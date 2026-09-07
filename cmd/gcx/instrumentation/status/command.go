@@ -30,12 +30,10 @@ func (o *statusOpts) setup(flags *pflag.FlagSet) {
 // registration must happen here — after flag parsing but before IO.Validate.
 func (o *statusOpts) Validate() error {
 	if o.Namespace != "" {
-		o.IO.RegisterCustomCodec("table", &instroutput.ServiceTableCodec{})
-		o.IO.RegisterCustomCodec("wide", &instroutput.ServiceTableCodec{Wide: true})
+		cmdio.RegisterTable(&o.IO, instroutput.ServiceTable(cmdio.TableOnly))
 		o.IO.SetJSONFieldValidator(cmdio.MakeFieldValidator(instroutput.ServiceView{}))
 	} else {
-		o.IO.RegisterCustomCodec("table", &instroutput.ClusterTableCodec{})
-		o.IO.RegisterCustomCodec("wide", &instroutput.ClusterTableCodec{Wide: true})
+		cmdio.RegisterTable(&o.IO, instroutput.ClusterTable())
 		o.IO.SetJSONFieldValidator(cmdio.MakeFieldValidator(instroutput.ClusterView{}))
 	}
 	return o.IO.Validate()
@@ -97,17 +95,14 @@ workload-level status for a specific namespace, powered by RunK8sDiscovery.`,
 			// Wrap the result in the canonical list envelope for JSON output
 			// (docs/design/output.md §101: list endpoints emit {"items":[...]}).
 			// Table/wide codecs unwrap the envelope at the codec boundary.
-			var encoded any
 			switch v := result.(type) {
 			case []instroutput.ClusterView:
-				encoded = instroutput.ClusterListEnvelope{Items: v}
+				return instroutput.EncodeList(&opts.IO, cmd.OutOrStdout(), v, instroutput.ClusterListEnvelope{Items: v})
 			case []instroutput.ServiceView:
-				encoded = instroutput.ServiceListEnvelope{Items: v}
+				return instroutput.EncodeList(&opts.IO, cmd.OutOrStdout(), v, instroutput.ServiceListEnvelope{Items: v})
 			default:
-				encoded = result
+				return opts.IO.Encode(cmd.OutOrStdout(), result)
 			}
-
-			return opts.IO.Encode(cmd.OutOrStdout(), encoded)
 		},
 	}
 

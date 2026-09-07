@@ -35,8 +35,8 @@ func newListCommand(loader fleet.ConfigLoader) *cobra.Command {
 	opts := &listOpts{}
 	outOpts := &cmdio.Options{}
 	outOpts.DefaultFormat("text")
-	outOpts.RegisterCustomCodec("text", &instrumout.ServiceTableCodec{Wide: false})
-	outOpts.RegisterCustomCodec("wide", &instrumout.ServiceTableCodec{Wide: true})
+	outOpts.RegisterCustomCodec(cmdio.FormatText, instrumout.ServiceTable(cmdio.TextOnly).Codec(cmdio.FormatText))
+	outOpts.RegisterCustomCodec(cmdio.FormatWide, instrumout.ServiceTable(cmdio.TextOnly).Codec(cmdio.FormatWide))
 	outOpts.SetJSONFieldValidator(cmdio.MakeFieldValidator(instrumout.ServiceView{}))
 
 	cmd := &cobra.Command{
@@ -138,5 +138,5 @@ func runList(
 		})
 	}
 
-	return outOpts.Encode(out, instrumout.ServiceListEnvelope{Items: views})
+	return instrumout.EncodeList(outOpts, out, views, instrumout.ServiceListEnvelope{Items: views})
 }

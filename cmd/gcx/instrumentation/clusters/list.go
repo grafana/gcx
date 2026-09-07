@@ -20,8 +20,7 @@ type listOpts struct {
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &instrOutput.ClusterTableCodec{Wide: false})
-	o.IO.RegisterCustomCodec("wide", &instrOutput.ClusterTableCodec{Wide: true})
+	cmdio.RegisterTable(&o.IO, instrOutput.ClusterTable())
 	o.IO.DefaultFormat("table")
 	o.IO.SetJSONFieldValidator(cmdio.MakeFieldValidator(instrOutput.ClusterView{}))
 	o.IO.BindFlags(flags)
@@ -136,5 +135,5 @@ func runList(
 		views[i] = cv
 	}
 
-	return opts.IO.Encode(w, instrOutput.ClusterListEnvelope{Items: views})
+	return instrOutput.EncodeList(&opts.IO, w, views, instrOutput.ClusterListEnvelope{Items: views})
 }

@@ -19,8 +19,8 @@ import (
 func makeListCmd(factory appClientFactory) *cobra.Command {
 	opts := &output.Options{}
 	opts.DefaultFormat("text")
-	opts.RegisterCustomCodec("text", &instoutput.AppTableCodec{Wide: false})
-	opts.RegisterCustomCodec("wide", &instoutput.AppTableCodec{Wide: true})
+	opts.RegisterCustomCodec(output.FormatText, instoutput.AppTable().Codec(output.FormatText))
+	opts.RegisterCustomCodec(output.FormatWide, instoutput.AppTable().Codec(output.FormatWide))
 	opts.SetJSONFieldValidator(output.MakeFieldValidator(instoutput.AppView{}))
 
 	cmd := &cobra.Command{
@@ -88,7 +88,7 @@ Use "gcx instrumentation status" for observed-state status.`,
 				})
 			}
 
-			return opts.Encode(cmd.OutOrStdout(), instoutput.AppListEnvelope{Items: views})
+			return instoutput.EncodeList(opts, cmd.OutOrStdout(), views, instoutput.AppListEnvelope{Items: views})
 		},
 	}
 

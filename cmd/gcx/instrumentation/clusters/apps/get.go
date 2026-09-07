@@ -20,8 +20,8 @@ import (
 func makeGetCmd(factory appClientFactory) *cobra.Command {
 	opts := &output.Options{}
 	opts.DefaultFormat("text")
-	opts.RegisterCustomCodec("text", &instoutput.AppTableCodec{Wide: false})
-	opts.RegisterCustomCodec("wide", &instoutput.AppTableCodec{Wide: true})
+	opts.RegisterCustomCodec(output.FormatText, instoutput.AppTable().Codec(output.FormatText))
+	opts.RegisterCustomCodec(output.FormatWide, instoutput.AppTable().Codec(output.FormatWide))
 	opts.SetJSONFieldValidator(output.MakeFieldValidator(instoutput.AppView{}))
 
 	cmd := &cobra.Command{

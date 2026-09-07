@@ -8,10 +8,13 @@ import (
 	"github.com/grafana/gcx/internal/style"
 )
 
-// Format names a table declaration is registered under.
+// Format names a table declaration is registered under. Commands whose human
+// default is a single record register the narrow codec as "text" rather than
+// "table"; both are narrow, so both have a Visibility.
 const (
 	FormatTable = "table"
 	FormatWide  = "wide"
+	FormatText  = "text"
 )
 
 // Visibility limits a column to a single output format. The zero value shows
@@ -25,6 +28,8 @@ const (
 	TableOnly Visibility = FormatTable
 	// WideOnly restricts the column to "wide".
 	WideOnly Visibility = FormatWide
+	// TextOnly restricts the column to "text".
+	TextOnly Visibility = FormatText
 )
 
 // Column is one column of a Table. TableBuilder cells are strings, so Content

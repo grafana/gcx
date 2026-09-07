@@ -8,6 +8,7 @@ import (
 
 	goyaml "github.com/goccy/go-yaml"
 	"github.com/grafana/gcx/internal/format"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers/instrumentation"
 	instroutput "github.com/grafana/gcx/internal/providers/instrumentation/output"
 	"github.com/stretchr/testify/assert"
@@ -132,14 +133,14 @@ func TestNormalizeStatus(t *testing.T) {
 func TestClusterTableCodec_Format(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, format.Format("table"), (&instroutput.ClusterTableCodec{}).Format())
-	assert.Equal(t, format.Format("wide"), (&instroutput.ClusterTableCodec{Wide: true}).Format())
+	assert.Equal(t, format.Format("table"), instroutput.ClusterTable().Codec(cmdio.FormatTable).Format())
+	assert.Equal(t, format.Format("wide"), instroutput.ClusterTable().Codec(cmdio.FormatWide).Format())
 }
 
 func TestClusterTableCodec_Decode_ReturnsError(t *testing.T) {
 	t.Parallel()
 
-	err := (&instroutput.ClusterTableCodec{}).Decode(strings.NewReader(""), nil)
+	err := instroutput.ClusterTable().Codec(cmdio.FormatTable).Decode(strings.NewReader(""), nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "does not support decoding")
 }
@@ -147,7 +148,7 @@ func TestClusterTableCodec_Decode_ReturnsError(t *testing.T) {
 func TestClusterTableCodec_Encode_InvalidType(t *testing.T) {
 	t.Parallel()
 
-	err := (&instroutput.ClusterTableCodec{}).Encode(&bytes.Buffer{}, "not a slice")
+	err := instroutput.ClusterTable().Codec(cmdio.FormatTable).Encode(&bytes.Buffer{}, "not a slice")
 	require.Error(t, err)
 }
 
@@ -168,7 +169,7 @@ func TestClusterTableCodec_DefaultColumns(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	require.NoError(t, (&instroutput.ClusterTableCodec{}).Encode(&buf, clusters))
+	require.NoError(t, instroutput.ClusterTable().Codec(cmdio.FormatTable).Encode(&buf, clusters))
 	out := buf.String()
 
 	// Default columns present in headers.
@@ -216,7 +217,7 @@ func TestClusterTableCodec_DefaultColumns_StatusNormalization(t *testing.T) {
 			t.Parallel()
 			clusters := []instroutput.ClusterView{{Name: "c1", InstrumentationStatus: tc.status}}
 			var buf bytes.Buffer
-			require.NoError(t, (&instroutput.ClusterTableCodec{}).Encode(&buf, clusters))
+			require.NoError(t, instroutput.ClusterTable().Codec(cmdio.FormatTable).Encode(&buf, clusters))
 			assert.Contains(t, buf.String(), tc.want)
 		})
 	}
@@ -243,7 +244,7 @@ func TestClusterTableCodec_WideColumns(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	require.NoError(t, (&instroutput.ClusterTableCodec{Wide: true}).Encode(&buf, clusters))
+	require.NoError(t, instroutput.ClusterTable().Codec(cmdio.FormatWide).Encode(&buf, clusters))
 	out := buf.String()
 
 	// Wide adds extra columns.
@@ -276,7 +277,7 @@ func TestClusterTableCodec_EmptySlice(t *testing.T) {
 	t.Parallel()
 
 	var buf bytes.Buffer
-	require.NoError(t, (&instroutput.ClusterTableCodec{}).Encode(&buf, []instroutput.ClusterView{}))
+	require.NoError(t, instroutput.ClusterTable().Codec(cmdio.FormatTable).Encode(&buf, []instroutput.ClusterView{}))
 	out := buf.String()
 	// Headers still rendered even for empty slice.
 	assert.Contains(t, out, "NAME")
@@ -289,14 +290,14 @@ func TestClusterTableCodec_EmptySlice(t *testing.T) {
 func TestAppTableCodec_Format(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, format.Format("table"), (&instroutput.AppTableCodec{}).Format())
-	assert.Equal(t, format.Format("wide"), (&instroutput.AppTableCodec{Wide: true}).Format())
+	assert.Equal(t, format.Format("text"), instroutput.AppTable().Codec(cmdio.FormatText).Format())
+	assert.Equal(t, format.Format("wide"), instroutput.AppTable().Codec(cmdio.FormatWide).Format())
 }
 
 func TestAppTableCodec_Decode_ReturnsError(t *testing.T) {
 	t.Parallel()
 
-	err := (&instroutput.AppTableCodec{}).Decode(strings.NewReader(""), nil)
+	err := instroutput.AppTable().Codec(cmdio.FormatText).Decode(strings.NewReader(""), nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "does not support decoding")
 }
@@ -304,7 +305,7 @@ func TestAppTableCodec_Decode_ReturnsError(t *testing.T) {
 func TestAppTableCodec_Encode_InvalidType(t *testing.T) {
 	t.Parallel()
 
-	err := (&instroutput.AppTableCodec{}).Encode(&bytes.Buffer{}, 42)
+	err := instroutput.AppTable().Codec(cmdio.FormatText).Encode(&bytes.Buffer{}, 42)
 	require.Error(t, err)
 }
 
@@ -325,7 +326,7 @@ func TestAppTableCodec_DefaultColumns(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	require.NoError(t, (&instroutput.AppTableCodec{}).Encode(&buf, apps))
+	require.NoError(t, instroutput.AppTable().Codec(cmdio.FormatText).Encode(&buf, apps))
 	out := buf.String()
 
 	// Default columns present in headers.
@@ -376,7 +377,7 @@ func TestAppTableCodec_WideColumns(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	require.NoError(t, (&instroutput.AppTableCodec{Wide: true}).Encode(&buf, apps))
+	require.NoError(t, instroutput.AppTable().Codec(cmdio.FormatWide).Encode(&buf, apps))
 	out := buf.String()
 
 	// Wide columns present.
@@ -408,14 +409,14 @@ func TestAppTableCodec_WideColumns(t *testing.T) {
 func TestServiceTableCodec_Format(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, format.Format("table"), (&instroutput.ServiceTableCodec{}).Format())
-	assert.Equal(t, format.Format("wide"), (&instroutput.ServiceTableCodec{Wide: true}).Format())
+	assert.Equal(t, format.Format("text"), instroutput.ServiceTable(cmdio.TextOnly).Codec(cmdio.FormatText).Format())
+	assert.Equal(t, format.Format("wide"), instroutput.ServiceTable(cmdio.TextOnly).Codec(cmdio.FormatWide).Format())
 }
 
 func TestServiceTableCodec_Decode_ReturnsError(t *testing.T) {
 	t.Parallel()
 
-	err := (&instroutput.ServiceTableCodec{}).Decode(strings.NewReader(""), nil)
+	err := instroutput.ServiceTable(cmdio.TextOnly).Codec(cmdio.FormatText).Decode(strings.NewReader(""), nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "does not support decoding")
 }
@@ -423,7 +424,7 @@ func TestServiceTableCodec_Decode_ReturnsError(t *testing.T) {
 func TestServiceTableCodec_Encode_InvalidType(t *testing.T) {
 	t.Parallel()
 
-	err := (&instroutput.ServiceTableCodec{}).Encode(&bytes.Buffer{}, struct{}{})
+	err := instroutput.ServiceTable(cmdio.TextOnly).Codec(cmdio.FormatText).Encode(&bytes.Buffer{}, struct{}{})
 	require.Error(t, err)
 }
 
@@ -443,7 +444,7 @@ func TestServiceTableCodec_DefaultColumns(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	require.NoError(t, (&instroutput.ServiceTableCodec{}).Encode(&buf, services))
+	require.NoError(t, instroutput.ServiceTable(cmdio.TextOnly).Codec(cmdio.FormatText).Encode(&buf, services))
 	out := buf.String()
 
 	// Default columns present in headers.
@@ -496,7 +497,7 @@ func TestServiceTableCodec_DisplayNameFallback(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	require.NoError(t, (&instroutput.ServiceTableCodec{}).Encode(&buf, services))
+	require.NoError(t, instroutput.ServiceTable(cmdio.TextOnly).Codec(cmdio.FormatText).Encode(&buf, services))
 	out := buf.String()
 
 	// DisplayName and DisplayNamespace used when set.
@@ -526,7 +527,7 @@ func TestServiceTableCodec_WideColumns(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	require.NoError(t, (&instroutput.ServiceTableCodec{Wide: true}).Encode(&buf, services))
+	require.NoError(t, instroutput.ServiceTable(cmdio.TextOnly).Codec(cmdio.FormatWide).Encode(&buf, services))
 	out := buf.String()
 
 	// Wide columns present.
