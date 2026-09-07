@@ -129,10 +129,10 @@ func AppTable() cmdio.Table[adapter.TypedObject[FaroApp]] {
 			{Header: "NAME", Content: spec(func(a FaroApp) string { return a.GetResourceName() })},
 			{Header: "APP KEY", Content: spec(func(a FaroApp) string { return cmdio.OrDash(a.AppKey) })},
 			{Header: "COLLECT ENDPOINT URL", Content: spec(func(a FaroApp) string { return cmdio.OrDash(a.CollectEndpointURL) })},
-			{Header: "OTLP INGEST ENDPOINT URL", WideOnly: true, Content: spec(func(a FaroApp) string { return cmdio.OrDash(a.OTLPIngestEndpointURL) })},
-			{Header: "CORS ORIGINS", WideOnly: true, Content: spec(func(a FaroApp) string { return corsOriginsString(a.CORSOrigins) })},
-			{Header: "EXTRA LOG LABELS", WideOnly: true, Content: spec(func(a FaroApp) string { return labelsString(a.ExtraLogLabels) })},
-			{Header: "GEOLOCATION", WideOnly: true, Content: spec(func(a FaroApp) string { return geolocationString(a.Settings) })},
+			{Header: "OTLP INGEST ENDPOINT URL", Visible: cmdio.WideOnly, Content: spec(func(a FaroApp) string { return cmdio.OrDash(a.OTLPIngestEndpointURL) })},
+			{Header: "CORS ORIGINS", Visible: cmdio.WideOnly, Content: spec(func(a FaroApp) string { return corsOriginsString(a.CORSOrigins) })},
+			{Header: "EXTRA LOG LABELS", Visible: cmdio.WideOnly, Content: spec(func(a FaroApp) string { return labelsString(a.ExtraLogLabels) })},
+			{Header: "GEOLOCATION", Visible: cmdio.WideOnly, Content: spec(func(a FaroApp) string { return geolocationString(a.Settings) })},
 		},
 	}
 }

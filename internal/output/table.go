@@ -14,19 +14,34 @@ const (
 	FormatWide  = "wide"
 )
 
+// Visibility limits a column to a single output format. The zero value shows
+// the column in every format the table is registered under.
+type Visibility string
+
+const (
+	// VisibleAll is the zero value: the column appears in every format.
+	VisibleAll Visibility = ""
+	// TableOnly restricts the column to "table".
+	TableOnly Visibility = FormatTable
+	// WideOnly restricts the column to "wide".
+	WideOnly Visibility = FormatWide
+)
+
 // Column is one column of a Table. TableBuilder cells are strings, so Content
 // does the formatting for its own column.
+//
+// Two columns may share a Header when each is restricted to a different
+// format, which is how a column renders different content in table and wide.
 type Column[T any] struct {
 	Header string
 
-	// WideOnly hides the column from "table", leaving it to "wide".
-	WideOnly bool
+	Visible Visibility
 
 	Content func(T) string
 }
 
 func (c Column[T]) visibleIn(name string) bool {
-	return !c.WideOnly || name == FormatWide
+	return c.Visible == VisibleAll || string(c.Visible) == name
 }
 
 // Table declares how a []T renders. One declaration serves both "table" and
@@ -52,7 +67,7 @@ func RegisterTable[T any](opts *Options, t Table[T]) {
 	opts.RegisterCustomCodec(FormatTable, t.Codec(FormatTable))
 
 	for _, c := range t.Columns {
-		if c.WideOnly {
+		if c.Visible == WideOnly {
 			opts.RegisterCustomCodec(FormatWide, t.Codec(FormatWide))
 			return
 		}

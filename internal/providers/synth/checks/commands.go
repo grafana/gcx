@@ -175,10 +175,10 @@ func CheckTable() cmdio.Table[Check] {
 			{Header: "JOB", Content: func(c Check) string { return c.Job }},
 			{Header: "TARGET", Content: func(c Check) string { return c.Target }},
 			{Header: "TYPE", Content: func(c Check) string { return c.Settings.CheckType() }},
-			{Header: "ENABLED", WideOnly: true, Content: func(c Check) string { return strconv.FormatBool(c.Enabled) }},
-			{Header: "FREQ", WideOnly: true, Content: func(c Check) string { return fmt.Sprintf("%ds", c.Frequency/1000) }},
-			{Header: "TIMEOUT", WideOnly: true, Content: func(c Check) string { return fmt.Sprintf("%ds", c.Timeout/1000) }},
-			{Header: "PROBES", WideOnly: true, Content: func(c Check) string { return strconv.Itoa(len(c.Probes)) }},
+			{Header: "ENABLED", Visible: cmdio.WideOnly, Content: func(c Check) string { return strconv.FormatBool(c.Enabled) }},
+			{Header: "FREQ", Visible: cmdio.WideOnly, Content: func(c Check) string { return fmt.Sprintf("%ds", c.Frequency/1000) }},
+			{Header: "TIMEOUT", Visible: cmdio.WideOnly, Content: func(c Check) string { return fmt.Sprintf("%ds", c.Timeout/1000) }},
+			{Header: "PROBES", Visible: cmdio.WideOnly, Content: func(c Check) string { return strconv.Itoa(len(c.Probes)) }},
 		},
 	}
 }

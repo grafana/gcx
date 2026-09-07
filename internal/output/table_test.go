@@ -20,7 +20,7 @@ func testTable() cmdio.Table[row] {
 	return cmdio.Table[row]{
 		Columns: []cmdio.Column[row]{
 			{Header: "NAME", Content: func(r row) string { return r.name }},
-			{Header: "NOTE", WideOnly: true, Content: func(r row) string { return r.note }},
+			{Header: "NOTE", Visible: cmdio.WideOnly, Content: func(r row) string { return r.note }},
 		},
 	}
 }
@@ -130,4 +130,31 @@ func TestRegisterTableRegistersWideOnlyWhenNeeded(t *testing.T) {
 func TestOrDash(t *testing.T) {
 	assert.Equal(t, "-", cmdio.OrDash(""))
 	assert.Equal(t, "value", cmdio.OrDash("value"))
+}
+
+// Two columns may share a Header when each is limited to a different format.
+// That is how a column renders different content in table and wide — the case
+// instrumentation's STATUS column needs.
+func TestTableCodecSharedHeaderPerFormat(t *testing.T) {
+	table := cmdio.Table[row]{
+		Columns: []cmdio.Column[row]{
+			{Header: "NAME", Content: func(r row) string { return r.name }},
+			{Header: "STATUS", Visible: cmdio.TableOnly, Content: func(row) string { return "NORMALISED" }},
+			{Header: "STATUS", Visible: cmdio.WideOnly, Content: func(row) string { return "RAW_ENUM" }},
+		},
+	}
+
+	rows := []row{{name: "alpha"}}
+
+	var narrow bytes.Buffer
+	require.NoError(t, table.Codec(cmdio.FormatTable).Encode(&narrow, rows))
+	assert.Contains(t, narrow.String(), "NORMALISED")
+	assert.NotContains(t, narrow.String(), "RAW_ENUM")
+	assert.Equal(t, 1, strings.Count(narrow.String(), "STATUS"), "header appears once")
+
+	var wide bytes.Buffer
+	require.NoError(t, table.Codec(cmdio.FormatWide).Encode(&wide, rows))
+	assert.Contains(t, wide.String(), "RAW_ENUM")
+	assert.NotContains(t, wide.String(), "NORMALISED")
+	assert.Equal(t, 1, strings.Count(wide.String(), "STATUS"), "header appears once")
 }
