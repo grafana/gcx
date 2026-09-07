@@ -95,7 +95,7 @@ func TestQuery_RequestConstruction(t *testing.T) {
 
 	client := newTestClient(t, server.URL)
 	_, err := client.Query(context.Background(), "pinot-uid", pinot.QueryRequest{
-		RawSQL: "SELECT count(*) FROM faro_pinot_events_v2",
+		RawSQL: "SELECT count(*) FROM events",
 	})
 	require.NoError(t, err)
 
@@ -108,8 +108,8 @@ func TestQuery_RequestConstruction(t *testing.T) {
 	assert.Equal(t, "PinotQL", q["queryType"])
 	assert.Equal(t, "Code", q["editorMode"])
 	assert.Equal(t, "TABLE", q["displayType"])
-	assert.Equal(t, "faro_pinot_events_v2", q["tableName"])
-	assert.Equal(t, "SELECT count(*) FROM faro_pinot_events_v2", q["pinotQlCode"])
+	assert.Equal(t, "events", q["tableName"])
+	assert.Equal(t, "SELECT count(*) FROM events", q["pinotQlCode"])
 	ds, ok := q["datasource"].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, pinot.DatasourceType, ds["type"])

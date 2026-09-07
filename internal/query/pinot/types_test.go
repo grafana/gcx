@@ -13,9 +13,9 @@ func TestExtractTableName(t *testing.T) {
 		sql  string
 		want string
 	}{
-		{"simple from", `SELECT count(*) FROM faro_pinot_events_v2`, "faro_pinot_events_v2"},
-		{"quoted from", `SELECT 1 FROM "faro_pinot_events_v2"`, "faro_pinot_events_v2"},
-		{"set prefix", "SET useMultistageEngine = true;\nSELECT * FROM faro_pinot_logs_v1", "faro_pinot_logs_v1"},
+		{"simple from", `SELECT count(*) FROM events`, "events"},
+		{"quoted from", `SELECT 1 FROM "events"`, "events"},
+		{"set prefix", "SET useMultistageEngine = true;\nSELECT * FROM logs", "logs"},
 		{"schema-qualified", "SELECT * FROM my_db.events", "my_db.events"},
 		{"subquery from skipped", "SELECT * FROM (SELECT 1)", ""},
 		{"subquery with inner from skipped", "SELECT * FROM (SELECT x FROM inner_t) a", ""},
