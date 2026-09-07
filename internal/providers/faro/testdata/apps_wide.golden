@@ -1,0 +1,3 @@
+NAME           APP KEY  COLLECT ENDPOINT URL                     OTLP INGEST ENDPOINT URL       CORS ORIGINS             EXTRA LOG LABELS  GEOLOCATION
+my-app-42      abc123   https://faro.example.com/collect/abc123  https://faro.example.com/otlp  https://app.example.com  team=frontend     country
+minimal-app-7  -        -                                        -                              -                        -                 -
