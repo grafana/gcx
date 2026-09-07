@@ -188,6 +188,7 @@ current-context: default
 // TestConfigLoader_LoadSMConfig_AutoDiscoveryPersistsToConfig verifies that an
 // auto-discovered SM URL is saved to the config file for subsequent runs.
 func TestConfigLoader_LoadSMConfig_AutoDiscoveryPersistsToConfig(t *testing.T) {
+	t.Setenv("GCX_KEYCHAIN", "off")
 	const wantURL = "https://synthetic-monitoring-api-eu-west-2.grafana.net"
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -405,6 +406,7 @@ current-context: default
 // TestConfigLoader_LoadSMConfig_TokenPersistsToConfig verifies that an
 // auto-discovered SM token is saved to the config file for subsequent runs.
 func TestConfigLoader_LoadSMConfig_TokenPersistsToConfig(t *testing.T) {
+	t.Setenv("GCX_KEYCHAIN", "off")
 	const wantToken = "sm-access-token-persisted"
 
 	smSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

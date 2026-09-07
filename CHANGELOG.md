@@ -2,12 +2,14 @@
 
 **Breaking changes**
 
+- An unavailable OS keychain no longer falls back to a plaintext write. A first login (or any credential-consuming command) on a machine with no working OS credential store now fails instead of silently storing the token in plaintext. Set `GCX_KEYCHAIN=off` to keep the previous plaintext-storage behavior as an explicit opt-out.
 - Fleet Management and Instrumentation now use the `grafana-collector-app` plugin proxy instead of direct Cloud Access Policy authentication. A Cloud Access Policy token with `fleet-management` scopes is no longer sufficient. Use a Grafana stack login and ensure that the plugin is enabled. Older stack tokens can require a new `gcx login` to obtain `grafana-api:write`. Named plugin routes need `grafana-collector-app:read`. Wildcard routes need `grafana-collector-app:admin`, including some read-only commands. The default `gcx cloud login --scope` list no longer includes `fleet-management:read` or `fleet-management:write`.
 - Fleet collector resource manifests now include `spec.id`. Collector creation requires this field. Existing numeric-ID manifests continue to work for update and delete. Add `spec.id` before you reuse an older manifest to create a collector.
 - `gcx setup status` now adds `fleet-management` as the first item in `products`. Select entries by `.product` instead of their array position. The command returns exit code 1 when the plugin is missing or disabled. It returns exit code 4 when the Instrumentation check fails. In both cases, it emits the status document before it exits.
 - `gcx synthetic-monitoring probes reset-token` now returns the new probe token. Its structured output changes from the `gcx.mutation` schema to `gcx.synth.probe_token_reset`. The `name` and `id` fields move out of `target`, and `id` changes from a string to a number. Update scripts to read the top-level `token`, `name`, and `id` fields.
 - `gcx synthetic-monitoring probes deploy` now generates a Namespace, Secret, and Deployment. It no longer generates a ServiceAccount. The Secret keys change from `API_ACCESS_TOKEN` and `API_SERVER_URL` to `api-token` and `api-server-address`. Tools that process the generated manifests must accept the new resource and key names. An identity that applies the complete output must have permission to manage Namespace resources.
 - `gcx synthetic-monitoring probes deploy --api-server-url` now requires an address in `host:port` format. Values with a URL scheme or without a port now fail validation.
+- Add `--timezone` to `gcx irm oncall schedules list-final-shifts`. Without the flag the command uses the timezone of the schedule, then UTC. On a host that sets `TZ` to an IANA name, this changes the default from the zone of the host to the zone of the schedule.
 
 **New Features**
 
@@ -19,6 +21,8 @@
 **Fixes**
 
 - Correct Fleet resource examples, preserve string collector IDs in resource manifests, and include the collector name and ID in successful create output.
+- Accept the Kubernetes envelope (`apiVersion`/`kind`/`metadata`/`spec`) in the manifest that `create -f` and `update -f` read. The commands decoded the envelope into an empty object before this change, so they lost every field that the manifest set. This repairs the round trip for `gcx irm oncall`, where `gcx resources list-examples` prints that envelope. For `gcx alert` it adds tolerance for a hand-written envelope, because the alert provider registers no adapter.
+- Stop sending the local zone name of the host as `user_tz` in `gcx irm oncall schedules list-final-shifts`. A host that does not set `TZ` sent the literal string `Local`, and the API answered "Invalid timezone".
 
 ## v1.2.0 (2026-08-25)
 
@@ -71,6 +75,7 @@
 - Add a Grafana version support policy to the documentation (#1197)
 - Regenerate the command line interface reference (#1224)
 
+- instrumentation: app and service writes (`clusters apps configure`/`remove`, `services include`/`exclude`/`clear`) no longer fail with `otlp_url is required`.
 
 ## v1.1.0 (2026-08-14)
 

@@ -57,14 +57,22 @@ The following applies:
 
 - `gcx` works across a wide range of Grafana product offerings. Feature availability depends on your Grafana deployment. For more information, refer to the [Compatibility matrix](https://github.com/grafana/gcx#compatibility).
 
+## Experimental commands
+
+Some commands are labelled `[experimental]` in their help text and carry a `stability` field of `experimental` in `gcx commands` output. An experimental command may be removed, or its subcommands, flags, and responses may change, without following the normal semantic versioning conventions. Every other command is stable within a major version.
+
+Commands are labelled experimental when they are not yet stable, or when they operate a Grafana Cloud feature that is not yet Generally Available. For more information, refer to [Release life cycle for Grafana Labs](https://grafana.com/docs/release-life-cycle/).
+
 ## Migrate from `grafanactl`
 
 If you want to migrate from `grafanctl` to `gcx`, search-and-replace `grafanactl` with `gcx`. For `grafanactl resources serve`, use `gcx dev serve` instead.
 
 ## Learn more
 
-Refer to the [`gcx` repository](https://github.com/grafana/gcx) in GitHub for more information on:
+Refer to the [`gcx` repository](https://github.com/grafana/gcx) in GitHub for the full set of `gcx` documents, including more information on:
 
 - Installation and configuration
 - How to manage resources, including dashboards-as-code
+- Architecture
+- User guides
 - CLI command reference

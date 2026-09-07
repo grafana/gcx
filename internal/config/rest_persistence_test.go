@@ -190,6 +190,7 @@ current-context: default
 }
 
 func TestWireTokenPersistence_ExplicitModeWritesToExplicitSource(t *testing.T) {
+	store := withFakeStore(t)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/cli/v1/auth/refresh":
@@ -290,8 +291,10 @@ contexts:
 	explicitRaw, err := os.ReadFile(explicitFile)
 	require.NoError(t, err)
 	explicitContents := string(explicitRaw)
-	assert.Contains(t, explicitContents, "gat_explicit_new")
-	assert.Contains(t, explicitContents, "gar_explicit_new")
+	assert.NotContains(t, explicitContents, "gat_explicit_new")
+	assert.NotContains(t, explicitContents, "gar_explicit_new")
+	assert.True(t, store.containsValue("gat_explicit_new"))
+	assert.True(t, store.containsValue("gar_explicit_new"))
 
 	userRaw, err := os.ReadFile(userFile)
 	require.NoError(t, err)
@@ -318,6 +321,7 @@ func refresher(t *testing.T, rc config.NamespacedRESTConfig) func(previousRefres
 // rotated refresh token is issued by the server but never written to disk,
 // leaving the user locked out on the next invocation.
 func TestWireTokenPersistence_WritesAfterContextCancelled(t *testing.T) {
+	store := withFakeStore(t)
 	dir := t.TempDir()
 	explicitFile := filepath.Join(dir, "explicit.yaml")
 	writeTestConfigFile(t, explicitFile, `
@@ -370,8 +374,10 @@ current-context: default
 
 	raw, err := os.ReadFile(explicitFile)
 	require.NoError(t, err)
-	assert.Contains(t, string(raw), "gat_rotated")
-	assert.Contains(t, string(raw), "gar_rotated")
+	assert.NotContains(t, string(raw), "gat_rotated")
+	assert.NotContains(t, string(raw), "gar_rotated")
+	assert.True(t, store.containsValue("gat_rotated"))
+	assert.True(t, store.containsValue("gar_rotated"))
 
 	// Retrying after a write that committed but reported uncertain durability
 	// is an idempotent success only when every persisted field is the exact new
@@ -978,6 +984,7 @@ current-context: default
 // observe the freshly-written tokens on disk and adopt them without calling
 // the refresh endpoint a second time.
 func TestWireTokenPersistence_ConcurrentRefreshesSerializeViaFileLock(t *testing.T) {
+	store := withFakeStore(t)
 	var refreshCalls atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/cli/v1/auth/refresh" {
@@ -1069,14 +1076,17 @@ current-context: default
 	}
 	raw, err := os.ReadFile(file)
 	require.NoError(t, err)
-	assert.Contains(t, string(raw), "gat_new")
-	assert.Contains(t, string(raw), "gar_new")
+	assert.NotContains(t, string(raw), "gat_new")
+	assert.NotContains(t, string(raw), "gar_new")
+	assert.True(t, store.containsValue("gat_new"))
+	assert.True(t, store.containsValue("gar_new"))
 	assert.Equal(t, int32(1), refreshCalls.Load())
 }
 
 // Bug 5 — Tokens persisted in one "invocation" must be re-loadable and usable
 // for the next. Simulates two sequential gcx invocations sharing a config file.
 func TestWireTokenPersistence_RoundTripAcrossInvocations(t *testing.T) {
+	withFakeStore(t)
 	var refreshCalls atomic.Int32
 	var presentedRefresh atomic.Value // string
 	presentedRefresh.Store("")

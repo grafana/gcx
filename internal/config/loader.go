@@ -32,11 +32,15 @@ import (
 // uses credentials.Open() which probes the OS keychain, unless the resolved
 // keychain mode is disabled, in which case credentials stay in plaintext.
 //
-// Under `go test` (detected via testing.Testing()), the default is a no-op
-// store that reports ErrUnavailable for every operation. This prevents any
-// test in any package from triggering OS-keychain prompts when it loads a
-// config file. Tests that need to exercise the keychain code path must
-// explicitly install their own store by overriding this variable.
+// GCX_KEYCHAIN=off is checked before the test short-circuit below, so a
+// deliberate opt-out is honoured even under `go test`: ErrDisabled must
+// remain reachable in-process, or no test could exercise the one path that
+// still falls back to plaintext. Otherwise, under `go test` (detected via
+// testing.Testing()), the default is a no-op store that reports
+// ErrUnavailable for every operation. This prevents any test in any package
+// from triggering OS-keychain prompts when it loads a config file. Tests that
+// need to exercise the keychain code path must explicitly install their own
+// store by overriding this variable.
 //
 //nolint:gochecknoglobals // test injection seam for the keychain backend.
 var keychainStoreFn = defaultKeychainStore
@@ -79,10 +83,13 @@ var (
 )
 
 func defaultKeychainStore() credentials.Store {
+	if keychainModeForProcess() == keychainModeDisabled {
+		return disabledStore{}
+	}
 	if testing.Testing() {
 		return testingNoopStore{}
 	}
-	return keychainStoreForMode(keychainModeForProcess())
+	return keychainStoreForMode(keychainModeEnabled)
 }
 
 func keychainStoreForMode(mode keychainMode) credentials.Store {

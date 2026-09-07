@@ -166,9 +166,10 @@ precedence but remain ephemeral.
 are redacted in `gcx config view`. Undeclared keys and unknown providers are
 redacted by default. Keychain references are bound to their canonical source
 file, exact owner/field, and destination so another layer cannot redirect or
-overwrite a stored credential. A missing native keychain may permit a warned
-plaintext fallback for a brand-new credential; a reachable but locked or
-interaction-disabled keychain fails closed with `Keychain locked`.
+overwrite a stored credential. An unavailable native keychain fails closed,
+same as a reachable but locked or interaction-disabled keychain (`Keychain
+locked`); the only plaintext fallback path is the explicit `GCX_KEYCHAIN=off`
+opt-out.
 
 **Deep-dive:** [config-system.md](docs/architecture/config-system.md).
 

@@ -81,7 +81,10 @@ OnCall, Fleet Management, etc.) using product-specific REST APIs.
   release, unless the surface was explicitly marked experimental before
   release. The complete v1.0.0 command surface is therefore a supported
   compatibility exception for all v1.x releases, including invocations that
-  predate or deviate from the rules above.
+  predate or deviate from the rules above. One caveat to this rule is that commands marked as experimental may be removed or
+  changed without following the normal semver conventions - see
+  [experimental-commands.md](docs/design/experimental-commands.md) for how a command
+  is marked.
 
 ## Dual-Purpose Design
 

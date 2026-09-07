@@ -1333,9 +1333,10 @@ func TestErrorToDetailedError_KeychainLocked(t *testing.T) {
 		"failed to unlock correct collection '/org/freedesktop/secrets/collection/login'")
 
 	tests := []struct {
-		name       string
-		err        error
-		wantLocked bool
+		name        string
+		err         error
+		wantLocked  bool
+		wantSummary string
 	}{
 		{
 			name:       "bare ErrLocked",
@@ -1350,9 +1351,19 @@ func TestErrorToDetailedError_KeychainLocked(t *testing.T) {
 			wantLocked: true,
 		},
 		{
-			name:       "ErrUnavailable is not a locked keychain",
-			err:        fmt.Errorf("writing config: %w", credentials.ErrUnavailable),
-			wantLocked: false,
+			name:        "ErrUnavailable is an actionable unavailable keychain",
+			err:         fmt.Errorf("writing config: %w", credentials.ErrUnavailable),
+			wantSummary: "Keychain unavailable",
+		},
+		{
+			// ErrDisabled wraps ErrUnavailable, so it must be checked ahead of
+			// ErrUnavailable or it silently gets the "Keychain unavailable"
+			// envelope that convert.go deliberately refuses it. A deliberate
+			// GCX_KEYCHAIN=off opt-out still falls back to plaintext, so it
+			// must fall through to the generic error envelope instead.
+			name:        "ErrDisabled must not shadow into the unavailable-keychain envelope",
+			err:         fmt.Errorf("writing config: %w", credentials.ErrDisabled),
+			wantSummary: "Writing config",
 		},
 		{
 			name:       "ErrNotFound is not a locked keychain",
@@ -1365,6 +1376,32 @@ func TestErrorToDetailedError_KeychainLocked(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got := fail.ErrorToDetailedError(tt.err)
 			require.NotNil(t, got)
+
+			// ErrDisabled must be tested for explicitly, and ahead of
+			// ErrUnavailable: ErrDisabled wraps ErrUnavailable, so a check
+			// that only tests errors.Is(err, ErrUnavailable) would also match
+			// ErrDisabled and assert the wrong envelope.
+			if errors.Is(tt.err, credentials.ErrDisabled) {
+				require.NotEmpty(t, tt.wantSummary, "test row must pin an exact summary")
+				assert.Equal(t, tt.wantSummary, got.Summary)
+				assert.NotEqual(t, "Keychain unavailable", got.Summary,
+					"a deliberate GCX_KEYCHAIN=off opt-out must get the generic error envelope, not the unavailable-keychain one")
+				require.ErrorIs(t, got.Parent, credentials.ErrDisabled)
+				return
+			}
+
+			if errors.Is(tt.err, credentials.ErrUnavailable) {
+				require.NotEmpty(t, tt.wantSummary, "test row must pin an exact summary")
+				assert.Equal(t, tt.wantSummary, got.Summary)
+				assert.Equal(t,
+					"The OS keychain is unavailable. gcx did not fall back to plaintext credential storage.",
+					got.Details)
+				require.ErrorIs(t, got.Parent, credentials.ErrUnavailable)
+				assert.NotErrorIs(t, got.Parent, credentials.ErrLocked)
+				assert.Contains(t, strings.Join(got.Suggestions, "\n"), "GCX_KEYCHAIN=off")
+				assert.Contains(t, strings.Join(got.Suggestions, "\n"), "Plaintext credentials are stored on disk")
+				return
+			}
 
 			if !tt.wantLocked {
 				assert.NotEqual(t, "Keychain locked", got.Summary)
@@ -1380,6 +1417,7 @@ func TestErrorToDetailedError_KeychainLocked(t *testing.T) {
 			assert.Equal(t, docs.Keychain, got.DocsLink)
 			// convert_internal_test.go pins the per-platform suggestions.
 			assert.NotEmpty(t, got.Suggestions)
+			assert.NotContains(t, strings.Join(got.Suggestions, "\n"), "GCX_KEYCHAIN=off")
 		})
 	}
 }

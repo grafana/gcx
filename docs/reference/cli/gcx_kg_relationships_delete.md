@@ -1,14 +1,16 @@
 ## gcx kg relationships delete
 
-Delete a custom relationship [experimental].
+[experimental] Delete a custom relationship.
 
 ### Synopsis
+
+This command is experimental. It may be removed, or its subcommands, flags and
+responses may change without following the normal semantic versioning conventions.
 
 Delete an API-origin edge of the given type between the from/to entities.
 The endpoint refs (incl. scope) must match the values used at upsert.
 
-Experimental: this command uses the Knowledge Graph write API, which is gated
-server-side and may change.
+This command uses the Knowledge Graph write API, which is gated server-side.
 
 ```
 gcx kg relationships delete [flags]
@@ -50,5 +52,5 @@ gcx kg relationships delete [flags]
 
 ### SEE ALSO
 
-* [gcx kg relationships](gcx_kg_relationships.md)	 - Manage custom Knowledge Graph relationships [experimental].
+* [gcx kg relationships](gcx_kg_relationships.md)	 - [experimental] Manage custom Knowledge Graph relationships.
 
