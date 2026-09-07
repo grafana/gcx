@@ -56,20 +56,20 @@ Use --share-link to print the equivalent Grafana Explore URL, or --open to
 open it in your browser after the query succeeds.`,
 		Example: `
   # Simple query
-  gcx datasources pinot query -d UID 'SELECT count(*) FROM faro_pinot_events_v2'
+  gcx datasources pinot query -d UID 'SELECT count(*) FROM events'
 
   # With time range
   gcx datasources pinot query -d UID --since 7d \
-    'SELECT count(*) FROM faro_pinot_events_v2 WHERE appId = 66'
+    'SELECT count(*) FROM events WHERE $__timeFilter("timestamp")'
 
   # Output as JSON
-  gcx datasources pinot query -d UID 'SELECT 1 FROM faro_pinot_events_v2' -o json
+  gcx datasources pinot query -d UID 'SELECT 1 FROM events' -o json
 
   # Print a Grafana Explore share link for the executed query
-  gcx datasources pinot query -d UID 'SELECT 1 FROM faro_pinot_events_v2' --share-link
+  gcx datasources pinot query -d UID 'SELECT 1 FROM events' --share-link
 
   # Disable limit enforcement
-  gcx datasources pinot query -d UID 'SELECT * FROM faro_pinot_events_v2' --limit 0`,
+  gcx datasources pinot query -d UID 'SELECT * FROM events' --limit 0`,
 		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
@@ -144,7 +144,7 @@ open it in your browser after the query succeeds.`,
 
 	cmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "medium",
-		agent.AnnotationLLMHint:   `gcx datasources pinot query -d UID 'SELECT count(*) FROM faro_pinot_events_v2' -o json`,
+		agent.AnnotationLLMHint:   `gcx datasources pinot query -d UID 'SELECT count(*) FROM events' -o json`,
 	}
 
 	opts.setup(cmd.Flags())

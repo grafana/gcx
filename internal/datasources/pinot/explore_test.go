@@ -16,7 +16,7 @@ func TestQueryExploreURL(t *testing.T) {
 		got := pinot.QueryExploreURL("https://mystack.grafana.net", dsquery.ExploreQuery{
 			DatasourceUID:  "pinot-uid",
 			DatasourceType: querypinot.DatasourceType,
-			Expr:           "SELECT count(*) FROM faro_pinot_events_v2",
+			Expr:           "SELECT count(*) FROM events",
 			OrgID:          1,
 		})
 
@@ -29,8 +29,8 @@ func TestQueryExploreURL(t *testing.T) {
 		assert.Contains(t, params.Get("panes"), `"queryType":"PinotQL"`)
 		assert.Contains(t, params.Get("panes"), `"editorMode":"Code"`)
 		assert.Contains(t, params.Get("panes"), `"displayType":"TABLE"`)
-		assert.Contains(t, params.Get("panes"), `"tableName":"faro_pinot_events_v2"`)
-		assert.Contains(t, params.Get("panes"), `"pinotQlCode":"SELECT count(*) FROM faro_pinot_events_v2"`)
+		assert.Contains(t, params.Get("panes"), `"tableName":"events"`)
+		assert.Contains(t, params.Get("panes"), `"pinotQlCode":"SELECT count(*) FROM events"`)
 		assert.Contains(t, params.Get("panes"), `"from":"now-1h"`)
 		assert.Contains(t, params.Get("panes"), `"to":"now"`)
 	})
