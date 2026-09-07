@@ -14,6 +14,8 @@ The long description for an experimental command should begin with:
 
 > This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
 
+Unlike the short description, the long description is required on every command in an experimental subtree, including those not marked in the short description.
+
 ## Agent metadata
 
 Every experimental command carries the `agent.stability` annotation `agent.StabilityExperimental`, including each command inside an experimental subtree.

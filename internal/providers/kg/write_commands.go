@@ -431,11 +431,13 @@ func newRelationshipsCreateCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "upsert",
 		Short: "Create or update a custom relationship (upsert).",
-		Long: `Create or update an API-origin edge between two existing entities.
+		Long: `This command is experimental. It may be removed, or its subcommands, flags and
+responses may change without following the normal semantic versioning conventions.
+
+Create or update an API-origin edge between two existing entities.
 Both endpoints must already exist.
 
-Experimental: this command uses the Knowledge Graph write API, which is gated
-server-side and may change.
+This command uses the Knowledge Graph write API, which is gated server-side.
 
 With -f, the input may be a single object or a YAML/JSON array. Array entries
 are processed in order as independent upserts: the operation is not atomic,
@@ -614,11 +616,13 @@ func newRelationshipsDeleteCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "delete",
 		Short: "Delete a custom relationship.",
-		Long: `Delete an API-origin edge of the given type between the from/to entities.
+		Long: `This command is experimental. It may be removed, or its subcommands, flags and
+responses may change without following the normal semantic versioning conventions.
+
+Delete an API-origin edge of the given type between the from/to entities.
 The endpoint refs (incl. scope) must match the values used at upsert.
 
-Experimental: this command uses the Knowledge Graph write API, which is gated
-server-side and may change.`,
+This command uses the Knowledge Graph write API, which is gated server-side.`,
 		Example: `  gcx kg relationships delete --type CALLS \
     --from myapp/Service/checkout --to myapp/Service/cart --force`,
 		Annotations: map[string]string{agent.AnnotationStability: agent.StabilityExperimental},

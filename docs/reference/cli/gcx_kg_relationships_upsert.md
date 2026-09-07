@@ -4,11 +4,13 @@ Create or update a custom relationship (upsert).
 
 ### Synopsis
 
+This command is experimental. It may be removed, or its subcommands, flags and
+responses may change without following the normal semantic versioning conventions.
+
 Create or update an API-origin edge between two existing entities.
 Both endpoints must already exist.
 
-Experimental: this command uses the Knowledge Graph write API, which is gated
-server-side and may change.
+This command uses the Knowledge Graph write API, which is gated server-side.
 
 With -f, the input may be a single object or a YAML/JSON array. Array entries
 are processed in order as independent upserts: the operation is not atomic,

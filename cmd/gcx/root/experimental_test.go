@@ -89,10 +89,13 @@ func TestExperimental_AnnotatedCommandsAreAdvertised(t *testing.T) {
 }
 
 // TestExperimental_LongDescriptionCarriesPreamble checks the wording users are
-// shown when they ask for the full help.
+// shown when they ask for the full help. Unlike the marker, the preamble is
+// required on every experimental command, including those inside a subtree
+// marked only at its root: --help on a child is reached directly, so it cannot
+// rely on the parent to carry the warning.
 func TestExperimental_LongDescriptionCarriesPreamble(t *testing.T) {
 	agent.WalkCommands(buildRootCmd(), func(cmd *cobra.Command) {
-		if !hasExperimentalShort(cmd) {
+		if !isExperimental(cmd) {
 			return
 		}
 		t.Run(cmd.CommandPath(), func(t *testing.T) {
