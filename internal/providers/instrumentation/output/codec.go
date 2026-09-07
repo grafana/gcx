@@ -175,20 +175,21 @@ func AccessPoliciesURL(orgSlug string) string {
 // The Items slice is initialized via make([]T, 0) in the command layer to
 // guarantee [] (not null) for empty results.
 
-// ClusterListEnvelope is the JSON envelope for the clusters list command.
-type ClusterListEnvelope struct {
-	Items []ClusterView `json:"items"`
+// ListEnvelope is the JSON envelope every instrumentation list command emits.
+type ListEnvelope[T any] struct {
+	Items []T `json:"items"`
 }
 
-// ServiceListEnvelope is the JSON envelope for the services list command.
-type ServiceListEnvelope struct {
-	Items []ServiceView `json:"items"`
-}
-
-// AppListEnvelope is the JSON envelope for the clusters apps list command.
-type AppListEnvelope struct {
-	Items []AppView `json:"items"`
-}
+// The per-command names are aliases, so the envelope a command emits is
+// determined by its row type and never has to be named alongside it.
+type (
+	// ClusterListEnvelope is the JSON envelope for the clusters list command.
+	ClusterListEnvelope = ListEnvelope[ClusterView]
+	// ServiceListEnvelope is the JSON envelope for the services list command.
+	ServiceListEnvelope = ListEnvelope[ServiceView]
+	// AppListEnvelope is the JSON envelope for the clusters apps list command.
+	AppListEnvelope = ListEnvelope[AppView]
+)
 
 // ─── STATUS normalization ─────────────────────────────────────────────────────
 
@@ -378,10 +379,10 @@ func ServiceTable(narrow cmdio.Visibility) cmdio.Table[ServiceView] {
 }
 
 // EncodeList writes rows through the resolved codec when a table format is
-// selected, and envelope otherwise. The table codecs render a row slice while
-// JSON and YAML render the list envelope, so the payload depends on the
-// resolved format rather than on what the command fetched.
-func EncodeList[T any](opts *cmdio.Options, w io.Writer, rows []T, envelope any) error {
+// selected, and wraps them in the list envelope otherwise. The table codecs
+// render a row slice while JSON and YAML render the envelope, so the payload
+// depends on the resolved format rather than on what the command fetched.
+func EncodeList[T any](opts *cmdio.Options, w io.Writer, rows []T) error {
 	codec, err := opts.Codec()
 	if err != nil {
 		return err
@@ -391,6 +392,6 @@ func EncodeList[T any](opts *cmdio.Options, w io.Writer, rows []T, envelope any)
 	case cmdio.FormatTable, cmdio.FormatWide, cmdio.FormatText:
 		return codec.Encode(w, rows)
 	default:
-		return opts.Encode(w, envelope)
+		return opts.Encode(w, ListEnvelope[T]{Items: rows})
 	}
 }

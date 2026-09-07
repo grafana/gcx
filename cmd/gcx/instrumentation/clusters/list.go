@@ -135,5 +135,5 @@ func runList(
 		views[i] = cv
 	}
 
-	return instrOutput.EncodeList(&opts.IO, w, views, instrOutput.ClusterListEnvelope{Items: views})
+	return instrOutput.EncodeList(&opts.IO, w, views)
 }

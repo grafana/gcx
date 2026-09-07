@@ -138,5 +138,5 @@ func runList(
 		})
 	}
 
-	return instrumout.EncodeList(outOpts, out, views, instrumout.ServiceListEnvelope{Items: views})
+	return instrumout.EncodeList(outOpts, out, views)
 }

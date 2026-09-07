@@ -92,14 +92,15 @@ workload-level status for a specific namespace, powered by RunK8sDiscovery.`,
 				return fmt.Errorf("instrumentation status: %w", err)
 			}
 
-			// Wrap the result in the canonical list envelope for JSON output
-			// (docs/design/output.md §101: list endpoints emit {"items":[...]}).
-			// Table/wide codecs unwrap the envelope at the codec boundary.
+			// EncodeList hands the rows to a table codec and the canonical
+			// list envelope to JSON (docs/design/output.md §101: list
+			// endpoints emit {"items":[...]}). The switch is needed because
+			// each branch instantiates EncodeList for a different row type.
 			switch v := result.(type) {
 			case []instroutput.ClusterView:
-				return instroutput.EncodeList(&opts.IO, cmd.OutOrStdout(), v, instroutput.ClusterListEnvelope{Items: v})
+				return instroutput.EncodeList(&opts.IO, cmd.OutOrStdout(), v)
 			case []instroutput.ServiceView:
-				return instroutput.EncodeList(&opts.IO, cmd.OutOrStdout(), v, instroutput.ServiceListEnvelope{Items: v})
+				return instroutput.EncodeList(&opts.IO, cmd.OutOrStdout(), v)
 			default:
 				return opts.IO.Encode(cmd.OutOrStdout(), result)
 			}

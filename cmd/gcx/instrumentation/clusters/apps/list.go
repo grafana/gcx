@@ -88,7 +88,7 @@ Use "gcx instrumentation status" for observed-state status.`,
 				})
 			}
 
-			return instoutput.EncodeList(opts, cmd.OutOrStdout(), views, instoutput.AppListEnvelope{Items: views})
+			return instoutput.EncodeList(opts, cmd.OutOrStdout(), views)
 		},
 	}
 
