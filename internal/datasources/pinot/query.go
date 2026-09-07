@@ -129,7 +129,7 @@ open it in your browser after the query succeeds.`,
 				From:           opts.From,
 				To:             opts.To,
 				OrgID:          dsquery.OrgID(cfgCtx),
-			}, pinot.ExtractTableName(sql))
+			})
 			unavailableMsg, failedOpenMsg := dsquery.ExploreMessages("query")
 
 			return dsquery.EncodeAndHandleExplore(cmd, func() error {

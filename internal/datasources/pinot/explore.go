@@ -4,10 +4,11 @@ import (
 	"strings"
 
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
+	querypinot "github.com/grafana/gcx/internal/query/pinot"
 )
 
 // QueryExploreURL builds a Grafana Explore URL for a StarTree PinotQL query.
-func QueryExploreURL(host string, query dsquery.ExploreQuery, tableName string) string {
+func QueryExploreURL(host string, query dsquery.ExploreQuery) string {
 	if strings.TrimSpace(host) == "" || query.DatasourceUID == "" || strings.TrimSpace(query.Expr) == "" {
 		return ""
 	}
@@ -19,7 +20,7 @@ func QueryExploreURL(host string, query dsquery.ExploreQuery, tableName string) 
 		"queryType":   "PinotQL",
 		"editorMode":  "Code",
 		"displayType": "TABLE",
-		"tableName":   tableName,
+		"tableName":   querypinot.ExtractTableName(query.Expr),
 		"pinotQlCode": query.Expr,
 		"datasource":  dsquery.ExploreDatasource(query.DatasourceType, query.DatasourceUID),
 	}
