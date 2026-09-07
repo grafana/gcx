@@ -15,25 +15,13 @@ const (
 // NotificationQueryRequest is the body for POST notification/query. from and to
 // are always sent; the remaining fields are optional server-side filters.
 type NotificationQueryRequest struct {
-	Type        string         `json:"type,omitempty"`
-	From        time.Time      `json:"from"`
-	To          time.Time      `json:"to"`
-	Limit       int64          `json:"limit,omitempty"`
-	Step        int64          `json:"step,omitempty"`
-	Receiver    string         `json:"receiver,omitempty"`
-	RuleUID     string         `json:"ruleUID,omitempty"`
-	Status      string         `json:"status,omitempty"`
-	Outcome     string         `json:"outcome,omitempty"`
-	GroupLabels []LabelMatcher `json:"groupLabels,omitempty"`
-	Labels      []LabelMatcher `json:"labels,omitempty"`
-}
-
-// LabelMatcher filters notifications by group or alert labels. Type is one of
-// "=", "!=", "=~", "!~".
-type LabelMatcher struct {
-	Type  string `json:"type"`
-	Label string `json:"label"`
-	Value string `json:"value"`
+	From     time.Time `json:"from"`
+	To       time.Time `json:"to"`
+	Limit    int64     `json:"limit,omitempty"`
+	Receiver string    `json:"receiver,omitempty"`
+	RuleUID  string    `json:"ruleUID,omitempty"`
+	Status   string    `json:"status,omitempty"`
+	Outcome  string    `json:"outcome,omitempty"`
 }
 
 // NotificationQueryResponse is the response from POST notification/query. Only

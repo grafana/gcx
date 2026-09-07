@@ -58,6 +58,9 @@ func (o *notificationHistoryListOpts) Validate() error {
 	if err := o.IO.Validate(); err != nil {
 		return err
 	}
+	if o.Limit < 0 {
+		return errors.New("--limit must be non-negative")
+	}
 	if err := validateNotificationStatus(o.Status); err != nil {
 		return err
 	}
@@ -84,6 +87,7 @@ func newNotificationHistoryListCommand(loader GrafanaConfigLoader) *cobra.Comman
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List notification delivery history.",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
@@ -145,6 +149,9 @@ func (o *notificationHistoryAlertsOpts) Validate() error {
 	if o.UUID == "" {
 		return errors.New("--uuid is required")
 	}
+	if o.Limit < 0 {
+		return errors.New("--limit must be non-negative")
+	}
 	return nil
 }
 
@@ -169,6 +176,7 @@ func newNotificationHistoryAlertsCommand(loader GrafanaConfigLoader) *cobra.Comm
 The notification's own entry does not carry its alerts, so they are fetched
 separately by UUID. The time range must bracket the notification's timestamp;
 widen --since (or set --from/--to) if the notification is older.`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
