@@ -8,6 +8,7 @@
 
 /cmd/gcx/instrumentation/ @grafana/grafana-gcx @grafana/o11y-ingest
 /cmd/gcx/assistant/ @grafana/grafana-gcx @grafana/grafana-assistant-loop
+/cmd/gcx/cloud/ @grafana/grafana-gcx @grafana/grafana-com-maintainers
 
 # Providers
 /internal/providers/slo/ @grafana/grafana-gcx @grafana/slo-squad
@@ -24,6 +25,7 @@
 /internal/providers/agento11y/ @grafana/grafana-gcx @grafana/grafana-assistant-loop
 /internal/providers/dbo11y/ @grafana/grafana-gcx @grafana/db-o11y-squad
 /internal/providers/alert/ @grafana/grafana-gcx @grafana/alerting-squad
+/internal/providers/stacks/ @grafana/grafana-gcx @grafana/grafana-com-maintainers
 /internal/providers/logs/ @grafana/grafana-gcx @grafana/loki-team
 /internal/providers/metrics/ @grafana/grafana-gcx @grafana/cortex-team
 /internal/providers/profiles/ @grafana/grafana-gcx @grafana/pyroscope-team
@@ -80,6 +82,7 @@
 /docs/reference/cli/gcx_appo11y* @grafana/grafana-gcx @grafana/app-o11y-visualizations
 /docs/reference/cli/gcx_dbo11y* @grafana/grafana-gcx @grafana/db-o11y-squad
 /docs/reference/cli/gcx_alert* @grafana/grafana-gcx @grafana/alerting-squad
+/docs/reference/cli/gcx_cloud* @grafana/grafana-gcx @grafana/grafana-com-maintainers
 /docs/reference/cli/gcx_logs* @grafana/grafana-gcx @grafana/loki-team
 /docs/reference/cli/gcx_metrics* @grafana/grafana-gcx @grafana/cortex-team
 /docs/reference/cli/gcx_profiles* @grafana/grafana-gcx @grafana/pyroscope-team
