@@ -853,12 +853,11 @@ func (o *alertGroupActionVerbOpts) toListFilters() (alertGroupListFilters, error
 	// --max-age is the only time expression the bulk verbs take; resolve it to
 	// an absolute window here, matching resolveAlertGroupListFilters.
 	if o.MaxAge != "" {
-		dur, err := parseDuration(o.MaxAge)
+		w, err := maxAgeWindow(o.MaxAge, time.Now())
 		if err != nil {
-			return out, fmt.Errorf("invalid --max-age value %q: %w", o.MaxAge, err)
+			return out, err
 		}
-		now := time.Now()
-		out.StartedAt = &timeWindow{From: now.Add(-dur), To: now}
+		out.StartedAt = w
 	}
 
 	if len(o.States) > 0 {
