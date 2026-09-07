@@ -1,6 +1,7 @@
-# Last matching pattern wins, so add @grafana/grafana-gcx to every rule that 
-# also takes another team. We want grafana-gcx to be a required reviewer for 
-# all changes.
+# Last matching pattern wins, and a single approval from any owner on the
+# matching line satisfies the code owner requirement. @grafana/grafana-gcx is
+# listed alongside each partner team so it can always unblock a PR, and owns
+# everything not claimed by a specific team via the fallback rule.
 
 # Default / fallback rule
 * @grafana/grafana-gcx
@@ -58,3 +59,37 @@
 # (A redundant entry right now) GCX maintainers must approve PRs that add new
 # non-standard command operations
 /cmd/gcx/root/testdata/non_canonical_command_operations.json @grafana/grafana-gcx
+
+# Generated CLI reference. Any flag or command change regenerates these files,
+# so mirror the code ownership here - otherwise a provider-only PR still needs
+# a @grafana/grafana-gcx approval via the fallback rule above.
+/docs/reference/cli/gcx_instrumentation* @grafana/grafana-gcx @grafana/o11y-ingest
+/docs/reference/cli/gcx_assistant* @grafana/grafana-gcx @grafana/grafana-assistant-loop
+/docs/reference/cli/gcx_agento11y* @grafana/grafana-gcx @grafana/grafana-assistant-loop
+/docs/reference/cli/gcx_slo* @grafana/grafana-gcx @grafana/slo-squad
+/docs/reference/cli/gcx_synthetic-monitoring* @grafana/grafana-gcx @grafana/synthetic-monitoring-dev
+/docs/reference/cli/gcx_irm* @grafana/grafana-gcx @grafana/grafana-irm-backend
+/docs/reference/cli/gcx_k6* @grafana/grafana-gcx @grafana/k6-backend
+/docs/reference/cli/gcx_frontend* @grafana/grafana-gcx @grafana/frontend-o11y @grafana/mobile-o11y
+/docs/reference/cli/gcx_fleet* @grafana/grafana-gcx @grafana/fleet-management-backend
+/docs/reference/cli/gcx_kg* @grafana/grafana-gcx @grafana/asserts-team
+/docs/reference/cli/gcx_appo11y* @grafana/grafana-gcx @grafana/app-o11y-visualizations
+/docs/reference/cli/gcx_logs* @grafana/grafana-gcx @grafana/loki-team
+/docs/reference/cli/gcx_metrics* @grafana/grafana-gcx @grafana/cortex-team
+/docs/reference/cli/gcx_profiles* @grafana/grafana-gcx @grafana/pyroscope-team
+/docs/reference/cli/gcx_traces* @grafana/grafana-gcx @grafana/tempo
+
+/docs/reference/cli/gcx_datasources_athena* @grafana/grafana-gcx @grafana/data-sources
+/docs/reference/cli/gcx_datasources_azuremonitor* @grafana/grafana-gcx @grafana/data-sources-plugins
+/docs/reference/cli/gcx_datasources_clickhouse* @grafana/grafana-gcx @grafana/data-sources
+/docs/reference/cli/gcx_datasources_cloudmonitoring* @grafana/grafana-gcx @grafana/data-sources-plugins
+/docs/reference/cli/gcx_datasources_cloudwatch* @grafana/grafana-gcx @grafana/data-sources
+/docs/reference/cli/gcx_datasources_elasticsearch* @grafana/grafana-gcx @grafana/data-sources-plugins
+/docs/reference/cli/gcx_datasources_infinity* @grafana/grafana-gcx @grafana/data-sources
+/docs/reference/cli/gcx_datasources_influxdb* @grafana/grafana-gcx @grafana/data-sources
+/docs/reference/cli/gcx_datasources_loki* @grafana/grafana-gcx @grafana/loki-team
+/docs/reference/cli/gcx_datasources_mysql* @grafana/grafana-gcx @grafana/data-sources-plugins
+/docs/reference/cli/gcx_datasources_postgres* @grafana/grafana-gcx @grafana/data-sources-plugins
+/docs/reference/cli/gcx_datasources_prometheus* @grafana/grafana-gcx @grafana/cortex-team
+/docs/reference/cli/gcx_datasources_pyroscope* @grafana/grafana-gcx @grafana/pyroscope-team
+/docs/reference/cli/gcx_datasources_tempo* @grafana/grafana-gcx @grafana/tempo
