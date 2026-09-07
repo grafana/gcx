@@ -367,6 +367,7 @@ func TestUseExistingCloudEntryEndpointChangeFailsClosed(t *testing.T) {
 
 func TestServerChangeRejectsStoredGrafanaTokenBeforeNetwork(t *testing.T) {
 	t.Setenv("GCX_AGENT_MODE", "false")
+	t.Setenv("GCX_KEYCHAIN", "off")
 	t.Setenv("GRAFANA_TOKEN", " \t ")
 	agent.ResetForTesting()
 	t.Cleanup(agent.ResetForTesting)
@@ -407,6 +408,7 @@ func TestServerChangeRejectsStoredGrafanaTokenBeforeNetwork(t *testing.T) {
 }
 
 func TestProxyOrTLSChangeRejectsStoredGrafanaTokenBeforeNetwork(t *testing.T) {
+	t.Setenv("GCX_KEYCHAIN", "off")
 	tests := []struct {
 		name      string
 		configure func(*testing.T, *config.GrafanaConfig)
@@ -565,6 +567,7 @@ func TestRuntimeOnlyDestinationRejectsFreshTokenBeforeNonDurablePersistence(t *t
 
 func TestRuntimeOnlyTLSRecoveryCommandsInitializeFreshExplicitConfigAndUnblockLogin(t *testing.T) {
 	disableAgentMode(t)
+	t.Setenv("GCX_KEYCHAIN", "off")
 	for _, key := range []string{
 		"GCX_CONFIG",
 		"GRAFANA_SERVER",
@@ -735,6 +738,7 @@ func TestRuntimeOnlyDestinationRecoveryHandlesDottedNamesWithoutInvalidDotPaths(
 }
 
 func TestExistingGrafanaTokenIsOfferedOnlyForMatchingCompleteBinding(t *testing.T) {
+	t.Setenv("GCX_KEYCHAIN", "off")
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	seed := config.Config{}
 	seed.SetStack("default", config.StackConfig{Grafana: &config.GrafanaConfig{
@@ -811,6 +815,7 @@ func TestWhitespaceEnvironmentTokensAreNotExplicitOrSelected(t *testing.T) {
 }
 
 func TestLoadLoginSourceContextAppliesEnvToPositionalTarget(t *testing.T) {
+	t.Setenv("GCX_KEYCHAIN", "off")
 	t.Setenv("GRAFANA_TOKEN", "target-env-token")
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	seed := config.Config{}
@@ -937,6 +942,7 @@ func TestLoginNewContextWithoutServerReportsNoTarget(t *testing.T) {
 
 func TestLoginRejectedStoredTokenReportsRequestedTarget(t *testing.T) {
 	t.Setenv("GCX_AGENT_MODE", "false")
+	t.Setenv("GCX_KEYCHAIN", "off")
 	unsetEnvForTest(t, "GRAFANA_SERVER")
 	unsetEnvForTest(t, "GRAFANA_TOKEN")
 	unsetEnvForTest(t, "GRAFANA_CLOUD_API_URL")
@@ -1212,6 +1218,7 @@ func TestLoginEnvironmentServerChangeRequiresPreflightConfirmation(t *testing.T)
 }
 
 func TestSchemelessServerReauthMatchesStoredHTTPSDestination(t *testing.T) {
+	t.Setenv("GCX_KEYCHAIN", "off")
 	server, caFile := newLoginTLSServer(t)
 	bareServer := strings.TrimPrefix(server.URL, "https://")
 
@@ -1509,6 +1516,7 @@ contexts:
 
 func TestLoginCopyOnWritesCloudEntrySharedByAnotherLayer(t *testing.T) {
 	t.Setenv("GCX_AGENT_MODE", "false")
+	t.Setenv("GCX_KEYCHAIN", "off")
 	t.Setenv("HOME", t.TempDir())
 	userDir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", userDir)

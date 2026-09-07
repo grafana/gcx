@@ -16,19 +16,19 @@ copied file separately.
 
 ## Plaintext fallback
 
-gcx can keep a new credential in a mode-`0600` configuration file when no
-credential store is available. gcx writes a warning when it does this.
+gcx keeps a new credential in a mode-`0600` configuration file only when you
+have set `GCX_KEYCHAIN=off`. gcx writes a warning when it does this. See
+[Disable the credential store](#disable-the-credential-store).
 
 gcx does not use plaintext fallback for these conditions:
 
+- An unavailable credential store.
 - A locked credential store.
-- A replacement or deletion of an existing credential.
+- A deletion of an existing credential.
+- A replacement of an existing credential, unless you have set `GCX_KEYCHAIN=off`.
 - A missing or rejected credential reference.
 - A value that is too large for the credential store.
 - An unknown credential store error.
-
-gcx uses plaintext fallback for a replacement when you disable the credential
-store. See [Disable the credential store](#disable-the-credential-store).
 
 ## Disable the credential store
 

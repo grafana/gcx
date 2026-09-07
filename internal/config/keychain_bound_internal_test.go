@@ -1163,7 +1163,7 @@ func TestBoundKeychainGenericStoreFailuresLeaveDiskAndCallerUntouched(t *testing
 	}
 }
 
-func TestBoundKeychainUnreadableNewCredentialFallsBackAfterConfirmedCleanup(t *testing.T) {
+func TestBoundKeychainUnreadableNewCredentialFailsClosedAfterConfirmedCleanup(t *testing.T) {
 	store := newBoundTestStore()
 	store.getErrAfterSet = credentials.ErrUnavailable
 	store.getErrAfterSetAt = 1
@@ -1171,12 +1171,11 @@ func TestBoundKeychainUnreadableNewCredentialFallsBackAfterConfirmedCleanup(t *t
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	cfg := boundStackTestConfig("https://example.invalid", "api-token")
 
-	require.NoError(t, Write(context.Background(), ExplicitConfigFile(path), cfg))
-	raw, err := os.ReadFile(path)
-	require.NoError(t, err)
-	assert.Contains(t, string(raw), "api-token")
-	assert.NotContains(t, string(raw), "keychain:gcx:v2:")
-	assert.Empty(t, store.entries, "the unverifiable keychain generation must be removed before plaintext fallback")
+	err := Write(context.Background(), ExplicitConfigFile(path), cfg)
+	require.ErrorIs(t, err, credentials.ErrUnavailable)
+	_, readErr := os.ReadFile(path)
+	require.ErrorIs(t, readErr, os.ErrNotExist)
+	assert.Empty(t, store.entries, "the unverifiable keychain generation must be removed before the failed write returns")
 	assert.Equal(t, 1, store.deleteCalls, "the failed verification must perform its own confirmed cleanup")
 }
 
@@ -1205,23 +1204,18 @@ func TestBoundKeychainVerifyAndCleanupFailureRollsBackStagedWrite(t *testing.T) 
 	assert.Empty(t, cfg.Stacks["default"].sourceIdentity)
 }
 
-func TestBoundKeychainWriteUnavailableFallsBackOnlyForNewCredential(t *testing.T) {
+func TestBoundKeychainWriteUnavailableFailsClosedForNewCredential(t *testing.T) {
 	store := newBoundTestStore()
 	store.setErr = credentials.ErrUnavailable
 	useBoundTestStore(t, store)
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	cfg := boundStackTestConfig("https://example.invalid", "new-token")
 
-	require.NoError(t, Write(context.Background(), ExplicitConfigFile(path), cfg))
-
-	raw, err := os.ReadFile(path)
-	require.NoError(t, err)
-	assert.Contains(t, string(raw), "new-token")
-	assert.NotContains(t, string(raw), "keychain:gcx:v2:")
+	err := Write(context.Background(), ExplicitConfigFile(path), cfg)
+	require.ErrorIs(t, err, credentials.ErrUnavailable)
+	_, readErr := os.ReadFile(path)
+	require.ErrorIs(t, readErr, os.ErrNotExist)
 	assert.Empty(t, store.entries)
-	info, err := os.Stat(path)
-	require.NoError(t, err)
-	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
 }
 
 func TestBoundKeychainWriteUnavailableMissingReferenceRepairFailsClosed(t *testing.T) {
@@ -1243,7 +1237,7 @@ func TestBoundKeychainWriteUnavailableMissingReferenceRepairFailsClosed(t *testi
 
 	err = Write(context.Background(), ExplicitConfigFile(path), cfg)
 	require.ErrorIs(t, err, credentials.ErrUnavailable)
-	require.ErrorContains(t, err, "cannot replace credential")
+	require.ErrorContains(t, err, "write keychain entry")
 	rawAfter, readErr := os.ReadFile(path)
 	require.NoError(t, readErr)
 	assert.Equal(t, rawBefore, rawAfter)
@@ -1275,7 +1269,7 @@ func TestBoundKeychainWriteUnavailableRejectedReferenceRepairFailsClosed(t *test
 
 	err = Write(context.Background(), ExplicitConfigFile(path), cfg)
 	require.ErrorIs(t, err, credentials.ErrUnavailable)
-	require.ErrorContains(t, err, "cannot replace credential")
+	require.ErrorContains(t, err, "write keychain entry")
 	rawAfter, readErr := os.ReadFile(path)
 	require.NoError(t, readErr)
 	assert.Equal(t, rawBefore, rawAfter)
@@ -1285,7 +1279,7 @@ func TestBoundKeychainWriteUnavailableRejectedReferenceRepairFailsClosed(t *test
 	assert.Equal(t, "replacement-token", cfg.Stacks["default"].Grafana.APIToken)
 }
 
-func TestBoundKeychainPartialWriteUnavailableCommitsSentinelAndPlaintextSafely(t *testing.T) {
+func TestBoundKeychainPartialWriteUnavailableFailsClosed(t *testing.T) {
 	store := newBoundTestStore()
 	store.setErr = credentials.ErrUnavailable
 	store.setFailAt = 2
@@ -1295,18 +1289,11 @@ func TestBoundKeychainPartialWriteUnavailableCommitsSentinelAndPlaintextSafely(t
 	cfg.Stacks["default"].Grafana.User = "alice"
 	cfg.Stacks["default"].Grafana.Password = "new-password"
 
-	require.NoError(t, Write(context.Background(), ExplicitConfigFile(path), cfg))
-
-	raw, err := os.ReadFile(path)
-	require.NoError(t, err)
-	disk := string(raw)
-	assert.Len(t, store.entries, 1)
-	assert.NotEqual(t, strings.Contains(disk, "new-token"), strings.Contains(disk, "new-password"),
-		"exactly one credential should use the plaintext fallback")
-	assert.Equal(t, 1, strings.Count(disk, "keychain:gcx:v2:"))
-	info, err := os.Stat(path)
-	require.NoError(t, err)
-	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+	err := Write(context.Background(), ExplicitConfigFile(path), cfg)
+	require.ErrorIs(t, err, credentials.ErrUnavailable)
+	_, readErr := os.ReadFile(path)
+	require.ErrorIs(t, readErr, os.ErrNotExist)
+	assert.Empty(t, store.entries, "the staged generation must roll back with the failed write")
 }
 
 func TestBoundKeychainWriteUnavailableRotationAbortsWithoutWarning(t *testing.T) {
@@ -1338,7 +1325,8 @@ func TestBoundKeychainWriteUnavailableRotationAbortsWithoutWarning(t *testing.T)
 	ctx := logging.Context(context.Background(), logger)
 
 	err = Write(ctx, ExplicitConfigFile(path), loaded)
-	require.ErrorContains(t, err, "cannot replace credential")
+	require.ErrorIs(t, err, credentials.ErrUnavailable)
+	require.ErrorContains(t, err, "write keychain entry")
 	assert.Empty(t, logger.warnings, "an aborted rotation must not claim plaintext was committed")
 	rawAfter, readErr := os.ReadFile(path)
 	require.NoError(t, readErr)
@@ -1356,7 +1344,7 @@ func TestBoundKeychainFallbackWarningRunsOnlyAfterSuccessfulCommit(t *testing.T)
 	txn.plaintextFallback = true
 
 	require.NoError(t, txn.commit(&warnings))
-	assert.Equal(t, "Warning: credential store could not securely store the credential; credentials remain in plaintext on disk; verify your OS credential store (Keychain, Credential Manager, or Secret Service) is available and working to enable encrypted credential storage\n", warnings.String())
+	assert.Equal(t, "warn: credential store could not securely store the credential; credentials remain in plaintext on disk; verify your OS credential store (Keychain, Credential Manager, or Secret Service) is available and working to enable encrypted credential storage\n", warnings.String())
 	assert.Empty(t, logger.warnings, "the request-scoped warning must not be duplicated through structured logging")
 
 	txn = newKeychainWriteTransaction(newBoundTestStore(), logger)
@@ -1395,7 +1383,8 @@ func TestBoundKeychainUnavailableReplacementPreservesOldGeneration(t *testing.T)
 	cfg.Stacks["default"].Grafana.APIToken = "new-token"
 	store.getErr = credentials.ErrUnavailable
 	err = Write(context.Background(), ExplicitConfigFile(path), cfg)
-	require.ErrorContains(t, err, "cannot replace credential")
+	require.ErrorIs(t, err, credentials.ErrUnavailable)
+	require.ErrorContains(t, err, "inspect keychain entry")
 	rawAfter, readErr := os.ReadFile(path)
 	require.NoError(t, readErr)
 	assert.Equal(t, rawBefore, rawAfter)

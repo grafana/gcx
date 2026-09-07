@@ -47,9 +47,9 @@ Pick the read verb by what you start with:
 
 * [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph rules, entities, and insights
 * [gcx kg entities correlate](gcx_kg_entities_correlate.md)	 - Resolve the affected entities for a firing alert from its labels.
-* [gcx kg entities delete](gcx_kg_entities_delete.md)	 - Delete a custom entity [experimental].
+* [gcx kg entities delete](gcx_kg_entities_delete.md)	 - [experimental] Delete a custom entity.
 * [gcx kg entities inspect](gcx_kg_entities_inspect.md)	 - Show the insight timeline and related entities for a single entity (root-cause analysis).
 * [gcx kg entities list](gcx_kg_entities_list.md)	 - List entities by type/scope, or look up an entity's identity and properties.
 * [gcx kg entities query](gcx_kg_entities_query.md)	 - Query entities by running a read-only Cypher query against the Knowledge Graph.
-* [gcx kg entities upsert](gcx_kg_entities_upsert.md)	 - Create or update a custom entity (upsert) [experimental].
+* [gcx kg entities upsert](gcx_kg_entities_upsert.md)	 - [experimental] Create or update a custom entity (upsert).
 
