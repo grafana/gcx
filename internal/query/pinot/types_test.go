@@ -22,7 +22,15 @@ func TestExtractTableName(t *testing.T) {
 		{"simple from", `SELECT count(*) FROM faro_pinot_events_v2`, "faro_pinot_events_v2"},
 		{"quoted from", `SELECT 1 FROM "faro_pinot_events_v2"`, "faro_pinot_events_v2"},
 		{"set prefix", "SET useMultistageEngine = true;\nSELECT * FROM faro_pinot_logs_v1", "faro_pinot_logs_v1"},
+		{"schema-qualified", "SELECT * FROM my_db.events", "my_db.events"},
 		{"subquery from skipped", "SELECT * FROM (SELECT 1)", ""},
+		{"subquery with inner from skipped", "SELECT * FROM (SELECT x FROM inner_t) a", ""},
+		{"extract year from is not the table", `SELECT EXTRACT(YEAR FROM ts) FROM events`, "events"},
+		{"from inside string is not the table", `SELECT 'FROM x' AS a FROM events`, "events"},
+		{"from inside string lowercase", `SELECT 'from admin' AS x FROM t`, "t"},
+		{"hyphenated quoted table", `SELECT * FROM "my-table"`, "my-table"},
+		{"table alias", `SELECT * FROM events AS e`, "events"},
+		{"join uses left table", `SELECT * FROM orders AS o JOIN customers AS c ON o.id = c.id`, "orders"},
 		{"no from", "SELECT 1", ""},
 	}
 	for _, tt := range tests {
