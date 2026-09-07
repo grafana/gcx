@@ -164,7 +164,7 @@ func TestNotificationHistoryAlerts(t *testing.T) {
 	})
 
 	stdout, _, err := runCmdSplit(t, alert.NewNotificationHistoryAlertsCommandForTest(loader),
-		[]string{"alerts", "--uuid", "d97e1040-7be1-41e4-811e-90877f5cdb87"}, "")
+		[]string{"list-alerts", "--uuid", "d97e1040-7be1-41e4-811e-90877f5cdb87"}, "")
 	require.NoError(t, err)
 
 	assert.Equal(t, "/apis/historian.alerting.grafana.app/v0alpha1/namespaces/default/notifications/queryalerts", path)
@@ -185,7 +185,7 @@ func TestNotificationHistoryAlertsRequiresUUID(t *testing.T) {
 	})
 
 	_, _, err := runCmdSplit(t, alert.NewNotificationHistoryAlertsCommandForTest(loader),
-		[]string{"alerts"}, "")
+		[]string{"list-alerts"}, "")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "--uuid is required")
 }

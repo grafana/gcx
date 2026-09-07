@@ -1,4 +1,4 @@
-## gcx alert notification-history alerts
+## gcx alert notification-history list-alerts
 
 List the alerts in a single notification.
 
@@ -11,14 +11,14 @@ separately by UUID. The time range must bracket the notification's timestamp;
 widen --since (or set --from/--to) if the notification is older.
 
 ```
-gcx alert notification-history alerts [flags]
+gcx alert notification-history list-alerts [flags]
 ```
 
 ### Options
 
 ```
       --from string      Start of time range (RFC3339). Overrides --since.
-  -h, --help             help for alerts
+  -h, --help             help for list-alerts
       --jq string        jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string      Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int        Maximum number of alerts to return. (default 100)

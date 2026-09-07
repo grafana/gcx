@@ -25,7 +25,7 @@ func notificationHistoryCommands(loader GrafanaConfigLoader) *cobra.Command {
 
 These commands are read-only. Each entry is a grouped notification that Grafana
 attempted to send to a contact point, recorded by the alerting historian. Use
-'list' to browse notifications and 'alerts' to see the alerts in a specific one.
+'list' to browse notifications and 'list-alerts' to see the alerts in a specific one.
 
 Notification history must be enabled on the stack (the
 [unified_alerting.notification_history] config with Loki, plus the
@@ -169,7 +169,7 @@ func (o *notificationHistoryAlertsOpts) setup(flags *pflag.FlagSet) {
 func newNotificationHistoryAlertsCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &notificationHistoryAlertsOpts{}
 	cmd := &cobra.Command{
-		Use:   "alerts",
+		Use:   "list-alerts",
 		Short: "List the alerts in a single notification.",
 		Long: `List the individual alerts that were part of one grouped notification.
 

@@ -8,7 +8,7 @@ Inspect the history of alert notifications delivered by Grafana Alerting.
 
 These commands are read-only. Each entry is a grouped notification that Grafana
 attempted to send to a contact point, recorded by the alerting historian. Use
-'list' to browse notifications and 'alerts' to see the alerts in a specific one.
+'list' to browse notifications and 'list-alerts' to see the alerts in a specific one.
 
 Notification history must be enabled on the stack (the
 [unified_alerting.notification_history] config with Loki, plus the
@@ -35,6 +35,6 @@ kubernetesAlertingHistorian feature).
 ### SEE ALSO
 
 * [gcx alert](gcx_alert.md)	 - Manage Grafana alert rules and alert groups
-* [gcx alert notification-history alerts](gcx_alert_notification-history_alerts.md)	 - List the alerts in a single notification.
 * [gcx alert notification-history list](gcx_alert_notification-history_list.md)	 - List notification delivery history.
+* [gcx alert notification-history list-alerts](gcx_alert_notification-history_list-alerts.md)	 - List the alerts in a single notification.
 
