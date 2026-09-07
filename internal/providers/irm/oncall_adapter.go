@@ -508,7 +508,7 @@ func scheduleExample() json.RawMessage {
 		"metadata":   map[string]any{"name": "my-schedule"},
 		"spec": map[string]any{
 			"name":      "my-schedule",
-			"type":      "web",
+			"type":      2,
 			"time_zone": "UTC",
 		},
 	})

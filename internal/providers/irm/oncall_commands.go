@@ -207,9 +207,10 @@ func newGetSubcommand[T adapter.ResourceNamer](
 	return cmd
 }
 
-// newCreateSubcommand creates a "create" subcommand. It reads a bare resource
-// object from -f/--filename (or stdin when "-"), dispatches through the same
-// TypedCRUD wiring the resource adapter uses, and emits the created object.
+// newCreateSubcommand creates a "create" subcommand. It reads the resource
+// from -f/--filename (or stdin when "-") as a bare object or as a K8s
+// envelope, dispatches through the same TypedCRUD wiring the resource adapter
+// uses, and emits the created object.
 func newCreateSubcommand[T adapter.ResourceNamer](
 	loader OnCallConfigLoader, short string, crudOpts []crudOption[T],
 ) *cobra.Command {
@@ -246,8 +247,9 @@ func newCreateSubcommand[T adapter.ResourceNamer](
 	return cmd
 }
 
-// newUpdateSubcommand creates an "update <id>" subcommand reading the new
-// resource definition from -f/--filename.
+// newUpdateSubcommand creates an "update <id>" subcommand that reads the new
+// resource definition from -f/--filename, as a bare object or as a K8s
+// envelope.
 func newUpdateSubcommand[T adapter.ResourceNamer](
 	loader OnCallConfigLoader, short string, crudOpts []crudOption[T],
 ) *cobra.Command {
