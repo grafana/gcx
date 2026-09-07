@@ -16,6 +16,7 @@
 - `GCX_KEYCHAIN=off` stops gcx using the OS credential store, leaving credentials in plaintext in the mode-`0600` config file. It is for machines whose credential store is permanently unavailable, such as headless boxes and CI runners. Credentials already in the store are not moved back out: their references are preserved and unreadable until the variable is unset. Replacing one instead writes plaintext and leaves the previous secret in the credential store unreferenced, which gcx warns about. See [Keychain credential storage](https://grafana.com/docs/grafana/latest/as-code/observability-as-code/grafana-cli/gcx/keychain/).
 - traces: add experimental `gcx traces baseline <trace-id>` to retrieve same-operation candidate traces (root identity, operation success, and topology fingerprint) to feed into `gcx traces diff`, with optional raw TraceQL filters when the unfiltered candidates are not valid comparisons.
 - traces: include Tempo `serviceStats` metadata (per-service span and error counts) in structured trace search output.
+- Added experimental Tempo TraceByID V2 params to `gcx traces get` / `gcx datasources tempo get`: `--q` filters the trace to spans matching a TraceQL spanset expression, with `--keep-hierarchy`, `--match-depth`, and `--ancestor-depth` shaping how much surrounding context is kept; `--span-pruning` (plus `--span-pruning-group-by`, `--span-pruning-min-spans`, `--span-pruning-max-parent-depth`) collapses repeated sibling spans into a single aggregated span. Both are aimed at shrinking large traces before `--llm` analysis.
 
 **Fixes**
 

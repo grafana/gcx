@@ -322,6 +322,19 @@ When inspecting trace bodies, use `gcx traces get <trace-id> --llm -o json`. Do 
 OTLP-shaped default trace and manually compact it unless the user explicitly
 needs raw trace JSON for schema/debugging work.
 
+For traces too large to read in full, narrow them server-side instead of
+truncating the output yourself — `gcx traces get` supports experimental V2
+filtering and span pruning:
+
+```bash
+# Only spans matching a TraceQL filter, plus their ancestor path to the root.
+gcx traces get -d <tempo-uid> <trace-id> --q '{ status = error }' --keep-hierarchy --llm -o json
+
+# Collapse repeated sibling spans (e.g. a fan-out of identical DB calls).
+# Combines cleanly with --q.
+gcx traces get -d <tempo-uid> <trace-id> --span-pruning --llm -o json
+```
+
 Discover available labels and values:
 ```bash
 gcx traces labels -d <tempo-uid>

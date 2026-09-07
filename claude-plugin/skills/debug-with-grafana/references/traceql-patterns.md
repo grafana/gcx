@@ -89,6 +89,24 @@ schema debugging, export, or byte-for-byte comparison.
 The trace ID is a positional argument — do not use `--trace-id` (it doesn't
 exist).
 
+For a trace too large to read in full, narrow it server-side (experimental,
+V2 only) instead of truncating the LLM output yourself:
+
+```bash
+# Only spans matching a TraceQL filter, plus their ancestor path to the root.
+gcx traces get -d <tempo-uid> <trace-id> --q '{ status = error }' --keep-hierarchy --llm -o json
+
+# Collapse repeated sibling spans (e.g. a fan-out of identical DB calls)
+# into one aggregated span. Combines cleanly with --q.
+gcx traces get -d <tempo-uid> <trace-id> --span-pruning --llm -o json
+```
+
+`--match-depth`/`--ancestor-depth` tune how many descendant/ancestor levels
+around each `--q` match are kept, and are ignored without `--q`.
+`--span-pruning-group-by`/`--span-pruning-min-spans`/
+`--span-pruning-max-parent-depth` tune the pruning behavior and are ignored
+without `--span-pruning`.
+
 ## Attribute scoping rules
 
 Tempo requires scoped attribute names. Unscoped dotted names cause parse errors.
