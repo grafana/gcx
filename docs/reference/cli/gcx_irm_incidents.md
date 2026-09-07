@@ -33,4 +33,5 @@ Manage incidents.
 * [gcx irm incidents list-contexts](gcx_irm_incidents_list-contexts.md)	 - List contexts attached to an incident.
 * [gcx irm incidents open](gcx_irm_incidents_open.md)	 - Open an incident in the browser.
 * [gcx irm incidents severities](gcx_irm_incidents_severities.md)	 - Manage incident severity levels.
+* [gcx irm incidents update](gcx_irm_incidents_update.md)	 - Update the severity or the title of an incident.
 

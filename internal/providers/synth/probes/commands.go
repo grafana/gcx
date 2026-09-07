@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strconv"
 	"strings"
 
@@ -386,9 +387,9 @@ type tokenResetOpts struct {
 }
 
 func (o *tokenResetOpts) setup(flags *pflag.FlagSet) {
-	// The reset result flows through the codec system: the default text
-	// codec reproduces the historical line byte-for-byte; agent mode and
-	// explicit -o json/yaml get the structured document.
+	// The reset result flows through the codec system. The text codec shows
+	// the new token. Agent mode and explicit -o json/yaml return the same token
+	// in the structured document.
 	o.IO.RegisterCustomCodec("text", &resetTokenCodec{})
 	o.IO.DefaultFormat("text")
 	o.IO.BindFlags(flags)
@@ -396,10 +397,19 @@ func (o *tokenResetOpts) setup(flags *pflag.FlagSet) {
 
 func (o *tokenResetOpts) Validate() error { return o.IO.Validate() }
 
-// resetTokenCodec is the human "text" codec for the reset-token
-// cmdio.SingleMutation result: exactly the line the command has always
-// printed on stdout. The token-not-returned note stays on stderr as a
-// diagnostic.
+// probeTokenResetResult is the finite result document for `probes reset-token`.
+// The new token must be a structured field because the old token is no longer
+// valid after this command succeeds.
+type probeTokenResetResult struct {
+	Type          string `json:"type" yaml:"type"`
+	SchemaVersion string `json:"schema_version" yaml:"schema_version"`
+	Action        string `json:"action" yaml:"action"`
+	Name          string `json:"name" yaml:"name"`
+	ID            int64  `json:"id" yaml:"id"`
+	Token         string `json:"token" yaml:"token"`
+}
+
+// resetTokenCodec is the human "text" codec for probeTokenResetResult values.
 type resetTokenCodec struct{}
 
 func (c *resetTokenCodec) Format() format.Format { return "text" }
@@ -409,11 +419,12 @@ func (c *resetTokenCodec) Decode(io.Reader, any) error {
 }
 
 func (c *resetTokenCodec) Encode(w io.Writer, v any) error {
-	r, ok := v.(cmdio.SingleMutation)
+	r, ok := v.(probeTokenResetResult)
 	if !ok {
-		return errors.New("invalid data type for reset-token codec: expected SingleMutation")
+		return errors.New("invalid data type for reset-token codec: expected probeTokenResetResult")
 	}
-	cmdio.Success(w, "Reset auth token for probe %q (id=%s)", r.Target.Name, r.Target.ID)
+	cmdio.Success(w, "Reset auth token for probe %q (id=%d)", r.Name, r.ID)
+	fmt.Fprintf(w, "\nNew probe auth token (save this securely):\n%s\n", r.Token)
 	return nil
 }
 
@@ -422,7 +433,14 @@ func newResetTokenCommand(loader smcfg.Loader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "reset-token ID",
 		Short: "Reset the auth token of a Synthetic Monitoring probe.",
-		Args:  cobra.ExactArgs(1),
+		Long: "Reset the auth token of a Synthetic Monitoring probe. The command returns the new token once. " +
+			"Save the new token and update the probe deployment before you restart the agent.",
+		Args: cobra.ExactArgs(1),
+		Example: `  # Reset a probe token and show it in the default text output.
+  gcx synthetic-monitoring probes reset-token 123
+
+  # Reset a probe token and return a structured result.
+  gcx synthetic-monitoring probes reset-token 123 -o json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
@@ -454,21 +472,15 @@ func newResetTokenCommand(loader smcfg.Loader) *cobra.Command {
 				return err
 			}
 
-			result := cmdio.NewSingleMutation("reset-token", cmdio.MutationTarget{
-				Kind: "Probe",
-				Name: updated.Name,
-				ID:   strconv.FormatInt(updated.ID, 10),
-			})
-			changed := true
-			result.Changed = &changed
-
-			if err := opts.IO.Encode(cmd.OutOrStdout(), result); err != nil {
-				return err
+			result := probeTokenResetResult{
+				Type:          "gcx.synth.probe_token_reset",
+				SchemaVersion: "1",
+				Action:        "reset-token",
+				Name:          updated.Probe.Name,
+				ID:            updated.Probe.ID,
+				Token:         updated.Token,
 			}
-			// Advisory note, not the result — stderr keeps it out of the
-			// stdout document.
-			cmdio.Warning(cmd.ErrOrStderr(), "The SM API does not return the new token in the reset response. Re-create the probe if you need the token.")
-			return nil
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -481,6 +493,8 @@ func newResetTokenCommand(loader smcfg.Loader) *cobra.Command {
 
 type deployOpts struct {
 	Token        string
+	TokenFile    string
+	TokenEnv     string
 	Namespace    string
 	Image        string
 	ProbeName    string
@@ -488,19 +502,103 @@ type deployOpts struct {
 }
 
 func (o *deployOpts) setup(flags *pflag.FlagSet) {
-	flags.StringVar(&o.Token, "token", "", "Probe auth token (required)")
-	flags.StringVar(&o.ProbeName, "probe-name", "", "Name for the k8s resources (required)")
-	flags.StringVar(&o.APIServerURL, "api-server-url", "", "SM API gRPC endpoint (required)")
-	flags.StringVar(&o.Namespace, "namespace", "synthetic-monitoring", "K8s namespace")
+	flags.StringVar(&o.Token, "token", "", "Probe auth token")
+	_ = flags.MarkDeprecated("token", "use --token-file or --token-env")
+	flags.StringVar(&o.TokenFile, "token-file", "", "Read the probe auth token from a file (- for standard input)")
+	flags.StringVar(&o.TokenEnv, "token-env", "", "Read the probe auth token from this environment variable")
+	flags.StringVar(&o.ProbeName, "probe-name", "", "Name for the Kubernetes resources (required)")
+	flags.StringVar(&o.APIServerURL, "api-server-url", "", "SM API gRPC address in host:port format (required)")
+	flags.StringVar(&o.Namespace, "namespace", "synthetic-monitoring", "Kubernetes namespace")
 	flags.StringVar(&o.Image, "image", DefaultAgentImage, "SM agent container image")
 }
 
-func (o *deployOpts) Validate() error {
+func (o *deployOpts) config(token string) DeployConfig {
 	return DeployConfig{
 		ProbeName:    o.ProbeName,
-		ProbeToken:   o.Token,
+		ProbeToken:   token,
 		APIServerURL: o.APIServerURL,
-	}.Validate()
+		Namespace:    o.Namespace,
+		Image:        o.Image,
+	}
+}
+
+func (o *deployOpts) Validate(flags *pflag.FlagSet) error {
+	sources := 0
+	for _, name := range []string{"token", "token-file", "token-env"} {
+		if flags.Changed(name) {
+			sources++
+		}
+	}
+	if sources == 0 {
+		return errors.New("one of --token-file, --token-env, or --token is required")
+	}
+	if sources > 1 {
+		return errors.New("use only one of --token-file, --token-env, or --token")
+	}
+
+	return o.config("validation-token").Validate()
+}
+
+const maxProbeTokenBytes = 1024 * 1024
+
+func readProbeToken(r io.Reader) (string, error) {
+	data, err := io.ReadAll(io.LimitReader(r, maxProbeTokenBytes+1))
+	if err != nil {
+		return "", err
+	}
+	if len(data) > maxProbeTokenBytes {
+		return "", errors.New("probe token exceeds 1 MiB")
+	}
+
+	token := strings.TrimRight(string(data), "\r\n")
+	if token == "" {
+		return "", errors.New("probe token is empty")
+	}
+	return token, nil
+}
+
+func (o *deployOpts) loadToken(flags *pflag.FlagSet, stdin io.Reader) (string, error) {
+	switch {
+	case flags.Changed("token-file"):
+		if o.TokenFile == "" {
+			return "", errors.New("--token-file must not be empty")
+		}
+		if o.TokenFile == "-" {
+			token, err := readProbeToken(stdin)
+			if err != nil {
+				return "", fmt.Errorf("reading probe token from standard input: %w", err)
+			}
+			return token, nil
+		}
+
+		f, err := os.Open(o.TokenFile)
+		if err != nil {
+			return "", fmt.Errorf("opening probe token file %q: %w", o.TokenFile, err)
+		}
+
+		token, err := readProbeToken(f)
+		closeErr := f.Close()
+		if err != nil {
+			return "", fmt.Errorf("reading probe token file %q: %w", o.TokenFile, err)
+		}
+		if closeErr != nil {
+			return "", fmt.Errorf("closing probe token file %q: %w", o.TokenFile, closeErr)
+		}
+		return token, nil
+
+	case flags.Changed("token-env"):
+		if o.TokenEnv == "" {
+			return "", errors.New("--token-env must name an environment variable")
+		}
+		token, ok := os.LookupEnv(o.TokenEnv)
+		if !ok {
+			return "", fmt.Errorf("environment variable %q is not set", o.TokenEnv)
+		}
+		return readProbeToken(strings.NewReader(token))
+
+	default:
+		return readProbeToken(strings.NewReader(o.Token))
+	}
 }
 
 func newDeployCommand() *cobra.Command {
@@ -508,23 +606,27 @@ func newDeployCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "deploy",
 		Short: "Generate Kubernetes manifests for deploying an SM agent.",
-		Args:  cobra.NoArgs,
-		Example: `  # Generate manifests for a probe deployment.
-  gcx synthetic-monitoring probes deploy --probe-name my-probe --token <token> --api-server-url synthetic-monitoring-grpc.grafana.net:443
+		Long: "Generate a Namespace, Secret, and Deployment for a private Synthetic Monitoring probe. " +
+			"The Deployment reads the probe token from the Secret and sends it to the agent through a protected environment variable. " +
+			"The output contains the Secret, so store saved output securely.",
+		Args: cobra.NoArgs,
+		Example: `  # Read the probe token from a file.
+  gcx synthetic-monitoring probes deploy --probe-name my-probe --token-file ./probe-token --api-server-url synthetic-monitoring-grpc.grafana.net:443
 
-  # Pipe directly into kubectl.
-  gcx synthetic-monitoring probes deploy --probe-name my-probe --token <token> --api-server-url synthetic-monitoring-grpc.grafana.net:443 | kubectl apply -f -`,
+  # Read the probe token from an environment variable and apply the manifests.
+  gcx synthetic-monitoring probes deploy --probe-name my-probe --token-env PROBE_TOKEN --api-server-url synthetic-monitoring-grpc.grafana.net:443 | kubectl apply -f -
+
+  # Read the probe token from standard input.
+  printf '%s' "$PROBE_TOKEN" | gcx synthetic-monitoring probes deploy --probe-name my-probe --token-file - --api-server-url synthetic-monitoring-grpc.grafana.net:443`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := opts.Validate(); err != nil {
+			if err := opts.Validate(cmd.Flags()); err != nil {
 				return err
 			}
-			return RenderManifests(cmd.OutOrStdout(), DeployConfig{
-				ProbeName:    opts.ProbeName,
-				ProbeToken:   opts.Token,
-				APIServerURL: opts.APIServerURL,
-				Namespace:    opts.Namespace,
-				Image:        opts.Image,
-			})
+			token, err := opts.loadToken(cmd.Flags(), cmd.InOrStdin())
+			if err != nil {
+				return err
+			}
+			return RenderManifests(cmd.OutOrStdout(), opts.config(token))
 		},
 	}
 	opts.setup(cmd.Flags())

@@ -512,12 +512,12 @@ func TestCloudEntryFromOAuthResultPreservesMetadata(t *testing.T) {
 	}, &auth.GCOMResult{
 		AccessToken: "oauth-token",
 		ExpiresAt:   "2030-01-01T00:00:00Z",
-		Scope:       "stacks:read fleet-management:read",
+		Scope:       "stacks:read metrics:write",
 	})
 
 	assert.Equal(t, "oauth-token", entry.OAuthToken)
 	assert.Equal(t, "2030-01-01T00:00:00Z", entry.OAuthTokenExpiresAt)
-	assert.Equal(t, []string{"stacks:read", "fleet-management:read"}, entry.OAuthScopes)
+	assert.Equal(t, []string{"stacks:read", "metrics:write"}, entry.OAuthScopes)
 	assert.Equal(t, "https://grafana-ops.com", entry.OAuthUrl)
 	assert.Equal(t, "https://grafana-ops.com", entry.APIUrl)
 }

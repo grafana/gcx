@@ -29,7 +29,8 @@ import (
 
 // keychainStoreFn returns the credentials.Store used by Load and Write. It is
 // a package-level variable so tests can inject a fake store. Production code
-// uses credentials.Open() which probes the OS keychain.
+// uses credentials.Open() which probes the OS keychain, unless the resolved
+// keychain mode is disabled, in which case credentials stay in plaintext.
 //
 // Under `go test` (detected via testing.Testing()), the default is a no-op
 // store that reports ErrUnavailable for every operation. This prevents any
@@ -81,6 +82,13 @@ func defaultKeychainStore() credentials.Store {
 	if testing.Testing() {
 		return testingNoopStore{}
 	}
+	return keychainStoreForMode(keychainModeForProcess())
+}
+
+func keychainStoreForMode(mode keychainMode) credentials.Store {
+	if mode == keychainModeDisabled {
+		return disabledStore{}
+	}
 	openStoreOnce.Do(func() { openedStore = credentials.Open() })
 	return openedStore
 }
@@ -90,6 +98,14 @@ type testingNoopStore struct{}
 func (testingNoopStore) Get(string) (string, error) { return "", credentials.ErrUnavailable }
 func (testingNoopStore) Set(string, string) error   { return credentials.ErrUnavailable }
 func (testingNoopStore) Delete(string) error        { return credentials.ErrUnavailable }
+
+// disabledStore stands in for the OS keychain when the user has turned it off,
+// so credentials stay in plaintext in the config file.
+type disabledStore struct{}
+
+func (disabledStore) Get(string) (string, error) { return "", credentials.ErrDisabled }
+func (disabledStore) Set(string, string) error   { return credentials.ErrDisabled }
+func (disabledStore) Delete(string) error        { return credentials.ErrDisabled }
 
 const (
 	configFilePermissions  = 0o600

@@ -82,6 +82,13 @@ var ErrUnavailable = errors.New("credentials: keychain unavailable")
 // must fail and ask the user to unlock the keychain.
 var ErrLocked = errors.New("credentials: keychain locked")
 
+// ErrDisabled is reported by a store that stands in for a keychain the user has
+// deliberately turned off. Unlike ErrLocked it wraps ErrUnavailable, because no
+// keychain is in play at all: every existing fallback path keeps treating it as
+// an unreachable backend, and only the decisions that differ for a deliberate
+// opt-out test for it specifically.
+var ErrDisabled = fmt.Errorf("%w: disabled by configuration", ErrUnavailable)
+
 // Store is the minimal interface for a secret backend.
 type Store interface {
 	Get(key string) (string, error)

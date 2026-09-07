@@ -27,6 +27,58 @@ gcx does not use plaintext fallback for these conditions:
 - A value that is too large for the credential store.
 - An unknown credential store error.
 
+gcx uses plaintext fallback for a replacement when you disable the credential
+store. See [Disable the credential store](#disable-the-credential-store).
+
+## Disable the credential store
+
+Set `GCX_KEYCHAIN=off` when the credential store is permanently unavailable,
+such as on a headless box, a CI runner, or a session that can never unlock the
+keyring. gcx then keeps credentials in the mode-`0600` configuration file and
+does not use the credential store.
+
+```shell
+export GCX_KEYCHAIN=off
+```
+
+`off` is the only value that disables the credential store. gcx keeps using the
+store for every other value, so a typo cannot write credentials in plaintext
+without your intent. gcx warns once per command when it ignores a value:
+
+```
+warn: GCX_KEYCHAIN="disabled" is not a recognized value and was ignored; the OS credential store is still in use. Set GCX_KEYCHAIN=off to disable it.
+```
+
+Set the variable in your shell profile or CI job environment to make it
+permanent for a machine.
+
+gcx does not move stored credentials back into the configuration file when you
+disable the credential store. It preserves their references and cannot read
+them. You have two choices for each one.
+
+Keep the reference. Unset `GCX_KEYCHAIN` and the credential works again.
+
+Replace the credential. Authenticate again, and gcx writes the new value in
+plaintext. This is not reversible: gcx cannot delete through a disabled store,
+so the credential you replaced stays in the OS credential store with nothing
+referencing it, and no gcx command can reach it again. gcx warns when this
+happens. Delete that entry yourself to finish the change, and treat this as
+required when you are replacing a leaked credential.
+
+gcx cannot remove a credential that is in the credential store while the
+credential store is disabled. `gcx config unset` on that field, and deleting
+the stack or Cloud entry that owns it, both fail. gcx does not drop the
+reference and leave the secret in the credential store, because that reports a
+deletion that did not happen. Unset `GCX_KEYCHAIN` and run the command again.
+When the credential store is permanently unavailable, unsetting the variable
+does not help, because gcx still cannot read the entry: edit the configuration
+file to remove the reference, then delete the entry through your OS credential
+store.
+
+This applies only to credentials that are in the credential store. A credential
+that is already plaintext in the configuration file has nothing to remove from
+the store, so `gcx config unset` and entry deletion both work as usual.
+
 ## `Keychain locked`
 
 This error means that macOS Keychain or a Linux or BSD Secret Service is

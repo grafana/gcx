@@ -128,7 +128,7 @@ Action-verb command tree for Grafana Cloud's Instrumentation Hub. Backed by flee
 - **`instrumentation clusters [list|get|configure|remove|wait]`** + nested **`apps`** — Declared-state read/write with tri-state flag semantics on `configure` and a per-namespace optimistic-lock guard
 - **`instrumentation services [list|get|include|exclude|clear]`** — Observed-state fleet sweep via `RunK8sDiscovery` with DWIM single-workload mutation
 
-Uses `internal/providers/instrumentation/` (provider, types, output codecs, RMW helper, helm formatter, enumeration helper) and `internal/fleet/` (shared base HTTP client, also used by the fleet provider). `check` and `explain` are thin cmd/-only wrappers around the upstream `github.com/grafana/otel-checker/checks` and `.../checks/explain` packages — no provider glue. `check --fix-plan=assistant` embeds Grafana Assistant via `internal/providers/assistant.ResolveClientOptions` + `RequireGrafanaCloud` (reused from the same auth resolution used by `gcx assistant prompt`), then calls `ChatWithApproval` directly; the two-mode dispatch (local vs. assistant, no cross-mode fallback) lives in `cmd/gcx/instrumentation/check/fixplan/`. See ADR-018 for the design.
+Uses `internal/providers/instrumentation/` (provider, types, output codecs, RMW helper, helm formatter, enumeration helper) and `internal/fleet/` (shared base HTTP client, also used by the fleet provider; it reaches Fleet Management through the `grafana-collector-app` plugin proxy on the stack — see ADR-023). `check` and `explain` are thin cmd/-only wrappers around the upstream `github.com/grafana/otel-checker/checks` and `.../checks/explain` packages — no provider glue. `check --fix-plan=assistant` embeds Grafana Assistant via `internal/providers/assistant.ResolveClientOptions` + `RequireGrafanaCloud` (reused from the same auth resolution used by `gcx assistant prompt`), then calls `ChatWithApproval` directly; the two-mode dispatch (local vs. assistant, no cross-mode fallback) lives in `cmd/gcx/instrumentation/check/fixplan/`. See ADR-018 for the design.
 
 ### 7. Configuration
 
@@ -223,6 +223,7 @@ can otherwise inject Grafana auth into the wrong request.
 | [020](docs/adrs/sm-datasource-proxy/001-dual-mode-transport.md) | Synthetic Monitoring dual-mode transport: datasource proxy primary, direct SM API fallback | accepted |
 | [021](docs/adrs/assistant-provider/001-assistant-provider-and-mcp-servers-as-resources.md) | Assistant provider + MCP servers as resources | proposed |
 | [022](docs/adrs/config-v1/001-versioned-split-config-and-secret-trust.md) | Versioned Split Config and Source-Bound Secret Trust | proposed |
+| [023](docs/adrs/fleet-plugin-proxy/001-fleet-via-collector-app-proxy.md) | Fleet Management through the collector app plugin proxy | accepted |
 
 See [docs/adrs/](docs/adrs/) for all ADRs.
 

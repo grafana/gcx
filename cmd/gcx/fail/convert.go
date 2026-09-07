@@ -1105,34 +1105,6 @@ func convertCloudConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 		}, true
 	}
 
-	// Fleet API scope error on read operations.
-	if strings.Contains(msg, "fleet:") && strings.Contains(msg, "invalid scope") &&
-		(strings.Contains(msg, "list ") || strings.Contains(msg, "get ")) {
-		return &gcxerrors.DetailedError{
-			Parent:  err,
-			Summary: "Fleet Management: permission denied",
-			Suggestions: []string{
-				"Ensure your cloud token's access policy includes the fleet-management:read scope",
-			},
-			DocsLink: docs.AccessPolicies,
-			ExitCode: new(gcxerrors.ExitAuthFailure),
-		}, true
-	}
-
-	// Fleet API scope error on write operations.
-	if strings.Contains(msg, "fleet:") && strings.Contains(msg, "invalid scope") &&
-		(strings.Contains(msg, "create ") || strings.Contains(msg, "update ") || strings.Contains(msg, "delete ")) {
-		return &gcxerrors.DetailedError{
-			Parent:  err,
-			Summary: "Fleet Management: permission denied",
-			Suggestions: []string{
-				"Ensure your cloud token's access policy includes the fleet-management:write scope",
-			},
-			DocsLink: docs.AccessPolicies,
-			ExitCode: new(gcxerrors.ExitAuthFailure),
-		}, true
-	}
-
 	// Adaptive Traces scope errors.
 	if strings.Contains(msg, "adaptive-traces:") && strings.Contains(msg, "invalid scope") {
 		return &gcxerrors.DetailedError{
@@ -1162,21 +1134,6 @@ func convertCloudConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 		}, true
 	}
 
-	// Fleet management not available.
-	if strings.Contains(msg, "fleet management endpoint is not available") ||
-		strings.Contains(msg, "fleet management instance ID is not available") {
-		return &gcxerrors.DetailedError{
-			Summary: "Fleet Management not available",
-			Details: msg,
-			Parent:  err,
-			Suggestions: []string{
-				"Fleet Management may not be enabled for this stack",
-				"Contact Grafana Cloud support to enable Fleet Management",
-			},
-			DocsLink: docs.FleetManagement,
-		}, true
-	}
-
 	// Stack info lookup forbidden — access policy missing stacks:read scope.
 	if strings.Contains(msg, "failed to get stack info for") && strings.Contains(msg, "status 403") {
 		suggestions := []string{
@@ -1198,12 +1155,31 @@ func convertCloudConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 }
 
 // convertFleetHTTPErrors converts fleet.HTTPError values (non-2xx HTTP
-// responses from the Fleet Management API) into structured DetailedErrors with
-// actionable auth suggestions for 401 and 403 responses.
+// responses from the Fleet Management plugin proxy) into structured
+// DetailedErrors. Fleet Management runs behind the grafana-collector-app plugin
+// proxy on the stack, so an absent plugin and an absent permission are the two
+// common causes.
 func convertFleetHTTPErrors(err error) (*gcxerrors.DetailedError, bool) {
 	var httpErr *fleet.HTTPError
 	if !errors.As(err, &httpErr) {
 		return nil, false
+	}
+
+	// Grafana returns this when the collector app plugin is absent or disabled.
+	// It arrives as a 404, the same status Fleet Management uses for an absent
+	// resource, so the body decides.
+	if httpErr.Status == http.StatusNotFound && fleet.IsPluginMissingBody(httpErr.Body) {
+		return &gcxerrors.DetailedError{
+			Parent:  err,
+			Summary: "Endpoint not available",
+			Details: "The " + fleet.CollectorAppID + " plugin is not installed or not enabled on this stack",
+			Suggestions: []string{
+				"Check the plugin and your permissions: gcx setup status",
+				"Install or enable the Collector app in Grafana: Administration > Plugins",
+				"Fleet Management is a Grafana Cloud product and is not available on self-hosted Grafana",
+			},
+			DocsLink: docs.FleetManagement,
+		}, true
 	}
 
 	switch httpErr.Status {
@@ -1213,11 +1189,10 @@ func convertFleetHTTPErrors(err error) (*gcxerrors.DetailedError, bool) {
 			Summary: "Authentication failed",
 			Details: "HTTP 401 from " + httpErr.Path,
 			Suggestions: []string{
-				"Ensure cloud auth is configured: gcx cloud login",
 				"Verify the token has not expired: gcx config view",
 				reauthSuggestion,
 			},
-			DocsLink: docs.AccessPolicies,
+			DocsLink: docs.ServiceAccounts,
 			ExitCode: new(gcxerrors.ExitAuthFailure),
 		}, true
 	case http.StatusForbidden:
@@ -1226,11 +1201,11 @@ func convertFleetHTTPErrors(err error) (*gcxerrors.DetailedError, bool) {
 			Summary: "Authorization failed",
 			Details: "HTTP 403 from " + httpErr.Path,
 			Suggestions: []string{
-				"Ensure your Cloud Access Policy includes the fleet-management:read scope",
-				"Ensure your Cloud Access Policy includes the fleet-management:write scope for mutation commands",
-				reauthSuggestion,
+				"Named read routes need the " + fleet.CollectorAppReadAction + " action on this stack",
+				"Wildcard routes need the Admin role, or the " + fleet.CollectorAppAdminAction + " action; some read-only commands use these routes",
+				"Check what your login holds: gcx setup status",
 			},
-			DocsLink: docs.AccessPolicies,
+			DocsLink: docs.RolesAndPermissions,
 			ExitCode: new(gcxerrors.ExitAuthFailure),
 		}, true
 	}
