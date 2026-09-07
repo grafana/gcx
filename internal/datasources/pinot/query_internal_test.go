@@ -11,10 +11,10 @@ import (
 func TestWarnLimitEnforcement(t *testing.T) {
 	const (
 		unionSQL   = "SELECT 1 FROM a UNION SELECT 2 FROM b LIMIT 2000"
-		offsetSQL  = "SELECT * FROM t LIMIT 5000 OFFSET 0"
+		offsetSQL  = "SELECT * FROM t LIMIT 5000 OFFSET 0" //nolint:unqueryvet // LIMIT/OFFSET shape fixture
 		plainSQL   = "SELECT 1 LIMIT 50"
-		commaSQL   = "SELECT * FROM t LIMIT 10, 20"
-		optionSQL  = "SELECT * FROM t OPTION(timeoutMs=5000)"
+		commaSQL   = "SELECT * FROM t LIMIT 10, 20"           //nolint:unqueryvet // LIMIT offset,count shape fixture
+		optionSQL  = "SELECT * FROM t OPTION(timeoutMs=5000)" //nolint:unqueryvet // OPTION shape fixture
 		cappedWarn = "LIMIT in query exceeds the maximum of 1000 and was capped; use --limit 0 to disable enforcement"
 		skipWarn   = "query uses UNION, OFFSET, or OPTION, so --limit was not applied; the SQL was sent unchanged. Use --limit 0 to disable this warning"
 	)
