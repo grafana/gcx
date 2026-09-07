@@ -7,12 +7,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestEscapeSQLString(t *testing.T) {
-	assert.Equal(t, "events", pinot.EscapeSQLString("events"))
-	assert.Equal(t, "it''s", pinot.EscapeSQLString("it's"))
-	assert.Empty(t, pinot.EscapeSQLString(""))
-}
-
 func TestExtractTableName(t *testing.T) {
 	tests := []struct {
 		name string

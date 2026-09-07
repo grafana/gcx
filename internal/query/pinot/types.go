@@ -13,11 +13,6 @@ const (
 	DatasourceType = "startree-pinot-datasource"
 )
 
-// EscapeSQLString escapes single quotes for use in SQL string literals.
-func EscapeSQLString(s string) string {
-	return strings.ReplaceAll(s, "'", "''")
-}
-
 // leadingSetRe matches one or more Pinot SET statements at the start of a
 // query (e.g. SET useMultistageEngine = true;). Those prefixes are stripped
 // before the SELECT-shaped allow-list so EnforceLimit can still bound the
