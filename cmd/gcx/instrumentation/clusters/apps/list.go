@@ -40,7 +40,7 @@ Use "gcx instrumentation status" for observed-state status.`,
 			// --json list (field discovery): introspect AppView shape without
 			// requiring a cluster positional or making any API call.
 			if opts.JSONDiscovery {
-				return opts.Encode(cmd.OutOrStdout(), instoutput.AppListEnvelope{Items: []instoutput.AppView{{}}})
+				return opts.Encode(cmd.OutOrStdout(), instoutput.ListEnvelope[instoutput.AppView]{Items: []instoutput.AppView{{}}})
 			}
 
 			if len(args) != 1 {

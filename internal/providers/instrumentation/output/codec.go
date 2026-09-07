@@ -176,20 +176,10 @@ func AccessPoliciesURL(orgSlug string) string {
 // guarantee [] (not null) for empty results.
 
 // ListEnvelope is the JSON envelope every instrumentation list command emits.
+// EncodeList builds it from the row type, so commands rarely name it directly.
 type ListEnvelope[T any] struct {
 	Items []T `json:"items"`
 }
-
-// The per-command names are aliases, so the envelope a command emits is
-// determined by its row type and never has to be named alongside it.
-type (
-	// ClusterListEnvelope is the JSON envelope for the clusters list command.
-	ClusterListEnvelope = ListEnvelope[ClusterView]
-	// ServiceListEnvelope is the JSON envelope for the services list command.
-	ServiceListEnvelope = ListEnvelope[ServiceView]
-	// AppListEnvelope is the JSON envelope for the clusters apps list command.
-	AppListEnvelope = ListEnvelope[AppView]
-)
 
 // ─── STATUS normalization ─────────────────────────────────────────────────────
 

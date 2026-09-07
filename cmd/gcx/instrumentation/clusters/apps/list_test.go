@@ -127,8 +127,8 @@ func TestListCmd_Discovered(t *testing.T) {
 
 	require.NoError(t, cmd.Execute())
 
-	var envelope instoutput.AppListEnvelope
-	require.NoError(t, json.Unmarshal(out.Bytes(), &envelope), "output must be AppListEnvelope; got: %s", out.String())
+	var envelope instoutput.ListEnvelope[instoutput.AppView]
+	require.NoError(t, json.Unmarshal(out.Bytes(), &envelope), "output must be ListEnvelope[AppView]; got: %s", out.String())
 	require.Len(t, envelope.Items, 2)
 
 	byName := make(map[string]instoutput.AppView, len(envelope.Items))
