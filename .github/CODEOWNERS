@@ -7,7 +7,6 @@
 * @grafana/grafana-gcx
 
 /cmd/gcx/instrumentation/ @grafana/grafana-gcx @grafana/o11y-ingest
-/cmd/gcx/assistant/ @grafana/grafana-gcx @grafana/grafana-assistant-loop
 /cmd/gcx/cloud/ @grafana/grafana-gcx @grafana/grafana-com-maintainers
 
 # Providers
@@ -22,6 +21,7 @@
 /internal/providers/instrumentation/ @grafana/grafana-gcx @grafana/o11y-ingest
 /internal/providers/kg/ @grafana/grafana-gcx @grafana/asserts-team
 /internal/providers/appo11y/ @grafana/grafana-gcx @grafana/app-o11y-visualizations
+/internal/providers/assistant/ @grafana/grafana-gcx @grafana/grafana-assistant-loop
 /internal/providers/agento11y/ @grafana/grafana-gcx @grafana/grafana-assistant-loop
 /internal/providers/dbo11y/ @grafana/grafana-gcx @grafana/db-o11y-squad
 /internal/providers/alert/ @grafana/grafana-gcx @grafana/alerting-squad
@@ -47,10 +47,15 @@
 /internal/datasources/pyroscope/ @grafana/grafana-gcx @grafana/pyroscope-team
 /internal/datasources/tempo/ @grafana/grafana-gcx @grafana/tempo
 
+/internal/query/athena/ @grafana/grafana-gcx @grafana/data-sources
 /internal/query/azuremonitor/ @grafana/grafana-gcx @grafana/data-sources
 /internal/query/bigquery/ @grafana/grafana-gcx @grafana/data-sources
+/internal/query/clickhouse/ @grafana/grafana-gcx @grafana/data-sources
 /internal/query/cloudmonitoring/ @grafana/grafana-gcx @grafana/data-sources
+/internal/query/cloudwatch/ @grafana/grafana-gcx @grafana/data-sources
 /internal/query/elasticsearch/ @grafana/grafana-gcx @grafana/data-sources
+/internal/query/infinity/ @grafana/grafana-gcx @grafana/data-sources
+/internal/query/influxdb/ @grafana/grafana-gcx @grafana/data-sources
 /internal/query/loki/ @grafana/grafana-gcx @grafana/loki-team
 /internal/query/mysql/ @grafana/grafana-gcx @grafana/data-sources
 /internal/query/postgres/ @grafana/grafana-gcx @grafana/data-sources
