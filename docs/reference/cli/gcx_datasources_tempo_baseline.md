@@ -4,7 +4,10 @@
 
 ### Synopsis
 
-[experimental] Find healthy, same-operation candidate traces to compare against a seed trace.
+This command is experimental. It may be removed, or its subcommands, flags and
+responses may change without following the normal semantic versioning conventions.
+
+Find healthy, same-operation candidate traces to compare against a seed trace.
 
 TRACE_ID is the seed trace (typically a faulty one). The command fetches it,
 reads its root service/operation and its busiest downstream services, then
