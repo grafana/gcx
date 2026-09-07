@@ -319,6 +319,12 @@ func TestFormatMetricsCSV_Instant(t *testing.T) {
 func TestFormatMetricsCSV_NoData(t *testing.T) {
 	var buf bytes.Buffer
 	require.NoError(t, tempo.FormatMetricsCSV(&buf, &tempo.MetricsResponse{}))
+	assert.Equal(t, "TIMESTAMP,VALUE\n", buf.String())
+}
+
+func TestFormatMetricsCSV_NilResponse(t *testing.T) {
+	var buf bytes.Buffer
+	require.NoError(t, tempo.FormatMetricsCSV(&buf, nil))
 	assert.Empty(t, buf.String())
 }
 

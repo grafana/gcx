@@ -69,6 +69,13 @@ func (tb *TableBuilder) Render(w io.Writer) error {
 // encoding/csv already quotes any cell value containing commas, quotes, or
 // newlines, so embedded newlines survive as valid multi-line CSV fields
 // rather than being flattened.
+//
+// A row shorter than the header count is padded with empty fields rather
+// than written as-is: unlike Render (tabwriter pads, lipgloss fills) and
+// csv.Writer.Write (which doesn't validate field count), a short row here
+// would make the whole file unparseable — csv.Reader returns ErrFieldCount
+// and DuckDB's read_csv rejects the column-count mismatch — rather than
+// just that one row looking odd.
 func (tb *TableBuilder) RenderCSV(w io.Writer) error {
 	cw := csv.NewWriter(w)
 	if len(tb.headers) > 0 {
@@ -77,12 +84,23 @@ func (tb *TableBuilder) RenderCSV(w io.Writer) error {
 		}
 	}
 	for _, row := range tb.rows {
-		if err := cw.Write(row); err != nil {
+		if err := cw.Write(padRow(row, len(tb.headers))); err != nil {
 			return err
 		}
 	}
 	cw.Flush()
 	return cw.Error()
+}
+
+// padRow returns row padded with empty strings to length n. Rows at or
+// above n are returned unchanged.
+func padRow(row []string, n int) []string {
+	if len(row) >= n {
+		return row
+	}
+	padded := make([]string, n)
+	copy(padded, row)
+	return padded
 }
 
 func (tb *TableBuilder) renderPlain(w io.Writer) error {

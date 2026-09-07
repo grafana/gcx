@@ -73,3 +73,13 @@ func TestFormatCSV_NoData(t *testing.T) {
 	require.NoError(t, sql.FormatCSV(&buf, &sql.QueryResponse{}))
 	assert.Empty(t, buf.String())
 }
+
+func TestFormatCSV_NilRendersEmptyNotDash(t *testing.T) {
+	resp := &sql.QueryResponse{
+		Columns: []sql.Column{{Name: "id", Type: "number"}, {Name: "name", Type: "string"}},
+		Rows:    [][]any{{float64(1), nil}},
+	}
+	var buf bytes.Buffer
+	require.NoError(t, sql.FormatCSV(&buf, resp))
+	assert.Equal(t, "ID,NAME\n1,\n", buf.String())
+}

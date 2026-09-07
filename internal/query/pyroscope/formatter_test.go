@@ -34,7 +34,7 @@ func TestFormatCSV(t *testing.T) {
 func TestFormatCSV_NoProfileData(t *testing.T) {
 	var buf bytes.Buffer
 	require.NoError(t, pyroscope.FormatCSV(&buf, &pyroscope.QueryResponse{}))
-	assert.Empty(t, buf.String())
+	assert.Equal(t, "FUNCTION,SELF,TOTAL,PERCENTAGE\n", buf.String())
 }
 
 func tp(value float64, timestamp int64) pyroscope.TimePoint {

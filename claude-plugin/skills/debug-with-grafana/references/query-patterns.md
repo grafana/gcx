@@ -350,10 +350,16 @@ JSON structure:
 
 ### CSV Format (for SQL-based analysis)
 
-`-o csv` gives one row per series/label-combination, same columns as `-o wide`
-(one column per label, plus TIMESTAMP/VALUE). Available for Prometheus, Loki
-log queries, Tempo search, Infinity, SQL, Athena discovery, and CloudWatch —
-not for hierarchical shapes like `traces get`, which stays JSON/table-only.
+`-o csv` gives one row per series/label-combination or table row, with the
+same columns as that datasource's `-o table` output — not a single fixed
+schema. Prometheus, Loki metric queries, and Tempo metrics emit one column
+per label plus TIMESTAMP/VALUE; Loki log queries emit TIME, stream labels,
+and MESSAGE; Tempo search emits TRACE_ID/SERVICE/NAME/DURATION/START; SQL,
+Infinity, and InfluxDB emit the query's own columns. Available for
+Prometheus, Loki (log and metric queries), Tempo search and metrics,
+Pyroscope, Infinity, InfluxDB, SQL, Athena discovery, ClickHouse
+table/column info, and CloudWatch — not for hierarchical shapes like
+`traces get`, which stays JSON/table-only.
 
 Pipe it straight into DuckDB — this is the preferred way to filter, aggregate,
 join, or otherwise manipulate query results, not a python or jq script:

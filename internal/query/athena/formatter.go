@@ -16,11 +16,9 @@ func FormatStringList(w io.Writer, items []string, header string) error {
 	return buildStringListTable(items, header).Render(w)
 }
 
-// FormatStringListCSV formats a []string as single-column CSV with the given header.
+// FormatStringListCSV formats a []string as single-column CSV with the given
+// header. An empty list still emits the header row rather than zero bytes.
 func FormatStringListCSV(w io.Writer, items []string, header string) error {
-	if len(items) == 0 {
-		return nil
-	}
 	return buildStringListTable(items, header).RenderCSV(w)
 }
 

@@ -54,7 +54,7 @@ func TestFormatListTablesCSV(t *testing.T) {
 func TestFormatListTablesCSV_Empty(t *testing.T) {
 	var buf bytes.Buffer
 	require.NoError(t, clickhouse.FormatListTablesCSV(&buf, nil))
-	assert.Empty(t, buf.String())
+	assert.Equal(t, "DATABASE,NAME,ENGINE,TOTAL_ROWS,TOTAL_BYTES\n", buf.String())
 }
 
 func TestFormatDescribeTableCSV(t *testing.T) {
@@ -69,5 +69,5 @@ func TestFormatDescribeTableCSV(t *testing.T) {
 func TestFormatDescribeTableCSV_Empty(t *testing.T) {
 	var buf bytes.Buffer
 	require.NoError(t, clickhouse.FormatDescribeTableCSV(&buf, nil))
-	assert.Empty(t, buf.String())
+	assert.Equal(t, "NAME,TYPE,DEFAULT_TYPE,DEFAULT_EXPRESSION,COMMENT\n", buf.String())
 }

@@ -18,12 +18,9 @@ func FormatTable(w io.Writer, resp *QueryResponse) error {
 	return buildTable(resp).Render(w)
 }
 
-// FormatCSV renders a QueryResponse as CSV, same columns as FormatTable.
+// FormatCSV renders a QueryResponse as CSV, same columns as FormatTable. An
+// empty result still emits the header row rather than zero bytes.
 func FormatCSV(w io.Writer, resp *QueryResponse) error {
-	if len(resp.Rows) == 0 {
-		return nil
-	}
-
 	return buildTable(resp).RenderCSV(w)
 }
 

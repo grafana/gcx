@@ -168,9 +168,10 @@ func formatInstantMetricsTable(w io.Writer, resp *MetricsResponse) error {
 // is independently queryable in DuckDB. Range queries get a TIMESTAMP
 // column (one row per sample, RFC3339 instead of a raw millisecond-epoch
 // string) — instant queries omit it (one row per series), matching
-// formatRangeMetricsTable/formatInstantMetricsTable.
+// formatRangeMetricsTable/formatInstantMetricsTable. An empty (but non-nil)
+// response still emits the header row rather than zero bytes.
 func FormatMetricsCSV(w io.Writer, resp *MetricsResponse) error {
-	if resp == nil || len(resp.Series) == 0 {
+	if resp == nil {
 		return nil
 	}
 

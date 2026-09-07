@@ -36,10 +36,10 @@ func TestFormatStringListCSV(t *testing.T) {
 		assert.Equal(t, "CATALOG\nalpha\nbeta\n", buf.String())
 	})
 
-	t.Run("empty result", func(t *testing.T) {
+	t.Run("empty result still emits header", func(t *testing.T) {
 		var buf bytes.Buffer
 		err := athena.FormatStringListCSV(&buf, []string{}, "EMPTY")
 		require.NoError(t, err)
-		assert.Empty(t, buf.String())
+		assert.Equal(t, "EMPTY\n", buf.String())
 	})
 }

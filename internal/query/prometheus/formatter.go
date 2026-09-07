@@ -50,12 +50,11 @@ func FormatWideTable(w io.Writer, resp *QueryResponse) error {
 }
 
 // FormatCSV formats a QueryResponse as CSV, one column per label plus
-// TIMESTAMP and VALUE — the same column layout as FormatWideTable.
+// TIMESTAMP and VALUE — the same column layout as FormatWideTable. Unlike
+// FormatWideTable, an empty result still emits the header row: a CSV
+// consumer like DuckDB needs it to detect the schema, and zero bytes reads
+// as a query failure rather than an empty result set.
 func FormatCSV(w io.Writer, resp *QueryResponse) error {
-	if len(resp.Data.Result) == 0 {
-		return nil
-	}
-
 	t, err := buildWideTable(resp)
 	if err != nil {
 		return err

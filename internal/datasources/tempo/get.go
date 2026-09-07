@@ -24,6 +24,9 @@ type getOpts struct {
 
 func (opts *getOpts) setup(flags *pflag.FlagSet) {
 	dsquery.RegisterCodecs(&opts.IO, false)
+	// csv is not supported for trace get (queryCSVCodec rejects
+	// *tempo.GetTraceResponse), so hide it from the advertised menu.
+	opts.IO.HideFormat("csv")
 	// Default is the human-readable tree table for all non-agent sessions.
 	// Piped output renders the same table without ANSI styling (via IsStylingEnabled).
 	// Agent mode is the only path that overrides the default to JSON.

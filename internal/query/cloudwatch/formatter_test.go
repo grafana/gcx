@@ -119,7 +119,7 @@ func TestFormatCSV_HasLabelColumn(t *testing.T) {
 func TestFormatCSV_Empty(t *testing.T) {
 	var buf bytes.Buffer
 	require.NoError(t, cloudwatch.FormatCSV(&buf, &cloudwatch.QueryResponse{}))
-	assert.Empty(t, buf.String())
+	assert.Equal(t, "TIMESTAMP,VALUE,SERIES,LABEL\n", buf.String())
 }
 
 func TestFormatNamespaces_Populated(t *testing.T) {

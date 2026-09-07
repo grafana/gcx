@@ -69,7 +69,7 @@ gcx datasources azuremonitor query [flags]
       --metric string               Metric name, e.g. Transactions (required)
       --namespace string            Metric namespace, e.g. Microsoft.Storage/storageAccounts (required)
       --open                        Open the executed query in Grafana Explore
-  -o, --output string               Output format. One of: agents, graph, json, table, wide, yaml (default "table")
+  -o, --output string               Output format. One of: agents, csv, graph, json, table, wide, yaml (default "table")
       --region string               Azure region, e.g. uksouth (optional; used for multi-resource queries)
       --resource string             Azure resource name; use the slash form for sub-resources, e.g. mystorage/blobServices/default (required)
       --resource-group string       Azure resource group name (required)

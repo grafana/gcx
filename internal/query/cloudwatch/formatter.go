@@ -41,12 +41,9 @@ func FormatWide(w io.Writer, resp *QueryResponse) error {
 	return buildWideTable(resp).Render(w)
 }
 
-// FormatCSV renders query results as CSV, same columns as FormatWide.
+// FormatCSV renders query results as CSV, same columns as FormatWide. An
+// empty result still emits the header row rather than zero bytes.
 func FormatCSV(w io.Writer, resp *QueryResponse) error {
-	if len(resp.Frames) == 0 {
-		return nil
-	}
-
 	return buildWideTable(resp).RenderCSV(w)
 }
 

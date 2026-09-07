@@ -33,12 +33,9 @@ func FormatQueryTable(w io.Writer, resp *QueryResponse) error {
 }
 
 // FormatCSV formats a QueryResponse as CSV — same column layout and cell
-// formatting as FormatQueryTable (RFC3339 timestamps, decimal floats).
+// formatting as FormatQueryTable (RFC3339 timestamps, decimal floats). An
+// empty result still emits the header row rather than zero bytes.
 func FormatCSV(w io.Writer, resp *QueryResponse) error {
-	if len(resp.Rows) == 0 {
-		return nil
-	}
-
 	t := style.NewTable(resp.Columns...)
 	for _, row := range resp.Rows {
 		vals := make([]string, len(row))

@@ -138,7 +138,7 @@ func TestFormatQueryCSV_NoData(t *testing.T) {
 
 	var buf bytes.Buffer
 	require.NoError(t, loki.FormatQueryCSV(&buf, resp))
-	assert.Empty(t, buf.String())
+	assert.Equal(t, "TIME,MESSAGE\n", buf.String())
 }
 
 func TestFormatMetricQueryCSV(t *testing.T) {
@@ -168,7 +168,7 @@ func TestFormatMetricQueryCSV_NoData(t *testing.T) {
 
 	var buf bytes.Buffer
 	require.NoError(t, loki.FormatMetricQueryCSV(&buf, resp))
-	assert.Empty(t, buf.String())
+	assert.Equal(t, "TIMESTAMP,VALUE\n", buf.String())
 }
 
 func TestFormatQueryTable_FallsBackToPlainMessage(t *testing.T) {

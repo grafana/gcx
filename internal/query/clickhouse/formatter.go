@@ -45,9 +45,6 @@ func formatNullableUint64(v *uint64) string {
 // TOTAL_BYTES are empty (not "-") for an absent value, so DuckDB infers a
 // numeric column instead of falling back to VARCHAR.
 func FormatListTablesCSV(w io.Writer, tables []TableInfo) error {
-	if len(tables) == 0 {
-		return nil
-	}
 	t := style.NewTable("DATABASE", "NAME", "ENGINE", "TOTAL_ROWS", "TOTAL_BYTES")
 	for _, tbl := range tables {
 		t.Row(tbl.Database, tbl.Name, tbl.Engine, formatNullableUint64CSV(tbl.TotalRows), formatNullableUint64CSV(tbl.TotalBytes))
@@ -57,9 +54,6 @@ func FormatListTablesCSV(w io.Writer, tables []TableInfo) error {
 
 // FormatDescribeTableCSV formats a slice of ColumnInfo as CSV.
 func FormatDescribeTableCSV(w io.Writer, cols []ColumnInfo) error {
-	if len(cols) == 0 {
-		return nil
-	}
 	t := style.NewTable("NAME", "TYPE", "DEFAULT_TYPE", "DEFAULT_EXPRESSION", "COMMENT")
 	for _, c := range cols {
 		t.Row(c.Name, c.Type, c.DefaultType, c.DefaultExpression, c.Comment)

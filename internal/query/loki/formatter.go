@@ -111,13 +111,11 @@ func FormatQueryTableWide(w io.Writer, resp *QueryResponse) error {
 }
 
 // FormatQueryCSV formats a QueryResponse as CSV, one column per stream label —
-// the same column layout as FormatQueryTableWide.
+// the same column layout as FormatQueryTableWide. An empty result still
+// emits the header row rather than zero bytes, so a CSV consumer can detect
+// the schema.
 func FormatQueryCSV(w io.Writer, resp *QueryResponse) error {
 	entries := buildDisplayEntries(resp)
-	if len(entries) == 0 {
-		return nil
-	}
-
 	return buildQueryWideTable(resp, entries).RenderCSV(w)
 }
 
@@ -264,10 +262,6 @@ func FormatMetricQueryTable(w io.Writer, resp *MetricQueryResponse) error {
 // a raw epoch-seconds number) so DuckDB infers a real timestamp column
 // instead of a double.
 func FormatMetricQueryCSV(w io.Writer, resp *MetricQueryResponse) error {
-	if len(resp.Data.Result) == 0 {
-		return nil
-	}
-
 	labelNames := collectMetricLabelNames(resp.Data.Result)
 	header := make([]string, 0, len(labelNames)+2)
 	header = append(header, "TIMESTAMP", "VALUE")

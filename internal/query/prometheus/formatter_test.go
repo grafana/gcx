@@ -119,5 +119,5 @@ func TestFormatCSV_NoData(t *testing.T) {
 
 	var buf bytes.Buffer
 	require.NoError(t, prometheus.FormatCSV(&buf, resp))
-	assert.Empty(t, buf.String())
+	assert.Equal(t, "TIMESTAMP,VALUE\n", buf.String())
 }

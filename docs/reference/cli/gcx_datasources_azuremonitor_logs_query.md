@@ -54,7 +54,7 @@ gcx datasources azuremonitor logs query KQL [flags]
       --jq string               jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string             Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --open                    Open the executed query in Grafana Explore
-  -o, --output string           Output format. One of: agents, json, table, wide, yaml (default "table")
+  -o, --output string           Output format. One of: agents, csv, json, table, wide, yaml (default "table")
       --resource-group string   Azure resource group of the workspace (required)
       --share-link              Print the Grafana Explore URL for the executed query to stderr
       --since string            Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from

@@ -38,12 +38,9 @@ func FormatQueryTable(w io.Writer, resp *QueryResponse) error {
 // same data as FormatQueryTable (via ExtractTopFunctions), but PERCENTAGE is
 // a plain number (no trailing "%") so DuckDB infers a numeric column, and
 // FUNCTION isn't truncated to 60 chars (that truncation exists only for
-// terminal width, not for analysis).
+// terminal width, not for analysis). No profile data still emits the header
+// row rather than zero bytes.
 func FormatCSV(w io.Writer, resp *QueryResponse) error {
-	if resp.Flamegraph == nil || len(resp.Flamegraph.Names) == 0 {
-		return nil
-	}
-
 	samples := ExtractTopFunctions(resp.Flamegraph, 20)
 
 	t := style.NewTable("FUNCTION", "SELF", "TOTAL", "PERCENTAGE")
