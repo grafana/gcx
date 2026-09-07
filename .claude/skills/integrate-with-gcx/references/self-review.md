@@ -72,6 +72,7 @@ review output. Neither is a blocker.
 | is a fix pushed in response to review | [T10](#t10-fix-pushes) |
 | touches either skill tree or generated docs | [T11](#t11-skills-and-generated-docs) |
 | adds an interface, exported symbol, flag, package, or dependency | [T12](#t12-over-engineering) |
+| marks a command experimental, or wraps a pre-GA product surface | [T13](#t13-experimental-marking) |
 
 ## T1: Any new or changed leaf
 
@@ -449,3 +450,28 @@ Close by stating the smaller version in the PR body: the deletions and merges
 that would resolve every finding above and in T5, and the resulting size change.
 A reviewer works this out anyway. Writing it yourself turns a review round into
 a decision.
+
+## T13: Experimental marking
+
+Three checks. `docs/design/experimental-commands.md` is the standard; this is
+what review keeps catching.
+
+1. **Decide, and say why.** Experimental is the *only* exemption from the
+  CONSTITUTION compatibility promise (§ CLI Grammar), and it applies only to a
+  surface "explicitly marked experimental before release" — so the decision is
+  made now or never, and adding the mark to a shipped command does not
+  retroactively free it. Nothing in CI asks whether a pre-GA backend, a shape you
+  expect to change, or a bounded-bootstrap surface was marked; that question is a
+  human at review time or nobody. State the call in the PR body either way.
+2. **All three markers, on every command in the subtree.** `[experimental] `
+  opening `Short`; the preamble opening `Long`; `agent.AnnotationStability:
+  agent.StabilityExperimental` in `Annotations`. Children do not inherit —
+  help, the command catalog and `gcx commands --flat` each print one command's
+  own `Short` without its ancestors', and `--help` on a child is reached
+  directly. `cmd/gcx/root/experimental_test.go` enforces the three against each
+  other in both directions, so a partial marking fails CI; a missing one does not.
+3. **The preamble is verbatim.** "This command is experimental. It may be
+  removed, or its subcommands, flags and responses may change without following
+  the normal semantic versioning conventions." The test collapses whitespace, so
+  wrap it however the source needs — but reword nothing, and put it first, ahead
+  of the description. Call site to copy: `internal/providers/kg/write_commands.go`.

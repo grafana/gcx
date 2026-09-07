@@ -76,6 +76,10 @@ useful, bounded result with no extra parameters.
 **Parameter count.** More than ~8 flags on one leaf is a review trigger, not a
 hard rule: group related options, split the surface, or reconsider placement.
 
+**Experimental surfaces.** A command for a pre-GA product, or one whose shape is
+not settled, ships like so: a `[experimental] ` prefix on `Short` descriptions, the fixed preamble for `Long` descriptions, and
+`agent.AnnotationStability: agent.StabilityExperimental` in `Annotations`.For more, see `docs/design/experimental-commands.md`. 
+
 **Large responses.** In priority order: push filters to the server; bind a
 `--limit`; let `--json` field selection and `--jq` reduce the payload; let the
 agents codec spill what is still large. Set `token_cost` to match the actual

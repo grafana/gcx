@@ -118,7 +118,7 @@ API shape, domain semantics, authentication and RBAC, scalability, and
 domain-specific data reduction. Before designing commands, answer:
 
 - **Owner** — who owns and approves use of this API? Are they aware?
-- **Stability** — is the API public/stable, or internal/experimental?
+- **Stability** — is the API public/stable, or internal/experimental? A pre-GA API can be presented as experimental. See `docs/design/experimental-commands.md`.
 - **Auth/RBAC** — does the stack token (or an existing gcx auth mechanism)
   cover it, or does it need credentials gcx doesn't manage?
 - **Sensitive data** — does it return data that needs redaction rules?
@@ -135,10 +135,7 @@ the API plausibly does. Then weigh what is still unknown.
 An unknown makes the outcome **backend prerequisite** (or bounded bootstrap,
 where all three of its conditions hold) when it bears on any of:
 
-- **API ownership or stability** — an unidentified owner, or an internal or
-  experimental API, cannot be wrapped in a public contract. This one is easy to
-  wave through as "just paperwork"; it is not. It decides whether the surface you
-  build can be supported at all.
+- **API ownership or stability** — an unidentified owner or an internal API cannot be wrapped in a public contract. Pre-GA APIs can be presented as experimental.
 - **Authentication or RBAC** — including whether existing gcx auth reaches it.
 - **Security or sensitive data** — anything needing redaction rules.
 - **Mutation safety** — what a partial or retried write does.
@@ -175,6 +172,8 @@ Outcome (one of four, written down):
    waits or ships read-only around the gap.
 3. **Bounded bootstrap** — proceed with an explicitly experimental, narrow
    surface without inventing a public contract the backend doesn't honor.
+   *Explicitly* means marked in the code as `docs/design/experimental-commands.md`
+   requires, not described as experimental in the PR ([self-review.md](self-review.md)).
    For capabilities that reduce/aggregate bulk data client-side, bounded
    bootstrap additionally requires ALL of: a hard input ceiling in the
    contract; a written statement of why the server-side alternative cannot

@@ -87,7 +87,7 @@ terminal — Place is the whole deliverable and there is nothing to implement:
 | Readiness outcome | Next |
 |---|---|
 | **ready** | continue |
-| **bounded bootstrap** | continue, within the ceiling the outcome requires |
+| **bounded bootstrap** | continue, within the ceiling the outcome requires, with the surface marked experimental (`docs/design/experimental-commands.md`) |
 | **backend prerequisite** *with an explicitly viable read-only slice* | continue, on that slice only |
 | **backend prerequisite** *without a viable slice* | **stop.** Report the boundary, the missing prerequisite and its named owner |
 | **not gcx** | **stop.** Report the boundary and the owner; write no contract and no code |
@@ -161,6 +161,7 @@ Never state proposed or conventional guidance as law.
 |---|---|
 | Output-class fixture entry, token cost | **CI-enforced** — `TestConsistency_AllLeafCommandsHaveOutputClass` / `HaveTokenCost` walk every leaf and fail on a missing entry |
 | `llm_hint` whenever the worst case is medium/large | **Required, only partly CI-enforced** — `NonSmallCommandsHaveLLMHint` matches `"medium"`/`"large"` exactly, so a qualified cost evades it. Write the hint anyway; the rule is about the worst case, not the spelling. Trade-off in [references/self-review.md](references/self-review.md) T1.3 |
+| `[experimental]` marking  | `cmd/gcx/root/experimental_test.go` fails if an experimental command is not documented or annotated correctly. A command must be marked as experimental before it is merged. |
 | Cloud-only availability, command→skill mapping | **NOT enforced in that direction.** `TestConsistency_CloudOnlyPathsResolveToCommands` and `SkillMappingResolvesToCommands` iterate the entries you *declared* and check each resolves to a real command — they catch a stale entry after a rename, never a missing one. Adding the entry is review-enforced |
 | A `finite` leaf emits exactly one JSON value in agent mode | **CI-enforced** (`TestAgentConformance_*`) |
 | One `init()`, one `providers.Register()`; no `adapter.Register()` outside it | **CONSTITUTION** § Architecture Invariants |
