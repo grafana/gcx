@@ -41,6 +41,16 @@ func NewNotificationPoliciesResetCommandForTest(loader GrafanaConfigLoader) *cob
 	return newNotificationPoliciesResetCommand(loader)
 }
 
+// NewNotificationHistoryListCommandForTest wraps newNotificationHistoryListCommand.
+func NewNotificationHistoryListCommandForTest(loader GrafanaConfigLoader) *cobra.Command {
+	return newNotificationHistoryListCommand(loader)
+}
+
+// NewNotificationHistoryAlertsCommandForTest wraps newNotificationHistoryAlertsCommand.
+func NewNotificationHistoryAlertsCommandForTest(loader GrafanaConfigLoader) *cobra.Command {
+	return newNotificationHistoryAlertsCommand(loader)
+}
+
 // RulerSubtypeForDatasourceType exposes the subtype mapping to tests.
 func RulerSubtypeForDatasourceType(dsType string) (string, error) {
 	return rulerSubtypeForDatasourceType(dsType)
