@@ -81,14 +81,42 @@ func EnforceLimit(sql string, limit, maxLimit int) (string, bool) {
 	return querysql.EnforceLimit(sql, limit, maxLimit, bail)
 }
 
-// fromTableRe captures the first unquoted or double-quoted table after FROM.
-// Subqueries (`FROM (SELECT ...)`) do not match. Used only to fill StarTree's
-// tableName editor field; Pinot executes pinotQlCode regardless.
-var fromTableRe = regexp.MustCompile(`(?is)\bFROM\s+"?([a-zA-Z_][a-zA-Z0-9_.]*)"?`)
+// sqlStringRe matches a single-quoted SQL literal, including escaped quotes.
+var sqlStringRe = regexp.MustCompile(`'([^']|'')*'`)
 
-// ExtractTableName returns the first FROM table in sql, or empty if none.
+// extractCallRe matches EXTRACT(...) so a FROM inside the call is not treated
+// as a table (e.g. EXTRACT(YEAR FROM ts)).
+var extractCallRe = regexp.MustCompile(`(?is)\bEXTRACT\s*\([^)]*\)`)
+
+var fromKeywordRe = regexp.MustCompile(`(?i)\bFROM\b`)
+
+var quotedTableRe = regexp.MustCompile(`^"([^"]+)"`)
+
+var identTableRe = regexp.MustCompile(`^([a-zA-Z_][a-zA-Z0-9_.]*)`)
+
+// ExtractTableName returns the first FROM table we can be confident about, or
+// empty if the shape is unclear. String literals and EXTRACT(...) are stripped
+// first. FROM ( starts a subquery and yields "". Used only to fill StarTree's
+// tableName editor field; Pinot executes pinotQlCode regardless.
 func ExtractTableName(sql string) string {
-	m := fromTableRe.FindStringSubmatch(sql)
+	s := sqlStringRe.ReplaceAllString(sql, " ")
+	s = extractCallRe.ReplaceAllString(s, " ")
+	loc := fromKeywordRe.FindStringIndex(s)
+	if loc == nil {
+		return ""
+	}
+	rest := strings.TrimLeft(s[loc[1]:], " \t\n")
+	if rest == "" || rest[0] == '(' {
+		return ""
+	}
+	if rest[0] == '"' {
+		m := quotedTableRe.FindStringSubmatch(rest)
+		if len(m) < 2 {
+			return ""
+		}
+		return m[1]
+	}
+	m := identTableRe.FindStringSubmatch(rest)
 	if len(m) < 2 {
 		return ""
 	}
