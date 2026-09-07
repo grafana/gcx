@@ -55,6 +55,8 @@ func TestEnforceLimit(t *testing.T) {
 		{"bail on EXPLAIN", "EXPLAIN SELECT * FROM t", 100, "EXPLAIN SELECT * FROM t", false},
 		{"bail on DML INSERT", "INSERT INTO t VALUES (1)", 100, "INSERT INTO t VALUES (1)", false},
 		{"bail on trailing line comment", "SELECT 1 -- keep going", 100, "SELECT 1 -- keep going", false},
+		{"appends LIMIT when delete is only a literal", "SELECT * FROM t WHERE action = 'delete'", 100, "SELECT * FROM t WHERE action = 'delete' LIMIT 100", false},
+		{"appends LIMIT when -- is only a literal", "SELECT '--' FROM t", 100, "SELECT '--' FROM t LIMIT 100", false},
 		{
 			"appends LIMIT to multi-line SELECT",
 			"SELECT * FROM t\nORDER BY ts DESC",

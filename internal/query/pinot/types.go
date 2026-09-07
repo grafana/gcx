@@ -42,22 +42,18 @@ var limitCommaRe = regexp.MustCompile(`(?i)\bLIMIT\s+\d+\s*,`)
 // warns.
 var optionClauseRe = regexp.MustCompile(`(?i)\bOPTION\s*\(`)
 
-// DML keywords anywhere fail safe (no LIMIT added) rather than corrupting a
-// write. A SELECT mentioning those words in a string literal also skips
-// enforcement.
-var dmlBailRe = regexp.MustCompile(`(?i)\b(INSERT|UPDATE|DELETE|MERGE)\b`)
-
-// trailingLineCommentRe matches a `--` line comment that runs to the end of
-// the statement. Appending "LIMIT n" as a bare suffix after one would land
-// inside the comment and be dropped, silently leaving the query unbounded.
-var trailingLineCommentRe = regexp.MustCompile(`--[^\n]*$`)
+// trailingLineCommentRe matches a real `--` line comment (whitespace or start
+// before `--`) that runs to the end of the statement. Appending "LIMIT n"
+// after one would land inside the comment. A `--` inside a string literal
+// (`SELECT '--' FROM t`) does not match.
+var trailingLineCommentRe = regexp.MustCompile(`(^|[\s;])--[^\n]*$`)
 
 func selectBody(sql string) string {
 	return leadingSetRe.ReplaceAllString(sql, "")
 }
 
 func bail(sql string) bool {
-	return unionOrOffsetRe.MatchString(sql) || limitCommaRe.MatchString(sql) || optionClauseRe.MatchString(sql) || dmlBailRe.MatchString(sql) || trailingLineCommentRe.MatchString(strings.TrimRight(sql, "; \t\n"))
+	return unionOrOffsetRe.MatchString(sql) || limitCommaRe.MatchString(sql) || optionClauseRe.MatchString(sql) || trailingLineCommentRe.MatchString(strings.TrimRight(sql, "; \t\n"))
 }
 
 // LimitNotEnforced reports whether EnforceLimit will leave sql unchanged
@@ -76,8 +72,8 @@ func LimitNotEnforced(sql string) bool {
 // warn instead of truncating silently.
 // If limit is 0, enforcement is disabled (pass-through).
 // SET prefixes are ignored for the SELECT-shaped allow-list. UNION, OFFSET,
-// LIMIT offset,count, OPTION(...), DML, and statements ending in a line
-// comment pass through unchanged.
+// LIMIT offset,count, OPTION(...), and statements ending in a line comment
+// pass through unchanged. Real DML never reaches bail: only SELECT/WITH do.
 func EnforceLimit(sql string, limit, maxLimit int) (string, bool) {
 	if !limitStatementRe.MatchString(selectBody(sql)) {
 		return sql, false
