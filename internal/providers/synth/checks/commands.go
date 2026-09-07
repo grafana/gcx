@@ -56,8 +56,7 @@ type listOpts struct {
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &checkTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &checkWideTableCodec{})
+	cmdio.RegisterTable(&o.IO, CheckTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 
@@ -167,54 +166,23 @@ func newListCommand(loader smcfg.Loader) *cobra.Command {
 	return cmd
 }
 
-type checkTableCodec struct{}
+// CheckTable declares the synthetic check table. The wide columns are the
+// narrow ones plus four, so one declaration serves both formats.
+func CheckTable() cmdio.Table[Check] {
+	wide := []string{cmdio.FormatWide}
 
-func (c *checkTableCodec) Format() format.Format { return "table" }
-
-func (c *checkTableCodec) Encode(w io.Writer, v any) error {
-	checkList, ok := v.([]Check)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []Check")
+	return cmdio.Table[Check]{
+		Columns: []cmdio.Column[Check]{
+			{Header: "NAME", Cell: checkDisplayName},
+			{Header: "JOB", Cell: func(c Check) string { return c.Job }},
+			{Header: "TARGET", Cell: func(c Check) string { return c.Target }},
+			{Header: "TYPE", Cell: func(c Check) string { return c.Settings.CheckType() }},
+			{Header: "ENABLED", Formats: wide, Cell: func(c Check) string { return strconv.FormatBool(c.Enabled) }},
+			{Header: "FREQ", Formats: wide, Cell: func(c Check) string { return fmt.Sprintf("%ds", c.Frequency/1000) }},
+			{Header: "TIMEOUT", Formats: wide, Cell: func(c Check) string { return fmt.Sprintf("%ds", c.Timeout/1000) }},
+			{Header: "PROBES", Formats: wide, Cell: func(c Check) string { return strconv.Itoa(len(c.Probes)) }},
+		},
 	}
-
-	t := style.NewTable("NAME", "JOB", "TARGET", "TYPE")
-
-	for _, c := range checkList {
-		t.Row(checkDisplayName(c), c.Job, c.Target, c.Settings.CheckType())
-	}
-
-	return t.Render(w)
-}
-
-func (c *checkTableCodec) Decode(r io.Reader, v any) error {
-	return errors.New("table format does not support decoding")
-}
-
-type checkWideTableCodec struct{}
-
-func (c *checkWideTableCodec) Format() format.Format { return "wide" }
-
-func (c *checkWideTableCodec) Encode(w io.Writer, v any) error {
-	checkList, ok := v.([]Check)
-	if !ok {
-		return errors.New("invalid data type for wide codec: expected []Check")
-	}
-
-	t := style.NewTable("NAME", "JOB", "TARGET", "TYPE", "ENABLED", "FREQ", "TIMEOUT", "PROBES")
-
-	for _, c := range checkList {
-		t.Row(checkDisplayName(c), c.Job, c.Target, c.Settings.CheckType(),
-			strconv.FormatBool(c.Enabled),
-			fmt.Sprintf("%ds", c.Frequency/1000),
-			fmt.Sprintf("%ds", c.Timeout/1000),
-			strconv.Itoa(len(c.Probes)))
-	}
-
-	return t.Render(w)
-}
-
-func (c *checkWideTableCodec) Decode(r io.Reader, v any) error {
-	return errors.New("wide format does not support decoding")
 }
 
 // ---------------------------------------------------------------------------
@@ -227,8 +195,7 @@ type getOpts struct {
 }
 
 func (o *getOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &checkTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &checkWideTableCodec{})
+	cmdio.RegisterTable(&o.IO, CheckTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 

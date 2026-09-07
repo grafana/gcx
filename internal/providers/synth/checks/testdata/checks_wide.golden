@@ -1,0 +1,3 @@
+NAME              JOB            TARGET                     TYPE     ENABLED  FREQ  TIMEOUT  PROBES
+shop-frontend-42  shop-frontend  https://shop.example.com   http     true     60s   3s       3
+bare-job          bare job       tcp://db.example.com:5432  unknown  false    120s  10s      0
