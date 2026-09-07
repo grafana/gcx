@@ -27,9 +27,11 @@
   "gcx dashboards snapshot",
   "gcx dashboards versions restore",
   "gcx datasources athena describe-table",
+  "gcx datasources bigquery describe-table",
   "gcx datasources clickhouse describe-table",
   "gcx datasources health",
   "gcx datasources mysql describe-table",
+  "gcx datasources tempo baseline",
   "gcx datasources postgres describe-table",
   "gcx datasources pyroscope data-range",
   "gcx datasources pyroscope exemplars profile",
@@ -104,5 +106,6 @@
   "gcx synthetic-monitoring probes reset-token",
   "gcx traces adaptive recommendations apply",
   "gcx traces adaptive recommendations dismiss",
+  "gcx traces baseline",
   "gcx traces diff"
 ]
