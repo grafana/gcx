@@ -428,8 +428,14 @@ Recommended next actions:
   2. <Additional action>
 ```
 
-Use `-o graph` for any visualizations shared with the user. Use `-o json` for
-data retrieved for your own analysis.
+Use `-o graph` for any visualizations shared with the user. When you need to
+filter, aggregate, or otherwise manipulate query results for your own
+analysis, pipe `-o csv` into DuckDB (see
+[`references/query-patterns.md`](references/query-patterns.md#csv-format-for-sql-based-analysis))
+rather than writing a python or jq script — it's SQL against real columns
+instead of ad hoc parsing. Fall back to `-o json` only when you need structure
+CSV's flat columns don't carry (e.g. trace bodies, log `structuredMetadata`/
+`parsed` fields).
 
 ---
 

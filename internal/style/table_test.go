@@ -39,3 +39,52 @@ func TestTableBuilder_AgentModeRendersPlain(t *testing.T) {
 		t.Errorf("agent-mode table output missing data:\n%s", out)
 	}
 }
+
+func TestTableBuilder_RenderCSV(t *testing.T) {
+	tb := style.NewTable("NAME", "NOTE")
+	tb.Row("prod-eu", "ok")
+	tb.Row("has,comma", `has "quote"`+"\nand newline")
+
+	var buf bytes.Buffer
+	if err := tb.RenderCSV(&buf); err != nil {
+		t.Fatalf("RenderCSV() error: %v", err)
+	}
+
+	want := "NAME,NOTE\nprod-eu,ok\n\"has,comma\",\"has \"\"quote\"\"\nand newline\"\n"
+	if buf.String() != want {
+		t.Errorf("RenderCSV() = %q, want %q", buf.String(), want)
+	}
+}
+
+func TestTableBuilder_RenderCSV_NoRows(t *testing.T) {
+	tb := style.NewTable("NAME", "NOTE")
+
+	var buf bytes.Buffer
+	if err := tb.RenderCSV(&buf); err != nil {
+		t.Fatalf("RenderCSV() error: %v", err)
+	}
+
+	if want := "NAME,NOTE\n"; buf.String() != want {
+		t.Errorf("RenderCSV() = %q, want %q", buf.String(), want)
+	}
+}
+
+// TestTableBuilder_RenderCSV_PadsShortRow covers: a row with fewer fields
+// than the header count is padded with empty strings rather than written
+// as-is, so every line has the same field count and stays parseable by a
+// strict csv.Reader / DuckDB read_csv.
+func TestTableBuilder_RenderCSV_PadsShortRow(t *testing.T) {
+	tb := style.NewTable("NAME", "TIMESTAMP", "VALUE")
+	tb.Row("full-row", "2023-11-14T22:13:20Z", "1")
+	tb.Row("short-row") // missing TIMESTAMP and VALUE
+
+	var buf bytes.Buffer
+	if err := tb.RenderCSV(&buf); err != nil {
+		t.Fatalf("RenderCSV() error: %v", err)
+	}
+
+	want := "NAME,TIMESTAMP,VALUE\nfull-row,2023-11-14T22:13:20Z,1\nshort-row,,\n"
+	if buf.String() != want {
+		t.Errorf("RenderCSV() = %q, want %q", buf.String(), want)
+	}
+}

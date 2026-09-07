@@ -72,7 +72,7 @@ gcx datasources cloudmonitoring query [flags]
       --json string               Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --metric string             Metric type, e.g. compute.googleapis.com/instance/cpu/utilization (required)
       --open                      Open the executed query in Grafana Explore
-  -o, --output string             Output format. One of: agents, graph, json, table, wide, yaml (default "table")
+  -o, --output string             Output format. One of: agents, csv, graph, json, table, wide, yaml (default "table")
       --project string            GCP project ID (required)
       --reducer string            Cross-series reducer: REDUCE_NONE, REDUCE_MEAN, REDUCE_SUM, REDUCE_MIN, REDUCE_MAX, REDUCE_COUNT, ... (default "REDUCE_NONE")
       --share-link                Print the Grafana Explore URL for the executed query to stderr

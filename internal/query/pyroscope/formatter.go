@@ -34,6 +34,28 @@ func FormatQueryTable(w io.Writer, resp *QueryResponse) error {
 	return t.Render(w)
 }
 
+// FormatCSV formats a Pyroscope query response as CSV of its top functions —
+// same data as FormatQueryTable (via ExtractTopFunctions), but PERCENTAGE is
+// a plain number (no trailing "%") so DuckDB infers a numeric column, and
+// FUNCTION isn't truncated to 60 chars (that truncation exists only for
+// terminal width, not for analysis). No profile data still emits the header
+// row rather than zero bytes.
+func FormatCSV(w io.Writer, resp *QueryResponse) error {
+	samples := ExtractTopFunctions(resp.Flamegraph, 20)
+
+	t := style.NewTable("FUNCTION", "SELF", "TOTAL", "PERCENTAGE")
+	for _, s := range samples {
+		t.Row(
+			s.Name,
+			strconv.FormatInt(s.Self, 10),
+			strconv.FormatInt(s.Total, 10),
+			strconv.FormatFloat(s.Percentage, 'f', -1, 64),
+		)
+	}
+
+	return t.RenderCSV(w)
+}
+
 // FormatPprofWriteTable formats the result of writing a pprof binary as a single-row table.
 func FormatPprofWriteTable(w io.Writer, result *PprofWriteResult) error {
 	t := style.NewTable("PATH")

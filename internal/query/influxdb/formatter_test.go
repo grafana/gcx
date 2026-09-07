@@ -65,6 +65,26 @@ func TestFormatQueryTable(t *testing.T) {
 	}
 }
 
+func TestFormatCSV(t *testing.T) {
+	resp := &influxdb.QueryResponse{
+		Columns:     []string{"time", "cpu", "host"},
+		TimeColumns: map[int]bool{0: true},
+		Rows: [][]any{
+			{float64(1700000000000), float64(55.2), "server-a"},
+		},
+	}
+
+	var buf bytes.Buffer
+	require.NoError(t, influxdb.FormatCSV(&buf, resp))
+	assert.Equal(t, "time,cpu,host\n2023-11-14T22:13:20Z,55.2,server-a\n", buf.String())
+}
+
+func TestFormatCSV_NoData(t *testing.T) {
+	var buf bytes.Buffer
+	require.NoError(t, influxdb.FormatCSV(&buf, &influxdb.QueryResponse{}))
+	assert.Empty(t, buf.String())
+}
+
 func TestFormatMeasurementsTable(t *testing.T) {
 	tests := []struct {
 		name     string

@@ -75,6 +75,19 @@ current-context: default
 	assert.Empty(t, stderr.String())
 }
 
+// TestGetCmd_CSVHiddenFromOutputMenu verifies csv is not advertised in the
+// -o flag's usage string, since queryCSVCodec rejects *tempo.GetTraceResponse.
+// An explicit -o csv still resolves to the codec and fails with the
+// command's own rejection message rather than "unknown output format".
+func TestGetCmd_CSVHiddenFromOutputMenu(t *testing.T) {
+	loader := &providers.ConfigLoader{}
+	cmd := tempo.GetCmd(loader)
+
+	outputFlag := cmd.Flags().Lookup("output")
+	require.NotNil(t, outputFlag)
+	assert.NotContains(t, outputFlag.Usage, "csv")
+}
+
 func writeTempoTestConfig(t *testing.T, content string) string {
 	t.Helper()
 	f, err := os.CreateTemp(t.TempDir(), "gcx-tempo-config-*.yaml")

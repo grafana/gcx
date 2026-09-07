@@ -57,7 +57,7 @@ gcx datasources elasticsearch query [EXPR] [flags]
       --limit int           Max documents to return (1-1000) (default 100)
       --mode string         Search mode: "documents" (raw documents) or "logs" (newest-first, plugin-internal fields omitted) (default "documents")
       --open                Open the executed query in Grafana Explore
-  -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
+  -o, --output string       Output format. One of: agents, csv, json, table, wide, yaml (default "table")
       --share-link          Print the Grafana Explore URL for the executed query to stderr
       --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --step string         Query step (e.g., '15s', '1m')
