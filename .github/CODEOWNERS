@@ -54,3 +54,7 @@
 /internal/assistant/ @grafana/grafana-gcx @grafana/grafana-assistant-loop
 
 /internal/auth/adaptive/ @grafana/grafana-gcx @grafana/adaptive-telemetry
+
+# (A redundant entry right now) GCX maintainers must approve PRs that add new
+# non-standard command operations
+/cmd/gcx/root/testdata/non_canonical_command_operations.json @grafana/grafana-gcx
