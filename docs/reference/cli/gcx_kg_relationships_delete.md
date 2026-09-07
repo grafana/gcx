@@ -1,6 +1,6 @@
 ## gcx kg relationships delete
 
-Delete a custom relationship.
+[experimental] Delete a custom relationship.
 
 ### Synopsis
 

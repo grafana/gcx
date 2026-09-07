@@ -1,6 +1,6 @@
 ## gcx kg relationships upsert
 
-Create or update a custom relationship (upsert).
+[experimental] Create or update a custom relationship (upsert).
 
 ### Synopsis
 

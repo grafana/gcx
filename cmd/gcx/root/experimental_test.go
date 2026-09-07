@@ -28,17 +28,6 @@ func hasExperimentalShort(cmd *cobra.Command) bool {
 	return strings.HasPrefix(cmd.Short, experimentalMarker+" ")
 }
 
-// nearestMarkedAncestor returns the closest ancestor whose short description is
-// marked, or nil when the command is not inside a marked subtree.
-func nearestMarkedAncestor(cmd *cobra.Command) *cobra.Command {
-	for parent := cmd.Parent(); parent != nil; parent = parent.Parent() {
-		if hasExperimentalShort(parent) {
-			return parent
-		}
-	}
-	return nil
-}
-
 // TestExperimental_MarkerIsShortDescriptionPrefix rejects the marker anywhere
 // but the start of the short description, where readers scanning a command list
 // would miss it.
@@ -72,16 +61,18 @@ func TestExperimental_MarkedCommandsCarryStabilityAnnotation(t *testing.T) {
 	})
 }
 
-// TestExperimental_AnnotatedCommandsAreAdvertised is the other direction: an
-// annotated command must say so itself, or sit under a command that does.
+// TestExperimental_AnnotatedCommandsAreAdvertised is the other direction: every
+// annotated command must say so in its own short description. Help, the command
+// catalog and `gcx commands --flat` each show one command's short description
+// without its ancestors', so a child cannot inherit the marker.
 func TestExperimental_AnnotatedCommandsAreAdvertised(t *testing.T) {
 	agent.WalkCommands(buildRootCmd(), func(cmd *cobra.Command) {
 		if !isExperimental(cmd) {
 			return
 		}
 		t.Run(cmd.CommandPath(), func(t *testing.T) {
-			if !hasExperimentalShort(cmd) && nearestMarkedAncestor(cmd) == nil {
-				t.Errorf("annotated %s but neither its short description nor any ancestor's carries %q",
+			if !hasExperimentalShort(cmd) {
+				t.Errorf("annotated %s but its short description does not carry %q",
 					agent.StabilityExperimental, experimentalMarker)
 			}
 		})
@@ -108,21 +99,6 @@ func TestExperimental_LongDescriptionCarriesPreamble(t *testing.T) {
 			// collapsed whitespace.
 			if !strings.HasPrefix(strings.Join(strings.Fields(long), " "), experimentalPreamble) {
 				t.Errorf("long description must begin with %q, got %q", experimentalPreamble, firstLine(long))
-			}
-		})
-	})
-}
-
-// TestExperimental_SubtreeMarkedOnlyAtItsRoot enforces the one-marker rule: a
-// command under an already-marked command must not repeat the marker.
-func TestExperimental_SubtreeMarkedOnlyAtItsRoot(t *testing.T) {
-	agent.WalkCommands(buildRootCmd(), func(cmd *cobra.Command) {
-		if !hasExperimentalShort(cmd) {
-			return
-		}
-		t.Run(cmd.CommandPath(), func(t *testing.T) {
-			if ancestor := nearestMarkedAncestor(cmd); ancestor != nil {
-				t.Errorf("%q is already marked, so this command must not repeat the marker", ancestor.CommandPath())
 			}
 		})
 	})

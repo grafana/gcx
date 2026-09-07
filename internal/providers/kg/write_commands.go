@@ -430,7 +430,7 @@ func newRelationshipsCreateCommand(loader RESTConfigLoader) *cobra.Command {
 	opts := &relCreateOpts{}
 	cmd := &cobra.Command{
 		Use:   "upsert",
-		Short: "Create or update a custom relationship (upsert).",
+		Short: "[experimental] Create or update a custom relationship (upsert).",
 		Long: `This command is experimental. It may be removed, or its subcommands, flags and
 responses may change without following the normal semantic versioning conventions.
 
@@ -615,7 +615,7 @@ func newRelationshipsDeleteCommand(loader RESTConfigLoader) *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "delete",
-		Short: "Delete a custom relationship.",
+		Short: "[experimental] Delete a custom relationship.",
 		Long: `This command is experimental. It may be removed, or its subcommands, flags and
 responses may change without following the normal semantic versioning conventions.
 

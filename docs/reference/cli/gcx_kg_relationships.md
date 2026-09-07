@@ -30,6 +30,6 @@ Create, update, and delete API-origin edges between Knowledge Graph entities.
 ### SEE ALSO
 
 * [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph rules, entities, and insights
-* [gcx kg relationships delete](gcx_kg_relationships_delete.md)	 - Delete a custom relationship.
-* [gcx kg relationships upsert](gcx_kg_relationships_upsert.md)	 - Create or update a custom relationship (upsert).
+* [gcx kg relationships delete](gcx_kg_relationships_delete.md)	 - [experimental] Delete a custom relationship.
+* [gcx kg relationships upsert](gcx_kg_relationships_upsert.md)	 - [experimental] Create or update a custom relationship (upsert).
 

@@ -8,13 +8,11 @@ Experimental commands are exempt from the compatibility promise in [CONSTITUTION
 
 The short description for experimental commands should begin with `[experimental]`.
 
-If an entire command subtree is experimental, only the top-level command will be marked as experimental in the short description.
+Every command in an experimental subtree is marked, including its children: help and `gcx commands --flat` show a command's short description without its ancestors'.
 
 The long description for an experimental command should begin with:
 
 > This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
-
-Unlike the short description, the long description is required on every command in an experimental subtree, including those not marked in the short description.
 
 ## Agent metadata
 
