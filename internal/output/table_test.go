@@ -19,8 +19,8 @@ type row struct {
 func testTable() cmdio.Table[row] {
 	return cmdio.Table[row]{
 		Columns: []cmdio.Column[row]{
-			{Header: "NAME", Cell: func(r row) string { return r.name }},
-			{Header: "NOTE", Formats: []string{cmdio.FormatWide}, Cell: func(r row) string { return r.note }},
+			{Header: "NAME", Content: func(r row) string { return r.name }},
+			{Header: "NOTE", WideOnly: true, Content: func(r row) string { return r.note }},
 		},
 	}
 }
@@ -118,7 +118,7 @@ func TestRegisterTableRegistersWideOnlyWhenNeeded(t *testing.T) {
 	t.Run("skips wide when every column is shared", func(t *testing.T) {
 		opts := &cmdio.Options{OutputFormat: cmdio.FormatWide}
 		cmdio.RegisterTable(opts, cmdio.Table[row]{
-			Columns: []cmdio.Column[row]{{Header: "NAME", Cell: func(r row) string { return r.name }}},
+			Columns: []cmdio.Column[row]{{Header: "NAME", Content: func(r row) string { return r.name }}},
 		})
 
 		_, err := opts.Codec()

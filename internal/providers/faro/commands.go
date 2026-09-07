@@ -124,17 +124,15 @@ func AppTable() cmdio.Table[adapter.TypedObject[FaroApp]] {
 	spec := func(fn func(FaroApp) string) func(adapter.TypedObject[FaroApp]) string {
 		return func(obj adapter.TypedObject[FaroApp]) string { return fn(obj.Spec) }
 	}
-	wide := []string{cmdio.FormatWide}
-
 	return cmdio.Table[adapter.TypedObject[FaroApp]]{
 		Columns: []cmdio.Column[adapter.TypedObject[FaroApp]]{
-			{Header: "NAME", Cell: spec(func(a FaroApp) string { return a.GetResourceName() })},
-			{Header: "APP KEY", Cell: spec(func(a FaroApp) string { return cmdio.OrDash(a.AppKey) })},
-			{Header: "COLLECT ENDPOINT URL", Cell: spec(func(a FaroApp) string { return cmdio.OrDash(a.CollectEndpointURL) })},
-			{Header: "OTLP INGEST ENDPOINT URL", Formats: wide, Cell: spec(func(a FaroApp) string { return cmdio.OrDash(a.OTLPIngestEndpointURL) })},
-			{Header: "CORS ORIGINS", Formats: wide, Cell: spec(func(a FaroApp) string { return corsOriginsString(a.CORSOrigins) })},
-			{Header: "EXTRA LOG LABELS", Formats: wide, Cell: spec(func(a FaroApp) string { return labelsString(a.ExtraLogLabels) })},
-			{Header: "GEOLOCATION", Formats: wide, Cell: spec(func(a FaroApp) string { return geolocationString(a.Settings) })},
+			{Header: "NAME", Content: spec(func(a FaroApp) string { return a.GetResourceName() })},
+			{Header: "APP KEY", Content: spec(func(a FaroApp) string { return cmdio.OrDash(a.AppKey) })},
+			{Header: "COLLECT ENDPOINT URL", Content: spec(func(a FaroApp) string { return cmdio.OrDash(a.CollectEndpointURL) })},
+			{Header: "OTLP INGEST ENDPOINT URL", WideOnly: true, Content: spec(func(a FaroApp) string { return cmdio.OrDash(a.OTLPIngestEndpointURL) })},
+			{Header: "CORS ORIGINS", WideOnly: true, Content: spec(func(a FaroApp) string { return corsOriginsString(a.CORSOrigins) })},
+			{Header: "EXTRA LOG LABELS", WideOnly: true, Content: spec(func(a FaroApp) string { return labelsString(a.ExtraLogLabels) })},
+			{Header: "GEOLOCATION", WideOnly: true, Content: spec(func(a FaroApp) string { return geolocationString(a.Settings) })},
 		},
 	}
 }

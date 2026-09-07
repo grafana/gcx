@@ -3,7 +3,6 @@ package output
 import (
 	"fmt"
 	"io"
-	"slices"
 
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/style"
@@ -15,25 +14,24 @@ const (
 	FormatWide  = "wide"
 )
 
-// Column is one column of a Table. TableBuilder cells are strings, so Cell
+// Column is one column of a Table. TableBuilder cells are strings, so Content
 // does the formatting for its own column.
 type Column[T any] struct {
 	Header string
 
-	// Formats lists the registered format names this column appears under.
-	// Empty means every name the table is registered for.
-	Formats []string
+	// WideOnly hides the column from "table", leaving it to "wide".
+	WideOnly bool
 
-	Cell func(T) string
+	Content func(T) string
 }
 
 func (c Column[T]) visibleIn(name string) bool {
-	return len(c.Formats) == 0 || slices.Contains(c.Formats, name)
+	return !c.WideOnly || name == FormatWide
 }
 
-// Table declares how a []T renders. One declaration serves every format name
-// it is registered under — columns select themselves by name, so the narrow
-// and wide renderings cannot drift apart.
+// Table declares how a []T renders. One declaration serves both "table" and
+// "wide" — the wide columns are the narrow ones plus those marked WideOnly,
+// so the two renderings cannot drift apart.
 type Table[T any] struct {
 	Columns []Column[T]
 
@@ -54,7 +52,7 @@ func RegisterTable[T any](opts *Options, t Table[T]) {
 	opts.RegisterCustomCodec(FormatTable, t.Codec(FormatTable))
 
 	for _, c := range t.Columns {
-		if !c.visibleIn(FormatTable) && c.visibleIn(FormatWide) {
+		if c.WideOnly {
 			opts.RegisterCustomCodec(FormatWide, t.Codec(FormatWide))
 			return
 		}
@@ -98,7 +96,7 @@ func (c *tableCodec[T]) Encode(w io.Writer, v any) error {
 		// A fresh slice per row: TableBuilder.Row retains what it is given.
 		cells := make([]string, len(cols))
 		for i, col := range cols {
-			cells[i] = col.Cell(row)
+			cells[i] = col.Content(row)
 		}
 		tb.Row(cells...)
 	}

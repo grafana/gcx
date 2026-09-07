@@ -169,18 +169,16 @@ func newListCommand(loader smcfg.Loader) *cobra.Command {
 // CheckTable declares the synthetic check table. The wide columns are the
 // narrow ones plus four, so one declaration serves both formats.
 func CheckTable() cmdio.Table[Check] {
-	wide := []string{cmdio.FormatWide}
-
 	return cmdio.Table[Check]{
 		Columns: []cmdio.Column[Check]{
-			{Header: "NAME", Cell: checkDisplayName},
-			{Header: "JOB", Cell: func(c Check) string { return c.Job }},
-			{Header: "TARGET", Cell: func(c Check) string { return c.Target }},
-			{Header: "TYPE", Cell: func(c Check) string { return c.Settings.CheckType() }},
-			{Header: "ENABLED", Formats: wide, Cell: func(c Check) string { return strconv.FormatBool(c.Enabled) }},
-			{Header: "FREQ", Formats: wide, Cell: func(c Check) string { return fmt.Sprintf("%ds", c.Frequency/1000) }},
-			{Header: "TIMEOUT", Formats: wide, Cell: func(c Check) string { return fmt.Sprintf("%ds", c.Timeout/1000) }},
-			{Header: "PROBES", Formats: wide, Cell: func(c Check) string { return strconv.Itoa(len(c.Probes)) }},
+			{Header: "NAME", Content: checkDisplayName},
+			{Header: "JOB", Content: func(c Check) string { return c.Job }},
+			{Header: "TARGET", Content: func(c Check) string { return c.Target }},
+			{Header: "TYPE", Content: func(c Check) string { return c.Settings.CheckType() }},
+			{Header: "ENABLED", WideOnly: true, Content: func(c Check) string { return strconv.FormatBool(c.Enabled) }},
+			{Header: "FREQ", WideOnly: true, Content: func(c Check) string { return fmt.Sprintf("%ds", c.Frequency/1000) }},
+			{Header: "TIMEOUT", WideOnly: true, Content: func(c Check) string { return fmt.Sprintf("%ds", c.Timeout/1000) }},
+			{Header: "PROBES", WideOnly: true, Content: func(c Check) string { return strconv.Itoa(len(c.Probes)) }},
 		},
 	}
 }
