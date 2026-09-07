@@ -164,6 +164,7 @@ Adding a new summary requires a PR amending this list.
 | `Invalid configuration` | Bad config file, unresolvable context |
 | `Authentication failed` | Token expired or missing |
 | `Keychain locked` | The OS keychain answers, but it is locked or the current session cannot unlock it, so gcx cannot store or use the credential |
+| `Keychain unavailable` | The OS keychain cannot be reached, so gcx cannot store or use the credential without an explicit plaintext-storage opt-out |
 | `Authorization failed` | Permission denied (403) |
 | `Resource not found` | 404 or client-side not-found detection |
 | `Resource conflict` | Optimistic lock / RMW conflict, or an API-reported conflict whose exact cause is not machine-discriminable (e.g. GCOM stack 409s) |

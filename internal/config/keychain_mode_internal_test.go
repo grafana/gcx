@@ -129,3 +129,16 @@ func TestKeychainStoreForDisabledModeNeverTouchesTheOSKeychain(t *testing.T) {
 	require.ErrorIs(t, store.Set("any-account", "value"), credentials.ErrDisabled)
 	require.ErrorIs(t, store.Delete("any-account"), credentials.ErrDisabled)
 }
+
+// defaultKeychainStore must resolve GCX_KEYCHAIN before the go-test
+// short-circuit. Every test binary runs under testing.Testing(), so if that
+// check came first, an explicit GCX_KEYCHAIN=off could never be exercised by
+// an in-process test — it would always resolve to the bare "unavailable"
+// no-op store instead of the disabled one.
+func TestDefaultKeychainStoreHonoursDisabledModeBeforeTestingShortCircuit(t *testing.T) {
+	t.Setenv(envKeychain, "off")
+
+	err := defaultKeychainStore().Set("a", "b")
+
+	require.ErrorIs(t, err, credentials.ErrDisabled)
+}

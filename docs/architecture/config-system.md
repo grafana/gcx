@@ -262,12 +262,14 @@ Loading steps (in `Load`):
    file is rewritten with
    `keychain:gcx:v2:<binding-digest>:<random-generation>`. The binding covers
    the canonical source, exact owner kind/name, exact field, and normalized
-   destination. An incomplete binding or unavailable keychain leaves the value
-   in plaintext with a warning. A locked keychain stops the migration write with
-   the same warning, but it never authorizes a plaintext fallback elsewhere: an
-   explicit write, such as `gcx login` or `gcx config set`, fails on a locked
-   backend. The user must unlock the keychain, or must run gcx from a desktop
-   session that can answer the unlock prompt.
+   destination. An incomplete binding leaves the value in plaintext with a
+   warning. An unavailable or locked keychain stops the migration write with the
+   same warning, but neither authorizes a plaintext fallback elsewhere: an
+   explicit write, such as `gcx login` or `gcx config set`, fails on an
+   unavailable or locked backend. The user must restore access to the
+   keychain, unlock it, or run gcx from a desktop session that can answer the
+   unlock prompt. Setting `GCX_KEYCHAIN=off` remains the one condition that
+   still authorizes a plaintext write.
 9. Apply each `Override` function in order, then lazily resolve a context selected
    by an override
 10. On `ValidationError`, annotate the error with YAML source information
