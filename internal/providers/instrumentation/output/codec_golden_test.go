@@ -109,7 +109,7 @@ func TestServiceTableGolden(t *testing.T) {
 	for _, name := range []string{cmdio.FormatText, cmdio.FormatWide} {
 		t.Run(name, func(t *testing.T) {
 			var buf bytes.Buffer
-			require.NoError(t, instroutput.ServiceTable(cmdio.TextOnly).Codec(name).Encode(&buf, goldenServices()))
+			require.NoError(t, instroutput.ServiceTable().Codec(name).Encode(&buf, goldenServices()))
 
 			testutils.Golden(t, "services_"+name, buf.String())
 		})

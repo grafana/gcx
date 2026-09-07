@@ -30,7 +30,7 @@ func (o *statusOpts) setup(flags *pflag.FlagSet) {
 // registration must happen here — after flag parsing but before IO.Validate.
 func (o *statusOpts) Validate() error {
 	if o.Namespace != "" {
-		cmdio.RegisterTable(&o.IO, instroutput.ServiceTable(cmdio.TableOnly))
+		cmdio.RegisterTable(&o.IO, instroutput.ServiceTable())
 		o.IO.SetJSONFieldValidator(cmdio.MakeFieldValidator(instroutput.ServiceView{}))
 	} else {
 		cmdio.RegisterTable(&o.IO, instroutput.ClusterTable())

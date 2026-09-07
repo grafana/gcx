@@ -281,7 +281,7 @@ func ClusterTable() cmdio.Table[ClusterView] {
 			{Header: "NODES", Visible: cmdio.WideOnly, Content: func(c ClusterView) string { return itoa(c.Nodes) }},
 
 			// STATUS is normalized in table and the raw proto enum in wide.
-			{Header: "STATUS", Visible: cmdio.TableOnly, Content: func(c ClusterView) string {
+			{Header: "STATUS", Visible: cmdio.NarrowOnly, Content: func(c ClusterView) string {
 				return NormalizeStatus(c.InstrumentationStatus)
 			}},
 			{Header: "STATUS", Visible: cmdio.WideOnly, Content: func(c ClusterView) string {
@@ -316,7 +316,7 @@ func AppTable() cmdio.Table[AppView] {
 			{Header: "OVERRIDES", Visible: cmdio.WideOnly, Content: func(a AppView) string { return itoa(a.Overrides) }},
 
 			// STATUS is normalized in table and the raw proto enum in wide.
-			{Header: "STATUS", Visible: cmdio.TextOnly, Content: func(a AppView) string {
+			{Header: "STATUS", Visible: cmdio.NarrowOnly, Content: func(a AppView) string {
 				return NormalizeStatus(a.InstrumentationStatus)
 			}},
 			{Header: "STATUS", Visible: cmdio.WideOnly, Content: func(a AppView) string {
@@ -340,9 +340,7 @@ func AppTable() cmdio.Table[AppView] {
 //
 // Table NAME renders DisplayName when set, falling back to Name.
 // Table NAMESPACE renders DisplayNamespace when set, falling back to Namespace.
-// narrow is the format name this table is registered under alongside "wide":
-// "table" for the status command, "text" for the services commands.
-func ServiceTable(narrow cmdio.Visibility) cmdio.Table[ServiceView] {
+func ServiceTable() cmdio.Table[ServiceView] {
 	return cmdio.Table[ServiceView]{
 		Columns: []cmdio.Column[ServiceView]{
 			{Header: "NAME", Content: func(s ServiceView) string { return displayName(s.DisplayName, s.Name) }},
@@ -358,7 +356,7 @@ func ServiceTable(narrow cmdio.Visibility) cmdio.Table[ServiceView] {
 			}},
 
 			// STATUS is normalized in table and the raw proto enum in wide.
-			{Header: "STATUS", Visible: narrow, Content: func(s ServiceView) string {
+			{Header: "STATUS", Visible: cmdio.NarrowOnly, Content: func(s ServiceView) string {
 				return NormalizeStatus(s.InstrumentationStatus)
 			}},
 			{Header: "STATUS", Visible: cmdio.WideOnly, Content: func(s ServiceView) string {

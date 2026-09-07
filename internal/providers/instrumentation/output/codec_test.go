@@ -409,14 +409,14 @@ func TestAppTableCodec_WideColumns(t *testing.T) {
 func TestServiceTableCodec_Format(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, format.Format("text"), instroutput.ServiceTable(cmdio.TextOnly).Codec(cmdio.FormatText).Format())
-	assert.Equal(t, format.Format("wide"), instroutput.ServiceTable(cmdio.TextOnly).Codec(cmdio.FormatWide).Format())
+	assert.Equal(t, format.Format("text"), instroutput.ServiceTable().Codec(cmdio.FormatText).Format())
+	assert.Equal(t, format.Format("wide"), instroutput.ServiceTable().Codec(cmdio.FormatWide).Format())
 }
 
 func TestServiceTableCodec_Decode_ReturnsError(t *testing.T) {
 	t.Parallel()
 
-	err := instroutput.ServiceTable(cmdio.TextOnly).Codec(cmdio.FormatText).Decode(strings.NewReader(""), nil)
+	err := instroutput.ServiceTable().Codec(cmdio.FormatText).Decode(strings.NewReader(""), nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "does not support decoding")
 }
@@ -424,7 +424,7 @@ func TestServiceTableCodec_Decode_ReturnsError(t *testing.T) {
 func TestServiceTableCodec_Encode_InvalidType(t *testing.T) {
 	t.Parallel()
 
-	err := instroutput.ServiceTable(cmdio.TextOnly).Codec(cmdio.FormatText).Encode(&bytes.Buffer{}, struct{}{})
+	err := instroutput.ServiceTable().Codec(cmdio.FormatText).Encode(&bytes.Buffer{}, struct{}{})
 	require.Error(t, err)
 }
 
@@ -444,7 +444,7 @@ func TestServiceTableCodec_DefaultColumns(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	require.NoError(t, instroutput.ServiceTable(cmdio.TextOnly).Codec(cmdio.FormatText).Encode(&buf, services))
+	require.NoError(t, instroutput.ServiceTable().Codec(cmdio.FormatText).Encode(&buf, services))
 	out := buf.String()
 
 	// Default columns present in headers.
@@ -497,7 +497,7 @@ func TestServiceTableCodec_DisplayNameFallback(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	require.NoError(t, instroutput.ServiceTable(cmdio.TextOnly).Codec(cmdio.FormatText).Encode(&buf, services))
+	require.NoError(t, instroutput.ServiceTable().Codec(cmdio.FormatText).Encode(&buf, services))
 	out := buf.String()
 
 	// DisplayName and DisplayNamespace used when set.
@@ -527,7 +527,7 @@ func TestServiceTableCodec_WideColumns(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	require.NoError(t, instroutput.ServiceTable(cmdio.TextOnly).Codec(cmdio.FormatWide).Encode(&buf, services))
+	require.NoError(t, instroutput.ServiceTable().Codec(cmdio.FormatWide).Encode(&buf, services))
 	out := buf.String()
 
 	// Wide columns present.
