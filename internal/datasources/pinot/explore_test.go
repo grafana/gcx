@@ -18,7 +18,7 @@ func TestQueryExploreURL(t *testing.T) {
 			DatasourceType: querypinot.DatasourceType,
 			Expr:           "SELECT count(*) FROM faro_pinot_events_v2",
 			OrgID:          1,
-		}, "faro_pinot_events_v2")
+		})
 
 		require.NotEmpty(t, got)
 		params := mustParseURL(t, got).Query()
@@ -42,7 +42,7 @@ func TestQueryExploreURL(t *testing.T) {
 			Expr:           "SELECT 1",
 			From:           "2026-05-10T10:00:00Z",
 			To:             "2026-05-10T11:00:00Z",
-		}, "faro_pinot_events_v2")
+		})
 
 		require.NotEmpty(t, got)
 		params := mustParseURL(t, got).Query()
@@ -51,9 +51,9 @@ func TestQueryExploreURL(t *testing.T) {
 	})
 
 	t.Run("returns empty for missing required fields", func(t *testing.T) {
-		assert.Empty(t, pinot.QueryExploreURL("", dsquery.ExploreQuery{DatasourceUID: "pinot-uid", Expr: "SELECT 1"}, "t"))
-		assert.Empty(t, pinot.QueryExploreURL("https://mystack.grafana.net", dsquery.ExploreQuery{Expr: "SELECT 1"}, "t"))
-		assert.Empty(t, pinot.QueryExploreURL("https://mystack.grafana.net", dsquery.ExploreQuery{DatasourceUID: "pinot-uid"}, "t"))
+		assert.Empty(t, pinot.QueryExploreURL("", dsquery.ExploreQuery{DatasourceUID: "pinot-uid", Expr: "SELECT 1"}))
+		assert.Empty(t, pinot.QueryExploreURL("https://mystack.grafana.net", dsquery.ExploreQuery{Expr: "SELECT 1"}))
+		assert.Empty(t, pinot.QueryExploreURL("https://mystack.grafana.net", dsquery.ExploreQuery{DatasourceUID: "pinot-uid"}))
 	})
 }
 
