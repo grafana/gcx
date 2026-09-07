@@ -324,7 +324,7 @@ gcx agent skills list
 
 SKILL                      INSTALLED    DESCRIPTION
 create-dashboard           yes          Design and create dashboards with datasource discovery and snapshot-based visual iteration.
-debug-with-grafana         yes          Structured workflow for investigating application problems with Grafana observability data.
+debug-with-grafana         yes          Investigates application problems and earlier incidents using Grafana metrics, logs, and traces via gcx.
 ....
 ```
 
