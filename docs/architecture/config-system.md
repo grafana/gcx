@@ -914,24 +914,23 @@ affect command behavior but are not tied to any specific Grafana context.
 ```go
 // internal/config/cli_options.go
 type CLIOptions struct {
-    AutoApprove bool `env:"GCX_AUTO_APPROVE"`
+    AutoApprove      bool   `env:"GCX_AUTO_APPROVE"`
+    DisableUpdateNotifier string `env:"GCX_NO_UPDATE_NOTIFIER"`
+    Keychain         string `env:"GCX_KEYCHAIN"`
+    RequireContext   string `env:"GCX_REQUIRE_CONTEXT"`
 }
 
 func LoadCLIOptions() (CLIOptions, error)
 ```
 
-`LoadCLIOptions()` uses `caarlos0/env/v11` (the same library used for
-context-scoped env vars) to parse global environment variables into a
-`CLIOptions` struct. Unlike context overrides, these options are loaded
-independently — they do not read from the config file or affect any context.
-
-**Current usage:** The `delete` command calls `LoadCLIOptions()` in its `RunE`
-and, when `AutoApprove` is true (or `--yes`/`-y` is passed), automatically
-enables the `--force` flag for non-interactive operation in CI/CD pipelines.
+`LoadCLIOptions()` parses these tags into a `CLIOptions` struct. Unlike context
+overrides, they are loaded independently — they do not read from the config file
+or change any context.
 
 | Env Var | CLI Flag | Effect |
 |---------|----------|--------|
 | `GCX_AUTO_APPROVE` | `--yes` / `-y` | Auto-enables `--force` on delete |
+| `GCX_REQUIRE_CONTEXT` | (none) | Require `--context` or `GRAFANA_SERVER` on commands that reach Grafana; see [Strict Context Mode](#strict-context-mode) |
 
 See [environment-variables.md](../design/environment-variables.md) for the full environment
 variable reference.
