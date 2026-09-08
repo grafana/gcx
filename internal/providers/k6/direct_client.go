@@ -1,13 +1,11 @@
 package k6
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"mime/multipart"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -33,13 +31,17 @@ type ReauthFunc func(ctx context.Context) (token string, orgID int, err error)
 // It does NOT route through the grafana-k6-app plugin proxy — this path exists
 // for stacks that cannot use OAuth (CI service accounts, headless automation).
 type DirectClient struct {
-	apiDomain string
-	orgID     int
-	stackID   int
-	token     string
-	http      *http.Client
-	reauth    ReauthFunc
-	mu        sync.Mutex // guards token, orgID, stackID across reauth races
+	*cloudOperations
+
+	apiDomain  string
+	logsDomain string
+	stackURL   string
+	orgID      int
+	stackID    int
+	token      string
+	http       *http.Client
+	reauth     ReauthFunc
+	mu         sync.Mutex // guards token, orgID, stackID, and stackURL across reauth races
 }
 
 // NewDirectClient creates a DirectClient. If apiDomain is empty, DefaultAPIDomain
@@ -48,16 +50,42 @@ type DirectClient struct {
 // The returned client is not authenticated until Authenticate or SetCachedAuth
 // is called. Both Bearer + X-Stack-Id are injected on every subsequent request.
 func NewDirectClient(ctx context.Context, apiDomain string, httpClient *http.Client) *DirectClient {
+	return newDirectClient(ctx, apiDomain, "", httpClient)
+}
+
+func newDirectClient(ctx context.Context, apiDomain, stackURL string, httpClient *http.Client) *DirectClient {
 	if apiDomain == "" {
 		apiDomain = DefaultAPIDomain
 	}
+	apiDomain = strings.TrimRight(apiDomain, "/")
 	if httpClient == nil {
 		httpClient = httputils.NewDefaultClient(ctx)
 	}
-	return &DirectClient{
-		apiDomain: strings.TrimRight(apiDomain, "/"),
-		http:      httpClient,
+	logsDomain := defaultLogsDomain
+	if apiDomain != DefaultAPIDomain {
+		logsDomain = apiDomain
 	}
+	client := &DirectClient{
+		apiDomain:  apiDomain,
+		logsDomain: logsDomain,
+		stackURL:   strings.TrimRight(strings.TrimSpace(stackURL), "/"),
+		http:       httpClient,
+	}
+	client.cloudOperations = &cloudOperations{executor: client}
+	return client
+}
+
+func (c *DirectClient) selectedStackID() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.stackID
+}
+
+// SetStackURL sets the Grafana stack URL used by ValidateCloudAuth.
+func (c *DirectClient) SetStackURL(stackURL string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.stackURL = strings.TrimRight(strings.TrimSpace(stackURL), "/")
 }
 
 // Authenticate exchanges a Grafana SA token (glsa_*) for a k6 v3 token by
@@ -80,15 +108,17 @@ func (c *DirectClient) Authenticate(ctx context.Context, saToken string, stackID
 	if err != nil {
 		return fmt.Errorf("k6: auth request: %w", err)
 	}
-	defer resp.Body.Close()
+	response, err := readCloudResponse(resp)
+	if err != nil {
+		return fmt.Errorf("k6: read auth response: %w", err)
+	}
 
-	if resp.StatusCode >= 400 {
-		respBody, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("k6: token exchange failed (PUT %s, status %d): %s", authPath, resp.StatusCode, string(respBody))
+	if response.StatusCode >= 400 {
+		return fmt.Errorf("k6: token exchange failed (PUT %s, status %d): %s", authPath, response.StatusCode, string(response.Body))
 	}
 
 	var ar authResponse
-	if err := json.NewDecoder(resp.Body).Decode(&ar); err != nil {
+	if err := json.Unmarshal(response.Body, &ar); err != nil {
 		return fmt.Errorf("k6: decode auth response: %w", err)
 	}
 
@@ -172,25 +202,19 @@ func (c *DirectClient) doJSON(ctx context.Context, method, path string, body any
 		}
 		bodyBytes = b
 	}
-	build := func() (*http.Request, error) {
-		c.mu.Lock()
-		token := c.token
-		stackID := c.stackID
-		c.mu.Unlock()
-		var br io.Reader
-		if bodyBytes != nil {
-			br = bytes.NewReader(bodyBytes)
-		}
-		req, err := http.NewRequestWithContext(ctx, method, c.apiDomain+path, br)
-		if err != nil {
-			return nil, fmt.Errorf("k6: create request: %w", err)
-		}
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", "Bearer "+token)
-		req.Header.Set("X-Stack-Id", strconv.Itoa(stackID))
-		return req, nil
+	response, err := c.doCloud(ctx, cloudRequest{
+		Target:      cloudTargetCloud,
+		Auth:        cloudAuthConfigured,
+		Method:      method,
+		Path:        path,
+		Body:        bodyBytes,
+		ContentType: "application/json",
+		Accept:      "application/json",
+	})
+	if err != nil {
+		return nil, err
 	}
-	return c.doWithReauth(ctx, build)
+	return asHTTPResponse(response), nil
 }
 
 // doRaw issues a multipart/form-data or application/octet-stream request,
@@ -204,36 +228,18 @@ func (c *DirectClient) doRaw(ctx context.Context, method, path, contentType stri
 		}
 		bodyBytes = buf
 	}
-	build := func() (*http.Request, error) {
-		c.mu.Lock()
-		token := c.token
-		stackID := c.stackID
-		c.mu.Unlock()
-		var br io.Reader
-		if bodyBytes != nil {
-			br = bytes.NewReader(bodyBytes)
-		}
-		req, err := http.NewRequestWithContext(ctx, method, c.apiDomain+path, br)
-		if err != nil {
-			return nil, fmt.Errorf("k6: create raw request: %w", err)
-		}
-		if contentType != "" {
-			req.Header.Set("Content-Type", contentType)
-		}
-		req.Header.Set("Authorization", "Bearer "+token)
-		req.Header.Set("X-Stack-Id", strconv.Itoa(stackID))
-		return req, nil
-	}
-	resp, err := c.doWithReauth(ctx, build)
+	response, err := c.doCloud(ctx, cloudRequest{
+		Target:      cloudTargetCloud,
+		Auth:        cloudAuthConfigured,
+		Method:      method,
+		Path:        path,
+		Body:        bodyBytes,
+		ContentType: contentType,
+	})
 	if err != nil {
 		return 0, nil, fmt.Errorf("k6: raw request: %w", err)
 	}
-	defer resp.Body.Close()
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return 0, nil, fmt.Errorf("k6: read raw response: %w", err)
-	}
-	return resp.StatusCode, respBody, nil
+	return response.StatusCode, response.Body, nil
 }
 
 // doWithReauth runs the request; if it 401s and a reauth callback is wired,
@@ -249,7 +255,7 @@ func (c *DirectClient) doWithReauth(ctx context.Context, build func() (*http.Req
 	if err != nil || resp.StatusCode != http.StatusUnauthorized || c.reauth == nil {
 		return resp, err
 	}
-	_, _ = io.Copy(io.Discard, resp.Body)
+	_, _ = io.CopyN(io.Discard, resp.Body, 1<<20)
 	_ = resp.Body.Close()
 
 	token, orgID, err := c.reauth(ctx)
@@ -382,78 +388,6 @@ func (c *DirectClient) GetProjectByName(ctx context.Context, name string) (*Proj
 // Load Tests
 // ---------------------------------------------------------------------------
 
-// ListLoadTestsByProject retrieves load tests filtered by project ID.
-// Uses the server-side project_id query parameter to avoid fetching all tests.
-func (c *DirectClient) ListLoadTestsByProject(ctx context.Context, projectID int) ([]LoadTest, error) {
-	path := fmt.Sprintf(loadTestsPath+"?project_id=%d", projectID)
-	return c.listLoadTests(ctx, path, 0)
-}
-
-// ListLoadTests retrieves all load tests across all projects, handling pagination.
-func (c *DirectClient) ListLoadTests(ctx context.Context) ([]LoadTest, error) {
-	return c.listLoadTests(ctx, loadTestsPath, 0)
-}
-
-// ListLoadTestsWithLimit retrieves load tests with a server-side limit on the
-// number of results. Pass 0 for no limit (fetches all).
-func (c *DirectClient) ListLoadTestsWithLimit(ctx context.Context, limit int) ([]LoadTest, error) {
-	return c.listLoadTests(ctx, loadTestsPath, limit)
-}
-
-// listLoadTests fetches load tests from the given path, paginating through all pages.
-// The k6 v6 API uses OData-style pagination with $skip/$top parameters and @count.
-// If limit > 0, at most limit items are fetched by setting $top accordingly.
-func (c *DirectClient) listLoadTests(ctx context.Context, path string, limit int) ([]LoadTest, error) {
-	const defaultPageSize = 100
-	var all []LoadTest
-
-	for {
-		pageSize := defaultPageSize
-		if limit > 0 {
-			if remaining := limit - len(all); remaining < pageSize {
-				pageSize = remaining
-			}
-		}
-
-		sep := "?"
-		if strings.Contains(path, "?") {
-			sep = "&"
-		}
-		pagePath := fmt.Sprintf("%s%s$skip=%d&$top=%d", path, sep, len(all), pageSize)
-
-		resp, err := c.doJSON(ctx, http.MethodGet, pagePath, nil)
-		if err != nil {
-			return nil, fmt.Errorf("k6: list load tests: %w", err)
-		}
-
-		if resp.StatusCode >= 400 {
-			body := readErrorBody(resp)
-			resp.Body.Close()
-			return nil, fmt.Errorf("k6: list load tests: status %d: %s", resp.StatusCode, body)
-		}
-
-		result, err := decodeJSON[loadTestsResponse](resp)
-		resp.Body.Close()
-		if err != nil {
-			return nil, err
-		}
-
-		all = append(all, result.Value...)
-
-		// Stop if limit reached.
-		if limit > 0 && len(all) >= limit {
-			all = all[:limit]
-			break
-		}
-
-		// Stop if we got fewer results than page size or have fetched all (per @count).
-		if len(result.Value) < pageSize || (result.Count > 0 && len(all) >= result.Count) {
-			break
-		}
-	}
-	return all, nil
-}
-
 // GetLoadTest retrieves a single load test by ID.
 func (c *DirectClient) GetLoadTest(ctx context.Context, id int) (*LoadTest, error) {
 	resp, err := c.doJSON(ctx, http.MethodGet, fmt.Sprintf(loadTestsPath+"/%d", id), nil)
@@ -488,42 +422,6 @@ func (c *DirectClient) DeleteLoadTest(ctx context.Context, id int) error {
 		return fmt.Errorf("k6: delete load test %d: status %d: %s", id, resp.StatusCode, readErrorBody(resp))
 	}
 	return nil
-}
-
-// CreateLoadTest creates a new load test via multipart/form-data upload.
-//
-//nolint:dupl // identical multipart construction; ProxyClient and DirectClient are parallel implementations
-func (c *DirectClient) CreateLoadTest(ctx context.Context, name string, projectID int, script string) (*LoadTest, error) {
-	var buf bytes.Buffer
-	writer := multipart.NewWriter(&buf)
-	if err := writer.WriteField("name", name); err != nil {
-		return nil, fmt.Errorf("k6: write name field: %w", err)
-	}
-	part, err := writer.CreateFormFile("script", "script.js")
-	if err != nil {
-		return nil, fmt.Errorf("k6: create script form file: %w", err)
-	}
-	if _, err := io.WriteString(part, script); err != nil {
-		return nil, fmt.Errorf("k6: write script content: %w", err)
-	}
-	if err := writer.Close(); err != nil {
-		return nil, fmt.Errorf("k6: close multipart writer: %w", err)
-	}
-
-	path := fmt.Sprintf(projectsPath+"/%d/load_tests", projectID)
-	status, respBody, err := c.doRaw(ctx, http.MethodPost, path, writer.FormDataContentType(), &buf)
-	if err != nil {
-		return nil, fmt.Errorf("k6: create load test: %w", err)
-	}
-	if status != http.StatusCreated && status != http.StatusOK {
-		return nil, fmt.Errorf("k6: create load test: status %d: %s", status, string(respBody))
-	}
-
-	var lt LoadTest
-	if err := json.Unmarshal(respBody, &lt); err != nil {
-		return nil, fmt.Errorf("k6: decode created load test: %w", err)
-	}
-	return &lt, nil
 }
 
 // UpdateLoadTest updates an existing load test's metadata and optionally its script.
@@ -859,86 +757,6 @@ func (c *DirectClient) DeleteLoadZone(ctx context.Context, name string) error {
 
 	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusNotFound {
 		return fmt.Errorf("k6: delete load zone %q: status %d: %s", name, resp.StatusCode, readErrorBody(resp))
-	}
-	return nil
-}
-
-// ---------------------------------------------------------------------------
-// Allowed Projects / Load Zones
-// ---------------------------------------------------------------------------
-
-// ListAllowedProjects lists the projects allowed to use a load zone.
-func (c *DirectClient) ListAllowedProjects(ctx context.Context, loadZoneID int) ([]AllowedProject, error) {
-	path := fmt.Sprintf(loadZonesPath+"/%d/allowed_projects", loadZoneID)
-	resp, err := c.doJSON(ctx, http.MethodGet, path, nil)
-	if err != nil {
-		return nil, fmt.Errorf("k6: list allowed projects: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("k6: list allowed projects: status %d: %s", resp.StatusCode, readErrorBody(resp))
-	}
-
-	result, err := decodeJSON[allowedProjectsResponse](resp)
-	if err != nil {
-		return nil, err
-	}
-	return result.Value, nil
-}
-
-// UpdateAllowedProjects sets the projects allowed to use a load zone.
-func (c *DirectClient) UpdateAllowedProjects(ctx context.Context, loadZoneID int, projectIDs []int) error {
-	path := fmt.Sprintf(loadZonesPath+"/%d/allowed_projects", loadZoneID)
-	body := struct {
-		ProjectIDs []int `json:"project_ids"`
-	}{ProjectIDs: projectIDs}
-	resp, err := c.doJSON(ctx, http.MethodPut, path, body)
-	if err != nil {
-		return fmt.Errorf("k6: update allowed projects: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		return fmt.Errorf("k6: update allowed projects: status %d: %s", resp.StatusCode, readErrorBody(resp))
-	}
-	return nil
-}
-
-// ListAllowedLoadZones lists the load zones allowed for a project.
-func (c *DirectClient) ListAllowedLoadZones(ctx context.Context, projectID int) ([]AllowedLoadZone, error) {
-	path := fmt.Sprintf(projectsPath+"/%d/allowed_load_zones", projectID)
-	resp, err := c.doJSON(ctx, http.MethodGet, path, nil)
-	if err != nil {
-		return nil, fmt.Errorf("k6: list allowed load zones: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("k6: list allowed load zones: status %d: %s", resp.StatusCode, readErrorBody(resp))
-	}
-
-	result, err := decodeJSON[allowedLoadZonesResponse](resp)
-	if err != nil {
-		return nil, err
-	}
-	return result.Value, nil
-}
-
-// UpdateAllowedLoadZones sets the load zones allowed for a project.
-func (c *DirectClient) UpdateAllowedLoadZones(ctx context.Context, projectID int, loadZoneIDs []int) error {
-	path := fmt.Sprintf(projectsPath+"/%d/allowed_load_zones", projectID)
-	body := struct {
-		LoadZoneIDs []int `json:"load_zone_ids"`
-	}{LoadZoneIDs: loadZoneIDs}
-	resp, err := c.doJSON(ctx, http.MethodPut, path, body)
-	if err != nil {
-		return fmt.Errorf("k6: update allowed load zones: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		return fmt.Errorf("k6: update allowed load zones: status %d: %s", resp.StatusCode, readErrorBody(resp))
 	}
 	return nil
 }
