@@ -77,54 +77,17 @@ jobs:
           classify_inline_comments: true
           plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
           plugins: 'code-review@claude-code-plugins'
-          # The review process lives in the repo-local review-pr skill, so a PR
-          # gets the same treatment whether a developer runs it locally or this
-          # workflow runs it. The skill carries the severity split, the skip
-          # rules, the report shape, and the unattended-run overrides.
-          #
-          # /code-review runs without --comment on purpose: its findings must
-          # come back into the session so they can be merged with the skill's
-          # checks before anything is posted. That skill signs off with "not
-          # posting because --comment was not passed" — a session once took
-          # that as its own conclusion and ended having posted nothing, so the
-          # prompt now names it and makes posting the last required step.
+          # The review process lives entirely in the repo-local review-pr
+          # skill, so a PR gets the same treatment whether a developer runs it
+          # locally or this workflow does. Everything that used to be repeated
+          # here — the two passes, the report shape, the unattended-run
+          # overrides, the closing line — is in that file. Keep it that way:
+          # a rule added here instead of there applies to CI only, and silently
+          # stops applying the moment someone reviews the same PR locally.
           prompt: |
-            Review ${{ github.repository }}/pull/${{ steps.pr.outputs.number }}.
-
-            Run two passes.
-
-            1. The /review-pr skill, for PR
-               ${{ steps.pr.outputs.number }}. Run it as a skill rather than
-               reading the file, so its "When a workflow invoked this"
-               section governs the run.
-            2. The /code-review:code-review skill, for correctness bugs.
-               Do not pass --comment: its findings must come back to you so
-               they can be merged with the first pass.
-
-            Base the report on both sets combined: drop duplicates, and where
-            the two disagree, resolve it against the code and report one
-            conclusion rather than both. The report should always follow the
-            structure in .claude/skills/review-pr/SKILL.md#Report-shape, but
-            prefer to put blocking and nits feedback in inline comments. do
-            not duplicate inline comments in the main report body. Do not
-            mention the process you used to generate the report.
-
-            We should categorise findings as blocking or nits. Recommended
-            findings should be upgraded to blocking.
-
-            Finally, post the combined report to the PR yourself.
-
-            /code-review:code-review ends by saying it is not posting because
-            --comment was not passed. That is expected and it is not the end
-            of your task: it hands its findings back so you can post them
-            together with the first pass. Do not repeat that line and do not
-            stop there.
-
-            Post even when you found nothing — one line saying so, plus the
-            closing line the review-pr skill specifies. Nobody is watching
-            this run, so a review that ends without posting is
-            indistinguishable from one that never ran. Do not end your turn
-            until the report is on the PR.
+            Review ${{ github.repository }}/pull/${{ steps.pr.outputs.number }}
+            with the /review-pr skill. Invoke it as a skill; reading the file
+            leaves its unattended-run rules unapplied.
           # Pin the model to keep the behaviour consistent. Tool permissions
           # live in .claude/settings.json, which this session loads as a
           # project setting source, so a local /review-pr run and this workflow
