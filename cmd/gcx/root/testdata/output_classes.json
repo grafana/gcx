@@ -103,6 +103,7 @@
  "gcx alert ruler namespaces list": "finite",
  "gcx alert rules get": "finite",
  "gcx alert rules list": "finite",
+ "gcx alert state-history list": "finite",
  "gcx alert templates delete": "finite",
  "gcx alert templates get": "finite",
  "gcx alert templates list": "finite",
