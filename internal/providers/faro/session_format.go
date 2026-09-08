@@ -1,6 +1,7 @@
 package faro
 
 import (
+	"bytes"
 	"fmt"
 	"math"
 	"slices"
@@ -335,15 +336,17 @@ func writeLogfmtKV(b *strings.Builder, key, value string) {
 }
 
 func writeLogfmtField(b *strings.Builder, key, value string) {
-	b.WriteString(key)
-	b.WriteByte('=')
-	if strings.ContainsAny(value, " \t\"") {
-		b.WriteByte('"')
-		b.WriteString(strings.ReplaceAll(value, `"`, `\"`))
-		b.WriteByte('"')
-	} else {
-		b.WriteString(value)
+	// Decoder turns quoted `\n` into a real newline. Re-emit with the
+	// logfmt encoder so backslashes and control characters stay escaped
+	// and a multiline exception stays one dump record.
+	var buf bytes.Buffer
+	if err := logfmt.NewEncoder(&buf).EncodeKeyval(key, value); err != nil {
+		b.WriteString(key)
+		b.WriteByte('=')
+		b.WriteString(escapeTSV(value))
+		return
 	}
+	b.Write(buf.Bytes())
 }
 
 func dropMetadataLogfmt(line string) string {
