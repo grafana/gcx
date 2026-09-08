@@ -90,8 +90,12 @@ commands.
 
 `gcx k6 runs list-logs` reads the selected run from the k6 Cloud logs API.
 `gcx k6 runs get-insights` reads the latest insight execution and joins its
-audit definitions with its results.
+audit definitions with its results. `gcx k6 runs traces list` and
+`gcx k6 runs traces get` inspect browser traces through the k6 Tempo route.
+`gcx k6 runs artifacts list` and `gcx k6 runs artifacts download` discover and
+download browser screenshots through the k6 files API. These trace and file
+routes are internal k6 service routes. Their response contracts can change.
 
-The service also exposes internal run files, traces, and browser artifacts.
-These routes are not in the published v6 API. Their response contracts can
-change without notice. `gcx` does not add commands for them at this time.
+`gcx k6 runs wait` polls the published v6 run endpoint until execution and
+metric processing finish. It returns a nonzero exit code when the final run
+result does not pass.
