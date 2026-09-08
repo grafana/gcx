@@ -214,6 +214,7 @@ func fetchLokiEventsByKind(ctx context.Context, client lokiQuerier, uid string, 
 	g, gctx := errgroup.WithContext(ctx)
 	results := make([]*loki.QueryResponse, len(kinds))
 	for i, kind := range kinds {
+		i, kind := i, kind
 		g.Go(func() error {
 			resp, err := fetchLokiEventPages(gctx, client, uid, lokiEventsQueryForKind(p, kind), start, end, timeout)
 			if err != nil {

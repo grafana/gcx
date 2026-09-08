@@ -348,6 +348,49 @@ func lokiMeasurementQueryFrom(queries []string) string {
 	return ""
 }
 
+func TestFetchLokiEventsByKindKeepsKindAlignment(t *testing.T) {
+	t.Parallel()
+	stub := &staggeredKindLoki{}
+	p := sessionQueryParams{AppID: "66", SessionID: "sid"}
+	got, err := fetchLokiEventsByKind(context.Background(), stub, "uid", p, time.Unix(0, 0), time.Unix(1, 0), time.Second)
+	require.NoError(t, err)
+	dump := formatLokiLines(got)
+	assert.Contains(t, dump, "kind=event")
+	assert.Contains(t, dump, "kind=exception")
+	assert.Contains(t, dump, "kind=log")
+	assert.Contains(t, dump, "kind=measurement")
+	assert.ElementsMatch(t, lokiSessionEventKinds(), stub.kinds())
+}
+
+type staggeredKindLoki struct {
+	mu   sync.Mutex
+	seen []string
+}
+
+func (s *staggeredKindLoki) kinds() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]string, len(s.seen))
+	copy(out, s.seen)
+	return out
+}
+
+func (s *staggeredKindLoki) Query(_ context.Context, _ string, req loki.QueryRequest) (*loki.QueryResponse, error) {
+	kind := ""
+	for _, candidate := range lokiSessionEventKinds() {
+		if strings.Contains(req.Query, `kind="`+candidate+`"`) {
+			kind = candidate
+			break
+		}
+	}
+	s.mu.Lock()
+	s.seen = append(s.seen, kind)
+	delay := time.Duration(len(s.seen)) * 5 * time.Millisecond
+	s.mu.Unlock()
+	time.Sleep(delay)
+	return lokiSingle("200", "kind="+kind), nil
+}
+
 func TestFetchLokiSession(t *testing.T) {
 	t.Parallel()
 	stub := &stubLoki{metaLine: `sdk_name=faro-web os_name="Mac OS" browser_name=Chrome`}
