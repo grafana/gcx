@@ -144,7 +144,14 @@ func executeMetrics(cmd *cobra.Command, opts *metricsOpts, resolved *resolvedQue
 		return fmt.Errorf("query failed: %w", err)
 	}
 	if opts.GroupBy != "" && opensearch.TruncateSeries(resp, opts.GroupSize) {
-		cmdio.Warning(cmd.ErrOrStderr(), "showing the top %d groups by count; more groups match — raise --group-size (max %d) to see more", opts.GroupSize, maxGroupSize)
+		// No ceiling named here (unlike --limit's warning): --group-size's cap
+		// is a sanity bound against OpenSearch's default search.max_buckets,
+		// not a promise that the max is always reachable. The real bucket
+		// count is terms-groups x histogram-buckets-per-group, so a busy,
+		// high-cardinality --group-by can still hit too_many_buckets_exception
+		// well before --group-size's own ceiling, and telling someone to
+		// "raise to 1000" would be misleading in that case.
+		cmdio.Warning(cmd.ErrOrStderr(), "showing the top %d groups by count; more groups match — raise --group-size to see more", opts.GroupSize)
 	}
 
 	exploreURL := MetricsExploreURL(resolved.Cfg.GrafanaURL, resolved.ExploreBase(&opts.SharedOpts), req)
