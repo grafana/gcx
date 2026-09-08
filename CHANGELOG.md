@@ -23,6 +23,7 @@
 - Correct Fleet resource examples, preserve string collector IDs in resource manifests, and include the collector name and ID in successful create output.
 - Accept the Kubernetes envelope (`apiVersion`/`kind`/`metadata`/`spec`) in the manifest that `create -f` and `update -f` read. The commands decoded the envelope into an empty object before this change, so they lost every field that the manifest set. This repairs the round trip for `gcx irm oncall`, where `gcx resources list-examples` prints that envelope. For `gcx alert` it adds tolerance for a hand-written envelope, because the alert provider registers no adapter.
 - Stop sending the local zone name of the host as `user_tz` in `gcx irm oncall schedules list-final-shifts`. A host that does not set `TZ` sent the literal string `Local`, and the API answered "Invalid timezone".
+- Config write locks are now bound to the config file they were taken for. A held lock for one config file no longer lets a write to a different file skip locking, which could let concurrent gcx invocations write the same file at once.
 
 ## v1.2.0 (2026-08-25)
 

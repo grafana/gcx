@@ -87,7 +87,7 @@ func (config *Config) NewLoginMutationGuard(contextName string, intent LoginMuta
 // CAS then protects the selected owner after this function returns.
 func LoadLoginMutationGuarded(ctx context.Context, source Source, guard LoginMutationGuard) (Config, error) {
 	if !guard.enabled {
-		return Load(ctx, source)
+		return load(ctx, source, loadOptions{layer: configLayerFromCtx(ctx)})
 	}
 
 	snapshot, err := guard.currentSelectedSourceSnapshot()
@@ -101,11 +101,14 @@ func LoadLoginMutationGuarded(ctx context.Context, source Source, guard LoginMut
 		}
 	}
 
-	loadCtx := withMigrationPersistenceSuppressed(ctx)
-	if snapshot != nil {
-		loadCtx = withConfigSnapshot(loadCtx, guard.sourcePath, snapshot)
+	loadOpts := loadOptions{
+		layer:                        configLayerFromCtx(ctx),
+		suppressMigrationPersistence: true,
 	}
-	cfg, loadErr := Load(loadCtx, source)
+	if snapshot != nil {
+		loadOpts = loadOpts.withSourceSnapshot(guard.sourcePath, snapshot)
+	}
+	cfg, loadErr := load(ctx, source, loadOpts)
 	if loadErr != nil && !errors.Is(loadErr, os.ErrNotExist) {
 		return cfg, loadErr
 	}

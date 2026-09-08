@@ -1515,6 +1515,21 @@ func TestRawLocalSymlinkLoadIsRejectedBeforeKeychainAccess(t *testing.T) {
 	assert.Empty(t, store.deletes)
 }
 
+func TestRawLocalSymlinkLoginMutationGuardedLoadIsRejectedBeforeKeychainAccess(t *testing.T) {
+	store := newBoundTestStore()
+	useBoundTestStore(t, store)
+	target := filepath.Join(t.TempDir(), "victim.yaml")
+	require.NoError(t, os.WriteFile(target, []byte("version: 1\ncontexts: {}\ncurrent-context: \"\"\n"), 0o600))
+	link := filepath.Join(t.TempDir(), LocalConfigFileName)
+	require.NoError(t, os.Symlink(target, link))
+	ctx := ContextWithConfigSource(context.Background(), ConfigSource{Path: link, Type: "local"})
+	_, err := LoadLoginMutationGuarded(ctx, ExplicitConfigFile(link), LoginMutationGuard{})
+	require.ErrorContains(t, err, "symlinks are not allowed")
+	assert.Empty(t, store.gets)
+	assert.Empty(t, store.sets)
+	assert.Empty(t, store.deletes)
+}
+
 func TestCredentialDestinationURLNormalizationPreservesSecurityRelevantBytes(t *testing.T) {
 	assert.NotEqual(t, normalizeCredentialURL("https://example.invalid/a%2Fb", ""), normalizeCredentialURL("https://example.invalid/a/b", ""))
 	assert.NotEqual(t, normalizeCredentialURL("https://example.invalid/path?tenant=a", ""), normalizeCredentialURL("https://example.invalid/path?tenant=b", ""))
