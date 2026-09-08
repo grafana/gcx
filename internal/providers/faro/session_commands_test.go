@@ -535,13 +535,8 @@ func TestFetchLokiSession(t *testing.T) {
 	assert.NotContains(t, events, `| logfmt | session_id=`)
 	assert.NotContains(t, events, "faro.tracing.fetch")
 	assert.NotContains(t, events, "app_memory")
-	for i, dir := range stub.dirs {
-		q := stub.queries[i]
-		if strings.Contains(q, `!~ "performanceEntry`) {
-			assert.Empty(t, dir)
-			continue
-		}
-		assert.Equal(t, lokiQueryDirectionForward, dir)
+	for _, dir := range stub.dirs {
+		assert.Empty(t, dir)
 	}
 }
 
@@ -576,9 +571,10 @@ func TestFetchLokiSessionTimeoutExits(t *testing.T) {
 	p := sessionQueryParams{AppID: "67", SessionID: "4JPV1T7Nyi"}
 	_, err := fetchLokiSessionTimed(context.Background(), hangLoki{}, "uid", p, time.Unix(0, 0), time.Unix(1, 0), 20*time.Millisecond)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "no telemetry for session 4JPV1T7Nyi")
-	assert.Contains(t, err.Error(), "timed out")
-	assert.Contains(t, err.Error(), "try a Pinot datasource UID")
+	assert.Contains(t, err.Error(), "loki query timed out")
+	assert.Contains(t, err.Error(), "4JPV1T7Nyi")
+	assert.Contains(t, err.Error(), "not an empty result")
+	assert.Contains(t, err.Error(), "Pinot datasource UID")
 }
 
 func TestFetchLokiSessionPagesUntilComplete(t *testing.T) {
