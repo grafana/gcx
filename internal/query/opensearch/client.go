@@ -146,7 +146,18 @@ func queryModel(dsUID, query, timeField string, metric map[string]any, bucketAgg
 		"query":      query,
 		"metrics":    []any{metric},
 		"bucketAggs": bucketAggs,
-		"timeField":  orDefault(timeField, DefaultTimeField),
+		// This top-level "timeField" is inert: the plugin's own source says so
+		// directly ("we had a string-field named timeField in the past. we do
+		// not use it anymore", pkg/opensearch/query_request.go in
+		// grafana/opensearch-datasource) — kept only so old persisted queries
+		// with the field still parse. Live-verified too: swapping this value
+		// for a nonexistent field name against a real datasource returns
+		// byte-identical results. AddDateRangeFilter and the date_histogram
+		// fallback both read the datasource's own configured time field
+		// instead (client.GetConfiguredFields().TimeField). The field that
+		// does matter is bucketAggs' own date_histogram "field" below, which
+		// AggsQueryModel deliberately leaves empty for the same fallback.
+		"timeField": orDefault(timeField, DefaultTimeField),
 		// The plugin derives histogram bucket sizing from intervalMs and
 		// maxDataPoints; omitting them causes "too many buckets" errors from
 		// OpenSearch on wide time ranges.
