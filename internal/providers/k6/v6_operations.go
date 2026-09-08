@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"sort"
 	"strconv"
 	"strings"
 )
@@ -241,9 +240,10 @@ func (o *cloudOperations) ListAllTestRuns(ctx context.Context, params TestRunLis
 			break
 		}
 		query := url.Values{
-			"$count": {"true"},
-			"$top":   {strconv.Itoa(pageSize)},
-			"$skip":  {strconv.Itoa(skip)},
+			"$count":   {"true"},
+			"$orderby": {"created desc"},
+			"$top":     {strconv.Itoa(pageSize)},
+			"$skip":    {strconv.Itoa(skip)},
 		}
 		if params.CreatedAfter != "" {
 			query.Set("created_after", params.CreatedAfter)
@@ -267,7 +267,6 @@ func (o *cloudOperations) ListAllTestRuns(ctx context.Context, params TestRunLis
 		}
 		skip += len(page.Value)
 	}
-	sort.SliceStable(all, func(i, j int) bool { return all[i].Created > all[j].Created })
 	return &TestRunList{Value: all, Count: total}, nil
 }
 

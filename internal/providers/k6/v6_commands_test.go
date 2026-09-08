@@ -50,6 +50,11 @@ func TestV6CommandsRejectInvalidInputBeforeConfigLoad(t *testing.T) {
 			args:  []string{"0"}, contains: "positive integer",
 		},
 		{
+			name:  "non-positive metrics run ID",
+			build: newRunsListMetricsCommand,
+			args:  []string{"0"}, contains: "invalid run ID",
+		},
+		{
 			name:  "negative schedule load test ID",
 			build: newSchedulesCreateCommand,
 			args:  []string{"--load-test-id", "-1", "-f", "-"}, stdin: "starts: 2026-01-01T00:00:00Z\n", contains: "positive integer",

@@ -15,46 +15,12 @@ import (
 	"github.com/spf13/pflag"
 )
 
-type v6CommandAPI interface { //nolint:interfacebloat // One local command boundary mirrors the v6 provider domains.
-	ValidateCloudAuth(ctx context.Context) (*AuthValidation, error)
-	ListLabelKeys(ctx context.Context) ([]LabelKey, error)
-	CreateLabelKeys(ctx context.Context, req LabelKeyCreateRequest) ([]LabelKey, error)
-	UpdateLabelKey(ctx context.Context, id int, req LabelKeyPatch) (*LabelKey, error)
-	DeleteLabelKey(ctx context.Context, id int) error
-	MoveLoadTest(ctx context.Context, id, projectID int) error
-	StartLoadTest(ctx context.Context, id int, idempotencyKey string) (*TestRun, error)
-	GetLoadTestSchedule(ctx context.Context, id int) (*CloudSchedule, error)
-	DownloadLoadTestScript(ctx context.Context, id int, accept string) (*ScriptDownload, error)
-	ValidateTestOptions(ctx context.Context, req ValidateOptionsRequest) (*ValidateOptionsResult, error)
-	ListProjectLimits(ctx context.Context, projectIDs []int, top int) (*ProjectLimitsList, error)
-	GetProjectLimits(ctx context.Context, id int) (*ProjectLimits, error)
-	UpdateProjectLimits(ctx context.Context, id int, patch ProjectLimitsPatch) error
-	ListProjectLabels(ctx context.Context, id int) ([]ProjectLabel, error)
-	ReplaceProjectLabels(ctx context.Context, id int, req ProjectLabelPutRequest) ([]ProjectLabel, error)
-	DeleteSchedule(ctx context.Context, id int) error
-	ActivateSchedule(ctx context.Context, id int) error
-	DeactivateSchedule(ctx context.Context, id int) error
-	ListAllTestRuns(ctx context.Context, params TestRunListParams) (*TestRunList, error)
-	GetTestRun(ctx context.Context, id int) (*TestRun, error)
-	UpdateTestRun(ctx context.Context, id int, note string) error
-	DeleteTestRun(ctx context.Context, id int) error
-	AbortTestRun(ctx context.Context, id int) error
-	GetTestRunDistribution(ctx context.Context, id int) (*TestRunDistribution, error)
-	DownloadTestRunScript(ctx context.Context, id int, accept string) (*ScriptDownload, error)
-	StarTestRun(ctx context.Context, id int) error
-	UnstarTestRun(ctx context.Context, id int) error
-}
-
-func loadV6CommandAPI(ctx context.Context, loader CloudConfigLoader) (v6CommandAPI, error) {
+func loadV6CommandAPI(ctx context.Context, loader CloudConfigLoader) (API, error) {
 	client, _, err := authenticatedClient(ctx, loader)
 	if err != nil {
 		return nil, err
 	}
-	ops, ok := client.(v6CommandAPI)
-	if !ok {
-		return nil, errors.New("k6: client does not support Cloud v6 operations")
-	}
-	return ops, nil
+	return client, nil
 }
 
 func parsePositiveID(value, subject string) (int, error) {
@@ -404,7 +370,7 @@ func scriptAccept(kind string) (string, error) {
 	}
 }
 
-func newRawScriptCommand(use, short string, loader CloudConfigLoader, download func(context.Context, v6CommandAPI, int, string) (*ScriptDownload, error)) *cobra.Command {
+func newRawScriptCommand(use, short string, loader CloudConfigLoader, download func(context.Context, API, int, string) (*ScriptDownload, error)) *cobra.Command {
 	var kind string
 	cmd := &cobra.Command{Use: use, Short: short, Args: cobra.ExactArgs(1)}
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
@@ -432,7 +398,7 @@ func newRawScriptCommand(use, short string, loader CloudConfigLoader, download f
 }
 
 func newLoadTestsGetScriptCommand(loader CloudConfigLoader) *cobra.Command {
-	return newRawScriptCommand("get-script <load-test-id>", "Download a k6 load-test script.", loader, func(ctx context.Context, api v6CommandAPI, id int, accept string) (*ScriptDownload, error) {
+	return newRawScriptCommand("get-script <load-test-id>", "Download a k6 load-test script.", loader, func(ctx context.Context, api API, id int, accept string) (*ScriptDownload, error) {
 		return api.DownloadLoadTestScript(ctx, id, accept)
 	})
 }
@@ -698,7 +664,7 @@ func titleAction(action string) string {
 	return strings.ToUpper(action[:1]) + action[1:]
 }
 
-func newScheduleActionCommand(loader CloudConfigLoader, use, short, action string, destructive bool, call func(context.Context, v6CommandAPI, int) error) *cobra.Command {
+func newScheduleActionCommand(loader CloudConfigLoader, use, short, action string, destructive bool, call func(context.Context, API, int) error) *cobra.Command {
 	type options struct {
 		IO    cmdio.Options
 		Force bool
@@ -736,13 +702,13 @@ func newScheduleActionCommand(loader CloudConfigLoader, use, short, action strin
 }
 
 func newSchedulesDeleteCommand(loader CloudConfigLoader) *cobra.Command {
-	return newScheduleActionCommand(loader, "delete", "Delete a k6 Cloud schedule.", "deleted", true, func(ctx context.Context, api v6CommandAPI, id int) error { return api.DeleteSchedule(ctx, id) })
+	return newScheduleActionCommand(loader, "delete", "Delete a k6 Cloud schedule.", "deleted", true, func(ctx context.Context, api API, id int) error { return api.DeleteSchedule(ctx, id) })
 }
 func newSchedulesActivateCommand(loader CloudConfigLoader) *cobra.Command {
-	return newScheduleActionCommand(loader, "activate", "Activate a k6 Cloud schedule.", "activated", false, func(ctx context.Context, api v6CommandAPI, id int) error { return api.ActivateSchedule(ctx, id) })
+	return newScheduleActionCommand(loader, "activate", "Activate a k6 Cloud schedule.", "activated", false, func(ctx context.Context, api API, id int) error { return api.ActivateSchedule(ctx, id) })
 }
 func newSchedulesDeactivateCommand(loader CloudConfigLoader) *cobra.Command {
-	return newScheduleActionCommand(loader, "deactivate", "Deactivate a k6 Cloud schedule.", "deactivated", false, func(ctx context.Context, api v6CommandAPI, id int) error { return api.DeactivateSchedule(ctx, id) })
+	return newScheduleActionCommand(loader, "deactivate", "Deactivate a k6 Cloud schedule.", "deactivated", false, func(ctx context.Context, api API, id int) error { return api.DeactivateSchedule(ctx, id) })
 }
 
 func newRunsGetCommand(loader CloudConfigLoader) *cobra.Command {
@@ -802,7 +768,7 @@ func newRunsUpdateCommand(loader CloudConfigLoader) *cobra.Command {
 	return cmd
 }
 
-func newRunActionCommand(loader CloudConfigLoader, use, short, action string, destructive bool, call func(context.Context, v6CommandAPI, int) error) *cobra.Command {
+func newRunActionCommand(loader CloudConfigLoader, use, short, action string, destructive bool, call func(context.Context, API, int) error) *cobra.Command {
 	type options struct {
 		IO    cmdio.Options
 		Force bool
@@ -840,16 +806,16 @@ func newRunActionCommand(loader CloudConfigLoader, use, short, action string, de
 }
 
 func newRunsDeleteCommand(loader CloudConfigLoader) *cobra.Command {
-	return newRunActionCommand(loader, "delete", "Delete a k6 Cloud test run.", "deleted", true, func(ctx context.Context, api v6CommandAPI, id int) error { return api.DeleteTestRun(ctx, id) })
+	return newRunActionCommand(loader, "delete", "Delete a k6 Cloud test run.", "deleted", true, func(ctx context.Context, api API, id int) error { return api.DeleteTestRun(ctx, id) })
 }
 func newRunsAbortCommand(loader CloudConfigLoader) *cobra.Command {
-	return newRunActionCommand(loader, "abort", "Abort a running k6 Cloud test run.", "aborted", true, func(ctx context.Context, api v6CommandAPI, id int) error { return api.AbortTestRun(ctx, id) })
+	return newRunActionCommand(loader, "abort", "Abort a running k6 Cloud test run.", "aborted", true, func(ctx context.Context, api API, id int) error { return api.AbortTestRun(ctx, id) })
 }
 func newRunsStarCommand(loader CloudConfigLoader) *cobra.Command {
-	return newRunActionCommand(loader, "star", "Star a k6 Cloud test run.", "starred", false, func(ctx context.Context, api v6CommandAPI, id int) error { return api.StarTestRun(ctx, id) })
+	return newRunActionCommand(loader, "star", "Star a k6 Cloud test run.", "starred", false, func(ctx context.Context, api API, id int) error { return api.StarTestRun(ctx, id) })
 }
 func newRunsUnstarCommand(loader CloudConfigLoader) *cobra.Command {
-	return newRunActionCommand(loader, "unstar", "Unstar a k6 Cloud test run.", "unstarred", false, func(ctx context.Context, api v6CommandAPI, id int) error { return api.UnstarTestRun(ctx, id) })
+	return newRunActionCommand(loader, "unstar", "Unstar a k6 Cloud test run.", "unstarred", false, func(ctx context.Context, api API, id int) error { return api.UnstarTestRun(ctx, id) })
 }
 
 func newRunsGetDistributionCommand(loader CloudConfigLoader) *cobra.Command {
@@ -878,7 +844,7 @@ func newRunsGetDistributionCommand(loader CloudConfigLoader) *cobra.Command {
 }
 
 func newRunsGetScriptCommand(loader CloudConfigLoader) *cobra.Command {
-	return newRawScriptCommand("get-script <run-id>", "Download the script for a k6 Cloud test run.", loader, func(ctx context.Context, api v6CommandAPI, id int, accept string) (*ScriptDownload, error) {
+	return newRawScriptCommand("get-script <run-id>", "Download the script for a k6 Cloud test run.", loader, func(ctx context.Context, api API, id int, accept string) (*ScriptDownload, error) {
 		return api.DownloadTestRunScript(ctx, id, accept)
 	})
 }

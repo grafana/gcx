@@ -1005,7 +1005,7 @@ func (o *runsListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 	flags.IntVar(&o.ProjectID, "project-id", 0, "Project ID (required when looking up by name)")
 	flags.IntVar(&o.TestID, "id", 0, "Load test ID (skip name lookup)")
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
+	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of runs to return (0 for all)")
 	flags.StringVar(&o.After, "created-after", "", "Include runs created after this RFC3339 time")
 	flags.StringVar(&o.Before, "created-before", "", "Include runs created before this RFC3339 time")
 }
@@ -1014,8 +1014,14 @@ func newRunsListCommand(loader CloudConfigLoader) *cobra.Command {
 	opts := &runsListOpts{}
 	cmd := &cobra.Command{
 		Use:   "list [id-or-name]",
-		Short: "List test runs for a load test.",
-		Args:  cobra.RangeArgs(0, 1),
+		Short: "List k6 Cloud test runs.",
+		Long: "List k6 Cloud test runs. With no argument, list runs across the stack. " +
+			"With an ID or name argument, or with --id, list runs for one load test. " +
+			"The --created-after and --created-before flags apply only to the global list.",
+		Example: "  gcx k6 runs list\n" +
+			"  gcx k6 runs list --created-after 2026-09-01T00:00:00Z --limit 50\n" +
+			"  gcx k6 runs list 12345",
+		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
@@ -1056,7 +1062,19 @@ func newRunsListCommand(loader CloudConfigLoader) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				return opts.IO.Encode(cmd.OutOrStdout(), runs.Value)
+				if err := opts.IO.Encode(cmd.OutOrStdout(), runs.Value); err != nil {
+					return err
+				}
+				if runs.Count > len(runs.Value) {
+					total := runs.Count
+					meta := cmdio.AttachListMeta(&cmdio.ListMeta{
+						Truncated: true,
+						Returned:  len(runs.Value),
+						Total:     &total,
+					}, os.Args)
+					cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
+				}
+				return nil
 			}
 			var loadTestID int
 			switch {

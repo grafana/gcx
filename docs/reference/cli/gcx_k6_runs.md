@@ -29,7 +29,7 @@ Manage k6 test runs.
 * [gcx k6 runs get-distribution](gcx_k6_runs_get-distribution.md)	 - Get distribution details for a k6 Cloud test run.
 * [gcx k6 runs get-insights](gcx_k6_runs_get-insights.md)	 - Get Cloud Insights for a k6 test run.
 * [gcx k6 runs get-script](gcx_k6_runs_get-script.md)	 - Download the script for a k6 Cloud test run.
-* [gcx k6 runs list](gcx_k6_runs_list.md)	 - List test runs for a load test.
+* [gcx k6 runs list](gcx_k6_runs_list.md)	 - List k6 Cloud test runs.
 * [gcx k6 runs list-labels](gcx_k6_runs_list-labels.md)	 - List metric label names or values for a k6 test run.
 * [gcx k6 runs list-logs](gcx_k6_runs_list-logs.md)	 - List logs for a k6 test run.
 * [gcx k6 runs list-metrics](gcx_k6_runs_list-metrics.md)	 - List metric metadata for a k6 test run.

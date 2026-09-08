@@ -81,7 +81,7 @@ func newRunsListLogsCommand(loader CloudConfigLoader) *cobra.Command {
 			if err := opts.Validate(); err != nil {
 				return err
 			}
-			runID, err := parsePositiveK6ID(args[0], "run ID")
+			runID, err := parsePositiveID(args[0], "run")
 			if err != nil {
 				return err
 			}
@@ -210,7 +210,7 @@ func newRunsGetInsightsCommand(loader CloudConfigLoader) *cobra.Command {
 			if err := opts.Validate(); err != nil {
 				return err
 			}
-			runID, err := parsePositiveK6ID(args[0], "run ID")
+			runID, err := parsePositiveID(args[0], "run")
 			if err != nil {
 				return err
 			}
