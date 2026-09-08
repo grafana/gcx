@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/grafana/gcx/internal/docs"
 	"github.com/grafana/gcx/internal/format"
@@ -167,6 +168,10 @@ func newProjectsCommand(loader CloudConfigLoader) *cobra.Command {
 		newProjectsDeleteCommand(loader),
 		newListAllowedLoadZonesCommand(loader),
 		newUpdateAllowedLoadZonesCommand(loader),
+		newProjectsGetLimitsCommand(loader),
+		newProjectsUpdateLimitsCommand(loader),
+		newProjectsListLabelsCommand(loader),
+		newProjectsUpdateLabelsCommand(loader),
 	)
 	return cmd
 }
@@ -552,6 +557,12 @@ func newTestsCommand(loader CloudConfigLoader) *cobra.Command {
 		newTestsUpdateScriptCommand(loader),
 		newTestsDeleteCommand(loader),
 		newTestsDeleteScheduleCommand(loader),
+		newLoadTestsMoveCommand(loader),
+		newLoadTestsStartCommand(loader),
+		newLoadTestsGetScheduleCommand(loader),
+		newLoadTestsGetScriptCommand(loader),
+		newTestsListMetricsCommand(loader),
+		newTestsMetricsQueryCommand(loader),
 	)
 	return cmd
 }
@@ -959,7 +970,23 @@ func newRunsCommand(loader CloudConfigLoader) *cobra.Command {
 		Use:   "runs",
 		Short: "Manage k6 test runs.",
 	}
-	cmd.AddCommand(newRunsListCommand(loader))
+	cmd.AddCommand(
+		newRunsListCommand(loader),
+		newRunsGetCommand(loader),
+		newRunsUpdateCommand(loader),
+		newRunsDeleteCommand(loader),
+		newRunsAbortCommand(loader),
+		newRunsGetDistributionCommand(loader),
+		newRunsGetScriptCommand(loader),
+		newRunsStarCommand(loader),
+		newRunsUnstarCommand(loader),
+		newRunsListMetricsCommand(loader),
+		newRunsListSeriesCommand(loader),
+		newRunsListLabelsCommand(loader),
+		newRunsMetricsQueryCommand(loader),
+		newRunsListLogsCommand(loader),
+		newRunsGetInsightsCommand(loader),
+	)
 	return cmd
 }
 
@@ -968,6 +995,8 @@ type runsListOpts struct {
 	ProjectID int
 	TestID    int
 	Limit     int64
+	After     string
+	Before    string
 }
 
 func (o *runsListOpts) setup(flags *pflag.FlagSet) {
@@ -977,6 +1006,8 @@ func (o *runsListOpts) setup(flags *pflag.FlagSet) {
 	flags.IntVar(&o.ProjectID, "project-id", 0, "Project ID (required when looking up by name)")
 	flags.IntVar(&o.TestID, "id", 0, "Load test ID (skip name lookup)")
 	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
+	flags.StringVar(&o.After, "created-after", "", "Include runs created after this RFC3339 time")
+	flags.StringVar(&o.Before, "created-before", "", "Include runs created before this RFC3339 time")
 }
 
 func newRunsListCommand(loader CloudConfigLoader) *cobra.Command {
@@ -989,12 +1020,44 @@ func newRunsListCommand(loader CloudConfigLoader) *cobra.Command {
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
+			if opts.Limit < 0 {
+				return fmt.Errorf("invalid --limit %d: expected 0 or more", opts.Limit)
+			}
+			for name, value := range map[string]string{"created-after": opts.After, "created-before": opts.Before} {
+				if value != "" {
+					if _, err := time.Parse(time.RFC3339, value); err != nil {
+						return fmt.Errorf("invalid --%s %q: expected RFC3339", name, value)
+					}
+				}
+			}
+			if opts.After != "" && opts.Before != "" {
+				after, _ := time.Parse(time.RFC3339, opts.After)
+				before, _ := time.Parse(time.RFC3339, opts.Before)
+				if !after.Before(before) {
+					return errors.New("--created-after must be before --created-before")
+				}
+			}
+			global := opts.TestID == 0 && len(args) == 0
+			if !global && (opts.After != "" || opts.Before != "") {
+				return errors.New("--created-after and --created-before are only valid for the global run list")
+			}
 			ctx := cmd.Context()
 			client, _, err := authenticatedClient(ctx, loader)
 			if err != nil {
 				return err
 			}
 
+			if global {
+				runs, err := client.ListAllTestRuns(ctx, TestRunListParams{
+					Top:           int(opts.Limit),
+					CreatedAfter:  opts.After,
+					CreatedBefore: opts.Before,
+				})
+				if err != nil {
+					return err
+				}
+				return opts.IO.Encode(cmd.OutOrStdout(), runs.Value)
+			}
 			var loadTestID int
 			switch {
 			case opts.TestID != 0:
@@ -1032,6 +1095,9 @@ type TestRunTableCodec struct{}
 func (c *TestRunTableCodec) Format() format.Format { return "table" }
 
 func (c *TestRunTableCodec) Encode(w io.Writer, v any) error {
+	if runs, ok := v.([]TestRun); ok {
+		return (&testRunTableCodec{}).Encode(w, runs)
+	}
 	runs, ok := v.([]TestRunStatus)
 	if !ok {
 		return errors.New("invalid data type for table codec: expected []TestRunStatus")
@@ -1324,7 +1390,10 @@ func newAuthCommand(loader CloudConfigLoader) *cobra.Command {
 		Use:   "auth",
 		Short: "k6 authentication commands.",
 	}
-	cmd.AddCommand(newTokenCommand(loader))
+	cmd.AddCommand(
+		newTokenCommand(loader),
+		newAuthValidateCommand(loader),
+	)
 	return cmd
 }
 
@@ -1369,6 +1438,9 @@ func newSchedulesCommand(loader CloudConfigLoader) *cobra.Command {
 		newSchedulesGetCommand(loader),
 		newSchedulesCreateCommand(loader),
 		newSchedulesUpdateCommand(loader),
+		newSchedulesDeleteCommand(loader),
+		newSchedulesActivateCommand(loader),
+		newSchedulesDeactivateCommand(loader),
 	)
 	return cmd
 }
@@ -1394,7 +1466,10 @@ func (c *ScheduleTableCodec) Encode(w io.Writer, v any) error {
 		if starts == "" {
 			starts = "-"
 		}
-		nextRun := s.NextRun
+		nextRun := ""
+		if s.NextRun != nil {
+			nextRun = *s.NextRun
+		}
 		if len(nextRun) > 16 {
 			nextRun = nextRun[:16]
 		}
@@ -1431,9 +1506,13 @@ func newSchedulesListCommand(loader CloudConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List all k6 schedules.",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
+			}
+			if opts.Limit < 0 {
+				return fmt.Errorf("invalid --limit %d: expected 0 or more", opts.Limit)
 			}
 			ctx := cmd.Context()
 			client, _, err := authenticatedClient(ctx, loader)
@@ -1461,7 +1540,7 @@ func (o *schedulesGetOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func newSchedulesGetCommand(loader CloudConfigLoader) *cobra.Command { //nolint:dupl // Structurally similar to newListAllowedProjectsCommand but different API calls.
+func newSchedulesGetCommand(loader CloudConfigLoader) *cobra.Command {
 	opts := &schedulesGetOpts{}
 	cmd := &cobra.Command{
 		Use:   "get <id>",
@@ -1472,9 +1551,9 @@ func newSchedulesGetCommand(loader CloudConfigLoader) *cobra.Command { //nolint:
 				return err
 			}
 			ctx := cmd.Context()
-			id, err := strconv.Atoi(args[0])
+			id, err := parsePositiveID(args[0], "schedule")
 			if err != nil {
-				return fmt.Errorf("invalid schedule ID: %w", err)
+				return err
 			}
 			client, _, err := authenticatedClient(ctx, loader)
 			if err != nil {
@@ -1509,27 +1588,91 @@ func (o *schedulesCreateOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&o.File, "filename", "f", "", "File containing the schedule request (JSON/YAML)")
 }
 
+func validateScheduleRequest(req ScheduleRequest) error {
+	if strings.TrimSpace(req.Starts) == "" {
+		return errors.New("schedule starts is required")
+	}
+	if _, err := time.Parse(time.RFC3339, req.Starts); err != nil {
+		return fmt.Errorf("invalid schedule starts %q: expected RFC3339", req.Starts)
+	}
+	if req.RecurrenceRule != nil && req.Cron != nil {
+		return errors.New("schedule must set only one of recurrence_rule or cron")
+	}
+	if err := validateRecurrenceRule(req.RecurrenceRule); err != nil {
+		return err
+	}
+	if cron := req.Cron; cron != nil {
+		if strings.TrimSpace(cron.Schedule) == "" {
+			return errors.New("cron schedule is required")
+		}
+		if strings.TrimSpace(cron.TimeZone) == "" {
+			return errors.New("cron time_zone is required")
+		}
+		if _, err := time.LoadLocation(cron.TimeZone); err != nil {
+			return fmt.Errorf("invalid cron time_zone %q", cron.TimeZone)
+		}
+	}
+	return nil
+}
+
+func validateRecurrenceRule(recurrence *RecurrenceRule) error {
+	if recurrence == nil {
+		return nil
+	}
+	switch recurrence.Frequency {
+	case "HOURLY", "DAILY", "WEEKLY", "MONTHLY":
+	default:
+		return fmt.Errorf("invalid recurrence frequency %q: expected HOURLY, DAILY, WEEKLY, or MONTHLY", recurrence.Frequency)
+	}
+	if recurrence.Interval < 0 {
+		return errors.New("recurrence interval must be 0 or a positive integer")
+	}
+	if recurrence.Count != nil && *recurrence.Count < 1 {
+		return errors.New("recurrence count must be a positive integer")
+	}
+	if recurrence.Until != nil {
+		if _, err := time.Parse(time.RFC3339, *recurrence.Until); err != nil {
+			return fmt.Errorf("invalid recurrence until %q: expected RFC3339", *recurrence.Until)
+		}
+	}
+	return validateRecurrenceWeekdays(recurrence.Frequency, recurrence.ByDay)
+}
+
+func validateRecurrenceWeekdays(frequency string, weekdays []string) error {
+	if len(weekdays) > 0 && frequency != "WEEKLY" {
+		return errors.New("recurrence byday is only valid with WEEKLY frequency")
+	}
+	seen := make(map[string]struct{}, len(weekdays))
+	for _, day := range weekdays {
+		switch day {
+		case "MO", "TU", "WE", "TH", "FR", "SA", "SU":
+		default:
+			return fmt.Errorf("invalid recurrence weekday %q", day)
+		}
+		if _, ok := seen[day]; ok {
+			return fmt.Errorf("recurrence weekday %q is duplicated", day)
+		}
+		seen[day] = struct{}{}
+	}
+	return nil
+}
+
 func newSchedulesCreateCommand(loader CloudConfigLoader) *cobra.Command {
 	opts := &schedulesCreateOpts{}
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a k6 schedule from a file.",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
-			if opts.LoadTestID == 0 {
-				return errors.New("--load-test-id is required")
+			if opts.LoadTestID <= 0 {
+				return errors.New("--load-test-id must be a positive integer")
 			}
 			if opts.File == "" {
 				return errors.New("--filename/-f is required")
 			}
-			ctx := cmd.Context()
-			client, _, err := authenticatedClient(ctx, loader)
-			if err != nil {
-				return err
-			}
-
 			data, err := readFileOrStdin(cmd, opts.File)
 			if err != nil {
 				return fmt.Errorf("failed to read file: %w", err)
@@ -1537,6 +1680,15 @@ func newSchedulesCreateCommand(loader CloudConfigLoader) *cobra.Command {
 			var req ScheduleRequest
 			if err := decodeYAMLOrJSON(data, &req); err != nil {
 				return fmt.Errorf("failed to parse input: %w", err)
+			}
+			if err := validateScheduleRequest(req); err != nil {
+				return err
+			}
+
+			ctx := cmd.Context()
+			client, _, err := authenticatedClient(ctx, loader)
+			if err != nil {
+				return err
 			}
 
 			schedule, err := client.CreateSchedule(ctx, opts.LoadTestID, req)
@@ -1580,11 +1732,7 @@ func newSchedulesUpdateCommand(loader CloudConfigLoader) *cobra.Command {
 				return errors.New("--filename/-f is required")
 			}
 			ctx := cmd.Context()
-			id, err := strconv.Atoi(args[0])
-			if err != nil {
-				return fmt.Errorf("invalid schedule ID: %w", err)
-			}
-			client, _, err := authenticatedClient(ctx, loader)
+			id, err := parsePositiveID(args[0], "schedule")
 			if err != nil {
 				return err
 			}
@@ -1596,6 +1744,14 @@ func newSchedulesUpdateCommand(loader CloudConfigLoader) *cobra.Command {
 			var req ScheduleRequest
 			if err := decodeYAMLOrJSON(data, &req); err != nil {
 				return fmt.Errorf("failed to parse input: %w", err)
+			}
+			if err := validateScheduleRequest(req); err != nil {
+				return err
+			}
+
+			client, _, err := authenticatedClient(ctx, loader)
+			if err != nil {
+				return err
 			}
 
 			if _, err := client.UpdateScheduleByID(ctx, id, req); err != nil {
@@ -1840,7 +1996,7 @@ func (o *allowedProjectsListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func newListAllowedProjectsCommand(loader CloudConfigLoader) *cobra.Command { //nolint:dupl // Structurally similar to newListAllowedLoadZonesCommand but different API calls.
+func newListAllowedProjectsCommand(loader CloudConfigLoader) *cobra.Command {
 	opts := &allowedProjectsListOpts{}
 	cmd := &cobra.Command{
 		Use:   "list-allowed-projects <load-zone-id>",
@@ -1974,7 +2130,7 @@ func (o *allowedLoadZonesListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func newListAllowedLoadZonesCommand(loader CloudConfigLoader) *cobra.Command { //nolint:dupl // Structurally similar to newListAllowedProjectsCommand but different API calls.
+func newListAllowedLoadZonesCommand(loader CloudConfigLoader) *cobra.Command {
 	opts := &allowedLoadZonesListOpts{}
 	cmd := &cobra.Command{
 		Use:   "list-allowed-load-zones <project-id>",

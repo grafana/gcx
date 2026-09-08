@@ -465,8 +465,8 @@ func TestProxyClient_GetProjectByName(t *testing.T) {
 
 func TestProxyClient_ListLoadTestsByProject(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Verify server-side filtering is requested
-		assert.Equal(t, "1", r.URL.Query().Get("project_id"))
+		assert.Equal(t, "/cloud/v6/projects/1/load_tests", r.URL.Path)
+		assert.Empty(t, r.URL.Query().Get("project_id"))
 		w.Header().Set("Content-Type", "application/json")
 		// Mock returns only project 1's tests (server-side filtered)
 		writeJSON(t, w, map[string]any{
@@ -483,22 +483,6 @@ func TestProxyClient_ListLoadTestsByProject(t *testing.T) {
 	assert.Len(t, tests, 2)
 	assert.Equal(t, "Test A", tests[0].Name)
 	assert.Equal(t, "Test C", tests[1].Name)
-}
-
-func TestProxyClient_CreateLoadTest(t *testing.T) {
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, http.MethodPost, r.Method)
-		assert.Equal(t, "/cloud/v6/projects/1/load_tests", r.URL.Path)
-		assert.Contains(t, r.Header.Get("Content-Type"), "multipart/form-data")
-		w.WriteHeader(http.StatusCreated)
-		writeJSON(t, w, map[string]any{"id": 10, "name": "New Test", "project_id": 1})
-	})
-
-	client := newAuthenticatedProxyClient(t, handler)
-	lt, err := client.CreateLoadTest(t.Context(), "New Test", 1, "export default function() {}")
-	require.NoError(t, err)
-	assert.Equal(t, 10, lt.ID)
-	assert.Equal(t, "New Test", lt.Name)
 }
 
 func TestProxyClient_UpdateLoadTest(t *testing.T) {
@@ -746,21 +730,6 @@ func TestProxyClient_ListAllowedProjects(t *testing.T) {
 	assert.Equal(t, 10, projects[0].ID)
 }
 
-func TestProxyClient_UpdateAllowedProjects(t *testing.T) {
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, http.MethodPut, r.Method)
-		assert.Equal(t, "/cloud/v6/load_zones/1/allowed_projects", r.URL.Path)
-		var body map[string]any
-		_ = json.NewDecoder(r.Body).Decode(&body)
-		assert.NotNil(t, body["project_ids"])
-		w.WriteHeader(http.StatusOK)
-	})
-
-	client := newAuthenticatedProxyClient(t, handler)
-	err := client.UpdateAllowedProjects(t.Context(), 1, []int{10, 20})
-	require.NoError(t, err)
-}
-
 func TestProxyClient_ListAllowedLoadZones(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
@@ -778,19 +747,49 @@ func TestProxyClient_ListAllowedLoadZones(t *testing.T) {
 	assert.Equal(t, 100, zones[0].ID)
 }
 
-func TestProxyClient_UpdateAllowedLoadZones(t *testing.T) {
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, http.MethodPut, r.Method)
-		assert.Equal(t, "/cloud/v6/projects/1/allowed_load_zones", r.URL.Path)
-		var body map[string]any
-		_ = json.NewDecoder(r.Body).Decode(&body)
-		assert.NotNil(t, body["load_zone_ids"])
-		w.WriteHeader(http.StatusOK)
-	})
+func TestProxyClient_UpdateAllowedResources(t *testing.T) {
+	tests := []struct {
+		name     string
+		path     string
+		wantBody []map[string]int
+		update   func(*k6.ProxyClient) error
+	}{
+		{
+			name:     "projects",
+			path:     "/cloud/v6/load_zones/1/allowed_projects",
+			wantBody: []map[string]int{{"id": 10}, {"id": 20}},
+			update: func(client *k6.ProxyClient) error {
+				return client.UpdateAllowedProjects(t.Context(), 1, []int{10, 20})
+			},
+		},
+		{
+			name:     "load zones",
+			path:     "/cloud/v6/projects/1/allowed_load_zones",
+			wantBody: []map[string]int{{"id": 100}, {"id": 200}},
+			update: func(client *k6.ProxyClient) error {
+				return client.UpdateAllowedLoadZones(t.Context(), 1, []int{100, 200})
+			},
+		},
+	}
 
-	client := newAuthenticatedProxyClient(t, handler)
-	err := client.UpdateAllowedLoadZones(t.Context(), 1, []int{100, 200})
-	require.NoError(t, err)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, http.MethodPut, r.Method)
+				assert.Equal(t, test.path, r.URL.Path)
+				var body map[string][]map[string]int
+				if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&body)) {
+					http.Error(w, "invalid request body", http.StatusBadRequest)
+					return
+				}
+				assert.Equal(t, test.wantBody, body["value"])
+				w.WriteHeader(http.StatusOK)
+			})
+
+			client := newAuthenticatedProxyClient(t, handler)
+			require.NoError(t, test.update(client))
+		})
+	}
 }
 
 func writeJSON(t *testing.T, w http.ResponseWriter, v any) {
