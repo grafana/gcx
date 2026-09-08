@@ -45,6 +45,10 @@ const (
 // measurements leg only (web omits it).
 const mobileMeasurementFilter = ` AND measurementType NOT IN ('app_memory', 'app_cpu_usage')`
 
+// pinotEventsMetadataSQL reads session envelope fields from the events table.
+// session_resume is the same session ID after a reload. Device fields are
+// flattened there as attributesJson.device_* (measurements attributesJson is
+// per-event and does not store Faro session attributes).
 const pinotEventsMetadataSQL = `SET useMultistageEngine = true;
 SELECT
   FIRSTWITHTIME(appName, "timestamp", 'STRING') FILTER (WHERE appName <> '' AND appName <> 'null') AS app_name,
@@ -54,9 +58,12 @@ SELECT
   FIRSTWITHTIME(browserOs, "timestamp", 'STRING') FILTER (WHERE browserOs <> '' AND browserOs <> 'null') AS browser_os,
   FIRSTWITHTIME(geoCountryCode, "timestamp", 'STRING') FILTER (WHERE geoCountryCode <> '' AND geoCountryCode <> 'null') AS geo_country_iso,
   FIRSTWITHTIME(geoCity, "timestamp", 'STRING') FILTER (WHERE geoCity <> '' AND geoCity <> 'null') AS geo_city,
-  min("timestamp") FILTER (WHERE eventName = 'session_start') AS session_start,
+  min("timestamp") FILTER (WHERE eventName IN ('session_start', 'session_resume')) AS session_start,
   max("timestamp") AS session_last_event,
-  min("timestamp") FILTER (WHERE eventName = 'faro.session_recording.started') AS session_replay_start
+  min("timestamp") FILTER (WHERE eventName = 'faro.session_recording.started') AS session_replay_start,
+  FIRSTWITHTIME("attributesJson.device_model", "timestamp", 'STRING') FILTER (WHERE "attributesJson.device_model" <> '' AND "attributesJson.device_model" <> 'null') AS device_model_name,
+  FIRSTWITHTIME("attributesJson.device_manufacturer", "timestamp", 'STRING') FILTER (WHERE "attributesJson.device_manufacturer" <> '' AND "attributesJson.device_manufacturer" <> 'null') AS device_manufacturer,
+  FIRSTWITHTIME("attributesJson.device_brand", "timestamp", 'STRING') FILTER (WHERE "attributesJson.device_brand" <> '' AND "attributesJson.device_brand" <> 'null') AS device_brand
 FROM {{EVENTS_TABLE}}
 WHERE appId = {{APP_ID}}
   AND sessionId = '{{SESSION_ID}}'
@@ -71,10 +78,7 @@ SELECT
   FIRSTWITHTIME(sdkName, "timestamp", 'STRING') FILTER (WHERE sdkName <> '' AND sdkName <> 'null') AS sdk_name,
   FIRSTWITHTIME(sdkVersion, "timestamp", 'STRING') FILTER (WHERE sdkVersion <> '' AND sdkVersion <> 'null') AS sdk_version,
   FIRSTWITHTIME(osName, "timestamp", 'STRING') FILTER (WHERE osName <> '' AND osName <> 'null') AS os_name,
-  FIRSTWITHTIME(osVersion, "timestamp", 'STRING') FILTER (WHERE osVersion <> '' AND osVersion <> 'null') AS os_version,
-  FIRSTWITHTIME(JSON_EXTRACT_SCALAR(attributesJson, '$[''device_model_name'']', 'STRING', ''), "timestamp", 'STRING') FILTER (WHERE JSON_EXTRACT_SCALAR(attributesJson, '$[''device_model_name'']', 'STRING', '') <> '') AS device_model_name,
-  FIRSTWITHTIME(JSON_EXTRACT_SCALAR(attributesJson, '$[''device_manufacturer'']', 'STRING', ''), "timestamp", 'STRING') FILTER (WHERE JSON_EXTRACT_SCALAR(attributesJson, '$[''device_manufacturer'']', 'STRING', '') <> '') AS device_manufacturer,
-  FIRSTWITHTIME(JSON_EXTRACT_SCALAR(attributesJson, '$[''device_brand'']', 'STRING', ''), "timestamp", 'STRING') FILTER (WHERE JSON_EXTRACT_SCALAR(attributesJson, '$[''device_brand'']', 'STRING', '') <> '') AS device_brand
+  FIRSTWITHTIME(osVersion, "timestamp", 'STRING') FILTER (WHERE osVersion <> '' AND osVersion <> 'null') AS os_version
 FROM faro_pinot_measurements_v1
 WHERE appId = {{APP_ID}}
   AND sessionId = '{{SESSION_ID}}'
