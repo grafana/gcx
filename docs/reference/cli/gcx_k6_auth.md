@@ -24,4 +24,5 @@ k6 authentication commands.
 
 * [gcx k6](gcx_k6.md)	 - Manage Grafana k6 Cloud projects, load tests, and schedules
 * [gcx k6 auth token](gcx_k6_auth_token.md)	 - Print the authenticated k6 API token.
+* [gcx k6 auth validate](gcx_k6_auth_validate.md)	 - Validate k6 Cloud access for the selected stack.
 

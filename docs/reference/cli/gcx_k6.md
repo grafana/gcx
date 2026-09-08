@@ -25,8 +25,11 @@ Manage Grafana k6 Cloud projects, load tests, and schedules
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
 * [gcx k6 auth](gcx_k6_auth.md)	 - k6 authentication commands.
 * [gcx k6 env-vars](gcx_k6_env-vars.md)	 - Manage k6 Cloud environment variables.
+* [gcx k6 label-keys](gcx_k6_label-keys.md)	 - Manage k6 Cloud label keys.
 * [gcx k6 load-tests](gcx_k6_load-tests.md)	 - Manage k6 Cloud load tests.
 * [gcx k6 load-zones](gcx_k6_load-zones.md)	 - Manage k6 private load zones.
+* [gcx k6 options](gcx_k6_options.md)	 - Work with k6 Cloud test options.
+* [gcx k6 project-limits](gcx_k6_project-limits.md)	 - Inspect k6 Cloud project limits.
 * [gcx k6 projects](gcx_k6_projects.md)	 - Manage k6 Cloud projects.
 * [gcx k6 runs](gcx_k6_runs.md)	 - Manage k6 test runs.
 * [gcx k6 schedules](gcx_k6_schedules.md)	 - Manage k6 Cloud schedules.

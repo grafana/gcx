@@ -1,13 +1,11 @@
 package k6
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"mime/multipart"
 	"net/http"
 	"net/url"
 	"strings"
@@ -33,9 +31,16 @@ const (
 // ProxyClient is an HTTP client for the k6 Cloud API.
 // It routes every k6 API call through the grafana-k6-app plugin proxy.
 type ProxyClient struct {
-	host      string
-	proxyBase string
-	http      *http.Client
+	*cloudOperations
+
+	host string
+	http *http.Client
+
+	stackURL   string
+	stackID    int
+	apiDomain  string
+	logsDomain string
+	directHTTP *http.Client
 
 	mu          sync.Mutex
 	cachedToken string // memoized result of /v3/account/me
@@ -48,16 +53,39 @@ type ProxyClient struct {
 // RefreshTransport, so the OAuth bearer is injected (and refreshed before
 // expiry) on every request.
 func NewProxyClient(ctx context.Context, host string, authClient *http.Client) *ProxyClient {
+	return newProxyClient(ctx, host, host, 0, DefaultAPIDomain, authClient, nil)
+}
+
+func newProxyClient(
+	ctx context.Context,
+	host string,
+	stackURL string,
+	stackID int,
+	apiDomain string,
+	authClient *http.Client,
+	directHTTP *http.Client,
+) *ProxyClient {
 	if authClient == nil {
 		authClient = httputils.NewDefaultClient(ctx)
 	}
-	base := strings.TrimRight(host, "/")
-	return &ProxyClient{
-		host:      base,
-		proxyBase: base + pluginProxyBasePath,
-		http:      authClient,
+	if directHTTP == nil {
+		directHTTP = httputils.NewDefaultClient(ctx)
 	}
+	base := strings.TrimRight(host, "/")
+	client := &ProxyClient{
+		host:       base,
+		http:       authClient,
+		stackURL:   strings.TrimRight(strings.TrimSpace(stackURL), "/"),
+		stackID:    stackID,
+		apiDomain:  normalizeAPIDomain(apiDomain),
+		logsDomain: defaultLogsDomain,
+		directHTTP: directHTTP,
+	}
+	client.cloudOperations = &cloudOperations{executor: client}
+	return client
 }
+
+func (c *ProxyClient) selectedStackID() int { return c.stackID }
 
 // orgID hits /organization on the plugin to discover the k6 organization ID
 // for legacy APIs. The result is memoised for the life of the client.
@@ -78,17 +106,19 @@ func (c *ProxyClient) orgID(ctx context.Context) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("k6: fetch org id: %w", err)
 	}
-	defer resp.Body.Close()
+	response, err := readCloudResponse(resp)
+	if err != nil {
+		return 0, fmt.Errorf("k6: read organization response: %w", err)
+	}
 
-	if resp.StatusCode >= 400 {
-		respBody, _ := io.ReadAll(resp.Body)
-		return 0, fmt.Errorf("k6: identity discovery failed (GET %s, status %d): %s", url, resp.StatusCode, string(respBody))
+	if response.StatusCode >= 400 {
+		return 0, fmt.Errorf("k6: identity discovery failed (GET %s, status %d): %s", url, response.StatusCode, string(response.Body))
 	}
 
 	var orgResp struct {
 		OrganizationID int `json:"organization_id"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&orgResp); err != nil {
+	if err := json.Unmarshal(response.Body, &orgResp); err != nil {
 		return 0, fmt.Errorf("k6: decode organization response: %w", err)
 	}
 	c.cachedOrgID = orgResp.OrganizationID
@@ -99,9 +129,10 @@ func (c *ProxyClient) orgID(ctx context.Context) (int, error) {
 // /v3/account/me through the proxy and memoised for the life of the client.
 func (c *ProxyClient) Token(ctx context.Context) (string, error) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.cachedToken != "" {
-		return c.cachedToken, nil
+	cached := c.cachedToken
+	c.mu.Unlock()
+	if cached != "" {
+		return cached, nil
 	}
 
 	resp, err := c.doJSON(ctx, http.MethodGet, "/v3/account/me", nil)
@@ -126,8 +157,21 @@ func (c *ProxyClient) Token(ctx context.Context) (string, error) {
 	if me.Token.Key == "" {
 		return "", errors.New("k6: /v3/account/me returned empty token.key")
 	}
-	c.cachedToken = me.Token.Key
-	return c.cachedToken, nil
+	c.mu.Lock()
+	if c.cachedToken == "" {
+		c.cachedToken = me.Token.Key
+	}
+	cached = c.cachedToken
+	c.mu.Unlock()
+	return cached, nil
+}
+
+func (c *ProxyClient) invalidateToken(token string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.cachedToken == token {
+		c.cachedToken = ""
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -135,20 +179,27 @@ func (c *ProxyClient) Token(ctx context.Context) (string, error) {
 // ---------------------------------------------------------------------------
 
 func (c *ProxyClient) doJSON(ctx context.Context, method, path string, body any) (*http.Response, error) {
-	var bodyReader io.Reader
+	var bodyBytes []byte
 	if body != nil {
 		b, err := json.Marshal(body)
 		if err != nil {
 			return nil, fmt.Errorf("k6: marshal request body: %w", err)
 		}
-		bodyReader = bytes.NewReader(b)
+		bodyBytes = b
 	}
-	req, err := http.NewRequestWithContext(ctx, method, c.proxyBase+path, bodyReader)
+	response, err := c.doCloud(ctx, cloudRequest{
+		Target:      cloudTargetCloud,
+		Auth:        cloudAuthConfigured,
+		Method:      method,
+		Path:        path,
+		Body:        bodyBytes,
+		ContentType: "application/json",
+		Accept:      "application/json",
+	})
 	if err != nil {
-		return nil, fmt.Errorf("k6: create request: %w", err)
+		return nil, err
 	}
-	req.Header.Set("Content-Type", "application/json")
-	return c.http.Do(req)
+	return asHTTPResponse(response), nil
 }
 
 func decodeJSON[T any](resp *http.Response) (T, error) {
@@ -170,26 +221,26 @@ func readErrorBody(resp *http.Response) string {
 // doRaw performs a raw HTTP request through the plugin proxy.
 // Used for multipart/form-data and application/octet-stream requests.
 func (c *ProxyClient) doRaw(ctx context.Context, method, path, contentType string, body io.Reader) (int, []byte, error) {
-	req, err := http.NewRequestWithContext(ctx, method, c.proxyBase+path, body)
-	if err != nil {
-		return 0, nil, fmt.Errorf("k6: create raw request: %w", err)
+	var bodyBytes []byte
+	if body != nil {
+		buffered, err := io.ReadAll(body)
+		if err != nil {
+			return 0, nil, fmt.Errorf("k6: buffer raw request body: %w", err)
+		}
+		bodyBytes = buffered
 	}
-	if contentType != "" {
-		req.Header.Set("Content-Type", contentType)
-	}
-
-	resp, err := c.http.Do(req)
+	response, err := c.doCloud(ctx, cloudRequest{
+		Target:      cloudTargetCloud,
+		Auth:        cloudAuthConfigured,
+		Method:      method,
+		Path:        path,
+		Body:        bodyBytes,
+		ContentType: contentType,
+	})
 	if err != nil {
 		return 0, nil, fmt.Errorf("k6: raw request: %w", err)
 	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return 0, nil, fmt.Errorf("k6: read raw response: %w", err)
-	}
-
-	return resp.StatusCode, respBody, nil
+	return response.StatusCode, response.Body, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -306,78 +357,6 @@ func (c *ProxyClient) GetProjectByName(ctx context.Context, name string) (*Proje
 // Load Tests
 // ---------------------------------------------------------------------------
 
-// ListLoadTestsByProject retrieves load tests filtered by project ID.
-// Uses the server-side project_id query parameter to avoid fetching all tests.
-func (c *ProxyClient) ListLoadTestsByProject(ctx context.Context, projectID int) ([]LoadTest, error) {
-	path := fmt.Sprintf(loadTestsPath+"?project_id=%d", projectID)
-	return c.listLoadTests(ctx, path, 0)
-}
-
-// ListLoadTests retrieves all load tests across all projects, handling pagination.
-func (c *ProxyClient) ListLoadTests(ctx context.Context) ([]LoadTest, error) {
-	return c.listLoadTests(ctx, loadTestsPath, 0)
-}
-
-// ListLoadTestsWithLimit retrieves load tests with a server-side limit on the
-// number of results. Pass 0 for no limit (fetches all).
-func (c *ProxyClient) ListLoadTestsWithLimit(ctx context.Context, limit int) ([]LoadTest, error) {
-	return c.listLoadTests(ctx, loadTestsPath, limit)
-}
-
-// listLoadTests fetches load tests from the given path, paginating through all pages.
-// The k6 v6 API uses OData-style pagination with $skip/$top parameters and @count.
-// If limit > 0, at most limit items are fetched by setting $top accordingly.
-func (c *ProxyClient) listLoadTests(ctx context.Context, path string, limit int) ([]LoadTest, error) {
-	const defaultPageSize = 100
-	var all []LoadTest
-
-	for {
-		pageSize := defaultPageSize
-		if limit > 0 {
-			if remaining := limit - len(all); remaining < pageSize {
-				pageSize = remaining
-			}
-		}
-
-		sep := "?"
-		if strings.Contains(path, "?") {
-			sep = "&"
-		}
-		pagePath := fmt.Sprintf("%s%s$skip=%d&$top=%d", path, sep, len(all), pageSize)
-
-		resp, err := c.doJSON(ctx, http.MethodGet, pagePath, nil)
-		if err != nil {
-			return nil, fmt.Errorf("k6: list load tests: %w", err)
-		}
-
-		if resp.StatusCode >= 400 {
-			body := readErrorBody(resp)
-			resp.Body.Close()
-			return nil, fmt.Errorf("k6: list load tests: status %d: %s", resp.StatusCode, body)
-		}
-
-		result, err := decodeJSON[loadTestsResponse](resp)
-		resp.Body.Close()
-		if err != nil {
-			return nil, err
-		}
-
-		all = append(all, result.Value...)
-
-		// Stop if limit reached.
-		if limit > 0 && len(all) >= limit {
-			all = all[:limit]
-			break
-		}
-
-		// Stop if we got fewer results than page size or have fetched all (per @count).
-		if len(result.Value) < pageSize || (result.Count > 0 && len(all) >= result.Count) {
-			break
-		}
-	}
-	return all, nil
-}
-
 // GetLoadTest retrieves a single load test by ID.
 func (c *ProxyClient) GetLoadTest(ctx context.Context, id int) (*LoadTest, error) {
 	resp, err := c.doJSON(ctx, http.MethodGet, fmt.Sprintf(loadTestsPath+"/%d", id), nil)
@@ -412,42 +391,6 @@ func (c *ProxyClient) DeleteLoadTest(ctx context.Context, id int) error {
 		return fmt.Errorf("k6: delete load test %d: status %d: %s", id, resp.StatusCode, readErrorBody(resp))
 	}
 	return nil
-}
-
-// CreateLoadTest creates a new load test via multipart/form-data upload.
-//
-//nolint:dupl // identical multipart construction; ProxyClient and DirectClient are parallel implementations
-func (c *ProxyClient) CreateLoadTest(ctx context.Context, name string, projectID int, script string) (*LoadTest, error) {
-	var buf bytes.Buffer
-	writer := multipart.NewWriter(&buf)
-	if err := writer.WriteField("name", name); err != nil {
-		return nil, fmt.Errorf("k6: write name field: %w", err)
-	}
-	part, err := writer.CreateFormFile("script", "script.js")
-	if err != nil {
-		return nil, fmt.Errorf("k6: create script form file: %w", err)
-	}
-	if _, err := io.WriteString(part, script); err != nil {
-		return nil, fmt.Errorf("k6: write script content: %w", err)
-	}
-	if err := writer.Close(); err != nil {
-		return nil, fmt.Errorf("k6: close multipart writer: %w", err)
-	}
-
-	path := fmt.Sprintf(projectsPath+"/%d/load_tests", projectID)
-	status, respBody, err := c.doRaw(ctx, http.MethodPost, path, writer.FormDataContentType(), &buf)
-	if err != nil {
-		return nil, fmt.Errorf("k6: create load test: %w", err)
-	}
-	if status != http.StatusCreated && status != http.StatusOK {
-		return nil, fmt.Errorf("k6: create load test: status %d: %s", status, string(respBody))
-	}
-
-	var lt LoadTest
-	if err := json.Unmarshal(respBody, &lt); err != nil {
-		return nil, fmt.Errorf("k6: decode created load test: %w", err)
-	}
-	return &lt, nil
 }
 
 // UpdateLoadTest updates an existing load test's metadata and optionally its script.
@@ -783,86 +726,6 @@ func (c *ProxyClient) DeleteLoadZone(ctx context.Context, name string) error {
 
 	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusNotFound {
 		return fmt.Errorf("k6: delete load zone %q: status %d: %s", name, resp.StatusCode, readErrorBody(resp))
-	}
-	return nil
-}
-
-// ---------------------------------------------------------------------------
-// Allowed Projects / Load Zones
-// ---------------------------------------------------------------------------
-
-// ListAllowedProjects lists the projects allowed to use a load zone.
-func (c *ProxyClient) ListAllowedProjects(ctx context.Context, loadZoneID int) ([]AllowedProject, error) {
-	path := fmt.Sprintf(loadZonesPath+"/%d/allowed_projects", loadZoneID)
-	resp, err := c.doJSON(ctx, http.MethodGet, path, nil)
-	if err != nil {
-		return nil, fmt.Errorf("k6: list allowed projects: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("k6: list allowed projects: status %d: %s", resp.StatusCode, readErrorBody(resp))
-	}
-
-	result, err := decodeJSON[allowedProjectsResponse](resp)
-	if err != nil {
-		return nil, err
-	}
-	return result.Value, nil
-}
-
-// UpdateAllowedProjects sets the projects allowed to use a load zone.
-func (c *ProxyClient) UpdateAllowedProjects(ctx context.Context, loadZoneID int, projectIDs []int) error {
-	path := fmt.Sprintf(loadZonesPath+"/%d/allowed_projects", loadZoneID)
-	body := struct {
-		ProjectIDs []int `json:"project_ids"`
-	}{ProjectIDs: projectIDs}
-	resp, err := c.doJSON(ctx, http.MethodPut, path, body)
-	if err != nil {
-		return fmt.Errorf("k6: update allowed projects: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		return fmt.Errorf("k6: update allowed projects: status %d: %s", resp.StatusCode, readErrorBody(resp))
-	}
-	return nil
-}
-
-// ListAllowedLoadZones lists the load zones allowed for a project.
-func (c *ProxyClient) ListAllowedLoadZones(ctx context.Context, projectID int) ([]AllowedLoadZone, error) {
-	path := fmt.Sprintf(projectsPath+"/%d/allowed_load_zones", projectID)
-	resp, err := c.doJSON(ctx, http.MethodGet, path, nil)
-	if err != nil {
-		return nil, fmt.Errorf("k6: list allowed load zones: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("k6: list allowed load zones: status %d: %s", resp.StatusCode, readErrorBody(resp))
-	}
-
-	result, err := decodeJSON[allowedLoadZonesResponse](resp)
-	if err != nil {
-		return nil, err
-	}
-	return result.Value, nil
-}
-
-// UpdateAllowedLoadZones sets the load zones allowed for a project.
-func (c *ProxyClient) UpdateAllowedLoadZones(ctx context.Context, projectID int, loadZoneIDs []int) error {
-	path := fmt.Sprintf(projectsPath+"/%d/allowed_load_zones", projectID)
-	body := struct {
-		LoadZoneIDs []int `json:"load_zone_ids"`
-	}{LoadZoneIDs: loadZoneIDs}
-	resp, err := c.doJSON(ctx, http.MethodPut, path, body)
-	if err != nil {
-		return fmt.Errorf("k6: update allowed load zones: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		return fmt.Errorf("k6: update allowed load zones: status %d: %s", resp.StatusCode, readErrorBody(resp))
 	}
 	return nil
 }

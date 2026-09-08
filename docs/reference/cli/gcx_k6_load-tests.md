@@ -27,7 +27,13 @@ Manage k6 Cloud load tests.
 * [gcx k6 load-tests delete](gcx_k6_load-tests_delete.md)	 - Delete a k6 load test.
 * [gcx k6 load-tests delete-schedule](gcx_k6_load-tests_delete-schedule.md)	 - Delete the schedule for a k6 load test.
 * [gcx k6 load-tests get](gcx_k6_load-tests_get.md)	 - Get a single k6 load test by ID or name.
+* [gcx k6 load-tests get-schedule](gcx_k6_load-tests_get-schedule.md)	 - Get the schedule for a k6 load test.
+* [gcx k6 load-tests get-script](gcx_k6_load-tests_get-script.md)	 - Download a k6 load-test script.
 * [gcx k6 load-tests list](gcx_k6_load-tests_list.md)	 - List k6 Cloud load tests.
+* [gcx k6 load-tests list-metrics](gcx_k6_load-tests_list-metrics.md)	 - List metric metadata across k6 test runs.
+* [gcx k6 load-tests move](gcx_k6_load-tests_move.md)	 - Move a k6 load test to another project.
+* [gcx k6 load-tests query](gcx_k6_load-tests_query.md)	 - Query aggregate metric values across k6 test runs.
+* [gcx k6 load-tests start](gcx_k6_load-tests_start.md)	 - Start a saved k6 Cloud load test.
 * [gcx k6 load-tests update](gcx_k6_load-tests_update.md)	 - Update a k6 load test from a file.
 * [gcx k6 load-tests update-script](gcx_k6_load-tests_update-script.md)	 - Update the script of a k6 load test from a file.
 
