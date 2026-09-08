@@ -50,7 +50,6 @@ var limitStatementRe = regexp.MustCompile(`(?is)^\s*(SELECT|WITH)\b`)
 // would bind only the last UNION leg. EnforceLimit leaves these unchanged.
 var unionOrOffsetRe = regexp.MustCompile(`(?i)(\bUNION\b|\bLIMIT\s+\d+\s+OFFSET\b|\bOFFSET\s+\d+\b)`)
 
-
 // limitCommaRe matches Pinot's LIMIT offset, count form. The shared helper only
 // sees LIMIT n at end-of-statement, so without a bail it would append a second
 // LIMIT. The comma form already bounds the result; leave it as written.

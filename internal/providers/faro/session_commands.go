@@ -82,14 +82,14 @@ func newSessionsGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 		Long: `Fetch one Frontend Observability session and write it as plain text.
 
 Two labeled blocks are produced: session metadata (once) and events (the user
-journey). Without --save, Pinot metadata prints as tables and the journey as
-TSV; Loki metadata is named fields once (sdk, app, user, os, geo, browser,
-device, session_id, session_attr), and events are timestamp then the log line
-with those envelope keys stripped. --save writes Pinot TSV or the Loki stream.
-There is no JSON or YAML encoding of the dump.
+journey). Metadata is named fields once (sdk, app, user, os, geo, browser,
+device, session times), empty values omitted. Pinot events are TSV; Loki
+events are timestamp then the log line with those envelope keys stripped.
+--save writes that same dump. There is no JSON or YAML encoding of the dump.
 
 Use --save so agents receive a small artifact receipt on stdout and then read
-the file.
+the file. Pinot events use faro_pinot_events_v2 on grafana-ops hosts and
+faro_pinot_events_v1 everywhere else, matching Frontend Observability.
 
 -d/--datasource is the Grafana datasource UID (required). gcx fetches the
 datasource and infers Loki vs Pinot from its type. Each Loki query times out
@@ -99,7 +99,7 @@ window.
 Faro apps do not store web vs mobile on the app resource. Omit --app-type and
 gcx infers it from sdkName / osName on the session (so mobile journeys exclude
 app_memory / app_cpu_usage). Pass --app-type to override.`,
-		Example: `  # Pinot on stdout (metadata tables, journey TSV)
+		Example: `  # Pinot on stdout (metadata fields, journey TSV)
   gcx frontend sessions get 7TiMbCCvby --app 66 -d grafanacloud-pinot --since 7d
 
   # Pinot dump to a file; app type inferred from telemetry
@@ -159,6 +159,7 @@ app_memory / app_cpu_usage). Pass --app-type to override.`,
 				AppID:     appID,
 				SessionID: sessionID,
 				AppType:   opts.AppType,
+				ServerURL: cfg.GrafanaURL,
 			}
 
 			dsType, err := dsquery.GetDatasourceType(ctx, cfg, opts.Datasource)

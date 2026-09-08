@@ -148,16 +148,18 @@ func TestSessionsGetOptsValidateAgentRequiresSave(t *testing.T) {
 }
 
 type stubPinot struct {
-	mu      sync.Mutex
-	sqls    []string
-	sdkName string
-	osName  string
-	empty   bool
+	mu         sync.Mutex
+	sqls       []string
+	tableNames []string
+	sdkName    string
+	osName     string
+	empty      bool
 }
 
 func (s *stubPinot) Query(_ context.Context, _ string, req pinot.QueryRequest) (*querysql.QueryResponse, error) {
 	s.mu.Lock()
 	s.sqls = append(s.sqls, req.RawSQL)
+	s.tableNames = append(s.tableNames, req.TableName)
 	s.mu.Unlock()
 	if s.empty {
 		return &querysql.QueryResponse{
@@ -197,6 +199,28 @@ func TestFetchPinotSession(t *testing.T) {
 	assert.Contains(t, joined, "UNION ALL")
 	assert.NotContains(t, joined, "app_memory")
 	assert.NotContains(t, joined, "LIMIT")
+	assert.Contains(t, joined, pinotEventsTableDev)
+	assert.NotContains(t, joined, pinotEventsTableOps)
+	require.Len(t, stub.tableNames, 3)
+	assert.Equal(t, pinotEventsTableDev, stub.tableNames[2])
+}
+
+func TestFetchPinotSessionOpsEventsTable(t *testing.T) {
+	t.Parallel()
+	stub := &stubPinot{}
+	p := sessionQueryParams{
+		AppID:     "66",
+		SessionID: "sid",
+		AppType:   appTypeWeb,
+		ServerURL: "https://ops.grafana-ops.net",
+	}
+	_, err := fetchPinotSession(context.Background(), stub, "uid", p, time.Unix(0, 0), time.Unix(1, 0))
+	require.NoError(t, err)
+	joined := queryJoined(stub.sqls)
+	assert.Contains(t, joined, pinotEventsTableOps)
+	assert.NotContains(t, joined, pinotEventsTableDev)
+	require.Len(t, stub.tableNames, 3)
+	assert.Equal(t, pinotEventsTableOps, stub.tableNames[2])
 }
 
 func TestFetchPinotSessionMobile(t *testing.T) {
