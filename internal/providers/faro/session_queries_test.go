@@ -135,6 +135,7 @@ func TestPinotMetadataQueries(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, eventsSQL, "session_replay_start")
 	assert.Contains(t, eventsSQL, "session_last_event")
+	assert.Contains(t, eventsSQL, "FILTER (WHERE eventName = 'session_start')")
 	assert.Contains(t, eventsSQL, pinotEventsTableDev)
 	assert.Contains(t, userSQL, "faro_pinot_measurements_v1")
 	assert.Contains(t, userSQL, "userEmail")

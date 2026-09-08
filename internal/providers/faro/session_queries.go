@@ -46,7 +46,7 @@ SELECT
   FIRSTWITHTIME(browserOs, "timestamp", 'STRING') FILTER (WHERE browserOs <> '' AND browserOs <> 'null') AS browser_os,
   FIRSTWITHTIME(geoCountryCode, "timestamp", 'STRING') FILTER (WHERE geoCountryCode <> '' AND geoCountryCode <> 'null') AS geo_country_iso,
   FIRSTWITHTIME(geoCity, "timestamp", 'STRING') FILTER (WHERE geoCity <> '' AND geoCity <> 'null') AS geo_city,
-  min("timestamp") AS session_start,
+  min("timestamp") FILTER (WHERE eventName = 'session_start') AS session_start,
   max("timestamp") AS session_last_event,
   min("timestamp") FILTER (WHERE eventName = 'faro.session_recording.started') AS session_replay_start
 FROM {{EVENTS_TABLE}}
