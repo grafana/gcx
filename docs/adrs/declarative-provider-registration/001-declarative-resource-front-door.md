@@ -20,8 +20,8 @@ information to derive one.
 ## Decision
 
 Keep `TypedCRUD[T]`, `ResourceIdentity`, and `Provider.TypedRegistrations()`.
-Add `adapter.Resource[T]` as a declarative registration entry point. Expose
-OnCall's existing builder pattern as
+Add `adapter.Resource[T]` as a declarative registration entry point and migrate
+SLO definitions as its first consumer. Lift OnCall's existing builder into
 `adapter.BuildRegistration[T, C]` for clients whose methods do not match the
 capability interfaces. Remove the unused `TypedRegistration[T]`.
 
@@ -57,26 +57,26 @@ Unsupported operations return `errors.ErrUnsupported`. Dry-run create/update
 uses `Validator` when available; otherwise it skips the mutation and returns
 `ErrDryRunUnverified`. It must not report an unvalidated mutation as successful.
 
-### Metadata and migration plan
+### Metadata and SLO migration
 
 `AsAdapter()` derives its schema from the resource type and descriptor.
 Both builders carry examples through registration and adapter construction.
 Natural-key and deep-link metadata remain available to the generic resource
 pipeline.
 
-The dependent migration will move SLO's create/update-and-refetch behavior
-into its client methods.
+SLO's create/update-and-refetch behavior moves into its client methods.
 Provider commands and generic resource operations call those same methods.
 The existing command tree retains its `NewTypedCRUD` entry point; it and the
-declarative registration construct separate adapters. The migration will compare their resource output in tests. This preserves the CLI while removing duplicated mutation
+declarative registration construct separate adapters. Tests compare their
+resource output. This preserves the CLI while removing duplicated mutation
 logic, without adding command generation to this PR.
 
 ## Consequences and alternatives
 
 - New resource declarations derive common metadata and infer supported verbs.
   Existing providers can migrate independently.
-- Existing providers remain unchanged in the machinery PR. A dependent PR
-  migrates SLO to declarations and OnCall to the shared explicit builder.
+- OnCall retains explicit operation wiring through the shared builder; it is
+  not migrated to capability interfaces in this change.
 - A single interface requiring every CRUD verb would force read-only clients
   to implement unsupported methods, so separate capability interfaces are used.
 - Reflection-based resource tags would spread runtime dispatch beyond the

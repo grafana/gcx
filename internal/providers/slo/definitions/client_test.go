@@ -9,6 +9,7 @@ import (
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/slo/definitions"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/client-go/rest"
@@ -89,7 +90,7 @@ func TestClient_List(t *testing.T) {
 			defer server.Close()
 
 			client := newTestClient(t, server)
-			slos, err := client.List(t.Context())
+			slos, err := client.List(t.Context(), adapter.ListOptions{})
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -100,6 +101,24 @@ func TestClient_List(t *testing.T) {
 			assert.Len(t, slos, tt.wantSLOs)
 		})
 	}
+}
+
+func TestClient_List_Limit(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, definitions.SLOListResponse{
+			SLOs: []definitions.Slo{
+				{UUID: "uuid-1", Name: "SLO 1"},
+				{UUID: "uuid-2", Name: "SLO 2"},
+				{UUID: "uuid-3", Name: "SLO 3"},
+			},
+		})
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	slos, err := client.List(t.Context(), adapter.ListOptions{Limit: 2})
+	require.NoError(t, err)
+	assert.Len(t, slos, 2, "List must truncate client-side to opts.Limit")
 }
 
 func TestClient_Get(t *testing.T) {
@@ -154,6 +173,9 @@ func TestClient_Get(t *testing.T) {
 	}
 }
 
+// TestClient_Create exercises Create's create-then-refetch behavior: the
+// create endpoint only returns a UUID, so Create must re-fetch the full SLO
+// before returning it (FR-020).
 func TestClient_Create(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -163,30 +185,44 @@ func TestClient_Create(t *testing.T) {
 		wantUID string
 	}{
 		{
-			name: "success 202",
+			name: "success 202 then refetch",
 			slo:  &definitions.Slo{Name: "New SLO", Description: "A new SLO"},
 			handler: func(w http.ResponseWriter, r *http.Request) {
-				assert.Equal(t, http.MethodPost, r.Method)
-				assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+				switch r.Method {
+				case http.MethodPost:
+					assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
 
-				var received definitions.Slo
-				if err := json.NewDecoder(r.Body).Decode(&received); err != nil {
-					http.Error(w, err.Error(), http.StatusBadRequest)
-					return
+					var received definitions.Slo
+					if err := json.NewDecoder(r.Body).Decode(&received); err != nil {
+						http.Error(w, err.Error(), http.StatusBadRequest)
+						return
+					}
+					assert.Equal(t, "New SLO", received.Name)
+
+					w.WriteHeader(http.StatusAccepted)
+					writeJSON(w, definitions.SLOCreateResponse{UUID: "new-uuid", Message: "SLO created"})
+				case http.MethodGet:
+					assert.Equal(t, "/api/plugins/grafana-slo-app/resources/v1/slo/new-uuid", r.URL.Path)
+					writeJSON(w, definitions.Slo{UUID: "new-uuid", Name: "New SLO"})
+				default:
+					w.WriteHeader(http.StatusMethodNotAllowed)
 				}
-				assert.Equal(t, "New SLO", received.Name)
-
-				w.WriteHeader(http.StatusAccepted)
-				writeJSON(w, definitions.SLOCreateResponse{UUID: "new-uuid", Message: "SLO created"})
 			},
 			wantErr: false,
 			wantUID: "new-uuid",
 		},
 		{
-			name: "success 200",
+			name: "success 200 then refetch",
 			slo:  &definitions.Slo{Name: "New SLO", Description: "A new SLO"},
 			handler: func(w http.ResponseWriter, r *http.Request) {
-				writeJSON(w, definitions.SLOCreateResponse{UUID: "new-uuid-200", Message: "SLO created"})
+				switch r.Method {
+				case http.MethodPost:
+					writeJSON(w, definitions.SLOCreateResponse{UUID: "new-uuid-200", Message: "SLO created"})
+				case http.MethodGet:
+					writeJSON(w, definitions.Slo{UUID: "new-uuid-200", Name: "New SLO"})
+				default:
+					w.WriteHeader(http.StatusMethodNotAllowed)
+				}
 			},
 			wantErr: false,
 			wantUID: "new-uuid-200",
@@ -208,7 +244,7 @@ func TestClient_Create(t *testing.T) {
 			defer server.Close()
 
 			client := newTestClient(t, server)
-			resp, err := client.Create(t.Context(), tt.slo)
+			created, err := client.Create(t.Context(), tt.slo)
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -216,11 +252,14 @@ func TestClient_Create(t *testing.T) {
 			}
 
 			require.NoError(t, err)
-			assert.Equal(t, tt.wantUID, resp.UUID)
+			require.NotNil(t, created)
+			assert.Equal(t, tt.wantUID, created.UUID)
 		})
 	}
 }
 
+// TestClient_Update exercises Update's update-then-refetch behavior: Update
+// re-fetches the full SLO after the update request succeeds (FR-020).
 func TestClient_Update(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -230,23 +269,36 @@ func TestClient_Update(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name: "success 202",
+			name: "success 202 then refetch",
 			uuid: "uuid-1",
 			slo:  &definitions.Slo{Name: "Updated SLO"},
 			handler: func(w http.ResponseWriter, r *http.Request) {
-				assert.Equal(t, http.MethodPut, r.Method)
-				assert.Equal(t, "/api/plugins/grafana-slo-app/resources/v1/slo/uuid-1", r.URL.Path)
-				assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
-				w.WriteHeader(http.StatusAccepted)
+				switch r.Method {
+				case http.MethodPut:
+					assert.Equal(t, "/api/plugins/grafana-slo-app/resources/v1/slo/uuid-1", r.URL.Path)
+					assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+					w.WriteHeader(http.StatusAccepted)
+				case http.MethodGet:
+					writeJSON(w, definitions.Slo{UUID: "uuid-1", Name: "Updated SLO"})
+				default:
+					w.WriteHeader(http.StatusMethodNotAllowed)
+				}
 			},
 			wantErr: false,
 		},
 		{
-			name: "success 200",
+			name: "success 200 then refetch",
 			uuid: "uuid-1",
 			slo:  &definitions.Slo{Name: "Updated SLO"},
 			handler: func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(http.StatusOK)
+				switch r.Method {
+				case http.MethodPut:
+					w.WriteHeader(http.StatusOK)
+				case http.MethodGet:
+					writeJSON(w, definitions.Slo{UUID: "uuid-1", Name: "Updated SLO"})
+				default:
+					w.WriteHeader(http.StatusMethodNotAllowed)
+				}
 			},
 			wantErr: false,
 		},
@@ -268,7 +320,7 @@ func TestClient_Update(t *testing.T) {
 			defer server.Close()
 
 			client := newTestClient(t, server)
-			err := client.Update(t.Context(), tt.uuid, tt.slo)
+			updated, err := client.Update(t.Context(), tt.uuid, tt.slo)
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -276,6 +328,8 @@ func TestClient_Update(t *testing.T) {
 			}
 
 			require.NoError(t, err)
+			require.NotNil(t, updated)
+			assert.Equal(t, tt.uuid, updated.UUID)
 		})
 	}
 }
@@ -370,7 +424,7 @@ func TestClient_ErrorResponses(t *testing.T) {
 			defer server.Close()
 
 			client := newTestClient(t, server)
-			_, err := client.List(t.Context())
+			_, err := client.List(t.Context(), adapter.ListOptions{})
 
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.wantErrMsg)
