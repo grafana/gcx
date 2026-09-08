@@ -8,21 +8,28 @@ import (
 	"github.com/grafana/gcx/internal/style"
 )
 
-// Format names a table declaration is registered under.
+// Format names a table declaration is registered under. The narrow codec is
+// conventionally "table", but commands whose human default is a single record
+// register it as "text" instead.
 const (
 	FormatTable = "table"
 	FormatWide  = "wide"
+	FormatText  = "text"
 )
 
-// Visibility limits a column to a single output format. The zero value shows
-// the column in every format the table is registered under.
+// Visibility limits a column to the narrow or the wide rendering. The zero
+// value shows the column in both.
+//
+// Narrow is defined as "not wide" rather than by name, so a column does not
+// have to know whether its command registered the narrow codec as "table" or
+// as "text".
 type Visibility string
 
 const (
-	// VisibleAll is the zero value: the column appears in every format.
+	// VisibleAll is the zero value: the column appears in both renderings.
 	VisibleAll Visibility = ""
-	// TableOnly restricts the column to "table".
-	TableOnly Visibility = FormatTable
+	// NarrowOnly restricts the column to the narrow rendering.
+	NarrowOnly Visibility = "narrow"
 	// WideOnly restricts the column to "wide".
 	WideOnly Visibility = FormatWide
 )
@@ -30,8 +37,8 @@ const (
 // Column is one column of a Table. TableBuilder cells are strings, so Content
 // does the formatting for its own column.
 //
-// Two columns may share a Header when each is restricted to a different
-// format, which is how a column renders different content in table and wide.
+// Two columns may share a Header when one is NarrowOnly and the other
+// WideOnly, which is how a column renders different content in each.
 type Column[T any] struct {
 	Header string
 
@@ -41,7 +48,14 @@ type Column[T any] struct {
 }
 
 func (c Column[T]) visibleIn(name string) bool {
-	return c.Visible == VisibleAll || string(c.Visible) == name
+	switch c.Visible {
+	case WideOnly:
+		return name == FormatWide
+	case NarrowOnly:
+		return name != FormatWide
+	default:
+		return true
+	}
 }
 
 // Table declares how a []T renders. One declaration serves both "table" and
@@ -61,10 +75,15 @@ func (t Table[T]) Codec(name string) format.Codec { //nolint:ireturn // codec re
 	return &tableCodec[T]{name: name, table: t}
 }
 
-// RegisterTable registers t under "table", and additionally under "wide" when
-// some column is wide-only.
+// RegisterTable registers t with "table" as the narrow format name.
 func RegisterTable[T any](opts *Options, t Table[T]) {
-	opts.RegisterCustomCodec(FormatTable, t.Codec(FormatTable))
+	RegisterTableAs(opts, t, FormatTable)
+}
+
+// RegisterTableAs registers t under narrow, and additionally under "wide" when
+// some column is wide-only.
+func RegisterTableAs[T any](opts *Options, t Table[T], narrow string) {
+	opts.RegisterCustomCodec(narrow, t.Codec(narrow))
 
 	for _, c := range t.Columns {
 		if c.Visible == WideOnly {
