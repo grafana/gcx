@@ -26,8 +26,12 @@ Manage k6 Cloud projects.
 * [gcx k6 projects create](gcx_k6_projects_create.md)	 - Create a new k6 project from a file.
 * [gcx k6 projects delete](gcx_k6_projects_delete.md)	 - Delete a k6 project.
 * [gcx k6 projects get](gcx_k6_projects_get.md)	 - Get a single k6 project by ID or name.
+* [gcx k6 projects get-limits](gcx_k6_projects_get-limits.md)	 - Get limits for a k6 Cloud project.
 * [gcx k6 projects list](gcx_k6_projects_list.md)	 - List k6 Cloud projects.
 * [gcx k6 projects list-allowed-load-zones](gcx_k6_projects_list-allowed-load-zones.md)	 - List load zones allowed for a project.
+* [gcx k6 projects list-labels](gcx_k6_projects_list-labels.md)	 - List labels for a k6 Cloud project.
 * [gcx k6 projects update](gcx_k6_projects_update.md)	 - Update a k6 project.
 * [gcx k6 projects update-allowed-load-zones](gcx_k6_projects_update-allowed-load-zones.md)	 - Replace the set of load zones allowed for a project.
+* [gcx k6 projects update-labels](gcx_k6_projects_update-labels.md)	 - Replace all labels for a k6 Cloud project.
+* [gcx k6 projects update-limits](gcx_k6_projects_update-limits.md)	 - Update limits for a k6 Cloud project.
 

@@ -16,4 +16,6 @@ title: Reference
 
 - :material-currency-usd:{ .lg .middle } __[Costs and billing](./costs.md)__
 
+- :material-speedometer:{ .lg .middle } __[k6 Cloud API coverage](./k6-api-coverage.md)__
+
 </div>

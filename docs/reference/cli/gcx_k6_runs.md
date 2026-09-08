@@ -23,5 +23,19 @@ Manage k6 test runs.
 ### SEE ALSO
 
 * [gcx k6](gcx_k6.md)	 - Manage Grafana k6 Cloud projects, load tests, and schedules
+* [gcx k6 runs abort](gcx_k6_runs_abort.md)	 - Abort a running k6 Cloud test run.
+* [gcx k6 runs delete](gcx_k6_runs_delete.md)	 - Delete a k6 Cloud test run.
+* [gcx k6 runs get](gcx_k6_runs_get.md)	 - Get a k6 Cloud test run.
+* [gcx k6 runs get-distribution](gcx_k6_runs_get-distribution.md)	 - Get distribution details for a k6 Cloud test run.
+* [gcx k6 runs get-insights](gcx_k6_runs_get-insights.md)	 - Get Cloud Insights for a k6 test run.
+* [gcx k6 runs get-script](gcx_k6_runs_get-script.md)	 - Download the script for a k6 Cloud test run.
 * [gcx k6 runs list](gcx_k6_runs_list.md)	 - List test runs for a load test.
+* [gcx k6 runs list-labels](gcx_k6_runs_list-labels.md)	 - List metric label names or values for a k6 test run.
+* [gcx k6 runs list-logs](gcx_k6_runs_list-logs.md)	 - List logs for a k6 test run.
+* [gcx k6 runs list-metrics](gcx_k6_runs_list-metrics.md)	 - List metric metadata for a k6 test run.
+* [gcx k6 runs list-series](gcx_k6_runs_list-series.md)	 - List metric series for a k6 test run.
+* [gcx k6 runs query](gcx_k6_runs_query.md)	 - Query metric values for a k6 test run.
+* [gcx k6 runs star](gcx_k6_runs_star.md)	 - Star a k6 Cloud test run.
+* [gcx k6 runs unstar](gcx_k6_runs_unstar.md)	 - Unstar a k6 Cloud test run.
+* [gcx k6 runs update](gcx_k6_runs_update.md)	 - Update the note for a k6 Cloud test run.
 
