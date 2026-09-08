@@ -1,13 +1,15 @@
 package graph
 
 import (
-	"github.com/charmbracelet/lipgloss"
+	"image/color"
+
+	"charm.land/lipgloss/v2"
 	"github.com/grafana/gcx/internal/style"
 )
 
 // ColorForIndex returns the color for a given series index, cycling through
 // the Grafana chart palette.
-func ColorForIndex(idx int) lipgloss.Color {
+func ColorForIndex(idx int) color.Color {
 	return style.ChartPalette[idx%len(style.ChartPalette)]
 }
 
@@ -23,7 +25,7 @@ var (
 
 // ComplianceColor returns a color reflecting how close value is to target.
 // Both value and target are percentages (0–100).
-func ComplianceColor(value, target float64) lipgloss.Color {
+func ComplianceColor(value, target float64) color.Color {
 	if target <= 0 {
 		target = 100 // No target: grade against 100%
 	}

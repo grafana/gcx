@@ -1,483 +1,305 @@
-# Query Patterns
+# Metrics, logs, and dashboard query patterns
 
-Advanced patterns for querying Prometheus and Loki datasources with gcx.
+Use only the patterns that answer the next question. Commands below assume a
+confirmed context, datasource UIDs, and fixed UTC `FROM`/`TO` values. `api`,
+metric names, and labels are examples: substitute the schema you actually found.
 
-## Contents
+## Bounded discovery
 
-- [Datasource UID Resolution](#datasource-uid-resolution) - finding UIDs, setting defaults
-- [Prometheus Query Patterns](#prometheus-query-patterns) - instant vs range, time formats, step intervals
-- [Loki Query Patterns](#loki-query-patterns) - stream selectors, log metric queries
-- [Prometheus Datasource Operations](#prometheus-datasource-operations) - label/metadata discovery workflow
-- [Loki Datasource Operations](#loki-datasource-operations) - label/series discovery workflow
-- [Output Formats](#output-formats) - table, wide, JSON shapes, `--json` field selection
-- [Performance Tips](#performance-tips) - Loki series limits, distributed-request counting, indexed vs structured-metadata vs parsed labels
-- [Comparison Queries](#comparison-queries) - comparing now vs a past instant
-
-## Datasource UID Resolution
-
-**CRITICAL**: Always use datasource UID, never the name.
-
-### Finding Datasource UIDs
+Prefer supplied rule/panel queries and configured datasource references over
+inventories. If a metric name is unknown, scope server-side before filtering
+names; `--contains` and `--limit` alone do not bound backend discovery work.
 
 ```bash
-# List all datasources
-gcx datasources list
-
-# Filter by type
-gcx datasources list --type prometheus
-gcx datasources list --type loki
-
-# Get JSON for scripting
-DS_UID=$(gcx datasources list --type prometheus -o json 2>/dev/null | \
-  python3 -c "import json,sys; print(json.load(sys.stdin)['datasources'][0]['uid'])")
+gcx metrics list-names -d "$PROM_UID" --match '{job="api"}' --contains request --limit 20 -o json
+gcx metrics metadata -d "$PROM_UID" --metric http_requests_total -o json
+gcx metrics labels -d "$PROM_UID" --metric http_requests_total --match '{job="api"}' -o json
+gcx metrics labels -d "$PROM_UID" --metric http_requests_total --match '{job="api"}' --label status -o json
+# Inspect actual label combinations in the investigation interval.
+gcx metrics series -d "$PROM_UID" 'http_requests_total{job="api"}' \
+  --from "$FROM" --to "$TO" -o json
 ```
 
-### Setting Default Datasource
+Repeated `--match` selectors combine as a **union**, not intersection; put
+conditions in one selector for AND. Metadata/label discovery is not proof of
+data in the incident window. Series discovery can be large; specify a metric,
+relevant scope, and time bounds. Do not remove tenant/environment constraints
+to work around an empty result without explaining the changed scope.
 
-Avoid repeating the datasource UID argument:
+## Reuse dashboard and alert evidence
+
+Inspect a supplied dashboard immediately if it provides the relevant query.
+If discovery is necessary, search narrowly rather than pulling all dashboards:
 
 ```bash
-# Set default Prometheus datasource (current context)
-gcx config set contexts.<name>.datasources.prometheus <uid>
-
-# Set default Loki datasource
-gcx config set contexts.<name>.datasources.loki <uid>
-
-# Now queries work without specifying a UID
-gcx metrics query 'up'
-gcx logs query '{job="varlogs"}'
+gcx dashboards search <service-or-keyword> --limit 10 -o json
+gcx dashboards get <dashboard-uid> -o json
 ```
 
-## Prometheus Query Patterns
+Check the returned `apiVersion` and `spec` before extracting fields:
 
-### Instant Queries
+| Dashboard schema | Inspect |
+| --- | --- |
+| Legacy | `spec.panels` (including nested row panels), each panel's `targets`/`datasource`; variables in `spec.templating.list` |
+| Newer v2 | `spec.elements` map: Panel elements' `spec` contains panel ID/title and data query definitions; variables in `spec.variables` with kind-specific `spec` |
 
-Query current values, or at a specific point in time with `--time`:
+Do not treat absent `spec.panels` as an empty dashboard. Read the element's
+actual query kind and datasource references, including nested query specs,
+instead of assuming legacy `targets[].expr`. `gcx dashboards get --help` exposes
+`--api-version` if you need a specific server-supported version. Do not guess
+which versions the server serves.
+
+Resolve template variables, datasource variables, ad hoc filters, and macros
+such as `$__rate_interval` before reusing a query outside Grafana. Check query
+units and what boundary it measures: a panel title can misdescribe its query.
+Record the exact panel ID and variables in evidence links.
+
+Render only when visual state helps answer the question and the renderer is
+available. Pin incident times and relevant variables:
 
 ```bash
-# Current uptime for all targets
-gcx metrics query -d <uid> 'up'
-
-# CPU usage by job
-gcx metrics query -d <uid> 'avg by(job) (rate(cpu_usage_seconds[5m]))'
-
-# Memory usage with threshold
-gcx metrics query -d <uid> 'node_memory_MemAvailable_bytes < 1000000000'
-
-# Instant query at a specific timestamp (mutually exclusive with --from/--to/--since)
-gcx metrics query -d <uid> 'rate(http_requests_total[5m])' --time 2026-05-14T12:00:00Z
-gcx metrics query -d <uid> 'up' --time now-1h
+gcx dashboards snapshot <dashboard-uid> --panel <panel-id> \
+  --from "$FROM" --to "$TO" --var cluster=<cluster> --var job=api \
+  --output-dir ./debug-snapshots
 ```
 
-**Do not use `--time` with over-time aggregations** (`increase()`, `max_over_time()`, `avg_over_time()`, etc.) where the window defines the answer. Use `--from`/`--to` instead so you can see the full series and aggregate with `sum by (label)` — using `count ... > 0` on an instant result loses the magnitude.
+This creates local PNGs. Do not render or export inventories as a prerequisite
+to investigation. Current alert state is not history; see
+[alert-to-trace](alert-to-trace.md) for rule lookup and JSON shape.
 
-### Range Queries
+## Prometheus: define population and aggregation
 
-Query over time periods:
+Use the actual status/operation labels (`status`, `code`, `handler`, `route`,
+etc.). Apply the same environment/tenant scope on numerator and denominator.
+Rate counters before aggregating so counter resets are handled per series.
+Empty, zero, and non-finite results are different states.
+
+### HTTP error ratio
+
+Aggregate away status and instance on both sides, retaining the intended common
+dimensions. Here one result describes all requests for the selected job:
 
 ```bash
-# HTTP request rate over last hour
-gcx metrics query -d <uid> 'rate(http_requests_total[5m])' \
-  --from now-1h --to now --step 1m
-
-# CPU usage for specific time period
-gcx metrics query -d <uid> 'avg(cpu_usage)' \
-  --from 2026-03-01T00:00:00Z --to 2026-03-01T12:00:00Z --step 5m
-
-# Disk usage over last 24 hours
-gcx metrics query -d <uid> 'disk_used_percent' \
-  --from now-24h --to now --step 15m
+gcx metrics query -d "$PROM_UID" \
+  'sum by (job) (rate(http_requests_total{job="api",status=~"5.."}[5m])) / sum by (job) (rate(http_requests_total{job="api"}[5m]))' \
+  --from "$FROM" --to "$TO" --step 1m -o json
 ```
 
-### Time Range Formats
+Unaggregated division matches each error series to itself, often yielding 1.
+For per-route ratios, retain the route label on both sides. Missing numerator
+series are not automatically zero errors: establish coverage/export behavior
+before supplying zeros. A zero denominator cannot yield a meaningful ratio.
+Inspect total request rate too, so a ratio increase is not mistaken for a
+volume increase.
 
-gcx supports multiple time formats:
+### Classic histogram P95
+
+Combine buckets across instances **before** calculating the quantile. Preserve
+`le` plus the intended grouping (here `job`):
 
 ```bash
-# Relative time (recommended for most cases)
---from now-1h --to now
---from now-24h --to now-1h
---from now-7d --to now
-
-# RFC3339 timestamps
---from 2026-03-01T00:00:00Z --to 2026-03-01T12:00:00Z
-
-# Unix timestamps
---from 1709280000 --to 1709366400
-
-# Instant query at a specific moment (omits --from/--to/--since)
---time 2026-03-01T12:00:00Z
---time now-1h
+gcx metrics query -d "$PROM_UID" \
+  'histogram_quantile(0.95, sum by (job, le) (rate(http_request_duration_seconds_bucket{job="api"}[5m])))' \
+  --from "$FROM" --to "$TO" --step 1m -o json
 ```
 
-### Valid vs Invalid Time Expressions
+For per-endpoint latency retain the endpoint label alongside `job, le`. Do not
+average instance P95s or combine unlike populations/bucket layouts without
+checking compatibility. A percentile is not an additive latency share.
+
+### Native histogram P95
+
+A native histogram is the base metric, not a `_bucket` family. Do not invent an
+`le` grouping for it:
 
 ```bash
-# Valid relative expressions
---from now-6h --to now
---from now-1h --to now-30m
---step 5m
---step 300s
-
-# Valid absolute timestamp
---from 2026-03-01T00:00:00Z
-
-# INVALID — cannot chain subtractions
---from now-6h-1m     # Use now-361m instead
-
-# INVALID — step needs a unit suffix
---step 300           # Use --step 300s or --step 5m
+gcx metrics query -d "$PROM_UID" \
+  'histogram_quantile(0.95, sum by (job) (rate(http_request_duration_seconds{job="api"}[5m])))' \
+  --from "$FROM" --to "$TO" --step 1m -o json
 ```
 
-### Step Interval
+Select the example matching actual metadata and samples. Check response
+warnings for incompatible histograms or mixed sample types. If only sum/count
+series exist, a ratio of aggregated rates gives the mean, **not** a P95.
 
-Choose step based on time range:
+### Scrape status
 
 ```bash
-# Short ranges: 1-5 second steps
-gcx metrics query -d <uid> 'rate(requests[1m])' \
-  --from now-5m --to now --step 1s
-
-# Medium ranges: 1-5 minute steps
-gcx metrics query -d <uid> 'rate(requests[5m])' \
-  --from now-6h --to now --step 1m
-
-# Long ranges: 15-60 minute steps
-gcx metrics query -d <uid> 'rate(requests[1h])' \
-  --from now-7d --to now --step 1h
+gcx metrics query -d "$PROM_UID" 'up{job="api"}' --time "$TO" -o json
 ```
 
-**Rule of thumb**: Step should be ~1/100th of total range for smooth charts.
+- `1`: that scrape succeeded, not proof every application operation is healthy.
+- `0`: that scrape failed; inspect target, network, auth, or scrape errors.
+- Empty vector: no matching series at that evaluation time. Configuration,
+  staleness, retention, or missing telemetry may explain it.
 
-Pass `-o graph` directly to any query command (instant or range) to render a
-terminal line chart.
-
-## Loki Query Patterns
-
-### Log Stream Selectors
-
-Basic log filtering:
+### Absent scrape series
 
 ```bash
-# All logs from a job
-gcx logs query -d <loki-uid> '{job="varlogs"}'
-
-# Multiple labels (AND) — every key inside {} must be an INDEXED label.
-# `level` works here only if it's indexed on your stack; Loki's auto-added
-# `detected_level` is structured metadata, so it must go after a pipe instead:
-#   {job="varlogs"} | detected_level="error"
-# See "Label kinds" below.
-gcx logs query -d <loki-uid> '{job="varlogs",level="error"}'
-
-# Regex matching
-gcx logs query -d <loki-uid> '{job=~"mysql.*",level!="debug"}'
-
-# Exclude specific values
-gcx logs query -d <loki-uid> '{namespace="production",pod!~"test.*"}'
+gcx metrics query -d "$PROM_UID" 'absent(up{job="api"})' \
+  --from "$FROM" --to "$TO" --step 1m -o json
 ```
 
-Line filters and parsers (`|= "error"`, `|~ "regex"`, `| json`, `| logfmt`)
-follow standard LogQL syntax after the selector. Time ranges use the same
-`--from`/`--to` formats as Prometheus queries (see
-[Time Range Formats](#time-range-formats)).
+`absent(...)` returns a series with value **1** when no input series matches.
+It returns no sample when any matching series exists, even one with `up=0`.
+Neither absence nor the last observed sample proves when a process crashed.
 
-### Log Metrics (Rate Queries)
+## Time semantics and coverage
 
-Calculate metrics from logs:
+### Window request total
+
+For a total over a window ending at one selected timestamp, use an **instant**
+query. This is valid with `increase()` and other over-time functions:
 
 ```bash
-# Log rate per second
-gcx logs query -d <loki-uid> \
-  'rate({job="varlogs"}[5m])' \
-  --from now-1h --to now --step 1m
-
-# Sum of log rates
-gcx logs query -d <loki-uid> \
-  'sum(rate({namespace="production"}[5m]))' \
-  --from now-6h --to now --step 5m
-
-# Count by level
-gcx logs query -d <loki-uid> \
-  'sum by(level) (rate({job="varlogs"} | json [5m]))' \
-  --from now-1h --to now --step 1m
-
-# Visualize log volume with -o graph
-gcx logs query -d <loki-uid> \
-  'sum(rate({job="app"} |= "error" [5m]))' \
-  --from now-24h --to now --step 15m -o graph
+gcx metrics query -d "$PROM_UID" \
+  'sum by (job) (increase(http_requests_total{job="api"}[30m]))' --time "$TO" -o json
 ```
 
-## Prometheus Datasource Operations
+`increase()` accounts for observed counter resets and extrapolates to the
+window boundaries; it is not an exact event ledger. Check scrape coverage.
+Do not sum overlapping sliding-window totals from a range query.
 
-### Exploring Metrics
+### Window gauge average
+
+For the mean of recorded gauge samples over a window ending at `TO`:
 
 ```bash
-# List all available labels
-gcx metrics labels -d <uid>
-
-# Get values for specific label
-gcx metrics labels -d <uid> --label job
-gcx metrics labels -d <uid> --label instance
-
-# Get metric metadata
-gcx metrics metadata -d <uid>
-gcx metrics metadata -d <uid> --metric http_requests_total
-
-# Check scrape targets via up metric
-gcx metrics query -d <uid> 'up'
+gcx metrics query -d "$PROM_UID" \
+  'avg_over_time(queue_depth{job="api"}[30m])' --time "$TO" -o json
 ```
 
-### Discovery Workflow
+This is per-series and sample-weighted, not a traffic-weighted average or the
+current queue depth. Keep instances separate or aggregate only when the metric's
+semantics justify it. A queue-depth gauge does not measure enqueue counts.
 
-1. Find interesting labels:
-```bash
-gcx metrics labels -d <uid>
-```
+Use `--from`/`--to` for **trends** and `--time` for an instant evaluation; they
+are mutually exclusive. Pin comparison timestamps rather than repeatedly
+resolving `now`. RFC3339 and Unix timestamps are supported; relative expressions
+such as `now-1h` are useful for initial live triage. Do not chain relative
+subtractions. Step values need units (for example `1m` or `300s`).
 
-2. Get values for label:
-```bash
-gcx metrics labels -d <uid> --label job
-```
+Choose the rate lookback for the actual scrape interval (enough samples to
+estimate a rate), and step for useful resolution and cost. A smaller step
+cannot restore data that was not recorded.
 
-3. Query specific job:
-```bash
-gcx metrics query -d <uid> 'up{job="prometheus"}'
-```
+Before using a result quantitatively:
 
-4. Explore available metrics for that job:
-```bash
-gcx metrics metadata -d <uid> | grep -i <keyword>
-```
+- Inspect actual first/last timestamps, spacing, gaps, and units for each series.
+- Verify incident and comparison windows have suitable, comparable coverage.
+- If requested 1h steps return 6h-spaced points, do not claim hourly resolution
+  or blame a particular layer without evidence. Narrow once to verify, inspect
+  the source query/recording interval, then report the observed resolution.
+- Distinguish current rate, mean rate, window total, and percentile. Do not
+  compare a current rate with a weekly average as if they were the same measure.
 
-## Loki Datasource Operations
+### Grafana Cloud aggregated metrics
 
-### Exploring Log Streams
+Some series are available only through supported aggregations. A rejected raw
+selector or aggregation is not proof of missing telemetry. Reuse the working
+recording-rule/dashboard query, inspect its output labels, and preserve its
+supported aggregation. Add filters only on retained dimensions. If a tenant or
+other label has been aggregated away, you cannot recover that scope by filtering
+the result; choose another source or state that the requested attribution is
+unavailable. Do not silently broaden the population to make a query succeed.
 
-```bash
-# List all available labels
-gcx logs labels -d <loki-uid>
+## Loki: sample details separately from counts
 
-# Get values for specific label
-gcx logs labels -d <loki-uid> --label job
-gcx logs labels -d <loki-uid> --label namespace
-
-# Find series matching selectors
-gcx logs series -d <loki-uid> -M '{job="varlogs"}'
-gcx logs series -d <loki-uid> -M '{namespace="production"}' -M '{level="error"}'
-```
-
-### Discovery Workflow
-
-1. Find available labels:
-```bash
-gcx logs labels -d <loki-uid>
-```
-
-2. Get values for interesting labels:
-```bash
-gcx logs labels -d <loki-uid> --label job
-gcx logs labels -d <loki-uid> --label namespace
-```
-
-3. Find series combinations:
-```bash
-gcx logs series -d <loki-uid> -M '{job="varlogs"}'
-```
-
-4. Query specific stream:
-```bash
-gcx logs query -d <loki-uid> '{job="varlogs",namespace="prod"}'
-```
-
-## Output Formats
-
-### Table Format (Default)
-
-For Prometheus queries, shows metric values in a table:
+### Discover label kinds
 
 ```bash
-gcx metrics query -d <uid> 'up'
-# Output:
-# METRIC    VALUE  TIMESTAMP
-# up{...}   1      2026-03-03T12:00:00Z
+gcx logs labels -d "$LOKI_UID" -o json
+gcx logs labels -d "$LOKI_UID" -l service_name -o json
+# A bounded line query establishes coverage and reveals per-entry fields.
+gcx logs query -d "$LOKI_UID" '{service_name="api"}' \
+  --from "$FROM" --to "$TO" --limit 10 -o json
 ```
 
-For Loki queries, shows raw log lines:
+| Kind | JSON location | LogQL use |
+| --- | --- | --- |
+| Indexed labels | `data.result[].stream` | Inside `{service_name="api"}` |
+| Structured metadata | Entry `structuredMetadata` | After a pipe, e.g. `\| detected_level="error"` |
+| Parsed fields | Entry `parsed` after parsing | After `\| json`/`\| logfmt`, e.g. `\| status="500"` |
+
+Loki's auto-added `detected_level` is structured metadata, not an indexed label.
+`logs labels` enumerates indexed labels, not every key seen in a line. A stream
+selector needs a matcher that cannot match the empty string; avoid `{}` and
+broad catch-alls. `logs series -M` can discover indexed combinations but has no
+time flags in this build; use scoped line queries to verify incident coverage.
+
+### Targeted error details
 
 ```bash
-gcx logs query -d <loki-uid> '{job="varlogs"}' --from now-5m --to now
-# Output:
-# ts=2026-03-06T10:30:00Z level=info msg="request completed" status=200
-# ts=2026-03-06T10:30:01Z level=error msg="connection refused"
+gcx logs query -d "$LOKI_UID" \
+  '{service_name="api"} | json | trace_id="<trace-id>" | __error__=""' \
+  --from "$FROM" --to "$TO" --limit 20 -o json
 ```
 
-### Wide Format (Loki only)
+Choose actual fields and parsers. If `trace_id` is structured metadata, filter
+it after a pipe without parsing the body. gcx defaults to **50 log lines**;
+explicit limits bound samples, not frequency. Omitting the CLI cap does not
+establish complete backend coverage. The earliest returned line is only the
+earliest **observed in that sample**, not necessarily the first occurrence.
 
-Shows all labels plus the log line:
+### Log-derived trends
+
+Use `logs metrics`, not the log-line `logs query` output path, for aggregate
+LogQL. Aggregate to the dimensions you need to reduce returned cardinality:
 
 ```bash
-gcx logs query -d <loki-uid> '{job="varlogs"}' --from now-5m --to now -o wide
-# Output (STREAM columns are indexed labels; detected_level is structured
-# metadata surfaced in DETAILS/LEVEL, NOT a stream label you can put in {}):
-# CLUSTER        JOB       NAMESPACE  POD          LEVEL  MESSAGE                  DETAILS
-# dev-eu-west-2  varlogs   prod       app-abc123   info   ts=2026-03-06T10:30:00Z  detected_level=info
-# dev-eu-west-2  varlogs   prod       app-abc123   error  ts=2026-03-06T10:30:01Z  detected_level=error
+gcx logs metrics -d "$LOKI_UID" \
+  'sum(rate({service_name="api"} | json | level="error" | __error__="" [5m]))' \
+  --from "$FROM" --to "$TO" --step 1m -o json
+
+# Rolling count of observed matching entries, not independent 5m buckets.
+gcx logs metrics -d "$LOKI_UID" \
+  'sum(count_over_time({service_name="api"} | json | status >= 500 | __error__="" [5m]))' \
+  --from "$FROM" --to "$TO" --step 1m -o json
 ```
 
-### JSON Format
+Place `__error__=""` after stages that can create errors, including numeric
+conversions. Metric queries reject pipeline errors; filtering them excludes
+those entries, so disclose parse failures when they affect the conclusion.
+Aggregation reduces output, but does not guarantee a cheap scan or avoidance of
+all intermediate series limits. Narrow indexed scope/time before broadening.
 
-Machine-readable for scripting:
+`logs metrics` without time flags evaluates at now; it has no Prometheus-style
+`--time`. For historical counts use explicit ranges and the correct rolling
+window semantics; do not invent an instant-time flag or sum overlapping windows.
+To investigate first occurrence, use aggregate trends to narrow an onset window,
+then inspect bounded logs there; qualify the onset by available retention and
+coverage.
 
-```bash
-gcx metrics query -d <uid> 'up' -o json
-```
+### Define what you count
 
-JSON structure:
-```json
-{
-  "status": "success",
-  "data": {
-    "resultType": "vector",
-    "result": [
-      {
-        "metric": {"__name__": "up", "job": "prometheus"},
-        "value": [1709467200, "1"]
-      }
-    ]
-  }
-}
-```
+An HTTP request can log at gateways, callers, backends, and on each retry. Do
+not sum those hops as unique requests. Choose one authoritative request boundary
+for totals/shares and verify that it logs one event per unit being counted.
+Gateway metrics may be the correct boundary for user-visible outcomes. Backend
+attempts may be correct for dependency load; name them as attempts.
 
-### Field Selection
+A trace ID need not equal one application request (batches and async work exist).
+Do not recommend high-cardinality trace-ID grouping as a universal deduplication
+fix. For endpoint ownership, distinguish error **counts/shares** from per-endpoint
+error **ratios**; for retries, distinguish attempts from original requests.
 
-Use `--json` to select fields without external tools:
+## Output and evidence links
 
-```bash
-# Discover available fields
-gcx metrics query -d <uid> 'up' --json list
+Use `-o json` for analysis, `--json list` to inspect fields, and `--json`/`--jq`
+to reduce output after understanding its shape. Field projection is not query
+pushdown. Keep stdout and stderr separate: never pipe `2>&1` into a JSON parser,
+but do retain stderr warnings, truncation hints, and share links.
 
-# Select specific fields
-gcx metrics query -d <uid> 'up' --json metric,value
+Add `--share-link` to an already-needed metrics/logs range query or a bounded
+trace search/get with fixed `--from`/`--to` timestamps to capture a reproducible
+Explore link.
 
-# For complex filtering, pipe to python3 (jq may not be installed)
-gcx metrics query -d <uid> 'up' -o json 2>/dev/null | \
-  python3 -c "import json,sys; data=json.load(sys.stdin); print(len(data['data']['result']))"
-```
+**Exception: historical Prometheus instant queries.** With `--time "$TO"`,
+the query uses the selected timestamp, but the generated Explore link currently
+ignores `--time` and opens `now-1m` → `now`. Until link generation preserves
+`--time`, do not use that link as reproducible incident evidence; retain the
+exact expression, datasource UID, and evaluation timestamp instead.
 
-> **Piping caution**: Never use `2>&1` when piping gcx JSON output — gcx writes
-> hints to stderr that break JSON parsers. Use `2>/dev/null` instead.
-
-## Performance Tips
-
-### Loki Performance
-
-1. **Use indexed labels for filtering**:
-```bash
-# Fast (uses indexed labels)
-gcx logs query -d <loki-uid> '{job="varlogs",namespace="prod"}'
-
-# Slow (line filter, not indexed)
-gcx logs query -d <loki-uid> '{job="varlogs"} |= "namespace:prod"'
-```
-
-2. **Limit log queries**:
-```bash
-# The default limit is 1000 lines
-# For production, consider increasing or narrowing time range
-gcx logs query -d <loki-uid> '{job="varlogs"}' --from now-5m --to now
-```
-
-### Querying at Scale
-
-Loki metric queries (`rate()`, `count_over_time()`, etc.) produce one series per unique label combination. At scale this hits series limits (default 20K). Always aggregate:
-
-```bash
-# BAD — one series per pod/namespace/level/... combination
-gcx logs query -d <loki-uid> 'count_over_time({job="app"} [5m])'
-
-# GOOD — aggregate down to what you need
-gcx logs query -d <loki-uid> 'sum(count_over_time({job="app"} [5m]))'
-gcx logs query -d <loki-uid> 'sum by(level) (count_over_time({job="app"} | json [5m]))'
-gcx logs query -d <loki-uid> 'topk(10, sum by(pod) (rate({job="app"} [5m])))'
-```
-
-Rule of thumb: if your query uses `rate()`, `count_over_time()`, or `bytes_over_time()`, wrap it with `sum()`, `sum by(label)`, or `topk()`.
-
-### Counting requests across distributed services
-
-A single HTTP request typically produces one log line at *every* service it
-traverses (gateway, upstream, backend). Using a label selector that matches
-all of them double- or triple-counts the same request.
-
-**Symptom**: counts look ~2-3x what the rest of the evidence (dashboards,
-metrics, traces) suggests.
-
-**Wrong** (counts every hop):
-```bash
-gcx logs query -d <loki-uid> \
-  'sum(count_over_time({job=~".+"} | json | path="/api/<endpoint>" | status >= 500 [6h]))'
-```
-
-**Right** — scope the label selector to the *backend services that own the
-request*, not the gateway / proxy / load balancer:
-```bash
-gcx logs query -d <loki-uid> \
-  'sum(count_over_time({job=~"<backend-svc-a>|<backend-svc-b>"} | json | __error__="" | path="/api/<endpoint>" | status >= 500 [6h]))'
-```
-
-How to identify the backend services for a path:
-- Look at a representative trace with `gcx traces get <id> --llm -o json` and pick
-  the service where the actual error (`status: error`) originates, plus its
-  immediate caller.
-- Or use `gcx logs labels -d <uid> -l job` to enumerate jobs, then exclude
-  obvious gateway/proxy names (anything that just forwards — e.g. `webapp`,
-  `api-gateway`, `envoy`, `nginx`).
-
-Alternative: deduplicate by `trace_id` if the logs contain it:
-```bash
-gcx logs query -d <loki-uid> \
-  'count(count by (trace_id) (rate({job=~".+"} | json | path="/api/<endpoint>" | status >= 500 [6h])))'
-```
-
-Always include `| __error__=""` after `| json` to drop lines that failed to
-parse, otherwise the parser stage silently keeps them and they pollute the
-count.
-
-### Label kinds: indexed vs structured metadata vs parsed
-
-Loki has **three** kinds of key/value data on a log line. Confusing them causes
-silent empty results — a query that returns `success` with zero streams:
-
-| | Indexed stream labels | Structured metadata | Parsed labels |
-|---|---|---|---|
-| Set by | Ingestion / stream config | Attached per-line at ingest (incl. Loki's auto-added `detected_level`) | Parser stages (`\| json`, `\| logfmt`) |
-| Used in | Stream selector `{job="app"}` | Filter **after** a pipe: `\| detected_level="error"` | Filter **after** the parser: `\| json \| status="500"` |
-| Indexed | Yes (fast) | No | No |
-| Valid inside `{}` | **Yes** | **No** | **No** |
-
-How gcx surfaces them in `gcx logs query` output (as of the label-type split):
-- `-o json`: each stream's `stream` map is **indexed labels only**; each entry
-  carries `structuredMetadata` and `parsed` maps for the non-indexed keys.
-- `-o table`: the `STREAM` column shows indexed labels; structured metadata and
-  parsed labels land in `DETAILS` (and `detected_level` fills `LEVEL`).
-
-So the rule is simple: **only keys that appear in `stream` (or the `STREAM`
-column) are valid inside `{...}`.** Anything under `structuredMetadata` / `parsed`
-/ `DETAILS` must go after a `|`.
-
-Common mistakes:
-- Putting a structured-metadata key inside `{}` — fails silently:
-  `{detected_level="error"}` matches nothing; use `{job="app"} | detected_level="error"` instead.
-- Putting a parsed field in `{}` before the parser runs — add `| json` / `| logfmt` first, then `| status="500"`.
-- `gcx logs labels` lists the **indexed** label names (what's valid in `{}`); it
-  does NOT enumerate structured-metadata keys, so don't assume a key is a stream
-  label just because you saw it in query output — check whether it came from
-  `stream` vs `structuredMetadata`.
-
-## Comparison Queries
-
-```bash
-# Compare current vs 24h ago — use --time for instant snapshots, not range queries
-gcx metrics query -d <uid> 'rate(requests[5m])' --time now -o json > now.json
-gcx metrics query -d <uid> 'rate(requests[5m])' --time now-24h -o json > yesterday.json
-```
+Keep supplied dashboard links with exact panel IDs and variable values. Prefer
+these to speculative hand-built URLs. `-o graph` is useful for human metric trends,
+not a replacement for inspecting actual timestamps and values.

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -57,14 +58,151 @@ func TestReportError_EmittedError(t *testing.T) {
 	}
 }
 
+// TestIsSilentCancellation pins which errors take the quiet exit-5 route.
+// An interrupted invocation prints nothing, but an EmittedError has already
+// written its own result document and owns its exit code, even when its cause
+// chain reaches context.Canceled.
+func TestIsSilentCancellation(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "nil error", err: nil, want: false},
+		{name: "bare context.Canceled", err: context.Canceled, want: true},
+		{name: "wrapped context.Canceled", err: fmt.Errorf("query: %w", context.Canceled), want: true},
+		{name: "deadline exceeded is not a cancellation", err: context.DeadlineExceeded, want: false},
+		{name: "unrelated error", err: errors.New("boom"), want: false},
+		{
+			name: "EmittedError wrapping context.Canceled keeps its own exit code",
+			err:  gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, context.Canceled),
+			want: false,
+		},
+		{
+			name: "EmittedError carrying exit 5 still reports through reportError",
+			err:  gcxerrors.NewEmittedError(gcxerrors.ExitCancelled, context.Canceled),
+			want: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			if got := isSilentCancellation(ctx, tc.err); got != tc.want {
+				t.Fatalf("isSilentCancellation() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// A signal context carries a cause describing the signal (Go 1.26), and
+// net/http surfaces that cause instead of context.Canceled. Before Go 1.26.5
+// the cause did not report itself as context.Canceled, so an interrupted
+// request has to be recognised through the context's own cause — but only when
+// the error really carries it, never for an unrelated failure that happened to
+// land while the context was done.
+func TestIsSilentCancellationMatchesSignalCause(t *testing.T) {
+	signalCause := errors.New("interrupt signal received")
+
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "request failure carrying the signal cause",
+			err:  &url.Error{Op: "Get", URL: "http://example.invalid", Err: signalCause},
+			want: true,
+		},
+		{name: "the bare cause", err: signalCause, want: true},
+		{name: "unrelated failure during a canceled context", err: errors.New("boom"), want: false},
+		{
+			name: "EmittedError carrying the signal cause keeps its own exit code",
+			err:  gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, signalCause),
+			want: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancelCause(context.Background())
+			cancel(signalCause)
+			if got := isSilentCancellation(ctx, tc.err); got != tc.want {
+				t.Fatalf("isSilentCancellation() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// A cause is only consulted once the context is actually canceled: an ordinary
+// failure in a live invocation must never be read as a cancellation.
+func TestIsSilentCancellationIgnoresLiveContext(t *testing.T) {
+	if isSilentCancellation(context.Background(), errors.New("boom")) {
+		t.Fatal("an error in a live context must not be treated as a cancellation")
+	}
+}
+
+// An EmittedError carrying exit 5 keeps that code through reportError, so the
+// usage event classifies it as canceled like any other exit-5 invocation.
+func TestReportErrorEmittedCancellationKeepsExitFive(t *testing.T) {
+	agent.SetFlag(false)
+	t.Cleanup(func() { agent.SetFlag(false) })
+
+	err := fmt.Errorf("push: %w", gcxerrors.NewEmittedError(gcxerrors.ExitCancelled, context.Canceled))
+	if got := reportError(err, nil, nil); got != gcxerrors.ExitCancelled {
+		t.Fatalf("reportError() = %d, want %d", got, gcxerrors.ExitCancelled)
+	}
+}
+
+// TestAbandonsExport pins the full matrix that decides whether exitWith may
+// disarm the signal handler. The process-level tests cover the two diagonal
+// cases against a real binary; this covers the other two, which no command in
+// the tree can reach without a second subprocess harness.
+func TestAbandonsExport(t *testing.T) {
+	cases := []struct {
+		name        string
+		interrupted bool
+		exitCode    int
+		want        bool
+	}{
+		{
+			name:        "interrupted and canceled",
+			interrupted: true, exitCode: gcxerrors.ExitCancelled, want: true,
+		},
+		{
+			name:        "interrupted but successful",
+			interrupted: true, exitCode: gcxerrors.ExitSuccess, want: false,
+		},
+		{
+			name:        "interrupted but failed",
+			interrupted: true, exitCode: gcxerrors.ExitGeneralError, want: false,
+		},
+		{
+			name:        "canceled without an interrupt",
+			interrupted: false, exitCode: gcxerrors.ExitCancelled, want: false,
+		},
+		{
+			name:        "neither",
+			interrupted: false, exitCode: gcxerrors.ExitSuccess, want: false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := abandonsExport(tc.interrupted, tc.exitCode); got != tc.want {
+				t.Fatalf("abandonsExport(%t, %d) = %t, want %t",
+					tc.interrupted, tc.exitCode, got, tc.want)
+			}
+		})
+	}
+}
+
 const (
 	configCheckProcessHelper       = "GCX_CONFIG_CHECK_PROCESS_HELPER"
 	configSetFallbackProcessHelper = "GCX_CONFIG_SET_FALLBACK_PROCESS_HELPER"
 )
 
-func TestConfigSetPlaintextFallbackWarningProcess(t *testing.T) {
-	const token = "synthetic-plaintext-fallback-token"
-	const warning = "Warning: credential store could not securely store the credential; credentials remain in plaintext on disk; verify your OS credential store (Keychain, Credential Manager, or Secret Service) is available and working to enable encrypted credential storage"
+func TestConfigSetUnavailableKeychainFailsClosedProcess(t *testing.T) {
+	const token = "synthetic-unavailable-keychain-token"
 
 	for _, agentMode := range []string{"false", "true"} {
 		t.Run("agent-mode="+agentMode, func(t *testing.T) {
@@ -112,24 +250,27 @@ current-context: smoke
 				"GRAFANA_STACK_ID=",
 			)
 
-			if err := cmd.Run(); err != nil {
-				t.Fatalf("config set failed: %v; stdout=%q stderr=%q", err, stdout.String(), stderr.String())
+			if err := cmd.Run(); err == nil {
+				t.Fatalf("config set unexpectedly succeeded; stdout=%q stderr=%q", stdout.String(), stderr.String())
 			}
-			// The agent output contract makes config set emit one JSON
-			// mutation document; the human default stays silent.
+			// The typed error envelope must be emitted in agent mode; the human
+			// diagnostic belongs on stderr without corrupting stdout.
 			if agentMode == "true" {
 				var doc map[string]any
 				if err := json.Unmarshal(stdout.Bytes(), &doc); err != nil {
-					t.Fatalf("agent stdout is not one JSON document: %v; stdout=%q", err, stdout.String())
+					t.Fatalf("agent stdout is not one JSON error document: %v; stdout=%q", err, stdout.String())
 				}
-				if doc["type"] != "gcx.config.mutation" {
-					t.Fatalf("agent stdout document type = %v, want gcx.config.mutation", doc["type"])
+				if doc["type"] != "gcx.error" {
+					t.Fatalf("agent stdout document type = %v, want gcx.error", doc["type"])
+				}
+				if stderr.Len() != 0 {
+					t.Fatalf("agent error wrote unexpected stderr: %q", stderr.String())
 				}
 			} else if stdout.Len() != 0 {
 				t.Fatalf("config set wrote unexpected stdout: %q", stdout.String())
 			}
-			if got := bytes.Count(stderr.Bytes(), []byte(warning)); got != 1 {
-				t.Fatalf("plaintext fallback warning count = %d, want 1; stderr=%q", got, stderr.String())
+			if agentMode == "false" && !bytes.Contains(stderr.Bytes(), []byte("Keychain unavailable")) {
+				t.Fatalf("human output did not name the unavailable keychain: %q", stderr.String())
 			}
 			if bytes.Contains(stdout.Bytes(), []byte(token)) || bytes.Contains(stderr.Bytes(), []byte(token)) {
 				t.Fatalf("plaintext token appeared in command output; stdout=%q stderr=%q", stdout.String(), stderr.String())
@@ -139,8 +280,8 @@ current-context: smoke
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !bytes.Contains(raw, []byte(token)) || bytes.Contains(raw, []byte("keychain:gcx:v2:")) {
-				t.Fatalf("expected deliberate plaintext fallback without a sentinel: %q", raw)
+			if bytes.Contains(raw, []byte(token)) || bytes.Contains(raw, []byte("keychain:gcx:v2:")) {
+				t.Fatalf("unavailable keychain wrote a credential unexpectedly: %q", raw)
 			}
 			info, err := os.Stat(configPath)
 			if err != nil {

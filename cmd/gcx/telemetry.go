@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/agentlog"
 	internalconfig "github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/telemetry"
 	"github.com/grafana/gcx/internal/telemetry/capture"
 	"github.com/grafana/gcx/internal/terminal"
@@ -108,6 +109,11 @@ func buildUsageEvent(info *root.TelemetryInfo, start time.Time, exitCode int) te
 		event.Outcome = telemetry.OutcomeHelp
 	case exitCode == 0:
 		event.Outcome = telemetry.OutcomeOK
+	case exitCode == gcxerrors.ExitCancelled:
+		// Classified on the final exit code, not on how it was reached: the
+		// event records that the invocation stopped early, never what stopped
+		// it. See OutcomeCanceled.
+		event.Outcome = telemetry.OutcomeCanceled
 	default:
 		event.Outcome = telemetry.OutcomeRuntimeError
 		event.ErrorKind = agentlog.KindFromExitCode(exitCode)

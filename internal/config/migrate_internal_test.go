@@ -249,7 +249,7 @@ func TestMigrateLegacyConfig(t *testing.T) {
 	withFakeKeychain(t)
 	path := writeTestConfig(t, legacyFullConfig)
 
-	cfg, err := Load(withConfigLayer(context.Background(), "user"), ExplicitConfigFile(path))
+	cfg, err := load(context.Background(), ExplicitConfigFile(path), loadOptions{layer: "user"})
 	require.NoError(t, err)
 
 	// Contexts became thin references.
@@ -325,7 +325,7 @@ contexts:
 current-context: alpha
 `)
 
-	cfg, err := Load(withConfigLayer(context.Background(), "user"), ExplicitConfigFile(path))
+	cfg, err := load(context.Background(), ExplicitConfigFile(path), loadOptions{layer: "user"})
 	require.NoError(t, err)
 
 	// Two distinct tokens against the same host: the first (sorted) context
@@ -354,7 +354,7 @@ contexts:
 current-context: dev
 `)
 
-	cfg, err := Load(withConfigLayer(context.Background(), "user"), ExplicitConfigFile(path))
+	cfg, err := load(context.Background(), ExplicitConfigFile(path), loadOptions{layer: "user"})
 	require.NoError(t, err)
 
 	// In-memory view holds resolved plaintext.
@@ -432,7 +432,7 @@ current-context: prod
 			withFakeKeychain(t)
 			path := writeTrustedUserTestConfig(t, test.legacyYAML)
 
-			cfg, err := Load(withConfigLayer(t.Context(), "user"), ExplicitConfigFile(path))
+			cfg, err := load(t.Context(), ExplicitConfigFile(path), loadOptions{layer: "user"})
 			require.NoError(t, err)
 			ctx := cfg.Contexts["prod"]
 			require.NotNil(t, ctx)
@@ -472,7 +472,7 @@ current-context: attacker
 
 	before, err := os.ReadFile(path)
 	require.NoError(t, err)
-	_, err = Load(withConfigLayer(context.Background(), "user"), ExplicitConfigFile(path))
+	_, err = load(context.Background(), ExplicitConfigFile(path), loadOptions{layer: "user"})
 	require.ErrorContains(t, err, "invalid legacy keychain reference")
 	assert.Empty(t, store.gets, "legacy YAML must not select another owner or field's keychain account")
 
@@ -624,7 +624,7 @@ contexts:
 current-context: prod
 `)
 
-	_, err := Load(withConfigLayer(t.Context(), "system"), ExplicitConfigFile(path))
+	_, err := load(t.Context(), ExplicitConfigFile(path), loadOptions{layer: "system"})
 	require.ErrorContains(t, err, "untrusted config source")
 	assert.Empty(t, store.gets)
 }
@@ -643,7 +643,7 @@ current-context: prod
 	before, err := os.ReadFile(path)
 	require.NoError(t, err)
 
-	_, err = Load(withConfigLayer(context.Background(), "local"), ExplicitConfigFile(path))
+	_, err = load(context.Background(), ExplicitConfigFile(path), loadOptions{layer: "local"})
 	require.ErrorContains(t, err, "untrusted config source")
 	assert.Empty(t, store.gets)
 	assert.Equal(t, "user-secret", store.entries["prod:grafana-token"])
@@ -668,7 +668,7 @@ current-context: prod
 	link := filepath.Join(t.TempDir(), "config.yaml")
 	require.NoError(t, os.Symlink(target, link))
 
-	_, err := Load(withConfigLayer(context.Background(), "user"), ExplicitConfigFile(link))
+	_, err := load(context.Background(), ExplicitConfigFile(link), loadOptions{layer: "user"})
 	require.ErrorContains(t, err, "untrusted config source")
 	assert.Empty(t, store.gets)
 	assert.Equal(t, "user-secret", store.entries["prod:grafana-token"])
@@ -686,7 +686,7 @@ contexts:
 current-context: prod
 `)
 
-	cfg, err := Load(withConfigLayer(context.Background(), "local"), ExplicitConfigFile(path))
+	cfg, err := load(context.Background(), ExplicitConfigFile(path), loadOptions{layer: "local"})
 	require.NoError(t, err)
 	assert.Equal(t, "repo-token", cfg.Contexts["prod"].Grafana.APIToken)
 	assert.Equal(t, "user-secret", store.entries["prod:grafana-token"])
@@ -743,8 +743,8 @@ current-context: dev
 	path := writeTrustedUserTestConfig(t, legacy)
 
 	var warnings bytes.Buffer
-	ctx := ContextWithWarningWriter(withConfigLayer(context.Background(), "user"), &warnings)
-	cfg, err := Load(ctx, ExplicitConfigFile(path))
+	ctx := ContextWithWarningWriter(context.Background(), &warnings)
+	cfg, err := load(ctx, ExplicitConfigFile(path), loadOptions{layer: "user"})
 	require.NoError(t, err)
 
 	assert.Equal(t, "plaintext-secret", cfg.Contexts["dev"].Grafana.APIToken)
@@ -764,7 +764,7 @@ current-context: dev
 	// keychain is available again.
 	store.getErr = nil
 	store.entries["dev:cloud-token"] = "recovered"
-	recovered, err := Load(withConfigLayer(context.Background(), "user"), ExplicitConfigFile(path))
+	recovered, err := load(context.Background(), ExplicitConfigFile(path), loadOptions{layer: "user"})
 	require.NoError(t, err)
 	assert.Equal(t, "recovered", recovered.Contexts["dev"].CloudEntry.Token)
 	rewritten, err := os.ReadFile(path)
@@ -984,7 +984,7 @@ contexts:
 
 	var merged Config
 	for i, src := range sources {
-		loaded, err := Load(withConfigLayer(context.Background(), src.Type), ExplicitConfigFile(src.Path))
+		loaded, err := load(context.Background(), ExplicitConfigFile(src.Path), loadOptions{layer: src.Type})
 		require.NoError(t, err)
 		if i == 0 {
 			merged = loaded

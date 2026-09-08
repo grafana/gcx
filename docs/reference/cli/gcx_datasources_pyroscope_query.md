@@ -59,6 +59,14 @@ gcx datasources pyroscope query [EXPR] [flags]
   # Download as pprof binary to a specific path
   gcx datasources pyroscope query -d UID '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds -o pprof --pprof-path ./cpu.pb.gz
+
+  # Caller-callee call graph as Graphviz DOT text (function names, file:line,
+  # self/cumulative values) — the most readable format for LLM analysis.
+  # Requires a pure-v2 backend (-architecture.storage=v2); other backends
+  # fall back to the table. Dotted edges mean intermediate frames were
+  # elided by the 100-node default — raise --max-nodes for fuller chains.
+  gcx datasources pyroscope query -d UID '{service_name="frontend"}' \
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds -o dot --max-nodes 250
 ```
 
 ### Options
@@ -70,14 +78,14 @@ gcx datasources pyroscope query [EXPR] [flags]
   -h, --help                          help for query
       --jq string                     jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string                   Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --max-nodes int                 Maximum nodes in flame graph (default 0/unlimited for pprof output, 50000 for all other formats)
-  -o, --output string                 Output format. One of: agents, graph, json, pprof, table, wide, yaml (default "table")
+      --max-nodes int                 Maximum nodes in the result (defaults: pprof 0/unlimited, dot 100-node call graph rendered server-side, 50000 for all other formats)
+  -o, --output string                 Output format. One of: agents, dot, graph, json, pprof, table, wide, yaml (default "table")
       --pprof-overwrite               Overwrite the output file if it already exists (only with -o pprof)
       --pprof-path string             Destination path for pprof binary output (only with -o pprof; default: profile-YYYY-MM-DD-HHMMSS.pb.gz)
       --profile-id strings            Drill down to specific profile UUIDs from exemplar queries (repeatable)
       --profile-type string           Profile type ID (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds'); use 'gcx profiles list-profile-types' to list available (required)
       --since string                  Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
-      --span-id strings               Only query profiles with these 16-character hex span IDs (repeatable; unavailable with -o pprof)
+      --span-id strings               Only query profiles with these 16-character hex span IDs (repeatable; unavailable with -o pprof and -o dot)
       --stacktrace-selector strings   Only query locations with these function names, starting from the root (repeatable)
       --step string                   Query step (e.g., '15s', '1m')
       --to string                     End time (RFC3339, Unix timestamp, or relative like 'now')

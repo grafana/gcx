@@ -420,6 +420,9 @@ func NewCreateCommand(loader GrafanaConfigLoader) *cobra.Command {
   spec:
     title: "Service degradation in production"
     status: active
+    # The display label, not the identifier. Run
+    # 'gcx irm incidents severities list' for the valid values.
+    severity: Minor
     isDrill: false
     incidentType: internal
     labels:
@@ -482,6 +485,13 @@ func NewCreateCommand(loader GrafanaConfigLoader) *cobra.Command {
 
 			created, err := client.Create(ctx, inc)
 			if err != nil {
+				// Create reports the incident next to the error when the
+				// incident exists but a later step failed. That error already
+				// names the incident and the repair command, so a
+				// "failed to create incident" prefix would contradict it.
+				if created != nil {
+					return err
+				}
 				return fmt.Errorf("failed to create incident: %w", err)
 			}
 

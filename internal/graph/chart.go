@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/NimbleMarkets/ntcharts/barchart"
-	"github.com/NimbleMarkets/ntcharts/canvas/runes"
-	"github.com/NimbleMarkets/ntcharts/linechart/timeserieslinechart"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
+	"github.com/NimbleMarkets/ntcharts/v2/barchart"
+	"github.com/NimbleMarkets/ntcharts/v2/canvas/runes"
+	"github.com/NimbleMarkets/ntcharts/v2/linechart/timeserieslinechart"
 	"golang.org/x/term"
 )
 
@@ -98,7 +98,7 @@ func RenderPercentageBars(w io.Writer, title string, items []PercentageBarItem, 
 		fmt.Fprintf(&sb, "  %s  %s%s  %s%s\n", labelStr, filledStr, emptyStr, valueStr, targetStr)
 	}
 
-	_, err := fmt.Fprint(w, sb.String())
+	_, err := lipgloss.Fprint(w, sb.String())
 	return err
 }
 
@@ -198,7 +198,7 @@ func RenderBarChart(w io.Writer, data *ChartData, opts ChartOptions) error {
 		sb.WriteString(legend)
 	}
 
-	_, err := fmt.Fprint(w, sb.String())
+	_, err := lipgloss.Fprint(w, sb.String())
 	return err
 }
 
@@ -243,7 +243,7 @@ func RenderLineChart(w io.Writer, data *ChartData, opts ChartOptions) error {
 
 	// Resolve color for first series: use explicit Color if set, else ColorForIndex.
 	firstColor := data.Series[0].Color
-	if firstColor == "" {
+	if firstColor == nil {
 		firstColor = ColorForIndex(0)
 	}
 
@@ -265,7 +265,7 @@ func RenderLineChart(w io.Writer, data *ChartData, opts ChartOptions) error {
 	for i := 1; i < len(data.Series); i++ {
 		series := data.Series[i]
 		color := series.Color
-		if color == "" {
+		if color == nil {
 			color = ColorForIndex(i)
 		}
 		dataSetName := fmt.Sprintf("series%d", i)
@@ -311,7 +311,7 @@ func RenderLineChart(w io.Writer, data *ChartData, opts ChartOptions) error {
 		sb.WriteString(legend)
 	}
 
-	_, err := fmt.Fprint(w, sb.String())
+	_, err := lipgloss.Fprint(w, sb.String())
 	return err
 }
 
@@ -378,7 +378,7 @@ func renderLegend(series []Series) string {
 	for i, s := range series {
 		// Use the series-specific Color if set; otherwise fall back to ColorForIndex.
 		color := s.Color
-		if color == "" {
+		if color == nil {
 			color = ColorForIndex(i)
 		}
 		colorBox := lipgloss.NewStyle().Foreground(color).Render("●")

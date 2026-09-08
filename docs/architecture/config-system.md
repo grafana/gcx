@@ -255,17 +255,21 @@ Loading steps (in `Load`):
    config inspection and repair continue to use the recorded rejection reason.
    Under `go test`, the default store is unavailable, so test binaries never
    prompt the OS keychain.
+   `GCX_KEYCHAIN=off` selects a store that reports
+   `credentials.ErrDisabled` without probing the OS backend.
 8. **Migrate plaintext token-shaped secrets**: plaintext values in tracked stack
    and Cloud fields are staged under a newly generated bound account and the
    file is rewritten with
    `keychain:gcx:v2:<binding-digest>:<random-generation>`. The binding covers
    the canonical source, exact owner kind/name, exact field, and normalized
-   destination. An incomplete binding or unavailable keychain leaves the value
-   in plaintext with a warning. A locked keychain stops the migration write with
-   the same warning, but it never authorizes a plaintext fallback elsewhere: an
-   explicit write, such as `gcx login` or `gcx config set`, fails on a locked
-   backend. The user must unlock the keychain, or must run gcx from a desktop
-   session that can answer the unlock prompt.
+   destination. An incomplete binding leaves the value in plaintext with a
+   warning. An unavailable or locked keychain stops the migration write with the
+   same warning, but neither authorizes a plaintext fallback elsewhere: an
+   explicit write, such as `gcx login` or `gcx config set`, fails on an
+   unavailable or locked backend. The user must restore access to the
+   keychain, unlock it, or run gcx from a desktop session that can answer the
+   unlock prompt. Setting `GCX_KEYCHAIN=off` remains the one condition that
+   still authorizes a plaintext write.
 9. Apply each `Override` function in order, then lazily resolve a context selected
    by an override
 10. On `ValidationError`, annotate the error with YAML source information
@@ -318,6 +322,12 @@ leave an old credential active, downgrade a credential for an unrelated backend
 error, or write a secret in plaintext while a real secret backend exists.
 Secret-less writes skip the keychain entirely (`hasSecretsToReconcile`), so they
 never probe the OS backend.
+
+A deliberately disabled keychain (`credentials.ErrDisabled`) is the one
+exception to fail-closed replacement: the user has asked for plaintext, so
+replacing a credential that still holds a reference writes plaintext and leaves
+the abandoned generation in place rather than erroring. Re-enabling the
+keychain therefore loses nothing.
 
 ---
 

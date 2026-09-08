@@ -291,6 +291,156 @@ Datasource is resolved from -d flag or datasources.{kind} in your context.`,
 
 Reference: `internal/datasources/prometheus/`, `internal/datasources/loki/`
 
+### Step 1c: Explore Link (required)
+
+Every query-class leaf command must build a Grafana Explore URL. Users rely on
+`--share-link` to hand a query to a colleague, and on `--open` to continue in
+the UI. A datasource that omits this is inconsistent with the rest of the CLI.
+
+Create `internal/datasources/{kind}/explore.go`. Pick the shape that matches how
+the datasource carries its query.
+
+**Shape A — expression datasources** (SQL, PromQL, LogQL, TraceQL). The whole
+query is one string, so `dsquery.ExploreQuery.Expr` holds it.
+
+```go
+package {kind}
+
+import (
+    "strings"
+
+    dsquery "github.com/grafana/gcx/internal/datasources/query"
+)
+
+// QueryExploreURL builds a Grafana Explore URL for a {Name} query.
+func QueryExploreURL(host string, query dsquery.ExploreQuery) string {
+    if strings.TrimSpace(host) == "" || query.DatasourceUID == "" || strings.TrimSpace(query.Expr) == "" {
+        return ""
+    }
+
+    from, to := dsquery.ExploreRange(query.From, query.To, false)
+
+    q := map[string]any{
+        "refId":      "A",
+        "datasource": dsquery.ExploreDatasource(query.DatasourceType, query.DatasourceUID),
+        // ... the plugin's own query fields
+    }
+
+    return dsquery.BuildExploreURL(host, query.OrgID, dsquery.SinglePane(query.DatasourceUID, []any{q}, from, to, nil), nil)
+}
+```
+
+Reference: `internal/datasources/clickhouse/explore.go`.
+
+**Shape B — structured datasources** (CloudWatch, Cloud Monitoring, Azure
+Monitor, Elasticsearch). The query is a set of typed fields, not one string.
+Take the client's request struct as a third parameter. Do not flatten it into
+`Expr`.
+
+```go
+// QueryExploreURL builds a Grafana Explore URL for a {Name} query.
+// base supplies the datasource UID, the time range and the org ID.
+// base.Expr is unused — the query lives in req.
+func QueryExploreURL(host string, base dsquery.ExploreQuery, req {kind}client.QueryRequest) string {
+    if strings.TrimSpace(host) == "" || base.DatasourceUID == "" || req.Project == "" {
+        return ""
+    }
+
+    from, to := dsquery.ExploreRange(base.From, base.To, false)
+    model := {kind}client.BuildQueryModel(base.DatasourceUID, req)
+
+    return dsquery.BuildExploreURL(host, base.OrgID,
+        dsquery.SinglePane(base.DatasourceUID, []any{model}, from, to, nil), nil)
+}
+```
+
+Reference: `internal/datasources/cloudwatch/explore.go`.
+
+**Guard the fields the datasource actually requires — not `Expr` by reflex.**
+Always check `host` and `DatasourceUID`. Beyond that:
+
+- Shape A: guard `Expr`, unless an empty query is meaningful. An empty
+  Elasticsearch Lucene expression matches every document, so an `Expr` guard
+  there suppresses the link for a legal invocation.
+- Shape B: guard the required request fields (project + metric type,
+  subscription + metric name, and so on). `Expr` is empty by design. Never
+  guard it.
+
+Return `""` when a required field is missing. The caller warns the user; a
+missing link does not fail the command.
+
+Then wire it into the command's `RunE`:
+
+```go
+share := &dsquery.ExploreLinkOpts{}          // next to shared := &dsquery.SharedOpts{}
+// ...
+share.Setup(cmd.Flags(), "executed query")   // next to shared.Setup(...)
+```
+
+Replace the direct `IO.Encode(...)` return with:
+
+```go
+// Shape A — the query is the Expr string:
+exploreURL := QueryExploreURL(cfg.GrafanaURL, dsquery.ExploreQuery{
+    DatasourceUID:  datasourceUID,
+    DatasourceType: dsType,
+    Expr:           expr,
+    From:           shared.From,
+    To:             shared.To,
+    OrgID:          dsquery.OrgID(cfgCtx),
+})
+
+// Shape B — pass the same req the client executed, so the link and the
+// query can never disagree. Leave Expr unset.
+exploreURL := QueryExploreURL(cfg.GrafanaURL, dsquery.ExploreQuery{
+    DatasourceUID:  datasourceUID,
+    DatasourceType: dsType,
+    From:           shared.From,
+    To:             shared.To,
+    OrgID:          dsquery.OrgID(cfgCtx),
+}, req)
+
+unavailableMsg, failedOpenMsg := dsquery.ExploreMessages("query")
+
+return dsquery.EncodeAndHandleExplore(cmd, func() error {
+    return shared.IO.Encode(cmd.OutOrStdout(), resp)
+}, *share, dsquery.ExploreLink{
+    URL:            exploreURL,
+    UnavailableMsg: unavailableMsg,
+    FailedOpenMsg:  failedOpenMsg,
+})
+```
+
+**Rules:**
+
+- **The Explore query map must mirror the request body the client sends**, minus
+  `from` and `to` — the pane range carries the time span. Plugins reject or
+  silently misread a query shape that differs from their own model. Prefer one
+  exported query-map builder in the client package, called by both `client.go`
+  and `explore.go`, so the two shapes cannot drift apart.
+- **One builder per query model.** A datasource with several query types needs
+  one URL builder per type (e.g. Azure Monitor metrics vs Logs vs Resource
+  Graph). Do not reuse a single builder across different `queryType` values.
+- **Never leak an internal rewrite into the link.** When the command rewrites
+  the query before it sends it (e.g. a sentinel `LIMIT`), pass the rewritten
+  form to the client, and pass the user-facing form to `Expr`. No datasource
+  does this yet: `internal/datasources/athena/query.go` and
+  `internal/datasources/clickhouse/query.go` both pass the `EnforceLimit`
+  result to `Expr`, so the link carries a `LIMIT` the user never typed.
+- **Mention both flags** in the command's `Long` and `Example` text.
+- **A unit test cannot prove the URL is right.** Verify each new URL in a
+  browser during Stage 3.
+
+Reuse these helpers — do not write new ones:
+
+| Helper | File |
+|--------|------|
+| `ExploreQuery`, `ExploreRange`, `ExploreDatasource`, `SinglePane`, `BuildExploreURL` | `internal/datasources/query/explore.go` |
+| `ExploreLinkOpts`, `ExploreLink`, `ExploreMessages`, `OrgID`, `EncodeAndHandleExplore` | `internal/datasources/query/sharelink.go` |
+
+Reference: `internal/datasources/clickhouse/explore.go` (the SQL case) and
+`internal/datasources/prometheus/explore.go` (the metrics case).
+
 ### Step 2: DatasourceProvider
 
 Add a registration file in `internal/datasources/providers/`. This package
@@ -457,7 +607,25 @@ bin/gcx datasources {kind} query '<expr>' --since 1h
 # etc.
 ```
 
-### 3b. Run Checks
+### 3b. Explore Link Check (required)
+
+Run this for every query-class subcommand you added. A unit test cannot prove
+the URL opens the right query, so check it in a browser:
+
+```bash
+bin/gcx datasources {kind} query -d UID '<expr>' --since 1h --share-link
+bin/gcx datasources {kind} query -d UID '<expr>' --since 1h --open
+```
+
+Confirm three things in Grafana:
+
+1. Explore loads the correct datasource.
+2. The query text matches what you sent.
+3. The time range matches `--since`.
+
+Repeat for each query type when the datasource has more than one.
+
+### 3c. Run Checks
 
 ```bash
 # Full quality gates
@@ -473,12 +641,24 @@ mise exec -- go test ./internal/agent/...
 
 ## Reference Implementations
 
-| Kind | Commands | DSProvider Registration | Query Client |
-|------|----------|----------------------|-------------|
-| prometheus | `internal/datasources/prometheus/` | `internal/datasources/providers/prometheus.go` | `internal/query/prometheus/` |
-| loki | `internal/datasources/loki/` | `internal/datasources/providers/loki.go` | `internal/query/loki/` |
-| pyroscope | `internal/datasources/pyroscope/` | `internal/datasources/providers/pyroscope.go` | `internal/query/pyroscope/` |
-| tempo | `internal/datasources/tempo/` | `internal/datasources/providers/tempo.go` | `internal/query/tempo/` |
+| Kind | Commands | DSProvider Registration | Query Client | Explore Builder |
+|------|----------|----------------------|-------------|-----------------|
+| athena | `internal/datasources/athena/` | `internal/datasources/providers/athena.go` | `internal/query/athena/` | `internal/datasources/athena/explore.go` (Shape A) |
+| clickhouse | `internal/datasources/clickhouse/` | `internal/datasources/providers/clickhouse.go` | `internal/query/clickhouse/` | `internal/datasources/clickhouse/explore.go` (Shape A) |
+| cloudwatch | `internal/datasources/cloudwatch/` | `internal/datasources/providers/cloudwatch.go` | `internal/query/cloudwatch/` | `internal/datasources/cloudwatch/explore.go` (Shape B) |
+| infinity | `internal/datasources/infinity/` | `internal/datasources/providers/infinity.go` | `internal/query/infinity/` | — |
+| influxdb | `internal/datasources/influxdb/` | `internal/datasources/providers/influxdb.go` | `internal/query/influxdb/` | — |
+| loki | `internal/datasources/loki/` | `internal/datasources/providers/loki.go` | `internal/query/loki/` | `internal/datasources/loki/explore.go` |
+| postgres | `internal/datasources/postgres/` | `internal/datasources/providers/postgres.go` | `internal/query/postgres/` | — |
+| prometheus | `internal/datasources/prometheus/` | `internal/datasources/providers/prometheus.go` | `internal/query/prometheus/` | `internal/datasources/prometheus/explore.go` |
+| pyroscope | `internal/datasources/pyroscope/` | `internal/datasources/providers/pyroscope.go` | `internal/query/pyroscope/` | — |
+| tempo | `internal/datasources/tempo/` | `internal/datasources/providers/tempo.go` | `internal/query/tempo/` | `internal/datasources/tempo/explore.go` |
+
+A `—` marks a datasource that still has no Explore link. Four kinds have this
+gap now: `infinity`, `influxdb`, `postgres`, and `pyroscope`.
+
+Use `clickhouse` as the reference for an expression datasource (Shape A), and
+`cloudwatch` for a structured datasource (Shape B).
 
 ## Common Pitfalls
 
@@ -488,3 +668,5 @@ mise exec -- go test ./internal/agent/...
 | Plugin ID vs short kind | Add mapping to `NormalizeKind()` in `internal/datasources/query/resolve.go` |
 | Missing agent annotations | Every leaf needs a `token_cost` annotation on the built command. Setting it inline via `cmd.Annotations` in the constructor satisfies this, as does an entry in `internal/agent/command_annotations.go` — `agent.ApplyAnnotations` merges that map into the tree at startup. Per-kind datasource leaves normally do it inline |
 | PersistentPreRun chain | Always propagate to root in the DatasourceProvider parent command |
+| Explore URL opens an empty pane | See the rules in Step 1c |
+| Duplicated request-body code | Reuse `internal/query/sql` for SQL datasources. Do not copy another client's `Query` method. |

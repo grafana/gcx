@@ -38,7 +38,7 @@ gcx/
 │   ├── auth/                 # OAuth PKCE flow, token refresh transport
 │   │   └── adaptive/         # Shared adaptive telemetry auth (GCOM caching, Basic auth)
 │   ├── cloud/                # Grafana Cloud stack discovery via GCOM API
-│   ├── fleet/                # Shared fleet base client (HTTP, auth, config — shared by fleet provider and instrumentation provider)
+│   ├── fleet/                # Shared fleet base client (HTTP + stack config, over the grafana-collector-app plugin proxy — shared by fleet provider and instrumentation provider)
 │   ├── config/               # Config loading, context management, auth types (auto-migrates plaintext token-shaped secrets into the OS keychain via internal/credentials)
 │   │   └── testdata/         # YAML fixtures for config unit tests
 │   ├── credentials/          # OS-keychain backend for token-shaped secrets; sentinel format + Store interface; auto-disabled under `go test`
@@ -340,7 +340,7 @@ tree (e.g. fully offline work); it is never required.
 | Concurrency | `golang.org/x/sync` | `errgroup` for bounded parallel operations |
 | YAML / JSON | `goccy/go-yaml`, `go-openapi/strfmt` | YAML codec, OpenAPI format types |
 | File watching | `fsnotify/fsnotify` | Live reload file watcher |
-| Terminal UI | `NimbleMarkets/ntcharts`, `charmbracelet/lipgloss` | Terminal chart rendering (bar charts, line graphs) |
+| Terminal UI | `NimbleMarkets/ntcharts/v2`, `charm.land/lipgloss/v2` | Terminal chart rendering (bar charts, line graphs) |
 | Terminal detection | `golang.org/x/term` | Terminal size detection for graph output |
 | Testing | `stretchr/testify` | Assertions in unit tests |
 | Semver | `Masterminds/semver/v3` | Version parsing/comparison |

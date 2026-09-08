@@ -14,7 +14,6 @@ import (
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources/adapter"
-	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -82,8 +81,7 @@ type listOpts struct {
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &AppTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &AppTableCodec{Wide: true})
+	cmdio.RegisterTable(&o.IO, AppTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for unlimited)")
@@ -118,65 +116,25 @@ func newListCommand(loader RESTConfigLoader) *cobra.Command {
 	return cmd
 }
 
-// AppTableCodec renders Faro apps as a tabular table.
-type AppTableCodec struct {
-	Wide bool
-}
-
-// Format returns the output format name.
-func (c *AppTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
+// AppTable declares the Faro app table. Commands encode
+// []adapter.TypedObject[FaroApp] — the same payload the JSON and YAML codecs
+// receive — so the columns reach through .Spec rather than the command
+// unwrapping and changing what those codecs see.
+func AppTable() cmdio.Table[adapter.TypedObject[FaroApp]] {
+	spec := func(fn func(FaroApp) string) func(adapter.TypedObject[FaroApp]) string {
+		return func(obj adapter.TypedObject[FaroApp]) string { return fn(obj.Spec) }
 	}
-	return "table"
-}
-
-// Encode writes apps to the writer as a table.
-// It accepts []adapter.TypedObject[FaroApp] (from commands) and extracts .Spec internally.
-func (c *AppTableCodec) Encode(w io.Writer, v any) error {
-	typedObjs, ok := v.([]adapter.TypedObject[FaroApp])
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []TypedObject[FaroApp]")
+	return cmdio.Table[adapter.TypedObject[FaroApp]]{
+		Columns: []cmdio.Column[adapter.TypedObject[FaroApp]]{
+			{Header: "NAME", Content: spec(func(a FaroApp) string { return a.GetResourceName() })},
+			{Header: "APP KEY", Content: spec(func(a FaroApp) string { return cmdio.OrDash(a.AppKey) })},
+			{Header: "COLLECT ENDPOINT URL", Content: spec(func(a FaroApp) string { return cmdio.OrDash(a.CollectEndpointURL) })},
+			{Header: "OTLP INGEST ENDPOINT URL", Visible: cmdio.WideOnly, Content: spec(func(a FaroApp) string { return cmdio.OrDash(a.OTLPIngestEndpointURL) })},
+			{Header: "CORS ORIGINS", Visible: cmdio.WideOnly, Content: spec(func(a FaroApp) string { return corsOriginsString(a.CORSOrigins) })},
+			{Header: "EXTRA LOG LABELS", Visible: cmdio.WideOnly, Content: spec(func(a FaroApp) string { return labelsString(a.ExtraLogLabels) })},
+			{Header: "GEOLOCATION", Visible: cmdio.WideOnly, Content: spec(func(a FaroApp) string { return geolocationString(a.Settings) })},
+		},
 	}
-
-	var t *style.TableBuilder
-	if c.Wide {
-		t = style.NewTable("NAME", "APP KEY", "COLLECT ENDPOINT URL", "OTLP INGEST ENDPOINT URL", "CORS ORIGINS", "EXTRA LOG LABELS", "GEOLOCATION")
-	} else {
-		t = style.NewTable("NAME", "APP KEY", "COLLECT ENDPOINT URL")
-	}
-
-	for _, obj := range typedObjs {
-		app := obj.Spec
-		appKey := app.AppKey
-		if appKey == "" {
-			appKey = "-"
-		}
-		endpoint := app.CollectEndpointURL
-		if endpoint == "" {
-			endpoint = "-"
-		}
-
-		if c.Wide {
-			otlpEndpoint := app.OTLPIngestEndpointURL
-			if otlpEndpoint == "" {
-				otlpEndpoint = "-"
-			}
-			cors := corsOriginsString(app.CORSOrigins)
-			labels := labelsString(app.ExtraLogLabels)
-			geo := geolocationString(app.Settings)
-			t.Row(app.GetResourceName(), appKey, endpoint, otlpEndpoint, cors, labels, geo)
-		} else {
-			t.Row(app.GetResourceName(), appKey, endpoint)
-		}
-	}
-
-	return t.Render(w)
-}
-
-// Decode is not supported for table format.
-func (c *AppTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
 }
 
 // resolveGetTarget resolves the lookup ID for the get command.
@@ -245,8 +203,7 @@ type getOpts struct {
 }
 
 func (o *getOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &AppTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &AppTableCodec{Wide: true})
+	cmdio.RegisterTable(&o.IO, AppTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.StringVar(&o.Name, "name", "", "Get Frontend Observability app by name instead of slug-id")

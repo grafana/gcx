@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"strconv"
 	"strings"
 	"testing"
@@ -68,6 +69,29 @@ func TestFormatSearchTable_Empty(t *testing.T) {
 	assert.Contains(t, buf.String(), "TRACE_ID")
 	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
 	assert.Len(t, lines, 1)
+}
+
+func TestFormatBaselineTable_DistinguishesKnownAndUnknownCounts(t *testing.T) {
+	zero, errorSpans := 0, 3
+	resp := &tempo.BaselineResult{
+		SeedTraceID:      "seed",
+		SeedPartial:      true,
+		SeedSpanCount:    2,
+		SeedServiceCount: 1,
+		Candidates: []tempo.BaselineCandidate{
+			{TraceID: "known", RootServiceName: "svc", RootTraceName: "op", SpanCount: &zero, ServiceCount: &zero, ErrorCount: &errorSpans},
+			{TraceID: "unknown", RootServiceName: "svc", RootTraceName: "op"},
+		},
+	}
+
+	var buf bytes.Buffer
+	require.NoError(t, tempo.FormatBaselineTable(&buf, resp))
+
+	out := buf.String()
+	assert.Contains(t, out, "Seed seed (partial)")
+	assert.Contains(t, out, "ERRORS")
+	assert.Regexp(t, `(?m)^known\s+svc\s+op\s+0\s+0\s+3\s+`, out)
+	assert.Regexp(t, `(?m)^unknown\s+svc\s+op\s+-\s+-\s+-\s+`, out)
 }
 
 func TestFormatTagsTable(t *testing.T) {
@@ -481,6 +505,27 @@ func TestFormatTraceTable_NilTrace(t *testing.T) {
 		var buf bytes.Buffer
 		require.NoError(t, tempo.FormatTraceTable(&buf, resp))
 		assert.Contains(t, buf.String(), "spans: 0")
+	})
+}
+
+type failWriter struct{ err error }
+
+func (w failWriter) Write([]byte) (int, error) { return 0, w.err }
+
+func TestFormatTraceTable_PropagatesHeaderWriteErrors(t *testing.T) {
+	wantErr := errors.New("write failed")
+
+	t.Run("empty trace", func(t *testing.T) {
+		err := tempo.FormatTraceTable(failWriter{err: wantErr}, nil)
+		require.ErrorIs(t, err, wantErr)
+	})
+
+	t.Run("populated trace", func(t *testing.T) {
+		resp := mkTrace(mkResourceSpans("svc",
+			mkSpan(t, "root", "0000000000000001", "", "", "STATUS_CODE_OK", 0, 100_000_000),
+		))
+		err := tempo.FormatTraceTable(failWriter{err: wantErr}, resp)
+		require.ErrorIs(t, err, wantErr)
 	})
 }
 

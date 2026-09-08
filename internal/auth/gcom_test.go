@@ -9,13 +9,14 @@ import (
 
 // The `gcx login` cloud followup requests DefaultGCOMScopes directly, so this
 // pins the full scope set gcx needs across all commands - not just stacks.
+// Fleet Management is absent on purpose: it reaches its API through the
+// collector app plugin proxy on the stack, so it needs no grafana.com scope.
 func TestDefaultGCOMScopes(t *testing.T) {
 	want := []string{
 		"stacks:read", "stacks:write", "stacks:delete",
 		"metrics:write",
 		"logs:write",
 		"traces:write",
-		"fleet-management:read", "fleet-management:write",
 	}
 	assert.Equal(t, want, auth.DefaultGCOMScopes())
 

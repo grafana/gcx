@@ -81,6 +81,8 @@ func TestRuntimeOnlyOAuthDestinationChecksBeforeAndAfterFlow(t *testing.T) {
 	})
 
 	t.Run("issuer endpoint matching runtime override remains persistable", func(t *testing.T) {
+		t.Setenv("GCX_KEYCHAIN", "off")
+
 		const runtimeProxy = "https://runtime-proxy.example.invalid"
 		source := config.ExplicitConfigFile(t.TempDir() + "/config.yaml")
 		_, err := Run(t.Context(), &Options{

@@ -27,6 +27,10 @@ type fakeStore struct {
 	// that is reachable for writes but cannot resolve reads (e.g. a locked
 	// session). Tests set it to credentials.ErrUnavailable.
 	getErr error
+	// setErr simulates a store that opens successfully but refuses new
+	// credential generations. Keeping this distinct from getErr lets tests
+	// prove that fresh-login failures never fall back to plaintext.
+	setErr error
 }
 
 func newFakeStore() *fakeStore {
@@ -55,6 +59,9 @@ func (s *fakeStore) setGetErr(err error) {
 func (s *fakeStore) Set(key, value string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.setErr != nil {
+		return s.setErr
+	}
 	s.entries[key] = value
 	s.setCalls++
 	return nil
@@ -84,6 +91,17 @@ func (s *fakeStore) len() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return len(s.entries)
+}
+
+func (s *fakeStore) containsValue(value string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, stored := range s.entries {
+		if stored == value {
+			return true
+		}
+	}
+	return false
 }
 
 // withFakeStore installs a fakeStore for the duration of the test and returns
