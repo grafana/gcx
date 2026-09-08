@@ -161,13 +161,16 @@ func TestPinotMetadataQueries(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, eventsSQL, "session_replay_start")
 	assert.Contains(t, eventsSQL, "session_last_event")
-	assert.Contains(t, eventsSQL, "FILTER (WHERE eventName = 'session_start')")
+	assert.Contains(t, eventsSQL, "eventName IN ('session_start', 'session_resume')")
+	assert.Contains(t, eventsSQL, `"attributesJson.device_model"`)
+	assert.Contains(t, eventsSQL, "device_model_name")
 	assert.Contains(t, eventsSQL, pinotEventsTableDev)
 	assert.Contains(t, userSQL, "faro_pinot_measurements_v1")
 	assert.Contains(t, userSQL, "userEmail")
 	assert.Contains(t, userSQL, "user_email")
 	assert.Contains(t, userSQL, "sdkName")
-	assert.Contains(t, userSQL, "device_model_name")
+	assert.NotContains(t, userSQL, "device_model")
+	assert.NotContains(t, userSQL, "attributesJson")
 	assert.NotContains(t, eventsSQL, "appNamespace")
 }
 
