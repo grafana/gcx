@@ -6,7 +6,9 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
+	"time"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/query/pinot"
@@ -155,6 +157,32 @@ func TestQuery_ExplicitTableNameOverridesExtract(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "events", q["tableName"])
 	assert.Equal(t, "SELECT 1 FROM (SELECT 1) journey", q["pinotQlCode"])
+}
+
+func TestQuery_DefaultsTimeRangeOnlyWhenBothUnset(t *testing.T) {
+	start := time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC)
+	wantFrom := strconv.FormatInt(start.UnixMilli(), 10)
+	wantTo := strconv.FormatInt(time.Time{}.UnixMilli(), 10)
+
+	var captured map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(raw, &captured)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"results":{"A":{"frames":[{"schema":{"fields":[{"name":"v","type":"number"}]},"data":{"values":[[1]]}}],"status":200}}}`))
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server.URL)
+	_, err := client.Query(context.Background(), "pinot-uid", pinot.QueryRequest{
+		RawSQL:    "SELECT 1",
+		TableName: "events",
+		Start:     start,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, wantFrom, captured["from"])
+	assert.Equal(t, wantTo, captured["to"])
 }
 
 func TestQuery_TableNameExtraction(t *testing.T) {

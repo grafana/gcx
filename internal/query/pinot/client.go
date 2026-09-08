@@ -45,7 +45,7 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 
 	from := strconv.FormatInt(req.Start.UnixMilli(), 10)
 	to := strconv.FormatInt(req.End.UnixMilli(), 10)
-	if req.Start.IsZero() || req.End.IsZero() {
+	if req.Start.IsZero() && req.End.IsZero() {
 		now := time.Now()
 		from = strconv.FormatInt(now.Add(-1*time.Hour).UnixMilli(), 10)
 		to = strconv.FormatInt(now.UnixMilli(), 10)
