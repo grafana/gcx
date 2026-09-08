@@ -24,8 +24,6 @@ type lokiQuerier interface {
 }
 
 const (
-	lokiQueryDirectionForward = "forward"
-
 	// Loki session queries go through Grafana's query API with no HTTP client
 	// timeout. Bound each Loki POST so a stuck scan exits; do not share one
 	// deadline across metadata + every kind page. Pinot is not wrapped.
@@ -37,7 +35,7 @@ func wrapLokiSessionQueryErr(sessionID string, err error, timeout time.Duration)
 		return nil
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
-		return fmt.Errorf("no telemetry for session %s in this time range (Loki query timed out after %s; try a Pinot datasource UID (-d) or a narrower --from/--to)", sessionID, timeout)
+		return fmt.Errorf("loki query timed out after %s while fetching session %s (scan did not finish; this is not an empty result); try a narrower --from/--to or a Pinot datasource UID (-d)", timeout, sessionID)
 	}
 	return err
 }
@@ -260,11 +258,13 @@ func fetchLokiSessionTimed(ctx context.Context, client lokiQuerier, uid string, 
 	g.Go(func() error {
 		var err error
 		metaResp, err = queryLoki(gctx, client, uid, loki.QueryRequest{
-			Query:     lokiMetadataQuery(p),
-			Start:     start,
-			End:       end,
-			Limit:     1,
-			Direction: lokiQueryDirectionForward,
+			Query: lokiMetadataQuery(p),
+			Start: start,
+			End:   end,
+			Limit: 1,
+			// Omit direction so Grafana/Loki default to backward (latest
+			// line). Forward scans app_id from the window start and times
+			// out on a busy frontend stream before Limit 1 is filled.
 		}, timeout)
 		if err != nil {
 			return fmt.Errorf("loki metadata query failed: %w", err)
@@ -274,11 +274,10 @@ func fetchLokiSessionTimed(ctx context.Context, client lokiQuerier, uid string, 
 	g.Go(func() error {
 		var err error
 		replayResp, err = queryLoki(gctx, client, uid, loki.QueryRequest{
-			Query:     lokiReplayStartQuery(p),
-			Start:     start,
-			End:       end,
-			Limit:     1,
-			Direction: lokiQueryDirectionForward,
+			Query: lokiReplayStartQuery(p),
+			Start: start,
+			End:   end,
+			Limit: 1,
 		}, timeout)
 		if err != nil {
 			return fmt.Errorf("loki replay-start query failed: %w", err)
