@@ -17,14 +17,6 @@ import (
 	"github.com/spf13/pflag"
 )
 
-func parsePositiveK6ID(value, label string) (int, error) {
-	id, err := strconv.Atoi(value)
-	if err != nil || id <= 0 {
-		return 0, fmt.Errorf("invalid %s %q: must be a positive integer", label, value)
-	}
-	return id, nil
-}
-
 type testRunMetricsTableCodec struct{}
 
 func (*testRunMetricsTableCodec) Format() format.Format { return "table" }
@@ -146,7 +138,7 @@ func newRunsListMetricsCommand(loader CloudConfigLoader) *cobra.Command {
 			if err := opts.Validate(); err != nil {
 				return err
 			}
-			runID, err := parsePositiveK6ID(args[0], "run ID")
+			runID, err := parsePositiveID(args[0], "run")
 			if err != nil {
 				return err
 			}
@@ -206,7 +198,7 @@ func newTestsListMetricsCommand(loader CloudConfigLoader) *cobra.Command {
 			if err := opts.Validate(); err != nil {
 				return err
 			}
-			loadTestID, err := parsePositiveK6ID(args[0], "load test ID")
+			loadTestID, err := parsePositiveID(args[0], "load test")
 			if err != nil {
 				return err
 			}
@@ -252,9 +244,6 @@ func (o *listTestRunSeriesOpts) Validate(selectors []string) error {
 		if selector == "" {
 			return errors.New("series selector must not be empty")
 		}
-		if strings.HasPrefix(selector, "{") {
-			return errors.New("series selector must start with a metric name")
-		}
 	}
 	return nil
 }
@@ -277,7 +266,7 @@ func newRunsListSeriesCommand(loader CloudConfigLoader) *cobra.Command {
 			if err := opts.Validate(selectors); err != nil {
 				return err
 			}
-			runID, err := parsePositiveK6ID(args[0], "run ID")
+			runID, err := parsePositiveID(args[0], "run")
 			if err != nil {
 				return err
 			}
@@ -323,9 +312,6 @@ func (o *listTestRunLabelsOpts) Validate() error {
 		if selector == "" {
 			return errors.New("--match selector must not be empty")
 		}
-		if strings.HasPrefix(selector, "{") {
-			return errors.New("--match selector must start with a metric name")
-		}
 	}
 	return nil
 }
@@ -346,7 +332,7 @@ func newRunsListLabelsCommand(loader CloudConfigLoader) *cobra.Command {
 			if err := opts.Validate(); err != nil {
 				return err
 			}
-			runID, err := parsePositiveK6ID(args[0], "run ID")
+			runID, err := parsePositiveID(args[0], "run")
 			if err != nil {
 				return err
 			}
@@ -436,7 +422,7 @@ func newRunsMetricsQueryCommand(loader CloudConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			runID, err := parsePositiveK6ID(args[0], "run ID")
+			runID, err := parsePositiveID(args[0], "run")
 			if err != nil {
 				return err
 			}
@@ -539,7 +525,7 @@ func newTestsMetricsQueryCommand(loader CloudConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			loadTestID, err := parsePositiveK6ID(args[0], "load test ID")
+			loadTestID, err := parsePositiveID(args[0], "load test")
 			if err != nil {
 				return err
 			}
