@@ -160,6 +160,14 @@ credential-bearing stack/Cloud entries atomically, select `--context` or
 `GRAFANA_TOKEN`, `GRAFANA_PROVIDER_{NAME}_{KEY}`). Overrides take runtime
 precedence but remain ephemeral.
 
+**Strict context mode:** `GCX_REQUIRE_CONTEXT` drops the `current-context`
+fallback from that chain, so an invocation must name its target with `--context`
+or `GRAFANA_SERVER` or be refused with exit code 2. It protects workstations
+holding many contexts, where one session's `config use-context` would otherwise
+retarget commands running in another. Enforced pre-dispatch in
+`cmd/gcx/root/contextguard.go`, ahead of Cobra's hooks, so no command subtree can
+opt out of it.
+
 **Namespace resolution:** `org-id` (on-prem, maps to K8s namespace) or `stack-id` (Cloud, discovered via GCOM). Providers use `ConfigLoader` which resolves these uniformly.
 
 **Secret handling:** Config keys marked `Secret: true` in provider `ConfigKeys()`

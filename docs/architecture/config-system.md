@@ -489,6 +489,28 @@ func (config *Config) GetCurrentContext() *Context {
 
 Returns `nil` if `CurrentContext` is empty or not found — callers must check.
 
+### Strict Context Mode
+
+`GCX_REQUIRE_CONTEXT` removes step 2 from the selection order above: an
+invocation must name its own target, or it is refused before it runs. It exists
+because `current-context` is shared mutable state — on a workstation holding
+many contexts, one session's `gcx config use-context` silently retargets every
+later command in every other session, including commands run by coding agents.
+
+An invocation satisfies the requirement with `--context <name>` (root's
+persistent flag or a subtree-bound one) or a `GRAFANA_SERVER` override, both of
+which name the destination for that invocation alone. Anything else fails with
+exit code 2.
+
+The check lives in `EnforceContextSelection` (`cmd/gcx/root/contextguard.go`) and
+runs pre-dispatch from `main()`, not in root's `PersistentPreRun`. Cobra runs
+only the closest `PersistentPreRun` in the chain, and several provider groups
+define their own and chain back to root's by hand, so a guard in that hook would
+be skipped by any subtree that forgot to chain — a fail-open outcome. Commands
+are enforced by default; `contextExemptRoutes` lists the routes that are not
+(local metadata, shell plumbing, config-file editing, and the bootstrapping
+`login` commands, which name their own destination).
+
 ---
 
 ## From Config to REST Client

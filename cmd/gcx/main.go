@@ -77,6 +77,10 @@ func main() {
 		exitWith(cmd, gate, start, reportError(err, boolFlags, subCmds))
 	}
 
+	if err := root.EnforceContextSelection(formattedVersion, os.Args[1:]); err != nil {
+		exitWith(cmd, gate, start, reportError(err, boolFlags, subCmds))
+	}
+
 	err := cmd.ExecuteContext(ctx)
 
 	// An interrupted invocation reports no error: a fused error document would
