@@ -104,8 +104,22 @@ jobs:
 
             We should categorise findings as blocking or nits. Recommended
             findings should be upgraded to blocking.
-          # Pin the model to keep the behaviour consistent
-          claude_args: '--model claude-opus-4-6 --allowedTools "Read,Grep,Glob,Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(gh pr review:*),mcp__github_inline_comment__create_inline_comment"'
+          # Pin the model to keep the behaviour consistent. Tool permissions
+          # live in .claude/settings.json, which this session loads as a
+          # project setting source, so a local /review-pr run and this workflow
+          # get the same allowlist instead of drifting apart.
+          claude_args: '--model claude-opus-4-6'
+
+      # The transcript records every tool call and every permission denial.
+      # Without it a review that silently denied its way to no output looks
+      # identical to one that found nothing.
+      - name: Upload Claude session transcript
+        if: always() && steps.claude-review.outputs.execution_file != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: claude-review-transcript-${{ steps.pr.outputs.number }}
+          path: ${{ steps.claude-review.outputs.execution_file }}
+          retention-days: 7
 
       - name: Add claude-reviewed label
         if: success()
