@@ -242,6 +242,24 @@ func TestFormatLokiLines(t *testing.T) {
 	assert.Equal(t, "Mac OS", logfmtValue(`os_name="Mac OS" sdk_name=faro-web`, "os_name"))
 }
 
+func TestWriteLogfmtFieldEscapesNewlines(t *testing.T) {
+	t.Parallel()
+	// Loki stores exception_value="line1\nline2"; decode yields a real
+	// newline. The dump must write it back escaped so one event is one line.
+	got := formatLokiLines(&loki.QueryResponse{
+		Data: loki.QueryResultData{
+			Result: []loki.StreamEntry{{
+				Values: []loki.LogEntry{{
+					Timestamp: "1",
+					Line:      "kind=exception exception_value=\"line1\\nline2\" message=\"say \\\"hi\\\"\"",
+				}},
+			}},
+		},
+	})
+	assert.Equal(t, "1\tkind=exception exception_value=\"line1\\nline2\" message=\"say \\\"hi\\\"\"\n\n", got)
+	assert.NotContains(t, got, "line1\nline2")
+}
+
 func TestFormatLokiMetadata(t *testing.T) {
 	t.Parallel()
 	meta := &loki.QueryResponse{Data: loki.QueryResultData{Result: []loki.StreamEntry{{
