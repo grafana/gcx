@@ -51,6 +51,12 @@ func ValidateConfigPath(cfg Config, path string) (string, error) {
 			return path, nil
 		case "":
 			return "", fmt.Errorf("invalid path %q: credentials has no directly settable field; use credentials.keychain", path)
+		default:
+			// Without this arm a mistyped leaf ("credentials.keychan") falls
+			// through to the generic unknown-path error, which tells the user
+			// their top-level section is wrong and lists sections excluding
+			// credentials — misdirecting them away from the actual typo.
+			return "", fmt.Errorf("invalid path %q: credentials.keychain is the only supported credentials path", path)
 		}
 	case "cloud":
 		if sub, _, _ := strings.Cut(rest, "."); rest == "" || cloudEntryFields[sub] {

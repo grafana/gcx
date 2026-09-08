@@ -102,8 +102,10 @@ func TestValidateConfigPath(t *testing.T) {
 		// top-level map.
 		{"cloud", "cloud.<entry>."},
 		{"credentials", "credentials.keychain"},
-		{"credentials.unknown", "top-level section"},
-		{"credentials.keychain.extra", "top-level section"},
+		// A mistyped leaf names the supported path rather than misdirecting
+		// the user to the top-level grammar: credentials IS a valid section.
+		{"credentials.unknown", "credentials.keychain is the only supported credentials path"},
+		{"credentials.keychain.extra", "credentials.keychain is the only supported credentials path"},
 		// Unknown paths get the general grammar.
 		{"nonsense.path", "top-level section"},
 	}
