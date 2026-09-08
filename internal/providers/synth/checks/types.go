@@ -31,17 +31,18 @@ type Check struct {
 // CheckSpec is the user-facing representation stored in YAML files.
 // Probes are stored as human-readable names, not IDs.
 type CheckSpec struct {
-	Job              string        `json:"job"`
-	Target           string        `json:"target"`
-	Frequency        int64         `json:"frequency"`
-	Offset           int64         `json:"offset,omitempty"`
-	Timeout          int64         `json:"timeout"`
-	Enabled          bool          `json:"enabled"`
-	Labels           []Label       `json:"labels,omitempty"`
-	Settings         CheckSettings `json:"settings"`
-	Probes           []string      `json:"probes"` // probe NAMES in YAML files
-	BasicMetricsOnly bool          `json:"basicMetricsOnly,omitempty"`
-	AlertSensitivity string        `json:"alertSensitivity,omitempty"`
+	Job              string         `json:"job"`
+	Target           string         `json:"target"`
+	Frequency        int64          `json:"frequency"`
+	Offset           int64          `json:"offset,omitempty"`
+	Timeout          int64          `json:"timeout"`
+	Enabled          bool           `json:"enabled"`
+	Labels           []Label        `json:"labels,omitempty"`
+	Settings         CheckSettings  `json:"settings"`
+	Probes           []string       `json:"probes"` // probe NAMES in YAML files
+	BasicMetricsOnly bool           `json:"basicMetricsOnly,omitempty"`
+	AlertSensitivity string         `json:"alertSensitivity,omitempty"`
+	Channels         map[string]any `json:"channels,omitempty"`
 }
 
 // Label is a key-value pair applied to all metrics and events for a check.

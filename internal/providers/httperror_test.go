@@ -36,6 +36,18 @@ func TestFormatError(t *testing.T) {
 			want: "request failed with status 500: boom",
 		},
 		{
+			name: "err detail preferred over generic msg",
+			code: 400,
+			body: `{"msg":"Invalid incoming check","err":"browser checks require channels.k6.id"}`,
+			want: "request failed with status 400: browser checks require channels.k6.id",
+		},
+		{
+			name: "non-string err preserves msg fallback",
+			code: 400,
+			body: `{"msg":"bad request data","err":{"field":"job"}}`,
+			want: "request failed with status 400: bad request data",
+		},
+		{
 			name: "raw body fallback",
 			code: 502,
 			body: "upstream unavailable",
