@@ -115,13 +115,24 @@ func TestMetricsRunSelectionValidation(t *testing.T) {
 	}
 }
 
-func TestSeriesSelectorsRequireMetricName(t *testing.T) {
+func TestSeriesSelectorsAllowMatcherOnlySelectors(t *testing.T) {
 	seriesOpts := &listTestRunSeriesOpts{}
 	seriesOpts.setup(pflag.NewFlagSet("series", pflag.ContinueOnError))
-	require.ErrorContains(t, seriesOpts.Validate([]string{`{scenario="api"}`}), "metric name")
+	require.NoError(t, seriesOpts.Validate([]string{`{scenario="api"}`}))
 
 	labelOpts := &listTestRunLabelsOpts{}
 	labelOpts.setup(pflag.NewFlagSet("labels", pflag.ContinueOnError))
-	labelOpts.Matches = []string{`{scenario="api"}`}
-	require.ErrorContains(t, labelOpts.Validate(), "metric name")
+	labelOpts.Matches = []string{`{__name__="http_reqs"}`}
+	require.NoError(t, labelOpts.Validate())
+}
+
+func TestSeriesSelectorsRejectEmptyValues(t *testing.T) {
+	seriesOpts := &listTestRunSeriesOpts{}
+	seriesOpts.setup(pflag.NewFlagSet("series", pflag.ContinueOnError))
+	require.ErrorContains(t, seriesOpts.Validate([]string{" "}), "must not be empty")
+
+	labelOpts := &listTestRunLabelsOpts{}
+	labelOpts.setup(pflag.NewFlagSet("labels", pflag.ContinueOnError))
+	labelOpts.Matches = []string{" "}
+	require.ErrorContains(t, labelOpts.Validate(), "must not be empty")
 }

@@ -36,7 +36,7 @@ func (e *v6PagedRunsExecutor) doCloud(_ context.Context, request cloudRequest) (
 	if skip == 0 {
 		values := make([]TestRun, 100)
 		for i := range values {
-			values[i] = TestRun{ID: i + 1, Created: fmt.Sprintf("2026-01-01T00:%02d:00Z", i%60)}
+			values[i] = TestRun{ID: 101 - i, Created: fmt.Sprintf("2026-01-%02dT00:00:00Z", 31-(i%31))}
 		}
 		body, err := json.Marshal(TestRunList{Value: values, Count: 101})
 		if err != nil {
@@ -44,7 +44,7 @@ func (e *v6PagedRunsExecutor) doCloud(_ context.Context, request cloudRequest) (
 		}
 		return cloudResponse{StatusCode: http.StatusOK, Body: body}, nil
 	}
-	body, err := json.Marshal(TestRunList{Value: []TestRun{{ID: 101, Created: "2026-12-31T23:59:59Z"}}, Count: 101})
+	body, err := json.Marshal(TestRunList{Value: []TestRun{{ID: 1, Created: "2025-12-31T23:59:59Z"}}, Count: 101})
 	if err != nil {
 		return cloudResponse{}, err
 	}
@@ -134,7 +134,7 @@ func TestListProjectLimitsRequestMapping(t *testing.T) {
 	assert.Contains(t, executor.request.Path, "project_id_in=7%2C8")
 }
 
-func TestListAllTestRunsPaginatesAndSortsNewestFirst(t *testing.T) {
+func TestListAllTestRunsPaginatesNewestFirst(t *testing.T) {
 	executor := &v6PagedRunsExecutor{}
 	operations := &cloudOperations{executor: executor}
 	result, err := operations.ListAllTestRuns(t.Context(), TestRunListParams{})
@@ -142,7 +142,33 @@ func TestListAllTestRunsPaginatesAndSortsNewestFirst(t *testing.T) {
 	require.Len(t, result.Value, 101)
 	assert.Len(t, executor.paths, 2)
 	assert.Equal(t, 101, result.Value[0].ID)
+	assert.Equal(t, 1, result.Value[100].ID)
 	assert.Equal(t, 101, result.Count)
+	for _, path := range executor.paths {
+		parsed, parseErr := url.Parse(path)
+		require.NoError(t, parseErr)
+		assert.Equal(t, "created desc", parsed.Query().Get("$orderby"))
+	}
+}
+
+func TestListAllTestRunsAppliesLimitAfterNewestFirstOrder(t *testing.T) {
+	executor := &v6RecordingExecutor{response: cloudResponse{
+		StatusCode: http.StatusOK,
+		Body:       []byte(`{"value":[{"id":101,"created":"2026-12-31T23:59:59Z"}],"@count":200}`),
+	}}
+	operations := &cloudOperations{executor: executor}
+	result, err := operations.ListAllTestRuns(t.Context(), TestRunListParams{Top: 1})
+	require.NoError(t, err)
+	require.Len(t, result.Value, 1)
+	assert.Equal(t, 101, result.Value[0].ID)
+	assert.Equal(t, 200, result.Count)
+
+	parsed, err := url.Parse(executor.request.Path)
+	require.NoError(t, err)
+	assert.Equal(t, "true", parsed.Query().Get("$count"))
+	assert.Equal(t, "created desc", parsed.Query().Get("$orderby"))
+	assert.Equal(t, "1", parsed.Query().Get("$top"))
+	assert.Equal(t, "0", parsed.Query().Get("$skip"))
 }
 
 func TestFlexibleNumberAcceptsNumberAndString(t *testing.T) {
