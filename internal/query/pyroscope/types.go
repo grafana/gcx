@@ -20,7 +20,15 @@ type QueryRequest struct {
 	SpanIDs            []string
 	TraceIDs           []string
 	StackTraceSelector *StackTraceSelector
+	// Format optionally selects the querier.v1.ProfileFormat of the response.
+	// Empty requests the default flame graph.
+	Format string
 }
+
+// ProfileFormatDot requests a Graphviz DOT call graph from the
+// SelectMergeStacktraces RPC. Only pure-v2 read paths honor it: v1 backends
+// reject it and v1-v2-dual backends silently return a flame graph instead.
+const ProfileFormatDot = "PROFILE_FORMAT_DOT"
 
 // StackTraceSelector mirrors querier.v1.StackTraceSelector. Only the CallSite
 // variant is supported on the SelectMergeStacktraces RPC; GoPGO selection
@@ -40,8 +48,11 @@ func (r QueryRequest) IsRange() bool {
 }
 
 // QueryResponse represents the response from a Pyroscope profile query.
+// Exactly one of Flamegraph or Dot is set on success; both are empty when
+// the query matched no data and PROFILE_FORMAT_DOT was requested.
 type QueryResponse struct {
 	Flamegraph *Flamegraph `json:"flamegraph,omitempty"`
+	Dot        string      `json:"dot,omitempty"`
 }
 
 // Flamegraph represents a flame graph structure.
