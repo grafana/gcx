@@ -20,6 +20,7 @@ import (
 
 type sessionsGetOpts struct {
 	dsquery.TimeRangeOpts
+
 	IO cmdio.Options
 
 	App        string
