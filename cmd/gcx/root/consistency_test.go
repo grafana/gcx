@@ -90,6 +90,29 @@ func TestConsistency_NonSmallCommandsHaveLLMHint(t *testing.T) {
 	}
 }
 
+func TestConsistency_K6ScriptDownloadsHaveLargeTokenCost(t *testing.T) {
+	want := map[string]bool{
+		"gcx k6 load-tests get-script": false,
+		"gcx k6 runs get-script":       false,
+	}
+	rootCmd := buildRootCmd()
+	agent.WalkCommands(rootCmd, func(cmd *cobra.Command) {
+		path := cmd.CommandPath()
+		if _, ok := want[path]; !ok {
+			return
+		}
+		want[path] = true
+		if got := cmd.Annotations[agent.AnnotationTokenCost]; got != "large" {
+			t.Errorf("%s token cost = %q, want large", path, got)
+		}
+	})
+	for path, found := range want {
+		if !found {
+			t.Errorf("command %s was not found", path)
+		}
+	}
+}
+
 func TestConsistency_LLMHintRequiresTokenCost(t *testing.T) {
 	rootCmd := buildRootCmd()
 
