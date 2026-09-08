@@ -49,8 +49,7 @@ func makeDiscoveryClient(t *testing.T, serverURL string) *instrumentation.Client
 func makeListOutOpts() *cmdio.Options {
 	opts := &cmdio.Options{}
 	opts.DefaultFormat("text")
-	opts.RegisterCustomCodec("text", &instrumout.ServiceTableCodec{Wide: false})
-	opts.RegisterCustomCodec("wide", &instrumout.ServiceTableCodec{Wide: true})
+	cmdio.RegisterTableAs(opts, instrumout.ServiceTable(), cmdio.FormatText)
 	// BindFlags initialises OutputFormat to the default ("text") via pflag default.
 	fs := pflag.NewFlagSet("test", pflag.ContinueOnError)
 	opts.BindFlags(fs)

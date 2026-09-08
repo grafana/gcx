@@ -1,0 +1,3 @@
+NAME          NAMESPACES  WORKLOADS  PODS  COST  EVENTS  ENERGY  LOGS  NODES  STATUS
+prod-eu-west  12          48         310   true  false   true    true  9      INSTRUMENTED
+bare          0           0          0                                 0      

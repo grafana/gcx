@@ -199,17 +199,6 @@ func (opts *Options) MutationConfigSource() config.Source {
 	}
 }
 
-// MutationConfigContext carries the sole discovered source's trust provenance
-// into raw login/provider mutations. Explicit --config and GCX_CONFIG paths
-// remain explicit user intent (including symlink support).
-func (opts *Options) MutationConfigContext(ctx context.Context) context.Context {
-	target, err := opts.resolveMutationConfigTarget()
-	if err != nil || target.Type == "explicit" || target.Type == "" {
-		return ctx
-	}
-	return config.ContextWithConfigSource(ctx, target)
-}
-
 // MutationConfigTarget returns the exact raw config document selected for a
 // mutation together with its discovery provenance. Credential-accepting
 // commands use the provenance to require an explicit --config/GCX_CONFIG trust
