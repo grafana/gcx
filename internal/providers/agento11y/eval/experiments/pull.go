@@ -103,7 +103,7 @@ type exportOpts struct {
 }
 
 func (o *exportOpts) setup(flags *pflag.FlagSet) {
-	flags.StringVarP(&o.OutputDir, "output-dir", "d", "", "Directory to create for the export (required; must not already exist)")
+	flags.StringVarP(&o.OutputDir, "output-dir", "d", "", "Directory to create for the pulled bundle (required; must not already exist)")
 	flags.BoolVar(&o.IncludeConversations, "include-conversations", false, "Download the full payload for every conversation referenced by a trial")
 	flags.IntVar(&o.Concurrency, "concurrency", defaultExportConcurrency, "Maximum concurrent requests when including conversations")
 }
@@ -118,29 +118,34 @@ func (o *exportOpts) Validate() error {
 	return nil
 }
 
-func newExportCommand(loader *providers.ConfigLoader) *cobra.Command {
+func newPullCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &exportOpts{}
 	cmd := &cobra.Command{
-		Use:   "export <run-id>",
-		Short: "Export an experiment's raw source bundle to disk.",
-		Long: `Export the experiment record, aggregate report, and paginated trial responses
-to a new directory. The trial index contains referenced conversation IDs, but
-conversation payloads are not downloaded unless --include-conversations is set.
-API response bodies are stored without field selection or model-specific
+		Use:   "pull <run-id>",
+		Short: "[experimental] Pull an experiment's raw source bundle to disk.",
+		Long: `This command is experimental. It may be removed, or its subcommands, flags and
+responses may change without following the normal semantic versioning conventions.
+
+Pull the experiment record, aggregate report, and paginated trial responses to
+a new directory. The report includes the evaluator scores and artifact metadata
+returned for each trial. The trial index contains referenced conversation IDs,
+but conversation payloads are not downloaded unless --include-conversations is
+set. API response bodies are stored without field selection or model-specific
 transformation so source fields remain available for offline analysis.
 
-The destination must not already exist. When conversations are included, their
-requests run concurrently and individual failures are recorded in the manifest
-and artifact receipt. Exported data may contain sensitive prompts, tool inputs,
-and tool outputs. Each export includes an AGENTS.md with safe-handling
-instructions and a .gitignore that excludes the entire bundle from Git by
-default.`,
-		Example: `  # Export experiment metadata, aggregate report, trials, and conversation IDs.
-  gcx agento11y experiments export <run-id> -d ./exports/run-1
+The destination must not already exist. Before downloading, gcx verifies that
+the destination filesystem supports atomic no-replace directory publication.
+When conversations are included, their requests run concurrently and individual
+failures are recorded in the manifest and artifact receipt. Pulled data may
+contain sensitive prompts, tool inputs, and tool outputs. Each bundle includes
+an AGENTS.md with safe-handling instructions and a .gitignore that excludes the
+entire bundle from Git by default.`,
+		Example: `  # Pull experiment metadata, aggregate report, trials, and conversation IDs.
+  gcx agento11y experiments pull <run-id> -d ./exports/run-1
 
   # Also download every referenced conversation with reduced request pressure.
-  gcx agento11y experiments export <run-id> -d ./exports/run-1 --include-conversations --concurrency 4`,
-		Args: exactArgsWithSuggestion(1, "gcx agento11y experiments export <run-id> -d <directory>"),
+  gcx agento11y experiments pull <run-id> -d ./exports/run-1 --include-conversations --concurrency 4`,
+		Args: exactArgsWithSuggestion(1, "gcx agento11y experiments pull <run-id> -d <directory>"),
 		Annotations: map[string]string{
 			agent.AnnotationStability: agent.StabilityExperimental,
 		},
@@ -159,6 +164,9 @@ default.`,
 			if err := requireMissingDirectory(outputDir); err != nil {
 				return err
 			}
+			if err := preflightDirectoryPublication(outputDir, publishDirectoryNoReplace); err != nil {
+				return err
+			}
 
 			base, err := agento11yhttp.NewClientFromCommand(cmd, loader)
 			if err != nil {
@@ -171,16 +179,16 @@ default.`,
 
 			if err := cmdio.EmitArtifactResult(cmd.OutOrStdout(), result.receipt, func(w io.Writer) error {
 				if !opts.IncludeConversations {
-					cmdio.Success(w, "Exported experiment %s with %d trials to %s", args[0], result.manifest.Summary.Trials, outputDir)
+					cmdio.Success(w, "Pulled experiment %s with %d trials to %s", args[0], result.manifest.Summary.Trials, outputDir)
 					return nil
 				}
 				if result.receipt.Summary.Failed > 0 {
-					cmdio.Warning(w, "Exported experiment %s with %d conversations to %s (%d failed)",
-						args[0], result.receipt.Summary.Succeeded, outputDir, result.receipt.Summary.Failed)
+					cmdio.Warning(w, "Pulled experiment %s with %d conversations to %s (%d failed)",
+						args[0], result.manifest.Summary.ConversationsWritten, outputDir, result.receipt.Summary.Failed)
 					return nil
 				}
-				cmdio.Success(w, "Exported experiment %s with %d conversations to %s",
-					args[0], result.receipt.Summary.Succeeded, outputDir)
+				cmdio.Success(w, "Pulled experiment %s with %d conversations to %s",
+					args[0], result.manifest.Summary.ConversationsWritten, outputDir)
 				return nil
 			}); err != nil {
 				return err
@@ -191,7 +199,7 @@ default.`,
 					cmdio.EmitWarn(cmd.ErrOrStderr(), failure.Error)
 				}
 				exitCode := gcxerrors.ExitPartialFailure
-				if result.receipt.Summary.Succeeded == 0 && result.manifest.Summary.UniqueConversations > 0 {
+				if result.manifest.Summary.ConversationsWritten == 0 && result.manifest.Summary.UniqueConversations > 0 {
 					exitCode = gcxerrors.ExitGeneralError
 				}
 				return gcxerrors.NewEmittedError(exitCode, errors.Join(result.errs...))
@@ -296,9 +304,9 @@ func exportExperimentBundle(ctx context.Context, base *agento11yhttp.Client, run
 	if err != nil {
 		return nil, err
 	}
-	published := false
+	cleanupStaging := true
 	defer func() {
-		if !published {
+		if cleanupStaging {
 			_ = os.RemoveAll(stagingDir)
 		}
 	}()
@@ -396,20 +404,24 @@ func exportExperimentBundle(ctx context.Context, base *agento11yhttp.Client, run
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if err := publishDirectoryNoReplace(stagingDir, outputDir); err != nil {
-		return nil, fmt.Errorf("publish output directory %q: %w", outputDir, err)
+	retainStaging, err := publishCompletedBundle(stagingDir, outputDir, publishDirectoryNoReplace)
+	if err != nil {
+		cleanupStaging = !retainStaging
+		return nil, err
 	}
-	published = true
+	cleanupStaging = false
 
-	receipt := cmdio.NewArtifactReceipt("exported", "json")
+	receipt := cmdio.NewArtifactReceipt("pulled", "json")
 	receipt.Dir = outputDir
 	receipt.Files = append(receipt.Files, cmdio.ArtifactFile{
-		Path:  outputDir,
-		Kind:  "AgentO11yExperimentExport",
-		Count: len(trials),
+		Path:  filepath.Join(outputDir, "manifest.json"),
+		Kind:  "AgentO11yExperimentExportManifest",
+		Count: len(manifest.Files),
 	})
 	receipt.Summary = cmdio.MutationSummary{
-		Succeeded: len(pathByConversation),
+		// The experiment bundle is one target. Requested conversations are
+		// additional independently fetched targets.
+		Succeeded: 1 + manifest.Summary.ConversationsWritten,
 		Failed:    len(manifest.Failures),
 	}
 	receipt.Failures = append(receipt.Failures, manifest.Failures...)
@@ -536,7 +548,7 @@ func fetchRawJSON(ctx context.Context, base *agento11yhttp.Client, path string) 
 }
 
 func requireMissingDirectory(path string) error {
-	_, err := os.Stat(path)
+	_, err := os.Lstat(path)
 	switch {
 	case err == nil:
 		return fmt.Errorf("output directory %q already exists: choose a new directory", path)
@@ -545,6 +557,35 @@ func requireMissingDirectory(path string) error {
 	default:
 		return fmt.Errorf("inspect output directory %q: %w", path, err)
 	}
+}
+
+func preflightDirectoryPublication(outputDir string, publish func(string, string) error) error {
+	parent := filepath.Dir(outputDir)
+	if err := os.MkdirAll(parent, 0o700); err != nil {
+		return fmt.Errorf("create output directory parent %q: %w", parent, err)
+	}
+	probeDir, err := os.MkdirTemp(parent, ".gcx-agento11y-publish-probe-*")
+	if err != nil {
+		return fmt.Errorf("create publication probe: %w", err)
+	}
+	probeTarget := probeDir + "-published"
+	defer os.RemoveAll(probeDir)
+	defer os.RemoveAll(probeTarget)
+
+	if err := publish(probeDir, probeTarget); err != nil {
+		return fmt.Errorf("output filesystem does not support required atomic no-replace directory publication: %w", err)
+	}
+	return nil
+}
+
+func publishCompletedBundle(stagingDir, outputDir string, publish func(string, string) error) (bool, error) {
+	if err := publish(stagingDir, outputDir); err != nil {
+		if _, statErr := os.Lstat(outputDir); errors.Is(statErr, os.ErrNotExist) {
+			return true, fmt.Errorf("publish output directory %q: completed bundle retained in private staging directory %q: %w", outputDir, stagingDir, err)
+		}
+		return false, fmt.Errorf("publish output directory %q: %w", outputDir, err)
+	}
+	return false, nil
 }
 
 func createPrivateStagingDirectory(outputDir string) (string, error) {

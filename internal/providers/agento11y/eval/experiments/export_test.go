@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -49,7 +50,7 @@ contexts:
 
 func runExperimentExportCommand(t *testing.T, serverURL string, args ...string) (string, string, error) {
 	t.Helper()
-	cmd := newExportCommand(exportTestLoader(t, serverURL))
+	cmd := newPullCommand(exportTestLoader(t, serverURL))
 	cmd.SilenceErrors = true
 	cmd.SilenceUsage = true
 	cmd.SetContext(context.Background())
@@ -83,7 +84,7 @@ func TestExport_CommandWritesLosslessBundle(t *testing.T) {
 	t.Cleanup(agent.ResetForTesting)
 
 	const experimentBody = `{"experiment_id":"run-1","name":"nightly","future_field":{"kept":true}}`
-	const reportBody = `{"experiment":{"experiment_id":"run-1"},"summary":{"trial_count":4},"rows":[],"future_report_field":17}`
+	const reportBody = `{"experiment":{"experiment_id":"run-1"},"summary":{"trial_count":4},"rows":[{"test_case_id":"case-1","trials":[{"trial":{"trial_id":"trial-1"},"final_score":{"score_id":"score-1","value":0.9},"scores":[{"score_id":"score-1","future_score_field":"kept"}],"artifacts":[{"artifact_id":"artifact-1","future_artifact_field":"kept"}]}]}],"future_report_field":17}`
 	const firstTrialPage = `{"items":[{"trial_id":"trial-1","test_case_id":"case-1","attempt":1,"status":"completed","conversation_id":"conv-1","unknown_trial_field":"kept"},{"trial_id":"trial-2","test_case_id":"case-2","attempt":1,"status":"completed","conversation_id":"conv-1"}],"next_cursor":"page-2","future_page_field":true}`
 	const secondTrialPage = `{"items":[{"trial_id":"trial-3","test_case_id":"case-3","attempt":2,"status":"completed","conversation_id":"conv-2"},{"trial_id":"trial-4","test_case_id":"case-4","attempt":1,"status":"failed","error":"runner failed"}]}`
 	const conversation1 = `{"conversation_id":"conv-1","generations":[{"generation_id":"gen-1","input":{"messages":[{"role":"user","content":"hello"}]},"unknown_generation_field":{"kept":true}}]}`
@@ -131,7 +132,7 @@ func TestExport_CommandWritesLosslessBundle(t *testing.T) {
 	receipt := decodeOneJSONDocument(t, stdout)
 	assert.Equal(t, "gcx.artifact_receipt", receipt["type"])
 	assert.Equal(t, "1", receipt["schema_version"])
-	assert.Equal(t, "exported", receipt["action"])
+	assert.Equal(t, "pulled", receipt["action"])
 	assert.Equal(t, "json", receipt["format"])
 	assert.Equal(t, outputDir, receipt["dir"])
 	summary, ok := receipt["summary"].(map[string]any)
@@ -140,8 +141,18 @@ func TestExport_CommandWritesLosslessBundle(t *testing.T) {
 	require.True(t, ok)
 	failed, ok := summary["failed"].(float64)
 	require.True(t, ok)
-	assert.Equal(t, 2, int(succeeded))
+	assert.Equal(t, 3, int(succeeded))
 	assert.Equal(t, 0, int(failed))
+	files, ok := receipt["files"].([]any)
+	require.True(t, ok)
+	require.Len(t, files, 1)
+	manifestFile, ok := files[0].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, filepath.Join(outputDir, "manifest.json"), manifestFile["path"])
+	assert.Equal(t, "AgentO11yExperimentExportManifest", manifestFile["kind"])
+	fileCount, ok := manifestFile["count"].(float64)
+	require.True(t, ok)
+	assert.Equal(t, 9, int(fileCount))
 
 	assertFileBytes(t, filepath.Join(outputDir, "raw", "experiment.json"), experimentBody)
 	assertFileBytes(t, filepath.Join(outputDir, "raw", "report.json"), reportBody)
@@ -245,7 +256,7 @@ func TestExport_DefaultWritesConversationIDsWithoutPayloads(t *testing.T) {
 	require.True(t, ok)
 	failed, ok := summary["failed"].(float64)
 	require.True(t, ok)
-	assert.Zero(t, int(succeeded))
+	assert.Equal(t, 1, int(succeeded))
 	assert.Zero(t, int(failed))
 
 	manifestData, readErr := os.ReadFile(filepath.Join(outputDir, "manifest.json"))
@@ -306,7 +317,7 @@ func TestExport_PartialFailureWritesManifestAndExitFour(t *testing.T) {
 	require.True(t, ok)
 	failed, ok := summary["failed"].(float64)
 	require.True(t, ok)
-	assert.Equal(t, 1, int(succeeded))
+	assert.Equal(t, 2, int(succeeded))
 	assert.Equal(t, 1, int(failed))
 	failures, ok := receipt["failures"].([]any)
 	require.True(t, ok)
@@ -357,7 +368,7 @@ func TestExport_TotalConversationFailureEmitsReceiptAndExitOne(t *testing.T) {
 	require.True(t, ok)
 	failed, ok := summary["failed"].(float64)
 	require.True(t, ok)
-	assert.Zero(t, int(succeeded))
+	assert.Equal(t, 1, int(succeeded))
 	assert.Equal(t, 1, int(failed))
 	assert.FileExists(t, filepath.Join(outputDir, "manifest.json"))
 }
@@ -388,7 +399,7 @@ func TestExport_CancellationDoesNotPublish(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	outputDir := filepath.Join(t.TempDir(), "export")
-	cmd := newExportCommand(exportTestLoader(t, server.URL))
+	cmd := newPullCommand(exportTestLoader(t, server.URL))
 	cmd.SilenceErrors = true
 	cmd.SilenceUsage = true
 	cmd.SetContext(ctx)
@@ -437,6 +448,93 @@ func TestExport_ConcurrencyFlagBoundsRequests(t *testing.T) {
 	_, stderr, err := runExperimentExportCommand(t, server.URL, "run-1", "-d", outputDir, "--include-conversations", "--concurrency", "2")
 	require.NoError(t, err, "stderr: %s", stderr)
 	assert.Equal(t, int32(2), maxInFlight.Load(), "--concurrency must bound the conversation fan-out")
+}
+
+func TestExport_ConversationFetchUsesConfiguredRetries(t *testing.T) {
+	var conversationCalls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case exportPluginPrefix + "/eval/experiments/run-1":
+			writeRawJSON(t, w, `{"experiment_id":"run-1"}`)
+		case exportPluginPrefix + "/eval/experiments/run-1/report":
+			writeRawJSON(t, w, `{"experiment":{"experiment_id":"run-1"},"summary":{},"rows":[]}`)
+		case exportPluginPrefix + "/eval/experiments/run-1/trials":
+			writeRawJSON(t, w, `{"items":[{"trial_id":"t-1","conversation_id":"c-1"}]}`)
+		case exportPluginPrefix + "/query/conversations/c-1":
+			if conversationCalls.Add(1) == 1 {
+				w.Header().Set("Retry-After", "1")
+				http.Error(w, "rate limited", http.StatusTooManyRequests)
+				return
+			}
+			writeRawJSON(t, w, `{"conversation_id":"c-1","generations":[]}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	outputDir := filepath.Join(t.TempDir(), "export")
+	_, stderr, err := runExperimentExportCommand(t, server.URL, "run-1", "-d", outputDir, "--include-conversations")
+	require.NoError(t, err, "stderr: %s", stderr)
+	assert.Equal(t, int32(2), conversationCalls.Load())
+	assert.FileExists(t, filepath.Join(outputDir, "raw", "conversations", conversationFileName("c-1")))
+}
+
+func TestPreflightDirectoryPublication_RejectsUnsupportedFilesystem(t *testing.T) {
+	parent := t.TempDir()
+	outputDir := filepath.Join(parent, "export")
+	var probeDir, probeTarget string
+	unsupported := errors.New("no-replace rename unsupported")
+
+	err := preflightDirectoryPublication(outputDir, func(from, to string) error {
+		probeDir, probeTarget = from, to
+		assert.DirExists(t, from)
+		assert.NoDirExists(t, to)
+		return unsupported
+	})
+
+	require.ErrorIs(t, err, unsupported)
+	assert.Contains(t, err.Error(), "output filesystem does not support required atomic no-replace directory publication")
+	assert.NoDirExists(t, probeDir)
+	assert.NoDirExists(t, probeTarget)
+	assert.NoDirExists(t, outputDir)
+}
+
+func TestPublishCompletedBundle_RetainsStagingWhenDestinationIsAbsent(t *testing.T) {
+	parent := t.TempDir()
+	stagingDir := filepath.Join(parent, ".gcx-agento11y-export-staged")
+	outputDir := filepath.Join(parent, "export")
+	require.NoError(t, os.Mkdir(stagingDir, 0o700))
+	publishErr := errors.New("publication failed")
+
+	retained, err := publishCompletedBundle(stagingDir, outputDir, func(string, string) error {
+		return publishErr
+	})
+
+	require.ErrorIs(t, err, publishErr)
+	assert.True(t, retained)
+	assert.Contains(t, err.Error(), stagingDir)
+	assert.DirExists(t, stagingDir)
+	assert.NoDirExists(t, outputDir)
+}
+
+func TestPublishCompletedBundle_DoesNotRetainStagingAfterDestinationRace(t *testing.T) {
+	parent := t.TempDir()
+	stagingDir := filepath.Join(parent, ".gcx-agento11y-export-staged")
+	outputDir := filepath.Join(parent, "export")
+	require.NoError(t, os.Mkdir(stagingDir, 0o700))
+	require.NoError(t, os.Mkdir(outputDir, 0o700))
+	publishErr := errors.New("destination exists")
+
+	retained, err := publishCompletedBundle(stagingDir, outputDir, func(string, string) error {
+		return publishErr
+	})
+
+	require.ErrorIs(t, err, publishErr)
+	assert.False(t, retained)
+	assert.NotContains(t, err.Error(), "bundle retained")
+	assert.DirExists(t, stagingDir)
+	assert.DirExists(t, outputDir)
 }
 
 func TestExport_DestinationCreatedDuringExportIsNotReplaced(t *testing.T) {

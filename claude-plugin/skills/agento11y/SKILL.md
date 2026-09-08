@@ -35,7 +35,7 @@ All commands live under `gcx agento11y`. Use `gcx agento11y <subcommand> --help`
 | `rules` | List, get, create, update, delete evaluation rules; `list-scores` for online score rows |
 | `templates` | List, get built-in evaluator templates |
 | `judge` | List judge providers and models |
-| `experiments` | List, get, create, update, cancel runs; inspect scores/reports/trials; export conversation source bundles |
+| `experiments` | List, get, create, update, cancel runs; inspect scores/reports/trials; pull experiment source bundles |
 
 Delete commands (`evaluators delete`, `rules delete`) require `--force` to skip confirmation in agent mode (there is no `-f` shorthand on delete). List first to confirm the target ID:
 
@@ -64,24 +64,27 @@ gcx agento11y conversations search --filters 'agent = "my-agent"' --from 2026-04
 
 ## Exporting Experiments
 
-Use the experimental export for offline analysis of an experiment. By default,
+Use the experimental pull for offline analysis of an experiment. By default,
 it writes experiment metadata, the aggregate report, every trial page, and a
-trial index containing referenced conversation IDs:
+trial index containing referenced conversation IDs. The report includes the
+per-trial evaluator scores and artifact metadata returned by the API:
 
 ```bash
-gcx agento11y experiments export <run-id> -d ./exports/<run-id>
+gcx agento11y experiments pull <run-id> -d ./exports/<run-id>
 ```
 
 Download the full conversation payloads only when the task requires them:
 
 ```bash
-gcx agento11y experiments export <run-id> -d ./exports/<run-id> --include-conversations
+gcx agento11y experiments pull <run-id> -d ./exports/<run-id> --include-conversations
 ```
 
-The destination must not already exist. The command preserves the exact
-successful JSON response bodies and writes a checksummed manifest plus a
-streaming trial index. Check `includes.conversations` in `manifest.json` to
-confirm whether conversation payloads were requested. Each export also contains
+The destination must not already exist, and its filesystem must support atomic
+no-replace directory publication; gcx verifies this before downloading. The
+command preserves the exact successful JSON response bodies and writes a
+checksummed manifest plus a streaming trial index. Check
+`includes.conversations` in `manifest.json` to confirm whether conversation
+payloads were requested. Each export also contains
 an `AGENTS.md` with handling instructions and a `.gitignore` that ignores the
 entire bundle by default.
 

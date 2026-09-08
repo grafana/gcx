@@ -18,7 +18,7 @@ func TestCommands_HasExpectedLeaves(t *testing.T) {
 	cmd := experiments.Commands(nil)
 	require.Equal(t, "experiments", cmd.Name())
 
-	for _, sub := range []string{"list", "get", "create", "update", "cancel", "list-scores", "get-report", "list-trials", "export", "test-suites", "trials"} {
+	for _, sub := range []string{"list", "get", "create", "update", "cancel", "list-scores", "get-report", "list-trials", "pull", "test-suites", "trials"} {
 		c, _, err := cmd.Find([]string{sub})
 		require.NoError(t, err, "subcommand %q must exist", sub)
 		require.NotNil(t, c)
@@ -201,9 +201,9 @@ func TestTrialsListCommand_RequiresExperimentIDWithSuggestion(t *testing.T) {
 	assert.Contains(t, err.Error(), "expected format: gcx agento11y experiments list-trials <run-id>")
 }
 
-func TestExportCommand_RequiresRunIDWithSuggestion(t *testing.T) {
+func TestPullCommand_RequiresRunIDWithSuggestion(t *testing.T) {
 	cmd := experiments.Commands(nil)
-	cmd.SetArgs([]string{"export"})
+	cmd.SetArgs([]string{"pull"})
 
 	var stdout, stderr bytes.Buffer
 	cmd.SetOut(&stdout)
@@ -211,7 +211,7 @@ func TestExportCommand_RequiresRunIDWithSuggestion(t *testing.T) {
 
 	err := cmd.Execute()
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "expected format: gcx agento11y experiments export <run-id> -d <directory>")
+	assert.Contains(t, err.Error(), "expected format: gcx agento11y experiments pull <run-id> -d <directory>")
 }
 
 func TestCasesListCommand_RequiresSuiteAndVersionWithSuggestion(t *testing.T) {

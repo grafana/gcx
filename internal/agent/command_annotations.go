@@ -580,9 +580,9 @@ var commandAnnotations = map[string]annotation{
 		Cost: "small",
 		Hint: "<run-id> -o json",
 	},
-	"gcx agento11y experiments export": {
+	"gcx agento11y experiments pull": {
 		Cost: "large",
-		Hint: "<run-id> --output-dir ./exports/<run-id> --include-conversations --concurrency 10",
+		Hint: "<run-id> --output-dir ./exports/<run-id>",
 	},
 
 	"gcx agento11y experiments test-suites list":             {Cost: "small"},
