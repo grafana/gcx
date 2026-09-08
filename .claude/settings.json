@@ -7,6 +7,7 @@
       "Skill",
       "Task",
       "Bash(git diff:*)",
+      "Bash(git fetch:*)",
       "Bash(git log:*)",
       "Bash(git show:*)",
       "Bash(gh issue list:*)",
