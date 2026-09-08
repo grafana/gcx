@@ -94,47 +94,7 @@ open it in your browser after the query succeeds.`,
 			if err != nil {
 				return err
 			}
-
-			// req carries the user-facing group size — used for the Explore
-			// link, so the URL never leaks the sentinel below. sentinelReq is
-			// what actually goes on the wire: group-size+1, so a full page of
-			// groups back means more groups matched. The sentinel only
-			// applies when grouping is active; an ungrouped aggregation is a
-			// single continuous series with no "groups" cap to disclose.
-			req := opensearch.AggsRequest{
-				Query:     resolved.Expr,
-				Agg:       opts.Agg,
-				Field:     opts.Field,
-				GroupBy:   opts.GroupBy,
-				GroupSize: opts.GroupSize,
-				TimeField: opts.TimeField,
-				Start:     resolved.Start,
-				End:       resolved.End,
-				StepMs:    resolved.StepMs,
-			}
-			sentinelReq := req
-			if opts.GroupBy != "" {
-				sentinelReq.GroupSize = opts.GroupSize + 1
-			}
-
-			resp, err := resolved.Client.Aggregations(cmd.Context(), resolved.DatasourceUID, sentinelReq)
-			if err != nil {
-				return fmt.Errorf("query failed: %w", err)
-			}
-			if opts.GroupBy != "" && opensearch.TruncateSeries(resp, opts.GroupSize) {
-				cmdio.Warning(cmd.ErrOrStderr(), "showing the top %d groups by count; more groups match — raise --group-size (max %d) to see more", opts.GroupSize, maxGroupSize)
-			}
-
-			exploreURL := MetricsExploreURL(resolved.Cfg.GrafanaURL, resolved.ExploreBase(&opts.SharedOpts), req)
-			unavailableMsg, failedOpenMsg := dsquery.ExploreMessages("metric query")
-
-			return dsquery.EncodeAndHandleExplore(cmd, func() error {
-				return opts.IO.Encode(cmd.OutOrStdout(), resp)
-			}, *share, dsquery.ExploreLink{
-				URL:            exploreURL,
-				UnavailableMsg: unavailableMsg,
-				FailedOpenMsg:  failedOpenMsg,
-			})
+			return executeMetrics(cmd, opts, resolved, *share)
 		},
 	}
 
@@ -147,4 +107,54 @@ open it in your browser after the query succeeds.`,
 	share.Setup(cmd.Flags(), "executed query")
 
 	return cmd
+}
+
+// executeMetrics runs the sentinel-wrapped aggregation against an
+// already-resolved query and handles output/Explore linking. Split out from
+// MetricsCmd's RunE so the sentinel-vs-Explore wiring — which request carries
+// the +1, which carries the user-facing group size — can be pinned by a test
+// that builds a resolvedQuery directly against a fake HTTP server, without
+// needing to fake config loading and datasource resolution just to reach this
+// code (mirrors query.go's runQuery/executeQuery split for the same reason).
+func executeMetrics(cmd *cobra.Command, opts *metricsOpts, resolved *resolvedQuery, share dsquery.ExploreLinkOpts) error {
+	// req carries the user-facing group size — used for the Explore
+	// link, so the URL never leaks the sentinel below. sentinelReq is
+	// what actually goes on the wire: group-size+1, so a full page of
+	// groups back means more groups matched. The sentinel only
+	// applies when grouping is active; an ungrouped aggregation is a
+	// single continuous series with no "groups" cap to disclose.
+	req := opensearch.AggsRequest{
+		Query:     resolved.Expr,
+		Agg:       opts.Agg,
+		Field:     opts.Field,
+		GroupBy:   opts.GroupBy,
+		GroupSize: opts.GroupSize,
+		TimeField: opts.TimeField,
+		Start:     resolved.Start,
+		End:       resolved.End,
+		StepMs:    resolved.StepMs,
+	}
+	sentinelReq := req
+	if opts.GroupBy != "" {
+		sentinelReq.GroupSize = opts.GroupSize + 1
+	}
+
+	resp, err := resolved.Client.Aggregations(cmd.Context(), resolved.DatasourceUID, sentinelReq)
+	if err != nil {
+		return fmt.Errorf("query failed: %w", err)
+	}
+	if opts.GroupBy != "" && opensearch.TruncateSeries(resp, opts.GroupSize) {
+		cmdio.Warning(cmd.ErrOrStderr(), "showing the top %d groups by count; more groups match — raise --group-size (max %d) to see more", opts.GroupSize, maxGroupSize)
+	}
+
+	exploreURL := MetricsExploreURL(resolved.Cfg.GrafanaURL, resolved.ExploreBase(&opts.SharedOpts), req)
+	unavailableMsg, failedOpenMsg := dsquery.ExploreMessages("metric query")
+
+	return dsquery.EncodeAndHandleExplore(cmd, func() error {
+		return opts.IO.Encode(cmd.OutOrStdout(), resp)
+	}, share, dsquery.ExploreLink{
+		URL:            exploreURL,
+		UnavailableMsg: unavailableMsg,
+		FailedOpenMsg:  failedOpenMsg,
+	})
 }

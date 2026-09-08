@@ -18,45 +18,46 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-// firstSettingsSize digs metrics[0].settings.size out of a decoded query object,
-// the shape both the wire request and the Explore pane's query carry it in.
-func firstSettingsSize(t *testing.T, q map[string]any) string {
+// firstTermsSize digs bucketAggs[0].settings.size out of a decoded query
+// object, the shape both the wire request and the Explore pane's query carry
+// the terms-bucket group size in.
+func firstTermsSize(t *testing.T, q map[string]any) string {
 	t.Helper()
-	metrics, ok := q["metrics"].([]any)
+	bucketAggs, ok := q["bucketAggs"].([]any)
 	require.True(t, ok)
-	require.Len(t, metrics, 1)
-	m, ok := metrics[0].(map[string]any)
+	require.NotEmpty(t, bucketAggs)
+	b, ok := bucketAggs[0].(map[string]any)
 	require.True(t, ok)
-	settings, ok := m["settings"].(map[string]any)
+	require.Equal(t, "terms", b["type"], "bucketAggs[0] must be the terms bucket when --group-by is set")
+	settings, ok := b["settings"].(map[string]any)
 	require.True(t, ok)
 	size, _ := settings["size"].(string)
 	return size
 }
 
-// TestExecuteQuery_SentinelWiring pins the one thing TruncateRows alone can't:
-// which request gets the +1. A reviewer found that swapping sentinelReq for
-// req at the client call (or the reverse at the Explore URL) left the full
-// suite green, since nothing asserted which value either destination received.
-// This builds a resolvedQuery directly against a fake HTTP server — bypassing
-// config loading and datasource resolution, which aren't what's under test —
-// and checks both destinations in one test: the wire request must carry
-// --limit+1, while the Explore link must carry the user-facing --limit so a
-// shared link never leaks the sentinel.
-func TestExecuteQuery_SentinelWiring(t *testing.T) {
+// TestExecuteMetrics_SentinelWiring is TestExecuteQuery_SentinelWiring's
+// counterpart for the metrics path: a reviewer found that swapping
+// sentinelReq for req at the client call (or the reverse at the Explore URL)
+// in executeMetrics left the full suite green, since nothing asserted which
+// request carried the +1. This builds a resolvedQuery directly against a fake
+// HTTP server and checks both destinations in one test: the wire request must
+// carry --group-size+1, while the Explore link must carry the user-facing
+// --group-size so a shared link never leaks the sentinel.
+func TestExecuteMetrics_SentinelWiring(t *testing.T) {
 	var (
 		capturedSize string
 		decodeErr    error
 	)
 	srv := newSentinelCaptureServer(t, &capturedSize, &decodeErr, func(q map[string]any) string {
-		metrics, ok := q["metrics"].([]any)
-		if !ok || len(metrics) != 1 {
+		bucketAggs, ok := q["bucketAggs"].([]any)
+		if !ok || len(bucketAggs) == 0 {
 			return ""
 		}
-		m, ok := metrics[0].(map[string]any)
+		b, ok := bucketAggs[0].(map[string]any)
 		if !ok {
 			return ""
 		}
-		settings, ok := m["settings"].(map[string]any)
+		settings, ok := b["settings"].(map[string]any)
 		if !ok {
 			return ""
 		}
@@ -85,16 +86,17 @@ func TestExecuteQuery_SentinelWiring(t *testing.T) {
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&stderr)
 
-	opts := &queryOpts{}
+	opts := &metricsOpts{}
 	opts.setup(cmd.Flags()) // registers IO/codecs at their flag defaults
-	opts.Limit = 5
-	opts.Mode = modeDocuments
+	opts.GroupBy = "app.keyword"
+	opts.GroupSize = 5
+	opts.Agg = "count"
 
-	err = executeQuery(cmd, opts, resolved, dsquery.ExploreLinkOpts{ShareLink: true})
+	err = executeMetrics(cmd, opts, resolved, dsquery.ExploreLinkOpts{ShareLink: true})
 	require.NoError(t, err)
 	require.NoError(t, decodeErr)
 
-	assert.Equal(t, "6", capturedSize, "the wire request must ask for limit+1, the sentinel row")
+	assert.Equal(t, "6", capturedSize, "the wire request must ask for group-size+1, the sentinel group")
 
 	stderrOut := stderr.String()
 	i := strings.Index(stderrOut, "https://")
@@ -113,5 +115,5 @@ func TestExecuteQuery_SentinelWiring(t *testing.T) {
 	query, ok := queries[0].(map[string]any)
 	require.True(t, ok)
 
-	assert.Equal(t, "5", firstSettingsSize(t, query), "the Explore link must carry the user-facing limit, not the sentinel")
+	assert.Equal(t, "5", firstTermsSize(t, query), "the Explore link must carry the user-facing group size, not the sentinel")
 }
