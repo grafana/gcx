@@ -1,0 +1,3 @@
+ID     NAME     TYPE           START                 END
+row-1  morning  rolling_users  2026-03-14T09:00:00Z  2026-03-14T17:00:00Z
+row-2                          -                     -
