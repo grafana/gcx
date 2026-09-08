@@ -46,7 +46,6 @@ func TestFormatSQLInt(t *testing.T) {
 	}
 }
 
-
 func TestExtractTableName(t *testing.T) {
 	tests := []struct {
 		name string

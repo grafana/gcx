@@ -3,6 +3,7 @@ package faro
 import (
 	"fmt"
 	"math"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -31,28 +32,12 @@ func formatSessionDump(metadata, events string) string {
 	return b.String()
 }
 
-func joinBlocks(blocks ...string) string {
-	var parts []string
-	for _, block := range blocks {
-		trimmed := strings.TrimRight(block, "\n")
-		if trimmed != "" {
-			parts = append(parts, trimmed)
-		}
-	}
-	return strings.Join(parts, "\n\n")
-}
-
 func pinotMetadataTimeKeys() []string {
 	return []string{"session_start", "session_last_event", "session_replay_start"}
 }
 
 func isPinotMetadataTimeKey(key string) bool {
-	for _, k := range pinotMetadataTimeKeys() {
-		if key == k {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(pinotMetadataTimeKeys(), key)
 }
 
 func pinotInt64(v any) (int64, bool) {

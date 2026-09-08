@@ -198,7 +198,8 @@ func TestFetchPinotSession(t *testing.T) {
 	assert.Contains(t, joined, "userId")
 	assert.Contains(t, joined, "UNION ALL")
 	assert.NotContains(t, joined, "app_memory")
-	assert.NotContains(t, joined, "LIMIT")
+	assert.Contains(t, joined, "LIMIT "+strconv.Itoa(pinotJourneyPageSize))
+	assert.NotContains(t, joined, "OFFSET")
 	assert.Contains(t, joined, pinotEventsTableDev)
 	assert.NotContains(t, joined, pinotEventsTableOps)
 	require.Len(t, stub.tableNames, 3)
@@ -254,6 +255,123 @@ func TestFetchPinotSessionEmpty(t *testing.T) {
 	_, err := fetchPinotSession(context.Background(), stub, "uid", p, time.Unix(0, 0), time.Unix(1, 0))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no telemetry for session missing")
+}
+
+func TestFetchPinotSessionPagesUntilComplete(t *testing.T) {
+	t.Parallel()
+	stub := &pagingPinot{}
+	p := sessionQueryParams{AppID: "66", SessionID: "sid", AppType: appTypeWeb}
+	got, err := fetchPinotSession(context.Background(), stub, "uid", p, time.UnixMilli(1), time.UnixMilli(5000))
+	require.NoError(t, err)
+	require.NotNil(t, got.journey)
+	// 1000 first-page rows + 2 new bucket rows at the boundary + 4 later rows.
+	assert.Len(t, got.journey.Rows, pinotJourneyPageSize+2+4)
+	assert.Equal(t, 2, stub.metaCalls())
+	assert.Equal(t, 3, stub.journeyCalls())
+	joined := queryJoined(stub.sqls)
+	assert.Contains(t, joined, "LIMIT "+strconv.Itoa(pinotJourneyPageSize))
+	assert.NotContains(t, joined, "OFFSET")
+	assert.Contains(t, joined, `WHERE "timestamp" = 1000`)
+	assert.Contains(t, joined, `WHERE "timestamp" > 1000`)
+	var first, bucket, after bool
+	for _, sql := range stub.sqls {
+		if !strings.Contains(sql, "UNION ALL") {
+			continue
+		}
+		switch {
+		case strings.Contains(sql, `WHERE "timestamp" =`):
+			bucket = true
+		case strings.Contains(sql, `WHERE "timestamp" >`):
+			after = true
+		default:
+			first = true
+			assert.NotContains(t, sql, `WHERE "timestamp"`)
+		}
+		assert.Contains(t, sql, "LIMIT "+strconv.Itoa(pinotJourneyPageSize))
+		assert.NotContains(t, sql, "OFFSET")
+	}
+	assert.True(t, first && bucket && after)
+}
+
+type pagingPinot struct {
+	mu       sync.Mutex
+	sqls     []string
+	metaN    int
+	journeyN int
+}
+
+func (s *pagingPinot) metaCalls() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.metaN
+}
+
+func (s *pagingPinot) journeyCalls() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.journeyN
+}
+
+func (s *pagingPinot) Query(_ context.Context, _ string, req pinot.QueryRequest) (*querysql.QueryResponse, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.sqls = append(s.sqls, req.RawSQL)
+	if !strings.Contains(req.RawSQL, "UNION ALL") {
+		s.metaN++
+		return &querysql.QueryResponse{
+			Columns: []querysql.Column{{Name: "sdk_name"}, {Name: "os_name"}},
+			Rows:    [][]any{{"faro-web", "Mac OS"}},
+		}, nil
+	}
+	s.journeyN++
+	cols := []querysql.Column{{Name: "timestamp"}, {Name: "kind"}}
+	switch {
+	case strings.Contains(req.RawSQL, `WHERE "timestamp" =`):
+		return &querysql.QueryResponse{Columns: cols, Rows: [][]any{
+			{int64(1000), "event"},
+			{int64(1000), "bucket-a"},
+			{int64(1000), "bucket-b"},
+		}}, nil
+	case strings.Contains(req.RawSQL, `WHERE "timestamp" >`):
+		return &querysql.QueryResponse{Columns: cols, Rows: pinotTimestampRows(4, 1001)}, nil
+	default:
+		return &querysql.QueryResponse{Columns: cols, Rows: pinotTimestampRows(pinotJourneyPageSize, 1)}, nil
+	}
+}
+
+func pinotTimestampRows(n int, startMS int64) [][]any {
+	rows := make([][]any, n)
+	for i := range rows {
+		rows[i] = []any{startMS + int64(i), "event"}
+	}
+	return rows
+}
+
+func TestAppendPinotRowsSkipsEqualJourneyRows(t *testing.T) {
+	t.Parallel()
+	cols := []querysql.Column{{Name: "timestamp"}, {Name: "kind"}}
+	dup := []any{int64(1000), "exception"}
+	seen := make(map[string]struct{})
+	dst := &querysql.QueryResponse{}
+	appendPinotRows(dst, &querysql.QueryResponse{Columns: cols, Rows: [][]any{dup, dup, dup}}, seen)
+	assert.Len(t, dst.Rows, 1)
+	appendPinotRows(dst, &querysql.QueryResponse{Columns: cols, Rows: [][]any{dup, {int64(1001), "event"}}}, seen)
+	assert.Len(t, dst.Rows, 2)
+}
+
+func TestPinotMaxTimestampMS(t *testing.T) {
+	t.Parallel()
+	ms, ok := pinotMaxTimestampMS(&querysql.QueryResponse{
+		Columns: []querysql.Column{{Name: "kind"}, {Name: "timestamp"}},
+		Rows:    [][]any{{"event", float64(10)}, {"event", "30"}, {"event", int64(20)}},
+	})
+	require.True(t, ok)
+	assert.Equal(t, int64(30), ms)
+	_, ok = pinotMaxTimestampMS(&querysql.QueryResponse{
+		Columns: []querysql.Column{{Name: "kind"}},
+		Rows:    [][]any{{"event"}},
+	})
+	assert.False(t, ok)
 }
 
 func TestFetchPinotSessionRejectsNonIntegerAppID(t *testing.T) {

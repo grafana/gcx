@@ -1,8 +1,10 @@
 package faro
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/grafana/gcx/internal/query/pinot"
@@ -19,6 +21,12 @@ const (
 	// clamp higher values. Page at that size and continue while a page is
 	// full so a long session is not cut off at Explore's old 2000-row cap.
 	lokiEventsPageSize = 1000
+
+	// Pinot defaults a SELECT with no LIMIT to 10 rows. Page the journey
+	// UNION at this outer LIMIT and continue while a page is full. OFFSET
+	// is not used: it re-scans all three UNION legs every page.
+	pinotJourneyPageSize = 1000
+	pinotJourneyMaxPages = 100
 
 	lokiKindEvent       = "event"
 	lokiKindException   = "exception"
@@ -77,6 +85,8 @@ WHERE appId = {{APP_ID}}
 // measurements, exceptions, events. The only mobile difference is
 // {{MEASUREMENT_FILTER}} on the measurements WHERE. Outer columns are named
 // (equivalent to Explore's SELECT *) so the SQL linter does not flag SELECT *.
+// LIMIT sits on the outer SELECT so it bounds the UNION, not the last leg.
+// {{JOURNEY_CURSOR}} is an optional outer WHERE used to page by timestamp.
 const pinotJourneySQL = `SET useMultistageEngine = true;
 SELECT
   "timestamp",
@@ -277,7 +287,8 @@ FROM (
     AND eventName NOT IN ('faro.performance.resource', 'faro.performanceEntry')
     AND $__timeFilter("timestamp")
 ) journey
-ORDER BY "timestamp" ASC`
+{{JOURNEY_CURSOR}}ORDER BY "timestamp" ASC
+LIMIT {{JOURNEY_LIMIT}}`
 
 type sessionQueryParams struct {
 	AppID     string
@@ -336,6 +347,7 @@ func substPinot(sql string, p sessionQueryParams) (string, error) {
 		"{{SESSION_ID}}", pinot.EscapeSQLString(p.SessionID),
 		"{{MEASUREMENT_FILTER}}", filter,
 		"{{EVENTS_TABLE}}", pinotEventsTable(p.ServerURL),
+		"{{JOURNEY_LIMIT}}", strconv.Itoa(pinotJourneyPageSize),
 	).Replace(sql), nil
 }
 
@@ -347,8 +359,26 @@ func pinotUserMetadataQuery(p sessionQueryParams) (string, error) {
 	return substPinot(pinotUserMetadataSQL, p)
 }
 
-func pinotJourneyQuery(p sessionQueryParams) (string, error) {
-	return substPinot(pinotJourneySQL, p)
+// pinotJourneyQueryPaged builds the journey UNION. cursorMS 0 is the first
+// page (no extra WHERE). Later pages use WHERE "timestamp" > cursorMS, or
+// WHERE "timestamp" = cursorMS to refetch a same-millisecond bucket.
+func pinotJourneyQueryPaged(p sessionQueryParams, cursorMS int64, equal bool) (string, error) {
+	sql, err := substPinot(pinotJourneySQL, p)
+	if err != nil {
+		return "", err
+	}
+	clause := ""
+	if cursorMS > 0 {
+		op := ">"
+		if equal {
+			op = "="
+		}
+		clause = fmt.Sprintf("WHERE \"timestamp\" %s %d\n", op, cursorMS)
+	}
+	if !strings.Contains(sql, "{{JOURNEY_CURSOR}}") {
+		return "", errors.New("journey SQL missing cursor placeholder")
+	}
+	return strings.Replace(sql, "{{JOURNEY_CURSOR}}", clause, 1), nil
 }
 
 // inferAppType maps session telemetry to web vs mobile.

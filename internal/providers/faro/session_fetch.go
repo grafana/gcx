@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/grafana/gcx/internal/query/loki"
@@ -122,26 +123,131 @@ func fetchPinotSession(ctx context.Context, client pinotQuerier, uid string, p s
 		p.AppType = inferAppType(pinotCell(userMeta, "sdk_name"), pinotCell(userMeta, "os_name"))
 	}
 
-	journeySQL, err := pinotJourneyQuery(p)
+	journey, err := fetchPinotJourneyPages(ctx, client, uid, p, start, end)
 	if err != nil {
 		return nil, err
-	}
-	// Outer FROM is a subquery, so ExtractTableName is empty and StarTree
-	// rejects the request. The session-detail journey uses the events table.
-	journey, err := client.Query(ctx, uid, pinot.QueryRequest{
-		RawSQL:    journeySQL,
-		TableName: pinotEventsTable(p.ServerURL),
-		Start:     start,
-		End:       end,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("pinot events query failed: %w", err)
 	}
 	if !pinotResponseHasValues(eventsMeta) && !pinotResponseHasValues(userMeta) && !pinotResponseHasValues(journey) {
 		return nil, fmt.Errorf("no telemetry for session %s in this time range", p.SessionID)
 	}
 
 	return &pinotSessionResult{eventsMeta: eventsMeta, userMeta: userMeta, journey: journey}, nil
+}
+
+func fetchPinotJourneyPages(ctx context.Context, client pinotQuerier, uid string, p sessionQueryParams, start, end time.Time) (*querysql.QueryResponse, error) {
+	table := pinotEventsTable(p.ServerURL)
+	merged := &querysql.QueryResponse{}
+	seen := make(map[string]struct{})
+	var cursorMS int64
+	for range pinotJourneyMaxPages {
+		resp, err := queryPinotJourney(ctx, client, uid, table, p, start, end, cursorMS, false)
+		if err != nil {
+			return nil, err
+		}
+		appendPinotRows(merged, resp, seen)
+		if pinotRowCount(resp) < pinotJourneyPageSize {
+			return merged, nil
+		}
+		lastMS, ok := pinotMaxTimestampMS(resp)
+		if !ok || lastMS <= cursorMS {
+			return merged, nil
+		}
+		// Refetch the last millisecond so rows that shared that timestamp
+		// but missed this LIMIT are kept, then continue after that instant.
+		bucket, err := queryPinotJourney(ctx, client, uid, table, p, start, end, lastMS, true)
+		if err != nil {
+			return nil, err
+		}
+		appendPinotRows(merged, bucket, seen)
+		cursorMS = lastMS
+	}
+	return nil, fmt.Errorf("pinot journey exceeded %d pages of %d rows", pinotJourneyMaxPages, pinotJourneyPageSize)
+}
+
+func queryPinotJourney(ctx context.Context, client pinotQuerier, uid, table string, p sessionQueryParams, start, end time.Time, cursorMS int64, equal bool) (*querysql.QueryResponse, error) {
+	sql, err := pinotJourneyQueryPaged(p, cursorMS, equal)
+	if err != nil {
+		return nil, err
+	}
+	// Outer FROM is a subquery, so ExtractTableName is empty and StarTree
+	// rejects the request. The session-detail journey uses the events table.
+	resp, err := client.Query(ctx, uid, pinot.QueryRequest{
+		RawSQL:    sql,
+		TableName: table,
+		Start:     start,
+		End:       end,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("pinot events query failed: %w", err)
+	}
+	return resp, nil
+}
+
+func appendPinotRows(dst, src *querysql.QueryResponse, seen map[string]struct{}) {
+	if src == nil {
+		return
+	}
+	if len(dst.Columns) == 0 {
+		dst.Columns = src.Columns
+	}
+	for _, row := range src.Rows {
+		// Same projected journey row more than once (repeat exception /
+		// fetch in the same ms) is noise for analysis. Also drops the
+		// same-ms page/bucket overlap.
+		fp := pinotRowFingerprint(row)
+		if _, ok := seen[fp]; ok {
+			continue
+		}
+		seen[fp] = struct{}{}
+		dst.Rows = append(dst.Rows, row)
+	}
+}
+
+func pinotRowFingerprint(row []any) string {
+	parts := make([]string, len(row))
+	for i, cell := range row {
+		parts[i] = tsvCell(cell)
+	}
+	return strings.Join(parts, "\x1e")
+}
+
+func pinotRowCount(resp *querysql.QueryResponse) int {
+	if resp == nil {
+		return 0
+	}
+	return len(resp.Rows)
+}
+
+func pinotMaxTimestampMS(resp *querysql.QueryResponse) (int64, bool) {
+	if resp == nil || len(resp.Rows) == 0 {
+		return 0, false
+	}
+	idx := -1
+	for i, col := range resp.Columns {
+		if col.Name == "timestamp" {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		return 0, false
+	}
+	var maxMS int64
+	ok := false
+	for _, row := range resp.Rows {
+		if idx >= len(row) {
+			continue
+		}
+		ms, parsed := pinotInt64(row[idx])
+		if !parsed || ms <= 0 {
+			continue
+		}
+		if !ok || ms > maxMS {
+			maxMS = ms
+			ok = true
+		}
+	}
+	return maxMS, ok
 }
 
 func fetchLokiSession(ctx context.Context, client lokiQuerier, uid string, p sessionQueryParams, start, end time.Time) (*lokiSessionResult, error) {
@@ -214,7 +320,6 @@ func fetchLokiEventsByKind(ctx context.Context, client lokiQuerier, uid string, 
 	g, gctx := errgroup.WithContext(ctx)
 	results := make([]*loki.QueryResponse, len(kinds))
 	for i, kind := range kinds {
-		i, kind := i, kind
 		g.Go(func() error {
 			resp, err := fetchLokiEventPages(gctx, client, uid, lokiEventsQueryForKind(p, kind), start, end, timeout)
 			if err != nil {

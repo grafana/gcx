@@ -12,7 +12,7 @@ func TestPinotJourneyQuery(t *testing.T) {
 	t.Parallel()
 
 	p := sessionQueryParams{AppID: "66", SessionID: "7TiMbCCvby", AppType: appTypeWeb}
-	sql, err := pinotJourneyQuery(p)
+	sql, err := pinotJourneyQueryPaged(p, 0, false)
 	require.NoError(t, err)
 
 	assert.Contains(t, sql, "appId = 66")
@@ -27,8 +27,13 @@ func TestPinotJourneyQuery(t *testing.T) {
 	assert.NotContains(t, sql, "{{SESSION_ID}}")
 	assert.NotContains(t, sql, "{{MEASUREMENT_FILTER}}")
 	assert.NotContains(t, sql, "{{EVENTS_TABLE}}")
+	assert.NotContains(t, sql, "{{JOURNEY_CURSOR}}")
+	assert.NotContains(t, sql, "{{JOURNEY_LIMIT}}")
 	assert.NotContains(t, sql, "measurementType NOT IN")
-	assert.NotRegexp(t, `(?i)\bLIMIT\b`, sql)
+	assert.Contains(t, sql, fmt.Sprintf("LIMIT %d", pinotJourneyPageSize))
+	assert.Regexp(t, `(?s)ORDER BY "timestamp" ASC\nLIMIT 1000`, sql)
+	assert.NotContains(t, sql, "OFFSET")
+	assert.NotContains(t, sql, `WHERE "timestamp"`)
 	assert.NotContains(t, sql, "sdk_name")
 	assert.NotContains(t, sql, "app_name")
 	assert.NotContains(t, sql, "app_environment")
@@ -38,11 +43,30 @@ func TestPinotJourneyQueryMobileFilter(t *testing.T) {
 	t.Parallel()
 
 	p := sessionQueryParams{AppID: "96", SessionID: "kwwAkkXwas", AppType: appTypeMobile}
-	sql, err := pinotJourneyQuery(p)
+	sql, err := pinotJourneyQueryPaged(p, 0, false)
 	require.NoError(t, err)
 
 	assert.Contains(t, sql, "AND sessionId = 'kwwAkkXwas' AND measurementType NOT IN ('app_memory', 'app_cpu_usage')")
 	assert.Contains(t, sql, "appId = 96")
+	assert.Contains(t, sql, fmt.Sprintf("LIMIT %d", pinotJourneyPageSize))
+	assert.NotContains(t, sql, "OFFSET")
+}
+
+func TestPinotJourneyQueryPagedCursor(t *testing.T) {
+	t.Parallel()
+
+	p := sessionQueryParams{AppID: "66", SessionID: "sid", AppType: appTypeWeb}
+	after, err := pinotJourneyQueryPaged(p, 1710000000000, false)
+	require.NoError(t, err)
+	assert.Contains(t, after, "WHERE \"timestamp\" > 1710000000000\nORDER BY")
+	assert.Contains(t, after, fmt.Sprintf("LIMIT %d", pinotJourneyPageSize))
+	assert.NotContains(t, after, "OFFSET")
+	assert.NotContains(t, after, "{{JOURNEY_CURSOR}}")
+
+	equal, err := pinotJourneyQueryPaged(p, 1710000000000, true)
+	require.NoError(t, err)
+	assert.Contains(t, equal, "WHERE \"timestamp\" = 1710000000000\nORDER BY")
+	assert.NotContains(t, equal, "WHERE \"timestamp\" >")
 }
 
 func TestPinotQueryEscapesSessionID(t *testing.T) {
@@ -115,7 +139,7 @@ func TestPinotQueriesUseOpsEventsTable(t *testing.T) {
 	}
 	meta, err := pinotEventsMetadataQuery(p)
 	require.NoError(t, err)
-	journey, err := pinotJourneyQuery(p)
+	journey, err := pinotJourneyQueryPaged(p, 0, false)
 	require.NoError(t, err)
 	assert.Contains(t, meta, pinotEventsTableOps)
 	assert.Contains(t, journey, pinotEventsTableOps)
@@ -123,6 +147,8 @@ func TestPinotQueriesUseOpsEventsTable(t *testing.T) {
 	assert.NotContains(t, journey, pinotEventsTableDev)
 	assert.NotContains(t, meta, "{{EVENTS_TABLE}}")
 	assert.NotContains(t, journey, "{{EVENTS_TABLE}}")
+	assert.NotContains(t, journey, "{{JOURNEY_CURSOR}}")
+	assert.Contains(t, journey, fmt.Sprintf("LIMIT %d", pinotJourneyPageSize))
 }
 
 func TestPinotMetadataQueries(t *testing.T) {
