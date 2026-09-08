@@ -440,8 +440,8 @@ func lokiEventsQueryForKind(p sessionQueryParams, kind string) string {
 	app := escapeLogQLString(p.AppID)
 	session := escapeLogQLString(p.SessionID)
 	q := fmt.Sprintf(
-		`{app_id="%s", kind="%s"} |= "session_id=%s" !~ "performanceEntry|faro.performanceEntry|faro.performance.resource" | logfmt`,
-		app, kind, session,
+		`{app_id="%s", kind="%s"} |= "session_id=%s" !~ "performanceEntry|faro.performanceEntry|faro.performance.resource" | logfmt | session_id="%s"`,
+		app, kind, session, session,
 	)
 	if kind == lokiKindMeasurement && p.mobile() {
 		q += ` | type!="app_memory" | type!="app_cpu_usage"`

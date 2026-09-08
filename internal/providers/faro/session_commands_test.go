@@ -531,8 +531,7 @@ func TestFetchLokiSession(t *testing.T) {
 	events := lokiJourneyQueryFrom(stub.queries)
 	require.NotEmpty(t, events)
 	assert.Contains(t, events, `{app_id="66", kind="event"}`)
-	assert.Contains(t, events, `| logfmt`)
-	assert.NotContains(t, events, `| logfmt | session_id=`)
+	assert.Contains(t, events, `| logfmt | session_id="sid"`)
 	assert.NotContains(t, events, "faro.tracing.fetch")
 	assert.NotContains(t, events, "app_memory")
 	for _, dir := range stub.dirs {

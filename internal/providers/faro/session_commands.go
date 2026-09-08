@@ -188,8 +188,6 @@ app_memory / app_cpu_usage). Pass --app-type to override.`,
 					return fmt.Errorf("failed to create loki client: %w", clientErr)
 				}
 				result, err = fetchLokiSession(ctx, client, opts.Datasource, params, start, end)
-			default:
-				return fmt.Errorf("unsupported datasource kind %s", kind)
 			}
 			if err != nil {
 				return err
