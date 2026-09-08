@@ -2,7 +2,9 @@ package faro
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
+	"io"
 	"math"
 	"slices"
 	"sort"
@@ -11,9 +13,39 @@ import (
 	"time"
 
 	"github.com/go-logfmt/logfmt"
+	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/query/loki"
 	querysql "github.com/grafana/gcx/internal/query/sql"
 )
+
+const sessionDumpTextOnlyErr = "session dump is text-only; use --save for the file"
+
+type sessionDumper interface {
+	dump() string
+}
+
+// sessionDumpCodec is the default "text" codec for sessions get. Encode writes
+// the same dump as writeTables; JSON/YAML are rejected in Validate.
+type sessionDumpCodec struct{}
+
+func (sessionDumpCodec) Format() format.Format { return "text" }
+
+func (sessionDumpCodec) Decode(io.Reader, any) error {
+	return errors.New("text codec does not support decoding")
+}
+
+func (sessionDumpCodec) Encode(w io.Writer, v any) error {
+	switch d := v.(type) {
+	case string:
+		_, err := io.WriteString(w, d)
+		return err
+	case sessionDumper:
+		_, err := io.WriteString(w, d.dump())
+		return err
+	default:
+		return fmt.Errorf("invalid data type for text codec: expected session dump, got %T", v)
+	}
+}
 
 const (
 	sessionDumpMetadataHeader = "=== session metadata ==="

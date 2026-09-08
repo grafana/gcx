@@ -20,11 +20,20 @@ import (
 
 type sessionsGetOpts struct {
 	dsquery.TimeRangeOpts
+	IO cmdio.Options
 
 	App        string
 	AppType    string
 	Datasource string
 	Save       string
+}
+
+func (o *sessionsGetOpts) setupIO() {
+	o.IO.RegisterCustomCodec("text", sessionDumpCodec{})
+	o.IO.PinDefaultFormat("text")
+	o.IO.HideFormat("json")
+	o.IO.HideFormat("yaml")
+	o.IO.HideFormat("agents")
 }
 
 func (o *sessionsGetOpts) setup(flags *pflag.FlagSet) {
@@ -33,6 +42,10 @@ func (o *sessionsGetOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&o.AppType, "app-type", "", "web or mobile (case-insensitive). Optional: inferred from sdkName/osName when omitted")
 	flags.StringVarP(&o.Datasource, "datasource", "d", "", "Grafana datasource UID (required). Type is inferred (loki or pinot)")
 	flags.StringVar(&o.Save, "save", "", "Write the session dump to this path instead of stdout")
+	o.setupIO()
+	o.IO.BindFlags(flags)
+	_ = flags.MarkHidden("json")
+	_ = flags.MarkHidden("jq")
 }
 
 func (o *sessionsGetOpts) Validate() error {
@@ -61,6 +74,16 @@ func (o *sessionsGetOpts) Validate() error {
 	if agent.IsAgentMode() && o.Save == "" {
 		return errors.New("--save is required in agent mode so the session dump is not written to stdout")
 	}
+	o.setupIO()
+	if o.IO.OutputFormat == "" {
+		o.IO.OutputFormat = "text"
+	}
+	if err := o.IO.Validate(); err != nil {
+		return err
+	}
+	if o.IO.OutputFormat != "text" || len(o.IO.JSONFields) > 0 || o.IO.JSONDiscovery || o.IO.JQActive() {
+		return errors.New(sessionDumpTextOnlyErr)
+	}
 	return nil
 }
 
@@ -85,7 +108,8 @@ Two labeled blocks are produced: session metadata (once) and events (the user
 journey). Metadata is named fields once (sdk, app, user, os, geo, browser,
 device, session times), empty values omitted. Pinot events are TSV; Loki
 events are timestamp then the log line with those envelope keys stripped.
---save writes that same dump. There is no JSON or YAML encoding of the dump.
+--save writes that same dump. Default -o is text; -o json/yaml, --json, and --jq
+are rejected.
 
 Use --save so agents receive a small artifact receipt on stdout and then read
 the file. Pinot events use faro_pinot_events_v2 on grafana-ops hosts and
@@ -171,10 +195,7 @@ app_memory / app_cpu_usage). Pass --app-type to override.`,
 				return err
 			}
 
-			var result interface {
-				dump() string
-				writeTables(w io.Writer) error
-			}
+			var result sessionDumper
 			switch kind {
 			case datasourcePinot:
 				client, clientErr := pinot.NewClient(cfg)
@@ -194,10 +215,14 @@ app_memory / app_cpu_usage). Pass --app-type to override.`,
 			}
 
 			if opts.Save == "" {
-				return result.writeTables(cmd.OutOrStdout())
+				return opts.IO.Encode(cmd.OutOrStdout(), result)
 			}
 
-			if err = os.WriteFile(opts.Save, []byte(result.dump()), 0o600); err != nil {
+			var buf strings.Builder
+			if err = opts.IO.Encode(&buf, result); err != nil {
+				return err
+			}
+			if err = os.WriteFile(opts.Save, []byte(buf.String()), 0o600); err != nil {
 				return fmt.Errorf("writing session dump: %w", err)
 			}
 

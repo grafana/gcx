@@ -12,6 +12,28 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestSessionDumpCodecEncode(t *testing.T) {
+	t.Parallel()
+	result := &pinotSessionResult{
+		eventsMeta: &querysql.QueryResponse{
+			Columns: []querysql.Column{{Name: "browser_name"}},
+			Rows:    [][]any{{"Chrome"}},
+		},
+	}
+	var buf bytes.Buffer
+	require.NoError(t, sessionDumpCodec{}.Encode(&buf, result))
+	assert.Equal(t, result.dump(), buf.String())
+
+	buf.Reset()
+	require.NoError(t, sessionDumpCodec{}.Encode(&buf, "plain"))
+	assert.Equal(t, "plain", buf.String())
+
+	err := sessionDumpCodec{}.Encode(&buf, 3)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "expected session dump")
+	assert.Equal(t, "text", string(sessionDumpCodec{}.Format()))
+}
+
 func TestFormatPinotTSV(t *testing.T) {
 	t.Parallel()
 
