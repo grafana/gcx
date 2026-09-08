@@ -28,7 +28,9 @@ Run both passes, then combine them:
 
 1. **`/code-review`**, for correctness bugs. Do not pass `--comment`. The
    findings must return to you instead of going straight to the PR, or you have
-   nothing left to combine.
+   nothing left to combine. It signs off with "no `--comment` argument was
+   provided, so stopping here without posting" — that is it handing findings
+   back, not the end of your review. Do not repeat the line or stop on it.
 2. **The triggers above** that fire for this diff, plus the compliance
    hierarchy.
 
@@ -136,7 +138,7 @@ which. Otherwise five blocking findings look heavier than the change deserves.
 
 ## When a workflow invoked this
 
-Five things change when no human is present. The rest of the review is the same.
+Six things change when no human is present. The rest of the review is the same.
 
 - **Post without asking.** The offer below applies when a human can answer. In
   CI nobody can, and the trigger is the consent.
@@ -152,7 +154,13 @@ Five things change when no human is present. The rest of the review is the same.
 
   > Comment `@claude review` for a fresh review.
 
-Silence is a valid result. If there are no findings, say so in one line. Never invent a finding.
+- **Upgrade `recommended` findings to blocking.** A human reviewer can weigh a
+  should-fix in conversation. Nobody is here to do that, so a finding is either
+  worth the author's attention or it is a nit.
+
+Silence is a valid result. If there are no findings, say so in one line — and
+post that line. A review that ends without posting cannot be told apart from
+one that never ran. Never invent a finding.
 
 ## Offering to post the review
 
