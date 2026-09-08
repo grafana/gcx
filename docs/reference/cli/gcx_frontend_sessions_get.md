@@ -10,7 +10,8 @@ Two labeled blocks are produced: session metadata (once) and events (the user
 journey). Metadata is named fields once (sdk, app, user, os, geo, browser,
 device, session times), empty values omitted. Pinot events are TSV; Loki
 events are timestamp then the log line with those envelope keys stripped.
---save writes that same dump. There is no JSON or YAML encoding of the dump.
+--save writes that same dump. Default -o is text; -o json/yaml, --json, and --jq
+are rejected.
 
 Use --save so agents receive a small artifact receipt on stdout and then read
 the file. Pinot events use faro_pinot_events_v2 on grafana-ops hosts and
@@ -56,6 +57,7 @@ gcx frontend sessions get <session-id> [flags]
   -d, --datasource string   Grafana datasource UID (required). Type is inferred (loki or pinot)
       --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                help for get
+  -o, --output string       Output format. One of: text (default "text")
       --save string         Write the session dump to this path instead of stdout
       --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --to string           End time (RFC3339, Unix timestamp, or relative like 'now')

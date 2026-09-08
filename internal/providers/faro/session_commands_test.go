@@ -54,6 +54,56 @@ func TestSessionsGetOptsValidate(t *testing.T) {
 	}
 }
 
+func TestSessionsGetOptsValidateRejectsStructuredOutput(t *testing.T) {
+	t.Parallel()
+	base := func() sessionsGetOpts {
+		return sessionsGetOpts{
+			App:        "66",
+			Datasource: "grafanacloud-logs",
+			TimeRangeOpts: dsquery.TimeRangeOpts{
+				Since: "1h",
+			},
+		}
+	}
+
+	opts := base()
+	opts.IO.OutputFormat = "json"
+	err := opts.Validate()
+	require.Error(t, err)
+	assert.Equal(t, sessionDumpTextOnlyErr, err.Error())
+
+	opts = base()
+	opts.IO.OutputFormat = "yaml"
+	err = opts.Validate()
+	require.Error(t, err)
+	assert.Equal(t, sessionDumpTextOnlyErr, err.Error())
+
+	opts = base()
+	opts.IO.JSONFields = []string{"sdk_name"}
+	err = opts.Validate()
+	require.Error(t, err)
+	assert.Equal(t, sessionDumpTextOnlyErr, err.Error())
+}
+
+func TestSessionsGetCommandRejectsJSONOutput(t *testing.T) {
+	t.Parallel()
+	cmd := newSessionsGetCommand(&providers.ConfigLoader{})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{"sid", "--app", "66", "-d", "grafanacloud-logs", "--since", "1h", "-o", "json"})
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), sessionDumpTextOnlyErr)
+
+	cmd = newSessionsGetCommand(&providers.ConfigLoader{})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{"sid", "--app", "66", "-d", "grafanacloud-logs", "--since", "1h", "--json", "sdk_name"})
+	err = cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), sessionDumpTextOnlyErr)
+}
+
 func TestSessionsGetOptsValidateOK(t *testing.T) {
 	t.Parallel()
 	opts := sessionsGetOpts{
