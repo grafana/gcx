@@ -2,6 +2,7 @@ package faro
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/grafana/gcx/internal/query/pinot"
@@ -23,6 +24,13 @@ const (
 	lokiKindException   = "exception"
 	lokiKindLog         = "log"
 	lokiKindMeasurement = "measurement"
+
+	// Frontend Observability Pinot: ops serves events v2; grafana-dev and
+	// other hosts still serve v1. Only the events table name differs.
+	pinotEventsTableOps = "faro_pinot_events_v2"
+	pinotEventsTableDev = "faro_pinot_events_v1"
+	grafanaOpsHost      = "grafana-ops.net"
+	grafanaDevHost      = "grafana-dev.net"
 )
 
 // Same clause the session-detail journey emits for mobile apps, on the
@@ -39,9 +47,9 @@ SELECT
   FIRSTWITHTIME(geoCountryCode, "timestamp", 'STRING') FILTER (WHERE geoCountryCode <> '' AND geoCountryCode <> 'null') AS geo_country_iso,
   FIRSTWITHTIME(geoCity, "timestamp", 'STRING') FILTER (WHERE geoCity <> '' AND geoCity <> 'null') AS geo_city,
   min("timestamp") AS session_start,
-  max("timestamp") AS session_end,
+  max("timestamp") AS session_last_event,
   min("timestamp") FILTER (WHERE eventName = 'faro.session_recording.started') AS session_replay_start
-FROM faro_pinot_events_v2
+FROM {{EVENTS_TABLE}}
 WHERE appId = {{APP_ID}}
   AND sessionId = '{{SESSION_ID}}'
   AND $__timeFilter("timestamp")`
@@ -263,7 +271,7 @@ FROM (
     JSON_EXTRACT_SCALAR(attributesJson, '$[''name'']', 'STRING', '') AS nav_name,
     JSON_EXTRACT_SCALAR(attributesJson, '$[''duration'']', 'STRING', '') AS nav_duration,
     JSON_EXTRACT_SCALAR(attributesJson, '$[''ttfb'']', 'STRING', '') AS nav_ttfb
-  FROM faro_pinot_events_v2
+  FROM {{EVENTS_TABLE}}
   WHERE appId = {{APP_ID}}
     AND sessionId = '{{SESSION_ID}}'
     AND eventName NOT IN ('faro.performance.resource', 'faro.performanceEntry')
@@ -275,6 +283,36 @@ type sessionQueryParams struct {
 	AppID     string
 	SessionID string
 	AppType   string
+	ServerURL string
+}
+
+// pinotEventsTable matches Frontend Observability: ops Pinot serves
+// faro_pinot_events_v2; grafana-dev and every other host still serve v1.
+func pinotEventsTable(serverURL string) string {
+	host := hostnameFromServerURL(serverURL)
+	if hostHasSuffix(host, grafanaOpsHost) && !hostHasSuffix(host, grafanaDevHost) {
+		return pinotEventsTableOps
+	}
+	return pinotEventsTableDev
+}
+
+func hostnameFromServerURL(serverURL string) string {
+	raw := strings.TrimSpace(serverURL)
+	if raw == "" {
+		return ""
+	}
+	if !strings.Contains(raw, "://") {
+		raw = "https://" + raw
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	return strings.ToLower(u.Hostname())
+}
+
+func hostHasSuffix(host, suffix string) bool {
+	return host == suffix || strings.HasSuffix(host, "."+suffix)
 }
 
 func (p sessionQueryParams) mobile() bool {
@@ -297,6 +335,7 @@ func substPinot(sql string, p sessionQueryParams) (string, error) {
 		"{{APP_ID}}", appID,
 		"{{SESSION_ID}}", pinot.EscapeSQLString(p.SessionID),
 		"{{MEASUREMENT_FILTER}}", filter,
+		"{{EVENTS_TABLE}}", pinotEventsTable(p.ServerURL),
 	).Replace(sql), nil
 }
 

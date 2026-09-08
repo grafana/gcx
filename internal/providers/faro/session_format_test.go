@@ -2,6 +2,7 @@ package faro //nolint:testpackage // Tests unexported dump formatters.
 
 import (
 	"bytes"
+	"math"
 	"strings"
 	"testing"
 
@@ -55,18 +56,51 @@ func TestFormatSessionDump(t *testing.T) {
 	require.Contains(t, got, "=== events ===\ne1\ne2\n")
 }
 
-func TestWritePinotTables(t *testing.T) {
+func TestFormatPinotMetadata(t *testing.T) {
 	t.Parallel()
-	var buf bytes.Buffer
-	err := writePinotTables(&buf, &querysql.QueryResponse{
-		Columns: []querysql.Column{{Name: "kind"}, {Name: "count"}},
-		Rows:    [][]any{{"event", float64(2)}},
-	})
-	require.NoError(t, err)
-	out := buf.String()
-	assert.Contains(t, out, "KIND")
-	assert.Contains(t, out, "COUNT")
-	assert.Contains(t, out, "event")
+
+	got := formatPinotMetadata(
+		&querysql.QueryResponse{
+			Columns: []querysql.Column{
+				{Name: "app_name"},
+				{Name: "browser_name"},
+				{Name: "geo_city"},
+				{Name: "session_start"},
+				{Name: "session_last_event"},
+				{Name: "session_replay_start"},
+			},
+			Rows: [][]any{{
+				"grafana-frontend",
+				"Chrome",
+				"",
+				float64(1_700_000_000_000),
+				float64(1_700_000_600_000),
+				float64(math.MaxInt64),
+			}},
+		},
+		&querysql.QueryResponse{
+			Columns: []querysql.Column{
+				{Name: "sdk_name"},
+				{Name: "user_username"},
+				{Name: "device_brand"},
+			},
+			Rows: [][]any{{"faro-web", "null", "Apple"}},
+		},
+	)
+	assert.Contains(t, got, "sdk_name=faro-web\n")
+	assert.Contains(t, got, "browser_name=Chrome\n")
+	assert.Contains(t, got, "app_name=grafana-frontend\n")
+	assert.Contains(t, got, "device_brand=Apple\n")
+	assert.Contains(t, got, "session_start=2023-11-14T22:13:20Z\n")
+	assert.Contains(t, got, "session_last_event=2023-11-14T22:23:20Z\n")
+	assert.NotContains(t, got, "geo_city=")
+	assert.NotContains(t, got, "user_username=")
+	assert.NotContains(t, got, "session_replay_start=")
+	assert.Less(t, strings.Index(got, "sdk_name="), strings.Index(got, "app_name="))
+	assert.Empty(t, formatPinotMetadata(nil, &querysql.QueryResponse{
+		Columns: []querysql.Column{{Name: "sdk_name"}},
+		Rows:    [][]any{{""}},
+	}))
 }
 
 func TestPinotSessionWriteTables(t *testing.T) {
@@ -88,12 +122,12 @@ func TestPinotSessionWriteTables(t *testing.T) {
 	var buf bytes.Buffer
 	require.NoError(t, result.writeTables(&buf))
 	out := buf.String()
+	assert.Equal(t, result.dump(), out)
 	assert.Contains(t, out, "=== session metadata ===")
 	assert.Contains(t, out, "=== events ===")
-	assert.Contains(t, out, "BROWSER_NAME")
-	assert.Contains(t, out, "SDK_NAME")
-	assert.Contains(t, out, "Chrome")
-	assert.Contains(t, out, "faro-web")
+	assert.Contains(t, out, "browser_name=Chrome\n")
+	assert.Contains(t, out, "sdk_name=faro-web\n")
+	assert.NotContains(t, out, "BROWSER_NAME")
 	assert.Contains(t, out, "kind\nevent\n")
 }
 

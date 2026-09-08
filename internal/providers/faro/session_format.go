@@ -2,10 +2,11 @@ package faro
 
 import (
 	"fmt"
-	"io"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-logfmt/logfmt"
 	"github.com/grafana/gcx/internal/query/loki"
@@ -41,29 +42,99 @@ func joinBlocks(blocks ...string) string {
 	return strings.Join(parts, "\n\n")
 }
 
-// writePinotTables prints Pinot results as human-readable tables. Empty column
-// sets are skipped.
-func writePinotTables(w io.Writer, resps ...*querysql.QueryResponse) error {
-	printed := false
+func pinotMetadataTimeKeys() []string {
+	return []string{"session_start", "session_last_event", "session_replay_start"}
+}
+
+func isPinotMetadataTimeKey(key string) bool {
+	for _, k := range pinotMetadataTimeKeys() {
+		if key == k {
+			return true
+		}
+	}
+	return false
+}
+
+func pinotInt64(v any) (int64, bool) {
+	switch val := v.(type) {
+	case int:
+		return int64(val), true
+	case int64:
+		return val, true
+	case float64:
+		return int64(val), true
+	case string:
+		n, err := strconv.ParseInt(strings.TrimSpace(val), 10, 64)
+		return n, err == nil
+	default:
+		return 0, false
+	}
+}
+
+func formatPinotMetaValue(name string, v any) string {
+	if v == nil {
+		return ""
+	}
+	if isPinotMetadataTimeKey(name) {
+		ms, ok := pinotInt64(v)
+		if !ok || ms <= 0 || ms == math.MaxInt64 {
+			return ""
+		}
+		return time.UnixMilli(ms).UTC().Format(time.RFC3339)
+	}
+	s := strings.TrimSpace(tsvCell(v))
+	if s == "" || strings.EqualFold(s, "null") {
+		return ""
+	}
+	return s
+}
+
+func pinotMetadataFields(resps ...*querysql.QueryResponse) map[string]string {
+	fields := make(map[string]string)
 	for _, resp := range resps {
-		if resp == nil || len(resp.Columns) == 0 {
+		if resp == nil || len(resp.Rows) == 0 {
 			continue
 		}
-		if printed {
-			if _, err := fmt.Fprintln(w); err != nil {
-				return err
+		row := resp.Rows[0]
+		for i, col := range resp.Columns {
+			name := strings.TrimSpace(col.Name)
+			if name == "" || i >= len(row) {
+				continue
+			}
+			if val := formatPinotMetaValue(name, row[i]); val != "" {
+				fields[name] = val
 			}
 		}
-		printed = true
-		if err := querysql.FormatTable(w, resp); err != nil {
-			return err
+	}
+	return fields
+}
+
+// formatPinotMetadata prints Pinot session metadata as one key=value per line,
+// the same shape as Loki. Empty, "null", and sentinel time values are omitted.
+func formatPinotMetadata(resps ...*querysql.QueryResponse) string {
+	fields := pinotMetadataFields(resps...)
+	if len(fields) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	written := make(map[string]struct{})
+	for _, key := range append(lokiMetadataKeys(), pinotMetadataTimeKeys()...) {
+		if v := fields[key]; v != "" {
+			writeLogfmtKV(&b, key, v)
+			written[key] = struct{}{}
 		}
 	}
-	if !printed {
-		_, err := fmt.Fprintln(w, "No data")
-		return err
+	extra := make([]string, 0, len(fields))
+	for key := range fields {
+		if _, ok := written[key]; !ok {
+			extra = append(extra, key)
+		}
 	}
-	return nil
+	sort.Strings(extra)
+	for _, key := range extra {
+		writeLogfmtKV(&b, key, fields[key])
+	}
+	return b.String()
 }
 
 // formatPinotTSV prints a Pinot result as tab-separated values with a header

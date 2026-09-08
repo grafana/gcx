@@ -52,22 +52,13 @@ func (r *pinotSessionResult) dump() string {
 		return ""
 	}
 	return formatSessionDump(
-		joinBlocks(formatPinotTSV(r.eventsMeta), formatPinotTSV(r.userMeta)),
+		formatPinotMetadata(r.eventsMeta, r.userMeta),
 		formatPinotTSV(r.journey),
 	)
 }
 
 func (r *pinotSessionResult) writeTables(w io.Writer) error {
-	if _, err := fmt.Fprintln(w, sessionDumpMetadataHeader); err != nil {
-		return err
-	}
-	if err := writePinotTables(w, r.eventsMeta, r.userMeta); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintf(w, "\n%s\n", sessionDumpEventsHeader); err != nil {
-		return err
-	}
-	_, err := io.WriteString(w, formatPinotTSV(r.journey))
+	_, err := io.WriteString(w, r.dump())
 	return err
 }
 
@@ -135,7 +126,14 @@ func fetchPinotSession(ctx context.Context, client pinotQuerier, uid string, p s
 	if err != nil {
 		return nil, err
 	}
-	journey, err := client.Query(ctx, uid, req(journeySQL))
+	// Outer FROM is a subquery, so ExtractTableName is empty and StarTree
+	// rejects the request. The session-detail journey uses the events table.
+	journey, err := client.Query(ctx, uid, pinot.QueryRequest{
+		RawSQL:    journeySQL,
+		TableName: pinotEventsTable(p.ServerURL),
+		Start:     start,
+		End:       end,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("pinot events query failed: %w", err)
 	}
