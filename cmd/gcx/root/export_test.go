@@ -10,3 +10,9 @@ import (
 func NewCommandForTest(version string, pp []providers.Provider) *cobra.Command {
 	return newCommand(version, pp)
 }
+
+// ContextPolicyRoutesForTest exposes the command routes named by the strict
+// context policy so a test can check them against the real command tree.
+func ContextPolicyRoutesForTest() []string {
+	return append(append([]string{}, contextExemptRoutes...), contextRequiredRoutes...)
+}
