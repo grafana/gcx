@@ -1,38 +1,27 @@
 ## gcx traces baseline
 
-[experimental] Find healthy baseline candidates for a trace
+[experimental] Find same-operation trace candidates.
 
 ### Synopsis
 
 This command is experimental. It may be removed, or its subcommands, flags and
 responses may change without following the normal semantic versioning conventions.
 
-Find healthy, same-operation candidate traces to compare against a seed trace.
+Find unranked candidates when you have a seed trace (TRACE_ID) but need a useful
+comparison; if you already have both trace IDs, use 'gcx traces diff' directly.
 
-TRACE_ID is the seed trace (typically a faulty one). The command fetches it,
-reads its root service/operation and its busiest downstream services, then
-searches for traces with the same root identity whose operation succeeded
-(status != error), pinned to the seed's top downstream services so candidates
-stay on the same execution path.
+Retrieval fetches the seed, matches its root service/operation, requires root
+status != error (including unset), retains downstream errors, and pins up to
+three busiest downstream services; these heuristics do not prove health or
+comparable work.
 
-Run the generated query without --filter first and inspect candidates with
-'gcx traces diff <candidate> <seed>'. Only when those candidates are not valid
-comparisons, add repeatable --filter expressions to require domain-specific
-context such as a tenant, cluster, or query path. Filters are trusted raw
-TraceQL, ANDed with the generated query, and syntax-validated by Tempo.
+Apply verified environment, tenant, or operation constraints with --filter from
+the first request, then fetch a small batch of plausible candidates with
+'gcx traces get --llm' when their summaries lack enough context.
 
-Downstream errors are deliberately NOT filtered out: surfacing them is the job
-of 'gcx traces diff <candidate> <seed>', which is the real similarity and
-root-cause step. This command only retrieves candidate trace IDs (in the order
-search returns them); it does not rank them.
-
-By default candidates are searched within the seed trace's own time range,
-padded by --window (30m) on each side, so candidates from before or after the
-seed are eligible. Widen with --window, or set an absolute window with
---from/--to.
-
-This is a heuristic retrieval built on TraceQL search; its query and output may
-change.
+Use candidate bodies and exploratory diffs to accept or reject controls for the
+actual symptom, rather than requiring exact workload filters before the first
+diff or treating the first result as healthy.
 
 ```
 gcx traces baseline TRACE_ID [flags]
@@ -42,22 +31,28 @@ gcx traces baseline TRACE_ID [flags]
 
 ```
 
-  # Start unfiltered, then diff a candidate as the baseline (B - A semantics)
-  gcx traces baseline <trace-id>
-  gcx traces diff <candidate> <trace-id>
+  # Find a small shortlist; COHORT is an already-verified TraceQL spanset
+  gcx traces baseline --context prod -d UID <seed-id> --filter "$COHORT" --limit 5
 
-  # Only if unfiltered candidates are not valid comparisons, refine by tenant
-  gcx traces baseline <trace-id> --filter '{ span.tenantID = "tenant-a" }'
+  # With no additional known scope, use the seed-derived defaults
+  gcx traces baseline --context prod -d UID <seed-id> --limit 5
 
-  # Widen the window to 6h before and after the seed, output JSON
-  gcx traces baseline <trace-id> --window 6h -o json
+  # Inspect selected candidates; repeat for a small batch, not every result
+  gcx traces get --context prod -d UID <candidate-id> --llm -o agents
+
+  # Assess a candidate with an exploratory diff (seed minus candidate)
+  gcx traces diff --context prod -d UID <candidate-id> <seed-id>
+
+  # Set the candidate window; this does not bound the seed trace lookup
+  gcx traces baseline --context prod -d UID <seed-id> --filter "$COHORT" --limit 5 \
+    --from 2026-01-15T08:00:00Z --to 2026-01-15T09:00:00Z
 ```
 
 ### Options
 
 ```
   -d, --datasource string    Datasource UID (required unless datasources.tempo is configured)
-      --filter stringArray   Raw TraceQL spanset expression to refine candidates when unfiltered results are not valid comparisons (repeatable; ANDed with the generated query)
+      --filter stringArray   Raw TraceQL spanset expression to constrain candidates (repeatable; ANDed server-side with the generated query)
       --from string          Absolute start time override (RFC3339, Unix timestamp, or relative like 'now-1h'); requires --to
   -h, --help                 help for baseline
       --jq string            jq expression to apply to JSON output. Mutually exclusive with --json.
