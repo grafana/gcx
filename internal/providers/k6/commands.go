@@ -985,6 +985,9 @@ func newRunsCommand(loader CloudConfigLoader) *cobra.Command {
 		newRunsListLabelsCommand(loader),
 		newRunsMetricsQueryCommand(loader),
 		newRunsListLogsCommand(loader),
+		newRunsTracesCommand(loader),
+		newRunsArtifactsCommand(loader),
+		newRunsWaitCommand(loader),
 		newRunsGetInsightsCommand(loader),
 	)
 	return cmd

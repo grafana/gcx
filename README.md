@@ -291,6 +291,9 @@ gcx k6 load-tests list                          # list k6 load tests
 gcx k6 runs list                                # list k6 test runs across the stack
 gcx k6 runs list-logs 12345                     # list logs for one k6 test run
 gcx k6 runs get-insights 12345                  # get insights for one k6 test run
+gcx k6 runs traces list 12345                   # list browser traces for one k6 test run
+gcx k6 runs artifacts download 12345            # download browser screenshots for one k6 test run
+gcx k6 runs wait 12345 --timeout 30m            # wait for a final test result
 
 # Query more datasources
 gcx logs query '{app="nginx"} |= "error"' --since 1h

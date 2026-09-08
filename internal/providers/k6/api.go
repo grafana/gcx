@@ -96,6 +96,10 @@ type API interface { //nolint:interfacebloat
 	QueryLoadTestMetrics(ctx context.Context, loadTestID int, req LoadTestMetricsQueryRequest) (*prometheus.QueryResponse, error)
 
 	ListRunLogs(ctx context.Context, runID int, req RunLogsRequest) (*loki.QueryResponse, error)
+	ListRunTraces(ctx context.Context, runID int, req RunTracesRequest) (*RunTracesResponse, error)
+	GetRunTrace(ctx context.Context, runID int, traceID string) (*RunTrace, error)
+	ListRunArtifacts(ctx context.Context, runID int) ([]string, error)
+	SignRunArtifactDownloads(ctx context.Context, runID int, names []string) ([]RunArtifactDownload, error)
 	ListInsightExecutions(ctx context.Context, runID int) (*InsightExecutionsResponse, error)
 	ListInsightAudits(ctx context.Context, runID int, executionID string) (*InsightAuditsResponse, error)
 	ListInsightAuditResults(ctx context.Context, runID int, executionID string) (*InsightAuditResultsResponse, error)
