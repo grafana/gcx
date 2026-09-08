@@ -108,8 +108,7 @@ func TestRunList(t *testing.T) {
 			}
 
 			opts := &listOpts{}
-			opts.IO.RegisterCustomCodec("table", &instrOutput.ClusterTableCodec{Wide: false})
-			opts.IO.RegisterCustomCodec("wide", &instrOutput.ClusterTableCodec{Wide: true})
+			cmdio.RegisterTable(&opts.IO, instrOutput.ClusterTable())
 			opts.IO.DefaultFormat("table")
 			opts.IO.OutputFormat = "table"
 
@@ -242,7 +241,7 @@ func TestRunList_JSONFieldSelection_Unknown(t *testing.T) {
 	}
 
 	opts := &listOpts{}
-	opts.IO.RegisterCustomCodec("table", &instrOutput.ClusterTableCodec{Wide: false})
+	cmdio.RegisterTable(&opts.IO, instrOutput.ClusterTable())
 	opts.IO.DefaultFormat("table")
 	opts.IO.SetJSONFieldValidator(cmdio.MakeFieldValidator(instrOutput.ClusterView{}))
 	opts.IO.OutputFormat = "json"

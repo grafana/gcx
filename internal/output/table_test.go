@@ -139,7 +139,7 @@ func TestTableCodecSharedHeaderPerFormat(t *testing.T) {
 	table := cmdio.Table[row]{
 		Columns: []cmdio.Column[row]{
 			{Header: "NAME", Content: func(r row) string { return r.name }},
-			{Header: "STATUS", Visible: cmdio.TableOnly, Content: func(row) string { return "NORMALISED" }},
+			{Header: "STATUS", Visible: cmdio.NarrowOnly, Content: func(row) string { return "NORMALISED" }},
 			{Header: "STATUS", Visible: cmdio.WideOnly, Content: func(row) string { return "RAW_ENUM" }},
 		},
 	}

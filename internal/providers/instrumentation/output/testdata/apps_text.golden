@@ -1,0 +1,3 @@
+NAME      CLUSTER       WORKLOADS  PODS  AUTOINSTRUMENT  STATUS
+checkout  prod-eu-west  4          20    true            OK
+bare      prod-eu-west  0          0                     NODATA

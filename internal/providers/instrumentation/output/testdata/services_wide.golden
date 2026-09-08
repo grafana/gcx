@@ -1,0 +1,3 @@
+NAME  CLUSTER       NAMESPACE  TYPE        LANG  OS     INSTRUMENTATION_ERROR  STATUS
+cart  prod-eu-west  shop       deployment  go    linux                         INSTRUMENTED
+bare  prod-eu-west  shop       daemonset                                       

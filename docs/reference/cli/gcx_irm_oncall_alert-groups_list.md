@@ -22,6 +22,10 @@ interchangeable with --integration: one integration routes to several chains.
 timestamp, or a relative expression like now-30d. --max-age and --from/--to cannot
 be combined.
 
+--limit 0 returns every matching alert group, walking the endpoint's pages until
+they are exhausted. Over a wide window on a busy stack that is many sequential
+requests, so narrow the window or the filters when a partial answer will do.
+
 ```
 gcx irm oncall alert-groups list [flags]
 ```
@@ -58,7 +62,7 @@ gcx irm oncall alert-groups list [flags]
       --integration strings        Filter by integration PK (repeatable, comma-separated)
       --jq string                  jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string                Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --limit int                  Maximum number of alert groups to return (0 for all, capped by an internal safety limit) (default 50)
+      --limit int                  Maximum number of alert groups to return. 0 means all results are returned (default 50)
       --max-age string             Exclude groups older than this duration (e.g. 1h, 24h, 7d)
       --mine                       Limit to alert groups for the authenticated user
   -o, --output string              Output format. One of: agents, json, table, wide, yaml (default "table")

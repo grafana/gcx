@@ -342,11 +342,15 @@ Maximum number of <subject> to return. 0 means all results are returned
 ```
 
 **Capped-source exception:** commands whose fetch is bounded by a client-side
-safety cap (e.g. `irm oncall alert-groups list`, capped at 1000) must NOT use
-the binder — "0 means all" would be dishonest there. They keep a bespoke flag
-description that discloses the cap, and disclose the cap at runtime via
-`ListMeta.Cap` plus the cap-variant hint (below). `--limit 0` on a capped
-source means "as much as the cap allows", and the output must say so.
+safety cap must NOT use the binder — "0 means all" would be dishonest there.
+They keep a bespoke flag description that discloses the cap, and disclose the
+cap at runtime via `ListMeta.Cap` plus the cap-variant hint (below).
+`--limit 0` on a capped source means "as much as the cap allows", and the
+output must say so. No command currently takes this exception: the last one,
+`irm oncall alert-groups list`, dropped its 1000-item cap in favour of a real
+cursor drain (grafana/gcx#1157). Prefer draining — a cap that a caller cannot
+raise makes the complete set unreachable, which is the defect that issue
+reported.
 
 The binder is deliberately minimal: commands still pass the limit to their
 clients for server-side pushdown where the API supports it.
@@ -402,10 +406,12 @@ PR988 defect where `--limit 0` silently returned a hard-capped page as if it
 were complete. `serverHasMore` must also be true when the final page
 **overshot** the bound and in-hand items were trimmed, even without a next
 cursor — dropped items are truncation evidence. In that drained-overshoot
-case the total was genuinely observed, and the command may attach it to the
-constructed meta when honest (always on a cap-bounded page; otherwise only
-when `--limit 0` can really retrieve it) — observed, never guessed
-(`irm oncall alert-groups list` is the reference implementation).
+case the total was genuinely observed and the command attaches it to the
+constructed meta — observed, never guessed
+(`irm oncall alert-groups list` is the reference implementation). On a capped
+source the total may only be attached when it is honest to do so: always on a
+cap-bounded page (which carries no continuation), otherwise only when
+`--limit 0` can really retrieve it.
 
 The cap-recording rule fires at `limit >= safetyCap`, including
 `limit == safetyCap` exactly: a doubled `--limit` continuation could never
@@ -472,9 +478,9 @@ research doc's remaining-migration section).
 - `cmd/gcx/datasources/list.go` — cheaply complete source, binder,
   default `--limit 0`, known total.
 - `internal/providers/irm/oncall_commands_extra.go` (alert-groups list) —
-  paginated source, both server-reported (`PagedListMeta` with safety cap)
-  and over-fetch-by-one (`TruncatePagedList`, alternate-implementation
-  fallback path) variants.
+  paginated source, both server-reported (`PagedListMeta`, no safety cap:
+  `--limit 0` drains every `next` cursor) and over-fetch-by-one
+  (`TruncatePagedList`, alternate-implementation fallback path) variants.
 
 `alert rules list` is deliberately not migrated yet: its JSON/YAML output is
 a bare array (no envelope to carry `list_meta`) and its `--limit` counts
