@@ -592,6 +592,7 @@ jobs:
 - `--dry-run` on `push` and `delete` to preview changes
 - `--on-error abort|fail|ignore` to control error behavior
 - `-o json` or `-o yaml` for machine-parseable output
+- `--jq '<expr>' -o agents` for [jq with compact output and spilling](docs/design/output.md#16-jq-transformation)
 
 
 ## Documentation

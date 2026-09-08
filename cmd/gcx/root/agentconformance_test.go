@@ -196,6 +196,37 @@ func TestAgentConformance_FailuresAreOneInBandErrorDocument(t *testing.T) {
 	}
 }
 
+// Late jq errors must emit only the error document, even after spilling.
+func TestAgentConformance_JQAgentsRuntimeError(t *testing.T) {
+	if testing.Short() {
+		t.Skip("builds the gcx binary; skipped with -short")
+	}
+	configFile := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(configFile, []byte("version: 1\ncontexts: {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, query := range []string{`1, error("boom")`, `("x" * 102400), error("boom")`} {
+		t.Run(query, func(t *testing.T) {
+			stdout, code := runGcx(t, "config", "list-contexts", "--config", configFile,
+				"--jq", query, "-o", "agents")
+			if code == 0 {
+				t.Fatalf("expected runtime failure, got success:\n%s", stdout)
+			}
+			obj, ok := assertOneJSONValue(t, stdout).(map[string]any)
+			if !ok || obj["type"] != "gcx.error" {
+				t.Fatalf("expected gcx.error, got:\n%s", stdout)
+			}
+			errField, ok := obj["error"].(map[string]any)
+			if !ok || errField["exitCode"] != float64(code) {
+				t.Fatalf("error exit code disagrees with process code %d:\n%s", code, stdout)
+			}
+			if !strings.Contains(stdout, "boom") {
+				t.Fatalf("runtime error was lost:\n%s", stdout)
+			}
+		})
+	}
+}
+
 // TestAgentConformance_InvalidStackSlugIsUsageError pins the client-side slug
 // validation added for issue #950: an invalid slug fails before the dry-run
 // preview with a single gcx.error document and a usage exit code, in both the
