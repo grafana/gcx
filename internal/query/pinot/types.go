@@ -426,6 +426,11 @@ var identTableRe = regexp.MustCompile(`^([a-zA-Z_][a-zA-Z0-9_]*)`)
 // rejects an empty tableName before it runs pinotQlCode.
 var ErrTableNameRequired = errors.New("could not derive a table name from the SQL. StarTree needs one to load schema and expand macros before it runs the query. Pass --table <name> (a real table the query uses)")
 
+// ErrPartialTimeRange is returned when exactly one of Start/End is set. The
+// unified query API expects a complete range; a zero boundary becomes a
+// year-0001 UnixMilli and yields confusing empty results.
+var ErrPartialTimeRange = errors.New("start and end must both be set or both omitted")
+
 // ExtractTableName returns the first FROM table we can be confident about, or
 // empty if the shape is unclear. FROM inside strings, quoted identifiers,
 // comments, and EXTRACT/TRIM/SUBSTRING/OVERLAY calls is ignored. FROM ( is

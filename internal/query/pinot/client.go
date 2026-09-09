@@ -43,6 +43,10 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 		intervalMs = 60000
 	}
 
+	if req.Start.IsZero() != req.End.IsZero() {
+		return nil, ErrPartialTimeRange
+	}
+
 	from := strconv.FormatInt(req.Start.UnixMilli(), 10)
 	to := strconv.FormatInt(req.End.UnixMilli(), 10)
 	if req.Start.IsZero() && req.End.IsZero() {

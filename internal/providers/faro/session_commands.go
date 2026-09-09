@@ -219,11 +219,15 @@ app_memory / app_cpu_usage). Pass --app-type to override.`,
 				return opts.IO.Encode(cmd.OutOrStdout(), result)
 			}
 
-			var buf strings.Builder
-			if err = opts.IO.Encode(&buf, result); err != nil {
+			f, fileErr := os.OpenFile(opts.Save, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+			if fileErr != nil {
+				return fmt.Errorf("writing session dump: %w", fileErr)
+			}
+			if err = opts.IO.Encode(f, result); err != nil {
+				_ = f.Close()
 				return err
 			}
-			if err = os.WriteFile(opts.Save, []byte(buf.String()), 0o600); err != nil {
+			if err = f.Close(); err != nil {
 				return fmt.Errorf("writing session dump: %w", err)
 			}
 

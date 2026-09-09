@@ -2,7 +2,10 @@ package faro //nolint:testpackage // Tests unexported opts, fetch, and command c
 
 import (
 	"bytes"
+	"cmp"
 	"context"
+	"math/rand"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -398,10 +401,13 @@ func pinotTimestampRows(n int, startMS int64) [][]any {
 }
 
 // datasetPinot serves a fixed journey dataset with Pinot's LIMIT 1000 and the
-// same > / = cursor clauses as pinotJourneyQueryPaged.
+// same > / = cursor clauses as pinotJourneyQueryPaged. Rows are sorted with
+// pinotJourneyOrderBy tie-breakers before LIMIT/OFFSET, matching stable Pinot
+// paging for dense same-ms buckets.
 type datasetPinot struct {
-	mu      sync.Mutex
-	dataset [][]any
+	mu       sync.Mutex
+	dataset  [][]any
+	shuffleN int
 }
 
 func (s *datasetPinot) Query(_ context.Context, _ string, req pinot.QueryRequest) (*querysql.QueryResponse, error) {
@@ -421,6 +427,12 @@ func (s *datasetPinot) Query(_ context.Context, _ string, req pinot.QueryRequest
 		ms := parseJourneyCursorMS(req.RawSQL[i:])
 		rows = filterJourneyTS(rows, func(ts int64) bool { return ts > ms })
 	}
+	if s.shuffleN > 0 {
+		s.shuffleN++
+		rng := rand.New(rand.NewSource(int64(s.shuffleN * 7919))) //nolint:gosec // test-only tie-order probe
+		rng.Shuffle(len(rows), func(i, j int) { rows[i], rows[j] = rows[j], rows[i] })
+	}
+	sortJourneyStubRows(rows)
 	if off := parseSQLOffset(req.RawSQL); off > 0 {
 		if off >= len(rows) {
 			rows = nil
@@ -435,6 +447,31 @@ func (s *datasetPinot) Query(_ context.Context, _ string, req pinot.QueryRequest
 		Columns: []querysql.Column{{Name: "timestamp"}, {Name: "kind"}},
 		Rows:    rows,
 	}, nil
+}
+
+func sortJourneyStubRows(rows [][]any) {
+	slices.SortFunc(rows, func(a, b []any) int {
+		if c := cmp.Compare(stubJourneyTS(a), stubJourneyTS(b)); c != 0 {
+			return c
+		}
+		return strings.Compare(stubJourneyKind(a), stubJourneyKind(b))
+	})
+}
+
+func stubJourneyTS(row []any) int64 {
+	if len(row) == 0 {
+		return 0
+	}
+	ts, _ := row[0].(int64)
+	return ts
+}
+
+func stubJourneyKind(row []any) string {
+	if len(row) < 2 {
+		return ""
+	}
+	k, _ := row[1].(string)
+	return k
 }
 
 func parseSQLOffset(sql string) int {
@@ -480,6 +517,22 @@ func TestFetchPinotJourneyKeepsMoreThanPageInOneMillisecond(t *testing.T) {
 	}
 	p := sessionQueryParams{AppID: "66", SessionID: "sid", AppType: appTypeWeb}
 	got, err := fetchPinotSession(context.Background(), &datasetPinot{dataset: ds}, "uid", p, time.UnixMilli(1), time.UnixMilli(9000))
+	require.NoError(t, err)
+	require.NotNil(t, got.journey)
+	assert.Len(t, got.journey.Rows, pinotJourneyPageSize+1)
+}
+
+func TestFetchPinotJourneySameMSStableWhenShuffled(t *testing.T) {
+	t.Parallel()
+	ds := make([][]any, pinotJourneyPageSize+1)
+	for i := range ds {
+		ds[i] = []any{int64(5000), "row-" + strconv.Itoa(i)}
+	}
+	rng := rand.New(rand.NewSource(42)) //nolint:gosec // test-only dataset shuffle
+	rng.Shuffle(len(ds), func(i, j int) { ds[i], ds[j] = ds[j], ds[i] })
+
+	p := sessionQueryParams{AppID: "66", SessionID: "sid", AppType: appTypeWeb}
+	got, err := fetchPinotSession(context.Background(), &datasetPinot{dataset: ds, shuffleN: 1}, "uid", p, time.UnixMilli(1), time.UnixMilli(9000))
 	require.NoError(t, err)
 	require.NotNil(t, got.journey)
 	assert.Len(t, got.journey.Rows, pinotJourneyPageSize+1)
@@ -541,7 +594,11 @@ func (s *stubLoki) Query(_ context.Context, _ string, req loki.QueryRequest) (*l
 		return &loki.QueryResponse{}, nil
 	}
 
-	isJourney := strings.Contains(req.Query, `!~ "performanceEntry`)
+	isJourney := strings.Contains(req.Query, `| logfmt | session_id=`) &&
+		(strings.Contains(req.Query, lokiPerformanceEventFilter) ||
+			strings.Contains(req.Query, `kind="exception"`) ||
+			strings.Contains(req.Query, `kind="log"`) ||
+			strings.Contains(req.Query, `kind="measurement"`))
 	switch {
 	case strings.Contains(req.Query, "faro.session_recording.started"):
 		return lokiSingle("150", "event_name=faro.session_recording.started"), nil
@@ -589,7 +646,7 @@ func lokiSingle(ts, line string) *loki.QueryResponse {
 
 func lokiJourneyQueryFrom(queries []string) string {
 	for _, q := range queries {
-		if strings.Contains(q, `!~ "performanceEntry`) && strings.Contains(q, `kind="event"`) {
+		if strings.Contains(q, lokiPerformanceEventFilter) && strings.Contains(q, `kind="event"`) {
 			return q
 		}
 	}
@@ -598,7 +655,7 @@ func lokiJourneyQueryFrom(queries []string) string {
 
 func lokiMeasurementQueryFrom(queries []string) string {
 	for _, q := range queries {
-		if strings.Contains(q, `kind="measurement"`) && strings.Contains(q, `!~ "performanceEntry`) {
+		if strings.Contains(q, `kind="measurement"`) && strings.Contains(q, `| logfmt | session_id=`) {
 			return q
 		}
 	}
@@ -725,7 +782,7 @@ func TestFetchLokiSessionPagesUntilComplete(t *testing.T) {
 	assert.Equal(t, lokiEventsPageSize+4+otherKinds, lokiEntryCount(got.events))
 	eventKindPages := 0
 	for i, q := range stub.queries {
-		if !strings.Contains(q, `!~ "performanceEntry`) || !strings.Contains(q, `kind="event"`) {
+		if !strings.Contains(q, lokiPerformanceEventFilter) || !strings.Contains(q, `kind="event"`) {
 			continue
 		}
 		eventKindPages++
