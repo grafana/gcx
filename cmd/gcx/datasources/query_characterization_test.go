@@ -229,6 +229,20 @@ func TestGenericQueryCharacterization_LokiLimit(t *testing.T) {
 	assert.InDelta(t, float64(7), q["maxLines"], 0, "--limit must reach maxLines")
 }
 
+func TestGenericQueryCharacterization_PinotDefaultLimit(t *testing.T) {
+	f := &fakeGrafana{t: t, dsType: "startree-pinot-datasource"}
+
+	_, err := runGeneric(t, f,
+		"query", "uid", "SELECT 1 FROM events",
+		"-o", "json")
+	require.NoError(t, err)
+
+	_, body := f.seenPost()
+	q := firstQuery(t, body)
+	assert.Equal(t, "SELECT 1 FROM events LIMIT 100", q["pinotQlCode"],
+		"omitted --limit must use pinot.DefaultLimit, not the generic Loki default")
+}
+
 func TestGenericQueryCharacterization_PinotLimit(t *testing.T) {
 	f := &fakeGrafana{t: t, dsType: "startree-pinot-datasource"}
 
@@ -241,6 +255,20 @@ func TestGenericQueryCharacterization_PinotLimit(t *testing.T) {
 	q := firstQuery(t, body)
 	assert.Equal(t, "SELECT 1 FROM events LIMIT 7", q["pinotQlCode"],
 		"--limit must reach the Pinot SQL LIMIT, not a hardcoded 100")
+}
+
+func TestGenericQueryCharacterization_PinotExplicitLimit50(t *testing.T) {
+	f := &fakeGrafana{t: t, dsType: "startree-pinot-datasource"}
+
+	_, err := runGeneric(t, f,
+		"query", "uid", "SELECT 1 FROM events",
+		"--limit", "50", "-o", "json")
+	require.NoError(t, err)
+
+	_, body := f.seenPost()
+	q := firstQuery(t, body)
+	assert.Equal(t, "SELECT 1 FROM events LIMIT 50", q["pinotQlCode"],
+		"explicit --limit 50 must not be upgraded to pinot.DefaultLimit")
 }
 
 func TestGenericQueryCharacterization_PinotSkipLimitWarnsOnStderr(t *testing.T) {
