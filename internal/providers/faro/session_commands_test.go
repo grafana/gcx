@@ -482,7 +482,7 @@ func TestFetchPinotJourneyKeepsMoreThanPageInOneMillisecond(t *testing.T) {
 	got, err := fetchPinotSession(context.Background(), &datasetPinot{dataset: ds}, "uid", p, time.UnixMilli(1), time.UnixMilli(9000))
 	require.NoError(t, err)
 	require.NotNil(t, got.journey)
-	assert.Equal(t, pinotJourneyPageSize+1, len(got.journey.Rows))
+	assert.Len(t, got.journey.Rows, pinotJourneyPageSize+1)
 }
 
 func TestAppendPinotRowsSkipsEqualJourneyRows(t *testing.T) {
