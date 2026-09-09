@@ -30,6 +30,7 @@ Manage eval experiment runs.
 * [gcx agento11y experiments list](gcx_agento11y_experiments_list.md)	 - List experiments.
 * [gcx agento11y experiments list-scores](gcx_agento11y_experiments_list-scores.md)	 - List scores produced by an experiment.
 * [gcx agento11y experiments list-trials](gcx_agento11y_experiments_list-trials.md)	 - List test case trials for an experiment.
+* [gcx agento11y experiments pull](gcx_agento11y_experiments_pull.md)	 - [experimental] Pull an experiment's raw source bundle to disk.
 * [gcx agento11y experiments test-suites](gcx_agento11y_experiments_test-suites.md)	 - Manage experiment test suites.
 * [gcx agento11y experiments trials](gcx_agento11y_experiments_trials.md)	 - Manage experiment test case trials.
 * [gcx agento11y experiments update](gcx_agento11y_experiments_update.md)	 - Update an experiment's mutable fields.
