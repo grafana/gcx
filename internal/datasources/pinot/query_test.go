@@ -5,9 +5,17 @@ import (
 
 	"github.com/grafana/gcx/internal/datasources/pinot"
 	"github.com/grafana/gcx/internal/providers"
+	querypinot "github.com/grafana/gcx/internal/query/pinot"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestQueryCmd_LimitFlagUsesSharedUsage(t *testing.T) {
+	cmd := pinot.QueryCmd(&providers.ConfigLoader{})
+	usage := cmd.Flags().Lookup("limit").Usage
+	assert.Equal(t, querypinot.LimitFlagUsage(querypinot.MaxLimit), usage)
+	assert.Contains(t, usage, querypinot.LimitSkipShapes)
+}
 
 func TestQueryCmd_ValidationErrors(t *testing.T) {
 	tests := []struct {

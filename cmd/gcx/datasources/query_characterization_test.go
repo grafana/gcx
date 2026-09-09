@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/grafana/gcx/cmd/gcx/datasources"
+	querypinot "github.com/grafana/gcx/internal/query/pinot"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -254,7 +255,7 @@ func TestGenericQueryCharacterization_PinotSkipLimitWarnsOnStderr(t *testing.T) 
 	q := firstQuery(t, body)
 	assert.Equal(t, "SELECT 1 FROM a UNION SELECT 2 FROM b", q["pinotQlCode"],
 		"UNION SQL is sent unchanged")
-	assert.Contains(t, stderr, "UNION, OFFSET, OPTION, or a trailing line comment",
+	assert.Contains(t, stderr, querypinot.LimitSkipShapes,
 		"a skipped --limit must be reported, not silent")
 }
 
