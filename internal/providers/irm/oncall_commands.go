@@ -374,7 +374,6 @@ func newTypedCRUD[T adapter.ResourceNamer](
 // Per-resource group commands: oncall <resource> list|get|...
 // ---------------------------------------------------------------------------
 
-//nolint:dupl // Each noun builder follows the same CRUD wiring pattern; structural duplication is intentional.
 func newIntegrationsCmd(loader OnCallConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "integrations",
@@ -394,6 +393,10 @@ func newIntegrationsCmd(loader OnCallConfigLoader) *cobra.Command {
 		newCreateSubcommand(loader, "Create an integration.", integrationCRUDOpts()),
 		newUpdateSubcommand(loader, "Update an integration by ID.", integrationCRUDOpts()),
 		newDeleteSubcommand(loader, "Delete an integration by ID.", "Integration", "integration", integrationCRUDOpts()),
+		newIntegrationGetTemplatesCmd(loader),
+		newIntegrationUpdateTemplatesCmd(loader),
+		newIntegrationStartMaintenanceCmd(loader),
+		newIntegrationStopMaintenanceCmd(loader),
 	)
 	return cmd
 }
@@ -474,7 +477,6 @@ func newSchedulesCmd(loader OnCallConfigLoader) *cobra.Command {
 	return cmd
 }
 
-//nolint:dupl // Each noun builder follows the same CRUD wiring pattern; structural duplication is intentional.
 func newShiftsCmd(loader OnCallConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "shifts",
