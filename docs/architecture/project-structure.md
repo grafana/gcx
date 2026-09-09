@@ -44,6 +44,7 @@ gcx/
 │   ├── credentials/          # OS-keychain backend for token-shaped secrets; sentinel format + Store interface; auto-disabled under `go test`
 │   ├── format/               # JSON/YAML codec, format auto-detection
 │   ├── output/               # Output codec registry (json, yaml, text, wide), field selection, user-facing messages
+│   ├── gcxerrors/            # Shared error contracts: exit codes, DetailedError + JSON error envelope, EmittedError, PartialFailureError, HTTPStatusError (typed transport-status carrier)
 │   ├── grafana/              # Thin wrapper over grafana-openapi-client-go
 │   ├── graph/                # Terminal chart rendering (ntcharts + lipgloss)
 │   ├── httputils/            # REST client helpers, request/response utilities
@@ -101,6 +102,7 @@ gcx/
 │   │   ├── cloudwatch/       # CloudWatch CLI commands (query, list-namespaces/metrics/dimensions/regions/accounts)
 │   │   ├── elasticsearch/    # Elasticsearch datasource commands (query [--mode documents|logs], metrics, list-indices, list-fields)
 │   │   ├── mysql/            # MySQL datasource commands (query, list-tables, describe-table)
+│   │   ├── opensearch/       # OpenSearch datasource commands (query [--mode documents|logs], metrics, list-indices, list-fields)
 │   │   ├── postgres/         # PostgreSQL datasource commands (query, list-tables, describe-table)
 │   │   └── query/            # Shared query CLI utils (time parsing, codecs, opts, resolve helpers)
 │   ├── query/                # Datasource query clients
@@ -110,6 +112,7 @@ gcx/
 │   │   ├── cloudmonitoring/  # Google Cloud Monitoring HTTP query client (time-series list queries, project/metric discovery)
 │   │   ├── cloudwatch/       # CloudWatch HTTP client (metric queries, resource listing)
 │   │   ├── elasticsearch/    # Elasticsearch HTTP query client (Lucene search, logs, aggregations, mapping discovery)
+│   │   ├── opensearch/       # OpenSearch HTTP query client (Lucene DSL search, logs, aggregations, mapping discovery)
 │   │   ├── prometheus/       # Prometheus HTTP client (instant + range queries)
 │   │   ├── influxdb/         # InfluxDB HTTP query client
 │   │   ├── infinity/         # Infinity HTTP query client
@@ -124,7 +127,7 @@ gcx/
 │   ├── secrets/              # Redaction of sensitive config fields
 │   ├── skills/               # Portable Agent Skills installer primitives (Install, Update, Bundled/InstalledBundledSkillNames)
 │   ├── strcase/              # String case conversion (snake_case, kebab-case, PascalCase)
-│   ├── telemetry/            # Anonymous usage stats library (event model, mode resolution, device ID, CI detection, volume buckets, flat-JSON HTTP export)
+│   ├── telemetry/            # Anonymous usage stats library (event model, mode resolution, device ID, CI detection, wire vocabularies: volume buckets, k8s reasons, auth methods; flat-JSON HTTP export)
 │   │   └── capture/          # Process-wide invocation facts written mid-run, read once at exit by the usage-event builder (holds no wire vocabulary, so writing a signal does not pull in the event model or HTTP exporter)
 │   ├── terminal/             # TTY detection: IsPiped(), NoTruncate(), Detect()
 │   ├── testutils/            # Shared test helpers (not exposed externally)
