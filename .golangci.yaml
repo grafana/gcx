@@ -63,7 +63,7 @@ linters:
       # Test data containing "token"/"credential" keys is not a real secret,
       # and marshaling test fixtures that include secret-pattern fields is fine.
       - linters: [gosec]
-        text: "G101|G117|G705"
+        text: "G101|G117"
         path: "_test\\.go$"
       # uintptr→int for term.GetSize / term.IsTerminal is the standard Go pattern.
       - linters: [gosec]

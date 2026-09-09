@@ -65,7 +65,7 @@ func runExperimentExportCommand(t *testing.T, serverURL string, args ...string) 
 func writeRawJSON(t *testing.T, w http.ResponseWriter, body string) {
 	t.Helper()
 	w.Header().Set("Content-Type", "application/json")
-	_, err := io.WriteString(w, body)
+	_, err := io.WriteString(w, body) // #nosec G705 -- raw test fixtures verify byte-for-byte response fidelity
 	require.NoError(t, err)
 }
 
