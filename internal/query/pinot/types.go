@@ -2,6 +2,7 @@ package pinot
 
 import (
 	"errors"
+	"fmt"
 	"regexp"
 	"strings"
 	"time"
@@ -12,6 +13,16 @@ import (
 const (
 	// DatasourceType is the Grafana plugin ID for StarTree Pinot datasources.
 	DatasourceType = "startree-pinot-datasource"
+
+	// DefaultLimit is the typed `gcx datasources pinot query` --limit default.
+	DefaultLimit = 100
+	// MaxLimit is the ceiling EnforceLimit will emit. Callers warn when they cap.
+	MaxLimit = 1000
+
+	// LimitSkipShapes is the user-facing list of SQL shapes where EnforceLimit
+	// leaves the statement unchanged and callers warn. Flag help, stderr
+	// warnings, and LimitNotEnforced must all use this string.
+	LimitSkipShapes = "UNION, OFFSET, OPTION, or a trailing comment"
 )
 
 // leadingSetRe matches one or more Pinot SET statements at the start of a
@@ -51,25 +62,83 @@ func selectBody(sql string) string {
 // sqlStringRe matches a single-quoted SQL literal, including escaped quotes.
 var sqlStringRe = regexp.MustCompile(`'([^']|'')*'`)
 
+// sqlQuotedIdentRe matches a double-quoted identifier, including escaped quotes.
+var sqlQuotedIdentRe = regexp.MustCompile(`"([^"]|"")*"`)
+
+var sqlLineCommentRe = regexp.MustCompile(`--[^\n]*`)
+
+var sqlBlockCommentRe = regexp.MustCompile(`(?s)/\*.*?\*/`)
+
+var sqlUnclosedBlockRe = regexp.MustCompile(`(?s)/\*.*$`)
+
+func stripQuoted(sql string) string {
+	s := sqlStringRe.ReplaceAllString(sql, " ")
+	return sqlQuotedIdentRe.ReplaceAllString(s, " ")
+}
+
 func stripSQLStrings(sql string) string {
 	return sqlStringRe.ReplaceAllString(sql, " ")
 }
 
+// keywordScan removes literals, quoted identifiers, and comments so UNION /
+// OPTION / LIMIT offset,count are matched only as real syntax.
+func keywordScan(sql string) string {
+	s := stripQuoted(sql)
+	s = sqlLineCommentRe.ReplaceAllString(s, " ")
+	return sqlBlockCommentRe.ReplaceAllString(s, " ")
+}
+
+func hasTrailingComment(sql string) bool {
+	s := strings.TrimRight(stripQuoted(sql), "; \t\n")
+	if trailingLineCommentRe.MatchString(s) {
+		return true
+	}
+	return sqlUnclosedBlockRe.MatchString(sqlBlockCommentRe.ReplaceAllString(s, " "))
+}
+
 func bail(sql string) bool {
-	s := stripSQLStrings(sql)
-	return unionOrOffsetRe.MatchString(s) || limitCommaRe.MatchString(s) || optionClauseRe.MatchString(s) || trailingLineCommentRe.MatchString(strings.TrimRight(s, "; \t\n"))
+	if hasTrailingComment(sql) {
+		return true
+	}
+	s := keywordScan(sql)
+	return unionOrOffsetRe.MatchString(s) || limitCommaRe.MatchString(s) || optionClauseRe.MatchString(s)
+}
+
+// LimitFlagUsage is the --limit help text for the typed Pinot command.
+func LimitFlagUsage(maxLimit int) string {
+	return fmt.Sprintf("Max rows to return; requests above %d are capped, with a warning. Not applied to %s (warned on stderr). 0 disables enforcement", maxLimit, LimitSkipShapes)
+}
+
+// LimitCappedWarning is the stderr notice when a LIMIT was reduced to maxLimit.
+func LimitCappedWarning(maxLimit int) string {
+	return fmt.Sprintf("LIMIT in query exceeds the maximum of %d and was capped; use --limit 0 to disable enforcement", maxLimit)
+}
+
+// LimitSkipWarning is the stderr notice when EnforceLimit left SQL unchanged.
+func LimitSkipWarning() string {
+	return fmt.Sprintf("query uses %s, so --limit was not applied; the SQL was sent unchanged. Use --limit 0 to disable this warning", LimitSkipShapes)
+}
+
+// LimitWarning returns the stderr notice for a limit rewrite, or empty.
+func LimitWarning(expr string, capped bool, limit, maxLimit int) string {
+	if capped {
+		return LimitCappedWarning(maxLimit)
+	}
+	if limit != 0 && LimitNotEnforced(expr) {
+		return LimitSkipWarning()
+	}
+	return ""
 }
 
 // LimitNotEnforced reports whether EnforceLimit will leave a SELECT/WITH
-// statement unchanged for a reason the user should hear about: UNION, OFFSET,
-// OPTION, or a trailing -- comment. LIMIT offset,count is excluded because
-// that form already bounds the result. Keywords inside string literals do
-// not count.
+// statement unchanged for a reason the user should hear about: the shapes in
+// LimitSkipShapes. LIMIT offset,count is excluded because that form already
+// bounds the result. Keywords inside quotes or comments do not count.
 func LimitNotEnforced(sql string) bool {
 	if !limitStatementRe.MatchString(selectBody(sql)) {
 		return false
 	}
-	if limitCommaRe.MatchString(stripSQLStrings(sql)) {
+	if limitCommaRe.MatchString(keywordScan(sql)) {
 		return false
 	}
 	return bail(sql)
@@ -80,8 +149,8 @@ func LimitNotEnforced(sql string) bool {
 // warn instead of truncating silently.
 // If limit is 0, enforcement is disabled (pass-through).
 // SET prefixes are ignored for the SELECT-shaped allow-list. UNION, OFFSET,
-// LIMIT offset,count, OPTION(...), and statements ending in a line comment
-// pass through unchanged. Keywords inside string literals do not trigger a
+// LIMIT offset,count, OPTION(...), and statements ending in a comment
+// pass through unchanged. Keywords inside quotes or comments do not trigger a
 // bail. Real DML never reaches bail: only SELECT/WITH do.
 func EnforceLimit(sql string, limit, maxLimit int) (string, bool) {
 	if !limitStatementRe.MatchString(selectBody(sql)) {

@@ -14,11 +14,6 @@ import (
 	"github.com/spf13/pflag"
 )
 
-const (
-	defaultLimit = 100
-	maxLimit     = 1000
-)
-
 type queryOpts struct {
 	dsquery.SharedOpts
 
@@ -31,7 +26,7 @@ func (opts *queryOpts) setup(flags *pflag.FlagSet) {
 	opts.Setup(flags, false)
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.pinot is configured)")
 	flags.StringVar(&opts.Table, "table", "", "StarTree table name when the SQL has no extractable FROM (required in that case)")
-	flags.IntVar(&opts.Limit, "limit", defaultLimit, fmt.Sprintf("Max rows to return; requests above %d are capped, with a warning. Not applied to UNION, OFFSET, or OPTION queries (warned on stderr). 0 disables enforcement", maxLimit))
+	flags.IntVar(&opts.Limit, "limit", pinot.DefaultLimit, pinot.LimitFlagUsage(pinot.MaxLimit))
 }
 
 func (opts *queryOpts) Validate() error {
@@ -88,7 +83,7 @@ open it in your browser after the query succeeds.`,
 				return err
 			}
 
-			sql, capped := pinot.EnforceLimit(expr, opts.Limit, maxLimit)
+			sql, capped := pinot.EnforceLimit(expr, opts.Limit, pinot.MaxLimit)
 			warnLimitEnforcement(cmd.ErrOrStderr(), expr, capped, opts.Limit)
 
 			tableName, err := pinot.ResolveTableName(sql, opts.Table)
@@ -168,11 +163,7 @@ open it in your browser after the query succeeds.`,
 }
 
 func warnLimitEnforcement(w io.Writer, expr string, capped bool, limit int) {
-	if capped {
-		cmdio.Warning(w, "LIMIT in query exceeds the maximum of %d and was capped; use --limit 0 to disable enforcement", maxLimit)
-		return
-	}
-	if limit != 0 && pinot.LimitNotEnforced(expr) {
-		cmdio.Warning(w, "query uses UNION, OFFSET, OPTION, or a trailing line comment, so --limit was not applied; the SQL was sent unchanged. Use --limit 0 to disable this warning")
+	if msg := pinot.LimitWarning(expr, capped, limit, pinot.MaxLimit); msg != "" {
+		cmdio.Warning(w, "%s", msg)
 	}
 }

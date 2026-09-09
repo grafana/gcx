@@ -42,7 +42,7 @@ gcx datasources query DATASOURCE_UID [EXPR] [flags]
   -h, --help                  help for query
       --jq string             jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string           Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --limit int             Maximum log lines for loki, or max rows for pinot (0 means no limit) (default 50)
+      --limit int             Maximum log lines for loki, or max rows for pinot (0 means no limit). Pinot: not applied to UNION, OFFSET, OPTION, or a trailing comment (warned on stderr) (default 50)
       --max-nodes int         Maximum nodes in flame graph (pyroscope only) (default 1024)
   -o, --output string         Output format. One of: agents, graph, json, table, wide, yaml (default "table")
       --profile-type string   Profile type ID for pyroscope queries (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds')

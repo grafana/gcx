@@ -16,9 +16,9 @@ func TestWarnLimitEnforcement(t *testing.T) {
 		commaSQL   = "SELECT * FROM t LIMIT 10, 20"           //nolint:unqueryvet // LIMIT offset,count shape fixture
 		optionSQL  = "SELECT * FROM t OPTION(timeoutMs=5000)" //nolint:unqueryvet // OPTION shape fixture
 		commentSQL = "SELECT 1 -- keep going"
-		cappedWarn = "LIMIT in query exceeds the maximum of 1000 and was capped; use --limit 0 to disable enforcement"
-		skipWarn   = "query uses UNION, OFFSET, OPTION, or a trailing line comment, so --limit was not applied; the SQL was sent unchanged. Use --limit 0 to disable this warning"
 	)
+	cappedWarn := pinot.LimitCappedWarning(pinot.MaxLimit)
+	skipWarn := pinot.LimitSkipWarning()
 
 	tests := []struct {
 		name    string
@@ -76,6 +76,12 @@ func TestWarnLimitEnforcement(t *testing.T) {
 			want:  skipWarn,
 		},
 		{
+			name:  "unclosed block comment skip warns",
+			expr:  "SELECT 1 FROM t /* keep",
+			limit: 100,
+			want:  skipWarn,
+		},
+		{
 			name:    "limit 0 on trailing comment stays quiet",
 			expr:    commentSQL,
 			limit:   0,
@@ -91,7 +97,7 @@ func TestWarnLimitEnforcement(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, capped := pinot.EnforceLimit(tt.expr, tt.limit, maxLimit)
+			_, capped := pinot.EnforceLimit(tt.expr, tt.limit, pinot.MaxLimit)
 			var stderr bytes.Buffer
 			warnLimitEnforcement(&stderr, tt.expr, capped, tt.limit)
 			got := stderr.String()

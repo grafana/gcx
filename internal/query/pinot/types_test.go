@@ -95,6 +95,10 @@ func TestEnforceLimit(t *testing.T) {
 		{"appends LIMIT when UNION is only a literal", "SELECT 'UNION' FROM t", 100, "SELECT 'UNION' FROM t LIMIT 100", false},
 		{"appends LIMIT when OPTION is only a literal", "SELECT * FROM t WHERE note = 'OPTION(timeoutMs=1)'", 100, "SELECT * FROM t WHERE note = 'OPTION(timeoutMs=1)' LIMIT 100", false},
 		{"appends LIMIT when LIMIT offset,count is only a literal", "SELECT * FROM t WHERE hint = 'LIMIT 10, 20'", 100, "SELECT * FROM t WHERE hint = 'LIMIT 10, 20' LIMIT 100", false},
+		{"appends LIMIT when UNION is only a quoted identifier", `SELECT "UNION" FROM t`, 100, `SELECT "UNION" FROM t LIMIT 100`, false},
+		{"appends LIMIT when UNION is only in a line comment", "SELECT 1 -- UNION\nFROM t", 100, "SELECT 1 -- UNION\nFROM t LIMIT 100", false},
+		{"appends LIMIT when UNION is only in a block comment", "SELECT 1 FROM t /* UNION */", 100, "SELECT 1 FROM t /* UNION */ LIMIT 100", false},
+		{"bail on unclosed block comment", "SELECT 1 FROM t /* keep", 100, "SELECT 1 FROM t /* keep", false},
 		{
 			"appends LIMIT to multi-line SELECT",
 			"SELECT * FROM t\nORDER BY ts DESC",
@@ -134,10 +138,22 @@ func TestLimitNotEnforced(t *testing.T) {
 		{"union word in literal is not a union", "SELECT 'UNION' FROM t", false},
 		{"option word in literal is not an option clause", "SELECT * FROM t WHERE note = 'OPTION(timeoutMs=1)'", false},
 		{"limit offset,count in literal is not that form", "SELECT * FROM t WHERE hint = 'LIMIT 10, 20'", false},
+		{"union in quoted identifier is not a union", `SELECT "UNION" FROM t`, false},
+		{"union in line comment is not a union", "SELECT 1 -- UNION\nFROM t", false},
+		{"union in block comment is not a union", "SELECT 1 FROM t /* UNION */", false},
+		{"unclosed block comment skips enforcement", "SELECT 1 FROM t /* keep", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equal(t, tt.want, pinot.LimitNotEnforced(tt.sql))
 		})
 	}
+}
+
+func TestLimitUserFacingTextSharesSkipShapes(t *testing.T) {
+	assert.Contains(t, pinot.LimitFlagUsage(pinot.MaxLimit), pinot.LimitSkipShapes)
+	assert.Contains(t, pinot.LimitSkipWarning(), pinot.LimitSkipShapes)
+	assert.Equal(t, pinot.LimitSkipWarning(), pinot.LimitWarning("SELECT 1 FROM a UNION SELECT 2 FROM b", false, 100, pinot.MaxLimit))
+	assert.Equal(t, pinot.LimitCappedWarning(pinot.MaxLimit), pinot.LimitWarning("SELECT 1 LIMIT 5000", true, 100, pinot.MaxLimit))
+	assert.Empty(t, pinot.LimitWarning("SELECT 1", false, 100, pinot.MaxLimit))
 }
