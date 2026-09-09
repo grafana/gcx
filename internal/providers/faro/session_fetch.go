@@ -248,11 +248,7 @@ func pinotMaxTimestampMS(resp *querysql.QueryResponse) (int64, bool) {
 	return maxMS, ok
 }
 
-func fetchLokiSession(ctx context.Context, client lokiQuerier, uid string, p sessionQueryParams, start, end time.Time) (*lokiSessionResult, error) {
-	return fetchLokiSessionTimed(ctx, client, uid, p, start, end, sessionLokiQueryTimeout)
-}
-
-func fetchLokiSessionTimed(ctx context.Context, client lokiQuerier, uid string, p sessionQueryParams, start, end time.Time, timeout time.Duration) (*lokiSessionResult, error) {
+func fetchLokiSession(ctx context.Context, client lokiQuerier, uid string, p sessionQueryParams, start, end time.Time, timeout time.Duration) (*lokiSessionResult, error) {
 	g, gctx := errgroup.WithContext(ctx)
 	var metaResp, replayResp *loki.QueryResponse
 	g.Go(func() error {

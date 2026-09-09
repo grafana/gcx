@@ -209,7 +209,7 @@ app_memory / app_cpu_usage). Pass --app-type to override.`,
 				if clientErr != nil {
 					return fmt.Errorf("failed to create loki client: %w", clientErr)
 				}
-				result, err = fetchLokiSession(ctx, client, opts.Datasource, params, start, end)
+				result, err = fetchLokiSession(ctx, client, opts.Datasource, params, start, end, sessionLokiQueryTimeout)
 			}
 			if err != nil {
 				return err
