@@ -18,6 +18,11 @@ func TestExtractTableName(t *testing.T) {
 		{"quoted from", `SELECT 1 FROM "events"`, "events"},
 		{"set prefix", "SET useMultistageEngine = true;\nSELECT * FROM logs", "logs"},
 		{"schema-qualified", "SELECT * FROM my_db.events", "my_db.events"},
+		{"quoted schema-qualified", `SELECT * FROM "db"."events"`, "db.events"},
+		{"quoted schema unquoted table", `SELECT * FROM "db".events`, "db.events"},
+		{"unquoted schema quoted table", `SELECT * FROM db."events"`, "db.events"},
+		{"quoted three-part name", `SELECT * FROM "cat"."db"."events"`, "cat.db.events"},
+		{"quoted schema with spaces around dots", `SELECT * FROM "db" . "events"`, "db.events"},
 		{"subquery from skipped", "SELECT * FROM (SELECT 1)", ""},
 		{"subquery uses inner table", "SELECT * FROM (SELECT x FROM inner_t) a", "inner_t"},
 		{"subquery count from events", "SELECT count(*) FROM (SELECT col FROM events) sub", "events"},
@@ -29,6 +34,7 @@ func TestExtractTableName(t *testing.T) {
 		{"table alias", `SELECT * FROM events AS e`, "events"},
 		{"join uses left table", `SELECT * FROM orders AS o JOIN customers AS c ON o.id = c.id`, "orders"},
 		{"no from", "SELECT 1", ""},
+		{"trailing dot after quoted schema", `SELECT * FROM "db".`, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

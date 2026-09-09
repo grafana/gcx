@@ -31,7 +31,7 @@ func (o *genericQueryOpts) setup(flags *pflag.FlagSet) {
 	o.shared.Setup(flags, true)
 	flags.StringVar(&o.profileType, "profile-type", "", "Profile type ID for pyroscope queries (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds')")
 	flags.Int64Var(&o.maxNodes, "max-nodes", 1024, "Maximum nodes in flame graph (pyroscope only)")
-	flags.IntVar(&o.limit, "limit", dsquery.DefaultLokiLimit, "Maximum number of log lines to return for loki queries (0 means no limit)")
+	flags.IntVar(&o.limit, "limit", dsquery.DefaultLokiLimit, "Maximum log lines for loki, or max rows for pinot (0 means no limit)")
 	flags.StringVar(&o.table, "table", "", "StarTree table name for pinot queries when the SQL has no extractable FROM")
 }
 

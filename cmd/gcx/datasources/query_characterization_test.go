@@ -228,6 +228,20 @@ func TestGenericQueryCharacterization_LokiLimit(t *testing.T) {
 	assert.InDelta(t, float64(7), q["maxLines"], 0, "--limit must reach maxLines")
 }
 
+func TestGenericQueryCharacterization_PinotLimit(t *testing.T) {
+	f := &fakeGrafana{t: t, dsType: "startree-pinot-datasource"}
+
+	_, err := runGeneric(t, f,
+		"query", "uid", "SELECT 1 FROM events",
+		"--limit", "7", "-o", "json")
+	require.NoError(t, err)
+
+	_, body := f.seenPost()
+	q := firstQuery(t, body)
+	assert.Equal(t, "SELECT 1 FROM events LIMIT 7", q["pinotQlCode"],
+		"--limit must reach the Pinot SQL LIMIT, not a hardcoded 100")
+}
+
 func TestGenericQueryCharacterization_PyroscopeRequiresProfileType(t *testing.T) {
 	f := &fakeGrafana{t: t, dsType: "grafana-pyroscope-datasource"}
 
