@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/grafana/gcx/cmd/gcx/commands"
+	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/spf13/pflag"
@@ -200,5 +201,34 @@ func TestCommandsAgentMode_SingleJSONDocument(t *testing.T) {
 	}
 	if _, ok := doc["resource_types"]; !ok {
 		t.Fatal("catalog document missing resource_types field")
+	}
+}
+
+// TestCommandsArrayPathErrorUsesGeneralRecovery drives a real command through
+// field selection and the shared error converter. The recovery must apply to
+// this command. It must not suggest a query for an unrelated datasource.
+func TestCommandsArrayPathErrorUsesGeneralRecovery(t *testing.T) {
+	root := buildTestTree()
+	cmd := commands.NewTestCommand(root)
+	cmd.SetArgs([]string{"--json", "commands.flags.name"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("execute succeeded, want an array-path error")
+	}
+
+	detailed := fail.ErrorToDetailedError(err)
+	if detailed == nil {
+		t.Fatal("error conversion returned nil")
+	}
+	if len(detailed.Suggestions) != 1 {
+		t.Fatalf("suggestions = %v, want one general recovery", detailed.Suggestions)
+	}
+	const want = "Use --jq to iterate the array before selecting the nested value"
+	if detailed.Suggestions[0] != want {
+		t.Fatalf("suggestion = %q, want %q", detailed.Suggestions[0], want)
+	}
+	if strings.Contains(detailed.Suggestions[0], "data.result") {
+		t.Fatalf("suggestion contains an unrelated Prometheus path: %q", detailed.Suggestions[0])
 	}
 }

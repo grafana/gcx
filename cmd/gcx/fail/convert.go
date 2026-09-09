@@ -1318,7 +1318,7 @@ func adaptiveMetricsScopeFromError(msg string) string {
 // convertUnknownFieldSelectionErrors converts UnknownFieldSelectionError (from
 // the --json field validator) into a structured DetailedError with exit code 2
 // (ExitUsageError). The suggestion directs users to run the command with
-// --json list to discover valid field names.
+// --json list to discover valid dotted field paths.
 func convertUnknownFieldSelectionErrors(err error) (*gcxerrors.DetailedError, bool) {
 	var fieldErr cmdoutput.UnknownFieldSelectionError
 	if !errors.As(err, &fieldErr) {
@@ -1331,7 +1331,7 @@ func convertUnknownFieldSelectionErrors(err error) (*gcxerrors.DetailedError, bo
 		Details:  fieldErr.Error(),
 		ExitCode: &exitCode,
 		Suggestions: []string{
-			"Run the command with --json list to enumerate valid field names",
+			"Run the command with --json list to enumerate valid dotted field paths",
 		},
 	}, true
 }
@@ -1352,7 +1352,7 @@ func convertArrayPathSelectionErrors(err error) (*gcxerrors.DetailedError, bool)
 		Details:  arrayErr.Error(),
 		ExitCode: &exitCode,
 		Suggestions: []string{
-			"Step into the array with --jq, e.g. --jq '.data.result[].metric'",
+			"Use --jq to iterate the array before selecting the nested value",
 		},
 	}, true
 }

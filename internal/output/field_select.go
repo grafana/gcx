@@ -21,7 +21,7 @@ import (
 // via Options.SetJSONFieldValidator). Extraction itself produces it for any
 // requested path that exists in no emitted object.
 type UnknownFieldSelectionError struct {
-	Fields []string // the offending field names
+	Fields []string // the offending dotted field paths
 
 	// Candidates maps an offending name to the real dotted paths that end
 	// with it, so a caller who typed a leaf name instead of a path reads the
@@ -34,7 +34,7 @@ func (e UnknownFieldSelectionError) Error() string {
 	if suggestion := e.suggestion(); suggestion != "" {
 		msg += " " + suggestion
 	}
-	return msg + " Run --json list to enumerate valid fields."
+	return msg + " Run --json list to enumerate valid dotted field paths."
 }
 
 // suggestion renders the candidate paths as a "did you mean" clause, in the

@@ -1060,7 +1060,7 @@ func TestErrorToDetailedError_MutuallyExclusiveFlagsSentinel(t *testing.T) {
 // UnknownFieldSelectionError is converted to a DetailedError with:
 //   - Summary: "Invalid command usage"
 //   - ExitCode: 2 (ExitUsageError)
-//   - Details containing the offending field names
+//   - Details containing the offending field paths
 //   - A suggestion to run --json list
 func TestErrorToDetailedError_UnknownFieldSelectionError(t *testing.T) {
 	tests := []struct {
@@ -1096,6 +1096,8 @@ func TestErrorToDetailedError_UnknownFieldSelectionError(t *testing.T) {
 			require.NotNil(t, got.ExitCode)
 			assert.Equal(t, tc.wantExitCode, *got.ExitCode)
 			assert.Contains(t, got.Details, tc.wantInDetails)
+			assert.Contains(t, got.Details, "Run --json list to enumerate valid dotted field paths.")
+			assert.Contains(t, got.Suggestions, "Run the command with --json list to enumerate valid dotted field paths")
 			if tc.wantSuggestion != "" {
 				found := false
 				for _, s := range got.Suggestions {
