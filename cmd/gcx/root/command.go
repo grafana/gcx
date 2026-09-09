@@ -286,7 +286,7 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	rootCmd.PersistentFlags().CountVarP(&verbosity, "verbose", "v", "Verbose mode. Multiple -v options increase the verbosity (maximum: 3).")
 	rootCmd.PersistentFlags().StringVar(&contextName, "context", "", "Name of the context to use (overrides current-context in config)")
 	rootCmd.PersistentFlags().BoolVar(&insecureLogHTTPPayload, "insecure-log-http-payload", false,
-		"Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.")
+		"Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Requires -vvv. Do not ship these logs.")
 	// Hard error on the old flag name so engineers see the migration message.
 	rootCmd.PersistentFlags().Var(&renamedFlag{newName: "insecure-log-http-payload"}, "log-http-payload", "")
 	if err := rootCmd.PersistentFlags().MarkHidden("log-http-payload"); err != nil {

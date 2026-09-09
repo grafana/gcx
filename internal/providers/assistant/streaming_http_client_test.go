@@ -10,7 +10,9 @@ import (
 	"time"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/providers/assistant"
+	"github.com/grafana/gcx/internal/retry"
 )
 
 func TestNewAssistantStreamingHTTPClient(t *testing.T) {
@@ -28,6 +30,27 @@ func TestNewAssistantStreamingHTTPClient(t *testing.T) {
 				t.Fatalf("Timeout: got %v, want %v", c.Timeout, tc.want)
 			}
 		})
+	}
+}
+
+func TestNewAssistantStreamingHTTPClientPayloadDumpIsInnermost(t *testing.T) {
+	ctx := httputils.WithPayloadLogging(t.Context(), true)
+	client := assistant.NewAssistantStreamingHTTPClient(ctx, 300)
+
+	userAgentTransport, ok := client.Transport.(*httputils.UserAgentTransport)
+	if !ok {
+		t.Fatalf("client transport = %T, want *httputils.UserAgentTransport", client.Transport)
+	}
+	retryTransport, ok := userAgentTransport.Base.(*retry.Transport)
+	if !ok {
+		t.Fatalf("user-agent base = %T, want *retry.Transport", userAgentTransport.Base)
+	}
+	loggingTransport, ok := retryTransport.Base.(*httputils.LoggingRoundTripper)
+	if !ok {
+		t.Fatalf("retry base = %T, want *httputils.LoggingRoundTripper", retryTransport.Base)
+	}
+	if _, ok := loggingTransport.Base.(*httputils.RequestResponseLoggingRoundTripper); !ok {
+		t.Fatalf("logging base = %T, want *httputils.RequestResponseLoggingRoundTripper", loggingTransport.Base)
 	}
 }
 

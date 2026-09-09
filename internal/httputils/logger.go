@@ -32,13 +32,10 @@ func (rt RequestResponseLoggingRoundTripper) RoundTrip(req *http.Request) (*http
 
 	logger := logging.FromContext(req.Context())
 
-	// DumpRequestOut is the dump call for an outgoing request: it returns the
-	// exact wire bytes, including Content-Length and Accept-Encoding. It needs
-	// an http or https scheme, so fall back to DumpRequest for other schemes.
+	// DumpRequestOut serializes the outgoing request in HTTP/1.1 form. It adds
+	// transport headers such as Content-Length and Accept-Encoding. The framing
+	// can differ when the transport uses HTTP/2.
 	reqStr, err := httputil.DumpRequestOut(req, true)
-	if err != nil {
-		reqStr, err = httputil.DumpRequest(req, true)
-	}
 	if err != nil {
 		logger.Warn("cannot dump http request", "err", err)
 	} else {

@@ -83,7 +83,7 @@
 - Show the OAuth bearer token in the `--insecure-log-http-payload` dump. The dump is now the innermost transport layer, so it shows every header that reaches the wire. Before this change the dump ran before the OAuth transport added the header, and the flag help promised the token. One consequence: the dump now also shows the OAuth token refresh exchange, which carries the refresh token and the rotated token pair.
 - Dump an outgoing request with `httputil.DumpRequestOut`, so `Content-Length` and `Accept-Encoding` appear.
 - Report the reason when a payload dump fails. The error was discarded, which logged an empty line.
-- Correct the recommended verbosity in the `--insecure-log-http-payload` reference: the dumps log at Debug level, which needs `-vvv`.
+- Correct the recommended verbosity in the `--insecure-log-http-payload` reference and flag help: the dumps log at Debug level, which needs `-vvv`.
 
 ## v1.1.0 (2026-08-14)
 

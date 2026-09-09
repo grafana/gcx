@@ -19,6 +19,9 @@ The dump is the innermost transport layer. It therefore shows every header that
 reaches the wire, including the bearer token that the OAuth transport adds, the
 `X-Grafana-Caller-Id` header, and the user agent.
 
+`DumpRequestOut` serializes the request in HTTP/1.1 form. The transport can use
+HTTP/2, so the request line and framing are not always the exact wire format.
+
 ## How to find the dump
 
 The dumps log at **Debug** level, so they need `-vvv`. Each dump carries a
