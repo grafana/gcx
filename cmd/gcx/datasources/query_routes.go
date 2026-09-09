@@ -56,6 +56,7 @@ type genericQueryRequest struct {
 	profileType string
 	maxNodes    int64
 	limit       int
+	table       string
 
 	// warn is the command's stderr. dispatchPostgres is its reader: it caps an
 	// oversized LIMIT and must say so without polluting the stdout document.
@@ -289,9 +290,10 @@ func dispatchPinot(ctx context.Context, req genericQueryRequest) (any, error) {
 	}
 
 	pinotReq := pinot.QueryRequest{
-		RawSQL: sql,
-		Start:  req.start,
-		End:    req.end,
+		RawSQL:    sql,
+		TableName: req.table,
+		Start:     req.start,
+		End:       req.end,
 	}
 	if req.step > 0 {
 		pinotReq.IntervalMs = req.step.Milliseconds()

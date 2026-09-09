@@ -1,6 +1,7 @@
 package pinot
 
 import (
+	"errors"
 	"regexp"
 	"strings"
 	"time"
@@ -89,18 +90,29 @@ var quotedTableRe = regexp.MustCompile(`^"([^"]+)"`)
 
 var identTableRe = regexp.MustCompile(`^([a-zA-Z_][a-zA-Z0-9_.]*)`)
 
+// ErrTableNameRequired is returned when StarTree's tableName field cannot be
+// filled from SQL and the caller did not supply an override. The plugin
+// rejects an empty tableName before it runs pinotQlCode.
+var ErrTableNameRequired = errors.New("could not derive a table name from the SQL. StarTree needs one to load schema and expand macros before it runs the query. Pass --table <name> (a real table the query uses)")
+
 // ExtractTableName returns the first FROM table we can be confident about, or
 // empty if the shape is unclear. String literals and EXTRACT(...) are stripped
-// first. FROM ( starts a subquery and yields "". Used only to fill StarTree's
-// tableName editor field; Pinot executes pinotQlCode regardless.
+// first. FROM ( is skipped so a subquery or UNION wrapper yields the first
+// inner table (SELECT … FROM (SELECT col FROM events) → events). Used to fill
+// StarTree's required tableName field; Pinot still executes pinotQlCode.
 func ExtractTableName(sql string) string {
 	s := sqlStringRe.ReplaceAllString(sql, " ")
 	s = extractCallRe.ReplaceAllString(s, " ")
-	loc := fromKeywordRe.FindStringIndex(s)
-	if loc == nil {
-		return ""
+	for _, loc := range fromKeywordRe.FindAllStringIndex(s, -1) {
+		if name := tableNameAfterFrom(s[loc[1]:]); name != "" {
+			return name
+		}
 	}
-	rest := strings.TrimLeft(s[loc[1]:], " \t\n")
+	return ""
+}
+
+func tableNameAfterFrom(after string) string {
+	rest := strings.TrimLeft(after, " \t\n")
 	if rest == "" || rest[0] == '(' {
 		return ""
 	}
@@ -118,9 +130,25 @@ func ExtractTableName(sql string) string {
 	return m[1]
 }
 
+// ResolveTableName returns override when set, otherwise ExtractTableName(sql).
+// Empty after both is ErrTableNameRequired: StarTree will not run the query.
+func ResolveTableName(sql, override string) (string, error) {
+	if t := strings.TrimSpace(override); t != "" {
+		return t, nil
+	}
+	if t := ExtractTableName(sql); t != "" {
+		return t, nil
+	}
+	return "", ErrTableNameRequired
+}
+
 // QueryRequest represents a PinotQL query request.
 type QueryRequest struct {
-	RawSQL     string
+	RawSQL string
+	// TableName fills StarTree's required editor field. Empty means derive
+	// it from the first confident FROM in RawSQL (including inside FROM ().
+	// SQL with no extractable table must set this (or the CLI --table flag).
+	TableName  string
 	Start      time.Time
 	End        time.Time
 	IntervalMs int64

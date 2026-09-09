@@ -21,6 +21,9 @@ type ExploreQuery struct {
 	Instant        bool
 	Step           time.Duration
 	OrgID          int64
+	// TableName is the StarTree editor field when the Explore payload includes
+	// one. Empty means the Pinot URL builder derives it from Expr.
+	TableName string
 }
 
 // ExploreRange normalizes the visible Explore time range.

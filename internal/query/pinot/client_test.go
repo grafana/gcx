@@ -73,7 +73,8 @@ func TestQuery(t *testing.T) {
 
 			client := newTestClient(t, server.URL)
 			resp, err := client.Query(context.Background(), "pinot-uid", pinot.QueryRequest{
-				RawSQL: "SELECT 1",
+				RawSQL:    "SELECT 1",
+				TableName: "events",
 			})
 			require.NoError(t, err)
 			tt.assertResp(t, resp)
@@ -116,7 +117,19 @@ func TestQuery_RequestConstruction(t *testing.T) {
 	assert.Equal(t, "pinot-uid", ds["uid"])
 }
 
-func TestQuery_EmptyTableNameWhenSQLHasNoFrom(t *testing.T) {
+func TestQuery_RequiresTableNameWhenSQLHasNoFrom(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		t.Fatal("query must not be sent when tableName cannot be derived")
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server.URL)
+	_, err := client.Query(context.Background(), "pinot-uid", pinot.QueryRequest{RawSQL: "SELECT 1"})
+	require.ErrorIs(t, err, pinot.ErrTableNameRequired)
+	assert.Contains(t, err.Error(), "--table")
+}
+
+func TestQuery_ExplicitTableNameOverridesExtract(t *testing.T) {
 	var captured map[string]any
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -129,7 +142,10 @@ func TestQuery_EmptyTableNameWhenSQLHasNoFrom(t *testing.T) {
 	defer server.Close()
 
 	client := newTestClient(t, server.URL)
-	_, err := client.Query(context.Background(), "pinot-uid", pinot.QueryRequest{RawSQL: "SELECT 1"})
+	_, err := client.Query(context.Background(), "pinot-uid", pinot.QueryRequest{
+		RawSQL:    "SELECT 1 FROM (SELECT 1) journey",
+		TableName: "events",
+	})
 	require.NoError(t, err)
 
 	queries, ok := captured["queries"].([]any)
@@ -137,8 +153,34 @@ func TestQuery_EmptyTableNameWhenSQLHasNoFrom(t *testing.T) {
 	require.Len(t, queries, 1)
 	q, ok := queries[0].(map[string]any)
 	require.True(t, ok)
-	assert.Empty(t, q["tableName"])
-	assert.Equal(t, "SELECT 1", q["pinotQlCode"])
+	assert.Equal(t, "events", q["tableName"])
+	assert.Equal(t, "SELECT 1 FROM (SELECT 1) journey", q["pinotQlCode"])
+}
+
+func TestQuery_SubqueryExtractsInnerTable(t *testing.T) {
+	var captured map[string]any
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(raw, &captured)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"results":{"A":{"frames":[{"schema":{"fields":[{"name":"v","type":"number"}]},"data":{"values":[[1]]}}],"status":200}}}`))
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server.URL)
+	_, err := client.Query(context.Background(), "pinot-uid", pinot.QueryRequest{
+		RawSQL: "SELECT count(*) FROM (SELECT col FROM events) sub",
+	})
+	require.NoError(t, err)
+
+	queries, ok := captured["queries"].([]any)
+	require.True(t, ok)
+	require.Len(t, queries, 1)
+	q, ok := queries[0].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "events", q["tableName"])
 }
 
 func TestQuery_ReturnsTypedAPIError(t *testing.T) {
@@ -151,7 +193,8 @@ func TestQuery_ReturnsTypedAPIError(t *testing.T) {
 
 	client := newTestClient(t, server.URL)
 	_, err := client.Query(context.Background(), "pinot-uid", pinot.QueryRequest{
-		RawSQL: "SELECT 1",
+		RawSQL:    "SELECT 1",
+		TableName: "events",
 	})
 	require.Error(t, err)
 
@@ -183,7 +226,8 @@ func TestQuery_FallsBackOn404(t *testing.T) {
 
 	client := newTestClient(t, server.URL)
 	resp, err := client.Query(context.Background(), "pinot-uid", pinot.QueryRequest{
-		RawSQL: "SELECT 42",
+		RawSQL:    "SELECT 42",
+		TableName: "events",
 	})
 	require.NoError(t, err)
 	assert.Len(t, resp.Rows, 1)

@@ -9,6 +9,8 @@ Execute a PinotQL query against a StarTree Pinot datasource.
 EXPR is the SQL query to execute, passed as a positional argument or via --expr.
 Datasource is resolved from -d flag or datasources.pinot in your context.
 Server-side macros ($__timeFilter, $__timeGroup, etc.) are supported.
+StarTree requires a table name: gcx derives it from the first FROM, including
+inside a subquery. Pass --table when the SQL names no table (for example SELECT 1).
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
 open it in your browser after the query succeeds.
 
@@ -35,6 +37,9 @@ gcx datasources pinot query [EXPR] [flags]
 
   # Disable limit enforcement
   gcx datasources pinot query -d UID 'SELECT * FROM events' --limit 0
+
+  # SQL with no extractable table
+  gcx datasources pinot query -d UID --table events 'SELECT 1'
 ```
 
 ### Options
@@ -52,6 +57,7 @@ gcx datasources pinot query [EXPR] [flags]
       --share-link          Print the Grafana Explore URL for the executed query to stderr
       --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --step string         Query step (e.g., '15s', '1m')
+      --table string        StarTree table name when the SQL has no extractable FROM (required in that case)
       --to string           End time (RFC3339, Unix timestamp, or relative like 'now')
 ```
 

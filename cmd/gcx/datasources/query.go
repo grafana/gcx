@@ -21,6 +21,7 @@ type genericQueryOpts struct {
 	profileType string
 	maxNodes    int64
 	limit       int
+	table       string
 
 	routes queryRoutes
 }
@@ -31,6 +32,7 @@ func (o *genericQueryOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&o.profileType, "profile-type", "", "Profile type ID for pyroscope queries (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds')")
 	flags.Int64Var(&o.maxNodes, "max-nodes", 1024, "Maximum nodes in flame graph (pyroscope only)")
 	flags.IntVar(&o.limit, "limit", dsquery.DefaultLokiLimit, "Maximum number of log lines to return for loki queries (0 means no limit)")
+	flags.StringVar(&o.table, "table", "", "StarTree table name for pinot queries when the SQL has no extractable FROM")
 }
 
 // Validate runs the checks that need no I/O. args carries the optional
@@ -102,6 +104,7 @@ func (o *genericQueryOpts) run(cmd *cobra.Command, args []string) error {
 		profileType: o.profileType,
 		maxNodes:    o.maxNodes,
 		limit:       o.limit,
+		table:       o.table,
 		warn:        cmd.ErrOrStderr(),
 	})
 	if err != nil {

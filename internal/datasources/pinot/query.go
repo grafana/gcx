@@ -23,12 +23,14 @@ type queryOpts struct {
 	dsquery.SharedOpts
 
 	Datasource string
+	Table      string
 	Limit      int
 }
 
 func (opts *queryOpts) setup(flags *pflag.FlagSet) {
 	opts.Setup(flags, false)
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.pinot is configured)")
+	flags.StringVar(&opts.Table, "table", "", "StarTree table name when the SQL has no extractable FROM (required in that case)")
 	flags.IntVar(&opts.Limit, "limit", defaultLimit, fmt.Sprintf("Max rows to return; requests above %d are capped, with a warning. Not applied to UNION, OFFSET, or OPTION queries (warned on stderr). 0 disables enforcement", maxLimit))
 }
 
@@ -52,6 +54,8 @@ func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
 EXPR is the SQL query to execute, passed as a positional argument or via --expr.
 Datasource is resolved from -d flag or datasources.pinot in your context.
 Server-side macros ($__timeFilter, $__timeGroup, etc.) are supported.
+StarTree requires a table name: gcx derives it from the first FROM, including
+inside a subquery. Pass --table when the SQL names no table (for example SELECT 1).
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
 open it in your browser after the query succeeds.`,
 		Example: `
@@ -69,7 +73,10 @@ open it in your browser after the query succeeds.`,
   gcx datasources pinot query -d UID 'SELECT 1 FROM events' --share-link
 
   # Disable limit enforcement
-  gcx datasources pinot query -d UID 'SELECT * FROM events' --limit 0`,
+  gcx datasources pinot query -d UID 'SELECT * FROM events' --limit 0
+
+  # SQL with no extractable table
+  gcx datasources pinot query -d UID --table events 'SELECT 1'`,
 		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
@@ -77,6 +84,14 @@ open it in your browser after the query succeeds.`,
 			}
 
 			expr, err := opts.ResolveExpr(args, 0)
+			if err != nil {
+				return err
+			}
+
+			sql, capped := pinot.EnforceLimit(expr, opts.Limit, maxLimit)
+			warnLimitEnforcement(cmd.ErrOrStderr(), expr, capped, opts.Limit)
+
+			tableName, err := pinot.ResolveTableName(sql, opts.Table)
 			if err != nil {
 				return err
 			}
@@ -92,9 +107,6 @@ open it in your browser after the query succeeds.`,
 			if err != nil {
 				return err
 			}
-
-			sql, capped := pinot.EnforceLimit(expr, opts.Limit, maxLimit)
-			warnLimitEnforcement(cmd.ErrOrStderr(), expr, capped, opts.Limit)
 
 			now := time.Now()
 			start, end, step, err := opts.ParseTimes(now)
@@ -114,6 +126,7 @@ open it in your browser after the query succeeds.`,
 
 			resp, err := client.Query(ctx, datasourceUID, pinot.QueryRequest{
 				RawSQL:     sql,
+				TableName:  tableName,
 				Start:      start,
 				End:        end,
 				IntervalMs: intervalMs,
@@ -129,6 +142,7 @@ open it in your browser after the query succeeds.`,
 				From:           opts.From,
 				To:             opts.To,
 				OrgID:          dsquery.OrgID(cfgCtx),
+				TableName:      tableName,
 			})
 			unavailableMsg, failedOpenMsg := dsquery.ExploreMessages("query")
 

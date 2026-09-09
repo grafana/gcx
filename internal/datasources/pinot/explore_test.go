@@ -35,6 +35,32 @@ func TestQueryExploreURL(t *testing.T) {
 		assert.Contains(t, params.Get("panes"), `"to":"now"`)
 	})
 
+	t.Run("subquery explore uses inner table", func(t *testing.T) {
+		got := pinot.QueryExploreURL("https://mystack.grafana.net", dsquery.ExploreQuery{
+			DatasourceUID:  "pinot-uid",
+			DatasourceType: querypinot.DatasourceType,
+			Expr:           "SELECT count(*) FROM (SELECT col FROM events) sub",
+		})
+
+		require.NotEmpty(t, got)
+		params := mustParseURL(t, got).Query()
+		assert.Contains(t, params.Get("panes"), `"tableName":"events"`)
+	})
+
+	t.Run("explicit table name overrides extract", func(t *testing.T) {
+		got := pinot.QueryExploreURL("https://mystack.grafana.net", dsquery.ExploreQuery{
+			DatasourceUID:  "pinot-uid",
+			DatasourceType: querypinot.DatasourceType,
+			Expr:           "SELECT 1",
+			TableName:      "events",
+		})
+
+		require.NotEmpty(t, got)
+		params := mustParseURL(t, got).Query()
+		assert.Contains(t, params.Get("panes"), `"tableName":"events"`)
+		assert.Contains(t, params.Get("panes"), `"pinotQlCode":"SELECT 1"`)
+	})
+
 	t.Run("includes explicit time range", func(t *testing.T) {
 		got := pinot.QueryExploreURL("https://mystack.grafana.net", dsquery.ExploreQuery{
 			DatasourceUID:  "pinot-uid",
