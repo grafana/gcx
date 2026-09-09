@@ -313,7 +313,7 @@ type sessionQueryParams struct {
 // faro_pinot_events_v2; grafana-dev and every other host still serve v1.
 func pinotEventsTable(serverURL string) string {
 	host := hostnameFromServerURL(serverURL)
-	if hostHasSuffix(host, grafanaOpsHost) && !hostHasSuffix(host, grafanaDevHost) {
+	if hostHasSuffix(host, grafanaOpsHost) {
 		return pinotEventsTableOps
 	}
 	return pinotEventsTableDev
@@ -344,7 +344,7 @@ func (p sessionQueryParams) mobile() bool {
 
 func substPinot(sql string, p sessionQueryParams) (string, error) {
 	// appId is an unquoted numeric literal in the templates. EscapeSQLString
-	// only doubles quotes, so a value like `66; DROP TABLE events` would
+	// only escapes single quotes, so a value like `66; DROP TABLE events` would
 	// still inject. Canonicalize to a base-10 int64 or refuse to build SQL.
 	appID, err := pinot.FormatSQLInt(p.AppID)
 	if err != nil {
