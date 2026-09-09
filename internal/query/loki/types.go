@@ -8,12 +8,11 @@ import (
 
 // QueryRequest represents a Loki query request.
 type QueryRequest struct {
-	Query     string
-	Start     time.Time
-	End       time.Time
-	Step      time.Duration
-	Limit     int
-	Direction string // "forward" or "backward"; empty uses Grafana Loki default (backward)
+	Query string
+	Start time.Time
+	End   time.Time
+	Step  time.Duration
+	Limit int
 }
 
 // IsRange returns true if this is a range query.

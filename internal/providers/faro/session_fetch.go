@@ -258,9 +258,6 @@ func fetchLokiSession(ctx context.Context, client lokiQuerier, uid string, p ses
 			Start: start,
 			End:   end,
 			Limit: 1,
-			// Omit direction so Grafana/Loki default to backward (latest
-			// line). Forward scans app_id from the window start and times
-			// out on a busy frontend stream before Limit 1 is filled.
 		}, timeout)
 		if err != nil {
 			return fmt.Errorf("loki metadata query failed: %w", err)
