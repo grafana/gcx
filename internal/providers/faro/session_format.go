@@ -136,7 +136,7 @@ func formatPinotMetadata(resps ...*querysql.QueryResponse) string {
 	}
 	var b strings.Builder
 	written := make(map[string]struct{})
-	for _, key := range append(lokiMetadataKeys(), pinotMetadataTimeKeys()...) {
+	for _, key := range append(sessionMetadataKeys(), pinotMetadataTimeKeys()...) {
 		if v := fields[key]; v != "" {
 			writeLogfmtKV(&b, key, v)
 			written[key] = struct{}{}
@@ -268,7 +268,7 @@ func lokiTimestampLess(a, b string) bool {
 
 // Session-level Faro logfmt keys printed first. Remaining envelope keys
 // matching sessionMetadataPrefixes() are appended in sorted order.
-func lokiMetadataKeys() []string {
+func sessionMetadataKeys() []string {
 	return []string{
 		"sdk_name",
 		"sdk_version",
@@ -320,7 +320,7 @@ func formatLokiMetadata(metaResp, replayResp *loki.QueryResponse) string {
 	fields := parseLogfmt(firstLokiLine(metaResp))
 	var b strings.Builder
 	written := make(map[string]struct{})
-	for _, key := range lokiMetadataKeys() {
+	for _, key := range sessionMetadataKeys() {
 		if v := fields[key]; v != "" {
 			writeLogfmtKV(&b, key, v)
 			written[key] = struct{}{}
