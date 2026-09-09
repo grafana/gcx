@@ -41,11 +41,15 @@ jobs:
     steps:
       # One number for both entry points: pull_request carries it on the PR,
       # issue_comment on the issue.
-      - name: Resolve pull request number
+      - name: Resolve pull request
         id: pr
         env:
+          GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
-        run: echo "number=${PR_NUMBER}" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "number=${PR_NUMBER}" >> "$GITHUB_OUTPUT"
+          gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" \
+            --json headRefOid --jq '"head_sha=" + .headRefOid' >> "$GITHUB_OUTPUT"
 
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -85,14 +89,17 @@ jobs:
           # a rule added here instead of there applies to CI only, and silently
           # stops applying the moment someone reviews the same PR locally.
           prompt: |
-            Review ${{ github.repository }}/pull/${{ steps.pr.outputs.number }}
-            with the /review-pr skill. Invoke it as a skill; reading the file
-            leaves its unattended-run rules unapplied.
-          # Pin the model to keep the behaviour consistent. Tool permissions
-          # live in .claude/settings.json, which this session loads as a
-          # project setting source, so a local /review-pr run and this workflow
-          # get the same allowlist instead of drifting apart.
-          claude_args: '--model claude-opus-4-6'
+            Invoke the /review-pr skill to review
+            ${{ github.repository }}/pull/${{ steps.pr.outputs.number }}.
+            This is an unattended workflow run.
+            Review head: ${{ steps.pr.outputs.head_sha }}
+            Review marker: <!-- gcx-claude-review:${{ github.run_id }}:${{ github.run_attempt }} -->
+          # Shared permissions live in .claude/settings.json. The action also
+          # reads --allowedTools to decide which MCP servers to register, so
+          # this tool must stay here even though settings already allow it.
+          claude_args: >-
+            --model claude-opus-4-6
+            --allowedTools mcp__github_inline_comment__create_inline_comment
 
       # The transcript records every tool call and every permission denial.
       # Without it a review that silently denied its way to no output looks
@@ -105,8 +112,29 @@ jobs:
           path: ${{ steps.claude-review.outputs.execution_file }}
           retention-days: 7
 
-      - name: Add claude-reviewed label
+      - name: Verify review and add claude-reviewed label
         if: success()
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh pr edit "${{ steps.pr.outputs.number }}" --add-label claude-reviewed
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          REVIEW_HEAD: ${{ steps.pr.outputs.head_sha }}
+          REVIEW_MARKER: '<!-- gcx-claude-review:${{ github.run_id }}:${{ github.run_attempt }} -->'
+        run: |
+          current_head=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" \
+            --json headRefOid --jq .headRefOid)
+          if [[ "$current_head" != "$REVIEW_HEAD" ]]; then
+            echo "::error::The PR changed during the review. Run @claude review again."
+            exit 1
+          fi
+          if ! gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/reviews" |
+            jq -e --arg head "$REVIEW_HEAD" --arg marker "$REVIEW_MARKER" '
+              any(.[][];
+                .user.login == "claude[bot]" and
+                .state == "COMMENTED" and
+                .commit_id == $head and
+                ((.body // "") | contains($marker)))' > /dev/null; then
+            echo "::error::Claude did not publish a COMMENT review for this run and commit. Check the session transcript."
+            exit 1
+          fi
+          gh pr edit "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --add-label claude-reviewed
