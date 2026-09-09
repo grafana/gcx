@@ -196,7 +196,9 @@ func stripLeadingNoise(sql string) string {
 }
 
 func limitStatementBody(sql string) string {
-	return stripLeadingNoise(selectBody(sql))
+	s := stripLeadingNoise(sql)
+	s = selectBody(s)
+	return stripLeadingNoise(s)
 }
 
 func limitAppendUnsafe(sql string) bool {

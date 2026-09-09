@@ -92,6 +92,7 @@ func TestEnforceLimit(t *testing.T) {
 	}{
 		{"appends LIMIT when missing", "SELECT 1", 100, "SELECT 1 LIMIT 100", false},
 		{"appends LIMIT after SET prefix", "SET useMultistageEngine = true;\nSELECT 1", 100, "SET useMultistageEngine = true;\nSELECT 1 LIMIT 100", false},
+		{"appends LIMIT after leading comment before SET", "/* note */ SET useMultistageEngine = true;\nSELECT 1", 100, "/* note */ SET useMultistageEngine = true;\nSELECT 1 LIMIT 100", false},
 		{"keeps existing LIMIT if under max", "SELECT 1 LIMIT 50", 100, "SELECT 1 LIMIT 50", false},
 		{"caps existing LIMIT exceeding max", "SELECT 1 LIMIT 5000", 100, "SELECT 1 LIMIT 1000", true},
 		{"requested limit above max is capped and reported", "SELECT 1", 5000, "SELECT 1 LIMIT 1000", true},
@@ -155,6 +156,7 @@ func TestLimitNotEnforced(t *testing.T) {
 		{"trailing comment after block comment skips enforcement", "SELECT 1 FROM t/*note*/-- comment", true},
 		{"limit before trailing block comment skips enforcement", "SELECT 1 FROM events LIMIT 5 /* note */", true},
 		{"leading block comment still enforces limit", "/* note */ SELECT 1 FROM events", false},
+		{"leading block comment before SET still enforces limit", "/* note */ SET useMultistageEngine = true;\nSELECT 1", false},
 		{"dml word in literal is not union/offset", "SELECT * FROM t WHERE action = 'delete'", false},
 		{"union word in literal is not a union", "SELECT 'UNION' FROM t", false},
 		{"option word in literal is not an option clause", "SELECT * FROM t WHERE note = 'OPTION(timeoutMs=1)'", false},
