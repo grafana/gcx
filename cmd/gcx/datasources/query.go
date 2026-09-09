@@ -33,6 +33,7 @@ func (o *genericQueryOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&o.profileType, "profile-type", "", "Profile type ID for pyroscope queries (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds')")
 	flags.Int64Var(&o.maxNodes, "max-nodes", 1024, "Maximum nodes in flame graph (pyroscope only)")
 	flags.IntVar(&o.limit, "limit", dsquery.DefaultLokiLimit, fmt.Sprintf("Maximum log lines for loki, or max rows for pinot (0 means no limit). Pinot uses %d when --limit is omitted. Pinot: not applied to %s (warned on stderr)", pinot.DefaultLimit, pinot.LimitSkipShapes))
+	flags.StringVar(&o.table, "table", "", "StarTree table name for pinot queries when the SQL has no extractable FROM")
 }
 
 // Validate runs the checks that need no I/O. args carries the optional
