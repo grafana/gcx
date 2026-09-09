@@ -180,6 +180,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx alert instances list":                   {Cost: "large", Hint: "--state firing --group <name> -o json"},
 	"gcx alert rules get":                        {Cost: "small"},
 	"gcx alert rules list":                       {Cost: "medium", Hint: "--folder <uid> --group <name> -o json"},
+	"gcx alert state-history list":               {Cost: "medium", Hint: "Recorded state transitions from Grafana's alerting history backend (needs Loki or annotations configured). Scope with --rule <uid> --from now-24h --to now --label key=value --limit N -o json. The annotations backend requires --rule."},
 	"gcx alert ruler namespaces list":            {Cost: "small", Hint: "--datasource <uid>"},
 	"gcx alert ruler namespaces delete":          {Cost: "small", Hint: "<namespace> --datasource <uid> --force"},
 	"gcx alert ruler groups list":                {Cost: "medium", Hint: "--datasource <uid> [--namespace <ns>] -o json"},
@@ -578,6 +579,10 @@ var commandAnnotations = map[string]annotation{
 	"gcx agento11y experiments list-trials": {
 		Cost: "small",
 		Hint: "<run-id> -o json",
+	},
+	"gcx agento11y experiments pull": {
+		Cost: "large",
+		Hint: "<run-id> --output-dir ./exports/<run-id>",
 	},
 
 	"gcx agento11y experiments test-suites list":             {Cost: "small"},

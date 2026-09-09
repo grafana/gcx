@@ -31,5 +31,6 @@ Manage Grafana alert rules and alert groups
 * [gcx alert notification-policies](gcx_alert_notification-policies.md)	 - Manage the Grafana alerting notification policy tree.
 * [gcx alert ruler](gcx_alert_ruler.md)	 - Manage datasource-managed (Mimir/Loki ruler) rules.
 * [gcx alert rules](gcx_alert_rules.md)	 - Inspect alert rule state and health.
+* [gcx alert state-history](gcx_alert_state-history.md)	 - Inspect alert state history.
 * [gcx alert templates](gcx_alert_templates.md)	 - Manage Grafana alerting notification templates.
 
