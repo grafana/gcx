@@ -19,6 +19,9 @@ func QueryExploreURL(host string, query dsquery.ExploreQuery) string {
 	if tableName == "" {
 		tableName = querypinot.ExtractTableName(query.Expr)
 	}
+	if tableName == "" {
+		return ""
+	}
 
 	q := map[string]any{
 		"refId":       "A",

@@ -48,19 +48,28 @@ func selectBody(sql string) string {
 	return leadingSetRe.ReplaceAllString(sql, "")
 }
 
+// sqlStringRe matches a single-quoted SQL literal, including escaped quotes.
+var sqlStringRe = regexp.MustCompile(`'([^']|'')*'`)
+
+func stripSQLStrings(sql string) string {
+	return sqlStringRe.ReplaceAllString(sql, " ")
+}
+
 func bail(sql string) bool {
-	return unionOrOffsetRe.MatchString(sql) || limitCommaRe.MatchString(sql) || optionClauseRe.MatchString(sql) || trailingLineCommentRe.MatchString(strings.TrimRight(sql, "; \t\n"))
+	s := stripSQLStrings(sql)
+	return unionOrOffsetRe.MatchString(s) || limitCommaRe.MatchString(s) || optionClauseRe.MatchString(s) || trailingLineCommentRe.MatchString(strings.TrimRight(s, "; \t\n"))
 }
 
 // LimitNotEnforced reports whether EnforceLimit will leave a SELECT/WITH
 // statement unchanged for a reason the user should hear about: UNION, OFFSET,
 // OPTION, or a trailing -- comment. LIMIT offset,count is excluded because
-// that form already bounds the result.
+// that form already bounds the result. Keywords inside string literals do
+// not count.
 func LimitNotEnforced(sql string) bool {
 	if !limitStatementRe.MatchString(selectBody(sql)) {
 		return false
 	}
-	if limitCommaRe.MatchString(sql) {
+	if limitCommaRe.MatchString(stripSQLStrings(sql)) {
 		return false
 	}
 	return bail(sql)
@@ -72,16 +81,14 @@ func LimitNotEnforced(sql string) bool {
 // If limit is 0, enforcement is disabled (pass-through).
 // SET prefixes are ignored for the SELECT-shaped allow-list. UNION, OFFSET,
 // LIMIT offset,count, OPTION(...), and statements ending in a line comment
-// pass through unchanged. Real DML never reaches bail: only SELECT/WITH do.
+// pass through unchanged. Keywords inside string literals do not trigger a
+// bail. Real DML never reaches bail: only SELECT/WITH do.
 func EnforceLimit(sql string, limit, maxLimit int) (string, bool) {
 	if !limitStatementRe.MatchString(selectBody(sql)) {
 		return sql, false
 	}
 	return querysql.EnforceLimit(sql, limit, maxLimit, bail)
 }
-
-// sqlStringRe matches a single-quoted SQL literal, including escaped quotes.
-var sqlStringRe = regexp.MustCompile(`'([^']|'')*'`)
 
 // extractCallRe matches EXTRACT(...) so a FROM inside the call is not treated
 // as a table (e.g. EXTRACT(YEAR FROM ts)).
@@ -106,7 +113,7 @@ var ErrTableNameRequired = errors.New("could not derive a table name from the SQ
 // inner table (SELECT … FROM (SELECT col FROM events) → events). Used to fill
 // StarTree's required tableName field; Pinot still executes pinotQlCode.
 func ExtractTableName(sql string) string {
-	s := sqlStringRe.ReplaceAllString(sql, " ")
+	s := stripSQLStrings(sql)
 	s = extractCallRe.ReplaceAllString(s, " ")
 	for _, loc := range fromKeywordRe.FindAllStringIndex(s, -1) {
 		if name := tableNameAfterFrom(s[loc[1]:]); name != "" {
