@@ -167,8 +167,9 @@ func queryPinotJourney(ctx context.Context, client pinotQuerier, uid, table stri
 	if err != nil {
 		return nil, err
 	}
-	// Outer FROM is a subquery, so ExtractTableName is empty and StarTree
-	// rejects the request. The session-detail journey uses the events table.
+	// Outer FROM is a subquery; extraction would take the first inner table
+	// (measurements). Pass the events table so StarTree loads the same schema
+	// Frontend Observability uses for macros.
 	resp, err := client.Query(ctx, uid, pinot.QueryRequest{
 		RawSQL:    sql,
 		TableName: table,
