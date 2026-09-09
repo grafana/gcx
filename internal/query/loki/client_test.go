@@ -102,7 +102,7 @@ func TestQuery_ReturnsTypedAPIErrorForGrafanaEnvelope(t *testing.T) {
 	assert.Equal(t, "downstream", apiErr.ErrorSource)
 }
 
-func TestQuery_SendsDirectionAndMaxLines(t *testing.T) {
+func TestQuery_SendsMaxLines(t *testing.T) {
 	var gotBody []byte
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotBody, _ = io.ReadAll(r.Body)
@@ -121,11 +121,10 @@ func TestQuery_SendsDirectionAndMaxLines(t *testing.T) {
 	start := time.Unix(1, 0)
 	end := time.Unix(2, 0)
 	_, err = client.Query(context.Background(), "loki-uid", loki.QueryRequest{
-		Query:     `{job="grafana"}`,
-		Start:     start,
-		End:       end,
-		Limit:     1000,
-		Direction: "forward",
+		Query: `{job="grafana"}`,
+		Start: start,
+		End:   end,
+		Limit: 1000,
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, gotBody)
@@ -135,6 +134,5 @@ func TestQuery_SendsDirectionAndMaxLines(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(gotBody, &payload))
 	require.Len(t, payload.Queries, 1)
-	assert.Equal(t, "forward", payload.Queries[0]["direction"])
 	assert.InDelta(t, float64(1000), payload.Queries[0]["maxLines"], 0)
 }

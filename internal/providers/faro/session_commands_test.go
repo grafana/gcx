@@ -437,7 +437,6 @@ func TestFetchPinotSessionRejectsNonIntegerAppID(t *testing.T) {
 type stubLoki struct {
 	mu         sync.Mutex
 	queries    []string
-	dirs       []string
 	limits     []int
 	metaLine   string
 	empty      bool
@@ -449,7 +448,6 @@ func (s *stubLoki) Query(_ context.Context, _ string, req loki.QueryRequest) (*l
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.queries = append(s.queries, req.Query)
-	s.dirs = append(s.dirs, req.Direction)
 	s.limits = append(s.limits, req.Limit)
 	if s.empty {
 		return &loki.QueryResponse{}, nil
@@ -584,9 +582,6 @@ func TestFetchLokiSession(t *testing.T) {
 	assert.Contains(t, events, `| logfmt | session_id="sid"`)
 	assert.NotContains(t, events, "faro.tracing.fetch")
 	assert.NotContains(t, events, "app_memory")
-	for _, dir := range stub.dirs {
-		assert.Empty(t, dir)
-	}
 }
 
 func TestFetchLokiSessionInfersMobile(t *testing.T) {
@@ -644,7 +639,6 @@ func TestFetchLokiSessionPagesUntilComplete(t *testing.T) {
 		}
 		eventKindPages++
 		assert.Equal(t, lokiEventsPageSize, stub.limits[i])
-		assert.Empty(t, stub.dirs[i])
 	}
 	assert.Equal(t, 2, eventKindPages)
 }

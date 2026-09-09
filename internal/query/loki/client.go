@@ -94,9 +94,6 @@ func (c *Client) buildQueryBody(datasourceUID string, req QueryRequest, includeM
 	if includeMaxLines && req.Limit > 0 {
 		query["maxLines"] = req.Limit
 	}
-	if req.Direction != "" {
-		query["direction"] = req.Direction
-	}
 
 	bodyMap := map[string]any{
 		"queries": []any{query},
