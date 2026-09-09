@@ -126,7 +126,7 @@ func TestLimitNotEnforced(t *testing.T) {
 		{"bare offset", "SELECT * FROM t OFFSET 10", true},
 		{"explain never reaches bail", "EXPLAIN SELECT * FROM t", false},
 		{"insert never reaches bail", "INSERT INTO t VALUES (1)", false},
-		{"trailing comment is not union/offset", "SELECT 1 -- keep going", false},
+		{"trailing comment skips enforcement", "SELECT 1 -- keep going", true},
 		{"dml word in literal is not union/offset", "SELECT * FROM t WHERE action = 'delete'", false},
 	}
 	for _, tt := range tests {

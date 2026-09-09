@@ -52,15 +52,18 @@ func bail(sql string) bool {
 	return unionOrOffsetRe.MatchString(sql) || limitCommaRe.MatchString(sql) || optionClauseRe.MatchString(sql) || trailingLineCommentRe.MatchString(strings.TrimRight(sql, "; \t\n"))
 }
 
-// LimitNotEnforced reports whether EnforceLimit will leave sql unchanged
-// because a LIMIT suffix would bind only the last UNION leg, collide with
-// OFFSET, or land after OPTION. LIMIT offset,count is not included: that form
-// already bounds the result, so it is left alone without a warning.
+// LimitNotEnforced reports whether EnforceLimit will leave a SELECT/WITH
+// statement unchanged for a reason the user should hear about: UNION, OFFSET,
+// OPTION, or a trailing -- comment. LIMIT offset,count is excluded because
+// that form already bounds the result.
 func LimitNotEnforced(sql string) bool {
 	if !limitStatementRe.MatchString(selectBody(sql)) {
 		return false
 	}
-	return unionOrOffsetRe.MatchString(sql) || optionClauseRe.MatchString(sql)
+	if limitCommaRe.MatchString(sql) {
+		return false
+	}
+	return bail(sql)
 }
 
 // EnforceLimit ensures the SQL has a LIMIT clause within bounds and reports

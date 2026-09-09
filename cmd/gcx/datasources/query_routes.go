@@ -58,8 +58,8 @@ type genericQueryRequest struct {
 	limit       int
 	table       string
 
-	// warn is the command's stderr. dispatchPostgres is its reader: it caps an
-	// oversized LIMIT and must say so without polluting the stdout document.
+	// warn is the command's stderr. dispatchPostgres and dispatchPinot write
+	// LIMIT-cap (and, for Pinot, skip) notices here so they stay off stdout.
 	warn io.Writer
 }
 
@@ -282,6 +282,8 @@ func dispatchPinot(ctx context.Context, req genericQueryRequest) (any, error) {
 	sql, capped := pinot.EnforceLimit(req.expr, req.limit, 1000)
 	if capped {
 		cmdio.Warning(req.warn, "LIMIT in query exceeds the maximum of 1000 and was capped")
+	} else if req.limit != 0 && pinot.LimitNotEnforced(req.expr) {
+		cmdio.Warning(req.warn, "query uses UNION, OFFSET, OPTION, or a trailing line comment, so --limit was not applied; the SQL was sent unchanged. Use --limit 0 to disable this warning")
 	}
 
 	client, err := pinot.NewClient(req.cfg)

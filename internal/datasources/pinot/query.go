@@ -173,6 +173,6 @@ func warnLimitEnforcement(w io.Writer, expr string, capped bool, limit int) {
 		return
 	}
 	if limit != 0 && pinot.LimitNotEnforced(expr) {
-		cmdio.Warning(w, "query uses UNION, OFFSET, or OPTION, so --limit was not applied; the SQL was sent unchanged. Use --limit 0 to disable this warning")
+		cmdio.Warning(w, "query uses UNION, OFFSET, OPTION, or a trailing line comment, so --limit was not applied; the SQL was sent unchanged. Use --limit 0 to disable this warning")
 	}
 }
