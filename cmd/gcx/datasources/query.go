@@ -46,6 +46,9 @@ func (o *genericQueryOpts) Validate(args []string) error {
 	if len(args) > 1 && o.shared.Expr != "" {
 		return errors.New("provide the expression as a positional argument or via --expr, not both")
 	}
+	if o.limit < 0 {
+		return fmt.Errorf("--limit must be >= 0, got %d", o.limit)
+	}
 
 	return nil
 }

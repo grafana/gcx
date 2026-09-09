@@ -242,6 +242,22 @@ func TestGenericQueryCharacterization_PinotLimit(t *testing.T) {
 		"--limit must reach the Pinot SQL LIMIT, not a hardcoded 100")
 }
 
+func TestGenericQueryCharacterization_PinotSkipLimitWarnsOnStderr(t *testing.T) {
+	f := &fakeGrafana{t: t, dsType: "startree-pinot-datasource"}
+
+	_, stderr, err := runGenericStreams(t, f,
+		"query", "uid", "SELECT 1 FROM a UNION SELECT 2 FROM b",
+		"--limit", "7", "-o", "json")
+	require.NoError(t, err)
+
+	_, body := f.seenPost()
+	q := firstQuery(t, body)
+	assert.Equal(t, "SELECT 1 FROM a UNION SELECT 2 FROM b", q["pinotQlCode"],
+		"UNION SQL is sent unchanged")
+	assert.Contains(t, stderr, "UNION, OFFSET, OPTION, or a trailing line comment",
+		"a skipped --limit must be reported, not silent")
+}
+
 func TestGenericQueryCharacterization_PyroscopeRequiresProfileType(t *testing.T) {
 	f := &fakeGrafana{t: t, dsType: "grafana-pyroscope-datasource"}
 
@@ -350,9 +366,9 @@ func TestGenericQueryCharacterization_PostgresLimitAndInterval(t *testing.T) {
 	assert.Empty(t, stderr, "a query within the limit warns about nothing")
 }
 
-// The capped-LIMIT notice is the only thing any generic handler writes outside
-// the stdout document, so it pins both the capping and the stream it lands on.
-// dispatchPostgres is the sole reader of genericQueryRequest.warn.
+// The capped-LIMIT notice is the only thing postgres writes outside the stdout
+// document, so it pins both the capping and the stream it lands on.
+// dispatchPostgres and dispatchPinot both write LIMIT notices to warn.
 func TestGenericQueryCharacterization_PostgresOversizedLimitWarnsOnStderr(t *testing.T) {
 	f := &fakeGrafana{t: t, dsType: "grafana-postgresql-datasource"}
 

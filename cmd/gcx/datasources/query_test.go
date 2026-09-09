@@ -394,6 +394,11 @@ func TestGenericQueryFlagValidationPrecedence(t *testing.T) {
 			args:      []string{"query", "uid", "--since", "1h", "--from", "now-2h"},
 			expectErr: "--since is mutually exclusive with --from",
 		},
+		{
+			name:      "negative limit errors before HTTP",
+			args:      []string{"query", "uid", "--limit", "-5", "SELECT 1"},
+			expectErr: "--limit must be >= 0",
+		},
 	}
 
 	for _, tt := range tests {
