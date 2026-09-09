@@ -16,6 +16,11 @@ func NewInstancesListCommandForTest(loader GrafanaConfigLoader) *cobra.Command {
 	return newInstancesListCommand(loader)
 }
 
+// NewStateHistoryListCommandForTest wraps newStateHistoryListCommand.
+func NewStateHistoryListCommandForTest(loader GrafanaConfigLoader) *cobra.Command {
+	return newStateHistoryListCommand(loader)
+}
+
 // NewContactPointsDeleteCommandForTest wraps newContactPointsDeleteCommand.
 func NewContactPointsDeleteCommandForTest(loader GrafanaConfigLoader) *cobra.Command {
 	return newContactPointsDeleteCommand(loader)
