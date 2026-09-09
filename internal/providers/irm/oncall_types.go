@@ -200,6 +200,8 @@ type OnCallAPI interface {
 	TakeShiftSwap(ctx context.Context, id string, input TakeShiftSwapInput) (*ShiftSwap, error)
 
 	CreateDirectPaging(ctx context.Context, input DirectPagingInput) (*DirectPagingResult, error)
+
+	SyncPlugin(ctx context.Context) error
 }
 
 func (x Integration) GetResourceName() string           { return x.ID }

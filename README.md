@@ -455,6 +455,12 @@ gcx provides dedicated commands for each Grafana Cloud product:
 | **Profiles (Pyroscope)** | `gcx profiles` | `profiles query`, `profiles labels` |
 | **Traces (Tempo)** | `gcx traces` | `traces query`, `traces get`, `traces labels` |
 
+**Experimental IRM synchronization:** `gcx irm plugin sync` is a temporary
+bridge for callers that create Grafana users or teams and then create IRM
+objects that reference them. IRM must ultimately keep its internal copy current
+without a caller-triggered synchronization. Remove this command when the IRM
+backend provides that behavior.
+
 > **Note — Grafana Cloud costs:** gcx itself is free, but some of these products are billed based on usage: Grafana Assistant per token consumed (including requests made through gcx), Synthetic Monitoring per test execution, k6 per Virtual User Hour, and IRM per monthly active user. Queries and resource push/pull are not billed. See [Costs and billing](docs/reference/costs.md) and the [Grafana Cloud Cost Management and Billing documentation](https://grafana.com/docs/grafana-cloud/cost-management-and-billing/).
 
 ## Resource Management
