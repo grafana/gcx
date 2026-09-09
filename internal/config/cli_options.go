@@ -1,6 +1,9 @@
 package config
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // CLIOptions holds CLI-level configuration options that affect command behavior
 // but are not specific to any Grafana context.
@@ -20,6 +23,27 @@ type CLIOptions struct {
 	// disables it; every other value, recognised or not, leaves the keychain in
 	// use, so a typo cannot silently write credentials in plaintext.
 	Keychain string `env:"GCX_KEYCHAIN"`
+
+	// RequireContext makes gcx refuse any invocation that would fall back to
+	// current-context from the config file, so a command can only reach the
+	// environment its own invocation names. Intended for workstations that
+	// hold many contexts and run gcx from several sessions or coding agents at
+	// once, where current-context is shared mutable state: another session's
+	// `config use-context` silently retargets every later command.
+	//
+	// Any non-empty value except an explicit off switch enables it, so a typo
+	// leaves the requirement in place rather than silently lifting it.
+	RequireContext string `env:"GCX_REQUIRE_CONTEXT"`
+}
+
+// RequireContextEnabled reports whether strict context mode is on.
+func (opts CLIOptions) RequireContextEnabled() bool {
+	switch strings.ToLower(strings.TrimSpace(opts.RequireContext)) {
+	case "", "false", "0", "off", "no":
+		return false
+	default:
+		return true
+	}
 }
 
 // LoadCLIOptions loads CLI options from environment variables.

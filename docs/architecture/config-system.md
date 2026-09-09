@@ -489,6 +489,28 @@ func (config *Config) GetCurrentContext() *Context {
 
 Returns `nil` if `CurrentContext` is empty or not found — callers must check.
 
+### Strict Context Mode
+
+`GCX_REQUIRE_CONTEXT` removes step 2 from the selection order above: an
+invocation must name its own target, or it is refused before it runs. It exists
+because `current-context` is shared mutable state — on a workstation holding
+many contexts, one session's `gcx config use-context` silently retargets every
+later command in every other session, including commands run by coding agents.
+
+An invocation satisfies the requirement with `--context <name>` (root's
+persistent flag or a subtree-bound one) or a `GRAFANA_SERVER` override, both of
+which name the destination for that invocation alone. Anything else fails with
+exit code 2.
+
+The check lives in `EnforceContextSelection` (`cmd/gcx/root/contextguard.go`) and
+runs pre-dispatch from `main()`, not in root's `PersistentPreRun`. Cobra runs
+only the closest `PersistentPreRun` in the chain, and several provider groups
+define their own and chain back to root's by hand, so a guard in that hook would
+be skipped by any subtree that forgot to chain — a fail-open outcome. Commands
+are enforced by default; `contextExemptRoutes` lists the routes that are not
+(local metadata, shell plumbing, config-file editing, and the bootstrapping
+`login` commands, which name their own destination).
+
 ---
 
 ## From Config to REST Client
@@ -892,24 +914,23 @@ affect command behavior but are not tied to any specific Grafana context.
 ```go
 // internal/config/cli_options.go
 type CLIOptions struct {
-    AutoApprove bool `env:"GCX_AUTO_APPROVE"`
+    AutoApprove      bool   `env:"GCX_AUTO_APPROVE"`
+    DisableUpdateNotifier string `env:"GCX_NO_UPDATE_NOTIFIER"`
+    Keychain         string `env:"GCX_KEYCHAIN"`
+    RequireContext   string `env:"GCX_REQUIRE_CONTEXT"`
 }
 
 func LoadCLIOptions() (CLIOptions, error)
 ```
 
-`LoadCLIOptions()` uses `caarlos0/env/v11` (the same library used for
-context-scoped env vars) to parse global environment variables into a
-`CLIOptions` struct. Unlike context overrides, these options are loaded
-independently — they do not read from the config file or affect any context.
-
-**Current usage:** The `delete` command calls `LoadCLIOptions()` in its `RunE`
-and, when `AutoApprove` is true (or `--yes`/`-y` is passed), automatically
-enables the `--force` flag for non-interactive operation in CI/CD pipelines.
+`LoadCLIOptions()` parses these tags into a `CLIOptions` struct. Unlike context
+overrides, they are loaded independently — they do not read from the config file
+or change any context.
 
 | Env Var | CLI Flag | Effect |
 |---------|----------|--------|
 | `GCX_AUTO_APPROVE` | `--yes` / `-y` | Auto-enables `--force` on delete |
+| `GCX_REQUIRE_CONTEXT` | (none) | Require `--context` or `GRAFANA_SERVER` on commands that reach Grafana; see [Strict Context Mode](#strict-context-mode) |
 
 See [environment-variables.md](../design/environment-variables.md) for the full environment
 variable reference.

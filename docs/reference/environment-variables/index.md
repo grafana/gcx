@@ -25,6 +25,18 @@ DisableUpdateNotifier disables the periodic notifier that reminds users
 when their installed gcx skills can be updated. Any non-empty value
 disables the notifier (NO_COLOR convention).
 
+## `GCX_REQUIRE_CONTEXT`
+
+RequireContext makes gcx refuse any invocation that would fall back to
+current-context from the config file, so a command can only reach the
+environment its own invocation names. Intended for workstations that
+hold many contexts and run gcx from several sessions or coding agents at
+once, where current-context is shared mutable state: another session's
+`config use-context` silently retargets every later command.
+
+Any non-empty value except an explicit off switch enables it, so a typo
+leaves the requirement in place rather than silently lifting it.
+
 ## `GCX_TELEMETRY`
 
 Telemetry controls anonymous usage telemetry for this invocation:
