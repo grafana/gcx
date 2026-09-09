@@ -116,6 +116,7 @@ func TestEnforceLimit(t *testing.T) {
 		{"appends LIMIT when LIMIT offset,count is only a literal", "SELECT * FROM t WHERE hint = 'LIMIT 10, 20'", 100, "SELECT * FROM t WHERE hint = 'LIMIT 10, 20' LIMIT 100", false},
 		{"appends LIMIT when UNION is only a quoted identifier", `SELECT "UNION" FROM t`, 100, `SELECT "UNION" FROM t LIMIT 100`, false},
 		{"appends LIMIT when UNION is only in a line comment", "SELECT 1 -- UNION\nFROM t", 100, "SELECT 1 -- UNION\nFROM t LIMIT 100", false},
+		{"appends LIMIT when block open is only in a line comment", "SELECT 1 -- /* note\nFROM t", 100, "SELECT 1 -- /* note\nFROM t LIMIT 100", false},
 		{"appends LIMIT when UNION is only in a block comment", "SELECT 1 FROM t /* UNION */", 100, "SELECT 1 FROM t /* UNION */ LIMIT 100", false},
 		{"bail on unclosed block comment", "SELECT 1 FROM t /* keep", 100, "SELECT 1 FROM t /* keep", false},
 		{
@@ -163,6 +164,7 @@ func TestLimitNotEnforced(t *testing.T) {
 		{"limit offset,count in literal is not that form", "SELECT * FROM t WHERE hint = 'LIMIT 10, 20'", false},
 		{"union in quoted identifier is not a union", `SELECT "UNION" FROM t`, false},
 		{"union in line comment is not a union", "SELECT 1 -- UNION\nFROM t", false},
+		{"block open in line comment is not unclosed block", "SELECT 1 -- /* note\nFROM t", false},
 		{"union in block comment is not a union", "SELECT 1 FROM t /* UNION */", false},
 		{"unclosed block comment skips enforcement", "SELECT 1 FROM t /* keep", true},
 	}
