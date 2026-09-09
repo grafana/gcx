@@ -56,6 +56,7 @@ type genericQueryRequest struct {
 	profileType string
 	maxNodes    int64
 	limit       int
+	limitSet    bool
 	table       string
 
 	// warn is the command's stderr. dispatchPostgres and dispatchPinot write
@@ -279,8 +280,9 @@ func dispatchClickHouse(ctx context.Context, req genericQueryRequest) (any, erro
 }
 
 func dispatchPinot(ctx context.Context, req genericQueryRequest) (any, error) {
-	sql, capped := pinot.EnforceLimit(req.expr, req.limit, pinot.MaxLimit)
-	if msg := pinot.LimitWarning(req.expr, capped, req.limit, pinot.MaxLimit); msg != "" {
+	limit := pinotLimitFromGeneric(req.limit, req.limitSet)
+	sql, capped := pinot.EnforceLimit(req.expr, limit, pinot.MaxLimit)
+	if msg := pinot.LimitWarning(req.expr, capped, limit, pinot.MaxLimit); msg != "" {
 		cmdio.Warning(req.warn, "%s", msg)
 	}
 
@@ -414,4 +416,16 @@ func dispatchPostgres(ctx context.Context, req genericQueryRequest) (any, error)
 	}
 
 	return resp, nil
+}
+
+// pinotLimitFromGeneric maps the auto-detecting query command's --limit to an
+// effective row cap for Pinot. The generic flag defaults to Loki's limit; when
+// --limit was omitted, use pinot.DefaultLimit so generic and typed pinot query
+// behave the same. limitSet comes from cmd.Flags().Changed("limit") so an
+// explicit --limit 50 is not confused with the untyped default.
+func pinotLimitFromGeneric(limit int, limitSet bool) int {
+	if !limitSet {
+		return pinot.DefaultLimit
+	}
+	return limit
 }

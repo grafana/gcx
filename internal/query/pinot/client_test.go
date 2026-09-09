@@ -157,56 +157,49 @@ func TestQuery_ExplicitTableNameOverridesExtract(t *testing.T) {
 	assert.Equal(t, "SELECT 1 FROM (SELECT 1) journey", q["pinotQlCode"])
 }
 
-func TestQuery_IgnoresFromInsideComment(t *testing.T) {
-	var captured map[string]any
+func TestQuery_TableNameExtraction(t *testing.T) {
+	tests := []struct {
+		name      string
+		request   pinot.QueryRequest
+		wantTable string
+	}{
+		{
+			name:      "ignores FROM inside comment",
+			request:   pinot.QueryRequest{RawSQL: "SELECT 1 -- FROM events\nFROM t"},
+			wantTable: "t",
+		},
+		{
+			name:      "subquery extracts inner table",
+			request:   pinot.QueryRequest{RawSQL: "SELECT count(*) FROM (SELECT col FROM events) sub"},
+			wantTable: "events",
+		},
+	}
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		raw, _ := io.ReadAll(r.Body)
-		_ = json.Unmarshal(raw, &captured)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"results":{"A":{"frames":[{"schema":{"fields":[{"name":"v","type":"number"}]},"data":{"values":[[1]]}}],"status":200}}}`))
-	}))
-	defer server.Close()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var captured map[string]any
 
-	client := newTestClient(t, server.URL)
-	_, err := client.Query(context.Background(), "pinot-uid", pinot.QueryRequest{
-		RawSQL: "SELECT 1 -- FROM events\nFROM t",
-	})
-	require.NoError(t, err)
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				raw, _ := io.ReadAll(r.Body)
+				_ = json.Unmarshal(raw, &captured)
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"results":{"A":{"frames":[{"schema":{"fields":[{"name":"v","type":"number"}]},"data":{"values":[[1]]}}],"status":200}}}`))
+			}))
+			defer server.Close()
 
-	queries, ok := captured["queries"].([]any)
-	require.True(t, ok)
-	require.Len(t, queries, 1)
-	q, ok := queries[0].(map[string]any)
-	require.True(t, ok)
-	assert.Equal(t, "t", q["tableName"])
-}
+			client := newTestClient(t, server.URL)
+			_, err := client.Query(context.Background(), "pinot-uid", tt.request)
+			require.NoError(t, err)
 
-func TestQuery_SubqueryExtractsInnerTable(t *testing.T) {
-	var captured map[string]any
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		raw, _ := io.ReadAll(r.Body)
-		_ = json.Unmarshal(raw, &captured)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"results":{"A":{"frames":[{"schema":{"fields":[{"name":"v","type":"number"}]},"data":{"values":[[1]]}}],"status":200}}}`))
-	}))
-	defer server.Close()
-
-	client := newTestClient(t, server.URL)
-	_, err := client.Query(context.Background(), "pinot-uid", pinot.QueryRequest{
-		RawSQL: "SELECT count(*) FROM (SELECT col FROM events) sub",
-	})
-	require.NoError(t, err)
-
-	queries, ok := captured["queries"].([]any)
-	require.True(t, ok)
-	require.Len(t, queries, 1)
-	q, ok := queries[0].(map[string]any)
-	require.True(t, ok)
-	assert.Equal(t, "events", q["tableName"])
+			queries, ok := captured["queries"].([]any)
+			require.True(t, ok)
+			require.Len(t, queries, 1)
+			q, ok := queries[0].(map[string]any)
+			require.True(t, ok)
+			assert.Equal(t, tt.wantTable, q["tableName"])
+		})
+	}
 }
 
 func TestQuery_ReturnsTypedAPIError(t *testing.T) {

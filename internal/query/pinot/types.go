@@ -49,11 +49,11 @@ var limitCommaRe = regexp.MustCompile(`(?i)\bLIMIT\s+\d+\s*,`)
 // warns.
 var optionClauseRe = regexp.MustCompile(`(?i)\bOPTION\s*\(`)
 
-// trailingLineCommentRe matches a real `--` line comment (whitespace or start
-// before `--`) that runs to the end of the statement. Appending "LIMIT n"
-// after one would land inside the comment. A `--` inside a string literal
-// (`SELECT '--' FROM t`) does not match.
-var trailingLineCommentRe = regexp.MustCompile(`(^|[\s;])--[^\n]*$`)
+// trailingLineCommentRe matches a trailing `--` line comment. Appending
+// "LIMIT n" after one would land inside the comment. hasTrailingComment
+// strips quoted literals and identifiers first, so `SELECT '--' FROM t` does
+// not match even though the raw SQL contains `--`.
+var trailingLineCommentRe = regexp.MustCompile(`--[^\n]*$`)
 
 func selectBody(sql string) string {
 	return leadingSetRe.ReplaceAllString(sql, "")
