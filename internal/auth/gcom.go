@@ -139,7 +139,7 @@ func (f *GCOMFlow) runManual(ctx context.Context) (*GCOMResult, error) {
 func (f *GCOMFlow) runWithCallbackServer(ctx context.Context) (*GCOMResult, error) {
 	listener, port, err := listenOnCallbackPort(ctx, "127.0.0.1", 0)
 	if err != nil {
-		return nil, fmt.Errorf("no available port: %w", err)
+		return nil, err
 	}
 
 	state, codeVerifier, codeChallenge, err := newFlowSecrets()
