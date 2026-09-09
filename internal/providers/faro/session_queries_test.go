@@ -12,7 +12,7 @@ func TestPinotJourneyQuery(t *testing.T) {
 	t.Parallel()
 
 	p := sessionQueryParams{AppID: "66", SessionID: "7TiMbCCvby", AppType: appTypeWeb}
-	sql, err := pinotJourneyQueryPaged(p, 0, false)
+	sql, err := pinotJourneyQueryPaged(p, 0, false, 0)
 	require.NoError(t, err)
 
 	assert.Contains(t, sql, "appId = 66")
@@ -43,7 +43,7 @@ func TestPinotJourneyQueryMobileFilter(t *testing.T) {
 	t.Parallel()
 
 	p := sessionQueryParams{AppID: "96", SessionID: "kwwAkkXwas", AppType: appTypeMobile}
-	sql, err := pinotJourneyQueryPaged(p, 0, false)
+	sql, err := pinotJourneyQueryPaged(p, 0, false, 0)
 	require.NoError(t, err)
 
 	assert.Contains(t, sql, "AND sessionId = 'kwwAkkXwas' AND measurementType NOT IN ('app_memory', 'app_cpu_usage')")
@@ -56,17 +56,23 @@ func TestPinotJourneyQueryPagedCursor(t *testing.T) {
 	t.Parallel()
 
 	p := sessionQueryParams{AppID: "66", SessionID: "sid", AppType: appTypeWeb}
-	after, err := pinotJourneyQueryPaged(p, 1710000000000, false)
+	after, err := pinotJourneyQueryPaged(p, 1710000000000, false, 0)
 	require.NoError(t, err)
 	assert.Contains(t, after, "WHERE \"timestamp\" > 1710000000000\nORDER BY")
 	assert.Contains(t, after, fmt.Sprintf("LIMIT %d", pinotJourneyPageSize))
 	assert.NotContains(t, after, "OFFSET")
 	assert.NotContains(t, after, "{{JOURNEY_CURSOR}}")
 
-	equal, err := pinotJourneyQueryPaged(p, 1710000000000, true)
+	equal, err := pinotJourneyQueryPaged(p, 1710000000000, true, 0)
 	require.NoError(t, err)
 	assert.Contains(t, equal, "WHERE \"timestamp\" = 1710000000000\nORDER BY")
 	assert.NotContains(t, equal, "WHERE \"timestamp\" >")
+	assert.NotContains(t, equal, "OFFSET")
+
+	paged, err := pinotJourneyQueryPaged(p, 1710000000000, true, pinotJourneyPageSize)
+	require.NoError(t, err)
+	assert.Contains(t, paged, "WHERE \"timestamp\" = 1710000000000\nORDER BY")
+	assert.Contains(t, paged, fmt.Sprintf("\nOFFSET %d", pinotJourneyPageSize))
 }
 
 func TestPinotQueryEscapesSessionID(t *testing.T) {
@@ -139,7 +145,7 @@ func TestPinotQueriesUseOpsEventsTable(t *testing.T) {
 	}
 	meta, err := pinotEventsMetadataQuery(p)
 	require.NoError(t, err)
-	journey, err := pinotJourneyQueryPaged(p, 0, false)
+	journey, err := pinotJourneyQueryPaged(p, 0, false, 0)
 	require.NoError(t, err)
 	assert.Contains(t, meta, pinotEventsTableOps)
 	assert.Contains(t, journey, pinotEventsTableOps)

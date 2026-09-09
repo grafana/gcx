@@ -137,11 +137,13 @@ func fetchPinotJourneyPages(ctx context.Context, client pinotQuerier, uid string
 	merged := &querysql.QueryResponse{}
 	seen := make(map[string]struct{})
 	var cursorMS int64
-	for range pinotJourneyMaxPages {
-		resp, err := queryPinotJourney(ctx, client, uid, table, p, start, end, cursorMS, false)
+	pages := 0
+	for pages < pinotJourneyMaxPages {
+		resp, err := queryPinotJourney(ctx, client, uid, table, p, start, end, cursorMS, false, 0)
 		if err != nil {
 			return nil, err
 		}
+		pages++
 		appendPinotRows(merged, resp, seen)
 		if pinotRowCount(resp) < pinotJourneyPageSize {
 			return merged, nil
@@ -150,20 +152,27 @@ func fetchPinotJourneyPages(ctx context.Context, client pinotQuerier, uid string
 		if !ok || lastMS <= cursorMS {
 			return merged, nil
 		}
-		// Refetch the last millisecond so rows that shared that timestamp
-		// but missed this LIMIT are kept, then continue after that instant.
-		bucket, err := queryPinotJourney(ctx, client, uid, table, p, start, end, lastMS, true)
-		if err != nil {
-			return nil, err
+		// Page the last millisecond so rows that shared that timestamp but
+		// missed this LIMIT are kept. OFFSET is only used here: a full `=`
+		// page must not advance past that instant. Then continue after it.
+		for offset := 0; pages < pinotJourneyMaxPages; offset += pinotJourneyPageSize {
+			bucket, err := queryPinotJourney(ctx, client, uid, table, p, start, end, lastMS, true, offset)
+			if err != nil {
+				return nil, err
+			}
+			pages++
+			appendPinotRows(merged, bucket, seen)
+			if pinotRowCount(bucket) < pinotJourneyPageSize {
+				break
+			}
 		}
-		appendPinotRows(merged, bucket, seen)
 		cursorMS = lastMS
 	}
 	return nil, fmt.Errorf("pinot journey exceeded %d pages of %d rows", pinotJourneyMaxPages, pinotJourneyPageSize)
 }
 
-func queryPinotJourney(ctx context.Context, client pinotQuerier, uid, table string, p sessionQueryParams, start, end time.Time, cursorMS int64, equal bool) (*querysql.QueryResponse, error) {
-	sql, err := pinotJourneyQueryPaged(p, cursorMS, equal)
+func queryPinotJourney(ctx context.Context, client pinotQuerier, uid, table string, p sessionQueryParams, start, end time.Time, cursorMS int64, equal bool, offset int) (*querysql.QueryResponse, error) {
+	sql, err := pinotJourneyQueryPaged(p, cursorMS, equal, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -334,6 +343,7 @@ func fetchLokiEventsByKind(ctx context.Context, client lokiQuerier, uid string, 
 
 func fetchLokiEventPages(ctx context.Context, client lokiQuerier, uid, query string, start, end time.Time, timeout time.Duration) (*loki.QueryResponse, error) {
 	merged := &loki.QueryResponse{Data: loki.QueryResultData{ResultType: "streams"}}
+	seen := make(map[string]struct{})
 	cursor := end
 	for cursor.After(start) {
 		resp, err := queryLoki(ctx, client, uid, loki.QueryRequest{
@@ -347,6 +357,7 @@ func fetchLokiEventPages(ctx context.Context, client lokiQuerier, uid, query str
 		}
 		n := lokiEntryCount(resp)
 		appendLokiEvents(merged, resp)
+		recordLokiFingerprints(resp, seen)
 		if n < lokiEventsPageSize {
 			break
 		}
@@ -354,11 +365,25 @@ func fetchLokiEventPages(ctx context.Context, client lokiQuerier, uid, query str
 		if !ok {
 			break
 		}
-		next := earliest.Add(-time.Millisecond)
-		if !next.Before(cursor) {
+		// Refetch the earliest instant so leftover rows that share that
+		// timestamp are kept. Stepping End back 1ms would drop them.
+		bucket, err := queryLoki(ctx, client, uid, loki.QueryRequest{
+			Query: query,
+			Start: earliest,
+			End:   earliest.Add(time.Millisecond),
+			Limit: lokiEventsPageSize,
+		}, timeout)
+		if err != nil {
+			return nil, fmt.Errorf("loki events query failed: %w", err)
+		}
+		appendLokiEventsUnseen(merged, bucket, seen)
+		if lokiEntryCount(bucket) >= lokiEventsPageSize {
+			return nil, fmt.Errorf("loki events: more than %d rows share timestamp %s; dump would be truncated", lokiEventsPageSize, earliest.UTC().Format(time.RFC3339Nano))
+		}
+		if !earliest.Before(cursor) {
 			break
 		}
-		cursor = next
+		cursor = earliest
 	}
 	return merged, nil
 }
@@ -368,6 +393,42 @@ func appendLokiEvents(dst, src *loki.QueryResponse) {
 		return
 	}
 	dst.Data.Result = append(dst.Data.Result, src.Data.Result...)
+}
+
+func lokiEntryFingerprint(e loki.LogEntry) string {
+	return e.Timestamp + "\x1e" + e.Line
+}
+
+func recordLokiFingerprints(resp *loki.QueryResponse, seen map[string]struct{}) {
+	if resp == nil {
+		return
+	}
+	for _, stream := range resp.Data.Result {
+		for _, e := range stream.Values {
+			seen[lokiEntryFingerprint(e)] = struct{}{}
+		}
+	}
+}
+
+func appendLokiEventsUnseen(dst, src *loki.QueryResponse, seen map[string]struct{}) {
+	if src == nil {
+		return
+	}
+	var kept []loki.LogEntry
+	for _, stream := range src.Data.Result {
+		for _, e := range stream.Values {
+			fp := lokiEntryFingerprint(e)
+			if _, ok := seen[fp]; ok {
+				continue
+			}
+			seen[fp] = struct{}{}
+			kept = append(kept, e)
+		}
+	}
+	if len(kept) == 0 {
+		return
+	}
+	dst.Data.Result = append(dst.Data.Result, loki.StreamEntry{Values: kept})
 }
 
 func minLokiTime(resp *loki.QueryResponse) (time.Time, bool) {

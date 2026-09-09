@@ -365,8 +365,9 @@ func pinotUserMetadataQuery(p sessionQueryParams) (string, error) {
 
 // pinotJourneyQueryPaged builds the journey UNION. cursorMS 0 is the first
 // page (no extra WHERE). Later pages use WHERE "timestamp" > cursorMS, or
-// WHERE "timestamp" = cursorMS to refetch a same-millisecond bucket.
-func pinotJourneyQueryPaged(p sessionQueryParams, cursorMS int64, equal bool) (string, error) {
+// WHERE "timestamp" = cursorMS to refetch a same-millisecond bucket. offset
+// pages that bucket when one millisecond has more than LIMIT rows.
+func pinotJourneyQueryPaged(p sessionQueryParams, cursorMS int64, equal bool, offset int) (string, error) {
 	sql, err := substPinot(pinotJourneySQL, p)
 	if err != nil {
 		return "", err
@@ -382,7 +383,11 @@ func pinotJourneyQueryPaged(p sessionQueryParams, cursorMS int64, equal bool) (s
 	if !strings.Contains(sql, "{{JOURNEY_CURSOR}}") {
 		return "", errors.New("journey SQL missing cursor placeholder")
 	}
-	return strings.Replace(sql, "{{JOURNEY_CURSOR}}", clause, 1), nil
+	sql = strings.Replace(sql, "{{JOURNEY_CURSOR}}", clause, 1)
+	if offset > 0 {
+		sql += fmt.Sprintf("\nOFFSET %d", offset)
+	}
+	return sql, nil
 }
 
 // inferAppType maps session telemetry to web vs mobile.
