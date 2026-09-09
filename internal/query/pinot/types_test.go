@@ -44,6 +44,8 @@ func TestExtractTableName(t *testing.T) {
 		{"substring from is not the table", `SELECT SUBSTRING(col FROM 1 FOR 2) FROM events`, "events"},
 		{"overlay from is not the table", `SELECT OVERLAY(col PLACING 'x' FROM 1) FROM events`, "events"},
 		{"hyphenated quoted table", `SELECT * FROM "my-table"`, "my-table"},
+		{"quoted table with escaped quote", `SELECT * FROM "my""table"`, `my"table`},
+		{"quoted schema with escaped quote in table", `SELECT * FROM "db"."my""table"`, `db.my"table`},
 		{"table alias", `SELECT * FROM events AS e`, "events"},
 		{"join uses left table", `SELECT * FROM orders AS o JOIN customers AS c ON o.id = c.id`, "orders"},
 		{"no from", "SELECT 1", ""},

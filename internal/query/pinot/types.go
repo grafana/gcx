@@ -275,8 +275,6 @@ func EnforceLimit(sql string, limit, maxLimit int) (string, bool) {
 
 var fromKeywordRe = regexp.MustCompile(`(?i)\bFROM\b`)
 
-var quotedTableRe = regexp.MustCompile(`^"([^"]+)"`)
-
 // One unquoted identifier segment. Dots are walked separately so
 // "db"."events" and db."events" join the same way as my_db.events.
 var identTableRe = regexp.MustCompile(`^([a-zA-Z_][a-zA-Z0-9_]*)`)
@@ -329,16 +327,34 @@ func tableNameAfterFrom(after string) string {
 	return strings.Join(parts, ".")
 }
 
+// parseQuotedIdent reads a SQL double-quoted identifier, unescaping "" to ".
+func parseQuotedIdent(rest string) (string, string, bool) {
+	if rest == "" || rest[0] != '"' {
+		return "", rest, false
+	}
+	var b strings.Builder
+	for i := 1; i < len(rest); i++ {
+		switch rest[i] {
+		case '"':
+			if i+1 < len(rest) && rest[i+1] == '"' {
+				b.WriteByte('"')
+				i++
+				continue
+			}
+			return b.String(), rest[i+1:], true
+		default:
+			b.WriteByte(rest[i])
+		}
+	}
+	return "", rest, false
+}
+
 func tableIdentSegment(rest string) (string, string, bool) {
 	if rest == "" {
 		return "", rest, false
 	}
 	if rest[0] == '"' {
-		m := quotedTableRe.FindStringSubmatch(rest)
-		if len(m) < 2 {
-			return "", rest, false
-		}
-		return m[1], rest[len(m[0]):], true
+		return parseQuotedIdent(rest)
 	}
 	m := identTableRe.FindStringSubmatch(rest)
 	if len(m) < 2 {
