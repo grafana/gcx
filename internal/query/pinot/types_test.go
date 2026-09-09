@@ -5,6 +5,7 @@ import (
 
 	"github.com/grafana/gcx/internal/query/pinot"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestExtractTableName(t *testing.T) {
@@ -18,7 +19,9 @@ func TestExtractTableName(t *testing.T) {
 		{"set prefix", "SET useMultistageEngine = true;\nSELECT * FROM logs", "logs"},
 		{"schema-qualified", "SELECT * FROM my_db.events", "my_db.events"},
 		{"subquery from skipped", "SELECT * FROM (SELECT 1)", ""},
-		{"subquery with inner from skipped", "SELECT * FROM (SELECT x FROM inner_t) a", ""},
+		{"subquery uses inner table", "SELECT * FROM (SELECT x FROM inner_t) a", "inner_t"},
+		{"subquery count from events", "SELECT count(*) FROM (SELECT col FROM events) sub", "events"},
+		{"union wrapper uses first inner table", "SELECT * FROM (\n  SELECT 1 FROM measurements\n  UNION ALL\n  SELECT 1 FROM events\n) journey", "measurements"},
 		{"extract year from is not the table", `SELECT EXTRACT(YEAR FROM ts) FROM events`, "events"},
 		{"from inside string is not the table", `SELECT 'FROM x' AS a FROM events`, "events"},
 		{"from inside string lowercase", `SELECT 'from admin' AS x FROM t`, "t"},
@@ -32,6 +35,30 @@ func TestExtractTableName(t *testing.T) {
 			assert.Equal(t, tt.want, pinot.ExtractTableName(tt.sql))
 		})
 	}
+}
+
+func TestResolveTableName(t *testing.T) {
+	t.Run("override wins", func(t *testing.T) {
+		got, err := pinot.ResolveTableName("SELECT 1", "events")
+		require.NoError(t, err)
+		assert.Equal(t, "events", got)
+	})
+	t.Run("override wins over extracted", func(t *testing.T) {
+		got, err := pinot.ResolveTableName("SELECT 1 FROM logs", "events")
+		require.NoError(t, err)
+		assert.Equal(t, "events", got)
+	})
+	t.Run("blank override falls back to extract", func(t *testing.T) {
+		got, err := pinot.ResolveTableName("SELECT 1 FROM logs", "  ")
+		require.NoError(t, err)
+		assert.Equal(t, "logs", got)
+	})
+	t.Run("empty when neither override nor from", func(t *testing.T) {
+		got, err := pinot.ResolveTableName("SELECT 1", "")
+		require.ErrorIs(t, err, pinot.ErrTableNameRequired)
+		assert.Empty(t, got)
+		assert.Contains(t, err.Error(), "--table")
+	})
 }
 
 func TestEnforceLimit(t *testing.T) {

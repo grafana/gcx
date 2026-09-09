@@ -15,12 +15,17 @@ func QueryExploreURL(host string, query dsquery.ExploreQuery) string {
 
 	from, to := dsquery.ExploreRange(query.From, query.To, false)
 
+	tableName := strings.TrimSpace(query.TableName)
+	if tableName == "" {
+		tableName = querypinot.ExtractTableName(query.Expr)
+	}
+
 	q := map[string]any{
 		"refId":       "A",
 		"queryType":   "PinotQL",
 		"editorMode":  "Code",
 		"displayType": "TABLE",
-		"tableName":   querypinot.ExtractTableName(query.Expr),
+		"tableName":   tableName,
 		"pinotQlCode": query.Expr,
 		"datasource":  dsquery.ExploreDatasource(query.DatasourceType, query.DatasourceUID),
 	}

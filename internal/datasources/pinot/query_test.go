@@ -20,6 +20,11 @@ func TestQueryCmd_ValidationErrors(t *testing.T) {
 			args:    []string{"--limit=-5", "SELECT 1"},
 			wantErr: "--limit must be >= 0",
 		},
+		{
+			name:    "missing table rejected before any config/datasource I/O",
+			args:    []string{"SELECT 1"},
+			wantErr: "could not derive a table name",
+		},
 	}
 
 	for _, tt := range tests {

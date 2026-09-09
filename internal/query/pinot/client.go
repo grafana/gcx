@@ -30,9 +30,14 @@ func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
 // Query executes a PinotQL query against the specified StarTree datasource.
 // The request body is custom (not querysql.BuildRawQueryBody): StarTree expects
 // queryType/editorMode/displayType/tableName/pinotQlCode rather than rawSql.
-// tableName is the plugin editor field from the first confident FROM; Pinot
-// executes pinotQlCode, and a bad query is returned as a plugin error.
+// tableName is required by the plugin (schema + macros) before it runs
+// pinotQlCode. It comes from req.TableName or the first confident FROM.
 func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryRequest) (*querysql.QueryResponse, error) {
+	tableName, err := ResolveTableName(req.RawSQL, req.TableName)
+	if err != nil {
+		return nil, err
+	}
+
 	intervalMs := req.IntervalMs
 	if intervalMs == 0 {
 		intervalMs = 60000
@@ -54,7 +59,7 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 				"queryType":   "PinotQL",
 				"editorMode":  "Code",
 				"displayType": "TABLE",
-				"tableName":   ExtractTableName(req.RawSQL),
+				"tableName":   tableName,
 				"pinotQlCode": req.RawSQL,
 				"intervalMs":  intervalMs,
 			},

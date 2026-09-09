@@ -48,6 +48,7 @@ gcx datasources query DATASOURCE_UID [EXPR] [flags]
       --profile-type string   Profile type ID for pyroscope queries (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds')
       --since string          Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --step string           Query step (e.g., '15s', '1m')
+      --table string          StarTree table name for pinot queries when the SQL has no extractable FROM
       --to string             End time (RFC3339, Unix timestamp, or relative like 'now')
 ```
 
