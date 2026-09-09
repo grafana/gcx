@@ -16,7 +16,7 @@ import (
 
 const testDSUID = "sm-ds-uid"
 
-func newTestClient(t *testing.T, handler http.HandlerFunc) *synth.Client {
+func newTestClient(t *testing.T, handler http.HandlerFunc) *synth.ProxyClient {
 	t.Helper()
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
@@ -24,7 +24,7 @@ func newTestClient(t *testing.T, handler http.HandlerFunc) *synth.Client {
 		Config:    rest.Config{Host: srv.URL},
 		Namespace: "default",
 	}
-	client, err := synth.NewClient(cfg)
+	client, err := synth.NewProxyClient(cfg)
 	require.NoError(t, err)
 	return client
 }
