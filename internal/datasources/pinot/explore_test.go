@@ -35,6 +35,19 @@ func TestQueryExploreURL(t *testing.T) {
 		assert.Contains(t, params.Get("panes"), `"to":"now"`)
 	})
 
+	t.Run("comment from is not the explore table", func(t *testing.T) {
+		got := pinot.QueryExploreURL("https://mystack.grafana.net", dsquery.ExploreQuery{
+			DatasourceUID:  "pinot-uid",
+			DatasourceType: querypinot.DatasourceType,
+			Expr:           "SELECT 1 -- FROM events\nFROM t",
+		})
+
+		require.NotEmpty(t, got)
+		params := mustParseURL(t, got).Query()
+		assert.Contains(t, params.Get("panes"), `"tableName":"t"`)
+		assert.NotContains(t, params.Get("panes"), `"tableName":"events"`)
+	})
+
 	t.Run("subquery explore uses inner table", func(t *testing.T) {
 		got := pinot.QueryExploreURL("https://mystack.grafana.net", dsquery.ExploreQuery{
 			DatasourceUID:  "pinot-uid",
