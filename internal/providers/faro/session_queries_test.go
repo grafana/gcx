@@ -31,7 +31,8 @@ func TestPinotJourneyQuery(t *testing.T) {
 	assert.NotContains(t, sql, "{{JOURNEY_LIMIT}}")
 	assert.NotContains(t, sql, "measurementType NOT IN")
 	assert.Contains(t, sql, fmt.Sprintf("LIMIT %d", pinotJourneyPageSize))
-	assert.Regexp(t, `(?s)ORDER BY "timestamp" ASC\nLIMIT 1000`, sql)
+	assert.Contains(t, sql, pinotJourneyOrderBy)
+	assert.Regexp(t, `(?s)`+pinotJourneyOrderBy+`\nLIMIT 1000`, sql)
 	assert.NotContains(t, sql, "OFFSET")
 	assert.NotContains(t, sql, `WHERE "timestamp"`)
 	assert.NotContains(t, sql, "sdk_name")
@@ -195,13 +196,26 @@ func TestLokiQueries(t *testing.T) {
 	assert.Contains(t, eventQ, `{app_id="66", kind="event"}`)
 	assert.Contains(t, eventQ, `|= "session_id=7TiMbCCvby"`)
 	assert.Contains(t, eventQ, `| logfmt | session_id="7TiMbCCvby"`)
+	assert.Contains(t, eventQ, lokiPerformanceEventFilter)
+	assert.NotContains(t, eventQ, `!~ "performanceEntry"`)
 	assert.NotContains(t, eventQ, "app_memory")
+
+	exceptionQ := lokiEventsQueryForKind(web, lokiKindException)
+	assert.Contains(t, exceptionQ, `{app_id="66", kind="exception"}`)
+	assert.NotContains(t, exceptionQ, lokiPerformanceEventFilter)
+	assert.NotContains(t, exceptionQ, `!~ "`)
+
 	assert.Equal(t, []string{lokiKindEvent, lokiKindException, lokiKindLog, lokiKindMeasurement}, lokiSessionEventKinds())
 	for _, kind := range lokiSessionEventKinds() {
 		q := lokiEventsQueryForKind(web, kind)
 		assert.Contains(t, q, fmt.Sprintf(`kind="%s"`, kind))
 		assert.Contains(t, q, `| logfmt | session_id="7TiMbCCvby"`)
 		assert.NotContains(t, q, `{app_id="66"} |=`)
+		if kind == lokiKindEvent {
+			assert.Contains(t, q, lokiPerformanceEventFilter)
+		} else {
+			assert.NotContains(t, q, lokiPerformanceEventFilter)
+		}
 	}
 	assert.NotContains(t, lokiEventsQueryForKind(web, lokiKindMeasurement), "app_memory")
 

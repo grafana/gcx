@@ -24,9 +24,17 @@ const (
 
 	// Pinot defaults a SELECT with no LIMIT to 10 rows. Page the journey
 	// UNION at this outer LIMIT and continue while a page is full. OFFSET
-	// is not used: it re-scans all three UNION legs every page.
+	// pages a same-millisecond bucket when it exceeds LIMIT; tie-breakers
+	// keep that bucket stable across requests.
 	pinotJourneyPageSize = 1000
 	pinotJourneyMaxPages = 100
+
+	// Outer journey sort: timestamp alone is not stable when OFFSET pages a
+	// dense same-ms bucket (Pinot may return ties in arbitrary order).
+	pinotJourneyOrderBy = `ORDER BY "timestamp" ASC, kind ASC, event_name ASC, hash ASC, attribute_hash ASC, message ASC, exception_type ASC, measurement_type ASC, traceID ASC`
+
+	// Parsed event_name filter for Loki event streams (matches Pinot events leg).
+	lokiPerformanceEventFilter = ` | event_name!~"faro\\.performanceEntry|faro\\.performance\\.resource"`
 
 	lokiKindEvent       = "event"
 	lokiKindException   = "exception"
@@ -291,7 +299,7 @@ FROM (
     AND eventName NOT IN ('faro.performance.resource', 'faro.performanceEntry')
     AND $__timeFilter("timestamp")
 ) journey
-{{JOURNEY_CURSOR}}ORDER BY "timestamp" ASC
+{{JOURNEY_CURSOR}}` + pinotJourneyOrderBy + `
 LIMIT {{JOURNEY_LIMIT}}`
 
 type sessionQueryParams struct {
@@ -445,9 +453,12 @@ func lokiEventsQueryForKind(p sessionQueryParams, kind string) string {
 	app := escapeLogQLString(p.AppID)
 	session := escapeLogQLString(p.SessionID)
 	q := fmt.Sprintf(
-		`{app_id="%s", kind="%s"} |= "session_id=%s" !~ "performanceEntry|faro.performanceEntry|faro.performance.resource" | logfmt | session_id="%s"`,
+		`{app_id="%s", kind="%s"} |= "session_id=%s" | logfmt | session_id="%s"`,
 		app, kind, session, session,
 	)
+	if kind == lokiKindEvent {
+		q += lokiPerformanceEventFilter
+	}
 	if kind == lokiKindMeasurement && p.mobile() {
 		q += ` | type!="app_memory" | type!="app_cpu_usage"`
 	}
