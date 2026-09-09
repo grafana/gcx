@@ -93,25 +93,33 @@ func (n *NamespacedRESTConfig) WireTokenPersistence(ctx context.Context, source 
 	// Persistence runs inside an HTTP RoundTrip whose request context may be
 	// cancelled the moment the caller has what it needs. Use a context
 	// detached from that cancellation so Load/Write always complete.
-	persistCtx := withConfigWriteLockHeld(context.WithoutCancel(ctx))
+	persistCtx := context.WithoutCancel(ctx)
 
 	persistLoad := func() (Config, error) {
 		path, err := persistSource()
 		if err != nil {
 			return Config{}, err
 		}
-		loadCtx := persistCtx
+		loadOpts := loadOptions{layer: configLayerFromCtx(persistCtx)}
 		if selected, ok := configSourceForPath(sources, path); ok {
-			loadCtx = withConfigLayer(loadCtx, selected.Type)
+			loadOpts.layer = selected.Type
 			current, readErr := readConfigSource(selected)
 			if readErr != nil {
 				return Config{}, readErr
 			}
 			if len(sources) > 1 && isLegacyConfig(current) {
-				loadCtx = withMigrationPersistenceSuppressed(loadCtx)
+				loadOpts.suppressMigrationPersistence = true
 			}
 		}
-		fresh, err := Load(loadCtx, persistSource)
+		// The Lock callback below holds the write lock for exactly this
+		// identity, so any write the load performs on our behalf is already
+		// protected. Naming the identity is what makes that claim checkable.
+		identity, err := tokenPersistenceIdentity(sources, path)
+		if err != nil {
+			return Config{}, err
+		}
+		loadOpts.writeLockHeldFor = identity
+		fresh, err := load(persistCtx, persistSource, loadOpts)
 		if err != nil {
 			return fresh, err
 		}
@@ -138,19 +146,11 @@ func (n *NamespacedRESTConfig) WireTokenPersistence(ctx context.Context, source 
 	}
 
 	n.oauthTransport.Lock = func(reqCtx context.Context) (func(), error) {
-		path, err := persistSource()
+		path, identity, err := tokenPersistenceIdentityFor(persistSource, sources)
 		if err != nil {
 			return nil, err
 		}
-		layer := ""
-		if selected, ok := configSourceForPath(sources, path); ok {
-			layer = selected.Type
-		}
-		identity, err := canonicalConfigSourceForLayer(path, layer)
-		if err != nil {
-			return nil, err
-		}
-		lockPath, err := configLockFile(identity, "write")
+		lockPath, err := configLockFile(identity)
 		if err != nil {
 			return nil, err
 		}
@@ -238,8 +238,42 @@ func (n *NamespacedRESTConfig) WireTokenPersistence(ctx context.Context, source 
 		g.OAuthRefreshToken = refreshToken
 		g.OAuthTokenExpiresAt = expiresAt
 		g.OAuthRefreshExpiresAt = refreshExpiresAt
-		return Write(persistCtx, persistSource, fresh)
+		// Derive the held lock's identity from tokenPersistenceIdentity, the
+		// same helper the Lock callback and persistLoad use, so the three
+		// cannot disagree. fresh.sourceIdentity agrees with it, but only by
+		// following the path and layer four hops back through the load.
+		_, identity, err := tokenPersistenceIdentityFor(persistSource, sources)
+		if err != nil {
+			return err
+		}
+		return write(persistCtx, persistSource, fresh, writeOptions{layer: fresh.sourceLayer, writeLockHeldFor: identity})
 	})
+}
+
+// tokenPersistenceIdentityFor resolves the persistence target path and its
+// canonical write-lock identity together, so a caller cannot name one without
+// the other.
+func tokenPersistenceIdentityFor(source Source, sources []ConfigSource) (string, string, error) {
+	path, err := source()
+	if err != nil {
+		return "", "", err
+	}
+	identity, err := tokenPersistenceIdentity(sources, path)
+	if err != nil {
+		return "", "", err
+	}
+	return path, identity, nil
+}
+
+// tokenPersistenceIdentity returns the canonical identity of the config source
+// at path. The lock callback, the reload, and the write all derive the write
+// lock's identity here so the three cannot disagree.
+func tokenPersistenceIdentity(sources []ConfigSource, path string) (string, error) {
+	layer := ""
+	if selected, ok := configSourceForPath(sources, path); ok {
+		layer = selected.Type
+	}
+	return canonicalConfigSourceForLayer(path, layer)
 }
 
 func configSourceForPath(sources []ConfigSource, path string) (ConfigSource, bool) {
@@ -296,8 +330,10 @@ func resolveTokenPersistenceSource(ctx context.Context, fallback Source, stackNa
 func pickHighestSourceForStack(ctx context.Context, sources []ConfigSource, stackName string, match func(*StackConfig) bool) (ConfigSource, bool, error) {
 	// DiscoverSources returns low→high precedence, so scan in reverse.
 	for _, src := range slices.Backward(sources) {
-		loadCtx := withMigrationPersistenceSuppressed(withConfigLayer(ctx, src.Type))
-		cfg, err := Load(loadCtx, ExplicitConfigFile(src.Path))
+		cfg, err := load(ctx, ExplicitConfigFile(src.Path), loadOptions{
+			layer:                        src.Type,
+			suppressMigrationPersistence: true,
+		})
 		if err != nil {
 			return ConfigSource{}, false, fmt.Errorf("rescan OAuth persistence source %s: %w", src.Path, err)
 		}

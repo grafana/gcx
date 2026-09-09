@@ -115,6 +115,10 @@ explicit `http.Client` + `host` fields with named endpoint methods. Internal
 `toAPI()` / `fromAPI()` handles ExtraLogLabels (map ↔ array of `{key, value}`)
 and ID (string ↔ int64).
 
+> **Correction (2026-08-25):** the wire field is `label`, not `key`. The `key`
+> tag shipped, so the server stored an empty label name and Loki rejected every
+> write for the app. The array is `{label, value}`.
+
 **API quirks preserved from gcx source:**
 
 | Quirk | Behavior | Source reference |

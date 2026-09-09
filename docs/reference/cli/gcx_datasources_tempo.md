@@ -23,6 +23,7 @@ Query Tempo datasources
 ### SEE ALSO
 
 * [gcx datasources](gcx_datasources.md)	 - Manage and query Grafana datasources
+* [gcx datasources tempo baseline](gcx_datasources_tempo_baseline.md)	 - [experimental] Find healthy baseline candidates for a trace
 * [gcx datasources tempo diff](gcx_datasources_tempo_diff.md)	 - [experimental] Compare two traces (baseline vs comparison)
 * [gcx datasources tempo get](gcx_datasources_tempo_get.md)	 - Retrieve a trace by ID
 * [gcx datasources tempo labels](gcx_datasources_tempo_labels.md)	 - List trace labels or label values

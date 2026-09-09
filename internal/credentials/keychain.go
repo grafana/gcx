@@ -25,13 +25,15 @@ type keychainStore struct{}
 
 // Open returns a Store backed by the OS keychain. If no working backend is
 // reachable (unsupported platform, headless box, missing DBus), it returns a
-// Store that reports ErrUnavailable on every operation so callers can fall
-// back to plaintext. If the backend is reachable but locked, every operation
-// reports ErrLocked instead, so no secret ever falls back to plaintext.
+// Store that reports ErrUnavailable on every operation; callers must
+// propagate that failure rather than fall back to plaintext. If the backend
+// is reachable but locked, every operation reports ErrLocked instead, so no
+// secret ever falls back to plaintext either. Plaintext is only ever chosen
+// through the separate, explicit GCX_KEYCHAIN=off opt-out, not through Open.
 func Open() Store {
 	// Probe with a read for an account we never write. A working backend
 	// returns ErrNotFound; an unreachable one returns a transport/platform
-	// error, which means we should fall back to plaintext.
+	// error, which the caller must treat as fatal.
 	if _, err := keyring.Get(service, probeAccount); err != nil && !errors.Is(err, keyring.ErrNotFound) {
 		err = normalizeKeyringError(err)
 		if errors.Is(err, ErrUnavailable) {
@@ -198,7 +200,9 @@ func darwinKeychainLockedExitCode(code int) bool {
 }
 
 // unavailableStore is returned by Open when no working backend was found.
-// Every operation returns ErrUnavailable so callers fall back to plaintext.
+// Every operation returns ErrUnavailable; callers must propagate the failure
+// rather than fall back to plaintext. Plaintext is selected separately, only
+// through the explicit GCX_KEYCHAIN=off opt-out.
 type unavailableStore struct{}
 
 func (unavailableStore) Get(string) (string, error) { return "", ErrUnavailable }

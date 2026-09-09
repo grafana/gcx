@@ -149,6 +149,7 @@ this-field-is-invalid: []`
 }
 
 func TestLoad_withProviders(t *testing.T) {
+	withFakeStore(t)
 	req := require.New(t)
 
 	configYAML := `version: 1

@@ -128,7 +128,7 @@ Action-verb command tree for Grafana Cloud's Instrumentation Hub. Backed by flee
 - **`instrumentation clusters [list|get|configure|remove|wait]`** + nested **`apps`** — Declared-state read/write with tri-state flag semantics on `configure` and a per-namespace optimistic-lock guard
 - **`instrumentation services [list|get|include|exclude|clear]`** — Observed-state fleet sweep via `RunK8sDiscovery` with DWIM single-workload mutation
 
-Uses `internal/providers/instrumentation/` (provider, types, output codecs, RMW helper, helm formatter, enumeration helper) and `internal/fleet/` (shared base HTTP client, also used by the fleet provider). `check` and `explain` are thin cmd/-only wrappers around the upstream `github.com/grafana/otel-checker/checks` and `.../checks/explain` packages — no provider glue. `check --fix-plan=assistant` embeds Grafana Assistant via `internal/providers/assistant.ResolveClientOptions` + `RequireGrafanaCloud` (reused from the same auth resolution used by `gcx assistant prompt`), then calls `ChatWithApproval` directly; the two-mode dispatch (local vs. assistant, no cross-mode fallback) lives in `cmd/gcx/instrumentation/check/fixplan/`. See ADR-018 for the design.
+Uses `internal/providers/instrumentation/` (provider, types, output codecs, RMW helper, helm formatter, enumeration helper) and `internal/fleet/` (shared base HTTP client, also used by the fleet provider; it reaches Fleet Management through the `grafana-collector-app` plugin proxy on the stack — see ADR-023). `check` and `explain` are thin cmd/-only wrappers around the upstream `github.com/grafana/otel-checker/checks` and `.../checks/explain` packages — no provider glue. `check --fix-plan=assistant` embeds Grafana Assistant via `internal/providers/assistant.ResolveClientOptions` + `RequireGrafanaCloud` (reused from the same auth resolution used by `gcx assistant prompt`), then calls `ChatWithApproval` directly; the two-mode dispatch (local vs. assistant, no cross-mode fallback) lives in `cmd/gcx/instrumentation/check/fixplan/`. See ADR-018 for the design.
 
 ### 7. Configuration
 
@@ -166,9 +166,10 @@ precedence but remain ephemeral.
 are redacted in `gcx config view`. Undeclared keys and unknown providers are
 redacted by default. Keychain references are bound to their canonical source
 file, exact owner/field, and destination so another layer cannot redirect or
-overwrite a stored credential. A missing native keychain may permit a warned
-plaintext fallback for a brand-new credential; a reachable but locked or
-interaction-disabled keychain fails closed with `Keychain locked`.
+overwrite a stored credential. An unavailable native keychain fails closed,
+same as a reachable but locked or interaction-disabled keychain (`Keychain
+locked`); the only plaintext fallback path is the explicit `GCX_KEYCHAIN=off`
+opt-out.
 
 **Deep-dive:** [config-system.md](docs/architecture/config-system.md).
 
@@ -223,6 +224,8 @@ can otherwise inject Grafana auth into the wrong request.
 | [020](docs/adrs/sm-datasource-proxy/001-dual-mode-transport.md) | Synthetic Monitoring dual-mode transport: datasource proxy primary, direct SM API fallback | accepted |
 | [021](docs/adrs/assistant-provider/001-assistant-provider-and-mcp-servers-as-resources.md) | Assistant provider + MCP servers as resources | proposed |
 | [022](docs/adrs/config-v1/001-versioned-split-config-and-secret-trust.md) | Versioned Split Config and Source-Bound Secret Trust | proposed |
+| [023](docs/adrs/fleet-plugin-proxy/001-fleet-via-collector-app-proxy.md) | Fleet Management through the collector app plugin proxy | accepted |
+| [024](docs/adrs/provider-consolidation/002-shared-table-declaration.md) | Providers declare table columns instead of writing codecs | accepted |
 
 See [docs/adrs/](docs/adrs/) for all ADRs.
 

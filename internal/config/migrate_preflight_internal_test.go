@@ -201,6 +201,59 @@ contexts:
 	require.ErrorIs(t, statErr, os.ErrNotExist)
 }
 
+// TestLoadLayeredDerivesPerLayerOptionsIndependently pins the per-iteration
+// option derivation in loadLayered. Migration-persistence suppression and the
+// shared warning collector are set only for the layers that are actually
+// legacy, so a current-format layer loaded beside a legacy one must not
+// inherit them. Reusing one option value across iterations compiles and passes
+// the warning-consolidation tests, but silently marks the current-format layer
+// migrationDeferred and skips its plaintext-credential migration.
+func TestLoadLayeredDerivesPerLayerOptionsIndependently(t *testing.T) {
+	withFakeKeychain(t)
+	fixture := newLayeredMigrationFixture(t)
+	// Disjoint entry names: a legacy layer overlapping a current-format one is
+	// rejected by preflight before the loop under test runs.
+	writeLayeredMigrationFixture(t, fixture.user, `
+contexts:
+  legacyonly:
+    grafana:
+      server: https://legacy.example
+current-context: legacyonly
+`)
+	writeLayeredMigrationFixture(t, fixture.local, `version: 1
+stacks:
+  currentonly:
+    grafana:
+      server: https://current.example
+      token: plaintext-secret
+contexts:
+  currentonly:
+    stack: currentonly
+`)
+
+	var warnings bytes.Buffer
+	ctx := ContextWithWarningWriter(t.Context(), &warnings)
+	cfg, err := LoadLayered(ctx, "")
+	require.NoError(t, err)
+	require.NotNil(t, cfg.Contexts["legacyonly"])
+	require.NotNil(t, cfg.Contexts["currentonly"])
+
+	// The legacy layer was loaded with persistence suppressed: its file is
+	// unchanged and no backup was taken.
+	userOnDisk, readErr := os.ReadFile(fixture.user)
+	require.NoError(t, readErr)
+	assert.True(t, isLegacyConfig(userOnDisk))
+	_, statErr := os.Stat(fixture.user + legacyBackupSuffix)
+	require.ErrorIs(t, statErr, os.ErrNotExist)
+
+	// The current-format layer beside it did not inherit that suppression: its
+	// plaintext credential was migrated into the keychain in place.
+	localOnDisk, readErr := os.ReadFile(fixture.local)
+	require.NoError(t, readErr)
+	assert.Contains(t, string(localOnDisk), "keychain:gcx:v2:")
+	assert.NotContains(t, string(localOnDisk), "plaintext-secret")
+}
+
 func TestLoadLayeredConsolidatesLegacyMigrationWarning(t *testing.T) {
 	withFakeKeychain(t)
 	fixture := newLayeredMigrationFixture(t)

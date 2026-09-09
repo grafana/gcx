@@ -29,13 +29,18 @@ import (
 
 // keychainStoreFn returns the credentials.Store used by Load and Write. It is
 // a package-level variable so tests can inject a fake store. Production code
-// uses credentials.Open() which probes the OS keychain.
+// uses credentials.Open() which probes the OS keychain, unless the resolved
+// keychain mode is disabled, in which case credentials stay in plaintext.
 //
-// Under `go test` (detected via testing.Testing()), the default is a no-op
-// store that reports ErrUnavailable for every operation. This prevents any
-// test in any package from triggering OS-keychain prompts when it loads a
-// config file. Tests that need to exercise the keychain code path must
-// explicitly install their own store by overriding this variable.
+// GCX_KEYCHAIN=off is checked before the test short-circuit below, so a
+// deliberate opt-out is honoured even under `go test`: ErrDisabled must
+// remain reachable in-process, or no test could exercise the one path that
+// still falls back to plaintext. Otherwise, under `go test` (detected via
+// testing.Testing()), the default is a no-op store that reports
+// ErrUnavailable for every operation. This prevents any test in any package
+// from triggering OS-keychain prompts when it loads a config file. Tests that
+// need to exercise the keychain code path must explicitly install their own
+// store by overriding this variable.
 //
 //nolint:gochecknoglobals // test injection seam for the keychain backend.
 var keychainStoreFn = defaultKeychainStore
@@ -78,8 +83,18 @@ var (
 )
 
 func defaultKeychainStore() credentials.Store {
+	if keychainModeForProcess() == keychainModeDisabled {
+		return disabledStore{}
+	}
 	if testing.Testing() {
 		return testingNoopStore{}
+	}
+	return keychainStoreForMode(keychainModeEnabled)
+}
+
+func keychainStoreForMode(mode keychainMode) credentials.Store {
+	if mode == keychainModeDisabled {
+		return disabledStore{}
 	}
 	openStoreOnce.Do(func() { openedStore = credentials.Open() })
 	return openedStore
@@ -90,6 +105,14 @@ type testingNoopStore struct{}
 func (testingNoopStore) Get(string) (string, error) { return "", credentials.ErrUnavailable }
 func (testingNoopStore) Set(string, string) error   { return credentials.ErrUnavailable }
 func (testingNoopStore) Delete(string) error        { return credentials.ErrUnavailable }
+
+// disabledStore stands in for the OS keychain when the user has turned it off,
+// so credentials stay in plaintext in the config file.
+type disabledStore struct{}
+
+func (disabledStore) Get(string) (string, error) { return "", credentials.ErrDisabled }
+func (disabledStore) Set(string, string) error   { return credentials.ErrDisabled }
+func (disabledStore) Delete(string) error        { return credentials.ErrDisabled }
 
 const (
 	configFilePermissions  = 0o600
@@ -377,17 +400,6 @@ type Override func(cfg *Config) error
 
 type Source func() (string, error)
 
-type configWriteLockHeldKey struct{}
-
-func withConfigWriteLockHeld(ctx context.Context) context.Context {
-	return context.WithValue(ctx, configWriteLockHeldKey{}, true)
-}
-
-func configWriteLockIsHeld(ctx context.Context) bool {
-	held, _ := ctx.Value(configWriteLockHeldKey{}).(bool)
-	return held
-}
-
 func ExplicitConfigFile(path string) Source {
 	return func() (string, error) {
 		return path, nil
@@ -482,35 +494,42 @@ func CreateDefaultConfigFile(file string) error {
 	return nil
 }
 
-//nolint:gocyclo,nestif // Loading keeps versioning, legacy migration, source binding, and keychain migration in one ordered trust pipeline.
+// Load reads the config document named by source. It reads the ambient config
+// layer, if a caller set one through ContextWithConfigSource, once here and
+// passes it down as an explicit option.
 func Load(ctx context.Context, source Source, overrides ...Override) (Config, error) {
+	return load(ctx, source, loadOptions{layer: configLayerFromCtx(ctx)}, overrides...)
+}
+
+//nolint:gocyclo,nestif // Loading keeps versioning, legacy migration, source binding, and keychain migration in one ordered trust pipeline.
+func load(ctx context.Context, source Source, opts loadOptions, overrides ...Override) (Config, error) {
 	config := Config{}
 
 	filename, err := source()
 	if err != nil {
 		return config, err
 	}
-	layer, err := configLayerForPath(filename, configLayerFromCtx(ctx))
+	layer, err := configLayerForPath(filename, opts.layer)
 	if err != nil {
 		return config, err
 	}
 	if layer != "" {
-		ctx = withConfigLayer(ctx, layer)
+		opts.layer = layer
 	}
 
 	logging.FromContext(ctx).Debug("Loading config", slog.String("filename", filename))
 	config.Source = filename
 
-	contents, snapshotted := configSnapshotFromContext(ctx, filename)
+	contents, snapshotted := opts.snapshotFor(filename)
 	if !snapshotted {
-		contents, err = readConfigFileForLayer(filename, configLayerFromCtx(ctx))
+		contents, err = readConfigFileForLayer(filename, opts.layer)
 		if err != nil {
 			if os.IsNotExist(err) {
-				sourceIdentity, identityErr := canonicalConfigSourceForLayer(filename, configLayerFromCtx(ctx))
+				sourceIdentity, identityErr := canonicalConfigSourceForLayer(filename, opts.layer)
 				if identityErr != nil {
 					return config, identityErr
 				}
-				config.sourceLayer = configLayerFromCtx(ctx)
+				config.sourceLayer = opts.layer
 				config.bindSourceIdentity(sourceIdentity)
 				config.expectSourceAbsent = true
 			}
@@ -523,13 +542,13 @@ func Load(ctx context.Context, source Source, overrides ...Override) (Config, er
 
 	loadedLegacy := isLegacyConfig(contents)
 	if loadedLegacy {
-		config, err = migrateLegacyConfig(ctx, source, filename, contents)
+		config, err = migrateLegacyConfig(ctx, source, filename, contents, opts)
 		if err != nil {
 			return config, err
 		}
 		config.Source = filename
 		if !config.migrationDeferred {
-			persisted, readErr := readConfigFileForLayer(filename, configLayerFromCtx(ctx))
+			persisted, readErr := readConfigFileForLayer(filename, opts.layer)
 			if readErr != nil {
 				return config, readErr
 			}
@@ -547,15 +566,15 @@ func Load(ctx context.Context, source Source, overrides ...Override) (Config, er
 		}
 	}
 
-	sourceIdentity, err := canonicalConfigSourceForLayer(filename, configLayerFromCtx(ctx))
+	sourceIdentity, err := canonicalConfigSourceForLayer(filename, opts.layer)
 	if err != nil {
 		return config, err
 	}
-	config.sourceLayer = configLayerFromCtx(ctx)
+	config.sourceLayer = opts.layer
 	config.bindSourceIdentity(sourceIdentity)
 	config.sourceRevision = sha256.Sum256(contents)
 	config.hasSourceRevision = true
-	if migrationPersistenceSuppressed(ctx) {
+	if opts.suppressMigrationPersistence {
 		config.migrationDeferred = true
 	}
 
@@ -590,11 +609,11 @@ func Load(ctx context.Context, source Source, overrides ...Override) (Config, er
 	}
 
 	if !config.migrationDeferred && config.hasPlaintextSecrets() {
-		migrated, writeErr := writeConfig(ctx, source, config, true)
+		migrated, writeErr := writeConfig(ctx, source, config, opts.forWrite(), true)
 		var durabilityErr *configDurabilityError
 		switch {
 		case errors.As(writeErr, &durabilityErr) && migrated > 0:
-			if err := refreshKeychainRuntimeAfterWrite(&config, filename, sourceIdentity, configLayerFromCtx(ctx), store); err != nil {
+			if err := refreshKeychainRuntimeAfterWrite(&config, filename, sourceIdentity, opts.layer, store); err != nil {
 				return config, err
 			}
 			log.Warn("config was replaced but its directory durability barrier failed; old and new keychain generations were retained",
@@ -608,7 +627,7 @@ func Load(ctx context.Context, source Source, overrides ...Override) (Config, er
 			log.Info("migrated plaintext credentials into OS keychain",
 				"count", migrated,
 				"file", filename)
-			if err := refreshKeychainRuntimeAfterWrite(&config, filename, sourceIdentity, configLayerFromCtx(ctx), store); err != nil {
+			if err := refreshKeychainRuntimeAfterWrite(&config, filename, sourceIdentity, opts.layer, store); err != nil {
 				return config, err
 			}
 		}
@@ -640,8 +659,14 @@ type configDurabilityError struct {
 func (e *configDurabilityError) Error() string { return e.err.Error() }
 func (e *configDurabilityError) Unwrap() error { return e.err }
 
+// Write persists cfg to the document named by source. Like Load, it reads the
+// ambient config layer once here and passes it down as an explicit option.
 func Write(ctx context.Context, source Source, cfg Config) error {
-	_, err := writeConfig(ctx, source, cfg, false)
+	return write(ctx, source, cfg, writeOptions{layer: configLayerFromCtx(ctx)})
+}
+
+func write(ctx context.Context, source Source, cfg Config, opts writeOptions) error {
+	_, err := writeConfig(ctx, source, cfg, opts, false)
 	return err
 }
 
@@ -689,7 +714,7 @@ func readConfigFileForLayer(filename, layer string) ([]byte, error) {
 // could be staged (for example while the keychain is unavailable).
 //
 //nolint:gocyclo,nestif // The filesystem rename, durability barrier, and keychain commit/rollback are one atomic write protocol.
-func writeConfig(ctx context.Context, source Source, cfg Config, autoMigrationOnly bool) (int, error) {
+func writeConfig(ctx context.Context, source Source, cfg Config, opts writeOptions, autoMigrationOnly bool) (int, error) {
 	// Config contains pointer-backed stack, cloud, and context maps. Work on an
 	// isolated copy so validation failures and temporary keychain sentinel swaps
 	// cannot mutate the caller's in-memory configuration.
@@ -709,7 +734,7 @@ func writeConfig(ctx context.Context, source Source, cfg Config, autoMigrationOn
 	}
 	layer := cfg.sourceLayer
 	if layer == "" {
-		layer = configLayerFromCtx(ctx)
+		layer = opts.layer
 	}
 	layer, err = configLayerForPath(filename, layer)
 	if err != nil {
@@ -724,8 +749,12 @@ func writeConfig(ctx context.Context, source Source, cfg Config, autoMigrationOn
 	if err != nil {
 		return 0, err
 	}
-	if !configWriteLockIsHeld(ctx) {
-		writeLockPath, err := configLockFile(sourceIdentity, "write")
+	writeLockCovered, err := opts.writeLockCovers(sourceIdentity)
+	if err != nil {
+		return 0, err
+	}
+	if !writeLockCovered {
+		writeLockPath, err := configLockFile(sourceIdentity)
 		if err != nil {
 			return 0, err
 		}
@@ -884,7 +913,10 @@ func configLayerForPath(filename, declared string) (string, error) {
 	return declared, nil
 }
 
-func configLockFile(sourceIdentity, purpose string) (string, error) {
+// configLockFile returns the path of the write lock for one config source.
+// Locks are per-source: two config files never contend, and a lock held for
+// one says nothing about another.
+func configLockFile(sourceIdentity string) (string, error) {
 	stateHome := xdg.StateHome()
 	if testing.Testing() {
 		stateHome = filepath.Join(os.TempDir(), "gcx-test-state")
@@ -907,7 +939,7 @@ func configLockFile(sourceIdentity, purpose string) (string, error) {
 		return "", fmt.Errorf("secure config lock directory: %w", err)
 	}
 	digest := sha256.Sum256([]byte(sourceIdentity))
-	return filepath.Join(lockDir, fmt.Sprintf("%x.%s.lock", digest, purpose)), nil
+	return filepath.Join(lockDir, fmt.Sprintf("%x.write.lock", digest)), nil
 }
 
 func validateConfigWriteSnapshot(filename, sourceIdentity string, cfg *Config) error {
@@ -1050,7 +1082,12 @@ func configWriteTarget(filename, canonicalSource string, allowSymlink bool) (str
 // bypasses layering entirely and loads that single file.
 // Every load also records the effective context's telemetry target kind.
 func LoadLayered(ctx context.Context, explicitFile string, overrides ...Override) (Config, error) {
-	cfg, err := loadLayered(ctx, explicitFile, overrides...)
+	return loadLayeredTracked(ctx, explicitFile, loadOptions{layer: configLayerFromCtx(ctx)}, overrides...)
+}
+
+// loadLayeredTracked is LoadLayered with explicit options.
+func loadLayeredTracked(ctx context.Context, explicitFile string, opts loadOptions, overrides ...Override) (Config, error) {
+	cfg, err := loadLayered(ctx, explicitFile, opts, overrides...)
 	// Capture even when err is non-nil: the validation and credential-binding
 	// override paths below return a fully merged config, so the target is known
 	// even though the command will fail. Gating on success attributed those
@@ -1069,15 +1106,15 @@ func LoadLayered(ctx context.Context, explicitFile string, overrides ...Override
 	return cfg, err
 }
 
-func loadLayered(ctx context.Context, explicitFile string, overrides ...Override) (Config, error) {
+func loadLayered(ctx context.Context, explicitFile string, opts loadOptions, overrides ...Override) (Config, error) {
 	// --config flag bypasses layering.
 	if explicitFile != "" {
-		return loadExplicit(ctx, explicitFile, overrides...)
+		return loadExplicit(ctx, explicitFile, opts, overrides...)
 	}
 
 	// GCX_CONFIG env var also bypasses layering (preserving existing behavior).
 	if envPath := os.Getenv(ConfigFileEnvVar); envPath != "" {
-		return loadExplicit(ctx, envPath, overrides...)
+		return loadExplicit(ctx, envPath, opts, overrides...)
 	}
 
 	// Warn when configs exist in both $HOME/.config and the platform XDG dir.
@@ -1093,7 +1130,7 @@ func loadLayered(ctx context.Context, explicitFile string, overrides ...Override
 
 	// No config files — auto-create user config (current behavior).
 	if len(sources) == 0 {
-		cfg, err := Load(ctx, StandardLocation(), overrides...)
+		cfg, err := load(ctx, StandardLocation(), opts, overrides...)
 		if err != nil {
 			return cfg, err
 		}
@@ -1113,15 +1150,21 @@ func loadLayered(ctx context.Context, explicitFile string, overrides ...Override
 	// Load and merge in priority order (system → user → local).
 	var merged Config
 	for i, src := range sources {
-		loadCtx := withConfigLayer(ctx, src.Type)
+		// Derive this layer's options from opts per iteration. Every field set
+		// here — the layer, the migration-persistence suppression, the frozen
+		// source bytes — is a property of this source alone, so inheriting one
+		// layer's value into the next would silently load a layer under
+		// another layer's rules, or from another layer's content.
+		layerOpts := opts
+		layerOpts.layer = src.Type
 		if hasLegacyLayer && len(sources) > 1 && isLegacyConfig(src.snapshot) {
-			loadCtx = withMigrationPersistenceSuppressed(loadCtx)
-			loadCtx = withInMemoryMigrationWarningCollector(loadCtx, migrationWarnings)
+			layerOpts.suppressMigrationPersistence = true
+			layerOpts.migrationWarnings = migrationWarnings
 		}
 		if src.snapshot != nil {
-			loadCtx = withConfigSnapshot(loadCtx, src.Path, src.snapshot)
+			layerOpts = layerOpts.withSourceSnapshot(src.Path, src.snapshot)
 		}
-		loaded, err := Load(loadCtx, ExplicitConfigFile(src.Path))
+		loaded, err := load(ctx, ExplicitConfigFile(src.Path), layerOpts)
 		if err != nil {
 			return Config{}, err
 		}
@@ -1178,12 +1221,15 @@ func loadLayered(ctx context.Context, explicitFile string, overrides ...Override
 //
 // explicitFile is the value of the --config flag; fileType is the value of
 // the --file flag. Both may be empty.
-//
-//nolint:nestif // Legacy-layer preflight and interrupted-migration recovery are one ordered, fail-before-write selection flow.
 func LoadForWrite(ctx context.Context, explicitFile, fileType string) (Config, Source, error) {
+	return loadForWrite(ctx, explicitFile, fileType, loadOptions{layer: configLayerFromCtx(ctx)})
+}
+
+//nolint:nestif // Legacy-layer preflight and interrupted-migration recovery are one ordered, fail-before-write selection flow.
+func loadForWrite(ctx context.Context, explicitFile, fileType string, opts loadOptions) (Config, Source, error) {
 	if explicitFile != "" {
 		src := ExplicitConfigFile(explicitFile)
-		cfg, err := loadExplicit(ctx, explicitFile)
+		cfg, err := loadExplicit(ctx, explicitFile, opts)
 		return cfg, src, err
 	}
 
@@ -1203,7 +1249,8 @@ func LoadForWrite(ctx context.Context, explicitFile, fileType string) (Config, S
 		for _, s := range sources {
 			if s.Type == fileType {
 				src := ExplicitConfigFile(s.Path)
-				loadCtx := withConfigLayer(ctx, s.Type)
+				layerOpts := opts
+				layerOpts.layer = s.Type
 				contents, readErr := readConfigSource(s)
 				if readErr != nil {
 					return Config{}, nil, readErr
@@ -1213,7 +1260,7 @@ func LoadForWrite(ctx context.Context, explicitFile, fileType string) (Config, S
 				// back to legacy before Load runs, loading the snapshot prevents an
 				// un-preflighted migration; the eventual Write revision check rejects
 				// the intervening change.
-				loadCtx = withConfigSnapshot(loadCtx, s.Path, contents)
+				layerOpts = layerOpts.withSourceSnapshot(s.Path, contents)
 				targetWasLegacy := isLegacyConfig(contents)
 				if targetWasLegacy && len(sources) > 1 {
 					preflightErr := preflightLayeredSources(sources)
@@ -1229,12 +1276,12 @@ func LoadForWrite(ctx context.Context, explicitFile, fileType string) (Config, S
 					}
 					for _, preflightSource := range sources {
 						if preflightSource.Type == fileType && preflightSource.snapshot != nil {
-							loadCtx = withConfigSnapshot(loadCtx, s.Path, preflightSource.snapshot) //nolint:fatcontext // One immutable snapshot is attached to the selected layer.
+							layerOpts = layerOpts.withSourceSnapshot(s.Path, preflightSource.snapshot)
 							break
 						}
 					}
 				}
-				cfg, err := Load(loadCtx, src)
+				cfg, err := load(ctx, src, layerOpts)
 				if err == nil && targetWasLegacy {
 					remaining := remainingLegacySourceSnapshots(sources, fileType, cfg.migrationDeferred)
 					warnIncompleteLayeredMigration(ctx, remaining, nil)
@@ -1246,13 +1293,13 @@ func LoadForWrite(ctx context.Context, explicitFile, fileType string) (Config, S
 		// LoadLayered only ever created the user layer, so --file user creates and
 		// returns it; other layer types have nothing to auto-create and still error.
 		if fileType == "user" && len(sources) == 0 {
-			cfg, err := Load(ctx, StandardLocation())
+			cfg, err := load(ctx, StandardLocation(), opts)
 			return cfg, StandardLocation(), err
 		}
 		return Config{}, nil, fmt.Errorf("no %s config file found", fileType)
 	}
 
-	layered, err := LoadLayered(ctx, "")
+	layered, err := loadLayeredTracked(ctx, "", opts)
 	if err != nil {
 		return Config{}, nil, err
 	}
@@ -1325,19 +1372,19 @@ func warnIncompleteLayeredMigration(ctx context.Context, remaining []ConfigSourc
 }
 
 // loadExplicit loads a single explicit config file, bypassing layered discovery.
-func loadExplicit(ctx context.Context, path string, overrides ...Override) (Config, error) {
+func loadExplicit(ctx context.Context, path string, opts loadOptions, overrides ...Override) (Config, error) {
 	// Reaching this function means the caller explicitly selected one document
 	// through --config or GCX_CONFIG. Preserve that provenance through legacy
 	// migration; constructing an ExplicitConfigFile Source and calling Load
 	// directly is only a path resolver and does not itself grant legacy-keychain
 	// authority.
-	var err error
-	ctx, err = withExplicitLegacyMigrationConsent(ctx, path)
+	consentIdentity, err := canonicalConfigSource(path)
 	if err != nil {
 		return Config{}, err
 	}
-	ctx = withConfigLayer(ctx, "explicit")
-	cfg, err := Load(ctx, ExplicitConfigFile(path), overrides...)
+	opts.explicitLegacyMigrationConsent = consentIdentity
+	opts.layer = "explicit"
+	cfg, err := load(ctx, ExplicitConfigFile(path), opts, overrides...)
 	if err != nil {
 		return cfg, err
 	}

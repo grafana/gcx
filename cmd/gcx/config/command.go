@@ -12,7 +12,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/charmbracelet/huh"
+	"charm.land/huh/v2"
 	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/config"
@@ -197,17 +197,6 @@ func (opts *Options) MutationConfigSource() config.Source {
 		target, err := opts.resolveMutationConfigTarget()
 		return target.Path, err
 	}
-}
-
-// MutationConfigContext carries the sole discovered source's trust provenance
-// into raw login/provider mutations. Explicit --config and GCX_CONFIG paths
-// remain explicit user intent (including symlink support).
-func (opts *Options) MutationConfigContext(ctx context.Context) context.Context {
-	target, err := opts.resolveMutationConfigTarget()
-	if err != nil || target.Type == "explicit" || target.Type == "" {
-		return ctx
-	}
-	return config.ContextWithConfigSource(ctx, target)
 }
 
 // MutationConfigTarget returns the exact raw config document selected for a

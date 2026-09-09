@@ -81,7 +81,10 @@ OnCall, Fleet Management, etc.) using product-specific REST APIs.
   release, unless the surface was explicitly marked experimental before
   release. The complete v1.0.0 command surface is therefore a supported
   compatibility exception for all v1.x releases, including invocations that
-  predate or deviate from the rules above.
+  predate or deviate from the rules above. One caveat to this rule is that commands marked as experimental may be removed or
+  changed without following the normal semver conventions - see
+  [experimental-commands.md](docs/design/experimental-commands.md) for how a command
+  is marked.
 
 ## Dual-Purpose Design
 
@@ -193,13 +196,21 @@ agent mode detection, behavior changes, and opt-out mechanisms.
   credentials independently — this ensures consistent env var precedence,
   secret handling, and auth behavior across all providers.
 - **`httputils.NewDefaultClient(ctx)` for external APIs.** Provider clients
-  calling APIs outside the Grafana server (k6 Cloud, OnCall, Fleet —
+  calling APIs outside the Grafana server (k6 Cloud, OnCall —
   any domain other than `cfg.Host`) must use `httputils.NewDefaultClient(ctx)`,
   never `rest.HTTPClientFor()`. The k8s transport round-tripper injects the
   Grafana bearer token on every outgoing request, which conflicts with the
   product's own auth mechanism. `NewDefaultClient(ctx)` returns an `*http.Client`
   with `LoggingRoundTripper` and no auth injection — providers set their own
   auth headers per request.
+- **Fleet Management runs through the plugin proxy.** Fleet Management and the
+  Instrumentation Hub reach their API at `cfg.Host`, through the
+  `grafana-collector-app` plugin proxy
+  (`/api/plugin-proxy/grafana-collector-app/fleet-management-api/…`). The plugin
+  adds the Fleet Management credentials and the tenant headers server-side, so
+  the client carries the caller's Grafana credential only and uses
+  `rest.HTTPClientFor()`, the same as Faro. Fleet Management needs no
+  grafana.com token and no `fleet-management` access policy scope. See ADR-023.
 - **Synth is dual-mode (carve-out).** Synthetic Monitoring reaches its API two
   ways: (1) primary — Grafana's datasource proxy at `cfg.Host`
   (`/api/datasources/proxy/uid/<sm-uid>/sm/…`) via `rest.HTTPClientFor()` in

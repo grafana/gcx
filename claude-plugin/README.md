@@ -76,7 +76,7 @@ canonical portable skill bundle.
 | `manage-dashboards` | Operate existing dashboards: list, search, pull, push, validate, promote, restore, delete, and snapshot |
 | `investigate-alert` | Investigate why a Grafana alert is firing and what it impacts |
 | `oncall-triage` | Triage active Grafana OnCall alert groups: list, inspect, acknowledge, silence, resolve |
-| `debug-with-grafana` | Run a structured diagnostic workflow across metrics, logs, and dashboards |
+| `debug-with-grafana` | Investigate with metrics, logs, and traces; use baseline candidates and trace diff to localize request regressions |
 | `diagnose-entity-graph` | Diagnose Knowledge Graph problems: missing entities, missing edges, broken trace context propagation, service-name collisions |
 | `slo-check-status` | Check SLO health and summarize current status |
 | `slo-investigate` | Diagnose why a specific SLO is breaching or alerting |
@@ -98,7 +98,7 @@ Agents are specialist personas invoked automatically for multi-step tasks.
 
 | Agent | Purpose |
 |-------|---------|
-| `grafana-debugger` | Autonomous debugging specialist — runs the full diagnostic workflow, correlates signals across datasources, and produces a root-cause report |
+| `grafana-debugger` | Delegates to `debug-with-grafana` for question-led diagnosis and evidence-backed conclusions |
 
 ## Plugin Structure
 
@@ -120,9 +120,20 @@ claude-plugin/
 **Debugging a production incident:**
 > "Latency on the checkout service spiked 10 minutes ago. Debug it."
 
-Claude will invoke `grafana-debugger`, run the `debug-with-grafana` skill,
-query Prometheus for latency metrics, correlate with Loki error logs, and
-return a root-cause analysis with the exact query commands used.
+Claude will invoke `grafana-debugger` and follow `debug-with-grafana`: scope the
+incident with existing metrics, locate a representative anomalous trace, and
+compare qualified baseline candidates with `gcx traces diff` when supported.
+The differences direct targeted log, resource, or deployment checks. Conclusions
+include evidence links and distinguish localized changes from proven causes.
+Missing signals do not block an otherwise answerable question.
+
+**Comparing a supplied trace:**
+> "What changed in this slow trace compared with normal requests?"
+
+The skill inspects the supplied trace directly, uses `gcx traces baseline` to
+retrieve comparison candidates, qualifies them, and diffs baseline A against
+anomalous B. It checks repeatability when needed and reports sampling, partiality,
+or unavailable comparison capabilities rather than assuming a guaranteed RCA.
 
 **Dashboard creation workflow:**
 > "Create a checkout service triage dashboard in the SRE folder."

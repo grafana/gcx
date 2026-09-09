@@ -1,6 +1,7 @@
 package output
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -159,24 +160,25 @@ func (c *JQCodec) Decode(src io.Reader, value any) error {
 }
 
 // toJQInput converts an arbitrary Go value into the generic JSON primitives
-// gojq expects (map[string]any, []any, string, float64, bool, nil).
+// gojq expects (maps, slices, strings, booleans, nil, and supported numbers).
 //
-// Unstructured types are handled directly to avoid pointer-receiver
-// MarshalJSON quirks (mirrors marshalToSampleMap in format.go). For all other
-// types we round-trip through encoding/json.
+// Unstructured types are reduced to their underlying map/list shape to avoid
+// pointer-receiver MarshalJSON quirks (mirrors marshalToSampleMap in
+// format.go). All values then round-trip through encoding/json with UseNumber
+// so gojq receives supported numeric types without losing integer precision.
 func toJQInput(value any) (any, error) {
 	switch v := value.(type) {
 	case unstructured.Unstructured:
-		return v.Object, nil
+		value = v.Object
 	case *unstructured.Unstructured:
 		if v != nil {
-			return v.Object, nil
+			value = v.Object
 		}
 	case unstructured.UnstructuredList:
-		return unstructuredItemsAsMap(v.Items), nil
+		value = unstructuredItemsAsMap(v.Items)
 	case *unstructured.UnstructuredList:
 		if v != nil {
-			return unstructuredItemsAsMap(v.Items), nil
+			value = unstructuredItemsAsMap(v.Items)
 		}
 	}
 
@@ -185,7 +187,9 @@ func toJQInput(value any) (any, error) {
 		return nil, fmt.Errorf("jq: marshal input: %w", err)
 	}
 	var parsed any
-	if err := json.Unmarshal(data, &parsed); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	if err := decoder.Decode(&parsed); err != nil {
 		return nil, fmt.Errorf("jq: parse input: %w", err)
 	}
 	return parsed, nil

@@ -31,6 +31,11 @@ const (
 	// reference for the "invalid scope" / "permission denied" cloud errors.
 	AccessPolicies = "https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/create-access-policies.md"
 
+	// RolesAndPermissions documents Grafana roles and plugin permissions. It is
+	// the reference for a plugin action a user does not hold, such as
+	// grafana-collector-app:admin.
+	RolesAndPermissions = "https://grafana.com/docs/grafana/latest/administration/roles-and-permissions.md"
+
 	// GrafanaInstallation documents Grafana setup, referenced when a stack is
 	// older than the minimum supported version.
 	GrafanaInstallation = "https://grafana.com/docs/grafana/latest/setup-grafana/installation.md"

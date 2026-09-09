@@ -2,8 +2,11 @@ package irm_test
 
 import (
 	"encoding/json"
+	"maps"
 	"net/http"
 	"net/http/httptest"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/internal/config"
@@ -208,14 +211,26 @@ func TestResourceAdapter_Create(t *testing.T) {
 }
 
 func TestResourceAdapter_Update(t *testing.T) {
+	// Update reads the incident first, so the title and the severity guards
+	// compare the manifest against the server.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Contains(t, r.URL.Path, "IncidentsService.UpdateStatus")
 		var body map[string]any
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		assert.Equal(t, "inc-789", body["incidentID"])
-		writeJSON(w, map[string]any{
-			"incident": map[string]any{"incidentID": "inc-789", "title": "Updated", "status": "resolved"},
-		})
+
+		switch {
+		case strings.Contains(r.URL.Path, "IncidentsService.GetIncident"):
+			writeJSON(w, map[string]any{
+				"incident": map[string]any{"incidentID": "inc-789", "title": "Old", "status": "active"},
+			})
+		case strings.Contains(r.URL.Path, "IncidentsService.UpdateStatus"),
+			strings.Contains(r.URL.Path, "IncidentsService.UpdateTitle"):
+			writeJSON(w, map[string]any{
+				"incident": map[string]any{"incidentID": "inc-789", "title": "Updated", "status": "resolved"},
+			})
+		default:
+			t.Errorf("unexpected call to %q", r.URL.Path)
+		}
 	}))
 	defer server.Close()
 
@@ -284,6 +299,98 @@ func TestResourceAdapter_RoundTrip(t *testing.T) {
 	assert.Equal(t, originalInc.Status, restored.Status)
 	assert.Equal(t, originalInc.Severity, restored.Severity)
 	assert.Equal(t, originalInc.Description, restored.Description)
+}
+
+// TestResourceAdapter_PullDropsSeverityID proves that a pulled manifest
+// carries the severity label alone. A manifest with both fields makes an edit
+// of the label unreachable, because severityID has precedence in the client.
+func TestResourceAdapter_PullDropsSeverityID(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "IncidentsService.GetIncident") {
+			writeJSON(w, map[string]any{
+				"incident": map[string]any{
+					"incidentID": "inc-1", "title": "Outage", "status": "active",
+					"severity": "Major", "severityID": "sev-2",
+				},
+			})
+			return
+		}
+		writeJSON(w, map[string]any{
+			"incidentPreviews": []map[string]any{
+				{
+					"incidentID": "inc-1", "title": "Outage", "status": "active",
+					"severityLabel": "Major", "severityID": "sev-2",
+				},
+			},
+			"cursor": map[string]any{"hasMore": false},
+		})
+	}))
+	defer server.Close()
+
+	a := newTestAdapter(t, server, "stack-123")
+
+	got, err := a.Get(t.Context(), "inc-1", metav1.GetOptions{})
+	require.NoError(t, err)
+
+	list, err := a.List(t.Context(), metav1.ListOptions{})
+	require.NoError(t, err)
+	require.Len(t, list.Items, 1)
+
+	for name, obj := range map[string]*unstructured.Unstructured{"get": got, "list": &list.Items[0]} {
+		spec, found, err := unstructured.NestedMap(obj.Object, "spec")
+		require.NoError(t, err)
+		require.True(t, found, "%s: spec field should be present", name)
+		assert.Equal(t, "Major", spec["severity"], "%s: the pull keeps the severity label", name)
+		assert.NotContains(t, spec, "severityID", "%s: the pull removes severityID", name)
+		assert.NotContains(t, spec, "incidentID", "%s: the pull removes incidentID", name)
+	}
+}
+
+// TestBothAccessPathsEmitTheSameSpecKeys proves that the two access paths
+// describe one incident with one key set. `gcx irm incidents get|create|update`
+// converts with ToResource, and `gcx resources get|list|pull` converts through
+// the adapter. CONSTITUTION.md requires the two outputs to be identical, so a
+// `--jq .spec.severityID` caller gets one answer, whichever command produced
+// the manifest.
+func TestBothAccessPathsEmitTheSameSpecKeys(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, map[string]any{
+			"incident": map[string]any{
+				"incidentID": "inc-1", "title": "Outage", "status": "active",
+				"severity": "Major", "severityID": "sev-2",
+				"incidentType": "internal", "description": "the disk is full",
+				"labels": []map[string]any{{"key": "team", "label": "platform"}},
+			},
+		})
+	}))
+	defer server.Close()
+
+	// The resources path.
+	a := newTestAdapter(t, server, "stack-123")
+	viaAdapter, err := a.Get(t.Context(), "inc-1", metav1.GetOptions{})
+	require.NoError(t, err)
+
+	// The provider path.
+	inc, err := newTestClient(t, server).Get(t.Context(), "inc-1")
+	require.NoError(t, err)
+	res, err := irm.ToResource(*inc, "stack-123")
+	require.NoError(t, err)
+	viaProvider := res.ToUnstructured()
+
+	adapterKeys := specKeys(t, viaAdapter)
+	providerKeys := specKeys(t, &viaProvider)
+	assert.Equal(t, adapterKeys, providerKeys, "the two access paths must emit the same spec keys")
+	assert.NotContains(t, adapterKeys, "severityID")
+	assert.NotContains(t, adapterKeys, "incidentID")
+}
+
+// specKeys returns the sorted spec keys of a manifest.
+func specKeys(t *testing.T, obj *unstructured.Unstructured) []string {
+	t.Helper()
+	spec, found, err := unstructured.NestedMap(obj.Object, "spec")
+	require.NoError(t, err)
+	require.True(t, found, "spec field should be present")
+	return slices.Sorted(maps.Keys(spec))
 }
 
 func TestResourceAdapter_ListPopulatesMetadata(t *testing.T) {

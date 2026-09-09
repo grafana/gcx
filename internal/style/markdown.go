@@ -5,7 +5,8 @@ import (
 	"io"
 	"os"
 
-	"github.com/charmbracelet/glamour"
+	"charm.land/glamour/v2"
+	"charm.land/lipgloss/v2"
 	"golang.org/x/term"
 )
 
@@ -26,7 +27,7 @@ func RenderMarkdown(w io.Writer, source string) error {
 		r, err := glamour.NewTermRenderer(glamour.WithStandardStyle("dark"), glamour.WithWordWrap(0))
 		if err == nil {
 			if out, err := r.Render(source); err == nil {
-				_, err := fmt.Fprint(w, out)
+				_, err := lipgloss.Fprint(w, out)
 				return err
 			}
 		}
