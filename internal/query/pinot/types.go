@@ -59,21 +59,94 @@ func selectBody(sql string) string {
 	return leadingSetRe.ReplaceAllString(sql, "")
 }
 
-// sqlStringRe matches a single-quoted SQL literal, including escaped quotes.
-var sqlStringRe = regexp.MustCompile(`'([^']|'')*'`)
-
-// sqlQuotedIdentRe matches a double-quoted identifier, including escaped quotes.
-var sqlQuotedIdentRe = regexp.MustCompile(`"([^"]|"")*"`)
-
-var sqlLineCommentRe = regexp.MustCompile(`--[^\n]*`)
-
 var sqlBlockCommentRe = regexp.MustCompile(`(?s)/\*.*?\*/`)
 
 var sqlUnclosedBlockRe = regexp.MustCompile(`(?s)/\*.*$`)
 
+// limitBeforeTrailingCommentRe matches LIMIT n followed only by a trailing
+// comment. Appending another LIMIT would produce invalid SQL.
+var limitBeforeTrailingCommentRe = regexp.MustCompile(`(?is)\bLIMIT\s+\d+\s*(?:--[^\n]*|/\*.*?\*/)\s*$`)
+
+type lexicalMask struct {
+	strings      bool
+	quotedIdents bool
+	comments     bool
+}
+
+func blankRange(b []byte, start, end int) {
+	for i := start; i < end; i++ {
+		b[i] = ' '
+	}
+}
+
+// maskLexical blanks string literals, quoted identifiers, and/or comments in
+// scan order so `--` inside `/* */` and quotes inside comments are not misread.
+func maskLexical(sql string, mask lexicalMask) string {
+	out := []byte(sql)
+	for i := 0; i < len(out); {
+		switch {
+		case mask.strings && out[i] == '\'':
+			j := i + 1
+			for j < len(out) {
+				if out[j] == '\'' {
+					if j+1 < len(out) && out[j+1] == '\'' {
+						j += 2
+						continue
+					}
+					j++
+					break
+				}
+				j++
+			}
+			blankRange(out, i, j)
+			i = j
+		case mask.quotedIdents && out[i] == '"':
+			j := i + 1
+			for j < len(out) {
+				if out[j] == '"' {
+					if j+1 < len(out) && out[j+1] == '"' {
+						j += 2
+						continue
+					}
+					j++
+					break
+				}
+				j++
+			}
+			blankRange(out, i, j)
+			i = j
+		case mask.comments && i+1 < len(out) && out[i] == '-' && out[i+1] == '-':
+			j := i
+			for j < len(out) && out[j] != '\n' {
+				j++
+			}
+			blankRange(out, i, j)
+			i = j
+		case mask.comments && i+1 < len(out) && out[i] == '/' && out[i+1] == '*':
+			j := i + 2
+			closed := false
+			for j+1 < len(out) {
+				if out[j] == '*' && out[j+1] == '/' {
+					j += 2
+					closed = true
+					break
+				}
+				j++
+			}
+			if !closed {
+				j = len(out)
+			}
+			blankRange(out, i, j)
+			i = j
+		default:
+			i++
+		}
+	}
+	return string(out)
+}
+
 func stripQuoted(sql string) string {
-	s := sqlStringRe.ReplaceAllString(sql, " ")
-	return sqlQuotedIdentRe.ReplaceAllString(s, " ")
+	return maskLexical(sql, lexicalMask{strings: true, quotedIdents: true})
 }
 
 // fromFuncRe matches Calcite functions whose FROM argument is not a table.
@@ -90,34 +163,55 @@ func replaceSameLen(re *regexp.Regexp, s string) string {
 // Quoted identifiers are blanked only on the search copy; the parse copy
 // keeps them so FROM "my-table" still yields my-table.
 func maskNonTableFrom(sql string, maskQuotedIdents bool) string {
-	s := replaceSameLen(sqlStringRe, sql)
-	if maskQuotedIdents {
-		s = replaceSameLen(sqlQuotedIdentRe, s)
-	}
-	s = replaceSameLen(sqlLineCommentRe, s)
-	s = replaceSameLen(sqlBlockCommentRe, s)
-	s = replaceSameLen(sqlUnclosedBlockRe, s)
-	return replaceSameLen(fromFuncRe, s)
+	m := lexicalMask{strings: true, comments: true, quotedIdents: maskQuotedIdents}
+	return replaceSameLen(fromFuncRe, maskLexical(sql, m))
 }
 
 // keywordScan removes literals, quoted identifiers, and comments so UNION /
 // OPTION / LIMIT offset,count are matched only as real syntax.
 func keywordScan(sql string) string {
-	s := stripQuoted(sql)
-	s = sqlLineCommentRe.ReplaceAllString(s, " ")
-	return sqlBlockCommentRe.ReplaceAllString(s, " ")
+	return maskLexical(sql, lexicalMask{strings: true, quotedIdents: true, comments: true})
 }
 
-func hasTrailingComment(sql string) bool {
+func stripLeadingNoise(sql string) string {
+	s := sql
+	for {
+		s = strings.TrimLeft(s, " \t\r\n")
+		if len(s) >= 2 && s[0] == '-' && s[1] == '-' {
+			if idx := strings.IndexByte(s, '\n'); idx >= 0 {
+				s = s[idx+1:]
+				continue
+			}
+			return ""
+		}
+		if len(s) >= 2 && s[0] == '/' && s[1] == '*' {
+			if end := strings.Index(s, "*/"); end >= 0 {
+				s = s[end+2:]
+				continue
+			}
+			return s
+		}
+		return s
+	}
+}
+
+func limitStatementBody(sql string) string {
+	return stripLeadingNoise(selectBody(sql))
+}
+
+func limitAppendUnsafe(sql string) bool {
 	s := strings.TrimRight(stripQuoted(sql), "; \t\n")
 	if trailingLineCommentRe.MatchString(s) {
+		return true
+	}
+	if limitBeforeTrailingCommentRe.MatchString(s) {
 		return true
 	}
 	return sqlUnclosedBlockRe.MatchString(sqlBlockCommentRe.ReplaceAllString(s, " "))
 }
 
 func bail(sql string) bool {
-	if hasTrailingComment(sql) {
+	if limitAppendUnsafe(sql) {
 		return true
 	}
 	s := keywordScan(sql)
@@ -155,7 +249,7 @@ func LimitWarning(expr string, capped bool, limit, maxLimit int) string {
 // LimitSkipShapes. LIMIT offset,count is excluded because that form already
 // bounds the result. Keywords inside quotes or comments do not count.
 func LimitNotEnforced(sql string) bool {
-	if !limitStatementRe.MatchString(selectBody(sql)) {
+	if !limitStatementRe.MatchString(limitStatementBody(sql)) {
 		return false
 	}
 	if limitCommaRe.MatchString(keywordScan(sql)) {
@@ -173,7 +267,7 @@ func LimitNotEnforced(sql string) bool {
 // pass through unchanged. Keywords inside quotes or comments do not trigger a
 // bail. Real DML never reaches bail: only SELECT/WITH do.
 func EnforceLimit(sql string, limit, maxLimit int) (string, bool) {
-	if !limitStatementRe.MatchString(selectBody(sql)) {
+	if !limitStatementRe.MatchString(limitStatementBody(sql)) {
 		return sql, false
 	}
 	return querysql.EnforceLimit(sql, limit, maxLimit, bail)
