@@ -271,6 +271,20 @@ func TestGenericQueryCharacterization_PinotExplicitLimit50(t *testing.T) {
 		"explicit --limit 50 must not be upgraded to pinot.DefaultLimit")
 }
 
+func TestGenericQueryCharacterization_PinotTableOverride(t *testing.T) {
+	f := &fakeGrafana{t: t, dsType: "startree-pinot-datasource"}
+
+	_, err := runGeneric(t, f,
+		"query", "uid", "SELECT 1",
+		"--table", "events", "-o", "json")
+	require.NoError(t, err)
+
+	_, body := f.seenPost()
+	q := firstQuery(t, body)
+	assert.Equal(t, "events", q["tableName"],
+		"--table must reach the Pinot request when SQL has no FROM")
+}
+
 func TestGenericQueryCharacterization_PinotSkipLimitWarnsOnStderr(t *testing.T) {
 	f := &fakeGrafana{t: t, dsType: "startree-pinot-datasource"}
 
