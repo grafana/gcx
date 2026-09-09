@@ -397,6 +397,94 @@ func pinotTimestampRows(n int, startMS int64) [][]any {
 	return rows
 }
 
+// datasetPinot serves a fixed journey dataset with Pinot's LIMIT 1000 and the
+// same > / = cursor clauses as pinotJourneyQueryPaged.
+type datasetPinot struct {
+	mu      sync.Mutex
+	dataset [][]any
+}
+
+func (s *datasetPinot) Query(_ context.Context, _ string, req pinot.QueryRequest) (*querysql.QueryResponse, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !strings.Contains(req.RawSQL, "UNION ALL") {
+		return &querysql.QueryResponse{
+			Columns: []querysql.Column{{Name: "sdk_name"}, {Name: "os_name"}},
+			Rows:    [][]any{{"faro-web", "Mac OS"}},
+		}, nil
+	}
+	rows := s.dataset
+	if i := strings.Index(req.RawSQL, `WHERE "timestamp" = `); i >= 0 {
+		ms := parseJourneyCursorMS(req.RawSQL[i:])
+		rows = filterJourneyTS(rows, func(ts int64) bool { return ts == ms })
+	} else if i := strings.Index(req.RawSQL, `WHERE "timestamp" > `); i >= 0 {
+		ms := parseJourneyCursorMS(req.RawSQL[i:])
+		rows = filterJourneyTS(rows, func(ts int64) bool { return ts > ms })
+	}
+	if off := parseSQLOffset(req.RawSQL); off > 0 {
+		if off >= len(rows) {
+			rows = nil
+		} else {
+			rows = rows[off:]
+		}
+	}
+	if len(rows) > pinotJourneyPageSize {
+		rows = rows[:pinotJourneyPageSize]
+	}
+	return &querysql.QueryResponse{
+		Columns: []querysql.Column{{Name: "timestamp"}, {Name: "kind"}},
+		Rows:    rows,
+	}, nil
+}
+
+func parseSQLOffset(sql string) int {
+	i := strings.LastIndex(sql, "OFFSET ")
+	if i < 0 {
+		return 0
+	}
+	fields := strings.Fields(sql[i+len("OFFSET "):])
+	if len(fields) == 0 {
+		return 0
+	}
+	n, _ := strconv.Atoi(fields[0])
+	return n
+}
+
+func parseJourneyCursorMS(sqlTail string) int64 {
+	fields := strings.Fields(sqlTail)
+	for i, f := range fields {
+		if (f == "=" || f == ">") && i+1 < len(fields) {
+			n, _ := strconv.ParseInt(fields[i+1], 10, 64)
+			return n
+		}
+	}
+	return 0
+}
+
+func filterJourneyTS(rows [][]any, keep func(int64) bool) [][]any {
+	out := make([][]any, 0, len(rows))
+	for _, row := range rows {
+		ts, _ := row[0].(int64)
+		if keep(ts) {
+			out = append(out, row)
+		}
+	}
+	return out
+}
+
+func TestFetchPinotJourneyKeepsMoreThanPageInOneMillisecond(t *testing.T) {
+	t.Parallel()
+	ds := make([][]any, pinotJourneyPageSize+1)
+	for i := range ds {
+		ds[i] = []any{int64(5000), "row-" + strconv.Itoa(i)}
+	}
+	p := sessionQueryParams{AppID: "66", SessionID: "sid", AppType: appTypeWeb}
+	got, err := fetchPinotSession(context.Background(), &datasetPinot{dataset: ds}, "uid", p, time.UnixMilli(1), time.UnixMilli(9000))
+	require.NoError(t, err)
+	require.NotNil(t, got.journey)
+	assert.Equal(t, pinotJourneyPageSize+1, len(got.journey.Rows))
+}
+
 func TestAppendPinotRowsSkipsEqualJourneyRows(t *testing.T) {
 	t.Parallel()
 	cols := []querysql.Column{{Name: "timestamp"}, {Name: "kind"}}
@@ -457,6 +545,9 @@ func (s *stubLoki) Query(_ context.Context, _ string, req loki.QueryRequest) (*l
 	switch {
 	case strings.Contains(req.Query, "faro.session_recording.started"):
 		return lokiSingle("150", "event_name=faro.session_recording.started"), nil
+	case isJourney && strings.Contains(req.Query, `kind="event"`) && !req.Start.IsZero() && req.End.Sub(req.Start) == time.Millisecond:
+		// Boundary refetch; this stub's canned pages do not model leftover same-ms rows.
+		return &loki.QueryResponse{Data: loki.QueryResultData{Result: []loki.StreamEntry{{}}}}, nil
 	case isJourney && strings.Contains(req.Query, `kind="event"`):
 		page := s.eventCalls
 		s.eventCalls++
@@ -640,7 +731,56 @@ func TestFetchLokiSessionPagesUntilComplete(t *testing.T) {
 		eventKindPages++
 		assert.Equal(t, lokiEventsPageSize, stub.limits[i])
 	}
-	assert.Equal(t, 2, eventKindPages)
+	assert.Equal(t, 3, eventKindPages)
+}
+
+// rangeLoki serves a fixed event dataset newest-first with a [start, end) window.
+type rangeLoki struct {
+	dataset []loki.LogEntry
+}
+
+func (s *rangeLoki) Query(_ context.Context, _ string, req loki.QueryRequest) (*loki.QueryResponse, error) {
+	var hit []loki.LogEntry
+	for _, e := range s.dataset {
+		ts, ok := parseLokiUnixNano(e.Timestamp)
+		if !ok {
+			continue
+		}
+		if !ts.Before(req.Start) && ts.Before(req.End) {
+			hit = append(hit, e)
+		}
+	}
+	for i, j := 0, len(hit)-1; i < j; i, j = i+1, j-1 {
+		hit[i], hit[j] = hit[j], hit[i]
+	}
+	if req.Limit > 0 && len(hit) > req.Limit {
+		hit = hit[:req.Limit]
+	}
+	return &loki.QueryResponse{Data: loki.QueryResultData{Result: []loki.StreamEntry{{Values: hit}}}}, nil
+}
+
+func lokiUnixNanoMS(ms int64) string {
+	return strconv.FormatInt(time.UnixMilli(ms).UnixNano(), 10)
+}
+
+func TestFetchLokiEventPagesKeepsBoundaryRowsThatShareTimestamp(t *testing.T) {
+	t.Parallel()
+	// 1001 distinct events; only the two oldest share a timestamp. Loki pages
+	// newest-first; stepping End back 1ms must not drop the leftover boundary row.
+	ds := make([]loki.LogEntry, 0, lokiEventsPageSize+1)
+	ds = append(ds,
+		loki.LogEntry{Timestamp: lokiUnixNanoMS(1), Line: "share-a"},
+		loki.LogEntry{Timestamp: lokiUnixNanoMS(1), Line: "share-b"},
+	)
+	for i := 2; i <= lokiEventsPageSize; i++ {
+		ds = append(ds, loki.LogEntry{
+			Timestamp: lokiUnixNanoMS(int64(i)),
+			Line:      "event-" + strconv.Itoa(i),
+		})
+	}
+	got, err := fetchLokiEventPages(context.Background(), &rangeLoki{dataset: ds}, "uid", `{kind="event"}`, time.UnixMilli(0), time.UnixMilli(2000), sessionLokiQueryTimeout)
+	require.NoError(t, err)
+	assert.Equal(t, lokiEventsPageSize+1, lokiEntryCount(got))
 }
 
 func TestSessionsGetCommandRequiresDatasource(t *testing.T) {
