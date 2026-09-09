@@ -76,8 +76,28 @@ func stripQuoted(sql string) string {
 	return sqlQuotedIdentRe.ReplaceAllString(s, " ")
 }
 
-func stripSQLStrings(sql string) string {
-	return sqlStringRe.ReplaceAllString(sql, " ")
+// fromFuncRe matches Calcite functions whose FROM argument is not a table.
+var fromFuncRe = regexp.MustCompile(`(?is)\b(?:EXTRACT|SUBSTRING|SUBSTR|TRIM|OVERLAY)\s*\([^)]*\)`)
+
+func replaceSameLen(re *regexp.Regexp, s string) string {
+	return re.ReplaceAllStringFunc(s, func(m string) string {
+		return strings.Repeat(" ", len(m))
+	})
+}
+
+// maskNonTableFrom blanks regions where FROM is not a table clause, keeping
+// the string the same length so FROM positions still index the parse copy.
+// Quoted identifiers are blanked only on the search copy; the parse copy
+// keeps them so FROM "my-table" still yields my-table.
+func maskNonTableFrom(sql string, maskQuotedIdents bool) string {
+	s := replaceSameLen(sqlStringRe, sql)
+	if maskQuotedIdents {
+		s = replaceSameLen(sqlQuotedIdentRe, s)
+	}
+	s = replaceSameLen(sqlLineCommentRe, s)
+	s = replaceSameLen(sqlBlockCommentRe, s)
+	s = replaceSameLen(sqlUnclosedBlockRe, s)
+	return replaceSameLen(fromFuncRe, s)
 }
 
 // keywordScan removes literals, quoted identifiers, and comments so UNION /
@@ -159,10 +179,6 @@ func EnforceLimit(sql string, limit, maxLimit int) (string, bool) {
 	return querysql.EnforceLimit(sql, limit, maxLimit, bail)
 }
 
-// extractCallRe matches EXTRACT(...) so a FROM inside the call is not treated
-// as a table (e.g. EXTRACT(YEAR FROM ts)).
-var extractCallRe = regexp.MustCompile(`(?is)\bEXTRACT\s*\([^)]*\)`)
-
 var fromKeywordRe = regexp.MustCompile(`(?i)\bFROM\b`)
 
 var quotedTableRe = regexp.MustCompile(`^"([^"]+)"`)
@@ -177,15 +193,17 @@ var identTableRe = regexp.MustCompile(`^([a-zA-Z_][a-zA-Z0-9_]*)`)
 var ErrTableNameRequired = errors.New("could not derive a table name from the SQL. StarTree needs one to load schema and expand macros before it runs the query. Pass --table <name> (a real table the query uses)")
 
 // ExtractTableName returns the first FROM table we can be confident about, or
-// empty if the shape is unclear. String literals and EXTRACT(...) are stripped
-// first. FROM ( is skipped so a subquery or UNION wrapper yields the first
-// inner table (SELECT … FROM (SELECT col FROM events) → events). Used to fill
+// empty if the shape is unclear. FROM inside strings, quoted identifiers,
+// comments, and EXTRACT/TRIM/SUBSTRING/OVERLAY calls is ignored. FROM ( is
+// skipped so a subquery or UNION wrapper yields the first inner table
+// (SELECT … FROM (SELECT col FROM events) → events). An unclosed /* blanks
+// only that tail, so a real FROM before it is still used. Used to fill
 // StarTree's required tableName field; Pinot still executes pinotQlCode.
 func ExtractTableName(sql string) string {
-	s := stripSQLStrings(sql)
-	s = extractCallRe.ReplaceAllString(s, " ")
-	for _, loc := range fromKeywordRe.FindAllStringIndex(s, -1) {
-		if name := tableNameAfterFrom(s[loc[1]:]); name != "" {
+	search := maskNonTableFrom(sql, true)
+	parse := maskNonTableFrom(sql, false)
+	for _, loc := range fromKeywordRe.FindAllStringIndex(search, -1) {
+		if name := tableNameAfterFrom(parse[loc[1]:]); name != "" {
 			return name
 		}
 	}
@@ -193,7 +211,7 @@ func ExtractTableName(sql string) string {
 }
 
 func tableNameAfterFrom(after string) string {
-	rest := strings.TrimLeft(after, " \t\n")
+	rest := strings.TrimLeft(after, " \t\n\r")
 	if rest == "" || rest[0] == '(' {
 		return ""
 	}
@@ -203,11 +221,11 @@ func tableNameAfterFrom(after string) string {
 	}
 	parts := []string{part}
 	for {
-		rest = strings.TrimLeft(rest, " \t\n")
+		rest = strings.TrimLeft(rest, " \t\n\r")
 		if rest == "" || rest[0] != '.' {
 			break
 		}
-		rest = strings.TrimLeft(rest[1:], " \t\n")
+		rest = strings.TrimLeft(rest[1:], " \t\n\r")
 		part, rest, ok = tableIdentSegment(rest)
 		if !ok {
 			return ""

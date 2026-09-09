@@ -157,6 +157,32 @@ func TestQuery_ExplicitTableNameOverridesExtract(t *testing.T) {
 	assert.Equal(t, "SELECT 1 FROM (SELECT 1) journey", q["pinotQlCode"])
 }
 
+func TestQuery_IgnoresFromInsideComment(t *testing.T) {
+	var captured map[string]any
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(raw, &captured)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"results":{"A":{"frames":[{"schema":{"fields":[{"name":"v","type":"number"}]},"data":{"values":[[1]]}}],"status":200}}}`))
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server.URL)
+	_, err := client.Query(context.Background(), "pinot-uid", pinot.QueryRequest{
+		RawSQL: "SELECT 1 -- FROM events\nFROM t",
+	})
+	require.NoError(t, err)
+
+	queries, ok := captured["queries"].([]any)
+	require.True(t, ok)
+	require.Len(t, queries, 1)
+	q, ok := queries[0].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "t", q["tableName"])
+}
+
 func TestQuery_SubqueryExtractsInnerTable(t *testing.T) {
 	var captured map[string]any
 
