@@ -563,7 +563,7 @@ func TestFetchLokiSession(t *testing.T) {
 	t.Parallel()
 	stub := &stubLoki{metaLine: `sdk_name=faro-web os_name="Mac OS" browser_name=Chrome`}
 	p := sessionQueryParams{AppID: "66", SessionID: "sid"}
-	got, err := fetchLokiSession(context.Background(), stub, "uid", p, time.Unix(0, 0), time.Unix(1, 0))
+	got, err := fetchLokiSession(context.Background(), stub, "uid", p, time.Unix(0, 0), time.Unix(1, 0), sessionLokiQueryTimeout)
 	require.NoError(t, err)
 	dump := got.dump()
 	assert.Contains(t, dump, "sdk_name=faro-web")
@@ -593,7 +593,7 @@ func TestFetchLokiSessionInfersMobile(t *testing.T) {
 	t.Parallel()
 	stub := &stubLoki{metaLine: "sdk_name=@grafana/faro-react-native os_name=iOS"}
 	p := sessionQueryParams{AppID: "96", SessionID: "sid"}
-	_, err := fetchLokiSession(context.Background(), stub, "uid", p, time.Unix(0, 0), time.Unix(1, 0))
+	_, err := fetchLokiSession(context.Background(), stub, "uid", p, time.Unix(0, 0), time.Unix(1, 0), sessionLokiQueryTimeout)
 	require.NoError(t, err)
 	require.Len(t, stub.queries, 6)
 	assert.Contains(t, lokiMeasurementQueryFrom(stub.queries), `type!="app_memory"`)
@@ -604,7 +604,7 @@ func TestFetchLokiSessionEmpty(t *testing.T) {
 	t.Parallel()
 	stub := &stubLoki{empty: true}
 	p := sessionQueryParams{AppID: "66", SessionID: "missing"}
-	_, err := fetchLokiSession(context.Background(), stub, "uid", p, time.Unix(0, 0), time.Unix(1, 0))
+	_, err := fetchLokiSession(context.Background(), stub, "uid", p, time.Unix(0, 0), time.Unix(1, 0), sessionLokiQueryTimeout)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no telemetry for session missing")
 }
@@ -618,7 +618,7 @@ func (hangLoki) Query(ctx context.Context, _ string, _ loki.QueryRequest) (*loki
 
 func TestFetchLokiSessionTimeoutExits(t *testing.T) {
 	p := sessionQueryParams{AppID: "67", SessionID: "4JPV1T7Nyi"}
-	_, err := fetchLokiSessionTimed(context.Background(), hangLoki{}, "uid", p, time.Unix(0, 0), time.Unix(1, 0), 20*time.Millisecond)
+	_, err := fetchLokiSession(context.Background(), hangLoki{}, "uid", p, time.Unix(0, 0), time.Unix(1, 0), 20*time.Millisecond)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "loki query timed out")
 	assert.Contains(t, err.Error(), "4JPV1T7Nyi")
@@ -633,7 +633,7 @@ func TestFetchLokiSessionPagesUntilComplete(t *testing.T) {
 		eventPages: []int{lokiEventsPageSize, 4},
 	}
 	p := sessionQueryParams{AppID: "66", SessionID: "sid"}
-	got, err := fetchLokiSession(context.Background(), stub, "uid", p, time.Unix(0, 0), time.Unix(10, 0))
+	got, err := fetchLokiSession(context.Background(), stub, "uid", p, time.Unix(0, 0), time.Unix(10, 0), sessionLokiQueryTimeout)
 	require.NoError(t, err)
 	otherKinds := 3 // exception, log, measurement each return 1 row
 	assert.Equal(t, lokiEventsPageSize+4+otherKinds, lokiEntryCount(got.events))
