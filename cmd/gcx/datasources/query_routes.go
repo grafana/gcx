@@ -279,7 +279,7 @@ func dispatchClickHouse(ctx context.Context, req genericQueryRequest) (any, erro
 }
 
 func dispatchPinot(ctx context.Context, req genericQueryRequest) (any, error) {
-	sql, capped := pinot.EnforceLimit(req.expr, 100, 1000)
+	sql, capped := pinot.EnforceLimit(req.expr, req.limit, 1000)
 	if capped {
 		cmdio.Warning(req.warn, "LIMIT in query exceeds the maximum of 1000 and was capped")
 	}

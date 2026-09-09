@@ -88,7 +88,9 @@ var fromKeywordRe = regexp.MustCompile(`(?i)\bFROM\b`)
 
 var quotedTableRe = regexp.MustCompile(`^"([^"]+)"`)
 
-var identTableRe = regexp.MustCompile(`^([a-zA-Z_][a-zA-Z0-9_.]*)`)
+// One unquoted identifier segment. Dots are walked separately so
+// "db"."events" and db."events" join the same way as my_db.events.
+var identTableRe = regexp.MustCompile(`^([a-zA-Z_][a-zA-Z0-9_]*)`)
 
 // ErrTableNameRequired is returned when StarTree's tableName field cannot be
 // filled from SQL and the caller did not supply an override. The plugin
@@ -116,18 +118,42 @@ func tableNameAfterFrom(after string) string {
 	if rest == "" || rest[0] == '(' {
 		return ""
 	}
+	part, rest, ok := tableIdentSegment(rest)
+	if !ok {
+		return ""
+	}
+	parts := []string{part}
+	for {
+		rest = strings.TrimLeft(rest, " \t\n")
+		if rest == "" || rest[0] != '.' {
+			break
+		}
+		rest = strings.TrimLeft(rest[1:], " \t\n")
+		part, rest, ok = tableIdentSegment(rest)
+		if !ok {
+			return ""
+		}
+		parts = append(parts, part)
+	}
+	return strings.Join(parts, ".")
+}
+
+func tableIdentSegment(rest string) (string, string, bool) {
+	if rest == "" {
+		return "", rest, false
+	}
 	if rest[0] == '"' {
 		m := quotedTableRe.FindStringSubmatch(rest)
 		if len(m) < 2 {
-			return ""
+			return "", rest, false
 		}
-		return m[1]
+		return m[1], rest[len(m[0]):], true
 	}
 	m := identTableRe.FindStringSubmatch(rest)
 	if len(m) < 2 {
-		return ""
+		return "", rest, false
 	}
-	return m[1]
+	return m[1], rest[len(m[0]):], true
 }
 
 // ResolveTableName returns override when set, otherwise ExtractTableName(sql).
