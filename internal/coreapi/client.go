@@ -15,10 +15,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"slices"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/providers"
 	"k8s.io/client-go/rest"
 )
 
@@ -146,46 +146,7 @@ func doStatus(ctx context.Context, c *Client, method, path string, body any, not
 	return nil
 }
 
-// errorResponse is the standard Grafana core API error body.
-type errorResponse struct {
-	Message string `json:"message"`
-}
-
-// HandleErrorResponse reads an error response body and returns a formatted
-// error, preferring Grafana's {"message": "..."} field when present.
+// HandleErrorResponse uses the shared provider handler to format an error response.
 func HandleErrorResponse(resp *http.Response) error {
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("request failed with status %d (could not read body: %w)", resp.StatusCode, err)
-	}
-
-	var errResp errorResponse
-	if err := json.Unmarshal(body, &errResp); err == nil && errResp.Message != "" {
-		return fmt.Errorf("request failed with status %d: %s", resp.StatusCode, errResp.Message)
-	}
-	if len(body) > 0 {
-		return fmt.Errorf("request failed with status %d: %s", resp.StatusCode, string(body))
-	}
-	return fmt.Errorf("request failed with status %d", resp.StatusCode)
-}
-
-// ReadInput reads a JSON (or other) spec from path, or from stdin when path is
-// "-". It is the shared file-or-stdin reader for provider `-f/--file` flags. A
-// nil stdin falls back to os.Stdin.
-func ReadInput(path string, stdin io.Reader) ([]byte, error) {
-	if path == "-" {
-		if stdin == nil {
-			stdin = os.Stdin
-		}
-		data, err := io.ReadAll(stdin)
-		if err != nil {
-			return nil, fmt.Errorf("reading stdin: %w", err)
-		}
-		return data, nil
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("reading %s: %w", path, err)
-	}
-	return data, nil
+	return providers.HandleErrorResponse(resp)
 }

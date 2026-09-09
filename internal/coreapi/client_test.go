@@ -6,9 +6,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/internal/config"
@@ -124,25 +121,4 @@ func TestDoStatus_Error(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "500")
 	assert.Contains(t, err.Error(), "boom")
-}
-
-func TestReadInput(t *testing.T) {
-	t.Run("reads from stdin when path is -", func(t *testing.T) {
-		got, err := coreapi.ReadInput("-", strings.NewReader(`{"a":1}`))
-		require.NoError(t, err)
-		assert.JSONEq(t, `{"a":1}`, string(got))
-	})
-
-	t.Run("reads from file", func(t *testing.T) {
-		path := filepath.Join(t.TempDir(), "spec.json")
-		require.NoError(t, os.WriteFile(path, []byte(`{"b":2}`), 0o600))
-		got, err := coreapi.ReadInput(path, nil)
-		require.NoError(t, err)
-		assert.JSONEq(t, `{"b":2}`, string(got))
-	})
-
-	t.Run("errors on missing file", func(t *testing.T) {
-		_, err := coreapi.ReadInput(filepath.Join(t.TempDir(), "nope.json"), nil)
-		require.Error(t, err)
-	})
 }
