@@ -131,6 +131,7 @@ type OnCallAPI interface {
 	CreateEscalationPolicy(ctx context.Context, p EscalationPolicy) (*EscalationPolicy, error)
 	UpdateEscalationPolicy(ctx context.Context, id string, p EscalationPolicy) (*EscalationPolicy, error)
 	DeleteEscalationPolicy(ctx context.Context, id string) error
+	MoveEscalationPolicy(ctx context.Context, id string, position int) error
 	ListEscalationStepOptions(ctx context.Context) ([]EscalationStepOption, error)
 
 	ListSchedules(ctx context.Context) ([]Schedule, error)
@@ -151,6 +152,7 @@ type OnCallAPI interface {
 	CreateRoute(ctx context.Context, r Route) (*Route, error)
 	UpdateRoute(ctx context.Context, id string, r Route) (*Route, error)
 	DeleteRoute(ctx context.Context, id string) error
+	MoveRoute(ctx context.Context, id string, position int) error
 	ListRouteFilterTypes(ctx context.Context) ([]RouteFilterType, error)
 
 	ListWebhooks(ctx context.Context) ([]Webhook, error)

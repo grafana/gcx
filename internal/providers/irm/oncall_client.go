@@ -384,6 +384,12 @@ func (c *OnCallClient) DeleteEscalationPolicy(ctx context.Context, id string) er
 	return deleteResource(ctx, c, escalationPoliciesPath, id, "escalation policy")
 }
 
+// MoveEscalationPolicy moves an escalation step to a zero-based position
+// inside its chain. The backend renumbers the other steps of the chain.
+func (c *OnCallClient) MoveEscalationPolicy(ctx context.Context, id string, position int) error {
+	return c.moveToPosition(ctx, escalationPoliciesPath, id, position, "escalation policy")
+}
+
 // ListEscalationStepOptions fetches the catalog of allowed `step` values from
 // GET /escalation_policies/escalation_options/.
 func (c *OnCallClient) ListEscalationStepOptions(ctx context.Context) ([]EscalationStepOption, error) {
@@ -484,6 +490,36 @@ func (c *OnCallClient) UpdateRoute(ctx context.Context, id string, r Route) (*Ro
 
 func (c *OnCallClient) DeleteRoute(ctx context.Context, id string) error {
 	return deleteResource(ctx, c, routesPath, id, "route")
+}
+
+// MoveRoute moves a route to a zero-based position inside its integration.
+// The backend renumbers the other routes of the integration.
+func (c *OnCallClient) MoveRoute(ctx context.Context, id string, position int) error {
+	return c.moveToPosition(ctx, routesPath, id, position, "route")
+}
+
+// moveToPosition calls the move_to_position action of an ordered resource.
+// The backend takes the target index as a query parameter, and it answers with
+// an empty body, so there is no applied index to read back. An index past the
+// end of the list gives HTTP 400 "Invalid position": the backend does not
+// clamp the index.
+func (c *OnCallClient) moveToPosition(ctx context.Context, basePath, id string, position int, resourceType string) error {
+	params := url.Values{"position": []string{strconv.Itoa(position)}}
+	path := pathWithParams(fmt.Sprintf("%s%s/move_to_position/", basePath, url.PathEscape(id)), params)
+
+	resp, err := c.DoRequest(ctx, http.MethodPut, path, nil)
+	if err != nil {
+		return fmt.Errorf("irm: move %s: %w", resourceType, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return fmt.Errorf("irm: %s %q not found", resourceType, id)
+	}
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		return providers.HandleErrorResponse(resp)
+	}
+	return nil
 }
 
 // ListRouteFilterTypes reads the allowed filtering_term_type values from the
