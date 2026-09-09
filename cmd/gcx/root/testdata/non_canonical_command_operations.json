@@ -30,6 +30,7 @@
   "gcx datasources bigquery describe-table",
   "gcx datasources clickhouse describe-table",
   "gcx datasources health",
+  "gcx datasources mssql describe-table",
   "gcx datasources mysql describe-table",
   "gcx datasources tempo baseline",
   "gcx datasources postgres describe-table",
