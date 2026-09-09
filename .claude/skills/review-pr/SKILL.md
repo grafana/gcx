@@ -162,6 +162,15 @@ Silence is a valid result. If there are no findings, say so in one line — and
 post that line. A review that ends without posting cannot be told apart from
 one that never ran. Never invent a finding.
 
+Publish one review with `event: COMMENT`, using the mechanics below. Use the
+workflow's **Review head** as `commit_id` and append its **Review marker** to
+the summary as an HTML comment, after the closing line. The workflow checks
+that this run published a review for that commit before adding its label.
+
+If publication is denied, stop and report the failed command. Do not retry it
+through scripts, post test comments, or move inline findings into a regular PR
+comment. A permission failure needs a workflow fix, not a different report.
+
 ## Offering to post the review
 
 After the report, offer to post it to the PR as inline comments. Do not post
@@ -183,11 +192,23 @@ judges the code. The event judges a colleague's work, and that choice is theirs.
 ### Mechanics
 
 One `POST` creates the whole review, both the summary body and every inline
-comment. The author then gets one notification instead of ten:
+comment. The author then gets one notification instead of ten. Pass the JSON
+directly on stdin; CI does not allow creating payload files. A quoted heredoc
+keeps backticks, dollar signs, and suggestions literal:
 
 ```bash
-gh api repos/{owner}/{repo}/pulls/{n}/reviews -X POST --input review.json
+gh api repos/{owner}/{repo}/pulls/{n}/reviews -X POST --input - <<'REVIEW_JSON'
+{
+  "event": "COMMENT",
+  "commit_id": "<reviewed head SHA>",
+  "body": "<summary and, in CI, the review marker>",
+  "comments": []
+}
+REVIEW_JSON
 ```
+
+Replace the placeholders, use the chosen event for a human-invoked review,
+and put the inline findings in `comments`. Leave it empty for a clean review.
 
 Each comment needs `path`, `line`, and `side`. Use `RIGHT` for the file after
 the change. A range also needs `start_line` and `start_side`.

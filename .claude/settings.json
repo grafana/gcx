@@ -10,6 +10,7 @@
       "Bash(git fetch:*)",
       "Bash(git log:*)",
       "Bash(git show:*)",
+      "Bash(gh api repos/grafana/gcx/pulls/*/reviews -X POST *)",
       "Bash(gh issue list:*)",
       "Bash(gh issue view:*)",
       "Bash(gh pr comment:*)",
