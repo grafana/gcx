@@ -66,6 +66,7 @@ func TestQueryExploreURL(t *testing.T) {
 			DatasourceUID:  "pinot-uid",
 			DatasourceType: querypinot.DatasourceType,
 			Expr:           "SELECT 1",
+			TableName:      "events",
 			From:           "2026-05-10T10:00:00Z",
 			To:             "2026-05-10T11:00:00Z",
 		})
@@ -74,12 +75,14 @@ func TestQueryExploreURL(t *testing.T) {
 		params := mustParseURL(t, got).Query()
 		assert.Contains(t, params.Get("panes"), `"from":"2026-05-10T10:00:00Z"`)
 		assert.Contains(t, params.Get("panes"), `"to":"2026-05-10T11:00:00Z"`)
+		assert.Contains(t, params.Get("panes"), `"tableName":"events"`)
 	})
 
 	t.Run("returns empty for missing required fields", func(t *testing.T) {
 		assert.Empty(t, pinot.QueryExploreURL("", dsquery.ExploreQuery{DatasourceUID: "pinot-uid", Expr: "SELECT 1"}))
 		assert.Empty(t, pinot.QueryExploreURL("https://mystack.grafana.net", dsquery.ExploreQuery{Expr: "SELECT 1"}))
 		assert.Empty(t, pinot.QueryExploreURL("https://mystack.grafana.net", dsquery.ExploreQuery{DatasourceUID: "pinot-uid"}))
+		assert.Empty(t, pinot.QueryExploreURL("https://mystack.grafana.net", dsquery.ExploreQuery{DatasourceUID: "pinot-uid", Expr: "SELECT 1"}))
 	})
 }
 

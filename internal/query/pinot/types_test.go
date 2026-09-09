@@ -92,6 +92,9 @@ func TestEnforceLimit(t *testing.T) {
 		{"bail on trailing line comment", "SELECT 1 -- keep going", 100, "SELECT 1 -- keep going", false},
 		{"appends LIMIT when delete is only a literal", "SELECT * FROM t WHERE action = 'delete'", 100, "SELECT * FROM t WHERE action = 'delete' LIMIT 100", false},
 		{"appends LIMIT when -- is only a literal", "SELECT '--' FROM t", 100, "SELECT '--' FROM t LIMIT 100", false},
+		{"appends LIMIT when UNION is only a literal", "SELECT 'UNION' FROM t", 100, "SELECT 'UNION' FROM t LIMIT 100", false},
+		{"appends LIMIT when OPTION is only a literal", "SELECT * FROM t WHERE note = 'OPTION(timeoutMs=1)'", 100, "SELECT * FROM t WHERE note = 'OPTION(timeoutMs=1)' LIMIT 100", false},
+		{"appends LIMIT when LIMIT offset,count is only a literal", "SELECT * FROM t WHERE hint = 'LIMIT 10, 20'", 100, "SELECT * FROM t WHERE hint = 'LIMIT 10, 20' LIMIT 100", false},
 		{
 			"appends LIMIT to multi-line SELECT",
 			"SELECT * FROM t\nORDER BY ts DESC",
@@ -128,6 +131,9 @@ func TestLimitNotEnforced(t *testing.T) {
 		{"insert never reaches bail", "INSERT INTO t VALUES (1)", false},
 		{"trailing comment skips enforcement", "SELECT 1 -- keep going", true},
 		{"dml word in literal is not union/offset", "SELECT * FROM t WHERE action = 'delete'", false},
+		{"union word in literal is not a union", "SELECT 'UNION' FROM t", false},
+		{"option word in literal is not an option clause", "SELECT * FROM t WHERE note = 'OPTION(timeoutMs=1)'", false},
+		{"limit offset,count in literal is not that form", "SELECT * FROM t WHERE hint = 'LIMIT 10, 20'", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
