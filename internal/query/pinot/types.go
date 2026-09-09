@@ -173,6 +173,70 @@ func keywordScan(sql string) string {
 	return maskLexical(sql, lexicalMask{strings: true, quotedIdents: true, comments: true})
 }
 
+// stripLineComments blanks -- line comments while skipping string literals,
+// quoted identifiers, and block comments (without altering block comment text).
+// Used before unclosed-block detection so /* inside a line comment is ignored.
+func stripLineComments(sql string) string {
+	out := []byte(sql)
+	for i := 0; i < len(out); {
+		switch {
+		case out[i] == '\'':
+			j := i + 1
+			for j < len(out) {
+				if out[j] == '\'' {
+					if j+1 < len(out) && out[j+1] == '\'' {
+						j += 2
+						continue
+					}
+					j++
+					break
+				}
+				j++
+			}
+			i = j
+		case out[i] == '"':
+			j := i + 1
+			for j < len(out) {
+				if out[j] == '"' {
+					if j+1 < len(out) && out[j+1] == '"' {
+						j += 2
+						continue
+					}
+					j++
+					break
+				}
+				j++
+			}
+			i = j
+		case i+1 < len(out) && out[i] == '/' && out[i+1] == '*':
+			j := i + 2
+			closed := false
+			for j+1 < len(out) {
+				if out[j] == '*' && out[j+1] == '/' {
+					j += 2
+					closed = true
+					break
+				}
+				j++
+			}
+			if !closed {
+				j = len(out)
+			}
+			i = j
+		case i+1 < len(out) && out[i] == '-' && out[i+1] == '-':
+			j := i
+			for j < len(out) && out[j] != '\n' {
+				j++
+			}
+			blankRange(out, i, j)
+			i = j
+		default:
+			i++
+		}
+	}
+	return string(out)
+}
+
 func stripLeadingNoise(sql string) string {
 	s := sql
 	for {
@@ -209,6 +273,7 @@ func limitAppendUnsafe(sql string) bool {
 	if limitBeforeTrailingCommentRe.MatchString(s) {
 		return true
 	}
+	s = stripLineComments(s)
 	return sqlUnclosedBlockRe.MatchString(sqlBlockCommentRe.ReplaceAllString(s, " "))
 }
 
