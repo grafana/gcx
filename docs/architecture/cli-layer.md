@@ -585,7 +585,11 @@ empty), and the agents codec's spill summary previews and counts the
 envelope's items. The opt-in is deliberate: a structural multi-key heuristic
 would misclassify detail objects that happen to contain one nested array.
 
-Built-in codecs: `json` and `yaml` (always available). Commands register additional ones (e.g. `text`, `wide`, `graph`) by calling `RegisterCustomCodec` before `BindFlags`.
+Use `Options.Encode` for structured output: `Codec().Encode` bypasses jq,
+field selection, and discovery. jq runs before formatting or spilling; see
+[the output contract](../design/output.md#16-jq-transformation).
+
+Built-in codecs: `json`, `yaml`, and `agents` (always available). Commands register additional ones (e.g. `text`, `wide`, `graph`) by calling `RegisterCustomCodec` before `BindFlags`.
 
 The `graph` codec is a special-purpose output format available on per-kind `query` subcommands (`metrics query`, `logs query`, `profiles series`, etc.) and `synth checks status`. It renders Prometheus or Loki query results (or check status metrics) as a terminal line chart using `ntcharts` and `lipgloss` (via `internal/graph`). Terminal width is detected at render time via `golang.org/x/term`.
 
