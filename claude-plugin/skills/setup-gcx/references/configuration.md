@@ -214,9 +214,10 @@ credentials:
   keychain: off
 ```
 
-`GCX_KEYCHAIN` overrides that policy. Precedence is `GCX_KEYCHAIN`, then an
-explicit `--config`/`GCX_CONFIG` file, user config, system config, and default
-`on`. An automatically discovered repository `.gcx.yaml` cannot set
+`GCX_KEYCHAIN` overrides that policy. With `--config` or `GCX_CONFIG`, precedence
+is environment, selected file, then default `on`; user and system files are
+bypassed even when the selected file omits the field. Otherwise precedence is
+environment, user config, system config, then default `on`. An automatically discovered repository `.gcx.yaml` cannot set
 `credentials.keychain`: gcx ignores it with a warning but still merges its
 other fields. Invalid trusted config fails validation; an invalid environment
 value warns and resolves to `on`.

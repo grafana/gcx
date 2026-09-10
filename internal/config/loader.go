@@ -1213,7 +1213,7 @@ func loadLayered(ctx context.Context, explicitFile string, opts loadOptions, ove
 	// and bind it to the parent options so each per-layer copy below inherits
 	// it. A layer that re-derived the policy from its own bytes would obey a
 	// different decision than the load it is part of.
-	policy, err := resolveKeychainPolicy(ctx, sources)
+	policy, err := resolveKeychainPolicyForSources(ctx, opts, sources)
 	if err != nil {
 		return Config{}, err
 	}

@@ -178,18 +178,17 @@ Configuration has two mutually exclusive loading modes:
 `credentials.keychain` is a storage policy rather than ordinary repository
 configuration. The accepted values are `on` and `off` (case-insensitive after
 trimming), and absence resolves to `on`. Before creating a credential store,
-gcx resolves one policy for the invocation:
+gcx resolves one policy for the invocation. Precedence, highest first:
 
 ```text
-system config -> user config -> [ignore local credentials policy]
-       -> explicit selection rules -> GCX_KEYCHAIN override
-       -> one resolved store for load + write
+Explicit file: GCX_KEYCHAIN -> selected file -> default on
+Discovery:     GCX_KEYCHAIN -> user config -> system config -> default on
 ```
 
-More precisely, the precedence is `GCX_KEYCHAIN`, then a deliberately selected
-`--config` or `GCX_CONFIG` file, then user config, system config, and the
-default `on`. An automatically discovered local `.gcx.yaml` can still merge its
-ordinary fields, but its `credentials.keychain` value is ignored with an
+Selecting `--config` or `GCX_CONFIG` bypasses user and system layers entirely.
+If the selected file omits the field, it defaults to `on` rather than inheriting
+another file's policy. An automatically discovered local `.gcx.yaml` can still
+merge its ordinary fields, but its `credentials.keychain` value is ignored with an
 actionable warning. Explicitly selecting that file makes the policy trusted —
 durably via `GCX_CONFIG`, or for the current command only via `--config`, which
 must be repeated on every later invocation to keep trusting the same file.

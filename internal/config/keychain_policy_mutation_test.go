@@ -308,3 +308,101 @@ func TestSetKeychainPolicyRejectsSourceIdentityChangeAfterLockSelection(t *testi
 	require.NoError(t, readErr)
 	assert.Equal(t, preferredContents, preferredAfter, "a rediscovered owner must not be written under another source's lock")
 }
+
+// Default discovery must keep the intended policy through the layered loader.
+func TestDiscoveredKeychainPolicyMutation(t *testing.T) {
+	tests := []struct {
+		name, initial, value                         string
+		unset, unavailable, wantError, wantPlaintext bool
+	}{
+		{name: "enable", initial: "off", value: "on"},
+		{name: "unset enables", initial: "off", unset: true},
+		{name: "disable", initial: "on", value: "off", wantPlaintext: true},
+		{name: "enable unavailable", initial: "off", value: "on", unavailable: true, wantError: true},
+		{name: "unset unavailable", initial: "off", unset: true, unavailable: true, wantError: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fixture := newKeychainPolicyFixture(t)
+			writeKeychainPolicyConfig(t, fixture.user, tt.initial, "mutation-token", false)
+			before, err := os.ReadFile(fixture.user)
+			require.NoError(t, err)
+			store := &policyMutationStore{entries: map[string]string{}}
+			if tt.unavailable {
+				store.err = credentials.ErrUnavailable
+			}
+			t.Cleanup(config.SetKeychainStoreFnForTest(func() credentials.Store { return store }))
+			cmd := commandconfig.Command()
+			cmd.SilenceErrors = true
+			cmd.SilenceUsage = true
+			cmd.SetOut(&bytes.Buffer{})
+			cmd.SetErr(&bytes.Buffer{})
+			args := []string{"set", "credentials.keychain", tt.value}
+			if tt.unset {
+				args = []string{"unset", "credentials.keychain"}
+			}
+			cmd.SetArgs(args)
+			err = cmd.ExecuteContext(t.Context())
+			after, readErr := os.ReadFile(fixture.user)
+			require.NoError(t, readErr)
+			if tt.wantError {
+				require.Error(t, err)
+				require.Equal(t, before, after, "failed enabling must leave policy and credentials unchanged")
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantPlaintext, strings.Contains(string(after), "mutation-token"))
+			assert.Equal(t, !tt.wantPlaintext, strings.Contains(string(after), "keychain:gcx:v2:"))
+			if tt.wantPlaintext {
+				assert.Zero(t, store.calls)
+			} else {
+				values := make([]string, 0, len(store.entries))
+				for _, value := range store.entries {
+					values = append(values, value)
+				}
+				assert.Contains(t, values, "mutation-token")
+			}
+			if tt.unset {
+				assert.NotContains(t, string(after), "credentials:")
+			}
+		})
+	}
+}
+
+func TestKeychainDisabledCheckDescribesEffectivePolicy(t *testing.T) {
+	for _, source := range []string{"environment", "config"} {
+		t.Run(source, func(t *testing.T) {
+			fixture := newKeychainPolicyFixture(t)
+			store := &policyMutationStore{entries: map[string]string{}}
+			t.Cleanup(config.SetKeychainStoreFnForTest(func() credentials.Store { return store }))
+			writeKeychainPolicyConfig(t, fixture.explicit, "on", "check-token", false)
+			_, err := config.Load(t.Context(), config.ExplicitConfigFile(fixture.explicit))
+			require.NoError(t, err)
+			if source == "environment" {
+				t.Setenv("GCX_KEYCHAIN", "off")
+			} else {
+				raw, err := os.ReadFile(fixture.explicit)
+				require.NoError(t, err)
+				raw = bytes.ReplaceAll(raw, []byte(`keychain: "on"`), []byte(`keychain: "off"`))
+				require.NoError(t, os.WriteFile(fixture.explicit, raw, 0o600))
+			}
+			var out bytes.Buffer
+			cmd := commandconfig.Command()
+			cmd.SilenceErrors = true
+			cmd.SilenceUsage = true
+			cmd.SetOut(&out)
+			cmd.SetErr(&out)
+			cmd.SetArgs([]string{"check", "--config", fixture.explicit})
+			_ = cmd.ExecuteContext(t.Context())
+			assert.Contains(t, out.String(), "disabled by the effective credential-storage policy")
+			assert.NotContains(t, out.String(), "disabled by GCX_KEYCHAIN")
+			t.Setenv("GCX_KEYCHAIN", "on")
+			cfg, err := config.Load(t.Context(), config.ExplicitConfigFile(fixture.explicit))
+			require.NoError(t, err)
+			require.NotEmpty(t, cfg.Stacks)
+			for _, stack := range cfg.Stacks {
+				assert.Equal(t, "check-token", stack.Grafana.APIToken)
+			}
+		})
+	}
+}

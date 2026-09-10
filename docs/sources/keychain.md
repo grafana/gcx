@@ -67,13 +67,13 @@ environment:
 export GCX_KEYCHAIN=off
 ```
 
-The precedence, highest first, is:
+Policy precedence depends on how the configuration is selected (highest first):
 
-1. `GCX_KEYCHAIN`
-2. A deliberately selected file (`--config` or `GCX_CONFIG`)
-3. User configuration
-4. System configuration
-5. The default, `on`
+- With `--config` or `GCX_CONFIG`: `GCX_KEYCHAIN`, the selected file, then
+  the default `on`. Selecting a file bypasses user and system configuration;
+  an omitted field does not inherit their policy.
+- Otherwise: `GCX_KEYCHAIN`, user configuration, system configuration, then
+  the default `on`.
 
 An automatically discovered repository-local `.gcx.yaml` is not trusted to set
 this policy. gcx ignores its `credentials.keychain` value and warns, but still
@@ -94,8 +94,9 @@ gcx does not move stored credentials back into the configuration file when you
 switch to `off`. It preserves their references and cannot read them. You have
 two choices for each one.
 
-Keep the reference. Set the policy to `on` again (or unset `GCX_KEYCHAIN`) and
-the credential works again.
+Keep the reference. Set `GCX_KEYCHAIN=on` for the invocation, or unset
+`GCX_KEYCHAIN` and set `credentials.keychain: on` in the trusted configuration
+file. The credential works again once the effective policy is `on`.
 
 Replace the credential. Authenticate again, and gcx writes the new value in
 plaintext. This is not reversible: gcx cannot delete through a disabled store,
