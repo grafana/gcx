@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 
+	"github.com/grafana/gcx/internal/secrets"
 	"github.com/grafana/grafana-app-sdk/logging"
 )
 
@@ -31,13 +32,19 @@ func (rt RequestResponseLoggingRoundTripper) RoundTrip(req *http.Request) (*http
 	}
 
 	logger := logging.FromContext(req.Context())
+	logRequest := secrets.Request(req)
 
 	// DumpRequestOut serializes the outgoing request in HTTP/1.1 form. It adds
 	// transport headers such as Content-Length and Accept-Encoding. The framing
 	// can differ when the transport uses HTTP/2.
-	reqStr, err := httputil.DumpRequestOut(req, true)
+	reqStr, err := httputil.DumpRequestOut(logRequest, true)
+	if logRequest != req {
+		// DumpRequestOut replaces the body it consumes. Carry that replacement
+		// back to the wire request when logging required a URL-safe clone.
+		req.Body = logRequest.Body
+	}
 	if err != nil {
-		logger.Debug("cannot dump http request", "error", err)
+		logger.Debug("cannot dump http request", "error", secrets.ErrorString(req.Context(), req.URL, err))
 	} else {
 		logger.Debug(requestDumpMessage + "\n" + string(reqStr))
 	}
@@ -70,18 +77,19 @@ type LoggingRoundTripper struct {
 
 func (t *LoggingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	logger := logging.FromContext(req.Context())
-	logger.Debug("http request", "method", req.Method, "url", req.URL.String())
+	logURL := secrets.URLString(req.Context(), req.URL)
+	logger.Debug("http request", "method", req.Method, "url", logURL)
 
 	resp, err := t.Base.RoundTrip(req)
 	if err != nil {
-		logger.Warn("http error", "method", req.Method, "url", req.URL.String(), "error", err)
+		logger.Warn("http error", "method", req.Method, "url", logURL, "error", secrets.ErrorString(req.Context(), req.URL, err))
 		return nil, err
 	}
 
 	if resp.StatusCode >= 500 {
-		logger.Warn("http response", "method", req.Method, "url", req.URL.String(), "status", resp.StatusCode)
+		logger.Warn("http response", "method", req.Method, "url", logURL, "status", resp.StatusCode)
 	} else {
-		logger.Debug("http response", "method", req.Method, "url", req.URL.String(), "status", resp.StatusCode)
+		logger.Debug("http response", "method", req.Method, "url", logURL, "status", resp.StatusCode)
 	}
 	return resp, nil
 }

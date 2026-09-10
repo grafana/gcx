@@ -1,8 +1,11 @@
 package k6 //nolint:testpackage // Tests private request mapping and download safety helpers.
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -11,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/gcx/internal/httputils"
+	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -20,6 +25,12 @@ type diagnosticsCloudExecutor struct {
 	requestIndex int
 	requests     []cloudRequest
 	responses    []cloudResponse
+}
+
+type diagnosticsRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f diagnosticsRoundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return f(request)
 }
 
 func (e *diagnosticsCloudExecutor) doCloud(_ context.Context, request cloudRequest) (cloudResponse, error) {
@@ -132,6 +143,26 @@ func TestDownloadRunArtifactsWritesReceiptAndDoesNotOverwrite(t *testing.T) {
 	require.Error(t, err)
 	assert.Zero(t, receipt.Summary.Succeeded)
 	assert.Equal(t, 1, receipt.Summary.Failed)
+}
+
+func TestDownloadRunArtifactRedactsSignedURLFromLogsAndError(t *testing.T) {
+	const secret = "credential-that-must-not-leak"
+	signedURL := "https://artifacts.example.test/a.png?X-Amz-Credential=" + secret + "&X-Amz-Signature=signature"
+
+	var logs bytes.Buffer
+	logger := logging.NewSLogLogger(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	ctx := logging.Context(t.Context(), logger)
+	transport := &httputils.LoggingRoundTripper{Base: diagnosticsRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		assert.Equal(t, signedURL, req.URL.String(), "redaction must not alter the wire request")
+		return nil, fmt.Errorf("connection refused fetching %s", req.URL.String())
+	})}
+
+	err := downloadRunArtifact(ctx, &http.Client{Transport: transport}, signedURL, filepath.Join(t.TempDir(), "a.png"))
+	require.Error(t, err)
+	assert.Contains(t, logs.String(), "?REDACTED")
+	assert.NotContains(t, logs.String(), secret)
+	assert.NotContains(t, err.Error(), secret)
+	assert.Contains(t, err.Error(), "?REDACTED")
 }
 
 type sequenceRunGetter struct {
