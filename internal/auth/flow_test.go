@@ -84,6 +84,64 @@ func TestGCOMFlowRun_RejectsUntrustedURL(t *testing.T) {
 	}
 }
 
+func TestIsGCOMHost(t *testing.T) {
+	tests := []struct {
+		name string
+		host string
+		want bool
+	}{
+		{"prod portal", "grafana.com", true},
+		{"dev portal", "grafana-dev.com", true},
+		{"ops portal", "grafana-ops.com", true},
+		{"uppercase portal", "GRAFANA.COM", true},
+		{"portal subdomain", "help.grafana.com", false},
+		{"stack host", "mystack.grafana.net", false},
+		{"lookalike", "grafana.com.attacker.com", false},
+		{"empty", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := auth.IsGCOMHost(tt.host); got != tt.want {
+				t.Fatalf("IsGCOMHost(%q) = %v, want %v", tt.host, got, tt.want)
+			}
+		})
+	}
+}
+
+// A Cloud portal root has no grafana-assistant-app route. The flow must refuse
+// it instead of opening a browser on a page that does not exist.
+func TestFlowRun_RejectsCloudPortalEndpointBeforeBrowserOutput(t *testing.T) {
+	tests := []struct {
+		name     string
+		endpoint string
+	}{
+		{"prod portal", "https://grafana.com"},
+		{"dev portal", "https://grafana-dev.com"},
+		{"ops portal", "https://grafana-ops.com"},
+		{"portal with a trailing slash", "https://grafana.com/"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var writer bytes.Buffer
+			flow := auth.NewFlow(tt.endpoint, auth.Options{Writer: &writer})
+
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+
+			if _, err := flow.Run(ctx); err == nil {
+				t.Fatalf("expected %q to be rejected", tt.endpoint)
+			} else if !strings.Contains(err.Error(), "is a Grafana Cloud portal, not a Grafana stack") {
+				t.Fatalf("expected a portal error, got %v", err)
+			}
+			if writer.Len() != 0 {
+				t.Fatalf("expected no browser instructions before the portal check, got %q", writer.String())
+			}
+		})
+	}
+}
+
 func TestFlowRun_FailsBeforeBrowserOutputWhenFixedPortUnavailable(t *testing.T) {
 	var lc net.ListenConfig
 	listener, err := lc.Listen(context.Background(), "tcp", "127.0.0.1:0")
