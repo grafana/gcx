@@ -80,28 +80,12 @@ func (p *Provider) descriptor() signals.Descriptor {
 			{
 				Build:     dstempo.DiffCmd,
 				TokenCost: "medium",
-				LLMHint:   "gcx traces diff -d abc123 <trace-a> <trace-b> -o json",
-				Example: `
-  # Compare two traces (B - A semantics); experimental, Grafana Cloud-only
-  gcx traces diff <trace-a> <trace-b>
-
-  # With an explicit datasource UID, JSON output
-  gcx traces diff -d UID <trace-a> <trace-b> -o json`,
+				LLMHint:   `gcx traces diff --context <context> -d UID <candidate-id> <seed-id> --from "$PAIR_FROM" --to "$PAIR_TO" -o agents`,
 			},
 			{
 				Build:     dstempo.BaselineCmd,
 				TokenCost: "medium",
-				LLMHint:   "gcx traces baseline -d abc123 <trace-id> -o json",
-				Example: `
-  # Start unfiltered, then diff a candidate as the baseline (B - A semantics)
-  gcx traces baseline <trace-id>
-  gcx traces diff <candidate> <trace-id>
-
-  # Only if unfiltered candidates are not valid comparisons, refine by tenant
-  gcx traces baseline <trace-id> --filter '{ span.tenantID = "tenant-a" }'
-
-  # Widen the window to 6h before and after the seed, output JSON
-  gcx traces baseline <trace-id> --window 6h -o json`,
+				LLMHint:   "gcx traces baseline --context <context> -d UID <seed-id> --limit 5 -o agents",
 			},
 		},
 		Adaptive: &signals.AdaptiveSpec{
