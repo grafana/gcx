@@ -21,9 +21,13 @@ const pruneOlderThan = 30 * time.Minute
 // PruneSpillFiles deletes gcx agent spill files in dir that are older than olderThan.
 // Returns the number of files deleted.
 func PruneSpillFiles(dir string, olderThan time.Duration) (int, error) {
-	matches, err := filepath.Glob(filepath.Join(dir, cmdio.SpillFilePattern))
-	if err != nil {
-		return 0, fmt.Errorf("glob spill files: %w", err)
+	var matches []string
+	for _, pattern := range []string{cmdio.SpillFilePattern, cmdio.SpillStreamFilePattern} {
+		files, err := filepath.Glob(filepath.Join(dir, pattern))
+		if err != nil {
+			return 0, fmt.Errorf("glob spill files: %w", err)
+		}
+		matches = append(matches, files...)
 	}
 
 	cutoff := time.Now().Add(-olderThan)
@@ -93,7 +97,7 @@ func pruneCommand() *cobra.Command {
 		Annotations: map[string]string{
 			agent.AnnotationTokenCost: "small",
 		},
-		Long: `Remove gcx agent spill files (` + cmdio.SpillFilePattern + `) from the system temp directory that are older than 30 minutes.
+		Long: `Remove gcx agent spill files (` + cmdio.SpillFilePattern + ` and ` + cmdio.SpillStreamFilePattern + `) from the system temp directory that are older than 30 minutes.
 
 These files are created when a command response exceeds the spill threshold (default 100 KiB). Run prune periodically to keep the temp directory clean, or call it at the end of an agent session.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {

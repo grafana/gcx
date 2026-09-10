@@ -78,7 +78,9 @@ from `| python -c "..."` aggregation pipelines toward built-in transformation.
 ### 6.3 Opt-Out
 
 Explicit flags override agent mode defaults:
-- `-o json` forces full compact JSON to stdout (no spill)
+- `-o json` forces full indented JSON to stdout (no spill)
+- Bare `--jq` disables spill; add `-o agents` for
+  [compact/spill handling](output.md#16-jq-transformation)
 - `-o text` or `-o yaml` overrides the agents default
 - `-o wide` retains human table output even in agent mode (explicit-override semantics — the
   operator has explicitly requested wide table format, so the JSON default is not applied)
