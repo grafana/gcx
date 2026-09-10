@@ -32,6 +32,10 @@ var commandSkills = map[string][]string{
 	"gcx setup":       {"setup-gcx"},
 	"gcx login":       {"setup-gcx"},
 
+	// Leaf override: the typed Pyroscope subtree is profiling-specific, so it
+	// routes to performance-rca instead of inheriting the general
+	// debug-with-grafana footer from "gcx datasources". Kept in its own
+	// alignment block so gofmt does not re-align the area-granularity keys.
 	"gcx datasources pyroscope": {"performance-rca"},
 }
 

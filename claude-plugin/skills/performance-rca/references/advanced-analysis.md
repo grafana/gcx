@@ -40,10 +40,9 @@ find one service.
 Export when DOT/table pruning, collapsed caller contexts, or unclear numerical
 changes prevent attribution, and the running CLI advertises `-o pprof` and
 `--pprof-path`. Otherwise retain the supported profile view and report the
-limit.
-Use a fresh local artifact directory and record the selectors/windows alongside
-the files. Copying the commands below requires
-substituting the qualified selectors; baseline pods/versions may differ.
+limit. Use a fresh local artifact directory and record the selectors/windows
+alongside the files. Copying the commands below requires substituting the
+qualified selectors; baseline pods/versions may differ.
 
 ```bash
 gcx profiles query -d <pyro-uid> '<incident-selector>' \
@@ -88,12 +87,11 @@ reading local code additionally requires a matching repository and revision.
 ## Trace correlation
 
 Use when a user or triage provides a trace associated with the symptom and the
-running CLI advertises the exemplar/query commands and scoping flags below.
-If it lacks DOT, use `-o table`; if it lacks trace scoping, retain only service
-window attribution. Do not
-infer a trace ID from a span ID. Scoped profiles require matching
-instrumentation
-and collected samples; a slow span can contain mostly unprofiled waiting.
+running CLI advertises the exemplar/query commands and scoping flags below. If
+it lacks DOT, use `-o table`; if it lacks trace scoping, retain only service
+window attribution. Do not infer a trace ID from a span ID. Scoped profiles
+require matching instrumentation and collected samples; a slow span can contain
+mostly unprofiled waiting.
 
 ```bash
 gcx profiles exemplars span -d <pyro-uid> '{service_name="<suspect>"}' \
@@ -119,8 +117,8 @@ parts of end-to-end latency.
 
 This skill does not fetch or run an anomaly detector. No profiling anomaly API
 or production availability is assumed. Anomaly results can prioritize **where
-and when to investigate**. Accept a
-supplied detector result as another entry alongside symptoms, alerts and traces:
+and when to investigate**. Accept a supplied detector result as another entry
+alongside symptoms, alerts and traces:
 
 ```text
 Anomaly candidate → verify scope/onset and collection → qualify a control
