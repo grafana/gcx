@@ -2,21 +2,14 @@ package irm
 
 import (
 	"context"
-	"errors"
-	"io"
 	"strconv"
 	"strings"
 
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
-	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
-
-// errInvalidTableInput is returned by discovery table codecs when Encode
-// receives a value of an unexpected type.
-var errInvalidTableInput = errors.New("invalid data type for table codec")
 
 // Discovery commands surface the enum catalogs behind OnCall resource fields
 // that previously required raw `gcx api` calls or hard-coded numeric "magic
@@ -142,7 +135,7 @@ func newEscalationStepCmds(loader OnCallConfigLoader) []*cobra.Command {
 
   # Put that value in the step field of policy.yaml, then create the policy
   gcx irm oncall escalation-policies create -f policy.yaml`,
-		codec: &escalationStepOptionTableCodec{},
+		codec: escalationStepOptionTable().Codec(cmdio.FormatTable),
 		fetch: func(ctx context.Context, client OnCallAPI) ([]EscalationStepOption, error) {
 			return client.ListEscalationStepOptions(ctx)
 		},
@@ -170,7 +163,7 @@ func newWebhookTriggerCmds(loader OnCallConfigLoader) []*cobra.Command {
 
   # Put that value in the trigger_type field of webhook.yaml, then create the webhook
   gcx irm oncall webhooks create -f webhook.yaml`,
-		codec: &webhookTriggerOptionTableCodec{},
+		codec: webhookTriggerOptionTable().Codec(cmdio.FormatTable),
 		fetch: func(ctx context.Context, client OnCallAPI) ([]WebhookTriggerOption, error) {
 			return client.ListWebhookTriggerOptions(ctx)
 		},
@@ -197,7 +190,7 @@ func newWebhookPresetCmds(loader OnCallConfigLoader) []*cobra.Command {
 
   # Put the preset ID in the preset field of webhook.yaml, then create the webhook
   gcx irm oncall webhooks create -f webhook.yaml`,
-		codec: &webhookPresetTableCodec{},
+		codec: webhookPresetTable().Codec(cmdio.FormatTable),
 		fetch: func(ctx context.Context, client OnCallAPI) ([]WebhookPreset, error) {
 			return client.ListWebhookPresets(ctx)
 		},
@@ -225,79 +218,56 @@ func newRouteFilterTypeCmds(loader OnCallConfigLoader) []*cobra.Command {
 
   # Put that value in the filtering_term_type field of route.yaml, then create the route
   gcx irm oncall routes create -f route.yaml`,
-		codec: &routeFilterTypeTableCodec{},
+		codec: routeFilterTypeTable().Codec(cmdio.FormatTable),
 		fetch: func(ctx context.Context, client OnCallAPI) ([]RouteFilterType, error) {
 			return client.ListRouteFilterTypes(ctx)
 		},
 	})
 }
 
-// --- Table codecs ---
+// --- Tables ---
 
-type escalationStepOptionTableCodec struct{ noDecodeCodec }
-
-func (c *escalationStepOptionTableCodec) Format() format.Format { return "table" }
-
-func (c *escalationStepOptionTableCodec) Encode(w io.Writer, v any) error {
-	items, ok := v.([]EscalationStepOption)
-	if !ok {
-		return errInvalidTableInput
+func escalationStepOptionTable() cmdio.Table[EscalationStepOption] {
+	return cmdio.Table[EscalationStepOption]{
+		Columns: []cmdio.Column[EscalationStepOption]{
+			{Header: "VALUE", Content: func(o EscalationStepOption) string { return strconv.Itoa(o.Value) }},
+			{Header: "NAME", Content: func(o EscalationStepOption) string { return o.CreateDisplayName }},
+			{Header: "DISPLAY NAME", Content: func(o EscalationStepOption) string { return o.DisplayName }},
+		},
 	}
-	t := style.NewTable("VALUE", "NAME", "DISPLAY NAME")
-	for _, it := range items {
-		t.Row(strconv.Itoa(it.Value), it.CreateDisplayName, it.DisplayName)
-	}
-	return t.Render(w)
 }
 
-type webhookTriggerOptionTableCodec struct{ noDecodeCodec }
-
-func (c *webhookTriggerOptionTableCodec) Format() format.Format { return "table" }
-
-func (c *webhookTriggerOptionTableCodec) Encode(w io.Writer, v any) error {
-	items, ok := v.([]WebhookTriggerOption)
-	if !ok {
-		return errInvalidTableInput
+func webhookTriggerOptionTable() cmdio.Table[WebhookTriggerOption] {
+	return cmdio.Table[WebhookTriggerOption]{
+		Columns: []cmdio.Column[WebhookTriggerOption]{
+			{Header: "VALUE", Content: func(o WebhookTriggerOption) string { return strconv.Itoa(o.Value) }},
+			{Header: "NAME", Content: func(o WebhookTriggerOption) string { return o.DisplayName }},
+		},
 	}
-	t := style.NewTable("VALUE", "NAME")
-	for _, it := range items {
-		t.Row(strconv.Itoa(it.Value), it.DisplayName)
-	}
-	return t.Render(w)
 }
 
-type webhookPresetTableCodec struct{ noDecodeCodec }
-
-func (c *webhookPresetTableCodec) Format() format.Format { return "table" }
-
-func (c *webhookPresetTableCodec) Encode(w io.Writer, v any) error {
-	items, ok := v.([]WebhookPreset)
-	if !ok {
-		return errInvalidTableInput
+func webhookPresetTable() cmdio.Table[WebhookPreset] {
+	return cmdio.Table[WebhookPreset]{
+		Columns: []cmdio.Column[WebhookPreset]{
+			{Header: "ID", Content: func(p WebhookPreset) string { return p.ID }},
+			{Header: "NAME", Content: func(p WebhookPreset) string { return p.Name }},
+			{Header: "TRIGGERS", Content: func(p WebhookPreset) string {
+				triggers := make([]string, 0, len(p.TriggerTypes))
+				for _, tt := range p.TriggerTypes {
+					triggers = append(triggers, tt.Value)
+				}
+				return strings.Join(triggers, ", ")
+			}},
+			{Header: "DESCRIPTION", Content: func(p WebhookPreset) string { return p.Description }},
+		},
 	}
-	t := style.NewTable("ID", "NAME", "TRIGGERS", "DESCRIPTION")
-	for _, it := range items {
-		triggers := make([]string, 0, len(it.TriggerTypes))
-		for _, tt := range it.TriggerTypes {
-			triggers = append(triggers, tt.Value)
-		}
-		t.Row(it.ID, it.Name, strings.Join(triggers, ", "), it.Description)
-	}
-	return t.Render(w)
 }
 
-type routeFilterTypeTableCodec struct{ noDecodeCodec }
-
-func (c *routeFilterTypeTableCodec) Format() format.Format { return "table" }
-
-func (c *routeFilterTypeTableCodec) Encode(w io.Writer, v any) error {
-	items, ok := v.([]RouteFilterType)
-	if !ok {
-		return errInvalidTableInput
+func routeFilterTypeTable() cmdio.Table[RouteFilterType] {
+	return cmdio.Table[RouteFilterType]{
+		Columns: []cmdio.Column[RouteFilterType]{
+			{Header: "VALUE", Content: func(f RouteFilterType) string { return strconv.Itoa(f.Value) }},
+			{Header: "NAME", Content: func(f RouteFilterType) string { return f.DisplayName }},
+		},
 	}
-	t := style.NewTable("VALUE", "NAME")
-	for _, it := range items {
-		t.Row(strconv.Itoa(it.Value), it.DisplayName)
-	}
-	return t.Render(w)
 }

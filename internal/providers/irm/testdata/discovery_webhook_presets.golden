@@ -1,0 +1,3 @@
+ID        NAME        TRIGGERS                       DESCRIPTION
+preset-1  ServiceNow  alert group created, resolved  Create a ServiceNow ticket
+preset-2  bare                                       
