@@ -436,6 +436,16 @@ TypedRegistration[T ResourceNamer]
 This replaces the old pattern where providers called `adapter.Register()` directly
 in their `init()` functions alongside `providers.Register()`.
 
+`Registration.GroupAliases` accepts old API groups for an exact kind and version.
+Unlike `Aliases` (resource names), it applies to manifests and group-qualified
+selectors. Registration adds aliases to `resources` without extra discovery entries.
+File filtering, push, and delete accept old manifests; discovery accepts full and
+short group names. Output uses the descriptor's group.
+
+Agent Observability uses `agento11y.ext.grafana.app/v1alpha1` for `evaluators`,
+`evalrules`, `hookrules`, and `collections`. Its `sigil.ext.grafana.app` alias keeps
+old manifests and selectors such as `evalrules.sigil` working.
+
 ### ResourceClientRouter
 
 `ResourceClientRouter` wraps both a `DynamicClient` (k8s path) and a
