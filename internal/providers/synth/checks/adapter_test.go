@@ -24,6 +24,7 @@ func TestToResource(t *testing.T) {
 		Settings:  checks.CheckSettings{"http": map[string]any{"method": "GET"}},
 		Probes:    []int64{166, 217},
 		Labels:    []checks.Label{{Name: "team", Value: "platform"}},
+		Channels:  map[string]any{"k6": map[string]any{"id": "v2"}},
 	}
 
 	res, err := checks.ToResource(check, "default", testProbeNames())
@@ -53,6 +54,7 @@ func TestToResource(t *testing.T) {
 	require.Len(t, probeList, 2)
 	assert.Equal(t, "Oregon", probeList[0])
 	assert.Equal(t, "Spain", probeList[1])
+	assert.Equal(t, map[string]any{"k6": map[string]any{"id": "v2"}}, spec["channels"])
 
 	// Server-managed fields must not appear in spec.
 	assert.NotContains(t, spec, "id")
@@ -89,6 +91,7 @@ func TestFromResource_RoundTrip(t *testing.T) {
 		Enabled:   true,
 		Settings:  checks.CheckSettings{"ping": map[string]any{"ipVersion": "V4"}},
 		Probes:    []int64{166, 217},
+		Channels:  map[string]any{"k6": map[string]any{"id": "v2"}},
 	}
 
 	res, err := checks.ToResource(original, "default", testProbeNames())
@@ -103,6 +106,7 @@ func TestFromResource_RoundTrip(t *testing.T) {
 	assert.Equal(t, int64(60000), spec.Frequency)
 	assert.True(t, spec.Enabled)
 	assert.Equal(t, []string{"Oregon", "Spain"}, spec.Probes)
+	assert.Equal(t, map[string]any{"k6": map[string]any{"id": "v2"}}, spec.Channels)
 }
 
 func TestFromResource_NoUIDReturnsZeroID(t *testing.T) {
@@ -137,6 +141,7 @@ func TestSpecToCheck(t *testing.T) {
 		Enabled:   true,
 		Settings:  checks.CheckSettings{"http": map[string]any{}},
 		Probes:    []string{"Oregon"},
+		Channels:  map[string]any{"k6": map[string]any{"id": "v2"}},
 	}
 
 	resolvedIDs := []int64{166}
@@ -146,4 +151,5 @@ func TestSpecToCheck(t *testing.T) {
 	assert.Equal(t, int64(214), c.TenantID)
 	assert.Equal(t, "hello", c.Job)
 	assert.Equal(t, []int64{166}, c.Probes)
+	assert.Equal(t, map[string]any{"k6": map[string]any{"id": "v2"}}, c.Channels)
 }

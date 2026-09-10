@@ -15,23 +15,30 @@ const maxErrorBodyBytes = 1 << 20 // 1 MiB
 
 // ErrorResponse is the common JSON error-body shape returned by Grafana Cloud
 // product plugin APIs. They disagree on the field name for the human-readable
-// message, so all three variants are captured and read in preference order.
+// message, so all variants are captured and read in preference order.
 // TraceID, when present, is surfaced for supportability.
 type ErrorResponse struct {
-	Error   string `json:"error"`
-	Message string `json:"message"`
-	Msg     string `json:"msg"`
-	TraceID string `json:"traceID"`
+	Error   string          `json:"error"`
+	Message string          `json:"message"`
+	Err     json.RawMessage `json:"err"`
+	Msg     string          `json:"msg"`
+	TraceID string          `json:"traceID"`
 }
 
-// message returns the first populated field: Error, then Message, then Msg.
+// message returns the first populated field: Error, then Message, then Err, then Msg.
 func (e ErrorResponse) message() string {
-	for _, m := range []string{e.Error, e.Message, e.Msg} {
+	for _, m := range []string{e.Error, e.Message} {
 		if m != "" {
 			return m
 		}
 	}
-	return ""
+
+	var errMessage string
+	if err := json.Unmarshal(e.Err, &errMessage); err == nil && errMessage != "" {
+		return errMessage
+	}
+
+	return e.Msg
 }
 
 // HandleErrorResponse reads a non-2xx HTTP response body and returns a
