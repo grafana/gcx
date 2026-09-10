@@ -164,8 +164,12 @@ func TestClient_Create(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name:  "success",
-			check: checks.Check{Job: "new-job", Target: "https://example.com"},
+			name: "success",
+			check: checks.Check{
+				Job:      "new-job",
+				Target:   "https://example.com",
+				Channels: map[string]any{"k6": map[string]any{"id": "v2"}},
+			},
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, http.MethodPost, r.Method)
 				assert.Equal(t, proxyPath("check/add"), r.URL.Path)
@@ -175,6 +179,7 @@ func TestClient_Create(t *testing.T) {
 					http.Error(w, err.Error(), http.StatusBadRequest)
 					return
 				}
+				assert.Equal(t, map[string]any{"k6": map[string]any{"id": "v2"}}, body.Channels)
 				writeJSON(w, checks.Check{ID: 100, Job: body.Job})
 			},
 			wantID: 100,
@@ -214,8 +219,13 @@ func TestClient_Update(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name:  "success",
-			check: checks.Check{ID: 42, TenantID: 1, Job: "updated-job"},
+			name: "success",
+			check: checks.Check{
+				ID:       42,
+				TenantID: 1,
+				Job:      "updated-job",
+				Channels: map[string]any{"k6": map[string]any{"id": "v2"}},
+			},
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, http.MethodPost, r.Method)
 				assert.Equal(t, proxyPath("check/update"), r.URL.Path)
@@ -225,6 +235,7 @@ func TestClient_Update(t *testing.T) {
 					return
 				}
 				assert.Equal(t, int64(42), body.ID)
+				assert.Equal(t, map[string]any{"k6": map[string]any{"id": "v2"}}, body.Channels)
 				writeJSON(w, body)
 			},
 		},
