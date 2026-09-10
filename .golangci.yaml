@@ -59,7 +59,7 @@ linters:
       # Taint-analysis rules produce too many false positives for CLI tools
       # that intentionally handle user-controlled paths and URLs.
       - linters: [gosec]
-        text: "G702|G703|G704"
+        text: "G702|G703|G704|G705"
       # Test data containing "token"/"credential" keys is not a real secret,
       # and marshaling test fixtures that include secret-pattern fields is fine.
       - linters: [gosec]
