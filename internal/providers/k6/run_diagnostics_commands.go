@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/httputils"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/secrets"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -422,13 +423,14 @@ func downloadRunArtifact(ctx context.Context, httpClient *http.Client, rawURL, o
 	if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
 		return errors.New("invalid signed download URL")
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, http.NoBody)
+	downloadCtx := secrets.WithRedactedURLQuery(ctx)
+	request, err := http.NewRequestWithContext(downloadCtx, http.MethodGet, rawURL, http.NoBody)
 	if err != nil {
 		return fmt.Errorf("create download request: %w", err)
 	}
 	response, err := httpClient.Do(request)
 	if err != nil {
-		return err
+		return fmt.Errorf("download request failed: %s", secrets.ErrorString(downloadCtx, request.URL, err))
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {

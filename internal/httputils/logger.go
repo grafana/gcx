@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 
+	"github.com/grafana/gcx/internal/secrets"
 	"github.com/grafana/grafana-app-sdk/logging"
 )
 
@@ -20,7 +21,13 @@ func (rt RequestResponseLoggingRoundTripper) RoundTrip(req *http.Request) (*http
 		transport = rt.DecoratedTransport
 	}
 
-	reqStr, _ := httputil.DumpRequest(req, true)
+	logRequest := secrets.Request(req)
+	reqStr, _ := httputil.DumpRequest(logRequest, true)
+	if logRequest != req {
+		// DumpRequest replaces the body it consumes. Carry that replacement
+		// back to the wire request when logging required a URL-safe clone.
+		req.Body = logRequest.Body
+	}
 	logging.FromContext(req.Context()).Debug(string(reqStr))
 
 	resp, err := transport.RoundTrip(req)
@@ -45,18 +52,19 @@ type LoggingRoundTripper struct {
 
 func (t *LoggingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	logger := logging.FromContext(req.Context())
-	logger.Debug("http request", "method", req.Method, "url", req.URL.String())
+	logURL := secrets.URLString(req.Context(), req.URL)
+	logger.Debug("http request", "method", req.Method, "url", logURL)
 
 	resp, err := t.Base.RoundTrip(req)
 	if err != nil {
-		logger.Warn("http error", "method", req.Method, "url", req.URL.String(), "error", err)
+		logger.Warn("http error", "method", req.Method, "url", logURL, "error", secrets.ErrorString(req.Context(), req.URL, err))
 		return nil, err
 	}
 
 	if resp.StatusCode >= 500 {
-		logger.Warn("http response", "method", req.Method, "url", req.URL.String(), "status", resp.StatusCode)
+		logger.Warn("http response", "method", req.Method, "url", logURL, "status", resp.StatusCode)
 	} else {
-		logger.Debug("http response", "method", req.Method, "url", req.URL.String(), "status", resp.StatusCode)
+		logger.Debug("http response", "method", req.Method, "url", logURL, "status", resp.StatusCode)
 	}
 	return resp, nil
 }
