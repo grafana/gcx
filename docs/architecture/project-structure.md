@@ -101,6 +101,7 @@ gcx/
 │   │   ├── cloudmonitoring/  # Google Cloud Monitoring CLI commands (query, list-projects, list-metrics)
 │   │   ├── cloudwatch/       # CloudWatch CLI commands (query, list-namespaces/metrics/dimensions/regions/accounts)
 │   │   ├── elasticsearch/    # Elasticsearch datasource commands (query [--mode documents|logs], metrics, list-indices, list-fields)
+│   │   ├── mssql/            # Microsoft SQL Server commands (query with TOP injection, list-tables, describe-table, explore)
 │   │   ├── mysql/            # MySQL datasource commands (query, list-tables, describe-table)
 │   │   ├── opensearch/       # OpenSearch datasource commands (query [--mode documents|logs], metrics, list-indices, list-fields)
 │   │   ├── postgres/         # PostgreSQL datasource commands (query, list-tables, describe-table)
@@ -120,6 +121,7 @@ gcx/
 │   │   ├── athena/           # Athena SQL query client
 │   │   ├── bigquery/         # BigQuery SQL query client
 │   │   ├── clickhouse/       # ClickHouse HTTP client
+│   │   ├── mssql/            # Microsoft SQL Server HTTP client
 │   │   ├── mysql/            # MySQL HTTP query client (raw SQL via unified query API)
 │   │   └── postgres/         # PostgreSQL HTTP query client (raw SQL via unified query API)
 │   ├── signals/              # Shared signal command and datasource-provider mounting (metrics/logs/traces/profiles)
