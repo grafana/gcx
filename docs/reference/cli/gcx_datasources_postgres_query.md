@@ -6,7 +6,8 @@ Execute a SQL query against a PostgreSQL datasource
 
 Execute a SQL query against a PostgreSQL datasource.
 
-EXPR is the SQL query to execute, passed as a positional argument or via --expr.
+EXPR is the SQL query to execute, passed as a positional argument, via --expr,
+or via --query-file. Use --query-file - to read SQL from stdin.
 Datasource is resolved from -d flag or datasources.postgres in your context.
 Server-side macros ($__timeFilter, $__timeGroup, etc.) are supported.
 
@@ -27,6 +28,9 @@ gcx datasources postgres query [EXPR] [flags]
   # Output as JSON
   gcx datasources postgres query -d UID 'SELECT 1' -o json
 
+  # Read a long query from a file
+  gcx datasources postgres query -d UID --query-file ./query.sql -o json
+
   # Disable limit enforcement
   gcx datasources postgres query 'SELECT * FROM big_table' --limit 0
 ```
@@ -42,6 +46,7 @@ gcx datasources postgres query [EXPR] [flags]
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int           Max rows to return; requests above 1000 are capped, with a warning (0 disables enforcement) (default 100)
   -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
+      --query-file string   Read the SQL query from FILE (use - for stdin)
       --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --step string         Query step (e.g., '15s', '1m')
       --to string           End time (RFC3339, Unix timestamp, or relative like 'now')

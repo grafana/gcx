@@ -10,14 +10,16 @@ import (
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/postgres"
+	querysql "github.com/grafana/gcx/internal/query/sql"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
 
 type describeTableOpts struct {
-	IO         cmdio.Options
-	Datasource string
-	Schema     string
+	IO                 cmdio.Options
+	Datasource         string
+	Schema             string
+	IncludeConstraints bool
 }
 
 // splitTableArg resolves a possibly schema-qualified TABLE argument
@@ -43,6 +45,7 @@ func (opts *describeTableOpts) setup(flags *pflag.FlagSet) {
 	opts.IO.BindFlags(flags)
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.postgres is configured)")
 	flags.StringVar(&opts.Schema, "schema", "", "Schema of the table (exact match, case-sensitive; defaults to all schemas)")
+	flags.BoolVar(&opts.IncludeConstraints, "include-constraints", false, "Include ordered constraint and foreign-key metadata (requires an explicit schema and JSON/YAML/agent output)")
 }
 
 func (opts *describeTableOpts) Validate() error {
@@ -59,7 +62,11 @@ func DescribeTableCmd(loader *providers.ConfigLoader) *cobra.Command {
 		Long: `Show the columns of a PostgreSQL table: name, data type, nullability, and default.
 
 The table can be schema-qualified (schema.table); otherwise use --schema to
-disambiguate when the same table name exists in multiple schemas.`,
+disambiguate when the same table name exists in multiple schemas.
+
+Use --include-constraints with a schema-qualified table (or --schema) to also
+return a structured table identity, columns, and ordered constraint metadata.
+Constraint metadata requires -o json, -o yaml, or agent mode.`,
 		Example: `
   # Describe a table
   gcx datasources postgres describe-table orders -d UID
@@ -69,7 +76,10 @@ disambiguate when the same table name exists in multiple schemas.`,
   gcx datasources postgres describe-table orders --schema public
 
   # Output as JSON
-  gcx datasources postgres describe-table orders -o json`,
+  gcx datasources postgres describe-table orders -o json
+
+  # Include ordered keys and foreign-key relationships
+  gcx datasources postgres describe-table public.orders --include-constraints -o json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
@@ -89,6 +99,14 @@ disambiguate when the same table name exists in multiple schemas.`,
 			}
 			if err := postgres.ValidateIdentifier(schema, "schema"); err != nil {
 				return err
+			}
+			if opts.IncludeConstraints {
+				if schema == "" {
+					return errors.New("--include-constraints requires an explicit schema (use SCHEMA.TABLE or --schema)")
+				}
+				if opts.IO.OutputFormat != "json" && opts.IO.OutputFormat != "yaml" && opts.IO.OutputFormat != "agents" {
+					return errors.New("--include-constraints requires JSON, YAML, or agent output (use -o json or -o yaml)")
+				}
 			}
 
 			ctx := cmd.Context()
@@ -131,6 +149,18 @@ disambiguate when the same table name exists in multiple schemas.`,
 					return fmt.Errorf("table %q not found in schema %q", table, schema)
 				}
 				return fmt.Errorf("table %q not found", table)
+			}
+
+			if opts.IncludeConstraints {
+				constraintsResp, err := client.Query(ctx, datasourceUID, postgres.QueryRequest{RawSQL: postgres.BuildDescribeConstraintsQuery(schema, table)})
+				if err != nil {
+					return fmt.Errorf("query constraints failed: %w", err)
+				}
+				description, err := querysql.ParseTableDescription(schema, table, resp, constraintsResp)
+				if err != nil {
+					return fmt.Errorf("parse table description: %w", err)
+				}
+				return opts.IO.Encode(cmd.OutOrStdout(), description)
 			}
 
 			return opts.IO.Encode(cmd.OutOrStdout(), resp)

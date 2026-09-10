@@ -292,6 +292,8 @@ gcx k6 load-tests list                          # list k6 load tests
 # Query more datasources
 gcx logs query '{app="nginx"} |= "error"' --since 1h
 gcx traces query '{.cluster="dev-us-central-0"}' --since 1h
+gcx datasources mysql query -d UID --query-file ./query.sql -o json
+gcx datasources postgres describe-table public.orders --include-constraints -o json
 ```
 
 ## Install Agent Skills

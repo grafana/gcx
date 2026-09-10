@@ -18,7 +18,7 @@ const (
 
 // QueryCmd returns the `query` subcommand for an Athena datasource parent.
 func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
-	shared := &dsquery.SharedOpts{}
+	shared := &dsquery.SQLQueryOpts{}
 	share := &dsquery.ExploreLinkOpts{}
 	var datasource string
 	var limit int
@@ -31,7 +31,8 @@ func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
 		Short: "Execute a SQL query against an Athena datasource",
 		Long: `Execute a SQL query against an Amazon Athena datasource.
 
-EXPR is the SQL query to execute, passed as a positional argument or via --expr.
+EXPR is the SQL query to execute, passed as a positional argument, via --expr,
+or via --query-file. Use --query-file - to read SQL from stdin.
 Datasource is resolved from -d flag or datasources.athena in your context.
 Server-side macros ($__timeFilter, $__dateFilter, etc.) are supported.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
@@ -46,6 +47,9 @@ open it in your browser after the query succeeds.`,
   # With connection overrides
   gcx datasources athena query -d UID 'SELECT 1' --region us-west-2 --database analytics
 
+  # Read a long query from a file
+  gcx datasources athena query -d UID --query-file ./query.sql -o json
+
   # Enable result reuse (Athena engine v3)
   gcx datasources athena query -d UID 'SELECT count(*) FROM events' --result-reuse --ttl-minutes 60
 
@@ -57,7 +61,7 @@ open it in your browser after the query succeeds.`,
 				return err
 			}
 
-			expr, err := shared.ResolveExpr(args, 0)
+			expr, err := shared.ResolveExpr(args, 0, cmd.InOrStdin(), cmd.Flags().Changed("query-file"))
 			if err != nil {
 				return err
 			}
