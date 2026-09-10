@@ -101,6 +101,7 @@ gcx/
 │   │   ├── cloudmonitoring/  # Google Cloud Monitoring CLI commands (query, list-projects, list-metrics)
 │   │   ├── cloudwatch/       # CloudWatch CLI commands (query, list-namespaces/metrics/dimensions/regions/accounts)
 │   │   ├── elasticsearch/    # Elasticsearch datasource commands (query [--mode documents|logs], metrics, list-indices, list-fields)
+│   │   ├── mssql/            # Microsoft SQL Server commands (query with TOP injection, list-tables, describe-table, explore)
 │   │   ├── mysql/            # MySQL datasource commands (query, list-tables, describe-table)
 │   │   ├── opensearch/       # OpenSearch datasource commands (query [--mode documents|logs], metrics, list-indices, list-fields)
 │   │   ├── postgres/         # PostgreSQL datasource commands (query, list-tables, describe-table)
@@ -120,6 +121,7 @@ gcx/
 │   │   ├── athena/           # Athena SQL query client
 │   │   ├── bigquery/         # BigQuery SQL query client
 │   │   ├── clickhouse/       # ClickHouse HTTP client
+│   │   ├── mssql/            # Microsoft SQL Server HTTP client
 │   │   ├── mysql/            # MySQL HTTP query client (raw SQL via unified query API)
 │   │   └── postgres/         # PostgreSQL HTTP query client (raw SQL via unified query API)
 │   ├── signals/              # Shared signal command and datasource-provider mounting (metrics/logs/traces/profiles)
@@ -127,7 +129,7 @@ gcx/
 │   ├── secrets/              # Redaction of sensitive config fields
 │   ├── skills/               # Portable Agent Skills installer primitives (Install, Update, Bundled/InstalledBundledSkillNames)
 │   ├── strcase/              # String case conversion (snake_case, kebab-case, PascalCase)
-│   ├── telemetry/            # Anonymous usage stats library (event model, mode resolution, device ID, CI detection, wire vocabularies: volume buckets, k8s reasons, auth methods; flat-JSON HTTP export)
+│   ├── telemetry/            # Anonymous usage stats library (event model, mode resolution, device ID, CI detection, wire vocabularies: volume buckets, k8s reasons, auth methods, api routes and datasource types; flat-JSON HTTP export)
 │   │   └── capture/          # Process-wide invocation facts written mid-run, read once at exit by the usage-event builder (holds no wire vocabulary, so writing a signal does not pull in the event model or HTTP exporter)
 │   ├── terminal/             # TTY detection: IsPiped(), NoTruncate(), Detect()
 │   ├── testutils/            # Shared test helpers (not exposed externally)

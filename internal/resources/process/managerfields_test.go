@@ -5,10 +5,21 @@ import (
 
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/process"
+	"github.com/grafana/gcx/internal/version"
 	"github.com/grafana/grafana/pkg/apimachinery/utils"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
+
+func TestManagerIdentity(t *testing.T) {
+	// A build without version information reports the snapshot value.
+	require.Equal(t, "gcx/SNAPSHOT", process.ManagerIdentity())
+
+	version.Set("1.2.3")
+	t.Cleanup(func() { version.Set("") })
+
+	require.Equal(t, "gcx/1.2.3", process.ManagerIdentity())
+}
 
 func TestManagerFieldsAppender(t *testing.T) {
 	tests := []struct {
@@ -50,7 +61,7 @@ func TestManagerFieldsAppender(t *testing.T) {
 						"namespace": "default",
 						"annotations": map[string]any{
 							utils.AnnoKeyManagerKind:        string(resources.ResourceManagerKind),
-							utils.AnnoKeyManagerIdentity:    "gcx",
+							utils.AnnoKeyManagerIdentity:    process.ManagerIdentity(),
 							utils.AnnoKeyManagerAllowsEdits: "true",
 							utils.AnnoKeySourcePath:         "file://some/test/path.json",
 						},
@@ -110,7 +121,7 @@ func TestManagerFieldsAppender(t *testing.T) {
 						"name":      "example",
 						"namespace": "default",
 						"annotations": map[string]any{
-							utils.AnnoKeyManagerIdentity: "gcx",
+							utils.AnnoKeyManagerIdentity: "gcx", // stale value from a previous push
 							utils.AnnoKeyManagerKind:     string(resources.ResourceManagerKind),
 							utils.AnnoKeySourcePath:      "file://some/test/path.json",
 						},
@@ -132,7 +143,7 @@ func TestManagerFieldsAppender(t *testing.T) {
 						"namespace": "default",
 						"annotations": map[string]any{
 							utils.AnnoKeyManagerKind:        string(resources.ResourceManagerKind),
-							utils.AnnoKeyManagerIdentity:    "gcx",
+							utils.AnnoKeyManagerIdentity:    process.ManagerIdentity(),
 							utils.AnnoKeyManagerAllowsEdits: "true",
 							utils.AnnoKeySourcePath:         "file://other/test/path.json",
 						},

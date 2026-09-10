@@ -28,7 +28,9 @@ const (
 //     name, a hostname, or anything else identifying a person, an organisation,
 //     or their data. Flags holds flag NAMES only; Command is the resolved
 //     command path only; the parse_error_* fields are shape-filtered before they
-//     are set (see #578).
+//     are set (see #578); the api_* fields hold only values from the closed
+//     vocabularies in api_vocabulary.go, with "other" for anything outside them
+//     (see RecordAPIRequest in api.go).
 //   - No field carries a raw count of batch or resource volume. Batch sizes
 //     travel as labels from the fixed vocabulary in bucket.go. Note that two of
 //     those labels are singletons, so a batch of 0 or 1 is exactly recoverable —
@@ -126,6 +128,14 @@ type Event struct {
 	// mode is the field's reason to exist. Eligible on every outcome,
 	// including success and canceled.
 	GrafanaAuthMethod string `json:"grafana_auth_method,omitempty"`
+
+	// Sanitized `gcx api` passthrough detail, set only for the api command.
+	// Each field carries a closed-vocabulary value produced by
+	// RecordAPIRequest: the fixed verb list, a route template, allowlisted
+	// datasource plugin types. Never a raw path, argument, or body value.
+	APIMethod          string `json:"api_method,omitempty"`
+	APIRoute           string `json:"api_route,omitempty"`
+	APIDatasourceTypes string `json:"api_datasource_types,omitempty"`
 
 	// Parse-failure capture, set only when Outcome is OutcomeParseError.
 	ParseErrorKind     string `json:"parse_error_kind,omitempty"`
