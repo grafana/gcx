@@ -43,10 +43,10 @@ and proactive optimization are separate tasks.
 Reuse the context, datasource, service, symptom, incident window, deployment
 facts, and trace/profile links supplied by the user or a referring skill. Pin
 absolute UTC incident and baseline times. Derive a missing incident interval
-from timestamped symptom evidence, or ask for it before querying. Carry the
-same `--context <context>` on remote commands (omitted below), and pass the
-datasource UID explicitly.
-Keep the investigation read-only; do not switch contexts or change collection.
+from timestamped symptom evidence, or ask for it before querying. Carry the same
+`--context <context>` on remote commands (omitted below), and pass the
+datasource UID explicitly. Keep the investigation read-only; do not switch
+contexts or change collection.
 
 ```bash
 gcx help-tree profiles -o text
@@ -91,9 +91,9 @@ through `debug-with-grafana` with the missing-evidence question made explicit.
   For partial overlap, analyze only that overlap, record the coverage gap, and
   limit conclusions to the observed interval.
 - **EXIT D — no usable incident profiles:** after checking the selector, window,
-  and lens against discovered facts, incident samples remain absent or zero.
-  A missing baseline alone is handled in Section 2, not by this exit.
-  Report the unresolved coverage/instrumentation gap, not proof of zero cost.
+  and lens against discovered facts, incident samples remain absent or zero. A
+  missing baseline alone is handled in Section 2, not by this exit. Report the
+  unresolved coverage/instrumentation gap, not proof of zero cost.
 
 **Continue with scoped checks** when stats are absent, unsupported, or have
 unknown bounds. Missing stats alone must not block usable type/profile queries.
@@ -162,10 +162,11 @@ gcx profiles metrics -d <pyro-uid> '{service_name="<suspect>"}' \
 ```
 
 Use `profiles series` to discover actual label combinations for a service
-without requiring a profile type. See [scoped series discovery](references/advanced-analysis.md#scoped-series-discovery)
+without requiring a profile type. See
+[scoped series discovery](references/advanced-analysis.md#scoped-series-discovery)
 for label projection and the compatibility fallback for older binaries or
-backends that do not support discovery.
-Tenant-wide label inventories alone do not prove labels coexist on the suspect.
+backends that do not support discovery. Tenant-wide label inventories alone do
+not prove labels coexist on the suspect.
 
 Repeat the chosen grouping for the baseline. Leaderboards are capped candidates,
 not a fleet census; missing groups may have fallen outside the limit. A single
@@ -204,10 +205,9 @@ caller context is missing, repeat the same query with `-o dot --max-nodes 250`
 in both windows. This raises the node limit; it does not guarantee an unpruned
 graph. If attribution remains ambiguous, use the pprof comparison below.
 
-The table shows the top 20 functions ranked by SELF and truncates names to
-60 characters.
-Its PERCENTAGE column is SELF divided by the profile total, not the function
-TOTAL share. Neither format can rule out a missing path. For ambiguous
+The table shows the top 20 functions ranked by SELF and truncates names to 60
+characters. Its PERCENTAGE column is SELF divided by the profile total, not the
+function TOTAL share. Neither format can rule out a missing path. For ambiguous
 attribution or numerical differences, read
 [pprof comparison](references/advanced-analysis.md#pprof-comparison) and export
 both profiles. Do not assume an exported profile repairs collection gaps.
