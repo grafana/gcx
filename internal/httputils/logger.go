@@ -7,9 +7,19 @@ import (
 	"github.com/grafana/grafana-app-sdk/logging"
 )
 
+// Log messages of the payload dumps. Users search the debug log for these,
+// because a wire dump holds no word that identifies it.
+const (
+	requestDumpMessage  = "http request dump"
+	responseDumpMessage = "http response dump"
+)
+
 // RequestResponseLoggingRoundTripper logs full HTTP request and response bodies at Debug level
-// via httputil.DumpRequest / httputil.DumpResponse (includes headers — may expose tokens).
+// via httputil.DumpRequestOut / httputil.DumpResponse (includes headers — may expose tokens).
 // Enabled when --insecure-log-http-payload is set.
+//
+// It is the innermost transport layer, so the dump shows every header that an
+// outer layer adds (bearer token, caller id, user agent).
 type RequestResponseLoggingRoundTripper struct {
 	DecoratedTransport http.RoundTripper
 }
@@ -20,18 +30,33 @@ func (rt RequestResponseLoggingRoundTripper) RoundTrip(req *http.Request) (*http
 		transport = rt.DecoratedTransport
 	}
 
-	reqStr, _ := httputil.DumpRequest(req, true)
-	logging.FromContext(req.Context()).Debug(string(reqStr))
+	logger := logging.FromContext(req.Context())
+
+	// DumpRequestOut serializes the outgoing request in HTTP/1.1 form. It adds
+	// transport headers such as Content-Length and Accept-Encoding. The framing
+	// can differ when the transport uses HTTP/2.
+	reqStr, err := httputil.DumpRequestOut(req, true)
+	if err != nil {
+		logger.Warn("cannot dump http request", "err", err)
+	} else {
+		logger.Debug(requestDumpMessage + "\n" + string(reqStr))
+	}
 
 	resp, err := transport.RoundTrip(req)
 	if err != nil {
+		// The round trip failed, so there is no response to dump. The error
+		// reaches the log through LoggingRoundTripper.
 		return resp, err
 	}
 
-	respStr, _ := httputil.DumpResponse(resp, true)
-	logging.FromContext(req.Context()).Debug(string(respStr))
+	respStr, err := httputil.DumpResponse(resp, true)
+	if err != nil {
+		logger.Warn("cannot dump http response", "err", err)
+	} else {
+		logger.Debug(responseDumpMessage + "\n" + string(respStr))
+	}
 
-	return resp, err
+	return resp, nil
 }
 
 // LoggingRoundTripper logs HTTP method, URL, and response status at appropriate levels.
