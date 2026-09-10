@@ -1,8 +1,8 @@
 # From an alert or symptom to a representative trace
 
 Use this reference when request execution remains unexplained and you need a
-seed for baseline comparison. A supplied trace ID skips localization: confirm
-its target, fetch it, and check that it represents the stated symptom.
+representative trace. A supplied ID is a direct lookup opportunity, not a promise
+that the trace was retained. Confirm its target, fetch it, and inspect it if usable.
 
 ## Normalize the input without requiring IRM
 
@@ -23,14 +23,14 @@ rule semantics; IRM is only an optional context source.
 For a Grafana-managed rule with a known UID:
 
 ```bash
-gcx alert rules get <rule-uid> -o json
+gcx alert rules get <rule-uid> -o agents
 ```
 
 If the rule UID is unknown and current firing state is relevant, narrow by a
 known folder/group before inspecting a bounded list:
 
 ```bash
-gcx alert rules list --folder <folder-uid> --state firing --limit 20 -o json
+gcx alert rules list --folder <folder-uid> --state firing --limit 20 -o agents
 ```
 
 JSON is an array of groups, each with a `rules` array. `rules[].state` is current
@@ -66,35 +66,62 @@ an arbitrary 1s threshold corresponds to the alert.
 
 ## Reach the seed by the shortest useful route
 
-1. Follow a supplied trace ID/link after confirming context and datasource.
-2. Follow a metric exemplar relevant to the operation and incident interval.
-   Use an existing exemplar ID/link; do not invent a gcx exemplar command.
-3. Search Tempo using the verified service, operation, interval, and symptom.
-4. Use a log trace ID if it supplies the missing connection. Do not scan logs
-   merely to earn access to traces.
+```text
+Known ID from a link, exemplar, or log → fetch → usable? inspect
+                                              otherwise ↓
+No usable ID → scoped tags/values → bounded cohort search → inspect a retained example
+```
 
-Example search after discovering the schema (replace placeholders):
+Use an existing exemplar ID/link; do not invent a gcx exemplar command. Do not
+scan logs merely to obtain an ID when a scoped trace search can find the seed.
+
+### When a known ID is unavailable
+
+If retrieval reports no trace, check the supplied datasource and lookup bounds;
+correct a concrete mismatch once. Otherwise record the ID as unavailable and
+search the affected cohort, rather than repeatedly fetching that ID or cycling
+through more log IDs. Sampling (including Adaptive Traces), retention, and
+ingestion delays can explain missing data; do not claim which caused it without
+evidence. A failed request is not a missing trace: handle authentication,
+permission, or backend errors through [error recovery](error-recovery.md).
+
+### Prepare a cohort search
+
+When no usable ID exists, use [scoped tags and tag values](traceql-patterns.md#scoped-discovery)
+to learn the attributes, types, and values needed for a selective TraceQL query.
+This is query preparation, not merely error recovery. Reuse known attributes
+and scope; do not enumerate every tag or run a discovery tour before fetching
+a usable known ID. Tag presence alone does not establish incident coverage.
+
+Search for the affected service, operation, interval, and symptom. A retained
+example must independently exhibit that symptom; it is not the missing request
+and does not prove the same mechanism occurred there. If no relevant retained
+evidence is found, use other signals or report the request-level limitation.
+
+Example searches using the verified schema (replace placeholders):
 
 ```bash
 # Duration here is server-span duration, not total trace duration.
 gcx traces query -d "$TEMPO_UID" \
   '{ resource.service.name = "<service>" && name = "<operation>" && kind = server && duration > <threshold> }' \
-  --from "$FROM" --to "$TO" --limit 10 -o json
+  --from "$FROM" --to "$TO" --limit 10 -o agents
 
 # For an HTTP-error symptom, use the actual response-status attribute/type.
 gcx traces query -d "$TEMPO_UID" \
   '{ resource.service.name = "<service>" && name = "<operation>" && span.http.response.status_code >= 500 }' \
-  --from "$FROM" --to "$TO" --limit 10 -o json
+  --from "$FROM" --to "$TO" --limit 10 -o agents
 ```
 
 Search returns exemplars, not a ranked or statistically representative sample.
-A cap of 10 is a starting bound, not a completeness guarantee. Narrow/refine the
-cohort when results are unrelated; do not fetch every trace or automatically
-select the first result or slowest outlier.
+Sampling can bias the retained cohort; use independent metrics/logs with known
+coverage for incident frequency and blast radius. A cap of 10 is a starting
+bound, not a completeness guarantee. Narrow/refine the cohort when results are
+unrelated; do not fetch every trace or automatically select the first result
+or slowest outlier.
 
 ```bash
 gcx traces get -d "$TEMPO_UID" "$SEED" --llm \
-  --from "$FROM" --to "$TO" --share-link -o json
+  --from "$FROM" --to "$TO" --share-link -o agents
 ```
 
 Inspect the body for the affected operation, duration/error evidence, relevant

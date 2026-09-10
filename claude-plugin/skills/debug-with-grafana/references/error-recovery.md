@@ -96,10 +96,10 @@ Use [trace comparison](trace-comparison.md) for the fallback protocol:
 
 | Failure | Recovery |
 | --- | --- |
-| Baseline command/required TraceQL capability unavailable | Same-operation bounded search, then qualify candidates manually |
+| Baseline command/required TraceQL capability unavailable | Same-operation bounded search, then assess candidate bodies and exploratory diffs |
 | No valid controls or topology-biased retrieval | Relax generated topology constraints via ordinary TraceQL search, not an invented flag |
 | Partial seed or missing root | Try a complete representative seed; time overrides cannot restore missing structure |
-| Diff endpoint unavailable | Fetch both qualified traces with `--llm` and compare execution evidence manually; disclose the limitation |
+| Diff endpoint unavailable | Reuse or fetch candidate and seed bodies with `--llm`; assess comparability and execution differences manually, and disclose the limitation |
 | Trace lookup not found | Check ID, datasource, retention, and time bounds before assuming the endpoint is absent |
 | Comparisons disagree | Refine the cohort or report inconclusive evidence; do not select the diff that best fits a preferred explanation |
 

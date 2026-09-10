@@ -6,18 +6,22 @@ metric names, and labels are examples: substitute the schema you actually found.
 
 ## Bounded discovery
 
-Prefer supplied rule/panel queries and configured datasource references over
-inventories. If a metric name is unknown, scope server-side before filtering
-names; `--contains` and `--limit` alone do not bound backend discovery work.
+Reuse supplied rule/panel queries and configured datasource references. When
+the metric and selector are known, run the evidence query directly. Otherwise
+choose only the discovery read that resolves the missing name, type, or label;
+the commands below are alternatives, not a mandatory sequence.
+
+Scope server-side before filtering names; `--contains` and `--limit` alone do
+not bound backend discovery work.
 
 ```bash
-gcx metrics list-names -d "$PROM_UID" --match '{job="api"}' --contains request --limit 20 -o json
-gcx metrics metadata -d "$PROM_UID" --metric http_requests_total -o json
-gcx metrics labels -d "$PROM_UID" --metric http_requests_total --match '{job="api"}' -o json
-gcx metrics labels -d "$PROM_UID" --metric http_requests_total --match '{job="api"}' --label status -o json
-# Inspect actual label combinations in the investigation interval.
+gcx metrics list-names -d "$PROM_UID" --match '{job="api"}' --contains request --limit 20 -o agents
+gcx metrics metadata -d "$PROM_UID" --metric http_requests_total -o agents
+gcx metrics labels -d "$PROM_UID" --metric http_requests_total --match '{job="api"}' -o agents
+gcx metrics labels -d "$PROM_UID" --metric http_requests_total --match '{job="api"}' --label status -o agents
+# Inspect actual label combinations in the investigation interval when needed.
 gcx metrics series -d "$PROM_UID" 'http_requests_total{job="api"}' \
-  --from "$FROM" --to "$TO" -o json
+  --from "$FROM" --to "$TO" -o agents
 ```
 
 Repeated `--match` selectors combine as a **union**, not intersection; put
@@ -32,8 +36,8 @@ Inspect a supplied dashboard immediately if it provides the relevant query.
 If discovery is necessary, search narrowly rather than pulling all dashboards:
 
 ```bash
-gcx dashboards search <service-or-keyword> --limit 10 -o json
-gcx dashboards get <dashboard-uid> -o json
+gcx dashboards search <service-or-keyword> --limit 10 -o agents
+gcx dashboards get <dashboard-uid> -o agents
 ```
 
 Check the returned `apiVersion` and `spec` before extracting fields:
@@ -82,7 +86,7 @@ dimensions. Here one result describes all requests for the selected job:
 ```bash
 gcx metrics query -d "$PROM_UID" \
   'sum by (job) (rate(http_requests_total{job="api",status=~"5.."}[5m])) / sum by (job) (rate(http_requests_total{job="api"}[5m]))' \
-  --from "$FROM" --to "$TO" --step 1m -o json
+  --from "$FROM" --to "$TO" --step 1m -o agents
 ```
 
 Unaggregated division matches each error series to itself, often yielding 1.
@@ -100,7 +104,7 @@ Combine buckets across instances **before** calculating the quantile. Preserve
 ```bash
 gcx metrics query -d "$PROM_UID" \
   'histogram_quantile(0.95, sum by (job, le) (rate(http_request_duration_seconds_bucket{job="api"}[5m])))' \
-  --from "$FROM" --to "$TO" --step 1m -o json
+  --from "$FROM" --to "$TO" --step 1m -o agents
 ```
 
 For per-endpoint latency retain the endpoint label alongside `job, le`. Do not
@@ -115,7 +119,7 @@ A native histogram is the base metric, not a `_bucket` family. Do not invent an
 ```bash
 gcx metrics query -d "$PROM_UID" \
   'histogram_quantile(0.95, sum by (job) (rate(http_request_duration_seconds{job="api"}[5m])))' \
-  --from "$FROM" --to "$TO" --step 1m -o json
+  --from "$FROM" --to "$TO" --step 1m -o agents
 ```
 
 Select the example matching actual metadata and samples. Check response
@@ -125,7 +129,7 @@ series exist, a ratio of aggregated rates gives the mean, **not** a P95.
 ### Scrape status
 
 ```bash
-gcx metrics query -d "$PROM_UID" 'up{job="api"}' --time "$TO" -o json
+gcx metrics query -d "$PROM_UID" 'up{job="api"}' --time "$TO" -o agents
 ```
 
 - `1`: that scrape succeeded, not proof every application operation is healthy.
@@ -137,7 +141,7 @@ gcx metrics query -d "$PROM_UID" 'up{job="api"}' --time "$TO" -o json
 
 ```bash
 gcx metrics query -d "$PROM_UID" 'absent(up{job="api"})' \
-  --from "$FROM" --to "$TO" --step 1m -o json
+  --from "$FROM" --to "$TO" --step 1m -o agents
 ```
 
 `absent(...)` returns a series with value **1** when no input series matches.
@@ -153,7 +157,7 @@ query. This is valid with `increase()` and other over-time functions:
 
 ```bash
 gcx metrics query -d "$PROM_UID" \
-  'sum by (job) (increase(http_requests_total{job="api"}[30m]))' --time "$TO" -o json
+  'sum by (job) (increase(http_requests_total{job="api"}[30m]))' --time "$TO" -o agents
 ```
 
 `increase()` accounts for observed counter resets and extrapolates to the
@@ -166,7 +170,7 @@ For the mean of recorded gauge samples over a window ending at `TO`:
 
 ```bash
 gcx metrics query -d "$PROM_UID" \
-  'avg_over_time(queue_depth{job="api"}[30m])' --time "$TO" -o json
+  'avg_over_time(queue_depth{job="api"}[30m])' --time "$TO" -o agents
 ```
 
 This is per-series and sample-weighted, not a traffic-weighted average or the
@@ -205,14 +209,21 @@ unavailable. Do not silently broaden the population to make a query succeed.
 
 ## Loki: sample details separately from counts
 
-### Discover label kinds
+### Learn fields from bounded logs
+
+With a known stream selector, a bounded query provides evidence and reveals
+per-entry fields in the same read; do not add a label-discovery pass first:
 
 ```bash
-gcx logs labels -d "$LOKI_UID" -o json
-gcx logs labels -d "$LOKI_UID" -l service_name -o json
-# A bounded line query establishes coverage and reveals per-entry fields.
 gcx logs query -d "$LOKI_UID" '{service_name="api"}' \
-  --from "$FROM" --to "$TO" --limit 10 -o json
+  --from "$FROM" --to "$TO" --limit 10 -o agents
+```
+
+Only if needed to construct the selector, discover indexed names or values:
+
+```bash
+gcx logs labels -d "$LOKI_UID" -o agents
+gcx logs labels -d "$LOKI_UID" -l service_name -o agents
 ```
 
 | Kind | JSON location | LogQL use |
@@ -232,7 +243,7 @@ time flags in this build; use scoped line queries to verify incident coverage.
 ```bash
 gcx logs query -d "$LOKI_UID" \
   '{service_name="api"} | json | trace_id="<trace-id>" | __error__=""' \
-  --from "$FROM" --to "$TO" --limit 20 -o json
+  --from "$FROM" --to "$TO" --limit 20 -o agents
 ```
 
 Choose actual fields and parsers. If `trace_id` is structured metadata, filter
@@ -249,12 +260,12 @@ LogQL. Aggregate to the dimensions you need to reduce returned cardinality:
 ```bash
 gcx logs metrics -d "$LOKI_UID" \
   'sum(rate({service_name="api"} | json | level="error" | __error__="" [5m]))' \
-  --from "$FROM" --to "$TO" --step 1m -o json
+  --from "$FROM" --to "$TO" --step 1m -o agents
 
 # Rolling count of observed matching entries, not independent 5m buckets.
 gcx logs metrics -d "$LOKI_UID" \
   'sum(count_over_time({service_name="api"} | json | status >= 500 | __error__="" [5m]))' \
-  --from "$FROM" --to "$TO" --step 1m -o json
+  --from "$FROM" --to "$TO" --step 1m -o agents
 ```
 
 Place `__error__=""` after stages that can create errors, including numeric
@@ -285,10 +296,64 @@ error **ratios**; for retries, distinguish attempts from original requests.
 
 ## Output and evidence links
 
-Use `-o json` for analysis, `--json list` to inspect fields, and `--json`/`--jq`
-to reduce output after understanding its shape. Field projection is not query
-pushdown. Keep stdout and stderr separate: never pipe `2>&1` into a JSON parser,
-but do retain stderr warnings, truncation hints, and share links.
+Start with normal agent output; examples pin it with `-o agents`. Inspect the
+inline result directly. An automatic spill points to saved data, not an empty
+result; inspect that data without repeating the remote read. A harness may also
+truncate output before GCX spills: recover its saved result when available, or
+narrow the query. Do not treat a truncated preview as complete evidence.
+
+Use `--json` or `--jq` upfront only when the needed fields and transformation are
+known. Otherwise let the bounded evidence read reveal them, rather than adding
+a throwaway schema query. Both are native GCX features; no external jq dependency
+or installation preflight is needed. Use one flag, not both, and omit `-o agents`
+with either. They transform command output, not saved spill files; use available
+local file tools for those. Projection reduces model input, not backend work.
+
+### Optional native transformations
+
+These are examples, not a required processing stage. Keep stdout and stderr
+separate; never pipe `2>&1` into a JSON parser. The filters below modify only
+successful results of the expected kind, preserving the surrounding response,
+including notices and warnings. Retain stderr diagnostics too.
+
+Rank the five routes with the largest estimated 5xx counts. PromQL bounds the
+result; `--jq` orders the returned vector numerically without a separate script:
+
+```bash
+gcx metrics query -d "$PROM_UID" \
+  'topk(5, sum by (route) (increase(http_requests_total{job="api",status=~"5.."}[30m])))' \
+  --time "$TO" --jq '
+    if .status == "success" and .data.resultType == "vector"
+      and all(.data.result[]; .value[1] | try (tonumber | isfinite) catch false)
+    then .data.result |= (sort_by(.value[1] | tonumber) | reverse)
+    else . end'
+```
+
+Metric labels and evaluation timestamps remain attached to values; non-finite
+or unparseable values leave the response unchanged. This is a top-five ranking,
+not the total error count, an error ratio, or proof that other routes are
+unaffected. Use a matching denominator if the question needs shares; do not
+interpret empty or non-finite results as zero errors.
+
+For verbose parsed logs, return timestamps, parsed fields, and structured
+metadata without duplicating the raw line body. Use this projection only after
+confirming the needed evidence is in those fields:
+
+```bash
+gcx logs query -d "$LOKI_UID" \
+  '{service_name="api"} | json | level="error" | __error__=""' \
+  --from "$FROM" --to "$TO" --limit 5 --jq '
+    if .status == "success" and .data.resultType == "streams" then
+      .data.result |= map(.values |= map({timestamp, parsed, structuredMetadata}))
+    else . end'
+```
+
+Stream labels and response notices are retained. Five returned lines may hit the
+sample cap; this sample cannot establish frequency or absence elsewhere. Keep
+query scope, time bounds, and the limit with the evidence. If raw line details
+are needed, return the bounded response with `-o agents` and no projection instead.
+
+### Evidence links
 
 Add `--share-link` to an already-needed metrics/logs range query or a bounded
 trace search/get with fixed `--from`/`--to` timestamps to capture a reproducible
