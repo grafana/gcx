@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/gcx/internal/secrets"
 	"github.com/grafana/grafana-app-sdk/logging"
 )
 
@@ -125,7 +126,7 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 		logger := logging.FromContext(req.Context())
 		attrs := []any{
 			"method", req.Method,
-			"url", req.URL.String(),
+			"url", secrets.URLString(req.Context(), req.URL),
 			"attempt", attempt + 1,
 			"max_retries", maxRetries,
 			"backoff", backoff.String(),
@@ -134,7 +135,7 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 			attrs = append(attrs, "status", resp.StatusCode)
 		}
 		if err != nil {
-			attrs = append(attrs, "error", err.Error())
+			attrs = append(attrs, "error", secrets.ErrorString(req.Context(), req.URL, err))
 		}
 		logger.Warn("retrying HTTP request", attrs...)
 
