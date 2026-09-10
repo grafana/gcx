@@ -7,7 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/grafana/gcx/internal/credentials"
 	"github.com/stretchr/testify/assert"
@@ -19,13 +21,44 @@ type fakeKeychain struct {
 	entries map[string]string
 	gets    []string
 	getErr  error
+	calls   int
 }
+
+// migrationRetargetContext is a context.Context whose Done() (not Err())
+// triggers a retarget (e.g. symlink swap) exactly once, the first time it is
+// called. This is intentionally coupled to a specific production call site:
+// acquireLegacyMigrationWriteLock in migrate.go constructs
+// `lockCtx, cancel := context.WithTimeout(ctx, 30*time.Second)` right after
+// selecting the write lock and before migrateLegacyConfig calls
+// readLegacyMigrationSource to reread the file. context.WithTimeout's
+// internal cancellation propagation calls the parent context's Done() as
+// part of that construction, so onDone fires at exactly that narrow window —
+// after the lock decision, before the reread. If production ever switches
+// that lock-timeout construction to call ctx.Err() instead of relying on
+// context.WithTimeout's Done()-based propagation (or moves it relative to
+// the reread), this helper stops injecting the retarget at the intended
+// point and these tests silently stop testing the race they claim to cover.
+type migrationRetargetContext struct {
+	onDone func()
+	once   sync.Once
+}
+
+func (*migrationRetargetContext) Deadline() (time.Time, bool) { return time.Time{}, false }
+
+func (c *migrationRetargetContext) Done() <-chan struct{} {
+	c.once.Do(c.onDone)
+	return nil
+}
+
+func (*migrationRetargetContext) Err() error    { return nil }
+func (*migrationRetargetContext) Value(any) any { return nil }
 
 func newFakeKeychain() *fakeKeychain {
 	return &fakeKeychain{entries: map[string]string{}}
 }
 
 func (f *fakeKeychain) Get(key string) (string, error) {
+	f.calls++
 	f.gets = append(f.gets, key)
 	if f.getErr != nil {
 		return "", f.getErr
@@ -38,11 +71,13 @@ func (f *fakeKeychain) Get(key string) (string, error) {
 }
 
 func (f *fakeKeychain) Set(key, value string) error {
+	f.calls++
 	f.entries[key] = value
 	return nil
 }
 
 func (f *fakeKeychain) Delete(key string) error {
+	f.calls++
 	delete(f.entries, key)
 	return nil
 }
@@ -672,6 +707,75 @@ current-context: prod
 	require.ErrorContains(t, err, "untrusted config source")
 	assert.Empty(t, store.gets)
 	assert.Equal(t, "user-secret", store.entries["prod:grafana-token"])
+}
+
+func TestMigrateLegacyConfigRejectsSymlinkRetargetAfterLockSelection(t *testing.T) {
+	originalLegacy := []byte(`
+contexts:
+  original:
+    grafana:
+      server: https://original.example
+current-context: original
+`)
+	tests := []struct {
+		name             string
+		retargetContents []byte
+	}{
+		{
+			name: "different bytes",
+			retargetContents: []byte(`
+contexts:
+  retargeted:
+    grafana:
+      server: https://retargeted.example
+current-context: retargeted
+`),
+		},
+		{
+			name:             "identical bytes",
+			retargetContents: originalLegacy,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			withFakeKeychain(t)
+			dir := t.TempDir()
+			originalPath := filepath.Join(dir, "original.yaml")
+			retargetPath := filepath.Join(dir, "retargeted.yaml")
+			linkPath := filepath.Join(dir, "config.yaml")
+			replacementLink := filepath.Join(dir, "replacement-link")
+			require.NoError(t, os.WriteFile(originalPath, originalLegacy, 0o600))
+			require.NoError(t, os.WriteFile(retargetPath, tt.retargetContents, 0o600))
+			require.NoError(t, os.Symlink(originalPath, linkPath))
+			require.NoError(t, os.Symlink(retargetPath, replacementLink))
+
+			ctx := &migrationRetargetContext{onDone: func() {
+				require.NoError(t, os.Remove(linkPath))
+				require.NoError(t, os.Rename(replacementLink, linkPath))
+			}}
+			_, err := Load(ctx, ExplicitConfigFile(linkPath))
+			if err == nil || !strings.Contains(err.Error(), "config source identity changed while reading legacy migration") {
+				t.Errorf("Load() error = %v, want a post-lock source identity error", err)
+			}
+
+			backup, backupErr := os.ReadFile(linkPath + legacyBackupSuffix)
+			if backupErr == nil {
+				t.Errorf("migration created an unauthorized backup after symlink retarget: %q", backup)
+			} else if !errors.Is(backupErr, os.ErrNotExist) {
+				t.Errorf("read migration backup: %v", backupErr)
+			}
+			originalAfter, readErr := os.ReadFile(originalPath)
+			require.NoError(t, readErr)
+			assert.Equal(t, originalLegacy, originalAfter)
+			retargetAfter, readErr := os.ReadFile(retargetPath)
+			require.NoError(t, readErr)
+			assert.Equal(t, tt.retargetContents, retargetAfter)
+			linkedTarget, readErr := os.Readlink(linkPath)
+			require.NoError(t, readErr)
+			assert.Equal(t, retargetPath, linkedTarget)
+		})
+	}
 }
 
 func TestMigrateLocalPlaintextDoesNotOverwriteSameNamedLegacyAccount(t *testing.T) {

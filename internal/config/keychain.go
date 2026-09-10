@@ -1003,7 +1003,7 @@ func resolveSentinelsForOwner(owner secretOwner, store credentials.Store) (keych
 func keychainReadRejectionReason(err error) string {
 	switch {
 	case errors.Is(err, credentials.ErrDisabled):
-		return "keychain use is disabled by GCX_KEYCHAIN"
+		return "keychain use is disabled by the effective credential-storage policy"
 	case errors.Is(err, credentials.ErrLocked):
 		return "the OS keychain is locked"
 	default:
@@ -1481,7 +1481,7 @@ func (txn *keychainWriteTransaction) preflightDeletes() error {
 		// reached at all: unsetting GCX_KEYCHAIN does not help on a machine
 		// whose credential store is permanently unavailable.
 		if errors.Is(err, credentials.ErrDisabled) {
-			return fmt.Errorf("cannot delete the keychain entry for %q field %q while keychain use is disabled by GCX_KEYCHAIN; unset it to delete the entry, or edit the config file to remove the reference: %w", pending.owner, pending.field, err)
+			return fmt.Errorf("cannot delete the keychain entry for %q field %q while keychain use is disabled by the effective credential-storage policy; set GCX_KEYCHAIN=on for this invocation, or unset GCX_KEYCHAIN and set credentials.keychain to on in the trusted config file; alternatively, edit the config file to remove the reference: %w", pending.owner, pending.field, err)
 		}
 		return fmt.Errorf("cannot verify keychain deletion for %q field %q before writing config: %w", pending.owner, pending.field, err)
 	}
@@ -1519,7 +1519,7 @@ func (txn *keychainWriteTransaction) commit(warningWriter io.Writer) error {
 			hint := "verify your OS credential store (Keychain, Credential Manager, or Secret Service) is available and working to enable encrypted credential storage"
 			if errors.Is(txn.fallbackErr, credentials.ErrDisabled) {
 				message = "keychain storage is disabled; credentials remain in plaintext on disk"
-				hint = "unset GCX_KEYCHAIN to store credentials in the OS credential store"
+				hint = "set GCX_KEYCHAIN=on for this invocation, or unset GCX_KEYCHAIN and set credentials.keychain to on in the trusted config file"
 				if txn.abandonedGeneration {
 					// gcx cannot delete through the store that refused the write,
 					// so the credential this one replaced stays in the OS

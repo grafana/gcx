@@ -124,6 +124,8 @@ func TestBoundKeychainDisabledDeleteNamesAWorkingRepair(t *testing.T) {
 	err := txn.preflightDeletes()
 	require.ErrorIs(t, err, credentials.ErrDisabled)
 	assert.Contains(t, err.Error(), "edit the config file to remove the reference")
+	assert.Contains(t, err.Error(), "GCX_KEYCHAIN=on")
+	assert.Contains(t, err.Error(), "credentials.keychain")
 }
 
 // The delete guard applies only to credentials that are in the store. A
@@ -161,7 +163,7 @@ func TestBoundKeychainDisabledFallbackWarningOmitsTroubleshootingHint(t *testing
 
 	require.NoError(t, txn.commit(&warnings))
 	assert.Equal(t, "warn: keychain storage is disabled; credentials remain in plaintext on disk; "+
-		"unset GCX_KEYCHAIN to store credentials in the OS credential store\n",
+		"set GCX_KEYCHAIN=on for this invocation, or unset GCX_KEYCHAIN and set credentials.keychain to on in the trusted config file\n",
 		warnings.String())
 	assert.NotContains(t, warnings.String(), "is available and working",
 		"a deliberate opt-out must not be reported as a broken credential store")

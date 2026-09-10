@@ -153,8 +153,10 @@ contexts:
   prod: { stack: prod, cloud: grafana-com }
 ```
 
-**Loading chain:** Discover system → user → local files (or one explicit
-`--config` file), reject unsupported versions, preflight legacy migration, merge
+**Loading chain:** Discover system → user → local source snapshots (or one
+explicit `--config` file), reject unsupported declared versions (preflight every
+layered source), resolve the trusted keychain policy from those bytes before
+legacy migration, full decode, or opening a credential store, then merge
 credential-bearing stack/Cloud entries atomically, select `--context` or
 `current-context`, then apply environment overrides (`GRAFANA_SERVER`,
 `GRAFANA_TOKEN`, `GRAFANA_PROVIDER_{NAME}_{KEY}`). Overrides take runtime
@@ -166,10 +168,11 @@ precedence but remain ephemeral.
 are redacted in `gcx config view`. Undeclared keys and unknown providers are
 redacted by default. Keychain references are bound to their canonical source
 file, exact owner/field, and destination so another layer cannot redirect or
-overwrite a stored credential. An unavailable native keychain fails closed,
-same as a reachable but locked or interaction-disabled keychain (`Keychain
-locked`); the only plaintext fallback path is the explicit `GCX_KEYCHAIN=off`
-opt-out.
+overwrite a stored credential. `credentials.keychain` defaults to `on`; an
+explicit trusted `off` (or `GCX_KEYCHAIN=off`) is the only deliberate plaintext
+mode, and an auto-discovered local file cannot set that policy. An unavailable
+native keychain fails closed, same as a reachable but locked or
+interaction-disabled keychain (`Keychain locked`).
 
 **Deep-dive:** [config-system.md](docs/architecture/config-system.md).
 
