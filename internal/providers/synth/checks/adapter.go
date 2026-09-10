@@ -25,7 +25,7 @@ func extractIDFromSlug(name string) (int64, bool) { return adapter.ExtractInt64I
 
 // ToResource converts an API Check + probe map to a K8s-envelope Resource.
 // probeNames maps probe ID → name for display in the YAML file.
-// Server-managed fields (id, tenantId, created, modified, channels) are stripped.
+// Server-managed fields (id, tenantId, created, modified) are stripped.
 func ToResource(check Check, namespace string, probeNames map[int64]string) (*resources.Resource, error) {
 	// Resolve probe IDs to names for the YAML spec.
 	probeNameList := make([]string, 0, len(check.Probes))
@@ -49,6 +49,7 @@ func ToResource(check Check, namespace string, probeNames map[int64]string) (*re
 		Probes:           probeNameList,
 		BasicMetricsOnly: check.BasicMetricsOnly,
 		AlertSensitivity: check.AlertSensitivity,
+		Channels:         check.Channels,
 	}
 
 	// Marshal spec to generic map for the K8s envelope.
@@ -154,6 +155,7 @@ func SpecToCheck(spec *CheckSpec, id, tenantID int64, probeIDs []int64) Check {
 		Probes:           probeIDs,
 		BasicMetricsOnly: spec.BasicMetricsOnly,
 		AlertSensitivity: spec.AlertSensitivity,
+		Channels:         spec.Channels,
 	}
 }
 

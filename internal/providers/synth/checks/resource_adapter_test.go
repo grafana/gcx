@@ -57,6 +57,7 @@ var stubCheckList = []checks.Check{
 		Enabled:   true,
 		Settings:  checks.CheckSettings{"http": map[string]any{"method": "GET"}},
 		Probes:    []int64{1, 2},
+		Channels:  map[string]any{"k6": map[string]any{"id": "v2"}},
 	},
 }
 
@@ -128,6 +129,7 @@ func TestResourceAdapter_List(t *testing.T) {
 	require.Len(t, probeList, 2)
 	assert.Equal(t, "Oregon", probeList[0])
 	assert.Equal(t, "Spain", probeList[1])
+	assert.Equal(t, map[string]any{"k6": map[string]any{"id": "v2"}}, spec["channels"])
 }
 
 func TestResourceAdapter_Get(t *testing.T) {
@@ -186,10 +188,17 @@ func TestResourceAdapter_Create(t *testing.T) {
 		Enabled:   true,
 		Settings:  checks.CheckSettings{"ping": map[string]any{}},
 		Probes:    []int64{1},
+		Channels:  map[string]any{"k6": map[string]any{"id": "v2"}},
 	}
 
 	mux := buildTestMux(t)
 	mux.HandleFunc("/api/v1/check/add", func(w http.ResponseWriter, r *http.Request) {
+		var request checks.Check
+		if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&request)) {
+			http.Error(w, "invalid request", http.StatusBadRequest)
+			return
+		}
+		assert.Equal(t, map[string]any{"k6": map[string]any{"id": "v2"}}, request.Channels)
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(newCheck)
 	})
@@ -222,6 +231,7 @@ func TestResourceAdapter_Create(t *testing.T) {
 				"enabled":   true,
 				"settings":  map[string]any{"ping": map[string]any{}},
 				"probes":    []any{"Oregon"},
+				"channels":  map[string]any{"k6": map[string]any{"id": "v2"}},
 			},
 		},
 	}
