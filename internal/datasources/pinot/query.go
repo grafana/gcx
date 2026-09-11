@@ -49,8 +49,55 @@ func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
 EXPR is the SQL query to execute, passed as a positional argument or via --expr.
 Datasource is resolved from -d flag or datasources.pinot in your context.
 Server-side macros ($__timeFilter, $__timeGroup, etc.) are supported.
-StarTree requires a table name: gcx derives it from the first FROM, including
-inside a subquery. Pass --table when the SQL names no table (for example SELECT 1).
+
+Table name (StarTree tableName field):
+  - StarTree requires tableName to load schema and expand macros before it runs
+    pinotQlCode (sent alongside your SQL in the query request).
+  - By default, gcx derives tableName from the first real FROM in the SQL.
+  - Derivation supports schema.table, double-quoted identifiers, and the inner
+    table in FROM (subquery) … (for example SELECT … FROM (SELECT … FROM events)).
+  - Ignored for derivation: FROM inside string literals, line or block comments,
+    or EXTRACT/TRIM/SUBSTRING/OVERLAY calls (they are not table clauses).
+  - When the SQL has no extractable table (for example SELECT 1), pass --table
+    with a table the query actually uses; the command fails otherwise.
+  - --table overrides any name that would be derived from the SQL.
+
+Row limit (--limit):
+  - Default 100 when --limit is omitted on this command and the expresion does not have a LIMIT; generic gcx datasources
+    query uses the same Pinot default when the datasource kind is pinot.
+  - --limit 0 disables enforcement (SQL is sent unchanged) and prints no notice.
+  - Requests above 1000 are capped to 1000 in the emitted LIMIT when the SQL
+    can be rewritten. --limit never overwrites an existing LIMIT n that is
+    already at or below 1000.
+  - Only SELECT/WITH-shaped PinotQL may be rewritten; optional leading SET …;
+    prefixes are ignored for this check.
+  - Left unchanged (no append): UNION, OFFSET, LIMIT offset,count, OPTION(…),
+    trailing line comments, LIMIT before a trailing comment, unclosed block
+    comments; keywords only in string literals or comments do not trigger these.
+  - A LIMIT inside a comment (LIMIT /* note */ n) still counts as an existing
+    LIMIT. The number is read after comments are blanked but the SQL is not rewritten because it is not safe to modify.
+
+  Stderr notices (one line, never the full SQL):
+
+  When --limit N is set:
+    | Query                         | Sent            | Notice |
+    |-------------------------------|-----------------|--------|
+    | no LIMIT, safe                | append LIMIT N  | Query adjusted: appended LIMIT N (--limit). Use --limit 0 to disable enforcement. |
+    | no LIMIT, not safe            | unchanged       | You asked for --limit N, but a row limit was not appended (this query shape is not safe to modify). Add LIMIT in the SQL or use --limit 0. |
+    | has LIMIT, n == N             | unchanged       | (none) |
+    | has LIMIT, n != N, n <= 1000  | unchanged       | You requested --limit N but the query already has a LIMIT, so no change was applied. |
+    | bare LIMIT n, n > 1000        | LIMIT 1000      | You requested --limit N but the existing LIMIT was above the maximum, so it was reduced to 1000. |
+    | LIMIT /* … */ n, n > 1000     | unchanged       | The query has a LIMIT above 1000 that should be reduced to 1000, but the query is not safe to modify. |
+
+  When --limit is omitted (default 100):
+    | Query                         | Sent            | Notice |
+    |-------------------------------|-----------------|--------|
+    | no LIMIT, safe                | append LIMIT 100 | Query adjusted: appended default LIMIT 100. Use --limit 0 to disable enforcement. |
+    | no LIMIT, not safe            | unchanged       | (none) |
+    | has LIMIT, n <= 1000          | unchanged       | (none) |
+    | bare LIMIT n, n > 1000        | LIMIT 1000      | Query adjusted: LIMIT reduced to 1000 (maximum). Use --limit 0 to disable enforcement. |
+    | LIMIT /* … */ n, n > 1000     | unchanged       | The query has a LIMIT above 1000 that should be reduced to 1000, but the query is not safe to modify. |
+
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
 open it in your browser after the query succeeds.`,
 		Example: `
@@ -84,7 +131,7 @@ open it in your browser after the query succeeds.`,
 			}
 
 			sql, capped := pinot.EnforceLimit(expr, opts.Limit, pinot.MaxLimit)
-			warnLimitEnforcement(cmd.ErrOrStderr(), expr, capped, opts.Limit)
+			warnLimitEnforcement(cmd.ErrOrStderr(), expr, sql, capped, opts.Limit, cmd.Flags().Changed("limit"))
 
 			tableName, err := pinot.ResolveTableName(sql, opts.Table)
 			if err != nil {
@@ -162,8 +209,8 @@ open it in your browser after the query succeeds.`,
 	return cmd
 }
 
-func warnLimitEnforcement(w io.Writer, expr string, capped bool, limit int) {
-	if msg := pinot.LimitWarning(expr, capped, limit, pinot.MaxLimit); msg != "" {
+func warnLimitEnforcement(w io.Writer, expr, sql string, capped bool, limit int, limitSet bool) {
+	if msg := pinot.LimitEnforcementNotice(expr, sql, capped, limit, pinot.MaxLimit, limitSet); msg != "" {
 		cmdio.Warning(w, "%s", msg)
 	}
 }

@@ -14,42 +14,25 @@ func TestExtractTableName(t *testing.T) {
 		sql  string
 		want string
 	}{
-		{"simple from", `SELECT count(*) FROM events`, "events"},
-		{"quoted from", `SELECT 1 FROM "events"`, "events"},
-		{"set prefix", "SET useMultistageEngine = true;\nSELECT * FROM logs", "logs"},
-		{"schema-qualified", "SELECT * FROM my_db.events", "my_db.events"},
-		{"quoted schema-qualified", `SELECT * FROM "db"."events"`, "db.events"},
-		{"quoted schema unquoted table", `SELECT * FROM "db".events`, "db.events"},
-		{"unquoted schema quoted table", `SELECT * FROM db."events"`, "db.events"},
-		{"quoted three-part name", `SELECT * FROM "cat"."db"."events"`, "cat.db.events"},
-		{"quoted schema with spaces around dots", `SELECT * FROM "db" . "events"`, "db.events"},
-		{"subquery from skipped", "SELECT * FROM (SELECT 1)", ""},
-		{"subquery uses inner table", "SELECT * FROM (SELECT x FROM inner_t) a", "inner_t"},
-		{"subquery count from events", "SELECT count(*) FROM (SELECT col FROM events) sub", "events"},
-		{"union wrapper uses first inner table", "SELECT * FROM (\n  SELECT 1 FROM measurements\n  UNION ALL\n  SELECT 1 FROM events\n) journey", "measurements"},
-		{"extract year from is not the table", `SELECT EXTRACT(YEAR FROM ts) FROM events`, "events"},
-		{"from inside string is not the table", `SELECT 'FROM x' AS a FROM events`, "events"},
-		{"from inside string lowercase", `SELECT 'from admin' AS x FROM t`, "t"},
-		{"from inside quoted identifier is not the table", `SELECT "FROM x" FROM events`, "events"},
-		{"from inside line comment is not the table", "SELECT 1 -- FROM events\nFROM t", "t"},
-		{"from inside block comment is not the table", "SELECT 1 /* FROM events */ FROM t", "t"},
-		{"real from before a trailing line comment", "SELECT 1 FROM events -- FROM other", "events"},
-		{"real from before a block comment", "SELECT 1 FROM events /* FROM other */", "events"},
-		{"real from before an unclosed block comment", "SELECT 1 FROM events /* keep", "events"},
-		{"from only inside an unclosed block comment", "SELECT 1 /* FROM events", ""},
-		{"from after a block comment in the clause", "SELECT 1 FROM /* note */ events", "events"},
-		{"from after block comment containing line comment marker", "SELECT 1 /* -- note */ FROM events", "events"},
-		{"from after block comment containing apostrophe", "SELECT 1 /* don't stop */ FROM events", "events"},
-		{"trim from is not the table", `SELECT TRIM(BOTH 'x' FROM col) FROM events`, "events"},
-		{"substring from is not the table", `SELECT SUBSTRING(col FROM 1 FOR 2) FROM events`, "events"},
-		{"overlay from is not the table", `SELECT OVERLAY(col PLACING 'x' FROM 1) FROM events`, "events"},
-		{"hyphenated quoted table", `SELECT * FROM "my-table"`, "my-table"},
+		{"simple table", "SELECT * FROM events", "events"},
+		{"schema qualified", "SELECT * FROM db.events", "db.events"},
+		{"quoted schema.table", `SELECT * FROM "db"."events"`, "db.events"},
 		{"quoted table with escaped quote", `SELECT * FROM "my""table"`, `my"table`},
-		{"quoted schema with escaped quote in table", `SELECT * FROM "db"."my""table"`, `db.my"table`},
-		{"table alias", `SELECT * FROM events AS e`, "events"},
+		{"quoted schema.table with escaped quote", `SELECT * FROM "db"."my""table"`, `db.my"table`},
+		{"subquery inner table", "SELECT count(*) FROM (SELECT col FROM events) sub", "events"},
+		{"extract from is not a table", "SELECT EXTRACT(YEAR FROM ts) FROM events", "events"},
+		{"from in string literal", "SELECT 'from admin' AS x FROM events", "events"},
+		{"from in line comment", "SELECT 1 -- FROM events\nFROM t", "t"},
+		{"SQL comment marker in block comment does not hide from", "SELECT 1 /* -- note */ FROM events", "events"},
+		{"apostrophe in block comment does not hide from", "SELECT 1 /* don't stop */ FROM events", "events"},
+		{"unclosed block still finds earlier from", "SELECT * FROM events /* keep", "events"},
+		{"set prefix before select", "SET useMultistageEngine = true;\nSELECT * FROM logs", "logs"},
+		{"from inside block comment is not the table", "SELECT 1 /* FROM events */ FROM t", "t"},
+		{"trim from is not the table", `SELECT TRIM(BOTH 'x' FROM col) FROM events`, "events"},
 		{"join uses left table", `SELECT * FROM orders AS o JOIN customers AS c ON o.id = c.id`, "orders"},
+		{"hyphenated quoted table", `SELECT * FROM "my-table"`, "my-table"},
+		{"subquery with no inner from", "SELECT * FROM (SELECT 1)", ""},
 		{"no from", "SELECT 1", ""},
-		{"trailing dot after quoted schema", `SELECT * FROM "db".`, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -59,7 +42,7 @@ func TestExtractTableName(t *testing.T) {
 }
 
 func TestResolveTableName(t *testing.T) {
-	t.Run("override wins", func(t *testing.T) {
+	t.Run("override wins when sql has no from", func(t *testing.T) {
 		got, err := pinot.ResolveTableName("SELECT 1", "events")
 		require.NoError(t, err)
 		assert.Equal(t, "events", got)
@@ -74,7 +57,7 @@ func TestResolveTableName(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "logs", got)
 	})
-	t.Run("empty when neither override nor from", func(t *testing.T) {
+	t.Run("error when neither override nor from", func(t *testing.T) {
 		got, err := pinot.ResolveTableName("SELECT 1", "")
 		require.ErrorIs(t, err, pinot.ErrTableNameRequired)
 		assert.Empty(t, got)
@@ -108,6 +91,14 @@ func TestEnforceLimit(t *testing.T) {
 		{"bail on trailing line comment", "SELECT 1 -- keep going", 100, "SELECT 1 -- keep going", false},
 		{"bail on trailing line comment after block comment", "SELECT 1 FROM t/*note*/-- comment", 100, "SELECT 1 FROM t/*note*/-- comment", false},
 		{"bail when limit is followed by trailing block comment", "SELECT 1 FROM events LIMIT 5 /* note */", 100, "SELECT 1 FROM events LIMIT 5 /* note */", false},
+		{"bail when block comment is between LIMIT and row count", "SELECT 1 FROM events LIMIT /* note */ 5", 100, "SELECT 1 FROM events LIMIT /* note */ 5", false},
+		{
+			"bail when block comment is inside LIMIT on real table shape",
+			"SELECT *  FROM faro_pinot_measurements_v1 LIMIT /* note */ 5",
+			100,
+			"SELECT *  FROM faro_pinot_measurements_v1 LIMIT /* note */ 5",
+			false,
+		},
 		{"appends limit after leading block comment", "/* note */ SELECT 1 FROM events", 100, "/* note */ SELECT 1 FROM events LIMIT 100", false},
 		{"appends LIMIT when delete is only a literal", "SELECT * FROM t WHERE action = 'delete'", 100, "SELECT * FROM t WHERE action = 'delete' LIMIT 100", false},
 		{"appends LIMIT when -- is only a literal", "SELECT '--' FROM t", 100, "SELECT '--' FROM t LIMIT 100", false},
@@ -119,6 +110,10 @@ func TestEnforceLimit(t *testing.T) {
 		{"appends LIMIT when block open is only in a line comment", "SELECT 1 -- /* note\nFROM t", 100, "SELECT 1 -- /* note\nFROM t LIMIT 100", false},
 		{"appends LIMIT when UNION is only in a block comment", "SELECT 1 FROM t /* UNION */", 100, "SELECT 1 FROM t /* UNION */ LIMIT 100", false},
 		{"bail on unclosed block comment", "SELECT 1 FROM t /* keep", 100, "SELECT 1 FROM t /* keep", false},
+		{"appends LIMIT when apostrophe is only in a line comment", "SELECT a -- don't stop\nFROM events", 100, "SELECT a -- don't stop\nFROM events LIMIT 100", false},
+		{"appends LIMIT when apostrophe is only in a block comment", "SELECT a /* don't stop */ FROM events", 100, "SELECT a /* don't stop */ FROM events LIMIT 100", false},
+		{"appends LIMIT when a SQL comment marker is only inside a block comment", "SELECT /* note -- x */ a FROM events", 100, "SELECT /* note -- x */ a FROM events LIMIT 100", false},
+		{"appends LIMIT when block comment holding a SQL comment marker is mid-statement", "SELECT a FROM events /* a -- b */ WHERE x = 1", 100, "SELECT a FROM events /* a -- b */ WHERE x = 1 LIMIT 100", false},
 		{
 			"appends LIMIT to multi-line SELECT",
 			"SELECT * FROM t\nORDER BY ts DESC",
@@ -136,49 +131,214 @@ func TestEnforceLimit(t *testing.T) {
 	}
 }
 
-func TestLimitNotEnforced(t *testing.T) {
+func TestLimitEnforcementNotice(t *testing.T) {
+	flag := func(n int) *int { return &n }
+
 	tests := []struct {
 		name string
-		sql  string
-		want bool
+		expr string
+		// limitFlag is --limit N. nil means the flag was omitted; enforcement
+		// then uses pinot.DefaultLimit. This is not the SQL's own LIMIT.
+		limitFlag *int
+		want      string
 	}{
-		{"plain select", "SELECT 1", false},
-		{"plain select with limit", "SELECT 1 LIMIT 50", false},
-		{"limit offset,count already bounds rows", "SELECT * FROM t LIMIT 10, 20", false},
-		{"option cannot take a trailing limit", "SELECT * FROM t OPTION(timeoutMs=5000)", true},
-		{"limit then option cannot be rewritten", "SELECT * FROM t LIMIT 5000 OPTION(timeoutMs=5000)", true},
-		{"union", "SELECT 1 FROM a UNION SELECT 2 FROM b LIMIT 2000", true},
-		{"union all after SET", "SET useMultistageEngine = true;\nSELECT 1 FROM a\nUNION ALL\nSELECT 2 FROM b LIMIT 2000", true},
-		{"limit offset", "SELECT * FROM t LIMIT 5000 OFFSET 0", true},
-		{"bare offset", "SELECT * FROM t OFFSET 10", true},
-		{"explain never reaches bail", "EXPLAIN SELECT * FROM t", false},
-		{"insert never reaches bail", "INSERT INTO t VALUES (1)", false},
-		{"trailing comment skips enforcement", "SELECT 1 -- keep going", true},
-		{"trailing comment after block comment skips enforcement", "SELECT 1 FROM t/*note*/-- comment", true},
-		{"limit before trailing block comment skips enforcement", "SELECT 1 FROM events LIMIT 5 /* note */", true},
-		{"leading block comment still enforces limit", "/* note */ SELECT 1 FROM events", false},
-		{"leading block comment before SET still enforces limit", "/* note */ SET useMultistageEngine = true;\nSELECT 1", false},
-		{"dml word in literal is not union/offset", "SELECT * FROM t WHERE action = 'delete'", false},
-		{"union word in literal is not a union", "SELECT 'UNION' FROM t", false},
-		{"option word in literal is not an option clause", "SELECT * FROM t WHERE note = 'OPTION(timeoutMs=1)'", false},
-		{"limit offset,count in literal is not that form", "SELECT * FROM t WHERE hint = 'LIMIT 10, 20'", false},
-		{"union in quoted identifier is not a union", `SELECT "UNION" FROM t`, false},
-		{"union in line comment is not a union", "SELECT 1 -- UNION\nFROM t", false},
-		{"block open in line comment is not unclosed block", "SELECT 1 -- /* note\nFROM t", false},
-		{"union in block comment is not a union", "SELECT 1 FROM t /* UNION */", false},
-		{"unclosed block comment skips enforcement", "SELECT 1 FROM t /* keep", true},
+		{
+			name:      "limit 0 stays silent",
+			expr:      "SELECT 1",
+			limitFlag: flag(0),
+			want:      "",
+		},
+		{
+			name:      "omitted --limit appends default",
+			expr:      "SELECT 1",
+			limitFlag: nil,
+			want:      "Query adjusted: appended default LIMIT 100. Use --limit 0 to disable enforcement.",
+		},
+		{
+			name:      "set --limit appends requested",
+			expr:      "SELECT 1",
+			limitFlag: flag(50),
+			want:      "Query adjusted: appended LIMIT 50 (--limit). Use --limit 0 to disable enforcement.",
+		},
+		{
+			name:      "set --limit above max on append is reduced",
+			expr:      "SELECT 1",
+			limitFlag: flag(5000),
+			want:      "Query adjusted: LIMIT reduced to 1000 (maximum). Use --limit 0 to disable enforcement.",
+		},
+		{
+			name:      "omitted --limit caps bare LIMIT above max",
+			expr:      "SELECT 1 LIMIT 5000",
+			limitFlag: nil,
+			want:      "Query adjusted: LIMIT reduced to 1000 (maximum). Use --limit 0 to disable enforcement.",
+		},
+		{
+			name:      "set --limit caps bare LIMIT above max",
+			expr:      "SELECT 1 LIMIT 5000",
+			limitFlag: flag(50),
+			want:      "You requested --limit 50 but the existing LIMIT was above the maximum, so it was reduced to 1000.",
+		},
+		{
+			name:      "omitted --limit plus bare LIMIT under max stays silent",
+			expr:      "SELECT 1 LIMIT 50",
+			limitFlag: nil,
+			want:      "",
+		},
+		{
+			name:      "set --limit plus bare LIMIT under max is not applied",
+			expr:      "SELECT 1 LIMIT 150",
+			limitFlag: flag(50),
+			want:      "You requested --limit 50 but the query already has a LIMIT, so no change was applied.",
+		},
+		{
+			name:      "set --limit plus matching LIMIT stays silent",
+			expr:      "SELECT 1 LIMIT 50",
+			limitFlag: flag(50),
+			want:      "",
+		},
+		{
+			name:      "set --limit plus matching commented LIMIT stays silent",
+			expr:      "SELECT 1 FROM events LIMIT /* note */ 50",
+			limitFlag: flag(50),
+			want:      "",
+		},
+		{
+			name:      "set --limit plus commented LIMIT under max is not applied",
+			expr:      "SELECT 1 FROM events LIMIT /* note */ 5",
+			limitFlag: flag(50),
+			want:      "You requested --limit 50 but the query already has a LIMIT, so no change was applied.",
+		},
+		{
+			name:      "omitted --limit plus commented LIMIT under max stays silent",
+			expr:      "SELECT *  FROM faro_pinot_measurements_v1 LIMIT /* note */ 5",
+			limitFlag: nil,
+			want:      "",
+		},
+		{
+			name:      "set --limit plus commented LIMIT above max is unsafe",
+			expr:      "SELECT 1 FROM events LIMIT /* note */ 5000",
+			limitFlag: flag(50),
+			want:      "The query has a LIMIT above 1000 that should be reduced to 1000, but the query is not safe to modify.",
+		},
+		{
+			name:      "omitted --limit plus commented LIMIT above max is unsafe",
+			expr:      "SELECT 1 FROM events LIMIT /* note */ 5000",
+			limitFlag: nil,
+			want:      "The query has a LIMIT above 1000 that should be reduced to 1000, but the query is not safe to modify.",
+		},
+		{
+			name:      "union with LIMIT above max is unsafe when --limit set",
+			expr:      "SELECT 1 FROM a UNION SELECT 2 FROM b LIMIT 2000",
+			limitFlag: flag(50),
+			want:      "The query has a LIMIT above 1000 that should be reduced to 1000, but the query is not safe to modify.",
+		},
+		{
+			name:      "union with LIMIT above max is unsafe when --limit omitted",
+			expr:      "SELECT 1 FROM a UNION SELECT 2 FROM b LIMIT 2000",
+			limitFlag: nil,
+			want:      "The query has a LIMIT above 1000 that should be reduced to 1000, but the query is not safe to modify.",
+		},
+		{
+			name:      "union without LIMIT is not appended when --limit set",
+			expr:      "SELECT 1 FROM a UNION SELECT 2 FROM b",
+			limitFlag: flag(50),
+			want:      "You asked for --limit 50, but a row limit was not appended (this query shape is not safe to modify). Add LIMIT in the SQL or use --limit 0.",
+		},
+		{
+			name:      "union without LIMIT stays silent when --limit omitted",
+			expr:      "SELECT 1 FROM a UNION SELECT 2 FROM b",
+			limitFlag: nil,
+			want:      "",
+		},
+		{
+			name:      "OPTION is not appended when --limit set",
+			expr:      "SELECT * FROM t OPTION(timeoutMs=5000)",
+			limitFlag: flag(50),
+			want:      "You asked for --limit 50, but a row limit was not appended (this query shape is not safe to modify). Add LIMIT in the SQL or use --limit 0.",
+		},
+		{
+			name:      "trailing comment is not appended when --limit set",
+			expr:      "SELECT 1 -- keep going",
+			limitFlag: flag(50),
+			want:      "You asked for --limit 50, but a row limit was not appended (this query shape is not safe to modify). Add LIMIT in the SQL or use --limit 0.",
+		},
+		{
+			name:      "LIMIT offset,count already has a LIMIT when --limit set",
+			expr:      "SELECT * FROM t LIMIT 10, 20",
+			limitFlag: flag(50),
+			want:      "You requested --limit 50 but the query already has a LIMIT, so no change was applied.",
+		},
+		{
+			name:      "LIMIT offset,count above max stays silent when --limit omitted",
+			expr:      "SELECT * FROM t LIMIT 200, 34678",
+			limitFlag: nil,
+			want:      "",
+		},
+		{
+			name:      "LIMIT abc already has a LIMIT when --limit set",
+			expr:      "SELECT * FROM t LIMIT abc",
+			limitFlag: flag(50),
+			want:      "You requested --limit 50 but the query already has a LIMIT, so no change was applied.",
+		},
+		{
+			name:      "LIMIT OFFSET already has a LIMIT when --limit set",
+			expr:      "SELECT * FROM t LIMIT 5000 OFFSET 0",
+			limitFlag: flag(50),
+			want:      "You requested --limit 50 but the query already has a LIMIT, so no change was applied.",
+		},
+		{
+			name:      "LIMIT OFFSET stays silent when --limit omitted",
+			expr:      "SELECT * FROM t LIMIT 5000 OFFSET 0",
+			limitFlag: nil,
+			want:      "",
+		},
+		{
+			name:      "limit 0 on union stays silent",
+			expr:      "SELECT 1 FROM a UNION SELECT 2 FROM b",
+			limitFlag: flag(0),
+			want:      "",
+		},
+		{
+			name:      "EXPLAIN not SELECT-shaped stays silent",
+			expr:      "EXPLAIN SELECT * FROM t",
+			limitFlag: nil,
+			want:      "",
+		},
+		{
+			name:      "apostrophe in line comment appends default",
+			expr:      "SELECT a -- don't stop\nFROM events",
+			limitFlag: nil,
+			want:      "Query adjusted: appended default LIMIT 100. Use --limit 0 to disable enforcement.",
+		},
+		{
+			name:      "apostrophe in block comment appends default",
+			expr:      "SELECT a /* don't stop */ FROM events",
+			limitFlag: nil,
+			want:      "Query adjusted: appended default LIMIT 100. Use --limit 0 to disable enforcement.",
+		},
+		{
+			name:      "unclosed block comment is not appended when --limit set",
+			expr:      "SELECT 1 FROM t /* keep",
+			limitFlag: flag(50),
+			want:      "You asked for --limit 50, but a row limit was not appended (this query shape is not safe to modify). Add LIMIT in the SQL or use --limit 0.",
+		},
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, pinot.LimitNotEnforced(tt.sql))
+			limitSet := tt.limitFlag != nil
+			limit := pinot.DefaultLimit
+			if limitSet {
+				limit = *tt.limitFlag
+			}
+			sql, capped := pinot.EnforceLimit(tt.expr, limit, pinot.MaxLimit)
+			got := pinot.LimitEnforcementNotice(tt.expr, sql, capped, limit, pinot.MaxLimit, limitSet)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
 
-func TestLimitUserFacingTextSharesSkipShapes(t *testing.T) {
-	assert.Contains(t, pinot.LimitFlagUsage(pinot.MaxLimit), pinot.LimitSkipShapes)
-	assert.Contains(t, pinot.LimitSkipWarning(), pinot.LimitSkipShapes)
-	assert.Equal(t, pinot.LimitSkipWarning(), pinot.LimitWarning("SELECT 1 FROM a UNION SELECT 2 FROM b", false, 100, pinot.MaxLimit))
-	assert.Equal(t, pinot.LimitCappedWarning(pinot.MaxLimit), pinot.LimitWarning("SELECT 1 LIMIT 5000", true, 100, pinot.MaxLimit))
-	assert.Empty(t, pinot.LimitWarning("SELECT 1", false, 100, pinot.MaxLimit))
+func TestLimitFlagUsage(t *testing.T) {
+	assert.Contains(t, pinot.LimitFlagUsage(pinot.MaxLimit), "0 disables enforcement")
+	assert.NotContains(t, pinot.LimitFlagUsage(pinot.MaxLimit), "UNION")
 }

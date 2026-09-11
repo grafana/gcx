@@ -104,6 +104,7 @@ gcx/
 │   │   ├── mssql/            # Microsoft SQL Server commands (query with TOP injection, list-tables, describe-table, explore)
 │   │   ├── mysql/            # MySQL datasource commands (query, list-tables, describe-table)
 │   │   ├── opensearch/       # OpenSearch datasource commands (query [--mode documents|logs], metrics, list-indices, list-fields)
+│   │   ├── pinot/            # StarTree Pinot datasource commands (query)
 │   │   ├── postgres/         # PostgreSQL datasource commands (query, list-tables, describe-table)
 │   │   └── query/            # Shared query CLI utils (time parsing, codecs, opts, resolve helpers)
 │   ├── query/                # Datasource query clients
@@ -123,6 +124,7 @@ gcx/
 │   │   ├── clickhouse/       # ClickHouse HTTP client
 │   │   ├── mssql/            # Microsoft SQL Server HTTP client
 │   │   ├── mysql/            # MySQL HTTP query client (raw SQL via unified query API)
+│   │   ├── pinot/            # StarTree Pinot query client (PinotQL via unified query API)
 │   │   └── postgres/         # PostgreSQL HTTP query client (raw SQL via unified query API)
 │   ├── signals/              # Shared signal command and datasource-provider mounting (metrics/logs/traces/profiles)
 │   ├── notifier/             # Skills update notifier (XDG state, throttle, message rendering)

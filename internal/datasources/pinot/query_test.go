@@ -14,7 +14,6 @@ func TestQueryCmd_LimitFlagUsesSharedUsage(t *testing.T) {
 	cmd := pinot.QueryCmd(&providers.ConfigLoader{})
 	usage := cmd.Flags().Lookup("limit").Usage
 	assert.Equal(t, querypinot.LimitFlagUsage(querypinot.MaxLimit), usage)
-	assert.Contains(t, usage, querypinot.LimitSkipShapes)
 }
 
 func TestQueryCmd_ValidationErrors(t *testing.T) {
