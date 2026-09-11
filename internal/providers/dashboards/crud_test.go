@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/dashboards"
 	"github.com/grafana/gcx/internal/resources/dynamic"
+	"github.com/grafana/gcx/internal/testutils"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -260,6 +261,7 @@ func TestWrapUpdateError(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestConfirmDestructive(t *testing.T) {
+	testutils.SetAgentMode(t, false)
 	tests := []struct {
 		name    string
 		input   string // text the "user" types

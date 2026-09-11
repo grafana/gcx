@@ -16,5 +16,6 @@ func init() { //nolint:gochecknoinits // Self-registration pattern (like databas
 		pyroscope.MetricsCmd,
 		pyroscope.ExemplarsCmd,
 		pyroscope.DataRangeCmd,
+		pyroscope.SeriesCmd,
 	))
 }

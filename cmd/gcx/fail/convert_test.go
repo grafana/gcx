@@ -161,6 +161,22 @@ func TestErrorToDetailedError_QueryParseError(t *testing.T) {
 	assert.Nil(t, got.ExitCode)
 }
 
+func TestErrorToDetailedError_ProfileSeriesQuery(t *testing.T) {
+	got := fail.ErrorToDetailedError(queryerror.New(
+		"pyroscope",
+		"profile series query",
+		400,
+		"parse error: expecting string",
+		"downstream",
+	))
+
+	require.NotNil(t, got)
+	assert.Equal(t, "Invalid Pyroscope selector query", got.Summary)
+	assert.Contains(t, got.Suggestions, `Try a quoted selector value, e.g. gcx profiles series '{service_name="frontend"}'`)
+	assert.Contains(t, got.Suggestions, "Run 'gcx profiles series --help' for usage and examples")
+	assert.Equal(t, docs.PyroscopeQueries, got.DocsLink)
+}
+
 func TestErrorToDetailedError_QueryAuthFailure(t *testing.T) {
 	got := fail.ErrorToDetailedError(queryerror.New("prometheus", "query", 401, "unauthorized", ""))
 

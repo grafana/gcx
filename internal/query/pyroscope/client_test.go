@@ -12,6 +12,7 @@ import (
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/query/pyroscope"
+	"github.com/grafana/gcx/internal/queryerror"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/encoding/protowire"
@@ -242,6 +243,74 @@ func TestClient_LabelNames_UTF8CapabilityAndResponse(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"service_name", utf8LabelName}, resp.Names)
+}
+
+func TestClient_Series(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Contains(t, r.URL.Path, "querier.v1.QuerierService/Series")
+		var body map[string]any
+		if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&body)) {
+			return
+		}
+		assert.Equal(t, []any{`{service_name="frontend"}`}, body["matchers"])
+		assert.Equal(t, []any{"service_name", "namespace", "pod", "__name__"}, body["labelNames"])
+		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"labelsSet": [
+				{"labels": [
+					{"name": "service_name", "value": "frontend"},
+					{"name": "namespace", "value": "default"}
+				]}
+			]
+		}`))
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	resp, err := client.Series(context.Background(), "test-uid", pyroscope.SeriesRequest{
+		Matchers:   []string{`{service_name="frontend"}`},
+		LabelNames: []string{"service_name", "namespace", "pod", "__name__"},
+	})
+	require.NoError(t, err)
+	require.Len(t, resp.LabelsSet, 1)
+	assert.Equal(t, "frontend", resp.LabelsSet[0].Labels[0].Value)
+}
+
+func TestClient_Series_OmitsLabelNamesWhenUnset(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&body)) {
+			return
+		}
+		assert.NotContains(t, body, "labelNames", "an omitted projection must return complete label sets")
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	resp, err := client.Series(context.Background(), "test-uid", pyroscope.SeriesRequest{})
+	require.NoError(t, err)
+	assert.NotNil(t, resp.LabelsSet, "an omitted labelsSet must serialize as an empty array")
+	assert.Empty(t, resp.LabelsSet)
+}
+
+func TestClient_Series_NonOKUsesProfileSeriesOperation(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"message":"invalid selector"}`))
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	_, err := client.Series(context.Background(), "test-uid", pyroscope.SeriesRequest{})
+	require.Error(t, err)
+
+	var apiErr *queryerror.APIError
+	require.ErrorAs(t, err, &apiErr)
+	assert.Equal(t, "profile series query", apiErr.Operation)
 }
 
 func TestClient_Query_RequestFields(t *testing.T) {
