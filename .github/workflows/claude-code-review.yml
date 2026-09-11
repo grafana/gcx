@@ -169,9 +169,10 @@ jobs:
       # posting tool, or finding a spelling of one that clears the permission
       # rules it runs under.
       - name: Publish review
-        # Gate on the review itself, not on success(): a failed transcript
-        # upload must not be able to swallow a completed review.
-        if: steps.claude-review.outcome == 'success'
+        # An explicit status function overrides GitHub's implicit success()
+        # gate, so a failed transcript upload cannot swallow a completed
+        # review. Cancelled runs and failed reviews must not publish.
+        if: ${{ !cancelled() && steps.claude-review.outcome == 'success' }}
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}

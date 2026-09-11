@@ -532,8 +532,12 @@ func TestReviewWorkflowShape(t *testing.T) {
 	for _, step := range job.Steps {
 		switch step.Name {
 		case publishStep:
-			if strings.Contains(step.If, "success()") || !strings.Contains(step.If, "claude-review") {
-				t.Errorf("%q must gate on the review step's outcome, not on success(): %q", publishStep, step.If)
+			// GitHub implicitly adds success() unless the condition contains a
+			// status function. Keep publication independent of artifact failure,
+			// but skip it when the run is cancelled or the review failed.
+			const want = "${{ !cancelled() && steps.claude-review.outcome == 'success' }}"
+			if step.If != want {
+				t.Errorf("%q condition = %q, want %q to publish after artifact failure without publishing cancelled or failed reviews", publishStep, step.If, want)
 			}
 		case "Upload Claude session transcript":
 			if step.With["overwrite"] != true {
