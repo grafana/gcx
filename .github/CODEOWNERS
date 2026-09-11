@@ -16,8 +16,8 @@
 /internal/providers/irm/ @grafana/grafana-gcx @grafana/grafana-irm-backend
 /internal/providers/k6/ @grafana/grafana-gcx @grafana/k6-backend
 /internal/providers/faro/ @grafana/grafana-gcx @grafana/frontend-o11y @grafana/mobile-o11y
-/internal/providers/fleet/ @grafana/grafana-gcx @grafana/fleet-management-backend
-/internal/fleet/ @grafana/grafana-gcx @grafana/fleet-management-backend
+/internal/providers/fleet/ @grafana/grafana-gcx @grafana/fleet-management-backend @grafana/fleet-management-frontend
+/internal/fleet/ @grafana/grafana-gcx @grafana/fleet-management-backend @grafana/fleet-management-frontend
 /internal/providers/instrumentation/ @grafana/grafana-gcx @grafana/o11y-ingest
 /internal/providers/kg/ @grafana/grafana-gcx @grafana/asserts-team
 /internal/providers/appo11y/ @grafana/grafana-gcx @grafana/app-o11y-visualizations
@@ -82,7 +82,7 @@
 /docs/reference/cli/gcx_irm* @grafana/grafana-gcx @grafana/grafana-irm-backend
 /docs/reference/cli/gcx_k6* @grafana/grafana-gcx @grafana/k6-backend
 /docs/reference/cli/gcx_frontend* @grafana/grafana-gcx @grafana/frontend-o11y @grafana/mobile-o11y
-/docs/reference/cli/gcx_fleet* @grafana/grafana-gcx @grafana/fleet-management-backend
+/docs/reference/cli/gcx_fleet* @grafana/grafana-gcx @grafana/fleet-management-backend @grafana/fleet-management-frontend
 /docs/reference/cli/gcx_kg* @grafana/grafana-gcx @grafana/asserts-team
 /docs/reference/cli/gcx_appo11y* @grafana/grafana-gcx @grafana/app-o11y-visualizations
 /docs/reference/cli/gcx_dbo11y* @grafana/grafana-gcx @grafana/db-o11y-squad
