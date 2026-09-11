@@ -38,6 +38,7 @@
   "gcx datasources pyroscope exemplars profile",
   "gcx datasources pyroscope exemplars span",
   "gcx datasources tempo diff",
+  "gcx docs outline",
   "gcx frontend apps apply-sourcemap",
   "gcx instrumentation check",
   "gcx instrumentation clusters apps configure",

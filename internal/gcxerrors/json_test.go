@@ -153,6 +153,18 @@ func TestDetailedError_WriteJSON(t *testing.T) {
 	}
 }
 
+func TestDocsFetchSuggestion_QuotesURL(t *testing.T) {
+	url := "https://grafana.com/docs/tempo/latest/"
+	got := gcxerrors.DocsFetchSuggestion(url)
+	wantCmd := `gcx docs get "` + url + `"`
+	if !strings.Contains(got, wantCmd) {
+		t.Fatalf("DocsFetchSuggestion() = %q, want it to contain %q", got, wantCmd)
+	}
+	if strings.Contains(got, "'gcx docs get") {
+		t.Fatalf("DocsFetchSuggestion() wrapped the command in single quotes: %q", got)
+	}
+}
+
 // TestDetailedError_WriteJSON_DocsFetchSuggestion verifies that when DocsLink
 // is set, an imperative docs-fetch suggestion (containing the URL inline) is
 // appended to suggestions — so agents are actually prompted to follow the link

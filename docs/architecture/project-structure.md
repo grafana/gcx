@@ -13,6 +13,7 @@ gcx/
 │       ├── resources/        # 'resources' subcommand implementations
 │       ├── datasources/      # 'datasources' subcommand (list, get, query)
 │       │                     #   query.go + query_routes.go: auto-detecting query and its per-kind routing tables
+│       ├── docs/             # 'docs' subcommand (search, get, outline, list-products, list-links)
 │       ├── commands/         # 'commands' catalog (agent metadata, resource types, live validation)
 │       ├── helptree/        # 'help-tree' compact text tree for agent context injection
 │       ├── setup/            # 'setup' command area (cross-product onboarding helpers)
