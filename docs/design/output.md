@@ -137,7 +137,7 @@ gcx resources get dashboards/my-dash --json ?
 
 | Value | Behavior |
 |-------|----------|
-| `--json <path>,<path>` | Emit only the named paths. Invalid typed paths fail with a correction. Paths through arrays fail and name `--jq` |
+| `--json <path>,<path>` | Emit only the named paths. Invalid typed paths warn with a correction and render as `null`. Paths through arrays warn and name `--jq` |
 | `--json ?` | Print available field paths (one per line, sorted) and exit 0 |
 | `--json` + `-o json` | Allowed — both request JSON, no conflict |
 | `--json` + `-o <non-json>` | Usage error — field selection requires JSON output |
@@ -148,25 +148,30 @@ by `--json ?`. Field discovery introspects a sample object from the API — no
 additional list calls are made (NC-005).
 
 **A path is required, not a leaf name.** `--json username` on a resource whose
-username lives at `spec.username` fails with the real path in the message. The
-rejection is per-path existence, and the declared item type is the only
-authority:
+username lives at `spec.username` emits a warning with the real path while the
+selected value remains `null`. Detection is per-path existence, and the
+declared item type is the only authority:
 
 - A field that the type declares but that no row emits — an `omitempty` field
   that holds its zero value everywhere — keeps its `null`.
 - Where there is no declared type (an unstructured resource, a dynamic map),
-  gcx rejects nothing: every requested path keeps its `null`, whatever the
+  gcx warns about nothing: every requested path keeps its `null`, whatever the
   result set holds.
 - Where a type implements `json.Marshaler`, the marshaler controls the wire
-  shape. Reflection cannot deny a path in that shape, so gcx rejects nothing.
+  shape. Reflection cannot deny a path in that shape, so gcx emits no warning.
 - A path that any emitted object carries is real, so a heterogeneous list
   keeps a path that only some objects carry.
 - The result set size does not change the answer. An empty page of a typed
-  list rejects the same paths as a full page.
+  list warns about the same paths as a full page.
+
+Invalid field selection is an output diagnostic, not a command failure. This
+is especially important for mutations: a create, update, or delete may already
+have succeeded before its response is transformed. The warning goes to stderr,
+the selected result still goes to stdout, and the command exits successfully.
 
 **`--json` cannot reach a value inside an array.** Field selection walks maps
 only, so a path that continues past an array — `data.result.metric` on a
-Prometheus query result — is a usage error that names `--jq`. Use
+Prometheus query result — emits a warning that names `--jq`. Use
 `--jq '.data.result[].metric'` for such a value.
 
 **Output shape:**

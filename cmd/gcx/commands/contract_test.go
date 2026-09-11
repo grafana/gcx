@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/grafana/gcx/cmd/gcx/commands"
-	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/spf13/pflag"
@@ -204,31 +203,29 @@ func TestCommandsAgentMode_SingleJSONDocument(t *testing.T) {
 	}
 }
 
-// TestCommandsArrayPathErrorUsesGeneralRecovery drives a real command through
-// field selection and the shared error converter. The recovery must apply to
-// this command. It must not suggest a query for an unrelated datasource.
-func TestCommandsArrayPathErrorUsesGeneralRecovery(t *testing.T) {
+// TestCommandsArrayPathWarningUsesGeneralRecovery drives a real command
+// through field selection. The warning must apply to this command without
+// turning it into a failure or suggesting an unrelated datasource query.
+func TestCommandsArrayPathWarningUsesGeneralRecovery(t *testing.T) {
 	root := buildTestTree()
 	cmd := commands.NewTestCommand(root)
+	var stdout, stderr bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
 	cmd.SetArgs([]string{"--json", "commands.flags.name"})
 
 	err := cmd.Execute()
-	if err == nil {
-		t.Fatal("execute succeeded, want an array-path error")
+	if err != nil {
+		t.Fatalf("execute failed: %v", err)
 	}
-
-	detailed := fail.ErrorToDetailedError(err)
-	if detailed == nil {
-		t.Fatal("error conversion returned nil")
+	if !strings.Contains(stderr.String(), "Use --jq to read a value inside an array") {
+		t.Fatalf("stderr = %q, want general --jq recovery", stderr.String())
 	}
-	if len(detailed.Suggestions) != 1 {
-		t.Fatalf("suggestions = %v, want one general recovery", detailed.Suggestions)
+	if strings.Contains(stderr.String(), "data.result") {
+		t.Fatalf("warning contains an unrelated Prometheus path: %q", stderr.String())
 	}
-	const want = "Use --jq to iterate the array before selecting the nested value"
-	if detailed.Suggestions[0] != want {
-		t.Fatalf("suggestion = %q, want %q", detailed.Suggestions[0], want)
-	}
-	if strings.Contains(detailed.Suggestions[0], "data.result") {
-		t.Fatalf("suggestion contains an unrelated Prometheus path: %q", detailed.Suggestions[0])
+	doc := assertSingleJSONValue(t, stdout.String())
+	if value, ok := doc["commands.flags.name"]; !ok || value != nil {
+		t.Fatalf("stdout = %s, want null-filled selected path", stdout.String())
 	}
 }

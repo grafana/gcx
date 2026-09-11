@@ -2,6 +2,7 @@ package output
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	goio "io"
 	"maps"
@@ -13,8 +14,9 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
-// UnknownFieldSelectionError is returned by FieldSelectCodec when the caller
-// requests one or more fields that are not present in the value's field set.
+// UnknownFieldSelectionError describes one or more requested fields that are
+// not present in the value's field set. FieldSelectCodec renders it as an
+// advisory warning and continues encoding; validators may return it directly.
 //
 // Two paths produce it. The optional validator runs before extraction and is
 // only invoked when wired by the caller (e.g. instrumentation list commands
@@ -65,9 +67,9 @@ func (e UnknownFieldSelectionError) suggestion() string {
 	return fmt.Sprintf("Did you mean %s?", strings.Join(parts, "; "))
 }
 
-// ArrayPathSelectionError is returned when a requested path continues past an
-// array. Field selection walks maps only, so it cannot reach a value inside an
-// array; --jq can, because it iterates the array.
+// ArrayPathSelectionError describes a requested path that continues past an
+// array. FieldSelectCodec renders it as an advisory warning and continues
+// encoding; --jq can reach the value because it iterates the array.
 type ArrayPathSelectionError struct {
 	Fields []string // the offending field paths
 }
@@ -92,13 +94,13 @@ func (e ArrayPathSelectionError) Error() string {
 // {"datasources": [...]}) get per-item selection with the wrapper key
 // preserved.
 //
-// A requested path that the item type declares but that no object emits
-// produces a null value. A path that the item type denies, and that no object
-// carries, is a caller error (see selectFields).
+// A requested path that no object emits produces a null value. When the item
+// type denies the path, the codec also emits a warning (see selectFields).
 type FieldSelectCodec struct {
-	fields    []string
-	json      *format.JSONCodec
-	validator func(fields []string) error // optional; if non-nil, Encode calls it before field extraction
+	fields        []string
+	json          *format.JSONCodec
+	validator     func(fields []string) error // optional; if non-nil, Encode calls it before field extraction
+	warningWriter goio.Writer
 }
 
 // NewFieldSelectCodec creates a FieldSelectCodec for the given field paths.
@@ -109,9 +111,16 @@ func NewFieldSelectCodec(fields []string) *FieldSelectCodec {
 	}
 }
 
+// SetWarningWriter routes invalid-field diagnostics to w. Invalid selections
+// are advisory: the codec still writes the selected JSON (with null for a
+// missing path) and returns success. A nil writer suppresses the diagnostic.
+func (c *FieldSelectCodec) SetWarningWriter(w goio.Writer) {
+	c.warningWriter = w
+}
+
 // NewFieldSelectCodecWithValidator creates a FieldSelectCodec for the given
 // field paths, with an optional validator invoked before field extraction.
-// If the validator returns an error, Encode returns that error immediately.
+// Invalid-field diagnostics become warnings; other errors abort encoding.
 func NewFieldSelectCodecWithValidator(fields []string, validator func(fields []string) error) *FieldSelectCodec {
 	return &FieldSelectCodec{
 		fields:    fields,
@@ -126,12 +135,14 @@ func (c *FieldSelectCodec) Format() format.Format {
 
 // Encode writes the selected fields to dst as JSON.
 // If a validator was configured (via NewFieldSelectCodecWithValidator), it is
-// invoked before any field extraction. If the validator returns an error,
-// Encode returns that error immediately.
+// invoked before any field extraction. Invalid-field diagnostics are emitted
+// as warnings; other validator errors are returned.
 func (c *FieldSelectCodec) Encode(dst goio.Writer, value any) error {
 	if c.validator != nil {
 		if err := c.validator(c.fields); err != nil {
-			return err
+			if !c.warnInvalidSelection(err) {
+				return err
+			}
 		}
 	}
 
@@ -225,15 +236,40 @@ func (c *FieldSelectCodec) Encode(dst goio.Writer, value any) error {
 	}
 }
 
-// selectItems applies field selection to a list of objects, rejecting a
-// requested path that itemType denies and that no object carries.
+// selectItems applies field selection to a list of objects, warning when a
+// requested path is invalid for itemType and no object carries it.
 func (c *FieldSelectCodec) selectItems(objs []map[string]any, itemType reflect.Type) ([]map[string]any, error) {
-	return selectFields(objs, c.fields, itemType)
+	// A configured validator is the schema authority. Do not classify the
+	// runtime type again: that would emit the same warning twice.
+	if c.validator != nil {
+		itemType = nil
+	}
+	selected, err := selectFields(objs, c.fields, itemType)
+	if err != nil && !c.warnInvalidSelection(err) {
+		return nil, err
+	}
+	return selected, nil
+}
+
+// warnInvalidSelection demotes field-selection diagnostics to warnings. These
+// diagnostics describe the requested output transformation, not the command
+// action. Returning them would report a successfully applied mutation as a
+// failed command merely because its post-action rendering was invalid.
+func (c *FieldSelectCodec) warnInvalidSelection(err error) bool {
+	var unknown UnknownFieldSelectionError
+	var inArray ArrayPathSelectionError
+	if !errors.As(err, &unknown) && !errors.As(err, &inArray) {
+		return false
+	}
+	if c.warningWriter != nil {
+		EmitWarn(c.warningWriter, err.Error())
+	}
+	return true
 }
 
 // encodeOne applies field selection to a single object and writes it.
 func (c *FieldSelectCodec) encodeOne(dst goio.Writer, obj map[string]any, objType reflect.Type) error {
-	selected, err := selectFields([]map[string]any{obj}, c.fields, objType)
+	selected, err := c.selectItems([]map[string]any{obj}, objType)
 	if err != nil {
 		return err
 	}
@@ -291,7 +327,7 @@ func (c *FieldSelectCodec) envelopeFieldSelection(m map[string]any, value any) (
 	// Scalar items have no fields to select into, so selection runs on the
 	// whole envelope and the reserved entry is re-attached.
 	if hasListMetaEntry(m) && singleKeyScalarArray(m) {
-		selected, err := selectFields([]map[string]any{m}, c.fields, structTypeOf(value))
+		selected, err := c.selectItems([]map[string]any{m}, structTypeOf(value))
 		if err != nil {
 			return nil, false, err
 		}
@@ -320,21 +356,21 @@ func ExtractFields(obj map[string]any, fields []string) map[string]any {
 	return extractFields(obj, fields, make(map[string]bool, len(fields)))
 }
 
-// selectFields applies field selection across a set of objects, and rejects a
-// requested path only when a declared type denies it.
+// selectFields applies field selection across a set of objects and reports a
+// diagnostic when a requested path is invalid for a declared type.
 //
 // A path that resolves nowhere used to produce one null per row. A caller who
 // typed a leaf name (`username`) rather than a path (`spec.username`) then
 // read a full result set of nulls, and a script that searched that result
-// found nothing and reported zero. The absence of the path is a caller error,
-// so a type that denies the path fails it here instead.
+// found nothing and reported zero. A type that denies the path now produces a
+// warning alongside the null-filled selection.
 //
-// A rejection needs a type that denies the path, and it is per-path
+// A diagnostic needs a type that denies the path, and it is per-path
 // existence, not per-value:
 //
-//   - itemType is the only authority for a rejection. Where itemType is nil —
+//   - itemType is the only authority for a diagnostic. Where itemType is nil —
 //     an unstructured object, a dynamic map, a slice of maps — gcx knows no
-//     field set, so it rejects nothing and every requested path keeps its
+//     field set, so it warns about nothing and every requested path keeps its
 //     null.
 //   - A path that any object emits is real, even when the type does not
 //     declare it, so a heterogeneous list keeps a path that only some objects
@@ -342,7 +378,7 @@ func ExtractFields(obj map[string]any, fields []string) map[string]any {
 //   - A field that the type declares but that no object emits — an omitempty
 //     field that holds its zero value in every row — keeps its null.
 //   - A path that exists and holds null is a real field and stays.
-//   - A path that continues past an array is rejected on its own, because
+//   - A path that continues past an array is diagnosed on its own, because
 //     field selection walks maps only (see ArrayPathSelectionError).
 func selectFields(objs []map[string]any, fields []string, itemType reflect.Type) ([]map[string]any, error) {
 	selected := make([]map[string]any, len(objs))
@@ -362,12 +398,12 @@ func selectFields(objs []map[string]any, fields []string, itemType reflect.Type)
 	}
 	unknown, inArray := classifyPaths(itemType, missing)
 	if len(inArray) > 0 {
-		return nil, ArrayPathSelectionError{Fields: inArray}
+		return selected, ArrayPathSelectionError{Fields: inArray}
 	}
 	if len(unknown) == 0 {
 		return selected, nil
 	}
-	return nil, UnknownFieldSelectionError{
+	return selected, UnknownFieldSelectionError{
 		Fields:     unknown,
 		Candidates: candidatesByLeaf(typePaths(unwrapType(itemType), "", typePathDepth), unknown),
 	}
