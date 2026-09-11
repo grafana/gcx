@@ -17,11 +17,15 @@ gcx synthetic-monitoring checks get NAME [flags]
 
   # Get check with current execution status.
   gcx synthetic-monitoring checks get grafana-instance-health-5594 --show-status
+
+  # Get a scripted/browser check with a readable script, ready to edit and 'checks update'.
+  gcx synthetic-monitoring checks get grafana-instance-health-5594 --decode-script -o yaml > check.yaml
 ```
 
 ### Options
 
 ```
+      --decode-script   Decode a scripted/browser check's base64 script to plaintext (yaml/json output only, for editing and 'checks update')
   -h, --help            help for get
       --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
