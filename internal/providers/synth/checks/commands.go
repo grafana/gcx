@@ -188,8 +188,9 @@ func CheckTable() cmdio.Table[Check] {
 // ---------------------------------------------------------------------------
 
 type getOpts struct {
-	IO         cmdio.Options
-	ShowStatus bool
+	IO           cmdio.Options
+	ShowStatus   bool
+	DecodeScript bool
 }
 
 func (o *getOpts) setup(flags *pflag.FlagSet) {
@@ -198,6 +199,7 @@ func (o *getOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 
 	flags.BoolVar(&o.ShowStatus, "show-status", false, "Query and display the check's current execution status from Prometheus")
+	flags.BoolVar(&o.DecodeScript, "decode-script", false, "Decode a scripted/browser check's base64 script to plaintext (yaml/json output only, for editing and 'checks update')")
 }
 
 func newGetCommand(loader smcfg.StatusLoader) *cobra.Command {
@@ -212,7 +214,10 @@ func newGetCommand(loader smcfg.StatusLoader) *cobra.Command {
   gcx synthetic-monitoring checks get 5594
 
   # Get check with current execution status.
-  gcx synthetic-monitoring checks get grafana-instance-health-5594 --show-status`,
+  gcx synthetic-monitoring checks get grafana-instance-health-5594 --show-status
+
+  # Get a scripted/browser check with a readable script, ready to edit and 'checks update'.
+  gcx synthetic-monitoring checks get grafana-instance-health-5594 --decode-script -o yaml > check.yaml`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -271,6 +276,9 @@ func newGetCommand(loader smcfg.StatusLoader) *cobra.Command {
 			}
 
 			if codec.Format() == "table" || codec.Format() == "wide" {
+				if opts.DecodeScript {
+					cmdio.Warning(cmd.ErrOrStderr(), "--decode-script has no effect on table output; use -o yaml or -o json")
+				}
 				return encodeGetTable(cmd.OutOrStdout(), c, info, codec.Format() == "wide")
 			}
 
@@ -282,6 +290,10 @@ func newGetCommand(loader smcfg.StatusLoader) *cobra.Command {
 			var obj unstructured.Unstructured
 			if err := json.Unmarshal(objData, &obj); err != nil {
 				return fmt.Errorf("unmarshaling to unstructured: %w", err)
+			}
+
+			if opts.DecodeScript {
+				decodeScriptInSpec(&obj)
 			}
 			// Merge the fetched status into the structured output as an
 			// optional top-level status member carrying the same data the
@@ -867,7 +879,30 @@ func readCheckSpec(filePath string) (*CheckSpec, error) {
 		return nil, fmt.Errorf("converting resource from %s: %w", filePath, err)
 	}
 
+	// A scripted/browser check's script may have been left as plaintext by
+	// 'checks get --decode-script' (or written by hand); re-encode it to the
+	// base64 the API expects. A no-op if it's already base64.
+	spec.Settings = encodeScriptSettingsIfPlaintext(spec.Settings)
+
 	return spec, nil
+}
+
+// decodeScriptInSpec decodes a scripted/browser check's base64 script to
+// plaintext in place, on the unstructured spec.settings produced by
+// marshaling a checkResource/CheckSpec. No-op if spec.settings is missing,
+// malformed, or not a scripted/browser check.
+func decodeScriptInSpec(obj *unstructured.Unstructured) {
+	spec, ok := obj.Object["spec"].(map[string]any)
+	if !ok {
+		return
+	}
+	settingsRaw, ok := spec["settings"].(map[string]any)
+	if !ok {
+		return
+	}
+	if decoded, changed := decodeScriptSettings(CheckSettings(settingsRaw)); changed {
+		spec["settings"] = map[string]any(decoded)
+	}
 }
 
 // hasMultipleDocuments checks if YAML data contains more than one document
