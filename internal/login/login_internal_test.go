@@ -82,6 +82,7 @@ func TestRuntimeOnlyOAuthDestinationChecksBeforeAndAfterFlow(t *testing.T) {
 				RuntimeProxyEndpoint:        "https://runtime-proxy.example.invalid",
 			},
 			Hooks: Hooks{
+				CheckCredentialPersistence: func() error { return nil },
 				NewAuthFlow: func(string, auth.Options) AuthFlow {
 					return &stubInternalAuthFlow{result: &auth.Result{
 						Token:        "oauth-token",

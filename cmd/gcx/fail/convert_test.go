@@ -1422,26 +1422,22 @@ func TestErrorToDetailedError_KeychainLocked(t *testing.T) {
 	}
 }
 
-func TestErrorToDetailedError_OAuthPersistencePreflight(t *testing.T) {
+func TestErrorToDetailedError_RestrictedCredentialSession(t *testing.T) {
 	tests := []struct {
-		name        string
-		err         error
-		wantSummary string
-		wantDetails string
-		wantNoLogin bool
+		name string
+		err  error
 	}{
 		{
-			name:        "refresh",
-			err:         fmt.Errorf("request failed: %w: %w", auth.ErrCredentialPersistencePreflight, credentials.ErrRestrictedSession),
-			wantSummary: "OAuth refresh cannot persist credentials",
-			wantDetails: "gcx stopped before it sent the refresh token. The stored session is unchanged.",
-			wantNoLogin: true,
+			name: "direct credential-store failure",
+			err:  fmt.Errorf("write config: %w", credentials.ErrRestrictedSession),
 		},
 		{
-			name:        "login",
-			err:         fmt.Errorf("login failed: %w: %w", login.ErrCredentialPersistencePreflight, credentials.ErrRestrictedSession),
-			wantSummary: "OAuth login cannot persist credentials",
-			wantDetails: "gcx stopped before it started the OAuth browser flow.",
+			name: "OAuth refresh preflight failure",
+			err:  fmt.Errorf("request failed: %w: %w", auth.ErrCredentialPersistencePreflight, credentials.ErrRestrictedSession),
+		},
+		{
+			name: "OAuth login preflight failure",
+			err:  fmt.Errorf("login failed: %w: %w", login.ErrCredentialPersistencePreflight, credentials.ErrRestrictedSession),
 		},
 	}
 
@@ -1449,24 +1445,9 @@ func TestErrorToDetailedError_OAuthPersistencePreflight(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got := fail.ErrorToDetailedError(tt.err)
 			require.NotNil(t, got)
-			assert.Equal(t, tt.wantSummary, got.Summary)
-			assert.Equal(t, tt.wantDetails, got.Details)
+			assert.Equal(t, "OS credential store access is restricted", got.Summary)
+			assert.NotEqual(t, "Keychain locked", got.Summary)
 			assert.Equal(t, docs.Keychain, got.DocsLink)
-			assert.Contains(t, got.Suggestions, "Retry the same command outside the sandbox, or grant this process access to the OS credential store")
-			assert.Contains(t, got.Suggestions, "If an agent ran the command, use its approval flow to run gcx outside the sandbox")
-			if tt.wantNoLogin {
-				assert.Contains(t, got.Suggestions, "Do not run gcx login")
-			} else {
-				assert.NotContains(t, got.Suggestions, "Do not run gcx login")
-			}
 		})
 	}
-}
-
-func TestErrorToDetailedError_RestrictedCredentialSession(t *testing.T) {
-	got := fail.ErrorToDetailedError(fmt.Errorf("write config: %w", credentials.ErrRestrictedSession))
-	require.NotNil(t, got)
-	assert.Equal(t, "OS credential store access is restricted", got.Summary)
-	assert.NotEqual(t, "Keychain locked", got.Summary)
-	assert.Equal(t, docs.Keychain, got.DocsLink)
 }

@@ -664,6 +664,12 @@ func resolveGrafanaAuth(ctx context.Context, opts Options, target Target) (strin
 		if opts.NewAuthFlow == nil {
 			return "", nil, errors.New("OAuth requested but no auth flow factory provided")
 		}
+		// Manual OAuth reads the pasted redirect URL. internal/login must not
+		// reach for os.Stdin itself, so a missing reader is a programmer error
+		// rather than a silent fallback. Reject it before the persistence probe.
+		if opts.OAuthManual && opts.Reader == nil {
+			return "", nil, errors.New("manual OAuth requires an input reader")
+		}
 		checkPersistence := opts.CheckCredentialPersistence
 		if checkPersistence == nil {
 			checkPersistence = config.CheckOAuthCredentialPersistence
@@ -679,12 +685,6 @@ func resolveGrafanaAuth(ctx context.Context, opts Options, target Target) (strin
 		w := opts.Writer
 		if w == nil {
 			w = io.Discard
-		}
-		// Manual OAuth reads the pasted redirect URL. internal/login must not
-		// reach for os.Stdin itself, so a missing reader is a programmer error
-		// rather than a silent fallback.
-		if opts.OAuthManual && opts.Reader == nil {
-			return "", nil, errors.New("manual OAuth requires an input reader")
 		}
 		flow := opts.NewAuthFlow(opts.Server, auth.Options{
 			Writer: w,

@@ -54,8 +54,13 @@ func TestCheckOAuthCredentialPersistence(t *testing.T) {
 			store: &persistenceProbeStore{values: map[string]string{}},
 		},
 		{
-			name:  "unavailable store keeps plaintext fallback",
-			store: &persistenceProbeStore{err: credentials.ErrUnavailable},
+			name:  "disabled store keeps plaintext fallback",
+			store: &persistenceProbeStore{err: credentials.ErrDisabled},
+		},
+		{
+			name:    "unavailable store fails closed",
+			store:   &persistenceProbeStore{err: credentials.ErrUnavailable},
+			wantErr: credentials.ErrUnavailable,
 		},
 		{
 			name:    "restricted session fails closed",

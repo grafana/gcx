@@ -198,9 +198,8 @@ func (n *NamespacedRESTConfig) WireTokenPersistence(ctx context.Context, source 
 			return err
 		}
 		err = credentials.CheckWritable(fresh.keychainStore)
-		if errors.Is(err, credentials.ErrUnavailable) || errors.Is(err, credentials.ErrDisabled) {
-			// A new plaintext credential can stay in the mode-0600 config file
-			// when no credential store is available or the user disabled it.
+		if errors.Is(err, credentials.ErrDisabled) {
+			// The user selected plaintext credential storage.
 			return nil
 		}
 		return err
@@ -299,8 +298,8 @@ func tokenPersistenceIdentity(sources []ConfigSource, path string) (string, erro
 }
 
 // CheckOAuthCredentialPersistence verifies that a new OAuth credential can be
-// persisted before gcx starts a browser flow. A truly unavailable or disabled
-// store keeps the documented plaintext fallback.
+// persisted before gcx starts a browser flow. A disabled store keeps the
+// documented plaintext fallback.
 func CheckOAuthCredentialPersistence() error {
 	return checkOAuthCredentialPersistence(keychainStoreFn())
 }
@@ -316,7 +315,7 @@ func (cfg *Config) CheckOAuthCredentialPersistence() error {
 
 func checkOAuthCredentialPersistence(store credentials.Store) error {
 	err := credentials.CheckWritable(store)
-	if errors.Is(err, credentials.ErrUnavailable) || errors.Is(err, credentials.ErrDisabled) {
+	if errors.Is(err, credentials.ErrDisabled) {
 		return nil
 	}
 	return err

@@ -64,7 +64,6 @@ func ErrorToDetailedError(err error) *gcxerrors.DetailedError {
 		convertCobraUnknownCommandErrors,
 		convertContextCanceled,                      // Context cancellation (must be first — cancellation can wrap other errors)
 		convertRequiredFlagErrors,                   // Cobra required-flag errors — must appear before generic checks
-		convertOAuthPersistenceErrors,               // OAuth preflight failures — must precede credential-store errors that they wrap
 		convertCredentialsErrors,                    // OS credential-store failures — must precede config errors that wrap them
 		convertConfigErrors,                         // Config-related
 		convertAuthErrors,                           // Auth-related (expired tokens)
@@ -94,34 +93,6 @@ func ErrorToDetailedError(err error) *gcxerrors.DetailedError {
 	}
 
 	return fallbackDetailedError(err)
-}
-
-func convertOAuthPersistenceErrors(err error) (*gcxerrors.DetailedError, bool) {
-	suggestions := []string{
-		"Retry the same command outside the sandbox, or grant this process access to the OS credential store",
-		"If an agent ran the command, use its approval flow to run gcx outside the sandbox",
-	}
-	if errors.Is(err, auth.ErrCredentialPersistencePreflight) {
-		return &gcxerrors.DetailedError{
-			Summary: "OAuth refresh cannot persist credentials",
-			Details: "gcx stopped before it sent the refresh token. The stored session is unchanged.",
-			Parent:  err,
-			Suggestions: append([]string{
-				"Do not run gcx login",
-			}, suggestions...),
-			DocsLink: docs.Keychain,
-		}, true
-	}
-	if errors.Is(err, login.ErrCredentialPersistencePreflight) {
-		return &gcxerrors.DetailedError{
-			Summary:     "OAuth login cannot persist credentials",
-			Details:     "gcx stopped before it started the OAuth browser flow.",
-			Parent:      err,
-			Suggestions: suggestions,
-			DocsLink:    docs.Keychain,
-		}, true
-	}
-	return nil, false
 }
 
 // convertAlreadyReported suppresses a secondary error envelope when a command
