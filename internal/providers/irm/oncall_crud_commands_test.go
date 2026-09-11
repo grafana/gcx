@@ -13,6 +13,8 @@ import (
 
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/providers"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // fakeCRUDAPI stubs the route CRUD surface used by the verb-command tests.
@@ -49,14 +51,21 @@ func writeManifest(t *testing.T, content string) string {
 
 func runRoutesCmd(t *testing.T, fake *fakeCRUDAPI, stdin string, args ...string) (string, error) {
 	t.Helper()
+	stdout, stderr, err := runRoutesCmdStreams(t, fake, stdin, args...)
+	return stdout + stderr, err
+}
+
+func runRoutesCmdStreams(t *testing.T, fake *fakeCRUDAPI, stdin string, args ...string) (string, string, error) {
+	t.Helper()
 	cmd := newRoutesCmd(&fakeLoader{client: fake})
-	out := &bytes.Buffer{}
-	cmd.SetOut(out)
-	cmd.SetErr(out)
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	cmd.SetOut(stdout)
+	cmd.SetErr(stderr)
 	cmd.SetIn(strings.NewReader(stdin))
 	cmd.SetArgs(args)
 	err := cmd.ExecuteContext(context.Background())
-	return out.String(), err
+	return stdout.String(), stderr.String(), err
 }
 
 func TestRouteCreateCommand(t *testing.T) {
@@ -88,6 +97,30 @@ func TestRouteCreateCommand(t *testing.T) {
 	if result.ID != "RNEW" {
 		t.Errorf("expected created ID in output, got %+v", result)
 	}
+}
+
+// TestRouteCreateInvalidJSONFieldWarnsAfterMutation reproduces the review
+// case: output selection runs after CreateRoute, so an invalid --json path
+// must not turn the successfully applied mutation into a command failure.
+func TestRouteCreateInvalidJSONFieldWarnsAfterMutation(t *testing.T) {
+	resetAgentMode(t)
+
+	created := false
+	fake := &fakeCRUDAPI{
+		createRouteFn: func(_ context.Context, r Route) (*Route, error) {
+			created = true
+			r.ID = "RNEW"
+			return &r, nil
+		},
+	}
+	manifest := writeManifest(t, `{"alert_receive_channel":"C1","filtering_term":".*","filtering_term_type":0}`)
+
+	stdout, stderr, err := runRoutesCmdStreams(t, fake, "", "create", "-f", manifest, "--json", "bogus")
+
+	require.NoError(t, err)
+	assert.True(t, created, "route mutation must have been applied")
+	assert.JSONEq(t, `{"bogus":null}`, stdout)
+	assert.Contains(t, stderr, "warn: unknown field(s) in --json: bogus")
 }
 
 func TestRouteCreateCommandRequiresFilename(t *testing.T) {

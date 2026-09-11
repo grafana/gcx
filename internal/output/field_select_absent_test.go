@@ -120,18 +120,16 @@ type arrayItem struct {
 
 func TestAbsentFieldSelection(t *testing.T) {
 	tests := []struct {
-		name    string
-		fields  []string
-		value   any
-		wantErr string
-		// wantOK marks the cases that must still encode.
-		wantOK bool
+		name        string
+		fields      []string
+		value       any
+		wantWarning string
 	}{
 		{
-			name:    "an empty result set still answers from the item type",
-			fields:  []string{"username"},
-			value:   []oncallUser{},
-			wantErr: "unknown field(s) in --json: username. Did you mean spec.username?",
+			name:        "an empty result set still answers from the item type",
+			fields:      []string{"username"},
+			value:       []oncallUser{},
+			wantWarning: "unknown field(s) in --json: username. Did you mean spec.username?",
 		},
 		{
 			name:   "a path only some objects carry is kept",
@@ -140,112 +138,104 @@ func TestAbsentFieldSelection(t *testing.T) {
 				{"a": 1},
 				{"b": 2},
 			},
-			wantOK: true,
 		},
 		{
 			name:   "a path that exists and holds null is kept",
 			fields: []string{"a"},
 			value:  []map[string]any{{"a": nil}},
-			wantOK: true,
 		},
 		{
 			name:   "an omitempty field that no row emits is kept",
 			fields: []string{"name", "tags"},
 			value:  []omitemptyItem{{Name: "a"}, {Name: "b"}},
-			wantOK: true,
 		},
 		{
 			name:   "an omitempty field under a nested path is kept",
 			fields: []string{"spec.tags"},
 			value:  []nestedOmitemptyItem{{}},
-			wantOK: true,
 		},
 		{
 			name:   "an empty object declares no type, so the path is kept",
 			fields: []string{"anything"},
 			value:  map[string]any{},
-			wantOK: true,
 		},
 		{
 			name:   "a dynamic map declares no type, so the path is kept",
 			fields: []string{"a", "missing"},
 			value:  []map[string]any{{"a": 1}, {"a": 2}},
-			wantOK: true,
 		},
 		{
 			name:   "a promoted field of an embedded struct is kept",
 			fields: []string{"metric", "managed_by"},
 			value:  []inlineRecommendation{},
-			wantOK: true,
 		},
 		{
 			name:   "a promoted field of an inline-tagged embedded struct is kept",
 			fields: []string{"kind"},
 			value:  []inlineTypedObject{},
-			wantOK: true,
 		},
 		{
-			name:    "the name of an embedded struct is no key",
-			fields:  []string{"TypeMeta"},
-			value:   []inlineTypedObject{},
-			wantErr: "unknown field(s) in --json: TypeMeta",
+			name:        "the name of an embedded struct is no key",
+			fields:      []string{"TypeMeta"},
+			value:       []inlineTypedObject{},
+			wantWarning: "unknown field(s) in --json: TypeMeta",
 		},
 		{
-			name:    "a path the item type does not declare fails",
-			fields:  []string{"bogus"},
-			value:   []omitemptyItem{{Name: "a"}},
-			wantErr: "unknown field(s) in --json: bogus",
+			name:        "a path the item type does not declare warns",
+			fields:      []string{"bogus"},
+			value:       []omitemptyItem{{Name: "a"}},
+			wantWarning: "unknown field(s) in --json: bogus",
 		},
 		{
 			name:   "a custom marshaler controls the root object shape",
 			fields: []string{"metrics"},
 			value:  []customMarshaledItem{{}},
-			wantOK: true,
 		},
 		{
 			name:   "a custom marshaler controls a nested field shape",
 			fields: []string{"settings.url"},
 			value:  []customMarshaledFieldItem{{Settings: rawJSONObject(`{}`)}},
-			wantOK: true,
 		},
 		{
-			name:    "a dotted path the caller wrote gets no candidate",
-			fields:  []string{"spec.nope"},
-			value:   []oncallUser{{}},
-			wantErr: "unknown field(s) in --json: spec.nope. Run --json list",
+			name:        "a dotted path the caller wrote gets no candidate",
+			fields:      []string{"spec.nope"},
+			value:       []oncallUser{{}},
+			wantWarning: "unknown field(s) in --json: spec.nope. Run --json list",
 		},
 		{
-			name:    "each absent name keeps its own candidates",
-			fields:  []string{"username", "bogus"},
-			value:   newOnCallUsers("ward"),
-			wantErr: "unknown field(s) in --json: username, bogus. Did you mean spec.username for username?",
+			name:        "each absent name keeps its own candidates",
+			fields:      []string{"username", "bogus"},
+			value:       newOnCallUsers("ward"),
+			wantWarning: "unknown field(s) in --json: username, bogus. Did you mean spec.username for username?",
 		},
 		{
-			name:    "a leaf name that matches two paths names both",
-			fields:  []string{"name"},
-			value:   []twoNameItem{{}},
-			wantErr: "Did you mean metadata.name, spec.name?",
+			name:        "a leaf name that matches two paths names both",
+			fields:      []string{"name"},
+			value:       []twoNameItem{{}},
+			wantWarning: "Did you mean metadata.name, spec.name?",
 		},
 		{
-			name:    "a path that continues past an array names --jq",
-			fields:  []string{"rows.value"},
-			value:   []arrayItem{{}},
-			wantErr: "--json cannot reach a value inside an array: rows.value. Use --jq",
+			name:        "a path that continues past an array names --jq",
+			fields:      []string{"rows.value"},
+			value:       []arrayItem{{}},
+			wantWarning: "--json cannot reach a value inside an array: rows.value. Use --jq",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			codec := cmdio.NewFieldSelectCodec(tt.fields)
-			var buf bytes.Buffer
+			var buf, warnings bytes.Buffer
+			codec.SetWarningWriter(&warnings)
 			err := codec.Encode(&buf, tt.value)
 
-			if tt.wantOK {
-				require.NoError(t, err)
+			require.NoError(t, err)
+			assert.NotEmpty(t, buf.String(), "field selection must still produce a result")
+			if tt.wantWarning == "" {
+				assert.Empty(t, warnings.String())
 				return
 			}
-			require.Error(t, err)
-			assert.Contains(t, err.Error(), tt.wantErr)
+			assert.Contains(t, warnings.String(), tt.wantWarning)
 		})
 	}
 }
@@ -256,12 +246,13 @@ func TestAbsentFieldSelection(t *testing.T) {
 func TestEmbeddedStructSuggestionUsesPromotedPath(t *testing.T) {
 	codec := cmdio.NewFieldSelectCodec([]string{"name"})
 
-	var buf bytes.Buffer
+	var buf, warnings bytes.Buffer
+	codec.SetWarningWriter(&warnings)
 	err := codec.Encode(&buf, []inlineTypedObject{})
 
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "Did you mean spec.name?")
-	assert.NotContains(t, err.Error(), "TypeMeta")
+	require.NoError(t, err)
+	assert.Contains(t, warnings.String(), "Did you mean spec.name?")
+	assert.NotContains(t, warnings.String(), "TypeMeta")
 }
 
 // TestValidatorAcceptsDeclaredPaths covers the validator route: it must
@@ -295,11 +286,11 @@ func TestValidatorRejectsPathInsideArray(t *testing.T) {
 	assert.Contains(t, err.Error(), "--jq")
 }
 
-// TestEmptyTypedListRejectsUnknownPath is the `gcx datasources list --json
+// TestEmptyTypedListWarnsForUnknownPath is the `gcx datasources list --json
 // bogus` case against an empty result set. The item type is reachable through
 // the envelope, so the answer must not depend on how many rows the server
 // returned.
-func TestEmptyTypedListRejectsUnknownPath(t *testing.T) {
+func TestEmptyTypedListWarnsForUnknownPath(t *testing.T) {
 	type datasource struct {
 		UID  string `json:"uid"`
 		Name string `json:"name"`
@@ -310,12 +301,13 @@ func TestEmptyTypedListRejectsUnknownPath(t *testing.T) {
 	}{Datasources: []datasource{}}
 
 	codec := cmdio.NewFieldSelectCodec([]string{"bogus"})
-	var buf bytes.Buffer
+	var buf, warnings bytes.Buffer
+	codec.SetWarningWriter(&warnings)
 	err := codec.Encode(&buf, &envelope)
 
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unknown field(s) in --json: bogus")
-	assert.Empty(t, buf.String(), "a rejected selection must write nothing")
+	require.NoError(t, err)
+	assert.Contains(t, warnings.String(), "unknown field(s) in --json: bogus")
+	assert.JSONEq(t, `{"datasources":[]}`, buf.String())
 
 	// The same flag must be accepted for a declared path, empty set or not.
 	okCodec := cmdio.NewFieldSelectCodec([]string{"uid"})
@@ -329,11 +321,13 @@ func TestEmptyTypedListRejectsUnknownPath(t *testing.T) {
 func TestAbsentFieldSelectionOnSingleObject(t *testing.T) {
 	codec := cmdio.NewFieldSelectCodec([]string{"username"})
 
-	var buf bytes.Buffer
+	var buf, warnings bytes.Buffer
+	codec.SetWarningWriter(&warnings)
 	err := codec.Encode(&buf, oncallUser{})
 
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "Did you mean spec.username?")
+	require.NoError(t, err)
+	assert.Contains(t, warnings.String(), "Did you mean spec.username?")
+	assert.JSONEq(t, `{"username":null}`, buf.String())
 }
 
 // TestEmptyUnstructuredSliceKeepsEveryPath is the list counterpart of
