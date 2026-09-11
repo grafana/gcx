@@ -21,7 +21,10 @@ Before executing, a pre-flight index-stats check estimates the bytes this
 query would scan and prints a non-blocking warning if it exceeds
 --stats (default 1GiB). Use --skip-stats to disable this check.
 Only the query's stream selector is used for the estimate, since Loki's index
-tracks streams, not line filters or parsing stages.
+tracks streams, not line filters or parsing stages. The checked window is
+widened by any range-vector duration or offset in EXPR (e.g. '[24h]',
+'offset 1h'), since Loki evaluates further back than the query's own time
+range alone would suggest.
 
 ```
 gcx logs metrics [EXPR] [flags]
