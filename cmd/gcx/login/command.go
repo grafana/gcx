@@ -394,9 +394,10 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 			StoredProxyEndpoint:         storedProxyEndpoint,
 		},
 		Hooks: login.Hooks{
-			ConfigSource:        mutationSource,
-			CloudMutationSafety: cloudMutationSafety,
-			LoginMutationGuard:  loginMutationGuard,
+			ConfigSource:               mutationSource,
+			CloudMutationSafety:        cloudMutationSafety,
+			LoginMutationGuard:         loginMutationGuard,
+			CheckCredentialPersistence: cfg.CheckOAuthCredentialPersistence,
 			NewAuthFlow: func(server string, ao internalauth.Options) login.AuthFlow {
 				return internalauth.NewFlow(server, ao)
 			},

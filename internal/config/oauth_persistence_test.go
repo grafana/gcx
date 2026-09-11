@@ -2,6 +2,8 @@ package config_test
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/grafana/gcx/internal/config"
@@ -85,4 +87,38 @@ func TestCheckOAuthCredentialPersistenceKeepsUnknownFailuresFatal(t *testing.T) 
 	t.Cleanup(restore)
 
 	require.ErrorIs(t, config.CheckOAuthCredentialPersistence(), want)
+}
+
+func TestConfigCheckOAuthCredentialPersistenceHonorsResolvedPolicy(t *testing.T) {
+	tests := []struct {
+		name    string
+		mode    string
+		wantErr error
+	}{
+		{name: "configured off keeps plaintext fallback", mode: "off"},
+		{name: "configured on checks the OS store", mode: "on", wantErr: credentials.ErrRestrictedSession},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			contents := []byte("version: 1\ncredentials:\n  keychain: " + tt.mode + "\n")
+			require.NoError(t, os.WriteFile(path, contents, 0o600))
+
+			restore := config.SetKeychainStoreFnForTest(func() credentials.Store {
+				return &persistenceProbeStore{err: credentials.ErrRestrictedSession}
+			})
+			t.Cleanup(restore)
+
+			cfg, err := config.Load(t.Context(), config.ExplicitConfigFile(path))
+			require.NoError(t, err)
+
+			err = cfg.CheckOAuthCredentialPersistence()
+			if tt.wantErr == nil {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorIs(t, err, tt.wantErr)
+		})
+	}
 }

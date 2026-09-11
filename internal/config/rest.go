@@ -302,7 +302,20 @@ func tokenPersistenceIdentity(sources []ConfigSource, path string) (string, erro
 // persisted before gcx starts a browser flow. A truly unavailable or disabled
 // store keeps the documented plaintext fallback.
 func CheckOAuthCredentialPersistence() error {
-	err := credentials.CheckWritable(keychainStoreFn())
+	return checkOAuthCredentialPersistence(keychainStoreFn())
+}
+
+// CheckOAuthCredentialPersistence verifies OAuth persistence with the
+// credential-store policy that was resolved when cfg was loaded.
+func (cfg *Config) CheckOAuthCredentialPersistence() error {
+	if cfg == nil || cfg.keychainStore == nil {
+		return CheckOAuthCredentialPersistence()
+	}
+	return checkOAuthCredentialPersistence(cfg.keychainStore)
+}
+
+func checkOAuthCredentialPersistence(store credentials.Store) error {
+	err := credentials.CheckWritable(store)
 	if errors.Is(err, credentials.ErrUnavailable) || errors.Is(err, credentials.ErrDisabled) {
 		return nil
 	}
