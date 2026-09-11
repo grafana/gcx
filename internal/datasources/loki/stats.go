@@ -64,7 +64,10 @@ narrower set a filter like '|= "error"' would actually return. An expression
 combining multiple selectors (e.g. via a binary operator) sums each
 selector's stats into a single total.
 When no time flags are given, defaults to the last minute (now-1m to now),
-matching the instant-query default used by 'query'/'metrics'.`,
+matching the instant-query default used by 'query'/'metrics'. That window is
+widened by any range-vector duration or offset in EXPR (e.g. '[24h]',
+'offset 1h'), since Loki evaluates further back than --from/--to/--since
+alone would suggest.`,
 		Example: `
   # Estimate bytes scanned by a selector over the last hour
   gcx datasources loki stats -d UID '{job="varlogs"}' --since 1h
@@ -106,6 +109,13 @@ matching the instant-query default used by 'query'/'metrics'.`,
 			}
 			if !opts.Time.IsRange() {
 				start, end = now.Add(-time.Minute), now
+			}
+			// A range-vector duration (e.g. "[24h]") or "offset" modifier in
+			// expr makes Loki actually evaluate further back than start/end
+			// alone would suggest — widen the window so the estimate doesn't
+			// undercount what 'query'/'metrics' would really scan.
+			if lookback := loki.MaxLookback(expr); lookback > 0 {
+				start = start.Add(-lookback)
 			}
 
 			client, err := loki.NewClient(cfg)

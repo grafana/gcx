@@ -18,7 +18,10 @@ narrower set a filter like '|= "error"' would actually return. An expression
 combining multiple selectors (e.g. via a binary operator) sums each
 selector's stats into a single total.
 When no time flags are given, defaults to the last minute (now-1m to now),
-matching the instant-query default used by 'query'/'metrics'.
+matching the instant-query default used by 'query'/'metrics'. That window is
+widened by any range-vector duration or offset in EXPR (e.g. '[24h]',
+'offset 1h'), since Loki evaluates further back than --from/--to/--since
+alone would suggest.
 
 ```
 gcx datasources loki stats [EXPR] [flags]
