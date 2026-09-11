@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"strings"
 
-	internaldocs "github.com/grafana/gcx/internal/docs"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/mcp-doc-server/pkg/grafanadocs"
@@ -96,17 +95,11 @@ func getCommand(loader *indexLoader, fetch docFetcher) *cobra.Command {
 			if err := opts.validateExplicitFlags(cmd); err != nil {
 				return err
 			}
-			if !strings.HasPrefix(opts.url, "https://") {
-				idx, err := loader.get(cmd.Context())
-				if err != nil {
-					return err
-				}
-				resolved, err := internaldocs.ResolveShorthand(idx, opts.url, opts.product)
-				if err != nil {
-					return err
-				}
-				opts.url = resolved
+			resolved, err := resolveIfShorthand(cmd.Context(), loader, opts.url, opts.product)
+			if err != nil {
+				return err
 			}
+			opts.url = resolved
 			doc, err := fetch(cmd.Context(), opts.url)
 			if err != nil {
 				return cleanFetchErr(opts.url, err)
