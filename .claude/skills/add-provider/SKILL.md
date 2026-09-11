@@ -287,8 +287,8 @@ Summary of the key steps:
 1. Provider interface + `init()` with a single `providers.Register()` call + `providers.ConfigLoader` (mirror the SLO reference)
 2. Config keys + validation
 3. Commands with UX compliance
-4. Types + client; adapter only for resources placed in the `resources` pipeline (returned from `TypedRegistrations()`, non-nil `Schema`)
-5. Register (blank import in `cmd/gcx/root/command.go`; adapter registration flows through `TypedRegistrations()` — never call `adapter.Register()` directly)
+4. Types + capability-satisfying client; declare `adapter.Resource[T]` only for resources placed in the `resources` pipeline (returned from `TypedRegistrations()`, non-nil `Schema`)
+5. Register via `adapter.NewProvider(...).WithCommands(...)` for adapter-backed resources (blank import in `cmd/gcx/root/command.go`; adapter registration flows through `TypedRegistrations()` — never call `adapter.Register()` directly)
 6. Tests (interface compliance, client httptest request mapping; adapter round-trip only when an adapter exists)
 
 **Key patterns** (see provider-guide.md for details):
@@ -296,6 +296,7 @@ Summary of the key steps:
 - Use `providers.ConfigLoader` (instantiate once in `Commands()`, `BindFlags` on the parent) — don't hand-roll config loading or import `cmd/gcx/config`
 - Config key names use hyphen-case
 - Adapter-backed resources must strip server-generated fields on Create/Update
+- Declare adapter-backed resource types with `adapter.Resource[T]`; see the SLO reference in `internal/providers/slo/definitions/resource_adapter.go`.
 
 ### Gate: Stage Complete
 
@@ -369,7 +370,7 @@ what a reviewer must run before merge. Wiring checks pass; docs updated.
 
 | Provider | Auth Model | API Type | Key Entry Point |
 |----------|-----------|----------|-----------------|
-| SLO | Same Grafana token | Plugin API | `internal/providers/slo/provider.go` |
+| SLO | Same Grafana token | Plugin API | `internal/providers/slo/provider.go` — declarative `adapter.Resource[T]` reference |
 | Synth | Separate URL + token | External service | `internal/providers/synth/provider.go` |
 
 ## Common Pitfalls
