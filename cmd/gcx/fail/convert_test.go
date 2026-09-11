@@ -1437,3 +1437,33 @@ func TestErrorToDetailedError_KeychainLocked(t *testing.T) {
 		})
 	}
 }
+
+func TestErrorToDetailedError_RestrictedCredentialSession(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{
+			name: "direct credential-store failure",
+			err:  fmt.Errorf("write config: %w", credentials.ErrRestrictedSession),
+		},
+		{
+			name: "OAuth refresh preflight failure",
+			err:  fmt.Errorf("request failed: %w: %w", auth.ErrCredentialPersistencePreflight, credentials.ErrRestrictedSession),
+		},
+		{
+			name: "OAuth login preflight failure",
+			err:  fmt.Errorf("login failed: %w: %w", login.ErrCredentialPersistencePreflight, credentials.ErrRestrictedSession),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := fail.ErrorToDetailedError(tt.err)
+			require.NotNil(t, got)
+			assert.Equal(t, "OS credential store access is restricted", got.Summary)
+			assert.NotEqual(t, "Keychain locked", got.Summary)
+			assert.Equal(t, docs.Keychain, got.DocsLink)
+		})
+	}
+}

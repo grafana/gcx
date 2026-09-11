@@ -189,6 +189,44 @@ current-context: default
 	require.ErrorContains(t, err, "credential owner \"default\" disappeared")
 }
 
+func TestWireTokenPersistence_UnavailableWritesFailPreflight(t *testing.T) {
+	store := withFakeStore(t)
+	dir := t.TempDir()
+	file := filepath.Join(dir, "config.yaml")
+	writeTestConfigFile(t, file, `
+version: 1
+stacks:
+  default:
+    grafana:
+      server: https://grafana.invalid
+      proxy-endpoint: https://proxy.invalid
+      oauth-token: gat_old
+      oauth-refresh-token: gar_old
+      oauth-token-expires-at: "2020-01-01T00:00:00Z"
+      oauth-refresh-expires-at: "2099-01-01T00:00:00Z"
+contexts:
+  default:
+    stack: default
+current-context: default
+`)
+	cfg, err := config.Load(t.Context(), config.ExplicitConfigFile(file))
+	require.NoError(t, err)
+	restCfg, err := config.NewNamespacedRESTConfig(t.Context(), *cfg.Contexts["default"])
+	require.NoError(t, err)
+	restCfg.WireTokenPersistence(
+		t.Context(),
+		config.ExplicitConfigFile(file),
+		"default",
+		"default",
+		[]config.ConfigSource{{Path: file, Type: "explicit"}},
+	)
+
+	store.setErr = credentials.ErrUnavailable
+	checkPersistence := restCfg.CheckPersistenceForTest()
+	require.NotNil(t, checkPersistence)
+	require.ErrorIs(t, checkPersistence(), credentials.ErrUnavailable)
+}
+
 func TestWireTokenPersistence_ExplicitModeWritesToExplicitSource(t *testing.T) {
 	store := withFakeStore(t)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -396,6 +434,8 @@ current-context: default
 }
 
 func TestWireTokenPersistence_PendingGenerationCannotOverwriteRelogin(t *testing.T) {
+	t.Setenv("GCX_KEYCHAIN", "off")
+
 	var refreshCalls, protectedCalls atomic.Int32
 	var protectedAuthorization atomic.Value
 	protectedAuthorization.Store("")
@@ -787,6 +827,8 @@ current-context: default
 }
 
 func TestWireTokenPersistence_TLSFileSwapRejectsRotatedGeneration(t *testing.T) {
+	t.Setenv("GCX_KEYCHAIN", "off")
+
 	var refreshCalls, protectedCalls atomic.Int32
 	caFile := filepath.Join(t.TempDir(), "ca.pem")
 	require.NoError(t, os.WriteFile(caFile, []byte("initial-ca-material"), 0o600))

@@ -64,7 +64,7 @@ func ErrorToDetailedError(err error) *gcxerrors.DetailedError {
 		convertCobraUnknownCommandErrors,
 		convertContextCanceled,                      // Context cancellation (must be first — cancellation can wrap other errors)
 		convertRequiredFlagErrors,                   // Cobra required-flag errors — must appear before generic checks
-		convertCredentialsErrors,                    // Locked OS keychain — must precede credential-rejection/config errors that wrap it
+		convertCredentialsErrors,                    // OS credential-store failures — must precede config errors that wrap them
 		convertConfigErrors,                         // Config-related
 		convertAuthErrors,                           // Auth-related (expired tokens)
 		convertUnavailableEndpoint,                  // Experimental/Cloud-only endpoint route absent
@@ -212,17 +212,20 @@ func convertAuthErrors(err error) (*gcxerrors.DetailedError, bool) {
 	return nil, false
 }
 
-// convertCredentialsErrors converts unavailable and locked keychain errors
-// into actionable messages. Both conditions remain fatal so gcx never falls
-// back to a plaintext write unless the user explicitly selects that policy.
+// convertCredentialsErrors converts restricted, unavailable, and locked
+// credential-store errors into actionable messages. These conditions remain
+// fatal unless the user explicitly selects plaintext storage.
 func convertCredentialsErrors(err error) (*gcxerrors.DetailedError, bool) {
-	if errors.Is(err, credentials.ErrLocked) {
+	if errors.Is(err, credentials.ErrRestrictedSession) {
 		return &gcxerrors.DetailedError{
-			Summary:     "Keychain locked",
-			Details:     "The OS keychain is reachable, but it is locked or cannot be unlocked in this session. gcx does not fall back to a plaintext credential.",
-			Parent:      err,
-			Suggestions: keychainLockedSuggestions(runtime.GOOS),
-			DocsLink:    docs.Keychain,
+			Summary: "OS credential store access is restricted",
+			Details: "The credential store is available, but this execution session cannot write to it. gcx does not fall back to a plaintext credential.",
+			Parent:  err,
+			Suggestions: []string{
+				"Retry the same command outside the sandbox, or grant this process access to the OS credential store",
+				"If an agent ran the command, use its approval flow to run gcx outside the sandbox",
+			},
+			DocsLink: docs.Keychain,
 		}, true
 	}
 
@@ -240,6 +243,15 @@ func convertCredentialsErrors(err error) (*gcxerrors.DetailedError, bool) {
 		}, true
 	}
 
+	if errors.Is(err, credentials.ErrLocked) {
+		return &gcxerrors.DetailedError{
+			Summary:     "Keychain locked",
+			Details:     "The OS keychain is reachable, but it is locked or cannot be unlocked in this session. gcx does not fall back to a plaintext credential.",
+			Parent:      err,
+			Suggestions: keychainLockedSuggestions(runtime.GOOS),
+			DocsLink:    docs.Keychain,
+		}, true
+	}
 	return nil, false
 }
 
