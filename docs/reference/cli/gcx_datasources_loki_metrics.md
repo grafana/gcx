@@ -17,6 +17,12 @@ Instant vs range is deduced from time flags: no time flags = instant query,
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
 open it in your browser after the query succeeds.
 
+Before executing, a pre-flight index-stats check estimates the bytes this
+query would scan and prints a non-blocking warning if it exceeds
+--stats (default 1GiB). Use --skip-stats to disable this check.
+Only the query's stream selector is used for the estimate, since Loki's index
+tracks streams, not line filters or parsing stages.
+
 ```
 gcx datasources loki metrics [EXPR] [flags]
 ```
@@ -54,6 +60,8 @@ gcx datasources loki metrics [EXPR] [flags]
   -o, --output string       Output format. One of: agents, graph, json, table, wide, yaml (default "table")
       --share-link          Print the Grafana Explore URL for the executed query to stderr
       --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
+      --skip-stats          Skip the index-stats pre-flight check
+      --stats string        Warn (non-blocking) if index-stats reports more than this many bytes would be scanned (e.g. '500MiB', '2GiB') (default "1GiB")
       --step string         Query step (e.g., '15s', '1m')
       --to string           End time (RFC3339, Unix timestamp, or relative like 'now')
 ```

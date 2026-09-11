@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"time"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/httputils"
@@ -136,104 +137,87 @@ func (c *Client) executeQuery(ctx context.Context, body []byte, operation string
 	return &grafanaResp, nil
 }
 
-func (c *Client) Labels(ctx context.Context, datasourceUID string) (*LabelsResponse, error) {
-	apiPath := c.buildLabelsPath(datasourceUID)
-
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, c.restConfig.Host+apiPath, nil)
+// doGet issues an authenticated GET to path with optional query parameters,
+// decoding the JSON response body into result on success. On a non-200
+// response it returns a typed API error via queryerror.FromBody; operation
+// names both that error and the request/read failure wrapping, so it should
+// read naturally in "failed to execute <operation>: ...".
+func (c *Client) doGet(ctx context.Context, path string, query url.Values, operation string, result any) error {
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, c.restConfig.Host+path, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	if len(query) > 0 {
+		httpReq.URL.RawQuery = query.Encode()
 	}
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get labels: %w", err)
+		return fmt.Errorf("failed to execute %s: %w", operation, err)
 	}
 	defer resp.Body.Close()
 
 	respBody, err := httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
+		return fmt.Errorf("failed to read response: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, queryerror.FromBody("loki", "labels query", resp.StatusCode, respBody)
+		return queryerror.FromBody("loki", operation, resp.StatusCode, respBody)
 	}
 
+	if err := json.Unmarshal(respBody, result); err != nil {
+		return fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return nil
+}
+
+func (c *Client) Labels(ctx context.Context, datasourceUID string) (*LabelsResponse, error) {
 	var result LabelsResponse
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+	if err := c.doGet(ctx, c.buildLabelsPath(datasourceUID), nil, "labels query", &result); err != nil {
+		return nil, err
 	}
-
 	return &result, nil
 }
 
 func (c *Client) LabelValues(ctx context.Context, datasourceUID, labelName string) (*LabelsResponse, error) {
-	apiPath := c.buildLabelValuesPath(datasourceUID, labelName)
-
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, c.restConfig.Host+apiPath, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	resp, err := c.httpClient.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get label values: %w", err)
-	}
-	defer resp.Body.Close()
-
-	respBody, err := httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, queryerror.FromBody("loki", "label values query", resp.StatusCode, respBody)
-	}
-
 	var result LabelsResponse
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+	if err := c.doGet(ctx, c.buildLabelValuesPath(datasourceUID, labelName), nil, "label values query", &result); err != nil {
+		return nil, err
 	}
-
 	return &result, nil
 }
 
 func (c *Client) Series(ctx context.Context, datasourceUID string, matchers []string) (*SeriesResponse, error) {
-	apiPath := c.buildSeriesPath(datasourceUID)
-
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, c.restConfig.Host+apiPath, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
+	var query url.Values
 	if len(matchers) > 0 {
-		q := httpReq.URL.Query()
+		query = url.Values{}
 		for _, matcher := range matchers {
-			q.Add("match[]", matcher)
+			query.Add("match[]", matcher)
 		}
-		httpReq.URL.RawQuery = q.Encode()
-	}
-
-	resp, err := c.httpClient.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get series: %w", err)
-	}
-	defer resp.Body.Close()
-
-	respBody, err := httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, queryerror.FromBody("loki", "series query", resp.StatusCode, respBody)
 	}
 
 	var result SeriesResponse
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+	if err := c.doGet(ctx, c.buildSeriesPath(datasourceUID), query, "series query", &result); err != nil {
+		return nil, err
 	}
+	return &result, nil
+}
 
+// IndexStats calls Loki's index/stats endpoint for the given LogQL matcher and
+// time range, returning stream/chunk/byte/entry counts WITHOUT executing the
+// query. Useful as a pre-flight cost check before Query/MetricQuery.
+func (c *Client) IndexStats(ctx context.Context, datasourceUID, query string, start, end time.Time) (*IndexStatsResponse, error) {
+	q := url.Values{}
+	q.Set("query", query)
+	q.Set("start", strconv.FormatInt(start.UnixNano(), 10))
+	q.Set("end", strconv.FormatInt(end.UnixNano(), 10))
+
+	var result IndexStatsResponse
+	if err := c.doGet(ctx, c.buildIndexStatsPath(datasourceUID), q, "index stats query", &result); err != nil {
+		return nil, err
+	}
 	return &result, nil
 }
 
@@ -248,6 +232,10 @@ func (c *Client) buildLabelValuesPath(datasourceUID, labelName string) string {
 
 func (c *Client) buildSeriesPath(datasourceUID string) string {
 	return fmt.Sprintf("/api/datasources/uid/%s/resources/series", url.PathEscape(datasourceUID))
+}
+
+func (c *Client) buildIndexStatsPath(datasourceUID string) string {
+	return fmt.Sprintf("/api/datasources/uid/%s/resources/index/stats", url.PathEscape(datasourceUID))
 }
 
 func convertGrafanaResponse(grafanaResp *GrafanaQueryResponse) *QueryResponse {
