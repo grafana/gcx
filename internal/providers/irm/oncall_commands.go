@@ -447,12 +447,28 @@ func newSchedulesCmd(loader OnCallConfigLoader) *cobra.Command {
 		Short:   "Manage OnCall schedules.",
 		Aliases: []string{"schedule"},
 	}
+	listCmd := newListSubcommand(loader, "schedules", "Schedule", "List OnCall schedules.", "id",
+		func(ctx context.Context, c OnCallAPI) ([]Schedule, error) { return c.ListSchedules(ctx) },
+		func(ctx context.Context, c OnCallAPI, name string) (*Schedule, error) {
+			return c.GetSchedule(ctx, name)
+		})
+	listCmd.Long = `List OnCall schedules and their current assignees.
+
+JSON output includes current assignees in spec.on_call_now, with usernames
+available directly without a separate users lookup.
+Use --jq to filter the returned schedules by name and select only the fields you need.
+For coverage over a date range or handover times, use schedules list-final-shifts
+with the schedule ID from metadata.name; on_call_now describes only the current moment.`
+	listCmd.Example = `  # List schedules and current assignees
+  gcx irm oncall schedules list
+
+  # Show only schedule names and current usernames
+  gcx irm oncall schedules list --jq '[.[] | {name: .spec.name, on_call_now: [.spec.on_call_now[]? | .username]}]'
+
+  # Find Payments schedules in a known context (name match, case-insensitive)
+  gcx --context prod irm oncall schedules list --jq '[.[] | select(.spec.name | test("payments"; "i")) | {id: .metadata.name, name: .spec.name, on_call_now: [.spec.on_call_now[]? | .username]}]'`
 	cmd.AddCommand(
-		newListSubcommand(loader, "schedules", "Schedule", "List OnCall schedules.", "id",
-			func(ctx context.Context, c OnCallAPI) ([]Schedule, error) { return c.ListSchedules(ctx) },
-			func(ctx context.Context, c OnCallAPI, name string) (*Schedule, error) {
-				return c.GetSchedule(ctx, name)
-			}),
+		listCmd,
 		newGetSubcommand(loader, "Get a schedule by ID.",
 			func(ctx context.Context, c OnCallAPI, name string) (*Schedule, error) {
 				return c.GetSchedule(ctx, name)
