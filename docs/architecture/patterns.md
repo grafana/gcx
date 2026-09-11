@@ -489,6 +489,40 @@ Do not introduce new serialization bridges, dispatch patterns, or
 type-erasure mechanisms. If TypedCRUD does not fit your use case, raise
 the issue for architectural discussion.
 
+### Sanctioned Exception — Single-Seam Capability Assertion (`adapter.Resource[T]`)
+
+The declarative `adapter.Resource[T]` + `adapter.NewProvider` registration
+model (see [ADR-025](../adrs/declarative-provider-registration/001-declarative-resource-front-door.md)) needs
+to determine, at registration time, which CRUD verbs a provider's `NewClient`
+result actually supports. Detecting capability-interface satisfaction
+intrinsically requires a type assertion on the `any` value `NewClient`
+returns — there is no generics-only way to do this within the TypedCRUD
+model. The ADR records this narrow exception.
+
+This is a **documented, audited exception** to the "no `any` type erasure"
+rule above, narrowly scoped:
+
+- The assertion is confined to exactly ONE file:
+  `internal/resources/adapter/capability.go`. Grep for `.(Lister[`,
+  `.(Getter[`, `.(Creator[`, `.(Updater[`, `.(Deleter[`, `.(Validator[` — all
+  six must appear only there.
+- No provider package performs this assertion. Providers only implement the
+  capability interfaces (`Lister[T]`, `Getter[T]`, `Creator[T]`, `Updater[T]`,
+  `Deleter[T]`, `Validator[T]`) on their REST client; the seam converts
+  interface satisfaction into `TypedCRUD[T]`'s existing "nil Fn ⇒
+  `errors.ErrUnsupported`" semantics. No new dispatch or serialization
+  mechanism is introduced, and no second seam may be added anywhere else.
+- An unimplemented verb resolves to `errors.ErrUnsupported` (TypedCRUD's
+  existing behavior, unchanged); an unimplemented `Validator[T]` makes
+  dry-run mutations skip the server call and return `ErrDryRunUnverified`,
+  so the resource is reported as skipped rather than falsely valid.
+
+This qualifies Pattern 18's "No `any` type erasure — all 16 types use
+concrete generics" claim below: that claim describes the **hand-written,
+per-provider registration path** (OnCall's existing private builder). The
+separate declarative `Resource[T]` path uses exactly one sanctioned
+`any`-assertion seam, documented here.
+
 ### Provider ConfigLoader
 
 All provider commands must use `providers.ConfigLoader` for `--config` flag
