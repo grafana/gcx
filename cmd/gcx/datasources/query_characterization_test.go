@@ -228,6 +228,97 @@ func TestGenericQueryCharacterization_LokiLimit(t *testing.T) {
 	assert.InDelta(t, float64(7), q["maxLines"], 0, "--limit must reach maxLines")
 }
 
+func TestGenericQueryCharacterization_PinotDefaultLimit(t *testing.T) {
+	f := &fakeGrafana{t: t, dsType: "startree-pinot-datasource"}
+
+	_, err := runGeneric(t, f,
+		"query", "uid", "SELECT 1 FROM events",
+		"-o", "json")
+	require.NoError(t, err)
+
+	_, body := f.seenPost()
+	q := firstQuery(t, body)
+	assert.Equal(t, "SELECT 1 FROM events LIMIT 100", q["pinotQlCode"],
+		"omitted --limit must use pinot.DefaultLimit, not the generic Loki default")
+}
+
+func TestGenericQueryCharacterization_PinotLimit(t *testing.T) {
+	f := &fakeGrafana{t: t, dsType: "startree-pinot-datasource"}
+
+	_, err := runGeneric(t, f,
+		"query", "uid", "SELECT 1 FROM events",
+		"--limit", "7", "-o", "json")
+	require.NoError(t, err)
+
+	_, body := f.seenPost()
+	q := firstQuery(t, body)
+	assert.Equal(t, "SELECT 1 FROM events LIMIT 7", q["pinotQlCode"],
+		"--limit must reach the Pinot SQL LIMIT, not a hardcoded 100")
+}
+
+func TestGenericQueryCharacterization_PinotExplicitLimit50(t *testing.T) {
+	f := &fakeGrafana{t: t, dsType: "startree-pinot-datasource"}
+
+	_, err := runGeneric(t, f,
+		"query", "uid", "SELECT 1 FROM events",
+		"--limit", "50", "-o", "json")
+	require.NoError(t, err)
+
+	_, body := f.seenPost()
+	q := firstQuery(t, body)
+	assert.Equal(t, "SELECT 1 FROM events LIMIT 50", q["pinotQlCode"],
+		"explicit --limit 50 must not be upgraded to pinot.DefaultLimit")
+}
+
+func TestGenericQueryCharacterization_PinotTableOverride(t *testing.T) {
+	f := &fakeGrafana{t: t, dsType: "startree-pinot-datasource"}
+
+	_, err := runGeneric(t, f,
+		"query", "uid", "SELECT 1",
+		"--table", "events", "-o", "json")
+	require.NoError(t, err)
+
+	_, body := f.seenPost()
+	q := firstQuery(t, body)
+	assert.Equal(t, "events", q["tableName"],
+		"--table must reach the Pinot request when SQL has no FROM")
+}
+
+func TestGenericQueryCharacterization_PinotSkipLimitWarnsOnStderr(t *testing.T) {
+	f := &fakeGrafana{t: t, dsType: "startree-pinot-datasource"}
+
+	_, stderr, err := runGenericStreams(t, f,
+		"query", "uid", "SELECT 1 FROM a UNION SELECT 2 FROM b",
+		"--limit", "7", "-o", "json")
+	require.NoError(t, err)
+
+	_, body := f.seenPost()
+	q := firstQuery(t, body)
+	assert.Equal(t, "SELECT 1 FROM a UNION SELECT 2 FROM b", q["pinotQlCode"],
+		"UNION SQL is sent unchanged")
+	assert.Contains(t, stderr, "not appended",
+		"a skipped --limit must be reported on stderr")
+}
+
+func TestGenericQueryCharacterization_PinotOmittedLimitOnCommentedLimitStaysQuiet(t *testing.T) {
+	f := &fakeGrafana{t: t, dsType: "startree-pinot-datasource"}
+	const commentedLimitSQL = "SELECT *  FROM faro_pinot_measurements_v1 LIMIT /* note */ 5" //nolint:unqueryvet // commented LIMIT fixture
+
+	_, stderr, err := runGenericStreams(t, f,
+		"query", "uid", commentedLimitSQL,
+		"-o", "json")
+	require.NoError(t, err)
+
+	_, body := f.seenPost()
+	q := firstQuery(t, body)
+	assert.Equal(t, commentedLimitSQL, q["pinotQlCode"],
+		"commented LIMIT is sent unchanged when --limit is omitted")
+	assert.NotContains(t, stderr, "not appended",
+		"omitted --limit must not claim the user asked for --limit")
+	assert.NotContains(t, stderr, "You asked for --limit",
+		"omitted --limit must not emit the skip warning")
+}
+
 func TestGenericQueryCharacterization_PyroscopeRequiresProfileType(t *testing.T) {
 	f := &fakeGrafana{t: t, dsType: "grafana-pyroscope-datasource"}
 
@@ -336,9 +427,9 @@ func TestGenericQueryCharacterization_PostgresLimitAndInterval(t *testing.T) {
 	assert.Empty(t, stderr, "a query within the limit warns about nothing")
 }
 
-// The capped-LIMIT notice is the only thing any generic handler writes outside
-// the stdout document, so it pins both the capping and the stream it lands on.
-// dispatchPostgres is the sole reader of genericQueryRequest.warn.
+// The capped-LIMIT notice is the only thing postgres writes outside the stdout
+// document, so it pins both the capping and the stream it lands on.
+// dispatchPostgres and dispatchPinot both write LIMIT notices to warn.
 func TestGenericQueryCharacterization_PostgresOversizedLimitWarnsOnStderr(t *testing.T) {
 	f := &fakeGrafana{t: t, dsType: "grafana-postgresql-datasource"}
 

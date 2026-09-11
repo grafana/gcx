@@ -8,6 +8,7 @@ import (
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
+	"github.com/grafana/gcx/internal/query/pinot"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -21,6 +22,7 @@ type genericQueryOpts struct {
 	profileType string
 	maxNodes    int64
 	limit       int
+	table       string
 
 	routes queryRoutes
 }
@@ -30,7 +32,8 @@ func (o *genericQueryOpts) setup(flags *pflag.FlagSet) {
 	o.shared.Setup(flags, true)
 	flags.StringVar(&o.profileType, "profile-type", "", "Profile type ID for pyroscope queries (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds')")
 	flags.Int64Var(&o.maxNodes, "max-nodes", 1024, "Maximum nodes in flame graph (pyroscope only)")
-	flags.IntVar(&o.limit, "limit", dsquery.DefaultLokiLimit, "Maximum number of log lines to return for loki queries (0 means no limit)")
+	flags.IntVar(&o.limit, "limit", dsquery.DefaultLokiLimit, fmt.Sprintf("Maximum log lines for loki, or max rows for pinot (0 means no limit). Pinot uses %d when --limit is omitted; stderr notes when PinotQL is adjusted", pinot.DefaultLimit))
+	flags.StringVar(&o.table, "table", "", "StarTree table name for pinot queries when the SQL has no extractable FROM")
 }
 
 // Validate runs the checks that need no I/O. args carries the optional
@@ -43,6 +46,9 @@ func (o *genericQueryOpts) Validate(args []string) error {
 	// Reject "both positional and --expr" before any HTTP call.
 	if len(args) > 1 && o.shared.Expr != "" {
 		return errors.New("provide the expression as a positional argument or via --expr, not both")
+	}
+	if o.limit < 0 {
+		return fmt.Errorf("--limit must be >= 0, got %d", o.limit)
 	}
 
 	return nil
@@ -102,6 +108,8 @@ func (o *genericQueryOpts) run(cmd *cobra.Command, args []string) error {
 		profileType: o.profileType,
 		maxNodes:    o.maxNodes,
 		limit:       o.limit,
+		limitSet:    cmd.Flags().Changed("limit"),
+		table:       o.table,
 		warn:        cmd.ErrOrStderr(),
 	})
 	if err != nil {
