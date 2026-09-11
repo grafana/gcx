@@ -1,9 +1,10 @@
-package loki
+package loki_test
 
 import (
 	"testing"
 
 	"github.com/grafana/gcx/internal/agent"
+	"github.com/grafana/gcx/internal/datasources/loki"
 )
 
 // Expression resolution itself (positional arg vs --expr, both/neither
@@ -11,7 +12,7 @@ import (
 // embeds that type directly, so no separate unit test is needed here. This
 // test just confirms the CLI wiring surfaces that error end-to-end.
 func TestStatsCmd_ExprFlagAndPositionalBothProvidedIsError(t *testing.T) {
-	cmd := StatsCmd(nil)
+	cmd := loki.StatsCmd(nil)
 	cmd.SetArgs([]string{`{job="x"}`, "--expr", `{job="x"}`})
 	cmd.SilenceUsage = true
 	cmd.SilenceErrors = true
@@ -23,7 +24,7 @@ func TestStatsCmd_ExprFlagAndPositionalBothProvidedIsError(t *testing.T) {
 }
 
 func TestStatsCmd_NoSelectorFoundReturnsError(t *testing.T) {
-	cmd := StatsCmd(nil)
+	cmd := loki.StatsCmd(nil)
 	cmd.SetArgs([]string{"--expr", "vector(1)"})
 	cmd.SilenceUsage = true
 	cmd.SilenceErrors = true
@@ -35,7 +36,7 @@ func TestStatsCmd_NoSelectorFoundReturnsError(t *testing.T) {
 }
 
 func TestStatsCmd_Construction(t *testing.T) {
-	cmd := StatsCmd(nil)
+	cmd := loki.StatsCmd(nil)
 	if cmd.Use != "stats [EXPR]" {
 		t.Errorf("Use = %q, want %q", cmd.Use, "stats [EXPR]")
 	}
