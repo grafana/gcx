@@ -209,7 +209,7 @@ tool versions are used regardless of shell configuration.
 | `mise run all` | Runs lint + tests + build + docs (the full gate) |
 | `mise run build` | Compiles `./cmd/gcx` into `bin/gcx` |
 | `mise run install` | Copies binary to `$GOPATH/bin` |
-| `mise run tests` | `go test -v ./...` (all packages, with race detection implied) |
+| `mise run tests` | CLI Go tests, linter-rule tests, and install-script tests; Go-based tasks pin `GCX_AGENT_MODE=false` |
 | `mise run lint` | Runs `golangci-lint run -c .golangci.yaml` |
 | `mise run deps` | `go mod download` + `uv pip install -r requirements.txt` |
 | `mise run docs` | Runs `reference` then `mkdocs build` → `build/documentation/` |
@@ -249,16 +249,8 @@ substitutes `"SNAPSHOT"` at runtime, so development builds are clearly marked.
 
 ## 3. Mise (Reproducible Toolchain)
 
-`mise.toml` pins the tool versions used across all environments:
-
-```toml
-[tools]
-go = "1.26"
-golangci-lint = "2.9"
-goreleaser = "2.13.3"
-python = "3.12"
-uv = "latest"
-```
+[`mise.toml`](../../mise.toml) pins tool versions in its `[tools]` stanza.
+Read the versions there rather than copying them into guidance that will drift.
 
 A new contributor runs `mise install` to get the full toolchain, then `mise run deps`
 to download Go modules and install Python packages. CI uses `jdx/mise-action` to replicate

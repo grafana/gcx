@@ -19,7 +19,7 @@ gcx is a single CLI that unifies access to the entire Grafana stack — across O
 1. **K8s resource tier** — dashboards, folders, and other Grafana-native resources via Grafana 12's Kubernetes-compatible API (`k8s.io/client-go`)
 2. **Cloud provider tier** — pluggable providers for every Grafana Cloud product via product-specific REST APIs
 
-Every command serves both humans and AI agents. Agent mode is auto-detected (Claude Code, Cursor, Copilot) and switches defaults (JSON output, no color, no truncation, auto-approved prompts) without changing available functionality.
+Every command serves both humans and AI agents. Agent mode is auto-detected (Claude Code, Cursor, Copilot) and switches defaults (JSON output, no color, no truncation) without changing available functionality. It does not auto-approve destructive prompts — those require an explicit bypass via `--force` or enabled `GCX_AUTO_APPROVE` (see [safety.md](docs/design/safety.md) § 3.3).
 
 ## Core Beliefs
 
@@ -34,7 +34,7 @@ Every command serves both humans and AI agents. Agent mode is auto-detected (Cla
 
 ## Observability as Code
 
-The `gcx dev` commands provide an end-to-end workflow for managing Grafana resources as Go code using the [grafana-foundation-sdk](https://github.com/grafana/grafana-foundation-sdk) — scaffold, import, lint, live-preview, and push. Developer tooling generates the same manifests that the `gcx resources` pipeline and GitOps workflows consume. See [ARCHITECTURE.md § Observability as Code](ARCHITECTURE.md#6-observability-as-code-gcx-dev) for the full workflow.
+The `gcx dev` commands provide an end-to-end workflow for managing Grafana resources as Go code using the [grafana-foundation-sdk](https://github.com/grafana/grafana-foundation-sdk) — scaffold, import, lint, live-preview, and push. Developer tooling generates the same manifests that the `gcx resources` pipeline and GitOps workflows consume. See [ARCHITECTURE.md § Developer Tooling](ARCHITECTURE.md#4-developer-tooling-gcx-dev) for the full workflow.
 
 ## Grafana Assistant
 

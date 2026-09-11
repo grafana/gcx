@@ -10,10 +10,13 @@ Reference alongside [cli-layer.md](../architecture/cli-layer.md) for command str
 
 ### 1.1 Built-in Codecs
 
-Every command gets `json`, `yaml`, and `agents` output for free via `io.Options`.
-The `json` and `yaml` codecs produce the full resource object as returned by
-the API — no envelope wrapping, no field filtering. This output is stable.
-The `agents` codec is described in [§ 1.1.1](#111-agents-codec) below.
+Commands using `io.Options` get `json`, `yaml`, and `agents` codecs; commands
+with a different declared protocol may restrict them (see § 11). JSON/YAML
+serialize the value passed to `Encode`, without adding a resource envelope.
+Commands supply their registered resource or domain response according to
+[Pattern 17](../architecture/patterns.md#17-k8s-envelope-wrapping-for-provider-listget).
+Explicit `--json`/`--jq` may transform that value; the default preserves all
+fields. The `agents` codec is described in [§ 1.1.1](#111-agents-codec).
 
 ```go
 ioOpts := &io.Options{}
@@ -92,14 +95,30 @@ JSON/YAML to silently omit fields. See Pattern 13 in `patterns.md`.
 
 | Command type | Default format | Rationale |
 |-------------|---------------|-----------|
-| `list`, `get` | `text` (with table codec) | Human-scannable |
+| `list`, `get` | a narrow table codec — `text` or `table` | Human-scannable |
 | `config view` | `yaml` | Config is YAML-native |
-| `push`, `pull`, `delete` | Status messages only | Operations, not data |
+| `push`, `delete` | a structured summary (see [§ 12](#12-mutation-command-output)) | Operations, not data |
+| the `pull` family | `json` (pinned; selects the *file* format, see [§ 14](#14-pull-format-consistency)) | Files are the output |
 | Agent mode ([agent-mode.md](agent-mode.md)) | `agents` | Token-efficient: compact JSON below 100 KiB, temp-file spill above (see [§ 1.1.1](#111-agents-codec)) |
 
-When building a new command: call `ioOpts.DefaultFormat("text")` for data
-display commands and register a table codec. Don't leave `json` as the default
-for interactive commands.
+**There is no repo-wide format set.** `text` and `table` are both sanctioned
+names for the narrow table codec and both ship today; `agents` is the agent-mode
+default for display commands but is *rejected* by the artifact family, which
+writes files the pipeline reads back. Some `get` commands legitimately default
+to `yaml` with no table codec at all.
+
+When building a new command: register a narrow table codec and make it the
+default with `ioOpts.DefaultFormat(...)`, using **the same name its siblings in
+the same command area already use**. Don't leave `json` as the default for
+interactive commands, and don't rename a released format to make a checklist
+uniform. To find what any command actually supports, read its own `-o` line:
+
+```bash
+GCX_AGENT_MODE=false gcx <command> --help | grep -- '-o, --output'
+```
+
+The prefix prevents agent detection from replacing a display command's human
+default in help. Commands with pinned formats keep their own defaults.
 
 ### 1.4 Status Messages
 
@@ -107,13 +126,23 @@ Use the `cmdio` functions for operation feedback — they use Unicode symbols
 and respect `color.NoColor`:
 
 ```go
-cmdio.Success(cmd.OutOrStdout(), "Pushed %d resources", count)  // ✔
-cmdio.Warning(cmd.OutOrStdout(), "Skipped %d resources", count) // ⚠
-cmdio.Error(cmd.OutOrStdout(), "Failed %d resources", count)    // ✘
-cmdio.Info(cmd.OutOrStdout(), "Using context %q", ctx)          // 🛈
+cmdio.Success(cmd.ErrOrStderr(), "Pushed %d resources", count)  // ✔
+cmdio.Warning(cmd.ErrOrStderr(), "Skipped %d resources", count) // ⚠
+cmdio.Error(cmd.ErrOrStderr(), "Failed %d resources", count)    // ✘
+cmdio.Info(cmd.ErrOrStderr(), "Using context %q", ctx)          // 🛈
 ```
 
-Status messages go to stdout. Errors (via `DetailedError`) go to stderr.
+**Status messages go to stderr**, per
+[CONSTITUTION.md § Output](../../CONSTITUTION.md) — stdout is the result, stderr
+is the diagnostic. A status line on stdout lands inside a caller's redirected
+output. Errors (via `DetailedError`) also go to stderr.
+
+The command's declared protocol matters: interactive prompts and server startup
+messages can be the result themselves, while `EmitArtifactResult` writes a
+structured receipt to stdout (see § 12). Check
+`cmd/gcx/root/testdata/output_classes.json` before changing these paths.
+Existing finite-command no-data notices on stdout, such as those in SLO status
+and Synth checks status, are known nonconforming behavior, not examples to copy.
 
 Reference: `internal/output/messages.go`
 
@@ -214,16 +243,36 @@ remain separate, never implicitly wrapped in an array. A yielded `null` emits
 
 ## 11. Codec Requirements by Command Type
 
-| Command type | `text` (table) | `wide` | `json` | `yaml` | Domain-specific |
+| Command type | narrow table (`text` or `table`) | `wide` | `json` | `yaml` | Domain-specific |
 |---|---|---|---|---|---|
-| CRUD data (list, get) | Required, default | Required | Built-in | Built-in | — |
-| CRUD mutation (push, pull, delete) | Required, default (summary) | Required (summary) | Built-in (summary) | Built-in (summary) | — |
+| CRUD data — `list` | Required, default | If it adds columns | Built-in | Built-in | — |
+| CRUD data — `get` | Expected, default; `yaml` where a single object reads better | If it adds columns | Built-in | Built-in | — |
+| CRUD mutation (push, delete) | Required, default (summary) | If it adds columns | Built-in (summary) | Built-in (summary) | — |
+| `artifact` class (the pull family) | — files are the output | — | Required, pinned default | Required | — |
 | Extension (status, timeline...) | Required, default | Optional | Built-in | Built-in | Optional (e.g. graph) |
 
-All data-display and mutation commands must register a `text` table codec
-and call `DefaultFormat("text")`. The `text` codec is the human default;
-`agents` becomes the default in agent mode (compact JSON with spill — see
-[§ 1.1.1](#111-agents-codec)).
+A `list` command always gets a narrow table. A `get` command usually should, but
+`yaml` is a legitimate default for one object a user is about to edit — that is
+what `slo definitions get` does (`agents,json,yaml`, defaulting to `yaml`), and
+it is not a defect. Everything else registers a narrow table codec and makes it
+the default.
+
+The narrow codec is the human default; `agents` becomes the default in agent
+mode (compact JSON with spill — see [§ 1.1.1](#111-agents-codec)).
+
+**The `artifact` class is the exception, and it has no table at all.** Its real
+output is files the push pipeline reads back, so `-o` selects the *file* format:
+`resources pull` offers `json, yaml` only, pins the default with
+`PinDefaultFormat`, and rejects `-o agents` (`cmd/gcx/resources/pull.go`). A
+narrow table codec there would produce a file nothing can read back. See
+[§ 14](#14-pull-format-consistency).
+
+`wide` is **not** a separate obligation. Most commands register it by hand with
+`RegisterCustomCodec("wide", ...)`, and that is fine. For a command built on
+`Table[T]`, prefer `RegisterTableAs` (`internal/output/table.go`): it adds
+`wide` when — and only when — some column is marked `WideOnly`, so the narrow
+and wide renderings cannot drift apart. Either way, a command with nothing extra
+to show in `wide` should not have one, and that is correct.
 
 Codec registration happens in `setup(flags)`, not in `RunE`.
 
@@ -231,50 +280,80 @@ Codec registration happens in `setup(flags)`, not in `RunE`.
 
 ## 12. Mutation Command Output
 
-### 12.1 Summary Table
+### 12.1 Shared Result Family
 
-CRUD mutation commands (push, pull, delete) output a structured summary
-through the codec system. The summary replaces ad-hoc `cmdio.Success/Warning`
-status messages as the primary output.
+New finite mutations encode structured results through `io.Options`. Use the
+constructors in `internal/output/mutation.go` so `type` and `schema_version`
+are always populated. Select the shape that fits the operation:
 
-**STDOUT** — summary table grouped by resource kind:
-
-| RESOURCE KIND | TOTAL | SUCCEEDED | SKIPPED | FAILED |
-|---|---|---|---|---|
-| Dashboard | 2452 | 2440 | 2 | 10 |
-| Folder | 48 | 48 | 0 | 0 |
-
-**STDERR** — failures enumerated individually with error detail:
-
-| RESOURCE | ERROR |
+| Constructor | Purpose |
 |---|---|
-| dashboards/revenue-overview | 409 conflict: resource modified server-side |
-| dashboards/checkout-funnel | 413 payload too large |
+| `NewSingleMutation(action, target)` | One target; optional `changed`, `dry_run`, and `error` |
+| `NewBatchMutation(action)` | Counts for the whole batch and an always-present `failures` array |
+| `NewArtifactReceipt(action, format)` | Files produced, their format, counts, and failures |
 
-**Rules:**
-- Successes are counted, never enumerated individually.
-- Failures are always enumerated individually — they require action.
-- Skipped resources are enumerated if count < 20, otherwise grouped.
-- `cmdio.Success/Warning/Error` remain for progress feedback *during*
-  execution. The summary table is the *final* output.
+Batch counts cover every matched target exactly once. Successes and skips are
+counted; failures include a `target` and an `error`. Zero `skipped` is omitted.
+The shared family does not add a success array for `-v` or `-o wide`.
+Human codecs render the command's summary on stdout, with progress and advisory
+diagnostics on stderr. Agent output includes the failure detail in its result;
+a caller must not need stderr to understand the outcome. If the command has
+already emitted a complete failure result, use `gcxerrors.EmittedError` to
+prevent a second document and preserve the appropriate nonzero exit code.
 
-### 12.2 JSON Summary Shape
+For artifact commands whose `-o` selects the file format, pass the receipt to
+`EmitArtifactResult`: it writes JSON in agent mode and invokes the command's
+human renderer otherwise. Do not send the receipt through the file codec.
+
+These shapes are not a universal replacement for released provider contracts.
+IRM OnCall action envelopes and skills receipts retain their existing forms;
+instrumentation's existing `MutationResult` carries additive discriminators.
+See [CONSTITUTION.md § Dual-Purpose Design](../../CONSTITUTION.md#dual-purpose-design).
+
+### 12.2 JSON Examples
+
+A single result from `NewSingleMutation("deleted", MutationTarget{Kind:
+"dashboard", Name: "revenue-overview"})`:
 
 ```json
 {
-  "summary": [
-    {"kind": "Dashboard", "total": 2452, "succeeded": 2440, "skipped": 2, "failed": 10}
-  ],
+  "type": "gcx.mutation",
+  "schema_version": "1",
+  "action": "deleted",
+  "target": {"kind": "dashboard", "name": "revenue-overview"}
+}
+```
+
+A populated `NewBatchMutation("pushed")` result:
+
+```json
+{
+  "type": "gcx.mutation_batch",
+  "schema_version": "1",
+  "action": "pushed",
+  "summary": {"succeeded": 2, "failed": 1, "skipped": 1},
   "failures": [
-    {"name": "dashboards/revenue-overview", "error": "409 conflict: resource modified server-side"}
-  ],
-  "skipped": [
-    {"name": "dashboards/archived-q3", "reason": "no changes detected"}
+    {
+      "target": {"kind": "dashboard", "name": "revenue-overview"},
+      "error": "409 conflict: resource modified server-side"
+    }
   ]
 }
 ```
 
-Verbose opt-in (`-v` or `-o wide`) adds a `"succeeded"` array for audit.
+A populated `NewArtifactReceipt("pulled", "json")` result:
+
+```json
+{
+  "type": "gcx.artifact_receipt",
+  "schema_version": "1",
+  "action": "pulled",
+  "format": "json",
+  "files": [{"path": "dashboards/revenue-overview.json", "kind": "dashboard"}],
+  "summary": {"succeeded": 1, "failed": 0},
+  "failures": []
+}
+```
 
 ---
 

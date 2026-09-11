@@ -1,95 +1,47 @@
 # Provider Commands Reference
 
-Patterns for implementing CRUD redirect commands and ancillary subcommands.
-Reference: `internal/providers/irm/incidents_commands.go` (and
-`incidents_commands_impl.go`) for working examples.
+Patterns for implementing adapter-backed CRUD commands and provider-only
+operations. For the shared data-access path, read
+[`TypedCRUD` in the resource model](../../../docs/architecture/resource-model.md#typedcrud-and-resourceidentity)
+and `internal/providers/slo/definitions/adapter.go` and `commands.go`.
+Use `internal/providers/irm/incidents_commands_impl.go` for incident-specific
+operations; older commands there are not universal CRUD templates.
 
 ## Output Format Compliance
 
-> Reference: `docs/design/output.md`
+Follow [output.md](../../../docs/design/output.md) for command defaults,
+resource representations, and mutation results:
 
-All provider commands must comply with the default format rules:
+- Human-mode `list` defaults to the area's narrow table (`table` or `text`);
+  `get` may use a single-row table or YAML. Match the surrounding commands.
+- Register `wide` only when it adds useful detail. Derive supported formats
+  from each command's `--help`; there is no universal four-format set.
+- Adapter-backed reads use the registered resource representation in JSON/YAML,
+  including singleton or read-only adapters. Preserve documented shipped output
+  exceptions. Provider-only views and query results use their domain response.
+- Tables may extract fields from typed values, but changing the output format
+  must not change which data is fetched.
+- New gcx-owned mutation results use the shared result family in
+  `internal/output/mutation.go`; a status message belongs on stderr and does
+  not replace a structured result on stdout. Preserve existing result contracts.
 
-| Command type | Default format | Required codecs | K8s wrapping for json/yaml |
-|-------------|---------------|-----------------|---------------------------|
-| `list` | `table` | `table` + `wide` | Yes — wrap via `ToResource` |
-| `get` | `table` | `table` (single-row) | Yes — wrap via `ToResource` |
-| `create -f` | Status message | — | Return created resource if `-o` specified |
-| `close` / operational | Status message | — | No |
+## CRUD Access Path
 
-**Key rules:**
-- `list` and `get` **must** call `ioOpts.DefaultFormat("table")` — do NOT leave `json` as default
-- `list` and `get` **must** register both `table` and `wide` codecs via `RegisterCustomCodec`
-- `table` columns: key identifying fields (ID/UID, name/title, status)
-- `wide` columns: everything in `table` + additional detail (timestamps, labels, counts)
-- json/yaml output wraps through `ToResource` to produce K8s-style envelope (`apiVersion`, `kind`, `metadata`, `spec`)
-- Operational/query commands (activity, severities, etc.) are **exceptions** — they may use different defaults if the data is not a standard resource
+For resources exposed through both a provider command and a registered adapter,
+use the shared `TypedCRUD[T]` factory and its `List`, `Get`, `Create`, `Update`,
+and `Delete` methods. The product client sits behind that factory. This is the
+[constitutional rule](../../../CONSTITUTION.md#architecture-invariants), so
+new CRUD commands must not copy a legacy direct-client implementation.
 
----
+Keep command code limited to options, input decoding, calling the typed method,
+and encoding the result. For create/update, decode file or stdin through the
+existing manifest path and handle errors; do not duplicate parsing templates or
+bypass `TypedCRUD` to call `client.Create`.
 
-## CRUD Redirect Pattern
-
-Thin wrappers calling the client directly — NOT full re-implementations.
-
-| Command | What it does |
-|---------|-------------|
-| `{provider} list` | `client.List` → table codec for table/wide, `ToResource` for json/yaml |
-| `{provider} get <id>` | `client.Get` → K8s envelope via `ToResource`, encode |
-| `{provider} create -f <file>` | Read YAML/JSON from file/stdin → parse unstructured → `client.Create` |
-| `{provider} close <id>` | Convenience: `client.UpdateStatus` with "resolved" (or equivalent) |
-
-### Key patterns
-
-- All use `cmdio.Options` for output formatting (`-o json/yaml/table/wide`)
-- `list` calls client directly for table output (avoids unstructured
-  round-trip). For json/yaml, convert through `ToResource` for K8s envelope.
-- `create` accepts file/stdin only — no flag-based convenience (`--title` etc.)
-- No deprecation warnings — these are canonical paths
-
-### Table codec
-
-Export the codec type so `_test` package can use it:
-
-```go
-// IncidentTableCodec renders incidents as a tabular table.
-type IncidentTableCodec struct {
-    Wide bool
-}
-
-func (c *IncidentTableCodec) Format() format.Format { ... }
-func (c *IncidentTableCodec) Encode(w io.Writer, v any) error { ... }
-func (c *IncidentTableCodec) Decode(_ io.Reader, _ any) error {
-    return errors.New("table format does not support decoding")
-}
-```
-
-Register in command setup:
-```go
-opts.IO.RegisterCustomCodec("table", &IncidentTableCodec{})
-opts.IO.RegisterCustomCodec("wide", &IncidentTableCodec{Wide: true})
-opts.IO.DefaultFormat("table")
-```
-
-### Create from file/stdin
-
-```go
-var reader io.Reader
-if opts.File == "-" {
-    reader = cmd.InOrStdin()
-} else {
-    f, err := os.Open(opts.File)
-    // ...
-    reader = f
-}
-
-var obj unstructured.Unstructured
-yamlCodec := format.NewYAMLCodec()
-if err := yamlCodec.Decode(reader, &obj); err != nil { ... }
-
-res, _ := resources.FromUnstructured(&obj)
-inc, _ := FromResource(res)
-created, _ := client.Create(ctx, inc)
-```
+Provider-only commands without adapter registration use their approved product
+clients directly. Domain operations such as an incident's `close` action can
+also use the product client for behavior outside the shared CRUD interface.
+Do not create an adapter merely to make a provider-only `list` or `get` possible.
 
 ## Ancillary Subcommands
 
@@ -143,7 +95,8 @@ exec.CommandContext(ctx, "open", url).Start()
 ## HTTP Client Reference Section Template
 
 Phase 2 plan.md MUST include this section, filled in per provider. Copy this
-template and replace placeholders with concrete values from the gcx source.
+template and replace placeholders with concrete values from the legacy CLI
+source and current provider contract.
 
 ### Endpoint Table
 
@@ -155,59 +108,33 @@ template and replace placeholders with concrete values from the gcx source.
 | PUT | `/api/v1/{resource}/{id}` | Update resource | Full replace, not PATCH |
 | DELETE | `/api/v1/{resource}/{id}` | Delete resource | Returns 204 on success |
 
-**CRITICAL:** Copy exact paths from gcx source. Do NOT guess paths — many APIs
-have non-obvious patterns (org-scoped paths, plugin proxy paths, gRPC-style
+**CRITICAL:** Copy exact paths from the legacy CLI source and verify the current
+API contract. Do NOT guess paths — many APIs have non-obvious patterns (org-scoped paths, plugin proxy paths, gRPC-style
 POST-only endpoints).
 
-### Auth Helper Signature
+### Auth and Client Construction
 
-```go
-// Standard Bearer token (same Grafana SA token):
-func (c *Client) setAuth(req *http.Request) {
-    req.Header.Set("Authorization", "Bearer "+c.token)
-}
+Record the actual request destination, selected credential source, any token
+exchange, extra headers (for example `X-Scope-OrgID`), and the chosen client
+factory. Resolve credentials and endpoints through `providers.ConfigLoader`.
 
-// Separate token (provider-specific):
-func (c *Client) setAuth(req *http.Request) {
-    req.Header.Set("Authorization", "Bearer "+c.providerToken)
-}
+Use the [provider guide's destination-based HTTP client rules](../../../docs/reference/provider-guide.md#step-4b-http-client-construction).
+That is the construction reference for this plan: Grafana-host requests use the
+configured Grafana transport; direct product-host requests use the approved
+`httputils` factory after the direct-provider trust checks. A bare
+`http.Client` and field-presence credential selection are not migration
+patterns.
 
-// Token exchange (e.g., k6):
-func (c *Client) setAuth(req *http.Request) {
-    req.Header.Set("Authorization", "Bearer "+c.exchangedToken)
-}
-```
-
-Document which pattern applies and any extra headers (e.g., `X-Grafana-Url`,
-`X-Scope-OrgID`).
-
-### Client Construction Pattern
-
-```go
-type Client struct {
-    baseURL string       // API base URL (trimmed trailing slash)
-    token   string       // Auth token (Bearer or provider-specific)
-    http    *http.Client // Standard HTTP client with timeout
-}
-
-func NewClient(baseURL, token string) *Client {
-    return &Client{
-        baseURL: strings.TrimRight(baseURL, "/"),
-        token:   token,
-        http:    &http.Client{Timeout: 30 * time.Second},
-    }
-}
-```
-
-Document exact field names — builders MUST use these names, not invent aliases.
-If the provider needs additional fields (instanceID, orgID, stackID), add them
-to the struct and constructor.
+Name the existing constructor and fields the builder should use. If a new
+constructor is required, document its signature here with the selected factory
+and auth flow rather than copying a generic Bearer-token template.
 
 ---
 
 ## API Endpoint Gotchas
 
-**CRITICAL:** Always check gcx source for exact endpoint paths. Don't guess.
+**CRITICAL:** Always check the legacy CLI source and current provider client
+for exact endpoint paths. Don't guess.
 
 Known inconsistencies in IRM API:
 - `SeveritiesService.GetOrgSeverities` (not `SeverityService.GetSeverities`)
@@ -215,4 +142,4 @@ Known inconsistencies in IRM API:
 - Activity query wraps in `{"query": {...}}`, not flat `{...}`
 
 These naming inconsistencies are common in gRPC-style APIs. The ONLY
-reliable source is the gcx client code.
+reliable sources are the current API contract and verified client code.

@@ -33,7 +33,7 @@ Store: stack URL, context name. Mark task completed.
 
 ## Phase 1: Discovery & Context
 
-Mark task in_progress. Ask the user all questions in a **single `AskUserQuestion` call** (don't ask one at a time):
+Mark task in_progress. Group these questions using the host's question tool or prose (in Claude Code, use `AskUserQuestion`):
 
 1. Application name and brief description
 2. K8s cluster(s) and namespaces
@@ -55,7 +55,7 @@ Mark task in_progress.
 **Pre-check - skip files that already exist:**
 List local files matching `slo-*.yaml`, `k6-test-*.js`, `k6-schedule-*.yaml`, and `check-*.yaml`. For any files already present, skip writing them and use the existing versions in later phases. Only write files that are missing.
 
-Ask the user a **single `AskUserQuestion`** to confirm/adjust these defaults:
+Use the host's question tool or prose to confirm or adjust these defaults:
 
 - SLO targets per journey (default: 99.9% availability, p95 latency < 500ms over 28d)
 - k6 load profile per endpoint (default: 10 VUs, 30s, p95 < 500ms threshold)

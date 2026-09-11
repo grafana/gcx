@@ -43,8 +43,8 @@ Phase 2 produces three documents that replace the old custom audit artifacts
 - **plan.md** — architecture decisions + HTTP client reference section (endpoint
   table, auth signature, client construction). Replaces the architectural mapping.
 - **tasks.md** — dependency graph with waves + per-task deliverables including
-  mandatory smoke test tasks for all four output formats. Replaces the
-  verification plan.
+  mandatory smoke test tasks across the formats each command declares (see
+  `SKILL.md` § "Step 4B: Smoke Tests"). Replaces the verification plan.
 
 All three documents use YAML frontmatter. See `commands-reference.md` for the
 HTTP client reference section template that plan.md must include.
@@ -171,47 +171,16 @@ func (c *Client) ListResources(ctx context.Context) ([]ResourceType, error) {
 }
 ```
 
-```go
-// gcx pattern (after):
-type Client struct {
-    baseURL string
-    token   string
-    http    *http.Client
-}
+For the gcx implementation, use the
+[provider guide's HTTP construction rules](../../../docs/reference/provider-guide.md#step-4b-http-client-construction).
+Select the transport from the request destination, resolve credentials through
+`ConfigLoader`, and keep `context.Context` on client operations. Record the
+chosen constructor and any auth exchange in the plan's HTTP client reference.
+Do not reuse the legacy embedded client or assume every destination accepts a
+Grafana Bearer token.
 
-func NewClient(ctx context.Context, baseURL, token string) *Client {
-    return &Client{
-        baseURL: strings.TrimRight(baseURL, "/"),
-        token:   token,
-        http:    httputils.NewDefaultClient(ctx),
-    }
-}
-
-func (c *Client) List(ctx context.Context) ([]ResourceType, error) {
-    req, err := http.NewRequestWithContext(ctx, "GET", c.baseURL+"/api/path", nil)
-    if err != nil {
-        return nil, err
-    }
-    req.Header.Set("Authorization", "Bearer "+c.token)
-    resp, err := c.http.Do(req)
-    // ... handle response, decode JSON
-}
-```
-
-**Key differences:**
-- No embedded base client — each provider owns its HTTP calls
-- Explicit `context.Context` on all methods
-- `httputils.NewDefaultClient(ctx)` supplies gcx's standard timeout, logging,
-  TLS defaults, and insecure-payload debug support
-- Direct `http.NewRequestWithContext` instead of the legacy CLI's `.Get()` wrapper
-- Error handling: return `fmt.Errorf("{provider}: {action}: %w", err)` with
-  provider name prefix for debuggability
-
-Follow `docs/reference/provider-guide.md` Step 4b for the destination-driven
-client choice: pick from the URL the request actually goes to.
-`cloudCfg.HTTPClient(ctx)` never inspects that URL, so it is right only for
-requests to `cfg.Host` — a product API on its own domain needs
-`httputils.NewDefaultClient(ctx)`.
+Port the verified request/response mapping using that client. Handle errors
+with provider and operation context, and preserve the legacy response shape.
 
 **Pagination:** If the legacy client uses manual pagination loops, port them. If
 the API returns all results in one call, keep it simple.
@@ -384,8 +353,9 @@ bin/gcx providers list                   # new provider listed
 > live instance is available, report each one UNVERIFIED with that reason and do
 > not assert parity with the legacy CLI.
 >
-> Every show/list command MUST be tested with ALL FOUR output formats:
-> `-o json`, `-o table`, `-o wide`, `-o yaml`.
+> Every show/list command MUST be smoke-tested across the formats it actually
+> declares. There is no repo-wide set — see `SKILL.md` § "Step 4B: Smoke Tests"
+> for the one procedure, and run it with Bash.
 
 Run every command side-by-side — the **legacy** CLI at `$LEGACY_CLI` against
 **this repo's** `bin/gcx` — on a real instance. Don't skip this: wrong endpoint
@@ -397,6 +367,9 @@ comparison read the same, the diff will report MATCH while proving nothing —
 that is the failure mode this template is written to make obvious.
 
 #### 8a. Structured Comparison (jq diff template)
+
+Run with Bash. Adapt both command paths and jq fields to the approved spec;
+legacy IDs and current resource names may require an explicit mapping.
 
 ```bash
 CTX=dev                      # adjust to your context
@@ -434,17 +407,18 @@ cmp -s "$LEGACY_CLI" "$NEW_CLI" && {
 # that proves nothing. Check status explicitly; pipefail keeps a failing CLI
 # from being masked by a successful `jq`.
 set -o pipefail
+failed=0
 
 # --- List: compare resource IDs ---
 "$LEGACY_CLI" --context=$CTX {resource} list -o json > /tmp/legacy_list.json \
   || { echo "List: LEGACY COMMAND FAILED — no comparison possible"; exit 1; }
 "$NEW_CLI" --context=$CTX {resource} list -o json > /tmp/new_list.json \
   || { echo "List: NEW COMMAND FAILED — no comparison possible"; exit 1; }
-LEGACY_IDS=$(jq -r '.[].id // .[].uid' /tmp/legacy_list.json | sort)
-NEW_IDS=$(jq -r '.[].metadata.name' /tmp/new_list.json | sort)
-[ -n "$LEGACY_IDS" ] || { echo "List: legacy returned zero ids — pick a context with data"; exit 1; }
+LEGACY_IDS=$(jq -r '.[].id // .[].uid' /tmp/legacy_list.json | sort) || exit 1
+NEW_IDS=$(jq -r '.[].metadata.name' /tmp/new_list.json | sort) || exit 1
+[ -n "$LEGACY_IDS" ] && [ -n "$NEW_IDS" ] || { echo "List: missing ids — pick a populated fixture and check the output shape"; exit 1; }
 echo "=== List ID diff ==="
-diff <(echo "$LEGACY_IDS") <(echo "$NEW_IDS") && echo "MATCH" || echo "MISMATCH"
+diff <(echo "$LEGACY_IDS") <(echo "$NEW_IDS") && echo "MATCH" || { echo "MISMATCH"; failed=1; }
 
 # --- Get: compare key fields ---
 ID="<pick-an-id-from-list>"
@@ -456,30 +430,18 @@ ID="<pick-an-id-from-list>"
   || { echo "Get: NEW COMMAND FAILED — no comparison possible"; exit 1; }
 [ -s /tmp/legacy_get.json ] || { echo "Get: legacy produced no output"; exit 1; }
 echo "=== Get field diff ==="
-diff /tmp/legacy_get.json /tmp/new_get.json && echo "MATCH" || echo "MISMATCH"
-
-# --- Adapter path (new side only — the legacy CLI has no resources tier) ---
-echo "=== Adapter path ==="
-"$NEW_CLI" --context=$CTX resources get {alias} > /dev/null 2>&1 && echo "resources get: OK" || echo "resources get: FAIL"
-"$NEW_CLI" --context=$CTX resources get {alias}/$ID -o json > /dev/null 2>&1 && echo "resources get/id: OK" || echo "resources get/id: FAIL"
+diff /tmp/legacy_get.json /tmp/new_get.json && echo "MATCH" || { echo "MISMATCH"; failed=1; }
 
 # --- Ancillary commands (repeat per ancillary) ---
-echo "=== Ancillary: {subcommand} ==="
-"$LEGACY_CLI" --context=$CTX {resource} {subcommand} -o json | jq length
-"$NEW_CLI"    --context=$CTX {resource} {subcommand} -o json | jq length
+# Choose content assertions from the spec; length alone is not parity.
+"$LEGACY_CLI" --context="$CTX" {resource} {subcommand} -o json | jq length || failed=1
+"$NEW_CLI"    --context="$CTX" {resource} {subcommand} -o json | jq length || failed=1
 
-# --- Schema + example ---
-echo "=== Schema ==="
-"$NEW_CLI" --context=$CTX resources list-types -o json | jq 'to_entries[] | select(.key | test("{group}")) | .value' | head -5
-echo "=== Example ==="
-"$NEW_CLI" --context=$CTX resources list-examples {alias} | head -10
-
-# --- Output format check ---
-echo "=== Output formats ==="
-for fmt in table wide json yaml; do
-  GCX_AGENT_MODE=false "$NEW_CLI" --context=$CTX {resource} list -o $fmt > /dev/null 2>&1 \
-    && echo "$fmt: OK" || echo "$fmt: FAIL"
-done
+# Run SKILL.md Step 4B for every command's declared output formats and Step 4C
+# for adapter registration and resource content. Keep those procedures there.
+# Inspect resources list-examples for each writable type; read-only types may
+# intentionally have no example. Record the result in the comparison report.
+exit "$failed"
 ```
 
 #### 8b. Paste Results
@@ -733,4 +695,4 @@ skill is for **building providers from scratch**. Key differences:
 | Auth | Preserve the legacy protocol behavior (headers, token exchange, basic vs bearer), but resolve credentials and endpoints through current `ConfigLoader` rules | Investigate from scratch |
 
 After porting, the provider must pass Phase 4 verification (SKILL.md steps
-4A–4E) including mandatory smoke tests with all four output formats.
+4A–4E) including mandatory smoke tests across the formats each command declares.

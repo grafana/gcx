@@ -97,11 +97,14 @@ semantics, pagination and error taxonomy are proven by YOUR package tests
 ## Preflight
 
 Format what you actually edited — including changes you have not committed yet,
-which a base-diff would miss — then gate:
+which a base-diff would miss — and select the validation stage:
 
 ```bash
 mise exec -- gofmt -w <the .go files you edited>
+# During iteration:
 mise run gate
+
+# Final validation before push (no separate gate run needed):
 GCX_AGENT_MODE=false mise run all
 ```
 
@@ -113,12 +116,14 @@ GCX_AGENT_MODE=false mise run all
 validate-skills, lint, tests, build and docs — you do not need to run those
 separately as well.
 
-For a skill-only change — both gates cover the embedded `claude-plugin/skills/`
-bundle **and** repo-local `.claude/skills/`, so either tree is checked:
+For a skill-only change, these targeted checks help during iteration. They
+cover the embedded `claude-plugin/skills/` bundle and **git-tracked** repo-local
+`.claude/skills/` files; add a new contributor skill to the index before relying
+on the repo-local checks. The required final PR gate still applies:
 
 ```bash
 mise run validate-skills
-mise exec -- go test ./cmd/gcx/root/ \
+GCX_AGENT_MODE=false mise exec -- go test ./cmd/gcx/root/ \
   -run 'TestSkillsGcxInvocationsMatchCommandTree|TestSkillDocsFromFS|TestExtractInvocations|TestValidateInvocation'
 ```
 

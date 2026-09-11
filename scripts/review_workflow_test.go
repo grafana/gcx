@@ -11,8 +11,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Execute the workflow's actual shell with a fake GitHub API. In particular,
-// an old review or a failed API call must never be enough to add the label.
+// Execute the workflow's actual shell with a fake GitHub API. Only the response
+// to this run's POST can authorize the label, and both head checks must pass.
 func TestReviewWorkflowPublicationGate(t *testing.T) {
 	if _, err := exec.LookPath("jq"); err != nil {
 		t.Skip("jq is required to execute the review workflow")
@@ -24,9 +24,10 @@ func TestReviewWorkflowPublicationGate(t *testing.T) {
 	var workflow struct {
 		Jobs map[string]struct {
 			Steps []struct {
-				Name  string `yaml:"name"`
-				Run   string `yaml:"run"`
-				Shell string `yaml:"shell"`
+				Name  string            `yaml:"name"`
+				Run   string            `yaml:"run"`
+				Shell string            `yaml:"shell"`
+				Env   map[string]string `yaml:"env"`
 			} `yaml:"steps"`
 		} `yaml:"jobs"`
 	}
@@ -35,9 +36,13 @@ func TestReviewWorkflowPublicationGate(t *testing.T) {
 	}
 	var script string
 	for _, step := range workflow.Jobs["claude-review"].Steps {
-		if step.Name == "Verify review and add claude-reviewed label" {
+		if step.Name == "Publish review and add claude-reviewed label" {
 			if step.Shell != "bash" {
 				t.Fatal("the publication gate needs explicit bash for pipefail")
+			}
+			// The composite action revokes its App token before this step runs.
+			if step.Env["GH_TOKEN"] != "${{ github.token }}" {
+				t.Fatal("publication must use the job token, not the revoked action output token")
 			}
 			script = step.Run
 		}
@@ -46,53 +51,98 @@ func TestReviewWorkflowPublicationGate(t *testing.T) {
 		t.Fatal("review publication gate is missing")
 	}
 
-	const review = `{"user":{"login":"claude[bot]"},"state":"COMMENTED","commit_id":"head","body":"No issues. <!-- gcx-claude-review:123:1 -->"}`
+	const marker = "<!-- gcx-claude-review:123:1 -->"
+	const review = `{"id":42,"submitted_at":"2026-09-11T10:00:00Z","user":{"login":"github-actions[bot]"},"state":"COMMENTED","commit_id":"head","body":"No issues. ` + marker + `"}`
+	const clean = `{"review":{"body":"No issues.","comments":[]}}`
+	const findings = `{"review":{"body":"Fix ` + "`" + `agents` + "`" + ` and $(touch expanded).","comments":[{"path":"a.go","line":2,"side":"RIGHT","body":"Use $(literal), $values, and ` + "`code`" + `."}]}}`
 	const mockGH = `#!/usr/bin/env bash
 set -euo pipefail
 case "$1 $2" in
-  "pr view") printf '%s\n' "$TEST_CURRENT_HEAD" ;;
-  "api --paginate") cat "$TEST_REVIEWS_FILE"; exit "$TEST_API_EXIT" ;;
-  "pr edit") printf '%s\n' "$*" > "$TEST_LABEL_FILE" ;;
+  "pr view")
+    if [[ -f "$TEST_HEAD_FILE" ]]; then
+      printf '%s\n' "$TEST_HEAD_AFTER"
+    else
+      touch "$TEST_HEAD_FILE"
+      printf '%s\n' "$TEST_HEAD_BEFORE"
+    fi
+    exit "$TEST_HEAD_EXIT" ;;
+  "api repos/grafana/gcx/pulls/1292/reviews")
+    [[ "$*" == 'api repos/grafana/gcx/pulls/1292/reviews -X POST --input -' ]] || exit 2
+    cat > "$TEST_POST_FILE"
+    cat "$TEST_REVIEW_FILE"
+    exit "$TEST_API_EXIT" ;;
+  "pr edit") printf '%s\n' "$*" > "$TEST_LABEL_FILE"; exit "$TEST_LABEL_EXIT" ;;
   *) echo "Unexpected gh invocation: $*" >&2; exit 2 ;;
 esac
 `
 	tests := []struct {
-		name, pages, currentHead, apiExit string
-		wantLabel                         bool
+		name, output, response, headBefore, headAfter, headExit, apiExit, labelExit string
+		wantPost, wantLabel, wantSuccess                                            bool
 	}{
-		{"clean review", "[[" + review + "]]", "head", "0", true},
-		{"review on later page", "[[],[" + review + "]]", "head", "0", true},
-		{"nothing published", "[[]]", "head", "0", false},
-		{"previous run", "[[" + strings.ReplaceAll(review, "123:1", "122:1") + "]]", "head", "0", false},
-		{"previous attempt", "[[" + strings.ReplaceAll(review, "123:1", "123:0") + "]]", "head", "0", false},
-		{"wrong commit", "[[" + strings.ReplaceAll(review, `"head"`, `"old"`) + "]]", "head", "0", false},
-		{"other author", "[[" + strings.ReplaceAll(review, "claude[bot]", "other[bot]") + "]]", "head", "0", false},
-		{"approval", "[[" + strings.ReplaceAll(review, "COMMENTED", "APPROVED") + "]]", "head", "0", false},
-		{"pending review", "[[" + strings.ReplaceAll(review, "COMMENTED", "PENDING") + "]]", "head", "0", false},
-		{"head changed", "[[" + review + "]]", "new-head", "0", false},
-		{"API failed after a page", "[[" + review + "]]", "head", "1", false},
-		{"invalid API response", "not json", "head", "0", false},
+		{name: "clean review", wantPost: true, wantLabel: true, wantSuccess: true},
+		{name: "findings preserve literal shell syntax", output: findings, wantPost: true, wantLabel: true, wantSuccess: true},
+		{name: "incomplete correctness pass", output: `{"review":null}`},
+		{name: "missing payload", output: `{}`},
+		{name: "invalid payload", output: `not json`},
+		{name: "empty body", output: `{"review":{"body":"","comments":[]}}`},
+		{name: "missing comments", output: `{"review":{"body":"No issues."}}`},
+		{name: "previous run", response: strings.ReplaceAll(review, "123:1", "122:1"), wantPost: true},
+		{name: "previous attempt", response: strings.ReplaceAll(review, "123:1", "123:0"), wantPost: true},
+		{name: "wrong commit", response: strings.ReplaceAll(review, `"head"`, `"old"`), wantPost: true},
+		{name: "Claude action identity", response: strings.ReplaceAll(review, "github-actions[bot]", "claude[bot]"), wantPost: true},
+		{name: "other author", response: strings.ReplaceAll(review, "github-actions[bot]", "other[bot]"), wantPost: true},
+		{name: "approval", response: strings.ReplaceAll(review, "COMMENTED", "APPROVED"), wantPost: true},
+		{name: "pending review", response: strings.ReplaceAll(review, "COMMENTED", "PENDING"), wantPost: true},
+		{name: "missing submission timestamp", response: strings.ReplaceAll(review, `"2026-09-11T10:00:00Z"`, `null`), wantPost: true},
+		{name: "invalid review id", response: strings.ReplaceAll(review, `"id":42`, `"id":0`), wantPost: true},
+		{name: "head changed before posting", headBefore: "new-head"},
+		{name: "head changed after posting", headAfter: "new-head", wantPost: true},
+		{name: "head API failed", headExit: "1"},
+		{name: "POST failed with valid response", apiExit: "1", wantPost: true},
+		{name: "invalid API response", response: "not json", wantPost: true},
+		{name: "label API failed", labelExit: "1", wantPost: true, wantLabel: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			defaultString := func(value, fallback string) string {
+				if value == "" {
+					return fallback
+				}
+				return value
+			}
 			dir := t.TempDir()
 			if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(mockGH), 0o700); err != nil { // #nosec G306 -- Executable test stub in t.TempDir.
 				t.Fatal(err)
 			}
-			if err := os.WriteFile(filepath.Join(dir, "reviews.json"), []byte(tt.pages), 0o600); err != nil {
+			if err := os.WriteFile(filepath.Join(dir, "review.json"), []byte(defaultString(tt.response, review)), 0o600); err != nil {
 				t.Fatal(err)
 			}
 			labelFile := filepath.Join(dir, "label")
+			postFile := filepath.Join(dir, "posted.json")
+			output := defaultString(tt.output, clean)
 			cmd := exec.CommandContext(t.Context(), "bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", script)
+			cmd.Dir = dir
 			cmd.Env = append(os.Environ(),
 				"PATH="+dir+string(os.PathListSeparator)+os.Getenv("PATH"),
 				"GITHUB_REPOSITORY=grafana/gcx", "PR_NUMBER=1292", "REVIEW_HEAD=head",
-				"REVIEW_MARKER=<!-- gcx-claude-review:123:1 -->",
-				"TEST_CURRENT_HEAD="+tt.currentHead, "TEST_API_EXIT="+tt.apiExit,
-				"TEST_REVIEWS_FILE="+filepath.Join(dir, "reviews.json"), "TEST_LABEL_FILE="+labelFile)
+				"REVIEW_MARKER="+marker, "REVIEW_OUTPUT="+output,
+				"GITHUB_OUTPUT="+filepath.Join(dir, "output"),
+				"TEST_HEAD_BEFORE="+defaultString(tt.headBefore, "head"), "TEST_HEAD_AFTER="+defaultString(tt.headAfter, "head"),
+				"TEST_HEAD_EXIT="+defaultString(tt.headExit, "0"), "TEST_API_EXIT="+defaultString(tt.apiExit, "0"),
+				"TEST_LABEL_EXIT="+defaultString(tt.labelExit, "0"), "TEST_HEAD_FILE="+filepath.Join(dir, "head-read"),
+				"TEST_REVIEW_FILE="+filepath.Join(dir, "review.json"), "TEST_LABEL_FILE="+labelFile, "TEST_POST_FILE="+postFile)
 			out, err := cmd.CombinedOutput()
-			if (err == nil) != tt.wantLabel {
-				t.Fatalf("workflow error = %v, want label %v; output: %s", err, tt.wantLabel, out)
+			if (err == nil) != tt.wantSuccess {
+				t.Fatalf("workflow error = %v, want success %v; output: %s", err, tt.wantSuccess, out)
+			}
+			posted, readErr := os.ReadFile(postFile)
+			if tt.wantPost {
+				if readErr != nil {
+					t.Fatal(readErr)
+				}
+				assertPostedReview(t, posted, output, marker)
+			} else if !os.IsNotExist(readErr) {
+				t.Fatalf("review was posted despite invalid payload or head: %q (%v)", posted, readErr)
 			}
 			label, readErr := os.ReadFile(labelFile)
 			if tt.wantLabel {
@@ -102,7 +152,43 @@ esac
 			} else if !os.IsNotExist(readErr) {
 				t.Fatalf("label command ran despite failed verification: %q (%v)", label, readErr)
 			}
+			if _, err := os.Stat(filepath.Join(dir, "expanded")); !os.IsNotExist(err) {
+				t.Fatalf("review text executed as shell syntax: %v", err)
+			}
 		})
+	}
+}
+
+func assertPostedReview(t *testing.T, posted []byte, output, marker string) {
+	t.Helper()
+	var got struct {
+		Event    string            `json:"event"`
+		CommitID string            `json:"commit_id"`
+		Body     string            `json:"body"`
+		Comments []json.RawMessage `json:"comments"`
+	}
+	var source struct {
+		Review struct {
+			Body     string            `json:"body"`
+			Comments []json.RawMessage `json:"comments"`
+		} `json:"review"`
+	}
+	if err := json.Unmarshal(posted, &got); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal([]byte(output), &source); err != nil {
+		t.Fatal(err)
+	}
+	wantComments, err := json.Marshal(source.Review.Comments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gotComments, err := json.Marshal(got.Comments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Event != "COMMENT" || got.CommitID != "head" || got.Body != source.Review.Body+"\n\n"+marker || string(gotComments) != string(wantComments) {
+		t.Fatalf("unexpected posted review: %s", posted)
 	}
 }
 
@@ -129,7 +215,7 @@ func TestReviewSkillPostsJSONOnStdin(t *testing.T) {
 	}
 	script := "gh api " + strings.NewReplacer(
 		"{owner}", "grafana", "{repo}", "gcx", "{n}", "1292",
-		`"<summary and, in CI, the review marker>"`, string(encodedBody),
+		`"<review summary>"`, string(encodedBody),
 	).Replace(block)
 	mock := "#!/bin/sh\n[ \"$*\" = 'api repos/grafana/gcx/pulls/1292/reviews -X POST --input -' ] || exit 2\ncat\n"
 	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(mock), 0o700); err != nil { // #nosec G306 -- Executable test stub in t.TempDir.

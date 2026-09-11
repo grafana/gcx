@@ -174,7 +174,7 @@ c.client.Resource(desc.GroupVersionResource()).Namespace(c.namespace).<op>()
 |---|---|
 | `List` | Uses k8s pager for automatic pagination |
 | `Get` | Single resource by name |
-| `GetMultiple` | Concurrent Gets via `errgroup` (no SetLimit currently) |
+| `GetMultiple` | Concurrent Gets via `errgroup.SetLimit(maxConcurrentGetRequests)` |
 | `Create` | POST to resource endpoint |
 | `Update` | PUT to resource endpoint |
 | `Delete` | DELETE from resource endpoint |
@@ -298,9 +298,12 @@ func ClientFromContext(ctx *config.Context) (*goapi.GrafanaHTTPAPI, error) {
     }
     // Auth and TLS use the same authoritative selection as rest.Config.
     method, err := ctx.EffectiveGrafanaAuthMethod()
+    if err != nil { return nil, err }
     selectedTLS, err := ctx.EffectiveGrafanaTLS()
+    if err != nil { return nil, err }
     if selectedTLS != nil {
         cfg.TLSConfig, err = selectedTLS.ToStdTLSConfig()
+        if err != nil { return nil, err }
     }
     switch method {
     case "basic":
@@ -467,34 +470,23 @@ dynamic client gets User-Agent through `rest.Config.UserAgent`.
 ## Authentication Flow Summary
 
 ```
-GrafanaConfig.APIToken != ""
+Resolved Context
     │
-    ├─ dynamic path       →  rest.Config.BearerToken
-    │                        k8s transport sets "Authorization: Bearer <token>"
-    │
-    ├─ OpenAPI path        →  TransportConfig.APIKey
-    │                        generated client sets "Authorization: Bearer <token>"
-    │
-    └─ query clients path →  rest.Config.BearerToken (via rest.HTTPClientFor)
-                             same http.Client used by prometheus.Client / loki.Client
-
-GrafanaConfig.User != ""
-    │
-    ├─ dynamic path       →  rest.Config.Username + Password
-    │                        k8s transport sets "Authorization: Basic <b64(user:pass)>"
-    │
-    ├─ OpenAPI path        →  TransportConfig.BasicAuth
-    │                        generated client sets "Authorization: Basic <b64(user:pass)>"
-    │
-    └─ query clients path →  rest.Config.Username + Password (via rest.HTTPClientFor)
-                             same mechanism as dynamic path
+    └─ validated auth selection + selected TLS view
+        ├─ OAuth → proxy refresh transport
+        ├─ token → BearerToken (REST) / APIKey (OpenAPI)
+        ├─ Basic → Username + Password (REST) / BasicAuth (OpenAPI)
+        └─ mTLS  → selected client certificate, no Authorization header
 ```
 
-Both paths dispatch from `EffectiveGrafanaAuthMethod`; they do not inspect raw
-fields to establish a separate precedence. Explicit methods attach only their
-selected HTTP credential and TLS client identity. The diagram above describes
-the token and Basic branches; OAuth uses the proxy refresh transport, while
-mTLS uses the selected client certificate without an Authorization header.
+Reuse `Context.ToRESTConfig` for REST and query clients. Bespoke clients must
+use `EffectiveGrafanaAuthMethod` and `EffectiveGrafanaTLS`, as the OpenAPI
+client does. These helpers validate the selected credential; populated stale
+fields do not establish another precedence. Explicit non-mTLS methods omit
+stale client identity while retaining server trust settings.
+
+See [auth-system.md § Grafana auth selection](auth-system.md#grafana-auth-selection)
+for the complete invocation override and legacy-inference rules.
 
 ---
 
@@ -509,15 +501,17 @@ mTLS uses the selected client certificate without an Authorization header.
 **Application-level concurrency** (in `NamespacedClient.GetMultiple`):
 ```go
 g, ctx := errgroup.WithContext(ctx)
+g.SetLimit(c.maxConcurrentGetRequests)
 for i, name := range names {
     g.Go(func() error { ... c.Get(ctx, desc, name, opts) ... })
 }
 ```
-No `SetLimit` call — all Gets run fully concurrent (bounded only by QPS/Burst).
-A TODO comment notes this should be capped.
+`GetMultiple` bounds individual Gets; `remote.Puller` separately bounds filter
+fetches with `SetLimit(maxConcurrentListRequests)`. Both default to 10.
+Transport rate limits do not replace these concurrency limits.
 
-**Push concurrency** is managed one level up in `remote.Pusher`, which does use
-`errgroup.SetLimit(maxConcurrent)` with a configurable value passed from the CLI.
+**Push concurrency** is managed by `ForEachConcurrently` in `remote.Pusher`,
+with a configurable limit passed from the CLI.
 
 ---
 

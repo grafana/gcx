@@ -6,7 +6,8 @@
 
 | Document | Update Required? |
 |----------|-----------------|
-| `CLAUDE.md` | Yes — update package map section (compact) |
+| `docs/architecture/project-structure.md` | Yes — update the detailed package map |
+| `AGENTS.md` (`CLAUDE.md` symlink) | Only if the entry-point routing or command-group map changes |
 | `docs/architecture/` | Yes — run structural checks below |
 | `README.md` | Only if it affects CLI usage or quick start |
 
@@ -30,16 +31,17 @@
 
 | Document | Update Required? |
 |----------|-----------------|
-| `CLAUDE.md` | Yes — update package map section |
+| `docs/architecture/project-structure.md` | Yes — add the provider packages |
+| `AGENTS.md` (`CLAUDE.md` symlink) | Only if the entry-point routing or command-group map changes |
 | `docs/architecture/` | Yes — run structural checks below |
 | `docs/reference/provider-guide.md` | Only if the pattern changes |
 
-### Changing Beads Workflow or Conventions
+### Changing Contribution Workflow or Issue Tracking
 
 | Document | Update Required? |
 |----------|-----------------|
 | `CONTRIBUTING.md` | Yes — issue tracking section |
-| `CLAUDE.md` | Only if core rules change |
+| `AGENTS.md` (`CLAUDE.md` symlink) | Only if shared contribution rules change |
 
 ### Changing CLI Flags or Interface
 
@@ -53,10 +55,10 @@
 
 1. **Every PR should include doc updates** for any user-visible or architecture-level change.
 2. **Root-level docs are the entry layer** — ARCHITECTURE.md for architecture/ADRs, DESIGN.md for UX/taste, CONSTITUTION.md for invariants. Link from these to `docs/` for details; don't put implementation detail in root files.
-3. **CLAUDE.md (= AGENTS.md) is the agent entry point** — keep it as a short TOC with a package map; put details in `docs/`.
+3. **CLAUDE.md (= AGENTS.md) is the agent entry point** — keep task routing and the compact command-group map here; `docs/architecture/project-structure.md` owns the detailed package inventory. Edit `AGENTS.md` and preserve the symlink.
 4. **Don't duplicate** — cross-link between docs instead of copying content.
-5. **docs/ is the system of record** — organize by content type, not audience.
-6. **Run `mise run docs`** after any CLI changes — regenerates reference docs.
+5. **docs/ holds detailed guidance** — organize by content type, not audience, and follow the [compliance hierarchy](../../AGENTS.md#compliance-hierarchy).
+6. **Run `GCX_AGENT_MODE=false mise run docs`** after any CLI changes — regenerates reference docs.
 7. **Don't hardcode volatile values** — avoid exact counts ("18 patterns", "10 ADRs"), specific dates ("Generated: 2026-03-02", "Last updated: ..."), confidence percentages, or domain counts in docs. These go stale immediately, create merge conflicts, and add no value over `git log`. Use descriptive labels instead ("recurring patterns", "high confidence"). The only exception is dates in ADR status fields, which are inherently historical.
 
 ---
@@ -74,7 +76,8 @@ that shift architecture — not line-level edits, test changes, or formatting.
 Every top-level directory in `internal/` should appear in:
 - `docs/architecture/architecture.md` (layered architecture description)
 - `docs/architecture/project-structure.md` (directory layout section)
-- `CLAUDE.md` (compact package map)
+
+Do not duplicate the internal package inventory in `AGENTS.md`/`CLAUDE.md`; the entry point links to the detailed map.
 
 **Severity:** Missing coverage (medium) for new architectural layers. Low for
 utility packages nested under existing layers.
@@ -89,9 +92,9 @@ Every command group directory in `cmd/gcx/` should appear in:
 
 **Severity:** Missing coverage (high) for user-facing command groups.
 
-### 3. Pattern Count
+### 3. Pattern Coverage
 
-**Check:** Count patterns documented in `docs/architecture/patterns.md`.
+**Check:** Review patterns documented in `docs/architecture/patterns.md`.
 Cross-reference against code for new patterns:
 - Provider interface pattern (if new provider packages exist)
 - Translation adapter pattern (if `adapter.go` files exist in provider packages)
@@ -111,9 +114,9 @@ described in `docs/architecture/config-system.md`. Flag:
 
 **Severity:** Stale reference (high) if data model diagram is materially wrong.
 
-### 5. Pipeline Count
+### 5. Pipeline Coverage
 
-**Check:** Count distinct data flow pipelines:
+**Check:** Compare the documented data flow pipelines with the current code:
 - Push pipeline (local -> Grafana via k8s API)
 - Pull pipeline (Grafana -> local via k8s API)
 - Delete pipeline (local -> Grafana deletion)

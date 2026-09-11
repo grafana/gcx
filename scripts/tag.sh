@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# scripts/tag.sh — bump version, generate AI changelog entry, commit, tag, push.
+# scripts/tag.sh — bump version, generate AI changelog entry, then commit and
+# push a release/vX.Y.Z branch. It does NOT create the tag: merge the branch,
+# then tag the merge commit on main by hand (the script prints the commands).
 # Usage: bash scripts/tag.sh <major|minor|patch>
-# Set DRY_RUN=1 to skip the git commit/tag/push steps (used by tests).
+# Set DRY_RUN=1 to skip the git commit/push steps (used by tests).
 
 set -euo pipefail
 

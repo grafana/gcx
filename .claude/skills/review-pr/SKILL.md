@@ -8,7 +8,7 @@ description: Review someone else's gcx pull request, produce a ranked report wit
 Use this skill to review work you did not write. It owns the **report**: what
 goes in it, in what order, and when to stop.
 
-It defines no checks of its own. Run the checks where they already live:
+Run the correctness pass below and the repository checks where they already live:
 
 - `.claude/skills/integrate-with-gcx/references/self-review.md`. Read
   **Evidence discipline** first. It sets what a finding may conclude. Then run
@@ -22,24 +22,31 @@ It defines no checks of its own. Run the checks where they already live:
 Authors run the same triggers before they push. Assume they did. Treat what you
 find as missed, not as dismissed.
 
-## Two passes, one set of findings
+## The correctness pass
 
-Run both passes, then combine them:
+**You owe every PR a correctness pass, and you run it yourself.** Read the diff
+for the defects a reviewer is here to catch: a nil or error path that returns
+the wrong value, a boundary the change moved, a resource that leaks on the
+failure branch, concurrent access the diff introduced, and a call whose
+behaviour the diff changed without changing its callers.
 
-1. **`/code-review`**, for correctness bugs. Do not pass `--comment`. The
-   findings must return to you instead of going straight to the PR, or you have
-   nothing left to combine. It signs off with "no `--comment` argument was
-   provided, so stopping here without posting" — that is it handing findings
-   back, not the end of your review. Do not repeat the line or stop on it.
-2. **The triggers above** that fire for this diff, plus the compliance
-   hierarchy.
+Then run **the triggers above** that fire for this diff, plus the compliance
+hierarchy.
 
-Reconcile the two sets before you report anything. Remove duplicates. Keep
-whichever version of a finding states the failure more precisely.
+`/code-review` is an optional second opinion. Before invoking it, read its
+instructions and confirm it can return findings without publishing. If it is
+unavailable, declines the PR, or only supports publication, complete your own
+pass. The CI workflow uses that pass and installs no review plugin.
 
-The two passes can disagree. One calls a line a bug and the other calls the same
-line correct. Settle it against the code and report one conclusion. Never report
-both and leave the author to decide.
+Never describe an incomplete correctness pass as a clean review. Report the
+limitation if the diff or necessary code was unavailable.
+
+Reconcile the sets before you report anything. Remove duplicates. Keep whichever
+version of a finding states the failure more precisely.
+
+Your pass and the supplement can disagree. One calls a line a bug and the other
+calls the same line correct. Settle it against the code and report one
+conclusion. Never report both and leave the author to decide.
 
 The same skill runs on a developer's machine and in the review workflow. A PR
 gets the same treatment either way.
@@ -47,14 +54,21 @@ gets the same treatment either way.
 ## What blocks a merge here
 
 The severity split matters more than any single finding. It decides what the
-author must act on. Reserve the blocking tier for four things.
+author must act on. Reserve the blocking tier for these, and nothing else.
+
+**A correctness bug.** The change returns the wrong value, drops an error,
+leaves a resource open on the failure path, or calls a function, field, or
+option that does not exist. This is what your correctness pass is looking for.
 
 **A violation of `CONSTITUTION.md` or `DESIGN.md`.** Two cases recur. The agent
 output contract: a command declared `finite` in
 `cmd/gcx/root/testdata/output_classes.json` must write exactly one JSON value to
-stdout. A flag that writes a file and leaves stdout empty breaks that contract.
-Stream routing: a status line or a fallback notice on stdout lands inside a
-user's redirected output.
+stdout **when agent mode supplies the default** — that is, no explicit `-o`,
+`--json`, or `--jq`. Under those flags the command follows the flag, so `--jq`
+emitting NDJSON and `--json list` emitting one field per line are both correct
+and neither is a finding. A flag that writes a file and leaves stdout empty
+breaks the contract. Stream routing: a status line or a fallback notice on
+stdout lands inside a user's redirected output.
 
 **A regression to a released command surface.** A removed or narrowed flag value,
 a changed exit code, or a changed output shape that existing `--json` or `--jq`
@@ -68,59 +82,77 @@ queue when the flow exits early, where the shell then reads it. Where a diff add
 a control for this, check that it runs on every exit path and not only on
 success.
 
-Report findings about naming, structure, duplication, and test shape as nits.
-Do that even when the argument for them is strong.
+**What does not block on its own.** Naming, structure, duplication, test shape,
+and anything [T12](../integrate-with-gcx/references/self-review.md#t12-over-engineering)
+or [T5](../integrate-with-gcx/references/self-review.md#t5-shared-infrastructure)
+turns up. These block only when the same finding independently lands in one of
+the tiers above — a name that breaks the frozen command surface is a
+DESIGN violation and blocks as one. "It concerns naming" and "T12 fired" are not
+reasons on their own. Everything else in this class goes in Other findings.
 
 ## Do not report
 
-- Anything CI already enforces: `mise run lint`, the test suite,
-  `reference-drift`, `validate-skills`, and the conformance suites in
-  `cmd/gcx/root/`.
+- Duplicate diagnostics already reported by CI. Report an independently
+  established defect even when CI also covers that area; a green check does not
+  prove the changed behavior is correct. Cite the mechanism and consequence,
+  rather than repeating lint or test output.
 - Generated files under `docs/reference/cli/`, and anything in `vendor/`.
 - Missing test coverage in files the diff did not touch.
 
 ## Report shape
 
-Use bold text for headings in the report, not markdown headings. Each section should be at most two sentences.
+Use bold text for headings in the report, not markdown headings. Five sections,
+in this order, referred to by name everywhere below.
 
-1. **Intent.** The problem, and how the change solves it. Say whether the
-   approach is sound before you list what is wrong with it. Do not give an opinion non whether the approach is sound or not here - that will become obvious from the rest. Keep this as short as possible.
-2. **Blocking.** Fix before merge: correctness bugs, regressions to shipped
-   behaviour, safety defects, and violations of CONSTITUTION.md or DESIGN.md. Also: Behaviour that changes inside a described refactor. A call to a function, field, or option that does not exist. Overengineering issues from T12 and T5. If nothing blocks the merge, omit this section.
-3. **Other findings.** Everything that does not block, worst first. Include
-   documentation that contradicts the code it describes. Give each finding the
-   space its argument needs and no more. Some take a paragraph. Most take a
-   line. The label shows the difference, so a one-line nit and a
-   worth-fixing defect can share the list.
-5. **Fix summary** One combined remedy. Omit this section when section
-   2 and 3 are empty.
-6. **Verdict.** Approve or request changes. Name the findings that decide it. If
-   you would merge a reduced version, say so, and say how much smaller.
+**Intent.** The problem, and how the change solves it. State it and stop —
+whether the approach is sound becomes obvious from the rest of the report, so do
+not give a verdict on it here. Two sentences at most.
+
+**Blocking.** Fix before merge — exactly the tiers in *What blocks a merge here*
+above, and nothing beyond them. Omit this section when nothing blocks.
+
+**Other findings.** Everything that does not block, worst first — see *Ordering*
+below for what breaks a tie. Include documentation that contradicts the code it
+describes, and everything from *What does not block on its own*. Give each
+finding the space its argument needs and no more. Some take a paragraph. Most
+take a line. The label shows the difference, so a one-line nit and a
+worth-fixing defect can share the list.
+
+**Fix summary.** One combined remedy. Omit when Blocking and Other findings are
+both empty.
+
+**Verdict.** Approve or request changes. Name the findings that decide it. If
+you would merge a reduced version, say so, and say how much smaller. Two
+sentences at most.
 
 ## Rules that keep the report honest
 
-**One finding per code unit, not per check.** Name the symbol, file, or flag.
-Two findings that name the same symbol are one finding. Combine them and list
-every check the unit trips. State the count as evidence. Never split one unit
-across sections. A split unit turns one problem into five complaints about the
-same file.
+**Group findings by code unit, not by check.** Name the symbol, file, or flag.
+Combine repeated diagnoses of the same defect. If a unit has distinct defects,
+keep each mechanism and consequence visible within its grouped entry. Place the
+entry in the section for its highest severity and retain the individual labels;
+a shared symbol does not make every issue blocking.
 
-**Rank section 4 by lock-in.** Lock-in is what the thing costs to remove after
-release:
+**Ordering: worst first, lock-in breaks the tie.** Worst means the consequence
+if it ships unfixed. Where two findings are equally consequential — and
+over-engineering findings usually are — order them by lock-in, what the thing
+costs to remove after release:
 
 1. Exported API with fewer than two callers
 2. User-visible surface: flags, output shape, command paths
 3. Internal structure: duplicate types, thin wrappers, copied code
 4. Tests and unreachable branches
 
-Break ties by line count. Cap the section at six findings. Move the
-lowest-ranked ones to section 3 as one-line nits. The ranking is mechanical on
-purpose, so two reviewers produce the same order.
+A finding that fits no tier — stale documentation, say — ranks on consequence
+alone. Break remaining ties by affected line count, then file path and line.
+In Other findings, give at most six entries a full argument and summarize the
+rest without changing their severity. The tie-break is mechanical on purpose,
+so two reviewers produce the same order.
 
-**Give one remedy, not one per finding.** Section 5 is an ordered list of
-deletions and merges. Together they resolve everything in section 4. State the
-resulting size change against the real diff size. The size is evidence for the
-whole set. It is not a finding, and it does not belong in section 4.
+**Give one combined remedy.** Fix summary lists the smallest changes that
+resolve the findings. Prefer deletions and consolidation when they are
+sufficient; fixes may need added code or tests. Quantify a proposed reduction
+only when it supports a simplification finding and the diff provides evidence.
 
 **Say what would overturn each blocking finding.** This makes you look for the
 author's reasoning before you write. It also gives the author something specific
@@ -138,70 +170,82 @@ which. Otherwise five blocking findings look heavier than the change deserves.
 
 ## When a workflow invoked this
 
-Six things change when no human is present. The rest of the review is the same.
+Five things change when no human is present. The rest of the review is the same,
+including the severity policy — a PR gets the same treatment either way.
 
-- **Post without asking.** The offer below applies when a human can answer. In
-  CI nobody can, and the trigger is the consent.
-- **Never approve or request changes.** Post whatever you found as a comment.
+- **Deliver the requested payload.** The configured workflow trigger authorizes
+  publication. Follow *Workflow delivery*; the workflow publishes the review.
+- **Never approve or request changes.** The workflow publishes a `COMMENT` review.
   Whether a finding is cheap enough to merge over is a judgement about the
   author's time. An unattended run cannot make it.
 - **Drop what you could not establish.** Do not label it unverified. No author
   can answer a speculative finding here, and a wrong one makes them disprove it
   in public.
-- **Use tighter caps**: at most three blocking findings, and eight comments in
-  total. Drop the lowest-ranked findings.
+- **Use tighter caps**: at most three blocking entries, and eight comments in
+  total. Drop the lowest-ranked entries; do not downgrade their severity.
 - **Close the summary with this exact line**:
 
   > Comment `@claude review` for a fresh review.
 
-- **Upgrade `recommended` findings to blocking.** A human reviewer can weigh a
-  should-fix in conversation. Nobody is here to do that, so a finding is either
-  worth the author's attention or it is a nit.
+Silence is a valid result. If there are no findings, say so in one line and
+deliver that line for publication. Never invent a finding.
 
-Silence is a valid result. If there are no findings, say so in one line — and
-post that line. A review that ends without posting cannot be told apart from
-one that never ran. Never invent a finding.
+Silence is not the same as a pass you did not run. If your correctness pass
+could not complete, say that instead — never post "no findings" on a review that
+did not happen.
 
-Publish one review with `event: COMMENT`, using the mechanics below. Use the
-workflow's **Review head** as `commit_id` and append its **Review marker** to
-the summary as an HTML comment, after the closing line. The workflow checks
-that this run published a review for that commit before adding its label.
+### Workflow delivery
 
-If publication is denied, stop and report the failed command. Do not retry it
-through scripts, post test comments, or move inline findings into a regular PR
-comment. A permission failure needs a workflow fix, not a different report.
+When the caller requests a structured review payload, return
+`{"review":{"body":"...","comments":[...]}}`. Use the report's summary and
+inline-comment mapping from *Mechanics* below. Each inline comment carries
+`path`, `line`, `side`, and `body`; ranges also carry `start_line` and
+`start_side`. With no findings, use the no-findings summary and an empty comments
+array. If the correctness pass could not complete, return `{"review":null}`.
+
+**Do not publish through `gh`, a plugin, or an inline-comment tool in this
+mode.** The workflow submits the payload as one `COMMENT` review from
+`github-actions[bot]` on the supplied head commit, appends its run marker, and
+validates GitHub's returned review ID,
+author, submission state, marker, and commit before marking the PR reviewed.
+It also checks the PR head before and after publication. An incomplete payload,
+failed submission, or changed head fails the workflow; retry with `@claude review`.
+The normal human-facing report and consent flow apply when no structured payload
+was requested.
 
 ## Offering to post the review
 
-After the report, offer to post it to the PR as inline comments. Do not post
-without an explicit yes. The comments are public, they carry the invoker's name,
-they land on someone else's PR, and you cannot undo them quietly.
+After the report, offer to post it to the PR as inline comments if publication
+has not already been explicitly authorized. A request to review alone does not
+authorize posting; a request to post the review does. Reuse an event choice the
+invoker has already made.
 
 Present the event choice with a recommendation and the reason for it:
 
 | Report state | Recommend |
 |---|---|
-| Section 2 empty, section 3 empty | `APPROVE` |
-| Section 2 empty, section 3 has findings | `APPROVE` with the comments attached |
-| Section 2 has findings, all cheap to fix, none a regression to shipped behaviour | `COMMENT` |
-| Section 2 has a regression, a safety defect, or anything expensive | `REQUEST_CHANGES` |
+| Blocking empty, Other findings empty | `APPROVE` |
+| Blocking empty, Other findings has findings | `APPROVE` with the comments attached |
+| Blocking has findings, all cheap to fix, none a regression to shipped behaviour | `COMMENT` |
+| Blocking has a regression, a safety defect, or anything expensive | `REQUEST_CHANGES` |
 
-State the recommendation, then let the invoker choose. The report's verdict
-judges the code. The event judges a colleague's work, and that choice is theirs.
+State the recommendation and obtain the event choice if it is not settled. The
+report's verdict judges the code. The event judges a colleague's work, and that
+choice is theirs.
 
 ### Mechanics
 
 One `POST` creates the whole review, both the summary body and every inline
 comment. The author then gets one notification instead of ten. Pass the JSON
-directly on stdin; CI does not allow creating payload files. A quoted heredoc
-keeps backticks, dollar signs, and suggestions literal:
+directly on stdin. A quoted heredoc keeps backticks, dollar signs, and
+suggestions literal:
 
 ```bash
-gh api repos/{owner}/{repo}/pulls/{n}/reviews -X POST --input - <<'REVIEW_JSON'
+gh api repos/grafana/gcx/pulls/{n}/reviews -X POST --input - <<'REVIEW_JSON'
 {
   "event": "COMMENT",
   "commit_id": "<reviewed head SHA>",
-  "body": "<summary and, in CI, the review marker>",
+  "body": "<review summary>",
   "comments": []
 }
 REVIEW_JSON
@@ -209,6 +253,10 @@ REVIEW_JSON
 
 Replace the placeholders, use the chosen event for a human-invoked review,
 and put the inline findings in `comments`. Leave it empty for a clean review.
+Keep the endpoint first, unquoted, and followed by `-X POST`: that matches the
+repository's narrow review permission in `.claude/settings.json`. Record the
+returned review ID. If publication is denied, report the failed command; do not
+retry through scripts, post test comments, or switch to a regular PR comment.
 
 Each comment needs `path`, `line`, and `side`. Use `RIGHT` for the file after
 the change. A range also needs `start_line` and `start_side`.
@@ -226,9 +274,8 @@ GitHub rejects lines outside every hunk. A `suggestion` block replaces exactly
 the lines you anchor it to, so match the indentation of the target. Go files use
 tabs.
 
-Report sections split like this. Sections 2, 3, and 4 become inline comments at
-the symbol each one names. Sections 1, 5, and 6 have no line to attach to, so
-they become the summary body.
+Blocking and Other findings become inline comments at the symbol each entry
+names. Intent, Fix summary, and Verdict become the summary body.
 
 ### Rewrite the findings as comments
 
@@ -253,24 +300,24 @@ Thirty make noise.
 
 ### Labels
 
-The label follows from the section. That makes it mechanical instead of a second
-judgement:
+Labels follow each defect's severity. A grouped entry can contain both required
+and advisory defects; label them individually:
 
 | Section | Label | Means |
 |---|---|---|
-| 2 Blocking | `**required**` | fix before merge |
-| 3 Other findings | `**recommended**` | should fix, does not block the merge |
-| 3 Other findings | `**nit**` | take it or leave it |
-| 4 Over-engineering | `**followup**` | fine to defer to its own PR |
+| Blocking | `**required**` | fix before merge |
+| Other findings | `**recommended**` | should fix, does not block the merge |
+| Other findings | `**nit**` | take it or leave it |
+| Other findings | `**followup**` | fine to defer to its own PR |
 
 Written out:
 
 > **required** — this returns on every `readLine` error, not just the `Close`
 > one the comment describes. …
 
-Two adjustments. Label a section 4 finding `**nit**` when it is small enough to
-fix in the same sitting. Where the author may ignore a `**nit**`, say so in the
-text as well as the label.
+In Other findings, use `**followup**` for work that merits a separate PR,
+`**recommended**` for a nonblocking improvement, and `**nit**` for an optional
+minor change. A cheap fix can still be required when its consequence blocks.
 
 Say what the labels mean once, in the summary body, with the counts. The author
 wants the shape of the review before the detail:
@@ -278,7 +325,7 @@ wants the shape of the review before the detail:
 > comments below are prefixed **required** (2), **recommended** (4),
 > **followup** (2), **nit** (2)
 
-Only label a comment `**required**` when it sits in section 2 of the report. One
+Only label a defect `**required**` when it meets the Blocking criteria. One
 inflated label teaches the author to ignore every label in every later review.
 
 ## Language

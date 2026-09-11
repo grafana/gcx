@@ -133,12 +133,11 @@ Directly modeled after kubectl's kubeconfig trust pattern. Key design decisions:
 
 ### 7. Concurrency via errgroup
 
-All concurrent operations use `golang.org/x/sync/errgroup`, with two patterns:
-
-1. **Bounded concurrency** (`errgroup.SetLimit`): FSReader file reads,
-   `ForEachConcurrently` for push/pull/delete operations
-2. **Unbounded concurrency**: Puller fetch goroutines (one per filter),
-   `GetMultiple` in NamespacedClient
+Batch I/O uses bounded `golang.org/x/sync/errgroup` concurrency via
+`SetLimit`: FSReader file reads, `ForEachConcurrently` for resource operations,
+Puller filter fetches (`maxConcurrentListRequests`), and NamespacedClient
+individual Gets (`maxConcurrentGetRequests`). Transport rate limits do not
+replace these limits.
 
 `ForEachConcurrently` on `Resources` is the primary concurrency primitive for
 batch operations. Default limit is 10. Error propagation behavior depends on
@@ -371,15 +370,15 @@ detection when explicitly set.
 
 | Priority | Mechanism | Notes |
 |----------|-----------|-------|
-| 1 | `GCX_AGENT_MODE` env var | Explicit override — falsy value disables agent mode even if other vars are set |
-| 2 | `CLAUDECODE`, `CLAUDE_CODE`, `CURSOR_AGENT`, `GITHUB_COPILOT`, `AMAZON_Q`, `OPENCODE`, `PI_CODING_AGENT` env vars | Any truthy value enables agent mode |
-| 3 | `--agent` CLI flag | Applied after env detection; always takes precedence when explicitly passed |
+| 1 | `--agent` CLI flag | Applied after env detection and overwrites it, so an explicitly passed `--agent`/`--agent=false` wins in both directions |
+| 2 | `GCX_AGENT_MODE` env var | Explicit override — falsy value disables agent mode even if other vars are set |
+| 3 | `CLAUDECODE`, `CLAUDE_CODE`, `CURSOR_AGENT`, `GITHUB_COPILOT`, `AMAZON_Q`, `OPENCODE`, `PI_CODING_AGENT` env vars | Any truthy value enables agent mode |
 
 **Behavioral effects when agent mode is active:**
 - Color output disabled globally (`color.NoColor = true`)
-- Default output format overridden to `json` (machine-parseable by default)
+- Default output format overridden to `agents` (compact JSON below 100 KiB, temp-file spill above); `artifact`-class commands pin their own format and reject `-o agents`
 - Pipe-aware behaviors forced: `IsPiped=true`, `NoTruncate=true` regardless of TTY state
-- In-band error JSON written to stdout on failure (see `cmd/gcx/fail/json.go`)
+- In-band error JSON written to stdout on failure (see `internal/gcxerrors/json.go`)
 
 **Pipe detection** is also independent of agent mode. Root `PersistentPreRun` calls
 `terminal.Detect()` which checks `term.IsTerminal(os.Stdout.Fd())`. When piped:
@@ -395,7 +394,7 @@ behaviors regardless of actual TTY state.
 - `internal/terminal/terminal.go` — `Detect()`, `IsPiped()`, `NoTruncate()`, setters
 - `cmd/gcx/root/command.go` — orchestrates detection order in `PersistentPreRun`
 - `internal/output/format.go` — `io.Options` fields `IsPiped`, `NoTruncate`, `JSONFields`
-- `cmd/gcx/fail/json.go` — `DetailedError.WriteJSON` for in-band error reporting
+- `internal/gcxerrors/json.go` — `DetailedError.WriteJSON` for in-band error reporting
 
 **Evidence:**
 - `internal/agent/` package with `init()`-time env-var detection
@@ -461,15 +460,17 @@ copy-paste it directly into `get`, `update`, and `delete` commands.
 Provider CRUD commands must use their registered `ResourceAdapter` (via
 TypedCRUD) for data access, not raw REST clients. This ensures:
 
-- JSON/YAML output is identical to the `resources` pipeline by construction.
+- Structured output uses the registered resource representation (Pattern 17);
+  TypedCRUD supplies the same data to both paths.
 - Table/wide codecs may access domain types `T` for richer columns (e.g.
   SLI%, burn rate, budget remaining).
 - The `resources` pipeline uses generic resource columns (name, namespace,
   age) for its table codec.
 
-Provider commands that bypass the adapter for CRUD operations are
-non-compliant. Extension commands (status, timeline, etc.) may use raw
-clients since they have no `resources` pipeline equivalent.
+New adapter-backed commands must not bypass the adapter for CRUD operations.
+Provider-only commands and extensions (status, timeline, etc.) use product
+clients when they have no adapter-backed CRUD equivalent. Pattern 17 records
+existing output compatibility gaps; it does not authorize new bypasses.
 
 ### TypedCRUD Pattern
 
@@ -554,47 +555,28 @@ without requiring an extra parameter on the `Factory` type.
 
 ### 17. K8s Envelope Wrapping for Provider List/Get
 
-Provider list/get commands that output CRUD resources (resources the user can
-create, update, and delete via the CLI) wrap JSON/YAML output in K8s envelope
-manifests (`apiVersion`/`kind`/`metadata`/`spec`) for round-trip compatibility
-with push/pull. Table/wide codecs continue to receive raw domain types for
-direct field access, since they need to pick specific fields for column rendering.
+For new provider entity reads, **adapter registration** determines the
+representation. A registered resource uses the same K8s manifest
+(`apiVersion`/`kind`/`metadata`/`spec`) through both access paths. This includes
+read-only and singleton adapters; list/create/delete support is not the test.
+Provider-only views and query results use their domain response.
 
-This is a companion to Pattern 13 (Format-Agnostic Data Fetching): data is
-fetched unconditionally, but the _presentation_ layer converts to K8s envelopes
-for structured formats while keeping raw types for tabular formats.
+| Read operation | Structured representation | Example |
+|---|---|---|
+| Registered resource, including a read-only or singleton adapter | Registered resource envelope | `gcx appo11y settings get` uses the singleton `default` |
+| Provider-only query, reference data, or operational view | Domain result; do not invent an adapter solely for wrapping | `gcx kg meta scopes` |
+| Existing command with a shipped raw-output contract | Preserve that contract until an explicit compatibility migration | `gcx k6 env-vars list` (also available via the `env` alias) |
 
-**Implementation rule:**
+Adapter-backed CRUD uses `TypedCRUD` for data access. Encode its typed resource
+representation, or use the provider's existing conversion to the registered
+resource. Table codecs may receive the domain `Spec` where they require it;
+fetching stays format-agnostic (Pattern 13). The JSON/YAML codecs serialize the
+value passed to `Encode`; they do not add an envelope themselves.
 
-```go
-// Table/wide → raw domain types for direct field access.
-if opts.IO.OutputFormat == "table" || opts.IO.OutputFormat == "wide" {
-    return opts.IO.Encode(cmd.OutOrStdout(), items)
-}
-
-// JSON/YAML → K8s envelope via ToResource().
-var objs []unstructured.Unstructured
-for _, item := range items {
-    res, err := ItemToResource(item, namespace)
-    if err != nil { return err }
-    objs = append(objs, res.ToUnstructured())
-}
-return opts.IO.Encode(cmd.OutOrStdout(), objs)
-```
-
-**Exempt command categories** (output raw API types without wrapping):
-
-| Category | Examples | Rationale |
-|----------|----------|-----------|
-| Query/search results | `entities list`, `assertions search` | Time-series and aggregation results, not storable resources |
-| Operational views | `status`, `health`, `inspect` | Composite or derived data, not individual resources |
-| Read-only reference data | `kg meta scopes` | Discoverable metadata, not user-managed resources |
-| Singleton config | `env get` | Single config objects, not collections of resources |
-
-**Evidence:**
-- `internal/providers/slo/definitions/commands.go`: `newListCommand` — SLO list wraps via `ToResource`
-- `internal/providers/fleet/provider.go`: `newPipelineListCommand`, `newCollectorListCommand`
-- `internal/providers/kg/commands.go`: `newRulesCommand` — rules list/get wrap via `RuleToResource`
+**Implementation references:**
+- `internal/providers/appo11y/settings/commands.go`: singleton `Get` via `TypedCRUD`, domain table rendering, registered manifest for structured formats.
+- `internal/providers/slo/definitions/commands.go`: list/get resource conversion.
+- `internal/providers/k6/commands.go`: existing env-var list output compatibility.
 
 ---
 
@@ -750,18 +732,6 @@ calls are real. The second call is necessary because `NewNamespacedRESTConfig`
 operates on the already-validated config and needs the resolved namespace.
 Caching would require threading state between the validation and REST config
 construction steps.
-
-### 2. GetMultiple Concurrency Limit
-
-**Observed in:** Client/API domain says `GetMultiple` has "no SetLimit call,"
-while Data Flows domain says push operations use `errgroup.SetLimit(maxConcurrent)`.
-
-**Resolution:** Both are correct at different layers. `GetMultiple` in
-`NamespacedClient` runs fully concurrent Gets (bounded only by QPS/Burst at the
-HTTP transport level). Push concurrency is bounded by `ForEachConcurrently` in
-the Pusher, which wraps the per-resource push logic (including the Get-then-
-Create/Update upsert). The concurrency limit applies to the outer loop, not to
-the inner `GetMultiple`.
 
 ### 3. Manager Metadata Check in Delete vs Push
 

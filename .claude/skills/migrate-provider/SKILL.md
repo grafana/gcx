@@ -250,8 +250,9 @@ discovered during provider migrations.
 ### tasks.md: Verification Tasks (MANDATORY)
 
 tasks.md MUST include smoke test design as explicit verification tasks. Each
-show/list command MUST have a smoke test task entry specifying all four output
-formats (json, table, wide, yaml).
+show/list command MUST have a smoke test task entry naming the formats that
+command declares — derive them, do not assume a fixed set (see
+Step 4B below).
 
 ### Optional: /plan-spec Integration
 
@@ -306,7 +307,7 @@ The Build phase uses an agent team with two teammates:
 | Step 4: Adapter + Resource Adapter | `internal/providers/{name}/adapter.go`, `resource_adapter.go` | Build-Core |
 | Step 5: Provider registration | `internal/providers/{name}/provider.go` | Build-Commands |
 | Step 6: Tests | Command tests (`*_test.go`) | Build-Commands |
-| Step 7: Integration / Wiring | `cmd/gcx/providers/{name}/commands.go`, `cmd/gcx/root/command.go` (blank import) | Build-Commands |
+| Step 7: Integration / Wiring | `internal/providers/{name}/commands.go`, `cmd/gcx/root/command.go` (blank import) | Build-Commands |
 
 Teammates MUST NOT modify files outside their ownership boundary.
 
@@ -343,34 +344,101 @@ Phase 4 MUST execute in this exact order. No step may be skipped.
 
 ### Step 4A: Build Gate
 
-Run `GCX_AGENT_MODE=false mise run all` and confirm exit 0.
+Confirm `GCX_AGENT_MODE=false mise run all` passed on the current tree. Reuse
+the Phase 3 result if nothing has changed; rerun after any fix.
 
 ### Step 4B: Smoke Tests (MANDATORY)
 
-Smoke tests are MANDATORY for every show/list command. Each command MUST be
-tested with ALL FOUR output formats: `-o json`, `-o table`, `-o wide`,
-`-o yaml`.
+This is the smoke-test procedure used by the verifier and recipe. Test every
+show/list command using the freshly built `./bin/gcx`, across the formats that
+command declares. A bare `gcx` may resolve to the legacy CLI or another install.
+If live access or populated fixtures are unavailable, mark the affected checks
+UNVERIFIED with the reason; do not claim parity or silently omit them.
 
-Smoke tests MUST NOT be silently skipped or quietly downgraded.
-If no live instance is available, report every smoke test as UNVERIFIED with that
-reason and do NOT assert parity with the legacy CLI — an unverified port is an
-honest state, a claimed-but-untested one is not. Report the blocker
-to the user.
+Adapt the command placeholders and run with **Bash** (`bash smoke.sh`), because
+this loop depends on Bash word splitting. Preserve stderr and return failure
+if any format fails; `... && echo OK || echo FAIL` alone always exits 0.
 
 ```bash
+#!/usr/bin/env bash
+set -u -o pipefail
 CTX={context-name}
+GCX_BIN=./bin/gcx
 
-for fmt in json table wide yaml; do
-  GCX_AGENT_MODE=false bin/gcx --context=$CTX {resource} list -o $fmt > /dev/null 2>&1 \
-    && echo "list $fmt: OK" || echo "list $fmt: FAIL"
-done
+check() {                              # check <label> <cmd...>
+  local label="$1"; shift
+  local fmts fmt rc=0
+  fmts=$(GCX_AGENT_MODE=false "$GCX_BIN" "$@" --help \
+    | sed -n 's/.*Output format. One of: \(.*\) (default.*/\1/p' | tr -d ',') || return 1
+  if [ -z "$fmts" ]; then
+    echo "$label: FAIL — cannot determine formats from --help"
+    return 1
+  fi
+  for fmt in $fmts; do
+    if GCX_AGENT_MODE=false "$GCX_BIN" --context="$CTX" "$@" -o "$fmt" >/dev/null; then
+      echo "$label -o $fmt: OK"
+    else
+      echo "$label -o $fmt: FAIL"; rc=1
+    fi
+  done
+  return "$rc"
+}
+
+failed=0
+check list {resource} list     || failed=1
+check get  {resource} get {id} || failed=1
+exit "$failed"
 ```
+
+This checks exit status, not content or parity. Use populated fixtures and
+inspect the rendered values. Compare supported formats with the legacy CLI
+and approved spec too: a format removed from both help and implementation
+would otherwise escape the loop.
 
 ### Step 4C: Adapter Smoke (MANDATORY)
 
-Every TypedCRUD resource MUST be verified via the adapter path:
-- `resources list-types` — registration visible
-- `resources get {alias}` — envelope + deserialization working
+For each TypedCRUD resource, check the exact registered group/version/kind and
+resource content. A successful `gcx resources list-types -o json` alone proves
+nothing about the new registration. Adapt these placeholders and run with Bash
+and `jq`; stderr remains visible and only stdout enters the JSON assertion.
+
+```bash
+#!/usr/bin/env bash
+set -u -o pipefail
+CTX={context-name}
+GCX_BIN=./bin/gcx
+
+probe() {                              # probe <label> <jq-assertion> <cmd...>
+  local label="$1" assert="$2" out; shift 2
+  if ! out=$(GCX_AGENT_MODE=false "$GCX_BIN" --context="$CTX" "$@" -o json); then
+    echo "$label: FAIL — command failed"; return 1
+  fi
+  if [ -z "$out" ] || ! jq -e "$assert" >/dev/null <<<"$out"; then
+    echo "$label: FAIL — output did not satisfy: $assert"
+    head -20 <<<"$out"; return 1
+  fi
+  echo "$label: OK"
+}
+
+# resources get returns a single object or an {"items": [...]} collection.
+ENVELOPED='def ok: .apiVersion == "{group}/{version}" and .kind == "{kind}" and has("metadata");
+  if has("items") then (.items | length > 0 and all(.[]; ok))
+  else ok end'
+
+failed=0
+probe list-types '.["{group}"]["{version}"] | any(.kind == "{kind}")' \
+  resources list-types || failed=1
+probe "get {alias}" "$ENVELOPED" \
+  resources get {alias} || failed=1
+probe "get {alias}/{id}" "$ENVELOPED" \
+  resources get {alias}/{id} || failed=1
+exit "$failed"
+```
+
+An empty collection cannot prove the adapter mapping works, so this probe
+fails on one. If no populated fixture is available, report UNVERIFIED rather
+than treating that as an adapter defect or weakening the assertion. Name the
+fixture used in the comparison report.
 
 ### Step 4D: Spec Compliance
 

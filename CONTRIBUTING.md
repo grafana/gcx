@@ -47,9 +47,11 @@ type and labels automatically.
 
 If you are using a coding agent to make changes to this repository, there are skills in [.claude/skills](.claude/skills) for contributing:
 
-- [add-provider](.claude/skills/add-provider) will help add a new top-level command area to gcx. 
-- [add-datasource](.claude/skills/add-datasource) will help add a new datasource provider to gcx (under `gcx datasources`).
-- [integrate-with-gcx](.claude/skills/integrate-with-gcx) is a more general skill that will help add capabilities with gcx.
+- [add-provider](.claude/skills/add-provider/SKILL.md) will help add a new top-level command area to gcx.
+- [add-datasource](.claude/skills/add-datasource/SKILL.md) will help add a new datasource provider to gcx (under `gcx datasources`).
+- [integrate-with-gcx](.claude/skills/integrate-with-gcx/SKILL.md) is a more general skill that will help add capabilities with gcx.
+
+If your agent does not discover these skills by name, open the linked `SKILL.md` directly. See [AGENTS.md](AGENTS.md#mandatory-pull-request-checklist) for the required contribution checks.
 
 ### Development environment
 
@@ -171,12 +173,11 @@ Releases are automated via `mise run tag`. It requires the `claude` CLI and [`sv
 $ mise run tag -- patch   # or minor, major
 ```
 
-This generates a changelog entry (via Claude), updates `CHANGELOG.md` and `.release-notes.md`, commits, tags, and pushes. The tag push triggers GoReleaser.
+This generates a changelog entry (via Claude), updates `CHANGELOG.md`, `.release-notes.md`, and the Claude plugin version, then commits and pushes them on a `release/vX.Y.Z` branch. **It does not tag** — tagging is the manual step below, and it is what triggers GoReleaser.
 
-**With branch protection** (can't push directly to main): the script will fail at the push step. Instead:
-1. Create a branch, commit the changelog, open a PR
-2. Merge the PR
-3. Tag the merge commit on main and push the tag:
+The full procedure lives in the [`release` skill](.claude/skills/release/SKILL.md); invoke it when cutting a release. In outline, after the script pushes the branch:
+1. Open a PR for the release branch and merge it (the script prints the exact command)
+2. Tag the merge commit on main and push the tag:
    ```bash
    git checkout main && git pull
    git tag v0.X.Y

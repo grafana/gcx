@@ -1,6 +1,8 @@
 # Phases 8-11: Dashboards, Cost Optimization, GitOps, Review
 
-Custom dashboards and cost optimization run in Wave A; GitOps export and the observability review run last (Wave C). See SKILL.md for the wave plan.
+Custom dashboards and cost optimization run in Wave A. The observability review
+and authorized remediation run in Wave C, followed by GitOps export and export
+verification in Wave D. See SKILL.md for dependencies and the host-tool fallback.
 
 ## Contents
 
@@ -90,6 +92,9 @@ Wait for all three. Report savings estimates and cardinality reduction. Mark tas
 
 ## Phase 10: GitOps Export
 
+Start after all selected setup phases and Phase 11, if selected. Complete any
+authorized review remediation before exporting.
+
 Mark task in_progress.
 
 **Pick the managed kind set first.** The GitOps directory is an apply-capable
@@ -111,7 +116,7 @@ Ask the user where in their repo to place the export (default: `./grafana/`).
 
 **Parallel:**
 
-- **Agent A** - export (run_in_background: true, can be slow):
+- **Agent A** - export (use a background worker if supported; export can be slow):
   Pull the managed kinds to the chosen directory, pinned to YAML (the default
   output format varies by mode), then confirm the result is apply-capable.
   Pass each kind as its own selector argument — space-separated, never
@@ -144,7 +149,8 @@ Ask the user where in their repo to place the export (default: `./grafana/`).
   Any pull error, skipped kind, or preflight failure makes the check
   incomplete — report it as such, not as drift.
 
-Wait for Agent A. Then report the managed kind set to the user:
+After the export and CI snippet are ready, confirm the YAML files exist and the
+managed set passes the dry-run above. Then report the managed kind set to the user:
 ```bash
 ls ./grafana/
 ```
@@ -169,10 +175,14 @@ Run `gcx instrumentation status` and `gcx setup status` for overall health. Repo
 - **Agent C** - synthetic check health: list all synthetic checks (`gcx synthetic-monitoring checks list`) and check status for each (`gcx synthetic-monitoring checks status <id>`). Confirm all are enabled and showing recent results.
 
 Wait for all agents. Then synthesize a **prioritized recommendations list**:
-- k6 tests missing schedules -> add schedule immediately
+- k6 tests missing schedules -> complete the already-selected scheduling work, or propose it if outside scope
 - Journeys missing custom spans -> add OTEL SDK instrumentation
 - Services with only auto-instrumentation -> add profiling
 - Frontend journeys -> add k6 browser test
 - SLOs with actual error rates near target -> tighten target or investigate
+
+Complete authorized remediation and verify affected resources before handing
+off to Phase 10. Leave other recommendations explicit in the report. If any
+resources change after an earlier export, refresh and verify that export.
 
 Mark task completed.

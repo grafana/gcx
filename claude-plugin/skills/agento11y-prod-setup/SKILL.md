@@ -122,8 +122,8 @@ from the traffic; read it from the code.
 
 1. Find the agent as Agent Observability sees it: `gcx agento11y agents list` (and `agents get` /
    `agents list-versions`) to get the exact `agent_name` — this is the `match.agent_name` you'll target. (Tip:
-   `agents list` prints a leading hint line before the JSON; set `GCX_AGENT_MODE=true` or skip
-   that line if you parse it.)
+   in human mode `gcx agento11y agents list` renders a table, so pass `-o json` when you parse it.
+   The agent-mode `--json`/`--jq` hint goes to **stderr**, so there is no stdout line to strip.)
 2. Sample recent conversations: `gcx agento11y conversations search --filters 'agent = "<name>"'`
    (add `status = "error"`, time windows, `tool.name`, `eval.passed = false`) and
    `gcx agento11y generations get <id>` for detail. Look for long tool loops, over-refusals, PII
