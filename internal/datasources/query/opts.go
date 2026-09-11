@@ -103,35 +103,24 @@ func (opts *TimeRangeOpts) ParseTimeRange(now time.Time) (time.Time, time.Time, 
 	return start, end, nil
 }
 
-// SharedOpts holds flags shared across typed query subcommands.
-type SharedOpts struct {
-	TimeRangeOpts
-
-	IO   cmdio.Options
-	Step string
+// ExprOpts holds resolution of a query expression from either a positional
+// argument or the --expr flag. Shared by any leaf command that accepts a
+// "positional arg OR --expr" expression, so the resolution logic and its
+// error text live in exactly one place.
+type ExprOpts struct {
 	Expr string
 }
 
-// SetupExprFlag registers the --expr flag on the given flag set.
-// Exposed separately from Setup for commands that register flags manually
-// (e.g., logs query, profiles metrics).
-func (opts *SharedOpts) SetupExprFlag(flags *pflag.FlagSet) {
-	flags.StringVar(&opts.Expr, "expr", "", "Query expression (alternative to positional argument)")
-}
-
-// Setup registers shared query flags on the given flag set.
-func (opts *SharedOpts) Setup(flags *pflag.FlagSet, enableGraph bool) {
-	RegisterCodecs(&opts.IO, enableGraph)
-	opts.IO.BindFlags(flags)
-
-	opts.SetupTimeFlags(flags)
-	opts.SetupExprFlag(flags)
-	flags.StringVar(&opts.Step, "step", "", "Query step (e.g., '15s', '1m')")
+// SetupExprFlag registers the --expr flag on the given flag set with the
+// given description (callers phrase it for their own query language, e.g.
+// "Query expression" vs "LogQL expression").
+func (opts *ExprOpts) SetupExprFlag(flags *pflag.FlagSet, description string) {
+	flags.StringVar(&opts.Expr, "expr", "", description)
 }
 
 // ResolveExpr resolves the query expression from either the --expr flag or a
 // positional argument at exprArgIndex. Exactly one source must provide the expression.
-func (opts *SharedOpts) ResolveExpr(args []string, exprArgIndex int) (string, error) {
+func (opts *ExprOpts) ResolveExpr(args []string, exprArgIndex int) (string, error) {
 	haveFlag := opts.Expr != ""
 	haveArg := exprArgIndex < len(args)
 
@@ -145,6 +134,32 @@ func (opts *SharedOpts) ResolveExpr(args []string, exprArgIndex int) (string, er
 		return opts.Expr, nil
 	}
 	return args[exprArgIndex], nil
+}
+
+// SharedOpts holds flags shared across typed query subcommands.
+type SharedOpts struct {
+	TimeRangeOpts
+	ExprOpts
+
+	IO   cmdio.Options
+	Step string
+}
+
+// SetupExprFlag registers the --expr flag on the given flag set.
+// Exposed separately from Setup for commands that register flags manually
+// (e.g., logs query, profiles metrics).
+func (opts *SharedOpts) SetupExprFlag(flags *pflag.FlagSet) {
+	opts.ExprOpts.SetupExprFlag(flags, "Query expression (alternative to positional argument)")
+}
+
+// Setup registers shared query flags on the given flag set.
+func (opts *SharedOpts) Setup(flags *pflag.FlagSet, enableGraph bool) {
+	RegisterCodecs(&opts.IO, enableGraph)
+	opts.IO.BindFlags(flags)
+
+	opts.SetupTimeFlags(flags)
+	opts.SetupExprFlag(flags)
+	flags.StringVar(&opts.Step, "step", "", "Query step (e.g., '15s', '1m')")
 }
 
 // Validate validates shared flags and resolves --since into From/To.
