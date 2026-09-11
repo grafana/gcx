@@ -460,6 +460,8 @@
  "gcx kg suppressions delete": "finite",
  "gcx kg suppressions list": "finite",
  "gcx kg suppressions upsert": "finite",
+ "gcx kg thresholds get": "finite",
+ "gcx kg thresholds list": "finite",
  "gcx login": "interactive",
  "gcx logs adaptive drop-rules create": "finite",
  "gcx logs adaptive drop-rules delete": "finite",
