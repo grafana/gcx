@@ -4,7 +4,7 @@ List Grafana documentation products.
 
 ### Synopsis
 
-List all product documentation groups in the index with their entry counts.
+List all product documentation groups in the index with their page counts. Use a product name with 'gcx docs search --product <name>' to scope search results.
 
 ```
 gcx docs list-products [flags]

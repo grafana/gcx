@@ -27,7 +27,7 @@ Search, fetch, and outline Grafana Labs product documentation, backed by an in-m
 
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
 * [gcx docs get](gcx_docs_get.md)	 - Fetch a Grafana documentation page.
-* [gcx docs list-links](gcx_docs_list-links.md)	 - List curated Grafana documentation links.
+* [gcx docs list-links](gcx_docs_list-links.md)	 - List curated Grafana documentation links referenced by gcx.
 * [gcx docs list-products](gcx_docs_list-products.md)	 - List Grafana documentation products.
 * [gcx docs outline](gcx_docs_outline.md)	 - Show the heading outline of a documentation page.
 * [gcx docs search](gcx_docs_search.md)	 - Search Grafana documentation.

@@ -34,6 +34,9 @@ func (o *getOpts) Validate() error {
 	if strings.TrimSpace(o.url) == "" {
 		return errors.New("url is required")
 	}
+	if o.offset < 0 {
+		return fmt.Errorf("--offset must be non-negative, got %d", o.offset)
+	}
 	return o.IO.Validate()
 }
 
