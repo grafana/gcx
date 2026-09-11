@@ -30,7 +30,7 @@ Grafana engineering teams are welcome to contribute to and maintain their areas 
 
 We have tools in place to help maintain a consistent command surface and output conventions across the codebase, as well as LLM-assisted code review to try and ensure that the architecture and design conventions are followed. For more details on these tools, see:
 
-- [The claude code review GH action, with prompt & references](.github/workflows/claude-code-review.yml). This should encourage authors to adhere to the guidelines linked above.
+- [The Claude review workflow](.github/workflows/claude-code-review.yml) reviews every non-draft PR opened by a person (bot PRs are skipped) with the repository's own [`review-pr`](.claude/skills/review-pr/SKILL.md) checks, so a PR gets the same treatment in CI as it does when a developer runs the review locally. The session returns its findings and the workflow publishes them as one comment review against the commit it reviewed, including a summary when there are no findings; missing or incomplete findings fail the run instead of publishing a clean review. Comment `@claude review` for a fresh review, and read the `claude-review-transcript-<PR>` artifact on the run to see what the session did. The review reads code: the normal CI jobs own builds, tests and generated docs.
 - [Prefer existing command operations over creating new ones](docs/design/command-naming.md)  (test files are [here](cmd/gcx/root/commandoperations_test.go))
 - [Syntax for experimental commands](docs/design/experimental-commands.md) (test files are referenced from the docs)
 
