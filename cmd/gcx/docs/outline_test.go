@@ -55,3 +55,36 @@ func TestOutlineShorthandResolution(t *testing.T) {
 		assert.Contains(t, err.Error(), "no matching page found")
 	})
 }
+
+func TestOutlineChildPages(t *testing.T) {
+	idx := loadTestIndex(t)
+
+	t.Run("directory page includes child pages", func(t *testing.T) {
+		// The sample index has tempo/latest.md as parent with configuration.md as child.
+		stdout, err := runWithIndexAndFetcher(t, idx, okDoc(), "outline", "https://grafana.com/docs/tempo/latest.md", "-o", "json")
+		require.NoError(t, err)
+
+		var res struct {
+			URL        string `json:"url"`
+			ChildPages []struct {
+				Title string `json:"title"`
+				URL   string `json:"url"`
+			} `json:"child_pages"`
+		}
+		require.NoError(t, json.Unmarshal([]byte(stdout), &res))
+		require.NotEmpty(t, res.ChildPages, "directory page should have child pages")
+		assert.Equal(t, "Configuration", res.ChildPages[0].Title)
+		assert.Contains(t, res.ChildPages[0].URL, "configuration")
+	})
+
+	t.Run("leaf page has no child pages", func(t *testing.T) {
+		stdout, err := runWithIndexAndFetcher(t, idx, okDoc(), "outline", "https://grafana.com/docs/tempo/latest/configuration.md", "-o", "json")
+		require.NoError(t, err)
+
+		var res struct {
+			ChildPages []struct{} `json:"child_pages"`
+		}
+		require.NoError(t, json.Unmarshal([]byte(stdout), &res))
+		assert.Empty(t, res.ChildPages, "leaf page should have no child pages")
+	})
+}
