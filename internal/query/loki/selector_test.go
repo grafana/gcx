@@ -66,6 +66,37 @@ func TestExtractStreamSelectors(t *testing.T) {
 			want: []string{`{app="x"}`},
 		},
 		{
+			// Regression: LogQL backtick (raw) strings are a second quoting
+			// delimiter alongside double quotes. A brace inside one must not
+			// be misread as a selector, the same way a double-quoted one
+			// isn't.
+			name: "regex filter with a backtick string containing a brace",
+			expr: "{app=\"x\"} |~ `foo{bar}`",
+			want: []string{`{app="x"}`},
+		},
+		{
+			name: "line filter with a backtick string containing a brace",
+			expr: "{app=\"x\"} |= `payload {foo}`",
+			want: []string{`{app="x"}`},
+		},
+		{
+			// The closing brace of the selector itself is backtick-quoted;
+			// it must not be mistaken for the selector's own closing brace.
+			name: "selector whose label value is a backtick string containing a brace",
+			expr: "{name!~`foo}bar`}",
+			want: []string{"{name!~`foo}bar`}"},
+		},
+		{
+			name: "line_format template with braces in a backtick string",
+			expr: "{app=\"x\"} | line_format `{{.x}}`",
+			want: []string{`{app="x"}`},
+		},
+		{
+			name: "a literal backtick inside a double-quoted string does not open a raw string",
+			expr: "{app=\"x\"} |= \"literal ` backtick\" |= `raw {z}`",
+			want: []string{`{app="x"}`},
+		},
+		{
 			name: "no selector",
 			expr: `vector(1)`,
 			want: nil,
