@@ -91,6 +91,16 @@ type SeriesResponse struct {
 	Data   []map[string]string `json:"data"`
 }
 
+// IndexStatsResponse represents the response from Loki's index/stats API,
+// summarizing streams/chunks/bytes/entries matched by a label selector and
+// time range without executing the query.
+type IndexStatsResponse struct {
+	Streams uint64 `json:"streams"`
+	Chunks  uint64 `json:"chunks"`
+	Bytes   uint64 `json:"bytes"`
+	Entries uint64 `json:"entries"`
+}
+
 // MetricQueryResponse represents the response from a metric LogQL query.
 // It uses the same structure as a Prometheus response (time-series with metric labels).
 type MetricQueryResponse struct {
