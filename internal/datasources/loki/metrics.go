@@ -101,11 +101,9 @@ tracks streams, not line filters or parsing stages.`,
 			}
 
 			var preflightWG sync.WaitGroup
-			preflightWG.Add(1)
-			go func() {
-				defer preflightWG.Done()
+			preflightWG.Go(func() {
 				runStatsPreflight(ctx, client, cmd.ErrOrStderr(), datasourceUID, expr, req.IsRange(), start, end, now, preflight.SkipStats, preflight.warnBytes)
-			}()
+			})
 
 			resp, err := client.MetricQuery(ctx, datasourceUID, req)
 			preflightWG.Wait()
