@@ -19,7 +19,7 @@ func TestSynthProvider_Interface(t *testing.T) {
 func TestSynthProvider_ConfigKeys(t *testing.T) {
 	p := &synth.SynthProvider{}
 	keys := p.ConfigKeys()
-	require.Len(t, keys, 3)
+	require.Len(t, keys, 4)
 
 	keyMap := make(map[string]providers.ConfigKey)
 	for _, k := range keys {
@@ -37,6 +37,10 @@ func TestSynthProvider_ConfigKeys(t *testing.T) {
 	smDS, ok := keyMap["sm-metrics-datasource-uid"]
 	require.True(t, ok)
 	assert.False(t, smDS.Secret)
+
+	smLogsDS, ok := keyMap["sm-logs-datasource-uid"]
+	require.True(t, ok)
+	assert.False(t, smLogsDS.Secret)
 }
 
 func TestSynthProvider_Validate(t *testing.T) {

@@ -28,6 +28,7 @@ Manage Synthetic Monitoring checks.
 * [gcx synthetic-monitoring checks get](gcx_synthetic-monitoring_checks_get.md)	 - Get a single Synthetic Monitoring check.
 * [gcx synthetic-monitoring checks list](gcx_synthetic-monitoring_checks_list.md)	 - List Synthetic Monitoring checks.
 * [gcx synthetic-monitoring checks status](gcx_synthetic-monitoring_checks_status.md)	 - Show pass/fail status of Synthetic Monitoring checks.
+* [gcx synthetic-monitoring checks test](gcx_synthetic-monitoring_checks_test.md)	 - Run a Synthetic Monitoring check once, without saving it.
 * [gcx synthetic-monitoring checks timeline](gcx_synthetic-monitoring_checks_timeline.md)	 - Render probe_success over time as a terminal line chart.
 * [gcx synthetic-monitoring checks update](gcx_synthetic-monitoring_checks_update.md)	 - Update a Synthetic Monitoring check from a file.
 

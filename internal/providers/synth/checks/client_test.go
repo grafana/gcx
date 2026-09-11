@@ -211,6 +211,67 @@ func TestClient_Create(t *testing.T) {
 	}
 }
 
+func TestClient_RunAdhoc(t *testing.T) {
+	tests := []struct {
+		name    string
+		req     checks.AdHocCheckRequest
+		handler http.HandlerFunc
+		wantID  string
+		wantErr bool
+	}{
+		{
+			name: "success",
+			req: checks.AdHocCheckRequest{
+				Timeout:  3000,
+				Settings: checks.CheckSettings{"http": map[string]any{}},
+				Probes:   []int64{1, 2},
+				Target:   "https://example.com",
+			},
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, http.MethodPost, r.Method)
+				assert.Equal(t, proxyPath("check/adhoc"), r.URL.Path)
+				var body checks.AdHocCheckRequest
+				assert.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+				assert.Equal(t, []int64{1, 2}, body.Probes)
+				assert.Equal(t, "https://example.com", body.Target)
+				writeJSON(w, checks.AdHocCheckResponse{
+					ID:       "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+					TenantID: 214,
+					Timeout:  3000,
+					Settings: checks.CheckSettings{"http": map[string]any{}},
+					Probes:   []int64{1, 2},
+					Target:   "https://example.com",
+				})
+			},
+			wantID: "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+		},
+		{
+			name: "server error",
+			req:  checks.AdHocCheckRequest{Target: "https://bad.example.com"},
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusBadRequest)
+				writeJSON(w, map[string]string{"error": "invalid target"})
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(tc.handler)
+			defer srv.Close()
+
+			got, err := proxyClient(t, srv).RunAdhoc(context.Background(), tc.req)
+			if tc.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantID, got.ID)
+		})
+	}
+}
+
 func TestClient_Update(t *testing.T) {
 	tests := []struct {
 		name    string

@@ -777,31 +777,57 @@ func computeCheckStatus(success *float64, sensitivity string) string {
 // 3. SM provider cache: providers.synth.sm-metrics-datasource-uid.
 // 4. Auto-discover via SM plugin settings — result saved to SM cache for next run.
 func resolveDataSourceUID(ctx context.Context, flagUID string, loader smcfg.StatusLoader) (string, error) {
+	return resolveTieredDatasourceUID(ctx, flagUID, loader, tieredDatasourceConfig{
+		Kind:     "prometheus",
+		FlagName: "--datasource-uid",
+		CacheKey: "sm-metrics-datasource-uid",
+		Discover: discoverPrometheusDatasource,
+		Save:     loader.SaveMetricsDatasourceUID,
+	})
+}
+
+// tieredDatasourceConfig parameterizes the four-tier datasource UID
+// resolution shared by Prometheus (metrics, resolveDataSourceUID) and Loki
+// (logs, resolveLogsDataSourceUID).
+type tieredDatasourceConfig struct {
+	Kind     string // config.DefaultDatasourceUID kind, e.g. "prometheus" or "loki"
+	FlagName string // e.g. "--datasource-uid" or "--logs-datasource-uid", for error text
+	CacheKey string // SM provider cache config key, e.g. "sm-metrics-datasource-uid"
+	Discover func(ctx context.Context, restCfg config.NamespacedRESTConfig) (string, error)
+	Save     func(ctx context.Context, uid string) error
+}
+
+// resolveTieredDatasourceUID resolves a datasource UID from:
+// 1. Explicit flag value (highest priority).
+// 2. Shared config resolver: datasources.<kind>.
+// 3. SM provider cache: providers.synth.<cacheKey>.
+// 4. Auto-discover via SM plugin settings — result saved to the cache for next run.
+func resolveTieredDatasourceUID(ctx context.Context, flagUID string, loader smcfg.StatusLoader, tc tieredDatasourceConfig) (string, error) {
 	if flagUID != "" {
 		return flagUID, nil
 	}
 
+	usageHint := fmt.Sprintf("use %s flag or set contexts.<name>.datasources.%s in config", tc.FlagName, tc.Kind)
+
 	cfg, err := loader.LoadConfig(ctx)
 	if err != nil {
-		return "", fmt.Errorf(
-			"loading config: %w; use --datasource-uid flag or set contexts.<name>.datasources.prometheus in config", err)
+		return "", fmt.Errorf("loading config: %w; %s", err, usageHint)
 	}
 
 	curCtx := cfg.GetCurrentContext()
 	if curCtx == nil {
-		return "", errors.New(
-			"datasource UID is required: use --datasource-uid flag or set contexts.<name>.datasources.prometheus in config")
+		return "", fmt.Errorf("datasource UID is required: %s", usageHint)
 	}
 
-	// Tier 2: shared config resolver — covers datasources.prometheus (new section)
-	// then default-prometheus-datasource (legacy key) in priority order.
-	if uid := config.DefaultDatasourceUID(*curCtx, "prometheus"); uid != "" {
+	// Tier 2: shared config resolver — covers datasources.<kind> (new section)
+	// then default-<kind>-datasource (legacy key) in priority order.
+	if uid := config.DefaultDatasourceUID(*curCtx, tc.Kind); uid != "" {
 		return uid, nil
 	}
 
 	// Tier 3: SM provider cache.
 	if prov := curCtx.Providers["synth"]; prov != nil {
-		if uid := prov["sm-metrics-datasource-uid"]; uid != "" {
+		if uid := prov[tc.CacheKey]; uid != "" {
 			return uid, nil
 		}
 	}
@@ -809,16 +835,15 @@ func resolveDataSourceUID(ctx context.Context, flagUID string, loader smcfg.Stat
 	// Tier 4: auto-discover via SM plugin settings, then cache for next run.
 	restCfg, err := loader.LoadGrafanaConfig(ctx)
 	if err != nil {
-		return "", fmt.Errorf(
-			"loading REST config: %w; use --datasource-uid flag or set contexts.<name>.datasources.prometheus in config", err)
+		return "", fmt.Errorf("loading REST config: %w; %s", err, usageHint)
 	}
-	uid, err := discoverPrometheusDatasource(ctx, restCfg)
+	uid, err := tc.Discover(ctx, restCfg)
 	if err != nil {
 		return "", err
 	}
 
 	// Best-effort save — don't fail the command if writing config fails.
-	if saveErr := loader.SaveMetricsDatasourceUID(ctx, uid); saveErr != nil {
+	if saveErr := tc.Save(ctx, uid); saveErr != nil {
 		logging.FromContext(ctx).Warn("could not save discovered datasource UID to config", slog.String("error", saveErr.Error()))
 	}
 
@@ -855,6 +880,13 @@ func discoverPrometheusDatasource(ctx context.Context, restCfg config.Namespaced
 // smMetricsDatasourceName queries the grafana-synthetic-monitoring-app plugin settings
 // and returns the configured metrics datasource name (jsonData.metrics.grafanaName).
 func smMetricsDatasourceName(ctx context.Context, restCfg config.NamespacedRESTConfig) (string, error) {
+	return smPluginDatasourceName(ctx, restCfg, "metrics")
+}
+
+// smPluginDatasourceName queries the grafana-synthetic-monitoring-app plugin
+// settings and returns the configured datasource name for the given section
+// (jsonData.<section>.grafanaName) — "metrics" or "logs".
+func smPluginDatasourceName(ctx context.Context, restCfg config.NamespacedRESTConfig, section string) (string, error) {
 	httpClient, err := rest.HTTPClientFor(&restCfg.Config)
 	if err != nil {
 		return "", fmt.Errorf("create Grafana client for SM plugin settings: %w", err)
@@ -879,21 +911,20 @@ func smMetricsDatasourceName(ctx context.Context, restCfg config.NamespacedRESTC
 	}
 
 	var body struct {
-		JSONData struct {
-			Metrics struct {
-				GrafanaName string `json:"grafanaName"`
-			} `json:"metrics"`
+		JSONData map[string]struct {
+			GrafanaName string `json:"grafanaName"`
 		} `json:"jsonData"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		return "", err
 	}
 
-	if body.JSONData.Metrics.GrafanaName == "" {
-		return "", errors.New("metrics datasource not configured in SM plugin settings")
+	name := body.JSONData[section].GrafanaName
+	if name == "" {
+		return "", fmt.Errorf("%s datasource not configured in SM plugin settings", section)
 	}
 
-	return body.JSONData.Metrics.GrafanaName, nil
+	return name, nil
 }
 
 // ---------------------------------------------------------------------------
