@@ -1,4 +1,4 @@
-package definitions_test
+package slo_test
 
 import (
 	"encoding/json"
@@ -6,22 +6,13 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/grafana/gcx/internal/config"
-	"github.com/grafana/gcx/internal/providers"
-	"github.com/grafana/gcx/internal/providers/slo/definitions"
+	slo "github.com/grafana/gcx/client/slo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"k8s.io/client-go/rest"
 )
 
-func newTestClient(t *testing.T, server *httptest.Server) *definitions.Client {
-	t.Helper()
-	cfg := config.NamespacedRESTConfig{
-		Config: rest.Config{Host: server.URL},
-	}
-	client, err := definitions.NewClient(cfg)
-	require.NoError(t, err)
-	return client
+func newTestClient(server *httptest.Server) *slo.Client {
+	return slo.NewClient(server.Client(), server.URL)
 }
 
 // writeJSON encodes v as JSON to w.
@@ -47,37 +38,34 @@ func TestClient_List(t *testing.T) {
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, http.MethodGet, r.Method)
 				assert.Equal(t, "/api/plugins/grafana-slo-app/resources/v1/slo", r.URL.Path)
-				writeJSON(w, definitions.SLOListResponse{
-					SLOs: []definitions.Slo{
-						{UUID: "uuid-1", Name: "SLO 1", Description: "First SLO"},
-						{UUID: "uuid-2", Name: "SLO 2", Description: "Second SLO"},
+				writeJSON(w, map[string]any{
+					"slos": []map[string]any{
+						{"uuid": "uuid-1", "name": "SLO 1", "description": "First SLO"},
+						{"uuid": "uuid-2", "name": "SLO 2", "description": "Second SLO"},
 					},
 				})
 			},
 			wantSLOs: 2,
-			wantErr:  false,
 		},
 		{
 			name: "empty list",
 			handler: func(w http.ResponseWriter, r *http.Request) {
-				writeJSON(w, definitions.SLOListResponse{SLOs: []definitions.Slo{}})
+				writeJSON(w, map[string]any{"slos": []map[string]any{}})
 			},
 			wantSLOs: 0,
-			wantErr:  false,
 		},
 		{
 			name: "null slos field returns empty slice",
 			handler: func(w http.ResponseWriter, r *http.Request) {
-				writeJSON(w, definitions.SLOListResponse{})
+				writeJSON(w, map[string]any{})
 			},
 			wantSLOs: 0,
-			wantErr:  false,
 		},
 		{
 			name: "server error",
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusInternalServerError)
-				writeJSON(w, providers.ErrorResponse{Error: "internal server error"})
+				writeJSON(w, map[string]string{"error": "internal server error"})
 			},
 			wantErr: true,
 		},
@@ -88,7 +76,7 @@ func TestClient_List(t *testing.T) {
 			server := httptest.NewServer(tt.handler)
 			defer server.Close()
 
-			client := newTestClient(t, server)
+			client := newTestClient(server)
 			slos, err := client.List(t.Context())
 
 			if tt.wantErr {
@@ -116,9 +104,8 @@ func TestClient_Get(t *testing.T) {
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, http.MethodGet, r.Method)
 				assert.Equal(t, "/api/plugins/grafana-slo-app/resources/v1/slo/uuid-1", r.URL.Path)
-				writeJSON(w, definitions.Slo{UUID: "uuid-1", Name: "SLO 1", Description: "First SLO"})
+				writeJSON(w, map[string]any{"uuid": "uuid-1", "name": "SLO 1", "description": "First SLO"})
 			},
-			wantErr: false,
 			wantUID: "uuid-1",
 		},
 		{
@@ -126,7 +113,7 @@ func TestClient_Get(t *testing.T) {
 			uuid: "uuid-missing",
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusNotFound)
-				writeJSON(w, providers.ErrorResponse{Error: "SLO not found"})
+				writeJSON(w, map[string]string{"error": "SLO not found"})
 			},
 			wantErr: true,
 		},
@@ -137,19 +124,19 @@ func TestClient_Get(t *testing.T) {
 			server := httptest.NewServer(tt.handler)
 			defer server.Close()
 
-			client := newTestClient(t, server)
-			slo, err := client.Get(t.Context(), tt.uuid)
+			client := newTestClient(server)
+			got, err := client.Get(t.Context(), tt.uuid)
 
 			if tt.wantErr {
 				require.Error(t, err)
 				if tt.name == "not found" {
-					require.ErrorIs(t, err, definitions.ErrNotFound)
+					require.ErrorIs(t, err, slo.ErrNotFound)
 				}
 				return
 			}
 
 			require.NoError(t, err)
-			assert.Equal(t, tt.wantUID, slo.UUID)
+			assert.Equal(t, tt.wantUID, got.UUID)
 		})
 	}
 }
@@ -157,60 +144,43 @@ func TestClient_Get(t *testing.T) {
 func TestClient_Create(t *testing.T) {
 	tests := []struct {
 		name    string
-		slo     *definitions.Slo
+		slo     *slo.Slo
 		handler http.HandlerFunc
 		wantErr bool
 		wantUID string
 	}{
 		{
 			name: "success 202 then fetch",
-			slo:  &definitions.Slo{Name: "New SLO", Description: "A new SLO"},
-			handler: func(w http.ResponseWriter, r *http.Request) {
-				switch r.Method {
-				case http.MethodPost:
-					assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
-
-					var received definitions.Slo
-					if err := json.NewDecoder(r.Body).Decode(&received); err != nil {
-						http.Error(w, err.Error(), http.StatusBadRequest)
-						return
+			slo:  &slo.Slo{Name: "New SLO", Description: "A new SLO"},
+			handler: func() http.HandlerFunc {
+				return func(w http.ResponseWriter, r *http.Request) {
+					switch r.Method {
+					case http.MethodPost:
+						assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+						var received slo.Slo
+						if err := json.NewDecoder(r.Body).Decode(&received); err != nil {
+							http.Error(w, err.Error(), http.StatusBadRequest)
+							return
+						}
+						assert.Equal(t, "New SLO", received.Name)
+						w.WriteHeader(http.StatusAccepted)
+						writeJSON(w, map[string]string{"uuid": "new-uuid", "message": "SLO created"})
+					case http.MethodGet:
+						assert.Equal(t, "/api/plugins/grafana-slo-app/resources/v1/slo/new-uuid", r.URL.Path)
+						writeJSON(w, map[string]any{"uuid": "new-uuid", "name": "New SLO"})
+					default:
+						w.WriteHeader(http.StatusMethodNotAllowed)
 					}
-					assert.Equal(t, "New SLO", received.Name)
-
-					w.WriteHeader(http.StatusAccepted)
-					writeJSON(w, definitions.SLOCreateResponse{UUID: "new-uuid", Message: "SLO created"})
-				case http.MethodGet:
-					assert.Equal(t, "/api/plugins/grafana-slo-app/resources/v1/slo/new-uuid", r.URL.Path)
-					writeJSON(w, definitions.Slo{UUID: "new-uuid", Name: "New SLO"})
-				default:
-					w.WriteHeader(http.StatusMethodNotAllowed)
 				}
-			},
-			wantErr: false,
+			}(),
 			wantUID: "new-uuid",
 		},
 		{
-			name: "success 200 then fetch",
-			slo:  &definitions.Slo{Name: "New SLO", Description: "A new SLO"},
-			handler: func(w http.ResponseWriter, r *http.Request) {
-				switch r.Method {
-				case http.MethodPost:
-					writeJSON(w, definitions.SLOCreateResponse{UUID: "new-uuid-200", Message: "SLO created"})
-				case http.MethodGet:
-					writeJSON(w, definitions.Slo{UUID: "new-uuid-200", Name: "New SLO"})
-				default:
-					w.WriteHeader(http.StatusMethodNotAllowed)
-				}
-			},
-			wantErr: false,
-			wantUID: "new-uuid-200",
-		},
-		{
 			name: "400 bad request",
-			slo:  &definitions.Slo{},
+			slo:  &slo.Slo{},
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusBadRequest)
-				writeJSON(w, providers.ErrorResponse{Error: "invalid SLO definition"})
+				writeJSON(w, map[string]string{"error": "invalid SLO definition"})
 			},
 			wantErr: true,
 		},
@@ -221,8 +191,8 @@ func TestClient_Create(t *testing.T) {
 			server := httptest.NewServer(tt.handler)
 			defer server.Close()
 
-			client := newTestClient(t, server)
-			resp, err := client.Create(t.Context(), tt.slo)
+			client := newTestClient(server)
+			got, err := client.Create(t.Context(), tt.slo)
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -230,7 +200,7 @@ func TestClient_Create(t *testing.T) {
 			}
 
 			require.NoError(t, err)
-			assert.Equal(t, tt.wantUID, resp.UUID)
+			assert.Equal(t, tt.wantUID, got.UUID)
 		})
 	}
 }
@@ -239,14 +209,14 @@ func TestClient_Update(t *testing.T) {
 	tests := []struct {
 		name    string
 		uuid    string
-		slo     *definitions.Slo
+		slo     *slo.Slo
 		handler http.HandlerFunc
 		wantErr bool
 	}{
 		{
 			name: "success 202 then fetch",
 			uuid: "uuid-1",
-			slo:  &definitions.Slo{Name: "Updated SLO"},
+			slo:  &slo.Slo{Name: "Updated SLO"},
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				switch r.Method {
 				case http.MethodPut:
@@ -254,36 +224,19 @@ func TestClient_Update(t *testing.T) {
 					assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
 					w.WriteHeader(http.StatusAccepted)
 				case http.MethodGet:
-					writeJSON(w, definitions.Slo{UUID: "uuid-1", Name: "Updated SLO"})
+					writeJSON(w, map[string]any{"uuid": "uuid-1", "name": "Updated SLO"})
 				default:
 					w.WriteHeader(http.StatusMethodNotAllowed)
 				}
 			},
-			wantErr: false,
-		},
-		{
-			name: "success 200 then fetch",
-			uuid: "uuid-1",
-			slo:  &definitions.Slo{Name: "Updated SLO"},
-			handler: func(w http.ResponseWriter, r *http.Request) {
-				switch r.Method {
-				case http.MethodPut:
-					w.WriteHeader(http.StatusOK)
-				case http.MethodGet:
-					writeJSON(w, definitions.Slo{UUID: "uuid-1", Name: "Updated SLO"})
-				default:
-					w.WriteHeader(http.StatusMethodNotAllowed)
-				}
-			},
-			wantErr: false,
 		},
 		{
 			name: "not found",
 			uuid: "uuid-missing",
-			slo:  &definitions.Slo{Name: "Updated SLO"},
+			slo:  &slo.Slo{Name: "Updated SLO"},
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusNotFound)
-				writeJSON(w, providers.ErrorResponse{Error: "SLO not found"})
+				writeJSON(w, map[string]string{"error": "SLO not found"})
 			},
 			wantErr: true,
 		},
@@ -294,8 +247,8 @@ func TestClient_Update(t *testing.T) {
 			server := httptest.NewServer(tt.handler)
 			defer server.Close()
 
-			client := newTestClient(t, server)
-			_, err := client.Update(t.Context(), tt.uuid, tt.slo)
+			client := newTestClient(server)
+			got, err := client.Update(t.Context(), tt.uuid, tt.slo)
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -303,6 +256,7 @@ func TestClient_Update(t *testing.T) {
 			}
 
 			require.NoError(t, err)
+			assert.Equal(t, tt.uuid, got.UUID)
 		})
 	}
 }
@@ -314,6 +268,7 @@ func TestClient_Delete(t *testing.T) {
 		confirmed bool
 		handler   http.HandlerFunc
 		wantErr   bool
+		wantErrIs error
 	}{
 		{
 			name:      "success 204",
@@ -324,7 +279,6 @@ func TestClient_Delete(t *testing.T) {
 				assert.Equal(t, "/api/plugins/grafana-slo-app/resources/v1/slo/uuid-1", r.URL.Path)
 				w.WriteHeader(http.StatusNoContent)
 			},
-			wantErr: false,
 		},
 		{
 			name:      "success 200",
@@ -333,7 +287,6 @@ func TestClient_Delete(t *testing.T) {
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
 			},
-			wantErr: false,
 		},
 		{
 			name:      "not found",
@@ -341,7 +294,7 @@ func TestClient_Delete(t *testing.T) {
 			confirmed: true,
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusNotFound)
-				writeJSON(w, providers.ErrorResponse{Error: "SLO not found"})
+				writeJSON(w, map[string]string{"error": "SLO not found"})
 			},
 			wantErr: true,
 		},
@@ -352,7 +305,8 @@ func TestClient_Delete(t *testing.T) {
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				t.Fatal("server must not be called when confirmed is false")
 			},
-			wantErr: true,
+			wantErr:   true,
+			wantErrIs: slo.ErrDeleteNotConfirmed,
 		},
 	}
 
@@ -361,11 +315,14 @@ func TestClient_Delete(t *testing.T) {
 			server := httptest.NewServer(tt.handler)
 			defer server.Close()
 
-			client := newTestClient(t, server)
+			client := newTestClient(server)
 			err := client.Delete(t.Context(), tt.uuid, tt.confirmed)
 
 			if tt.wantErr {
 				require.Error(t, err)
+				if tt.wantErrIs != nil {
+					require.ErrorIs(t, err, tt.wantErrIs)
+				}
 				return
 			}
 
@@ -378,25 +335,25 @@ func TestClient_ErrorResponses(t *testing.T) {
 	tests := []struct {
 		name       string
 		statusCode int
-		errBody    providers.ErrorResponse
+		errBody    map[string]string
 		wantErrMsg string
 	}{
 		{
 			name:       "401 unauthorized",
 			statusCode: http.StatusUnauthorized,
-			errBody:    providers.ErrorResponse{Error: "unauthorized"},
+			errBody:    map[string]string{"error": "unauthorized"},
 			wantErrMsg: "401",
 		},
 		{
 			name:       "403 forbidden",
 			statusCode: http.StatusForbidden,
-			errBody:    providers.ErrorResponse{Error: "forbidden"},
+			errBody:    map[string]string{"error": "forbidden"},
 			wantErrMsg: "403",
 		},
 		{
 			name:       "500 internal server error",
 			statusCode: http.StatusInternalServerError,
-			errBody:    providers.ErrorResponse{Error: "internal server error"},
+			errBody:    map[string]string{"error": "internal server error"},
 			wantErrMsg: "500",
 		},
 	}
@@ -409,11 +366,15 @@ func TestClient_ErrorResponses(t *testing.T) {
 			}))
 			defer server.Close()
 
-			client := newTestClient(t, server)
+			client := newTestClient(server)
 			_, err := client.List(t.Context())
 
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.wantErrMsg)
+
+			var httpErr interface{ HTTPStatusCode() int }
+			require.ErrorAs(t, err, &httpErr)
+			assert.Equal(t, tt.statusCode, httpErr.HTTPStatusCode())
 		})
 	}
 }

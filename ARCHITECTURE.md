@@ -229,6 +229,7 @@ can otherwise inject Grafana auth into the wrong request.
 | [022](docs/adrs/config-v1/001-versioned-split-config-and-secret-trust.md) | Versioned Split Config and Source-Bound Secret Trust | proposed |
 | [023](docs/adrs/fleet-plugin-proxy/001-fleet-via-collector-app-proxy.md) | Fleet Management through the collector app plugin proxy | accepted |
 | [024](docs/adrs/provider-consolidation/002-shared-table-declaration.md) | Providers declare table columns instead of writing codecs | accepted |
+| [025](docs/adrs/embeddable-library/001-typed-go-api-for-embedding.md) | gcx as an embeddable Go library: typed API, not a CLI shim | proposed |
 
 See [docs/adrs/](docs/adrs/) for all ADRs.
 

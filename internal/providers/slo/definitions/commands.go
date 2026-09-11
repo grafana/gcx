@@ -620,14 +620,22 @@ func newDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return nil
 			}
 
-			crud, _, err := NewTypedCRUD(ctx, loader)
+			cfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to load REST config for SLO: %w", err)
+			}
+
+			client, err := NewClient(cfg)
+			if err != nil {
+				return fmt.Errorf("failed to create SLO definitions client: %w", err)
 			}
 
 			result := newDeleteBatchResult()
 			for i, uuid := range args {
-				if err := crud.Delete(ctx, uuid); err != nil {
+				// proceed is already resolved above via ConfirmDestructive;
+				// the typed client's confirmed parameter (not stdin) is what
+				// actually gates the delete, so it is threaded through here.
+				if err := client.Delete(ctx, uuid, proceed); err != nil {
 					cause := fmt.Errorf("failed to delete SLO %s: %w", uuid, err)
 					result.Summary.Failed++
 					result.Summary.Skipped = len(args) - i - 1

@@ -15,6 +15,13 @@ OnCall, Fleet Management, etc.) using product-specific REST APIs.
 
 - **Strict layer separation:** `cmd/` contains only CLI wiring (Cobra commands, flag parsing,
   output formatting) — no business logic. All domain logic lives in `internal/`.
+- **Public Go API is a second, equally stable public surface.** Provider logic promoted into
+  an importable Go client (`docs/adrs/embeddable-library/001-typed-go-api-for-embedding.md`)
+  is not an exception to the layer-separation rule above — it ships in the same module,
+  versioned with the CLI, and inherits the CLI's "stable within a major version" contract
+  (see CLI Grammar below). `cmd/gcx/*` commands for a promoted provider must call that public
+  client rather than reimplement its logic — no parallel implementation may persist, even
+  temporarily.
 - **Unstructured resource model:** Resources are `unstructured.Unstructured` objects — no
   pre-generated Go types. Dynamic discovery at runtime, not compile-time.
 - **Folder-before-dashboard ordering:** Push pipeline does topological sort — folders are
