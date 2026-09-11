@@ -17,6 +17,7 @@ UX requirements. All items are unless marked otherwise.
 - [ ] Secret keys (passwords, tokens, API keys) have `Secret: true`
 - [ ] `Validate()` returns error pointing to `gcx config set ...`
 - [ ] Provider self-registers via a single `providers.Register()` in `init()` + blank import in `cmd/gcx/root/command.go` (no separate `adapter.Register()` calls)
+- [ ] Provider ships a typed public client package (not just `internal/providers/*` logic), and its `cmd/gcx/*` commands call that client directly — both in the same PR, not deferred (see `docs/adrs/embeddable-library/001-typed-go-api-for-embedding.md`)
 
 ### UX Compliance
 

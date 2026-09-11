@@ -1,31 +1,25 @@
 package definitions
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
-	"net/http"
 
+	sloclient "github.com/grafana/gcx/client/slo"
 	"github.com/grafana/gcx/internal/config"
-	"github.com/grafana/gcx/internal/providers"
 	"k8s.io/client-go/rest"
 )
 
 // ErrNotFound is returned when a requested SLO does not exist (HTTP 404).
-var ErrNotFound = errors.New("SLO not found")
+var ErrNotFound = sloclient.ErrNotFound
 
-const (
-	basePath     = "/api/plugins/grafana-slo-app/resources/v1/slo"
-	sloByUUIDFmt = basePath + "/%s"
-)
-
-// Client is an HTTP client for the Grafana SLO API.
+// Client is a thin CLI-facing wrapper around the public client/slo.Client:
+// it builds the *http.Client from a NamespacedRESTConfig (via client-go's
+// rest.HTTPClientFor) and converts between the CLI's Slo type — which
+// carries resource-adapter methods the public API has no business
+// exposing — and the public client's wire type.
 type Client struct {
-	restConfig config.NamespacedRESTConfig
-	httpClient *http.Client
+	inner *sloclient.Client
 }
 
 // NewClient creates a new SLO definitions client.
@@ -35,135 +29,102 @@ func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
 		return nil, fmt.Errorf("failed to create HTTP client: %w", err)
 	}
 
-	return &Client{
-		restConfig: cfg,
-		httpClient: httpClient,
-	}, nil
+	return &Client{inner: sloclient.NewClient(httpClient, cfg.Host)}, nil
 }
 
 // List returns all SLO definitions.
 func (c *Client) List(ctx context.Context) ([]Slo, error) {
-	resp, err := c.doRequest(ctx, http.MethodGet, basePath, nil)
+	items, err := c.inner.List(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list SLOs: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, providers.HandleErrorResponse(resp)
+		return nil, err
 	}
 
-	var listResp SLOListResponse
-	if err := json.NewDecoder(resp.Body).Decode(&listResp); err != nil {
-		return nil, fmt.Errorf("failed to decode SLO list response: %w", err)
+	slos := make([]Slo, len(items))
+	for i, item := range items {
+		slo, err := fromWire(&item)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert SLO %s: %w", item.UUID, err)
+		}
+		slos[i] = *slo
 	}
 
-	if listResp.SLOs == nil {
-		return []Slo{}, nil
-	}
-
-	return listResp.SLOs, nil
+	return slos, nil
 }
 
 // Get returns a single SLO definition by UUID.
 func (c *Client) Get(ctx context.Context, uuid string) (*Slo, error) {
-	resp, err := c.doRequest(ctx, http.MethodGet, fmt.Sprintf(sloByUUIDFmt, uuid), nil)
+	item, err := c.inner.Get(ctx, uuid)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get SLO %s: %w", uuid, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusNotFound {
-		return nil, ErrNotFound
+		return nil, err
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, providers.HandleErrorResponse(resp)
+	return fromWire(item)
+}
+
+// Create creates a new SLO definition and returns the created object.
+func (c *Client) Create(ctx context.Context, slo *Slo) (*Slo, error) {
+	wire, err := toWire(slo)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert SLO %s: %w", slo.Name, err)
 	}
 
+	created, err := c.inner.Create(ctx, wire)
+	if err != nil {
+		return nil, err
+	}
+
+	return fromWire(created)
+}
+
+// Update updates an existing SLO definition and returns the updated object.
+func (c *Client) Update(ctx context.Context, uuid string, slo *Slo) (*Slo, error) {
+	wire, err := toWire(slo)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert SLO %s: %w", uuid, err)
+	}
+
+	updated, err := c.inner.Update(ctx, uuid, wire)
+	if err != nil {
+		return nil, err
+	}
+
+	return fromWire(updated)
+}
+
+// Delete deletes an SLO definition by UUID. confirmed is resolved by the
+// caller (the CLI's ConfirmDestructive prompt, already run before this is
+// reached) and passed straight through to the public client, which has no
+// stdin of its own to prompt against.
+func (c *Client) Delete(ctx context.Context, uuid string, confirmed bool) error {
+	return c.inner.Delete(ctx, uuid, confirmed)
+}
+
+// toWire converts the CLI's Slo (which also carries resource-adapter
+// methods irrelevant to the wire format) to the public client's wire type.
+// Both types share identical JSON tags, so a marshal round-trip is a
+// correct and simple field-for-field copy without hand-mapping every
+// nested struct.
+func toWire(slo *Slo) (*sloclient.Slo, error) {
+	b, err := json.Marshal(slo)
+	if err != nil {
+		return nil, err
+	}
+	var wire sloclient.Slo
+	if err := json.Unmarshal(b, &wire); err != nil {
+		return nil, err
+	}
+	return &wire, nil
+}
+
+// fromWire converts the public client's wire type back to the CLI's Slo.
+func fromWire(wire *sloclient.Slo) (*Slo, error) {
+	b, err := json.Marshal(wire)
+	if err != nil {
+		return nil, err
+	}
 	var slo Slo
-	if err := json.NewDecoder(resp.Body).Decode(&slo); err != nil {
-		return nil, fmt.Errorf("failed to decode SLO response: %w", err)
+	if err := json.Unmarshal(b, &slo); err != nil {
+		return nil, err
 	}
-
 	return &slo, nil
-}
-
-// Create creates a new SLO definition.
-func (c *Client) Create(ctx context.Context, slo *Slo) (*SLOCreateResponse, error) {
-	body, err := json.Marshal(slo)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal SLO: %w", err)
-	}
-
-	resp, err := c.doRequest(ctx, http.MethodPost, basePath, bytes.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create SLO: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
-		return nil, providers.HandleErrorResponse(resp)
-	}
-
-	var createResp SLOCreateResponse
-	if err := json.NewDecoder(resp.Body).Decode(&createResp); err != nil {
-		return nil, fmt.Errorf("failed to decode SLO create response: %w", err)
-	}
-
-	return &createResp, nil
-}
-
-// Update updates an existing SLO definition.
-func (c *Client) Update(ctx context.Context, uuid string, slo *Slo) error {
-	body, err := json.Marshal(slo)
-	if err != nil {
-		return fmt.Errorf("failed to marshal SLO: %w", err)
-	}
-
-	resp, err := c.doRequest(ctx, http.MethodPut, fmt.Sprintf(sloByUUIDFmt, uuid), bytes.NewReader(body))
-	if err != nil {
-		return fmt.Errorf("failed to update SLO %s: %w", uuid, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusNoContent {
-		return providers.HandleErrorResponse(resp)
-	}
-
-	return nil
-}
-
-// Delete deletes an SLO definition by UUID.
-func (c *Client) Delete(ctx context.Context, uuid string) error {
-	resp, err := c.doRequest(ctx, http.MethodDelete, fmt.Sprintf(sloByUUIDFmt, uuid), nil)
-	if err != nil {
-		return fmt.Errorf("failed to delete SLO %s: %w", uuid, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
-		return providers.HandleErrorResponse(resp)
-	}
-
-	return nil
-}
-
-// doRequest builds and executes an HTTP request against the Grafana SLO API.
-func (c *Client) doRequest(ctx context.Context, method, path string, body io.Reader) (*http.Response, error) {
-	req, err := http.NewRequestWithContext(ctx, method, c.restConfig.Host+path, body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to execute request: %w", err)
-	}
-
-	return resp, nil
 }

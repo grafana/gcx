@@ -19,6 +19,8 @@ gcx is a single CLI that unifies access to the entire Grafana stack — across O
 1. **K8s resource tier** — dashboards, folders, and other Grafana-native resources via Grafana 12's Kubernetes-compatible API (`k8s.io/client-go`)
 2. **Cloud provider tier** — pluggable providers for every Grafana Cloud product via product-specific REST APIs
 
+Most of that provider logic is also consumable as a typed, embeddable Go library — for other programs (e.g. mcp-grafana) to import directly, not only via the CLI. See [docs/adrs/embeddable-library/001-typed-go-api-for-embedding.md](docs/adrs/embeddable-library/001-typed-go-api-for-embedding.md) for scope and rationale.
+
 Every command serves both humans and AI agents. Agent mode is auto-detected (Claude Code, Cursor, Copilot) and switches defaults (JSON output, no color, no truncation, auto-approved prompts) without changing available functionality.
 
 ## Core Beliefs

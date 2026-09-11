@@ -290,6 +290,7 @@ Summary of the key steps:
 4. Types + client; adapter only for resources placed in the `resources` pipeline (returned from `TypedRegistrations()`, non-nil `Schema`)
 5. Register (blank import in `cmd/gcx/root/command.go`; adapter registration flows through `TypedRegistrations()` — never call `adapter.Register()` directly)
 6. Tests (interface compliance, client httptest request mapping; adapter round-trip only when an adapter exists)
+7. Typed public client package + `cmd/gcx/*` commands calling it directly — in this same PR, not a follow-up (`docs/adrs/embeddable-library/001-typed-go-api-for-embedding.md`)
 
 **Key patterns** (see provider-guide.md for details):
 - Hand-roll HTTP client (~200 LOC) — don't use generated OpenAPI clients
@@ -335,7 +336,9 @@ From `docs/design/provider-checklist.md` and `docs/reference/provider-guide.md`:
 
 **Interface**: All 6 Provider methods (incl. `TypedRegistrations()` — `nil` is
 valid for commands-only providers), `Name()` lowercase/unique, ConfigKeys
-complete, secrets marked, Validate returns actionable errors, blank import added.
+complete, secrets marked, Validate returns actionable errors, blank import added,
+typed public client package with `cmd/gcx/*` calling it directly (no parallel
+implementation).
 
 **UX**: `-o json/yaml` support, text table default, actionable error suggestions,
 no `os.Exit()`, cmdio status messages, help text standards, push idempotent,

@@ -82,35 +82,23 @@ func NewTypedCRUD(ctx context.Context, loader GrafanaConfigLoader) (*adapter.Typ
 		return nil, internalconfig.NamespacedRESTConfig{}, fmt.Errorf("failed to create SLO definitions client: %w", err)
 	}
 
-	//nolint:dupl // Duplicate TypedCRUD initialization intentional between factory functions.
 	crud := &adapter.TypedCRUD[Slo]{
 		ListFn: adapter.LimitedListFn(client.List),
 		GetFn: func(ctx context.Context, name string) (*Slo, error) {
 			return client.Get(ctx, name)
 		},
 		CreateFn: func(ctx context.Context, slo *Slo) (*Slo, error) {
-			resp, err := client.Create(ctx, slo)
-			if err != nil {
-				return nil, fmt.Errorf("failed to create SLO: %w", err)
-			}
-			created, err := client.Get(ctx, resp.UUID)
-			if err != nil {
-				return nil, fmt.Errorf("failed to fetch created SLO %q: %w", resp.UUID, err)
-			}
-			return created, nil
+			return client.Create(ctx, slo)
 		},
 		UpdateFn: func(ctx context.Context, name string, slo *Slo) (*Slo, error) {
-			if err := client.Update(ctx, name, slo); err != nil {
-				return nil, fmt.Errorf("failed to update SLO %q: %w", name, err)
-			}
-			updated, err := client.Get(ctx, name)
-			if err != nil {
-				return nil, fmt.Errorf("failed to fetch updated SLO %q: %w", name, err)
-			}
-			return updated, nil
+			return client.Update(ctx, name, slo)
 		},
 		DeleteFn: func(ctx context.Context, name string) error {
-			return client.Delete(ctx, name)
+			// DeleteFn is only reached after the CLI layer (definitions'
+			// own delete command or the generic `resources delete`) has
+			// already run its own confirm/force check, so confirmation is
+			// always satisfied by the time the typed client sees it.
+			return client.Delete(ctx, name, true)
 		},
 		Namespace:   cfg.Namespace,
 		StripFields: []string{"uuid", "readOnly"},
@@ -143,35 +131,23 @@ func NewFactoryFromConfig(cfg internalconfig.NamespacedRESTConfig) adapter.Facto
 			return nil, fmt.Errorf("failed to create SLO definitions client: %w", err)
 		}
 
-		//nolint:dupl // Duplicate TypedCRUD initialization intentional between factory functions.
 		crud := &adapter.TypedCRUD[Slo]{
 			ListFn: adapter.LimitedListFn(client.List),
 			GetFn: func(ctx context.Context, name string) (*Slo, error) {
 				return client.Get(ctx, name)
 			},
 			CreateFn: func(ctx context.Context, slo *Slo) (*Slo, error) {
-				resp, err := client.Create(ctx, slo)
-				if err != nil {
-					return nil, fmt.Errorf("failed to create SLO: %w", err)
-				}
-				created, err := client.Get(ctx, resp.UUID)
-				if err != nil {
-					return nil, fmt.Errorf("failed to fetch created SLO %q: %w", resp.UUID, err)
-				}
-				return created, nil
+				return client.Create(ctx, slo)
 			},
 			UpdateFn: func(ctx context.Context, name string, slo *Slo) (*Slo, error) {
-				if err := client.Update(ctx, name, slo); err != nil {
-					return nil, fmt.Errorf("failed to update SLO %q: %w", name, err)
-				}
-				updated, err := client.Get(ctx, name)
-				if err != nil {
-					return nil, fmt.Errorf("failed to fetch updated SLO %q: %w", name, err)
-				}
-				return updated, nil
+				return client.Update(ctx, name, slo)
 			},
 			DeleteFn: func(ctx context.Context, name string) error {
-				return client.Delete(ctx, name)
+				// DeleteFn is only reached after the CLI layer (definitions'
+				// own delete command or the generic `resources delete`) has
+				// already run its own confirm/force check, so confirmation is
+				// always satisfied by the time the typed client sees it.
+				return client.Delete(ctx, name, true)
 			},
 			Namespace:   cfg.Namespace,
 			StripFields: []string{"uuid", "readOnly"},
