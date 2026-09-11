@@ -27,4 +27,5 @@ Query Loki datasources
 * [gcx datasources loki metrics](gcx_datasources_loki_metrics.md)	 - Execute a metric LogQL query against a Loki datasource
 * [gcx datasources loki query](gcx_datasources_loki_query.md)	 - Execute a LogQL query against a Loki datasource
 * [gcx datasources loki series](gcx_datasources_loki_series.md)	 - List log streams
+* [gcx datasources loki stats](gcx_datasources_loki_stats.md)	 - Show index stats (streams/chunks/bytes/entries) for a LogQL selector without executing it
 

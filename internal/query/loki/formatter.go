@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	"github.com/go-logfmt/logfmt"
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/style"
@@ -198,6 +199,16 @@ func FormatSeriesTable(w io.Writer, resp *SeriesResponse) error {
 		t.Row(row...)
 	}
 
+	return t.Render(w)
+}
+
+// FormatIndexStatsTable formats an IndexStatsResponse as a two-column table.
+func FormatIndexStatsTable(w io.Writer, resp *IndexStatsResponse) error {
+	t := style.NewTable("METRIC", "VALUE")
+	t.Row("Streams", strconv.FormatUint(resp.Streams, 10))
+	t.Row("Chunks", strconv.FormatUint(resp.Chunks, 10))
+	t.Row("Bytes", humanize.IBytes(resp.Bytes))
+	t.Row("Entries", strconv.FormatUint(resp.Entries, 10))
 	return t.Render(w)
 }
 
