@@ -192,17 +192,8 @@ func (opts *Options) applyJSONFlag() error {
 	return nil
 }
 
-// applyJQFlag processes the --jq flag. The flag is mutually exclusive with
-// --json (both field selection and discovery): jq strictly supersedes those
-// mechanisms, so combining them adds confusion without value. Also, the two
-// resources/* commands that bypass Options.Encode() and construct
-// FieldSelectCodec directly (get.go, schemas.go) only fire when JSONFields or
-// JSONDiscovery is set — mutual exclusion preserves correctness there.
-//
-// When -o is unset, --jq auto-flips OutputFormat to "json" (mirrors --json).
-// An explicit non-JSON -o is rejected because jq operates on JSON input.
-// The expression is parsed eagerly so syntax errors surface during validation,
-// not encoding.
+// applyJQFlag validates --jq and its output format, rejecting --json.
+// Bare --jq selects JSON even in agent mode; explicit -o agents keeps spilling.
 func (opts *Options) applyJQFlag() error {
 	if opts.flags == nil {
 		return nil
@@ -219,8 +210,12 @@ func (opts *Options) applyJQFlag() error {
 	}
 
 	outputFlag := opts.flags.Lookup("output")
-	if outputFlag != nil && outputFlag.Changed && outputFlag.Value.String() != "json" {
-		return fmt.Errorf("--jq requires JSON output, but -o %s was specified", outputFlag.Value.String())
+	if outputFlag != nil && outputFlag.Changed {
+		switch outputFlag.Value.String() {
+		case "json", "agents":
+		default:
+			return fmt.Errorf("--jq requires JSON output (json or agents), but -o %s was specified", outputFlag.Value.String())
+		}
 	}
 
 	query, err := gojq.Parse(jqFlag.Value.String())
@@ -229,13 +224,14 @@ func (opts *Options) applyJQFlag() error {
 	}
 
 	opts.jqQuery = query
-	opts.OutputFormat = "json"
+	if outputFlag == nil || !outputFlag.Changed {
+		opts.OutputFormat = "json"
+	}
 	return nil
 }
 
-// JQActive reports whether a --jq transformation is in effect. Commands that
-// build fused envelopes (bypassing Options.Encode) must not do so when jq is
-// active — the envelope would silently drop the user's transformation.
+// JQActive reports whether jq is active. Callers must not bypass Options.Encode
+// with a fused envelope that would drop the transformation.
 func (opts *Options) JQActive() bool {
 	return opts.jqQuery != nil
 }
@@ -259,19 +255,8 @@ func (opts *Options) Encode(dst io.Writer, value any) error {
 		return err
 	}
 
-	// In agent mode, nudge toward --json field selection / --jq transformation
-	// whenever the resolved codec is JSON-like (json or agents format). The
-	// hint still fires when --json field1,field2 is in use — the caller may
-	// not realize --jq exists for transformation (group_by, filter, count).
-	// Suppressed when --jq is already in use (caller already has the more
-	// powerful tool) or when --json list is requested (discovery output is
-	// not a transformation target). Also suppressed for pinned-default
-	// (file-writing) commands: their encode fills a file or editor buffer,
-	// not stdout, and they reject --json/--jq — recommending those flags
-	// would contradict the command's own validation. Emitted once per
-	// invocation to stderr (never pollutes stdout) as JSONL
-	// {"class":"hint",...} via emitHint (FR-104). Suppressed outside agent
-	// mode to avoid noise on TTYs.
+	// Nudge agents toward jq once, even with field selection. Pinned file-output
+	// commands reject --json/--jq, so recommending those flags would be wrong.
 	isJSONLike := codec.Format() == format.JSON || codec.Format() == agentsFormat
 	if !opts.jsonFieldsHintShown && agent.IsAgentMode() && isJSONLike && !opts.JSONDiscovery && opts.jqQuery == nil && !opts.defaultFormatPinned {
 		opts.jsonFieldsHintShown = true
@@ -285,22 +270,22 @@ func (opts *Options) Encode(dst io.Writer, value any) error {
 		)
 	}
 
-	// Intercept JSON field discovery, field selection, and jq transformation
-	// when the resolved codec is JSON-like. Commands that already check
-	// JSONFields/JSONDiscovery before calling Encode() will never reach here
-	// (they return early), so there is no double-application risk. --jq is
-	// mutually exclusive with --json (enforced in applyJQFlag), so the order
-	// of the branches below does not matter for correctness.
-	if isJSONLike {
-		if opts.jqQuery != nil {
-			return NewJQCodec(opts.jqQuery).Encode(dst, value)
+	// Apply JSON transformations before encoding or spilling.
+	if !isJSONLike {
+		return codec.Encode(dst, value)
+	}
+	if opts.jqQuery != nil {
+		jq := NewJQCodec(opts.jqQuery)
+		if agents, ok := codec.(*agentsCodec); ok {
+			return agents.encodeJQ(dst, jq.results(value))
 		}
-		if opts.JSONDiscovery {
-			return opts.encodeDiscovery(dst, value)
-		}
-		if len(opts.JSONFields) > 0 {
-			return NewFieldSelectCodecWithValidator(opts.JSONFields, opts.jsonFieldValidator).Encode(dst, value)
-		}
+		return jq.Encode(dst, value)
+	}
+	if opts.JSONDiscovery {
+		return opts.encodeDiscovery(dst, value)
+	}
+	if len(opts.JSONFields) > 0 {
+		return NewFieldSelectCodecWithValidator(opts.JSONFields, opts.jsonFieldValidator).Encode(dst, value)
 	}
 
 	return codec.Encode(dst, value)

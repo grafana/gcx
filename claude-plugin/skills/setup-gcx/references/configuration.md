@@ -206,6 +206,28 @@ contexts and never mutate the config file. Context selection happens before thes
 **Precedence:** env vars override config file values for the selected context. Token takes precedence
 over user/password when both are set.
 
+Credential storage defaults to the OS keychain. Set the trusted configuration
+policy to `off` only when mode-`0600` plaintext YAML storage is deliberate:
+
+```yaml
+credentials:
+  keychain: off
+```
+
+`GCX_KEYCHAIN` overrides that policy. With `--config` or `GCX_CONFIG`, precedence
+is environment, selected file, then default `on`; user and system files are
+bypassed even when the selected file omits the field. Otherwise precedence is
+environment, user config, system config, then default `on`. An automatically discovered repository `.gcx.yaml` cannot set
+`credentials.keychain`: gcx ignores it with a warning but still merges its
+other fields. Invalid trusted config fails validation; an invalid environment
+value warns and resolves to `on`.
+
+Configured `off` is the only deliberate plaintext persistence mode. Existing
+keychain-backed credentials are not moved back out: their references are preserved, so they
+become unreadable until the policy is `on` again or the credential is replaced.
+Replacing one while `off` writes plaintext and leaves the old OS-store item
+stale; gcx warns with cleanup guidance.
+
 Credentials stored in the OS keychain are bound to their canonical source file,
 exact owner kind/name, exact secret field, and normalized destination. If an
 environment variable changes a server, Cloud endpoint, or Synthetic Monitoring

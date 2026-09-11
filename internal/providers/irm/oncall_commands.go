@@ -37,49 +37,40 @@ func (o *listOpts) setup(flags *pflag.FlagSet, resource string) {
 	// resource type.
 	switch resource {
 	case "integrations":
-		o.IO.RegisterCustomCodec("table", &integrationTableCodec{})
-		o.IO.RegisterCustomCodec("wide", &integrationTableCodec{Wide: true})
+		cmdio.RegisterTable(&o.IO, integrationTable())
 	case "escalation-chains":
-		o.IO.RegisterCustomCodec("table", &escalationChainTableCodec{})
+		cmdio.RegisterTable(&o.IO, escalationChainTable())
 	case "escalation-policies":
-		o.IO.RegisterCustomCodec("table", &escalationPolicyTableCodec{})
-		o.IO.RegisterCustomCodec("wide", &escalationPolicyTableCodec{Wide: true})
+		cmdio.RegisterTable(&o.IO, escalationPolicyTable())
 	case "schedules":
-		o.IO.RegisterCustomCodec("table", &scheduleTableCodec{})
-		o.IO.RegisterCustomCodec("wide", &scheduleTableCodec{Wide: true})
+		cmdio.RegisterTable(&o.IO, scheduleTable())
 	case "shifts":
-		o.IO.RegisterCustomCodec("table", &shiftTableCodec{})
-		o.IO.RegisterCustomCodec("wide", &shiftTableCodec{Wide: true})
+		cmdio.RegisterTable(&o.IO, shiftTable())
 	case "routes":
-		o.IO.RegisterCustomCodec("table", &routeTableCodec{})
-		o.IO.RegisterCustomCodec("wide", &routeTableCodec{Wide: true})
+		cmdio.RegisterTable(&o.IO, routeTable())
 	case "webhooks":
-		o.IO.RegisterCustomCodec("table", &webhookTableCodec{})
-		o.IO.RegisterCustomCodec("wide", &webhookTableCodec{Wide: true})
+		cmdio.RegisterTable(&o.IO, webhookTable())
 	case "alert-groups":
 		o.IO.RegisterCustomCodec("table", &alertGroupTableCodec{})
 		o.IO.RegisterCustomCodec("wide", &alertGroupTableCodec{Wide: true})
 	case "users":
-		o.IO.RegisterCustomCodec("table", &userTableCodec{})
-		o.IO.RegisterCustomCodec("wide", &userTableCodec{Wide: true})
+		cmdio.RegisterTable(&o.IO, userTable())
 	case "teams":
-		o.IO.RegisterCustomCodec("table", &teamTableCodec{})
+		cmdio.RegisterTable(&o.IO, teamTable())
 	case "user-groups":
-		o.IO.RegisterCustomCodec("table", &userGroupTableCodec{})
+		cmdio.RegisterTable(&o.IO, userGroupTable())
 	case "slack-channels":
-		o.IO.RegisterCustomCodec("table", &slackChannelTableCodec{})
+		cmdio.RegisterTable(&o.IO, slackChannelTable())
 	case "alerts":
 		// `alert-groups list-alerts <group-id>` dispatches via this case.
 		o.IO.RegisterCustomCodec("table", &alertTableCodec{})
 		o.IO.RegisterCustomCodec("wide", &alertTableCodec{Wide: true})
 	case "organizations":
-		o.IO.RegisterCustomCodec("table", &organizationTableCodec{})
+		cmdio.RegisterTable(&o.IO, organizationTable())
 	case "resolution-notes":
-		o.IO.RegisterCustomCodec("table", &resolutionNoteTableCodec{})
-		o.IO.RegisterCustomCodec("wide", &resolutionNoteTableCodec{Wide: true})
+		cmdio.RegisterTable(&o.IO, resolutionNoteTable())
 	case "shift-swaps":
-		o.IO.RegisterCustomCodec("table", &shiftSwapTableCodec{})
-		o.IO.RegisterCustomCodec("wide", &shiftSwapTableCodec{Wide: true})
+		cmdio.RegisterTable(&o.IO, shiftSwapTable())
 	}
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
@@ -207,9 +198,10 @@ func newGetSubcommand[T adapter.ResourceNamer](
 	return cmd
 }
 
-// newCreateSubcommand creates a "create" subcommand. It reads a bare resource
-// object from -f/--filename (or stdin when "-"), dispatches through the same
-// TypedCRUD wiring the resource adapter uses, and emits the created object.
+// newCreateSubcommand creates a "create" subcommand. It reads the resource
+// from -f/--filename (or stdin when "-") as a bare object or as a K8s
+// envelope, dispatches through the same TypedCRUD wiring the resource adapter
+// uses, and emits the created object.
 func newCreateSubcommand[T adapter.ResourceNamer](
 	loader OnCallConfigLoader, short string, crudOpts []crudOption[T],
 ) *cobra.Command {
@@ -246,8 +238,9 @@ func newCreateSubcommand[T adapter.ResourceNamer](
 	return cmd
 }
 
-// newUpdateSubcommand creates an "update <id>" subcommand reading the new
-// resource definition from -f/--filename.
+// newUpdateSubcommand creates an "update <id>" subcommand that reads the new
+// resource definition from -f/--filename, as a bare object or as a K8s
+// envelope.
 func newUpdateSubcommand[T adapter.ResourceNamer](
 	loader OnCallConfigLoader, short string, crudOpts []crudOption[T],
 ) *cobra.Command {
@@ -443,8 +436,8 @@ func newEscalationPoliciesCmd(loader OnCallConfigLoader) *cobra.Command {
 		newCreateSubcommand(loader, "Create an escalation policy.", escalationPolicyCRUDOpts()),
 		newUpdateSubcommand(loader, "Update an escalation policy by ID.", escalationPolicyCRUDOpts()),
 		newDeleteSubcommand(loader, "Delete an escalation policy by ID.", "EscalationPolicy", "escalation policy", escalationPolicyCRUDOpts()),
-		newEscalationStepsCmd(loader),
 	)
+	cmd.AddCommand(newEscalationStepCmds(loader)...)
 	return cmd
 }
 
@@ -507,8 +500,8 @@ func newRoutesCmd(loader OnCallConfigLoader) *cobra.Command {
 		newCreateSubcommand(loader, "Create a route.", routeCRUDOpts()),
 		newUpdateSubcommand(loader, "Update a route by ID.", routeCRUDOpts()),
 		newDeleteSubcommand(loader, "Delete a route by ID.", "Route", "route", routeCRUDOpts()),
-		newRouteFilterTypesCmd(loader),
 	)
+	cmd.AddCommand(newRouteFilterTypeCmds(loader)...)
 	return cmd
 }
 
@@ -531,9 +524,9 @@ func newWebhooksCmd(loader OnCallConfigLoader) *cobra.Command {
 		newCreateSubcommand(loader, "Create an outgoing webhook.", webhookCRUDOpts()),
 		newUpdateSubcommand(loader, "Update an outgoing webhook by ID.", webhookCRUDOpts()),
 		newDeleteSubcommand(loader, "Delete an outgoing webhook by ID.", "Webhook", "webhook", webhookCRUDOpts()),
-		newWebhookTriggersCmd(loader),
-		newWebhookPresetsCmd(loader),
 	)
+	cmd.AddCommand(newWebhookTriggerCmds(loader)...)
+	cmd.AddCommand(newWebhookPresetCmds(loader)...)
 	return cmd
 }
 
@@ -713,14 +706,6 @@ func specBool(obj unstructured.Unstructured, key string) bool {
 	return v
 }
 
-func toUnstructuredSlice(v any) ([]unstructured.Unstructured, error) {
-	items, ok := v.([]unstructured.Unstructured)
-	if !ok {
-		return nil, errors.New("invalid data type for table codec: expected []unstructured.Unstructured")
-	}
-	return items, nil
-}
-
 func orDash(s string) string {
 	if s == "" {
 		return "-"
@@ -737,266 +722,144 @@ func truncate(s string, maxLen int) string {
 
 // --- Integration codec (internal: verbal_name, integration, team) ---
 
-type integrationTableCodec struct {
-	noDecodeCodec
-
-	Wide bool
-}
-
-func (c *integrationTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
+func integrationTable() cmdio.Table[unstructured.Unstructured] {
+	return cmdio.Table[unstructured.Unstructured]{
+		Columns: []cmdio.Column[unstructured.Unstructured]{
+			{Header: "ID", Content: func(o unstructured.Unstructured) string { return o.GetName() }},
+			{Header: "NAME", Visible: cmdio.NarrowOnly, Content: func(o unstructured.Unstructured) string {
+				return truncate(specStr(o, "verbal_name"), 50)
+			}},
+			{Header: "NAME", Visible: cmdio.WideOnly, Content: func(o unstructured.Unstructured) string {
+				return specStr(o, "verbal_name")
+			}},
+			{Header: "TYPE", Content: func(o unstructured.Unstructured) string { return specStr(o, "integration") }},
+			{Header: "TEAM", Visible: cmdio.WideOnly, Content: func(o unstructured.Unstructured) string {
+				return orDash(specStr(o, "team"))
+			}},
+			{Header: "URL", Visible: cmdio.WideOnly, Content: func(o unstructured.Unstructured) string {
+				return orDash(specStr(o, "integration_url"))
+			}},
+		},
 	}
-	return "table"
-}
-
-func (c *integrationTableCodec) Encode(w io.Writer, v any) error {
-	items, err := toUnstructuredSlice(v)
-	if err != nil {
-		return err
-	}
-	var t *style.TableBuilder
-	if c.Wide {
-		t = style.NewTable("ID", "NAME", "TYPE", "TEAM", "URL")
-	} else {
-		t = style.NewTable("ID", "NAME", "TYPE")
-	}
-	for _, obj := range items {
-		id := obj.GetName()
-		name := specStr(obj, "verbal_name")
-		if !c.Wide {
-			name = truncate(name, 50)
-		}
-		if c.Wide {
-			t.Row(id, name, specStr(obj, "integration"), orDash(specStr(obj, "team")), orDash(specStr(obj, "integration_url")))
-		} else {
-			t.Row(id, name, specStr(obj, "integration"))
-		}
-	}
-	return t.Render(w)
 }
 
 // --- EscalationChain codec ---
 
-type escalationChainTableCodec struct{ noDecodeCodec }
-
-func (c *escalationChainTableCodec) Format() format.Format { return "table" }
-
-func (c *escalationChainTableCodec) Encode(w io.Writer, v any) error {
-	items, err := toUnstructuredSlice(v)
-	if err != nil {
-		return err
+func escalationChainTable() cmdio.Table[unstructured.Unstructured] {
+	return cmdio.Table[unstructured.Unstructured]{
+		Columns: []cmdio.Column[unstructured.Unstructured]{
+			{Header: "ID", Content: func(o unstructured.Unstructured) string { return o.GetName() }},
+			{Header: "NAME", Content: func(o unstructured.Unstructured) string { return specStr(o, "name") }},
+			{Header: "TEAM", Content: func(o unstructured.Unstructured) string { return orDash(specStr(o, "team")) }},
+		},
 	}
-	t := style.NewTable("ID", "NAME", "TEAM")
-	for _, obj := range items {
-		t.Row(obj.GetName(), specStr(obj, "name"), orDash(specStr(obj, "team")))
-	}
-	return t.Render(w)
 }
 
 // --- EscalationPolicy codec (internal: step, wait_delay, escalation_chain) ---
 
-type escalationPolicyTableCodec struct {
-	noDecodeCodec
-
-	Wide bool
-}
-
-func (c *escalationPolicyTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
+func escalationPolicyTable() cmdio.Table[unstructured.Unstructured] {
+	return cmdio.Table[unstructured.Unstructured]{
+		Columns: []cmdio.Column[unstructured.Unstructured]{
+			{Header: "ID", Content: func(o unstructured.Unstructured) string { return o.GetName() }},
+			{Header: "CHAIN", Content: func(o unstructured.Unstructured) string { return specStr(o, "escalation_chain") }},
+			{Header: "STEP", Content: func(o unstructured.Unstructured) string { return specStr(o, "step") }},
+			{Header: "WAIT-DELAY", Content: func(o unstructured.Unstructured) string {
+				return orDash(specStr(o, "wait_delay"))
+			}},
+			{Header: "IMPORTANT", Visible: cmdio.WideOnly, Content: func(o unstructured.Unstructured) string {
+				return strconv.FormatBool(specBool(o, "important"))
+			}},
+			{Header: "NOTIFY-SCHEDULE", Visible: cmdio.WideOnly, Content: func(o unstructured.Unstructured) string {
+				return orDash(specStr(o, "notify_schedule"))
+			}},
+		},
 	}
-	return "table"
-}
-
-func (c *escalationPolicyTableCodec) Encode(w io.Writer, v any) error {
-	items, err := toUnstructuredSlice(v)
-	if err != nil {
-		return err
-	}
-	var t *style.TableBuilder
-	if c.Wide {
-		t = style.NewTable("ID", "CHAIN", "STEP", "WAIT-DELAY", "IMPORTANT", "NOTIFY-SCHEDULE")
-	} else {
-		t = style.NewTable("ID", "CHAIN", "STEP", "WAIT-DELAY")
-	}
-	for _, obj := range items {
-		id := obj.GetName()
-		waitDelay := orDash(specStr(obj, "wait_delay"))
-		if c.Wide {
-			important := "false"
-			if specBool(obj, "important") {
-				important = "true"
-			}
-			t.Row(id, specStr(obj, "escalation_chain"), specStr(obj, "step"), waitDelay, important, orDash(specStr(obj, "notify_schedule")))
-		} else {
-			t.Row(id, specStr(obj, "escalation_chain"), specStr(obj, "step"), waitDelay)
-		}
-	}
-	return t.Render(w)
 }
 
 // --- Schedule codec ---
 
-type scheduleTableCodec struct {
-	noDecodeCodec
-
-	Wide bool
-}
-
-func (c *scheduleTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
+func scheduleTable() cmdio.Table[unstructured.Unstructured] {
+	return cmdio.Table[unstructured.Unstructured]{
+		Columns: []cmdio.Column[unstructured.Unstructured]{
+			{Header: "ID", Content: func(o unstructured.Unstructured) string { return o.GetName() }},
+			{Header: "NAME", Content: func(o unstructured.Unstructured) string { return specStr(o, "name") }},
+			{Header: "TYPE", Content: func(o unstructured.Unstructured) string { return specStr(o, "type") }},
+			{Header: "TIMEZONE", Content: func(o unstructured.Unstructured) string {
+				return orDash(specStr(o, "time_zone"))
+			}},
+			{Header: "TEAM", Visible: cmdio.WideOnly, Content: func(o unstructured.Unstructured) string {
+				return orDash(specStr(o, "team"))
+			}},
+		},
 	}
-	return "table"
-}
-
-func (c *scheduleTableCodec) Encode(w io.Writer, v any) error {
-	items, err := toUnstructuredSlice(v)
-	if err != nil {
-		return err
-	}
-	var t *style.TableBuilder
-	if c.Wide {
-		t = style.NewTable("ID", "NAME", "TYPE", "TIMEZONE", "TEAM")
-	} else {
-		t = style.NewTable("ID", "NAME", "TYPE", "TIMEZONE")
-	}
-	for _, obj := range items {
-		id := obj.GetName()
-		tz := orDash(specStr(obj, "time_zone"))
-		if c.Wide {
-			t.Row(id, specStr(obj, "name"), specStr(obj, "type"), tz, orDash(specStr(obj, "team")))
-		} else {
-			t.Row(id, specStr(obj, "name"), specStr(obj, "type"), tz)
-		}
-	}
-	return t.Render(w)
 }
 
 // --- Shift codec (internal: shift_start, shift_end, priority_level) ---
 
-type shiftTableCodec struct {
-	noDecodeCodec
-
-	Wide bool
-}
-
-func (c *shiftTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
+func shiftTable() cmdio.Table[unstructured.Unstructured] {
+	return cmdio.Table[unstructured.Unstructured]{
+		Columns: []cmdio.Column[unstructured.Unstructured]{
+			{Header: "ID", Content: func(o unstructured.Unstructured) string { return o.GetName() }},
+			{Header: "NAME", Content: func(o unstructured.Unstructured) string { return specStr(o, "name") }},
+			{Header: "TYPE", Content: func(o unstructured.Unstructured) string { return specStr(o, "type") }},
+			{Header: "START", Content: func(o unstructured.Unstructured) string {
+				return orDash(specStr(o, "shift_start"))
+			}},
+			{Header: "END", Content: func(o unstructured.Unstructured) string { return orDash(specStr(o, "shift_end")) }},
+			{Header: "FREQUENCY", Visible: cmdio.WideOnly, Content: func(o unstructured.Unstructured) string {
+				return orDash(specStr(o, "frequency"))
+			}},
+			{Header: "INTERVAL", Visible: cmdio.WideOnly, Content: func(o unstructured.Unstructured) string {
+				return strconv.Itoa(specInt(o, "interval"))
+			}},
+		},
 	}
-	return "table"
-}
-
-func (c *shiftTableCodec) Encode(w io.Writer, v any) error {
-	items, err := toUnstructuredSlice(v)
-	if err != nil {
-		return err
-	}
-	var t *style.TableBuilder
-	if c.Wide {
-		t = style.NewTable("ID", "NAME", "TYPE", "START", "END", "FREQUENCY", "INTERVAL")
-	} else {
-		t = style.NewTable("ID", "NAME", "TYPE", "START", "END")
-	}
-	for _, obj := range items {
-		id := obj.GetName()
-		start := orDash(specStr(obj, "shift_start"))
-		end := orDash(specStr(obj, "shift_end"))
-		if c.Wide {
-			t.Row(id, specStr(obj, "name"), specStr(obj, "type"), start, end, orDash(specStr(obj, "frequency")), strconv.Itoa(specInt(obj, "interval")))
-		} else {
-			t.Row(id, specStr(obj, "name"), specStr(obj, "type"), start, end)
-		}
-	}
-	return t.Render(w)
 }
 
 // --- Route codec (internal: alert_receive_channel, escalation_chain, filtering_term) ---
 
-type routeTableCodec struct {
-	noDecodeCodec
-
-	Wide bool
-}
-
-func (c *routeTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
+func routeTable() cmdio.Table[unstructured.Unstructured] {
+	return cmdio.Table[unstructured.Unstructured]{
+		Columns: []cmdio.Column[unstructured.Unstructured]{
+			{Header: "ID", Content: func(o unstructured.Unstructured) string { return o.GetName() }},
+			{Header: "INTEGRATION", Content: func(o unstructured.Unstructured) string {
+				return specStr(o, "alert_receive_channel")
+			}},
+			{Header: "CHAIN", Content: func(o unstructured.Unstructured) string {
+				return orDash(specStr(o, "escalation_chain"))
+			}},
+			{Header: "FILTER-TYPE", Content: func(o unstructured.Unstructured) string {
+				return orDash(specStr(o, "filtering_term_type"))
+			}},
+			{Header: "FILTER", Visible: cmdio.WideOnly, Content: func(o unstructured.Unstructured) string {
+				return truncate(orDash(specStr(o, "filtering_term")), 40)
+			}},
+			{Header: "DEFAULT", Visible: cmdio.WideOnly, Content: func(o unstructured.Unstructured) string {
+				return strconv.FormatBool(specBool(o, "is_default"))
+			}},
+		},
 	}
-	return "table"
-}
-
-func (c *routeTableCodec) Encode(w io.Writer, v any) error {
-	items, err := toUnstructuredSlice(v)
-	if err != nil {
-		return err
-	}
-	var t *style.TableBuilder
-	if c.Wide {
-		t = style.NewTable("ID", "INTEGRATION", "CHAIN", "FILTER-TYPE", "FILTER", "DEFAULT")
-	} else {
-		t = style.NewTable("ID", "INTEGRATION", "CHAIN", "FILTER-TYPE")
-	}
-	for _, obj := range items {
-		id := obj.GetName()
-		if c.Wide {
-			isDefault := "false"
-			if specBool(obj, "is_default") {
-				isDefault = "true"
-			}
-			filter := orDash(specStr(obj, "filtering_term"))
-			if len(filter) > 40 {
-				filter = filter[:37] + "..."
-			}
-			t.Row(id, specStr(obj, "alert_receive_channel"), orDash(specStr(obj, "escalation_chain")), orDash(specStr(obj, "filtering_term_type")), filter, isDefault)
-		} else {
-			t.Row(id, specStr(obj, "alert_receive_channel"), orDash(specStr(obj, "escalation_chain")), orDash(specStr(obj, "filtering_term_type")))
-		}
-	}
-	return t.Render(w)
 }
 
 // --- Webhook codec ---
 
-type webhookTableCodec struct {
-	noDecodeCodec
-
-	Wide bool
-}
-
-func (c *webhookTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
+func webhookTable() cmdio.Table[unstructured.Unstructured] {
+	return cmdio.Table[unstructured.Unstructured]{
+		Columns: []cmdio.Column[unstructured.Unstructured]{
+			{Header: "ID", Content: func(o unstructured.Unstructured) string { return o.GetName() }},
+			{Header: "NAME", Content: func(o unstructured.Unstructured) string { return specStr(o, "name") }},
+			{Header: "URL", Visible: cmdio.WideOnly, Content: func(o unstructured.Unstructured) string {
+				return orDash(specStr(o, "url"))
+			}},
+			{Header: "METHOD", Visible: cmdio.WideOnly, Content: func(o unstructured.Unstructured) string {
+				return orDash(specStr(o, "http_method"))
+			}},
+			{Header: "TRIGGER", Content: func(o unstructured.Unstructured) string { return specStr(o, "trigger_type") }},
+			{Header: "ENABLED", Content: func(o unstructured.Unstructured) string {
+				return strconv.FormatBool(specBool(o, "is_webhook_enabled"))
+			}},
+		},
 	}
-	return "table"
-}
-
-func (c *webhookTableCodec) Encode(w io.Writer, v any) error {
-	items, err := toUnstructuredSlice(v)
-	if err != nil {
-		return err
-	}
-	var t *style.TableBuilder
-	if c.Wide {
-		t = style.NewTable("ID", "NAME", "URL", "METHOD", "TRIGGER", "ENABLED")
-	} else {
-		t = style.NewTable("ID", "NAME", "TRIGGER", "ENABLED")
-	}
-	for _, obj := range items {
-		id := obj.GetName()
-		enabled := "false"
-		if specBool(obj, "is_webhook_enabled") {
-			enabled = "true"
-		}
-		if c.Wide {
-			t.Row(id, specStr(obj, "name"), orDash(specStr(obj, "url")), orDash(specStr(obj, "http_method")), specStr(obj, "trigger_type"), enabled)
-		} else {
-			t.Row(id, specStr(obj, "name"), specStr(obj, "trigger_type"), enabled)
-		}
-	}
-	return t.Render(w)
 }
 
 // --- AlertGroup codec (typed: accepts []alertGroupEnvelope) ---
@@ -1374,94 +1237,63 @@ func truncateRunes(s string, width int) string {
 
 // --- User codec (internal: pk, avatar, current_team) ---
 
-type userTableCodec struct {
-	noDecodeCodec
-
-	Wide bool
-}
-
-func (c *userTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
+func userTable() cmdio.Table[unstructured.Unstructured] {
+	return cmdio.Table[unstructured.Unstructured]{
+		Columns: []cmdio.Column[unstructured.Unstructured]{
+			{Header: "ID", Content: func(o unstructured.Unstructured) string { return o.GetName() }},
+			{Header: "USERNAME", Content: func(o unstructured.Unstructured) string { return specStr(o, "username") }},
+			{Header: "NAME", Content: func(o unstructured.Unstructured) string { return orDash(specStr(o, "name")) }},
+			{Header: "EMAIL", Visible: cmdio.WideOnly, Content: func(o unstructured.Unstructured) string {
+				return orDash(specStr(o, "email"))
+			}},
+			{Header: "ROLE", Content: func(o unstructured.Unstructured) string { return orDash(specStr(o, "role")) }},
+			{Header: "TIMEZONE", Content: func(o unstructured.Unstructured) string {
+				return orDash(specStr(o, "timezone"))
+			}},
+		},
 	}
-	return "table"
-}
-
-func (c *userTableCodec) Encode(w io.Writer, v any) error {
-	items, err := toUnstructuredSlice(v)
-	if err != nil {
-		return err
-	}
-	var t *style.TableBuilder
-	if c.Wide {
-		t = style.NewTable("ID", "USERNAME", "NAME", "EMAIL", "ROLE", "TIMEZONE")
-	} else {
-		t = style.NewTable("ID", "USERNAME", "NAME", "ROLE", "TIMEZONE")
-	}
-	for _, obj := range items {
-		if c.Wide {
-			t.Row(obj.GetName(), specStr(obj, "username"), orDash(specStr(obj, "name")),
-				orDash(specStr(obj, "email")), orDash(specStr(obj, "role")), orDash(specStr(obj, "timezone")))
-		} else {
-			t.Row(obj.GetName(), specStr(obj, "username"), orDash(specStr(obj, "name")),
-				orDash(specStr(obj, "role")), orDash(specStr(obj, "timezone")))
-		}
-	}
-	return t.Render(w)
 }
 
 // --- Team codec ---
 
-type teamTableCodec struct{ noDecodeCodec }
-
-func (c *teamTableCodec) Format() format.Format { return "table" }
-
-func (c *teamTableCodec) Encode(w io.Writer, v any) error {
-	items, err := toUnstructuredSlice(v)
-	if err != nil {
-		return err
+func teamTable() cmdio.Table[unstructured.Unstructured] {
+	return cmdio.Table[unstructured.Unstructured]{
+		Columns: []cmdio.Column[unstructured.Unstructured]{
+			{Header: "ID", Content: func(o unstructured.Unstructured) string { return o.GetName() }},
+			{Header: "NAME", Content: func(o unstructured.Unstructured) string { return specStr(o, "name") }},
+			{Header: "EMAIL", Content: func(o unstructured.Unstructured) string { return orDash(specStr(o, "email")) }},
+		},
 	}
-	t := style.NewTable("ID", "NAME", "EMAIL")
-	for _, obj := range items {
-		t.Row(obj.GetName(), specStr(obj, "name"), orDash(specStr(obj, "email")))
-	}
-	return t.Render(w)
 }
 
 // --- UserGroup codec ---
 
-type userGroupTableCodec struct{ noDecodeCodec }
-
-func (c *userGroupTableCodec) Format() format.Format { return "table" }
-
-func (c *userGroupTableCodec) Encode(w io.Writer, v any) error {
-	items, err := toUnstructuredSlice(v)
-	if err != nil {
-		return err
+func userGroupTable() cmdio.Table[unstructured.Unstructured] {
+	return cmdio.Table[unstructured.Unstructured]{
+		Columns: []cmdio.Column[unstructured.Unstructured]{
+			{Header: "ID", Content: func(o unstructured.Unstructured) string { return o.GetName() }},
+			{Header: "NAME", Content: func(o unstructured.Unstructured) string { return orDash(specStr(o, "name")) }},
+			{Header: "HANDLE", Content: func(o unstructured.Unstructured) string {
+				return orDash(specStr(o, "handle"))
+			}},
+		},
 	}
-	t := style.NewTable("ID", "NAME", "HANDLE")
-	for _, obj := range items {
-		t.Row(obj.GetName(), orDash(specStr(obj, "name")), orDash(specStr(obj, "handle")))
-	}
-	return t.Render(w)
 }
 
 // --- SlackChannel codec ---
 
-type slackChannelTableCodec struct{ noDecodeCodec }
-
-func (c *slackChannelTableCodec) Format() format.Format { return "table" }
-
-func (c *slackChannelTableCodec) Encode(w io.Writer, v any) error {
-	items, err := toUnstructuredSlice(v)
-	if err != nil {
-		return err
+func slackChannelTable() cmdio.Table[unstructured.Unstructured] {
+	return cmdio.Table[unstructured.Unstructured]{
+		Columns: []cmdio.Column[unstructured.Unstructured]{
+			{Header: "ID", Content: func(o unstructured.Unstructured) string { return o.GetName() }},
+			{Header: "NAME", Content: func(o unstructured.Unstructured) string {
+				return orDash(specStr(o, "display_name"))
+			}},
+			{Header: "SLACK-ID", Content: func(o unstructured.Unstructured) string {
+				return orDash(specStr(o, "slack_id"))
+			}},
+		},
 	}
-	t := style.NewTable("ID", "NAME", "SLACK-ID")
-	for _, obj := range items {
-		t.Row(obj.GetName(), orDash(specStr(obj, "display_name")), orDash(specStr(obj, "slack_id")))
-	}
-	return t.Render(w)
 }
 
 // --- Alert codec (typed: accepts []alertEnvelope) ---
@@ -1573,111 +1405,73 @@ func (c *alertTableCodec) Encode(w io.Writer, v any) error {
 
 // --- Organization codec ---
 
-type organizationTableCodec struct{ noDecodeCodec }
-
-func (c *organizationTableCodec) Format() format.Format { return "table" }
-
-func (c *organizationTableCodec) Encode(w io.Writer, v any) error {
-	items, err := toUnstructuredSlice(v)
-	if err != nil {
-		return err
+func organizationTable() cmdio.Table[unstructured.Unstructured] {
+	return cmdio.Table[unstructured.Unstructured]{
+		Columns: []cmdio.Column[unstructured.Unstructured]{
+			{Header: "ID", Content: func(o unstructured.Unstructured) string { return o.GetName() }},
+			{Header: "NAME", Content: func(o unstructured.Unstructured) string { return orDash(specStr(o, "name")) }},
+			{Header: "SLUG", Content: func(o unstructured.Unstructured) string {
+				return orDash(specStr(o, "stack_slug"))
+			}},
+		},
 	}
-	t := style.NewTable("ID", "NAME", "SLUG")
-	for _, obj := range items {
-		t.Row(obj.GetName(), orDash(specStr(obj, "name")), orDash(specStr(obj, "stack_slug")))
-	}
-	return t.Render(w)
 }
 
 // --- ResolutionNote codec ---
 
-type resolutionNoteTableCodec struct {
-	noDecodeCodec
-
-	Wide bool
-}
-
-func (c *resolutionNoteTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
+func resolutionNoteTable() cmdio.Table[unstructured.Unstructured] {
+	return cmdio.Table[unstructured.Unstructured]{
+		Columns: []cmdio.Column[unstructured.Unstructured]{
+			{Header: "ID", Content: func(o unstructured.Unstructured) string { return o.GetName() }},
+			{Header: "ALERT-GROUP", Content: func(o unstructured.Unstructured) string {
+				return specStr(o, "alert_group")
+			}},
+			{Header: "SOURCE", Content: func(o unstructured.Unstructured) string { return orDash(specStr(o, "source")) }},
+			{Header: "CREATED", Content: func(o unstructured.Unstructured) string {
+				return orDash(cutTimestamp(specStr(o, "created_at")))
+			}},
+			{Header: "TEXT", Visible: cmdio.WideOnly, Content: func(o unstructured.Unstructured) string {
+				return orDash(truncate(specStr(o, "text"), 60))
+			}},
+		},
 	}
-	return "table"
-}
-
-func (c *resolutionNoteTableCodec) Encode(w io.Writer, v any) error {
-	items, err := toUnstructuredSlice(v)
-	if err != nil {
-		return err
-	}
-	var t *style.TableBuilder
-	if c.Wide {
-		t = style.NewTable("ID", "ALERT-GROUP", "SOURCE", "CREATED", "TEXT")
-	} else {
-		t = style.NewTable("ID", "ALERT-GROUP", "SOURCE", "CREATED")
-	}
-	for _, obj := range items {
-		created := specStr(obj, "created_at")
-		if len(created) > 16 {
-			created = created[:16]
-		}
-		if c.Wide {
-			text := specStr(obj, "text")
-			if len(text) > 60 {
-				text = text[:57] + "..."
-			}
-			t.Row(obj.GetName(), specStr(obj, "alert_group"), orDash(specStr(obj, "source")), orDash(created), orDash(text))
-		} else {
-			t.Row(obj.GetName(), specStr(obj, "alert_group"), orDash(specStr(obj, "source")), orDash(created))
-		}
-	}
-	return t.Render(w)
 }
 
 // --- ShiftSwap codec ---
 
-type shiftSwapTableCodec struct {
-	noDecodeCodec
-
-	Wide bool
+func shiftSwapTable() cmdio.Table[unstructured.Unstructured] {
+	return cmdio.Table[unstructured.Unstructured]{
+		Columns: []cmdio.Column[unstructured.Unstructured]{
+			{Header: "ID", Content: func(o unstructured.Unstructured) string { return o.GetName() }},
+			{Header: "SCHEDULE", Content: func(o unstructured.Unstructured) string {
+				return orDash(specStr(o, "schedule"))
+			}},
+			{Header: "STATUS", Content: func(o unstructured.Unstructured) string { return orDash(specStr(o, "status")) }},
+			{Header: "START", Content: func(o unstructured.Unstructured) string {
+				return orDash(cutTimestamp(specStr(o, "swap_start")))
+			}},
+			{Header: "END", Content: func(o unstructured.Unstructured) string {
+				return orDash(cutTimestamp(specStr(o, "swap_end")))
+			}},
+			{Header: "BENEFICIARY", Visible: cmdio.WideOnly, Content: func(o unstructured.Unstructured) string {
+				return orDash(specStr(o, "beneficiary"))
+			}},
+			{Header: "BENEFACTOR", Visible: cmdio.WideOnly, Content: func(o unstructured.Unstructured) string {
+				return orDash(specStr(o, "benefactor"))
+			}},
+			{Header: "CREATED", Visible: cmdio.WideOnly, Content: func(o unstructured.Unstructured) string {
+				return orDash(cutTimestamp(specStr(o, "created_at")))
+			}},
+		},
+	}
 }
 
-func (c *shiftSwapTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
+// cutTimestamp shortens an ISO timestamp to date and time, dropping seconds
+// and any fractional part.
+func cutTimestamp(s string) string {
+	if len(s) > 16 {
+		return s[:16]
 	}
-	return "table"
-}
 
-func (c *shiftSwapTableCodec) Encode(w io.Writer, v any) error {
-	items, err := toUnstructuredSlice(v)
-	if err != nil {
-		return err
-	}
-	var t *style.TableBuilder
-	if c.Wide {
-		t = style.NewTable("ID", "SCHEDULE", "STATUS", "START", "END", "BENEFICIARY", "BENEFACTOR", "CREATED")
-	} else {
-		t = style.NewTable("ID", "SCHEDULE", "STATUS", "START", "END")
-	}
-	for _, obj := range items {
-		id := obj.GetName()
-		start := specStr(obj, "swap_start")
-		if len(start) > 16 {
-			start = start[:16]
-		}
-		end := specStr(obj, "swap_end")
-		if len(end) > 16 {
-			end = end[:16]
-		}
-		if c.Wide {
-			created := specStr(obj, "created_at")
-			if len(created) > 16 {
-				created = created[:16]
-			}
-			t.Row(id, orDash(specStr(obj, "schedule")), orDash(specStr(obj, "status")), orDash(start), orDash(end), orDash(specStr(obj, "beneficiary")), orDash(specStr(obj, "benefactor")), orDash(created))
-		} else {
-			t.Row(id, orDash(specStr(obj, "schedule")), orDash(specStr(obj, "status")), orDash(start), orDash(end))
-		}
-	}
-	return t.Render(w)
+	return s
 }

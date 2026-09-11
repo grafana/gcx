@@ -28,7 +28,9 @@ Run both passes, then combine them:
 
 1. **`/code-review`**, for correctness bugs. Do not pass `--comment`. The
    findings must return to you instead of going straight to the PR, or you have
-   nothing left to combine.
+   nothing left to combine. It signs off with "no `--comment` argument was
+   provided, so stopping here without posting" — that is it handing findings
+   back, not the end of your review. Do not repeat the line or stop on it.
 2. **The triggers above** that fire for this diff, plus the compliance
    hierarchy.
 
@@ -136,7 +138,7 @@ which. Otherwise five blocking findings look heavier than the change deserves.
 
 ## When a workflow invoked this
 
-Five things change when no human is present. The rest of the review is the same.
+Six things change when no human is present. The rest of the review is the same.
 
 - **Post without asking.** The offer below applies when a human can answer. In
   CI nobody can, and the trigger is the consent.
@@ -152,7 +154,22 @@ Five things change when no human is present. The rest of the review is the same.
 
   > Comment `@claude review` for a fresh review.
 
-Silence is a valid result. If there are no findings, say so in one line. Never invent a finding.
+- **Upgrade `recommended` findings to blocking.** A human reviewer can weigh a
+  should-fix in conversation. Nobody is here to do that, so a finding is either
+  worth the author's attention or it is a nit.
+
+Silence is a valid result. If there are no findings, say so in one line — and
+post that line. A review that ends without posting cannot be told apart from
+one that never ran. Never invent a finding.
+
+Publish one review with `event: COMMENT`, using the mechanics below. Use the
+workflow's **Review head** as `commit_id` and append its **Review marker** to
+the summary as an HTML comment, after the closing line. The workflow checks
+that this run published a review for that commit before adding its label.
+
+If publication is denied, stop and report the failed command. Do not retry it
+through scripts, post test comments, or move inline findings into a regular PR
+comment. A permission failure needs a workflow fix, not a different report.
 
 ## Offering to post the review
 
@@ -175,11 +192,23 @@ judges the code. The event judges a colleague's work, and that choice is theirs.
 ### Mechanics
 
 One `POST` creates the whole review, both the summary body and every inline
-comment. The author then gets one notification instead of ten:
+comment. The author then gets one notification instead of ten. Pass the JSON
+directly on stdin; CI does not allow creating payload files. A quoted heredoc
+keeps backticks, dollar signs, and suggestions literal:
 
 ```bash
-gh api repos/{owner}/{repo}/pulls/{n}/reviews -X POST --input review.json
+gh api repos/{owner}/{repo}/pulls/{n}/reviews -X POST --input - <<'REVIEW_JSON'
+{
+  "event": "COMMENT",
+  "commit_id": "<reviewed head SHA>",
+  "body": "<summary and, in CI, the review marker>",
+  "comments": []
+}
+REVIEW_JSON
 ```
+
+Replace the placeholders, use the chosen event for a human-invoked review,
+and put the inline findings in `comments`. Leave it empty for a clean review.
 
 Each comment needs `path`, `line`, and `side`. Use `RIGHT` for the file after
 the change. A range also needs `start_line` and `start_side`.

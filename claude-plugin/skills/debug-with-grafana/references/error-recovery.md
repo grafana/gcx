@@ -1,344 +1,108 @@
-# Error Recovery Reference
+# Bounded error recovery
 
-Recovery patterns for CLI failures encountered during diagnostic workflows.
+Recover only when it advances the current question. Do not repeatedly broaden
+queries, change context, or fix infrastructure merely to complete a signal
+checklist. Preserve the original scope and record what remains unverified.
 
-## Contents
-
-- [Failure Mode 1: Authentication / Authorization Error (401/403)](#failure-mode-1-authentication--authorization-error-401403)
-- [Failure Mode 2: Datasource Not Found](#failure-mode-2-datasource-not-found)
-- [Failure Mode 3: Query Returns Empty Result Set](#failure-mode-3-query-returns-empty-result-set)
-- [Failure Mode 4: Query Timeout or Server Error (5xx)](#failure-mode-4-query-timeout-or-server-error-5xx)
-- [Failure Mode 5: Malformed PromQL or LogQL Syntax Error](#failure-mode-5-malformed-promql-or-logql-syntax-error)
-- [Failure Mode 6: "Accepts between 0 and 1 arg(s), received 2"](#failure-mode-6-accepts-between-0-and-1-args-received-2)
-- [Quick Reference: Recovery Command Cheatsheet](#quick-reference-recovery-command-cheatsheet)
-
----
-
-## Failure Mode 1: Authentication / Authorization Error (401/403)
-
-### Error Message Pattern
-
-```
-Error: request failed: 401 Unauthorized
-Error: request failed: 403 Forbidden
-Error: failed to list resources: 403 Forbidden — user does not have permission
-```
-
-### Likely Cause
-
-- The configured API token is expired, revoked, or missing.
-- The token exists but belongs to a service account without sufficient permissions for the resource type or namespace.
-- The active context points to a Grafana instance that requires a different token.
-
-### Corrective Action
-
-1. Inspect the current context and verify the server URL and credentials are correct:
-
-   ```bash
-   gcx config view
-   ```
-
-2. If multiple contexts exist, confirm you are using the right one:
-
-   ```bash
-   gcx config current-context
-   gcx config use-context <context-name>
-   ```
-
-3. Re-check the active context after switching:
-
-   ```bash
-   gcx config view --minify
-   ```
-
-4. If the token is known to be expired, update it with `gcx config set`:
-
-   ```bash
-   gcx config set stacks.<name>.grafana.token <new-token>
-   ```
-
-5. Retry the failing command after the context is corrected. For example:
-
-   ```bash
-   gcx datasources list -o json
-   ```
-
----
-
-## Failure Mode 2: Datasource Not Found
-
-### Error Message Pattern
-
-```
-Error: datasource not found: <uid>
-Error: no datasource with UID "<uid>" exists in this Grafana instance
-Error: failed to query datasource: 404 Not Found
-```
-
-### Likely Cause
-
-- The datasource UID used in `-d <uid>` does not exist in the current Grafana context.
-- The UID was copied from a different environment (e.g., a production UID used against a staging context).
-- The datasource has been renamed, deleted, or is provisioned under a different UID.
-
-### Corrective Action
-
-1. List all available datasources to find the correct UID:
-
-   ```bash
-   gcx datasources list -o json
-   ```
-
-   The output includes `uid`, `name`, and `type` for each datasource.
-
-2. Filter to a specific datasource type (e.g., Prometheus or Loki) to narrow the list:
-
-   ```bash
-   gcx datasources list -t prometheus -o json
-   gcx datasources list -t loki -o json
-   ```
-
-3. Inspect the full details of a specific datasource:
-
-   ```bash
-   gcx datasources get <uid> -o json
-   ```
-
-4. Retry the query using the correct UID from the listing output:
-
-   ```bash
-   gcx metrics query -d <correct-uid> '<expr>' --from now-1h --to now --step 1m -o json
-   ```
-
----
-
-## Failure Mode 3: Query Returns Empty Result Set
-
-### Error Message Pattern
-
-No error is raised; output contains an empty results array:
-
-```json
-{"status":"success","data":{"resultType":"vector","result":[]}}
-```
-
-Or for a range query:
-
-```json
-{"status":"success","data":{"resultType":"matrix","result":[]}}
-```
-
-### Likely Cause
-
-- The metric or log stream selector does not match any active time series.
-- The time range (`--from` / `--to`) falls outside the retention period or before the service was instrumented.
-- The label filters in the query are too restrictive (e.g., a `job` label value that does not exist).
-- The datasource is healthy but the service being queried is down and emitting no data.
-- **Loki-specific**: a structured-metadata or parsed key was placed inside the `{...}` selector. Only indexed stream labels are valid there. `{detected_level="error"}` matches nothing — Loki's `detected_level` is structured metadata, so it must go after a pipe: `{job="app"} | detected_level="error"`. Parsed fields need the parser stage first: `{job="app"} | json | status="500"`.
-
-### Corrective Action
-
-1. Verify that the metric exists and is being ingested:
-
-   ```bash
-   gcx metrics metadata -d <uid> -m <metric-name> -o json
-   ```
-
-2. Check available label names and values for a Prometheus datasource:
-
-   ```bash
-   gcx metrics labels -d <uid> -o json
-   gcx metrics labels -d <uid> -l job -o json
-   ```
-
-3. For Loki: confirm label names and streams are present:
-
-   ```bash
-   gcx logs labels -d <uid> -o json
-   gcx logs labels -d <uid> -l service_name -o json
-   ```
-
-4. Broaden the time range to confirm whether data exists at all:
-
-   ```bash
-   gcx metrics query -d <uid> '<metric>' --from now-24h --to now --step 5m -o json
-   ```
-
-5. Simplify the query to remove label filters and verify the base metric returns data:
-
-   ```bash
-   # Before: http_requests_total{job="api",code="500"}
-   # After (simplified):
-   gcx metrics query -d <uid> 'http_requests_total' --from now-1h --to now --step 1m -o json
-   ```
-
----
-
-## Failure Mode 4: Query Timeout or Server Error (5xx)
-
-### Error Message Pattern
-
-```
-Error: request failed: 504 Gateway Timeout
-Error: request failed: 500 Internal Server Error
-Error: context deadline exceeded
-Error: failed to execute query: upstream timeout
-```
-
-### Likely Cause
-
-- The query is too expensive for the time range and step combination (too many data points returned).
-- The Grafana instance or the upstream datasource (Prometheus, Loki) is under high load.
-- The step interval is too small, causing the query engine to evaluate too many windows.
-- A very broad label selector (`{}`) or high-cardinality metric causes excessive backend processing.
-
-### Corrective Action
-
-1. Reduce the time range to limit the number of data points:
-
-   ```bash
-   gcx metrics query -d <uid> '<expr>' --from now-30m --to now --step 1m -o json
-   ```
-
-2. Increase the step interval to reduce the resolution and query load:
-
-   ```bash
-   gcx metrics query -d <uid> '<expr>' --from now-1h --to now --step 5m -o json
-   ```
-
-3. Add label filters to reduce cardinality:
-
-   ```bash
-   # Before: rate(http_requests_total[5m])
-   # After (scoped):
-   gcx metrics query -d <uid> 'rate(http_requests_total{job="api"}[5m])' --from now-1h --to now --step 5m -o json
-   ```
-
-4. Check Prometheus scrape targets to confirm the datasource is healthy:
-
-   ```bash
-   gcx metrics query -d <uid> 'up' -o json
-   ```
-
-5. Verify the Grafana instance is reachable by running a lightweight command:
-
-   ```bash
-   gcx datasources list -o json
-   ```
-
-   If this also times out, the issue is connectivity or instance-level; check the context configuration:
-
-   ```bash
-   gcx config view --minify
-   ```
-
----
-
-## Failure Mode 5: Malformed PromQL or LogQL Syntax Error
-
-### Error Message Pattern
-
-```
-Error: bad_data: 1:25: parse error: unexpected <EOF>
-Error: bad_data: parse error at char 15: unexpected identifier
-Error: query parse error: <details>
-Error: bad_data: invalid parameter "query": <details>
-```
-
-### Likely Cause
-
-- Unmatched braces, brackets, or parentheses in the expression.
-- Missing or misplaced label selectors (e.g., `{job=api}` instead of `{job="api"}`).
-- Invalid function name or incorrect function argument count.
-- Loki LogQL passed to a Prometheus datasource, or PromQL passed to a Loki datasource.
-- Rate or aggregation window not specified (e.g., `rate(metric)` instead of `rate(metric[5m])`).
-
-### Corrective Action
-
-1. Check that the expression is syntactically complete — all `{`, `[`, and `(` must be closed:
-
-   ```bash
-   # Broken: rate(http_requests_total{job="api"[5m])
-   # Fixed:
-   gcx metrics query -d <uid> 'rate(http_requests_total{job="api"}[5m])' --from now-1h --to now --step 1m -o json
-   ```
-
-2. Confirm the datasource type matches the query language. List datasources and check the `type` field:
-
-   ```bash
-   gcx datasources list -o json
-   ```
-
-   Use Prometheus datasource UIDs for PromQL expressions, and Loki datasource UIDs for LogQL expressions.
-
-3. Verify label values use double quotes, not single quotes or no quotes:
-
-   ```bash
-   # Wrong: {job='api'}
-   # Wrong: {job=api}
-   # Correct:
-   gcx logs query -d <uid> '{job="api"} |= "error"' --from now-1h --to now -o json
-   ```
-
-4. For rate and increase functions, always specify the range window:
-
-   ```bash
-   # Wrong: rate(http_requests_total{code="500"})
-   # Correct:
-   gcx metrics query -d <uid> 'rate(http_requests_total{code="500"}[5m])' --from now-1h --to now --step 1m -o json
-   ```
-
-5. Use the Prometheus labels command to confirm label names and valid values before building complex queries:
-
-   ```bash
-   gcx metrics labels -d <uid> -o json
-   gcx metrics labels -d <uid> -l code -o json
-   ```
-
----
-
-## Failure Mode 6: "Accepts between 0 and 1 arg(s), received 2"
-
-### Error Message Pattern
-
-```
-Error: Accepts between 0 and 1 arg(s), received 2
-```
-
-### Likely Cause
-
-The datasource UID was passed as a positional argument instead of using the
-`-d` flag. Query commands accept at most one positional argument (the
-expression). The datasource must be specified with `-d <uid>`.
-
-### Corrective Action
-
-Move the datasource UID from a positional argument to the `-d` flag:
+## Authentication, authorization, or wrong target
 
 ```bash
-# Wrong — two positional args (UID + expression):
-gcx metrics query prometheus 'rate(http_requests_total[5m])' --from now-1h --to now
-
-# Correct — UID via -d flag:
-gcx metrics query -d prometheus 'rate(http_requests_total[5m])' --from now-1h --to now
-
-# Also correct — omit -d if a default datasource is configured:
-gcx metrics query 'rate(http_requests_total[5m])' --from now-1h --to now
+gcx config current-context
+gcx config view --context <context> --minify -o json
+gcx config check --context <context>
 ```
 
-The same pattern applies to `gcx logs query` and `gcx traces query`.
+Check **only the selected context**; a bare config check checks all contexts.
+A 401 can mean missing/expired/wrong credentials; a 403 can mean missing
+permission for a specific datasource or endpoint. Neither means the application
+has no telemetry. Use another already-authorized signal when it can answer the
+question. Ask for the smallest required access only when blocked.
 
----
+Do not expose secrets with `--raw`, print full HTTP payloads, rotate credentials,
+or switch the persisted context automatically. Use `setup-gcx` for an explicit
+setup request. An inaccessible experimental endpoint is not automatically an
+unsupported endpoint.
 
-## Quick Reference: Recovery Command Cheatsheet
+## Datasource not found
 
-| Failure | First Diagnostic Command |
-|---------|--------------------------|
-| 401/403 auth error | `gcx config view` |
-| Wrong context | `gcx config use-context <name>` |
-| Datasource UID unknown | `gcx datasources list -o json` |
-| Empty results | `gcx metrics metadata -d <uid> -m <metric>` |
-| Query timeout | Increase `--step`, reduce time range |
-| PromQL parse error | Check braces, quotes, and range windows |
-| Loki parse error | Check stream selector syntax and double-quoted labels |
-| "Accepts between 0 and 1 arg(s)" | Move datasource UID to `-d <uid>` flag |
+Use the context or dashboard's datasource UID; do not reuse a UID from another
+stack or choose the first entry in a list. Resolve ambiguity with type/name:
+
+```bash
+gcx datasources list --context <context> --type tempo --name <environment> \
+  --limit 20 --json uid,name,type
+gcx datasources get <uid> -o json
+```
+
+Use the selected context consistently on subsequent commands. A datasource
+listing confirms configuration, not backend health or incident coverage.
+
+## Empty or incomplete results
+
+Distinguish empty data, a query error, access failure, and a limited sample.
+Empty is not zero, disabled sampling, or proof of a healthy/down application.
+
+1. Recheck target, selector, time zone, and requested window against supplied
+   evidence. Ensure time bounds cover the trace being retrieved.
+2. Check actual schema/retained labels and a known working query. Do not assume
+   `job`, `status`, or `service.name` are the right keys.
+3. Check returned timestamps, spacing, gaps, warnings, and known retention or
+   sampling. Metadata presence is not historical coverage.
+4. Relax one justified constraint or expand to one meaningful comparison window.
+   Preserve tenant/environment scope. Do not drift to another population just
+   to obtain non-empty output.
+5. If still insufficient, change signal or report the evidence gap and stop.
+
+For Loki, only indexed labels belong inside `{...}`. Put structured metadata
+after a pipe and parsed fields after their parser; see
+[query patterns](query-patterns.md). A default log query returns at most 50
+lines in the current CLI, not a frequency or complete first-occurrence history.
+
+For aggregated metrics, reuse a supported aggregation and inspect retained
+labels. Labels aggregated away cannot establish the requested scope. A rejected
+raw selector is not proof the metric is absent. If requested and returned
+resolution differ, report actual coverage; do not assume which layer caused it.
+
+## Timeout, rate limit, or server failure
+
+Narrow time and indexed selectors, reuse a recording rule, or reduce resolution
+where that still answers the question. Field selection and output limits may
+reduce tokens without reducing backend scans. Aggregation does not guarantee
+that intermediate series limits disappear.
+
+For 429, respect retry guidance/backoff. Do not repeatedly retry an expensive
+query against an overloaded backend. For persistent 5xx, record the failure and
+use another useful signal; do not convert it into "no data". Test connectivity
+with a small relevant read only if the distinction matters.
+
+## Query syntax or CLI mismatch
+
+- Check the running command's help before guessing flags. Signal query commands
+  take one expression positional argument; put the datasource UID in `-d`.
+- Prometheus: use valid label matchers and range windows on counters. `--time`
+  is valid for instant `increase()`/`avg_over_time()` queries and cannot combine
+  with `--from`/`--to`/`--since`.
+- Loki: include a non-empty indexed matcher, use the right parser, and filter
+  `__error__` after error-producing stages. Use `gcx logs metrics` for aggregate
+  LogQL, not the log-line response path.
+- Tempo: use scoped resource/span attributes and unquoted status/kind enums.
+  Inspect attribute types; an HTTP code may not be encoded as assumed.
+- JSON piping: keep stderr separate, inspect exit status, and retain warnings.
+  Use `--json list` to discover fields instead of guessing paths.
+
+## Baseline or diff cannot run
+
+Use [trace comparison](trace-comparison.md) for the fallback protocol:
+
+| Failure | Recovery |
+| --- | --- |
+| Baseline command/required TraceQL capability unavailable | Same-operation bounded search, then assess candidate bodies and exploratory diffs |
+| No valid controls or topology-biased retrieval | Relax generated topology constraints via ordinary TraceQL search, not an invented flag |
+| Partial seed or missing root | Try a complete representative seed; time overrides cannot restore missing structure |
+| Diff endpoint unavailable | Reuse or fetch candidate and seed bodies with `--llm`; assess comparability and execution differences manually, and disclose the limitation |
+| Trace lookup not found | Check ID, datasource, retention, and time bounds before assuming the endpoint is absent |
+| Comparisons disagree | Refine the cohort or report inconclusive evidence; do not select the diff that best fits a preferred explanation |
+
+Unsupported tooling must not block an otherwise answerable question. Conversely,
+if request-level evidence is essential and unavailable, say what cannot be
+established rather than substituting a fabricated root cause.

@@ -29,13 +29,18 @@ import (
 
 // keychainStoreFn returns the credentials.Store used by Load and Write. It is
 // a package-level variable so tests can inject a fake store. Production code
-// uses credentials.Open() which probes the OS keychain.
+// uses credentials.Open() which probes the OS keychain, unless the resolved
+// keychain mode is disabled, in which case credentials stay in plaintext.
 //
-// Under `go test` (detected via testing.Testing()), the default is a no-op
-// store that reports ErrUnavailable for every operation. This prevents any
-// test in any package from triggering OS-keychain prompts when it loads a
-// config file. Tests that need to exercise the keychain code path must
-// explicitly install their own store by overriding this variable.
+// GCX_KEYCHAIN=off is checked before the test short-circuit below, so a
+// deliberate opt-out is honoured even under `go test`: ErrDisabled must
+// remain reachable in-process, or no test could exercise the one path that
+// still falls back to plaintext. Otherwise, under `go test` (detected via
+// testing.Testing()), the default is a no-op store that reports
+// ErrUnavailable for every operation. This prevents any test in any package
+// from triggering OS-keychain prompts when it loads a config file. Tests that
+// need to exercise the keychain code path must explicitly install their own
+// store by overriding this variable.
 //
 //nolint:gochecknoglobals // test injection seam for the keychain backend.
 var keychainStoreFn = defaultKeychainStore
@@ -78,11 +83,31 @@ var (
 )
 
 func defaultKeychainStore() credentials.Store {
+	if keychainModeForProcess() == keychainModeDisabled {
+		return disabledStore{}
+	}
 	if testing.Testing() {
 		return testingNoopStore{}
 	}
+	return keychainStoreForMode(keychainModeEnabled)
+}
+
+func keychainStoreForMode(mode keychainMode) credentials.Store {
+	if mode == keychainModeDisabled {
+		return disabledStore{}
+	}
 	openStoreOnce.Do(func() { openedStore = credentials.Open() })
 	return openedStore
+}
+
+// keychainStoreForPolicy is the sole selector for which credential store
+// backs a resolved policy: the already-resolved policy decides disabled vs.
+// enabled, so nothing here re-reads GCX_KEYCHAIN.
+func keychainStoreForPolicy(policy keychainPolicy) credentials.Store {
+	if policy.mode == keychainModeDisabled {
+		return disabledStore{}
+	}
+	return keychainStoreFn()
 }
 
 type testingNoopStore struct{}
@@ -90,6 +115,14 @@ type testingNoopStore struct{}
 func (testingNoopStore) Get(string) (string, error) { return "", credentials.ErrUnavailable }
 func (testingNoopStore) Set(string, string) error   { return credentials.ErrUnavailable }
 func (testingNoopStore) Delete(string) error        { return credentials.ErrUnavailable }
+
+// disabledStore stands in for the OS keychain when the user has turned it off,
+// so credentials stay in plaintext in the config file.
+type disabledStore struct{}
+
+func (disabledStore) Get(string) (string, error) { return "", credentials.ErrDisabled }
+func (disabledStore) Set(string, string) error   { return credentials.ErrDisabled }
+func (disabledStore) Delete(string) error        { return credentials.ErrDisabled }
 
 const (
 	configFilePermissions  = 0o600
@@ -377,17 +410,6 @@ type Override func(cfg *Config) error
 
 type Source func() (string, error)
 
-type configWriteLockHeldKey struct{}
-
-func withConfigWriteLockHeld(ctx context.Context) context.Context {
-	return context.WithValue(ctx, configWriteLockHeldKey{}, true)
-}
-
-func configWriteLockIsHeld(ctx context.Context) bool {
-	held, _ := ctx.Value(configWriteLockHeldKey{}).(bool)
-	return held
-}
-
 func ExplicitConfigFile(path string) Source {
 	return func() (string, error) {
 		return path, nil
@@ -482,35 +504,63 @@ func CreateDefaultConfigFile(file string) error {
 	return nil
 }
 
-//nolint:gocyclo,nestif // Loading keeps versioning, legacy migration, source binding, and keychain migration in one ordered trust pipeline.
+// Load reads the config document named by source. It reads the ambient config
+// layer, if a caller set one through ContextWithConfigSource, once here and
+// passes it down as an explicit option.
 func Load(ctx context.Context, source Source, overrides ...Override) (Config, error) {
+	return load(ctx, source, loadOptions{layer: configLayerFromCtx(ctx)}, overrides...)
+}
+
+// LoadUnderResolvedPolicy loads source under the credential-storage policy
+// that resolved has already worked out across every trusted layer, instead of
+// re-deriving one from source's own bytes.
+//
+// A login or cloud-login mutation reloads only the single layer it is about to
+// write. That layer need not be the one that declares credentials.keychain, so
+// a plain Load there would resolve the default "on" policy and could push the
+// layer's plaintext into the OS keychain against a trusted opt-out declared
+// elsewhere.
+//
+// It takes a whole Config rather than an exported policy value deliberately:
+// the policy type is private, so a caller cannot manufacture a plaintext
+// opt-out without first loading trusted configuration.
+func LoadUnderResolvedPolicy(ctx context.Context, source Source, resolved Config, overrides ...Override) (Config, error) {
+	opts := loadOptions{layer: configLayerFromCtx(ctx)}
+	if resolved.keychainPolicy.source != "" {
+		opts = opts.withKeychainPolicy(resolved.keychainPolicy)
+	}
+	return load(ctx, source, opts, overrides...)
+}
+
+//nolint:gocyclo,nestif // Loading keeps versioning, legacy migration, source binding, and keychain migration in one ordered trust pipeline.
+func load(ctx context.Context, source Source, opts loadOptions, overrides ...Override) (Config, error) {
 	config := Config{}
 
 	filename, err := source()
 	if err != nil {
 		return config, err
 	}
-	layer, err := configLayerForPath(filename, configLayerFromCtx(ctx))
+	layer, err := configLayerForPath(filename, opts.layer)
 	if err != nil {
 		return config, err
 	}
 	if layer != "" {
-		ctx = withConfigLayer(ctx, layer)
+		opts.layer = layer
 	}
 
 	logging.FromContext(ctx).Debug("Loading config", slog.String("filename", filename))
 	config.Source = filename
 
-	contents, snapshotted := configSnapshotFromContext(ctx, filename)
+	contents, snapshotted := opts.snapshotFor(filename)
 	if !snapshotted {
-		contents, err = readConfigFileForLayer(filename, configLayerFromCtx(ctx))
+		contents, err = readConfigFileForLayer(filename, opts.layer)
 		if err != nil {
 			if os.IsNotExist(err) {
-				sourceIdentity, identityErr := canonicalConfigSourceForLayer(filename, configLayerFromCtx(ctx))
+				sourceIdentity, identityErr := canonicalConfigSourceForLayer(filename, opts.layer)
 				if identityErr != nil {
 					return config, identityErr
 				}
-				config.sourceLayer = configLayerFromCtx(ctx)
+				config.sourceLayer = opts.layer
 				config.bindSourceIdentity(sourceIdentity)
 				config.expectSourceAbsent = true
 			}
@@ -520,16 +570,21 @@ func Load(ctx context.Context, source Source, overrides ...Override) (Config, er
 	if err := validateDeclaredConfigVersion(filename, contents); err != nil {
 		return config, err
 	}
+	policy, err := resolveKeychainPolicyForSource(ctx, filename, opts, contents)
+	if err != nil {
+		return config, err
+	}
+	opts = opts.withKeychainPolicy(policy)
 
 	loadedLegacy := isLegacyConfig(contents)
 	if loadedLegacy {
-		config, err = migrateLegacyConfig(ctx, source, filename, contents)
+		config, err = migrateLegacyConfig(ctx, source, filename, contents, opts)
 		if err != nil {
 			return config, err
 		}
 		config.Source = filename
 		if !config.migrationDeferred {
-			persisted, readErr := readConfigFileForLayer(filename, configLayerFromCtx(ctx))
+			persisted, readErr := readConfigFileForLayer(filename, opts.layer)
 			if readErr != nil {
 				return config, readErr
 			}
@@ -541,23 +596,28 @@ func Load(ctx context.Context, source Source, overrides ...Override) (Config, er
 			config.Source = filename
 		}
 	} else {
+		decodeContents, sanitizeErr := typedConfigContents(contents, opts.layer)
+		if sanitizeErr != nil {
+			return config, UnmarshalError{File: filename, Err: sanitizeErr}
+		}
 		codec := &format.YAMLCodec{BytesAsBase64: true}
-		if err := codec.Decode(bytes.NewBuffer(contents), &config); err != nil {
+		if err := codec.Decode(bytes.NewBuffer(decodeContents), &config); err != nil {
 			return config, UnmarshalError{File: filename, Err: err}
 		}
 	}
 
-	sourceIdentity, err := canonicalConfigSourceForLayer(filename, configLayerFromCtx(ctx))
+	sourceIdentity, err := canonicalConfigSourceForLayer(filename, opts.layer)
 	if err != nil {
 		return config, err
 	}
-	config.sourceLayer = configLayerFromCtx(ctx)
+	config.sourceLayer = opts.layer
 	config.bindSourceIdentity(sourceIdentity)
 	config.sourceRevision = sha256.Sum256(contents)
 	config.hasSourceRevision = true
-	if migrationPersistenceSuppressed(ctx) {
+	if opts.suppressMigrationPersistence {
 		config.migrationDeferred = true
 	}
+	config.keychainPolicy = policy
 
 	config.Resolve()
 	if err := config.materializeCloudCredentialDestinations(); err != nil {
@@ -573,7 +633,7 @@ func Load(ctx context.Context, source Source, overrides ...Override) (Config, er
 	// Defer opening the keychain until a sentinel actually needs resolving or a
 	// plaintext secret needs migrating; configs with no keychain-backed secrets
 	// then never probe the OS keychain.
-	store := newLazyStore(keychainStoreFn)
+	store := newLazyStore(func() credentials.Store { return keychainStoreForPolicy(policy) })
 	config.keychainStore = store
 
 	// Only resolve sentinels for the current context eagerly. Other contexts
@@ -589,12 +649,12 @@ func Load(ctx context.Context, source Source, overrides ...Override) (Config, er
 		}
 	}
 
-	if !config.migrationDeferred && config.hasPlaintextSecrets() {
-		migrated, writeErr := writeConfig(ctx, source, config, true)
+	if !config.migrationDeferred && !opts.suppressPlaintextMigration && config.hasPlaintextSecrets() {
+		migrated, writeErr := writeConfig(ctx, source, config, opts.forWrite(), true)
 		var durabilityErr *configDurabilityError
 		switch {
 		case errors.As(writeErr, &durabilityErr) && migrated > 0:
-			if err := refreshKeychainRuntimeAfterWrite(&config, filename, sourceIdentity, configLayerFromCtx(ctx), store); err != nil {
+			if err := refreshKeychainRuntimeAfterWrite(&config, filename, sourceIdentity, opts.layer, store); err != nil {
 				return config, err
 			}
 			log.Warn("config was replaced but its directory durability barrier failed; old and new keychain generations were retained",
@@ -608,7 +668,7 @@ func Load(ctx context.Context, source Source, overrides ...Override) (Config, er
 			log.Info("migrated plaintext credentials into OS keychain",
 				"count", migrated,
 				"file", filename)
-			if err := refreshKeychainRuntimeAfterWrite(&config, filename, sourceIdentity, configLayerFromCtx(ctx), store); err != nil {
+			if err := refreshKeychainRuntimeAfterWrite(&config, filename, sourceIdentity, opts.layer, store); err != nil {
 				return config, err
 			}
 		}
@@ -640,8 +700,14 @@ type configDurabilityError struct {
 func (e *configDurabilityError) Error() string { return e.err.Error() }
 func (e *configDurabilityError) Unwrap() error { return e.err }
 
+// Write persists cfg to the document named by source. Like Load, it reads the
+// ambient config layer once here and passes it down as an explicit option.
 func Write(ctx context.Context, source Source, cfg Config) error {
-	_, err := writeConfig(ctx, source, cfg, false)
+	return write(ctx, source, cfg, writeOptions{layer: configLayerFromCtx(ctx)})
+}
+
+func write(ctx context.Context, source Source, cfg Config, opts writeOptions) error {
+	_, err := writeConfig(ctx, source, cfg, opts, false)
 	return err
 }
 
@@ -652,11 +718,18 @@ func refreshKeychainRuntimeAfterWrite(cfg *Config, filename, sourceIdentity, lay
 	}
 	var disk Config
 	codec := &format.YAMLCodec{BytesAsBase64: true}
-	if err := codec.Decode(bytes.NewReader(contents), &disk); err != nil {
+	decodeContents, err := typedConfigContents(contents, layer)
+	if err != nil {
+		return UnmarshalError{File: filename, Err: err}
+	}
+	if err := codec.Decode(bytes.NewReader(decodeContents), &disk); err != nil {
 		return UnmarshalError{File: filename, Err: err}
 	}
 	disk.sourceLayer = layer
 	disk.bindSourceIdentity(sourceIdentity)
+	// Before Resolve: it copies the policy onto every resolved context, so a
+	// policy assigned afterwards would never reach them.
+	disk.keychainPolicy = cfg.keychainPolicy
 	disk.Resolve()
 	if err := disk.materializeCloudCredentialDestinations(); err != nil {
 		return err
@@ -684,12 +757,27 @@ func readConfigFileForLayer(filename, layer string) ([]byte, error) {
 	return os.ReadFile(filename)
 }
 
+func prepareConfigRuntimeForWrite(filename string, cfg *Config) error {
+	if err := validateConfigForWrite(filename, cfg); err != nil {
+		return err
+	}
+	policy, err := resolveKeychainPolicyForWrite(cfg, filename)
+	if err != nil {
+		return err
+	}
+	cfg.keychainPolicy = policy
+	if cfg.keychainStore == nil {
+		cfg.keychainStore = newLazyStore(func() credentials.Store { return keychainStoreForPolicy(policy) })
+	}
+	return nil
+}
+
 // writeConfig returns the number of newly staged credential generations.
 // autoMigrationOnly leaves the config untouched when no plaintext credential
 // could be staged (for example while the keychain is unavailable).
 //
 //nolint:gocyclo,nestif // The filesystem rename, durability barrier, and keychain commit/rollback are one atomic write protocol.
-func writeConfig(ctx context.Context, source Source, cfg Config, autoMigrationOnly bool) (int, error) {
+func writeConfig(ctx context.Context, source Source, cfg Config, opts writeOptions, autoMigrationOnly bool) (int, error) {
 	// Config contains pointer-backed stack, cloud, and context maps. Work on an
 	// isolated copy so validation failures and temporary keychain sentinel swaps
 	// cannot mutate the caller's in-memory configuration.
@@ -704,12 +792,12 @@ func writeConfig(ctx context.Context, source Source, cfg Config, autoMigrationOn
 	if cfg.migrationDeferred {
 		return 0, fmt.Errorf("legacy config migration is deferred; resolve the reported migration blocker before writing %s (%s)", filename, docs.ConfigMigration)
 	}
-	if err := validateConfigForWrite(filename, &cfg); err != nil {
+	if err := prepareConfigRuntimeForWrite(filename, &cfg); err != nil {
 		return 0, err
 	}
 	layer := cfg.sourceLayer
 	if layer == "" {
-		layer = configLayerFromCtx(ctx)
+		layer = opts.layer
 	}
 	layer, err = configLayerForPath(filename, layer)
 	if err != nil {
@@ -724,8 +812,12 @@ func writeConfig(ctx context.Context, source Source, cfg Config, autoMigrationOn
 	if err != nil {
 		return 0, err
 	}
-	if !configWriteLockIsHeld(ctx) {
-		writeLockPath, err := configLockFile(sourceIdentity, "write")
+	writeLockCovered, err := opts.writeLockCovers(sourceIdentity)
+	if err != nil {
+		return 0, err
+	}
+	if !writeLockCovered {
+		writeLockPath, err := configLockFile(sourceIdentity)
 		if err != nil {
 			return 0, err
 		}
@@ -755,7 +847,7 @@ func writeConfig(ctx context.Context, source Source, cfg Config, autoMigrationOn
 	var keychainTxn *keychainWriteTransaction
 	configRenamed := false
 	if cfg.hasSecretsToReconcile() {
-		keychainTxn, err = reconcileKeychain(&cfg, keychainStoreFn(), log)
+		keychainTxn, err = reconcileKeychain(&cfg, cfg.keychainStore, log)
 		if err != nil {
 			return 0, err
 		}
@@ -884,7 +976,10 @@ func configLayerForPath(filename, declared string) (string, error) {
 	return declared, nil
 }
 
-func configLockFile(sourceIdentity, purpose string) (string, error) {
+// configLockFile returns the path of the write lock for one config source.
+// Locks are per-source: two config files never contend, and a lock held for
+// one says nothing about another.
+func configLockFile(sourceIdentity string) (string, error) {
 	stateHome := xdg.StateHome()
 	if testing.Testing() {
 		stateHome = filepath.Join(os.TempDir(), "gcx-test-state")
@@ -907,7 +1002,7 @@ func configLockFile(sourceIdentity, purpose string) (string, error) {
 		return "", fmt.Errorf("secure config lock directory: %w", err)
 	}
 	digest := sha256.Sum256([]byte(sourceIdentity))
-	return filepath.Join(lockDir, fmt.Sprintf("%x.%s.lock", digest, purpose)), nil
+	return filepath.Join(lockDir, fmt.Sprintf("%x.write.lock", digest)), nil
 }
 
 func validateConfigWriteSnapshot(filename, sourceIdentity string, cfg *Config) error {
@@ -935,7 +1030,11 @@ func validateConfigWriteSnapshot(filename, sourceIdentity string, cfg *Config) e
 	}
 	var disk Config
 	codec := &format.YAMLCodec{BytesAsBase64: true}
-	if err := codec.Decode(bytes.NewReader(contents), &disk); err != nil {
+	decodeContents, sanitizeErr := typedConfigContents(contents, cfg.sourceLayer)
+	if sanitizeErr != nil {
+		return UnmarshalError{File: filename, Err: sanitizeErr}
+	}
+	if err := codec.Decode(bytes.NewReader(decodeContents), &disk); err != nil {
 		return UnmarshalError{File: filename, Err: err}
 	}
 	disk.sourceLayer = cfg.sourceLayer
@@ -1050,7 +1149,12 @@ func configWriteTarget(filename, canonicalSource string, allowSymlink bool) (str
 // bypasses layering entirely and loads that single file.
 // Every load also records the effective context's telemetry target kind.
 func LoadLayered(ctx context.Context, explicitFile string, overrides ...Override) (Config, error) {
-	cfg, err := loadLayered(ctx, explicitFile, overrides...)
+	return loadLayeredTracked(ctx, explicitFile, loadOptions{layer: configLayerFromCtx(ctx)}, overrides...)
+}
+
+// loadLayeredTracked is LoadLayered with explicit options.
+func loadLayeredTracked(ctx context.Context, explicitFile string, opts loadOptions, overrides ...Override) (Config, error) {
+	cfg, err := loadLayered(ctx, explicitFile, opts, overrides...)
 	// Capture even when err is non-nil: the validation and credential-binding
 	// override paths below return a fully merged config, so the target is known
 	// even though the command will fail. Gating on success attributed those
@@ -1069,15 +1173,15 @@ func LoadLayered(ctx context.Context, explicitFile string, overrides ...Override
 	return cfg, err
 }
 
-func loadLayered(ctx context.Context, explicitFile string, overrides ...Override) (Config, error) {
+func loadLayered(ctx context.Context, explicitFile string, opts loadOptions, overrides ...Override) (Config, error) {
 	// --config flag bypasses layering.
 	if explicitFile != "" {
-		return loadExplicit(ctx, explicitFile, overrides...)
+		return loadExplicit(ctx, explicitFile, opts, overrides...)
 	}
 
 	// GCX_CONFIG env var also bypasses layering (preserving existing behavior).
 	if envPath := os.Getenv(ConfigFileEnvVar); envPath != "" {
-		return loadExplicit(ctx, envPath, overrides...)
+		return loadExplicit(ctx, envPath, opts, overrides...)
 	}
 
 	// Warn when configs exist in both $HOME/.config and the platform XDG dir.
@@ -1093,7 +1197,7 @@ func loadLayered(ctx context.Context, explicitFile string, overrides ...Override
 
 	// No config files — auto-create user config (current behavior).
 	if len(sources) == 0 {
-		cfg, err := Load(ctx, StandardLocation(), overrides...)
+		cfg, err := load(ctx, StandardLocation(), opts, overrides...)
 		if err != nil {
 			return cfg, err
 		}
@@ -1105,6 +1209,15 @@ func loadLayered(ctx context.Context, explicitFile string, overrides ...Override
 	if err := preflightLayeredSources(sources, &hasLegacyLayer); err != nil {
 		return Config{}, err
 	}
+	// Resolve the credential-storage policy once, from every trusted layer,
+	// and bind it to the parent options so each per-layer copy below inherits
+	// it. A layer that re-derived the policy from its own bytes would obey a
+	// different decision than the load it is part of.
+	policy, err := resolveKeychainPolicyForSources(ctx, opts, sources)
+	if err != nil {
+		return Config{}, err
+	}
+	opts = opts.withKeychainPolicy(policy)
 	var migrationWarnings *inMemoryMigrationWarningCollector
 	if hasLegacyLayer && len(sources) > 1 {
 		migrationWarnings = &inMemoryMigrationWarningCollector{}
@@ -1113,17 +1226,30 @@ func loadLayered(ctx context.Context, explicitFile string, overrides ...Override
 	// Load and merge in priority order (system → user → local).
 	var merged Config
 	for i, src := range sources {
-		loadCtx := withConfigLayer(ctx, src.Type)
+		// Derive this layer's options from opts per iteration. Every field set
+		// here — the layer, the migration-persistence suppression, the frozen
+		// source bytes — is a property of this source alone, so inheriting one
+		// layer's value into the next would silently load a layer under
+		// another layer's rules, or from another layer's content.
+		layerOpts := opts
+		layerOpts.layer = src.Type
 		if hasLegacyLayer && len(sources) > 1 && isLegacyConfig(src.snapshot) {
-			loadCtx = withMigrationPersistenceSuppressed(loadCtx)
-			loadCtx = withInMemoryMigrationWarningCollector(loadCtx, migrationWarnings)
+			layerOpts.suppressMigrationPersistence = true
+			layerOpts.migrationWarnings = migrationWarnings
 		}
 		if src.snapshot != nil {
-			loadCtx = withConfigSnapshot(loadCtx, src.Path, src.snapshot)
+			layerOpts = layerOpts.withSourceSnapshot(src.Path, src.snapshot)
 		}
-		loaded, err := Load(loadCtx, ExplicitConfigFile(src.Path))
+		loaded, err := load(ctx, ExplicitConfigFile(src.Path), layerOpts)
 		if err != nil {
 			return Config{}, err
+		}
+		// With trusted lower layers, keep the repository policy out of the
+		// merged schema as well as the resolved runtime policy. A sole local
+		// source retains its field so an unrelated write cannot erase it; the
+		// private policy resolved above remains authoritative and ignores it.
+		if src.Type == "local" && i > 0 {
+			loaded.Credentials = nil
 		}
 		current, err := readConfigSource(src)
 		if err != nil {
@@ -1178,12 +1304,15 @@ func loadLayered(ctx context.Context, explicitFile string, overrides ...Override
 //
 // explicitFile is the value of the --config flag; fileType is the value of
 // the --file flag. Both may be empty.
-//
-//nolint:nestif // Legacy-layer preflight and interrupted-migration recovery are one ordered, fail-before-write selection flow.
 func LoadForWrite(ctx context.Context, explicitFile, fileType string) (Config, Source, error) {
+	return loadForWrite(ctx, explicitFile, fileType, loadOptions{layer: configLayerFromCtx(ctx)})
+}
+
+//nolint:nestif // Legacy-layer preflight and interrupted-migration recovery are one ordered, fail-before-write selection flow.
+func loadForWrite(ctx context.Context, explicitFile, fileType string, opts loadOptions) (Config, Source, error) {
 	if explicitFile != "" {
 		src := ExplicitConfigFile(explicitFile)
-		cfg, err := loadExplicit(ctx, explicitFile)
+		cfg, err := loadExplicit(ctx, explicitFile, opts)
 		return cfg, src, err
 	}
 
@@ -1200,73 +1329,134 @@ func LoadForWrite(ctx context.Context, explicitFile, fileType string) (Config, S
 		if err != nil {
 			return Config{}, nil, err
 		}
-		for _, s := range sources {
-			if s.Type == fileType {
-				src := ExplicitConfigFile(s.Path)
-				loadCtx := withConfigLayer(ctx, s.Type)
-				contents, readErr := readConfigSource(s)
-				if readErr != nil {
-					return Config{}, nil, readErr
+		for i := range sources {
+			contents, readErr := readConfigSource(sources[i])
+			if readErr != nil {
+				return Config{}, nil, readErr
+			}
+			sources[i].snapshot = contents
+		}
+		// Resolve the policy across every trusted layer, not just the selected
+		// one: the layer being written is not necessarily the layer that
+		// declares the policy the write has to obey.
+		policy, err := resolveKeychainPolicyForSources(ctx, opts, sources)
+		if err != nil {
+			return Config{}, nil, err
+		}
+		selected, _, selErr := selectConfigSource(sources, fileType)
+		switch {
+		case errors.Is(selErr, errNoConfigSourcesDiscovered):
+			// Fresh system (no config files yet): preserve LoadLayered's auto-create.
+			// LoadLayered only ever created the user layer, so --file user creates and
+			// returns it; other layer types have nothing to auto-create and already
+			// returned their own error from selectConfigSource above.
+			cfg, err := load(ctx, StandardLocation(), opts.withKeychainPolicy(policy))
+			return cfg, StandardLocation(), err
+		case selErr != nil:
+			return Config{}, nil, selErr
+		}
+
+		src := ExplicitConfigFile(selected.Path)
+		layerOpts := opts
+		layerOpts.layer = selected.Type
+		contents := selected.snapshot
+		// Freeze the target bytes selected for this write before inspecting
+		// their schema. If an older or concurrent process rewrites a v1 file
+		// back to legacy before Load runs, loading the snapshot prevents an
+		// un-preflighted migration; the eventual Write revision check rejects
+		// the intervening change.
+		layerOpts = layerOpts.withSourceSnapshot(selected.Path, contents)
+		layerOpts = layerOpts.withKeychainPolicy(policy)
+		targetWasLegacy := isLegacyConfig(contents)
+		if targetWasLegacy && len(sources) > 1 {
+			preflightErr := preflightLayeredSources(sources)
+			if preflightErr != nil {
+				var incomplete *layeredMigrationIncompleteError
+				if !errors.As(preflightErr, &incomplete) || !incomplete.includesLayer(fileType) {
+					return Config{}, nil, preflightErr
 				}
-				// Freeze the target bytes selected for this write before inspecting
-				// their schema. If an older or concurrent process rewrites a v1 file
-				// back to legacy before Load runs, loading the snapshot prevents an
-				// un-preflighted migration; the eventual Write revision check rejects
-				// the intervening change.
-				loadCtx = withConfigSnapshot(loadCtx, s.Path, contents)
-				targetWasLegacy := isLegacyConfig(contents)
-				if targetWasLegacy && len(sources) > 1 {
-					preflightErr := preflightLayeredSources(sources)
-					if preflightErr != nil {
-						var incomplete *layeredMigrationIncompleteError
-						if !errors.As(preflightErr, &incomplete) || !incomplete.includesLayer(fileType) {
-							return Config{}, nil, preflightErr
-						}
-						// A previous explicit step already migrated another layer.
-						// Let this targeted write finish one of the named remaining
-						// legacy layers; ordinary loads keep returning the typed error
-						// until every overlapping layer is complete.
-					}
-					for _, preflightSource := range sources {
-						if preflightSource.Type == fileType && preflightSource.snapshot != nil {
-							loadCtx = withConfigSnapshot(loadCtx, s.Path, preflightSource.snapshot) //nolint:fatcontext // One immutable snapshot is attached to the selected layer.
-							break
-						}
-					}
+				// A previous explicit step already migrated another layer.
+				// Let this targeted write finish one of the named remaining
+				// legacy layers; ordinary loads keep returning the typed error
+				// until every overlapping layer is complete.
+			}
+			for _, preflightSource := range sources {
+				if preflightSource.Type == fileType && preflightSource.snapshot != nil {
+					layerOpts = layerOpts.withSourceSnapshot(selected.Path, preflightSource.snapshot)
+					break
 				}
-				cfg, err := Load(loadCtx, src)
-				if err == nil && targetWasLegacy {
-					remaining := remainingLegacySourceSnapshots(sources, fileType, cfg.migrationDeferred)
-					warnIncompleteLayeredMigration(ctx, remaining, nil)
-				}
-				return cfg, src, err
 			}
 		}
-		// Fresh system (no config files yet): preserve LoadLayered's auto-create.
-		// LoadLayered only ever created the user layer, so --file user creates and
-		// returns it; other layer types have nothing to auto-create and still error.
-		if fileType == "user" && len(sources) == 0 {
-			cfg, err := Load(ctx, StandardLocation())
-			return cfg, StandardLocation(), err
+		cfg, err := load(ctx, src, layerOpts)
+		if err == nil && targetWasLegacy {
+			remaining := remainingLegacySourceSnapshots(sources, fileType, cfg.migrationDeferred)
+			warnIncompleteLayeredMigration(ctx, remaining, nil)
 		}
-		return Config{}, nil, fmt.Errorf("no %s config file found", fileType)
+		return cfg, src, err
 	}
 
-	layered, err := LoadLayered(ctx, "")
+	layered, err := loadLayeredTracked(ctx, "", opts)
 	if err != nil {
 		return Config{}, nil, err
 	}
-	switch len(layered.Sources) {
-	case 0:
+	selected, _, selErr := selectConfigSource(layered.Sources, "")
+	switch {
+	case errors.Is(selErr, errNoConfigSourcesDiscovered):
 		// Defensive: LoadLayered auto-created a config file and re-ran discovery,
 		// so it normally returns exactly one source (case 1). This only hits if
 		// that re-discovery failed to find the just-created file; reuse it anyway.
 		return layered, StandardLocation(), nil
-	case 1:
-		// Single source - LoadLayered already loaded exactly this file.
-		return layered, ExplicitConfigFile(layered.Sources[0].Path), nil
-	default:
+	case errors.Is(selErr, errAmbiguousConfigSource):
 		return Config{}, nil, errors.New("multiple config files loaded; specify which to update with --file (system, user, local)")
+	case selErr != nil:
+		return Config{}, nil, selErr
+	default:
+		// Single source - LoadLayered already loaded exactly this file.
+		return layered, ExplicitConfigFile(selected.Path), nil
+	}
+}
+
+// errNoConfigSourcesDiscovered signals that selectConfigSource found no
+// candidate sources to choose from (a fresh system with no config files
+// yet, or an explicit --file user request against one). The two callers
+// react to this differently — one performs a full load that auto-creates
+// the default location, the other only needs a raw snapshot of it — so
+// selectConfigSource leaves that decision to the caller instead of making
+// it itself.
+var errNoConfigSourcesDiscovered = errors.New("no config sources discovered")
+
+// errAmbiguousConfigSource signals that selectConfigSource was asked to pick
+// a single source with no --file filter, but more than one source was
+// discovered. Callers format their own "specify which to update" message,
+// since the valid --file choices differ by mutation (credentials.keychain
+// never accepts local as a trusted target; see keychainPolicyMutationTarget).
+var errAmbiguousConfigSource = errors.New("multiple config files loaded")
+
+// selectConfigSource picks the config source addressed by fileType among
+// already-discovered sources, or the sole discovered source when fileType is
+// empty. Both loadForWrite and keychainPolicyMutationTarget re-implemented
+// this selection independently; extracted here so a precedence fix applied
+// to one reaches the other.
+func selectConfigSource(sources []ConfigSource, fileType string) (ConfigSource, int, error) {
+	if fileType != "" {
+		for i, source := range sources {
+			if source.Type == fileType {
+				return source, i, nil
+			}
+		}
+		if fileType != "user" || len(sources) != 0 {
+			return ConfigSource{}, 0, fmt.Errorf("no %s config file found", fileType)
+		}
+		return ConfigSource{}, 0, errNoConfigSourcesDiscovered
+	}
+
+	switch len(sources) {
+	case 0:
+		return ConfigSource{}, 0, errNoConfigSourcesDiscovered
+	case 1:
+		return sources[0], 0, nil
+	default:
+		return ConfigSource{}, 0, errAmbiguousConfigSource
 	}
 }
 
@@ -1325,19 +1515,19 @@ func warnIncompleteLayeredMigration(ctx context.Context, remaining []ConfigSourc
 }
 
 // loadExplicit loads a single explicit config file, bypassing layered discovery.
-func loadExplicit(ctx context.Context, path string, overrides ...Override) (Config, error) {
+func loadExplicit(ctx context.Context, path string, opts loadOptions, overrides ...Override) (Config, error) {
 	// Reaching this function means the caller explicitly selected one document
 	// through --config or GCX_CONFIG. Preserve that provenance through legacy
 	// migration; constructing an ExplicitConfigFile Source and calling Load
 	// directly is only a path resolver and does not itself grant legacy-keychain
 	// authority.
-	var err error
-	ctx, err = withExplicitLegacyMigrationConsent(ctx, path)
+	consentIdentity, err := canonicalConfigSource(path)
 	if err != nil {
 		return Config{}, err
 	}
-	ctx = withConfigLayer(ctx, "explicit")
-	cfg, err := Load(ctx, ExplicitConfigFile(path), overrides...)
+	opts.explicitLegacyMigrationConsent = consentIdentity
+	opts.layer = "explicit"
+	cfg, err := load(ctx, ExplicitConfigFile(path), opts, overrides...)
 	if err != nil {
 		return cfg, err
 	}

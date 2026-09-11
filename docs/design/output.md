@@ -49,11 +49,12 @@ spill threshold (default **100 KiB**), and spills to a temp file otherwise.
 |-------|---------------|-------------|
 | `type` | yes | Fixed discriminator `gcx.spill_reference` — the receipt shape differs from the domain result, so consumers dispatch on this marker instead of heuristics |
 | `schema_version` | yes | Version of the receipt shape itself (currently `1`) |
-| `content_format` | yes | Media type of the spilled file's content (`json`) |
+| `content_format` | yes | `json` for documents; `jsonl` for jq streams (see § 1.6) |
 | `spilled_to` | yes | Absolute path to the full-payload file |
 | `bytes` | yes | Byte size of the full payload |
 | `total_items` | only for lists | Element count — named `total_items` (not `items`) to avoid collision with the k8s list `items` array shape |
-| `preview_sample` | yes | First 3 items for list shapes; sorted top-level key names for object/map shapes; `null` for other shapes. Named `preview_sample` (not `preview`) to signal it is never the complete dataset |
+| `total_values` | only for jq streams | Yielded-value count, not list elements; replaces `total_items` |
+| `preview_sample` | yes | First 3 items for list shapes; sorted top-level key names for object/map shapes; `null` for other shapes and jq streams. Named `preview_sample` (not `preview`) to signal it is never the complete dataset |
 | `message` | yes | Human-readable guidance: references `spilled_to` path and opt-outs |
 
 **Override:** `-o json` forces the full document inline to stdout regardless
@@ -170,49 +171,44 @@ resource object. `--json` is an independent mechanism (NC-002).
 
 ### 1.6 JQ Transformation
 
-The `--jq` flag applies a [jq](https://jqlang.github.io/jq/) expression to the
-command's JSON output before it reaches stdout. This eliminates the need to
-pipe gcx output into external scripts for grouping, reducing, or filtering — a
-common pain point when agents drive investigations and resort to generated
-Python.
+`--jq` transforms the full command result **before** formatting or spilling,
+never a spill receipt.
 
 ```bash
-# Count items
-gcx resources get dashboards --jq '.items | length'
+# Count contexts, with compact/spill handling
+gcx config list-contexts --jq '.contexts | length' -o agents
 
-# Extract names
+# Yield one value per dashboard
 gcx resources get dashboards --jq '.items[] | .metadata.name'
-
-# Reshape into a custom collection
-gcx resources get dashboards --jq '[.items[] | {name: .metadata.name, title: .spec.title}]'
 ```
 
-**Flag semantics:**
+| Combination | Behavior |
+|-------------|----------|
+| Bare `--jq` or `-o json --jq` | Pretty-printed JSON values, no spill, including in agent mode |
+| `-o agents --jq` | Compact JSONL, without HTML escaping, with aggregate spilling |
+| Other `-o` formats or `--json` with `--jq` | Rejected |
+| Invalid syntax | Validation error before command execution |
+| Empty/whitespace expression or unknown function | jq evaluation error |
 
-| Value | Behavior |
-|-------|----------|
-| `--jq '<expr>'` | Run the jq expression against the full JSON output |
-| `--jq` + `-o json` (or `-o` unset) | Allowed; auto-flips to JSON when `-o` is unset |
-| `--jq` + `-o <non-json>` | Usage error — jq operates on JSON input |
-| `--jq` + `--json ...` | Usage error — jq supersedes field selection |
-| Invalid jq expression | Validation error (syntax fails fast at flag parse time) |
+**Shape:** Zero values emit nothing; one or many values (including primitives)
+remain separate, never implicitly wrapped in an array. A yielded `null` emits
+`null\n`. Pretty-printed JSON can span lines; only agents output is JSONL.
 
-**Output shape:** Real-jq-compatible NDJSON. Each yielded value is
-pretty-printed JSON on its own line, so filters like `.items[]` stream one
-object per line — matching what users intuit from real `jq`. Empty result sets
-emit nothing.
+**Spilling with explicit `-o agents`:**
+- `GCX_AGENT_SPILL_BYTES` (default 100 KiB) limits the **entire transformed
+  stream**, including newlines—not each value or the original payload.
+- At or below the threshold, stdout gets the complete stream. Above it, the
+  same bytes go to one `$TMPDIR/gcx-results-<random>.jsonl` file; stdout gets
+  only a spill receipt, and stderr gets a hint.
+- The receipt uses `content_format: "jsonl"`, `total_values`, no `total_items`,
+  and `preview_sample: null` to avoid unbounded previews. Its fixed metadata
+  may exceed a very small threshold. `gcx agent prune` includes JSONL spills.
+- Evaluation/encoding errors discard buffered output and partial spill files;
+  I/O errors propagate without an inline fallback. Bare jq and `-o json`
+  retain already-emitted values on a later error.
 
-**Relationship to `--json`:** `--jq` strictly subsumes `--json` field
-selection. Combining the two is rejected to keep the model simple — anything
-`--json field1,field2` does, `{field1: .field1, field2: .field2}` does in jq.
-
-**Agents codec:** `--jq` bypasses the agents codec's spill-to-tempfile
-behavior. A caller using `--jq` wants the transformed results in-stream, not a
-"spilled to /tmp" summary.
-
-**Implementation:** `internal/output/jq.go` (`JQCodec`). Flag parsing and
-mutual-exclusion enforcement in `internal/output/format.go` (`applyJQFlag`).
-Library: [`github.com/itchyny/gojq`](https://github.com/itchyny/gojq).
+**Implementation:** `internal/output/{format,jq,agents}.go`, using
+[gojq](https://github.com/itchyny/gojq).
 
 ---
 
@@ -342,11 +338,15 @@ Maximum number of <subject> to return. 0 means all results are returned
 ```
 
 **Capped-source exception:** commands whose fetch is bounded by a client-side
-safety cap (e.g. `irm oncall alert-groups list`, capped at 1000) must NOT use
-the binder — "0 means all" would be dishonest there. They keep a bespoke flag
-description that discloses the cap, and disclose the cap at runtime via
-`ListMeta.Cap` plus the cap-variant hint (below). `--limit 0` on a capped
-source means "as much as the cap allows", and the output must say so.
+safety cap must NOT use the binder — "0 means all" would be dishonest there.
+They keep a bespoke flag description that discloses the cap, and disclose the
+cap at runtime via `ListMeta.Cap` plus the cap-variant hint (below).
+`--limit 0` on a capped source means "as much as the cap allows", and the
+output must say so. No command currently takes this exception: the last one,
+`irm oncall alert-groups list`, dropped its 1000-item cap in favour of a real
+cursor drain (grafana/gcx#1157). Prefer draining — a cap that a caller cannot
+raise makes the complete set unreachable, which is the defect that issue
+reported.
 
 The binder is deliberately minimal: commands still pass the limit to their
 clients for server-side pushdown where the API supports it.
@@ -402,10 +402,12 @@ PR988 defect where `--limit 0` silently returned a hard-capped page as if it
 were complete. `serverHasMore` must also be true when the final page
 **overshot** the bound and in-hand items were trimmed, even without a next
 cursor — dropped items are truncation evidence. In that drained-overshoot
-case the total was genuinely observed, and the command may attach it to the
-constructed meta when honest (always on a cap-bounded page; otherwise only
-when `--limit 0` can really retrieve it) — observed, never guessed
-(`irm oncall alert-groups list` is the reference implementation).
+case the total was genuinely observed and the command attaches it to the
+constructed meta — observed, never guessed
+(`irm oncall alert-groups list` is the reference implementation). On a capped
+source the total may only be attached when it is honest to do so: always on a
+cap-bounded page (which carries no continuation), otherwise only when
+`--limit 0` can really retrieve it.
 
 The cap-recording rule fires at `limit >= safetyCap`, including
 `limit == safetyCap` exactly: a doubled `--limit` continuation could never
@@ -472,9 +474,9 @@ research doc's remaining-migration section).
 - `cmd/gcx/datasources/list.go` — cheaply complete source, binder,
   default `--limit 0`, known total.
 - `internal/providers/irm/oncall_commands_extra.go` (alert-groups list) —
-  paginated source, both server-reported (`PagedListMeta` with safety cap)
-  and over-fetch-by-one (`TruncatePagedList`, alternate-implementation
-  fallback path) variants.
+  paginated source, both server-reported (`PagedListMeta`, no safety cap:
+  `--limit 0` drains every `next` cursor) and over-fetch-by-one
+  (`TruncatePagedList`, alternate-implementation fallback path) variants.
 
 `alert rules list` is deliberately not migrated yet: its JSON/YAML output is
 a bare array (no envelope to carry `list_meta`) and its `--limit` counts

@@ -11,6 +11,13 @@ GCX_TELEMETRY.
 AutoApprove automatically enables the --force flag on delete operations,
 enabling non-interactive operation in CI/CD pipelines.
 
+## `GCX_KEYCHAIN`
+
+Keychain overrides trusted credentials.keychain configuration. "off" is
+the only value that disables the OS keychain and persists credentials in
+the mode-0600 config file. "on" is the default; an unrecognized value
+warns and resolves to "on", so a typo cannot silently write plaintext.
+
 ## `GCX_NO_UPDATE_NOTIFIER`
 
 DisableUpdateNotifier disables the periodic notifier that reminds users

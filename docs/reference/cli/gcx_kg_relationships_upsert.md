@@ -1,14 +1,16 @@
 ## gcx kg relationships upsert
 
-Create or update a custom relationship (upsert) [experimental].
+[experimental] Create or update a custom relationship (upsert).
 
 ### Synopsis
+
+This command is experimental. It may be removed, or its subcommands, flags and
+responses may change without following the normal semantic versioning conventions.
 
 Create or update an API-origin edge between two existing entities.
 Both endpoints must already exist.
 
-Experimental: this command uses the Knowledge Graph write API, which is gated
-server-side and may change.
+This command uses the Knowledge Graph write API, which is gated server-side.
 
 With -f, the input may be a single object or a YAML/JSON array. Array entries
 are processed in order as independent upserts: the operation is not atomic,
@@ -58,5 +60,5 @@ gcx kg relationships upsert [flags]
 
 ### SEE ALSO
 
-* [gcx kg relationships](gcx_kg_relationships.md)	 - Manage custom Knowledge Graph relationships [experimental].
+* [gcx kg relationships](gcx_kg_relationships.md)	 - [experimental] Manage custom Knowledge Graph relationships.
 

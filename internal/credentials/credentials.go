@@ -71,8 +71,10 @@ var AllFields = []Field{
 // ErrNotFound is returned by Store.Get when no entry exists for the given key.
 var ErrNotFound = errors.New("credentials: entry not found")
 
-// ErrUnavailable is returned when the OS keychain cannot be reached. Callers
-// should fall back to plaintext.
+// ErrUnavailable is returned when the OS keychain cannot be reached. This is
+// fatal: callers must not fall back to plaintext for it. credentials.ErrDisabled
+// (the deliberate GCX_KEYCHAIN=off opt-out) is the one exception, and it must be
+// tested for explicitly, since it wraps ErrUnavailable.
 var ErrUnavailable = errors.New("credentials: keychain unavailable")
 
 // ErrLocked is returned when the OS keychain is reachable but locked, or when
@@ -81,6 +83,14 @@ var ErrUnavailable = errors.New("credentials: keychain unavailable")
 // secret backend exists, so callers must not fall back to plaintext. Callers
 // must fail and ask the user to unlock the keychain.
 var ErrLocked = errors.New("credentials: keychain locked")
+
+// ErrDisabled is reported by a store that stands in for a keychain the user has
+// deliberately turned off. Unlike ErrLocked it wraps ErrUnavailable, because no
+// keychain is in play at all, but callers must not rely on that wrapping: since
+// plain ErrUnavailable is now fatal, every fallback-to-plaintext path must test
+// for ErrDisabled specifically, ahead of any ErrUnavailable check, or it will
+// wrongly treat a deliberate opt-out as a fatal unreachable backend.
+var ErrDisabled = fmt.Errorf("%w: disabled by configuration", ErrUnavailable)
 
 // Store is the minimal interface for a secret backend.
 type Store interface {

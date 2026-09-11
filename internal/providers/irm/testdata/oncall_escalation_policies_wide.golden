@@ -1,0 +1,3 @@
+ID     CHAIN    STEP            WAIT-DELAY  IMPORTANT  NOTIFY-SCHEDULE
+row-1  primary  notify_persons  60          true       weekday
+row-2                           -           false      -

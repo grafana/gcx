@@ -43,30 +43,38 @@ func DiffCmd(loader *providers.ConfigLoader) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "diff TRACE_A TRACE_B",
-		Short: "[experimental] Compare two traces (baseline vs comparison)",
-		Long: `[experimental] Compare two traces using the Tempo trace-diff API.
+		Short: "[experimental] Compare execution of two traces.",
+		Long: `This command is experimental. It may be removed, or its subcommands, flags and
+responses may change without following the normal semantic versioning conventions.
 
-This is an experimental, Grafana Cloud-only endpoint: it may be unavailable on
-self-hosted or OSS Tempo, and its request/response shape may change.
+Compare two known trace IDs using the Grafana Cloud-only trace-diff API;
+use 'gcx traces baseline' first only when you need candidate IDs.
 
-TRACE_A is the baseline trace and TRACE_B is the comparison trace. Deltas use
-B - A semantics: negative means B is faster (improvement), positive means B is
-slower (regression).
+TRACE_A is the prospective baseline and TRACE_B is the comparison, with deltas
+B - A: positive duration means B is slower and negative means faster, not
+automatically a regression or improvement (a request can fail early).
 
-Datasource is resolved from the -d flag or datasources.tempo in your context.
+Use candidate bodies and exploratory diffs to assess comparability, rejecting
+obvious context mismatches first and interpreting timing at the affected request
+boundary; a diff localizes execution changes but does not establish their cause.
 
-Use --since or --from/--to to bound the lookup: narrowing the window helps
-Tempo locate older traces faster. When omitted, the datasource performs a full
-lookback.`,
+Keep the same context/datasource and make --from/--to (or --since) cover both
+executions; without time bounds the lookup uses the full lookback, and if the
+endpoint is unavailable, use 'gcx traces get --llm' to compare both bodies
+manually instead.`,
 		Example: `
-  # Compare two traces (B - A semantics)
-  gcx traces diff abc123 def456
+  # Compare an already-known pair directly; baseline search is not required
+  gcx traces diff --context prod -d UID <baseline-id> <comparison-id>
 
-  # With an explicit datasource UID, JSON output
-  gcx traces diff -d UID abc123 def456 -o json
+  # Inspect a plausible candidate before using a diff to assess it
+  gcx traces get --context prod -d UID <candidate-id> --llm -o agents
 
-  # Bound the lookup to the last 6 hours for a faster response
-  gcx traces diff abc123 def456 --since 6h`,
+  # Assess selected candidates against the seed; repeat only as useful
+  gcx traces diff --context prod -d UID <candidate-id> <seed-id>
+
+  # Bound BOTH trace lookups, including an older candidate, and allow spilling
+  gcx traces diff --context prod -d UID <candidate-id> <seed-id> \
+    --from 2026-01-15T08:00:00Z --to 2026-01-15T10:00:00Z -o agents`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
@@ -111,7 +119,7 @@ lookback.`,
 
 	cmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost:    "medium",
-		agent.AnnotationLLMHint:      "gcx datasources tempo diff -d UID <trace-a> <trace-b> -o json",
+		agent.AnnotationLLMHint:      `gcx datasources tempo diff --context <context> -d UID <candidate-id> <seed-id> --from "$PAIR_FROM" --to "$PAIR_TO" -o agents`,
 		agent.AnnotationAvailability: agent.AvailabilityCloudOnly,
 		agent.AnnotationStability:    agent.StabilityExperimental,
 	}

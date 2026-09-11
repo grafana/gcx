@@ -60,7 +60,14 @@ func (p *Provider) descriptor() signals.Descriptor {
   # (--stacktrace-selector is repeatable; pass it once per frame, root first)
   gcx profiles query '{service_name="my-go-service"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h \
-    --stacktrace-selector 'github.com/prometheus/client_golang/prometheus.(*Registry).Gather.func1'`,
+    --stacktrace-selector 'github.com/prometheus/client_golang/prometheus.(*Registry).Gather.func1'
+
+  # Caller-callee call graph as Graphviz DOT text — the most readable format
+  # for LLM analysis (requires a pure-v2 backend; others fall back to table).
+  # Dotted edges mean frames were elided by the 100-node default; raise
+  # --max-nodes for fuller call chains
+  gcx profiles query '{service_name="frontend"}' \
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h -o dot`,
 			},
 			{
 				Build:     dspyroscope.LabelsCmd,
@@ -75,6 +82,18 @@ func (p *Provider) descriptor() signals.Descriptor {
 
   # Output as JSON
   gcx profiles labels -d UID -o json`,
+			},
+			{
+				Build:     dspyroscope.SeriesCmd,
+				TokenCost: "large",
+				LLMHint:   `gcx profiles series -d abc123 --match '{service_name="frontend"}' --label-name namespace --label-name pod --since 1h -o json`,
+				Example: `
+  # List unique profile label sets without a profile type
+  gcx profiles series -d UID --since 1h
+
+  # Scope to a service and return selected labels
+  gcx profiles series -d UID '{service_name="frontend"}' \
+    --label-name service_name --label-name namespace --label-name pod --since 24h`,
 			},
 			{
 				Build:     dspyroscope.ListProfileTypesCmd,

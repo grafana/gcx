@@ -3,11 +3,32 @@ package traces_test
 import (
 	"testing"
 
+	dstempo "github.com/grafana/gcx/internal/datasources/tempo"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/traces"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestComparisonCommandsReuseHelp(t *testing.T) {
+	for _, shared := range []*cobra.Command{
+		dstempo.BaselineCmd(&providers.ConfigLoader{}),
+		dstempo.DiffCmd(&providers.ConfigLoader{}),
+	} {
+		t.Run(shared.Name(), func(t *testing.T) {
+			roots := (&traces.Provider{}).Commands()
+			require.Len(t, roots, 1)
+			cmd, _, err := roots[0].Find([]string{shared.Name()})
+			require.NoError(t, err)
+
+			require.NotEmpty(t, shared.Example)
+			assert.Equal(t, shared.Short, cmd.Short)
+			assert.Equal(t, shared.Long, cmd.Long)
+			assert.Equal(t, shared.Example, cmd.Example, "comparison workflow examples must not drift between entry points")
+		})
+	}
+}
 
 func TestProviderRegistration(t *testing.T) {
 	p := &traces.Provider{}

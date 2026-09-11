@@ -15,7 +15,6 @@ import (
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/shared"
-	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -37,8 +36,7 @@ type incidentListOpts struct {
 }
 
 func (o *incidentListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &IncidentTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &IncidentTableCodec{Wide: true})
+	cmdio.RegisterTable(&o.IO, IncidentTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.IntVar(&o.Limit, "limit", 50, "Maximum number of incidents to return")
@@ -176,64 +174,32 @@ func NewListCommand(loader GrafanaConfigLoader) *cobra.Command {
 	return cmd
 }
 
-// IncidentTableCodec renders incidents as a tabular table.
-type IncidentTableCodec struct {
-	Wide bool
-}
-
-func (c *IncidentTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
-	}
-	return "table"
-}
-
-func (c *IncidentTableCodec) Encode(w io.Writer, v any) error {
-	incs, ok := v.([]Incident)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []Incident")
-	}
-
-	var tbl *style.TableBuilder
-	if c.Wide {
-		tbl = style.NewTable("INCIDENTID", "TITLE", "STATUS", "SEVERITY", "TYPE", "CREATED")
-	} else {
-		tbl = style.NewTable("INCIDENTID", "TITLE", "STATUS", "SEVERITY", "CREATED")
-	}
-
-	for _, inc := range incs {
-		created := "-"
+// IncidentTable declares the incidents table. TITLE is truncated in the
+// narrow table and shown in full in wide, so it appears once per format.
+func IncidentTable() cmdio.Table[Incident] {
+	created := func(inc Incident) string {
 		t := time.Time(inc.CreatedTime)
-		if !t.IsZero() {
-			created = t.Format("2006-01-02 15:04")
+		if t.IsZero() {
+			return "-"
 		}
-
-		severity := inc.Severity
-		if severity == "" {
-			severity = "-"
-		}
-
-		title := inc.Title
-		if !c.Wide && len(title) > 50 {
-			title = title[:47] + "..."
-		}
-
-		if c.Wide {
-			incType := inc.IncidentType
-			if incType == "" {
-				incType = "-"
-			}
-			tbl.Row(inc.IncidentID, title, inc.Status, severity, incType, created)
-		} else {
-			tbl.Row(inc.IncidentID, title, inc.Status, severity, created)
-		}
+		return t.Format("2006-01-02 15:04")
 	}
 
-	return tbl.Render(w)
-}
-
-func (c *IncidentTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
+	return cmdio.Table[Incident]{
+		Columns: []cmdio.Column[Incident]{
+			{Header: "INCIDENTID", Content: func(inc Incident) string { return inc.IncidentID }},
+			{Header: "TITLE", Visible: cmdio.NarrowOnly, Content: func(inc Incident) string {
+				return truncate(inc.Title, 50)
+			}},
+			{Header: "TITLE", Visible: cmdio.WideOnly, Content: func(inc Incident) string { return inc.Title }},
+			{Header: "STATUS", Content: func(inc Incident) string { return inc.Status }},
+			{Header: "SEVERITY", Content: func(inc Incident) string { return orDash(inc.Severity) }},
+			{Header: "TYPE", Visible: cmdio.WideOnly, Content: func(inc Incident) string {
+				return orDash(inc.IncidentType)
+			}},
+			{Header: "CREATED", Content: created},
+		},
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -420,6 +386,9 @@ func NewCreateCommand(loader GrafanaConfigLoader) *cobra.Command {
   spec:
     title: "Service degradation in production"
     status: active
+    # The display label, not the identifier. Run
+    # 'gcx irm incidents severities list' for the valid values.
+    severity: Minor
     isDrill: false
     incidentType: internal
     labels:
@@ -482,6 +451,13 @@ func NewCreateCommand(loader GrafanaConfigLoader) *cobra.Command {
 
 			created, err := client.Create(ctx, inc)
 			if err != nil {
+				// Create reports the incident next to the error when the
+				// incident exists but a later step failed. That error already
+				// names the incident and the repair command, so a
+				// "failed to create incident" prefix would contradict it.
+				if created != nil {
+					return err
+				}
 				return fmt.Errorf("failed to create incident: %w", err)
 			}
 
@@ -630,7 +606,7 @@ type activityListOpts struct {
 }
 
 func (o *activityListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &ActivityTableCodec{})
+	cmdio.RegisterTable(&o.IO, ActivityTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.IntVar(&o.Limit, "limit", 50, "Maximum number of activity items to return")
@@ -677,43 +653,30 @@ func NewListActivityCommand(loader GrafanaConfigLoader) *cobra.Command {
 	return cmd
 }
 
-// ActivityTableCodec renders activity items as a table.
-type ActivityTableCodec struct{}
-
-func (c *ActivityTableCodec) Format() format.Format { return "table" }
-
-func (c *ActivityTableCodec) Encode(w io.Writer, v any) error {
-	items, ok := v.([]ActivityItem)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []ActivityItem")
+// ActivityTable declares the incident activity table.
+func ActivityTable() cmdio.Table[ActivityItem] {
+	return cmdio.Table[ActivityItem]{
+		Columns: []cmdio.Column[ActivityItem]{
+			{Header: "ID", Content: func(a ActivityItem) string { return a.ActivityItemID }},
+			{Header: "KIND", Content: func(a ActivityItem) string { return a.ActivityKind }},
+			{Header: "USER", Content: func(a ActivityItem) string { return a.User.Name }},
+			{Header: "TIME", Content: func(a ActivityItem) string {
+				eventTime := a.EventTime
+				if eventTime == "" {
+					eventTime = a.CreatedTime
+				}
+				// Truncate to date+time if it is an ISO timestamp.
+				if len(eventTime) > 16 {
+					eventTime = eventTime[:16]
+				}
+				return eventTime
+			}},
+			{Header: "BODY", Content: func(a ActivityItem) string {
+				// Newlines break the table layout.
+				return strings.ReplaceAll(truncate(a.Body, 60), "\n", " ")
+			}},
+		},
 	}
-
-	t := style.NewTable("ID", "KIND", "USER", "TIME", "BODY")
-	for _, item := range items {
-		body := item.Body
-		if len(body) > 60 {
-			body = body[:57] + "..."
-		}
-		// Newlines break the table layout.
-		body = strings.ReplaceAll(body, "\n", " ")
-
-		eventTime := item.EventTime
-		if eventTime == "" {
-			eventTime = item.CreatedTime
-		}
-		// Truncate to date+time if it's an ISO timestamp.
-		if len(eventTime) > 16 {
-			eventTime = eventTime[:16]
-		}
-
-		t.Row(item.ActivityItemID, item.ActivityKind, item.User.Name, eventTime, body)
-	}
-
-	return t.Render(w)
-}
-
-func (c *ActivityTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
 }
 
 type activityAddOpts struct {
@@ -803,7 +766,7 @@ type severitiesListOpts struct {
 }
 
 func (o *severitiesListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &SeverityTableCodec{})
+	cmdio.RegisterTable(&o.IO, SeverityTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 }
@@ -842,30 +805,16 @@ func newSeveritiesListCommand(loader GrafanaConfigLoader) *cobra.Command {
 	return cmd
 }
 
-// SeverityTableCodec renders severity levels as a table.
-type SeverityTableCodec struct{}
-
-func (c *SeverityTableCodec) Format() format.Format { return "table" }
-
-func (c *SeverityTableCodec) Encode(w io.Writer, v any) error {
-	sevs, ok := v.([]Severity)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []Severity")
+// SeverityTable declares the severity levels table.
+func SeverityTable() cmdio.Table[Severity] {
+	return cmdio.Table[Severity]{
+		Columns: []cmdio.Column[Severity]{
+			{Header: "ID", Content: func(s Severity) string { return s.SeverityID }},
+			{Header: "LEVEL", Content: func(s Severity) string { return strconv.Itoa(s.Level) }},
+			{Header: "LABEL", Content: func(s Severity) string { return s.DisplayLabel }},
+			{Header: "COLOR", Content: func(s Severity) string { return orDash(s.Color) }},
+		},
 	}
-
-	t := style.NewTable("ID", "LEVEL", "LABEL", "COLOR")
-	for _, s := range sevs {
-		color := s.Color
-		if color == "" {
-			color = "-"
-		}
-		t.Row(s.SeverityID, strconv.Itoa(s.Level), s.DisplayLabel, color)
-	}
-	return t.Render(w)
-}
-
-func (c *SeverityTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
 }
 
 // ---------------------------------------------------------------------------
@@ -881,8 +830,7 @@ type contextsListOpts struct {
 }
 
 func (o *contextsListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &IncidentContextTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &IncidentContextTableCodec{Wide: true})
+	cmdio.RegisterTable(&o.IO, IncidentContextTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.IntVar(&o.Limit, "limit", 0, "Maximum number of contexts to return (0 = server default)")
@@ -938,71 +886,36 @@ func NewListContextsCommand(loader GrafanaConfigLoader) *cobra.Command {
 	return cmd
 }
 
-// IncidentContextTableCodec renders incident contexts as a table.
-type IncidentContextTableCodec struct {
-	Wide bool
-}
+// IncidentContextTable declares the incident contexts table. TITLE is
+// truncated in the narrow table and shown in full in wide.
+func IncidentContextTable() cmdio.Table[IncidentContext] {
+	title := func(ctx IncidentContext) string { return orDash(ctx.Title) }
 
-func (c *IncidentContextTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
+	return cmdio.Table[IncidentContext]{
+		Columns: []cmdio.Column[IncidentContext]{
+			{Header: "CONTEXTID", Content: func(ctx IncidentContext) string { return ctx.ContextID }},
+			{Header: "TYPE", Content: func(ctx IncidentContext) string { return orDash(ctx.Type) }},
+			{Header: "STATUS", Content: func(ctx IncidentContext) string { return orDash(ctx.Status) }},
+			{Header: "ALERTGROUPID", Content: func(ctx IncidentContext) string {
+				if ctx.AlertGroupID == nil {
+					return "-"
+				}
+				return orDash(*ctx.AlertGroupID)
+			}},
+			{Header: "TITLE", Visible: cmdio.NarrowOnly, Content: func(ctx IncidentContext) string {
+				return truncate(title(ctx), 50)
+			}},
+			{Header: "TITLE", Visible: cmdio.WideOnly, Content: title},
+			{Header: "CREATED", Visible: cmdio.WideOnly, Content: func(ctx IncidentContext) string {
+				created := ctx.CreatedTime
+				if created == "" {
+					return "-"
+				}
+				if len(created) > 16 {
+					created = created[:16]
+				}
+				return created
+			}},
+		},
 	}
-	return "table"
-}
-
-func (c *IncidentContextTableCodec) Encode(w io.Writer, v any) error {
-	contexts, ok := v.([]IncidentContext)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []IncidentContext")
-	}
-
-	var tbl *style.TableBuilder
-	if c.Wide {
-		tbl = style.NewTable("CONTEXTID", "TYPE", "STATUS", "ALERTGROUPID", "TITLE", "CREATED")
-	} else {
-		tbl = style.NewTable("CONTEXTID", "TYPE", "STATUS", "ALERTGROUPID", "TITLE")
-	}
-
-	for _, ctx := range contexts {
-		alertGroup := "-"
-		if ctx.AlertGroupID != nil && *ctx.AlertGroupID != "" {
-			alertGroup = *ctx.AlertGroupID
-		}
-
-		title := ctx.Title
-		if title == "" {
-			title = "-"
-		}
-		if !c.Wide && len(title) > 50 {
-			title = title[:47] + "..."
-		}
-
-		ctxType := ctx.Type
-		if ctxType == "" {
-			ctxType = "-"
-		}
-
-		status := ctx.Status
-		if status == "" {
-			status = "-"
-		}
-
-		if c.Wide {
-			created := ctx.CreatedTime
-			if created == "" {
-				created = "-"
-			} else if len(created) > 16 {
-				created = created[:16]
-			}
-			tbl.Row(ctx.ContextID, ctxType, status, alertGroup, title, created)
-		} else {
-			tbl.Row(ctx.ContextID, ctxType, status, alertGroup, title)
-		}
-	}
-
-	return tbl.Render(w)
-}
-
-func (c *IncidentContextTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
 }

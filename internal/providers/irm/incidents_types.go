@@ -38,14 +38,20 @@ func (i *Incident) SetResourceName(name string) { i.IncidentID = name }
 //
 //nolint:recvcheck // Mixed receivers are intentional for Go generics TypedCRUD compatibility.
 type Incident struct {
-	IncidentID              string               `json:"incidentID,omitempty"`
-	Title                   string               `json:"title"`
-	Slug                    string               `json:"slug,omitempty"`
-	Prefix                  string               `json:"prefix,omitempty"`
-	Status                  string               `json:"status"`
-	StatusID                string               `json:"statusID,omitempty"`
-	State                   string               `json:"state,omitempty"`
-	Severity                string               `json:"severity,omitempty"`
+	IncidentID string `json:"incidentID,omitempty"`
+	Title      string `json:"title"`
+	Slug       string `json:"slug,omitempty"`
+	Prefix     string `json:"prefix,omitempty"`
+	Status     string `json:"status"`
+	StatusID   string `json:"statusID,omitempty"`
+	State      string `json:"state,omitempty"`
+	// Severity is the display label, for example "Critical". gcx ignores it
+	// when SeverityID is not empty.
+	Severity string `json:"severity,omitempty"`
+	// SeverityID is the severity identifier of the organization. A
+	// hand-written manifest can carry it, and gcx then resolves the label from
+	// the organization severity list. A pulled manifest carries the label
+	// alone, because the pull removes this field.
 	SeverityID              string               `json:"severityID,omitempty"`
 	IsDrill                 bool                 `json:"isDrill"`
 	IncidentType            string               `json:"incidentType,omitempty"`
@@ -72,6 +78,10 @@ type Incident struct {
 	IncidentEnd             FlexTime             `json:"incidentEnd,omitzero"`
 	DescriptionModifiedTime FlexTime             `json:"descriptionModifiedTime,omitzero"`
 	StatusModifiedTime      FlexTime             `json:"statusModifiedTime,omitzero"`
+
+	// updatedFields carries command result metadata through TypedCRUD.Update.
+	// It is not an IRM API field and is never serialized in a resource.
+	updatedFields []string
 }
 
 // IncidentUser represents a user referenced in incident fields.
@@ -317,7 +327,10 @@ func (p IncidentPreview) ToIncident() Incident {
 	}
 }
 
-// createIncidentRequest is the request body for creating an incident.
+// createIncidentRequest is the request body for creating an incident. It
+// carries no severity field: CreateIncident ignores both severity and
+// severityID, and UpdateSeverity is the only route to a severity other than
+// the default one.
 type createIncidentRequest struct {
 	Title          string          `json:"title"`
 	Status         string          `json:"status"`
@@ -325,7 +338,6 @@ type createIncidentRequest struct {
 	Labels         []IncidentLabel `json:"labels"`
 	IncidentType   string          `json:"incidentType,omitempty"`
 	FieldGroupUUID string          `json:"fieldGroupUUID,omitempty"`
-	SeverityID     string          `json:"severityID,omitempty"`
 }
 
 // createIncidentResponse wraps the created incident.
@@ -339,9 +351,23 @@ type updateStatusRequest struct {
 	Status     string `json:"status"`
 }
 
-// updateStatusResponse wraps the updated incident.
+// updateStatusResponse wraps the updated incident. UpdateSeverity and
+// UpdateTitle answer with the same envelope.
 type updateStatusResponse struct {
 	Incident Incident `json:"incident"`
+}
+
+// updateSeverityRequest is the request body for IncidentsService.UpdateSeverity.
+// The API takes the severity label, not the severity identifier.
+type updateSeverityRequest struct {
+	IncidentID string `json:"incidentID"`
+	Severity   string `json:"severity"`
+}
+
+// updateTitleRequest is the request body for IncidentsService.UpdateTitle.
+type updateTitleRequest struct {
+	IncidentID string `json:"incidentID"`
+	Title      string `json:"title"`
 }
 
 // Severity represents an organization-defined severity level.

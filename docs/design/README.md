@@ -18,4 +18,5 @@ New commands and providers **must comply with all rules documented here**.
 | [help-text.md](help-text.md) | Command descriptions, examples format |
 | [naming.md](naming.md) | Resource kinds, file naming, config keys, flags |
 | [command-naming.md](command-naming.md) | Canonical command verbs and placement |
+| [experimental-commands.md](experimental-commands.md) | Marking experimental commands in help text and agent metadata |
 | [environment-variables.md](environment-variables.md) | Canonical environment variable reference |

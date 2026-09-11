@@ -1,10 +1,30 @@
 ## Unreleased
 
+**Breaking changes**
+
+- An unavailable OS keychain no longer falls back to a plaintext write. A first login (or any credential-consuming command) on a machine with no working OS credential store now fails instead of silently storing the token in plaintext. Set `GCX_KEYCHAIN=off` to keep the previous plaintext-storage behavior as an explicit opt-out.
+- Fleet Management and Instrumentation now use the `grafana-collector-app` plugin proxy instead of direct Cloud Access Policy authentication. A Cloud Access Policy token with `fleet-management` scopes is no longer sufficient. Use a Grafana stack login and ensure that the plugin is enabled. Older stack tokens can require a new `gcx login` to obtain `grafana-api:write`. Named plugin routes need `grafana-collector-app:read`. Wildcard routes need `grafana-collector-app:admin`, including some read-only commands. The default `gcx cloud login --scope` list no longer includes `fleet-management:read` or `fleet-management:write`.
+- Fleet collector resource manifests now include `spec.id`. Collector creation requires this field. Existing numeric-ID manifests continue to work for update and delete. Add `spec.id` before you reuse an older manifest to create a collector.
+- `gcx setup status` now adds `fleet-management` as the first item in `products`. Select entries by `.product` instead of their array position. The command returns exit code 1 when the plugin is missing or disabled. It returns exit code 4 when the Instrumentation check fails. In both cases, it emits the status document before it exits.
+- `gcx synthetic-monitoring probes reset-token` now returns the new probe token. Its structured output changes from the `gcx.mutation` schema to `gcx.synth.probe_token_reset`. The `name` and `id` fields move out of `target`, and `id` changes from a string to a number. Update scripts to read the top-level `token`, `name`, and `id` fields.
+- `gcx synthetic-monitoring probes deploy` now generates a Namespace, Secret, and Deployment. It no longer generates a ServiceAccount. The Secret keys change from `API_ACCESS_TOKEN` and `API_SERVER_URL` to `api-token` and `api-server-address`. Tools that process the generated manifests must accept the new resource and key names. An identity that applies the complete output must have permission to manage Namespace resources.
+- `gcx synthetic-monitoring probes deploy --api-server-url` now requires an address in `host:port` format. Values with a URL scheme or without a port now fail validation.
+- Add `--timezone` to `gcx irm oncall schedules list-final-shifts`. Without the flag the command uses the timezone of the schedule, then UTC. On a host that sets `TZ` to an IANA name, this changes the default from the zone of the host to the zone of the schedule.
+
 **New Features**
 
+- Agent Observability: add experimental `gcx agento11y experiments pull` to write private, lossless, checksummed experiment bundles with optional conversation payloads, generated agent-handling guidance, and Git-ignore protection for offline analysis and fine-tuning dataset curation.
 - Added `--fix-plan` to `gcx instrumentation check`, with two explicit modes: `--fix-plan=local` produces a deterministic aggregation of the explanation docs' "How to fix" sections (offline, no billing, works on OSS/Enterprise), and `--fix-plan=assistant` synthesizes a prioritized plan with Grafana Assistant (BILLABLE, requires a Grafana Cloud context — see the Assistant pricing docs). The two modes are disjoint: assistant mode returns a clear error when preconditions aren't met rather than silently falling back to local. `--fix-plan` alone is rejected; users must specify a mode.
+- Add trusted `credentials.keychain: on|off` configuration for OS credential storage. The default is `on`; `GCX_KEYCHAIN` has highest precedence, and an automatically discovered repository-local policy is ignored with a warning. Explicit `off` writes credentials to the mode-`0600` configuration file. Replacing a sentinel while `off` leaves the old OS-store item stale and reports cleanup guidance. See [Keychain credential storage](https://grafana.com/docs/grafana/latest/as-code/observability-as-code/grafana-cli/gcx/keychain/).
 - traces: add experimental `gcx traces baseline <trace-id>` to retrieve same-operation candidate traces (root identity, operation success, and topology fingerprint) to feed into `gcx traces diff`, with optional raw TraceQL filters when the unfiltered candidates are not valid comparisons.
 - traces: include Tempo `serviceStats` metadata (per-service span and error counts) in structured trace search output.
+
+**Fixes**
+
+- Correct Fleet resource examples, preserve string collector IDs in resource manifests, and include the collector name and ID in successful create output.
+- Accept the Kubernetes envelope (`apiVersion`/`kind`/`metadata`/`spec`) in the manifest that `create -f` and `update -f` read. The commands decoded the envelope into an empty object before this change, so they lost every field that the manifest set. This repairs the round trip for `gcx irm oncall`, where `gcx resources list-examples` prints that envelope. For `gcx alert` it adds tolerance for a hand-written envelope, because the alert provider registers no adapter.
+- Stop sending the local zone name of the host as `user_tz` in `gcx irm oncall schedules list-final-shifts`. A host that does not set `TZ` sent the literal string `Local`, and the API answered "Invalid timezone".
+- Config write locks are now bound to the config file they were taken for. A held lock for one config file no longer lets a write to a different file skip locking, which could let concurrent gcx invocations write the same file at once.
 
 ## v1.2.0 (2026-08-25)
 
@@ -57,6 +77,8 @@
 - Add a Grafana version support policy to the documentation (#1197)
 - Regenerate the command line interface reference (#1224)
 
+- irm: `gcx irm oncall alert-groups list --limit 0` returns every matching alert group instead of stopping at 1000, and `--limit N` above 1000 is honored (#1157).
+- instrumentation: app and service writes (`clusters apps configure`/`remove`, `services include`/`exclude`/`clear`) no longer fail with `otlp_url is required`.
 
 ## v1.1.0 (2026-08-14)
 

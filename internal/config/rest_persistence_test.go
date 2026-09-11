@@ -190,6 +190,7 @@ current-context: default
 }
 
 func TestWireTokenPersistence_ExplicitModeWritesToExplicitSource(t *testing.T) {
+	store := withFakeStore(t)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/cli/v1/auth/refresh":
@@ -290,8 +291,10 @@ contexts:
 	explicitRaw, err := os.ReadFile(explicitFile)
 	require.NoError(t, err)
 	explicitContents := string(explicitRaw)
-	assert.Contains(t, explicitContents, "gat_explicit_new")
-	assert.Contains(t, explicitContents, "gar_explicit_new")
+	assert.NotContains(t, explicitContents, "gat_explicit_new")
+	assert.NotContains(t, explicitContents, "gar_explicit_new")
+	assert.True(t, store.containsValue("gat_explicit_new"))
+	assert.True(t, store.containsValue("gar_explicit_new"))
 
 	userRaw, err := os.ReadFile(userFile)
 	require.NoError(t, err)
@@ -318,6 +321,7 @@ func refresher(t *testing.T, rc config.NamespacedRESTConfig) func(previousRefres
 // rotated refresh token is issued by the server but never written to disk,
 // leaving the user locked out on the next invocation.
 func TestWireTokenPersistence_WritesAfterContextCancelled(t *testing.T) {
+	store := withFakeStore(t)
 	dir := t.TempDir()
 	explicitFile := filepath.Join(dir, "explicit.yaml")
 	writeTestConfigFile(t, explicitFile, `
@@ -370,8 +374,10 @@ current-context: default
 
 	raw, err := os.ReadFile(explicitFile)
 	require.NoError(t, err)
-	assert.Contains(t, string(raw), "gat_rotated")
-	assert.Contains(t, string(raw), "gar_rotated")
+	assert.NotContains(t, string(raw), "gat_rotated")
+	assert.NotContains(t, string(raw), "gar_rotated")
+	assert.True(t, store.containsValue("gat_rotated"))
+	assert.True(t, store.containsValue("gar_rotated"))
 
 	// Retrying after a write that committed but reported uncertain durability
 	// is an idempotent success only when every persisted field is the exact new
@@ -493,6 +499,99 @@ current-context: default
 	assert.Equal(t, int32(1), refreshCalls.Load())
 	assert.Equal(t, int32(1), protectedCalls.Load())
 	assert.Equal(t, "Bearer gat_relogin", protectedAuthorization.Load())
+}
+
+// TestWireTokenPersistencePreservesEffectivePolicyForSystemOwner pins the
+// policy across an asynchronous OAuth refresh. The refresh reloads only the
+// owning layer, long after the command resolved its policy, so it must reuse
+// the frozen decision rather than re-derive one from that single file.
+func TestWireTokenPersistencePreservesEffectivePolicyForSystemOwner(t *testing.T) {
+	tests := []struct {
+		name          string
+		systemMode    string
+		userMode      string
+		wantPlaintext bool
+	}{
+		{
+			name:          "higher priority user off disables system owner keychain",
+			systemMode:    "on",
+			userMode:      "off",
+			wantPlaintext: true,
+		},
+		{
+			name:       "higher priority user on enables system owner keychain",
+			systemMode: "off",
+			userMode:   "on",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			store := withFakeStore(t)
+			fixture := newKeychainPolicyFixture(t)
+			writeTestConfigFile(t, fixture.system, `
+version: 1
+credentials:
+  keychain: `+test.systemMode+`
+stacks:
+  default:
+    grafana:
+      server: https://grafana.example.invalid
+      proxy-endpoint: https://proxy.example.invalid
+      oauth-token: gat_layered_old
+      oauth-refresh-token: gar_layered_old
+      oauth-token-expires-at: "2020-01-01T00:00:00Z"
+      oauth-refresh-expires-at: "2099-01-01T00:00:00Z"
+      stack-id: 1
+contexts:
+  default:
+    stack: default
+current-context: default
+`)
+			writeTestConfigFile(t, fixture.user, `
+version: 1
+credentials:
+  keychain: `+test.userMode+`
+contexts: {}
+`)
+
+			cfg, err := config.LoadLayered(t.Context(), "")
+			require.NoError(t, err)
+			restCfg, err := config.NewNamespacedRESTConfig(t.Context(), *cfg.Contexts["default"])
+			require.NoError(t, err)
+			restCfg.WireTokenPersistence(
+				t.Context(),
+				config.StandardLocation(),
+				"default",
+				"default",
+				cfg.Sources,
+			)
+			onRefresh := restCfg.OnRefreshForTest()
+			require.NotNil(t, onRefresh)
+			err = onRefresh(
+				"gar_layered_old",
+				"gat_layered_rotated",
+				"gar_layered_rotated",
+				"2099-02-01T00:00:00Z",
+				"2099-03-01T00:00:00Z",
+			)
+			require.NoError(t, err)
+
+			raw, readErr := os.ReadFile(fixture.system)
+			require.NoError(t, readErr)
+			if test.wantPlaintext {
+				assert.Contains(t, string(raw), "oauth-token: gat_layered_rotated")
+				assert.Contains(t, string(raw), "oauth-refresh-token: gar_layered_rotated")
+				assert.NotContains(t, string(raw), "keychain:gcx:v2:")
+				assert.Zero(t, store.sets(), "effective off must not contact the credential store")
+				return
+			}
+			assert.NotContains(t, string(raw), "gat_layered_rotated")
+			assert.NotContains(t, string(raw), "gar_layered_rotated")
+			assert.Contains(t, string(raw), "keychain:gcx:v2:")
+			assert.Positive(t, store.sets(), "effective on must store the rotated credentials")
+		})
+	}
 }
 
 func TestWireTokenPersistence_KeychainReadFailureRetainsPendingGeneration(t *testing.T) {
@@ -978,6 +1077,7 @@ current-context: default
 // observe the freshly-written tokens on disk and adopt them without calling
 // the refresh endpoint a second time.
 func TestWireTokenPersistence_ConcurrentRefreshesSerializeViaFileLock(t *testing.T) {
+	store := withFakeStore(t)
 	var refreshCalls atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/cli/v1/auth/refresh" {
@@ -1069,14 +1169,17 @@ current-context: default
 	}
 	raw, err := os.ReadFile(file)
 	require.NoError(t, err)
-	assert.Contains(t, string(raw), "gat_new")
-	assert.Contains(t, string(raw), "gar_new")
+	assert.NotContains(t, string(raw), "gat_new")
+	assert.NotContains(t, string(raw), "gar_new")
+	assert.True(t, store.containsValue("gat_new"))
+	assert.True(t, store.containsValue("gar_new"))
 	assert.Equal(t, int32(1), refreshCalls.Load())
 }
 
 // Bug 5 — Tokens persisted in one "invocation" must be re-loadable and usable
 // for the next. Simulates two sequential gcx invocations sharing a config file.
 func TestWireTokenPersistence_RoundTripAcrossInvocations(t *testing.T) {
+	withFakeStore(t)
 	var refreshCalls atomic.Int32
 	var presentedRefresh atomic.Value // string
 	presentedRefresh.Store("")

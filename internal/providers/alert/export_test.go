@@ -16,6 +16,11 @@ func NewInstancesListCommandForTest(loader GrafanaConfigLoader) *cobra.Command {
 	return newInstancesListCommand(loader)
 }
 
+// NewStateHistoryListCommandForTest wraps newStateHistoryListCommand.
+func NewStateHistoryListCommandForTest(loader GrafanaConfigLoader) *cobra.Command {
+	return newStateHistoryListCommand(loader)
+}
+
 // NewContactPointsDeleteCommandForTest wraps newContactPointsDeleteCommand.
 func NewContactPointsDeleteCommandForTest(loader GrafanaConfigLoader) *cobra.Command {
 	return newContactPointsDeleteCommand(loader)
@@ -39,6 +44,16 @@ func NewNotificationPoliciesSetCommandForTest(loader GrafanaConfigLoader) *cobra
 // NewNotificationPoliciesResetCommandForTest wraps newNotificationPoliciesResetCommand.
 func NewNotificationPoliciesResetCommandForTest(loader GrafanaConfigLoader) *cobra.Command {
 	return newNotificationPoliciesResetCommand(loader)
+}
+
+// NewNotificationHistoryListCommandForTest wraps newNotificationHistoryListCommand.
+func NewNotificationHistoryListCommandForTest(loader GrafanaConfigLoader) *cobra.Command {
+	return newNotificationHistoryListCommand(loader)
+}
+
+// NewNotificationHistoryAlertsCommandForTest wraps newNotificationHistoryAlertsCommand.
+func NewNotificationHistoryAlertsCommandForTest(loader GrafanaConfigLoader) *cobra.Command {
+	return newNotificationHistoryAlertsCommand(loader)
 }
 
 // RulerSubtypeForDatasourceType exposes the subtype mapping to tests.

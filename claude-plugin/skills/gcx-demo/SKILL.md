@@ -201,7 +201,8 @@ the create commands for checks, schedules, and pipelines currently don't.)
 |-----------|--------|
 | `config check` fails | Stop. Ask user to fix the context before continuing. |
 | Signal datasource not found | Skip that signal type, note it. |
-| Cloud auth or stack slug missing | Skip k6 and fleet, note what's needed. |
+| Cloud auth or stack slug missing | Skip k6, note what's needed. Fleet needs the stack login only. |
+| Collector app plugin absent (fleet 404) | Skip fleet, run `gcx setup status` to name the cause. |
 | Assistant unavailable (self-hosted, OAuth missing, 403) | Skip assistant section, note Cloud + OAuth requirement. |
 | Auth scope missing (403) | Note the missing scope, skip, continue. |
 | Empty list (0 resources) | Report "none found" — not an error; continue. |

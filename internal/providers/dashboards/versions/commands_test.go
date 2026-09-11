@@ -14,6 +14,7 @@ import (
 
 	"github.com/grafana/gcx/internal/providers/dashboards/versions"
 	"github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/testutils"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -506,6 +507,7 @@ func TestVersionsRestore_RestoreListSelectors(t *testing.T) {
 }
 
 func TestVersionsRestore_ConfirmPromptAbort(t *testing.T) {
+	testutils.SetAgentMode(t, false)
 	// When --force is NOT set, restore must prompt on stderr and abort on "n".
 	fc := &fakeVersionsClient{
 		historyItems: []unstructured.Unstructured{
@@ -524,6 +526,7 @@ func TestVersionsRestore_ConfirmPromptAbort(t *testing.T) {
 }
 
 func TestVersionsRestore_ConfirmPromptProceed(t *testing.T) {
+	testutils.SetAgentMode(t, false)
 	// When --force is NOT set and user types "y", restore must proceed.
 	fc := &fakeVersionsClient{
 		historyItems: []unstructured.Unstructured{

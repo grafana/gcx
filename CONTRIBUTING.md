@@ -20,60 +20,42 @@ designs the command's agent-facing contract before any code gets written. It
 hands implementation off to `add-provider` or `add-datasource` where those
 apply, and runs a pre-review self-check over the finished diff.
 
+## Code ownership
+
+The code in this repository is owned by multiple teams. The ownership is codified in the [CODEOWNERS](./.github/CODEOWNERS) file. The @grafana/grafana-gcx team is responsible for the overall architecture of the repository, along with any features or functionality that are not specific to any particular provider.
+
+### Product teams
+
+Grafana engineering teams are welcome to contribute to and maintain their areas of the codebase without any interaction from the @grafana/grafana-gcx team. The [CODEOWNERS](./.github/CODEOWNERS) file should be such that these teams only need approvals from their own team to merge pull requests in their product area. If you find this is not the case, please do reach out to the @grafana/grafana-gcx team, or raise a pull request with a [CODEOWNERS](./.github/CODEOWNERS) change. If you are unsure, please reach out in the #gcx channel and we'd be happy to discuss.
+
+We have tools in place to help maintain a consistent command surface and output conventions across the codebase, as well as LLM-assisted code review to try and ensure that the architecture and design conventions are followed. For more details on these tools, see:
+
+- [The claude code review GH action, with prompt & references](.github/workflows/claude-code-review.yml). This should encourage authors to adhere to the guidelines linked above.
+- [Prefer existing command operations over creating new ones](docs/design/command-naming.md)  (test files are [here](cmd/gcx/root/commandoperations_test.go))
+- [Syntax for experimental commands](docs/design/experimental-commands.md) (test files are referenced from the docs)
+
+
 ## Issue Tracking
 
 Issues are tracked in [GitHub Issues](https://github.com/grafana/gcx/issues).
-Use the issue templates when creating new issues — they set the correct issue
+Use the issue templates when creating new issues - they set the correct issue
 type and labels automatically.
 
-### Issue types
+## Making changes
 
-GitHub's native issue types classify issues. Don't add type prefixes to titles.
+### Agentic coding
 
-| Type | When to use |
-|------|-------------|
-| **Bug** | Something is broken or behaving unexpectedly |
-| **Task** | A specific piece of implementation work |
-| **Feature** | New functionality or capability |
-| **Enhancement** | Improvement to existing functionality |
-| **Epic** | Large effort spanning multiple issues |
+If you are using a coding agent to make changes to this repository, there are skills in [.claude/skills](.claude/skills) for contributing:
 
-### Issue title convention
+- [add-provider](.claude/skills/add-provider) will help add a new top-level command area to gcx. 
+- [add-datasource](.claude/skills/add-datasource) will help add a new datasource provider to gcx (under `gcx datasources`).
+- [integrate-with-gcx](.claude/skills/integrate-with-gcx) is a more general skill that will help add capabilities with gcx.
 
-Write clear, concise titles. The style depends on the issue type:
+### Development environment
 
-| Type | Style | Good | Bad |
-|------|-------|------|-----|
-| Task / Feature | **Imperative verb** | "Add OnCall provider" | "OnCall provider" |
-| Enhancement | **Imperative verb** | "Improve cold-start latency" | "[Enhancement]: cold start is slow" |
-| Bug | **Descriptive symptom** | "Excessive warnings for unconfigured resources" | "[Bug]: warnings" |
-| Epic | **Noun phrase (scope)** | "OAuth authentication via Grafana Assistant" | "Epic: do OAuth stuff" |
+`gcx` relies on [`mise`](https://mise.jdx.dev/) for tooling, and [Docker](https://docs.docker.com/get-started/get-docker/) for local development dependencies.
 
-Rules:
-- No type prefixes (`[Bug]:`, `Epic:`, `[Feature]:`) — the issue type field handles this
-- Start with a capital letter
-- Be specific — someone should understand the scope from the title alone
-- Tasks and features start with a verb: Add, Implement, Port, Create, Fix, Improve, etc.
-
-### Labels
-
-| Prefix | Purpose |
-|--------|---------|
-| `area/` | Codebase area (providers, cli-ux, core, skills, docs) |
-| `priority/` | Severity (critical, high, medium, low, none) |
-| `action/` | Workflow state (needs-triage) |
-
-### Milestones
-
-Issues are grouped into milestones representing release targets. Check the
-[milestones page](https://github.com/grafana/gcx/milestones) for current targets.
-
-## Development environment
-
-`gcx` relies on [`mise`](https://mise.jdx.dev/) to manage all
-the tools required to work on it.
-
-Install mise and set up the project:
+Install mise and set up the project. For macOS:
 
 ```console
 $ brew install mise        # or: curl https://mise.run | sh
@@ -82,7 +64,7 @@ $ mise install             # install tools (Go, golangci-lint, etc.)
 $ mise run deps            # install Go and Python dependencies
 ```
 
-All development commands use `mise run`:
+Some mise commands for local development:
 
 ```console
 $ mise run build           # build to bin/gcx
@@ -92,9 +74,7 @@ $ mise run all             # lint + tests + build + docs
 $ mise tasks               # list all available tasks
 ```
 
-See the [mise documentation](https://mise.jdx.dev/) for shell integration and further options.
-
-## Testing against a real Grafana API
+### Testing against a real Grafana API
 
 While unit tests are valuable for testing individual components, integration testing against a real Grafana instance is important to ensure `gcx` works correctly with the actual Grafana API.
 
@@ -102,103 +82,29 @@ While unit tests are valuable for testing individual components, integration tes
 
 The repository includes a `docker-compose.yml` file that sets up a complete test environment with:
 
-- **Grafana 12.2** (latest stable release)
-- **MySQL 8.0** (as the backend database)
+- Grafana
+- MySQL for storage
 - Pre-configured with `admin:admin` credentials
 - The `kubernetesDashboards` feature toggle enabled (required for `gcx`)
 
-### Starting the test environment
-
-Start the services:
+Run this with:
 
 ```console
 $ mise run test-env-up
 ```
 
-This will start both Grafana and MySQL, wait for them to be healthy, and display the connection information.
-
-You can also start the services manually:
-
-```console
-$ docker-compose up -d
-```
-
-Check the status of the services:
+Check the status of the services with:
 
 ```console
 $ mise run test-env-status
 ```
 
-Or manually:
-
-```console
-$ docker-compose ps
-```
-
-You should see both `gcx-grafana` and `gcx-mysql` in a `healthy` state.
-
-Verify Grafana is accessible:
-
-```console
-$ curl -u admin:admin http://localhost:3000/api/health
-```
-
-You should receive a JSON response indicating Grafana is running.
-
-### Testing with gcx
-
-The repository includes a pre-configured test config file at `testdata/integration-test-config.yaml` that you can use to test `gcx` against the local Grafana instance.
-
-#### View the test configuration
-
-```console
-$ go run ./cmd/gcx --config testdata/integration-test-config.yaml config view
-```
-
-#### List available resources
+You can use the provided config file to get gcx to use the local Grafana instance. For example:
 
 ```console
 $ go run ./cmd/gcx --config testdata/integration-test-config.yaml resources list-types
 ```
 
-#### Create a test dashboard
-
-1. Create a dashboard YAML file (e.g., `test-dashboard.yaml`):
-
-```yaml
-apiVersion: dashboard.grafana.app/v1beta1
-kind: Dashboard
-metadata:
-  name: test-dashboard
-  namespace: default
-spec:
-  title: Test Dashboard
-  tags: [test]
-  timezone: browser
-  schemaVersion: 36
-```
-
-2. Push it to Grafana:
-
-```console
-$ go run ./cmd/gcx --config testdata/integration-test-config.yaml resources push -p test-dashboard.yaml
-```
-
-3. Pull it back to verify:
-
-```console
-$ go run ./cmd/gcx --config testdata/integration-test-config.yaml resources get dashboards/test-dashboard
-```
-
-#### Testing the serve command
-
-The `serve` command allows you to develop dashboards locally with live reload:
-
-```console
-$ go run ./cmd/gcx --config testdata/integration-test-config.yaml dev serve test-dashboard.yaml
-```
-
-Then open your browser to the URL shown in the output (typically `http://localhost:8080`).
 
 ### Stopping the test environment
 
@@ -208,29 +114,17 @@ When you're done testing, stop the services:
 $ mise run test-env-down
 ```
 
-Or manually:
-
-```console
-$ docker-compose down
-```
-
 To remove all data (including database volumes):
 
 ```console
 $ mise run test-env-clean
 ```
 
-Or manually:
-
-```console
-$ docker-compose down -v
-```
-
 ### Customizing the test environment
 
 #### Modifying Grafana configuration
 
-The Grafana instance uses a custom configuration file at `testdata/grafana.ini`. You can modify this file to change Grafana's behavior. After making changes, restart the services:
+The Grafana instance uses a custom configuration file at `testdata/grafana.ini`. You can modify this file (you will need to restart the service)
 
 ```console
 $ docker-compose restart grafana
@@ -246,15 +140,15 @@ services:
     image: grafana/grafana:12.1  # or any other version
 ```
 
-Then restart the services:
+Then restart the service:
 
 ```console
 $ docker-compose up -d --force-recreate grafana
 ```
 
-#### Viewing logs
+### View local grafana logs
 
-To view logs from both services:
+To view logs from all services:
 
 ```console
 $ mise run test-env-logs
@@ -266,59 +160,6 @@ To view logs from a specific service:
 $ docker-compose logs -f grafana
 ```
 
-Or for MySQL:
-
-```console
-$ docker-compose logs -f mysql
-```
-
-### Troubleshooting
-
-#### Grafana won't start or is unhealthy
-
-Check the logs for errors:
-
-```console
-$ docker-compose logs grafana
-```
-
-Common issues:
-- MySQL not fully initialized yet - wait a few more seconds and check again
-- Port 3000 already in use - stop any other Grafana instances or change the port in `docker-compose.yml`
-
-#### Cannot connect to Grafana from gcx
-
-Verify Grafana is accessible:
-
-```console
-$ curl -u admin:admin http://localhost:3000/api/health
-```
-
-If this fails, check:
-- Services are running: `docker-compose ps`
-- Firewall settings are not blocking port 3000
-- Check Grafana logs: `docker-compose logs grafana`
-
-#### Database connection errors
-
-Check MySQL is healthy:
-
-```console
-$ docker-compose ps mysql
-```
-
-If MySQL is not healthy, check the logs:
-
-```console
-$ docker-compose logs mysql
-```
-
-You may need to remove the volume and recreate it:
-
-```console
-$ docker-compose down -v
-$ docker-compose up -d
-```
 
 ## Releasing gcx
 

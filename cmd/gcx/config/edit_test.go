@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	internalConfig "github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/testutils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -137,6 +138,7 @@ func TestResolveRawEditTargetRejectsConflictingExplicitAndLayerSelection(t *test
 }
 
 func TestEditCommandOpensUnsupportedExplicitConfig(t *testing.T) {
+	testutils.SetAgentMode(t, false)
 	if runtime.GOOS == "windows" {
 		t.Skip("test editor fixture is a POSIX shell script")
 	}

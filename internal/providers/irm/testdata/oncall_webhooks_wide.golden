@@ -1,0 +1,3 @@
+ID     NAME        URL                         METHOD  TRIGGER   ENABLED
+row-1  servicenow  https://example.invalid/wh  POST    resolved  true
+row-2              -                           -                 false

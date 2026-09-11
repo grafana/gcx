@@ -20,7 +20,15 @@ type QueryRequest struct {
 	SpanIDs            []string
 	TraceIDs           []string
 	StackTraceSelector *StackTraceSelector
+	// Format optionally selects the querier.v1.ProfileFormat of the response.
+	// Empty requests the default flame graph.
+	Format string
 }
+
+// ProfileFormatDot requests a Graphviz DOT call graph from the
+// SelectMergeStacktraces RPC. Only pure-v2 read paths honor it: v1 backends
+// reject it and v1-v2-dual backends silently return a flame graph instead.
+const ProfileFormatDot = "PROFILE_FORMAT_DOT"
 
 // StackTraceSelector mirrors querier.v1.StackTraceSelector. Only the CallSite
 // variant is supported on the SelectMergeStacktraces RPC; GoPGO selection
@@ -40,8 +48,11 @@ func (r QueryRequest) IsRange() bool {
 }
 
 // QueryResponse represents the response from a Pyroscope profile query.
+// Exactly one of Flamegraph or Dot is set on success; both are empty when
+// the query matched no data and PROFILE_FORMAT_DOT was requested.
 type QueryResponse struct {
 	Flamegraph *Flamegraph `json:"flamegraph,omitempty"`
+	Dot        string      `json:"dot,omitempty"`
 }
 
 // Flamegraph represents a flame graph structure.
@@ -148,6 +159,25 @@ type LabelValuesRequest struct {
 // LabelValuesResponse represents the response from a label values query.
 type LabelValuesResponse struct {
 	Names []string `json:"names"` // Pyroscope uses "names" for both labels and values
+}
+
+// SeriesRequest represents a request to list unique profile label sets.
+// Unlike SelectSeriesRequest, it does not require a profile type.
+type SeriesRequest struct {
+	Matchers   []string
+	LabelNames []string
+	Start      time.Time
+	End        time.Time
+}
+
+// SeriesResponse represents unique profile label sets returned by Pyroscope.
+type SeriesResponse struct {
+	LabelsSet []Labels `json:"labelsSet"`
+}
+
+// Labels is one unique profile label set.
+type Labels struct {
+	Labels []LabelPair `json:"labels"`
 }
 
 // FunctionSample represents a function in the flame graph with computed stats.

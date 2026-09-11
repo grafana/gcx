@@ -12,6 +12,7 @@ import (
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/query/pyroscope"
+	"github.com/grafana/gcx/internal/queryerror"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/encoding/protowire"
@@ -242,6 +243,74 @@ func TestClient_LabelNames_UTF8CapabilityAndResponse(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"service_name", utf8LabelName}, resp.Names)
+}
+
+func TestClient_Series(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Contains(t, r.URL.Path, "querier.v1.QuerierService/Series")
+		var body map[string]any
+		if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&body)) {
+			return
+		}
+		assert.Equal(t, []any{`{service_name="frontend"}`}, body["matchers"])
+		assert.Equal(t, []any{"service_name", "namespace", "pod", "__name__"}, body["labelNames"])
+		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"labelsSet": [
+				{"labels": [
+					{"name": "service_name", "value": "frontend"},
+					{"name": "namespace", "value": "default"}
+				]}
+			]
+		}`))
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	resp, err := client.Series(context.Background(), "test-uid", pyroscope.SeriesRequest{
+		Matchers:   []string{`{service_name="frontend"}`},
+		LabelNames: []string{"service_name", "namespace", "pod", "__name__"},
+	})
+	require.NoError(t, err)
+	require.Len(t, resp.LabelsSet, 1)
+	assert.Equal(t, "frontend", resp.LabelsSet[0].Labels[0].Value)
+}
+
+func TestClient_Series_OmitsLabelNamesWhenUnset(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&body)) {
+			return
+		}
+		assert.NotContains(t, body, "labelNames", "an omitted projection must return complete label sets")
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	resp, err := client.Series(context.Background(), "test-uid", pyroscope.SeriesRequest{})
+	require.NoError(t, err)
+	assert.NotNil(t, resp.LabelsSet, "an omitted labelsSet must serialize as an empty array")
+	assert.Empty(t, resp.LabelsSet)
+}
+
+func TestClient_Series_NonOKUsesProfileSeriesOperation(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"message":"invalid selector"}`))
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	_, err := client.Series(context.Background(), "test-uid", pyroscope.SeriesRequest{})
+	require.Error(t, err)
+
+	var apiErr *queryerror.APIError
+	require.ErrorAs(t, err, &apiErr)
+	assert.Equal(t, "profile series query", apiErr.Operation)
 }
 
 func TestClient_Query_RequestFields(t *testing.T) {
@@ -736,4 +805,70 @@ func TestProfileStatsResponse_MarshalJSON_EmitsNumbers(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.JSONEq(t, `{"dataIngested":true,"oldestProfileTime":1711800000000,"newestProfileTime":1711886400000}`, string(out))
+}
+
+func TestClient_Query_DotFormat(t *testing.T) {
+	const dotGraph = `digraph "main" { N1 [label="hot 10s (90%)"] }`
+
+	tests := []struct {
+		name    string
+		handler http.HandlerFunc
+		wantDot string
+		wantFg  bool
+		wantErr string
+	}{
+		{
+			name: "pure v2 returns dot",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				var body map[string]any
+				assert.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+				assert.Equal(t, pyroscope.ProfileFormatDot, body["format"])
+				_, hasMaxNodes := body["maxNodes"]
+				assert.False(t, hasMaxNodes, "maxNodes must be omitted when zero so the server picks DOT defaults")
+
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"dot": "digraph \"main\" { N1 [label=\"hot 10s (90%)\"] }"}`))
+			},
+			wantDot: dotGraph,
+		},
+		{
+			name: "dual downgrade returns flamegraph instead",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"flamegraph":{"names":["total"],"levels":[],"total":"0","maxSelf":"0"}}`))
+			},
+			wantFg: true,
+		},
+		{
+			name: "v1 rejection is surfaced",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusNotImplemented)
+				_, _ = w.Write([]byte(`{"code":"unimplemented","message":"dot format is only supported with the v2 query backend"}`))
+			},
+			wantErr: "dot format is only supported",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(tt.handler)
+			defer server.Close()
+
+			client := newTestClient(t, server)
+			resp, err := client.Query(context.Background(), "test-uid", pyroscope.QueryRequest{
+				LabelSelector: `{service_name="frontend"}`,
+				ProfileTypeID: "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
+				Format:        pyroscope.ProfileFormatDot,
+			})
+
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantDot, resp.Dot)
+			assert.Equal(t, tt.wantFg, resp.Flamegraph != nil)
+		})
+	}
 }
