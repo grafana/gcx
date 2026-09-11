@@ -9,10 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	cmdfail "github.com/grafana/gcx/cmd/gcx/fail"
 	cmdresources "github.com/grafana/gcx/cmd/gcx/resources"
-	"github.com/grafana/gcx/internal/gcxerrors"
-	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -21,7 +18,7 @@ import (
 // runListTypes runs `resources list-types` with the given arguments against a
 // fake Grafana that answers one resource type, and returns stdout and the run
 // error.
-func runListTypes(t *testing.T, args ...string) (string, error) {
+func runListTypes(t *testing.T, args ...string) (string, string, error) {
 	t.Helper()
 
 	t.Setenv("HOME", t.TempDir())
@@ -74,7 +71,7 @@ current-context: test
 	root.SetArgs(append([]string{"resources", "--config", configFile, "list-types"}, args...))
 
 	err := root.Execute()
-	return stdout.String(), err
+	return stdout.String(), stderr.String(), err
 }
 
 // TestListTypes_JSONFieldSelectsPerDescriptor pins that
@@ -82,8 +79,9 @@ current-context: test
 // once passed a plain map envelope, which put selection on the whole object,
 // so every field that --json list advertises looked absent.
 func TestListTypes_JSONFieldSelectsPerDescriptor(t *testing.T) {
-	stdout, err := runListTypes(t, "--json", "kind")
+	stdout, stderr, err := runListTypes(t, "--json", "kind")
 	require.NoError(t, err)
+	assert.Empty(t, stderr)
 
 	var got struct {
 		Items []map[string]any `json:"items"`
@@ -101,20 +99,24 @@ func TestListTypes_JSONFieldSelectsPerDescriptor(t *testing.T) {
 	assert.Contains(t, kinds, "Dashboard")
 }
 
-// TestListTypes_JSONUnknownPathIsRejected pins that an unknown path fails.
+// TestListTypes_JSONUnknownPathWarns pins that an unknown path warns while the
+// command still emits its selected result and exits successfully.
 // The payload once carried the descriptors as dynamic maps, so the command
 // declared no field set and printed an items array of null-valued objects
 // with exit code 0.
-func TestListTypes_JSONUnknownPathIsRejected(t *testing.T) {
-	stdout, err := runListTypes(t, "--json", "bogus")
+func TestListTypes_JSONUnknownPathWarns(t *testing.T) {
+	stdout, stderr, err := runListTypes(t, "--json", "bogus")
 
-	var unknown cmdio.UnknownFieldSelectionError
-	require.ErrorAs(t, err, &unknown)
-	assert.Contains(t, err.Error(), "unknown field(s) in --json: bogus")
-	assert.Empty(t, stdout, "a rejected selection must write nothing")
+	require.NoError(t, err)
+	assert.Contains(t, stderr, "warn: unknown field(s) in --json: bogus")
 
-	detailed := cmdfail.ErrorToDetailedError(err)
-	require.NotNil(t, detailed)
-	require.NotNil(t, detailed.ExitCode)
-	assert.Equal(t, gcxerrors.ExitUsageError, *detailed.ExitCode)
+	var got struct {
+		Items []map[string]any `json:"items"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &got), "stdout: %s", stdout)
+	require.NotEmpty(t, got.Items)
+	for _, item := range got.Items {
+		assert.Contains(t, item, "bogus")
+		assert.Nil(t, item["bogus"])
+	}
 }

@@ -3,8 +3,10 @@ package output_test
 import (
 	"bytes"
 	"encoding/json"
+	"strings"
 	"testing"
 
+	"github.com/grafana/gcx/internal/agent"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -304,8 +306,8 @@ func TestDiscoverFields(t *testing.T) {
 	}
 }
 
-// TestFieldSelectCodec_WithValidator verifies that the validator is invoked before
-// field extraction and that UnknownFieldSelectionError is returned for unknown fields.
+// TestFieldSelectCodec_WithValidator verifies that the validator is invoked
+// before field extraction and unknown fields become advisory warnings.
 func TestFieldSelectCodec_WithValidator(t *testing.T) {
 	type item struct {
 		Name   string `json:"name"`
@@ -317,11 +319,10 @@ func TestFieldSelectCodec_WithValidator(t *testing.T) {
 	require.NotNil(t, validator, "MakeFieldValidator must return a non-nil validator for a struct type")
 
 	tests := []struct {
-		name       string
-		fields     []string
-		value      any
-		wantErr    bool
-		wantErrMsg string
+		name        string
+		fields      []string
+		value       any
+		wantWarning bool
 	}{
 		{
 			name:   "valid fields — no error",
@@ -329,39 +330,60 @@ func TestFieldSelectCodec_WithValidator(t *testing.T) {
 			value:  item{Name: "foo", Status: "ok"},
 		},
 		{
-			name:    "single unknown field — UnknownFieldSelectionError",
-			fields:  []string{"bogus"},
-			value:   item{Name: "foo"},
-			wantErr: true,
+			name:        "single unknown field becomes a warning",
+			fields:      []string{"bogus"},
+			value:       item{Name: "foo"},
+			wantWarning: true,
 		},
 		{
-			name:    "mix of valid and unknown — UnknownFieldSelectionError with offenders only",
-			fields:  []string{"name", "bogus"},
-			value:   item{Name: "foo"},
-			wantErr: true,
+			name:        "mix of valid and unknown warns with offenders only",
+			fields:      []string{"name", "bogus"},
+			value:       item{Name: "foo"},
+			wantWarning: true,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			codec := cmdio.NewFieldSelectCodecWithValidator(tc.fields, validator)
-			var buf bytes.Buffer
+			var buf, warnings bytes.Buffer
+			codec.SetWarningWriter(&warnings)
 			err := codec.Encode(&buf, tc.value)
-			if tc.wantErr {
-				require.Error(t, err)
-				var fieldErr cmdio.UnknownFieldSelectionError
-				require.ErrorAs(t, err, &fieldErr, "error must be UnknownFieldSelectionError")
-				// All unknown fields must appear in the error.
+			require.NoError(t, err)
+			if tc.wantWarning {
+				assert.Contains(t, warnings.String(), "unknown field(s) in --json")
+				assert.Equal(t, 1, strings.Count(warnings.String(), "warn:"), "validator and extraction must not duplicate the warning")
+				// All unknown fields must appear in the warning.
 				for _, f := range tc.fields {
 					if f != "name" && f != "status" {
-						assert.Contains(t, fieldErr.Fields, f)
+						assert.Contains(t, warnings.String(), f)
 					}
 				}
 			} else {
-				require.NoError(t, err)
+				assert.Empty(t, warnings.String())
 			}
 		})
 	}
+}
+
+func TestFieldSelectCodec_InvalidFieldWarningIsTypedInAgentMode(t *testing.T) {
+	agent.SetFlag(true)
+	t.Cleanup(func() { agent.SetFlag(false) })
+
+	type item struct {
+		Name string `json:"name"`
+	}
+	codec := cmdio.NewFieldSelectCodec([]string{"bogus"})
+	var stdout, stderr bytes.Buffer
+	codec.SetWarningWriter(&stderr)
+
+	require.NoError(t, codec.Encode(&stdout, item{Name: "kept"}))
+	assert.JSONEq(t, `{"bogus":null}`, stdout.String())
+
+	var warning map[string]any
+	require.NoError(t, json.Unmarshal(stderr.Bytes(), &warning))
+	assert.Equal(t, "warning", warning["class"])
+	assert.Contains(t, warning["summary"], "unknown field(s) in --json: bogus")
 }
 
 // TestMakeFieldValidator_StructType verifies that MakeFieldValidator returns a validator

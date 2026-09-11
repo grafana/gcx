@@ -170,12 +170,13 @@ func TestSingleKeyEnvelopeWithUnrelatedSecondKey(t *testing.T) {
 	assert.InDelta(t, 1, result["summary.count"], 0)
 }
 
-// TestSingleKeyEnvelopeWithUnrelatedSecondKeyRejectsItemField is the other
+// TestSingleKeyEnvelopeWithUnrelatedSecondKeyWarnsForItemField is the other
 // half: because selection runs on the whole object, an item-level name is a
-// path that exists nowhere, and the error names the real path.
-func TestSingleKeyEnvelopeWithUnrelatedSecondKeyRejectsItemField(t *testing.T) {
+// path that exists nowhere, and the warning names the real path.
+func TestSingleKeyEnvelopeWithUnrelatedSecondKeyWarnsForItemField(t *testing.T) {
 	codec := cmdio.NewFieldSelectCodec([]string{"uid"})
-	var buf bytes.Buffer
+	var buf, warnings bytes.Buffer
+	codec.SetWarningWriter(&warnings)
 	err := codec.Encode(&buf, struct {
 		Datasources []dsRow        `json:"datasources"`
 		Summary     map[string]any `json:"summary"`
@@ -183,8 +184,9 @@ func TestSingleKeyEnvelopeWithUnrelatedSecondKeyRejectsItemField(t *testing.T) {
 		Datasources: []dsRow{{UID: "ds-01"}},
 		Summary:     map[string]any{"count": 1},
 	})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unknown field(s) in --json: uid")
+	require.NoError(t, err)
+	assert.Contains(t, warnings.String(), "unknown field(s) in --json: uid")
+	assert.JSONEq(t, `{"uid":null}`, buf.String())
 }
 
 // dynamicEnvelope builds the map-shaped equivalent of a truncated list

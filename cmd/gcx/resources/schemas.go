@@ -106,13 +106,14 @@ func listTypesCmd(configOpts *cmdconfig.Options) *cobra.Command {
 
 			// --json ? discovery and --json <path>,<path> selection both run on
 			// the descriptor list. Encode routes them, and descriptorEntry
-			// declares the field set for both, so one unknown path fails
-			// instead of printing a null.
+			// declares the field set for both, so an unknown path warns
+			// instead of silently printing a null.
 			if opts.IO.JSONDiscovery || len(opts.IO.JSONFields) > 0 {
 				entries := make([]descriptorEntry, 0, len(res))
 				for _, d := range res {
 					entries = append(entries, newDescriptorEntry(d))
 				}
+				opts.IO.ErrWriter = cmd.ErrOrStderr()
 				return opts.IO.Encode(cmd.OutOrStdout(), descriptorList{Items: entries})
 			}
 
@@ -163,9 +164,9 @@ type descriptorList struct {
 func (descriptorList) ListItemsKey() string { return "items" }
 
 // descriptorEntry is one descriptor of the --json output. The struct declares
-// the field set, so gcx rejects a path that no descriptor carries instead of
-// printing a null. A map element declares nothing, and every unknown path
-// then looked valid.
+// the field set, so gcx warns about a path that no descriptor carries instead
+// of silently printing a null. A map element declares nothing, and every
+// unknown path then looked valid.
 type descriptorEntry struct {
 	Group    string `json:"group"`
 	Version  string `json:"version"`
