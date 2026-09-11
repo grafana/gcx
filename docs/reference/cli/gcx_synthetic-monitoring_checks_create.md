@@ -33,7 +33,7 @@ gcx synthetic-monitoring checks create [flags]
   -f, --filename string    File containing the check manifest (YAML)
   -h, --help               help for create
       --jq string          jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string        Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --json string        Comma-separated list of dotted field paths to include in JSON output (e.g. spec.name), or 'list' (or '?') to discover the available paths
   -o, --output string      Output format. One of: agents, json, text, yaml (default "text")
       --show-status        Query and display check status after creation
       --validate-targets   Pre-flight HTTP HEAD request for HTTP check targets (warning only)

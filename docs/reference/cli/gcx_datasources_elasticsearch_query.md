@@ -53,7 +53,7 @@ gcx datasources elasticsearch query [EXPR] [flags]
       --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                help for query
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --json string         Comma-separated list of dotted field paths to include in JSON output (e.g. spec.name), or 'list' (or '?') to discover the available paths
       --limit int           Max documents to return (1-1000) (default 100)
       --mode string         Search mode: "documents" (raw documents) or "logs" (newest-first, plugin-internal fields omitted) (default "documents")
       --open                Open the executed query in Grafana Explore

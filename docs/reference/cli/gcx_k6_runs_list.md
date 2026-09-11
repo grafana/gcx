@@ -12,7 +12,7 @@ gcx k6 runs list [id-or-name] [flags]
   -h, --help             help for list
       --id int           Load test ID (skip name lookup)
       --jq string        jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string      Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --json string      Comma-separated list of dotted field paths to include in JSON output (e.g. spec.name), or 'list' (or '?') to discover the available paths
       --limit int        Maximum number of items to return (0 for all) (default 50)
   -o, --output string    Output format. One of: agents, json, table, yaml (default "table")
       --project-id int   Project ID (required when looking up by name)

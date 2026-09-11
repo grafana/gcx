@@ -37,7 +37,7 @@ gcx instrumentation services list [flags]
       --cluster string     Filter by cluster name
   -h, --help               help for list
       --jq string          jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string        Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --json string        Comma-separated list of dotted field paths to include in JSON output (e.g. spec.name), or 'list' (or '?') to discover the available paths
   -n, --namespace string   Filter by Kubernetes namespace
   -o, --output string      Output format. One of: agents, json, text, wide, yaml (default "text")
       --status string      Filter by instrumentation status (e.g. ERROR, INSTRUMENTED)

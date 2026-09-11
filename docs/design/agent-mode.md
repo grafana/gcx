@@ -55,14 +55,14 @@ The following are **not yet implemented**:
 hint line to stderr nudging the agent toward in-process parsing:
 
 ```
-hint: use --json list / --json field1,field2 for field selection, or --jq '<expr>' for transformation (group_by, filter, count) — no external parsing needed
+hint: use --json list to discover the dotted paths, then --json <path>,<path> for field selection, or --jq '<expr>' for transformation (group_by, filter, count) — no external parsing needed
 ```
 
 The hint fires at most once per command invocation (`jsonFieldsHintShown`
 guard in `internal/output/format.go`). It is suppressed when `--jq`,
 `--json list` (field discovery), or a non-JSON-like output format
 (`-o yaml`, `-o text`, `-o wide`) is in use, and it never appears outside
-agent mode. The hint **still fires** when `--json field1,field2` (field
+agent mode. The hint **still fires** when `--json <path>,<path>` (field
 selection) is used — selection alone cannot do group_by / filter / count,
 so the nudge toward `--jq` remains useful. The goal is to steer agents away
 from `| python -c "..."` aggregation pipelines toward built-in transformation.

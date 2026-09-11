@@ -137,15 +137,17 @@ func TestJSONFieldSelection_MultipleResources(t *testing.T) {
 	assert.NotContains(t, second, "namespace")
 }
 
-// TestJSONFieldSelection_MissingFieldIsNull verifies that a requested field
-// that does not exist in the resource is output as null (not omitted).
+// TestJSONFieldSelection_AbsentFieldIsNull verifies that a requested field
+// that exists in no emitted unstructured object stays a null. gcx rejects a
+// path only when a declared type denies it, and an unstructured object
+// declares no type.
 //
 // Acceptance criterion:
 //
 //	GIVEN a gcx command that returns resource data
 //	WHEN --json nonexistent is provided
 //	THEN stdout contains a JSON object where nonexistent is null
-func TestJSONFieldSelection_MissingFieldIsNull(t *testing.T) {
+func TestJSONFieldSelection_AbsentFieldIsNull(t *testing.T) {
 	codec := cmdio.NewFieldSelectCodec([]string{"name", "nonexistent"})
 
 	item := unstructured.Unstructured{Object: map[string]any{
@@ -157,13 +159,10 @@ func TestJSONFieldSelection_MissingFieldIsNull(t *testing.T) {
 
 	var got map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &got))
-
 	assert.Equal(t, "my-dashboard", got["name"])
-
-	// The field must be present in the output (not omitted), with a null value.
 	val, exists := got["nonexistent"]
-	assert.True(t, exists, "missing field must be present in output with null value")
-	assert.Nil(t, val, "missing field value must be null")
+	assert.True(t, exists, "an absent field must stay in the output")
+	assert.Nil(t, val)
 }
 
 // TestJSONFieldSelection_RejectsNonJSONOutput verifies that providing

@@ -158,9 +158,14 @@ func newListSubcommand[T adapter.ResourceNamer](
 				return err
 			}
 
+			lo.IO.ErrWriter = cmd.ErrOrStderr()
 			return lo.IO.Encode(cmd.OutOrStdout(), objs)
 		},
 	}
+	// The command emits unstructured resource envelopes, but T declares the
+	// fields below spec. Use that declared shape so a leaf name such as
+	// username is rejected with spec.username as the correction.
+	lo.IO.SetJSONFieldValidator(cmdio.MakeFieldValidator(adapter.TypedObject[T]{}))
 	lo.setup(cmd.Flags(), resource)
 	return cmd
 }
@@ -191,6 +196,7 @@ func newGetSubcommand[T adapter.ResourceNamer](
 				return err
 			}
 
+			go2.IO.ErrWriter = cmd.ErrOrStderr()
 			return go2.IO.Encode(cmd.OutOrStdout(), typedObj.Spec)
 		},
 	}
@@ -231,6 +237,7 @@ func newCreateSubcommand[T adapter.ResourceNamer](
 				return err
 			}
 
+			mo.IO.ErrWriter = cmd.ErrOrStderr()
 			return mo.IO.Encode(cmd.OutOrStdout(), result.Spec)
 		},
 	}
@@ -270,6 +277,7 @@ func newUpdateSubcommand[T adapter.ResourceNamer](
 				return err
 			}
 
+			mo.IO.ErrWriter = cmd.ErrOrStderr()
 			return mo.IO.Encode(cmd.OutOrStdout(), result.Spec)
 		},
 	}
@@ -320,6 +328,7 @@ func newDeleteSubcommand[T adapter.ResourceNamer](
 			result := cmdio.NewSingleMutation("deleted", cmdio.MutationTarget{Kind: kind, ID: id})
 			changed := true
 			result.Changed = &changed
+			do.IO.ErrWriter = cmd.ErrOrStderr()
 			return do.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}

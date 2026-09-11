@@ -15,7 +15,7 @@ gcx kg insights chart [Type--Name] [flags]
   -h, --help                help for chart
       --insight string      Insight name (e.g. LatencyAverageBreach, ResourceRateAnomaly) — sets the 'alertname' label
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --json string         Comma-separated list of dotted field paths to include in JSON output (e.g. spec.name), or 'list' (or '?') to discover the available paths
       --label stringArray   Extra assertion label as key=value (repeatable; e.g. asserts_resource_type=jvm:live_threads to narrow ResourceRateAnomaly to a specific resource)
       --name string         Entity name
       --namespace string    Namespace scope
