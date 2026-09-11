@@ -48,6 +48,20 @@ func runWithFetcher(t *testing.T, fetch func(context.Context, string) (*grafanad
 	return out.String(), err
 }
 
+// runWithIndexAndFetcher builds the docs command group with both a pre-loaded
+// index and a replaced page fetcher, for testing shorthand resolution.
+func runWithIndexAndFetcher(t *testing.T, idx *grafanadocs.Index, fetch func(context.Context, string) (*grafanadocs.Doc, error), args ...string) (string, error) {
+	t.Helper()
+	disableAgentMode(t)
+	cmd := docs.CommandWithIndexAndFetcher(idx, fetch)
+	var out, errOut bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errOut)
+	cmd.SetArgs(args)
+	err := cmd.Execute()
+	return out.String(), err
+}
+
 func TestGetCommandSuccess(t *testing.T) {
 	const url = "https://grafana.com/docs/tempo/latest/"
 
@@ -90,6 +104,27 @@ func TestGetCommandSuccess(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), `section "Nonexistent" not found`)
 		assert.Contains(t, err.Error(), "gcx docs outline")
+	})
+}
+
+func TestGetShorthandResolution(t *testing.T) {
+	idx := loadTestIndex(t)
+
+	t.Run("shorthand resolves and fetches", func(t *testing.T) {
+		stdout, err := runWithIndexAndFetcher(t, idx, okDoc(), "get", "clustering", "-o", "json")
+		require.NoError(t, err)
+
+		var res struct {
+			URL string `json:"url"`
+		}
+		require.NoError(t, json.Unmarshal([]byte(stdout), &res))
+		assert.Contains(t, res.URL, "clustering")
+	})
+
+	t.Run("no match gives guidance", func(t *testing.T) {
+		_, err := runWithIndexAndFetcher(t, idx, okDoc(), "get", "zzzznotathing")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "no matching page found")
 	})
 }
 

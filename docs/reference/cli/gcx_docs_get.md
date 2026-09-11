@@ -4,17 +4,23 @@ Fetch a Grafana documentation page.
 
 ### Synopsis
 
-Fetch a documentation page as cleaned markdown. Supports section extraction and offset/limit paging for bounded retrieval.
+Fetch a documentation page as cleaned markdown. The argument can be a full URL or a shorthand query that is resolved via the docs index. Supports section extraction and offset/limit paging for bounded retrieval.
 
 ```
-gcx docs get <url> [flags]
+gcx docs get <url-or-query> [flags]
 ```
 
 ### Examples
 
 ```
-  # Fetch a doc
+  # Fetch by full URL
   gcx docs get https://grafana.com/docs/tempo/latest/traceql/construct-traceql-queries/
+
+  # Fetch by shorthand query (resolved via docs index)
+  gcx docs get traceql
+
+  # Scope shorthand resolution to a product
+  gcx docs get configuration --product tempo
 
   # Extract a single section
   gcx docs get https://grafana.com/docs/tempo/latest/traceql/construct-traceql-queries/ --section "Comparison operators"
@@ -32,6 +38,7 @@ gcx docs get <url> [flags]
       --limit int        Maximum lines to return (0 = default)
       --offset int       Line offset for paging (0-indexed)
   -o, --output string    Output format. One of: agents, json, text, yaml (default "text")
+      --product string   Scope shorthand resolution to a product (used when the argument is not a full URL)
       --section string   Heading text to extract (returns only that section)
 ```
 
