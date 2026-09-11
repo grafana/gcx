@@ -635,6 +635,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx synthetic-monitoring checks status":      {Cost: "medium", Hint: "--job <name> -o json"},
 	"gcx synthetic-monitoring checks timeline":    {Cost: "medium", Hint: "<id> --since 1h -o json"},
 	"gcx synthetic-monitoring checks update":      {Cost: "small", Hint: "<name> -f <check.yaml>. Frequency and probe changes affect billable execution volume (" + docs.SyntheticMonitoringInvoice + ")."},
+	"gcx synthetic-monitoring query":              {Cost: "small", Hint: "<name> -p job=<job> -p instance=<target> -p frequency=<ms>"},
 	"gcx synthetic-monitoring probes create":      {Cost: "small"},
 	"gcx synthetic-monitoring probes delete":      {Cost: "small"},
 	"gcx synthetic-monitoring probes deploy":      {Cost: "small"},
