@@ -41,6 +41,8 @@ const (
 	ruleByNameFmt            = rulesPath + "/%s"
 	rulesSchemaPath          = rulesPath + "/schema"
 	rulesValidateSyncPath    = rulesPath + "-validate-sync"
+	thresholdRulesPath       = pluginResourcePath + "/asserts/api-server/v1/config/threshold-rules"
+	thresholdRulesByCatFmt   = thresholdRulesPath + "/%s" // request|resource
 	modelRulesPath           = pluginResourcePath + "/asserts/api-server/v1/config/model-rules"
 	modelRulesByNameFmt      = modelRulesPath + "/%s"
 	modelRulesSchemaPath     = modelRulesPath + "/schema"
@@ -323,6 +325,27 @@ func (c *Client) GetPromRulesSchema(ctx context.Context) (map[string]any, error)
 		return nil, fmt.Errorf("kg: get prom rules schema: %w", err)
 	}
 	return result, nil
+}
+
+// GetThresholds fetches the whole threshold config (v1). The response is a
+// PrometheusRulesDto, identical to the prom-rules whole-config shape, so it decodes
+// into [Rule].
+func (c *Client) GetThresholds(ctx context.Context) (*Rule, error) {
+	var rule Rule
+	if err := c.getJSON(ctx, thresholdRulesPath, &rule); err != nil {
+		return nil, fmt.Errorf("kg: get thresholds: %w", err)
+	}
+	return &rule, nil
+}
+
+// GetThresholdsByCategory fetches the structured per-category threshold view (v1).
+// category must be "request" or "resource" (v1 has no health category).
+func (c *Client) GetThresholdsByCategory(ctx context.Context, category string) (*ThresholdRulesDto, error) {
+	var dto ThresholdRulesDto
+	if err := c.getJSON(ctx, fmt.Sprintf(thresholdRulesByCatFmt, category), &dto); err != nil {
+		return nil, fmt.Errorf("kg: get %s thresholds: %w", category, err)
+	}
+	return &dto, nil
 }
 
 // UploadModelRules uploads model rules configuration.

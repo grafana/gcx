@@ -238,6 +238,24 @@ type Rule struct {
 	Groups []RuleGroup `json:"groups,omitempty"`
 }
 
+// ThresholdRulesDto is the structured per-category threshold view returned by the
+// v1 threshold config API (GET /v1/config/threshold-rules/{request|resource}). It is
+// a different wire type from the whole-config PrometheusRulesDto/[Rule] returned by
+// GET /v1/config/threshold-rules.
+type ThresholdRulesDto struct {
+	CustomThresholds []Threshold `json:"customThresholds"`
+	GlobalThresholds []Threshold `json:"globalThresholds"`
+}
+
+// Threshold is a single threshold rule within a [ThresholdRulesDto]. Global
+// thresholds frequently omit Labels.
+type Threshold struct {
+	Active bool              `json:"active"`
+	Record string            `json:"record"`
+	Expr   string            `json:"expr"`
+	Labels map[string]string `json:"labels,omitempty"`
+}
+
 // RuleGroup is a group of related Prometheus rules within a Rule file.
 type RuleGroup struct {
 	Name     string     `json:"name"`

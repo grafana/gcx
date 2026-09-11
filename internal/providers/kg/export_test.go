@@ -193,6 +193,11 @@ func NewNotificationsCommand(loader RESTConfigLoader) *cobra.Command {
 	return newNotificationsCommand(loader)
 }
 
+// NewThresholdsCommand exposes the thresholds command group for tests.
+func NewThresholdsCommand(loader RESTConfigLoader) *cobra.Command {
+	return newThresholdsCommand(loader)
+}
+
 func NewRelationshipsDeleteCommand(loader RESTConfigLoader) *cobra.Command {
 	return newRelationshipsDeleteCommand(loader)
 }
