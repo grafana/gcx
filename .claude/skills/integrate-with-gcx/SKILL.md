@@ -165,7 +165,7 @@ Never state proposed or conventional guidance as law.
 | A `finite` leaf emits exactly one JSON value in agent mode | **CI-enforced** (`TestAgentConformance_*`) |
 | One `init()`, one `providers.Register()`; no `adapter.Register()` outside it | **CONSTITUTION** § Architecture Invariants |
 | Error summaries from the closed vocabulary | **Law, scoped to `cmd/gcx/fail/`** converters — not a constraint on arbitrary command error text |
-| Exit codes 0-6 | Real and reachable when you set it. **Documented gap:** cobra's own flag/arg errors exit 1, not 2 (`docs/design/exit-codes.md` §2.3) — don't claim 2 for a path you didn't wire |
+| Exit codes 0-6 | Real and reachable when you set it. **Documented gap:** an unknown flag and a missing positional arg still exit 1, not 2 (`docs/design/exit-codes.md` §2.3 has the verified table) — don't claim 2 for a path you didn't wire |
 | `Args:` on every leaf | Strong convention; no CI check |
 | `list_meta` truncation metadata | `docs/design/output.md` §15 is **PROPOSED** and opt-in. Not repo-wide, not required for every list command |
 | Empty array serialized as `[]` not `null` | Convention with local test precedent; no doc rule |
@@ -243,12 +243,15 @@ entry if the `<uid> <expr>` form can honestly carry your query, a `redirects`
 entry if it cannot. Both the reasoning and the ordering requirement are in the
 reference; get them from there rather than from memory.
 
-Format the files you touched, then gate:
+Format the files you touched and use the appropriate validation stage:
 
 ```bash
 mise exec -- gofmt -w <the .go files you edited>
-mise run gate                          # fast inner loop: lint + tests + build
-GCX_AGENT_MODE=false mise run all      # before you push; subsumes the above + docs
+# During iteration:
+mise run gate                          # lint + tests + build
+
+# Final validation before push (no separate gate run needed):
+GCX_AGENT_MODE=false mise run all      # includes the gate checks plus docs
 ```
 
 `go` and `gofmt` come from mise and may not be on your `PATH` — run them as

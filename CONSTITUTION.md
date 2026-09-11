@@ -112,16 +112,22 @@ the discriminators as additive fields.)
 See [agent-mode.md](docs/design/agent-mode.md) for
 agent mode detection, behavior changes, and opt-out mechanisms.
 
-- **All output goes through the codec system.** No command writes unstructured
-  prose as its primary output. CRUD data commands output resources. CRUD
-  mutation commands output structured operation summaries. Extension commands
-  output domain-specific structured data.
-- **Default output is proportional to what is actionable.** Mutation summaries
-  enumerate exceptions (failures, skips) and summarize successes by count.
-  Full per-resource detail is opt-in.
+- **Primary output uses the shared output system and declared protocol.**
+  Finite commands encode structured resources, mutation results, or domain
+  data through codecs. Streams use shared event writers. Artifact commands
+  use codecs for file contents and `EmitArtifactResult` for terminal receipts,
+  because their output flag selects the file format. The declared `prose`,
+  `shell`, `raw`, `server`, and `interactive` classes follow their own protocols;
+  they do not establish an exception for ad-hoc prose from finite commands.
+- **Default output is proportional to what is actionable.** Batch mutation
+  summaries count successes and skips and enumerate failures. Command-specific
+  skip detail may explain an action the caller can take; full per-resource
+  success detail is opt-in where supported.
 - **STDOUT is the result, STDERR is the diagnostic.** Summary tables and
-  resource data go to stdout. Failure details and progress feedback go to
-  stderr. Both use structured formats (tables or JSON), not unstructured prose.
+  resource data go to stdout. Failure details needed to understand a structured
+  outcome belong in that result; advisory diagnostics and progress go to stderr
+  through the shared output/logging helpers. Diagnostics may be prose; they
+  must never replace required fields in the stdout result.
 
 ## Push/Pull Philosophy
 

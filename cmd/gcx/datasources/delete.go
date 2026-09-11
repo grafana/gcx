@@ -52,8 +52,9 @@ func deleteCmd() *cobra.Command {
 		Short: "Delete one or more datasources",
 		Long: `Delete one or more datasources by UID.
 
-Deletion prompts for confirmation unless --force/--yes, GCX_AUTO_APPROVE, or
-agent mode is in effect.
+Deletion prompts for confirmation unless --force/--yes or GCX_AUTO_APPROVE.
+Agent mode does not auto-approve: without one of those it fails with an
+actionable error.
 
 Exit codes: 0 (all deleted), 4 (some deletions failed).`,
 		Args: cobra.MinimumNArgs(1),

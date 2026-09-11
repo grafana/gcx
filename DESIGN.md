@@ -32,12 +32,12 @@ Every command works identically for humans and agents. Agent mode changes defaul
 
 | Aspect | Human mode | Agent mode |
 |--------|-----------|------------|
-| Default output | `text` (table) | `agents` (compact JSON with spill) |
+| Default output | the command's narrow table codec | `agents` (compact JSON with spill) |
 | Colors | On (TTY) | Off |
 | Truncation | On (TTY) | Off |
-| Prompts | Interactive | Auto-approved |
+| Prompts | Interactive | Rejected unless `--force` or enabled `GCX_AUTO_APPROVE` bypasses confirmation (see [safety.md](docs/design/safety.md) § 3.3) |
 
-Agent mode is active when `GCX_AGENT_MODE=true`, or auto-detected from env vars (`CLAUDECODE`, `CLAUDE_CODE`).
+Agent mode is active when `GCX_AGENT_MODE=true`, or auto-detected from harness env vars (`CLAUDECODE`, `CLAUDE_CODE`, and others). An explicitly passed `--agent`/`--agent=false` overrides every environment variable in both directions — see [agent-mode.md § 6.1](docs/design/agent-mode.md) for the full order.
 Explicit flags always override: `--output json` works in human mode; `--output text` works in agent mode.
 
 See [docs/design/agent-mode.md](docs/design/agent-mode.md) for detection logic and opt-out.
@@ -55,10 +55,13 @@ Default formats by command type:
 
 | Command type | Default | Rationale |
 |-------------|---------|-----------|
-| `list`, `get` | `text` (table) | Human-scannable |
+| `list`, `get` | a narrow table codec (`text` or `table`) | Human-scannable |
 | `config view` | `yaml` | Config is YAML-native |
-| `push`, `pull`, `delete` | Status messages | Operations, not data |
+| `push`, `pull`, `delete` | structured operation summary | Operations, not data |
 | Agent mode | `agents` | Compact JSON with temp-file spill |
+
+There is no repo-wide format set — read a command's own `-o` line, and see
+[output.md § 1.3](docs/design/output.md) for the rule new commands follow.
 
 The `--json field1,field2` flag selects specific fields. `--json ?` discovers available field paths.
 
@@ -106,7 +109,7 @@ Dumps the full request and response bodies (via `httputil.DumpRequest` /
 `httputil.DumpResponse`) at Debug level. Requires `-vvv` to be visible.
 
 ```
-gcx --insecure-log-http-payload -vvv slo list
+gcx --insecure-log-http-payload -vvv slo definitions list
 ```
 
 **Warning:** The dump includes all headers, including `Authorization`. Treat
@@ -122,10 +125,10 @@ by `NewNamespacedRESTConfig` via `WrapTransport`).
 |------|---------|------|
 | 0 | Success | Command completed without errors |
 | 1 | General error | Unexpected error, business logic failure |
-| 2 | Usage error | Bad flags, invalid selectors, missing args |
+| 2 | Usage error | Invalid selectors, unknown commands, missing required flags — see [exit-codes.md § 2.3](docs/design/exit-codes.md) for what Cobra still surfaces as 1 |
 | 3 | Auth failure | 401/403, missing or invalid credentials |
 | 4 | Partial failure | Some resources succeeded, others failed |
-| 5 | Cancelled | The invocation stopped early: Ctrl+C, `context.Canceled`, a declined confirmation prompt, a server-reported cancellation |
+| 5 | Cancelled | The invocation stopped early: Ctrl+C, `context.Canceled`, explicit confirmation cancellation, or server-reported cancellation; see [legacy confirmation exceptions](docs/design/exit-codes.md#24-declined-confirmations) |
 | 6 | Version incompatible | Grafana < 12 detected |
 
 See [docs/design/exit-codes.md](docs/design/exit-codes.md) for implementation with `DetailedError` and converters.
