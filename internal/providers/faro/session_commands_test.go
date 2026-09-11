@@ -1,0 +1,874 @@
+package faro //nolint:testpackage // Tests unexported opts, fetch, and command constructors.
+
+import (
+	"bytes"
+	"cmp"
+	"context"
+	"math/rand"
+	"slices"
+	"strconv"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	dsquery "github.com/grafana/gcx/internal/datasources/query"
+	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/query/loki"
+	"github.com/grafana/gcx/internal/query/pinot"
+	querysql "github.com/grafana/gcx/internal/query/sql"
+	"github.com/grafana/gcx/internal/testutils"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestSessionsGetOptsValidate(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		app     string
+		appType string
+		ds      string
+		since   string
+		wantErr string
+	}{
+		{name: "missing app", ds: "grafanacloud-logs", wantErr: "--app is required"},
+		{name: "bad app type", app: "66", appType: "native", ds: "grafanacloud-logs", since: "1h", wantErr: "--app-type"},
+		{name: "missing datasource", app: "66", since: "1h", wantErr: "--datasource is required"},
+		{name: "missing time", app: "66", ds: "grafanacloud-logs", wantErr: "--since or --from/--to is required"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			opts := sessionsGetOpts{
+				App:        tt.app,
+				AppType:    tt.appType,
+				Datasource: tt.ds,
+				TimeRangeOpts: dsquery.TimeRangeOpts{
+					Since: tt.since,
+				},
+			}
+			err := opts.Validate()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.wantErr)
+		})
+	}
+}
+
+func TestSessionsGetOptsValidateRejectsStructuredOutput(t *testing.T) {
+	t.Parallel()
+	base := func() sessionsGetOpts {
+		return sessionsGetOpts{
+			App:        "66",
+			Datasource: "grafanacloud-logs",
+			TimeRangeOpts: dsquery.TimeRangeOpts{
+				Since: "1h",
+			},
+		}
+	}
+
+	opts := base()
+	opts.IO.OutputFormat = "json"
+	err := opts.Validate()
+	require.Error(t, err)
+	assert.Equal(t, sessionDumpTextOnlyErr, err.Error())
+
+	opts = base()
+	opts.IO.OutputFormat = "yaml"
+	err = opts.Validate()
+	require.Error(t, err)
+	assert.Equal(t, sessionDumpTextOnlyErr, err.Error())
+
+	opts = base()
+	opts.IO.JSONFields = []string{"sdk_name"}
+	err = opts.Validate()
+	require.Error(t, err)
+	assert.Equal(t, sessionDumpTextOnlyErr, err.Error())
+}
+
+func TestSessionsGetCommandRejectsJSONOutput(t *testing.T) {
+	t.Parallel()
+	cmd := newSessionsGetCommand(&providers.ConfigLoader{})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{"sid", "--app", "66", "-d", "grafanacloud-logs", "--since", "1h", "-o", "json"})
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), sessionDumpTextOnlyErr)
+
+	cmd = newSessionsGetCommand(&providers.ConfigLoader{})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{"sid", "--app", "66", "-d", "grafanacloud-logs", "--since", "1h", "--json", "sdk_name"})
+	err = cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), sessionDumpTextOnlyErr)
+}
+
+func TestSessionsGetOptsValidateOK(t *testing.T) {
+	t.Parallel()
+	opts := sessionsGetOpts{
+		App:        "66",
+		Datasource: "grafanacloud-pinot",
+		TimeRangeOpts: dsquery.TimeRangeOpts{
+			Since: "7d",
+		},
+	}
+	require.NoError(t, opts.Validate())
+}
+
+func TestSessionsGetOptsValidateTrimsInputs(t *testing.T) {
+	t.Parallel()
+	opts := sessionsGetOpts{
+		App:        "  my-app-66  ",
+		AppType:    " Mobile ",
+		Datasource: "  c-R8UWvVk  ",
+		Save:       " /tmp/session.txt ",
+		TimeRangeOpts: dsquery.TimeRangeOpts{
+			Since: "7d",
+		},
+	}
+	require.NoError(t, opts.Validate())
+	assert.Equal(t, "my-app-66", opts.App)
+	assert.Equal(t, appTypeMobile, opts.AppType)
+	assert.Equal(t, "c-R8UWvVk", opts.Datasource)
+	assert.Equal(t, "/tmp/session.txt", opts.Save)
+	assert.Equal(t, "66", resolveAppID(opts.App))
+}
+
+func TestSessionsGetOptsValidateDoesNotLowercaseUID(t *testing.T) {
+	t.Parallel()
+	opts := sessionsGetOpts{
+		App:        "66",
+		Datasource: "  c-R8UWvVk  ",
+		TimeRangeOpts: dsquery.TimeRangeOpts{
+			Since: "7d",
+		},
+	}
+	require.NoError(t, opts.Validate())
+	assert.Equal(t, "c-R8UWvVk", opts.Datasource)
+}
+
+func TestSessionKindFromDatasourceType(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		pluginID string
+		want     string
+		wantErr  string
+	}{
+		{pluginID: "loki", want: datasourceLoki},
+		{pluginID: "startree-pinot-datasource", want: datasourcePinot},
+		{pluginID: "clickhouse", wantErr: "not loki or pinot"},
+		{pluginID: "grafana-clickhouse-datasource", wantErr: "not loki or pinot"},
+		{pluginID: "", wantErr: "not loki or pinot"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.pluginID, func(t *testing.T) {
+			t.Parallel()
+			got, err := sessionKindFromDatasourceType(tt.pluginID)
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
+				assert.Empty(t, got)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestSessionsGetOptsValidateAgentRequiresSave(t *testing.T) {
+	testutils.SetAgentMode(t, true)
+	base := sessionsGetOpts{
+		App:        "66",
+		Datasource: "grafanacloud-logs",
+		TimeRangeOpts: dsquery.TimeRangeOpts{
+			Since: "1h",
+		},
+	}
+
+	missing := base
+	err := missing.Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--save is required")
+
+	ok := base
+	ok.Save = "/tmp/session.txt"
+	require.NoError(t, ok.Validate())
+}
+
+type stubPinot struct {
+	mu         sync.Mutex
+	sqls       []string
+	tableNames []string
+	sdkName    string
+	osName     string
+	empty      bool
+}
+
+func (s *stubPinot) Query(_ context.Context, _ string, req pinot.QueryRequest) (*querysql.QueryResponse, error) {
+	s.mu.Lock()
+	s.sqls = append(s.sqls, req.RawSQL)
+	s.tableNames = append(s.tableNames, req.TableName)
+	s.mu.Unlock()
+	if s.empty {
+		return &querysql.QueryResponse{
+			Columns: []querysql.Column{{Name: "c"}},
+			Rows:    [][]any{{""}},
+		}, nil
+	}
+	if strings.Contains(req.RawSQL, "UNION ALL") {
+		return &querysql.QueryResponse{
+			Columns: []querysql.Column{{Name: "c"}},
+			Rows:    [][]any{{"event"}},
+		}, nil
+	}
+	return &querysql.QueryResponse{
+		Columns: []querysql.Column{{Name: "sdk_name"}, {Name: "os_name"}},
+		Rows:    [][]any{{s.sdkName, s.osName}},
+	}, nil
+}
+
+func queryJoined(sqls []string) string {
+	return strings.Join(sqls, "\n")
+}
+
+func TestFetchPinotSession(t *testing.T) {
+	t.Parallel()
+	stub := &stubPinot{}
+	p := sessionQueryParams{AppID: "66", SessionID: "sid", AppType: appTypeWeb}
+	got, err := fetchPinotSession(context.Background(), stub, "uid", p, time.Unix(0, 0), time.Unix(1, 0))
+	require.NoError(t, err)
+	dump := got.dump()
+	assert.Contains(t, dump, "=== session metadata ===")
+	assert.Contains(t, dump, "=== events ===")
+	require.Len(t, stub.sqls, 3)
+	joined := queryJoined(stub.sqls)
+	assert.Contains(t, joined, "FIRSTWITHTIME(appName")
+	assert.Contains(t, joined, "userId")
+	assert.Contains(t, joined, "UNION ALL")
+	assert.NotContains(t, joined, "app_memory")
+	assert.Contains(t, joined, "LIMIT "+strconv.Itoa(pinotJourneyPageSize))
+	assert.NotContains(t, joined, "OFFSET")
+	assert.Contains(t, joined, pinotEventsTableDev)
+	assert.NotContains(t, joined, pinotEventsTableOps)
+	require.Len(t, stub.tableNames, 3)
+	assert.Equal(t, pinotEventsTableDev, stub.tableNames[2])
+}
+
+func TestFetchPinotSessionOpsEventsTable(t *testing.T) {
+	t.Parallel()
+	stub := &stubPinot{}
+	p := sessionQueryParams{
+		AppID:     "66",
+		SessionID: "sid",
+		AppType:   appTypeWeb,
+		ServerURL: "https://ops.grafana-ops.net",
+	}
+	_, err := fetchPinotSession(context.Background(), stub, "uid", p, time.Unix(0, 0), time.Unix(1, 0))
+	require.NoError(t, err)
+	joined := queryJoined(stub.sqls)
+	assert.Contains(t, joined, pinotEventsTableOps)
+	assert.NotContains(t, joined, pinotEventsTableDev)
+	require.Len(t, stub.tableNames, 3)
+	assert.Equal(t, pinotEventsTableOps, stub.tableNames[2])
+}
+
+func TestFetchPinotSessionMobile(t *testing.T) {
+	t.Parallel()
+	stub := &stubPinot{}
+	p := sessionQueryParams{AppID: "96", SessionID: "sid", AppType: appTypeMobile}
+	_, err := fetchPinotSession(context.Background(), stub, "uid", p, time.Unix(0, 0), time.Unix(1, 0))
+	require.NoError(t, err)
+	require.Len(t, stub.sqls, 3)
+	joined := queryJoined(stub.sqls)
+	assert.Contains(t, joined, "userId")
+	assert.Contains(t, joined, "device_model_name")
+	assert.Contains(t, joined, "UNION ALL")
+	assert.Contains(t, joined, "app_memory")
+}
+
+func TestFetchPinotSessionInfersMobile(t *testing.T) {
+	t.Parallel()
+	stub := &stubPinot{sdkName: "@grafana/faro-react-native"}
+	p := sessionQueryParams{AppID: "96", SessionID: "sid"}
+	_, err := fetchPinotSession(context.Background(), stub, "uid", p, time.Unix(0, 0), time.Unix(1, 0))
+	require.NoError(t, err)
+	require.Len(t, stub.sqls, 3)
+	assert.Contains(t, queryJoined(stub.sqls), "app_memory")
+}
+
+func TestFetchPinotSessionEmpty(t *testing.T) {
+	t.Parallel()
+	stub := &stubPinot{empty: true}
+	p := sessionQueryParams{AppID: "66", SessionID: "missing"}
+	_, err := fetchPinotSession(context.Background(), stub, "uid", p, time.Unix(0, 0), time.Unix(1, 0))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no telemetry for session missing")
+}
+
+func TestFetchPinotSessionPagesUntilComplete(t *testing.T) {
+	t.Parallel()
+	stub := &pagingPinot{}
+	p := sessionQueryParams{AppID: "66", SessionID: "sid", AppType: appTypeWeb}
+	got, err := fetchPinotSession(context.Background(), stub, "uid", p, time.UnixMilli(1), time.UnixMilli(5000))
+	require.NoError(t, err)
+	require.NotNil(t, got.journey)
+	// 1000 first-page rows + 2 new bucket rows at the boundary + 4 later rows.
+	assert.Len(t, got.journey.Rows, pinotJourneyPageSize+2+4)
+	assert.Equal(t, 2, stub.metaCalls())
+	assert.Equal(t, 3, stub.journeyCalls())
+	joined := queryJoined(stub.sqls)
+	assert.Contains(t, joined, "LIMIT "+strconv.Itoa(pinotJourneyPageSize))
+	assert.NotContains(t, joined, "OFFSET")
+	assert.Contains(t, joined, `WHERE "timestamp" = 1000`)
+	assert.Contains(t, joined, `WHERE "timestamp" > 1000`)
+	var first, bucket, after bool
+	for _, sql := range stub.sqls {
+		if !strings.Contains(sql, "UNION ALL") {
+			continue
+		}
+		switch {
+		case strings.Contains(sql, `WHERE "timestamp" =`):
+			bucket = true
+		case strings.Contains(sql, `WHERE "timestamp" >`):
+			after = true
+		default:
+			first = true
+			assert.NotContains(t, sql, `WHERE "timestamp"`)
+		}
+		assert.Contains(t, sql, "LIMIT "+strconv.Itoa(pinotJourneyPageSize))
+		assert.NotContains(t, sql, "OFFSET")
+	}
+	assert.True(t, first && bucket && after)
+}
+
+type pagingPinot struct {
+	mu       sync.Mutex
+	sqls     []string
+	metaN    int
+	journeyN int
+}
+
+func (s *pagingPinot) metaCalls() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.metaN
+}
+
+func (s *pagingPinot) journeyCalls() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.journeyN
+}
+
+func (s *pagingPinot) Query(_ context.Context, _ string, req pinot.QueryRequest) (*querysql.QueryResponse, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.sqls = append(s.sqls, req.RawSQL)
+	if !strings.Contains(req.RawSQL, "UNION ALL") {
+		s.metaN++
+		return &querysql.QueryResponse{
+			Columns: []querysql.Column{{Name: "sdk_name"}, {Name: "os_name"}},
+			Rows:    [][]any{{"faro-web", "Mac OS"}},
+		}, nil
+	}
+	s.journeyN++
+	cols := []querysql.Column{{Name: "timestamp"}, {Name: "kind"}}
+	switch {
+	case strings.Contains(req.RawSQL, `WHERE "timestamp" =`):
+		return &querysql.QueryResponse{Columns: cols, Rows: [][]any{
+			{int64(1000), "event"},
+			{int64(1000), "bucket-a"},
+			{int64(1000), "bucket-b"},
+		}}, nil
+	case strings.Contains(req.RawSQL, `WHERE "timestamp" >`):
+		return &querysql.QueryResponse{Columns: cols, Rows: pinotTimestampRows(4, 1001)}, nil
+	default:
+		return &querysql.QueryResponse{Columns: cols, Rows: pinotTimestampRows(pinotJourneyPageSize, 1)}, nil
+	}
+}
+
+func pinotTimestampRows(n int, startMS int64) [][]any {
+	rows := make([][]any, n)
+	for i := range rows {
+		rows[i] = []any{startMS + int64(i), "event"}
+	}
+	return rows
+}
+
+// datasetPinot serves a fixed journey dataset with Pinot's LIMIT 1000 and the
+// same > / = cursor clauses as pinotJourneyQueryPaged. Rows are sorted with
+// pinotJourneyOrderBy tie-breakers before LIMIT/OFFSET, matching stable Pinot
+// paging for dense same-ms buckets.
+type datasetPinot struct {
+	mu       sync.Mutex
+	dataset  [][]any
+	shuffleN int
+}
+
+func (s *datasetPinot) Query(_ context.Context, _ string, req pinot.QueryRequest) (*querysql.QueryResponse, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !strings.Contains(req.RawSQL, "UNION ALL") {
+		return &querysql.QueryResponse{
+			Columns: []querysql.Column{{Name: "sdk_name"}, {Name: "os_name"}},
+			Rows:    [][]any{{"faro-web", "Mac OS"}},
+		}, nil
+	}
+	rows := s.dataset
+	if i := strings.Index(req.RawSQL, `WHERE "timestamp" = `); i >= 0 {
+		ms := parseJourneyCursorMS(req.RawSQL[i:])
+		rows = filterJourneyTS(rows, func(ts int64) bool { return ts == ms })
+	} else if i := strings.Index(req.RawSQL, `WHERE "timestamp" > `); i >= 0 {
+		ms := parseJourneyCursorMS(req.RawSQL[i:])
+		rows = filterJourneyTS(rows, func(ts int64) bool { return ts > ms })
+	}
+	if s.shuffleN > 0 {
+		s.shuffleN++
+		rng := rand.New(rand.NewSource(int64(s.shuffleN * 7919))) //nolint:gosec // test-only tie-order probe
+		rng.Shuffle(len(rows), func(i, j int) { rows[i], rows[j] = rows[j], rows[i] })
+	}
+	sortJourneyStubRows(rows)
+	if off := parseSQLOffset(req.RawSQL); off > 0 {
+		if off >= len(rows) {
+			rows = nil
+		} else {
+			rows = rows[off:]
+		}
+	}
+	if len(rows) > pinotJourneyPageSize {
+		rows = rows[:pinotJourneyPageSize]
+	}
+	return &querysql.QueryResponse{
+		Columns: []querysql.Column{{Name: "timestamp"}, {Name: "kind"}},
+		Rows:    rows,
+	}, nil
+}
+
+func sortJourneyStubRows(rows [][]any) {
+	slices.SortFunc(rows, func(a, b []any) int {
+		if c := cmp.Compare(stubJourneyTS(a), stubJourneyTS(b)); c != 0 {
+			return c
+		}
+		return strings.Compare(stubJourneyKind(a), stubJourneyKind(b))
+	})
+}
+
+func stubJourneyTS(row []any) int64 {
+	if len(row) == 0 {
+		return 0
+	}
+	ts, _ := row[0].(int64)
+	return ts
+}
+
+func stubJourneyKind(row []any) string {
+	if len(row) < 2 {
+		return ""
+	}
+	k, _ := row[1].(string)
+	return k
+}
+
+func parseSQLOffset(sql string) int {
+	i := strings.LastIndex(sql, "OFFSET ")
+	if i < 0 {
+		return 0
+	}
+	fields := strings.Fields(sql[i+len("OFFSET "):])
+	if len(fields) == 0 {
+		return 0
+	}
+	n, _ := strconv.Atoi(fields[0])
+	return n
+}
+
+func parseJourneyCursorMS(sqlTail string) int64 {
+	fields := strings.Fields(sqlTail)
+	for i, f := range fields {
+		if (f == "=" || f == ">") && i+1 < len(fields) {
+			n, _ := strconv.ParseInt(fields[i+1], 10, 64)
+			return n
+		}
+	}
+	return 0
+}
+
+func filterJourneyTS(rows [][]any, keep func(int64) bool) [][]any {
+	out := make([][]any, 0, len(rows))
+	for _, row := range rows {
+		ts, _ := row[0].(int64)
+		if keep(ts) {
+			out = append(out, row)
+		}
+	}
+	return out
+}
+
+func TestFetchPinotJourneyKeepsMoreThanPageInOneMillisecond(t *testing.T) {
+	t.Parallel()
+	ds := make([][]any, pinotJourneyPageSize+1)
+	for i := range ds {
+		ds[i] = []any{int64(5000), "row-" + strconv.Itoa(i)}
+	}
+	p := sessionQueryParams{AppID: "66", SessionID: "sid", AppType: appTypeWeb}
+	got, err := fetchPinotSession(context.Background(), &datasetPinot{dataset: ds}, "uid", p, time.UnixMilli(1), time.UnixMilli(9000))
+	require.NoError(t, err)
+	require.NotNil(t, got.journey)
+	assert.Len(t, got.journey.Rows, pinotJourneyPageSize+1)
+}
+
+func TestFetchPinotJourneySameMSStableWhenShuffled(t *testing.T) {
+	t.Parallel()
+	ds := make([][]any, pinotJourneyPageSize+1)
+	for i := range ds {
+		ds[i] = []any{int64(5000), "row-" + strconv.Itoa(i)}
+	}
+	rng := rand.New(rand.NewSource(42)) //nolint:gosec // test-only dataset shuffle
+	rng.Shuffle(len(ds), func(i, j int) { ds[i], ds[j] = ds[j], ds[i] })
+
+	p := sessionQueryParams{AppID: "66", SessionID: "sid", AppType: appTypeWeb}
+	got, err := fetchPinotSession(context.Background(), &datasetPinot{dataset: ds, shuffleN: 1}, "uid", p, time.UnixMilli(1), time.UnixMilli(9000))
+	require.NoError(t, err)
+	require.NotNil(t, got.journey)
+	assert.Len(t, got.journey.Rows, pinotJourneyPageSize+1)
+}
+
+func TestAppendPinotRowsSkipsEqualJourneyRows(t *testing.T) {
+	t.Parallel()
+	cols := []querysql.Column{{Name: "timestamp"}, {Name: "kind"}}
+	dup := []any{int64(1000), "exception"}
+	seen := make(map[string]struct{})
+	dst := &querysql.QueryResponse{}
+	appendPinotRows(dst, &querysql.QueryResponse{Columns: cols, Rows: [][]any{dup, dup, dup}}, seen)
+	assert.Len(t, dst.Rows, 1)
+	appendPinotRows(dst, &querysql.QueryResponse{Columns: cols, Rows: [][]any{dup, {int64(1001), "event"}}}, seen)
+	assert.Len(t, dst.Rows, 2)
+}
+
+func TestPinotMaxTimestampMS(t *testing.T) {
+	t.Parallel()
+	ms, ok := pinotMaxTimestampMS(&querysql.QueryResponse{
+		Columns: []querysql.Column{{Name: "kind"}, {Name: "timestamp"}},
+		Rows:    [][]any{{"event", float64(10)}, {"event", "30"}, {"event", int64(20)}},
+	})
+	require.True(t, ok)
+	assert.Equal(t, int64(30), ms)
+	_, ok = pinotMaxTimestampMS(&querysql.QueryResponse{
+		Columns: []querysql.Column{{Name: "kind"}},
+		Rows:    [][]any{{"event"}},
+	})
+	assert.False(t, ok)
+}
+
+func TestFetchPinotSessionRejectsNonIntegerAppID(t *testing.T) {
+	t.Parallel()
+	stub := &stubPinot{}
+	p := sessionQueryParams{AppID: "66; DROP TABLE events", SessionID: "sid"}
+	_, err := fetchPinotSession(context.Background(), stub, "uid", p, time.Unix(0, 0), time.Unix(1, 0))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "must be an integer")
+	assert.Empty(t, stub.sqls)
+}
+
+type stubLoki struct {
+	mu         sync.Mutex
+	queries    []string
+	limits     []int
+	metaLine   string
+	empty      bool
+	eventPages []int
+	eventCalls int
+}
+
+func (s *stubLoki) Query(_ context.Context, _ string, req loki.QueryRequest) (*loki.QueryResponse, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.queries = append(s.queries, req.Query)
+	s.limits = append(s.limits, req.Limit)
+	if s.empty {
+		return &loki.QueryResponse{}, nil
+	}
+
+	isJourney := strings.Contains(req.Query, `| logfmt | session_id=`) &&
+		(strings.Contains(req.Query, lokiPerformanceEventFilter) ||
+			strings.Contains(req.Query, `kind="exception"`) ||
+			strings.Contains(req.Query, `kind="log"`) ||
+			strings.Contains(req.Query, `kind="measurement"`))
+	switch {
+	case strings.Contains(req.Query, "faro.session_recording.started"):
+		return lokiSingle("150", "event_name=faro.session_recording.started"), nil
+	case isJourney && strings.Contains(req.Query, `kind="event"`) && !req.Start.IsZero() && req.End.Sub(req.Start) == time.Millisecond:
+		// Boundary refetch; this stub's canned pages do not model leftover same-ms rows.
+		return &loki.QueryResponse{Data: loki.QueryResultData{Result: []loki.StreamEntry{{}}}}, nil
+	case isJourney && strings.Contains(req.Query, `kind="event"`):
+		page := s.eventCalls
+		s.eventCalls++
+		n := 1
+		if page < len(s.eventPages) {
+			n = s.eventPages[page]
+		}
+		ts := strconv.FormatInt(time.Unix(9-int64(page), 0).UnixNano(), 10)
+		values := make([]loki.LogEntry, n)
+		for i := range values {
+			values[i] = loki.LogEntry{Timestamp: ts, Line: "kind=event"}
+		}
+		return &loki.QueryResponse{Data: loki.QueryResultData{Result: []loki.StreamEntry{{
+			Values: values,
+		}}}}, nil
+	case isJourney:
+		line := "kind=log"
+		switch {
+		case strings.Contains(req.Query, `kind="exception"`):
+			line = "kind=exception"
+		case strings.Contains(req.Query, `kind="measurement"`):
+			line = "kind=measurement"
+		}
+		return lokiSingle("200", line), nil
+	default:
+		line := "meta"
+		if s.metaLine != "" {
+			line = s.metaLine
+		}
+		return lokiSingle("100", line), nil
+	}
+}
+
+func lokiSingle(ts, line string) *loki.QueryResponse {
+	return &loki.QueryResponse{Data: loki.QueryResultData{Result: []loki.StreamEntry{{
+		Values: []loki.LogEntry{{Timestamp: ts, Line: line}},
+	}}}}
+}
+
+func lokiJourneyQueryFrom(queries []string) string {
+	for _, q := range queries {
+		if strings.Contains(q, lokiPerformanceEventFilter) && strings.Contains(q, `kind="event"`) {
+			return q
+		}
+	}
+	return ""
+}
+
+func lokiMeasurementQueryFrom(queries []string) string {
+	for _, q := range queries {
+		if strings.Contains(q, `kind="measurement"`) && strings.Contains(q, `| logfmt | session_id=`) {
+			return q
+		}
+	}
+	return ""
+}
+
+func TestFetchLokiEventsByKindKeepsKindAlignment(t *testing.T) {
+	t.Parallel()
+	stub := &staggeredKindLoki{}
+	p := sessionQueryParams{AppID: "66", SessionID: "sid"}
+	got, err := fetchLokiEventsByKind(context.Background(), stub, "uid", p, time.Unix(0, 0), time.Unix(1, 0), time.Second)
+	require.NoError(t, err)
+	dump := formatLokiLines(got)
+	assert.Contains(t, dump, "kind=event")
+	assert.Contains(t, dump, "kind=exception")
+	assert.Contains(t, dump, "kind=log")
+	assert.Contains(t, dump, "kind=measurement")
+	assert.ElementsMatch(t, lokiSessionEventKinds(), stub.kinds())
+}
+
+type staggeredKindLoki struct {
+	mu   sync.Mutex
+	seen []string
+}
+
+func (s *staggeredKindLoki) kinds() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]string, len(s.seen))
+	copy(out, s.seen)
+	return out
+}
+
+func (s *staggeredKindLoki) Query(_ context.Context, _ string, req loki.QueryRequest) (*loki.QueryResponse, error) {
+	kind := ""
+	for _, candidate := range lokiSessionEventKinds() {
+		if strings.Contains(req.Query, `kind="`+candidate+`"`) {
+			kind = candidate
+			break
+		}
+	}
+	s.mu.Lock()
+	s.seen = append(s.seen, kind)
+	delay := time.Duration(len(s.seen)) * 5 * time.Millisecond
+	s.mu.Unlock()
+	time.Sleep(delay)
+	return lokiSingle("200", "kind="+kind), nil
+}
+
+func TestFetchLokiSession(t *testing.T) {
+	t.Parallel()
+	stub := &stubLoki{metaLine: `sdk_name=faro-web os_name="Mac OS" browser_name=Chrome`}
+	p := sessionQueryParams{AppID: "66", SessionID: "sid"}
+	got, err := fetchLokiSession(context.Background(), stub, "uid", p, time.Unix(0, 0), time.Unix(1, 0), sessionLokiQueryTimeout)
+	require.NoError(t, err)
+	dump := got.dump()
+	assert.Contains(t, dump, "sdk_name=faro-web")
+	assert.Contains(t, dump, `os_name="Mac OS"`)
+	assert.Contains(t, dump, "browser_name=Chrome")
+	assert.Contains(t, dump, "session_replay_start=150")
+	assert.NotContains(t, dump, "100\tsdk_name=")
+	assert.NotContains(t, dump, "150\tevent_name=faro.session_recording.started")
+	assert.Contains(t, dump, "kind=event")
+	require.Len(t, stub.queries, 6)
+	joined := queryJoined(stub.queries)
+	assert.NotContains(t, joined, "line_format")
+	assert.Contains(t, joined, "faro.session_recording.started")
+	assert.Contains(t, joined, "logfmt")
+	events := lokiJourneyQueryFrom(stub.queries)
+	require.NotEmpty(t, events)
+	assert.Contains(t, events, `{app_id="66", kind="event"}`)
+	assert.Contains(t, events, `| logfmt | session_id="sid"`)
+	assert.NotContains(t, events, "faro.tracing.fetch")
+	assert.NotContains(t, events, "app_memory")
+}
+
+func TestFetchLokiSessionInfersMobile(t *testing.T) {
+	t.Parallel()
+	stub := &stubLoki{metaLine: "sdk_name=@grafana/faro-react-native os_name=iOS"}
+	p := sessionQueryParams{AppID: "96", SessionID: "sid"}
+	_, err := fetchLokiSession(context.Background(), stub, "uid", p, time.Unix(0, 0), time.Unix(1, 0), sessionLokiQueryTimeout)
+	require.NoError(t, err)
+	require.Len(t, stub.queries, 6)
+	assert.Contains(t, lokiMeasurementQueryFrom(stub.queries), `type!="app_memory"`)
+	assert.Contains(t, lokiMeasurementQueryFrom(stub.queries), `type!="app_cpu_usage"`)
+}
+
+func TestFetchLokiSessionEmpty(t *testing.T) {
+	t.Parallel()
+	stub := &stubLoki{empty: true}
+	p := sessionQueryParams{AppID: "66", SessionID: "missing"}
+	_, err := fetchLokiSession(context.Background(), stub, "uid", p, time.Unix(0, 0), time.Unix(1, 0), sessionLokiQueryTimeout)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no telemetry for session missing")
+}
+
+type hangLoki struct{}
+
+func (hangLoki) Query(ctx context.Context, _ string, _ loki.QueryRequest) (*loki.QueryResponse, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func TestFetchLokiSessionTimeoutExits(t *testing.T) {
+	p := sessionQueryParams{AppID: "67", SessionID: "4JPV1T7Nyi"}
+	_, err := fetchLokiSession(context.Background(), hangLoki{}, "uid", p, time.Unix(0, 0), time.Unix(1, 0), 20*time.Millisecond)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "loki query timed out")
+	assert.Contains(t, err.Error(), "4JPV1T7Nyi")
+	assert.Contains(t, err.Error(), "not an empty result")
+	assert.Contains(t, err.Error(), "Pinot datasource UID")
+}
+
+func TestFetchLokiSessionPagesUntilComplete(t *testing.T) {
+	t.Parallel()
+	stub := &stubLoki{
+		metaLine:   "sdk_name=faro-web",
+		eventPages: []int{lokiEventsPageSize, 4},
+	}
+	p := sessionQueryParams{AppID: "66", SessionID: "sid"}
+	got, err := fetchLokiSession(context.Background(), stub, "uid", p, time.Unix(0, 0), time.Unix(10, 0), sessionLokiQueryTimeout)
+	require.NoError(t, err)
+	otherKinds := 3 // exception, log, measurement each return 1 row
+	assert.Equal(t, lokiEventsPageSize+4+otherKinds, lokiEntryCount(got.events))
+	eventKindPages := 0
+	for i, q := range stub.queries {
+		if !strings.Contains(q, lokiPerformanceEventFilter) || !strings.Contains(q, `kind="event"`) {
+			continue
+		}
+		eventKindPages++
+		assert.Equal(t, lokiEventsPageSize, stub.limits[i])
+	}
+	assert.Equal(t, 3, eventKindPages)
+}
+
+// rangeLoki serves a fixed event dataset newest-first with a [start, end) window.
+type rangeLoki struct {
+	dataset []loki.LogEntry
+}
+
+func (s *rangeLoki) Query(_ context.Context, _ string, req loki.QueryRequest) (*loki.QueryResponse, error) {
+	var hit []loki.LogEntry
+	for _, e := range s.dataset {
+		ts, ok := parseLokiUnixNano(e.Timestamp)
+		if !ok {
+			continue
+		}
+		if !ts.Before(req.Start) && ts.Before(req.End) {
+			hit = append(hit, e)
+		}
+	}
+	for i, j := 0, len(hit)-1; i < j; i, j = i+1, j-1 {
+		hit[i], hit[j] = hit[j], hit[i]
+	}
+	if req.Limit > 0 && len(hit) > req.Limit {
+		hit = hit[:req.Limit]
+	}
+	return &loki.QueryResponse{Data: loki.QueryResultData{Result: []loki.StreamEntry{{Values: hit}}}}, nil
+}
+
+func lokiUnixNanoMS(ms int64) string {
+	return strconv.FormatInt(time.UnixMilli(ms).UnixNano(), 10)
+}
+
+func TestFetchLokiEventPagesKeepsBoundaryRowsThatShareTimestamp(t *testing.T) {
+	t.Parallel()
+	// 1001 distinct events; only the two oldest share a timestamp. Loki pages
+	// newest-first; stepping End back 1ms must not drop the leftover boundary row.
+	ds := make([]loki.LogEntry, 0, lokiEventsPageSize+1)
+	ds = append(ds,
+		loki.LogEntry{Timestamp: lokiUnixNanoMS(1), Line: "share-a"},
+		loki.LogEntry{Timestamp: lokiUnixNanoMS(1), Line: "share-b"},
+	)
+	for i := 2; i <= lokiEventsPageSize; i++ {
+		ds = append(ds, loki.LogEntry{
+			Timestamp: lokiUnixNanoMS(int64(i)),
+			Line:      "event-" + strconv.Itoa(i),
+		})
+	}
+	got, err := fetchLokiEventPages(context.Background(), &rangeLoki{dataset: ds}, "uid", `{kind="event"}`, time.UnixMilli(0), time.UnixMilli(2000), sessionLokiQueryTimeout)
+	require.NoError(t, err)
+	assert.Equal(t, lokiEventsPageSize+1, lokiEntryCount(got))
+}
+
+func TestSessionsGetCommandRequiresDatasource(t *testing.T) {
+	t.Parallel()
+	cmd := newSessionsGetCommand(&providers.ConfigLoader{})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{"7TiMbCCvby", "--app", "66", "--since", "7d"})
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--datasource is required")
+}
+
+func TestSessionsGetCommandArgs(t *testing.T) {
+	t.Parallel()
+	cmd := newSessionsGetCommand(&providers.ConfigLoader{})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{})
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "accepts 1 arg")
+}
+
+func TestSessionsGetCommandBlankSessionID(t *testing.T) {
+	t.Parallel()
+	cmd := newSessionsGetCommand(&providers.ConfigLoader{})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{"   "})
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "session-id is required")
+}

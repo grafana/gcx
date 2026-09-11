@@ -21,6 +21,21 @@ const (
 	MaxLimit = 1000
 )
 
+// EscapeSQLString escapes single quotes for use in SQL string literals.
+func EscapeSQLString(s string) string {
+	return strings.ReplaceAll(s, "'", "''")
+}
+
+// FormatSQLInt returns s as a SQL integer literal. It rejects anything that
+// is not a base-10 int64 so the value can be interpolated unquoted.
+func FormatSQLInt(s string) (string, error) {
+	n, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		return "", fmt.Errorf("not a valid integer: %q", s)
+	}
+	return strconv.FormatInt(n, 10), nil
+}
+
 // leadingSetRe matches one or more Pinot SET statements at the start of a
 // query (e.g. SET useMultistageEngine = true;). Those prefixes are stripped
 // before the SELECT-shaped allow-list so EnforceLimit can still bound the
@@ -410,6 +425,11 @@ var identTableRe = regexp.MustCompile(`^([a-zA-Z_][a-zA-Z0-9_]*)`)
 // filled from SQL and the caller did not supply an override. The plugin
 // rejects an empty tableName before it runs pinotQlCode.
 var ErrTableNameRequired = errors.New("could not derive a table name from the SQL. StarTree needs one to load schema and expand macros before it runs the query. Pass --table <name> (a real table the query uses)")
+
+// ErrPartialTimeRange is returned when exactly one of Start/End is set. The
+// unified query API expects a complete range; a zero boundary becomes a
+// year-0001 UnixMilli and yields confusing empty results.
+var ErrPartialTimeRange = errors.New("start and end must both be set or both omitted")
 
 // ExtractTableName returns the first FROM table we can be confident about, or
 // empty if the shape is unclear. FROM inside strings, quoted identifiers,

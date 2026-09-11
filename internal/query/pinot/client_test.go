@@ -6,7 +6,9 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
+	"time"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/query/pinot"
@@ -155,6 +157,86 @@ func TestQuery_ExplicitTableNameOverridesExtract(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "events", q["tableName"])
 	assert.Equal(t, "SELECT 1 FROM (SELECT 1) journey", q["pinotQlCode"])
+}
+
+func TestQuery_DefaultsTimeRangeWhenBothUnset(t *testing.T) {
+	var captured map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(raw, &captured)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"results":{"A":{"frames":[{"schema":{"fields":[{"name":"v","type":"number"}]},"data":{"values":[[1]]}}],"status":200}}}`))
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server.URL)
+	_, err := client.Query(context.Background(), "pinot-uid", pinot.QueryRequest{
+		RawSQL:    "SELECT 1",
+		TableName: "events",
+	})
+	require.NoError(t, err)
+
+	fromStr, ok := captured["from"].(string)
+	require.True(t, ok)
+	from, err := strconv.ParseInt(fromStr, 10, 64)
+	require.NoError(t, err)
+	toStr, ok := captured["to"].(string)
+	require.True(t, ok)
+	to, err := strconv.ParseInt(toStr, 10, 64)
+	require.NoError(t, err)
+	assert.Greater(t, to, from)
+	assert.InDelta(t, float64(time.Hour.Milliseconds()), float64(to-from), float64(5*time.Second.Milliseconds()))
+}
+
+func TestQuery_SendsExplicitTimeRange(t *testing.T) {
+	start := time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 9, 8, 13, 0, 0, 0, time.UTC)
+
+	var captured map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(raw, &captured)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"results":{"A":{"frames":[{"schema":{"fields":[{"name":"v","type":"number"}]},"data":{"values":[[1]]}}],"status":200}}}`))
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server.URL)
+	_, err := client.Query(context.Background(), "pinot-uid", pinot.QueryRequest{
+		RawSQL:    "SELECT 1",
+		TableName: "events",
+		Start:     start,
+		End:       end,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, strconv.FormatInt(start.UnixMilli(), 10), captured["from"])
+	assert.Equal(t, strconv.FormatInt(end.UnixMilli(), 10), captured["to"])
+}
+
+func TestQuery_RejectsPartialTimeRange(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		t.Fatal("query must not be sent when time range is partial")
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server.URL)
+	start := time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC)
+
+	_, err := client.Query(context.Background(), "pinot-uid", pinot.QueryRequest{
+		RawSQL:    "SELECT 1",
+		TableName: "events",
+		Start:     start,
+	})
+	require.ErrorIs(t, err, pinot.ErrPartialTimeRange)
+
+	_, err = client.Query(context.Background(), "pinot-uid", pinot.QueryRequest{
+		RawSQL:    "SELECT 1",
+		TableName: "events",
+		End:       start,
+	})
+	require.ErrorIs(t, err, pinot.ErrPartialTimeRange)
 }
 
 func TestQuery_TableNameExtraction(t *testing.T) {
