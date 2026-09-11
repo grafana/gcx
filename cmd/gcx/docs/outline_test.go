@@ -30,3 +30,28 @@ func TestOutlineCommandSuccess(t *testing.T) {
 	assert.Equal(t, "Alpha", res.Headings[1].Text)
 	assert.Equal(t, "Beta", res.Headings[2].Text)
 }
+
+func TestOutlineShorthandResolution(t *testing.T) {
+	idx := loadTestIndex(t)
+
+	t.Run("shorthand resolves and shows outline", func(t *testing.T) {
+		stdout, err := runWithIndexAndFetcher(t, idx, okDoc(), "outline", "clustering", "-o", "json")
+		require.NoError(t, err)
+
+		var res struct {
+			URL      string `json:"url"`
+			Headings []struct {
+				Text string `json:"text"`
+			} `json:"headings"`
+		}
+		require.NoError(t, json.Unmarshal([]byte(stdout), &res))
+		assert.Contains(t, res.URL, "clustering")
+		require.NotEmpty(t, res.Headings)
+	})
+
+	t.Run("no match gives guidance", func(t *testing.T) {
+		_, err := runWithIndexAndFetcher(t, idx, okDoc(), "outline", "zzzznotathing")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "no matching page found")
+	})
+}
