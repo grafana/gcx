@@ -102,6 +102,7 @@
   "gcx slo reports status",
   "gcx slo reports timeline",
   "gcx synthetic-monitoring checks status",
+  "gcx synthetic-monitoring checks test",
   "gcx synthetic-monitoring checks timeline",
   "gcx synthetic-monitoring probes deploy",
   "gcx synthetic-monitoring probes reset-token",

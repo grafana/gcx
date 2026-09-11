@@ -544,6 +544,7 @@
  "gcx synthetic-monitoring checks get": "finite",
  "gcx synthetic-monitoring checks list": "finite",
  "gcx synthetic-monitoring checks status": "finite",
+ "gcx synthetic-monitoring checks test": "finite",
  "gcx synthetic-monitoring checks timeline": "finite",
  "gcx synthetic-monitoring checks update": "finite",
  "gcx synthetic-monitoring probes create": "finite",
