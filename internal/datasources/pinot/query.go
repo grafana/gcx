@@ -63,7 +63,7 @@ Table name (StarTree tableName field):
   - --table overrides any name that would be derived from the SQL.
 
 Row limit (--limit):
-  - Default 100 when --limit is omitted on this command and the expresion does not have a LIMIT; generic gcx datasources
+  - Default 100 when --limit is omitted on this command and the expression does not have a LIMIT; generic gcx datasources
     query uses the same Pinot default when the datasource kind is pinot.
   - --limit 0 disables enforcement (SQL is sent unchanged) and prints no notice.
   - Requests above 1000 are capped to 1000 in the emitted LIMIT when the SQL
