@@ -50,7 +50,7 @@ func linksCommand() *cobra.Command {
 	opts := &linksOpts{}
 	cmd := &cobra.Command{
 		Use:   "list-links",
-		Short: "List curated Grafana documentation links.",
+		Short: "List curated Grafana documentation links referenced by gcx.",
 		Long: "List the curated set of canonical Grafana documentation URLs that " +
 			"gcx surfaces in help text and error messages. Pass any URL to " +
 			"'gcx docs get' to read the page content.",

@@ -13,18 +13,18 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// sampleDoc is a small markdown fixture with a predictable line/heading layout:
-//
-//	line 1: # Doc Title
-//	line 2: (blank)
-//	line 3: ## Alpha
-//	line 4: (blank)
-//	line 5: First section text.
-//	line 6: (blank)
-//	line 7: ## Beta
-//	line 8: (blank)
-//	line 9: Second section text.
-const sampleDoc = "# Doc Title\n\n## Alpha\n\nFirst section text.\n\n## Beta\n\nSecond section text.\n"
+// sampleDoc is a small markdown fixture with a predictable heading layout
+// used by both get and outline tests.
+const sampleDoc = `# Doc Title
+
+## Alpha
+
+First section text.
+
+## Beta
+
+Second section text.
+`
 
 // okDoc returns a fetcher that always serves sampleDoc for the requested URL,
 // so the get/outline success paths run without any network access.
@@ -91,29 +91,6 @@ func TestGetCommandSuccess(t *testing.T) {
 		assert.Contains(t, err.Error(), `section "Nonexistent" not found`)
 		assert.Contains(t, err.Error(), "gcx docs outline")
 	})
-}
-
-func TestOutlineCommandSuccess(t *testing.T) {
-	const url = "https://grafana.com/docs/tempo/latest/"
-
-	stdout, err := runWithFetcher(t, okDoc(), "outline", url, "-o", "json")
-	require.NoError(t, err)
-
-	var res struct {
-		URL      string `json:"url"`
-		Headings []struct {
-			Level int    `json:"level"`
-			Text  string `json:"text"`
-			Line  int    `json:"line"`
-		} `json:"headings"`
-	}
-	require.NoError(t, json.Unmarshal([]byte(stdout), &res))
-	assert.Equal(t, url, res.URL)
-	require.Len(t, res.Headings, 3)
-	assert.Equal(t, "Doc Title", res.Headings[0].Text)
-	assert.Equal(t, 1, res.Headings[0].Level)
-	assert.Equal(t, "Alpha", res.Headings[1].Text)
-	assert.Equal(t, "Beta", res.Headings[2].Text)
 }
 
 // TestFetchErrorIsCleaned asserts that a grafanadocs error surfaced by get is

@@ -50,9 +50,10 @@ func toProductEntries(products []grafanadocs.Product) []productEntry {
 func productsCommand(loader *indexLoader) *cobra.Command {
 	opts := &productsOpts{}
 	cmd := &cobra.Command{
-		Use:     "list-products",
-		Short:   "List Grafana documentation products.",
-		Long:    "List all product documentation groups in the index with their entry counts.",
+		Use:   "list-products",
+		Short: "List Grafana documentation products.",
+		Long: "List all product documentation groups in the index with their page counts. " +
+			"Use a product name with 'gcx docs search --product <name>' to scope search results.",
 		Example: `  gcx docs list-products`,
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -82,7 +83,7 @@ func (c *productsTextCodec) Encode(w goio.Writer, v any) error {
 	if !ok {
 		return fmt.Errorf("productsTextCodec: expected productsResult, got %T", v)
 	}
-	t := style.NewTable("PRODUCT", "COUNT")
+	t := style.NewTable("PRODUCT", "PAGES")
 	for _, p := range res.Products {
 		t.Row(p.Name, strconv.Itoa(p.Count))
 	}

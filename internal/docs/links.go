@@ -129,6 +129,7 @@ func AllNamed() []NamedLink {
 	return []NamedLink{
 		{Name: "ServiceAccounts", URL: ServiceAccounts},
 		{Name: "AccessPolicies", URL: AccessPolicies},
+		{Name: "RolesAndPermissions", URL: RolesAndPermissions},
 		{Name: "GrafanaInstallation", URL: GrafanaInstallation},
 		{Name: "PromQL", URL: PromQL},
 		{Name: "LogQL", URL: LogQL},

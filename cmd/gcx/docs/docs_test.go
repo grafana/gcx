@@ -167,7 +167,7 @@ func TestProductsCommand(t *testing.T) {
 		stdout, _, err := run(t, "list-products")
 		require.NoError(t, err)
 		assert.Contains(t, stdout, "PRODUCT")
-		assert.Contains(t, stdout, "COUNT")
+		assert.Contains(t, stdout, "PAGES")
 		assert.Contains(t, stdout, "Grafana Agent")
 		assert.NotContains(t, stdout, "Documentation home")
 		assert.NotContains(t, stdout, "Copyright notice")
@@ -221,6 +221,7 @@ func TestGetCommandGuards(t *testing.T) {
 	}{
 		{name: "missing url arg", args: []string{"get"}, wantErr: "accepts 1 arg"},
 		{name: "non-grafana host", args: []string{"get", "https://evil.com/docs/x.md"}, wantErr: "rejected host"},
+		{name: "negative offset", args: []string{"get", "https://grafana.com/docs/tempo/latest/", "--offset", "-1"}, wantErr: "--offset must be non-negative"},
 		{name: "outline missing url", args: []string{"outline"}, wantErr: "accepts 1 arg"},
 		{name: "outline non-grafana host", args: []string{"outline", "https://evil.com/docs/x"}, wantErr: "rejected host"},
 	}

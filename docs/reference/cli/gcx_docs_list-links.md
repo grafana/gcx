@@ -1,6 +1,6 @@
 ## gcx docs list-links
 
-List curated Grafana documentation links.
+List curated Grafana documentation links referenced by gcx.
 
 ### Synopsis
 
