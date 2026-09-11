@@ -75,9 +75,19 @@ func CommandWithIndex(idx *grafanadocs.Index) *cobra.Command {
 // CommandWithFetcher returns a docs command group with the page fetcher
 // replaced. Intended for tests — lets the get/outline success paths run
 // without a live network fetch, mirroring CommandWithIndex for the
-// index-backed commands.
+// index-backed commands. The index loader is uninitialized, so shorthand
+// resolution is not available (only full URLs work).
 func CommandWithFetcher(fetch docFetcher) *cobra.Command {
 	return newDocsCommand(&indexLoader{}, fetch)
+}
+
+// CommandWithIndexAndFetcher returns a docs command group with both a
+// pre-loaded index and a replaced page fetcher. Intended for tests that
+// exercise shorthand resolution end-to-end without network access.
+func CommandWithIndexAndFetcher(idx *grafanadocs.Index, fetch docFetcher) *cobra.Command {
+	loader := &indexLoader{idx: idx}
+	loader.once.Do(func() {})
+	return newDocsCommand(loader, fetch)
 }
 
 func newDocsCommand(loader *indexLoader, fetch docFetcher) *cobra.Command {
@@ -90,8 +100,8 @@ func newDocsCommand(loader *indexLoader, fetch docFetcher) *cobra.Command {
 
 	cmd.AddCommand(
 		searchCommand(loader),
-		getCommand(fetch),
-		outlineCommand(fetch),
+		getCommand(loader, fetch),
+		outlineCommand(loader, fetch),
 		productsCommand(loader),
 		linksCommand(),
 	)

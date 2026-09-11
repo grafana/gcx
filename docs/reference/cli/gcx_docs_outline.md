@@ -4,25 +4,30 @@ Show the heading outline of a documentation page.
 
 ### Synopsis
 
-List the headings of a documentation page so you can target a section with 'gcx docs get --section'.
+List the headings of a documentation page so you can target a section with 'gcx docs get --section'. The argument can be a full URL or a shorthand query resolved via the docs index.
 
 ```
-gcx docs outline <url> [flags]
+gcx docs outline <url-or-query> [flags]
 ```
 
 ### Examples
 
 ```
+  # Outline by full URL
   gcx docs outline https://grafana.com/docs/tempo/latest/traceql/construct-traceql-queries/
+
+  # Outline by shorthand query
+  gcx docs outline traceql
 ```
 
 ### Options
 
 ```
-  -h, --help            help for outline
-      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string   Output format. One of: agents, json, text, yaml (default "text")
+  -h, --help             help for outline
+      --jq string        jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string      Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string    Output format. One of: agents, json, text, yaml (default "text")
+      --product string   Scope shorthand resolution to a product (used when the argument is not a full URL)
 ```
 
 ### Options inherited from parent commands
