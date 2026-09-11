@@ -37,6 +37,7 @@ func Commands(loader *providers.ConfigLoader) *cobra.Command {
 		newUpdateCommand(loader),
 		newDeleteCommand(loader),
 		scores.NewListRuleScoresCommand(loader),
+		actionsCommand(loader),
 	)
 	return cmd
 }
@@ -78,8 +79,15 @@ func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
 			}
 
 			specs := make([]eval.RuleDefinition, len(typedObjs))
+			actionClient, err := NewClientForLoader(ctx, loader)
+			if err != nil {
+				return err
+			}
 			for i := range typedObjs {
 				specs[i] = typedObjs[i].Spec
+			}
+			if err := attachActions(ctx, actionClient, specs); err != nil {
+				return err
 			}
 
 			if opts.IO.OutputFormat == "table" || opts.IO.OutputFormat == "wide" {
@@ -134,6 +142,15 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 				return err
 			}
 
+			actionClient, err := NewClientForLoader(ctx, loader)
+			if err != nil {
+				return err
+			}
+			actions, err := actionClient.ListActions(ctx, typedObj.Spec.RuleID)
+			if err != nil {
+				return err
+			}
+			typedObj.Spec.Actions = &actions
 			u, err := specToUnstructured(typedObj.Spec, namespace)
 			if err != nil {
 				return err
@@ -148,12 +165,16 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 // --- create ---
 
 type createOpts struct {
-	File string
-	IO   cmdio.Options
+	File              string
+	IO                cmdio.Options
+	OnPassCollections []string
+	OnFailCollections []string
 }
 
 func (o *createOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&o.File, "filename", "f", "", "File containing the rule definition (use - for stdin)")
+	flags.StringSliceVar(&o.OnPassCollections, "on-pass-collection", nil, "Collection ID to add matching conversations to when all evaluators pass (repeatable)")
+	flags.StringSliceVar(&o.OnFailCollections, "on-fail-collection", nil, "Collection ID to add matching conversations to when all evaluators fail (repeatable)")
 	o.IO.DefaultFormat("json")
 	o.IO.BindFlags(flags)
 }
@@ -187,6 +208,9 @@ func newCreateCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := applyActionFlags(rule, opts.OnPassCollections, opts.OnFailCollections); err != nil {
+				return err
+			}
 
 			ctx := cmd.Context()
 			crud, _, err := NewTypedCRUD(ctx, loader)
@@ -200,6 +224,15 @@ func newCreateCommand(loader *providers.ConfigLoader) *cobra.Command {
 				return err
 			}
 
+			actionClient, err := NewClientForLoader(ctx, loader)
+			if err != nil {
+				return err
+			}
+			actions, err := reconcileActions(ctx, actionClient, created.Spec.RuleID, rule.Actions)
+			if err != nil {
+				return err
+			}
+			created.Spec.Actions = &actions
 			cmdio.Success(cmd.ErrOrStderr(), "Rule %s created", created.Spec.RuleID)
 			return opts.IO.Encode(cmd.OutOrStdout(), created.Spec)
 		},
@@ -211,12 +244,16 @@ func newCreateCommand(loader *providers.ConfigLoader) *cobra.Command {
 // --- update ---
 
 type updateOpts struct {
-	File string
-	IO   cmdio.Options
+	File              string
+	IO                cmdio.Options
+	OnPassCollections []string
+	OnFailCollections []string
 }
 
 func (o *updateOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&o.File, "filename", "f", "", "File containing the full rule definition (use - for stdin)")
+	flags.StringSliceVar(&o.OnPassCollections, "on-pass-collection", nil, "Collection ID to add matching conversations to when all evaluators pass (repeatable)")
+	flags.StringSliceVar(&o.OnFailCollections, "on-fail-collection", nil, "Collection ID to add matching conversations to when all evaluators fail (repeatable)")
 	o.IO.DefaultFormat("json")
 	o.IO.BindFlags(flags)
 }
@@ -245,6 +282,9 @@ func newUpdateCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := applyActionFlags(rule, opts.OnPassCollections, opts.OnFailCollections); err != nil {
+				return err
+			}
 
 			ctx := cmd.Context()
 			crud, _, err := NewTypedCRUD(ctx, loader)
@@ -258,6 +298,15 @@ func newUpdateCommand(loader *providers.ConfigLoader) *cobra.Command {
 				return err
 			}
 
+			actionClient, err := NewClientForLoader(ctx, loader)
+			if err != nil {
+				return err
+			}
+			actions, err := reconcileActions(ctx, actionClient, args[0], rule.Actions)
+			if err != nil {
+				return err
+			}
+			updated.Spec.Actions = &actions
 			cmdio.Success(cmd.ErrOrStderr(), "Rule %s updated", updated.Spec.RuleID)
 			return opts.IO.Encode(cmd.OutOrStdout(), updated.Spec)
 		},
@@ -347,6 +396,27 @@ func ReadRuleFile(path string, stdin io.Reader) (*eval.RuleDefinition, error) {
 		return &yamlDef, nil
 	}
 	return &def, nil
+}
+
+func applyActionFlags(rule *eval.RuleDefinition, onPass, onFail []string) error {
+	if len(onPass) == 0 && len(onFail) == 0 {
+		return nil
+	}
+	if rule.Actions != nil {
+		return errors.New("action flags cannot be combined with actions in the rule file")
+	}
+	build := func(kind string, ids []string) eval.RuleAction {
+		return eval.RuleAction{Condition: eval.RuleActionCondition{Kind: kind}, ActionConfig: eval.RuleActionConfig{Kind: "add_to_collection", CollectionIDs: ids}, Enabled: true}
+	}
+	actions := make([]eval.RuleAction, 0, 2)
+	if len(onPass) > 0 {
+		actions = append(actions, build("all_evaluators_pass", onPass))
+	}
+	if len(onFail) > 0 {
+		actions = append(actions, build("all_evaluators_fail", onFail))
+	}
+	rule.Actions = &actions
+	return nil
 }
 
 // --- table codec ---

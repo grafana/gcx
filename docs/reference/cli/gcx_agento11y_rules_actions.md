@@ -1,11 +1,11 @@
-## gcx agento11y rules
+## gcx agento11y rules actions
 
-Manage rules that route generations to evaluators.
+Manage actions attached to an evaluation rule.
 
 ### Options
 
 ```
-  -h, --help   help for rules
+  -h, --help   help for actions
 ```
 
 ### Options inherited from parent commands
@@ -22,12 +22,10 @@ Manage rules that route generations to evaluators.
 
 ### SEE ALSO
 
-* [gcx agento11y](gcx_agento11y.md)	 - Manage Grafana Agent Observability resources
-* [gcx agento11y rules actions](gcx_agento11y_rules_actions.md)	 - Manage actions attached to an evaluation rule.
-* [gcx agento11y rules create](gcx_agento11y_rules_create.md)	 - Create an evaluation rule from a file.
-* [gcx agento11y rules delete](gcx_agento11y_rules_delete.md)	 - Delete evaluation rules.
-* [gcx agento11y rules get](gcx_agento11y_rules_get.md)	 - Get a single evaluation rule.
-* [gcx agento11y rules list](gcx_agento11y_rules_list.md)	 - List evaluation rules.
-* [gcx agento11y rules list-scores](gcx_agento11y_rules_list-scores.md)	 - List online evaluation scores for a rule.
-* [gcx agento11y rules update](gcx_agento11y_rules_update.md)	 - Update an evaluation rule from a file.
+* [gcx agento11y rules](gcx_agento11y_rules.md)	 - Manage rules that route generations to evaluators.
+* [gcx agento11y rules actions create](gcx_agento11y_rules_actions_create.md)	 - Create an action from a file.
+* [gcx agento11y rules actions delete](gcx_agento11y_rules_actions_delete.md)	 - Delete an action attached to an evaluation rule.
+* [gcx agento11y rules actions get](gcx_agento11y_rules_actions_get.md)	 - Get an action attached to an evaluation rule.
+* [gcx agento11y rules actions list](gcx_agento11y_rules_actions_list.md)	 - List actions attached to an evaluation rule.
+* [gcx agento11y rules actions update](gcx_agento11y_rules_actions_update.md)	 - Update an action from a file.
 

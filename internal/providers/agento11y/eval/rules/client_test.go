@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/internal/config"
@@ -203,4 +204,44 @@ func TestClient_Delete(t *testing.T) {
 
 	err := client.Delete(context.Background(), "rule-1")
 	require.NoError(t, err)
+}
+
+func TestClient_RuleActions(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Contains(t, r.URL.Path, "/eval/rules/rule-1/actions")
+		switch r.Method {
+		case http.MethodGet:
+			if strings.HasSuffix(r.URL.Path, "/actions") {
+				writeJSON(w, map[string]any{"items": []eval.RuleAction{{ActionID: "ra-1", RuleID: "rule-1", Enabled: true, Condition: eval.RuleActionCondition{Kind: "all_evaluators_pass"}, ActionConfig: eval.RuleActionConfig{Kind: "add_to_collection", CollectionIDs: []string{"coll-1"}}}}})
+			} else {
+				writeJSON(w, eval.RuleAction{ActionID: "ra-1", RuleID: "rule-1"})
+			}
+		case http.MethodPost:
+			var body map[string]any
+			assert.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+			assert.NotContains(t, body, "action_id")
+			writeJSON(w, eval.RuleAction{ActionID: "ra-1", RuleID: "rule-1"})
+		case http.MethodPatch:
+			var body map[string]any
+			assert.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+			assert.Contains(t, body, "condition")
+			writeJSON(w, eval.RuleAction{ActionID: "ra-1", RuleID: "rule-1"})
+		case http.MethodDelete:
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			t.Fatalf("unexpected method %s", r.Method)
+		}
+	}))
+
+	actions, err := client.ListActions(context.Background(), "rule-1")
+	require.NoError(t, err)
+	require.Len(t, actions, 1)
+	created, err := client.CreateAction(context.Background(), "rule-1", &eval.RuleAction{Condition: eval.RuleActionCondition{Kind: "all_evaluators_pass"}, ActionConfig: eval.RuleActionConfig{Kind: "add_to_collection", CollectionIDs: []string{"coll-1"}}, Enabled: true})
+	require.NoError(t, err)
+	assert.Equal(t, "ra-1", created.ActionID)
+	_, err = client.GetAction(context.Background(), "rule-1", "ra-1")
+	require.NoError(t, err)
+	_, err = client.UpdateAction(context.Background(), "rule-1", &eval.RuleAction{ActionID: "ra-1", Condition: eval.RuleActionCondition{Kind: "all_evaluators_fail"}, ActionConfig: eval.RuleActionConfig{Kind: "add_to_collection", CollectionIDs: []string{"coll-1"}}, Enabled: false})
+	require.NoError(t, err)
+	require.NoError(t, client.DeleteAction(context.Background(), "rule-1", "ra-1"))
 }

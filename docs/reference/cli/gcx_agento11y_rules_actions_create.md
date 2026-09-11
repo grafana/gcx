@@ -1,11 +1,19 @@
-## gcx agento11y rules
+## gcx agento11y rules actions create
 
-Manage rules that route generations to evaluators.
+Create an action from a file.
+
+```
+gcx agento11y rules actions create <rule-id> [flags]
+```
 
 ### Options
 
 ```
-  -h, --help   help for rules
+  -f, --filename string   File containing the action definition (use - for stdin)
+  -h, --help              help for create
+      --jq string         jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string     Output format. One of: agents, json, yaml (default "json")
 ```
 
 ### Options inherited from parent commands
@@ -22,12 +30,5 @@ Manage rules that route generations to evaluators.
 
 ### SEE ALSO
 
-* [gcx agento11y](gcx_agento11y.md)	 - Manage Grafana Agent Observability resources
 * [gcx agento11y rules actions](gcx_agento11y_rules_actions.md)	 - Manage actions attached to an evaluation rule.
-* [gcx agento11y rules create](gcx_agento11y_rules_create.md)	 - Create an evaluation rule from a file.
-* [gcx agento11y rules delete](gcx_agento11y_rules_delete.md)	 - Delete evaluation rules.
-* [gcx agento11y rules get](gcx_agento11y_rules_get.md)	 - Get a single evaluation rule.
-* [gcx agento11y rules list](gcx_agento11y_rules_list.md)	 - List evaluation rules.
-* [gcx agento11y rules list-scores](gcx_agento11y_rules_list-scores.md)	 - List online evaluation scores for a rule.
-* [gcx agento11y rules update](gcx_agento11y_rules_update.md)	 - Update an evaluation rule from a file.
 
