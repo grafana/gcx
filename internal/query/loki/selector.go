@@ -28,7 +28,7 @@ func ExtractStreamSelectors(expr string) []string {
 	escaped := false
 	selectorStart := -1
 
-	for i := 0; i < len(expr); i++ {
+	for i := range len(expr) {
 		c := expr[i]
 		switch {
 		case escaped:

@@ -1,4 +1,4 @@
-package loki
+package loki //nolint:testpackage // white-box: exercises unexported runStatsPreflight and statsPreflightOpts directly
 
 import (
 	"bytes"
