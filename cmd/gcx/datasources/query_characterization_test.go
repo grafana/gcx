@@ -22,7 +22,6 @@ import (
 	"time"
 
 	"github.com/grafana/gcx/cmd/gcx/datasources"
-	querypinot "github.com/grafana/gcx/internal/query/pinot"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -297,8 +296,27 @@ func TestGenericQueryCharacterization_PinotSkipLimitWarnsOnStderr(t *testing.T) 
 	q := firstQuery(t, body)
 	assert.Equal(t, "SELECT 1 FROM a UNION SELECT 2 FROM b", q["pinotQlCode"],
 		"UNION SQL is sent unchanged")
-	assert.Contains(t, stderr, querypinot.LimitSkipShapes,
-		"a skipped --limit must be reported, not silent")
+	assert.Contains(t, stderr, "not appended",
+		"a skipped --limit must be reported on stderr")
+}
+
+func TestGenericQueryCharacterization_PinotOmittedLimitOnCommentedLimitStaysQuiet(t *testing.T) {
+	f := &fakeGrafana{t: t, dsType: "startree-pinot-datasource"}
+	const commentedLimitSQL = "SELECT *  FROM faro_pinot_measurements_v1 LIMIT /* note */ 5" //nolint:unqueryvet // commented LIMIT fixture
+
+	_, stderr, err := runGenericStreams(t, f,
+		"query", "uid", commentedLimitSQL,
+		"-o", "json")
+	require.NoError(t, err)
+
+	_, body := f.seenPost()
+	q := firstQuery(t, body)
+	assert.Equal(t, commentedLimitSQL, q["pinotQlCode"],
+		"commented LIMIT is sent unchanged when --limit is omitted")
+	assert.NotContains(t, stderr, "not appended",
+		"omitted --limit must not claim the user asked for --limit")
+	assert.NotContains(t, stderr, "You asked for --limit",
+		"omitted --limit must not emit the skip warning")
 }
 
 func TestGenericQueryCharacterization_PyroscopeRequiresProfileType(t *testing.T) {

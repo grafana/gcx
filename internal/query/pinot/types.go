@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,11 +19,6 @@ const (
 	DefaultLimit = 100
 	// MaxLimit is the ceiling EnforceLimit will emit. Callers warn when they cap.
 	MaxLimit = 1000
-
-	// LimitSkipShapes is the user-facing list of SQL shapes where EnforceLimit
-	// leaves the statement unchanged and callers warn. Flag help, stderr
-	// warnings, and LimitNotEnforced must all use this string.
-	LimitSkipShapes = "UNION, OFFSET, OPTION, or a trailing comment"
 )
 
 // leadingSetRe matches one or more Pinot SET statements at the start of a
@@ -55,22 +51,26 @@ var optionClauseRe = regexp.MustCompile(`(?i)\bOPTION\s*\(`)
 // not match even though the raw SQL contains `--`.
 var trailingLineCommentRe = regexp.MustCompile(`--[^\n]*$`)
 
-func selectBody(sql string) string {
+func stripLeadingSetStatements(sql string) string {
 	return leadingSetRe.ReplaceAllString(sql, "")
 }
-
-var sqlBlockCommentRe = regexp.MustCompile(`(?s)/\*.*?\*/`)
-
-var sqlUnclosedBlockRe = regexp.MustCompile(`(?s)/\*.*$`)
 
 // limitBeforeTrailingCommentRe matches LIMIT n followed only by a trailing
 // comment. Appending another LIMIT would produce invalid SQL.
 var limitBeforeTrailingCommentRe = regexp.MustCompile(`(?is)\bLIMIT\s+\d+\s*(?:--[^\n]*|/\*.*?\*/)\s*$`)
 
+// limitClauseRe matches internal/query/sql.EnforceLimit's trailing LIMIT n (digits
+// immediately after LIMIT through end-of-statement). Comments between LIMIT and n
+// are not matched; those statements must bail so a second LIMIT is not appended.
+var limitClauseRe = regexp.MustCompile(`(?i)\bLIMIT\s+(\d+)\s*$`)
+
+var limitKeywordRe = regexp.MustCompile(`(?i)\bLIMIT\b`)
+
 type lexicalMask struct {
-	strings      bool
-	quotedIdents bool
-	comments     bool
+	strings       bool
+	quotedIdents  bool
+	comments      bool
+	blockComments bool
 }
 
 func blankRange(b []byte, start, end int) {
@@ -122,7 +122,7 @@ func maskLexical(sql string, mask lexicalMask) string {
 			}
 			blankRange(out, i, j)
 			i = j
-		case mask.comments && i+1 < len(out) && out[i] == '/' && out[i+1] == '*':
+		case (mask.comments || mask.blockComments) && i+1 < len(out) && out[i] == '/' && out[i+1] == '*':
 			j := i + 2
 			closed := false
 			for j+1 < len(out) {
@@ -145,7 +145,7 @@ func maskLexical(sql string, mask lexicalMask) string {
 	return string(out)
 }
 
-func stripQuoted(sql string) string {
+func stripQuotedLiterals(sql string) string {
 	return maskLexical(sql, lexicalMask{strings: true, quotedIdents: true})
 }
 
@@ -173,10 +173,37 @@ func keywordScan(sql string) string {
 	return maskLexical(sql, lexicalMask{strings: true, quotedIdents: true, comments: true})
 }
 
-// stripLineComments blanks -- line comments while skipping string literals,
-// quoted identifiers, and block comments (without altering block comment text).
-// Used before unclosed-block detection so /* inside a line comment is ignored.
-func stripLineComments(sql string) string {
+func stripLeadingComments(sql string) string {
+	s := sql
+	for {
+		s = strings.TrimLeft(s, " \t\r\n")
+		if len(s) >= 2 && s[0] == '-' && s[1] == '-' {
+			if idx := strings.IndexByte(s, '\n'); idx >= 0 {
+				s = s[idx+1:]
+				continue
+			}
+			return ""
+		}
+		if len(s) >= 2 && s[0] == '/' && s[1] == '*' {
+			if end := strings.Index(s, "*/"); end >= 0 {
+				s = s[end+2:]
+				continue
+			}
+			return s
+		}
+		return s
+	}
+}
+
+func limitStatementBody(sql string) string {
+	s := stripLeadingComments(sql)
+	s = stripLeadingSetStatements(s)
+	return stripLeadingComments(s)
+}
+
+// hasUnclosedBlockComment reports an unclosed /* while skipping strings and
+// line comments so apostrophes inside comments do not confuse the scan.
+func hasUnclosedBlockComment(sql string) bool {
 	out := []byte(sql)
 	for i := 0; i < len(out); {
 		switch {
@@ -208,6 +235,12 @@ func stripLineComments(sql string) string {
 				j++
 			}
 			i = j
+		case i+1 < len(out) && out[i] == '-' && out[i+1] == '-':
+			j := i
+			for j < len(out) && out[j] != '\n' {
+				j++
+			}
+			i = j
 		case i+1 < len(out) && out[i] == '/' && out[i+1] == '*':
 			j := i + 2
 			closed := false
@@ -220,109 +253,135 @@ func stripLineComments(sql string) string {
 				j++
 			}
 			if !closed {
-				j = len(out)
+				return true
 			}
-			i = j
-		case i+1 < len(out) && out[i] == '-' && out[i+1] == '-':
-			j := i
-			for j < len(out) && out[j] != '\n' {
-				j++
-			}
-			blankRange(out, i, j)
 			i = j
 		default:
 			i++
 		}
 	}
-	return string(out)
+	return false
 }
 
-func stripLeadingNoise(sql string) string {
-	s := sql
-	for {
-		s = strings.TrimLeft(s, " \t\r\n")
-		if len(s) >= 2 && s[0] == '-' && s[1] == '-' {
-			if idx := strings.IndexByte(s, '\n'); idx >= 0 {
-				s = s[idx+1:]
-				continue
-			}
-			return ""
-		}
-		if len(s) >= 2 && s[0] == '/' && s[1] == '*' {
-			if end := strings.Index(s, "*/"); end >= 0 {
-				s = s[end+2:]
-				continue
-			}
-			return s
-		}
-		return s
+// hasLimitWeCannotRewrite reports a real LIMIT that is not a bare trailing
+// LIMIT n (comments inside the clause, etc.). The shared helper would miss it
+// and append a second LIMIT.
+func hasLimitWeCannotRewrite(sql string) bool {
+	trimmed := strings.TrimRight(sql, "; \t\n")
+	if limitClauseRe.MatchString(trimmed) {
+		return false
 	}
+	return limitKeywordRe.MatchString(keywordScan(sql))
 }
 
-func limitStatementBody(sql string) string {
-	s := stripLeadingNoise(sql)
-	s = selectBody(s)
-	return stripLeadingNoise(s)
-}
-
-func limitAppendUnsafe(sql string) bool {
-	s := strings.TrimRight(stripQuoted(sql), "; \t\n")
-	if trailingLineCommentRe.MatchString(s) {
-		return true
-	}
-	if limitBeforeTrailingCommentRe.MatchString(s) {
-		return true
-	}
-	s = stripLineComments(s)
-	return sqlUnclosedBlockRe.MatchString(sqlBlockCommentRe.ReplaceAllString(s, " "))
-}
-
+// bail reports whether appending a trailing LIMIT would be invalid or unsafe.
 func bail(sql string) bool {
-	if limitAppendUnsafe(sql) {
+	scanned := keywordScan(sql)
+	if unionOrOffsetRe.MatchString(scanned) ||
+		limitCommaRe.MatchString(scanned) ||
+		optionClauseRe.MatchString(scanned) {
 		return true
 	}
-	s := keywordScan(sql)
-	return unionOrOffsetRe.MatchString(s) || limitCommaRe.MatchString(s) || optionClauseRe.MatchString(s)
+	if hasTrailingLineComment(sql) {
+		return true
+	}
+	if hasLimitBeforeTrailingComment(sql) {
+		return true
+	}
+	if hasUnclosedBlockComment(sql) {
+		return true
+	}
+	return hasLimitWeCannotRewrite(sql)
+}
+
+func hasLimitBeforeTrailingComment(sql string) bool {
+	s := strings.TrimRight(stripQuotedLiterals(sql), "; \t\n")
+	return limitBeforeTrailingCommentRe.MatchString(s)
+}
+
+// hasTrailingLineComment reports a -- line comment on the last line of the statement.
+func hasTrailingLineComment(sql string) bool {
+	trimmed := strings.TrimRight(sql, "; \t\n\r")
+	line := trimmed
+	if idx := strings.LastIndexByte(trimmed, '\n'); idx >= 0 {
+		line = trimmed[idx+1:]
+	}
+	line = strings.TrimRight(
+		maskLexical(line, lexicalMask{strings: true, quotedIdents: true, blockComments: true}),
+		" \t\r",
+	)
+	return trailingLineCommentRe.MatchString(line)
 }
 
 // LimitFlagUsage is the --limit help text for the typed Pinot command.
 func LimitFlagUsage(maxLimit int) string {
-	return fmt.Sprintf("Max rows to return; requests above %d are capped, with a warning. Not applied to %s (warned on stderr). 0 disables enforcement", maxLimit, LimitSkipShapes)
+	return fmt.Sprintf("Max rows to return; requests above %d are capped (stderr notice when the query is adjusted). 0 disables enforcement", maxLimit)
 }
 
-// LimitCappedWarning is the stderr notice when a LIMIT was reduced to maxLimit.
-func LimitCappedWarning(maxLimit int) string {
-	return fmt.Sprintf("LIMIT in query exceeds the maximum of %d and was capped; use --limit 0 to disable enforcement", maxLimit)
-}
-
-// LimitSkipWarning is the stderr notice when EnforceLimit left SQL unchanged.
-func LimitSkipWarning() string {
-	return fmt.Sprintf("query uses %s, so --limit was not applied; the SQL was sent unchanged. Use --limit 0 to disable this warning", LimitSkipShapes)
-}
-
-// LimitWarning returns the stderr notice for a limit rewrite, or empty.
-func LimitWarning(expr string, capped bool, limit, maxLimit int) string {
-	if capped {
-		return LimitCappedWarning(maxLimit)
+// queryLimitInfo reports whether the SQL has a real LIMIT keyword and, when
+// that clause is a clean trailing LIMIT n (after keywordScan blanks comments),
+// the row cap n. Comma form (LIMIT offset,count), OFFSET, and non-numeric
+// LIMIT return n == nil.
+func queryLimitInfo(sql string) (*int, bool) {
+	scanned := keywordScan(sql)
+	if !limitKeywordRe.MatchString(scanned) {
+		return nil, false
 	}
-	if limit != 0 && LimitNotEnforced(expr) {
-		return LimitSkipWarning()
+	trimmed := strings.TrimRight(scanned, "; \t\n")
+	m := limitClauseRe.FindStringSubmatch(trimmed)
+	if m == nil {
+		return nil, true
+	}
+	v, err := strconv.Atoi(m[1])
+	if err != nil {
+		return nil, true
+	}
+	return &v, true
+}
+
+// LimitEnforcementNotice returns a short stderr message after EnforceLimit, or
+// empty when no notice is needed. expr is the user's SQL; sql is what is sent.
+// limitSet is true when the user passed --limit. A clean LIMIT n is read after
+// keywordScan (LIMIT /* note */ 5000 yields 5000). Comma form is not a clean n.
+func LimitEnforcementNotice(expr, sql string, capped bool, limit, maxLimit int, limitSet bool) string {
+	if limit == 0 {
+		return ""
+	}
+
+	existingN, hasLimit := queryLimitInfo(expr)
+
+	if sql != expr {
+		if capped {
+			if limitSet && hasLimit {
+				return fmt.Sprintf("You requested --limit %d but the existing LIMIT was above the maximum, so it was reduced to %d.", limit, maxLimit)
+			}
+			return fmt.Sprintf("Query adjusted: LIMIT reduced to %d (maximum). Use --limit 0 to disable enforcement.", maxLimit)
+		}
+		if !limitSet {
+			return fmt.Sprintf("Query adjusted: appended default LIMIT %d. Use --limit 0 to disable enforcement.", limit)
+		}
+		return fmt.Sprintf("Query adjusted: appended LIMIT %d (--limit). Use --limit 0 to disable enforcement.", limit)
+	}
+
+	// Not SELECT/WITH after peeling leading comments and SET (EXPLAIN, INSERT, …): no notice.
+	if !limitStatementRe.MatchString(limitStatementBody(expr)) {
+		return ""
+	}
+
+	if hasLimit {
+		if existingN != nil && *existingN > maxLimit {
+			return fmt.Sprintf("The query has a LIMIT above %d that should be reduced to %d, but the query is not safe to modify.", maxLimit, maxLimit)
+		}
+		if limitSet && (existingN == nil || *existingN != limit) {
+			return fmt.Sprintf("You requested --limit %d but the query already has a LIMIT, so no change was applied.", limit)
+		}
+		return ""
+	}
+
+	if limitSet && bail(expr) {
+		return fmt.Sprintf("You asked for --limit %d, but a row limit was not appended (this query shape is not safe to modify). Add LIMIT in the SQL or use --limit 0.", limit)
 	}
 	return ""
-}
-
-// LimitNotEnforced reports whether EnforceLimit will leave a SELECT/WITH
-// statement unchanged for a reason the user should hear about: the shapes in
-// LimitSkipShapes. LIMIT offset,count is excluded because that form already
-// bounds the result. Keywords inside quotes or comments do not count.
-func LimitNotEnforced(sql string) bool {
-	if !limitStatementRe.MatchString(limitStatementBody(sql)) {
-		return false
-	}
-	if limitCommaRe.MatchString(keywordScan(sql)) {
-		return false
-	}
-	return bail(sql)
 }
 
 // EnforceLimit ensures the SQL has a LIMIT clause within bounds and reports
@@ -334,6 +393,7 @@ func LimitNotEnforced(sql string) bool {
 // pass through unchanged. Keywords inside quotes or comments do not trigger a
 // bail. Real DML never reaches bail: only SELECT/WITH do.
 func EnforceLimit(sql string, limit, maxLimit int) (string, bool) {
+	// Leave non-SELECT/WITH sql unchanged (after removing leading comments and SET).
 	if !limitStatementRe.MatchString(limitStatementBody(sql)) {
 		return sql, false
 	}

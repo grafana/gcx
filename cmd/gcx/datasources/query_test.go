@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/grafana/gcx/cmd/gcx/datasources"
-	"github.com/grafana/gcx/internal/query/pinot"
 	"github.com/grafana/gcx/internal/testutils"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -378,9 +377,10 @@ func TestGenericQueryCloudMonitoringShortCircuit(t *testing.T) {
 	}
 }
 
-func TestGenericQueryLimitFlagDisclosesPinotSkips(t *testing.T) {
+func TestGenericQueryLimitFlagDisclosesPinotDefault(t *testing.T) {
 	usage := datasources.QueryCmd().Flags().Lookup("limit").Usage
-	assert.Contains(t, usage, pinot.LimitSkipShapes)
+	assert.Contains(t, usage, "Pinot uses")
+	assert.Contains(t, usage, "stderr notes when PinotQL is adjusted")
 }
 
 // Pins shared.Validate() running before any HTTP or short-circuit branch.
