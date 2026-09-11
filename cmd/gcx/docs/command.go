@@ -73,8 +73,8 @@ func newDocsCommand(loader *indexLoader, fetch docFetcher) *cobra.Command {
 
 	cmd.AddCommand(
 		searchCommand(loader),
-		getCommand(fetch),
-		outlineCommand(fetch),
+		getCommand(loader, fetch),
+		outlineCommand(loader, fetch),
 		productsCommand(loader),
 		linksCommand(),
 	)

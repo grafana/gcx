@@ -134,6 +134,39 @@ func TestGetPartialityHint(t *testing.T) {
 	})
 }
 
+func TestGetShorthandResolution(t *testing.T) {
+	disableAgentMode(t)
+	idx := loadTestIndex(t)
+
+	t.Run("shorthand resolves and fetches", func(t *testing.T) {
+		stdout, _, err := testCommand(t, idx, okDoc(), "get", "clustering", "-o", "json")
+		require.NoError(t, err)
+
+		var res struct {
+			URL string `json:"url"`
+		}
+		require.NoError(t, json.Unmarshal([]byte(stdout), &res))
+		assert.Contains(t, res.URL, "clustering")
+	})
+
+	t.Run("product flag scopes resolution", func(t *testing.T) {
+		stdout, _, err := testCommand(t, idx, okDoc(), "get", "configuration", "--product", "tempo", "-o", "json")
+		require.NoError(t, err)
+
+		var res struct {
+			URL string `json:"url"`
+		}
+		require.NoError(t, json.Unmarshal([]byte(stdout), &res))
+		assert.Contains(t, res.URL, "configuration")
+	})
+
+	t.Run("no match gives guidance", func(t *testing.T) {
+		_, _, err := testCommand(t, idx, okDoc(), "get", "zzzznotathing")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "no matching page found")
+	})
+}
+
 // TestFetchErrorIsCleaned asserts that a grafanadocs error surfaced by get is
 // rewritten into product-facing language: the URL is added for context and the
 // internal "grafanadocs:" package prefix is stripped. This exercises the
