@@ -14,10 +14,14 @@ package loki
 // total cost by calling index/stats once per selector returned here and
 // summing.
 //
-// Quote state is tracked in one pass across the whole expression, not reset
-// per candidate "{" — otherwise a brace inside a quoted string in a later
-// pipeline stage (e.g. `{app="x"} |= "payload {foo}"`) would be misread as a
-// second selector once scanning resumes past the real one.
+// Quote state (both double-quoted and backtick-quoted strings) is tracked in
+// one pass across the whole expression, not reset per candidate "{" —
+// otherwise a brace inside a quoted string in a later pipeline stage (e.g.
+// `{app="x"} |= "payload {foo}"`) would be misread as a second selector once
+// scanning resumes past the real one. Backtick strings are raw (LogQL, like
+// Go raw string literals): no escape processing, and braces inside them
+// (common in regex matchers and line_format templates) are never selector
+// delimiters either.
 //
 // Returns nil if no selector could be found (expr has no "{...}" block).
 func ExtractStreamSelectors(expr string) []string {
@@ -25,12 +29,19 @@ func ExtractStreamSelectors(expr string) []string {
 	seen := make(map[string]bool)
 
 	inQuotes := false
+	inBacktick := false
 	escaped := false
 	selectorStart := -1
 
 	for i := range len(expr) {
 		c := expr[i]
 		switch {
+		case inBacktick:
+			// Backtick strings are raw: no escape processing, and nothing
+			// inside them delimits a selector.
+			if c == '`' {
+				inBacktick = false
+			}
 		case escaped:
 			escaped = false
 		case c == '\\':
@@ -41,6 +52,8 @@ func ExtractStreamSelectors(expr string) []string {
 			// Braces (and everything else) inside a quoted string are never
 			// selector delimiters, regardless of whether we're currently
 			// inside an open "{...}" or not.
+		case c == '`':
+			inBacktick = true
 		case c == '{' && selectorStart == -1:
 			selectorStart = i
 		case c == '}' && selectorStart != -1:
