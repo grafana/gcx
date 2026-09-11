@@ -20,7 +20,6 @@ import (
 	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/logs"
 	"github.com/grafana/gcx/internal/resources"
-	"github.com/grafana/gcx/internal/server/grafana"
 	"github.com/grafana/gcx/internal/server/handlers"
 	"github.com/grafana/gcx/internal/server/livereload"
 	"github.com/grafana/gcx/internal/version"
@@ -37,22 +36,44 @@ type Config struct {
 type Server struct {
 	config           Config
 	context          *config.Context
+	transport        http.RoundTripper
+	proxyTarget      *url.URL
 	resources        *resources.Resources
 	resourceHandlers []handlers.ResourceHandler
 	proxy            *httputil.ReverseProxy
 	subpath          string
 }
 
-func New(config Config, context *config.Context, resources *resources.Resources) *Server {
+// New builds a Server. restCfg supplies the Grafana connection (Host and
+// auth/TLS transport) — it must already be wired for OAuth token refresh via
+// restCfg.WireTokenPersistence when the context uses OAuth, since Server
+// reuses restCfg's transport chain (Basic, service-account bearer, or OAuth
+// with refresh) for every proxied request instead of handling auth itself.
+func New(config Config, context *config.Context, resources *resources.Resources, restCfg config.NamespacedRESTConfig) (*Server, error) {
+	transport, err := rest.TransportFor(&restCfg.Config)
+	if err != nil {
+		return nil, fmt.Errorf("building grafana transport: %w", err)
+	}
+
+	// ProxyTarget owns the per-auth-mode meaning of the Grafana host/path, so
+	// both proxy paths (the ReverseProxy below and the dashboard handler) assemble
+	// outgoing URLs the same way regardless of direct vs OAuth proxy mode.
+	proxyTarget, err := restCfg.ProxyTarget()
+	if err != nil {
+		return nil, err
+	}
+
 	return &Server{
-		config:    config,
-		context:   context,
-		resources: resources,
+		config:      config,
+		context:     context,
+		transport:   transport,
+		proxyTarget: proxyTarget,
+		resources:   resources,
 		resourceHandlers: []handlers.ResourceHandler{
-			handlers.NewDashboardProxy(context, resources),
+			handlers.NewDashboardProxy(proxyTarget, transport, resources),
 			handlers.NewFoldersProxy(resources),
 		},
-	}
+	}, nil
 }
 
 // makeOriginChecker returns a CheckOrigin function that allows only loopback
@@ -95,51 +116,18 @@ func (s *Server) Start(ctx context.Context) error {
 		return fmt.Errorf("could not create a sub-tree from the embedded assets FS: %w", err)
 	}
 
-	if s.context == nil || s.context.Grafana == nil {
-		return errors.New("grafana is not configured")
-	}
-	if err := grafana.ValidateDevProxyAuth(s.context); err != nil {
-		return fmt.Errorf("grafana authentication configuration: %w", err)
-	}
-
-	u, err := url.Parse(s.context.Grafana.Server)
+	grafanaURL, err := url.Parse(s.context.Grafana.Server)
 	if err != nil {
 		return err
 	}
 
-	s.subpath = strings.TrimSuffix(u.Path, "/")
+	s.subpath = strings.TrimSuffix(grafanaURL.Path, "/")
 
-	// Build the proxy from the same validated REST configuration used by
-	// resource clients. That keeps auth-method selection, rejected-credential
-	// handling, and TLS behavior on one authority. ValidateDevProxyAuth rejects
-	// OAuth above until refresh persistence can be wired to the config owner.
-	restCfg, err := s.context.ToRESTConfig(ctx)
-	if err != nil {
-		return fmt.Errorf("grafana authentication configuration: %w", err)
-	}
-	proxyURL, err := url.Parse(restCfg.Host)
-	if err != nil {
-		return fmt.Errorf("grafana proxy URL: %w", err)
-	}
-	if !restCfg.IsOAuthProxy() {
-		// Incoming dev-server routes already include Grafana's configured
-		// subpath, so retaining it in the direct target would duplicate it.
-		proxyURL.Path = ""
-		proxyURL.RawPath = ""
-	}
-	proxyTransport, err := rest.TransportFor(&restCfg.Config)
-	if err != nil {
-		return fmt.Errorf("grafana proxy transport: %w", err)
-	}
 	s.proxy = &httputil.ReverseProxy{
-		Transport: proxyTransport,
+		Transport: s.transport,
 		Rewrite: func(r *httputil.ProxyRequest) {
-			r.SetURL(proxyURL)
+			r.SetURL(s.proxyTarget)
 
-			// Never forward a browser-supplied credential. The selected REST
-			// transport adds exactly the configured Basic/token auth; mTLS
-			// intentionally sends no Authorization header.
-			r.Out.Header.Del("Authorization")
 			r.Out.Header.Del("Origin")
 			r.Out.Header.Set("User-Agent", version.UserAgent())
 		},
@@ -244,6 +232,7 @@ func (s *Server) staticProxyConfig() handlers.StaticProxyConfig {
 			"/avatar/*",
 		},
 		MockGet: map[string]string{
+			"/api/login/ping":      `{"message":"Logged in"}`,
 			"/api/ma/events":       "[]",
 			"/api/live/publish":    "[]",
 			"/api/live/list":       "[]",
