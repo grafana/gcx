@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	internaldocs "github.com/grafana/gcx/internal/docs"
 	"github.com/grafana/mcp-doc-server/pkg/grafanadocs"
 	"github.com/spf13/cobra"
 )
@@ -88,6 +89,21 @@ func CommandWithIndexAndFetcher(idx *grafanadocs.Index, fetch docFetcher) *cobra
 	loader := &indexLoader{idx: idx}
 	loader.once.Do(func() {})
 	return newDocsCommand(loader, fetch)
+}
+
+// resolveIfShorthand resolves a URL-or-query argument to a full documentation
+// URL. If the input already starts with "https://", it is returned as-is.
+// Otherwise the docs index is loaded and the shorthand query is resolved via
+// search, optionally scoped to a product.
+func resolveIfShorthand(ctx context.Context, loader *indexLoader, input, product string) (string, error) {
+	if strings.HasPrefix(input, "https://") {
+		return input, nil
+	}
+	idx, err := loader.get(ctx)
+	if err != nil {
+		return "", err
+	}
+	return internaldocs.ResolveShorthand(idx, input, product)
 }
 
 func newDocsCommand(loader *indexLoader, fetch docFetcher) *cobra.Command {
