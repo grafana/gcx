@@ -5,6 +5,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 	"time"
 
@@ -168,6 +169,59 @@ func TestRunStatsPreflight_SoftFailsPerSelector(t *testing.T) {
 
 	if stderr.Len() == 0 {
 		t.Fatal("expected a warning derived from the selector that succeeded")
+	}
+}
+
+// TestRunStatsPreflight_WidensWindowForRangeVectorDuration guards against a
+// real review finding: an instant metric query's naive window (now-1m..now)
+// undercounts what Loki actually evaluates when the expression has a range
+// vector like "[24h]" — the pre-flight must widen the checked window by that
+// duration, not just the CLI's own instant-query default.
+func TestRunStatsPreflight_WidensWindowForRangeVectorDuration(t *testing.T) {
+	var gotStart string
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		gotStart = r.URL.Query().Get("start")
+		_, _ = w.Write([]byte(`{"streams":1,"chunks":1,"bytes":1,"entries":1}`))
+	})
+
+	opts := &statsPreflightOpts{StatsWarnBytes: "1GiB"}
+	if err := opts.Validate(); err != nil {
+		t.Fatalf("unexpected Validate error: %v", err)
+	}
+
+	now := time.Now()
+	var stderr bytes.Buffer
+	runStatsPreflight(context.Background(), client, &stderr, "uid", `count_over_time({job="x"}[24h])`, false, now, now, now, opts.SkipStats, opts.warnBytes)
+
+	wantStart := strconv.FormatInt(now.Add(-24*time.Hour).Add(-time.Minute).UnixNano(), 10)
+	if gotStart != wantStart {
+		t.Errorf("start param sent to index-stats = %q, want %q (24h range vector should widen the instant-query window)", gotStart, wantStart)
+	}
+}
+
+// TestRunStatsPreflight_WidensWindowForOffset guards against the second
+// review example: an "offset" modifier shifts the real evaluation window
+// back, so the naive --from/--to window alone checks the wrong period.
+func TestRunStatsPreflight_WidensWindowForOffset(t *testing.T) {
+	var gotStart string
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		gotStart = r.URL.Query().Get("start")
+		_, _ = w.Write([]byte(`{"streams":1,"chunks":1,"bytes":1,"entries":1}`))
+	})
+
+	opts := &statsPreflightOpts{StatsWarnBytes: "1GiB"}
+	if err := opts.Validate(); err != nil {
+		t.Fatalf("unexpected Validate error: %v", err)
+	}
+
+	now := time.Now()
+	start := now.Add(-time.Hour)
+	var stderr bytes.Buffer
+	runStatsPreflight(context.Background(), client, &stderr, "uid", `count_over_time({job="x"}[5m] offset 1h)`, true, start, now, now, opts.SkipStats, opts.warnBytes)
+
+	wantStart := strconv.FormatInt(start.Add(-(5*time.Minute + time.Hour)).UnixNano(), 10)
+	if gotStart != wantStart {
+		t.Errorf("start param sent to index-stats = %q, want %q ([5m] range vector + 1h offset should widen the range-query window)", gotStart, wantStart)
 	}
 }
 

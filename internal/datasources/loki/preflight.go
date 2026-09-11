@@ -45,7 +45,9 @@ func (opts *statsPreflightOpts) Validate() error {
 // summed byte count exceeds warnBytes. isRange/start/end/now determine the
 // window: for an instant query (isRange false) it defaults to the same
 // now-1m..now window buildQueryBody already applies, so the estimate and the
-// real query look at consistent ranges.
+// real query look at consistent ranges. That window is then widened by any
+// range-vector duration or offset found in expr (see MaxLookback), since
+// Loki actually evaluates further back than start/end alone would suggest.
 //
 // This check is advisory only: skipStats bypasses it entirely, a query with
 // no extractable selector is skipped silently, and a failure calling
@@ -62,6 +64,13 @@ func runStatsPreflight(ctx context.Context, client *loki.Client, stderr io.Write
 
 	if !isRange {
 		start, end = now.Add(-time.Minute), now
+	}
+
+	// A range-vector duration (e.g. "[24h]") or "offset" modifier inside expr
+	// makes Loki actually evaluate further back than start/end alone would
+	// suggest — widen the window we check so the estimate doesn't undercount.
+	if lookback := loki.MaxLookback(expr); lookback > 0 {
+		start = start.Add(-lookback)
 	}
 
 	selectors := loki.ExtractStreamSelectors(expr)
