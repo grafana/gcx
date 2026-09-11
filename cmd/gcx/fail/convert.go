@@ -56,10 +56,8 @@ func ErrorToDetailedError(err error) *gcxerrors.DetailedError {
 
 	// Try to convert the error for common error categories
 	errorConverters := []func(err error) (*gcxerrors.DetailedError, bool){
-		convertAlreadyReported,             // Command already rendered a complete diagnostic report
-		convertUnknownFieldSelectionErrors, // --json unknown-field validation
-		convertArrayPathSelectionErrors,    // --json path that enters an array
-		convertJQRuntimeErrors,             // --jq runtime failures — includes output shape summary
+		convertAlreadyReported, // Command already rendered a complete diagnostic report
+		convertJQRuntimeErrors, // --jq runtime failures — includes output shape summary
 		convertPartialFailureErrors,
 		convertUsageErrors,
 		convertCobraUnknownCommandErrors,
@@ -1313,48 +1311,6 @@ func adaptiveMetricsScopeFromError(msg string) string {
 		}
 	}
 	return ""
-}
-
-// convertUnknownFieldSelectionErrors converts UnknownFieldSelectionError (from
-// the --json field validator) into a structured DetailedError with exit code 2
-// (ExitUsageError). The suggestion directs users to run the command with
-// --json list to discover valid dotted field paths.
-func convertUnknownFieldSelectionErrors(err error) (*gcxerrors.DetailedError, bool) {
-	var fieldErr cmdoutput.UnknownFieldSelectionError
-	if !errors.As(err, &fieldErr) {
-		return nil, false
-	}
-
-	exitCode := gcxerrors.ExitUsageError
-	return &gcxerrors.DetailedError{
-		Summary:  "Invalid command usage",
-		Details:  fieldErr.Error(),
-		ExitCode: &exitCode,
-		Suggestions: []string{
-			"Run the command with --json list to enumerate valid dotted field paths",
-		},
-	}, true
-}
-
-// convertArrayPathSelectionErrors converts ArrayPathSelectionError (a --json
-// path continues past an array) into a structured DetailedError with exit
-// code 2 (ExitUsageError). Field selection walks maps only, so the suggestion
-// names --jq, which iterates the array.
-func convertArrayPathSelectionErrors(err error) (*gcxerrors.DetailedError, bool) {
-	var arrayErr cmdoutput.ArrayPathSelectionError
-	if !errors.As(err, &arrayErr) {
-		return nil, false
-	}
-
-	exitCode := gcxerrors.ExitUsageError
-	return &gcxerrors.DetailedError{
-		Summary:  "Invalid command usage",
-		Details:  arrayErr.Error(),
-		ExitCode: &exitCode,
-		Suggestions: []string{
-			"Use --jq to iterate the array before selecting the nested value",
-		},
-	}, true
 }
 
 // convertJQRuntimeErrors converts JQRuntimeError (a --jq expression failed

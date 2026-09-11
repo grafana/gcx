@@ -54,8 +54,8 @@ type Options struct {
 
 // SetJSONFieldValidator registers an optional validator invoked before field
 // extraction when --json is used for field selection. The validator receives
-// the list of requested field names and may return UnknownFieldSelectionError
-// (or any error) to abort encoding with an error.
+// the list of requested field names. UnknownFieldSelectionError and
+// ArrayPathSelectionError become warnings; any other error aborts encoding.
 //
 // The validator is NOT invoked for --json list (field discovery) — that path
 // enumerates available fields and returns them; selection is not performed.
@@ -285,7 +285,13 @@ func (opts *Options) Encode(dst io.Writer, value any) error {
 		return opts.encodeDiscovery(dst, value)
 	}
 	if len(opts.JSONFields) > 0 {
-		return NewFieldSelectCodecWithValidator(opts.JSONFields, opts.jsonFieldValidator).Encode(dst, value)
+		fieldCodec := NewFieldSelectCodecWithValidator(opts.JSONFields, opts.jsonFieldValidator)
+		warningWriter := opts.ErrWriter
+		if warningWriter == nil {
+			warningWriter = os.Stderr
+		}
+		fieldCodec.SetWarningWriter(warningWriter)
+		return fieldCodec.Encode(dst, value)
 	}
 
 	return codec.Encode(dst, value)

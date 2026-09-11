@@ -398,6 +398,7 @@ func emitGetTruncationHint(stderr io.Writer, opts *getOpts, res *FetchResponse) 
 // {"items": [...], "error": {...}} envelope (FR-012) on partial failure in agent mode.
 func writeFieldSelect(out, stderr io.Writer, opts *getOpts, res *FetchResponse, output unstructured.UnstructuredList) error {
 	codec := cmdio.NewFieldSelectCodec(opts.IO.JSONFields)
+	codec.SetWarningWriter(stderr)
 	hasPartialFailure := opts.OnError.FailOnErrors() && res.PullSummary.FailedCount() > 0
 
 	// FR-012: when agent mode is active and there are partial failures,

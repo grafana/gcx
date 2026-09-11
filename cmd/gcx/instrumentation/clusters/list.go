@@ -66,6 +66,7 @@ GetK8SInstrumentation (up to 10 concurrent requests).`,
 			monClient := &monitoringAdapter{client: client, promHeaders: promHeaders}
 			pipeClient := &pipelineAdapter{client: client}
 
+			opts.IO.ErrWriter = cmd.ErrOrStderr()
 			return runList(ctx, opts, monClient, pipeClient, client, cmd.OutOrStdout())
 		},
 	}

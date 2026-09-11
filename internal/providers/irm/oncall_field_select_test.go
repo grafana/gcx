@@ -29,24 +29,25 @@ func TestUsersListFieldSelection(t *testing.T) {
 		Email:    "ward@example.com",
 	}}}
 
-	for _, tc := range []struct{ fields, wantErr string }{
+	for _, tc := range []struct{ fields, wantWarning string }{
 		{"username,email", "spec.username for username; spec.email for email"},
 		{"spec.username,spec.email", ""},
 	} {
 		t.Run(tc.fields, func(t *testing.T) {
 			cmd := newUsersCommand(&fakeLoader{client: client})
-			var stdout bytes.Buffer
+			var stdout, stderr bytes.Buffer
 			cmd.SetOut(&stdout)
-			cmd.SetErr(&bytes.Buffer{})
+			cmd.SetErr(&stderr)
 			cmd.SetArgs([]string{"list", "--json", tc.fields})
 
 			err := cmd.ExecuteContext(context.Background())
-			if tc.wantErr != "" {
-				require.Error(t, err)
-				assert.Contains(t, err.Error(), tc.wantErr)
+			require.NoError(t, err)
+			if tc.wantWarning != "" {
+				assert.Contains(t, stderr.String(), tc.wantWarning)
+				assert.JSONEq(t, `[{"email":null,"username":null}]`, stdout.String())
 				return
 			}
-			require.NoError(t, err)
+			assert.Empty(t, stderr.String())
 			assert.JSONEq(t, `[{"spec.email":"ward@example.com","spec.username":"ward"}]`, stdout.String())
 		})
 	}

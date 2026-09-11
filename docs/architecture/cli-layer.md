@@ -704,8 +704,6 @@ ErrorToDetailedError(err)
     ├─ isEmittedError → EmittedError (the command already wrote its document; suppress secondary output)
     ├─ errors.As(err, &DetailedError{}) → return as-is if already detailed
     ├─ convertAlreadyReported → ErrAlreadyReported sentinel (the command already printed its report)
-    ├─ convertUnknownFieldSelectionErrors → UnknownFieldSelectionError (--json unknown field)
-    ├─ convertArrayPathSelectionErrors → ArrayPathSelectionError (--json path that enters an array)
     ├─ convertJQRuntimeErrors → --jq runtime failure (names the shape of the output)
     ├─ convertPartialFailureErrors → PartialFailureError (exit 4)
     ├─ convertUsageErrors    → UsageError (exit 2)
