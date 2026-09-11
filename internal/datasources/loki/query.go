@@ -2,6 +2,7 @@ package loki
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/grafana/gcx/internal/agent"
@@ -15,6 +16,7 @@ import (
 func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
 	shared := &dsquery.SharedOpts{}
 	share := &dsquery.ExploreLinkOpts{}
+	preflight := &statsPreflightOpts{}
 	var limit int
 	var datasource string
 
@@ -31,7 +33,16 @@ bodies or -o json for the full structured response.
 
 Default --limit is 50; use --limit 0 for no cap.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
-open it in your browser after the query succeeds.`,
+open it in your browser after the query succeeds.
+
+Before executing, a pre-flight index-stats check estimates the bytes this
+query would scan and prints a non-blocking warning if it exceeds
+--stats (default 1GiB). Use --skip-stats to disable this check.
+Only the query's stream selector is used for the estimate, since Loki's index
+tracks streams, not line filters or parsing stages. The checked window is
+widened by any range-vector duration or offset in EXPR (e.g. '[24h]',
+'offset 1h'), since Loki evaluates further back than the query's own time
+range alone would suggest.`,
 		Example: `
   # Query logs using configured default datasource
   gcx datasources loki query '{job="varlogs"}'
@@ -50,6 +61,9 @@ open it in your browser after the query succeeds.`,
 		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := shared.Validate(); err != nil {
+				return err
+			}
+			if err := preflight.Validate(); err != nil {
 				return err
 			}
 
@@ -90,7 +104,13 @@ open it in your browser after the query succeeds.`,
 				Limit: limit,
 			}
 
+			var preflightWG sync.WaitGroup
+			preflightWG.Go(func() {
+				runStatsPreflight(ctx, client, cmd.ErrOrStderr(), datasourceUID, expr, req.IsRange(), start, end, now, preflight.SkipStats, preflight.warnBytes)
+			})
+
 			resp, err := client.Query(ctx, datasourceUID, req)
+			preflightWG.Wait()
 			if err != nil {
 				return fmt.Errorf("query failed: %w", err)
 			}
@@ -129,6 +149,7 @@ open it in your browser after the query succeeds.`,
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.loki is configured)")
 	cmd.Flags().IntVar(&limit, "limit", dsquery.DefaultLokiLimit, "Maximum number of log lines to return (0 means no limit)")
 	share.Setup(cmd.Flags(), "executed query")
+	preflight.setup(cmd.Flags())
 
 	return cmd
 }

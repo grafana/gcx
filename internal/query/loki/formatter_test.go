@@ -10,6 +10,30 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestFormatIndexStatsTable(t *testing.T) {
+	resp := &loki.IndexStatsResponse{
+		Streams: 12,
+		Chunks:  345,
+		Bytes:   6 * 1024 * 1024 * 1024,
+		Entries: 98765,
+	}
+
+	var buf bytes.Buffer
+	require.NoError(t, loki.FormatIndexStatsTable(&buf, resp))
+
+	out := buf.String()
+	assert.Contains(t, out, "METRIC")
+	assert.Contains(t, out, "VALUE")
+	assert.Contains(t, out, "Streams")
+	assert.Contains(t, out, "12")
+	assert.Contains(t, out, "Chunks")
+	assert.Contains(t, out, "345")
+	assert.Contains(t, out, "Bytes")
+	assert.Contains(t, out, "6.0 GiB")
+	assert.Contains(t, out, "Entries")
+	assert.Contains(t, out, "98765")
+}
+
 func TestFormatQueryTable_HumanFriendlyMixedFormats(t *testing.T) {
 	resp := &loki.QueryResponse{
 		Data: loki.QueryResultData{
