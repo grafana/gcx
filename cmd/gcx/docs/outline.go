@@ -53,7 +53,7 @@ type childPage struct {
 type outlineResult struct {
 	URL        string           `json:"url"`
 	Headings   []outlineHeading `json:"headings"`
-	ChildPages []childPage      `json:"child_pages,omitempty"`
+	ChildPages []childPage      `json:"child_pages"`
 }
 
 func toOutlineHeadings(headings []grafanadocs.Heading) []outlineHeading {
@@ -99,12 +99,14 @@ func outlineCommand(loader *indexLoader, fetch docFetcher) *cobra.Command {
 			if err != nil {
 				return cleanFetchErr(opts.url, err)
 			}
-			result := outlineResult{
-				URL:      doc.URL,
-				Headings: toOutlineHeadings(grafanadocs.Outline(doc)),
+			idx, err := loader.get(cmd.Context())
+			if err != nil {
+				return fmt.Errorf("loading index for child page lookup: %w", err)
 			}
-			if idx, err := loader.get(cmd.Context()); err == nil {
-				result.ChildPages = findChildPages(idx, doc.URL)
+			result := outlineResult{
+				URL:        doc.URL,
+				Headings:   toOutlineHeadings(grafanadocs.Outline(doc)),
+				ChildPages: findChildPages(idx, doc.URL),
 			}
 			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
@@ -121,7 +123,7 @@ func findChildPages(idx *grafanadocs.Index, pageURL string) []childPage {
 		prefix += "/"
 	}
 
-	var children []childPage
+	children := []childPage{}
 	for _, e := range idx.Entries {
 		if e.URL == pageURL {
 			continue
