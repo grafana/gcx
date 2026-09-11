@@ -351,6 +351,14 @@ same cause while keeping the rotated generation pending for retry. A locked
 backend, replacing or deleting an existing generation, replacing a missing or
 rejected sentinel, and
 value-size, policy, cancellation, or unknown backend failures all fail closed.
+
+Some sandboxes allow credential reads and block credential writes. OAuth login
+and refresh use a random non-secret write, read, and delete probe to detect this
+condition before they send OAuth credentials. Known macOS authorization exit
+codes use `credentials.ErrRestrictedSession`. Other probe failures stay fatal.
+The check uses credential-store behavior instead of an agent-specific
+environment variable.
+
 Silently continuing in those cases could orphan the only resolvable credential,
 leave an old credential active, downgrade a credential for an unrelated backend
 error, or write a secret in plaintext while a real secret backend exists.

@@ -85,7 +85,7 @@ func (n *NamespacedRESTConfig) SetOnRefresh(fn auth.TokenRefresher) {
 // when empty it defaults to contextName (the stack-named-after-context
 // convention used by login).
 //
-//nolint:gocyclo // Refresh locking, reload, binding CAS, and persistence form one security-critical transaction.
+//nolint:gocyclo,maintidx // Refresh locking, reload, binding CAS, and persistence form one security-critical transaction.
 func (n *NamespacedRESTConfig) WireTokenPersistence(ctx context.Context, source Source, contextName, stackName string, sources []ConfigSource) {
 	if n.oauthTransport == nil {
 		return
@@ -192,6 +192,20 @@ func (n *NamespacedRESTConfig) WireTokenPersistence(ctx context.Context, source 
 		}, true, nil
 	}
 
+	n.oauthTransport.CheckPersistence = func() error {
+		fresh, err := persistLoad()
+		if err != nil {
+			return err
+		}
+		err = credentials.CheckWritable(fresh.keychainStore)
+		if errors.Is(err, credentials.ErrUnavailable) || errors.Is(err, credentials.ErrDisabled) {
+			// A new plaintext credential can stay in the mode-0600 config file
+			// when no credential store is available or the user disabled it.
+			return nil
+		}
+		return err
+	}
+
 	n.SetOnRefresh(func(previousRefreshToken, token, refreshToken, expiresAt, refreshExpiresAt string) error {
 		fresh, err := persistLoad()
 		if err != nil {
@@ -282,6 +296,17 @@ func tokenPersistenceIdentity(sources []ConfigSource, path string) (string, erro
 		layer = selected.Type
 	}
 	return canonicalConfigSourceForLayer(path, layer)
+}
+
+// CheckOAuthCredentialPersistence verifies that a new OAuth credential can be
+// persisted before gcx starts a browser flow. A truly unavailable or disabled
+// store keeps the documented plaintext fallback.
+func CheckOAuthCredentialPersistence() error {
+	err := credentials.CheckWritable(keychainStoreFn())
+	if errors.Is(err, credentials.ErrUnavailable) || errors.Is(err, credentials.ErrDisabled) {
+		return nil
+	}
+	return err
 }
 
 func configSourceForPath(sources []ConfigSource, path string) (ConfigSource, bool) {

@@ -26,6 +26,9 @@ var (
 	// ErrInvalidRefreshResponse means a successful HTTP refresh response omitted
 	// or malformed fields required to safely use the rotated token generation.
 	ErrInvalidRefreshResponse = errors.New("OAuth refresh response is invalid")
+	// ErrCredentialPersistencePreflight means gcx could not confirm that it can
+	// persist a rotated token before it sent the current refresh token.
+	ErrCredentialPersistencePreflight = errors.New("OAuth credential persistence preflight failed")
 )
 
 // refreshThreshold is how far before token expiry we trigger a proactive refresh.
@@ -53,6 +56,10 @@ type StoredTokens struct {
 // persisted tokens are available.
 type TokenReloader func() (StoredTokens, bool, error)
 
+// TokenPersistenceChecker verifies that a rotated token can be persisted.
+// It runs inside the cross-process lock and before any refresh request.
+type TokenPersistenceChecker func() error
+
 // RefreshTransport wraps an http.RoundTripper and transparently refreshes
 // the gat_ access token when it is close to expiry.
 type RefreshTransport struct {
@@ -63,6 +70,7 @@ type RefreshTransport struct {
 	ExpiresAt        time.Time
 	RefreshExpiresAt time.Time
 	OnRefresh        TokenRefresher
+	CheckPersistence TokenPersistenceChecker
 
 	// Lock, if set, is called before a refresh to serialize concurrent gcx
 	// invocations that share a config file. Without it, two processes race to
@@ -273,6 +281,11 @@ func (t *RefreshTransport) refreshAndPersist(req *http.Request) error {
 	}
 	if adopted {
 		return nil
+	}
+	if t.CheckPersistence != nil {
+		if err := t.CheckPersistence(); err != nil {
+			return fmt.Errorf("%w: %w", ErrCredentialPersistencePreflight, err)
+		}
 	}
 
 	t.mu.Lock()

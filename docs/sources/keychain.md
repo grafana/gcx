@@ -119,6 +119,23 @@ This applies only to credentials that are in the credential store. A credential
 that is already plaintext in the configuration file has nothing to remove from
 the store, so `gcx config unset` and entry deletion both work as usual.
 
+## Restricted execution sessions
+
+Some agent tools run commands in a sandbox. The sandbox can allow credential
+reads and block credential writes. A read-only check cannot detect this state.
+
+Before an OAuth login or token refresh, gcx writes, reads, and removes a random
+non-secret test value. If this test fails, gcx stops before it starts the browser
+flow or sends the refresh token. The stored OAuth session stays unchanged.
+
+Run the same gcx command outside the sandbox. If an agent ran the command, use
+the agent approval flow to run gcx with access to the operating system
+credential store. Do not run `gcx login` when a refresh command reports this
+error. Retry the original command.
+
+gcx detects this condition from credential-store behavior. It does not depend
+on an environment variable from one agent tool.
+
 ## `Keychain locked`
 
 This error means that macOS Keychain or a Linux or BSD Secret Service is

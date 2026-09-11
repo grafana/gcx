@@ -194,6 +194,10 @@ spans three remote actors: the Grafana instance (which hosts the
 backend (which issues and refreshes tokens), and a short-lived callback
 server that gcx starts on a loopback port.
 
+Before gcx starts the browser flow, it confirms that the credential store can
+write, read, and remove a random non-secret value. It stops before browser or
+network use when a sandbox or another process policy blocks the write.
+
 ```mermaid
 sequenceDiagram
     participant User
@@ -364,6 +368,12 @@ uses a context detached from the caller's request context so that a caller
 cancellation cannot abandon a refresh that has already consumed and rotated
 the server-side refresh token. Cancellation is still honored before the lock
 and network request begin.
+
+After the lock and reload, the transport checks that the credential store is
+writable. This check occurs only when a network refresh is still required. A
+failure stops the operation before gcx sends the refresh token. A retry of an
+already rotated pending generation skips this check and retries only the
+persistence callback.
 
 A successful refresh response is not exposed to protected requests until
 persistence succeeds. Rotation-capable issuers may return a new refresh token;

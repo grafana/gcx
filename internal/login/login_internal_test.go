@@ -2,6 +2,7 @@ package login
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/grafana/gcx/internal/auth"
@@ -9,6 +10,29 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestResolveGrafanaOAuthChecksPersistenceBeforeFlow(t *testing.T) {
+	want := errors.New("credential store write denied")
+	var flowCalls int
+
+	_, _, err := resolveGrafanaAuth(t.Context(), Options{
+		Inputs: Inputs{
+			Server:   "https://grafana.example.invalid",
+			UseOAuth: true,
+		},
+		Hooks: Hooks{
+			CheckCredentialPersistence: func() error { return want },
+			NewAuthFlow: func(string, auth.Options) AuthFlow {
+				flowCalls++
+				return nil
+			},
+		},
+	}, TargetOnPrem)
+
+	require.ErrorIs(t, err, ErrCredentialPersistencePreflight)
+	require.ErrorIs(t, err, want)
+	assert.Zero(t, flowCalls)
+}
 
 func TestResolveGrafanaTokenAuthCarriesRuntimeProxyDestination(t *testing.T) {
 	const proxy = "https://proxy.example.invalid"

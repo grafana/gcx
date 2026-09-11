@@ -152,6 +152,10 @@ type Hooks struct {
 	// pass a factory that wraps auth.NewFlow.
 	NewAuthFlow func(server string, opts auth.Options) AuthFlow
 
+	// CheckCredentialPersistence verifies that OAuth results can be stored
+	// before the browser flow starts. Nil uses the configured OS store.
+	CheckCredentialPersistence func() error
+
 	// NewCloudAuthFlow constructs the direct GCOM OAuth PKCE flow used by the
 	// optional Cloud follow-up. Nil selects auth.NewGCOMFlow. The seam keeps the
 	// command path deterministic in tests without putting browser logic in cmd/.
@@ -215,6 +219,10 @@ type Options struct {
 	Hooks
 	RetryState
 }
+
+// ErrCredentialPersistencePreflight means gcx stopped before it started the
+// OAuth browser flow because it could not persist the result.
+var ErrCredentialPersistencePreflight = errors.New("OAuth login credential persistence preflight failed")
 
 // Result is returned by Run on success and carries enough data for callers to
 // render a post-login summary and persist auth-method metadata.
@@ -655,6 +663,13 @@ func resolveGrafanaAuth(ctx context.Context, opts Options, target Target) (strin
 	case opts.UseOAuth:
 		if opts.NewAuthFlow == nil {
 			return "", nil, errors.New("OAuth requested but no auth flow factory provided")
+		}
+		checkPersistence := opts.CheckCredentialPersistence
+		if checkPersistence == nil {
+			checkPersistence = config.CheckOAuthCredentialPersistence
+		}
+		if err := checkPersistence(); err != nil {
+			return "", nil, fmt.Errorf("%w: %w", ErrCredentialPersistencePreflight, err)
 		}
 		// The internal/login package is UI-free (NC-001) — it never touches
 		// process streams directly. Callers that want OAuth output surfaced
