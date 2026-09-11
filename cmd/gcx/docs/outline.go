@@ -43,10 +43,17 @@ type outlineHeading struct {
 	Line  int    `json:"line"`
 }
 
-// outlineResult wraps the heading list with the source URL.
+// childPage is a page nested under the outlined directory page.
+type childPage struct {
+	Title string `json:"title"`
+	URL   string `json:"url"`
+}
+
+// outlineResult wraps the heading list with the source URL and any child pages.
 type outlineResult struct {
-	URL      string           `json:"url"`
-	Headings []outlineHeading `json:"headings"`
+	URL        string           `json:"url"`
+	Headings   []outlineHeading `json:"headings"`
+	ChildPages []childPage      `json:"child_pages"`
 }
 
 func toOutlineHeadings(headings []grafanadocs.Heading) []outlineHeading {
@@ -64,7 +71,8 @@ func outlineCommand(loader *indexLoader, fetch docFetcher) *cobra.Command {
 		Short: "Show the heading outline of a documentation page.",
 		Long: "List the headings of a documentation page so you can target a " +
 			"section with 'gcx docs get --section'. The argument can be a full URL " +
-			"or a shorthand query resolved via the docs index.",
+			"or a shorthand query resolved via the docs index. For directory pages, " +
+			"child pages from the index are included in the output.",
 		Example: `  # Outline by full URL
   gcx docs outline https://grafana.com/docs/tempo/latest/traceql/construct-traceql-queries/
 
@@ -91,17 +99,45 @@ func outlineCommand(loader *indexLoader, fetch docFetcher) *cobra.Command {
 			if err != nil {
 				return cleanFetchErr(opts.url, err)
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), outlineResult{
-				URL:      doc.URL,
-				Headings: toOutlineHeadings(grafanadocs.Outline(doc)),
-			})
+			idx, err := loader.get(cmd.Context())
+			if err != nil {
+				return fmt.Errorf("loading index for child page lookup: %w", err)
+			}
+			result := outlineResult{
+				URL:        doc.URL,
+				Headings:   toOutlineHeadings(grafanadocs.Outline(doc)),
+				ChildPages: findChildPages(idx, doc.URL),
+			}
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
 	return cmd
 }
 
-// outlineTextCodec renders headings as a styled LVL/HEADING/LINE table.
+// findChildPages returns index entries whose URL is nested under the given
+// page URL. All descendants are included, not just direct children.
+func findChildPages(idx *grafanadocs.Index, pageURL string) []childPage {
+	prefix := strings.TrimSuffix(pageURL, ".md")
+	if !strings.HasSuffix(prefix, "/") {
+		prefix += "/"
+	}
+
+	children := []childPage{}
+	for _, e := range idx.Entries {
+		if e.URL == pageURL {
+			continue
+		}
+		trimmed := strings.TrimSuffix(e.URL, ".md")
+		if strings.HasPrefix(trimmed, prefix) {
+			children = append(children, childPage{Title: e.Title, URL: e.URL})
+		}
+	}
+	return children
+}
+
+// outlineTextCodec renders headings as a styled LVL/HEADING/LINE table,
+// followed by a CHILD PAGES table when child pages are present.
 type outlineTextCodec struct{}
 
 func (c *outlineTextCodec) Format() format.Format { return "text" }
@@ -115,7 +151,20 @@ func (c *outlineTextCodec) Encode(w goio.Writer, v any) error {
 	for _, h := range res.Headings {
 		t.Row(strconv.Itoa(h.Level), h.Text, strconv.Itoa(h.Line))
 	}
-	return t.Render(w)
+	if err := t.Render(w); err != nil {
+		return err
+	}
+	if len(res.ChildPages) > 0 {
+		if _, err := fmt.Fprintln(w); err != nil {
+			return err
+		}
+		ct := style.NewTable("TITLE", "URL")
+		for _, c := range res.ChildPages {
+			ct.Row(c.Title, c.URL)
+		}
+		return ct.Render(w)
+	}
+	return nil
 }
 
 func (c *outlineTextCodec) Decode(_ goio.Reader, _ any) error {

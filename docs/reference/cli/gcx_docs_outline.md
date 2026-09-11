@@ -4,7 +4,7 @@ Show the heading outline of a documentation page.
 
 ### Synopsis
 
-List the headings of a documentation page so you can target a section with 'gcx docs get --section'. The argument can be a full URL or a shorthand query resolved via the docs index.
+List the headings of a documentation page so you can target a section with 'gcx docs get --section'. The argument can be a full URL or a shorthand query resolved via the docs index. For directory pages, child pages from the index are included in the output.
 
 ```
 gcx docs outline <url-or-query> [flags]
