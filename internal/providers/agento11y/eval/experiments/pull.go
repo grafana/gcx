@@ -268,6 +268,7 @@ type artifactWireIdentity struct {
 
 type artifactExportIndex struct {
 	artifactWireIdentity
+
 	ContentPath   string `json:"content_path,omitempty"`
 	ContentSHA256 string `json:"content_sha256,omitempty"`
 }
@@ -448,32 +449,13 @@ func exportExperimentBundle(ctx context.Context, base *agento11yhttp.Client, run
 		return nil, err
 	}
 
-	fetchedArtifacts := []fetchedArtifact{}
-	if includeArtifacts {
-		fetchedArtifacts, err = fetchArtifactPayloads(ctx, base, stagingDir, artifacts, concurrency)
-		if err != nil {
-			return nil, err
-		}
+	pathByArtifact, artifactErrs, err := exportArtifactPayloads(
+		ctx, base, stagingDir, artifacts, includeArtifacts, concurrency, &manifest,
+	)
+	if err != nil {
+		return nil, err
 	}
-	pathByArtifact := make(map[string]fetchedArtifact, len(fetchedArtifacts))
-	for _, item := range fetchedArtifacts {
-		if item.err != nil {
-			exportErrs = append(exportErrs, item.err)
-			manifest.Failures = append(manifest.Failures, cmdio.MutationFailure{
-				Target: cmdio.MutationTarget{Kind: "artifact", ID: item.id},
-				Error:  item.err.Error(),
-			})
-			continue
-		}
-		pathByArtifact[item.id] = item
-		manifest.Files = append(manifest.Files, experimentExportFile{
-			Kind:      "artifact-content",
-			ID:        item.id,
-			Path:      item.path,
-			SHA256:    item.hash,
-			SizeBytes: item.sizeBytes,
-		})
-	}
+	exportErrs = append(exportErrs, artifactErrs...)
 	artifactIndex := make([]artifactExportIndex, 0, len(artifacts))
 	for _, artifact := range artifacts {
 		item := artifactExportIndex{artifactWireIdentity: artifact}
@@ -534,6 +516,45 @@ func exportExperimentBundle(ctx context.Context, base *agento11yhttp.Client, run
 	receipt.Failures = append(receipt.Failures, manifest.Failures...)
 
 	return &experimentExportResult{receipt: receipt, manifest: manifest, errs: exportErrs}, nil
+}
+
+func exportArtifactPayloads(
+	ctx context.Context,
+	base *agento11yhttp.Client,
+	stagingDir string,
+	artifacts []artifactWireIdentity,
+	include bool,
+	concurrency int,
+	manifest *experimentExportManifest,
+) (map[string]fetchedArtifact, []error, error) {
+	if !include {
+		return map[string]fetchedArtifact{}, nil, nil
+	}
+	fetched, err := fetchArtifactPayloads(ctx, base, stagingDir, artifacts, concurrency)
+	if err != nil {
+		return nil, nil, err
+	}
+	pathByArtifact := make(map[string]fetchedArtifact, len(fetched))
+	var exportErrs []error
+	for _, item := range fetched {
+		if item.err != nil {
+			exportErrs = append(exportErrs, item.err)
+			manifest.Failures = append(manifest.Failures, cmdio.MutationFailure{
+				Target: cmdio.MutationTarget{Kind: "artifact", ID: item.id},
+				Error:  item.err.Error(),
+			})
+			continue
+		}
+		pathByArtifact[item.id] = item
+		manifest.Files = append(manifest.Files, experimentExportFile{
+			Kind:      "artifact-content",
+			ID:        item.id,
+			Path:      item.path,
+			SHA256:    item.hash,
+			SizeBytes: item.sizeBytes,
+		})
+	}
+	return pathByArtifact, exportErrs, nil
 }
 
 func extractReportArtifacts(reportBody []byte) ([]artifactWireIdentity, int, error) {

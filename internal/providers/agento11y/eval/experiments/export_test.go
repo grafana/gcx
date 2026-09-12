@@ -297,9 +297,14 @@ func TestExport_IncludesArtifactPayloadAndChecksum(t *testing.T) {
 	assert.Equal(t, sha256Hex([]byte(artifactBody)), index.ContentSHA256)
 
 	receipt := decodeOneJSONDocument(t, stdout)
-	summary := receipt["summary"].(map[string]any)
-	assert.Equal(t, float64(2), summary["succeeded"])
-	assert.Equal(t, float64(0), summary["failed"])
+	summary, ok := receipt["summary"].(map[string]any)
+	require.True(t, ok)
+	succeeded, ok := summary["succeeded"].(float64)
+	require.True(t, ok)
+	failed, ok := summary["failed"].(float64)
+	require.True(t, ok)
+	assert.Equal(t, 2, int(succeeded))
+	assert.Equal(t, 0, int(failed))
 }
 
 func TestExport_ArtifactSizeMismatchFailsClosedWithReceipt(t *testing.T) {
