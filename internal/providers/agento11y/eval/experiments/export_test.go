@@ -69,6 +69,15 @@ func writeRawJSON(t *testing.T, w http.ResponseWriter, body string) {
 	require.NoError(t, err)
 }
 
+func findExportFile(files []experimentExportFile, path string) (experimentExportFile, bool) {
+	for _, file := range files {
+		if file.Path == path {
+			return file, true
+		}
+	}
+	return experimentExportFile{}, false
+}
+
 func decodeOneJSONDocument(t *testing.T, data string) map[string]any {
 	t.Helper()
 	decoder := json.NewDecoder(strings.NewReader(data))
@@ -152,7 +161,7 @@ func TestExport_CommandWritesLosslessBundle(t *testing.T) {
 	assert.Equal(t, "AgentO11yExperimentExportManifest", manifestFile["kind"])
 	fileCount, ok := manifestFile["count"].(float64)
 	require.True(t, ok)
-	assert.Equal(t, 9, int(fileCount))
+	assert.Equal(t, 10, int(fileCount))
 
 	assertFileBytes(t, filepath.Join(outputDir, "raw", "experiment.json"), experimentBody)
 	assertFileBytes(t, filepath.Join(outputDir, "raw", "report.json"), reportBody)
@@ -179,6 +188,7 @@ func TestExport_CommandWritesLosslessBundle(t *testing.T) {
 	require.NoError(t, json.Unmarshal(manifestData, &manifest))
 	assert.Equal(t, experimentExportType, manifest.Type)
 	assert.True(t, manifest.Includes.Conversations)
+	assert.False(t, manifest.Includes.Artifacts)
 	assert.True(t, manifest.Complete)
 	assert.Equal(t, experimentExportSummary{
 		Trials:                    4,
@@ -186,6 +196,8 @@ func TestExport_CommandWritesLosslessBundle(t *testing.T) {
 		UniqueConversations:       2,
 		ConversationsWritten:      2,
 		TrialsWithoutConversation: 1,
+		ArtifactReferences:        1,
+		UniqueArtifacts:           1,
 	}, manifest.Summary)
 	assert.Empty(t, manifest.Failures)
 
@@ -211,6 +223,13 @@ func TestExport_CommandWritesLosslessBundle(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(indexLines[1]), &second))
 	assert.Equal(t, "raw/conversations/"+conversationFileName("conv-1"), first.ConversationPath)
 	assert.Equal(t, first.ConversationPath, second.ConversationPath)
+	artifactIndexData, err := os.ReadFile(filepath.Join(outputDir, "indexes", "artifacts.jsonl"))
+	require.NoError(t, err)
+	var artifactIndex artifactExportIndex
+	require.NoError(t, json.Unmarshal(bytes.TrimSpace(artifactIndexData), &artifactIndex))
+	assert.Equal(t, "artifact-1", artifactIndex.ArtifactID)
+	assert.Empty(t, artifactIndex.ContentPath)
+	assert.Empty(t, artifactIndex.ContentSHA256)
 
 	if runtime.GOOS != "windows" {
 		assertMode(t, outputDir, 0o700)
@@ -218,6 +237,155 @@ func TestExport_CommandWritesLosslessBundle(t *testing.T) {
 		assertMode(t, filepath.Join(outputDir, ".gitignore"), 0o600)
 		assertMode(t, filepath.Join(outputDir, "raw", "conversations", conversationFileName("conv-1")), 0o600)
 		assertMode(t, filepath.Join(outputDir, "manifest.json"), 0o600)
+	}
+}
+
+func TestExport_IncludesArtifactPayloadAndChecksum(t *testing.T) {
+	agent.SetFlag(true)
+	t.Cleanup(agent.ResetForTesting)
+
+	const artifactBody = `{"request":"exact bytes"}`
+	const artifactID = "artifact-1"
+	reportBody := fmt.Sprintf(`{"experiment":{"experiment_id":"run-1"},"rows":[{"trials":[{"artifacts":[{"artifact_id":%q,"parent_kind":"test_case_trial","parent_id":"trial-1","name":"request.json","kind":"json","mime":"application/json","size_bytes":%d}]}]}]}`, artifactID, len(artifactBody))
+	var artifactCalls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case exportPluginPrefix + "/eval/experiments/run-1":
+			writeRawJSON(t, w, `{"experiment_id":"run-1"}`)
+		case exportPluginPrefix + "/eval/experiments/run-1/report":
+			writeRawJSON(t, w, reportBody)
+		case exportPluginPrefix + "/eval/experiments/run-1/trials":
+			writeRawJSON(t, w, `{"items":[{"trial_id":"trial-1"}]}`)
+		case exportPluginPrefix + "/eval/artifacts/" + artifactID + "/content":
+			artifactCalls.Add(1)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, artifactBody)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	outputDir := filepath.Join(t.TempDir(), "export")
+	stdout, stderr, err := runExperimentExportCommand(t, server.URL, "run-1", "-d", outputDir, "--include-artifacts", "--concurrency", "1")
+	require.NoError(t, err, "stderr: %s", stderr)
+	assert.Empty(t, stderr)
+	assert.Equal(t, int32(1), artifactCalls.Load())
+
+	contentPath := filepath.Join(outputDir, "raw", "artifacts", artifactFileName(artifactID))
+	assertFileBytes(t, contentPath, artifactBody)
+	manifestData, err := os.ReadFile(filepath.Join(outputDir, "manifest.json"))
+	require.NoError(t, err)
+	var manifest experimentExportManifest
+	require.NoError(t, json.Unmarshal(manifestData, &manifest))
+	assert.True(t, manifest.Includes.Artifacts)
+	assert.False(t, manifest.Includes.Conversations)
+	assert.True(t, manifest.Complete)
+	assert.Equal(t, 1, manifest.Summary.ArtifactReferences)
+	assert.Equal(t, 1, manifest.Summary.UniqueArtifacts)
+	assert.Equal(t, 1, manifest.Summary.ArtifactsWritten)
+
+	artifactFile, ok := findExportFile(manifest.Files, "raw/artifacts/"+artifactFileName(artifactID))
+	require.True(t, ok)
+	assert.Equal(t, sha256Hex([]byte(artifactBody)), artifactFile.SHA256)
+	assert.Equal(t, int64(len(artifactBody)), artifactFile.SizeBytes)
+	indexData, err := os.ReadFile(filepath.Join(outputDir, "indexes", "artifacts.jsonl"))
+	require.NoError(t, err)
+	var index artifactExportIndex
+	require.NoError(t, json.Unmarshal(bytes.TrimSpace(indexData), &index))
+	assert.Equal(t, "raw/artifacts/"+artifactFileName(artifactID), index.ContentPath)
+	assert.Equal(t, sha256Hex([]byte(artifactBody)), index.ContentSHA256)
+
+	receipt := decodeOneJSONDocument(t, stdout)
+	summary, ok := receipt["summary"].(map[string]any)
+	require.True(t, ok)
+	succeeded, ok := summary["succeeded"].(float64)
+	require.True(t, ok)
+	failed, ok := summary["failed"].(float64)
+	require.True(t, ok)
+	assert.Equal(t, 2, int(succeeded))
+	assert.Equal(t, 0, int(failed))
+}
+
+func TestExport_ArtifactSizeMismatchFailsClosedWithReceipt(t *testing.T) {
+	agent.SetFlag(true)
+	t.Cleanup(agent.ResetForTesting)
+
+	const artifactID = "artifact-1"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case exportPluginPrefix + "/eval/experiments/run-1":
+			writeRawJSON(t, w, `{"experiment_id":"run-1"}`)
+		case exportPluginPrefix + "/eval/experiments/run-1/report":
+			writeRawJSON(t, w, `{"rows":[{"trials":[{"artifacts":[{"artifact_id":"artifact-1","size_bytes":999}]}]}]}`)
+		case exportPluginPrefix + "/eval/experiments/run-1/trials":
+			writeRawJSON(t, w, `{"items":[{"trial_id":"trial-1"}]}`)
+		case exportPluginPrefix + "/eval/artifacts/" + artifactID + "/content":
+			_, _ = io.WriteString(w, "short")
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	outputDir := filepath.Join(t.TempDir(), "export")
+	stdout, stderr, err := runExperimentExportCommand(t, server.URL, "run-1", "-d", outputDir, "--include-artifacts")
+	var emitted *gcxerrors.EmittedError
+	require.ErrorAs(t, err, &emitted)
+	assert.Equal(t, gcxerrors.ExitGeneralError, emitted.Code)
+	assert.Contains(t, stderr, artifactID)
+	assert.NotContains(t, stderr, "short")
+	manifestData, readErr := os.ReadFile(filepath.Join(outputDir, "manifest.json"))
+	require.NoError(t, readErr)
+	var manifest experimentExportManifest
+	require.NoError(t, json.Unmarshal(manifestData, &manifest))
+	assert.False(t, manifest.Complete)
+	assert.Equal(t, 1, manifest.Summary.Failed)
+	assert.Zero(t, manifest.Summary.ArtifactsWritten)
+	assert.NoFileExists(t, filepath.Join(outputDir, "raw", "artifacts", artifactFileName(artifactID)))
+	assert.NotEmpty(t, decodeOneJSONDocument(t, stdout))
+}
+
+func TestExport_MixedArtifactAndConversationResultsExitFour(t *testing.T) {
+	agent.SetFlag(true)
+	t.Cleanup(agent.ResetForTesting)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case exportPluginPrefix + "/eval/experiments/run-1":
+			writeRawJSON(t, w, `{"experiment_id":"run-1"}`)
+		case exportPluginPrefix + "/eval/experiments/run-1/report":
+			writeRawJSON(t, w, `{"rows":[{"trials":[{"artifacts":[{"artifact_id":"artifact-1","size_bytes":2}]}]}]}`)
+		case exportPluginPrefix + "/eval/experiments/run-1/trials":
+			writeRawJSON(t, w, `{"items":[{"trial_id":"trial-1","conversation_id":"bad"}]}`)
+		case exportPluginPrefix + "/query/conversations/bad":
+			http.Error(w, "unavailable", http.StatusServiceUnavailable)
+		case exportPluginPrefix + "/eval/artifacts/artifact-1/content":
+			_, _ = io.WriteString(w, "{}")
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	outputDir := filepath.Join(t.TempDir(), "export")
+	_, _, err := runExperimentExportCommand(t, server.URL, "run-1", "-d", outputDir,
+		"--include-conversations", "--include-artifacts")
+	var emitted *gcxerrors.EmittedError
+	require.ErrorAs(t, err, &emitted)
+	assert.Equal(t, gcxerrors.ExitPartialFailure, emitted.Code)
+}
+
+func TestExtractReportArtifacts_RejectsInvalidDeclaredSizes(t *testing.T) {
+	for name, size := range map[string]int64{
+		"negative":  -1,
+		"oversized": maxExportArtifactBytes + 1,
+	} {
+		t.Run(name, func(t *testing.T) {
+			report := fmt.Sprintf(`{"rows":[{"trials":[{"artifacts":[{"artifact_id":"artifact-1","size_bytes":%d}]}]}]}`, size)
+			_, _, err := extractReportArtifacts([]byte(report))
+			require.Error(t, err)
+		})
 	}
 }
 
@@ -497,6 +665,21 @@ func TestPreflightDirectoryPublication_RejectsUnsupportedFilesystem(t *testing.T
 	assert.Contains(t, err.Error(), "output filesystem does not support required atomic no-replace directory publication")
 	assert.NoDirExists(t, probeDir)
 	assert.NoDirExists(t, probeTarget)
+	assert.NoDirExists(t, outputDir)
+}
+
+func TestPreflightDirectoryPublication_RejectsReplacingPublisher(t *testing.T) {
+	outputDir := filepath.Join(t.TempDir(), "export")
+	replacingPublish := func(from, to string) error {
+		if err := os.RemoveAll(to); err != nil {
+			return err
+		}
+		return os.Rename(from, to)
+	}
+
+	err := preflightDirectoryPublication(outputDir, replacingPublish)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "atomic no-replace semantics are unavailable")
 	assert.NoDirExists(t, outputDir)
 }
 

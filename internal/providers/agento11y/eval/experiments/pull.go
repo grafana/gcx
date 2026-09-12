@@ -30,14 +30,18 @@ import (
 
 const (
 	defaultExportConcurrency      = 10
+	maxExportArtifactBytes        = 25 << 20
+	maxExportJSONResponseBytes    = 64 << 20
+	maxExportTrialPages           = 10_000
+	maxExportTrialBytes           = 512 << 20
 	experimentExportType          = "gcx.agento11y.experiment_export"
 	experimentExportSchemaVersion = "1"
 
 	exportAgentsMarkdown = `# Sensitive Agent Observability Export
 
 This directory contains private Agent Observability experiment data and may
-include conversation payloads. These instructions apply to every file and
-subdirectory beneath this directory.
+include conversation and artifact payloads. These instructions apply to every
+file and subdirectory beneath this directory.
 
 ## Security Classification
 
@@ -78,10 +82,11 @@ user.
   against ` + "`size_bytes`" + ` and ` + "`sha256`" + ` in ` + "`manifest.json`" + `.
 - Manifest checksums detect file changes relative to the manifest but do not
   authenticate the bundle. If its provenance is uncertain, create a new export.
-- Check ` + "`includes.conversations`" + ` in the manifest before expecting raw
-  conversation payloads.
+- Check ` + "`includes.conversations`" + ` and ` + "`includes.artifacts`" + ` in the
+  manifest before expecting raw payloads.
 - Use ` + "`indexes/trials.jsonl`" + ` to map trials to conversation IDs and, when
-  included, conversation files.
+  included, conversation files. Use ` + "`indexes/artifacts.jsonl`" + ` to map
+  artifact metadata to downloaded content and its SHA-256.
 - Treat files below ` + "`raw/`" + ` as immutable source records.
 - Prefer aggregate or redacted findings over quoting source content.
 
@@ -99,13 +104,15 @@ requested by the user.
 type exportOpts struct {
 	OutputDir            string
 	IncludeConversations bool
+	IncludeArtifacts     bool
 	Concurrency          int
 }
 
 func (o *exportOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&o.OutputDir, "output-dir", "d", "", "Directory to create for the pulled bundle (required; must not already exist)")
 	flags.BoolVar(&o.IncludeConversations, "include-conversations", false, "Download the full payload for every conversation referenced by a trial")
-	flags.IntVar(&o.Concurrency, "concurrency", defaultExportConcurrency, "Maximum concurrent requests when including conversations")
+	flags.BoolVar(&o.IncludeArtifacts, "include-artifacts", false, "Download every artifact payload referenced by the experiment report")
+	flags.IntVar(&o.Concurrency, "concurrency", defaultExportConcurrency, "Maximum concurrent payload requests")
 }
 
 func (o *exportOpts) Validate() error {
@@ -128,23 +135,25 @@ responses may change without following the normal semantic versioning convention
 
 Pull the experiment record, aggregate report, and paginated trial responses to
 a new directory. The report includes the evaluator scores and artifact metadata
-returned for each trial. The trial index contains referenced conversation IDs,
-but conversation payloads are not downloaded unless --include-conversations is
-set. API response bodies are stored without field selection or model-specific
-transformation so source fields remain available for offline analysis.
+returned for each trial. The trial index contains referenced conversation IDs.
+Conversation and artifact payloads are not downloaded unless their respective
+--include-conversations or --include-artifacts flag is set. API response bodies
+are stored without field selection or model-specific transformation so source
+fields remain available for offline analysis.
 
 The destination must not already exist. Before downloading, gcx verifies that
 the destination filesystem supports atomic no-replace directory publication.
-When conversations are included, their requests run concurrently and individual
-failures are recorded in the manifest and artifact receipt. Pulled data may
-contain sensitive prompts, tool inputs, and tool outputs. Each bundle includes
+When conversations or artifacts are included, payload requests run concurrently
+and individual failures are recorded in the manifest and artifact receipt.
+Pulled data may contain sensitive prompts, tool inputs, tool outputs, and
+artifact bytes. Each bundle includes
 an AGENTS.md with safe-handling instructions and a .gitignore that excludes the
 entire bundle from Git by default.`,
 		Example: `  # Pull experiment metadata, aggregate report, trials, and conversation IDs.
   gcx agento11y experiments pull <run-id> -d ./exports/run-1
 
-  # Also download every referenced conversation with reduced request pressure.
-  gcx agento11y experiments pull <run-id> -d ./exports/run-1 --include-conversations --concurrency 4`,
+  # Also download every referenced conversation and artifact with reduced request pressure.
+  gcx agento11y experiments pull <run-id> -d ./exports/run-1 --include-conversations --include-artifacts --concurrency 4`,
 		Args: exactArgsWithSuggestion(1, "gcx agento11y experiments pull <run-id> -d <directory>"),
 		Annotations: map[string]string{
 			agent.AnnotationStability: agent.StabilityExperimental,
@@ -172,23 +181,24 @@ entire bundle from Git by default.`,
 			if err != nil {
 				return err
 			}
-			result, err := exportExperimentBundle(cmd.Context(), base, args[0], outputDir, opts.IncludeConversations, opts.Concurrency)
+			result, err := exportExperimentBundle(cmd.Context(), base, args[0], outputDir, opts.IncludeConversations, opts.IncludeArtifacts, opts.Concurrency)
 			if err != nil {
 				return err
 			}
 
 			if err := cmdio.EmitArtifactResult(cmd.OutOrStdout(), result.receipt, func(w io.Writer) error {
-				if !opts.IncludeConversations {
+				if !opts.IncludeConversations && !opts.IncludeArtifacts {
 					cmdio.Success(w, "Pulled experiment %s with %d trials to %s", args[0], result.manifest.Summary.Trials, outputDir)
 					return nil
 				}
 				if result.receipt.Summary.Failed > 0 {
-					cmdio.Warning(w, "Pulled experiment %s with %d conversations to %s (%d failed)",
-						args[0], result.manifest.Summary.ConversationsWritten, outputDir, result.receipt.Summary.Failed)
+					cmdio.Warning(w, "Pulled experiment %s with %d conversations and %d artifacts to %s (%d failed)",
+						args[0], result.manifest.Summary.ConversationsWritten, result.manifest.Summary.ArtifactsWritten,
+						outputDir, result.receipt.Summary.Failed)
 					return nil
 				}
-				cmdio.Success(w, "Pulled experiment %s with %d conversations to %s",
-					args[0], result.manifest.Summary.ConversationsWritten, outputDir)
+				cmdio.Success(w, "Pulled experiment %s with %d conversations and %d artifacts to %s",
+					args[0], result.manifest.Summary.ConversationsWritten, result.manifest.Summary.ArtifactsWritten, outputDir)
 				return nil
 			}); err != nil {
 				return err
@@ -199,7 +209,15 @@ entire bundle from Git by default.`,
 					cmdio.EmitWarn(cmd.ErrOrStderr(), failure.Error)
 				}
 				exitCode := gcxerrors.ExitPartialFailure
-				if result.manifest.Summary.ConversationsWritten == 0 && result.manifest.Summary.UniqueConversations > 0 {
+				requestedPayloads := 0
+				if opts.IncludeConversations {
+					requestedPayloads += result.manifest.Summary.UniqueConversations
+				}
+				if opts.IncludeArtifacts {
+					requestedPayloads += result.manifest.Summary.UniqueArtifacts
+				}
+				writtenPayloads := result.manifest.Summary.ConversationsWritten + result.manifest.Summary.ArtifactsWritten
+				if requestedPayloads > 0 && writtenPayloads == 0 {
 					exitCode = gcxerrors.ExitGeneralError
 				}
 				return gcxerrors.NewEmittedError(exitCode, errors.Join(result.errs...))
@@ -238,6 +256,31 @@ type trialExportIndex struct {
 	ConversationPath string `json:"conversation_path,omitempty"`
 }
 
+type artifactWireIdentity struct {
+	ArtifactID string `json:"artifact_id"`
+	ParentKind string `json:"parent_kind"`
+	ParentID   string `json:"parent_id"`
+	Name       string `json:"name"`
+	Kind       string `json:"kind"`
+	MIME       string `json:"mime,omitempty"`
+	SizeBytes  int64  `json:"size_bytes,omitempty"`
+}
+
+type artifactExportIndex struct {
+	artifactWireIdentity
+
+	ContentPath   string `json:"content_path,omitempty"`
+	ContentSHA256 string `json:"content_sha256,omitempty"`
+}
+
+type rawReportArtifactEnvelope struct {
+	Rows []struct {
+		Trials []struct {
+			Artifacts []json.RawMessage `json:"artifacts"`
+		} `json:"trials"`
+	} `json:"rows"`
+}
+
 type experimentExportFile struct {
 	Kind       string `json:"kind"`
 	ID         string `json:"id,omitempty"`
@@ -253,11 +296,15 @@ type experimentExportSummary struct {
 	UniqueConversations       int `json:"unique_conversations"`
 	ConversationsWritten      int `json:"conversations_written"`
 	TrialsWithoutConversation int `json:"trials_without_conversation"`
+	ArtifactReferences        int `json:"artifact_references"`
+	UniqueArtifacts           int `json:"unique_artifacts"`
+	ArtifactsWritten          int `json:"artifacts_written"`
 	Failed                    int `json:"failed"`
 }
 
 type experimentExportIncludes struct {
 	Conversations bool `json:"conversations"`
+	Artifacts     bool `json:"artifacts"`
 }
 
 type experimentExportManifest struct {
@@ -286,7 +333,15 @@ type fetchedConversation struct {
 	err       error
 }
 
-func exportExperimentBundle(ctx context.Context, base *agento11yhttp.Client, runID, outputDir string, includeConversations bool, concurrency int) (*experimentExportResult, error) {
+type fetchedArtifact struct {
+	id        string
+	path      string
+	hash      string
+	sizeBytes int64
+	err       error
+}
+
+func exportExperimentBundle(ctx context.Context, base *agento11yhttp.Client, runID, outputDir string, includeConversations, includeArtifacts bool, concurrency int) (*experimentExportResult, error) {
 	experimentBody, err := fetchRawJSON(ctx, base, basePath+"/"+url.PathEscape(runID))
 	if err != nil {
 		return nil, fmt.Errorf("fetch experiment %q: %w", runID, err)
@@ -298,6 +353,10 @@ func exportExperimentBundle(ctx context.Context, base *agento11yhttp.Client, run
 	trialPages, trials, err := fetchRawTrialPages(ctx, base, runID)
 	if err != nil {
 		return nil, fmt.Errorf("fetch trials for experiment %q: %w", runID, err)
+	}
+	artifacts, artifactReferences, err := extractReportArtifacts(reportBody)
+	if err != nil {
+		return nil, fmt.Errorf("decode artifacts for experiment %q: %w", runID, err)
 	}
 
 	stagingDir, err := createPrivateStagingDirectory(outputDir)
@@ -316,9 +375,12 @@ func exportExperimentBundle(ctx context.Context, base *agento11yhttp.Client, run
 		SchemaVersion: experimentExportSchemaVersion,
 		ExperimentID:  runID,
 		ExportedAt:    time.Now().UTC(),
-		Includes:      experimentExportIncludes{Conversations: includeConversations},
-		Files:         []experimentExportFile{},
-		Failures:      []cmdio.MutationFailure{},
+		Includes: experimentExportIncludes{
+			Conversations: includeConversations,
+			Artifacts:     includeArtifacts,
+		},
+		Files:    []experimentExportFile{},
+		Failures: []cmdio.MutationFailure{},
 	}
 
 	if err := writeExportPreamble(stagingDir, runID, experimentBody, reportBody, &manifest); err != nil {
@@ -387,9 +449,36 @@ func exportExperimentBundle(ctx context.Context, base *agento11yhttp.Client, run
 		return nil, err
 	}
 
+	pathByArtifact, artifactErrs, err := exportArtifactPayloads(
+		ctx, base, stagingDir, artifacts, includeArtifacts, concurrency, &manifest,
+	)
+	if err != nil {
+		return nil, err
+	}
+	exportErrs = append(exportErrs, artifactErrs...)
+	artifactIndex := make([]artifactExportIndex, 0, len(artifacts))
+	for _, artifact := range artifacts {
+		item := artifactExportIndex{artifactWireIdentity: artifact}
+		if fetched, ok := pathByArtifact[artifact.ArtifactID]; ok {
+			item.ContentPath = fetched.path
+			item.ContentSHA256 = fetched.hash
+		}
+		artifactIndex = append(artifactIndex, item)
+	}
+	artifactIndexBody, err := encodeJSONLines(artifactIndex)
+	if err != nil {
+		return nil, fmt.Errorf("encode artifact index: %w", err)
+	}
+	if err := writeExportFile(stagingDir, "indexes/artifacts.jsonl", "artifact-index", "", artifactIndexBody, len(artifacts), &manifest); err != nil {
+		return nil, err
+	}
+
 	manifest.Summary.Trials = len(trials)
 	manifest.Summary.UniqueConversations = len(conversationIDs)
 	manifest.Summary.ConversationsWritten = len(pathByConversation)
+	manifest.Summary.ArtifactReferences = artifactReferences
+	manifest.Summary.UniqueArtifacts = len(artifacts)
+	manifest.Summary.ArtifactsWritten = len(pathByArtifact)
 	manifest.Summary.Failed = len(manifest.Failures)
 	manifest.Complete = len(manifest.Failures) == 0
 
@@ -419,14 +508,161 @@ func exportExperimentBundle(ctx context.Context, base *agento11yhttp.Client, run
 		Count: len(manifest.Files),
 	})
 	receipt.Summary = cmdio.MutationSummary{
-		// The experiment bundle is one target. Requested conversations are
-		// additional independently fetched targets.
-		Succeeded: 1 + manifest.Summary.ConversationsWritten,
+		// The experiment bundle is one target. Requested conversation and
+		// artifact payloads are additional independently fetched targets.
+		Succeeded: 1 + manifest.Summary.ConversationsWritten + manifest.Summary.ArtifactsWritten,
 		Failed:    len(manifest.Failures),
 	}
 	receipt.Failures = append(receipt.Failures, manifest.Failures...)
 
 	return &experimentExportResult{receipt: receipt, manifest: manifest, errs: exportErrs}, nil
+}
+
+func exportArtifactPayloads(
+	ctx context.Context,
+	base *agento11yhttp.Client,
+	stagingDir string,
+	artifacts []artifactWireIdentity,
+	include bool,
+	concurrency int,
+	manifest *experimentExportManifest,
+) (map[string]fetchedArtifact, []error, error) {
+	if !include {
+		return map[string]fetchedArtifact{}, nil, nil
+	}
+	fetched, err := fetchArtifactPayloads(ctx, base, stagingDir, artifacts, concurrency)
+	if err != nil {
+		return nil, nil, err
+	}
+	pathByArtifact := make(map[string]fetchedArtifact, len(fetched))
+	var exportErrs []error
+	for _, item := range fetched {
+		if item.err != nil {
+			exportErrs = append(exportErrs, item.err)
+			manifest.Failures = append(manifest.Failures, cmdio.MutationFailure{
+				Target: cmdio.MutationTarget{Kind: "artifact", ID: item.id},
+				Error:  item.err.Error(),
+			})
+			continue
+		}
+		pathByArtifact[item.id] = item
+		manifest.Files = append(manifest.Files, experimentExportFile{
+			Kind:      "artifact-content",
+			ID:        item.id,
+			Path:      item.path,
+			SHA256:    item.hash,
+			SizeBytes: item.sizeBytes,
+		})
+	}
+	return pathByArtifact, exportErrs, nil
+}
+
+func extractReportArtifacts(reportBody []byte) ([]artifactWireIdentity, int, error) {
+	var report rawReportArtifactEnvelope
+	if err := json.Unmarshal(reportBody, &report); err != nil {
+		return nil, 0, err
+	}
+	byID := map[string]artifactWireIdentity{}
+	references := 0
+	for _, row := range report.Rows {
+		for _, trial := range row.Trials {
+			for _, raw := range trial.Artifacts {
+				references++
+				var artifact artifactWireIdentity
+				if err := json.Unmarshal(raw, &artifact); err != nil {
+					return nil, 0, err
+				}
+				artifact.ArtifactID = strings.TrimSpace(artifact.ArtifactID)
+				if artifact.ArtifactID == "" {
+					return nil, 0, errors.New("report artifact is missing artifact_id")
+				}
+				if artifact.SizeBytes < 0 {
+					return nil, 0, fmt.Errorf("report artifact %q has a negative size", artifact.ArtifactID)
+				}
+				if artifact.SizeBytes > maxExportArtifactBytes {
+					return nil, 0, fmt.Errorf("report artifact %q declares %d bytes, exceeding the %d-byte limit",
+						artifact.ArtifactID, artifact.SizeBytes, maxExportArtifactBytes)
+				}
+				if existing, ok := byID[artifact.ArtifactID]; ok && existing != artifact {
+					return nil, 0, fmt.Errorf("report repeats artifact %q with conflicting metadata", artifact.ArtifactID)
+				}
+				byID[artifact.ArtifactID] = artifact
+			}
+		}
+	}
+	ids := make([]string, 0, len(byID))
+	for id := range byID {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	artifacts := make([]artifactWireIdentity, 0, len(ids))
+	for _, id := range ids {
+		artifacts = append(artifacts, byID[id])
+	}
+	return artifacts, references, nil
+}
+
+func fetchArtifactPayloads(ctx context.Context, base *agento11yhttp.Client, stagingDir string, artifacts []artifactWireIdentity, concurrency int) ([]fetchedArtifact, error) {
+	fetched := make([]fetchedArtifact, len(artifacts))
+	g := new(errgroup.Group)
+	g.SetLimit(concurrency)
+	for i, artifact := range artifacts {
+		if ctx.Err() != nil {
+			break
+		}
+		g.Go(func() error {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			body, fetchErr := fetchArtifactContent(ctx, base, artifact)
+			if fetchErr != nil {
+				if err := ctx.Err(); err != nil {
+					return err
+				}
+				fetched[i] = fetchedArtifact{id: artifact.ArtifactID, err: fmt.Errorf("fetch artifact %q: %w", artifact.ArtifactID, fetchErr)}
+				return nil
+			}
+			rel := filepath.ToSlash(filepath.Join("raw", "artifacts", artifactFileName(artifact.ArtifactID)))
+			if writeErr := writePrivateFile(filepath.Join(stagingDir, filepath.FromSlash(rel)), body); writeErr != nil {
+				fetched[i] = fetchedArtifact{id: artifact.ArtifactID, err: fmt.Errorf("write artifact %q: %w", artifact.ArtifactID, writeErr)}
+				return nil
+			}
+			fetched[i] = fetchedArtifact{
+				id:        artifact.ArtifactID,
+				path:      rel,
+				hash:      sha256Hex(body),
+				sizeBytes: int64(len(body)),
+			}
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return fetched, nil
+}
+
+func fetchArtifactContent(ctx context.Context, base *agento11yhttp.Client, artifact artifactWireIdentity) ([]byte, error) {
+	resp, err := base.DoRequest(ctx, http.MethodGet, "/eval/artifacts/"+url.PathEscape(artifact.ArtifactID)+"/content", nil)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		handleErr := agento11yhttp.HandleErrorResponse(resp)
+		resp.Body.Close()
+		return nil, handleErr
+	}
+	body, err := readBoundedResponse(resp, maxExportArtifactBytes, "artifact content")
+	if err != nil {
+		return nil, err
+	}
+	if artifact.SizeBytes > 0 && int64(len(body)) != artifact.SizeBytes {
+		return nil, fmt.Errorf("artifact content size is %d bytes, metadata declares %d", len(body), artifact.SizeBytes)
+	}
+	return body, nil
 }
 
 func fetchConversationPayloads(ctx context.Context, base *agento11yhttp.Client, stagingDir string, conversationIDs []string, concurrency int) ([]fetchedConversation, error) {
@@ -478,8 +714,12 @@ func fetchRawTrialPages(ctx context.Context, base *agento11yhttp.Client, runID s
 	var trials []trialExportIndex
 	seenCursors := map[string]struct{}{}
 	cursor := ""
+	totalBytes := 0
 
 	for {
+		if len(pages) >= maxExportTrialPages {
+			return nil, nil, fmt.Errorf("trial pagination exceeds %d pages", maxExportTrialPages)
+		}
 		requestPath := path
 		if cursor != "" {
 			query := url.Values{"cursor": []string{cursor}}
@@ -488,6 +728,10 @@ func fetchRawTrialPages(ctx context.Context, base *agento11yhttp.Client, runID s
 		body, err := fetchRawJSON(ctx, base, requestPath)
 		if err != nil {
 			return nil, nil, err
+		}
+		totalBytes += len(body)
+		if totalBytes > maxExportTrialBytes {
+			return nil, nil, fmt.Errorf("trial pagination exceeds %d bytes", maxExportTrialBytes)
 		}
 		var envelope rawTrialPageEnvelope
 		if err := json.Unmarshal(body, &envelope); err != nil {
@@ -533,7 +777,18 @@ func fetchRawJSON(ctx context.Context, base *agento11yhttp.Client, path string) 
 		resp.Body.Close()
 		return nil, handleErr
 	}
-	body, readErr := io.ReadAll(resp.Body)
+	body, err := readBoundedResponse(resp, maxExportJSONResponseBytes, "JSON response")
+	if err != nil {
+		return nil, err
+	}
+	if !json.Valid(body) {
+		return nil, errors.New("response is not valid JSON")
+	}
+	return body, nil
+}
+
+func readBoundedResponse(resp *http.Response, limit int64, label string) ([]byte, error) {
+	body, readErr := io.ReadAll(io.LimitReader(resp.Body, limit+1))
 	closeErr := resp.Body.Close()
 	if readErr != nil {
 		return nil, fmt.Errorf("read response: %w", readErr)
@@ -541,8 +796,8 @@ func fetchRawJSON(ctx context.Context, base *agento11yhttp.Client, path string) 
 	if closeErr != nil {
 		return nil, fmt.Errorf("close response: %w", closeErr)
 	}
-	if !json.Valid(body) {
-		return nil, errors.New("response is not valid JSON")
+	if int64(len(body)) > limit {
+		return nil, fmt.Errorf("%s exceeds %d bytes", label, limit)
 	}
 	return body, nil
 }
@@ -569,11 +824,20 @@ func preflightDirectoryPublication(outputDir string, publish func(string, string
 		return fmt.Errorf("create publication probe: %w", err)
 	}
 	probeTarget := probeDir + "-published"
+	probeCollision, err := os.MkdirTemp(parent, ".gcx-agento11y-publish-collision-*")
+	if err != nil {
+		_ = os.RemoveAll(probeDir)
+		return fmt.Errorf("create publication collision probe: %w", err)
+	}
 	defer os.RemoveAll(probeDir)
 	defer os.RemoveAll(probeTarget)
+	defer os.RemoveAll(probeCollision)
 
 	if err := publish(probeDir, probeTarget); err != nil {
 		return fmt.Errorf("output filesystem does not support required atomic no-replace directory publication: %w", err)
+	}
+	if err := publish(probeCollision, probeTarget); err == nil {
+		return errors.New("output filesystem publication replaced an existing directory; atomic no-replace semantics are unavailable")
 	}
 	return nil
 }
@@ -604,6 +868,7 @@ func createPrivateStagingDirectory(outputDir string) (string, error) {
 	for _, dir := range []string{
 		filepath.Join(stagingDir, "raw", "trial-pages"),
 		filepath.Join(stagingDir, "raw", "conversations"),
+		filepath.Join(stagingDir, "raw", "artifacts"),
 		filepath.Join(stagingDir, "indexes"),
 	} {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -679,7 +944,7 @@ func writePrivateFile(path string, body []byte) error {
 	return os.Rename(tmpPath, path)
 }
 
-func encodeJSONLines(items []trialExportIndex) ([]byte, error) {
+func encodeJSONLines[T any](items []T) ([]byte, error) {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
@@ -693,6 +958,10 @@ func encodeJSONLines(items []trialExportIndex) ([]byte, error) {
 
 func conversationFileName(id string) string {
 	return "sha256-" + sha256Hex([]byte(id)) + ".json"
+}
+
+func artifactFileName(id string) string {
+	return "sha256-" + sha256Hex([]byte(id)) + ".blob"
 }
 
 func sha256Hex(body []byte) string {
