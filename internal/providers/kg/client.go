@@ -342,7 +342,7 @@ func (c *Client) GetThresholds(ctx context.Context) (*Rule, error) {
 // category must be "request" or "resource" (v1 has no health category).
 func (c *Client) GetThresholdsByCategory(ctx context.Context, category string) (*ThresholdRulesDto, error) {
 	var dto ThresholdRulesDto
-	if err := c.getJSON(ctx, fmt.Sprintf(thresholdRulesByCatFmt, category), &dto); err != nil {
+	if err := c.getJSON(ctx, fmt.Sprintf(thresholdRulesByCatFmt, url.PathEscape(category)), &dto); err != nil {
 		return nil, fmt.Errorf("kg: get %s thresholds: %w", category, err)
 	}
 	return &dto, nil

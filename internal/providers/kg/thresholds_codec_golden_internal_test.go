@@ -43,7 +43,7 @@ func TestThresholdsTableGolden(t *testing.T) {
 
 // Real global thresholds are indented, multi-line PromQL. Left as-is they put
 // newlines inside a cell and break the table apart, so the goldens pin the
-// collapsed, clipped rendering against the shape a live stack returns.
+// folded, untruncated rendering against the shape a live stack returns.
 func TestThresholdsTableGolden_MultilineExpr(t *testing.T) {
 	dto := &ThresholdRulesDto{
 		GlobalThresholds: []Threshold{{
@@ -66,21 +66,29 @@ func TestThresholdsTableGolden_MultilineExpr(t *testing.T) {
 
 func TestCompactExpr(t *testing.T) {
 	tests := []struct {
-		name  string
-		expr  string
-		width int
-		want  string
+		name string
+		expr string
+		want string
 	}{
-		{"single line under width is untouched", "0.1", 60, "0.1"},
-		{"newlines and indentation collapse to single spaces", "clamp_max(\n  round(\n    1.1\n  )\n)", 60, "clamp_max( round( 1.1 ) )"},
-		{"over width is clipped with an ellipsis", strings.Repeat("a", 70), 10, strings.Repeat("a", 9) + "…"},
-		{"exactly at width is untouched", strings.Repeat("a", 10), 10, strings.Repeat("a", 10)},
-		{"zero width disables clipping", "a b\nc", 0, "a b c"},
-		{"empty stays empty", "", 60, ""},
+		{"single line is untouched", "0.1", "0.1"},
+		{"multiline expression is folded without clipping", "clamp_max(\n  round(\n    1.1\n  )\n)", "clamp_max( round( 1.1 ) )"},
+		{"quoted whitespace is preserved", `sum(metric{label="a  b"})`, `sum(metric{label="a  b"})`},
+		{"raw string line break is escaped", "sum(metric{label=`a\nb`})", "sum(metric{label=`a\\nb`})"},
+		{"long expression is not clipped", strings.Repeat("a", 100), strings.Repeat("a", 100)},
+		{"invalid input still stays on one line", "not valid\n  promql", "not valid promql"},
+		{"empty stays empty", "", ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, compactExpr(tt.expr, tt.width))
+			assert.Equal(t, tt.want, compactExpr(tt.expr))
 		})
 	}
+}
+
+func TestRenderLabels(t *testing.T) {
+	assert.Equal(t, "a=simple,b=\"comma,value\",c=\"line\\nbreak\"", renderLabels(map[string]string{
+		"c": "line\nbreak",
+		"a": "simple",
+		"b": "comma,value",
+	}))
 }
