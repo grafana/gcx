@@ -33,10 +33,17 @@ func ResolveShorthand(idx *grafanadocs.Index, input string, product string) (str
 	if len(hits) == 0 {
 		hint := "no matching page found; try 'gcx docs search"
 		if product != "" {
-			hint += " --product " + product
+			hint += " --product " + shellQuote(product)
 		}
-		hint += fmt.Sprintf(" %s' to browse results", input)
+		hint += " " + shellQuote(input) + "' to browse results"
 		return "", fmt.Errorf("%s", hint)
 	}
 	return hits[0].URL, nil
+}
+
+// shellQuote wraps val in single quotes, escaping any embedded single quotes
+// using the canonical POSIX form (end-quote, backslash-escaped quote, re-open-quote).
+// Used to safely embed user-controlled values in shell command suggestions.
+func shellQuote(val string) string {
+	return "'" + strings.ReplaceAll(val, "'", `'\''`) + "'"
 }

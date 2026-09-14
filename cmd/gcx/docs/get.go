@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	goio "io"
-	"strconv"
 	"strings"
 
 	"github.com/grafana/gcx/internal/format"
@@ -34,7 +33,7 @@ func (o *getOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("text", &getTextCodec{})
 	o.IO.BindFlags(flags)
 	flags.StringVar(&o.section, "section", "", "Heading text to extract (returns only that section)")
-	flags.StringVar(&o.product, "product", "", "Scope shorthand resolution to a product (used when the argument is not a full URL)")
+	flags.StringVar(&o.product, "product", "", "Scope shorthand resolution to a product (case-insensitive; matches exact, then prefix, then substring; ignored when the argument is a full URL)")
 	flags.IntVar(&o.offset, "offset", 0, "Line offset for paging (0-indexed)")
 	flags.IntVar(&o.limit, "limit", 0, "Maximum lines to return (0 or negative uses the default of 80)")
 }
@@ -52,6 +51,9 @@ func (o *getOpts) Validate() error {
 func (o *getOpts) validateExplicitFlags(cmd *cobra.Command) error {
 	if cmd.Flags().Changed("section") && strings.TrimSpace(o.section) == "" {
 		return errors.New("--section must not be empty")
+	}
+	if cmd.Flags().Changed("product") && strings.TrimSpace(o.product) == "" {
+		return errors.New("--product must not be empty")
 	}
 	return nil
 }
@@ -156,8 +158,4 @@ func emitGetPartialityHint(w goio.Writer, rawURL string, start, end, total, effe
 	summary := fmt.Sprintf("showing lines %d-%d of %d", start, end, total)
 	continuation := fmt.Sprintf("gcx docs get %s --offset %d --limit %d", shellQuote(rawURL), end, effectiveLimit)
 	cmdio.EmitHint(w, summary, continuation)
-}
-
-func shellQuote(value string) string {
-	return strconv.Quote(value)
 }

@@ -25,7 +25,7 @@ func (o *outlineOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("text")
 	o.IO.RegisterCustomCodec("text", &outlineTextCodec{})
 	o.IO.BindFlags(flags)
-	flags.StringVar(&o.product, "product", "", "Scope shorthand resolution to a product (used when the argument is not a full URL)")
+	flags.StringVar(&o.product, "product", "", "Scope shorthand resolution to a product (case-insensitive; matches exact, then prefix, then substring; ignored when the argument is a full URL)")
 }
 
 func (o *outlineOpts) Validate() error {

@@ -27,7 +27,7 @@ gcx docs outline <url-or-query> [flags]
       --jq string        jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string      Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string    Output format. One of: agents, json, text, yaml (default "text")
-      --product string   Scope shorthand resolution to a product (used when the argument is not a full URL)
+      --product string   Scope shorthand resolution to a product (case-insensitive; matches exact, then prefix, then substring; ignored when the argument is a full URL)
 ```
 
 ### Options inherited from parent commands
