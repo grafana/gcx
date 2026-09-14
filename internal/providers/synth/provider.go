@@ -133,6 +133,7 @@ func (p *SynthProvider) ConfigKeys() []providers.ConfigKey {
 		{Name: "sm-url", Secret: false},
 		{Name: "sm-token", Secret: true},
 		{Name: "sm-metrics-datasource-uid", Secret: false},
+		{Name: "sm-logs-datasource-uid", Secret: false},
 	}
 }
 
@@ -410,4 +411,10 @@ func (l *configLoader) LoadConfig(ctx context.Context) (*config.Config, error) {
 // providers.synth.sm-metrics-datasource-uid in the config file.
 func (l *configLoader) SaveMetricsDatasourceUID(ctx context.Context, uid string) error {
 	return l.SaveProviderConfig(ctx, "synth", "sm-metrics-datasource-uid", uid)
+}
+
+// SaveLogsDatasourceUID persists an auto-discovered Loki datasource UID to
+// providers.synth.sm-logs-datasource-uid in the config file.
+func (l *configLoader) SaveLogsDatasourceUID(ctx context.Context, uid string) error {
+	return l.SaveProviderConfig(ctx, "synth", "sm-logs-datasource-uid", uid)
 }

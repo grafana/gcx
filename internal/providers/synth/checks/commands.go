@@ -17,6 +17,7 @@ import (
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/synth/smcfg"
+	"github.com/grafana/gcx/internal/query/loki"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/style"
@@ -26,7 +27,7 @@ import (
 )
 
 // Commands returns the checks command group with CRUD subcommands.
-func Commands(loader smcfg.StatusLoader) *cobra.Command {
+func Commands(loader smcfg.AdHocLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "checks",
 		Short:   "Manage Synthetic Monitoring checks.",
@@ -40,6 +41,7 @@ func Commands(loader smcfg.StatusLoader) *cobra.Command {
 		newDeleteCommand(loader),
 		newStatusCommand(loader),
 		newTimelineCommand(loader),
+		newTestCommand(loader),
 	)
 	return cmd
 }
@@ -660,6 +662,187 @@ func existingSensitivity(ctx context.Context, loader smcfg.Loader, checkID int64
 		return fallback
 	}
 	return existing.AlertSensitivity
+}
+
+// ---------------------------------------------------------------------------
+// test
+// ---------------------------------------------------------------------------
+
+// adHocPollBuffer is added on top of the check's own timeout to account for
+// probe scheduling and Loki ingestion delay, matching the Synthetic
+// Monitoring app's DEFAULT_TIMEOUT_IN_SECONDS.
+const adHocPollBuffer = 30 * time.Second
+
+type testOpts struct {
+	IO                cmdio.Options
+	File              string
+	LogsDatasourceUID string
+}
+
+func (o *testOpts) setup(flags *pflag.FlagSet) {
+	flags.StringVarP(&o.File, "filename", "f", "", "File containing the check manifest (YAML)")
+	flags.StringVar(&o.LogsDatasourceUID, "logs-datasource-uid", "", "UID of the Loki datasource to poll for ad-hoc results")
+	o.IO.RegisterCustomCodec("text", &checkTestCodec{})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
+}
+
+func (o *testOpts) Validate() error {
+	if o.File == "" {
+		return errors.New("--filename/-f is required")
+	}
+	return o.IO.Validate()
+}
+
+// checkTestResult is the finite result document for `checks test`.
+type checkTestResult struct {
+	Type          string             `json:"type" yaml:"type"`
+	SchemaVersion string             `json:"schema_version" yaml:"schema_version"`
+	Job           string             `json:"job" yaml:"job"`
+	Target        string             `json:"target" yaml:"target"`
+	AdHocID       string             `json:"adhoc_id" yaml:"adhoc_id"`
+	Probes        []AdHocProbeResult `json:"probes" yaml:"probes"`
+}
+
+// checkTestCodec is the human "text" codec for checkTestResult values: one
+// row per probe plus a summary line.
+type checkTestCodec struct{}
+
+func (c *checkTestCodec) Format() format.Format { return "text" }
+
+func (c *checkTestCodec) Decode(io.Reader, any) error {
+	return errors.New("text codec does not support decoding")
+}
+
+func (c *checkTestCodec) Encode(w io.Writer, v any) error {
+	r, ok := v.(checkTestResult)
+	if !ok {
+		return errors.New("invalid data type for check test codec: expected checkTestResult")
+	}
+
+	t := style.NewTable("PROBE", "STATUS", "LOGS")
+	var succeeded, failed, timedOut int
+	for _, p := range r.Probes {
+		t.Row(p.ProbeName, string(p.Status), strconv.Itoa(p.LogCount))
+		switch p.Status {
+		case AdHocSuccess:
+			succeeded++
+		case AdHocFailure:
+			failed++
+		case AdHocTimeout:
+			timedOut++
+		}
+	}
+	if err := t.Render(w); err != nil {
+		return err
+	}
+
+	cmdio.Info(w, "Ran ad-hoc check %q against %d probe(s): %d succeeded, %d failed, %d timed out",
+		r.Job, len(r.Probes), succeeded, failed, timedOut)
+	return nil
+}
+
+func newTestCommand(loader smcfg.AdHocLoader) *cobra.Command {
+	opts := &testOpts{}
+	cmd := &cobra.Command{
+		Use:   "test",
+		Short: "Run a Synthetic Monitoring check once, without saving it.",
+		Long: `Run a Synthetic Monitoring check once against its probes without persisting
+it — the check is never saved, and no schedule is created.
+
+Results are recovered by polling Loki for the log lines the probes emit for
+this execution (tagged type="adhoc"), the same mechanism the Synthetic
+Monitoring app's "Test" button uses. Requires a Loki datasource containing SM
+ad-hoc logs, and read access to it.
+
+Note: ad-hoc test executions are billed the same as scheduled check
+executions. See ` + docs.SyntheticMonitoringInvoice + `.`,
+		Example: `  # Run a check once from a YAML file.
+  gcx synthetic-monitoring checks test -f check.yaml
+
+  # Specify the Loki datasource to poll for results.
+  gcx synthetic-monitoring checks test -f check.yaml --logs-datasource-uid my-loki`,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
+			ctx := cmd.Context()
+
+			probeIDMap, _, err := FetchProbeInfo(ctx, loader)
+			if err != nil {
+				return err
+			}
+
+			spec, err := readCheckSpec(opts.File)
+			if err != nil {
+				return err
+			}
+
+			if errs := ValidateCheckSpec(spec, probeIDMap); len(errs) > 0 {
+				return fmt.Errorf("check validation failed:\n  - %s", strings.Join(errs, "\n  - "))
+			}
+
+			probeIDs, err := resolveProbeIDs(spec.Probes, probeIDMap)
+			if err != nil {
+				return fmt.Errorf("resolving probes for %q: %w", spec.Job, err)
+			}
+			probeNames := make(map[int64]string, len(probeIDs))
+			for i, id := range probeIDs {
+				probeNames[id] = spec.Probes[i]
+			}
+
+			smRestCfg, smDSUID, _, err := loader.LoadSMProxyConfig(ctx)
+			if err != nil {
+				return err
+			}
+			client, err := NewClient(smRestCfg, smDSUID, loader)
+			if err != nil {
+				return err
+			}
+
+			resp, err := client.RunAdhoc(ctx, AdHocCheckRequest{
+				Timeout:  spec.Timeout,
+				Settings: spec.Settings,
+				Probes:   probeIDs,
+				Target:   spec.Target,
+			})
+			if err != nil {
+				return fmt.Errorf("running ad-hoc check %q: %w", spec.Job, err)
+			}
+
+			dsUID, err := resolveLogsDataSourceUID(ctx, opts.LogsDatasourceUID, loader)
+			if err != nil {
+				return err
+			}
+			grafanaRestCfg, err := loader.LoadGrafanaConfig(ctx)
+			if err != nil {
+				return err
+			}
+			lokiClient, err := loki.NewClient(grafanaRestCfg)
+			if err != nil {
+				return err
+			}
+
+			pollTimeout := adHocPollBuffer + time.Duration(spec.Timeout)*time.Millisecond
+			probeResults, err := PollAdHocResults(ctx, lokiClient, dsUID, resp.ID, probeNames, pollTimeout)
+			if err != nil {
+				return fmt.Errorf("polling ad-hoc results for %q: %w", spec.Job, err)
+			}
+
+			result := checkTestResult{
+				Type:          "gcx.synth.check_test",
+				SchemaVersion: "1",
+				Job:           spec.Job,
+				Target:        spec.Target,
+				AdHocID:       resp.ID,
+				Probes:        probeResults,
+			}
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
+		},
+	}
+	opts.setup(cmd.Flags())
+	return cmd
 }
 
 // ---------------------------------------------------------------------------

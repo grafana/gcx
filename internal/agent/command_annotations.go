@@ -633,6 +633,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx synthetic-monitoring checks get":         {Cost: "small"},
 	"gcx synthetic-monitoring checks list":        {Cost: "small"},
 	"gcx synthetic-monitoring checks status":      {Cost: "medium", Hint: "--job <name> -o json"},
+	"gcx synthetic-monitoring checks test":        {Cost: "medium", Hint: "-f <check.yaml>. Runs the check once without saving it, then polls Loki for per-probe results. Billed the same as a scheduled execution (" + docs.SyntheticMonitoringInvoice + ")."},
 	"gcx synthetic-monitoring checks timeline":    {Cost: "medium", Hint: "<id> --since 1h -o json"},
 	"gcx synthetic-monitoring checks update":      {Cost: "small", Hint: "<name> -f <check.yaml>. Frequency and probe changes affect billable execution volume (" + docs.SyntheticMonitoringInvoice + ")."},
 	"gcx synthetic-monitoring probes create":      {Cost: "small"},
