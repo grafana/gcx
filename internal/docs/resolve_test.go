@@ -61,7 +61,18 @@ func TestResolveShorthand(t *testing.T) {
 			name:    "no match with product includes product in hint",
 			input:   "zzzznotathing",
 			product: "tempo",
-			wantErr: "--product tempo",
+			wantErr: "--product 'tempo'",
+		},
+		{
+			name:    "no match with single-quote in input is safely quoted",
+			input:   "it's a trap",
+			wantErr: `'it'\''s a trap'`,
+		},
+		{
+			name:    "no match with single-quote in product is safely quoted",
+			input:   "zzzznotathing",
+			product: "o'reilly",
+			wantErr: `--product 'o'\''reilly'`,
 		},
 	}
 

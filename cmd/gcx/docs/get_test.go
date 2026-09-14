@@ -121,6 +121,17 @@ func TestGetShorthandResolution(t *testing.T) {
 		assert.Contains(t, res.URL, "clustering")
 	})
 
+	t.Run("product flag scopes resolution", func(t *testing.T) {
+		stdout, err := runWithIndexAndFetcher(t, idx, okDoc(), "get", "configuration", "--product", "tempo", "-o", "json")
+		require.NoError(t, err)
+
+		var res struct {
+			URL string `json:"url"`
+		}
+		require.NoError(t, json.Unmarshal([]byte(stdout), &res))
+		assert.Contains(t, res.URL, "tempo")
+	})
+
 	t.Run("no match gives guidance", func(t *testing.T) {
 		_, err := runWithIndexAndFetcher(t, idx, okDoc(), "get", "zzzznotathing")
 		require.Error(t, err)

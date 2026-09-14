@@ -31,9 +31,10 @@ func cleanFetchErr(rawURL string, err error) error {
 }
 
 // indexLoader provides lazy, once-only loading of the documentation index.
-// The index is fetched on the first subcommand that needs it (search,
-// list-products) and cached for the lifetime of the process. Commands that only
-// need FetchDoc (get, outline) never trigger the load.
+// The index is fetched on the first subcommand that needs it and cached for
+// the lifetime of the process. Commands that always use the index: search,
+// list-products. Commands that use it conditionally: get and outline load the
+// index only when the argument is a shorthand query (not a full URL).
 //
 // Lazy loading avoids a network fetch on unrelated commands or --help.
 type indexLoader struct {
@@ -77,7 +78,9 @@ func CommandWithIndex(idx *grafanadocs.Index) *cobra.Command {
 // replaced. Intended for tests — lets the get/outline success paths run
 // without a live network fetch, mirroring CommandWithIndex for the
 // index-backed commands. The index loader is uninitialized, so shorthand
-// resolution is not available (only full URLs work).
+// resolution is not available (only full URLs work). For tests that need
+// both shorthand resolution and a replaced fetcher, use
+// CommandWithIndexAndFetcher instead.
 func CommandWithFetcher(fetch docFetcher) *cobra.Command {
 	return newDocsCommand(&indexLoader{}, fetch)
 }
@@ -104,6 +107,13 @@ func resolveIfShorthand(ctx context.Context, loader *indexLoader, input, product
 		return "", err
 	}
 	return internaldocs.ResolveShorthand(idx, input, product)
+}
+
+// shellQuote wraps val in single quotes, escaping any embedded single quotes
+// using the canonical POSIX form (end-quote, backslash-escaped quote, re-open-quote).
+// Used to safely embed user-controlled values in shell command suggestions.
+func shellQuote(val string) string {
+	return "'" + strings.ReplaceAll(val, "'", `'\''`) + "'"
 }
 
 func newDocsCommand(loader *indexLoader, fetch docFetcher) *cobra.Command {

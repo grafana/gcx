@@ -38,7 +38,7 @@ gcx docs get <url-or-query> [flags]
       --limit int        Maximum lines to return (0 = default)
       --offset int       Line offset for paging (0-indexed)
   -o, --output string    Output format. One of: agents, json, text, yaml (default "text")
-      --product string   Scope shorthand resolution to a product (used when the argument is not a full URL)
+      --product string   Scope shorthand resolution to a product (case-insensitive; matches exact, then prefix, then substring; ignored when the argument is a full URL)
       --section string   Heading text to extract (returns only that section)
 ```
 

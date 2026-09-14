@@ -27,7 +27,7 @@ func (o *getOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("text", &getTextCodec{})
 	o.IO.BindFlags(flags)
 	flags.StringVar(&o.section, "section", "", "Heading text to extract (returns only that section)")
-	flags.StringVar(&o.product, "product", "", "Scope shorthand resolution to a product (used when the argument is not a full URL)")
+	flags.StringVar(&o.product, "product", "", "Scope shorthand resolution to a product (case-insensitive; matches exact, then prefix, then substring; ignored when the argument is a full URL)")
 	flags.IntVar(&o.offset, "offset", 0, "Line offset for paging (0-indexed)")
 	flags.IntVar(&o.limit, "limit", 0, "Maximum lines to return (0 = default)")
 }
@@ -93,7 +93,7 @@ func getCommand(loader *indexLoader, fetch docFetcher) *cobra.Command {
 				Limit:   opts.limit,
 			})
 			if res.Content == "" && opts.section != "" {
-				return fmt.Errorf("section %q not found; run 'gcx docs outline %s' to see available headings", opts.section, opts.url)
+				return fmt.Errorf("section %q not found; run 'gcx docs outline %s' to see available headings", opts.section, shellQuote(opts.url))
 			}
 			return opts.IO.Encode(cmd.OutOrStdout(), getResult{
 				Content:       res.Content,
