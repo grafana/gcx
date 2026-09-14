@@ -821,7 +821,7 @@ even on partial failure so callers can report both successes and failures.
 | Location | Mechanism | Limit |
 |----------|-----------|-------|
 | `FSReader.Read` — file reads | `errgroup` + `SetLimit(MaxConcurrentReads)` | configurable |
-| `Puller.Pull` — API fetches | `errgroup` (one goroutine per filter) | = number of filters |
+| `Puller.Pull` — API fetches | `errgroup` + `SetLimit(maxConcurrentListRequests)` | default 10; constructor option |
 | `Pusher.Push` — folder levels | `ForEachConcurrently` per level, sequential across levels | `MaxConcurrency` |
 | `Pusher.Push` — non-folders | `ForEachConcurrently` | `MaxConcurrency` |
 | `Deleter.Delete` — API deletes | `ForEachConcurrently` | `MaxConcurrency` |
