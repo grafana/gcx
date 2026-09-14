@@ -7,11 +7,12 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"unicode/utf8"
+	"unicode"
 
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 func newThresholdsCommand(loader RESTConfigLoader) *cobra.Command {
@@ -27,7 +28,7 @@ user-configured thresholds run on.`,
 	getOpts := &thresholdsGetOpts{}
 	getCmd := &cobra.Command{
 		Use:   "get",
-		Short: "Get the whole threshold config as YAML.",
+		Short: "Get the whole threshold config.",
 		Long: `Fetches the entire threshold configuration. The wire shape is identical to
 gcx kg prom-rules (a PrometheusRulesDto), so -o json and -o yaml render the same
 named rule-group structure.`,
@@ -58,7 +59,12 @@ named rule-group structure.`,
 			// any falls back to struct-field encoding and leaks the wrapper as
 			// a top-level "Object" key.
 			obj := res.ToUnstructured()
-			return getOpts.IO.Encode(cmd.OutOrStdout(), &obj)
+			return encodeThresholdRowsOrValue(
+				&getOpts.IO,
+				cmd.OutOrStdout(),
+				[]unstructured.Unstructured{obj},
+				&obj,
+			)
 		},
 	}
 	getOpts.setup(getCmd.Flags())
@@ -94,7 +100,7 @@ thresholds. Only the request and resource categories exist in v1.`,
 			if dto.GlobalThresholds == nil {
 				dto.GlobalThresholds = []Threshold{}
 			}
-			return encodeThresholds(&listOpts.IO, cmd.OutOrStdout(), dto)
+			return encodeThresholdRowsOrValue(&listOpts.IO, cmd.OutOrStdout(), flattenThresholds(dto), dto)
 		},
 	}
 	listOpts.setup(listCmd.Flags())
@@ -108,7 +114,9 @@ type thresholdsGetOpts struct {
 }
 
 func (o *thresholdsGetOpts) setup(flags *pflag.FlagSet) {
-	o.IO.DefaultFormat("yaml")
+	o.IO.RegisterCustomCodec(cmdio.FormatTable, &RuleTableCodec{})
+	o.IO.RegisterCustomCodec(cmdio.FormatWide, &RuleWideTableCodec{})
+	o.IO.DefaultFormat(cmdio.FormatTable)
 	o.IO.BindFlags(flags)
 }
 
@@ -165,25 +173,20 @@ func flattenThresholds(dto *ThresholdRulesDto) []thresholdRow {
 	return rows
 }
 
-// encodeThresholds renders the resolved format from the shape that format
-// needs: the flattened rows for the tables, and the unflattened DTO for the
-// machine formats, whose custom/global split is the documented wire shape.
-//
-// ADR-002 rejected a row extractor on cmdio.Table for now, so the choice lives
-// in the command. This is the second copy of that switch (the first is
-// instrumentation's output.EncodeList) — the trigger the ADR named for moving
-// it onto the shared type.
-func encodeThresholds(opts *cmdio.Options, w io.Writer, dto *ThresholdRulesDto) error {
+// encodeThresholdRowsOrValue keeps the threshold command's two output shapes
+// local to KG: table formats consume flattened rows, while machine formats
+// preserve the backend DTO or resource envelope.
+func encodeThresholdRowsOrValue[T any](opts *cmdio.Options, w io.Writer, rows []T, value any) error {
 	codec, err := opts.Codec()
 	if err != nil {
 		return err
 	}
 
 	switch string(codec.Format()) {
-	case cmdio.FormatTable, cmdio.FormatWide:
-		return codec.Encode(w, flattenThresholds(dto))
+	case cmdio.FormatTable, cmdio.FormatWide, cmdio.FormatText:
+		return codec.Encode(w, rows)
 	default:
-		return opts.Encode(w, dto)
+		return opts.Encode(w, value)
 	}
 }
 
@@ -195,7 +198,7 @@ func thresholdTable() cmdio.Table[thresholdRow] {
 			{Header: "SCOPE", Content: func(r thresholdRow) string { return r.scope }},
 			{Header: "RECORD", Content: func(r thresholdRow) string { return r.record }},
 			{Header: "ACTIVE", Content: func(r thresholdRow) string { return strconv.FormatBool(r.active) }},
-			{Header: "EXPR", Content: func(r thresholdRow) string { return compactExpr(r.expr, exprWidth) }},
+			{Header: "EXPR", Content: func(r thresholdRow) string { return compactExpr(r.expr) }},
 			{Header: "LABELS", Visible: cmdio.WideOnly, Content: func(r thresholdRow) string {
 				return renderLabels(r.labels)
 			}},
@@ -203,20 +206,55 @@ func thresholdTable() cmdio.Table[thresholdRow] {
 	}
 }
 
-// exprWidth clips the rendered EXPR column. Real global thresholds are
-// multi-line PromQL (clamp_max/quantile_over_time blocks running to hundreds of
-// characters), which would otherwise break the table layout outright.
-const exprWidth = 60
+// compactExpr folds whitespace outside quoted strings without truncating the
+// expression. This keeps one threshold on one table row while preserving
+// whitespace that is meaningful inside PromQL string literals.
+func compactExpr(expr string) string {
+	var b strings.Builder
+	b.Grow(len(expr))
 
-// compactExpr collapses a threshold expression onto one line and clips it to
-// width. PromQL whitespace is not significant, so the collapse is lossless for
-// display; -o json and -o yaml carry the untouched expression.
-func compactExpr(expr string, width int) string {
-	oneLine := strings.Join(strings.Fields(expr), " ")
-	if width <= 0 || utf8.RuneCountInString(oneLine) <= width {
-		return oneLine
+	var quote rune
+	escaped := false
+	pendingSpace := false
+	for _, r := range expr {
+		if quote != 0 {
+			switch r {
+			case '\n':
+				b.WriteString(`\n`)
+				continue
+			case '\r':
+				b.WriteString(`\r`)
+				continue
+			case '\t':
+				b.WriteString(`\t`)
+				continue
+			}
+			b.WriteRune(r)
+			switch {
+			case escaped:
+				escaped = false
+			case r == '\\' && quote != '`':
+				escaped = true
+			case r == quote:
+				quote = 0
+			}
+			continue
+		}
+
+		if unicode.IsSpace(r) {
+			pendingSpace = b.Len() > 0
+			continue
+		}
+		if pendingSpace {
+			b.WriteByte(' ')
+			pendingSpace = false
+		}
+		if r == '"' || r == '\'' || r == '`' {
+			quote = r
+		}
+		b.WriteRune(r)
 	}
-	return string([]rune(oneLine)[:width-1]) + "…"
+	return b.String()
 }
 
 // renderLabels renders a label map as a stable, comma-separated key=value string.
@@ -231,7 +269,11 @@ func renderLabels(labels map[string]string) string {
 	sort.Strings(keys)
 	pairs := make([]string, 0, len(keys))
 	for _, k := range keys {
-		pairs = append(pairs, k+"="+labels[k])
+		value := labels[k]
+		if strings.ContainsAny(value, ",=\r\n\t") {
+			value = strconv.Quote(value)
+		}
+		pairs = append(pairs, k+"="+value)
 	}
 	return strings.Join(pairs, ",")
 }

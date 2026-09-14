@@ -30,6 +30,6 @@ user-configured thresholds run on.
 ### SEE ALSO
 
 * [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph rules, entities, and insights
-* [gcx kg thresholds get](gcx_kg_thresholds_get.md)	 - Get the whole threshold config as YAML.
+* [gcx kg thresholds get](gcx_kg_thresholds_get.md)	 - Get the whole threshold config.
 * [gcx kg thresholds list](gcx_kg_thresholds_list.md)	 - List threshold rules for a category (request or resource).
 

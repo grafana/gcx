@@ -82,6 +82,24 @@ func TestClient_GetThresholdsByCategory(t *testing.T) {
 	assert.Empty(t, dto.GlobalThresholds[0].Labels)
 }
 
+// The command layer validates --category, but the client method is exported and
+// the writes follow-up takes the same category-shaped input, so the escaping has
+// to hold at the client boundary too: an unescaped "/" would resolve to a
+// different config endpoint entirely.
+func TestClient_GetThresholdsByCategory_EscapesPathSegment(t *testing.T) {
+	var gotPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.EscapedPath()
+		writeJSON(w, kg.ThresholdRulesDto{})
+	}))
+	defer server.Close()
+
+	_, err := newTestClient(t, server).GetThresholdsByCategory(t.Context(), "../model-rules")
+	require.NoError(t, err)
+	assert.Contains(t, gotPath, "threshold-rules/..%2Fmodel-rules")
+	assert.NotContains(t, gotPath, "config/model-rules")
+}
+
 func TestThresholdsGetCommand(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, map[string]any{
@@ -94,22 +112,39 @@ func TestThresholdsGetCommand(t *testing.T) {
 	}))
 	defer server.Close()
 
-	cmd := kg.NewThresholdsCommand(thresholdsLoader(server))
-	var buf bytes.Buffer
-	cmd.SetOut(&buf)
-	cmd.SetErr(&buf)
-	cmd.SetArgs([]string{"get", "-o", "yaml"})
-	require.NoError(t, cmd.Execute())
+	t.Run("default output is a table", func(t *testing.T) {
+		cmd := kg.NewThresholdsCommand(thresholdsLoader(server))
+		var buf bytes.Buffer
+		cmd.SetOut(&buf)
+		cmd.SetErr(&buf)
+		cmd.SetArgs([]string{"get"})
+		require.NoError(t, cmd.Execute())
 
-	out := buf.String()
-	assert.Contains(t, out, "custom_thresholds")
-	assert.Contains(t, out, "asserts:latency:average:threshold")
-	// The K8s envelope must be the top-level document. unstructured.Unstructured
-	// implements MarshalJSON on the pointer receiver, so encoding a bare value
-	// silently nests everything under an "Object" key — assert on the document
-	// root, because a Contains check on "kind: Rule" passes either way.
-	assert.True(t, strings.HasPrefix(out, "apiVersion: "), "envelope must be top-level, got:\n%s", out)
-	assert.NotContains(t, out, "Object:")
+		out := buf.String()
+		assert.Contains(t, out, "NAME")
+		assert.Contains(t, out, "GROUPS")
+		assert.Contains(t, out, "RULES")
+		assert.Contains(t, out, "custom_thresholds")
+	})
+
+	t.Run("yaml keeps the resource envelope at the document root", func(t *testing.T) {
+		cmd := kg.NewThresholdsCommand(thresholdsLoader(server))
+		var buf bytes.Buffer
+		cmd.SetOut(&buf)
+		cmd.SetErr(&buf)
+		cmd.SetArgs([]string{"get", "-o", "yaml"})
+		require.NoError(t, cmd.Execute())
+
+		out := buf.String()
+		assert.Contains(t, out, "custom_thresholds")
+		assert.Contains(t, out, "asserts:latency:average:threshold")
+		// The K8s envelope must be the top-level document. unstructured.Unstructured
+		// implements MarshalJSON on the pointer receiver, so encoding a bare value
+		// silently nests everything under an "Object" key — assert on the document
+		// root, because a Contains check on "kind: Rule" passes either way.
+		assert.True(t, strings.HasPrefix(out, "apiVersion: "), "envelope must be top-level, got:\n%s", out)
+		assert.NotContains(t, out, "Object:")
+	})
 }
 
 func TestThresholdsListCommand(t *testing.T) {

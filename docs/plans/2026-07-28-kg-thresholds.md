@@ -1,7 +1,7 @@
 ---
 type: feature-plan
 title: "KG thresholds — CRUD over v1 threshold config (read-only first)"
-status: draft
+status: reads-implemented (writes pending)
 spec: # this plan is the design of record
 created: 2026-07-28
 issue: https://github.com/grafana/gcx/issues/1078
@@ -10,7 +10,7 @@ issue: https://github.com/grafana/gcx/issues/1078
 # Design: `gcx kg thresholds`
 
 > **Date**: 2026-07-28
-> **Status**: draft
+> **Status**: reads implemented in #1316 and verified against a dev stack; writes pending.
 > **Implements**: issue #1078 — CRUD over the **v1** Asserts threshold config API
 > (`/v1/config/threshold-rule(s)`). Target v1, not v2 — the Asserts plugin UI and
 > all real user config run on v1; v2 is unadopted.
@@ -108,7 +108,7 @@ Add path constants next to the prom-rules cluster:
 
 ```go
 thresholdRulesPath        = pluginResourcePath + "/asserts/api-server/v1/config/threshold-rules"
-thresholdRulesByCategory  = thresholdRulesPath + "/%s"   // request|resource
+thresholdRulesByCatFmt    = thresholdRulesPath + "/%s"   // request|resource
 // (write paths added in the follow-up)
 ```
 
@@ -116,7 +116,9 @@ thresholdRulesByCategory  = thresholdRulesPath + "/%s"   // request|resource
   `Rule` (reuse). The codec renders yaml/json; no need to request x-yaml from the
   server (gcx is format-agnostic: fetch data, codec controls display).
 - `GetThresholdsByCategory(ctx, category string) (*ThresholdRulesDto, error)` —
-  GET `fmt.Sprintf(thresholdRulesByCategory, category)`, decode `ThresholdRulesDto`.
+  GET `fmt.Sprintf(thresholdRulesByCatFmt, url.PathEscape(category))`, decode
+  `ThresholdRulesDto`. Escape the segment — every other interpolated path in
+  `client.go` does.
 
 Both use the existing `getJSON` helper. No new HTTP plumbing needed for reads (the
 `Accept: x-yaml` variant is only relevant if we dump the server's YAML verbatim;
@@ -125,12 +127,17 @@ we don't — we render client-side, consistent with the rest of gcx).
 ### Output
 
 - **`get`**: reuse the prom-rules path — `RuleToResource(rule, ns)` → unstructured →
-  encode. Register the existing `RuleTableCodec`/`RuleWideTableCodec` for table
-  views; default format `yaml`.
-- **`list`**: value is the `ThresholdRulesDto` (nested). json/yaml codecs marshal it
-  faithfully (preserving custom vs global). A custom table codec flattens both arrays
-  into rows with a `SCOPE` column (`custom`/`global`) + `RECORD`, `EXPR`, `ACTIVE`,
-  and (wide) `LABELS`. Default format `text` (table).
+  encode a *pointer* to it (`unstructured.Unstructured` implements `MarshalJSON` on
+  the pointer receiver; a value leaks a top-level `Object` key). Reuse the rule table
+  codecs and default to `table`; machine formats keep the full resource envelope.
+- **`list`**: value is the `ThresholdRulesDto` (nested). json/yaml/agents marshal it
+  faithfully (preserving custom vs global), while the tables take rows flattened from
+  both arrays — a `SCOPE` column (`custom`/`global`) + `RECORD`, `EXPR`, `ACTIVE`, and
+  (wide) `LABELS`. Default format `table`. Columns are declared as one
+  `cmdio.Table[thresholdRow]` list per ADR-002, not a hand-written codec pair. The
+  table-row/machine-value switch remains local to KG: this team owns the KG code,
+  not Instrumentation's provider code, so this PR does not change that package or
+  widen `internal/output`.
 
 ### Registration / conformance
 
@@ -145,7 +152,8 @@ we don't — we render client-side, consistent with the rest of gcx).
 Table-driven unit tests in `internal/providers/kg` (httptest-backed client, per the
 existing kg test pattern):
 
-- `get` decode: whole-config JSON → `Rule`; table + yaml render.
+- `get` decode: whole-config JSON → `Rule`; table and yaml/json render, asserting
+  the K8s envelope is the top-level machine document (no `Object` wrapper).
 - `list` decode: `ThresholdRulesDto` for both categories, including the
   global-thresholds-without-labels case; flattened table render; json faithful to
   custom/global split.
