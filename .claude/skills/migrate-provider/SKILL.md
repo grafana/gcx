@@ -250,8 +250,9 @@ discovered during provider migrations.
 ### tasks.md: Verification Tasks (MANDATORY)
 
 tasks.md MUST include smoke test design as explicit verification tasks. Each
-show/list command MUST have a smoke test task entry specifying all four output
-formats (json, table, wide, yaml).
+show/list command MUST have a smoke test task entry naming the formats that
+command declares — derive them, do not assume a fixed set (see
+Step 4B below).
 
 ### Optional: /plan-spec Integration
 
@@ -306,7 +307,7 @@ The Build phase uses an agent team with two teammates:
 | Step 4: Adapter + Resource Adapter | `internal/providers/{name}/adapter.go`, `resource_adapter.go` | Build-Core |
 | Step 5: Provider registration | `internal/providers/{name}/provider.go` | Build-Commands |
 | Step 6: Tests | Command tests (`*_test.go`) | Build-Commands |
-| Step 7: Integration / Wiring | `cmd/gcx/providers/{name}/commands.go`, `cmd/gcx/root/command.go` (blank import) | Build-Commands |
+| Step 7: Integration / Wiring | `internal/providers/{name}/commands.go`, `cmd/gcx/root/command.go` (blank import) | Build-Commands |
 
 Teammates MUST NOT modify files outside their ownership boundary.
 
@@ -343,34 +344,59 @@ Phase 4 MUST execute in this exact order. No step may be skipped.
 
 ### Step 4A: Build Gate
 
-Run `GCX_AGENT_MODE=false mise run all` and confirm exit 0.
+Confirm `GCX_AGENT_MODE=false mise run all` passed on the current tree. Reuse
+the Phase 3 result if nothing has changed; rerun after any fix.
 
 ### Step 4B: Smoke Tests (MANDATORY)
 
-Smoke tests are MANDATORY for every show/list command. Each command MUST be
-tested with ALL FOUR output formats: `-o json`, `-o table`, `-o wide`,
-`-o yaml`.
+Test every show/list command against the freshly built `./bin/gcx`. A bare
+`gcx` may resolve to the legacy CLI or another install.
 
-Smoke tests MUST NOT be silently skipped or quietly downgraded.
-If no live instance is available, report every smoke test as UNVERIFIED with that
-reason and do NOT assert parity with the legacy CLI — an unverified port is an
-honest state, a claimed-but-untested one is not. Report the blocker
-to the user.
+Four requirements:
+
+- **Run the formats the command declares**, read from its own `--help` rather
+  than a fixed set. A format dropped from both help and implementation would
+  pass a hardcoded loop.
+- **Preserve stderr and the exit status.** `... && echo OK || echo FAIL` exits 0
+  whatever happened, which is how a failing command gets reported as passing.
+- **Exit nonzero** when any format fails, so the caller sees it.
+- **Inspect the rendered values** against populated fixtures, not just the exit
+  status.
+
+One command and one format, written so failure is visible:
 
 ```bash
-CTX={context-name}
-
-for fmt in json table wide yaml; do
-  GCX_AGENT_MODE=false bin/gcx --context=$CTX {resource} list -o $fmt > /dev/null 2>&1 \
-    && echo "list $fmt: OK" || echo "list $fmt: FAIL"
-done
+GCX_AGENT_MODE=false ./bin/gcx --context={context} {resource} list -o json >/dev/null || exit 1
 ```
+
+Repeat per command and per declared format, and compare that declared list
+against the legacy CLI and the approved spec.
+
+If live access or populated fixtures are unavailable, mark the affected checks
+UNVERIFIED with the reason. Do not claim parity and do not silently omit them.
 
 ### Step 4C: Adapter Smoke (MANDATORY)
 
-Every TypedCRUD resource MUST be verified via the adapter path:
-- `resources list-types` — registration visible
-- `resources get {alias}` — envelope + deserialization working
+For each TypedCRUD resource, check the exact registered group, version and kind
+and the returned content. A successful `gcx resources list-types` alone proves
+nothing about the new registration.
+
+Assert on the values, and let a failed assertion fail the step:
+
+```bash
+GCX_AGENT_MODE=false ./bin/gcx --context={context} resources list-types -o json \
+  | jq -e '.["{group}"]["{version}"] | any(.kind == "{kind}")' >/dev/null || exit 1
+
+GCX_AGENT_MODE=false ./bin/gcx --context={context} resources get {alias}/{id} -o json \
+  | jq -e '.apiVersion == "{group}/{version}" and .kind == "{kind}" and has("metadata")' >/dev/null || exit 1
+```
+
+`resources get` without an id returns an `{"items": [...]}` collection, so
+assert the same shape over `.items` there and require a non-empty list: an
+empty collection cannot prove the mapping works. If no populated fixture
+exists, report UNVERIFIED and name the fixture gap rather than weakening the
+assertion or recording it as an adapter defect.
+
 
 ### Step 4D: Spec Compliance
 

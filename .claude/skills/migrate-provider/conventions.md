@@ -50,8 +50,9 @@ table codecs need to be exported (`IncidentTableCodec`, not
 **`nestif`** — complex nested ifs trigger this. Extract helper functions
 (e.g., `resolveSchema()` from a nested if-else chain).
 
-**`gci`** — import ordering and struct field alignment. Run `gci diff` to
-see what it wants. Common issue: inconsistent spacing before struct tags.
+**`gci`** — import ordering and grouping (it is a formatter in
+`.golangci.yaml`, alongside `gofmt` and `goimports`). Run `gci diff` to see what
+it wants. It does not touch struct fields; `tagalign` is disabled in this repo.
 
 ## Lint Compliance Checklist
 
@@ -87,7 +88,8 @@ slog.Debug("oncall: listing schedules", "path", BasePath+"/schedules")
 - Log request URLs and key parameters at Debug level
 - Log auth resolution decisions (which fallback was used)
 - Never log tokens or secrets — log presence only: `"hasToken", token != ""`
-- Enable with `GCX_LOG_LEVEL=debug` or `--log-level=debug`
+- Enable with `-v` (repeatable, `-vvv` is the maximum). There is no
+  `--log-level` flag and no `GCX_LOG_LEVEL` variable.
 
 ## Build Commands
 
