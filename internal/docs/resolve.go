@@ -31,12 +31,12 @@ func ResolveShorthand(idx *grafanadocs.Index, input string, product string) (str
 		Limit:   1,
 	})
 	if len(hits) == 0 {
-		hint := "no matching page found; try 'gcx docs search"
+		cmd := "gcx docs search"
 		if product != "" {
-			hint += " --product " + shellQuote(product)
+			cmd += " --product " + shellQuote(product)
 		}
-		hint += " " + shellQuote(input) + "' to browse results"
-		return "", fmt.Errorf("%s", hint)
+		cmd += " " + shellQuote(input)
+		return "", fmt.Errorf("no matching page found; try `%s` to browse results", cmd)
 	}
 	return hits[0].URL, nil
 }
