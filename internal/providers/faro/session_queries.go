@@ -23,14 +23,14 @@ const (
 	lokiEventsPageSize = 1000
 
 	// Pinot defaults a SELECT with no LIMIT to 10 rows. Page the journey
-	// UNION at this outer LIMIT and continue while a page is full. OFFSET
-	// pages a same-millisecond bucket when it exceeds LIMIT; tie-breakers
-	// keep that bucket stable across requests.
+	// UNION at this outer LIMIT and continue while a page is full. A
+	// same-millisecond bucket that itself fills LIMIT is rejected (same
+	// as Loki): OFFSET cannot page ties safely.
 	pinotJourneyPageSize = 1000
 	pinotJourneyMaxPages = 100
 
-	// Outer journey sort: timestamp alone is not stable when OFFSET pages a
-	// dense same-ms bucket (Pinot may return ties in arbitrary order).
+	// Outer journey sort for stable pages. A full same-ms bucket still
+	// errors in fetch — these columns do not uniquely order every event.
 	pinotJourneyOrderBy = `ORDER BY "timestamp" ASC, kind ASC, event_name ASC, hash ASC, attribute_hash ASC, message ASC, exception_type ASC, measurement_type ASC, traceID ASC`
 
 	// Parsed event_name filter for Loki event streams (matches Pinot events leg).
@@ -373,9 +373,8 @@ func pinotUserMetadataQuery(p sessionQueryParams) (string, error) {
 
 // pinotJourneyQueryPaged builds the journey UNION. cursorMS 0 is the first
 // page (no extra WHERE). Later pages use WHERE "timestamp" > cursorMS, or
-// WHERE "timestamp" = cursorMS to refetch a same-millisecond bucket. offset
-// pages that bucket when one millisecond has more than LIMIT rows.
-func pinotJourneyQueryPaged(p sessionQueryParams, cursorMS int64, equal bool, offset int) (string, error) {
+// WHERE "timestamp" = cursorMS to refetch leftover rows at that millisecond.
+func pinotJourneyQueryPaged(p sessionQueryParams, cursorMS int64, equal bool) (string, error) {
 	sql, err := substPinot(pinotJourneySQL, p)
 	if err != nil {
 		return "", err
@@ -391,11 +390,7 @@ func pinotJourneyQueryPaged(p sessionQueryParams, cursorMS int64, equal bool, of
 	if !strings.Contains(sql, "{{JOURNEY_CURSOR}}") {
 		return "", errors.New("journey SQL missing cursor placeholder")
 	}
-	sql = strings.Replace(sql, "{{JOURNEY_CURSOR}}", clause, 1)
-	if offset > 0 {
-		sql += fmt.Sprintf("\nOFFSET %d", offset)
-	}
-	return sql, nil
+	return strings.Replace(sql, "{{JOURNEY_CURSOR}}", clause, 1), nil
 }
 
 // inferAppType maps session telemetry to web vs mobile.

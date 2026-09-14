@@ -139,7 +139,7 @@ func fetchPinotJourneyPages(ctx context.Context, client pinotQuerier, uid string
 	var cursorMS int64
 	pages := 0
 	for pages < pinotJourneyMaxPages {
-		resp, err := queryPinotJourney(ctx, client, uid, table, p, start, end, cursorMS, false, 0)
+		resp, err := queryPinotJourney(ctx, client, uid, table, p, start, end, cursorMS, false)
 		if err != nil {
 			return nil, err
 		}
@@ -152,27 +152,25 @@ func fetchPinotJourneyPages(ctx context.Context, client pinotQuerier, uid string
 		if !ok || lastMS <= cursorMS {
 			return merged, nil
 		}
-		// Page the last millisecond so rows that shared that timestamp but
-		// missed this LIMIT are kept. OFFSET is only used here: a full `=`
-		// page must not advance past that instant. Then continue after it.
-		for offset := 0; pages < pinotJourneyMaxPages; offset += pinotJourneyPageSize {
-			bucket, err := queryPinotJourney(ctx, client, uid, table, p, start, end, lastMS, true, offset)
-			if err != nil {
-				return nil, err
-			}
-			pages++
-			appendPinotRows(merged, bucket, seen)
-			if pinotRowCount(bucket) < pinotJourneyPageSize {
-				break
-			}
+		// Refetch the last millisecond so leftover rows that shared that
+		// timestamp but missed this LIMIT are kept. A full `=` page cannot
+		// be OFFSET-paged safely (ties can reshuffle); fail like Loki.
+		bucket, err := queryPinotJourney(ctx, client, uid, table, p, start, end, lastMS, true)
+		if err != nil {
+			return nil, err
+		}
+		pages++
+		appendPinotRows(merged, bucket, seen)
+		if pinotRowCount(bucket) >= pinotJourneyPageSize {
+			return nil, fmt.Errorf("pinot journey: more than %d rows share timestamp %d; dump would be truncated", pinotJourneyPageSize, lastMS)
 		}
 		cursorMS = lastMS
 	}
 	return nil, fmt.Errorf("pinot journey exceeded %d pages of %d rows", pinotJourneyMaxPages, pinotJourneyPageSize)
 }
 
-func queryPinotJourney(ctx context.Context, client pinotQuerier, uid, table string, p sessionQueryParams, start, end time.Time, cursorMS int64, equal bool, offset int) (*querysql.QueryResponse, error) {
-	sql, err := pinotJourneyQueryPaged(p, cursorMS, equal, offset)
+func queryPinotJourney(ctx context.Context, client pinotQuerier, uid, table string, p sessionQueryParams, start, end time.Time, cursorMS int64, equal bool) (*querysql.QueryResponse, error) {
+	sql, err := pinotJourneyQueryPaged(p, cursorMS, equal)
 	if err != nil {
 		return nil, err
 	}

@@ -2,10 +2,7 @@ package faro //nolint:testpackage // Tests unexported opts, fetch, and command c
 
 import (
 	"bytes"
-	"cmp"
 	"context"
-	"math/rand"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -401,13 +398,10 @@ func pinotTimestampRows(n int, startMS int64) [][]any {
 }
 
 // datasetPinot serves a fixed journey dataset with Pinot's LIMIT 1000 and the
-// same > / = cursor clauses as pinotJourneyQueryPaged. Rows are sorted with
-// pinotJourneyOrderBy tie-breakers before LIMIT/OFFSET, matching stable Pinot
-// paging for dense same-ms buckets.
+// same > / = cursor clauses as pinotJourneyQueryPaged.
 type datasetPinot struct {
-	mu       sync.Mutex
-	dataset  [][]any
-	shuffleN int
+	mu      sync.Mutex
+	dataset [][]any
 }
 
 func (s *datasetPinot) Query(_ context.Context, _ string, req pinot.QueryRequest) (*querysql.QueryResponse, error) {
@@ -427,64 +421,13 @@ func (s *datasetPinot) Query(_ context.Context, _ string, req pinot.QueryRequest
 		ms := parseJourneyCursorMS(req.RawSQL[i:])
 		rows = filterJourneyTS(rows, func(ts int64) bool { return ts > ms })
 	}
-	if s.shuffleN > 0 {
-		s.shuffleN++
-		rng := rand.New(rand.NewSource(int64(s.shuffleN * 7919))) //nolint:gosec // test-only tie-order probe
-		rng.Shuffle(len(rows), func(i, j int) { rows[i], rows[j] = rows[j], rows[i] })
-	}
-	sortJourneyStubRows(rows)
-	if off := parseSQLOffset(req.RawSQL); off > 0 {
-		if off >= len(rows) {
-			rows = nil
-		} else {
-			rows = rows[off:]
-		}
-	}
 	if len(rows) > pinotJourneyPageSize {
 		rows = rows[:pinotJourneyPageSize]
 	}
 	return &querysql.QueryResponse{
-		Columns: []querysql.Column{{Name: "timestamp"}, {Name: "kind"}},
+		Columns: []querysql.Column{{Name: "timestamp"}, {Name: "kind"}, {Name: "http_url"}},
 		Rows:    rows,
 	}, nil
-}
-
-func sortJourneyStubRows(rows [][]any) {
-	slices.SortFunc(rows, func(a, b []any) int {
-		if c := cmp.Compare(stubJourneyTS(a), stubJourneyTS(b)); c != 0 {
-			return c
-		}
-		return strings.Compare(stubJourneyKind(a), stubJourneyKind(b))
-	})
-}
-
-func stubJourneyTS(row []any) int64 {
-	if len(row) == 0 {
-		return 0
-	}
-	ts, _ := row[0].(int64)
-	return ts
-}
-
-func stubJourneyKind(row []any) string {
-	if len(row) < 2 {
-		return ""
-	}
-	k, _ := row[1].(string)
-	return k
-}
-
-func parseSQLOffset(sql string) int {
-	i := strings.LastIndex(sql, "OFFSET ")
-	if i < 0 {
-		return 0
-	}
-	fields := strings.Fields(sql[i+len("OFFSET "):])
-	if len(fields) == 0 {
-		return 0
-	}
-	n, _ := strconv.Atoi(fields[0])
-	return n
 }
 
 func parseJourneyCursorMS(sqlTail string) int64 {
@@ -509,33 +452,17 @@ func filterJourneyTS(rows [][]any, keep func(int64) bool) [][]any {
 	return out
 }
 
-func TestFetchPinotJourneyKeepsMoreThanPageInOneMillisecond(t *testing.T) {
+func TestFetchPinotJourneyErrorsWhenSameMSBucketIsFull(t *testing.T) {
 	t.Parallel()
 	ds := make([][]any, pinotJourneyPageSize+1)
 	for i := range ds {
-		ds[i] = []any{int64(5000), "row-" + strconv.Itoa(i)}
+		ds[i] = []any{int64(5000), "event", "https://example/" + strconv.Itoa(i)}
 	}
 	p := sessionQueryParams{AppID: "66", SessionID: "sid", AppType: appTypeWeb}
-	got, err := fetchPinotSession(context.Background(), &datasetPinot{dataset: ds}, "uid", p, time.UnixMilli(1), time.UnixMilli(9000))
-	require.NoError(t, err)
-	require.NotNil(t, got.journey)
-	assert.Len(t, got.journey.Rows, pinotJourneyPageSize+1)
-}
-
-func TestFetchPinotJourneySameMSStableWhenShuffled(t *testing.T) {
-	t.Parallel()
-	ds := make([][]any, pinotJourneyPageSize+1)
-	for i := range ds {
-		ds[i] = []any{int64(5000), "row-" + strconv.Itoa(i)}
-	}
-	rng := rand.New(rand.NewSource(42)) //nolint:gosec // test-only dataset shuffle
-	rng.Shuffle(len(ds), func(i, j int) { ds[i], ds[j] = ds[j], ds[i] })
-
-	p := sessionQueryParams{AppID: "66", SessionID: "sid", AppType: appTypeWeb}
-	got, err := fetchPinotSession(context.Background(), &datasetPinot{dataset: ds, shuffleN: 1}, "uid", p, time.UnixMilli(1), time.UnixMilli(9000))
-	require.NoError(t, err)
-	require.NotNil(t, got.journey)
-	assert.Len(t, got.journey.Rows, pinotJourneyPageSize+1)
+	_, err := fetchPinotSession(context.Background(), &datasetPinot{dataset: ds}, "uid", p, time.UnixMilli(1), time.UnixMilli(9000))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "more than 1000 rows share timestamp 5000")
+	assert.Contains(t, err.Error(), "dump would be truncated")
 }
 
 func TestAppendPinotRowsSkipsEqualJourneyRows(t *testing.T) {
