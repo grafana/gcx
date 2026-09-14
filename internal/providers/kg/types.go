@@ -1,7 +1,11 @@
 // Package kg provides a client for the Grafana Knowledge Graph (Asserts) API.
 package kg
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	kgclient "github.com/grafana/gcx/client/kg"
+)
 
 // Status represents the Knowledge Graph stack status.
 type Status struct {
@@ -369,6 +373,29 @@ type LLMSummaryRequest struct {
 	HideAssertionsPresentMoreThanPercentageOfTime int         `json:"hideAssertionsPresentMoreThanPercentageOfTime"`
 	IncludeSuggestions                            bool        `json:"includeSuggestions"`
 	IncludeRcaPatterns                            bool        `json:"includeRcaPatterns"`
+}
+
+// toWire converts the request to the public client/kg package's type.
+func (r LLMSummaryRequest) toWire() kgclient.LLMSummaryRequest {
+	return kgclient.LLMSummaryRequest{
+		StartTime:                     r.StartTime,
+		EndTime:                       r.EndTime,
+		EntityKeys:                    toWireEntityKeys(r.EntityKeys),
+		SuggestionSrcEntities:         toWireEntityKeys(r.SuggestionSrcEntities),
+		AlertCategories:               r.AlertCategories,
+		HideAssertionsOlderThanNHours: r.HideAssertionsOlderThanNHours,
+		HideAssertionsPresentMoreThanPercentageOfTime: r.HideAssertionsPresentMoreThanPercentageOfTime,
+		IncludeSuggestions: r.IncludeSuggestions,
+		IncludeRcaPatterns: r.IncludeRcaPatterns,
+	}
+}
+
+func toWireEntityKeys(keys []EntityKey) []kgclient.EntityKey {
+	wire := make([]kgclient.EntityKey, len(keys))
+	for i, k := range keys {
+		wire[i] = kgclient.EntityKey{Type: k.Type, Name: k.Name, Scope: k.Scope}
+	}
+	return wire
 }
 
 // CypherInsight is a single insight on a Cypher search entity.

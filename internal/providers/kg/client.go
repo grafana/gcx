@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	kgclient "github.com/grafana/gcx/client/kg"
 	"github.com/grafana/gcx/internal/config"
 	"golang.org/x/sync/errgroup"
 	"k8s.io/client-go/rest"
@@ -31,7 +32,6 @@ const (
 	scopesPath               = pluginResourcePath + "/asserts/api-server/v1/entity_scope"
 	assertionsPath           = pluginResourcePath + "/asserts/api-server/v1/assertions"
 	assertMetricPath         = assertionsPath + "/entity-metric"
-	assertLLMPath            = assertionsPath + "/llm-summary"
 	sourceMetricPath         = pluginResourcePath + "/asserts/api-server/v1/assertion/source-metrics"
 	searchPath               = pluginResourcePath + "/asserts/api-server/v1/search"
 	searchAssertPath         = searchPath + "/assertions"
@@ -108,6 +108,10 @@ type Client struct {
 	httpClient *http.Client
 	host       string
 	namespace  string
+	// assertions serves the parts of this API already promoted to the public
+	// client/kg package; the CLI calls through it rather than keeping a second
+	// copy of that request logic.
+	assertions *kgclient.Client
 }
 
 // NewClient creates a new KG client from the given REST config.
@@ -116,7 +120,12 @@ func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("kg: failed to create HTTP client: %w", err)
 	}
-	return &Client{httpClient: httpClient, host: cfg.Host, namespace: cfg.Namespace}, nil
+	return &Client{
+		httpClient: httpClient,
+		host:       cfg.Host,
+		namespace:  cfg.Namespace,
+		assertions: kgclient.NewClient(httpClient, cfg.Host),
+	}, nil
 }
 
 // getJSON performs a GET request and decodes the JSON response into v.
@@ -1116,11 +1125,31 @@ func (c *Client) Correlate(ctx context.Context, req AlertInspectionRequest) (*Al
 
 // LLMSummary fetches entity health data from the LLM summary endpoint.
 func (c *Client) LLMSummary(ctx context.Context, req LLMSummaryRequest) (map[string]any, error) {
-	var result map[string]any
-	if err := c.postJSON(ctx, assertLLMPath, req, &result); err != nil {
-		return nil, fmt.Errorf("kg: llm summary: %w", err)
+	result, err := c.assertions.LLMSummary(ctx, req.toWire())
+	if err != nil {
+		return nil, fmt.Errorf("kg: llm summary: %w", asAPIError(err))
 	}
 	return result, nil
+}
+
+// asAPIError restates a failure from the public client as this package's
+// APIError. The CLI depends on that type: cmd/gcx/fail renders KG failures
+// through its service name, and `kg inspect` probes it for a 404 to offer scope
+// hints. APIError renders the status itself, so the public client's status
+// prefix is stripped to keep the message identical to before the cutover.
+func asAPIError(err error) error {
+	var statusErr interface{ HTTPStatusCode() int }
+	if !errors.As(err, &statusErr) {
+		return err
+	}
+
+	code := statusErr.HTTPStatusCode()
+	message := err.Error()
+	if after, ok := strings.CutPrefix(message, fmt.Sprintf("request failed with status %d", code)); ok {
+		message = strings.TrimSpace(strings.TrimPrefix(after, ":"))
+	}
+
+	return &APIError{StatusCode: code, message: message}
 }
 
 // ---------------------------------------------------------------------------

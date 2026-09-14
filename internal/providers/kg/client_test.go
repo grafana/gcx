@@ -982,3 +982,61 @@ func TestClient_ValidateSuppressions(t *testing.T) {
 		assert.Equal(t, http.StatusInternalServerError, apiErr.HTTPStatusCode())
 	})
 }
+
+func TestClient_LLMSummary(t *testing.T) {
+	const path = "/api/plugins/grafana-asserts-app/resources/asserts/api-server/v1/assertions/llm-summary"
+
+	t.Run("success", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, http.MethodPost, r.Method)
+			assert.Equal(t, path, r.URL.Path)
+			var received kg.LLMSummaryRequest
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&received))
+			assert.Equal(t, int64(1000), received.StartTime)
+			require.Len(t, received.EntityKeys, 1)
+			assert.Equal(t, "checkout", received.EntityKeys[0].Name)
+			assert.Equal(t, map[string]any{"env": "prod"}, received.EntityKeys[0].Scope)
+			writeJSON(w, map[string]any{"summary": "all good"})
+		}))
+		defer server.Close()
+
+		client := newTestClient(t, server)
+		result, err := client.LLMSummary(t.Context(), kg.LLMSummaryRequest{
+			StartTime:  1000,
+			EndTime:    2000,
+			EntityKeys: []kg.EntityKey{{Type: "Service", Name: "checkout", Scope: map[string]any{"env": "prod"}}},
+		})
+		require.NoError(t, err)
+		assert.Equal(t, "all good", result["summary"])
+	})
+
+	// `kg inspect` probes for *APIError with a 404 to offer scope hints, and
+	// cmd/gcx/fail renders KG failures through it, so delegating to client/kg
+	// must still surface that type with an unchanged message.
+	t.Run("404 returns APIError carrying the server message", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"message": "entity not found"}`))
+		}))
+		defer server.Close()
+
+		client := newTestClient(t, server)
+		_, err := client.LLMSummary(t.Context(), kg.LLMSummaryRequest{})
+		var apiErr *kg.APIError
+		require.ErrorAs(t, err, &apiErr)
+		assert.Equal(t, http.StatusNotFound, apiErr.StatusCode)
+		assert.Equal(t, "entity not found", apiErr.APIUserMessage())
+		assert.Equal(t, "kg: llm summary: kg: request failed with status 404: entity not found", err.Error())
+	})
+
+	t.Run("empty error body keeps the status-only message", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+		}))
+		defer server.Close()
+
+		client := newTestClient(t, server)
+		_, err := client.LLMSummary(t.Context(), kg.LLMSummaryRequest{})
+		assert.Equal(t, "kg: llm summary: kg: request failed with status 500", err.Error())
+	})
+}
