@@ -1,3 +1,26 @@
+## v0.5.0 (2026-09-14)
+
+Quick flag before the list: the commit range you pasted spans far more than v0.5.0 — it includes `chore(release)` markers all the way from v0.4.2 through v1.2.0/unreleased. I scoped this to just the commits between the v0.4.4 changelog commit (`72cf9d2f`) and the v0.5.0 changelog commit (`8e705281`), which is the actual v0.5.0 delta. Let me know if you wanted the full range instead.
+
+- Rename `aio11y` to `agento11y` across commands and skills (rebranding)
+- Add `agento11y-instrument` and `agento11y-prod-setup` skills for setup, evals, and guards
+- Bundle `agento11y-eval-starter`, later renamed to `agento11y-test-starter`
+- Remove the `explore-datasources` skill; retune other skill descriptions and fix doc drift
+- Register `assistant` as a first-class provider
+- Export usage events as flat JSON over HTTP; wire up usage event lifecycle logging
+- Add output-shape hints to `--jq` runtime errors
+- Fix `--json` discovery/selection to descend into single-key list envelopes
+- Request full cloud scopes on `login cloud` followup
+- Add span/trace selectors to profiles; include trace IDs in exemplars
+- Fix profiles `--top` totals to exclude pre-window boundary points
+- Add `kg prom-rules schema` command and `--dry-run` for suppressions create
+- Fix KG entity/relationship deletes and route writes through the asserts proxy
+- Add Dashboard V2 support to the resource linter
+- Derive SDK imports for generated import code from usage
+- Disclose per-product Grafana Cloud costs in docs and help text
+- Clarify gcx supports OSS and Enterprise, not just Cloud
+
+
 ## Unreleased
 
 **Breaking changes**
