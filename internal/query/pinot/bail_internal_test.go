@@ -15,6 +15,12 @@ func TestBail_apostropheInCommentsDoesNotBail(t *testing.T) {
 	assert.False(t, bail("SELECT a /* don't stop */ FROM events"))
 }
 
+func TestBail_trailingDashDashAfterMultilineBlockComment(t *testing.T) {
+	sql := "SELECT * FROM events /*\n' */ -- tail" //nolint:unqueryvet // trailing-comment lexer fixture
+	assert.True(t, hasTrailingLineComment(sql))
+	assert.True(t, bail(sql))
+}
+
 func TestBail_dashDashInsideBlockCommentDoesNotBail(t *testing.T) {
 	mid := "SELECT a FROM events /* a -- b */ WHERE x = 1"
 	leading := "SELECT /* note -- x */ a FROM events"

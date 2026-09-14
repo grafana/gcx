@@ -45,12 +45,6 @@ var limitCommaRe = regexp.MustCompile(`(?i)\bLIMIT\s+\d+\s*,`)
 // warns.
 var optionClauseRe = regexp.MustCompile(`(?i)\bOPTION\s*\(`)
 
-// trailingLineCommentRe matches a trailing `--` line comment. Appending
-// "LIMIT n" after one would land inside the comment. hasTrailingComment
-// strips quoted literals and identifiers first, so `SELECT '--' FROM t` does
-// not match even though the raw SQL contains `--`.
-var trailingLineCommentRe = regexp.MustCompile(`--[^\n]*$`)
-
 func stripLeadingSetStatements(sql string) string {
 	return leadingSetRe.ReplaceAllString(sql, "")
 }
@@ -299,18 +293,71 @@ func hasLimitBeforeTrailingComment(sql string) bool {
 	return limitBeforeTrailingCommentRe.MatchString(s)
 }
 
-// hasTrailingLineComment reports a -- line comment on the last line of the statement.
+// hasTrailingLineComment reports a -- line comment that reaches the end of the
+// statement. The scan walks the full SQL so a block comment that started on an
+// earlier line still hides quotes, and so an apostrophe inside that block
+// cannot hide a real trailing --.
 func hasTrailingLineComment(sql string) bool {
 	trimmed := strings.TrimRight(sql, "; \t\n\r")
-	line := trimmed
-	if idx := strings.LastIndexByte(trimmed, '\n'); idx >= 0 {
-		line = trimmed[idx+1:]
+	for i := 0; i < len(trimmed); {
+		switch {
+		case trimmed[i] == '\'':
+			j := i + 1
+			for j < len(trimmed) {
+				if trimmed[j] == '\'' {
+					if j+1 < len(trimmed) && trimmed[j+1] == '\'' {
+						j += 2
+						continue
+					}
+					j++
+					break
+				}
+				j++
+			}
+			i = j
+		case trimmed[i] == '"':
+			j := i + 1
+			for j < len(trimmed) {
+				if trimmed[j] == '"' {
+					if j+1 < len(trimmed) && trimmed[j+1] == '"' {
+						j += 2
+						continue
+					}
+					j++
+					break
+				}
+				j++
+			}
+			i = j
+		case i+1 < len(trimmed) && trimmed[i] == '-' && trimmed[i+1] == '-':
+			j := i + 2
+			for j < len(trimmed) && trimmed[j] != '\n' {
+				j++
+			}
+			if j >= len(trimmed) {
+				return true
+			}
+			i = j
+		case i+1 < len(trimmed) && trimmed[i] == '/' && trimmed[i+1] == '*':
+			j := i + 2
+			closed := false
+			for j+1 < len(trimmed) {
+				if trimmed[j] == '*' && trimmed[j+1] == '/' {
+					j += 2
+					closed = true
+					break
+				}
+				j++
+			}
+			if !closed {
+				return false
+			}
+			i = j
+		default:
+			i++
+		}
 	}
-	line = strings.TrimRight(
-		maskLexical(line, lexicalMask{strings: true, quotedIdents: true, blockComments: true}),
-		" \t\r",
-	)
-	return trailingLineCommentRe.MatchString(line)
+	return false
 }
 
 // LimitFlagUsage is the --limit help text for the typed Pinot command.

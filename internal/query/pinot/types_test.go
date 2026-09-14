@@ -89,6 +89,7 @@ func TestEnforceLimit(t *testing.T) {
 		{"explain is not SELECT or WITH", "EXPLAIN SELECT * FROM t", 100, "EXPLAIN SELECT * FROM t", false},
 		{"insert is not SELECT or WITH", "INSERT INTO t VALUES (1)", 100, "INSERT INTO t VALUES (1)", false},
 		{"bail on trailing line comment", "SELECT 1 -- keep going", 100, "SELECT 1 -- keep going", false},
+		{"bail when trailing -- is after a multiline block comment holding an apostrophe", "SELECT * FROM events /*\n' */ -- tail", 100, "SELECT * FROM events /*\n' */ -- tail", false},
 		{"bail on trailing line comment after block comment", "SELECT 1 FROM t/*note*/-- comment", 100, "SELECT 1 FROM t/*note*/-- comment", false},
 		{"bail when limit is followed by trailing block comment", "SELECT 1 FROM events LIMIT 5 /* note */", 100, "SELECT 1 FROM events LIMIT 5 /* note */", false},
 		{"bail when block comment is between LIMIT and row count", "SELECT 1 FROM events LIMIT /* note */ 5", 100, "SELECT 1 FROM events LIMIT /* note */ 5", false},
@@ -261,6 +262,18 @@ func TestLimitEnforcementNotice(t *testing.T) {
 			expr:      "SELECT 1 -- keep going",
 			limitFlag: flag(50),
 			want:      "You asked for --limit 50, but a row limit was not appended (this query shape is not safe to modify). Add LIMIT in the SQL or use --limit 0.",
+		},
+		{
+			name:      "multiline block comment then -- is not appended when --limit set",
+			expr:      "SELECT * FROM events /*\n' */ -- tail",
+			limitFlag: flag(100),
+			want:      "You asked for --limit 100, but a row limit was not appended (this query shape is not safe to modify). Add LIMIT in the SQL or use --limit 0.",
+		},
+		{
+			name:      "multiline block comment then -- stays silent when --limit omitted",
+			expr:      "SELECT * FROM events /*\n' */ -- tail",
+			limitFlag: nil,
+			want:      "",
 		},
 		{
 			name:      "LIMIT offset,count already has a LIMIT when --limit set",
