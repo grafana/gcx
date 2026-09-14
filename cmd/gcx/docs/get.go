@@ -93,7 +93,7 @@ func getCommand(loader *indexLoader, fetch docFetcher) *cobra.Command {
 				Limit:   opts.limit,
 			})
 			if res.Content == "" && opts.section != "" {
-				return fmt.Errorf("section %q not found; run 'gcx docs outline %s' to see available headings", opts.section, shellQuote(opts.url))
+				return fmt.Errorf("section %q not found; run `gcx docs outline %s` to see available headings", opts.section, shellQuote(opts.url))
 			}
 			return opts.IO.Encode(cmd.OutOrStdout(), getResult{
 				Content:       res.Content,
