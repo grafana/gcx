@@ -45,7 +45,7 @@ gcx appo11y services list-labels <service> [--namespace ns] [flags]
       --filter stringArray    Restrict discovery to series matching a label matcher, e.g. --filter k8s_cluster_name=prod-us (repeatable)
   -h, --help                  help for list-labels
       --jq string             jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string           Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --json string           Comma-separated list of dotted field paths to include in JSON output (e.g. spec.name), or 'list' (or '?') to discover the available paths
       --label string          Show the distinct values of a single label instead of the label summary (e.g. --label k8s_cluster_name)
       --metrics-mode string   Span-metrics family whose labels to inspect. One of: auto (probes the stack), v3, tempo, or otel (default "auto")
   -n, --namespace string      Service namespace (only needed when the argument is the bare service name and multiple namespaces are in play)

@@ -65,7 +65,7 @@ gcx appo11y services map <service> [--namespace ns] [flags]
       --group-by strings     Split each edge per distinct value of a label, e.g. --group-by k8s_cluster_name (comma-separated or repeatable). The label must exist on the service-graph metrics — note the Tempo service-graph family often omits cluster labels, in which case no edges match
   -h, --help                 help for map
       --jq string            jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --json string          Comma-separated list of dotted field paths to include in JSON output (e.g. spec.name), or 'list' (or '?') to discover the available paths
   -n, --namespace string     Service namespace (only needed when the argument is the bare service name and multiple namespaces are in play)
   -o, --output string        Output format. One of: agents, dot, json, mermaid, table, wide, yaml (default "table")
       --since string         Rate/quantile window applied to service-graph metrics (e.g. 1m, 5m, 1h, 1d) — PromQL duration syntax (default "5m")

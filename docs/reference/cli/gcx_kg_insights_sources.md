@@ -15,7 +15,7 @@ gcx kg insights sources [Type--Name] [flags]
   -h, --help                help for sources
       --insight string      Insight name (e.g. LatencyAverageBreach, ResourceRateAnomaly) — sets the 'alertname' label
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --json string         Comma-separated list of dotted field paths to include in JSON output (e.g. spec.name), or 'list' (or '?') to discover the available paths
       --label stringArray   Assertion label as key=value (repeatable; typically copied from 'kg entities inspect' timeLines[].labels)
       --name string         Entity name
       --namespace string    Namespace scope

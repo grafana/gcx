@@ -1072,60 +1072,6 @@ func TestErrorToDetailedError_MutuallyExclusiveFlagsSentinel(t *testing.T) {
 		"converter must only match the typed sentinel, not arbitrary strings")
 }
 
-// TestErrorToDetailedError_UnknownFieldSelectionError verifies that
-// UnknownFieldSelectionError is converted to a DetailedError with:
-//   - Summary: "Invalid command usage"
-//   - ExitCode: 2 (ExitUsageError)
-//   - Details containing the offending field names
-//   - A suggestion to run --json list
-func TestErrorToDetailedError_UnknownFieldSelectionError(t *testing.T) {
-	tests := []struct {
-		name           string
-		fields         []string
-		wantInDetails  string
-		wantExitCode   int
-		wantSuggestion string
-	}{
-		{
-			name:           "single unknown field",
-			fields:         []string{"bogus"},
-			wantInDetails:  "bogus",
-			wantExitCode:   gcxerrors.ExitUsageError,
-			wantSuggestion: "--json list",
-		},
-		{
-			name:          "multiple unknown fields",
-			fields:        []string{"foo", "bar"},
-			wantInDetails: "foo",
-			wantExitCode:  gcxerrors.ExitUsageError,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			err := cmdoutput.UnknownFieldSelectionError{Fields: tc.fields}
-
-			got := fail.ErrorToDetailedError(err)
-
-			require.NotNil(t, got)
-			assert.Equal(t, "Invalid command usage", got.Summary)
-			require.NotNil(t, got.ExitCode)
-			assert.Equal(t, tc.wantExitCode, *got.ExitCode)
-			assert.Contains(t, got.Details, tc.wantInDetails)
-			if tc.wantSuggestion != "" {
-				found := false
-				for _, s := range got.Suggestions {
-					if strings.Contains(s, tc.wantSuggestion) {
-						found = true
-						break
-					}
-				}
-				assert.True(t, found, "expected suggestion containing %q in %v", tc.wantSuggestion, got.Suggestions)
-			}
-		})
-	}
-}
-
 // TestErrorToDetailedError_JQRuntimeError verifies that JQRuntimeError (a --jq
 // expression failed against the actual output) is converted to a DetailedError
 // with:
