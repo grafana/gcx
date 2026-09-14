@@ -136,12 +136,20 @@ func (c *Client) executeQuery(ctx context.Context, body []byte, operation string
 	return &grafanaResp, nil
 }
 
-func (c *Client) Labels(ctx context.Context, datasourceUID string) (*LabelsResponse, error) {
+// Labels returns all label names. An optional query (LogQL stream selector)
+// scopes the result to matching streams; empty means unscoped.
+func (c *Client) Labels(ctx context.Context, datasourceUID, query string) (*LabelsResponse, error) {
 	apiPath := c.buildLabelsPath(datasourceUID)
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, c.restConfig.Host+apiPath, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	if query != "" {
+		q := httpReq.URL.Query()
+		q.Set("query", query)
+		httpReq.URL.RawQuery = q.Encode()
 	}
 
 	resp, err := c.httpClient.Do(httpReq)
@@ -167,12 +175,20 @@ func (c *Client) Labels(ctx context.Context, datasourceUID string) (*LabelsRespo
 	return &result, nil
 }
 
-func (c *Client) LabelValues(ctx context.Context, datasourceUID, labelName string) (*LabelsResponse, error) {
+// LabelValues returns the values a label takes. An optional query (LogQL
+// stream selector) scopes the result to matching streams; empty means unscoped.
+func (c *Client) LabelValues(ctx context.Context, datasourceUID, labelName, query string) (*LabelsResponse, error) {
 	apiPath := c.buildLabelValuesPath(datasourceUID, labelName)
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, c.restConfig.Host+apiPath, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	if query != "" {
+		q := httpReq.URL.Query()
+		q.Set("query", query)
+		httpReq.URL.RawQuery = q.Encode()
 	}
 
 	resp, err := c.httpClient.Do(httpReq)

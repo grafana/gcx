@@ -20,6 +20,12 @@ gcx datasources loki labels [flags]
 	# Get values for a specific label
 	gcx datasources loki labels -d UID --label job
 
+	# Scope labels to a stream selector
+	gcx datasources loki labels -d UID --selector '{app="foo"}'
+
+	# Scope label values to a stream selector
+	gcx datasources loki labels -d UID --label job --selector '{app="foo"}'
+
 	# Output as JSON
 	gcx datasources loki labels -d UID -o json
 ```
@@ -33,6 +39,7 @@ gcx datasources loki labels [flags]
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -l, --label string        Get values for this label (omit to list all labels)
   -o, --output string       Output format. One of: agents, json, table, yaml (default "table")
+      --selector string     LogQL stream selector to scope results (e.g. '{app="foo"}')
 ```
 
 ### Options inherited from parent commands
