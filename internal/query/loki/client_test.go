@@ -41,6 +41,90 @@ func TestBuildPathsEscapeDatasourceUID(t *testing.T) {
 	}
 }
 
+func TestClient_Labels_Query(t *testing.T) {
+	var capturedPath string
+	var capturedQuery url.Values
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedPath = r.URL.Path
+		capturedQuery = r.URL.Query()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"success","data":["app","job"]}`))
+	}))
+	defer server.Close()
+
+	cfg := config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}, Namespace: "default"}
+	client, err := loki.NewClient(cfg)
+	require.NoError(t, err)
+
+	resp, err := client.Labels(context.Background(), "loki-uid", `{app="backstage"}`)
+	require.NoError(t, err)
+
+	assert.Equal(t, "/api/datasources/uid/loki-uid/resources/labels", capturedPath)
+	assert.Equal(t, `{app="backstage"}`, capturedQuery.Get("query"))
+	assert.Equal(t, []string{"app", "job"}, resp.Data)
+}
+
+func TestClient_Labels_NoQuery(t *testing.T) {
+	var capturedRawQuery string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedRawQuery = r.URL.RawQuery
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"success","data":["app","job"]}`))
+	}))
+	defer server.Close()
+
+	cfg := config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}, Namespace: "default"}
+	client, err := loki.NewClient(cfg)
+	require.NoError(t, err)
+
+	_, err = client.Labels(context.Background(), "loki-uid", "")
+	require.NoError(t, err)
+
+	assert.Empty(t, capturedRawQuery)
+}
+
+func TestClient_LabelValues_Query(t *testing.T) {
+	var capturedPath string
+	var capturedQuery url.Values
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedPath = r.URL.Path
+		capturedQuery = r.URL.Query()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"success","data":["backstage"]}`))
+	}))
+	defer server.Close()
+
+	cfg := config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}, Namespace: "default"}
+	client, err := loki.NewClient(cfg)
+	require.NoError(t, err)
+
+	resp, err := client.LabelValues(context.Background(), "loki-uid", "app", `{app="backstage"}`)
+	require.NoError(t, err)
+
+	assert.Equal(t, "/api/datasources/uid/loki-uid/resources/label/app/values", capturedPath)
+	assert.Equal(t, `{app="backstage"}`, capturedQuery.Get("query"))
+	assert.Equal(t, []string{"backstage"}, resp.Data)
+}
+
+func TestClient_LabelValues_NoQuery(t *testing.T) {
+	var capturedRawQuery string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedRawQuery = r.URL.RawQuery
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"success","data":["backstage"]}`))
+	}))
+	defer server.Close()
+
+	cfg := config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}, Namespace: "default"}
+	client, err := loki.NewClient(cfg)
+	require.NoError(t, err)
+
+	_, err = client.LabelValues(context.Background(), "loki-uid", "app", "")
+	require.NoError(t, err)
+
+	assert.Empty(t, capturedRawQuery)
+}
+
 func TestQuery_FallsBackOn403(t *testing.T) {
 	var paths []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

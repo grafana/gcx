@@ -66,6 +66,9 @@ func (p *Provider) descriptor() signals.Descriptor {
   # Get values for a specific label
   gcx logs labels -d UID --label job
 
+  # Scope labels to a stream selector
+  gcx logs labels -d UID --selector '{app="foo"}'
+
   # Output as JSON
   gcx logs labels -d UID -o json`,
 			},
