@@ -90,11 +90,11 @@ func decodeScriptSettings(s CheckSettings) (CheckSettings, bool) {
 	return withScript(s, checkType, nested, string(decoded)), true
 }
 
-// encodeScriptSettingsIfPlaintext returns a copy of s with a plaintext
+// encodeScriptSettings returns a copy of s with a plaintext
 // scripted/browser script base64-encoded. If the script is already valid
 // base64 (or the check type carries no script at all), s is returned
-// unchanged — safe to call unconditionally on every read spec.
-func encodeScriptSettingsIfPlaintext(s CheckSettings) CheckSettings {
+// unchanged — safe to call unconditionally before sending a spec to the API.
+func encodeScriptSettings(s CheckSettings) CheckSettings {
 	checkType, nested, script, ok := scriptSettings(s)
 	if !ok || isBase64(script) {
 		return s

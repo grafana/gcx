@@ -882,7 +882,7 @@ func readCheckSpec(filePath string) (*CheckSpec, error) {
 	// A scripted/browser check's script may have been left as plaintext by
 	// 'checks get --decode-script' (or written by hand); re-encode it to the
 	// base64 the API expects. A no-op if it's already base64.
-	spec.Settings = encodeScriptSettingsIfPlaintext(spec.Settings)
+	spec.Settings = encodeScriptSettings(spec.Settings)
 
 	return spec, nil
 }

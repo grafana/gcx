@@ -91,41 +91,41 @@ func TestDecodeScriptSettings(t *testing.T) {
 	})
 }
 
-func TestEncodeScriptSettingsIfPlaintext(t *testing.T) {
+func TestEncodeScriptSettings(t *testing.T) {
 	plaintext := "export default function() {}"
 	encoded := base64.StdEncoding.EncodeToString([]byte(plaintext))
 
 	t.Run("plaintext scripted script gets encoded", func(t *testing.T) {
-		out := encodeScriptSettingsIfPlaintext(scriptedSettings(plaintext))
+		out := encodeScriptSettings(scriptedSettings(plaintext))
 		assert.Equal(t, encoded, scriptFromSettings(t, out, "scripted"))
 	})
 
 	t.Run("plaintext browser script gets encoded", func(t *testing.T) {
-		out := encodeScriptSettingsIfPlaintext(browserSettings(plaintext))
+		out := encodeScriptSettings(browserSettings(plaintext))
 		assert.Equal(t, encoded, scriptFromSettings(t, out, "browser"))
 	})
 
 	t.Run("already base64 script is left unchanged", func(t *testing.T) {
 		in := scriptedSettings(encoded)
-		out := encodeScriptSettingsIfPlaintext(in)
+		out := encodeScriptSettings(in)
 		assert.Equal(t, in, out)
 	})
 
 	t.Run("non-script check type is untouched", func(t *testing.T) {
 		in := CheckSettings{"http": map[string]any{"method": "GET"}}
-		out := encodeScriptSettingsIfPlaintext(in)
+		out := encodeScriptSettings(in)
 		assert.Equal(t, in, out)
 	})
 
 	t.Run("missing settings map", func(t *testing.T) {
-		out := encodeScriptSettingsIfPlaintext(nil)
+		out := encodeScriptSettings(nil)
 		assert.Nil(t, out)
 	})
 
 	t.Run("round trip through decode then encode is stable", func(t *testing.T) {
 		decoded, changed := decodeScriptSettings(scriptedSettings(encoded))
 		assert.True(t, changed)
-		reEncoded := encodeScriptSettingsIfPlaintext(decoded)
+		reEncoded := encodeScriptSettings(decoded)
 		assert.Equal(t, encoded, scriptFromSettings(t, reEncoded, "scripted"))
 	})
 }
