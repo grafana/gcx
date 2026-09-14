@@ -216,19 +216,7 @@ type IncidentLabel struct {
 	Description string `json:"description,omitempty"`
 }
 
-// IncidentCursor represents a cursor for paginated query responses.
-type IncidentCursor struct {
-	HasMore   bool   `json:"hasMore"`
-	NextValue string `json:"nextValue"`
-}
-
-// QueryIncidentPreviews: severity arrives as severityLabel, and the rest of
-// a full Incident's fields are absent — the structured children (taskList,
-// incidentMembership, incidentHookRuns, refs) as well as overviewURL,
-// durationSeconds, prefix, state, statusID, fieldGroupUUID, descriptionUser,
-// descriptionModifiedTime, statusModifiedByUser and statusModifiedTime. The
-// opt-in membership preview (includeMembershipPreview) is not requested:
-// its important-assignments-only shape does not map onto IncidentMembership.
+// IncidentQuery holds the parameters of a List call.
 type IncidentQuery struct {
 	Limit          int
 	OrderDirection string
@@ -245,104 +233,6 @@ type IncidentQuery struct {
 	// set it is used verbatim and the structured filters above are ignored;
 	// the list command rejects combining them.
 	QueryString string
-}
-
-// incidentPreviewsQuery is the documented IncidentPreviewsQuery wire type.
-type incidentPreviewsQuery struct {
-	Limit          int    `json:"limit"`
-	OrderDirection string `json:"orderDirection"`
-	OrderField     string `json:"orderField,omitempty"`
-	QueryString    string `json:"queryString,omitempty"`
-}
-
-// queryIncidentPreviewsRequest is the request body for QueryIncidentPreviews.
-// The cursor rides next to the query, not inside it: pass the cursor
-// returned by the previous page to fetch the next one.
-type queryIncidentPreviewsRequest struct {
-	Query                    incidentPreviewsQuery `json:"query"`
-	Cursor                   *IncidentCursor       `json:"cursor,omitempty"`
-	IncludeCustomFieldValues bool                  `json:"includeCustomFieldValues"`
-	IncludeIncidentChannels  bool                  `json:"includeIncidentChannels"`
-}
-
-// queryIncidentPreviewsResponse is the response from QueryIncidentPreviews.
-type queryIncidentPreviewsResponse struct {
-	IncidentPreviews []IncidentPreview `json:"incidentPreviews"`
-	Cursor           IncidentCursor    `json:"cursor"`
-	Error            string            `json:"error,omitempty"`
-}
-
-// IncidentPreview is the reduced incident shape returned by
-// QueryIncidentPreviews: severity arrives as severityLabel, and the
-// structured children of a full Incident (taskList, membership, hook runs,
-// refs) are absent.
-type IncidentPreview struct {
-	IncidentID       string               `json:"incidentID"`
-	Title            string               `json:"title"`
-	Slug             string               `json:"slug,omitempty"`
-	Status           string               `json:"status"`
-	SeverityID       string               `json:"severityID,omitempty"`
-	SeverityLabel    string               `json:"severityLabel,omitempty"`
-	IsDrill          bool                 `json:"isDrill"`
-	IncidentType     string               `json:"incidentType,omitempty"`
-	Description      string               `json:"description,omitempty"`
-	Summary          string               `json:"summary,omitempty"`
-	Version          int                  `json:"version,omitempty"`
-	Labels           []IncidentLabel      `json:"labels,omitempty"`
-	FieldValues      []IncidentFieldValue `json:"fieldValues,omitempty"`
-	IncidentChannels []any                `json:"incidentChannels,omitempty"`
-	CreatedByUser    *IncidentUser        `json:"createdByUser,omitempty"`
-	CreatedTime      FlexTime             `json:"createdTime,omitzero"`
-	ModifiedTime     FlexTime             `json:"modifiedTime,omitzero"`
-	ClosedTime       FlexTime             `json:"closedTime,omitzero"`
-	IncidentStart    FlexTime             `json:"incidentStart,omitzero"`
-	IncidentEnd      FlexTime             `json:"incidentEnd,omitzero"`
-}
-
-// ToIncident maps the preview onto the Incident shape used across the
-// provider; severityLabel populates Severity, matching the field
-// QueryIncidents used to return, and fields previews do not carry stay zero.
-func (p IncidentPreview) ToIncident() Incident {
-	return Incident{
-		IncidentID:       p.IncidentID,
-		Title:            p.Title,
-		Slug:             p.Slug,
-		Status:           p.Status,
-		Severity:         p.SeverityLabel,
-		SeverityID:       p.SeverityID,
-		IsDrill:          p.IsDrill,
-		IncidentType:     p.IncidentType,
-		Description:      p.Description,
-		Summary:          p.Summary,
-		Version:          p.Version,
-		Labels:           p.Labels,
-		FieldValues:      p.FieldValues,
-		IncidentChannels: p.IncidentChannels,
-		CreatedByUser:    p.CreatedByUser,
-		CreatedTime:      p.CreatedTime,
-		ModifiedTime:     p.ModifiedTime,
-		ClosedTime:       p.ClosedTime,
-		IncidentStart:    p.IncidentStart,
-		IncidentEnd:      p.IncidentEnd,
-	}
-}
-
-// createIncidentRequest is the request body for creating an incident. It
-// carries no severity field: CreateIncident ignores both severity and
-// severityID, and UpdateSeverity is the only route to a severity other than
-// the default one.
-type createIncidentRequest struct {
-	Title          string          `json:"title"`
-	Status         string          `json:"status"`
-	IsDrill        bool            `json:"isDrill"`
-	Labels         []IncidentLabel `json:"labels"`
-	IncidentType   string          `json:"incidentType,omitempty"`
-	FieldGroupUUID string          `json:"fieldGroupUUID,omitempty"`
-}
-
-// createIncidentResponse wraps the created incident.
-type createIncidentResponse struct {
-	Incident Incident `json:"incident"`
 }
 
 // updateStatusRequest is the request body for updating incident status.
