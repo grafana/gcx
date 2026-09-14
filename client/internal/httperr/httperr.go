@@ -1,4 +1,8 @@
-package slo
+// Package httperr turns a non-2xx Grafana API response into a descriptive
+// error. It is shared by the public client packages under client/ so each one
+// does not carry its own copy, and is internal so it stays out of their public
+// API surface.
+package httperr
 
 import (
 	"encoding/json"
@@ -12,11 +16,10 @@ import (
 const maxErrorBodyBytes = 1 << 20 // 1 MiB
 
 // apiError carries the HTTP status of a failing request. It deliberately
-// exposes only Error, Unwrap, and HTTPStatusCode: gcx's CLI (which wraps this
-// client for its `slo definitions` command) probes errors for that exact
-// three-method shape structurally, not by concrete type, so this satisfies
-// the same probe as gcx's internal error type without this package
-// depending on internal/gcxerrors.
+// exposes only Error, Unwrap, and HTTPStatusCode: gcx's CLI (which wraps these
+// clients) probes errors for that exact three-method shape structurally, not by
+// concrete type, so this satisfies the same probe as gcx's internal error type
+// without the client packages depending on internal/gcxerrors.
 type apiError struct {
 	status  int
 	message string
@@ -55,10 +58,9 @@ func (e errorResponse) text() string {
 	return e.Msg
 }
 
-// handleErrorResponse reads a non-2xx HTTP response body and returns a
-// descriptive error. It does not close resp.Body; callers remain
-// responsible for that.
-func handleErrorResponse(resp *http.Response) error {
+// FromResponse reads a non-2xx HTTP response body and returns a descriptive
+// error. It does not close resp.Body; callers remain responsible for that.
+func FromResponse(resp *http.Response) error {
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
 	if err != nil {
 		return &apiError{

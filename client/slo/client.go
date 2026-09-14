@@ -12,6 +12,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+
+	"github.com/grafana/gcx/client/internal/httperr"
 )
 
 // ErrNotFound is returned when a requested SLO does not exist (HTTP 404).
@@ -51,7 +53,7 @@ func (c *Client) List(ctx context.Context) ([]Slo, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, handleErrorResponse(resp)
+		return nil, httperr.FromResponse(resp)
 	}
 
 	var listResp listResponse
@@ -79,7 +81,7 @@ func (c *Client) Get(ctx context.Context, uuid string) (*Slo, error) {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, handleErrorResponse(resp)
+		return nil, httperr.FromResponse(resp)
 	}
 
 	var slo Slo
@@ -106,7 +108,7 @@ func (c *Client) Create(ctx context.Context, slo *Slo) (*Slo, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
-		return nil, handleErrorResponse(resp)
+		return nil, httperr.FromResponse(resp)
 	}
 
 	var createResp createResponse
@@ -136,7 +138,7 @@ func (c *Client) Update(ctx context.Context, uuid string, slo *Slo) (*Slo, error
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusNoContent {
-		return nil, handleErrorResponse(resp)
+		return nil, httperr.FromResponse(resp)
 	}
 
 	updated, err := c.Get(ctx, uuid)
@@ -164,7 +166,7 @@ func (c *Client) Delete(ctx context.Context, uuid string, confirmed bool) error 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
-		return handleErrorResponse(resp)
+		return httperr.FromResponse(resp)
 	}
 
 	return nil
