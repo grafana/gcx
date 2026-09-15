@@ -767,7 +767,10 @@ func (c *serviceDetailCodec) Encode(w io.Writer, v any) error {
 	writeRow("Namespace", orDash(d.Namespace))
 	writeRow("Language", orDash(d.Language))
 	writeRow("Status", instrumentationStatus(d.Instrumented))
-	writeRow("Environment", orDash(environmentValue(d.Labels)))
+	writeRow("Environment", orDash(d.Environment))
+	writeRow("Cluster", orDash(d.Cluster))
+	writeRow("Version", orDash(d.Version))
+	writeRow("Kind", orDash(d.Kind))
 
 	labels := defaultLabels()
 	if c.Wide {
@@ -777,6 +780,9 @@ func (c *serviceDetailCodec) Encode(w io.Writer, v any) error {
 	for _, lbl := range labels {
 		if lbl == "deployment_environment" || lbl == "deployment_environment_name" {
 			continue // already surfaced as `Environment`
+		}
+		if lbl == "cluster" {
+			continue // already surfaced as `Cluster` (k8s_cluster_name still walks separately)
 		}
 		value := d.Labels[lbl]
 		if value == "" {
