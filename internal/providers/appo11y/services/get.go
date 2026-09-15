@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/providers/appo11y/activation"
 	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/prometheus/common/model"
@@ -223,6 +224,11 @@ func runGet(loader *providers.ConfigLoader, opts *getOpts) func(*cobra.Command, 
 		cfgCtx, cfg, err := dsquery.LoadContextAndConfig(ctx, loader)
 		if err != nil {
 			return err
+		}
+		if ok, err := activation.IsActivated(ctx, cfg); err != nil {
+			return err
+		} else if !ok {
+			return activation.NotActivatedError()
 		}
 
 		datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "prometheus")
