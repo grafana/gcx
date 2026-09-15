@@ -225,10 +225,8 @@ func runGet(loader *providers.ConfigLoader, opts *getOpts) func(*cobra.Command, 
 		if err != nil {
 			return err
 		}
-		if ok, err := activation.IsActivated(ctx, cfg); err != nil {
+		if err := activation.Gate(ctx, cfg); err != nil {
 			return err
-		} else if !ok {
-			return activation.NotActivatedError()
 		}
 
 		datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "prometheus")

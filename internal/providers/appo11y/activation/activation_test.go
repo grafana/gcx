@@ -117,6 +117,41 @@ func TestIsActivated_TransportFailure(t *testing.T) {
 	}
 }
 
+func TestGate_NotFoundBlocks(t *testing.T) {
+	cfg := testRESTConfig(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	})
+
+	err := Gate(context.Background(), cfg)
+	if err == nil {
+		t.Fatal("expected a definitive not-activated error")
+	}
+	if err.Error() != NotActivatedError().Error() {
+		t.Errorf("err = %v, want NotActivatedError", err)
+	}
+}
+
+func TestGate_EnabledPasses(t *testing.T) {
+	cfg := testRESTConfig(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"jsonData":{}}`)) //nolint:errcheck // test helper
+	})
+
+	if err := Gate(context.Background(), cfg); err != nil {
+		t.Errorf("err = %v, want nil", err)
+	}
+}
+
+func TestGate_InconclusiveDoesNotBlock(t *testing.T) {
+	cfg := testRESTConfig(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	})
+
+	if err := Gate(context.Background(), cfg); err != nil {
+		t.Errorf("err = %v, want nil — an inconclusive activation check must not block the command", err)
+	}
+}
+
 func TestNotActivatedError(t *testing.T) {
 	err := NotActivatedError()
 	if err == nil {

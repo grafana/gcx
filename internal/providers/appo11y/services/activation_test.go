@@ -102,14 +102,15 @@ func TestServicesCommands_ActivationGate(t *testing.T) {
 }
 
 // TestServicesCommands_ActivationInconclusive covers the "inconclusive"
-// branch: a non-404 non-2xx status from the activation check must surface as
-// an error too (not silently proceed), and must not issue any query either.
+// branch: a non-404 non-2xx status from the activation check must NOT block
+// the command — a token that can't reach the plugin-proxy settings endpoint
+// may still have full Prometheus/Tempo access, so the command proceeds and
+// lets its own query succeed or fail on its own terms.
 func TestServicesCommands_ActivationInconclusive(t *testing.T) {
 	srv, otherPaths := activationGatedServer(t, http.StatusInternalServerError)
 	loader := newActivationTestLoader(t, srv.URL)
 
 	err := runServicesCmd(loader, "list", "-d", "test-uid")
-	require.Error(t, err)
-	assert.NotEqual(t, activation.NotActivatedError().Error(), err.Error())
-	assert.Empty(t, *otherPaths, "no query should be issued while the activation check is inconclusive")
+	require.NoError(t, err)
+	assert.NotEmpty(t, *otherPaths, "the command's own query should still be issued despite an inconclusive activation check")
 }

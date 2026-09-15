@@ -141,10 +141,8 @@ func runLabels(loader *providers.ConfigLoader, opts *labelsOpts) func(*cobra.Com
 		if err != nil {
 			return err
 		}
-		if ok, err := activation.IsActivated(ctx, cfg); err != nil {
+		if err := activation.Gate(ctx, cfg); err != nil {
 			return err
-		} else if !ok {
-			return activation.NotActivatedError()
 		}
 
 		datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "prometheus")

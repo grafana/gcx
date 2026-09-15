@@ -59,3 +59,20 @@ func IsActivated(ctx context.Context, cfg internalconfig.NamespacedRESTConfig) (
 func NotActivatedError() error {
 	return errors.New("App Observability is not activated for this stack — install/enable the App Observability plugin, or see " + notActivatedDocsURL) //nolint:staticcheck // "App" is a proper noun, capitalization is intentional
 }
+
+// Gate runs the activation pre-flight and returns an error only when
+// IsActivated has definitively confirmed the plugin is not activated. An
+// inconclusive result (IsActivated's (false, err) case — auth failure, 5xx,
+// transport error) does not block the command: the caller's own
+// Prometheus/Tempo request will either succeed or surface a more specific
+// error than this best-effort check could.
+func Gate(ctx context.Context, cfg internalconfig.NamespacedRESTConfig) error {
+	activated, err := IsActivated(ctx, cfg)
+	if err != nil {
+		return nil //nolint:nilerr // deliberate: an inconclusive check must not block the command
+	}
+	if !activated {
+		return NotActivatedError()
+	}
+	return nil
+}
