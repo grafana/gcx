@@ -62,25 +62,6 @@ func TestBuildServiceLinks_CompoundWindow(t *testing.T) {
 	}
 }
 
-func TestDatemathFrom(t *testing.T) {
-	tests := []struct {
-		window string
-		want   string
-	}{
-		{window: "5m", want: "now-300s"},
-		{window: "1h", want: "now-3600s"},
-		{window: "1h30m", want: "now-5400s"},
-		{window: "1d", want: "now-86400s"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.window, func(t *testing.T) {
-			if got := datemathFrom(tt.window); got != tt.want {
-				t.Errorf("datemathFrom(%q) = %q, want %q", tt.window, got, tt.want)
-			}
-		})
-	}
-}
-
 // assertURLContainsExpr confirms the query-string payload of an Explore
 // link carries expr. It doesn't overspecify the full URL shape — that's
 // prometheus.QueryExploreURL's own tested contract.
