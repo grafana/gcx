@@ -176,13 +176,8 @@ func runFleetOperationsList(loader *providers.ConfigLoader, opts *fleetOperation
 		if err != nil {
 			return err
 		}
-		if err := activation.Gate(ctx, cfg); err != nil {
-			return err
-		}
-		cat, err := opts.KG.catalog(cfg)
-		if err != nil {
-			return err
-		}
+		activation.Gate(ctx, cfg, cmd.ErrOrStderr())
+		cat := opts.KG.catalog(cfg)
 
 		datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "prometheus")
 		if err != nil {
@@ -212,7 +207,8 @@ func runFleetOperationsList(loader *providers.ConfigLoader, opts *fleetOperation
 			// pattern services list uses: --limit permits up to 500 rows,
 			// and lookup() costs two serial HTTP round trips each with no
 			// caching, which would turn this into a multi-minute command.
-			idx := warnKGIndex(cmd.ErrOrStderr(), cat.index(ctx))
+			startMs, endMs := windowMs(opts.Since)
+			idx := warnKGIndex(cmd.ErrOrStderr(), cat.index(ctx, startMs, endMs))
 			for i := range response.Items {
 				response.Items[i].KG = idx[response.Items[i].Service]
 			}
@@ -640,13 +636,8 @@ func runOperationGet(loader *providers.ConfigLoader, opts *operationDetailOpts) 
 		if err != nil {
 			return err
 		}
-		if err := activation.Gate(ctx, cfg); err != nil {
-			return err
-		}
-		cat, err := opts.KG.catalog(cfg)
-		if err != nil {
-			return err
-		}
+		activation.Gate(ctx, cfg, cmd.ErrOrStderr())
+		cat := opts.KG.catalog(cfg)
 
 		datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "prometheus")
 		if err != nil {
@@ -678,7 +669,8 @@ func runOperationGet(loader *providers.ConfigLoader, opts *operationDetailOpts) 
 			return err
 		}
 		if cat != nil {
-			detail.Service.KG = cat.lookup(ctx, name)
+			startMs, endMs := windowMs(opts.Since)
+			detail.Service.KG = warnKGLookup(cmd.ErrOrStderr(), cat.lookupVerbose(ctx, name, startMs, endMs))
 		}
 
 		notFound := !detail.Operation.HasTraffic
