@@ -3,6 +3,8 @@ package services //nolint:testpackage // Tests cover unexported fleet command op
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -285,5 +287,70 @@ func TestFleetOperationsList_KGAnnotationIsOneBulkCall(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), `"kg"`) {
 		t.Errorf("expected a kg annotation in the output: %s", stdout.String())
+	}
+}
+
+// TestFleetOperationsList_GroupByLimitTruncates guards the fix for the
+// "--limit doesn't bound rows under --group-by" finding: the server-side
+// topk(limit, ...) ranks (job, span_name) pairs, but "and on (job,
+// span_name)" fans each ranked pair out into one row per distinct
+// group-label value — 2 ranked pairs x 3 clusters returns 6 rows even
+// though --limit asked for 3. The client-side truncation added to
+// runFleetOperationsList must cap the final row count regardless.
+func TestFleetOperationsList_GroupByLimitTruncates(t *testing.T) {
+	// Every fleet query gets the same 6-series response back: 2
+	// (job, span_name) pairs, each split across 3 k8s_cluster_name values —
+	// the --group-by fanout that used to defeat --limit.
+	frames := make([]string, 0, 6)
+	i := 0
+	for _, job := range []string{"billing/checkout", "billing/cart"} {
+		for _, cluster := range []string{"a", "b", "c"} {
+			i++
+			frames = append(frames, fmt.Sprintf(`{
+				"schema":{"fields":[
+					{"name":"Time","type":"time"},
+					{"name":"Value","type":"number","labels":{"job":%q,"span_name":"GET /x","k8s_cluster_name":%q}}
+				]},
+				"data":{"values":[[1700000000000],[%d]]}
+			}`, job, cluster, i))
+		}
+	}
+	body := fmt.Sprintf(`{"results":{"A":{"frames":[%s]}}}`, strings.Join(frames, ","))
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == activationEndpoint:
+			w.WriteHeader(http.StatusOK)
+		case r.URL.Path == "/bootdata":
+			http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
+		default:
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(body))
+		}
+	}))
+	defer srv.Close()
+
+	loader := newActivationTestLoader(t, srv.URL)
+	root := OperationsCommands(loader)
+	root.SilenceUsage = true
+	root.SilenceErrors = true
+	var stdout, stderr bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetIn(strings.NewReader(""))
+	root.SetArgs([]string{"list", "-d", "test-uid", "-o", "json", "--group-by", "k8s_cluster_name", "--limit", "3", "--kg", "off"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute err = %v, stdout = %s, stderr = %s", err, stdout.String(), stderr.String())
+	}
+
+	var resp FleetOperationsResponse
+	if err := json.Unmarshal(stdout.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v\n%s", err, stdout.String())
+	}
+	if len(resp.Items) != 3 {
+		t.Errorf("len(Items) = %d, want 3 (the fanout produced 6 rows for 2 ranked pairs x 3 clusters)", len(resp.Items))
+	}
+	if !strings.Contains(stderr.String(), "showing top 3 ranked operations") {
+		t.Errorf("stderr missing the truncation hint: %s", stderr.String())
 	}
 }
