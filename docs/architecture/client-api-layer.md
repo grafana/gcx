@@ -443,9 +443,11 @@ Used by server-side HTTP handlers in `internal/server/handlers/`.
 ### `useragent.go`
 
 `UserAgentTransport` wraps any `http.RoundTripper` and injects the `User-Agent`
-header (`gcx/{version} ({os}/{arch})`) via `version.UserAgent()` on every request.
-Used by `NewClient` (and thus `NewDefaultClient`) and `NewGCOMClient`. The k8s
-dynamic client gets User-Agent through `rest.Config.UserAgent`.
+header (`gcx/{version} ({os}/{arch}; user={human|agent})`) via `version.UserAgent()`
+on every request. The `user` token comes from `agent.IsAgentMode()`, the same
+detection usage stats report as `is_agent`. Used by `NewClient` (and thus
+`NewDefaultClient`) and `NewGCOMClient`. The k8s dynamic client gets User-Agent
+through `rest.Config.UserAgent`.
 
 ### Callers
 
