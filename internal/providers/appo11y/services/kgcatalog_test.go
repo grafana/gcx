@@ -98,20 +98,34 @@ func TestKGCatalogLookup(t *testing.T) {
 		cat := newKGCatalog(newKGTestConfig(srv.URL), kgModeAuto)
 		require.NotNil(t, cat)
 
-		ref := cat.lookup(context.Background(), "checkout")
+		ref := cat.lookupVerbose(context.Background(), "checkout", 0, 0).ref
 		require.NotNil(t, ref)
-		assert.True(t, ref.Known)
 		assert.Equal(t, "Service", ref.EntityType)
 		assert.Equal(t, map[string]string{"env": "prod"}, ref.Scope)
 	})
 
-	t.Run("active but not found returns nil", func(t *testing.T) {
+	// TestKGCatalogLookup/scope-less_miss_falls_back_to_a_name-exact_search
+	// guards the fix for LookupEntity's scope requirement: a service the
+	// graph only knows under a specific scope (env/site/namespace) won't
+	// match a scope-less LookupEntity call, so lookupVerbose must fall back
+	// to scanning ListEntities by name — the same two-step
+	// internal/providers/kg's discoverEntityScope uses.
+	t.Run("scope-less miss falls back to a name-exact search", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			switch {
 			case strings.Contains(r.URL.Path, "v1/stack/status"):
 				writeKGJSON(w, map[string]any{"enabled": true, "status": "complete"})
 			case strings.Contains(r.URL.Path, "v1/entity"):
-				w.WriteHeader(http.StatusNoContent)
+				w.WriteHeader(http.StatusNoContent) // scope-less LookupEntity misses
+			case strings.Contains(r.URL.Path, "v1/search"):
+				writeKGJSON(w, map[string]any{
+					"data": map[string]any{
+						"entities": []map[string]any{
+							{"type": "Service", "name": "checkout", "scope": map[string]string{"env": "prod"}},
+						},
+						"lastPage": true,
+					},
+				})
 			default:
 				w.WriteHeader(http.StatusNotFound)
 			}
@@ -120,7 +134,31 @@ func TestKGCatalogLookup(t *testing.T) {
 
 		cat := newKGCatalog(newKGTestConfig(srv.URL), kgModeAuto)
 		require.NotNil(t, cat)
-		assert.Nil(t, cat.lookup(context.Background(), "unknown"))
+
+		ref := cat.lookupVerbose(context.Background(), "checkout", 0, 0).ref
+		require.NotNil(t, ref)
+		assert.Equal(t, "Service", ref.EntityType)
+		assert.Equal(t, map[string]string{"env": "prod"}, ref.Scope)
+	})
+
+	t.Run("active but not found in either lookup or search returns nil", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch {
+			case strings.Contains(r.URL.Path, "v1/stack/status"):
+				writeKGJSON(w, map[string]any{"enabled": true, "status": "complete"})
+			case strings.Contains(r.URL.Path, "v1/entity"):
+				w.WriteHeader(http.StatusNoContent)
+			case strings.Contains(r.URL.Path, "v1/search"):
+				writeKGJSON(w, map[string]any{"data": map[string]any{"entities": []map[string]any{}, "lastPage": true}})
+			default:
+				w.WriteHeader(http.StatusNotFound)
+			}
+		}))
+		defer srv.Close()
+
+		cat := newKGCatalog(newKGTestConfig(srv.URL), kgModeAuto)
+		require.NotNil(t, cat)
+		assert.Nil(t, cat.lookupVerbose(context.Background(), "unknown", 0, 0).ref)
 	})
 
 	t.Run("inactive short-circuits before the entity endpoint is hit", func(t *testing.T) {
@@ -140,11 +178,11 @@ func TestKGCatalogLookup(t *testing.T) {
 
 		cat := newKGCatalog(newKGTestConfig(srv.URL), kgModeAuto)
 		require.NotNil(t, cat)
-		assert.Nil(t, cat.lookup(context.Background(), "checkout"))
+		assert.Nil(t, cat.lookupVerbose(context.Background(), "checkout", 0, 0).ref)
 		assert.False(t, entityHit, "LookupEntity's endpoint must not be hit once KG is known inactive")
 	})
 
-	t.Run("active but the entity lookup itself errors is swallowed", func(t *testing.T) {
+	t.Run("active but the entity lookup itself errors is inconclusive, not swallowed", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			switch {
 			case strings.Contains(r.URL.Path, "v1/stack/status"):
@@ -159,7 +197,9 @@ func TestKGCatalogLookup(t *testing.T) {
 
 		cat := newKGCatalog(newKGTestConfig(srv.URL), kgModeAuto)
 		require.NotNil(t, cat)
-		assert.Nil(t, cat.lookup(context.Background(), "checkout"))
+		lr := cat.lookupVerbose(context.Background(), "checkout", 0, 0)
+		assert.Nil(t, lr.ref)
+		assert.True(t, lr.inconclusive)
 	})
 }
 
@@ -188,13 +228,12 @@ func TestKGCatalogIndex(t *testing.T) {
 		cat := newKGCatalog(newKGTestConfig(srv.URL), kgModeAuto)
 		require.NotNil(t, cat)
 
-		result := cat.index(context.Background())
+		result := cat.index(context.Background(), 0, 0)
 		require.False(t, result.inconclusive)
 		require.False(t, result.truncated)
 		idx := result.idx
 		require.Len(t, idx, 2)
 		require.NotNil(t, idx["checkout"])
-		assert.True(t, idx["checkout"].Known)
 		assert.Equal(t, map[string]string{"env": "prod"}, idx["checkout"].Scope)
 		require.NotNil(t, idx["payments"])
 	})
@@ -220,7 +259,7 @@ func TestKGCatalogIndex(t *testing.T) {
 		cat := newKGCatalog(newKGTestConfig(srv.URL), kgModeAuto)
 		require.NotNil(t, cat)
 
-		result := cat.index(context.Background())
+		result := cat.index(context.Background(), 0, 0)
 		assert.True(t, result.truncated)
 		assert.False(t, result.inconclusive)
 		assert.Len(t, result.idx, 1)
@@ -244,7 +283,7 @@ func TestKGCatalogIndex(t *testing.T) {
 		cat := newKGCatalog(newKGTestConfig(srv.URL), kgModeAuto)
 		require.NotNil(t, cat)
 
-		result := cat.index(context.Background())
+		result := cat.index(context.Background(), 0, 0)
 		assert.False(t, result.inconclusive)
 		assert.False(t, result.truncated)
 		assert.NotNil(t, result.idx)
@@ -268,7 +307,7 @@ func TestKGCatalogIndex(t *testing.T) {
 		cat := newKGCatalog(newKGTestConfig(srv.URL), kgModeAuto)
 		require.NotNil(t, cat)
 
-		result := cat.index(context.Background())
+		result := cat.index(context.Background(), 0, 0)
 		assert.NotNil(t, result.idx)
 		assert.Empty(t, result.idx)
 		assert.True(t, result.inconclusive, "a search failure must be distinguishable from a genuine empty catalog")
@@ -290,7 +329,7 @@ func TestKGCatalogLookupVerbose_Inconclusive(t *testing.T) {
 		cat := newKGCatalog(newKGTestConfig(srv.URL), kgModeAuto)
 		require.NotNil(t, cat)
 
-		lr := cat.lookupVerbose(context.Background(), "checkout")
+		lr := cat.lookupVerbose(context.Background(), "checkout", 0, 0)
 		assert.Nil(t, lr.ref)
 		assert.True(t, lr.inconclusive)
 		assert.Error(t, lr.inconclusiveErr)
@@ -312,7 +351,7 @@ func TestKGCatalogLookupVerbose_Inconclusive(t *testing.T) {
 		cat := newKGCatalog(newKGTestConfig(srv.URL), kgModeAuto)
 		require.NotNil(t, cat)
 
-		lr := cat.lookupVerbose(context.Background(), "checkout")
+		lr := cat.lookupVerbose(context.Background(), "checkout", 0, 0)
 		assert.Nil(t, lr.ref)
 		assert.True(t, lr.inconclusive)
 		assert.Error(t, lr.inconclusiveErr)
@@ -327,7 +366,7 @@ func TestKGCatalogLookupVerbose_Inconclusive(t *testing.T) {
 		cat := newKGCatalog(newKGTestConfig(srv.URL), kgModeAuto)
 		require.NotNil(t, cat)
 
-		lr := cat.lookupVerbose(context.Background(), "checkout")
+		lr := cat.lookupVerbose(context.Background(), "checkout", 0, 0)
 		assert.Nil(t, lr.ref)
 		assert.False(t, lr.inconclusive)
 		assert.NoError(t, lr.inconclusiveErr)
@@ -336,16 +375,16 @@ func TestKGCatalogLookupVerbose_Inconclusive(t *testing.T) {
 
 func TestAnnotateServicesFromKG(t *testing.T) {
 	items := []Service{{Name: "checkout"}, {Name: "payments"}}
-	idx := map[string]*KGRef{"checkout": {Known: true, EntityType: "Service"}}
+	idx := map[string]*KGRef{"checkout": {EntityType: "Service"}}
 
 	got := annotateServicesFromKG(items, idx)
 	require.Len(t, got, 2)
-	assert.Equal(t, &KGRef{Known: true, EntityType: "Service"}, got[0].KG)
+	assert.Equal(t, &KGRef{EntityType: "Service"}, got[0].KG)
 	assert.Nil(t, got[1].KG, "an item with no matching KG index entry must stay nil, not a synthesized {Known:false}")
 
 	// An index entry with no matching item must not add a new row — the
 	// graph annotates existing telemetry-discovered rows, it never adds ones.
-	idx["orphan-service"] = &KGRef{Known: true}
+	idx["orphan-service"] = &KGRef{EntityType: "Service"}
 	got2 := annotateServicesFromKG(items, idx)
 	assert.Len(t, got2, 2, "a KG index entry with no matching item must not synthesize a new row")
 }

@@ -149,10 +149,7 @@ func runMap(loader *providers.ConfigLoader, opts *mapOpts) func(*cobra.Command, 
 			return err
 		}
 		activation.Gate(ctx, cfg, cmd.ErrOrStderr())
-		cat, err := opts.KG.catalog(cfg)
-		if err != nil {
-			return err
-		}
+		cat := opts.KG.catalog(cfg)
 
 		datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "prometheus")
 		if err != nil {
@@ -178,7 +175,8 @@ func runMap(loader *providers.ConfigLoader, opts *mapOpts) func(*cobra.Command, 
 			return err
 		}
 		if cat != nil {
-			result.Service.KG = warnKGLookup(cmd.ErrOrStderr(), cat.lookupVerbose(ctx, name))
+			startMs, endMs := windowMs(opts.Since)
+			result.Service.KG = warnKGLookup(cmd.ErrOrStderr(), cat.lookupVerbose(ctx, name, startMs, endMs))
 		}
 
 		notFound := len(result.Callers) == 0 && len(result.Callees) == 0
