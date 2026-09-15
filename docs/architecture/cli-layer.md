@@ -646,11 +646,14 @@ func (c *tableCodec) Decode(io.Reader, any) error { return errors.New("not suppo
 Four colored message functions output to a given `io.Writer`:
 
 ```go
-cmdio.Success(cmd.OutOrStdout(), "%d resources pushed, %d errors", ok, fail)
-cmdio.Warning(cmd.OutOrStdout(), "...")
-cmdio.Error(cmd.OutOrStdout(), "...")
-cmdio.Info(cmd.OutOrStdout(), "...")
+cmdio.Success(cmd.ErrOrStderr(), "%d resources pushed, %d errors", ok, fail)
+cmdio.Warning(cmd.ErrOrStderr(), "...")
+cmdio.Error(cmd.ErrOrStderr(), "...")
+cmdio.Info(cmd.ErrOrStderr(), "...")
 ```
+
+Pass the **stderr** writer: stdout carries the result, stderr the diagnostics
+(see [output.md § 1.4](../design/output.md) and CONSTITUTION.md § Output).
 
 They prefix with colored Unicode symbols (✔ ⚠ ✘ 🛈). `--no-color` disables all color globally via `color.NoColor = true` in root's `PersistentPreRun`.
 
@@ -829,7 +832,7 @@ cmd.AddCommand(myCmd(configOpts))
 | `configOpts.LoadGrafanaConfig` is called in `RunE`, not at construction | All resource commands |
 | `--config` and `--context` are persistent on the group, not per-subcommand | `resources/command.go`, `config/command.go` |
 | All errors bubble up through `RunE` return value; never `os.Exit` in commands | All commands |
-| Status messages go to `cmd.OutOrStdout()`, not `os.Stdout` directly | All commands |
+| Status messages go to `cmd.ErrOrStderr()`, never `os.Stdout`/`os.Stderr` directly | All commands |
 | Custom table codecs implement `format.Codec` and are registered before `BindFlags` | `get.go`, `list.go`, `validate.go` |
 | Data fetching is format-agnostic — fetch all fields, let codecs filter display | All commands with custom codecs |
 | `OnErrorMode` is always validated in `opts.Validate()`, not inline | All multi-resource commands |

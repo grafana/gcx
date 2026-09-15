@@ -165,7 +165,7 @@ Never state proposed or conventional guidance as law.
 | A `finite` leaf emits exactly one JSON value in agent mode | **CI-enforced** (`TestAgentConformance_*`) |
 | One `init()`, one `providers.Register()`; no `adapter.Register()` outside it | **CONSTITUTION** § Architecture Invariants |
 | Error summaries from the closed vocabulary | **Law, scoped to `cmd/gcx/fail/`** converters — not a constraint on arbitrary command error text |
-| Exit codes 0-6 | Real and reachable when you set it. **Documented gap:** cobra's own flag/arg errors exit 1, not 2 (`docs/design/exit-codes.md` §2.3) — don't claim 2 for a path you didn't wire |
+| Exit codes 0-6 | Real and reachable when you set it. **Documented gap:** an unknown flag and a missing positional arg still exit 1, not 2 (`docs/design/exit-codes.md` §2.3 has the verified table) — don't claim 2 for a path you didn't wire |
 | `Args:` on every leaf | Strong convention; no CI check |
 | `list_meta` truncation metadata | `docs/design/output.md` §15 is **PROPOSED** and opt-in. Not repo-wide, not required for every list command |
 | Empty array serialized as `[]` not `null` | Convention with local test precedent; no doc rule |

@@ -371,15 +371,15 @@ detection when explicitly set.
 
 | Priority | Mechanism | Notes |
 |----------|-----------|-------|
-| 1 | `GCX_AGENT_MODE` env var | Explicit override — falsy value disables agent mode even if other vars are set |
-| 2 | `CLAUDECODE`, `CLAUDE_CODE`, `CURSOR_AGENT`, `GITHUB_COPILOT`, `AMAZON_Q`, `OPENCODE`, `PI_CODING_AGENT` env vars | Any truthy value enables agent mode |
-| 3 | `--agent` CLI flag | Applied after env detection; always takes precedence when explicitly passed |
+| 1 | `--agent` CLI flag | Applied after env detection and overwrites it, so an explicitly passed `--agent`/`--agent=false` wins in both directions |
+| 2 | `GCX_AGENT_MODE` env var | Explicit override — falsy value disables agent mode even if other vars are set |
+| 3 | `CLAUDECODE`, `CLAUDE_CODE`, `CURSOR_AGENT`, `GITHUB_COPILOT`, `AMAZON_Q`, `OPENCODE`, `PI_CODING_AGENT` env vars | Any truthy value enables agent mode |
 
 **Behavioral effects when agent mode is active:**
 - Color output disabled globally (`color.NoColor = true`)
-- Default output format overridden to `json` (machine-parseable by default)
+- Default output format overridden to `agents` (compact JSON below 100 KiB, temp-file spill above); `artifact`-class commands pin their own format and reject `-o agents`
 - Pipe-aware behaviors forced: `IsPiped=true`, `NoTruncate=true` regardless of TTY state
-- In-band error JSON written to stdout on failure (see `cmd/gcx/fail/json.go`)
+- In-band error JSON written to stdout on failure (see `internal/gcxerrors/json.go`)
 
 **Pipe detection** is also independent of agent mode. Root `PersistentPreRun` calls
 `terminal.Detect()` which checks `term.IsTerminal(os.Stdout.Fd())`. When piped:
@@ -395,7 +395,7 @@ behaviors regardless of actual TTY state.
 - `internal/terminal/terminal.go` — `Detect()`, `IsPiped()`, `NoTruncate()`, setters
 - `cmd/gcx/root/command.go` — orchestrates detection order in `PersistentPreRun`
 - `internal/output/format.go` — `io.Options` fields `IsPiped`, `NoTruncate`, `JSONFields`
-- `cmd/gcx/fail/json.go` — `DetailedError.WriteJSON` for in-band error reporting
+- `internal/gcxerrors/json.go` — `DetailedError.WriteJSON` for in-band error reporting
 
 **Evidence:**
 - `internal/agent/` package with `init()`-time env-var detection
