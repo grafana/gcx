@@ -194,6 +194,10 @@ spans three remote actors: the Grafana instance (which hosts the
 backend (which issues and refreshes tokens), and a short-lived callback
 server that gcx starts on a loopback port.
 
+The flow rejects Grafana Cloud portal roots before it prints a browser URL or
+starts a callback listener. A portal manages stacks, but it does not serve the
+Grafana instance plugin route. Callers must pass a stack URL instead.
+
 ```mermaid
 sequenceDiagram
     participant User
