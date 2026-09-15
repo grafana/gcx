@@ -62,9 +62,15 @@ implemented by Build-Core.
 
 **You own ONLY these files:**
 - `internal/providers/{name}/provider.go`
-- `cmd/gcx/providers/{name}/commands.go`
-- `cmd/gcx/providers/{name}/*_test.go` (command tests)
+- `internal/providers/{name}/commands.go`
+- `internal/providers/{name}/*_test.go` (command tests)
 - The blank import line in `cmd/gcx/root/command.go`
+
+Commands live under `internal/`, not `cmd/gcx/providers/{name}/` — that path
+exists nowhere in the repo, and `provider.go`'s `Commands()` would have to
+import `cmd/` to return them, which `CONSTITUTION.md` forbids. The root command
+mounts every registered provider's `Commands()` automatically; the blank import
+is the only root change.
 
 Do NOT modify types.go, client.go, adapter.go, or resource_adapter.go.
 Those are owned by Build-Core.

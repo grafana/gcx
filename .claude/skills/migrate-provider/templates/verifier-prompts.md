@@ -19,42 +19,31 @@ from the spec acceptance criteria and verification tasks below.
 
 ## Step 4A: Build Gate
 
-Run `GCX_AGENT_MODE=false mise run all` and confirm it exits 0 with no lint errors
-and all tests passing. If it fails, report the failure and STOP — do not
-proceed to smoke tests.
+Confirm `GCX_AGENT_MODE=false mise run all` passed on the current tree. Reuse
+the Phase 3 result if nothing has changed; rerun after a fix. If it fails,
+report the failure and STOP — do not proceed to smoke tests.
 
 ## Step 4B: Smoke Tests (MANDATORY)
 
-Run every show/list command against a live Grafana instance. Each command MUST be
-tested with ALL FOUR output formats: `-o json`, `-o table`, `-o wide`, `-o yaml`.
+**Read `../SKILL.md` § "Step 4B: Smoke Tests" and run its Bash procedure.**
+It uses the freshly built binary, derives the declared formats, preserves
+stderr, and fails when any command fails. Keep the procedure in that one place.
 
-Smoke tests are MANDATORY. If no live instance is available, STOP and report
-the blocker to the user. Do NOT skip smoke tests or mark them "optional".
-
-```bash
-CTX={context-name}
-
-# Per-command smoke (repeat for EVERY show/list command):
-for fmt in json table wide yaml; do
-  GCX_AGENT_MODE=false gcx --context=$CTX {resource} list -o $fmt > /dev/null 2>&1 \
-    && echo "list $fmt: OK" || echo "list $fmt: FAIL"
-  GCX_AGENT_MODE=false gcx --context=$CTX {resource} get {id} -o $fmt > /dev/null 2>&1 \
-    && echo "get $fmt: OK" || echo "get $fmt: FAIL"
-done
-```
+Run every show/list command against a live Grafana instance. If no live instance
+is available, report every smoke test as UNVERIFIED with that reason and do NOT
+assert parity with the legacy CLI — an unverified port is an honest state, a
+claimed-but-untested one is not. Report the blocker to the user. Do not silently
+skip a smoke test or mark it "optional".
 
 ## Step 4C: Adapter Smoke (MANDATORY)
 
-Every TypedCRUD resource MUST be verified via the adapter path:
+**Read `../SKILL.md` § "Step 4C: Adapter Smoke" and run its Bash procedure.**
 
-```bash
-# Registration visible:
-gcx --context=$CTX resources list-types -o json | jq 'to_entries[] | select(.key | test("{group}"))'
-
-# Envelope + deserialization:
-gcx --context=$CTX resources get {alias} -o json | head -5
-gcx --context=$CTX resources get {alias}/{id} -o json | head -5
-```
+It probes three commands — `gcx resources list-types -o json`,
+`gcx resources get {alias} -o json`, and `gcx resources get {alias}/{id} -o json`
+— against the freshly built `./bin/gcx`, and asserts on their *content*, not
+just their exit status. Check the exact group/version/kind. Mark unavailable
+access or populated fixtures UNVERIFIED, not PASS or an assumed wiring defect.
 
 ## Step 4D: Spec Compliance
 

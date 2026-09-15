@@ -43,9 +43,8 @@ UX requirements. All items are unless marked otherwise.
 - [ ] Push-like operations are idempotent (create-or-update)
 - [ ] Data fetching is format-agnostic — do not gate fetches on `--output` value (Pattern 13)
 - [ ] PromQL queries use `promql-builder` (`github.com/grafana/promql-builder/go/promql`), not string formatting (Pattern 14)
-- [ ] HTTP clients use `httputils.NewDefaultClient(ctx)` or `cloudCfg.HTTPClient(ctx)`,
-  not bare `http.Client{}` or `http.DefaultClient` (Step 4b in provider-guide.md)
-- [ ] List/get commands for CRUD resources wrap json/yaml output in K8s envelope manifests (see below)
+- [ ] HTTP clients follow [provider-guide Step 4b](../reference/provider-guide.md#step-4b-http-client-construction): preserve the configured Grafana transport for requests to `cfg.Host`, and use `httputils.NewDefaultClient(ctx)` for direct requests to other hosts. No bare `http.Client{}` or `http.DefaultClient`.
+- [ ] New list/get commands for adapter-registered resources use K8s envelope manifests in structured formats, including singletons (see below for compatibility scope)
 - [ ] Table output shows `NAME` (the slug-id or user-facing identifier), not bare numeric `ID` — users need the NAME for get/update/delete commands (see Slug-ID naming below)
 
 ### Slug-ID Naming in Tables
@@ -65,20 +64,14 @@ Reference: Fleet (pipelines, collectors) and Synth (checks) providers.
 
 ### K8s Manifest Wrapping
 
-Provider list/get commands that output **CRUD resources** (resources the user can
-create, update, and delete via the CLI) must wrap json/yaml output in K8s
-envelope manifests (`apiVersion`/`kind`/`metadata`/`spec`) for round-trip
-compatibility with push/pull. Table/wide codecs continue to receive raw domain
-types for direct field access.
+- [ ] New list/get commands for registered adapters use the registered resource
+  envelope in structured formats, including singleton and read-only adapters.
+- [ ] Provider-only query/view results keep their domain representation.
+- [ ] Existing output contracts remain compatible; adapter registration does
+  not authorize silently rewrapping a released raw result.
 
-Commands that are **exempt** from K8s wrapping:
-
-| Category | Examples | Rationale |
-|----------|----------|-----------|
-| Query/search results | `entities list`, `assertions search` | Time-series and aggregation results, not storable resources |
-| Operational views | `status`, `health`, `inspect` | Composite or derived data, not individual resources |
-| Read-only reference data | `kg meta scopes` | Discoverable metadata, not user-managed resources |
-| Singleton config | `env get` | Single config objects, not collections of resources |
+See [patterns.md § 17](../architecture/patterns.md#17-k8s-envelope-wrapping-for-provider-listget)
+for the decision table, implementation references, and k6 env-var exception.
 
 ### Build Verification
 
