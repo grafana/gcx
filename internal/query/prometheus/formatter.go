@@ -58,11 +58,12 @@ func formatVectorTable(w io.Writer, resp *QueryResponse) error {
 	t := style.NewTable("VALUE", "TIMESTAMP", "SERIES")
 
 	for _, sample := range resp.Data.Result {
-		if len(sample.Value) < 2 {
+		point := vectorPoint(sample)
+		if len(point) < 2 {
 			continue
 		}
-		val := parseValue(sample.Value[1])
-		ts := parseTimestamp(sample.Value[0])
+		val := parseValue(point[1])
+		ts := parseTimestamp(point[0])
 		t.Row(val, ts, formatSeriesSelector(sample.Metric))
 	}
 
@@ -103,15 +104,29 @@ func formatVectorWideTable(w io.Writer, resp *QueryResponse) error {
 			row = append(row, sample.Metric[name])
 		}
 
-		if len(sample.Value) >= 2 {
-			ts := parseTimestamp(sample.Value[0])
-			val := parseValue(sample.Value[1])
+		point := vectorPoint(sample)
+		if len(point) >= 2 {
+			ts := parseTimestamp(point[0])
+			val := parseValue(point[1])
 			row = append(row, ts, val)
 		}
 		t.Row(row...)
 	}
 
 	return t.Render(w)
+}
+
+// vectorPoint returns the point for a vector sample. Some Prometheus-like
+// APIs return a one-element plural values array for vector results. Accept
+// that wire variant without changing the response that JSON and YAML encode.
+func vectorPoint(sample Sample) []any {
+	if len(sample.Value) >= 2 {
+		return sample.Value
+	}
+	if len(sample.Values) > 0 {
+		return sample.Values[0]
+	}
+	return nil
 }
 
 func formatMatrixWideTable(w io.Writer, resp *QueryResponse) error {

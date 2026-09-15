@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -12,6 +13,8 @@ import (
 	"time"
 
 	"github.com/grafana/gcx/internal/retry"
+	"github.com/grafana/gcx/internal/secrets"
+	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -174,6 +177,36 @@ func TestTransport_MaxRetriesExhausted(t *testing.T) {
 	// 1 initial + 2 retries = 3 total.
 	assert.Equal(t, http.StatusTooManyRequests, resp.StatusCode)
 	assert.Equal(t, int32(3), attempts.Load())
+}
+
+func TestTransport_RedactsSensitiveQueryFromRetryLog(t *testing.T) {
+	const secret = "credential-that-must-not-leak"
+	var attempts atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if attempts.Add(1) == 1 {
+			w.WriteHeader(http.StatusBadGateway)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	var logs bytes.Buffer
+	logger := logging.NewSLogLogger(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	ctx := logging.Context(t.Context(), logger)
+	ctx = secrets.WithRedactedURLQuery(ctx)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL+"/artifact?X-Amz-Credential="+secret, nil)
+	require.NoError(t, err)
+	client := &http.Client{Transport: &retry.Transport{
+		Base: http.DefaultTransport, MaxRetries: 1, MinBackoff: time.Millisecond, MaxBackoff: time.Millisecond,
+	}}
+
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, int32(2), attempts.Load())
+	assert.Contains(t, logs.String(), "?REDACTED")
+	assert.NotContains(t, logs.String(), secret)
 }
 
 func TestTransport_NonRetryableStatusCodes(t *testing.T) {

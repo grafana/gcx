@@ -288,6 +288,12 @@ gcx alert rules list                            # list alert rules
 gcx synthetic-monitoring checks list            # list synthetic monitoring checks
 gcx irm oncall schedules list                   # list on-call schedules
 gcx k6 load-tests list                          # list k6 load tests
+gcx k6 runs list                                # list k6 test runs across the stack
+gcx k6 runs list-logs 12345                     # list logs for one k6 test run
+gcx k6 runs get-insights 12345                  # get insights for one k6 test run
+gcx k6 runs traces list 12345                   # list browser traces for one k6 test run
+gcx k6 runs artifacts download 12345            # download browser screenshots for one k6 test run
+gcx k6 runs wait 12345 --timeout 30m            # wait for a final test result
 
 # Query more datasources
 gcx logs query '{app="nginx"} |= "error"' --since 1h
@@ -442,7 +448,7 @@ gcx provides dedicated commands for each Grafana Cloud product:
 | **Synthetic Monitoring** | `gcx synthetic-monitoring` | `synthetic-monitoring checks list`, `synthetic-monitoring probes list`, `synthetic-monitoring probes deploy` |
 | **IRM** | `gcx irm` | `irm oncall schedules list`, `irm oncall integrations list`, `irm incidents list`, `irm incidents create -f incident.yaml` |
 | **Alerting** | `gcx alert` | `alert rules list`, `alert groups list` |
-| **k6 Cloud** | `gcx k6` | `k6 load-tests list`, `k6 runs list` |
+| **k6 Cloud** | `gcx k6` | `k6 load-tests list`, `k6 runs list`, `k6 runs query`, `k6 runs list-logs` ([API coverage](docs/reference/k6-api-coverage.md)) |
 | **Fleet Management** | `gcx fleet` | `fleet pipelines list`, `fleet collectors list` |
 | **Knowledge Graph** | `gcx kg` | `kg status`, `kg entities list`, `kg entities inspect` |
 | **Frontend Observability** | `gcx frontend` | `frontend apps list`, `frontend apps get` |
