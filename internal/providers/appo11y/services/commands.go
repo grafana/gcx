@@ -382,10 +382,18 @@ func wideLabels() []string {
 }
 
 // metadataLabels are target_info labels needed for typed Service fields
-// (Version) rather than table display. Unioned into allTargetInfoLabels so
-// the discovery query projects them without a follow-up request.
+// rather than the generic per-row Labels display. service_version feeds the
+// ambiguity-tracked Version field (see parseServicesResponse) and is
+// deliberately excluded from the flat Labels map so a service mid-rollout
+// across two versions can't leak an arbitrary single value there while
+// Version correctly reports "". cluster feeds Cluster's k8s_cluster_name
+// fallback via clusterValue and does stay in Labels — clusterValue reads it
+// from there — but without this entry no query ever projected a bare
+// `cluster` label at all, so the fallback branch was unreachable. Unioned
+// into allTargetInfoLabels so the discovery query projects both without a
+// follow-up request.
 func metadataLabels() []string {
-	return []string{"service_version"}
+	return []string{"service_version", "cluster"}
 }
 
 // allTargetInfoLabels returns the union projection used by the discovery

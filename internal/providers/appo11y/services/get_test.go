@@ -525,7 +525,7 @@ func TestServiceDetailCodec(t *testing.T) {
 	d := &ServiceDetail{
 		Service: Service{
 			Name: "checkout", Namespace: "billing", Language: "go",
-			Instrumented: true,
+			Instrumented: true, Environment: "production", Cluster: "prod-us", Version: "1.2.3", Kind: "service",
 			Labels: map[string]string{
 				"deployment_environment": "production",
 				"k8s_namespace_name":     "prod",
@@ -552,6 +552,9 @@ func TestServiceDetailCodec(t *testing.T) {
 		"Language:", "go",
 		"Status:", "instrumented",
 		"Environment:", "production",
+		"Cluster:", "prod-us",
+		"Version:", "1.2.3",
+		"Kind:", "service",
 		"Window:", "5m",
 		"Rate:", "12.500 req/s",
 		"Errors:", "0.250 req/s (2.00%)",
