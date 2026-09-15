@@ -40,9 +40,36 @@ func TestAllURLsAreMarkdown(t *testing.T) {
 }
 
 // TestAllContainsCloudAPI guards against the constant being defined but left
-// out of All() — the shape test above only checks what All() returns.
+// out of the registry — CloudAPI is surfaced to agents as a DetailedError
+// DocsLink, so it must be discoverable via docs.All()/AllNamed().
 func TestAllContainsCloudAPI(t *testing.T) {
 	if !slices.Contains(docs.All(), docs.CloudAPI) {
 		t.Errorf("docs.CloudAPI (%q) is missing from docs.All()", docs.CloudAPI)
+	}
+}
+
+// TestAllNamedMatchesAll asserts AllNamed is the source of truth for All:
+// the URLs line up one-for-one in order, and every entry has a unique,
+// non-empty name.
+func TestAllNamedMatchesAll(t *testing.T) {
+	named := docs.AllNamed()
+	all := docs.All()
+
+	if len(named) != len(all) {
+		t.Fatalf("AllNamed has %d entries, All has %d", len(named), len(all))
+	}
+
+	seenNames := map[string]bool{}
+	for i, l := range named {
+		if l.Name == "" {
+			t.Errorf("entry %d has empty name (url %q)", i, l.URL)
+		}
+		if l.URL != all[i] {
+			t.Errorf("entry %d url mismatch: AllNamed %q, All %q", i, l.URL, all[i])
+		}
+		if seenNames[l.Name] {
+			t.Errorf("duplicate name in registry: %q", l.Name)
+		}
+		seenNames[l.Name] = true
 	}
 }
