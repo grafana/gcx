@@ -37,6 +37,7 @@ type operationsOpts struct {
 	Limit       int
 	Filters     []string
 	GroupBy     []string
+	KG          kgFlags
 }
 
 func (o *operationsOpts) setup(flags *pflag.FlagSet) {
@@ -53,6 +54,7 @@ func (o *operationsOpts) setup(flags *pflag.FlagSet) {
 	flags.IntVar(&o.Limit, "limit", operationsDefaultLimit, "Limit the number of operations returned (0 = unlimited; applied after sorting by time-share desc)")
 	flags.StringArrayVar(&o.Filters, "filter", nil, "Scope the operations breakdown to series matching a label matcher, e.g. --filter k8s_cluster_name=prod-us (repeatable). Use to break a multi-cluster/multi-region service down one cluster at a time; the label must exist on the span metrics")
 	flags.StringSliceVar(&o.GroupBy, "group-by", nil, "Break each operation out per distinct value of a label, e.g. --group-by k8s_cluster_name (comma-separated or repeatable). Time-share is normalized within each group so per-cluster hotspots are comparable; the label must exist on the span metrics")
+	o.KG.register(flags)
 }
 
 func (o *operationsOpts) Validate(cmd *cobra.Command) error {
@@ -73,6 +75,9 @@ func (o *operationsOpts) Validate(cmd *cobra.Command) error {
 	}
 	if o.Limit < 0 {
 		return fail.NewCommandUsageError(cmd, "--limit must be zero or positive", nil)
+	}
+	if _, err := o.KG.resolve(); err != nil {
+		return fail.NewCommandUsageError(cmd, "", err)
 	}
 	return nil
 }
@@ -156,6 +161,10 @@ func runOperations(loader *providers.ConfigLoader, opts *operationsOpts) func(*c
 			return err
 		}
 		activation.Gate(ctx, cfg, cmd.ErrOrStderr())
+		cat, err := opts.KG.catalog(cfg)
+		if err != nil {
+			return err
+		}
 
 		datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "prometheus")
 		if err != nil {
@@ -189,6 +198,9 @@ func runOperations(loader *providers.ConfigLoader, opts *operationsOpts) func(*c
 		response, err := fetchOperations(ctx, client, datasourceUID, namespace, name, opts.Since, kinds, mode, matchers, groupBy)
 		if err != nil {
 			return err
+		}
+		if cat != nil {
+			response.Service.KG = cat.lookup(ctx, name)
 		}
 
 		notFound := !response.Service.Instrumented && len(response.Items) == 0

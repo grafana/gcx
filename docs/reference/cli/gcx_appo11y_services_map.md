@@ -66,6 +66,7 @@ gcx appo11y services map <service> [--namespace ns] [flags]
   -h, --help                 help for map
       --jq string            jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --kg string            Knowledge Graph catalog consumption: auto (annotate rows with what the graph knows, when it's active) or off (never contact the Knowledge Graph) (default "auto")
   -n, --namespace string     Service namespace (only needed when the argument is the bare service name and multiple namespaces are in play)
   -o, --output string        Output format. One of: agents, dot, json, mermaid, table, wide, yaml (default "table")
       --since string         Rate/quantile window applied to service-graph metrics (e.g. 1m, 5m, 1h, 1d) — PromQL duration syntax (default "5m")
