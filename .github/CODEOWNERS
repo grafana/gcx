@@ -6,7 +6,7 @@
 # Default / fallback rule
 * @grafana/grafana-gcx
 
-/cmd/gcx/instrumentation/ @grafana/grafana-gcx @grafana/o11y-ingest
+/cmd/gcx/instrumentation/ @grafana/grafana-gcx @grafana/fleet-management-backend
 /cmd/gcx/cloud/ @grafana/grafana-gcx @grafana/grafana-com-maintainers
 
 # Providers
@@ -18,7 +18,7 @@
 /internal/providers/faro/ @grafana/grafana-gcx @grafana/frontend-o11y @grafana/mobile-o11y
 /internal/providers/fleet/ @grafana/grafana-gcx @grafana/fleet-management-backend
 /internal/fleet/ @grafana/grafana-gcx @grafana/fleet-management-backend
-/internal/providers/instrumentation/ @grafana/grafana-gcx @grafana/o11y-ingest
+/internal/providers/instrumentation/ @grafana/grafana-gcx @grafana/fleet-management-backend
 /internal/providers/kg/ @grafana/grafana-gcx @grafana/asserts-team
 /internal/providers/appo11y/ @grafana/grafana-gcx @grafana/app-o11y-visualizations
 /internal/providers/assistant/ @grafana/grafana-gcx @grafana/grafana-assistant-loop
@@ -74,7 +74,7 @@
 # Generated CLI reference. Any flag or command change regenerates these files,
 # so mirror the code ownership here - otherwise a provider-only PR still needs
 # a @grafana/grafana-gcx approval via the fallback rule above.
-/docs/reference/cli/gcx_instrumentation* @grafana/grafana-gcx @grafana/o11y-ingest
+/docs/reference/cli/gcx_instrumentation* @grafana/grafana-gcx @grafana/fleet-management-backend
 /docs/reference/cli/gcx_assistant* @grafana/grafana-gcx @grafana/grafana-assistant-loop
 /docs/reference/cli/gcx_agento11y* @grafana/grafana-gcx @grafana/grafana-assistant-loop
 /docs/reference/cli/gcx_slo* @grafana/grafana-gcx @grafana/slo-squad
