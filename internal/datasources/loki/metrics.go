@@ -2,6 +2,7 @@ package loki
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/grafana/gcx/internal/agent"
@@ -15,6 +16,7 @@ import (
 func MetricsCmd(loader *providers.ConfigLoader) *cobra.Command {
 	shared := &dsquery.SharedOpts{}
 	share := &dsquery.ExploreLinkOpts{}
+	preflight := &statsPreflightOpts{}
 	var datasource string
 
 	cmd := &cobra.Command{
@@ -31,7 +33,16 @@ time-series data with proper table, graph, and JSON formatters.
 Instant vs range is deduced from time flags: no time flags = instant query,
 --since or --from/--to = range query.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
-open it in your browser after the query succeeds.`,
+open it in your browser after the query succeeds.
+
+Before executing, a pre-flight index-stats check estimates the bytes this
+query would scan and prints a non-blocking warning if it exceeds
+--stats (default 1GiB). Use --skip-stats to disable this check.
+Only the query's stream selector is used for the estimate, since Loki's index
+tracks streams, not line filters or parsing stages. The checked window is
+widened by any range-vector duration or offset in EXPR (e.g. '[24h]',
+'offset 1h'), since Loki evaluates further back than the query's own time
+range alone would suggest.`,
 		Example: `
   # Rate of log lines over 5 minutes
   gcx datasources loki metrics 'rate({job="varlogs"}[5m])' --since 1h -o table
@@ -50,6 +61,9 @@ open it in your browser after the query succeeds.`,
 		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := shared.Validate(); err != nil {
+				return err
+			}
+			if err := preflight.Validate(); err != nil {
 				return err
 			}
 
@@ -89,7 +103,13 @@ open it in your browser after the query succeeds.`,
 				Step:  step,
 			}
 
+			var preflightWG sync.WaitGroup
+			preflightWG.Go(func() {
+				runStatsPreflight(ctx, client, cmd.ErrOrStderr(), datasourceUID, expr, req.IsRange(), start, end, now, preflight.SkipStats, preflight.warnBytes)
+			})
+
 			resp, err := client.MetricQuery(ctx, datasourceUID, req)
+			preflightWG.Wait()
 			if err != nil {
 				return fmt.Errorf("metric query failed: %w", err)
 			}
@@ -124,6 +144,7 @@ open it in your browser after the query succeeds.`,
 	shared.Setup(cmd.Flags(), true)
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.loki is configured)")
 	share.Setup(cmd.Flags(), "executed query")
+	preflight.setup(cmd.Flags())
 
 	return cmd
 }

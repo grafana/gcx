@@ -5,8 +5,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/query/loki"
@@ -28,6 +30,7 @@ func TestBuildPathsEscapeDatasourceUID(t *testing.T) {
 		{"labels", c.BuildLabelsPath(uid)},
 		{"labelValues", c.BuildLabelValuesPath(uid, "job")},
 		{"series", c.BuildSeriesPath(uid)},
+		{"indexStats", c.BuildIndexStatsPath(uid)},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -68,6 +71,62 @@ func TestQuery_FallsBackOn403(t *testing.T) {
 	require.Len(t, paths, 2)
 	assert.Contains(t, paths[0], "/apis/query.grafana.app/v0alpha1/namespaces/default/query")
 	assert.Equal(t, "/api/ds/query", paths[1])
+}
+
+func TestIndexStats(t *testing.T) {
+	var gotQuery url.Values
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		gotQuery = r.URL.Query()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"streams":12,"chunks":345,"bytes":6789012,"entries":98765}`))
+	}))
+	defer server.Close()
+
+	cfg := config.NamespacedRESTConfig{
+		Config:    rest.Config{Host: server.URL},
+		Namespace: "default",
+	}
+	client, err := loki.NewClient(cfg)
+	require.NoError(t, err)
+
+	start := time.Unix(1000, 0)
+	end := time.Unix(2000, 0)
+	resp, err := client.IndexStats(context.Background(), "loki-uid", `{job="varlogs"}`, start, end)
+	require.NoError(t, err)
+
+	assert.Equal(t, uint64(12), resp.Streams)
+	assert.Equal(t, uint64(345), resp.Chunks)
+	assert.Equal(t, uint64(6789012), resp.Bytes)
+	assert.Equal(t, uint64(98765), resp.Entries)
+
+	assert.Equal(t, `{job="varlogs"}`, gotQuery.Get("query"))
+	assert.Equal(t, strconv.FormatInt(start.UnixNano(), 10), gotQuery.Get("start"))
+	assert.Equal(t, strconv.FormatInt(end.UnixNano(), 10), gotQuery.Get("end"))
+}
+
+func TestIndexStats_ReturnsTypedAPIErrorOnFailure(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"message":"bad query"}`))
+	}))
+	defer server.Close()
+
+	cfg := config.NamespacedRESTConfig{
+		Config:    rest.Config{Host: server.URL},
+		Namespace: "default",
+	}
+	client, err := loki.NewClient(cfg)
+	require.NoError(t, err)
+
+	_, err = client.IndexStats(context.Background(), "loki-uid", `{job="x"}`, time.Now(), time.Now())
+	require.Error(t, err)
+
+	var apiErr *queryerror.APIError
+	require.ErrorAs(t, err, &apiErr)
+	assert.Equal(t, "loki", apiErr.Datasource)
+	assert.Equal(t, "index stats query", apiErr.Operation)
+	assert.Equal(t, http.StatusBadRequest, apiErr.StatusCode)
 }
 
 func TestQuery_ReturnsTypedAPIErrorForGrafanaEnvelope(t *testing.T) {
