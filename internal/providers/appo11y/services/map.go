@@ -178,7 +178,11 @@ func runMap(loader *providers.ConfigLoader, opts *mapOpts) func(*cobra.Command, 
 			return err
 		}
 		if cat != nil {
-			result.Service.KG = cat.lookup(ctx, name)
+			lr := cat.lookupVerbose(ctx, name)
+			if lr.inconclusive {
+				warnKGInconclusive(cmd.ErrOrStderr(), lr.inconclusiveErr)
+			}
+			result.Service.KG = lr.ref
 		}
 
 		notFound := len(result.Callers) == 0 && len(result.Callees) == 0
