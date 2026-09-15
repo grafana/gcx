@@ -14,6 +14,12 @@ normalized against the WHOLE FLEET's busy-time, not per-service — so a
 it reports what share of the fleet's total wall-clock time they actually
 consume.
 
+--limit always bounds the returned row count to N, ranked by
+busy-seconds-per-second desc. Without --group-by that's N operations;
+with --group-by a single operation can occupy more than one of those N
+rows (one per distinct group-label value it appears under), so N rows
+may cover fewer than N distinct operations.
+
 The source span-metrics series (Tempo's traces_spanmetrics_*, the v3
 traces_span_metrics_*, or bare OTel calls_total) is auto-detected by
 default. Use --metrics-mode to pin it.
@@ -49,9 +55,9 @@ gcx appo11y operations list [flags]
   -h, --help                  help for list
       --jq string             jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string           Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --kg string             Knowledge Graph catalog consumption: auto (annotate rows with what the graph knows, when it's active) or off (never contact the Knowledge Graph) (default "auto")
+      --kg string             Knowledge Graph catalog consumption: auto (annotate rows with what the graph knows, when it's active) or off (never contact the Knowledge Graph). The annotation appears in JSON/YAML/agents output only — table and wide render nothing extra (default "auto")
       --kind string           Span kinds to include. One of: inbound (server+consumer), server, consumer, all, or a comma-separated list of SPAN_KIND_* literals (default "inbound")
-      --limit int             Rank the top N operations fleet-wide by busy-seconds-per-second (must be 1-500; unlike other list commands, 0 is rejected — the unbounded fleet shape is #services x #operations) (default 20)
+      --limit int             Return at most N rows fleet-wide, ranked by busy-seconds-per-second desc (must be 1-500; unlike other list commands, 0 is rejected — the unbounded fleet shape is #services x #operations). With --group-by a single operation may occupy more than one row, so N rows can cover fewer than N distinct operations (default 20)
       --metrics-mode string   Span-metrics family. One of: auto (probes the stack), v3 (traces_span_metrics_*), tempo (traces_spanmetrics_*), or otel (bare calls_total + duration_seconds_bucket) (default "auto")
   -n, --namespace string      Restrict to services in a single namespace (post-query convenience filter, applied after ranking)
   -o, --output string         Output format. One of: agents, json, table, wide, yaml (default "table")

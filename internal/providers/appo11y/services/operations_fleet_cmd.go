@@ -71,7 +71,7 @@ func (o *fleetOperationsListOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&o.Since, "since", defaultRedWindow, "Rate/quantile window applied to span metrics (e.g. 1m, 5m, 1h, 1d) — PromQL duration syntax")
 	flags.StringVar(&o.Kind, "kind", "inbound", "Span kinds to include. One of: inbound (server+consumer), server, consumer, all, or a comma-separated list of SPAN_KIND_* literals")
 	flags.StringVar(&o.MetricsMode, "metrics-mode", metricsModeAuto, "Span-metrics family. One of: auto (probes the stack), v3 (traces_span_metrics_*), tempo (traces_spanmetrics_*), or otel (bare calls_total + duration_seconds_bucket)")
-	flags.IntVar(&o.Limit, "limit", fleetOperationsDefaultLimit, fmt.Sprintf("Rank the top N operations fleet-wide by busy-seconds-per-second (must be 1-%d; unlike other list commands, 0 is rejected — the unbounded fleet shape is #services x #operations)", fleetOperationsMaxLimit))
+	flags.IntVar(&o.Limit, "limit", fleetOperationsDefaultLimit, fmt.Sprintf("Return at most N rows fleet-wide, ranked by busy-seconds-per-second desc (must be 1-%d; unlike other list commands, 0 is rejected — the unbounded fleet shape is #services x #operations). With --group-by a single operation may occupy more than one row, so N rows can cover fewer than N distinct operations", fleetOperationsMaxLimit))
 	flags.StringArrayVar(&o.Filters, "filter", nil, "Scope the ranking to series matching a label matcher, e.g. --filter k8s_cluster_name=prod-us (repeatable); the label must exist on the span metrics")
 	flags.StringSliceVar(&o.GroupBy, "group-by", nil, "Break each operation out per distinct value of a label, e.g. --group-by k8s_cluster_name (comma-separated or repeatable); the label must exist on the span metrics")
 	flags.StringVarP(&o.Namespace, "namespace", "n", "", "Restrict to services in a single namespace (post-query convenience filter, applied after ranking)")
@@ -122,6 +122,12 @@ normalized against the WHOLE FLEET's busy-time, not per-service — so a
 it reports what share of the fleet's total wall-clock time they actually
 consume.
 
+--limit always bounds the returned row count to N, ranked by
+busy-seconds-per-second desc. Without --group-by that's N operations;
+with --group-by a single operation can occupy more than one of those N
+rows (one per distinct group-label value it appears under), so N rows
+may cover fewer than N distinct operations.
+
 The source span-metrics series (Tempo's traces_spanmetrics_*, the v3
 traces_span_metrics_*, or bare OTel calls_total) is auto-detected by
 default. Use --metrics-mode to pin it.`,
@@ -141,7 +147,7 @@ default. Use --metrics-mode to pin it.`,
 		RunE: runFleetOperationsList(loader, opts),
 		Annotations: map[string]string{
 			agent.AnnotationTokenCost: "small",
-			agent.AnnotationLLMHint:   `Fleet-wide operations ranking across every App Observability service: one row per (service, span_name), sorted by busy-seconds-per-second (time-share) desc. Unlike 'gcx appo11y services list-operations <service>' (per-service, this command's positional-argument counterpart), this command takes no positional argument and ranks across the whole stack. Time-share is normalized against the fleet's total busy-time (fleet_busy_seconds_per_second in the response), so it reports true fleet share, not a per-row 100%. --limit caps the ranking depth (1-500; 0 is rejected, unlike other list commands, because the unbounded shape is #services x #operations). Use --namespace/--env to narrow the ranked result post-query. Use --group-by <label> to break each ranked operation out per distinct value of that label. Pairs with 'gcx appo11y operations get <operation> --service <svc>' to drill into one ranked row. Examples: gcx appo11y operations list -o json; gcx appo11y operations list --limit 50 --since 1h -o json; gcx appo11y operations list --namespace payments -o json`,
+			agent.AnnotationLLMHint:   `Fleet-wide operations ranking across every App Observability service: one row per (service, span_name), sorted by busy-seconds-per-second (time-share) desc. Unlike 'gcx appo11y services list-operations <service>' (per-service, this command's positional-argument counterpart), this command takes no positional argument and ranks across the whole stack. Time-share is normalized against the fleet's total busy-time (fleet_busy_seconds_per_second in the response), so it reports true fleet share, not a per-row 100%. --limit (1-500; 0 is rejected, unlike other list commands, because the unbounded shape is #services x #operations) always bounds the returned row count to N. Without --group-by that's N operations; with --group-by a single operation can occupy more than one of those N rows (one per distinct group-label value), so N rows may cover fewer than N distinct operations — a truncation hint fires on stderr whenever the row count needed capping. Use --namespace/--env to narrow the ranked result post-query. Use --group-by <label> to break each ranked operation out per distinct value of that label. Pairs with 'gcx appo11y operations get <operation> --service <svc>' to drill into one ranked row. Examples: gcx appo11y operations list -o json; gcx appo11y operations list --limit 50 --since 1h -o json; gcx appo11y operations list --namespace payments -o json`,
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -202,6 +208,20 @@ func runFleetOperationsList(loader *providers.ConfigLoader, opts *fleetOperation
 		}
 
 		response.Items = filterFleetByNamespaceAndEnv(response.Items, opts.Namespace, opts.Env)
+
+		// --limit bounds the server-side topk ranking to N (job, span_name)
+		// pairs, but --group-by's "and on (job, span_name)" join fans each
+		// ranked pair out into one row per distinct group-label combination
+		// — the returned row count is #ranked-pairs x #groups-per-pair, not
+		// N. mergeFleetOperations already sorts by busy-seconds desc, so
+		// truncating here keeps the top N rows fleet-wide regardless of
+		// --group-by, the same client-side bound
+		// "services list-operations" applies for the same reason.
+		truncated := len(response.Items) > opts.Limit
+		if truncated {
+			response.Items = response.Items[:opts.Limit]
+		}
+
 		if cat != nil {
 			// One bulk index() call — not a per-row lookup() — the same
 			// pattern services list uses: --limit permits up to 500 rows,
@@ -217,8 +237,11 @@ func runFleetOperationsList(loader *providers.ConfigLoader, opts *fleetOperation
 		notFound := len(response.Items) == 0
 		if notFound {
 			cmdio.EmitHint(cmd.ErrOrStderr(),
-				"no operations found in the requested window",
+				fmt.Sprintf("no operations found in the requested window (namespace=%q, env=%q)", opts.Namespace, opts.Env),
 				"gcx appo11y services list")
+		}
+		if truncated {
+			emitFleetOperationsLimitHint(cmd.ErrOrStderr(), opts.Limit)
 		}
 		if err := opts.IO.Encode(cmd.OutOrStdout(), response); err != nil {
 			return err
@@ -228,6 +251,17 @@ func runFleetOperationsList(loader *providers.ConfigLoader, opts *fleetOperation
 		}
 		return nil
 	}
+}
+
+// emitFleetOperationsLimitHint mirrors emitOperationsLimitHint's truncation
+// hint for the fleet-wide ranking: --group-by can fan a single ranked
+// (job, span_name) pair out into more rows than --limit alone would
+// suggest, so this fires whenever the final row count needed truncating,
+// not only when the server-side topk itself was the source of the excess.
+func emitFleetOperationsLimitHint(stderr io.Writer, limit int) {
+	cmdio.EmitHint(stderr,
+		fmt.Sprintf("showing top %d ranked operations", limit),
+		fmt.Sprintf("gcx appo11y operations list --limit %d", limit*2))
 }
 
 // detectFleetMetricsMode probes each metrics family fleet-wide (no `job`
