@@ -19,6 +19,7 @@ type lokiLabelsOpts struct {
 	IO         cmdio.Options
 	Datasource string
 	Label      string
+	Selector   string
 }
 
 func (opts *lokiLabelsOpts) setup(flags *pflag.FlagSet) {
@@ -28,6 +29,7 @@ func (opts *lokiLabelsOpts) setup(flags *pflag.FlagSet) {
 
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.loki is configured)")
 	flags.StringVarP(&opts.Label, "label", "l", "", "Get values for this label (omit to list all labels)")
+	flags.StringVar(&opts.Selector, "selector", "", "LogQL stream selector to scope results (e.g. '{app=\"foo\"}')")
 }
 
 func (opts *lokiLabelsOpts) Validate() error {
@@ -47,6 +49,12 @@ func LabelsCmd(loader *providers.ConfigLoader) *cobra.Command {
 
 	# Get values for a specific label
 	gcx datasources loki labels -d UID --label job
+
+	# Scope labels to a stream selector
+	gcx datasources loki labels -d UID --selector '{app="foo"}'
+
+	# Scope label values to a stream selector
+	gcx datasources loki labels -d UID --label job --selector '{app="foo"}'
 
 	# Output as JSON
 	gcx datasources loki labels -d UID -o json`,
@@ -73,25 +81,17 @@ func LabelsCmd(loader *providers.ConfigLoader) *cobra.Command {
 			}
 
 			if opts.Label != "" {
-				resp, err := client.LabelValues(ctx, datasourceUID, opts.Label)
+				resp, err := client.LabelValues(ctx, datasourceUID, opts.Label, opts.Selector)
 				if err != nil {
 					return fmt.Errorf("failed to get label values: %w", err)
-				}
-
-				if opts.IO.OutputFormat == "table" {
-					return loki.FormatLabelsTable(cmd.OutOrStdout(), resp)
 				}
 
 				return opts.IO.Encode(cmd.OutOrStdout(), resp)
 			}
 
-			resp, err := client.Labels(ctx, datasourceUID)
+			resp, err := client.Labels(ctx, datasourceUID, opts.Selector)
 			if err != nil {
 				return fmt.Errorf("failed to get labels: %w", err)
-			}
-
-			if opts.IO.OutputFormat == "table" {
-				return loki.FormatLabelsTable(cmd.OutOrStdout(), resp)
 			}
 
 			return opts.IO.Encode(cmd.OutOrStdout(), resp)
