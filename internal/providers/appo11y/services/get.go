@@ -272,11 +272,7 @@ func runGet(loader *providers.ConfigLoader, opts *getOpts) func(*cobra.Command, 
 				return err
 			}
 			if cat != nil {
-				lr := cat.lookupVerbose(ctx, name)
-				if lr.inconclusive {
-					warnKGInconclusive(cmd.ErrOrStderr(), lr.inconclusiveErr)
-				}
-				grouped.Service.KG = lr.ref
+				grouped.Service.KG = warnKGLookup(cmd.ErrOrStderr(), cat.lookupVerbose(ctx, name))
 			}
 			notFound := !anyGroupHasTraffic(grouped.Items)
 			if notFound {
@@ -297,11 +293,7 @@ func runGet(loader *providers.ConfigLoader, opts *getOpts) func(*cobra.Command, 
 			return err
 		}
 		if cat != nil {
-			lr := cat.lookupVerbose(ctx, name)
-			if lr.inconclusive {
-				warnKGInconclusive(cmd.ErrOrStderr(), lr.inconclusiveErr)
-			}
-			detail.Service.KG = lr.ref
+			detail.Service.KG = warnKGLookup(cmd.ErrOrStderr(), cat.lookupVerbose(ctx, name))
 		}
 		notFound := !detail.Service.Instrumented && !detail.RED.HasTraffic
 		if notFound {

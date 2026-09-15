@@ -195,6 +195,29 @@ func warnKGTruncated(stderr io.Writer) {
 		"")
 }
 
+// warnKGLookup is the single-call pattern every per-record lookup call site
+// needs: warn on an inconclusive lookupVerbose result, then hand back the
+// ref either way. Collapses the two-branch inline pattern (warn, then
+// assign) down to one expression at each call site.
+func warnKGLookup(stderr io.Writer, lr lookupResult) *KGRef {
+	if lr.inconclusive {
+		warnKGInconclusive(stderr, lr.inconclusiveErr)
+	}
+	return lr.ref
+}
+
+// warnKGIndex is warnKGLookup's counterpart for the bulk index() call
+// sites: warn on an inconclusive or truncated result, then hand back the
+// annotation map either way.
+func warnKGIndex(stderr io.Writer, result indexResult) map[string]*KGRef {
+	if result.inconclusive {
+		warnKGInconclusive(stderr, result.inconclusiveErr)
+	} else if result.truncated {
+		warnKGTruncated(stderr)
+	}
+	return result.idx
+}
+
 // annotateServicesFromKG sets Service.KG from idx for each item with a
 // matching bare-name entry, leaving items with no match untouched (nil).
 // idx entries with no matching item are never reflected in the result — the
