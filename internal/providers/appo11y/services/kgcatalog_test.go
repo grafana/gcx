@@ -86,7 +86,7 @@ func TestKGCatalogLookup(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			switch {
 			case strings.Contains(r.URL.Path, "v1/stack/status"):
-				writeKGJSON(w, map[string]any{"enabled": true})
+				writeKGJSON(w, map[string]any{"enabled": true, "status": "complete"})
 			case strings.Contains(r.URL.Path, "v1/entity"):
 				writeKGJSON(w, map[string]any{"type": "Service", "name": "checkout", "scope": map[string]string{"env": "prod"}})
 			default:
@@ -109,7 +109,7 @@ func TestKGCatalogLookup(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			switch {
 			case strings.Contains(r.URL.Path, "v1/stack/status"):
-				writeKGJSON(w, map[string]any{"enabled": true})
+				writeKGJSON(w, map[string]any{"enabled": true, "status": "complete"})
 			case strings.Contains(r.URL.Path, "v1/entity"):
 				w.WriteHeader(http.StatusNoContent)
 			default:
@@ -148,7 +148,7 @@ func TestKGCatalogLookup(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			switch {
 			case strings.Contains(r.URL.Path, "v1/stack/status"):
-				writeKGJSON(w, map[string]any{"enabled": true})
+				writeKGJSON(w, map[string]any{"enabled": true, "status": "complete"})
 			case strings.Contains(r.URL.Path, "v1/entity"):
 				w.WriteHeader(http.StatusInternalServerError)
 			default:
@@ -168,7 +168,7 @@ func TestKGCatalogIndex(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			switch {
 			case strings.Contains(r.URL.Path, "v1/stack/status"):
-				writeKGJSON(w, map[string]any{"enabled": true})
+				writeKGJSON(w, map[string]any{"enabled": true, "status": "complete"})
 			case strings.Contains(r.URL.Path, "v1/search"):
 				writeKGJSON(w, map[string]any{
 					"data": map[string]any{
@@ -224,7 +224,7 @@ func TestKGCatalogIndex(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			switch {
 			case strings.Contains(r.URL.Path, "v1/stack/status"):
-				writeKGJSON(w, map[string]any{"enabled": true})
+				writeKGJSON(w, map[string]any{"enabled": true, "status": "complete"})
 			case strings.Contains(r.URL.Path, "v1/search"):
 				w.WriteHeader(http.StatusInternalServerError)
 			default:
