@@ -200,11 +200,7 @@ func runOperations(loader *providers.ConfigLoader, opts *operationsOpts) func(*c
 			return err
 		}
 		if cat != nil {
-			lr := cat.lookupVerbose(ctx, name)
-			if lr.inconclusive {
-				warnKGInconclusive(cmd.ErrOrStderr(), lr.inconclusiveErr)
-			}
-			response.Service.KG = lr.ref
+			response.Service.KG = warnKGLookup(cmd.ErrOrStderr(), cat.lookupVerbose(ctx, name))
 		}
 
 		notFound := !response.Service.Instrumented && len(response.Items) == 0

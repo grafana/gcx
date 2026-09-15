@@ -304,13 +304,6 @@ func runList(loader *providers.ConfigLoader, opts *listOpts) func(*cobra.Command
 		if err := eg.Wait(); err != nil {
 			return err
 		}
-		if cat != nil {
-			if kgResult.inconclusive {
-				warnKGInconclusive(cmd.ErrOrStderr(), kgResult.inconclusiveErr)
-			} else if kgResult.truncated {
-				warnKGTruncated(cmd.ErrOrStderr())
-			}
-		}
 
 		instrumented, err := parseServicesResponses(instrumentedResponses)
 		if err != nil {
@@ -327,7 +320,7 @@ func runList(loader *providers.ConfigLoader, opts *listOpts) func(*cobra.Command
 		items := resolveItems(opts.Instrumentation, instrumented, baseline, graph)
 		items = filterByEnv(items, opts.Env)
 		if cat != nil {
-			items = annotateServicesFromKG(items, kgResult.idx)
+			items = annotateServicesFromKG(items, warnKGIndex(cmd.ErrOrStderr(), kgResult))
 		}
 
 		truncated := false
