@@ -98,17 +98,30 @@ func TestBuildFleetAvgLatencyQuery(t *testing.T) {
 
 func TestBuildFleetModeProbeQuery(t *testing.T) {
 	v3, _ := metricNamesByMode(MetricsModeV3)
-	got, err := buildFleetModeProbeQuery(v3.calls, nil)
+	got, err := buildFleetModeProbeQuery(v3.calls, "5m", nil)
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
-	want := `count(traces_span_metrics_calls_total)`
+	want := `sum(count_over_time(traces_span_metrics_calls_total[5m]))`
 	if got != want {
 		t.Errorf("got %q\nwant %q", got, want)
 	}
 
+	// A different --since must actually change the probe's range, not be
+	// silently ignored (the fix for the window-blind instant-count probe).
+	got1h, err := buildFleetModeProbeQuery(v3.calls, "1h", nil)
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if got1h == got {
+		t.Errorf("probe query did not change between windows 5m and 1h: %s", got1h)
+	}
+	if !strings.Contains(got1h, "[1h]") {
+		t.Errorf("probe query missing the requested window: %s", got1h)
+	}
+
 	m := []Matcher{{Label: "k8s_cluster_name", Op: "=", Value: "prod-us"}}
-	got, err = buildFleetModeProbeQuery(v3.calls, m)
+	got, err = buildFleetModeProbeQuery(v3.calls, "5m", m)
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -116,7 +129,7 @@ func TestBuildFleetModeProbeQuery(t *testing.T) {
 		t.Errorf("matcher not applied: %s", got)
 	}
 
-	if _, err := buildFleetModeProbeQuery("", nil); err == nil {
+	if _, err := buildFleetModeProbeQuery("", "5m", nil); err == nil {
 		t.Error("expected error for empty metric")
 	}
 }

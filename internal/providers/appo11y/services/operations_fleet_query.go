@@ -91,11 +91,16 @@ func buildFleetLatencyQuantileQuery(names metricNames, window string, kinds []st
 }
 
 // buildFleetModeProbeQuery returns a cheap fleet-wide (no `job` filter)
-// PromQL expression that yields a single scalar when the named calls
-// metric has any series at all — used by detectFleetMetricsMode to
+// PromQL expression that yields a nonzero scalar when the named calls
+// metric had any sample in window — used by detectFleetMetricsMode to
 // auto-detect which metrics-mode family the stack emits, the fleet-wide
 // counterpart to buildModeProbeQuery in query.go (which requires a job).
-func buildFleetModeProbeQuery(metric string, matchers []Matcher) (string, error) {
+// count_over_time(...[window]) rather than an instant count(...): an
+// instant probe is only sensitive to Prometheus's ~5m staleness window and
+// ignores --since entirely, so a --since 1d run could miss a metric family
+// that has a full day of history but paused ingesting in the last 5
+// minutes.
+func buildFleetModeProbeQuery(metric, window string, matchers []Matcher) (string, error) {
 	if metric == "" {
 		return "", errors.New("metric is required")
 	}
@@ -103,7 +108,7 @@ func buildFleetModeProbeQuery(metric string, matchers []Matcher) (string, error)
 	for _, m := range matchers {
 		v = m.apply(v)
 	}
-	expr, err := promql.Count(v).Build()
+	expr, err := promql.Sum(promql.CountOverTime(v.Range(window))).Build()
 	if err != nil {
 		return "", err
 	}
