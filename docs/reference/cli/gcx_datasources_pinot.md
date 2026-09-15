@@ -1,12 +1,12 @@
-## gcx frontend
+## gcx datasources pinot
 
-Manage Grafana Frontend Observability resources
+Query StarTree Pinot datasources
 
 ### Options
 
 ```
       --config string   Path to the configuration file to use
-  -h, --help            help for frontend
+  -h, --help            help for pinot
 ```
 
 ### Options inherited from parent commands
@@ -22,7 +22,6 @@ Manage Grafana Frontend Observability resources
 
 ### SEE ALSO
 
-* [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
-* [gcx frontend apps](gcx_frontend_apps.md)	 - Manage Frontend Observability apps.
-* [gcx frontend sessions](gcx_frontend_sessions.md)	 - Inspect Frontend Observability sessions.
+* [gcx datasources](gcx_datasources.md)	 - Manage and query Grafana datasources
+* [gcx datasources pinot query](gcx_datasources_pinot_query.md)	 - Execute a PinotQL query against a StarTree Pinot datasource
 
