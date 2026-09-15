@@ -1,10 +1,18 @@
 package services //nolint:testpackage // Tests cover unexported fleet command opts/helpers.
 
 import (
+	"bytes"
+	"context"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/spf13/cobra"
+	"k8s.io/client-go/rest"
 )
 
 func TestFleetOperationsListOptsValidate(t *testing.T) {
@@ -148,5 +156,134 @@ func TestFilterFleetByNamespaceAndEnv(t *testing.T) {
 	}
 	if got := filterFleetByNamespaceAndEnv(items, "", "staging"); len(got) != 1 || got[0].Service != "cart" {
 		t.Fatalf("env filter = %+v", got)
+	}
+}
+
+// TestFetchFleetOperations_EnvFilterEndToEnd guards the --env fix through
+// the real pipeline (query -> extractOperations -> mergeFleetOperations),
+// not a hand-constructed Labels map: fleet rows are built via `sum by
+// (job, span_name[, groupBy...])`, which drops deployment_environment
+// unless it's explicitly part of the grouping. Without widening that
+// grouping when env is set, every row's Labels would be missing the key
+// filterFleetByNamespaceAndEnv reads, and --env would silently drop
+// everything.
+func TestFetchFleetOperations_EnvFilterEndToEnd(t *testing.T) {
+	// Every fleet query (rate, error, avg, p50/p95/p99, total-time) gets the
+	// same single-series Grafana dataframe response back — one job/span_name
+	// pair labeled deployment_environment=production. This is the actual
+	// wire shape client.Query parses (Grafana's /api/ds/query dataframe
+	// contract), not the raw Prometheus /api/v1/query shape.
+	const frameJSON = `{"results":{"A":{"frames":[{
+		"schema":{"fields":[
+			{"name":"Time","type":"time"},
+			{"name":"Value","type":"number","labels":{"job":"billing/checkout","span_name":"GET /cart","deployment_environment":"production"}}
+		]},
+		"data":{"values":[[1700000000000],[5]]}
+	}]}}}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(frameJSON))
+	}))
+	defer srv.Close()
+
+	cfg := config.NamespacedRESTConfig{Config: rest.Config{Host: srv.URL}, Namespace: "stack-123"}
+	client, err := prometheus.NewClient(cfg)
+	if err != nil {
+		t.Fatalf("NewClient err = %v", err)
+	}
+	t.Run("env unset: default grouping is untouched", func(t *testing.T) {
+		resp, err := fetchFleetOperations(context.Background(), client, "test-uid", "5m", []string{spanKindServer}, MetricsModeV3, nil, nil, 20, "")
+		if err != nil {
+			t.Fatalf("fetchFleetOperations err = %v", err)
+		}
+		if len(resp.Items) != 1 {
+			t.Fatalf("len(Items) = %d, want 1", len(resp.Items))
+		}
+		if v, ok := resp.Items[0].Labels["deployment_environment"]; ok && v != "" {
+			t.Errorf("Labels = %+v, deployment_environment must be absent when env filtering isn't requested", resp.Items[0].Labels)
+		}
+		if len(resp.GroupBy) != 0 {
+			t.Errorf("GroupBy = %v, want empty (env labels must never leak into the display groupBy)", resp.GroupBy)
+		}
+	})
+
+	t.Run("env set: row carries deployment_environment and the real filter keeps/drops correctly", func(t *testing.T) {
+		resp, err := fetchFleetOperations(context.Background(), client, "test-uid", "5m", []string{spanKindServer}, MetricsModeV3, nil, nil, 20, "production")
+		if err != nil {
+			t.Fatalf("fetchFleetOperations err = %v", err)
+		}
+		if len(resp.Items) != 1 {
+			t.Fatalf("len(Items) = %d, want 1", len(resp.Items))
+		}
+		if got := resp.Items[0].Labels["deployment_environment"]; got != "production" {
+			t.Fatalf("Labels[deployment_environment] = %q, want %q — the real query/extract pipeline never populated it", got, "production")
+		}
+		if len(resp.GroupBy) != 0 {
+			t.Errorf("GroupBy = %v, want empty (env labels used internally for filtering must not leak into the display groupBy)", resp.GroupBy)
+		}
+
+		kept := filterFleetByNamespaceAndEnv(resp.Items, "", "production")
+		if len(kept) != 1 {
+			t.Errorf("filtering by the matching env: len = %d, want 1", len(kept))
+		}
+		dropped := filterFleetByNamespaceAndEnv(resp.Items, "", "staging")
+		if len(dropped) != 0 {
+			t.Errorf("filtering by a non-matching env: len = %d, want 0", len(dropped))
+		}
+	})
+}
+
+// TestFleetOperationsList_KGAnnotationIsOneBulkCall guards the fix for the
+// "up to ~1000 serial HTTP calls" finding: `operations list` must annotate
+// rows via one bulk index() call (like `services list` already does), not
+// a per-row lookup() — each lookup() costs two serial round trips with no
+// caching, which at --limit 500 would turn a sub-second command into a
+// multi-minute one.
+func TestFleetOperationsList_KGAnnotationIsOneBulkCall(t *testing.T) {
+	var searchHits int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == activationEndpoint:
+			w.WriteHeader(http.StatusOK)
+		case strings.Contains(r.URL.Path, "v1/stack/status"):
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"enabled":true,"status":"complete"}`))
+		case strings.Contains(r.URL.Path, "v1/search"):
+			searchHits++
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":{"entities":[{"type":"Service","name":"checkout"}],"lastPage":true}}`))
+		case r.URL.Path == "/bootdata":
+			http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
+		default:
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"results":{"A":{"frames":[{
+				"schema":{"fields":[
+					{"name":"Time","type":"time"},
+					{"name":"Value","type":"number","labels":{"job":"billing/checkout","span_name":"GET /cart"}}
+				]},
+				"data":{"values":[[1700000000000],[5]]}
+			}]}}}`))
+		}
+	}))
+	defer srv.Close()
+
+	loader := newActivationTestLoader(t, srv.URL)
+	root := OperationsCommands(loader)
+	root.SilenceUsage = true
+	root.SilenceErrors = true
+	var stdout bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetErr(io.Discard)
+	root.SetIn(strings.NewReader(""))
+	root.SetArgs([]string{"list", "-d", "test-uid", "-o", "json"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute err = %v, stdout = %s", err, stdout.String())
+	}
+
+	if searchHits != 1 {
+		t.Errorf("KG search endpoint hit %d times, want exactly 1 (one bulk index() call, not one lookup() per row)", searchHits)
+	}
+	if !strings.Contains(stdout.String(), `"kg"`) {
+		t.Errorf("expected a kg annotation in the output: %s", stdout.String())
 	}
 }
