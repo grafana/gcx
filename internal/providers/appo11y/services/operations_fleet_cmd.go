@@ -304,10 +304,6 @@ func detectFleetMetricsMode(ctx context.Context, client *prometheus.Client, data
 	return MetricsModeV3, nil
 }
 
-// fetchFleetOperations runs the fleet-wide total-time, rate, error-rate,
-// avg-latency, and p50/p95/p99 quantile queries in parallel (each already
-// restricted server-side to the top-`limit` operations — see
-// restrictToFleetTopK) and folds them into a FleetOperationsResponse.
 // envGroupLabels are the two possible OTel semconv spellings environmentValue
 // resolves from — see its doc comment. Neither is part of any fleet
 // aggregation's "by" clause unless env filtering needs it (see queryGroupBy
