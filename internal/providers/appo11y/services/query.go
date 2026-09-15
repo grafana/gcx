@@ -422,7 +422,7 @@ func serviceKindFromConnectionType(connType string) string {
 // guaranteed). A specific edge classification always wins over the generic
 // "service" fallback; ties are impossible since every kind has a distinct
 // rank.
-var kindRank = map[string]int{
+var kindRank = map[string]int{ //nolint:gochecknoglobals // constant-like lookup table; never mutated.
 	connTypeDatabase:        0,
 	connTypeMessagingSystem: 1,
 	connTypeVirtualNode:     2,
