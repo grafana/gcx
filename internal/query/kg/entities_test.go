@@ -31,6 +31,13 @@ func TestClient_LookupEntity(t *testing.T) {
 			want: &kg.Entity{Type: "service", Name: "checkout", Active: true},
 		},
 		{
+			name: "entityType fallback when type is empty",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				writeJSON(w, map[string]any{"entityType": "service", "name": "checkout"})
+			},
+			want: &kg.Entity{Type: "service", EntityType: "service", Name: "checkout"},
+		},
+		{
 			name: "204 not found",
 			handler: func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusNoContent)
@@ -83,6 +90,7 @@ func TestClient_ListEntities(t *testing.T) {
 					PropertyMatchers []struct {
 						Name string `json:"name"`
 						Op   string `json:"op"`
+						Type string `json:"type"`
 					} `json:"propertyMatchers"`
 				} `json:"filterCriteria"`
 				PageNum int `json:"pageNum"`
@@ -97,6 +105,7 @@ func TestClient_ListEntities(t *testing.T) {
 				if assert.Len(t, body.FilterCriteria[0].PropertyMatchers, 1) {
 					assert.Equal(t, "name", body.FilterCriteria[0].PropertyMatchers[0].Name)
 					assert.Equal(t, "IS NOT NULL", body.FilterCriteria[0].PropertyMatchers[0].Op)
+					assert.Equal(t, "String", body.FilterCriteria[0].PropertyMatchers[0].Type, "the IS NOT NULL matcher must carry the same Type the provider sends for the identical filter")
 				}
 			}
 			assert.Equal(t, 2, body.PageNum)
@@ -124,6 +133,32 @@ func TestClient_ListEntities(t *testing.T) {
 		assert.Equal(t, 2, page.PageNum)
 		assert.True(t, page.LastPage)
 		assert.False(t, page.MaxLimitHit)
+	})
+
+	// TestClient_ListEntities/entityType_fallback_when_type_is_empty guards
+	// the fix for entities whose response only populates entityType (not
+	// type) — the provider's own decode of the identical /v1/search
+	// response falls back to entityType, and this package must not come
+	// back with Type == "" in that case.
+	t.Run("entityType fallback when type is empty", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			writeJSON(w, map[string]any{
+				"data": map[string]any{
+					"entities": []map[string]any{
+						{"entityType": "service", "name": "checkout"},
+					},
+					"lastPage": true,
+				},
+			})
+		}))
+		defer server.Close()
+		client := newTestClient(t, server)
+
+		page, err := client.ListEntities(t.Context(), "service", kg.EntityScope{}, 0, 0, 0)
+		require.NoError(t, err)
+		require.Len(t, page.Entities, 1)
+		assert.Equal(t, "service", page.Entities[0].Type)
+		assert.Equal(t, "service", page.Entities[0].EntityType)
 	})
 
 	t.Run("nil entities become empty slice", func(t *testing.T) {
