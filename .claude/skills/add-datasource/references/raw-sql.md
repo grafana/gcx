@@ -40,6 +40,40 @@ clamp, and `internal/datasources/postgres/query.go` models both:
   The caller's own `LIMIT` was lowered to `maxLimit`, and they should hear about
   it from the command that did it.
 
+**Pinot (`internal/query/pinot`)** uses the same `querysql.EnforceLimit` + `bail`
+helper, with `keywordScan` so keywords inside string literals do not trigger
+bail. Stderr goes through `LimitEnforcementNotice` (see the tables below). No
+full SQL dump on stderr. An existing `LIMIT` is detected with `limitKeywordRe`
+on the scanned SQL. A trusted row cap `n` is only a clean trailing `LIMIT n`
+after comments are blanked (`LIMIT /* note */ 5000` yields 5000; `LIMIT 0` is
+valid). Comma form (`LIMIT 5,30`), `OFFSET`, and `LIMIT abc` have a LIMIT
+keyword but `n` is unset — do not treat the second number as the cap.
+`EnforceLimit` is not changed: it never overwrites a LIMIT that is already
+≤ 1000, and it cannot rewrite a commented LIMIT.
+
+When `--limit N` is set:
+
+| Query | Sent | Notice |
+|---|---|---|
+| no LIMIT, safe | append LIMIT N | Query adjusted: appended LIMIT N (--limit). Use --limit 0 to disable enforcement. |
+| no LIMIT, not safe | unchanged | You asked for --limit N, but a row limit was not appended (this query shape is not safe to modify). Add LIMIT in the SQL or use --limit 0. |
+| has LIMIT, n == N | unchanged | (none) |
+| has LIMIT, n ≠ N, n ≤ 1000 | unchanged | You requested --limit N but the query already has a LIMIT, so no change was applied. |
+| bare LIMIT n, n > 1000 | LIMIT 1000 | You requested --limit N but the existing LIMIT was above the maximum, so it was reduced to 1000. |
+| LIMIT /* … */ n, n > 1000 | unchanged | The query has a LIMIT above 1000 that should be reduced to 1000, but the query is not safe to modify. |
+
+When `--limit` is omitted (default 100):
+
+| Query | Sent | Notice |
+|---|---|---|
+| no LIMIT, safe | append LIMIT 100 | Query adjusted: appended default LIMIT 100. Use --limit 0 to disable enforcement. |
+| no LIMIT, not safe | unchanged | (none) |
+| has LIMIT, n ≤ 1000 | unchanged | (none) |
+| bare LIMIT n, n > 1000 | LIMIT 1000 | Query adjusted: LIMIT reduced to 1000 (maximum). Use --limit 0 to disable enforcement. |
+| LIMIT /* … */ n, n > 1000 | unchanged | The query has a LIMIT above 1000 that should be reduced to 1000, but the query is not safe to modify. |
+
+`--limit 0` is silent and sends the SQL unchanged.
+
 Handing back fewer rows than asked for without saying so is a completeness
 defect — T3 in `.claude/skills/integrate-with-gcx/references/self-review.md`.
 A stderr warning discharges it here because `docs/design/output.md` §15 is

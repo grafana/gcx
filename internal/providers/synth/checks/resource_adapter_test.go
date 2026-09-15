@@ -2,6 +2,7 @@ package checks_test
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -314,6 +315,68 @@ func TestResourceAdapter_Update_UnknownProbeName(t *testing.T) {
 	_, err = a.Update(context.Background(), obj, metav1.UpdateOptions{})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), `probe "TypoProbe" not found`)
+}
+
+// TestResourceAdapter_Update_PlaintextScript_IsReEncoded reproduces the
+// 'gcx resources push checks' workflow against a file produced by
+// 'checks get --decode-script': the on-disk spec carries a plaintext
+// scripted/browser script rather than the API's base64 form. The resource
+// adapter's Update path (used by push) must re-encode it before sending the
+// request, the same way readCheckSpec does for 'checks update -f'.
+func TestResourceAdapter_Update_PlaintextScript_IsReEncoded(t *testing.T) {
+	mux := buildTestMux(t)
+
+	var sentScript string
+	mux.HandleFunc("/api/v1/check/update", func(w http.ResponseWriter, r *http.Request) {
+		var request checks.Check
+		if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&request)) {
+			http.Error(w, "invalid request", http.StatusBadRequest)
+			return
+		}
+		nested, ok := request.Settings["scripted"].(map[string]any)
+		if !assert.True(t, ok, "settings.scripted should be a map") {
+			return
+		}
+		sentScript, ok = nested["script"].(string)
+		assert.True(t, ok, "settings.scripted.script should be a string")
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(stubCheckList[0])
+	})
+	srv := newAdapterTestServer(t, mux)
+
+	loader := &fakeLoader{baseURL: srv.URL, token: "test-token", namespace: "default"}
+	factory := checks.NewAdapterFactory(loader)
+
+	a, err := factory(context.Background())
+	require.NoError(t, err)
+
+	plaintext := "export default function() {}"
+	obj := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": checks.APIVersion,
+			"kind":       checks.Kind,
+			"metadata": map[string]any{
+				"name":      "web-check-1001",
+				"namespace": "default",
+			},
+			"spec": map[string]any{
+				"job":       "web-check",
+				"target":    "https://grafana.com",
+				"frequency": float64(60000),
+				"timeout":   float64(10000),
+				"enabled":   true,
+				"settings":  map[string]any{"scripted": map[string]any{"script": plaintext}},
+				"probes":    []any{"Oregon"},
+			},
+		},
+	}
+
+	_, err = a.Update(context.Background(), obj, metav1.UpdateOptions{})
+	require.NoError(t, err)
+
+	_, decodeErr := base64.StdEncoding.DecodeString(sentScript)
+	assert.NoError(t, decodeErr, "script sent to the SM API must be base64-encoded, got plaintext %q", sentScript)
 }
 
 func TestResourceAdapter_Descriptor(t *testing.T) {

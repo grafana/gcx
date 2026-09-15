@@ -3,10 +3,8 @@ package irm
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 
-	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -26,37 +24,6 @@ func init() { //nolint:gochecknoinits // Natural key registration for cross-stac
 	)
 }
 
-type resourceMeta struct {
-	Descriptor  resources.Descriptor
-	Schema      json.RawMessage
-	Example     json.RawMessage
-	URLTemplate string
-}
-
-func withCreate[T adapter.ResourceNamer](fn func(ctx context.Context, c OnCallAPI, item *T) (*T, error)) crudOption[T] {
-	return func(client OnCallAPI, crud *adapter.TypedCRUD[T]) {
-		crud.CreateFn = func(ctx context.Context, item *T) (*T, error) {
-			return fn(ctx, client, item)
-		}
-	}
-}
-
-func withUpdate[T adapter.ResourceNamer](fn func(ctx context.Context, c OnCallAPI, name string, item *T) (*T, error)) crudOption[T] {
-	return func(client OnCallAPI, crud *adapter.TypedCRUD[T]) {
-		crud.UpdateFn = func(ctx context.Context, name string, item *T) (*T, error) {
-			return fn(ctx, client, name, item)
-		}
-	}
-}
-
-func withDelete[T adapter.ResourceNamer](fn func(ctx context.Context, c OnCallAPI, name string) error) crudOption[T] {
-	return func(client OnCallAPI, crud *adapter.TypedCRUD[T]) {
-		crud.DeleteFn = func(ctx context.Context, name string) error {
-			return fn(ctx, client, name)
-		}
-	}
-}
-
 // ---------------------------------------------------------------------------
 // Per-resource CRUD wiring, shared between the resource adapters (push/pull)
 // and the noun-command verbs (create/update/delete). A single source of truth
@@ -65,13 +32,13 @@ func withDelete[T adapter.ResourceNamer](fn func(ctx context.Context, c OnCallAP
 
 func integrationCRUDOpts() []crudOption[Integration] {
 	return []crudOption[Integration]{
-		withCreate(func(ctx context.Context, c OnCallAPI, item *Integration) (*Integration, error) {
+		adapter.WithCreate(func(ctx context.Context, c OnCallAPI, item *Integration) (*Integration, error) {
 			return c.CreateIntegration(ctx, *item)
 		}),
-		withUpdate(func(ctx context.Context, c OnCallAPI, name string, item *Integration) (*Integration, error) {
+		adapter.WithUpdate(func(ctx context.Context, c OnCallAPI, name string, item *Integration) (*Integration, error) {
 			return c.UpdateIntegration(ctx, name, *item)
 		}),
-		withDelete[Integration](func(ctx context.Context, c OnCallAPI, name string) error {
+		adapter.WithDelete[Integration](func(ctx context.Context, c OnCallAPI, name string) error {
 			return c.DeleteIntegration(ctx, name)
 		}),
 	}
@@ -79,13 +46,13 @@ func integrationCRUDOpts() []crudOption[Integration] {
 
 func escalationChainCRUDOpts() []crudOption[EscalationChain] {
 	return []crudOption[EscalationChain]{
-		withCreate(func(ctx context.Context, c OnCallAPI, item *EscalationChain) (*EscalationChain, error) {
+		adapter.WithCreate(func(ctx context.Context, c OnCallAPI, item *EscalationChain) (*EscalationChain, error) {
 			return c.CreateEscalationChain(ctx, *item)
 		}),
-		withUpdate(func(ctx context.Context, c OnCallAPI, name string, item *EscalationChain) (*EscalationChain, error) {
+		adapter.WithUpdate(func(ctx context.Context, c OnCallAPI, name string, item *EscalationChain) (*EscalationChain, error) {
 			return c.UpdateEscalationChain(ctx, name, *item)
 		}),
-		withDelete[EscalationChain](func(ctx context.Context, c OnCallAPI, name string) error {
+		adapter.WithDelete[EscalationChain](func(ctx context.Context, c OnCallAPI, name string) error {
 			return c.DeleteEscalationChain(ctx, name)
 		}),
 	}
@@ -93,13 +60,13 @@ func escalationChainCRUDOpts() []crudOption[EscalationChain] {
 
 func escalationPolicyCRUDOpts() []crudOption[EscalationPolicy] {
 	return []crudOption[EscalationPolicy]{
-		withCreate(func(ctx context.Context, c OnCallAPI, item *EscalationPolicy) (*EscalationPolicy, error) {
+		adapter.WithCreate(func(ctx context.Context, c OnCallAPI, item *EscalationPolicy) (*EscalationPolicy, error) {
 			return c.CreateEscalationPolicy(ctx, *item)
 		}),
-		withUpdate(func(ctx context.Context, c OnCallAPI, name string, item *EscalationPolicy) (*EscalationPolicy, error) {
+		adapter.WithUpdate(func(ctx context.Context, c OnCallAPI, name string, item *EscalationPolicy) (*EscalationPolicy, error) {
 			return c.UpdateEscalationPolicy(ctx, name, *item)
 		}),
-		withDelete[EscalationPolicy](func(ctx context.Context, c OnCallAPI, name string) error {
+		adapter.WithDelete[EscalationPolicy](func(ctx context.Context, c OnCallAPI, name string) error {
 			return c.DeleteEscalationPolicy(ctx, name)
 		}),
 	}
@@ -107,13 +74,13 @@ func escalationPolicyCRUDOpts() []crudOption[EscalationPolicy] {
 
 func scheduleCRUDOpts() []crudOption[Schedule] {
 	return []crudOption[Schedule]{
-		withCreate(func(ctx context.Context, c OnCallAPI, item *Schedule) (*Schedule, error) {
+		adapter.WithCreate(func(ctx context.Context, c OnCallAPI, item *Schedule) (*Schedule, error) {
 			return c.CreateSchedule(ctx, *item)
 		}),
-		withUpdate(func(ctx context.Context, c OnCallAPI, name string, item *Schedule) (*Schedule, error) {
+		adapter.WithUpdate(func(ctx context.Context, c OnCallAPI, name string, item *Schedule) (*Schedule, error) {
 			return c.UpdateSchedule(ctx, name, *item)
 		}),
-		withDelete[Schedule](func(ctx context.Context, c OnCallAPI, name string) error {
+		adapter.WithDelete[Schedule](func(ctx context.Context, c OnCallAPI, name string) error {
 			return c.DeleteSchedule(ctx, name)
 		}),
 	}
@@ -121,13 +88,13 @@ func scheduleCRUDOpts() []crudOption[Schedule] {
 
 func shiftCRUDOpts() []crudOption[Shift] {
 	return []crudOption[Shift]{
-		withCreate(func(ctx context.Context, c OnCallAPI, item *Shift) (*Shift, error) {
+		adapter.WithCreate(func(ctx context.Context, c OnCallAPI, item *Shift) (*Shift, error) {
 			return c.CreateShift(ctx, shiftToRequest(item))
 		}),
-		withUpdate(func(ctx context.Context, c OnCallAPI, name string, item *Shift) (*Shift, error) {
+		adapter.WithUpdate(func(ctx context.Context, c OnCallAPI, name string, item *Shift) (*Shift, error) {
 			return c.UpdateShift(ctx, name, shiftToRequest(item))
 		}),
-		withDelete[Shift](func(ctx context.Context, c OnCallAPI, name string) error {
+		adapter.WithDelete[Shift](func(ctx context.Context, c OnCallAPI, name string) error {
 			return c.DeleteShift(ctx, name)
 		}),
 	}
@@ -135,13 +102,13 @@ func shiftCRUDOpts() []crudOption[Shift] {
 
 func routeCRUDOpts() []crudOption[Route] {
 	return []crudOption[Route]{
-		withCreate(func(ctx context.Context, c OnCallAPI, item *Route) (*Route, error) {
+		adapter.WithCreate(func(ctx context.Context, c OnCallAPI, item *Route) (*Route, error) {
 			return c.CreateRoute(ctx, *item)
 		}),
-		withUpdate(func(ctx context.Context, c OnCallAPI, name string, item *Route) (*Route, error) {
+		adapter.WithUpdate(func(ctx context.Context, c OnCallAPI, name string, item *Route) (*Route, error) {
 			return c.UpdateRoute(ctx, name, *item)
 		}),
-		withDelete[Route](func(ctx context.Context, c OnCallAPI, name string) error {
+		adapter.WithDelete[Route](func(ctx context.Context, c OnCallAPI, name string) error {
 			return c.DeleteRoute(ctx, name)
 		}),
 	}
@@ -149,13 +116,13 @@ func routeCRUDOpts() []crudOption[Route] {
 
 func webhookCRUDOpts() []crudOption[Webhook] {
 	return []crudOption[Webhook]{
-		withCreate(func(ctx context.Context, c OnCallAPI, item *Webhook) (*Webhook, error) {
+		adapter.WithCreate(func(ctx context.Context, c OnCallAPI, item *Webhook) (*Webhook, error) {
 			return c.CreateWebhook(ctx, *item)
 		}),
-		withUpdate(func(ctx context.Context, c OnCallAPI, name string, item *Webhook) (*Webhook, error) {
+		adapter.WithUpdate(func(ctx context.Context, c OnCallAPI, name string, item *Webhook) (*Webhook, error) {
 			return c.UpdateWebhook(ctx, name, *item)
 		}),
-		withDelete[Webhook](func(ctx context.Context, c OnCallAPI, name string) error {
+		adapter.WithDelete[Webhook](func(ctx context.Context, c OnCallAPI, name string) error {
 			return c.DeleteWebhook(ctx, name)
 		}),
 	}
@@ -163,18 +130,18 @@ func webhookCRUDOpts() []crudOption[Webhook] {
 
 func resolutionNoteCRUDOpts() []crudOption[ResolutionNote] {
 	return []crudOption[ResolutionNote]{
-		withCreate(func(ctx context.Context, c OnCallAPI, item *ResolutionNote) (*ResolutionNote, error) {
+		adapter.WithCreate(func(ctx context.Context, c OnCallAPI, item *ResolutionNote) (*ResolutionNote, error) {
 			return c.CreateResolutionNote(ctx, CreateResolutionNoteInput{
 				AlertGroup: item.AlertGroup,
 				Text:       item.Text,
 			})
 		}),
-		withUpdate(func(ctx context.Context, c OnCallAPI, name string, item *ResolutionNote) (*ResolutionNote, error) {
+		adapter.WithUpdate(func(ctx context.Context, c OnCallAPI, name string, item *ResolutionNote) (*ResolutionNote, error) {
 			return c.UpdateResolutionNote(ctx, name, UpdateResolutionNoteInput{
 				Text: item.Text,
 			})
 		}),
-		withDelete[ResolutionNote](func(ctx context.Context, c OnCallAPI, name string) error {
+		adapter.WithDelete[ResolutionNote](func(ctx context.Context, c OnCallAPI, name string) error {
 			return c.DeleteResolutionNote(ctx, name)
 		}),
 	}
@@ -182,7 +149,7 @@ func resolutionNoteCRUDOpts() []crudOption[ResolutionNote] {
 
 func shiftSwapCRUDOpts() []crudOption[ShiftSwap] {
 	return []crudOption[ShiftSwap]{
-		withCreate(func(ctx context.Context, c OnCallAPI, item *ShiftSwap) (*ShiftSwap, error) {
+		adapter.WithCreate(func(ctx context.Context, c OnCallAPI, item *ShiftSwap) (*ShiftSwap, error) {
 			return c.CreateShiftSwap(ctx, CreateShiftSwapInput{
 				Schedule:    item.Schedule,
 				SwapStart:   item.SwapStart,
@@ -190,76 +157,27 @@ func shiftSwapCRUDOpts() []crudOption[ShiftSwap] {
 				Beneficiary: item.Beneficiary,
 			})
 		}),
-		withUpdate(func(ctx context.Context, c OnCallAPI, name string, item *ShiftSwap) (*ShiftSwap, error) {
+		adapter.WithUpdate(func(ctx context.Context, c OnCallAPI, name string, item *ShiftSwap) (*ShiftSwap, error) {
 			return c.UpdateShiftSwap(ctx, name, UpdateShiftSwapInput{
 				Schedule:  item.Schedule,
 				SwapStart: item.SwapStart,
 				SwapEnd:   item.SwapEnd,
 			})
 		}),
-		withDelete[ShiftSwap](func(ctx context.Context, c OnCallAPI, name string) error {
+		adapter.WithDelete[ShiftSwap](func(ctx context.Context, c OnCallAPI, name string) error {
 			return c.DeleteShiftSwap(ctx, name)
 		}),
 	}
 }
 
-func buildRegistration[T adapter.ResourceNamer](
-	loader OnCallConfigLoader,
-	meta resourceMeta,
-	listFn func(ctx context.Context, client OnCallAPI) ([]T, error),
-	getFn func(ctx context.Context, client OnCallAPI, name string) (*T, error),
-	opts ...crudOption[T],
-) adapter.Registration {
-	desc := meta.Descriptor
-	return adapter.Registration{
-		Factory: func(ctx context.Context) (adapter.ResourceAdapter, error) {
-			client, namespace, err := loader.LoadOnCallClient(ctx)
-			if err != nil {
-				return nil, fmt.Errorf("failed to load IRM OnCall config for %s adapter: %w", desc.Kind, err)
-			}
-
-			crud := &adapter.TypedCRUD[T]{
-				StripFields: DefaultStripFields,
-				Namespace:   namespace,
-				Descriptor:  desc,
-			}
-
-			if listFn != nil {
-				crud.ListFn = adapter.LimitedListFn(func(ctx context.Context) ([]T, error) { return listFn(ctx, client) })
-			}
-
-			if getFn != nil {
-				crud.GetFn = func(ctx context.Context, name string) (*T, error) { return getFn(ctx, client, name) }
-			} else {
-				crud.GetFn = func(_ context.Context, _ string) (*T, error) { return nil, errors.ErrUnsupported }
-			}
-
-			for _, opt := range opts {
-				opt(client, crud)
-			}
-
-			return crud.AsAdapter(), nil
-		},
-		Descriptor:  desc,
-		GVK:         desc.GroupVersionKind(),
-		Schema:      meta.Schema,
-		Example:     meta.Example,
-		URLTemplate: meta.URLTemplate,
-	}
-}
-
-func oncallMeta(kind, singular, plural string) resourceMeta {
-	return resourceMeta{
-		Descriptor: resources.Descriptor{
-			GroupVersion: schema.GroupVersion{
-				Group:   APIGroup,
-				Version: Version,
-			},
-			Kind:     kind,
-			Singular: singular,
-			Plural:   plural,
-		},
-	}
+// oncallMeta builds an adapter.RegistrationMeta for an OnCall resource type,
+// wiring OnCall's GroupVersion and default strip fields. Schema and GVK are
+// auto-derived by adapter.BuildRegistration — callers only set Example and
+// URLTemplate on the returned value.
+func oncallMeta(kind, singular, plural string) adapter.RegistrationMeta {
+	meta := adapter.NewRegistrationMeta(schema.GroupVersion{Group: APIGroup, Version: Version}, kind, singular, plural)
+	meta.StripFields = DefaultStripFields
+	return meta
 }
 
 func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration {
@@ -267,10 +185,9 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 
 	// 1. Integration — full CRUD
 	meta := oncallMeta("Integration", "integration", "integrations")
-	meta.Schema = adapter.SchemaFromType[Integration](meta.Descriptor)
 	meta.Example = integrationExample()
 	meta.URLTemplate = "/a/grafana-oncall-app/integrations/{name}"
-	regs = append(regs, buildRegistration(loader, meta,
+	regs = append(regs, adapter.BuildRegistration(loader.LoadOnCallClient, meta,
 		func(ctx context.Context, c OnCallAPI) ([]Integration, error) { return c.ListIntegrations(ctx) },
 		func(ctx context.Context, c OnCallAPI, name string) (*Integration, error) {
 			return c.GetIntegration(ctx, name)
@@ -280,10 +197,9 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 
 	// 2. EscalationChain — full CRUD
 	meta = oncallMeta("EscalationChain", "escalationchain", "escalationchains")
-	meta.Schema = adapter.SchemaFromType[EscalationChain](meta.Descriptor)
 	meta.Example = escalationChainExample()
 	meta.URLTemplate = "/a/grafana-oncall-app/escalation-chains/{name}"
-	regs = append(regs, buildRegistration(loader, meta,
+	regs = append(regs, adapter.BuildRegistration(loader.LoadOnCallClient, meta,
 		func(ctx context.Context, c OnCallAPI) ([]EscalationChain, error) {
 			return c.ListEscalationChains(ctx)
 		},
@@ -295,9 +211,8 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 
 	// 3. EscalationPolicy — full CRUD
 	meta = oncallMeta("EscalationPolicy", "escalationpolicy", "escalationpolicies")
-	meta.Schema = adapter.SchemaFromType[EscalationPolicy](meta.Descriptor)
 	meta.Example = escalationPolicyExample()
-	regs = append(regs, buildRegistration(loader, meta,
+	regs = append(regs, adapter.BuildRegistration(loader.LoadOnCallClient, meta,
 		func(ctx context.Context, c OnCallAPI) ([]EscalationPolicy, error) {
 			return c.ListEscalationPolicies(ctx, "")
 		},
@@ -309,10 +224,9 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 
 	// 4. Schedule — full CRUD
 	meta = oncallMeta("Schedule", "schedule", "schedules")
-	meta.Schema = adapter.SchemaFromType[Schedule](meta.Descriptor)
 	meta.Example = scheduleExample()
 	meta.URLTemplate = "/a/grafana-oncall-app/schedules/{name}"
-	regs = append(regs, buildRegistration(loader, meta,
+	regs = append(regs, adapter.BuildRegistration(loader.LoadOnCallClient, meta,
 		func(ctx context.Context, c OnCallAPI) ([]Schedule, error) { return c.ListSchedules(ctx) },
 		func(ctx context.Context, c OnCallAPI, name string) (*Schedule, error) {
 			return c.GetSchedule(ctx, name)
@@ -322,9 +236,8 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 
 	// 5. Shift — CRUD with ShiftRequest conversion
 	meta = oncallMeta("Shift", "shift", "shifts")
-	meta.Schema = adapter.SchemaFromType[Shift](meta.Descriptor)
 	meta.Example = shiftExample()
-	regs = append(regs, buildRegistration(loader, meta,
+	regs = append(regs, adapter.BuildRegistration(loader.LoadOnCallClient, meta,
 		func(ctx context.Context, c OnCallAPI) ([]Shift, error) { return c.ListShifts(ctx) },
 		func(ctx context.Context, c OnCallAPI, name string) (*Shift, error) { return c.GetShift(ctx, name) },
 		shiftCRUDOpts()...,
@@ -332,9 +245,8 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 
 	// 6. Route — full CRUD
 	meta = oncallMeta("Route", "route", "routes")
-	meta.Schema = adapter.SchemaFromType[Route](meta.Descriptor)
 	meta.Example = routeExample()
-	regs = append(regs, buildRegistration(loader, meta,
+	regs = append(regs, adapter.BuildRegistration(loader.LoadOnCallClient, meta,
 		func(ctx context.Context, c OnCallAPI) ([]Route, error) { return c.ListRoutes(ctx, "") },
 		func(ctx context.Context, c OnCallAPI, name string) (*Route, error) { return c.GetRoute(ctx, name) },
 		routeCRUDOpts()...,
@@ -342,10 +254,9 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 
 	// 7. Webhook — full CRUD
 	meta = oncallMeta("Webhook", "webhook", "webhooks")
-	meta.Schema = adapter.SchemaFromType[Webhook](meta.Descriptor)
 	meta.Example = webhookExample()
 	meta.URLTemplate = "/a/grafana-oncall-app/outgoing-webhooks/{name}"
-	regs = append(regs, buildRegistration(loader, meta,
+	regs = append(regs, adapter.BuildRegistration(loader.LoadOnCallClient, meta,
 		func(ctx context.Context, c OnCallAPI) ([]Webhook, error) { return c.ListWebhooks(ctx) },
 		func(ctx context.Context, c OnCallAPI, name string) (*Webhook, error) {
 			return c.GetWebhook(ctx, name)
@@ -355,62 +266,55 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 
 	// 8. AlertGroup — read-only + delete
 	meta = oncallMeta("AlertGroup", "alertgroup", "alertgroups")
-	meta.Schema = adapter.SchemaFromType[AlertGroup](meta.Descriptor)
 	meta.URLTemplate = "/a/grafana-oncall-app/alert-groups/{name}"
-	regs = append(regs, buildRegistration(loader, meta,
+	regs = append(regs, adapter.BuildRegistration(loader.LoadOnCallClient, meta,
 		func(ctx context.Context, c OnCallAPI) ([]AlertGroup, error) { return c.ListAlertGroups(ctx) },
 		func(ctx context.Context, c OnCallAPI, name string) (*AlertGroup, error) {
 			return c.GetAlertGroup(ctx, name)
 		},
-		withDelete[AlertGroup](func(ctx context.Context, c OnCallAPI, name string) error {
+		adapter.WithDelete[AlertGroup](func(ctx context.Context, c OnCallAPI, name string) error {
 			return c.DeleteAlertGroup(ctx, name)
 		}),
 	))
 
 	// 9. User — read-only
 	meta = oncallMeta("User", "oncalluser", "oncallusers")
-	meta.Schema = adapter.SchemaFromType[User](meta.Descriptor)
-	regs = append(regs, buildRegistration(loader, meta,
+	regs = append(regs, adapter.BuildRegistration(loader.LoadOnCallClient, meta,
 		func(ctx context.Context, c OnCallAPI) ([]User, error) { return c.ListUsers(ctx) },
 		func(ctx context.Context, c OnCallAPI, name string) (*User, error) { return c.GetUser(ctx, name) },
 	))
 
 	// 10. Team — read-only
 	meta = oncallMeta("Team", "oncallteam", "oncallteams")
-	meta.Schema = adapter.SchemaFromType[Team](meta.Descriptor)
-	regs = append(regs, buildRegistration(loader, meta,
+	regs = append(regs, adapter.BuildRegistration(loader.LoadOnCallClient, meta,
 		func(ctx context.Context, c OnCallAPI) ([]Team, error) { return c.ListTeams(ctx) },
 		func(ctx context.Context, c OnCallAPI, name string) (*Team, error) { return c.GetTeam(ctx, name) },
 	))
 
 	// 11. UserGroup — list-only
 	meta = oncallMeta("UserGroup", "usergroup", "usergroups")
-	meta.Schema = adapter.SchemaFromType[UserGroup](meta.Descriptor)
-	regs = append(regs, buildRegistration(loader, meta,
+	regs = append(regs, adapter.BuildRegistration(loader.LoadOnCallClient, meta,
 		func(ctx context.Context, c OnCallAPI) ([]UserGroup, error) { return c.ListUserGroups(ctx) },
 		nil,
 	))
 
 	// 12. SlackChannel — list-only
 	meta = oncallMeta("SlackChannel", "slackchannel", "slackchannels")
-	meta.Schema = adapter.SchemaFromType[SlackChannel](meta.Descriptor)
-	regs = append(regs, buildRegistration(loader, meta,
+	regs = append(regs, adapter.BuildRegistration(loader.LoadOnCallClient, meta,
 		func(ctx context.Context, c OnCallAPI) ([]SlackChannel, error) { return c.ListSlackChannels(ctx) },
 		nil,
 	))
 
 	// 13. Alert — get-only
 	meta = oncallMeta("Alert", "alert", "alerts")
-	meta.Schema = adapter.SchemaFromType[Alert](meta.Descriptor)
-	regs = append(regs, buildRegistration(loader, meta,
+	regs = append(regs, adapter.BuildRegistration(loader.LoadOnCallClient, meta,
 		nil,
 		func(ctx context.Context, c OnCallAPI, name string) (*Alert, error) { return c.GetAlert(ctx, name) },
 	))
 
 	// 14. Organization — read-only (singular endpoint, no list)
 	meta = oncallMeta("Organization", "organization", "organizations")
-	meta.Schema = adapter.SchemaFromType[Organization](meta.Descriptor)
-	regs = append(regs, buildRegistration[Organization](loader, meta,
+	regs = append(regs, adapter.BuildRegistration[Organization](loader.LoadOnCallClient, meta,
 		nil,
 		func(ctx context.Context, c OnCallAPI, _ string) (*Organization, error) {
 			return c.GetOrganization(ctx)
@@ -419,9 +323,8 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 
 	// 15. ResolutionNote — CRUD with input conversion
 	meta = oncallMeta("ResolutionNote", "resolutionnote", "resolutionnotes")
-	meta.Schema = adapter.SchemaFromType[ResolutionNote](meta.Descriptor)
 	meta.Example = resolutionNoteExample()
-	regs = append(regs, buildRegistration(loader, meta,
+	regs = append(regs, adapter.BuildRegistration(loader.LoadOnCallClient, meta,
 		func(ctx context.Context, c OnCallAPI) ([]ResolutionNote, error) {
 			return c.ListResolutionNotes(ctx, "")
 		},
@@ -433,9 +336,8 @@ func buildOnCallRegistrations(loader OnCallConfigLoader) []adapter.Registration 
 
 	// 16. ShiftSwap — CRUD with input conversion
 	meta = oncallMeta("ShiftSwap", "shiftswap", "shiftswaps")
-	meta.Schema = adapter.SchemaFromType[ShiftSwap](meta.Descriptor)
 	meta.Example = shiftSwapExample()
-	regs = append(regs, buildRegistration(loader, meta,
+	regs = append(regs, adapter.BuildRegistration(loader.LoadOnCallClient, meta,
 		func(ctx context.Context, c OnCallAPI) ([]ShiftSwap, error) { return c.ListShiftSwaps(ctx) },
 		func(ctx context.Context, c OnCallAPI, name string) (*ShiftSwap, error) {
 			return c.GetShiftSwap(ctx, name)

@@ -130,7 +130,7 @@ internal/providers/{name}/
 ├── {resource}/
 │   ├── types.go          # API structs (copy from the legacy CLI; adjust tags if needed)
 │   ├── client.go         # HTTP client (adapt from the legacy CLI)
-│   ├── adapter.go        # TypedRegistration[T] wiring
+│   ├── adapter.go        # adapter.BuildRegistration wiring
 │   └── client_test.go    # httptest-based tests
 ```
 
@@ -216,9 +216,12 @@ requests to `cfg.Host` — a product API on its own domain needs
 **Pagination:** If the legacy client uses manual pagination loops, port them. If
 the API returns all results in one call, keep it simple.
 
-### Step 4: Wire adapter.go with TypedRegistration[T]
+### Step 4: Wire adapter.go with `adapter.BuildRegistration`
 
-This is the part that `TypedResourceAdapter[T]` makes trivial:
+Use `adapter.BuildRegistration` when the legacy client's method signatures do
+not directly satisfy `adapter.Resource[T]`'s capability interfaces. It derives
+the schema and GVK while keeping the client-specific conversion at the call
+site:
 
 ```go
 package {resource}
@@ -238,57 +241,36 @@ type ClientLoader func(ctx context.Context) (*Client, string, error)
 // in the provider's init() performs the actual registration (never call
 // adapter.Register() directly; CONSTITUTION § Architecture Invariants).
 func Registration(loadClient ClientLoader) adapter.Registration {
-    // ResourceType must implement adapter.ResourceIdentity
-    // (GetResourceName/SetResourceName) — identity comes from the domain
-    // type, not function pointers (CONSTITUTION § Architecture Invariants).
-    return adapter.TypedRegistration[ResourceType]{
-        Descriptor: Descriptor(),
-        Aliases:    []string{"{alias}"},
-        GVK:        GVK(),
-        Schema:     resourceSchema(), // required, non-nil
-        // Required for writable resources. CONSTITUTION § Architecture
-        // Invariants permits a nil Example only when the resource has no
-        // Create/Update support, because the example is the push template.
-        Example: resourceExample(),
-        Factory: func(ctx context.Context) (*adapter.TypedCRUD[ResourceType], error) {
-            client, namespace, err := loadClient(ctx)
-            if err != nil {
-                return nil, err
-            }
-            return &adapter.TypedCRUD[ResourceType]{
-                // Set Descriptor and Aliases on the CRUD too. ToRegistration()
-                // copies them onto the Registration but NOT onto the CRUD, and
-                // typedAdapter.Descriptor()/Aliases() read the CRUD's copies
-                // (internal/resources/adapter/typed.go). Omit them and the
-                // adapter's own Descriptor() is the zero value.
-                Descriptor: Descriptor(),
-                Aliases:    []string{"{alias}"},
-                Namespace:  namespace,
-                // LimitedListFn adapts a simple full-list client to TypedCRUD's
-                // (ctx, limit) signature. If the backend accepts a limit, wire a
-                // direct function that passes it through instead.
-                ListFn: adapter.LimitedListFn(client.List),
-                GetFn: func(ctx context.Context, name string) (*ResourceType, error) {
-                    return client.Get(ctx, name)
-                },
-                CreateFn: func(ctx context.Context, item *ResourceType) (*ResourceType, error) {
-                    return client.Create(ctx, item)
-                },
-                UpdateFn: func(ctx context.Context, name string, item *ResourceType) (*ResourceType, error) {
-                    return client.Update(ctx, name, item)
-                },
-                DeleteFn: func(ctx context.Context, name string) error {
-                    return client.Delete(ctx, name)
-                },
-            }, nil
+    return adapter.BuildRegistration(
+        loadClient,
+        adapter.RegistrationMeta{
+            Descriptor: Descriptor(),
+            Example:    resourceExample(),
         },
-    }.ToRegistration()
+        func(ctx context.Context, client *Client) ([]ResourceType, error) {
+            return client.List(ctx)
+        },
+        func(ctx context.Context, client *Client, name string) (*ResourceType, error) {
+            return client.Get(ctx, name)
+        },
+        adapter.WithCreate(func(ctx context.Context, client *Client, item *ResourceType) (*ResourceType, error) {
+            return client.Create(ctx, item)
+        }),
+        adapter.WithUpdate(func(ctx context.Context, client *Client, name string, item *ResourceType) (*ResourceType, error) {
+            return client.Update(ctx, name, item)
+        }),
+        adapter.WithDelete(func(ctx context.Context, client *Client, name string) error {
+            return client.Delete(ctx, name)
+        }),
+    )
 }
 ```
 
-The closures above show the signatures `TypedCRUD` requires. If a legacy
-client uses numeric IDs, value parameters, or omits `name`, adapt that mismatch
-inside the closure; assign a method directly only when its signature matches.
+`ResourceType` must implement `adapter.ResourceIdentity`
+(`GetResourceName`/`SetResourceName`). If a legacy client uses numeric IDs,
+value parameters, or omits `name`, adapt that mismatch inside the closures.
+Set `RegistrationMeta.Example` for writable resources; read-only resources may
+leave it nil because they do not need a push template.
 
 `ClientLoader` is a resource-local function type, not a method on
 `providers.ConfigLoader`. Pass a provider-local method that delegates to the
@@ -298,12 +280,9 @@ according to `docs/reference/provider-guide.md` Steps 4 and 4b. There is no
 generic `ConfigLoader.Load`. See `internal/providers/irm/config.go` and
 `oncall_adapter.go` for the production shape.
 
-> **On `ToRegistration()`:** it is a convenience wrapper with no production
-> callers today — every shipped provider builds `adapter.Registration{...}`
-> directly, setting `Descriptor` on both the Registration and the CRUD. See
-> `internal/providers/irm/oncall_adapter.go` (`crud := &adapter.TypedCRUD[T]{…
-> Descriptor: desc}`) for the shape the repo actually uses. Either form is
-> compliant; the direct form is the one with precedent.
+> **When to use `adapter.Resource[T]`:** Use the declarative resource path
+> when the client's methods implement the capability interfaces directly. Use
+> `BuildRegistration` when the client requires per-verb conversion.
 
 **For numeric-ID resources with a stable user-facing label**, implement
 `ResourceIdentity` with the slug-id helpers in

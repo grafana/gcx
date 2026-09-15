@@ -151,7 +151,7 @@ func SpecToCheck(spec *CheckSpec, id, tenantID int64, probeIDs []int64) Check {
 		Timeout:          spec.Timeout,
 		Enabled:          spec.Enabled,
 		Labels:           spec.Labels,
-		Settings:         spec.Settings,
+		Settings:         encodeScriptSettings(spec.Settings),
 		Probes:           probeIDs,
 		BasicMetricsOnly: spec.BasicMetricsOnly,
 		AlertSensitivity: spec.AlertSensitivity,
