@@ -12,19 +12,9 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-func AuthenticateAndProxyHandler(cfg *config.Context) http.HandlerFunc {
+func AuthenticateAndProxyHandler(restCfg config.NamespacedRESTConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Add("Content-Type", "text/html")
-
-		if err := ValidateDevProxyAuth(cfg); err != nil {
-			httputils.Error(r, w, err.Error(), err, http.StatusBadRequest)
-			return
-		}
-		restCfg, err := cfg.ToRESTConfig(r.Context())
-		if err != nil {
-			httputils.Error(r, w, "Grafana authentication configuration error", err, http.StatusBadRequest)
-			return
-		}
 
 		target := strings.TrimSuffix(restCfg.Host, "/") + r.URL.EscapedPath()
 		if r.URL.RawQuery != "" {
@@ -78,20 +68,15 @@ func AuthenticateAndProxyHandler(cfg *config.Context) http.HandlerFunc {
 	}
 }
 
-// ValidateDevProxyAuth rejects configurations that the local development
-// proxy cannot use without risking credential loss. OAuth refresh-token
-// rotation must be wired to the owning config source; this proxy has only a
-// resolved Context, so it must fail before constructing or sending a request.
+// ValidateDevProxyAuth rejects configurations that the local development proxy
+// cannot serve: it needs a Grafana URL for the served subpath and an
+// unambiguous auth method.
 func ValidateDevProxyAuth(cfg *config.Context) error {
 	if cfg == nil || cfg.Grafana == nil || cfg.Grafana.Server == "" {
 		return errors.New("no Grafana URL configured")
 	}
-	authMethod, err := cfg.EffectiveGrafanaAuthMethod()
-	if err != nil {
+	if _, err := cfg.EffectiveGrafanaAuthMethod(); err != nil {
 		return err
-	}
-	if authMethod == "oauth" {
-		return errors.New("OAuth authentication is not supported by `gcx dev serve` because refreshed credentials cannot be persisted safely; run `gcx login --token <token>` for this context or select a token, Basic, or mTLS context")
 	}
 	return nil
 }
