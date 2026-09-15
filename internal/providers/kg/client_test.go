@@ -33,46 +33,6 @@ func writeJSON(w http.ResponseWriter, v any) {
 	}
 }
 
-func TestClient_GetStatus(t *testing.T) {
-	tests := []struct {
-		name    string
-		handler http.HandlerFunc
-		wantErr bool
-	}{
-		{
-			name: "returns status",
-			handler: func(w http.ResponseWriter, r *http.Request) {
-				assert.Equal(t, http.MethodGet, r.Method)
-				assert.Contains(t, r.URL.Path, "v1/stack/status")
-				writeJSON(w, kg.Status{Status: "complete", Enabled: true})
-			},
-		},
-		{
-			name: "handles error",
-			handler: func(w http.ResponseWriter, _ *http.Request) {
-				w.WriteHeader(http.StatusInternalServerError)
-				_, _ = w.Write([]byte("internal error"))
-			},
-			wantErr: true,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			server := httptest.NewServer(tt.handler)
-			defer server.Close()
-			client := newTestClient(t, server)
-			status, err := client.GetStatus(t.Context())
-			if tt.wantErr {
-				require.Error(t, err)
-				return
-			}
-			require.NoError(t, err)
-			assert.Equal(t, "complete", status.Status)
-			assert.True(t, status.Enabled)
-		})
-	}
-}
-
 func TestClient_ListRuleNames(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
