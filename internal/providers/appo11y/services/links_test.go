@@ -40,6 +40,47 @@ func TestBuildServiceLinks_Populated(t *testing.T) {
 	assertURLContainsExpr(t, "LatencyP95", got.LatencyP95, p95Expr)
 }
 
+// TestBuildServiceLinks_CompoundWindow guards against a link built with a
+// compound --since value (e.g. "1h30m") embedding that string verbatim as
+// datemath's `from` — Grafana's datemath parser only accepts a single
+// amount+unit pair, so "now-1h30m" silently breaks the link's time range.
+func TestBuildServiceLinks_CompoundWindow(t *testing.T) {
+	got := buildServiceLinks("https://example.grafana.net", "prom-uid", 1, "1h30m", "rate(x)", "rate(y)", "histogram_quantile(0.95,z)")
+	if got == nil {
+		t.Fatal("buildServiceLinks() = nil, want populated *ServiceLinks")
+	}
+	u, err := url.Parse(got.Rate)
+	if err != nil {
+		t.Fatalf("Rate URL %q failed to parse: %v", got.Rate, err)
+	}
+	panes := u.Query().Get("panes")
+	if strings.Contains(panes, `"now-1h30m"`) {
+		t.Errorf("panes = %q, contains invalid compound-unit datemath %q", panes, "now-1h30m")
+	}
+	if !strings.Contains(panes, `"now-5400s"`) {
+		t.Errorf("panes = %q, want it to contain the normalized \"now-5400s\"", panes)
+	}
+}
+
+func TestDatemathFrom(t *testing.T) {
+	tests := []struct {
+		window string
+		want   string
+	}{
+		{window: "5m", want: "now-300s"},
+		{window: "1h", want: "now-3600s"},
+		{window: "1h30m", want: "now-5400s"},
+		{window: "1d", want: "now-86400s"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.window, func(t *testing.T) {
+			if got := datemathFrom(tt.window); got != tt.want {
+				t.Errorf("datemathFrom(%q) = %q, want %q", tt.window, got, tt.want)
+			}
+		})
+	}
+}
+
 // assertURLContainsExpr confirms the query-string payload of an Explore
 // link carries expr. It doesn't overspecify the full URL shape — that's
 // prometheus.QueryExploreURL's own tested contract.
