@@ -29,7 +29,8 @@ stacks:
       password: string
       # APIToken is a service account token.
       # See https://grafana.com/docs/grafana/latest/administration/service-accounts/#add-a-token-to-a-service-account-in-grafana
-      # Note: if defined, the API Token takes precedence over basic auth credentials.
+      # AuthMethod selects the credential to use. Only legacy configs without
+      # AuthMethod infer token before basic auth (and OAuth before token).
       # Optional.
       token: string
       # ProxyEndpoint is the assistant backend URL used as a reverse proxy for

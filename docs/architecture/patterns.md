@@ -133,12 +133,11 @@ Directly modeled after kubectl's kubeconfig trust pattern. Key design decisions:
 
 ### 7. Concurrency via errgroup
 
-All concurrent operations use `golang.org/x/sync/errgroup`, with two patterns:
-
-1. **Bounded concurrency** (`errgroup.SetLimit`): FSReader file reads,
-   `ForEachConcurrently` for push/pull/delete operations
-2. **Unbounded concurrency**: Puller fetch goroutines (one per filter),
-   `GetMultiple` in NamespacedClient
+Batch I/O uses bounded `golang.org/x/sync/errgroup` concurrency via
+`SetLimit`: FSReader file reads, `ForEachConcurrently` for resource operations,
+Puller filter fetches (`maxConcurrentListRequests`), and NamespacedClient
+individual Gets (`maxConcurrentGetRequests`). Transport rate limits do not
+replace these limits.
 
 `ForEachConcurrently` on `Resources` is the primary concurrency primitive for
 batch operations. Default limit is 10. Error propagation behavior depends on
@@ -798,19 +797,7 @@ operates on the already-validated config and needs the resolved namespace.
 Caching would require threading state between the validation and REST config
 construction steps.
 
-### 2. GetMultiple Concurrency Limit
-
-**Observed in:** Client/API domain says `GetMultiple` has "no SetLimit call,"
-while Data Flows domain says push operations use `errgroup.SetLimit(maxConcurrent)`.
-
-**Resolution:** Both are correct at different layers. `GetMultiple` in
-`NamespacedClient` runs fully concurrent Gets (bounded only by QPS/Burst at the
-HTTP transport level). Push concurrency is bounded by `ForEachConcurrently` in
-the Pusher, which wraps the per-resource push logic (including the Get-then-
-Create/Update upsert). The concurrency limit applies to the outer loop, not to
-the inner `GetMultiple`.
-
-### 3. Manager Metadata Check in Delete vs Push
+### 2. Manager Metadata Check in Delete vs Push
 
 **Observed in:** Data Flows domain notes that Deleter does NOT check
 `IsManaged()`, while Push always checks it.
@@ -821,7 +808,7 @@ list via `ExcludeManaged` in `fetchRequest`. The Pusher checks `IsManaged()`
 per-resource because the resource list comes from local files, not from a
 pre-filtered fetch.
 
-### 4. httputils Usage Scope
+### 3. httputils Usage Scope
 
 **Observed in:** Client/API domain previously stated that `internal/httputils`
 was used only by the local development server, not by the dynamic client path.
@@ -836,7 +823,7 @@ TLS handling. The K8s dynamic client path chains
 `NewNamespacedRESTConfig`. The OpenAPI health client manages its own transport
 but consumes the same effective auth method and selected TLS view.
 
-### 5. CI Drift Check Coverage
+### 4. CI Drift Check Coverage
 
 **Observed in:** Project Structure domain notes that the CI `docs` job only
 checks `cli-reference-drift`, not all three reference generators. `mise.toml`

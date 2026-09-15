@@ -12,7 +12,7 @@
 |------|---------|
 | [VISION.md](VISION.md) | Goals, product surface, roadmap themes, release timeline |
 | [CONSTITUTION.md](CONSTITUTION.md) | Invariants — things that cannot change without explicit human approval |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | System overview (all 7 subsystems), pipeline diagrams, ADR index |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | System overview (every subsystem), pipeline diagrams, ADR index |
 | [DESIGN.md](DESIGN.md) | CLI UX design: command grammar, output model, exit codes |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Dev setup, testing environment, contribution workflow |
 | [docs/architecture/](docs/architecture/) | Deep-dive architecture docs (patterns, resource model, CLI layer, data flows, …) |
@@ -37,20 +37,22 @@ Two tiers: **K8s resource tier** (dashboards, folders via `/apis`) and **Cloud p
 - **PromQL via promql-builder**: Use `github.com/grafana/promql-builder/go/promql` for PromQL construction, not string formatting (see Pattern 14 in `docs/architecture/patterns.md`)
 - **Datasource query reuse**: Datasource clients that call Grafana's unified datasource query API (`/apis/query.grafana.app/.../query`, with `/api/ds/query` fallback) should reuse `internal/query/grafanaquery` for HTTP transport and `internal/query/dataframe` for Grafana data frame wire types. Do not duplicate POST/fallback/response-limit logic or `GrafanaQueryResponse`/`DataFrame` structs in each datasource package.
 - **Explore links are required on query commands**: Every query-class datasource leaf command must build a Grafana Explore URL in `internal/datasources/{kind}/explore.go` and expose it via `--share-link`/`--open` through `dsquery.ExploreLinkOpts` + `dsquery.EncodeAndHandleExplore`. See Step 1c in [.claude/skills/add-datasource/SKILL.md](.claude/skills/add-datasource/SKILL.md) for the rules.
-- **Agent skill placement follows its audience**: Portable workflows for people using gcx live under `claude-plugin/skills/`; repository-only contributor workflows live under `.claude/skills/`. Do not add distributable gcx skills under repo-local `.agents/skills/` — that changes repo-context discovery semantics for tools that scan `.agents`. Both skill trees are gated: `TestSkillsGcxInvocationsMatchCommandTree` (`cmd/gcx/root/skillsdrift_test.go`) validates every `gcx` invocation in `claude-plugin/skills/` **and** repo-local `.claude/skills/` against the real command tree, failing CI on unknown commands or flags, and `mise run validate-skills` parses the front matter of both.
+- **Agent skill placement follows its audience**: Portable workflows for people using gcx live under `claude-plugin/skills/`; repository-only contributor workflows live under `.claude/skills/`. Do not add distributable gcx skills under repo-local `.agents/skills/` — that changes repo-context discovery semantics for tools that scan `.agents`. Both skill trees are gated: `TestSkillsGcxInvocationsMatchCommandTree` (`cmd/gcx/root/skillsdrift_test.go`) validates the `gcx` invocations in `claude-plugin/skills/` **and** repo-local `.claude/skills/` against the real command tree, failing CI on unknown commands or flags, and `mise run validate-skills` parses the front matter of both. For repo-local `.claude/skills/`, both gates read **git-tracked files only** (including newly staged files): `.claude/skills/` is also where a contributor's own harness installs third-party skills, and a skill this repo does not own must not be able to fail this repo's CI. The portable bundle is checked in full. Stage a new contributor skill before relying on these gates; untracked contributor skills are excluded. Personal skill guidance does not override [CONSTITUTION.md](CONSTITUTION.md) or [contract-and-tests.md](.claude/skills/integrate-with-gcx/references/contract-and-tests.md) on gcx command grammar, naming, or output shaping.
 
 ## Essential Commands
 
 ```bash
 mise run build       # Build to bin/gcx
-mise run tests       # Run all tests with race detection
+mise run tests       # Run all tests (CLI + linter rules + install script)
 mise run lint        # Run golangci-lint
-mise run gate        # lint + tests + build (no docs) — fast pre-push gate for code changes
+mise run gate        # lint + tests + build (no docs) — fast iteration gate
 mise run all         # lint + tests + build + docs
 mise run docs        # Generate + build all documentation
 ```
 
-**Without mise**: replace with direct Go commands — `go build -buildvcs=false -o bin/gcx ./cmd/gcx/` and `go test ./...`. Always build to `bin/gcx`. Lint runs in Go **module mode** (`golangci-lint`'s `modules-download-mode: readonly`), so no `vendor/` directory is needed locally — the module cache (`go mod download`, run automatically on worktree entry) is sufficient.
+**Bootstrap**: follow [CONTRIBUTING.md](CONTRIBUTING.md#development-environment) for the pinned tools and dependencies. In an additional worktree with tools already installed, run `mise trust` and `mise exec -- go mod download`. The Claude `EnterWorktree` hook runs the download automatically; ordinary Git and other agent worktrees need the explicit command. Lint uses Go **module mode**, so no local `vendor/` directory is needed.
+
+**Without mise**: with the compatible Go toolchain on `PATH`, use `go build -buildvcs=false -o bin/gcx ./cmd/gcx/` and `GCX_AGENT_MODE=false go test ./...`. These cover the build and Go tests; they do not replace the full mise lint, linter-rule, install-script, and docs gates. Always build to `bin/gcx`.
 
 > **Agent environments**: always prefix `mise run docs`, `mise run reference`, and `mise run all` with `GCX_AGENT_MODE=false` — agent-mode auto-detection changes output defaults, producing wrong CLI reference docs. The `tests` tasks pin `GCX_AGENT_MODE=false` themselves, so `mise run tests` needs no prefix.
 
@@ -86,10 +88,14 @@ internal/        Non-public packages — full annotated map: docs/architecture/p
 
 ## What to Read Before You Start
 
+Contributor skills live in `.claude/skills/`. If your host does not expose a linked skill by name, open its `SKILL.md` and follow it directly; no plugin installation or copy into `.agents/skills/` is required. For new or extended capabilities, start with `integrate-with-gcx`, then use the implementation skill it selects.
+
 | Task | Read first | Then |
 |------|-----------|------|
 | **Adding a new command** | [docs/design/command-naming.md](docs/design/command-naming.md) (verb + placement), [DESIGN.md](DESIGN.md) (grammar, output model) | [docs/design/](docs/design/) for implementation rules, [ARCHITECTURE.md](ARCHITECTURE.md) § CLI layer |
-| **Adding a new provider** | [ARCHITECTURE.md](ARCHITECTURE.md) § Provider System | [docs/reference/provider-guide.md](docs/reference/provider-guide.md), [docs/design/provider-checklist.md](docs/design/provider-checklist.md) |
+| **Adding a new provider** | [.claude/skills/integrate-with-gcx/SKILL.md](.claude/skills/integrate-with-gcx/SKILL.md) | [.claude/skills/add-provider/SKILL.md](.claude/skills/add-provider/SKILL.md), [docs/reference/provider-guide.md](docs/reference/provider-guide.md) |
+| **Adding a datasource kind** | [.claude/skills/integrate-with-gcx/SKILL.md](.claude/skills/integrate-with-gcx/SKILL.md) | [.claude/skills/add-datasource/SKILL.md](.claude/skills/add-datasource/SKILL.md) |
+| **Migrating an existing provider CLI** | [.claude/skills/migrate-provider/SKILL.md](.claude/skills/migrate-provider/SKILL.md) | Its migration recipe and verification references |
 | **Adding a signal provider command** | [ARCHITECTURE.md](ARCHITECTURE.md) § Signal Providers | Existing signal provider code for the SharedOpts pattern |
 | **Modifying resource handling** | [ARCHITECTURE.md](ARCHITECTURE.md) § Resources Pipeline | [docs/architecture/resource-model.md](docs/architecture/resource-model.md), [docs/architecture/data-flows.md](docs/architecture/data-flows.md) |
 | **Changing config or auth** | [ARCHITECTURE.md](ARCHITECTURE.md) § Configuration + § Auth | [docs/architecture/config-system.md](docs/architecture/config-system.md), [docs/architecture/client-api-layer.md](docs/architecture/client-api-layer.md) |
@@ -120,13 +126,15 @@ Release steps live in the `release` skill ([.claude/skills/release/SKILL.md](.cl
 
 ## Mandatory Pull Request Checklist
 
-You MUST run this checklist when creating a PR or updating an existing PR with new work (addressing PR reviews or fixing bugs). This is distinct from the Mandatory Pre-Commit Checklist below — `mise run all` in step 3 subsumes the individual pre-commit steps; do not substitute the pre-commit checklist here.
+You MUST run this checklist when creating a PR or updating an existing PR with new work (addressing PR reviews or fixing bugs). Format touched Go files before validation. The `mise run all` gate in step 3 checks formatting and subsumes the pre-commit lint, tests, build, and docs checks; it does not apply formatting fixes. Do not rerun unchanged checks just to satisfy both lists, or substitute the iteration-only `gate` task here.
 
 1. **Compliance check** — verify changes against the [compliance hierarchy](#compliance-hierarchy) above. CONSTITUTION and DESIGN violations must be fixed. VISION misalignment must be flagged. ARCHITECTURE deviations must be documented.
-2. **Sync with base branch**
+2. **Sync with the branch the PR actually targets** — not `main` by reflex. On a stacked PR the base is the branch below it, and rebasing onto `main` replays commits the parent already carries, which resurrects work the parent deleted.
    ```bash
-   git fetch origin main && git rebase origin/main
+   BASE=$(gh pr view --json baseRefName -q .baseRefName)
+   git fetch origin "$BASE" && git rebase "origin/$BASE"
    ```
+   If there is no PR yet, establish the target explicitly before rebasing — `git merge-base` cannot tell you what the base *should* be, only the common ancestor of two branches you already named. Use it afterwards for ancestry checks, not to choose the base.
 3. **Quality gates pass** — `mise run docs` auto-detects agent mode from env vars (`CLAUDECODE`, `CLAUDE_CODE`) and flips output defaults, producing wrong docs. Always override:
    ```bash
    GCX_AGENT_MODE=false mise run all
@@ -137,15 +145,17 @@ You MUST run this checklist when creating a PR or updating an existing PR with n
    git push
    git status   # must show "up to date with origin"
    ```
-   Work is not done until push succeeds. If it fails, resolve and retry.
+   Work is not done until push succeeds. A plain `push` is rejected after step 2 rebased an already-published branch — that is expected, not a conflict to resolve. Re-push with `git push --force-with-lease`, which refuses if someone else pushed in the meantime. Never use bare `--force`, and never force-push a branch someone else is building on without asking them first.
 
 ## Mandatory Pre-Commit Checklist
 
 Run this checklist **before every commit** (not only before PR/push):
 
+> The pinned Go toolchain is not on `PATH` in every shell — `go`, `gofmt`, and `golangci-lint` may all be missing. Prefix direct tool calls with `mise exec --`. Direct `go test` also needs `GCX_AGENT_MODE=false`: the `tests:*` tasks pin it because agent-mode detection flips confirm-prompt behaviour and fails the tests that exercise the prompts. Prefer the mise tasks, which pin it for you.
+
 1. **Format touched files**
    ```bash
-   gofmt -w <touched-go-files>
+   mise exec -- gofmt -w <touched-go-files>
    ```
 2. **Lint passes**
    ```bash
@@ -153,11 +163,11 @@ Run this checklist **before every commit** (not only before PR/push):
    ```
 3. **Targeted tests pass** for changed packages
    ```bash
-   go test ./path/to/changed/package/...
+   GCX_AGENT_MODE=false mise exec -- go test ./path/to/changed/package/...
    ```
 4. **Full test suite passes**
    ```bash
-   go test ./...
+   mise run tests
    ```
 5. **Reference docs regenerated** (CI runs `mise run reference-drift` which fails on any drift)
    ```bash
@@ -166,7 +176,7 @@ Run this checklist **before every commit** (not only before PR/push):
    This regenerates CLI reference, env-var reference, config reference, and linter-rules reference. Required when changes touch commands, flags, config fields, env vars, or linter rules.
 6. **Docs build succeeds** (CI runs `mise run docs` after the drift check)
    ```bash
-   mise run docs
+   GCX_AGENT_MODE=false mise run docs
    ```
    If `mise`/`mkdocs` is unavailable, skip — CI will catch build failures.
 7. **No unstaged surprises**

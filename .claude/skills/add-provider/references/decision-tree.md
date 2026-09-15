@@ -99,7 +99,7 @@ TypedCRUD).
 | Product has K8s CRDs but they're internal-only | Create provider | CRDs not accessible externally |
 | Product uses Grafana token but has custom API | Create provider | Non-K8s API needs adapter layer |
 | Product has one simple endpoint | Consider provider | Even simple products benefit from typed config |
-| Product is in beta with unstable API | Create provider, mark `v1alpha1` | Isolate instability in provider code |
+| Product is in beta with unstable API | Create provider, mark the commands **experimental** | The API version alone does not mark a command experimental. Follow [experimental-commands.md](../../../../docs/design/experimental-commands.md): `[experimental]` in Short, the required Long paragraph, and `agent.StabilityExperimental` on every command in the subtree |
 
 ## Auth Decision Matrix
 

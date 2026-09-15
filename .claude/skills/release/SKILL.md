@@ -11,7 +11,7 @@ Automated via `mise run tag`. Requires `claude` CLI and [`svu`](https://github.c
 mise run tag -- patch   # or minor, major
 ```
 
-This generates a changelog entry (via Claude), updates `CHANGELOG.md` and `.release-notes.md`, commits on a `release/vX.Y.Z` branch, and pushes the branch. Then:
+This generates a changelog entry (via Claude), updates `CHANGELOG.md`, `.release-notes.md`, and the Claude plugin version, commits on a `release/vX.Y.Z` branch, and pushes the branch. It does not create a tag. Then:
 
 1. Open a PR and merge it (the script prints the exact command)
 2. After merge, tag the commit on main and push the tag:
