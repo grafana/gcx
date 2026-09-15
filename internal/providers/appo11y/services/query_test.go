@@ -686,6 +686,40 @@ func TestParseServiceGraphResponse_Kind(t *testing.T) {
 	}
 }
 
+// TestParseServiceGraphResponse_KindDeterministicAcrossOrder guards against
+// a service reached via more than one connection_type resolving to a
+// different Kind depending on Prometheus's (unordered) result vector: the
+// specific classification must always win over the generic "service"
+// fallback, regardless of which sample arrives first.
+func TestParseServiceGraphResponse_KindDeterministicAcrossOrder(t *testing.T) {
+	sameKeyDifferentKinds := func(first, second string) *prometheus.QueryResponse {
+		return &prometheus.QueryResponse{
+			Data: prometheus.ResultData{
+				Result: []prometheus.Sample{
+					{Metric: map[string]string{"server": "checkout", "connection_type": first}},
+					{Metric: map[string]string{"server": "checkout", "connection_type": second}},
+				},
+			},
+		}
+	}
+
+	for _, order := range [][2]string{
+		{"", connTypeDatabase},
+		{connTypeDatabase, ""},
+	} {
+		got, err := parseServiceGraphResponse(sameKeyDifferentKinds(order[0], order[1]))
+		if err != nil {
+			t.Fatalf("err = %v", err)
+		}
+		if len(got) != 1 {
+			t.Fatalf("len = %d, want 1: %+v", len(got), got)
+		}
+		if got[0].Kind != connTypeDatabase {
+			t.Errorf("order %v: Kind = %q, want %q (specific classification must win over the generic fallback)", order, got[0].Kind, connTypeDatabase)
+		}
+	}
+}
+
 func TestParseJob(t *testing.T) {
 	tests := []struct {
 		in            string
