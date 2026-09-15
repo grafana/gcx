@@ -18,7 +18,7 @@ import (
 func StaticDescriptor() resources.Descriptor {
 	return resources.Descriptor{
 		GroupVersion: schema.GroupVersion{
-			Group:   "sigil.ext.grafana.app",
+			Group:   "agento11y.ext.grafana.app",
 			Version: "v1alpha1",
 		},
 		Kind:     "HookRule",
