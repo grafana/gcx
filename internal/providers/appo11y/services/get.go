@@ -258,7 +258,7 @@ func runGet(loader *providers.ConfigLoader, opts *getOpts) func(*cobra.Command, 
 		}
 
 		if len(groupBy) > 0 {
-			grouped, err := fetchGroupedServiceDetail(ctx, client, datasourceUID, namespace, name, opts.Since, kinds, mode, matchers, groupBy)
+			grouped, err := fetchGroupedServiceDetail(ctx, client, cfg.GrafanaURL, datasourceUID, dsquery.OrgID(cfgCtx), namespace, name, opts.Since, kinds, mode, matchers, groupBy)
 			if err != nil {
 				return err
 			}
@@ -276,11 +276,10 @@ func runGet(loader *providers.ConfigLoader, opts *getOpts) func(*cobra.Command, 
 			return nil
 		}
 
-		detail, err := fetchServiceDetail(ctx, client, datasourceUID, namespace, name, opts.Since, kinds, mode, matchers)
+		detail, err := fetchServiceDetail(ctx, client, cfg.GrafanaURL, datasourceUID, dsquery.OrgID(cfgCtx), namespace, name, opts.Since, kinds, mode, matchers)
 		if err != nil {
 			return err
 		}
-		detail.Links = buildDetailLinks(cfg.GrafanaURL, datasourceUID, dsquery.OrgID(cfgCtx), namespace, name, opts.Since, kinds, mode, matchers)
 		notFound := !detail.Service.Instrumented && !detail.RED.HasTraffic
 		if notFound {
 			emitNoDataHint(cmd.ErrOrStderr(), namespace, name)
@@ -417,12 +416,28 @@ func detectMetricsMode(ctx context.Context, client *prometheus.Client, datasourc
 // fetchServiceDetail runs the metadata + RED queries in parallel and folds
 // the responses into one ServiceDetail. Latency and error queries return
 // zero with HasX=false when there's no series in the window; the table
-// codec renders those as `-`.
-func fetchServiceDetail(ctx context.Context, client *prometheus.Client, datasourceUID, namespace, name, window string, kinds []string, mode MetricsMode, matchers []Matcher) (*ServiceDetail, error) {
+// codec renders those as `-`. The rate/error/p95 PromQL expressions are
+// built once and reused for both the query and the returned Explore links,
+// so the two can never drift apart.
+func fetchServiceDetail(ctx context.Context, client *prometheus.Client, grafanaURL, datasourceUID string, orgID int64, namespace, name, window string, kinds []string, mode MetricsMode, matchers []Matcher) (*ServiceDetail, error) {
 	names, ok := metricNamesByMode(mode)
 	if !ok {
 		return nil, fmt.Errorf("unknown metrics mode %q", mode)
 	}
+
+	rateExpr, err := buildRateQuery(names, namespace, name, window, kinds, matchers, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build rate query: %w", err)
+	}
+	errorExpr, err := buildErrorRateQuery(names, namespace, name, window, kinds, matchers, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build error-rate query: %w", err)
+	}
+	p95Expr, err := buildLatencyQuantileQuery(names, namespace, name, window, kinds, 0.95, matchers, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build p95 latency query: %w", err)
+	}
+	phiExprs := map[float64]string{0.95: p95Expr}
 
 	metrics := targetInfoMetrics()
 	metadataResponses := make([]*prometheus.QueryResponse, len(metrics))
@@ -444,11 +459,7 @@ func fetchServiceDetail(ctx context.Context, client *prometheus.Client, datasour
 		})
 	}
 	eg.Go(func() error {
-		expr, err := buildRateQuery(names, namespace, name, window, kinds, matchers, nil)
-		if err != nil {
-			return fmt.Errorf("failed to build rate query: %w", err)
-		}
-		resp, err := client.Query(egCtx, datasourceUID, prometheus.QueryRequest{Query: expr})
+		resp, err := client.Query(egCtx, datasourceUID, prometheus.QueryRequest{Query: rateExpr})
 		if err != nil {
 			return fmt.Errorf("rate query failed: %w", err)
 		}
@@ -456,11 +467,7 @@ func fetchServiceDetail(ctx context.Context, client *prometheus.Client, datasour
 		return nil
 	})
 	eg.Go(func() error {
-		expr, err := buildErrorRateQuery(names, namespace, name, window, kinds, matchers, nil)
-		if err != nil {
-			return fmt.Errorf("failed to build error-rate query: %w", err)
-		}
-		resp, err := client.Query(egCtx, datasourceUID, prometheus.QueryRequest{Query: expr})
+		resp, err := client.Query(egCtx, datasourceUID, prometheus.QueryRequest{Query: errorExpr})
 		if err != nil {
 			return fmt.Errorf("error-rate query failed: %w", err)
 		}
@@ -473,9 +480,13 @@ func fetchServiceDetail(ctx context.Context, client *prometheus.Client, datasour
 		0.99: &p99Resp,
 	} {
 		eg.Go(func() error {
-			expr, err := buildLatencyQuantileQuery(names, namespace, name, window, kinds, phi, matchers, nil)
-			if err != nil {
-				return fmt.Errorf("failed to build p%.0f latency query: %w", phi*100, err)
+			expr, ok := phiExprs[phi]
+			if !ok {
+				var err error
+				expr, err = buildLatencyQuantileQuery(names, namespace, name, window, kinds, phi, matchers, nil)
+				if err != nil {
+					return fmt.Errorf("failed to build p%.0f latency query: %w", phi*100, err)
+				}
 			}
 			resp, err := client.Query(egCtx, datasourceUID, prometheus.QueryRequest{Query: expr})
 			if err != nil {
@@ -523,40 +534,19 @@ func fetchServiceDetail(ctx context.Context, client *prometheus.Client, datasour
 			HasLatencyP95: hasP95,
 			HasLatencyP99: hasP99,
 		},
+		Links: buildServiceLinks(grafanaURL, datasourceUID, orgID, window, rateExpr, errorExpr, p95Expr),
 	}, nil
-}
-
-// buildDetailLinks rebuilds the three RED PromQL expressions (rate, errors,
-// p95 latency) for the plain `get` result and wraps them into Explore links.
-// Rebuilding is cheap — these are pure string builders, no network round
-// trip — so it's done here rather than threading expr strings back out of
-// fetchServiceDetail's parallel query fan-out.
-func buildDetailLinks(grafanaURL, datasourceUID string, orgID int64, namespace, name, window string, kinds []string, mode MetricsMode, matchers []Matcher) *ServiceLinks {
-	names, ok := metricNamesByMode(mode)
-	if !ok {
-		return nil
-	}
-	rateExpr, err := buildRateQuery(names, namespace, name, window, kinds, matchers, nil)
-	if err != nil {
-		return nil
-	}
-	errorExpr, err := buildErrorRateQuery(names, namespace, name, window, kinds, matchers, nil)
-	if err != nil {
-		return nil
-	}
-	p95Expr, err := buildLatencyQuantileQuery(names, namespace, name, window, kinds, 0.95, matchers, nil)
-	if err != nil {
-		return nil
-	}
-	return buildServiceLinks(grafanaURL, datasourceUID, orgID, window, rateExpr, errorExpr, p95Expr)
 }
 
 // fetchGroupedServiceDetail runs the metadata lookup plus the grouped
 // rate/error/latency queries in parallel and folds them into one
 // GroupedServiceDetail — a RED row per distinct --group-by combination.
 // Metadata stays service-level (language/labels identify the service, not
-// the group); only the RED numbers are pivoted per group.
-func fetchGroupedServiceDetail(ctx context.Context, client *prometheus.Client, datasourceUID, namespace, name, window string, kinds []string, mode MetricsMode, matchers []Matcher, groupBy []string) (*GroupedServiceDetail, error) {
+// the group); only the RED numbers are pivoted per group. Each item also
+// gets its own Explore links, scoped down to that one group's label values
+// — the same treatment the ungrouped `get` result gets, so --group-by
+// output isn't missing a field the plain result has.
+func fetchGroupedServiceDetail(ctx context.Context, client *prometheus.Client, grafanaURL, datasourceUID string, orgID int64, namespace, name, window string, kinds []string, mode MetricsMode, matchers []Matcher, groupBy []string) (*GroupedServiceDetail, error) {
 	names, ok := metricNamesByMode(mode)
 	if !ok {
 		return nil, fmt.Errorf("unknown metrics mode %q", mode)
@@ -641,6 +631,11 @@ func fetchGroupedServiceDetail(ctx context.Context, client *prometheus.Client, d
 		extractGrouped(p95Resp, groupBy),
 		extractGrouped(p99Resp, groupBy),
 	)
+	if grafanaURL != "" && datasourceUID != "" {
+		for i := range items {
+			items[i].Links = buildGroupedItemLinks(grafanaURL, datasourceUID, orgID, names, namespace, name, window, kinds, matchers, groupBy, items[i].Labels)
+		}
+	}
 
 	return &GroupedServiceDetail{
 		Service: svc,
@@ -648,6 +643,32 @@ func fetchGroupedServiceDetail(ctx context.Context, client *prometheus.Client, d
 		Window:  window,
 		Items:   items,
 	}, nil
+}
+
+// buildGroupedItemLinks builds Explore links for one --group-by row by
+// pinning the group's own label values as extra equality matchers and
+// re-running the same rate/error/p95 builders with groupBy=nil — the
+// resulting single-series expressions are what that row's numbers actually
+// came from, scoped down from the aggregate query to just this group.
+func buildGroupedItemLinks(grafanaURL, datasourceUID string, orgID int64, names metricNames, namespace, name, window string, kinds []string, matchers []Matcher, groupBy []string, labels map[string]string) *ServiceLinks {
+	groupMatchers := make([]Matcher, len(matchers), len(matchers)+len(groupBy))
+	copy(groupMatchers, matchers)
+	for _, l := range groupBy {
+		groupMatchers = append(groupMatchers, Matcher{Label: l, Op: "=", Value: labels[l]})
+	}
+	rateExpr, err := buildRateQuery(names, namespace, name, window, kinds, groupMatchers, nil)
+	if err != nil {
+		return nil
+	}
+	errorExpr, err := buildErrorRateQuery(names, namespace, name, window, kinds, groupMatchers, nil)
+	if err != nil {
+		return nil
+	}
+	p95Expr, err := buildLatencyQuantileQuery(names, namespace, name, window, kinds, 0.95, groupMatchers, nil)
+	if err != nil {
+		return nil
+	}
+	return buildServiceLinks(grafanaURL, datasourceUID, orgID, window, rateExpr, errorExpr, p95Expr)
 }
 
 // anyGroupHasTraffic reports whether at least one grouped RED row saw
