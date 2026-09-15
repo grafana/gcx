@@ -240,6 +240,11 @@ type Service struct {
 	Version string            `json:"version,omitempty" yaml:"version,omitempty"`
 	Kind    string            `json:"kind,omitempty" yaml:"kind,omitempty"`
 	Labels  map[string]string `json:"labels,omitempty" yaml:"labels,omitempty"`
+	// KG is set only under --kg auto, when the Knowledge Graph is active and
+	// knows this service; nil on every other path (off, inactive,
+	// unreachable, unknown service) so JSON stays byte-identical to before
+	// this field existed.
+	KG *KGRef `json:"kg,omitempty" yaml:"kg,omitempty"`
 }
 
 // parseJob splits a target_info `job` label on the first slash, treating

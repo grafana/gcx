@@ -38,6 +38,7 @@ type getOpts struct {
 	MetricsMode string
 	Filters     []string
 	GroupBy     []string
+	KG          kgFlags
 }
 
 func (o *getOpts) setup(flags *pflag.FlagSet) {
@@ -53,6 +54,7 @@ func (o *getOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&o.MetricsMode, "metrics-mode", metricsModeAuto, "Span-metrics family. One of: auto (probes the stack), v3 (traces_span_metrics_*), tempo (traces_spanmetrics_*), or otel (bare calls_total + duration_seconds_bucket)")
 	flags.StringArrayVar(&o.Filters, "filter", nil, "Scope the RED snapshot to series matching a label matcher, e.g. --filter k8s_cluster_name=prod-us (repeatable). Use to break a multi-cluster/multi-region service down one cluster at a time; the label must exist on the span metrics")
 	flags.StringSliceVar(&o.GroupBy, "group-by", nil, "Pivot the RED snapshot into one row per distinct value of a label, e.g. --group-by k8s_cluster_name (comma-separated or repeatable). Surfaces outliers across clusters/regions without naming each one; the label must exist on the span metrics")
+	o.KG.register(flags)
 }
 
 func (o *getOpts) Validate(cmd *cobra.Command) error {
@@ -69,6 +71,9 @@ func (o *getOpts) Validate(cmd *cobra.Command) error {
 		return fail.NewCommandUsageError(cmd, "", err)
 	}
 	if _, _, err := resolveMetricsMode(o.MetricsMode); err != nil {
+		return fail.NewCommandUsageError(cmd, "", err)
+	}
+	if _, err := o.KG.resolve(); err != nil {
 		return fail.NewCommandUsageError(cmd, "", err)
 	}
 	return nil
@@ -226,6 +231,10 @@ func runGet(loader *providers.ConfigLoader, opts *getOpts) func(*cobra.Command, 
 			return err
 		}
 		activation.Gate(ctx, cfg, cmd.ErrOrStderr())
+		cat, err := opts.KG.catalog(cfg)
+		if err != nil {
+			return err
+		}
 
 		datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "prometheus")
 		if err != nil {
@@ -262,6 +271,9 @@ func runGet(loader *providers.ConfigLoader, opts *getOpts) func(*cobra.Command, 
 			if err != nil {
 				return err
 			}
+			if cat != nil {
+				grouped.Service.KG = cat.lookup(ctx, name)
+			}
 			notFound := !anyGroupHasTraffic(grouped.Items)
 			if notFound {
 				emitNoDataHint(cmd.ErrOrStderr(), namespace, name)
@@ -279,6 +291,9 @@ func runGet(loader *providers.ConfigLoader, opts *getOpts) func(*cobra.Command, 
 		detail, err := fetchServiceDetail(ctx, client, cfg.GrafanaURL, datasourceUID, dsquery.OrgID(cfgCtx), namespace, name, opts.Since, kinds, mode, matchers)
 		if err != nil {
 			return err
+		}
+		if cat != nil {
+			detail.Service.KG = cat.lookup(ctx, name)
 		}
 		notFound := !detail.Service.Instrumented && !detail.RED.HasTraffic
 		if notFound {
