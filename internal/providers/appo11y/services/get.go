@@ -280,6 +280,7 @@ func runGet(loader *providers.ConfigLoader, opts *getOpts) func(*cobra.Command, 
 		if err != nil {
 			return err
 		}
+		detail.Links = buildDetailLinks(cfg.GrafanaURL, datasourceUID, dsquery.OrgID(cfgCtx), namespace, name, opts.Since, kinds, mode, matchers)
 		notFound := !detail.Service.Instrumented && !detail.RED.HasTraffic
 		if notFound {
 			emitNoDataHint(cmd.ErrOrStderr(), namespace, name)
@@ -523,6 +524,31 @@ func fetchServiceDetail(ctx context.Context, client *prometheus.Client, datasour
 			HasLatencyP99: hasP99,
 		},
 	}, nil
+}
+
+// buildDetailLinks rebuilds the three RED PromQL expressions (rate, errors,
+// p95 latency) for the plain `get` result and wraps them into Explore links.
+// Rebuilding is cheap — these are pure string builders, no network round
+// trip — so it's done here rather than threading expr strings back out of
+// fetchServiceDetail's parallel query fan-out.
+func buildDetailLinks(grafanaURL, datasourceUID string, orgID int64, namespace, name, window string, kinds []string, mode MetricsMode, matchers []Matcher) *ServiceLinks {
+	names, ok := metricNamesByMode(mode)
+	if !ok {
+		return nil
+	}
+	rateExpr, err := buildRateQuery(names, namespace, name, window, kinds, matchers, nil)
+	if err != nil {
+		return nil
+	}
+	errorExpr, err := buildErrorRateQuery(names, namespace, name, window, kinds, matchers, nil)
+	if err != nil {
+		return nil
+	}
+	p95Expr, err := buildLatencyQuantileQuery(names, namespace, name, window, kinds, 0.95, matchers, nil)
+	if err != nil {
+		return nil
+	}
+	return buildServiceLinks(grafanaURL, datasourceUID, orgID, window, rateExpr, errorExpr, p95Expr)
 }
 
 // fetchGroupedServiceDetail runs the metadata lookup plus the grouped
