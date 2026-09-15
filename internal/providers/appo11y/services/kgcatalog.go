@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/grafana/gcx/internal/config"
 	cmdio "github.com/grafana/gcx/internal/output"
 	kgquery "github.com/grafana/gcx/internal/query/kg"
+	"github.com/prometheus/common/model"
 	"github.com/spf13/pflag"
 )
 
@@ -38,31 +40,47 @@ type kgFlags struct {
 }
 
 func (f *kgFlags) register(flags *pflag.FlagSet) {
-	flags.StringVar(&f.Mode, "kg", string(kgModeAuto), "Knowledge Graph catalog consumption: auto (annotate rows with what the graph knows, when it's active) or off (never contact the Knowledge Graph)")
+	flags.StringVar(&f.Mode, "kg", string(kgModeAuto), "Knowledge Graph catalog consumption: auto (annotate rows with what the graph knows, when it's active) or off (never contact the Knowledge Graph). The annotation appears in JSON/YAML/agents output only — table and wide render nothing extra")
 }
 
 func (f *kgFlags) resolve() (kgMode, error) { return resolveKGMode(f.Mode) }
 
-// catalog resolves the flag value and builds the kgCatalog for it in one
-// step — the pattern every gated run* function needs right after its
-// activation check passes.
-func (f *kgFlags) catalog(cfg config.NamespacedRESTConfig) (*kgCatalog, error) {
-	mode, err := f.resolve()
-	if err != nil {
-		return nil, err
-	}
-	return newKGCatalog(cfg, mode), nil
+// catalog builds the kgCatalog for f's --kg value. Every call site runs
+// after opts.Validate, which already calls resolve and fails the command on
+// a bad value — by the time catalog runs, the mode is known good, so unlike
+// an earlier version of this method it does not re-surface that error.
+func (f *kgFlags) catalog(cfg config.NamespacedRESTConfig) *kgCatalog {
+	mode, _ := f.resolve()
+	return newKGCatalog(cfg, mode)
 }
 
 // KGRef records what the Knowledge Graph knows about a service. Present
 // only when --kg is auto AND the graph was reachable, active, and knew
 // about this service — pointer + omitempty so JSON on any other path (off,
 // inactive, unreachable, unknown service) stays byte-identical to before
-// this field existed.
+// this field existed. There is no separate "known" flag: the presence of a
+// non-nil *KGRef already says the graph knew this service, and a boolean
+// that can only ever be true would just be a second, redundant way to say
+// the same thing in every response this package emits.
 type KGRef struct {
-	Known      bool              `json:"known" yaml:"known"`
 	EntityType string            `json:"entity_type,omitempty" yaml:"entity_type,omitempty"`
 	Scope      map[string]string `json:"scope,omitempty" yaml:"scope,omitempty"`
+}
+
+// windowMs converts a `--since`-style PromQL duration into the [startMs,
+// endMs) window kgquery's LookupEntity/ListEntities expect, ending now. This
+// is what lets a graph lookup cover the same time range the command's own
+// telemetry query does, instead of silently defaulting to kgquery's last
+// hour regardless of --since. Falls back to (0, 0) — kgquery's own
+// last-hour default — if since somehow isn't a valid PromQL duration;
+// callers validate their own --since already, so this is defense in depth.
+func windowMs(since string) (startMs, endMs int64) {
+	d, err := model.ParseDuration(since)
+	if err != nil {
+		return 0, 0
+	}
+	end := time.Now()
+	return end.Add(-time.Duration(d)).UnixMilli(), end.UnixMilli()
 }
 
 // kgCatalog is the services package's best-effort Knowledge Graph lookup
@@ -100,27 +118,27 @@ type lookupResult struct {
 	inconclusiveErr error
 }
 
-// lookup resolves one service by bare name, with no scope filter (see the
-// name-join caveat on Service.Namespace vs. the Knowledge Graph's own
-// "namespace" scope dimension: they're different things, so this package
-// deliberately matches leniently across whatever scope the graph has the
-// entity in rather than guess a filter). Returns nil whenever the graph
-// doesn't know the service, isn't active, or the lookup fails for any
-// reason — this method never returns an error; every failure mode collapses
-// to "nothing to annotate with," per --kg auto's best-effort contract. Use
-// lookupVerbose to additionally distinguish an inconclusive failure from a
-// genuine negative.
-func (c *kgCatalog) lookup(ctx context.Context, name string) *KGRef {
-	return c.lookupVerbose(ctx, name).ref
-}
-
-// lookupVerbose is lookup plus the inconclusive/error detail that best-effort
-// callers may want to surface as a diagnostic (e.g. a stderr hint) instead of
-// silently discarding — an auth failure, a 5xx from the Asserts plugin, or a
-// transport error currently looks identical to "the graph genuinely doesn't
-// know this service," which makes a broken token indistinguishable from a
-// true negative.
-func (c *kgCatalog) lookupVerbose(ctx context.Context, name string) lookupResult {
+// lookupVerbose resolves one service by bare name and reports the
+// inconclusive/error detail that best-effort callers may want to surface as
+// a diagnostic (e.g. a stderr hint) instead of silently discarding — an auth
+// failure, a 5xx from the Asserts plugin, or a transport error currently
+// looks identical to "the graph genuinely doesn't know this service," which
+// makes a broken token indistinguishable from a true negative.
+//
+// startMs/endMs bound the window the graph considers "recent activity";
+// pass the command's own --since window (via windowMs) so a service with
+// telemetry in the requested window but no graph activity in
+// kgquery's default last-hour window doesn't read as "the graph doesn't
+// know this" for a --since 1d run.
+//
+// LookupEntity requires an exact (type, name, scope) match; scope is often
+// unknown to a telemetry-derived row (Service.Namespace and the graph's own
+// "namespace" scope dimension are different things — see the package doc),
+// so a scope-less LookupEntity misses any entity the graph only knows under
+// a specific scope. Falls back to a name-exact scan of ListEntities, the
+// same two-step discoverEntityScope in internal/providers/kg uses for the
+// identical ambiguity.
+func (c *kgCatalog) lookupVerbose(ctx context.Context, name string, startMs, endMs int64) lookupResult {
 	active, err := c.client.Active(ctx)
 	if err != nil {
 		return lookupResult{inconclusive: true, inconclusiveErr: err}
@@ -128,14 +146,23 @@ func (c *kgCatalog) lookupVerbose(ctx context.Context, name string) lookupResult
 	if !active {
 		return lookupResult{}
 	}
-	entity, err := c.client.LookupEntity(ctx, "Service", name, nil, "", 0, 0)
+	entity, err := c.client.LookupEntity(ctx, "Service", name, nil, "", startMs, endMs)
 	if err != nil {
 		return lookupResult{inconclusive: true, inconclusiveErr: err}
 	}
-	if entity == nil {
-		return lookupResult{}
+	if entity != nil {
+		return lookupResult{ref: &KGRef{EntityType: entity.Type, Scope: entity.Scope}}
 	}
-	return lookupResult{ref: &KGRef{Known: true, EntityType: entity.Type, Scope: entity.Scope}}
+	page, err := c.client.ListEntities(ctx, "Service", kgquery.EntityScope{}, startMs, endMs, 0)
+	if err != nil {
+		return lookupResult{inconclusive: true, inconclusiveErr: err}
+	}
+	for _, e := range page.Entities {
+		if e.Name == name {
+			return lookupResult{ref: &KGRef{EntityType: e.Type, Scope: e.Scope}}
+		}
+	}
+	return lookupResult{}
 }
 
 // indexResult is index's return value: the annotation map plus the
@@ -157,8 +184,10 @@ type indexResult struct {
 // fabricating a RED-snapshot placeholder for a row nobody asked for. Only
 // the entity search's first page is fetched; indexResult.truncated reports
 // when that page didn't cover every Service entity, so a caller can warn
-// instead of silently under-annotating.
-func (c *kgCatalog) index(ctx context.Context) indexResult {
+// instead of silently under-annotating. startMs/endMs are windowMs's
+// translation of the command's own --since window — see lookupVerbose's
+// doc comment for why that matters.
+func (c *kgCatalog) index(ctx context.Context, startMs, endMs int64) indexResult {
 	out := map[string]*KGRef{}
 	active, err := c.client.Active(ctx)
 	if err != nil {
@@ -167,12 +196,12 @@ func (c *kgCatalog) index(ctx context.Context) indexResult {
 	if !active {
 		return indexResult{idx: out}
 	}
-	page, err := c.client.ListEntities(ctx, "Service", kgquery.EntityScope{}, 0, 0, 0)
+	page, err := c.client.ListEntities(ctx, "Service", kgquery.EntityScope{}, startMs, endMs, 0)
 	if err != nil {
 		return indexResult{idx: out, inconclusive: true, inconclusiveErr: err}
 	}
 	for _, e := range page.Entities {
-		out[e.Name] = &KGRef{Known: true, EntityType: e.Type, Scope: e.Scope}
+		out[e.Name] = &KGRef{EntityType: e.Type, Scope: e.Scope}
 	}
 	truncated := page.MaxLimitHit || (!page.LastPage && len(page.Entities) > 0)
 	return indexResult{idx: out, truncated: truncated}
