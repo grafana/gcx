@@ -30,5 +30,6 @@ Manage Frontend Observability apps.
 * [gcx frontend apps get](gcx_frontend_apps_get.md)	 - Get a Frontend Observability app by slug-id or name.
 * [gcx frontend apps list](gcx_frontend_apps_list.md)	 - List Frontend Observability apps.
 * [gcx frontend apps list-sourcemaps](gcx_frontend_apps_list-sourcemaps.md)	 - List sourcemaps for a Frontend Observability app.
+* [gcx frontend apps overview](gcx_frontend_apps_overview.md)	 - Show a Frontend Observability KPI snapshot for one app: page loads, errors, and Core Web Vitals.
 * [gcx frontend apps update](gcx_frontend_apps_update.md)	 - Update a Frontend Observability app from a file.
 

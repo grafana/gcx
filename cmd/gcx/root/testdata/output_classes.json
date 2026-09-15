@@ -279,6 +279,7 @@
  "gcx frontend apps get": "finite",
  "gcx frontend apps list": "finite",
  "gcx frontend apps list-sourcemaps": "finite",
+ "gcx frontend apps overview": "finite",
  "gcx frontend apps update": "finite",
  "gcx frontend sessions get": "artifact",
  "gcx help": "prose",
