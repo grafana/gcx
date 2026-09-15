@@ -11,20 +11,18 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/grafana/gcx/internal/config"
+	kgquery "github.com/grafana/gcx/internal/query/kg"
 	"golang.org/x/sync/errgroup"
-	"k8s.io/client-go/rest"
 )
 
 // ruleFetchConcurrency caps parallel GetRule calls during ListRules fan-out.
 const ruleFetchConcurrency = 10
 
-const pluginResourcePath = "/api/plugins/grafana-asserts-app/resources"
+const pluginResourcePath = kgquery.PluginResourcePath
 
 const (
-	statusPath               = pluginResourcePath + "/asserts/api-server/v1/stack/status"
 	entitiesPath             = pluginResourcePath + "/asserts/api-server/v1/entity/info"
 	entityTypesPath          = pluginResourcePath + "/asserts/api-server/v1/entity_type"
 	entityCountPath          = entityTypesPath + "/count"
@@ -105,202 +103,16 @@ func (t RelabelRuleType) IsValid() bool {
 
 // Client is an HTTP client for the Knowledge Graph (Asserts) API.
 type Client struct {
-	httpClient *http.Client
-	host       string
-	namespace  string
+	*kgquery.Client
 }
 
 // NewClient creates a new KG client from the given REST config.
 func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
-	httpClient, err := rest.HTTPClientFor(&cfg.Config)
+	inner, err := kgquery.NewClient(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("kg: failed to create HTTP client: %w", err)
 	}
-	return &Client{httpClient: httpClient, host: cfg.Host, namespace: cfg.Namespace}, nil
-}
-
-// getJSON performs a GET request and decodes the JSON response into v.
-func (c *Client) getJSON(ctx context.Context, path string, v any) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.host+path, nil)
-	if err != nil {
-		return fmt.Errorf("kg: create request: %w", err)
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("kg: execute request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		return readError(resp)
-	}
-	return json.NewDecoder(resp.Body).Decode(v)
-}
-
-// postJSON performs a POST request with a JSON body and decodes the response into v.
-// If v is nil, the response body is discarded.
-func (c *Client) postJSON(ctx context.Context, path string, body, v any) error {
-	return c.doJSON(ctx, http.MethodPost, path, body, v)
-}
-
-// doJSON performs an HTTP request with a JSON body and decodes the response into v.
-func (c *Client) doJSON(ctx context.Context, method, path string, body, v any) error {
-	var bodyReader io.Reader
-	if body != nil {
-		b, err := json.Marshal(body)
-		if err != nil {
-			return fmt.Errorf("kg: marshal request body: %w", err)
-		}
-		bodyReader = bytes.NewReader(b)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, method, c.host+path, bodyReader)
-	if err != nil {
-		return fmt.Errorf("kg: create request: %w", err)
-	}
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("kg: execute request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		return readError(resp)
-	}
-	if v != nil {
-		return json.NewDecoder(resp.Body).Decode(v)
-	}
-	return nil
-}
-
-// doJSONStatus performs a JSON request and returns the HTTP status code so
-// callers can distinguish 201-created from 200-updated. Decodes into v if non-nil.
-func (c *Client) doJSONStatus(ctx context.Context, method, path string, body, v any) (int, error) {
-	var bodyReader io.Reader
-	if body != nil {
-		b, err := json.Marshal(body)
-		if err != nil {
-			return 0, fmt.Errorf("kg: marshal request body: %w", err)
-		}
-		bodyReader = bytes.NewReader(b)
-	}
-	req, err := http.NewRequestWithContext(ctx, method, c.host+path, bodyReader)
-	if err != nil {
-		return 0, fmt.Errorf("kg: create request: %w", err)
-	}
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return 0, fmt.Errorf("kg: execute request: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 400 {
-		return resp.StatusCode, readError(resp)
-	}
-	if v != nil {
-		if err := json.NewDecoder(resp.Body).Decode(v); err != nil {
-			return resp.StatusCode, fmt.Errorf("kg: decode response: %w", err)
-		}
-	}
-	return resp.StatusCode, nil
-}
-
-// doYAML performs an HTTP request with a YAML body.
-func (c *Client) doYAML(ctx context.Context, method, path, yamlContent string) error {
-	req, err := http.NewRequestWithContext(ctx, method, c.host+path, strings.NewReader(yamlContent))
-	if err != nil {
-		return fmt.Errorf("kg: create request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/x-yaml")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("kg: execute request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		return readError(resp)
-	}
-	return nil
-}
-
-// APIError is a structured error returned by the KG API.
-type APIError struct {
-	StatusCode int
-	message    string // extracted from JSON body, if available
-	rawBody    string
-}
-
-func (e *APIError) Error() string {
-	if e.message != "" {
-		return fmt.Sprintf("kg: request failed with status %d: %s", e.StatusCode, e.message)
-	}
-	if e.rawBody != "" {
-		return fmt.Sprintf("kg: request failed with status %d: %s", e.StatusCode, e.rawBody)
-	}
-	return fmt.Sprintf("kg: request failed with status %d", e.StatusCode)
-}
-
-func (e *APIError) HTTPStatusCode() int {
-	return e.StatusCode
-}
-
-func (e *APIError) APIServiceName() string {
-	return "Knowledge Graph"
-}
-
-func (e *APIError) APIUserMessage() string {
-	if e.message != "" {
-		return e.message
-	}
-	return e.rawBody
-}
-
-// IsServerError returns true for 5xx status codes.
-func (e *APIError) IsServerError() bool {
-	return e.StatusCode >= 500
-}
-
-// readError reads the response body and returns a formatted APIError.
-func readError(resp *http.Response) *APIError {
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return &APIError{StatusCode: resp.StatusCode}
-	}
-	apiErr := &APIError{StatusCode: resp.StatusCode}
-	if len(body) > 0 {
-		// Try to extract a human-readable message from a JSON error body.
-		var jsonErr struct {
-			Message string `json:"message"`
-		}
-		if jsonErr2 := json.Unmarshal(body, &jsonErr); jsonErr2 == nil && jsonErr.Message != "" {
-			apiErr.message = jsonErr.Message
-		} else {
-			apiErr.rawBody = string(body)
-		}
-	}
-	return apiErr
-}
-
-// ---------------------------------------------------------------------------
-// Stack status
-// ---------------------------------------------------------------------------
-
-// GetStatus retrieves the current Knowledge Graph status.
-func (c *Client) GetStatus(ctx context.Context) (*Status, error) {
-	var status Status
-	if err := c.getJSON(ctx, statusPath, &status); err != nil {
-		return nil, fmt.Errorf("kg: get status: %w", err)
-	}
-	return &status, nil
+	return &Client{Client: inner}, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -309,7 +121,7 @@ func (c *Client) GetStatus(ctx context.Context) (*Status, error) {
 
 // UploadPromRules uploads Prometheus recording rules.
 func (c *Client) UploadPromRules(ctx context.Context, yamlContent string) error {
-	return c.doYAML(ctx, http.MethodPut, rulesPath, yamlContent)
+	return c.DoYAML(ctx, http.MethodPut, rulesPath, yamlContent)
 }
 
 // GetPromRulesSchema fetches the live JSON Schema for the Prometheus rules config from the backend.
@@ -319,7 +131,7 @@ func (c *Client) UploadPromRules(ctx context.Context, yamlContent string) error 
 // before uploading instead of learning the shape from 400s.
 func (c *Client) GetPromRulesSchema(ctx context.Context) (map[string]any, error) {
 	var result map[string]any
-	if err := c.getJSON(ctx, rulesSchemaPath, &result); err != nil {
+	if err := c.GetJSON(ctx, rulesSchemaPath, &result); err != nil {
 		return nil, fmt.Errorf("kg: get prom rules schema: %w", err)
 	}
 	return result, nil
@@ -327,13 +139,13 @@ func (c *Client) GetPromRulesSchema(ctx context.Context) (map[string]any, error)
 
 // UploadModelRules uploads model rules configuration.
 func (c *Client) UploadModelRules(ctx context.Context, yamlContent string) error {
-	return c.doYAML(ctx, http.MethodPut, modelRulesPath, yamlContent)
+	return c.DoYAML(ctx, http.MethodPut, modelRulesPath, yamlContent)
 }
 
 // ListModelRuleNames returns the names of all custom model rule configurations for the tenant.
 func (c *Client) ListModelRuleNames(ctx context.Context) ([]string, error) {
 	var result ModelRuleNames
-	if err := c.getJSON(ctx, modelRulesPath, &result); err != nil {
+	if err := c.GetJSON(ctx, modelRulesPath, &result); err != nil {
 		return nil, fmt.Errorf("kg: list model rules: %w", err)
 	}
 	return result.RuleNames, nil
@@ -371,7 +183,7 @@ func (c *Client) ListModelRules(ctx context.Context) ([]ModelRules, error) {
 func (c *Client) GetModelRules(ctx context.Context, name string) (*ModelRules, error) {
 	var result ModelRules
 	path := fmt.Sprintf(modelRulesByNameFmt, url.PathEscape(name))
-	if err := c.getJSON(ctx, path, &result); err != nil {
+	if err := c.GetJSON(ctx, path, &result); err != nil {
 		return nil, fmt.Errorf("kg: get model rules %q: %w", name, err)
 	}
 	return &result, nil
@@ -384,7 +196,7 @@ func (c *Client) GetModelRules(ctx context.Context, name string) (*ModelRules, e
 // deeper than the shallow schema embedded in the gcx binary.
 func (c *Client) GetModelRulesSchema(ctx context.Context) (map[string]any, error) {
 	var result map[string]any
-	if err := c.getJSON(ctx, modelRulesSchemaPath, &result); err != nil {
+	if err := c.GetJSON(ctx, modelRulesSchemaPath, &result); err != nil {
 		return nil, fmt.Errorf("kg: get model rules schema: %w", err)
 	}
 	return result, nil
@@ -393,17 +205,17 @@ func (c *Client) GetModelRulesSchema(ctx context.Context) (map[string]any, error
 // DeleteModelRules deletes a custom model rules configuration by name.
 func (c *Client) DeleteModelRules(ctx context.Context, name string) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete,
-		c.host+fmt.Sprintf(modelRulesByNameFmt, url.PathEscape(name)), nil)
+		c.Host()+fmt.Sprintf(modelRulesByNameFmt, url.PathEscape(name)), nil)
 	if err != nil {
 		return fmt.Errorf("kg: create request: %w", err)
 	}
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.HTTPClient().Do(req)
 	if err != nil {
 		return fmt.Errorf("kg: execute request: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
-		return readError(resp)
+		return kgquery.ReadError(resp)
 	}
 	return nil
 }
@@ -423,23 +235,23 @@ type Suppressions struct {
 // UpsertSuppression creates or updates a single suppression without affecting others.
 // It uses the single-item endpoint so the backend performs a read-modify-write upsert.
 func (c *Client) UpsertSuppression(ctx context.Context, s Suppression) error {
-	return c.postJSON(ctx, suppressionPath, s, nil)
+	return c.PostJSON(ctx, suppressionPath, s, nil)
 }
 
 // DeleteSuppression deletes a single suppression by name.
 func (c *Client) DeleteSuppression(ctx context.Context, name string) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete,
-		c.host+fmt.Sprintf(suppressionByNameFmt, url.PathEscape(name)), nil)
+		c.Host()+fmt.Sprintf(suppressionByNameFmt, url.PathEscape(name)), nil)
 	if err != nil {
 		return fmt.Errorf("kg: create request: %w", err)
 	}
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.HTTPClient().Do(req)
 	if err != nil {
 		return fmt.Errorf("kg: execute request: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
-		return readError(resp)
+		return kgquery.ReadError(resp)
 	}
 	return nil
 }
@@ -447,7 +259,7 @@ func (c *Client) DeleteSuppression(ctx context.Context, name string) error {
 // GetSuppressions retrieves all disabled-alert configurations for the tenant.
 func (c *Client) GetSuppressions(ctx context.Context) (*Suppressions, error) {
 	var result Suppressions
-	if err := c.getJSON(ctx, suppressionsPath, &result); err != nil {
+	if err := c.GetJSON(ctx, suppressionsPath, &result); err != nil {
 		return nil, err
 	}
 	return &result, nil
@@ -507,7 +319,7 @@ func (c *Client) ListNotifications(ctx context.Context, category NotificationCat
 		path = fmt.Sprintf(alertConfigsCategoryFmt, url.PathEscape(string(category)))
 	}
 	var result AlertConfigs
-	if err := c.getJSON(ctx, path, &result); err != nil {
+	if err := c.GetJSON(ctx, path, &result); err != nil {
 		return nil, err
 	}
 	return &result, nil
@@ -526,29 +338,29 @@ func (c *Client) GetNotification(ctx context.Context, name string) (*AlertConfig
 			return &all.AlertConfigs[i], nil
 		}
 	}
-	return nil, &APIError{StatusCode: http.StatusNotFound, message: fmt.Sprintf("notification config %q not found", name)}
+	return nil, kgquery.NewAPIError(http.StatusNotFound, fmt.Sprintf("notification config %q not found", name))
 }
 
 // UpsertNotification creates or updates a single alert notification config
 // without affecting others, via the single-item POST endpoint.
 func (c *Client) UpsertNotification(ctx context.Context, cfg AlertConfig) error {
-	return c.postJSON(ctx, alertConfigPath, cfg, nil)
+	return c.PostJSON(ctx, alertConfigPath, cfg, nil)
 }
 
 // DeleteNotification deletes a single alert notification config by name.
 func (c *Client) DeleteNotification(ctx context.Context, name string) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete,
-		c.host+fmt.Sprintf(alertConfigByNameFmt, url.PathEscape(name)), nil)
+		c.Host()+fmt.Sprintf(alertConfigByNameFmt, url.PathEscape(name)), nil)
 	if err != nil {
 		return fmt.Errorf("kg: create request: %w", err)
 	}
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.HTTPClient().Do(req)
 	if err != nil {
 		return fmt.Errorf("kg: execute request: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
-		return readError(resp)
+		return kgquery.ReadError(resp)
 	}
 	return nil
 }
@@ -640,13 +452,13 @@ func (c *Client) ValidatePromRules(ctx context.Context, yamlContent string) erro
 // response: nil on 2xx, a *ConfigValidationError on 422 (per-field errors), or a
 // generic *APIError otherwise. kind names the config family for error messages.
 func (c *Client) validateConfig(ctx context.Context, path, contentType string, body []byte, kind string) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.host+path, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.Host()+path, bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("kg: create request: %w", err)
 	}
 	req.Header.Set("Content-Type", contentType)
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.HTTPClient().Do(req)
 	if err != nil {
 		return fmt.Errorf("kg: execute request: %w", err)
 	}
@@ -656,7 +468,7 @@ func (c *Client) validateConfig(ctx context.Context, path, contentType string, b
 		return parseConfigValidationError(resp, kind)
 	}
 	if resp.StatusCode >= 400 {
-		return readError(resp)
+		return kgquery.ReadError(resp)
 	}
 	return nil
 }
@@ -667,7 +479,7 @@ func (c *Client) validateConfig(ctx context.Context, path, contentType string, b
 func parseConfigValidationError(resp *http.Response, kind string) error {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return &APIError{StatusCode: resp.StatusCode}
+		return kgquery.NewAPIError(resp.StatusCode, "")
 	}
 	var env struct {
 		Message   string `json:"message"`
@@ -684,13 +496,11 @@ func parseConfigValidationError(resp *http.Response, kind string) error {
 		return verr
 	}
 	// Not the expected validation envelope — fall back to generic parsing.
-	apiErr := &APIError{StatusCode: resp.StatusCode}
-	if env.Message != "" {
-		apiErr.message = env.Message
-	} else if len(body) > 0 {
-		apiErr.rawBody = string(body)
+	msg := env.Message
+	if msg == "" && len(body) > 0 {
+		msg = string(body)
 	}
-	return apiErr
+	return kgquery.NewAPIError(resp.StatusCode, msg)
 }
 
 // getModelRulesForDiff fetches a model rules config by name for dry-run diffing,
@@ -698,7 +508,7 @@ func parseConfigValidationError(resp *http.Response, kind string) error {
 // or an empty object — so the caller can render it as an "add".
 func (c *Client) getModelRulesForDiff(ctx context.Context, name string) (*ModelRules, bool, error) {
 	var m ModelRules
-	err := c.getJSON(ctx, fmt.Sprintf(modelRulesByNameFmt, url.PathEscape(name)), &m)
+	err := c.GetJSON(ctx, fmt.Sprintf(modelRulesByNameFmt, url.PathEscape(name)), &m)
 	if err != nil {
 		var apiErr *APIError
 		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
@@ -718,7 +528,7 @@ func (c *Client) getModelRulesForDiff(ctx context.Context, name string) (*ModelR
 // empty result is treated as not-found.
 func (c *Client) getPromRuleForDiff(ctx context.Context, name string) (*Rule, bool, error) {
 	var f Rule
-	err := c.getJSON(ctx, fmt.Sprintf(ruleByNameFmt, url.PathEscape(name)), &f)
+	err := c.GetJSON(ctx, fmt.Sprintf(ruleByNameFmt, url.PathEscape(name)), &f)
 	if err != nil {
 		var apiErr *APIError
 		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
@@ -739,13 +549,13 @@ func (c *Client) GetRelabelRules(ctx context.Context, t RelabelRuleType) (map[st
 		return nil, fmt.Errorf("kg: invalid relabel rule type %q", t)
 	}
 	path := v2RelabelRulesPath + "/" + string(t)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.host+path, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.Host()+path, nil)
 	if err != nil {
 		return nil, fmt.Errorf("kg: create request: %w", err)
 	}
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.HTTPClient().Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("kg: execute request: %w", err)
 	}
@@ -755,7 +565,7 @@ func (c *Client) GetRelabelRules(ctx context.Context, t RelabelRuleType) (map[st
 		return nil, nil //nolint:nilnil
 	}
 	if resp.StatusCode >= 400 {
-		return nil, readError(resp)
+		return nil, kgquery.ReadError(resp)
 	}
 	var result map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
@@ -768,22 +578,9 @@ func (c *Client) GetRelabelRules(ctx context.Context, t RelabelRuleType) (map[st
 // Entity operations
 // ---------------------------------------------------------------------------
 
-// timeRangeParams returns query params with start/end set for the given window,
-// defaulting to the last hour when either bound is unset.
-func timeRangeParams(startMs, endMs int64) url.Values {
-	if startMs == 0 || endMs == 0 {
-		endMs = time.Now().UnixMilli()
-		startMs = endMs - 3600000
-	}
-	q := url.Values{}
-	q.Set("start", strconv.FormatInt(startMs, 10))
-	q.Set("end", strconv.FormatInt(endMs, 10))
-	return q
-}
-
 // GetEntityInfo retrieves rich entity information by type, name, and optional scope.
 func (c *Client) GetEntityInfo(ctx context.Context, entityType, name string, scope map[string]string, domain string, startMs, endMs int64) (*GraphEntity, error) {
-	q := timeRangeParams(startMs, endMs)
+	q := kgquery.TimeRangeParams(startMs, endMs)
 	q.Set("entity_type", entityType)
 	q.Set("entity_name", name)
 	for k, v := range scope {
@@ -793,7 +590,7 @@ func (c *Client) GetEntityInfo(ctx context.Context, entityType, name string, sco
 		q.Set("domain", domain)
 	}
 	var result GraphEntity
-	if err := c.getJSON(ctx, entitiesPath+"?"+q.Encode(), &result); err != nil {
+	if err := c.GetJSON(ctx, entitiesPath+"?"+q.Encode(), &result); err != nil {
 		return nil, fmt.Errorf("kg: get entity info: %w", err)
 	}
 	return &result, nil
@@ -802,7 +599,7 @@ func (c *Client) GetEntityInfo(ctx context.Context, entityType, name string, sco
 // LookupEntity retrieves entity details from Prometheus alert label params.
 // Returns nil, nil on 204 No Content (entity not found).
 func (c *Client) LookupEntity(ctx context.Context, entityType, name string, scope map[string]string, domain string, startMs, endMs int64) (*GraphEntity, error) {
-	q := timeRangeParams(startMs, endMs)
+	q := kgquery.TimeRangeParams(startMs, endMs)
 	q.Set("asserts_entity_type", entityType)
 	q.Set("asserts_entity_name", name)
 	for k, v := range scope {
@@ -812,11 +609,11 @@ func (c *Client) LookupEntity(ctx context.Context, entityType, name string, scop
 		q.Set("domain", domain)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.host+entityLookupPath+"?"+q.Encode(), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.Host()+entityLookupPath+"?"+q.Encode(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("kg: create request: %w", err)
 	}
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.HTTPClient().Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("kg: execute request: %w", err)
 	}
@@ -826,7 +623,7 @@ func (c *Client) LookupEntity(ctx context.Context, entityType, name string, scop
 		return nil, nil //nolint:nilnil
 	}
 	if resp.StatusCode >= 400 {
-		return nil, readError(resp)
+		return nil, kgquery.ReadError(resp)
 	}
 	var result GraphEntity
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
@@ -842,7 +639,7 @@ func (c *Client) CountEntityTypes(ctx context.Context, startMs, endMs int64, sc 
 		ScopeCriteria: sc,
 	}
 	var result map[string]int64
-	if err := c.postJSON(ctx, entityCountPath, body, &result); err != nil {
+	if err := c.PostJSON(ctx, entityCountPath, body, &result); err != nil {
 		return nil, fmt.Errorf("kg: count entity types: %w", err)
 	}
 	return result, nil
@@ -850,11 +647,11 @@ func (c *Client) CountEntityTypes(ctx context.Context, startMs, endMs int64, sc 
 
 // ListEntityScopes retrieves the available scope dimension values.
 func (c *Client) ListEntityScopes(ctx context.Context, startMs, endMs int64) (map[string][]string, error) {
-	q := timeRangeParams(startMs, endMs)
+	q := kgquery.TimeRangeParams(startMs, endMs)
 	var wrapper struct {
 		ScopeValues map[string][]string `json:"scopeValues"`
 	}
-	if err := c.getJSON(ctx, scopesPath+"?"+q.Encode(), &wrapper); err != nil {
+	if err := c.GetJSON(ctx, scopesPath+"?"+q.Encode(), &wrapper); err != nil {
 		return nil, fmt.Errorf("kg: list entity scopes: %w", err)
 	}
 	return wrapper.ScopeValues, nil
@@ -895,7 +692,7 @@ func (c *Client) GetEntityQualityReport(ctx context.Context, entityType, name, e
 		path += "?" + enc
 	}
 	var report QualityReport
-	if err := c.getJSON(ctx, path, &report); err != nil {
+	if err := c.GetJSON(ctx, path, &report); err != nil {
 		return nil, fmt.Errorf("kg: get quality report: %w", err)
 	}
 	return &report, nil
@@ -936,7 +733,7 @@ func (c *Client) ListQualityReports(ctx context.Context, query QualityReportQuer
 		path += "?" + enc
 	}
 	var page QualityReportPage
-	if err := c.getJSON(ctx, path, &page); err != nil {
+	if err := c.GetJSON(ctx, path, &page); err != nil {
 		return nil, fmt.Errorf("kg: list quality reports: %w", err)
 	}
 	return &page, nil
@@ -949,7 +746,7 @@ func (c *Client) ListQualityReports(ctx context.Context, query QualityReportQuer
 // AssertionEntityMetric retrieves metric data for a specific assertion on an entity.
 func (c *Client) AssertionEntityMetric(ctx context.Context, req EntityMetricRequest) (*EntityMetricResponse, error) {
 	var result EntityMetricResponse
-	if err := c.postJSON(ctx, assertMetricPath, req, &result); err != nil {
+	if err := c.PostJSON(ctx, assertMetricPath, req, &result); err != nil {
 		return nil, fmt.Errorf("kg: assertion entity metric: %w", err)
 	}
 	return &result, nil
@@ -958,7 +755,7 @@ func (c *Client) AssertionEntityMetric(ctx context.Context, req EntityMetricRequ
 // AssertionSourceMetrics retrieves source metrics for a specific assertion.
 func (c *Client) AssertionSourceMetrics(ctx context.Context, req SourceMetricsRequest) ([]SourceMetricsResponse, error) {
 	var result []SourceMetricsResponse
-	if err := c.postJSON(ctx, sourceMetricPath, req, &result); err != nil {
+	if err := c.PostJSON(ctx, sourceMetricPath, req, &result); err != nil {
 		return nil, fmt.Errorf("kg: assertion source metrics: %w", err)
 	}
 	return result, nil
@@ -989,7 +786,7 @@ func (c *Client) Search(ctx context.Context, req SearchRequest) (SearchPage, err
 			SearchResultsMaxLimitHit bool           `json:"searchResultsMaxLimitHit"`
 		} `json:"data"`
 	}
-	if err := c.postJSON(ctx, searchPath, req, &wrapper); err != nil {
+	if err := c.PostJSON(ctx, searchPath, req, &wrapper); err != nil {
 		return SearchPage{}, fmt.Errorf("kg: search: %w", err)
 	}
 	entities := wrapper.Data.Entities
@@ -1007,7 +804,7 @@ func (c *Client) Search(ctx context.Context, req SearchRequest) (SearchPage, err
 // SearchAssertions searches for assertion timelines matching the given query.
 func (c *Client) SearchAssertions(ctx context.Context, req SearchRequest) ([]AssertionTimeline, error) {
 	var result []AssertionTimeline
-	if err := c.postJSON(ctx, searchAssertPath, req, &result); err != nil {
+	if err := c.PostJSON(ctx, searchAssertPath, req, &result); err != nil {
 		return nil, fmt.Errorf("kg: search assertions: %w", err)
 	}
 	if result == nil {
@@ -1021,7 +818,7 @@ func (c *Client) SearchSample(ctx context.Context, req SampleSearchRequest) ([]S
 	var wrapper struct {
 		Entities []SearchResult `json:"entities"`
 	}
-	if err := c.postJSON(ctx, searchSamplePath, req, &wrapper); err != nil {
+	if err := c.PostJSON(ctx, searchSamplePath, req, &wrapper); err != nil {
 		return nil, fmt.Errorf("kg: search sample: %w", err)
 	}
 	if wrapper.Entities == nil {
@@ -1045,7 +842,7 @@ func (c *Client) FetchGraphSchema(ctx context.Context, startMs, endMs int64) (Gr
 		},
 	}
 	var resp GraphSchemaResponse
-	if err := c.postJSON(ctx, searchPath, body, &resp); err != nil {
+	if err := c.PostJSON(ctx, searchPath, body, &resp); err != nil {
 		return GraphSchemaResponse{}, fmt.Errorf("kg: fetch schema: %w", err)
 	}
 	return resp, nil
@@ -1054,7 +851,7 @@ func (c *Client) FetchGraphSchema(ctx context.Context, startMs, endMs int64) (Gr
 // FetchLogConfigs fetches log drilldown configs from the v2 API.
 func (c *Client) FetchLogConfigs(ctx context.Context) (LogConfigsResponse, error) {
 	var resp LogConfigsResponse
-	if err := c.getJSON(ctx, v2LogConfigPath, &resp); err != nil {
+	if err := c.GetJSON(ctx, v2LogConfigPath, &resp); err != nil {
 		return LogConfigsResponse{}, fmt.Errorf("kg: fetch log configs: %w", err)
 	}
 	return resp, nil
@@ -1063,7 +860,7 @@ func (c *Client) FetchLogConfigs(ctx context.Context) (LogConfigsResponse, error
 // FetchTraceConfigs fetches trace drilldown configs from the v2 API.
 func (c *Client) FetchTraceConfigs(ctx context.Context) (TraceConfigsResponse, error) {
 	var resp TraceConfigsResponse
-	if err := c.getJSON(ctx, v2TraceConfigPath, &resp); err != nil {
+	if err := c.GetJSON(ctx, v2TraceConfigPath, &resp); err != nil {
 		return TraceConfigsResponse{}, fmt.Errorf("kg: fetch trace configs: %w", err)
 	}
 	return resp, nil
@@ -1072,7 +869,7 @@ func (c *Client) FetchTraceConfigs(ctx context.Context) (TraceConfigsResponse, e
 // FetchProfileConfigs fetches profile drilldown configs from the v2 API.
 func (c *Client) FetchProfileConfigs(ctx context.Context) (ProfileConfigsResponse, error) {
 	var resp ProfileConfigsResponse
-	if err := c.getJSON(ctx, v2ProfileConfigPath, &resp); err != nil {
+	if err := c.GetJSON(ctx, v2ProfileConfigPath, &resp); err != nil {
 		return ProfileConfigsResponse{}, fmt.Errorf("kg: fetch profile configs: %w", err)
 	}
 	return resp, nil
@@ -1081,7 +878,7 @@ func (c *Client) FetchProfileConfigs(ctx context.Context) (ProfileConfigsRespons
 // CypherSearch runs a read-only Cypher query against the Knowledge Graph.
 func (c *Client) CypherSearch(ctx context.Context, req CypherSearchRequest) (*CypherSearchResponse, error) {
 	var result CypherSearchResponse
-	if err := c.postJSON(ctx, searchPath+"/cypher", req, &result); err != nil {
+	if err := c.PostJSON(ctx, searchPath+"/cypher", req, &result); err != nil {
 		return nil, fmt.Errorf("kg: cypher search: %w", err)
 	}
 	if result.Entities == nil {
@@ -1102,7 +899,7 @@ func (c *Client) CypherSearch(ctx context.Context, req CypherSearchRequest) (*Cy
 // payload rather than the status code.
 func (c *Client) Correlate(ctx context.Context, req AlertInspectionRequest) (*AlertInspectionResponse, error) {
 	var result AlertInspectionResponse
-	if err := c.postJSON(ctx, alertInspectionPath, req, &result); err != nil {
+	if err := c.PostJSON(ctx, alertInspectionPath, req, &result); err != nil {
 		return nil, fmt.Errorf("kg: correlate: %w", err)
 	}
 	if result.Data.Entities == nil {
@@ -1117,7 +914,7 @@ func (c *Client) Correlate(ctx context.Context, req AlertInspectionRequest) (*Al
 // LLMSummary fetches entity health data from the LLM summary endpoint.
 func (c *Client) LLMSummary(ctx context.Context, req LLMSummaryRequest) (map[string]any, error) {
 	var result map[string]any
-	if err := c.postJSON(ctx, assertLLMPath, req, &result); err != nil {
+	if err := c.PostJSON(ctx, assertLLMPath, req, &result); err != nil {
 		return nil, fmt.Errorf("kg: llm summary: %w", err)
 	}
 	return result, nil
@@ -1134,7 +931,7 @@ func (c *Client) ListRuleNames(ctx context.Context) ([]string, error) {
 	var wrapper struct {
 		RuleNames []string `json:"ruleNames"`
 	}
-	if err := c.getJSON(ctx, rulesPath, &wrapper); err != nil {
+	if err := c.GetJSON(ctx, rulesPath, &wrapper); err != nil {
 		return nil, fmt.Errorf("kg: list rule names: %w", err)
 	}
 	return wrapper.RuleNames, nil
@@ -1173,17 +970,17 @@ func (c *Client) ListRules(ctx context.Context) ([]Rule, error) {
 // Backend: DELETE /v1/config/prom-rules/{name}.
 func (c *Client) DeleteRule(ctx context.Context, name string) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete,
-		c.host+fmt.Sprintf(ruleByNameFmt, url.PathEscape(name)), nil)
+		c.Host()+fmt.Sprintf(ruleByNameFmt, url.PathEscape(name)), nil)
 	if err != nil {
 		return fmt.Errorf("kg: create request: %w", err)
 	}
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.HTTPClient().Do(req)
 	if err != nil {
 		return fmt.Errorf("kg: execute request: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
-		return readError(resp)
+		return kgquery.ReadError(resp)
 	}
 	return nil
 }
@@ -1195,7 +992,7 @@ func (c *Client) DeleteRule(ctx context.Context, name string) error {
 // instead of 404, so we treat an empty body as not-found.
 func (c *Client) GetRule(ctx context.Context, name string) (*Rule, error) {
 	var f Rule
-	if err := c.getJSON(ctx, fmt.Sprintf(ruleByNameFmt, url.PathEscape(name)), &f); err != nil {
+	if err := c.GetJSON(ctx, fmt.Sprintf(ruleByNameFmt, url.PathEscape(name)), &f); err != nil {
 		return nil, fmt.Errorf("kg: get rule %q: %w", name, err)
 	}
 	if f.Name == "" && len(f.Groups) == 0 {
@@ -1211,9 +1008,9 @@ func (c *Client) GetRule(ctx context.Context, name string) (*Rule, error) {
 // UpsertRelationship creates or updates a custom (API-origin) edge between two
 // existing entities. Both endpoints must already exist (404 otherwise).
 func (c *Client) UpsertRelationship(ctx context.Context, req RelationshipWriteRequest) (*RelationshipWriteResponse, error) {
-	path := fmt.Sprintf(kgRelationshipsFmt, url.PathEscape(c.namespace))
+	path := fmt.Sprintf(kgRelationshipsFmt, url.PathEscape(c.Namespace()))
 	var resp RelationshipWriteResponse
-	if _, err := c.doJSONStatus(ctx, http.MethodPost, path, req, &resp); err != nil {
+	if _, err := c.DoJSONStatus(ctx, http.MethodPost, path, req, &resp); err != nil {
 		return nil, fmt.Errorf("kg: upsert relationship: %w", err)
 	}
 	return &resp, nil
@@ -1223,7 +1020,7 @@ func (c *Client) UpsertRelationship(ctx context.Context, req RelationshipWriteRe
 // Identity travels as query params on the collection path (type, from.*, to.*);
 // there is no request body.
 func (c *Client) DeleteRelationship(ctx context.Context, relType string, from, to EntityRef) error {
-	path := fmt.Sprintf(kgRelationshipsFmt, url.PathEscape(c.namespace))
+	path := fmt.Sprintf(kgRelationshipsFmt, url.PathEscape(c.Namespace()))
 	q := url.Values{}
 	q.Set("type", relType)
 	addRef := func(prefix string, ref EntityRef) {
@@ -1236,17 +1033,17 @@ func (c *Client) DeleteRelationship(ctx context.Context, relType string, from, t
 	}
 	addRef("from", from)
 	addRef("to", to)
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.host+path+"?"+q.Encode(), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.Host()+path+"?"+q.Encode(), nil)
 	if err != nil {
 		return fmt.Errorf("kg: create request: %w", err)
 	}
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.HTTPClient().Do(req)
 	if err != nil {
 		return fmt.Errorf("kg: execute request: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
-		return readError(resp)
+		return kgquery.ReadError(resp)
 	}
 	return nil
 }
@@ -1258,9 +1055,9 @@ func (c *Client) DeleteRelationship(ctx context.Context, relType string, from, t
 // UpsertEntity creates or updates a custom (API-origin) entity. The returned
 // bool is true when the entity was created (HTTP 201), false when updated (200).
 func (c *Client) UpsertEntity(ctx context.Context, req EntityWriteRequest) (*EntityWriteResponse, bool, error) {
-	path := fmt.Sprintf(kgEntitiesPathFmt, url.PathEscape(c.namespace))
+	path := fmt.Sprintf(kgEntitiesPathFmt, url.PathEscape(c.Namespace()))
 	var resp EntityWriteResponse
-	status, err := c.doJSONStatus(ctx, http.MethodPost, path, req, &resp)
+	status, err := c.DoJSONStatus(ctx, http.MethodPost, path, req, &resp)
 	if err != nil {
 		return nil, false, fmt.Errorf("kg: upsert entity: %w", err)
 	}
@@ -1272,7 +1069,7 @@ func (c *Client) UpsertEntity(ctx context.Context, req EntityWriteRequest) (*Ent
 // and optional scope[key]=value); there is no request body. Scope is
 // identity-significant and must match the value used at upsert.
 func (c *Client) DeleteEntity(ctx context.Context, domain, entityType, name string, scope map[string]string) error {
-	path := fmt.Sprintf(kgEntitiesPathFmt, url.PathEscape(c.namespace))
+	path := fmt.Sprintf(kgEntitiesPathFmt, url.PathEscape(c.Namespace()))
 	q := url.Values{}
 	q.Set("domain", domain)
 	q.Set("type", entityType)
@@ -1280,17 +1077,17 @@ func (c *Client) DeleteEntity(ctx context.Context, domain, entityType, name stri
 	for k, v := range scope {
 		q.Set("scope["+k+"]", v)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.host+path+"?"+q.Encode(), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.Host()+path+"?"+q.Encode(), nil)
 	if err != nil {
 		return fmt.Errorf("kg: create request: %w", err)
 	}
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.HTTPClient().Do(req)
 	if err != nil {
 		return fmt.Errorf("kg: execute request: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
-		return readError(resp)
+		return kgquery.ReadError(resp)
 	}
 	return nil
 }
