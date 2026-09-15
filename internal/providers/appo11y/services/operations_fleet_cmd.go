@@ -176,10 +176,8 @@ func runFleetOperationsList(loader *providers.ConfigLoader, opts *fleetOperation
 		if err != nil {
 			return err
 		}
-		if ok, err := activation.IsActivated(ctx, cfg); err != nil {
+		if err := activation.Gate(ctx, cfg); err != nil {
 			return err
-		} else if !ok {
-			return activation.NotActivatedError()
 		}
 		cat, err := opts.KG.catalog(cfg)
 		if err != nil {
@@ -197,21 +195,31 @@ func runFleetOperationsList(loader *providers.ConfigLoader, opts *fleetOperation
 		}
 
 		if auto {
-			mode, err = detectFleetMetricsMode(ctx, client, datasourceUID, matchers)
+			mode, err = detectFleetMetricsMode(ctx, client, datasourceUID, opts.Since, matchers)
 			if err != nil {
 				return fmt.Errorf("metrics-mode auto-detect failed: %w", err)
 			}
 		}
 
-		response, err := fetchFleetOperations(ctx, client, datasourceUID, opts.Since, kinds, mode, matchers, groupBy, opts.Limit)
+		response, err := fetchFleetOperations(ctx, client, datasourceUID, opts.Since, kinds, mode, matchers, groupBy, opts.Limit, opts.Env)
 		if err != nil {
 			return err
 		}
 
 		response.Items = filterFleetByNamespaceAndEnv(response.Items, opts.Namespace, opts.Env)
 		if cat != nil {
+			// One bulk index() call — not a per-row lookup() — the same
+			// pattern services list uses: --limit permits up to 500 rows,
+			// and lookup() costs two serial HTTP round trips each with no
+			// caching, which would turn this into a multi-minute command.
+			kgResult := cat.index(ctx)
+			if kgResult.inconclusive {
+				warnKGInconclusive(cmd.ErrOrStderr(), kgResult.inconclusiveErr)
+			} else if kgResult.truncated {
+				warnKGTruncated(cmd.ErrOrStderr())
+			}
 			for i := range response.Items {
-				response.Items[i].KG = cat.lookup(ctx, response.Items[i].Service)
+				response.Items[i].KG = kgResult.idx[response.Items[i].Service]
 			}
 		}
 
@@ -235,7 +243,7 @@ func runFleetOperationsList(loader *providers.ConfigLoader, opts *fleetOperation
 // filter) and returns the first with data, biased toward modern names —
 // the fleet-wide counterpart to detectMetricsMode in get.go, which scopes
 // its probe to one service.
-func detectFleetMetricsMode(ctx context.Context, client *prometheus.Client, datasourceUID string, matchers []Matcher) (MetricsMode, error) {
+func detectFleetMetricsMode(ctx context.Context, client *prometheus.Client, datasourceUID, window string, matchers []Matcher) (MetricsMode, error) {
 	preference := metricsModePreference()
 	found := make([]bool, len(preference))
 
@@ -246,7 +254,7 @@ func detectFleetMetricsMode(ctx context.Context, client *prometheus.Client, data
 			return "", fmt.Errorf("unknown metrics mode %q", m)
 		}
 		eg.Go(func() error {
-			expr, err := buildFleetModeProbeQuery(names.calls, matchers)
+			expr, err := buildFleetModeProbeQuery(names.calls, window, matchers)
 			if err != nil {
 				return fmt.Errorf("failed to build %s probe query: %w", m, err)
 			}
@@ -275,10 +283,29 @@ func detectFleetMetricsMode(ctx context.Context, client *prometheus.Client, data
 // avg-latency, and p50/p95/p99 quantile queries in parallel (each already
 // restricted server-side to the top-`limit` operations — see
 // restrictToFleetTopK) and folds them into a FleetOperationsResponse.
-func fetchFleetOperations(ctx context.Context, client *prometheus.Client, datasourceUID, window string, kinds []string, mode MetricsMode, matchers []Matcher, groupBy []string, limit int) (*FleetOperationsResponse, error) {
+// envGroupLabels are the two possible OTel semconv spellings environmentValue
+// resolves from — see its doc comment. Neither is part of any fleet
+// aggregation's "by" clause unless env filtering needs it (see queryGroupBy
+// in fetchFleetOperations): widening the grouping unconditionally would
+// split every row that happens to carry an environment label, even when the
+// caller never asked to filter or group by one.
+var envGroupLabels = []string{"deployment_environment", "deployment_environment_name"}
+
+// fetchFleetOperations runs the fleet-wide rate/error/latency queries in
+// parallel and folds them into one FleetOperationsResponse. When env is set,
+// the aggregations are internally grouped by envGroupLabels in addition to
+// groupBy so filterFleetByNamespaceAndEnv's post-filter has an environment
+// value to read from each row — env never appears in the returned
+// response's GroupBy, which always reflects the caller's own --group-by.
+func fetchFleetOperations(ctx context.Context, client *prometheus.Client, datasourceUID, window string, kinds []string, mode MetricsMode, matchers []Matcher, groupBy []string, limit int, env string) (*FleetOperationsResponse, error) {
 	names, ok := metricNamesByMode(mode)
 	if !ok {
 		return nil, fmt.Errorf("unknown metrics mode %q", mode)
+	}
+
+	queryGroupBy := groupBy
+	if env != "" {
+		queryGroupBy = append(append([]string{}, groupBy...), envGroupLabels...)
 	}
 
 	var totalResp, rateResp, errorResp, avgResp, p50Resp, p95Resp, p99Resp *prometheus.QueryResponse
@@ -297,7 +324,7 @@ func fetchFleetOperations(ctx context.Context, client *prometheus.Client, dataso
 		return nil
 	})
 	eg.Go(func() error {
-		expr, err := buildFleetRateQuery(names, window, kinds, matchers, groupBy, limit)
+		expr, err := buildFleetRateQuery(names, window, kinds, matchers, queryGroupBy, limit)
 		if err != nil {
 			return fmt.Errorf("failed to build fleet rate query: %w", err)
 		}
@@ -309,7 +336,7 @@ func fetchFleetOperations(ctx context.Context, client *prometheus.Client, dataso
 		return nil
 	})
 	eg.Go(func() error {
-		expr, err := buildFleetErrorRateQuery(names, window, kinds, matchers, groupBy, limit)
+		expr, err := buildFleetErrorRateQuery(names, window, kinds, matchers, queryGroupBy, limit)
 		if err != nil {
 			return fmt.Errorf("failed to build fleet error-rate query: %w", err)
 		}
@@ -321,7 +348,7 @@ func fetchFleetOperations(ctx context.Context, client *prometheus.Client, dataso
 		return nil
 	})
 	eg.Go(func() error {
-		expr, err := buildFleetAvgLatencyQuery(names, window, kinds, matchers, groupBy, limit)
+		expr, err := buildFleetAvgLatencyQuery(names, window, kinds, matchers, queryGroupBy, limit)
 		if err != nil {
 			return fmt.Errorf("failed to build fleet avg-latency query: %w", err)
 		}
@@ -338,7 +365,7 @@ func fetchFleetOperations(ctx context.Context, client *prometheus.Client, dataso
 		0.99: &p99Resp,
 	} {
 		eg.Go(func() error {
-			expr, err := buildFleetLatencyQuantileQuery(names, window, kinds, phi, matchers, groupBy, limit)
+			expr, err := buildFleetLatencyQuantileQuery(names, window, kinds, phi, matchers, queryGroupBy, limit)
 			if err != nil {
 				return fmt.Errorf("failed to build fleet p%.0f latency query: %w", phi*100, err)
 			}
@@ -355,7 +382,7 @@ func fetchFleetOperations(ctx context.Context, client *prometheus.Client, dataso
 	}
 
 	fleetTotal, _ := instantScalar(totalResp)
-	groupLabels := append([]string{"job"}, groupBy...)
+	groupLabels := append([]string{"job"}, queryGroupBy...)
 	items := mergeFleetOperations(
 		extractOperations(rateResp, groupLabels),
 		extractOperations(errorResp, groupLabels),
@@ -364,7 +391,7 @@ func fetchFleetOperations(ctx context.Context, client *prometheus.Client, dataso
 		extractOperations(p95Resp, groupLabels),
 		extractOperations(p99Resp, groupLabels),
 		fleetTotal,
-		groupBy,
+		queryGroupBy,
 	)
 
 	return &FleetOperationsResponse{
@@ -618,10 +645,8 @@ func runOperationGet(loader *providers.ConfigLoader, opts *operationDetailOpts) 
 		if err != nil {
 			return err
 		}
-		if ok, err := activation.IsActivated(ctx, cfg); err != nil {
+		if err := activation.Gate(ctx, cfg); err != nil {
 			return err
-		} else if !ok {
-			return activation.NotActivatedError()
 		}
 		cat, err := opts.KG.catalog(cfg)
 		if err != nil {
