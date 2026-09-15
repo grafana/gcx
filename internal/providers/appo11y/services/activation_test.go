@@ -1,4 +1,4 @@
-package services
+package services //nolint:testpackage // Tests cover unexported activation-gate wiring (runServicesCmd, activationGatedServer).
 
 // Guards the App Observability activation pre-flight (#1309 PR1): every
 // `services` subcommand must check plugin activation immediately after

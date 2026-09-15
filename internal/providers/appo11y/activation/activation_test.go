@@ -91,7 +91,7 @@ func TestIsActivated_TransportFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to open listener: %v", err)
 	}
-	t.Cleanup(func() { ln.Close() }) //nolint:errcheck // best-effort cleanup
+	t.Cleanup(func() { ln.Close() })
 
 	go func() {
 		for {
@@ -99,7 +99,7 @@ func TestIsActivated_TransportFailure(t *testing.T) {
 			if err != nil {
 				return
 			}
-			conn.Close() //nolint:errcheck // deliberately reset the connection
+			conn.Close()
 		}
 	}()
 
