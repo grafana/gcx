@@ -6,17 +6,22 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 
 	internalconfig "github.com/grafana/gcx/internal/config"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	k8srest "k8s.io/client-go/rest"
 )
 
-// settingsEndpoint is the same plugin-proxy path
-// internal/providers/appo11y/settings uses to read/write plugin settings; a
-// 404 there is the plugin's own "not installed or not enabled" signal.
-const settingsEndpoint = "/api/plugin-proxy/grafana-app-observability-app/provisioned-plugin-settings"
+// SettingsEndpoint is the plugin-proxy path that reads/writes the App
+// Observability plugin's settings; a 404 there is the plugin's own "not
+// installed or not enabled" signal. Exported so internal/providers/appo11y/settings
+// and .../overrides — which genuinely cannot operate without the plugin, unlike
+// the best-effort telemetry commands Gate covers — share this repo's single
+// copy of the path instead of each keeping their own.
+const SettingsEndpoint = "/api/plugin-proxy/grafana-app-observability-app/provisioned-plugin-settings"
 
 // notActivatedDocsURL points to App Observability's get-started doc.
 const notActivatedDocsURL = "https://grafana.com/docs/grafana-cloud/monitor-applications/application-observability/"
@@ -32,7 +37,7 @@ func IsActivated(ctx context.Context, cfg internalconfig.NamespacedRESTConfig) (
 		return false, fmt.Errorf("failed to create HTTP client for activation check: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, cfg.Host+settingsEndpoint, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, cfg.Host+SettingsEndpoint, nil)
 	if err != nil {
 		return false, fmt.Errorf("failed to build activation check request: %w", err)
 	}
@@ -60,19 +65,24 @@ func NotActivatedError() error {
 	return errors.New("App Observability is not activated for this stack — install/enable the App Observability plugin, or see " + notActivatedDocsURL) //nolint:staticcheck // "App" is a proper noun, capitalization is intentional
 }
 
-// Gate runs the activation pre-flight and returns an error only when
-// IsActivated has definitively confirmed the plugin is not activated. An
-// inconclusive result (IsActivated's (false, err) case — auth failure, 5xx,
-// transport error) does not block the command: the caller's own
-// Prometheus/Tempo request will either succeed or surface a more specific
-// error than this best-effort check could.
-func Gate(ctx context.Context, cfg internalconfig.NamespacedRESTConfig) error {
+// Gate runs the activation pre-flight and never blocks the command — it
+// surfaces the result as a stderr warning either way. The commands this
+// guards (services list/get/map/list-operations/list-labels) read
+// target_info and span metrics straight from Prometheus/Tempo; none of that
+// data requires the App Observability Grafana app plugin itself to be
+// installed, only OTLP ingestion into the stack's own datasources. Treating
+// a 404 from the plugin-proxy settings endpoint as fatal would reject a
+// perfectly good OTLP-only stack, and an inconclusive result (auth failure,
+// 5xx, transport error) is even weaker evidence — in both cases the
+// caller's own query is the real source of truth for whether there's
+// anything to show.
+func Gate(ctx context.Context, cfg internalconfig.NamespacedRESTConfig, stderr io.Writer) {
 	activated, err := IsActivated(ctx, cfg)
 	if err != nil {
-		return nil //nolint:nilerr // deliberate: an inconclusive check must not block the command
+		cmdio.EmitWarn(stderr, fmt.Sprintf("App Observability activation check failed (%v) — continuing to query the datasource directly", err))
+		return
 	}
 	if !activated {
-		return NotActivatedError()
+		cmdio.EmitWarn(stderr, NotActivatedError().Error())
 	}
-	return nil
 }

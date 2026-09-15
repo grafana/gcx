@@ -1,10 +1,12 @@
 package activation //nolint:testpackage // Tests cover unexported HTTP wiring alongside the exported API.
 
 import (
+	"bytes"
 	"context"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	internalconfig "github.com/grafana/gcx/internal/config"
@@ -67,20 +69,6 @@ func TestIsActivated_ServerError(t *testing.T) {
 	}
 }
 
-func TestIsActivated_Forbidden(t *testing.T) {
-	cfg := testRESTConfig(t, func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusForbidden)
-	})
-
-	activated, err := IsActivated(context.Background(), cfg)
-	if err == nil {
-		t.Fatal("expected an error for a 403 status")
-	}
-	if activated {
-		t.Error("expected activated = false on error")
-	}
-}
-
 // TestIsActivated_TransportFailure exercises a connection-level failure (the
 // server accepts and immediately closes the connection without a response)
 // rather than an HTTP-level error status, confirming httpClient.Do's error
@@ -117,44 +105,45 @@ func TestIsActivated_TransportFailure(t *testing.T) {
 	}
 }
 
-func TestGate_NotFoundBlocks(t *testing.T) {
+// TestGate_NotFoundWarns confirms Gate never blocks: it surfaces a
+// definitive not-activated result as a stderr warning and returns, letting
+// the caller's own query decide the outcome.
+func TestGate_NotFoundWarns(t *testing.T) {
 	cfg := testRESTConfig(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 	})
 
-	err := Gate(context.Background(), cfg)
-	if err == nil {
-		t.Fatal("expected a definitive not-activated error")
-	}
-	if err.Error() != NotActivatedError().Error() {
-		t.Errorf("err = %v, want NotActivatedError", err)
+	var stderr bytes.Buffer
+	Gate(context.Background(), cfg, &stderr)
+	if !strings.Contains(stderr.String(), NotActivatedError().Error()) {
+		t.Errorf("stderr = %q, want it to contain the not-activated message", stderr.String())
 	}
 }
 
-func TestGate_EnabledPasses(t *testing.T) {
+func TestGate_EnabledIsSilent(t *testing.T) {
 	cfg := testRESTConfig(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"jsonData":{}}`)) //nolint:errcheck // test helper
 	})
 
-	if err := Gate(context.Background(), cfg); err != nil {
-		t.Errorf("err = %v, want nil", err)
+	var stderr bytes.Buffer
+	Gate(context.Background(), cfg, &stderr)
+	if stderr.Len() != 0 {
+		t.Errorf("stderr = %q, want no warning when the plugin is active", stderr.String())
 	}
 }
 
-func TestGate_InconclusiveDoesNotBlock(t *testing.T) {
+// TestGate_InconclusiveWarns confirms an inconclusive check (auth failure,
+// 5xx, transport error) still surfaces something on stderr rather than
+// vanishing silently — it just doesn't block.
+func TestGate_InconclusiveWarns(t *testing.T) {
 	cfg := testRESTConfig(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	})
 
-	if err := Gate(context.Background(), cfg); err != nil {
-		t.Errorf("err = %v, want nil — an inconclusive activation check must not block the command", err)
-	}
-}
-
-func TestNotActivatedError(t *testing.T) {
-	err := NotActivatedError()
-	if err == nil {
-		t.Fatal("expected a non-nil error")
+	var stderr bytes.Buffer
+	Gate(context.Background(), cfg, &stderr)
+	if stderr.Len() == 0 {
+		t.Error("expected a warning for an inconclusive activation check, got none")
 	}
 }

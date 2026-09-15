@@ -155,9 +155,7 @@ func runOperations(loader *providers.ConfigLoader, opts *operationsOpts) func(*c
 		if err != nil {
 			return err
 		}
-		if err := activation.Gate(ctx, cfg); err != nil {
-			return err
-		}
+		activation.Gate(ctx, cfg, cmd.ErrOrStderr())
 
 		datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "prometheus")
 		if err != nil {
