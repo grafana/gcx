@@ -87,7 +87,7 @@ func (c *agentsCodec) encodeJQ(dst io.Writer, results iter.Seq2[any, error]) err
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
-	threshold := spillThreshold()
+	threshold := SpillThreshold()
 	var f *os.File
 	success := false
 	defer func() {
