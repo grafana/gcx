@@ -84,6 +84,11 @@ var ErrUnavailable = errors.New("credentials: keychain unavailable")
 // must fail and ask the user to unlock the keychain.
 var ErrLocked = errors.New("credentials: keychain locked")
 
+// ErrRestrictedSession is returned when the credential store exists, but the
+// current execution session cannot write to it. A sandbox or another process
+// policy can cause this condition. Callers must not fall back to plaintext.
+var ErrRestrictedSession = errors.New("credentials: access restricted in this execution session")
+
 // ErrDisabled is reported by a store that stands in for a keychain the user has
 // deliberately turned off. Unlike ErrLocked it wraps ErrUnavailable, because no
 // keychain is in play at all, but callers must not rely on that wrapping: since
@@ -97,6 +102,46 @@ type Store interface {
 	Get(key string) (string, error)
 	Set(key, value string) error
 	Delete(key string) error
+}
+
+// CheckWritable verifies that store can persist and retrieve a new value. The
+// probe uses a random account and a non-secret value. It removes the account
+// before it returns.
+func CheckWritable(store Store) error {
+	if store == nil {
+		return errors.New("credentials: credential store is nil")
+	}
+
+	random := make([]byte, 18)
+	if _, err := rand.Read(random); err != nil {
+		return fmt.Errorf("credentials: generate write probe: %w", err)
+	}
+	account := "__gcx_write_probe__:" + base64.RawURLEncoding.EncodeToString(random)
+	const value = "gcx-write-probe"
+
+	if err := store.Set(account, value); err != nil {
+		return fmt.Errorf("credentials: write probe: %w", err)
+	}
+
+	stored, getErr := store.Get(account)
+	deleteErr := store.Delete(account)
+	if getErr != nil {
+		return errors.Join(fmt.Errorf("credentials: read write probe: %w", getErr), wrapProbeDeleteError(deleteErr))
+	}
+	if stored != value {
+		return errors.Join(errors.New("credentials: write probe returned a different value"), wrapProbeDeleteError(deleteErr))
+	}
+	if deleteErr != nil {
+		return wrapProbeDeleteError(deleteErr)
+	}
+	return nil
+}
+
+func wrapProbeDeleteError(err error) error {
+	if err == nil {
+		return nil
+	}
+	return fmt.Errorf("credentials: remove write probe: %w", err)
 }
 
 // Binding is the complete authority boundary for one keychain credential.

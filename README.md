@@ -137,6 +137,10 @@ gcx login my-stack --server https://my-stack.grafana.net
 
 Opens a browser for OAuth, then saves the access token, refresh token, and proxy endpoint to the `my-stack` context's named stack entry and makes the context current. Best for day-to-day use on Cloud stacks. If OAuth doesn't suit your setup, pick "Service account token" at the prompt.
 
+gcx stops before the browser flow when the current process cannot write to the
+OS credential store. Agent users must approve the same command outside the
+sandbox. See [Keychain credential storage](docs/sources/keychain.md).
+
 **Service account token (Cloud or on-premises, recommended for CI/automation):**
 
 ```bash
