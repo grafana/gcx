@@ -40,6 +40,10 @@ func TestFleetOperationsListOptsValidate(t *testing.T) {
 		wantErr bool
 	}{
 		{name: "defaults ok", opts: mk(fleetOperationsListOpts{})},
+		// Deliberate divergence from every other `list` command in this
+		// repo: --limit 0 means "unbounded" everywhere else, but is
+		// rejected here because the unbounded fleet shape is
+		// #services x #operations.
 		{name: "limit zero rejected", opts: func() fleetOperationsListOpts {
 			o := mk(fleetOperationsListOpts{})
 			o.Limit = 0
@@ -69,21 +73,6 @@ func TestFleetOperationsListOptsValidate(t *testing.T) {
 				t.Errorf("err = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
-	}
-}
-
-// TestFleetOperationsListOptsValidate_LimitZeroIsRejected pins down the
-// deliberate divergence from every other `list` command in this repo:
-// --limit 0 means "unbounded" everywhere else, but is rejected here
-// because the unbounded fleet shape is #services x #operations.
-func TestFleetOperationsListOptsValidate_LimitZeroIsRejected(t *testing.T) {
-	o := fleetOperationsListOpts{
-		Since: defaultRedWindow, Kind: "inbound", MetricsMode: metricsModeAuto,
-		Limit: 0, KG: kgFlags{Mode: string(kgModeAuto)},
-	}
-	o.IO.OutputFormat = "json"
-	if err := o.Validate(&cobra.Command{Use: "list"}); err == nil {
-		t.Error("expected --limit 0 to be rejected")
 	}
 }
 
