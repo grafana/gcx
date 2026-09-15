@@ -25,12 +25,18 @@ var commandSkills = map[string][]string{
 	"gcx logs":        {"debug-with-grafana"},
 	"gcx metrics":     {"debug-with-grafana"},
 	"gcx traces":      {"debug-with-grafana"},
-	"gcx profiles":    {"debug-with-grafana"},
+	"gcx profiles":    {"performance-rca", "debug-with-grafana"},
 	"gcx datasources": {"debug-with-grafana"},
 	"gcx kg":          {"diagnose-entity-graph"},
 	"gcx agento11y":   {"agento11y", "agento11y-instrument"},
 	"gcx setup":       {"setup-gcx"},
 	"gcx login":       {"setup-gcx"},
+
+	// Leaf override: the typed Pyroscope subtree is profiling-specific, so it
+	// routes to performance-rca instead of inheriting the general
+	// debug-with-grafana footer from "gcx datasources". Kept in its own
+	// alignment block so gofmt does not re-align the area-granularity keys.
+	"gcx datasources pyroscope": {"performance-rca"},
 }
 
 // SkillsForCommand returns the bundled skill names mapped to the nearest mapped
