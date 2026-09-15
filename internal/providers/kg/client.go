@@ -110,7 +110,7 @@ type Client struct {
 func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
 	inner, err := kgquery.NewClient(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("kg: failed to create HTTP client: %w", err)
+		return nil, err
 	}
 	return &Client{Client: inner}, nil
 }
@@ -204,20 +204,7 @@ func (c *Client) GetModelRulesSchema(ctx context.Context) (map[string]any, error
 
 // DeleteModelRules deletes a custom model rules configuration by name.
 func (c *Client) DeleteModelRules(ctx context.Context, name string) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete,
-		c.Host()+fmt.Sprintf(modelRulesByNameFmt, url.PathEscape(name)), nil)
-	if err != nil {
-		return fmt.Errorf("kg: create request: %w", err)
-	}
-	resp, err := c.HTTPClient().Do(req)
-	if err != nil {
-		return fmt.Errorf("kg: execute request: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 400 {
-		return kgquery.ReadError(resp)
-	}
-	return nil
+	return c.DoJSON(ctx, http.MethodDelete, fmt.Sprintf(modelRulesByNameFmt, url.PathEscape(name)), nil, nil)
 }
 
 // Suppression represents a single disabled-alert configuration entry.
@@ -240,20 +227,7 @@ func (c *Client) UpsertSuppression(ctx context.Context, s Suppression) error {
 
 // DeleteSuppression deletes a single suppression by name.
 func (c *Client) DeleteSuppression(ctx context.Context, name string) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete,
-		c.Host()+fmt.Sprintf(suppressionByNameFmt, url.PathEscape(name)), nil)
-	if err != nil {
-		return fmt.Errorf("kg: create request: %w", err)
-	}
-	resp, err := c.HTTPClient().Do(req)
-	if err != nil {
-		return fmt.Errorf("kg: execute request: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 400 {
-		return kgquery.ReadError(resp)
-	}
-	return nil
+	return c.DoJSON(ctx, http.MethodDelete, fmt.Sprintf(suppressionByNameFmt, url.PathEscape(name)), nil, nil)
 }
 
 // GetSuppressions retrieves all disabled-alert configurations for the tenant.
@@ -349,20 +323,7 @@ func (c *Client) UpsertNotification(ctx context.Context, cfg AlertConfig) error 
 
 // DeleteNotification deletes a single alert notification config by name.
 func (c *Client) DeleteNotification(ctx context.Context, name string) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete,
-		c.Host()+fmt.Sprintf(alertConfigByNameFmt, url.PathEscape(name)), nil)
-	if err != nil {
-		return fmt.Errorf("kg: create request: %w", err)
-	}
-	resp, err := c.HTTPClient().Do(req)
-	if err != nil {
-		return fmt.Errorf("kg: execute request: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 400 {
-		return kgquery.ReadError(resp)
-	}
-	return nil
+	return c.DoJSON(ctx, http.MethodDelete, fmt.Sprintf(alertConfigByNameFmt, url.PathEscape(name)), nil, nil)
 }
 
 // ConfigFieldError is a single field-level validation failure reported by a
@@ -969,20 +930,7 @@ func (c *Client) ListRules(ctx context.Context) ([]Rule, error) {
 //
 // Backend: DELETE /v1/config/prom-rules/{name}.
 func (c *Client) DeleteRule(ctx context.Context, name string) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete,
-		c.Host()+fmt.Sprintf(ruleByNameFmt, url.PathEscape(name)), nil)
-	if err != nil {
-		return fmt.Errorf("kg: create request: %w", err)
-	}
-	resp, err := c.HTTPClient().Do(req)
-	if err != nil {
-		return fmt.Errorf("kg: execute request: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 400 {
-		return kgquery.ReadError(resp)
-	}
-	return nil
+	return c.DoJSON(ctx, http.MethodDelete, fmt.Sprintf(ruleByNameFmt, url.PathEscape(name)), nil, nil)
 }
 
 // GetRule retrieves a specific Asserts prom rule by name.
@@ -1033,19 +981,7 @@ func (c *Client) DeleteRelationship(ctx context.Context, relType string, from, t
 	}
 	addRef("from", from)
 	addRef("to", to)
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.Host()+path+"?"+q.Encode(), nil)
-	if err != nil {
-		return fmt.Errorf("kg: create request: %w", err)
-	}
-	resp, err := c.HTTPClient().Do(req)
-	if err != nil {
-		return fmt.Errorf("kg: execute request: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 400 {
-		return kgquery.ReadError(resp)
-	}
-	return nil
+	return c.DoJSON(ctx, http.MethodDelete, path+"?"+q.Encode(), nil, nil)
 }
 
 // ---------------------------------------------------------------------------
@@ -1077,17 +1013,5 @@ func (c *Client) DeleteEntity(ctx context.Context, domain, entityType, name stri
 	for k, v := range scope {
 		q.Set("scope["+k+"]", v)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.Host()+path+"?"+q.Encode(), nil)
-	if err != nil {
-		return fmt.Errorf("kg: create request: %w", err)
-	}
-	resp, err := c.HTTPClient().Do(req)
-	if err != nil {
-		return fmt.Errorf("kg: execute request: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 400 {
-		return kgquery.ReadError(resp)
-	}
-	return nil
+	return c.DoJSON(ctx, http.MethodDelete, path+"?"+q.Encode(), nil, nil)
 }
