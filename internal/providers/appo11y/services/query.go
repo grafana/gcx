@@ -416,15 +416,30 @@ func serviceKindFromConnectionType(connType string) string {
 	}
 }
 
+// kindRank orders Service.Kind values so a service reached via more than one
+// connection_type resolves to the same Kind regardless of the order
+// Prometheus happens to return its result vector in (which is not
+// guaranteed). A specific edge classification always wins over the generic
+// "service" fallback; ties are impossible since every kind has a distinct
+// rank.
+var kindRank = map[string]int{
+	connTypeDatabase:        0,
+	connTypeMessagingSystem: 1,
+	connTypeVirtualNode:     2,
+	"service":               3,
+}
+
 // parseServiceGraphResponse returns one Service per distinct (server,
 // server_service_namespace). Results are marked `Instrumented: false`; the
-// caller is expected to keep that flag when merging.
+// caller is expected to keep that flag when merging. When the same service
+// appears under more than one connection_type, the lowest-kindRank
+// classification wins — see kindRank.
 func parseServiceGraphResponse(resp *prometheus.QueryResponse) ([]Service, error) {
 	if resp == nil {
 		return nil, errors.New("nil query response")
 	}
 	type key struct{ namespace, name string }
-	seen := make(map[key]struct{})
+	index := make(map[key]int)
 	out := make([]Service, 0, len(resp.Data.Result))
 	for _, sample := range resp.Data.Result {
 		name := sample.Metric["server"]
@@ -433,15 +448,19 @@ func parseServiceGraphResponse(resp *prometheus.QueryResponse) ([]Service, error
 		}
 		ns := sample.Metric["server_service_namespace"]
 		k := key{namespace: ns, name: name}
-		if _, dup := seen[k]; dup {
+		kind := serviceKindFromConnectionType(sample.Metric["connection_type"])
+		if i, dup := index[k]; dup {
+			if kindRank[kind] < kindRank[out[i].Kind] {
+				out[i].Kind = kind
+			}
 			continue
 		}
-		seen[k] = struct{}{}
+		index[k] = len(out)
 		out = append(out, Service{
 			Name:         name,
 			Namespace:    ns,
 			Instrumented: false,
-			Kind:         serviceKindFromConnectionType(sample.Metric["connection_type"]),
+			Kind:         kind,
 		})
 	}
 	sortServices(out)
@@ -1104,6 +1123,7 @@ type ServiceDetail struct {
 type GroupedRED struct {
 	Labels map[string]string `json:"labels" yaml:"labels"`
 	RED    REDStats          `json:"red" yaml:"red"`
+	Links  *ServiceLinks     `json:"links,omitempty" yaml:"links,omitempty"`
 }
 
 // GroupedServiceDetail is the get-command response when --group-by is set:
