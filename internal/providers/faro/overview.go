@@ -142,13 +142,13 @@ func runOverview(opts *overviewOpts) func(*cobra.Command, []string) error {
 			return err
 		}
 
-		if !overview.HasTraffic() {
+		if !overview.HasData() {
 			emitNoRUMHint(cmd.ErrOrStderr(), appName)
 		}
 		if err := opts.IO.Encode(cmd.OutOrStdout(), overview); err != nil {
 			return err
 		}
-		if !overview.HasTraffic() {
+		if !overview.HasData() {
 			// Emit the (empty) snapshot for structure, but signal "no data"
 			// via exit code so callers can branch on $?.
 			return fmt.Errorf("app %q has no RUM telemetry in the requested window", appName)
@@ -218,7 +218,7 @@ func (c *overviewCodec) Encode(w io.Writer, v any) error {
 	row("App", appLabel(o.AppName, o.AppID))
 	row("Window", o.Window)
 	row("Page loads", formatCount(o.PageLoads, o.HasPageLoads))
-	row("Errors", formatErrorCount(o.Errors, o.ErrorPercent, o.HasErrors, o.HasTraffic()))
+	row("Errors", formatErrorCount(o.Errors, o.ErrorPercent, o.HasErrors, o.HasPageLoads && o.PageLoads > 0))
 
 	fmt.Fprintln(tw, "Core Web Vitals (p75):")
 	for _, vital := range o.WebVitals {
@@ -260,13 +260,13 @@ func formatCountPlain(n int64) string {
 }
 
 // formatErrorCount shows the absolute exception count plus its share of page
-// loads. With no traffic there's no meaningful denominator, so the percentage
-// is dropped.
-func formatErrorCount(errs, pct float64, hasErrors, hasTraffic bool) string {
+// loads. With no page loads there's no meaningful denominator, so the
+// percentage is dropped.
+func formatErrorCount(errs, pct float64, hasErrors, hasPageLoads bool) string {
 	if !hasErrors {
 		return "-"
 	}
-	if !hasTraffic {
+	if !hasPageLoads {
 		return formatCountPlain(int64(errs))
 	}
 	return fmt.Sprintf("%d (%.2f%% of loads)", int64(errs), pct)

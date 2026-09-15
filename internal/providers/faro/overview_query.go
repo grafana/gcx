@@ -36,9 +36,12 @@ func errorsExpr(appID, window string) string {
 
 // vitalExpr is the p75 of a single Core Web Vital. The line filter narrows to
 // lines carrying the field before logfmt+unwrap so series without it don't
-// dilute the quantile.
+// dilute the quantile. The trailing "by ()" collapses every underlying log
+// stream into one series; without it, a busy app whose streams carry
+// high-cardinality labels (pod, browser, session, ...) blows past Loki's
+// per-query series cap instead of returning a single p75.
 func vitalExpr(appID, field, window string) string {
-	return fmt.Sprintf(`quantile_over_time(0.75, {app_id=%q,kind="measurement"} |= %q | logfmt | unwrap %s [%s])`,
+	return fmt.Sprintf(`quantile_over_time(0.75, {app_id=%q,kind="measurement"} |= %q | logfmt | unwrap %s [%s]) by ()`,
 		appID, field+"=", field, window)
 }
 

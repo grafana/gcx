@@ -45,6 +45,7 @@ func TestOverviewExprBuilders(t *testing.T) {
 				`{app_id="153",kind="measurement"}`,
 				`|= "lcp="`,
 				`| unwrap lcp [1h]`,
+				`) by ()`,
 			},
 		},
 		{
@@ -64,6 +65,51 @@ func TestOverviewExprBuilders(t *testing.T) {
 				if !strings.Contains(tt.got, want) {
 					t.Errorf("expr %q\n  missing substring %q", tt.got, want)
 				}
+			}
+		})
+	}
+}
+
+func TestOverviewHasData(t *testing.T) {
+	tests := []struct {
+		name string
+		o    faro.Overview
+		want bool
+	}{
+		{
+			name: "page loads only",
+			o:    faro.Overview{HasPageLoads: true, PageLoads: 42},
+			want: true,
+		},
+		{
+			// A mobile/non-web Faro SDK never emits the `ttfb` field
+			// pageLoadsExpr proxies on, so page loads legitimately stay at
+			// zero even while exceptions are actively flowing.
+			name: "exceptions only, no page loads",
+			o: faro.Overview{
+				HasErrors: true,
+				Errors:    2,
+				TopErrors: []faro.TopError{{Type: "flutter_error", Message: "boom", Count: 2}},
+			},
+			want: true,
+		},
+		{
+			name: "top errors present but error count query returned no data",
+			o: faro.Overview{
+				TopErrors: []faro.TopError{{Type: "flutter_error", Message: "boom", Count: 2}},
+			},
+			want: true,
+		},
+		{
+			name: "nothing at all",
+			o:    faro.Overview{},
+			want: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.o.HasData(); got != tt.want {
+				t.Errorf("HasData() = %v, want %v", got, tt.want)
 			}
 		})
 	}

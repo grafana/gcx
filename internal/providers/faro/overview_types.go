@@ -49,11 +49,15 @@ type Overview struct {
 	TopErrors    []TopError `json:"topErrors,omitempty"`
 }
 
-// HasTraffic reports whether any page loads were observed in the window.
-// When false, the snapshot is rendered but the command exits non-zero so
-// callers can branch on $? (mirrors `appo11y services get`).
-func (o *Overview) HasTraffic() bool {
-	return o.HasPageLoads && o.PageLoads > 0
+// HasData reports whether the app produced any RUM signal in the window —
+// page loads, exceptions, or both. When false, the snapshot is rendered but
+// the command exits non-zero so callers can branch on $? (mirrors
+// `appo11y services get`). It deliberately does not require page loads: a
+// mobile/non-web Faro SDK never emits the `ttfb` field pageLoadsExpr proxies
+// on, so an app with only exception telemetry would otherwise be reported as
+// having no data at all.
+func (o *Overview) HasData() bool {
+	return (o.HasPageLoads && o.PageLoads > 0) || (o.HasErrors && o.Errors > 0) || len(o.TopErrors) > 0
 }
 
 // vitalSpec describes one Core Web Vital: the logfmt field name carrying its
