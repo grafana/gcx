@@ -17,12 +17,27 @@ const (
 // summaries, no connected-entity counts). Consumers that need the richer
 // shape use internal/providers/kg directly.
 type Entity struct {
-	ID         int64             `json:"id,omitempty"`
-	Type       string            `json:"type"`
+	ID   int64  `json:"id,omitempty"`
+	Type string `json:"type"`
+	// EntityType is an alternate field name the same /v1/entity and /v1/search
+	// responses sometimes carry the type under instead of "type" — the
+	// provider's own decode of the identical response falls back to it
+	// (internal/providers/kg SearchResult/table codec); resolveType keeps
+	// that fallback in one place.
+	EntityType string            `json:"entityType,omitempty"`
 	Name       string            `json:"name"`
 	Active     bool              `json:"active,omitempty"`
 	Scope      map[string]string `json:"scope,omitempty"`
 	Properties map[string]any    `json:"properties,omitempty"`
+}
+
+// resolveType applies the Type/EntityType fallback in place, mirroring the
+// provider's table-codec fallback so a response that only populated
+// entityType doesn't come back from this package with an empty Type.
+func (e *Entity) resolveType() {
+	if e.Type == "" {
+		e.Type = e.EntityType
+	}
 }
 
 // LookupEntity resolves one entity by type + name + optional scope.
@@ -58,6 +73,7 @@ func (c *Client) LookupEntity(ctx context.Context, entityType, name string, scop
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("kg: decode entity: %w", err)
 	}
+	result.resolveType()
 	return &result, nil
 }
 
@@ -130,7 +146,8 @@ type entitySearchRequest struct {
 // ListEntities returns the entities of one type within an optional scope,
 // following the same "name IS NOT NULL" default filter the Knowledge Graph
 // provider's own entity listing uses. startMs/endMs bound the search window
-// (both zero defaults to the last hour, same as TimeRangeParams).
+// (either left at zero defaults to the last hour, same as TimeRangeParams —
+// passing only one of the two does not clear the other's default).
 func (c *Client) ListEntities(ctx context.Context, entityType string, scope EntityScope, startMs, endMs int64, pageNum int) (EntityPage, error) {
 	startMs, endMs = defaultTimeWindow(startMs, endMs)
 
@@ -138,7 +155,7 @@ func (c *Client) ListEntities(ctx context.Context, entityType string, scope Enti
 		FilterCriteria: []entityFilterCriteria{{
 			EntityType: entityType,
 			PropertyMatchers: []entityPropertyMatcher{
-				{Name: "name", Op: "IS NOT NULL"},
+				{Name: "name", Op: "IS NOT NULL", Type: "String"},
 			},
 		}},
 		PageNum: pageNum,
@@ -163,6 +180,9 @@ func (c *Client) ListEntities(ctx context.Context, entityType string, scope Enti
 	entities := wrapper.Data.Entities
 	if entities == nil {
 		entities = []Entity{}
+	}
+	for i := range entities {
+		entities[i].resolveType()
 	}
 	return EntityPage{
 		Entities:    entities,
