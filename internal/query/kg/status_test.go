@@ -51,9 +51,10 @@ func TestClient_GetStatus(t *testing.T) {
 }
 
 // TestClient_Active is the load-bearing truth table for the KG activation
-// contract: only a definitive 404 or an explicit enabled:false yields
-// (false, nil); every other failure mode must be (false, non-nil error) so
-// callers never mistake an inconclusive check for "not activated".
+// contract: only a definitive 404, an explicit enabled:false, or a
+// status other than StatusComplete (still onboarding) yields (false, nil);
+// every other failure mode must be (false, non-nil error) so callers never
+// mistake an inconclusive check for "not activated".
 func TestClient_Active(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -63,16 +64,23 @@ func TestClient_Active(t *testing.T) {
 		wantErr    bool
 	}{
 		{
-			name: "200 enabled true",
+			name: "200 enabled true and status complete",
 			handler: func(w http.ResponseWriter, _ *http.Request) {
-				writeJSON(w, kg.Status{Enabled: true})
+				writeJSON(w, kg.Status{Enabled: true, Status: kg.StatusComplete})
 			},
 			wantActive: true,
 		},
 		{
 			name: "200 enabled false",
 			handler: func(w http.ResponseWriter, _ *http.Request) {
-				writeJSON(w, kg.Status{Enabled: false})
+				writeJSON(w, kg.Status{Enabled: false, Status: kg.StatusComplete})
+			},
+			wantActive: false,
+		},
+		{
+			name: "200 enabled true but still onboarding",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				writeJSON(w, kg.Status{Enabled: true, Status: "onboarding"})
 			},
 			wantActive: false,
 		},
