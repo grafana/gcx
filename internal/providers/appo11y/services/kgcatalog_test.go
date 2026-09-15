@@ -188,12 +188,42 @@ func TestKGCatalogIndex(t *testing.T) {
 		cat := newKGCatalog(newKGTestConfig(srv.URL), kgModeAuto)
 		require.NotNil(t, cat)
 
-		idx := cat.index(context.Background())
+		result := cat.index(context.Background())
+		require.False(t, result.inconclusive)
+		require.False(t, result.truncated)
+		idx := result.idx
 		require.Len(t, idx, 2)
 		require.NotNil(t, idx["checkout"])
 		assert.True(t, idx["checkout"].Known)
 		assert.Equal(t, map[string]string{"env": "prod"}, idx["checkout"].Scope)
 		require.NotNil(t, idx["payments"])
+	})
+
+	t.Run("first page not last and non-empty is reported as truncated", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch {
+			case strings.Contains(r.URL.Path, "v1/stack/status"):
+				writeKGJSON(w, map[string]any{"enabled": true, "status": "complete"})
+			case strings.Contains(r.URL.Path, "v1/search"):
+				writeKGJSON(w, map[string]any{
+					"data": map[string]any{
+						"entities": []map[string]any{{"type": "Service", "name": "checkout"}},
+						"lastPage": false,
+					},
+				})
+			default:
+				w.WriteHeader(http.StatusNotFound)
+			}
+		}))
+		defer srv.Close()
+
+		cat := newKGCatalog(newKGTestConfig(srv.URL), kgModeAuto)
+		require.NotNil(t, cat)
+
+		result := cat.index(context.Background())
+		assert.True(t, result.truncated)
+		assert.False(t, result.inconclusive)
+		assert.Len(t, result.idx, 1)
 	})
 
 	t.Run("inactive returns an empty map without hitting the search endpoint", func(t *testing.T) {
@@ -214,13 +244,15 @@ func TestKGCatalogIndex(t *testing.T) {
 		cat := newKGCatalog(newKGTestConfig(srv.URL), kgModeAuto)
 		require.NotNil(t, cat)
 
-		idx := cat.index(context.Background())
-		assert.NotNil(t, idx)
-		assert.Empty(t, idx)
+		result := cat.index(context.Background())
+		assert.False(t, result.inconclusive)
+		assert.False(t, result.truncated)
+		assert.NotNil(t, result.idx)
+		assert.Empty(t, result.idx)
 		assert.False(t, searchHit, "ListEntities's endpoint must not be hit once KG is known inactive")
 	})
 
-	t.Run("active but the search itself errors returns an empty map", func(t *testing.T) {
+	t.Run("active but the search itself errors returns an empty map and is marked inconclusive", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			switch {
 			case strings.Contains(r.URL.Path, "v1/stack/status"):
@@ -236,9 +268,69 @@ func TestKGCatalogIndex(t *testing.T) {
 		cat := newKGCatalog(newKGTestConfig(srv.URL), kgModeAuto)
 		require.NotNil(t, cat)
 
-		idx := cat.index(context.Background())
-		assert.NotNil(t, idx)
-		assert.Empty(t, idx)
+		result := cat.index(context.Background())
+		assert.NotNil(t, result.idx)
+		assert.Empty(t, result.idx)
+		assert.True(t, result.inconclusive, "a search failure must be distinguishable from a genuine empty catalog")
+		assert.Error(t, result.inconclusiveErr)
+	})
+}
+
+// TestKGCatalogLookupVerbose_Inconclusive guards the fix for the "swallowed
+// error" finding: an Active() or LookupEntity failure must be reported as
+// inconclusive (so a caller can warn), not collapse into the same shape as
+// "the graph genuinely doesn't know this service".
+func TestKGCatalogLookupVerbose_Inconclusive(t *testing.T) {
+	t.Run("Active() failure is inconclusive", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+		}))
+		defer srv.Close()
+
+		cat := newKGCatalog(newKGTestConfig(srv.URL), kgModeAuto)
+		require.NotNil(t, cat)
+
+		lr := cat.lookupVerbose(context.Background(), "checkout")
+		assert.Nil(t, lr.ref)
+		assert.True(t, lr.inconclusive)
+		assert.Error(t, lr.inconclusiveErr)
+	})
+
+	t.Run("LookupEntity failure is inconclusive", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch {
+			case strings.Contains(r.URL.Path, "v1/stack/status"):
+				writeKGJSON(w, map[string]any{"enabled": true, "status": "complete"})
+			case strings.Contains(r.URL.Path, "v1/entity"):
+				w.WriteHeader(http.StatusInternalServerError)
+			default:
+				w.WriteHeader(http.StatusNotFound)
+			}
+		}))
+		defer srv.Close()
+
+		cat := newKGCatalog(newKGTestConfig(srv.URL), kgModeAuto)
+		require.NotNil(t, cat)
+
+		lr := cat.lookupVerbose(context.Background(), "checkout")
+		assert.Nil(t, lr.ref)
+		assert.True(t, lr.inconclusive)
+		assert.Error(t, lr.inconclusiveErr)
+	})
+
+	t.Run("inactive is a genuine negative, not inconclusive", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+		}))
+		defer srv.Close()
+
+		cat := newKGCatalog(newKGTestConfig(srv.URL), kgModeAuto)
+		require.NotNil(t, cat)
+
+		lr := cat.lookupVerbose(context.Background(), "checkout")
+		assert.Nil(t, lr.ref)
+		assert.False(t, lr.inconclusive)
+		assert.NoError(t, lr.inconclusiveErr)
 	})
 }
 
