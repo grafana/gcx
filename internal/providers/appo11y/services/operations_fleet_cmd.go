@@ -212,14 +212,9 @@ func runFleetOperationsList(loader *providers.ConfigLoader, opts *fleetOperation
 			// pattern services list uses: --limit permits up to 500 rows,
 			// and lookup() costs two serial HTTP round trips each with no
 			// caching, which would turn this into a multi-minute command.
-			kgResult := cat.index(ctx)
-			if kgResult.inconclusive {
-				warnKGInconclusive(cmd.ErrOrStderr(), kgResult.inconclusiveErr)
-			} else if kgResult.truncated {
-				warnKGTruncated(cmd.ErrOrStderr())
-			}
+			idx := warnKGIndex(cmd.ErrOrStderr(), cat.index(ctx))
 			for i := range response.Items {
-				response.Items[i].KG = kgResult.idx[response.Items[i].Service]
+				response.Items[i].KG = idx[response.Items[i].Service]
 			}
 		}
 
@@ -289,7 +284,7 @@ func detectFleetMetricsMode(ctx context.Context, client *prometheus.Client, data
 // in fetchFleetOperations): widening the grouping unconditionally would
 // split every row that happens to carry an environment label, even when the
 // caller never asked to filter or group by one.
-var envGroupLabels = []string{"deployment_environment", "deployment_environment_name"}
+var envGroupLabels = []string{"deployment_environment", "deployment_environment_name"} //nolint:gochecknoglobals // constant-like lookup list; never mutated.
 
 // fetchFleetOperations runs the fleet-wide rate/error/latency queries in
 // parallel and folds them into one FleetOperationsResponse. When env is set,
