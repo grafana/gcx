@@ -2,11 +2,14 @@ package query
 
 import (
 	"encoding/json"
+	"fmt"
 	"maps"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/prometheus/common/model"
 )
 
 const DefaultExplorePaneID = "gcx"
@@ -41,6 +44,27 @@ func ExploreRange(from, to string, instant bool) (string, string) {
 		}
 	}
 	return from, to
+}
+
+// DatemathFrom converts a PromQL duration string (which permits compound
+// units like "1h30m" or "1d12h", per model.ParseDuration) into a Grafana
+// datemath "now-<n>s" expression. Datemath's relative-time grammar only
+// accepts a single amount+unit pair, so a compound duration must be
+// normalized to one unit before it's usable as an Explore link's `from` —
+// "now-1h30m" is not valid datemath and silently breaks the link's time
+// range. Falls back to the raw "now-<window>" string if window somehow
+// isn't a valid PromQL duration (callers validate their own duration flags
+// already; this is defense in depth, not the primary check).
+func DatemathFrom(window string) string {
+	d, err := model.ParseDuration(window)
+	if err != nil {
+		return "now-" + window
+	}
+	seconds := int64(time.Duration(d).Round(time.Second) / time.Second)
+	if seconds <= 0 {
+		seconds = 1
+	}
+	return fmt.Sprintf("now-%ds", seconds)
 }
 
 // ShortExploreRange normalizes the visible Explore time range using a short
