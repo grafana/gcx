@@ -226,11 +226,20 @@ func parseFilters(raw []string) ([]Matcher, error) {
 // from the `job` label using the `<namespace>/<service>` convention — see
 // parseJob.
 type Service struct {
-	Name         string            `json:"name" yaml:"name"`
-	Namespace    string            `json:"namespace,omitempty" yaml:"namespace,omitempty"`
-	Language     string            `json:"language,omitempty" yaml:"language,omitempty"`
-	Instrumented bool              `json:"instrumented" yaml:"instrumented"`
-	Labels       map[string]string `json:"labels,omitempty" yaml:"labels,omitempty"`
+	Name         string `json:"name" yaml:"name"`
+	Namespace    string `json:"namespace,omitempty" yaml:"namespace,omitempty"`
+	Language     string `json:"language,omitempty" yaml:"language,omitempty"`
+	Instrumented bool   `json:"instrumented" yaml:"instrumented"`
+	Environment  string `json:"environment,omitempty" yaml:"environment,omitempty"`
+	Cluster      string `json:"cluster,omitempty" yaml:"cluster,omitempty"`
+	// Version is the service_version resource attribute, populated only
+	// when every matched series agreed on a single value. service_version
+	// is per-deploy — a "first non-empty wins" pick (like Environment and
+	// Cluster) would silently misreport a service mid-rollout across two
+	// versions, so this field stays empty rather than guess.
+	Version string            `json:"version,omitempty" yaml:"version,omitempty"`
+	Kind    string            `json:"kind,omitempty" yaml:"kind,omitempty"`
+	Labels  map[string]string `json:"labels,omitempty" yaml:"labels,omitempty"`
 }
 
 // parseJob splits a target_info `job` label on the first slash, treating
@@ -314,6 +323,10 @@ func parseServicesResponse(resp *prometheus.QueryResponse) ([]Service, error) {
 	}
 	type key struct{ namespace, name, language string }
 	byKey := make(map[key]*Service)
+	// versionsSeen tracks the distinct non-empty service_version values
+	// observed per key so Version can be left empty when a merge spans
+	// more than one (see the Version doc comment on Service).
+	versionsSeen := make(map[key]map[string]struct{})
 	for _, sample := range resp.Data.Result {
 		job := sample.Metric["job"]
 		if job == "" {
@@ -323,7 +336,7 @@ func parseServicesResponse(resp *prometheus.QueryResponse) ([]Service, error) {
 		k := key{namespace: ns, name: svcName, language: sample.Metric["telemetry_sdk_language"]}
 		svc, ok := byKey[k]
 		if !ok {
-			svc = &Service{Name: svcName, Namespace: ns, Language: k.language, Instrumented: true}
+			svc = &Service{Name: svcName, Namespace: ns, Language: k.language, Instrumented: true, Kind: "service"}
 			byKey[k] = svc
 		}
 		for lk, lv := range sample.Metric {
@@ -337,9 +350,22 @@ func parseServicesResponse(resp *prometheus.QueryResponse) ([]Service, error) {
 				svc.Labels[lk] = lv
 			}
 		}
+		if v := sample.Metric["service_version"]; v != "" {
+			if versionsSeen[k] == nil {
+				versionsSeen[k] = map[string]struct{}{}
+			}
+			versionsSeen[k][v] = struct{}{}
+		}
 	}
 	out := make([]Service, 0, len(byKey))
-	for _, svc := range byKey {
+	for k, svc := range byKey {
+		svc.Environment = environmentValue(svc.Labels)
+		svc.Cluster = clusterValue(svc.Labels)
+		if versions := versionsSeen[k]; len(versions) == 1 {
+			for v := range versions {
+				svc.Version = v
+			}
+		}
 		out = append(out, *svc)
 	}
 	sortServices(out)
@@ -369,11 +395,25 @@ func sortServices(s []Service) {
 // the uninstrumented set. metric defaults to "traces_service_graph_request_total".
 func buildServiceGraphQuery(metric string) (string, error) {
 	v := promql.Vector(metric).LabelNeq("connection_type", "")
-	expr, err := promql.Group(v).By([]string{"server", "server_service_namespace"}).Build()
+	expr, err := promql.Group(v).By([]string{"server", "server_service_namespace", "connection_type"}).Build()
 	if err != nil {
 		return "", err
 	}
 	return expr.String(), nil
+}
+
+// serviceKindFromConnectionType maps a service-graph `connection_type`
+// label value onto the coarse Service.Kind classification, reusing the
+// connType* constants from map.go so the two codecs stay in sync. Empty
+// (no special classification — the common HTTP/gRPC case) becomes
+// "service".
+func serviceKindFromConnectionType(connType string) string {
+	switch connType {
+	case connTypeDatabase, connTypeMessagingSystem, connTypeVirtualNode:
+		return connType
+	default:
+		return "service"
+	}
 }
 
 // parseServiceGraphResponse returns one Service per distinct (server,
@@ -397,7 +437,12 @@ func parseServiceGraphResponse(resp *prometheus.QueryResponse) ([]Service, error
 			continue
 		}
 		seen[k] = struct{}{}
-		out = append(out, Service{Name: name, Namespace: ns, Instrumented: false})
+		out = append(out, Service{
+			Name:         name,
+			Namespace:    ns,
+			Instrumented: false,
+			Kind:         serviceKindFromConnectionType(sample.Metric["connection_type"]),
+		})
 	}
 	sortServices(out)
 	return out, nil
@@ -1047,8 +1092,9 @@ type REDStats struct {
 // the service only via the service graph and it has no Tempo spanmetrics
 // emitting on its behalf.
 type ServiceDetail struct {
-	Service Service  `json:"service" yaml:"service"`
-	RED     REDStats `json:"red" yaml:"red"`
+	Service Service       `json:"service" yaml:"service"`
+	RED     REDStats      `json:"red" yaml:"red"`
+	Links   *ServiceLinks `json:"links,omitempty" yaml:"links,omitempty"`
 }
 
 // GroupedRED is one row of a `services get --group-by` result: the group's

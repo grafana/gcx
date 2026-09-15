@@ -1,0 +1,63 @@
+package services //nolint:testpackage // Tests cover the unexported buildServiceLinks helper.
+
+import (
+	"net/url"
+	"strings"
+	"testing"
+)
+
+func TestBuildServiceLinks_MissingGrafanaURLOrDatasource(t *testing.T) {
+	tests := []struct {
+		name          string
+		grafanaURL    string
+		datasourceUID string
+	}{
+		{name: "empty grafanaURL", grafanaURL: "", datasourceUID: "prom-uid"},
+		{name: "empty datasourceUID", grafanaURL: "https://example.grafana.net", datasourceUID: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := buildServiceLinks(tt.grafanaURL, tt.datasourceUID, 1, "5m", "rate(x)", "rate(y)", "histogram_quantile(0.95,z)")
+			if got != nil {
+				t.Errorf("buildServiceLinks() = %+v, want nil", got)
+			}
+		})
+	}
+}
+
+func TestBuildServiceLinks_Populated(t *testing.T) {
+	const (
+		rateExpr = `sum(rate(traces_span_metrics_calls_total{job="billing/checkout"}[5m]))`
+		errExpr  = `sum(rate(traces_span_metrics_calls_total{job="billing/checkout",status_code="STATUS_CODE_ERROR"}[5m]))`
+		p95Expr  = `histogram_quantile(0.95, sum by (le) (rate(traces_span_metrics_duration_seconds_bucket{job="billing/checkout"}[5m])))`
+	)
+	got := buildServiceLinks("https://example.grafana.net", "prom-uid", 1, "5m", rateExpr, errExpr, p95Expr)
+	if got == nil {
+		t.Fatal("buildServiceLinks() = nil, want populated *ServiceLinks")
+	}
+	assertURLContainsExpr(t, "Rate", got.Rate, rateExpr)
+	assertURLContainsExpr(t, "Errors", got.Errors, errExpr)
+	assertURLContainsExpr(t, "LatencyP95", got.LatencyP95, p95Expr)
+}
+
+// assertURLContainsExpr confirms the query-string payload of an Explore
+// link carries expr. It doesn't overspecify the full URL shape — that's
+// prometheus.QueryExploreURL's own tested contract.
+func assertURLContainsExpr(t *testing.T, field, rawURL, expr string) {
+	t.Helper()
+	if rawURL == "" {
+		t.Errorf("%s URL is empty", field)
+		return
+	}
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		t.Fatalf("%s URL %q failed to parse: %v", field, rawURL, err)
+	}
+	panes := u.Query().Get("panes")
+	// panes is a JSON-encoded blob, so quotes in expr are backslash-escaped
+	// there.
+	jsonEscaped := strings.ReplaceAll(expr, `"`, `\"`)
+	if !strings.Contains(panes, jsonEscaped) {
+		t.Errorf("%s panes = %q, want it to contain %q", field, panes, jsonEscaped)
+	}
+}
