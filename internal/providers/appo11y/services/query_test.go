@@ -10,7 +10,7 @@ import (
 )
 
 func TestBuildServicesQuery(t *testing.T) {
-	wantGroup := "group by (telemetry_sdk_language, job, deployment_environment, deployment_environment_name, k8s_namespace_name, k8s_cluster_name, cloud_region, service_version)"
+	wantGroup := "group by (telemetry_sdk_language, job, deployment_environment, deployment_environment_name, k8s_namespace_name, k8s_cluster_name, cloud_region, service_version, cluster)"
 
 	tests := []struct {
 		name     string
@@ -68,13 +68,13 @@ func TestBuildServicesQuery(t *testing.T) {
 			name:   "extra columns appended once (incl. label that's not in defaults)",
 			metric: "target_info",
 			extra:  []string{"service_version", "k8s_pod_name", "service_namespace"},
-			want:   "group by (telemetry_sdk_language, job, deployment_environment, deployment_environment_name, k8s_namespace_name, k8s_cluster_name, cloud_region, service_version, k8s_pod_name, service_namespace) (target_info)",
+			want:   "group by (telemetry_sdk_language, job, deployment_environment, deployment_environment_name, k8s_namespace_name, k8s_cluster_name, cloud_region, service_version, cluster, k8s_pod_name, service_namespace) (target_info)",
 		},
 		{
 			name:   "extra columns with empty string ignored",
 			metric: "target_info",
 			extra:  []string{"", "service_version"},
-			want:   "group by (telemetry_sdk_language, job, deployment_environment, deployment_environment_name, k8s_namespace_name, k8s_cluster_name, cloud_region, service_version) (target_info)",
+			want:   "group by (telemetry_sdk_language, job, deployment_environment, deployment_environment_name, k8s_namespace_name, k8s_cluster_name, cloud_region, service_version, cluster) (target_info)",
 		},
 	}
 	for _, tt := range tests {
@@ -637,6 +637,33 @@ func TestParseServicesResponse_VersionAmbiguous(t *testing.T) {
 	if got[0].Version != "" {
 		t.Errorf("Version = %q, want empty (ambiguous)", got[0].Version)
 	}
+	if v, ok := got[0].Labels["service_version"]; ok {
+		t.Errorf("Labels[service_version] = %q, want absent — it must not duplicate the ambiguous Version field with an arbitrary single value", v)
+	}
+}
+
+// TestParseServicesResponse_ClusterFallback guards the fix for the dead
+// clusterValue fallback: metadataLabels() must project a bare `cluster`
+// label so a non-k8s deployment (no k8s_cluster_name) still populates
+// Service.Cluster.
+func TestParseServicesResponse_ClusterFallback(t *testing.T) {
+	resp := &prometheus.QueryResponse{
+		Data: prometheus.ResultData{
+			Result: []prometheus.Sample{
+				{Metric: map[string]string{"job": "billing/checkout", "cluster": "on-prem-1"}},
+			},
+		},
+	}
+	got, err := parseServicesResponse(resp)
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("len = %d, want 1: %+v", len(got), got)
+	}
+	if got[0].Cluster != "on-prem-1" {
+		t.Errorf("Cluster = %q, want %q", got[0].Cluster, "on-prem-1")
+	}
 }
 
 func TestParseServicesResponse_KindDefaultsToService(t *testing.T) {
@@ -688,9 +715,11 @@ func TestParseServiceGraphResponse_Kind(t *testing.T) {
 
 // TestParseServiceGraphResponse_KindDeterministicAcrossOrder guards against
 // a service reached via more than one connection_type resolving to a
-// different Kind depending on Prometheus's (unordered) result vector: the
-// specific classification must always win over the generic "service"
-// fallback, regardless of which sample arrives first.
+// different Kind depending on Prometheus's (unordered) result vector.
+// buildServiceGraphQuery filters connection_type!="", so the two colliding
+// samples here are both non-empty — the shape parseServiceGraphResponse
+// actually receives in production, unlike an empty-vs-classified pair the
+// query would never produce.
 func TestParseServiceGraphResponse_KindDeterministicAcrossOrder(t *testing.T) {
 	sameKeyDifferentKinds := func(first, second string) *prometheus.QueryResponse {
 		return &prometheus.QueryResponse{
@@ -704,8 +733,8 @@ func TestParseServiceGraphResponse_KindDeterministicAcrossOrder(t *testing.T) {
 	}
 
 	for _, order := range [][2]string{
-		{"", connTypeDatabase},
-		{connTypeDatabase, ""},
+		{connTypeMessagingSystem, connTypeDatabase},
+		{connTypeDatabase, connTypeMessagingSystem},
 	} {
 		got, err := parseServiceGraphResponse(sameKeyDifferentKinds(order[0], order[1]))
 		if err != nil {
@@ -715,7 +744,7 @@ func TestParseServiceGraphResponse_KindDeterministicAcrossOrder(t *testing.T) {
 			t.Fatalf("len = %d, want 1: %+v", len(got), got)
 		}
 		if got[0].Kind != connTypeDatabase {
-			t.Errorf("order %v: Kind = %q, want %q (specific classification must win over the generic fallback)", order, got[0].Kind, connTypeDatabase)
+			t.Errorf("order %v: Kind = %q, want %q (lower-ranked classification must win regardless of arrival order)", order, got[0].Kind, connTypeDatabase)
 		}
 	}
 }
