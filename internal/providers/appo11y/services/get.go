@@ -267,25 +267,7 @@ func runGet(loader *providers.ConfigLoader, opts *getOpts) func(*cobra.Command, 
 		}
 
 		if len(groupBy) > 0 {
-			grouped, err := fetchGroupedServiceDetail(ctx, client, cfg.GrafanaURL, datasourceUID, dsquery.OrgID(cfgCtx), namespace, name, opts.Since, kinds, mode, matchers, groupBy)
-			if err != nil {
-				return err
-			}
-			if cat != nil {
-				grouped.Service.KG = warnKGLookup(cmd.ErrOrStderr(), cat.lookupVerbose(ctx, name))
-			}
-			notFound := !anyGroupHasTraffic(grouped.Items)
-			if notFound {
-				emitNoDataHint(cmd.ErrOrStderr(), namespace, name)
-			}
-			if err := opts.IO.Encode(cmd.OutOrStdout(), grouped); err != nil {
-				return err
-			}
-			if notFound {
-				return notFoundEmitted(cmd.ErrOrStderr(),
-					fmt.Sprintf("service %q has no telemetry in the requested window (for group-by %s)", jobLabel(namespace, name), strings.Join(groupBy, ", ")))
-			}
-			return nil
+			return emitGroupedServiceDetail(cmd, opts, ctx, client, cat, cfg.GrafanaURL, datasourceUID, dsquery.OrgID(cfgCtx), namespace, name, kinds, mode, matchers, groupBy)
 		}
 
 		detail, err := fetchServiceDetail(ctx, client, cfg.GrafanaURL, datasourceUID, dsquery.OrgID(cfgCtx), namespace, name, opts.Since, kinds, mode, matchers)
@@ -311,6 +293,31 @@ func runGet(loader *providers.ConfigLoader, opts *getOpts) func(*cobra.Command, 
 		}
 		return nil
 	}
+}
+
+// emitGroupedServiceDetail is runGet's --group-by path, split out of the
+// main RunE closure so its own error/not-found handling doesn't nest inside
+// runGet's `if len(groupBy) > 0` — kept as one branch there instead of five.
+func emitGroupedServiceDetail(cmd *cobra.Command, opts *getOpts, ctx context.Context, client *prometheus.Client, cat *kgCatalog, grafanaURL, datasourceUID string, orgID int64, namespace, name string, kinds []string, mode MetricsMode, matchers []Matcher, groupBy []string) error {
+	grouped, err := fetchGroupedServiceDetail(ctx, client, grafanaURL, datasourceUID, orgID, namespace, name, opts.Since, kinds, mode, matchers, groupBy)
+	if err != nil {
+		return err
+	}
+	if cat != nil {
+		grouped.Service.KG = warnKGLookup(cmd.ErrOrStderr(), cat.lookupVerbose(ctx, name))
+	}
+	notFound := !anyGroupHasTraffic(grouped.Items)
+	if notFound {
+		emitNoDataHint(cmd.ErrOrStderr(), namespace, name)
+	}
+	if err := opts.IO.Encode(cmd.OutOrStdout(), grouped); err != nil {
+		return err
+	}
+	if notFound {
+		return notFoundEmitted(cmd.ErrOrStderr(),
+			fmt.Sprintf("service %q has no telemetry in the requested window (for group-by %s)", jobLabel(namespace, name), strings.Join(groupBy, ", ")))
+	}
+	return nil
 }
 
 // resolveNamespaceForBareName queries the target_info union for any series
