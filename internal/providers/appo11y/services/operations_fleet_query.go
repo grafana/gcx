@@ -9,12 +9,12 @@ import (
 )
 
 // fleetTopKAgg returns topk(limit, sum by (job, span_name) (rate(<latencySum>[window]))) —
-// the fleet-wide ranking aggregation shared by buildFleetRankQuery (as its
-// own query) and every other fleet builder (as the "and on (job, span_name)"
-// restriction that narrows their result set to the same top-N operations).
-// Ranking by rate(latencySum) directly is algebraically the same
-// busy-seconds-per-second numerator mergeOperations already uses for
-// per-service time-share (avg_latency * rate) — one series instead of two.
+// the fleet-wide ranking aggregation used as the "and on (job, span_name)"
+// restriction that narrows every other fleet builder's result set to the
+// same top-N operations (see restrictToFleetTopK). Ranking by
+// rate(latencySum) directly is algebraically the same busy-seconds-per-second
+// numerator mergeOperations already uses for per-service time-share
+// (avg_latency * rate) — one series instead of two.
 func fleetTopKAgg(names metricNames, window string, kinds []string, matchers []Matcher, limit int) *promql.AggregationExprBuilder {
 	v := spanMetricSelector(names.latencySum, "", kinds, window, matchers)
 	busy := promql.Sum(promql.Rate(v)).By([]string{"job", "span_name"})
@@ -23,18 +23,9 @@ func fleetTopKAgg(names metricNames, window string, kinds []string, matchers []M
 
 // restrictToFleetTopK wraps agg (any instant-vector builder carrying job
 // and span_name labels) as `agg and on (job, span_name) <fleetTopKAgg>`, so
-// its result set matches buildFleetRankQuery's ranking exactly.
+// its result set matches the fleet-wide ranking exactly.
 func restrictToFleetTopK(agg cog.Builder[promql.Expr], names metricNames, window string, kinds []string, matchers []Matcher, limit int) *promql.BinaryExprBuilder {
 	return promql.And(agg, fleetTopKAgg(names, window, kinds, matchers, limit)).On([]string{"job", "span_name"})
-}
-
-// buildFleetRankQuery returns topk(limit, sum by (job, span_name) (rate(<latencySum>[window]))).
-func buildFleetRankQuery(names metricNames, window string, kinds []string, matchers []Matcher, limit int) (string, error) {
-	expr, err := fleetTopKAgg(names, window, kinds, matchers, limit).Build()
-	if err != nil {
-		return "", err
-	}
-	return expr.String(), nil
 }
 
 // buildFleetTotalTimeQuery returns sum(rate(<latencySum>[window])) with no

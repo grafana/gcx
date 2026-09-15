@@ -5,18 +5,6 @@ import (
 	"testing"
 )
 
-func TestBuildFleetRankQuery(t *testing.T) {
-	v3, _ := metricNamesByMode(MetricsModeV3)
-	got, err := buildFleetRankQuery(v3, "5m", []string{spanKindServer}, nil, 5)
-	if err != nil {
-		t.Fatalf("build err = %v", err)
-	}
-	want := `topk(5, sum by (job, span_name) (rate(traces_span_metrics_duration_seconds_sum{span_kind=~"SPAN_KIND_SERVER"}[5m])))`
-	if got != want {
-		t.Errorf("got %q\nwant %q", got, want)
-	}
-}
-
 func TestBuildFleetTotalTimeQuery(t *testing.T) {
 	v3, _ := metricNamesByMode(MetricsModeV3)
 	got, err := buildFleetTotalTimeQuery(v3, "5m", []string{spanKindServer}, nil)
@@ -142,9 +130,6 @@ func TestFleetQueryBuildersAllMetricsModes(t *testing.T) {
 		if !ok {
 			t.Fatalf("unknown mode %q", mode)
 		}
-		if _, err := buildFleetRankQuery(names, "5m", nil, nil, 10); err != nil {
-			t.Errorf("%s: buildFleetRankQuery err = %v", mode, err)
-		}
 		if _, err := buildFleetTotalTimeQuery(names, "5m", nil, nil); err != nil {
 			t.Errorf("%s: buildFleetTotalTimeQuery err = %v", mode, err)
 		}
@@ -175,7 +160,6 @@ func TestFleetQueryFilterAndLimit(t *testing.T) {
 		build     func() (string, error)
 		wantLimit bool
 	}{
-		{"rank", func() (string, error) { return buildFleetRankQuery(v3, "5m", nil, m, 7) }, true},
 		// buildFleetTotalTimeQuery has no by(...) or topk(...) — it's the
 		// honest fleet-wide denominator, deliberately unrestricted by limit.
 		{"total", func() (string, error) { return buildFleetTotalTimeQuery(v3, "5m", nil, m) }, false},
