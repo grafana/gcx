@@ -216,10 +216,7 @@ func runList(loader *providers.ConfigLoader, opts *listOpts) func(*cobra.Command
 			return err
 		}
 		activation.Gate(ctx, cfg, cmd.ErrOrStderr())
-		cat, err := opts.KG.catalog(cfg)
-		if err != nil {
-			return err
-		}
+		cat := opts.KG.catalog(cfg)
 
 		datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "prometheus")
 		if err != nil {
@@ -297,7 +294,11 @@ func runList(loader *providers.ConfigLoader, opts *listOpts) func(*cobra.Command
 		var kgResult indexResult
 		if cat != nil {
 			eg.Go(func() error {
-				kgResult = cat.index(egCtx)
+				// services list has no --since window of its own (target_info
+				// discovery is an instant snapshot, not RED-windowed), so
+				// there's nothing to thread here beyond kgquery's own
+				// last-hour default.
+				kgResult = cat.index(egCtx, 0, 0)
 				return nil
 			})
 		}

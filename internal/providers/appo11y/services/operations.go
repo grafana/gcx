@@ -161,10 +161,7 @@ func runOperations(loader *providers.ConfigLoader, opts *operationsOpts) func(*c
 			return err
 		}
 		activation.Gate(ctx, cfg, cmd.ErrOrStderr())
-		cat, err := opts.KG.catalog(cfg)
-		if err != nil {
-			return err
-		}
+		cat := opts.KG.catalog(cfg)
 
 		datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "prometheus")
 		if err != nil {
@@ -200,7 +197,8 @@ func runOperations(loader *providers.ConfigLoader, opts *operationsOpts) func(*c
 			return err
 		}
 		if cat != nil {
-			response.Service.KG = warnKGLookup(cmd.ErrOrStderr(), cat.lookupVerbose(ctx, name))
+			startMs, endMs := windowMs(opts.Since)
+			response.Service.KG = warnKGLookup(cmd.ErrOrStderr(), cat.lookupVerbose(ctx, name, startMs, endMs))
 		}
 
 		notFound := !response.Service.Instrumented && len(response.Items) == 0

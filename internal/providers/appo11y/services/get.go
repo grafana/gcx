@@ -231,10 +231,7 @@ func runGet(loader *providers.ConfigLoader, opts *getOpts) func(*cobra.Command, 
 			return err
 		}
 		activation.Gate(ctx, cfg, cmd.ErrOrStderr())
-		cat, err := opts.KG.catalog(cfg)
-		if err != nil {
-			return err
-		}
+		cat := opts.KG.catalog(cfg)
 
 		datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "prometheus")
 		if err != nil {
@@ -267,7 +264,7 @@ func runGet(loader *providers.ConfigLoader, opts *getOpts) func(*cobra.Command, 
 		}
 
 		if len(groupBy) > 0 {
-			return emitGroupedServiceDetail(cmd, opts, ctx, client, cat, cfg.GrafanaURL, datasourceUID, dsquery.OrgID(cfgCtx), namespace, name, kinds, mode, matchers, groupBy)
+			return emitGroupedServiceDetail(ctx, cmd, opts, client, cat, cfg.GrafanaURL, datasourceUID, dsquery.OrgID(cfgCtx), namespace, name, kinds, mode, matchers, groupBy)
 		}
 
 		detail, err := fetchServiceDetail(ctx, client, cfg.GrafanaURL, datasourceUID, dsquery.OrgID(cfgCtx), namespace, name, opts.Since, kinds, mode, matchers)
@@ -275,7 +272,8 @@ func runGet(loader *providers.ConfigLoader, opts *getOpts) func(*cobra.Command, 
 			return err
 		}
 		if cat != nil {
-			detail.Service.KG = warnKGLookup(cmd.ErrOrStderr(), cat.lookupVerbose(ctx, name))
+			startMs, endMs := windowMs(opts.Since)
+			detail.Service.KG = warnKGLookup(cmd.ErrOrStderr(), cat.lookupVerbose(ctx, name, startMs, endMs))
 		}
 		notFound := !detail.Service.Instrumented && !detail.RED.HasTraffic
 		if notFound {
@@ -298,13 +296,14 @@ func runGet(loader *providers.ConfigLoader, opts *getOpts) func(*cobra.Command, 
 // emitGroupedServiceDetail is runGet's --group-by path, split out of the
 // main RunE closure so its own error/not-found handling doesn't nest inside
 // runGet's `if len(groupBy) > 0` — kept as one branch there instead of five.
-func emitGroupedServiceDetail(cmd *cobra.Command, opts *getOpts, ctx context.Context, client *prometheus.Client, cat *kgCatalog, grafanaURL, datasourceUID string, orgID int64, namespace, name string, kinds []string, mode MetricsMode, matchers []Matcher, groupBy []string) error {
+func emitGroupedServiceDetail(ctx context.Context, cmd *cobra.Command, opts *getOpts, client *prometheus.Client, cat *kgCatalog, grafanaURL, datasourceUID string, orgID int64, namespace, name string, kinds []string, mode MetricsMode, matchers []Matcher, groupBy []string) error {
 	grouped, err := fetchGroupedServiceDetail(ctx, client, grafanaURL, datasourceUID, orgID, namespace, name, opts.Since, kinds, mode, matchers, groupBy)
 	if err != nil {
 		return err
 	}
 	if cat != nil {
-		grouped.Service.KG = warnKGLookup(cmd.ErrOrStderr(), cat.lookupVerbose(ctx, name))
+		startMs, endMs := windowMs(opts.Since)
+		grouped.Service.KG = warnKGLookup(cmd.ErrOrStderr(), cat.lookupVerbose(ctx, name, startMs, endMs))
 	}
 	notFound := !anyGroupHasTraffic(grouped.Items)
 	if notFound {
