@@ -1,6 +1,6 @@
 ## Unreleased
 
-- Added experimental Tempo TraceByID V2 params to `gcx traces get` / `gcx datasources tempo get`: `--q` filters the trace to spans matching a TraceQL spanset expression, with `--keep-hierarchy`, `--match-depth`, and `--ancestor-depth` shaping how much surrounding context is kept; `--span-pruning` (plus `--span-pruning-group-by`, `--span-pruning-min-spans`, `--span-pruning-max-parent-depth`) collapses repeated sibling spans into a single aggregated span. Both are aimed at shrinking large traces before `--llm` analysis.
+- Added experimental Tempo TraceByID V2 params to `gcx traces get` / `gcx datasources tempo get`: `--filter` filters the trace to spans matching a TraceQL spanset expression, with `--keep-hierarchy`, `--match-depth`, and `--ancestor-depth` shaping how much surrounding context is kept; `--prune` (plus `--prune-group-by`, `--prune-min-spans`, `--prune-max-parent-depth`) collapses repeated sibling spans into a single aggregated span. `--prune` takes `true`, `false`, or `auto`, where `auto` fetches the trace unpruned and re-requests it with pruning only if it exceeds the agent output budget (100 KiB, overridable via `GCX_AGENT_SPILL_BYTES`), pairing naturally with `-o agents`; omitting the flag uses the datasource's tenant default. Both are aimed at shrinking large traces before `--llm` analysis.
 
 ## v1.3.0 (2026-09-13)
 
