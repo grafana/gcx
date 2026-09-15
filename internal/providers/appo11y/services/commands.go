@@ -237,7 +237,6 @@ func runList(loader *providers.ConfigLoader, opts *listOpts) func(*cobra.Command
 		}
 
 		var graph []Service
-		var kgIdx map[string]*KGRef
 		metrics := targetInfoMetrics()
 		// `instrumented` is the filtered set used for display rows.
 		// `baseline` is the unfiltered set used as the index for the
@@ -295,14 +294,22 @@ func runList(loader *providers.ConfigLoader, opts *listOpts) func(*cobra.Command
 				return nil
 			})
 		}
+		var kgResult indexResult
 		if cat != nil {
 			eg.Go(func() error {
-				kgIdx = cat.index(egCtx)
+				kgResult = cat.index(egCtx)
 				return nil
 			})
 		}
 		if err := eg.Wait(); err != nil {
 			return err
+		}
+		if cat != nil {
+			if kgResult.inconclusive {
+				warnKGInconclusive(cmd.ErrOrStderr(), kgResult.inconclusiveErr)
+			} else if kgResult.truncated {
+				warnKGTruncated(cmd.ErrOrStderr())
+			}
 		}
 
 		instrumented, err := parseServicesResponses(instrumentedResponses)
@@ -320,7 +327,7 @@ func runList(loader *providers.ConfigLoader, opts *listOpts) func(*cobra.Command
 		items := resolveItems(opts.Instrumentation, instrumented, baseline, graph)
 		items = filterByEnv(items, opts.Env)
 		if cat != nil {
-			items = annotateServicesFromKG(items, kgIdx)
+			items = annotateServicesFromKG(items, kgResult.idx)
 		}
 
 		truncated := false
