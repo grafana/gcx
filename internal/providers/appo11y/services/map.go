@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/providers/appo11y/activation"
 	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/prometheus/common/model"
@@ -142,6 +143,7 @@ func runMap(loader *providers.ConfigLoader, opts *mapOpts) func(*cobra.Command, 
 		if err != nil {
 			return err
 		}
+		activation.Gate(ctx, cfg, cmd.ErrOrStderr())
 
 		datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "prometheus")
 		if err != nil {
