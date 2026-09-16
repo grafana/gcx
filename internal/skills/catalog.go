@@ -73,7 +73,7 @@ type SkillState struct {
 	CatalogEntry
 
 	Name             string `json:"name"`
-	Known            bool   `json:"known"`
+	Known            bool   `json:"-"`
 	ShortDescription string `json:"short_description"`
 	Installed        bool   `json:"installed"`
 	Present          bool   `json:"present"`

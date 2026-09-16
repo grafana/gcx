@@ -202,9 +202,7 @@ func TestListCommand(t *testing.T) {
 				var result listResult
 				require.NoError(t, json.Unmarshal([]byte(out), &result))
 				require.Equal(t, 3, result.SkillCount)
-				for _, skill := range result.Skills {
-					require.True(t, skill.Known)
-				}
+				require.NotContains(t, out, `"known"`)
 				require.True(t, result.Skills[0].Installed)
 				require.Equal(t, "alpha skill description", result.Skills[0].ShortDescription)
 				require.False(t, result.Skills[1].Installed)

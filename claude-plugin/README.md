@@ -122,8 +122,9 @@ them. It never installs replacements automatically or prunes obsolete local file
 Install/update receipts include lifecycle notices in JSON as well as warnings on
 stderr. `get` reads only bundled content, not a local copy.
 
-Directories absent from the catalog are unmanaged and never targeted. Reconciled
-state records catalog membership in `known`, separate from the release `status`.
+Directories absent from the catalog are unmanaged and never targeted. Reconciliation
+tracks catalog membership internally in `SkillState.Known`, separate from the
+release `status`.
 Per-skill stat failures report `installed: false` without blocking inventory or
 operations on other skills. Catalog names do **not** establish ownership of local files:
 there is no installation receipt or local-modification tracking yet. Explicit
