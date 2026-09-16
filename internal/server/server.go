@@ -20,7 +20,6 @@ import (
 	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/logs"
 	"github.com/grafana/gcx/internal/resources"
-	"github.com/grafana/gcx/internal/server/grafana"
 	"github.com/grafana/gcx/internal/server/handlers"
 	"github.com/grafana/gcx/internal/server/livereload"
 	"github.com/grafana/gcx/internal/version"
@@ -103,8 +102,10 @@ func (s *Server) Start(ctx context.Context) error {
 	if s.context == nil || s.context.Grafana == nil {
 		return errors.New("grafana is not configured")
 	}
-	if err := grafana.ValidateDevProxyAuth(s.context); err != nil {
-		return fmt.Errorf("grafana authentication configuration: %w", err)
+	// Validate the REST config the proxy actually uses. An empty host parses
+	// cleanly below, which would wire every proxied route to an empty target.
+	if s.restCfg.Host == "" {
+		return errors.New("grafana proxy target is not configured")
 	}
 
 	u, err := url.Parse(s.context.Grafana.Server)

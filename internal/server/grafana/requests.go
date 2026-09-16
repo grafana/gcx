@@ -1,10 +1,10 @@
 package grafana
 
 import (
-	"errors"
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/grafana/gcx/internal/config"
@@ -13,6 +13,30 @@ import (
 )
 
 func AuthenticateAndProxyHandler(restCfg config.NamespacedRESTConfig) http.HandlerFunc {
+	// Build the client once. rest.HTTPClientFor re-runs the REST config's
+	// WrapTransport, and in OAuth mode that closure assigns Base on the single
+	// shared RefreshTransport, so constructing per request races concurrent
+	// proxy requests on a field RefreshTransport reads without its mutex.
+	httpClient := sync.OnceValues(func() (*http.Client, error) {
+		client, err := rest.HTTPClientFor(&restCfg.Config)
+		if err != nil {
+			return nil, err
+		}
+		client.Timeout = 10 * time.Second
+		client.CheckRedirect = func(req *http.Request, _ []*http.Request) error {
+			// Being redirected to the login page means authentication is misconfigured.
+			// We interrupt the redirect and let the rest of AuthenticateAndProxyHandler
+			// handle that case.
+			if strings.HasSuffix(req.URL.Path, "/login") {
+				return http.ErrUseLastResponse
+			}
+
+			return nil
+		}
+
+		return client, nil
+	})
+
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Add("Content-Type", "text/html")
 
@@ -26,22 +50,10 @@ func AuthenticateAndProxyHandler(restCfg config.NamespacedRESTConfig) http.Handl
 			return
 		}
 
-		client, err := rest.HTTPClientFor(&restCfg.Config)
+		client, err := httpClient()
 		if err != nil {
 			httputils.Error(r, w, "Grafana transport configuration error", err, http.StatusInternalServerError)
 			return
-		}
-		client.Timeout = 10 * time.Second
-
-		client.CheckRedirect = func(req *http.Request, _ []*http.Request) error {
-			// Being redirected to the login page means authentication is misconfigured.
-			// We interrupt the redirect and let the rest of AuthenticateAndProxyHandler
-			// handle that case.
-			if strings.HasSuffix(req.URL.Path, "/login") {
-				return http.ErrUseLastResponse
-			}
-
-			return nil
 		}
 
 		resp, err := client.Do(req)
@@ -66,17 +78,4 @@ func AuthenticateAndProxyHandler(restCfg config.NamespacedRESTConfig) http.Handl
 		w.WriteHeader(resp.StatusCode)
 		httputils.Write(r, w, body)
 	}
-}
-
-// ValidateDevProxyAuth rejects configurations that the local development proxy
-// cannot serve: it needs a Grafana URL for the served subpath and an
-// unambiguous auth method.
-func ValidateDevProxyAuth(cfg *config.Context) error {
-	if cfg == nil || cfg.Grafana == nil || cfg.Grafana.Server == "" {
-		return errors.New("no Grafana URL configured")
-	}
-	if _, err := cfg.EffectiveGrafanaAuthMethod(); err != nil {
-		return err
-	}
-	return nil
 }

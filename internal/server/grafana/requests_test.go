@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -100,83 +100,47 @@ func TestAuthenticateAndProxyHandlerUsesOnlySelectedAuth(t *testing.T) {
 	}
 }
 
-func TestValidateDevProxyAuth(t *testing.T) {
+// Concurrent proxy requests must share one HTTP client. Building it per request
+// re-runs the REST config's WrapTransport, which mutates the shared OAuth
+// RefreshTransport and races under -race.
+func TestAuthenticateAndProxyHandlerServesConcurrentOAuthRequests(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name        string
-		context     *config.Context
-		wantMessage string
-	}{
-		{
-			name:        "nil context",
-			context:     nil,
-			wantMessage: "no Grafana URL configured",
-		},
-		{
-			name:        "no grafana config",
-			context:     &config.Context{Name: "selected"},
-			wantMessage: "no Grafana URL configured",
-		},
-		{
-			name:        "empty server",
-			context:     &config.Context{Name: "selected", Grafana: &config.GrafanaConfig{AuthMethod: "token", APIToken: "token"}},
-			wantMessage: "no Grafana URL configured",
-		},
-		{
-			name: "partial token",
-			context: &config.Context{Name: "selected", Grafana: &config.GrafanaConfig{
-				Server:     "https://stack.example.invalid",
-				AuthMethod: "token",
-			}},
-			wantMessage: `auth-method "token" requires a non-empty Grafana service-account token`,
-		},
-		{
-			name: "token accepted",
-			context: &config.Context{Name: "selected", Grafana: &config.GrafanaConfig{
-				Server:     "https://stack.example.invalid",
-				AuthMethod: "token",
-				APIToken:   "selected-token",
-			}},
-		},
-		{
-			name: "basic accepted",
-			context: &config.Context{Name: "selected", Grafana: &config.GrafanaConfig{
-				Server:     "https://stack.example.invalid",
-				AuthMethod: "basic",
-				User:       "selected-user",
-				Password:   "selected-password",
-			}},
-		},
-		{
-			name: "OAuth accepted",
-			context: &config.Context{Name: "selected", Grafana: &config.GrafanaConfig{
-				Server:            "https://stack.example.invalid",
-				ProxyEndpoint:     "https://proxy.example.invalid",
-				AuthMethod:        "oauth",
-				OAuthToken:        "oauth-access",
-				OAuthRefreshToken: "oauth-refresh",
-			}},
-		},
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("proxied"))
+	}))
+	t.Cleanup(upstream.Close)
+
+	cfgCtx := &config.Context{Name: "selected", Grafana: &config.GrafanaConfig{
+		AuthMethod:          "oauth",
+		OAuthToken:          "oauth-access",
+		OAuthTokenExpiresAt: time.Now().Add(time.Hour).Format(time.RFC3339),
+		Server:              upstream.URL,
+		ProxyEndpoint:       upstream.URL,
+		StackID:             12345,
+	}}
+	restCfg, err := cfgCtx.ToRESTConfig(context.Background())
+	if err != nil {
+		t.Fatalf("ToRESTConfig() error = %v", err)
 	}
+	handler := servergrafana.AuthenticateAndProxyHandler(restCfg)
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			err := servergrafana.ValidateDevProxyAuth(tc.context)
-			if tc.wantMessage == "" {
-				if err != nil {
-					t.Fatalf("ValidateDevProxyAuth() error = %v, want nil", err)
-				}
-				return
-			}
-			if err == nil {
-				t.Fatalf("ValidateDevProxyAuth() error = nil, want %q", tc.wantMessage)
-			}
-			if !strings.Contains(err.Error(), tc.wantMessage) {
-				t.Errorf("error %q does not contain %q", err.Error(), tc.wantMessage)
-			}
+	var wg sync.WaitGroup
+	codes := make([]int, 16)
+	for i := range codes {
+		wg.Go(func() {
+			req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/example", nil)
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, req)
+			codes[i] = response.Code
 		})
+	}
+	wg.Wait()
+
+	for i, code := range codes {
+		if code != http.StatusOK {
+			t.Errorf("request %d: status = %d, want %d", i, code, http.StatusOK)
+		}
 	}
 }
