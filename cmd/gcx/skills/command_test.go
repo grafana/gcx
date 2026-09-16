@@ -128,7 +128,9 @@ func TestUpdateCommand(t *testing.T) {
 	}{
 		{name: "installed only", installed: []string{"alpha", "external"}, updated: []string{"alpha"}},
 		{name: "no installed", updated: []string{}},
-		{name: "missing explicit", args: []string{"alpha"}, err: "is not installed"},
+		{name: "missing explicit", args: []string{"alpha"}, err: "skill \"alpha\" is not installed; use 'gcx agent skills install alpha' to install it first"},
+		{name: "missing deprecated", args: []string{"beta"}, err: "skill \"beta\" is not installed; use 'gcx agent skills install beta' to install it first"},
+		{name: "missing retired", args: []string{"old"}, err: "skill \"old\" is retired and not installed; use 'gcx agent skills list' to see available skills"},
 		{name: "unmanaged explicit", installed: []string{"external"}, args: []string{"external"}, err: "unknown skill"},
 		{name: "retirement", installed: []string{"old", "external"}, updated: []string{}, notices: 1},
 		{name: "explicit retirement", installed: []string{"old"}, args: []string{"old"}, updated: []string{}, notices: 1},

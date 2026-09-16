@@ -144,7 +144,10 @@ func Update(source fs.FS, catalog []byte, root string, targets []string, dryRun 
 			return InstallResult{}, fmt.Errorf("unknown skill %q (use 'gcx agent skills list' to see available skills)", name)
 		}
 		if !state.Installed && (state.Status != Retired || !state.Present) {
-			return InstallResult{}, fmt.Errorf("skill %q is not installed", name)
+			if state.Status == Retired {
+				return InstallResult{}, fmt.Errorf("skill %q is retired and not installed; use 'gcx agent skills list' to see available skills", name)
+			}
+			return InstallResult{}, fmt.Errorf("skill %q is not installed; use 'gcx agent skills install %s' to install it first", name, name)
 		}
 		requested[name] = struct{}{}
 	}
