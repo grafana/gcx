@@ -26,7 +26,7 @@ func Get(source fs.FS, catalogData []byte, name, reference string) (GetResult, e
 	if err := ValidateSkillName(name); err != nil {
 		return GetResult{}, err
 	}
-	catalog, err := LoadCatalog(source, catalogData)
+	catalog, err := LoadCatalog(catalogData)
 	if err != nil {
 		return GetResult{}, err
 	}

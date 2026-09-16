@@ -1,7 +1,9 @@
 package skills_test
 
 import (
+	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"testing"
 	"testing/fstest"
@@ -13,7 +15,6 @@ import (
 
 func TestLoadCatalog(t *testing.T) {
 	t.Parallel()
-	source := fstest.MapFS{"alpha/SKILL.md": {Data: []byte("alpha")}}
 	for _, tc := range []struct {
 		name string
 		data string
@@ -22,14 +23,9 @@ func TestLoadCatalog(t *testing.T) {
 		{name: "active", data: "skills: {alpha: {status: active}}"},
 		{name: "deprecated with replacement", data: "skills: {alpha: {status: deprecated, replacement: old}, old: {status: retired}}"},
 		{name: "retired with replacement", data: "skills: {alpha: {status: active}, old: {status: retired, replacement: alpha}}"},
-		{name: "missing catalog entry", data: "skills: {}", err: "missing from the catalog"},
-		{name: "missing content", data: "skills: {alpha: {status: active}, beta: {status: active}}", err: "requires a bundled SKILL.md"},
-		{name: "retired content", data: "skills: {alpha: {status: retired}}", err: "must not have bundled content"},
+		{name: "empty catalog", data: "skills: {}"},
 		{name: "bad status", data: "skills: {alpha: {status: deleted}}", err: "invalid status"},
 		{name: "missing status", data: "skills: {alpha: {}}", err: "invalid status"},
-		{name: "unknown replacement", data: "skills: {alpha: {status: deprecated, replacement: unknown}}", err: "unknown replacement"},
-		{name: "self replacement", data: "skills: {alpha: {status: deprecated, replacement: alpha}}", err: "replacement cycle"},
-		{name: "replacement cycle", data: "skills: {alpha: {status: deprecated, replacement: old}, old: {status: retired, replacement: alpha}}", err: "replacement cycle"},
 		{name: "invalid name", data: "skills: {alpha: {status: active}, '../old': {status: retired}}", err: "invalid skill name"},
 		{name: "unknown field", data: "skills: {alpha: {status: active, typo: true}}", err: "field typo"},
 		{name: "duplicate key", data: "skills: {alpha: {status: active}, alpha: {status: active}}", err: "already defined"},
@@ -39,7 +35,7 @@ func TestLoadCatalog(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := skills.LoadCatalog(source, []byte(tc.data))
+			_, err := skills.LoadCatalog([]byte(tc.data))
 			if tc.err != "" {
 				require.ErrorContains(t, err, tc.err)
 			} else {
@@ -51,11 +47,35 @@ func TestLoadCatalog(t *testing.T) {
 
 func TestBundledCatalog(t *testing.T) {
 	t.Parallel()
-	catalog, err := skills.LoadCatalog(claudeplugin.SkillsFS(), claudeplugin.SkillsCatalog())
+	catalog, err := skills.LoadCatalog(claudeplugin.SkillsCatalog())
 	require.NoError(t, err)
 	require.NotEmpty(t, catalog.Skills)
-	// Each newly shipped directory needs metadata; retirement keeps metadata but
-	// removes content. This validates the actual embedded release, not a fixture.
+	source := claudeplugin.SkillsFS()
+	bundled, err := fs.ReadDir(source, ".")
+	require.NoError(t, err)
+	for _, entry := range bundled {
+		if entry.IsDir() {
+			require.Contains(t, catalog.Skills, entry.Name(), "bundled skill must have a catalog entry")
+		}
+	}
+	// Packaging invariants belong here, not on the uninstall recovery path.
+	for name, entry := range catalog.Skills {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			switch entry.Status {
+			case skills.Active, skills.Deprecated:
+				info, err := fs.Stat(source, path.Join(name, "SKILL.md"))
+				require.NoError(t, err, "active/deprecated skill must have bundled content")
+				require.True(t, info.Mode().IsRegular(), "SKILL.md must be a regular file")
+			case skills.Retired:
+				_, err := fs.Stat(source, name)
+				require.ErrorIs(t, err, fs.ErrNotExist, "retired skill must not have bundled content")
+			}
+			if entry.Replacement != "" {
+				require.Contains(t, catalog.Skills, entry.Replacement, "replacement must exist in the catalog")
+			}
+		})
+	}
 }
 
 func TestReconcile(t *testing.T) {

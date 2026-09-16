@@ -7,7 +7,6 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -37,12 +36,10 @@ type Catalog struct {
 	Skills map[string]CatalogEntry `yaml:"skills"`
 }
 
-// LoadCatalog validates release metadata against the bundled content. Unknown
-// fields and duplicate keys are errors so lifecycle typos cannot silently ship.
-func LoadCatalog(source fs.FS, data []byte) (Catalog, error) {
-	if source == nil {
-		return Catalog{}, errors.New("skills source is nil")
-	}
+// LoadCatalog decodes embedded release metadata and validates names and statuses
+// used for local targeting. Bundle consistency is checked by TestBundledCatalog,
+// not here: packaging errors must not disable uninstalling cataloged skills.
+func LoadCatalog(data []byte) (Catalog, error) {
 	var catalog Catalog
 	decoder := yaml.NewDecoder(bytes.NewReader(data))
 	decoder.KnownFields(true)
@@ -56,45 +53,14 @@ func LoadCatalog(source fs.FS, data []byte) (Catalog, error) {
 	if catalog.Skills == nil {
 		return Catalog{}, errors.New("skills catalog must contain a skills map")
 	}
-	bundled, err := BundledSkillNames(source)
-	if err != nil {
-		return Catalog{}, err
-	}
-	for _, name := range bundled {
-		if _, ok := catalog.Skills[name]; !ok {
-			return Catalog{}, fmt.Errorf("bundled skill %q is missing from the catalog", name)
-		}
-	}
 	for name, entry := range catalog.Skills {
 		if err := ValidateSkillName(name); err != nil {
 			return Catalog{}, err
 		}
 		switch entry.Status {
-		case Active, Deprecated:
-			info, err := fs.Stat(source, path.Join(name, "SKILL.md"))
-			if err != nil || !info.Mode().IsRegular() {
-				return Catalog{}, fmt.Errorf("catalog skill %q requires a bundled SKILL.md", name)
-			}
-		case Retired:
-			if _, err := fs.Stat(source, name); !errors.Is(err, fs.ErrNotExist) {
-				return Catalog{}, fmt.Errorf("retired skill %q must not have bundled content", name)
-			}
+		case Active, Deprecated, Retired:
 		default:
 			return Catalog{}, fmt.Errorf("invalid status %q for skill %q: use active, deprecated, or retired", entry.Status, name)
-		}
-		if entry.Replacement != "" {
-			if _, ok := catalog.Skills[entry.Replacement]; !ok {
-				return Catalog{}, fmt.Errorf("unknown replacement %q for skill %q", entry.Replacement, name)
-			}
-		}
-	}
-	for name := range catalog.Skills {
-		seen := make(map[string]bool)
-		for current := name; current != ""; current = catalog.Skills[current].Replacement {
-			if seen[current] {
-				return Catalog{}, fmt.Errorf("replacement cycle for skill %q", name)
-			}
-			seen[current] = true
 		}
 	}
 	return catalog, nil
@@ -115,7 +81,7 @@ type SkillState struct {
 // Reconcile is read-only. It includes missing catalog entries and uncataloged
 // local directories, allowing every command to make the same targeting decision.
 func Reconcile(source fs.FS, data []byte, root string) ([]SkillState, error) {
-	catalog, err := LoadCatalog(source, data)
+	catalog, err := LoadCatalog(data)
 	if err != nil {
 		return nil, err
 	}

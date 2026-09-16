@@ -88,7 +88,7 @@ func newInstallCommand(source fs.FS, catalog []byte) *cobra.Command {
   gcx agent skills install setup-gcx --force`,
 		Args: cobra.ArbitraryArgs,
 		ValidArgsFunction: func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
-			return completeSkillNames(source, catalog, false)
+			return completeSkillNames(catalog, false)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(args); err != nil {
@@ -132,8 +132,8 @@ func emitLifecycleNotices(dst goio.Writer, notices []skillops.LifecycleNotice) {
 	}
 }
 
-func completeSkillNames(source fs.FS, data []byte, includeRetired bool) ([]string, cobra.ShellCompDirective) {
-	catalog, err := skillops.LoadCatalog(source, data)
+func completeSkillNames(data []byte, includeRetired bool) ([]string, cobra.ShellCompDirective) {
+	catalog, err := skillops.LoadCatalog(data)
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveError
 	}
@@ -246,7 +246,7 @@ func newUpdateCommand(source fs.FS, catalog []byte) *cobra.Command {
   gcx agent skills update setup-gcx debug-with-grafana`,
 		Args: cobra.ArbitraryArgs,
 		ValidArgsFunction: func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
-			return completeSkillNames(source, catalog, true)
+			return completeSkillNames(catalog, true)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
@@ -444,7 +444,7 @@ By default the skill's SKILL.md body is printed. Pass a reference path (e.g. ref
 			if len(args) > 0 {
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
-			return completeSkillNames(source, catalog, false)
+			return completeSkillNames(catalog, false)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(args); err != nil {
@@ -548,7 +548,7 @@ func newUninstallCommand(source fs.FS, catalog []byte) *cobra.Command {
   gcx agent skills uninstall --all --yes --dry-run`,
 		Args: cobra.ArbitraryArgs,
 		ValidArgsFunction: func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
-			return completeSkillNames(source, catalog, true)
+			return completeSkillNames(catalog, true)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(args); err != nil {

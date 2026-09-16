@@ -102,10 +102,12 @@ canonical portable skill bundle.
   removable with `gcx agent skills uninstall`, including `--all --yes`.
 
 Entries may include an optional `replacement` skill name and `message` explaining
-what changed. Replacements must exist in the catalog and must not form cycles.
-Every bundled skill needs an active or deprecated entry. When removing content,
-change its entry to retired and **keep it indefinitely** so users can skip releases.
-The Go tests validate the catalog against the embedded bundle.
+what changed. Replacements are informational labels, not redirects; gcx does not
+follow replacement chains. Every bundled skill needs an active or deprecated
+entry. When removing content, change its entry to retired and **keep it
+indefinitely** so users can skip releases. `TestBundledCatalog` checks catalog/content
+consistency and replacement existence against the embedded release. These checks
+run only in tests so a packaging mismatch cannot block uninstall.
 
 For the `.agents` installer, commands reconcile the catalog with the selected
 `--dir` (default `~/.agents`). `list` includes bundled skills and locally present

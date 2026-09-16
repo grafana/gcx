@@ -306,6 +306,62 @@ func TestUninstallCommand(t *testing.T) {
 	}
 }
 
+func TestUninstallCommand_IgnoresBundleMismatch(t *testing.T) {
+	t.Setenv("GCX_AGENT_MODE", "false")
+	agent.ResetForTesting()
+	for _, tc := range []struct {
+		name    string
+		source  fs.FS
+		catalog string
+	}{
+		{
+			name: "missing active content", source: fstest.MapFS{},
+			catalog: "skills: {old: {status: active}}",
+		},
+		{
+			name:    "uncataloged bundled content",
+			source:  fstest.MapFS{"other/SKILL.md": {Data: []byte("other")}},
+			catalog: "skills: {old: {status: retired}}",
+		},
+		{
+			name:    "retired bundled content",
+			source:  fstest.MapFS{"old/SKILL.md": {Data: []byte("old")}},
+			catalog: "skills: {old: {status: retired}}",
+		},
+		{
+			name: "unknown replacement", source: fstest.MapFS{},
+			catalog: "skills: {old: {status: retired, replacement: missing}}",
+		},
+		{
+			name: "cyclic replacement metadata", source: fstest.MapFS{},
+			catalog: "skills: {old: {status: retired, replacement: other}, other: {status: retired, replacement: old}}",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, mode := range []string{"named", "all"} {
+				t.Run(mode, func(t *testing.T) {
+					root := t.TempDir()
+					putSkill(t, root, "old", "installed content")
+					putSkill(t, root, "external", "unmanaged content")
+					args := []string{"--dir", root, "-o", "json"}
+					if mode == "all" {
+						args = append(args, "--all", "--yes")
+					} else {
+						args = append(args, "old")
+					}
+					out, _, err := executeCommand(t, newUninstallCommand(tc.source, []byte(tc.catalog)), args...)
+					require.NoError(t, err)
+					var result uninstallResult
+					require.NoError(t, json.Unmarshal([]byte(out), &result))
+					require.Equal(t, []string{"old"}, result.Removed)
+					require.NoDirExists(t, filepath.Join(root, "skills", "old"))
+					require.FileExists(t, filepath.Join(root, "skills", "external", "SKILL.md"))
+				})
+			}
+		})
+	}
+}
+
 func TestSkillCompletion(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {

@@ -158,8 +158,9 @@ Key: SELECTOR = `kind[/name[,name...]]` or long form `kind.group/name`
 ## Portable Skill Lifecycle
 
 `claude-plugin/assets.go` embeds `skills/` and `skills-catalog.yaml` separately.
-`internal/skills` validates active/deprecated/retired metadata against the bundle
-and reconciles it with the selected local `.agents` root. Install, update, list,
+`internal/skills` decodes active/deprecated/retired metadata and reconciles it with
+the selected local `.agents` root. `TestBundledCatalog` checks content consistency
+and replacement existence at build time, not on the uninstall recovery path. Install, update, list,
 and uninstall share this read-only reconciliation; get reads bundled content only.
 CLI wiring and codecs remain in `cmd/gcx/skills`; the background update notifier
 uses the same update preview, including retirement notices.

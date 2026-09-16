@@ -26,23 +26,6 @@ type InstallResult struct {
 	Notices     []LifecycleNotice `json:"notices,omitempty"`
 }
 
-// BundledSkillNames returns all top-level bundled skill directory names.
-func BundledSkillNames(source fs.FS) ([]string, error) {
-	entries, err := fs.ReadDir(source, ".")
-	if err != nil {
-		return nil, err
-	}
-
-	names := make([]string, 0, len(entries))
-	for _, e := range entries {
-		if e.IsDir() {
-			names = append(names, e.Name())
-		}
-	}
-	sort.Strings(names)
-	return names, nil
-}
-
 // Install installs current bundled skills. A nil filter selects all active and
 // deprecated skills; retired and unmanaged local skills are never installed.
 func Install(source fs.FS, catalog []byte, root string, filter map[string]struct{}, force bool, dryRun bool) (InstallResult, error) {
