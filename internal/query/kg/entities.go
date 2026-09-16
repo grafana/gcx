@@ -40,9 +40,14 @@ func (e *Entity) resolveType() {
 	}
 }
 
-// LookupEntity resolves one entity by type + name + optional scope.
-// Returns (nil, nil) on HTTP 204 — "not found" is not an error.
-func (c *Client) LookupEntity(ctx context.Context, entityType, name string, scope map[string]string, domain string, startMs, endMs int64) (*Entity, error) {
+// GetEntity issues the GET /v1/entity lookup shared by every caller that
+// resolves one entity by type + name + optional scope, decoding the
+// response into T. Returns (nil, nil) on HTTP 204 — "not found" is not an
+// error. T is the per-caller decode shape: this package's own LookupEntity
+// uses the minimal Entity below; internal/providers/kg.Client.LookupEntity
+// uses its own richer GraphEntity over the identical endpoint — one request
+// implementation, two decode targets, instead of two copies of the request.
+func GetEntity[T any](ctx context.Context, c *Client, entityType, name string, scope map[string]string, domain string, startMs, endMs int64) (*T, error) {
 	q := TimeRangeParams(startMs, endMs)
 	q.Set("asserts_entity_type", entityType)
 	q.Set("asserts_entity_name", name)
@@ -69,12 +74,22 @@ func (c *Client) LookupEntity(ctx context.Context, entityType, name string, scop
 	if resp.StatusCode >= 400 {
 		return nil, ReadError(resp)
 	}
-	var result Entity
+	var result T
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("kg: decode entity: %w", err)
 	}
-	result.resolveType()
 	return &result, nil
+}
+
+// LookupEntity resolves one entity by type + name + optional scope.
+// Returns (nil, nil) on HTTP 204 — "not found" is not an error.
+func (c *Client) LookupEntity(ctx context.Context, entityType, name string, scope map[string]string, domain string, startMs, endMs int64) (*Entity, error) {
+	result, err := GetEntity[Entity](ctx, c, entityType, name, scope, domain, startMs, endMs)
+	if err != nil || result == nil {
+		return result, err
+	}
+	result.resolveType()
+	return result, nil
 }
 
 // EntityScope narrows an entity search/list to specific scope dimension
@@ -103,13 +118,20 @@ func (s EntityScope) nameAndValues() map[string][]string {
 	return nv
 }
 
-// EntityPage is one page of a ListEntities search.
-type EntityPage struct {
-	Entities    []Entity
+// Page is one page of search results plus the backend's pagination
+// signals, generic over the per-entity decode shape T. LastPage is true
+// when no further pages exist; MaxLimitHit is true when the backend's
+// per-page result cap was reached (i.e. the page is truncated and a
+// subsequent --page would return more).
+type Page[T any] struct {
+	Entities    []T
 	PageNum     int
 	LastPage    bool
 	MaxLimitHit bool
 }
+
+// EntityPage is one page of a ListEntities search.
+type EntityPage = Page[Entity]
 
 // entityPropertyMatcher mirrors the wire shape of the KG search API's
 // property matcher entries — same JSON tags as the provider's
@@ -143,6 +165,39 @@ type entitySearchRequest struct {
 	PageNum        int                    `json:"pageNum"`
 }
 
+// SearchEntities posts req — any JSON-marshalable Knowledge Graph search
+// request body — to /v1/search and decodes the standard paginated-entities
+// response envelope this backend uses for every filtered entity listing,
+// with T as the per-entity decode shape. This is the single implementation
+// of that endpoint: this package's own ListEntities below passes its
+// minimal Entity and a name-filter-only request;
+// internal/providers/kg.Client.Search passes its own richer SearchResult
+// and a request with arbitrary matchers/bindings — same wire call, two
+// decode shapes, instead of two copies of the request/response handling.
+func SearchEntities[T any](ctx context.Context, c *Client, req any) (Page[T], error) {
+	var wrapper struct {
+		Data struct {
+			Entities                 []T  `json:"entities"`
+			PageNum                  int  `json:"pageNum"`
+			LastPage                 bool `json:"lastPage"`
+			SearchResultsMaxLimitHit bool `json:"searchResultsMaxLimitHit"`
+		} `json:"data"`
+	}
+	if err := c.PostJSON(ctx, searchPath, req, &wrapper); err != nil {
+		return Page[T]{}, err
+	}
+	entities := wrapper.Data.Entities
+	if entities == nil {
+		entities = []T{}
+	}
+	return Page[T]{
+		Entities:    entities,
+		PageNum:     wrapper.Data.PageNum,
+		LastPage:    wrapper.Data.LastPage,
+		MaxLimitHit: wrapper.Data.SearchResultsMaxLimitHit,
+	}, nil
+}
+
 // ListEntities returns the entities of one type within an optional scope,
 // following the same "name IS NOT NULL" default filter the Knowledge Graph
 // provider's own entity listing uses. startMs/endMs bound the search window
@@ -166,28 +221,12 @@ func (c *Client) ListEntities(ctx context.Context, entityType string, scope Enti
 		req.ScopeCriteria = &entityScopeCriteria{NameAndValues: nv}
 	}
 
-	var wrapper struct {
-		Data struct {
-			Entities                 []Entity `json:"entities"`
-			PageNum                  int      `json:"pageNum"`
-			LastPage                 bool     `json:"lastPage"`
-			SearchResultsMaxLimitHit bool     `json:"searchResultsMaxLimitHit"`
-		} `json:"data"`
-	}
-	if err := c.PostJSON(ctx, searchPath, req, &wrapper); err != nil {
+	page, err := SearchEntities[Entity](ctx, c, req)
+	if err != nil {
 		return EntityPage{}, fmt.Errorf("kg: list entities: %w", err)
 	}
-	entities := wrapper.Data.Entities
-	if entities == nil {
-		entities = []Entity{}
+	for i := range page.Entities {
+		page.Entities[i].resolveType()
 	}
-	for i := range entities {
-		entities[i].resolveType()
-	}
-	return EntityPage{
-		Entities:    entities,
-		PageNum:     wrapper.Data.PageNum,
-		LastPage:    wrapper.Data.LastPage,
-		MaxLimitHit: wrapper.Data.SearchResultsMaxLimitHit,
-	}, nil
+	return page, nil
 }
