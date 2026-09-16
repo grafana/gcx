@@ -92,7 +92,7 @@ const (
 	labelValuesPath = "/api/datasources/uid/loki-uid/resources/label/job/values"
 )
 
-func TestLabelsCmd_SelectorScoping(t *testing.T) {
+func TestLabelsCmd_QueryScoping(t *testing.T) {
 	tests := []struct {
 		name      string
 		args      []string
@@ -106,19 +106,19 @@ func TestLabelsCmd_SelectorScoping(t *testing.T) {
 			wantQuery: "",
 		},
 		{
-			name:      "selector is sent as the query param",
-			args:      []string{"--selector", `{app="backstage"}`},
+			name:      "query is sent as the query param",
+			args:      []string{"--query", `{app="backstage"}`},
 			path:      labelsPath,
 			wantQuery: `{app="backstage"}`,
 		},
 		{
-			name:      "label values path gets the same selector",
-			args:      []string{"--label", "job", "--selector", `{app="backstage"}`},
+			name:      "label values path gets the same query",
+			args:      []string{"--label", "job", "--query", `{app="backstage"}`},
 			path:      labelValuesPath,
 			wantQuery: `{app="backstage"}`,
 		},
 		{
-			name:      "label values path with no selector sends no query param",
+			name:      "label values path with no query sends no query param",
 			args:      []string{"--label", "job"},
 			path:      labelValuesPath,
 			wantQuery: "",
@@ -153,7 +153,7 @@ func TestLabelsCmd_RejectsPositionalArgs(t *testing.T) {
 }
 
 func TestLabelsCmd_RejectsExplicitlyEmptyFlagValues(t *testing.T) {
-	for _, flag := range []string{"selector", "label"} {
+	for _, flag := range []string{"query", "label"} {
 		t.Run(flag, func(t *testing.T) {
 			captured, err := runLabelsCmd(t, "--"+flag, "")
 			require.Error(t, err)

@@ -19,7 +19,7 @@ type lokiLabelsOpts struct {
 	IO         cmdio.Options
 	Datasource string
 	Label      string
-	Selector   string
+	Query      string
 }
 
 func (opts *lokiLabelsOpts) setup(flags *pflag.FlagSet) {
@@ -29,7 +29,7 @@ func (opts *lokiLabelsOpts) setup(flags *pflag.FlagSet) {
 
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.loki is configured)")
 	flags.StringVarP(&opts.Label, "label", "l", "", "Get values for this label (omit to list all labels)")
-	flags.StringVar(&opts.Selector, "selector", "", "LogQL stream selector to scope results (e.g. '{app=\"foo\"}')")
+	flags.StringVarP(&opts.Query, "query", "q", "", "LogQL query to filter labels")
 }
 
 func (opts *lokiLabelsOpts) Validate() error {
@@ -51,11 +51,11 @@ func LabelsCmd(loader *providers.ConfigLoader) *cobra.Command {
 	# Get values for a specific label
 	gcx datasources loki labels -d UID --label job
 
-	# Scope labels to a stream selector
-	gcx datasources loki labels -d UID --selector '{app="foo"}'
+	# Filter labels with a query
+	gcx datasources loki labels -d UID --query '{app="foo"}'
 
-	# Scope label values to a stream selector
-	gcx datasources loki labels -d UID --label job --selector '{app="foo"}'
+	# Filter label values with a query
+	gcx datasources loki labels -d UID --label job --query '{app="foo"}'
 
 	# Output as JSON
 	gcx datasources loki labels -d UID -o json`,
@@ -64,9 +64,9 @@ func LabelsCmd(loader *providers.ConfigLoader) *cobra.Command {
 				return err
 			}
 
-			// Reject an explicitly empty --selector/--label (unset shell var)
+			// Reject an explicitly empty --query/--label (unset shell var)
 			// instead of silently dropping scoping.
-			for _, name := range []string{"selector", "label"} {
+			for _, name := range []string{"query", "label"} {
 				if cmd.Flags().Changed(name) && cmd.Flags().Lookup(name).Value.String() == "" {
 					return fmt.Errorf("invalid --%s: value is empty (unset shell variable?)", name)
 				}
@@ -90,7 +90,7 @@ func LabelsCmd(loader *providers.ConfigLoader) *cobra.Command {
 			}
 
 			if opts.Label != "" {
-				resp, err := client.LabelValues(ctx, datasourceUID, opts.Label, opts.Selector)
+				resp, err := client.LabelValues(ctx, datasourceUID, opts.Label, opts.Query)
 				if err != nil {
 					return fmt.Errorf("failed to get label values: %w", err)
 				}
@@ -98,7 +98,7 @@ func LabelsCmd(loader *providers.ConfigLoader) *cobra.Command {
 				return opts.IO.Encode(cmd.OutOrStdout(), resp)
 			}
 
-			resp, err := client.Labels(ctx, datasourceUID, opts.Selector)
+			resp, err := client.Labels(ctx, datasourceUID, opts.Query)
 			if err != nil {
 				return fmt.Errorf("failed to get labels: %w", err)
 			}
