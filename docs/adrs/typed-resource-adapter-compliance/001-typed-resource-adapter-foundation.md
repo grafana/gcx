@@ -1,7 +1,7 @@
 # TypedResourceAdapter[T] with ResourceIdentity and Provider Command Migration
 
 **Created**: 2026-03-25
-**Status**: proposed
+**Status**: accepted
 **Bead**: gcx-experiments-dvwd
 **Supersedes**: none
 

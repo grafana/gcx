@@ -10,6 +10,7 @@ import (
 )
 
 var _ providers.Provider = &mockProvider{}
+var _ providers.Provider = (*adapter.Provider)(nil)
 
 type mockProvider struct {
 	name       string

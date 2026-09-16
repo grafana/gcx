@@ -424,14 +424,23 @@ func Register(p Provider) {
 }
 ```
 
-`TypedRegistration[T]` bridges `TypedCRUD` to the `Registration` system:
+`Registration` carries the static metadata and lazy factory for one adapter:
 
 ```go
-TypedRegistration[T ResourceNamer]
+Registration
   +-- Descriptor, Aliases, GVK, Schema, Example
-  +-- Factory func(ctx) (*TypedCRUD[T], error)
-  +-- ToRegistration() → Registration   // wraps Factory to return ResourceAdapter
+  +-- Factory func(ctx) (ResourceAdapter, error)
 ```
+
+Providers can derive a registration from an `adapter.Resource[T]` declaration
+through `adapter.NewProvider`. Providers whose client methods need explicit
+adapters use `adapter.BuildRegistration[T, C]` instead.
+
+| Registration path | Use when |
+|---|---|
+| `Resource[T]` through `NewProvider` | Client methods implement the capability interfaces directly. |
+| `BuildRegistration` | Client methods need explicit per-verb adaptation. |
+| Handwritten `Registration` | Required metadata or factory behavior is not supported by either builder. |
 
 This replaces the old pattern where providers called `adapter.Register()` directly
 in their `init()` functions alongside `providers.Register()`.
@@ -529,7 +538,9 @@ PartialGVK                         Descriptor
 | `cmd/gcx/resources/pull.go` | Pull pipeline wiring (processors, registry, filters) |
 | `internal/resources/adapter/adapter.go` | `ResourceAdapter` interface and `Factory` type |
 | `internal/resources/adapter/identity.go` | `ResourceIdentity` and `ResourceNamer` interfaces |
-| `internal/resources/adapter/typed.go` | `TypedCRUD[T]`, `TypedObject[T]`, `TypedRegistration[T]` — generic adapter framework |
+| `internal/resources/adapter/typed.go` | `TypedCRUD[T]`, `TypedObject[T]` — generic adapter framework |
+| `internal/resources/adapter/resource.go` | Declarative `Resource[T]`, `ClientDeps`, and capability-based registration |
+| `internal/resources/adapter/builder.go` | `BuildRegistration[T, C]` for explicit client-method adapters |
 | `internal/resources/adapter/register.go` | Global `Register()`, `AllRegistrations()` for self-registration |
 | `internal/resources/adapter/router.go` | `ResourceClientRouter` — routes CRUD to adapter or dynamic client |
 | `internal/resources/discovery/openapi.go` | `SchemaFetcher` — fetches OpenAPI v3 schemas with disk caching; used by `resources list-types` |

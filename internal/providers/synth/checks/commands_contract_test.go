@@ -3,6 +3,7 @@ package checks_test
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -83,6 +84,7 @@ type checkAPIState struct {
 	probesOnline bool
 	failCreate   bool
 	failDelete   map[int64]bool
+	lastUpdated  checks.Check // last body posted to /api/v1/check/update
 }
 
 func newCheckServer(t *testing.T, st *checkAPIState) *httptest.Server {
@@ -126,6 +128,9 @@ func newCheckServer(t *testing.T, st *checkAPIState) *httptest.Server {
 	mux.HandleFunc("/api/v1/check/update", func(w http.ResponseWriter, r *http.Request) {
 		var c checks.Check
 		_ = json.NewDecoder(r.Body).Decode(&c)
+		st.mu.Lock()
+		st.lastUpdated = c
+		st.mu.Unlock()
 		writeJSON(w, c)
 	})
 	mux.HandleFunc("/api/v1/check/delete/", func(w http.ResponseWriter, r *http.Request) {
@@ -520,6 +525,100 @@ func TestChecksGetDiagnosticsOnStderr(t *testing.T) {
 		assert.NotContains(t, stdout, "could not retrieve execution status")
 		assert.Contains(t, stdout, "web-check-1234")
 	})
+}
+
+func TestChecksGetDecodeScript(t *testing.T) {
+	plaintext := "export default function() { console.log('hi'); }"
+	encoded := base64.StdEncoding.EncodeToString([]byte(plaintext))
+	st := &checkAPIState{
+		probesOnline: true,
+		checks: map[int64]checks.Check{
+			1234: {ID: 1234, Job: "web-check", Target: "https://example.com",
+				Settings: checks.CheckSettings{"scripted": map[string]any{"script": encoded}}},
+		},
+	}
+	srv := newCheckServer(t, st)
+
+	t.Run("yaml/json output decodes the script", func(t *testing.T) {
+		stdout, _, err := runChecks(t, srv.URL, false, "", "get", "web-check-1234", "-o", "json", "--decode-script")
+		require.NoError(t, err)
+
+		doc, ok := decodeSingleJSONValue(t, stdout).(map[string]any)
+		require.True(t, ok)
+		spec, ok := doc["spec"].(map[string]any)
+		require.True(t, ok)
+		settings, ok := spec["settings"].(map[string]any)
+		require.True(t, ok)
+		scripted, ok := settings["scripted"].(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, plaintext, scripted["script"])
+	})
+
+	t.Run("without the flag the script stays base64", func(t *testing.T) {
+		stdout, _, err := runChecks(t, srv.URL, false, "", "get", "web-check-1234", "-o", "json")
+		require.NoError(t, err)
+
+		doc, ok := decodeSingleJSONValue(t, stdout).(map[string]any)
+		require.True(t, ok)
+		spec, ok := doc["spec"].(map[string]any)
+		require.True(t, ok)
+		settings, ok := spec["settings"].(map[string]any)
+		require.True(t, ok)
+		scripted, ok := settings["scripted"].(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, encoded, scripted["script"])
+	})
+
+	t.Run("table output warns and ignores the flag", func(t *testing.T) {
+		stdout, stderr, err := runChecks(t, srv.URL, false, "", "get", "web-check-1234", "--decode-script")
+		require.NoError(t, err)
+
+		assert.Contains(t, stderr, "--decode-script has no effect on table output")
+		assert.Contains(t, stdout, "web-check-1234")
+		assert.NotContains(t, stdout, plaintext)
+	})
+}
+
+func TestChecksUpdateEncodesPlaintextScript(t *testing.T) {
+	plaintext := "export default function() { console.log('hi'); }"
+	st := &checkAPIState{probesOnline: true}
+	srv := newCheckServer(t, st)
+
+	dir := t.TempDir()
+	manifest := filepath.Join(dir, "check.yaml")
+	content := "apiVersion: syntheticmonitoring.ext.grafana.app/v1alpha1\n" +
+		"kind: Check\n" +
+		"metadata:\n" +
+		"  name: web-check\n" +
+		"spec:\n" +
+		"  job: web-check\n" +
+		"  target: https://example.com\n" +
+		"  frequency: 60000\n" +
+		"  timeout: 10000\n" +
+		"  enabled: true\n" +
+		"  probes:\n" +
+		"    - Oregon\n" +
+		"  settings:\n" +
+		"    scripted:\n" +
+		"      script: |-\n" +
+		"        " + plaintext + "\n"
+	require.NoError(t, os.WriteFile(manifest, []byte(content), 0o600))
+
+	_, _, err := runChecks(t, srv.URL, false, "", "update", "web-check-1234", "-f", manifest)
+	require.NoError(t, err)
+
+	st.mu.Lock()
+	sent := st.lastUpdated
+	st.mu.Unlock()
+
+	scripted, ok := sent.Settings["scripted"].(map[string]any)
+	require.True(t, ok, "settings sent to the API must still be scripted: %+v", sent.Settings)
+	sentScript, ok := scripted["script"].(string)
+	require.True(t, ok)
+
+	decoded, err := base64.StdEncoding.DecodeString(sentScript)
+	require.NoError(t, err, "script sent to the API must be base64-encoded")
+	assert.Equal(t, plaintext, string(decoded))
 }
 
 func TestChecksStatusEmptyContract(t *testing.T) {

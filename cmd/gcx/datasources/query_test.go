@@ -377,6 +377,12 @@ func TestGenericQueryCloudMonitoringShortCircuit(t *testing.T) {
 	}
 }
 
+func TestGenericQueryLimitFlagDisclosesPinotDefault(t *testing.T) {
+	usage := datasources.QueryCmd().Flags().Lookup("limit").Usage
+	assert.Contains(t, usage, "Pinot uses")
+	assert.Contains(t, usage, "stderr notes when PinotQL is adjusted")
+}
+
 // Pins shared.Validate() running before any HTTP or short-circuit branch.
 func TestGenericQueryFlagValidationPrecedence(t *testing.T) {
 	tests := []struct {
@@ -393,6 +399,11 @@ func TestGenericQueryFlagValidationPrecedence(t *testing.T) {
 			name:      "since+from mutex errors before HTTP",
 			args:      []string{"query", "uid", "--since", "1h", "--from", "now-2h"},
 			expectErr: "--since is mutually exclusive with --from",
+		},
+		{
+			name:      "negative limit errors before HTTP",
+			args:      []string{"query", "uid", "--limit", "-5", "SELECT 1"},
+			expectErr: "--limit must be >= 0",
 		},
 	}
 
