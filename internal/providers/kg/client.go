@@ -55,7 +55,6 @@ const (
 	alertConfigByNameFmt    = alertConfigPath + "/%s"
 	alertConfigsPath        = pluginResourcePath + "/asserts/api-server/v1/config/alerts"
 	alertConfigsCategoryFmt = alertConfigsPath + "/%s"
-	entityLookupPath        = pluginResourcePath + "/asserts/api-server/v1/entity"
 	v2ConfigPath            = pluginResourcePath + "/asserts/api-server/v2/config"
 	v2LogConfigPath         = v2ConfigPath + "/log"
 	v2TraceConfigPath       = v2ConfigPath + "/trace"
@@ -558,39 +557,12 @@ func (c *Client) GetEntityInfo(ctx context.Context, entityType, name string, sco
 }
 
 // LookupEntity retrieves entity details from Prometheus alert label params.
-// Returns nil, nil on 204 No Content (entity not found).
+// Returns nil, nil on 204 No Content (entity not found). Delegates the
+// GET /v1/entity call to kgquery.GetEntity — the same request-building and
+// 204/error handling internal/query/kg's own LookupEntity uses for the
+// identical endpoint — decoding into this package's richer GraphEntity.
 func (c *Client) LookupEntity(ctx context.Context, entityType, name string, scope map[string]string, domain string, startMs, endMs int64) (*GraphEntity, error) {
-	q := kgquery.TimeRangeParams(startMs, endMs)
-	q.Set("asserts_entity_type", entityType)
-	q.Set("asserts_entity_name", name)
-	for k, v := range scope {
-		q.Set(k, v)
-	}
-	if domain != "" {
-		q.Set("domain", domain)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.Host()+entityLookupPath+"?"+q.Encode(), nil)
-	if err != nil {
-		return nil, fmt.Errorf("kg: create request: %w", err)
-	}
-	resp, err := c.HTTPClient().Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("kg: execute request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusNoContent {
-		return nil, nil //nolint:nilnil
-	}
-	if resp.StatusCode >= 400 {
-		return nil, kgquery.ReadError(resp)
-	}
-	var result GraphEntity
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("kg: decode entity: %w", err)
-	}
-	return &result, nil
+	return kgquery.GetEntity[GraphEntity](ctx, c.Client, entityType, name, scope, domain, startMs, endMs)
 }
 
 // CountEntityTypes retrieves entity type counts for the given time window and scope.
@@ -730,36 +702,18 @@ func (c *Client) AssertionSourceMetrics(ctx context.Context, req SourceMetricsRe
 // pagination signals. LastPage is true when no further pages exist;
 // MaxLimitHit is true when the backend's per-page result cap was reached
 // (i.e. the page is truncated and a subsequent --page would return more).
-type SearchPage struct {
-	Entities    []SearchResult
-	PageNum     int
-	LastPage    bool
-	MaxLimitHit bool
-}
+type SearchPage = kgquery.Page[SearchResult]
 
-// Search searches for entities matching the given request.
+// Search searches for entities matching the given request. Delegates the
+// POST /v1/search call to kgquery.SearchEntities — the same request/
+// response handling internal/query/kg's own ListEntities uses for the
+// identical endpoint — decoding into this package's richer SearchResult.
 func (c *Client) Search(ctx context.Context, req SearchRequest) (SearchPage, error) {
-	var wrapper struct {
-		Data struct {
-			Entities                 []SearchResult `json:"entities"`
-			PageNum                  int            `json:"pageNum"`
-			LastPage                 bool           `json:"lastPage"`
-			SearchResultsMaxLimitHit bool           `json:"searchResultsMaxLimitHit"`
-		} `json:"data"`
-	}
-	if err := c.PostJSON(ctx, searchPath, req, &wrapper); err != nil {
+	page, err := kgquery.SearchEntities[SearchResult](ctx, c.Client, req)
+	if err != nil {
 		return SearchPage{}, fmt.Errorf("kg: search: %w", err)
 	}
-	entities := wrapper.Data.Entities
-	if entities == nil {
-		entities = []SearchResult{}
-	}
-	return SearchPage{
-		Entities:    entities,
-		PageNum:     wrapper.Data.PageNum,
-		LastPage:    wrapper.Data.LastPage,
-		MaxLimitHit: wrapper.Data.SearchResultsMaxLimitHit,
-	}, nil
+	return page, nil
 }
 
 // SearchAssertions searches for assertion timelines matching the given query.
