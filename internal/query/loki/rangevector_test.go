@@ -59,6 +59,19 @@ func TestMaxLookback(t *testing.T) {
 			expr: `{app=~"[a-z]+"}`,
 			want: 0,
 		},
+		{
+			// Regression: a line filter's quoted string can contain text
+			// that looks like an offset/range-vector token; it must not
+			// falsely widen the window.
+			name: "quoted offset-looking text in a line filter is ignored",
+			expr: `{app="x"} |= "offset 24h"`,
+			want: 0,
+		},
+		{
+			name: "quoted bracket-looking text in a line filter is ignored",
+			expr: "{app=\"x\"} |= `value[5m]`",
+			want: 0,
+		},
 	}
 
 	for _, tt := range tests {

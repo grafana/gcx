@@ -18,14 +18,14 @@ func TestStatsPreflightOpts_Validate(t *testing.T) {
 	t.Run("rejects an unparseable threshold as a usage error", func(t *testing.T) {
 		opts := &statsPreflightOpts{StatsWarnBytes: "not-a-size"}
 		if err := opts.Validate(); err == nil {
-			t.Fatal("expected an error for an invalid --stats value")
+			t.Fatal("expected an error for an invalid --stats-warn-bytes value")
 		}
 	})
 
 	t.Run("rejects an unparseable threshold even when --skip-stats is set", func(t *testing.T) {
 		opts := &statsPreflightOpts{SkipStats: true, StatsWarnBytes: "not-a-size"}
 		if err := opts.Validate(); err == nil {
-			t.Fatal("expected an error for an invalid --stats value regardless of --skip-stats")
+			t.Fatal("expected an error for an invalid --stats-warn-bytes value regardless of --skip-stats")
 		}
 	})
 
@@ -57,36 +57,19 @@ func newTestClient(t *testing.T, handler http.HandlerFunc) *loki.Client {
 	return client
 }
 
-// runPreflight is a small helper matching the real call sites: it resolves
-// warnBytes from a raw threshold string via Validate, then calls
-// runStatsPreflight with isRange=true (so start/end are used as given, no
-// instant-query fallback window applies).
-func runPreflight(t *testing.T, client *loki.Client, stderr *bytes.Buffer, expr, warnBytesStr string, skipStats bool) {
+// runPreflight is a small helper matching the real call sites: it resolves a
+// 1GB warnBytes threshold via Validate, then calls runStatsPreflight with
+// isRange=true (so start/end are used as given, no instant-query fallback
+// window applies). SkipStats is checked by callers (query.go/metrics.go)
+// before ever invoking runStatsPreflight, so it's not exercised here.
+func runPreflight(t *testing.T, client *loki.Client, stderr *bytes.Buffer, expr string) {
 	t.Helper()
-	opts := &statsPreflightOpts{SkipStats: skipStats, StatsWarnBytes: warnBytesStr}
+	opts := &statsPreflightOpts{StatsWarnBytes: "1GB"}
 	if err := opts.Validate(); err != nil {
 		t.Fatalf("unexpected Validate error: %v", err)
 	}
 	now := time.Now()
-	runStatsPreflight(context.Background(), client, stderr, "uid", expr, true, now, now, now, opts.SkipStats, opts.warnBytes)
-}
-
-func TestRunStatsPreflight_SkipStatsBypassesCall(t *testing.T) {
-	called := false
-	client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
-		called = true
-		_, _ = w.Write([]byte(`{"bytes":0}`))
-	})
-
-	var stderr bytes.Buffer
-	runPreflight(t, client, &stderr, `{job="x"}`, "1GiB", true)
-
-	if called {
-		t.Fatal("expected index-stats endpoint not to be called when SkipStats is set")
-	}
-	if stderr.Len() != 0 {
-		t.Fatalf("expected no output, got %q", stderr.String())
-	}
+	runStatsPreflight(context.Background(), client, stderr, "uid", expr, true, now, now, now, opts.warnBytes)
 }
 
 func TestRunStatsPreflight_OverThresholdWarns(t *testing.T) {
@@ -95,10 +78,50 @@ func TestRunStatsPreflight_OverThresholdWarns(t *testing.T) {
 	})
 
 	var stderr bytes.Buffer
-	runPreflight(t, client, &stderr, `{job="x"}`, "1GB", false)
+	runPreflight(t, client, &stderr, `{job="x"}`)
 
 	if stderr.Len() == 0 {
 		t.Fatal("expected a warning to be printed when bytes exceed the threshold")
+	}
+}
+
+// TestRunStatsPreflight_TimesOut guards the review finding that a slow
+// index-stats call could hold back an already-finished query: the whole
+// check must be bounded by statsPreflightTimeout, not by the caller's ctx
+// alone.
+func TestRunStatsPreflight_TimesOut(t *testing.T) {
+	old := statsPreflightTimeout
+	statsPreflightTimeout = 20 * time.Millisecond
+	t.Cleanup(func() { statsPreflightTimeout = old })
+
+	unblock := make(chan struct{})
+	t.Cleanup(func() { close(unblock) })
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-r.Context().Done():
+		case <-unblock:
+		}
+	})
+
+	done := make(chan struct{})
+	var stderr bytes.Buffer
+	start := time.Now()
+	go func() {
+		runPreflight(t, client, &stderr, `{job="x"}`)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("runStatsPreflight did not return within its timeout budget")
+	}
+
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Errorf("runStatsPreflight took %v, expected it to be bounded by statsPreflightTimeout", elapsed)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected no output on timeout (soft-fail), got %q", stderr.String())
 	}
 }
 
@@ -116,7 +139,7 @@ func TestRunStatsPreflight_ExtractsSelectorFromMetricExpression(t *testing.T) {
 	})
 
 	var stderr bytes.Buffer
-	runPreflight(t, client, &stderr, `rate({app="backstage"}[5m])`, "1GB", false)
+	runPreflight(t, client, &stderr, `rate({app="backstage"}[5m])`)
 
 	if gotQuery != `{app="backstage"}` {
 		t.Errorf("query param sent to index-stats = %q, want %q", gotQuery, `{app="backstage"}`)
@@ -144,7 +167,7 @@ func TestRunStatsPreflight_SumsMultipleSelectors(t *testing.T) {
 
 	var stderr bytes.Buffer
 	// Neither selector alone (600MB) exceeds 1GB, but their sum (1.2GB) does.
-	runPreflight(t, client, &stderr, `count_over_time({app="a"}[5m]) + count_over_time({app="b"}[5m])`, "1GB", false)
+	runPreflight(t, client, &stderr, `count_over_time({app="a"}[5m]) + count_over_time({app="b"}[5m])`)
 
 	if stderr.Len() == 0 {
 		t.Fatal("expected a warning to be printed when the summed bytes across selectors exceed the threshold")
@@ -165,7 +188,7 @@ func TestRunStatsPreflight_SoftFailsPerSelector(t *testing.T) {
 	})
 
 	var stderr bytes.Buffer
-	runPreflight(t, client, &stderr, `count_over_time({app="a"}[5m]) + count_over_time({app="b"}[5m])`, "1GB", false)
+	runPreflight(t, client, &stderr, `count_over_time({app="a"}[5m]) + count_over_time({app="b"}[5m])`)
 
 	if stderr.Len() == 0 {
 		t.Fatal("expected a warning derived from the selector that succeeded")
@@ -191,7 +214,7 @@ func TestRunStatsPreflight_WidensWindowForRangeVectorDuration(t *testing.T) {
 
 	now := time.Now()
 	var stderr bytes.Buffer
-	runStatsPreflight(context.Background(), client, &stderr, "uid", `count_over_time({job="x"}[24h])`, false, now, now, now, opts.SkipStats, opts.warnBytes)
+	runStatsPreflight(context.Background(), client, &stderr, "uid", `count_over_time({job="x"}[24h])`, false, now, now, now, opts.warnBytes)
 
 	wantStart := strconv.FormatInt(now.Add(-24*time.Hour).Add(-time.Minute).UnixNano(), 10)
 	if gotStart != wantStart {
@@ -217,7 +240,7 @@ func TestRunStatsPreflight_WidensWindowForOffset(t *testing.T) {
 	now := time.Now()
 	start := now.Add(-time.Hour)
 	var stderr bytes.Buffer
-	runStatsPreflight(context.Background(), client, &stderr, "uid", `count_over_time({job="x"}[5m] offset 1h)`, true, start, now, now, opts.SkipStats, opts.warnBytes)
+	runStatsPreflight(context.Background(), client, &stderr, "uid", `count_over_time({job="x"}[5m] offset 1h)`, true, start, now, now, opts.warnBytes)
 
 	wantStart := strconv.FormatInt(start.Add(-(5*time.Minute + time.Hour)).UnixNano(), 10)
 	if gotStart != wantStart {
@@ -233,7 +256,7 @@ func TestRunStatsPreflight_NoSelectorFoundSkipsSilently(t *testing.T) {
 	})
 
 	var stderr bytes.Buffer
-	runPreflight(t, client, &stderr, `vector(1)`, "1GB", false)
+	runPreflight(t, client, &stderr, `vector(1)`)
 
 	if called {
 		t.Fatal("expected index-stats endpoint not to be called when no selector can be extracted")
@@ -249,7 +272,7 @@ func TestRunStatsPreflight_UnderThresholdIsSilent(t *testing.T) {
 	})
 
 	var stderr bytes.Buffer
-	runPreflight(t, client, &stderr, `{job="x"}`, "1GB", false)
+	runPreflight(t, client, &stderr, `{job="x"}`)
 
 	if stderr.Len() != 0 {
 		t.Fatalf("expected no output, got %q", stderr.String())
@@ -263,7 +286,7 @@ func TestRunStatsPreflight_IndexStatsErrorSoftFails(t *testing.T) {
 	})
 
 	var stderr bytes.Buffer
-	runPreflight(t, client, &stderr, `{job="x"}`, "1GB", false)
+	runPreflight(t, client, &stderr, `{job="x"}`)
 
 	if stderr.Len() != 0 {
 		t.Fatalf("expected no output on soft-fail, got %q", stderr.String())
