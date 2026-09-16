@@ -307,10 +307,10 @@ func TestFleetOperationsList_GroupByLimitTruncates(t *testing.T) {
 	body := fmt.Sprintf(`{"results":{"A":{"frames":[%s]}}}`, strings.Join(frames, ","))
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.URL.Path == activationEndpoint:
+		switch r.URL.Path {
+		case activationEndpoint:
 			w.WriteHeader(http.StatusOK)
-		case r.URL.Path == "/bootdata":
+		case "/bootdata":
 			http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
 		default:
 			w.Header().Set("Content-Type", "application/json")
