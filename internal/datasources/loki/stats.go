@@ -107,16 +107,7 @@ alone would suggest.`,
 			if err != nil {
 				return err
 			}
-			if !opts.Time.IsRange() {
-				start, end = now.Add(-time.Minute), now
-			}
-			// A range-vector duration (e.g. "[24h]") or "offset" modifier in
-			// expr makes Loki actually evaluate further back than start/end
-			// alone would suggest — widen the window so the estimate doesn't
-			// undercount what 'query'/'metrics' would really scan.
-			if lookback := loki.MaxLookback(expr); lookback > 0 {
-				start = start.Add(-lookback)
-			}
+			start, end = resolveStatsWindow(expr, opts.Time.IsRange(), start, end, now)
 
 			client, err := loki.NewClient(cfg)
 			if err != nil {
@@ -133,10 +124,6 @@ alone would suggest.`,
 				resp.Chunks += selectorResp.Chunks
 				resp.Bytes += selectorResp.Bytes
 				resp.Entries += selectorResp.Entries
-			}
-
-			if opts.IO.OutputFormat == "table" {
-				return loki.FormatIndexStatsTable(cmd.OutOrStdout(), resp)
 			}
 
 			return opts.IO.Encode(cmd.OutOrStdout(), resp)
