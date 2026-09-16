@@ -67,7 +67,7 @@ func newActivationTestLoader(t *testing.T, srvURL string) *providers.ConfigLoade
 	return loader
 }
 
-func runServicesCmd(loader *providers.ConfigLoader, args ...string) (stderr string, err error) {
+func runServicesCmd(loader *providers.ConfigLoader, args ...string) (string, error) {
 	root := Commands(loader)
 	root.SilenceUsage = true
 	root.SilenceErrors = true
@@ -76,7 +76,7 @@ func runServicesCmd(loader *providers.ConfigLoader, args ...string) (stderr stri
 	root.SetErr(&stderrBuf)
 	root.SetIn(strings.NewReader(""))
 	root.SetArgs(args)
-	err = root.Execute()
+	err := root.Execute()
 	return stderrBuf.String(), err
 }
 
