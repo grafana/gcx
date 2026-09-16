@@ -30,16 +30,22 @@ var (
 // never underestimates. That's the safe direction for a check whose only
 // job is warning before an expensive query. This deliberately doesn't parse
 // LogQL fully, for the same reasoning as ExtractStreamSelectors.
+//
+// Scanning runs against a quote-masked copy of expr (see maskQuoted), so a
+// line filter like `|= "offset 24h"` or `|= "value[5m]"` can't be mistaken
+// for a real offset/range-vector token.
 func MaxLookback(expr string) time.Duration {
+	masked := maskQuoted(expr)
+
 	var maxRange, maxOffset time.Duration
 
-	for _, m := range rangeVectorPattern.FindAllStringSubmatch(expr, -1) {
+	for _, m := range rangeVectorPattern.FindAllStringSubmatch(masked, -1) {
 		if d, err := shared.ParseDuration(m[1]); err == nil && d > maxRange {
 			maxRange = d
 		}
 	}
 
-	for _, m := range offsetPattern.FindAllStringSubmatch(expr, -1) {
+	for _, m := range offsetPattern.FindAllStringSubmatch(masked, -1) {
 		if d, err := shared.ParseDuration(m[1]); err == nil && d > maxOffset {
 			maxOffset = d
 		}
