@@ -19,7 +19,7 @@ const (
 )
 
 // MaybeNotifySkills runs the default skills notifier check and writes a message
-// to dst only when installed gcx skills can be updated. The check is throttled
+// to dst when installed gcx skills can be updated or retired copies remain. The check is throttled
 // via persisted state; repeated calls within the interval are silent.
 func MaybeNotifySkills(dst io.Writer) error {
 	root, err := skillops.ResolveInstallRoot("")
