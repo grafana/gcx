@@ -5,6 +5,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 	"testing"
 	"testing/fstest"
 
@@ -50,12 +51,22 @@ func TestBundledCatalog(t *testing.T) {
 	catalog, err := skills.LoadCatalog(claudeplugin.SkillsCatalog())
 	require.NoError(t, err)
 	require.NotEmpty(t, catalog.Skills)
+	// Append-only history is independent of the current bundle. Removing both a
+	// directory and its catalog entry must not erase support for installed copies.
+	data, err := os.ReadFile("testdata/shipped_skills.txt")
+	require.NoError(t, err)
+	shipped := strings.Fields(string(data))
+	require.NotEmpty(t, shipped)
+	for _, name := range shipped {
+		require.Contains(t, catalog.Skills, name, "shipped skill must retain a catalog entry; mark it retired instead of deleting it")
+	}
 	source := claudeplugin.SkillsFS()
 	bundled, err := fs.ReadDir(source, ".")
 	require.NoError(t, err)
 	for _, entry := range bundled {
 		if entry.IsDir() {
 			require.Contains(t, catalog.Skills, entry.Name(), "bundled skill must have a catalog entry")
+			require.Contains(t, shipped, entry.Name(), "append new bundled skills to testdata/shipped_skills.txt; never remove historical names")
 		}
 	}
 	// Packaging invariants belong here, not on the uninstall recovery path.

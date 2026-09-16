@@ -105,9 +105,14 @@ Entries may include an optional `replacement` skill name and `message` explainin
 what changed. Replacements are informational labels, not redirects; gcx does not
 follow replacement chains. Every bundled skill needs an active or deprecated
 entry. When removing content, change its entry to retired and **keep it
-indefinitely** so users can skip releases. `TestBundledCatalog` checks catalog/content
-consistency and replacement existence against the embedded release. These checks
-run only in tests so a packaging mismatch cannot block uninstall.
+indefinitely** so users can skip releases. Append every new bundled name to
+`internal/skills/testdata/shipped_skills.txt`. This committed snapshot is append-only:
+never remove names or regenerate it from the current bundle during retirement.
+`TestBundledCatalog` requires the catalog to retain every snapshot name, even after
+its directory disappears, and requires new bundled names to enter the snapshot.
+It also checks catalog/content consistency and replacement existence against the
+embedded release. These checks run only in tests so a packaging mismatch cannot
+block uninstall.
 
 For the `.agents` installer, commands reconcile the catalog with the selected
 `--dir` (default `~/.agents`). `list` includes bundled skills and locally present
