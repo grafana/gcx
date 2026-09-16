@@ -320,12 +320,6 @@ For example: OpenAI Codex, OpenCode, and Pi. View the skills shipped in the bund
 
 ```sh
 gcx agent skills list
-24 skill(s) bundled with gcx
-
-SKILL                      INSTALLED    DESCRIPTION
-create-dashboard           yes          Design and create dashboards with datasource discovery and snapshot-based visual iteration.
-debug-with-grafana         yes          Investigates application problems and earlier incidents using Grafana metrics, logs, and traces via gcx.
-....
 ```
 
 Install the bundle into `~/.agents/skills` with:
@@ -346,6 +340,14 @@ bundled skills. After upgrading `gcx`, install a new skill by name. To refresh
 existing skills and add every newly bundled one, run `gcx agent skills update`
 followed by `gcx agent skills install --all` — `install --all` on its own stops
 with an error if any already-installed skill differs from the new bundle.
+
+`list` also shows locally present retired skills and their replacements. `update`
+warns about deprecated and retired skills, but never deletes retired files or
+installs replacements automatically. Remove an unwanted skill explicitly with
+`gcx agent skills uninstall <skill>`; retired names remain supported after their
+content leaves the bundle. Use the same `--dir` for each command when managing a
+non-default installation. See [skill lifecycle](claude-plugin/README.md#skill-lifecycle)
+for the catalog and ownership limits.
 
 To disable that reminder entirely, set:
 

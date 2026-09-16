@@ -1,76 +1,54 @@
-package notifier //nolint:testpackage // Tests share the package to fixture an in-memory bundled fs against the unexported helpers.
+package notifier //nolint:testpackage // Tests fixture the notifier against an in-memory release bundle.
 
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"testing/fstest"
+
+	"github.com/stretchr/testify/require"
 )
 
-func testSkillsFS() fstest.MapFS {
-	return fstest.MapFS{
-		"alpha/SKILL.md":            {Data: []byte("alpha-skill")},
-		"alpha/references/guide.md": {Data: []byte("alpha-guide")},
-		"beta/SKILL.md":             {Data: []byte("beta-skill")},
-	}
-}
-
-func TestSkillsUpdateMessage_NoInstalledSkillsReturnsEmpty(t *testing.T) {
+func TestSkillsUpdateMessage(t *testing.T) {
 	t.Parallel()
-
-	root := filepath.Join(t.TempDir(), ".agents")
-	msg, err := SkillsUpdateMessage(testSkillsFS(), root)
-	if err != nil {
-		t.Fatalf("SkillsUpdateMessage() error = %v", err)
+	source := fstest.MapFS{
+		"alpha/SKILL.md": {Data: []byte("alpha-skill")},
+		"beta/SKILL.md":  {Data: []byte("beta-skill")},
 	}
-	if msg != "" {
-		t.Fatalf("SkillsUpdateMessage() = %q, want empty", msg)
-	}
-}
-
-func TestSkillsUpdateMessage_InstalledSkillMatchesBundleReturnsEmpty(t *testing.T) {
-	t.Parallel()
-
-	root := filepath.Join(t.TempDir(), ".agents")
-	if err := os.MkdirAll(filepath.Join(root, "skills", "alpha", "references"), 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(root, "skills", "alpha", "SKILL.md"), []byte("alpha-skill"), 0o600); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(root, "skills", "alpha", "references", "guide.md"), []byte("alpha-guide"), 0o600); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
-
-	msg, err := SkillsUpdateMessage(testSkillsFS(), root)
-	if err != nil {
-		t.Fatalf("SkillsUpdateMessage() error = %v", err)
-	}
-	if msg != "" {
-		t.Fatalf("SkillsUpdateMessage() = %q, want empty", msg)
-	}
-}
-
-func TestSkillsUpdateMessage_InstalledSkillDiffersFromBundle(t *testing.T) {
-	t.Parallel()
-
-	root := filepath.Join(t.TempDir(), ".agents")
-	if err := os.MkdirAll(filepath.Join(root, "skills", "alpha"), 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(root, "skills", "alpha", "SKILL.md"), []byte("local-change"), 0o600); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
-
-	msg, err := SkillsUpdateMessage(testSkillsFS(), root)
-	if err != nil {
-		t.Fatalf("SkillsUpdateMessage() error = %v", err)
-	}
-	if msg == "" {
-		t.Fatal("SkillsUpdateMessage() = empty, want message")
-	}
-	if want := "Run: gcx agent skills update"; !strings.HasSuffix(msg, want) {
-		t.Fatalf("SkillsUpdateMessage() = %q, want suffix %q", msg, want)
+	catalog := []byte("skills: {alpha: {status: active}, beta: {status: active}, old: {status: retired, replacement: alpha}}")
+	for _, tc := range []struct {
+		name    string
+		skill   string
+		content string
+		message string
+	}{
+		{name: "no installed skills"},
+		{name: "matches bundle", skill: "alpha", content: "alpha-skill"},
+		{name: "differs from bundle", skill: "alpha", content: "local-change", message: "can be updated"},
+		{name: "retired installation", skill: "old", content: "old-skill", message: "Retired gcx skills"},
+		{name: "unmanaged installation", skill: "external", content: "external-skill"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			root := t.TempDir()
+			if tc.skill != "" {
+				dir := filepath.Join(root, "skills", tc.skill)
+				require.NoError(t, os.MkdirAll(dir, 0o755))
+				require.NoError(t, os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(tc.content), 0o600))
+			}
+			message, err := SkillsUpdateMessage(source, catalog, root)
+			require.NoError(t, err)
+			if tc.message == "" {
+				require.Empty(t, message)
+			} else {
+				require.Contains(t, message, tc.message)
+				require.Contains(t, message, "Run: gcx agent skills update")
+			}
+			if tc.skill != "" {
+				data, err := os.ReadFile(filepath.Join(root, "skills", tc.skill, "SKILL.md"))
+				require.NoError(t, err)
+				require.Equal(t, tc.content, string(data))
+			}
+		})
 	}
 }

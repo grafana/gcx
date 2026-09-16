@@ -5,10 +5,6 @@ import (
 	"fmt"
 	goio "io"
 	"io/fs"
-	"os"
-	"path"
-	"path/filepath"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -31,22 +27,24 @@ func Command() *cobra.Command {
 		Long:  "Install the canonical portable gcx Agent Skills bundle for .agents-compatible agent harnesses.",
 	}
 
-	cmd.AddCommand(newInstallCommand(claudeplugin.SkillsFS()))
-	cmd.AddCommand(newUpdateCommand(claudeplugin.SkillsFS()))
-	cmd.AddCommand(newListCommand(claudeplugin.SkillsFS()))
-	cmd.AddCommand(newGetCommand(claudeplugin.SkillsFS()))
-	cmd.AddCommand(newUninstallCommand(claudeplugin.SkillsFS()))
+	source, catalog := claudeplugin.SkillsFS(), claudeplugin.SkillsCatalog()
+	cmd.AddCommand(newInstallCommand(source, catalog))
+	cmd.AddCommand(newUpdateCommand(source, catalog))
+	cmd.AddCommand(newListCommand(source, catalog))
+	cmd.AddCommand(newGetCommand(source, catalog))
+	cmd.AddCommand(newUninstallCommand(source, catalog))
 
 	return cmd
 }
 
 type installOpts struct {
-	Dir    string
-	All    bool
-	Force  bool
-	DryRun bool
-	Source fs.FS
-	IO     cmdio.Options
+	Dir     string
+	All     bool
+	Force   bool
+	DryRun  bool
+	Source  fs.FS
+	Catalog []byte
+	IO      cmdio.Options
 }
 
 func (o *installOpts) setup(flags *pflag.FlagSet) {
@@ -76,13 +74,13 @@ func (o *installOpts) Validate(args []string) error {
 	return o.IO.Validate()
 }
 
-func newInstallCommand(source fs.FS) *cobra.Command {
-	opts := &installOpts{Source: source}
+func newInstallCommand(source fs.FS, catalog []byte) *cobra.Command {
+	opts := &installOpts{Source: source, Catalog: catalog}
 
 	cmd := &cobra.Command{
 		Use:   "install [SKILL]...",
 		Short: "Install bundled gcx skills into ~/.agents/skills",
-		Long:  "Install one or more bundled gcx Agent Skills into a user-level .agents directory for tools that follow the .agents skill convention. Use --all to install the entire bundle.",
+		Long:  "Install one or more bundled gcx Agent Skills into a user-level .agents directory for tools that follow the .agents skill convention. Use --all to install the entire bundle. Deprecated skills are installed with a warning; retired skills cannot be installed.",
 		Example: `  gcx agent skills install setup-gcx
   gcx agent skills install setup-gcx debug-with-grafana manage-dashboards
   gcx agent skills install --all
@@ -90,11 +88,7 @@ func newInstallCommand(source fs.FS) *cobra.Command {
   gcx agent skills install setup-gcx --force`,
 		Args: cobra.ArbitraryArgs,
 		ValidArgsFunction: func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
-			names, err := skillops.BundledSkillNames(source)
-			if err != nil {
-				return nil, cobra.ShellCompDirectiveError
-			}
-			return names, cobra.ShellCompDirectiveNoFileComp
+			return completeSkillNames(source, catalog, false)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(args); err != nil {
@@ -114,11 +108,11 @@ func newInstallCommand(source fs.FS) *cobra.Command {
 				}
 			}
 
-			result, err := skillops.Install(opts.Source, root, filter, opts.Force, opts.DryRun)
+			result, err := skillops.Install(opts.Source, opts.Catalog, root, filter, opts.Force, opts.DryRun)
 			if err != nil {
 				return err
 			}
-
+			emitLifecycleNotices(cmd.ErrOrStderr(), result.Notices)
 			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
@@ -126,6 +120,31 @@ func newInstallCommand(source fs.FS) *cobra.Command {
 	opts.setup(cmd.Flags())
 
 	return cmd
+}
+
+func emitLifecycleNotices(dst goio.Writer, notices []skillops.LifecycleNotice) {
+	for _, notice := range notices {
+		message := notice.String()
+		if notice.Status == skillops.Retired {
+			message += "; local files left untouched; remove explicitly with gcx agent skills uninstall " + notice.Name + " (using the same --dir)"
+		}
+		cmdio.EmitWarn(dst, message)
+	}
+}
+
+func completeSkillNames(source fs.FS, data []byte, includeRetired bool) ([]string, cobra.ShellCompDirective) {
+	catalog, err := skillops.LoadCatalog(source, data)
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveError
+	}
+	names := make([]string, 0, len(catalog.Skills))
+	for name, entry := range catalog.Skills {
+		if includeRetired || entry.Status != skillops.Retired {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	return names, cobra.ShellCompDirectiveNoFileComp
 }
 
 type installResult = skillops.InstallResult
@@ -191,10 +210,11 @@ func (c *installTextCodec) Decode(_ goio.Reader, _ any) error {
 }
 
 type updateOpts struct {
-	Dir    string
-	DryRun bool
-	Source fs.FS
-	IO     cmdio.Options
+	Dir     string
+	DryRun  bool
+	Source  fs.FS
+	Catalog []byte
+	IO      cmdio.Options
 }
 
 func (o *updateOpts) setup(flags *pflag.FlagSet) {
@@ -214,23 +234,19 @@ func (o *updateOpts) Validate() error {
 	return o.IO.Validate()
 }
 
-func newUpdateCommand(source fs.FS) *cobra.Command {
-	opts := &updateOpts{Source: source}
+func newUpdateCommand(source fs.FS, catalog []byte) *cobra.Command {
+	opts := &updateOpts{Source: source, Catalog: catalog}
 
 	cmd := &cobra.Command{
 		Use:   "update [SKILL]...",
 		Short: "Update installed gcx skills in ~/.agents/skills",
-		Long:  "Update gcx-managed skills in a user-level .agents skills directory. With no skill names, gcx updates only bundled skills that are already installed locally.",
+		Long:  "Update installed gcx skills in a user-level .agents skills directory. With no skill names, update all installed bundled skills and report retired installations. Retired skills are left untouched; replacements are never installed automatically.",
 		Example: `  gcx agent skills update
   gcx agent skills update --dry-run
   gcx agent skills update setup-gcx debug-with-grafana`,
 		Args: cobra.ArbitraryArgs,
 		ValidArgsFunction: func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
-			names, err := skillops.BundledSkillNames(source)
-			if err != nil {
-				return nil, cobra.ShellCompDirectiveError
-			}
-			return names, cobra.ShellCompDirectiveNoFileComp
+			return completeSkillNames(source, catalog, true)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
@@ -242,11 +258,11 @@ func newUpdateCommand(source fs.FS) *cobra.Command {
 				return err
 			}
 
-			result, err := skillops.Update(opts.Source, root, args, opts.DryRun)
+			result, err := skillops.Update(opts.Source, opts.Catalog, root, args, opts.DryRun)
 			if err != nil {
 				return err
 			}
-
+			emitLifecycleNotices(cmd.ErrOrStderr(), result.Notices)
 			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
@@ -274,9 +290,10 @@ func (c *updateTextCodec) Decode(_ goio.Reader, _ any) error {
 }
 
 type listOpts struct {
-	Dir    string
-	Source fs.FS
-	IO     cmdio.Options
+	Dir     string
+	Source  fs.FS
+	Catalog []byte
+	IO      cmdio.Options
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
@@ -295,13 +312,13 @@ func (o *listOpts) Validate() error {
 	return o.IO.Validate()
 }
 
-func newListCommand(source fs.FS) *cobra.Command {
-	opts := &listOpts{Source: source}
+func newListCommand(source fs.FS, catalog []byte) *cobra.Command {
+	opts := &listOpts{Source: source, Catalog: catalog}
 
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "List skills bundled with the gcx binary",
-		Long:  "List skills bundled with the gcx binary, including each skill's short description and install status.",
+		Short: "List bundled skills and locally present retired gcx skills",
+		Long:  "List bundled skills and locally present retired gcx skills, including descriptions, lifecycle status, replacements, and installation state. Skills not in the gcx catalog are unmanaged and omitted.",
 		Example: `  gcx agent skills list
   gcx agent skills list -o json`,
 		Args: cobra.NoArgs,
@@ -315,7 +332,7 @@ func newListCommand(source fs.FS) *cobra.Command {
 				return err
 			}
 
-			result, err := listBundledSkills(opts.Source, root)
+			result, err := skillops.List(opts.Source, opts.Catalog, root)
 			if err != nil {
 				return err
 			}
@@ -329,16 +346,9 @@ func newListCommand(source fs.FS) *cobra.Command {
 	return cmd
 }
 
-type listResult struct {
-	Skills     []skillInfo `json:"skills"`
-	SkillCount int         `json:"skill_count"`
-}
+type listResult = skillops.ListResult
 
-type skillInfo struct {
-	Name             string `json:"name"`
-	ShortDescription string `json:"short_description"`
-	Installed        bool   `json:"installed"`
-}
+type skillInfo = skillops.SkillState
 
 type listTextCodec struct{}
 
@@ -358,7 +368,7 @@ func (c *listTextCodec) Encode(dst goio.Writer, value any) error {
 		return fmt.Errorf("list text codec: unsupported value %T", value)
 	}
 
-	fmt.Fprintf(dst, "%d skill(s) bundled with gcx\n\n", result.SkillCount)
+	fmt.Fprintf(dst, "%d gcx skill(s)\n\n", result.SkillCount)
 
 	if len(result.Skills) > 0 {
 		if err := renderSkillsTable(dst, result.Skills); err != nil {
@@ -373,71 +383,29 @@ func (c *listTextCodec) Decode(_ goio.Reader, _ any) error {
 	return errors.New("list text codec does not support decoding")
 }
 
-func listBundledSkills(source fs.FS, installRoot string) (listResult, error) {
-	result := listResult{}
-
-	entries, err := fs.ReadDir(source, ".")
-	if err != nil {
-		return listResult{}, err
-	}
-
-	skillsDir := filepath.Join(installRoot, "skills")
-
-	result.Skills = make([]skillInfo, 0, len(entries))
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-
-		skillDocPath := path.Join(entry.Name(), "SKILL.md")
-		data, err := fs.ReadFile(source, skillDocPath)
-		if err != nil {
-			if errors.Is(err, fs.ErrNotExist) {
-				continue
-			}
-			return listResult{}, err
-		}
-
-		installed := skillops.IsSkillInstalled(skillsDir, entry.Name())
-
-		result.Skills = append(result.Skills, skillInfo{
-			Name:             entry.Name(),
-			ShortDescription: skillops.ShortDescriptionFromBytes(data),
-			Installed:        installed,
-		})
-	}
-
-	sort.Slice(result.Skills, func(i int, j int) bool {
-		return result.Skills[i].Name < result.Skills[j].Name
-	})
-	result.SkillCount = len(result.Skills)
-
-	return result, nil
-}
-
-func installedBundledSkillNames(source fs.FS, root string) ([]string, error) {
-	return skillops.InstalledBundledSkillNames(source, root)
-}
-
 func renderSkillsTable(dst goio.Writer, skills []skillInfo) error {
-	t := style.NewTable("SKILL", "INSTALLED", "DESCRIPTION")
+	t := style.NewTable("SKILL", "INSTALLED", "STATUS", "REPLACEMENT", "DESCRIPTION")
 	for _, skill := range skills {
 		installed := "no"
 		if skill.Installed {
 			installed = "yes"
 		}
-		t.Row(skill.Name, installed, skill.ShortDescription)
+		if skill.Present && !skill.Installed {
+			installed = "incomplete"
+		}
+		description := skill.ShortDescription
+		if skill.Message != "" {
+			description = skill.Message
+		}
+		t.Row(skill.Name, installed, string(skill.Status), skill.Replacement, description)
 	}
 	return t.Render(dst)
 }
 
-func installSkills(source fs.FS, root string, filter map[string]struct{}, force bool, dryRun bool) (installResult, error) {
-	return skillops.Install(source, root, filter, force, dryRun)
-}
-
 type getOpts struct {
-	Source fs.FS
-	IO     cmdio.Options
+	Source  fs.FS
+	Catalog []byte
+	IO      cmdio.Options
 }
 
 func (o *getOpts) setup(flags *pflag.FlagSet) {
@@ -459,15 +427,15 @@ func (o *getOpts) Validate(args []string) error {
 	return o.IO.Validate()
 }
 
-func newGetCommand(source fs.FS) *cobra.Command {
-	opts := &getOpts{Source: source}
+func newGetCommand(source fs.FS, catalog []byte) *cobra.Command {
+	opts := &getOpts{Source: source, Catalog: catalog}
 
 	cmd := &cobra.Command{
 		Use:   "get SKILL [REFERENCE]",
 		Short: "Print a bundled skill's content without installing it",
 		Long: `Print the content of a bundled gcx Agent Skill straight from the embedded bundle, without writing anything to ~/.agents.
 
-By default the skill's SKILL.md body is printed. Pass a reference path (e.g. references/query-patterns.md) to print a single bundled reference file instead.`,
+By default the skill's SKILL.md body is printed. Pass a reference path (e.g. references/query-patterns.md) to print a single bundled reference file instead. Deprecated skills emit a warning; retired skills report their replacement, when one is recorded, instead of content.`,
 		Example: `  gcx agent skills get create-dashboard
   gcx agent skills get create-dashboard -o json
   gcx agent skills get debug-with-grafana references/query-patterns.md`,
@@ -476,11 +444,7 @@ By default the skill's SKILL.md body is printed. Pass a reference path (e.g. ref
 			if len(args) > 0 {
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
-			names, err := skillops.BundledSkillNames(source)
-			if err != nil {
-				return nil, cobra.ShellCompDirectiveError
-			}
-			return names, cobra.ShellCompDirectiveNoFileComp
+			return completeSkillNames(source, catalog, false)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(args); err != nil {
@@ -493,11 +457,13 @@ By default the skill's SKILL.md body is printed. Pass a reference path (e.g. ref
 				reference = args[1]
 			}
 
-			result, err := getBundledSkill(opts.Source, name, reference)
+			result, err := skillops.Get(opts.Source, opts.Catalog, name, reference)
 			if err != nil {
 				return err
 			}
-
+			if result.Status == skillops.Deprecated {
+				emitLifecycleNotices(cmd.ErrOrStderr(), []skillops.LifecycleNotice{{Name: name, CatalogEntry: result.CatalogEntry}})
+			}
 			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}
@@ -507,13 +473,7 @@ By default the skill's SKILL.md body is printed. Pass a reference path (e.g. ref
 	return cmd
 }
 
-type getResult struct {
-	Name        string   `json:"name"`
-	Description string   `json:"description"`
-	Path        string   `json:"path"`
-	Body        string   `json:"body"`
-	References  []string `json:"references"`
-}
+type getResult = skillops.GetResult
 
 type getTextCodec struct{}
 
@@ -541,110 +501,14 @@ func (c *getTextCodec) Decode(_ goio.Reader, _ any) error {
 	return errors.New("get text codec does not support decoding")
 }
 
-// resolveReferencePath cleans a user-supplied reference path and rejects any
-// path that would escape the skill directory.
-func resolveReferencePath(reference string) (string, error) {
-	if path.IsAbs(reference) {
-		return "", fmt.Errorf("invalid reference path %q: must be relative to the skill directory", reference)
-	}
-
-	cleaned := path.Clean(reference)
-	if cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, "../") {
-		return "", fmt.Errorf("invalid reference path %q: must not escape the skill directory", reference)
-	}
-
-	return cleaned, nil
-}
-
-func getBundledSkill(source fs.FS, name string, reference string) (getResult, error) {
-	if err := validateSkillName(name); err != nil {
-		return getResult{}, err
-	}
-
-	bundled, err := skillops.BundledSkillNames(source)
-	if err != nil {
-		return getResult{}, err
-	}
-	if !slices.Contains(bundled, name) {
-		return getResult{}, fmt.Errorf("unknown skill %q (use 'gcx agent skills list' to see available skills)", name)
-	}
-
-	relPath := "SKILL.md"
-	if strings.TrimSpace(reference) != "" {
-		relPath, err = resolveReferencePath(reference)
-		if err != nil {
-			return getResult{}, err
-		}
-	}
-
-	filePath := path.Join(name, relPath)
-	body, err := fs.ReadFile(source, filePath)
-	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return getResult{}, fmt.Errorf("file %q not found in skill %q", relPath, name)
-		}
-		return getResult{}, err
-	}
-
-	references, err := listSkillReferences(source, name)
-	if err != nil {
-		return getResult{}, err
-	}
-
-	skillDoc := body
-	if relPath != "SKILL.md" {
-		skillDoc, err = fs.ReadFile(source, path.Join(name, "SKILL.md"))
-		if err != nil {
-			skillDoc = nil
-		}
-	}
-	description := skillops.ShortDescriptionFromBytes(skillDoc)
-
-	return getResult{
-		Name:        name,
-		Description: description,
-		Path:        relPath,
-		Body:        string(body),
-		References:  references,
-	}, nil
-}
-
-// listSkillReferences returns the bundled reference file paths for a skill,
-// relative to the skill directory (e.g. "references/query-patterns.md").
-func listSkillReferences(source fs.FS, name string) ([]string, error) {
-	refsDir := path.Join(name, "references")
-	var refs []string
-	err := fs.WalkDir(source, refsDir, func(p string, d fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			if errors.Is(walkErr, fs.ErrNotExist) {
-				return fs.SkipDir
-			}
-			return walkErr
-		}
-		if d.IsDir() {
-			return nil
-		}
-		rel, err := filepath.Rel(name, p)
-		if err != nil {
-			return err
-		}
-		refs = append(refs, filepath.ToSlash(rel))
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	sort.Strings(refs)
-	return refs, nil
-}
-
 type uninstallOpts struct {
-	Dir    string
-	All    bool
-	Yes    bool
-	DryRun bool
-	Source fs.FS
-	IO     cmdio.Options
+	Dir     string
+	All     bool
+	Yes     bool
+	DryRun  bool
+	Source  fs.FS
+	Catalog []byte
+	IO      cmdio.Options
 }
 
 func (o *uninstallOpts) setup(flags *pflag.FlagSet) {
@@ -671,24 +535,20 @@ func (o *uninstallOpts) Validate(args []string) error {
 	return o.IO.Validate()
 }
 
-func newUninstallCommand(source fs.FS) *cobra.Command {
-	opts := &uninstallOpts{Source: source}
+func newUninstallCommand(source fs.FS, catalog []byte) *cobra.Command {
+	opts := &uninstallOpts{Source: source, Catalog: catalog}
 
 	cmd := &cobra.Command{
 		Use:   "uninstall [SKILL]...",
 		Short: "Uninstall gcx-managed skills from ~/.agents/skills",
-		Long:  "Remove one or more gcx-managed skills from a user-level .agents skills directory. Only skills bundled with gcx can be uninstalled; non-gcx skills are never touched.",
+		Long:  "Remove one or more current or retired gcx skills from a user-level .agents skills directory. Only names recorded in the gcx catalog can be uninstalled; unmanaged skills are never touched. Catalog names identify skills but do not prove ownership of local files.",
 		Example: `  gcx agent skills uninstall setup-gcx
   gcx agent skills uninstall setup-gcx debug-with-grafana
   gcx agent skills uninstall --all --yes
   gcx agent skills uninstall --all --yes --dry-run`,
 		Args: cobra.ArbitraryArgs,
 		ValidArgsFunction: func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
-			names, err := skillops.BundledSkillNames(source)
-			if err != nil {
-				return nil, cobra.ShellCompDirectiveError
-			}
-			return names, cobra.ShellCompDirectiveNoFileComp
+			return completeSkillNames(source, catalog, true)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(args); err != nil {
@@ -709,28 +569,7 @@ func newUninstallCommand(source fs.FS) *cobra.Command {
 				return err
 			}
 
-			bundled, err := skillops.BundledSkillNames(opts.Source)
-			if err != nil {
-				return err
-			}
-			bundledSet := make(map[string]struct{}, len(bundled))
-			for _, name := range bundled {
-				bundledSet[name] = struct{}{}
-			}
-
-			targets := args
-			if opts.All {
-				// --all only targets gcx-bundled skills, never non-gcx skills.
-				targets = bundled
-			} else {
-				for _, name := range args {
-					if _, ok := bundledSet[name]; !ok {
-						return fmt.Errorf("unknown skill %q (use 'gcx agent skills list' to see gcx-managed skills)", name)
-					}
-				}
-			}
-
-			result, err := uninstallSkills(root, targets, opts.DryRun)
+			result, err := skillops.Uninstall(opts.Source, opts.Catalog, root, args, opts.All, opts.DryRun)
 			if err != nil {
 				return err
 			}
@@ -744,17 +583,7 @@ func newUninstallCommand(source fs.FS) *cobra.Command {
 	return cmd
 }
 
-type uninstallResult struct {
-	Root           string   `json:"root"`
-	SkillsDir      string   `json:"skills_dir"`
-	Requested      []string `json:"requested"`
-	RequestedCount int      `json:"requested_count"`
-	Removed        []string `json:"removed"`
-	RemovedCount   int      `json:"removed_count"`
-	Missing        []string `json:"missing"`
-	MissingCount   int      `json:"missing_count"`
-	DryRun         bool     `json:"dry_run"`
-}
+type uninstallResult = skillops.UninstallResult
 
 type uninstallTextCodec struct{}
 
@@ -806,73 +635,4 @@ func (c *uninstallTextCodec) Encode(dst goio.Writer, value any) error {
 
 func (c *uninstallTextCodec) Decode(_ goio.Reader, _ any) error {
 	return errors.New("uninstall text codec does not support decoding")
-}
-
-func uninstallSkills(root string, names []string, dryRun bool) (uninstallResult, error) {
-	root = filepath.Clean(root)
-	result := uninstallResult{
-		Root:      root,
-		SkillsDir: filepath.Join(root, "skills"),
-		DryRun:    dryRun,
-	}
-
-	seen := make(map[string]struct{}, len(names))
-	result.Requested = make([]string, 0, len(names))
-	for _, name := range names {
-		trimmed := strings.TrimSpace(name)
-		if trimmed == "" {
-			continue
-		}
-		if err := validateSkillName(trimmed); err != nil {
-			return uninstallResult{}, err
-		}
-		if _, ok := seen[trimmed]; ok {
-			continue
-		}
-		seen[trimmed] = struct{}{}
-		result.Requested = append(result.Requested, trimmed)
-	}
-
-	sort.Strings(result.Requested)
-	result.RequestedCount = len(result.Requested)
-	result.Removed = make([]string, 0, len(result.Requested))
-	result.Missing = make([]string, 0, len(result.Requested))
-
-	for _, name := range result.Requested {
-		targetPath := filepath.Join(result.SkillsDir, name)
-		info, err := os.Stat(targetPath)
-		if err != nil {
-			if errors.Is(err, os.ErrNotExist) {
-				result.Missing = append(result.Missing, name)
-				continue
-			}
-			return uninstallResult{}, err
-		}
-		if !info.IsDir() {
-			return uninstallResult{}, fmt.Errorf("destination path exists and is not a directory: %s", targetPath)
-		}
-
-		if !dryRun {
-			if err := os.RemoveAll(targetPath); err != nil {
-				return uninstallResult{}, err
-			}
-		}
-
-		result.Removed = append(result.Removed, name)
-	}
-
-	result.RemovedCount = len(result.Removed)
-	result.MissingCount = len(result.Missing)
-
-	return result, nil
-}
-
-func validateSkillName(name string) error {
-	if name == "." || name == ".." ||
-		strings.Contains(name, "/") || strings.Contains(name, `\`) ||
-		filepath.Base(name) != name {
-		return fmt.Errorf("invalid skill name %q: must be a plain name without path separators (e.g. gcx, manage-dashboards)", name)
-	}
-
-	return nil
 }

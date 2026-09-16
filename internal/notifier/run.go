@@ -27,7 +27,7 @@ func MaybeNotifySkills(dst io.Writer) error {
 		return err
 	}
 
-	return maybeNotifySkillsAt(claudeplugin.SkillsFS(), dst, StatePath(), root, time.Now())
+	return maybeNotifySkillsAt(claudeplugin.SkillsFS(), claudeplugin.SkillsCatalog(), dst, StatePath(), root, time.Now())
 }
 
 // MaybeNotifyVersion runs the default gcx version update check. Network errors
@@ -36,7 +36,7 @@ func MaybeNotifyVersion(ctx context.Context, dst io.Writer, currentVersion strin
 	return maybeNotifyVersionAt(ctx, dst, StatePath(), currentVersion, time.Now(), http.DefaultClient, latestReleaseURL)
 }
 
-func maybeNotifySkillsAt(source fs.FS, dst io.Writer, statePath, root string, now time.Time) error {
+func maybeNotifySkillsAt(source fs.FS, catalog []byte, dst io.Writer, statePath, root string, now time.Time) error {
 	state, err := LoadState(statePath)
 	if err != nil {
 		return err
@@ -45,7 +45,7 @@ func maybeNotifySkillsAt(source fs.FS, dst io.Writer, statePath, root string, no
 		return nil
 	}
 
-	msg, err := SkillsUpdateMessage(source, root)
+	msg, err := SkillsUpdateMessage(source, catalog, root)
 	if err != nil {
 		return err
 	}
