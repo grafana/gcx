@@ -42,6 +42,7 @@ func LabelsCmd(loader *providers.ConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "labels",
 		Short: "List labels or label values",
+		Args:  cobra.NoArgs,
 		Long:  "List all labels or get values for a specific label from a Loki datasource.",
 		Example: `
 	# List all labels (use datasource UID, not name)
@@ -61,6 +62,14 @@ func LabelsCmd(loader *providers.ConfigLoader) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
+			}
+
+			// Reject an explicitly empty --selector/--label (unset shell var)
+			// instead of silently dropping scoping.
+			for _, name := range []string{"selector", "label"} {
+				if cmd.Flags().Changed(name) && cmd.Flags().Lookup(name).Value.String() == "" {
+					return fmt.Errorf("invalid --%s: value is empty (unset shell variable?)", name)
+				}
 			}
 
 			ctx := cmd.Context()
