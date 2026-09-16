@@ -74,7 +74,7 @@ type KGRef struct {
 // hour regardless of --since. Falls back to (0, 0) — kgquery's own
 // last-hour default — if since somehow isn't a valid PromQL duration;
 // callers validate their own --since already, so this is defense in depth.
-func windowMs(since string) (startMs, endMs int64) {
+func windowMs(since string) (int64, int64) {
 	d, err := model.ParseDuration(since)
 	if err != nil {
 		return 0, 0
