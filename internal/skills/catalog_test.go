@@ -114,6 +114,9 @@ func TestReconcile(t *testing.T) {
 			for _, state := range states {
 				byName[state.Name] = state
 			}
+			for _, name := range []string{"alpha", "beta", "old"} {
+				require.True(t, byName[name].Known)
+			}
 			require.Equal(t, skills.Active, byName["alpha"].Status)
 			require.Equal(t, "alpha description", byName["alpha"].ShortDescription)
 			require.Equal(t, skills.Deprecated, byName["beta"].Status)
@@ -125,12 +128,75 @@ func TestReconcile(t *testing.T) {
 			}
 			switch tc.name {
 			case "installed":
-				require.Equal(t, skills.Unmanaged, byName["external"].Status)
+				require.False(t, byName["external"].Known)
+				require.Empty(t, byName["external"].Status)
 			case "missing root":
 				require.Len(t, states, 3)
 				require.False(t, byName["alpha"].Present)
 				require.False(t, byName["old"].Installed)
 				require.NoDirExists(t, root)
+			}
+		})
+	}
+}
+
+func TestReconcile_StatErrorsDoNotBlockOtherSkills(t *testing.T) {
+	t.Parallel()
+	for _, failure := range []string{"unreadable directory", "symlink loop"} {
+		t.Run(failure, func(t *testing.T) {
+			t.Parallel()
+			root := t.TempDir()
+			source := fstest.MapFS{"healthy/SKILL.md": {Data: []byte("healthy")}}
+			catalog := []byte("skills: {healthy: {status: active}, broken: {status: active}}")
+			healthy := filepath.Join(root, "skills", "healthy")
+			require.NoError(t, os.MkdirAll(healthy, 0o755))
+			require.NoError(t, os.WriteFile(filepath.Join(healthy, "SKILL.md"), []byte("healthy"), 0o600))
+			for _, name := range []string{"broken", "external"} {
+				dir := filepath.Join(root, "skills", name)
+				if failure == "symlink loop" {
+					require.NoError(t, os.Symlink(name, dir))
+				} else {
+					require.NoError(t, os.MkdirAll(dir, 0o755))
+					require.NoError(t, os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("hidden"), 0o600))
+					t.Cleanup(func() { require.NoError(t, os.Chmod(dir, 0o755)) })
+					require.NoError(t, os.Chmod(dir, 0))
+				}
+				_, err := os.Stat(filepath.Join(dir, "SKILL.md"))
+				if failure == "unreadable directory" && err == nil {
+					t.Skip("directory permissions do not restrict this test process")
+				}
+				require.Error(t, err)
+				require.NotErrorIs(t, err, os.ErrNotExist)
+			}
+
+			states, err := skills.Reconcile(source, catalog, root)
+			require.NoError(t, err)
+			require.Len(t, states, 3)
+			for _, state := range states {
+				require.True(t, state.Present)
+				require.Equal(t, state.Name == "healthy", state.Installed)
+				require.Equal(t, state.Name != "external", state.Known)
+				if !state.Known {
+					require.Empty(t, state.Status)
+				}
+			}
+			listed, err := skills.List(source, catalog, root)
+			require.NoError(t, err)
+			require.Len(t, listed.Skills, 2)
+			require.Equal(t, "broken", listed.Skills[0].Name)
+			require.False(t, listed.Skills[0].Installed)
+			_, err = skills.Install(source, catalog, root, map[string]struct{}{"healthy": {}}, false, true)
+			require.NoError(t, err)
+			_, err = skills.Update(source, catalog, root, nil, true)
+			require.NoError(t, err)
+			removed, err := skills.Uninstall(source, catalog, root, []string{"healthy"}, false, false)
+			require.NoError(t, err)
+			require.Equal(t, []string{"healthy"}, removed.Removed)
+			require.NoDirExists(t, healthy)
+			if failure == "symlink loop" {
+				removed, err = skills.Uninstall(source, catalog, root, []string{"broken"}, false, false)
+				require.NoError(t, err)
+				require.Equal(t, []string{"broken"}, removed.Removed)
 			}
 		})
 	}

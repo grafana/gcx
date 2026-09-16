@@ -41,7 +41,7 @@ func Install(source fs.FS, catalog []byte, root string, filter map[string]struct
 				continue
 			}
 		}
-		if state.Status == Unmanaged || state.Status == Retired {
+		if !state.Known || state.Status == Retired {
 			if filter != nil && state.Status == Retired {
 				return InstallResult{}, fmt.Errorf("%s; retired skills cannot be installed", LifecycleNotice{Name: state.Name, CatalogEntry: state.CatalogEntry})
 			}
@@ -140,7 +140,7 @@ func Update(source fs.FS, catalog []byte, root string, targets []string, dryRun 
 	requested := make(map[string]struct{}, len(targets))
 	for _, name := range targets {
 		state, ok := byName[name]
-		if !ok || state.Status == Unmanaged {
+		if !ok || !state.Known {
 			return InstallResult{}, fmt.Errorf("unknown skill %q (use 'gcx agent skills list' to see available skills)", name)
 		}
 		if !state.Installed && (state.Status != Retired || !state.Present) {
@@ -159,7 +159,7 @@ func Update(source fs.FS, catalog []byte, root string, targets []string, dryRun 
 				continue
 			}
 		}
-		if state.Status == Unmanaged || (!state.Installed && (state.Status != Retired || !state.Present)) {
+		if !state.Known || (!state.Installed && (state.Status != Retired || !state.Present)) {
 			continue
 		}
 		if state.Status == Deprecated || state.Status == Retired {

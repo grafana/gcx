@@ -117,8 +117,10 @@ them. It never installs replacements automatically or prunes obsolete local file
 Install/update receipts include lifecycle notices in JSON as well as warnings on
 stderr. `get` reads only bundled content, not a local copy.
 
-Directories absent from the catalog are unmanaged and never targeted. Catalog
-names identify gcx skills but do **not** establish ownership of local files:
+Directories absent from the catalog are unmanaged and never targeted. Reconciled
+state records catalog membership in `known`, separate from the release `status`.
+Per-skill stat failures report `installed: false` without blocking inventory or
+operations on other skills. Catalog names do **not** establish ownership of local files:
 there is no installation receipt or local-modification tracking yet. Explicit
 uninstall removes the selected directory and its local edits. These lifecycle
 rules apply to `gcx agent skills`; the Claude plugin manager consumes the skill

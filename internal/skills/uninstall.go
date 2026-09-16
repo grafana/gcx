@@ -30,7 +30,7 @@ func Uninstall(source fs.FS, catalog []byte, root string, names []string, all, d
 	}
 	known := make(map[string]SkillState, len(states))
 	for _, state := range states {
-		if state.Status != Unmanaged {
+		if state.Known {
 			known[state.Name] = state
 		}
 	}

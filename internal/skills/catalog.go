@@ -21,7 +21,6 @@ const (
 	Active     Status = "active"
 	Deprecated Status = "deprecated"
 	Retired    Status = "retired"
-	Unmanaged  Status = "unmanaged"
 )
 
 // CatalogEntry survives removal of the corresponding bundled skill directory.
@@ -67,12 +66,14 @@ func LoadCatalog(data []byte) (Catalog, error) {
 }
 
 // SkillState reconciles release metadata with the selected local installation.
-// Present also covers incomplete installations without SKILL.md. Neither it nor
-// Installed proves ownership: this version recognizes gcx skills by catalog name.
+// Known records catalog membership, not ownership. Present also covers incomplete
+// installations without SKILL.md. A failed stat reports absence, as in the legacy
+// installation check; it does not abort inventory or unrelated operations.
 type SkillState struct {
 	CatalogEntry
 
 	Name             string `json:"name"`
+	Known            bool   `json:"known"`
 	ShortDescription string `json:"short_description"`
 	Installed        bool   `json:"installed"`
 	Present          bool   `json:"present"`
@@ -102,27 +103,16 @@ func Reconcile(source fs.FS, data []byte, root string) ([]SkillState, error) {
 	states := make([]SkillState, 0, len(names))
 	for name := range names {
 		entry, known := catalog.Skills[name]
-		if !known {
-			entry.Status = Unmanaged
-		}
-		state := SkillState{Name: name, CatalogEntry: entry}
+		state := SkillState{Name: name, Known: known, CatalogEntry: entry}
 		if entry.Status == Active || entry.Status == Deprecated {
 			state.ShortDescription = ShortDescription(source, name)
 		}
 		localPath := filepath.Join(skillsDir, name)
 		info, err := os.Lstat(localPath)
-		if err == nil {
-			state.Present = true
-		} else if !errors.Is(err, os.ErrNotExist) {
-			return nil, err
-		}
+		state.Present = err == nil
 		if state.Present && (info.IsDir() || info.Mode()&os.ModeSymlink != 0) {
 			info, err := os.Stat(filepath.Join(localPath, "SKILL.md"))
-			if err == nil {
-				state.Installed = info.Mode().IsRegular()
-			} else if !errors.Is(err, os.ErrNotExist) && known {
-				return nil, err
-			}
+			state.Installed = err == nil && info.Mode().IsRegular()
 		}
 		states = append(states, state)
 	}
@@ -144,7 +134,7 @@ func List(source fs.FS, catalog []byte, root string) (ListResult, error) {
 	}
 	result := ListResult{Skills: make([]SkillState, 0, len(states))}
 	for _, state := range states {
-		if state.Status == Unmanaged || (state.Status == Retired && !state.Present) {
+		if !state.Known || (state.Status == Retired && !state.Present) {
 			continue
 		}
 		result.Skills = append(result.Skills, state)
