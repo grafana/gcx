@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -603,4 +604,29 @@ func TestSuppressionsUpsert_DryRun_SystemFieldsIgnored(t *testing.T) {
 	assert.Empty(t, got.Diff, "system-only differences must not appear in the diff")
 	assert.NotContains(t, stdout.String(), "managedBy")
 	assert.False(t, writeHit, "dry-run must not write")
+}
+
+// TestRcaWorkbenchURL_CompoundUnitSince pins down that a compound PromQL
+// duration (e.g. "1h30m", valid model.ParseDuration syntax) is normalized to
+// a single-unit datemath expression before landing in the RCA Workbench
+// link's start param — a bare "now-"+since would emit "now-1h30m", which
+// Grafana's datemath parser rejects.
+func TestRcaWorkbenchURL_CompoundUnitSince(t *testing.T) {
+	got := kg.RcaWorkbenchURLForTest("https://example.grafana.net", "Service", "checkout", nil, 0, 0, "1h30m")
+
+	u, err := url.Parse(got)
+	require.NoError(t, err)
+	assert.Equal(t, "now-5400s", u.Query().Get("start"))
+	assert.Equal(t, "now", u.Query().Get("end"))
+}
+
+// TestRcaWorkbenchURL_EmptySinceUsesEpochMillis pins the non-relative path:
+// with since empty, start/end fall back to the literal ms timestamps.
+func TestRcaWorkbenchURL_EmptySinceUsesEpochMillis(t *testing.T) {
+	got := kg.RcaWorkbenchURLForTest("https://example.grafana.net", "Service", "checkout", nil, 1000, 2000, "")
+
+	u, err := url.Parse(got)
+	require.NoError(t, err)
+	assert.Equal(t, "1000", u.Query().Get("start"))
+	assert.Equal(t, "2000", u.Query().Get("end"))
 }
