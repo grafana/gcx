@@ -17,6 +17,7 @@ type getOpts struct {
 	IO      cmdio.Options
 	url     string
 	section string
+	product string
 	offset  int
 	limit   int
 }
@@ -26,6 +27,7 @@ func (o *getOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("text", &getTextCodec{})
 	o.IO.BindFlags(flags)
 	flags.StringVar(&o.section, "section", "", "Heading text to extract (returns only that section)")
+	flags.StringVar(&o.product, "product", "", "Scope shorthand resolution to a product (case-insensitive; matches exact, then prefix, then substring; ignored when the argument is a full URL)")
 	flags.IntVar(&o.offset, "offset", 0, "Line offset for paging (0-indexed)")
 	flags.IntVar(&o.limit, "limit", 0, "Maximum lines to return (0 = default)")
 }
@@ -48,15 +50,22 @@ type getResult struct {
 	ReturnedRange [2]int `json:"returned_range"`
 }
 
-func getCommand(fetch docFetcher) *cobra.Command {
+func getCommand(loader *indexLoader, fetch docFetcher) *cobra.Command {
 	opts := &getOpts{}
 	cmd := &cobra.Command{
-		Use:   "get <url>",
+		Use:   "get <url-or-query>",
 		Short: "Fetch a Grafana documentation page.",
-		Long: "Fetch a documentation page as cleaned markdown. Supports section " +
-			"extraction and offset/limit paging for bounded retrieval.",
-		Example: `  # Fetch a doc
+		Long: "Fetch a documentation page as cleaned markdown. The argument can be " +
+			"a full URL or a shorthand query that is resolved via the docs index. " +
+			"Supports section extraction and offset/limit paging for bounded retrieval.",
+		Example: `  # Fetch by full URL
   gcx docs get https://grafana.com/docs/tempo/latest/traceql/construct-traceql-queries/
+
+  # Fetch by shorthand query (resolved via docs index)
+  gcx docs get traceql
+
+  # Scope shorthand resolution to a product
+  gcx docs get configuration --product tempo
 
   # Extract a single section
   gcx docs get https://grafana.com/docs/tempo/latest/traceql/construct-traceql-queries/ --section "Comparison operators"
@@ -69,6 +78,11 @@ func getCommand(fetch docFetcher) *cobra.Command {
 			if err := opts.Validate(); err != nil {
 				return err
 			}
+			resolved, err := resolveIfShorthand(cmd.Context(), loader, opts.url, opts.product)
+			if err != nil {
+				return err
+			}
+			opts.url = resolved
 			doc, err := fetch(cmd.Context(), opts.url)
 			if err != nil {
 				return cleanFetchErr(opts.url, err)
@@ -79,7 +93,7 @@ func getCommand(fetch docFetcher) *cobra.Command {
 				Limit:   opts.limit,
 			})
 			if res.Content == "" && opts.section != "" {
-				return fmt.Errorf("section %q not found; run 'gcx docs outline %s' to see available headings", opts.section, opts.url)
+				return fmt.Errorf("section %q not found; run `gcx docs outline %s` to see available headings", opts.section, shellQuote(opts.url))
 			}
 			return opts.IO.Encode(cmd.OutOrStdout(), getResult{
 				Content:       res.Content,

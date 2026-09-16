@@ -63,8 +63,8 @@ gcx (root)
 │
 ├── docs                     [cmd/gcx/docs/command.go]
 │   ├── search  QUERY        Search the grafana.com docs index [--product] [--limit]
-│   ├── get     URL          Fetch a page as bounded markdown [--section] [--offset] [--limit]
-│   ├── outline URL          List headings of a page
+│   ├── get     URL|QUERY    Fetch a page as bounded markdown [--section] [--offset] [--limit] [--product]
+│   ├── outline URL|QUERY    List headings of a page [--product]
 │   ├── list-products        List indexed doc products with entry counts
 │   └── list-links           List curated canonical doc URLs (no network)
 │

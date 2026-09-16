@@ -16,14 +16,16 @@ import (
 )
 
 type outlineOpts struct {
-	IO  cmdio.Options
-	url string
+	IO      cmdio.Options
+	url     string
+	product string
 }
 
 func (o *outlineOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("text")
 	o.IO.RegisterCustomCodec("text", &outlineTextCodec{})
 	o.IO.BindFlags(flags)
+	flags.StringVar(&o.product, "product", "", "Scope shorthand resolution to a product (case-insensitive; matches exact, then prefix, then substring; ignored when the argument is a full URL)")
 }
 
 func (o *outlineOpts) Validate() error {
@@ -54,20 +56,30 @@ func toOutlineHeadings(headings []grafanadocs.Heading) []outlineHeading {
 	return out
 }
 
-func outlineCommand(fetch docFetcher) *cobra.Command {
+func outlineCommand(loader *indexLoader, fetch docFetcher) *cobra.Command {
 	opts := &outlineOpts{}
 	cmd := &cobra.Command{
-		Use:   "outline <url>",
+		Use:   "outline <url-or-query>",
 		Short: "Show the heading outline of a documentation page.",
 		Long: "List the headings of a documentation page so you can target a " +
-			"section with 'gcx docs get --section'.",
-		Example: `  gcx docs outline https://grafana.com/docs/tempo/latest/traceql/construct-traceql-queries/`,
-		Args:    cobra.ExactArgs(1),
+			"section with 'gcx docs get --section'. The argument can be a full URL " +
+			"or a shorthand query resolved via the docs index.",
+		Example: `  # Outline by full URL
+  gcx docs outline https://grafana.com/docs/tempo/latest/traceql/construct-traceql-queries/
+
+  # Outline by shorthand query
+  gcx docs outline traceql`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.url = args[0]
 			if err := opts.Validate(); err != nil {
 				return err
 			}
+			resolved, err := resolveIfShorthand(cmd.Context(), loader, opts.url, opts.product)
+			if err != nil {
+				return err
+			}
+			opts.url = resolved
 			doc, err := fetch(cmd.Context(), opts.url)
 			if err != nil {
 				return cleanFetchErr(opts.url, err)

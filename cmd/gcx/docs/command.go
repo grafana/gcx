@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	internaldocs "github.com/grafana/gcx/internal/docs"
 	"github.com/grafana/mcp-doc-server/pkg/grafanadocs"
 	"github.com/spf13/cobra"
 )
@@ -30,9 +31,10 @@ func cleanFetchErr(rawURL string, err error) error {
 }
 
 // indexLoader provides lazy, once-only loading of the documentation index.
-// The index is fetched on the first subcommand that needs it (search,
-// list-products) and cached for the lifetime of the process. Commands that only
-// need FetchDoc (get, outline) never trigger the load.
+// The index is fetched on the first subcommand that needs it and cached for
+// the lifetime of the process. Commands that always use the index: search,
+// list-products. Commands that use it conditionally: get and outline load the
+// index only when the argument is a shorthand query (not a full URL).
 //
 // Lazy loading avoids a network fetch on unrelated commands or --help.
 type indexLoader struct {
@@ -75,9 +77,43 @@ func CommandWithIndex(idx *grafanadocs.Index) *cobra.Command {
 // CommandWithFetcher returns a docs command group with the page fetcher
 // replaced. Intended for tests — lets the get/outline success paths run
 // without a live network fetch, mirroring CommandWithIndex for the
-// index-backed commands.
+// index-backed commands. The index loader is uninitialized, so shorthand
+// resolution is not available (only full URLs work). For tests that need
+// both shorthand resolution and a replaced fetcher, use
+// CommandWithIndexAndFetcher instead.
 func CommandWithFetcher(fetch docFetcher) *cobra.Command {
 	return newDocsCommand(&indexLoader{}, fetch)
+}
+
+// CommandWithIndexAndFetcher returns a docs command group with both a
+// pre-loaded index and a replaced page fetcher. Intended for tests that
+// exercise shorthand resolution end-to-end without network access.
+func CommandWithIndexAndFetcher(idx *grafanadocs.Index, fetch docFetcher) *cobra.Command {
+	loader := &indexLoader{idx: idx}
+	loader.once.Do(func() {})
+	return newDocsCommand(loader, fetch)
+}
+
+// resolveIfShorthand resolves a URL-or-query argument to a full documentation
+// URL. If the input already starts with "https://", it is returned as-is.
+// Otherwise the docs index is loaded and the shorthand query is resolved via
+// search, optionally scoped to a product.
+func resolveIfShorthand(ctx context.Context, loader *indexLoader, input, product string) (string, error) {
+	if strings.HasPrefix(input, "https://") {
+		return input, nil
+	}
+	idx, err := loader.get(ctx)
+	if err != nil {
+		return "", err
+	}
+	return internaldocs.ResolveShorthand(idx, input, product)
+}
+
+// shellQuote wraps val in single quotes, escaping any embedded single quotes
+// using the canonical POSIX form (end-quote, backslash-escaped quote, re-open-quote).
+// Used to safely embed user-controlled values in shell command suggestions.
+func shellQuote(val string) string {
+	return "'" + strings.ReplaceAll(val, "'", `'\''`) + "'"
 }
 
 func newDocsCommand(loader *indexLoader, fetch docFetcher) *cobra.Command {
@@ -90,8 +126,8 @@ func newDocsCommand(loader *indexLoader, fetch docFetcher) *cobra.Command {
 
 	cmd.AddCommand(
 		searchCommand(loader),
-		getCommand(fetch),
-		outlineCommand(fetch),
+		getCommand(loader, fetch),
+		outlineCommand(loader, fetch),
 		productsCommand(loader),
 		linksCommand(),
 	)
