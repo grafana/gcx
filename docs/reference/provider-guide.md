@@ -495,12 +495,12 @@ existing hand-written command tree with `WithCommands` — no separate
 
 ```go
 func NewSLOProvider() *adapter.Provider {
-    return adapter.NewProvider("slo", shortDesc, loadSLODeps, definitions.SloResource()).
+    return adapter.NewProvider("slo", shortDesc, providers.LoadGrafanaDeps, definitions.SloResource(), reports.ReportResource()).
         WithCommands(func() []*cobra.Command {
             loader := &providers.ConfigLoader{}
             sloCmd := &cobra.Command{Use: "slo", Short: shortDesc}
             loader.BindFlags(sloCmd.PersistentFlags())
-            sloCmd.AddCommand(definitions.Commands(loader))
+            sloCmd.AddCommand(definitions.Commands(loader), reports.Commands(loader))
             return []*cobra.Command{sloCmd}
         })
 }
@@ -510,11 +510,31 @@ func init() { //nolint:gochecknoinits // Self-registration pattern (like databas
 }
 ```
 
-`loadSLODeps` is a `func(ctx context.Context) (adapter.ClientDeps, error)`
-closure — `adapter` cannot import `internal/providers` (the reverse import
-already exists), so every provider supplies its own loader, typically
-`providers.ConfigLoader.LoadGrafanaConfig` + `rest.HTTPClientFor`. Reference:
-`internal/providers/slo/provider.go` for the full implementation.
+`NewProvider` accepts multiple declarations with different Go types. Each
+resource gets its own schema, example, capabilities, and lazy client factory.
+SLO registers both `Slo` and `Report` this way.
+
+`providers.LoadGrafanaDeps` resolves the active Grafana configuration and its
+HTTP transport lazily. Providers using product-specific authentication supply
+their own `adapter.DepsLoader` instead; the adapter package never loads config.
+
+Provider commands use the same resource declaration:
+
+```go
+crud, cfg, err := providers.LoadGrafanaResource(ctx, loader, SloResource())
+```
+
+This loads the command's selected configuration once, constructs the declared
+client, and binds it through `Resource.TypedCRUD`. The returned config snapshot
+can also serve auxiliary queries (SLO status/timeline). No provider-local
+`TypedCRUD` literal, descriptor, strip-field list, or CRUD function mapping is
+needed. Use `crud.ToUnstructured` for machine output and
+`crud.FromUnstructured` to restore identity from input manifests. For offline
+manifest conversion, use `SloResource().TypedCRUD(nil, "")`; no client is created
+and CRUD operations remain unsupported. Define list columns with
+`output.Table[T]` and register them with `output.RegisterTable`; keep
+domain-specific command workflows in the provider.
+
 `adapter.NewProvider` does **not** auto-generate CRUD command verbs — it
 calls the factory passed to `WithCommands` each time it mounts commands.
 The factory must create fresh commands and flag state for each root.

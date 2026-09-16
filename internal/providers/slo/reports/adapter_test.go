@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/grafana/gcx/internal/providers/slo/reports"
+	"github.com/grafana/gcx/internal/resources"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -43,7 +44,7 @@ func fullReport() reports.Report {
 
 func TestToResource_MinimalReport(t *testing.T) {
 	report := minimalReport()
-	res, err := reports.ToResource(report, "stack-123")
+	res, err := reportToResource(report, "stack-123")
 	require.NoError(t, err)
 
 	assert.Equal(t, reports.APIVersion, res.APIVersion())
@@ -64,7 +65,7 @@ func TestToResource_MapsUUIDToMetadataName(t *testing.T) {
 	report := minimalReport()
 	report.UUID = "my-custom-uuid"
 
-	res, err := reports.ToResource(report, "stack-123")
+	res, err := reportToResource(report, "stack-123")
 	require.NoError(t, err)
 
 	assert.Equal(t, "my-custom-uuid", res.Name())
@@ -79,7 +80,7 @@ func TestToResource_MapsUUIDToMetadataName(t *testing.T) {
 
 func TestToResource_SetsCorrectGVK(t *testing.T) {
 	report := minimalReport()
-	res, err := reports.ToResource(report, "stack-123")
+	res, err := reportToResource(report, "stack-123")
 	require.NoError(t, err)
 
 	gvk := res.GroupVersionKind()
@@ -90,10 +91,10 @@ func TestToResource_SetsCorrectGVK(t *testing.T) {
 
 func TestFromResource_RestoresUUID(t *testing.T) {
 	report := minimalReport()
-	res, err := reports.ToResource(report, "stack-123")
+	res, err := reportToResource(report, "stack-123")
 	require.NoError(t, err)
 
-	restored, err := reports.FromResource(res)
+	restored, err := reportFromResource(res)
 	require.NoError(t, err)
 
 	assert.Equal(t, "test-uuid-123", restored.UUID)
@@ -102,10 +103,10 @@ func TestFromResource_RestoresUUID(t *testing.T) {
 func TestRoundTrip_Report(t *testing.T) {
 	original := minimalReport()
 
-	res, err := reports.ToResource(original, "stack-123")
+	res, err := reportToResource(original, "stack-123")
 	require.NoError(t, err)
 
-	restored, err := reports.FromResource(res)
+	restored, err := reportFromResource(res)
 	require.NoError(t, err)
 
 	assert.Equal(t, original.UUID, restored.UUID)
@@ -119,10 +120,10 @@ func TestRoundTrip_Report(t *testing.T) {
 func TestRoundTrip_FullReport(t *testing.T) {
 	original := fullReport()
 
-	res, err := reports.ToResource(original, "stack-456")
+	res, err := reportToResource(original, "stack-456")
 	require.NoError(t, err)
 
-	restored, err := reports.FromResource(res)
+	restored, err := reportFromResource(res)
 	require.NoError(t, err)
 
 	assert.Equal(t, original.UUID, restored.UUID)
@@ -136,7 +137,7 @@ func TestRoundTrip_FullReport(t *testing.T) {
 
 func TestFileNamer(t *testing.T) {
 	report := minimalReport()
-	res, err := reports.ToResource(report, "stack-123")
+	res, err := reportToResource(report, "stack-123")
 	require.NoError(t, err)
 
 	namer := reports.FileNamer("yaml")
@@ -146,4 +147,16 @@ func TestFileNamer(t *testing.T) {
 	namer = reports.FileNamer("json")
 	path = namer(res)
 	assert.Equal(t, "Report/test-uuid-123.json", path)
+}
+
+func reportToResource(report reports.Report, namespace string) (*resources.Resource, error) {
+	obj, err := reports.ReportResource().TypedCRUD(nil, namespace).ToUnstructured(report)
+	if err != nil {
+		return nil, err
+	}
+	return resources.MustFromObject(obj.Object, resources.SourceInfo{}), nil
+}
+func reportFromResource(res *resources.Resource) (*reports.Report, error) {
+	obj := res.ToUnstructured()
+	return reports.ReportResource().TypedCRUD(nil, "").FromUnstructured(&obj)
 }

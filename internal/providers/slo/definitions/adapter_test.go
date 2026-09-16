@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/grafana/gcx/internal/providers/slo/definitions"
+	"github.com/grafana/gcx/internal/resources"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -66,7 +67,7 @@ func fullSlo() definitions.Slo {
 
 func TestToResource_MinimalSLO(t *testing.T) {
 	slo := minimalSlo()
-	res, err := definitions.ToResource(slo, "stack-123")
+	res, err := sloToResource(slo, "stack-123")
 	require.NoError(t, err)
 
 	assert.Equal(t, definitions.APIVersion, res.APIVersion())
@@ -84,7 +85,7 @@ func TestToResource_MinimalSLO(t *testing.T) {
 
 func TestToResource_FullSLO(t *testing.T) {
 	slo := fullSlo()
-	res, err := definitions.ToResource(slo, "stack-456")
+	res, err := sloToResource(slo, "stack-456")
 	require.NoError(t, err)
 
 	assert.Equal(t, "full-uuid-456", res.Name())
@@ -109,7 +110,7 @@ func TestToResource_StripsReadOnly(t *testing.T) {
 		Provenance:        "api",
 	}
 
-	res, err := definitions.ToResource(slo, "stack-123")
+	res, err := sloToResource(slo, "stack-123")
 	require.NoError(t, err)
 
 	spec, err := res.Spec()
@@ -123,7 +124,7 @@ func TestToResource_MapsUUIDToMetadataName(t *testing.T) {
 	slo := minimalSlo()
 	slo.UUID = "my-custom-uuid"
 
-	res, err := definitions.ToResource(slo, "stack-123")
+	res, err := sloToResource(slo, "stack-123")
 	require.NoError(t, err)
 
 	assert.Equal(t, "my-custom-uuid", res.Name())
@@ -138,7 +139,7 @@ func TestToResource_MapsUUIDToMetadataName(t *testing.T) {
 
 func TestToResource_SetsCorrectGVK(t *testing.T) {
 	slo := minimalSlo()
-	res, err := definitions.ToResource(slo, "stack-123")
+	res, err := sloToResource(slo, "stack-123")
 	require.NoError(t, err)
 
 	gvk := res.GroupVersionKind()
@@ -149,10 +150,10 @@ func TestToResource_SetsCorrectGVK(t *testing.T) {
 
 func TestFromResource_RestoresUUID(t *testing.T) {
 	slo := minimalSlo()
-	res, err := definitions.ToResource(slo, "stack-123")
+	res, err := sloToResource(slo, "stack-123")
 	require.NoError(t, err)
 
-	restored, err := definitions.FromResource(res)
+	restored, err := sloFromResource(res)
 	require.NoError(t, err)
 
 	assert.Equal(t, "test-uuid-123", restored.UUID)
@@ -161,10 +162,10 @@ func TestFromResource_RestoresUUID(t *testing.T) {
 func TestRoundTrip_Freeform(t *testing.T) {
 	original := minimalSlo()
 
-	res, err := definitions.ToResource(original, "stack-123")
+	res, err := sloToResource(original, "stack-123")
 	require.NoError(t, err)
 
-	restored, err := definitions.FromResource(res)
+	restored, err := sloFromResource(res)
 	require.NoError(t, err)
 
 	// Zero out ReadOnly on original since it's stripped
@@ -204,10 +205,10 @@ func TestRoundTrip_Ratio(t *testing.T) {
 		},
 	}
 
-	res, err := definitions.ToResource(original, "stack-123")
+	res, err := sloToResource(original, "stack-123")
 	require.NoError(t, err)
 
-	restored, err := definitions.FromResource(res)
+	restored, err := sloFromResource(res)
 	require.NoError(t, err)
 
 	assert.Equal(t, original.UUID, restored.UUID)
@@ -240,10 +241,10 @@ func TestRoundTrip_Threshold(t *testing.T) {
 		},
 	}
 
-	res, err := definitions.ToResource(original, "stack-123")
+	res, err := sloToResource(original, "stack-123")
 	require.NoError(t, err)
 
-	restored, err := definitions.FromResource(res)
+	restored, err := sloFromResource(res)
 	require.NoError(t, err)
 
 	assert.Equal(t, original.UUID, restored.UUID)
@@ -267,10 +268,10 @@ func TestRoundTrip_AlertingEnrichments(t *testing.T) {
 		},
 	}
 
-	res, err := definitions.ToResource(original, "stack-123")
+	res, err := sloToResource(original, "stack-123")
 	require.NoError(t, err)
 
-	restored, err := definitions.FromResource(res)
+	restored, err := sloFromResource(res)
 	require.NoError(t, err)
 
 	require.NotNil(t, restored.Alerting)
@@ -285,7 +286,7 @@ func TestRoundTrip_AlertingEnrichments(t *testing.T) {
 
 func TestFileNamer(t *testing.T) {
 	slo := minimalSlo()
-	res, err := definitions.ToResource(slo, "stack-123")
+	res, err := sloToResource(slo, "stack-123")
 	require.NoError(t, err)
 
 	namer := definitions.FileNamer("yaml")
@@ -295,4 +296,18 @@ func TestFileNamer(t *testing.T) {
 	namer = definitions.FileNamer("json")
 	path = namer(res)
 	assert.Equal(t, "SLO/test-uuid-123.json", path)
+}
+
+// Exercise the declaration's offline conversion path without a live API client.
+func sloToResource(slo definitions.Slo, namespace string) (*resources.Resource, error) {
+	obj, err := definitions.SloResource().TypedCRUD(nil, namespace).ToUnstructured(slo)
+	if err != nil {
+		return nil, err
+	}
+	return resources.MustFromObject(obj.Object, resources.SourceInfo{}), nil
+}
+
+func sloFromResource(res *resources.Resource) (*definitions.Slo, error) {
+	obj := res.ToUnstructured()
+	return definitions.SloResource().TypedCRUD(nil, "").FromUnstructured(&obj)
 }

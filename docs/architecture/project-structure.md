@@ -55,6 +55,7 @@ gcx/
 │   │   └── builtins/         # Built-in PromQL/LogQL validators
 │   ├── providers/            # Provider plugin system
 │   │   ├── configloader.go   # Shared ConfigLoader for all providers
+│   │   ├── resource.go       # Grafana resource loading and shared declaration binding
 │   │   ├── metrics/          # Metrics signal provider (Prometheus queries + Adaptive Metrics)
 │   │   │   └── adaptive/     # Adaptive Metrics commands (rules, recommendations)
 │   │   ├── logs/             # Logs signal provider (Loki queries + Adaptive Logs)

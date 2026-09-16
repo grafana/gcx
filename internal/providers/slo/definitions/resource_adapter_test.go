@@ -230,7 +230,7 @@ func TestResourceAdapter_Create(t *testing.T) {
 		},
 		Objectives: []definitions.Objective{{Value: 0.99, Window: "30d"}},
 	}
-	res, err := definitions.ToResource(inputSLO, "stack-123")
+	res, err := sloToResource(inputSLO, "stack-123")
 	require.NoError(t, err)
 	obj := res.ToUnstructured()
 
@@ -270,7 +270,7 @@ func TestResourceAdapter_Update(t *testing.T) {
 		},
 		Objectives: []definitions.Objective{{Value: 0.99, Window: "30d"}},
 	}
-	res, err := definitions.ToResource(inputSLO, "stack-123")
+	res, err := sloToResource(inputSLO, "stack-123")
 	require.NoError(t, err)
 	obj := res.ToUnstructured()
 
@@ -359,7 +359,7 @@ func TestResourceAdapter_RoundTrip(t *testing.T) {
 	res, err := resources.FromUnstructured(obj)
 	require.NoError(t, err)
 
-	restored, err := definitions.FromResource(res)
+	restored, err := sloFromResource(res)
 	require.NoError(t, err)
 
 	assert.Equal(t, originalSLO.UUID, restored.UUID)
@@ -430,7 +430,7 @@ func TestSloResource_RegistrationDerivesSchemaAndExample(t *testing.T) {
 // TestSloResource_SharedByBothFrontDoors covers AC-001/AC-019: the same
 // definitions.SloResource declaration (and therefore the same NewClient /
 // capability-seam construction) backs both provider.go's `gcx slo` command
-// tree (via NewTypedCRUD) and the `gcx resources` pipeline (via
+// tree (via providers.LoadGrafanaResource) and the `gcx resources` pipeline (via
 // adapter.NewProvider's TypedRegistrations()) — this test drives both call
 // sites against the same test server and asserts field-for-field equivalent
 // data.
@@ -454,11 +454,9 @@ func TestSloResource_SharedByBothFrontDoors(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, viaResources.Items, 1)
 
-	// Front door 2: gcx slo definitions, via commands.go's frozen
-	// NewTypedCRUD entry point — backed by the same Client capability
-	// methods as SloResource.NewClient.
+	// Front door 2: gcx slo definitions, through the shared resource loader.
 	loader := stubGrafanaConfigLoader{host: server.URL, namespace: "shared-ns"}
-	crud, _, err := definitions.NewTypedCRUD(t.Context(), loader)
+	crud, _, err := providers.LoadGrafanaResource(t.Context(), loader, definitions.SloResource())
 	require.NoError(t, err)
 	viaCommands, err := crud.List(t.Context(), 0)
 	require.NoError(t, err)
@@ -470,6 +468,12 @@ func TestSloResource_SharedByBothFrontDoors(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, found)
 	assert.Equal(t, "Shared SLO", spec["name"])
+	commandObj, err := crud.ToUnstructured(viaCommands[0].Spec)
+	require.NoError(t, err)
+	assert.Equal(t, viaResources.Items[0].Object, commandObj.Object)
+	assert.NotContains(t, spec, "uuid")
+	assert.NotContains(t, spec, "readOnly")
+	assert.NotEmpty(t, crud.Example)
 }
 
 // stubGrafanaConfigLoader implements definitions.GrafanaConfigLoader for

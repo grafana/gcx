@@ -9,6 +9,7 @@ import (
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/graph"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/slo/definitions"
 	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/grafana/gcx/internal/resources/adapter"
@@ -100,13 +101,7 @@ grafana_slo_sli_window metrics.`,
 
 			ctx := cmd.Context()
 
-			restCfg, err := loader.LoadGrafanaConfig(ctx)
-			if err != nil {
-				return err
-			}
-
-			// Create report and SLO definition clients.
-			reportClient, err := NewClient(restCfg)
+			reportClient, restCfg, err := providers.LoadGrafanaResource(ctx, loader, ReportResource())
 			if err != nil {
 				return err
 			}
@@ -117,17 +112,20 @@ grafana_slo_sli_window metrics.`,
 			}
 
 			// Fetch report(s).
-			var rpts []Report
+			rpts := []Report{}
 			if len(args) == 1 {
 				r, err := reportClient.Get(ctx, args[0])
 				if err != nil {
 					return err
 				}
-				rpts = []Report{*r}
+				rpts = []Report{r.Spec}
 			} else {
-				rpts, err = reportClient.List(ctx)
+				items, err := reportClient.List(ctx, 0)
 				if err != nil {
 					return err
+				}
+				for _, item := range items {
+					rpts = append(rpts, item.Spec)
 				}
 			}
 

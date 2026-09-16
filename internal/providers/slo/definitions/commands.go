@@ -16,7 +16,6 @@ import (
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/adapter"
-	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -56,8 +55,7 @@ type listOpts struct {
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &sloTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &sloTableCodec{Wide: true})
+	cmdio.RegisterTable(&o.IO, sloTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 
@@ -76,7 +74,7 @@ func newListCommand(loader GrafanaConfigLoader) *cobra.Command {
 
 			ctx := cmd.Context()
 
-			crud, cfg, err := NewTypedCRUD(ctx, loader)
+			crud, _, err := providers.LoadGrafanaResource(ctx, loader, SloResource())
 			if err != nil {
 				return err
 			}
@@ -101,11 +99,11 @@ func newListCommand(loader GrafanaConfigLoader) *cobra.Command {
 
 			var objs []unstructured.Unstructured
 			for _, slo := range slos {
-				res, err := ToResource(slo, cfg.Namespace)
+				obj, err := crud.ToUnstructured(slo)
 				if err != nil {
 					return fmt.Errorf("failed to convert SLO %s to resource: %w", slo.UUID, err)
 				}
-				objs = append(objs, res.ToUnstructured())
+				objs = append(objs, obj)
 			}
 
 			return opts.IO.Encode(cmd.OutOrStdout(), objs)
@@ -115,56 +113,30 @@ func newListCommand(loader GrafanaConfigLoader) *cobra.Command {
 	return cmd
 }
 
-// sloTableCodec renders SLOs as a tabular table.
-type sloTableCodec struct {
-	Wide bool
-}
-
-func (c *sloTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
-	}
-	return "table"
-}
-
-func (c *sloTableCodec) Encode(w io.Writer, v any) error {
-	slos, ok := v.([]Slo)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []Slo")
-	}
-
-	var t *style.TableBuilder
-	if c.Wide {
-		t = style.NewTable("UUID", "NAME", "TARGET", "WINDOW", "STATUS", "DESCRIPTION")
-	} else {
-		t = style.NewTable("UUID", "NAME", "TARGET", "WINDOW", "STATUS")
-	}
-
-	for _, slo := range slos {
-		target := "-"
-		window := "-"
-		if len(slo.Objectives) > 0 {
-			target = fmt.Sprintf("%.2f%%", slo.Objectives[0].Value*100)
-			window = slo.Objectives[0].Window
-		}
-
-		status := "-"
-		if slo.ReadOnly != nil && slo.ReadOnly.Status != nil {
-			status = slo.ReadOnly.Status.Type
-		}
-
-		if c.Wide {
-			t.Row(slo.UUID, slo.Name, target, window, status, slo.Description)
-		} else {
-			t.Row(slo.UUID, slo.Name, target, window, status)
-		}
-	}
-
-	return t.Render(w)
-}
-
-func (c *sloTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
+func sloTable() cmdio.Table[Slo] {
+	return cmdio.Table[Slo]{Columns: []cmdio.Column[Slo]{
+		{Header: "UUID", Content: func(s Slo) string { return s.UUID }},
+		{Header: "NAME", Content: func(s Slo) string { return s.Name }},
+		{Header: "TARGET", Content: func(s Slo) string {
+			if len(s.Objectives) == 0 {
+				return "-"
+			}
+			return fmt.Sprintf("%.2f%%", s.Objectives[0].Value*100)
+		}},
+		{Header: "WINDOW", Content: func(s Slo) string {
+			if len(s.Objectives) == 0 {
+				return "-"
+			}
+			return s.Objectives[0].Window
+		}},
+		{Header: "STATUS", Content: func(s Slo) string {
+			if s.ReadOnly == nil || s.ReadOnly.Status == nil {
+				return "-"
+			}
+			return s.ReadOnly.Status.Type
+		}},
+		{Header: "DESCRIPTION", Visible: cmdio.WideOnly, Content: func(s Slo) string { return s.Description }},
+	}}
 }
 
 // ---------------------------------------------------------------------------
@@ -194,7 +166,7 @@ func newGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 			ctx := cmd.Context()
 			uuid := args[0]
 
-			crud, cfg, err := NewTypedCRUD(ctx, loader)
+			crud, _, err := providers.LoadGrafanaResource(ctx, loader, SloResource())
 			if err != nil {
 				return err
 			}
@@ -205,12 +177,11 @@ func newGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 			}
 
 			slo := typedObj.Spec
-			res, err := ToResource(slo, cfg.Namespace)
+			obj, err := crud.ToUnstructured(slo)
 			if err != nil {
 				return fmt.Errorf("failed to convert SLO to resource: %w", err)
 			}
 
-			obj := res.ToUnstructured()
 			return opts.IO.Encode(cmd.OutOrStdout(), &obj)
 		},
 	}
@@ -238,7 +209,7 @@ func newPullCommand(loader GrafanaConfigLoader) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			crud, cfg, err := NewTypedCRUD(ctx, loader)
+			crud, _, err := providers.LoadGrafanaResource(ctx, loader, SloResource())
 			if err != nil {
 				return err
 			}
@@ -257,7 +228,7 @@ func newPullCommand(loader GrafanaConfigLoader) *cobra.Command {
 
 			for _, typedObj := range typedObjs {
 				slo := typedObj.Spec
-				res, err := ToResource(slo, cfg.Namespace)
+				obj, err := crud.ToUnstructured(slo)
 				if err != nil {
 					return fmt.Errorf("failed to convert SLO %s to resource: %w", slo.UUID, err)
 				}
@@ -268,7 +239,6 @@ func newPullCommand(loader GrafanaConfigLoader) *cobra.Command {
 					return fmt.Errorf("failed to open file %s: %w", filePath, err)
 				}
 
-				obj := res.ToUnstructured()
 				if err := codec.Encode(f, &obj); err != nil {
 					f.Close()
 					return fmt.Errorf("failed to write SLO %s: %w", slo.UUID, err)
@@ -408,7 +378,7 @@ func newPushCommand(loader GrafanaConfigLoader) *cobra.Command {
 
 			ctx := cmd.Context()
 
-			crud, _, err := NewTypedCRUD(ctx, loader)
+			crud, _, err := providers.LoadGrafanaResource(ctx, loader, SloResource())
 			if err != nil {
 				return err
 			}
@@ -473,12 +443,12 @@ func readSloFile(yamlCodec format.Codec, filePath string) (*Slo, error) {
 		return nil, fmt.Errorf("failed to parse %s: %w", filePath, err)
 	}
 
-	res, err := resources.FromUnstructured(&obj)
+	_, err = resources.FromUnstructured(&obj)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build resource from %s: %w", filePath, err)
 	}
 
-	slo, err := FromResource(res)
+	slo, err := SloResource().TypedCRUD(nil, "").FromUnstructured(&obj)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert resource to SLO from %s: %w", filePath, err)
 	}
@@ -620,7 +590,7 @@ func newDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return nil
 			}
 
-			crud, _, err := NewTypedCRUD(ctx, loader)
+			crud, _, err := providers.LoadGrafanaResource(ctx, loader, SloResource())
 			if err != nil {
 				return err
 			}

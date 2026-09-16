@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/graph"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/grafana/promql-builder/go/promql"
@@ -113,7 +114,7 @@ grafana_slo_sli_window metrics.`,
 
 			ctx := cmd.Context()
 
-			crud, cfg, err := NewTypedCRUD(ctx, loader)
+			crud, cfg, err := providers.LoadGrafanaResource(ctx, loader, SloResource())
 			if err != nil {
 				return err
 			}

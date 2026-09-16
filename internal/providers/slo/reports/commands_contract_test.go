@@ -417,3 +417,16 @@ func TestReportsPullReceiptContract(t *testing.T) {
 		})
 	}
 }
+
+func TestTimeline_EmptyReportsRemainArray(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"reports":[],"slos":[]}`))
+	}))
+	defer srv.Close()
+	stdout, _, err := runReports(t, srv.URL, false, "", "timeline", "-o", "json",
+		"--from", "2026-09-16T09:00:00Z", "--to", "2026-09-16T10:00:00Z")
+	require.NoError(t, err)
+	var result map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal([]byte(stdout), &result))
+	assert.JSONEq(t, "[]", string(result["Reports"]))
+}

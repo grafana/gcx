@@ -66,10 +66,15 @@ pipeline.
 
 SLO's create/update-and-refetch behavior moves into its client methods.
 Provider commands and generic resource operations call those same methods.
-The existing command tree retains its `NewTypedCRUD` entry point; it and the
-declarative registration construct separate adapters. Tests compare their
-resource output. This preserves the CLI while removing duplicated mutation
-logic, without adding command generation to this PR.
+The command tree and declarative registration both use `Resource.TypedCRUD`
+to bind capabilities and resource metadata. Grafana-backed commands use
+`providers.LoadGrafanaResource`, which resolves one config snapshot and returns
+it alongside the typed CRUD for auxiliary queries. Registration uses
+`providers.LoadGrafanaDeps` for the same transport construction. SLO no longer
+maintains its own descriptor, CRUD wiring, or manifest conversion implementation;
+the adapter owns conversion in both directions. Domain-specific command workflows
+and table rendering remain in SLO.
+
 
 ## Consequences and alternatives
 

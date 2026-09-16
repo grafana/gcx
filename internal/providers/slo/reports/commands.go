@@ -17,7 +17,6 @@ import (
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/adapter"
-	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -57,8 +56,7 @@ type listOpts struct {
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &reportTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &reportTableCodec{Wide: true})
+	cmdio.RegisterTable(&o.IO, reportTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 
@@ -77,22 +75,20 @@ func newListCommand(loader GrafanaConfigLoader) *cobra.Command {
 
 			ctx := cmd.Context()
 
-			restCfg, err := loader.LoadGrafanaConfig(ctx)
+			crud, _, err := providers.LoadGrafanaResource(ctx, loader, ReportResource())
 			if err != nil {
 				return err
 			}
 
-			client, err := NewClient(restCfg)
+			items, err := crud.List(ctx, opts.Limit)
 			if err != nil {
 				return err
 			}
 
-			rpts, err := client.List(ctx)
-			if err != nil {
-				return err
+			rpts := make([]Report, len(items))
+			for i := range items {
+				rpts[i] = items[i].Spec
 			}
-
-			rpts = adapter.TruncateSlice(rpts, opts.Limit)
 
 			// Table codec operates on raw []Report for direct field access.
 			// Other formats (yaml/json) convert to K8s envelope Resources
@@ -103,11 +99,11 @@ func newListCommand(loader GrafanaConfigLoader) *cobra.Command {
 
 			var objs []unstructured.Unstructured
 			for _, report := range rpts {
-				res, err := ToResource(report, restCfg.Namespace)
+				obj, err := crud.ToUnstructured(report)
 				if err != nil {
 					return fmt.Errorf("failed to convert report %s to resource: %w", report.UUID, err)
 				}
-				objs = append(objs, res.ToUnstructured())
+				objs = append(objs, obj)
 			}
 
 			return opts.IO.Encode(cmd.OutOrStdout(), objs)
@@ -117,51 +113,20 @@ func newListCommand(loader GrafanaConfigLoader) *cobra.Command {
 	return cmd
 }
 
-// reportTableCodec renders reports as a tabular table.
-type reportTableCodec struct {
-	Wide bool
-}
-
-func (c *reportTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
-	}
-	return "table"
-}
-
-func (c *reportTableCodec) Encode(w io.Writer, v any) error {
-	rpts, ok := v.([]Report)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []Report")
-	}
-
-	var t *style.TableBuilder
-	if c.Wide {
-		t = style.NewTable("UUID", "NAME", "TIME_SPAN", "SLOS", "SLO_UUIDS")
-	} else {
-		t = style.NewTable("UUID", "NAME", "TIME_SPAN", "SLOS")
-	}
-
-	for _, report := range rpts {
-		timeSpan := mapTimeSpan(report.TimeSpan)
-		sloCount := len(report.ReportDefinition.Slos)
-
-		if c.Wide {
-			sloUUIDs := make([]string, 0, sloCount)
-			for _, s := range report.ReportDefinition.Slos {
-				sloUUIDs = append(sloUUIDs, s.SloUUID)
+func reportTable() cmdio.Table[Report] {
+	return cmdio.Table[Report]{Columns: []cmdio.Column[Report]{
+		{Header: "UUID", Content: func(r Report) string { return r.UUID }},
+		{Header: "NAME", Content: func(r Report) string { return r.Name }},
+		{Header: "TIME_SPAN", Content: func(r Report) string { return mapTimeSpan(r.TimeSpan) }},
+		{Header: "SLOS", Content: func(r Report) string { return strconv.Itoa(len(r.ReportDefinition.Slos)) }},
+		{Header: "SLO_UUIDS", Visible: cmdio.WideOnly, Content: func(r Report) string {
+			ids := make([]string, 0, len(r.ReportDefinition.Slos))
+			for _, s := range r.ReportDefinition.Slos {
+				ids = append(ids, s.SloUUID)
 			}
-			t.Row(report.UUID, report.Name, timeSpan, strconv.Itoa(sloCount), strings.Join(sloUUIDs, ","))
-		} else {
-			t.Row(report.UUID, report.Name, timeSpan, strconv.Itoa(sloCount))
-		}
-	}
-
-	return t.Render(w)
-}
-
-func (c *reportTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
+			return strings.Join(ids, ",")
+		}},
+	}}
 }
 
 // mapTimeSpan converts API timeSpan values to human-readable labels.
@@ -205,27 +170,21 @@ func newGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 			ctx := cmd.Context()
 			uuid := args[0]
 
-			restCfg, err := loader.LoadGrafanaConfig(ctx)
+			crud, _, err := providers.LoadGrafanaResource(ctx, loader, ReportResource())
 			if err != nil {
 				return err
 			}
 
-			client, err := NewClient(restCfg)
+			report, err := crud.Get(ctx, uuid)
 			if err != nil {
 				return err
 			}
 
-			report, err := client.Get(ctx, uuid)
-			if err != nil {
-				return err
-			}
-
-			res, err := ToResource(*report, restCfg.Namespace)
+			obj, err := crud.ToUnstructured(report.Spec)
 			if err != nil {
 				return fmt.Errorf("failed to convert report to resource: %w", err)
 			}
 
-			obj := res.ToUnstructured()
 			return opts.IO.Encode(cmd.OutOrStdout(), &obj)
 		},
 	}
@@ -253,21 +212,20 @@ func newPullCommand(loader GrafanaConfigLoader) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			restCfg, err := loader.LoadGrafanaConfig(ctx)
+			crud, _, err := providers.LoadGrafanaResource(ctx, loader, ReportResource())
 			if err != nil {
 				return err
 			}
 
-			client, err := NewClient(restCfg)
+			items, err := crud.List(ctx, 0)
 			if err != nil {
 				return err
 			}
 
-			rpts, err := client.List(ctx)
-			if err != nil {
-				return err
+			rpts := make([]Report, len(items))
+			for i := range items {
+				rpts[i] = items[i].Spec
 			}
-
 			outputDir := filepath.Join(opts.OutputDir, "Report")
 			if err := os.MkdirAll(outputDir, 0755); err != nil {
 				return fmt.Errorf("failed to create output directory %s: %w", outputDir, err)
@@ -276,7 +234,7 @@ func newPullCommand(loader GrafanaConfigLoader) *cobra.Command {
 			codec := format.NewYAMLCodec()
 
 			for _, report := range rpts {
-				res, err := ToResource(report, restCfg.Namespace)
+				obj, err := crud.ToUnstructured(report)
 				if err != nil {
 					return fmt.Errorf("failed to convert report %s to resource: %w", report.UUID, err)
 				}
@@ -287,7 +245,6 @@ func newPullCommand(loader GrafanaConfigLoader) *cobra.Command {
 					return fmt.Errorf("failed to open file %s: %w", filePath, err)
 				}
 
-				obj := res.ToUnstructured()
 				if err := codec.Encode(f, &obj); err != nil {
 					f.Close()
 					return fmt.Errorf("failed to write report %s: %w", report.UUID, err)
@@ -426,12 +383,7 @@ func newPushCommand(loader GrafanaConfigLoader) *cobra.Command {
 
 			ctx := cmd.Context()
 
-			restCfg, err := loader.LoadGrafanaConfig(ctx)
-			if err != nil {
-				return err
-			}
-
-			client, err := NewClient(restCfg)
+			crud, _, err := providers.LoadGrafanaResource(ctx, loader, ReportResource())
 			if err != nil {
 				return err
 			}
@@ -467,7 +419,7 @@ func newPushCommand(loader GrafanaConfigLoader) *cobra.Command {
 					continue
 				}
 
-				item, err := upsertReport(ctx, client, report)
+				item, err := upsertReport(ctx, crud, report)
 				if err != nil {
 					return fail(cmdio.MutationTarget{Kind: "Report", Name: report.Name, UID: report.UUID}, len(args)-i-1, err)
 				}
@@ -496,12 +448,12 @@ func readReportFile(yamlCodec format.Codec, filePath string) (*Report, error) {
 		return nil, fmt.Errorf("failed to parse %s: %w", filePath, err)
 	}
 
-	res, err := resources.FromUnstructured(&obj)
+	_, err = resources.FromUnstructured(&obj)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build resource from %s: %w", filePath, err)
 	}
 
-	report, err := FromResource(res)
+	report, err := ReportResource().TypedCRUD(nil, "").FromUnstructured(&obj)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert resource to report from %s: %w", filePath, err)
 	}
@@ -512,31 +464,31 @@ func readReportFile(yamlCodec format.Codec, filePath string) (*Report, error) {
 // If report.UUID is set, it checks the server; a 404 means create, otherwise update.
 // If report.UUID is empty, it always creates. It returns the item outcome — the
 // caller owns rendering, so the same result feeds every output format.
-func upsertReport(ctx context.Context, client *Client, report *Report) (pushItemResult, error) {
+func upsertReport(ctx context.Context, crud *adapter.TypedCRUD[Report], report *Report) (pushItemResult, error) {
 	if report.UUID == "" {
-		resp, err := client.Create(ctx, report)
+		resp, err := crud.Create(ctx, &adapter.TypedObject[Report]{Spec: *report})
 		if err != nil {
 			return pushItemResult{}, fmt.Errorf("failed to create report %s: %w", report.Name, err)
 		}
-		return pushItemResult{Action: "created", Name: report.Name, UUID: resp.UUID}, nil
+		return pushItemResult{Action: "created", Name: report.Name, UUID: resp.Spec.UUID}, nil
 	}
 
-	_, getErr := client.Get(ctx, report.UUID)
+	_, getErr := crud.Get(ctx, report.UUID)
 	switch {
 	case getErr == nil:
 		// Report exists — update.
-		if err := client.Update(ctx, report.UUID, report); err != nil {
+		if _, err := crud.Update(ctx, report.UUID, &adapter.TypedObject[Report]{Spec: *report}); err != nil {
 			return pushItemResult{}, fmt.Errorf("failed to update report %s: %w", report.UUID, err)
 		}
 		return pushItemResult{Action: "updated", Name: report.Name, UUID: report.UUID}, nil
 
 	case errors.Is(getErr, ErrNotFound):
 		// Report not found — create.
-		resp, err := client.Create(ctx, report)
+		resp, err := crud.Create(ctx, &adapter.TypedObject[Report]{Spec: *report})
 		if err != nil {
 			return pushItemResult{}, fmt.Errorf("failed to create report %s: %w", report.Name, err)
 		}
-		return pushItemResult{Action: "created", Name: report.Name, UUID: resp.UUID}, nil
+		return pushItemResult{Action: "created", Name: report.Name, UUID: resp.Spec.UUID}, nil
 
 	default:
 		// Any other error (auth, network, server) — propagate.
@@ -631,19 +583,14 @@ func newDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return nil
 			}
 
-			restCfg, err := loader.LoadGrafanaConfig(ctx)
-			if err != nil {
-				return err
-			}
-
-			client, err := NewClient(restCfg)
+			crud, _, err := providers.LoadGrafanaResource(ctx, loader, ReportResource())
 			if err != nil {
 				return err
 			}
 
 			result := newDeleteBatchResult()
 			for i, uuid := range args {
-				if err := client.Delete(ctx, uuid); err != nil {
+				if err := crud.Delete(ctx, uuid); err != nil {
 					cause := fmt.Errorf("failed to delete report %s: %w", uuid, err)
 					result.Summary.Failed++
 					result.Summary.Skipped = len(args) - i - 1

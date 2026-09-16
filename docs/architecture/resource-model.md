@@ -432,6 +432,14 @@ Registration
   +-- Factory func(ctx) (ResourceAdapter, error)
 ```
 
+Provider commands bind the same declaration through `Resource.TypedCRUD(client,
+namespace)`, sharing capability dispatch, descriptor, stripping, and examples
+with generic resource factories. Grafana-backed providers can use
+`providers.LoadGrafanaResource(ctx, loader, declaration)` to construct the client
+and return the resolved config snapshot for auxiliary queries. Convert manifests
+with `TypedCRUD.ToUnstructured` / `FromUnstructured`; a nil-client binding supports
+offline conversion without loading credentials.
+
 Providers can derive a registration from an `adapter.Resource[T]` declaration
 through `adapter.NewProvider`. Providers whose client methods need explicit
 adapters use `adapter.BuildRegistration[T, C]` instead.

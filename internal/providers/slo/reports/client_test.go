@@ -9,6 +9,7 @@ import (
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/slo/reports"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/client-go/rest"
@@ -89,7 +90,7 @@ func TestClient_List(t *testing.T) {
 			defer server.Close()
 
 			client := newTestClient(t, server)
-			rpts, err := client.List(t.Context())
+			rpts, err := client.List(t.Context(), adapter.ListOptions{})
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -282,7 +283,7 @@ func TestClient_Update(t *testing.T) {
 			defer server.Close()
 
 			client := newTestClient(t, server)
-			err := client.Update(t.Context(), tt.uuid, tt.report)
+			_, err := client.Update(t.Context(), tt.uuid, tt.report)
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -384,7 +385,7 @@ func TestClient_ErrorResponses(t *testing.T) {
 			defer server.Close()
 
 			client := newTestClient(t, server)
-			_, err := client.List(t.Context())
+			_, err := client.List(t.Context(), adapter.ListOptions{})
 
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.wantErrMsg)

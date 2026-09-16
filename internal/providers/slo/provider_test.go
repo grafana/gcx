@@ -119,3 +119,13 @@ func TestSLOProvider_CommandsReturnFreshTrees(t *testing.T) {
 	assert.Equal(t, "first tree", firstOutput.String())
 	assert.Empty(t, secondOutput.String())
 }
+
+func TestSLOProvider_Resources(t *testing.T) {
+	registrations := slo.NewSLOProvider().TypedRegistrations()
+	require.Len(t, registrations, 2)
+	for _, registration := range registrations {
+		assert.NotEmpty(t, registration.Schema)
+		assert.NotEmpty(t, registration.Example)
+		assert.NotNil(t, registration.Factory)
+	}
+}

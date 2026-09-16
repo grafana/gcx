@@ -9,6 +9,7 @@ import (
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/graph"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/slo/definitions"
 	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/grafana/gcx/internal/resources/adapter"
@@ -77,13 +78,7 @@ metrics, and computes combined SLI and error budget per report.`,
 
 			ctx := cmd.Context()
 
-			restCfg, err := loader.LoadGrafanaConfig(ctx)
-			if err != nil {
-				return err
-			}
-
-			// Create report and SLO definition clients.
-			reportClient, err := NewClient(restCfg)
+			reportClient, restCfg, err := providers.LoadGrafanaResource(ctx, loader, ReportResource())
 			if err != nil {
 				return err
 			}
@@ -106,11 +101,13 @@ metrics, and computes combined SLI and error budget per report.`,
 					if err != nil {
 						return err
 					}
-					reports = []Report{*r}
+					reports = []Report{r.Spec}
 					return nil
 				}
-				var err error
-				reports, err = reportClient.List(initCtx)
+				items, err := reportClient.List(initCtx, 0)
+				for _, item := range items {
+					reports = append(reports, item.Spec)
+				}
 				return err
 			})
 			initG.Go(func() error {
