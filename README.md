@@ -202,6 +202,12 @@ export GRAFANA_CLOUD_STACK="your-stack-slug"
 
 Env vars resolve at every command invocation, so you can run `gcx` commands directly without a prior `gcx login`.
 
+If you keep several contexts and run `gcx` from more than one session (or from
+a coding agent), `current-context` is shared mutable state: `gcx config
+use-context` in one shell retargets every other invocation. Set
+`GCX_REQUIRE_CONTEXT=true` so commands that reach Grafana must name
+`--context <name>` (or `GRAFANA_SERVER`) instead of inheriting the file default.
+
 For safety, an auto-discovered repository `.gcx.yaml` cannot attach runtime
 tokens, prompted login credentials, or external mTLS keypairs to destinations
 the file supplies. If you intend that file to own credentials or direct

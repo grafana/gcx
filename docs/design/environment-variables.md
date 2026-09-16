@@ -46,6 +46,7 @@ stack because its TLS and proxy settings affect the transport.
 | `GCX_TELEMETRY` | global | `enabled`, `disabled`, or `log`; takes precedence over `DO_NOT_TRACK` and config |
 | `DO_NOT_TRACK` | global | Disable anonymous telemetry when `1` or `true` unless `GCX_TELEMETRY` overrides it |
 | `GCX_NO_UPDATE_NOTIFIER` | global | Disable the periodic gcx/skill update notifier when non-empty |
+| `GCX_REQUIRE_CONTEXT` | global | Refuse commands that would fall back to `current-context`; the invocation must name `--context` or set `GRAFANA_SERVER`. Any non-empty value except `false`/`0`/`off`/`no` enables it. See [config-system.md § Strict Context Mode](../architecture/config-system.md#strict-context-mode) |
 | `NO_COLOR` | global | Disable color output ([no-color.org](https://no-color.org/)) |
 
 ### Provider Variables
