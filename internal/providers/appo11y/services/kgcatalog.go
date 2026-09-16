@@ -186,11 +186,9 @@ type indexResult struct {
 // when that page didn't cover every Service entity, so a caller can warn
 // instead of silently under-annotating. startMs/endMs are windowMs's
 // translation of the command's own --since window — see lookupVerbose's
-// doc comment for why that matters. services list (this PR's only caller)
-// has no --since and always passes (0, 0); "gcx appo11y operations list"
-// (next in the stack) calls this with a real windowMs(opts.Since) window.
-//
-//nolint:unparam // startMs/endMs vary once the next PR's caller lands; see doc comment above
+// doc comment for why that matters. services list (which has no --since)
+// always passes (0, 0); "gcx appo11y operations list" passes a real
+// windowMs(opts.Since) window.
 func (c *kgCatalog) index(ctx context.Context, startMs, endMs int64) indexResult {
 	out := map[string]*KGRef{}
 	active, err := c.client.Active(ctx)
