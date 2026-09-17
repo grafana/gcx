@@ -453,7 +453,9 @@ short group names. Output uses the descriptor's group.
 
 Agent Observability uses `agento11y.ext.grafana.app/v1alpha1` for `evaluators`,
 `evalrules`, `hookrules`, and `collections`. Its `sigil.ext.grafana.app` alias keeps
-old manifests and selectors such as `evalrules.sigil` working.
+old manifests and selectors such as `evalrules.sigil` working. Resource commands
+warn on stderr when an old group is used in a selector or a selected local manifest.
+Warnings name the replacement group and do not change stdout.
 
 ### ResourceClientRouter
 
