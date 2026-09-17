@@ -9,6 +9,7 @@ import (
 
 	"github.com/grafana/gcx/internal/providers/agento11y/agento11yhttp"
 	"github.com/grafana/gcx/internal/providers/agento11y/eval"
+	"github.com/grafana/gcx/internal/resources/adapter"
 )
 
 const (
@@ -33,7 +34,8 @@ func (c *Client) List(ctx context.Context) ([]eval.RuleDefinition, error) {
 
 // Get returns a single rule by ID.
 func (c *Client) Get(ctx context.Context, id string) (*eval.RuleDefinition, error) {
-	rule, err := agento11yhttp.DoJSON[any, eval.RuleDefinition](ctx, c.base, http.MethodGet, fmt.Sprintf(ruleByIDFmt, url.PathEscape(id)), nil, http.StatusOK)
+	rule, err := agento11yhttp.DoJSONNotFound[any, eval.RuleDefinition](ctx, c.base, http.MethodGet, fmt.Sprintf(ruleByIDFmt, url.PathEscape(id)), nil,
+		fmt.Errorf("eval rule %s: %w", id, adapter.ErrNotFound), http.StatusOK)
 	if err != nil {
 		return nil, err
 	}
