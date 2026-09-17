@@ -214,9 +214,10 @@ func TestClientGetConversationRejectsUnknownEngine(t *testing.T) {
 
 func TestClientGetConversationValidatesResponseStructure(t *testing.T) {
 	tests := []struct {
-		name      string
-		responses map[string]testHTTPResponse
-		wantErr   string
+		name        string
+		responses   map[string]testHTTPResponse
+		wantErr     string
+		wantContent assistant.ContentJSON
 	}{
 		{
 			name: "metadata missing data",
@@ -256,12 +257,34 @@ func TestClientGetConversationValidatesResponseStructure(t *testing.T) {
 			},
 			wantErr: "invalid text part",
 		},
+		{
+			name: "text part null",
+			responses: map[string]testHTTPResponse{
+				"/chats/chat-1":                         {body: `{"data":{"id":"chat-1","engine":"aisdk"}}`},
+				"/chats/chat-1/ui-messages?thread=main": {body: `{"data":{"thread":"main","messages":[{"id":"m1","role":"assistant","created":"2026-01-01T00:00:00Z","parts":[{"type":"text","text":null}]}],"fastMode":false}}`},
+			},
+			wantErr: "invalid text part",
+		},
+		{
+			name: "empty text part remains valid",
+			responses: map[string]testHTTPResponse{
+				"/chats/chat-1":                         {body: `{"data":{"id":"chat-1","engine":"aisdk"}}`},
+				"/chats/chat-1/ui-messages?thread=main": {body: `{"data":{"thread":"main","messages":[{"id":"m1","role":"assistant","created":"2026-01-01T00:00:00Z","parts":[{"type":"text","text":""}]}],"fastMode":false}}`},
+			},
+			wantContent: assistant.ContentJSON{{Type: "text", Text: ""}},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			client, _ := newConversationTestClient(t, tt.responses, nil)
-			_, err := client.GetConversation(context.Background(), assistant.ConversationReference{ID: "chat-1"})
+			got, err := client.GetConversation(context.Background(), assistant.ConversationReference{ID: "chat-1"})
+			if tt.wantContent != nil {
+				require.NoError(t, err)
+				require.Len(t, got.Messages, 1)
+				assert.Equal(t, tt.wantContent, got.Messages[0].Content)
+				return
+			}
 			require.ErrorContains(t, err, tt.wantErr)
 		})
 	}
