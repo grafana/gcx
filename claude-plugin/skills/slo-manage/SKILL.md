@@ -100,10 +100,10 @@ gcx resources push slos -p slo.yaml
 
 **Push semantics:**
 - `metadata.name` set to UUID → update if it exists; otherwise match by the SLO name before creating.
-- The server assigns the UUID for newly created definitions.
+- Empty `metadata.name` → match by the SLO name before creating; the server assigns a UUID only when creating.
 - A dry-run against an adapter without server validation is reported as unverified and sends no writes; it does not establish that the backend accepts the manifest.
 
-After creation, server assigns UUID. Run `gcx slo definitions list` to confirm.
+Run `gcx slo definitions list` to confirm.
 
 ## Workflow 2: Update Existing SLO
 

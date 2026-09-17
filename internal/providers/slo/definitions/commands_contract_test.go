@@ -530,24 +530,28 @@ func TestDefinitionsTimelineEmptyContract(t *testing.T) {
 }
 
 func TestDefinitionsPushUsesPipelineNaturalKeyMatching(t *testing.T) {
-	// Register the same natural key as the real provider, without loading credentials.
-	adapter.NewProvider("slo", "", nil, definitions.SloResource())
-	st := &sloAPIState{slos: map[string]definitions.Slo{
-		"target-uuid": {UUID: "target-uuid", Name: "Existing SLO"},
-	}}
-	srv := newSLOServer(t, st)
-	defer srv.Close()
-	file := writeSLOManifest(t, t.TempDir(), "slo.yaml", "Existing SLO", "source-uuid")
-	stdout, _, err := runDefinitions(t, srv.URL, false, "", "push", file, "-o", "json")
-	require.NoError(t, err)
-	assert.Zero(t, st.createCalls, "the shared pipeline must update the natural-key match")
-	doc, ok := decodeSingleJSONValue(t, stdout).(map[string]any)
-	require.True(t, ok)
-	items, ok := doc["items"].([]any)
-	require.True(t, ok)
-	require.Len(t, items, 1)
-	item, ok := items[0].(map[string]any)
-	require.True(t, ok)
-	assert.Equal(t, "updated", item["action"])
-	assert.Equal(t, "target-uuid", item["uuid"])
+	for _, uuid := range []string{"source-uuid", ""} {
+		t.Run("source UUID="+uuid, func(t *testing.T) {
+			// Register the same natural key as the real provider, without loading credentials.
+			adapter.NewProvider("slo", "", nil, definitions.SloResource())
+			st := &sloAPIState{slos: map[string]definitions.Slo{
+				"target-uuid": {UUID: "target-uuid", Name: "Existing SLO"},
+			}}
+			srv := newSLOServer(t, st)
+			defer srv.Close()
+			file := writeSLOManifest(t, t.TempDir(), "slo.yaml", "Existing SLO", uuid)
+			stdout, _, err := runDefinitions(t, srv.URL, false, "", "push", file, "-o", "json")
+			require.NoError(t, err)
+			assert.Zero(t, st.createCalls, "the shared pipeline must update the natural-key match")
+			doc, ok := decodeSingleJSONValue(t, stdout).(map[string]any)
+			require.True(t, ok)
+			items, ok := doc["items"].([]any)
+			require.True(t, ok)
+			require.Len(t, items, 1)
+			item, ok := items[0].(map[string]any)
+			require.True(t, ok)
+			assert.Equal(t, "updated", item["action"])
+			assert.Equal(t, "target-uuid", item["uuid"])
+		})
+	}
 }

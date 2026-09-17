@@ -465,22 +465,26 @@ func TestReportsPushAcceptsLegacyManifestFilename(t *testing.T) {
 }
 
 func TestReportsPushUsesPipelineNaturalKeyMatching(t *testing.T) {
-	adapter.NewProvider("slo", "", nil, reports.ReportResource())
-	st := &reportAPIState{reports: map[string]reports.Report{
-		"target-uuid": {UUID: "target-uuid", Name: "Existing report"},
-	}}
-	srv := newReportServer(t, st)
-	file := writeReportManifest(t, t.TempDir(), "report.yaml", "Existing report", "source-uuid")
-	stdout, _, err := runReports(t, srv.URL, false, "", "push", file, "-o", "json")
-	require.NoError(t, err)
-	assert.Zero(t, st.createCalls)
-	doc, ok := decodeSingleJSONValue(t, stdout).(map[string]any)
-	require.True(t, ok)
-	items, ok := doc["items"].([]any)
-	require.True(t, ok)
-	require.Len(t, items, 1)
-	item, ok := items[0].(map[string]any)
-	require.True(t, ok)
-	assert.Equal(t, "updated", item["action"])
-	assert.Equal(t, "target-uuid", item["uuid"])
+	for _, uuid := range []string{"source-uuid", ""} {
+		t.Run("source UUID="+uuid, func(t *testing.T) {
+			adapter.NewProvider("slo", "", nil, reports.ReportResource())
+			st := &reportAPIState{reports: map[string]reports.Report{
+				"target-uuid": {UUID: "target-uuid", Name: "Existing report"},
+			}}
+			srv := newReportServer(t, st)
+			file := writeReportManifest(t, t.TempDir(), "report.yaml", "Existing report", uuid)
+			stdout, _, err := runReports(t, srv.URL, false, "", "push", file, "-o", "json")
+			require.NoError(t, err)
+			assert.Zero(t, st.createCalls)
+			doc, ok := decodeSingleJSONValue(t, stdout).(map[string]any)
+			require.True(t, ok)
+			items, ok := doc["items"].([]any)
+			require.True(t, ok)
+			require.Len(t, items, 1)
+			item, ok := items[0].(map[string]any)
+			require.True(t, ok)
+			assert.Equal(t, "updated", item["action"])
+			assert.Equal(t, "target-uuid", item["uuid"])
+		})
+	}
 }

@@ -761,4 +761,7 @@ deprecated compatibility wrappers. `internal/providers/slo/transfer` uses
 the same execution components as `resources push/pull`; the wrappers retain
 file-at-a-time results, the `Kind/name.yaml` export layout, and local-only
 dry-run previews. Push validates the declared resource kind and uses pipeline
-natural-key matching. New workflows should use `resources push/pull`.
+natural-key matching for both absent and unknown UUIDs, so an existing resource
+with the same name is updated. Local-only dry-run previews show manifest identities
+and do not resolve the remote target or determine create versus update. New
+workflows should use `resources push/pull`.

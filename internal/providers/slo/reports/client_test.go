@@ -6,23 +6,20 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/slo/reports"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"k8s.io/client-go/rest"
 )
 
 func newTestClient(t *testing.T, server *httptest.Server) *reports.Client {
 	t.Helper()
-	cfg := config.NamespacedRESTConfig{
-		Config: rest.Config{Host: server.URL},
-	}
-	client, err := reports.NewClient(cfg)
+	client, err := reports.ReportResource().NewClient(t.Context(), adapter.ClientDeps{BaseURL: server.URL, HTTP: server.Client()})
 	require.NoError(t, err)
-	return client
+	reportClient, ok := client.(*reports.Client)
+	require.True(t, ok)
+	return reportClient
 }
 
 // writeJSON encodes v as JSON to w.

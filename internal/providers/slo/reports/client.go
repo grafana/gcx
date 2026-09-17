@@ -11,7 +11,6 @@ import (
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
-	"k8s.io/client-go/rest"
 )
 
 // ErrNotFound is returned when a requested report does not exist (HTTP 404).
@@ -26,19 +25,6 @@ const (
 type Client struct {
 	restConfig config.NamespacedRESTConfig
 	httpClient *http.Client
-}
-
-// NewClient creates a new SLO reports client.
-func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
-	httpClient, err := rest.HTTPClientFor(&cfg.Config)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create HTTP client: %w", err)
-	}
-
-	return &Client{
-		restConfig: cfg,
-		httpClient: httpClient,
-	}, nil
 }
 
 // List returns all SLO reports.
