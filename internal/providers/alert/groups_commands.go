@@ -37,7 +37,7 @@ type groupsListOpts struct {
 }
 
 func (o *groupsListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &GroupsTableCodec{})
+	cmdio.RegisterTable(&o.IO, GroupsTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for unlimited)")
@@ -78,27 +78,13 @@ func newGroupsListCommand(loader GrafanaConfigLoader) *cobra.Command {
 	return cmd
 }
 
-// GroupsTableCodec renders alert rule groups as a tabular table.
-type GroupsTableCodec struct{}
-
-func (c *GroupsTableCodec) Format() format.Format { return "table" }
-
-func (c *GroupsTableCodec) Encode(w io.Writer, v any) error {
-	groups, ok := v.([]RuleGroup)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []RuleGroup")
-	}
-
-	t := style.NewTable("NAME", "FOLDER", "RULES", "INTERVAL")
-	for _, g := range groups {
-		// Interval is in seconds per the Prometheus/Grafana ruler API contract.
-		t.Row(g.Name, g.FolderUID, strconv.Itoa(len(g.Rules)), strconv.Itoa(g.Interval)+"s")
-	}
-	return t.Render(w)
-}
-
-func (c *GroupsTableCodec) Decode(r io.Reader, v any) error {
-	return errors.New("table format does not support decoding")
+func GroupsTable() cmdio.Table[RuleGroup] {
+	return cmdio.Table[RuleGroup]{Columns: []cmdio.Column[RuleGroup]{
+		{Header: "NAME", Content: func(r RuleGroup) string { return r.Name }},
+		{Header: "FOLDER", Content: func(r RuleGroup) string { return r.FolderUID }},
+		{Header: "RULES", Content: func(r RuleGroup) string { return strconv.Itoa(len(r.Rules)) }},
+		{Header: "INTERVAL", Content: func(r RuleGroup) string { return strconv.Itoa(r.Interval) + "s" }},
+	}}
 }
 
 type groupsGetOpts struct {

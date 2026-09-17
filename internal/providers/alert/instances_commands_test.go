@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"testing"
 
+	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/providers/alert"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -12,14 +13,14 @@ import (
 func TestInstancesTableCodec_Encode(t *testing.T) {
 	tests := []struct {
 		name         string
-		codec        *alert.InstancesTableCodec
+		codec        format.Codec
 		instances    []alert.AlertInstanceRecord
 		wantFormat   string
 		wantContains []string
 	}{
 		{
 			name:  "table mode",
-			codec: &alert.InstancesTableCodec{},
+			codec: alert.InstancesTable().Codec("table"),
 			instances: []alert.AlertInstanceRecord{
 				{
 					RuleUID:  "rule-1",
@@ -54,7 +55,7 @@ func TestInstancesTableCodec_Encode(t *testing.T) {
 		},
 		{
 			name:  "wide mode",
-			codec: &alert.InstancesTableCodec{Wide: true},
+			codec: alert.InstancesTable().Codec("wide"),
 			instances: []alert.AlertInstanceRecord{
 				{
 					RuleUID:   "rule-1",
@@ -100,18 +101,18 @@ func TestInstancesTableCodec_Encode(t *testing.T) {
 func TestInstancesTableCodec_Errors(t *testing.T) {
 	tests := []struct {
 		name string
-		run  func(*alert.InstancesTableCodec) error
+		run  func(format.Codec) error
 	}{
 		{
 			name: "invalid encode type",
-			run: func(codec *alert.InstancesTableCodec) error {
+			run: func(codec format.Codec) error {
 				var buf bytes.Buffer
 				return codec.Encode(&buf, "not instances")
 			},
 		},
 		{
 			name: "decode not supported",
-			run: func(codec *alert.InstancesTableCodec) error {
+			run: func(codec format.Codec) error {
 				return codec.Decode(nil, nil)
 			},
 		},
@@ -119,7 +120,7 @@ func TestInstancesTableCodec_Errors(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			codec := &alert.InstancesTableCodec{}
+			codec := alert.InstancesTable().Codec("table")
 			err := tc.run(codec)
 			require.Error(t, err)
 		})

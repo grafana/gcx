@@ -107,12 +107,12 @@ func TestStateHistoryTableCodec(t *testing.T) {
 	}}
 
 	var narrow bytes.Buffer
-	require.NoError(t, (&alert.StateHistoryTableCodec{}).Encode(&narrow, rows))
+	require.NoError(t, (alert.StateHistoryTable().Codec("table")).Encode(&narrow, rows))
 	assert.Contains(t, narrow.String(), "CURRENT")
 	assert.NotContains(t, narrow.String(), "RULE_UID")
 
 	var wide bytes.Buffer
-	require.NoError(t, (&alert.StateHistoryTableCodec{Wide: true}).Encode(&wide, rows))
+	require.NoError(t, (alert.StateHistoryTable().Codec("wide")).Encode(&wide, rows))
 	assert.Contains(t, wide.String(), "RULE_UID")
 	assert.Contains(t, wide.String(), "uid-1")
 }

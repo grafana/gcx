@@ -11,7 +11,7 @@ import (
 )
 
 func TestRulesTableCodec_Encode(t *testing.T) {
-	codec := &alert.RulesTableCodec{}
+	codec := alert.RulesTable().Codec("table")
 	assert.Equal(t, "table", string(codec.Format()))
 
 	rules := []alert.RuleStatus{
@@ -42,7 +42,7 @@ func TestRulesTableCodec_Encode(t *testing.T) {
 }
 
 func TestRulesTableCodec_Encode_Wide(t *testing.T) {
-	codec := &alert.RulesTableCodec{Wide: true}
+	codec := alert.RulesTable().Codec("wide")
 	assert.Equal(t, "wide", string(codec.Format()))
 
 	rules := []alert.RuleStatus{
@@ -83,14 +83,14 @@ func TestRulesTableCodec_Encode_Wide(t *testing.T) {
 }
 
 func TestRulesTableCodec_InvalidType(t *testing.T) {
-	codec := &alert.RulesTableCodec{}
+	codec := alert.RulesTable().Codec("table")
 	var buf bytes.Buffer
 	err := codec.Encode(&buf, "not a slice")
 	require.Error(t, err)
 }
 
 func TestRulesTableCodec_Decode(t *testing.T) {
-	codec := &alert.RulesTableCodec{}
+	codec := alert.RulesTable().Codec("table")
 	err := codec.Decode(nil, nil)
 	require.Error(t, err)
 }

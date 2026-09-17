@@ -1,16 +1,12 @@
 package alert
 
 import (
-	"errors"
 	"fmt"
-	"io"
 	"regexp"
 	"sort"
 	"strings"
 
-	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
-	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -56,8 +52,7 @@ func (o *instancesListOpts) Validate() error {
 }
 
 func (o *instancesListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &InstancesTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &InstancesTableCodec{Wide: true})
+	cmdio.RegisterTable(&o.IO, InstancesTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.StringVar(&o.RuleUID, "rule", "", "Filter by rule UID")
@@ -117,48 +112,17 @@ func newInstancesListCommand(loader GrafanaConfigLoader) *cobra.Command {
 	return cmd
 }
 
-// InstancesTableCodec renders alert instances as tabular output.
-type InstancesTableCodec struct {
-	Wide bool
-}
-
-func (c *InstancesTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
-	}
-	return "table"
-}
-
-func (c *InstancesTableCodec) Encode(w io.Writer, v any) error {
-	instances, ok := v.([]AlertInstanceRecord)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []AlertInstanceRecord")
-	}
-
-	var t *style.TableBuilder
-	if c.Wide {
-		t = style.NewTable("RULE_UID", "RULE", "GROUP", "FOLDER", "STATE", "ACTIVE_AT", "VALUE", "LABELS")
-	} else {
-		t = style.NewTable("RULE_UID", "RULE", "STATE", "ACTIVE_AT", "VALUE", "LABELS")
-	}
-
-	for _, inst := range instances {
-		activeAt := orDash(inst.ActiveAt)
-		value := dashForNil(inst.Value)
-		labels := formatLabels(inst.Labels)
-
-		if c.Wide {
-			t.Row(inst.RuleUID, inst.RuleName, inst.GroupName, orDash(inst.FolderUID), inst.State, activeAt, value, labels)
-			continue
-		}
-
-		t.Row(inst.RuleUID, inst.RuleName, inst.State, activeAt, value, labels)
-	}
-	return t.Render(w)
-}
-
-func (c *InstancesTableCodec) Decode(r io.Reader, v any) error {
-	return errors.New("table format does not support decoding")
+func InstancesTable() cmdio.Table[AlertInstanceRecord] {
+	return cmdio.Table[AlertInstanceRecord]{Columns: []cmdio.Column[AlertInstanceRecord]{
+		{Header: "RULE_UID", Content: func(r AlertInstanceRecord) string { return r.RuleUID }},
+		{Header: "RULE", Content: func(r AlertInstanceRecord) string { return r.RuleName }},
+		{Header: "GROUP", Visible: cmdio.WideOnly, Content: func(r AlertInstanceRecord) string { return r.GroupName }},
+		{Header: "FOLDER", Visible: cmdio.WideOnly, Content: func(r AlertInstanceRecord) string { return orDash(r.FolderUID) }},
+		{Header: "STATE", Content: func(r AlertInstanceRecord) string { return r.State }},
+		{Header: "ACTIVE_AT", Content: func(r AlertInstanceRecord) string { return orDash(r.ActiveAt) }},
+		{Header: "VALUE", Content: func(r AlertInstanceRecord) string { return dashForNil(r.Value) }},
+		{Header: "LABELS", Content: func(r AlertInstanceRecord) string { return formatLabels(r.Labels) }},
+	}}
 }
 
 func filterInstancesByName(instances []AlertInstanceRecord, re *regexp.Regexp) []AlertInstanceRecord {

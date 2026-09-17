@@ -190,7 +190,7 @@ func TestRulerGroupsDelete_DeclinesWithoutForce(t *testing.T) {
 }
 
 func TestRulerNamespacesTableCodec_Encode(t *testing.T) {
-	codec := &alert.RulerNamespacesTableCodec{}
+	codec := alert.RulerNamespacesTable().Codec("table")
 	assert.Equal(t, "table", string(codec.Format()))
 
 	var buf bytes.Buffer
@@ -210,7 +210,7 @@ func TestRulerNamespacesTableCodec_Encode(t *testing.T) {
 }
 
 func TestRulerGroupsTableCodec_Encode(t *testing.T) {
-	codec := &alert.RulerGroupsTableCodec{}
+	codec := alert.RulerGroupsTable().Codec("table")
 	assert.Equal(t, "table", string(codec.Format()))
 
 	var buf bytes.Buffer

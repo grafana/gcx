@@ -4,16 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"sort"
 	"strconv"
 
 	"github.com/grafana/gcx/internal/datasources/query"
-	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
-	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -105,7 +102,7 @@ type rulerNamespacesListOpts struct {
 }
 
 func (o *rulerNamespacesListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &RulerNamespacesTableCodec{})
+	cmdio.RegisterTable(&o.IO, RulerNamespacesTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	o.rulerOpts.setup(flags)
@@ -155,25 +152,12 @@ func newRulerNamespacesListCommand(loader GrafanaConfigLoader) *cobra.Command {
 	return cmd
 }
 
-// RulerNamespacesTableCodec renders ruler namespaces as a table.
-type RulerNamespacesTableCodec struct{}
-
-func (c *RulerNamespacesTableCodec) Format() format.Format { return "table" }
-
-func (c *RulerNamespacesTableCodec) Encode(w io.Writer, v any) error {
-	views, ok := v.([]RulerNamespaceView)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []RulerNamespaceView")
-	}
-	t := style.NewTable("NAMESPACE", "GROUPS", "RULES")
-	for _, n := range views {
-		t.Row(n.Namespace, strconv.Itoa(n.Groups), strconv.Itoa(n.Rules))
-	}
-	return t.Render(w)
-}
-
-func (c *RulerNamespacesTableCodec) Decode(io.Reader, any) error {
-	return errors.New("table format does not support decoding")
+func RulerNamespacesTable() cmdio.Table[RulerNamespaceView] {
+	return cmdio.Table[RulerNamespaceView]{Columns: []cmdio.Column[RulerNamespaceView]{
+		{Header: "NAMESPACE", Content: func(r RulerNamespaceView) string { return r.Namespace }},
+		{Header: "GROUPS", Content: func(r RulerNamespaceView) string { return strconv.Itoa(r.Groups) }},
+		{Header: "RULES", Content: func(r RulerNamespaceView) string { return strconv.Itoa(r.Rules) }},
+	}}
 }
 
 type rulerNamespacesDeleteOpts struct {
@@ -271,7 +255,7 @@ type rulerGroupsListOpts struct {
 }
 
 func (o *rulerGroupsListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &RulerGroupsTableCodec{})
+	cmdio.RegisterTable(&o.IO, RulerGroupsTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	o.rulerOpts.setup(flags)
@@ -336,29 +320,13 @@ func newRulerGroupsListCommand(loader GrafanaConfigLoader) *cobra.Command {
 	return cmd
 }
 
-// RulerGroupsTableCodec renders ruler rule groups as a table.
-type RulerGroupsTableCodec struct{}
-
-func (c *RulerGroupsTableCodec) Format() format.Format { return "table" }
-
-func (c *RulerGroupsTableCodec) Encode(w io.Writer, v any) error {
-	views, ok := v.([]RulerGroupView)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []RulerGroupView")
-	}
-	t := style.NewTable("NAMESPACE", "GROUP", "INTERVAL", "RULES")
-	for _, g := range views {
-		interval := g.Interval
-		if interval == "" {
-			interval = "-"
-		}
-		t.Row(g.Namespace, g.Group, interval, strconv.Itoa(g.Rules))
-	}
-	return t.Render(w)
-}
-
-func (c *RulerGroupsTableCodec) Decode(io.Reader, any) error {
-	return errors.New("table format does not support decoding")
+func RulerGroupsTable() cmdio.Table[RulerGroupView] {
+	return cmdio.Table[RulerGroupView]{Columns: []cmdio.Column[RulerGroupView]{
+		{Header: "NAMESPACE", Content: func(r RulerGroupView) string { return r.Namespace }},
+		{Header: "GROUP", Content: func(r RulerGroupView) string { return r.Group }},
+		{Header: "INTERVAL", Content: func(r RulerGroupView) string { return orDash(r.Interval) }},
+		{Header: "RULES", Content: func(r RulerGroupView) string { return strconv.Itoa(r.Rules) }},
+	}}
 }
 
 type rulerGroupsGetOpts struct {
