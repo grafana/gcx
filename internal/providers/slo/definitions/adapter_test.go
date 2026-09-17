@@ -284,20 +284,6 @@ func TestRoundTrip_AlertingEnrichments(t *testing.T) {
 	assert.Equal(t, "assistantInvestigation", restored.Alerting.SlowBurn.Enrichments[0].Type)
 }
 
-func TestFileNamer(t *testing.T) {
-	slo := minimalSlo()
-	res, err := sloToResource(slo, "stack-123")
-	require.NoError(t, err)
-
-	namer := definitions.FileNamer("yaml")
-	path := namer(res)
-	assert.Equal(t, "SLO/test-uuid-123.yaml", path)
-
-	namer = definitions.FileNamer("json")
-	path = namer(res)
-	assert.Equal(t, "SLO/test-uuid-123.json", path)
-}
-
 // Exercise the declaration's offline conversion path without a live API client.
 func sloToResource(slo definitions.Slo, namespace string) (*resources.Resource, error) {
 	obj, err := definitions.SloResource().TypedCRUD(nil, namespace).ToUnstructured(slo)

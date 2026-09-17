@@ -105,10 +105,13 @@ metrics, and computes combined SLI and error budget per report.`,
 					return nil
 				}
 				items, err := reportClient.List(initCtx, 0)
+				if err != nil {
+					return err
+				}
 				for _, item := range items {
 					reports = append(reports, item.Spec)
 				}
-				return err
+				return nil
 			})
 			initG.Go(func() error {
 				var err error

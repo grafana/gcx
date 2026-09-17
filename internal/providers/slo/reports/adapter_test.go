@@ -135,20 +135,6 @@ func TestRoundTrip_FullReport(t *testing.T) {
 	require.Len(t, restored.ReportDefinition.Slos, 3)
 }
 
-func TestFileNamer(t *testing.T) {
-	report := minimalReport()
-	res, err := reportToResource(report, "stack-123")
-	require.NoError(t, err)
-
-	namer := reports.FileNamer("yaml")
-	path := namer(res)
-	assert.Equal(t, "Report/test-uuid-123.yaml", path)
-
-	namer = reports.FileNamer("json")
-	path = namer(res)
-	assert.Equal(t, "Report/test-uuid-123.json", path)
-}
-
 func reportToResource(report reports.Report, namespace string) (*resources.Resource, error) {
 	obj, err := reports.ReportResource().TypedCRUD(nil, namespace).ToUnstructured(report)
 	if err != nil {

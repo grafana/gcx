@@ -145,6 +145,7 @@ func TestClient_Get(t *testing.T) {
 				require.Error(t, err)
 				if tt.name == "not found" {
 					require.ErrorIs(t, err, reports.ErrNotFound)
+					require.EqualError(t, err, "report not found")
 				}
 				return
 			}

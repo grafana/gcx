@@ -15,7 +15,7 @@ import (
 )
 
 // ErrNotFound is returned when a requested report does not exist (HTTP 404).
-var ErrNotFound = fmt.Errorf("report not found: %w", adapter.ErrNotFound)
+var ErrNotFound = fmt.Errorf("report %w", adapter.ErrNotFound)
 
 const (
 	basePath        = "/api/plugins/grafana-slo-app/resources/v1/report"

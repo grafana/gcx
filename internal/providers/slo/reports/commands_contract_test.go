@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/providers/slo/reports"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/client-go/rest"
@@ -461,4 +462,25 @@ func TestReportsPushAcceptsLegacyManifestFilename(t *testing.T) {
 	file := writeReportManifest(t, t.TempDir(), "report.manifest", "Weekly", "")
 	_, _, err := runReports(t, srv.URL, false, "", "push", file, "--dry-run")
 	require.NoError(t, err)
+}
+
+func TestReportsPushUsesPipelineNaturalKeyMatching(t *testing.T) {
+	adapter.NewProvider("slo", "", nil, reports.ReportResource())
+	st := &reportAPIState{reports: map[string]reports.Report{
+		"target-uuid": {UUID: "target-uuid", Name: "Existing report"},
+	}}
+	srv := newReportServer(t, st)
+	file := writeReportManifest(t, t.TempDir(), "report.yaml", "Existing report", "source-uuid")
+	stdout, _, err := runReports(t, srv.URL, false, "", "push", file, "-o", "json")
+	require.NoError(t, err)
+	assert.Zero(t, st.createCalls)
+	doc, ok := decodeSingleJSONValue(t, stdout).(map[string]any)
+	require.True(t, ok)
+	items, ok := doc["items"].([]any)
+	require.True(t, ok)
+	require.Len(t, items, 1)
+	item, ok := items[0].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "updated", item["action"])
+	assert.Equal(t, "target-uuid", item["uuid"])
 }

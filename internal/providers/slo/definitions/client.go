@@ -15,7 +15,7 @@ import (
 )
 
 // ErrNotFound is returned when a requested SLO does not exist (HTTP 404).
-var ErrNotFound = fmt.Errorf("SLO not found: %w", adapter.ErrNotFound)
+var ErrNotFound = fmt.Errorf("SLO %w", adapter.ErrNotFound)
 
 const (
 	basePath     = "/api/plugins/grafana-slo-app/resources/v1/slo"
