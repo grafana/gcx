@@ -911,15 +911,28 @@ func smPluginDatasourceName(ctx context.Context, restCfg config.NamespacedRESTCo
 	}
 
 	var body struct {
-		JSONData map[string]struct {
-			GrafanaName string `json:"grafanaName"`
+		JSONData struct {
+			Metrics struct {
+				GrafanaName string `json:"grafanaName"`
+			} `json:"metrics"`
+			Logs struct {
+				GrafanaName string `json:"grafanaName"`
+			} `json:"logs"`
 		} `json:"jsonData"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		return "", err
 	}
 
-	name := body.JSONData[section].GrafanaName
+	var name string
+	switch section {
+	case "metrics":
+		name = body.JSONData.Metrics.GrafanaName
+	case "logs":
+		name = body.JSONData.Logs.GrafanaName
+	default:
+		return "", fmt.Errorf("unknown SM plugin datasource section %q", section)
+	}
 	if name == "" {
 		return "", fmt.Errorf("%s datasource not configured in SM plugin settings", section)
 	}

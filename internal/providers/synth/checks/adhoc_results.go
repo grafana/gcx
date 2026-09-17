@@ -3,6 +3,7 @@ package checks
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"time"
@@ -138,6 +139,12 @@ func PollAdHocResults(ctx context.Context, lokiClient *loki.Client, dsUID, id st
 			return orderedAdHocResults(reported, probeNames), nil
 		case <-ticker.C:
 			if err := poll(); err != nil {
+				if errors.Is(pollCtx.Err(), context.DeadlineExceeded) {
+					for name, probeID := range pendingByName {
+						reported[name] = AdHocProbeResult{ProbeID: probeID, ProbeName: name, Status: AdHocTimeout}
+					}
+					return orderedAdHocResults(reported, probeNames), nil
+				}
 				return nil, fmt.Errorf("querying ad-hoc results: %w", err)
 			}
 		}
