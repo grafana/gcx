@@ -71,7 +71,7 @@ func ValidateTimelineFlags(cmd *cobra.Command) error {
 	return nil
 }
 
-func newTimelineCommand(loader GrafanaConfigLoader) *cobra.Command {
+func newTimelineCommand(resource providers.BoundResource[Slo]) *cobra.Command {
 	opts := &timelineOpts{}
 	cmd := &cobra.Command{
 		Use:   "timeline [UUID]",
@@ -114,7 +114,7 @@ grafana_slo_sli_window metrics.`,
 
 			ctx := cmd.Context()
 
-			crud, cfg, err := providers.LoadGrafanaResource(ctx, loader, SloResource())
+			crud, cfg, err := resource.Load(ctx)
 			if err != nil {
 				return err
 			}

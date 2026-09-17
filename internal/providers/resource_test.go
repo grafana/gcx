@@ -32,7 +32,7 @@ type resourceItem struct {
 
 func (i resourceItem) GetResourceName() string { return i.Name }
 
-func TestLoadGrafanaResource(t *testing.T) {
+func TestBoundResource_Load(t *testing.T) {
 	failure := errors.New("failed")
 	for _, tc := range []struct {
 		name               string
@@ -66,7 +66,7 @@ func TestLoadGrafanaResource(t *testing.T) {
 					return struct{}{}, nil
 				},
 			}
-			crud, cfg, err := providers.LoadGrafanaResource(t.Context(), loader, resource)
+			crud, cfg, err := providers.BindGrafanaResource(loader, resource).Load(t.Context())
 			assert.Equal(t, 1, loader.calls)
 			if tc.loadErr != nil || tc.clientErr != nil {
 				require.ErrorIs(t, err, failure)
@@ -83,4 +83,30 @@ func TestLoadGrafanaResource(t *testing.T) {
 			assert.Equal(t, "selected-stack", obj.GetNamespace())
 		})
 	}
+}
+
+func TestBoundResource_LoadsFreshConfiguration(t *testing.T) {
+	loader := &resourceLoader{cfg: config.NamespacedRESTConfig{Config: rest.Config{Host: "https://first.example"}, Namespace: "first"}}
+	var hosts []string
+	bound := providers.BindGrafanaResource(loader, adapter.Resource[resourceItem]{
+		Group: "test.grafana.app", Version: "v1", Kind: "Item",
+		NewClient: func(_ context.Context, deps adapter.ClientDeps) (any, error) {
+			hosts = append(hosts, deps.BaseURL)
+			return struct{}{}, nil
+		},
+	})
+	assert.Zero(t, loader.calls)
+	assert.Empty(t, hosts)
+	for _, namespace := range []string{"first", "second"} {
+		loader.cfg.Namespace = namespace
+		loader.cfg.Host = "https://" + namespace + ".example"
+		crud, cfg, err := bound.Load(t.Context())
+		require.NoError(t, err)
+		assert.Equal(t, namespace, cfg.Namespace)
+		obj, err := crud.ToUnstructured(resourceItem{Name: "one"})
+		require.NoError(t, err)
+		assert.Equal(t, namespace, obj.GetNamespace())
+	}
+	assert.Equal(t, 2, loader.calls)
+	assert.Equal(t, []string{"https://first.example", "https://second.example"}, hosts)
 }

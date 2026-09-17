@@ -62,7 +62,7 @@ func (o *statusOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func newStatusCommand(loader GrafanaConfigLoader) *cobra.Command {
+func newStatusCommand(resource providers.BoundResource[Slo]) *cobra.Command {
 	opts := &statusOpts{}
 	cmd := &cobra.Command{
 		Use:   "status [UUID]",
@@ -94,7 +94,7 @@ grafana_slo_* metrics.`,
 
 			ctx := cmd.Context()
 
-			crud, cfg, err := providers.LoadGrafanaResource(ctx, loader, SloResource())
+			crud, cfg, err := resource.Load(ctx)
 			if err != nil {
 				return err
 			}

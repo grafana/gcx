@@ -435,7 +435,7 @@ Registration
 Provider commands bind the same declaration through `Resource.TypedCRUD(client,
 namespace)`, sharing capability dispatch, descriptor, stripping, and examples
 with generic resource factories. Grafana-backed providers can use
-`providers.LoadGrafanaResource(ctx, loader, declaration)` to construct the client
+`providers.BindGrafanaResource(loader, declaration).Load(ctx)` to construct the client
 and return the resolved config snapshot for auxiliary queries. Convert manifests
 with `TypedCRUD.ToUnstructured` / `FromUnstructured`; a nil-client binding supports
 offline conversion without loading credentials.

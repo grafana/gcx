@@ -129,3 +129,15 @@ func TestSLOProvider_Resources(t *testing.T) {
 		assert.NotNil(t, registration.Factory)
 	}
 }
+
+func TestSLOProvider_InheritsRootHook(t *testing.T) {
+	calls := 0
+	root := &cobra.Command{Use: "gcx", PersistentPreRun: func(_ *cobra.Command, _ []string) { calls++ }}
+	root.AddCommand(slo.NewSLOProvider().Commands()...)
+	cmd, _, err := root.Find([]string{"slo", "reports", "list"})
+	require.NoError(t, err)
+	cmd.RunE = func(_ *cobra.Command, _ []string) error { return nil }
+	root.SetArgs([]string{"slo", "reports", "list"})
+	require.NoError(t, root.Execute())
+	assert.Equal(t, 1, calls)
+}

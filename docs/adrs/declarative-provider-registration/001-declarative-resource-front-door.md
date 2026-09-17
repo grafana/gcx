@@ -68,13 +68,13 @@ SLO's create/update-and-refetch behavior moves into its client methods.
 Provider commands and generic resource operations call those same methods.
 The command tree and declarative registration both use `Resource.TypedCRUD`
 to bind capabilities and resource metadata. Grafana-backed commands use
-`providers.LoadGrafanaResource`, which resolves one config snapshot and returns
-it alongside the typed CRUD for auxiliary queries. Registration uses
+`providers.BindGrafanaResource` inside each resource's command factory.
+Binding does no I/O; each leaf calls `Load` after validation and confirmation
+to resolve one fresh config snapshot alongside typed CRUD for auxiliary queries. Registration uses
 `providers.LoadGrafanaDeps` for the same transport construction. SLO no longer
 maintains its own descriptor, CRUD wiring, or manifest conversion implementation;
 the adapter owns conversion in both directions. Domain-specific command workflows
 and table rendering remain in SLO.
-
 
 ## Consequences and alternatives
 

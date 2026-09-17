@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/providers/slo/api"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"k8s.io/client-go/rest"
 )
@@ -11,7 +12,7 @@ import (
 // ReportResource is shared by provider commands and the generic resource pipeline.
 func ReportResource() adapter.Resource[Report] {
 	return adapter.Resource[Report]{
-		Group: "slo.ext.grafana.app", Version: "v1alpha1", Kind: Kind,
+		Group: api.Group, Version: api.Version, Kind: "Report",
 		StripFields: []string{"uuid"},
 		Example: &Report{
 			UUID: "my-report", Name: "Weekly availability", Description: "Availability of the selected SLOs",

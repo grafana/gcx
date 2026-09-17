@@ -70,8 +70,8 @@ func TestToResource_MinimalSLO(t *testing.T) {
 	res, err := sloToResource(slo, "stack-123")
 	require.NoError(t, err)
 
-	assert.Equal(t, definitions.APIVersion, res.APIVersion())
-	assert.Equal(t, definitions.Kind, res.Kind())
+	assert.Equal(t, "slo.ext.grafana.app/v1alpha1", res.APIVersion())
+	assert.Equal(t, "SLO", res.Kind())
 	assert.Equal(t, "test-uuid-123", res.Name())
 	assert.Equal(t, "stack-123", res.Namespace())
 

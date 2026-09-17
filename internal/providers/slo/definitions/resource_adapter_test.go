@@ -93,8 +93,8 @@ func TestResourceAdapter_List(t *testing.T) {
 				})
 			},
 			wantLen:       2,
-			wantAPIVer:    definitions.APIVersion,
-			wantKind:      definitions.Kind,
+			wantAPIVer:    "slo.ext.grafana.app/v1alpha1",
+			wantKind:      "SLO",
 			wantNamespace: "stack-123",
 		},
 		{
@@ -188,8 +188,8 @@ func TestResourceAdapter_Get(t *testing.T) {
 
 			require.NoError(t, err)
 			assert.Equal(t, tt.wantName, result.GetName())
-			assert.Equal(t, definitions.APIVersion, result.GetAPIVersion())
-			assert.Equal(t, definitions.Kind, result.GetKind())
+			assert.Equal(t, "slo.ext.grafana.app/v1alpha1", result.GetAPIVersion())
+			assert.Equal(t, "SLO", result.GetKind())
 		})
 	}
 }
@@ -237,8 +237,8 @@ func TestResourceAdapter_Create(t *testing.T) {
 	result, err := a.Create(t.Context(), &obj, metav1.CreateOptions{})
 	require.NoError(t, err)
 	assert.Equal(t, createdUUID, result.GetName())
-	assert.Equal(t, definitions.APIVersion, result.GetAPIVersion())
-	assert.Equal(t, definitions.Kind, result.GetKind())
+	assert.Equal(t, "slo.ext.grafana.app/v1alpha1", result.GetAPIVersion())
+	assert.Equal(t, "SLO", result.GetKind())
 }
 
 func TestResourceAdapter_Update(t *testing.T) {
@@ -389,8 +389,8 @@ func TestResourceAdapter_ListPopulatesMetadata(t *testing.T) {
 	item := result.Items[0]
 	assert.Equal(t, "meta-uuid", item.GetName())
 	assert.Equal(t, "meta-ns", item.GetNamespace())
-	assert.Equal(t, definitions.APIVersion, item.GetAPIVersion())
-	assert.Equal(t, definitions.Kind, item.GetKind())
+	assert.Equal(t, "slo.ext.grafana.app/v1alpha1", item.GetAPIVersion())
+	assert.Equal(t, "SLO", item.GetKind())
 
 	// Verify spec is populated.
 	spec, found, err := unstructured.NestedMap(item.Object, "spec")
@@ -430,7 +430,7 @@ func TestSloResource_RegistrationDerivesSchemaAndExample(t *testing.T) {
 // TestSloResource_SharedByBothFrontDoors covers AC-001/AC-019: the same
 // definitions.SloResource declaration (and therefore the same NewClient /
 // capability-seam construction) backs both provider.go's `gcx slo` command
-// tree (via providers.LoadGrafanaResource) and the `gcx resources` pipeline (via
+// tree (via providers.BoundResource.Load) and the `gcx resources` pipeline (via
 // adapter.NewProvider's TypedRegistrations()) — this test drives both call
 // sites against the same test server and asserts field-for-field equivalent
 // data.
@@ -456,7 +456,7 @@ func TestSloResource_SharedByBothFrontDoors(t *testing.T) {
 
 	// Front door 2: gcx slo definitions, through the shared resource loader.
 	loader := stubGrafanaConfigLoader{host: server.URL, namespace: "shared-ns"}
-	crud, _, err := providers.LoadGrafanaResource(t.Context(), loader, definitions.SloResource())
+	crud, _, err := providers.BindGrafanaResource(loader, definitions.SloResource()).Load(t.Context())
 	require.NoError(t, err)
 	viaCommands, err := crud.List(t.Context(), 0)
 	require.NoError(t, err)
@@ -476,7 +476,7 @@ func TestSloResource_SharedByBothFrontDoors(t *testing.T) {
 	assert.NotEmpty(t, crud.Example)
 }
 
-// stubGrafanaConfigLoader implements definitions.GrafanaConfigLoader for
+// stubGrafanaConfigLoader implements providers.GrafanaConfigLoader for
 // TestSloResource_SharedByBothFrontDoors.
 type stubGrafanaConfigLoader struct {
 	host      string

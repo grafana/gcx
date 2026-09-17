@@ -29,11 +29,6 @@ func newSLOCommands() []*cobra.Command {
 	sloCmd := &cobra.Command{
 		Use:   "slo",
 		Short: shortDesc,
-		PersistentPreRun: func(cmd *cobra.Command, args []string) {
-			if root := cmd.Root(); root.PersistentPreRun != nil {
-				root.PersistentPreRun(cmd, args)
-			}
-		},
 	}
 
 	// Bind config flags on the parent — all subcommands inherit these.

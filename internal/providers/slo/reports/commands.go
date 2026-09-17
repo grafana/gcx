@@ -10,7 +10,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
@@ -22,26 +21,22 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
-// GrafanaConfigLoader can load a NamespacedRESTConfig from the active context.
-type GrafanaConfigLoader interface {
-	LoadGrafanaConfig(ctx context.Context) (config.NamespacedRESTConfig, error)
-}
-
 // Commands returns the reports command group with CRUD subcommands.
-func Commands(loader GrafanaConfigLoader) *cobra.Command {
+func Commands(loader providers.GrafanaConfigLoader) *cobra.Command {
+	resource := providers.BindGrafanaResource(loader, ReportResource())
 	cmd := &cobra.Command{
 		Use:     "reports",
 		Short:   "Manage SLO reports.",
 		Aliases: []string{"report"},
 	}
 	cmd.AddCommand(
-		newListCommand(loader),
-		newGetCommand(loader),
-		newPushCommand(loader),
-		newPullCommand(loader),
-		newDeleteCommand(loader),
-		newStatusCommand(loader),
-		newTimelineCommand(loader),
+		newListCommand(resource),
+		newGetCommand(resource),
+		newPushCommand(resource),
+		newPullCommand(resource),
+		newDeleteCommand(resource),
+		newStatusCommand(resource),
+		newTimelineCommand(resource),
 	)
 	return cmd
 }
@@ -63,7 +58,7 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
 }
 
-func newListCommand(loader GrafanaConfigLoader) *cobra.Command {
+func newListCommand(resource providers.BoundResource[Report]) *cobra.Command {
 	opts := &listOpts{}
 	cmd := &cobra.Command{
 		Use:   "list",
@@ -75,7 +70,7 @@ func newListCommand(loader GrafanaConfigLoader) *cobra.Command {
 
 			ctx := cmd.Context()
 
-			crud, _, err := providers.LoadGrafanaResource(ctx, loader, ReportResource())
+			crud, _, err := resource.Load(ctx)
 			if err != nil {
 				return err
 			}
@@ -156,7 +151,7 @@ func (o *getOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func newGetCommand(loader GrafanaConfigLoader) *cobra.Command {
+func newGetCommand(resource providers.BoundResource[Report]) *cobra.Command {
 	opts := &getOpts{}
 	cmd := &cobra.Command{
 		Use:   "get UUID",
@@ -170,7 +165,7 @@ func newGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 			ctx := cmd.Context()
 			uuid := args[0]
 
-			crud, _, err := providers.LoadGrafanaResource(ctx, loader, ReportResource())
+			crud, _, err := resource.Load(ctx)
 			if err != nil {
 				return err
 			}
@@ -204,7 +199,7 @@ func (o *pullOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&o.OutputDir, "output-dir", "d", ".", "Directory to write SLO report files to")
 }
 
-func newPullCommand(loader GrafanaConfigLoader) *cobra.Command {
+func newPullCommand(resource providers.BoundResource[Report]) *cobra.Command {
 	opts := &pullOpts{}
 	cmd := &cobra.Command{
 		Use:   "pull",
@@ -212,7 +207,7 @@ func newPullCommand(loader GrafanaConfigLoader) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
-			crud, _, err := providers.LoadGrafanaResource(ctx, loader, ReportResource())
+			crud, _, err := resource.Load(ctx)
 			if err != nil {
 				return err
 			}
@@ -370,7 +365,7 @@ func emitPartialResult(cmd *cobra.Command, io *cmdio.Options, result any, cause 
 	return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, cause)
 }
 
-func newPushCommand(loader GrafanaConfigLoader) *cobra.Command {
+func newPushCommand(resource providers.BoundResource[Report]) *cobra.Command {
 	opts := &pushOpts{}
 	cmd := &cobra.Command{
 		Use:   "push FILE...",
@@ -383,7 +378,7 @@ func newPushCommand(loader GrafanaConfigLoader) *cobra.Command {
 
 			ctx := cmd.Context()
 
-			crud, _, err := providers.LoadGrafanaResource(ctx, loader, ReportResource())
+			crud, _, err := resource.Load(ctx)
 			if err != nil {
 				return err
 			}
@@ -559,7 +554,7 @@ func (c *deleteResultCodec) Encode(w io.Writer, v any) error {
 	return nil
 }
 
-func newDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
+func newDeleteCommand(resource providers.BoundResource[Report]) *cobra.Command {
 	opts := &deleteOpts{}
 	cmd := &cobra.Command{
 		Use:   "delete UUID...",
@@ -583,7 +578,7 @@ func newDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return nil
 			}
 
-			crud, _, err := providers.LoadGrafanaResource(ctx, loader, ReportResource())
+			crud, _, err := resource.Load(ctx)
 			if err != nil {
 				return err
 			}

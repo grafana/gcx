@@ -521,10 +521,14 @@ their own `adapter.DepsLoader` instead; the adapter package never loads config.
 Provider commands use the same resource declaration:
 
 ```go
-crud, cfg, err := providers.LoadGrafanaResource(ctx, loader, SloResource())
+// Bind once inside the resource package's Commands factory; this does no I/O.
+resource := providers.BindGrafanaResource(loader, SloResource())
+
+// Each leaf loads after validation and any destructive confirmation.
+crud, cfg, err := resource.Load(ctx)
 ```
 
-This loads the command's selected configuration once, constructs the declared
+Each Load resolves fresh configuration without caching across executions, constructs the declared
 client, and binds it through `Resource.TypedCRUD`. The returned config snapshot
 can also serve auxiliary queries (SLO status/timeline). No provider-local
 `TypedCRUD` literal, descriptor, strip-field list, or CRUD function mapping is

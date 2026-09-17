@@ -55,7 +55,7 @@ gcx/
 │   │   └── builtins/         # Built-in PromQL/LogQL validators
 │   ├── providers/            # Provider plugin system
 │   │   ├── configloader.go   # Shared ConfigLoader for all providers
-│   │   ├── resource.go       # Grafana resource loading and shared declaration binding
+│   │   ├── resource.go       # Lazy Grafana resource bindings and transport loading
 │   │   ├── metrics/          # Metrics signal provider (Prometheus queries + Adaptive Metrics)
 │   │   │   └── adaptive/     # Adaptive Metrics commands (rules, recommendations)
 │   │   ├── logs/             # Logs signal provider (Loki queries + Adaptive Logs)
@@ -85,6 +85,7 @@ gcx/
 │   │   ├── k6/              # k6 Cloud provider (projects, tests, runs, envvars)
 │   │   ├── kg/               # Knowledge Graph (Asserts) provider (rules, entities, insights, diagnose, quality reports)
 │   │   ├── slo/              # SLO provider implementation
+│   │   │   ├── api/          # Shared resource group/version; kinds stay in declarations
 │   │   │   ├── definitions/  # SLO definitions and status queries
 │   │   │   └── reports/      # SLO reports
 │   │   └── synth/            # Synthetic Monitoring provider

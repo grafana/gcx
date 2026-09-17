@@ -47,8 +47,8 @@ func TestToResource_MinimalReport(t *testing.T) {
 	res, err := reportToResource(report, "stack-123")
 	require.NoError(t, err)
 
-	assert.Equal(t, reports.APIVersion, res.APIVersion())
-	assert.Equal(t, reports.Kind, res.Kind())
+	assert.Equal(t, "slo.ext.grafana.app/v1alpha1", res.APIVersion())
+	assert.Equal(t, "Report", res.Kind())
 	assert.Equal(t, "test-uuid-123", res.Name())
 	assert.Equal(t, "stack-123", res.Namespace())
 

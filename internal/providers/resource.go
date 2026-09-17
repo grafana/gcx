@@ -34,17 +34,28 @@ func loadGrafanaDeps(ctx context.Context, loader GrafanaConfigLoader) (adapter.C
 	return adapter.ClientDeps{HTTP: client, BaseURL: cfg.Host, Namespace: cfg.Namespace}, cfg, nil
 }
 
-// LoadGrafanaResource constructs the command's typed CRUD from its registered
-// declaration. It returns the same config snapshot for auxiliary queries, so
-// resource operations and queries cannot resolve different stacks.
-func LoadGrafanaResource[T adapter.ResourceNamer](ctx context.Context, loader GrafanaConfigLoader, resource adapter.Resource[T]) (*adapter.TypedCRUD[T], config.NamespacedRESTConfig, error) {
-	deps, cfg, err := loadGrafanaDeps(ctx, loader)
+// BoundResource binds a declaration to a configuration loader without doing I/O.
+// Each Load resolves fresh configuration; clients are never cached across executions.
+type BoundResource[T adapter.ResourceNamer] struct {
+	loader   GrafanaConfigLoader
+	resource adapter.Resource[T]
+}
+
+// BindGrafanaResource declares a command group's resource dependency.
+func BindGrafanaResource[T adapter.ResourceNamer](loader GrafanaConfigLoader, resource adapter.Resource[T]) BoundResource[T] {
+	return BoundResource[T]{loader: loader, resource: resource}
+}
+
+// Load constructs typed CRUD and returns the same configuration snapshot for
+// auxiliary queries. Call it after validation and any destructive confirmation.
+func (b BoundResource[T]) Load(ctx context.Context) (*adapter.TypedCRUD[T], config.NamespacedRESTConfig, error) {
+	deps, cfg, err := loadGrafanaDeps(ctx, b.loader)
 	if err != nil {
 		return nil, cfg, err
 	}
-	client, err := resource.NewClient(ctx, deps)
+	client, err := b.resource.NewClient(ctx, deps)
 	if err != nil {
-		return nil, cfg, fmt.Errorf("failed to construct %s client: %w", resource.Kind, err)
+		return nil, cfg, fmt.Errorf("failed to construct %s client: %w", b.resource.Kind, err)
 	}
-	return resource.TypedCRUD(client, deps.Namespace), cfg, nil
+	return b.resource.TypedCRUD(client, deps.Namespace), cfg, nil
 }

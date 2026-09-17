@@ -3,6 +3,7 @@ package definitions
 import (
 	"context"
 
+	"github.com/grafana/gcx/internal/providers/slo/api"
 	"github.com/grafana/gcx/internal/resources/adapter"
 )
 
@@ -16,8 +17,8 @@ import (
 // shared global.
 func SloResource() adapter.Resource[Slo] {
 	return adapter.Resource[Slo]{
-		Group:   "slo.ext.grafana.app",
-		Version: "v1alpha1",
+		Group:   api.Group,
+		Version: api.Version,
 		Kind:    "SLO",
 
 		NaturalKey:  "name",

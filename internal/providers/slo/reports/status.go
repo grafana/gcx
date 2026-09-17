@@ -47,7 +47,7 @@ func (o *reportStatusOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func newStatusCommand(loader GrafanaConfigLoader) *cobra.Command {
+func newStatusCommand(resource providers.BoundResource[Report]) *cobra.Command {
 	opts := &reportStatusOpts{}
 	cmd := &cobra.Command{
 		Use:   "status [UUID]",
@@ -78,7 +78,7 @@ metrics, and computes combined SLI and error budget per report.`,
 
 			ctx := cmd.Context()
 
-			reportClient, restCfg, err := providers.LoadGrafanaResource(ctx, loader, ReportResource())
+			reportClient, restCfg, err := resource.Load(ctx)
 			if err != nil {
 				return err
 			}

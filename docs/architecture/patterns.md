@@ -227,7 +227,7 @@ based editor picks them up via the `yaml:"providers"` tag.
 **Evidence:**
 - `internal/providers/provider.go`: `Provider` interface and `ConfigKey` type
 - `internal/providers/registry.go`: `All()` function
-- `internal/providers/resource.go`: `LoadGrafanaResource` and `LoadGrafanaDeps` share Grafana transport construction; commands bind the same resource declaration as registration.
+- `internal/providers/resource.go`: `BoundResource.Load` and `LoadGrafanaDeps` share Grafana transport construction; commands bind the same resource declaration as registration.
 - `internal/providers/redact.go`: `RedactSecrets` implementation
 - `internal/providers/configloader.go`: Shared `ConfigLoader` struct — all providers use this instead of duplicating config loading logic. Provides `LoadGrafanaConfig`, `LoadCloudConfig`, `LoadProviderConfig` (provider-specific `map[string]string`), `SaveProviderConfig` (write-back), and `LoadFullConfig` (full `*config.Config`)
 - `internal/providers/alert/provider.go`: Second provider implementation (alert rules and groups)
