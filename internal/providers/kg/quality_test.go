@@ -110,7 +110,7 @@ func TestClient_ListQualityReports(t *testing.T) {
 }
 
 func TestQualityReportListTableCodec_Encode(t *testing.T) {
-	codec := &kg.QualityReportListTableCodec{}
+	codec := kg.QualityReportListTable().Codec("table")
 
 	var buf bytes.Buffer
 	items := []kg.QualityReportListItem{

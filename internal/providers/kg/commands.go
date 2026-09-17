@@ -598,8 +598,7 @@ type rulesListOpts struct {
 }
 
 func (o *rulesListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &RuleTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &RuleWideTableCodec{})
+	cmdio.RegisterTable(&o.IO, RuleTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
@@ -651,52 +650,14 @@ func ruleSpecStats(obj unstructured.Unstructured) ruleStats {
 	return s
 }
 
-// RuleTableCodec renders rule files as a compact table: name + group/rule counts.
-type RuleTableCodec struct{}
-
-func (c *RuleTableCodec) Format() format.Format { return "table" }
-
-func (c *RuleTableCodec) Encode(w io.Writer, v any) error {
-	objs, ok := v.([]unstructured.Unstructured)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []unstructured.Unstructured")
-	}
-	t := style.NewTable("NAME", "GROUPS", "RULES")
-	for _, obj := range objs {
-		s := ruleSpecStats(obj)
-		t.Row(obj.GetName(), strconv.Itoa(s.groups), strconv.Itoa(s.rules))
-	}
-	return t.Render(w)
-}
-
-func (c *RuleTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
-}
-
-// RuleWideTableCodec adds alert/recording breakdowns to the basic table view.
-type RuleWideTableCodec struct{}
-
-func (c *RuleWideTableCodec) Format() format.Format { return "wide" }
-
-func (c *RuleWideTableCodec) Encode(w io.Writer, v any) error {
-	objs, ok := v.([]unstructured.Unstructured)
-	if !ok {
-		return errors.New("invalid data type for wide codec: expected []unstructured.Unstructured")
-	}
-	t := style.NewTable("NAME", "GROUPS", "RULES", "ALERTS", "RECORDING")
-	for _, obj := range objs {
-		s := ruleSpecStats(obj)
-		t.Row(obj.GetName(),
-			strconv.Itoa(s.groups),
-			strconv.Itoa(s.rules),
-			strconv.Itoa(s.alerts),
-			strconv.Itoa(s.recording))
-	}
-	return t.Render(w)
-}
-
-func (c *RuleWideTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("wide format does not support decoding")
+func RuleTable() cmdio.Table[unstructured.Unstructured] {
+	return cmdio.Table[unstructured.Unstructured]{Columns: []cmdio.Column[unstructured.Unstructured]{
+		{Header: "NAME", Content: func(obj unstructured.Unstructured) string { return obj.GetName() }},
+		{Header: "GROUPS", Content: func(obj unstructured.Unstructured) string { return strconv.Itoa(ruleSpecStats(obj).groups) }},
+		{Header: "RULES", Content: func(obj unstructured.Unstructured) string { return strconv.Itoa(ruleSpecStats(obj).rules) }},
+		{Header: "ALERTS", Visible: cmdio.WideOnly, Content: func(obj unstructured.Unstructured) string { return strconv.Itoa(ruleSpecStats(obj).alerts) }},
+		{Header: "RECORDING", Visible: cmdio.WideOnly, Content: func(obj unstructured.Unstructured) string { return strconv.Itoa(ruleSpecStats(obj).recording) }},
+	}}
 }
 
 // ---------------------------------------------------------------------------
@@ -835,7 +796,7 @@ type modelRulesListOpts struct {
 }
 
 func (o *modelRulesListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &ModelRulesNameTableCodec{})
+	cmdio.RegisterTable(&o.IO, ModelRulesNameTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 }
@@ -849,25 +810,10 @@ func (o *modelRulesGetOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-// ModelRulesNameTableCodec renders model rule names as a single-column table.
-type ModelRulesNameTableCodec struct{}
-
-func (c *ModelRulesNameTableCodec) Format() format.Format { return "table" }
-
-func (c *ModelRulesNameTableCodec) Encode(w io.Writer, v any) error {
-	names, ok := v.([]string)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []string")
-	}
-	t := style.NewTable("NAME")
-	for _, n := range names {
-		t.Row(n)
-	}
-	return t.Render(w)
-}
-
-func (c *ModelRulesNameTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
+func ModelRulesNameTable() cmdio.Table[string] {
+	return cmdio.Table[string]{Columns: []cmdio.Column[string]{
+		{Header: "NAME", Content: func(n string) string { return n }},
+	}}
 }
 
 func newSuppressionsCommand(loader RESTConfigLoader) *cobra.Command {
@@ -1175,7 +1121,7 @@ type notificationsListOpts struct {
 
 func (o *notificationsListOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&o.Category, "category", "", "Filter by category: request, resource, health, or slo.")
-	o.IO.RegisterCustomCodec("table", &NotificationTableCodec{})
+	cmdio.RegisterTable(&o.IO, NotificationTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 }
@@ -1226,25 +1172,13 @@ func (c *NotificationsUpsertTextCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("text format does not support decoding")
 }
 
-// NotificationTableCodec renders alert notification configs as a table.
-type NotificationTableCodec struct{}
-
-func (c *NotificationTableCodec) Format() format.Format { return "table" }
-
-func (c *NotificationTableCodec) Encode(w io.Writer, v any) error {
-	configs, ok := v.([]AlertConfig)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []AlertConfig")
-	}
-	t := style.NewTable("NAME", "MATCH LABELS", "FOR", "SILENCED")
-	for _, ac := range configs {
-		t.Row(ac.Name, scopeStr(ac.MatchLabels), ac.For, strconv.FormatBool(ac.Silenced))
-	}
-	return t.Render(w)
-}
-
-func (c *NotificationTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
+func NotificationTable() cmdio.Table[AlertConfig] {
+	return cmdio.Table[AlertConfig]{Columns: []cmdio.Column[AlertConfig]{
+		{Header: "NAME", Content: func(ac AlertConfig) string { return ac.Name }},
+		{Header: "MATCH LABELS", Content: func(ac AlertConfig) string { return scopeStr(ac.MatchLabels) }},
+		{Header: "FOR", Content: func(ac AlertConfig) string { return ac.For }},
+		{Header: "SILENCED", Content: func(ac AlertConfig) string { return strconv.FormatBool(ac.Silenced) }},
+	}}
 }
 
 type suppressionsCreateOpts struct {
@@ -1715,30 +1649,16 @@ type suppressionsListOpts struct {
 }
 
 func (o *suppressionsListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &SuppressionTableCodec{})
+	cmdio.RegisterTable(&o.IO, SuppressionTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 }
 
-// SuppressionTableCodec renders suppressions as a table.
-type SuppressionTableCodec struct{}
-
-func (c *SuppressionTableCodec) Format() format.Format { return "table" }
-
-func (c *SuppressionTableCodec) Encode(w io.Writer, v any) error {
-	suppressions, ok := v.([]Suppression)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []Suppression")
-	}
-	t := style.NewTable("NAME", "MATCH LABELS")
-	for _, s := range suppressions {
-		t.Row(s.Name, scopeStr(s.MatchLabels))
-	}
-	return t.Render(w)
-}
-
-func (c *SuppressionTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
+func SuppressionTable() cmdio.Table[Suppression] {
+	return cmdio.Table[Suppression]{Columns: []cmdio.Column[Suppression]{
+		{Header: "NAME", Content: func(s Suppression) string { return s.Name }},
+		{Header: "MATCH LABELS", Content: func(s Suppression) string { return scopeStr(s.MatchLabels) }},
+	}}
 }
 
 func newRelabelRulesCommand(loader RESTConfigLoader) *cobra.Command {
@@ -2000,35 +1920,24 @@ type entitiesListOpts struct {
 }
 
 func (o *entitiesListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &EntityTableCodec{})
+	cmdio.RegisterTable(&o.IO, EntityTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all; the backend may still page results — use --page to paginate)")
 }
 
-// EntityTableCodec renders search results as a table.
-type EntityTableCodec struct{}
-
-func (c *EntityTableCodec) Format() format.Format { return "table" }
-
-func (c *EntityTableCodec) Encode(w io.Writer, v any) error {
-	results, ok := v.([]SearchResult)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []SearchResult")
-	}
-	t := style.NewTable("TYPE", "NAME", "SCOPE", "ACTIVE")
-	for _, r := range results {
-		typ := r.Type
-		if typ == "" {
-			typ = r.EntityType
-		}
-		t.Row(typ, r.Name, scopeStr(r.Scope), strconv.FormatBool(r.Active))
-	}
-	return t.Render(w)
-}
-
-func (c *EntityTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
+func EntityTable() cmdio.Table[SearchResult] {
+	return cmdio.Table[SearchResult]{Columns: []cmdio.Column[SearchResult]{
+		{Header: "TYPE", Content: func(r SearchResult) string {
+			if r.Type != "" {
+				return r.Type
+			}
+			return r.EntityType
+		}},
+		{Header: "NAME", Content: func(r SearchResult) string { return r.Name }},
+		{Header: "SCOPE", Content: func(r SearchResult) string { return scopeStr(r.Scope) }},
+		{Header: "ACTIVE", Content: func(r SearchResult) string { return strconv.FormatBool(r.Active) }},
+	}}
 }
 
 // ---------------------------------------------------------------------------
@@ -2975,7 +2884,7 @@ type correlateOpts struct {
 }
 
 func (o *correlateOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &AlertCorrelateTableCodec{})
+	cmdio.RegisterTable(&o.IO, AlertCorrelateTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 }
@@ -3039,36 +2948,20 @@ func parseAlertmanagerLabels(data []byte) ([]map[string]string, error) {
 	return nil, errors.New(`no alert labels found in input: expected an Alertmanager envelope {"alerts":[{"labels":{...}}]} or a bare array [{"labels":{...}}]`)
 }
 
-// AlertCorrelateTableCodec renders the correlated entities as a table with
-// their connected-entity impact counts.
-type AlertCorrelateTableCodec struct{}
-
-func (c *AlertCorrelateTableCodec) Format() format.Format { return "table" }
-
-func (c *AlertCorrelateTableCodec) Encode(w io.Writer, v any) error {
-	entities, ok := v.([]GraphEntity)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []GraphEntity")
-	}
-	t := style.NewTable("TYPE", "NAME", "SCOPE", "CONNECTED")
-	for _, e := range entities {
-		var scopeParts []string
-		for k, val := range e.Scope {
-			scopeParts = append(scopeParts, fmt.Sprintf("%s=%s", k, val))
-		}
-		sort.Strings(scopeParts)
-		var connParts []string
-		for k, n := range e.ConnectedEntityTypes {
-			connParts = append(connParts, fmt.Sprintf("%s=%d", k, n))
-		}
-		sort.Strings(connParts)
-		t.Row(e.Type, e.Name, strings.Join(scopeParts, ", "), strings.Join(connParts, ", "))
-	}
-	return t.Render(w)
-}
-
-func (c *AlertCorrelateTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
+func AlertCorrelateTable() cmdio.Table[GraphEntity] {
+	return cmdio.Table[GraphEntity]{Columns: []cmdio.Column[GraphEntity]{
+		{Header: "TYPE", Content: func(e GraphEntity) string { return e.Type }},
+		{Header: "NAME", Content: func(e GraphEntity) string { return e.Name }},
+		{Header: "SCOPE", Content: func(e GraphEntity) string { return scopeStr(e.Scope) }},
+		{Header: "CONNECTED", Content: func(e GraphEntity) string {
+			parts := make([]string, 0, len(e.ConnectedEntityTypes))
+			for k, n := range e.ConnectedEntityTypes {
+				parts = append(parts, fmt.Sprintf("%s=%d", k, n))
+			}
+			sort.Strings(parts)
+			return strings.Join(parts, ", ")
+		}},
+	}}
 }
 
 // ---------------------------------------------------------------------------

@@ -387,7 +387,7 @@ func TestRuleTableCodec_Encode(t *testing.T) {
 		ruleObj("file-empty", nil),
 	}
 	var buf bytes.Buffer
-	require.NoError(t, (&kg.RuleTableCodec{}).Encode(&buf, objs))
+	require.NoError(t, kg.RuleTable().Codec("table").Encode(&buf, objs))
 	out := buf.String()
 	assert.Contains(t, out, "NAME")
 	assert.Contains(t, out, "GROUPS")
@@ -407,7 +407,7 @@ func TestRuleWideTableCodec_Encode(t *testing.T) {
 		}),
 	}
 	var buf bytes.Buffer
-	require.NoError(t, (&kg.RuleWideTableCodec{}).Encode(&buf, objs))
+	require.NoError(t, kg.RuleTable().Codec("wide").Encode(&buf, objs))
 	out := buf.String()
 	for _, want := range []string{"NAME", "GROUPS", "RULES", "ALERTS", "RECORDING", "file-a"} {
 		assert.Contains(t, out, want)
@@ -415,9 +415,9 @@ func TestRuleWideTableCodec_Encode(t *testing.T) {
 }
 
 func TestRuleTableCodec_RejectsWrongType(t *testing.T) {
-	err := (&kg.RuleTableCodec{}).Encode(&bytes.Buffer{}, []string{"nope"})
+	err := kg.RuleTable().Codec("table").Encode(&bytes.Buffer{}, []string{"nope"})
 	require.Error(t, err)
-	err = (&kg.RuleWideTableCodec{}).Encode(&bytes.Buffer{}, []string{"nope"})
+	err = kg.RuleTable().Codec("wide").Encode(&bytes.Buffer{}, []string{"nope"})
 	require.Error(t, err)
 }
 
