@@ -44,7 +44,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx assistant investigations resume":          {Cost: "small"},
 	"gcx assistant investigations share":           {Cost: "small", Hint: "<id> --team=<name> (repeatable)"},
 	"gcx assistant conversation list":              {Cost: "small", Hint: "Discover conversation IDs. --source assistant,slack,cli (default), --limit, --offset, -o json"},
-	"gcx assistant conversation get":               {Cost: "large", Hint: "Pull a conversation transcript by ID before continuing it with 'gcx assistant prompt --context-id'. Example: <conversation-id> -o json"},
+	"gcx assistant conversation get":               {Cost: "large", Hint: "Pull a conversation transcript by ID or shared URL. AI SDK results cover the main thread; shared snapshots are read-only here. Example: <id-or-url> -o json"},
 	"gcx assistant mcp-servers create":             {Cost: "small"},
 	"gcx assistant mcp-servers delete":             {Cost: "small"},
 	"gcx assistant mcp-servers get":                {Cost: "small"},
