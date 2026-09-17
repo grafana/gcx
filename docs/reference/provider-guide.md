@@ -752,3 +752,13 @@ When implementing a new provider (see also [provider-checklist.md](../design/pro
 - [ ] `mise run tests` passes
 - [ ] `gcx providers list` lists the new provider
 - [ ] `gcx config view` redacts secrets correctly
+
+### Deprecated SLO transfer commands
+
+SLO definitions and reports keep their released push/pull invocations as
+deprecated compatibility wrappers. `internal/providers/slo/transfer` uses
+`remote.Pusher`, `remote.Puller`, `local.FSReader`, and `local.FSWriter`,
+the same execution components as `resources push/pull`; the wrappers retain
+file-at-a-time results, the `Kind/name.yaml` export layout, and local-only
+dry-run previews. Push validates the declared resource kind and uses pipeline
+natural-key matching. New workflows should use `resources push/pull`.

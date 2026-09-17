@@ -766,3 +766,19 @@ type mockPushRegistry struct {
 func (m *mockPushRegistry) SupportedResources() resources.Descriptors {
 	return m.supportedResources
 }
+
+func TestPusher_UnnamedResourceDoesNotReadCollectionAsItem(t *testing.T) {
+	desc := resources.Descriptor{GroupVersion: schema.GroupVersion{Group: "test.grafana.app", Version: "v1"}, Kind: "Item", Plural: "items"}
+	obj := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "test.grafana.app/v1", "kind": "Item",
+		"metadata": map[string]any{}, "spec": map[string]any{"name": "New item"},
+	}}
+	// Some REST APIs route GET with an empty ID to the collection endpoint.
+	client := &mockPushClient{existingResources: map[string]*unstructured.Unstructured{"": obj}}
+	summary, err := remote.NewPusher(client, &mockPushRegistry{supportedResources: resources.Descriptors{desc}}).Push(t.Context(), remote.PushRequest{
+		Resources: resources.NewResources(resources.MustFromUnstructured(obj)), IncludeManaged: true, StopOnError: true,
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, summary.SuccessCount())
+	require.Equal(t, []string{"create-"}, client.operations)
+}

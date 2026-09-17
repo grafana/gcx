@@ -1,6 +1,11 @@
 ## gcx slo reports push
 
-Push SLO reports from files.
+Push resources from files (Deprecated: use gcx resources push).
+
+### Synopsis
+
+Deprecated: use gcx resources push reports.v1alpha1.slo.ext.grafana.app -p PATH instead.
+This compatibility command retains its file-at-a-time results and local-only --dry-run preview.
 
 ```
 gcx slo reports push FILE... [flags]

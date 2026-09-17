@@ -87,7 +87,8 @@ gcx/
 │   │   ├── slo/              # SLO provider implementation
 │   │   │   ├── api/          # Shared resource group/version; kinds stay in declarations
 │   │   │   ├── definitions/  # SLO definitions and status queries
-│   │   │   └── reports/      # SLO reports
+│   │   │   ├── reports/      # SLO reports
+│   │   │   └── transfer/     # Deprecated CLI wrappers around the resource pipeline
 │   │   └── synth/            # Synthetic Monitoring provider
 │   │       ├── checks/       # Checks status, timeline, CRUD
 │   │       ├── probes/       # Probe listing

@@ -1,6 +1,11 @@
 ## gcx slo definitions push
 
-Push SLO definitions from files.
+Push resources from files (Deprecated: use gcx resources push).
+
+### Synopsis
+
+Deprecated: use gcx resources push slos.v1alpha1.slo.ext.grafana.app -p PATH instead.
+This compatibility command retains its file-at-a-time results and local-only --dry-run preview.
 
 ```
 gcx slo definitions push FILE... [flags]

@@ -26,8 +26,8 @@ Manage SLO definitions.
 * [gcx slo definitions delete](gcx_slo_definitions_delete.md)	 - Delete SLO definitions.
 * [gcx slo definitions get](gcx_slo_definitions_get.md)	 - Get a single SLO definition.
 * [gcx slo definitions list](gcx_slo_definitions_list.md)	 - List SLO definitions.
-* [gcx slo definitions pull](gcx_slo_definitions_pull.md)	 - Pull SLO definitions to disk.
-* [gcx slo definitions push](gcx_slo_definitions_push.md)	 - Push SLO definitions from files.
+* [gcx slo definitions pull](gcx_slo_definitions_pull.md)	 - Pull resources to disk (Deprecated: use gcx resources pull).
+* [gcx slo definitions push](gcx_slo_definitions_push.md)	 - Push resources from files (Deprecated: use gcx resources push).
 * [gcx slo definitions status](gcx_slo_definitions_status.md)	 - Show SLO definitions status with SLI and error budget data.
 * [gcx slo definitions timeline](gcx_slo_definitions_timeline.md)	 - Render SLI values over time as a line chart.
 

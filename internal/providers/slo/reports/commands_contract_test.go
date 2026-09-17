@@ -430,3 +430,35 @@ func TestTimeline_EmptyReportsRemainArray(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(stdout), &result))
 	assert.JSONEq(t, "[]", string(result["Reports"]))
 }
+
+func TestReportsPushRejectsAnotherResourceKind(t *testing.T) {
+	st := &reportAPIState{}
+	srv := newReportServer(t, st)
+	defer srv.Close()
+	path := writeReportManifest(t, t.TempDir(), "wrong.yaml", "Wrong kind", "")
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(path, bytes.Replace(data, []byte("kind: Report"), []byte("kind: SLO"), 1), 0o600))
+	_, _, err = runReports(t, srv.URL, false, "", "push", path)
+	require.Error(t, err)
+	assert.Zero(t, st.createCalls)
+}
+
+func TestReportsTransferHelpDeprecation(t *testing.T) {
+	for _, verb := range []string{"push", "pull"} {
+		t.Run(verb, func(t *testing.T) {
+			stdout, _, err := runReports(t, "", false, "", verb, "--help")
+			require.NoError(t, err)
+			assert.Contains(t, stdout, "Deprecated")
+			assert.Contains(t, stdout, "gcx resources "+verb)
+		})
+	}
+}
+
+func TestReportsPushAcceptsLegacyManifestFilename(t *testing.T) {
+	srv := newReportServer(t, &reportAPIState{})
+	defer srv.Close()
+	file := writeReportManifest(t, t.TempDir(), "report.manifest", "Weekly", "")
+	_, _, err := runReports(t, srv.URL, false, "", "push", file, "--dry-run")
+	require.NoError(t, err)
+}
