@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/goccy/go-yaml"
-	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/agento11y/agento11yhttp"
@@ -18,7 +17,6 @@ import (
 	"github.com/grafana/gcx/internal/providers/agento11y/eval"
 	"github.com/grafana/gcx/internal/providers/agento11y/scores"
 	"github.com/grafana/gcx/internal/resources/adapter"
-	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -49,8 +47,7 @@ type listOpts struct {
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &TableCodec{})
-	o.IO.RegisterCustomCodec("wide", &TableCodec{Wide: true})
+	cmdio.RegisterTable(&o.IO, Table())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of rules to return (0 for no limit)")
@@ -351,54 +348,30 @@ func ReadRuleFile(path string, stdin io.Reader) (*eval.RuleDefinition, error) {
 
 // --- table codec ---
 
-type TableCodec struct {
-	Wide bool
-}
-
-func (c *TableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
-	}
-	return "table"
-}
-
-func (c *TableCodec) Encode(w io.Writer, v any) error {
-	rules, ok := v.([]eval.RuleDefinition)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []RuleDefinition")
-	}
-
-	var t *style.TableBuilder
-	if c.Wide {
-		t = style.NewTable("ID", "ENABLED", "SELECTOR", "SAMPLE RATE", "EVALUATORS", "CREATED BY", "CREATED AT")
-	} else {
-		t = style.NewTable("ID", "ENABLED", "SELECTOR", "SAMPLE RATE", "EVALUATORS")
-	}
-
-	for _, r := range rules {
-		enabled := "no"
-		if r.Enabled {
-			enabled = "yes"
-		}
-		evalIDs := strings.Join(r.EvaluatorIDs, ", ")
-		if evalIDs == "" {
-			evalIDs = "-"
-		}
-		sampleRate := strconv.FormatFloat(r.SampleRate, 'f', -1, 64)
-
-		if c.Wide {
-			createdBy := r.CreatedBy
-			if createdBy == "" {
-				createdBy = "-"
+func Table() cmdio.Table[eval.RuleDefinition] {
+	return cmdio.Table[eval.RuleDefinition]{Columns: []cmdio.Column[eval.RuleDefinition]{
+		{Header: "ID", Content: func(r eval.RuleDefinition) string { return r.RuleID }},
+		{Header: "ENABLED", Content: func(r eval.RuleDefinition) string {
+			if r.Enabled {
+				return "yes"
 			}
-			t.Row(r.RuleID, enabled, r.Selector, sampleRate, evalIDs, createdBy, agento11yhttp.FormatTime(r.CreatedAt))
-		} else {
-			t.Row(r.RuleID, enabled, r.Selector, sampleRate, evalIDs)
-		}
-	}
-	return t.Render(w)
-}
-
-func (c *TableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
+			return "no"
+		}},
+		{Header: "SELECTOR", Content: func(r eval.RuleDefinition) string { return r.Selector }},
+		{Header: "SAMPLE RATE", Content: func(r eval.RuleDefinition) string { return strconv.FormatFloat(r.SampleRate, 'f', -1, 64) }},
+		{Header: "EVALUATORS", Content: func(r eval.RuleDefinition) string {
+			value := strings.Join(r.EvaluatorIDs, ", ")
+			if value == "" {
+				return "-"
+			}
+			return value
+		}},
+		{Header: "CREATED BY", Visible: cmdio.WideOnly, Content: func(r eval.RuleDefinition) string {
+			if r.CreatedBy == "" {
+				return "-"
+			}
+			return r.CreatedBy
+		}},
+		{Header: "CREATED AT", Visible: cmdio.WideOnly, Content: func(r eval.RuleDefinition) string { return agento11yhttp.FormatTime(r.CreatedAt) }},
+	}}
 }

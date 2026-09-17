@@ -50,7 +50,7 @@ func TestTableCodec_Encode(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			codec := &rules.TableCodec{Wide: tc.wide}
+			codec := rules.Table().Codec(map[bool]string{false: "table", true: "wide"}[tc.wide])
 			var buf bytes.Buffer
 			require.NoError(t, codec.Encode(&buf, items))
 
@@ -63,11 +63,11 @@ func TestTableCodec_Encode(t *testing.T) {
 }
 
 func TestTableCodec_WrongType(t *testing.T) {
-	codec := &rules.TableCodec{}
+	codec := rules.Table().Codec("table")
 	var buf bytes.Buffer
 	err := codec.Encode(&buf, "not-a-slice")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "expected []RuleDefinition")
+	assert.Contains(t, err.Error(), "expected []eval.RuleDefinition")
 }
 
 func TestTableCodec_Format(t *testing.T) {
@@ -79,13 +79,13 @@ func TestTableCodec_Format(t *testing.T) {
 		{true, "wide"},
 	}
 	for _, tc := range tests {
-		codec := &rules.TableCodec{Wide: tc.wide}
+		codec := rules.Table().Codec(map[bool]string{false: "table", true: "wide"}[tc.wide])
 		assert.Equal(t, tc.expect, string(codec.Format()))
 	}
 }
 
 func TestTableCodec_DecodeUnsupported(t *testing.T) {
-	codec := &rules.TableCodec{}
+	codec := rules.Table().Codec("table")
 	err := codec.Decode(nil, nil)
 	require.Error(t, err)
 }

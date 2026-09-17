@@ -17,7 +17,6 @@ import (
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/agento11y/agento11yhttp"
 	"github.com/grafana/gcx/internal/providers/agento11y/commandutil"
-	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -104,8 +103,7 @@ type listOpts struct {
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &TableCodec{})
-	o.IO.RegisterCustomCodec("wide", &TableCodec{Wide: true})
+	cmdio.RegisterTable(&o.IO, Table())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of experiments to return (0 for no limit)")
@@ -378,8 +376,7 @@ type scoresOpts struct {
 }
 
 func (o *scoresOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &ScoresTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &ScoresTableCodec{Wide: true})
+	cmdio.RegisterTable(&o.IO, ScoresTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of scores to return (0 for no limit)")
@@ -474,8 +471,7 @@ type suitesListOpts struct {
 }
 
 func (o *suitesListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &SuitesTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &SuitesTableCodec{Wide: true})
+	cmdio.RegisterTable(&o.IO, SuitesTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of test suites to return (0 for no limit)")
@@ -742,8 +738,7 @@ type casesListOpts struct {
 }
 
 func (o *casesListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &CasesTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &CasesTableCodec{Wide: true})
+	cmdio.RegisterTable(&o.IO, CasesTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of test cases to return (0 for no limit)")
@@ -938,8 +933,7 @@ type trialsListOpts struct {
 }
 
 func (o *trialsListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &TrialsTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &TrialsTableCodec{Wide: true})
+	cmdio.RegisterTable(&o.IO, TrialsTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of trials to return (0 for no limit)")
@@ -1089,8 +1083,7 @@ type artifactsOpts struct {
 }
 
 func (o *artifactsOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &ArtifactsTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &ArtifactsTableCodec{Wide: true})
+	cmdio.RegisterTable(&o.IO, ArtifactsTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of artifacts to return (0 for no limit)")
@@ -1123,265 +1116,173 @@ func newTrialListArtifactsCommand(loader *providers.ConfigLoader) *cobra.Command
 
 // --- table codecs ---
 
-// SuitesTableCodec renders []TestSuite rows.
-type SuitesTableCodec struct {
-	Wide bool
-}
-
-func (c *SuitesTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
-	}
-	return "table"
-}
-
-func (c *SuitesTableCodec) Encode(w io.Writer, v any) error {
-	items, ok := v.([]TestSuite)
-	if !ok {
-		return errors.New("invalid data type for suites table codec: expected []TestSuite")
-	}
-	var t *style.TableBuilder
-	if c.Wide {
-		t = style.NewTable("SUITE-ID", "NAME", "LATEST", "VERSIONS", "TAGS", "CREATED", "UPDATED", "DESCRIPTION")
-	} else {
-		t = style.NewTable("SUITE-ID", "NAME", "LATEST", "VERSIONS", "TAGS", "CREATED")
-	}
-	for _, suite := range items {
-		latest := suite.LatestVersion
-		if latest == "" {
-			latest = "-"
-		}
-		if c.Wide {
-			t.Row(suite.SuiteID, suite.Name, latest, strconv.Itoa(len(suite.Versions)), formatTags(suite.Tags), agento11yhttp.FormatTime(suite.CreatedAt), agento11yhttp.FormatTime(suite.UpdatedAt), agento11yhttp.Truncate(suite.Description, 60))
-		} else {
-			t.Row(suite.SuiteID, suite.Name, latest, strconv.Itoa(len(suite.Versions)), formatTags(suite.Tags), agento11yhttp.FormatTime(suite.CreatedAt))
-		}
-	}
-	return t.Render(w)
-}
-
-func (c *SuitesTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
-}
-
-// CasesTableCodec renders []TestCase rows.
-type CasesTableCodec struct {
-	Wide bool
-}
-
-func (c *CasesTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
-	}
-	return "table"
-}
-
-func (c *CasesTableCodec) Encode(w io.Writer, v any) error {
-	items, ok := v.([]TestCase)
-	if !ok {
-		return errors.New("invalid data type for cases table codec: expected []TestCase")
-	}
-	var t *style.TableBuilder
-	if c.Wide {
-		t = style.NewTable("TEST-CASE-ID", "NAME", "CATEGORY", "TAGS", "SUITE", "VERSION", "CREATED", "UPDATED", "DESCRIPTION")
-	} else {
-		t = style.NewTable("TEST-CASE-ID", "NAME", "CATEGORY", "TAGS", "SUITE", "VERSION")
-	}
-	for _, tc := range items {
-		name := tc.Name
-		if name == "" {
-			name = "-"
-		}
-		category := tc.Category
-		if category == "" {
-			category = "-"
-		}
-		if c.Wide {
-			t.Row(tc.TestCaseID, name, category, formatTags(tc.Tags), tc.SuiteID, tc.SuiteVersion, agento11yhttp.FormatTime(tc.CreatedAt), agento11yhttp.FormatTime(tc.UpdatedAt), agento11yhttp.Truncate(tc.Description, 60))
-		} else {
-			t.Row(tc.TestCaseID, name, category, formatTags(tc.Tags), tc.SuiteID, tc.SuiteVersion)
-		}
-	}
-	return t.Render(w)
-}
-
-func (c *CasesTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
-}
-
-// TrialsTableCodec renders []TestCaseTrial rows.
-type TrialsTableCodec struct {
-	Wide bool
-}
-
-func (c *TrialsTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
-	}
-	return "table"
-}
-
-func (c *TrialsTableCodec) Encode(w io.Writer, v any) error {
-	items, ok := v.([]TestCaseTrial)
-	if !ok {
-		return errors.New("invalid data type for trials table codec: expected []TestCaseTrial")
-	}
-	var t *style.TableBuilder
-	if c.Wide {
-		t = style.NewTable("TRIAL-ID", "EXPERIMENT-ID", "TEST-CASE-ID", "ATTEMPT", "STATUS", "CONVERSATION", "TRACE", "TOTAL-TOKENS", "DURATION-MS", "CREATED", "COMPLETED", "ERROR")
-	} else {
-		t = style.NewTable("TRIAL-ID", "EXPERIMENT-ID", "TEST-CASE-ID", "ATTEMPT", "STATUS", "CONVERSATION", "TRACE")
-	}
-	for _, trial := range items {
-		conversation := trial.ConversationID
-		if conversation == "" {
-			conversation = "-"
-		}
-		trace := trial.TraceID
-		if trace == "" {
-			trace = "-"
-		}
-		status := trial.Status
-		if status == "" {
-			status = "-"
-		}
-		if c.Wide {
-			duration := "-"
-			if trial.DurationMS != nil {
-				duration = strconv.FormatInt(*trial.DurationMS, 10)
+func SuitesTable() cmdio.Table[TestSuite] {
+	return cmdio.Table[TestSuite]{Columns: []cmdio.Column[TestSuite]{
+		{Header: "SUITE-ID", Content: func(r TestSuite) string { return r.SuiteID }},
+		{Header: "NAME", Content: func(r TestSuite) string { return r.Name }},
+		{Header: "LATEST", Content: func(r TestSuite) string {
+			if r.LatestVersion == "" {
+				return "-"
 			}
-			totalTokens := "-"
-			if trial.TotalTokens != nil {
-				totalTokens = strconv.FormatInt(*trial.TotalTokens, 10)
+			return r.LatestVersion
+		}},
+		{Header: "VERSIONS", Content: func(r TestSuite) string { return strconv.Itoa(len(r.Versions)) }},
+		{Header: "TAGS", Content: func(r TestSuite) string { return formatTags(r.Tags) }},
+		{Header: "CREATED", Content: func(r TestSuite) string { return agento11yhttp.FormatTime(r.CreatedAt) }},
+		{Header: "UPDATED", Visible: cmdio.WideOnly, Content: func(r TestSuite) string { return agento11yhttp.FormatTime(r.UpdatedAt) }},
+		{Header: "DESCRIPTION", Visible: cmdio.WideOnly, Content: func(r TestSuite) string { return agento11yhttp.Truncate(r.Description, 60) }},
+	}}
+}
+
+func CasesTable() cmdio.Table[TestCase] {
+	return cmdio.Table[TestCase]{Columns: []cmdio.Column[TestCase]{
+		{Header: "TEST-CASE-ID", Content: func(r TestCase) string { return r.TestCaseID }},
+		{Header: "NAME", Content: func(r TestCase) string {
+			if r.Name == "" {
+				return "-"
 			}
-			completed := "-"
-			if trial.CompletedAt != nil {
-				completed = agento11yhttp.FormatTime(*trial.CompletedAt)
+			return r.Name
+		}},
+		{Header: "CATEGORY", Content: func(r TestCase) string {
+			if r.Category == "" {
+				return "-"
 			}
-			t.Row(trial.TrialID, trial.ExperimentID, trial.TestCaseID, strconv.Itoa(trial.Attempt), status, conversation, trace, totalTokens, duration, agento11yhttp.FormatTime(trial.CreatedAt), completed, agento11yhttp.Truncate(trial.Error, 40))
-		} else {
-			t.Row(trial.TrialID, trial.ExperimentID, trial.TestCaseID, strconv.Itoa(trial.Attempt), status, conversation, trace)
-		}
-	}
-	return t.Render(w)
+			return r.Category
+		}},
+		{Header: "TAGS", Content: func(r TestCase) string { return formatTags(r.Tags) }},
+		{Header: "SUITE", Content: func(r TestCase) string { return r.SuiteID }},
+		{Header: "VERSION", Content: func(r TestCase) string { return r.SuiteVersion }},
+		{Header: "CREATED", Visible: cmdio.WideOnly, Content: func(r TestCase) string { return agento11yhttp.FormatTime(r.CreatedAt) }},
+		{Header: "UPDATED", Visible: cmdio.WideOnly, Content: func(r TestCase) string { return agento11yhttp.FormatTime(r.UpdatedAt) }},
+		{Header: "DESCRIPTION", Visible: cmdio.WideOnly, Content: func(r TestCase) string { return agento11yhttp.Truncate(r.Description, 60) }},
+	}}
 }
 
-func (c *TrialsTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
-}
-
-// ArtifactsTableCodec renders []Artifact rows.
-type ArtifactsTableCodec struct {
-	Wide bool
-}
-
-func (c *ArtifactsTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
-	}
-	return "table"
-}
-
-func (c *ArtifactsTableCodec) Encode(w io.Writer, v any) error {
-	items, ok := v.([]Artifact)
-	if !ok {
-		return errors.New("invalid data type for artifacts table codec: expected []Artifact")
-	}
-	var t *style.TableBuilder
-	if c.Wide {
-		t = style.NewTable("ARTIFACT-ID", "NAME", "KIND", "MIME", "PARENT-KIND", "PARENT-ID", "SIZE", "CREATED")
-	} else {
-		t = style.NewTable("ARTIFACT-ID", "NAME", "KIND", "MIME", "SIZE")
-	}
-	for _, artifact := range items {
-		mime := artifact.Mime
-		if mime == "" {
-			mime = "-"
-		}
-		size := "-"
-		if artifact.SizeBytes > 0 {
-			size = strconv.FormatInt(artifact.SizeBytes, 10)
-		}
-		if c.Wide {
-			t.Row(artifact.ArtifactID, artifact.Name, artifact.Kind, mime, artifact.ParentKind, artifact.ParentID, size, agento11yhttp.FormatTime(artifact.CreatedAt))
-		} else {
-			t.Row(artifact.ArtifactID, artifact.Name, artifact.Kind, mime, size)
-		}
-	}
-	return t.Render(w)
-}
-
-func (c *ArtifactsTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
-}
-
-// TableCodec renders []Experiment rows.
-type TableCodec struct {
-	Wide bool
-}
-
-func (c *TableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
-	}
-	return "table"
-}
-
-func (c *TableCodec) Encode(w io.Writer, v any) error {
-	items, ok := v.([]Experiment)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []Experiment")
-	}
-
-	var t *style.TableBuilder
-	if c.Wide {
-		t = style.NewTable("EXPERIMENT-ID", "NAME", "STATUS", "SUITE", "VERSION", "TAGS", "TRIALS", "PASS", "CREATED", "COMPLETED", "DESCRIPTION", "ERROR")
-	} else {
-		t = style.NewTable("EXPERIMENT-ID", "NAME", "STATUS", "SUITE", "VERSION", "TRIALS", "PASS", "CREATED")
-	}
-
-	for _, exp := range items {
-		id := exp.ID()
-		trials := "-"
-		pass := "-"
-		if exp.Result != nil {
-			trials = strconv.Itoa(exp.Result.TrialCount)
-			if exp.Result.PassRate != nil {
-				pass = fmt.Sprintf("%.2f%%", *exp.Result.PassRate*100)
+func TrialsTable() cmdio.Table[TestCaseTrial] {
+	return cmdio.Table[TestCaseTrial]{Columns: []cmdio.Column[TestCaseTrial]{
+		{Header: "TRIAL-ID", Content: func(r TestCaseTrial) string { return r.TrialID }},
+		{Header: "EXPERIMENT-ID", Content: func(r TestCaseTrial) string { return r.ExperimentID }},
+		{Header: "TEST-CASE-ID", Content: func(r TestCaseTrial) string { return r.TestCaseID }},
+		{Header: "ATTEMPT", Content: func(r TestCaseTrial) string { return strconv.Itoa(r.Attempt) }},
+		{Header: "STATUS", Content: func(r TestCaseTrial) string {
+			if r.Status == "" {
+				return "-"
 			}
-		}
-		suite := exp.SuiteID
-		if suite == "" {
-			suite = "-"
-		}
-		version := exp.SuiteVersion
-		if version == "" {
-			version = "-"
-		}
-		status := exp.Status
-		if status == "" {
-			status = "-"
-		}
-		tags := formatTags(exp.Tags)
-		if c.Wide {
-			completed := "-"
-			if exp.CompletedAt != nil {
-				completed = agento11yhttp.FormatTime(*exp.CompletedAt)
+			return r.Status
+		}},
+		{Header: "CONVERSATION", Content: func(r TestCaseTrial) string {
+			if r.ConversationID == "" {
+				return "-"
 			}
+			return r.ConversationID
+		}},
+		{Header: "TRACE", Content: func(r TestCaseTrial) string {
+			if r.TraceID == "" {
+				return "-"
+			}
+			return r.TraceID
+		}},
+		{Header: "TOTAL-TOKENS", Visible: cmdio.WideOnly, Content: func(r TestCaseTrial) string {
+			if r.TotalTokens == nil {
+				return "-"
+			}
+			return strconv.FormatInt(*r.TotalTokens, 10)
+		}},
+		{Header: "DURATION-MS", Visible: cmdio.WideOnly, Content: func(r TestCaseTrial) string {
+			if r.DurationMS == nil {
+				return "-"
+			}
+			return strconv.FormatInt(*r.DurationMS, 10)
+		}},
+		{Header: "CREATED", Visible: cmdio.WideOnly, Content: func(r TestCaseTrial) string { return agento11yhttp.FormatTime(r.CreatedAt) }},
+		{Header: "COMPLETED", Visible: cmdio.WideOnly, Content: func(r TestCaseTrial) string {
+			if r.CompletedAt == nil {
+				return "-"
+			}
+			return agento11yhttp.FormatTime(*r.CompletedAt)
+		}},
+		{Header: "ERROR", Visible: cmdio.WideOnly, Content: func(r TestCaseTrial) string { return agento11yhttp.Truncate(r.Error, 40) }},
+	}}
+}
+
+func ArtifactsTable() cmdio.Table[Artifact] {
+	return cmdio.Table[Artifact]{Columns: []cmdio.Column[Artifact]{
+		{Header: "ARTIFACT-ID", Content: func(r Artifact) string { return r.ArtifactID }},
+		{Header: "NAME", Content: func(r Artifact) string { return r.Name }},
+		{Header: "KIND", Content: func(r Artifact) string { return r.Kind }},
+		{Header: "MIME", Content: func(r Artifact) string {
+			if r.Mime == "" {
+				return "-"
+			}
+			return r.Mime
+		}},
+		{Header: "PARENT-KIND", Visible: cmdio.WideOnly, Content: func(r Artifact) string { return r.ParentKind }},
+		{Header: "PARENT-ID", Visible: cmdio.WideOnly, Content: func(r Artifact) string { return r.ParentID }},
+		{Header: "SIZE", Content: func(r Artifact) string {
+			if r.SizeBytes > 0 {
+				return strconv.FormatInt(r.SizeBytes, 10)
+			}
+			return "-"
+		}},
+		{Header: "CREATED", Visible: cmdio.WideOnly, Content: func(r Artifact) string { return agento11yhttp.FormatTime(r.CreatedAt) }},
+	}}
+}
+
+func Table() cmdio.Table[Experiment] {
+	return cmdio.Table[Experiment]{Columns: []cmdio.Column[Experiment]{
+		{Header: "EXPERIMENT-ID", Content: func(r Experiment) string { return r.ID() }},
+		{Header: "NAME", Content: func(r Experiment) string { return r.Name }},
+		{Header: "STATUS", Content: func(r Experiment) string {
+			if r.Status == "" {
+				return "-"
+			}
+			return r.Status
+		}},
+		{Header: "SUITE", Content: func(r Experiment) string {
+			if r.SuiteID == "" {
+				return "-"
+			}
+			return r.SuiteID
+		}},
+		{Header: "VERSION", Content: func(r Experiment) string {
+			if r.SuiteVersion == "" {
+				return "-"
+			}
+			return r.SuiteVersion
+		}},
+		{Header: "TAGS", Visible: cmdio.WideOnly, Content: func(r Experiment) string { return formatTags(r.Tags) }},
+		{Header: "TRIALS", Content: func(r Experiment) string {
+			if r.Result == nil {
+				return "-"
+			}
+			return strconv.Itoa(r.Result.TrialCount)
+		}},
+		{Header: "PASS", Content: func(r Experiment) string {
+			if r.Result == nil || r.Result.PassRate == nil {
+				return "-"
+			}
+			return fmt.Sprintf("%.2f%%", *r.Result.PassRate*100)
+		}},
+		{Header: "CREATED", Content: func(r Experiment) string { return agento11yhttp.FormatTime(r.CreatedAt) }},
+		{Header: "COMPLETED", Visible: cmdio.WideOnly, Content: func(r Experiment) string {
+			if r.CompletedAt == nil {
+				return "-"
+			}
+			return agento11yhttp.FormatTime(*r.CompletedAt)
+		}},
+		{Header: "DESCRIPTION", Visible: cmdio.WideOnly, Content: func(r Experiment) string { return agento11yhttp.Truncate(r.Description, 40) }},
+		{Header: "ERROR", Visible: cmdio.WideOnly, Content: func(r Experiment) string {
 			// The rollup can fail on its own while the experiment succeeds.
 			// TRIALS and PASS then render "-" like an experiment with no
 			// trials, so without this fallback the stored reason never
 			// reaches the table.
-			failure := exp.Error
+			failure := r.Error
 			if failure == "" {
-				failure = exp.ResultError
+				failure = r.ResultError
 			}
-			t.Row(id, exp.Name, status, suite, version, tags, trials, pass, agento11yhttp.FormatTime(exp.CreatedAt), completed, agento11yhttp.Truncate(exp.Description, 40), agento11yhttp.Truncate(failure, 40))
-		} else {
-			t.Row(id, exp.Name, status, suite, version, trials, pass, agento11yhttp.FormatTime(exp.CreatedAt))
-		}
-	}
-	return t.Render(w)
+			return agento11yhttp.Truncate(failure, 40)
+		}},
+	}}
 }
 
 func formatTags(tags []string) string {
@@ -1391,68 +1292,37 @@ func formatTags(tags []string) string {
 	return strings.Join(tags, ", ")
 }
 
-func (c *TableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
-}
-
-// ScoresTableCodec renders []ScoreItem rows.
-type ScoresTableCodec struct {
-	Wide bool
-}
-
-func (c *ScoresTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
-	}
-	return "table"
-}
-
-func (c *ScoresTableCodec) Encode(w io.Writer, v any) error {
-	items, ok := v.([]ScoreItem)
-	if !ok {
-		return errors.New("invalid data type for scores table codec: expected []ScoreItem")
-	}
-
-	var t *style.TableBuilder
-	if c.Wide {
-		t = style.NewTable("SCORE-ID", "EVALUATOR", "KEY", "VALUE", "PASSED", "GENERATION", "EXPLANATION", "CREATED")
-	} else {
-		t = style.NewTable("SCORE-ID", "EVALUATOR", "KEY", "VALUE", "PASSED", "GENERATION")
-	}
-
-	for _, s := range items {
-		passed := "-"
-		if s.Passed != nil {
-			if *s.Passed {
-				passed = "true"
-			} else {
-				passed = "false"
+func ScoresTable() cmdio.Table[ScoreItem] {
+	return cmdio.Table[ScoreItem]{Columns: []cmdio.Column[ScoreItem]{
+		{Header: "SCORE-ID", Content: func(r ScoreItem) string { return r.ScoreID }},
+		{Header: "EVALUATOR", Content: func(r ScoreItem) string {
+			if r.EvaluatorID == "" {
+				return "-"
 			}
-		}
-		value := s.Value.Display()
-		key := s.ScoreKey
-		if key == "" {
-			key = "-"
-		}
-		gen := s.GenerationID
-		if gen == "" {
-			gen = "-"
-		}
-		evaluator := s.EvaluatorID
-		if evaluator == "" {
-			evaluator = "-"
-		}
-		if c.Wide {
-			t.Row(s.ScoreID, evaluator, key, value, passed, gen, agento11yhttp.Truncate(s.Explanation, 40), agento11yhttp.FormatTime(s.CreatedAt))
-		} else {
-			t.Row(s.ScoreID, evaluator, key, value, passed, gen)
-		}
-	}
-	return t.Render(w)
-}
-
-func (c *ScoresTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
+			return r.EvaluatorID
+		}},
+		{Header: "KEY", Content: func(r ScoreItem) string {
+			if r.ScoreKey == "" {
+				return "-"
+			}
+			return r.ScoreKey
+		}},
+		{Header: "VALUE", Content: func(r ScoreItem) string { return r.Value.Display() }},
+		{Header: "PASSED", Content: func(r ScoreItem) string {
+			if r.Passed == nil {
+				return "-"
+			}
+			return strconv.FormatBool(*r.Passed)
+		}},
+		{Header: "GENERATION", Content: func(r ScoreItem) string {
+			if r.GenerationID == "" {
+				return "-"
+			}
+			return r.GenerationID
+		}},
+		{Header: "EXPLANATION", Visible: cmdio.WideOnly, Content: func(r ScoreItem) string { return agento11yhttp.Truncate(r.Explanation, 40) }},
+		{Header: "CREATED", Visible: cmdio.WideOnly, Content: func(r ScoreItem) string { return agento11yhttp.FormatTime(r.CreatedAt) }},
+	}}
 }
 
 // ReportTextCodec renders an *ExperimentReport (or ExperimentReport) as a

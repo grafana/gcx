@@ -43,7 +43,7 @@ func TestTableCodec_Encode(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			codec := &templates.TableCodec{Wide: tc.wide}
+			codec := templates.Table().Codec(map[bool]string{false: "table", true: "wide"}[tc.wide])
 			var buf bytes.Buffer
 			require.NoError(t, codec.Encode(&buf, items))
 
@@ -61,7 +61,7 @@ func TestVersionsTableCodec_Encode(t *testing.T) {
 			CreatedAt: time.Date(2026, 4, 1, 10, 0, 0, 0, time.UTC)},
 	}
 
-	codec := &templates.VersionsTableCodec{}
+	codec := templates.VersionsTable().Codec("table")
 	var buf bytes.Buffer
 	require.NoError(t, codec.Encode(&buf, items))
 
@@ -73,11 +73,11 @@ func TestVersionsTableCodec_Encode(t *testing.T) {
 }
 
 func TestTableCodec_WrongType(t *testing.T) {
-	codec := &templates.TableCodec{}
+	codec := templates.Table().Codec("table")
 	var buf bytes.Buffer
 	err := codec.Encode(&buf, "not-a-slice")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "expected []TemplateDefinition")
+	assert.Contains(t, err.Error(), "expected []eval.TemplateDefinition")
 }
 
 func TestTableCodec_Format(t *testing.T) {
@@ -89,27 +89,27 @@ func TestTableCodec_Format(t *testing.T) {
 		{true, "wide"},
 	}
 	for _, tc := range tests {
-		codec := &templates.TableCodec{Wide: tc.wide}
+		codec := templates.Table().Codec(map[bool]string{false: "table", true: "wide"}[tc.wide])
 		assert.Equal(t, tc.expect, string(codec.Format()))
 	}
 }
 
 func TestTableCodec_DecodeUnsupported(t *testing.T) {
-	codec := &templates.TableCodec{}
+	codec := templates.Table().Codec("table")
 	err := codec.Decode(nil, nil)
 	require.Error(t, err)
 }
 
 func TestVersionsTableCodec_WrongType(t *testing.T) {
-	codec := &templates.VersionsTableCodec{}
+	codec := templates.VersionsTable().Codec("table")
 	var buf bytes.Buffer
 	err := codec.Encode(&buf, "not-a-slice")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "expected []TemplateVersion")
+	assert.Contains(t, err.Error(), "expected []eval.TemplateVersion")
 }
 
 func TestVersionsTableCodec_DecodeUnsupported(t *testing.T) {
-	codec := &templates.VersionsTableCodec{}
+	codec := templates.VersionsTable().Codec("table")
 	err := codec.Decode(nil, nil)
 	require.Error(t, err)
 }

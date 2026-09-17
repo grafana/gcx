@@ -7,12 +7,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/agento11y/agento11yhttp"
 	"github.com/grafana/gcx/internal/providers/agento11y/commandutil"
-	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -50,8 +48,7 @@ type listOpts struct {
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &TableCodec{})
-	o.IO.RegisterCustomCodec("wide", &TableCodec{Wide: true})
+	cmdio.RegisterTable(&o.IO, Table())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.StringVar(&o.Source, "source", "", "Filter by source (telemetry or manual)")
@@ -272,8 +269,7 @@ type collectionsOpts struct {
 }
 
 func (o *collectionsOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &CollectionsTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &CollectionsTableCodec{Wide: true})
+	cmdio.RegisterTable(&o.IO, CollectionsTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 }
@@ -305,97 +301,40 @@ func newCollectionsCommand(loader *providers.ConfigLoader) *cobra.Command {
 
 // --- table codecs ---
 
-// TableCodec renders []SavedConversation rows.
-type TableCodec struct {
-	Wide bool
-}
-
-func (c *TableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
-	}
-	return "table"
-}
-
-func (c *TableCodec) Encode(w io.Writer, v any) error {
-	items, ok := v.([]SavedConversation)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []SavedConversation")
-	}
-
-	var t *style.TableBuilder
-	if c.Wide {
-		t = style.NewTable("SAVED ID", "NAME", "CONVERSATION", "SOURCE", "GENS", "SAVED BY", "CREATED AT")
-	} else {
-		t = style.NewTable("SAVED ID", "NAME", "CONVERSATION", "SOURCE", "GENS")
-	}
-
-	for _, sc := range items {
-		name := agento11yhttp.Truncate(sc.Name, 40)
-		source := sc.Source
-		if source == "" {
-			source = "-"
-		}
-		gens := strconv.Itoa(sc.GenerationCount)
-		if c.Wide {
-			savedBy := sc.SavedBy
-			if savedBy == "" {
-				savedBy = "-"
+func Table() cmdio.Table[SavedConversation] {
+	return cmdio.Table[SavedConversation]{Columns: []cmdio.Column[SavedConversation]{
+		{Header: "SAVED ID", Content: func(r SavedConversation) string { return r.SavedID }},
+		{Header: "NAME", Content: func(r SavedConversation) string { return agento11yhttp.Truncate(r.Name, 40) }},
+		{Header: "CONVERSATION", Content: func(r SavedConversation) string { return r.ConversationID }},
+		{Header: "SOURCE", Content: func(r SavedConversation) string {
+			if r.Source == "" {
+				return "-"
 			}
-			t.Row(sc.SavedID, name, sc.ConversationID, source, gens, savedBy, agento11yhttp.FormatTime(sc.CreatedAt))
-		} else {
-			t.Row(sc.SavedID, name, sc.ConversationID, source, gens)
-		}
-	}
-	return t.Render(w)
-}
-
-func (c *TableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
-}
-
-// CollectionsTableCodec renders []CollectionRef rows for the reverse-lookup
-// `saved-conversations collections <saved-id>` command.
-type CollectionsTableCodec struct {
-	Wide bool
-}
-
-func (c *CollectionsTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
-	}
-	return "table"
-}
-
-func (c *CollectionsTableCodec) Encode(w io.Writer, v any) error {
-	items, ok := v.([]CollectionRef)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []CollectionRef")
-	}
-
-	var t *style.TableBuilder
-	if c.Wide {
-		t = style.NewTable("COLLECTION ID", "NAME", "MEMBERS", "DESCRIPTION", "CREATED BY", "CREATED AT")
-	} else {
-		t = style.NewTable("COLLECTION ID", "NAME", "MEMBERS")
-	}
-
-	for _, cref := range items {
-		members := strconv.Itoa(cref.MemberCount)
-		if c.Wide {
-			desc := agento11yhttp.Truncate(cref.Description, 40)
-			createdBy := cref.CreatedBy
-			if createdBy == "" {
-				createdBy = "-"
+			return r.Source
+		}},
+		{Header: "GENS", Content: func(r SavedConversation) string { return strconv.Itoa(r.GenerationCount) }},
+		{Header: "SAVED BY", Visible: cmdio.WideOnly, Content: func(r SavedConversation) string {
+			if r.SavedBy == "" {
+				return "-"
 			}
-			t.Row(cref.CollectionID, cref.Name, members, desc, createdBy, agento11yhttp.FormatTime(cref.CreatedAt))
-		} else {
-			t.Row(cref.CollectionID, cref.Name, members)
-		}
-	}
-	return t.Render(w)
+			return r.SavedBy
+		}},
+		{Header: "CREATED AT", Visible: cmdio.WideOnly, Content: func(r SavedConversation) string { return agento11yhttp.FormatTime(r.CreatedAt) }},
+	}}
 }
 
-func (c *CollectionsTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
+func CollectionsTable() cmdio.Table[CollectionRef] {
+	return cmdio.Table[CollectionRef]{Columns: []cmdio.Column[CollectionRef]{
+		{Header: "COLLECTION ID", Content: func(r CollectionRef) string { return r.CollectionID }},
+		{Header: "NAME", Content: func(r CollectionRef) string { return r.Name }},
+		{Header: "MEMBERS", Content: func(r CollectionRef) string { return strconv.Itoa(r.MemberCount) }},
+		{Header: "DESCRIPTION", Visible: cmdio.WideOnly, Content: func(r CollectionRef) string { return agento11yhttp.Truncate(r.Description, 40) }},
+		{Header: "CREATED BY", Visible: cmdio.WideOnly, Content: func(r CollectionRef) string {
+			if r.CreatedBy == "" {
+				return "-"
+			}
+			return r.CreatedBy
+		}},
+		{Header: "CREATED AT", Visible: cmdio.WideOnly, Content: func(r CollectionRef) string { return agento11yhttp.FormatTime(r.CreatedAt) }},
+	}}
 }

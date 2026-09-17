@@ -40,7 +40,7 @@ func TestTableCodec_Encode(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			codec := &savedconversations.TableCodec{Wide: tc.wide}
+			codec := savedconversations.Table().Codec(map[bool]string{false: "table", true: "wide"}[tc.wide])
 			var buf bytes.Buffer
 			require.NoError(t, codec.Encode(&buf, items))
 
@@ -53,23 +53,23 @@ func TestTableCodec_Encode(t *testing.T) {
 }
 
 func TestTableCodec_WrongType(t *testing.T) {
-	codec := &savedconversations.TableCodec{}
+	codec := savedconversations.Table().Codec("table")
 	var buf bytes.Buffer
 	err := codec.Encode(&buf, "not-a-slice")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "expected []SavedConversation")
+	assert.Contains(t, err.Error(), "expected []savedconversations.SavedConversation")
 }
 
 func TestTableCodec_Format(t *testing.T) {
-	assert.Equal(t, "table", string((&savedconversations.TableCodec{}).Format()))
-	assert.Equal(t, "wide", string((&savedconversations.TableCodec{Wide: true}).Format()))
+	assert.Equal(t, "table", string((savedconversations.Table().Codec("table")).Format()))
+	assert.Equal(t, "wide", string((savedconversations.Table().Codec("wide")).Format()))
 }
 
 func TestCollectionsTableCodec_Encode(t *testing.T) {
 	items := []savedconversations.CollectionRef{
 		{CollectionID: "c-1", Name: "Regression suite", MemberCount: 3, Description: "Used for nightly regression"},
 	}
-	codec := &savedconversations.CollectionsTableCodec{Wide: true}
+	codec := savedconversations.CollectionsTable().Codec("wide")
 	var buf bytes.Buffer
 	require.NoError(t, codec.Encode(&buf, items))
 
@@ -80,11 +80,11 @@ func TestCollectionsTableCodec_Encode(t *testing.T) {
 }
 
 func TestCollectionsTableCodec_WrongType(t *testing.T) {
-	codec := &savedconversations.CollectionsTableCodec{}
+	codec := savedconversations.CollectionsTable().Codec("table")
 	var buf bytes.Buffer
 	err := codec.Encode(&buf, []string{"x"})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "expected []CollectionRef")
+	assert.Contains(t, err.Error(), "expected []savedconversations.CollectionRef")
 }
 
 func TestSaveCommand_RequiresName(t *testing.T) {

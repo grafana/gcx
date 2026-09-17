@@ -39,7 +39,7 @@ func TestTableCodec_Encode(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			codec := &collections.TableCodec{Wide: tc.wide}
+			codec := collections.Table().Codec(map[bool]string{false: "table", true: "wide"}[tc.wide])
 			var buf bytes.Buffer
 			require.NoError(t, codec.Encode(&buf, items))
 			out := buf.String()
@@ -51,16 +51,16 @@ func TestTableCodec_Encode(t *testing.T) {
 }
 
 func TestTableCodec_WrongType(t *testing.T) {
-	codec := &collections.TableCodec{}
+	codec := collections.Table().Codec("table")
 	var buf bytes.Buffer
 	err := codec.Encode(&buf, "not-a-slice")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "expected []Collection")
+	assert.Contains(t, err.Error(), "expected []collections.Collection")
 }
 
 func TestTableCodec_Format(t *testing.T) {
-	assert.Equal(t, "table", string((&collections.TableCodec{}).Format()))
-	assert.Equal(t, "wide", string((&collections.TableCodec{Wide: true}).Format()))
+	assert.Equal(t, "table", string((collections.Table().Codec("table")).Format()))
+	assert.Equal(t, "wide", string((collections.Table().Codec("wide")).Format()))
 }
 
 func TestCommands_HasMembershipCompounds(t *testing.T) {

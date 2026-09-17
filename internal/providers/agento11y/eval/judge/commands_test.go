@@ -16,7 +16,7 @@ func TestProvidersTableCodec_Encode(t *testing.T) {
 		{ID: "anthropic", Name: "Anthropic", Type: "anthropic"},
 	}
 
-	codec := &judge.ProvidersTableCodec{}
+	codec := judge.ProvidersTable().Codec("table")
 	var buf bytes.Buffer
 	require.NoError(t, codec.Encode(&buf, items))
 
@@ -27,20 +27,20 @@ func TestProvidersTableCodec_Encode(t *testing.T) {
 }
 
 func TestProvidersTableCodec_WrongType(t *testing.T) {
-	codec := &judge.ProvidersTableCodec{}
+	codec := judge.ProvidersTable().Codec("table")
 	var buf bytes.Buffer
 	err := codec.Encode(&buf, "not-a-slice")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "expected []JudgeProvider")
+	assert.Contains(t, err.Error(), "expected []eval.JudgeProvider")
 }
 
 func TestProvidersTableCodec_Format(t *testing.T) {
-	codec := &judge.ProvidersTableCodec{}
+	codec := judge.ProvidersTable().Codec("table")
 	assert.Equal(t, "table", string(codec.Format()))
 }
 
 func TestProvidersTableCodec_DecodeUnsupported(t *testing.T) {
-	codec := &judge.ProvidersTableCodec{}
+	codec := judge.ProvidersTable().Codec("table")
 	err := codec.Decode(nil, nil)
 	require.Error(t, err)
 }
@@ -68,7 +68,7 @@ func TestModelsTableCodec_Encode(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			codec := &judge.ModelsTableCodec{}
+			codec := judge.ModelsTable().Codec("table")
 			var buf bytes.Buffer
 			require.NoError(t, codec.Encode(&buf, items))
 
@@ -81,20 +81,20 @@ func TestModelsTableCodec_Encode(t *testing.T) {
 }
 
 func TestModelsTableCodec_WrongType(t *testing.T) {
-	codec := &judge.ModelsTableCodec{}
+	codec := judge.ModelsTable().Codec("table")
 	var buf bytes.Buffer
 	err := codec.Encode(&buf, "not-a-slice")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "expected []JudgeModel")
+	assert.Contains(t, err.Error(), "expected []eval.JudgeModel")
 }
 
 func TestModelsTableCodec_Format(t *testing.T) {
-	codec := &judge.ModelsTableCodec{}
+	codec := judge.ModelsTable().Codec("table")
 	assert.Equal(t, "table", string(codec.Format()))
 }
 
 func TestModelsTableCodec_DecodeUnsupported(t *testing.T) {
-	codec := &judge.ModelsTableCodec{}
+	codec := judge.ModelsTable().Codec("table")
 	err := codec.Decode(nil, nil)
 	require.Error(t, err)
 }

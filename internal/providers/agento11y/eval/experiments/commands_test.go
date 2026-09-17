@@ -241,8 +241,8 @@ func TestReportCommand_RequiresArg(t *testing.T) {
 }
 
 func TestTableCodec_Format(t *testing.T) {
-	assert.Equal(t, "table", string((&experiments.TableCodec{}).Format()))
-	assert.Equal(t, "wide", string((&experiments.TableCodec{Wide: true}).Format()))
+	assert.Equal(t, "table", string((experiments.Table().Codec("table")).Format()))
+	assert.Equal(t, "wide", string((experiments.Table().Codec("wide")).Format()))
 }
 
 func TestTableCodec_Encode(t *testing.T) {
@@ -303,7 +303,7 @@ func TestTableCodec_Encode(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			codec := &experiments.TableCodec{Wide: tc.wide}
+			codec := experiments.Table().Codec(map[bool]string{false: "table", true: "wide"}[tc.wide])
 			var buf bytes.Buffer
 			require.NoError(t, codec.Encode(&buf, items))
 			out := buf.String()
@@ -387,7 +387,7 @@ func TestTrialsTableCodec_Encode(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			codec := &experiments.TrialsTableCodec{Wide: tc.wide}
+			codec := experiments.TrialsTable().Codec(map[bool]string{false: "table", true: "wide"}[tc.wide])
 			var buf bytes.Buffer
 			require.NoError(t, codec.Encode(&buf, items))
 			out := buf.String()
@@ -407,11 +407,11 @@ func TestTrialsTableCodec_Encode(t *testing.T) {
 }
 
 func TestTableCodec_WrongType(t *testing.T) {
-	codec := &experiments.TableCodec{}
+	codec := experiments.Table().Codec("table")
 	var buf bytes.Buffer
 	err := codec.Encode(&buf, "not-a-slice")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "expected []Experiment")
+	assert.Contains(t, err.Error(), "expected []experiments.Experiment")
 }
 
 func TestScoresTableCodec_Encode(t *testing.T) {
@@ -449,7 +449,7 @@ func TestScoresTableCodec_Encode(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			codec := &experiments.ScoresTableCodec{Wide: tc.wide}
+			codec := experiments.ScoresTable().Codec(map[bool]string{false: "table", true: "wide"}[tc.wide])
 			var buf bytes.Buffer
 			require.NoError(t, codec.Encode(&buf, items))
 			out := buf.String()
@@ -461,11 +461,11 @@ func TestScoresTableCodec_Encode(t *testing.T) {
 }
 
 func TestScoresTableCodec_WrongType(t *testing.T) {
-	codec := &experiments.ScoresTableCodec{}
+	codec := experiments.ScoresTable().Codec("table")
 	var buf bytes.Buffer
 	err := codec.Encode(&buf, "not-a-slice")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "expected []ScoreItem")
+	assert.Contains(t, err.Error(), "expected []experiments.ScoreItem")
 }
 
 func TestReportTextCodec_Encode(t *testing.T) {

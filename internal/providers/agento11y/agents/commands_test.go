@@ -43,7 +43,7 @@ func TestListTableCodec_Encode(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			codec := &agents.ListTableCodec{Wide: tc.wide}
+			codec := agents.ListTable().Codec(map[bool]string{false: "table", true: "wide"}[tc.wide])
 			var buf bytes.Buffer
 			require.NoError(t, codec.Encode(&buf, items))
 
@@ -56,11 +56,11 @@ func TestListTableCodec_Encode(t *testing.T) {
 }
 
 func TestListTableCodec_WrongType(t *testing.T) {
-	codec := &agents.ListTableCodec{}
+	codec := agents.ListTable().Codec("table")
 	var buf bytes.Buffer
 	err := codec.Encode(&buf, "not-a-slice")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "expected []Agent")
+	assert.Contains(t, err.Error(), "expected []agents.Agent")
 }
 
 func TestListTableCodec_Format(t *testing.T) {
@@ -72,13 +72,13 @@ func TestListTableCodec_Format(t *testing.T) {
 		{true, "wide"},
 	}
 	for _, tc := range tests {
-		codec := &agents.ListTableCodec{Wide: tc.wide}
+		codec := agents.ListTable().Codec(map[bool]string{false: "table", true: "wide"}[tc.wide])
 		assert.Equal(t, tc.expect, string(codec.Format()))
 	}
 }
 
 func TestListTableCodec_DecodeUnsupported(t *testing.T) {
-	codec := &agents.ListTableCodec{}
+	codec := agents.ListTable().Codec("table")
 	err := codec.Decode(nil, nil)
 	require.Error(t, err)
 }
@@ -91,7 +91,7 @@ func TestVersionsTableCodec_Encode(t *testing.T) {
 			LastSeenAt:    time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)},
 	}
 
-	codec := &agents.VersionsTableCodec{}
+	codec := agents.VersionsTable().Codec("table")
 	var buf bytes.Buffer
 	require.NoError(t, codec.Encode(&buf, versions))
 
@@ -103,9 +103,9 @@ func TestVersionsTableCodec_Encode(t *testing.T) {
 }
 
 func TestVersionsTableCodec_WrongType(t *testing.T) {
-	codec := &agents.VersionsTableCodec{}
+	codec := agents.VersionsTable().Codec("table")
 	var buf bytes.Buffer
 	err := codec.Encode(&buf, "not-a-slice")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "expected []AgentVersion")
+	assert.Contains(t, err.Error(), "expected []agents.AgentVersion")
 }

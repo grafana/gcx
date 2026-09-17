@@ -45,7 +45,7 @@ func TestTableCodec_Encode(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			codec := &conversations.TableCodec{Wide: tc.wide}
+			codec := conversations.Table().Codec(map[bool]string{false: "table", true: "wide"}[tc.wide])
 			var buf bytes.Buffer
 			err := codec.Encode(&buf, convs)
 			require.NoError(t, err)
@@ -62,11 +62,11 @@ func TestTableCodec_Encode(t *testing.T) {
 }
 
 func TestTableCodec_WrongType(t *testing.T) {
-	codec := &conversations.TableCodec{}
+	codec := conversations.Table().Codec("table")
 	var buf bytes.Buffer
 	err := codec.Encode(&buf, "not-a-slice")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "expected []Conversation")
+	assert.Contains(t, err.Error(), "expected []conversations.Conversation")
 }
 
 func TestTableCodec_Format(t *testing.T) {
@@ -78,13 +78,13 @@ func TestTableCodec_Format(t *testing.T) {
 		{true, "wide"},
 	}
 	for _, tc := range tests {
-		codec := &conversations.TableCodec{Wide: tc.wide}
+		codec := conversations.Table().Codec(map[bool]string{false: "table", true: "wide"}[tc.wide])
 		assert.Equal(t, tc.expect, string(codec.Format()))
 	}
 }
 
 func TestTableCodec_DecodeUnsupported(t *testing.T) {
-	codec := &conversations.TableCodec{}
+	codec := conversations.Table().Codec("table")
 	err := codec.Decode(nil, nil)
 	require.Error(t, err)
 }
@@ -94,7 +94,7 @@ func TestTableCodec_TitleTruncation(t *testing.T) {
 		{ID: "c1", Title: strings.Repeat("A", 50), GenerationCount: 1},
 	}
 
-	codec := &conversations.TableCodec{}
+	codec := conversations.Table().Codec("table")
 	var buf bytes.Buffer
 	require.NoError(t, codec.Encode(&buf, convs))
 	assert.Contains(t, buf.String(), "...")
@@ -140,7 +140,7 @@ func TestSearchTableCodec_Encode(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			codec := &conversations.SearchTableCodec{Wide: tc.wide}
+			codec := conversations.SearchTable().Codec(map[bool]string{false: "table", true: "wide"}[tc.wide])
 			var buf bytes.Buffer
 			require.NoError(t, codec.Encode(&buf, results))
 
@@ -153,11 +153,11 @@ func TestSearchTableCodec_Encode(t *testing.T) {
 }
 
 func TestSearchTableCodec_WrongType(t *testing.T) {
-	codec := &conversations.SearchTableCodec{}
+	codec := conversations.SearchTable().Codec("table")
 	var buf bytes.Buffer
 	err := codec.Encode(&buf, "not-a-slice")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "expected []SearchResult")
+	assert.Contains(t, err.Error(), "expected []conversations.SearchResult")
 }
 
 func TestAnnotationsTableCodec_Encode(t *testing.T) {
@@ -193,7 +193,7 @@ func TestAnnotationsTableCodec_Encode(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			codec := &conversations.AnnotationsTableCodec{Wide: tc.wide}
+			codec := conversations.AnnotationsTable().Codec(map[bool]string{false: "table", true: "wide"}[tc.wide])
 			var buf bytes.Buffer
 			require.NoError(t, codec.Encode(&buf, items))
 
@@ -206,11 +206,11 @@ func TestAnnotationsTableCodec_Encode(t *testing.T) {
 }
 
 func TestAnnotationsTableCodec_WrongType(t *testing.T) {
-	codec := &conversations.AnnotationsTableCodec{}
+	codec := conversations.AnnotationsTable().Codec("table")
 	var buf bytes.Buffer
 	err := codec.Encode(&buf, "not-a-slice")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "expected []ConversationAnnotation")
+	assert.Contains(t, err.Error(), "expected []conversations.ConversationAnnotation")
 }
 
 func TestCommands_HasAnnotationCommands(t *testing.T) {
