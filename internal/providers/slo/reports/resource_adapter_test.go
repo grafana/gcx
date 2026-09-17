@@ -100,3 +100,64 @@ func TestReportResource(t *testing.T) {
 		})
 	}
 }
+
+func minimalReport() reports.Report {
+	return reports.Report{
+		UUID:        "test-uuid-123",
+		Name:        "My Report",
+		Description: "A test report",
+		TimeSpan:    "calendarMonth",
+		ReportDefinition: reports.ReportDefinition{
+			Slos: []reports.ReportSlo{
+				{SloUUID: "slo-uuid-1"},
+			},
+		},
+	}
+}
+
+func fullReport() reports.Report {
+	return reports.Report{
+		UUID:        "full-uuid-456",
+		Name:        "Full Report",
+		Description: "A fully populated report",
+		TimeSpan:    "weeklySundayToSunday",
+		Labels: []reports.Label{
+			{Key: "team", Value: "platform"},
+		},
+		ReportDefinition: reports.ReportDefinition{
+			Slos: []reports.ReportSlo{
+				{SloUUID: "slo-uuid-1"},
+				{SloUUID: "slo-uuid-2"},
+				{SloUUID: "slo-uuid-3"},
+			},
+		},
+	}
+}
+
+func TestReportResource_Conversion(t *testing.T) {
+	tests := []struct {
+		name  string
+		value reports.Report
+	}{
+		{name: "minimal", value: minimalReport()},
+		{name: "full", value: fullReport()},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			crud := reports.ReportResource().TypedCRUD(nil, "stack-123")
+			obj, err := crud.ToUnstructured(tt.value)
+			require.NoError(t, err)
+			assert.Equal(t, "slo.ext.grafana.app/v1alpha1", obj.GetAPIVersion())
+			assert.Equal(t, "Report", obj.GetKind())
+			assert.Equal(t, tt.value.UUID, obj.GetName())
+			assert.Equal(t, "stack-123", obj.GetNamespace())
+			spec, found, err := unstructured.NestedMap(obj.Object, "spec")
+			require.NoError(t, err)
+			require.True(t, found)
+			assert.NotContains(t, spec, "uuid")
+			restored, err := crud.FromUnstructured(&obj)
+			require.NoError(t, err)
+			assert.Equal(t, tt.value, *restored)
+		})
+	}
+}
