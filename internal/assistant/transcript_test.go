@@ -1,6 +1,7 @@
 package assistant_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/internal/assistant"
@@ -10,10 +11,11 @@ import (
 func TestConversationTranscriptFormatTextShowsSharedAISDKScope(t *testing.T) {
 	transcript := assistant.ConversationTranscript{
 		Chat: assistant.Chat{ID: "shared-1", Name: "Synthetic", Source: "assistant", Engine: "aisdk", Shared: true},
-		Messages: []assistant.ChatMessage{{
-			Role:    "assistant",
-			Content: assistant.ContentJSON{{Type: "text", Text: "hello"}},
-		}},
+		Messages: []assistant.ChatMessage{
+			{Role: "assistant", Content: assistant.ContentJSON{{Type: "text", Text: "hello"}}},
+			{Role: "user", Content: assistant.ContentJSON{{Type: "text", Text: "follow-up"}}},
+			{Role: "assistant", Hidden: true, Content: assistant.ContentJSON{{Type: "text", Text: "hidden detail"}}},
+		},
 		Scope: "main",
 	}
 
@@ -21,6 +23,9 @@ func TestConversationTranscriptFormatTextShowsSharedAISDKScope(t *testing.T) {
 	assert.Contains(t, got, "Shared snapshot: yes")
 	assert.Contains(t, got, "Scope: main thread")
 	assert.Contains(t, got, "hello")
+	assert.Contains(t, got, "follow-up")
+	assert.Less(t, strings.Index(got, "hello"), strings.Index(got, "follow-up"))
+	assert.NotContains(t, got, "hidden detail")
 }
 
 func TestConversationTranscriptFormatTextKeepsLegacyMetadataMinimal(t *testing.T) {
