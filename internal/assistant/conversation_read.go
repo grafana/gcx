@@ -243,11 +243,11 @@ func normalizeUIMessage(wire uiMessage) (ChatMessage, error) {
 		if part.Type != "text" {
 			continue
 		}
-		var text string
-		if len(part.Text) == 0 || json.Unmarshal(part.Text, &text) != nil {
+		var text *string
+		if len(part.Text) == 0 || json.Unmarshal(part.Text, &text) != nil || text == nil {
 			return ChatMessage{}, fmt.Errorf("invalid text part in Assistant UI message %q", wire.ID)
 		}
-		content = append(content, ContentBlock{Type: "text", Text: text})
+		content = append(content, ContentBlock{Type: "text", Text: *text})
 	}
 	return ChatMessage{
 		ID:        wire.ID,
