@@ -19,7 +19,7 @@ func TestClientGetConversationRoutesByReferenceAndEngine(t *testing.T) {
 		aiMetadata     = `{"data":{"id":"chat-1","name":"AI SDK","engine":"aisdk","source":"assistant"}}`
 		sharedAI       = `{"data":{"id":"chat-1","name":"AI SDK","engine":"aisdk","source":"assistant","isPublic":true}}`
 		legacyMessages = `{"data":{"messages":[{"id":"m1","role":"user","created":"2026-01-01T00:00:00Z","content":[{"type":"text","text":"legacy"}]}]}}`
-		uiMessages     = `{"data":{"thread":"main","messages":[{"id":"m1","role":"assistant","created":"2026-01-01T00:00:00Z","parts":[{"type":"text","text":"first"},{"type":"tool-example","toolCallId":"call-1"},{"type":"text","text":"second"}]}],"fastMode":false}}`
+		uiMessages     = `{"data":{"thread":"main","messages":[{"id":"m1","role":"assistant","created":"2026-01-01T00:00:00Z","parts":[{"type":"text","text":"first"},{"type":"tool-example","toolCallId":"call-1"},{"type":"file","mediaType":"text/plain","url":"https://example.invalid/synthetic.txt"},{"type":"future-part","data":{"value":1}},{"type":"text","text":"second"}]},{"id":"m2","role":"user","created":"2026-01-01T00:01:00Z","parts":[{"type":"text","text":"third"}]},{"id":"m3","role":"assistant","created":"2026-01-01T00:02:00Z","metadata":{"hidden":true},"parts":[{"type":"text","text":"hidden"}]}],"fastMode":false}}`
 	)
 
 	tests := []struct {
@@ -65,7 +65,7 @@ func TestClientGetConversationRoutesByReferenceAndEngine(t *testing.T) {
 			wantEngine:   "aisdk",
 			wantScope:    "main",
 			wantText:     "first\nsecond",
-			wantParts:    `[{"type":"text","text":"first"},{"type":"tool-example","toolCallId":"call-1"},{"type":"text","text":"second"}]`,
+			wantParts:    `[{"type":"text","text":"first"},{"type":"tool-example","toolCallId":"call-1"},{"type":"file","mediaType":"text/plain","url":"https://example.invalid/synthetic.txt"},{"type":"future-part","data":{"value":1}},{"type":"text","text":"second"}]`,
 		},
 		{
 			name: "explicit shared AI SDK",
@@ -79,7 +79,7 @@ func TestClientGetConversationRoutesByReferenceAndEngine(t *testing.T) {
 			wantShared:   true,
 			wantScope:    "main",
 			wantText:     "first\nsecond",
-			wantParts:    `[{"type":"text","text":"first"},{"type":"tool-example","toolCallId":"call-1"},{"type":"text","text":"second"}]`,
+			wantParts:    `[{"type":"text","text":"first"},{"type":"tool-example","toolCallId":"call-1"},{"type":"file","mediaType":"text/plain","url":"https://example.invalid/synthetic.txt"},{"type":"future-part","data":{"value":1}},{"type":"text","text":"second"}]`,
 		},
 		{
 			name: "bare ID falls back to shared metadata on 404",
@@ -94,7 +94,7 @@ func TestClientGetConversationRoutesByReferenceAndEngine(t *testing.T) {
 			wantShared:   true,
 			wantScope:    "main",
 			wantText:     "first\nsecond",
-			wantParts:    `[{"type":"text","text":"first"},{"type":"tool-example","toolCallId":"call-1"},{"type":"text","text":"second"}]`,
+			wantParts:    `[{"type":"text","text":"first"},{"type":"tool-example","toolCallId":"call-1"},{"type":"file","mediaType":"text/plain","url":"https://example.invalid/synthetic.txt"},{"type":"future-part","data":{"value":1}},{"type":"text","text":"second"}]`,
 		},
 		{
 			name: "ordinary metadata takes precedence for a public chat",
@@ -108,7 +108,7 @@ func TestClientGetConversationRoutesByReferenceAndEngine(t *testing.T) {
 			wantShared:   true,
 			wantScope:    "main",
 			wantText:     "first\nsecond",
-			wantParts:    `[{"type":"text","text":"first"},{"type":"tool-example","toolCallId":"call-1"},{"type":"text","text":"second"}]`,
+			wantParts:    `[{"type":"text","text":"first"},{"type":"tool-example","toolCallId":"call-1"},{"type":"file","mediaType":"text/plain","url":"https://example.invalid/synthetic.txt"},{"type":"future-part","data":{"value":1}},{"type":"text","text":"second"}]`,
 		},
 	}
 
@@ -121,11 +121,23 @@ func TestClientGetConversationRoutesByReferenceAndEngine(t *testing.T) {
 			assert.Equal(t, tt.wantEngine, got.Chat.Engine)
 			assert.Equal(t, tt.wantShared, got.Chat.Shared)
 			assert.Equal(t, tt.wantScope, got.Scope)
+			if tt.wantParts != "" {
+				require.Len(t, got.Messages, 3)
+				assert.Equal(t, []string{"m1", "m2", "m3"}, []string{got.Messages[0].ID, got.Messages[1].ID, got.Messages[2].ID})
+				assert.Equal(t, []string{"2026-01-01T00:00:00Z", "2026-01-01T00:01:00Z", "2026-01-01T00:02:00Z"}, []string{got.Messages[0].CreatedAt, got.Messages[1].CreatedAt, got.Messages[2].CreatedAt})
+				assert.Equal(t, tt.wantText, got.Messages[0].ExtractText())
+				assert.Equal(t, "third", got.Messages[1].ExtractText())
+				assert.True(t, got.Messages[2].Hidden)
+				visible := got.VisibleMessages()
+				require.Len(t, visible, 2)
+				assert.Equal(t, []string{"m1", "m2"}, []string{visible[0].ID, visible[1].ID})
+				assert.JSONEq(t, tt.wantParts, string(got.Messages[0].Parts))
+				assert.JSONEq(t, `[{"type":"text","text":"third"}]`, string(got.Messages[1].Parts))
+				assert.JSONEq(t, `[{"type":"text","text":"hidden"}]`, string(got.Messages[2].Parts))
+				return
+			}
 			require.Len(t, got.Messages, 1)
 			assert.Equal(t, tt.wantText, got.Messages[0].ExtractText())
-			if tt.wantParts != "" {
-				assert.JSONEq(t, tt.wantParts, string(got.Messages[0].Parts))
-			}
 		})
 	}
 }
@@ -314,6 +326,7 @@ func TestClientGetConversationDirectCLIRoutes(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var requests []string
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, http.MethodGet, r.Method)
 				requests = append(requests, r.URL.RequestURI())
 				response, ok := tt.responses[r.URL.RequestURI()]
 				if !ok {
@@ -351,6 +364,7 @@ func newConversationTestClient(t *testing.T, responses map[string]testHTTPRespon
 	t.Helper()
 	requests := []string{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
 		key := r.URL.RequestURI()
 		prefix := "/api/plugins/grafana-assistant-app/resources/api/v1"
 		requests = append(requests, key[len(prefix):])

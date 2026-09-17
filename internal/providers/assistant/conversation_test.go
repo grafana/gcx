@@ -147,13 +147,14 @@ func TestConversationGetCommand_RejectsMismatchedSharedURLBeforeTranscriptIO(t *
 func TestConversationGetCommand_OutputFormatParityAndFieldSelection(t *testing.T) {
 	requestCount := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
 		requestCount++
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.RequestURI() {
 		case "/api/plugins/grafana-assistant-app/resources/api/v1/chats/chat-1":
 			_, _ = fmt.Fprint(w, `{"data":{"id":"chat-1","name":"AI SDK","engine":"aisdk","source":"assistant"}}`)
 		case "/api/plugins/grafana-assistant-app/resources/api/v1/chats/chat-1/ui-messages?thread=main":
-			_, _ = fmt.Fprint(w, `{"data":{"thread":"main","messages":[{"id":"m1","role":"assistant","created":"2026-01-01T00:00:00Z","parts":[{"type":"text","text":"hello"},{"type":"data-synthetic","data":{"value":1}}]}],"fastMode":false}}`)
+			_, _ = fmt.Fprint(w, `{"data":{"thread":"main","messages":[{"id":"m1","role":"assistant","created":"2026-01-01T00:00:00Z","parts":[{"type":"text","text":"hello"},{"type":"tool-example","toolCallId":"call-1"},{"type":"file","mediaType":"text/plain","url":"https://example.invalid/synthetic.txt"},{"type":"future-part","data":{"value":1}}]}],"fastMode":false}}`)
 		default:
 			http.NotFound(w, r)
 		}
@@ -162,14 +163,14 @@ func TestConversationGetCommand_OutputFormatParityAndFieldSelection(t *testing.T
 	cfgPath := writeAssistantTestConfig(t, server.URL)
 
 	tests := []struct {
-		name       string
-		args       []string
-		wantOutput string
+		name        string
+		args        []string
+		wantOutputs []string
 	}{
-		{name: "JSON", args: []string{"--output", "json"}, wantOutput: `"parts"`},
-		{name: "YAML", args: []string{"--output", "yaml"}, wantOutput: "scope: main"},
-		{name: "text", args: []string{"--output", "text"}, wantOutput: "Scope: main thread"},
-		{name: "field selection", args: []string{"--json", "scope"}, wantOutput: `"scope": "main"`},
+		{name: "JSON", args: []string{"--output", "json"}, wantOutputs: []string{`"parts"`, `"type": "tool-example"`, `"type": "file"`, `"type": "future-part"`}},
+		{name: "YAML", args: []string{"--output", "yaml"}, wantOutputs: []string{"scope: main", "type: tool-example", "type: file", "type: future-part", "mediaType: text/plain"}},
+		{name: "text", args: []string{"--output", "text"}, wantOutputs: []string{"Scope: main thread", "hello"}},
+		{name: "field selection", args: []string{"--json", "scope"}, wantOutputs: []string{`"scope": "main"`}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -183,7 +184,9 @@ func TestConversationGetCommand_OutputFormatParityAndFieldSelection(t *testing.T
 			args := []string{"conversation", "get", "chat-1", "--config", cfgPath}
 			root.SetArgs(append(args, tt.args...))
 			require.NoError(t, root.Execute())
-			assert.Contains(t, stdout.String(), tt.wantOutput)
+			for _, want := range tt.wantOutputs {
+				assert.Contains(t, stdout.String(), want)
+			}
 		})
 	}
 	assert.Equal(t, len(tests)*2, requestCount)
