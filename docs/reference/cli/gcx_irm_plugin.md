@@ -23,5 +23,5 @@ Manage the IRM plugin.
 ### SEE ALSO
 
 * [gcx irm](gcx_irm.md)	 - Manage Grafana IRM (OnCall + Incidents)
-* [gcx irm plugin sync](gcx_irm_plugin_sync.md)	 - Request a refresh of the IRM copy of Grafana users and teams [experimental].
+* [gcx irm plugin sync](gcx_irm_plugin_sync.md)	 - [experimental] Request a refresh of the IRM copy of Grafana users and teams.
 

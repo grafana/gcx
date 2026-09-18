@@ -1,12 +1,15 @@
 ## gcx irm plugin sync
 
-Request a refresh of the IRM copy of Grafana users and teams [experimental].
+[experimental] Request a refresh of the IRM copy of Grafana users and teams.
 
 ### Synopsis
 
+This command is experimental. It may be removed, or its subcommands, flags and
+responses may change without following the normal semantic versioning conventions.
+
 Request a refresh of the IRM copy of the Grafana users and teams.
 
-Experimental: this command is a temporary bridge for a backend synchronization
+This command is a temporary bridge for a backend synchronization
 constraint. It can change or be removed when IRM keeps its internal copy current
 without a caller-triggered synchronization.
 
