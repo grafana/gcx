@@ -205,9 +205,9 @@ type RetryState struct {
 	// from anonymous callers).
 	ForceSave bool
 
-	// CloudTokenDropWarned prevents the non-Cloud token advisory from repeating
+	// CloudCredentialNotAppliedWarned prevents the non-Cloud credential advisory from repeating
 	// when the CLI resolves a sentinel and calls Run again.
-	CloudTokenDropWarned bool
+	CloudCredentialNotAppliedWarned bool
 }
 
 // Options is the top-level input to Run. It embeds three semantic groupings:
@@ -777,12 +777,12 @@ func resolveGrafanaAuth(ctx context.Context, opts Options, target Target) (strin
 // it does not block login).
 func resolveCloudAuth(opts *Options, target Target) (*config.CloudEntry, string, error) {
 	if target != TargetCloud {
-		// A Cloud credential has no home on a non-Cloud context, so it is
-		// dropped. Say so: silence here reads as acceptance, and the user then
-		// finds the Cloud commands unauthenticated for no visible reason.
-		if !opts.CloudTokenDropWarned && opts.CloudToken != "" {
-			warnCloudTokenDropped(opts.Writer, opts.CloudToken)
-			opts.CloudTokenDropWarned = true
+		// Do not apply a Cloud credential to a non-Cloud target. An existing
+		// saved Cloud entry can remain bound to the context during re-auth, so
+		// the advisory must not claim that Cloud commands are unavailable.
+		if !opts.CloudCredentialNotAppliedWarned && opts.CloudToken != "" {
+			warnCloudCredentialNotApplied(opts.Writer)
+			opts.CloudCredentialNotAppliedWarned = true
 		}
 		return nil, "", nil
 	}
@@ -890,20 +890,17 @@ func announceCloudTokenStep(w io.Writer) {
 	fmt.Fprintln(w, "\nOptional: log in to Grafana Cloud to enable Cloud management features.")
 }
 
-// warnCloudTokenDropped surfaces a non-fatal advisory when the caller supplied
-// a Cloud credential but the resolved target is not Grafana Cloud. Login
-// proceeds, because Grafana instance authentication is unaffected. It writes to
-// w (the caller-supplied progress writer); a nil writer discards, keeping
-// internal/login free of process streams (NC-001).
-func warnCloudTokenDropped(w io.Writer, cloudToken string) {
-	if cloudToken == "" {
-		return
-	}
+// warnCloudCredentialNotApplied surfaces a non-fatal advisory when a resolved Cloud
+// credential is not applied because the target is not Grafana Cloud. An
+// existing saved Cloud entry remains unchanged during re-authentication. It
+// writes to w (the caller-supplied progress writer); a nil writer discards,
+// keeping internal/login free of process streams (NC-001).
+func warnCloudCredentialNotApplied(w io.Writer) {
 	if w == nil {
 		w = io.Discard
 	}
-	fmt.Fprintln(w, "Warning: the target is not Grafana Cloud, so the Cloud token was not saved. "+
-		"Grafana Cloud product commands stay unavailable on this context. "+
+	fmt.Fprintln(w, "Warning: the target is not Grafana Cloud, so this login did not apply the Cloud credential. "+
+		"Any existing saved Cloud credential stays unchanged. "+
 		"Pass --cloud to force a Cloud target if the server is a Cloud stack.")
 }
 

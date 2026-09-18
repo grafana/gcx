@@ -25,7 +25,7 @@ Grafana instance authentication (choose one, for non-interactive use):
 
 Grafana Cloud platform credential (optional, and in addition to the above):
   --cloud-token  Grafana Cloud access-policy token (created at grafana.com).
-                 It authenticates the Grafana Cloud product commands, including cloud, sm, k6, irm, slo, and faro.
+                 It authenticates the Grafana Cloud product commands, including cloud, sm, k6, irm, slo, and frontend.
                  It cannot authenticate the Grafana instance, so pass --oauth or --token as well.
                  See: https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/create-access-policies.md
 
