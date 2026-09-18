@@ -28,6 +28,8 @@ func MetricsCmd(loader *providers.ConfigLoader) *cobra.Command {
 
 TRACEQL is the TraceQL metrics expression to evaluate.
 Datasource is resolved from -d flag or datasources.tempo in your context.
+Metrics queries support arithmetic (+, -, *, /) with other queries or numeric
+scalars on supported Tempo backends. Wrap each metrics subquery in parentheses.
 
 Instant vs range is deduced from time flags: no time flags = instant query,
 --since or --from/--to = range query. Use --instant to force an instant query
@@ -39,20 +41,17 @@ open it in your browser after the query succeeds.`,
   # Instant query over the last hour (default, no time flags)
   gcx datasources tempo metrics '{ } | rate()'
 
-  # Range query with relative window
-  gcx datasources tempo metrics -d tempo-001 '{ } | rate()' --since 1h
-
-  # Print a Grafana Explore share link for the query
-  gcx datasources tempo metrics '{ } | rate()' --share-link
-
   # Instant query with explicit time range
   gcx datasources tempo metrics '{ } | rate()' --instant --since 1h
 
-  # Range query with explicit time range and step
-  gcx datasources tempo metrics '{ } | rate()' --from now-1h --to now --step 30s
+  # Range query with explicit bounds, step, and an Explore share link
+  gcx datasources tempo metrics '{ } | rate()' --from now-1h --to now --step 30s --share-link
 
-  # Output as JSON
-  gcx datasources tempo metrics -d tempo-001 '{ } | rate()' -o json`,
+  # Error percentage among observed server spans (not unsampled traffic)
+  gcx datasources tempo metrics '100 * ({ kind = server && status = error } | rate()) / ({ kind = server } | rate())' --since 1h -o json
+
+  # Each service's share of observed server-span throughput
+  gcx datasources tempo metrics '100 * ({ kind = server } | rate() by (resource.service.name)) / ({ kind = server } | rate())' --since 1h`,
 		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := shared.Validate(); err != nil {
