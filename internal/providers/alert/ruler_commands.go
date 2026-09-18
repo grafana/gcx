@@ -324,7 +324,7 @@ func RulerGroupsTable() cmdio.Table[RulerGroupView] {
 	return cmdio.Table[RulerGroupView]{Columns: []cmdio.Column[RulerGroupView]{
 		{Header: "NAMESPACE", Content: func(r RulerGroupView) string { return r.Namespace }},
 		{Header: "GROUP", Content: func(r RulerGroupView) string { return r.Group }},
-		{Header: "INTERVAL", Content: func(r RulerGroupView) string { return orDash(r.Interval) }},
+		{Header: "INTERVAL", Content: func(r RulerGroupView) string { return cmdio.OrDash(r.Interval) }},
 		{Header: "RULES", Content: func(r RulerGroupView) string { return strconv.Itoa(r.Rules) }},
 	}}
 }

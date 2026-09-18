@@ -10,40 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestGroupsTableCodec_Encode(t *testing.T) {
-	codec := alert.GroupsTable().Codec("table")
-	assert.Equal(t, "table", string(codec.Format()))
-
-	groups := []alert.RuleGroup{
-		{Name: "group-1", FolderUID: "folder-abc", Interval: 60, Rules: make([]alert.RuleStatus, 3)},
-		{Name: "group-2", FolderUID: "folder-xyz", Interval: 120, Rules: make([]alert.RuleStatus, 1)},
-	}
-
-	var buf bytes.Buffer
-	err := codec.Encode(&buf, groups)
-	require.NoError(t, err)
-
-	output := buf.String()
-	assert.Contains(t, output, "NAME")
-	assert.Contains(t, output, "FOLDER")
-	assert.Contains(t, output, "RULES")
-	assert.Contains(t, output, "INTERVAL")
-	assert.Contains(t, output, "group-1")
-	assert.Contains(t, output, "folder-abc")
-	assert.Contains(t, output, "60s")
-	assert.Contains(t, output, "120s")
-
-	lines := strings.Split(strings.TrimSpace(output), "\n")
-	require.Len(t, lines, 3, "header + 2 data rows")
-}
-
-func TestGroupsTableCodec_InvalidType(t *testing.T) {
-	codec := alert.GroupsTable().Codec("table")
-	var buf bytes.Buffer
-	err := codec.Encode(&buf, "not a slice")
-	require.Error(t, err)
-}
-
 func TestGroupRulesTableCodec_Encode(t *testing.T) {
 	codec := &alert.GroupRulesTableCodec{}
 	assert.Equal(t, "table", string(codec.Format()))

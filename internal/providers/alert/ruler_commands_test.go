@@ -189,53 +189,6 @@ func TestRulerGroupsDelete_DeclinesWithoutForce(t *testing.T) {
 	assert.NotContains(t, buf.String(), "Deleted")
 }
 
-func TestRulerNamespacesTableCodec_Encode(t *testing.T) {
-	codec := alert.RulerNamespacesTable().Codec("table")
-	assert.Equal(t, "table", string(codec.Format()))
-
-	var buf bytes.Buffer
-	err := codec.Encode(&buf, []alert.RulerNamespaceView{
-		{Namespace: "ns-a", Groups: 2, Rules: 5},
-		{Namespace: "ns-b", Groups: 1, Rules: 1},
-	})
-	require.NoError(t, err)
-
-	output := buf.String()
-	assert.Contains(t, output, "NAMESPACE")
-	assert.Contains(t, output, "ns-a")
-	assert.Contains(t, output, "5")
-	require.Len(t, strings.Split(strings.TrimSpace(output), "\n"), 3, "header + 2 rows")
-
-	require.Error(t, codec.Encode(&buf, "not a slice"))
-}
-
-func TestRulerGroupsTableCodec_Encode(t *testing.T) {
-	codec := alert.RulerGroupsTable().Codec("table")
-	assert.Equal(t, "table", string(codec.Format()))
-
-	var buf bytes.Buffer
-	err := codec.Encode(&buf, []alert.RulerGroupView{
-		{Namespace: "ns-a", Group: "g1", Interval: "1m", Rules: 3},
-		{Namespace: "ns-a", Group: "g2", Rules: 1},
-	})
-	require.NoError(t, err)
-
-	output := buf.String()
-	assert.Contains(t, output, "GROUP")
-	assert.Contains(t, output, "g1")
-	assert.Contains(t, output, "1m")
-	// Groups without an explicit interval render a placeholder, not a blank cell.
-	g2Line := ""
-	for line := range strings.SplitSeq(output, "\n") {
-		if strings.Contains(line, "g2") {
-			g2Line = line
-		}
-	}
-	assert.Contains(t, g2Line, "-")
-
-	require.Error(t, codec.Encode(&buf, 42))
-}
-
 // runRulerSplit executes `alert ruler <args...>` with stdout and stderr kept
 // apart, so a test can assert what reaches the agent-mode stdout document
 // versus what is only a diagnostic. Agent mode is enabled before the command

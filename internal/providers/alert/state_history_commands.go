@@ -134,12 +134,12 @@ func parseLabelFilters(pairs []string) (map[string]string, error) {
 
 func StateHistoryTable() cmdio.Table[StateTransition] {
 	return cmdio.Table[StateTransition]{Columns: []cmdio.Column[StateTransition]{
-		{Header: "TIME", Content: func(r StateTransition) string { return orDash(formatHistoryTime(r.Time)) }},
-		{Header: "RULE_UID", Visible: cmdio.WideOnly, Content: func(r StateTransition) string { return orDash(r.RuleUID) }},
-		{Header: "RULE", Content: func(r StateTransition) string { return orDash(r.RuleTitle) }},
-		{Header: "PREVIOUS", Content: func(r StateTransition) string { return orDash(r.Previous) }},
-		{Header: "CURRENT", Content: func(r StateTransition) string { return orDash(r.Current) }},
-		{Header: "ERROR", Visible: cmdio.WideOnly, Content: func(r StateTransition) string { return orDash(r.Error) }},
+		{Header: "TIME", Content: func(r StateTransition) string { return cmdio.OrDash(formatHistoryTime(r.Time)) }},
+		{Header: "RULE_UID", Visible: cmdio.WideOnly, Content: func(r StateTransition) string { return cmdio.OrDash(r.RuleUID) }},
+		{Header: "RULE", Content: func(r StateTransition) string { return cmdio.OrDash(r.RuleTitle) }},
+		{Header: "PREVIOUS", Content: func(r StateTransition) string { return cmdio.OrDash(r.Previous) }},
+		{Header: "CURRENT", Content: func(r StateTransition) string { return cmdio.OrDash(r.Current) }},
+		{Header: "ERROR", Visible: cmdio.WideOnly, Content: func(r StateTransition) string { return cmdio.OrDash(r.Error) }},
 		{Header: "LABELS", Content: func(r StateTransition) string { return formatLabels(r.Labels) }},
 	}}
 }

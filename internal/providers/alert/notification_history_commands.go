@@ -224,10 +224,10 @@ func NotificationHistoryTable() cmdio.Table[NotificationEntry] {
 		{Header: "OUTCOME", Content: func(r NotificationEntry) string { return r.Outcome }},
 		{Header: "ALERTS", Content: func(r NotificationEntry) string { return strconv.FormatInt(r.AlertCount, 10) }},
 		{Header: "DURATION", Content: func(r NotificationEntry) string { return formatDurationNanos(r.Duration) }},
-		{Header: "RULE_UIDS", Visible: cmdio.WideOnly, Content: func(r NotificationEntry) string { return orDash(strings.Join(r.RuleUIDs, ",")) }},
+		{Header: "RULE_UIDS", Visible: cmdio.WideOnly, Content: func(r NotificationEntry) string { return cmdio.OrDash(strings.Join(r.RuleUIDs, ",")) }},
 		{Header: "GROUP_LABELS", Visible: cmdio.WideOnly, Content: func(r NotificationEntry) string { return formatLabels(r.GroupLabels) }},
-		{Header: "UUID", Visible: cmdio.WideOnly, Content: func(r NotificationEntry) string { return orDash(r.UUID) }},
-		{Header: "ERROR", Content: func(r NotificationEntry) string { return orDash(r.Error) }},
+		{Header: "UUID", Visible: cmdio.WideOnly, Content: func(r NotificationEntry) string { return cmdio.OrDash(r.UUID) }},
+		{Header: "ERROR", Content: func(r NotificationEntry) string { return cmdio.OrDash(r.Error) }},
 	}}
 }
 

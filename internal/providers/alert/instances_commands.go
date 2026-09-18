@@ -117,9 +117,9 @@ func InstancesTable() cmdio.Table[AlertInstanceRecord] {
 		{Header: "RULE_UID", Content: func(r AlertInstanceRecord) string { return r.RuleUID }},
 		{Header: "RULE", Content: func(r AlertInstanceRecord) string { return r.RuleName }},
 		{Header: "GROUP", Visible: cmdio.WideOnly, Content: func(r AlertInstanceRecord) string { return r.GroupName }},
-		{Header: "FOLDER", Visible: cmdio.WideOnly, Content: func(r AlertInstanceRecord) string { return orDash(r.FolderUID) }},
+		{Header: "FOLDER", Visible: cmdio.WideOnly, Content: func(r AlertInstanceRecord) string { return cmdio.OrDash(r.FolderUID) }},
 		{Header: "STATE", Content: func(r AlertInstanceRecord) string { return r.State }},
-		{Header: "ACTIVE_AT", Content: func(r AlertInstanceRecord) string { return orDash(r.ActiveAt) }},
+		{Header: "ACTIVE_AT", Content: func(r AlertInstanceRecord) string { return cmdio.OrDash(r.ActiveAt) }},
 		{Header: "VALUE", Content: func(r AlertInstanceRecord) string { return dashForNil(r.Value) }},
 		{Header: "LABELS", Content: func(r AlertInstanceRecord) string { return formatLabels(r.Labels) }},
 	}}
@@ -200,11 +200,4 @@ func dashForNil(v any) string {
 		return "-"
 	}
 	return fmt.Sprint(v)
-}
-
-func orDash(s string) string {
-	if s == "" {
-		return "-"
-	}
-	return s
 }

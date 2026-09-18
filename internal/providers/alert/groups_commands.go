@@ -83,6 +83,7 @@ func GroupsTable() cmdio.Table[RuleGroup] {
 		{Header: "NAME", Content: func(r RuleGroup) string { return r.Name }},
 		{Header: "FOLDER", Content: func(r RuleGroup) string { return r.FolderUID }},
 		{Header: "RULES", Content: func(r RuleGroup) string { return strconv.Itoa(len(r.Rules)) }},
+		// Interval is in seconds per the Prometheus/Grafana ruler API contract.
 		{Header: "INTERVAL", Content: func(r RuleGroup) string { return strconv.Itoa(r.Interval) + "s" }},
 	}}
 }
