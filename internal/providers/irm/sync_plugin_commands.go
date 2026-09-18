@@ -51,10 +51,13 @@ func newSyncPluginCommand(loader OnCallConfigLoader) *cobra.Command {
 	opts := &syncPluginOpts{}
 	cmd := &cobra.Command{
 		Use:   "sync",
-		Short: "Request a refresh of the IRM copy of Grafana users and teams [experimental].",
-		Long: `Request a refresh of the IRM copy of the Grafana users and teams.
+		Short: "[experimental] Request a refresh of the IRM copy of Grafana users and teams.",
+		Long: `This command is experimental. It may be removed, or its subcommands, flags and
+responses may change without following the normal semantic versioning conventions.
 
-Experimental: this command is a temporary bridge for a backend synchronization
+Request a refresh of the IRM copy of the Grafana users and teams.
+
+This command is a temporary bridge for a backend synchronization
 constraint. It can change or be removed when IRM keeps its internal copy current
 without a caller-triggered synchronization.
 

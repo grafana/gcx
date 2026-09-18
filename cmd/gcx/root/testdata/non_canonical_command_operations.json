@@ -63,6 +63,7 @@
   "gcx irm oncall alert-groups unsilence",
   "gcx irm oncall escalate",
   "gcx irm oncall users current",
+  "gcx irm plugin sync",
   "gcx k6 auth token",
   "gcx k6 test-run emit",
   "gcx k6 test-run status",
