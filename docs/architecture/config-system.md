@@ -933,9 +933,8 @@ type CLIOptions struct {
 func LoadCLIOptions() (CLIOptions, error)
 ```
 
-`LoadCLIOptions()` uses `caarlos0/env/v11` (the same library used for
-context-scoped env vars) to parse global environment variables into a
-`CLIOptions` struct. Unlike context overrides, these options are loaded
+`LoadCLIOptions()` uses `parseEnvTags` (`internal/config/envparse.go`) to parse
+global environment variables into a `CLIOptions` struct. Unlike context overrides, these options are loaded
 independently — they do not read from the config file or affect any context.
 
 **Current usage:** The `delete` command calls `LoadCLIOptions()` in its `RunE`
@@ -944,7 +943,7 @@ enables the `--force` flag for non-interactive operation in CI/CD pipelines.
 
 | Env Var | CLI Flag | Effect |
 |---------|----------|--------|
-| `GCX_AUTO_APPROVE` | `--yes` / `-y` | Auto-enables `--force` on delete |
+| `GCX_AUTO_APPROVE` | `--yes` / `-y` | Auto-enables `--force` on delete. Agent mode does not auto-approve — see [safety.md § 3.3](../design/safety.md) |
 
 See [environment-variables.md](../design/environment-variables.md) for the full environment
 variable reference.
