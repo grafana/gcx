@@ -2,8 +2,28 @@
 
 Get a collector by ID or name.
 
+### Synopsis
+
+Get one Fleet Management collector by ID or name.
+
+Structured output includes local and remote attributes plus the timestamps that
+the Fleet API reports. Use table or wide output for a human-readable health view.
+
 ```
 gcx fleet collectors get <id|name> [flags]
+```
+
+### Examples
+
+```
+  # Get the full collector resource
+  gcx fleet collectors get <id>
+
+  # Show the collector health fields as a table
+  gcx fleet collectors get <id> -o wide
+
+  # Select attributes and update time
+  gcx fleet collectors get <id> --json spec.local_attributes,spec.remote_attributes,spec.updated_at
 ```
 
 ### Options
@@ -12,7 +32,7 @@ gcx fleet collectors get <id|name> [flags]
   -h, --help            help for get
       --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string   Output format. One of: agents, json, yaml (default "yaml")
+  -o, --output string   Output format. One of: agents, json, table, wide, yaml (default "yaml")
 ```
 
 ### Options inherited from parent commands
