@@ -39,7 +39,7 @@ gcx datasources tempo metrics [TRACEQL] [flags]
   gcx datasources tempo metrics '100 * ({ kind = server && status = error } | rate()) / ({ kind = server } | rate())' --since 1h -o json
 
   # Each service's share of observed server-span throughput
-  gcx datasources tempo metrics '({ kind = server } | rate() by (resource.service.name)) / ({ kind = server } | rate())' --since 1h
+  gcx datasources tempo metrics '100 * ({ kind = server } | rate() by (resource.service.name)) / ({ kind = server } | rate())' --since 1h
 ```
 
 ### Options
