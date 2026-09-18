@@ -24,7 +24,16 @@ type syncPluginOpts struct {
 func newPluginCommand(loader OnCallConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "plugin",
-		Short: "Manage the IRM plugin.",
+		Short: "[experimental] Manage the IRM plugin.",
+		Long: `This command is experimental. It may be removed, or its subcommands, flags and
+responses may change without following the normal semantic versioning conventions.
+
+Request operations on the IRM plugin. This group is a temporary bridge. It can
+be removed when IRM keeps its internal copy of the Grafana users and teams
+current without a caller-triggered synchronization.`,
+		Annotations: map[string]string{
+			agent.AnnotationStability: agent.StabilityExperimental,
+		},
 	}
 	cmd.AddCommand(newSyncPluginCommand(loader))
 	return cmd
@@ -36,7 +45,7 @@ func (o *syncPluginOpts) setup(flags *pflag.FlagSet) {
 	// -o json/yaml gets the structured document.
 	o.IO.RegisterCustomCodec("text", &singleMutationTextCodec{
 		render: func(w io.Writer, _ cmdio.SingleMutation) {
-			cmdio.Success(w, "Requested a sync of the IRM plugin")
+			cmdio.Success(w, "Requested a sync of the IRM plugin. The refresh runs in the background, so a create can still need a retry.")
 		},
 	})
 	o.IO.DefaultFormat("text")
