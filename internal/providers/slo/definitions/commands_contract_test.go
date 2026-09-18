@@ -529,29 +529,61 @@ func TestDefinitionsTimelineEmptyContract(t *testing.T) {
 	}
 }
 
-func TestDefinitionsPushUsesPipelineNaturalKeyMatching(t *testing.T) {
-	for _, uuid := range []string{"source-uuid", ""} {
-		t.Run("source UUID="+uuid, func(t *testing.T) {
-			// Register the same natural key as the real provider, without loading credentials.
-			adapter.NewProvider("slo", "", nil, definitions.SloResource())
-			st := &sloAPIState{slos: map[string]definitions.Slo{
-				"target-uuid": {UUID: "target-uuid", Name: "Existing SLO"},
-			}}
-			srv := newSLOServer(t, st)
-			defer srv.Close()
-			file := writeSLOManifest(t, t.TempDir(), "slo.yaml", "Existing SLO", uuid)
-			stdout, _, err := runDefinitions(t, srv.URL, false, "", "push", file, "-o", "json")
-			require.NoError(t, err)
-			assert.Zero(t, st.createCalls, "the shared pipeline must update the natural-key match")
-			doc, ok := decodeSingleJSONValue(t, stdout).(map[string]any)
-			require.True(t, ok)
-			items, ok := doc["items"].([]any)
-			require.True(t, ok)
-			require.Len(t, items, 1)
-			item, ok := items[0].(map[string]any)
-			require.True(t, ok)
-			assert.Equal(t, "updated", item["action"])
-			assert.Equal(t, "target-uuid", item["uuid"])
-		})
+func TestDefinitionsPushPreservesLegacyIdentity(t *testing.T) {
+	adapter.NewProvider("slo", "", nil, definitions.SloResource())
+	for _, uuid := range []string{"target-uuid", "source-uuid", ""} {
+		for _, envelope := range []string{"full", "no-apiVersion", "no-kind", "neither"} {
+			for _, dryRun := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/%s/dry-run=%t", uuid, envelope, dryRun), func(t *testing.T) {
+					st := &sloAPIState{slos: map[string]definitions.Slo{
+						"target-uuid": {UUID: "target-uuid", Name: "Existing"},
+					}}
+					srv := newSLOServer(t, st)
+					defer srv.Close()
+					file := writeSLOManifest(t, t.TempDir(), "resource.yaml", "Existing", uuid)
+					data, err := os.ReadFile(file)
+					require.NoError(t, err)
+					if envelope == "no-apiVersion" || envelope == "neither" {
+						data = bytes.ReplaceAll(data, []byte("apiVersion: slo.ext.grafana.app/v1alpha1\n"), nil)
+					}
+					if envelope == "no-kind" || envelope == "neither" {
+						data = bytes.ReplaceAll(data, []byte("kind: SLO\n"), nil)
+					}
+					require.NoError(t, os.WriteFile(file, data, 0o600))
+					args := []string{"push", file, "-o", "json"}
+					if dryRun {
+						srv.Close() // Local previews must succeed without contacting the API.
+						args = append(args, "--dry-run")
+					}
+					stdout, _, err := runDefinitions(t, srv.URL, false, "", args...)
+					require.NoError(t, err)
+					doc, ok := decodeSingleJSONValue(t, stdout).(map[string]any)
+					require.True(t, ok)
+					items, ok := doc["items"].([]any)
+					require.True(t, ok)
+					require.Len(t, items, 1)
+					item, ok := items[0].(map[string]any)
+					require.True(t, ok)
+					switch {
+					case dryRun:
+						assert.Zero(t, st.createCalls)
+						assert.Equal(t, "dry-run", item["action"])
+						if uuid != "" {
+							assert.Equal(t, uuid, item["uuid"])
+						} else {
+							assert.NotContains(t, item, "uuid")
+						}
+					case uuid == "target-uuid":
+						assert.Zero(t, st.createCalls)
+						assert.Equal(t, "updated", item["action"])
+						assert.Equal(t, uuid, item["uuid"])
+					default:
+						assert.Equal(t, 1, st.createCalls)
+						assert.Equal(t, "created", item["action"])
+						assert.Equal(t, "uuid-1", item["uuid"])
+					}
+				})
+			}
+		}
 	}
 }

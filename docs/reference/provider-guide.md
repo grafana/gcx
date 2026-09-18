@@ -760,8 +760,9 @@ deprecated compatibility wrappers. `internal/providers/slo/transfer` uses
 `remote.Pusher`, `remote.Puller`, `local.FSReader`, and `local.FSWriter`,
 the same execution components as `resources push/pull`; the wrappers retain
 file-at-a-time results, the `Kind/name.yaml` export layout, and local-only
-dry-run previews. Push validates the declared resource kind and uses pipeline
-natural-key matching for both absent and unknown UUIDs, so an existing resource
-with the same name is updated. Local-only dry-run previews show manifest identities
-and do not resolve the remote target or determine create versus update. New
-workflows should use `resources push/pull`.
+dry-run previews. Push supplies omitted `apiVersion` and `kind` fields and
+validates explicitly supplied resource types. Compatibility wrappers update only
+an existing UUID; empty or unknown UUIDs create a new resource, even when its name
+matches another resource. Their local-only dry-run makes no API requests and
+shows the manifest identity. Generic `resources push` retains natural-key matching.
+New workflows should use `resources push/pull`.

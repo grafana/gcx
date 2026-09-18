@@ -4,6 +4,7 @@ package transfer
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -24,6 +25,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"sigs.k8s.io/yaml"
 )
 
 // pushItemResult is one successfully processed file in a push batch.
@@ -117,7 +119,8 @@ func PushCommand[T adapter.ResourceNamer](binding providers.BoundResource[T], la
 		Use: "push FILE...", Args: cobra.MinimumNArgs(1),
 		Short: "Push resources from files (Deprecated: use gcx resources push).",
 		Long: fmt.Sprintf(`Deprecated: use gcx resources push %s -p PATH instead.
-Writes use the shared pipeline: an absent or unknown UUID matches by resource name before creating.
+Writes update only an existing metadata.name UUID; an absent or unknown UUID creates a new resource.
+Manifests may omit apiVersion and kind; this command supplies its resource type.
 This compatibility command retains its file-at-a-time results and local-only --dry-run preview.
 The preview shows manifest identities only; it does not resolve the remote UUID or determine create versus update.`, selector),
 		RunE: func(cmd *cobra.Command, paths []string) error {
@@ -130,7 +133,7 @@ The preview shows manifest identities only; it does not resolve the remote UUID 
 				return err
 			}
 			client, registry := pipeline(crud)
-			tracked := &pushClient{ResourceClientRouter: client, label: label}
+			tracked := &pushClient{PushClient: client, label: label}
 			pusher := remote.NewPusher(tracked, registry)
 			result := newPushBatchResult(opts.DryRun)
 			fail := func(file string, remaining int, target cmdio.MutationTarget, cause error) error {
@@ -149,6 +152,24 @@ The preview shows manifest identities only; it does not resolve the remote UUID 
 			for i, file := range paths {
 				target := cmdio.MutationTarget{Kind: crud.Descriptor.Kind, Name: file}
 				data, err := os.ReadFile(file)
+				if err != nil {
+					return fail(file, len(paths)-i-1, target, err)
+				}
+				// Legacy provider commands inferred omitted envelope fields.
+				var manifest map[string]any
+				if err := yaml.Unmarshal(data, &manifest); err != nil {
+					return fail(file, len(paths)-i-1, target, err)
+				}
+				if manifest == nil {
+					manifest = map[string]any{}
+				}
+				if manifest["apiVersion"] == nil || manifest["apiVersion"] == "" {
+					manifest["apiVersion"] = crud.Descriptor.GroupVersion.String()
+				}
+				if manifest["kind"] == nil || manifest["kind"] == "" {
+					manifest["kind"] = crud.Descriptor.Kind
+				}
+				data, err = json.Marshal(manifest)
 				if err != nil {
 					return fail(file, len(paths)-i-1, target, err)
 				}
@@ -255,9 +276,10 @@ func pipeline[T adapter.ResourceNamer](crud *adapter.TypedCRUD[T]) (*adapter.Res
 }
 
 // pushClient captures the successful pipeline write for the legacy receipt.
-// It does not implement upsert decisions; remote.Pusher owns those.
+// Exposing only PushClient deliberately excludes the optional PushLister,
+// preserving UUID-only upsert in legacy commands without changing generic pushes.
 type pushClient struct {
-	*adapter.ResourceClientRouter
+	remote.PushClient
 
 	label  string
 	action string
@@ -265,7 +287,7 @@ type pushClient struct {
 }
 
 func (c *pushClient) Create(ctx context.Context, desc resources.Descriptor, obj *unstructured.Unstructured, opts metav1.CreateOptions) (*unstructured.Unstructured, error) {
-	result, err := c.ResourceClientRouter.Create(ctx, desc, obj, opts)
+	result, err := c.PushClient.Create(ctx, desc, obj, opts)
 	if err != nil {
 		name, _, _ := unstructured.NestedString(obj.Object, "spec", "name")
 		return nil, fmt.Errorf("failed to create %s %s: %w", c.label, name, err)
@@ -274,7 +296,7 @@ func (c *pushClient) Create(ctx context.Context, desc resources.Descriptor, obj 
 	return result, err
 }
 func (c *pushClient) Update(ctx context.Context, desc resources.Descriptor, obj *unstructured.Unstructured, opts metav1.UpdateOptions) (*unstructured.Unstructured, error) {
-	result, err := c.ResourceClientRouter.Update(ctx, desc, obj, opts)
+	result, err := c.PushClient.Update(ctx, desc, obj, opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to update %s %s: %w", c.label, obj.GetName(), err)
 	}
