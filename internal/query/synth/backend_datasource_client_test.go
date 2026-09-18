@@ -202,7 +202,7 @@ func TestMean(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, ok := synth.Mean(resultWithValues(tt.values))
+			got, ok := synth.Mean(frameWithValues(tt.values))
 			assert.Equal(t, tt.wantOK, ok)
 			if tt.wantOK {
 				assert.InDelta(t, tt.want, got, 1e-9)
@@ -211,8 +211,8 @@ func TestMean(t *testing.T) {
 	}
 }
 
-func TestMean_NoFrames(t *testing.T) {
-	_, ok := synth.Mean(&synth.NamedResult{})
+func TestMean_NoValues(t *testing.T) {
+	_, ok := synth.Mean(dataframe.Frame{})
 	assert.False(t, ok)
 }
 
@@ -220,48 +220,80 @@ func TestMean_LogFrameIsNotAveragedAsNumbers(t *testing.T) {
 	// A log query's first non-time field is a string (the log line). Averaging
 	// it as if it were a metric would silently produce a wrong number instead
 	// of a clear "not reducible" signal.
-	res := &synth.NamedResult{
-		Frames: []dataframe.Frame{{
-			Schema: dataframe.Schema{
-				Fields: []dataframe.Field{
-					{Name: "Time", Type: "time"},
-					{Name: "Line", Type: "string"},
-				},
+	frame := dataframe.Frame{
+		Schema: dataframe.Schema{
+			Fields: []dataframe.Field{
+				{Name: "Time", Type: "time"},
+				{Name: "Line", Type: "string"},
 			},
-			Data: dataframe.Data{Values: [][]any{
-				{1000.0, 2000.0},
-				{"level=error msg=timeout", "level=error msg=refused"},
-			}},
+		},
+		Data: dataframe.Data{Values: [][]any{
+			{1000.0, 2000.0},
+			{"level=error msg=timeout", "level=error msg=refused"},
 		}},
 	}
 
-	_, ok := synth.Mean(res)
+	_, ok := synth.Mean(frame)
 	assert.False(t, ok)
-	assert.False(t, synth.HasNumericField(res), "a log frame has no numeric field")
+	assert.False(t, synth.HasNumericField(frame), "a log frame has no numeric field")
 }
 
 func TestHasNumericField(t *testing.T) {
-	assert.True(t, synth.HasNumericField(resultWithValues([]any{1.0, 2.0})),
+	assert.True(t, synth.HasNumericField(frameWithValues([]any{1.0, 2.0})),
 		"a metric frame has a numeric field even before checking its values")
-	assert.False(t, synth.HasNumericField(&synth.NamedResult{}), "no frames at all")
-	assert.False(t, synth.HasNumericField(nil))
+	assert.False(t, synth.HasNumericField(dataframe.Frame{}), "no fields at all")
 }
 
-func resultWithValues(values []any) *synth.NamedResult {
+func frameWithValues(values []any) dataframe.Frame {
 	times := make([]any, len(values))
 	for i := range values {
 		times[i] = float64(i * 1000)
 	}
 
-	return &synth.NamedResult{
-		Frames: []dataframe.Frame{{
-			Schema: dataframe.Schema{
-				Fields: []dataframe.Field{
-					{Name: "Time", Type: "time"},
-					{Name: "Value", Type: "number"},
-				},
+	return dataframe.Frame{
+		Schema: dataframe.Schema{
+			Fields: []dataframe.Field{
+				{Name: "Time", Type: "time"},
+				{Name: "Value", Type: "number"},
 			},
-			Data: dataframe.Data{Values: [][]any{times, values}},
-		}},
+		},
+		Data: dataframe.Data{Values: [][]any{times, values}},
 	}
+}
+
+// TestMean_PerFrame proves the fix for the bug The-9880 flagged on PR #1307:
+// probe_execution_rate is `sum(rate(...)) by (probe)`, so the backend returns
+// one frame per probe rather than the single frame checks_uptime returns.
+// Mean used to reduce Frames[0] only, silently dropping every other probe's
+// data. Mean is now frame-scoped, so the caller reduces each frame on its own
+// -- averaging across probes is never done, because it is not a value the app
+// itself produces.
+func TestMean_PerFrame(t *testing.T) {
+	frames := []dataframe.Frame{
+		frameWithValues([]any{10.0, 10.0, 10.0}), // probe=canary-us
+		frameWithValues([]any{20.0, 20.0, 20.0}), // probe=canary-eu
+	}
+
+	got0, ok := synth.Mean(frames[0])
+	require.True(t, ok)
+	assert.InDelta(t, 10.0, got0, 1e-9)
+
+	got1, ok := synth.Mean(frames[1])
+	require.True(t, ok)
+	assert.InDelta(t, 20.0, got1, 1e-9)
+}
+
+func TestLabels(t *testing.T) {
+	labeled := dataframe.Frame{
+		Schema: dataframe.Schema{
+			Fields: []dataframe.Field{
+				{Name: "Time", Type: "time"},
+				{Name: "Value", Type: "number", Labels: map[string]string{"probe": "canary-us"}},
+			},
+		},
+	}
+	assert.Equal(t, map[string]string{"probe": "canary-us"}, synth.Labels(labeled))
+
+	unlabeled := frameWithValues([]any{1.0})
+	assert.Empty(t, synth.Labels(unlabeled), "checks_uptime-style frames have no labels")
 }

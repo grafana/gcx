@@ -1,9 +1,11 @@
 package namedquery
 
 import (
+	"bytes"
 	"testing"
 	"time"
 
+	"github.com/grafana/gcx/internal/query/dataframe"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -23,9 +25,21 @@ func TestParseParams(t *testing.T) {
 		{
 			// The backend unmarshals frequency into an int and quantile into a
 			// float, so sending them quoted fails to decode.
-			name: "numbers are sent as numbers",
+			name: "frequency and quantile are sent as numbers",
 			raw:  []string{"frequency=60000", "quantile=0.75"},
 			want: map[string]any{"frequency": float64(60000), "quantile": 0.75},
+		},
+		{
+			// job is a string param that can look numeric (e.g. a numeric job
+			// ID); only the known-numeric params get coerced.
+			name: "a numeric-looking value stays a string outside the numeric allowlist",
+			raw:  []string{"job=1234"},
+			want: map[string]any{"job": "1234"},
+		},
+		{
+			name:    "a non-numeric value for a numeric param is rejected",
+			raw:     []string{"frequency=not-a-number"},
+			wantErr: true,
 		},
 		{
 			name: "booleans are sent as booleans",
@@ -67,6 +81,70 @@ func TestParseParams(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func testFrame(values ...any) dataframe.Frame {
+	times := make([]any, len(values))
+	for i := range values {
+		times[i] = float64(i * 1000)
+	}
+	return dataframe.Frame{
+		Schema: dataframe.Schema{
+			Fields: []dataframe.Field{
+				{Name: "Time", Type: "time"},
+				{Name: "Value", Type: "number"},
+			},
+		},
+		Data: dataframe.Data{Values: [][]any{times, values}},
+	}
+}
+
+// TestPoints_PerFrame proves the fix for the bug where points() only counted
+// frame 0's column: it is now frame-scoped, so a probe_execution_rate result
+// with 2 probes x 3 samples each is counted per frame (3, 3), not summed or
+// taken from one frame only.
+func TestPoints_PerFrame(t *testing.T) {
+	assert.Equal(t, 3, points(testFrame(10.0, 10.0, 10.0)))
+	assert.Equal(t, 3, points(testFrame(20.0, 20.0, 20.0)))
+}
+
+// TestTableCodec_MultiSeriesRendersOneRowPerSeries is a codec-level regression
+// test: a result with N series (e.g. probe_execution_rate's one series per
+// probe) must render N rows with a LABELS column, not collapse to one.
+func TestTableCodec_MultiSeriesRendersOneRowPerSeries(t *testing.T) {
+	res := Result{
+		Query: "probe_execution_rate",
+		Series: []Series{
+			{Labels: `{probe="canary-us"}`, Value: 10, HasValue: true, Reducible: true, Points: 3},
+			{Labels: `{probe="canary-eu"}`, Value: 20, HasValue: true, Reducible: true, Points: 3},
+		},
+	}
+
+	var buf bytes.Buffer
+	require.NoError(t, (&tableCodec{}).Encode(&buf, res))
+
+	out := buf.String()
+	assert.Contains(t, out, "LABELS")
+	assert.Contains(t, out, `{probe="canary-us"}`)
+	assert.Contains(t, out, `{probe="canary-eu"}`)
+}
+
+// TestTableCodec_SingleUnlabeledSeriesMatchesLegacyFormat proves checks_uptime
+// -- the single-frame, unlabeled case -- still renders the QUERY/VALUE/POINTS
+// rows with no LABELS column, unchanged from before per-frame Series existed.
+func TestTableCodec_SingleUnlabeledSeriesMatchesLegacyFormat(t *testing.T) {
+	res := Result{
+		Query:  "checks_uptime",
+		Series: []Series{{Labels: "{}", Value: 0.75, HasValue: true, Reducible: true, Points: 4}},
+	}
+
+	var buf bytes.Buffer
+	require.NoError(t, (&tableCodec{}).Encode(&buf, res))
+
+	out := buf.String()
+	assert.NotContains(t, out, "LABELS")
+	assert.Contains(t, out, "QUERY")
+	assert.Contains(t, out, "0.7500")
 }
 
 func TestParseRange(t *testing.T) {

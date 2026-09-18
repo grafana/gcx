@@ -157,19 +157,20 @@ func executedQuery(frames []dataframe.Frame) string {
 	return ""
 }
 
-// Mean averages the numeric field of the first frame, reporting false when there
-// is nothing to average.
+// Mean averages the numeric field of frame, reporting false when there is
+// nothing to average.
 //
 // This mirrors how the app reduces a range frame to the single percentage on a
 // check card. It is a stopgap: while the reduction lives in the client, gcx and
 // the app can drift even though they share the expression, so the backend should
 // grow a reduced form of these queries and this helper should then go away.
-func Mean(res *NamedResult) (float64, bool) {
-	if res == nil || len(res.Frames) == 0 {
-		return 0, false
-	}
-
-	values := numericValues(res.Frames[0])
+//
+// It operates on a single frame deliberately: a query grouped by a label (e.g.
+// probe_execution_rate's `by (probe)`) returns one frame per series, and
+// averaging across series is not a value the app itself ever produces -- the
+// caller reduces each frame separately instead.
+func Mean(frame dataframe.Frame) (float64, bool) {
+	values := numericValues(frame)
 
 	var sum float64
 	var n int
@@ -191,23 +192,37 @@ func Mean(res *NamedResult) (float64, bool) {
 	return sum / float64(n), true
 }
 
-// HasNumericField reports whether res contains a field typed "number" -- the
+// HasNumericField reports whether frame contains a field typed "number" -- the
 // shape Mean can reduce. A log-backed query (e.g. check_error_logs) returns
 // string/label fields and no numeric field, so this is false for it -- that
 // case is "not reducible", distinct from a metric query that legitimately
 // returned no points.
-func HasNumericField(res *NamedResult) bool {
-	if res == nil || len(res.Frames) == 0 {
-		return false
-	}
-
-	for _, field := range res.Frames[0].Schema.Fields {
+func HasNumericField(frame dataframe.Frame) bool {
+	for _, field := range frame.Schema.Fields {
 		if field.Type == "number" {
 			return true
 		}
 	}
 
 	return false
+}
+
+// Labels returns the labels of frame's numeric field, or of its first labeled
+// field if none is numeric. checks_uptime-style single-series frames have no
+// labels at all, so this returns nil/empty for them.
+func Labels(frame dataframe.Frame) map[string]string {
+	var fallback map[string]string
+
+	for _, field := range frame.Schema.Fields {
+		if field.Type == "number" {
+			return field.Labels
+		}
+		if fallback == nil && len(field.Labels) > 0 {
+			fallback = field.Labels
+		}
+	}
+
+	return fallback
 }
 
 // numericValues returns the values of the first field typed "number", which is

@@ -22,9 +22,9 @@ gcx synthetic-monitoring query NAME [flags]
   gcx synthetic-monitoring query checks_uptime \
     -p job=my-check -p instance=https://example.com -p frequency=60000
 
-  # Reachability over the last day
-  gcx synthetic-monitoring query reachability \
-    -p job=my-check -p instance=https://example.com -p frequency=60000 --from now-1d
+  # Execution rate per probe over the last day
+  gcx synthetic-monitoring query probe_execution_rate \
+    -p job=my-check -p instance=https://example.com --from now-1d
 ```
 
 ### Options
