@@ -6,7 +6,7 @@ Print a bundled skill's content without installing it
 
 Print the content of a bundled gcx Agent Skill straight from the embedded bundle, without writing anything to ~/.agents.
 
-By default the skill's SKILL.md body is printed. Pass a reference path (e.g. references/query-patterns.md) to print a single bundled reference file instead.
+By default the skill's SKILL.md body is printed. Pass a reference path (e.g. references/query-patterns.md) to print a single bundled reference file instead. Deprecated skills emit a warning; retired skills report their replacement, when one is recorded, instead of content.
 
 ```
 gcx agent skills get SKILL [REFERENCE] [flags]

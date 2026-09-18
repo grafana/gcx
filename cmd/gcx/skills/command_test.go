@@ -1,7 +1,8 @@
-package skills //nolint:testpackage // Tests exercise unexported installer helpers directly to cover conflict and dry-run behavior.
+package skills //nolint:testpackage // Tests exercise command wiring and text codecs with a fixture bundle.
 
 import (
 	"bytes"
+	"encoding/json"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -9,589 +10,385 @@ import (
 	"testing/fstest"
 
 	"github.com/grafana/gcx/internal/agent"
+	skillops "github.com/grafana/gcx/internal/skills"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 )
 
 func testSkillsFS() fs.FS {
 	return fstest.MapFS{
-		"alpha/SKILL.md":                     {Data: []byte("alpha-skill")},
+		"alpha/SKILL.md":                     {Data: []byte("---\nname: alpha\ndescription: alpha skill description\n---\nalpha-skill")},
 		"alpha/references/guide.md":          {Data: []byte("alpha-guide")},
 		"beta/SKILL.md":                      {Data: []byte("beta-skill")},
 		"beta/references/troubleshooting.md": {Data: []byte("beta-help")},
 	}
 }
 
-func TestInstallSkills_WritesBundleIntoSkillsSubdir(t *testing.T) {
-	t.Parallel()
-
-	root := filepath.Join(t.TempDir(), ".agents")
-
-	result, err := installSkills(testSkillsFS(), root, nil, false, false)
-	require.NoError(t, err)
-
-	require.Equal(t, filepath.Clean(root), result.Root)
-	require.Equal(t, filepath.Join(filepath.Clean(root), "skills"), result.SkillsDir)
-	require.Equal(t, []string{"alpha", "beta"}, result.Skills)
-	require.Equal(t, 2, result.SkillCount)
-	require.Equal(t, 4, result.FileCount)
-	require.Equal(t, 4, result.Written)
-	require.Zero(t, result.Overwritten)
-	require.Zero(t, result.Unchanged)
-
-	data, err := os.ReadFile(filepath.Join(root, "skills", "alpha", "SKILL.md"))
-	require.NoError(t, err)
-	require.Equal(t, []byte("alpha-skill"), data)
-
-	data, err = os.ReadFile(filepath.Join(root, "skills", "beta", "references", "troubleshooting.md"))
-	require.NoError(t, err)
-	require.Equal(t, []byte("beta-help"), data)
+func testCatalog() []byte {
+	return []byte(`skills:
+  alpha: {status: active}
+  beta: {status: deprecated, replacement: alpha, message: Use alpha instead}
+  old: {status: retired, replacement: alpha}
+  missing: {status: retired}
+`)
 }
 
-func TestInstallSkills_SingleSkill(t *testing.T) {
-	t.Parallel()
-
-	root := filepath.Join(t.TempDir(), ".agents")
-	filter := map[string]struct{}{"alpha": {}}
-
-	result, err := installSkills(testSkillsFS(), root, filter, false, false)
-	require.NoError(t, err)
-
-	require.Equal(t, []string{"alpha"}, result.Skills)
-	require.Equal(t, 1, result.SkillCount)
-	require.Equal(t, 2, result.FileCount)
-	require.Equal(t, 2, result.Written)
-
-	data, err := os.ReadFile(filepath.Join(root, "skills", "alpha", "SKILL.md"))
-	require.NoError(t, err)
-	require.Equal(t, []byte("alpha-skill"), data)
-
-	_, err = os.Stat(filepath.Join(root, "skills", "beta"))
-	require.True(t, os.IsNotExist(err))
+func putSkill(t *testing.T, root, name, content string) {
+	t.Helper()
+	dir := filepath.Join(root, "skills", name)
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(content), 0o600))
 }
 
-func TestInstallSkills_UnknownSkillReturnsError(t *testing.T) {
-	t.Parallel()
-
-	root := filepath.Join(t.TempDir(), ".agents")
-	filter := map[string]struct{}{"nonexistent": {}}
-
-	_, err := installSkills(testSkillsFS(), root, filter, false, false)
-	require.Error(t, err)
-	require.ErrorContains(t, err, "unknown skill")
+func executeCommand(t *testing.T, cmd *cobra.Command, args ...string) (string, string, error) {
+	t.Helper()
+	var stdout, stderr bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	cmd.SetArgs(args)
+	err := cmd.Execute()
+	return stdout.String(), stderr.String(), err
 }
 
-func TestInstallSkills_DryRunDoesNotWriteFiles(t *testing.T) {
-	t.Parallel()
-
-	root := filepath.Join(t.TempDir(), ".agents")
-
-	result, err := installSkills(testSkillsFS(), root, nil, false, true)
-	require.NoError(t, err)
-	require.True(t, result.DryRun)
-	require.Equal(t, 4, result.Written)
-
-	_, err = os.Stat(filepath.Join(root, "skills", "alpha", "SKILL.md"))
-	require.Error(t, err)
-	require.True(t, os.IsNotExist(err))
-}
-
-func TestInstallSkills_ConflictingFileRequiresForce(t *testing.T) {
-	t.Parallel()
-
-	root := filepath.Join(t.TempDir(), ".agents")
-	target := filepath.Join(root, "skills", "alpha")
-	require.NoError(t, os.MkdirAll(target, 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(target, "SKILL.md"), []byte("local-change"), 0o600))
-
-	_, err := installSkills(testSkillsFS(), root, nil, false, false)
-	require.Error(t, err)
-	require.ErrorContains(t, err, "use --force to overwrite")
-}
-
-func TestInstallSkills_ForceOverwritesDifferingFiles(t *testing.T) {
-	t.Parallel()
-
-	root := filepath.Join(t.TempDir(), ".agents")
-	target := filepath.Join(root, "skills", "alpha")
-	require.NoError(t, os.MkdirAll(target, 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(target, "SKILL.md"), []byte("local-change"), 0o600))
-
-	result, err := installSkills(testSkillsFS(), root, nil, true, false)
-	require.NoError(t, err)
-	require.Equal(t, 3, result.Written)
-	require.Equal(t, 1, result.Overwritten)
-
-	data, err := os.ReadFile(filepath.Join(target, "SKILL.md"))
-	require.NoError(t, err)
-	require.Equal(t, []byte("alpha-skill"), data)
-}
-
-func TestInstallCommand_AllInstallsEverything(t *testing.T) {
+func TestInstallCommand(t *testing.T) {
 	t.Setenv("GCX_AGENT_MODE", "false")
 	agent.ResetForTesting()
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("USERPROFILE", home)
-
-	cmd := newInstallCommand(testSkillsFS())
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	cmd.SetOut(stdout)
-	cmd.SetErr(stderr)
-	cmd.SetArgs([]string{"--all"})
-
-	err := cmd.Execute()
-	require.NoError(t, err)
-
-	data, err := os.ReadFile(filepath.Join(home, ".agents", "skills", "alpha", "SKILL.md"))
-	require.NoError(t, err)
-	require.Equal(t, []byte("alpha-skill"), data)
-	require.Contains(t, stdout.String(), "Installed 2 skill(s)")
-}
-
-func TestInstallCommand_SingleSkillByName(t *testing.T) {
-	t.Setenv("GCX_AGENT_MODE", "false")
-	agent.ResetForTesting()
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("USERPROFILE", home)
-
-	cmd := newInstallCommand(testSkillsFS())
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	cmd.SetOut(stdout)
-	cmd.SetErr(stderr)
-	cmd.SetArgs([]string{"beta"})
-
-	err := cmd.Execute()
-	require.NoError(t, err)
-	require.Contains(t, stdout.String(), "Installed 1 skill(s)")
-
-	_, err = os.Stat(filepath.Join(home, ".agents", "skills", "alpha"))
-	require.True(t, os.IsNotExist(err))
-
-	data, err := os.ReadFile(filepath.Join(home, ".agents", "skills", "beta", "SKILL.md"))
-	require.NoError(t, err)
-	require.Equal(t, []byte("beta-skill"), data)
-}
-
-func TestInstallCommand_NoArgsNoAllReturnsError(t *testing.T) {
-	cmd := newInstallCommand(testSkillsFS())
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	cmd.SetOut(stdout)
-	cmd.SetErr(stderr)
-	cmd.SetArgs(nil)
-
-	err := cmd.Execute()
-	require.Error(t, err)
-	require.ErrorContains(t, err, "provide at least one skill name or use --all")
-}
-
-func TestInstalledBundledSkillNames_ReturnsOnlyInstalledBundled(t *testing.T) {
-	t.Parallel()
-
-	root := filepath.Join(t.TempDir(), ".agents")
-	require.NoError(t, os.MkdirAll(filepath.Join(root, "skills", "alpha"), 0o755))
-	require.NoError(t, os.MkdirAll(filepath.Join(root, "skills", "external"), 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(root, "skills", "alpha", "SKILL.md"), []byte("alpha-skill"), 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(root, "skills", "external", "SKILL.md"), []byte("external-skill"), 0o600))
-
-	names, err := installedBundledSkillNames(testSkillsFS(), root)
-	require.NoError(t, err)
-	require.Equal(t, []string{"alpha"}, names)
-}
-
-func TestUpdateCommand_UpdatesOnlyInstalledSkills(t *testing.T) {
-	t.Setenv("GCX_AGENT_MODE", "false")
-	agent.ResetForTesting()
-	root := filepath.Join(t.TempDir(), ".agents")
-
-	require.NoError(t, os.MkdirAll(filepath.Join(root, "skills", "alpha"), 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(root, "skills", "alpha", "SKILL.md"), []byte("local-change"), 0o600))
-
-	cmd := newUpdateCommand(testSkillsFS())
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	cmd.SetOut(stdout)
-	cmd.SetErr(stderr)
-	cmd.SetArgs([]string{"--dir", root})
-
-	err := cmd.Execute()
-	require.NoError(t, err)
-	require.Contains(t, stdout.String(), "Updated 1 skill(s)")
-
-	data, err := os.ReadFile(filepath.Join(root, "skills", "alpha", "SKILL.md"))
-	require.NoError(t, err)
-	require.Equal(t, []byte("alpha-skill"), data)
-
-	_, err = os.Stat(filepath.Join(root, "skills", "beta"))
-	require.True(t, os.IsNotExist(err))
-}
-
-func TestUpdateCommand_UpdatesReadOnlyFiles(t *testing.T) {
-	t.Setenv("GCX_AGENT_MODE", "false")
-	agent.ResetForTesting()
-	root := filepath.Join(t.TempDir(), ".agents")
-
-	skillPath := filepath.Join(root, "skills", "alpha", "SKILL.md")
-	require.NoError(t, os.MkdirAll(filepath.Dir(skillPath), 0o755))
-	require.NoError(t, os.WriteFile(skillPath, []byte("old-content"), 0o600))
-	require.NoError(t, os.Chmod(skillPath, 0o444))
-
-	cmd := newUpdateCommand(testSkillsFS())
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	cmd.SetOut(stdout)
-	cmd.SetErr(stderr)
-	cmd.SetArgs([]string{"--dir", root})
-
-	err := cmd.Execute()
-	require.NoError(t, err)
-	require.Contains(t, stdout.String(), "Updated 1 skill(s)")
-
-	data, err := os.ReadFile(skillPath)
-	require.NoError(t, err)
-	require.Equal(t, []byte("alpha-skill"), data)
-
-	info, err := os.Stat(skillPath)
-	require.NoError(t, err)
-	require.Equal(t, fs.FileMode(0o644), info.Mode().Perm())
-}
-
-func TestUpdateCommand_NoInstalledSkillsNoOp(t *testing.T) {
-	t.Setenv("GCX_AGENT_MODE", "false")
-	agent.ResetForTesting()
-	root := filepath.Join(t.TempDir(), ".agents")
-
-	cmd := newUpdateCommand(testSkillsFS())
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	cmd.SetOut(stdout)
-	cmd.SetErr(stderr)
-	cmd.SetArgs([]string{"--dir", root})
-
-	err := cmd.Execute()
-	require.NoError(t, err)
-	require.Contains(t, stdout.String(), "Updated 0 skill(s)")
-
-	_, err = os.Stat(filepath.Join(root, "skills"))
-	require.True(t, os.IsNotExist(err))
-}
-
-func TestUpdateCommand_ExplicitSkillMustAlreadyBeInstalled(t *testing.T) {
-	t.Setenv("GCX_AGENT_MODE", "false")
-	agent.ResetForTesting()
-	root := filepath.Join(t.TempDir(), ".agents")
-
-	cmd := newUpdateCommand(testSkillsFS())
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	cmd.SetOut(stdout)
-	cmd.SetErr(stderr)
-	cmd.SetArgs([]string{"--dir", root, "alpha"})
-
-	err := cmd.Execute()
-	require.Error(t, err)
-	require.ErrorContains(t, err, `skill "alpha" is not installed`)
-
-	_, err = os.Stat(filepath.Join(root, "skills", "alpha", "SKILL.md"))
-	require.True(t, os.IsNotExist(err))
-}
-
-func TestListBundledSkills_ReturnsSourceSkills(t *testing.T) {
-	t.Parallel()
-
-	nonexistent := filepath.Join(t.TempDir(), "no-such-dir")
-	result, err := listBundledSkills(testSkillsFS(), nonexistent)
-	require.NoError(t, err)
-	require.Equal(t, []skillInfo{
-		{Name: "alpha", ShortDescription: "alpha-skill", Installed: false},
-		{Name: "beta", ShortDescription: "beta-skill", Installed: false},
-	}, result.Skills)
-	require.Equal(t, 2, result.SkillCount)
-}
-
-func TestListBundledSkills_ShowsInstalledStatus(t *testing.T) {
-	t.Parallel()
-
-	root := filepath.Join(t.TempDir(), ".agents")
-	require.NoError(t, os.MkdirAll(filepath.Join(root, "skills", "alpha"), 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(root, "skills", "alpha", "SKILL.md"), []byte("alpha-skill"), 0o600))
-
-	result, err := listBundledSkills(testSkillsFS(), root)
-	require.NoError(t, err)
-	require.Len(t, result.Skills, 2)
-
-	require.Equal(t, "alpha", result.Skills[0].Name)
-	require.True(t, result.Skills[0].Installed)
-
-	require.Equal(t, "beta", result.Skills[1].Name)
-	require.False(t, result.Skills[1].Installed)
-}
-
-func TestListCommand_JSONIncludesShortDescription(t *testing.T) {
-	source := fstest.MapFS{
-		"alpha/SKILL.md": {
-			Data: []byte(`---
-name: alpha
-description: alpha skill description
----
-`),
-		},
-	}
-
-	cmd := newListCommand(source)
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	cmd.SetOut(stdout)
-	cmd.SetErr(stderr)
-	cmd.SetArgs([]string{"-o", "json"})
-
-	err := cmd.Execute()
-	require.NoError(t, err)
-	require.Contains(t, stdout.String(), `"name": "alpha"`)
-	require.Contains(t, stdout.String(), `"short_description": "alpha skill description"`)
-}
-
-func TestGetBundledSkill_ReturnsSkillBody(t *testing.T) {
-	t.Parallel()
-
-	result, err := getBundledSkill(testSkillsFS(), "alpha", "")
-	require.NoError(t, err)
-	require.Equal(t, "alpha", result.Name)
-	require.Equal(t, "SKILL.md", result.Path)
-	require.Equal(t, "alpha-skill", result.Body)
-	require.Equal(t, []string{"references/guide.md"}, result.References)
-}
-
-func TestGetBundledSkill_ReturnsReferenceBody(t *testing.T) {
-	t.Parallel()
-
-	result, err := getBundledSkill(testSkillsFS(), "alpha", "references/guide.md")
-	require.NoError(t, err)
-	require.Equal(t, "references/guide.md", result.Path)
-	require.Equal(t, "alpha-guide", result.Body)
-}
-
-func TestGetBundledSkill_ExtractsDescriptionFromFrontMatter(t *testing.T) {
-	t.Parallel()
-
-	source := fstest.MapFS{
-		"alpha/SKILL.md": {Data: []byte("---\nname: alpha\ndescription: alpha skill description\n---\n\nbody\n")},
-	}
-
-	result, err := getBundledSkill(source, "alpha", "")
-	require.NoError(t, err)
-	require.Equal(t, "alpha skill description", result.Description)
-}
-
-func TestGetBundledSkill_UnknownSkill(t *testing.T) {
-	t.Parallel()
-
-	_, err := getBundledSkill(testSkillsFS(), "nonexistent", "")
-	require.Error(t, err)
-	require.ErrorContains(t, err, "unknown skill")
-	require.ErrorContains(t, err, "gcx agent skills list")
-}
-
-func TestGetBundledSkill_MissingReference(t *testing.T) {
-	t.Parallel()
-
-	_, err := getBundledSkill(testSkillsFS(), "alpha", "references/missing.md")
-	require.Error(t, err)
-	require.ErrorContains(t, err, "not found")
-}
-
-func TestGetBundledSkill_RejectsPathTraversal(t *testing.T) {
-	t.Parallel()
-
-	cases := []struct {
-		name      string
-		reference string
+	for _, tc := range []struct {
+		name    string
+		args    []string
+		want    []string
+		err     string
+		dryRun  bool
+		warning bool
 	}{
-		{name: "parent escape", reference: "../beta/SKILL.md"},
-		{name: "nested parent escape", reference: "references/../../beta/SKILL.md"},
-		{name: "absolute path", reference: "/etc/passwd"},
-		{name: "bare parent", reference: ".."},
-	}
-
-	for _, tc := range cases {
+		{name: "all", args: []string{"--all"}, want: []string{"alpha", "beta"}, warning: true},
+		{name: "single", args: []string{"alpha"}, want: []string{"alpha"}},
+		{name: "deprecated", args: []string{"beta"}, want: []string{"beta"}, warning: true},
+		{name: "dry run", args: []string{"--all", "--dry-run"}, want: []string{"alpha", "beta"}, warning: true, dryRun: true},
+		{name: "retired", args: []string{"old"}, err: "retired"},
+		{name: "unknown", args: []string{"external"}, err: "unknown skill"},
+		{name: "no targets", err: "provide at least one skill name or use --all"},
+		{name: "all and targets", args: []string{"--all", "alpha"}, err: "skill names cannot be provided"},
+	} {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			_, err := getBundledSkill(testSkillsFS(), "alpha", tc.reference)
-			require.Error(t, err)
-			require.ErrorContains(t, err, "invalid reference path")
+			root := t.TempDir()
+			args := append([]string{"--dir", root, "-o", "json"}, tc.args...)
+			out, diagnostics, err := executeCommand(t, newInstallCommand(testSkillsFS(), testCatalog()), args...)
+			if tc.err != "" {
+				require.ErrorContains(t, err, tc.err)
+				require.NoDirExists(t, filepath.Join(root, "skills"))
+				return
+			}
+			require.NoError(t, err)
+			var result installResult
+			require.NoError(t, json.Unmarshal([]byte(out), &result))
+			require.Equal(t, tc.want, result.Skills)
+			require.Equal(t, tc.dryRun, result.DryRun)
+			if tc.warning {
+				require.Contains(t, diagnostics, "deprecated")
+				require.Len(t, result.Notices, 1)
+				require.Equal(t, "alpha", result.Notices[0].Replacement)
+			}
+			for _, name := range tc.want {
+				file := filepath.Join(root, "skills", name, "SKILL.md")
+				if tc.dryRun {
+					require.NoFileExists(t, file)
+				} else {
+					require.FileExists(t, file)
+				}
+			}
+			require.NoDirExists(t, filepath.Join(root, "skills", "old"))
 		})
 	}
 }
 
-func TestGetCommand_TextPrintsBody(t *testing.T) {
+func TestInstallCommand_DefaultRoot(t *testing.T) {
 	t.Setenv("GCX_AGENT_MODE", "false")
 	agent.ResetForTesting()
-
-	cmd := newGetCommand(testSkillsFS())
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	cmd.SetOut(stdout)
-	cmd.SetErr(stderr)
-	cmd.SetArgs([]string{"alpha"})
-
-	err := cmd.Execute()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	out, _, err := executeCommand(t, newInstallCommand(testSkillsFS(), testCatalog()), "alpha")
 	require.NoError(t, err)
-	require.Equal(t, "alpha-skill", stdout.String())
+	require.Contains(t, out, "Installed 1 skill(s)")
+	require.FileExists(t, filepath.Join(home, ".agents", "skills", "alpha", "SKILL.md"))
 }
 
-func TestGetCommand_JSONIncludesFields(t *testing.T) {
+func TestUpdateCommand(t *testing.T) {
 	t.Setenv("GCX_AGENT_MODE", "false")
 	agent.ResetForTesting()
-
-	source := fstest.MapFS{
-		"alpha/SKILL.md":            {Data: []byte("---\nname: alpha\ndescription: alpha skill description\n---\nbody\n")},
-		"alpha/references/guide.md": {Data: []byte("alpha-guide")},
+	for _, tc := range []struct {
+		name      string
+		installed []string
+		args      []string
+		updated   []string
+		notices   int
+		err       string
+		dryRun    bool
+	}{
+		{name: "installed only", installed: []string{"alpha", "external"}, updated: []string{"alpha"}},
+		{name: "no installed", updated: []string{}},
+		{name: "missing explicit", args: []string{"alpha"}, err: "skill \"alpha\" is not installed; use 'gcx agent skills install alpha' to install it first"},
+		{name: "missing deprecated", args: []string{"beta"}, err: "skill \"beta\" is not installed; use 'gcx agent skills install beta' to install it first"},
+		{name: "missing retired", args: []string{"old"}, err: "skill \"old\" is retired and not installed; use 'gcx agent skills list' to see available skills"},
+		{name: "unmanaged explicit", installed: []string{"external"}, args: []string{"external"}, err: "unknown skill"},
+		{name: "retirement", installed: []string{"old", "external"}, updated: []string{}, notices: 1},
+		{name: "explicit retirement", installed: []string{"old"}, args: []string{"old"}, updated: []string{}, notices: 1},
+		{name: "mixed", installed: []string{"beta", "old"}, updated: []string{"beta"}, notices: 2},
+		{name: "dry run", installed: []string{"alpha", "old"}, args: []string{"--dry-run"}, updated: []string{"alpha"}, notices: 1, dryRun: true},
+		{name: "validate all before writes", installed: []string{"alpha"}, args: []string{"alpha", "unknown"}, err: "unknown skill"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			for _, name := range tc.installed {
+				putSkill(t, root, name, "local-change")
+				require.NoError(t, os.Chmod(filepath.Join(root, "skills", name, "SKILL.md"), 0o444))
+			}
+			out, diagnostics, err := executeCommand(t, newUpdateCommand(testSkillsFS(), testCatalog()), append([]string{"--dir", root, "-o", "json"}, tc.args...)...)
+			if tc.err != "" {
+				require.ErrorContains(t, err, tc.err)
+			} else {
+				require.NoError(t, err)
+				var result installResult
+				require.NoError(t, json.Unmarshal([]byte(out), &result))
+				require.Equal(t, tc.updated, result.Skills)
+				require.Len(t, result.Notices, tc.notices)
+				if tc.notices > 0 {
+					require.Contains(t, diagnostics, "replacement: alpha")
+				}
+			}
+			for _, name := range tc.installed {
+				file := filepath.Join(root, "skills", name, "SKILL.md")
+				data, err := os.ReadFile(file)
+				require.NoError(t, err)
+				if tc.err != "" || tc.dryRun || name == "old" || name == "external" {
+					require.Equal(t, "local-change", string(data))
+				} else {
+					expected, err := fs.ReadFile(testSkillsFS(), name+"/SKILL.md")
+					require.NoError(t, err)
+					require.Equal(t, expected, data)
+					info, err := os.Stat(file)
+					require.NoError(t, err)
+					require.Equal(t, fs.FileMode(0o644), info.Mode().Perm())
+				}
+			}
+			if len(tc.installed) == 0 {
+				require.NoDirExists(t, filepath.Join(root, "skills"))
+			}
+			// A replacement is never installed just because beta/old names it.
+			if tc.name == "mixed" || tc.name == "retirement" {
+				require.NoDirExists(t, filepath.Join(root, "skills", "alpha"))
+			}
+		})
 	}
-
-	cmd := newGetCommand(source)
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	cmd.SetOut(stdout)
-	cmd.SetErr(stderr)
-	cmd.SetArgs([]string{"alpha", "-o", "json"})
-
-	err := cmd.Execute()
-	require.NoError(t, err)
-	out := stdout.String()
-	require.Contains(t, out, `"name": "alpha"`)
-	require.Contains(t, out, `"description": "alpha skill description"`)
-	require.Contains(t, out, `"path": "SKILL.md"`)
-	require.Contains(t, out, `"references": [`)
-	require.Contains(t, out, `"references/guide.md"`)
 }
 
-func TestGetCommand_UnknownSkillErrors(t *testing.T) {
+func TestListCommand(t *testing.T) {
 	t.Setenv("GCX_AGENT_MODE", "false")
 	agent.ResetForTesting()
-
-	cmd := newGetCommand(testSkillsFS())
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	cmd.SetOut(stdout)
-	cmd.SetErr(stderr)
-	cmd.SetArgs([]string{"not-a-bundled-skill"})
-
-	err := cmd.Execute()
-	require.Error(t, err)
-	require.ErrorContains(t, err, "unknown skill")
+	for _, format := range []string{"json", "text"} {
+		t.Run(format, func(t *testing.T) {
+			root := t.TempDir()
+			for _, name := range []string{"alpha", "old", "external"} {
+				putSkill(t, root, name, "local")
+			}
+			out, _, err := executeCommand(t, newListCommand(testSkillsFS(), testCatalog()), "--dir", root, "-o", format)
+			require.NoError(t, err)
+			require.NotContains(t, out, "external")
+			require.NotContains(t, out, "missing")
+			require.Contains(t, out, "retired")
+			require.Contains(t, out, "deprecated")
+			if format == "json" {
+				var result listResult
+				require.NoError(t, json.Unmarshal([]byte(out), &result))
+				require.Equal(t, 3, result.SkillCount)
+				require.NotContains(t, out, `"known"`)
+				require.True(t, result.Skills[0].Installed)
+				require.Equal(t, "alpha skill description", result.Skills[0].ShortDescription)
+				require.False(t, result.Skills[1].Installed)
+				require.Equal(t, skillops.Retired, result.Skills[2].Status)
+				require.Equal(t, "alpha", result.Skills[2].Replacement)
+			}
+		})
+	}
 }
 
-func TestUninstallSkills_RemovesRequestedSkills(t *testing.T) {
-	t.Parallel()
-
-	root := filepath.Join(t.TempDir(), ".agents")
-	require.NoError(t, os.MkdirAll(filepath.Join(root, "skills", "alpha"), 0o755))
-	require.NoError(t, os.MkdirAll(filepath.Join(root, "skills", "beta"), 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(root, "skills", "alpha", "SKILL.md"), []byte("alpha"), 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(root, "skills", "beta", "SKILL.md"), []byte("beta"), 0o600))
-
-	result, err := uninstallSkills(root, []string{"alpha", "missing"}, false)
-	require.NoError(t, err)
-	require.Equal(t, []string{"alpha", "missing"}, result.Requested)
-	require.Equal(t, []string{"alpha"}, result.Removed)
-	require.Equal(t, []string{"missing"}, result.Missing)
-	require.Equal(t, 1, result.RemovedCount)
-	require.Equal(t, 1, result.MissingCount)
-
-	_, err = os.Stat(filepath.Join(root, "skills", "alpha"))
-	require.Error(t, err)
-	require.True(t, os.IsNotExist(err))
+func TestGetCommand(t *testing.T) {
+	t.Setenv("GCX_AGENT_MODE", "false")
+	agent.ResetForTesting()
+	for _, tc := range []struct {
+		name string
+		args []string
+		want string
+		err  string
+	}{
+		{name: "body", args: []string{"alpha"}, want: "alpha-skill"},
+		{name: "reference", args: []string{"alpha", "references/guide.md"}, want: "alpha-guide"},
+		{name: "json", args: []string{"alpha", "-o", "json"}, want: `"description": "alpha skill description"`},
+		{name: "unknown", args: []string{"unknown"}, err: "unknown skill"},
+		{name: "retired", args: []string{"old"}, err: "retired"},
+		{name: "missing reference", args: []string{"alpha", "references/missing.md"}, err: "not found"},
+		{name: "parent", args: []string{"alpha", "../beta/SKILL.md"}, err: "invalid reference path"},
+		{name: "nested parent", args: []string{"alpha", "references/../../beta/SKILL.md"}, err: "invalid reference path"},
+		{name: "absolute", args: []string{"alpha", "/etc/passwd"}, err: "invalid reference path"},
+		{name: "bare parent", args: []string{"alpha", ".."}, err: "invalid reference path"},
+		{name: "bad name", args: []string{"../alpha"}, err: "invalid skill name"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			out, _, err := executeCommand(t, newGetCommand(testSkillsFS(), testCatalog()), tc.args...)
+			if tc.err != "" {
+				require.ErrorContains(t, err, tc.err)
+				return
+			}
+			require.NoError(t, err)
+			require.Contains(t, out, tc.want)
+			if tc.name == "json" {
+				var result getResult
+				require.NoError(t, json.Unmarshal([]byte(out), &result))
+				require.Equal(t, []string{"references/guide.md"}, result.References)
+				require.Equal(t, "SKILL.md", result.Path)
+			}
+		})
+	}
 }
 
-func TestUninstallSkills_DryRunDoesNotRemoveFiles(t *testing.T) {
-	t.Parallel()
-
-	root := filepath.Join(t.TempDir(), ".agents")
-	require.NoError(t, os.MkdirAll(filepath.Join(root, "skills", "alpha"), 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(root, "skills", "alpha", "SKILL.md"), []byte("alpha"), 0o600))
-
-	result, err := uninstallSkills(root, []string{"alpha"}, true)
-	require.NoError(t, err)
-	require.Equal(t, []string{"alpha"}, result.Removed)
-	require.True(t, result.DryRun)
-
-	_, err = os.Stat(filepath.Join(root, "skills", "alpha", "SKILL.md"))
-	require.NoError(t, err)
-}
-
-func TestUninstallSkills_InvalidName(t *testing.T) {
-	t.Parallel()
-
-	root := filepath.Join(t.TempDir(), ".agents")
-
-	_, err := uninstallSkills(root, []string{"../alpha"}, false)
-	require.Error(t, err)
-	require.ErrorContains(t, err, "invalid skill name")
-}
-
-func TestUninstallCommand_AllRequiresApproval(t *testing.T) {
+func TestUninstallCommand(t *testing.T) {
+	t.Setenv("GCX_AGENT_MODE", "false")
 	t.Setenv("GCX_AUTO_APPROVE", "0")
-
-	cmd := newUninstallCommand(testSkillsFS())
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	cmd.SetOut(stdout)
-	cmd.SetErr(stderr)
-	cmd.SetArgs([]string{"--all"})
-
-	err := cmd.Execute()
-	require.Error(t, err)
-	require.ErrorContains(t, err, "refusing to uninstall all gcx skills without --yes")
+	agent.ResetForTesting()
+	for _, tc := range []struct {
+		name    string
+		args    []string
+		removed []string
+		missing []string
+		dryRun  bool
+		err     string
+	}{
+		{name: "current", args: []string{"alpha"}, removed: []string{"alpha"}, missing: []string{}},
+		{name: "retired", args: []string{"old"}, removed: []string{"old"}, missing: []string{}},
+		{name: "missing", args: []string{"missing"}, removed: []string{}, missing: []string{"missing"}},
+		{name: "duplicates", args: []string{"old", "old"}, removed: []string{"old"}, missing: []string{}},
+		{name: "dry run", args: []string{"old", "--dry-run"}, removed: []string{"old"}, missing: []string{}, dryRun: true},
+		{name: "all", args: []string{"--all", "--yes"}, removed: []string{"alpha", "old"}, missing: []string{"beta"}},
+		{name: "all dry run", args: []string{"--all", "--yes", "--dry-run"}, removed: []string{"alpha", "old"}, missing: []string{"beta"}, dryRun: true},
+		{name: "requires approval", args: []string{"--all"}, err: "refusing to uninstall all gcx skills without --yes"},
+		{name: "unmanaged", args: []string{"external"}, err: "unknown skill"},
+		{name: "validate all first", args: []string{"alpha", "external"}, err: "unknown skill"},
+		{name: "invalid name", args: []string{"../alpha"}, err: "invalid skill name"},
+		{name: "no targets", err: "provide at least one skill name"},
+		{name: "all and targets", args: []string{"--all", "--yes", "old"}, err: "skill names cannot be provided"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			for _, name := range []string{"alpha", "old", "external"} {
+				putSkill(t, root, name, "local")
+			}
+			out, _, err := executeCommand(t, newUninstallCommand(testSkillsFS(), testCatalog()), append([]string{"--dir", root, "-o", "json"}, tc.args...)...)
+			if tc.err != "" {
+				require.ErrorContains(t, err, tc.err)
+				for _, name := range []string{"alpha", "old"} {
+					require.DirExists(t, filepath.Join(root, "skills", name))
+				}
+			} else {
+				require.NoError(t, err)
+				var result uninstallResult
+				require.NoError(t, json.Unmarshal([]byte(out), &result))
+				require.Equal(t, tc.removed, result.Removed)
+				require.Equal(t, tc.missing, result.Missing)
+				require.Equal(t, len(tc.removed), result.RemovedCount)
+				for _, name := range tc.removed {
+					if tc.dryRun {
+						require.DirExists(t, filepath.Join(root, "skills", name))
+					} else {
+						require.NoDirExists(t, filepath.Join(root, "skills", name))
+					}
+				}
+			}
+			require.FileExists(t, filepath.Join(root, "skills", "external", "SKILL.md"))
+		})
+	}
 }
 
-func TestUninstallCommand_AllWithYesRemovesOnlyBundledSkills(t *testing.T) {
+func TestUninstallCommand_IgnoresBundleMismatch(t *testing.T) {
 	t.Setenv("GCX_AGENT_MODE", "false")
 	agent.ResetForTesting()
-	root := filepath.Join(t.TempDir(), ".agents")
-
-	// Install gcx-bundled skills (alpha, beta) and a non-gcx skill (external).
-	require.NoError(t, os.MkdirAll(filepath.Join(root, "skills", "alpha"), 0o755))
-	require.NoError(t, os.MkdirAll(filepath.Join(root, "skills", "beta"), 0o755))
-	require.NoError(t, os.MkdirAll(filepath.Join(root, "skills", "external"), 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(root, "skills", "alpha", "SKILL.md"), []byte("alpha"), 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(root, "skills", "beta", "SKILL.md"), []byte("beta"), 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(root, "skills", "external", "SKILL.md"), []byte("not from gcx"), 0o600))
-
-	cmd := newUninstallCommand(testSkillsFS())
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	cmd.SetOut(stdout)
-	cmd.SetErr(stderr)
-	cmd.SetArgs([]string{"--dir", root, "--all", "--yes"})
-
-	err := cmd.Execute()
-	require.NoError(t, err)
-	require.Contains(t, stdout.String(), "Uninstalled 2 skill(s)")
-
-	// Bundled skills removed.
-	_, err = os.Stat(filepath.Join(root, "skills", "alpha"))
-	require.True(t, os.IsNotExist(err))
-	_, err = os.Stat(filepath.Join(root, "skills", "beta"))
-	require.True(t, os.IsNotExist(err))
-
-	// Non-gcx skill is untouched.
-	_, err = os.Stat(filepath.Join(root, "skills", "external", "SKILL.md"))
-	require.NoError(t, err)
+	for _, tc := range []struct {
+		name    string
+		source  fs.FS
+		catalog string
+	}{
+		{
+			name: "missing active content", source: fstest.MapFS{},
+			catalog: "skills: {old: {status: active}}",
+		},
+		{
+			name:    "uncataloged bundled content",
+			source:  fstest.MapFS{"other/SKILL.md": {Data: []byte("other")}},
+			catalog: "skills: {old: {status: retired}}",
+		},
+		{
+			name:    "retired bundled content",
+			source:  fstest.MapFS{"old/SKILL.md": {Data: []byte("old")}},
+			catalog: "skills: {old: {status: retired}}",
+		},
+		{
+			name: "unknown replacement", source: fstest.MapFS{},
+			catalog: "skills: {old: {status: retired, replacement: missing}}",
+		},
+		{
+			name: "cyclic replacement metadata", source: fstest.MapFS{},
+			catalog: "skills: {old: {status: retired, replacement: other}, other: {status: retired, replacement: old}}",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, mode := range []string{"named", "all"} {
+				t.Run(mode, func(t *testing.T) {
+					root := t.TempDir()
+					putSkill(t, root, "old", "installed content")
+					putSkill(t, root, "external", "unmanaged content")
+					args := []string{"--dir", root, "-o", "json"}
+					if mode == "all" {
+						args = append(args, "--all", "--yes")
+					} else {
+						args = append(args, "old")
+					}
+					out, _, err := executeCommand(t, newUninstallCommand(tc.source, []byte(tc.catalog)), args...)
+					require.NoError(t, err)
+					var result uninstallResult
+					require.NoError(t, json.Unmarshal([]byte(out), &result))
+					require.Equal(t, []string{"old"}, result.Removed)
+					require.NoDirExists(t, filepath.Join(root, "skills", "old"))
+					require.FileExists(t, filepath.Join(root, "skills", "external", "SKILL.md"))
+				})
+			}
+		})
+	}
 }
 
-func TestUninstallCommand_RejectsNonBundledSkillName(t *testing.T) {
-	cmd := newUninstallCommand(testSkillsFS())
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	cmd.SetOut(stdout)
-	cmd.SetErr(stderr)
-	cmd.SetArgs([]string{"external"})
-
-	err := cmd.Execute()
-	require.Error(t, err)
-	require.ErrorContains(t, err, "unknown skill")
+func TestSkillCompletion(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name        string
+		constructor func(fs.FS, []byte) *cobra.Command
+		retired     bool
+	}{
+		{name: "install", constructor: newInstallCommand},
+		{name: "get", constructor: newGetCommand},
+		{name: "update", constructor: newUpdateCommand, retired: true},
+		{name: "uninstall", constructor: newUninstallCommand, retired: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cmd := tc.constructor(testSkillsFS(), testCatalog())
+			names, directive := cmd.ValidArgsFunction(cmd, nil, "")
+			require.Equal(t, cobra.ShellCompDirectiveNoFileComp, directive)
+			require.Contains(t, names, "alpha")
+			require.Contains(t, names, "beta")
+			if tc.retired {
+				require.Contains(t, names, "old")
+			} else {
+				require.NotContains(t, names, "old")
+			}
+		})
+	}
 }
