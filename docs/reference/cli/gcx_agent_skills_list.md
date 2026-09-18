@@ -1,10 +1,10 @@
 ## gcx agent skills list
 
-List skills bundled with the gcx binary
+List bundled skills and locally present retired gcx skills
 
 ### Synopsis
 
-List skills bundled with the gcx binary, including each skill's short description and install status.
+List bundled skills and locally present retired gcx skills, including descriptions, lifecycle status, replacements, and installation state. Skills not in the gcx catalog are unmanaged and omitted.
 
 ```
 gcx agent skills list [flags]

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	fleetbase "github.com/grafana/gcx/internal/fleet"
 	"github.com/grafana/gcx/internal/providers/fleet"
@@ -342,14 +343,22 @@ func TestClient_DeletePipeline(t *testing.T) {
 }
 
 func TestClient_ListCollectors(t *testing.T) {
+	createdAt := "2026-08-01T10:00:00Z"
+	updatedAt := "2026-09-18T11:12:13Z"
+	inactiveAt := "2026-09-18T12:00:00Z"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
 		assert.Contains(t, r.URL.Path, "/collector.v1.CollectorService/ListCollectors")
 		writeJSON(w, map[string]any{
 			"collectors": []map[string]any{
-				{"id": "c-1", "name": "collector-1", "collector_type": "alloy"},
-				{"id": "c-2", "name": "collector-2", "collector_type": "alloy"},
-				{"id": "c-3", "name": "collector-3", "collector_type": "alloy"},
+				{
+					"id": "c-1", "name": "collector-1", "collectorType": "COLLECTOR_TYPE_ALLOY",
+					"localAttributes":  map[string]string{"collector.version": "1.10.2", "collector.os": "linux"},
+					"remoteAttributes": map[string]string{"env": "production"},
+					"createdAt":        createdAt, "updatedAt": updatedAt, "markedInactiveAt": inactiveAt,
+				},
+				{"id": "c-2", "name": "collector-2", "collectorType": "COLLECTOR_TYPE_ALLOY"},
+				{"id": "c-3", "name": "collector-3", "collectorType": "COLLECTOR_TYPE_ALLOY"},
 			},
 		})
 	}))
@@ -361,6 +370,15 @@ func TestClient_ListCollectors(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, collectors, 3)
 	assert.Equal(t, "c-1", collectors[0].ID)
+	assert.Equal(t, "COLLECTOR_TYPE_ALLOY", collectors[0].CollectorType)
+	assert.Equal(t, "1.10.2", collectors[0].LocalAttributes["collector.version"])
+	assert.Equal(t, "production", collectors[0].RemoteAttributes["env"])
+	require.NotNil(t, collectors[0].CreatedAt)
+	assert.Equal(t, createdAt, collectors[0].CreatedAt.Format(time.RFC3339))
+	require.NotNil(t, collectors[0].UpdatedAt)
+	assert.Equal(t, updatedAt, collectors[0].UpdatedAt.Format(time.RFC3339))
+	require.NotNil(t, collectors[0].MarkedInactiveAt)
+	assert.Equal(t, inactiveAt, collectors[0].MarkedInactiveAt.Format(time.RFC3339))
 }
 
 func TestClient_GetCollector(t *testing.T) {

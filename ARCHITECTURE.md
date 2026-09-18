@@ -203,6 +203,14 @@ can otherwise inject Grafana auth into the wrong request.
 
 **Deep-dive:** [client-api-layer.md](docs/architecture/client-api-layer.md), [config-system.md](docs/architecture/config-system.md).
 
+### Portable Agent Skills (`gcx agent skills`)
+
+`claude-plugin/skills-catalog.yaml` records active, deprecated, and retired skills
+independently of bundled content. `internal/skills` reconciles that release catalog
+with the selected local installation for list/install/update/uninstall; retired
+entries remain addressable without automatic deletion or replacement installation.
+See [CLI layer: Portable Skill Lifecycle](docs/architecture/cli-layer.md#portable-skill-lifecycle).
+
 ## Architecture Decision Records
 
 | ADR | Title | Status |

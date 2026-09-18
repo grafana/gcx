@@ -236,8 +236,8 @@ var commandAnnotations = map[string]annotation{
 	// -----------------------------------------------------------------------
 	"gcx fleet collectors create": {Cost: "small", Hint: "-f <manifest.yaml>"},
 	"gcx fleet collectors delete": {Cost: "small"},
-	"gcx fleet collectors get":    {Cost: "small"},
-	"gcx fleet collectors list":   {Cost: "small"},
+	"gcx fleet collectors get":    {Cost: "medium", Hint: "<id|name> --json spec.local_attributes,spec.remote_attributes,spec.updated_at"},
+	"gcx fleet collectors list":   {Cost: "large", Hint: "--limit 50 --json spec.id,spec.local_attributes,spec.updated_at; use --limit 0 only for a complete fleet audit"},
 	"gcx fleet collectors update": {Cost: "small"},
 	"gcx fleet pipelines create":  {Cost: "small", Hint: "-f <manifest.yaml>"},
 	"gcx fleet pipelines delete":  {Cost: "small"},
@@ -634,6 +634,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx synthetic-monitoring checks get":         {Cost: "small"},
 	"gcx synthetic-monitoring checks list":        {Cost: "small"},
 	"gcx synthetic-monitoring checks status":      {Cost: "medium", Hint: "--job <name> -o json"},
+	"gcx synthetic-monitoring checks test":        {Cost: "medium", Hint: "-f <check.yaml>. Runs the check once without saving it, then polls Loki for per-probe results. Billed the same as a scheduled execution (" + docs.SyntheticMonitoringInvoice + ")."},
 	"gcx synthetic-monitoring checks timeline":    {Cost: "medium", Hint: "<id> --since 1h -o json"},
 	"gcx synthetic-monitoring checks update":      {Cost: "small", Hint: "<name> -f <check.yaml>. Frequency and probe changes affect billable execution volume (" + docs.SyntheticMonitoringInvoice + ")."},
 	"gcx synthetic-monitoring probes create":      {Cost: "small"},
