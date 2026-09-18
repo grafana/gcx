@@ -1,0 +1,3 @@
+ID      ENABLED  SELECTOR             SAMPLE RATE  EVALUATORS
+rule-1  yes      {agent="assistant"}  0.25         quality, safety
+		no                            0            -
