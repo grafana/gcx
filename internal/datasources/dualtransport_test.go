@@ -253,7 +253,7 @@ func TestDualListManyGroupsAggregatesConcurrently(t *testing.T) {
 		fmt.Fprintf(&b, `{"name":%q}`, group)
 		path := "/apis/" + group + "/v0alpha1/namespaces/stacks-1/datasources"
 		bodies[path] = fmt.Sprintf(
-			`{"items":[{"apiVersion":"%s/v0alpha1","metadata":{"name":"ds-%02d"},"spec":{}}]}`, group, i)
+			`{"items":[{"metadata":{"name":"ds-%02d"},"spec":{}}]}`, i)
 	}
 	b.WriteString(`]}`)
 	discovery := b.String()
@@ -285,6 +285,11 @@ func TestDualListManyGroupsAggregatesConcurrently(t *testing.T) {
 	list, err := tr.List(context.Background())
 	require.NoError(t, err)
 	assert.Len(t, list, groups, "every served group must be aggregated")
+	for _, ds := range list {
+		wantType := "plugin-" + strings.TrimPrefix(ds.UID, "ds-") + "-datasource"
+		assert.Equal(t, wantType, ds.Type, "list items can omit both spec.type and apiVersion")
+		assert.Equal(t, wantType+".datasource.grafana.app/v0alpha1", datasources.ManifestFromDatasource(ds).APIVersion)
+	}
 	assert.LessOrEqual(t, maxInFlight, int64(10), "fan-out must stay bounded at 10")
 	assert.Greater(t, maxInFlight, int64(1), "fetches must actually run concurrently")
 }
