@@ -1527,6 +1527,178 @@ func TestRun_NormalizesServerScheme(t *testing.T) {
 	}
 }
 
+// A Grafana Cloud portal root manages stacks and serves no Grafana instance
+// API. Run must reject it before target detection and before the OAuth flow,
+// so the browser never opens on a route the portal does not have.
+func TestRun_RejectsCloudPortalServerURL(t *testing.T) {
+	tests := []struct {
+		name       string
+		server     string
+		wantHost   string
+		wantSuffix string
+	}{
+		{"prod portal", "https://grafana.com", "grafana.com", ".grafana.net"},
+		{"dev portal", "https://grafana-dev.com", "grafana-dev.com", ".grafana-dev.net"},
+		{"ops portal", "https://grafana-ops.com", "grafana-ops.com", ".grafana-ops.net"},
+		{"portal without a scheme", "grafana.com", "grafana.com", ".grafana.net"},
+		{"portal with a path", "https://grafana.com/orgs/example", "grafana.com", ".grafana.net"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			opts := login.Options{
+				Inputs: login.Inputs{
+					Server: tt.server,
+					// A Cloud token alone reproduces the reported invocation.
+					CloudToken: "glc_test",
+					Yes:        true,
+				},
+				Hooks: login.Hooks{
+					ConfigSource: configSource(dir),
+					ValidateFn: func(_ context.Context, _ login.Options, _ config.NamespacedRESTConfig) (string, error) {
+						t.Fatal("validation must not run for a portal URL")
+						return "", nil
+					},
+					DetectFn: func(_ context.Context, _ string) (login.Target, error) {
+						t.Fatal("target detection must not run for a portal URL")
+						return login.TargetUnknown, nil
+					},
+					NewAuthFlow: func(_ string, _ auth.Options) login.AuthFlow {
+						t.Fatal("the OAuth flow must not start for a portal URL")
+						return nil
+					},
+				},
+			}
+
+			_, err := login.Run(context.Background(), &opts)
+			require.Error(t, err)
+
+			var portalErr *login.PortalServerURLError
+			require.ErrorAs(t, err, &portalErr)
+			assert.Equal(t, tt.wantHost, portalErr.Host)
+			assert.Equal(t, tt.wantSuffix, portalErr.StackSuffix)
+
+			// Nothing may be written when login refuses this early.
+			_, loadErr := config.Load(context.Background(), configSource(dir))
+			assert.Error(t, loadErr, "no config may be persisted for a rejected portal URL")
+		})
+	}
+}
+
+// A stack URL must still reach authentication. This guards the portal check
+// against over-reach onto real stacks and custom Cloud domains.
+func TestRun_AcceptsStackAndCustomDomainServerURLs(t *testing.T) {
+	for _, server := range []string{
+		"https://mystack.grafana.net",
+		"https://mystack.grafana-ops.net",
+		"https://help.grafana.com",
+		"https://mystack.cloud.example.grafana.com",
+		"https://grafana.example.com",
+	} {
+		t.Run(server, func(t *testing.T) {
+			usePlaintextCredentialStorage(t)
+
+			dir := t.TempDir()
+			opts := login.Options{
+				Inputs: login.Inputs{
+					Server:       server,
+					GrafanaToken: "glsa_test",
+					Target:       login.TargetOnPrem,
+					Yes:          true,
+				},
+				Hooks: login.Hooks{
+					ConfigSource: configSource(dir),
+					ValidateFn:   noopValidate,
+				},
+			}
+
+			_, err := login.Run(context.Background(), &opts)
+			require.NoError(t, err)
+		})
+	}
+}
+
+// A login must say when it does not apply a Cloud credential to a non-Cloud
+// target. It must not claim that a saved Cloud entry was removed.
+func TestRun_WarnsWhenCloudCredentialIsNotAppliedToNonCloudTarget(t *testing.T) {
+	tests := []struct {
+		name       string
+		cloudToken string
+		wantWarn   bool
+	}{
+		{"cloud token supplied", "glc_test", true},
+		{"no cloud token", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			usePlaintextCredentialStorage(t)
+
+			dir := t.TempDir()
+			var writer bytes.Buffer
+			opts := login.Options{
+				Inputs: login.Inputs{
+					Server:       "https://grafana.example.com",
+					GrafanaToken: "glsa_test",
+					CloudToken:   tt.cloudToken,
+					Target:       login.TargetOnPrem,
+					Yes:          true,
+					Writer:       &writer,
+				},
+				Hooks: login.Hooks{
+					ConfigSource: configSource(dir),
+					ValidateFn:   noopValidate,
+				},
+			}
+
+			_, err := login.Run(context.Background(), &opts)
+			require.NoError(t, err)
+
+			if tt.wantWarn {
+				assert.Contains(t, writer.String(), "this login did not apply the Cloud credential")
+				assert.Contains(t, writer.String(), "Any existing saved Cloud credential stays unchanged")
+				assert.NotContains(t, writer.String(), "commands stay unavailable")
+			} else {
+				assert.NotContains(t, writer.String(), "this login did not apply the Cloud credential")
+			}
+		})
+	}
+}
+
+func TestRun_WarnsOnceWhenCloudTokenIsDroppedAcrossRetry(t *testing.T) {
+	t.Setenv("GCX_AGENT_MODE", "0")
+	usePlaintextCredentialStorage(t)
+
+	dir := t.TempDir()
+	var writer bytes.Buffer
+	opts := login.Options{
+		Inputs: login.Inputs{
+			Server:       "https://grafana.example.com",
+			GrafanaToken: "glsa_test",
+			CloudToken:   "glc_test",
+			Target:       login.TargetOnPrem,
+			Writer:       &writer,
+		},
+		Hooks: login.Hooks{
+			ConfigSource: configSource(dir),
+			ValidateFn: func(_ context.Context, _ login.Options, _ config.NamespacedRESTConfig) (string, error) {
+				return "", errors.New("validation failed")
+			},
+		},
+		RetryState: login.RetryState{StagedContext: &config.Context{}},
+	}
+
+	_, err := login.Run(context.Background(), &opts)
+	var needClarification *login.ErrNeedClarification
+	require.ErrorAs(t, err, &needClarification)
+
+	opts.ForceSave = true
+	_, err = login.Run(context.Background(), &opts)
+	require.NoError(t, err)
+	assert.Equal(t, 1, strings.Count(writer.String(), "this login did not apply the Cloud credential"))
+}
+
 func TestRun_TLSPropagatedToContext(t *testing.T) {
 	usePlaintextCredentialStorage(t)
 
