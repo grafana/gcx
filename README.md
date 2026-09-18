@@ -27,36 +27,36 @@ before choosing a command, provider, or datasource path.
 
 ## Choosing between gcx and Grafana MCP
 
-Use gcx when you can run commands in a terminal, a coding agent environment,
-or a CI/CD pipeline. It supports Grafana OSS, Enterprise, and Cloud. Use it to
-investigate production issues, instrument services, manage incidents, and
-version or deploy resources. It also provides broad coverage for Grafana Cloud
-products.
+gcx gives people and coding agents access to Grafana through shell commands.
+Grafana MCP gives AI clients access through Model Context Protocol tools.
+Both support investigations and write operations.
 
-Use Grafana MCP when your AI client uses native MCP tools. The
-[Grafana Cloud MCP server](https://grafana.com/docs/grafana-cloud/ai-tools/mcp-servers/cloud-mcp/)
-provides a hosted connection with OAuth 2.1 user authorization. The
-[open source Grafana MCP server](https://grafana.com/docs/grafana/latest/developer-resources/mcp/)
-can run as a local process over stdio or as a remote server that you operate.
+Use **gcx** for terminal work, scripts, and CI/CD pipelines. It supports
+Grafana OSS, Enterprise, and Cloud; see the [compatibility matrix](#compatibility).
+You can pull resources into files, track
+changes in Git, and push resources to another environment. Dedicated commands
+also manage Grafana Cloud products such as SLOs, Synthetic Monitoring, k6, and
+Fleet.
 
-Both options support investigations and write operations. gcx provides broader
-operational coverage. Choose based on the available runtime, required
-authentication, and operation coverage.
+If your coding agent supports both shell commands and MCP, start with gcx for
+these workflows. Choose MCP when a specific tool or its connection model better
+meets your needs.
 
-| Your situation | Choose | Why |
-|----------------|--------|-----|
-| You use a chat application or hosted agent with MCP support but no shell access | Grafana MCP | The client can use configured MCP tools without executing gcx. |
-| You need a hosted MCP connection with on-behalf-of user authorization for Grafana Cloud | [Cloud MCP](https://grafana.com/docs/grafana-cloud/ai-tools/mcp-servers/cloud-mcp/) | The hosted endpoint uses the signed-in user's identity and Grafana permissions. |
-| Your AI client needs MCP access to self-hosted Grafana | [OSS MCP](https://grafana.com/docs/grafana-cloud/ai-tools/mcp-servers/oss-mcp/set-up/) | Run it locally over stdio or deploy it where it can reach your Grafana instance. |
-| You want to use MCP with Grafana Cloud and control the MCP deployment | [OSS MCP](https://grafana.com/docs/grafana/latest/developer-resources/mcp/configure/command-line-flags/) | You operate and configure the process, transport, and credentials. |
-| You work in a terminal or automate Grafana with scripts | gcx | Run commands wherever the CLI is installed and configured. |
-| You version resources in Git and deploy them through CI/CD | gcx | Resource pull and push commands support repository and pipeline workflows. |
-| You manage Grafana Cloud products such as SLOs, Synthetic Monitoring, k6, or Fleet | gcx | Dedicated commands provide broader product administration coverage. |
-| Your coding agent supports both shell commands and MCP | gcx | gcx has broader Grafana product and operation coverage. Use MCP when its authentication model or a specific MCP tool is a better fit. |
+Use **Grafana MCP** when your AI client needs an MCP connection, including
+clients without shell access. Choose between:
 
-For Grafana OSS and Enterprise, gcx uses service account credentials. For
-Grafana Cloud, gcx also supports OAuth. OAuth is the preferred authentication
-method for interactive use.
+- **Grafana Cloud MCP:** Grafana hosts the server. You authorize access through
+  your browser with OAuth 2.1. Access uses your Grafana identity and permissions.
+  See the [Cloud MCP documentation](https://grafana.com/docs/grafana-cloud/ai-tools/mcp-servers/cloud-mcp/).
+- **Open source Grafana MCP:** You run and configure the server. It connects to
+  Grafana Cloud or your own Grafana instance.
+  See the [open source MCP documentation](https://grafana.com/docs/grafana/latest/developer-resources/mcp/).
+
+For interactive login to a Grafana Cloud instance, prefer OAuth through
+`gcx login`. Cloud platform access uses a separate credential. Use a Cloud
+Access Policy token for full Cloud product command compatibility; Cloud platform
+OAuth remains experimental. For Grafana OSS and Enterprise, you can use a
+service account token, basic authentication, or mTLS. See [Authentication](#authentication).
 
 ## Quick Start
 
