@@ -63,45 +63,49 @@ type Response struct {
 	Body       []byte
 }
 
-// Client is a transport for the Synthetic Monitoring API via Grafana's
+// ProxyClient is a transport for the Synthetic Monitoring API via Grafana's
 // datasource proxy.
-type Client struct {
+type ProxyClient struct {
 	restConfig config.NamespacedRESTConfig
 	httpClient *http.Client
 }
 
-// NewClient creates a new SM datasource-proxy transport. The HTTP client is
+// NewProxyClient creates a new SM datasource-proxy transport. The HTTP client is
 // built from the rest.Config so it carries the caller's Grafana credential.
-func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
+// The intent of the client is to provide a mechanism for gcx to communicate with the synthetic-monitoring api
+// via grafana's proxy. This client is authenticated with gcx credential's to the grafana api.
+// Clients with valid credentials hit the proxy which injects the tenant token enabling the connection to authenticate with
+// SM's api.
+func NewProxyClient(cfg config.NamespacedRESTConfig) (*ProxyClient, error) {
 	httpClient, err := rest.HTTPClientFor(&cfg.Config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create HTTP client: %w", err)
 	}
 
-	return &Client{
+	return &ProxyClient{
 		restConfig: cfg,
 		httpClient: httpClient,
 	}, nil
 }
 
 // Get performs a GET against the SM API path (e.g. "check/list") via the proxy.
-func (c *Client) Get(ctx context.Context, datasourceUID, smPath string) (*Response, error) {
+func (c *ProxyClient) Get(ctx context.Context, datasourceUID, smPath string) (*Response, error) {
 	return c.do(ctx, http.MethodGet, datasourceUID, smPath, nil)
 }
 
 // Post performs a POST against the SM API path (e.g. "check/add") via the proxy.
 // The body is sent as application/json.
-func (c *Client) Post(ctx context.Context, datasourceUID, smPath string, body []byte) (*Response, error) {
+func (c *ProxyClient) Post(ctx context.Context, datasourceUID, smPath string, body []byte) (*Response, error) {
 	return c.do(ctx, http.MethodPost, datasourceUID, smPath, body)
 }
 
 // Delete performs a DELETE against the SM API path (e.g. "check/delete/42") via
 // the proxy.
-func (c *Client) Delete(ctx context.Context, datasourceUID, smPath string) (*Response, error) {
+func (c *ProxyClient) Delete(ctx context.Context, datasourceUID, smPath string) (*Response, error) {
 	return c.do(ctx, http.MethodDelete, datasourceUID, smPath, nil)
 }
 
-func (c *Client) do(ctx context.Context, method, datasourceUID, smPath string, body []byte) (*Response, error) {
+func (c *ProxyClient) do(ctx context.Context, method, datasourceUID, smPath string, body []byte) (*Response, error) {
 	url := c.restConfig.Host + c.buildProxyPath(datasourceUID, smPath)
 
 	var reqBody io.Reader
@@ -135,7 +139,7 @@ func (c *Client) do(ctx context.Context, method, datasourceUID, smPath string, b
 	return &Response{StatusCode: resp.StatusCode, Body: respBody}, nil
 }
 
-func (c *Client) buildProxyPath(datasourceUID, smPath string) string {
+func (c *ProxyClient) buildProxyPath(datasourceUID, smPath string) string {
 	return fmt.Sprintf("/api/datasources/proxy/uid/%s/%s/%s",
 		datasourceUID, smRoute, strings.TrimPrefix(smPath, "/"))
 }
