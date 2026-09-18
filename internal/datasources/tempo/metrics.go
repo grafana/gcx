@@ -51,7 +51,7 @@ open it in your browser after the query succeeds.`,
   gcx datasources tempo metrics '100 * ({ kind = server && status = error } | rate()) / ({ kind = server } | rate())' --since 1h -o json
 
   # Each service's share of observed server-span throughput
-  gcx datasources tempo metrics '({ kind = server } | rate() by (resource.service.name)) / ({ kind = server } | rate())' --since 1h`,
+  gcx datasources tempo metrics '100 * ({ kind = server } | rate() by (resource.service.name)) / ({ kind = server } | rate())' --since 1h`,
 		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := shared.Validate(); err != nil {
