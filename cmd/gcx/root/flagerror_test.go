@@ -109,6 +109,20 @@ func TestFlagUsageError_RedactsSensitiveFlagValueWithEqualsSyntax(t *testing.T) 
 	assert.Equal(t, "gcx resources get --format=json '--token=<redacted>'", usageErr.Corrections[0].Command)
 }
 
+func TestFlagUsageError_RedactsCloudTokenValueInCorrection(t *testing.T) {
+	cmd := newFlagTestCommand(t)
+	cmd.Flags().String("cloud-token", "", "Grafana Cloud API token")
+	parseErr := parseFlagError(t, cmd, []string{"--formt", "json", "--cloud-token", "sekrit-value"})
+
+	err := root.FlagUsageErrorForTest(cmd, parseErr, []string{"resources", "get", "--formt", "json", "--cloud-token", "sekrit-value"})
+
+	usageErr := &fail.UsageError{}
+	require.ErrorAs(t, err, &usageErr)
+	require.Len(t, usageErr.Corrections, 1)
+	assert.NotContains(t, usageErr.Corrections[0].Command, "sekrit-value")
+	assert.Equal(t, "gcx resources get --format json --cloud-token '<redacted>'", usageErr.Corrections[0].Command)
+}
+
 func TestFlagUsageError_MatchesInheritedFlags(t *testing.T) {
 	cmd := newFlagTestCommand(t)
 	parseErr := parseFlagError(t, cmd, []string{"--contxt", "dev"})
@@ -165,9 +179,9 @@ func TestRedactSensitiveValues(t *testing.T) {
 			want: []string{"resources", "get", "--format", "json"},
 		},
 		{
-			name: "password and secret also redacted",
-			args: []string{"--password", "hunter2", "--secret=abc", "--api-key", "xyz"},
-			want: []string{"--password", "<redacted>", "--secret=<redacted>", "--api-key", "<redacted>"},
+			name: "other sensitive flags also redacted",
+			args: []string{"--cloud-token", "cap", "--password", "hunter2", "--secret=abc", "--api-key", "xyz"},
+			want: []string{"--cloud-token", "<redacted>", "--password", "<redacted>", "--secret=<redacted>", "--api-key", "<redacted>"},
 		},
 	}
 

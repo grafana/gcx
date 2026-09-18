@@ -114,6 +114,7 @@ func substituteFlag(args []string, unknown, candidate string) ([]string, bool) {
 // --token <value>`).
 var sensitiveFlagNames = map[string]struct{}{ //nolint:gochecknoglobals // constant-like lookup table; no mutable state.
 	"token":         {},
+	"cloud-token":   {},
 	"password":      {},
 	"secret":        {},
 	"client-secret": {},
