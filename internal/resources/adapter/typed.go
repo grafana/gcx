@@ -477,3 +477,10 @@ func (a *typedAdapter[T]) dryRunValidate(ctx context.Context, item *T) (*unstruc
 func isDryRun(dryRun []string) bool {
 	return slices.Contains(dryRun, metav1.DryRunAll)
 }
+
+// FromUnstructured decodes a manifest and restores the domain identity from
+// metadata.name using the same conversion as generic resource mutations.
+func (c *TypedCRUD[T]) FromUnstructured(obj *unstructured.Unstructured) (*T, error) {
+	_, item, err := c.fromUnstructured(obj)
+	return item, err
+}

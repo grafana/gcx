@@ -1,6 +1,8 @@
 package reports
 
 // Report represents a Grafana SLO report.
+//
+//nolint:recvcheck // Identity reads use a value receiver; restoration mutates the pointer.
 type Report struct {
 	UUID             string           `json:"uuid,omitempty"`
 	Name             string           `json:"name"`
@@ -38,3 +40,9 @@ type ReportCreateResponse struct {
 	Message string `json:"message"`
 	UUID    string `json:"uuid"`
 }
+
+// GetResourceName identifies the report by its UUID.
+func (r Report) GetResourceName() string { return r.UUID }
+
+// SetResourceName restores the UUID from manifest metadata.
+func (r *Report) SetResourceName(name string) { r.UUID = name }

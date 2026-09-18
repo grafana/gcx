@@ -6,22 +6,20 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/slo/reports"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"k8s.io/client-go/rest"
 )
 
 func newTestClient(t *testing.T, server *httptest.Server) *reports.Client {
 	t.Helper()
-	cfg := config.NamespacedRESTConfig{
-		Config: rest.Config{Host: server.URL},
-	}
-	client, err := reports.NewClient(cfg)
+	client, err := reports.ReportResource().NewClient(t.Context(), adapter.ClientDeps{BaseURL: server.URL, HTTP: server.Client()})
 	require.NoError(t, err)
-	return client
+	reportClient, ok := client.(*reports.Client)
+	require.True(t, ok)
+	return reportClient
 }
 
 // writeJSON encodes v as JSON to w.
@@ -89,7 +87,7 @@ func TestClient_List(t *testing.T) {
 			defer server.Close()
 
 			client := newTestClient(t, server)
-			rpts, err := client.List(t.Context())
+			rpts, err := client.List(t.Context(), adapter.ListOptions{})
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -144,6 +142,7 @@ func TestClient_Get(t *testing.T) {
 				require.Error(t, err)
 				if tt.name == "not found" {
 					require.ErrorIs(t, err, reports.ErrNotFound)
+					require.EqualError(t, err, "report not found")
 				}
 				return
 			}
@@ -282,7 +281,7 @@ func TestClient_Update(t *testing.T) {
 			defer server.Close()
 
 			client := newTestClient(t, server)
-			err := client.Update(t.Context(), tt.uuid, tt.report)
+			_, err := client.Update(t.Context(), tt.uuid, tt.report)
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -384,7 +383,7 @@ func TestClient_ErrorResponses(t *testing.T) {
 			defer server.Close()
 
 			client := newTestClient(t, server)
-			_, err := client.List(t.Context())
+			_, err := client.List(t.Context(), adapter.ListOptions{})
 
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.wantErrMsg)

@@ -146,8 +146,10 @@ agent mode detection, behavior changes, and opt-out mechanisms.
   Provider commands (`slo definitions list`) are ergonomic shorthands with
   domain-rich table output. Generic commands
   (`resources get slos.v1alpha1.slo.ext.grafana.app`) serve the push/pull
-  pipeline and cross-resource operations. Neither path is deprecated; both
-  are first-class.
+  pipeline and cross-resource operations. Both paths remain first-class for
+  CRUD access. SLO-specific push/pull commands are deprecated compatibility
+  wrappers around the shared resource pipeline; use `resources push/pull`
+  for new workflows. Their released invocations remain supported.
 - **For dual-path resources, JSON/YAML output is identical between both
   paths.** This is enforced structurally: provider CRUD commands must use
   their registered `ResourceAdapter` (via TypedCRUD) for data access, not raw

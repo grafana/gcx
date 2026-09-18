@@ -1,6 +1,16 @@
 ## gcx slo definitions push
 
-Push SLO definitions from files.
+Push SLO from files (Deprecated: use gcx resources push).
+
+### Synopsis
+
+Push SLO from files.
+
+Deprecated: use gcx resources push slos.v1alpha1.slo.ext.grafana.app -p PATH instead.
+Writes update only an existing metadata.name UUID; an absent or unknown UUID creates a new resource.
+Manifests may omit apiVersion and kind; this command supplies its resource type.
+This compatibility command retains its file-at-a-time results and local-only --dry-run preview.
+The preview shows manifest identities only; it does not resolve the remote UUID or determine create versus update.
 
 ```
 gcx slo definitions push FILE... [flags]

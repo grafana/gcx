@@ -10,7 +10,6 @@ import (
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/slo/definitions"
-	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -93,8 +92,8 @@ func TestResourceAdapter_List(t *testing.T) {
 				})
 			},
 			wantLen:       2,
-			wantAPIVer:    definitions.APIVersion,
-			wantKind:      definitions.Kind,
+			wantAPIVer:    "slo.ext.grafana.app/v1alpha1",
+			wantKind:      "SLO",
 			wantNamespace: "stack-123",
 		},
 		{
@@ -188,8 +187,8 @@ func TestResourceAdapter_Get(t *testing.T) {
 
 			require.NoError(t, err)
 			assert.Equal(t, tt.wantName, result.GetName())
-			assert.Equal(t, definitions.APIVersion, result.GetAPIVersion())
-			assert.Equal(t, definitions.Kind, result.GetKind())
+			assert.Equal(t, "slo.ext.grafana.app/v1alpha1", result.GetAPIVersion())
+			assert.Equal(t, "SLO", result.GetKind())
 		})
 	}
 }
@@ -230,15 +229,14 @@ func TestResourceAdapter_Create(t *testing.T) {
 		},
 		Objectives: []definitions.Objective{{Value: 0.99, Window: "30d"}},
 	}
-	res, err := definitions.ToResource(inputSLO, "stack-123")
+	obj, err := definitions.SloResource().TypedCRUD(nil, "stack-123").ToUnstructured(inputSLO)
 	require.NoError(t, err)
-	obj := res.ToUnstructured()
 
 	result, err := a.Create(t.Context(), &obj, metav1.CreateOptions{})
 	require.NoError(t, err)
 	assert.Equal(t, createdUUID, result.GetName())
-	assert.Equal(t, definitions.APIVersion, result.GetAPIVersion())
-	assert.Equal(t, definitions.Kind, result.GetKind())
+	assert.Equal(t, "slo.ext.grafana.app/v1alpha1", result.GetAPIVersion())
+	assert.Equal(t, "SLO", result.GetKind())
 }
 
 func TestResourceAdapter_Update(t *testing.T) {
@@ -270,9 +268,8 @@ func TestResourceAdapter_Update(t *testing.T) {
 		},
 		Objectives: []definitions.Objective{{Value: 0.99, Window: "30d"}},
 	}
-	res, err := definitions.ToResource(inputSLO, "stack-123")
+	obj, err := definitions.SloResource().TypedCRUD(nil, "stack-123").ToUnstructured(inputSLO)
 	require.NoError(t, err)
-	obj := res.ToUnstructured()
 
 	result, err := a.Update(t.Context(), &obj, metav1.UpdateOptions{})
 	require.NoError(t, err)
@@ -355,11 +352,7 @@ func TestResourceAdapter_RoundTrip(t *testing.T) {
 	obj, err := a.Get(t.Context(), originalSLO.UUID, metav1.GetOptions{})
 	require.NoError(t, err)
 
-	// Convert back to Resource and then FromResource.
-	res, err := resources.FromUnstructured(obj)
-	require.NoError(t, err)
-
-	restored, err := definitions.FromResource(res)
+	restored, err := definitions.SloResource().TypedCRUD(nil, "stack-rt").FromUnstructured(obj)
 	require.NoError(t, err)
 
 	assert.Equal(t, originalSLO.UUID, restored.UUID)
@@ -389,8 +382,8 @@ func TestResourceAdapter_ListPopulatesMetadata(t *testing.T) {
 	item := result.Items[0]
 	assert.Equal(t, "meta-uuid", item.GetName())
 	assert.Equal(t, "meta-ns", item.GetNamespace())
-	assert.Equal(t, definitions.APIVersion, item.GetAPIVersion())
-	assert.Equal(t, definitions.Kind, item.GetKind())
+	assert.Equal(t, "slo.ext.grafana.app/v1alpha1", item.GetAPIVersion())
+	assert.Equal(t, "SLO", item.GetKind())
 
 	// Verify spec is populated.
 	spec, found, err := unstructured.NestedMap(item.Object, "spec")
@@ -430,7 +423,7 @@ func TestSloResource_RegistrationDerivesSchemaAndExample(t *testing.T) {
 // TestSloResource_SharedByBothFrontDoors covers AC-001/AC-019: the same
 // definitions.SloResource declaration (and therefore the same NewClient /
 // capability-seam construction) backs both provider.go's `gcx slo` command
-// tree (via NewTypedCRUD) and the `gcx resources` pipeline (via
+// tree (via providers.BoundResource.Load) and the `gcx resources` pipeline (via
 // adapter.NewProvider's TypedRegistrations()) — this test drives both call
 // sites against the same test server and asserts field-for-field equivalent
 // data.
@@ -454,11 +447,9 @@ func TestSloResource_SharedByBothFrontDoors(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, viaResources.Items, 1)
 
-	// Front door 2: gcx slo definitions, via commands.go's frozen
-	// NewTypedCRUD entry point — backed by the same Client capability
-	// methods as SloResource.NewClient.
+	// Front door 2: gcx slo definitions, through the shared resource loader.
 	loader := stubGrafanaConfigLoader{host: server.URL, namespace: "shared-ns"}
-	crud, _, err := definitions.NewTypedCRUD(t.Context(), loader)
+	crud, _, err := providers.BindGrafanaResource(loader, definitions.SloResource()).Load(t.Context())
 	require.NoError(t, err)
 	viaCommands, err := crud.List(t.Context(), 0)
 	require.NoError(t, err)
@@ -470,9 +461,15 @@ func TestSloResource_SharedByBothFrontDoors(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, found)
 	assert.Equal(t, "Shared SLO", spec["name"])
+	commandObj, err := crud.ToUnstructured(viaCommands[0].Spec)
+	require.NoError(t, err)
+	assert.Equal(t, viaResources.Items[0].Object, commandObj.Object)
+	assert.NotContains(t, spec, "uuid")
+	assert.NotContains(t, spec, "readOnly")
+	assert.NotEmpty(t, crud.Example)
 }
 
-// stubGrafanaConfigLoader implements definitions.GrafanaConfigLoader for
+// stubGrafanaConfigLoader implements providers.GrafanaConfigLoader for
 // TestSloResource_SharedByBothFrontDoors.
 type stubGrafanaConfigLoader struct {
 	host      string
@@ -484,4 +481,145 @@ func (l stubGrafanaConfigLoader) LoadGrafanaConfig(context.Context) (config.Name
 		Config:    rest.Config{Host: l.host},
 		Namespace: l.namespace,
 	}, nil
+}
+
+func minimalSlo() definitions.Slo {
+	return definitions.Slo{
+		UUID:        "test-uuid-123",
+		Name:        "My SLO",
+		Description: "A test SLO",
+		Query: definitions.Query{
+			Type: "freeform",
+			Freeform: &definitions.FreeformQuery{
+				Query: "sum(rate(http_requests_total{status=~\"2..\"}[5m])) / sum(rate(http_requests_total[5m]))",
+			},
+		},
+		Objectives: []definitions.Objective{
+			{Value: 0.999, Window: "30d"},
+		},
+	}
+}
+
+func fullSlo() definitions.Slo {
+	return definitions.Slo{
+		UUID:        "full-uuid-456",
+		Name:        "Full SLO",
+		Description: "A fully populated SLO",
+		Query: definitions.Query{
+			Type: "ratio",
+			Ratio: &definitions.RatioQuery{
+				SuccessMetric: definitions.MetricDef{
+					PrometheusMetric: "http_requests_total{status=~\"2..\"}",
+					Type:             "counter",
+				},
+				TotalMetric: definitions.MetricDef{
+					PrometheusMetric: "http_requests_total",
+					Type:             "counter",
+				},
+				GroupByLabels: []string{"service"},
+			},
+		},
+		Objectives: []definitions.Objective{
+			{Value: 0.999, Window: "30d"},
+			{Value: 0.99, Window: "7d"},
+		},
+		Labels: []definitions.Label{
+			{Key: "team", Value: "platform"},
+		},
+		Alerting: &definitions.Alerting{
+			Labels: []definitions.Label{{Key: "severity", Value: "critical"}},
+			FastBurn: &definitions.AlertingRule{
+				Annotations: []definitions.Label{{Key: "runbook", Value: "https://example.com"}},
+				Enrichments: []definitions.Enrichment{{Type: "assistantInvestigation"}},
+			},
+		},
+		DestinationDatasource: &definitions.DestinationDatasource{UID: "prom-uid"},
+		Folder:                &definitions.Folder{UID: "folder-uid"},
+		SearchExpression:      "team:platform",
+	}
+}
+
+func TestSloResource_Conversion(t *testing.T) {
+	tests := []struct {
+		name  string
+		value definitions.Slo
+	}{
+		{name: "minimal", value: minimalSlo()},
+		{name: "full", value: fullSlo()},
+		{name: "Ratio", value: definitions.Slo{
+			UUID:        "ratio-uuid",
+			Name:        "Ratio SLO",
+			Description: "An SLO with ratio query",
+			Query: definitions.Query{
+				Type: "ratio",
+				Ratio: &definitions.RatioQuery{
+					SuccessMetric: definitions.MetricDef{
+						PrometheusMetric: "http_requests_total{status=~\"2..\"}",
+						Type:             "counter",
+					},
+					TotalMetric: definitions.MetricDef{
+						PrometheusMetric: "http_requests_total",
+					},
+					GroupByLabels: []string{"service", "namespace"},
+				},
+			},
+			Objectives: []definitions.Objective{
+				{Value: 0.995, Window: "28d"},
+			},
+		}},
+		{name: "Threshold", value: definitions.Slo{
+			UUID:        "threshold-uuid",
+			Name:        "Threshold SLO",
+			Description: "An SLO with threshold query",
+			Query: definitions.Query{
+				Type: "threshold",
+				Threshold: &definitions.ThresholdQuery{
+					ThresholdExpression: "sum(rate(http_requests_total[5m]))",
+					Threshold: definitions.Threshold{
+						Value:    100.0,
+						Operator: "gt",
+					},
+					GroupByLabels: []string{"pod"},
+				},
+			},
+			Objectives: []definitions.Objective{
+				{Value: 0.99, Window: "7d"},
+			},
+		}},
+		{name: "AlertingEnrichments", value: func() definitions.Slo {
+			original := minimalSlo()
+			original.Alerting = &definitions.Alerting{
+				FastBurn: &definitions.AlertingRule{
+					Annotations: []definitions.Label{{Key: "name", Value: "SLO Burn Rate Very High"}},
+					Enrichments: []definitions.Enrichment{{Type: "assistantInvestigation"}},
+				},
+				SlowBurn: &definitions.AlertingRule{
+					Annotations: []definitions.Label{{Key: "name", Value: "SLO Burn Rate High"}},
+					Enrichments: []definitions.Enrichment{{Type: "assistantInvestigation"}},
+				},
+			}
+			return original
+		}()},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			crud := definitions.SloResource().TypedCRUD(nil, "stack-123")
+			tt.value.ReadOnly = &definitions.ReadOnly{CreationTimestamp: 1234567890, Status: &definitions.Status{Type: "Ok"}, Provenance: "api"}
+			obj, err := crud.ToUnstructured(tt.value)
+			require.NoError(t, err)
+			assert.Equal(t, "slo.ext.grafana.app/v1alpha1", obj.GetAPIVersion())
+			assert.Equal(t, "SLO", obj.GetKind())
+			assert.Equal(t, tt.value.UUID, obj.GetName())
+			assert.Equal(t, "stack-123", obj.GetNamespace())
+			spec, found, err := unstructured.NestedMap(obj.Object, "spec")
+			require.NoError(t, err)
+			require.True(t, found)
+			assert.NotContains(t, spec, "uuid")
+			assert.NotContains(t, spec, "readOnly")
+			restored, err := crud.FromUnstructured(&obj)
+			require.NoError(t, err)
+			tt.value.ReadOnly = nil
+			assert.Equal(t, tt.value, *restored)
+		})
+	}
 }
