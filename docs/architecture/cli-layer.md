@@ -125,18 +125,19 @@ gcx (root)
 │       ├── exclude          Exclude a workload
 │       └── clear            Clear workload inclusion override
 │
-├── skills                   [cmd/gcx/skills/command.go]
+├── agent skills             [cmd/gcx/skills/command.go]
 │   ├── install             Install the canonical portable gcx Agent Skills bundle into a .agents root
 │   │   ├── --dir           .agents root directory (default: ~/.agents)
 │   │   ├── --force         Overwrite existing differing files
 │   │   ├── --dry-run       Preview installation without writing files
 │   │   └── --output / -o   text|json|yaml
-│   ├── update              Update installed bundled gcx skills in a .agents root
+│   ├── update              Update installed bundled skills; report retired copies without deleting
 │   │   ├── --dir           .agents root directory (default: ~/.agents)
 │   │   ├── --dry-run       Preview updates without writing files
 │   │   └── --output / -o   text|json|yaml
-│   ├── list                List bundled gcx skills and install status
-│   └── uninstall           Remove gcx-managed skills from a .agents root
+│   ├── list                List bundled and locally present retired skills with lifecycle/install status
+│   ├── get                 Read bundled skill or reference content without installing
+│   └── uninstall           Remove current or retired cataloged skills from a .agents root
 │
 └── dev                      [cmd/gcx/dev/command.go]
     ├── generate [FILE_PATH]... Generate typed Go stubs for new resources
@@ -153,6 +154,25 @@ gcx (root)
 Key: SELECTOR = `kind[/name[,name...]]` or long form `kind.group/name`
 
 ---
+
+## Portable Skill Lifecycle
+
+`claude-plugin/assets.go` embeds `skills/` and `skills-catalog.yaml` separately.
+`internal/skills` decodes active/deprecated/retired metadata and reconciles it with
+the selected local `.agents` root. `TestBundledCatalog` checks content consistency
+and replacement existence at build time, not on the uninstall recovery path.
+It also requires the catalog to retain every name in the committed, append-only
+`internal/skills/testdata/shipped_skills.txt` snapshot, independently of current
+bundle contents. New bundled names must be appended to that snapshot. Install, update, list,
+and uninstall share this read-only reconciliation; get reads bundled content only.
+CLI wiring and codecs remain in `cmd/gcx/skills`; the background update notifier
+uses the same update preview, including retirement notices.
+
+Retired catalog entries remain after content removal so old installations stay
+manageable across skipped releases. Uncataloged local directories are unmanaged.
+Catalog membership does not prove ownership; no installation manifest or file
+pruning is implemented. See [skill lifecycle](https://github.com/grafana/gcx/blob/main/claude-plugin/README.md#skill-lifecycle)
+for maintenance rules and command behavior.
 
 ## Provider Command Groups
 

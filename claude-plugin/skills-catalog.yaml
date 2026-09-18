@@ -1,0 +1,51 @@
+# Release lifecycle metadata, not a record of ownership or installation.
+# Keep retired entries indefinitely so users can skip releases and still uninstall.
+skills:
+  agento11y:
+    status: active
+  agento11y-instrument:
+    status: active
+  agento11y-prod-setup:
+    status: active
+  agento11y-test-starter:
+    status: active
+  create-dashboard:
+    status: active
+  debug-with-grafana:
+    status: active
+  diagnose-entity-graph:
+    status: active
+  gcx:
+    status: active
+  gcx-demo:
+    status: active
+  gcx-observability:
+    status: active
+  generate-resource-stubs:
+    status: active
+  import-dashboards:
+    status: active
+  investigate-alert:
+    status: active
+  manage-dashboards:
+    status: active
+  oncall-triage:
+    status: active
+  scaffold-project:
+    status: active
+  setup-gcx:
+    status: active
+  slo-check-status:
+    status: active
+  slo-investigate:
+    status: active
+  slo-manage:
+    status: active
+  slo-optimize:
+    status: active
+  synth-check-status:
+    status: active
+  synth-investigate-check:
+    status: active
+  synth-manage-checks:
+    status: active

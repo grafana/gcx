@@ -129,7 +129,7 @@ gcx/
 │   ├── signals/              # Shared signal command and datasource-provider mounting (metrics/logs/traces/profiles)
 │   ├── notifier/             # Skills update notifier (XDG state, throttle, message rendering)
 │   ├── secrets/              # Redaction of sensitive config fields
-│   ├── skills/               # Portable Agent Skills installer primitives (Install, Update, Bundled/InstalledBundledSkillNames)
+│   ├── skills/               # Agent Skills catalog validation, local reconciliation, content reads, install/update/uninstall
 │   ├── strcase/              # String case conversion (snake_case, kebab-case, PascalCase)
 │   ├── telemetry/            # Anonymous usage stats library (event model, mode resolution, device ID, CI detection, wire vocabularies: volume buckets, k8s reasons, auth methods, api routes and datasource types; flat-JSON HTTP export)
 │   │   └── capture/          # Process-wide invocation facts written mid-run, read once at exit by the usage-event builder (holds no wire vocabulary, so writing a signal does not pull in the event model or HTTP exporter)
