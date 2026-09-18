@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sync"
 	"time"
 
 	"github.com/dustin/go-humanize"
@@ -12,31 +13,48 @@ import (
 	"github.com/spf13/pflag"
 )
 
-// statsPreflightOpts holds the --skip-stats/--stats-warn-bytes flags shared
-// by the query and metrics commands.
+// statsPreflightOpts holds the --skip-stats/--stats-warn-bytes/--stats-max-bytes
+// flags shared by the query and metrics commands.
 type statsPreflightOpts struct {
 	SkipStats      bool
 	StatsWarnBytes string
+	StatsMaxBytes  string
 
 	// warnBytes is StatsWarnBytes parsed by Validate.
 	warnBytes uint64
+	// maxBytes is StatsMaxBytes parsed by Validate; only meaningful when
+	// hasMaxBytes is true, since "" (the default) means the blocking check
+	// is disabled rather than resolving to a zero threshold.
+	maxBytes    uint64
+	hasMaxBytes bool
 }
 
 func (opts *statsPreflightOpts) setup(flags *pflag.FlagSet) {
-	flags.BoolVar(&opts.SkipStats, "skip-stats", false, "Skip the index-stats pre-flight check")
+	flags.BoolVar(&opts.SkipStats, "skip-stats", false, "Skip the index-stats pre-flight check entirely (also bypasses --stats-max-bytes)")
 	flags.StringVar(&opts.StatsWarnBytes, "stats-warn-bytes", "1GiB", "Warn (non-blocking) if index-stats reports more than this many bytes would be scanned (e.g. '500MiB', '2GiB')")
+	flags.StringVar(&opts.StatsMaxBytes, "stats-max-bytes", "", "Refuse to run the query (blocking) if index-stats reports more than this many bytes would be scanned; unset disables this check (e.g. '5GiB')")
 }
 
-// Validate parses --stats-warn-bytes eagerly so an invalid value is rejected
-// as an actionable usage error before any network I/O, rather than silently
-// disabling the pre-flight warning. This is independent of --skip-stats: a bad
-// flag value is a user input error regardless of whether the check runs.
+// Validate parses --stats-warn-bytes/--stats-max-bytes eagerly so an invalid
+// value is rejected as an actionable usage error before any network I/O,
+// rather than silently disabling the pre-flight check. This is independent of
+// --skip-stats: a bad flag value is a user input error regardless of whether
+// the check runs.
 func (opts *statsPreflightOpts) Validate() error {
 	warnBytes, err := humanize.ParseBytes(opts.StatsWarnBytes)
 	if err != nil {
 		return fmt.Errorf("invalid --stats-warn-bytes: %w", err)
 	}
 	opts.warnBytes = warnBytes
+
+	if opts.StatsMaxBytes != "" {
+		maxBytes, err := humanize.ParseBytes(opts.StatsMaxBytes)
+		if err != nil {
+			return fmt.Errorf("invalid --stats-max-bytes: %w", err)
+		}
+		opts.maxBytes = maxBytes
+		opts.hasMaxBytes = true
+	}
 	return nil
 }
 
@@ -64,18 +82,19 @@ func resolveStatsWindow(expr string, isRange bool, start, end, now time.Time) (t
 	return start, end
 }
 
-// runStatsPreflight calls Loki's index-stats endpoint once per stream
-// selector found in expr and prints a non-blocking warning to stderr if the
-// summed byte count exceeds warnBytes. Callers must check SkipStats
-// themselves before calling — this never skips on its own, so no goroutine
-// needs spawning when the check is off.
+// computeStatsBytes sums index-stats bytes across every stream selector
+// found in expr, over the window resolveStatsWindow derives from the query's
+// own time range. It's the shared primitive behind both the non-blocking
+// warn-only check (runStatsPreflight) and the blocking check
+// (checkStatsPreflightSync), so the two can never drift on how the estimate
+// itself is computed.
 //
-// This check is advisory only: a query with no extractable selector is
-// skipped silently, and a failure or timeout calling IndexStats for any
-// individual selector is a soft fail for that selector — the remaining
-// selectors' results (if any) still count toward the total. warnBytes is
-// expected to already be resolved (e.g. via statsPreflightOpts.Validate).
-func runStatsPreflight(ctx context.Context, client *loki.Client, stderr io.Writer, datasourceUID, expr string, isRange bool, start, end, now time.Time, warnBytes uint64) {
+// The check is advisory: a query with no extractable selector reports
+// ok=false, and a failure or timeout calling IndexStats for any individual
+// selector is a soft fail for that selector — the remaining selectors'
+// results (if any) still count toward the total; ok is true as long as at
+// least one selector succeeded.
+func computeStatsBytes(ctx context.Context, client *loki.Client, datasourceUID, expr string, isRange bool, start, end, now time.Time) (uint64, bool) {
 	ctx, cancel := context.WithTimeout(ctx, statsPreflightTimeout)
 	defer cancel()
 
@@ -83,7 +102,7 @@ func runStatsPreflight(ctx context.Context, client *loki.Client, stderr io.Write
 
 	selectors := loki.ExtractStreamSelectors(expr)
 	if len(selectors) == 0 {
-		return
+		return 0, false
 	}
 
 	var totalBytes uint64
@@ -96,12 +115,80 @@ func runStatsPreflight(ctx context.Context, client *loki.Client, stderr io.Write
 		succeeded = true
 		totalBytes += resp.Bytes
 	}
-	if !succeeded {
+	return totalBytes, succeeded
+}
+
+// runStatsPreflight calls computeStatsBytes and prints a non-blocking
+// warning to stderr if the summed byte count exceeds warnBytes. Callers must
+// check SkipStats themselves before calling — this never skips on its own,
+// so no goroutine needs spawning when the check is off. warnBytes is
+// expected to already be resolved (e.g. via statsPreflightOpts.Validate).
+func runStatsPreflight(ctx context.Context, client *loki.Client, stderr io.Writer, datasourceUID, expr string, isRange bool, start, end, now time.Time, warnBytes uint64) {
+	totalBytes, ok := computeStatsBytes(ctx, client, datasourceUID, expr, isRange, start, end, now)
+	if !ok {
 		return
 	}
 
 	if totalBytes > warnBytes {
 		cmdio.Warning(stderr, "query may scan approximately %s of data (threshold: %s); use --skip-stats to suppress this check",
 			humanize.IBytes(totalBytes), humanize.IBytes(warnBytes))
+	}
+}
+
+// checkStatsPreflightSync calls computeStatsBytes synchronously — unlike
+// runStatsPreflight's fire-and-forget goroutine, which is designed to add no
+// latency to the real query, this one must complete and be evaluated before
+// the real query starts, since it can refuse to run it at all. Callers use
+// this instead of runStatsPreflight only when maxBytes is actually set
+// (statsPreflightOpts.hasMaxBytes), trading the "no added latency" property
+// for the ability to block.
+//
+// It returns an error — refusing to run the query — when the estimate
+// exceeds maxBytes. Otherwise, it falls through to the same non-blocking
+// warning runStatsPreflight would print when the estimate exceeds warnBytes
+// but not maxBytes, so callers don't need to run the check twice.
+func checkStatsPreflightSync(ctx context.Context, client *loki.Client, stderr io.Writer, datasourceUID, expr string, isRange bool, start, end, now time.Time, warnBytes, maxBytes uint64) error {
+	totalBytes, ok := computeStatsBytes(ctx, client, datasourceUID, expr, isRange, start, end, now)
+	if !ok {
+		return nil
+	}
+
+	if totalBytes > maxBytes {
+		return fmt.Errorf("query would scan approximately %s of data, exceeding --stats-max-bytes %s; refusing to run (raise --stats-max-bytes, or use --skip-stats to bypass this check entirely)",
+			humanize.IBytes(totalBytes), humanize.IBytes(maxBytes))
+	}
+
+	if totalBytes > warnBytes {
+		cmdio.Warning(stderr, "query may scan approximately %s of data (threshold: %s); use --skip-stats to suppress this check",
+			humanize.IBytes(totalBytes), humanize.IBytes(warnBytes))
+	}
+	return nil
+}
+
+// startStatsPreflight decides between the synchronous blocking check and the
+// concurrent, zero-added-latency warn-only check, so query.go and
+// metrics.go — which each call this around their own real query — can't
+// drift on that decision the way the two commands' pre-flight windowing once
+// did before it was unified into resolveStatsWindow.
+//
+// On success it returns a wait function the caller must call after issuing
+// the real query (a no-op unless the async warn-only path was taken); a
+// non-nil error means the caller must return immediately without querying
+// at all.
+func startStatsPreflight(ctx context.Context, client *loki.Client, stderr io.Writer, datasourceUID, expr string, isRange bool, start, end, now time.Time, preflight *statsPreflightOpts) (func(), error) {
+	switch {
+	case preflight.hasMaxBytes && !preflight.SkipStats:
+		if err := checkStatsPreflightSync(ctx, client, stderr, datasourceUID, expr, isRange, start, end, now, preflight.warnBytes, preflight.maxBytes); err != nil {
+			return nil, err
+		}
+		return func() {}, nil
+	case !preflight.SkipStats:
+		var wg sync.WaitGroup
+		wg.Go(func() {
+			runStatsPreflight(ctx, client, stderr, datasourceUID, expr, isRange, start, end, now, preflight.warnBytes)
+		})
+		return wg.Wait, nil
+	default:
+		return func() {}, nil
 	}
 }
