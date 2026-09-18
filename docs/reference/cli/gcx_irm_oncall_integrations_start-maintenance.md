@@ -10,8 +10,8 @@ Maintenance suppresses escalation during planned work. Mode "maintenance"
 groups every alert of the integration into one alert group and pages nobody.
 Mode "debug" routes each alert to its author only.
 
-The backend accepts these durations only: 3600, 10800, 21600, 43200, or 86400
-seconds. These values are 1, 3, 6, 12, and 24 hours.
+The backend accepts these durations only:
+3600, 10800, 21600, 43200, 86400 seconds. These values are 1, 3, 6, 12, and 24 hours.
 
 ```
 gcx irm oncall integrations start-maintenance <id> [flags]

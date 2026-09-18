@@ -224,30 +224,42 @@ func TestIntegrationStopMaintenanceCommand(t *testing.T) {
 }
 
 func TestIntegrationMaintenanceStructuredResult(t *testing.T) {
-	resetAgentMode(t)
-
-	fake := &fakeIntegrationAPI{}
-	out, err := runIntegrationsCmd(t, fake, "start-maintenance", "CH1", "-o", "json")
-	if err != nil {
-		t.Fatal(err)
+	tests := []struct {
+		command    string
+		wantAction string
+	}{
+		{command: "start-maintenance", wantAction: "started-maintenance"},
+		{command: "stop-maintenance", wantAction: "stopped-maintenance"},
 	}
 
-	var got struct {
-		Type          string `json:"type"`
-		SchemaVersion string `json:"schema_version"`
-		Action        string `json:"action"`
-		Target        struct {
-			Kind string `json:"kind"`
-			ID   string `json:"id"`
-		} `json:"target"`
-	}
-	if err := json.Unmarshal([]byte(out), &got); err != nil {
-		t.Fatalf("output is not JSON: %v\n%s", err, out)
-	}
-	if got.Type != "gcx.mutation" || got.SchemaVersion != "1" {
-		t.Errorf("missing mutation discriminators: %+v", got)
-	}
-	if got.Action != "maintenance-started" || got.Target.ID != "CH1" || got.Target.Kind != "Integration" {
-		t.Errorf("unexpected mutation document: %+v", got)
+	for _, tt := range tests {
+		t.Run(tt.command, func(t *testing.T) {
+			resetAgentMode(t)
+
+			fake := &fakeIntegrationAPI{}
+			out, err := runIntegrationsCmd(t, fake, tt.command, "CH1", "-o", "json")
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			var got struct {
+				Type          string `json:"type"`
+				SchemaVersion string `json:"schema_version"`
+				Action        string `json:"action"`
+				Target        struct {
+					Kind string `json:"kind"`
+					ID   string `json:"id"`
+				} `json:"target"`
+			}
+			if err := json.Unmarshal([]byte(out), &got); err != nil {
+				t.Fatalf("output is not JSON: %v\n%s", err, out)
+			}
+			if got.Type != "gcx.mutation" || got.SchemaVersion != "1" {
+				t.Errorf("missing mutation discriminators: %+v", got)
+			}
+			if got.Action != tt.wantAction || got.Target.ID != "CH1" || got.Target.Kind != "Integration" {
+				t.Errorf("unexpected mutation document: %+v", got)
+			}
+		})
 	}
 }

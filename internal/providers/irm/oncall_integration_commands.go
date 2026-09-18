@@ -132,6 +132,9 @@ func (o *startMaintenanceOpts) setup(flags *pflag.FlagSet) {
 }
 
 func (o *startMaintenanceOpts) Validate() error {
+	if err := o.IO.Validate(); err != nil {
+		return err
+	}
 	if _, ok := maintenanceModeNames[o.Mode]; !ok {
 		return fmt.Errorf("unknown --mode %q, expected one of: %s",
 			o.Mode, strings.Join(maintenanceModeFlagValues(), ", "))
@@ -169,19 +172,16 @@ func newIntegrationStartMaintenanceCmd(loader OnCallConfigLoader) *cobra.Command
 	cmd := &cobra.Command{
 		Use:   "start-maintenance <id>",
 		Short: "Start maintenance on an integration.",
-		Long: `Start maintenance on an integration.
+		Long: fmt.Sprintf(`Start maintenance on an integration.
 
 Maintenance suppresses escalation during planned work. Mode "maintenance"
 groups every alert of the integration into one alert group and pages nobody.
 Mode "debug" routes each alert to its author only.
 
-The backend accepts these durations only: 3600, 10800, 21600, 43200, or 86400
-seconds. These values are 1, 3, 6, 12, and 24 hours.`,
+The backend accepts these durations only:
+%s seconds. These values are 1, 3, 6, 12, and 24 hours.`, maintenanceDurationFlagValues()),
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.IO.Validate(); err != nil {
-				return err
-			}
 			if err := opts.Validate(); err != nil {
 				return err
 			}
@@ -196,7 +196,7 @@ seconds. These values are 1, 3, 6, 12, and 24 hours.`,
 				return err
 			}
 
-			return encodeIntegrationMutation(cmd, &opts.IO, "maintenance-started", args[0])
+			return encodeIntegrationMutation(cmd, &opts.IO, "started-maintenance", args[0])
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -217,6 +217,10 @@ func (o *stopMaintenanceOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
+func (o *stopMaintenanceOpts) Validate() error {
+	return o.IO.Validate()
+}
+
 func newIntegrationStopMaintenanceCmd(loader OnCallConfigLoader) *cobra.Command {
 	opts := &stopMaintenanceOpts{}
 	cmd := &cobra.Command{
@@ -228,7 +232,7 @@ Use this to end maintenance before its scheduled end. Escalation resumes at
 once.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := opts.IO.Validate(); err != nil {
+			if err := opts.Validate(); err != nil {
 				return err
 			}
 
@@ -241,7 +245,7 @@ once.`,
 				return err
 			}
 
-			return encodeIntegrationMutation(cmd, &opts.IO, "maintenance-stopped", args[0])
+			return encodeIntegrationMutation(cmd, &opts.IO, "stopped-maintenance", args[0])
 		},
 	}
 	opts.setup(cmd.Flags())
