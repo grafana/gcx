@@ -45,7 +45,7 @@ gcx datasources pyroscope series [SELECTOR] [flags]
       --from string          Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                 help for series
       --jq string            jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --json string          Comma-separated list of dotted field paths to include in JSON output (e.g. spec.name), or 'list' (or '?') to discover the available paths
       --label-name strings   Label name to return (repeatable; limit labels to reduce response size and speed up discovery)
       --match stringArray    Profile label selector (repeatable; selectors are combined as a union)
   -o, --output string        Output format. One of: agents, json, table, wide, yaml (default "table")

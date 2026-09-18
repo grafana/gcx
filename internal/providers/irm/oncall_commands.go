@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"sort"
 	"strconv"
 	"strings"
@@ -133,6 +134,7 @@ func newListSubcommand[T adapter.ResourceNamer](
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: short,
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := lo.IO.Validate(); err != nil {
 				return err
@@ -164,10 +166,61 @@ func newListSubcommand[T adapter.ResourceNamer](
 	}
 	// The command emits unstructured resource envelopes, but T declares the
 	// fields below spec. Use that declared shape so a leaf name such as
-	// username is rejected with spec.username as the correction.
-	lo.IO.SetJSONFieldValidator(cmdio.MakeFieldValidator(adapter.TypedObject[T]{}))
+	// username gets a warning with spec.username as the correction.
+	lo.IO.SetJSONFieldValidator(makeListFieldValidator[T](idField))
 	lo.setup(cmd.Flags(), resource)
 	return cmd
+}
+
+// makeListFieldValidator accounts for itemsToUnstructured moving the provider
+// identity field from spec to metadata.name. The declared provider type still
+// carries that field under spec, but the emitted resource does not.
+func makeListFieldValidator[T adapter.ResourceNamer](idField string) func(fields []string) error {
+	validate := cmdio.MakeFieldValidator(adapter.TypedObject[T]{})
+	return func(fields []string) error {
+		err := validate(fields)
+		var arrayErr cmdio.ArrayPathSelectionError
+		if errors.As(err, &arrayErr) {
+			return err
+		}
+
+		var fieldErr cmdio.UnknownFieldSelectionError
+		if err != nil && !errors.As(err, &fieldErr) {
+			return err
+		}
+
+		unknown := make(map[string]bool, len(fieldErr.Fields)+2)
+		for _, field := range fieldErr.Fields {
+			unknown[field] = true
+		}
+		identityPath := "spec." + idField
+		for _, field := range fields {
+			if field == idField || field == identityPath {
+				unknown[field] = true
+			}
+		}
+		if len(unknown) == 0 {
+			return nil
+		}
+
+		ordered := make([]string, 0, len(unknown))
+		candidates := make(map[string][]string, len(fieldErr.Candidates)+2)
+		maps.Copy(candidates, fieldErr.Candidates)
+		for _, field := range fields {
+			if !unknown[field] {
+				continue
+			}
+			ordered = append(ordered, field)
+			if field == idField || field == identityPath {
+				candidates[field] = []string{"metadata.name"}
+			}
+		}
+
+		return cmdio.UnknownFieldSelectionError{
+			Fields:     ordered,
+			Candidates: candidates,
+		}
+	}
 }
 
 // newGetSubcommand creates a "get <id>" subcommand using TypedCRUD.
