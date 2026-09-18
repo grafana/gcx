@@ -113,6 +113,7 @@ func TestThresholdsGetCommand(t *testing.T) {
 	defer server.Close()
 
 	t.Run("default output is a table", func(t *testing.T) {
+		pinHumanMode(t)
 		cmd := kg.NewThresholdsCommand(thresholdsLoader(server))
 		var buf bytes.Buffer
 		cmd.SetOut(&buf)
@@ -158,7 +159,7 @@ func TestThresholdsListCommand(t *testing.T) {
 	}))
 	defer server.Close()
 
-	t.Run("json output is faithful to custom/global split", func(t *testing.T) {
+	t.Run("json output is an items envelope with scope", func(t *testing.T) {
 		cmd := kg.NewThresholdsCommand(thresholdsLoader(server))
 		var buf bytes.Buffer
 		cmd.SetOut(&buf)
@@ -168,10 +169,65 @@ func TestThresholdsListCommand(t *testing.T) {
 
 		require.True(t, strings.HasSuffix(gotPath, "/threshold-rules/resource"), "path: %s", gotPath)
 
-		var got kg.ThresholdRulesDto
+		var got struct {
+			Items []struct {
+				Scope  string            `json:"scope"`
+				Record string            `json:"record"`
+				Expr   string            `json:"expr"`
+				Active bool              `json:"active"`
+				Labels map[string]string `json:"labels"`
+			} `json:"items"`
+		}
 		require.NoError(t, json.Unmarshal(buf.Bytes(), &got))
-		assert.Len(t, got.CustomThresholds, 2)
-		assert.Len(t, got.GlobalThresholds, 1)
+		require.Len(t, got.Items, 3)
+		assert.Equal(t, "custom", got.Items[0].Scope)
+		assert.Equal(t, "custom-a", got.Items[0].Record)
+		assert.Equal(t, "custom", got.Items[1].Scope)
+		assert.Equal(t, "custom-b", got.Items[1].Record)
+		assert.Equal(t, "global", got.Items[2].Scope)
+		assert.Equal(t, "global-a", got.Items[2].Record)
+		assert.True(t, got.Items[2].Active)
+	})
+
+	t.Run("json field selection applies to each threshold", func(t *testing.T) {
+		cmd := kg.NewThresholdsCommand(thresholdsLoader(server))
+		var buf bytes.Buffer
+		cmd.SetOut(&buf)
+		cmd.SetErr(&buf)
+		cmd.SetArgs([]string{"list", "--category", "resource", "--json", "record"})
+		require.NoError(t, cmd.Execute())
+
+		var got struct {
+			Items []map[string]any `json:"items"`
+		}
+		require.NoError(t, json.Unmarshal(buf.Bytes(), &got))
+		require.Len(t, got.Items, 3)
+		assert.Equal(t, map[string]any{"record": "custom-a"}, got.Items[0])
+		assert.Equal(t, map[string]any{"record": "custom-b"}, got.Items[1])
+		assert.Equal(t, map[string]any{"record": "global-a"}, got.Items[2])
+	})
+
+	t.Run("agent spill counts and previews threshold items", func(t *testing.T) {
+		setAgentMode(t)
+		t.Setenv("GCX_AGENT_SPILL_BYTES", "1")
+		t.Setenv("TMPDIR", t.TempDir())
+
+		cmd := kg.NewThresholdsCommand(thresholdsLoader(server))
+		var stdout, stderr bytes.Buffer
+		cmd.SetOut(&stdout)
+		cmd.SetErr(&stderr)
+		cmd.SetArgs([]string{"list", "--category", "resource"})
+		require.NoError(t, cmd.Execute())
+
+		var summary map[string]any
+		require.NoError(t, json.Unmarshal(stdout.Bytes(), &summary))
+		assert.EqualValues(t, 3, summary["total_items"])
+		preview, ok := summary["preview_sample"].([]any)
+		require.True(t, ok)
+		require.Len(t, preview, 3)
+		first, ok := preview[0].(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, "custom-a", first["record"])
 	})
 
 	t.Run("table output flattens custom-first, sorted by record", func(t *testing.T) {
@@ -209,7 +265,7 @@ func TestThresholdsListCommand_ZeroResults(t *testing.T) {
 	cmd.SetErr(&buf)
 	cmd.SetArgs([]string{"list", "--category", "request", "-o", "json"})
 	require.NoError(t, cmd.Execute())
-	assert.JSONEq(t, `{"customThresholds": [], "globalThresholds": []}`, buf.String())
+	assert.JSONEq(t, `{"items": []}`, buf.String())
 }
 
 func TestThresholdsListCommand_CategoryValidation(t *testing.T) {

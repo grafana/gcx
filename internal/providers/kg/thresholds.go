@@ -28,10 +28,10 @@ user-configured thresholds run on.`,
 	getOpts := &thresholdsGetOpts{}
 	getCmd := &cobra.Command{
 		Use:   "get",
-		Short: "Get the whole threshold config.",
-		Long: `Fetches the entire threshold configuration. The wire shape is identical to
-gcx kg prom-rules (a PrometheusRulesDto), so -o json and -o yaml render the same
-named rule-group structure.`,
+		Short: "Summarize the whole threshold config.",
+		Long: `Fetches the entire threshold configuration. The default table summarizes the
+config name and its group and rule counts. Use -o json or -o yaml for the full
+PrometheusRules resource envelope.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := getOpts.IO.Validate(); err != nil {
@@ -73,8 +73,9 @@ named rule-group structure.`,
 	listCmd := &cobra.Command{
 		Use:   "list",
 		Short: "List threshold rules for a category (request or resource).",
-		Long: `Lists the structured per-category threshold view, split into custom and global
-thresholds. Only the request and resource categories exist in v1.`,
+		Long: `Lists threshold rules for one category. Machine formats return an items
+envelope, with each item tagged as custom or global in its scope field. Only the
+request and resource categories exist in v1.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := listOpts.Validate(); err != nil {
@@ -93,14 +94,13 @@ thresholds. Only the request and resource categories exist in v1.`,
 			if err != nil {
 				return err
 			}
-			// Zero results must serialize as [] in machine formats, not null.
-			if dto.CustomThresholds == nil {
-				dto.CustomThresholds = []Threshold{}
-			}
-			if dto.GlobalThresholds == nil {
-				dto.GlobalThresholds = []Threshold{}
-			}
-			return encodeThresholdRowsOrValue(&listOpts.IO, cmd.OutOrStdout(), flattenThresholds(dto), dto)
+			rows := flattenThresholds(dto)
+			return encodeThresholdRowsOrValue(
+				&listOpts.IO,
+				cmd.OutOrStdout(),
+				rows,
+				thresholdListOutput{Items: rows},
+			)
 		},
 	}
 	listOpts.setup(listCmd.Flags())
@@ -148,12 +148,23 @@ func (o *thresholdsListOpts) Validate() error {
 
 // thresholdRow is a flattened view of a single threshold for table rendering.
 type thresholdRow struct {
-	scope  string // custom | global
-	record string
-	expr   string
-	active bool
-	labels map[string]string
+	Scope  string            `json:"scope" yaml:"scope"` // custom | global
+	Record string            `json:"record" yaml:"record"`
+	Expr   string            `json:"expr" yaml:"expr"`
+	Active bool              `json:"active" yaml:"active"`
+	Labels map[string]string `json:"labels,omitempty" yaml:"labels,omitempty"`
 }
+
+// thresholdListOutput gives machine formats one collection shape while keeping
+// the backend's custom/global distinction on each item. ListItemsKey integrates
+// the local envelope with field selection and agent spill summaries.
+type thresholdListOutput struct {
+	Items []thresholdRow `json:"items" yaml:"items"`
+}
+
+func (thresholdListOutput) ListItemsKey() string { return "items" }
+
+var _ cmdio.ListEnvelope = thresholdListOutput{}
 
 // flattenThresholds flattens the custom and global threshold lists into rows,
 // tagging each with its scope. Rows are ordered custom-first, then global, each
@@ -165,7 +176,7 @@ func flattenThresholds(dto *ThresholdRulesDto) []thresholdRow {
 		copy(sorted, ts)
 		sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].Record < sorted[j].Record })
 		for _, t := range sorted {
-			rows = append(rows, thresholdRow{scope: scope, record: t.Record, expr: t.Expr, active: t.Active, labels: t.Labels})
+			rows = append(rows, thresholdRow{Scope: scope, Record: t.Record, Expr: t.Expr, Active: t.Active, Labels: t.Labels})
 		}
 	}
 	add("custom", dto.CustomThresholds)
@@ -183,7 +194,7 @@ func encodeThresholdRowsOrValue[T any](opts *cmdio.Options, w io.Writer, rows []
 	}
 
 	switch string(codec.Format()) {
-	case cmdio.FormatTable, cmdio.FormatWide, cmdio.FormatText:
+	case cmdio.FormatTable, cmdio.FormatWide:
 		return codec.Encode(w, rows)
 	default:
 		return opts.Encode(w, value)
@@ -195,12 +206,12 @@ func encodeThresholdRowsOrValue[T any](opts *cmdio.Options, w io.Writer, rows []
 func thresholdTable() cmdio.Table[thresholdRow] {
 	return cmdio.Table[thresholdRow]{
 		Columns: []cmdio.Column[thresholdRow]{
-			{Header: "SCOPE", Content: func(r thresholdRow) string { return r.scope }},
-			{Header: "RECORD", Content: func(r thresholdRow) string { return r.record }},
-			{Header: "ACTIVE", Content: func(r thresholdRow) string { return strconv.FormatBool(r.active) }},
-			{Header: "EXPR", Content: func(r thresholdRow) string { return compactExpr(r.expr) }},
+			{Header: "SCOPE", Content: func(r thresholdRow) string { return r.Scope }},
+			{Header: "RECORD", Content: func(r thresholdRow) string { return r.Record }},
+			{Header: "ACTIVE", Content: func(r thresholdRow) string { return strconv.FormatBool(r.Active) }},
+			{Header: "EXPR", Content: func(r thresholdRow) string { return compactExpr(r.Expr) }},
 			{Header: "LABELS", Visible: cmdio.WideOnly, Content: func(r thresholdRow) string {
-				return renderLabels(r.labels)
+				return renderLabels(r.Labels)
 			}},
 		},
 	}

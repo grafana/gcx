@@ -34,7 +34,7 @@ plugin-resource prefix as the rest of kg:
 
 | gcx verb (this branch) | Endpoint | Response shape |
 |---|---|---|
-| `get [-o yaml\|json]` | `GET .../threshold-rules` | **`PrometheusRulesDto`** = existing `Rule` type. Honors `Accept: application/x-yaml`. |
+| `get [-o table\|wide\|yaml\|json\|agents]` | `GET .../threshold-rules` | **`PrometheusRulesDto`** = existing `Rule` type. Table summarizes counts; machine formats return the full resource envelope. |
 | `list --category request\|resource` | `GET .../threshold-rules/{request\|resource}` | **`ThresholdRulesDto`** (new type, below). |
 
 Deferred to the follow-up branch (writes):
@@ -57,7 +57,8 @@ Deferred to the follow-up branch (writes):
 ```
 
 Identical to `gcx kg prom-rules` — decode into the existing `Rule` (`types.go`),
-wrap via `RuleToResource`, encode through the codec. Default format `yaml`.
+wrap via `RuleToResource`, encode through the codec. The default table summarizes
+the config name and group/rule counts; use YAML or JSON for the full envelope.
 
 ### `list --category` shape — new `ThresholdRulesDto`
 
@@ -93,8 +94,8 @@ Only `request` and `resource` categories exist in v1 (no `health`).
 
 ```
 gcx kg thresholds
-  get                      # whole config; default -o yaml
-  list --category request|resource   # structured per-category view; -o json|yaml + table
+  get                      # whole config summary; -o yaml for the full envelope
+  list --category request|resource   # per-category items with scope + table
 ```
 
 Mounted by `newThresholdsCommand(loader)` added to `provider.go` alongside
@@ -130,9 +131,10 @@ we don't — we render client-side, consistent with the rest of gcx).
   encode a *pointer* to it (`unstructured.Unstructured` implements `MarshalJSON` on
   the pointer receiver; a value leaks a top-level `Object` key). Reuse the rule table
   codecs and default to `table`; machine formats keep the full resource envelope.
-- **`list`**: value is the `ThresholdRulesDto` (nested). json/yaml/agents marshal it
-  faithfully (preserving custom vs global), while the tables take rows flattened from
-  both arrays — a `SCOPE` column (`custom`/`global`) + `RECORD`, `EXPR`, `ACTIVE`, and
+- **`list`**: json/yaml/agents receive an `items` envelope whose rows carry
+  `scope: custom|global`, so field selection and agent spill summaries operate on the
+  collection. The tables use the same flattened rows — a `SCOPE` column
+  (`custom`/`global`) + `RECORD`, `EXPR`, `ACTIVE`, and
   (wide) `LABELS`. Default format `table`. Columns are declared as one
   `cmdio.Table[thresholdRow]` list per ADR-002, not a hand-written codec pair. The
   table-row/machine-value switch remains local to KG: this team owns the KG code,
@@ -155,8 +157,8 @@ existing kg test pattern):
 - `get` decode: whole-config JSON → `Rule`; table and yaml/json render, asserting
   the K8s envelope is the top-level machine document (no `Object` wrapper).
 - `list` decode: `ThresholdRulesDto` for both categories, including the
-  global-thresholds-without-labels case; flattened table render; json faithful to
-  custom/global split.
+  global-thresholds-without-labels case; flattened table render; items-envelope JSON
+  with per-item field selection and `scope` preserving the custom/global split.
 - `--category` validation: reject anything other than `request`/`resource`.
 
 ## Out of scope (this branch)
