@@ -1,12 +1,12 @@
 ## gcx kg thresholds get
 
-Get the whole threshold config.
+Summarize the whole threshold config.
 
 ### Synopsis
 
-Fetches the entire threshold configuration. The wire shape is identical to
-gcx kg prom-rules (a PrometheusRulesDto), so -o json and -o yaml render the same
-named rule-group structure.
+Fetches the entire threshold configuration. The default table summarizes the
+config name and its group and rule counts. Use -o json or -o yaml for the full
+PrometheusRules resource envelope.
 
 ```
 gcx kg thresholds get [flags]
