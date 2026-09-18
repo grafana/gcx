@@ -50,5 +50,5 @@ gcx irm plugin sync [flags]
 
 ### SEE ALSO
 
-* [gcx irm plugin](gcx_irm_plugin.md)	 - Manage the IRM plugin.
+* [gcx irm plugin](gcx_irm_plugin.md)	 - [experimental] Manage the IRM plugin.
 

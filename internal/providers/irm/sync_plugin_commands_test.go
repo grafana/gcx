@@ -47,7 +47,7 @@ func TestSyncPluginCommandText(t *testing.T) {
 	if fake.calls != 1 {
 		t.Errorf("expected one sync call, got %d", fake.calls)
 	}
-	want := "Requested a sync of the IRM plugin"
+	want := "Requested a sync of the IRM plugin. The refresh runs in the background, so a create can still need a retry."
 	if !strings.Contains(out, want) {
 		t.Errorf("expected %q, got %q", want, out)
 	}

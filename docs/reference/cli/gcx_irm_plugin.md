@@ -1,6 +1,15 @@
 ## gcx irm plugin
 
-Manage the IRM plugin.
+[experimental] Manage the IRM plugin.
+
+### Synopsis
+
+This command is experimental. It may be removed, or its subcommands, flags and
+responses may change without following the normal semantic versioning conventions.
+
+Request operations on the IRM plugin. This group is a temporary bridge. It can
+be removed when IRM keeps its internal copy of the Grafana users and teams
+current without a caller-triggered synchronization.
 
 ### Options
 
