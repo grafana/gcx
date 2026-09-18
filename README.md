@@ -43,6 +43,9 @@ gcx metrics query -d grafanacloud-usage 'grafanacloud_org_metrics_billable_serie
 # list and search your dashboards
 gcx dashboards list
 gcx dashboards search "node exporter"
+
+# render a dashboard, allowing up to three minutes for the render
+gcx dashboards snapshot my-dashboard --timeout 3m
 ```
 
 ## Installation
