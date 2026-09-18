@@ -14,7 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/credentials"
 )
 
@@ -709,21 +708,13 @@ func GCOMPortalServerURL(serverURL string) (string, bool) {
 	}
 
 	host := strings.ToLower(parsed.Hostname())
-	if !auth.IsGCOMHost(host) {
-		return "", false
-	}
-
 	for _, entry := range grafanaCloudStackSuffixes {
-		root, err := url.Parse(entry.gcomRoot)
-		if err != nil {
-			continue
-		}
-		if strings.ToLower(root.Hostname()) == host {
+		if strings.TrimPrefix(entry.gcomRoot, "https://") == host {
 			return entry.suffix, true
 		}
 	}
 
-	return "", true
+	return "", false
 }
 
 // ContextNameFromServerURL derives a context name from a Grafana server URL.

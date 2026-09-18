@@ -204,6 +204,10 @@ type RetryState struct {
 	// user knows to be safe (e.g. Grafana Cloud hiding the version string
 	// from anonymous callers).
 	ForceSave bool
+
+	// CloudTokenDropWarned prevents the non-Cloud token advisory from repeating
+	// when the CLI resolves a sentinel and calls Run again.
+	CloudTokenDropWarned bool
 }
 
 // Options is the top-level input to Run. It embeds three semantic groupings:
@@ -398,7 +402,7 @@ func Run(ctx context.Context, opts *Options) (Result, error) {
 	}
 
 	// Step 5: Cloud API token (Cloud targets only)
-	cloudEntry, stackSlug, err := resolveCloudAuth(*opts, target)
+	cloudEntry, stackSlug, err := resolveCloudAuth(opts, target)
 	if err != nil {
 		return Result{}, err
 	}
@@ -771,19 +775,22 @@ func resolveGrafanaAuth(ctx context.Context, opts Options, target Target) (strin
 // unless Yes or agent mode is set (which allows skipping step 5: the CAP
 // token is optional — its absence just disables Cloud management features,
 // it does not block login).
-func resolveCloudAuth(opts Options, target Target) (*config.CloudEntry, string, error) {
+func resolveCloudAuth(opts *Options, target Target) (*config.CloudEntry, string, error) {
 	if target != TargetCloud {
 		// A Cloud credential has no home on a non-Cloud context, so it is
 		// dropped. Say so: silence here reads as acceptance, and the user then
 		// finds the Cloud commands unauthenticated for no visible reason.
-		warnCloudTokenDropped(opts.Writer, opts.CloudToken)
+		if !opts.CloudTokenDropWarned && opts.CloudToken != "" {
+			warnCloudTokenDropped(opts.Writer, opts.CloudToken)
+			opts.CloudTokenDropWarned = true
+		}
 		return nil, "", nil
 	}
 
 	slug := resolveStackSlug(opts.Server)
 
 	if opts.CloudToken != "" {
-		return cloudEntryForToken(opts), slug, nil
+		return cloudEntryForToken(*opts), slug, nil
 	}
 
 	// Cloud target with no token: skip if Yes or agent mode (D9, D10).

@@ -186,7 +186,7 @@ reaches its API through the `grafana-collector-app` plugin proxy on your stack,
 so your Grafana login alone is enough. See
 [ADR-023](../adrs/fleet-plugin-proxy/001-fleet-via-collector-app-proxy.md).
 
-The Cloud Access Policy token is for Grafana Cloud product APIs (GCOM stack management, Synthetic Monitoring, k6, IRM, SLO). Signal queries (`gcx metrics`, `gcx logs`, `gcx traces`, `gcx profiles`) authenticate with your Grafana token (OAuth or service account), not this token. When in doubt, start narrow and widen the policy as commands report missing-scope errors — the token can be re-scoped without re-running `gcx login`.
+The Cloud Access Policy token is for Grafana Cloud product APIs (GCOM stack management, Synthetic Monitoring, k6, IRM, SLO, Faro). Signal queries (`gcx metrics`, `gcx logs`, `gcx traces`, `gcx profiles`) authenticate with your Grafana token (OAuth or service account), not this token. When in doubt, start narrow and widen the policy as commands report missing-scope errors — the token can be re-scoped without re-running `gcx login`.
 
 `--cloud-token` never replaces Grafana instance authentication. It is a second
 credential that sits beside `--oauth` or `--token`, not an alternative to them.
@@ -426,7 +426,7 @@ Each entry pairs the error you see with what it means and how to fix it.
     - *Means:* one credential-bearing Cloud entry has no explicit endpoint pair and is referenced by contexts in different Cloud environments. gcx will not guess which API destination may receive it.
     - *Fix:* Run the exact raw `gcx config edit ...` command from the error, split the Cloud entry into one entry per environment, and update each `contexts.<name>.cloud` binding. Ordinary config loading remains blocked until the ambiguity is removed.
 
-15. **`Server URL is a Grafana Cloud portal, not a Grafana stack`**
+15. **`Invalid command usage`** for a Grafana Cloud portal URL
     - *Means:* `--server` names the Grafana Cloud portal (`grafana.com`) rather than a stack. The portal manages stacks through the Cloud API. It serves no Grafana instance API, so no authentication method can succeed against it.
     - *Fix:* pass the stack URL, in the form `https://<stack>.grafana.net`. Find it on your stack list at grafana.com, or in the browser address bar while you view the stack. Keep the access policy token on `--cloud-token`; the portal URL never belongs on `--server`.
     - *Note:* older gcx versions accepted the portal URL here. Browser login then opened a page that does not exist, and the command waited for a callback that never arrived.

@@ -112,7 +112,8 @@ gcx login cloud --server https://myorg.grafana.net \
 Two rules apply to that command:
 
 - `--cloud-token` never replaces `--token` or `--oauth`. It authenticates the
-  Cloud product commands (`sm`, `k6`, `irm`, `slo`). It cannot
+  Grafana Cloud product commands, including `cloud`, `sm`, `k6`, `irm`, `slo`,
+  and `faro`. It cannot
   authenticate the Grafana instance, so always pass an instance credential too.
 - `--server` takes the stack URL, such as `https://myorg.grafana.net`. It never
   takes the Grafana Cloud portal at `grafana.com`. gcx rejects a portal URL.
