@@ -156,7 +156,8 @@ gcx traces metrics -d "$TEMPO_UID" \
   --from "$FROM" --to "$TO" --step 1m -o agents
 
 # Per-service error percentage; match both sides by the same labels.
-# Keep the five highest series, then retain points above 5 percent.
+# At each time step, keep up to five highest percentages, then retain points > 5.
+# The selected services can change across steps; the range can contain > 5 series.
 gcx traces metrics -d "$TEMPO_UID" \
   '100 * ({ kind = server && status = error } | rate() by (resource.service.name)) / ({ kind = server } | rate() by (resource.service.name)) | topk(5) > 5' \
   --from "$FROM" --to "$TO" --step 1m -o agents
@@ -199,8 +200,16 @@ Rules that differ from common PromQL assumptions:
 - Same `by(...)` attributes on both sides match series by label. An unlabeled
   side is applied to every labeled series on the other side; do not add PromQL
   `on(...)`, `ignoring(...)`, or `group_left` syntax to these examples.
-- `topk`, `bottomk`, and comparisons follow the arithmetic expression. A
-  percentage query uses `> 5` for five percent; an unscaled ratio uses `> 0.05`.
+- Trailing `topk`, `bottomk`, and comparisons apply to the **whole arithmetic
+  expression**, not its final operand. In the example above, Tempo computes
+  `100 * numerator / denominator`, then applies `topk(5)`, then `> 5`.
+  Outer parentheses around the arithmetic expression are optional; each metrics
+  subquery still requires its own parentheses. A percentage query uses `> 5`
+  for five percent; an unscaled ratio uses `> 0.05`.
+- `topk(k)` and `bottomk(k)` select independently at each time step, not once
+  across the range. They retain up to `k` values per step; changing membership
+  means a range query can return more than `k` distinct series. Non-selected
+  points become `NaN`, not zero.
 - Division by zero and a bucket with no matching spans produce `NaN`.
   Arithmetic propagates it: neither `+ 0` nor `* 0` repairs missing data.
   A missing error bucket is not evidence of a zero-percent error rate.
