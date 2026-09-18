@@ -20,7 +20,6 @@ import (
 	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/logs"
 	"github.com/grafana/gcx/internal/resources"
-	"github.com/grafana/gcx/internal/server/grafana"
 	"github.com/grafana/gcx/internal/server/handlers"
 	"github.com/grafana/gcx/internal/server/livereload"
 	"github.com/grafana/gcx/internal/version"
@@ -37,19 +36,24 @@ type Config struct {
 type Server struct {
 	config           Config
 	context          *config.Context
+	restCfg          config.NamespacedRESTConfig
 	resources        *resources.Resources
 	resourceHandlers []handlers.ResourceHandler
 	proxy            *httputil.ReverseProxy
 	subpath          string
 }
 
-func New(config Config, context *config.Context, resources *resources.Resources) *Server {
+// New takes a REST config prepared by the caller rather than deriving one from
+// the context. The caller owns the config source, so it is the only layer that
+// can wire OAuth refresh-token persistence for this long-running process.
+func New(config Config, restCfg config.NamespacedRESTConfig, context *config.Context, resources *resources.Resources) *Server {
 	return &Server{
 		config:    config,
 		context:   context,
+		restCfg:   restCfg,
 		resources: resources,
 		resourceHandlers: []handlers.ResourceHandler{
-			handlers.NewDashboardProxy(context, resources),
+			handlers.NewDashboardProxy(restCfg, resources),
 			handlers.NewFoldersProxy(resources),
 		},
 	}
@@ -98,8 +102,10 @@ func (s *Server) Start(ctx context.Context) error {
 	if s.context == nil || s.context.Grafana == nil {
 		return errors.New("grafana is not configured")
 	}
-	if err := grafana.ValidateDevProxyAuth(s.context); err != nil {
-		return fmt.Errorf("grafana authentication configuration: %w", err)
+	// Validate the REST config the proxy actually uses. An empty host parses
+	// cleanly below, which would wire every proxied route to an empty target.
+	if s.restCfg.Host == "" {
+		return errors.New("grafana proxy target is not configured")
 	}
 
 	u, err := url.Parse(s.context.Grafana.Server)
@@ -111,23 +117,18 @@ func (s *Server) Start(ctx context.Context) error {
 
 	// Build the proxy from the same validated REST configuration used by
 	// resource clients. That keeps auth-method selection, rejected-credential
-	// handling, and TLS behavior on one authority. ValidateDevProxyAuth rejects
-	// OAuth above until refresh persistence can be wired to the config owner.
-	restCfg, err := s.context.ToRESTConfig(ctx)
-	if err != nil {
-		return fmt.Errorf("grafana authentication configuration: %w", err)
-	}
-	proxyURL, err := url.Parse(restCfg.Host)
+	// handling, and TLS behavior on one authority.
+	proxyURL, err := url.Parse(s.restCfg.Host)
 	if err != nil {
 		return fmt.Errorf("grafana proxy URL: %w", err)
 	}
-	if !restCfg.IsOAuthProxy() {
+	if !s.restCfg.IsOAuthProxy() {
 		// Incoming dev-server routes already include Grafana's configured
 		// subpath, so retaining it in the direct target would duplicate it.
 		proxyURL.Path = ""
 		proxyURL.RawPath = ""
 	}
-	proxyTransport, err := rest.TransportFor(&restCfg.Config)
+	proxyTransport, err := rest.TransportFor(&s.restCfg.Config)
 	if err != nil {
 		return fmt.Errorf("grafana proxy transport: %w", err)
 	}
