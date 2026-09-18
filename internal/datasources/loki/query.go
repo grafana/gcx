@@ -1,6 +1,7 @@
 package loki
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -8,6 +9,8 @@ import (
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/loki"
+	"github.com/grafana/gcx/internal/terminal"
+	tuilogs "github.com/grafana/gcx/internal/tui/logs"
 	"github.com/spf13/cobra"
 )
 
@@ -15,8 +18,11 @@ import (
 func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
 	shared := &dsquery.SharedOpts{}
 	share := &dsquery.ExploreLinkOpts{}
+	drilldown := &dsquery.DrilldownLinkOpts{}
 	var limit int
 	var datasource string
+	var tui bool
+	var wrap bool
 
 	cmd := &cobra.Command{
 		Use:   "query [EXPR]",
@@ -31,7 +37,14 @@ bodies or -o json for the full structured response.
 
 Default --limit is 50; use --limit 0 for no cap.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
-open it in your browser after the query succeeds.`,
+open it in your browser after the query succeeds. Use --drilldown-link or
+--open-drilldown for the equivalent Grafana Logs Drilldown URL (falls back to
+the Explore URL for expressions Drilldown's simple filter model can't
+represent, e.g. parser stages or aggregations).
+Use --tui to page through results in an interactive, color-coded viewer
+(requires a real terminal); pass --wrap to start with long lines wrapped
+instead of clipped, or toggle wrapping live with 'w'. Use -o graph for a
+log-volume-over-time chart.`,
 		Example: `
   # Query logs using configured default datasource
   gcx datasources loki query '{job="varlogs"}'
@@ -42,6 +55,15 @@ open it in your browser after the query succeeds.`,
   # Print a Grafana Explore share link for the query
   gcx datasources loki query '{job="varlogs"}' --share-link
 
+  # Print a Grafana Logs Drilldown link for the query
+  gcx datasources loki query '{job="varlogs"}' --drilldown-link
+
+  # Interactive, color-coded log viewer
+  gcx datasources loki query -d UID '{job="varlogs"}' --tui
+
+  # Log volume over time, colored by level
+  gcx datasources loki query -d UID '{job="varlogs"}' -o graph
+
   # Raw line bodies only
   gcx datasources loki query -d UID '{job="varlogs"}' -o raw
 
@@ -51,6 +73,14 @@ open it in your browser after the query succeeds.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := shared.Validate(); err != nil {
 				return err
+			}
+
+			// Statically decidable — check before any I/O, and explicitly in
+			// agent mode too: a real TTY can still be attached while agent
+			// mode is forced on, and an interactive viewer must never block
+			// there.
+			if tui && (agent.IsAgentMode() || !terminal.StdoutIsTerminal()) {
+				return errors.New("--tui requires an interactive terminal; use -o table/json/raw when piping output")
 			}
 
 			expr, err := shared.ResolveExpr(args, 0)
@@ -95,6 +125,15 @@ open it in your browser after the query succeeds.`,
 				return fmt.Errorf("query failed: %w", err)
 			}
 
+			encode := func() error {
+				return shared.IO.Encode(cmd.OutOrStdout(), resp)
+			}
+			if tui {
+				encode = func() error {
+					return tuilogs.Run(resp, tuilogs.WithWrap(wrap))
+				}
+			}
+
 			exploreURL := LogsExploreURL(cfg.GrafanaURL, dsquery.ExploreQuery{
 				DatasourceUID:  datasourceUID,
 				DatasourceType: dsType,
@@ -105,13 +144,18 @@ open it in your browser after the query succeeds.`,
 			})
 			unavailableMsg, failedOpenMsg := dsquery.ExploreMessages("query")
 
-			return dsquery.EncodeAndHandleExplore(cmd, func() error {
-				return shared.IO.Encode(cmd.OutOrStdout(), resp)
-			}, *share, dsquery.ExploreLink{
+			if err := dsquery.EncodeAndHandleExplore(cmd, encode, *share, dsquery.ExploreLink{
 				URL:            exploreURL,
 				UnavailableMsg: unavailableMsg,
 				FailedOpenMsg:  failedOpenMsg,
-			})
+			}); err != nil {
+				return err
+			}
+
+			drilldownURL, _ := LogsDrilldownURL(cfg.GrafanaURL, datasourceUID, expr, start, end)
+			drilldownUnavailableMsg, drilldownFailedOpenMsg := dsquery.DrilldownMessages("query")
+			return dsquery.HandleDrilldownLinkWithExploreFallback(cmd, *drilldown, drilldownURL, drilldownUnavailableMsg, drilldownFailedOpenMsg,
+				share.Enabled(), exploreURL, unavailableMsg, failedOpenMsg)
 		},
 	}
 
@@ -120,7 +164,7 @@ open it in your browser after the query succeeds.`,
 		agent.AnnotationLLMHint:   `gcx datasources loki query -d UID '{job="grafana"}' -o json`,
 	}
 
-	dsquery.RegisterCodecs(&shared.IO, false)
+	dsquery.RegisterCodecs(&shared.IO, true)
 	shared.IO.RegisterCustomCodec("raw", loki.NewRawQueryCodec())
 	shared.IO.BindFlags(cmd.Flags())
 	shared.SetupTimeFlags(cmd.Flags())
@@ -128,7 +172,10 @@ open it in your browser after the query succeeds.`,
 	shared.SetupExprFlag(cmd.Flags())
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.loki is configured)")
 	cmd.Flags().IntVar(&limit, "limit", dsquery.DefaultLokiLimit, "Maximum number of log lines to return (0 means no limit)")
+	cmd.Flags().BoolVar(&tui, "tui", false, "Page through results in an interactive, color-coded viewer (requires a real terminal)")
+	cmd.Flags().BoolVar(&wrap, "wrap", false, "With --tui, start with long lines soft-wrapped instead of clipped at the terminal width (toggle live with 'w')")
 	share.Setup(cmd.Flags(), "executed query")
+	drilldown.Setup(cmd.Flags(), "executed query")
 
 	return cmd
 }
