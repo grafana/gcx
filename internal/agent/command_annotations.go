@@ -236,8 +236,8 @@ var commandAnnotations = map[string]annotation{
 	// -----------------------------------------------------------------------
 	"gcx fleet collectors create": {Cost: "small", Hint: "-f <manifest.yaml>"},
 	"gcx fleet collectors delete": {Cost: "small"},
-	"gcx fleet collectors get":    {Cost: "small"},
-	"gcx fleet collectors list":   {Cost: "small"},
+	"gcx fleet collectors get":    {Cost: "medium", Hint: "<id|name> --json spec.local_attributes,spec.remote_attributes,spec.updated_at"},
+	"gcx fleet collectors list":   {Cost: "large", Hint: "--limit 50 --json spec.id,spec.local_attributes,spec.updated_at; use --limit 0 only for a complete fleet audit"},
 	"gcx fleet collectors update": {Cost: "small"},
 	"gcx fleet pipelines create":  {Cost: "small", Hint: "-f <manifest.yaml>"},
 	"gcx fleet pipelines delete":  {Cost: "small"},

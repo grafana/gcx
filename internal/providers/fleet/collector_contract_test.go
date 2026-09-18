@@ -41,6 +41,33 @@ func TestCollectorSchemaExposesID(t *testing.T) {
 	assert.Equal(t, "string", id["type"])
 }
 
+func TestCollectorSchemaExposesHealthFields(t *testing.T) {
+	var schema map[string]any
+	require.NoError(t, json.Unmarshal(collectorSchema(), &schema))
+
+	properties, ok := schema["properties"].(map[string]any)
+	require.True(t, ok)
+	spec, ok := properties["spec"].(map[string]any)
+	require.True(t, ok)
+	specProperties, ok := spec["properties"].(map[string]any)
+	require.True(t, ok)
+
+	localAttributes, ok := specProperties["local_attributes"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, true, localAttributes["readOnly"])
+	additionalProperties, ok := localAttributes["additionalProperties"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "string", additionalProperties["type"])
+
+	for _, name := range []string{"created_at", "updated_at", "marked_inactive_at"} {
+		field, ok := specProperties[name].(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, "string", field["type"])
+		assert.Equal(t, "date-time", field["format"])
+		assert.Equal(t, true, field["readOnly"])
+	}
+}
+
 func TestResolveCollectorUsesArbitraryStringIDFirst(t *testing.T) {
 	const collectorID = "collector-prod-eu-a"
 	var requestedIDs []string
