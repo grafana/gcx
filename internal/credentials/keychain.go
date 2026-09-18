@@ -81,8 +81,12 @@ func normalizeKeyringError(err error) error {
 
 func normalizeKeyringErrorForOS(err error, goos string) error {
 	if err == nil || errors.Is(err, ErrUnavailable) || errors.Is(err, ErrLocked) ||
+		errors.Is(err, ErrRestrictedSession) ||
 		errors.Is(err, keyring.ErrSetDataTooBig) {
 		return err
+	}
+	if nativeKeyringBackendRestricted(err, goos) {
+		return fmt.Errorf("%w: %w", ErrRestrictedSession, err)
 	}
 	// A locked backend is a reachable backend. Classify it before the
 	// unavailability check so it never downgrades to a plaintext fallback.
@@ -93,6 +97,16 @@ func normalizeKeyringErrorForOS(err error, goos string) error {
 		return fmt.Errorf("%w: %w", ErrUnavailable, err)
 	}
 	return err
+}
+
+// nativeKeyringBackendRestricted reports whether a process policy denied
+// credential-store access in the current execution session.
+func nativeKeyringBackendRestricted(err error, goos string) bool {
+	if goos != "darwin" {
+		return false
+	}
+	var exitErr *exec.ExitError
+	return errors.As(err, &exitErr) && darwinKeychainRestrictedExitCode(exitErr.ExitCode())
 }
 
 // nativeKeyringBackendLocked reports whether the error proves that a native
@@ -193,6 +207,18 @@ func darwinKeychainLockedExitCode(code int) bool {
 	// but cannot be unlocked interactively in the current session.
 	switch code {
 	case 24, 36, 154:
+		return true
+	default:
+		return false
+	}
+}
+
+func darwinKeychainRestrictedExitCode(code int) bool {
+	// These are low-byte process statuses returned by security(1) when the
+	// execution session cannot obtain authorization. Exit 152 is the low byte
+	// of errAuthorizationInternal (-60008). Some sandbox profiles return 161.
+	switch code {
+	case 152, 161:
 		return true
 	default:
 		return false
