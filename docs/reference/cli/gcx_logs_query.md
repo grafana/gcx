@@ -14,7 +14,14 @@ bodies or -o json for the full structured response.
 
 Default --limit is 50; use --limit 0 for no cap.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
-open it in your browser after the query succeeds.
+open it in your browser after the query succeeds. Use --drilldown-link or
+--open-drilldown for the equivalent Grafana Logs Drilldown URL (falls back to
+the Explore URL for expressions Drilldown's simple filter model can't
+represent, e.g. parser stages or aggregations).
+Use --tui to page through results in an interactive, color-coded viewer
+(requires a real terminal); pass --wrap to start with long lines wrapped
+instead of clipped, or toggle wrapping live with 'w'. Use -o graph for a
+log-volume-over-time chart.
 
 ```
 gcx logs query [EXPR] [flags]
@@ -44,7 +51,7 @@ gcx logs query [EXPR] [flags]
 
 ```
   -d, --datasource string   Datasource UID (required unless datasources.loki is configured)
-      --error-on-empty      Fail if the query returns no results
+      --drilldown-link      Print the Grafana Logs Drilldown URL for the executed query to stderr
       --expr string         Query expression (alternative to positional argument)
       --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                help for query
@@ -52,11 +59,14 @@ gcx logs query [EXPR] [flags]
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int           Maximum number of log lines to return (0 means no limit) (default 50)
       --open                Open the executed query in Grafana Explore
-  -o, --output string       Output format. One of: agents, json, raw, table, wide, yaml (default "table")
+      --open-drilldown      Open the executed query in Grafana Logs Drilldown
+  -o, --output string       Output format. One of: agents, graph, json, raw, table, wide, yaml (default "table")
       --share-link          Print the Grafana Explore URL for the executed query to stderr
       --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --step string         Query step (e.g., '15s', '1m')
       --to string           End time (RFC3339, Unix timestamp, or relative like 'now')
+      --tui                 Page through results in an interactive, color-coded viewer (requires a real terminal)
+      --wrap                With --tui, start with long lines soft-wrapped instead of clipped at the terminal width (toggle live with 'w')
 ```
 
 ### Options inherited from parent commands

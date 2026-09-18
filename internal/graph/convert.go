@@ -115,35 +115,92 @@ func formatMetricName(labels map[string]string) string {
 	return "{" + strings.Join(otherLabels, ", ") + "}"
 }
 
-// FromLokiResponse converts a Loki query response to ChartData.
-func FromLokiResponse(resp *loki.QueryResponse) (*ChartData, error) {
+// logVolumeBuckets is the target number of time buckets for the log-volume
+// histogram, matching the granularity Grafana Explore's own logs-volume
+// mini-graph aims for.
+const logVolumeBuckets = 40
+
+// FromLokiLogVolumeResponse converts a raw Loki log-lines query response into
+// a per-level, bucketed log-volume-over-time chart, mirroring the shape of
+// Grafana Explore's own logs volume mini-graph (public/app/features/logs/
+// logsModel.ts): one series per detected level, colored via LevelColor.
+func FromLokiLogVolumeResponse(resp *loki.QueryResponse) (*ChartData, error) {
 	if resp == nil || len(resp.Data.Result) == 0 {
 		return &ChartData{}, nil
 	}
 
-	data := &ChartData{
-		Series: make([]Series, 0, len(resp.Data.Result)),
+	type timedEntry struct {
+		t     time.Time
+		level LogLevel
 	}
 
+	var entries []timedEntry
+	var minTime, maxTime time.Time
 	for _, stream := range resp.Data.Result {
-		series := Series{
-			Name:   formatMetricName(stream.Stream),
-			Labels: stream.Stream,
-			Points: make([]Point, 0),
-		}
-
 		for _, entry := range stream.Values {
-			t, v, err := parseLokiPoint(entry.Timestamp, entry.Line)
+			t, err := loki.ParseTimestamp(entry.Timestamp)
 			if err != nil {
 				continue
 			}
-			series.Points = append(series.Points, Point{Time: t, Value: v})
-		}
-
-		if len(series.Points) > 0 {
-			data.Series = append(data.Series, series)
+			level := DetectLevel(stream.Stream, entry)
+			entries = append(entries, timedEntry{t: t, level: level})
+			if minTime.IsZero() || t.Before(minTime) {
+				minTime = t
+			}
+			if maxTime.IsZero() || t.After(maxTime) {
+				maxTime = t
+			}
 		}
 	}
+	if len(entries) == 0 {
+		return &ChartData{}, nil
+	}
+
+	bucketSize := maxTime.Sub(minTime) / logVolumeBuckets
+	if bucketSize <= 0 {
+		bucketSize = time.Second
+	}
+
+	counts := make(map[LogLevel]map[int64]int)
+	for _, e := range entries {
+		bucket := e.t.Sub(minTime) / bucketSize
+		if counts[e.level] == nil {
+			counts[e.level] = make(map[int64]int)
+		}
+		counts[e.level][int64(bucket)]++
+	}
+
+	// numBuckets spans bucket indices 0..logVolumeBuckets inclusive (a point
+	// at exactly maxTime lands in bucket logVolumeBuckets).
+	numBuckets := logVolumeBuckets + 1
+
+	data := &ChartData{
+		Title:  "Log volume",
+		Series: make([]Series, 0, len(counts)),
+	}
+	for level, byBucket := range counts {
+		// Every level's series is filled across the full bucket range (zero
+		// where that level had no lines), not just the buckets it actually
+		// hit. A rare level with a single occurrence would otherwise produce
+		// a single-point series, which a line chart can't draw a line
+		// through — it'd sit correctly in the legend but never appear on the
+		// chart itself.
+		series := Series{
+			Name:   string(level),
+			Color:  LevelColor(level),
+			Points: make([]Point, 0, numBuckets),
+		}
+		for bucket := range numBuckets {
+			series.Points = append(series.Points, Point{
+				Time:  minTime.Add(time.Duration(bucket) * bucketSize),
+				Value: float64(byBucket[int64(bucket)]),
+			})
+		}
+		data.Series = append(data.Series, series)
+	}
+	sort.Slice(data.Series, func(i, j int) bool {
+		return data.Series[i].Name < data.Series[j].Name
+	})
 
 	return data, nil
 }
@@ -190,19 +247,4 @@ func FromLokiMetricResponse(resp *loki.MetricQueryResponse) (*ChartData, error) 
 	}
 
 	return data, nil
-}
-
-func parseLokiPoint(tsVal, valVal string) (time.Time, float64, error) {
-	nanos, err := strconv.ParseInt(tsVal, 10, 64)
-	if err != nil {
-		return time.Time{}, 0, fmt.Errorf("failed to parse timestamp: %w", err)
-	}
-	ts := time.Unix(0, nanos)
-
-	value, err := strconv.ParseFloat(valVal, 64)
-	if err != nil {
-		return time.Time{}, 0, fmt.Errorf("failed to parse value: %w", err)
-	}
-
-	return ts, value, nil
 }
