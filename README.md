@@ -53,9 +53,7 @@ clients without shell access. Choose between:
   See the [open source MCP documentation](https://grafana.com/docs/grafana/latest/developer-resources/mcp/).
 
 For interactive login to a Grafana Cloud instance, prefer OAuth through
-`gcx login`. Cloud platform access uses a separate credential. Use a Cloud
-Access Policy token for full Cloud product command compatibility; Cloud platform
-OAuth remains experimental. For Grafana OSS and Enterprise, you can use a
+`gcx login`. For Grafana OSS and Enterprise, you can use a
 service account token, basic authentication, or mTLS. See [Authentication](#authentication).
 
 ## Quick Start
