@@ -6,6 +6,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	"github.com/grafana/gcx/internal/agent"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/format"
@@ -67,7 +68,11 @@ When no time flags are given, defaults to the last minute (now-1m to now),
 matching the instant-query default used by 'query'/'metrics'. That window is
 widened by any range-vector duration or offset in EXPR (e.g. '[24h]',
 'offset 1h'), since Loki evaluates further back than --from/--to/--since
-alone would suggest.`,
+alone would suggest.
+Bytes scanned is the number this command exists to answer, so it's always
+printed as a leading "<size> would be scanned" line — on stdout, above the
+table, for -o table; on stderr for -o json/yaml, so the payload stays clean
+and parseable.`,
 		Example: `
   # Estimate bytes scanned by a selector over the last hour
   gcx datasources loki stats -d UID '{job="varlogs"}' --since 1h
@@ -124,6 +129,19 @@ alone would suggest.`,
 				resp.Chunks += selectorResp.Chunks
 				resp.Bytes += selectorResp.Bytes
 				resp.Entries += selectorResp.Entries
+			}
+
+			// Bytes scanned is the number this command exists to answer, so lead
+			// with it rather than burying it as one of four equal table rows.
+			// It goes to stdout for table output (a real header above the
+			// table) but to stderr for json/yaml, so scripts/agents parsing
+			// stdout still get a clean, valid payload.
+			bytesMsg := humanize.IBytes(resp.Bytes) + " would be scanned"
+			if opts.IO.OutputFormat == "table" {
+				cmdio.Warning(cmd.OutOrStdout(), "%s", bytesMsg)
+				fmt.Fprintln(cmd.OutOrStdout())
+			} else {
+				cmdio.Warning(cmd.ErrOrStderr(), "%s", bytesMsg)
 			}
 
 			return opts.IO.Encode(cmd.OutOrStdout(), resp)

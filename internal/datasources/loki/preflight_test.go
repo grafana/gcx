@@ -279,6 +279,212 @@ func TestRunStatsPreflight_UnderThresholdIsSilent(t *testing.T) {
 	}
 }
 
+func TestStatsPreflightOpts_Validate_StatsMaxBytes(t *testing.T) {
+	t.Run("unset leaves hasMaxBytes false", func(t *testing.T) {
+		opts := &statsPreflightOpts{StatsWarnBytes: "1GiB"}
+		if err := opts.Validate(); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if opts.hasMaxBytes {
+			t.Error("expected hasMaxBytes to be false when --stats-max-bytes is unset")
+		}
+	})
+
+	t.Run("resolves a valid threshold", func(t *testing.T) {
+		opts := &statsPreflightOpts{StatsWarnBytes: "1GiB", StatsMaxBytes: "5GiB"}
+		if err := opts.Validate(); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !opts.hasMaxBytes {
+			t.Error("expected hasMaxBytes to be true when --stats-max-bytes is set")
+		}
+		if opts.maxBytes != 5<<30 {
+			t.Errorf("maxBytes = %d, want %d", opts.maxBytes, uint64(5<<30))
+		}
+	})
+
+	t.Run("rejects an unparseable threshold as a usage error", func(t *testing.T) {
+		opts := &statsPreflightOpts{StatsWarnBytes: "1GiB", StatsMaxBytes: "not-a-size"}
+		if err := opts.Validate(); err == nil {
+			t.Fatal("expected an error for an invalid --stats-max-bytes value")
+		}
+	})
+}
+
+// runPreflightSync mirrors runPreflight but for checkStatsPreflightSync,
+// resolving both a warnBytes threshold and a fixed 5GB maxBytes threshold
+// via Validate.
+func runPreflightSync(t *testing.T, client *loki.Client, stderr *bytes.Buffer, expr, warnBytes string) error {
+	t.Helper()
+	opts := &statsPreflightOpts{StatsWarnBytes: warnBytes, StatsMaxBytes: "5GB"}
+	if err := opts.Validate(); err != nil {
+		t.Fatalf("unexpected Validate error: %v", err)
+	}
+	now := time.Now()
+	return checkStatsPreflightSync(context.Background(), client, stderr, "uid", expr, true, now, now, now, opts.warnBytes, opts.maxBytes)
+}
+
+func TestCheckStatsPreflightSync_OverMaxBytesBlocks(t *testing.T) {
+	client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"streams":1,"chunks":1,"bytes":6000000000,"entries":1}`))
+	})
+
+	var stderr bytes.Buffer
+	err := runPreflightSync(t, client, &stderr, `{job="x"}`, "1GiB")
+	if err == nil {
+		t.Fatal("expected an error when the estimate exceeds --stats-max-bytes")
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("expected no stderr warning when blocking (the error carries the message), got %q", stderr.String())
+	}
+}
+
+func TestCheckStatsPreflightSync_BetweenWarnAndMaxWarnsWithoutBlocking(t *testing.T) {
+	client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"streams":1,"chunks":1,"bytes":2000000000,"entries":1}`))
+	})
+
+	var stderr bytes.Buffer
+	err := runPreflightSync(t, client, &stderr, `{job="x"}`, "1GB")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if stderr.Len() == 0 {
+		t.Fatal("expected a non-blocking warning when the estimate exceeds warnBytes but not maxBytes")
+	}
+}
+
+func TestCheckStatsPreflightSync_UnderWarnBytesIsSilent(t *testing.T) {
+	client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"streams":1,"chunks":1,"bytes":100,"entries":1}`))
+	})
+
+	var stderr bytes.Buffer
+	err := runPreflightSync(t, client, &stderr, `{job="x"}`, "1GB")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("expected no output, got %q", stderr.String())
+	}
+}
+
+func TestCheckStatsPreflightSync_NoSelectorFoundSkipsSilently(t *testing.T) {
+	called := false
+	client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		called = true
+		_, _ = w.Write([]byte(`{"bytes":0}`))
+	})
+
+	var stderr bytes.Buffer
+	err := runPreflightSync(t, client, &stderr, `vector(1)`, "1GB")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if called {
+		t.Fatal("expected index-stats endpoint not to be called when no selector can be extracted")
+	}
+}
+
+// TestStartStatsPreflight_ChoosesSyncOverAsyncWhenMaxBytesSet is a direct,
+// fast unit test of startStatsPreflight's branching — the switch that
+// decides between the blocking and async paths is the single most
+// safety-critical line in this feature (get it backwards and the block
+// silently stops blocking), so it gets its own test independent of the
+// slower full-command integration tests in query_test.go.
+func TestStartStatsPreflight_ChoosesSyncOverAsyncWhenMaxBytesSet(t *testing.T) {
+	requests := 0
+	client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+		_, _ = w.Write([]byte(`{"streams":1,"chunks":1,"bytes":6000000000,"entries":1}`))
+	})
+
+	preflight := &statsPreflightOpts{StatsWarnBytes: "1GB", StatsMaxBytes: "5GB"}
+	if err := preflight.Validate(); err != nil {
+		t.Fatalf("unexpected Validate error: %v", err)
+	}
+
+	now := time.Now()
+	var stderr bytes.Buffer
+	wait, err := startStatsPreflight(context.Background(), client, &stderr, "uid", `{job="x"}`, true, now, now, now, preflight)
+
+	if err == nil {
+		t.Fatal("expected the sync path to block when the estimate exceeds --stats-max-bytes")
+	}
+	if requests != 1 {
+		t.Errorf("expected exactly one index-stats request (the sync check), got %d", requests)
+	}
+	if wait != nil {
+		t.Error("expected a nil wait function alongside a blocking error")
+	}
+}
+
+// TestStartStatsPreflight_UsesAsyncPathWhenNoMaxBytes confirms the default
+// (no --stats-max-bytes) case still uses the concurrent, zero-added-latency
+// path: startStatsPreflight must return immediately (before the index-stats
+// call completes), with a wait function the caller blocks on afterward.
+func TestStartStatsPreflight_UsesAsyncPathWhenNoMaxBytes(t *testing.T) {
+	unblock := make(chan struct{})
+	t.Cleanup(func() { close(unblock) })
+	client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		<-unblock
+		_, _ = w.Write([]byte(`{"streams":1,"chunks":1,"bytes":100,"entries":1}`))
+	})
+
+	preflight := &statsPreflightOpts{StatsWarnBytes: "1GB"}
+	if err := preflight.Validate(); err != nil {
+		t.Fatalf("unexpected Validate error: %v", err)
+	}
+
+	now := time.Now()
+	var stderr bytes.Buffer
+	returned := make(chan struct{})
+	var wait func()
+	var err error
+	go func() {
+		wait, err = startStatsPreflight(context.Background(), client, &stderr, "uid", `{job="x"}`, true, now, now, now, preflight)
+		close(returned)
+	}()
+
+	select {
+	case <-returned:
+	case <-time.After(2 * time.Second):
+		t.Fatal("startStatsPreflight did not return promptly; expected it not to wait for the async check")
+	}
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	unblock <- struct{}{}
+	wait()
+}
+
+// TestStartStatsPreflight_SkipStatsDisablesBothPaths confirms --skip-stats
+// takes priority over --stats-max-bytes: no index-stats request at all.
+func TestStartStatsPreflight_SkipStatsDisablesBothPaths(t *testing.T) {
+	called := false
+	client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		called = true
+		_, _ = w.Write([]byte(`{"streams":1,"chunks":1,"bytes":6000000000,"entries":1}`))
+	})
+
+	preflight := &statsPreflightOpts{SkipStats: true, StatsWarnBytes: "1GB", StatsMaxBytes: "5GB"}
+	if err := preflight.Validate(); err != nil {
+		t.Fatalf("unexpected Validate error: %v", err)
+	}
+
+	now := time.Now()
+	var stderr bytes.Buffer
+	wait, err := startStatsPreflight(context.Background(), client, &stderr, "uid", `{job="x"}`, true, now, now, now, preflight)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	wait()
+
+	if called {
+		t.Fatal("expected --skip-stats to prevent any index-stats request")
+	}
+}
+
 func TestRunStatsPreflight_IndexStatsErrorSoftFails(t *testing.T) {
 	client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
