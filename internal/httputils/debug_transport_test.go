@@ -19,6 +19,13 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
+type errorReadCloser struct {
+	err error
+}
+
+func (r errorReadCloser) Read([]byte) (int, error) { return 0, r.err }
+func (errorReadCloser) Close() error               { return nil }
+
 // debugLogContext returns a context carrying a logger that writes Debug records
 // to buf, using the same handler as the CLI so the message stays verbatim.
 func debugLogContext(t *testing.T, buf *bytes.Buffer) context.Context {
@@ -31,10 +38,10 @@ func debugLogContext(t *testing.T, buf *bytes.Buffer) context.Context {
 
 // jsonResponse builds a complete response, so the dump writes a valid status
 // line and a body.
-func jsonResponse(req *http.Request, status int, body string) *http.Response {
+func jsonResponse(req *http.Request, body string) *http.Response {
 	return &http.Response{
-		Status:        http.StatusText(status),
-		StatusCode:    status,
+		Status:        http.StatusText(http.StatusOK),
+		StatusCode:    http.StatusOK,
 		Proto:         "HTTP/1.1",
 		ProtoMajor:    1,
 		ProtoMinor:    1,
@@ -90,7 +97,7 @@ func TestRequestResponseLoggingRoundTripper_Dumps(t *testing.T) {
 					}
 					gotReqBody = string(b)
 				}
-				return jsonResponse(r, http.StatusOK, tt.respBody), nil
+				return jsonResponse(r, tt.respBody), nil
 			})
 
 			var out bytes.Buffer
@@ -141,7 +148,7 @@ func TestRequestResponseLoggingRoundTripper_Dumps(t *testing.T) {
 // the OAuth bearer token.
 func TestRequestResponseLoggingRoundTripper_DumpsHeadersFromOuterLayers(t *testing.T) {
 	base := roundTripFunc(func(r *http.Request) (*http.Response, error) {
-		return jsonResponse(r, http.StatusOK, `{}`), nil
+		return jsonResponse(r, `{}`), nil
 	})
 	dump := &httputils.RequestResponseLoggingRoundTripper{DecoratedTransport: base}
 	outer := roundTripFunc(func(r *http.Request) (*http.Response, error) {
@@ -195,6 +202,61 @@ func TestRequestResponseLoggingRoundTripper_TransportError(t *testing.T) {
 	}
 	if strings.Contains(logged, "http response dump") {
 		t.Errorf("log must hold no response dump after a transport error\ngot:\n%s", logged)
+	}
+}
+
+func TestRequestResponseLoggingRoundTripper_DumpErrors(t *testing.T) {
+	tests := []struct {
+		name      string
+		prepare   func(*http.Request) roundTripFunc
+		wantInLog []string
+	}{
+		{
+			name: "request dump error",
+			prepare: func(req *http.Request) roundTripFunc {
+				req.Body = errorReadCloser{err: errors.New("request body read failed")}
+				return func(r *http.Request) (*http.Response, error) {
+					return jsonResponse(r, `{}`), nil
+				}
+			},
+			wantInLog: []string{"cannot dump http request", "request body read failed"},
+		},
+		{
+			name: "response dump error",
+			prepare: func(_ *http.Request) roundTripFunc {
+				return func(r *http.Request) (*http.Response, error) {
+					resp := jsonResponse(r, "")
+					resp.Body = errorReadCloser{err: errors.New("response body read failed")}
+					resp.ContentLength = -1
+					return resp, nil
+				}
+			},
+			wantInLog: []string{"cannot dump http response", "response body read failed"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var out bytes.Buffer
+			ctx := debugLogContext(t, &out)
+			req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://example.com/api", nil)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			rt := &httputils.RequestResponseLoggingRoundTripper{DecoratedTransport: tt.prepare(req)}
+			resp, err := rt.RoundTrip(req)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			defer resp.Body.Close()
+
+			for _, want := range tt.wantInLog {
+				if !strings.Contains(out.String(), want) {
+					t.Errorf("log is missing %q\ngot:\n%s", want, out.String())
+				}
+			}
+		})
 	}
 }
 
