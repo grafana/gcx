@@ -84,31 +84,6 @@ func TestGCOMFlowRun_RejectsUntrustedURL(t *testing.T) {
 	}
 }
 
-func TestIsGCOMHost(t *testing.T) {
-	tests := []struct {
-		name string
-		host string
-		want bool
-	}{
-		{"prod portal", "grafana.com", true},
-		{"dev portal", "grafana-dev.com", true},
-		{"ops portal", "grafana-ops.com", true},
-		{"uppercase portal", "GRAFANA.COM", true},
-		{"portal subdomain", "help.grafana.com", false},
-		{"stack host", "mystack.grafana.net", false},
-		{"lookalike", "grafana.com.attacker.com", false},
-		{"empty", "", false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := auth.IsGCOMHost(tt.host); got != tt.want {
-				t.Fatalf("IsGCOMHost(%q) = %v, want %v", tt.host, got, tt.want)
-			}
-		})
-	}
-}
-
 func TestFlowRun_FailsBeforeBrowserOutputWhenFixedPortUnavailable(t *testing.T) {
 	var lc net.ListenConfig
 	listener, err := lc.Listen(context.Background(), "tcp", "127.0.0.1:0")

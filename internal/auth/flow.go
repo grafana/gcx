@@ -332,21 +332,11 @@ func ValidateEndpointURL(endpoint string) error {
 	return fmt.Errorf("endpoint host %q is not a trusted Grafana domain", hostname)
 }
 
-// Keep this list aligned with the gcomRoot values in
-// internal/config.grafanaCloudStackSuffixes. The config package uses this list
-// to detect a portal and its own table to name the related stack URL suffix.
+// Trusted Grafana Cloud portal roots for the direct GCOM OAuth flow.
 var allowedGCOMHosts = []string{ //nolint:gochecknoglobals
 	"grafana.com",
 	"grafana-dev.com",
 	"grafana-ops.com",
-}
-
-// IsGCOMHost reports whether host is a Grafana Cloud portal root such as
-// grafana.com. A portal root manages stacks; it is not a Grafana stack
-// endpoint itself, so it can never serve as a Grafana server URL. The caller
-// must supply a bare hostname without a port. Matching is case-insensitive.
-func IsGCOMHost(host string) bool {
-	return slices.Contains(allowedGCOMHosts, strings.ToLower(host))
 }
 
 // validateGCOMURL checks that the given URL points at a trusted Grafana Cloud
@@ -372,7 +362,7 @@ func validateGCOMURL(rawURL string) error {
 		return fmt.Errorf("URL must use HTTPS, got %q", u.Scheme)
 	}
 
-	if IsGCOMHost(hostname) {
+	if slices.Contains(allowedGCOMHosts, strings.ToLower(hostname)) {
 		return nil
 	}
 

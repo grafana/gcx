@@ -1619,9 +1619,9 @@ func TestRun_AcceptsStackAndCustomDomainServerURLs(t *testing.T) {
 	}
 }
 
-// A Cloud credential has no home on a non-Cloud context, so login drops it.
-// Dropping it in silence reads as acceptance, so Run must say what happened.
-func TestRun_WarnsWhenCloudTokenDroppedOnNonCloudTarget(t *testing.T) {
+// A login must say when it does not apply a Cloud credential to a non-Cloud
+// target. It must not claim that a saved Cloud entry was removed.
+func TestRun_WarnsWhenCloudCredentialIsNotAppliedToNonCloudTarget(t *testing.T) {
 	tests := []struct {
 		name       string
 		cloudToken string
@@ -1656,9 +1656,11 @@ func TestRun_WarnsWhenCloudTokenDroppedOnNonCloudTarget(t *testing.T) {
 			require.NoError(t, err)
 
 			if tt.wantWarn {
-				assert.Contains(t, writer.String(), "the Cloud token was not saved")
+				assert.Contains(t, writer.String(), "this login did not apply the Cloud credential")
+				assert.Contains(t, writer.String(), "Any existing saved Cloud credential stays unchanged")
+				assert.NotContains(t, writer.String(), "commands stay unavailable")
 			} else {
-				assert.NotContains(t, writer.String(), "the Cloud token was not saved")
+				assert.NotContains(t, writer.String(), "this login did not apply the Cloud credential")
 			}
 		})
 	}
@@ -1694,7 +1696,7 @@ func TestRun_WarnsOnceWhenCloudTokenIsDroppedAcrossRetry(t *testing.T) {
 	opts.ForceSave = true
 	_, err = login.Run(context.Background(), &opts)
 	require.NoError(t, err)
-	assert.Equal(t, 1, strings.Count(writer.String(), "the Cloud token was not saved"))
+	assert.Equal(t, 1, strings.Count(writer.String(), "this login did not apply the Cloud credential"))
 }
 
 func TestRun_TLSPropagatedToContext(t *testing.T) {

@@ -950,14 +950,11 @@ func convertLoginValidationErrors(err error) (*gcxerrors.DetailedError, bool) {
 // newcomer, so the message contrasts them and shows the stack URL form for the
 // same environment.
 func convertPortalServerURLError(err *login.PortalServerURLError) *gcxerrors.DetailedError {
-	suggestions := []string{}
-	if err.StackSuffix != "" {
-		suggestions = append(suggestions,
-			"Pass the stack URL instead, in the form https://<stack>"+err.StackSuffix)
+	suggestions := []string{
+		"Pass the stack URL instead, in the form https://<stack>" + err.StackSuffix,
+		"Find the stack URL on the " + err.Host + " stack list, or in the browser address bar when you view the stack",
+		"A Cloud access-policy token authenticates the Cloud product APIs only; the Grafana instance still needs --oauth or --token",
 	}
-	suggestions = append(suggestions,
-		"Find the stack URL on the "+err.Host+" stack list, or in the browser address bar when you view the stack",
-		"A Cloud access-policy token authenticates the Cloud product APIs only; the Grafana instance still needs --oauth or --token")
 
 	return &gcxerrors.DetailedError{
 		Parent:  err,
