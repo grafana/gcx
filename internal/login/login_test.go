@@ -1664,6 +1664,39 @@ func TestRun_WarnsWhenCloudTokenDroppedOnNonCloudTarget(t *testing.T) {
 	}
 }
 
+func TestRun_WarnsOnceWhenCloudTokenIsDroppedAcrossRetry(t *testing.T) {
+	t.Setenv("GCX_AGENT_MODE", "0")
+	usePlaintextCredentialStorage(t)
+
+	dir := t.TempDir()
+	var writer bytes.Buffer
+	opts := login.Options{
+		Inputs: login.Inputs{
+			Server:       "https://grafana.example.com",
+			GrafanaToken: "glsa_test",
+			CloudToken:   "glc_test",
+			Target:       login.TargetOnPrem,
+			Writer:       &writer,
+		},
+		Hooks: login.Hooks{
+			ConfigSource: configSource(dir),
+			ValidateFn: func(_ context.Context, _ login.Options, _ config.NamespacedRESTConfig) (string, error) {
+				return "", errors.New("validation failed")
+			},
+		},
+		RetryState: login.RetryState{StagedContext: &config.Context{}},
+	}
+
+	_, err := login.Run(context.Background(), &opts)
+	var needClarification *login.ErrNeedClarification
+	require.ErrorAs(t, err, &needClarification)
+
+	opts.ForceSave = true
+	_, err = login.Run(context.Background(), &opts)
+	require.NoError(t, err)
+	assert.Equal(t, 1, strings.Count(writer.String(), "the Cloud token was not saved"))
+}
+
 func TestRun_TLSPropagatedToContext(t *testing.T) {
 	usePlaintextCredentialStorage(t)
 
