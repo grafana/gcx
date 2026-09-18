@@ -4,7 +4,7 @@ Uninstall gcx-managed skills from ~/.agents/skills
 
 ### Synopsis
 
-Remove one or more gcx-managed skills from a user-level .agents skills directory. Only skills bundled with gcx can be uninstalled; non-gcx skills are never touched.
+Remove one or more current or retired gcx skills from a user-level .agents skills directory. Only names recorded in the gcx catalog can be uninstalled; unmanaged skills are never touched. Catalog names identify skills but do not prove ownership of local files.
 
 ```
 gcx agent skills uninstall [SKILL]... [flags]
