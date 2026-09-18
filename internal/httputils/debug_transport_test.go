@@ -260,26 +260,47 @@ func TestRequestResponseLoggingRoundTripper_DumpErrors(t *testing.T) {
 	}
 }
 
-func TestLoggingRoundTripper_Success(t *testing.T) {
-	base := roundTripFunc(func(_ *http.Request) (*http.Response, error) {
-		return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}, nil
-	})
-	rt := &httputils.LoggingRoundTripper{Base: base}
-	var out bytes.Buffer
-	req, _ := http.NewRequestWithContext(debugLogContext(t, &out), http.MethodGet, "http://example.com/api", nil)
+func TestLoggingRoundTripper_ResponseLevel(t *testing.T) {
+	tests := []struct {
+		name      string
+		status    int
+		wantInLog []string
+	}{
+		{
+			name:      "success logs at debug",
+			status:    http.StatusOK,
+			wantInLog: []string{"DEBUG http request", "DEBUG http response", "status=200"},
+		},
+		{
+			name:      "server error logs response at warn",
+			status:    http.StatusBadGateway,
+			wantInLog: []string{"DEBUG http request", "WARN http response", "status=502"},
+		},
+	}
 
-	resp, err := rt.RoundTrip(req)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("expected 200, got %d", resp.StatusCode)
-	}
-	for _, want := range []string{"DEBUG http request", "DEBUG http response", "status=200"} {
-		if !strings.Contains(out.String(), want) {
-			t.Errorf("log is missing %q\ngot:\n%s", want, out.String())
-		}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			base := roundTripFunc(func(_ *http.Request) (*http.Response, error) {
+				return &http.Response{StatusCode: tt.status, Body: http.NoBody}, nil
+			})
+			rt := &httputils.LoggingRoundTripper{Base: base}
+			var out bytes.Buffer
+			req, _ := http.NewRequestWithContext(debugLogContext(t, &out), http.MethodGet, "http://example.com/api", nil)
+
+			resp, err := rt.RoundTrip(req)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != tt.status {
+				t.Fatalf("status = %d, want %d", resp.StatusCode, tt.status)
+			}
+			for _, want := range tt.wantInLog {
+				if !strings.Contains(out.String(), want) {
+					t.Errorf("log is missing %q\ngot:\n%s", want, out.String())
+				}
+			}
+		})
 	}
 }
 
@@ -300,29 +321,6 @@ func TestLoggingRoundTripper_TransportError(t *testing.T) {
 		t.Fatalf("expected %v, got %v", wantErr, err)
 	}
 	for _, want := range []string{"DEBUG http request", "WARN http error", "error=\"connection refused\""} {
-		if !strings.Contains(out.String(), want) {
-			t.Errorf("log is missing %q\ngot:\n%s", want, out.String())
-		}
-	}
-}
-
-func TestLoggingRoundTripper_5xx(t *testing.T) {
-	base := roundTripFunc(func(_ *http.Request) (*http.Response, error) {
-		return &http.Response{StatusCode: http.StatusBadGateway, Body: http.NoBody}, nil
-	})
-	rt := &httputils.LoggingRoundTripper{Base: base}
-	var out bytes.Buffer
-	req, _ := http.NewRequestWithContext(debugLogContext(t, &out), http.MethodGet, "http://example.com/api", nil)
-
-	resp, err := rt.RoundTrip(req)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusBadGateway {
-		t.Fatalf("expected 502, got %d", resp.StatusCode)
-	}
-	for _, want := range []string{"DEBUG http request", "WARN http response", "status=502"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("log is missing %q\ngot:\n%s", want, out.String())
 		}
