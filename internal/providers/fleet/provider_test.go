@@ -344,7 +344,7 @@ func TestCollectorTableCodec_Encode(t *testing.T) {
 			name:       "wide format adds timestamps and attributes",
 			codec:      fleet.CollectorTableCodec{Wide: true},
 			wantHeader: []string{"CREATED_AT", "MARKED_INACTIVE_AT", "LOCAL_ATTRIBUTES", "REMOTE_ATTRIBUTES"},
-			wantValues: []string{"2025-03-15 14:30", "2025-03-17 16:00", `{"collector.os":"linux","collector.version":"1.10.2"}`, `{"env":"production"}`},
+			wantValues: []string{"2025-03-15 14:30", "2025-03-17 16:00", "collector.os=linux, collector.version=1.10.2", "env=production"},
 		},
 	}
 

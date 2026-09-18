@@ -995,7 +995,7 @@ func (c *CollectorTableCodec) Encode(w io.Writer, v any) error {
 		t = style.NewTable(
 			"ID", "NAME", "TYPE", "VERSION", "OS", "ENABLED", "UPDATED_AT",
 			"CREATED_AT", "MARKED_INACTIVE_AT", "LOCAL_ATTRIBUTES", "REMOTE_ATTRIBUTES",
-		)
+		).MultilineCells(true)
 	} else {
 		t = style.NewTable("ID", "NAME", "TYPE", "VERSION", "OS", "ENABLED", "UPDATED_AT")
 	}
@@ -1058,11 +1058,19 @@ func formatCollectorAttributes(attributes map[string]string) string {
 	if len(attributes) == 0 {
 		return "-"
 	}
-	data, err := json.Marshal(attributes)
-	if err != nil {
-		return "-"
+	keys := make([]string, 0, len(attributes))
+	for key := range attributes {
+		keys = append(keys, key)
 	}
-	return string(data)
+	sort.Strings(keys)
+	pairs := make([]string, 0, len(keys))
+	for _, key := range keys {
+		// Quote escapes control characters before the table adds line separators.
+		quotedKey := strconv.Quote(key)
+		quotedValue := strconv.Quote(attributes[key])
+		pairs = append(pairs, quotedKey[1:len(quotedKey)-1]+"="+quotedValue[1:len(quotedValue)-1])
+	}
+	return strings.Join(pairs, "\n")
 }
 
 // Slug helpers — thin wrappers around adapter.SlugifyName / adapter.ExtractIDFromSlug.
@@ -1504,9 +1512,12 @@ func collectorSchema() json.RawMessage {
 			"spec": map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"id":                 map[string]any{"type": "string"},
-					"name":               map[string]any{"type": "string"},
-					"collector_type":     map[string]any{"type": "string"},
+					"id":   map[string]any{"type": "string"},
+					"name": map[string]any{"type": "string"},
+					"collector_type": map[string]any{
+						"type": "string",
+						"enum": []string{"COLLECTOR_TYPE_UNSPECIFIED", "COLLECTOR_TYPE_ALLOY", "COLLECTOR_TYPE_OTEL"},
+					},
 					"enabled":            map[string]any{"type": "boolean"},
 					"remote_attributes":  stringMap,
 					"local_attributes":   readOnlyStringMap,
@@ -1581,7 +1592,7 @@ func collectorExample() json.RawMessage {
 		"spec": map[string]any{
 			"id":             "my-collector-id",
 			"name":           "my-collector",
-			"collector_type": "alloy",
+			"collector_type": "COLLECTOR_TYPE_ALLOY",
 			"enabled":        true,
 			"remote_attributes": map[string]string{
 				"env": "production",

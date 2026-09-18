@@ -24,6 +24,7 @@ func TestFleetExamplesMatchLiveCreateRequirements(t *testing.T) {
 	collectorSpec, ok := collector["spec"].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, "my-collector-id", collectorSpec["id"])
+	assert.Equal(t, "COLLECTOR_TYPE_ALLOY", collectorSpec["collector_type"])
 }
 
 func TestCollectorSchemaExposesID(t *testing.T) {
@@ -51,6 +52,18 @@ func TestCollectorSchemaExposesHealthFields(t *testing.T) {
 	require.True(t, ok)
 	specProperties, ok := spec["properties"].(map[string]any)
 	require.True(t, ok)
+
+	collectorType, ok := specProperties["collector_type"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, []any{"COLLECTOR_TYPE_UNSPECIFIED", "COLLECTOR_TYPE_ALLOY", "COLLECTOR_TYPE_OTEL"}, collectorType["enum"])
+	var example map[string]any
+	require.NoError(t, json.Unmarshal(collectorExample(), &example))
+	exampleSpec, ok := example["spec"].(map[string]any)
+	require.True(t, ok)
+	assert.Contains(t, collectorType["enum"], exampleSpec["collector_type"])
+	if required, ok := spec["required"].([]any); ok {
+		assert.NotContains(t, required, "collector_type")
+	}
 
 	localAttributes, ok := specProperties["local_attributes"].(map[string]any)
 	require.True(t, ok)

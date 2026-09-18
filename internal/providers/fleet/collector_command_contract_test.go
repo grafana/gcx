@@ -98,6 +98,59 @@ func TestCollectorListRejectsNegativeLimitBeforeAPICall(t *testing.T) {
 	assert.Contains(t, err.Error(), "limit")
 }
 
+func TestCollectorListRejectsArgumentsBeforeAPICall(t *testing.T) {
+	cmd := (&fleetHelper{}).newCollectorListCommand()
+	cmd.SetArgs([]string{"unexpected"})
+	require.Error(t, cmd.Execute())
+}
+
+func TestCollectorExampleCreateRequest(t *testing.T) {
+	var request struct {
+		Collector Collector `json:"collector"`
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, fleetProxyPrefix+pathCreateCollector, r.URL.Path)
+		if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&request)) {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		writeContractJSON(t, w, map[string]any{})
+	}))
+	t.Cleanup(server.Close)
+	manifest := writeManifest(t, "collector.json", string(collectorExample()))
+	cmd := (&fleetHelper{loader: &fakeRESTLoader{url: server.URL}}).newCollectorCreateCommand()
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetArgs([]string{"-f", manifest, "-o", "json"})
+	require.NoError(t, cmd.Execute())
+	assert.Equal(t, "COLLECTOR_TYPE_ALLOY", request.Collector.CollectorType)
+	assert.Equal(t, "my-collector-id", request.Collector.ID)
+}
+
+func TestCollectorWideAttributeCells(t *testing.T) {
+	withPlainColors(t)
+	tests := []struct {
+		name       string
+		attributes map[string]string
+		want       string
+	}{
+		{name: "empty", want: "-"},
+		{name: "sorted", attributes: map[string]string{"z": "last", "a": "first"}, want: "a=first, z=last"},
+		{name: "control characters", attributes: map[string]string{"a\tb": "line\nnext\r\x1b"}, want: `a\tb=line\nnext\r\x1b`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var stdout bytes.Buffer
+			codec := CollectorTableCodec{Wide: true}
+			require.NoError(t, codec.Encode(&stdout, []Collector{{ID: "c-1", RemoteAttributes: tt.attributes}}))
+			lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
+			require.Len(t, lines, 2)
+			assert.True(t, strings.HasSuffix(strings.TrimSpace(lines[1]), tt.want), stdout.String())
+		})
+	}
+}
+
 func newCollectorReadServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	collector := map[string]any{
