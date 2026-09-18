@@ -306,19 +306,9 @@ func Table() cmdio.Table[SavedConversation] {
 		{Header: "SAVED ID", Content: func(r SavedConversation) string { return r.SavedID }},
 		{Header: "NAME", Content: func(r SavedConversation) string { return agento11yhttp.Truncate(r.Name, 40) }},
 		{Header: "CONVERSATION", Content: func(r SavedConversation) string { return r.ConversationID }},
-		{Header: "SOURCE", Content: func(r SavedConversation) string {
-			if r.Source == "" {
-				return "-"
-			}
-			return r.Source
-		}},
+		{Header: "SOURCE", Content: func(r SavedConversation) string { return cmdio.OrDash(r.Source) }},
 		{Header: "GENS", Content: func(r SavedConversation) string { return strconv.Itoa(r.GenerationCount) }},
-		{Header: "SAVED BY", Visible: cmdio.WideOnly, Content: func(r SavedConversation) string {
-			if r.SavedBy == "" {
-				return "-"
-			}
-			return r.SavedBy
-		}},
+		{Header: "SAVED BY", Visible: cmdio.WideOnly, Content: func(r SavedConversation) string { return cmdio.OrDash(r.SavedBy) }},
 		{Header: "CREATED AT", Visible: cmdio.WideOnly, Content: func(r SavedConversation) string { return agento11yhttp.FormatTime(r.CreatedAt) }},
 	}}
 }
@@ -329,12 +319,7 @@ func CollectionsTable() cmdio.Table[CollectionRef] {
 		{Header: "NAME", Content: func(r CollectionRef) string { return r.Name }},
 		{Header: "MEMBERS", Content: func(r CollectionRef) string { return strconv.Itoa(r.MemberCount) }},
 		{Header: "DESCRIPTION", Visible: cmdio.WideOnly, Content: func(r CollectionRef) string { return agento11yhttp.Truncate(r.Description, 40) }},
-		{Header: "CREATED BY", Visible: cmdio.WideOnly, Content: func(r CollectionRef) string {
-			if r.CreatedBy == "" {
-				return "-"
-			}
-			return r.CreatedBy
-		}},
+		{Header: "CREATED BY", Visible: cmdio.WideOnly, Content: func(r CollectionRef) string { return cmdio.OrDash(r.CreatedBy) }},
 		{Header: "CREATED AT", Visible: cmdio.WideOnly, Content: func(r CollectionRef) string { return agento11yhttp.FormatTime(r.CreatedAt) }},
 	}}
 }

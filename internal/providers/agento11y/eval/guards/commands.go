@@ -363,13 +363,7 @@ func Table() cmdio.Table[eval.HookRuleDefinition] {
 		{Header: "PRIORITY", Content: func(r eval.HookRuleDefinition) string { return strconv.Itoa(r.Priority) }},
 		{Header: "SELECTOR", Content: func(r eval.HookRuleDefinition) string { return r.Selector }},
 		{Header: "ACTION", Content: func(r eval.HookRuleDefinition) string { return r.ActionOnFail }},
-		{Header: "EVALUATORS", Visible: cmdio.WideOnly, Content: func(r eval.HookRuleDefinition) string {
-			value := strings.Join(r.EvaluatorIDs, ", ")
-			if value == "" {
-				return "-"
-			}
-			return value
-		}},
+		{Header: "EVALUATORS", Visible: cmdio.WideOnly, Content: func(r eval.HookRuleDefinition) string { return cmdio.OrDash(strings.Join(r.EvaluatorIDs, ", ")) }},
 		{Header: "TRANSFORM", Visible: cmdio.WideOnly, Content: func(r eval.HookRuleDefinition) string {
 			if r.Redact != nil && len(r.Redact.Patterns) > 0 {
 				return "yes"
@@ -382,12 +376,7 @@ func Table() cmdio.Table[eval.HookRuleDefinition] {
 			}
 			return "no"
 		}},
-		{Header: "CREATED BY", Visible: cmdio.WideOnly, Content: func(r eval.HookRuleDefinition) string {
-			if r.CreatedBy == "" {
-				return "-"
-			}
-			return r.CreatedBy
-		}},
+		{Header: "CREATED BY", Visible: cmdio.WideOnly, Content: func(r eval.HookRuleDefinition) string { return cmdio.OrDash(r.CreatedBy) }},
 		{Header: "CREATED AT", Visible: cmdio.WideOnly, Content: func(r eval.HookRuleDefinition) string { return agento11yhttp.FormatTime(r.CreatedAt) }},
 	}}
 }

@@ -359,19 +359,8 @@ func Table() cmdio.Table[eval.RuleDefinition] {
 		}},
 		{Header: "SELECTOR", Content: func(r eval.RuleDefinition) string { return r.Selector }},
 		{Header: "SAMPLE RATE", Content: func(r eval.RuleDefinition) string { return strconv.FormatFloat(r.SampleRate, 'f', -1, 64) }},
-		{Header: "EVALUATORS", Content: func(r eval.RuleDefinition) string {
-			value := strings.Join(r.EvaluatorIDs, ", ")
-			if value == "" {
-				return "-"
-			}
-			return value
-		}},
-		{Header: "CREATED BY", Visible: cmdio.WideOnly, Content: func(r eval.RuleDefinition) string {
-			if r.CreatedBy == "" {
-				return "-"
-			}
-			return r.CreatedBy
-		}},
+		{Header: "EVALUATORS", Content: func(r eval.RuleDefinition) string { return cmdio.OrDash(strings.Join(r.EvaluatorIDs, ", ")) }},
+		{Header: "CREATED BY", Visible: cmdio.WideOnly, Content: func(r eval.RuleDefinition) string { return cmdio.OrDash(r.CreatedBy) }},
 		{Header: "CREATED AT", Visible: cmdio.WideOnly, Content: func(r eval.RuleDefinition) string { return agento11yhttp.FormatTime(r.CreatedAt) }},
 	}}
 }

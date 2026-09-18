@@ -1120,12 +1120,7 @@ func SuitesTable() cmdio.Table[TestSuite] {
 	return cmdio.Table[TestSuite]{Columns: []cmdio.Column[TestSuite]{
 		{Header: "SUITE-ID", Content: func(r TestSuite) string { return r.SuiteID }},
 		{Header: "NAME", Content: func(r TestSuite) string { return r.Name }},
-		{Header: "LATEST", Content: func(r TestSuite) string {
-			if r.LatestVersion == "" {
-				return "-"
-			}
-			return r.LatestVersion
-		}},
+		{Header: "LATEST", Content: func(r TestSuite) string { return cmdio.OrDash(r.LatestVersion) }},
 		{Header: "VERSIONS", Content: func(r TestSuite) string { return strconv.Itoa(len(r.Versions)) }},
 		{Header: "TAGS", Content: func(r TestSuite) string { return formatTags(r.Tags) }},
 		{Header: "CREATED", Content: func(r TestSuite) string { return agento11yhttp.FormatTime(r.CreatedAt) }},
@@ -1137,18 +1132,8 @@ func SuitesTable() cmdio.Table[TestSuite] {
 func CasesTable() cmdio.Table[TestCase] {
 	return cmdio.Table[TestCase]{Columns: []cmdio.Column[TestCase]{
 		{Header: "TEST-CASE-ID", Content: func(r TestCase) string { return r.TestCaseID }},
-		{Header: "NAME", Content: func(r TestCase) string {
-			if r.Name == "" {
-				return "-"
-			}
-			return r.Name
-		}},
-		{Header: "CATEGORY", Content: func(r TestCase) string {
-			if r.Category == "" {
-				return "-"
-			}
-			return r.Category
-		}},
+		{Header: "NAME", Content: func(r TestCase) string { return cmdio.OrDash(r.Name) }},
+		{Header: "CATEGORY", Content: func(r TestCase) string { return cmdio.OrDash(r.Category) }},
 		{Header: "TAGS", Content: func(r TestCase) string { return formatTags(r.Tags) }},
 		{Header: "SUITE", Content: func(r TestCase) string { return r.SuiteID }},
 		{Header: "VERSION", Content: func(r TestCase) string { return r.SuiteVersion }},
@@ -1164,24 +1149,9 @@ func TrialsTable() cmdio.Table[TestCaseTrial] {
 		{Header: "EXPERIMENT-ID", Content: func(r TestCaseTrial) string { return r.ExperimentID }},
 		{Header: "TEST-CASE-ID", Content: func(r TestCaseTrial) string { return r.TestCaseID }},
 		{Header: "ATTEMPT", Content: func(r TestCaseTrial) string { return strconv.Itoa(r.Attempt) }},
-		{Header: "STATUS", Content: func(r TestCaseTrial) string {
-			if r.Status == "" {
-				return "-"
-			}
-			return r.Status
-		}},
-		{Header: "CONVERSATION", Content: func(r TestCaseTrial) string {
-			if r.ConversationID == "" {
-				return "-"
-			}
-			return r.ConversationID
-		}},
-		{Header: "TRACE", Content: func(r TestCaseTrial) string {
-			if r.TraceID == "" {
-				return "-"
-			}
-			return r.TraceID
-		}},
+		{Header: "STATUS", Content: func(r TestCaseTrial) string { return cmdio.OrDash(r.Status) }},
+		{Header: "CONVERSATION", Content: func(r TestCaseTrial) string { return cmdio.OrDash(r.ConversationID) }},
+		{Header: "TRACE", Content: func(r TestCaseTrial) string { return cmdio.OrDash(r.TraceID) }},
 		{Header: "TOTAL-TOKENS", Visible: cmdio.WideOnly, Content: func(r TestCaseTrial) string {
 			if r.TotalTokens == nil {
 				return "-"
@@ -1210,12 +1180,7 @@ func ArtifactsTable() cmdio.Table[Artifact] {
 		{Header: "ARTIFACT-ID", Content: func(r Artifact) string { return r.ArtifactID }},
 		{Header: "NAME", Content: func(r Artifact) string { return r.Name }},
 		{Header: "KIND", Content: func(r Artifact) string { return r.Kind }},
-		{Header: "MIME", Content: func(r Artifact) string {
-			if r.Mime == "" {
-				return "-"
-			}
-			return r.Mime
-		}},
+		{Header: "MIME", Content: func(r Artifact) string { return cmdio.OrDash(r.Mime) }},
 		{Header: "PARENT-KIND", Visible: cmdio.WideOnly, Content: func(r Artifact) string { return r.ParentKind }},
 		{Header: "PARENT-ID", Visible: cmdio.WideOnly, Content: func(r Artifact) string { return r.ParentID }},
 		{Header: "SIZE", Content: func(r Artifact) string {
@@ -1232,24 +1197,9 @@ func Table() cmdio.Table[Experiment] {
 	return cmdio.Table[Experiment]{Columns: []cmdio.Column[Experiment]{
 		{Header: "EXPERIMENT-ID", Content: func(r Experiment) string { return r.ID() }},
 		{Header: "NAME", Content: func(r Experiment) string { return r.Name }},
-		{Header: "STATUS", Content: func(r Experiment) string {
-			if r.Status == "" {
-				return "-"
-			}
-			return r.Status
-		}},
-		{Header: "SUITE", Content: func(r Experiment) string {
-			if r.SuiteID == "" {
-				return "-"
-			}
-			return r.SuiteID
-		}},
-		{Header: "VERSION", Content: func(r Experiment) string {
-			if r.SuiteVersion == "" {
-				return "-"
-			}
-			return r.SuiteVersion
-		}},
+		{Header: "STATUS", Content: func(r Experiment) string { return cmdio.OrDash(r.Status) }},
+		{Header: "SUITE", Content: func(r Experiment) string { return cmdio.OrDash(r.SuiteID) }},
+		{Header: "VERSION", Content: func(r Experiment) string { return cmdio.OrDash(r.SuiteVersion) }},
 		{Header: "TAGS", Visible: cmdio.WideOnly, Content: func(r Experiment) string { return formatTags(r.Tags) }},
 		{Header: "TRIALS", Content: func(r Experiment) string {
 			if r.Result == nil {
@@ -1295,18 +1245,8 @@ func formatTags(tags []string) string {
 func ScoresTable() cmdio.Table[ScoreItem] {
 	return cmdio.Table[ScoreItem]{Columns: []cmdio.Column[ScoreItem]{
 		{Header: "SCORE-ID", Content: func(r ScoreItem) string { return r.ScoreID }},
-		{Header: "EVALUATOR", Content: func(r ScoreItem) string {
-			if r.EvaluatorID == "" {
-				return "-"
-			}
-			return r.EvaluatorID
-		}},
-		{Header: "KEY", Content: func(r ScoreItem) string {
-			if r.ScoreKey == "" {
-				return "-"
-			}
-			return r.ScoreKey
-		}},
+		{Header: "EVALUATOR", Content: func(r ScoreItem) string { return cmdio.OrDash(r.EvaluatorID) }},
+		{Header: "KEY", Content: func(r ScoreItem) string { return cmdio.OrDash(r.ScoreKey) }},
 		{Header: "VALUE", Content: func(r ScoreItem) string { return r.Value.Display() }},
 		{Header: "PASSED", Content: func(r ScoreItem) string {
 			if r.Passed == nil {
@@ -1314,12 +1254,7 @@ func ScoresTable() cmdio.Table[ScoreItem] {
 			}
 			return strconv.FormatBool(*r.Passed)
 		}},
-		{Header: "GENERATION", Content: func(r ScoreItem) string {
-			if r.GenerationID == "" {
-				return "-"
-			}
-			return r.GenerationID
-		}},
+		{Header: "GENERATION", Content: func(r ScoreItem) string { return cmdio.OrDash(r.GenerationID) }},
 		{Header: "EXPLANATION", Visible: cmdio.WideOnly, Content: func(r ScoreItem) string { return agento11yhttp.Truncate(r.Explanation, 40) }},
 		{Header: "CREATED", Visible: cmdio.WideOnly, Content: func(r ScoreItem) string { return agento11yhttp.FormatTime(r.CreatedAt) }},
 	}}

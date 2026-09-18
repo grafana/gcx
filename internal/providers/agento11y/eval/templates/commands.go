@@ -163,19 +163,9 @@ func Table() cmdio.Table[eval.TemplateDefinition] {
 		{Header: "ID", Content: func(r eval.TemplateDefinition) string { return r.TemplateID }},
 		{Header: "SCOPE", Content: func(r eval.TemplateDefinition) string { return r.Scope }},
 		{Header: "KIND", Content: func(r eval.TemplateDefinition) string { return r.Kind }},
-		{Header: "LATEST VERSION", Content: func(r eval.TemplateDefinition) string {
-			if r.LatestVersion == "" {
-				return "-"
-			}
-			return r.LatestVersion
-		}},
+		{Header: "LATEST VERSION", Content: func(r eval.TemplateDefinition) string { return cmdio.OrDash(r.LatestVersion) }},
 		{Header: "DESCRIPTION", Content: func(r eval.TemplateDefinition) string { return agento11yhttp.Truncate(r.Description, 40) }},
-		{Header: "CREATED BY", Visible: cmdio.WideOnly, Content: func(r eval.TemplateDefinition) string {
-			if r.CreatedBy == "" {
-				return "-"
-			}
-			return r.CreatedBy
-		}},
+		{Header: "CREATED BY", Visible: cmdio.WideOnly, Content: func(r eval.TemplateDefinition) string { return cmdio.OrDash(r.CreatedBy) }},
 		{Header: "CREATED AT", Visible: cmdio.WideOnly, Content: func(r eval.TemplateDefinition) string { return agento11yhttp.FormatTime(r.CreatedAt) }},
 	}}
 }
@@ -184,12 +174,7 @@ func VersionsTable() cmdio.Table[eval.TemplateVersion] {
 	return cmdio.Table[eval.TemplateVersion]{Columns: []cmdio.Column[eval.TemplateVersion]{
 		{Header: "VERSION", Content: func(r eval.TemplateVersion) string { return r.Version }},
 		{Header: "CHANGELOG", Content: func(r eval.TemplateVersion) string { return agento11yhttp.Truncate(r.Changelog, 50) }},
-		{Header: "CREATED BY", Content: func(r eval.TemplateVersion) string {
-			if r.CreatedBy == "" {
-				return "-"
-			}
-			return r.CreatedBy
-		}},
+		{Header: "CREATED BY", Content: func(r eval.TemplateVersion) string { return cmdio.OrDash(r.CreatedBy) }},
 		{Header: "CREATED AT", Content: func(r eval.TemplateVersion) string { return agento11yhttp.FormatTime(r.CreatedAt) }},
 	}}
 }

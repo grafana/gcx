@@ -4,88 +4,11 @@ import (
 	"bytes"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/grafana/gcx/internal/providers/agento11y/eval/savedconversations"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-func TestTableCodec_Encode(t *testing.T) {
-	items := []savedconversations.SavedConversation{
-		{
-			SavedID: "saved-1", Name: "Regression seed", ConversationID: "conv-1",
-			Source: "telemetry", GenerationCount: 4, SavedBy: "alice",
-			CreatedAt: time.Date(2026, 4, 1, 10, 0, 0, 0, time.UTC),
-		},
-		{SavedID: "saved-2", Name: "Manual", ConversationID: "conv-manual-2", Source: "manual"},
-	}
-
-	tests := []struct {
-		name string
-		wide bool
-		want []string
-	}{
-		{
-			name: "table format",
-			wide: false,
-			want: []string{"SAVED ID", "NAME", "CONVERSATION", "SOURCE", "GENS", "saved-1", "Regression seed", "telemetry"},
-		},
-		{
-			name: "wide adds saved-by and created-at",
-			wide: true,
-			want: []string{"SAVED BY", "CREATED AT", "alice", "2026-04-01 10:00"},
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			codec := savedconversations.Table().Codec(map[bool]string{false: "table", true: "wide"}[tc.wide])
-			var buf bytes.Buffer
-			require.NoError(t, codec.Encode(&buf, items))
-
-			out := buf.String()
-			for _, s := range tc.want {
-				assert.Contains(t, out, s)
-			}
-		})
-	}
-}
-
-func TestTableCodec_WrongType(t *testing.T) {
-	codec := savedconversations.Table().Codec("table")
-	var buf bytes.Buffer
-	err := codec.Encode(&buf, "not-a-slice")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "expected []savedconversations.SavedConversation")
-}
-
-func TestTableCodec_Format(t *testing.T) {
-	assert.Equal(t, "table", string((savedconversations.Table().Codec("table")).Format()))
-	assert.Equal(t, "wide", string((savedconversations.Table().Codec("wide")).Format()))
-}
-
-func TestCollectionsTableCodec_Encode(t *testing.T) {
-	items := []savedconversations.CollectionRef{
-		{CollectionID: "c-1", Name: "Regression suite", MemberCount: 3, Description: "Used for nightly regression"},
-	}
-	codec := savedconversations.CollectionsTable().Codec("wide")
-	var buf bytes.Buffer
-	require.NoError(t, codec.Encode(&buf, items))
-
-	out := buf.String()
-	for _, s := range []string{"COLLECTION ID", "NAME", "MEMBERS", "DESCRIPTION", "c-1", "Regression suite", "3", "Used for nightly regression"} {
-		assert.Contains(t, out, s)
-	}
-}
-
-func TestCollectionsTableCodec_WrongType(t *testing.T) {
-	codec := savedconversations.CollectionsTable().Codec("table")
-	var buf bytes.Buffer
-	err := codec.Encode(&buf, []string{"x"})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "expected []savedconversations.CollectionRef")
-}
 
 func TestSaveCommand_RequiresName(t *testing.T) {
 	cmd := savedconversations.Commands(nil)

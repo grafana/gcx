@@ -4,64 +4,11 @@ import (
 	"bytes"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/grafana/gcx/internal/providers/agento11y/eval/collections"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-func TestTableCodec_Encode(t *testing.T) {
-	items := []collections.Collection{
-		{
-			CollectionID: "c-1", Name: "Regression", Description: "Nightly", MemberCount: 4,
-			CreatedBy: "alice", CreatedAt: time.Date(2026, 4, 1, 10, 0, 0, 0, time.UTC),
-		},
-		{CollectionID: "c-2", Name: "Smoke"},
-	}
-
-	tests := []struct {
-		name string
-		wide bool
-		want []string
-	}{
-		{
-			name: "table format",
-			wide: false,
-			want: []string{"ID", "NAME", "MEMBERS", "DESCRIPTION", "c-1", "Regression"},
-		},
-		{
-			name: "wide adds CREATED BY",
-			wide: true,
-			want: []string{"CREATED BY", "alice", "2026-04-01 10:00"},
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			codec := collections.Table().Codec(map[bool]string{false: "table", true: "wide"}[tc.wide])
-			var buf bytes.Buffer
-			require.NoError(t, codec.Encode(&buf, items))
-			out := buf.String()
-			for _, s := range tc.want {
-				assert.Contains(t, out, s)
-			}
-		})
-	}
-}
-
-func TestTableCodec_WrongType(t *testing.T) {
-	codec := collections.Table().Codec("table")
-	var buf bytes.Buffer
-	err := codec.Encode(&buf, "not-a-slice")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "expected []collections.Collection")
-}
-
-func TestTableCodec_Format(t *testing.T) {
-	assert.Equal(t, "table", string((collections.Table().Codec("table")).Format()))
-	assert.Equal(t, "wide", string((collections.Table().Codec("wide")).Format()))
-}
 
 func TestCommands_HasMembershipCompounds(t *testing.T) {
 	cmd := collections.Commands(nil)

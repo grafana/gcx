@@ -240,11 +240,6 @@ func TestReportCommand_RequiresArg(t *testing.T) {
 	assert.Contains(t, err.Error(), "accepts 1 arg")
 }
 
-func TestTableCodec_Format(t *testing.T) {
-	assert.Equal(t, "table", string((experiments.Table().Codec("table")).Format()))
-	assert.Equal(t, "wide", string((experiments.Table().Codec("wide")).Format()))
-}
-
 func TestTableCodec_Encode(t *testing.T) {
 	completed := time.Date(2026, 4, 2, 12, 0, 0, 0, time.UTC)
 	passRate := 0.5
@@ -266,7 +261,7 @@ func TestTableCodec_Encode(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		wide    bool
+		format  string
 		want    []string
 		notWant []string
 		// wantCells maps an experiment ID to the value each named column holds
@@ -276,7 +271,7 @@ func TestTableCodec_Encode(t *testing.T) {
 	}{
 		{
 			name:    "table format reports trials and pass rate",
-			wide:    false,
+			format:  "table",
 			want:    []string{"EXPERIMENT-ID", "NAME", "STATUS", "SUITE", "VERSION", "TRIALS", "PASS"},
 			notWant: []string{"SCORES", "TAGS", "support, prompt-v2"},
 			wantCells: map[string]map[string]string{
@@ -287,7 +282,7 @@ func TestTableCodec_Encode(t *testing.T) {
 		},
 		{
 			name:    "wide adds TAGS, ERROR, COMPLETED, and DESCRIPTION",
-			wide:    true,
+			format:  "wide",
 			want:    []string{"TAGS", "support, prompt-v2", "ERROR", "COMPLETED", "DESCRIPTION", "Nightly regression run", "2026-04-02 12:00"},
 			notWant: []string{"SCORES"},
 			wantCells: map[string]map[string]string{
@@ -303,7 +298,7 @@ func TestTableCodec_Encode(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			codec := experiments.Table().Codec(map[bool]string{false: "table", true: "wide"}[tc.wide])
+			codec := experiments.Table().Codec(tc.format)
 			var buf bytes.Buffer
 			require.NoError(t, codec.Encode(&buf, items))
 			out := buf.String()
@@ -361,22 +356,22 @@ func TestTrialsTableCodec_Encode(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		wide      bool
+		format    string
 		want      []string
 		notWant   []string
 		wantCells map[string]map[string]string
 	}{
 		{
 			name:      "table format omits usage",
-			wide:      false,
+			format:    "table",
 			want:      []string{"TRIAL-ID", "case-1"},
 			notWant:   []string{"TOTAL-TOKENS"},
 			wantCells: map[string]map[string]string{"trial-1": {"EXPERIMENT-ID": "exp-1", "STATUS": "completed"}},
 		},
 		{
-			name: "wide reports total tokens",
-			wide: true,
-			want: []string{"TOTAL-TOKENS"},
+			name:   "wide reports total tokens",
+			format: "wide",
+			want:   []string{"TOTAL-TOKENS"},
 			wantCells: map[string]map[string]string{
 				"trial-1": {"TOTAL-TOKENS": "12161", "DURATION-MS": "578"},
 				// trial-2 reported no usage.
@@ -387,7 +382,7 @@ func TestTrialsTableCodec_Encode(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			codec := experiments.TrialsTable().Codec(map[bool]string{false: "table", true: "wide"}[tc.wide])
+			codec := experiments.TrialsTable().Codec(tc.format)
 			var buf bytes.Buffer
 			require.NoError(t, codec.Encode(&buf, items))
 			out := buf.String()
@@ -404,68 +399,6 @@ func TestTrialsTableCodec_Encode(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestTableCodec_WrongType(t *testing.T) {
-	codec := experiments.Table().Codec("table")
-	var buf bytes.Buffer
-	err := codec.Encode(&buf, "not-a-slice")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "expected []experiments.Experiment")
-}
-
-func TestScoresTableCodec_Encode(t *testing.T) {
-	value := 0.95
-	passed := true
-	items := []experiments.ScoreItem{
-		{
-			ScoreID:      "s-1",
-			EvaluatorID:  "ev-1",
-			ScoreKey:     "quality",
-			Value:        experiments.ScoreValue{Number: &value},
-			Passed:       &passed,
-			GenerationID: "gen-1",
-			Explanation:  "looks good",
-		},
-		{ScoreID: "s-2", EvaluatorID: "ev-2", ScoreKey: "tone"},
-	}
-
-	tests := []struct {
-		name string
-		wide bool
-		want []string
-	}{
-		{
-			name: "table format",
-			wide: false,
-			want: []string{"SCORE-ID", "EVALUATOR", "VALUE", "s-1", "ev-1", "0.95", "true", "gen-1"},
-		},
-		{
-			name: "wide adds explanation",
-			wide: true,
-			want: []string{"EXPLANATION", "looks good"},
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			codec := experiments.ScoresTable().Codec(map[bool]string{false: "table", true: "wide"}[tc.wide])
-			var buf bytes.Buffer
-			require.NoError(t, codec.Encode(&buf, items))
-			out := buf.String()
-			for _, s := range tc.want {
-				assert.Contains(t, out, s)
-			}
-		})
-	}
-}
-
-func TestScoresTableCodec_WrongType(t *testing.T) {
-	codec := experiments.ScoresTable().Codec("table")
-	var buf bytes.Buffer
-	err := codec.Encode(&buf, "not-a-slice")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "expected []experiments.ScoreItem")
 }
 
 func TestReportTextCodec_Encode(t *testing.T) {

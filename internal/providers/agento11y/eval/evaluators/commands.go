@@ -295,12 +295,7 @@ func Table() cmdio.Table[eval.EvaluatorDefinition] {
 		{Header: "KIND", Content: func(r eval.EvaluatorDefinition) string { return r.Kind }},
 		{Header: "DESCRIPTION", Content: func(r eval.EvaluatorDefinition) string { return agento11yhttp.Truncate(r.Description, 40) }},
 		{Header: "OUTPUTS", Visible: cmdio.WideOnly, Content: func(r eval.EvaluatorDefinition) string { return strconv.Itoa(len(r.OutputKeys)) }},
-		{Header: "CREATED BY", Visible: cmdio.WideOnly, Content: func(r eval.EvaluatorDefinition) string {
-			if r.CreatedBy == "" {
-				return "-"
-			}
-			return r.CreatedBy
-		}},
+		{Header: "CREATED BY", Visible: cmdio.WideOnly, Content: func(r eval.EvaluatorDefinition) string { return cmdio.OrDash(r.CreatedBy) }},
 		{Header: "CREATED AT", Visible: cmdio.WideOnly, Content: func(r eval.EvaluatorDefinition) string { return agento11yhttp.FormatTime(r.CreatedAt) }},
 	}}
 }

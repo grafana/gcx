@@ -217,20 +217,8 @@ func SearchTable() cmdio.Table[SearchResult] {
 		{Header: "ID", Content: func(r SearchResult) string { return r.ConversationID }},
 		{Header: "TITLE", Content: func(r SearchResult) string { return agento11yhttp.Truncate(r.ConversationTitle, 40) }},
 		{Header: "GENERATIONS", Content: func(r SearchResult) string { return strconv.Itoa(r.GenerationCount) }},
-		{Header: "MODELS", Content: func(r SearchResult) string {
-			value := strings.Join(r.Models, ", ")
-			if value == "" {
-				return "-"
-			}
-			return value
-		}},
-		{Header: "AGENTS", Visible: cmdio.WideOnly, Content: func(r SearchResult) string {
-			value := strings.Join(r.Agents, ", ")
-			if value == "" {
-				return "-"
-			}
-			return value
-		}},
+		{Header: "MODELS", Content: func(r SearchResult) string { return cmdio.OrDash(strings.Join(r.Models, ", ")) }},
+		{Header: "AGENTS", Visible: cmdio.WideOnly, Content: func(r SearchResult) string { return cmdio.OrDash(strings.Join(r.Agents, ", ")) }},
 		{Header: "ERRORS", Visible: cmdio.WideOnly, Content: func(r SearchResult) string {
 			if r.ErrorCount > 0 {
 				return strconv.Itoa(r.ErrorCount)
