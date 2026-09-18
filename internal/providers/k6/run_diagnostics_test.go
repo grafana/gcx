@@ -165,6 +165,20 @@ func TestDownloadRunArtifactRedactsSignedURLFromLogsAndError(t *testing.T) {
 	assert.Contains(t, err.Error(), "?REDACTED")
 }
 
+func TestDownloadRunArtifactPreservesCancellationCause(t *testing.T) {
+	const secret = "credential-that-must-not-leak"
+	signedURL := "https://artifacts.example.test/a.png?X-Amz-Credential=" + secret
+	transport := diagnosticsRoundTripFunc(func(*http.Request) (*http.Response, error) {
+		return nil, context.Canceled
+	})
+
+	err := downloadRunArtifact(t.Context(), &http.Client{Transport: transport}, signedURL, filepath.Join(t.TempDir(), "a.png"))
+	require.Error(t, err)
+	require.ErrorIs(t, err, context.Canceled)
+	assert.NotContains(t, err.Error(), secret)
+	assert.Contains(t, err.Error(), "?REDACTED")
+}
+
 type sequenceRunGetter struct {
 	runs  []*TestRun
 	calls int

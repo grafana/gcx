@@ -20,17 +20,22 @@ func TestRequestRedactsQueryWithoutChangingOriginal(t *testing.T) {
 	assert.Equal(t, "https://artifacts.example.test/a.png?REDACTED", logRequest.URL.String())
 	assert.Equal(t, rawURL, req.URL.String())
 	assert.Equal(t, logRequest.URL.String(), secrets.URLString(req.Context(), req.URL))
+	requestErr := errors.New(`Get "` + rawURL + `": request failed for ` + req.URL.RawQuery)
+	redactedErr := secrets.Error(req.Context(), req.URL, requestErr)
 	assert.Equal(t,
 		`Get "https://artifacts.example.test/a.png?REDACTED": request failed for REDACTED`,
-		secrets.ErrorString(req.Context(), req.URL, errors.New(`Get "`+rawURL+`": request failed for `+req.URL.RawQuery)),
+		redactedErr.Error(),
 	)
+	require.ErrorIs(t, redactedErr, requestErr)
 	redirectErr := &url.Error{
 		Op:  "Get",
 		URL: "https://redirect.example.test/a.png?token=redirect-secret",
 		Err: errors.New("connection refused"),
 	}
+	redactedRedirectErr := secrets.Error(req.Context(), req.URL, redirectErr)
 	assert.Equal(t,
 		`Get "https://redirect.example.test/a.png?REDACTED": connection refused`,
-		secrets.ErrorString(req.Context(), req.URL, redirectErr),
+		redactedRedirectErr.Error(),
 	)
+	require.ErrorIs(t, redactedRedirectErr, redirectErr)
 }

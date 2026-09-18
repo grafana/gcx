@@ -32,30 +32,39 @@ func URLString(ctx context.Context, u *url.URL) string {
 	return clone.String()
 }
 
-// ErrorString returns err's message with occurrences of the request URL and
-// raw query replaced by their safe-to-log forms.
-func ErrorString(ctx context.Context, u *url.URL, err error) string {
+type redactedURLError struct {
+	message string
+	cause   error
+}
+
+func (e *redactedURLError) Error() string { return e.message }
+func (e *redactedURLError) Unwrap() error { return e.cause }
+
+// Error returns err with occurrences of the request URL and raw query replaced
+// by their safe-to-log forms. The returned error preserves err's cause chain.
+func Error(ctx context.Context, u *url.URL, err error) error {
 	if err == nil {
-		return ""
+		return nil
 	}
 	if u == nil {
-		return err.Error()
+		return err
 	}
 	if redact, _ := ctx.Value(redactURLQueryKey{}).(bool); !redact || u.RawQuery == "" {
-		return err.Error()
+		return err
 	}
 	message := strings.ReplaceAll(err.Error(), u.String(), URLString(ctx, u))
 	message = strings.ReplaceAll(message, u.RawQuery, redactedQuery)
 	var urlErr *url.Error
 	if !errors.As(err, &urlErr) || urlErr.URL == "" {
-		return message
+		return &redactedURLError{message: message, cause: err}
 	}
 	errorURL, parseErr := url.Parse(urlErr.URL)
 	if parseErr != nil || errorURL.RawQuery == "" {
-		return message
+		return &redactedURLError{message: message, cause: err}
 	}
 	message = strings.ReplaceAll(message, urlErr.URL, URLString(ctx, errorURL))
-	return strings.ReplaceAll(message, errorURL.RawQuery, redactedQuery)
+	message = strings.ReplaceAll(message, errorURL.RawQuery, redactedQuery)
+	return &redactedURLError{message: message, cause: err}
 }
 
 // Request returns a shallow clone whose URL is safe for request-dump logging.

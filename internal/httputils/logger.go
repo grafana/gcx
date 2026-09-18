@@ -57,7 +57,7 @@ func (t *LoggingRoundTripper) RoundTrip(req *http.Request) (*http.Response, erro
 
 	resp, err := t.Base.RoundTrip(req)
 	if err != nil {
-		logger.Warn("http error", "method", req.Method, "url", logURL, "error", secrets.ErrorString(req.Context(), req.URL, err))
+		logger.Warn("http error", "method", req.Method, "url", logURL, "error", secrets.Error(req.Context(), req.URL, err))
 		return nil, err
 	}
 
