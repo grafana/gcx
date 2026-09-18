@@ -3,6 +3,8 @@ package output
 import (
 	"strconv"
 	"strings"
+
+	"github.com/grafana/gcx/internal/shellquote"
 )
 
 // BuildPaginationCommand returns a shell command for fetching the next page of a
@@ -15,7 +17,7 @@ func BuildPaginationCommand(argv []string, limit int64, continueToken string) st
 		args = append(args, "--limit", strconv.FormatInt(limit, 10))
 	}
 	args = append(args, "--continue", continueToken)
-	return shellJoin(args)
+	return shellquote.Join(args)
 }
 
 // BuildListLimitCommand returns a runnable list command derived from the
@@ -26,7 +28,7 @@ func BuildPaginationCommand(argv []string, limit int64, continueToken string) st
 func BuildListLimitCommand(argv []string, limit int) string {
 	args := stripFlag(argv, "--limit")
 	args = append(args, "--limit", strconv.Itoa(limit))
-	return shellJoin(args)
+	return shellquote.Join(args)
 }
 
 func stripFlag(argv []string, flag string) []string {
@@ -45,33 +47,4 @@ func stripFlag(argv []string, flag string) []string {
 		out = append(out, arg)
 	}
 	return out
-}
-
-func shellJoin(argv []string) string {
-	parts := make([]string, len(argv))
-	for i, arg := range argv {
-		parts[i] = shellQuoteArg(arg)
-	}
-	return strings.Join(parts, " ")
-}
-
-func shellQuoteArg(s string) string {
-	if s != "" && isShellSafe(s) {
-		return s
-	}
-	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
-}
-
-func isShellSafe(s string) bool {
-	for _, r := range s {
-		switch {
-		case r >= 'a' && r <= 'z':
-		case r >= 'A' && r <= 'Z':
-		case r >= '0' && r <= '9':
-		case strings.ContainsRune("-_=+/:.,@%", r):
-		default:
-			return false
-		}
-	}
-	return true
 }

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	instrumentation "github.com/grafana/gcx/internal/providers/instrumentation"
+	"github.com/grafana/gcx/internal/shellquote"
 )
 
 // Format returns a runnable helm command string that installs
@@ -38,15 +39,9 @@ func Format(cluster string, fm instrumentation.FleetManagement, accessPolicyToke
 		sb.WriteString(" \\\n  --set ")
 		sb.WriteString(f.key)
 		sb.WriteByte('=')
-		sb.WriteString(shellQuote(f.val))
+		sb.WriteString(shellquote.Escape(f.val))
 	}
 
 	sb.WriteString(" \\\n  --wait")
 	return sb.String()
-}
-
-// shellQuote wraps val in single quotes, escaping any embedded single quotes
-// using the canonical POSIX form (end-quote, backslash-escaped quote, re-open-quote).
-func shellQuote(val string) string {
-	return "'" + strings.ReplaceAll(val, "'", `'\''`) + "'"
 }
