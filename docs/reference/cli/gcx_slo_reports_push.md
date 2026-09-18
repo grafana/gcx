@@ -1,8 +1,10 @@
 ## gcx slo reports push
 
-Push resources from files (Deprecated: use gcx resources push).
+Push report from files (Deprecated: use gcx resources push).
 
 ### Synopsis
+
+Push report from files.
 
 Deprecated: use gcx resources push reports.v1alpha1.slo.ext.grafana.app -p PATH instead.
 Writes update only an existing metadata.name UUID; an absent or unknown UUID creates a new resource.

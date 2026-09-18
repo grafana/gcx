@@ -26,8 +26,8 @@ Manage SLO reports.
 * [gcx slo reports delete](gcx_slo_reports_delete.md)	 - Delete SLO reports.
 * [gcx slo reports get](gcx_slo_reports_get.md)	 - Get a single SLO report.
 * [gcx slo reports list](gcx_slo_reports_list.md)	 - List SLO reports.
-* [gcx slo reports pull](gcx_slo_reports_pull.md)	 - Pull resources to disk (Deprecated: use gcx resources pull).
-* [gcx slo reports push](gcx_slo_reports_push.md)	 - Push resources from files (Deprecated: use gcx resources push).
+* [gcx slo reports pull](gcx_slo_reports_pull.md)	 - Pull SLO reports to disk (Deprecated: use gcx resources pull).
+* [gcx slo reports push](gcx_slo_reports_push.md)	 - Push report from files (Deprecated: use gcx resources push).
 * [gcx slo reports status](gcx_slo_reports_status.md)	 - Show SLO report status with combined SLI and error budget data.
 * [gcx slo reports timeline](gcx_slo_reports_timeline.md)	 - Render SLI values over time for SLO reports.
 

@@ -22,6 +22,7 @@ import (
 	"github.com/grafana/gcx/internal/resources/remote"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -107,8 +108,8 @@ func (o *pushOpts) Validate() error { return o.IO.Validate() }
 
 type pullOpts struct{ OutputDir string }
 
-func (o *pullOpts) setup(flags *pflag.FlagSet) {
-	flags.StringVarP(&o.OutputDir, "output-dir", "d", ".", "Directory to write resources to")
+func (o *pullOpts) setup(flags *pflag.FlagSet, label string) {
+	flags.StringVarP(&o.OutputDir, "output-dir", "d", ".", fmt.Sprintf("Directory to write %s to", label))
 }
 
 // PushCommand is the legacy file-at-a-time front end to remote.Pusher.
@@ -117,12 +118,14 @@ func PushCommand[T adapter.ResourceNamer](binding providers.BoundResource[T], la
 	opts := &pushOpts{}
 	cmd := &cobra.Command{
 		Use: "push FILE...", Args: cobra.MinimumNArgs(1),
-		Short: "Push resources from files (Deprecated: use gcx resources push).",
-		Long: fmt.Sprintf(`Deprecated: use gcx resources push %s -p PATH instead.
+		Short: fmt.Sprintf("Push %s from files (Deprecated: use gcx resources push).", label),
+		Long: fmt.Sprintf(`Push %s from files.
+
+Deprecated: use gcx resources push %s -p PATH instead.
 Writes update only an existing metadata.name UUID; an absent or unknown UUID creates a new resource.
 Manifests may omit apiVersion and kind; this command supplies its resource type.
 This compatibility command retains its file-at-a-time results and local-only --dry-run preview.
-The preview shows manifest identities only; it does not resolve the remote UUID or determine create versus update.`, selector),
+The preview shows manifest identities only; it does not resolve the remote UUID or determine create versus update.`, label, selector),
 		RunE: func(cmd *cobra.Command, paths []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
@@ -217,9 +220,11 @@ func PullCommand[T adapter.ResourceNamer](binding providers.BoundResource[T], la
 	opts := &pullOpts{}
 	cmd := &cobra.Command{
 		Use:   "pull",
-		Short: "Pull resources to disk (Deprecated: use gcx resources pull).",
-		Long: fmt.Sprintf(`Deprecated: use gcx resources pull %s -p PATH -o yaml instead.
-This compatibility command retains its Kind/name.yaml layout.`, selector),
+		Short: fmt.Sprintf("Pull %s to disk (Deprecated: use gcx resources pull).", label),
+		Long: fmt.Sprintf(`Pull %s to disk.
+
+Deprecated: use gcx resources pull %s -p PATH -o yaml instead.
+This compatibility command retains its Kind/name.yaml layout.`, label, selector),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
 			crud, _, err := binding.Load(ctx)
@@ -257,7 +262,7 @@ This compatibility command retains its Kind/name.yaml layout.`, selector),
 			})
 		},
 	}
-	opts.setup(cmd.Flags())
+	opts.setup(cmd.Flags(), label)
 	return cmd
 }
 
@@ -301,5 +306,14 @@ func (c *pushClient) Update(ctx context.Context, desc resources.Descriptor, obj 
 		return nil, fmt.Errorf("failed to update %s %s: %w", c.label, obj.GetName(), err)
 	}
 	c.action, c.result = "updated", result
+	return result, err
+}
+
+// Get preserves legacy lookup diagnostics while letting NotFound reach the pusher.
+func (c *pushClient) Get(ctx context.Context, desc resources.Descriptor, name string, opts metav1.GetOptions) (*unstructured.Unstructured, error) {
+	result, err := c.PushClient.Get(ctx, desc, name, opts)
+	if err != nil && !apierrors.IsNotFound(err) {
+		return nil, fmt.Errorf("failed to check %s %s: %w", c.label, name, err)
+	}
 	return result, err
 }

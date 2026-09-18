@@ -522,3 +522,28 @@ func TestReportsPushPreservesLegacyIdentity(t *testing.T) {
 		}
 	}
 }
+
+func TestReportsPushLookupErrorIdentifiesResource(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer srv.Close()
+	file := writeReportManifest(t, t.TempDir(), "resource.yaml", "Existing", "denied-uuid")
+	_, _, err := runReports(t, srv.URL, false, "", "push", file)
+	require.ErrorContains(t, err, "failed to check report denied-uuid")
+}
+func TestReportsTransferHelpNamesResource(t *testing.T) {
+	for _, verb := range []string{"push", "pull"} {
+		t.Run(verb, func(t *testing.T) {
+			stdout, _, err := runReports(t, "", false, "", verb, "--help")
+			require.NoError(t, err)
+			if verb == "push" {
+				assert.Contains(t, stdout, "Push report from files")
+			} else {
+				assert.Contains(t, stdout, "Pull SLO reports to disk")
+				assert.Contains(t, stdout, "Directory to write SLO reports to")
+			}
+		})
+	}
+}
