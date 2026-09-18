@@ -34,6 +34,7 @@ func newListCommand(loader fleet.ConfigLoader) *cobra.Command {
 	opts := &listOpts{}
 	cmd := &cobra.Command{
 		Use:   "list",
+		Args:  cobra.NoArgs,
 		Short: "List all clusters with their instrumentation status",
 		Long: `List all clusters with their K8s monitoring configuration and observed status.
 

@@ -29,9 +29,16 @@ func TestUsersListFieldSelection(t *testing.T) {
 		Email:    "ward@example.com",
 	}}}
 
-	for _, tc := range []struct{ fields, wantWarning string }{
-		{"username,email", "spec.username for username; spec.email for email"},
-		{"spec.username,spec.email", ""},
+	for _, tc := range []struct {
+		fields      string
+		wantWarning string
+		wantJSON    string
+	}{
+		{"username,email", "spec.username for username; spec.email for email", `[{"email":null,"username":null}]`},
+		{"spec.username,spec.email", "", `[{"spec.email":"ward@example.com","spec.username":"ward"}]`},
+		{"pk", "metadata.name", `[{"pk":null}]`},
+		{"spec.pk", "metadata.name", `[{"spec.pk":null}]`},
+		{"metadata.name", "", `[{"metadata.name":"U123"}]`},
 	} {
 		t.Run(tc.fields, func(t *testing.T) {
 			cmd := newUsersCommand(&fakeLoader{client: client})
@@ -42,13 +49,21 @@ func TestUsersListFieldSelection(t *testing.T) {
 
 			err := cmd.ExecuteContext(context.Background())
 			require.NoError(t, err)
+			assert.JSONEq(t, tc.wantJSON, stdout.String())
 			if tc.wantWarning != "" {
 				assert.Contains(t, stderr.String(), tc.wantWarning)
-				assert.JSONEq(t, `[{"email":null,"username":null}]`, stdout.String())
 				return
 			}
 			assert.Empty(t, stderr.String())
-			assert.JSONEq(t, `[{"spec.email":"ward@example.com","spec.username":"ward"}]`, stdout.String())
 		})
 	}
+}
+
+func TestUsersListRejectsPositionalArgs(t *testing.T) {
+	resetAgentMode(t)
+
+	cmd := newUsersCommand(&fakeLoader{client: &fieldSelectOnCallAPI{}})
+	cmd.SetArgs([]string{"list", "unexpected"})
+
+	require.Error(t, cmd.ExecuteContext(context.Background()))
 }

@@ -17,6 +17,13 @@ import (
 //nolint:modernize // boolVal(x) is clearer than new(*bool) + dereference assignment in test data.
 func boolVal(b bool) *bool { return &b }
 
+func TestListCommandRejectsPositionalArgs(t *testing.T) {
+	cmd := newListCommand(nil)
+	cmd.SetArgs([]string{"unexpected"})
+
+	require.Error(t, cmd.ExecuteContext(context.Background()))
+}
+
 func TestRunList(t *testing.T) {
 	tests := []struct {
 		name        string
