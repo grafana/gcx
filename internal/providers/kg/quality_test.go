@@ -109,7 +109,7 @@ func TestClient_ListQualityReports(t *testing.T) {
 	assert.Equal(t, 60, page.Content[0].QualityPercent)
 }
 
-func TestQualityReportListTableCodec_Encode(t *testing.T) {
+func TestQualityReportListTable_Encode(t *testing.T) {
 	codec := kg.QualityReportListTable().Codec("table")
 
 	var buf bytes.Buffer

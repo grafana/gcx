@@ -12,7 +12,7 @@ import (
 )
 
 func TestTableGolden(t *testing.T) {
-	rules := []unstructured.Unstructured{ruleObj("mixed-rules", []map[string]any{{"name": "group", "rules": []any{map[string]any{"alert": "Alert"}, map[string]any{"record": "metric"}}}}), ruleObj("empty", nil)}
+	rules := []unstructured.Unstructured{ruleObj("mixed-rules", []any{map[string]any{"name": "group", "rules": []any{map[string]any{"alert": "Alert"}, map[string]any{"record": "metric"}}}}), ruleObj("empty", nil)}
 	for _, tc := range []struct {
 		name  string
 		codec format.Codec
