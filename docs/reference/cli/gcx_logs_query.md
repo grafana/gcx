@@ -18,7 +18,10 @@ open it in your browser after the query succeeds.
 
 Before executing, a pre-flight index-stats check estimates the bytes this
 query would scan and prints a non-blocking warning if it exceeds
---stats-warn-bytes (default 1GiB). Use --skip-stats to disable this check.
+--stats-warn-bytes (default 1GiB). Set --stats-max-bytes to refuse to run the
+query at all above that many bytes — this is blocking, so unlike the default
+warn-only check it does add the pre-flight call's latency to the command.
+Use --skip-stats to disable both checks entirely.
 Only the query's stream selector is used for the estimate, since Loki's index
 tracks streams, not line filters or parsing stages. The checked window is
 widened by any range-vector duration or offset in EXPR (e.g. '[24h]',
@@ -63,7 +66,8 @@ gcx logs query [EXPR] [flags]
   -o, --output string             Output format. One of: agents, json, raw, table, wide, yaml (default "table")
       --share-link                Print the Grafana Explore URL for the executed query to stderr
       --since string              Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
-      --skip-stats                Skip the index-stats pre-flight check
+      --skip-stats                Skip the index-stats pre-flight check entirely (also bypasses --stats-max-bytes)
+      --stats-max-bytes string    Refuse to run the query (blocking) if index-stats reports more than this many bytes would be scanned; unset disables this check (e.g. '5GiB')
       --stats-warn-bytes string   Warn (non-blocking) if index-stats reports more than this many bytes would be scanned (e.g. '500MiB', '2GiB') (default "1GiB")
       --step string               Query step (e.g., '15s', '1m')
       --to string                 End time (RFC3339, Unix timestamp, or relative like 'now')

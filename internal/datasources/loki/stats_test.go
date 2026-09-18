@@ -1,10 +1,18 @@
 package loki_test
 
 import (
+	"bytes"
+	"net/http"
+	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/datasources/loki"
+	"github.com/grafana/gcx/internal/providers"
+	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // Expression resolution itself (positional arg vs --expr, both/neither
@@ -48,4 +56,76 @@ func TestStatsCmd_Construction(t *testing.T) {
 			t.Errorf("expected --%s flag to be registered", flag)
 		}
 	}
+}
+
+func writeStatsTestConfig(t *testing.T, serverURL string) string {
+	t.Helper()
+	f, err := os.CreateTemp(t.TempDir(), "gcx-loki-stats-config-*.yaml")
+	require.NoError(t, err)
+	_, err = f.WriteString(`
+contexts:
+  default:
+    grafana:
+      server: "` + serverURL + `"
+      token: "test-token"
+      org-id: 1
+      tls:
+        insecure-skip-verify: true
+current-context: default
+`)
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+	return f.Name()
+}
+
+// execStatsCmd executes `stats` against a fake index-stats response and
+// returns stdout/stderr separately, so the header-routing test can assert on
+// each stream in isolation the way a script piping only stdout would see it.
+func execStatsCmd(t *testing.T, args ...string) (string, string, error) {
+	t.Helper()
+
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/bootdata" {
+			http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, writeErr := w.Write([]byte(`{"streams":6,"chunks":316,"bytes":37748736,"entries":88531}`))
+		assert.NoError(t, writeErr)
+	}))
+	defer srv.Close()
+
+	cfgFile := writeStatsTestConfig(t, srv.URL)
+	loader := &providers.ConfigLoader{}
+	loader.SetConfigFile(cfgFile)
+
+	cmd := loki.StatsCmd(loader)
+	root := &cobra.Command{Use: "test"}
+	root.AddCommand(cmd)
+
+	var outBuf, errBuf bytes.Buffer
+	root.SetOut(&outBuf)
+	root.SetErr(&errBuf)
+	root.SetArgs(append([]string{"stats", "-d", "loki-uid", `{app="foo"}`}, args...))
+
+	err := root.Execute()
+	return outBuf.String(), errBuf.String(), err
+}
+
+func TestStatsCmd_BytesHeaderRoutesByFormat(t *testing.T) {
+	t.Run("table: header on stdout, above the table, nothing on stderr", func(t *testing.T) {
+		stdout, stderr, err := execStatsCmd(t, "-o", "table")
+		require.NoError(t, err)
+		assert.Contains(t, stdout, "36 MiB would be scanned")
+		assert.Contains(t, stdout, "Bytes")
+		assert.Empty(t, stderr)
+	})
+
+	t.Run("json: stdout is clean valid JSON, header goes to stderr instead", func(t *testing.T) {
+		stdout, stderr, err := execStatsCmd(t, "-o", "json")
+		require.NoError(t, err)
+		assert.NotContains(t, stdout, "would be scanned")
+		assert.Contains(t, stdout, `"bytes"`)
+		assert.Contains(t, stderr, "36 MiB would be scanned")
+	})
 }
