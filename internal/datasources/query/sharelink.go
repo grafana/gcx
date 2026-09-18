@@ -76,3 +76,79 @@ func HandleExploreLink(cmd *cobra.Command, opts ExploreLinkOpts, url string, una
 	}
 	return nil
 }
+
+// DrilldownLinkOpts controls optional Logs Drilldown link output for
+// query-like commands. It mirrors ExploreLinkOpts exactly, as a separate,
+// independently-settable pair of flags so a command can offer both an
+// Explore link and a Drilldown link at once.
+type DrilldownLinkOpts struct {
+	ShareLink bool
+	Open      bool
+}
+
+// Setup registers the standard drilldown-link/open-drilldown flags for
+// query-like commands.
+func (opts *DrilldownLinkOpts) Setup(flags *pflag.FlagSet, subject string) {
+	flags.BoolVar(&opts.ShareLink, "drilldown-link", false, "Print the Grafana Logs Drilldown URL for the "+subject+" to stderr")
+	flags.BoolVar(&opts.Open, "open-drilldown", false, "Open the "+subject+" in Grafana Logs Drilldown")
+}
+
+// Enabled reports whether either share/open behavior was requested.
+func (opts *DrilldownLinkOpts) Enabled() bool {
+	return opts.ShareLink || opts.Open
+}
+
+// DrilldownMessages returns the standard unavailable/open-failed messages for
+// a successfully completed command subject.
+func DrilldownMessages(subject string) (string, string) {
+	return subject + " succeeded, but no Logs Drilldown URL could be built for this expression; showing the Explore link instead",
+		subject + " succeeded, but could not open browser"
+}
+
+// HandleDrilldownLink prints and/or opens a Logs Drilldown URL. Missing URLs
+// are warned about but do not fail the command after successful data
+// retrieval — this is expected whenever the query expression doesn't
+// decompose into Drilldown's simple filter model (aggregations, parser
+// stages, ...).
+func HandleDrilldownLink(cmd *cobra.Command, opts DrilldownLinkOpts, url string, unavailableMsg, failedOpenMsg string) error {
+	if !opts.Enabled() {
+		return nil
+	}
+	if url == "" {
+		cmdio.Warning(cmd.ErrOrStderr(), "%s", unavailableMsg)
+		return nil
+	}
+	if opts.ShareLink {
+		cmdio.Info(cmd.ErrOrStderr(), "Logs Drilldown link: %s", url)
+	}
+	if opts.Open {
+		if err := deeplink.Open(url); err != nil {
+			cmdio.Warning(cmd.ErrOrStderr(), "%s: %v", failedOpenMsg, err)
+		}
+	}
+	return nil
+}
+
+// HandleDrilldownLinkWithExploreFallback prints/opens a Logs Drilldown URL,
+// and — when drilldownURL couldn't be built — makes DrilldownMessages'
+// "showing the Explore link instead" promise literal by actually
+// printing/opening the Explore URL, using the same share/open intent the
+// caller gave to the Drilldown flags. exploreEnabled should be the caller's
+// own ExploreLinkOpts.Enabled(): when the Explore link was already
+// requested (and thus already shown) via its own flags, the fallback is
+// skipped to avoid printing it twice.
+func HandleDrilldownLinkWithExploreFallback(
+	cmd *cobra.Command,
+	drilldownOpts DrilldownLinkOpts, drilldownURL, drilldownUnavailableMsg, drilldownFailedOpenMsg string,
+	exploreEnabled bool,
+	exploreURL, exploreUnavailableMsg, exploreFailedOpenMsg string,
+) error {
+	if err := HandleDrilldownLink(cmd, drilldownOpts, drilldownURL, drilldownUnavailableMsg, drilldownFailedOpenMsg); err != nil {
+		return err
+	}
+	if drilldownURL != "" || !drilldownOpts.Enabled() || exploreEnabled {
+		return nil
+	}
+	fallback := ExploreLinkOpts(drilldownOpts)
+	return HandleExploreLink(cmd, fallback, exploreURL, exploreUnavailableMsg, exploreFailedOpenMsg)
+}
