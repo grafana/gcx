@@ -4,8 +4,9 @@ List threshold rules for a category (request or resource).
 
 ### Synopsis
 
-Lists the structured per-category threshold view, split into custom and global
-thresholds. Only the request and resource categories exist in v1.
+Lists threshold rules for one category. Machine formats return an items
+envelope, with each item tagged as custom or global in its scope field. Only the
+request and resource categories exist in v1.
 
 ```
 gcx kg thresholds list [flags]
