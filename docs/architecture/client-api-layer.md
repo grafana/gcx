@@ -441,7 +441,7 @@ values through constructor chains.
 
 `RequestResponseLoggingRoundTripper` is the innermost layer in both tiers, so
 the dump shows the bearer token, the caller id, and the user agent that outer
-layers add. A failed dump logs a Warn record with the reason.
+layers add. A failed dump logs a Debug record with the reason.
 
 ### `response.go` — Server Response Helpers
 

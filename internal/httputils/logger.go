@@ -37,7 +37,7 @@ func (rt RequestResponseLoggingRoundTripper) RoundTrip(req *http.Request) (*http
 	// can differ when the transport uses HTTP/2.
 	reqStr, err := httputil.DumpRequestOut(req, true)
 	if err != nil {
-		logger.Warn("cannot dump http request", "err", err)
+		logger.Debug("cannot dump http request", "error", err)
 	} else {
 		logger.Debug(requestDumpMessage + "\n" + string(reqStr))
 	}
@@ -51,7 +51,7 @@ func (rt RequestResponseLoggingRoundTripper) RoundTrip(req *http.Request) (*http
 
 	respStr, err := httputil.DumpResponse(resp, true)
 	if err != nil {
-		logger.Warn("cannot dump http response", "err", err)
+		logger.Debug("cannot dump http response", "error", err)
 	} else {
 		logger.Debug(responseDumpMessage + "\n" + string(respStr))
 	}
