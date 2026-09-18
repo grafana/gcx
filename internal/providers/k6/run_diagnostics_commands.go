@@ -430,7 +430,7 @@ func downloadRunArtifact(ctx context.Context, httpClient *http.Client, rawURL, o
 	}
 	response, err := httpClient.Do(request)
 	if err != nil {
-		return fmt.Errorf("download request failed: %s", secrets.ErrorString(downloadCtx, request.URL, err))
+		return fmt.Errorf("download request failed: %w", secrets.Error(downloadCtx, request.URL, err))
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {

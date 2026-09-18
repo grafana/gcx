@@ -135,7 +135,7 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 			attrs = append(attrs, "status", resp.StatusCode)
 		}
 		if err != nil {
-			attrs = append(attrs, "error", secrets.ErrorString(req.Context(), req.URL, err))
+			attrs = append(attrs, "error", secrets.Error(req.Context(), req.URL, err))
 		}
 		logger.Warn("retrying HTTP request", attrs...)
 
