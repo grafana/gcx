@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/cmd/gcx/datasources"
 	"github.com/grafana/gcx/cmd/gcx/dev"
+	docscmd "github.com/grafana/gcx/cmd/gcx/docs"
 	"github.com/grafana/gcx/cmd/gcx/helptree"
 	instrumentationcmd "github.com/grafana/gcx/cmd/gcx/instrumentation"
 	logincmd "github.com/grafana/gcx/cmd/gcx/login"
@@ -250,6 +251,7 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	rootCmd.AddCommand(dev.Command())
 	rootCmd.AddCommand(setup.Command())
 	rootCmd.AddCommand(versioncmd.Command())
+	rootCmd.AddCommand(docscmd.Command())
 	rootCmd.AddCommand(instrumentationcmd.Command())
 	rootCmd.AddCommand(datasources.Command())
 	rootCmd.AddCommand(resources.Command())
