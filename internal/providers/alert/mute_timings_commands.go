@@ -1,16 +1,12 @@
 package alert
 
 import (
-	"errors"
-	"io"
 	"strconv"
 	"strings"
 
-	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
-	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -39,7 +35,7 @@ type muteTimingsListOpts struct {
 }
 
 func (o *muteTimingsListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &MuteTimingsTableCodec{})
+	cmdio.RegisterTable(&o.IO, MuteTimingsTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for unlimited)")
@@ -75,25 +71,12 @@ func newMuteTimingsListCommand(loader GrafanaConfigLoader) *cobra.Command {
 	return cmd
 }
 
-// MuteTimingsTableCodec renders mute timings as a tabular table.
-type MuteTimingsTableCodec struct{}
-
-func (c *MuteTimingsTableCodec) Format() format.Format { return "table" }
-
-func (c *MuteTimingsTableCodec) Encode(w io.Writer, v any) error {
-	timings, ok := v.([]MuteTiming)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []MuteTiming")
-	}
-	t := style.NewTable("NAME", "INTERVALS", "SUMMARY")
-	for _, mt := range timings {
-		t.Row(mt.Name, strconv.Itoa(len(mt.TimeIntervals)), summarizeIntervals(mt.TimeIntervals))
-	}
-	return t.Render(w)
-}
-
-func (c *MuteTimingsTableCodec) Decode(io.Reader, any) error {
-	return errors.New("table format does not support decoding")
+func MuteTimingsTable() cmdio.Table[MuteTiming] {
+	return cmdio.Table[MuteTiming]{Columns: []cmdio.Column[MuteTiming]{
+		{Header: "NAME", Content: func(r MuteTiming) string { return r.Name }},
+		{Header: "INTERVALS", Content: func(r MuteTiming) string { return strconv.Itoa(len(r.TimeIntervals)) }},
+		{Header: "SUMMARY", Content: func(r MuteTiming) string { return summarizeIntervals(r.TimeIntervals) }},
+	}}
 }
 
 func summarizeIntervals(intervals []TimeInterval) string {

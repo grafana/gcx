@@ -1,0 +1,3 @@
+NAMESPACE   GROUP    INTERVAL  RULES
+production  latency  1m        2
+						-         0
