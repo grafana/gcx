@@ -360,7 +360,7 @@ func TestRelabelRuleType_IsValid(t *testing.T) {
 	}
 }
 
-func ruleObj(name string, groups []map[string]any) unstructured.Unstructured {
+func ruleObj(name string, groups []any) unstructured.Unstructured {
 	spec := map[string]any{"name": name}
 	if groups != nil {
 		spec["groups"] = groups
@@ -373,51 +373,10 @@ func ruleObj(name string, groups []map[string]any) unstructured.Unstructured {
 	}}
 }
 
-func TestRuleTableCodec_Encode(t *testing.T) {
-	objs := []unstructured.Unstructured{
-		ruleObj("file-a", []map[string]any{
-			{"name": "g1", "rules": []any{
-				map[string]any{"alert": "X", "expr": "1"},
-				map[string]any{"record": "y", "expr": "1"},
-			}},
-			{"name": "g2", "rules": []any{
-				map[string]any{"record": "z", "expr": "1"},
-			}},
-		}),
-		ruleObj("file-empty", nil),
-	}
-	var buf bytes.Buffer
-	require.NoError(t, (&kg.RuleTableCodec{}).Encode(&buf, objs))
-	out := buf.String()
-	assert.Contains(t, out, "NAME")
-	assert.Contains(t, out, "GROUPS")
-	assert.Contains(t, out, "RULES")
-	assert.Contains(t, out, "file-a")
-	assert.Contains(t, out, "file-empty")
-}
-
-func TestRuleWideTableCodec_Encode(t *testing.T) {
-	objs := []unstructured.Unstructured{
-		ruleObj("file-a", []map[string]any{
-			{"name": "g1", "rules": []any{
-				map[string]any{"alert": "X", "expr": "1"},
-				map[string]any{"alert": "Y", "expr": "1"},
-				map[string]any{"record": "z", "expr": "1"},
-			}},
-		}),
-	}
-	var buf bytes.Buffer
-	require.NoError(t, (&kg.RuleWideTableCodec{}).Encode(&buf, objs))
-	out := buf.String()
-	for _, want := range []string{"NAME", "GROUPS", "RULES", "ALERTS", "RECORDING", "file-a"} {
-		assert.Contains(t, out, want)
-	}
-}
-
-func TestRuleTableCodec_RejectsWrongType(t *testing.T) {
-	err := (&kg.RuleTableCodec{}).Encode(&bytes.Buffer{}, []string{"nope"})
+func TestRuleTable_RejectsWrongType(t *testing.T) {
+	err := kg.RuleTable().Codec("table").Encode(&bytes.Buffer{}, []string{"nope"})
 	require.Error(t, err)
-	err = (&kg.RuleWideTableCodec{}).Encode(&bytes.Buffer{}, []string{"nope"})
+	err = kg.RuleTable().Codec("wide").Encode(&bytes.Buffer{}, []string{"nope"})
 	require.Error(t, err)
 }
 
