@@ -38,6 +38,7 @@ type getOpts struct {
 	MetricsMode string
 	Filters     []string
 	GroupBy     []string
+	KG          kgFlags
 }
 
 func (o *getOpts) setup(flags *pflag.FlagSet) {
@@ -53,6 +54,7 @@ func (o *getOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&o.MetricsMode, "metrics-mode", metricsModeAuto, "Span-metrics family. One of: auto (probes the stack), v3 (traces_span_metrics_*), tempo (traces_spanmetrics_*), or otel (bare calls_total + duration_seconds_bucket)")
 	flags.StringArrayVar(&o.Filters, "filter", nil, "Scope the RED snapshot to series matching a label matcher, e.g. --filter k8s_cluster_name=prod-us (repeatable). Use to break a multi-cluster/multi-region service down one cluster at a time; the label must exist on the span metrics")
 	flags.StringSliceVar(&o.GroupBy, "group-by", nil, "Pivot the RED snapshot into one row per distinct value of a label, e.g. --group-by k8s_cluster_name (comma-separated or repeatable). Surfaces outliers across clusters/regions without naming each one; the label must exist on the span metrics")
+	o.KG.register(flags)
 }
 
 func (o *getOpts) Validate(cmd *cobra.Command) error {
@@ -69,6 +71,9 @@ func (o *getOpts) Validate(cmd *cobra.Command) error {
 		return fail.NewCommandUsageError(cmd, "", err)
 	}
 	if _, _, err := resolveMetricsMode(o.MetricsMode); err != nil {
+		return fail.NewCommandUsageError(cmd, "", err)
+	}
+	if _, err := o.KG.resolve(); err != nil {
 		return fail.NewCommandUsageError(cmd, "", err)
 	}
 	return nil
@@ -226,6 +231,7 @@ func runGet(loader *providers.ConfigLoader, opts *getOpts) func(*cobra.Command, 
 			return err
 		}
 		activation.Gate(ctx, cfg, cmd.ErrOrStderr())
+		cat := opts.KG.catalog(cfg)
 
 		datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "prometheus")
 		if err != nil {
@@ -258,27 +264,16 @@ func runGet(loader *providers.ConfigLoader, opts *getOpts) func(*cobra.Command, 
 		}
 
 		if len(groupBy) > 0 {
-			grouped, err := fetchGroupedServiceDetail(ctx, client, cfg.GrafanaURL, datasourceUID, dsquery.OrgID(cfgCtx), namespace, name, opts.Since, kinds, mode, matchers, groupBy)
-			if err != nil {
-				return err
-			}
-			notFound := !anyGroupHasTraffic(grouped.Items)
-			if notFound {
-				emitNoDataHint(cmd.ErrOrStderr(), namespace, name)
-			}
-			if err := opts.IO.Encode(cmd.OutOrStdout(), grouped); err != nil {
-				return err
-			}
-			if notFound {
-				return notFoundEmitted(cmd.ErrOrStderr(),
-					fmt.Sprintf("service %q has no telemetry in the requested window (for group-by %s)", jobLabel(namespace, name), strings.Join(groupBy, ", ")))
-			}
-			return nil
+			return emitGroupedServiceDetail(ctx, cmd, opts, client, cat, cfg.GrafanaURL, datasourceUID, dsquery.OrgID(cfgCtx), namespace, name, kinds, mode, matchers, groupBy)
 		}
 
 		detail, err := fetchServiceDetail(ctx, client, cfg.GrafanaURL, datasourceUID, dsquery.OrgID(cfgCtx), namespace, name, opts.Since, kinds, mode, matchers)
 		if err != nil {
 			return err
+		}
+		if cat != nil {
+			startMs, endMs := windowMs(opts.Since)
+			detail.Service.KG = warnKGLookup(cmd.ErrOrStderr(), cat.lookupVerbose(ctx, name, startMs, endMs))
 		}
 		notFound := !detail.Service.Instrumented && !detail.RED.HasTraffic
 		if notFound {
@@ -296,6 +291,32 @@ func runGet(loader *providers.ConfigLoader, opts *getOpts) func(*cobra.Command, 
 		}
 		return nil
 	}
+}
+
+// emitGroupedServiceDetail is runGet's --group-by path, split out of the
+// main RunE closure so its own error/not-found handling doesn't nest inside
+// runGet's `if len(groupBy) > 0` — kept as one branch there instead of five.
+func emitGroupedServiceDetail(ctx context.Context, cmd *cobra.Command, opts *getOpts, client *prometheus.Client, cat *kgCatalog, grafanaURL, datasourceUID string, orgID int64, namespace, name string, kinds []string, mode MetricsMode, matchers []Matcher, groupBy []string) error {
+	grouped, err := fetchGroupedServiceDetail(ctx, client, grafanaURL, datasourceUID, orgID, namespace, name, opts.Since, kinds, mode, matchers, groupBy)
+	if err != nil {
+		return err
+	}
+	if cat != nil {
+		startMs, endMs := windowMs(opts.Since)
+		grouped.Service.KG = warnKGLookup(cmd.ErrOrStderr(), cat.lookupVerbose(ctx, name, startMs, endMs))
+	}
+	notFound := !anyGroupHasTraffic(grouped.Items)
+	if notFound {
+		emitNoDataHint(cmd.ErrOrStderr(), namespace, name)
+	}
+	if err := opts.IO.Encode(cmd.OutOrStdout(), grouped); err != nil {
+		return err
+	}
+	if notFound {
+		return notFoundEmitted(cmd.ErrOrStderr(),
+			fmt.Sprintf("service %q has no telemetry in the requested window (for group-by %s)", jobLabel(namespace, name), strings.Join(groupBy, ", ")))
+	}
+	return nil
 }
 
 // resolveNamespaceForBareName queries the target_info union for any series

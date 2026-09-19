@@ -489,6 +489,9 @@ func TestGetOptsValidate(t *testing.T) {
 		if o.Kind == "" {
 			o.Kind = "inbound"
 		}
+		if o.KG.Mode == "" {
+			o.KG.Mode = string(kgModeAuto)
+		}
 		return o
 	}
 	tests := []struct {
