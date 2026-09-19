@@ -21,6 +21,7 @@ import (
 
 type pyroscopeMetricsOpts struct {
 	shared      dsquery.SharedOpts
+	explore     dsquery.ExploreLinkOpts
 	Datasource  string
 	ProfileType string
 	GroupBy     []string
@@ -35,6 +36,7 @@ func (opts *pyroscopeMetricsOpts) setup(flags *pflag.FlagSet) {
 	opts.shared.IO.RegisterCustomCodec("graph", &pyroscopeSeriesGraphCodec{})
 	opts.shared.IO.DefaultFormat("table")
 	opts.shared.IO.BindFlags(flags)
+	opts.explore.Setup(flags, "profile metrics query")
 
 	flags.StringVar(&opts.shared.From, "from", "", "Start time (RFC3339, Unix timestamp, or relative like 'now-1h')")
 	flags.StringVar(&opts.shared.To, "to", "", "End time (RFC3339, Unix timestamp, or relative like 'now')")
@@ -98,6 +100,10 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds \
     --since 1h --step 1m
 
+  # Open the metrics query in Grafana Explore
+  gcx datasources pyroscope metrics '{service_name="frontend"}' \
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h --open
+
   # Line chart output
   gcx datasources pyroscope metrics '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds \
@@ -140,10 +146,8 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 				groupBy = []string{"service_name"}
 			}
 
-			// --top mode queries the full range to get one bucket per series.
-			if opts.Top && (start.IsZero() || end.IsZero()) {
-				start, end = pyroscope.DefaultTimeRange(start, end)
-			}
+			// Resolve the default once so the request and Explore link use identical bounds.
+			start, end = pyroscope.DefaultTimeRange(start, end)
 
 			stepSeconds, err := resolveMetricsStepSeconds(ctx, cfg, datasourceUID, opts.Top, start, end, step)
 			if err != nil {
@@ -171,13 +175,24 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 				return fmt.Errorf("metrics query failed: %w", err)
 			}
 
+			var omitted []string
 			if opts.Top {
-				topResp := pyroscope.AggregateTopSeries(resp, opts.ProfileType, groupBy, int(opts.Limit), start.UnixMilli())
-				return opts.shared.IO.Encode(cmd.OutOrStdout(), topResp)
+				omitted = append(omitted, "--top")
 			}
-
-			resp.StepSeconds = stepSeconds
-			return opts.shared.IO.Encode(cmd.OutOrStdout(), resp)
+			if opts.Aggregation != "" {
+				omitted = append(omitted, "--aggregation")
+			}
+			if opts.shared.Step != "" {
+				omitted = append(omitted, "--step")
+			}
+			return encodeAndHandleExplore(cmd, func() error {
+				if opts.Top {
+					topResp := pyroscope.AggregateTopSeries(resp, opts.ProfileType, groupBy, int(opts.Limit), start.UnixMilli())
+					return opts.shared.IO.Encode(cmd.OutOrStdout(), topResp)
+				}
+				resp.StepSeconds = stepSeconds
+				return opts.shared.IO.Encode(cmd.OutOrStdout(), resp)
+			}, opts.explore, MetricsExploreURL(cfg.Host, datasourceUID, dsquery.OrgID(cfgCtx), req), omitted)
 		},
 	}
 

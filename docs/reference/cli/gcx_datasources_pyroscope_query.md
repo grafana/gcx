@@ -25,6 +25,10 @@ gcx datasources pyroscope query [EXPR] [flags]
   gcx datasources pyroscope query '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h
 
+  # Share the profile in Grafana Explore
+  gcx datasources pyroscope query '{service_name="frontend"}' \
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h --share-link
+
   # Output as JSON
   gcx datasources pyroscope query -d UID '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds -o json
@@ -79,11 +83,13 @@ gcx datasources pyroscope query [EXPR] [flags]
       --jq string                     jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string                   Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --max-nodes int                 Maximum nodes in the result (defaults: pprof 0/unlimited, dot 100-node call graph rendered server-side, 50000 for all other formats)
+      --open                          Open the profile query in Grafana Explore
   -o, --output string                 Output format. One of: agents, dot, graph, json, pprof, table, wide, yaml (default "table")
       --pprof-overwrite               Overwrite the output file if it already exists (only with -o pprof)
       --pprof-path string             Destination path for pprof binary output (only with -o pprof; default: profile-YYYY-MM-DD-HHMMSS.pb.gz)
       --profile-id strings            Drill down to specific profile UUIDs from exemplar queries (repeatable)
       --profile-type string           Profile type ID (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds'); use 'gcx profiles list-profile-types' to list available (required)
+      --share-link                    Print the Grafana Explore URL for the profile query to stderr
       --since string                  Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --span-id strings               Only query profiles with these 16-character hex span IDs (repeatable; unavailable with -o pprof and -o dot)
       --stacktrace-selector strings   Only query locations with these function names, starting from the root (repeatable)

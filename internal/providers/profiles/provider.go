@@ -35,6 +35,10 @@ func (p *Provider) descriptor() signals.Descriptor {
   gcx profiles query '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h
 
+  # Share the profile in Grafana Explore
+  gcx profiles query '{service_name="frontend"}' \
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h --share-link
+
   # Output as JSON
   gcx profiles query -d abc123 '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds -o json
@@ -111,6 +115,10 @@ func (p *Provider) descriptor() signals.Descriptor {
 				TokenCost: "small",
 				LLMHint:   "gcx profiles metrics '{}' --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h --top -o json",
 				Example: `
+  # Open the metrics query in Grafana Explore
+  gcx profiles metrics '{service_name="frontend"}' \
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h --open
+
   # Top services by CPU usage (ranked leaderboard)
   gcx profiles metrics '{}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h --top

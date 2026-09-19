@@ -651,11 +651,11 @@ mise exec -- go test ./internal/agent/...
 | loki | `internal/datasources/loki/` | `internal/datasources/providers/loki.go` | `internal/query/loki/` | `internal/datasources/loki/explore.go` |
 | postgres | `internal/datasources/postgres/` | `internal/datasources/providers/postgres.go` | `internal/query/postgres/` | — |
 | prometheus | `internal/datasources/prometheus/` | `internal/datasources/providers/prometheus.go` | `internal/query/prometheus/` | `internal/datasources/prometheus/explore.go` |
-| pyroscope | `internal/datasources/pyroscope/` | `internal/datasources/providers/pyroscope.go` | `internal/query/pyroscope/` | — |
+| pyroscope | `internal/datasources/pyroscope/` | `internal/datasources/providers/pyroscope.go` | `internal/query/pyroscope/` | `internal/datasources/pyroscope/explore.go` |
 | tempo | `internal/datasources/tempo/` | `internal/datasources/providers/tempo.go` | `internal/query/tempo/` | `internal/datasources/tempo/explore.go` |
 
-A `—` marks a datasource that still has no Explore link. Four kinds have this
-gap now: `infinity`, `influxdb`, `postgres`, and `pyroscope`.
+A `—` marks a datasource that still has no Explore link. The remaining kinds with this
+gap are `infinity`, `influxdb`, and `postgres`.
 
 Use `clickhouse` as the reference for an expression datasource (Shape A), and
 `cloudwatch` for a structured datasource (Shape B).
