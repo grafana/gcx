@@ -1,3 +1,5 @@
+## Unreleased
+
 ## v1.3.1 (2026-09-19)
 
 **Synthetic Monitoring**
@@ -14,8 +16,9 @@
 - Add optional artifact downloads to experiment pulls (#1321)
 
 **SLO, Fleet, and skills**
-- Move SLO definitions and reports to declarative resource adapters (#1342)
-- Keep deprecated SLO push and pull commands as compatibility wrappers (#1342)
+- Move SLO, OnCall, and report commands to declarative adapters (#1293, #1342)
+- Use `gcx resources push` and `pull` for new SLO workflows. Generic push
+  matches natural keys. Deprecated SLO wrappers match UUIDs only (#1342)
 - Show Fleet collector health attributes and timestamps (#1352)
 - Reconcile installed skills with a release lifecycle catalog (#1339)
 
@@ -27,8 +30,6 @@
 - Update Go and Kubernetes dependencies (#915, #798)
 - Improve release, review, and ownership workflows (#1341, #1306, #1350,
   #1317, #1314)
-
-## Unreleased
 
 ## v1.3.0 (2026-09-13)
 
