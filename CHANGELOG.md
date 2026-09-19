@@ -1,5 +1,36 @@
 ## Unreleased
 
+## v1.3.1 (2026-09-19)
+
+**Synthetic Monitoring**
+- Add ad hoc check execution with result polling (#1311)
+- Add named backend datasource queries (#1307)
+- Add optional script decoding for browser and scripted checks (#1309)
+
+**Datasources and queries**
+- Add StarTree Pinot datasource queries (#1255)
+- Add Frontend Observability session retrieval (#1257)
+
+**Dashboards and Agent Observability**
+- Add a render timeout option to dashboard snapshots (#1355)
+- Add optional artifact downloads to experiment pulls (#1321)
+
+**SLO, Fleet, and skills**
+- Move SLO, OnCall, and report commands to declarative adapters (#1293, #1342)
+- Use `gcx resources push` and `pull` for new SLO workflows. Generic push
+  matches natural keys. Deprecated SLO wrappers match UUIDs only (#1342)
+- Show Fleet collector health attributes and timestamps (#1352)
+- Reconcile installed skills with a release lifecycle catalog (#1339)
+
+**Security and telemetry**
+- Stop OAuth before network use when the credential store is not writable (#1313)
+- Add the human or agent execution mode to the user agent (#1336)
+
+**Other**
+- Update Go and Kubernetes dependencies (#915, #798)
+- Improve release, review, and ownership workflows (#1341, #1306, #1350,
+  #1317, #1314)
+
 ## v1.3.0 (2026-09-13)
 
 **Breaking changes**
