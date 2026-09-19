@@ -4,19 +4,17 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 
 	internalconfig "github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/providers/appo11y/activation"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	k8srest "k8s.io/client-go/rest"
 )
-
-const settingsEndpoint = "/api/plugin-proxy/grafana-app-observability-app/provisioned-plugin-settings"
 
 // StaticDescriptor returns the resource descriptor for App Observability settings.
 func StaticDescriptor() resources.Descriptor {
@@ -78,7 +76,7 @@ func newSettingsAPIClient(cfg internalconfig.NamespacedRESTConfig) (*settingsAPI
 }
 
 func (c *settingsAPIClient) getSettings(ctx context.Context) (*PluginSettings, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.host+settingsEndpoint, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.host+activation.SettingsEndpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -107,7 +105,7 @@ func (c *settingsAPIClient) updateSettings(ctx context.Context, s *PluginSetting
 		return fmt.Errorf("failed to marshal settings: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.host+settingsEndpoint, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.host+activation.SettingsEndpoint, bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
@@ -128,7 +126,7 @@ func checkSettingsStatus(resp *http.Response) error {
 	}
 
 	if resp.StatusCode == http.StatusNotFound {
-		return errors.New("Grafana App Observability plugin is not installed or not enabled") //nolint:staticcheck // "Grafana" is a proper noun, capitalization is intentional
+		return activation.NotActivatedError()
 	}
 
 	return providers.HandleErrorResponse(resp)
