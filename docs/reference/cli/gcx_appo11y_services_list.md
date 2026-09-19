@@ -15,6 +15,10 @@ entities with relationships and insights (requires the Knowledge Graph plugin);
 "gcx instrumentation services" lists Kubernetes workloads discovered for setting up
 instrumentation.
 
+The "version" field (--output wide/json/yaml) is populated only when every
+matched series agrees on a single service_version; a service mid-rollout
+across two versions reports an empty version rather than picking one.
+
 ```
 gcx appo11y services list [flags]
 ```

@@ -10,7 +10,7 @@ import (
 )
 
 func TestBuildServicesQuery(t *testing.T) {
-	wantGroup := "group by (telemetry_sdk_language, job, deployment_environment, deployment_environment_name, k8s_namespace_name, k8s_cluster_name, cloud_region)"
+	wantGroup := "group by (telemetry_sdk_language, job, deployment_environment, deployment_environment_name, k8s_namespace_name, k8s_cluster_name, cloud_region, service_version, cluster)"
 
 	tests := []struct {
 		name     string
@@ -68,13 +68,13 @@ func TestBuildServicesQuery(t *testing.T) {
 			name:   "extra columns appended once (incl. label that's not in defaults)",
 			metric: "target_info",
 			extra:  []string{"service_version", "k8s_pod_name", "service_namespace"},
-			want:   "group by (telemetry_sdk_language, job, deployment_environment, deployment_environment_name, k8s_namespace_name, k8s_cluster_name, cloud_region, service_version, k8s_pod_name, service_namespace) (target_info)",
+			want:   "group by (telemetry_sdk_language, job, deployment_environment, deployment_environment_name, k8s_namespace_name, k8s_cluster_name, cloud_region, service_version, cluster, k8s_pod_name, service_namespace) (target_info)",
 		},
 		{
 			name:   "extra columns with empty string ignored",
 			metric: "target_info",
 			extra:  []string{"", "service_version"},
-			want:   "group by (telemetry_sdk_language, job, deployment_environment, deployment_environment_name, k8s_namespace_name, k8s_cluster_name, cloud_region, service_version) (target_info)",
+			want:   "group by (telemetry_sdk_language, job, deployment_environment, deployment_environment_name, k8s_namespace_name, k8s_cluster_name, cloud_region, service_version, cluster) (target_info)",
 		},
 	}
 	for _, tt := range tests {
@@ -131,7 +131,7 @@ func TestBuildServiceGraphQuery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
-	want := `group by (server, server_service_namespace) (traces_service_graph_request_total{connection_type!=""})`
+	want := `group by (server, server_service_namespace, connection_type) (traces_service_graph_request_total{connection_type!=""})`
 	if got != want {
 		t.Errorf("buildServiceGraphQuery() =\n  %q\nwant\n  %q", got, want)
 	}
@@ -140,7 +140,7 @@ func TestBuildServiceGraphQuery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
-	want = `group by (server, server_service_namespace) (traces_spanmetrics_calls_total{connection_type!=""})`
+	want = `group by (server, server_service_namespace, connection_type) (traces_spanmetrics_calls_total{connection_type!=""})`
 	if got != want {
 		t.Errorf("override =\n  %q\nwant\n  %q", got, want)
 	}
@@ -543,6 +543,209 @@ func TestParseServicesResponse_MergesByNameLanguage(t *testing.T) {
 	// First non-empty k8s namespace wins (prod, seen first).
 	if got[0].Labels["k8s_namespace_name"] != "prod" {
 		t.Errorf("k8s_namespace_name = %q, want prod", got[0].Labels["k8s_namespace_name"])
+	}
+}
+
+func TestParseServicesResponse_Metadata(t *testing.T) {
+	tests := []struct {
+		name        string
+		metric      map[string]string
+		wantEnv     string
+		wantCluster string
+		wantVersion string
+	}{
+		{
+			name:    "environment from deployment_environment only",
+			metric:  map[string]string{"job": "svc/a", "deployment_environment": "production"},
+			wantEnv: "production",
+		},
+		{
+			name:    "environment from deployment_environment_name only",
+			metric:  map[string]string{"job": "svc/b", "deployment_environment_name": "staging"},
+			wantEnv: "staging",
+		},
+		{
+			name:    "environment prefers deployment_environment when both present",
+			metric:  map[string]string{"job": "svc/c", "deployment_environment": "prod", "deployment_environment_name": "prod-new"},
+			wantEnv: "prod",
+		},
+		{
+			name:        "cluster from k8s_cluster_name",
+			metric:      map[string]string{"job": "svc/d", "k8s_cluster_name": "cluster-a"},
+			wantCluster: "cluster-a",
+		},
+		{
+			name:        "cluster falls back to cluster label",
+			metric:      map[string]string{"job": "svc/e", "cluster": "cluster-b"},
+			wantCluster: "cluster-b",
+		},
+		{
+			name:        "single service_version is populated",
+			metric:      map[string]string{"job": "svc/f", "service_version": "1.2.3"},
+			wantVersion: "1.2.3",
+		},
+		{
+			name:   "label present but empty stays empty, not the literal value",
+			metric: map[string]string{"job": "svc/g", "deployment_environment": "", "k8s_cluster_name": "", "service_version": ""},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp := &prometheus.QueryResponse{
+				Data: prometheus.ResultData{Result: []prometheus.Sample{{Metric: tt.metric}}},
+			}
+			got, err := parseServicesResponse(resp)
+			if err != nil {
+				t.Fatalf("err = %v", err)
+			}
+			if len(got) != 1 {
+				t.Fatalf("len = %d, want 1: %+v", len(got), got)
+			}
+			svc := got[0]
+			if svc.Environment != tt.wantEnv {
+				t.Errorf("Environment = %q, want %q", svc.Environment, tt.wantEnv)
+			}
+			if svc.Cluster != tt.wantCluster {
+				t.Errorf("Cluster = %q, want %q", svc.Cluster, tt.wantCluster)
+			}
+			if svc.Version != tt.wantVersion {
+				t.Errorf("Version = %q, want %q", svc.Version, tt.wantVersion)
+			}
+		})
+	}
+}
+
+func TestParseServicesResponse_VersionAmbiguous(t *testing.T) {
+	// Two distinct service_version values across samples for the same
+	// (namespace, name, language) key must leave Version empty rather than
+	// picking one arbitrarily.
+	resp := &prometheus.QueryResponse{
+		Data: prometheus.ResultData{
+			Result: []prometheus.Sample{
+				{Metric: map[string]string{"job": "billing/checkout", "service_version": "1.0.0"}},
+				{Metric: map[string]string{"job": "billing/checkout", "service_version": "1.1.0"}},
+			},
+		},
+	}
+	got, err := parseServicesResponse(resp)
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("len = %d, want 1: %+v", len(got), got)
+	}
+	if got[0].Version != "" {
+		t.Errorf("Version = %q, want empty (ambiguous)", got[0].Version)
+	}
+	if v, ok := got[0].Labels["service_version"]; ok {
+		t.Errorf("Labels[service_version] = %q, want absent — it must not duplicate the ambiguous Version field with an arbitrary single value", v)
+	}
+}
+
+// TestParseServicesResponse_ClusterFallback guards the fix for the dead
+// clusterValue fallback: metadataLabels() must project a bare `cluster`
+// label so a non-k8s deployment (no k8s_cluster_name) still populates
+// Service.Cluster.
+func TestParseServicesResponse_ClusterFallback(t *testing.T) {
+	resp := &prometheus.QueryResponse{
+		Data: prometheus.ResultData{
+			Result: []prometheus.Sample{
+				{Metric: map[string]string{"job": "billing/checkout", "cluster": "on-prem-1"}},
+			},
+		},
+	}
+	got, err := parseServicesResponse(resp)
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("len = %d, want 1: %+v", len(got), got)
+	}
+	if got[0].Cluster != "on-prem-1" {
+		t.Errorf("Cluster = %q, want %q", got[0].Cluster, "on-prem-1")
+	}
+}
+
+func TestParseServicesResponse_KindDefaultsToService(t *testing.T) {
+	resp := &prometheus.QueryResponse{
+		Data: prometheus.ResultData{Result: []prometheus.Sample{{Metric: map[string]string{"job": "svc/a"}}}},
+	}
+	got, err := parseServicesResponse(resp)
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if len(got) != 1 || got[0].Kind != "service" {
+		t.Fatalf("got = %+v, want Kind=service", got)
+	}
+}
+
+func TestParseServiceGraphResponse_Kind(t *testing.T) {
+	tests := []struct {
+		name     string
+		connType string
+		want     string
+	}{
+		{name: "empty connection_type is a service", connType: "", want: "service"},
+		{name: "database", connType: connTypeDatabase, want: connTypeDatabase},
+		{name: "messaging_system", connType: connTypeMessagingSystem, want: connTypeMessagingSystem},
+		{name: "virtual_node", connType: connTypeVirtualNode, want: connTypeVirtualNode},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp := &prometheus.QueryResponse{
+				Data: prometheus.ResultData{
+					Result: []prometheus.Sample{
+						{Metric: map[string]string{"server": "checkout", "connection_type": tt.connType}},
+					},
+				},
+			}
+			got, err := parseServiceGraphResponse(resp)
+			if err != nil {
+				t.Fatalf("err = %v", err)
+			}
+			if len(got) != 1 {
+				t.Fatalf("len = %d, want 1: %+v", len(got), got)
+			}
+			if got[0].Kind != tt.want {
+				t.Errorf("Kind = %q, want %q", got[0].Kind, tt.want)
+			}
+		})
+	}
+}
+
+// TestParseServiceGraphResponse_KindDeterministicAcrossOrder guards against
+// a service reached via more than one connection_type resolving to a
+// different Kind depending on Prometheus's (unordered) result vector.
+// buildServiceGraphQuery filters connection_type!="", so the two colliding
+// samples here are both non-empty — the shape parseServiceGraphResponse
+// actually receives in production, unlike an empty-vs-classified pair the
+// query would never produce.
+func TestParseServiceGraphResponse_KindDeterministicAcrossOrder(t *testing.T) {
+	sameKeyDifferentKinds := func(first, second string) *prometheus.QueryResponse {
+		return &prometheus.QueryResponse{
+			Data: prometheus.ResultData{
+				Result: []prometheus.Sample{
+					{Metric: map[string]string{"server": "checkout", "connection_type": first}},
+					{Metric: map[string]string{"server": "checkout", "connection_type": second}},
+				},
+			},
+		}
+	}
+
+	for _, order := range [][2]string{
+		{connTypeMessagingSystem, connTypeDatabase},
+		{connTypeDatabase, connTypeMessagingSystem},
+	} {
+		got, err := parseServiceGraphResponse(sameKeyDifferentKinds(order[0], order[1]))
+		if err != nil {
+			t.Fatalf("err = %v", err)
+		}
+		if len(got) != 1 {
+			t.Fatalf("len = %d, want 1: %+v", len(got), got)
+		}
+		if got[0].Kind != connTypeDatabase {
+			t.Errorf("order %v: Kind = %q, want %q (lower-ranked classification must win regardless of arrival order)", order, got[0].Kind, connTypeDatabase)
+		}
 	}
 }
 
