@@ -25,24 +25,28 @@ const (
 	// BasePath is the plugin resources root for the IRM app.
 	BasePath = "/api/plugins/grafana-irm-app/resources"
 
-	integrationsPath       = "alert_receive_channels/"
-	escalationChainsPath   = "escalation_chains/"
-	escalationPoliciesPath = "escalation_policies/"
-	schedulesPath          = "schedules/"
-	shiftsPath             = "oncall_shifts/"
-	routesPath             = "channel_filters/"
-	webhooksPath           = "webhooks/"
-	alertGroupsPath        = "alertgroups/"
-	usersPath              = "users/"
-	currentUserPath        = "user/"
-	teamsPath              = "teams/"
-	userGroupsPath         = "user_groups/"
-	slackChannelsPath      = "slack_channels/"
-	alertsPath             = "alerts/"
-	organizationPath       = "organization/"
-	resolutionNotesPath    = "resolution_notes/"
-	shiftSwapsPath         = "shift_swaps/"
-	directPagingPath       = "direct_paging"
+	integrationsPath = "alert_receive_channels/"
+	// integrationTemplatesPath addresses the alert templates of an
+	// integration. The templates live behind their own collection, keyed by
+	// the integration ID, and never travel inside the Integration object.
+	integrationTemplatesPath = "alert_receive_channel_templates/"
+	escalationChainsPath     = "escalation_chains/"
+	escalationPoliciesPath   = "escalation_policies/"
+	schedulesPath            = "schedules/"
+	shiftsPath               = "oncall_shifts/"
+	routesPath               = "channel_filters/"
+	webhooksPath             = "webhooks/"
+	alertGroupsPath          = "alertgroups/"
+	usersPath                = "users/"
+	currentUserPath          = "user/"
+	teamsPath                = "teams/"
+	userGroupsPath           = "user_groups/"
+	slackChannelsPath        = "slack_channels/"
+	alertsPath               = "alerts/"
+	organizationPath         = "organization/"
+	resolutionNotesPath      = "resolution_notes/"
+	shiftSwapsPath           = "shift_swaps/"
+	directPagingPath         = "direct_paging"
 )
 
 var _ OnCallAPI = (*OnCallClient)(nil)
@@ -334,6 +338,72 @@ func (c *OnCallClient) UpdateIntegration(ctx context.Context, id string, i Integ
 
 func (c *OnCallClient) DeleteIntegration(ctx context.Context, id string) error {
 	return deleteResource(ctx, c, integrationsPath, id, "integration")
+}
+
+// GetIntegrationTemplates returns the alert templates of an integration.
+//
+// The template set is a flat document with many fields. The field set grows
+// with the IRM backend. The document is therefore carried as a map
+// rather than a Go struct, so that a get followed by an update never drops a field
+// this build does not know about.
+func (c *OnCallClient) GetIntegrationTemplates(ctx context.Context, id string) (map[string]any, error) {
+	doc, err := getResource[map[string]any](ctx, c, integrationTemplatesPath, id, "integration templates")
+	if err != nil {
+		return nil, err
+	}
+	return *doc, nil
+}
+
+// UpdateIntegrationTemplates replaces the alert templates of an integration
+// and returns the stored document.
+func (c *OnCallClient) UpdateIntegrationTemplates(ctx context.Context, id string, templates map[string]any) (map[string]any, error) {
+	doc, err := updateResource[map[string]any, map[string]any](ctx, c, integrationTemplatesPath, id, templates, "integration templates")
+	if err != nil {
+		return nil, err
+	}
+	return *doc, nil
+}
+
+// StartIntegrationMaintenance puts an integration into maintenance for the
+// given number of seconds. mode selects the maintenance behaviour; see
+// MaintenanceMode.
+func (c *OnCallClient) StartIntegrationMaintenance(ctx context.Context, id string, mode MaintenanceMode, durationSeconds int) error {
+	body := struct {
+		Mode     MaintenanceMode `json:"mode"`
+		Duration int             `json:"duration"`
+	}{Mode: mode, Duration: durationSeconds}
+	return c.integrationAction(ctx, id, "start_maintenance", body, "start integration maintenance")
+}
+
+// StopIntegrationMaintenance ends maintenance on an integration before its
+// scheduled end.
+func (c *OnCallClient) StopIntegrationMaintenance(ctx context.Context, id string) error {
+	return c.integrationAction(ctx, id, "stop_maintenance", map[string]int{}, "stop integration maintenance")
+}
+
+// integrationAction posts to an action endpoint of a single integration.
+// An action endpoint answers with any success status, and with a body that
+// carries no field a caller can act on, so the body is discarded.
+func (c *OnCallClient) integrationAction(ctx context.Context, id, action string, body any, description string) error {
+	data, err := json.Marshal(body)
+	if err != nil {
+		return fmt.Errorf("irm: marshal %s: %w", description, err)
+	}
+
+	path := fmt.Sprintf("%s%s/%s/", integrationsPath, url.PathEscape(id), action)
+	resp, err := c.DoRequest(ctx, http.MethodPost, path, bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("irm: %s: %w", description, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return fmt.Errorf("irm: integration %q not found", id)
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return providers.HandleErrorResponse(resp)
+	}
+	return nil
 }
 
 // --- Escalation Chains ---
