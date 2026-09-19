@@ -102,7 +102,7 @@ support for file notifications.
 				return err
 			}
 
-			cfg, err := configOpts.LoadConfig(cmd.Context())
+			restCfg, currentContext, err := configOpts.LoadGrafanaConfigWithContext(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -188,7 +188,10 @@ support for file notifications.
 				Port:       opts.Port,
 				NoColor:    cmd.Flags().Lookup("no-color").Value.String() == "true",
 			}
-			resourceServer := server.New(serverCfg, cfg.GetCurrentContext(), parsedResources)
+			resourceServer, err := server.New(serverCfg, currentContext, parsedResources, restCfg)
+			if err != nil {
+				return err
+			}
 
 			logger.Debug(fmt.Sprintf("Listening on %s:%d", opts.Address, opts.Port))
 			cmdio.Info(cmd.OutOrStdout(), "Server will be available on http://localhost:%d/", opts.Port)
