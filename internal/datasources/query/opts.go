@@ -130,8 +130,10 @@ func (opts *SharedOpts) Setup(flags *pflag.FlagSet, enableGraph bool) {
 	flags.StringVar(&opts.Step, "step", "", "Query step (e.g., '15s', '1m')")
 }
 
-// SetupErrorOnEmptyFlag registers the opt-in result assertion for commands
-// whose response type has a defined empty-result predicate.
+// SetupErrorOnEmptyFlag registers the opt-in result assertion for the
+// Prometheus, Loki, Tempo, and Pyroscope signal-query commands whose response
+// types have defined empty-result predicates. It is intentionally not part of
+// the generic shared setup used by unrelated datasource query commands.
 func (opts *SharedOpts) SetupErrorOnEmptyFlag(flags *pflag.FlagSet) {
 	flags.BoolVar(&opts.ErrorOnEmpty, "error-on-empty", false, "Fail if the query returns no results")
 }

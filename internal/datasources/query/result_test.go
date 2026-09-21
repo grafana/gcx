@@ -23,6 +23,7 @@ func TestErrorOnEmpty(t *testing.T) {
 		{name: "loki empty", value: &loki.QueryResponse{}, empty: true},
 		{name: "loki result", value: &loki.QueryResponse{Data: loki.QueryResultData{Result: []loki.StreamEntry{{}}}}},
 		{name: "loki metric empty", value: &loki.MetricQueryResponse{}, empty: true},
+		{name: "loki metric result", value: &loki.MetricQueryResponse{Data: loki.MetricQueryData{Result: []loki.MetricQuerySample{{}}}}},
 		{name: "tempo empty", value: &tempo.SearchResponse{}, empty: true},
 		{name: "tempo result", value: &tempo.SearchResponse{Traces: []tempo.SearchTrace{{}}}},
 		{name: "tempo metrics empty", value: &tempo.MetricsResponse{}, empty: true},
