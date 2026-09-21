@@ -138,6 +138,7 @@ open it in your browser after the query succeeds.`,
 	}
 
 	shared.Setup(cmd.Flags(), true)
+	shared.SetupRequireResultFlag(cmd.Flags())
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.tempo is configured)")
 	cmd.Flags().BoolVar(&instant, "instant", false, "Run an instant query over the selected time range instead of a range query")
 	share.Setup(cmd.Flags(), "executed query")

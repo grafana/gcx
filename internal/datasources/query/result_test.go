@@ -2,6 +2,7 @@ package query_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	query "github.com/grafana/gcx/internal/datasources/query"
@@ -27,8 +28,8 @@ func TestRequireResult(t *testing.T) {
 		{name: "tempo metrics empty", value: &tempo.MetricsResponse{}, empty: true},
 		{name: "tempo metrics result", value: &tempo.MetricsResponse{Series: []tempo.MetricsSeries{{}}}},
 		{name: "pyroscope empty", value: &pyroscope.QueryResponse{}, empty: true},
-		{name: "pyroscope flamegraph", value: &pyroscope.QueryResponse{Flamegraph: &pyroscope.Flamegraph{}}},
-		{name: "unsupported response", value: struct{}{}},
+		{name: "pyroscope empty flamegraph", value: &pyroscope.QueryResponse{Flamegraph: &pyroscope.Flamegraph{}}, empty: true},
+		{name: "pyroscope flamegraph", value: &pyroscope.QueryResponse{Flamegraph: &pyroscope.Flamegraph{Names: []string{"main"}}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -40,5 +41,8 @@ func TestRequireResult(t *testing.T) {
 				t.Fatalf("RequireResult() error = %v, want nil", err)
 			}
 		})
+	}
+	if err := query.RequireResult(struct{}{}); err == nil || !strings.Contains(err.Error(), "struct {}") {
+		t.Fatalf("RequireResult() unsupported error = %v", err)
 	}
 }

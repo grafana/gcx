@@ -25,8 +25,8 @@ or Grafana Cloud. An agent harness and its model access are separate from gcx.
 - Know which application or fixture you may inspect. Do not enumerate unrelated
   containers, environments, or services to compensate for missing context.
 
-The command examples use the gcx 1.3.0 command surface. Check `gcx version` and
-the relevant command's `--help` when following them with another release.
+The command examples use the current gcx command surface. Check `gcx version`
+and the relevant command's `--help` when following them with another release.
 
 ## Connect without changing your usual context
 
@@ -76,11 +76,13 @@ For example, against a Prometheus datasource:
 
 ```bash
 gcx metrics query 'vector(1)' --datasource 'PROMETHEUS_DATASOURCE_UID' \
+  --require-result \
   --config "$GCX_DIAGNOSTICS_CONFIG" --context diagnostics
 ```
 
 Replace `PROMETHEUS_DATASOURCE_UID` before running. A returned value proves that query
-path works, not that the application emitted metrics. A successful empty query,
+path works, not that the application emitted metrics. With `--require-result`,
+an empty response exits unsuccessfully; without it, a successful empty query,
 an invalid query, and a failed connection are different observations.
 
 ## Give the agent the symptom and boundaries

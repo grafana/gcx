@@ -70,6 +70,7 @@ func (opts *pyroscopeQueryOpts) setup(flags *pflag.FlagSet) {
 	opts.shared.IO.RegisterCustomCodec("pprof", &pprofCodec{})
 	opts.shared.IO.RegisterCustomCodec("dot", &dotCodec{})
 	opts.shared.Setup(flags, true)
+	opts.shared.SetupRequireResultFlag(flags)
 
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.pyroscope is configured)")
 	flags.StringVar(&opts.ProfileType, "profile-type", "", "Profile type ID (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds'); use 'gcx profiles list-profile-types' to list available (required)")

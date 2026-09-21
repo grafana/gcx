@@ -128,6 +128,11 @@ func (opts *SharedOpts) Setup(flags *pflag.FlagSet, enableGraph bool) {
 	opts.SetupTimeFlags(flags)
 	opts.SetupExprFlag(flags)
 	flags.StringVar(&opts.Step, "step", "", "Query step (e.g., '15s', '1m')")
+}
+
+// SetupRequireResultFlag registers the opt-in result assertion for commands
+// whose response type has a defined empty-result predicate.
+func (opts *SharedOpts) SetupRequireResultFlag(flags *pflag.FlagSet) {
 	flags.BoolVar(&opts.RequireResult, "require-result", false, "Fail if the query returns no results")
 }
 

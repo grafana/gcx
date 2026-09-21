@@ -131,6 +131,7 @@ explicit time range via --since or --from/--to.`,
 	}
 
 	shared.Setup(cmd.Flags(), false)
+	shared.SetupRequireResultFlag(cmd.Flags())
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.tempo is configured)")
 	cmd.Flags().IntVar(&limit, "limit", 20, "Maximum number of traces to return (0 means no limit)")
 	share.Setup(cmd.Flags(), "executed query")

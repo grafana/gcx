@@ -2,6 +2,7 @@ package query
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/grafana/gcx/internal/query/loki"
 	"github.com/grafana/gcx/internal/query/prometheus"
@@ -28,9 +29,9 @@ func RequireResult(data any) error {
 	case *tempo.MetricsResponse:
 		empty = len(resp.Series) == 0
 	case *pyroscope.QueryResponse:
-		empty = resp.Flamegraph == nil && resp.Dot == ""
+		empty = (resp.Flamegraph == nil || len(resp.Flamegraph.Names) == 0) && resp.Dot == ""
 	default:
-		return nil
+		return fmt.Errorf("cannot require a result for unsupported response type %T", data)
 	}
 	if empty {
 		return ErrNoResult

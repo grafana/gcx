@@ -127,6 +127,7 @@ open it in your browser after the query succeeds.`,
 	}
 
 	shared.Setup(cmd.Flags(), true)
+	shared.SetupRequireResultFlag(cmd.Flags())
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.loki is configured)")
 	share.Setup(cmd.Flags(), "executed query")
 
