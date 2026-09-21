@@ -1,0 +1,3 @@
+NAME    MATCH LABELS         FOR  SILENCED
+notify  env=prod, site=west  5m   true
+										false
