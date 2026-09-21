@@ -76,12 +76,12 @@ For example, against a Prometheus datasource:
 
 ```bash
 gcx metrics query 'vector(1)' --datasource 'PROMETHEUS_DATASOURCE_UID' \
-  --require-result \
+  --error-on-empty \
   --config "$GCX_DIAGNOSTICS_CONFIG" --context diagnostics
 ```
 
 Replace `PROMETHEUS_DATASOURCE_UID` before running. A returned value proves that query
-path works, not that the application emitted metrics. With `--require-result`,
+path works, not that the application emitted metrics. With `--error-on-empty`,
 an empty response exits unsuccessfully; without it, a successful empty query,
 an invalid query, and a failed connection are different observations.
 

@@ -91,8 +91,8 @@ explicit time range via --since or --from/--to.`,
 			if err != nil {
 				return fmt.Errorf("search failed: %w", err)
 			}
-			if shared.RequireResult {
-				if err := dsquery.RequireResult(resp); err != nil {
+			if shared.ErrorOnEmpty {
+				if err := dsquery.ErrorOnEmpty(resp); err != nil {
 					return err
 				}
 			}
@@ -131,7 +131,7 @@ explicit time range via --since or --from/--to.`,
 	}
 
 	shared.Setup(cmd.Flags(), false)
-	shared.SetupRequireResultFlag(cmd.Flags())
+	shared.SetupErrorOnEmptyFlag(cmd.Flags())
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.tempo is configured)")
 	cmd.Flags().IntVar(&limit, "limit", 20, "Maximum number of traces to return (0 means no limit)")
 	share.Setup(cmd.Flags(), "executed query")

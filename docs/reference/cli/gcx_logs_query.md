@@ -44,6 +44,7 @@ gcx logs query [EXPR] [flags]
 
 ```
   -d, --datasource string   Datasource UID (required unless datasources.loki is configured)
+      --error-on-empty      Fail if the query returns no results
       --expr string         Query expression (alternative to positional argument)
       --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                help for query
@@ -52,7 +53,6 @@ gcx logs query [EXPR] [flags]
       --limit int           Maximum number of log lines to return (0 means no limit) (default 50)
       --open                Open the executed query in Grafana Explore
   -o, --output string       Output format. One of: agents, json, raw, table, wide, yaml (default "table")
-      --require-result      Fail if the query returns no results
       --share-link          Print the Grafana Explore URL for the executed query to stderr
       --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --step string         Query step (e.g., '15s', '1m')

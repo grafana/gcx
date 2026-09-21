@@ -64,6 +64,7 @@ gcx profiles query [EXPR] [flags]
 
 ```
   -d, --datasource string             Datasource UID (required unless datasources.pyroscope is configured)
+      --error-on-empty                Fail if the query returns no results
       --expr string                   Query expression (alternative to positional argument)
       --from string                   Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                          help for query
@@ -75,7 +76,6 @@ gcx profiles query [EXPR] [flags]
       --pprof-path string             Destination path for pprof binary output (only with -o pprof; default: profile-YYYY-MM-DD-HHMMSS.pb.gz)
       --profile-id strings            Drill down to specific profile UUIDs from exemplar queries (repeatable)
       --profile-type string           Profile type ID (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds'); use 'gcx profiles list-profile-types' to list available (required)
-      --require-result                Fail if the query returns no results
       --since string                  Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --span-id strings               Only query profiles with these 16-character hex span IDs (repeatable; unavailable with -o pprof and -o dot)
       --stacktrace-selector strings   Only query locations with these function names, starting from the root (repeatable)

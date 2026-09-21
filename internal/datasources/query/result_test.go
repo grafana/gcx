@@ -12,7 +12,7 @@ import (
 	"github.com/grafana/gcx/internal/query/tempo"
 )
 
-func TestRequireResult(t *testing.T) {
+func TestErrorOnEmpty(t *testing.T) {
 	tests := []struct {
 		name  string
 		value any
@@ -33,16 +33,16 @@ func TestRequireResult(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := query.RequireResult(tt.value)
+			err := query.ErrorOnEmpty(tt.value)
 			if tt.empty && !errors.Is(err, query.ErrNoResult) {
-				t.Fatalf("RequireResult() error = %v, want ErrNoResult", err)
+				t.Fatalf("ErrorOnEmpty() error = %v, want ErrNoResult", err)
 			}
 			if !tt.empty && err != nil {
-				t.Fatalf("RequireResult() error = %v, want nil", err)
+				t.Fatalf("ErrorOnEmpty() error = %v, want nil", err)
 			}
 		})
 	}
-	if err := query.RequireResult(struct{}{}); err == nil || !strings.Contains(err.Error(), "struct {}") {
-		t.Fatalf("RequireResult() unsupported error = %v", err)
+	if err := query.ErrorOnEmpty(struct{}{}); err == nil || !strings.Contains(err.Error(), "struct {}") {
+		t.Fatalf("ErrorOnEmpty() unsupported error = %v", err)
 	}
 }

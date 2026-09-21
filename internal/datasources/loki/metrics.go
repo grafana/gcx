@@ -93,8 +93,8 @@ open it in your browser after the query succeeds.`,
 			if err != nil {
 				return fmt.Errorf("metric query failed: %w", err)
 			}
-			if shared.RequireResult {
-				if err := dsquery.RequireResult(resp); err != nil {
+			if shared.ErrorOnEmpty {
+				if err := dsquery.ErrorOnEmpty(resp); err != nil {
 					return err
 				}
 			}
@@ -127,7 +127,7 @@ open it in your browser after the query succeeds.`,
 	}
 
 	shared.Setup(cmd.Flags(), true)
-	shared.SetupRequireResultFlag(cmd.Flags())
+	shared.SetupErrorOnEmptyFlag(cmd.Flags())
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.loki is configured)")
 	share.Setup(cmd.Flags(), "executed query")
 

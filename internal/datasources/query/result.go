@@ -12,10 +12,10 @@ import (
 
 var ErrNoResult = errors.New("query returned no results")
 
-// RequireResult returns ErrNoResult when a supported signal query contains no
+// ErrorOnEmpty returns ErrNoResult when a supported signal query contains no
 // result items. Empty results remain successful unless the command's opt-in
-// --require-result flag requests this check.
-func RequireResult(data any) error {
+// --error-on-empty flag requests this check.
+func ErrorOnEmpty(data any) error {
 	var empty bool
 	switch resp := data.(type) {
 	case *prometheus.QueryResponse:

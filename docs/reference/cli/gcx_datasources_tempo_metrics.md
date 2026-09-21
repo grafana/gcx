@@ -47,6 +47,7 @@ gcx datasources tempo metrics [TRACEQL] [flags]
 
 ```
   -d, --datasource string   Datasource UID (required unless datasources.tempo is configured)
+      --error-on-empty      Fail if the query returns no results
       --expr string         Query expression (alternative to positional argument)
       --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                help for metrics
@@ -55,7 +56,6 @@ gcx datasources tempo metrics [TRACEQL] [flags]
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --open                Open the executed query in Grafana Explore
   -o, --output string       Output format. One of: agents, graph, json, table, wide, yaml (default "table")
-      --require-result      Fail if the query returns no results
       --share-link          Print the Grafana Explore URL for the executed query to stderr
       --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --step string         Query step (e.g., '15s', '1m')
