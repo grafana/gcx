@@ -174,6 +174,46 @@ func TestRunStatsPreflight_SumsMultipleSelectors(t *testing.T) {
 	}
 }
 
+// TestComputeStatsBytes_SelectorsRunConcurrentlyNotSerially pins the fix for
+// the "one slow selector starves the shared deadline" review finding: two
+// selectors, each slower than half the overall timeout, must still both
+// complete and count toward the total — which is only possible if they run
+// in parallel. Serially, the first selector alone would consume enough of
+// the shared budget that the second's request starts too late to finish
+// before the deadline, silently dropping its bytes from the total.
+func TestComputeStatsBytes_SelectorsRunConcurrentlyNotSerially(t *testing.T) {
+	old := statsPreflightTimeout
+	statsPreflightTimeout = 200 * time.Millisecond
+	t.Cleanup(func() { statsPreflightTimeout = old })
+
+	const perSelectorDelay = 120 * time.Millisecond
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-time.After(perSelectorDelay):
+		case <-r.Context().Done():
+			return
+		}
+		switch r.URL.Query().Get("query") {
+		case `{app="a"}`:
+			_, _ = w.Write([]byte(`{"streams":1,"chunks":1,"bytes":500,"entries":1}`))
+		case `{app="b"}`:
+			_, _ = w.Write([]byte(`{"streams":1,"chunks":1,"bytes":500,"entries":1}`))
+		default:
+			t.Errorf("unexpected query param %q", r.URL.Query().Get("query"))
+		}
+	})
+
+	now := time.Now()
+	totalBytes, ok := computeStatsBytes(context.Background(), client, "uid", `count_over_time({app="a"}[5m]) + count_over_time({app="b"}[5m])`, true, now, now, now)
+
+	if !ok {
+		t.Fatal("expected at least one selector to succeed")
+	}
+	if totalBytes != 1000 {
+		t.Errorf("totalBytes = %d, want 1000 (both selectors' 500 bytes) — a selector's bytes were dropped, meaning they ran serially and one starved the other's share of the timeout", totalBytes)
+	}
+}
+
 // TestRunStatsPreflight_SoftFailsPerSelector verifies that one selector's
 // IndexStats call failing doesn't prevent a warning derived from the
 // selectors that did succeed.
@@ -406,7 +446,7 @@ func TestStartStatsPreflight_ChoosesSyncOverAsyncWhenMaxBytesSet(t *testing.T) {
 
 	now := time.Now()
 	var stderr bytes.Buffer
-	wait, err := startStatsPreflight(context.Background(), client, &stderr, "uid", `{job="x"}`, true, now, now, now, preflight)
+	wait, cancel, err := startStatsPreflight(context.Background(), client, &stderr, "uid", `{job="x"}`, true, now, now, now, preflight)
 
 	if err == nil {
 		t.Fatal("expected the sync path to block when the estimate exceeds --stats-max-bytes")
@@ -416,6 +456,9 @@ func TestStartStatsPreflight_ChoosesSyncOverAsyncWhenMaxBytesSet(t *testing.T) {
 	}
 	if wait != nil {
 		t.Error("expected a nil wait function alongside a blocking error")
+	}
+	if cancel != nil {
+		t.Error("expected a nil cancel function alongside a blocking error")
 	}
 }
 
@@ -439,10 +482,10 @@ func TestStartStatsPreflight_UsesAsyncPathWhenNoMaxBytes(t *testing.T) {
 	now := time.Now()
 	var stderr bytes.Buffer
 	returned := make(chan struct{})
-	var wait func()
+	var wait, cancel func()
 	var err error
 	go func() {
-		wait, err = startStatsPreflight(context.Background(), client, &stderr, "uid", `{job="x"}`, true, now, now, now, preflight)
+		wait, cancel, err = startStatsPreflight(context.Background(), client, &stderr, "uid", `{job="x"}`, true, now, now, now, preflight)
 		close(returned)
 	}()
 
@@ -456,6 +499,61 @@ func TestStartStatsPreflight_UsesAsyncPathWhenNoMaxBytes(t *testing.T) {
 	}
 	unblock <- struct{}{}
 	wait()
+	cancel() // no-op once the check has already finished; just exercised for nil-safety
+}
+
+// TestStartStatsPreflight_CancelCutsTheAsyncCheckShort pins the fix for the
+// "a fast query still waits out a slow index-stats call" review finding:
+// calling cancel() must make wait() return promptly, even while the
+// index-stats request is still genuinely in flight — not leave it to run
+// out the full statsPreflightTimeout. Without propagating the cancellation
+// into the HTTP request's context, this would block for the whole timeout
+// instead.
+func TestStartStatsPreflight_CancelCutsTheAsyncCheckShort(t *testing.T) {
+	old := statsPreflightTimeout
+	statsPreflightTimeout = 5 * time.Second
+	t.Cleanup(func() { statsPreflightTimeout = old })
+
+	unblock := make(chan struct{})
+	t.Cleanup(func() { close(unblock) })
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-r.Context().Done():
+		case <-unblock:
+			_, _ = w.Write([]byte(`{"streams":1,"chunks":1,"bytes":100,"entries":1}`))
+		}
+	})
+
+	preflight := &statsPreflightOpts{StatsWarnBytes: "1GB"}
+	if err := preflight.Validate(); err != nil {
+		t.Fatalf("unexpected Validate error: %v", err)
+	}
+
+	now := time.Now()
+	var stderr bytes.Buffer
+	wait, cancel, err := startStatsPreflight(context.Background(), client, &stderr, "uid", `{job="x"}`, true, now, now, now, preflight)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Simulate the real query returning quickly, well before the 5s
+	// statsPreflightTimeout: cancel immediately, and wait() must not block
+	// anywhere near that long.
+	start := time.Now()
+	cancel()
+	done := make(chan struct{})
+	go func() {
+		wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("wait() did not return promptly after cancel(); the async check ran out its own timeout instead")
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Errorf("wait() took %v after cancel(), expected it to return almost immediately", elapsed)
+	}
 }
 
 // TestStartStatsPreflight_SkipStatsDisablesBothPaths confirms --skip-stats
@@ -474,10 +572,11 @@ func TestStartStatsPreflight_SkipStatsDisablesBothPaths(t *testing.T) {
 
 	now := time.Now()
 	var stderr bytes.Buffer
-	wait, err := startStatsPreflight(context.Background(), client, &stderr, "uid", `{job="x"}`, true, now, now, now, preflight)
+	wait, cancel, err := startStatsPreflight(context.Background(), client, &stderr, "uid", `{job="x"}`, true, now, now, now, preflight)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	cancel()
 	wait()
 
 	if called {

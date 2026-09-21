@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/datasources/loki"
@@ -128,4 +129,48 @@ func TestStatsCmd_BytesHeaderRoutesByFormat(t *testing.T) {
 		assert.Contains(t, stdout, `"bytes"`)
 		assert.Contains(t, stderr, "36 MiB would be scanned")
 	})
+}
+
+// TestStatsCmd_QueriesSelectorsConcurrently pins the fix for the "batch I/O
+// serially, one round trip per selector" review finding: two selectors,
+// each delayed, must complete in roughly one delay's worth of wall-clock
+// time, not the sum of both — which is only true if StatsCmd's own
+// per-selector loop runs them concurrently rather than one after another.
+func TestStatsCmd_QueriesSelectorsConcurrently(t *testing.T) {
+	const perSelectorDelay = 150 * time.Millisecond
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/bootdata" {
+			http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
+			return
+		}
+		time.Sleep(perSelectorDelay)
+		w.Header().Set("Content-Type", "application/json")
+		_, writeErr := w.Write([]byte(`{"streams":1,"chunks":1,"bytes":500,"entries":1}`))
+		assert.NoError(t, writeErr)
+	}))
+	defer srv.Close()
+
+	cfgFile := writeStatsTestConfig(t, srv.URL)
+	loader := &providers.ConfigLoader{}
+	loader.SetConfigFile(cfgFile)
+
+	cmd := loki.StatsCmd(loader)
+	root := &cobra.Command{Use: "test"}
+	root.AddCommand(cmd)
+
+	var outBuf, errBuf bytes.Buffer
+	root.SetOut(&outBuf)
+	root.SetErr(&errBuf)
+	root.SetArgs([]string{"stats", "-d", "loki-uid", `count_over_time({app="a"}[5m]) + count_over_time({app="b"}[5m])`, "-o", "json"})
+
+	start := time.Now()
+	err := root.Execute()
+	elapsed := time.Since(start)
+
+	require.NoError(t, err)
+	assert.Contains(t, outBuf.String(), `"bytes": 1000`)
+	// Serially this would take roughly 2*perSelectorDelay (plus the
+	// datasource-type lookup); concurrently it's roughly 1*perSelectorDelay.
+	// 250ms gives headroom above one delay without reaching two.
+	assert.Less(t, elapsed, 250*time.Millisecond, "selectors appear to have been queried serially, not concurrently")
 }
