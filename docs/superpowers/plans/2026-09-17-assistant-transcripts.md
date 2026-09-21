@@ -10,6 +10,15 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-17-assistant-transcript-engines-and-sharing-design.md`
 
+## Execution status
+
+Implementation and regression coverage are complete. The steps below preserve the
+original execution recipe; unchecked recipe items are not a current task ledger.
+The original branch was pushed as `codex/assistant-transcripts`. Pre-publication
+review now runs on `codex/support-assistant-transcripts-across-engines` in the
+managed worktree, with the original commits replayed on current main. Backend
+deployment and live shared-transcript acceptance remain pending.
+
 ## Global Constraints
 
 - No `--shared` flag or parallel endpoint probing is required.
@@ -18,7 +27,9 @@
 - Preserve the top-level `{chat, messages}` structure and existing legacy message fields.
 - This is a read operation. It must not import a shared chat, create a copy, send a prompt, or follow `parentChatId` to fetch additional private history.
 - JSON/YAML preserve the returned parts, including their original text; formatting does not change the fetch.
-- Work only in `/tmp/gcx-assistant-transcripts`, branch `codex/assistant-transcripts`. No pushes, PR publication or remote mutation.
+- Original execution workspace: `/tmp/gcx-assistant-transcripts`, branch
+  `codex/assistant-transcripts`. Subsequent workspace and publication authorization
+  follow the current user request; see execution status above.
 - Synthetic fixtures only. No real transcript contents or credentials in source, logs or committed tests.
 
 ## Task 1: Integrate reference resolution, engine-aware reading and the command
@@ -126,11 +137,12 @@ Command tests cover shared URL, bare shared ID, ordinary legacy and AI SDK, inva
 
 ## Backend readiness finding
 
-Current Assistant main (77dd63412c225ee09514d227184e58b5cdcd5d97) registers shared
-routes but its CLI OAuth scope allowlist omits `/api/cli/v1/shared`. GCX must
-preserve that 403 without fallback. The supported plugin-proxy slice and client
-fixtures remain implementable. A separate Assistant allowlist fix/rollout is
-required for shared retrieval through the direct OAuth CLI base. This is a known
-release dependency, not a reason to weaken GCX auth behavior. The controller is
-asking whether that backend fix should also be prepared; no implementer should
-change backend files.
+The September 17 verification found that Assistant main
+`77dd63412c225ee09514d227184e58b5cdcd5d97` registered shared routes but omitted
+those routes from its CLI OAuth scope allowlist. GCX preserves that 403 without
+fallback.
+
+[Assistant PR #10839](https://github.com/grafana/grafana-assistant-app/pull/10839)
+is now merged, allowing the shared metadata and UI-message GET routes under
+`assistant:chat`. Deployment and the original shared-URL/bare-ID smoke tests remain
+pending. No backend changes belong in this GCX branch.

@@ -1,6 +1,6 @@
 # Assistant transcripts across engines and shared links
 
-Status: **implemented locally; backend rollout dependency remains**. Date: 2026-09-17.
+Status: **implemented; backend authorization fix merged, deployment pending**. Date: 2026-09-17.
 
 The user approved URL-aware resolution with an ordinary-then-shared cascade for
 bare IDs. No `--shared` flag or parallel endpoint probing is required. Backend
@@ -262,7 +262,8 @@ result scope is explicit; no new mutation or continuation behavior is introduced
 After implementation, run focused Assistant/provider tests, the root metadata and
 output conformance checks, regenerate references, and run
 `GCX_AGENT_MODE=false mise run all` plus the documented doc-maintenance gate before
-PR publication. This draft itself makes no claim that implementation tests ran.
+PR publication. Local automated verification does not replace the deployment-dependent
+live acceptance check.
 
 ## Approved decisions and remaining verification
 
@@ -273,14 +274,14 @@ PR publication. This draft itself makes no claim that implementation tests ran.
 - **Scope:** main-thread AI SDK retrieval with explicit scope metadata. All-thread
   export and A2A continuation are separate work. Shared snapshots remain visibly
   identified in the result without requiring users to classify input IDs.
-- **Backend verification:** before writing an execution plan, verify direct CLI
-  route/auth parity, legacy shared payload semantics, and endpoint completeness
-  with the Assistant API owners. The verified shared plugin-proxy case remains
-  the concrete regression target.
+- **Backend verification:** route/auth parity, legacy shared payload semantics,
+  and endpoint completeness were checked during implementation. The verified
+  shared plugin-proxy case remains the concrete regression target; direct CLI
+  OAuth acceptance awaits the backend rollout.
 
 Proposed delivery is one focused GCX PR after verification, unless route parity
-requires a separate backend prerequisite. Approval settles the design; GCX implementation is underway. External publication
-has not started. Shared OAuth retrieval remains dependent on the Assistant CLI
+requires a separate backend prerequisite. GCX implementation is complete and the implementation branch is pushed. PR
+publication remains gated on the shared-URL smoke test. Shared OAuth retrieval remains dependent on the Assistant CLI
 allowlist rollout; GCX preserves a denial rather than bypassing it.
 
 ## Implementation readiness evidence (September 17)
@@ -302,3 +303,12 @@ ID and the equivalent shared URL returned the typed Assistant HTTP 403 path. The
 backend allowlist fix and rollout remain required before direct CLI OAuth can read
 shared transcripts. No ordinary AI SDK conversation was available for a live
 check; synthetic route fixtures cover that reader locally.
+
+## Backend dependency update (September 21)
+
+[Assistant PR #10839](https://github.com/grafana/grafana-assistant-app/pull/10839)
+is merged. It authorizes only the shared metadata and UI-message GET routes under
+`assistant:chat`, retaining published-snapshot and tenant access checks. Deployment
+is pending; the September 17 live failure above is historical evidence, not a
+post-deployment result. Rerun the original shared URL and bare ID smoke tests after
+rollout before claiming end-to-end readiness.
