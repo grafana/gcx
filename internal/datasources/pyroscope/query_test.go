@@ -161,7 +161,7 @@ func TestQueryDotV1Fallback_ErrorOnEmpty(t *testing.T) {
 			err := queryDotV1Fallback(context.Background(), cmd, client, "test-uid", querypyroscope.QueryRequest{}, tt.errorOnEmpty)
 			if tt.wantErr {
 				require.ErrorIs(t, err, dsquery.ErrNoResult)
-				assert.Empty(t, stdout.String())
+				assert.Contains(t, stdout.String(), "(no profile data)")
 				return
 			}
 			require.NoError(t, err)

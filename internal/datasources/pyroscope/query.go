@@ -158,12 +158,15 @@ func queryDotV1Fallback(ctx context.Context, cmd *cobra.Command, client *pyrosco
 	if err != nil {
 		return fmt.Errorf("query failed: %w", err)
 	}
-	if errorOnEmpty {
-		if err := dsquery.ErrorOnEmpty(resp); err != nil {
-			return err
-		}
+	if err := pyroscope.FormatQueryTable(cmd.OutOrStdout(), resp); err != nil {
+		return err
 	}
-	return pyroscope.FormatQueryTable(cmd.OutOrStdout(), resp)
+	if errorOnEmpty {
+		return dsquery.ErrorOnEmptyWithContext(resp, dsquery.EmptyResultContext{
+			Expr: req.LabelSelector, DatasourceUID: datasourceUID, Start: req.Start, End: req.End,
+		})
+	}
+	return nil
 }
 
 // stackTraceSelector builds the StackTraceSelector message from the
@@ -348,35 +351,37 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 				}
 				return fmt.Errorf("query failed: %w", err)
 			}
-			if opts.shared.ErrorOnEmpty {
-				if err := dsquery.ErrorOnEmpty(resp); err != nil {
-					return err
-				}
-			}
-
-			if isDot {
+			var renderErr error
+			switch {
+			case isDot:
 				switch {
 				case pyroscope.DotHasNodes(resp.Dot):
-					_, err := fmt.Fprintln(cmd.OutOrStdout(), pyroscope.CleanDot(resp.Dot))
-					return err
+					_, renderErr = fmt.Fprintln(cmd.OutOrStdout(), pyroscope.CleanDot(resp.Dot))
 				case resp.Flamegraph != nil:
 					// v1-v2-dual read paths silently downgrade DOT to a
 					// flame graph; render it as the standard table.
 					cmdio.EmitHint(cmd.ErrOrStderr(), "backend runs v1-v2-dual and downgraded DOT to a flame graph (requires -architecture.storage=v2); showing table instead", "")
-					return pyroscope.FormatQueryTable(cmd.OutOrStdout(), resp)
+					renderErr = pyroscope.FormatQueryTable(cmd.OutOrStdout(), resp)
 				default:
 					// No dot payload and no flame graph: the query matched
 					// no samples. The table renders "(no profile data)".
 					emitEmptyWindowHint(cmd.ErrOrStderr(), "profile data", start, end, req.IsRange())
-					return pyroscope.FormatQueryTable(cmd.OutOrStdout(), resp)
+					renderErr = pyroscope.FormatQueryTable(cmd.OutOrStdout(), resp)
 				}
+			case opts.shared.IO.OutputFormat == "table":
+				renderErr = pyroscope.FormatQueryTable(cmd.OutOrStdout(), resp)
+			default:
+				renderErr = opts.shared.IO.Encode(cmd.OutOrStdout(), resp)
 			}
-
-			if opts.shared.IO.OutputFormat == "table" {
-				return pyroscope.FormatQueryTable(cmd.OutOrStdout(), resp)
+			if renderErr != nil {
+				return renderErr
 			}
-
-			return opts.shared.IO.Encode(cmd.OutOrStdout(), resp)
+			if opts.shared.ErrorOnEmpty {
+				return dsquery.ErrorOnEmptyWithContext(resp, dsquery.EmptyResultContext{
+					Expr: expr, DatasourceUID: datasourceUID, Start: start, End: end,
+				})
+			}
+			return nil
 		},
 	}
 

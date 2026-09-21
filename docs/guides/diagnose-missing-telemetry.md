@@ -32,12 +32,14 @@ and the relevant command's `--help` when following them with another release.
 
 For an already configured destination, use explicit `--config` and `--context`
 arguments. Do not switch the current context just for this investigation.
-Otherwise, create a separate private configuration outside your checkout:
+Otherwise, create a separate private configuration outside your checkout. The
+examples use `GCX_CONFIG`, gcx's actual environment override; unset it first if
+it points at another configuration so it cannot silently defeat this isolation:
 
 ```bash
 GCX_DIAGNOSTICS_DIR=$(mktemp -d)
-GCX_DIAGNOSTICS_CONFIG="$GCX_DIAGNOSTICS_DIR/config.yaml"
-(umask 077; printf '{}\n' > "$GCX_DIAGNOSTICS_CONFIG")
+export GCX_CONFIG="$GCX_DIAGNOSTICS_DIR/config.yaml"
+(umask 077; printf '{}\n' > "$GCX_CONFIG")
 ```
 
 Keep the path until cleanup. In another terminal, set the variable to the same
@@ -47,7 +49,7 @@ For an existing Grafana destination, use interactive login with a new context
 in that file (replace the example URL):
 
 ```bash
-gcx login diagnostics --config "$GCX_DIAGNOSTICS_CONFIG" \
+gcx login diagnostics --config "$GCX_CONFIG" \
   --server https://your-grafana.example
 ```
 
@@ -65,8 +67,8 @@ verification to make a connection error disappear.
 Use your selected context name below (`diagnostics` is the login example):
 
 ```bash
-gcx config check --config "$GCX_DIAGNOSTICS_CONFIG" --context diagnostics
-gcx datasources list --config "$GCX_DIAGNOSTICS_CONFIG" --context diagnostics
+gcx config check --config "$GCX_CONFIG" --context diagnostics
+gcx datasources list --config "$GCX_CONFIG" --context diagnostics
 ```
 
 Stop and resolve connection/authentication errors before interpreting query
@@ -77,13 +79,16 @@ For example, against a Prometheus datasource:
 ```bash
 gcx metrics query 'vector(1)' --datasource 'PROMETHEUS_DATASOURCE_UID' \
   --error-on-empty \
-  --config "$GCX_DIAGNOSTICS_CONFIG" --context diagnostics
+  --config "$GCX_CONFIG" --context diagnostics
 ```
 
 Replace `PROMETHEUS_DATASOURCE_UID` before running. A returned value proves that query
 path works, not that the application emitted metrics. With `--error-on-empty`,
 an empty response exits unsuccessfully; without it, a successful empty query,
 an invalid query, and a failed connection are different observations.
+The flag is supported on the Prometheus query, Loki logs/metrics, Tempo
+search/metrics, and Pyroscope query commands; it is not a generic flag for
+unrelated datasource query commands.
 
 ## Give the agent the symptom and boundaries
 

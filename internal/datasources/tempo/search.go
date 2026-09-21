@@ -91,12 +91,6 @@ explicit time range via --since or --from/--to.`,
 			if err != nil {
 				return fmt.Errorf("search failed: %w", err)
 			}
-			if shared.ErrorOnEmpty {
-				if err := dsquery.ErrorOnEmpty(resp); err != nil {
-					return err
-				}
-			}
-
 			exploreURL := ""
 			unavailableMsg, failedOpenMsg := dsquery.ExploreMessages("search")
 			switch {
@@ -115,13 +109,22 @@ explicit time range via --since or --from/--to.`,
 				}, limit)
 			}
 
-			return dsquery.EncodeAndHandleExplore(cmd, func() error {
+			resultErr := dsquery.EncodeAndHandleExplore(cmd, func() error {
 				return shared.IO.Encode(cmd.OutOrStdout(), resp)
 			}, *share, dsquery.ExploreLink{
 				URL:            exploreURL,
 				UnavailableMsg: unavailableMsg,
 				FailedOpenMsg:  failedOpenMsg,
 			})
+			if resultErr != nil {
+				return resultErr
+			}
+			if shared.ErrorOnEmpty {
+				return dsquery.ErrorOnEmptyWithContext(resp, dsquery.EmptyResultContext{
+					Expr: expr, DatasourceUID: datasourceUID, Start: start, End: end,
+				})
+			}
+			return nil
 		},
 	}
 

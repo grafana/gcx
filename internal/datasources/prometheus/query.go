@@ -113,12 +113,6 @@ open it in your browser after the query succeeds.`,
 			if err != nil {
 				return fmt.Errorf("query failed: %w", err)
 			}
-			if shared.ErrorOnEmpty {
-				if err := dsquery.ErrorOnEmpty(resp); err != nil {
-					return err
-				}
-			}
-
 			exploreURL := QueryExploreURL(cfg.GrafanaURL, dsquery.ExploreQuery{
 				DatasourceUID:  datasourceUID,
 				DatasourceType: dsType,
@@ -131,13 +125,22 @@ open it in your browser after the query succeeds.`,
 			})
 			unavailableMsg, failedOpenMsg := dsquery.ExploreMessages("query")
 
-			return dsquery.EncodeAndHandleExplore(cmd, func() error {
+			resultErr := dsquery.EncodeAndHandleExplore(cmd, func() error {
 				return shared.IO.Encode(cmd.OutOrStdout(), resp)
 			}, *share, dsquery.ExploreLink{
 				URL:            exploreURL,
 				UnavailableMsg: unavailableMsg,
 				FailedOpenMsg:  failedOpenMsg,
 			})
+			if resultErr != nil {
+				return resultErr
+			}
+			if shared.ErrorOnEmpty {
+				return dsquery.ErrorOnEmptyWithContext(resp, dsquery.EmptyResultContext{
+					Expr: expr, DatasourceUID: datasourceUID, Start: start, End: end,
+				})
+			}
+			return nil
 		},
 	}
 
