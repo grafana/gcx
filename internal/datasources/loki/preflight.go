@@ -11,7 +11,16 @@ import (
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/query/loki"
 	"github.com/spf13/pflag"
+	"golang.org/x/sync/errgroup"
 )
+
+// statsSelectorConcurrency bounds how many selectors' index-stats calls run
+// at once, per the repo's batch-I/O convention (AGENTS.md: bounded errgroup,
+// default 10). It's also what stops one slow selector from starving every
+// other selector's share of a shared deadline — serially, a slow first
+// selector could consume the whole statsPreflightTimeout budget before a
+// later, genuinely over-threshold selector ever got to run.
+const statsSelectorConcurrency = 10
 
 // statsPreflightOpts holds the --skip-stats/--stats-warn-bytes/--stats-max-bytes
 // flags shared by the query and metrics commands.
@@ -89,6 +98,12 @@ func resolveStatsWindow(expr string, isRange bool, start, end, now time.Time) (t
 // (checkStatsPreflightSync), so the two can never drift on how the estimate
 // itself is computed.
 //
+// Selectors are queried concurrently (bounded by statsSelectorConcurrency),
+// not serially: all of them share one statsPreflightTimeout deadline, so a
+// slow first selector must not be able to consume the whole budget and
+// starve a later one — that would silently omit a genuinely over-threshold
+// selector's bytes from the total.
+//
 // The check is advisory: a query with no extractable selector reports
 // ok=false, and a failure or timeout calling IndexStats for any individual
 // selector is a soft fail for that selector — the remaining selectors'
@@ -105,15 +120,31 @@ func computeStatsBytes(ctx context.Context, client *loki.Client, datasourceUID, 
 		return 0, false
 	}
 
+	bytesPerSelector := make([]uint64, len(selectors))
+	okPerSelector := make([]bool, len(selectors))
+
+	var g errgroup.Group
+	g.SetLimit(statsSelectorConcurrency)
+	for i, selector := range selectors {
+		g.Go(func() error {
+			resp, err := client.IndexStats(ctx, datasourceUID, selector, start, end)
+			if err != nil {
+				return nil //nolint:nilerr // deliberate soft fail per selector — must not cancel the group
+			}
+			bytesPerSelector[i] = resp.Bytes
+			okPerSelector[i] = true
+			return nil
+		})
+	}
+	_ = g.Wait() // every Go func above always returns nil
+
 	var totalBytes uint64
 	succeeded := false
-	for _, selector := range selectors {
-		resp, err := client.IndexStats(ctx, datasourceUID, selector, start, end)
-		if err != nil {
-			continue
+	for i, ok := range okPerSelector {
+		if ok {
+			succeeded = true
+			totalBytes += bytesPerSelector[i]
 		}
-		succeeded = true
-		totalBytes += resp.Bytes
 	}
 	return totalBytes, succeeded
 }
@@ -171,24 +202,32 @@ func checkStatsPreflightSync(ctx context.Context, client *loki.Client, stderr io
 // drift on that decision the way the two commands' pre-flight windowing once
 // did before it was unified into resolveStatsWindow.
 //
-// On success it returns a wait function the caller must call after issuing
-// the real query (a no-op unless the async warn-only path was taken); a
-// non-nil error means the caller must return immediately without querying
-// at all.
-func startStatsPreflight(ctx context.Context, client *loki.Client, stderr io.Writer, datasourceUID, expr string, isRange bool, start, end, now time.Time, preflight *statsPreflightOpts) (func(), error) {
+// On success it returns (wait, cancel, nil): the caller must issue the real
+// query, then call cancel() immediately when that returns — before calling
+// wait() — so a still-running async check is cut short rather than left to
+// run out its full statsPreflightTimeout. Without this, a query that
+// finishes quickly can still sit waiting on a slow index-stats call for up
+// to statsPreflightTimeout, which is exactly the added latency this
+// advisory check is supposed to avoid. Both functions are no-ops on the
+// synchronous or skipped paths, where there's nothing left to cut short.
+//
+// A non-nil error means the caller must return immediately without querying
+// at all; wait and cancel are both nil in that case.
+func startStatsPreflight(ctx context.Context, client *loki.Client, stderr io.Writer, datasourceUID, expr string, isRange bool, start, end, now time.Time, preflight *statsPreflightOpts) (func(), func(), error) {
 	switch {
 	case preflight.hasMaxBytes && !preflight.SkipStats:
 		if err := checkStatsPreflightSync(ctx, client, stderr, datasourceUID, expr, isRange, start, end, now, preflight.warnBytes, preflight.maxBytes); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		return func() {}, nil
+		return func() {}, func() {}, nil
 	case !preflight.SkipStats:
+		preflightCtx, cancelPreflight := context.WithCancel(ctx)
 		var wg sync.WaitGroup
 		wg.Go(func() {
-			runStatsPreflight(ctx, client, stderr, datasourceUID, expr, isRange, start, end, now, preflight.warnBytes)
+			runStatsPreflight(preflightCtx, client, stderr, datasourceUID, expr, isRange, start, end, now, preflight.warnBytes)
 		})
-		return wg.Wait, nil
+		return wg.Wait, cancelPreflight, nil
 	default:
-		return func() {}, nil
+		return func() {}, func() {}, nil
 	}
 }

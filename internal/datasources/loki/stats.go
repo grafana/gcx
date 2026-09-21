@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/gcx/internal/query/loki"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"golang.org/x/sync/errgroup"
 )
 
 type statsOpts struct {
@@ -119,12 +120,28 @@ and parseable.`,
 				return fmt.Errorf("failed to create client: %w", err)
 			}
 
+			// Selectors are queried concurrently (bounded, per AGENTS.md's
+			// batch-I/O convention) rather than serially, so command latency
+			// doesn't grow by one round trip per selector.
+			selectorResps := make([]*loki.IndexStatsResponse, len(selectors))
+			g, gCtx := errgroup.WithContext(ctx)
+			g.SetLimit(statsSelectorConcurrency)
+			for i, selector := range selectors {
+				g.Go(func() error {
+					selectorResp, err := client.IndexStats(gCtx, datasourceUID, selector, start, end)
+					if err != nil {
+						return fmt.Errorf("failed to get index stats for selector %s: %w", selector, err)
+					}
+					selectorResps[i] = selectorResp
+					return nil
+				})
+			}
+			if err := g.Wait(); err != nil {
+				return err
+			}
+
 			resp := &loki.IndexStatsResponse{}
-			for _, selector := range selectors {
-				selectorResp, err := client.IndexStats(ctx, datasourceUID, selector, start, end)
-				if err != nil {
-					return fmt.Errorf("failed to get index stats for selector %s: %w", selector, err)
-				}
+			for _, selectorResp := range selectorResps {
 				resp.Streams += selectorResp.Streams
 				resp.Chunks += selectorResp.Chunks
 				resp.Bytes += selectorResp.Bytes

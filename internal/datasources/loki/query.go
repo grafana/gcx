@@ -109,12 +109,15 @@ range alone would suggest.`,
 				Limit: limit,
 			}
 
-			wait, err := startStatsPreflight(ctx, client, cmd.ErrOrStderr(), datasourceUID, expr, req.IsRange(), start, end, now, preflight)
+			wait, cancelPreflight, err := startStatsPreflight(ctx, client, cmd.ErrOrStderr(), datasourceUID, expr, req.IsRange(), start, end, now, preflight)
 			if err != nil {
 				return err
 			}
 
 			resp, err := client.Query(ctx, datasourceUID, req)
+			// Cut a still-running async check short rather than let it run
+			// out its own timeout now that the real query has an answer.
+			cancelPreflight()
 			wait()
 			if err != nil {
 				return fmt.Errorf("query failed: %w", err)
