@@ -91,6 +91,11 @@ explicit time range via --since or --from/--to.`,
 			if err != nil {
 				return fmt.Errorf("search failed: %w", err)
 			}
+			if shared.RequireResult {
+				if err := dsquery.RequireResult(resp); err != nil {
+					return err
+				}
+			}
 
 			exploreURL := ""
 			unavailableMsg, failedOpenMsg := dsquery.ExploreMessages("search")

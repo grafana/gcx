@@ -303,6 +303,9 @@ gcx traces query '{.cluster="dev-us-central-0"}' --since 1h
 
 ## Install Agent Skills
 
+For an empty dashboard or missing application telemetry, follow
+[Diagnose missing telemetry with gcx](docs/guides/diagnose-missing-telemetry.md).
+
 gcx ships a portable Agent Skills bundle for setup, dashboard creation and
 GitOps, datasource exploration, alert investigation, structured debugging, SLO
 management, Synthetic Monitoring workflows, Knowledge Graph diagnosis,

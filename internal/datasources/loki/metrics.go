@@ -93,6 +93,11 @@ open it in your browser after the query succeeds.`,
 			if err != nil {
 				return fmt.Errorf("metric query failed: %w", err)
 			}
+			if shared.RequireResult {
+				if err := dsquery.RequireResult(resp); err != nil {
+					return err
+				}
+			}
 
 			exploreURL := MetricsExploreURL(cfg.GrafanaURL, dsquery.ExploreQuery{
 				DatasourceUID:  datasourceUID,

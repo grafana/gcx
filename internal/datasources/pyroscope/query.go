@@ -339,6 +339,11 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 				}
 				return fmt.Errorf("query failed: %w", err)
 			}
+			if opts.shared.RequireResult {
+				if err := dsquery.RequireResult(resp); err != nil {
+					return err
+				}
+			}
 
 			if isDot {
 				switch {

@@ -97,6 +97,11 @@ open it in your browser after the query succeeds.`,
 			if err != nil {
 				return fmt.Errorf("metrics query failed: %w", err)
 			}
+			if shared.RequireResult {
+				if err := dsquery.RequireResult(resp); err != nil {
+					return err
+				}
+			}
 
 			from := shared.From
 			to := shared.To

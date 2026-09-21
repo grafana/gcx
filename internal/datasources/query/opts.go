@@ -107,9 +107,10 @@ func (opts *TimeRangeOpts) ParseTimeRange(now time.Time) (time.Time, time.Time, 
 type SharedOpts struct {
 	TimeRangeOpts
 
-	IO   cmdio.Options
-	Step string
-	Expr string
+	IO            cmdio.Options
+	Step          string
+	Expr          string
+	RequireResult bool
 }
 
 // SetupExprFlag registers the --expr flag on the given flag set.
@@ -127,6 +128,7 @@ func (opts *SharedOpts) Setup(flags *pflag.FlagSet, enableGraph bool) {
 	opts.SetupTimeFlags(flags)
 	opts.SetupExprFlag(flags)
 	flags.StringVar(&opts.Step, "step", "", "Query step (e.g., '15s', '1m')")
+	flags.BoolVar(&opts.RequireResult, "require-result", false, "Fail if the query returns no results")
 }
 
 // ResolveExpr resolves the query expression from either the --expr flag or a

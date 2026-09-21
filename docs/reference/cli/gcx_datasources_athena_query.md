@@ -51,6 +51,7 @@ gcx datasources athena query [EXPR] [flags]
       --open                Open the executed query in Grafana Explore
   -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
       --region string       AWS region override
+      --require-result      Fail if the query returns no results
       --result-reuse        Enable Athena query result reuse (engine v3)
       --share-link          Print the Grafana Explore URL for the executed query to stderr
       --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from

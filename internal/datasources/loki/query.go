@@ -94,6 +94,11 @@ open it in your browser after the query succeeds.`,
 			if err != nil {
 				return fmt.Errorf("query failed: %w", err)
 			}
+			if shared.RequireResult {
+				if err := dsquery.RequireResult(resp); err != nil {
+					return err
+				}
+			}
 
 			exploreURL := LogsExploreURL(cfg.GrafanaURL, dsquery.ExploreQuery{
 				DatasourceUID:  datasourceUID,
