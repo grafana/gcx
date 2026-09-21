@@ -3,14 +3,11 @@ package alert
 import (
 	"errors"
 	"fmt"
-	"io"
 	"strings"
 	"time"
 
-	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/shared"
-	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -42,8 +39,7 @@ type stateHistoryListOpts struct {
 }
 
 func (o *stateHistoryListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &StateHistoryTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &StateHistoryTableCodec{Wide: true})
+	cmdio.RegisterTable(&o.IO, StateHistoryTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.StringVar(&o.RuleUID, "rule", "", "Filter by rule UID (required by the annotations history backend)")
@@ -136,46 +132,16 @@ func parseLabelFilters(pairs []string) (map[string]string, error) {
 	return labels, nil
 }
 
-// StateHistoryTableCodec renders state transitions as tabular output.
-type StateHistoryTableCodec struct {
-	Wide bool
-}
-
-func (c *StateHistoryTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
-	}
-	return "table"
-}
-
-func (c *StateHistoryTableCodec) Encode(w io.Writer, v any) error {
-	transitions, ok := v.([]StateTransition)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []StateTransition")
-	}
-
-	var t *style.TableBuilder
-	if c.Wide {
-		t = style.NewTable("TIME", "RULE_UID", "RULE", "PREVIOUS", "CURRENT", "ERROR", "LABELS")
-	} else {
-		t = style.NewTable("TIME", "RULE", "PREVIOUS", "CURRENT", "LABELS")
-	}
-
-	for _, tr := range transitions {
-		ts := orDash(formatHistoryTime(tr.Time))
-		labels := formatLabels(tr.Labels)
-
-		if c.Wide {
-			t.Row(ts, orDash(tr.RuleUID), orDash(tr.RuleTitle), orDash(tr.Previous), orDash(tr.Current), orDash(tr.Error), labels)
-			continue
-		}
-		t.Row(ts, orDash(tr.RuleTitle), orDash(tr.Previous), orDash(tr.Current), labels)
-	}
-	return t.Render(w)
-}
-
-func (c *StateHistoryTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
+func StateHistoryTable() cmdio.Table[StateTransition] {
+	return cmdio.Table[StateTransition]{Columns: []cmdio.Column[StateTransition]{
+		{Header: "TIME", Content: func(r StateTransition) string { return cmdio.OrDash(formatHistoryTime(r.Time)) }},
+		{Header: "RULE_UID", Visible: cmdio.WideOnly, Content: func(r StateTransition) string { return cmdio.OrDash(r.RuleUID) }},
+		{Header: "RULE", Content: func(r StateTransition) string { return cmdio.OrDash(r.RuleTitle) }},
+		{Header: "PREVIOUS", Content: func(r StateTransition) string { return cmdio.OrDash(r.Previous) }},
+		{Header: "CURRENT", Content: func(r StateTransition) string { return cmdio.OrDash(r.Current) }},
+		{Header: "ERROR", Visible: cmdio.WideOnly, Content: func(r StateTransition) string { return cmdio.OrDash(r.Error) }},
+		{Header: "LABELS", Content: func(r StateTransition) string { return formatLabels(r.Labels) }},
+	}}
 }
 
 func formatHistoryTime(t time.Time) string {
