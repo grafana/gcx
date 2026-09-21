@@ -29,7 +29,7 @@ func ErrorOnEmpty(data any) error {
 	case *tempo.MetricsResponse:
 		empty = len(resp.Series) == 0
 	case *pyroscope.QueryResponse:
-		empty = (resp.Flamegraph == nil || len(resp.Flamegraph.Names) == 0) && resp.Dot == ""
+		empty = (resp.Flamegraph == nil || len(resp.Flamegraph.Names) == 0) && !pyroscope.DotHasNodes(resp.Dot)
 	default:
 		return fmt.Errorf("cannot require a result for unsupported response type %T", data)
 	}

@@ -29,6 +29,8 @@ func TestErrorOnEmpty(t *testing.T) {
 		{name: "tempo metrics result", value: &tempo.MetricsResponse{Series: []tempo.MetricsSeries{{}}}},
 		{name: "pyroscope empty", value: &pyroscope.QueryResponse{}, empty: true},
 		{name: "pyroscope empty flamegraph", value: &pyroscope.QueryResponse{Flamegraph: &pyroscope.Flamegraph{}}, empty: true},
+		{name: "pyroscope empty dot graph", value: &pyroscope.QueryResponse{Dot: `digraph "profile" {}`}, empty: true},
+		{name: "pyroscope dot graph", value: &pyroscope.QueryResponse{Dot: `digraph "profile" { N1 [label="main"] }`}},
 		{name: "pyroscope flamegraph", value: &pyroscope.QueryResponse{Flamegraph: &pyroscope.Flamegraph{Names: []string{"main"}}}},
 	}
 	for _, tt := range tests {
