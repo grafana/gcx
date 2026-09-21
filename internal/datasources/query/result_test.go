@@ -1,9 +1,10 @@
-package query
+package query_test
 
 import (
 	"errors"
 	"testing"
 
+	query "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/query/loki"
 	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/grafana/gcx/internal/query/pyroscope"
@@ -31,8 +32,8 @@ func TestRequireResult(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := RequireResult(tt.value)
-			if tt.empty && !errors.Is(err, ErrNoResult) {
+			err := query.RequireResult(tt.value)
+			if tt.empty && !errors.Is(err, query.ErrNoResult) {
 				t.Fatalf("RequireResult() error = %v, want ErrNoResult", err)
 			}
 			if !tt.empty && err != nil {
