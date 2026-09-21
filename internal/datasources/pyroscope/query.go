@@ -92,6 +92,9 @@ func (opts *pyroscopeQueryOpts) Validate(flags *pflag.FlagSet) error {
 	if err := opts.shared.Validate(); err != nil {
 		return err
 	}
+	if opts.shared.ErrorOnEmpty && opts.shared.IO.OutputFormat == "pprof" {
+		return errors.New("--error-on-empty is not supported with -o pprof")
+	}
 	if opts.ProfileType == "" {
 		return errors.New("--profile-type is required for pyroscope queries")
 	}
@@ -145,7 +148,7 @@ func isDotUnsupportedErr(err error) bool {
 // without the format field and renders the standard table. An explicit
 // --max-nodes survives the fallback; only the dot-mode 0 (server-side graph
 // default) is replaced by the regular table default.
-func queryDotV1Fallback(ctx context.Context, cmd *cobra.Command, client *pyroscope.Client, datasourceUID string, req pyroscope.QueryRequest) error {
+func queryDotV1Fallback(ctx context.Context, cmd *cobra.Command, client *pyroscope.Client, datasourceUID string, req pyroscope.QueryRequest, errorOnEmpty bool) error {
 	cmdio.EmitHint(cmd.ErrOrStderr(), "backend does not support DOT output (requires -architecture.storage=v2); showing table instead", "")
 	req.Format = ""
 	if !cmd.Flags().Changed("max-nodes") {
@@ -154,6 +157,11 @@ func queryDotV1Fallback(ctx context.Context, cmd *cobra.Command, client *pyrosco
 	resp, err := client.Query(ctx, datasourceUID, req)
 	if err != nil {
 		return fmt.Errorf("query failed: %w", err)
+	}
+	if errorOnEmpty {
+		if err := dsquery.ErrorOnEmpty(resp); err != nil {
+			return err
+		}
 	}
 	return pyroscope.FormatQueryTable(cmd.OutOrStdout(), resp)
 }
@@ -336,7 +344,7 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 			resp, err := client.Query(ctx, datasourceUID, req)
 			if err != nil {
 				if isDot && isDotUnsupportedErr(err) {
-					return queryDotV1Fallback(ctx, cmd, client, datasourceUID, req)
+					return queryDotV1Fallback(ctx, cmd, client, datasourceUID, req, opts.shared.ErrorOnEmpty)
 				}
 				return fmt.Errorf("query failed: %w", err)
 			}

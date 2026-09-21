@@ -2,11 +2,21 @@
 package pyroscope
 
 import (
+	"bytes"
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
+	"github.com/grafana/gcx/internal/config"
+	dsquery "github.com/grafana/gcx/internal/datasources/query"
+	"github.com/grafana/gcx/internal/providers"
+	querypyroscope "github.com/grafana/gcx/internal/query/pyroscope"
+	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"k8s.io/client-go/rest"
 )
 
 func TestPyroscopeQueryOptsValidateSelectors(t *testing.T) {
@@ -30,6 +40,11 @@ func TestPyroscopeQueryOptsValidateSelectors(t *testing.T) {
 		{
 			name: "trace selector with pprof",
 			args: []string{"--trace-id", "4bf92f3577b34da6a3ce929d0e0e4736", "-o", "pprof"},
+		},
+		{
+			name:    "error on empty with pprof",
+			args:    []string{"--error-on-empty", "-o", "pprof"},
+			wantErr: "--error-on-empty is not supported with -o pprof",
 		},
 		{
 			name: "trace selector with stacktrace selector",
@@ -106,6 +121,50 @@ func TestPyroscopeQueryOptsValidateSelectors(t *testing.T) {
 			}
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.wantErr)
+		})
+	}
+}
+
+func TestQueryCmd_ErrorOnEmptyPprofValidationRunsBeforeConfigIO(t *testing.T) {
+	cmd := QueryCmd(&providers.ConfigLoader{})
+	cmd.SetArgs([]string{"--profile-type", "process_cpu:cpu:nanoseconds:cpu:nanoseconds", "--error-on-empty", "-o", "pprof"})
+
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--error-on-empty is not supported with -o pprof")
+}
+
+func TestQueryDotV1Fallback_ErrorOnEmpty(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"flamegraph":{"names":[],"levels":[],"total":"0","maxSelf":"0"}}`))
+	}))
+	defer server.Close()
+
+	client, err := querypyroscope.NewClient(config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}})
+	require.NoError(t, err)
+
+	for _, tt := range []struct {
+		name         string
+		errorOnEmpty bool
+		wantErr      bool
+	}{
+		{name: "enabled", errorOnEmpty: true, wantErr: true},
+		{name: "disabled", errorOnEmpty: false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			cmd := &cobra.Command{}
+			cmd.SetOut(&stdout)
+			cmd.SetErr(&stderr)
+
+			err := queryDotV1Fallback(context.Background(), cmd, client, "test-uid", querypyroscope.QueryRequest{}, tt.errorOnEmpty)
+			if tt.wantErr {
+				require.ErrorIs(t, err, dsquery.ErrNoResult)
+				assert.Empty(t, stdout.String())
+				return
+			}
+			require.NoError(t, err)
 		})
 	}
 }
