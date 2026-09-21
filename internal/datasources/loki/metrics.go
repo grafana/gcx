@@ -108,12 +108,15 @@ range alone would suggest.`,
 				Step:  step,
 			}
 
-			wait, err := startStatsPreflight(ctx, client, cmd.ErrOrStderr(), datasourceUID, expr, req.IsRange(), start, end, now, preflight)
+			wait, cancelPreflight, err := startStatsPreflight(ctx, client, cmd.ErrOrStderr(), datasourceUID, expr, req.IsRange(), start, end, now, preflight)
 			if err != nil {
 				return err
 			}
 
 			resp, err := client.MetricQuery(ctx, datasourceUID, req)
+			// Cut a still-running async check short rather than let it run
+			// out its own timeout now that the real query has an answer.
+			cancelPreflight()
 			wait()
 			if err != nil {
 				return fmt.Errorf("metric query failed: %w", err)
