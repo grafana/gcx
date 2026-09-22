@@ -340,11 +340,9 @@ func parseServicesResponse(resp *prometheus.QueryResponse) ([]Service, error) {
 			byKey[k] = svc
 		}
 		for lk, lv := range sample.Metric {
-			// service_version is deliberately excluded here: it feeds the
-			// ambiguity-tracked Version field below via versionsSeen, and a
-			// flat first-wins copy into Labels would leak an arbitrary
-			// single value for a service mid-rollout across two versions —
-			// exactly the misreport Version's "" case exists to avoid.
+			// service_version is excluded from the first-wins merge here. It
+			// feeds the ambiguity-tracked Version field below and is copied
+			// into Labels only after resolving to one distinct value.
 			if lk == "job" || lk == "telemetry_sdk_language" || lk == "__name__" || lk == "service_version" || lv == "" {
 				continue
 			}
@@ -370,6 +368,10 @@ func parseServicesResponse(resp *prometheus.QueryResponse) ([]Service, error) {
 			for v := range versions {
 				svc.Version = v
 			}
+			if svc.Labels == nil {
+				svc.Labels = map[string]string{}
+			}
+			svc.Labels["service_version"] = svc.Version
 		}
 		out = append(out, *svc)
 	}

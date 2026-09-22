@@ -642,6 +642,70 @@ func TestParseServicesResponse_VersionAmbiguous(t *testing.T) {
 	}
 }
 
+func TestParseServicesResponse_ServiceVersionLabel(t *testing.T) {
+	tests := []struct {
+		name        string
+		metrics     []map[string]string
+		wantVersion string
+		wantLabel   bool
+	}{
+		{
+			name: "single version populates field and label",
+			metrics: []map[string]string{
+				{"job": "billing/checkout", "service_version": "1.2.3"},
+			},
+			wantVersion: "1.2.3",
+			wantLabel:   true,
+		},
+		{
+			name: "absent version leaves field and label empty",
+			metrics: []map[string]string{
+				{"job": "billing/checkout"},
+			},
+		},
+		{
+			name: "empty version leaves field and label empty",
+			metrics: []map[string]string{
+				{"job": "billing/checkout", "service_version": ""},
+			},
+		},
+		{
+			name: "ambiguous version leaves field and label empty",
+			metrics: []map[string]string{
+				{"job": "billing/checkout", "service_version": "1.0.0"},
+				{"job": "billing/checkout", "service_version": "1.1.0"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp := &prometheus.QueryResponse{Data: prometheus.ResultData{}}
+			for _, metric := range tt.metrics {
+				resp.Data.Result = append(resp.Data.Result, prometheus.Sample{Metric: metric})
+			}
+
+			got, err := parseServicesResponse(resp)
+			if err != nil {
+				t.Fatalf("err = %v", err)
+			}
+			if len(got) != 1 {
+				t.Fatalf("len = %d, want 1: %+v", len(got), got)
+			}
+			if got[0].Version != tt.wantVersion {
+				t.Errorf("Version = %q, want %q", got[0].Version, tt.wantVersion)
+			}
+			version, present := got[0].Labels["service_version"]
+			if present != tt.wantLabel {
+				t.Fatalf("Labels[service_version] present = %v, want %v", present, tt.wantLabel)
+			}
+			if version != tt.wantVersion {
+				t.Errorf("Labels[service_version] = %q, want %q", version, tt.wantVersion)
+			}
+		})
+	}
+}
+
 // TestParseServicesResponse_ClusterFallback guards the fix for the dead
 // clusterValue fallback: metadataLabels() must project a bare `cluster`
 // label so a non-k8s deployment (no k8s_cluster_name) still populates
