@@ -6,9 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"mime"
 	"net/http"
 	"net/url"
 	"strings"
+	"unicode"
 )
 
 type assistantAPIError struct {
@@ -93,7 +96,6 @@ func (c *Client) GetConversation(ctx context.Context, ref ConversationReference)
 				return nil, fmt.Errorf("decode shared conversation messages: %w", err)
 			}
 			transcript.Messages = messages
-			transcript.Scope = "shared"
 			return transcript, nil
 		}
 		messages, err := c.readLegacyConversationMessages(ctx, ref.ID)
@@ -290,7 +292,7 @@ func (c *Client) doTranscriptRequest(ctx context.Context, operation, endpoint st
 		return &assistantAPIError{
 			operation: operation,
 			status:    resp.StatusCode,
-			message:   fmt.Sprintf("Assistant returned HTTP %d while reading %s", resp.StatusCode, operation),
+			message:   transcriptErrorMessage(resp),
 		}
 	}
 	if err := json.NewDecoder(resp.Body).Decode(target); err != nil {
@@ -310,4 +312,35 @@ func (c *Client) transcriptEndpoint(id string, shared bool, suffix string) strin
 func isAssistantStatus(err error, status int) bool {
 	var statusErr interface{ HTTPStatusCode() int }
 	return errors.As(err, &statusErr) && statusErr.HTTPStatusCode() == status
+}
+
+// transcriptErrorMessage retains bounded server diagnostics without dumping response payloads.
+func transcriptErrorMessage(resp *http.Response) string {
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	if err != nil {
+		return ""
+	}
+	var fields map[string]json.RawMessage
+	message := ""
+	if json.Unmarshal(body, &fields) == nil {
+		for _, key := range []string{"message", "error"} {
+			if json.Unmarshal(fields[key], &message) == nil && strings.TrimSpace(message) != "" {
+				break
+			}
+			message = ""
+		}
+	} else if mediaType, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type")); err == nil && mediaType == "text/plain" {
+		plain := strings.TrimSpace(string(body))
+		if strings.HasPrefix(plain, "{") || strings.HasPrefix(plain, "[") || strings.HasPrefix(plain, "<") {
+			return ""
+		}
+		message = plain
+	}
+	message = strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return ' '
+		}
+		return r
+	}, message)
+	return strings.Join(strings.Fields(message), " ")
 }

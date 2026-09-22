@@ -72,11 +72,18 @@ func (t ConversationTranscript) FormatText() string {
 		b.WriteByte('\n')
 	}
 
+	if t.hasNonTextParts() {
+		b.WriteString("\n(non-text message parts omitted; use --output json to inspect message parts)\n")
+	}
+
 	return strings.TrimRight(b.String(), "\n") + "\n"
 }
 
 func (t ConversationTranscript) hasNonTextParts() bool {
 	for _, message := range t.Messages {
+		if message.Hidden {
+			continue
+		}
 		var parts []struct {
 			Type string `json:"type"`
 		}

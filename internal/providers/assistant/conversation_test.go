@@ -228,7 +228,7 @@ func TestConversationGetCommand_ForbiddenConvertsToAuthExit(t *testing.T) {
 	detailed := fail.ErrorToDetailedError(err)
 	require.NotNil(t, detailed.ExitCode)
 	assert.Equal(t, gcxerrors.ExitAuthFailure, *detailed.ExitCode)
-	assert.NotContains(t, err.Error(), "path not allowed")
+	assert.Contains(t, err.Error(), "path not allowed")
 }
 
 func TestConversationGetCommand_TextOutput(t *testing.T) {

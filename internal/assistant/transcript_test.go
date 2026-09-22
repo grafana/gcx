@@ -61,3 +61,33 @@ func TestConversationTranscriptFormatTextStillReportsTrulyEmptyConversation(t *t
 
 	assert.Contains(t, transcript.FormatText(), "(no user/assistant messages)")
 }
+
+func TestConversationTranscriptFormatTextOmissionHint(t *testing.T) {
+	tests := []struct {
+		name                             string
+		prose, hidden, nontext, wantHint bool
+	}{
+		{"mixed prose and parts", true, false, true, true},
+		{"parts only", false, false, true, true},
+		{"hidden parts with visible prose", true, true, true, false},
+		{"hidden parts only", false, true, true, false},
+		{"text only", true, false, false, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			transcript := assistant.ConversationTranscript{Chat: assistant.Chat{ID: "chat-1"}}
+			if tt.prose {
+				transcript.Messages = append(transcript.Messages, assistant.ChatMessage{Role: "assistant", Content: assistant.ContentJSON{{Type: "text", Text: "visible prose"}}})
+			}
+			if tt.nontext {
+				transcript.Messages = append(transcript.Messages, assistant.ChatMessage{Role: "assistant", Hidden: tt.hidden, Parts: []byte(`[{"type":"file","url":"private"}]`)})
+			}
+			got := transcript.FormatText()
+			assert.Equal(t, tt.wantHint, strings.Contains(got, "use --output json to inspect message parts"))
+			if tt.prose {
+				assert.Contains(t, got, "visible prose")
+			}
+			assert.NotContains(t, got, "private")
+		})
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/internal/assistant"
@@ -151,7 +152,7 @@ func TestClientGetConversationReadsEmbeddedLegacySharedMessages(t *testing.T) {
 	got, err := client.GetConversation(context.Background(), assistant.ConversationReference{ID: "shared-1", Shared: true})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"/shared/shared-1"}, *requests)
-	assert.Equal(t, "shared", got.Scope)
+	assert.Empty(t, got.Scope)
 	assert.True(t, got.Chat.Shared)
 	require.Len(t, got.Messages, 1)
 	assert.Equal(t, "snapshot", got.Messages[0].ExtractText())
@@ -369,7 +370,7 @@ func TestClientGetConversationDirectCLIRoutes(t *testing.T) {
 			_, err := client.GetConversation(context.Background(), tt.ref)
 			if tt.wantErr != "" {
 				require.ErrorContains(t, err, tt.wantErr)
-				assert.NotContains(t, err.Error(), "path not allowed")
+				assert.Contains(t, err.Error(), "path not allowed")
 			} else {
 				require.NoError(t, err)
 			}
@@ -411,4 +412,47 @@ func newConversationTestClient(t *testing.T, responses map[string]testHTTPRespon
 		TokenRefresher: refresher,
 		HTTPClient:     server.Client(),
 	}), &requests
+}
+
+func TestClientGetConversationErrorDiagnostics(t *testing.T) {
+	tests := []struct{ name, contentType, body, want string }{
+		{"JSON message", "application/json", `{"message":"Access denied: path not allowed for CLI tokens","data":"private"}`, "Access denied: path not allowed for CLI tokens"},
+		{"JSON error", "application/json", `{"error":"missing scope"}`, "missing scope"},
+		{"JSON without content type", "", `{"error":"missing scope"}`, "missing scope"},
+		{"JSON message precedence", "application/json", `{"message":"first","error":"second"}`, "first"},
+		{"JSON nonstring message", "application/json", `{"message":{"private":"value"},"error":"missing scope"}`, "missing scope"},
+		{"JSON unrelated fields", "application/json", `{"data":{"text":"private"}}`, ""},
+		{"JSON malformed", "application/json", `{"message":"private"`, ""},
+		{"HTML", "text/html", "<html>private</html>", ""},
+		{"plain text", "text/plain; charset=utf-8", "Access denied: path not allowed for CLI tokens", "Access denied: path not allowed for CLI tokens"},
+		{"plain text controls", "text/plain", "denied\nnext\r\t\x00\x1b", "denied next"},
+		{"JSON controls", "application/json", `{"error":"denied\nnext\u0000\u001b"}`, "denied next"},
+		{"empty", "application/json", "", ""},
+		{"HTML marked plain", "text/plain", "  <html>private</html>", ""},
+		{"truncated JSON marked plain", "text/plain", `{"message":"` + strings.Repeat("x", 5000) + `"}`, ""},
+		{"malformed JSON array marked plain", "text/plain", ` ["private"`, ""},
+		{"JSON array marked plain", "text/plain", `["private"]`, ""},
+		{"oversized JSON", "application/json", `{"message":"` + strings.Repeat("x", 5000) + `"}`, ""},
+		{"bounded plain text", "text/plain", strings.Repeat("x", 4096) + "private tail", strings.Repeat("x", 4096)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header()["Content-Type"] = []string{tt.contentType}
+				w.WriteHeader(http.StatusForbidden)
+				_, _ = fmt.Fprint(w, tt.body)
+			}))
+			t.Cleanup(server.Close)
+			client := assistant.New(assistant.ClientOptions{GrafanaURL: server.URL, Token: "test-token", HTTPClient: server.Client()})
+			_, err := client.GetConversation(context.Background(), assistant.ConversationReference{ID: "chat-1"})
+			var apiErr interface {
+				HTTPStatusCode() int
+				APIUserMessage() string
+			}
+			require.ErrorAs(t, err, &apiErr)
+			assert.Equal(t, http.StatusForbidden, apiErr.HTTPStatusCode())
+			assert.Equal(t, tt.want, apiErr.APIUserMessage())
+			assert.Equal(t, 1, strings.Count(err.Error(), "HTTP 403"))
+		})
+	}
 }
