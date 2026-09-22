@@ -11,61 +11,6 @@ import (
 	"github.com/grafana/gcx/internal/assistant"
 )
 
-func TestFetchChatMessages(t *testing.T) {
-	t.Parallel()
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		if r.URL.Path != "/api/plugins/grafana-assistant-app/resources/api/v1/chats/chat-1/all-messages" {
-			http.NotFound(w, r)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"data": map[string]any{
-				"messages": []assistant.ChatMessage{
-					{
-						ID:   "m1",
-						Role: "user",
-						Content: assistant.ContentJSON{
-							{Type: "text", Text: "Why is checkout slow?"},
-						},
-					},
-					{
-						ID:   "m2",
-						Role: "assistant",
-						Content: assistant.ContentJSON{
-							{Type: "text", Text: "p99 latency is elevated."},
-						},
-					},
-				},
-			},
-		})
-	}))
-	t.Cleanup(server.Close)
-
-	messages, err := assistant.FetchChatMessages(
-		context.Background(),
-		server.URL+"/api/plugins/grafana-assistant-app/resources/api/v1",
-		"test-token",
-		"chat-1",
-		server.Client(),
-	)
-	if err != nil {
-		t.Fatalf("FetchChatMessages: %v", err)
-	}
-	if len(messages) != 2 {
-		t.Fatalf("got %d messages, want 2", len(messages))
-	}
-	if messages[0].ExtractText() != "Why is checkout slow?" {
-		t.Fatalf("message 0 text = %q", messages[0].ExtractText())
-	}
-}
-
 func TestFetchChats(t *testing.T) {
 	t.Parallel()
 

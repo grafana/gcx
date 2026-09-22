@@ -4,13 +4,14 @@ Get a conversation transcript
 
 ### Synopsis
 
-Fetch conversation metadata and message history for a conversation ID.
+Fetch conversation metadata and message history by conversation ID or shared URL.
 
-Use this to pull a web Assistant chat into a coding agent before continuing it
-with 'gcx assistant prompt --context-id'.
+AI SDK conversations include the server-visible main thread. Shared conversations
+are read-only snapshots in this workflow; transcript retrieval does not establish
+that a conversation can be continued with 'gcx assistant prompt --context-id'.
 
 ```
-gcx assistant conversation get <conversation-id> [flags]
+gcx assistant conversation get <id-or-url> [flags]
 ```
 
 ### Examples
@@ -18,6 +19,7 @@ gcx assistant conversation get <conversation-id> [flags]
 ```
   gcx assistant conversation get 295a674f-3a3d-44e8-9166-3f8054409f65
   gcx assistant conversation get 295a674f-3a3d-44e8-9166-3f8054409f65 -o json
+  gcx assistant conversation get 'https://example.grafana.net/a/grafana-assistant-app/chats/shared/295a674f-3a3d-44e8-9166-3f8054409f65'
 ```
 
 ### Options
