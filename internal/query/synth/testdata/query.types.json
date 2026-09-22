@@ -1,0 +1,76 @@
+{
+  "kind": "QueryTypeDefinitionList",
+  "apiVersion": "datasource.grafana.app/v0alpha1",
+  "metadata": {
+    "resourceVersion": "1788464229422"
+  },
+  "items": [
+    {
+      "metadata": {
+        "name": "probe_execution_rate",
+        "resourceVersion": "1788205583968",
+        "creationTimestamp": "2026-08-31T19:46:23Z"
+      },
+      "spec": {
+        "discriminators": [
+          {
+            "field": "queryType",
+            "value": "probe_execution_rate"
+          }
+        ],
+        "description": "Rate of successful check executions per probe, summed across all checks in the tenant.",
+        "schema": {
+          "$schema": "https://json-schema.org/draft-04/schema",
+          "additionalProperties": false,
+          "description": "TenantWideQuery has no parameters: the query is computed across the whole tenant.",
+          "type": "object"
+        }
+      }
+    },
+    {
+      "metadata": {
+        "name": "checks_uptime",
+        "resourceVersion": "1788464229422",
+        "creationTimestamp": "2026-09-03T19:37:09Z"
+      },
+      "spec": {
+        "discriminators": [
+          {
+            "field": "queryType",
+            "value": "checks_uptime"
+          }
+        ],
+        "description": "Uptime for a single check over its execution frequency window, as the app displays it.",
+        "schema": {
+          "$schema": "https://json-schema.org/draft-04/schema",
+          "additionalProperties": false,
+          "description": "CheckFrequencyQuery is a CheckQuery plus the check's execution frequency, used to size a lookback window.",
+          "properties": {
+            "frequency": {
+              "description": "Frequency is the check's frequency in milliseconds. Must be positive.",
+              "type": "integer"
+            },
+            "instance": {
+              "description": "Instance is the check's instance label.",
+              "type": "string"
+            },
+            "job": {
+              "description": "Job is the check's job label.",
+              "type": "string"
+            },
+            "probe": {
+              "description": "Probe restricts results to a single probe. Empty matches every probe.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "job",
+            "instance",
+            "frequency"
+          ],
+          "type": "object"
+        }
+      }
+    }
+  ]
+}
