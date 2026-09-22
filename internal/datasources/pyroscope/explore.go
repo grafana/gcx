@@ -13,6 +13,15 @@ import (
 // to match pyroscope query's flamegraph output (as opposed to "metrics" or
 // "both").
 //
+// Manual testing against a real Grafana Cloud stack saw one load where the
+// Explore panel's editor failed to hydrate labelSelector from this exact
+// query shape ("No data", empty selector shown) and a later, identical load
+// that hydrated and rendered correctly. That one-off looks like a race in
+// the panel's own URL-hydration/default-query-init path, not something tied
+// to queryType specifically — there's no repro or evidence pinning it to
+// "profile" over "both", so this deliberately doesn't change queryType to
+// chase an unverified fix. Revisit if it reproduces reliably.
+//
 // traceIDs has no field anywhere in that schema, so --trace-id has no
 // Explore-UI representation and is not part of this query object — the
 // Explore link is simply inaccurate for that one flag, same as it is today
