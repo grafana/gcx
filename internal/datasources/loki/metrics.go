@@ -120,7 +120,7 @@ rate(...) fall back to the Explore URL).`,
 			}
 
 			drilldownURL, _ := LogsDrilldownURL(cfg.GrafanaURL, datasourceUID, expr, start, end)
-			drilldownUnavailableMsg, drilldownFailedOpenMsg := dsquery.DrilldownMessages("metric query")
+			drilldownUnavailableMsg, drilldownFailedOpenMsg := dsquery.DrilldownMessages("metric query", "Logs Drilldown")
 			if err := dsquery.HandleDrilldownLinkWithExploreFallback(cmd, *drilldown, drilldownURL, drilldownUnavailableMsg, drilldownFailedOpenMsg,
 				share.Enabled(), exploreURL, unavailableMsg, failedOpenMsg); err != nil {
 				return err
@@ -144,7 +144,7 @@ rate(...) fall back to the Explore URL).`,
 	shared.SetupErrorOnEmptyFlag(cmd.Flags())
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.loki is configured)")
 	share.Setup(cmd.Flags(), "executed query")
-	drilldown.Setup(cmd.Flags(), "executed query")
+	drilldown.Setup(cmd.Flags(), "executed query", "Logs Drilldown")
 
 	return cmd
 }

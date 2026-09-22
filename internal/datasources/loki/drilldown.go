@@ -68,5 +68,5 @@ func LogsDrilldownURL(host, datasourceUID, expr string, start, end time.Time) (s
 		params["var-lineFilters"] = append(params["var-lineFilters"], dsquery.EncodeLineFilter(strconv.Itoa(i), lf.Operator, lf.Value))
 	}
 
-	return dsquery.BuildDrilldownURL(host, path, params), true
+	return dsquery.BuildDrilldownURL(host, dsquery.LogsDrilldownPluginID, path, params), true
 }

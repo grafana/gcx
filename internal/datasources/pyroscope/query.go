@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/grafana/gcx/internal/agent"
+	"github.com/grafana/gcx/internal/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
@@ -145,10 +146,12 @@ func isDotUnsupportedErr(err error) bool {
 }
 
 // queryDotV1Fallback retries a DOT-rejected query against a v1 backend
-// without the format field and renders the standard table. An explicit
-// --max-nodes survives the fallback; only the dot-mode 0 (server-side graph
-// default) is replaced by the regular table default.
-func queryDotV1Fallback(ctx context.Context, cmd *cobra.Command, client *pyroscope.Client, datasourceUID string, req pyroscope.QueryRequest, errorOnEmpty bool) error {
+// without the format field. An explicit --max-nodes survives the fallback;
+// only the dot-mode 0 (server-side graph default) is replaced by the regular
+// table default. Rendering the result (and any Explore/Drilldown links) is
+// left to the caller, which funnels every non-pprof branch through one
+// shared tail.
+func queryDotV1Fallback(ctx context.Context, cmd *cobra.Command, client *pyroscope.Client, datasourceUID string, req pyroscope.QueryRequest) (*pyroscope.QueryResponse, error) {
 	cmdio.EmitHint(cmd.ErrOrStderr(), "backend does not support DOT output (requires -architecture.storage=v2); showing table instead", "")
 	req.Format = ""
 	if !cmd.Flags().Changed("max-nodes") {
@@ -156,17 +159,58 @@ func queryDotV1Fallback(ctx context.Context, cmd *cobra.Command, client *pyrosco
 	}
 	resp, err := client.Query(ctx, datasourceUID, req)
 	if err != nil {
-		return fmt.Errorf("query failed: %w", err)
+		return nil, fmt.Errorf("query failed: %w", err)
 	}
-	if err := pyroscope.FormatQueryTable(cmd.OutOrStdout(), resp); err != nil {
-		return err
+	return resp, nil
+}
+
+// queryLinkFinisher builds the Explore and Profiles Drilldown URLs for a
+// query command invocation and returns a function every query-view render
+// branch (table, JSON, dot, and dot's v1/no-data fallbacks) should route its
+// response and render error through: on success it handles both links (with
+// Drilldown falling back to Explore when it can't represent the query) and
+// then applies --error-on-empty against resp; on a render failure it passes
+// that error straight through unchanged.
+func queryLinkFinisher(
+	cmd *cobra.Command,
+	share *dsquery.ExploreLinkOpts, drilldown *dsquery.DrilldownLinkOpts,
+	cfg config.NamespacedRESTConfig, cfgCtx *config.Context,
+	datasourceUID, dsType, expr string,
+	opts *pyroscopeQueryOpts,
+	start, end time.Time, maxNodes int64,
+) func(*pyroscope.QueryResponse, error) error {
+	exploreURL := QueryExploreURL(cfg.GrafanaURL, dsquery.ExploreQuery{
+		DatasourceUID:  datasourceUID,
+		DatasourceType: dsType,
+		Expr:           expr,
+		From:           opts.shared.From,
+		To:             opts.shared.To,
+		OrgID:          dsquery.OrgID(cfgCtx),
+	}, opts.ProfileType, opts.SpanIDs, opts.ProfileIDs, opts.StacktraceSelector, maxNodes)
+	exploreUnavailableMsg, exploreFailedOpenMsg := dsquery.ExploreMessages("query")
+
+	hasUnsupportedDrillDown := len(opts.TraceIDs) > 0 || len(opts.ProfileIDs) > 0
+	drilldownURL, _ := ProfilesDrilldownURL(cfg.GrafanaURL, datasourceUID, expr, opts.ProfileType, opts.SpanIDs, hasUnsupportedDrillDown, start, end)
+	drilldownUnavailableMsg, drilldownFailedOpenMsg := dsquery.DrilldownMessages("query", "Profiles Drilldown")
+
+	return func(resp *pyroscope.QueryResponse, renderErr error) error {
+		if renderErr != nil {
+			return renderErr
+		}
+		if err := dsquery.HandleExploreLink(cmd, *share, exploreURL, exploreUnavailableMsg, exploreFailedOpenMsg); err != nil {
+			return err
+		}
+		if err := dsquery.HandleDrilldownLinkWithExploreFallback(cmd, *drilldown, drilldownURL, drilldownUnavailableMsg, drilldownFailedOpenMsg,
+			share.Enabled(), exploreURL, exploreUnavailableMsg, exploreFailedOpenMsg); err != nil {
+			return err
+		}
+		if opts.shared.ErrorOnEmpty {
+			return dsquery.ErrorOnEmptyWithContext(resp, dsquery.EmptyResultContext{
+				Expr: expr, DatasourceUID: datasourceUID, Start: start, End: end,
+			})
+		}
+		return nil
 	}
-	if errorOnEmpty {
-		return dsquery.ErrorOnEmptyWithContext(resp, dsquery.EmptyResultContext{
-			Expr: req.LabelSelector, DatasourceUID: datasourceUID, Start: req.Start, End: req.End,
-		})
-	}
-	return nil
 }
 
 // stackTraceSelector builds the StackTraceSelector message from the
@@ -199,6 +243,8 @@ func (opts *pyroscopeQueryOpts) resolveMaxNodes(flags *pflag.FlagSet) int64 {
 // QueryCmd returns the `query` subcommand for a Pyroscope datasource parent.
 func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &pyroscopeQueryOpts{}
+	share := &dsquery.ExploreLinkOpts{}
+	drilldown := &dsquery.DrilldownLinkOpts{}
 
 	cmd := &cobra.Command{
 		Use:   "query [EXPR]",
@@ -206,7 +252,13 @@ func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
 		Long: `Execute a profiling query against a Pyroscope datasource.
 
 EXPR is the label selector (e.g., '{service_name="frontend"}').
-Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
+Datasource is resolved from -d flag or datasources.pyroscope in your context.
+Use --share-link to print the equivalent Grafana Explore URL, or --open to
+open it in your browser after the query succeeds (unavailable for --trace-id,
+which has no Explore-UI representation). Use --drilldown-link or
+--open-drilldown for the equivalent Grafana Profiles Drilldown URL (falls
+back to the Explore URL for --trace-id/--profile-id, neither of which has a
+Drilldown URL equivalent).`,
 		Example: `
   # Profile query with explicit datasource UID
   gcx datasources pyroscope query -d UID '{service_name="frontend"}' \
@@ -215,6 +267,10 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
   # Using configured default datasource
   gcx datasources pyroscope query '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h
+
+  # Print a Grafana Profiles Drilldown link for the query
+  gcx datasources pyroscope query '{service_name="frontend"}' \
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --drilldown-link
 
   # Output as JSON
   gcx datasources pyroscope query -d UID '{service_name="frontend"}' \
@@ -277,7 +333,7 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 				return err
 			}
 
-			datasourceUID, _, err := dsquery.ResolveValidateAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "pyroscope")
+			datasourceUID, dsType, err := dsquery.ResolveValidateAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "pyroscope")
 			if err != nil {
 				return err
 			}
@@ -344,44 +400,47 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 				req.Format = pyroscope.ProfileFormatDot
 			}
 
+			// Explore/Drilldown links apply to every query-view branch below
+			// (table, JSON, dot, dot's v1/no-data fallbacks) but not the
+			// pprof export above, which downloads a file rather than
+			// viewing the query in Grafana. finish is the single shared
+			// tail every one of those branches routes its render error
+			// through, so the links are only ever handled once.
+			finish := queryLinkFinisher(cmd, share, drilldown, cfg, cfgCtx, datasourceUID, dsType, expr, opts, start, end, req.MaxNodes)
+
 			resp, err := client.Query(ctx, datasourceUID, req)
 			if err != nil {
 				if isDot && isDotUnsupportedErr(err) {
-					return queryDotV1Fallback(ctx, cmd, client, datasourceUID, req, opts.shared.ErrorOnEmpty)
+					resp, err = queryDotV1Fallback(ctx, cmd, client, datasourceUID, req)
+					if err != nil {
+						return err
+					}
+					return finish(resp, pyroscope.FormatQueryTable(cmd.OutOrStdout(), resp))
 				}
 				return fmt.Errorf("query failed: %w", err)
 			}
-			var renderErr error
 			switch {
 			case isDot:
 				switch {
 				case pyroscope.DotHasNodes(resp.Dot):
-					_, renderErr = fmt.Fprintln(cmd.OutOrStdout(), pyroscope.CleanDot(resp.Dot))
+					_, err := fmt.Fprintln(cmd.OutOrStdout(), pyroscope.CleanDot(resp.Dot))
+					return finish(resp, err)
 				case resp.Flamegraph != nil:
 					// v1-v2-dual read paths silently downgrade DOT to a
 					// flame graph; render it as the standard table.
 					cmdio.EmitHint(cmd.ErrOrStderr(), "backend runs v1-v2-dual and downgraded DOT to a flame graph (requires -architecture.storage=v2); showing table instead", "")
-					renderErr = pyroscope.FormatQueryTable(cmd.OutOrStdout(), resp)
+					return finish(resp, pyroscope.FormatQueryTable(cmd.OutOrStdout(), resp))
 				default:
 					// No dot payload and no flame graph: the query matched
 					// no samples. The table renders "(no profile data)".
 					emitEmptyWindowHint(cmd.ErrOrStderr(), "profile data", start, end, req.IsRange())
-					renderErr = pyroscope.FormatQueryTable(cmd.OutOrStdout(), resp)
+					return finish(resp, pyroscope.FormatQueryTable(cmd.OutOrStdout(), resp))
 				}
 			case opts.shared.IO.OutputFormat == "table":
-				renderErr = pyroscope.FormatQueryTable(cmd.OutOrStdout(), resp)
+				return finish(resp, pyroscope.FormatQueryTable(cmd.OutOrStdout(), resp))
 			default:
-				renderErr = opts.shared.IO.Encode(cmd.OutOrStdout(), resp)
+				return finish(resp, opts.shared.IO.Encode(cmd.OutOrStdout(), resp))
 			}
-			if renderErr != nil {
-				return renderErr
-			}
-			if opts.shared.ErrorOnEmpty {
-				return dsquery.ErrorOnEmptyWithContext(resp, dsquery.EmptyResultContext{
-					Expr: expr, DatasourceUID: datasourceUID, Start: start, End: end,
-				})
-			}
-			return nil
 		},
 	}
 
@@ -391,6 +450,8 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 	}
 
 	opts.setup(cmd.Flags())
+	share.Setup(cmd.Flags(), "executed query")
+	drilldown.Setup(cmd.Flags(), "executed query", "Profiles Drilldown")
 
 	return cmd
 }

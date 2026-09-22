@@ -68,7 +68,7 @@ func TestHandleDrilldownLinkWithExploreFallback(t *testing.T) {
 		cmd.SetErr(&stderr)
 
 		err := dsquery.HandleDrilldownLinkWithExploreFallback(cmd,
-			dsquery.DrilldownLinkOpts{ShareLink: true}, "https://example.grafana.net/a/grafana-lokiexplore-app/explore/app/foo/logs", "unavailable", "failed",
+			dsquery.DrilldownLinkOpts{ShareLink: true, AppName: "Logs Drilldown"}, "https://example.grafana.net/a/grafana-lokiexplore-app/explore/app/foo/logs", "unavailable", "failed",
 			false, "https://example.grafana.net/explore?x=1", "explore unavailable", "explore failed",
 		)
 		require.NoError(t, err)

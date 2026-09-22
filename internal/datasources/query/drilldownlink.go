@@ -51,11 +51,12 @@ func EncodeLineFilter(key, operator, value string) string {
 	return key + "|" + escapeURLDelimiters(operator) + "|" + escapeURLDelimiters(value)
 }
 
-// BuildDrilldownURL renders a Logs Drilldown app URL. path is the app-relative
-// path (e.g. "/explore/service/foo/logs" or "/explore" for the root), and
-// params holds the flat, possibly-repeated query parameters (var-filters,
-// var-lineFilters, etc.) already in Drilldown's encoded form.
-func BuildDrilldownURL(host, path string, params map[string][]string) string {
+// BuildDrilldownURL renders a Grafana Drilldown app URL for pluginID (e.g.
+// LogsDrilldownPluginID). path is the app-relative path (e.g.
+// "/explore/service/foo/logs" or "/explore" for the root), and params holds
+// the flat, possibly-repeated query parameters (var-filters, var-lineFilters,
+// etc.) already in that app's encoded form.
+func BuildDrilldownURL(host, pluginID, path string, params map[string][]string) string {
 	host = strings.TrimRight(strings.TrimSpace(host), "/")
 	if host == "" {
 		return ""
@@ -64,7 +65,7 @@ func BuildDrilldownURL(host, path string, params map[string][]string) string {
 		return ""
 	}
 
-	u, err := url.Parse(host + "/a/" + LogsDrilldownPluginID + path)
+	u, err := url.Parse(host + "/a/" + pluginID + path)
 	if err != nil {
 		return ""
 	}

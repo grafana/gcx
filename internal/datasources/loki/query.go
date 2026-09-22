@@ -152,7 +152,7 @@ log-volume-over-time chart.`,
 			}
 
 			drilldownURL, _ := LogsDrilldownURL(cfg.GrafanaURL, datasourceUID, expr, start, end)
-			drilldownUnavailableMsg, drilldownFailedOpenMsg := dsquery.DrilldownMessages("query")
+			drilldownUnavailableMsg, drilldownFailedOpenMsg := dsquery.DrilldownMessages("query", "Logs Drilldown")
 			if err := dsquery.HandleDrilldownLinkWithExploreFallback(cmd, *drilldown, drilldownURL, drilldownUnavailableMsg, drilldownFailedOpenMsg,
 				share.Enabled(), exploreURL, unavailableMsg, failedOpenMsg); err != nil {
 				return err
@@ -184,7 +184,7 @@ log-volume-over-time chart.`,
 	cmd.Flags().BoolVar(&tui, "tui", false, "Page through results in an interactive, color-coded viewer (requires a real terminal)")
 	cmd.Flags().BoolVar(&wrap, "wrap", false, "With --tui, start with long lines soft-wrapped instead of clipped at the terminal width (toggle live with 'w')")
 	share.Setup(cmd.Flags(), "executed query")
-	drilldown.Setup(cmd.Flags(), "executed query")
+	drilldown.Setup(cmd.Flags(), "executed query", "Logs Drilldown")
 
 	return cmd
 }
