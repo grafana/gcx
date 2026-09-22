@@ -39,7 +39,7 @@ gcx datasources loki labels [flags]
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -l, --label string        Get values for this label (omit to list all labels)
   -o, --output string       Output format. One of: agents, json, table, yaml (default "table")
-  -q, --query string        LogQL query to filter labels
+  -q, --query string        LogQL stream selector to scope labels, e.g. '{app="foo"}' (pipeline stages are not supported)
 ```
 
 ### Options inherited from parent commands
