@@ -29,7 +29,7 @@ gcx docs get <url> [flags]
   -h, --help             help for get
       --jq string        jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string      Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --limit int        Maximum lines to return (0 = default)
+      --limit int        Maximum lines to return (0 or negative uses the default of 80)
       --offset int       Line offset for paging (0-indexed)
   -o, --output string    Output format. One of: agents, json, text, yaml (default "text")
       --section string   Heading text to extract (returns only that section)

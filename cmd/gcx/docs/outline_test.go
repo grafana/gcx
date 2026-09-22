@@ -1,4 +1,4 @@
-package docs_test
+package docs
 
 import (
 	"encoding/json"
@@ -9,9 +9,10 @@ import (
 )
 
 func TestOutlineCommandSuccess(t *testing.T) {
+	disableAgentMode(t)
 	const url = "https://grafana.com/docs/tempo/latest/"
 
-	stdout, err := runWithFetcher(t, okDoc(), "outline", url, "-o", "json")
+	stdout, _, err := testCommand(t, nil, okDoc(), "outline", url, "-o", "json")
 	require.NoError(t, err)
 
 	var res struct {

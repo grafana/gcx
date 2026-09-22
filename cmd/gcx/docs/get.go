@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	goio "io"
+	"strconv"
 	"strings"
 
 	"github.com/grafana/gcx/internal/format"
@@ -12,6 +13,12 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
+
+// defaultGetLimit is the command default and the value used when --limit
+// is 0 or negative. grafanadocs.Excerpt applies the same coercion, but get
+// resolves the bound itself so help text and continuation hints name a
+// concrete number.
+const defaultGetLimit = 80
 
 type getOpts struct {
 	IO      cmdio.Options
@@ -27,7 +34,7 @@ func (o *getOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 	flags.StringVar(&o.section, "section", "", "Heading text to extract (returns only that section)")
 	flags.IntVar(&o.offset, "offset", 0, "Line offset for paging (0-indexed)")
-	flags.IntVar(&o.limit, "limit", 0, "Maximum lines to return (0 = default)")
+	flags.IntVar(&o.limit, "limit", 0, "Maximum lines to return (0 or negative uses the default of 80)")
 }
 
 func (o *getOpts) Validate() error {
@@ -38,6 +45,13 @@ func (o *getOpts) Validate() error {
 		return fmt.Errorf("--offset must be non-negative, got %d", o.offset)
 	}
 	return o.IO.Validate()
+}
+
+func (o *getOpts) validateExplicitFlags(cmd *cobra.Command) error {
+	if cmd.Flags().Changed("section") && strings.TrimSpace(o.section) == "" {
+		return errors.New("--section must not be empty")
+	}
+	return nil
 }
 
 // getResult is the JSON-serializable form of a fetched, excerpted page.
@@ -69,24 +83,37 @@ func getCommand(fetch docFetcher) *cobra.Command {
 			if err := opts.Validate(); err != nil {
 				return err
 			}
+			if err := opts.validateExplicitFlags(cmd); err != nil {
+				return err
+			}
 			doc, err := fetch(cmd.Context(), opts.url)
 			if err != nil {
 				return cleanFetchErr(opts.url, err)
 			}
+			effectiveLimit := opts.limit
+			if effectiveLimit <= 0 {
+				effectiveLimit = defaultGetLimit
+			}
 			res := grafanadocs.Excerpt(doc, grafanadocs.ExcerptOpts{
 				Section: opts.section,
 				Offset:  opts.offset,
-				Limit:   opts.limit,
+				Limit:   effectiveLimit,
 			})
 			if res.Content == "" && opts.section != "" {
-				return fmt.Errorf("section %q not found; run 'gcx docs outline %s' to see available headings", opts.section, opts.url)
+				return fmt.Errorf("section %q not found; run `gcx docs outline %s` to see available headings", opts.section, shellQuote(opts.url))
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), getResult{
+			if err := opts.IO.Encode(cmd.OutOrStdout(), getResult{
 				Content:       res.Content,
 				URL:           doc.URL,
 				TotalLines:    res.Total,
 				ReturnedRange: [2]int{res.Start, res.End},
-			})
+			}); err != nil {
+				return err
+			}
+			if opts.section == "" && res.End < res.Total {
+				emitGetPartialityHint(cmd.ErrOrStderr(), opts.url, res.Start, res.End, res.Total, effectiveLimit)
+			}
+			return nil
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -109,4 +136,14 @@ func (c *getTextCodec) Encode(w goio.Writer, v any) error {
 
 func (c *getTextCodec) Decode(_ goio.Reader, _ any) error {
 	return errors.New("get text codec does not support decoding")
+}
+
+func emitGetPartialityHint(w goio.Writer, rawURL string, start, end, total, effectiveLimit int) {
+	summary := fmt.Sprintf("showing lines %d-%d of %d", start, end, total)
+	continuation := fmt.Sprintf("gcx docs get %s --offset %d --limit %d", shellQuote(rawURL), end, effectiveLimit)
+	cmdio.EmitHint(w, summary, continuation)
+}
+
+func shellQuote(value string) string {
+	return strconv.Quote(value)
 }

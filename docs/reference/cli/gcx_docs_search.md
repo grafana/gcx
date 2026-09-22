@@ -4,7 +4,7 @@ Search Grafana documentation.
 
 ### Synopsis
 
-Search the documentation index by keyword. Returns matching pages ranked by relevance.
+Search the documentation index by keyword. Multiple words are joined into one phrase. Matching is case-insensitive; each word is scored independently, and entries matching more words rank higher. Returns matching pages ranked by relevance.
 
 ```
 gcx docs search <query> [flags]

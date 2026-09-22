@@ -87,7 +87,9 @@ func searchCommand(loader *indexLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "search <query>",
 		Short: "Search Grafana documentation.",
-		Long:  "Search the documentation index by keyword. Returns matching pages ranked by relevance.",
+		Long: "Search the documentation index by keyword. Multiple words are joined into one " +
+			"phrase. Matching is case-insensitive; each word is scored independently, and " +
+			"entries matching more words rank higher. Returns matching pages ranked by relevance.",
 		Example: `  # Search across all products
   gcx docs search "rate limiting"
 

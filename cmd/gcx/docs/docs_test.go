@@ -1,61 +1,23 @@
-package docs_test
+package docs
 
 import (
-	"bytes"
 	"encoding/json"
-	"os"
 	"testing"
 
-	"github.com/grafana/gcx/cmd/gcx/docs"
-	"github.com/grafana/gcx/internal/agent"
-	"github.com/grafana/mcp-doc-server/pkg/grafanadocs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// disableAgentMode ensures tests run with agent mode off so default output
-// format is "text" rather than "agents".
-func disableAgentMode(t *testing.T) {
-	t.Helper()
-	t.Setenv("GCX_AGENT_MODE", "false")
-	t.Setenv("CURSOR_AGENT", "")
-	t.Setenv("CLAUDECODE", "")
-	t.Setenv("CLAUDE_CODE", "")
-	agent.ResetForTesting()
-}
-
-func loadTestIndex(t *testing.T) *grafanadocs.Index {
-	t.Helper()
-	f, err := os.Open("testdata/sample-index.txt")
-	require.NoError(t, err)
-	defer func() { _ = f.Close() }()
-	idx, err := grafanadocs.LoadIndexFromReader(f)
-	require.NoError(t, err)
-	return idx
-}
-
-// run builds the docs command group with a pre-loaded index and executes it
-// with the given args, capturing stdout and stderr separately.
-func run(t *testing.T, args ...string) (string, string, error) {
-	t.Helper()
-	idx := loadTestIndex(t)
-	cmd := docs.CommandWithIndex(idx)
-	var out, errOut bytes.Buffer
-	cmd.SetOut(&out)
-	cmd.SetErr(&errOut)
-	cmd.SetArgs(args)
-	err := cmd.Execute()
-	return out.String(), errOut.String(), err
-}
-
 func TestSearchCommand(t *testing.T) {
 	disableAgentMode(t)
+	idx := loadTestIndex(t)
 
 	tests := []struct {
 		name        string
 		args        []string
 		wantErr     string
 		wantStdout  []string
+		notStdout   []string
 		wantStderr  string
 		checkStdout func(t *testing.T, stdout string)
 	}{
@@ -68,6 +30,13 @@ func TestSearchCommand(t *testing.T) {
 			name:       "product filter is case-insensitive substring",
 			args:       []string{"search", "clustering", "--product", "agent"},
 			wantStdout: []string{"Clustering"},
+		},
+		{
+			name:       "product filter excludes non-matching products",
+			args:       []string{"search", "clustering", "--product", "tempo"},
+			wantStdout: []string{"TITLE"},
+			notStdout:  []string{"Clustering"},
+			wantStderr: "no results found",
 		},
 		{
 			name:    "empty query is rejected",
@@ -140,7 +109,7 @@ func TestSearchCommand(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			stdout, stderr, err := run(t, tt.args...)
+			stdout, stderr, err := testCommand(t, idx, nil, tt.args...)
 			if tt.wantErr != "" {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.wantErr)
@@ -149,6 +118,9 @@ func TestSearchCommand(t *testing.T) {
 			require.NoError(t, err)
 			for _, want := range tt.wantStdout {
 				assert.Contains(t, stdout, want)
+			}
+			for _, not := range tt.notStdout {
+				assert.NotContains(t, stdout, not)
 			}
 			if tt.wantStderr != "" {
 				assert.Contains(t, stderr, tt.wantStderr)
@@ -162,9 +134,10 @@ func TestSearchCommand(t *testing.T) {
 
 func TestProductsCommand(t *testing.T) {
 	disableAgentMode(t)
+	idx := loadTestIndex(t)
 
 	t.Run("text lists products and counts", func(t *testing.T) {
-		stdout, _, err := run(t, "list-products")
+		stdout, _, err := testCommand(t, idx, nil, "list-products")
 		require.NoError(t, err)
 		assert.Contains(t, stdout, "PRODUCT")
 		assert.Contains(t, stdout, "PAGES")
@@ -174,7 +147,7 @@ func TestProductsCommand(t *testing.T) {
 	})
 
 	t.Run("json wraps products", func(t *testing.T) {
-		stdout, _, err := run(t, "list-products", "-o", "json")
+		stdout, _, err := testCommand(t, idx, nil, "list-products", "-o", "json")
 		require.NoError(t, err)
 		var got map[string]any
 		require.NoError(t, json.Unmarshal([]byte(stdout), &got))
@@ -188,7 +161,7 @@ func TestLinksCommand(t *testing.T) {
 	disableAgentMode(t)
 
 	t.Run("text lists names and urls", func(t *testing.T) {
-		stdout, _, err := run(t, "list-links")
+		stdout, _, err := testCommand(t, nil, nil, "list-links")
 		require.NoError(t, err)
 		assert.Contains(t, stdout, "NAME")
 		assert.Contains(t, stdout, "URL")
@@ -197,7 +170,7 @@ func TestLinksCommand(t *testing.T) {
 	})
 
 	t.Run("json wraps links", func(t *testing.T) {
-		stdout, _, err := run(t, "list-links", "-o", "json")
+		stdout, _, err := testCommand(t, nil, nil, "list-links", "-o", "json")
 		require.NoError(t, err)
 		var got map[string]any
 		require.NoError(t, json.Unmarshal([]byte(stdout), &got))
@@ -213,6 +186,7 @@ func TestLinksCommand(t *testing.T) {
 
 func TestGetCommandGuards(t *testing.T) {
 	disableAgentMode(t)
+	const url = "https://grafana.com/docs/tempo/latest/"
 
 	tests := []struct {
 		name    string
@@ -221,14 +195,15 @@ func TestGetCommandGuards(t *testing.T) {
 	}{
 		{name: "missing url arg", args: []string{"get"}, wantErr: "accepts 1 arg"},
 		{name: "non-grafana host", args: []string{"get", "https://evil.com/docs/x.md"}, wantErr: "rejected host"},
-		{name: "negative offset", args: []string{"get", "https://grafana.com/docs/tempo/latest/", "--offset", "-1"}, wantErr: "--offset must be non-negative"},
+		{name: "negative offset", args: []string{"get", url, "--offset", "-1"}, wantErr: "--offset must be non-negative"},
+		{name: "explicit empty section", args: []string{"get", url, "--section", ""}, wantErr: "--section must not be empty"},
 		{name: "outline missing url", args: []string{"outline"}, wantErr: "accepts 1 arg"},
 		{name: "outline non-grafana host", args: []string{"outline", "https://evil.com/docs/x"}, wantErr: "rejected host"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, _, err := run(t, tt.args...)
+			_, _, err := testCommand(t, nil, nil, tt.args...)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.wantErr)
 		})

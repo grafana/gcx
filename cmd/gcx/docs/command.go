@@ -12,10 +12,9 @@ import (
 )
 
 // docFetcher fetches a documentation page as bounded Markdown. It is
-// grafanadocs.FetchDoc in production and is replaced in tests (via
-// CommandWithFetcher) so the get/outline success paths can be exercised
-// without a live fetch, mirroring the CommandWithIndex hook used for the
-// index-backed commands. Dependency injection keeps it off the package scope.
+// grafanadocs.FetchDoc in production and is replaced in tests so the
+// get/outline success paths can be exercised without a live fetch.
+// Dependency injection keeps it off the package scope.
 type docFetcher func(ctx context.Context, url string) (*grafanadocs.Doc, error)
 
 // cleanFetchErr rewrites a grafanadocs fetch error into product-facing
@@ -62,22 +61,6 @@ func (l *indexLoader) get(ctx context.Context) (*grafanadocs.Index, error) {
 // with rootCmd.AddCommand(docs.Command()).
 func Command() *cobra.Command {
 	return newDocsCommand(&indexLoader{}, grafanadocs.FetchDoc)
-}
-
-// CommandWithIndex returns a docs command group wired to a pre-loaded index.
-// Intended for tests — avoids network fetches during test execution.
-func CommandWithIndex(idx *grafanadocs.Index) *cobra.Command {
-	loader := &indexLoader{idx: idx}
-	loader.once.Do(func() {})
-	return newDocsCommand(loader, grafanadocs.FetchDoc)
-}
-
-// CommandWithFetcher returns a docs command group with the page fetcher
-// replaced. Intended for tests — lets the get/outline success paths run
-// without a live network fetch, mirroring CommandWithIndex for the
-// index-backed commands.
-func CommandWithFetcher(fetch docFetcher) *cobra.Command {
-	return newDocsCommand(&indexLoader{}, fetch)
 }
 
 func newDocsCommand(loader *indexLoader, fetch docFetcher) *cobra.Command {
