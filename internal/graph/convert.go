@@ -156,10 +156,41 @@ func FromLokiLogVolumeResponse(resp *loki.QueryResponse) (*ChartData, error) {
 		return &ChartData{}, nil
 	}
 
-	bucketSize := maxTime.Sub(minTime) / logVolumeBuckets
-	if bucketSize <= 0 {
-		bucketSize = time.Second
+	if maxTime.Equal(minTime) {
+		// Every entry shares one timestamp. A single real bucket, not a
+		// fabricated logVolumeBuckets-wide range extending past the only
+		// observed instant (which would draw a spike followed by tens of
+		// seconds of false zero volume).
+		counts := make(map[LogLevel]int)
+		for _, e := range entries {
+			counts[e.level]++
+		}
+
+		data := &ChartData{
+			Title:  "Log volume",
+			Series: make([]Series, 0, len(counts)),
+		}
+		for level, count := range counts {
+			data.Series = append(data.Series, Series{
+				Name:   string(level),
+				Color:  LevelColor(level),
+				Points: []Point{{Time: minTime, Value: float64(count)}},
+			})
+		}
+		sort.Slice(data.Series, func(i, j int) bool {
+			return data.Series[i].Name < data.Series[j].Name
+		})
+
+		return data, nil
 	}
+
+	// Ceiling division so bucketSize*logVolumeBuckets is always >= the full
+	// span; floor division could round bucketSize down enough that the
+	// entry at maxTime computes a bucket index beyond logVolumeBuckets,
+	// which the render loop below never reads — silently dropping it from
+	// the chart.
+	span := maxTime.Sub(minTime)
+	bucketSize := (span + logVolumeBuckets - 1) / logVolumeBuckets
 
 	counts := make(map[LogLevel]map[int64]int)
 	for _, e := range entries {

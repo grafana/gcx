@@ -21,7 +21,8 @@ represent, e.g. parser stages or aggregations).
 Use --tui to page through results in an interactive, color-coded viewer
 (requires a real terminal); pass --wrap to start with long lines wrapped
 instead of clipped, or toggle wrapping live with 'w'. Use -o graph for a
-log-volume-over-time chart.
+log-volume-over-time chart — it only charts the lines --limit actually
+returned, so pass --limit 0 for the chart to reflect the full queried range.
 
 ```
 gcx logs query [EXPR] [flags]

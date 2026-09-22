@@ -47,7 +47,12 @@ func LogsDrilldownURL(host, datasourceUID, expr string, start, end time.Time) (s
 	if pathLabelName == "service_name" {
 		pathLabelName = "service"
 	}
-	path := "/explore/" + pathLabelName + "/" + dsquery.EscapePrimaryLabel(primary.Value) + "/logs"
+	// Logs Drilldown's own contextToLink uses only the first |-separated
+	// alternative of an inclusive regex matcher (e.g. {app=~"foo|bar"}) for
+	// the path segment; the full value is unaffected and still goes into
+	// var-filters below via primary.Value.
+	pathValue := strings.SplitN(primary.Value, "|", 2)[0]
+	path := "/explore/" + pathLabelName + "/" + dsquery.EscapePrimaryLabel(pathValue) + "/logs"
 
 	if end.IsZero() {
 		end = time.Now()
@@ -65,7 +70,8 @@ func LogsDrilldownURL(host, datasourceUID, expr string, start, end time.Time) (s
 		params["var-filters"] = append(params["var-filters"], dsquery.EncodeLabelFilter(m.Key, m.Operator, m.Value))
 	}
 	for i, lf := range lineFilters {
-		params["var-lineFilters"] = append(params["var-lineFilters"], dsquery.EncodeLineFilter(strconv.Itoa(i), lf.Operator, lf.Value))
+		key, value := dsquery.LineFilterKeyAndValue(i, lf.Operator, lf.Value)
+		params["var-lineFilters"] = append(params["var-lineFilters"], dsquery.EncodeLineFilter(key, lf.Operator, value))
 	}
 
 	return dsquery.BuildDrilldownURL(host, dsquery.LogsDrilldownPluginID, path, params), true

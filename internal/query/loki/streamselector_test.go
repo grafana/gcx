@@ -56,3 +56,24 @@ func TestParseStreamSelector_EmptySelectorBody(t *testing.T) {
 	_, _, ok := loki.ParseStreamSelector(`{}`)
 	assert.False(t, ok)
 }
+
+// unquote must decode LogQL's string-literal escapes (matching Go's own
+// escape rules), not just strip the backslash and keep the escaped rune
+// literally — otherwise \n, \t, \\, and \" would corrupt the value sent to
+// Drilldown relative to the value Loki actually matched.
+func TestParseStreamSelector_DecodesLogQLEscapes(t *testing.T) {
+	matchers, lineFilters, ok := loki.ParseStreamSelector(`{app="foo\nbar"} |= "a\tb" != "c\\d" |~ "e\"f"`)
+	require.True(t, ok)
+	require.Len(t, matchers, 1)
+	assert.Equal(t, "foo\nbar", matchers[0].Value)
+
+	require.Len(t, lineFilters, 3)
+	assert.Equal(t, "a\tb", lineFilters[0].Value)
+	assert.Equal(t, `c\d`, lineFilters[1].Value)
+	assert.Equal(t, `e"f`, lineFilters[2].Value)
+}
+
+func TestParseStreamSelector_InvalidEscapeFallsBack(t *testing.T) {
+	_, _, ok := loki.ParseStreamSelector(`{app="foo\zbar"}`)
+	assert.False(t, ok)
+}

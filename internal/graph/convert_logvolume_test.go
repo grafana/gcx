@@ -102,6 +102,58 @@ func TestFromLokiLogVolumeResponse_EmptyResponse(t *testing.T) {
 	assert.Empty(t, data.Series)
 }
 
+// A zero-span response (every entry shares one timestamp) must render a
+// single real point per level, not a fabricated logVolumeBuckets-wide range
+// extending past the only observed instant.
+func TestFromLokiLogVolumeResponse_ZeroSpanIsSinglePoint(t *testing.T) {
+	resp := &loki.QueryResponse{
+		Data: loki.QueryResultData{
+			Result: []loki.StreamEntry{{
+				Stream: map[string]string{"app": "foo"},
+				Values: []loki.LogEntry{
+					{Timestamp: "1000000000", Line: "a", StructuredMetadata: map[string]string{"detected_level": "info"}},
+					{Timestamp: "1000000000", Line: "b", StructuredMetadata: map[string]string{"detected_level": "info"}},
+				},
+			}},
+		},
+	}
+
+	data, err := graph.FromLokiLogVolumeResponse(resp)
+	require.NoError(t, err)
+	require.Len(t, data.Series, 1)
+	require.Len(t, data.Series[0].Points, 1)
+	assert.InDelta(t, 2.0, data.Series[0].Points[0].Value, 0)
+}
+
+// The entry at maxTime must always fall within the rendered bucket range,
+// even when the span isn't evenly divisible by logVolumeBuckets — floor
+// division on bucket size can otherwise round it down just enough that the
+// tail entry's computed bucket index falls outside the buckets the render
+// loop actually reads, silently dropping it from the chart.
+func TestFromLokiLogVolumeResponse_TailEntryNotDroppedByBucketRounding(t *testing.T) {
+	resp := &loki.QueryResponse{
+		Data: loki.QueryResultData{
+			Result: []loki.StreamEntry{{
+				Stream: map[string]string{"app": "foo"},
+				Values: []loki.LogEntry{
+					{Timestamp: "0", Line: "first"},
+					{Timestamp: "41", Line: "last"},
+				},
+			}},
+		},
+	}
+
+	data, err := graph.FromLokiLogVolumeResponse(resp)
+	require.NoError(t, err)
+	require.Len(t, data.Series, 1)
+
+	total := 0.0
+	for _, p := range data.Series[0].Points {
+		total += p.Value
+	}
+	assert.InDelta(t, 2.0, total, 0, "both entries, including the one at the max timestamp, must be represented in the rendered buckets")
+}
+
 func TestFromLokiLogVolumeResponse_SkipsUnparsableTimestamps(t *testing.T) {
 	resp := &loki.QueryResponse{
 		Data: loki.QueryResultData{

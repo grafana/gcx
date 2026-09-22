@@ -7,6 +7,7 @@ import (
 
 	"github.com/grafana/gcx/internal/agent"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/loki"
 	"github.com/grafana/gcx/internal/terminal"
@@ -44,7 +45,8 @@ represent, e.g. parser stages or aggregations).
 Use --tui to page through results in an interactive, color-coded viewer
 (requires a real terminal); pass --wrap to start with long lines wrapped
 instead of clipped, or toggle wrapping live with 'w'. Use -o graph for a
-log-volume-over-time chart.`,
+log-volume-over-time chart — it only charts the lines --limit actually
+returned, so pass --limit 0 for the chart to reflect the full queried range.`,
 		Example: `
   # Query logs using configured default datasource
   gcx datasources loki query '{job="varlogs"}'
@@ -124,6 +126,17 @@ log-volume-over-time chart.`,
 			if err != nil {
 				return fmt.Errorf("query failed: %w", err)
 			}
+
+			if shared.IO.OutputFormat == "graph" && limit != 0 {
+				// The log-volume chart only reflects the lines actually
+				// fetched. A capped --limit (50 by default) silently caps
+				// the chart's apparent volume too, with no other signal
+				// that it's a truncated page rather than the true total.
+				cmdio.EmitHint(cmd.ErrOrStderr(),
+					fmt.Sprintf("-o graph only charts the %d line(s) returned by --limit; pass --limit 0 to chart the full queried range", limit),
+					"--limit 0")
+			}
+
 			encode := func() error {
 				return shared.IO.Encode(cmd.OutOrStdout(), resp)
 			}

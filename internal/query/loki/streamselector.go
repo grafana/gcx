@@ -1,6 +1,7 @@
 package loki
 
 import (
+	"strconv"
 	"strings"
 )
 
@@ -194,33 +195,22 @@ func readQuotedValue(s string) (string, string, bool) {
 	return "", "", false
 }
 
-// unquote strips a single layer of double quotes and resolves backslash
-// escapes, mirroring LogQL's quoted-string syntax. It does not accept
-// backtick-quoted (raw) strings, since Drilldown's own matcher parsing
-// doesn't special-case them either.
+// unquote strips a single layer of double quotes and decodes LogQL's
+// quoted-string escapes, which follow Go string-literal semantics (\n, \t,
+// \\, \", \xHH, \uHHHH, octal escapes, ...) rather than treating every
+// escaped rune as itself. It does not accept backtick-quoted (raw) strings
+// — rejected by the leading double-quote check before reaching
+// strconv.Unquote — since Drilldown's own matcher parsing doesn't
+// special-case them either.
 func unquote(s string) (string, bool) {
 	if len(s) < 2 || !strings.HasPrefix(s, `"`) || !strings.HasSuffix(s, `"`) {
 		return "", false
 	}
-	inner := s[1 : len(s)-1]
-
-	var sb strings.Builder
-	escaped := false
-	for _, c := range inner {
-		switch {
-		case escaped:
-			sb.WriteRune(c)
-			escaped = false
-		case c == '\\':
-			escaped = true
-		default:
-			sb.WriteRune(c)
-		}
-	}
-	if escaped {
+	unquoted, err := strconv.Unquote(s)
+	if err != nil {
 		return "", false
 	}
-	return sb.String(), true
+	return unquoted, true
 }
 
 // splitTopLevelCommas splits s on commas that are not inside a quoted string.
