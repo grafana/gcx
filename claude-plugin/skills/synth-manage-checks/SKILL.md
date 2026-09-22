@@ -180,4 +180,4 @@ Deleted check <ID> (<job-name> -> <target>)
 - **"check validation failed"**: gcx validates the spec client-side before calling the API. Fix the YAML field indicated in the error and re-run.
 - **Create fails with "check already exists"**: The check job+target combination may already exist. Use `gcx synthetic-monitoring checks list` to find it and update instead of create.
 - **No probes available**: Run `gcx synthetic-monitoring probes list`; if empty, verify gcx context and SM API access.
-- **Complex check types (MultiHTTP, Browser, Scripted)**: Settings map is not fully documented. Pull an existing check of that type as a template: `gcx synthetic-monitoring checks get <ID> -o yaml`.
+- **Complex check types (MultiHTTP, Browser, Scripted)**: See [Complex Check Types](references/check-types.md#complex-check-types-scripted-browser-multihttp) in check-types.md.

@@ -8,6 +8,7 @@
 - [DNS Check](#dns-check)
 - [TCP Check](#tcp-check)
 - [Traceroute Check](#traceroute-check)
+- [Complex Check Types (Scripted, Browser, MultiHTTP)](#complex-check-types-scripted-browser-multihttp)
 
 ## Decision Tree
 
@@ -223,4 +224,23 @@ spec:
       maxHops: 64          # maximum hops to trace
       ptrLookup: false     # true = resolve hop IPs via PTR records
       hopTimeout: 500      # ms per hop
+```
+
+## Complex Check Types (Scripted, Browser, MultiHTTP)
+
+gcx validates and applies these types today — `scripted`, `browser`, and
+`multihttp` are all accepted `settings` keys — but this skill doesn't cover
+authoring them. For scripted/browser check authoring — the k6
+single-VU/single-iteration execution model, `expect()` vs bare `check()`
+semantics, secrets, deterministic scripts, robust browser locators — install
+the `synthetic-monitoring-checks` skill:
+
+```bash
+npx skills add grafana/skills -s synthetic-monitoring-checks
+```
+
+Then pull an existing check of the target type as a starting template:
+
+```bash
+gcx synthetic-monitoring checks get <ID> -o yaml --decode-script
 ```
