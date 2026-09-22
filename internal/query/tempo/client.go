@@ -100,13 +100,17 @@ func (c *Client) GetTrace(ctx context.Context, datasourceUID string, req GetTrac
 	}
 	if req.Query != "" {
 		q.Set("q", req.Query)
-		q.Set("keep_hierarchy", strconv.FormatBool(req.KeepHierarchy))
-		q.Set("match_depth", strconv.Itoa(req.MatchDepth))
-		q.Set("ancestor_depth", strconv.Itoa(req.AncestorDepth))
+		if req.KeepHierarchy != nil {
+			q.Set("keep_hierarchy", strconv.FormatBool(*req.KeepHierarchy))
+		}
+		if req.MatchDepth != nil {
+			q.Set("match_depth", strconv.Itoa(*req.MatchDepth))
+		}
+		if req.AncestorDepth != nil {
+			q.Set("ancestor_depth", strconv.Itoa(*req.AncestorDepth))
+		}
 	}
-	if req.SpanPruning != nil {
-		q.Set("span_pruning", strconv.FormatBool(*req.SpanPruning))
-	}
+	q.Set("span_pruning", strconv.FormatBool(req.SpanPruning))
 	if req.SpanPruningGroupBy != "" {
 		q.Set("span_pruning_group_by", req.SpanPruningGroupBy)
 	}

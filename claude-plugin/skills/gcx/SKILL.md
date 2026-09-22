@@ -196,21 +196,17 @@ gcx traces get -d <tempo-uid> <trace-id> --filter '{ status = error }' --keep-hi
 # Collapse repeated sibling spans (e.g. a fan-out of identical DB calls)
 # into one aggregated span. Safe to combine with --filter.
 gcx traces get -d <tempo-uid> <trace-id> --prune --llm -o json
-
-# Prune only if the unpruned trace exceeds the agent output budget.
-gcx traces get -d <tempo-uid> <trace-id> --prune=auto --llm -o agents
 ```
 
 `--filter` takes a TraceQL spanset filter; `--match-depth`/`--ancestor-depth`
 tune how many descendant/ancestor levels around each match are kept and are
-ignored without `--filter`. `--prune` takes `true`, `false`, or `auto`; bare
-`--prune` means true, and omitting it uses the datasource's tenant default.
-With `--prune=auto` the trace is fetched unpruned first and re-requested with
-pruning only if it exceeds the agent output budget (100 KiB, overridable via
-`GCX_AGENT_SPILL_BYTES`), which pairs with `-o agents`.
-`--prune-group-by`/`--prune-min-spans`/`--prune-max-parent-depth` tune the
-pruning behavior and apply whenever pruning is enabled, including by the
-datasource's tenant default. Run `gcx traces get --help` for full flag details.
+ignored without `--filter`. `--prune` is a bool, off unless set. 
+`--prune-group-by`/`--prune-min-spans`/`--prune-max-parent-depth`
+tune the pruning behavior and apply only when `--prune` enables pruning. Run
+`gcx traces get --help` for full flag details.
+
+If a response is too large for `-o agents`, it spills to a file with a hint
+to read it directly or re-run narrower (e.g. with `--filter` or `--prune`).
 
 ## Grafana Assistant
 

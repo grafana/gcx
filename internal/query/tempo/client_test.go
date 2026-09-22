@@ -177,9 +177,9 @@ func TestGetTrace(t *testing.T) {
 			req: tempo.GetTraceRequest{
 				TraceID:       "trace1",
 				Query:         "{ status = error }",
-				KeepHierarchy: true,
-				MatchDepth:    2,
-				AncestorDepth: -1,
+				KeepHierarchy: new(true),
+				MatchDepth:    new(2),
+				AncestorDepth: new(-1),
 			},
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, "{ status = error }", r.URL.Query().Get("q"))
@@ -204,7 +204,7 @@ func TestGetTrace(t *testing.T) {
 			name: "span pruning enabled with tuning params",
 			req: tempo.GetTraceRequest{
 				TraceID:                   "trace1",
-				SpanPruning:               new(true),
+				SpanPruning:               true,
 				SpanPruningGroupBy:        "db.*,http.method",
 				SpanPruningMinSpans:       new(3),
 				SpanPruningMaxParentDepth: new(2),
@@ -218,24 +218,13 @@ func TestGetTrace(t *testing.T) {
 			},
 		},
 		{
-			name: "unset span pruning omits all pruning params",
+			name: "default span pruning sends false explicitly and omits tuning params",
 			req:  tempo.GetTraceRequest{TraceID: "trace1"},
 			handler: func(w http.ResponseWriter, r *http.Request) {
-				assert.False(t, r.URL.Query().Has("span_pruning"))
+				assert.Equal(t, "false", r.URL.Query().Get("span_pruning"))
 				assert.False(t, r.URL.Query().Has("span_pruning_group_by"))
 				assert.False(t, r.URL.Query().Has("span_pruning_min_spans"))
 				assert.False(t, r.URL.Query().Has("span_pruning_max_parent_depth"))
-				writeJSON(t, w, tempo.GetTraceResponse{})
-			},
-		},
-		{
-			name: "span pruning explicitly disabled",
-			req: tempo.GetTraceRequest{
-				TraceID:     "trace1",
-				SpanPruning: new(false),
-			},
-			handler: func(w http.ResponseWriter, r *http.Request) {
-				assert.Equal(t, "false", r.URL.Query().Get("span_pruning"))
 				writeJSON(t, w, tempo.GetTraceResponse{})
 			},
 		},

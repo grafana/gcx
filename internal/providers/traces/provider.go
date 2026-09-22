@@ -38,7 +38,7 @@ func (p *Provider) descriptor() signals.Descriptor {
 			{
 				Build:     dstempo.GetCmd,
 				TokenCost: "medium",
-				LLMHint:   "gcx traces get -d abc123 <trace-id> --llm -o json; for a large trace, narrow with --filter '{ status = error }' --keep-hierarchy or shrink fan-outs with --prune (or --prune=auto to prune only when oversized)",
+				LLMHint:   "gcx traces get -d abc123 <trace-id> --llm -o json; for a large trace, narrow with --filter '{ status = error }' --keep-hierarchy or shrink fan-outs with --prune",
 				Example: `
   # Fetch a trace by ID for agent analysis
   gcx traces get -d UID <trace-id> --llm -o json
@@ -53,10 +53,7 @@ func (p *Provider) descriptor() signals.Descriptor {
   gcx traces get -d UID <trace-id> --filter '{ status = error }' --keep-hierarchy
 
   # Collapse repeated sibling spans to shrink a huge trace before analysis
-  gcx traces get -d UID <trace-id> --prune --llm -o json
-
-  # Prune only if the trace does not fit the agent output budget
-  gcx traces get -d UID <trace-id> --prune=auto --llm -o agents`,
+  gcx traces get -d UID <trace-id> --prune --llm -o json`,
 			},
 			{
 				Build:     dstempo.LabelsCmd,

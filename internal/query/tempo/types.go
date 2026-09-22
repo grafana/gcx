@@ -94,19 +94,20 @@ type GetTraceRequest struct {
 
 	// V2 trace-by-id spanset filter. KeepHierarchy, MatchDepth, and
 	// AncestorDepth are only meaningful (and only sent) when Query is set —
-	// Tempo ignores them otherwise.
+	// Tempo ignores them otherwise. Each is a pointer because Tempo defaults
+	// it per-request when omitted; an explicit value always overrides that
+	// default.
 	Query         string
-	KeepHierarchy bool
-	MatchDepth    int
-	AncestorDepth int
+	KeepHierarchy *bool
+	MatchDepth    *int
+	AncestorDepth *int
 
 	// Span pruning collapses repeated sibling spans (e.g. a fan-out of
-	// identical DB calls) into a single aggregated span. SpanPruning is a
-	// pointer because Tempo defaults it per-tenant when omitted; an explicit
-	// true or false always overrides that default. The Min/MaxParentDepth
-	// fields are pointers for the same reason: their zero value is a valid,
-	// but different, setting from "let Tempo use its own default".
-	SpanPruning               *bool
+	// identical DB calls) into a single aggregated span. SpanPruningMinSpans/
+	// MaxParentDepth are pointers because their zero value is a valid, but
+	// different, setting from "let Tempo use its own default" (5 and 1,
+	// respectively).
+	SpanPruning               bool
 	SpanPruningGroupBy        string
 	SpanPruningMinSpans       *int
 	SpanPruningMaxParentDepth *int
