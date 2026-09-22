@@ -130,7 +130,10 @@ filter model can't represent, so this falls back to the Explore URL).`,
 				return err
 			}
 
-			drilldownURL, _ := TracesDrilldownURL(cfg.GrafanaURL, datasourceUID, expr, req.Start, req.End)
+			var drilldownURL string
+			if drilldown.Enabled() {
+				drilldownURL, _ = TracesDrilldownURL(cfg.GrafanaURL, datasourceUID, expr, req.Start, req.End)
+			}
 			drilldownUnavailableMsg, drilldownFailedOpenMsg := dsquery.DrilldownMessages("metrics query", "Traces Drilldown")
 			if err := dsquery.HandleDrilldownLinkWithExploreFallback(cmd, *drilldown, drilldownURL, drilldownUnavailableMsg, drilldownFailedOpenMsg,
 				share.Enabled(), exploreURL, unavailableMsg, failedOpenMsg); err != nil {

@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
+	"strings"
 	"testing"
 
 	dsprometheus "github.com/grafana/gcx/internal/datasources/prometheus"
@@ -76,5 +78,20 @@ current-context: default
 		require.NoError(t, err)
 		assert.NotContains(t, stderr, "Metrics Drilldown link:")
 		assert.Contains(t, stderr, "Explore link: ")
+	})
+
+	t.Run("--time sets a tight window around the queried instant, not a stale end", func(t *testing.T) {
+		_, stderr, err := exec("--drilldown-link", "--time", "2026-01-15T10:30:00Z", `up{job="grafana"}`)
+		require.NoError(t, err)
+
+		idx := strings.Index(stderr, "Metrics Drilldown link: ")
+		require.NotEqual(t, -1, idx, "expected a Metrics Drilldown link in stderr, got: %s", stderr)
+		link := strings.TrimSpace(stderr[idx+len("Metrics Drilldown link: "):])
+
+		u, err := url.Parse(link)
+		require.NoError(t, err)
+		q := u.Query()
+		assert.Equal(t, "1768473000000", q.Get("from"))
+		assert.Equal(t, "1768473000000", q.Get("to"))
 	})
 }

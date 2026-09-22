@@ -26,13 +26,15 @@ func encodeProfilesFilter(m pyroquery.LabelMatcher) string {
 // Profiles Drilldown itself builds via buildURL
 // (grafana/profiles-drilldown's src/links.ts).
 //
-// traceIDs and profileIDs (from --trace-id/--profile-id) have no Drilldown
-// URL equivalent — neither param exists anywhere in the app's extension
-// points — so either one present forces a fallback to the plain Explore
-// link instead of showing an inaccurate Drilldown link. spanIDs (from
-// --span-id) does have one and is threaded through to var-spanSelector.
-func ProfilesDrilldownURL(host, datasourceUID, selector, profileType string, spanIDs, traceIDs, profileIDs []string, start, end time.Time) (string, bool) {
-	if host == "" || datasourceUID == "" || selector == "" || profileType == "" || len(traceIDs) > 0 || len(profileIDs) > 0 {
+// traceIDs, profileIDs, and stacktraceSelector (from --trace-id/--profile-id/
+// --stacktrace-selector) have no Drilldown URL equivalent — none of those
+// params exist anywhere in the app's extension points — so any one present
+// forces a fallback to the plain Explore link instead of showing an
+// inaccurate Drilldown link. spanIDs (from --span-id) does have one and is
+// threaded through to var-spanSelector.
+func ProfilesDrilldownURL(host, datasourceUID, selector, profileType string, spanIDs, traceIDs, profileIDs, stacktraceSelector []string, start, end time.Time) (string, bool) {
+	if host == "" || datasourceUID == "" || selector == "" || profileType == "" ||
+		len(traceIDs) > 0 || len(profileIDs) > 0 || len(stacktraceSelector) > 0 {
 		return "", false
 	}
 
@@ -49,6 +51,15 @@ func ProfilesDrilldownURL(host, datasourceUID, selector, profileType string, spa
 			continue
 		}
 		extra = append(extra, m)
+	}
+
+	if serviceName == "" && len(extra) > 0 {
+		// var-filters is only representable in the "labels"/"flame-graph"
+		// exploration views, which require a service_name to scope into.
+		// Without one, these matchers have no representation in the "all"
+		// view either — fall back to Explore instead of silently dropping
+		// them from the link.
+		return "", false
 	}
 
 	if end.IsZero() {

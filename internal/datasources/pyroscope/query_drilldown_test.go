@@ -54,7 +54,7 @@ current-context: default
 	loader := &providers.ConfigLoader{}
 	loader.SetConfigFile(f.Name())
 
-	exec := func(args ...string) (string, string, error) {
+	exec := func(selector string, args ...string) (string, string, error) {
 		cmd := dspyroscope.QueryCmd(loader)
 		root := &cobra.Command{Use: "test"}
 		root.AddCommand(cmd)
@@ -64,27 +64,41 @@ current-context: default
 		root.SetArgs(append([]string{
 			"query", "-d", "pyro-uid", "-o", "json",
 			"--profile-type", "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
-			`{service_name="frontend"}`,
+			selector,
 		}, args...))
 		err := root.Execute()
 		return stdout.String(), stderr.String(), err
 	}
 
 	t.Run("prints explore link", func(t *testing.T) {
-		_, stderr, err := exec("--share-link")
+		_, stderr, err := exec(`{service_name="frontend"}`, "--share-link")
 		require.NoError(t, err)
 		assert.Contains(t, stderr, "Explore link: ")
 	})
 
 	t.Run("prints drilldown link for a supported selector", func(t *testing.T) {
-		_, stderr, err := exec("--drilldown-link")
+		_, stderr, err := exec(`{service_name="frontend"}`, "--drilldown-link")
 		require.NoError(t, err)
 		assert.Contains(t, stderr, "Profiles Drilldown link: ")
 		assert.Contains(t, stderr, "/a/grafana-pyroscope-app/explore")
 	})
 
 	t.Run("falls back to explore link when --trace-id forces it", func(t *testing.T) {
-		_, stderr, err := exec("--drilldown-link", "--trace-id", "4bf92f3577b34da6a3ce929d0e0e4736")
+		_, stderr, err := exec(`{service_name="frontend"}`, "--drilldown-link", "--trace-id", "4bf92f3577b34da6a3ce929d0e0e4736")
+		require.NoError(t, err)
+		assert.NotContains(t, stderr, "Profiles Drilldown link:")
+		assert.Contains(t, stderr, "Explore link: ")
+	})
+
+	t.Run("falls back to explore link when --stacktrace-selector forces it", func(t *testing.T) {
+		_, stderr, err := exec(`{service_name="frontend"}`, "--drilldown-link", "--stacktrace-selector", "main.handler")
+		require.NoError(t, err)
+		assert.NotContains(t, stderr, "Profiles Drilldown link:")
+		assert.Contains(t, stderr, "Explore link: ")
+	})
+
+	t.Run("falls back to explore link when selector has extra filters but no service_name", func(t *testing.T) {
+		_, stderr, err := exec(`{env="prod"}`, "--drilldown-link")
 		require.NoError(t, err)
 		assert.NotContains(t, stderr, "Profiles Drilldown link:")
 		assert.Contains(t, stderr, "Explore link: ")

@@ -102,6 +102,7 @@ Explore URL).`,
 					return fmt.Errorf("invalid --time value: %w", err)
 				}
 				start = t
+				end = t
 			}
 
 			client, err := prometheus.NewClient(cfg)
@@ -143,7 +144,10 @@ Explore URL).`,
 				return err
 			}
 
-			drilldownURL, _ := MetricsDrilldownURL(cfg.GrafanaURL, datasourceUID, expr, start, end)
+			var drilldownURL string
+			if drilldown.Enabled() {
+				drilldownURL, _ = MetricsDrilldownURL(cfg.GrafanaURL, datasourceUID, expr, start, end)
+			}
 			drilldownUnavailableMsg, drilldownFailedOpenMsg := dsquery.DrilldownMessages("query", "Metrics Drilldown")
 			if err := dsquery.HandleDrilldownLinkWithExploreFallback(cmd, *drilldown, drilldownURL, drilldownUnavailableMsg, drilldownFailedOpenMsg,
 				share.Enabled(), exploreURL, unavailableMsg, failedOpenMsg); err != nil {

@@ -45,6 +45,16 @@ func TestParseFlatSpansetFilters_Valid(t *testing.T) {
 			expr: `{ resource.k8s.pod.name = "foo-123" }`,
 			want: []tempo.TraceQLFilter{{Scope: "resource", Tag: "k8s.pod.name", Operator: "=", Value: "foo-123"}},
 		},
+		{
+			name: "quoted value containing a decoy operator substring",
+			expr: `{ resource.service.name = "checkout!=prod" }`,
+			want: []tempo.TraceQLFilter{{Scope: "resource", Tag: "service.name", Operator: "=", Value: "checkout!=prod"}},
+		},
+		{
+			name: "quoted value containing a decoy >= substring",
+			expr: `{ resource.name = "a>=b" }`,
+			want: []tempo.TraceQLFilter{{Scope: "resource", Tag: "name", Operator: "=", Value: "a>=b"}},
+		},
 	}
 
 	for _, tt := range tests {

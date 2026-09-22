@@ -189,7 +189,10 @@ func queryLinkFinisher(
 	}, opts.ProfileType, opts.SpanIDs, opts.ProfileIDs, opts.StacktraceSelector, maxNodes)
 	exploreUnavailableMsg, exploreFailedOpenMsg := dsquery.ExploreMessages("query")
 
-	drilldownURL, _ := ProfilesDrilldownURL(cfg.GrafanaURL, datasourceUID, expr, opts.ProfileType, opts.SpanIDs, opts.TraceIDs, opts.ProfileIDs, start, end)
+	var drilldownURL string
+	if drilldown.Enabled() {
+		drilldownURL, _ = ProfilesDrilldownURL(cfg.GrafanaURL, datasourceUID, expr, opts.ProfileType, opts.SpanIDs, opts.TraceIDs, opts.ProfileIDs, opts.StacktraceSelector, start, end)
+	}
 	drilldownUnavailableMsg, drilldownFailedOpenMsg := dsquery.DrilldownMessages("query", "Profiles Drilldown")
 
 	return func(resp *pyroscope.QueryResponse, renderErr error) error {

@@ -111,9 +111,12 @@ func parseANDedComparisons(spanset string) ([]TraceQLFilter, bool) {
 func parseComparison(part string) (TraceQLFilter, bool) {
 	// Longer operators must be checked before their single-character
 	// prefixes (=~ before =, >= before >, <= before <) so e.g. ">=" isn't
-	// misparsed as ">" with a value of "=500".
+	// misparsed as ">" with a value of "=500". The search skips quoted
+	// content so an operator-looking substring inside a quoted value (e.g.
+	// `resource.service.name = "checkout!=prod"`) isn't mistaken for the
+	// real operator.
 	for _, op := range []string{"!=", "=~", "!~", ">=", "<=", "=", ">", "<"} {
-		idx := strings.Index(part, op)
+		idx := indexOutsideQuotes(part, op)
 		if idx <= 0 {
 			continue
 		}
@@ -200,6 +203,12 @@ func unquote(s string) (string, bool) {
 // containsTopLevel reports whether sub appears in s outside of any
 // double-quoted string.
 func containsTopLevel(s, sub string) bool {
+	return indexOutsideQuotes(s, sub) >= 0
+}
+
+// indexOutsideQuotes returns the index of the first occurrence of sub in s
+// that is not inside a double-quoted string, or -1 if there is none.
+func indexOutsideQuotes(s, sub string) int {
 	inQuotes := false
 	escaped := false
 	for i := range len(s) {
@@ -217,10 +226,10 @@ func containsTopLevel(s, sub string) bool {
 		case c == '"':
 			inQuotes = true
 		case strings.HasPrefix(s[i:], sub):
-			return true
+			return i
 		}
 	}
-	return false
+	return -1
 }
 
 // splitTopLevel splits s on occurrences of sep that are not inside a quoted
