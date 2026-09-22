@@ -118,6 +118,7 @@ func (p *SynthProvider) Commands() []*cobra.Command {
 	synthCmd.AddCommand(checks.Commands(loader))
 	synthCmd.AddCommand(probes.Commands(loader))
 	synthCmd.AddCommand(namedquery.Commands(loader))
+	synthCmd.AddCommand(namedquery.QueriesCommands(loader))
 
 	return []*cobra.Command{synthCmd}
 }
