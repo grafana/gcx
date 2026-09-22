@@ -29,7 +29,7 @@ func (opts *lokiLabelsOpts) setup(flags *pflag.FlagSet) {
 
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.loki is configured)")
 	flags.StringVarP(&opts.Label, "label", "l", "", "Get values for this label (omit to list all labels)")
-	flags.StringVarP(&opts.Query, "query", "q", "", "LogQL query to filter labels")
+	flags.StringVarP(&opts.Query, "query", "q", "", "LogQL stream selector to scope labels, e.g. '{app=\"foo\"}' (pipeline stages are not supported)")
 }
 
 func (opts *lokiLabelsOpts) Validate() error {

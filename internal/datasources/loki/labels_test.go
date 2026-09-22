@@ -26,10 +26,10 @@ func writeLabelsTestConfig(t *testing.T, content string) string {
 }
 
 // runLabelsCmd executes the labels command against a capture server with JSON
-// output and returns the request query values recorded per path.
+// output and returns the request query values recorded per resource path.
 func runLabelsCmd(t *testing.T, args ...string) (map[string]url.Values, error) {
 	t.Helper()
-	captured, _, err := execLabelsCmd(t, append([]string{"-o", "json"}, args...)...)
+	_, captured, _, err := execLabelsCmd(t, append([]string{"-o", "json"}, args...)...)
 	return captured, err
 }
 
@@ -37,17 +37,30 @@ func runLabelsCmd(t *testing.T, args ...string) (map[string]url.Values, error) {
 // leaving the output format to the caller's args.
 func runLabelsCmdRawOutput(t *testing.T, args ...string) (string, error) {
 	t.Helper()
-	_, stdout, err := execLabelsCmd(t, args...)
+	_, _, stdout, err := execLabelsCmd(t, args...)
 	return stdout, err
 }
 
+// runLabelsCmdRequests executes the labels command and returns every request
+// path the server saw, including config-loading calls like /bootdata, so
+// callers can assert that validation ran before any network I/O at all.
+func runLabelsCmdRequests(t *testing.T, args ...string) ([]string, error) {
+	t.Helper()
+	requests, _, _, err := execLabelsCmd(t, append([]string{"-o", "json"}, args...)...)
+	return requests, err
+}
+
 // execLabelsCmd executes the labels command against a capture server and
-// returns the recorded query values per path, raw stdout, and the run error.
-func execLabelsCmd(t *testing.T, args ...string) (map[string]url.Values, string, error) {
+// returns every request path seen (including config-loading calls such as
+// /bootdata), the recorded query values per resource path, raw stdout, and
+// the run error.
+func execLabelsCmd(t *testing.T, args ...string) ([]string, map[string]url.Values, string, error) {
 	t.Helper()
 
+	var requests []string
 	captured := map[string]url.Values{}
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.URL.Path)
 		if r.URL.Path == "/bootdata" {
 			http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
 			return
@@ -84,7 +97,7 @@ current-context: default
 	root.SetArgs(append([]string{"labels", "-d", "loki-uid"}, args...))
 
 	err := root.Execute()
-	return captured, stdout.String(), err
+	return requests, captured, stdout.String(), err
 }
 
 const (
@@ -147,18 +160,18 @@ func TestLabelsCmd_TableOutputThroughCodec(t *testing.T) {
 }
 
 func TestLabelsCmd_RejectsPositionalArgs(t *testing.T) {
-	captured, err := runLabelsCmd(t, "job")
+	requests, err := runLabelsCmdRequests(t, "job")
 	require.Error(t, err)
-	assert.Empty(t, captured, "no request should be made when args are rejected")
+	assert.Empty(t, requests, "no request of any kind, including config loading, should be made when args are rejected")
 }
 
 func TestLabelsCmd_RejectsExplicitlyEmptyFlagValues(t *testing.T) {
 	for _, flag := range []string{"query", "label"} {
 		t.Run(flag, func(t *testing.T) {
-			captured, err := runLabelsCmd(t, "--"+flag, "")
+			requests, err := runLabelsCmdRequests(t, "--"+flag, "")
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), "invalid --"+flag)
-			assert.Empty(t, captured, "no request should be made for an empty --%s", flag)
+			assert.Empty(t, requests, "no request of any kind, including config loading, should be made for an empty --%s", flag)
 		})
 	}
 }
