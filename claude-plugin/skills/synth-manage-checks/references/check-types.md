@@ -16,6 +16,9 @@
 What is the target?
 ├── URL (https:// or http://)
 │   ├── Need to trace routing/hops? → Traceroute
+│   ├── Need to validate a multi-step or scripted user journey (script,
+│   │   browser, or chained requests)? → see
+│   │   [Complex Check Types](#complex-check-types-scripted-browser-multihttp)
 │   └── Standard availability/response? → HTTP
 ├── Hostname or IP address (no port)
 │   └── → Ping
@@ -239,7 +242,9 @@ the `synthetic-monitoring-checks` skill:
 npx skills add grafana/skills -s synthetic-monitoring-checks
 ```
 
-Then pull an existing check of the target type as a starting template:
+Then pull an existing check as a starting template. For scripted/browser,
+`--decode-script` gives you the plain-text script (it's a no-op for
+MultiHTTP, which has no script field to decode):
 
 ```bash
 gcx synthetic-monitoring checks get <ID> -o yaml --decode-script
