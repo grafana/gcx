@@ -138,6 +138,45 @@ func TestCatalog_404WithAppNotInstalled(t *testing.T) {
 	assert.Contains(t, strings.ToLower(err.Error()), "no synthetic monitoring app installed")
 }
 
+func TestCatalog_404WithSettingsForbiddenIsNotMisreportedAsUninstalled(t *testing.T) {
+	client := newCatalogTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case schemaPath:
+			http.NotFound(w, r)
+		case settingsPath:
+			w.WriteHeader(http.StatusForbidden)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+
+	_, err := client.Catalog(context.Background())
+	require.Error(t, err)
+	assert.NotContains(t, strings.ToLower(err.Error()), "no synthetic monitoring app installed")
+	assert.Contains(t, err.Error(), "403")
+}
+
+func TestCatalog_404WithVersionAboveMinimumDoesNotBlameVersion(t *testing.T) {
+	client := newCatalogTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case schemaPath:
+			http.NotFound(w, r)
+		case settingsPath:
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"info": map[string]any{"version": "1.70.0"},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	})
+
+	_, err := client.Catalog(context.Background())
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "requires Synthetic Monitoring app v1.62.0 or later; this context has v1.70.0")
+	assert.Contains(t, err.Error(), "1.70.0")
+}
+
 func TestCatalog_OversizedBodyIsRejected(t *testing.T) {
 	client := newCatalogTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)

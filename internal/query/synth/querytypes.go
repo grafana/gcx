@@ -20,6 +20,7 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/Masterminds/semver/v3"
 	"github.com/grafana/gcx/internal/config"
 	"k8s.io/client-go/rest"
 )
@@ -142,30 +143,21 @@ func (c *CatalogClient) Catalog(ctx context.Context) (*CatalogResult, error) {
 	}
 }
 
-// unavailableError distinguishes "no SM app installed" from "SM app installed
-// but too old to publish a catalog" by re-querying the app's own settings
-// endpoint, which 404s only in the former case.
+// unavailableError explains a query.types.json 404 by re-querying the SM
+// app's settings endpoint. Only an actual 404 there means "not installed" --
+// any other failure (403, 500, decode error) is returned as-is instead of
+// being misreported as a missing app, and the reported version is compared
+// against minDiscoveryAppVersion so the message doesn't blame a version that
+// already satisfies it.
 func (c *CatalogClient) unavailableError(ctx context.Context) error {
-	version, err := c.smAppVersion(ctx)
-	if err != nil {
-		return errors.New(
-			"no Synthetic Monitoring app installed in this context; named-query discovery requires one",
-		)
-	}
-
-	return fmt.Errorf(
-		"named-query discovery requires Synthetic Monitoring app v%s or later; this context has v%s installed",
-		minDiscoveryAppVersion, version,
-	)
-}
-
-func (c *CatalogClient) smAppVersion(ctx context.Context) (string, error) {
 	body, status, err := c.get(ctx, smAppSettingsPath())
-	if err != nil {
-		return "", err
-	}
-	if status != http.StatusOK {
-		return "", fmt.Errorf("SM app settings returned HTTP %d", status)
+	switch {
+	case err != nil:
+		return fmt.Errorf("named-query catalog: %w", err)
+	case status == http.StatusNotFound:
+		return errors.New("no Synthetic Monitoring app installed in this context; named-query discovery requires one")
+	case status != http.StatusOK:
+		return fmt.Errorf("named-query catalog: SM app settings returned HTTP %d", status)
 	}
 
 	var settings struct {
@@ -174,13 +166,27 @@ func (c *CatalogClient) smAppVersion(ctx context.Context) (string, error) {
 		} `json:"info"`
 	}
 	if err := json.Unmarshal(body, &settings); err != nil {
-		return "", fmt.Errorf("failed to decode SM app settings: %w", err)
+		return fmt.Errorf("named-query catalog: failed to decode SM app settings: %w", err)
 	}
 	if settings.Info.Version == "" {
-		return "", errors.New("version not found in SM app settings")
+		return errors.New("named-query catalog: SM app settings did not report an installed version")
 	}
 
-	return settings.Info.Version, nil
+	installed, err := semver.NewVersion(settings.Info.Version)
+	if err != nil {
+		return fmt.Errorf("SM app reports invalid version %q: %w", settings.Info.Version, err)
+	}
+	if installed.LessThan(semver.MustParse(minDiscoveryAppVersion)) {
+		return fmt.Errorf(
+			"named-query discovery requires Synthetic Monitoring app v%s or later; this context has v%s installed",
+			minDiscoveryAppVersion, settings.Info.Version,
+		)
+	}
+
+	return fmt.Errorf(
+		"named-query catalog not found even though Synthetic Monitoring app v%s is installed; the datasource may not have published query.types.json",
+		settings.Info.Version,
+	)
 }
 
 // get performs an unauthenticated-endpoint GET against the Grafana host,
