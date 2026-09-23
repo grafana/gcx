@@ -1,6 +1,13 @@
 ## gcx slo reports pull
 
+Pull SLO reports to disk (Deprecated: use gcx resources pull).
+
+### Synopsis
+
 Pull SLO reports to disk.
+
+Deprecated: use gcx resources pull reports.v1alpha1.slo.ext.grafana.app -p PATH -o yaml instead.
+This compatibility command retains its Kind/name.yaml layout.
 
 ```
 gcx slo reports pull [flags]
@@ -10,7 +17,7 @@ gcx slo reports pull [flags]
 
 ```
   -h, --help                help for pull
-  -d, --output-dir string   Directory to write SLO report files to (default ".")
+  -d, --output-dir string   Directory to write SLO reports to (default ".")
 ```
 
 ### Options inherited from parent commands

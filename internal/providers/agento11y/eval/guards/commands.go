@@ -10,14 +10,12 @@ import (
 	"strings"
 
 	"github.com/goccy/go-yaml"
-	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/agento11y/agento11yhttp"
 	"github.com/grafana/gcx/internal/providers/agento11y/commandutil"
 	"github.com/grafana/gcx/internal/providers/agento11y/eval"
 	"github.com/grafana/gcx/internal/resources/adapter"
-	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -51,8 +49,7 @@ type listOpts struct {
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &TableCodec{})
-	o.IO.RegisterCustomCodec("wide", &TableCodec{Wide: true})
+	cmdio.RegisterTable(&o.IO, Table())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of hook rules to return (0 for no limit)")
@@ -353,67 +350,33 @@ func ReadHookRuleFile(path string, stdin io.Reader) (*eval.HookRuleDefinition, e
 
 // --- table codec ---
 
-type TableCodec struct {
-	Wide bool
-}
-
-func (c *TableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
-	}
-	return "table"
-}
-
-func (c *TableCodec) Encode(w io.Writer, v any) error {
-	rules, ok := v.([]eval.HookRuleDefinition)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []HookRuleDefinition")
-	}
-
-	var t *style.TableBuilder
-	if c.Wide {
-		t = style.NewTable("ID", "ENABLED", "PHASE", "PRIORITY", "SELECTOR", "ACTION", "EVALUATORS", "TRANSFORM", "TOOL FILTER", "CREATED BY", "CREATED AT")
-	} else {
-		t = style.NewTable("ID", "ENABLED", "PHASE", "PRIORITY", "SELECTOR", "ACTION")
-	}
-
-	for _, r := range rules {
-		c.appendRow(t, r)
-	}
-	return t.Render(w)
-}
-
-func (c *TableCodec) appendRow(t *style.TableBuilder, r eval.HookRuleDefinition) {
-	enabled := "no"
-	if r.Enabled {
-		enabled = "yes"
-	}
-	priority := strconv.Itoa(r.Priority)
-
-	if !c.Wide {
-		t.Row(r.RuleID, enabled, r.Phase, priority, r.Selector, r.ActionOnFail)
-		return
-	}
-
-	evalIDs := strings.Join(r.EvaluatorIDs, ", ")
-	if evalIDs == "" {
-		evalIDs = "-"
-	}
-	transform := "no"
-	if r.Redact != nil && len(r.Redact.Patterns) > 0 {
-		transform = "yes"
-	}
-	toolFilter := "no"
-	if r.ToolFilter != nil && len(r.ToolFilter.BlockedNames) > 0 {
-		toolFilter = "yes"
-	}
-	createdBy := r.CreatedBy
-	if createdBy == "" {
-		createdBy = "-"
-	}
-	t.Row(r.RuleID, enabled, r.Phase, priority, r.Selector, r.ActionOnFail, evalIDs, transform, toolFilter, createdBy, agento11yhttp.FormatTime(r.CreatedAt))
-}
-
-func (c *TableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
+func Table() cmdio.Table[eval.HookRuleDefinition] {
+	return cmdio.Table[eval.HookRuleDefinition]{Columns: []cmdio.Column[eval.HookRuleDefinition]{
+		{Header: "ID", Content: func(r eval.HookRuleDefinition) string { return r.RuleID }},
+		{Header: "ENABLED", Content: func(r eval.HookRuleDefinition) string {
+			if r.Enabled {
+				return "yes"
+			}
+			return "no"
+		}},
+		{Header: "PHASE", Content: func(r eval.HookRuleDefinition) string { return r.Phase }},
+		{Header: "PRIORITY", Content: func(r eval.HookRuleDefinition) string { return strconv.Itoa(r.Priority) }},
+		{Header: "SELECTOR", Content: func(r eval.HookRuleDefinition) string { return r.Selector }},
+		{Header: "ACTION", Content: func(r eval.HookRuleDefinition) string { return r.ActionOnFail }},
+		{Header: "EVALUATORS", Visible: cmdio.WideOnly, Content: func(r eval.HookRuleDefinition) string { return cmdio.OrDash(strings.Join(r.EvaluatorIDs, ", ")) }},
+		{Header: "TRANSFORM", Visible: cmdio.WideOnly, Content: func(r eval.HookRuleDefinition) string {
+			if r.Redact != nil && len(r.Redact.Patterns) > 0 {
+				return "yes"
+			}
+			return "no"
+		}},
+		{Header: "TOOL FILTER", Visible: cmdio.WideOnly, Content: func(r eval.HookRuleDefinition) string {
+			if r.ToolFilter != nil && len(r.ToolFilter.BlockedNames) > 0 {
+				return "yes"
+			}
+			return "no"
+		}},
+		{Header: "CREATED BY", Visible: cmdio.WideOnly, Content: func(r eval.HookRuleDefinition) string { return cmdio.OrDash(r.CreatedBy) }},
+		{Header: "CREATED AT", Visible: cmdio.WideOnly, Content: func(r eval.HookRuleDefinition) string { return agento11yhttp.FormatTime(r.CreatedAt) }},
+	}}
 }

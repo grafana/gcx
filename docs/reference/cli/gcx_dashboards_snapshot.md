@@ -26,6 +26,9 @@ gcx dashboards snapshot <name> [name...] [flags]
   # Snapshot using a duration shorthand
   gcx dashboards snapshot my-dashboard-name --since 6h
 
+  # Allow up to three minutes for each render
+  gcx dashboards snapshot my-dashboard-name --timeout 3m
+
   # Snapshot multiple dashboards to a specific directory
   gcx dashboards snapshot name1 name2 name3 --output-dir ./snapshots
 
@@ -48,6 +51,7 @@ gcx dashboards snapshot <name> [name...] [flags]
       --panel int            Panel number to render a single panel instead of the full dashboard
       --since string         Duration before now (e.g. '1h', '7d'); expands to --from now-{since} --to now; mutually exclusive with --from/--to
       --theme string         Grafana theme (light or dark) (default "dark")
+      --timeout duration     Maximum time for each render as a positive whole-second duration (e.g. 30s, 3m)
       --to string            End time (relative like 'now', RFC3339, Unix seconds, or Unix milliseconds)
       --tz string            Timezone (e.g. 'UTC', 'America/New_York')
       --var stringToString   Dashboard template variable overrides (e.g. --var cluster=prod --var datasource=prometheus) (default [])

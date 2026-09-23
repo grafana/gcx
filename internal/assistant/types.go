@@ -134,12 +134,13 @@ type A2ATaskMetadata struct {
 
 // ChatMessage represents a message from the Chat REST API.
 type ChatMessage struct {
-	ID        string      `json:"id"`
-	Role      string      `json:"role"`
-	Content   ContentJSON `json:"content"`
-	CreatedAt string      `json:"created"`
-	Type      string      `json:"type,omitempty"`
-	Hidden    bool        `json:"hidden,omitempty"`
+	ID        string          `json:"id"`
+	Role      string          `json:"role"`
+	Content   ContentJSON     `json:"content"`
+	CreatedAt string          `json:"created"`
+	Type      string          `json:"type,omitempty"`
+	Hidden    bool            `json:"hidden,omitempty"`
+	Parts     json.RawMessage `json:"parts,omitempty"`
 }
 
 // ContentJSON is an array of content blocks from the API.
@@ -264,6 +265,8 @@ type Chat struct {
 	Category  string `json:"category,omitempty"`
 	Source    string `json:"source"`
 	UpdatedAt string `json:"modified,omitempty"`
+	Engine    string `json:"engine,omitempty"`
+	Shared    bool   `json:"shared,omitempty"`
 }
 
 // ============================================================================

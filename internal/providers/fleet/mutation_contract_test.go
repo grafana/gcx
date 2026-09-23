@@ -129,7 +129,7 @@ metadata:
 spec:
   id: "202"
   name: col-a
-  collector_type: alloy
+  collector_type: COLLECTOR_TYPE_ALLOY
 `)
 }
 
@@ -309,7 +309,7 @@ metadata:
   name: col-a
 spec:
   name: col-a
-  collector_type: alloy
+  collector_type: COLLECTOR_TYPE_ALLOY
 `)
 
 	stdout, err := runCommand(t, func(h *fleetHelper) *cobra.Command {

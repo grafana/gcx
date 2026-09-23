@@ -22,6 +22,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/config"
@@ -36,10 +37,12 @@ var testPNG = []byte("\x89PNG\r\n\x1a\nfake-pixels") //nolint:gochecknoglobals
 
 // stubLoader satisfies snapshot.GrafanaConfigLoader with a fixed config.
 type stubLoader struct {
-	cfg config.NamespacedRESTConfig
+	cfg   config.NamespacedRESTConfig
+	calls int
 }
 
 func (s *stubLoader) LoadGrafanaConfig(context.Context) (config.NamespacedRESTConfig, error) {
+	s.calls++
 	return s.cfg, nil
 }
 
@@ -98,6 +101,108 @@ func decodeSingleJSONDoc(t *testing.T, stdout string) map[string]any {
 		t.Fatalf("stdout must contain exactly one JSON value, second decode = %v\n%s", err, stdout)
 	}
 	return first
+}
+
+func TestSnapshot_TimeoutValidationBeforeConfigLoad(t *testing.T) {
+	tests := []struct {
+		name        string
+		value       string
+		wantContain string
+	}{
+		{name: "empty", value: "", wantContain: "invalid argument"},
+		{name: "malformed", value: "eventually", wantContain: "invalid duration"},
+		{name: "zero", value: "0s", wantContain: "must be positive"},
+		{name: "negative", value: "-1s", wantContain: "must be positive"},
+		{name: "fractional second", value: "1500ms", wantContain: "whole number of seconds"},
+		{name: "HTTP overhead overflow", value: "2562047h47m16s", wantContain: "too large"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			loader := &stubLoader{}
+			cmd := snapshot.Commands(loader)
+			cmd.SilenceUsage = true
+			cmd.SilenceErrors = true
+			cmd.SetOut(io.Discard)
+			cmd.SetErr(io.Discard)
+			cmd.SetArgs([]string{"dash-a", "--timeout=" + tt.value})
+
+			err := cmd.Execute()
+			if err == nil {
+				t.Fatal("Execute() = nil, want timeout validation error")
+			}
+			if !strings.Contains(err.Error(), tt.wantContain) {
+				t.Errorf("Execute() error = %q, want it to contain %q", err.Error(), tt.wantContain)
+			}
+			if loader.calls != 0 {
+				t.Errorf("LoadGrafanaConfig calls = %d, want 0", loader.calls)
+			}
+		})
+	}
+}
+
+func TestSnapshot_TimeoutPropagatesToDashboardAndPanelRenders(t *testing.T) {
+	tests := []struct {
+		name      string
+		panelArgs []string
+		wantPath  string
+	}{
+		{name: "dashboard", wantPath: "/render/d/dash-a/"},
+		{name: "panel", panelArgs: []string{"--panel", "42"}, wantPath: "/render/d-solo/dash-a/"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			requestCh := make(chan *http.Request, 1)
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requestCh <- r.Clone(r.Context())
+				_, _ = w.Write(testPNG)
+			}))
+			defer server.Close()
+
+			args := []string{"dash-a", "--timeout", "3m", "--output-dir", t.TempDir()}
+			args = append(args, tt.panelArgs...)
+			_, _, err := runSnapshotCmd(t, server, args)
+			if err != nil {
+				t.Fatalf("Execute() = %v", err)
+			}
+
+			select {
+			case req := <-requestCh:
+				if req.URL.Path != tt.wantPath {
+					t.Errorf("path = %q, want %q", req.URL.Path, tt.wantPath)
+				}
+				if got := req.URL.Query().Get("timeout"); got != "180" {
+					t.Errorf("timeout query = %q, want 180", got)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("render request was not received")
+			}
+		})
+	}
+}
+
+func TestSnapshot_OmittedTimeoutDoesNotSetRenderQuery(t *testing.T) {
+	requestCh := make(chan *http.Request, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCh <- r.Clone(r.Context())
+		_, _ = w.Write(testPNG)
+	}))
+	defer server.Close()
+
+	_, _, err := runSnapshotCmd(t, server, []string{"dash-a", "--output-dir", t.TempDir()})
+	if err != nil {
+		t.Fatalf("Execute() = %v", err)
+	}
+
+	select {
+	case req := <-requestCh:
+		if _, ok := req.URL.Query()["timeout"]; ok {
+			t.Errorf("timeout query unexpectedly present: %q", req.URL.RawQuery)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("render request was not received")
+	}
 }
 
 func TestSnapshot_HumanDefaultByteIdentical(t *testing.T) {

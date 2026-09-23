@@ -16,6 +16,7 @@ import (
 	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/synth/checks"
+	"github.com/grafana/gcx/internal/providers/synth/namedquery"
 	"github.com/grafana/gcx/internal/providers/synth/probes"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
@@ -116,6 +117,7 @@ func (p *SynthProvider) Commands() []*cobra.Command {
 
 	synthCmd.AddCommand(checks.Commands(loader))
 	synthCmd.AddCommand(probes.Commands(loader))
+	synthCmd.AddCommand(namedquery.Commands(loader))
 
 	return []*cobra.Command{synthCmd}
 }
@@ -133,6 +135,7 @@ func (p *SynthProvider) ConfigKeys() []providers.ConfigKey {
 		{Name: "sm-url", Secret: false},
 		{Name: "sm-token", Secret: true},
 		{Name: "sm-metrics-datasource-uid", Secret: false},
+		{Name: "sm-logs-datasource-uid", Secret: false},
 	}
 }
 
@@ -410,4 +413,10 @@ func (l *configLoader) LoadConfig(ctx context.Context) (*config.Config, error) {
 // providers.synth.sm-metrics-datasource-uid in the config file.
 func (l *configLoader) SaveMetricsDatasourceUID(ctx context.Context, uid string) error {
 	return l.SaveProviderConfig(ctx, "synth", "sm-metrics-datasource-uid", uid)
+}
+
+// SaveLogsDatasourceUID persists an auto-discovered Loki datasource UID to
+// providers.synth.sm-logs-datasource-uid in the config file.
+func (l *configLoader) SaveLogsDatasourceUID(ctx context.Context, uid string) error {
+	return l.SaveProviderConfig(ctx, "synth", "sm-logs-datasource-uid", uid)
 }

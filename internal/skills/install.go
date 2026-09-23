@@ -13,84 +13,64 @@ import (
 
 // InstallResult summarizes an install/update operation against a .agents root.
 type InstallResult struct {
-	Root        string   `json:"root"`
-	SkillsDir   string   `json:"skills_dir"`
-	Skills      []string `json:"skills"`
-	SkillCount  int      `json:"skill_count"`
-	FileCount   int      `json:"file_count"`
-	Written     int      `json:"written"`
-	Overwritten int      `json:"overwritten"`
-	Unchanged   int      `json:"unchanged"`
-	DryRun      bool     `json:"dry_run"`
-	Force       bool     `json:"force"`
+	Root        string            `json:"root"`
+	SkillsDir   string            `json:"skills_dir"`
+	Skills      []string          `json:"skills"`
+	SkillCount  int               `json:"skill_count"`
+	FileCount   int               `json:"file_count"`
+	Written     int               `json:"written"`
+	Overwritten int               `json:"overwritten"`
+	Unchanged   int               `json:"unchanged"`
+	DryRun      bool              `json:"dry_run"`
+	Force       bool              `json:"force"`
+	Notices     []LifecycleNotice `json:"notices,omitempty"`
 }
 
-// BundledSkillNames returns all top-level bundled skill directory names.
-func BundledSkillNames(source fs.FS) ([]string, error) {
-	entries, err := fs.ReadDir(source, ".")
+// Install installs current bundled skills. A nil filter selects all active and
+// deprecated skills; retired and unmanaged local skills are never installed.
+func Install(source fs.FS, catalog []byte, root string, filter map[string]struct{}, force bool, dryRun bool) (InstallResult, error) {
+	states, err := Reconcile(source, catalog, root)
 	if err != nil {
-		return nil, err
+		return InstallResult{}, err
 	}
-
-	names := make([]string, 0, len(entries))
-	for _, e := range entries {
-		if e.IsDir() {
-			names = append(names, e.Name())
+	selected := make(map[string]struct{})
+	var notices []LifecycleNotice
+	for _, state := range states {
+		if filter != nil {
+			if _, ok := filter[state.Name]; !ok {
+				continue
+			}
+		}
+		if !state.Known || state.Status == Retired {
+			if filter != nil && state.Status == Retired {
+				return InstallResult{}, fmt.Errorf("%s; retired skills cannot be installed", LifecycleNotice{Name: state.Name, CatalogEntry: state.CatalogEntry})
+			}
+			continue
+		}
+		selected[state.Name] = struct{}{}
+		if state.Status == Deprecated {
+			notices = append(notices, LifecycleNotice{Name: state.Name, CatalogEntry: state.CatalogEntry})
 		}
 	}
-	sort.Strings(names)
-	return names, nil
-}
-
-// InstalledBundledSkillNames returns the subset of bundled skills that are
-// already installed under root/skills.
-func InstalledBundledSkillNames(source fs.FS, root string) ([]string, error) {
-	bundled, err := BundledSkillNames(source)
-	if err != nil {
-		return nil, err
-	}
-
-	skillsDir := filepath.Join(root, "skills")
-	installed := make([]string, 0, len(bundled))
-	for _, name := range bundled {
-		if IsSkillInstalled(skillsDir, name) {
-			installed = append(installed, name)
+	for name := range filter {
+		if _, ok := selected[name]; !ok {
+			return InstallResult{}, fmt.Errorf("unknown skill %q (use 'gcx agent skills list' to see available skills)", name)
 		}
 	}
-
-	sort.Strings(installed)
-	return installed, nil
+	result, err := installFiles(source, root, selected, force, dryRun)
+	result.Notices = notices
+	return result, err
 }
 
-// Install installs bundled skills from source into root. When filter is nil all
-// skills are installed; otherwise only skills whose name is in the filter set.
-func Install(source fs.FS, root string, filter map[string]struct{}, force bool, dryRun bool) (InstallResult, error) {
-	if source == nil {
-		return InstallResult{}, errors.New("skills source is nil")
-	}
-
+// installFiles only copies selected bundled files. Lifecycle targeting happens
+// before this function, and it never prunes obsolete local files.
+func installFiles(source fs.FS, root string, filter map[string]struct{}, force bool, dryRun bool) (InstallResult, error) {
 	root = filepath.Clean(root)
 	result := InstallResult{
 		Root:      root,
 		SkillsDir: filepath.Join(root, "skills"),
 		DryRun:    dryRun,
 		Force:     force,
-	}
-
-	if filter != nil {
-		available, err := BundledSkillNames(source)
-		if err != nil {
-			return InstallResult{}, err
-		}
-		avail := make(map[string]struct{}, len(available))
-		for _, n := range available {
-			avail[n] = struct{}{}
-		}
-		for name := range filter {
-			if _, ok := avail[name]; !ok {
-				return InstallResult{}, fmt.Errorf("unknown skill %q (use 'gcx agent skills list' to see available skills)", name)
-			}
-		}
 	}
 
 	skillSet := make(map[string]struct{})
@@ -104,13 +84,11 @@ func Install(source fs.FS, root string, filter map[string]struct{}, force bool, 
 
 		parts := strings.Split(path, "/")
 		skillName := parts[0]
-		if filter != nil {
-			if _, ok := filter[skillName]; !ok {
-				if d.IsDir() && len(parts) == 1 {
-					return fs.SkipDir
-				}
-				return nil
+		if _, ok := filter[skillName]; !ok {
+			if d.IsDir() && len(parts) == 1 {
+				return fs.SkipDir
 			}
+			return nil
 		}
 
 		skillSet[skillName] = struct{}{}
@@ -148,49 +126,52 @@ func Install(source fs.FS, root string, filter map[string]struct{}, force bool, 
 	return result, nil
 }
 
-// Update applies the same targeting semantics as `gcx agent skills update`.
-// With no targets, only already-installed bundled skills are updated.
-func Update(source fs.FS, root string, targets []string, dryRun bool) (InstallResult, error) {
-	installedTargets, err := InstalledBundledSkillNames(source, root)
+// Update refreshes installed bundled skills and reports retired installations
+// without changing them. Explicit targets are all validated before any writes.
+func Update(source fs.FS, catalog []byte, root string, targets []string, dryRun bool) (InstallResult, error) {
+	states, err := Reconcile(source, catalog, root)
 	if err != nil {
 		return InstallResult{}, err
 	}
-
-	resolvedTargets := targets
-	if len(resolvedTargets) == 0 {
-		resolvedTargets = installedTargets
-	} else {
-		bundledTargets, err := BundledSkillNames(source)
-		if err != nil {
-			return InstallResult{}, err
+	byName := make(map[string]SkillState, len(states))
+	for _, state := range states {
+		byName[state.Name] = state
+	}
+	requested := make(map[string]struct{}, len(targets))
+	for _, name := range targets {
+		state, ok := byName[name]
+		if !ok || !state.Known {
+			return InstallResult{}, fmt.Errorf("unknown skill %q (use 'gcx agent skills list' to see available skills)", name)
 		}
-
-		installedSet := make(map[string]struct{}, len(installedTargets))
-		for _, name := range installedTargets {
-			installedSet[name] = struct{}{}
-		}
-
-		bundledSet := make(map[string]struct{}, len(bundledTargets))
-		for _, name := range bundledTargets {
-			bundledSet[name] = struct{}{}
-		}
-
-		for _, name := range resolvedTargets {
-			if _, ok := bundledSet[name]; !ok {
-				return InstallResult{}, fmt.Errorf("unknown skill %q (use 'gcx agent skills list' to see available skills)", name)
+		if !state.Installed && (state.Status != Retired || !state.Present) {
+			if state.Status == Retired {
+				return InstallResult{}, fmt.Errorf("skill %q is retired and not installed; use 'gcx agent skills list' to see available skills", name)
 			}
-			if _, ok := installedSet[name]; !ok {
-				return InstallResult{}, fmt.Errorf("skill %q is not installed; use 'gcx agent skills install %s' to install it first", name, name)
+			return InstallResult{}, fmt.Errorf("skill %q is not installed; use 'gcx agent skills install %s' to install it first", name, name)
+		}
+		requested[name] = struct{}{}
+	}
+	filter := make(map[string]struct{})
+	var notices []LifecycleNotice
+	for _, state := range states {
+		if len(targets) > 0 {
+			if _, ok := requested[state.Name]; !ok {
+				continue
 			}
 		}
+		if !state.Known || (!state.Installed && (state.Status != Retired || !state.Present)) {
+			continue
+		}
+		if state.Status == Deprecated || state.Status == Retired {
+			notices = append(notices, LifecycleNotice{Name: state.Name, CatalogEntry: state.CatalogEntry})
+		}
+		if state.Status != Retired {
+			filter[state.Name] = struct{}{}
+		}
 	}
-
-	filter := make(map[string]struct{}, len(resolvedTargets))
-	for _, name := range resolvedTargets {
-		filter[name] = struct{}{}
-	}
-
-	return Install(source, root, filter, true, dryRun)
+	result, err := installFiles(source, root, filter, true, dryRun)
+	result.Notices = notices
+	return result, err
 }
 
 // ResolveInstallRoot resolves ~ and returns an absolute .agents root path.
@@ -221,13 +202,6 @@ func ResolveInstallRoot(root string) (string, error) {
 	}
 
 	return filepath.Clean(absRoot), nil
-}
-
-// IsSkillInstalled reports whether a bundled skill named name exists under
-// skillsDir as a regular SKILL.md file.
-func IsSkillInstalled(skillsDir string, name string) bool {
-	info, err := os.Stat(filepath.Join(skillsDir, name, "SKILL.md"))
-	return err == nil && !info.IsDir()
 }
 
 func syncFile(source fs.FS, sourcePath string, targetPath string, force bool, dryRun bool) (bool, bool, error) {

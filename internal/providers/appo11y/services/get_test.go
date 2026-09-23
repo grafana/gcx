@@ -2,6 +2,7 @@ package services //nolint:testpackage // Tests cover unexported builders and hel
 
 import (
 	"bytes"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -524,7 +525,7 @@ func TestServiceDetailCodec(t *testing.T) {
 	d := &ServiceDetail{
 		Service: Service{
 			Name: "checkout", Namespace: "billing", Language: "go",
-			Instrumented: true,
+			Instrumented: true, Environment: "production", Cluster: "prod-us", Version: "1.2.3", Kind: "service",
 			Labels: map[string]string{
 				"deployment_environment": "production",
 				"k8s_namespace_name":     "prod",
@@ -551,6 +552,9 @@ func TestServiceDetailCodec(t *testing.T) {
 		"Language:", "go",
 		"Status:", "instrumented",
 		"Environment:", "production",
+		"Cluster:", "prod-us",
+		"Version:", "1.2.3",
+		"Kind:", "service",
 		"Window:", "5m",
 		"Rate:", "12.500 req/s",
 		"Errors:", "0.250 req/s (2.00%)",
@@ -586,5 +590,43 @@ func TestServiceDetailCodec(t *testing.T) {
 
 	if err := codec.Encode(&buf, "not a *ServiceDetail"); err == nil {
 		t.Error("expected error on wrong type")
+	}
+}
+
+// TestBuildGroupedItemLinks_ScopesToGroup guards the --group-by Links fix:
+// each item's link must be scoped to that item's own label values (not the
+// aggregate query groupBy pivots), so opening the link in Explore shows the
+// exact series behind that row's numbers.
+func TestBuildGroupedItemLinks_ScopesToGroup(t *testing.T) {
+	v3, _ := metricNamesByMode(MetricsModeV3)
+	links := buildGroupedItemLinks(
+		"https://example.grafana.net", "prom-uid", 1, v3,
+		"billing", "checkout", "5m", []string{spanKindServer},
+		[]Matcher{{Label: "cloud_region", Op: "=", Value: "us-east"}},
+		[]string{"k8s_cluster_name"},
+		map[string]string{"k8s_cluster_name": "prod-us"},
+	)
+	if links == nil {
+		t.Fatal("buildGroupedItemLinks() = nil, want populated *ServiceLinks")
+	}
+	u, err := url.Parse(links.Rate)
+	if err != nil {
+		t.Fatalf("Rate URL %q failed to parse: %v", links.Rate, err)
+	}
+	panes := u.Query().Get("panes")
+	for _, want := range []string{`k8s_cluster_name=\"prod-us\"`, `cloud_region=\"us-east\"`} {
+		if !strings.Contains(panes, want) {
+			t.Errorf("panes missing %q:\n%s", want, panes)
+		}
+	}
+}
+
+// TestBuildGroupedItemLinks_NoDatasourceReturnsNil mirrors
+// buildServiceLinks' own missing-datasource contract.
+func TestBuildGroupedItemLinks_NoDatasourceReturnsNil(t *testing.T) {
+	v3, _ := metricNamesByMode(MetricsModeV3)
+	links := buildGroupedItemLinks("", "prom-uid", 1, v3, "billing", "checkout", "5m", []string{spanKindServer}, nil, nil, nil)
+	if links != nil {
+		t.Errorf("buildGroupedItemLinks() = %+v, want nil", links)
 	}
 }

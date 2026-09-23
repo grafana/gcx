@@ -43,6 +43,9 @@ gcx metrics query -d grafanacloud-usage 'grafanacloud_org_metrics_billable_serie
 # list and search your dashboards
 gcx dashboards list
 gcx dashboards search "node exporter"
+
+# render a dashboard, allowing up to three minutes for the render
+gcx dashboards snapshot my-dashboard --timeout 3m
 ```
 
 ## Installation
@@ -136,6 +139,10 @@ gcx login my-stack --server https://my-stack.grafana.net
 ```
 
 Opens a browser for OAuth, then saves the access token, refresh token, and proxy endpoint to the `my-stack` context's named stack entry and makes the context current. Best for day-to-day use on Cloud stacks. If OAuth doesn't suit your setup, pick "Service account token" at the prompt.
+
+gcx stops before the browser flow when the current process cannot write to the
+OS credential store. Agent users must approve the same command outside the
+sandbox. See [Keychain credential storage](docs/sources/keychain.md).
 
 **Service account token (Cloud or on-premises, recommended for CI/automation):**
 
@@ -320,12 +327,6 @@ For example: OpenAI Codex, OpenCode, and Pi. View the skills shipped in the bund
 
 ```sh
 gcx agent skills list
-24 skill(s) bundled with gcx
-
-SKILL                      INSTALLED    DESCRIPTION
-create-dashboard           yes          Design and create dashboards with datasource discovery and snapshot-based visual iteration.
-debug-with-grafana         yes          Investigates application problems and earlier incidents using Grafana metrics, logs, and traces via gcx.
-....
 ```
 
 Install the bundle into `~/.agents/skills` with:
@@ -346,6 +347,14 @@ bundled skills. After upgrading `gcx`, install a new skill by name. To refresh
 existing skills and add every newly bundled one, run `gcx agent skills update`
 followed by `gcx agent skills install --all` — `install --all` on its own stops
 with an error if any already-installed skill differs from the new bundle.
+
+`list` also shows locally present retired skills and their replacements. `update`
+warns about deprecated and retired skills, but never deletes retired files or
+installs replacements automatically. Remove an unwanted skill explicitly with
+`gcx agent skills uninstall <skill>`; retired names remain supported after their
+content leaves the bundle. Use the same `--dir` for each command when managing a
+non-default installation. See [skill lifecycle](claude-plugin/README.md#skill-lifecycle)
+for the catalog and ownership limits.
 
 To disable that reminder entirely, set:
 
@@ -382,6 +391,7 @@ The agentic workflow above is one example. gcx supports a wide range of workflow
 
 - **Resource GitOps** — Pull resources to local files, let your agent edit them, push back to Grafana (`gcx resources pull` / `gcx resources push`)
 - **Explore your data** — Discover datasources, metrics, labels, and log streams before writing queries (`gcx datasources list`, `gcx metrics labels`)
+- **Bring Assistant context into your agent** — Read a conversation by ID or a shared Grafana Assistant URL, including AI SDK main-thread transcripts (`gcx assistant conversation get <id-or-url> -o json`)
 - **SLO management** — Create, monitor, and investigate SLOs from your terminal (`gcx slo definitions list`, `gcx slo reports list`)
 - **Onboarding & setup** — Instrument a Kubernetes cluster and configure Grafana Cloud products (`gcx instrumentation setup`)
 - **Observability as Code** — Scaffold a project, import existing dashboards as Go code, lint, and deploy (`gcx dev scaffold`, `gcx dev import`)

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -360,7 +361,7 @@ func TestRelabelRuleType_IsValid(t *testing.T) {
 	}
 }
 
-func ruleObj(name string, groups []map[string]any) unstructured.Unstructured {
+func ruleObj(name string, groups []any) unstructured.Unstructured {
 	spec := map[string]any{"name": name}
 	if groups != nil {
 		spec["groups"] = groups
@@ -373,51 +374,10 @@ func ruleObj(name string, groups []map[string]any) unstructured.Unstructured {
 	}}
 }
 
-func TestRuleTableCodec_Encode(t *testing.T) {
-	objs := []unstructured.Unstructured{
-		ruleObj("file-a", []map[string]any{
-			{"name": "g1", "rules": []any{
-				map[string]any{"alert": "X", "expr": "1"},
-				map[string]any{"record": "y", "expr": "1"},
-			}},
-			{"name": "g2", "rules": []any{
-				map[string]any{"record": "z", "expr": "1"},
-			}},
-		}),
-		ruleObj("file-empty", nil),
-	}
-	var buf bytes.Buffer
-	require.NoError(t, (&kg.RuleTableCodec{}).Encode(&buf, objs))
-	out := buf.String()
-	assert.Contains(t, out, "NAME")
-	assert.Contains(t, out, "GROUPS")
-	assert.Contains(t, out, "RULES")
-	assert.Contains(t, out, "file-a")
-	assert.Contains(t, out, "file-empty")
-}
-
-func TestRuleWideTableCodec_Encode(t *testing.T) {
-	objs := []unstructured.Unstructured{
-		ruleObj("file-a", []map[string]any{
-			{"name": "g1", "rules": []any{
-				map[string]any{"alert": "X", "expr": "1"},
-				map[string]any{"alert": "Y", "expr": "1"},
-				map[string]any{"record": "z", "expr": "1"},
-			}},
-		}),
-	}
-	var buf bytes.Buffer
-	require.NoError(t, (&kg.RuleWideTableCodec{}).Encode(&buf, objs))
-	out := buf.String()
-	for _, want := range []string{"NAME", "GROUPS", "RULES", "ALERTS", "RECORDING", "file-a"} {
-		assert.Contains(t, out, want)
-	}
-}
-
-func TestRuleTableCodec_RejectsWrongType(t *testing.T) {
-	err := (&kg.RuleTableCodec{}).Encode(&bytes.Buffer{}, []string{"nope"})
+func TestRuleTable_RejectsWrongType(t *testing.T) {
+	err := kg.RuleTable().Codec("table").Encode(&bytes.Buffer{}, []string{"nope"})
 	require.Error(t, err)
-	err = (&kg.RuleWideTableCodec{}).Encode(&bytes.Buffer{}, []string{"nope"})
+	err = kg.RuleTable().Codec("wide").Encode(&bytes.Buffer{}, []string{"nope"})
 	require.Error(t, err)
 }
 
@@ -644,4 +604,29 @@ func TestSuppressionsUpsert_DryRun_SystemFieldsIgnored(t *testing.T) {
 	assert.Empty(t, got.Diff, "system-only differences must not appear in the diff")
 	assert.NotContains(t, stdout.String(), "managedBy")
 	assert.False(t, writeHit, "dry-run must not write")
+}
+
+// TestRcaWorkbenchURL_CompoundUnitSince pins down that a compound PromQL
+// duration (e.g. "1h30m", valid model.ParseDuration syntax) is normalized to
+// a single-unit datemath expression before landing in the RCA Workbench
+// link's start param — a bare "now-"+since would emit "now-1h30m", which
+// Grafana's datemath parser rejects.
+func TestRcaWorkbenchURL_CompoundUnitSince(t *testing.T) {
+	got := kg.RcaWorkbenchURLForTest("https://example.grafana.net", "Service", "checkout", nil, 0, 0, "1h30m")
+
+	u, err := url.Parse(got)
+	require.NoError(t, err)
+	assert.Equal(t, "now-5400s", u.Query().Get("start"))
+	assert.Equal(t, "now", u.Query().Get("end"))
+}
+
+// TestRcaWorkbenchURL_EmptySinceUsesEpochMillis pins the non-relative path:
+// with since empty, start/end fall back to the literal ms timestamps.
+func TestRcaWorkbenchURL_EmptySinceUsesEpochMillis(t *testing.T) {
+	got := kg.RcaWorkbenchURLForTest("https://example.grafana.net", "Service", "checkout", nil, 1000, 2000, "")
+
+	u, err := url.Parse(got)
+	require.NoError(t, err)
+	assert.Equal(t, "1000", u.Query().Get("start"))
+	assert.Equal(t, "2000", u.Query().Get("end"))
 }

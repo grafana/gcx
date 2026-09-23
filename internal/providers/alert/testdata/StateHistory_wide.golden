@@ -1,0 +1,3 @@
+TIME                  RULE_UID  RULE          PREVIOUS  CURRENT   ERROR         LABELS
+2026-09-01T12:00:00Z  r1        High latency  Normal    Alerting  query failed  env=prod, service=api
+-                     -         -             -         -         -             -

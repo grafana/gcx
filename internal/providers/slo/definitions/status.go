@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/graph"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/grafana/promql-builder/go/promql"
@@ -61,7 +62,7 @@ func (o *statusOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func newStatusCommand(loader GrafanaConfigLoader) *cobra.Command {
+func newStatusCommand(resource providers.BoundResource[Slo]) *cobra.Command {
 	opts := &statusOpts{}
 	cmd := &cobra.Command{
 		Use:   "status [UUID]",
@@ -93,7 +94,7 @@ grafana_slo_* metrics.`,
 
 			ctx := cmd.Context()
 
-			crud, cfg, err := NewTypedCRUD(ctx, loader)
+			crud, cfg, err := resource.Load(ctx)
 			if err != nil {
 				return err
 			}

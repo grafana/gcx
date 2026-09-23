@@ -1,6 +1,13 @@
 ## gcx slo definitions pull
 
+Pull SLO definitions to disk (Deprecated: use gcx resources pull).
+
+### Synopsis
+
 Pull SLO definitions to disk.
+
+Deprecated: use gcx resources pull slos.v1alpha1.slo.ext.grafana.app -p PATH -o yaml instead.
+This compatibility command retains its Kind/name.yaml layout.
 
 ```
 gcx slo definitions pull [flags]
@@ -10,7 +17,7 @@ gcx slo definitions pull [flags]
 
 ```
   -h, --help                help for pull
-  -d, --output-dir string   Directory to write SLO definition files to (default ".")
+  -d, --output-dir string   Directory to write SLO definitions to (default ".")
 ```
 
 ### Options inherited from parent commands

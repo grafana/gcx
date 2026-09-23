@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/providers/appo11y/activation"
 	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
@@ -163,7 +164,11 @@ Each result row is one service.
 Related: "gcx kg entities --type Service" surfaces services as Knowledge Graph
 entities with relationships and insights (requires the Knowledge Graph plugin);
 "gcx instrumentation services" lists Kubernetes workloads discovered for setting up
-instrumentation.`,
+instrumentation.
+
+The "version" field (--output wide/json/yaml) is populated only when every
+matched series agrees on a single service_version; a service mid-rollout
+across two versions reports an empty version rather than picking one.`,
 		Example: `
   # List all services in the current stack
   gcx appo11y services list
@@ -205,6 +210,7 @@ func runList(loader *providers.ConfigLoader, opts *listOpts) func(*cobra.Command
 		if err != nil {
 			return err
 		}
+		activation.Gate(ctx, cfg, cmd.ErrOrStderr())
 
 		datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "prometheus")
 		if err != nil {
@@ -375,10 +381,25 @@ func wideLabels() []string {
 	}
 }
 
+// metadataLabels are target_info labels needed for typed Service fields
+// rather than the generic per-row Labels display. service_version feeds the
+// ambiguity-tracked Version field (see parseServicesResponse). It is copied
+// into Labels only after resolving to one distinct value, so custom columns
+// work without leaking an arbitrary version during a rollout. cluster feeds
+// Cluster's k8s_cluster_name fallback via clusterValue and stays in Labels —
+// clusterValue reads it from there — but without this entry no query ever
+// projected a bare `cluster` label at all, so the fallback branch was
+// unreachable. Unioned into allTargetInfoLabels so the discovery query
+// projects both without a follow-up request.
+func metadataLabels() []string {
+	return []string{"service_version", "cluster"}
+}
+
 // allTargetInfoLabels returns the union projection used by the discovery
 // query so we can fill any default/wide column without a follow-up request.
 func allTargetInfoLabels() []string {
-	return append(defaultLabels(), wideLabels()...)
+	labels := append(defaultLabels(), wideLabels()...)
+	return append(labels, metadataLabels()...)
 }
 
 func (c *servicesTableCodec) Encode(w io.Writer, v any) error {
@@ -404,7 +425,11 @@ func (c *servicesTableCodec) encodeServicesTable(w io.Writer, resp *ServicesResp
 		wideCols = wideLabels()
 	}
 
-	headers := append([]string{"NAME", "NAMESPACE", "ENVIRONMENT", "LANGUAGE", "STATUS"}, upperHeaders(wideCols)...)
+	headers := []string{"NAME", "NAMESPACE", "ENVIRONMENT", "LANGUAGE", "STATUS"}
+	if c.Wide {
+		headers = append(headers, "KIND", "VERSION")
+	}
+	headers = append(headers, upperHeaders(wideCols)...)
 	headers = append(headers, upperHeaders(extra)...)
 
 	t := style.NewTable(headers...)
@@ -412,9 +437,12 @@ func (c *servicesTableCodec) encodeServicesTable(w io.Writer, resp *ServicesResp
 		row := []string{
 			s.Name,
 			orDash(s.Namespace),
-			orDash(environmentValue(s.Labels)),
+			orDash(s.Environment),
 			orDash(s.Language),
 			instrumentationStatus(s.Instrumented),
+		}
+		if c.Wide {
+			row = append(row, orDash(s.Kind), orDash(s.Version))
 		}
 		for _, lbl := range wideCols {
 			row = append(row, orDash(s.Labels[lbl]))
@@ -436,6 +464,16 @@ func environmentValue(labels map[string]string) string {
 		return v
 	}
 	return labels["deployment_environment_name"]
+}
+
+// clusterValue prefers k8s_cluster_name (the Kubernetes-flavored attribute
+// most App Observability stacks emit) and falls back to the bare `cluster`
+// label some non-k8s deployments use instead. Either may be empty.
+func clusterValue(labels map[string]string) string {
+	if v := labels["k8s_cluster_name"]; v != "" {
+		return v
+	}
+	return labels["cluster"]
 }
 
 func instrumentationStatus(instrumented bool) string {

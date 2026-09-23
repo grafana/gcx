@@ -4,7 +4,7 @@ Install bundled gcx skills into ~/.agents/skills
 
 ### Synopsis
 
-Install one or more bundled gcx Agent Skills into a user-level .agents directory for tools that follow the .agents skill convention. Use --all to install the entire bundle.
+Install one or more bundled gcx Agent Skills into a user-level .agents directory for tools that follow the .agents skill convention. Use --all to install the entire bundle. Deprecated skills are installed with a warning; retired skills cannot be installed.
 
 ```
 gcx agent skills install [SKILL]... [flags]

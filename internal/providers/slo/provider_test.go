@@ -119,3 +119,25 @@ func TestSLOProvider_CommandsReturnFreshTrees(t *testing.T) {
 	assert.Equal(t, "first tree", firstOutput.String())
 	assert.Empty(t, secondOutput.String())
 }
+
+func TestSLOProvider_Resources(t *testing.T) {
+	registrations := slo.NewSLOProvider().TypedRegistrations()
+	require.Len(t, registrations, 2)
+	for _, registration := range registrations {
+		assert.NotEmpty(t, registration.Schema)
+		assert.NotEmpty(t, registration.Example)
+		assert.NotNil(t, registration.Factory)
+	}
+}
+
+func TestSLOProvider_InheritsRootHook(t *testing.T) {
+	calls := 0
+	root := &cobra.Command{Use: "gcx", PersistentPreRun: func(_ *cobra.Command, _ []string) { calls++ }}
+	root.AddCommand(slo.NewSLOProvider().Commands()...)
+	cmd, _, err := root.Find([]string{"slo", "reports", "list"})
+	require.NoError(t, err)
+	cmd.RunE = func(_ *cobra.Command, _ []string) error { return nil }
+	root.SetArgs([]string{"slo", "reports", "list"})
+	require.NoError(t, root.Execute())
+	assert.Equal(t, 1, calls)
+}

@@ -1,6 +1,43 @@
 ## Unreleased
 
 - Added experimental Tempo TraceByID V2 params to `gcx traces get` / `gcx datasources tempo get`: `--filter` filters the trace to spans matching a TraceQL spanset expression, with `--keep-hierarchy`, `--match-depth`, and `--ancestor-depth` shaping how much surrounding context is kept; `--prune` (plus `--prune-group-by`, `--prune-min-spans`, `--prune-max-parent-depth`) collapses repeated sibling spans into a single aggregated span. `--prune` is off unless set. Both are aimed at shrinking large traces before `--llm` analysis.
+## v1.3.1 (2026-09-22)
+
+**Synthetic Monitoring**
+- Add ad hoc check execution with result polling (#1311)
+- Add named backend datasource queries (#1307)
+- Add optional script decoding for browser and scripted checks (#1309)
+
+**Datasources and queries**
+- Add StarTree Pinot datasource queries (#1255)
+- Add Frontend Observability session retrieval (#1257)
+- Preserve datasource plugin types in list and resource responses (#1356)
+
+**Dashboards, Assistant, and Agent Observability**
+- Add a render timeout option to dashboard snapshots (#1355)
+- Add optional artifact downloads to experiment pulls (#1321)
+- Read legacy, AI SDK, and shared Assistant transcripts (#1369)
+
+**Application Observability**
+- Require App Observability activation for service commands (#1329)
+
+**SLO, Fleet, and skills**
+- Move SLO definitions and reports to declarative adapters (#1342)
+- Use `gcx resources push` and `pull` for new SLO workflows. Generic push
+  matches natural keys. Deprecated SLO wrappers match UUIDs only (#1342)
+- Show Fleet collector health attributes and timestamps (#1352)
+- Reconcile installed skills with a release lifecycle catalog (#1339)
+
+**Security and telemetry**
+- Stop OAuth before network use when the credential store is not writable (#1313)
+- Add the human or agent execution mode to the user agent (#1336)
+
+**Other**
+- Migrate Knowledge Graph, Alerting, and Agent Observability tables to shared
+  codecs (#1345, #1346, #1347)
+- Update Go and Kubernetes dependencies (#915, #798)
+- Improve release, review, and ownership workflows (#1341, #1306, #1350,
+  #1317, #1314)
 
 ## v1.3.0 (2026-09-13)
 

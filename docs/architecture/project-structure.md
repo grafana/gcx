@@ -55,6 +55,7 @@ gcx/
 │   │   └── builtins/         # Built-in PromQL/LogQL validators
 │   ├── providers/            # Provider plugin system
 │   │   ├── configloader.go   # Shared ConfigLoader for all providers
+│   │   ├── resource.go       # Lazy Grafana resource bindings and transport loading
 │   │   ├── metrics/          # Metrics signal provider (Prometheus queries + Adaptive Metrics)
 │   │   │   └── adaptive/     # Adaptive Metrics commands (rules, recommendations)
 │   │   ├── logs/             # Logs signal provider (Loki queries + Adaptive Logs)
@@ -84,8 +85,10 @@ gcx/
 │   │   ├── k6/              # k6 Cloud provider (projects, tests, runs, envvars)
 │   │   ├── kg/               # Knowledge Graph (Asserts) provider (rules, entities, insights, diagnose, quality reports)
 │   │   ├── slo/              # SLO provider implementation
+│   │   │   ├── api/          # Shared resource group/version; kinds stay in declarations
 │   │   │   ├── definitions/  # SLO definitions and status queries
-│   │   │   └── reports/      # SLO reports
+│   │   │   ├── reports/      # SLO reports
+│   │   │   └── transfer/     # Deprecated CLI wrappers around the resource pipeline
 │   │   └── synth/            # Synthetic Monitoring provider
 │   │       ├── checks/       # Checks status, timeline, CRUD
 │   │       ├── probes/       # Probe listing
@@ -129,7 +132,7 @@ gcx/
 │   ├── signals/              # Shared signal command and datasource-provider mounting (metrics/logs/traces/profiles)
 │   ├── notifier/             # Skills update notifier (XDG state, throttle, message rendering)
 │   ├── secrets/              # Redaction of sensitive config fields
-│   ├── skills/               # Portable Agent Skills installer primitives (Install, Update, Bundled/InstalledBundledSkillNames)
+│   ├── skills/               # Agent Skills catalog validation, local reconciliation, content reads, install/update/uninstall
 │   ├── strcase/              # String case conversion (snake_case, kebab-case, PascalCase)
 │   ├── telemetry/            # Anonymous usage stats library (event model, mode resolution, device ID, CI detection, wire vocabularies: volume buckets, k8s reasons, auth methods, api routes and datasource types; flat-JSON HTTP export)
 │   │   └── capture/          # Process-wide invocation facts written mid-run, read once at exit by the usage-event builder (holds no wire vocabulary, so writing a signal does not pull in the event model or HTTP exporter)

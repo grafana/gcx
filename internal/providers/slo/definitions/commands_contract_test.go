@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/providers/slo/definitions"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/client-go/rest"
@@ -523,6 +524,90 @@ func TestDefinitionsTimelineEmptyContract(t *testing.T) {
 				assert.Contains(t, doc, "Points")
 			} else {
 				assert.Equal(t, tc.wantStdout, stdout)
+			}
+		})
+	}
+}
+
+func TestDefinitionsPushPreservesLegacyIdentity(t *testing.T) {
+	adapter.NewProvider("slo", "", nil, definitions.SloResource())
+	for _, uuid := range []string{"target-uuid", "source-uuid", ""} {
+		for _, envelope := range []string{"full", "no-apiVersion", "no-kind", "neither"} {
+			for _, dryRun := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/%s/dry-run=%t", uuid, envelope, dryRun), func(t *testing.T) {
+					st := &sloAPIState{slos: map[string]definitions.Slo{
+						"target-uuid": {UUID: "target-uuid", Name: "Existing"},
+					}}
+					srv := newSLOServer(t, st)
+					defer srv.Close()
+					file := writeSLOManifest(t, t.TempDir(), "resource.yaml", "Existing", uuid)
+					data, err := os.ReadFile(file)
+					require.NoError(t, err)
+					if envelope == "no-apiVersion" || envelope == "neither" {
+						data = bytes.ReplaceAll(data, []byte("apiVersion: slo.ext.grafana.app/v1alpha1\n"), nil)
+					}
+					if envelope == "no-kind" || envelope == "neither" {
+						data = bytes.ReplaceAll(data, []byte("kind: SLO\n"), nil)
+					}
+					require.NoError(t, os.WriteFile(file, data, 0o600))
+					args := []string{"push", file, "-o", "json"}
+					if dryRun {
+						srv.Close() // Local previews must succeed without contacting the API.
+						args = append(args, "--dry-run")
+					}
+					stdout, _, err := runDefinitions(t, srv.URL, false, "", args...)
+					require.NoError(t, err)
+					doc, ok := decodeSingleJSONValue(t, stdout).(map[string]any)
+					require.True(t, ok)
+					items, ok := doc["items"].([]any)
+					require.True(t, ok)
+					require.Len(t, items, 1)
+					item, ok := items[0].(map[string]any)
+					require.True(t, ok)
+					switch {
+					case dryRun:
+						assert.Zero(t, st.createCalls)
+						assert.Equal(t, "dry-run", item["action"])
+						if uuid != "" {
+							assert.Equal(t, uuid, item["uuid"])
+						} else {
+							assert.NotContains(t, item, "uuid")
+						}
+					case uuid == "target-uuid":
+						assert.Zero(t, st.createCalls)
+						assert.Equal(t, "updated", item["action"])
+						assert.Equal(t, uuid, item["uuid"])
+					default:
+						assert.Equal(t, 1, st.createCalls)
+						assert.Equal(t, "created", item["action"])
+						assert.Equal(t, "uuid-1", item["uuid"])
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestDefinitionsPushLookupErrorIdentifiesResource(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer srv.Close()
+	file := writeSLOManifest(t, t.TempDir(), "resource.yaml", "Existing", "denied-uuid")
+	_, _, err := runDefinitions(t, srv.URL, false, "", "push", file)
+	require.ErrorContains(t, err, "failed to check SLO denied-uuid")
+}
+func TestDefinitionsTransferHelpNamesResource(t *testing.T) {
+	for _, verb := range []string{"push", "pull"} {
+		t.Run(verb, func(t *testing.T) {
+			stdout, _, err := runDefinitions(t, "", false, "", verb, "--help")
+			require.NoError(t, err)
+			if verb == "push" {
+				assert.Contains(t, stdout, "Push SLO from files")
+			} else {
+				assert.Contains(t, stdout, "Pull SLO definitions to disk")
+				assert.Contains(t, stdout, "Directory to write SLO definitions to")
 			}
 		})
 	}
