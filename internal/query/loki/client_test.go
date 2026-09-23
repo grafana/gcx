@@ -76,9 +76,11 @@ func TestQuery_FallsBackOn403(t *testing.T) {
 }
 
 func TestIndexStats(t *testing.T) {
+	var gotPath string
 	var gotQuery url.Values
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
+		gotPath = r.URL.Path
 		gotQuery = r.URL.Query()
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"streams":12,"chunks":345,"bytes":6789012,"entries":98765}`))
@@ -102,6 +104,10 @@ func TestIndexStats(t *testing.T) {
 	assert.Equal(t, uint64(6789012), resp.Bytes)
 	assert.Equal(t, uint64(98765), resp.Entries)
 
+	// Pins the exact endpoint contract: the handler above accepts any path,
+	// so without this a typo in buildIndexStatsPath's "/resources/index/stats"
+	// suffix would go undetected.
+	assert.Equal(t, "/api/datasources/uid/loki-uid/resources/index/stats", gotPath)
 	assert.Equal(t, `{job="varlogs"}`, gotQuery.Get("query"))
 	assert.Equal(t, strconv.FormatInt(start.UnixNano(), 10), gotQuery.Get("start"))
 	assert.Equal(t, strconv.FormatInt(end.UnixNano(), 10), gotQuery.Get("end"))

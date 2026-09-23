@@ -113,13 +113,19 @@ func execStatsCmd(t *testing.T, args ...string) (string, string, error) {
 	return outBuf.String(), errBuf.String(), err
 }
 
-func TestStatsCmd_BytesHeaderRoutesByFormat(t *testing.T) {
-	t.Run("table: header on stdout, above the table, nothing on stderr", func(t *testing.T) {
+// TestStatsCmd_BytesHeaderAlwaysOnStderr pins the fix for the "unstructured
+// warning on stdout, ahead of the codec-owned result" finding
+// (DESIGN.md's Output Model / CONSTITUTION.md's "all output goes through the
+// codec system"): the "<size> would be scanned" diagnostic always goes to
+// stderr, regardless of -o format, so stdout only ever carries the
+// codec-rendered result (which already includes the same Bytes value).
+func TestStatsCmd_BytesHeaderAlwaysOnStderr(t *testing.T) {
+	t.Run("table: stdout is only the codec-rendered table", func(t *testing.T) {
 		stdout, stderr, err := execStatsCmd(t, "-o", "table")
 		require.NoError(t, err)
-		assert.Contains(t, stdout, "36 MiB would be scanned")
+		assert.NotContains(t, stdout, "would be scanned")
 		assert.Contains(t, stdout, "Bytes")
-		assert.Empty(t, stderr)
+		assert.Contains(t, stderr, "36 MiB would be scanned")
 	})
 
 	t.Run("json: stdout is clean valid JSON, header goes to stderr instead", func(t *testing.T) {
