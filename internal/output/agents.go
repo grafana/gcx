@@ -73,7 +73,7 @@ func (c *agentsCodec) Encode(dst io.Writer, value any) error {
 		return err
 	}
 
-	if buf.Len() <= spillThreshold() {
+	if buf.Len() <= SpillThreshold() {
 		_, err := io.Copy(dst, &buf)
 		return err
 	}
@@ -87,7 +87,7 @@ func (c *agentsCodec) encodeJQ(dst io.Writer, results iter.Seq2[any, error]) err
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
-	threshold := spillThreshold()
+	threshold := SpillThreshold()
 	var f *os.File
 	success := false
 	defer func() {
@@ -188,7 +188,11 @@ func (c *agentsCodec) writeSpillSummary(dst io.Writer, s spillSummary) error {
 	return nil
 }
 
-func spillThreshold() int {
+// SpillThreshold is the encoded-payload size in bytes above which the agents
+// codec spills to a file. Exported so commands that can shrink a response
+// server-side (e.g. gcx traces get --prune) can budget against the same
+// number the codec uses.
+func SpillThreshold() int {
 	if v := os.Getenv(agentsSpillEnv); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			return n

@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/deeplink"
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/gcxerrors"
@@ -2462,14 +2463,16 @@ func (o *inspectOpts) resolveInsightFilters(flags *pflag.FlagSet) (int, int) {
 
 // rcaWorkbenchURL builds a deep link to the Asserts RCA Workbench for a single entity.
 // start/end use the relative expression (e.g. "now-24h"/"now") when since is set,
-// otherwise fall back to millisecond epoch timestamps.
+// otherwise fall back to millisecond epoch timestamps. The relative expression
+// goes through dsquery.DatemathFrom rather than a bare "now-"+since: PromQL
+// durations permit compound units (e.g. "1h30m") that datemath doesn't accept.
 func rcaWorkbenchURL(host, entityType, name string, scope map[string]string, startMs, endMs int64, since string) string {
 	if host == "" {
 		return ""
 	}
 	start, end := strconv.FormatInt(startMs, 10), strconv.FormatInt(endMs, 10)
 	if since != "" {
-		start, end = "now-"+since, "now"
+		start, end = dsquery.DatemathFrom(since), "now"
 	}
 
 	q := url.Values{}

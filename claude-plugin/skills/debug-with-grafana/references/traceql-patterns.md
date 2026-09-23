@@ -109,6 +109,29 @@ Prefer the backend's compact trace encoding. Do not fetch raw OTLP and write a
 custom compactor for agent analysis. Omit `--llm` only when raw schema/export
 work is requested; the backend may also fall back to standard JSON itself.
 Inspect partiality and missing parents before making structural claims.
+
+For a trace too large to read in full, narrow it server-side (experimental,
+V2 only) instead of truncating the output yourself:
+
+```bash
+# Only spans matching a TraceQL filter, plus their ancestor path to the root.
+gcx traces get -d "$TEMPO_UID" "$SEED" --filter '{ status = error }' --keep-hierarchy --llm -o agents
+
+# Collapse repeated sibling spans (e.g. a fan-out of identical DB calls)
+# into one aggregated span. Combines cleanly with --filter.
+gcx traces get -d "$TEMPO_UID" "$SEED" --prune --llm -o agents
+```
+
+`--match-depth`/`--ancestor-depth` tune how many descendant/ancestor levels
+around each `--filter` match are kept, and are ignored without `--filter`.
+`--prune` is a bool, off unless set. `--prune-group-by`/`--prune-min-spans`/
+`--prune-max-parent-depth` tune the pruning behavior and apply only when
+`--prune` enables pruning.
+
+A response too large for `-o agents` (100 KiB, overridable via
+`GCX_AGENT_SPILL_BYTES`) spills to a file with a hint to read it directly or
+re-run narrower with `--filter` or `--prune`.
+
 Continue with [trace comparison](trace-comparison.md) for candidates, diff
 orientation, topology bias, and capability fallbacks.
 
