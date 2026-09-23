@@ -1,5 +1,8 @@
 ## Unreleased
 
+**Datasources and queries**
+- Add experimental Prometheus/Mimir search API support: `gcx datasources prometheus search-metric-names/search-label-names/search-label-values` and `gcx metrics search metric-names/label-names/label-values` (#TODO)
+
 ## v1.3.1 (2026-09-22)
 
 **Synthetic Monitoring**
