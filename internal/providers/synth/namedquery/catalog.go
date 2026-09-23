@@ -87,6 +87,7 @@ publishes. Each entry can be run with 'gcx synthetic-monitoring query NAME'; use
 Requires Synthetic Monitoring app v1.62.0 or later -- named-query discovery is
 not available on older deployments.`,
 		Example: `  gcx synthetic-monitoring queries list`,
+		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
@@ -153,6 +154,7 @@ ready-to-run 'gcx synthetic-monitoring query' invocation.
 Requires Synthetic Monitoring app v1.62.0 or later.`,
 		Example: `  gcx synthetic-monitoring queries get checks_uptime`,
 		Args:    cobra.ExactArgs(1),
+
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
