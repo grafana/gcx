@@ -1,4 +1,6 @@
 // No npm dependencies: the action revision selects the gcx source to build.
+// Arbitrary pinned commits (including this unreleased feature) need not have a matching
+// release artifact. install.sh selects a version/latest, not an exact source SHA.
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');

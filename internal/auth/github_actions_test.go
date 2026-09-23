@@ -4,11 +4,13 @@
 package auth
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -20,12 +22,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestGitHubActionsExchangeCacheRefreshAndResponseBinding(t *testing.T) {
-	for _, name := range []string{"valid", "opaque token", "long lifetime", "empty token", "short lifetime", "tenant", "endpoint", "scope", "expiry", "destination", "secret error"} {
+	for _, name := range []string{"valid", "opaque token", "long lifetime", "empty token", "short lifetime", "tenant", "endpoint", "endpoint path", "scope", "downscope", "expiry", "destination", "secret error"} {
 		t.Run(name, func(t *testing.T) {
 			var oidcCalls, exchangeCalls atomic.Int32
 			var endpoint string
@@ -50,6 +53,10 @@ func TestGitHubActionsExchangeCacheRefreshAndResponseBinding(t *testing.T) {
 					result.Tenant = "2"
 				case "endpoint":
 					result.APIEndpoint = "https://other.invalid"
+				case "endpoint path":
+					result.APIEndpoint = endpoint + "/other-backend"
+				case "downscope":
+					result.Scopes = nil
 				case "scope":
 					result.Scopes = []string{"grafana-api:write"}
 				case "opaque token":
@@ -200,4 +207,65 @@ func TestGitHubActionsSharedClientRejectsRedirects(t *testing.T) {
 	err = client.do(req, &struct{}{})
 	require.ErrorContains(t, err, "HTTP 302")
 	require.Equal(t, 1, calls)
+}
+
+func TestGitHubActionsMalformedResponseDoesNotLeakIntoLogs(t *testing.T) {
+	const secret = "dummy-credential-in-status-line"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hijacker, ok := w.(http.Hijacker)
+		if !assert.True(t, ok) {
+			return
+		}
+		conn, rw, err := hijacker.Hijack()
+		if !assert.NoError(t, err) {
+			return
+		}
+		defer conn.Close()
+		_, err = rw.WriteString(secret + "\r\n\r\n")
+		assert.NoError(t, err)
+		assert.NoError(t, rw.Flush())
+	}))
+	defer server.Close()
+
+	// Demonstrate that the standard transport includes remote bytes in its error.
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL, nil)
+	require.NoError(t, err)
+	response, err := server.Client().Do(req)
+	if response != nil {
+		response.Body.Close()
+	}
+	require.ErrorContains(t, err, secret)
+
+	t.Setenv("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "request-secret")
+	t.Setenv("ACTIONS_ID_TOKEN_REQUEST_URL", "https://pipelines.actions.githubusercontent.com/oidc")
+	client, err := NewGitHubActions(GitHubActionsOptions{Endpoint: "https://assistant.example", TenantID: "1", Scopes: []string{"assistant:chat"}})
+	require.NoError(t, err)
+	var logs bytes.Buffer
+	ctx := logging.Context(t.Context(), logging.NewSLogLogger(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	req = req.WithContext(ctx)
+	err = client.do(req, &struct{}{})
+	require.ErrorContains(t, err, "connection failed")
+	assert.NotContains(t, err.Error(), secret)
+	assert.Contains(t, logs.String(), "connection failed")
+	assert.NotContains(t, logs.String(), secret)
+}
+
+func TestGitHubActionsSafeTransportPreservesErrorClassification(t *testing.T) {
+	cause := &net.OpError{Op: "dummy-secret", Err: os.ErrDeadlineExceeded}
+	transport := actionsErrorTransport{base: actionsRoundTripper(func(*http.Request) (*http.Response, error) {
+		return nil, cause
+	})}
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "https://assistant.example", nil)
+	require.NoError(t, err)
+	response, err := transport.RoundTrip(req)
+	if response != nil {
+		response.Body.Close()
+	}
+	require.ErrorContains(t, err, "network timeout")
+	assert.NotContains(t, err.Error(), "dummy-secret")
+	// Shared retries rely on typed errors and errors.Is, not message text.
+	var networkError *net.OpError
+	require.ErrorAs(t, err, &networkError)
+	assert.Same(t, cause, networkError)
+	assert.ErrorIs(t, err, os.ErrDeadlineExceeded)
 }

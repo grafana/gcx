@@ -38,6 +38,8 @@ func (o GitHubActionsOptions) Validate() error {
 	if o.TenantID == "" || len(o.Scopes) == 0 {
 		return errors.New("GitHub Actions requires tenant-id and explicit scopes")
 	}
+	// This version implements the Assistant CLI scope contract; unknown scopes
+	// require explicit client support rather than being silently delegated.
 	valid := []string{"assistant:a2a", "assistant:chat", "grafana-api:read", "grafana-api:write", "grafana-api:delete"}
 	seen := map[string]bool{}
 	for _, scope := range o.Scopes {
@@ -77,7 +79,14 @@ func NewGitHubActions(options GitHubActionsOptions) (*GitHubActions, error) {
 	if err != nil || u.Scheme != "https" || u.User != nil || (u.Hostname() != "token.actions.githubusercontent.com" && !strings.HasSuffix(u.Hostname(), ".actions.githubusercontent.com")) || token == "" {
 		return nil, errors.New("GitHub Actions OIDC is unavailable; run in a GitHub Actions job with id-token: write")
 	}
-	return &GitHubActions{options: options, requestURL: raw, requestToken: token, client: httputils.NewClient(httputils.ClientOpts{Timeout: 30 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }})}, nil
+	return &GitHubActions{options: options, requestURL: raw, requestToken: token, client: httputils.NewClient(httputils.ClientOpts{
+		Timeout:       30 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		Middlewares: []httputils.Middleware{
+			func(rt http.RoundTripper) http.RoundTripper { return actionsErrorTransport{base: rt} },
+			httputils.LoggingMiddleware,
+		},
+	})}, nil
 }
 
 func (a *GitHubActions) FreshToken(ctx context.Context) (string, error) {
@@ -137,6 +146,8 @@ func (a *GitHubActions) Exchange(ctx context.Context) (GitHubActionsResult, erro
 	if err := a.do(req, &response); err != nil {
 		return empty, fmt.Errorf("exchange GitHub identity: %w; check the workflow grant and linked Grafana account", err)
 	}
+	// The exchange is all-or-nothing: scopes equal the request and the backend
+	// base URL (including its routing path) matches the explicitly trusted URL.
 	r := response.Data
 	if r.Token == "" || r.Tenant != a.options.TenantID || strings.TrimRight(r.APIEndpoint, "/") != endpoint {
 		return empty, errors.New("invalid GitHub Actions credential response")
@@ -176,6 +187,27 @@ func (a *GitHubActions) do(req *http.Request, out any) error {
 	}
 	return nil
 }
+
+// A malformed HTTP status line can embed server-returned credential bytes in
+// Go's transport error. Sanitize before shared logging/retries see it, while
+// retaining the cause for typed timeout/cancellation and retry classification.
+type actionsErrorTransport struct{ base http.RoundTripper }
+
+func (t actionsErrorTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	response, err := t.base.RoundTrip(req)
+	if err != nil {
+		return response, actionsSafeError{message: actionsTransportError(err).Error(), cause: err}
+	}
+	return response, nil
+}
+
+type actionsSafeError struct {
+	message string
+	cause   error
+}
+
+func (e actionsSafeError) Error() string { return e.message }
+func (e actionsSafeError) Unwrap() error { return e.cause }
 
 // Keep useful failure classes in returned errors without embedding raw transport
 // messages. The shared HTTP logger separately records request URLs for diagnosis.
