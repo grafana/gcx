@@ -225,8 +225,15 @@ func FormatPatternsTable(w io.Writer, resp *PatternsResponse) error {
 		}
 		rows = append(rows, row{pattern: p.Pattern, total: total})
 	}
+	// Break ties on total by pattern text so the row order is fully
+	// deterministic — sort.Slice alone leaves equal-total patterns in an
+	// unspecified relative order, which can flip between otherwise-identical
+	// runs and make table output flaky to diff.
 	sort.Slice(rows, func(i, j int) bool {
-		return rows[i].total > rows[j].total
+		if rows[i].total != rows[j].total {
+			return rows[i].total > rows[j].total
+		}
+		return rows[i].pattern < rows[j].pattern
 	})
 
 	t := style.NewTable("PATTERN", "SAMPLES")
