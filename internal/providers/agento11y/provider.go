@@ -89,7 +89,7 @@ func (p *Agento11yProvider) Commands() []*cobra.Command {
 	modelRatesCmd := modelrates.Commands(loader)
 	modelRatesCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "low",
-		agent.AnnotationLLMHint:   `gcx agento11y model-rates list -o json; gcx agento11y model-rates set --provider openai --model gpt-5.5 --input 2.00 --output 8.00 -o json; gcx agento11y model-rates delete --provider openai --model gpt-5.5 --effective-from <ts>`,
+		agent.AnnotationLLMHint:   `gcx agento11y model-rates list -o json; gcx agento11y model-rates create --provider openai --model gpt-5.5 --price-input 2.00 --price-output 8.00 -o json; gcx agento11y model-rates delete --provider openai --model gpt-5.5 --effective-from <ts>`,
 	}
 
 	generationsCmd := generations.Commands(loader)

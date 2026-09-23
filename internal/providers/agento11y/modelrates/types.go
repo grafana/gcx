@@ -13,6 +13,12 @@
 package modelrates
 
 // Rate is one configured price as the API returns it.
+//
+// A nil rate and a zero cost the same: the pricer skips a nil bucket and
+// multiplying by zero adds nothing. What differs is what each records — a zero
+// says the contract prices that bucket at nothing, a nil says nothing about it
+// — and that a row must set at least one rate, where a zero counts and a nil
+// does not.
 type Rate struct {
 	Provider      string `json:"provider" yaml:"provider"`
 	Model         string `json:"model" yaml:"model"`
@@ -41,7 +47,12 @@ type LongContextRate struct {
 	CacheWriteUSDPerMillion *float64 `json:"cache_write_usd_per_million,omitempty" yaml:"cache_write_usd_per_million,omitempty"`
 }
 
-// RateWrite is the request body. It carries no effective_from: a write takes
+// RateWrite is the request body. A rate left nil is omitted rather than sent as
+// zero: both charge nothing, but only a value sent counts toward the
+// requirement that a row price something, and only a value sent records that
+// the contract says so.
+//
+// It carries no effective_from: a write takes
 // effect from the moment the server accepts it, and applying a rate to history
 // is a separate job rather than a side effect of setting one. That is also why
 // there is no update — every write records a new rate in force from now, and

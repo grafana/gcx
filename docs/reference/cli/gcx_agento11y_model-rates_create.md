@@ -7,8 +7,13 @@ Record your price for one model, in force from now.
 Record your price for one model, in force from now.
 
 The rate replaces the public catalog price for this provider and model
-completely: nothing is filled in from the catalog card. A bucket you leave
-unset is not charged, so state every rate your contract covers.
+completely: nothing is filled in from the catalog card, so state every rate
+your contract covers.
+
+A bucket you leave unset is not charged, and passing 0 charges the same. The
+difference is what it records: 0 says your contract prices that bucket at
+nothing, while leaving the flag off says nothing about it at all. At least one
+rate has to be set, and an explicit 0 counts.
 
 Generations already recorded keep the price they were given. A later call
 records a new rate rather than overwriting this one.

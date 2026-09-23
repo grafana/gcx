@@ -30,11 +30,12 @@ gcx agento11y model-rates delete [flags]
 
 ```
       --effective-from string   effective-from of the rate to delete, as 'list' reports it (required)
+      --force                   Skip confirmation prompt
   -h, --help                    help for delete
       --jq string               jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string             Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --model string            Model of the rate to delete (required)
-  -o, --output string           Output format. One of: agents, json, yaml (default "yaml")
+  -o, --output string           Output format. One of: agents, json, text, yaml (default "text")
       --provider string         Provider of the rate to delete (required)
 ```
 

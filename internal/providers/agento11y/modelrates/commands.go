@@ -10,6 +10,7 @@ import (
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/agento11y/agento11yhttp"
+	"github.com/grafana/gcx/internal/providers/agento11y/commandutil"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -154,8 +155,13 @@ func newCreateCommand(loader *providers.ConfigLoader) *cobra.Command {
 		Long: `Record your price for one model, in force from now.
 
 The rate replaces the public catalog price for this provider and model
-completely: nothing is filled in from the catalog card. A bucket you leave
-unset is not charged, so state every rate your contract covers.
+completely: nothing is filled in from the catalog card, so state every rate
+your contract covers.
+
+A bucket you leave unset is not charged, and passing 0 charges the same. The
+difference is what it records: 0 says your contract prices that bucket at
+nothing, while leaving the flag off says nothing about it at all. At least one
+rate has to be set, and an explicit 0 counts.
 
 Generations already recorded keep the price they were given. A later call
 records a new rate rather than overwriting this one.`,
@@ -251,11 +257,17 @@ type deleteOpts struct {
 	Provider      string
 	Model         string
 	EffectiveFrom string
+	Force         bool
 }
 
 func (o *deleteOpts) setup(flags *pflag.FlagSet) {
-	o.IO.DefaultFormat("yaml")
+	// The receipt goes to stderr and the result document to stdout, so the
+	// human default prints nothing extra — the same silent codec the other
+	// delete verbs register.
+	o.IO.RegisterCustomCodec("text", commandutil.SilentTextCodec{})
+	o.IO.DefaultFormat("text")
 	o.IO.BindFlags(flags)
+	flags.BoolVar(&o.Force, "force", false, "Skip confirmation prompt")
 	flags.StringVar(&o.Provider, "provider", "", "Provider of the rate to delete (required)")
 	flags.StringVar(&o.Model, "model", "", "Model of the rate to delete (required)")
 	flags.StringVar(&o.EffectiveFrom, "effective-from", "", "effective-from of the rate to delete, as 'list' reports it (required)")
@@ -292,15 +304,29 @@ What changes is the price applied from now on.`,
 			if err != nil {
 				return fmt.Errorf("--effective-from must be an RFC 3339 timestamp as 'list' reports it: %w", err)
 			}
+			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
+				fmt.Sprintf("Delete the %s/%s rate effective from %s?", provider, model, raw))
+			if err != nil {
+				return err
+			}
+			if !proceed {
+				return nil
+			}
+
 			client, err := newClient(cmd, loader)
 			if err != nil {
 				return err
 			}
-			if err := client.Delete(cmd.Context(), provider, model, effectiveFrom); err != nil {
-				return err
-			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Deleted the %s/%s rate effective from %s.\n", provider, model, raw)
-			return nil
+			// Through the shared batch helper even for one rate, so the
+			// result reaches stdout as the document the finite output class
+			// requires. Writing a sentence here instead made -o json print
+			// English and put prose on an agent's stdout.
+			target := fmt.Sprintf("%s/%s@%s", provider, model, raw)
+			return commandutil.RunBatchDelete(cmd.OutOrStdout(), cmd.ErrOrStderr(), &opts.IO,
+				"rate", "Deleted rate %s", "deleting rate %s", []string{target},
+				func(string) error {
+					return client.Delete(cmd.Context(), provider, model, effectiveFrom)
+				})
 		},
 	}
 	opts.setup(cmd.Flags())
