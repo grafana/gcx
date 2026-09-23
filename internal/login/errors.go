@@ -76,3 +76,24 @@ func (e *BasicAuthCheckError) Error() string {
 	}
 	return "basic authentication verification failed: could not retrieve the signed-in user"
 }
+
+// SignupIncompleteError reports a `gcx signup` that failed once the browser
+// step had started. The person may already have created the Grafana Cloud
+// account, and when Server is set the browser step finished, so the account
+// and the stack at Server exist. Running signup again would start a second
+// account. Recovery is the gcx login command in Recovery. Err is the failure
+// itself; the CLI renders it as usual and adds the recovery.
+type SignupIncompleteError struct {
+	Err      error
+	Server   string
+	Recovery string
+}
+
+func (e *SignupIncompleteError) Error() string {
+	if e.Server == "" {
+		return fmt.Sprintf("signup did not finish: %v", e.Err)
+	}
+	return fmt.Sprintf("signup did not save the connection to %s: %v", e.Server, e.Err)
+}
+
+func (e *SignupIncompleteError) Unwrap() error { return e.Err }

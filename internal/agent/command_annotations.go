@@ -53,6 +53,7 @@ var commandAnnotations = map[string]annotation{
 
 	// login
 	"gcx login":       {Cost: "small", Hint: "Browser OAuth (recommended for Grafana Cloud): gcx login <ctx> --server <url> --oauth — opens a browser for the user to approve; works in agent mode. Non-interactive token: gcx login <ctx> --yes --server <url> --token <grafana-sa-token> [--cloud-token <cap-token>]. Service-account tokens (--token) are created inside the Grafana instance — see " + docs.ServiceAccounts + ". Cloud access-policy tokens (--cloud-token) are created at grafana.com — see " + docs.AccessPolicies + ". Append .md to any grafana.com/docs URL to fetch markdown. Do not guess token URLs."},
+	"gcx signup":      {Cost: "small", Hint: "Creates a Grafana Cloud account and connects gcx to its first stack. A person must complete sign-up, email verification, first-stack creation, and the Connect gcx approval in the browser; in agent mode gcx prints the URL for them and asks no questions. Pass an unused CONTEXT_NAME. If it fails after the browser step started, run the gcx login command the error shows, never signup again. For an existing account use gcx login instead."},
 	"gcx cloud login": {Cost: "small", Hint: "Authenticate to the Grafana Cloud platform API (grafana.com) for managing stacks and access policies, distinct from 'gcx login' which targets a single stack. Browser OAuth by default; non-interactive: gcx cloud login --cloud-token <cap-token>. Cloud access-policy tokens are created at grafana.com, see " + docs.AccessPolicies + "."},
 
 	// commands

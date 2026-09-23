@@ -61,7 +61,7 @@ func TestStructuredMissingFieldsError(t *testing.T) {
 			err:            &internallogin.ErrNeedInput{Fields: []string{"server"}},
 			wantSummary:    "Login requires additional input",
 			wantDetailSubs: []string{"server"},
-			wantSuggestSub: []string{"--server", "GRAFANA_SERVER"},
+			wantSuggestSub: []string{"--server", "GRAFANA_SERVER", "--cloud --oauth"},
 		},
 		{
 			name:           "missing_grafana_auth",
@@ -100,7 +100,7 @@ func TestStructuredMissingFieldsError(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			err := structuredMissingFieldsError(tt.err)
+			err := structuredMissingFieldsError(tt.err, false)
 			require.Error(t, err)
 
 			var det gcxerrors.DetailedError
@@ -1047,7 +1047,7 @@ func TestRunLoginLoopReportsDetectedCloudTargetOnCustomDomain(t *testing.T) {
 
 	// Non-interactive, and a Cloud target with no cloud credential, so Run
 	// returns a missing-input error before attempting any network call.
-	err := runLoginLoop(cmd, &loginOpts{}, opts, nil, nil, false, nil, false)
+	_, err := runLoginLoop(cmd, opts, nil, nil, false, nil, false)
 	require.Error(t, err)
 	require.True(t, detected, "detection did not run; the test no longer covers the recapture")
 	assert.Equal(t, "cloud", config.CapturedTargetKind())
@@ -2211,7 +2211,7 @@ func TestPrintResult_TextCodec(t *testing.T) {
 			ioOpts.BindFlags(fs)
 			require.NoError(t, ioOpts.Validate())
 
-			err := printResult(cmd, ioOpts, tt.server, tt.result)
+			err := printResult(cmd, ioOpts, tt.server, tt.result, false)
 			require.NoError(t, err)
 
 			assert.Equal(t, tt.wantStdout, stdout.String(), "stdout mismatch")

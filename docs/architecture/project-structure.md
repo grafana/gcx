@@ -8,7 +8,7 @@ gcx/
 │   └── gcx/           # Binary entry point (public surface)
 │       ├── main.go           # Version vars, main(), error handler
 │       ├── root/             # Root Cobra command, global flags, logging setup
-│       ├── auth/             # OAuth login command (browser-based PKCE flow)
+│       ├── login/            # 'login' and 'signup' commands (token, browser OAuth PKCE, Basic auth; account creation)
 │       ├── config/           # 'config' subcommand implementations
 │       ├── resources/        # 'resources' subcommand implementations
 │       ├── datasources/      # 'datasources' subcommand (list, get, query)
