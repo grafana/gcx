@@ -8,12 +8,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// newSetFlags wires a setOpts to a flag set the way the command does, so these
+// newCreateFlags wires a createOpts to a flag set the way the command does, so these
 // tests exercise the same flags.Changed logic the CLI relies on.
-func newSetFlags(t *testing.T, args ...string) (*setOpts, *pflag.FlagSet) {
+func newCreateFlags(t *testing.T, args ...string) (*createOpts, *pflag.FlagSet) {
 	t.Helper()
-	opts := &setOpts{}
-	flags := pflag.NewFlagSet("set", pflag.ContinueOnError)
+	opts := &createOpts{}
+	flags := pflag.NewFlagSet("create", pflag.ContinueOnError)
 	opts.setup(flags)
 	require.NoError(t, flags.Parse(args))
 	return opts, flags
@@ -24,7 +24,7 @@ func newSetFlags(t *testing.T, args ...string) (*setOpts, *pflag.FlagSet) {
 // an absent rate as "nothing configured for this bucket" and a zero as "this
 // model does not charge for it" — two different statements about a contract.
 func TestToWriteDistinguishesUnsetFromZero(t *testing.T) {
-	opts, flags := newSetFlags(t,
+	opts, flags := newCreateFlags(t,
 		"--provider", "openai", "--model", "gpt-5.5",
 		"--price-input", "2.00",
 		"--price-cache-read", "0",
@@ -84,7 +84,7 @@ func TestToWriteRejectsIncompleteInput(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			opts, flags := newSetFlags(t, tc.args...)
+			opts, flags := newCreateFlags(t, tc.args...)
 			_, err := opts.toWrite(flags)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tc.wantIn)
@@ -93,7 +93,7 @@ func TestToWriteRejectsIncompleteInput(t *testing.T) {
 }
 
 func TestToWriteCarriesTheLongContextTier(t *testing.T) {
-	opts, flags := newSetFlags(t,
+	opts, flags := newCreateFlags(t,
 		"--provider", " OpenAI ", "--model", " gpt-5.5 ",
 		"--price-input", "2.00", "--price-output", "8.00",
 		"--long-context-threshold", "272000",

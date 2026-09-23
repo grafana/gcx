@@ -41,16 +41,16 @@ keep the price they were given, and a later change records a new rate rather
 than replacing the old one, so history stays readable.`,
 	}
 	cmd.AddCommand(
-		newSetCommand(loader),
+		newCreateCommand(loader),
 		newListCommand(loader),
 		newDeleteCommand(loader),
 	)
 	return cmd
 }
 
-// --- set ---
+// --- create ---
 
-type setOpts struct {
+type createOpts struct {
 	IO       cmdio.Options
 	Provider string
 	Model    string
@@ -68,7 +68,7 @@ type setOpts struct {
 	LongContextCacheWrite float64
 }
 
-func (o *setOpts) setup(flags *pflag.FlagSet) {
+func (o *createOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("yaml")
 	o.IO.BindFlags(flags)
 
@@ -92,7 +92,7 @@ func (o *setOpts) setup(flags *pflag.FlagSet) {
 // rate is left out rather than sent as zero, because the two mean different
 // things: zero says the model does not charge for that bucket, and absent says
 // nothing is configured for it.
-func (o *setOpts) toWrite(flags *pflag.FlagSet) (*RateWrite, error) {
+func (o *createOpts) toWrite(flags *pflag.FlagSet) (*RateWrite, error) {
 	provider := strings.TrimSpace(o.Provider)
 	model := strings.TrimSpace(o.Model)
 	if provider == "" {
@@ -146,12 +146,12 @@ func setFloat(flags *pflag.FlagSet, name string, value float64) *float64 {
 	return &value
 }
 
-func newSetCommand(loader *providers.ConfigLoader) *cobra.Command {
-	opts := &setOpts{}
+func newCreateCommand(loader *providers.ConfigLoader) *cobra.Command {
+	opts := &createOpts{}
 	cmd := &cobra.Command{
-		Use:   "set",
-		Short: "Set your price for one model, from now on.",
-		Long: `Set your price for one model, from now on.
+		Use:   "create",
+		Short: "Record your price for one model, in force from now.",
+		Long: `Record your price for one model, in force from now.
 
 The rate replaces the public catalog price for this provider and model
 completely: nothing is filled in from the catalog card. A bucket you leave
@@ -160,15 +160,15 @@ unset is not charged, so state every rate your contract covers.
 Generations already recorded keep the price they were given. A later call
 records a new rate rather than overwriting this one.`,
 		Example: `  # A flat negotiated rate.
-  gcx agento11y model-rates set --provider openai --model gpt-5.5 \
+  gcx agento11y model-rates create --provider openai --model gpt-5.5 \
       --price-input 2.00 --price-output 8.00
 
   # A model the catalog does not carry.
-  gcx agento11y model-rates set --provider acme --model in-house-7b \
+  gcx agento11y model-rates create --provider acme --model in-house-7b \
       --price-input 1.00 --price-output 4.00
 
   # A contract that keeps the provider's long-context tier.
-  gcx agento11y model-rates set --provider openai --model gpt-5.5 \
+  gcx agento11y model-rates create --provider openai --model gpt-5.5 \
       --price-input 2.00 --price-output 8.00 \
       --long-context-threshold 272000 \
       --long-context-price-input 4.00 --long-context-price-output 12.00`,
