@@ -100,13 +100,13 @@ This moves the denominator of every outcome rate in two ways, so compare rates w
 
 ### Failure and authentication fields
 
-For Grafana connections, `gcx` records the authentication category selected, such as `oauth`, `token`, `basic`, `mtls`, `anonymous`, or `unknown`, but never credentials. For some failed commands, it may also record a 4xx/5xx HTTP status or a fixed Kubernetes reason category; these details are omitted for partial failures and cancellations.
+For Grafana connections, `gcx` records the authentication category selected, such as `oauth`, `token`, `basic`, `mtls`, `github-actions`, `anonymous`, or `unknown`, but never credentials. For some failed commands, it may also record a 4xx/5xx HTTP status or a fixed Kubernetes reason category; these details are omitted for partial failures and cancellations.
 
 | Field | Description | Example |
 | :---- | :---- | :---- |
 | `http_status` | The HTTP transport status of the failing request, only ever `400`–`599`. Never a status embedded inside a response body, and never a Kubernetes status code. | `403` |
 | `k8s_reason` | The Kubernetes status reason of the failing API call, from a fixed vocabulary. Any reason outside the vocabulary is sent as `other`, never verbatim. | `NotFound` |
-| `grafana_auth_method` | The authentication category selected for the Grafana connection. Exactly one of `oauth`, `token`, `basic`, `mtls`, `anonymous`, or `unknown`. Never a raw configured value, never credential material. | `token` |
+| `grafana_auth_method` | The authentication category selected for the Grafana connection. Exactly one of `oauth`, `token`, `basic`, `mtls`, `github-actions`, `anonymous`, or `unknown`. Never a raw configured value, never credential material. | `token` |
 
 The `k8s_reason` vocabulary is exactly: `Unauthorized`, `Forbidden`, `NotFound`, `AlreadyExists`, `Conflict`, `Gone`, `Invalid`, `BadRequest`, `MethodNotAllowed`, `NotAcceptable`, `RequestEntityTooLarge`, `UnsupportedMediaType`, `Expired`, `Timeout`, `ServerTimeout`, `TooManyRequests`, `InternalError`, `ServiceUnavailable`, `StorageReadError`, plus the `other` sentinel.
 

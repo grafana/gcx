@@ -2,6 +2,7 @@ min_version = "2024.1.0"
 
 [tools]
 go = "1.26"
+node = "24"
 golangci-lint = "2.12.2"
 goreleaser = "2.13.3"
 python = "3.12"
@@ -32,8 +33,8 @@ description = "Validate skill front matter (claude-plugin/skills + .claude/skill
 run = "go run ./scripts/validate-skills"
 
 [tasks.tests]
-description = "Run all tests (CLI + linter rules + install script)"
-depends = ["tests:cli", "tests:linter", "tests:install"]
+description = "Run all tests (CLI + linter rules + install script + GitHub Action)"
+depends = ["tests:cli", "tests:linter", "tests:install", "tests:action"]
 
 # GCX_AGENT_MODE is pinned on the leaf tasks (mise env does not propagate
 # through `depends`). Without it, agent-mode auto-detection picks up CLAUDECODE
@@ -53,6 +54,10 @@ run = "go run ./cmd/gcx/ dev lint test ./internal/linter/bundle/gcx/"
 [tasks."tests:install"]
 description = "Run the install script tests"
 run = "bash scripts/install_test.sh"
+
+[tasks."tests:action"]
+description = "Run GitHub Action setup and cleanup tests"
+run = "node --test .github/action/action.test.cjs"
 
 [tasks.build]
 description = "Build binary to bin/gcx"

@@ -93,7 +93,7 @@ func (opts *loginOpts) setup(flags *pflag.FlagSet) {
 // Also validates the output codec options (format name, --json flag shape).
 func (opts *loginOpts) Validate(args []string) error {
 	if opts.GitHubActions {
-		if opts.OAuth || opts.OAuthManual || opts.Token != "" || opts.CloudToken != "" || opts.OAuthCallbackPort != 0 || opts.OrgID != 0 || opts.Server != "" || opts.CloudAPIURL != "" {
+		if opts.Cloud || opts.OAuth || opts.OAuthManual || opts.Token != "" || opts.CloudToken != "" || opts.OAuthCallbackPort != 0 || opts.OrgID != 0 || opts.Server != "" || opts.CloudAPIURL != "" {
 			return errors.New("--github-actions cannot be combined with browser, token, server or Cloud login options")
 		}
 		if err := (internalauth.GitHubActionsOptions{Endpoint: opts.ActionsEndpoint, TenantID: opts.ActionsTenant, Scopes: opts.ActionsScopes}).Validate(); err != nil {

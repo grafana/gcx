@@ -24,10 +24,11 @@ func TestGrafanaAuthMethodLabel(t *testing.T) {
 		"a valid selection with no credential material goes out unauthenticated")
 
 	for mode, want := range map[grafanaAuthMode]string{
-		grafanaAuthOAuth: "oauth",
-		grafanaAuthToken: "token",
-		grafanaAuthBasic: "basic",
-		grafanaAuthMTLS:  "mtls",
+		grafanaAuthOAuth:         "oauth",
+		grafanaAuthGitHubActions: "github-actions",
+		grafanaAuthToken:         "token",
+		grafanaAuthBasic:         "basic",
+		grafanaAuthMTLS:          "mtls",
 	} {
 		assert.Equal(t, want, grafanaAuthMethodLabel(grafana, grafanaAuthSelection{mode: mode}, nil))
 	}
@@ -54,6 +55,7 @@ func TestGrafanaAuthMethodLabelsAreInTheTelemetryVocabulary(t *testing.T) {
 		grafanaAuthMethodLabel(grafana, grafanaAuthSelection{mode: grafanaAuthToken}, nil),
 		grafanaAuthMethodLabel(grafana, grafanaAuthSelection{mode: grafanaAuthBasic}, nil),
 		grafanaAuthMethodLabel(grafana, grafanaAuthSelection{mode: grafanaAuthMTLS}, nil),
+		grafanaAuthMethodLabel(grafana, grafanaAuthSelection{mode: grafanaAuthGitHubActions}, nil),
 	}
 	for _, label := range labels {
 		assert.True(t, allowed[label],

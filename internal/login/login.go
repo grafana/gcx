@@ -161,6 +161,10 @@ type Hooks struct {
 	// command path deterministic in tests without putting browser logic in cmd/.
 	NewCloudAuthFlow func(opts auth.GCOMOptions) CloudAuthFlow
 
+	// ExchangeGitHubActions overrides the workflow exchange. Nil uses the real
+	// GitHub OIDC and Assistant HTTP client.
+	ExchangeGitHubActions func(context.Context, auth.GitHubActionsOptions) (auth.GitHubActionsResult, error)
+
 	// ValidateFn overrides connectivity validation for testing.
 	// Returns the Grafana version string on success. When nil, the real
 	// Validate() is used.

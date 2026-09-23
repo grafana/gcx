@@ -25,3 +25,24 @@ func TestGitHubActionsRefusesAutoLocalConfiguration(t *testing.T) {
 		})
 	}
 }
+
+func TestGitHubActionsValidationGivesConfigPath(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		actions *auth.GitHubActionsOptions
+		path    string
+	}{
+		{name: "missing config", path: "github-actions"},
+		{name: "endpoint mismatch", actions: &auth.GitHubActionsOptions{Endpoint: "https://other.example"}, path: "proxy-endpoint"},
+		{name: "invalid options", actions: &auth.GitHubActionsOptions{Endpoint: "https://assistant.example"}, path: "github-actions"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			grafana := GrafanaConfig{AuthMethod: "github-actions", ProxyEndpoint: "https://assistant.example", GitHubActions: tt.actions}
+			err := grafana.validateSelectedAuth(grafanaAuthSelection{mode: grafanaAuthGitHubActions}, "test")
+			var validation ValidationError
+			require.ErrorAs(t, err, &validation)
+			require.Equal(t, "$.stacks.'test'.grafana."+tt.path, validation.Path)
+			require.NotEmpty(t, validation.Suggestions)
+		})
+	}
+}

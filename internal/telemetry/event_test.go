@@ -168,7 +168,7 @@ func TestGrafanaAuthMethodLabelClampsToVocabulary(t *testing.T) {
 	for _, label := range telemetry.GrafanaAuthMethodLabels() {
 		assert.Equal(t, label, telemetry.GrafanaAuthMethodLabel(label), "every listed method passes through unchanged")
 	}
-	assert.Len(t, telemetry.GrafanaAuthMethodLabels(), 6, "six values is the receiver-gated contract")
+	assert.Len(t, telemetry.GrafanaAuthMethodLabels(), 7, "seven values is the receiver-gated contract")
 }
 
 // The zero bucket and a false dry-run are real answers, so omitempty must not

@@ -2517,6 +2517,7 @@ func TestGitHubActionsLoginFlags(t *testing.T) {
 		{name: "missing tenant", change: func(o *loginOpts) { o.ActionsTenant = "" }},
 		{name: "missing scopes", change: func(o *loginOpts) { o.ActionsScopes = nil }},
 		{name: "unselected mode", change: func(o *loginOpts) { o.GitHubActions = false }},
+		{name: "cloud conflict", change: func(o *loginOpts) { o.Cloud = true }},
 		{name: "browser conflict", change: func(o *loginOpts) { o.OAuth = true }},
 		{name: "token conflict", change: func(o *loginOpts) { o.Token = "do-not-send" }},
 		{name: "server conflict", change: func(o *loginOpts) { o.Server = "https://other.grafana.net" }},

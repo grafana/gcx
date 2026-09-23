@@ -5,10 +5,15 @@ package auth
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -106,7 +111,7 @@ func TestGitHubActionsTransportRestrictsCredentials(t *testing.T) {
 		}
 		require.Empty(t, req.Header.Get("Authorization"), "original request must not retain credential")
 	}
-	require.Equal(t, 1, calls, "mutations are never retried")
+	require.Equal(t, 1, calls, "this auth transport does not replay requests; shared retries are separate")
 }
 func TestGitHubActionsEnvironmentAndConfigValidation(t *testing.T) {
 	good := GitHubActionsOptions{Endpoint: "https://assistant.example", TenantID: "1", Scopes: []string{"assistant:chat"}}
@@ -133,4 +138,54 @@ func TestGitHubActionsEnvironmentAndConfigValidation(t *testing.T) {
 	options := good
 	options.Scopes = []string{"assistant:chat", "assistant:chat"}
 	require.Error(t, options.Validate())
+}
+
+func TestGitHubActionsTransportErrorsAreUsefulAndSanitized(t *testing.T) {
+	tests := []struct {
+		name     string
+		cause    error
+		want     string
+		sentinel error
+	}{
+		{name: "cancelled", cause: context.Canceled, want: "context canceled", sentinel: context.Canceled},
+		{name: "deadline", cause: context.DeadlineExceeded, want: "context deadline exceeded", sentinel: context.DeadlineExceeded},
+		{name: "DNS", cause: &net.DNSError{Name: "secret.example", Err: "secret"}, want: "DNS lookup failed"},
+		{name: "TLS", cause: &tls.CertificateVerificationError{Err: errors.New("secret")}, want: "TLS certificate verification failed"},
+		{name: "timeout", cause: &net.OpError{Op: "secret", Err: os.ErrDeadlineExceeded}, want: "network timeout"},
+		{name: "connection", cause: errors.New("secret"), want: "connection failed"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := &GitHubActions{client: &http.Client{Transport: actionsRoundTripper(func(*http.Request) (*http.Response, error) {
+				return nil, &url.Error{Op: "GET", URL: "https://secret.example/?token=secret", Err: tt.cause}
+			})}}
+			req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "https://secret.example", nil)
+			require.NoError(t, err)
+			err = client.do(req, &struct{}{})
+			require.ErrorContains(t, err, tt.want)
+			require.NotContains(t, err.Error(), "secret")
+			if tt.sentinel != nil {
+				require.ErrorIs(t, err, tt.sentinel)
+			}
+		})
+	}
+}
+
+func TestGitHubActionsSharedClientRejectsRedirects(t *testing.T) {
+	t.Setenv("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "secret")
+	t.Setenv("ACTIONS_ID_TOKEN_REQUEST_URL", "https://pipelines.actions.githubusercontent.com/oidc")
+	client, err := NewGitHubActions(GitHubActionsOptions{Endpoint: "https://assistant.example", TenantID: "1", Scopes: []string{"assistant:chat"}})
+	require.NoError(t, err)
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		assert.Contains(t, r.UserAgent(), "gcx/")
+		http.Redirect(w, r, "/must-not-follow", http.StatusFound)
+	}))
+	defer server.Close()
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL, nil)
+	require.NoError(t, err)
+	err = client.do(req, &struct{}{})
+	require.ErrorContains(t, err, "HTTP 302")
+	require.Equal(t, 1, calls)
 }

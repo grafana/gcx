@@ -3,10 +3,12 @@ package auth
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -14,6 +16,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/grafana/gcx/internal/httputils"
 )
 
 const GitHubActionsAudience = "gcx"
@@ -73,7 +77,7 @@ func NewGitHubActions(options GitHubActionsOptions) (*GitHubActions, error) {
 	if err != nil || u.Scheme != "https" || u.User != nil || (u.Hostname() != "token.actions.githubusercontent.com" && !strings.HasSuffix(u.Hostname(), ".actions.githubusercontent.com")) || token == "" {
 		return nil, errors.New("GitHub Actions OIDC is unavailable; run in a GitHub Actions job with id-token: write")
 	}
-	return &GitHubActions{options: options, requestURL: raw, requestToken: token, client: &http.Client{Timeout: 30 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}, nil
+	return &GitHubActions{options: options, requestURL: raw, requestToken: token, client: httputils.NewClient(httputils.ClientOpts{Timeout: 30 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }})}, nil
 }
 
 func (a *GitHubActions) FreshToken(ctx context.Context) (string, error) {
@@ -156,7 +160,7 @@ func (a *GitHubActions) Exchange(ctx context.Context) (GitHubActionsResult, erro
 func (a *GitHubActions) do(req *http.Request, out any) error {
 	res, err := a.client.Do(req)
 	if err != nil {
-		return errors.New("authentication service unavailable")
+		return actionsTransportError(err)
 	}
 	defer res.Body.Close()
 	// Never include remote bodies or URLs: either can contain authentication material.
@@ -167,6 +171,30 @@ func (a *GitHubActions) do(req *http.Request, out any) error {
 		return errors.New("invalid authentication response")
 	}
 	return nil
+}
+
+// Keep useful failure classes without printing url.Error or transport messages,
+// which can contain the OIDC request URL or other authentication material.
+func actionsTransportError(err error) error {
+	if errors.Is(err, context.Canceled) {
+		return fmt.Errorf("authentication service unavailable: %w", context.Canceled)
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return fmt.Errorf("authentication service unavailable: %w", context.DeadlineExceeded)
+	}
+	var dnsErr *net.DNSError
+	var certErr *tls.CertificateVerificationError
+	var netErr net.Error
+	switch {
+	case errors.As(err, &dnsErr):
+		return errors.New("authentication service unavailable: DNS lookup failed")
+	case errors.As(err, &certErr):
+		return errors.New("authentication service unavailable: TLS certificate verification failed")
+	case errors.As(err, &netErr) && netErr.Timeout():
+		return errors.New("authentication service unavailable: network timeout")
+	default:
+		return errors.New("authentication service unavailable: connection failed")
+	}
 }
 
 func trustedActionsEndpoint(raw string) (*url.URL, error) {

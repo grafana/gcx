@@ -1,7 +1,7 @@
 package telemetry
 
 // The complete wire vocabulary for Event.GrafanaAuthMethod. Absence is the
-// seventh state and carries its own meaning — no Grafana context was ever
+// additional state and carries its own meaning — no Grafana context was ever
 // selected, or several different methods were used in one invocation — so
 // there is deliberately no "none" or "mixed" value.
 const (
@@ -14,10 +14,11 @@ const (
 	// method whose credential is merely invalid reports the method instead.
 	AuthMethodUnknown = "unknown"
 
-	authMethodOAuth = "oauth"
-	authMethodToken = "token"
-	authMethodBasic = "basic"
-	authMethodMTLS  = "mtls"
+	authMethodGitHubActions = "github-actions"
+	authMethodOAuth         = "oauth"
+	authMethodToken         = "token"
+	authMethodBasic         = "basic"
+	authMethodMTLS          = "mtls"
 )
 
 // GrafanaAuthMethodLabel clamps a captured auth method to the wire
@@ -30,7 +31,7 @@ func GrafanaAuthMethodLabel(method string) string {
 	switch method {
 	case "":
 		return ""
-	case authMethodOAuth, authMethodToken, authMethodBasic, authMethodMTLS,
+	case authMethodOAuth, authMethodToken, authMethodBasic, authMethodMTLS, authMethodGitHubActions,
 		AuthMethodAnonymous, AuthMethodUnknown:
 		return method
 	default:
@@ -42,7 +43,7 @@ func GrafanaAuthMethodLabel(method string) string {
 // carry, for tests and for validating the vocabulary against the receiver.
 func GrafanaAuthMethodLabels() []string {
 	return []string{
-		authMethodOAuth, authMethodToken, authMethodBasic, authMethodMTLS,
+		authMethodOAuth, authMethodToken, authMethodBasic, authMethodMTLS, authMethodGitHubActions,
 		AuthMethodAnonymous, AuthMethodUnknown,
 	}
 }

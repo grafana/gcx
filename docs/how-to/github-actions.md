@@ -51,8 +51,11 @@ cannot opt your job into this exchange.
 
 The saved config contains only non-secret settings. Each gcx process obtains a
 new GitHub OIDC token and exchanges it for a 15-minute Assistant credential.
-Credentials stay in memory and renew before expiry; failed API mutations are
-not retried. Unlinking the user or removing the workflow grant stops further use.
+Credentials stay in memory and renew before expiry. Authentication failures do
+not trigger credential renewal and replay. The shared HTTP transport can retry
+requests, including mutations, after rate limits or transient connection errors;
+make mutating workflows idempotent. Unlinking the user or removing the workflow
+grant stops further use.
 The original signed workflow actor determines identity, including reruns.
 
 For local development, run the focused auth/config/login tests with mock HTTP

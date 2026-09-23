@@ -279,12 +279,27 @@ func (grafana GrafanaConfig) validateSelectedAuth(selection grafanaAuthSelection
 	switch selection.mode {
 	case grafanaAuthGitHubActions:
 		if grafana.GitHubActions == nil {
-			return errors.New("GitHub Actions configuration is missing")
+			return ValidationError{
+				Path:        fmt.Sprintf("$.stacks.'%s'.grafana.github-actions", contextName),
+				Message:     "GitHub Actions configuration is missing",
+				Suggestions: []string{"Run gcx login --github-actions with --tenant-id, --assistant-endpoint and --scopes"},
+			}
 		}
 		if grafana.ProxyEndpoint != grafana.GitHubActions.Endpoint {
-			return errors.New("GitHub Actions endpoint differs from proxy-endpoint")
+			return ValidationError{
+				Path:        fmt.Sprintf("$.stacks.'%s'.grafana.proxy-endpoint", contextName),
+				Message:     "GitHub Actions endpoint differs from proxy-endpoint",
+				Suggestions: []string{"Run gcx login --github-actions to configure matching endpoints"},
+			}
 		}
-		return grafana.GitHubActions.Validate()
+		if err := grafana.GitHubActions.Validate(); err != nil {
+			return ValidationError{
+				Path:        fmt.Sprintf("$.stacks.'%s'.grafana.github-actions", contextName),
+				Message:     err.Error(),
+				Suggestions: []string{"Run gcx login --github-actions with --tenant-id, --assistant-endpoint and --scopes"},
+			}
+		}
+		return nil
 	case grafanaAuthOAuth:
 		if strings.TrimSpace(grafana.ProxyEndpoint) == "" ||
 			(strings.TrimSpace(grafana.OAuthToken) == "" && strings.TrimSpace(grafana.OAuthRefreshToken) == "") {
