@@ -8,7 +8,8 @@ import (
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers"
-	querysynth "github.com/grafana/gcx/internal/query/synth"
+	"github.com/grafana/gcx/internal/providers/synth/smcfg"
+	"github.com/grafana/gcx/pkg/gfc/sm"
 )
 
 // SM API paths, relative to the SM API v1 root. They are forwarded verbatim by
@@ -22,20 +23,20 @@ const (
 
 // Client is a typed client for the Synthetic Monitoring probes API. It owns
 // request shapes and response decoding; the dual-mode SM transport (datasource
-// proxy primary, direct SM API fallback) lives in internal/query/synth.
+// proxy primary, direct SM API fallback) lives in pkg/gfc/sm.
 type Client struct {
-	t *querysynth.Transport
+	t *sm.Transport
 }
 
-// NewClient creates a probes client over the dual-mode SM transport.
+// NewClient creates a probes client over the shared dual-mode SM transport.
 //
 // When datasourceUID is non-empty, requests go through the Grafana datasource
 // proxy built from restCfg (carrying the caller's Grafana credential). On a
 // proxy 403 — or when datasourceUID is empty — requests fall back to the direct
 // SM API, with credentials resolved lazily via fallback.LoadSMConfig. A nil
 // fallback disables the direct path.
-func NewClient(restCfg config.NamespacedRESTConfig, datasourceUID string, fallback querysynth.FallbackLoader) (*Client, error) {
-	t, err := querysynth.NewTransport(restCfg, datasourceUID, fallback)
+func NewClient(ctx context.Context, restCfg config.NamespacedRESTConfig, datasourceUID string, fallback smcfg.FallbackLoader) (*Client, error) {
+	t, err := smcfg.NewSMTransport(ctx, restCfg, datasourceUID, fallback)
 	if err != nil {
 		return nil, err
 	}

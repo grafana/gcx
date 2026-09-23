@@ -46,7 +46,9 @@ linters:
               desc: debug statements should be removed
     gomoddirectives:
       replace-allow-list:
+        - github.com/grafana/gcx/pkg/gfc
         - github.com/hashicorp/memberlist
+      replace-local: true
 
   exclusions:
     generated: lax
