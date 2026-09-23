@@ -4,10 +4,12 @@ title: Diagnose missing telemetry
 
 # Diagnose missing telemetry with gcx
 
-Use gcx and its existing agent skills to investigate an empty dashboard or
-missing application telemetry. Start with evidence, ask before repairs, and
-verify the original symptom afterward. You do not need a new diagnostic skill
-or Grafana Cloud. An agent harness and its model access are separate from gcx.
+This guide is for people investigating an empty dashboard or missing application
+telemetry. It shows how to use gcx to gather evidence before proposing a repair;
+you can investigate directly or use an agent with gcx's existing skills. Start
+with evidence, ask before repairs, and verify the original symptom afterward.
+You do not need a new diagnostic skill or Grafana Cloud. If you use an agent, its
+harness and model access are separate from gcx.
 
 ## Before you start
 
