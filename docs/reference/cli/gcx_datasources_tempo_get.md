@@ -22,9 +22,9 @@ a TraceQL spanset filter (V2 only). --keep-hierarchy, --match-depth, and
 ignored without --filter.
 
 Experimental: --prune collapses repeated sibling spans (for example, a fan-out
-of identical DB calls) into a single aggregated span. Off unless set;
---prune-group-by, --prune-min-spans, and --prune-max-parent-depth 
-tune the pruning behavior and apply only when --prune enables pruning.
+of identical DB calls) into a single aggregated span. Off unless set.
+--prune-group-by, --prune-min-spans, and --prune-max-parent-depth tune the
+pruning behavior and apply only when --prune enables pruning.
 
 If the trace is too large for -o agents, the response is spilled to a file
 with a hint to read it directly or re-run narrower (e.g. with --filter or
