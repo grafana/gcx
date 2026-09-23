@@ -45,6 +45,7 @@ Run 'gcx agent skills list' to see bundled Agent Skills with task-specific guida
 * [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph rules, entities, and insights
 * [gcx login](gcx_login.md)	 - Log in to a Grafana instance
 * [gcx logs](gcx_logs.md)	 - Query Loki datasources and manage Adaptive Logs
+* [gcx mcp](gcx_mcp.md)	 - Model Context Protocol server
 * [gcx metrics](gcx_metrics.md)	 - Query Prometheus datasources and manage Adaptive Metrics
 * [gcx profiles](gcx_profiles.md)	 - Query Pyroscope datasources and manage continuous profiling
 * [gcx providers](gcx_providers.md)	 - Manage registered providers

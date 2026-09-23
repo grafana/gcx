@@ -89,6 +89,7 @@
   "gcx metrics adaptive recommendations apply",
   "gcx metrics adaptive recommendations diff",
   "gcx metrics cardinality label-names",
+  "gcx mcp serve",
   "gcx metrics cardinality label-values",
   "gcx profiles adaptive",
   "gcx profiles data-range",
