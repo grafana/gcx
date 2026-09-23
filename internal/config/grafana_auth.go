@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -17,10 +18,13 @@ const (
 	grafanaAuthToken
 	grafanaAuthBasic
 	grafanaAuthMTLS
+	grafanaAuthGitHubActions
 )
 
 func (mode grafanaAuthMode) String() string {
 	switch mode {
+	case grafanaAuthGitHubActions:
+		return "github-actions"
 	case grafanaAuthOAuth:
 		return "oauth"
 	case grafanaAuthToken:
@@ -52,6 +56,8 @@ func selectGrafanaAuth(grafana *GrafanaConfig, stack *StackConfig, contextName s
 	explicit := strings.TrimSpace(grafana.AuthMethod)
 	if explicit != "" {
 		switch strings.ToLower(explicit) {
+		case "github-actions":
+			return grafanaAuthSelection{mode: grafanaAuthGitHubActions, explicit: true}, nil
 		case "oauth":
 			return grafanaAuthSelection{mode: grafanaAuthOAuth, explicit: true}, nil
 		case "token":
@@ -65,7 +71,7 @@ func selectGrafanaAuth(grafana *GrafanaConfig, stack *StackConfig, contextName s
 				Path:    fmt.Sprintf("$.stacks.'%s'.grafana.auth-method", contextName),
 				Message: fmt.Sprintf("unsupported auth-method %q", explicit),
 				Suggestions: []string{
-					"Use one of: oauth, token, basic, mtls",
+					"Use one of: oauth, token, basic, mtls, github-actions",
 					"Or remove auth-method to use legacy credential inference",
 				},
 			}
@@ -119,6 +125,9 @@ func (context *Context) selectGrafanaAuth() (grafanaAuthSelection, error) {
 		return grafanaAuthSelection{mode: grafanaAuthUnknown}, nil
 	}
 	selection, err := selectGrafanaAuth(context.Grafana, context.StackEntry, context.stackName())
+	if err == nil && selection.mode == grafanaAuthGitHubActions && context.StackFromAutoLocal() {
+		return grafanaAuthSelection{}, errors.New("GitHub Actions authentication requires explicitly trusted configuration; select it with --config or GCX_CONFIG")
+	}
 	capture.SetGrafanaAuthMethod(grafanaAuthMethodLabel(context.Grafana, selection, err))
 	return selection, err
 }
@@ -268,6 +277,14 @@ func (tlsConfig *TLS) ServerTrustOnly() *TLS {
 func (grafana GrafanaConfig) validateSelectedAuth(selection grafanaAuthSelection, contextName string) error {
 	path := fmt.Sprintf("$.stacks.'%s'.grafana.auth-method", contextName)
 	switch selection.mode {
+	case grafanaAuthGitHubActions:
+		if grafana.GitHubActions == nil {
+			return errors.New("GitHub Actions configuration is missing")
+		}
+		if grafana.ProxyEndpoint != grafana.GitHubActions.Endpoint {
+			return errors.New("GitHub Actions endpoint differs from proxy-endpoint")
+		}
+		return grafana.GitHubActions.Validate()
 	case grafanaAuthOAuth:
 		if strings.TrimSpace(grafana.ProxyEndpoint) == "" ||
 			(strings.TrimSpace(grafana.OAuthToken) == "" && strings.TrimSpace(grafana.OAuthRefreshToken) == "") {

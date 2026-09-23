@@ -2505,3 +2505,36 @@ func TestRunCloudOAuthPropagatesManualPaste(t *testing.T) {
 	assert.True(t, gotFlowOpts.Manual)
 	assert.Same(t, reader, gotFlowOpts.Reader)
 }
+
+func TestGitHubActionsLoginFlags(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		change func(*loginOpts)
+		valid  bool
+	}{
+		{name: "explicit inputs", valid: true},
+		{name: "missing endpoint", change: func(o *loginOpts) { o.ActionsEndpoint = "" }},
+		{name: "missing tenant", change: func(o *loginOpts) { o.ActionsTenant = "" }},
+		{name: "missing scopes", change: func(o *loginOpts) { o.ActionsScopes = nil }},
+		{name: "unselected mode", change: func(o *loginOpts) { o.GitHubActions = false }},
+		{name: "browser conflict", change: func(o *loginOpts) { o.OAuth = true }},
+		{name: "token conflict", change: func(o *loginOpts) { o.Token = "do-not-send" }},
+		{name: "server conflict", change: func(o *loginOpts) { o.Server = "https://other.grafana.net" }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			opts := loginOpts{GitHubActions: true, ActionsTenant: "1", ActionsEndpoint: "https://assistant.example", ActionsScopes: []string{"assistant:a2a"}}
+			opts.IO.RegisterCustomCodec("text", &loginTextCodec{})
+			opts.IO.DefaultFormat("text")
+			opts.IO.BindFlags(pflag.NewFlagSet("test", pflag.ContinueOnError))
+			if tc.change != nil {
+				tc.change(&opts)
+			}
+			err := opts.Validate(nil)
+			if tc.valid {
+				require.NoError(t, err)
+			} else {
+				require.Error(t, err)
+			}
+		})
+	}
+}

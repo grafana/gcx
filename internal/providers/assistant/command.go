@@ -52,7 +52,7 @@ func Command() *cobra.Command {
 		Short: "Interact with Grafana Assistant",
 		Long: `Send prompts to Grafana Assistant and receive streaming responses via the A2A protocol.
 
-Requires Grafana Cloud with OAuth authentication (gcx login with browser flow).
+Requires Grafana Cloud with browser OAuth or GitHub Actions authentication.
 Service account tokens are not supported.
 
 Note: Grafana Assistant is billed based on tokens consumed, including requests
@@ -265,7 +265,7 @@ func ResolveClientOptions(ctx context.Context, configOpts *providers.ConfigLoade
 	}
 
 	switch authMethod {
-	case "oauth":
+	case "oauth", "github-actions":
 		// OAuth path: direct API via ProxyEndpoint. Reuse the canonical REST
 		// refresh lifecycle so A2A requests get the same cross-process lock,
 		// owning-layer reload, keychain handling, and fail-closed persistence as

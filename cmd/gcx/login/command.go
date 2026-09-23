@@ -54,11 +54,19 @@ type loginOpts struct {
 	AllowServerOverride bool
 	OAuthCallbackPort   int
 	OAuthManual         bool
+	GitHubActions       bool
+	ActionsTenant       string
+	ActionsEndpoint     string
+	ActionsScopes       []string
 	OrgID               int
 }
 
 func (opts *loginOpts) setup(flags *pflag.FlagSet) {
 	opts.Config.BindFlags(flags)
+	flags.BoolVar(&opts.GitHubActions, "github-actions", false, "Authenticate using the current GitHub Actions job (requires id-token: write)")
+	flags.StringVar(&opts.ActionsTenant, "tenant-id", "", "Grafana stack ID for GitHub Actions authentication")
+	flags.StringVar(&opts.ActionsEndpoint, "assistant-endpoint", "", "Explicitly trusted Assistant backend URL for GitHub Actions authentication")
+	flags.StringSliceVar(&opts.ActionsScopes, "scopes", nil, "Explicit CLI scopes for GitHub Actions authentication (comma-separated)")
 	// Register a human-text codec and use it as the default for interactive
 	// terminals. cmdio.BindFlags overrides the default with "json" when
 	// agent.IsAgentMode() is true, so we don't branch on agent mode here.
@@ -84,6 +92,17 @@ func (opts *loginOpts) setup(flags *pflag.FlagSet) {
 // --context flag (they're mutually exclusive to prevent silent confusion).
 // Also validates the output codec options (format name, --json flag shape).
 func (opts *loginOpts) Validate(args []string) error {
+	if opts.GitHubActions {
+		if opts.OAuth || opts.OAuthManual || opts.Token != "" || opts.CloudToken != "" || opts.OAuthCallbackPort != 0 || opts.OrgID != 0 || opts.Server != "" || opts.CloudAPIURL != "" {
+			return errors.New("--github-actions cannot be combined with browser, token, server or Cloud login options")
+		}
+		if err := (internalauth.GitHubActionsOptions{Endpoint: opts.ActionsEndpoint, TenantID: opts.ActionsTenant, Scopes: opts.ActionsScopes}).Validate(); err != nil {
+			return err
+		}
+	} else if opts.ActionsTenant != "" || opts.ActionsEndpoint != "" || len(opts.ActionsScopes) != 0 {
+		return errors.New("--tenant-id, --assistant-endpoint and --scopes require --github-actions")
+	}
+
 	if len(args) == 1 && opts.Config.Context != "" {
 		return gcxerrors.DetailedError{
 			Summary: "conflicting context specification",
@@ -152,6 +171,7 @@ Without CONTEXT_NAME, re-authenticates the current context, or starts a
 first-time setup if no current context is configured.
 
 Auth sources (for non-interactive use):
+  --github-actions  GitHub Actions OIDC; requires --tenant-id, --assistant-endpoint and --scopes.
   --oauth        Browser-based OAuth (recommended for Grafana Cloud). Opens a browser for the user to approve; works in agent mode.
   --token        Grafana service-account token (created inside the Grafana instance).
                  See: ` + docs.ServiceAccounts + `
@@ -192,7 +212,7 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 		return err
 	}
 	if targetIsDeterministic && preflightTarget.Type == "local" &&
-		(flags.OAuth || credentialProvided(flags.Token, "GRAFANA_TOKEN") ||
+		(flags.OAuth || flags.GitHubActions || credentialProvided(flags.Token, "GRAFANA_TOKEN") ||
 			credentialProvided(flags.CloudToken, "GRAFANA_CLOUD_TOKEN")) {
 		return autoLocalFreshCredentialError(preflightTarget)
 	}
@@ -229,7 +249,7 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 	if mutationTarget.Type == "local" {
 		target := mutationTarget
 		autoLocalTarget = &target
-		if flags.OAuth || credentialProvided(flags.Token, "GRAFANA_TOKEN") ||
+		if flags.OAuth || flags.GitHubActions || credentialProvided(flags.Token, "GRAFANA_TOKEN") ||
 			credentialProvided(flags.CloudToken, "GRAFANA_CLOUD_TOKEN") {
 			return autoLocalFreshCredentialError(target)
 		}
@@ -267,6 +287,17 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 		if err != nil {
 			return err
 		}
+	}
+
+	if flags.GitHubActions {
+		if credentialProvided("", "GRAFANA_TOKEN") || credentialProvided("", "GRAFANA_CLOUD_TOKEN") {
+			return errors.New("unset ambient token credentials before selecting GitHub Actions authentication")
+		}
+		result, server, err := login.RunGitHubActions(ctx, login.Options{RetryState: login.RetryState{AllowOverride: flags.AllowServerOverride}, Hooks: login.Hooks{ConfigSource: mutationSource, LoginMutationGuard: loginMutationGuard, CloudMutationSafety: cloudMutationSafety}}, contextName, internalauth.GitHubActionsOptions{Endpoint: strings.TrimRight(flags.ActionsEndpoint, "/"), TenantID: flags.ActionsTenant, Scopes: flags.ActionsScopes})
+		if err != nil {
+			return err
+		}
+		return printResult(cmd, &flags.IO, server, result)
 	}
 
 	printModeHeader(cmd, cfg, contextName, sourceCtx)

@@ -1014,6 +1014,7 @@ func mergeGrafanaAuthIntoStack(cfg *config.Config, existing *config.Context, src
 		return err
 	}
 	g.AuthMethod = src.AuthMethod
+	g.GitHubActions = src.GitHubActions
 
 	// Clear all auth fields then repopulate with incoming values so that
 	// switching from OAuth to token (or vice-versa) leaves no stale credentials.

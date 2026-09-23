@@ -144,6 +144,13 @@ gcx stops before the browser flow when the current process cannot write to the
 OS credential store. Agent users must approve the same command outside the
 sandbox. See [Keychain credential storage](docs/sources/keychain.md).
 
+**GitHub Actions OIDC (requires Assistant workflow authorization):**
+
+Use the gcx GitHub Action or `gcx login --github-actions` to run as a linked
+Grafana user without storing a Grafana token in repository secrets. This requires
+an Assistant deployment with the exchange enabled and an explicit workflow grant.
+See [Use gcx in GitHub Actions](docs/how-to/github-actions.md) for setup and examples.
+
 **Service account token (Cloud or on-premises, recommended for CI/automation):**
 
 ```bash

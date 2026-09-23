@@ -34,6 +34,7 @@ type NamespacedRESTConfig struct {
 	// mode is active, allowing callers to wire the OnRefresh callback after
 	// construction (Option C: call-site wiring).
 	oauthTransport *auth.RefreshTransport
+	githubActions  *auth.GitHubActions
 
 	// oauthCredentialBinding freezes the source/owner/field/destination tuple
 	// that authorized the OAuth transport. Persistence compares a freshly
@@ -49,7 +50,7 @@ type NamespacedRESTConfig struct {
 
 // IsOAuthProxy reports whether the config is using OAuth proxy mode.
 func (n *NamespacedRESTConfig) IsOAuthProxy() bool {
-	return n.oauthTransport != nil
+	return n.oauthTransport != nil || n.githubActions != nil
 }
 
 // FreshOAuthToken returns a usable access token through the configured OAuth
@@ -57,6 +58,9 @@ func (n *NamespacedRESTConfig) IsOAuthProxy() bool {
 // example A2A streaming) should use this instead of implementing a separate
 // refresh path.
 func (n *NamespacedRESTConfig) FreshOAuthToken(ctx context.Context) (string, error) {
+	if n.githubActions != nil {
+		return n.githubActions.FreshToken(ctx)
+	}
 	if n.oauthTransport == nil {
 		return "", errors.New("OAuth proxy transport is not configured")
 	}
@@ -449,8 +453,20 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) (NamespacedRESTCo
 
 	// Authentication
 	var oauthTransport *auth.RefreshTransport
+	var githubActions *auth.GitHubActions
 	var oauthCredentialBinding credentials.Binding
 	switch authSelection.mode {
+	case grafanaAuthGitHubActions:
+		options := *cfg.Grafana.GitHubActions
+		options.GrafanaURL = cfg.Grafana.Server
+		githubActions, err = auth.NewGitHubActions(options)
+		if err != nil {
+			return NamespacedRESTConfig{}, err
+		}
+		rcfg.Host = strings.TrimRight(options.Endpoint, "/") + "/api/cli/v1/proxy"
+		rcfg.WrapTransport = func(rt http.RoundTripper) http.RoundTripper {
+			return &auth.GitHubActionsTransport{Base: rt, Auth: githubActions}
+		}
 	case grafanaAuthOAuth:
 		// OAuth proxy mode: route requests through the assistant backend proxy.
 		// The ProxyEndpoint may differ from Server (e.g. cloud routing through
@@ -515,6 +531,7 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) (NamespacedRESTCo
 		Namespace:              namespace,
 		GrafanaURL:             strings.TrimSuffix(cfg.Grafana.Server, "/"),
 		oauthTransport:         oauthTransport,
+		githubActions:          githubActions,
 		oauthCredentialBinding: oauthCredentialBinding,
 		keychainPolicy:         cfg.keychainPolicy,
 	}, nil

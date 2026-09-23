@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/credentials"
 )
 
@@ -742,6 +743,9 @@ func NormalizeCloudURL(raw string) string {
 }
 
 type GrafanaConfig struct {
+	// GitHubActions delegates authentication to the current Actions job; no secrets are persisted.
+	GitHubActions *auth.GitHubActionsOptions `json:"github-actions,omitempty" yaml:"github-actions,omitempty"`
+
 	// Server is the address of the Grafana server (https://hostname:port/path).
 	// Required.
 	Server string `env:"GRAFANA_SERVER" json:"server,omitempty" yaml:"server,omitempty"`
@@ -777,7 +781,7 @@ type GrafanaConfig struct {
 	// OAuthRefreshExpiresAt is the OAuthRefreshToken expiration time in RFC3339 format.
 	OAuthRefreshExpiresAt string `json:"oauth-refresh-expires-at,omitempty" yaml:"oauth-refresh-expires-at,omitempty"`
 
-	// AuthMethod selects "oauth", "token", "basic", or "mtls" when no complete
+	// AuthMethod selects "oauth", "github-actions", "token", "basic", or "mtls" when no complete
 	// runtime credential override supersedes it. Empty is valid for legacy configs
 	// and uses compatibility inference; consumers should use
 	// Context.EffectiveGrafanaAuthMethod instead of inspecting fields.

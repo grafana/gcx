@@ -18,6 +18,13 @@ stacks:
     # Optional: if not set, the slug may be derived from Grafana.Server.
     slug: string
     grafana:
+      # GitHubActions delegates authentication to the current Actions job; no secrets are persisted.
+      github-actions:
+        endpoint: string
+        tenant-id: string
+        scopes:
+          - string
+          - ...
       # Server is the address of the Grafana server (https://hostname:port/path).
       # Required.
       server: string
@@ -45,7 +52,7 @@ stacks:
       oauth-token-expires-at: string
       # OAuthRefreshExpiresAt is the OAuthRefreshToken expiration time in RFC3339 format.
       oauth-refresh-expires-at: string
-      # AuthMethod selects "oauth", "token", "basic", or "mtls" when no complete
+      # AuthMethod selects "oauth", "github-actions", "token", "basic", or "mtls" when no complete
       # runtime credential override supersedes it. Empty is valid for legacy configs
       # and uses compatibility inference; consumers should use
       # Context.EffectiveGrafanaAuthMethod instead of inspecting fields.

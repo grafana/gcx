@@ -31,7 +31,8 @@ Config
 │   │   │   ├── User      ""
 │   │   │   ├── Password  ""            // datapolicy:"secret"
 │   │   │   ├── APIToken  "glsa_..."    // datapolicy:"secret"
-│   │   │   ├── AuthMethod "token"       // authoritative: oauth, token, basic, or mtls
+│   │   │   ├── AuthMethod "token"       // authoritative: oauth, github-actions, token, basic, or mtls
+│   │   │   ├── GitHubActions *auth.GitHubActionsOptions // endpoint, tenant-id, scopes; no credentials
 │   │   │   ├── OrgID     0             // on-prem: org namespace
 │   │   │   ├── StackID   12345         // cloud: stack namespace
 │   │   │   └── TLS       *TLS

@@ -1,0 +1,17 @@
+name: Set up gcx with GitHub Actions authentication
+description: Build gcx from this pinned Action revision and authenticate a linked Grafana user using GitHub OIDC.
+inputs:
+  tenant-id:
+    description: Grafana Cloud stack ID authorized by the Assistant workflow grant.
+    required: true
+  assistant-endpoint:
+    description: Explicit HTTPS Assistant backend base URL.
+    required: true
+  scopes:
+    description: Comma-separated scopes authorized by the workflow grant.
+    required: true
+runs:
+  using: node24
+  main: .github/action/setup.cjs
+  post: .github/action/cleanup.cjs
+  post-if: always()

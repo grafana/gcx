@@ -15,6 +15,7 @@ Without CONTEXT_NAME, re-authenticates the current context, or starts a
 first-time setup if no current context is configured.
 
 Auth sources (for non-interactive use):
+  --github-actions  GitHub Actions OIDC; requires --tenant-id, --assistant-endpoint and --scopes.
   --oauth        Browser-based OAuth (recommended for Grafana Cloud). Opens a browser for the user to approve; works in agent mode.
   --token        Grafana service-account token (created inside the Grafana instance).
                  See: https://grafana.com/docs/grafana/latest/administration/service-accounts.md
@@ -39,23 +40,27 @@ gcx login [CONTEXT_NAME] [flags]
 ### Options
 
 ```
-      --allow-server-override     Allow re-pointing an existing context at a different server URL
-      --cloud                     Force Grafana Cloud target (skip auto-detection)
-      --cloud-api-url string      Override Grafana Cloud API URL
-      --cloud-token string        Grafana Cloud API token (enables Cloud management features)
-      --config string             Path to the configuration file to use
-      --context string            Name of the context to use
-  -h, --help                      help for login
-      --jq string                 jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string               Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --oauth                     Authenticate via browser-based OAuth (recommended for Grafana Cloud). Works non-interactively and in agent mode: opens a browser for the user to approve.
-      --oauth-callback-port int   Fixed local port for the OAuth callback server (default: auto-pick from 54321-54399). Useful when only specific ports are forwarded between a remote host and your browser
-      --oauth-manual              Complete browser OAuth without a local callback server: gcx prints the URL, then reads the redirect URL that you copy from the browser address bar. Use this when gcx runs on a remote host and the browser runs on your own computer. Implies --oauth
-      --org-id int                Grafana organization ID (defaults to 1 for on-prem)
-  -o, --output string             Output format. One of: agents, json, text, yaml (default "text")
-      --server string             Grafana server URL (e.g. https://my-stack.grafana.net)
-      --token string              Grafana service account token
-      --yes                       Non-interactive: skip optional prompts and use defaults
+      --allow-server-override       Allow re-pointing an existing context at a different server URL
+      --assistant-endpoint string   Explicitly trusted Assistant backend URL for GitHub Actions authentication
+      --cloud                       Force Grafana Cloud target (skip auto-detection)
+      --cloud-api-url string        Override Grafana Cloud API URL
+      --cloud-token string          Grafana Cloud API token (enables Cloud management features)
+      --config string               Path to the configuration file to use
+      --context string              Name of the context to use
+      --github-actions              Authenticate using the current GitHub Actions job (requires id-token: write)
+  -h, --help                        help for login
+      --jq string                   jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string                 Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --oauth                       Authenticate via browser-based OAuth (recommended for Grafana Cloud). Works non-interactively and in agent mode: opens a browser for the user to approve.
+      --oauth-callback-port int     Fixed local port for the OAuth callback server (default: auto-pick from 54321-54399). Useful when only specific ports are forwarded between a remote host and your browser
+      --oauth-manual                Complete browser OAuth without a local callback server: gcx prints the URL, then reads the redirect URL that you copy from the browser address bar. Use this when gcx runs on a remote host and the browser runs on your own computer. Implies --oauth
+      --org-id int                  Grafana organization ID (defaults to 1 for on-prem)
+  -o, --output string               Output format. One of: agents, json, text, yaml (default "text")
+      --scopes strings              Explicit CLI scopes for GitHub Actions authentication (comma-separated)
+      --server string               Grafana server URL (e.g. https://my-stack.grafana.net)
+      --tenant-id string            Grafana stack ID for GitHub Actions authentication
+      --token string                Grafana service account token
+      --yes                         Non-interactive: skip optional prompts and use defaults
 ```
 
 ### Options inherited from parent commands

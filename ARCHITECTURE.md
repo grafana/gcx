@@ -187,10 +187,11 @@ Multiple auth mechanisms for different tiers.
 | **Service account token** | Grafana K8s API (`/apis`), plugin APIs | Bearer token in `rest.Config` |
 | **Cloud Access Policy token** | GCOM stack discovery, Cloud product APIs | `internal/cloud/` GCOM client |
 | **OAuth PKCE** | Browser-based login (`gcx login`) | `internal/auth/` — token refresh transport persists to config |
+| **GitHub Actions OIDC** | Grafana API proxy and Assistant as a linked user | `internal/auth/` — workflow identity exchange; short-lived credentials stay in memory |
 | **Basic auth** | Legacy Grafana instances | Username/password in `rest.Config` |
 | **Adaptive auth** | Signal provider adaptive telemetry APIs | `internal/auth/adaptive/` — GCOM-resolved Basic auth shared across signal providers; stale provider cache fields are not credential destinations |
 
-**Runtime selection:** an explicit `grafana.auth-method` (`oauth`, `token`,
+**Runtime selection:** an explicit `grafana.auth-method` (`oauth`, `github-actions`, `token`,
 `basic`, or `mtls`) is authoritative, and stale fields for other methods are
 not attached to the request. Legacy entries without `auth-method` infer OAuth
 proxy > service-account token > user/password > mTLS/anonymous; partial or
@@ -201,7 +202,13 @@ the Grafana server unless the provider uses the trust-checked
 `CloudRESTConfig.HTTPClient`/direct-provider snapshot path; a raw k8s transport
 can otherwise inject Grafana auth into the wrong request.
 
-**Deep-dive:** [client-api-layer.md](docs/architecture/client-api-layer.md), [config-system.md](docs/architecture/config-system.md).
+GitHub Actions authentication requires trusted configuration and an explicit
+Assistant backend, tenant, and scope set. The backend authorizes the workflow
+and linked user; gcx renews credentials by requesting a fresh GitHub identity.
+The authentication client disables redirects and sanitizes remote errors to keep
+credentials confined to the configured endpoints.
+
+**Deep-dive:** [client-api-layer.md](docs/architecture/client-api-layer.md), [config-system.md](docs/architecture/config-system.md), [GitHub Actions setup](docs/how-to/github-actions.md).
 
 ### Portable Agent Skills (`gcx agent skills`)
 

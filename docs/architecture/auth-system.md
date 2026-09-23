@@ -43,6 +43,7 @@ graph LR
 | Method | Target | Provisioning | Storage field | Refresh | Rotation |
 |---|---|---|---|---|---|
 | OAuth PKCE | Grafana API, K8s `/apis` | Browser flow via `gcx login` | `GrafanaConfig.OAuthToken`, `OAuthRefreshToken`, `OAuthTokenExpiresAt`, `OAuthRefreshExpiresAt`, `ProxyEndpoint` | Automatic via `RefreshTransport` | Transparent |
+| GitHub Actions OIDC | Grafana API proxy, K8s `/apis`, Assistant | `gcx login --github-actions` or the gcx Action | Non-secret `GrafanaConfig.GitHubActions` settings and `ProxyEndpoint`; credentials stay in memory | Fresh GitHub OIDC exchange before expiry | Explicitly trusted config and backend workflow grant required |
 | Service account token | Grafana API, K8s `/apis` | Grafana UI → Administration → Service accounts | `GrafanaConfig.APIToken` | None (static) | Manual (rotate in Grafana UI) |
 | mTLS client certificate | Grafana API, K8s `/apis` | Identity-aware proxy (e.g. Teleport) | `GrafanaConfig.TLS.CertFile`, `KeyFile`, `CAFile` (or `CertData`, `KeyData`, `CAData`) | External (proxy manages cert lifecycle) | External (e.g. `tsh apps login`) |
 | Cloud Access Policy token | GCOM, Cloud product APIs | Grafana Cloud UI → Security → Access policies | `CloudEntry.Token` | None (static) | Manual (rotate in Cloud UI) |
