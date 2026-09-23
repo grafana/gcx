@@ -61,11 +61,8 @@ Install mise and set up the project. For macOS:
 $ brew install mise        # or: curl https://mise.run | sh
 $ mise trust               # trust the mise.toml configuration
 $ mise install             # install tools (Go, golangci-lint, etc.)
-$ mise run deps            # install Go modules and Python requirements, including MkDocs
+$ mise run deps            # install Go and Python dependencies
 ```
-
-Run `mise run deps` before `mise run docs` or `mise run all`; it installs
-MkDocs and its plugins from `requirements.txt`.
 
 Some mise commands for local development:
 
