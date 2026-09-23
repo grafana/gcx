@@ -84,8 +84,8 @@ Query operations are not disguised CRUD:
 
 - `query` executes a user-supplied expression or backend query.
 - `search` finds matching subjects using the domain's search semantics.
-- `labels`, `series`, `metrics`, and `metadata` are established shorthand
-  operations in signal and datasource command families.
+- `labels`, `series`, `metrics`, `metadata`, and `patterns` are established
+  shorthand operations in signal and datasource command families.
 
 Use the shorthand only where its domain meaning is clear. The cross-signal
 vocabulary and intentional aliases are documented in
