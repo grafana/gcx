@@ -18,7 +18,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"sort"
 	"strings"
 	"text/tabwriter"
 
@@ -189,8 +188,6 @@ Requires Synthetic Monitoring app v1.62.0 or later.`,
 	return cmd
 }
 
-// exampleInvocation builds a ready-to-run `query` command using the entry's
-// required parameters as placeholders.
 // requiredOrEmpty normalizes a nil Required (a query with no required
 // parameters) to an empty slice, so JSON output shows "[]" rather than
 // "null" -- both mean the same thing to a caller, but "null" reads as a
@@ -202,15 +199,16 @@ func requiredOrEmpty(required []string) []string {
 	return required
 }
 
+// exampleInvocation builds a ready-to-run `query` command using the entry's
+// required parameters as placeholders, single-quoted so `<name>` isn't parsed
+// as shell redirection, in the same order as Required (and the table's
+// REQUIRED column) rather than alphabetical.
 func exampleInvocation(qt synth.QueryType) string {
-	names := append([]string{}, qt.Required...)
-	sort.Strings(names)
-
 	var b strings.Builder
 	b.WriteString("gcx synthetic-monitoring query ")
 	b.WriteString(qt.Name)
-	for _, name := range names {
-		fmt.Fprintf(&b, " -p %s=<%s>", name, name)
+	for _, name := range qt.Required {
+		fmt.Fprintf(&b, " -p '%s=<%s>'", name, name)
 	}
 
 	return b.String()
