@@ -743,9 +743,6 @@ func NormalizeCloudURL(raw string) string {
 }
 
 type GrafanaConfig struct {
-	// GitHubActions delegates authentication to the current Actions job; no secrets are persisted.
-	GitHubActions *auth.GitHubActionsOptions `json:"github-actions,omitempty" yaml:"github-actions,omitempty"`
-
 	// Server is the address of the Grafana server (https://hostname:port/path).
 	// Required.
 	Server string `env:"GRAFANA_SERVER" json:"server,omitempty" yaml:"server,omitempty"`
@@ -786,6 +783,9 @@ type GrafanaConfig struct {
 	// and uses compatibility inference; consumers should use
 	// Context.EffectiveGrafanaAuthMethod instead of inspecting fields.
 	AuthMethod string `json:"auth-method,omitempty" yaml:"auth-method,omitempty"`
+
+	// GitHubActions delegates authentication to the current Actions job; no secrets are persisted.
+	GitHubActions *auth.GitHubActionsOptions `json:"github-actions,omitempty" yaml:"github-actions,omitempty"`
 
 	// OrgID specifies the organization targeted by this config.
 	// Note: required when targeting an on-prem Grafana instance.

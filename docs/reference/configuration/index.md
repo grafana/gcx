@@ -18,13 +18,6 @@ stacks:
     # Optional: if not set, the slug may be derived from Grafana.Server.
     slug: string
     grafana:
-      # GitHubActions delegates authentication to the current Actions job; no secrets are persisted.
-      github-actions:
-        endpoint: string
-        tenant-id: string
-        scopes:
-          - string
-          - ...
       # Server is the address of the Grafana server (https://hostname:port/path).
       # Required.
       server: string
@@ -57,6 +50,13 @@ stacks:
       # and uses compatibility inference; consumers should use
       # Context.EffectiveGrafanaAuthMethod instead of inspecting fields.
       auth-method: string
+      # GitHubActions delegates authentication to the current Actions job; no secrets are persisted.
+      github-actions:
+        endpoint: string
+        tenant-id: string
+        scopes:
+          - string
+          - ...
       # OrgID specifies the organization targeted by this config.
       # Note: required when targeting an on-prem Grafana instance.
       # See StackID for Grafana Cloud instances.

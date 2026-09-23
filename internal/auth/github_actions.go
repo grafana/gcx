@@ -20,7 +20,7 @@ import (
 	"github.com/grafana/gcx/internal/httputils"
 )
 
-const GitHubActionsAudience = "gcx"
+const githubActionsAudience = "gcx"
 
 // GitHubActionsOptions contains no credentials. The endpoint is explicitly trusted by login.
 type GitHubActionsOptions struct {
@@ -101,7 +101,7 @@ func (a *GitHubActions) Exchange(ctx context.Context) (GitHubActionsResult, erro
 		return empty, errors.New("invalid GitHub OIDC request URL")
 	}
 	q := u.Query()
-	q.Set("audience", GitHubActionsAudience)
+	q.Set("audience", githubActionsAudience)
 	u.RawQuery = q.Encode()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
@@ -138,11 +138,11 @@ func (a *GitHubActions) Exchange(ctx context.Context) (GitHubActionsResult, erro
 		return empty, fmt.Errorf("exchange GitHub identity: %w; check the workflow grant and linked Grafana account", err)
 	}
 	r := response.Data
-	if !strings.HasPrefix(r.Token, "gat_") || r.Tenant != a.options.TenantID || strings.TrimRight(r.APIEndpoint, "/") != endpoint {
+	if r.Token == "" || r.Tenant != a.options.TenantID || strings.TrimRight(r.APIEndpoint, "/") != endpoint {
 		return empty, errors.New("invalid GitHub Actions credential response")
 	}
-	if remaining := time.Until(r.ExpiresAt); remaining <= time.Minute || remaining > 16*time.Minute {
-		return empty, errors.New("GitHub Actions credential lifetime must be greater than 1 minute and at most 16 minutes")
+	if remaining := time.Until(r.ExpiresAt); remaining <= time.Minute {
+		return empty, errors.New("GitHub Actions credential must remain valid for more than 1 minute")
 	}
 	if _, err := trustedActionsEndpoint(r.GrafanaURL); err != nil {
 		return empty, errors.New("invalid Grafana URL in credential response")

@@ -295,8 +295,12 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 		}
 		result, server, err := login.RunGitHubActions(ctx, login.Options{RetryState: login.RetryState{AllowOverride: flags.AllowServerOverride}, Hooks: login.Hooks{ConfigSource: mutationSource, LoginMutationGuard: loginMutationGuard, CloudMutationSafety: cloudMutationSafety}}, contextName, internalauth.GitHubActionsOptions{Endpoint: strings.TrimRight(flags.ActionsEndpoint, "/"), TenantID: flags.ActionsTenant, Scopes: flags.ActionsScopes})
 		// Override captures from config loading and persistence on success or failure.
-		captureLoginGrafanaAuthMethod(login.Result{AuthMethod: "github-actions"}, &login.Options{})
+		capture.ForceGrafanaAuthMethod("github-actions")
 		if err != nil {
+			var clarification *login.ErrNeedClarification
+			if errors.As(err, &clarification) {
+				return structuredClarificationError(clarification)
+			}
 			return err
 		}
 		return printResult(cmd, &flags.IO, server, result)
@@ -1777,7 +1781,7 @@ func printResult(cmd *cobra.Command, ioOpts *cmdio.Options, server string, resul
 		fmt.Fprintln(ew)
 		fmt.Fprintln(ew, "Verify access anytime with: gcx config check")
 	}
-	if result.IsCloud && !result.HasCloudToken {
+	if result.IsCloud && !result.HasCloudToken && result.AuthMethod != "github-actions" {
 		fmt.Fprintln(ew)
 		fmt.Fprintln(ew, "You're authenticated for the Grafana API (dashboards, datasources, queries, alerts, folders).")
 		fmt.Fprintln(ew, "Grafana Cloud product management (SLOs, Synthetic Monitoring, Fleet, k6, IRM, Adaptive telemetry)")

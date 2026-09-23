@@ -25,7 +25,7 @@ import (
 )
 
 func TestGitHubActionsExchangeCacheRefreshAndResponseBinding(t *testing.T) {
-	for _, name := range []string{"valid", "tenant", "endpoint", "scope", "expiry", "destination", "secret error"} {
+	for _, name := range []string{"valid", "opaque token", "long lifetime", "empty token", "short lifetime", "tenant", "endpoint", "scope", "expiry", "destination", "secret error"} {
 		t.Run(name, func(t *testing.T) {
 			var oidcCalls, exchangeCalls atomic.Int32
 			var endpoint string
@@ -52,8 +52,16 @@ func TestGitHubActionsExchangeCacheRefreshAndResponseBinding(t *testing.T) {
 					result.APIEndpoint = "https://other.invalid"
 				case "scope":
 					result.Scopes = []string{"grafana-api:write"}
-				case "expiry":
+				case "opaque token":
+					result.Token = "opaque-credential"
+				case "long lifetime":
 					result.ExpiresAt = time.Now().Add(time.Hour)
+				case "empty token":
+					result.Token = ""
+				case "short lifetime":
+					result.ExpiresAt = time.Now().Add(30 * time.Second)
+				case "expiry":
+					result.ExpiresAt = time.Now().Add(-time.Minute)
 				case "destination":
 					result.GrafanaURL = "https://other.grafana.net"
 				case "secret error":
@@ -66,13 +74,17 @@ func TestGitHubActionsExchangeCacheRefreshAndResponseBinding(t *testing.T) {
 			endpoint = srv.URL
 			a := &GitHubActions{options: GitHubActionsOptions{Endpoint: endpoint, TenantID: "1", Scopes: []string{"assistant:chat"}, GrafanaURL: "https://stack.grafana.net"}, requestURL: endpoint + "/oidc", requestToken: "request-secret", client: srv.Client()}
 			token, err := a.FreshToken(context.Background())
-			if name != "valid" {
+			if name != "valid" && name != "opaque token" && name != "long lifetime" {
 				require.Error(t, err)
 				require.NotContains(t, err.Error(), "secret")
 				return
 			}
 			require.NoError(t, err)
-			require.Equal(t, "gat_secret", token)
+			if name == "opaque token" {
+				require.Equal(t, "opaque-credential", token)
+			} else {
+				require.Equal(t, "gat_secret", token)
+			}
 			var wg sync.WaitGroup
 			for range 10 {
 				wg.Go(func() { _, err := a.FreshToken(context.Background()); require.NoError(t, err) })

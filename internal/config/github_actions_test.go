@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/grafana/gcx/internal/auth"
+	"github.com/grafana/gcx/internal/telemetry/capture"
 	"github.com/stretchr/testify/require"
 )
 
@@ -14,10 +15,13 @@ func TestGitHubActionsRefusesAutoLocalConfiguration(t *testing.T) {
 	grafana := &GrafanaConfig{AuthMethod: "github-actions", Server: "https://stack.grafana.net", ProxyEndpoint: "https://assistant.example", GitHubActions: &auth.GitHubActionsOptions{Endpoint: "https://assistant.example", TenantID: "1", Scopes: []string{"assistant:chat"}}}
 	for _, source := range []string{"local", "explicit", "global"} {
 		t.Run(source, func(t *testing.T) {
+			capture.Reset()
+			t.Cleanup(capture.Reset)
 			c := &Context{Grafana: grafana, StackEntry: &StackConfig{Grafana: grafana, sourceLayer: source}}
 			selection, err := c.selectGrafanaAuth()
 			if source == "local" {
 				require.Error(t, err)
+				require.Equal(t, "unknown", capture.CurrentGrafanaAuthMethod())
 				return
 			}
 			require.NoError(t, err)

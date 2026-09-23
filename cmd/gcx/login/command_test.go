@@ -2153,6 +2153,17 @@ func TestPrintResult_TextCodec(t *testing.T) {
 			},
 		},
 		{
+			name:   "workflow_login_has_no_cloud_token_advisory",
+			server: "https://stack.grafana.net",
+			result: internallogin.Result{ContextName: "actions", AuthMethod: "github-actions", IsCloud: true},
+			wantStdout: `Logged in to https://stack.grafana.net
+  Context:     actions
+  Auth method: github-actions
+  Grafana Cloud: yes
+`,
+			wantStderrSubs: []string{"Verify access anytime with: gcx config check"},
+		},
+		{
 			name:   "onprem_no_advisory",
 			server: "https://grafana.local",
 			result: internallogin.Result{
@@ -2214,6 +2225,9 @@ func TestPrintResult_TextCodec(t *testing.T) {
 			require.NoError(t, err)
 
 			assert.Equal(t, tt.wantStdout, stdout.String(), "stdout mismatch")
+			if tt.result.AuthMethod == "github-actions" {
+				assert.NotContains(t, stderr.String(), "--cloud-token")
+			}
 			if tt.noStderr {
 				assert.Empty(t, stderr.String(), "expected no stderr output")
 			} else {

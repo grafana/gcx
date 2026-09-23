@@ -46,7 +46,8 @@ Select that same explicit config for subsequent commands. The job must grant
 `GRAFANA_TOKEN` and `GRAFANA_CLOUD_TOKEN` from the job when selecting this mode.
 Possible scopes are `assistant:a2a`, `assistant:chat`, `grafana-api:read`,
 `grafana-api:write`, and `grafana-api:delete`; request only the scopes you need.
-The grant must allow every requested scope. An untrusted auto-discovered `.gcx.yaml`
+These scope names are validated by gcx; using a newly introduced backend scope
+requires a gcx version that supports it. The grant must allow every requested scope. An untrusted auto-discovered `.gcx.yaml`
 cannot opt your job into this exchange.
 
 The saved config contains only non-secret settings. Each gcx process obtains a

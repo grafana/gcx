@@ -326,8 +326,12 @@ gcx config unset stacks.myctx    # also remove its stack entry if nothing else u
 ## Authentication
 
 Grafana instance authentication supports browser OAuth (`gcx login`), service
-account tokens, basic authentication, and mTLS client certificates. A service
-account token is recommended for automation:
+account tokens, GitHub Actions OIDC, basic authentication, and mTLS client
+certificates. In GitHub Actions, an authorized workflow can use
+`gcx login --github-actions` with an Assistant backend grant and a linked GitHub
+account to avoid a stored Grafana token. See
+[GitHub Actions setup](https://github.com/grafana/gcx/blob/main/docs/how-to/github-actions.md).
+For other automation, use a service account token:
 
 **Service account token:**
 ```bash

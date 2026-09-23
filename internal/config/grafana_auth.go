@@ -126,7 +126,7 @@ func (context *Context) selectGrafanaAuth() (grafanaAuthSelection, error) {
 	}
 	selection, err := selectGrafanaAuth(context.Grafana, context.StackEntry, context.stackName())
 	if err == nil && selection.mode == grafanaAuthGitHubActions && context.StackFromAutoLocal() {
-		return grafanaAuthSelection{}, errors.New("GitHub Actions authentication requires explicitly trusted configuration; select it with --config or GCX_CONFIG")
+		err = errors.New("GitHub Actions authentication requires explicitly trusted configuration; select it with --config or GCX_CONFIG")
 	}
 	capture.SetGrafanaAuthMethod(grafanaAuthMethodLabel(context.Grafana, selection, err))
 	return selection, err
