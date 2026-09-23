@@ -131,3 +131,16 @@ func TestPatternsCmd_RequiresExpr(t *testing.T) {
 	_, _, err := execPatternsCmd(t, nil)
 	require.Error(t, err)
 }
+
+// Loki's patterns endpoint accepts step as either a duration string ("30s")
+// or a bare float number of seconds ("30", "1.5") — using shared.ParseTimes
+// (which validates --step through Go-duration-only syntax) instead of
+// shared.ParseTimeRange would reject the latter before any request is sent.
+func TestPatternsCmd_AcceptsBareSecondsStep(t *testing.T) {
+	captured, _, err := execPatternsCmd(t, []string{`{job="varlogs"}`, "--since", "1h", "--step", "30"})
+	require.NoError(t, err)
+
+	query, ok := captured[patternsPath]
+	require.True(t, ok, "expected a request to %s, got %v", patternsPath, captured)
+	assert.Equal(t, "30", query.Get("step"))
+}

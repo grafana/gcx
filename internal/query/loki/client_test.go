@@ -77,6 +77,38 @@ func TestClient_Patterns(t *testing.T) {
 	assert.Equal(t, [][]int64{{1711839260, 1}, {1711839270, 2}}, resp.Data[0].Samples)
 }
 
+func TestClient_Patterns_RejectsReversedTimeRange(t *testing.T) {
+	var requested bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requested = true
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"success","data":[]}`))
+	}))
+	defer server.Close()
+
+	cfg := config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}, Namespace: "default"}
+	client, err := loki.NewClient(cfg)
+	require.NoError(t, err)
+
+	start := time.Unix(1711839280, 0)
+	end := time.Unix(1711839260, 0) // before start
+	_, err = client.Patterns(context.Background(), "loki-uid", `{job="varlogs"}`, start, end, "")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "must be before end")
+	assert.False(t, requested, "no request should be sent for an invalid time range")
+}
+
+func TestClient_Patterns_RejectsEqualStartAndEnd(t *testing.T) {
+	cfg := config.NamespacedRESTConfig{Config: rest.Config{Host: "https://example.invalid"}, Namespace: "default"}
+	client, err := loki.NewClient(cfg)
+	require.NoError(t, err)
+
+	same := time.Unix(1711839260, 0)
+	_, err = client.Patterns(context.Background(), "loki-uid", `{job="varlogs"}`, same, same, "")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "must be before end")
+}
+
 func TestClient_Patterns_OmitsStepWhenEmpty(t *testing.T) {
 	var capturedRawQuery string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

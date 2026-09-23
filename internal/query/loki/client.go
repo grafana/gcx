@@ -247,6 +247,10 @@ func (c *Client) Series(ctx context.Context, datasourceUID string, matchers []st
 // have pattern_ingester enabled — otherwise this returns an empty Data slice,
 // not an error.
 func (c *Client) Patterns(ctx context.Context, datasourceUID, query string, start, end time.Time, step string) (*PatternsResponse, error) {
+	if !start.Before(end) {
+		return nil, fmt.Errorf("invalid time range: start (%s) must be before end (%s)", start, end)
+	}
+
 	apiPath := c.buildPatternsPath(datasourceUID)
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, c.restConfig.Host+apiPath, nil)
