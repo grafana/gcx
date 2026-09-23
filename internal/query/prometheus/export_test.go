@@ -26,6 +26,18 @@ func (c *Client) BuildCardinalityLabelValuesPath(datasourceUID string) string {
 	return c.buildCardinalityLabelValuesPath(datasourceUID)
 }
 
+func (c *Client) BuildSearchMetricNamesPath(datasourceUID string) string {
+	return c.buildSearchMetricNamesPath(datasourceUID)
+}
+
+func (c *Client) BuildSearchLabelNamesPath(datasourceUID string) string {
+	return c.buildSearchLabelNamesPath(datasourceUID)
+}
+
+func (c *Client) BuildSearchLabelValuesPath(datasourceUID string) string {
+	return c.buildSearchLabelValuesPath(datasourceUID)
+}
+
 // ConvertGrafanaResponse exposes the unexported converter for the external test package.
 func ConvertGrafanaResponse(grafanaResp *GrafanaQueryResponse, isRange bool) *QueryResponse {
 	return convertGrafanaResponse(grafanaResp, isRange)

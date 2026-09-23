@@ -30,5 +30,6 @@ Query Prometheus datasources and manage Adaptive Metrics
 * [gcx metrics list-names](gcx_metrics_list-names.md)	 - List metric names
 * [gcx metrics metadata](gcx_metrics_metadata.md)	 - Get metric metadata
 * [gcx metrics query](gcx_metrics_query.md)	 - Execute a PromQL query against a Prometheus datasource
+* [gcx metrics search](gcx_metrics_search.md)	 - Search for metric names, label names or label values (experimental)
 * [gcx metrics series](gcx_metrics_series.md)	 - List time series matching one or more selectors
 
