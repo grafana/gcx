@@ -52,7 +52,7 @@ func LogsDrilldownURL(host, datasourceUID, expr string, start, end time.Time) (s
 	// the path segment; the full value is unaffected and still goes into
 	// var-filters below via primary.Value.
 	pathValue := strings.SplitN(primary.Value, "|", 2)[0]
-	path := "/explore/" + pathLabelName + "/" + dsquery.EscapePrimaryLabel(pathValue) + "/logs"
+	path := "/explore/" + pathLabelName + "/" + escapePrimaryLabel(pathValue) + "/logs"
 
 	if end.IsZero() {
 		end = time.Now()
@@ -67,12 +67,12 @@ func LogsDrilldownURL(host, datasourceUID, expr string, start, end time.Time) (s
 		"to":     {strconv.FormatInt(end.UnixMilli(), 10)},
 	}
 	for _, m := range matchers {
-		params["var-filters"] = append(params["var-filters"], dsquery.EncodeLabelFilter(m.Key, m.Operator, m.Value))
+		params["var-filters"] = append(params["var-filters"], encodeLabelFilter(m.Key, m.Operator, m.Value))
 	}
 	for i, lf := range lineFilters {
-		key, value := dsquery.LineFilterKeyAndValue(i, lf.Operator, lf.Value)
-		params["var-lineFilters"] = append(params["var-lineFilters"], dsquery.EncodeLineFilter(key, lf.Operator, value))
+		key, value := lineFilterKeyAndValue(i, lf.Operator, lf.Value)
+		params["var-lineFilters"] = append(params["var-lineFilters"], encodeLineFilter(key, lf.Operator, value))
 	}
 
-	return dsquery.BuildDrilldownURL(host, dsquery.LogsDrilldownPluginID, path, params), true
+	return dsquery.BuildDrilldownURL(host, logsDrilldownPluginID, path, params), true
 }

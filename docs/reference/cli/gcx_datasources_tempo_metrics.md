@@ -14,10 +14,10 @@ Instant vs range is deduced from time flags: no time flags = instant query,
 even when a time range is provided. If no time flags are set, gcx queries the
 last hour by default.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
-open it in your browser after the query succeeds. Use --drilldown-link or
---open-drilldown for the equivalent Grafana Traces Drilldown URL (TraceQL
-metrics queries use a pipeline stage like "| rate()", which Drilldown's
-filter model can't represent, so this falls back to the Explore URL).
+open it in your browser after the query succeeds. There is no
+--drilldown-link here: every TraceQL metrics query uses a pipeline stage
+like "| rate()", which Traces Drilldown's filter model can never
+represent — use 'tempo query' for Drilldown links.
 
 ```
 gcx datasources tempo metrics [TRACEQL] [flags]
@@ -50,7 +50,6 @@ gcx datasources tempo metrics [TRACEQL] [flags]
 
 ```
   -d, --datasource string   Datasource UID (required unless datasources.tempo is configured)
-      --drilldown-link      Print the Grafana Traces Drilldown URL for the executed query to stderr
       --expr string         Query expression (alternative to positional argument)
       --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                help for metrics
@@ -58,7 +57,6 @@ gcx datasources tempo metrics [TRACEQL] [flags]
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --open                Open the executed query in Grafana Explore
-      --open-drilldown      Open the executed query in Grafana Traces Drilldown
   -o, --output string       Output format. One of: agents, graph, json, table, wide, yaml (default "table")
       --share-link          Print the Grafana Explore URL for the executed query to stderr
       --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from

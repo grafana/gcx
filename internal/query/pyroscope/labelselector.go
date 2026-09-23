@@ -1,6 +1,9 @@
 package pyroscope
 
-import "strings"
+import (
+	"strconv"
+	"strings"
+)
 
 // LabelMatcher is a single label matcher from a Pyroscope label selector,
 // e.g. the `service_name="frontend"` in `{service_name="frontend"}`.
@@ -53,31 +56,21 @@ func parseSingleMatcher(part string) (LabelMatcher, bool) {
 	return LabelMatcher{}, false
 }
 
-// unquote strips a single layer of double quotes and resolves backslash
-// escapes.
+// unquote strips a single layer of double quotes and decodes Go/LogQL-style
+// string escapes (\n, \t, \\, \", \xHH, \uHHHH, octal, ...) via
+// strconv.Unquote, mirroring internal/query/loki/streamselector.go's
+// unquote — a hand-rolled loop that only strips the backslash and keeps the
+// escaped rune literally would decode "a\nb" as "anb" instead of a real
+// newline.
 func unquote(s string) (string, bool) {
 	if len(s) < 2 || !strings.HasPrefix(s, `"`) || !strings.HasSuffix(s, `"`) {
 		return "", false
 	}
-	inner := s[1 : len(s)-1]
-
-	var sb strings.Builder
-	escaped := false
-	for _, c := range inner {
-		switch {
-		case escaped:
-			sb.WriteRune(c)
-			escaped = false
-		case c == '\\':
-			escaped = true
-		default:
-			sb.WriteRune(c)
-		}
-	}
-	if escaped {
+	unquoted, err := strconv.Unquote(s)
+	if err != nil {
 		return "", false
 	}
-	return sb.String(), true
+	return unquoted, true
 }
 
 // splitTopLevelCommas splits s on commas that are not inside a quoted string.

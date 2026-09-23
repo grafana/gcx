@@ -33,6 +33,15 @@ func TestParseLabelSelector(t *testing.T) {
 				{Key: "pod", Operator: "!~", Value: "canary-.*"},
 			},
 		},
+		{
+			// unquote decodes real escape sequences via strconv.Unquote
+			// rather than stripping the backslash and keeping the escaped
+			// rune literally — "a\nb" must become an actual newline, not
+			// the three characters "a", "n", "b".
+			name: "matcher value with escape sequences decodes them",
+			expr: `{service_name="a\nb"}`,
+			want: []pyroscope.LabelMatcher{{Key: "service_name", Operator: "=", Value: "a\nb"}},
+		},
 	}
 
 	for _, tt := range tests {
@@ -53,6 +62,7 @@ func TestParseLabelSelector_Unsupported(t *testing.T) {
 		"missing braces":  `service_name="frontend"`,
 		"malformed value": `{service_name=frontend}`,
 		"empty key":       `{="frontend"}`,
+		"invalid escape":  `{service_name="a\zb"}`,
 	}
 
 	for name, expr := range tests {

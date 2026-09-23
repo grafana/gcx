@@ -1,10 +1,9 @@
-package query_test
+package loki_test
 
 import (
 	"testing"
 
-	dsquery "github.com/grafana/gcx/internal/datasources/query"
-	"github.com/stretchr/testify/assert"
+	"github.com/grafana/gcx/internal/datasources/loki"
 )
 
 func TestEscapePrimaryLabel(t *testing.T) {
@@ -21,7 +20,9 @@ func TestEscapePrimaryLabel(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			assert.Equal(t, tt.want, dsquery.EscapePrimaryLabel(tt.value))
+			if got := loki.EscapePrimaryLabel(tt.value); got != tt.want {
+				t.Errorf("EscapePrimaryLabel(%q) = %q, want %q", tt.value, got, tt.want)
+			}
 		})
 	}
 }
@@ -31,13 +32,19 @@ func TestEncodeLabelFilter_EmptyValueUsesDrilldownSentinel(t *testing.T) {
 	// for an empty value instead of the ad-hoc user-input prefix applied to
 	// an empty string — otherwise {app=""} would decode on the Drilldown
 	// side as a non-empty ad-hoc-marker value, changing the query.
-	got := dsquery.EncodeLabelFilter("app", "=", "")
-	assert.Equal(t, `app|=|"",`, got)
+	got := loki.EncodeLabelFilter("app", "=", "")
+	want := `app|=|"",`
+	if got != want {
+		t.Errorf("EncodeLabelFilter(...) = %q, want %q", got, want)
+	}
 }
 
 func TestEncodeLabelFilter_NonEmptyValueUnaffected(t *testing.T) {
-	got := dsquery.EncodeLabelFilter("app", "=", "foo")
-	assert.Equal(t, "app|=|__CVΩ__foo,foo", got)
+	got := loki.EncodeLabelFilter("app", "=", "foo")
+	want := "app|=|__CVΩ__foo,foo"
+	if got != want {
+		t.Errorf("EncodeLabelFilter(...) = %q, want %q", got, want)
+	}
 }
 
 func TestLineFilterKeyAndValue(t *testing.T) {
@@ -93,9 +100,11 @@ func TestLineFilterKeyAndValue(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotKey, gotValue := dsquery.LineFilterKeyAndValue(tt.index, tt.operator, tt.value)
-			assert.Equal(t, tt.wantKey, gotKey)
-			assert.Equal(t, tt.wantValue, gotValue)
+			gotKey, gotValue := loki.LineFilterKeyAndValue(tt.index, tt.operator, tt.value)
+			if gotKey != tt.wantKey || gotValue != tt.wantValue {
+				t.Errorf("LineFilterKeyAndValue(%d, %q, %q) = (%q, %q), want (%q, %q)",
+					tt.index, tt.operator, tt.value, gotKey, gotValue, tt.wantKey, tt.wantValue)
+			}
 		})
 	}
 }

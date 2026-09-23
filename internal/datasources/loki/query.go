@@ -81,6 +81,12 @@ returned, so pass --limit 0 for the chart to reflect the full queried range.`,
 			// agent mode too: a real TTY can still be attached while agent
 			// mode is forced on, and an interactive viewer must never block
 			// there.
+			if wrap && !tui {
+				return errors.New("--wrap requires --tui")
+			}
+			if tui && cmd.Flags().Changed("output") {
+				return errors.New("--tui is mutually exclusive with an explicit -o/--output; drop --tui to use the requested output format, or drop -o to use the interactive viewer")
+			}
 			if tui && (agent.IsAgentMode() || !terminal.StdoutIsTerminal()) {
 				return errors.New("--tui requires an interactive terminal; use -o table/json/raw when piping output")
 			}

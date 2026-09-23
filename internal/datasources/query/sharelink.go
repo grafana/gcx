@@ -113,18 +113,19 @@ func DrilldownMessages(subject, appName string) (string, string) {
 		subject + " succeeded, but could not open browser"
 }
 
-// HandleDrilldownLink prints and/or opens a Grafana Drilldown app URL. Missing
+// handleDrilldownLink prints and/or opens a Grafana Drilldown app URL. Missing
 // URLs are warned about but do not fail the command after successful data
 // retrieval — this is expected whenever the query expression doesn't
 // decompose into the Drilldown app's simple filter model (aggregations,
-// parser stages, ...).
-func HandleDrilldownLink(cmd *cobra.Command, opts DrilldownLinkOpts, url string, unavailableMsg, failedOpenMsg string) error {
+// parser stages, ...). It has no failure mode of its own (a failed --open
+// only warns), so unlike HandleExploreLink it returns nothing.
+func handleDrilldownLink(cmd *cobra.Command, opts DrilldownLinkOpts, url string, unavailableMsg, failedOpenMsg string) {
 	if !opts.Enabled() {
-		return nil
+		return
 	}
 	if url == "" {
 		cmdio.Warning(cmd.ErrOrStderr(), "%s", unavailableMsg)
-		return nil
+		return
 	}
 	if opts.ShareLink {
 		cmdio.Info(cmd.ErrOrStderr(), "%s link: %s", opts.AppName, url)
@@ -134,7 +135,6 @@ func HandleDrilldownLink(cmd *cobra.Command, opts DrilldownLinkOpts, url string,
 			cmdio.Warning(cmd.ErrOrStderr(), "%s: %v", failedOpenMsg, err)
 		}
 	}
-	return nil
 }
 
 // HandleDrilldownLinkWithExploreFallback prints/opens a Grafana Drilldown app
@@ -151,9 +151,7 @@ func HandleDrilldownLinkWithExploreFallback(
 	exploreEnabled bool,
 	exploreURL, exploreUnavailableMsg, exploreFailedOpenMsg string,
 ) error {
-	if err := HandleDrilldownLink(cmd, drilldownOpts, drilldownURL, drilldownUnavailableMsg, drilldownFailedOpenMsg); err != nil {
-		return err
-	}
+	handleDrilldownLink(cmd, drilldownOpts, drilldownURL, drilldownUnavailableMsg, drilldownFailedOpenMsg)
 	if drilldownURL != "" || !drilldownOpts.Enabled() || exploreEnabled {
 		return nil
 	}

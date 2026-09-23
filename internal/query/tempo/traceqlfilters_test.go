@@ -55,6 +55,15 @@ func TestParseFlatSpansetFilters_Valid(t *testing.T) {
 			expr: `{ resource.name = "a>=b" }`,
 			want: []tempo.TraceQLFilter{{Scope: "resource", Tag: "name", Operator: "=", Value: "a>=b"}},
 		},
+		{
+			// unquote decodes real LogQL/Go string escapes via
+			// strconv.Unquote rather than stripping the backslash and
+			// keeping the escaped rune literally — "a\nb" must become an
+			// actual newline, not the three characters "a", "n", "b".
+			name: "quoted value with escape sequences decodes them",
+			expr: `{ resource.name = "a\nb" }`,
+			want: []tempo.TraceQLFilter{{Scope: "resource", Tag: "name", Operator: "=", Value: "a\nb"}},
+		},
 	}
 
 	for _, tt := range tests {
@@ -86,6 +95,7 @@ func TestParseFlatSpansetFilters_Unsupported(t *testing.T) {
 		"pipeline stage unsupported":         `{ span.foo = "bar" } | select(span.baz)`,
 		"structural operator unsupported":    `{ span.foo = "bar" } >> { span.baz = "qux" }`,
 		"unknown scope unsupported":          `{ notascope.foo = "bar" }`,
+		"invalid escape falls back":          `{ resource.name = "a\zb" }`,
 		"empty spanset unsupported":          `{ }`,
 		"missing braces unsupported":         `span.foo = "bar"`,
 	}

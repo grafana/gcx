@@ -70,3 +70,39 @@ func TestQueryCmd_TUIRequiresInteractiveTerminal(t *testing.T) {
 	assert.Contains(t, err.Error(), "requires an interactive terminal")
 	assert.Zero(t, requests, "no HTTP request should reach the backend when --tui is rejected before I/O")
 }
+
+// TestQueryCmd_WrapRequiresTUI pins that --wrap without --tui is rejected
+// rather than silently accepted and ignored (--wrap only has meaning inside
+// the --tui viewer).
+func TestQueryCmd_WrapRequiresTUI(t *testing.T) {
+	cmd := dsloki.QueryCmd(&providers.ConfigLoader{})
+	root := &cobra.Command{Use: "test"}
+	root.AddCommand(cmd)
+
+	var stdout, stderr bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{"query", "-d", "loki-uid", `{app="foo"}`, "--wrap"})
+
+	err := root.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--wrap requires --tui")
+}
+
+// TestQueryCmd_TUIRejectsExplicitOutputFormat pins that --tui together with
+// an explicit -o/--output errors instead of one flag silently winning (--tui
+// would otherwise discard the requested -o format with no message).
+func TestQueryCmd_TUIRejectsExplicitOutputFormat(t *testing.T) {
+	cmd := dsloki.QueryCmd(&providers.ConfigLoader{})
+	root := &cobra.Command{Use: "test"}
+	root.AddCommand(cmd)
+
+	var stdout, stderr bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{"query", "-d", "loki-uid", `{app="foo"}`, "--tui", "-o", "json"})
+
+	err := root.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "mutually exclusive")
+}
