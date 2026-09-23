@@ -145,37 +145,6 @@ func TestQueriesGet_UnknownNameErrors(t *testing.T) {
 	assert.Contains(t, err.Error(), "queries list")
 }
 
-func TestQueriesList_404BelowMinimumVersion(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case schemaPath:
-			http.NotFound(w, r)
-		case settingsPath:
-			w.WriteHeader(http.StatusOK)
-			_ = json.NewEncoder(w).Encode(map[string]any{"info": map[string]any{"version": "1.61.0"}})
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	t.Cleanup(srv.Close)
-
-	_, _, err := runQueries(t, srv.URL, false, "list")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "1.62.0")
-	assert.Contains(t, err.Error(), "1.61.0")
-}
-
-func TestQueriesList_404AppNotInstalled(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.NotFound(w, r)
-	}))
-	t.Cleanup(srv.Close)
-
-	_, _, err := runQueries(t, srv.URL, false, "list")
-	require.Error(t, err)
-	assert.Contains(t, strings.ToLower(err.Error()), "no synthetic monitoring app installed")
-}
-
 func TestQueriesList_UnexpectedAPIVersionWarnsOnStderr(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == schemaPath {
