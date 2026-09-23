@@ -78,15 +78,21 @@ var statsPreflightTimeout = 5 * time.Second //nolint:gochecknoglobals // test-ov
 // index/stats for expr, given the query's own time range. For an instant
 // query (isRange false) it defaults to the same now-1m..now window
 // buildQueryBody already applies. The window is then widened by any
-// range-vector duration or offset found in expr (see loki.MaxLookback),
-// since Loki evaluates further back than start/end alone would suggest.
+// range-vector duration or offset found in expr (see loki.MaxLookback) —
+// positive offsets and range vectors push start further back, while a
+// negative offset (LogQL accepts "offset -5m") pushes end further forward —
+// since Loki evaluates a wider window than start/end alone would suggest.
 // Shared by runStatsPreflight and StatsCmd so the two can't drift.
 func resolveStatsWindow(expr string, isRange bool, start, end, now time.Time) (time.Time, time.Time) {
 	if !isRange {
 		start, end = now.Add(-time.Minute), now
 	}
-	if lookback := loki.MaxLookback(expr); lookback > 0 {
-		start = start.Add(-lookback)
+	back, forward := loki.MaxLookback(expr)
+	if back > 0 {
+		start = start.Add(-back)
+	}
+	if forward > 0 {
+		end = end.Add(forward)
 	}
 	return start, end
 }

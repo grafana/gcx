@@ -23,9 +23,9 @@ widened by any range-vector duration or offset in EXPR (e.g. '[24h]',
 'offset 1h'), since Loki evaluates further back than --from/--to/--since
 alone would suggest.
 Bytes scanned is the number this command exists to answer, so it's always
-printed as a leading "<size> would be scanned" line — on stdout, above the
-table, for -o table; on stderr for -o json/yaml, so the payload stays clean
-and parseable.
+called out as a "<size> would be scanned" diagnostic on stderr, regardless of
+-o format — stdout is reserved for the codec-rendered result (the table, or
+the json/yaml payload), which already includes the same Bytes value.
 
 ```
 gcx datasources loki stats [EXPR] [flags]

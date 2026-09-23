@@ -71,9 +71,9 @@ widened by any range-vector duration or offset in EXPR (e.g. '[24h]',
 'offset 1h'), since Loki evaluates further back than --from/--to/--since
 alone would suggest.
 Bytes scanned is the number this command exists to answer, so it's always
-printed as a leading "<size> would be scanned" line — on stdout, above the
-table, for -o table; on stderr for -o json/yaml, so the payload stays clean
-and parseable.`,
+called out as a "<size> would be scanned" diagnostic on stderr, regardless of
+-o format — stdout is reserved for the codec-rendered result (the table, or
+the json/yaml payload), which already includes the same Bytes value.`,
 		Example: `
   # Estimate bytes scanned by a selector over the last hour
   gcx datasources loki stats -d UID '{job="varlogs"}' --since 1h
@@ -148,18 +148,14 @@ and parseable.`,
 				resp.Entries += selectorResp.Entries
 			}
 
-			// Bytes scanned is the number this command exists to answer, so lead
-			// with it rather than burying it as one of four equal table rows.
-			// It goes to stdout for table output (a real header above the
-			// table) but to stderr for json/yaml, so scripts/agents parsing
-			// stdout still get a clean, valid payload.
-			bytesMsg := humanize.IBytes(resp.Bytes) + " would be scanned"
-			if opts.IO.OutputFormat == "table" {
-				cmdio.Warning(cmd.OutOrStdout(), "%s", bytesMsg)
-				fmt.Fprintln(cmd.OutOrStdout())
-			} else {
-				cmdio.Warning(cmd.ErrOrStderr(), "%s", bytesMsg)
-			}
+			// Bytes scanned is the number this command exists to answer, so
+			// call it out as a diagnostic on stderr regardless of output
+			// format — resp.Bytes is already the "Bytes" row in the table
+			// codec below, and stdout is reserved for that codec-owned
+			// result (DESIGN.md's Output Model, CONSTITUTION.md's "all
+			// output goes through the codec system"), not unstructured
+			// prose ahead of it.
+			cmdio.Warning(cmd.ErrOrStderr(), "%s would be scanned", humanize.IBytes(resp.Bytes))
 
 			return opts.IO.Encode(cmd.OutOrStdout(), resp)
 		},
