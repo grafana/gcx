@@ -70,7 +70,7 @@ type queriesListOpts struct {
 }
 
 func (o *queriesListOpts) setup(flags *pflag.FlagSet) {
-	cmdio.RegisterTable(&o.IO, QueryTypeSummaryTable())
+	cmdio.RegisterTable(&o.IO, queryTypeSummaryTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 }
@@ -97,7 +97,6 @@ not available on older deployments.`,
 			if err != nil {
 				return err
 			}
-			warnOnUnexpectedAPIVersion(cmd, result.APIVersion)
 
 			summaries := make([]QueryTypeSummary, 0, len(result.QueryTypes))
 			for _, qt := range result.QueryTypes {
@@ -115,11 +114,11 @@ not available on older deployments.`,
 	return cmd
 }
 
-// QueryTypeSummaryTable declares the `queries list` table. REQUIRED never
+// queryTypeSummaryTable declares the `queries list` table. REQUIRED never
 // shows the full schema -- a datasource plugin's catalog can be tens of KB,
 // and dumping every entry's parameter constraints on every discovery call is
 // a token cost an agent should not pay just to see what exists.
-func QueryTypeSummaryTable() cmdio.Table[QueryTypeSummary] {
+func queryTypeSummaryTable() cmdio.Table[QueryTypeSummary] {
 	return cmdio.Table[QueryTypeSummary]{
 		Columns: []cmdio.Column[QueryTypeSummary]{
 			{Header: "NAME", Content: func(q QueryTypeSummary) string { return q.Name }},
@@ -164,7 +163,6 @@ Requires Synthetic Monitoring app v1.62.0 or later.`,
 			if err != nil {
 				return err
 			}
-			warnOnUnexpectedAPIVersion(cmd, result.APIVersion)
 
 			name := args[0]
 			for _, qt := range result.QueryTypes {
@@ -273,17 +271,4 @@ func fetchCatalog(ctx context.Context, loader smcfg.GrafanaConfigLoader) (*synth
 	}
 
 	return client.Catalog(ctx)
-}
-
-// warnOnUnexpectedAPIVersion writes a one-line stderr warning when the served
-// catalog uses an apiVersion this package was not built against. The file is
-// additive, so this is advisory, not fatal -- Catalog already parsed it.
-func warnOnUnexpectedAPIVersion(cmd *cobra.Command, apiVersion string) {
-	if apiVersion == "" || apiVersion == synth.ExpectedQueryTypesAPIVersion {
-		return
-	}
-
-	cmdio.Warning(cmd.ErrOrStderr(),
-		"named-query catalog uses apiVersion %q, expected %q; some fields may not be understood",
-		apiVersion, synth.ExpectedQueryTypesAPIVersion)
 }

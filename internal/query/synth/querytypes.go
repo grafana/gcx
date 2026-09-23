@@ -33,13 +33,6 @@ const smAppPluginID = "grafana-synthetic-monitoring-app"
 // query.types.json (app PR #1843, landed 2026-09-11, releasing in v1.62.0).
 const minDiscoveryAppVersion = "1.62.0"
 
-// ExpectedQueryTypesAPIVersion is the apiVersion this package was built
-// against. CatalogResult.APIVersion is still populated when the served file
-// uses a different one -- the file is additive, so this package parses it
-// regardless. Exported so a caller (e.g. the `queries` command) can compare
-// and warn on a mismatch rather than failing the fetch.
-const ExpectedQueryTypesAPIVersion = "datasource.grafana.app/v0alpha1"
-
 func queryTypesSchemaPath() string {
 	return fmt.Sprintf("/public/plugins/%s/schema/v0alpha1/query.types.json", DatasourceType)
 }
@@ -69,20 +62,21 @@ type QueryType struct {
 
 // CatalogResult is the outcome of a successful catalog fetch.
 type CatalogResult struct {
-	// APIVersion is the apiVersion the server reported. Compare against
-	// expectedQueryTypesAPIVersion if you need to decide whether to warn --
-	// this package parses the file regardless, since it is additive.
-	APIVersion string
 	QueryTypes []QueryType
 }
+
+// queryTypeDefinitionListKind is the only Kind parseCatalog accepts. Without
+// checking it, any 200 response that happens to decode into this shape (e.g.
+// an empty JSON object) is silently read as a catalog with zero query types,
+// indistinguishable from a tenant that genuinely has none.
+const queryTypeDefinitionListKind = "QueryTypeDefinitionList"
 
 // queryTypeDefinitionList mirrors the QueryTypeDefinitionList Kubernetes-style
 // envelope Grafana's schemabuilder writes. Only the fields this package reads
 // are declared.
 type queryTypeDefinitionList struct {
-	Kind       string                `json:"kind"`
-	APIVersion string                `json:"apiVersion"`
-	Items      []queryTypeDefinition `json:"items"`
+	Kind  string                `json:"kind"`
+	Items []queryTypeDefinition `json:"items"`
 }
 
 type queryTypeDefinition struct {
@@ -137,6 +131,42 @@ func (c *CatalogClient) Catalog(ctx context.Context) (*CatalogResult, error) {
 	}
 }
 
+// FetchSMAppSettings performs the shared, unauthenticated GET against the SM
+// app's plugin settings endpoint, returning the raw body and status so each
+// caller can decode whatever subtree it needs (this package reads
+// info.version; others read jsonData.* subtrees).
+//
+// This is meant to be the one place in the codebase that builds this
+// request. discoverSMURL (internal/providers/synth/provider.go) and
+// smPluginDatasourceName (internal/providers/synth/checks/status.go) predate
+// it and each hand-roll their own version of this fetch, disagreeing on
+// details (trailing-slash trimming, OAuth-proxy host selection) -- they are
+// candidates to adopt this as a follow-up, not duplicated further.
+func FetchSMAppSettings(ctx context.Context, cfg config.NamespacedRESTConfig) ([]byte, int, error) {
+	httpClient, err := rest.HTTPClientFor(&cfg.Config)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to create HTTP client: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, cfg.Host+smAppSettingsPath(), nil)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to execute request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := httputils.ReadResponseBody(resp.Body, maxResponseBytes)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	return body, resp.StatusCode, nil
+}
+
 // unavailableError explains a query.types.json 404 by re-querying the SM
 // app's settings endpoint. Only an actual 404 there means "not installed" --
 // any other failure (403, 500, decode error) is returned as-is instead of
@@ -144,7 +174,7 @@ func (c *CatalogClient) Catalog(ctx context.Context) (*CatalogResult, error) {
 // against minDiscoveryAppVersion so the message doesn't blame a version that
 // already satisfies it.
 func (c *CatalogClient) unavailableError(ctx context.Context) error {
-	body, status, err := c.get(ctx, smAppSettingsPath())
+	body, status, err := FetchSMAppSettings(ctx, c.restConfig)
 	switch {
 	case err != nil:
 		return fmt.Errorf("named-query catalog: %w", err)
@@ -215,6 +245,12 @@ func parseCatalog(body []byte) (*CatalogResult, error) {
 	if err := json.Unmarshal(body, &list); err != nil {
 		return nil, fmt.Errorf("failed to parse named-query catalog: %w", err)
 	}
+	if list.Kind != queryTypeDefinitionListKind {
+		return nil, fmt.Errorf(
+			"named-query catalog: expected kind %q, got %q -- this does not look like a query.types.json catalog",
+			queryTypeDefinitionListKind, list.Kind,
+		)
+	}
 
 	queryTypes := make([]QueryType, 0, len(list.Items))
 	for _, item := range list.Items {
@@ -234,7 +270,6 @@ func parseCatalog(body []byte) (*CatalogResult, error) {
 	}
 
 	return &CatalogResult{
-		APIVersion: list.APIVersion,
 		QueryTypes: queryTypes,
 	}, nil
 }

@@ -19,10 +19,7 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-const (
-	schemaPath   = "/public/plugins/synthetic-monitoring-datasource/schema/v0alpha1/query.types.json"
-	settingsPath = "/api/plugins/grafana-synthetic-monitoring-app/settings"
-)
+const schemaPath = "/public/plugins/synthetic-monitoring-datasource/schema/v0alpha1/query.types.json"
 
 // fakeGrafanaLoader implements smcfg.GrafanaConfigLoader against a fake
 // server. Discovery needs nothing else -- no SM token, no datasource UID --
@@ -59,7 +56,7 @@ func catalogServer(t *testing.T) *httptest.Server {
 	return srv
 }
 
-func runQueries(t *testing.T, srvURL string, agentMode bool, args ...string) (string, string, error) {
+func runQueries(t *testing.T, srvURL string, agentMode bool, args ...string) (string, error) {
 	t.Helper()
 	prevNoColor := color.NoColor
 	color.NoColor = true
@@ -77,13 +74,13 @@ func runQueries(t *testing.T, srvURL string, agentMode bool, args ...string) (st
 	root.SetErr(&stderr)
 	root.SetArgs(args)
 	err := root.ExecuteContext(context.Background())
-	return stdout.String(), stderr.String(), err
+	return stdout.String(), err
 }
 
 func TestQueriesList_TableContract(t *testing.T) {
 	srv := catalogServer(t)
 
-	stdout, _, err := runQueries(t, srv.URL, false, "list")
+	stdout, err := runQueries(t, srv.URL, false, "list")
 	require.NoError(t, err)
 	assert.Contains(t, stdout, "NAME")
 	assert.Contains(t, stdout, "REQUIRED")
@@ -96,7 +93,7 @@ func TestQueriesList_TableContract(t *testing.T) {
 func TestQueriesList_JSONContract(t *testing.T) {
 	srv := catalogServer(t)
 
-	stdout, _, err := runQueries(t, srv.URL, false, "list", "-o", "json")
+	stdout, err := runQueries(t, srv.URL, false, "list", "-o", "json")
 	require.NoError(t, err)
 
 	var docs []map[string]any
@@ -113,7 +110,7 @@ func TestQueriesList_JSONContract(t *testing.T) {
 func TestQueriesGet_TableContract(t *testing.T) {
 	srv := catalogServer(t)
 
-	stdout, _, err := runQueries(t, srv.URL, false, "get", "checks_uptime")
+	stdout, err := runQueries(t, srv.URL, false, "get", "checks_uptime")
 	require.NoError(t, err)
 	assert.Contains(t, stdout, "checks_uptime")
 	assert.Contains(t, stdout, "job")
@@ -125,7 +122,7 @@ func TestQueriesGet_TableContract(t *testing.T) {
 func TestQueriesGet_JSONContract(t *testing.T) {
 	srv := catalogServer(t)
 
-	stdout, _, err := runQueries(t, srv.URL, false, "get", "checks_uptime", "-o", "json")
+	stdout, err := runQueries(t, srv.URL, false, "get", "checks_uptime", "-o", "json")
 	require.NoError(t, err)
 
 	var doc map[string]any
@@ -139,40 +136,20 @@ func TestQueriesGet_JSONContract(t *testing.T) {
 func TestQueriesGet_UnknownNameErrors(t *testing.T) {
 	srv := catalogServer(t)
 
-	_, _, err := runQueries(t, srv.URL, false, "get", "does_not_exist")
+	_, err := runQueries(t, srv.URL, false, "get", "does_not_exist")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not found")
 	assert.Contains(t, err.Error(), "queries list")
 }
 
-func TestQueriesList_UnexpectedAPIVersionWarnsOnStderr(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == schemaPath {
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{
-				"kind": "QueryTypeDefinitionList",
-				"apiVersion": "datasource.grafana.app/v1alpha2",
-				"items": [{"metadata":{"name":"foo"},"spec":{"description":"d","schema":{"type":"object"}}}]
-			}`))
-			return
-		}
-		http.NotFound(w, r)
-	}))
-	t.Cleanup(srv.Close)
-
-	stdout, stderr, err := runQueries(t, srv.URL, false, "list")
-	require.NoError(t, err, "an unexpected apiVersion must not fail the fetch")
-	assert.Contains(t, stdout, "foo")
-	assert.Contains(t, stderr, "apiVersion")
-}
-
 func TestQueriesList_AgentModeSingleJSONValue(t *testing.T) {
 	srv := catalogServer(t)
 
-	stdout, _, err := runQueries(t, srv.URL, true, "list")
+	stdout, err := runQueries(t, srv.URL, true, "list")
 	require.NoError(t, err)
 
 	dec := json.NewDecoder(strings.NewReader(stdout))
 	var doc any
 	require.NoError(t, dec.Decode(&doc))
+	assert.False(t, dec.More(), "agent mode must write exactly one JSON value")
 }

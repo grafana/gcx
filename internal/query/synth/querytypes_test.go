@@ -53,7 +53,6 @@ func TestCatalog_ParsesRealFixture(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
-	assert.Equal(t, "datasource.grafana.app/v0alpha1", result.APIVersion)
 	require.Len(t, result.QueryTypes, 2)
 
 	assert.Equal(t, "probe_execution_rate", result.QueryTypes[0].Name)
@@ -90,21 +89,19 @@ func TestCatalog_MalformedJSONIsError(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestCatalog_UnexpectedAPIVersionIsParsedNotFailed(t *testing.T) {
+// TestCatalog_WrongKindIsError guards against a 200 response that happens to
+// decode into the same shape (e.g. an empty JSON object, or an unrelated
+// document with no "kind") being silently read as a catalog with zero query
+// types -- indistinguishable from a tenant that genuinely has none.
+func TestCatalog_WrongKindIsError(t *testing.T) {
 	client := newCatalogTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{
-			"kind": "QueryTypeDefinitionList",
-			"apiVersion": "datasource.grafana.app/v1alpha2",
-			"items": [{"metadata":{"name":"foo"},"spec":{"description":"d","schema":{"type":"object"}}}]
-		}`))
+		_, _ = w.Write([]byte(`{}`))
 	})
 
-	result, err := client.Catalog(context.Background())
-	require.NoError(t, err, "an unexpected apiVersion must not fail the fetch -- the file is additive")
-	assert.Equal(t, "datasource.grafana.app/v1alpha2", result.APIVersion)
-	require.Len(t, result.QueryTypes, 1)
-	assert.Equal(t, "foo", result.QueryTypes[0].Name)
+	_, err := client.Catalog(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "QueryTypeDefinitionList")
 }
 
 func TestCatalog_404WithVersionBelowMinimum(t *testing.T) {
