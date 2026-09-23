@@ -62,6 +62,21 @@ and can reach the server.
 Use this path when connecting to a Grafana Cloud instance
 (URLs ending in `.grafana.net`).
 
+**No Grafana Cloud account yet?** Skip Steps 1 to 4 and run:
+
+```bash
+gcx signup cloud
+```
+
+It opens the Grafana Cloud sign-up page (in agent mode it prints the URL for
+the user to open). The user creates the account, verifies their email, creates
+a first stack, and approves "Connect gcx"; gcx then saves the connection to the
+`cloud` context and makes it current. It asks no questions, and it only saves
+a new connection, so it refuses a context or stack entry that already exists:
+do not run Step 1 first. If it fails once the browser step has started, run
+the `gcx login` command the error shows, not `gcx signup` again, which would
+start a second account.
+
 ### Step 1: Create a stack and context
 
 ```bash

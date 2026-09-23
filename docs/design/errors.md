@@ -173,6 +173,7 @@ Adding a new summary requires a PR amending this list.
 | `Network error` | Connection refused, DNS failure |
 | `API error` | Non-404/403 HTTP error from backend |
 | `Endpoint not available` | The requested API route is absent on this deployment or version (e.g. an experimental or Cloud-only endpoint), as opposed to a missing resource |
+| `Operation cancelled` | The user cancelled (exit code 5): Ctrl-C or another context cancellation, or Cancel on a browser login's consent page |
 | `Unexpected error` | Catch-all — no typed converter matched |
 
 Converters in `cmd/gcx/fail/convert.go` MUST set `Summary` to a value from this table.

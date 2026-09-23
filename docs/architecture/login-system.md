@@ -50,7 +50,8 @@ classDiagram
         CloudOAuthTokenExpiresAt, CloudOAuthScopes
         UseOAuth, Yes, Writer
         OAuthCallbackPort, OAuthManual, Reader
-        UseCloudInstanceSelector
+        UseCloudInstanceSelector, CloudSignup
+        Interactive
         TLS, StoredTLS
         PreserveStoredTLS
         RuntimeProxyEndpoint, StoredProxyEndpoint
@@ -144,6 +145,27 @@ flowchart TD
     Mismatch -->|yes, no override| OverSentinel[Return ErrNeedClarification&#123;allow-override&#125;]
     Mismatch -->|no| Result([Return Result])
 ```
+
+`Server set?` is also satisfied by `UseCloudInstanceSelector`, which the CLI
+sets when the user leaves the first-run server prompt empty and for
+`--cloud --oauth` without a server. `CloudSignup`, set only by `gcx signup`,
+implies it. Those logins run OAuth against the Grafana Cloud stack launcher on
+the portal named by the Cloud OAuth URL, and the server comes back from the
+consent page. `CloudSignup` starts on the account creation page, skips the
+optional Cloud step, and never returns the `save-unvalidated` clarification:
+a failed validation comes back as the error itself. `gcx signup` shares
+`runLogin` with `gcx login`. Before the browser opens it fixes the context name
+and refuses anything but a new connection: a context with a stack or Cloud
+binding, an existing stack entry named after the context (where
+`mergeGrafanaAuthIntoStack` would save), a context bound to that name, and
+destination environment overrides; it checks both the effective config and the
+file the save writes. It asks no questions, ignores Cloud credentials, passes
+a sign in command as `ManualRetryCommand` for the SSH hint, and wraps any error
+from `login.Run` once the browser flow has been constructed in
+`SignupIncompleteError`. The error converter renders that with the gcx login
+recovery: `--server <stack> --oauth` when the browser step finished, and
+`--cloud --oauth` when it did not. Errors from printing the result, after the
+save, are returned as they are.
 
 The pipeline reads top-to-bottom in `Run()` (login.go:180). Each step returns
 early on failure; sentinel branches unwind to the CLI for interactive

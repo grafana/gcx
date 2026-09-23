@@ -3,6 +3,8 @@ package auth
 import (
 	"context"
 	"io"
+	"net"
+	"net/http"
 	"net/url"
 	"os"
 )
@@ -82,4 +84,64 @@ func HandleCallbackParams(ctx context.Context, q url.Values, expectedState, code
 		return nil
 	}
 	return cerr.err
+}
+
+// SwapOpenBrowser replaces the browser opener so a test can record the URLs a
+// flow opens without starting a browser. It returns a restore function.
+func SwapOpenBrowser(open func(string) (bool, error)) func() {
+	previous := openBrowser
+	openBrowser = open
+	return func() { openBrowser = previous }
+}
+
+// StartReopenWatcher exposes the unexported startReopenWatcher. It returns nil
+// when the reopen shortcut does not apply.
+func StartReopenWatcher(w io.Writer) *PasteWatcher {
+	return startReopenWatcher(w)
+}
+
+// AuthAndEntryURLs exposes the consent URL a flow builds for a callback port,
+// and the URL that the browser opens first.
+func (f *Flow) AuthAndEntryURLs(port int, state, codeChallenge string) (string, string) {
+	authURL := f.buildAuthURL(port, state, codeChallenge)
+	return authURL, f.buildEntryURL(authURL)
+}
+
+// ReopenRequestForTest returns a watcher whose only delivery is one reopen
+// request, already waiting.
+func ReopenRequestForTest() *PasteWatcher {
+	w := &pasteWatcher{
+		values: make(chan pastedInput, 1),
+		stop:   make(chan struct{}),
+		done:   make(chan struct{}),
+		reopen: true,
+	}
+	w.values <- pastedInput{Reopen: true}
+	close(w.done)
+	return w
+}
+
+// AwaitReadyResult runs the flow's wait loop with a result that is already
+// waiting alongside paste's delivery.
+func AwaitReadyResult(ctx context.Context, paste *PasteWatcher, result *Result, reopen func()) (*Result, error) {
+	resultCh := make(chan *Result, 1)
+	resultCh <- result
+	return awaitCallbackOrPaste(ctx, io.Discard, paste, reopen, resultCh, make(chan error),
+		func(url.Values) (*Result, *callbackError) { return nil, nil })
+}
+
+// TerminalDeviceCandidates exposes the device-path filter of the macOS
+// terminal fallback.
+func TerminalDeviceCandidates(devNames, ptsPaths []string) []string {
+	return terminalDeviceCandidates(devNames, ptsPaths)
+}
+
+// StartGCOMCallbackServer starts the grafana.com flow's callback server on
+// listener, so a test can send it callbacks that never reach a token exchange.
+// It returns the channel on which the server reports a login-ending error.
+func StartGCOMCallbackServer(ctx context.Context, listener net.Listener, state string) (*http.Server, <-chan error) {
+	f := NewGCOMFlow(GCOMOptions{ClientID: "gcx", GCOMURL: "https://grafana.com", Writer: io.Discard})
+	errCh := make(chan error, 1)
+	server := f.startGCOMCallbackServer(ctx, listener, state, "verifier", "http://127.0.0.1/callback", &exchangeGuard{}, make(chan *GCOMResult, 1), errCh)
+	return server, errCh
 }
