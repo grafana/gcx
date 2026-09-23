@@ -20,6 +20,7 @@
 /internal/fleet/ @grafana/grafana-gcx @grafana/fleet-management-backend @grafana/fleet-management-frontend
 /internal/providers/instrumentation/ @grafana/grafana-gcx @grafana/fleet-management-backend
 /internal/providers/kg/ @grafana/grafana-gcx @grafana/asserts-team
+/internal/query/kg/ @grafana/grafana-gcx @grafana/asserts-team @grafana/app-o11y-visualizations
 /internal/providers/appo11y/ @grafana/grafana-gcx @grafana/app-o11y-visualizations
 /internal/providers/assistant/ @grafana/grafana-gcx @grafana/grafana-assistant-loop
 /internal/providers/agento11y/ @grafana/grafana-gcx @grafana/grafana-assistant-loop
