@@ -4,7 +4,11 @@ Search label names (experimental)
 
 ### Synopsis
 
-Search label names from a Prometheus/Mimir datasource. Requires TERM (performs a fuzzy search), or --metric / --metric-regex to scope by metric name instead.
+Search label names from a Prometheus/Mimir datasource. Requires TERM (performs a fuzzy search; multiple TERM values combine as OR), or --metric / --metric-regex to scope by metric name instead.
+
+sort_by=score (the default) requires a search term — omitting TERM in favor
+of a metric scope falls back to sort_by=alpha unless --sort-by is set
+explicitly.
 
 --metric-regex is used exactly as given — PromQL anchors =~ at ^...$, so
 "kube" matches only a metric literally named "kube", not one containing
@@ -54,7 +58,7 @@ gcx metrics search label-names [TERM...] [flags]
       --jq string             jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string           Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int             Maximum results to return (0: unlimited but may be limited server side) (default 50)
-      --match stringArray     PromQL series selector(s) restricting candidates; repeatable
+      --match stringArray     PromQL series selector(s) restricting candidates; repeatable (repeated selectors combine as a union, per the Prometheus match[] API)
       --metric string         Only results from series of this metric name; mutually exclusive with --metric-regex
       --metric-regex string   Only results from series whose metric name matches this regex. Used exactly as given. To match all metric names which contain "kube" use ".*kube.*". Mutually exclusive with --metric.
   -o, --output string         Output format. One of: agents, json, table, yaml (default "table")

@@ -307,6 +307,70 @@ func TestSearchLabelNamesCmd_RejectsExplicitlyEmptyMetric(t *testing.T) {
 	assert.Empty(t, path, "no request should be made for an empty --metric")
 }
 
+// TestSearchMetricNamesCmd_RejectsInvalidEnumAndRangeFlags proves --sort-by,
+// --sort-dir, --fuzz-alg, --fuzz-threshold, --limit, and --batch-size are
+// validated client-side against their documented allowed values/ranges
+// before any request is made — an unvalidated bad value would otherwise
+// reach the server as an opaque error.
+func TestSearchMetricNamesCmd_RejectsInvalidEnumAndRangeFlags(t *testing.T) {
+	tests := []struct {
+		name      string
+		extraArgs []string
+		wantErr   string
+	}{
+		{name: "bad sort-by", extraArgs: []string{"--sort-by", "bogus"}, wantErr: "invalid --sort-by"},
+		{name: "explicitly empty sort-by", extraArgs: []string{"--sort-by", ""}, wantErr: "invalid --sort-by"},
+		{name: "bad sort-dir", extraArgs: []string{"--sort-dir", "bogus"}, wantErr: "invalid --sort-dir"},
+		{name: "sort-dir incompatible with sort-by=score", extraArgs: []string{"--sort-dir", "asc"}, wantErr: "incompatible with --sort-by=score"},
+		{name: "bad fuzz-alg", extraArgs: []string{"--fuzz-alg", "bogus"}, wantErr: "invalid --fuzz-alg"},
+		{name: "fuzz-threshold too low", extraArgs: []string{"--fuzz-threshold", "-1"}, wantErr: "invalid --fuzz-threshold"},
+		{name: "fuzz-threshold too high", extraArgs: []string{"--fuzz-threshold", "101"}, wantErr: "invalid --fuzz-threshold"},
+		{name: "negative limit", extraArgs: []string{"--limit", "-1"}, wantErr: "invalid --limit"},
+		{name: "batch-size too high", extraArgs: []string{"--batch-size", "10001"}, wantErr: "invalid --batch-size"},
+		{name: "negative batch-size", extraArgs: []string{"--batch-size", "-1"}, wantErr: "invalid --batch-size"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			root, _, captured := newSearchTestRoot(t, "")
+			args := append([]string{"search-metric-names", "up", "-d", "prom-uid"}, tc.extraArgs...)
+			root.SetArgs(args)
+
+			err := root.Execute()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.wantErr)
+
+			path, _ := captured()
+			assert.Empty(t, path, "no request should be made for an invalid flag value")
+		})
+	}
+}
+
+// TestSearchMetricNamesCmd_AcceptsValidEnumAndRangeFlags proves the
+// documented valid values for the same flags are not rejected.
+func TestSearchMetricNamesCmd_AcceptsValidEnumAndRangeFlags(t *testing.T) {
+	ndjson := strings.Join([]string{`{"results":[]}`, `{"status":"success"}`}, "\n") + "\n"
+
+	tests := [][]string{
+		{"--sort-by", "alpha"},
+		{"--sort-by", "alpha", "--sort-dir", "dsc"},
+		{"--fuzz-alg", "subsequence"},
+		{"--fuzz-threshold", "0"},
+		{"--fuzz-threshold", "100"},
+		{"--limit", "0"},
+		{"--batch-size", "10000"},
+	}
+
+	for _, extraArgs := range tests {
+		t.Run(strings.Join(extraArgs, " "), func(t *testing.T) {
+			root, _, _ := newSearchTestRoot(t, ndjson)
+			args := append([]string{"search-metric-names", "up", "-d", "prom-uid"}, extraArgs...)
+			root.SetArgs(args)
+			require.NoError(t, root.Execute())
+		})
+	}
+}
+
 func TestSearchMetricNamesCmd_HasNoMetricFlag(t *testing.T) {
 	root, _, _ := newSearchTestRoot(t, "")
 	cmd, _, err := root.Find([]string{"search-metric-names"})

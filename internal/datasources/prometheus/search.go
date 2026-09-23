@@ -52,7 +52,7 @@ func (opts *SearchOpts) SetupCommon(flags *pflag.FlagSet, withMetric bool) {
 	opts.SetupTimeFlags(flags)
 
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.prometheus is configured)")
-	flags.StringArrayVar(&opts.Match, "match", nil, "PromQL series selector(s) restricting candidates; repeatable")
+	flags.StringArrayVar(&opts.Match, "match", nil, "PromQL series selector(s) restricting candidates; repeatable (repeated selectors combine as a union, per the Prometheus match[] API)")
 	if withMetric {
 		flags.StringVar(&opts.Metric, "metric", "", "Only results from series of this metric name; mutually exclusive with --metric-regex")
 		flags.StringVar(&opts.MetricRegex, "metric-regex", "", `Only results from series whose metric name matches this regex. Used exactly as given. To match all metric names which contain "kube" use ".*kube.*". Mutually exclusive with --metric.`)
@@ -71,6 +71,35 @@ func (opts *SearchOpts) Validate() error {
 	if err := opts.IO.Validate(); err != nil {
 		return err
 	}
+
+	switch opts.SortBy {
+	case "score", "alpha":
+	default:
+		return fmt.Errorf(`invalid --sort-by %q: must be "score" or "alpha"`, opts.SortBy)
+	}
+	switch opts.SortDir {
+	case "", "asc", "dsc":
+	default:
+		return fmt.Errorf(`invalid --sort-dir %q: must be "asc" or "dsc"`, opts.SortDir)
+	}
+	if opts.SortDir != "" && opts.SortBy == "score" {
+		return errors.New("--sort-dir is incompatible with --sort-by=score; sort direction only applies to --sort-by=alpha")
+	}
+	switch opts.FuzzAlg {
+	case "jarowinkler", "subsequence":
+	default:
+		return fmt.Errorf(`invalid --fuzz-alg %q: must be "jarowinkler" or "subsequence"`, opts.FuzzAlg)
+	}
+	if opts.FuzzThreshold < 0 || opts.FuzzThreshold > 100 {
+		return fmt.Errorf("invalid --fuzz-threshold %d: must be between 0 and 100", opts.FuzzThreshold)
+	}
+	if opts.Limit < 0 {
+		return fmt.Errorf("invalid --limit %d: must be >= 0 (0 means unlimited)", opts.Limit)
+	}
+	if opts.BatchSize < 0 || opts.BatchSize > 10000 {
+		return fmt.Errorf("invalid --batch-size %d: must be between 0 and 10000", opts.BatchSize)
+	}
+
 	return opts.ValidateTimeRange()
 }
 
@@ -171,7 +200,7 @@ func SearchMetricNamesCmd(loader *providers.ConfigLoader) *cobra.Command {
 		Short: "Search metric names (experimental)",
 		Long: `Search metric names from a Prometheus/Mimir datasource. At least one TERM is required.
 
-This API allows for metric names to be discovered via a configurable fuzzy search. 
+This API allows for metric names to be discovered via a configurable fuzzy search. Multiple TERM values combine as OR.
 
 Search terms can be augmented with matchers for additional filtering of considered series.
 
@@ -247,7 +276,11 @@ func SearchLabelNamesCmd(loader *providers.ConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "search-label-names [TERM...]",
 		Short: "Search label names (experimental)",
-		Long: `Search label names from a Prometheus/Mimir datasource. Requires TERM (performs a fuzzy search), or --metric / --metric-regex to scope by metric name instead.
+		Long: `Search label names from a Prometheus/Mimir datasource. Requires TERM (performs a fuzzy search; multiple TERM values combine as OR), or --metric / --metric-regex to scope by metric name instead.
+
+sort_by=score (the default) requires a search term — omitting TERM in favor
+of a metric scope falls back to sort_by=alpha unless --sort-by is set
+explicitly.
 
 --metric-regex is used exactly as given — PromQL anchors =~ at ^...$, so
 "kube" matches only a metric literally named "kube", not one containing
@@ -332,7 +365,10 @@ func SearchLabelValuesCmd(loader *providers.ConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "search-label-values LABEL [TERM...]",
 		Short: "Search the values of a label (experimental)",
-		Long: `Search the values of a single label from a Prometheus/Mimir datasource. LABEL is always required; TERM, --metric, and --metric-regex are all optional and may be combined or omitted — LABEL alone lists every value of that label.
+		Long: `Search the values of a single label from a Prometheus/Mimir datasource. LABEL is always required; TERM (multiple values combine as OR), --metric, and --metric-regex are all optional and may be combined or omitted — LABEL alone lists every value of that label.
+
+sort_by=score (the default) requires a search term — omitting TERM falls
+back to sort_by=alpha unless --sort-by is set explicitly.
 
 --metric-regex is used exactly as given — PromQL anchors =~ at ^...$, so
 "kube" matches only a metric literally named "kube", not one containing

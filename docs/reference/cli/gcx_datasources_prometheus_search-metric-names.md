@@ -6,7 +6,7 @@ Search metric names (experimental)
 
 Search metric names from a Prometheus/Mimir datasource. At least one TERM is required.
 
-This API allows for metric names to be discovered via a configurable fuzzy search. 
+This API allows for metric names to be discovered via a configurable fuzzy search. Multiple TERM values combine as OR.
 
 Search terms can be augmented with matchers for additional filtering of considered series.
 
@@ -55,7 +55,7 @@ gcx datasources prometheus search-metric-names TERM... [flags]
       --jq string            jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int            Maximum results to return (0: unlimited but may be limited server side) (default 50)
-      --match stringArray    PromQL series selector(s) restricting candidates; repeatable
+      --match stringArray    PromQL series selector(s) restricting candidates; repeatable (repeated selectors combine as a union, per the Prometheus match[] API)
   -o, --output string        Output format. One of: agents, json, table, yaml (default "table")
       --since string         Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --sort-by string       Sort by: score (requires a search term) or alpha (default "score")
