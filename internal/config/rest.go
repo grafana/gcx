@@ -48,7 +48,8 @@ type NamespacedRESTConfig struct {
 	keychainPolicy keychainPolicy
 }
 
-// IsOAuthProxy reports whether the config is using OAuth proxy mode.
+// IsOAuthProxy reports whether Grafana requests use the Assistant proxy,
+// through either browser OAuth or GitHub Actions authentication.
 func (n *NamespacedRESTConfig) IsOAuthProxy() bool {
 	return n.oauthTransport != nil || n.githubActions != nil
 }

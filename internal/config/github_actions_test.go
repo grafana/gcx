@@ -46,3 +46,19 @@ func TestGitHubActionsValidationGivesConfigPath(t *testing.T) {
 		})
 	}
 }
+
+func TestGitHubActionsKeepsAssistantProxyForExistingConsumers(t *testing.T) {
+	t.Setenv("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "request-secret")
+	t.Setenv("ACTIONS_ID_TOKEN_REQUEST_URL", "https://pipelines.actions.githubusercontent.com/oidc")
+	cfg := Context{Grafana: &GrafanaConfig{
+		AuthMethod: "github-actions", Server: "https://stack.grafana.net/grafana", StackID: 1,
+		ProxyEndpoint: "https://assistant.example/assistant",
+		GitHubActions: &auth.GitHubActionsOptions{Endpoint: "https://assistant.example/assistant", TenantID: "1", Scopes: []string{"grafana-api:read"}},
+	}}
+	restCfg, err := NewNamespacedRESTConfig(t.Context(), cfg)
+	require.NoError(t, err)
+	require.True(t, restCfg.IsOAuthProxy(), "k6, SM discovery and dev serve must select the proxy path")
+	require.Equal(t, "https://assistant.example/assistant/api/cli/v1/proxy", restCfg.Host)
+	require.Equal(t, "https://stack.grafana.net/grafana", restCfg.GrafanaURL)
+	require.Empty(t, restCfg.BearerToken, "authentication belongs to the renewing transport")
+}

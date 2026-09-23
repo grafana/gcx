@@ -232,7 +232,7 @@ var ErrCredentialPersistencePreflight = errors.New("OAuth login credential persi
 // render a post-login summary and persist auth-method metadata.
 type Result struct {
 	ContextName    string
-	AuthMethod     string // "oauth", "token", "basic", or "mtls"
+	AuthMethod     string // "oauth", "github-actions", "token", "basic", or "mtls"
 	IsCloud        bool
 	HasCloudToken  bool
 	GrafanaVersion string

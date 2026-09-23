@@ -138,8 +138,11 @@ func (a *GitHubActions) Exchange(ctx context.Context) (GitHubActionsResult, erro
 		return empty, fmt.Errorf("exchange GitHub identity: %w; check the workflow grant and linked Grafana account", err)
 	}
 	r := response.Data
-	if !strings.HasPrefix(r.Token, "gat_") || r.Tenant != a.options.TenantID || strings.TrimRight(r.APIEndpoint, "/") != endpoint || time.Until(r.ExpiresAt) <= time.Minute || time.Until(r.ExpiresAt) > 16*time.Minute {
+	if !strings.HasPrefix(r.Token, "gat_") || r.Tenant != a.options.TenantID || strings.TrimRight(r.APIEndpoint, "/") != endpoint {
 		return empty, errors.New("invalid GitHub Actions credential response")
+	}
+	if remaining := time.Until(r.ExpiresAt); remaining <= time.Minute || remaining > 16*time.Minute {
+		return empty, errors.New("GitHub Actions credential lifetime must be greater than 1 minute and at most 16 minutes")
 	}
 	if _, err := trustedActionsEndpoint(r.GrafanaURL); err != nil {
 		return empty, errors.New("invalid Grafana URL in credential response")
@@ -163,7 +166,8 @@ func (a *GitHubActions) do(req *http.Request, out any) error {
 		return actionsTransportError(err)
 	}
 	defer res.Body.Close()
-	// Never include remote bodies or URLs: either can contain authentication material.
+	// Returned errors omit remote bodies and URLs. Shared HTTP diagnostics still
+	// log request URLs, but never these credential-bearing bodies or headers.
 	if res.StatusCode != http.StatusOK {
 		return fmt.Errorf("HTTP %d", res.StatusCode)
 	}
@@ -173,8 +177,8 @@ func (a *GitHubActions) do(req *http.Request, out any) error {
 	return nil
 }
 
-// Keep useful failure classes without printing url.Error or transport messages,
-// which can contain the OIDC request URL or other authentication material.
+// Keep useful failure classes in returned errors without embedding raw transport
+// messages. The shared HTTP logger separately records request URLs for diagnosis.
 func actionsTransportError(err error) error {
 	if errors.Is(err, context.Canceled) {
 		return fmt.Errorf("authentication service unavailable: %w", context.Canceled)

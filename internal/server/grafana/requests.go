@@ -82,6 +82,8 @@ func AuthenticateAndProxyHandler(cfg *config.Context) http.HandlerFunc {
 // proxy cannot use without risking credential loss. OAuth refresh-token
 // rotation must be wired to the owning config source; this proxy has only a
 // resolved Context, so it must fail before constructing or sending a request.
+// GitHub Actions is allowed: renewal stays in memory and never rotates persisted
+// credentials. It remains usable only while the job can request GitHub OIDC tokens.
 func ValidateDevProxyAuth(cfg *config.Context) error {
 	if cfg == nil || cfg.Grafana == nil || cfg.Grafana.Server == "" {
 		return errors.New("no Grafana URL configured")

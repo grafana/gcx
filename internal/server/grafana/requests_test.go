@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/config"
 	servergrafana "github.com/grafana/gcx/internal/server/grafana"
 )
@@ -131,6 +132,25 @@ func TestAuthenticateAndProxyHandlerRejectsUnsupportedAuthBeforeNetwork(t *testi
 			}
 			if !strings.Contains(response.Body.String(), tc.wantMessage) {
 				t.Errorf("body %q does not contain %q", response.Body.String(), tc.wantMessage)
+			}
+		})
+	}
+}
+
+func TestDevProxyAllowsValidatedInMemoryWorkflowAuth(t *testing.T) {
+	for _, valid := range []bool{true, false} {
+		t.Run(map[bool]string{true: "valid", false: "missing scopes"}[valid], func(t *testing.T) {
+			options := &auth.GitHubActionsOptions{Endpoint: "https://assistant.example", TenantID: "1"}
+			if valid {
+				options.Scopes = []string{"grafana-api:read"}
+			}
+			cfg := &config.Context{Grafana: &config.GrafanaConfig{
+				Server: "https://stack.grafana.net", AuthMethod: "github-actions",
+				ProxyEndpoint: options.Endpoint, GitHubActions: options,
+			}}
+			err := servergrafana.ValidateDevProxyAuth(cfg)
+			if (err == nil) != valid {
+				t.Fatalf("ValidateDevProxyAuth error = %v, valid = %v", err, valid)
 			}
 		})
 	}

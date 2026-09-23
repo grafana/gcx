@@ -58,6 +58,17 @@ make mutating workflows idempotent. Unlinking the user or removing the workflow
 grant stops further use.
 The original signed workflow actor determines identity, including reruns.
 
+Existing Assistant-proxy consumers use this mode too: k6 routes through the
+Grafana plugin proxy, and Synthetic Monitoring discovers its API URL through
+Grafana plugin settings. Product-specific credentials and permission checks
+still apply; OIDC does not supply a Grafana Cloud API token. `gcx dev serve` may
+use this mode inside a job: it keeps the Assistant proxy path and renews in memory,
+without the persistent refresh-token rotation that prevents browser OAuth there.
+The server stops authenticating when the job can no longer obtain OIDC tokens.
+An explicit loopback HTTP backend is accepted for local tests; remote backends
+require HTTPS. Shared HTTP debug logs include request URLs and status codes;
+exchange request/response bodies and authorization headers are not dumped.
+
 For local development, run the focused auth/config/login tests with mock HTTP
 servers. Real GitHub OIDC is only available inside a GitHub Actions job; a tunnel
 can point that job at a local Assistant backend. Publishing the Action and smoke

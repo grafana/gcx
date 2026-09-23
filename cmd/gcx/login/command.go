@@ -94,7 +94,7 @@ func (opts *loginOpts) setup(flags *pflag.FlagSet) {
 func (opts *loginOpts) Validate(args []string) error {
 	if opts.GitHubActions {
 		if opts.Cloud || opts.OAuth || opts.OAuthManual || opts.Token != "" || opts.CloudToken != "" || opts.OAuthCallbackPort != 0 || opts.OrgID != 0 || opts.Server != "" || opts.CloudAPIURL != "" {
-			return errors.New("--github-actions cannot be combined with browser, token, server or Cloud login options")
+			return gcxerrors.DetailedError{Summary: "--github-actions conflicts with browser, token, server or Cloud login options", Suggestions: []string{"Use --github-actions with --tenant-id, --assistant-endpoint and --scopes; remove other login options"}}
 		}
 		if err := (internalauth.GitHubActionsOptions{Endpoint: opts.ActionsEndpoint, TenantID: opts.ActionsTenant, Scopes: opts.ActionsScopes}).Validate(); err != nil {
 			return err
@@ -291,9 +291,11 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 
 	if flags.GitHubActions {
 		if credentialProvided("", "GRAFANA_TOKEN") || credentialProvided("", "GRAFANA_CLOUD_TOKEN") {
-			return errors.New("unset ambient token credentials before selecting GitHub Actions authentication")
+			return gcxerrors.DetailedError{Summary: "ambient token credentials conflict with --github-actions", Suggestions: []string{"Unset GRAFANA_TOKEN and GRAFANA_CLOUD_TOKEN, then repeat gcx login --github-actions"}}
 		}
 		result, server, err := login.RunGitHubActions(ctx, login.Options{RetryState: login.RetryState{AllowOverride: flags.AllowServerOverride}, Hooks: login.Hooks{ConfigSource: mutationSource, LoginMutationGuard: loginMutationGuard, CloudMutationSafety: cloudMutationSafety}}, contextName, internalauth.GitHubActionsOptions{Endpoint: strings.TrimRight(flags.ActionsEndpoint, "/"), TenantID: flags.ActionsTenant, Scopes: flags.ActionsScopes})
+		// Override captures from config loading and persistence on success or failure.
+		captureLoginGrafanaAuthMethod(login.Result{AuthMethod: "github-actions"}, &login.Options{})
 		if err != nil {
 			return err
 		}

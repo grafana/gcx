@@ -5,7 +5,7 @@ inputs:
     description: Grafana Cloud stack ID authorized by the Assistant workflow grant.
     required: true
   assistant-endpoint:
-    description: Explicit HTTPS Assistant backend base URL.
+    description: Explicit HTTPS Assistant backend base URL (loopback HTTP is allowed for local tests).
     required: true
   scopes:
     description: Comma-separated scopes authorized by the workflow grant.

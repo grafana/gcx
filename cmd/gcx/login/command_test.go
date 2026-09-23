@@ -2539,3 +2539,24 @@ func TestGitHubActionsLoginFlags(t *testing.T) {
 		})
 	}
 }
+
+func TestGitHubActionsLoginFailureCapturesSelectedMethod(t *testing.T) {
+	for _, seedMethod := range []string{"", "basic"} {
+		t.Run("previous method "+seedMethod, func(t *testing.T) {
+			capture.Reset()
+			t.Cleanup(capture.Reset)
+			capture.SetGrafanaAuthMethod(seedMethod)
+			for _, key := range []string{"GRAFANA_TOKEN", "GRAFANA_CLOUD_TOKEN", "GRAFANA_SERVER", "ACTIONS_ID_TOKEN_REQUEST_TOKEN", "ACTIONS_ID_TOKEN_REQUEST_URL"} {
+				t.Setenv(key, "")
+			}
+			cmd := Command()
+			cmd.SilenceErrors, cmd.SilenceUsage = true, true
+			cmd.SetOut(&bytes.Buffer{})
+			cmd.SetErr(&bytes.Buffer{})
+			cmd.SetArgs([]string{"--github-actions", "--tenant-id", "1", "--assistant-endpoint", "https://assistant.example", "--scopes", "assistant:a2a", "--config", filepath.Join(t.TempDir(), "config.yaml")})
+			err := cmd.ExecuteContext(t.Context())
+			require.ErrorContains(t, err, "GitHub Actions OIDC is unavailable")
+			require.Equal(t, "github-actions", capture.CurrentGrafanaAuthMethod())
+		})
+	}
+}
