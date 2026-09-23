@@ -17,19 +17,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/httputils"
 	"k8s.io/client-go/rest"
 )
-
-// smDatasourcePluginID is the plugin id of the SM datasource, matching
-// DatasourceType in backend_datasource_client.go, but spelled out again here:
-// this package deliberately has no dependency between its files beyond the
-// shared HTTP conventions.
-const smDatasourcePluginID = "synthetic-monitoring-datasource"
 
 // smAppPluginID is the SM app's plugin id, used only to look up the installed
 // version when the catalog itself 404s.
@@ -47,7 +41,7 @@ const minDiscoveryAppVersion = "1.62.0"
 const ExpectedQueryTypesAPIVersion = "datasource.grafana.app/v0alpha1"
 
 func queryTypesSchemaPath() string {
-	return fmt.Sprintf("/public/plugins/%s/schema/v0alpha1/query.types.json", smDatasourcePluginID)
+	return fmt.Sprintf("/public/plugins/%s/schema/v0alpha1/query.types.json", DatasourceType)
 }
 
 func smAppSettingsPath() string {
@@ -176,6 +170,7 @@ func (c *CatalogClient) unavailableError(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("SM app reports invalid version %q: %w", settings.Info.Version, err)
 	}
+
 	if installed.LessThan(semver.MustParse(minDiscoveryAppVersion)) {
 		return fmt.Errorf(
 			"named-query discovery requires Synthetic Monitoring app v%s or later; this context has v%s installed",
@@ -191,8 +186,7 @@ func (c *CatalogClient) unavailableError(ctx context.Context) error {
 
 // get performs an unauthenticated-endpoint GET against the Grafana host,
 // enforcing the same response-size cap as the SM proxy transport
-// (maxResponseBytes, proxy_client.go) so a misbehaving server cannot exhaust
-// memory.
+// (maxResponseBytes, proxy_client.go) via the shared httputils reader.
 func (c *CatalogClient) get(ctx context.Context, path string) ([]byte, int, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.restConfig.Host+path, nil)
 	if err != nil {
@@ -205,12 +199,9 @@ func (c *CatalogClient) get(ctx context.Context, path string) ([]byte, int, erro
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
+	body, err := httputils.ReadResponseBody(resp.Body, maxResponseBytes)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to read response: %w", err)
-	}
-	if int64(len(body)) > maxResponseBytes {
-		return nil, 0, fmt.Errorf("named-query catalog response exceeds %d MB limit", int64(maxResponseBytes)>>20)
 	}
 
 	return body, resp.StatusCode, nil
