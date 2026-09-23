@@ -75,7 +75,9 @@ func (opts *SearchOpts) Validate() error {
 }
 
 // ToOptions resolves the parsed flags into a prometheus.SearchOptions.
-// Note that SortBy falls back to alpha when no search term is issued.
+// SortBy falls back to alpha when no search term is issued and the caller
+// didn't explicitly pass --sort-by; an explicit --sort-by=score with no
+// term is left alone.
 func (opts *SearchOpts) ToOptions(terms []string, sortByExplicit bool) (prometheus.SearchOptions, error) {
 	start, end, err := opts.ParseTimeRange(time.Now())
 	if err != nil {
@@ -177,7 +179,7 @@ This API is experimental and disabled by default on both self-hosted
 Prometheus (requires --enable-feature=search-api) and self-hosted Mimir
 (requires -querier.experimental-search-api-enabled).
 
-See also search-label-names and search-label-values.`,
+See also the sibling label-name search and label-value search commands.`,
 		Args: cobra.MinimumNArgs(1),
 		Example: `
   # Fuzzy search metric names (use datasource UID, not name)
@@ -255,7 +257,7 @@ This API is experimental and disabled by default on both self-hosted
 Prometheus (requires --enable-feature=search-api) and self-hosted Mimir
 (requires -querier.experimental-search-api-enabled).
 
-See also search-metric-names and search-label-values.`,
+See also the sibling metric-name search and label-value search commands.`,
 		Args: cobra.ArbitraryArgs,
 		Example: `
   # Fuzzy search label names (use datasource UID, not name)
@@ -340,7 +342,7 @@ This API is experimental and disabled by default on both self-hosted
 Prometheus (requires --enable-feature=search-api) and self-hosted Mimir
 (requires -querier.experimental-search-api-enabled).
 
-See also search-metric-names and search-label-names.`,
+See also the sibling metric-name search and label-name search commands.`,
 		Args: cobra.MinimumNArgs(1),
 		Example: `
   # List every value of the "job" label (use datasource UID, not name)

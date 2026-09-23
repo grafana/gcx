@@ -10,6 +10,12 @@ import (
 // SearchCommands returns the `search` subcommand group exposing the
 // experimental Prometheus/Mimir search API under the cross-signal `gcx
 // metrics` family: metric-names, label-names, label-values.
+//
+// These three leaf names don't pass the canonical-verb naming gate as
+// children of a group (only "search-*" flat leaves would); all three full
+// paths are grandfathered in
+// cmd/gcx/root/testdata/non_canonical_command_operations.json as a
+// deliberate, maintainer-requested exception, not an oversight.
 func SearchCommands(loader *providers.ConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "search",

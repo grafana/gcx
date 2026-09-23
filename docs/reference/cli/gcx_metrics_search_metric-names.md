@@ -14,7 +14,7 @@ This API is experimental and disabled by default on both self-hosted
 Prometheus (requires --enable-feature=search-api) and self-hosted Mimir
 (requires -querier.experimental-search-api-enabled).
 
-See also search label-names and search label-values.
+See also the sibling label-name search and label-value search commands.
 
 ```
 gcx metrics search metric-names TERM... [flags]

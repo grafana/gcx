@@ -30,7 +30,7 @@ func newEqualNameMatcher(metric string) *promlabels.Matcher {
 }
 
 // newRegexNameMatcher builds a __name__=~"pattern" matcher for
-// --metric-regex. pattern is used exactly as given — not escaped
+// --metric-regex. pattern is used exactly as given — not escaped, not wrapped.
 func newRegexNameMatcher(pattern string) (*promlabels.Matcher, error) {
 	m, err := promlabels.NewMatcher(promlabels.MatchRegexp, model.MetricNameLabel, pattern)
 	if err != nil {

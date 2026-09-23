@@ -4,7 +4,7 @@ Search the values of a label (experimental)
 
 ### Synopsis
 
-Search the values of a single label from a Prometheus/Mimir datasource. LABEL is always required; TERM, --metric, and --metric-regex are all optional and may be combined or omitted — LABEL alone lists every value of that label. TERM performs a fuzzy search; --metric / --metric-regex scope by metric name instead. sort_by=score (the default) requires a search term — omitting TERM falls back to sort_by=alpha unless --sort-by is set explicitly.
+Search the values of a single label from a Prometheus/Mimir datasource. LABEL is always required; TERM, --metric, and --metric-regex are all optional and may be combined or omitted — LABEL alone lists every value of that label.
 
 --metric-regex is used exactly as given — PromQL anchors =~ at ^...$, so
 "kube" matches only a metric literally named "kube", not one containing
@@ -14,8 +14,7 @@ This API is experimental and disabled by default on both self-hosted
 Prometheus (requires --enable-feature=search-api) and self-hosted Mimir
 (requires -querier.experimental-search-api-enabled).
 
-See also search-metric-names (the metric-name counterpart) and
-search-label-names (search label names instead of a label's values).
+See also the sibling metric-name search and label-name search commands.
 
 ```
 gcx metrics search label-values LABEL [TERM...] [flags]
