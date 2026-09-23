@@ -67,11 +67,14 @@ Default time range is the last hour when no time flags are given.`,
 			}
 
 			now := time.Now()
-			// Loki's patterns endpoint accepts step as a duration string or
-			// float seconds, same shape as --step, so the raw flag value is
-			// passed straight through rather than the time.Duration
-			// ParseTimes would otherwise resolve it to.
-			start, end, _, err := shared.ParseTimes(now)
+			// ParseTimeRange, not ParseTimes: Loki's patterns endpoint
+			// accepts step as a duration string OR a bare float number of
+			// seconds, so the raw --step flag value is passed straight
+			// through to client.Patterns below rather than through
+			// ParseTimes' stricter Go-duration-only parsing (which would
+			// reject a valid "--step 30" or "--step 1.5" before any
+			// request is even sent).
+			start, end, err := shared.ParseTimeRange(now)
 			if err != nil {
 				return err
 			}

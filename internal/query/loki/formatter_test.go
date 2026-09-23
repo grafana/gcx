@@ -10,6 +10,41 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// Patterns with an equal total must sort deterministically (by pattern text)
+// rather than in whatever order sort.Slice happens to leave ties in, which
+// can otherwise flip between identical runs and make table output flaky.
+func TestFormatPatternsTable_TiedTotalsSortDeterministically(t *testing.T) {
+	resp := &loki.PatternsResponse{
+		Data: []loki.Pattern{
+			{Pattern: "zebra pattern", Samples: [][]int64{{1, 5}}},
+			{Pattern: "alpha pattern", Samples: [][]int64{{1, 5}}},
+			{Pattern: "mid pattern", Samples: [][]int64{{1, 5}}},
+		},
+	}
+
+	var first, second string
+	for range 20 {
+		var buf bytes.Buffer
+		require.NoError(t, loki.FormatPatternsTable(&buf, resp))
+		out := buf.String()
+		if first == "" {
+			first = out
+		} else {
+			second = out
+			assert.Equal(t, first, second, "row order must be stable across repeated calls with tied totals")
+		}
+	}
+
+	alphaIdx := strings.Index(first, "alpha pattern")
+	midIdx := strings.Index(first, "mid pattern")
+	zebraIdx := strings.Index(first, "zebra pattern")
+	require.NotEqual(t, -1, alphaIdx)
+	require.NotEqual(t, -1, midIdx)
+	require.NotEqual(t, -1, zebraIdx)
+	assert.Less(t, alphaIdx, midIdx, "ties should break alphabetically by pattern text")
+	assert.Less(t, midIdx, zebraIdx, "ties should break alphabetically by pattern text")
+}
+
 func TestFormatPatternsTable_EmptyResponse(t *testing.T) {
 	var buf bytes.Buffer
 	require.NoError(t, loki.FormatPatternsTable(&buf, &loki.PatternsResponse{}))
