@@ -13,6 +13,7 @@
 /internal/cloud/ @grafana/grafana-gcx @grafana/appcore
 
 # Providers
+/internal/providers/annotations/ @grafana/grafana-gcx @grafana/grafana-backend-services-squad
 /internal/providers/slo/ @grafana/grafana-gcx @grafana/slo-squad
 /internal/providers/synth/ @grafana/grafana-gcx @grafana/synthetic-monitoring-dev
 /internal/query/synth/ @grafana/grafana-gcx @grafana/synthetic-monitoring-dev
