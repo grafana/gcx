@@ -339,14 +339,15 @@ func (c *cloudOperations) QueryLoadTestMetrics(
 	if err := request.validate(); err != nil {
 		return nil, err
 	}
-	selection, _ := selectionParam(request.Selection)
+	params := []k6V5FunctionParam{
+		{name: "query", value: request.Expression, quote: true},
+		{name: "metric", value: request.Metric, quote: true},
+	}
+	if selection, ok := selectionParam(request.Selection); ok {
+		params = append(params, selection)
+	}
 	path := buildK6V5FunctionPath(
-		fmt.Sprintf(k6MetricsV5Path+"/load_tests/%d/query_aggregate_k6", loadTestID),
-		[]k6V5FunctionParam{
-			{name: "query", value: request.Expression, quote: true},
-			{name: "metric", value: request.Metric, quote: true},
-			selection,
-		},
+		fmt.Sprintf(k6MetricsV5Path+"/load_tests/%d/query_aggregate_k6", loadTestID), params,
 	)
 	resp, err := c.executor.doCloud(ctx, cloudRequest{
 		Target: cloudTargetCloud, Auth: cloudAuthConfigured, Method: http.MethodGet, Path: path, Accept: "application/json",
