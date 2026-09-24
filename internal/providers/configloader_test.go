@@ -195,6 +195,30 @@ current-context: default
 	assert.Contains(t, err.Error(), "context has no cloud auth")
 }
 
+// TestConfigLoader_UnknownContextListsAvailableContexts pins the resolution
+// path: an unknown --context must surface a ContextNotFoundError carrying the
+// available context names. It fails if a call site drops cfg.ContextNames(),
+// which the converter-level tests alone cannot catch.
+func TestConfigLoader_UnknownContextListsAvailableContexts(t *testing.T) {
+	cfgFile := writeConfigFile(t, `
+version: 1
+contexts:
+  dev: {}
+  prod: {}
+current-context: dev
+`)
+	loader := &providers.ConfigLoader{}
+	loader.SetConfigFile(cfgFile)
+	loader.SetContextName("bogus")
+
+	_, err := loader.LoadGrafanaConfig(context.Background())
+
+	var ctxErr *internalconfig.ContextNotFoundError
+	require.ErrorAs(t, err, &ctxErr)
+	assert.Equal(t, "bogus", ctxErr.Name)
+	assert.Equal(t, []string{"dev", "prod"}, ctxErr.Available)
+}
+
 func TestConfigLoader_LoadCloudConfig_MissingStack(t *testing.T) {
 	cfgFile := writeConfigFile(t, `
 version: 1
