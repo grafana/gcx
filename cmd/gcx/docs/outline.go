@@ -30,9 +30,16 @@ func (o *outlineOpts) setup(flags *pflag.FlagSet) {
 
 func (o *outlineOpts) Validate() error {
 	if strings.TrimSpace(o.url) == "" {
-		return errors.New("url is required")
+		return errors.New("url or query is required")
 	}
 	return o.IO.Validate()
+}
+
+func (o *outlineOpts) validateExplicitFlags(cmd *cobra.Command) error {
+	if cmd.Flags().Changed("product") && strings.TrimSpace(o.product) == "" {
+		return errors.New("--product must not be empty")
+	}
+	return nil
 }
 
 // outlineHeading is the JSON-serializable form of a heading.
@@ -73,6 +80,9 @@ func outlineCommand(loader *indexLoader, fetch docFetcher) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.url = args[0]
 			if err := opts.Validate(); err != nil {
+				return err
+			}
+			if err := opts.validateExplicitFlags(cmd); err != nil {
 				return err
 			}
 			resolved, err := resolveIfShorthand(cmd.Context(), loader, opts.url, opts.product)

@@ -158,6 +158,14 @@ func TestGetShorthandResolution(t *testing.T) {
 		}
 		require.NoError(t, json.Unmarshal([]byte(stdout), &res))
 		assert.Contains(t, res.URL, "configuration")
+		assert.Contains(t, res.URL, "tempo")
+	})
+
+	t.Run("product filter excludes non-matching products", func(t *testing.T) {
+		// sample-index has Configuration under Tempo only; agent product must not match.
+		_, _, err := testCommand(t, idx, okDoc(), "get", "configuration", "--product", "agent")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "no matching page found")
 	})
 
 	t.Run("no match gives guidance", func(t *testing.T) {

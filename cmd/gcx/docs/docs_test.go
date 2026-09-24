@@ -197,7 +197,8 @@ func TestGetCommandGuards(t *testing.T) {
 		{name: "non-grafana host", args: []string{"get", "https://evil.com/docs/x.md"}, wantErr: "rejected host"},
 		{name: "negative offset", args: []string{"get", url, "--offset", "-1"}, wantErr: "--offset must be non-negative"},
 		{name: "explicit empty section", args: []string{"get", url, "--section", ""}, wantErr: "--section must not be empty"},
-		{name: "explicit empty product", args: []string{"get", "clustering", "--product", ""}, wantErr: "--product must not be empty"},
+		{name: "explicit empty product on get", args: []string{"get", "clustering", "--product", ""}, wantErr: "--product must not be empty"},
+		{name: "explicit empty product on outline", args: []string{"outline", "clustering", "--product", ""}, wantErr: "--product must not be empty"},
 		{name: "outline missing url", args: []string{"outline"}, wantErr: "accepts 1 arg"},
 		{name: "outline non-grafana host", args: []string{"outline", "https://evil.com/docs/x"}, wantErr: "rejected host"},
 	}

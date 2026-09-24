@@ -40,7 +40,7 @@ func (o *getOpts) setup(flags *pflag.FlagSet) {
 
 func (o *getOpts) Validate() error {
 	if strings.TrimSpace(o.url) == "" {
-		return errors.New("url is required")
+		return errors.New("url or query is required")
 	}
 	if o.offset < 0 {
 		return fmt.Errorf("--offset must be non-negative, got %d", o.offset)

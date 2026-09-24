@@ -18,9 +18,11 @@ import (
 // https://grafana.com/ entries per I11) and is re-validated by FetchDoc's
 // allowlist (I3/I21) before any network call.
 //
-// Security: resolved URLs must only be passed to FetchDoc. They must not
-// be passed to DocsFetchSuggestion or interpolated into shell commands;
-// those paths require trusted constant values from the docs link registry.
+// Security: resolved URLs must only be passed to FetchDoc, not to
+// DocsFetchSuggestion (that path requires trusted registry constants).
+// When a resolved URL appears in a copy-paste command hint shown to the
+// user, it must be shell-quoted — see shellQuote below and get.go's
+// section-not-found message.
 func ResolveShorthand(idx *grafanadocs.Index, input string, product string) (string, error) {
 	if strings.HasPrefix(input, "https://") {
 		return input, nil
