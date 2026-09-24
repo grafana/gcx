@@ -2,10 +2,12 @@ package kg_test
 
 import (
 	"bytes"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers/kg"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
