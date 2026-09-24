@@ -40,7 +40,7 @@ gcx appo11y operations get <operation> --service <service> [--namespace ns] [fla
       --filter stringArray    Scope the lookup to series matching a label matcher, e.g. --filter k8s_cluster_name=prod-us (repeatable); the label must exist on the span metrics
   -h, --help                  help for get
       --jq string             jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string           Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --json string           Comma-separated list of dotted field paths to include in JSON output (e.g. spec.name), or 'list' (or '?') to discover the available paths
       --kg string             Knowledge Graph catalog consumption: auto (annotate rows with what the graph knows, when it's active) or off (never contact the Knowledge Graph). The annotation appears in JSON/YAML/agents output only — table and wide render nothing extra (default "auto")
       --kind string           Span kinds to include. One of: inbound (server+consumer), server, consumer, all, or a comma-separated list of SPAN_KIND_* literals (default "inbound")
       --metrics-mode string   Span-metrics family. One of: auto (probes the stack), v3 (traces_span_metrics_*), tempo (traces_spanmetrics_*), or otel (bare calls_total + duration_seconds_bucket) (default "auto")

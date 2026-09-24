@@ -104,19 +104,6 @@ func listTypesCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				res = filtered
 			}
 
-			// --json ? discovery and --json <path>,<path> selection both run on
-			// the descriptor list. Encode routes them, and descriptorEntry
-			// declares the field set for both, so an unknown path warns
-			// instead of silently printing a null.
-			if opts.IO.JSONDiscovery || len(opts.IO.JSONFields) > 0 {
-				entries := make([]descriptorEntry, 0, len(res))
-				for _, d := range res {
-					entries = append(entries, newDescriptorEntry(d))
-				}
-				opts.IO.ErrWriter = cmd.ErrOrStderr()
-				return opts.IO.Encode(cmd.OutOrStdout(), descriptorList{Items: entries})
-			}
-
 			// Fetch schemas regardless of output format (Pattern 13: format-agnostic
 			// data fetching). The --no-schema flag is the correct opt-out mechanism,
 			// not the output format. Tabular codecs simply ignore the schema data.
@@ -130,6 +117,25 @@ func listTypesCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				if fetchErr != nil {
 					return fmt.Errorf("fetching schemas: %w", fetchErr)
 				}
+			}
+
+			// --json ? discovery and --json <path>,<path> selection both run on
+			// the descriptor list. Encode routes them, and descriptorEntry
+			// declares the field set for both, so an unknown path warns
+			// instead of silently printing a null. The schema filter matches -o json.
+			if opts.IO.JSONDiscovery || len(opts.IO.JSONFields) > 0 {
+				entries := make([]descriptorEntry, 0, len(res))
+				for _, d := range res {
+					if schemas != nil {
+						gvk := d.GroupVersion.Group + "/" + d.GroupVersion.Version + "/" + d.Kind
+						if _, hasSchema := resolveSchema(schemas, gvk, d); !hasSchema {
+							continue
+						}
+					}
+					entries = append(entries, newDescriptorEntry(d))
+				}
+				opts.IO.ErrWriter = cmd.ErrOrStderr()
+				return opts.IO.Encode(cmd.OutOrStdout(), descriptorList{Items: entries})
 			}
 
 			switch opts.IO.OutputFormat {

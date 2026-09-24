@@ -641,11 +641,11 @@ and arbitrary types (marshaled to JSON, then fields extracted).
 | List/collection | `{"items": [{"field": value}, ...]}` |
 
 **Dot-path resolution:** `metadata.name` walks `obj["metadata"]["name"]`.
-A path that a declared item type denies is a usage error. A path stays `null`
-when the type declares it but the value is absent. Dynamic objects and types
-that implement `json.Marshaler` fail open because reflection cannot define
-their wire fields. A path that enters an array is a usage error that directs
-the caller to `--jq`.
+A path that a declared item type denies emits a warning and renders as `null`.
+A path stays `null` without a warning when the type declares it but the value is
+absent. Dynamic objects and types that implement `json.Marshaler` fail open
+because reflection cannot define their wire fields. A path that enters an array
+emits a warning that directs the caller to `--jq`.
 
 **Field discovery** is handled by `DiscoverFields(obj map[string]any) []string`:
 returns sorted top-level and nested paths. Discovery uses a sample object when

@@ -25,6 +25,7 @@ func runListTypes(t *testing.T, args ...string) (string, string, error) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("XDG_CONFIG_DIRS", t.TempDir())
 	t.Setenv("GCX_DISCOVERY_CACHE_DIR", t.TempDir())
+	t.Setenv("GCX_OPENAPI_CACHE_DIR", t.TempDir())
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -40,7 +41,17 @@ func runListTypes(t *testing.T, args ...string) (string, string, error) {
 			_, _ = w.Write([]byte(`{"kind":"APIResourceList","apiVersion":"v1",` +
 				`"groupVersion":"dashboard.grafana.app/v1beta1","resources":[{` +
 				`"name":"dashboards","singularName":"dashboard","namespaced":true,` +
-				`"kind":"Dashboard","verbs":["get","list"]}]}`))
+				`"kind":"Dashboard","verbs":["get","list"]},{` +
+				`"name":"connections","singularName":"connection","namespaced":true,` +
+				`"kind":"Connection","verbs":["get","list"]}]}`))
+		case "/openapi/v3":
+			_, _ = w.Write([]byte(`{"paths":{"apis/dashboard.grafana.app/v1beta1":` +
+				`{"serverRelativeURL":"/openapi/v3/apis/dashboard.grafana.app/v1beta1"}}}`))
+		case "/openapi/v3/apis/dashboard.grafana.app/v1beta1":
+			_, _ = w.Write([]byte(`{"components":{"schemas":{"test.Dashboard":{` +
+				`"type":"object","x-kubernetes-group-version-kind":[{` +
+				`"group":"dashboard.grafana.app","version":"v1beta1","kind":"Dashboard"}],` +
+				`"properties":{"spec":{"type":"object","properties":{"title":{"type":"string"}}}}}}}}`))
 		default:
 			http.NotFound(w, r)
 		}
@@ -97,6 +108,20 @@ func TestListTypes_JSONFieldSelectsPerDescriptor(t *testing.T) {
 		kinds = append(kinds, kind)
 	}
 	assert.Contains(t, kinds, "Dashboard")
+	assert.NotContains(t, kinds, "Connection", "unlistable resources are filtered like -o json")
+
+	fullOutput, _, err := runListTypes(t, "-o", "json")
+	require.NoError(t, err)
+	var full map[string]map[string][]map[string]any
+	require.NoError(t, json.Unmarshal([]byte(fullOutput), &full))
+	fullItems := full["dashboard.grafana.app"]["v1beta1"]
+	fullKinds := make([]string, 0, len(fullItems))
+	for _, item := range fullItems {
+		kind, ok := item["kind"].(string)
+		require.True(t, ok)
+		fullKinds = append(fullKinds, kind)
+	}
+	assert.ElementsMatch(t, fullKinds, kinds, "--json and -o json must select the same resources")
 }
 
 // TestListTypes_JSONUnknownPathWarns pins that an unknown path warns while the
