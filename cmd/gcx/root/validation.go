@@ -6,6 +6,10 @@ import (
 	"strings"
 
 	"github.com/grafana/gcx/cmd/gcx/fail"
+	"github.com/grafana/gcx/internal/agent"
+	"github.com/grafana/gcx/internal/gcxerrors"
+	"github.com/grafana/gcx/internal/shellquote"
+	"github.com/grafana/gcx/internal/suggest"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -45,17 +49,43 @@ func ValidateArgs(rootCmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	if !parseGroupFlags(cmd, remaining) {
-		return nil
+	positionals := []string{}
+	if parseGroupFlags(cmd, remaining) {
+		positionals = cmd.Flags().Args()
+	} else {
+		// A valid leaf flag can appear before the misspelled command. The
+		// parent cannot parse it, but we can still identify a unique typo.
+		for _, token := range remaining {
+			if strings.HasPrefix(token, "-") || len(subcommandCandidates(cmd, token)) == 0 {
+				continue
+			}
+			if len(positionals) > 0 {
+				return nil // Ambiguous: do not offer a runnable correction.
+			}
+			positionals = []string{token}
+		}
 	}
-
-	positionals := cmd.Flags().Args()
 	if len(positionals) == 0 {
 		return nil
 	}
 
-	commandPath := strings.TrimSpace(cmd.CommandPath())
+	candidates := subcommandCandidates(cmd, positionals[0])
+
 	suggestions := []string{}
+	corrections := []gcxerrors.Correction{}
+	for _, sub := range candidates {
+		if corrected, ok := substituteCommand(args, positionals[0], sub.Name()); ok {
+			rootName := strings.Fields(cmd.CommandPath())[0]
+			invocation := shellquote.Join(append([]string{rootName}, redactSensitiveValues(corrected)...))
+			suggestions = append(suggestions, fmt.Sprintf("Did you mean '%s'?", invocation))
+			corrections = append(corrections, gcxerrors.Correction{
+				Command: invocation,
+				Hint:    sub.Annotations[agent.AnnotationLLMHint],
+			})
+		}
+	}
+
+	commandPath := strings.TrimSpace(cmd.CommandPath())
 	if commandPath != "" {
 		for _, name := range cmd.SuggestionsFor(positionals[0]) {
 			suggestions = append(suggestions, fmt.Sprintf("Did you mean '%s %s'?", commandPath, name))
@@ -64,9 +94,61 @@ func ValidateArgs(rootCmd *cobra.Command, args []string) error {
 	}
 
 	return &fail.UsageError{
-		Message:     formatUnknownGroupCommand(cmd, positionals[0]),
+		Message:     formatUnknownGroupCommand(cmd, positionals[0], candidates),
 		Suggestions: suggestions,
+		Corrections: corrections,
 	}
+}
+
+// substituteCommand preserves every explicit flag and positional argument.
+// If the typo occurs more than once, its location is ambiguous and no
+// ready-to-run correction is emitted.
+func substituteCommand(args []string, unknown, candidate string) ([]string, bool) {
+	index := -1
+	for i, arg := range args {
+		if arg != unknown {
+			continue
+		}
+		if index >= 0 {
+			return nil, false
+		}
+		index = i
+	}
+	if index < 0 {
+		return nil, false
+	}
+	corrected := append([]string(nil), args...)
+	corrected[index] = candidate
+	return corrected, true
+}
+
+// subcommandCandidates fuzzy-matches an unknown token against the group's
+// available subcommand names and aliases, returning the matched subcommands
+// best-first (deduplicated when a name and alias hit the same command).
+func subcommandCandidates(cmd *cobra.Command, unknown string) []*cobra.Command {
+	vocabulary := []string{}
+	byToken := map[string]*cobra.Command{}
+	for _, sub := range cmd.Commands() {
+		if !sub.IsAvailableCommand() || sub.Name() == "help" {
+			continue
+		}
+		for _, token := range append([]string{sub.Name()}, sub.Aliases...) {
+			vocabulary = append(vocabulary, token)
+			byToken[strings.ToLower(token)] = sub
+		}
+	}
+
+	candidates := []*cobra.Command{}
+	seen := map[*cobra.Command]bool{}
+	for _, token := range suggest.Candidates(unknown, vocabulary) {
+		sub := byToken[strings.ToLower(token)]
+		if sub == nil || seen[sub] {
+			continue
+		}
+		seen[sub] = true
+		candidates = append(candidates, sub)
+	}
+	return candidates
 }
 
 func trimLeadingRootFlags(rootCmd *cobra.Command, args []string) ([]string, bool) {
@@ -92,7 +174,7 @@ func parseGroupFlags(cmd *cobra.Command, args []string) bool {
 	return cmd.ParseFlags(args) == nil
 }
 
-func formatUnknownGroupCommand(cmd *cobra.Command, unknown string) string {
+func formatUnknownGroupCommand(cmd *cobra.Command, unknown string, candidates []*cobra.Command) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "unknown command %q for %q\n\n", unknown, cmd.CommandPath())
 	fmt.Fprintln(&b, "Usage:")
@@ -101,6 +183,14 @@ func formatUnknownGroupCommand(cmd *cobra.Command, unknown string) string {
 		fmt.Fprint(&b, " [flags]")
 	}
 	fmt.Fprintln(&b)
+
+	if len(candidates) > 0 {
+		fmt.Fprintln(&b)
+		fmt.Fprintln(&b, "Did you mean this?")
+		for _, sub := range candidates {
+			fmt.Fprintf(&b, "  %s\n", sub.Name())
+		}
+	}
 
 	if cmd.HasAvailableSubCommands() {
 		fmt.Fprintln(&b)

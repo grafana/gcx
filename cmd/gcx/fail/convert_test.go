@@ -1467,3 +1467,19 @@ func TestErrorToDetailedError_RestrictedCredentialSession(t *testing.T) {
 		})
 	}
 }
+
+func TestErrorToDetailedError_UsageErrorCarriesCorrections(t *testing.T) {
+	corrections := []gcxerrors.Correction{
+		{Command: "gcx resources get dashboards --format json", Hint: "Rendering format"},
+	}
+
+	got := fail.ErrorToDetailedError(&fail.UsageError{
+		Message:     "unknown flag: --formt",
+		Corrections: corrections,
+	})
+
+	require.NotNil(t, got)
+	assert.Equal(t, corrections, got.Corrections)
+	require.NotNil(t, got.ExitCode)
+	assert.Equal(t, gcxerrors.ExitUsageError, *got.ExitCode)
+}
