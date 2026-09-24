@@ -208,7 +208,7 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 			}
 
 			if insecureLogHTTPPayload {
-				fmt.Fprintln(cmd.ErrOrStderr(), "WARNING: --insecure-log-http-payload is set. Authorization tokens, cookies, OAuth refresh tokens, and request bodies will be written to debug logs. Do not share or ship these logs.")
+				fmt.Fprintln(cmd.ErrOrStderr(), "WARNING: --insecure-log-http-payload is set. Authorization tokens, cookies, OAuth refresh tokens, and request bodies will be written to debug logs when using -vvv. Do not share or ship these logs.")
 				ctx = httputils.WithPayloadLogging(ctx, true)
 			}
 
