@@ -100,6 +100,11 @@ WARN http response method=GET url=https://... status=502
 WARN http error   method=GET url=https://... error="connection refused"
 ```
 
+Requests whose query strings contain short-lived credentials (for example,
+signed artifact downloads) mark those query strings as sensitive. HTTP logs
+and emitted transport errors render them as `?REDACTED` at every verbosity;
+the request sent on the wire remains unchanged.
+
 ### `--insecure-log-http-payload`
 
 Dumps the full request and response bodies (via `httputil.DumpRequest` /

@@ -83,6 +83,8 @@ func authenticatedClient(ctx context.Context, loader CloudConfigLoader) (API, st
 		return nil, "", errors.New("k6: Grafana configuration is required")
 	}
 	restCfg := *snapshot.GrafanaConfig
+	providerCfg := snapshot.ProviderConfig
+	domain := normalizeAPIDomain(providerCfg["api-domain"])
 
 	if restCfg.IsOAuthProxy() {
 		authClient, err := rest.HTTPClientFor(&restCfg.Config)
@@ -92,7 +94,16 @@ func authenticatedClient(ctx context.Context, loader CloudConfigLoader) (API, st
 		if _, err := authlib.ParseNamespace(restCfg.Namespace); err != nil {
 			return nil, "", err
 		}
-		return NewProxyClient(ctx, restCfg.Host, authClient), restCfg.Namespace, nil
+		client := newProxyClient(
+			ctx,
+			restCfg.Host,
+			restCfg.GrafanaURL,
+			int(restCfg.StackID()),
+			domain,
+			authClient,
+			httputils.NewDefaultClient(ctx),
+		)
+		return client, restCfg.Namespace, nil
 	}
 
 	// SA-token path: direct api.k6.io with /start exchange + cross-invocation cache.
@@ -100,13 +111,7 @@ func authenticatedClient(ctx context.Context, loader CloudConfigLoader) (API, st
 	if err != nil {
 		return nil, "", fmt.Errorf("k6: load cloud config: %w", err)
 	}
-	providerCfg := snapshot.ProviderConfig
-	domain := DefaultAPIDomain
-	if d := providerCfg["api-domain"]; d != "" {
-		domain = d
-	}
-	domain = normalizeAPIDomain(domain)
-	client := NewDirectClient(ctx, domain, httputils.NewDefaultClient(ctx))
+	client := newDirectClient(ctx, domain, restCfg.GrafanaURL, httputils.NewDefaultClient(ctx))
 
 	exchange := func(ctx context.Context) (string, int, error) {
 		if restCfg.BearerToken == "" {
@@ -268,6 +273,7 @@ func newScheduleCRUD(c API, ns string, desc resources.Descriptor) adapter.Resour
 			req := ScheduleRequest{
 				Starts:         s.Starts,
 				RecurrenceRule: s.RecurrenceRule,
+				Cron:           s.Cron,
 			}
 			return c.CreateSchedule(ctx, s.LoadTestID, req)
 		},
@@ -279,6 +285,7 @@ func newScheduleCRUD(c API, ns string, desc resources.Descriptor) adapter.Resour
 			req := ScheduleRequest{
 				Starts:         s.Starts,
 				RecurrenceRule: s.RecurrenceRule,
+				Cron:           s.Cron,
 			}
 			return c.UpdateScheduleByID(ctx, id, req)
 		},
@@ -478,6 +485,16 @@ func scheduleSchema() json.RawMessage {
 			"properties": map[string]any{
 				"frequency": map[string]any{"type": "string"},
 				"interval":  map[string]any{"type": "integer"},
+				"byday":     map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+				"until":     map[string]any{"type": "string"},
+				"count":     map[string]any{"type": "integer"},
+			},
+		},
+		"cron": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"schedule":  map[string]any{"type": "string"},
+				"time_zone": map[string]any{"type": "string"},
 			},
 		},
 		"deactivated": map[string]any{"type": "boolean"},
@@ -488,9 +505,9 @@ func scheduleExample() json.RawMessage {
 	return resourceExample("Schedule", "12345", map[string]any{
 		"load_test_id": 1,
 		"starts":       "2026-01-01T00:00:00Z",
-		"recurrence_rule": map[string]any{
-			"frequency": "DAILY",
-			"interval":  1,
+		"cron": map[string]any{
+			"schedule":  "0 7 * * 1",
+			"time_zone": "UTC",
 		},
 	})
 }
@@ -626,6 +643,7 @@ func NewTypedCRUDSchedule(ctx context.Context, loader CloudConfigLoader) (*adapt
 			req := ScheduleRequest{
 				Starts:         s.Starts,
 				RecurrenceRule: s.RecurrenceRule,
+				Cron:           s.Cron,
 			}
 			return client.CreateSchedule(ctx, s.LoadTestID, req)
 		},
@@ -637,6 +655,7 @@ func NewTypedCRUDSchedule(ctx context.Context, loader CloudConfigLoader) (*adapt
 			req := ScheduleRequest{
 				Starts:         s.Starts,
 				RecurrenceRule: s.RecurrenceRule,
+				Cron:           s.Cron,
 			}
 			return client.UpdateScheduleByID(ctx, id, req)
 		},

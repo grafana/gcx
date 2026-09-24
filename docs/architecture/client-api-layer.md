@@ -413,6 +413,10 @@ func NewClient(opts ClientOpts) *http.Client               // custom: explicit m
 2xx/3xx/4xx, Warn for 5xx + transport errors). When `PayloadLogging(ctx)` is
 true (set by `--insecure-log-http-payload`), it additionally wraps with
 `RequestResponseLoggingMiddleware` for full request/response body dumps.
+Callers sending signed URLs mark the request context with
+`secrets.WithRedactedURLQuery`; the logging and retry transports then redact the
+query string in URL fields, request dumps, and transport-error text without
+changing the URL sent to the server.
 
 `NewClient` accepts explicit `ClientOpts` for custom middleware stacks, TLS
 configuration, and timeouts. If `Middlewares` is nil, it defaults to
