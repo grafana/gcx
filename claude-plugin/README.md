@@ -51,6 +51,8 @@ instance, verifying connectivity, and confirming your credentials are working.
 `claude-plugin/skills/` is the current canonical portable Agent Skills bundle
 for gcx. The Claude plugin consumes that tree directly today, and the generic
 `.agents` installer exposed by `gcx agent skills install` reads from the same source.
+GitHub releases publish these skills as version-pinned Packslip resources, making
+them discoverable alongside the gcx release without downloading or running gcx.
 
 Claude-specific packaging remains under:
 

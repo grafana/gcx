@@ -17,6 +17,8 @@ jobs:
   release:
     permissions:
       contents: write # to push new branches
+      id-token: write # to sign the Packslip manifest
+      attestations: write # to attest release artifacts
     name: Release
     runs-on: ubuntu-latest
 
@@ -51,3 +53,34 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_NOTES: ${{ env.RELEASE_NOTES }}
 
+      - name: Publish signed Packslip manifest
+        uses: jdx/packslip@74c75db7d611b36dd5a157999ec16cf823ccf80c # v1.2.0
+        with:
+          artifacts: dist/gcx_*.tar.gz dist/gcx_*.zip
+          bin: gcx
+          attest: true
+          resources: |
+            skill/agento11y=repo:claude-plugin/skills/agento11y
+            skill/agento11y-instrument=repo:claude-plugin/skills/agento11y-instrument
+            skill/agento11y-prod-setup=repo:claude-plugin/skills/agento11y-prod-setup
+            skill/agento11y-test-starter=repo:claude-plugin/skills/agento11y-test-starter
+            skill/create-dashboard=repo:claude-plugin/skills/create-dashboard
+            skill/debug-with-grafana=repo:claude-plugin/skills/debug-with-grafana
+            skill/diagnose-entity-graph=repo:claude-plugin/skills/diagnose-entity-graph
+            skill/gcx=repo:claude-plugin/skills/gcx
+            skill/gcx-demo=repo:claude-plugin/skills/gcx-demo
+            skill/gcx-observability=repo:claude-plugin/skills/gcx-observability
+            skill/generate-resource-stubs=repo:claude-plugin/skills/generate-resource-stubs
+            skill/import-dashboards=repo:claude-plugin/skills/import-dashboards
+            skill/investigate-alert=repo:claude-plugin/skills/investigate-alert
+            skill/manage-dashboards=repo:claude-plugin/skills/manage-dashboards
+            skill/oncall-triage=repo:claude-plugin/skills/oncall-triage
+            skill/scaffold-project=repo:claude-plugin/skills/scaffold-project
+            skill/setup-gcx=repo:claude-plugin/skills/setup-gcx
+            skill/slo-check-status=repo:claude-plugin/skills/slo-check-status
+            skill/slo-investigate=repo:claude-plugin/skills/slo-investigate
+            skill/slo-manage=repo:claude-plugin/skills/slo-manage
+            skill/slo-optimize=repo:claude-plugin/skills/slo-optimize
+            skill/synth-check-status=repo:claude-plugin/skills/synth-check-status
+            skill/synth-investigate-check=repo:claude-plugin/skills/synth-investigate-check
+            skill/synth-manage-checks=repo:claude-plugin/skills/synth-manage-checks
