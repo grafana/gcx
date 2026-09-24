@@ -64,8 +64,7 @@ $ mise install             # install tools (Go, golangci-lint, etc.)
 $ mise run deps            # install Go modules and Python requirements, including MkDocs
 ```
 
-Run `mise run deps` before `mise run docs` or `mise run all`; it installs
-MkDocs and its plugins from `requirements.txt`.
+Run `mise run deps` before `mise run docs` or `mise run all`.
 
 Some mise commands for local development:
 
