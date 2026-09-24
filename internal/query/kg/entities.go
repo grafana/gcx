@@ -230,3 +230,31 @@ func (c *Client) ListEntities(ctx context.Context, entityType string, scope Enti
 	}
 	return page, nil
 }
+
+// SearchEntitiesByName requests entities of one type with a server-side exact
+// name matcher, avoiding dependence on position in an unfiltered result set.
+// It returns the server page unchanged apart from type normalization; callers
+// may defensively verify names before using a result.
+func (c *Client) SearchEntitiesByName(ctx context.Context, entityType, name string, startMs, endMs int64) (EntityPage, error) {
+	startMs, endMs = defaultTimeWindow(startMs, endMs)
+
+	req := entitySearchRequest{
+		FilterCriteria: []entityFilterCriteria{{
+			EntityType: entityType,
+			PropertyMatchers: []entityPropertyMatcher{
+				{Name: "name", Op: "=", Value: name},
+			},
+		}},
+	}
+	req.TimeCriteria.Start = startMs
+	req.TimeCriteria.End = endMs
+
+	page, err := SearchEntities[Entity](ctx, c, req)
+	if err != nil {
+		return EntityPage{}, fmt.Errorf("kg: search entities by name: %w", err)
+	}
+	for i := range page.Entities {
+		page.Entities[i].resolveType()
+	}
+	return page, nil
+}

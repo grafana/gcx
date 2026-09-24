@@ -827,6 +827,8 @@ Provider command tree backed by fleet-management `Set/Get` + observed-state RPCs
 
 ### Knowledge Graph (Asserts) Provider
 
+The shared transport in `internal/query/kg` serves both the KG provider and App Observability enrichment. For a single service whose scope is unknown, App Observability falls back from the exact entity lookup to a server-side exact-name search. This avoids missing a known service outside the first page of the full service inventory. Bulk enrichment still uses a bounded first page and reports truncation.
+
 | File | Purpose |
 |------|---------|
 | `internal/providers/kg/provider.go` | `KGProvider` implementing the `providers.Provider` interface |
