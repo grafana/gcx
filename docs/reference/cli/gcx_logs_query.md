@@ -18,11 +18,9 @@ open it in your browser after the query succeeds. Use --drilldown-link or
 --open-drilldown for the equivalent Grafana Logs Drilldown URL (falls back to
 the Explore URL for expressions Drilldown's simple filter model can't
 represent, e.g. parser stages or aggregations).
-Use --tui to page through results in an interactive, color-coded viewer
-(requires a real terminal); pass --wrap to start with long lines wrapped
-instead of clipped, or toggle wrapping live with 'w'. Use -o graph for a
-log-volume-over-time chart — it only charts the lines --limit actually
-returned, so pass --limit 0 for the chart to reflect the full queried range.
+Use -o graph for a log-volume-over-time chart — it only charts the lines
+--limit actually returned, so pass --limit 0 for the chart to reflect the
+full queried range.
 
 ```
 gcx logs query [EXPR] [flags]
@@ -67,8 +65,6 @@ gcx logs query [EXPR] [flags]
       --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --step string         Query step (e.g., '15s', '1m')
       --to string           End time (RFC3339, Unix timestamp, or relative like 'now')
-      --tui                 Page through results in an interactive, color-coded viewer (requires a real terminal)
-      --wrap                With --tui, start with long lines soft-wrapped instead of clipped at the terminal width (toggle live with 'w')
 ```
 
 ### Options inherited from parent commands

@@ -137,8 +137,6 @@ gcx/
 │   ├── telemetry/            # Anonymous usage stats library (event model, mode resolution, device ID, CI detection, wire vocabularies: volume buckets, k8s reasons, auth methods, api routes and datasource types; flat-JSON HTTP export)
 │   │   └── capture/          # Process-wide invocation facts written mid-run, read once at exit by the usage-event builder (holds no wire vocabulary, so writing a signal does not pull in the event model or HTTP exporter)
 │   ├── terminal/             # TTY detection: IsPiped(), NoTruncate(), Detect()
-│   ├── tui/                  # Interactive terminal UI viewers (bubbletea)
-│   │   └── logs/             # Color-coded log-line viewer for `datasources loki query --tui`
 │   ├── testutils/            # Shared test helpers (not exposed externally)
 │   ├── resources/            # Core resource abstraction layer
 │   │   ├── discovery/        # API discovery: registry, index, preferred versions
