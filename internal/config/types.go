@@ -688,6 +688,37 @@ func GCOMRootFromServerURL(serverURL string) (string, bool) {
 	return gcomRoot, ok
 }
 
+// GCOMPortalServerURL reports whether serverURL names a Grafana Cloud portal
+// root (grafana.com and its per-environment equivalents) instead of a Grafana
+// stack. A portal root manages stacks through the GCOM API. It serves no
+// Grafana instance API, so it is never a valid Grafana server URL.
+//
+// When ok is true, portalHost is the matched portal hostname and stackSuffix
+// is the stack URL suffix for that environment
+// (".grafana.net" for grafana.com), so a caller can name the correct URL form
+// in an error message.
+//
+// This complements StackSlugFromServerURL, which recognizes the stack URLs.
+// A bare portal root matches neither that function nor IsGrafanaCloudHost,
+// because the latter tests the ".grafana.com" suffix and a bare portal root
+// has no leading label. The www alias is also treated as a portal.
+func GCOMPortalServerURL(serverURL string) (string, string, bool) {
+	parsed, err := url.Parse(serverURL)
+	if err != nil {
+		return "", "", false
+	}
+
+	host := strings.ToLower(parsed.Hostname())
+	for _, entry := range grafanaCloudStackSuffixes {
+		root := strings.TrimPrefix(entry.gcomRoot, "https://")
+		if host == root || host == "www."+root {
+			return host, entry.suffix, true
+		}
+	}
+
+	return "", "", false
+}
+
 // ContextNameFromServerURL derives a context name from a Grafana server URL.
 // For Grafana Cloud URLs, it returns the stack slug with the per-environment
 // suffix ("-dev"/"-ops") appended to prevent collisions between same-named

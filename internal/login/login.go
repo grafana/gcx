@@ -174,8 +174,8 @@ type Hooks struct {
 
 // RetryState carries plumbing used by the CLI layer when Run returns a
 // sentinel (ErrNeedInput / ErrNeedClarification) and is re-invoked after
-// the caller resolves the missing value. These fields are never set on
-// the first invocation and should be treated as internal protocol between
+// the caller resolves the missing value. Some fields may be set on the first
+// invocation and should be treated as internal protocol between
 // Run and its retry-loop caller.
 type RetryState struct {
 	// StagedContext carries partially-resolved state across sentinel
@@ -203,6 +203,10 @@ type RetryState struct {
 	// user knows to be safe (e.g. Grafana Cloud hiding the version string
 	// from anonymous callers).
 	ForceSave bool
+
+	// CloudCredentialNotAppliedWarned prevents the non-Cloud credential advisory from repeating
+	// when the CLI resolves a sentinel and calls Run again.
+	CloudCredentialNotAppliedWarned bool
 }
 
 // Options is the top-level input to Run. It embeds three semantic groupings:
@@ -338,6 +342,12 @@ func Run(ctx context.Context, opts *Options) (Result, error) {
 	// Normalize: missing scheme → default to https. Users who meant http://
 	// must pass the full URL explicitly; defaulting to https is safer.
 	opts.Server = NormalizeServerURL(opts.Server)
+	// A Grafana Cloud portal root manages stacks; it serves no Grafana instance
+	// API. Reject it here, before target detection, before any prompt, and
+	// before the OAuth browser opens on a route the portal does not have.
+	if err := rejectPortalServerURL(opts.Server); err != nil {
+		return Result{}, err
+	}
 	if err := validateRuntimeOnlyBearerDestination(*opts, ""); err != nil {
 		return Result{}, err
 	}
@@ -391,7 +401,7 @@ func Run(ctx context.Context, opts *Options) (Result, error) {
 	}
 
 	// Step 5: Cloud API token (Cloud targets only)
-	cloudEntry, stackSlug, err := resolveCloudAuth(*opts, target)
+	cloudEntry, stackSlug, err := resolveCloudAuth(opts, target)
 	if err != nil {
 		return Result{}, err
 	}
@@ -583,6 +593,18 @@ func NormalizeServerURL(raw string) string {
 	return raw
 }
 
+// rejectPortalServerURL returns a *PortalServerURLError when server names a
+// Grafana Cloud portal root instead of a Grafana stack. It returns nil for
+// every other URL, including custom Cloud domains and on-premises hosts.
+func rejectPortalServerURL(server string) error {
+	host, suffix, ok := config.GCOMPortalServerURL(server)
+	if !ok {
+		return nil
+	}
+
+	return &PortalServerURLError{Server: server, Host: host, StackSuffix: suffix}
+}
+
 // detectTarget calls DetectFn or falls back to the real DetectTarget.
 // When TLS settings are present, builds a TLS-aware HTTP client for the probe.
 //
@@ -747,15 +769,22 @@ func resolveGrafanaAuth(ctx context.Context, opts Options, target Target) (strin
 // unless Yes or agent mode is set (which allows skipping step 5: the CAP
 // token is optional — its absence just disables Cloud management features,
 // it does not block login).
-func resolveCloudAuth(opts Options, target Target) (*config.CloudEntry, string, error) {
+func resolveCloudAuth(opts *Options, target Target) (*config.CloudEntry, string, error) {
 	if target != TargetCloud {
+		// Do not apply a Cloud credential to a non-Cloud target. An existing
+		// saved Cloud entry can remain bound to the context during re-auth, so
+		// the advisory must not claim that Cloud commands are unavailable.
+		if !opts.CloudCredentialNotAppliedWarned && opts.CloudToken != "" {
+			warnCloudCredentialNotApplied(opts.Writer)
+			opts.CloudCredentialNotAppliedWarned = true
+		}
 		return nil, "", nil
 	}
 
 	slug := resolveStackSlug(opts.Server)
 
 	if opts.CloudToken != "" {
-		return cloudEntryForToken(opts), slug, nil
+		return cloudEntryForToken(*opts), slug, nil
 	}
 
 	// Cloud target with no token: skip if Yes or agent mode (D9, D10).
@@ -853,6 +882,20 @@ func announceCloudTokenStep(w io.Writer) {
 		w = io.Discard
 	}
 	fmt.Fprintln(w, "\nOptional: log in to Grafana Cloud to enable Cloud management features.")
+}
+
+// warnCloudCredentialNotApplied surfaces a non-fatal advisory when a resolved Cloud
+// credential is not applied because the target is not Grafana Cloud. An
+// existing saved Cloud entry remains unchanged during re-authentication. It
+// writes to w (the caller-supplied progress writer); a nil writer discards,
+// keeping internal/login free of process streams (NC-001).
+func warnCloudCredentialNotApplied(w io.Writer) {
+	if w == nil {
+		w = io.Discard
+	}
+	fmt.Fprintln(w, "Warning: the target is not Grafana Cloud, so this login did not apply the Cloud credential. "+
+		"Any existing saved Cloud credential stays unchanged. "+
+		"Pass --cloud to force a Cloud target if the server is a Cloud stack.")
 }
 
 // warnCloudTokenUnvalidated surfaces a non-fatal advisory when a Cloud token is
