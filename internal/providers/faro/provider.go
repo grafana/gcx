@@ -60,6 +60,10 @@ func (p *FaroProvider) Commands() []*cobra.Command {
 		newListSourcemapsCommand(loader),
 		newApplySourcemapCommand(loader),
 		newDeleteSourcemapCommand(loader),
+		// Extension verb: a KPI snapshot nests under the `apps` resource type
+		// alongside the CRUD verbs (CONSTITUTION CLI grammar), not as a
+		// top-level `frontend` command.
+		newOverviewCommand(),
 	)
 
 	faroCmd.AddCommand(appsCmd)
