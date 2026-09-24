@@ -425,6 +425,9 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 	if flags.AllowServerOverride {
 		opts.AllowOverride = true
 	}
+	if host, suffix, ok := config.GCOMPortalServerURL(opts.Server); ok {
+		return &login.PortalServerURLError{Server: opts.Server, Host: host, StackSuffix: suffix}
+	}
 	if err := preflightServerOverride(&opts, persistedSourceCtx, isInteractive); err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
 			fmt.Fprintln(cmd.ErrOrStderr(), "Aborted.")

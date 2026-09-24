@@ -313,7 +313,7 @@ func ValidateEndpointURL(endpoint string) error {
 		return errors.New("endpoint has no host")
 	}
 
-	hostname := u.Hostname()
+	hostname := strings.ToLower(u.Hostname())
 
 	if hostname == "localhost" || hostname == "127.0.0.1" || hostname == "::1" {
 		return nil

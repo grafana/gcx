@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"strings"
 
@@ -175,8 +174,8 @@ type Hooks struct {
 
 // RetryState carries plumbing used by the CLI layer when Run returns a
 // sentinel (ErrNeedInput / ErrNeedClarification) and is re-invoked after
-// the caller resolves the missing value. These fields are never set on
-// the first invocation and should be treated as internal protocol between
+// the caller resolves the missing value. Some fields may be set on the first
+// invocation and should be treated as internal protocol between
 // Run and its retry-loop caller.
 type RetryState struct {
 	// StagedContext carries partially-resolved state across sentinel
@@ -598,14 +597,9 @@ func NormalizeServerURL(raw string) string {
 // Grafana Cloud portal root instead of a Grafana stack. It returns nil for
 // every other URL, including custom Cloud domains and on-premises hosts.
 func rejectPortalServerURL(server string) error {
-	suffix, ok := config.GCOMPortalServerURL(server)
+	host, suffix, ok := config.GCOMPortalServerURL(server)
 	if !ok {
 		return nil
-	}
-
-	host := server
-	if parsed, err := url.Parse(server); err == nil && parsed.Hostname() != "" {
-		host = parsed.Hostname()
 	}
 
 	return &PortalServerURLError{Server: server, Host: host, StackSuffix: suffix}
