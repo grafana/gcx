@@ -120,11 +120,11 @@ func execStatsCmd(t *testing.T, args ...string) (string, string, error) {
 // stderr, regardless of -o format, so stdout only ever carries the
 // codec-rendered result (which already includes the same Bytes value).
 func TestStatsCmd_BytesHeaderAlwaysOnStderr(t *testing.T) {
-	t.Run("table: stdout is only the codec-rendered table", func(t *testing.T) {
+	t.Run("table: stdout is only the codec-rendered bytes value", func(t *testing.T) {
 		stdout, stderr, err := execStatsCmd(t, "-o", "table")
 		require.NoError(t, err)
 		assert.NotContains(t, stdout, "would be scanned")
-		assert.Contains(t, stdout, "Bytes")
+		assert.Contains(t, stdout, "36 MiB")
 		assert.Contains(t, stderr, "36 MiB would be scanned")
 	})
 

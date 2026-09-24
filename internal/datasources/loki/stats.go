@@ -51,10 +51,10 @@ func StatsCmd(loader *providers.ConfigLoader) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "stats [EXPR]",
-		Short: "Show index stats (streams/chunks/bytes/entries) for a LogQL selector without executing it",
+		Short: "Show the estimated size in bytes for a LogQL query without executing it",
 		Long: `Query Loki's index-stats endpoint for a label matcher and time range.
 
-Returns stream/chunk/byte/entry counts WITHOUT executing the query — useful to
+Returns the estimated bytes scanned WITHOUT executing the query — useful to
 estimate the cost of a query before running it with 'loki query' or 'loki metrics'.
 
 EXPR is the LogQL expression to evaluate (the same expression accepted by
@@ -72,8 +72,9 @@ widened by any range-vector duration or offset in EXPR (e.g. '[24h]',
 alone would suggest.
 Bytes scanned is the number this command exists to answer, so it's always
 called out as a "<size> would be scanned" diagnostic on stderr, regardless of
--o format — stdout is reserved for the codec-rendered result (the table, or
-the json/yaml payload), which already includes the same Bytes value.`,
+-o format. -o table's stdout result is that same size alone; the underlying
+Streams/Chunks/Entries counts aren't relevant to the cost question this
+command answers, but remain available via -o json/-o yaml.`,
 		Example: `
   # Estimate bytes scanned by a selector over the last hour
   gcx datasources loki stats -d UID '{job="varlogs"}' --since 1h
