@@ -113,27 +113,27 @@ func execStatsCmd(t *testing.T, args ...string) (string, string, error) {
 	return outBuf.String(), errBuf.String(), err
 }
 
-// TestStatsCmd_BytesHeaderAlwaysOnStderr pins the fix for the "unstructured
-// warning on stdout, ahead of the codec-owned result" finding
-// (DESIGN.md's Output Model / CONSTITUTION.md's "all output goes through the
-// codec system"): the "<size> would be scanned" diagnostic always goes to
-// stderr, regardless of -o format, so stdout only ever carries the
-// codec-rendered result (which already includes the same Bytes value).
-func TestStatsCmd_BytesHeaderAlwaysOnStderr(t *testing.T) {
-	t.Run("table: stdout is only the codec-rendered bytes value", func(t *testing.T) {
+// TestStatsCmd_BytesIsTheSoleResultWithNoDuplicateStderrDiagnostic pins the
+// fix for matyax's "I don't think we need the second 2.9 GiB returned"
+// finding: the bytes-scanned figure is the result this command exists to
+// produce, not a diagnostic about it, so it appears exactly once — as the
+// table codec's stdout line — with no separate stderr echo of the same
+// value. -o json/-o yaml keep the full struct on stdout for scripting, with
+// nothing on stderr either.
+func TestStatsCmd_BytesIsTheSoleResultWithNoDuplicateStderrDiagnostic(t *testing.T) {
+	t.Run("table: stdout is a single bytes-scanned line, stderr is empty", func(t *testing.T) {
 		stdout, stderr, err := execStatsCmd(t, "-o", "table")
 		require.NoError(t, err)
-		assert.NotContains(t, stdout, "would be scanned")
-		assert.Contains(t, stdout, "36 MiB")
-		assert.Contains(t, stderr, "36 MiB would be scanned")
+		assert.Equal(t, "36 MiB would be scanned\n", stdout)
+		assert.Empty(t, stderr)
 	})
 
-	t.Run("json: stdout is clean valid JSON, header goes to stderr instead", func(t *testing.T) {
+	t.Run("json: stdout is clean valid JSON, stderr is empty", func(t *testing.T) {
 		stdout, stderr, err := execStatsCmd(t, "-o", "json")
 		require.NoError(t, err)
 		assert.NotContains(t, stdout, "would be scanned")
 		assert.Contains(t, stdout, `"bytes"`)
-		assert.Contains(t, stderr, "36 MiB would be scanned")
+		assert.Empty(t, stderr)
 	})
 }
 
