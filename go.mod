@@ -42,7 +42,6 @@ require (
 	charm.land/huh/v2 v2.0.3
 	charm.land/lipgloss/v2 v2.0.6
 	github.com/NimbleMarkets/ntcharts/v2 v2.2.0
-	github.com/agnivade/levenshtein v1.2.1
 	github.com/go-openapi/runtime v0.33.2
 	github.com/gofrs/flock v0.13.1
 	github.com/google/uuid v1.6.0
@@ -60,6 +59,7 @@ require (
 	charm.land/bubbles/v2 v2.2.1 // indirect
 	charm.land/bubbletea/v2 v2.0.9 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
+	github.com/agnivade/levenshtein v1.2.1 // indirect
 	github.com/alecthomas/chroma/v2 v2.27.0 // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/aymerick/douceur v0.2.0 // indirect

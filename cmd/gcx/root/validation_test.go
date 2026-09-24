@@ -87,6 +87,37 @@ func TestValidateArgs_CorrectionQuotesSpacedTrailingArgs(t *testing.T) {
 	assert.Equal(t, `gcx aio11y agents show 'my agent'`, usageErr.Corrections[0].Command)
 }
 
+func TestValidateArgs_CorrectionPreservesContextAndLeafFlag(t *testing.T) {
+	for _, tt := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"--context", "staging", "aio11y", "agents", "shwo", "my-agent", "--output", "json"}, "gcx --context staging aio11y agents show my-agent --output json"},
+		{[]string{"--context", "staging", "aio11y", "agents", "--output", "json", "shwo", "my-agent"}, "gcx --context staging aio11y agents --output json show my-agent"},
+	} {
+		rootCmd := newAgentsTestRoot(t)
+		for _, area := range rootCmd.Commands() {
+			if area.Name() != "aio11y" {
+				continue
+			}
+			for _, group := range area.Commands() {
+				if group.Name() != "agents" {
+					continue
+				}
+				for _, leaf := range group.Commands() {
+					if leaf.Name() == "show" {
+						leaf.Flags().String("output", "", "Output format")
+					}
+				}
+			}
+		}
+		err := root.ValidateArgs(rootCmd, tt.args)
+		usageErr := asUsageError(t, err)
+		require.Len(t, usageErr.Corrections, 1)
+		assert.Equal(t, tt.want, usageErr.Corrections[0].Command)
+	}
+}
+
 func TestValidateArgs_SuggestsViaAlias(t *testing.T) {
 	rootCmd := newAgentsTestRoot(t)
 
