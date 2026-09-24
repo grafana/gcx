@@ -54,8 +54,11 @@ func TestGCOMPortalServerURL(t *testing.T) {
 	}{
 		// Portal roots: each maps to the stack suffix of its own environment.
 		{"prod portal", "https://grafana.com", ".grafana.net", true},
+		{"www prod portal", "https://www.grafana.com", ".grafana.net", true},
 		{"dev portal", "https://grafana-dev.com", ".grafana-dev.net", true},
+		{"www dev portal", "https://www.grafana-dev.com", ".grafana-dev.net", true},
 		{"ops portal", "https://grafana-ops.com", ".grafana-ops.net", true},
+		{"www ops portal", "https://www.grafana-ops.com", ".grafana-ops.net", true},
 		{"portal with a path", "https://grafana.com/orgs/example", ".grafana.net", true},
 		{"portal with a port", "https://grafana.com:443", ".grafana.net", true},
 		{"portal in uppercase", "https://GRAFANA.COM", ".grafana.net", true},
@@ -76,12 +79,15 @@ func TestGCOMPortalServerURL(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			suffix, ok := config.GCOMPortalServerURL(tc.serverURL)
+			host, suffix, ok := config.GCOMPortalServerURL(tc.serverURL)
 			if ok != tc.wantOK {
 				t.Fatalf("GCOMPortalServerURL(%q) ok = %v, want %v", tc.serverURL, ok, tc.wantOK)
 			}
 			if suffix != tc.wantSuffix {
 				t.Fatalf("GCOMPortalServerURL(%q) suffix = %q, want %q", tc.serverURL, suffix, tc.wantSuffix)
+			}
+			if ok && host == "" {
+				t.Fatalf("GCOMPortalServerURL(%q) returned empty portal host", tc.serverURL)
 			}
 		})
 	}

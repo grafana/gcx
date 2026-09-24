@@ -1264,6 +1264,34 @@ func TestLoginEnvironmentServerChangeRequiresPreflightConfirmation(t *testing.T)
 	require.ErrorContains(t, err, "--allow-server-override")
 }
 
+func TestLoginPortalURLRejectedBeforeServerOverrideConfirmation(t *testing.T) {
+	t.Setenv("GCX_AGENT_MODE", "false")
+	t.Setenv("GRAFANA_SERVER", "https://www.grafana.com")
+	t.Setenv("GRAFANA_TOKEN", "fresh-env-token")
+	unsetEnvForTest(t, "GRAFANA_CLOUD_API_URL")
+	unsetEnvForTest(t, "GRAFANA_CLOUD_OAUTH_URL")
+	agent.ResetForTesting()
+	t.Cleanup(agent.ResetForTesting)
+
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	seed := config.Config{}
+	seed.SetStack("prod", config.StackConfig{Grafana: &config.GrafanaConfig{Server: "https://old.example.invalid"}})
+	seed.SetContext("prod", true, config.Context{Stack: "prod"})
+	require.NoError(t, config.Write(t.Context(), config.ExplicitConfigFile(path), seed))
+
+	cmd := Command()
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{"prod", "--config", path, "--yes"})
+
+	err := cmd.ExecuteContext(t.Context())
+	var portalErr *internallogin.PortalServerURLError
+	require.ErrorAs(t, err, &portalErr)
+	assert.Equal(t, "www.grafana.com", portalErr.Host)
+}
+
 func TestSchemelessServerReauthMatchesStoredHTTPSDestination(t *testing.T) {
 	t.Setenv("GCX_KEYCHAIN", "off")
 	server, caFile := newLoginTLSServer(t)

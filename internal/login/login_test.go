@@ -1538,8 +1538,12 @@ func TestRun_RejectsCloudPortalServerURL(t *testing.T) {
 		wantSuffix string
 	}{
 		{"prod portal", "https://grafana.com", "grafana.com", ".grafana.net"},
+		{"www prod portal", "https://www.grafana.com", "www.grafana.com", ".grafana.net"},
+		{"uppercase portal", "https://GRAFANA.COM", "grafana.com", ".grafana.net"},
 		{"dev portal", "https://grafana-dev.com", "grafana-dev.com", ".grafana-dev.net"},
+		{"www dev portal", "https://www.grafana-dev.com", "www.grafana-dev.com", ".grafana-dev.net"},
 		{"ops portal", "https://grafana-ops.com", "grafana-ops.com", ".grafana-ops.net"},
+		{"www ops portal", "https://www.grafana-ops.com", "www.grafana-ops.com", ".grafana-ops.net"},
 		{"portal without a scheme", "grafana.com", "grafana.com", ".grafana.net"},
 		{"portal with a path", "https://grafana.com/orgs/example", "grafana.com", ".grafana.net"},
 	}
