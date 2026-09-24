@@ -202,10 +202,8 @@ func FormatSeriesTable(w io.Writer, resp *SeriesResponse) error {
 	return t.Render(w)
 }
 
-// FormatIndexStatsTable formats an IndexStatsResponse as a single "<size>
-// would be scanned" line — no table, no Streams/Chunks/Entries rows. Bytes
-// scanned is the number this command exists to answer; the other fields
-// aren't relevant to that question and only buried it.
+// FormatIndexStatsTable prints a single "<size> would be scanned" line —
+// Bytes is the only field this command's result cares about.
 func FormatIndexStatsTable(w io.Writer, resp *IndexStatsResponse) error {
 	_, err := fmt.Fprintf(w, "%s would be scanned\n", humanize.IBytes(resp.Bytes))
 	return err
