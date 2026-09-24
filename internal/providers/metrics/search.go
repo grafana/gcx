@@ -43,7 +43,7 @@ func searchMetricNamesCmd(loader *providers.ConfigLoader) *cobra.Command {
   gcx metrics search metric-names http --fuzz-alg=subsequence --fuzz-threshold=70
 
   # Limit result sets and control ordering
-  gcx metrics search metric-names http --limit=10 --sort-by=alpha 
+  gcx metrics search metric-names http --limit=10 --sort-by=alpha
 
   # Include relevance score and metric metadata
   gcx metrics search metric-names http --include-score --include-metadata

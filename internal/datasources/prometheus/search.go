@@ -43,7 +43,6 @@ type SearchOpts struct {
 	SortBy          string
 	SortDir         string
 	Limit           int
-	BatchSize       int
 	IncludeScore    bool
 	IncludeMetadata bool
 }
@@ -63,7 +62,6 @@ func (opts *SearchOpts) SetupCommon(flags *pflag.FlagSet, withMetric bool) {
 	flags.StringVar(&opts.SortBy, "sort-by", "score", "Sort by: score (requires a search term) or alpha")
 	flags.StringVar(&opts.SortDir, "sort-dir", "", "Sort direction for --sort-by alpha: asc (default) or dsc")
 	flags.IntVar(&opts.Limit, "limit", 50, "Maximum results to return (0: unlimited but may be limited server side)")
-	flags.IntVar(&opts.BatchSize, "batch-size", 100, "Maximum results per streamed batch (max 10000)")
 	flags.BoolVar(&opts.IncludeScore, "include-score", false, "Include each result's relevance score")
 }
 
@@ -82,9 +80,10 @@ func (opts *SearchOpts) Validate() error {
 	default:
 		return fmt.Errorf(`invalid --sort-dir %q: must be "asc" or "dsc"`, opts.SortDir)
 	}
-	if opts.SortDir != "" && opts.SortBy == "score" {
-		return errors.New("--sort-dir is incompatible with --sort-by=score; sort direction only applies to --sort-by=alpha")
-	}
+	// The --sort-dir/--sort-by=score incompatibility is checked in ToOptions,
+	// not here: ToOptions may downgrade SortBy to "alpha" when no term is
+	// given, and that resolved value — not the raw flag default — is what
+	// determines compatibility.
 	switch opts.FuzzAlg {
 	case "jarowinkler", "subsequence":
 	default:
@@ -95,9 +94,6 @@ func (opts *SearchOpts) Validate() error {
 	}
 	if opts.Limit < 0 {
 		return fmt.Errorf("invalid --limit %d: must be >= 0 (0 means unlimited)", opts.Limit)
-	}
-	if opts.BatchSize < 0 || opts.BatchSize > 10000 {
-		return fmt.Errorf("invalid --batch-size %d: must be between 0 and 10000", opts.BatchSize)
 	}
 
 	return opts.ValidateTimeRange()
@@ -127,6 +123,9 @@ func (opts *SearchOpts) ToOptions(terms []string, sortByExplicit bool) (promethe
 	if len(terms) == 0 && sortBy == "score" && !sortByExplicit {
 		sortBy = "alpha"
 	}
+	if opts.SortDir != "" && sortBy == "score" {
+		return prometheus.SearchOptions{}, errors.New("--sort-dir is incompatible with --sort-by=score; sort direction only applies to --sort-by=alpha")
+	}
 
 	return prometheus.SearchOptions{
 		Search:          terms,
@@ -139,7 +138,6 @@ func (opts *SearchOpts) ToOptions(terms []string, sortByExplicit bool) (promethe
 		SortBy:          sortBy,
 		SortDir:         opts.SortDir,
 		Limit:           opts.Limit,
-		BatchSize:       opts.BatchSize,
 		IncludeScore:    opts.IncludeScore,
 		IncludeMetadata: opts.IncludeMetadata,
 	}, nil
@@ -169,8 +167,8 @@ func resolveClient(cmd *cobra.Command, loader *providers.ConfigLoader, datasourc
 }
 
 type searchResult[T any] struct {
-	Results  []T
-	Warnings []string
+	Results  []T             `json:"results" yaml:"results"`
+	Warnings []string        `json:"warnings,omitempty" yaml:"warnings,omitempty"`
 	ListMeta *cmdio.ListMeta `json:"list_meta,omitempty" yaml:"list_meta,omitempty"`
 }
 
@@ -191,7 +189,12 @@ func emitSearchDiagnostics(w io.Writer, warnings []string, meta *cmdio.ListMeta)
 
 // SearchMetricNamesCmd returns the `search-metric-names` leaf command.
 //
-// This is one of three sibling leaf commands (see also SearchLabelNamesCmd and SearchLabelValuesCmd).
+// This is one of three sibling leaf commands (see also SearchLabelNamesCmd
+// and SearchLabelValuesCmd). Each is a flat `<operation>-<subject>` leaf
+// rather than children of a `search` subgroup, per the compound-verb rule in
+// docs/design/command-naming.md — a `search` group with `metric-names`/
+// `label-names`/`label-values` children would not pass the canonical-verb
+// naming gate.
 func SearchMetricNamesCmd(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &SearchOpts{}
 
@@ -405,6 +408,9 @@ See also the sibling metric-name search and label-name search commands.`,
 			}
 
 			label := args[0]
+			if label == "" {
+				return errors.New("invalid LABEL: value is empty (unset shell variable?)")
+			}
 			terms := args[1:]
 
 			searchOptions, err := opts.ToOptions(terms, cmd.Flags().Changed("sort-by"))

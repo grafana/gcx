@@ -20,9 +20,9 @@ import (
 // available on both Prometheus and Mimir. All fields are optional except
 // where the field doc says otherwise.
 //
-// Limit and BatchSize are always sent, even when zero: the server treats an
-// explicit 0 for Limit as "unlimited" (distinct from its own default of
-// 100), so a Go zero value must not be indistinguishable from that request.
+// Limit is always sent, even when zero: the server treats an explicit 0 as
+// "unlimited" (distinct from its own default of 100), so a Go zero value
+// must not be indistinguishable from that request.
 type SearchOptions struct {
 	// Search holds fuzzy search terms (max 32); repeated terms combine as OR.
 	Search []string
@@ -43,8 +43,6 @@ type SearchOptions struct {
 	SortDir string
 	// Limit caps the number of results; 0 means unlimited. Always sent.
 	Limit int
-	// BatchSize caps results per streamed NDJSON batch. Always sent.
-	BatchSize int
 	// IncludeScore adds a relevance score to each result.
 	IncludeScore bool
 	// IncludeMetadata attaches metric type/help/unit; metric_names only.
@@ -53,11 +51,11 @@ type SearchOptions struct {
 
 // MetricNameResult is one result from SearchMetricNames.
 type MetricNameResult struct {
-	Name  string
-	Score float64
-	Type  string
-	Help  string
-	Unit  string
+	Name  string  `json:"name"`
+	Score float64 `json:"score,omitempty"`
+	Type  string  `json:"type,omitempty"`
+	Help  string  `json:"help,omitempty"`
+	Unit  string  `json:"unit,omitempty"`
 }
 
 // SearchMetricNamesResponse is the response from SearchMetricNames.
@@ -69,8 +67,8 @@ type SearchMetricNamesResponse struct {
 
 // LabelNameResult is one result from SearchLabelNames.
 type LabelNameResult struct {
-	Name  string
-	Score float64
+	Name  string  `json:"name"`
+	Score float64 `json:"score,omitempty"`
 }
 
 // SearchLabelNamesResponse is the response from SearchLabelNames.
@@ -82,8 +80,8 @@ type SearchLabelNamesResponse struct {
 
 // LabelValueResult is one result from SearchLabelValues.
 type LabelValueResult struct {
-	Value string
-	Score float64
+	Value string  `json:"value"`
+	Score float64 `json:"score,omitempty"`
 }
 
 // SearchLabelValuesResponse is the response from SearchLabelValues.
@@ -180,7 +178,7 @@ func (c *Client) search(ctx context.Context, apiPath string, extra url.Values, o
 
 // addSearchParams appends the parameters common to all three search
 // endpoints. Optional parameters are omitted when unset so the server's own
-// default applies; Limit and BatchSize are always sent (see SearchOptions).
+// default applies; Limit is always sent (see SearchOptions).
 func addSearchParams(q url.Values, opts SearchOptions) {
 	for _, s := range opts.Search {
 		q.Add("search[]", s)
@@ -210,7 +208,6 @@ func addSearchParams(q url.Values, opts SearchOptions) {
 		q.Set("sort_dir", opts.SortDir)
 	}
 	q.Set("limit", strconv.Itoa(opts.Limit))
-	q.Set("batch_size", strconv.Itoa(opts.BatchSize))
 	if opts.IncludeScore {
 		q.Set("include_score", "true")
 	}

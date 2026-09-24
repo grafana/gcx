@@ -89,8 +89,8 @@ func TestSearchMetricNamesCmd(t *testing.T) {
 	assert.Equal(t, "/api/datasources/uid/prom-uid/resources/api/v1/search/metric_names", path)
 	assert.Equal(t, []string{"up"}, query["search[]"])
 	assert.Equal(t, "true", query.Get("include_score"))
-	assert.Contains(t, stdout.String(), `"Name": "up"`)
-	assert.Contains(t, stdout.String(), `"Score": 95`)
+	assert.Contains(t, stdout.String(), `"name": "up"`)
+	assert.Contains(t, stdout.String(), `"score": 95`)
 }
 
 func TestSearchLabelNamesCmd(t *testing.T) {
@@ -106,7 +106,7 @@ func TestSearchLabelNamesCmd(t *testing.T) {
 	path, query := captured()
 	assert.Equal(t, "/api/datasources/uid/prom-uid/resources/api/v1/search/label_names", path)
 	assert.Equal(t, []string{"jo"}, query["search[]"])
-	assert.Contains(t, stdout.String(), `"Name": "job"`)
+	assert.Contains(t, stdout.String(), `"name": "job"`)
 }
 
 // TestSearchCmds_CaseSensitiveDefaultsFalse proves case_sensitive=false is
@@ -161,7 +161,7 @@ func TestSearchLabelValuesCmd(t *testing.T) {
 	assert.Equal(t, "/api/datasources/uid/prom-uid/resources/api/v1/search/label_values", path)
 	assert.Equal(t, "job", query.Get("label"))
 	assert.Equal(t, []string{"prom"}, query["search[]"])
-	assert.Contains(t, stdout.String(), `"Value": "prometheus"`)
+	assert.Contains(t, stdout.String(), `"value": "prometheus"`)
 }
 
 func TestSearchMetricNamesCmd_RequiresTerm(t *testing.T) {
@@ -195,6 +195,22 @@ func TestSearchLabelValuesCmd_RequiresLabelArg(t *testing.T) {
 
 	path, _ := captured()
 	assert.Empty(t, path, "no request should be made when the required LABEL arg is missing")
+}
+
+// TestSearchLabelValuesCmd_RejectsExplicitlyEmptyLabel proves an explicitly
+// empty LABEL positional (typically an unset shell variable, as in
+// `search-label-values "$LABEL"`) is rejected before any request, the same
+// way rejectExplicitlyEmptyFlags guards --metric/--metric-regex.
+func TestSearchLabelValuesCmd_RejectsExplicitlyEmptyLabel(t *testing.T) {
+	root, _, captured := newSearchTestRoot(t, "")
+	root.SetArgs([]string{"search-label-values", "", "pro", "-d", "prom-uid", "-o", "json"})
+
+	err := root.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid LABEL")
+
+	path, _ := captured()
+	assert.Empty(t, path, "no request should be made for an empty LABEL")
 }
 
 func TestSearchMetricNamesCmd_TableOutput(t *testing.T) {
@@ -308,10 +324,10 @@ func TestSearchLabelNamesCmd_RejectsExplicitlyEmptyMetric(t *testing.T) {
 }
 
 // TestSearchMetricNamesCmd_RejectsInvalidEnumAndRangeFlags proves --sort-by,
-// --sort-dir, --fuzz-alg, --fuzz-threshold, --limit, and --batch-size are
-// validated client-side against their documented allowed values/ranges
-// before any request is made — an unvalidated bad value would otherwise
-// reach the server as an opaque error.
+// --sort-dir, --fuzz-alg, --fuzz-threshold, and --limit are validated
+// client-side against their documented allowed values/ranges before any
+// request is made — an unvalidated bad value would otherwise reach the
+// server as an opaque error.
 func TestSearchMetricNamesCmd_RejectsInvalidEnumAndRangeFlags(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -326,8 +342,6 @@ func TestSearchMetricNamesCmd_RejectsInvalidEnumAndRangeFlags(t *testing.T) {
 		{name: "fuzz-threshold too low", extraArgs: []string{"--fuzz-threshold", "-1"}, wantErr: "invalid --fuzz-threshold"},
 		{name: "fuzz-threshold too high", extraArgs: []string{"--fuzz-threshold", "101"}, wantErr: "invalid --fuzz-threshold"},
 		{name: "negative limit", extraArgs: []string{"--limit", "-1"}, wantErr: "invalid --limit"},
-		{name: "batch-size too high", extraArgs: []string{"--batch-size", "10001"}, wantErr: "invalid --batch-size"},
-		{name: "negative batch-size", extraArgs: []string{"--batch-size", "-1"}, wantErr: "invalid --batch-size"},
 	}
 
 	for _, tc := range tests {
@@ -358,7 +372,6 @@ func TestSearchMetricNamesCmd_AcceptsValidEnumAndRangeFlags(t *testing.T) {
 		{"--fuzz-threshold", "0"},
 		{"--fuzz-threshold", "100"},
 		{"--limit", "0"},
-		{"--batch-size", "10000"},
 	}
 
 	for _, extraArgs := range tests {
@@ -500,6 +513,22 @@ func TestSearchLabelValuesCmd_LabelAloneListsEveryValue(t *testing.T) {
 	assert.Equal(t, "alpha", query.Get("sort_by"), "sort_by=score requires a term; omitting it should fall back to alpha")
 }
 
+// TestSearchLabelValuesCmd_SortDirAllowedWithNoTerm proves --sort-dir is
+// accepted when TERM is omitted: sort_by silently downgrades from its
+// score default to alpha before the sort-dir/sort-by=score incompatibility
+// is checked, so the two are never in conflict here.
+func TestSearchLabelValuesCmd_SortDirAllowedWithNoTerm(t *testing.T) {
+	ndjson := strings.Join([]string{`{"results":[]}`, `{"status":"success","has_more":false}`}, "\n") + "\n"
+
+	root, _, captured := newSearchTestRoot(t, ndjson)
+	root.SetArgs([]string{"search-label-values", "job", "-d", "prom-uid", "--sort-dir", "dsc"})
+	require.NoError(t, root.Execute())
+
+	_, query := captured()
+	assert.Equal(t, "alpha", query.Get("sort_by"))
+	assert.Equal(t, "dsc", query.Get("sort_dir"))
+}
+
 func TestSearchMetricNamesCmd_FeatureNotEnabled(t *testing.T) {
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/bootdata" {
@@ -525,6 +554,35 @@ func TestSearchMetricNamesCmd_FeatureNotEnabled(t *testing.T) {
 	err := root.Execute()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "experimental")
+}
+
+// TestSearchMetricNamesCmd_JSONKeysAreSnakeCase proves the output envelope
+// and item fields use gcx's snake_case convention (not Go's default
+// PascalCase), and that an absent Warnings array serializes as an omitted
+// key rather than "null" — both were review findings on an earlier version
+// of this envelope.
+func TestSearchMetricNamesCmd_JSONKeysAreSnakeCase(t *testing.T) {
+	ndjson := strings.Join([]string{
+		`{"results":[{"name":"up","score":95,"type":"gauge","help":"1 if up","unit":"1"}]}`,
+		`{"status":"success","has_more":false}`,
+	}, "\n") + "\n"
+
+	root, stdout, _ := newSearchTestRoot(t, ndjson)
+	root.SetArgs([]string{"search-metric-names", "up", "-d", "prom-uid", "-o", "json", "--include-score", "--include-metadata"})
+	require.NoError(t, root.Execute())
+
+	out := stdout.String()
+	assert.Contains(t, out, `"results"`)
+	assert.Contains(t, out, `"name": "up"`)
+	assert.Contains(t, out, `"score": 95`)
+	assert.Contains(t, out, `"type": "gauge"`)
+	assert.Contains(t, out, `"help": "1 if up"`)
+	assert.Contains(t, out, `"unit": "1"`)
+	assert.NotContains(t, out, "Results")
+	assert.NotContains(t, out, "Name")
+	assert.NotContains(t, out, "Score")
+	assert.NotContains(t, out, `"warnings"`, "an absent warnings array must be omitted, not serialized as null")
+	assert.NotContains(t, out, "null")
 }
 
 // TestSearchMetricNamesCmd_ExposesHasMoreAsListMeta proves a truncated

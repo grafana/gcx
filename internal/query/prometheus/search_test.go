@@ -47,7 +47,6 @@ func TestClient_SearchMetricNames(t *testing.T) {
 		FuzzThreshold:   50,
 		SortBy:          "score",
 		Limit:           50,
-		BatchSize:       10,
 		IncludeScore:    true,
 		IncludeMetadata: true,
 	})
@@ -60,7 +59,6 @@ func TestClient_SearchMetricNames(t *testing.T) {
 	assert.Equal(t, "50", capturedQuery.Get("fuzz_threshold"))
 	assert.Equal(t, "score", capturedQuery.Get("sort_by"))
 	assert.Equal(t, "50", capturedQuery.Get("limit"))
-	assert.Equal(t, "10", capturedQuery.Get("batch_size"))
 	assert.Equal(t, "true", capturedQuery.Get("include_score"))
 	assert.Equal(t, "true", capturedQuery.Get("include_metadata"))
 
@@ -94,11 +92,10 @@ func TestClient_SearchMetricNames_OmitsUnsetOptionalParams(t *testing.T) {
 		_, present := capturedQuery[key]
 		assert.False(t, present, "expected %q to be omitted", key)
 	}
-	// limit and batch_size are always sent (0 is a meaningful value for the
-	// server: "unlimited"), so an unset Go zero value must not be
-	// indistinguishable from an explicit request for it.
+	// limit is always sent (0 is a meaningful value for the server:
+	// "unlimited"), so an unset Go zero value must not be indistinguishable
+	// from an explicit request for it.
 	assert.Equal(t, "0", capturedQuery.Get("limit"))
-	assert.Equal(t, "0", capturedQuery.Get("batch_size"))
 }
 
 func TestClient_SearchMetricNames_CaseSensitiveFalse(t *testing.T) {

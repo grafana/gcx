@@ -47,7 +47,6 @@ gcx metrics search label-names [TERM...] [flags]
 ### Options
 
 ```
-      --batch-size int        Maximum results per streamed batch (max 10000) (default 100)
       --case-sensitive        Case-sensitive search term matching (case-insensitive by default)
   -d, --datasource string     Datasource UID (required unless datasources.prometheus is configured)
       --from string           Start time (RFC3339, Unix timestamp, or relative like 'now-1h')

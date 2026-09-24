@@ -31,7 +31,7 @@ gcx metrics search metric-names TERM... [flags]
   gcx metrics search metric-names http --fuzz-alg=subsequence --fuzz-threshold=70
 
   # Limit result sets and control ordering
-  gcx metrics search metric-names http --limit=10 --sort-by=alpha 
+  gcx metrics search metric-names http --limit=10 --sort-by=alpha
 
   # Include relevance score and metric metadata
   gcx metrics search metric-names http --include-score --include-metadata
@@ -43,7 +43,6 @@ gcx metrics search metric-names TERM... [flags]
 ### Options
 
 ```
-      --batch-size int       Maximum results per streamed batch (max 10000) (default 100)
       --case-sensitive       Case-sensitive search term matching (case-insensitive by default)
   -d, --datasource string    Datasource UID (required unless datasources.prometheus is configured)
       --from string          Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
