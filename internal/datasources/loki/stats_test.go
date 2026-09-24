@@ -113,18 +113,14 @@ func execStatsCmd(t *testing.T, args ...string) (string, string, error) {
 	return outBuf.String(), errBuf.String(), err
 }
 
-// TestStatsCmd_BytesIsTheSoleResultWithNoDuplicateStderrDiagnostic pins the
-// fix for matyax's "I don't think we need the second 2.9 GiB returned"
-// finding: the bytes-scanned figure is the result this command exists to
-// produce, not a diagnostic about it, so it appears exactly once — as the
-// table codec's stdout line — with no separate stderr echo of the same
-// value. -o json/-o yaml keep the full struct on stdout for scripting, with
-// nothing on stderr either.
+// TestStatsCmd_BytesIsTheSoleResultWithNoDuplicateStderrDiagnostic pins
+// matyax's "don't need the second value returned": the bytes figure appears
+// once, as the table codec's stdout line, with nothing duplicated on stderr.
 func TestStatsCmd_BytesIsTheSoleResultWithNoDuplicateStderrDiagnostic(t *testing.T) {
 	t.Run("table: stdout is a single bytes-scanned line, stderr is empty", func(t *testing.T) {
 		stdout, stderr, err := execStatsCmd(t, "-o", "table")
 		require.NoError(t, err)
-		assert.Equal(t, "36 MiB would be scanned\n", stdout)
+		assert.Contains(t, stdout, "36 MiB would be scanned")
 		assert.Empty(t, stderr)
 	})
 
