@@ -58,6 +58,7 @@ type listOpts struct {
 	Limit           int
 	Count           bool
 	Instrumentation string
+	KG              kgFlags
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
@@ -75,6 +76,7 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 	flags.StringSliceVar(&o.Columns, "columns", nil, "Extra target_info labels to surface as table columns (comma-separated)")
 	flags.IntVar(&o.Limit, "limit", servicesListDefaultLimit, "Limit the number of services returned (0 = unlimited; applied after sorting)")
 	flags.BoolVar(&o.Count, "count", false, "Print a per-language summary instead of the full list")
+	o.KG.register(flags)
 }
 
 func (o *listOpts) Validate() error {
@@ -88,6 +90,9 @@ func (o *listOpts) Validate() error {
 	case instrAll, instrInstrumented, instrUninstrumented:
 	default:
 		return fmt.Errorf("--instrumentation must be one of %s, %s, or %s", instrAll, instrInstrumented, instrUninstrumented)
+	}
+	if _, err := o.KG.resolve(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -211,6 +216,7 @@ func runList(loader *providers.ConfigLoader, opts *listOpts) func(*cobra.Command
 			return err
 		}
 		activation.Gate(ctx, cfg, cmd.ErrOrStderr())
+		cat := opts.KG.catalog(cfg)
 
 		datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "prometheus")
 		if err != nil {
@@ -285,6 +291,17 @@ func runList(loader *providers.ConfigLoader, opts *listOpts) func(*cobra.Command
 				return nil
 			})
 		}
+		var kgResult indexResult
+		if cat != nil {
+			eg.Go(func() error {
+				// services list has no --since window of its own (target_info
+				// discovery is an instant snapshot, not RED-windowed), so
+				// there's nothing to thread here beyond kgquery's own
+				// last-hour default.
+				kgResult = cat.index(egCtx, 0, 0)
+				return nil
+			})
+		}
 		if err := eg.Wait(); err != nil {
 			return err
 		}
@@ -303,6 +320,9 @@ func runList(loader *providers.ConfigLoader, opts *listOpts) func(*cobra.Command
 
 		items := resolveItems(opts.Instrumentation, instrumented, baseline, graph)
 		items = filterByEnv(items, opts.Env)
+		if cat != nil {
+			items = annotateServicesFromKG(items, warnKGIndex(cmd.ErrOrStderr(), kgResult))
+		}
 
 		truncated := false
 		if opts.Limit > 0 && len(items) > opts.Limit {

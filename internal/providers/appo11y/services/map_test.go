@@ -181,6 +181,9 @@ func TestMapOptsValidate(t *testing.T) {
 		if o.Since == "" {
 			o.Since = defaultRedWindow
 		}
+		if o.KG.Mode == "" {
+			o.KG.Mode = string(kgModeAuto)
+		}
 		return o
 	}
 	tests := []struct {

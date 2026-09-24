@@ -65,6 +65,9 @@ func TestListOptsValidate(t *testing.T) {
 		if o.Instrumentation == "" {
 			o.Instrumentation = instrAll
 		}
+		if o.KG.Mode == "" {
+			o.KG.Mode = string(kgModeAuto)
+		}
 		return o
 	}
 	tests := []struct {

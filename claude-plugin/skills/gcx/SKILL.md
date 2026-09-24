@@ -184,6 +184,30 @@ Use `gcx traces labels -d <tempo-uid>` to discover attribute names first. Use
 a selected trace. Omit `--llm` only when the user explicitly needs raw Tempo/OTLP
 JSON or the standard `tagValues: [{type, value}]` shape for schema/debugging work.
 
+### Shrinking large traces before analysis
+
+`gcx traces get` supports V2 filtering and span pruning (both experimental) —
+reach for these before manually truncating a huge `--llm` payload yourself:
+
+```bash
+# Only error spans, plus each match's ancestor path to the root.
+gcx traces get -d <tempo-uid> <trace-id> --filter '{ status = error }' --keep-hierarchy --llm -o json
+
+# Collapse repeated sibling spans (e.g. a fan-out of identical DB calls)
+# into one aggregated span. Safe to combine with --filter.
+gcx traces get -d <tempo-uid> <trace-id> --prune --llm -o json
+```
+
+`--filter` takes a TraceQL spanset filter; `--match-depth`/`--ancestor-depth`
+tune how many descendant/ancestor levels around each match are kept and are
+ignored without `--filter`. `--prune` is a bool, off unless set. 
+`--prune-group-by`/`--prune-min-spans`/`--prune-max-parent-depth`
+tune the pruning behavior and apply only when `--prune` enables pruning. Run
+`gcx traces get --help` for full flag details.
+
+If a response is too large for `-o agents`, it spills to a file with a hint
+to read it directly or re-run narrower (e.g. with `--filter` or `--prune`).
+
 ## Grafana Assistant
 
 gcx provides direct access to the Grafana Assistant — use it for **reasoning
