@@ -92,7 +92,7 @@ func (p *Provider) descriptor() signals.Descriptor {
 				LLMHint:   `gcx metrics list-names -d abc123 --contains request -o json`,
 			},
 		},
-		ExtraCommands: []signals.CommandBuilder{BillingCommands, CardinalityCommands},
+		ExtraCommands: []signals.CommandBuilder{BillingCommands, CardinalityCommands, SearchCommands},
 		Adaptive: &signals.AdaptiveSpec{
 			Build: adaptivemetrics.Commands,
 			Use:   "adaptive",
