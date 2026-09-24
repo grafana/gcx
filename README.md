@@ -437,6 +437,11 @@ plus the previous major for 3 months after the new one ships. This will be refle
 kubernetesAlertingRules = true
 ```
 
+`gcx profiles query` and `gcx profiles metrics` support `--share-link` to print a
+Grafana Explore URL to stderr and `--open` to open it in your browser, like the
+other signal query commands. Links preserve the datasource, selector, profile
+type, and queried time window; unsupported query refinements produce a warning.
+
 **† Self-hosted signal queries** — `gcx metrics query`, `gcx logs query`, `gcx traces query`, and `gcx profiles query` work against self-hosted datasources (Prometheus, Loki, Tempo, Pyroscope), but datasource endpoints must be configured manually. For Grafana Cloud, endpoints are auto-discovered from your stack.
 
 **◐ BYOC** — Bring Your Own Cloud runs the Grafana stack on your own infrastructure while connecting to the Grafana Cloud control plane. Core Grafana features (dashboards, alerts, signal queries) work in full. Cloud product availability (SLO, Synthetic Monitoring, IRM, etc.) depends on which plugins are installed and configured in your BYOC stack.

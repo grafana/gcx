@@ -54,6 +54,7 @@ func (c *dotCodec) Decode(_ io.Reader, _ any) error {
 
 type pyroscopeQueryOpts struct {
 	shared             dsquery.SharedOpts
+	explore            dsquery.ExploreLinkOpts
 	Datasource         string
 	ProfileType        string
 	MaxNodes           int64
@@ -70,6 +71,7 @@ func (opts *pyroscopeQueryOpts) setup(flags *pflag.FlagSet) {
 	opts.shared.IO.RegisterCustomCodec("pprof", &pprofCodec{})
 	opts.shared.IO.RegisterCustomCodec("dot", &dotCodec{})
 	opts.shared.Setup(flags, true)
+	opts.explore.Setup(flags, "profile query")
 
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.pyroscope is configured)")
 	flags.StringVar(&opts.ProfileType, "profile-type", "", "Profile type ID (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds'); use 'gcx profiles list-profile-types' to list available (required)")
@@ -147,9 +149,6 @@ func isDotUnsupportedErr(err error) bool {
 func queryDotV1Fallback(ctx context.Context, cmd *cobra.Command, client *pyroscope.Client, datasourceUID string, req pyroscope.QueryRequest) error {
 	cmdio.EmitHint(cmd.ErrOrStderr(), "backend does not support DOT output (requires -architecture.storage=v2); showing table instead", "")
 	req.Format = ""
-	if !cmd.Flags().Changed("max-nodes") {
-		req.MaxNodes = defaultMaxNodes
-	}
 	resp, err := client.Query(ctx, datasourceUID, req)
 	if err != nil {
 		return fmt.Errorf("query failed: %w", err)
@@ -184,6 +183,21 @@ func (opts *pyroscopeQueryOpts) resolveMaxNodes(flags *pflag.FlagSet) int64 {
 	return defaultMaxNodes
 }
 
+// exploreOmittedFlags lists filters absent from Grafana 12's Explore query model.
+func (opts *pyroscopeQueryOpts) exploreOmittedFlags() []string {
+	var omitted []string
+	if len(opts.ProfileIDs) > 0 {
+		omitted = append(omitted, "--profile-id")
+	}
+	if len(opts.TraceIDs) > 0 {
+		omitted = append(omitted, "--trace-id")
+	}
+	if len(opts.StacktraceSelector) > 0 {
+		omitted = append(omitted, "--stacktrace-selector")
+	}
+	return omitted
+}
+
 // QueryCmd returns the `query` subcommand for a Pyroscope datasource parent.
 func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &pyroscopeQueryOpts{}
@@ -203,6 +217,10 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
   # Using configured default datasource
   gcx datasources pyroscope query '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h
+
+  # Share the profile in Grafana Explore
+  gcx datasources pyroscope query '{service_name="frontend"}' \
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h --share-link
 
   # Output as JSON
   gcx datasources pyroscope query -d UID '{service_name="frontend"}' \
@@ -276,9 +294,30 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 				return err
 			}
 
+			start, end = pyroscope.DefaultTimeRange(start, end)
+
 			client, err := pyroscope.NewClient(cfg)
 			if err != nil {
 				return fmt.Errorf("failed to create client: %w", err)
+			}
+
+			req := pyroscope.QueryRequest{
+				LabelSelector:      expr,
+				ProfileTypeID:      opts.ProfileType,
+				Start:              start,
+				End:                end,
+				MaxNodes:           opts.resolveMaxNodes(cmd.Flags()),
+				ProfileIDs:         opts.ProfileIDs,
+				SpanIDs:            opts.SpanIDs,
+				TraceIDs:           opts.TraceIDs,
+				StackTraceSelector: opts.stackTraceSelector(),
+			}
+			if opts.shared.IO.OutputFormat == "pprof" {
+				req.MaxNodes = opts.MaxNodes
+			}
+			encode := func(render func() error) error {
+				return encodeAndHandleExplore(cmd, render, opts.explore,
+					QueryExploreURL(cfg.Host, datasourceUID, dsquery.OrgID(cfgCtx), req), opts.exploreOmittedFlags())
 			}
 
 			if opts.shared.IO.OutputFormat == "pprof" {
@@ -310,24 +349,15 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 				receipt := cmdio.NewArtifactReceipt("pprof-export", "pprof")
 				receipt.Files = append(receipt.Files, cmdio.ArtifactFile{Path: dest})
 				receipt.Summary = cmdio.MutationSummary{Succeeded: 1}
-				return cmdio.EmitArtifactResult(cmd.OutOrStdout(), receipt, func(w io.Writer) error {
-					return pyroscope.FormatPprofWriteTable(w, result)
+				return encode(func() error {
+					return cmdio.EmitArtifactResult(cmd.OutOrStdout(), receipt, func(w io.Writer) error {
+						return pyroscope.FormatPprofWriteTable(w, result)
+					})
 				})
 			}
 
 			isDot := opts.shared.IO.OutputFormat == "dot"
 
-			req := pyroscope.QueryRequest{
-				LabelSelector:      expr,
-				ProfileTypeID:      opts.ProfileType,
-				Start:              start,
-				End:                end,
-				MaxNodes:           opts.resolveMaxNodes(cmd.Flags()),
-				ProfileIDs:         opts.ProfileIDs,
-				SpanIDs:            opts.SpanIDs,
-				TraceIDs:           opts.TraceIDs,
-				StackTraceSelector: opts.stackTraceSelector(),
-			}
 			if isDot {
 				req.Format = pyroscope.ProfileFormatDot
 			}
@@ -335,7 +365,12 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 			resp, err := client.Query(ctx, datasourceUID, req)
 			if err != nil {
 				if isDot && isDotUnsupportedErr(err) {
-					return queryDotV1Fallback(ctx, cmd, client, datasourceUID, req)
+					if !cmd.Flags().Changed("max-nodes") {
+						req.MaxNodes = defaultMaxNodes
+					}
+					return encode(func() error {
+						return queryDotV1Fallback(ctx, cmd, client, datasourceUID, req)
+					})
 				}
 				return fmt.Errorf("query failed: %w", err)
 			}
@@ -343,26 +378,28 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 			if isDot {
 				switch {
 				case pyroscope.DotHasNodes(resp.Dot):
-					_, err := fmt.Fprintln(cmd.OutOrStdout(), pyroscope.CleanDot(resp.Dot))
-					return err
+					return encode(func() error {
+						_, err := fmt.Fprintln(cmd.OutOrStdout(), pyroscope.CleanDot(resp.Dot))
+						return err
+					})
 				case resp.Flamegraph != nil:
 					// v1-v2-dual read paths silently downgrade DOT to a
 					// flame graph; render it as the standard table.
 					cmdio.EmitHint(cmd.ErrOrStderr(), "backend runs v1-v2-dual and downgraded DOT to a flame graph (requires -architecture.storage=v2); showing table instead", "")
-					return pyroscope.FormatQueryTable(cmd.OutOrStdout(), resp)
+					return encode(func() error { return pyroscope.FormatQueryTable(cmd.OutOrStdout(), resp) })
 				default:
 					// No dot payload and no flame graph: the query matched
 					// no samples. The table renders "(no profile data)".
-					emitEmptyWindowHint(cmd.ErrOrStderr(), "profile data", start, end, req.IsRange())
-					return pyroscope.FormatQueryTable(cmd.OutOrStdout(), resp)
+					emitEmptyWindowHint(cmd.ErrOrStderr(), "profile data", start, end, opts.shared.IsRange())
+					return encode(func() error { return pyroscope.FormatQueryTable(cmd.OutOrStdout(), resp) })
 				}
 			}
 
 			if opts.shared.IO.OutputFormat == "table" {
-				return pyroscope.FormatQueryTable(cmd.OutOrStdout(), resp)
+				return encode(func() error { return pyroscope.FormatQueryTable(cmd.OutOrStdout(), resp) })
 			}
 
-			return opts.shared.IO.Encode(cmd.OutOrStdout(), resp)
+			return encode(func() error { return opts.shared.IO.Encode(cmd.OutOrStdout(), resp) })
 		},
 	}
 

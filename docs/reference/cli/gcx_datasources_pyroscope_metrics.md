@@ -39,6 +39,10 @@ gcx datasources pyroscope metrics [EXPR] [flags]
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds \
     --since 1h --step 1m
 
+  # Open the metrics query in Grafana Explore
+  gcx datasources pyroscope metrics '{service_name="frontend"}' \
+    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h --open
+
   # Line chart output
   gcx datasources pyroscope metrics '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds \
@@ -57,8 +61,10 @@ gcx datasources pyroscope metrics [EXPR] [flags]
       --jq string             jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string           Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int             Maximum number of series to return (default 10)
+      --open                  Open the profile metrics query in Grafana Explore
   -o, --output string         Output format. One of: agents, graph, json, table, wide, yaml (default "table")
       --profile-type string   Profile type ID (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds') (required)
+      --share-link            Print the Grafana Explore URL for the profile metrics query to stderr
       --since string          Duration before --to (or now if omitted); mutually exclusive with --from
       --step string           Query step (e.g., '15s', '1m'); defaults to the Pyroscope datasource minStep (or 15s) when omitted
       --to string             End time (RFC3339, Unix timestamp, or relative like 'now')
