@@ -78,11 +78,12 @@ func TestOutlineShorthandResolution(t *testing.T) {
 }
 
 func TestOutlineChildPages(t *testing.T) {
+	disableAgentMode(t)
 	idx := loadTestIndex(t)
 
 	t.Run("directory page includes child pages", func(t *testing.T) {
 		// The sample index has tempo/latest.md as parent with configuration.md as child.
-		stdout, err := runWithIndexAndFetcher(t, idx, okDoc(), "outline", "https://grafana.com/docs/tempo/latest.md", "-o", "json")
+		stdout, _, err := testCommand(t, idx, okDoc(), "outline", "https://grafana.com/docs/tempo/latest.md", "-o", "json")
 		require.NoError(t, err)
 
 		var res struct {
@@ -99,7 +100,7 @@ func TestOutlineChildPages(t *testing.T) {
 	})
 
 	t.Run("leaf page has no child pages", func(t *testing.T) {
-		stdout, err := runWithIndexAndFetcher(t, idx, okDoc(), "outline", "https://grafana.com/docs/tempo/latest/configuration.md", "-o", "json")
+		stdout, _, err := testCommand(t, idx, okDoc(), "outline", "https://grafana.com/docs/tempo/latest/configuration.md", "-o", "json")
 		require.NoError(t, err)
 
 		var res struct {
