@@ -22,11 +22,9 @@ matching the instant-query default used by 'query'/'metrics'. That window is
 widened by any range-vector duration or offset in EXPR (e.g. '[24h]',
 'offset 1h'), since Loki evaluates further back than --from/--to/--since
 alone would suggest.
-Bytes scanned is the number this command exists to answer, so it's always
-called out as a "<size> would be scanned" diagnostic on stderr, regardless of
--o format. -o table's stdout result is that same size alone; the underlying
-Streams/Chunks/Entries counts aren't relevant to the cost question this
-command answers, but remain available via -o json/-o yaml.
+-o table's result is a single "<size> would be scanned" line — the
+underlying Streams/Chunks/Entries counts aren't relevant to the cost
+question this command answers, but remain available via -o json/-o yaml.
 
 ```
 gcx datasources loki stats [EXPR] [flags]

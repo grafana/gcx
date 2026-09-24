@@ -202,12 +202,12 @@ func FormatSeriesTable(w io.Writer, resp *SeriesResponse) error {
 	return t.Render(w)
 }
 
-// FormatIndexStatsTable formats an IndexStatsResponse's Bytes as a bare
-// humanized value, e.g. "2.8 GiB" — no table, no Streams/Chunks/Entries
-// rows. Bytes scanned is the number this command exists to answer; the
-// other fields aren't relevant to that question and only buried it.
+// FormatIndexStatsTable formats an IndexStatsResponse as a single "<size>
+// would be scanned" line — no table, no Streams/Chunks/Entries rows. Bytes
+// scanned is the number this command exists to answer; the other fields
+// aren't relevant to that question and only buried it.
 func FormatIndexStatsTable(w io.Writer, resp *IndexStatsResponse) error {
-	_, err := fmt.Fprintln(w, humanize.IBytes(resp.Bytes))
+	_, err := fmt.Fprintf(w, "%s would be scanned\n", humanize.IBytes(resp.Bytes))
 	return err
 }
 
