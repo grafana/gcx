@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -134,18 +135,37 @@ func TestStatsCmd_BytesIsTheSoleResultWithNoDuplicateStderrDiagnostic(t *testing
 }
 
 // TestStatsCmd_QueriesSelectorsConcurrently pins the fix for the "batch I/O
-// serially, one round trip per selector" review finding: two selectors,
-// each delayed, must complete in roughly one delay's worth of wall-clock
-// time, not the sum of both — which is only true if StatsCmd's own
-// per-selector loop runs them concurrently rather than one after another.
+// serially, one round trip per selector" review finding. Each selector's
+// handler blocks until both are in flight at once, which only happens if
+// StatsCmd's per-selector loop runs them concurrently — a serial caller
+// would leave the first handler waiting forever and time out. This proves
+// concurrency directly rather than inferring it from a wall-clock threshold,
+// which flaked under CI load (see PR #1310 CI run).
 func TestStatsCmd_QueriesSelectorsConcurrently(t *testing.T) {
-	const perSelectorDelay = 150 * time.Millisecond
+	var mu sync.Mutex
+	inFlight := 0
+	bothInFlight := make(chan struct{})
+	var closeOnce sync.Once
+
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/bootdata" {
 			http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
 			return
 		}
-		time.Sleep(perSelectorDelay)
+
+		mu.Lock()
+		inFlight++
+		if inFlight == 2 {
+			closeOnce.Do(func() { close(bothInFlight) })
+		}
+		mu.Unlock()
+
+		select {
+		case <-bothInFlight:
+		case <-time.After(2 * time.Second):
+			t.Error("timed out waiting for both selectors to be queried concurrently")
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		_, writeErr := w.Write([]byte(`{"streams":1,"chunks":1,"bytes":500,"entries":1}`))
 		assert.NoError(t, writeErr)
@@ -165,14 +185,8 @@ func TestStatsCmd_QueriesSelectorsConcurrently(t *testing.T) {
 	root.SetErr(&errBuf)
 	root.SetArgs([]string{"stats", "-d", "loki-uid", `count_over_time({app="a"}[5m]) + count_over_time({app="b"}[5m])`, "-o", "json"})
 
-	start := time.Now()
 	err := root.Execute()
-	elapsed := time.Since(start)
 
 	require.NoError(t, err)
 	assert.Contains(t, outBuf.String(), `"bytes": 1000`)
-	// Serially this would take roughly 2*perSelectorDelay (plus the
-	// datasource-type lookup); concurrently it's roughly 1*perSelectorDelay.
-	// 250ms gives headroom above one delay without reaching two.
-	assert.Less(t, elapsed, 250*time.Millisecond, "selectors appear to have been queried serially, not concurrently")
 }
