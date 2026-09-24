@@ -115,10 +115,11 @@ range alone would suggest.`,
 			}
 
 			resp, err := client.Query(ctx, datasourceUID, req)
-			// Cut a still-running async check short rather than let it run
-			// out its own timeout now that the real query has an answer.
-			cancelPreflight()
-			wait()
+			// Give a still-running async check a short grace window to
+			// finish naturally before cutting it short (see
+			// statsPreflightGraceAfterQuery) — the real query is not
+			// guaranteed to be slower than the index-stats call checking it.
+			finishStatsPreflight(wait, cancelPreflight)
 			if err != nil {
 				return fmt.Errorf("query failed: %w", err)
 			}
