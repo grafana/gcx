@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -553,6 +554,101 @@ func TestStartStatsPreflight_CancelCutsTheAsyncCheckShort(t *testing.T) {
 	}
 	if elapsed := time.Since(start); elapsed > time.Second {
 		t.Errorf("wait() took %v after cancel(), expected it to return almost immediately", elapsed)
+	}
+}
+
+// TestFinishStatsPreflight_GraceWindowAvoidsRaceWithFastQuery pins the fix
+// for a real bug found while manually verifying --stats-max-bytes: the real
+// query is not guaranteed to be slower than the index-stats call checking
+// it, so calling cancel() the instant the query returns (the old behavior)
+// could abort the check before its HTTP response ever arrived, silently
+// dropping the warning. finishStatsPreflight must instead give the check a
+// grace window to finish naturally when it's about to make it.
+func TestFinishStatsPreflight_GraceWindowAvoidsRaceWithFastQuery(t *testing.T) {
+	oldGrace := statsPreflightGraceAfterQuery
+	statsPreflightGraceAfterQuery = 200 * time.Millisecond
+	t.Cleanup(func() { statsPreflightGraceAfterQuery = oldGrace })
+
+	respondAfter := make(chan struct{})
+	client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		<-respondAfter
+		_, _ = w.Write([]byte(`{"streams":1,"chunks":1,"bytes":6000000000,"entries":1}`))
+	})
+
+	preflight := &statsPreflightOpts{StatsWarnBytes: "1GB"}
+	if err := preflight.Validate(); err != nil {
+		t.Fatalf("unexpected Validate error: %v", err)
+	}
+
+	now := time.Now()
+	var stderr bytes.Buffer
+	wait, cancel, err := startStatsPreflight(context.Background(), client, &stderr, "uid", `{job="x"}`, true, now, now, now, preflight)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Simulate the real query winning the race and returning immediately,
+	// well before the index-stats response arrives — but comfortably within
+	// the grace window.
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		close(respondAfter)
+	}()
+	finishStatsPreflight(wait, cancel)
+
+	if !strings.Contains(stderr.String(), "may scan approximately") {
+		t.Errorf("expected the warning to still print despite the fast query winning the initial race, got stderr = %q", stderr.String())
+	}
+}
+
+// TestFinishStatsPreflight_StillBoundedByGraceWindow confirms the grace
+// window from the fix above doesn't turn into an unbounded wait: a check
+// that's still not done once the grace window elapses gets cut short, same
+// as before.
+func TestFinishStatsPreflight_StillBoundedByGraceWindow(t *testing.T) {
+	oldGrace := statsPreflightGraceAfterQuery
+	statsPreflightGraceAfterQuery = 20 * time.Millisecond
+	t.Cleanup(func() { statsPreflightGraceAfterQuery = oldGrace })
+
+	oldTimeout := statsPreflightTimeout
+	statsPreflightTimeout = 5 * time.Second
+	t.Cleanup(func() { statsPreflightTimeout = oldTimeout })
+
+	unblock := make(chan struct{})
+	t.Cleanup(func() { close(unblock) })
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-r.Context().Done():
+		case <-unblock:
+			_, _ = w.Write([]byte(`{"streams":1,"chunks":1,"bytes":100,"entries":1}`))
+		}
+	})
+
+	preflight := &statsPreflightOpts{StatsWarnBytes: "1GB"}
+	if err := preflight.Validate(); err != nil {
+		t.Fatalf("unexpected Validate error: %v", err)
+	}
+
+	now := time.Now()
+	var stderr bytes.Buffer
+	wait, cancel, err := startStatsPreflight(context.Background(), client, &stderr, "uid", `{job="x"}`, true, now, now, now, preflight)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	start := time.Now()
+	done := make(chan struct{})
+	go func() {
+		finishStatsPreflight(wait, cancel)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("finishStatsPreflight did not return promptly; the grace window did not bound the wait")
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Errorf("finishStatsPreflight took %v, expected it to be bounded by statsPreflightGraceAfterQuery", elapsed)
 	}
 }
 
