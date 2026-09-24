@@ -36,7 +36,7 @@ open it in your browser after the query succeeds.
 
 Before executing, a pre-flight index-stats check estimates the bytes this
 query would scan and prints a non-blocking warning if it exceeds
---stats-warn-bytes (default 1GiB). Set --stats-max-bytes to refuse to run the
+--stats-warn-bytes (default 10GiB). Set --stats-max-bytes to refuse to run the
 query at all above that many bytes — this is blocking, so unlike the default
 warn-only check it does add the pre-flight call's latency to the command.
 Use --skip-stats to disable both checks entirely.
@@ -115,10 +115,7 @@ range alone would suggest.`,
 			}
 
 			resp, err := client.Query(ctx, datasourceUID, req)
-			// Give a still-running async check a short grace window to
-			// finish naturally before cutting it short (see
-			// statsPreflightGraceAfterQuery) — the real query is not
-			// guaranteed to be slower than the index-stats call checking it.
+			// Grace window avoids losing the check to a fast query (see statsPreflightGraceAfterQuery).
 			finishStatsPreflight(wait, cancelPreflight)
 			if err != nil {
 				return fmt.Errorf("query failed: %w", err)
