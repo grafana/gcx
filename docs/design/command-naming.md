@@ -93,6 +93,106 @@ vocabulary and intentional aliases are documented in
 Do not characterize query commands as side-effect-free: supporting work such as
 datasource discovery may persist configuration.
 
+## Query variants
+
+A datasource or provider may offer more than one way to be queried. Decide
+between one command and several by comparing what the caller must supply and
+what they get back, not by counting backend APIs.
+
+Variants that share an expression operand, take substantially the same required
+inputs, and return the same success output model are one `query` command with a
+typed `--mode`. Separate leaves with the same caller-facing contract give
+callers and agents a coin flip with no rule for choosing. Use one flag name per
+knob across modes: the same value must not be `--size` in one mode and
+`--limit` in another.
+
+Variants that require materially different identities or inputs, or that return
+a different success output model, take their own `<target> query` path, or an
+approved shorthand from the set above where one already fits. A target that
+needs its own identity arguments is not a mode of another command.
+
+One variant is the family's primary query and keeps the bare `<kind> query`
+path: the one a caller who names no target means. Choose it once, state it in
+the command's `Long`, and spell every other variant as a mode or a target. This
+is what decides an otherwise symmetric pair — two variants can both have their
+own inputs and result model, and one of them still has to be the default the
+family answers to.
+
+Compare the caller-facing contract, not the backend payload. Two variants that
+build different requests internally but answer the same expression with the same
+documented result are one command. Two that return different result models are
+not, even when both are the same output protocol class; protocol class does not
+decide this.
+
+The subject stays positional in every variant, per
+[CONSTITUTION.md § CLI Grammar](../../CONSTITUTION.md#cli-grammar): the metric,
+expression or query text is the operand, and the identity that scopes it is
+flags. `gcx datasources cloudwatch query` is flag-only and shipped in v1.0.0,
+so it is a compatibility exception, not a shape to copy.
+
+`--mode` is a closed, validated enum with a documented default. Reject an
+unknown, whitespace-only, or explicitly empty value with an error naming the
+rejected value and the allowed values, as `--on-error` does in
+`cmd/gcx/resources/onerror.go`. `--mode` selects which query runs; `--output`
+selects how the result is presented. Where the backend already determines the
+variant — InfluxDB's query language is read from the datasource record — the
+caller has nothing to choose and no flag is added.
+
+A kind that gains a `--mode` must keep it reachable from the auto-detecting
+`gcx datasources query`, which already carries kind-specific knobs. Silently
+answering with the default mode there, while the typed command honours the
+flag, splits one contract across two paths. If the generic form cannot carry
+the mode, redirect it to the typed command instead.
+
+`<target>` names the query surface: the expression language and API being
+queried. It nests inside the command's existing area, so for a datasource kind
+the path is `gcx datasources <kind> <target> query`. This is a query-variant
+placement rule, deliberately distinct from
+[placement by required identity](#place-each-operation-by-the-identity-it-requires)
+below — a query surface is not an independently identifiable resource, so
+neither the noun-group test nor the `<operation>-<subject>` compound test
+decides it. Reading a query target as a discovery facet and producing
+`query-<target>` is the wrong outcome: the operation is `query`, and the target
+says which surface it runs against. A bare `<target>` leaf is equally wrong
+unless that name is already in the shorthand set above.
+
+This rule authorizes that nesting and nothing else. It does not authorize a new
+top-level command: bare top-level verbs remain the closed enumeration in
+[CONSTITUTION.md § CLI Grammar](../../CONSTITUTION.md#cli-grammar), and the
+`$AREA $NOUN $VERB` shape at the top of this guide still governs. Nesting under
+a datasource kind is otherwise almost unused — `gcx datasources pyroscope
+exemplars profile` and `… exemplars span` are the only shipped instance, and
+[the list-subject verdicts](../plans/list-subject-verdicts.md) defer their
+convergence rather than ratify them — so the authorization here comes from
+this rule, not from reading them as precedent. As with every rule here, it
+binds new work and does not license renaming a released variant.
+
+The two shapes below were decided as owner on the pull requests that raised the
+question. They are the canonical spellings for that work, not commands available
+today:
+
+```shell
+gcx datasources elasticsearch query 'status:500'
+gcx datasources elasticsearch query 'level:error' --mode logs
+
+gcx datasources azuremonitor query METRIC \
+  --subscription SUB_ID --resource-group RG \
+  --resource NAME --namespace NAMESPACE
+gcx datasources azuremonitor logs query KQL \
+  --subscription SUB_ID --resource-group RG --workspace WORKSPACE
+gcx datasources azuremonitor resource-graph query KQL \
+  --subscription SUB_ID
+```
+
+Elasticsearch documents and logs share the Lucene expression, the time controls
+and the result model, so they are one command with `--mode` defaulting to
+`documents`; that they build different requests internally is not the test. Its
+`metrics` leaf stays separate: different inputs, a different result model, and
+`metrics` is already in the shorthand set. Azure Monitor keeps the metric query
+as its primary `query`, with the metric positional and its resource identity in
+flags, while logs require a workspace identity and Resource Graph requires a
+subscription list, so each of those is its own target path.
+
 ## View verbs
 
 Default to `get` for a straight read. Use a view verb such as `status`,
