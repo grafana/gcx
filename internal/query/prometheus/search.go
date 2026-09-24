@@ -8,7 +8,9 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/grafana/gcx/internal/httputils"
@@ -20,9 +22,9 @@ import (
 // available on both Prometheus and Mimir. All fields are optional except
 // where the field doc says otherwise.
 //
-// Limit is always sent, even when zero: the server treats an explicit 0 as
+// Limit is always sent, even when zero: Mimir treats an explicit 0 as
 // "unlimited" (distinct from its own default of 100), so a Go zero value
-// must not be indistinguishable from that request.
+// must not be indistinguishable from that request. Prometheus rejects 0.
 type SearchOptions struct {
 	// Search holds fuzzy search terms (max 32); repeated terms combine as OR.
 	Search []string
@@ -36,12 +38,15 @@ type SearchOptions struct {
 	// FuzzAlg is "subsequence" (server default) or "jarowinkler".
 	FuzzAlg string
 	// FuzzThreshold is the minimum match score, 0-100 (server default: 0).
+	// With "jarowinkler", 0 disables fuzzy matching, leaving substring
+	// matches only.
 	FuzzThreshold int
 	// SortBy is "alpha" (server default) or "score".
 	SortBy string
 	// SortDir is "asc" (server default) or "dsc"; only valid with SortBy "alpha".
 	SortDir string
-	// Limit caps the number of results; 0 means unlimited. Always sent.
+	// Limit caps the number of results; 0 means unlimited on Mimir and is
+	// rejected by Prometheus. Always sent.
 	Limit int
 	// IncludeScore adds a relevance score to each result.
 	IncludeScore bool
@@ -166,10 +171,10 @@ func (c *Client) search(ctx context.Context, apiPath string, extra url.Values, o
 		if readErr != nil {
 			return nil, false, nil, fmt.Errorf("failed to read response: %w", readErr)
 		}
-		return nil, false, nil, searchError(operation, resp.StatusCode, body)
+		return nil, false, nil, searchError(operation, resp.StatusCode, body, opts.Limit)
 	}
 
-	results, hasMore, warnings, err := decodeSearchStream(resp.Body)
+	results, hasMore, warnings, err := decodeSearchStream(resp.Body, httputils.DefaultResponseLimit)
 	if err != nil {
 		return nil, false, nil, fmt.Errorf("failed to %s: %w", operation, err)
 	}
@@ -231,7 +236,9 @@ type searchResultRaw struct {
 // searchStreamFrame decodes one line of the NDJSON response. A batch frame
 // carries Results; the final trailer frame carries a non-empty Status
 // instead, so that field distinguishes the two — Results is absent from
-// every trailer the API sends.
+// every trailer the API sends. Either kind may carry Warnings: Prometheus
+// sends them on the first batch (the trailer only repeats a changed set),
+// Mimir on the trailer.
 type searchStreamFrame struct {
 	Results   []searchResultRaw `json:"results"`
 	Status    string            `json:"status"`
@@ -242,45 +249,112 @@ type searchStreamFrame struct {
 }
 
 // decodeSearchStream reads an NDJSON search response: zero or more batch
-// frames, then exactly one trailer frame. The body is capped at
-// httputils.DefaultResponseLimit so a huge or misbehaving stream cannot
-// exhaust memory; results are decoded incrementally rather than buffered
-// whole, since the response is not a single JSON document.
-func decodeSearchStream(body io.Reader) ([]searchResultRaw, bool, []string, error) {
-	dec := json.NewDecoder(io.LimitReader(body, httputils.DefaultResponseLimit))
+// frames, then exactly one trailer frame. Results are decoded incrementally,
+// since the response is not a single JSON document, and the body is capped
+// at limit bytes so a huge or misbehaving stream cannot exhaust memory.
+//
+// A stream without a trailer is an error, since the results read so far may
+// be incomplete: it was cut by the cap, or by an interrupted upstream
+// connection, which Grafana's datasource proxy forwards as a clean end of
+// stream.
+func decodeSearchStream(body io.Reader, limit int64) ([]searchResultRaw, bool, []string, error) {
+	// Read one byte past the cap so hitting it is distinguishable from a
+	// stream that ends exactly at the cap.
+	counter := &countingReader{r: io.LimitReader(body, limit+1)}
+	dec := json.NewDecoder(counter)
 
-	var results []searchResultRaw
+	var (
+		results  []searchResultRaw
+		warnings []string
+	)
 	for {
 		var frame searchStreamFrame
 		if err := dec.Decode(&frame); err != nil {
-			if errors.Is(err, io.EOF) {
-				return nil, false, nil, errors.New("stream ended without a trailer")
+			if !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
+				return nil, false, nil, fmt.Errorf("failed to parse response: %w", err)
 			}
-			return nil, false, nil, fmt.Errorf("failed to parse response: %w", err)
+			if counter.n > limit {
+				size := fmt.Sprintf("%d MiB", limit>>20)
+				if limit < 1<<20 {
+					size = fmt.Sprintf("%d-byte", limit)
+				}
+				return nil, false, nil, fmt.Errorf("search response exceeded the %s limit after %d results; request a smaller limit or narrow the match selectors", size, len(results))
+			}
+			return nil, false, nil, fmt.Errorf("search stream ended after %d results without a completion trailer (connection interrupted?); refusing to return possibly incomplete results", len(results))
 		}
+
+		warnings = appendNewWarnings(warnings, frame.Warnings)
 
 		if frame.Status != "" {
 			if frame.Status == "error" {
 				return nil, false, nil, fmt.Errorf("%s (%s)", frame.Error, frame.ErrorType)
 			}
-			return results, frame.HasMore, frame.Warnings, nil
+			return results, frame.HasMore, warnings, nil
 		}
 
 		results = append(results, frame.Results...)
 	}
 }
 
-// searchError builds an error for a non-200 search response. A 404 means the
-// endpoint is unavailable because the experimental search API is disabled —
-// on both Prometheus and Mimir it ships off by default — so it returns a
-// friendlier message while keeping the raw upstream error as the wrapped
-// cause.
-func searchError(operation string, statusCode int, body []byte) error {
-	apiErr := queryerror.FromBody("prometheus", operation, statusCode, body)
-	if statusCode == http.StatusNotFound {
-		return fmt.Errorf("search API is experimental and disabled by default; enable it with --enable-feature=search-api on Prometheus or -querier.experimental-search-api-enabled on Mimir: %w", apiErr)
+// countingReader counts the bytes read through it.
+type countingReader struct {
+	r io.Reader
+	n int64
+}
+
+func (c *countingReader) Read(p []byte) (int, error) {
+	n, err := c.r.Read(p)
+	c.n += int64(n)
+	return n, err
+}
+
+// appendNewWarnings appends each warning in src not already in dst,
+// preserving order. Prometheus re-sends the full warning set on the trailer
+// when it changes after the first batch, so plain appending would duplicate.
+func appendNewWarnings(dst, src []string) []string {
+	for _, w := range src {
+		if !slices.Contains(dst, w) {
+			dst = append(dst, w)
+		}
 	}
-	return apiErr
+	return dst
+}
+
+// searchErrorBody is the Prometheus-style JSON error both servers send for
+// a non-200 search response.
+type searchErrorBody struct {
+	ErrorType string `json:"errorType"`
+	Error     string `json:"error"`
+}
+
+// searchError builds an error for a non-200 search response. It keeps the
+// upstream error as the wrapped cause and adds a hint for two failures whose
+// raw messages don't say what to do:
+//
+//   - The search API is disabled (the default on both servers): Mimir
+//     answers 404 feature_not_enabled, Prometheus unavailable "search API
+//     disabled". Prometheus's status is not checked: it is 500 by default
+//     and operators can override it.
+//   - Prometheus rejected limit 0, which only Mimir accepts as unlimited.
+//
+// The error is flagged experimental so a bare 404 from a server that lacks
+// the endpoint gets the CLI's generic route-absent handling rather than a
+// claim that the feature is disabled.
+func searchError(operation string, statusCode int, body []byte, limit int) error {
+	apiErr := queryerror.FromBody("prometheus", operation, statusCode, body).WithAvailability(false, true)
+
+	var parsed searchErrorBody
+	_ = json.Unmarshal(body, &parsed)
+
+	switch {
+	case statusCode == http.StatusNotFound && parsed.ErrorType == "feature_not_enabled",
+		parsed.ErrorType == "unavailable" && strings.Contains(parsed.Error, "search API disabled"):
+		return fmt.Errorf("the experimental search API is not enabled on this server; enable it with --enable-feature=search-api on Prometheus or -querier.experimental-search-api-enabled on Mimir: %w", apiErr)
+	case statusCode == http.StatusBadRequest && limit == 0 && strings.Contains(parsed.Error, "invalid limit"):
+		return fmt.Errorf("limit 0 (unlimited) is only supported by Mimir; Prometheus requires a positive limit, capped by its --web.search.max-limit: %w", apiErr)
+	default:
+		return apiErr
+	}
 }
 
 func (c *Client) buildSearchMetricNamesPath(datasourceUID string) string {
