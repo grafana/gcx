@@ -108,7 +108,7 @@ func TestKGCatalogLookup(t *testing.T) {
 	// guards the fix for LookupEntity's scope requirement: a service the
 	// graph only knows under a specific scope (env/site/namespace) won't
 	// match a scope-less LookupEntity call, so lookupVerbose must fall back
-	// to scanning ListEntities by name — the same two-step
+	// to a server-side name-exact search — the same two-step
 	// internal/providers/kg's discoverEntityScope uses.
 	t.Run("scope-less miss falls back to a name-exact search", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -118,9 +118,38 @@ func TestKGCatalogLookup(t *testing.T) {
 			case strings.Contains(r.URL.Path, "v1/entity"):
 				w.WriteHeader(http.StatusNoContent) // scope-less LookupEntity misses
 			case strings.Contains(r.URL.Path, "v1/search"):
+				var body struct {
+					TimeCriteria struct {
+						Start int64 `json:"start"`
+						End   int64 `json:"end"`
+					} `json:"timeCriteria"`
+					FilterCriteria []struct {
+						PropertyMatchers []struct {
+							Name  string `json:"name"`
+							Op    string `json:"op"`
+							Value string `json:"value"`
+						} `json:"propertyMatchers"`
+					} `json:"filterCriteria"`
+				}
+				if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&body)) {
+					return
+				}
+				assert.Equal(t, int64(1000), body.TimeCriteria.Start)
+				assert.Equal(t, int64(2000), body.TimeCriteria.End)
+				if !assert.Len(t, body.FilterCriteria, 1) {
+					return
+				}
+				if !assert.Len(t, body.FilterCriteria[0].PropertyMatchers, 1) {
+					return
+				}
+				matcher := body.FilterCriteria[0].PropertyMatchers[0]
+				assert.Equal(t, "name", matcher.Name)
+				assert.Equal(t, "=", matcher.Op)
+				assert.Equal(t, "checkout", matcher.Value)
 				writeKGJSON(w, map[string]any{
 					"data": map[string]any{
 						"entities": []map[string]any{
+							{"type": "Service", "name": "checkout-worker", "scope": map[string]string{"env": "wrong"}},
 							{"type": "Service", "name": "checkout", "scope": map[string]string{"env": "prod"}},
 						},
 						"lastPage": true,
@@ -135,7 +164,7 @@ func TestKGCatalogLookup(t *testing.T) {
 		cat := newKGCatalog(newKGTestConfig(srv.URL), kgModeAuto)
 		require.NotNil(t, cat)
 
-		ref := cat.lookupVerbose(context.Background(), "checkout", 0, 0).ref
+		ref := cat.lookupVerbose(context.Background(), "checkout", 1000, 2000).ref
 		require.NotNil(t, ref)
 		assert.Equal(t, "Service", ref.EntityType)
 		assert.Equal(t, map[string]string{"env": "prod"}, ref.Scope)
@@ -341,6 +370,30 @@ func TestKGCatalogLookupVerbose_Inconclusive(t *testing.T) {
 			case strings.Contains(r.URL.Path, "v1/stack/status"):
 				writeKGJSON(w, map[string]any{"enabled": true, "status": "complete"})
 			case strings.Contains(r.URL.Path, "v1/entity"):
+				w.WriteHeader(http.StatusInternalServerError)
+			default:
+				w.WriteHeader(http.StatusNotFound)
+			}
+		}))
+		defer srv.Close()
+
+		cat := newKGCatalog(newKGTestConfig(srv.URL), kgModeAuto)
+		require.NotNil(t, cat)
+
+		lr := cat.lookupVerbose(context.Background(), "checkout", 0, 0)
+		assert.Nil(t, lr.ref)
+		assert.True(t, lr.inconclusive)
+		assert.Error(t, lr.inconclusiveErr)
+	})
+
+	t.Run("name search failure is inconclusive", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch {
+			case strings.Contains(r.URL.Path, "v1/stack/status"):
+				writeKGJSON(w, map[string]any{"enabled": true, "status": "complete"})
+			case strings.Contains(r.URL.Path, "v1/entity"):
+				w.WriteHeader(http.StatusNoContent)
+			case strings.Contains(r.URL.Path, "v1/search"):
 				w.WriteHeader(http.StatusInternalServerError)
 			default:
 				w.WriteHeader(http.StatusNotFound)
