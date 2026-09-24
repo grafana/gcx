@@ -49,11 +49,22 @@ func ValidateArgs(rootCmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	if !parseGroupFlags(cmd, remaining) {
-		return nil
+	positionals := []string{}
+	if parseGroupFlags(cmd, remaining) {
+		positionals = cmd.Flags().Args()
+	} else {
+		// A valid leaf flag can appear before the misspelled command. The
+		// parent cannot parse it, but we can still identify a unique typo.
+		for _, token := range remaining {
+			if strings.HasPrefix(token, "-") || len(subcommandCandidates(cmd, token)) == 0 {
+				continue
+			}
+			if len(positionals) > 0 {
+				return nil // Ambiguous: do not offer a runnable correction.
+			}
+			positionals = []string{token}
+		}
 	}
-
-	positionals := cmd.Flags().Args()
 	if len(positionals) == 0 {
 		return nil
 	}
@@ -63,14 +74,15 @@ func ValidateArgs(rootCmd *cobra.Command, args []string) error {
 	suggestions := []string{}
 	corrections := []gcxerrors.Correction{}
 	for _, sub := range candidates {
-		// CommandPath is a space-separated path, not a single token, so it
-		// joins as-is; only the subcommand name and user tokens get quoted.
-		invocation := cmd.CommandPath() + " " + shellquote.Join(append([]string{sub.Name()}, positionals[1:]...))
-		suggestions = append(suggestions, fmt.Sprintf("Did you mean '%s'?", invocation))
-		corrections = append(corrections, gcxerrors.Correction{
-			Command: invocation,
-			Hint:    sub.Annotations[agent.AnnotationLLMHint],
-		})
+		if corrected, ok := substituteCommand(args, positionals[0], sub.Name()); ok {
+			rootName := strings.Fields(cmd.CommandPath())[0]
+			invocation := shellquote.Join(append([]string{rootName}, redactSensitiveValues(corrected)...))
+			suggestions = append(suggestions, fmt.Sprintf("Did you mean '%s'?", invocation))
+			corrections = append(corrections, gcxerrors.Correction{
+				Command: invocation,
+				Hint:    sub.Annotations[agent.AnnotationLLMHint],
+			})
+		}
 	}
 
 	commandPath := strings.TrimSpace(cmd.CommandPath())
@@ -86,6 +98,28 @@ func ValidateArgs(rootCmd *cobra.Command, args []string) error {
 		Suggestions: suggestions,
 		Corrections: corrections,
 	}
+}
+
+// substituteCommand preserves every explicit flag and positional argument.
+// If the typo occurs more than once, its location is ambiguous and no
+// ready-to-run correction is emitted.
+func substituteCommand(args []string, unknown, candidate string) ([]string, bool) {
+	index := -1
+	for i, arg := range args {
+		if arg != unknown {
+			continue
+		}
+		if index >= 0 {
+			return nil, false
+		}
+		index = i
+	}
+	if index < 0 {
+		return nil, false
+	}
+	corrected := append([]string(nil), args...)
+	corrected[index] = candidate
+	return corrected, true
 }
 
 // subcommandCandidates fuzzy-matches an unknown token against the group's

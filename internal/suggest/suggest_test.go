@@ -29,6 +29,12 @@ func TestCandidates(t *testing.T) {
 			want:       []string{"dashboards"},
 		},
 		{
+			name:       "transposition ranks push before pull",
+			input:      "puhs",
+			vocabulary: []string{"pull", "push"},
+			want:       []string{"push", "pull"},
+		},
+		{
 			name:       "prefix match beyond distance threshold",
 			input:      "data",
 			vocabulary: commands,
