@@ -13,6 +13,7 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/go-logfmt/logfmt"
 	"github.com/grafana/gcx/internal/format"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/style"
 )
 
@@ -205,7 +206,7 @@ func FormatSeriesTable(w io.Writer, resp *SeriesResponse) error {
 // FormatIndexStatsTable prints a single "<size> would be scanned" line —
 // Bytes is the only field this command's result cares about.
 func FormatIndexStatsTable(w io.Writer, resp *IndexStatsResponse) error {
-	_, err := fmt.Fprintf(w, "%s would be scanned\n", humanize.IBytes(resp.Bytes))
+	_, err := fmt.Fprintln(w, cmdio.Yellow("⚠ ")+humanize.IBytes(resp.Bytes)+" would be scanned")
 	return err
 }
 
