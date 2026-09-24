@@ -54,7 +54,7 @@ jobs:
           RELEASE_NOTES: ${{ env.RELEASE_NOTES }}
 
       - name: Publish signed Packslip manifest
-        uses: jdx/packslip@74c75db7d611b36dd5a157999ec16cf823ccf80c # v1.2.0
+        uses: jdx/packslip@4920350c39c234c7a969f9775040bd02829f1923 # v1.3.0
         with:
           artifacts: dist/gcx_*.tar.gz dist/gcx_*.zip
           bin: gcx
