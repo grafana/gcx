@@ -22,16 +22,7 @@ func TestFormatIndexStatsTable(t *testing.T) {
 	require.NoError(t, loki.FormatIndexStatsTable(&buf, resp))
 
 	out := buf.String()
-	assert.Contains(t, out, "METRIC")
-	assert.Contains(t, out, "VALUE")
-	assert.Contains(t, out, "Streams")
-	assert.Contains(t, out, "12")
-	assert.Contains(t, out, "Chunks")
-	assert.Contains(t, out, "345")
-	assert.Contains(t, out, "Bytes")
-	assert.Contains(t, out, "6.0 GiB")
-	assert.Contains(t, out, "Entries")
-	assert.Contains(t, out, "98765")
+	assert.Equal(t, "6.0 GiB\n", out, "expected a bare bytes value, not a Streams/Chunks/Entries table")
 }
 
 func TestFormatQueryTable_HumanFriendlyMixedFormats(t *testing.T) {

@@ -202,14 +202,13 @@ func FormatSeriesTable(w io.Writer, resp *SeriesResponse) error {
 	return t.Render(w)
 }
 
-// FormatIndexStatsTable formats an IndexStatsResponse as a two-column table.
+// FormatIndexStatsTable formats an IndexStatsResponse's Bytes as a bare
+// humanized value, e.g. "2.8 GiB" — no table, no Streams/Chunks/Entries
+// rows. Bytes scanned is the number this command exists to answer; the
+// other fields aren't relevant to that question and only buried it.
 func FormatIndexStatsTable(w io.Writer, resp *IndexStatsResponse) error {
-	t := style.NewTable("METRIC", "VALUE")
-	t.Row("Streams", strconv.FormatUint(resp.Streams, 10))
-	t.Row("Chunks", strconv.FormatUint(resp.Chunks, 10))
-	t.Row("Bytes", humanize.IBytes(resp.Bytes))
-	t.Row("Entries", strconv.FormatUint(resp.Entries, 10))
-	return t.Render(w)
+	_, err := fmt.Fprintln(w, humanize.IBytes(resp.Bytes))
+	return err
 }
 
 // FormatMetricQueryTable formats a MetricQueryResponse as a table with TIMESTAMP, VALUE, and label columns.
