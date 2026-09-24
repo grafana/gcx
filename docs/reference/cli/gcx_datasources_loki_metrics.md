@@ -48,6 +48,7 @@ gcx datasources loki metrics [EXPR] [flags]
 
 ```
   -d, --datasource string   Datasource UID (required unless datasources.loki is configured)
+      --error-on-empty      Fail if the query returns no results
       --expr string         Query expression (alternative to positional argument)
       --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                help for metrics
