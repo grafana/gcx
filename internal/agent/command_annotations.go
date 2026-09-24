@@ -479,7 +479,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx irm oncall routes get":                          {Cost: "small"},
 	"gcx irm oncall routes list":                         {Cost: "small"},
 	"gcx irm oncall routes list-filter-types":            {Cost: "small"},
-	"gcx irm oncall routes update-position": {Cost: "small", Hint: "<id> --position <n>; zero-based, routes match top down. The only way to set the order. The backend never reports a position, so the current order is not readable."},
+	"gcx irm oncall routes update-position":              {Cost: "small", Hint: "<id> --position <n>; zero-based, routes match top down. The only way to set the order. The backend never reports a position, so the current order is not readable."},
 	"gcx irm oncall routes update":                       {Cost: "small", Hint: "<id> -f route.yaml"},
 	"gcx irm oncall schedules create":                    {Cost: "small", Hint: "-f schedule.yaml"},
 	"gcx irm oncall schedules delete":                    {Cost: "small"},

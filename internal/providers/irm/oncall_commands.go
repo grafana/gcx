@@ -442,7 +442,6 @@ func newEscalationPoliciesCmd(loader OnCallConfigLoader) *cobra.Command {
 		newUpdateSubcommand(loader, "Update an escalation policy by ID.", escalationPolicyCRUDOpts()),
 		newDeleteSubcommand(loader, "Delete an escalation policy by ID.", "EscalationPolicy", "escalation policy", escalationPolicyCRUDOpts()),
 		newEscalationPolicyUpdatePositionCommand(loader),
-		newEscalationStepsCmd(loader),
 	)
 	cmd.AddCommand(newEscalationStepCmds(loader)...)
 	return cmd
@@ -507,7 +506,6 @@ func newRoutesCmd(loader OnCallConfigLoader) *cobra.Command {
 		newUpdateSubcommand(loader, "Update a route by ID.", routeCRUDOpts()),
 		newDeleteSubcommand(loader, "Delete a route by ID.", "Route", "route", routeCRUDOpts()),
 		newRouteUpdatePositionCommand(loader),
-		newRouteFilterTypesCmd(loader),
 	)
 	cmd.AddCommand(newRouteFilterTypeCmds(loader)...)
 	return cmd
