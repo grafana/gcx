@@ -104,6 +104,9 @@ var commandAnnotations = map[string]annotation{
 	"gcx dev lint run":        {Cost: "medium", Hint: "./dashboards -o compact"},
 	"gcx dev lint test":       {Cost: "medium", Hint: "./rules --run TestName"},
 
+	// mcp
+	"gcx mcp serve": {Cost: "small"},
+
 	// providers
 	"gcx providers list": {Cost: "small"},
 

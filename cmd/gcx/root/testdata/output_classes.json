@@ -484,6 +484,7 @@
  "gcx logs metrics": "finite",
  "gcx logs query": "finite",
  "gcx logs series": "finite",
+ "gcx mcp serve": "server",
  "gcx metrics adaptive exemptions create": "finite",
  "gcx metrics adaptive exemptions delete": "finite",
  "gcx metrics adaptive exemptions get": "finite",
