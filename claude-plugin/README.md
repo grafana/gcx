@@ -103,6 +103,10 @@ canonical portable skill bundle.
 - **retired:** no bundled content; existing local copies remain visible and
   removable with `gcx agent skills uninstall`, including `--all --yes`.
 
+The release workflow publishes active catalog entries as Packslip resources;
+changing a skill's catalog status therefore also changes its release discovery
+metadata.
+
 Entries may include an optional `replacement` skill name and `message` explaining
 what changed. Replacements are informational labels, not redirects; gcx does not
 follow replacement chains. Every bundled skill needs an active or deprecated
