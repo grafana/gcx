@@ -135,9 +135,11 @@ type lookupResult struct {
 // unknown to a telemetry-derived row (Service.Namespace and the graph's own
 // "namespace" scope dimension are different things — see the package doc),
 // so a scope-less LookupEntity misses any entity the graph only knows under
-// a specific scope. Falls back to a server-side name-exact search, the same
-// two-step discoverEntityScope in internal/providers/kg uses for the identical
-// ambiguity.
+// a specific scope. Falls back to a server-side name-exact search. This
+// advisory annotation intentionally uses the first exact match when several
+// scopes share a name; it does not identify the telemetry row's scope. Unlike
+// discoverEntityScope in internal/providers/kg, ambiguity is not an error.
+// The selected scope depends on server ordering and may vary between calls.
 func (c *kgCatalog) lookupVerbose(ctx context.Context, name string, startMs, endMs int64) lookupResult {
 	active, err := c.client.Active(ctx)
 	if err != nil {
@@ -158,6 +160,7 @@ func (c *kgCatalog) lookupVerbose(ctx context.Context, name string, startMs, end
 		return lookupResult{inconclusive: true, inconclusiveErr: err}
 	}
 	for _, e := range page.Entities {
+		// Defensively reject unexpected rows despite the server-side exact matcher.
 		if e.Name == name {
 			return lookupResult{ref: &KGRef{EntityType: e.Type, Scope: e.Scope}}
 		}

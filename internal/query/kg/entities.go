@@ -231,9 +231,10 @@ func (c *Client) ListEntities(ctx context.Context, entityType string, scope Enti
 	return page, nil
 }
 
-// SearchEntitiesByName returns entities of one type whose name exactly matches
-// name. The name matcher is applied by the server, so callers can resolve a
-// scoped entity without depending on its position in an unfiltered result set.
+// SearchEntitiesByName requests entities of one type with a server-side exact
+// name matcher, avoiding dependence on position in an unfiltered result set.
+// It returns the server page unchanged apart from type normalization; callers
+// may defensively verify names before using a result.
 func (c *Client) SearchEntitiesByName(ctx context.Context, entityType, name string, startMs, endMs int64) (EntityPage, error) {
 	startMs, endMs = defaultTimeWindow(startMs, endMs)
 
