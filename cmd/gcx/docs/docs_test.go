@@ -1,4 +1,4 @@
-package docs
+package docs //nolint:testpackage // white-box tests call newDocsCommand without exported test constructors.
 
 import (
 	"encoding/json"

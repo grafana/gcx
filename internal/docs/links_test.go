@@ -41,6 +41,8 @@ func TestAllURLsAreMarkdown(t *testing.T) {
 
 // registryConstants lists every exported URL constant that must appear in
 // AllNamed(). Add a new entry here when introducing a registry constant.
+//
+//nolint:gochecknoglobals // static test fixture list; never mutated.
 var registryConstants = []struct {
 	name string
 	url  string
