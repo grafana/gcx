@@ -34,12 +34,12 @@ func okDoc() docFetcher {
 }
 
 func schemeRejectingFetcher() docFetcher {
-	return func(_ context.Context, u string) (*grafanadocs.Doc, error) {
+	return func(ctx context.Context, u string) (*grafanadocs.Doc, error) {
 		if !strings.HasPrefix(u, "https://") {
 			scheme := strings.SplitN(u, "://", 2)[0]
 			return nil, fmt.Errorf("grafanadocs: rejected scheme %q (only https allowed)", scheme)
 		}
-		return okDoc()(context.Background(), u)
+		return okDoc()(ctx, u)
 	}
 }
 
