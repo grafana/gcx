@@ -243,12 +243,15 @@ entry if the `<uid> <expr>` form can honestly carry your query, a `redirects`
 entry if it cannot. Both the reasoning and the ordering requirement are in the
 reference; get them from there rather than from memory.
 
-Format the files you touched, then gate:
+Format the files you touched and use the appropriate validation stage:
 
 ```bash
 mise exec -- gofmt -w <the .go files you edited>
-mise run gate                          # fast inner loop: lint + tests + build
-GCX_AGENT_MODE=false mise run all      # before you push; subsumes the above + docs
+# During iteration:
+mise run gate                          # lint + tests + build
+
+# Final validation before push (no separate gate run needed):
+GCX_AGENT_MODE=false mise run all      # includes the gate checks plus docs
 ```
 
 `go` and `gofmt` come from mise and may not be on your `PATH` — run them as

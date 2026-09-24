@@ -16,7 +16,7 @@ description = "Validate skills, lint, test, build, and generate docs"
 depends = ["validate-skills", "lint", "tests", "build", "docs"]
 
 [tasks.gate]
-description = "Fast pre-push gate for code changes: lint + tests + build (no docs)"
+description = "Fast iteration gate: lint + tests + build (no docs)"
 depends = ["lint", "tests", "build"]
 
 # =============================================================================
@@ -105,7 +105,7 @@ echo "Git commit template configured"
 """
 
 [tasks.tag]
-description = "Bump version, generate changelog, tag, and push. Usage: mise run tag -- <major|minor|patch>"
+description = "Bump version, generate changelog, commit and push a release branch (does NOT tag). Usage: mise run tag -- <major|minor|patch>"
 run = "./scripts/tag.sh"
 
 # =============================================================================

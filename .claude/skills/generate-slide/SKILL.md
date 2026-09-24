@@ -66,10 +66,10 @@ every command shown on the slide actually exists.
 ./bin/gcx help-tree fleet --depth 3 -o text         # Card 3: Fleet Management
 ./bin/gcx help-tree frontend --depth 3 -o text      # Card 4a: App O11y (frontend/faro)
 ./bin/gcx help-tree appo11y --depth 3 -o text       # Card 4b: App O11y (appo11y)
-./bin/gcx help-tree incidents --depth 3 -o text     # Card 5a: Incident Response
-./bin/gcx help-tree oncall --depth 3 -o text        # Card 5b: Incident Response (OnCall)
-./bin/gcx help-tree synth --depth 3 -o text         # Card 5c: Incident Response (Synth)
-./bin/gcx help-tree setup --depth 3 -o text         # Card 6: K8s Observability
+./bin/gcx help-tree irm incidents --depth 3 -o text  # Card 5a: Incident Response
+./bin/gcx help-tree irm oncall --depth 3 -o text     # Card 5b: Incident Response (OnCall)
+./bin/gcx help-tree synthetic-monitoring --depth 3 -o text  # Card 5c: Incident Response (Synth)
+./bin/gcx help-tree instrumentation --depth 3 -o text  # Card 6: K8s Observability
 ./bin/gcx help-tree metrics adaptive --depth 3 -o text  # Card 7a: Adaptive Telemetry
 ./bin/gcx help-tree logs adaptive --depth 3 -o text     # Card 7b: Adaptive Telemetry
 ./bin/gcx help-tree traces adaptive --depth 3 -o text   # Card 7c: Adaptive Telemetry
@@ -101,7 +101,7 @@ HTML content inside card elements and the stats bar — never touch CSS or grid 
 #### Layout
 
 ```
-Header:  [gcx logo]  [tagline]                          [gcx auth login badge]
+Header:  [gcx logo]  [tagline]                          [gcx login badge]
 
 Row 1:   [ Card 1: Knowledge Graph (1fr)     ] [ Card 2: Grafana Assistant (1fr)   ]
 
@@ -114,16 +114,16 @@ Stats:   [ 1 binary ] [ N+ resource types ] [ N+ commands ] [ N products ]
 
 #### Card Topic Mapping
 
-| Card | Provider(s) to query | Badge |
+| Card | Commands to query | Badge |
 |------|---------------------|-------|
-| 1. Knowledge Graph | `kg` | badge-green "Dependencies & Health" |
-| 2. Grafana Assistant | `assistant`, `auth` | badge-orange "AI-Powered" |
-| 3. Fleet Management | `fleet` | badge-green "Infrastructure" |
-| 4. App O11y | `frontend` (faro), `appo11y` | badge-green "End to End Observability" |
-| 5. Incident Response | `incidents`, `oncall`, `synth`, `k6` | badge-filled-orange "IRM" |
-| 6. K8s Observability | `setup instrumentation`, `fleet` | badge-green "Kubernetes" |
-| 7. Adaptive Telemetry | `metrics adaptive`, `logs adaptive`, `traces adaptive` | badge-orange "Cost Control" |
-| 8. Agent-Ready Platform | `slo`, `profiles`, `resources`, `assistant` | badge-filled-orange "A2A" |
+| 1. Knowledge Graph | `gcx kg` | badge-green "Dependencies & Health" |
+| 2. Grafana Assistant | `gcx assistant`, `gcx login` | badge-orange "AI-Powered" |
+| 3. Fleet Management | `gcx fleet` | badge-green "Infrastructure" |
+| 4. App O11y | `gcx frontend` (faro), `gcx appo11y` | badge-green "End to End Observability" |
+| 5. Incident Response | `gcx irm incidents`, `gcx irm oncall`, `gcx synthetic-monitoring`, `gcx k6` | badge-filled-orange "IRM" |
+| 6. K8s Observability | `gcx instrumentation`, `gcx fleet` | badge-green "Kubernetes" |
+| 7. Adaptive Telemetry | `gcx metrics adaptive`, `gcx logs adaptive`, `gcx traces adaptive` | badge-orange "Cost Control" |
+| 8. Agent-Ready Platform | `gcx slo`, `gcx profiles`, `gcx resources`, `gcx assistant` | badge-filled-orange "A2A" |
 
 #### Styling Reference
 
