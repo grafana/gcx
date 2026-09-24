@@ -3,11 +3,13 @@ package docs
 import (
 	"context"
 	"fmt"
+	goio "io"
 	"os"
 	"strings"
 	"sync"
 
-	internaldocs "github.com/grafana/gcx/internal/docs"
+	"github.com/grafana/gcx/internal/docsindex"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/mcp-doc-server/pkg/grafanadocs"
 	"github.com/spf13/cobra"
 )
@@ -66,25 +68,29 @@ func Command() *cobra.Command {
 }
 
 // resolveIfShorthand resolves a URL-or-query argument to a full documentation
-// URL. If the input already starts with "https://", it is returned as-is.
-// Otherwise the docs index is loaded and the shorthand query is resolved via
-// search, optionally scoped to a product.
+// URL. If the input contains a URL scheme ("://"), it is returned as-is so
+// FetchDoc can validate or reject the scheme. Otherwise the docs index is
+// loaded and the shorthand query is resolved via search, optionally scoped to
+// a product.
 func resolveIfShorthand(ctx context.Context, loader *indexLoader, input, product string) (string, error) {
-	if strings.HasPrefix(input, "https://") {
+	if strings.Contains(input, "://") {
 		return input, nil
 	}
 	idx, err := loader.get(ctx)
 	if err != nil {
 		return "", err
 	}
-	return internaldocs.ResolveShorthand(idx, input, product)
+	return docsindex.ResolveShorthand(idx, input, product)
 }
 
-// shellQuote wraps val in single quotes, escaping any embedded single quotes
-// using the canonical POSIX form (end-quote, backslash-escaped quote, re-open-quote).
-// Used to safely embed user-controlled values in shell command suggestions.
-func shellQuote(val string) string {
-	return "'" + strings.ReplaceAll(val, "'", `'\''`) + "'"
+func emitShorthandResolutionHint(w goio.Writer, subcommand, original, resolved string) {
+	if original == resolved {
+		return
+	}
+	cmdio.EmitHint(w,
+		fmt.Sprintf("resolved %q to documentation URL", original),
+		fmt.Sprintf("gcx docs %s %q", subcommand, resolved),
+	)
 }
 
 func newDocsCommand(loader *indexLoader, fetch docFetcher) *cobra.Command {

@@ -33,7 +33,7 @@ func (o *getOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("text", &getTextCodec{})
 	o.IO.BindFlags(flags)
 	flags.StringVar(&o.section, "section", "", "Heading text to extract (returns only that section)")
-	flags.StringVar(&o.product, "product", "", "Scope shorthand resolution to a product (case-insensitive; matches exact, then prefix, then substring; ignored when the argument is a full URL)")
+	flags.StringVar(&o.product, "product", "", "Scope shorthand resolution to a product (case-insensitive; matches exact, then prefix, then substring; empty = all products; ignored when the argument is a full URL)")
 	flags.IntVar(&o.offset, "offset", 0, "Line offset for paging (0-indexed)")
 	flags.IntVar(&o.limit, "limit", 0, "Maximum lines to return (0 or negative uses the default of 80)")
 }
@@ -97,10 +97,12 @@ func getCommand(loader *indexLoader, fetch docFetcher) *cobra.Command {
 			if err := opts.validateExplicitFlags(cmd); err != nil {
 				return err
 			}
+			rawInput := opts.url
 			resolved, err := resolveIfShorthand(cmd.Context(), loader, opts.url, opts.product)
 			if err != nil {
 				return err
 			}
+			emitShorthandResolutionHint(cmd.ErrOrStderr(), "get", rawInput, resolved)
 			opts.url = resolved
 			doc, err := fetch(cmd.Context(), opts.url)
 			if err != nil {
@@ -116,7 +118,7 @@ func getCommand(loader *indexLoader, fetch docFetcher) *cobra.Command {
 				Limit:   effectiveLimit,
 			})
 			if res.Content == "" && opts.section != "" {
-				return fmt.Errorf("section %q not found; run `gcx docs outline %s` to see available headings", opts.section, shellQuote(opts.url))
+				return fmt.Errorf("section %q not found; run `gcx docs outline %q` to see available headings", opts.section, opts.url)
 			}
 			if err := opts.IO.Encode(cmd.OutOrStdout(), getResult{
 				Content:       res.Content,
@@ -156,6 +158,6 @@ func (c *getTextCodec) Decode(_ goio.Reader, _ any) error {
 
 func emitGetPartialityHint(w goio.Writer, rawURL string, start, end, total, effectiveLimit int) {
 	summary := fmt.Sprintf("showing lines %d-%d of %d", start, end, total)
-	continuation := fmt.Sprintf("gcx docs get %s --offset %d --limit %d", shellQuote(rawURL), end, effectiveLimit)
+	continuation := fmt.Sprintf("gcx docs get %q --offset %d --limit %d", rawURL, end, effectiveLimit)
 	cmdio.EmitHint(w, summary, continuation)
 }

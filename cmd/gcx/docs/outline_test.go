@@ -37,7 +37,7 @@ func TestOutlineShorthandResolution(t *testing.T) {
 	idx := loadTestIndex(t)
 
 	t.Run("shorthand resolves and shows outline", func(t *testing.T) {
-		stdout, _, err := testCommand(t, idx, okDoc(), "outline", "clustering", "-o", "json")
+		stdout, stderr, err := testCommand(t, idx, okDoc(), "outline", "clustering", "-o", "json")
 		require.NoError(t, err)
 
 		var res struct {
@@ -49,6 +49,7 @@ func TestOutlineShorthandResolution(t *testing.T) {
 		require.NoError(t, json.Unmarshal([]byte(stdout), &res))
 		assert.Contains(t, res.URL, "clustering")
 		require.NotEmpty(t, res.Headings)
+		assert.Contains(t, stderr, `resolved "clustering"`)
 	})
 
 	t.Run("shorthand with product scopes resolution", func(t *testing.T) {

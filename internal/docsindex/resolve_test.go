@@ -1,10 +1,10 @@
-package docs_test
+package docsindex_test
 
 import (
 	"strings"
 	"testing"
 
-	"github.com/grafana/gcx/internal/docs"
+	"github.com/grafana/gcx/internal/docsindex"
 	"github.com/grafana/mcp-doc-server/pkg/grafanadocs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -37,11 +37,6 @@ func TestResolveShorthand(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name:    "full URL is returned unchanged",
-			input:   "https://grafana.com/docs/tempo/latest/traceql.md",
-			wantURL: "https://grafana.com/docs/tempo/latest/traceql.md",
-		},
-		{
 			name:    "shorthand resolves to top hit",
 			input:   "traceql",
 			wantURL: "https://grafana.com/docs/tempo/latest/traceql.md",
@@ -64,6 +59,12 @@ func TestResolveShorthand(t *testing.T) {
 			wantErr: "--product 'tempo'",
 		},
 		{
+			name:    "no match with product suggests list-products",
+			input:   "zzzznotathing",
+			product: "tempo",
+			wantErr: "gcx docs list-products",
+		},
+		{
 			name:    "no match with single-quote in input is safely quoted",
 			input:   "it's a trap",
 			wantErr: `'it'\''s a trap'`,
@@ -78,7 +79,7 @@ func TestResolveShorthand(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := docs.ResolveShorthand(idx, tt.input, tt.product)
+			got, err := docsindex.ResolveShorthand(idx, tt.input, tt.product)
 			if tt.wantErr != "" {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.wantErr)

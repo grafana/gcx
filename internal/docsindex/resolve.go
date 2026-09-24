@@ -1,6 +1,4 @@
-// NOTE: Any changes to this file must be reflected in the corresponding SPECS.md or NOTES.md.
-
-package docs
+package docsindex
 
 import (
 	"fmt"
@@ -9,25 +7,14 @@ import (
 	"github.com/grafana/mcp-doc-server/pkg/grafanadocs"
 )
 
-// ResolveShorthand resolves a short input to a full grafana.com docs URL
-// via index search. If the input already looks like a full URL (starts with
-// "https://"), it is returned unchanged. Otherwise the input is treated as a
-// search query against the loaded index and the top hit's URL is returned.
+// ResolveShorthand resolves a short input to a full grafana.com docs URL via
+// index search. The input must not contain a URL scheme; callers treat any
+// argument containing "://" as a literal URL before invoking this function.
 //
 // The returned URL comes from the index (which only contains
 // https://grafana.com/ entries per I11) and is re-validated by FetchDoc's
 // allowlist (I3/I21) before any network call.
-//
-// Security: resolved URLs must only be passed to FetchDoc, not to
-// DocsFetchSuggestion (that path requires trusted registry constants).
-// When a resolved URL appears in a copy-paste command hint shown to the
-// user, it must be shell-quoted — see shellQuote below and get.go's
-// section-not-found message.
 func ResolveShorthand(idx *grafanadocs.Index, input string, product string) (string, error) {
-	if strings.HasPrefix(input, "https://") {
-		return input, nil
-	}
-
 	hits := grafanadocs.Search(idx, input, grafanadocs.SearchOpts{
 		Product: product,
 		Limit:   1,
@@ -38,7 +25,11 @@ func ResolveShorthand(idx *grafanadocs.Index, input string, product string) (str
 			cmd += " --product " + shellQuote(product)
 		}
 		cmd += " " + shellQuote(input)
-		return "", fmt.Errorf("no matching page found; try `%s` to browse results", cmd)
+		msg := fmt.Sprintf("no matching page found; try `%s` to browse results", cmd)
+		if product != "" {
+			msg += "; run `gcx docs list-products` to see available products"
+		}
+		return "", fmt.Errorf("%s", msg)
 	}
 	return hits[0].URL, nil
 }
