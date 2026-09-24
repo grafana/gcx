@@ -307,6 +307,56 @@ func TestParseGroupBy(t *testing.T) {
 	}
 }
 
+// TestBuildServiceTotalBusyQuery locks in the parent-service denominator
+// `operations get` uses to normalize TimeSharePercent: unscoped by
+// span_name, unlike every buildOperations* builder.
+func TestBuildServiceTotalBusyQuery(t *testing.T) {
+	v3, _ := metricNamesByMode(MetricsModeV3)
+	got, err := buildServiceTotalBusyQuery(v3, "billing", "checkout", "5m", []string{spanKindServer}, nil)
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	want := `sum(rate(traces_span_metrics_duration_seconds_sum{job="billing/checkout",span_kind=~"SPAN_KIND_SERVER"}[5m]))`
+	if got != want {
+		t.Errorf("got %q\nwant %q", got, want)
+	}
+	if _, err := buildServiceTotalBusyQuery(v3, "billing", "", "5m", nil, nil); err == nil {
+		t.Error("expected error for empty service name")
+	}
+}
+
+// TestScopedSpanMetric locks in scopedSpanMetric's rendered selector
+// (job before span_kind, matchers appended in order) across the
+// spanMetricSelector extraction — every buildOperations*/buildRate*
+// golden string in this package depends on this exact shape.
+func TestScopedSpanMetric(t *testing.T) {
+	got := scopedSpanMetric("traces_span_metrics_calls_total", "billing", "checkout", []string{spanKindServer}, "5m",
+		[]Matcher{{Label: "k8s_cluster_name", Op: "=", Value: "prod"}})
+	expr, err := got.Build()
+	if err != nil {
+		t.Fatalf("build err = %v", err)
+	}
+	want := `traces_span_metrics_calls_total{job="billing/checkout",span_kind=~"SPAN_KIND_SERVER",k8s_cluster_name="prod"}[5m]`
+	if expr.String() != want {
+		t.Errorf("got %q\nwant %q", expr.String(), want)
+	}
+}
+
+// TestSpanMetricSelectorEmptyJob confirms an empty job skips the `job`
+// label entirely — the fleet-wide builders rely on this to query across
+// every service instead of one.
+func TestSpanMetricSelectorEmptyJob(t *testing.T) {
+	got := spanMetricSelector("traces_span_metrics_calls_total", "", []string{spanKindServer}, "5m", nil)
+	expr, err := got.Build()
+	if err != nil {
+		t.Fatalf("build err = %v", err)
+	}
+	want := `traces_span_metrics_calls_total{span_kind=~"SPAN_KIND_SERVER"}[5m]`
+	if expr.String() != want {
+		t.Errorf("got %q\nwant %q", expr.String(), want)
+	}
+}
+
 func TestBuildSeriesSelector(t *testing.T) {
 	got := buildSeriesSelector("traces_span_metrics_calls_total", "billing/checkout", nil)
 	want := `traces_span_metrics_calls_total{job="billing/checkout"}`
