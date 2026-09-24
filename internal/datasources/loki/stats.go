@@ -6,7 +6,6 @@ import (
 	"io"
 	"time"
 
-	"github.com/dustin/go-humanize"
 	"github.com/grafana/gcx/internal/agent"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/format"
@@ -70,11 +69,9 @@ matching the instant-query default used by 'query'/'metrics'. That window is
 widened by any range-vector duration or offset in EXPR (e.g. '[24h]',
 'offset 1h'), since Loki evaluates further back than --from/--to/--since
 alone would suggest.
-Bytes scanned is the number this command exists to answer, so it's always
-called out as a "<size> would be scanned" diagnostic on stderr, regardless of
--o format. -o table's stdout result is that same size alone; the underlying
-Streams/Chunks/Entries counts aren't relevant to the cost question this
-command answers, but remain available via -o json/-o yaml.`,
+-o table's result is a single "<size> would be scanned" line — the
+underlying Streams/Chunks/Entries counts aren't relevant to the cost
+question this command answers, but remain available via -o json/-o yaml.`,
 		Example: `
   # Estimate bytes scanned by a selector over the last hour
   gcx datasources loki stats -d UID '{job="varlogs"}' --since 1h
@@ -148,15 +145,6 @@ command answers, but remain available via -o json/-o yaml.`,
 				resp.Bytes += selectorResp.Bytes
 				resp.Entries += selectorResp.Entries
 			}
-
-			// Bytes scanned is the number this command exists to answer, so
-			// call it out as a diagnostic on stderr regardless of output
-			// format — resp.Bytes is already the "Bytes" row in the table
-			// codec below, and stdout is reserved for that codec-owned
-			// result (DESIGN.md's Output Model, CONSTITUTION.md's "all
-			// output goes through the codec system"), not unstructured
-			// prose ahead of it.
-			cmdio.Warning(cmd.ErrOrStderr(), "%s would be scanned", humanize.IBytes(resp.Bytes))
 
 			return opts.IO.Encode(cmd.OutOrStdout(), resp)
 		},
