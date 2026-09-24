@@ -209,13 +209,9 @@ func checkStatsPreflightSync(ctx context.Context, client *loki.Client, stderr io
 // did before it was unified into resolveStatsWindow.
 //
 // On success it returns (wait, cancel, nil): the caller must issue the real
-// query, then call cancel() immediately when that returns — before calling
-// wait() — so a still-running async check is cut short rather than left to
-// run out its full statsPreflightTimeout. Without this, a query that
-// finishes quickly can still sit waiting on a slow index-stats call for up
-// to statsPreflightTimeout, which is exactly the added latency this
-// advisory check is supposed to avoid. Both functions are no-ops on the
-// synchronous or skipped paths, where there's nothing left to cut short.
+// query, then pass both functions to finishStatsPreflight once that returns.
+// Both functions are no-ops on the synchronous or skipped paths, where
+// there's nothing left to wait on or cut short.
 //
 // A non-nil error means the caller must return immediately without querying
 // at all; wait and cancel are both nil in that case.
@@ -235,5 +231,43 @@ func startStatsPreflight(ctx context.Context, client *loki.Client, stderr io.Wri
 		return wg.Wait, cancelPreflight, nil
 	default:
 		return func() {}, func() {}, nil
+	}
+}
+
+// statsPreflightGraceAfterQuery bounds how much extra time the async
+// warn-only check gets to finish on its own, after the real query it's
+// advising about has already returned, before finishStatsPreflight cuts it
+// short. Two requests to the same backend can finish in either order — a
+// cheap/empty real query is not guaranteed to be slower than the index-stats
+// call checking it — so cancelling the instant the query returns can abort
+// the check before it ever gets an answer, silently dropping the warning
+// rather than just being a little late with it. This window only needs to
+// absorb that ordinary race, not accommodate a genuinely slow index-stats
+// call, so it's far smaller than statsPreflightTimeout. A var, not a const,
+// so tests can lower it.
+var statsPreflightGraceAfterQuery = 500 * time.Millisecond //nolint:gochecknoglobals // test-overridable grace window
+
+// finishStatsPreflight is the caller-side counterpart to startStatsPreflight's
+// async branch: call it exactly once, immediately after the real query
+// returns, with the (wait, cancel) pair startStatsPreflight returned. It
+// gives the still-running check up to statsPreflightGraceAfterQuery to
+// finish naturally — long enough to absorb the two requests finishing in
+// the "wrong" order — before cancelling it, so the warning isn't lost
+// purely because the real query happened to win that race. wait and cancel
+// are always non-nil no-ops on the synchronous and skipped paths, so this
+// is safe to call unconditionally once startStatsPreflight has returned a
+// nil error.
+func finishStatsPreflight(wait, cancel func()) {
+	done := make(chan struct{})
+	go func() {
+		wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(statsPreflightGraceAfterQuery):
+		cancel()
+		<-done
 	}
 }
