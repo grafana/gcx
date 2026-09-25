@@ -19,7 +19,6 @@ func TestReplayRecordingTableCodec_Encode(t *testing.T) {
 		{
 			RecordingID:       "rec-001",
 			Status:            "complete",
-			Duration:          2*time.Minute + 30*time.Second,
 			DurationHuman:     (2*time.Minute + 30*time.Second).Truncate(time.Second).String(),
 			Segments:          5,
 			SegmentIDs:        []int64{1, 2, 4, 8, 12},
@@ -29,7 +28,6 @@ func TestReplayRecordingTableCodec_Encode(t *testing.T) {
 		{
 			RecordingID:       "rec-002",
 			Status:            "active",
-			Duration:          45 * time.Second,
 			DurationHuman:     (45 * time.Second).String(),
 			Segments:          2,
 			InactivityPeriods: 0,
@@ -105,7 +103,7 @@ func TestReplayRecordingTableCodec_Decode(t *testing.T) {
 	assert.Contains(t, err.Error(), "does not support decoding")
 }
 
-func TestInspectReplaySessionCommandRegistered(t *testing.T) {
+func TestListReplayRecordingsCommandRegistered(t *testing.T) {
 	p := &faro.FaroProvider{}
 	cmds := p.Commands()
 
@@ -126,11 +124,11 @@ func TestInspectReplaySessionCommandRegistered(t *testing.T) {
 		subCmds[c.Name()] = true
 	}
 
-	assert.True(t, subCmds["inspect-replay-session"], "missing inspect-replay-session subcommand")
+	assert.True(t, subCmds["list-replay-recordings"], "missing list-replay-recordings subcommand")
 }
 
-func TestInspectReplaySessionRejectsNegativeLimit(t *testing.T) {
-	err := executeFaroCommand(t, "apps", "inspect-replay-session", "my-web-app-42", "sess-1", "--limit", "-1")
+func TestListReplayRecordingsRejectsNegativeLimit(t *testing.T) {
+	err := executeFaroCommand(t, "apps", "list-replay-recordings", "my-web-app-42", "sess-1", "--limit", "-1")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "--limit must be zero or positive")
 }
@@ -299,11 +297,6 @@ func TestInspectReplaySegmentCommandRegistered(t *testing.T) {
 	assert.Empty(t, f.DefValue)
 }
 
-func TestInspectReplaySegmentRawFlagRemoved(t *testing.T) {
-	cmd := inspectReplaySegmentCommand(t)
-	assert.Nil(t, cmd.Flags().Lookup("raw"))
-}
-
 func TestEventsToSummaryRows(t *testing.T) {
 	events := []faro.RRWebEvent{
 		{Type: 4, Timestamp: 1700000000000, Data: json.RawMessage(`{}`)},
@@ -340,23 +333,4 @@ func executeFaroCommand(t *testing.T, args ...string) error {
 	cmd.SetErr(&bytes.Buffer{})
 	cmd.SetArgs(args)
 	return cmd.Execute()
-}
-
-func inspectReplaySegmentCommand(t *testing.T) *cobra.Command {
-	t.Helper()
-
-	p := &faro.FaroProvider{}
-	cmds := p.Commands()
-	require.Len(t, cmds, 1)
-
-	appsCmd, _, err := cmds[0].Find([]string{"apps"})
-	require.NoError(t, err)
-
-	for _, sub := range appsCmd.Commands() {
-		if sub.Name() == "inspect-replay-segment" {
-			return sub
-		}
-	}
-	t.Fatal("missing inspect-replay-segment command")
-	return nil
 }

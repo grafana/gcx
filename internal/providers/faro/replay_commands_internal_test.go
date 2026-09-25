@@ -81,11 +81,11 @@ func TestListReplaySessionsOptsAcceptsPrometheusDurations(t *testing.T) {
 	require.NoError(t, opts.Validate())
 }
 
-func TestInspectReplaySessionReturnsPartialResultsAndManifestIDs(t *testing.T) {
+func TestListReplayRecordingsReturnsPartialResultsAndManifestIDs(t *testing.T) {
 	server := newReplayInspectionTestServer(t)
 	defer server.Close()
 	loader := &fakeConfigLoader{grafanaURL: server.URL}
-	cmd := newInspectReplaySessionCommand(loader)
+	cmd := newListReplayRecordingsCommand(loader)
 	var stdout, stderr bytes.Buffer
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&stderr)
@@ -126,7 +126,7 @@ func TestInspectReplaySegmentSaveEmitsJSONReceipt(t *testing.T) {
 func newReplayInspectionTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
 
-	const base = "/api/plugin-proxy/grafana-kowalski-app/api-proxy/api/v1/sessions/"
+	const base = "/api/plugin-proxy/grafana-sessionreplay-app/faro-api-proxy/api/v1/sessions/"
 	mux := http.NewServeMux()
 	mux.HandleFunc(base+"sess-1/recordings", func(w http.ResponseWriter, r *http.Request) {
 		writeReplayTestJSON(w, SessionRecordingsListResponse{

@@ -26,14 +26,13 @@ const FormatText = format.Format("text")
 
 // ReplayRecordingRow holds pre-computed data for one replay recording row.
 type ReplayRecordingRow struct {
-	RecordingID       string        `json:"recording_id"`
-	Status            string        `json:"status"`
-	Duration          time.Duration `json:"-"`
-	DurationHuman     string        `json:"duration"`
-	Segments          int           `json:"segments"`
-	SegmentIDs        []int64       `json:"segment_ids,omitempty"`
-	InactivityPeriods int           `json:"inactivity_periods"`
-	ManifestAvailable bool          `json:"manifest_available"`
+	RecordingID       string  `json:"recording_id"`
+	Status            string  `json:"status"`
+	DurationHuman     string  `json:"duration"`
+	Segments          int     `json:"segments"`
+	SegmentIDs        []int64 `json:"segment_ids,omitempty"`
+	InactivityPeriods int     `json:"inactivity_periods"`
+	ManifestAvailable bool    `json:"manifest_available"`
 }
 
 // ReplayRecordingList is the structured result for replay recording inspection.
@@ -111,22 +110,22 @@ func resolveFirstRecordingID(ctx context.Context, client *Client, appID, session
 }
 
 // ---------------------------------------------------------------------------
-// inspect-replay-session command
+// list-replay-recordings command
 // ---------------------------------------------------------------------------
 
-type inspectReplaySessionOpts struct {
+type listReplayRecordingsOpts struct {
 	IO    cmdio.Options
 	Limit int
 }
 
-func (o *inspectReplaySessionOpts) setup(flags *pflag.FlagSet) {
+func (o *listReplayRecordingsOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("text", &ReplayRecordingTableCodec{})
 	o.IO.DefaultFormat("text")
 	o.IO.BindFlags(flags)
 	flags.IntVar(&o.Limit, "limit", 50, "Maximum number of replay recordings to return (0 for unlimited)")
 }
 
-func (o *inspectReplaySessionOpts) Validate() error {
+func (o *listReplayRecordingsOpts) Validate() error {
 	if err := o.IO.Validate(); err != nil {
 		return err
 	}
@@ -136,22 +135,22 @@ func (o *inspectReplaySessionOpts) Validate() error {
 	return nil
 }
 
-func newInspectReplaySessionCommand(loader RESTConfigLoader) *cobra.Command {
-	opts := &inspectReplaySessionOpts{}
+func newListReplayRecordingsCommand(loader RESTConfigLoader) *cobra.Command {
+	opts := &listReplayRecordingsOpts{}
 	cmd := &cobra.Command{
-		Use:   "inspect-replay-session <app-name> <session-id>",
-		Short: "Inspect replay recordings attached to a Frontend Observability session ID.",
-		Example: `  # Inspect replay recordings for a regular session ID.
-  gcx frontend apps inspect-replay-session my-web-app-42 abc-session-123
+		Use:   "list-replay-recordings <app-name> <session-id>",
+		Short: "List replay recordings for a Frontend Observability session ID.",
+		Example: `  # List replay recordings for a regular session ID.
+  gcx frontend apps list-replay-recordings my-web-app-42 abc-session-123
 
-  # Inspect replay recordings with JSON output.
-  gcx frontend apps inspect-replay-session my-web-app-42 abc-session-123 -o json
+  # List replay recordings with JSON output.
+  gcx frontend apps list-replay-recordings my-web-app-42 abc-session-123 -o json
 
   # Include segment IDs so you can inspect a specific segment.
-  gcx frontend apps inspect-replay-session my-web-app-42 abc-session-123 -o json --json items
+  gcx frontend apps list-replay-recordings my-web-app-42 abc-session-123 -o json --json items
 
-  # Inspect all replay recordings attached to a session ID.
-  gcx frontend apps inspect-replay-session my-web-app-42 abc-session-123 --limit 0`,
+  # List all replay recordings attached to a session ID.
+  gcx frontend apps list-replay-recordings my-web-app-42 abc-session-123 --limit 0`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
@@ -183,11 +182,10 @@ func newInspectReplaySessionCommand(loader RESTConfigLoader) *cobra.Command {
 			g.SetLimit(10)
 
 			for i, item := range resp.Items {
-				duration, durationHuman := formatRecordingDuration(item.StartTS, item.EndTS)
+				durationHuman := FormatRecordingDuration(item.StartTS, item.EndTS)
 				rows[i] = ReplayRecordingRow{
 					RecordingID:   item.ID,
 					Status:        item.Status,
-					Duration:      duration,
 					DurationHuman: durationHuman,
 				}
 				g.Go(func() error {
@@ -234,16 +232,11 @@ func newInspectReplaySessionCommand(loader RESTConfigLoader) *cobra.Command {
 
 // FormatRecordingDuration returns a display-safe duration for a recording.
 func FormatRecordingDuration(start, end time.Time) string {
-	_, human := formatRecordingDuration(start, end)
-	return human
-}
-
-func formatRecordingDuration(start, end time.Time) (time.Duration, string) {
 	if start.IsZero() || end.IsZero() || end.Before(start) {
-		return 0, "-"
+		return "-"
 	}
 	duration := end.Sub(start)
-	return duration, duration.Truncate(time.Second).String()
+	return duration.Truncate(time.Second).String()
 }
 
 // ---------------------------------------------------------------------------

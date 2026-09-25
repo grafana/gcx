@@ -22,7 +22,7 @@ const (
 	sourcemapsPathFmt      = basePath + "/%s/sourcemaps"
 	sourcemapsBatchPathFmt = basePath + "/%s/sourcemaps/batch/%s"
 
-	sessionsBasePath         = "/api/plugin-proxy/grafana-kowalski-app/api-proxy/api/v1/sessions"
+	sessionsBasePath         = "/api/plugin-proxy/grafana-sessionreplay-app/faro-api-proxy/api/v1/sessions"
 	recordingsPathFmt        = sessionsBasePath + "/%s/recordings"
 	recordingManifestPathFmt = sessionsBasePath + "/%s/recordings/%s/manifest"
 	recordingSegmentPathFmt  = sessionsBasePath + "/%s/recordings/%s/segments/%s"

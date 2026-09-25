@@ -1,31 +1,31 @@
-## gcx frontend apps inspect-replay-session
+## gcx frontend apps list-replay-recordings
 
-Inspect replay recordings attached to a Frontend Observability session ID.
+List replay recordings for a Frontend Observability session ID.
 
 ```
-gcx frontend apps inspect-replay-session <app-name> <session-id> [flags]
+gcx frontend apps list-replay-recordings <app-name> <session-id> [flags]
 ```
 
 ### Examples
 
 ```
-  # Inspect replay recordings for a regular session ID.
-  gcx frontend apps inspect-replay-session my-web-app-42 abc-session-123
+  # List replay recordings for a regular session ID.
+  gcx frontend apps list-replay-recordings my-web-app-42 abc-session-123
 
-  # Inspect replay recordings with JSON output.
-  gcx frontend apps inspect-replay-session my-web-app-42 abc-session-123 -o json
+  # List replay recordings with JSON output.
+  gcx frontend apps list-replay-recordings my-web-app-42 abc-session-123 -o json
 
   # Include segment IDs so you can inspect a specific segment.
-  gcx frontend apps inspect-replay-session my-web-app-42 abc-session-123 -o json --json items
+  gcx frontend apps list-replay-recordings my-web-app-42 abc-session-123 -o json --json items
 
-  # Inspect all replay recordings attached to a session ID.
-  gcx frontend apps inspect-replay-session my-web-app-42 abc-session-123 --limit 0
+  # List all replay recordings attached to a session ID.
+  gcx frontend apps list-replay-recordings my-web-app-42 abc-session-123 --limit 0
 ```
 
 ### Options
 
 ```
-  -h, --help            help for inspect-replay-session
+  -h, --help            help for list-replay-recordings
       --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int       Maximum number of replay recordings to return (0 for unlimited) (default 50)

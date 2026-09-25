@@ -55,10 +55,11 @@ func (c *ReplaySessionListCodec) Decode(_ io.Reader, _ any) error {
 }
 
 type listReplaySessionsOpts struct {
-	IO         cmdio.Options
-	Datasource string
-	Since      string
-	Limit      int
+	IO            cmdio.Options
+	Datasource    string
+	Since         string
+	Limit         int
+	sinceDuration time.Duration
 }
 
 func (o *listReplaySessionsOpts) setup(flags *pflag.FlagSet) {
@@ -84,6 +85,7 @@ func (o *listReplaySessionsOpts) Validate() error {
 	if since <= 0 {
 		return errors.New("--since must be positive")
 	}
+	o.sinceDuration = since
 	return nil
 }
 
@@ -132,18 +134,12 @@ func newListReplaySessionsCommand(loader *providers.ConfigLoader) *cobra.Command
 			}
 
 			appID := resolveAppID(args[0])
-			escapedAppID := strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(appID)
-			query := fmt.Sprintf(`{app_id="%s"} | logfmt | event_name=%sfaro.session_recording.started%s`, escapedAppID, "`", "`")
-
-			since, err := shared.ParseDuration(opts.Since)
-			if err != nil {
-				return fmt.Errorf("invalid --since value: %w", err)
-			}
+			query := fmt.Sprintf(`{app_id=%s} | logfmt | event_name="faro.session_recording.started"`, strconv.Quote(appID))
 
 			now := time.Now()
 			req := loki.QueryRequest{
 				Query: query,
-				Start: now.Add(-since),
+				Start: now.Add(-opts.sinceDuration),
 				End:   now,
 				Limit: opts.Limit,
 			}

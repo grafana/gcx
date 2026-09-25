@@ -61,7 +61,7 @@ func (p *FaroProvider) Commands() []*cobra.Command {
 		newApplySourcemapCommand(loader),
 		newDeleteSourcemapCommand(loader),
 		newListReplaySessionsCommand(loader),
-		newInspectReplaySessionCommand(loader),
+		newListReplayRecordingsCommand(loader),
 		newInspectReplaySegmentCommand(loader),
 	)
 

@@ -484,7 +484,7 @@ func TestClient_DeleteSourcemaps(t *testing.T) {
 func TestListRecordings(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
-		assert.Equal(t, "/api/plugin-proxy/grafana-kowalski-app/api-proxy/api/v1/sessions/sess-abc/recordings", r.URL.Path)
+		assert.Equal(t, "/api/plugin-proxy/grafana-sessionreplay-app/faro-api-proxy/api/v1/sessions/sess-abc/recordings", r.URL.Path)
 		assert.Equal(t, "app-42", r.URL.Query().Get("app_id"))
 		assert.Equal(t, "10", r.URL.Query().Get("limit"))
 
@@ -647,7 +647,7 @@ func TestListRecordingsAutoPaginationRejectsRepeatedCursor(t *testing.T) {
 func TestGetManifest(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
-		assert.Equal(t, "/api/plugin-proxy/grafana-kowalski-app/api-proxy/api/v1/sessions/sess-abc/recordings/rec-1/manifest", r.URL.Path)
+		assert.Equal(t, "/api/plugin-proxy/grafana-sessionreplay-app/faro-api-proxy/api/v1/sessions/sess-abc/recordings/rec-1/manifest", r.URL.Path)
 		assert.Equal(t, "app-42", r.URL.Query().Get("app_id"))
 
 		writeJSON(w, faro.RecordingManifestResponse{
@@ -688,7 +688,7 @@ func TestGetManifest(t *testing.T) {
 func TestGetSegment(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
-		assert.Equal(t, "/api/plugin-proxy/grafana-kowalski-app/api-proxy/api/v1/sessions/sess-abc/recordings/rec-1/segments/seg-0", r.URL.Path)
+		assert.Equal(t, "/api/plugin-proxy/grafana-sessionreplay-app/faro-api-proxy/api/v1/sessions/sess-abc/recordings/rec-1/segments/seg-0", r.URL.Path)
 		assert.Equal(t, "app-42", r.URL.Query().Get("app_id"))
 
 		writeJSON(w, faro.RecordingSegmentResponse{
