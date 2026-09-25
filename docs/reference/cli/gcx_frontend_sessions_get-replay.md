@@ -1,13 +1,12 @@
 ## gcx frontend sessions get-replay
 
-Save a playable replay for a Frontend Observability session.
+Save all replays for a Frontend Observability session.
 
 ### Synopsis
 
-Save the recording the Session Replay viewer opens by default as one
-rrweb event JSON file. All of that recording's segments are included in order.
-The returned viewer URL pins the selected recording, so later session activity
-cannot change which replay it opens.
+Save every recording in a session to one JSON file. Each recording
+contains its complete rrweb event stream, assembled from its segments in order.
+Recording boundaries are preserved because separate recordings can overlap in time.
 
 ```
 gcx frontend sessions get-replay <session-id> [flags]
@@ -25,7 +24,7 @@ gcx frontend sessions get-replay <session-id> [flags]
 ```
       --app string    Frontend Observability app slug-id or numeric id (required)
   -h, --help          help for get-replay
-      --save string   Path for the complete replay event JSON (required)
+      --save string   Path for the complete session replay JSON (required)
 ```
 
 ### Options inherited from parent commands

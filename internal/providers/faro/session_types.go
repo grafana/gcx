@@ -65,4 +65,27 @@ type RRWebEvent struct {
 	Type      int             `json:"type"`
 	Timestamp int64           `json:"timestamp"`
 	Data      json.RawMessage `json:"data"`
+	raw       json.RawMessage
+}
+
+// UnmarshalJSON keeps the exact event payload so exports do not drop rrweb
+// fields that the CLI does not interpret.
+func (e *RRWebEvent) UnmarshalJSON(data []byte) error {
+	type eventFields RRWebEvent
+	var fields eventFields
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	*e = RRWebEvent(fields)
+	e.raw = append(e.raw[:0], data...)
+	return nil
+}
+
+// MarshalJSON returns the original event when available.
+func (e RRWebEvent) MarshalJSON() ([]byte, error) {
+	if e.raw != nil {
+		return e.raw, nil
+	}
+	type eventFields RRWebEvent
+	return json.Marshal(eventFields(e))
 }

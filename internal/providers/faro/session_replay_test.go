@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestSessionsGetReplaySavesViewerDefaultAsOneFile(t *testing.T) {
+func TestSessionsGetReplayBundlesAllRecordingsAsOneFile(t *testing.T) {
 	testutils.SetAgentMode(t, true)
 	var paths []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -25,14 +25,22 @@ func TestSessionsGetReplaySavesViewerDefaultAsOneFile(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/sess-1/recordings"):
-			assert.Equal(t, "1", r.URL.Query().Get("limit"))
-			_, _ = w.Write([]byte(`{"session_id":"sess-1","items":[{"id":"newest","status":"finished"}],"page":{"hasNext":true,"totalItems":2}}`))
+			assert.Equal(t, "50", r.URL.Query().Get("limit"))
+			if r.URL.Query().Get("page") == "next" {
+				_, _ = w.Write([]byte(`{"session_id":"sess-1","items":[{"id":"older","status":"finished"}],"page":{"hasNext":false,"totalItems":2}}`))
+			} else {
+				_, _ = w.Write([]byte(`{"session_id":"sess-1","items":[{"id":"newest","status":"finished"}],"page":{"hasNext":true,"next":"next","totalItems":2}}`))
+			}
 		case strings.HasSuffix(r.URL.Path, "/newest/manifest"):
 			_, _ = w.Write([]byte(`{"id":"newest","session_id":"sess-1","status":"finished","segments":[{"id":0},{"id":3}]}`))
+		case strings.HasSuffix(r.URL.Path, "/older/manifest"):
+			_, _ = w.Write([]byte(`{"id":"older","session_id":"sess-1","status":"finished","segments":[{"id":0}]}`))
 		case strings.HasSuffix(r.URL.Path, "/newest/segments/0"):
 			_, _ = w.Write([]byte(`{"id":"0","recording_id":"newest","events":[{"type":4,"timestamp":1000,"data":{"href":"/"}}]}`))
 		case strings.HasSuffix(r.URL.Path, "/newest/segments/3"):
 			_, _ = w.Write([]byte(`{"id":"3","recording_id":"newest","events":[{"type":3,"timestamp":2000,"data":{"source":2}}]}`))
+		case strings.HasSuffix(r.URL.Path, "/older/segments/0"):
+			_, _ = w.Write([]byte(`{"id":"0","recording_id":"older","events":[{"type":4,"timestamp":1500,"data":{"href":"/older"},"extra":"preserved"}]}`))
 		default:
 			http.NotFound(w, r)
 		}
@@ -48,21 +56,31 @@ func TestSessionsGetReplaySavesViewerDefaultAsOneFile(t *testing.T) {
 
 	var receipt replayArtifactReceipt
 	require.NoError(t, json.Unmarshal(stdout.Bytes(), &receipt))
-	assert.Equal(t, 2, receipt.EventCount)
-	assert.Equal(t, server.URL+"/a/grafana-sessionreplay-app/app/42/session/sess-1?recording_id=newest", receipt.ReplayURL)
+	assert.Equal(t, 3, receipt.EventCount)
+	assert.Equal(t, 2, receipt.RecordingCount)
+	assert.Equal(t, server.URL+"/a/grafana-sessionreplay-app/app/42/session/sess-1", receipt.ReplayURL)
 	assert.Equal(t, path, receipt.Files[0].Path)
-	assert.Len(t, paths, 4)
-	for _, requestedPath := range paths {
-		assert.NotContains(t, requestedPath, "older")
-	}
+	assert.Len(t, paths, 7)
 
 	contents, err := os.ReadFile(path)
 	require.NoError(t, err)
-	var events []RRWebEvent
-	require.NoError(t, json.Unmarshal(contents, &events))
-	require.Len(t, events, 2)
-	assert.Equal(t, int64(1000), events[0].Timestamp)
-	assert.Equal(t, int64(2000), events[1].Timestamp)
+	var bundle struct {
+		AppID      string `json:"app_id"`
+		SessionID  string `json:"session_id"`
+		Recordings []struct {
+			ID     string       `json:"id"`
+			Events []RRWebEvent `json:"events"`
+		} `json:"recordings"`
+	}
+	require.NoError(t, json.Unmarshal(contents, &bundle))
+	assert.Equal(t, "42", bundle.AppID)
+	assert.Equal(t, "sess-1", bundle.SessionID)
+	require.Len(t, bundle.Recordings, 2)
+	assert.Equal(t, "newest", bundle.Recordings[0].ID)
+	assert.Equal(t, "older", bundle.Recordings[1].ID)
+	assert.Equal(t, []int64{1000, 2000}, []int64{bundle.Recordings[0].Events[0].Timestamp, bundle.Recordings[0].Events[1].Timestamp})
+	assert.Equal(t, int64(1500), bundle.Recordings[1].Events[0].Timestamp)
+	assert.Contains(t, string(contents), `"extra":"preserved"`)
 	if runtime.GOOS != "windows" {
 		info, statErr := os.Stat(path)
 		require.NoError(t, statErr)

@@ -24,5 +24,5 @@ Inspect Frontend Observability sessions.
 
 * [gcx frontend](gcx_frontend.md)	 - Manage Grafana Frontend Observability resources
 * [gcx frontend sessions get](gcx_frontend_sessions_get.md)	 - Write Frontend Observability session telemetry to a text file.
-* [gcx frontend sessions get-replay](gcx_frontend_sessions_get-replay.md)	 - Save a playable replay for a Frontend Observability session.
+* [gcx frontend sessions get-replay](gcx_frontend_sessions_get-replay.md)	 - Save all replays for a Frontend Observability session.
 

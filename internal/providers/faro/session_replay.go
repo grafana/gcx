@@ -24,7 +24,7 @@ type sessionsGetReplayOpts struct {
 
 func (o *sessionsGetReplayOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&o.App, "app", "", "Frontend Observability app slug-id or numeric id (required)")
-	flags.StringVar(&o.Save, "save", "", "Path for the complete replay event JSON (required)")
+	flags.StringVar(&o.Save, "save", "", "Path for the complete session replay JSON (required)")
 }
 
 func (o *sessionsGetReplayOpts) Validate() error {
@@ -42,19 +42,19 @@ func (o *sessionsGetReplayOpts) Validate() error {
 type replayArtifactReceipt struct {
 	cmdio.ArtifactReceipt
 
-	EventCount int    `json:"event_count"`
-	ReplayURL  string `json:"replay_url"`
+	RecordingCount int    `json:"recording_count"`
+	EventCount     int    `json:"event_count"`
+	ReplayURL      string `json:"replay_url"`
 }
 
 func newSessionsGetReplayCommand(loader RESTConfigLoader) *cobra.Command {
 	opts := &sessionsGetReplayOpts{}
 	cmd := &cobra.Command{
 		Use:   "get-replay <session-id>",
-		Short: "Save a playable replay for a Frontend Observability session.",
-		Long: `Save the recording the Session Replay viewer opens by default as one
-rrweb event JSON file. All of that recording's segments are included in order.
-The returned viewer URL pins the selected recording, so later session activity
-cannot change which replay it opens.`,
+		Short: "Save all replays for a Frontend Observability session.",
+		Long: `Save every recording in a session to one JSON file. Each recording
+contains its complete rrweb event stream, assembled from its segments in order.
+Recording boundaries are preserved because separate recordings can overlap in time.`,
 		Example: `  # Save the replay for a session to a private JSON file.
   gcx frontend sessions get-replay abc-session-123 --app my-web-app-42 --save replay.json`,
 		Args: func(_ *cobra.Command, args []string) error {
@@ -78,35 +78,28 @@ cannot change which replay it opens.`,
 			}
 			appID := resolveAppID(opts.App)
 			sessionID := strings.TrimSpace(args[0])
-			list, err := client.ListRecordings(ctx, appID, sessionID, 1)
+			list, err := client.ListRecordings(ctx, appID, sessionID, 0)
 			if err != nil {
 				return err
 			}
 			if len(list.Items) == 0 {
 				return fmt.Errorf("no replay found for session %s", sessionID)
 			}
-			recordingID := list.Items[0].ID
-			manifest, err := client.GetManifest(ctx, appID, sessionID, recordingID)
+			count, err := saveSessionReplayEvents(ctx, client, appID, sessionID, list.Items, opts.Save)
 			if err != nil {
 				return err
 			}
-			if manifest.ID != recordingID || manifest.SessionID != sessionID {
-				return fmt.Errorf("replay manifest identity does not match session %s", sessionID)
-			}
-			count, err := saveReplayEvents(ctx, client, appID, sessionID, recordingID, manifest.Segments, opts.Save)
-			if err != nil {
-				return err
-			}
-			replayURL := pinnedReplayURL(cfg.Host, appID, sessionID, recordingID)
+			replayURL := sessionReplayURL(cfg.Host, appID, sessionID)
 			receipt := replayArtifactReceipt{
 				ArtifactReceipt: cmdio.NewArtifactReceipt("get-replay", "json"),
+				RecordingCount:  len(list.Items),
 				EventCount:      count,
 				ReplayURL:       replayURL,
 			}
-			receipt.Files = append(receipt.Files, cmdio.ArtifactFile{Path: opts.Save, Kind: "rrweb-events"})
+			receipt.Files = append(receipt.Files, cmdio.ArtifactFile{Path: opts.Save, Kind: "session-replay"})
 			receipt.Summary = cmdio.MutationSummary{Succeeded: 1}
 			return cmdio.EmitArtifactResult(cmd.OutOrStdout(), receipt, func(w io.Writer) error {
-				_, err := fmt.Fprintf(w, "Wrote %d replay events to %s\nReplay: %s\n", count, opts.Save, replayURL)
+				_, err := fmt.Fprintf(w, "Wrote %d events from %d recordings to %s\nReplay: %s\n", count, len(list.Items), opts.Save, replayURL)
 				return err
 			})
 		},
@@ -115,19 +108,14 @@ cannot change which replay it opens.`,
 	return cmd
 }
 
-func pinnedReplayURL(host, appID, sessionID, recordingID string) string {
+func sessionReplayURL(host, appID, sessionID string) string {
 	return strings.TrimRight(host, "/") + "/a/grafana-sessionreplay-app/app/" +
-		url.PathEscape(appID) + "/session/" + url.PathEscape(sessionID) +
-		"?recording_id=" + url.QueryEscape(recordingID)
+		url.PathEscape(appID) + "/session/" + url.PathEscape(sessionID)
 }
 
-// saveReplayEvents follows the viewer's manifest order and writes one playable
-// rrweb event array. A temporary file keeps an existing destination intact if
-// any segment cannot be fetched or encoded.
-func saveReplayEvents(ctx context.Context, client *Client, appID, sessionID, recordingID string, segments []ManifestSegment, path string) (int, error) {
-	if len(segments) == 0 {
-		return 0, errors.New("replay manifest has no segments")
-	}
+// saveSessionReplayEvents bundles every recording, preserving boundaries and
+// manifest segment order. The destination stays intact if any read fails.
+func saveSessionReplayEvents(ctx context.Context, client *Client, appID, sessionID string, recordings []RecordingListItem, path string) (int, error) {
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".gcx-replay-*.tmp")
 	if err != nil {
 		return 0, fmt.Errorf("creating replay file: %w", err)
@@ -137,35 +125,77 @@ func saveReplayEvents(ctx context.Context, client *Client, appID, sessionID, rec
 	if err := tmp.Chmod(0o600); err != nil {
 		return 0, err
 	}
-	if _, err := io.WriteString(tmp, "[\n"); err != nil {
+	sessionJSON, err := json.Marshal(sessionID)
+	if err != nil {
+		return 0, err
+	}
+	appJSON, err := json.Marshal(appID)
+	if err != nil {
+		return 0, err
+	}
+	if _, err := fmt.Fprintf(tmp, "{\"app_id\":%s,\"session_id\":%s,\"recordings\":[\n", appJSON, sessionJSON); err != nil {
 		return 0, err
 	}
 	encoder := json.NewEncoder(tmp)
 	count := 0
-	for _, metadata := range segments {
-		segment, err := client.GetSegment(ctx, appID, sessionID, recordingID, strconv.FormatInt(metadata.ID, 10))
+	seen := make(map[string]struct{}, len(recordings))
+	for i, recording := range recordings {
+		if recording.ID == "" {
+			return 0, errors.New("replay list contains a recording without an ID")
+		}
+		if _, exists := seen[recording.ID]; exists {
+			return 0, fmt.Errorf("replay list repeats recording %s", recording.ID)
+		}
+		seen[recording.ID] = struct{}{}
+		manifest, err := client.GetManifest(ctx, appID, sessionID, recording.ID)
 		if err != nil {
-			return 0, fmt.Errorf("fetching replay segment %d: %w", metadata.ID, err)
+			return 0, fmt.Errorf("fetching replay manifest %s: %w", recording.ID, err)
 		}
-		if segment.RecordingID != recordingID {
-			return 0, fmt.Errorf("replay segment %d belongs to a different recording", metadata.ID)
+		if manifest.ID != recording.ID || manifest.SessionID != sessionID {
+			return 0, fmt.Errorf("replay manifest identity does not match session %s recording %s", sessionID, recording.ID)
 		}
-		for _, event := range segment.Events {
-			if count > 0 {
-				if _, err := io.WriteString(tmp, ",\n"); err != nil {
-					return 0, err
+		if i > 0 {
+			if _, err := io.WriteString(tmp, ",\n"); err != nil {
+				return 0, err
+			}
+		}
+		idJSON, err := json.Marshal(recording.ID)
+		if err != nil {
+			return 0, err
+		}
+		if _, err := fmt.Fprintf(tmp, "{\"id\":%s,\"events\":[\n", idJSON); err != nil {
+			return 0, err
+		}
+		recordingCount := 0
+		for _, metadata := range manifest.Segments {
+			segment, err := client.GetSegment(ctx, appID, sessionID, recording.ID, strconv.FormatInt(metadata.ID, 10))
+			if err != nil {
+				return 0, fmt.Errorf("fetching replay segment %d of recording %s: %w", metadata.ID, recording.ID, err)
+			}
+			if segment.RecordingID != recording.ID {
+				return 0, fmt.Errorf("replay segment %d belongs to a different recording", metadata.ID)
+			}
+			for _, event := range segment.Events {
+				if recordingCount > 0 {
+					if _, err := io.WriteString(tmp, ",\n"); err != nil {
+						return 0, err
+					}
 				}
+				if err := encoder.Encode(event); err != nil {
+					return 0, fmt.Errorf("encoding replay event: %w", err)
+				}
+				recordingCount++
+				count++
 			}
-			if err := encoder.Encode(event); err != nil {
-				return 0, fmt.Errorf("encoding replay event: %w", err)
-			}
-			count++
+		}
+		if _, err := io.WriteString(tmp, "]}"); err != nil {
+			return 0, err
 		}
 	}
 	if count == 0 {
 		return 0, errors.New("replay contains no events")
 	}
-	if _, err := io.WriteString(tmp, "]\n"); err != nil {
+	if _, err := io.WriteString(tmp, "]}\n"); err != nil {
 		return 0, err
 	}
 	if err := tmp.Close(); err != nil {
