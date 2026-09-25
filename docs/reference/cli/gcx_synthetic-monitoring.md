@@ -25,5 +25,6 @@ Manage Grafana Synthetic Monitoring checks and probes
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
 * [gcx synthetic-monitoring checks](gcx_synthetic-monitoring_checks.md)	 - Manage Synthetic Monitoring checks.
 * [gcx synthetic-monitoring probes](gcx_synthetic-monitoring_probes.md)	 - Manage Synthetic Monitoring probes.
+* [gcx synthetic-monitoring queries](gcx_synthetic-monitoring_queries.md)	 - Discover Synthetic Monitoring named queries.
 * [gcx synthetic-monitoring query](gcx_synthetic-monitoring_query.md)	 - Run a Synthetic Monitoring query by name.
 

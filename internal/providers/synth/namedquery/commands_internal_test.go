@@ -6,9 +6,47 @@ import (
 	"time"
 
 	"github.com/grafana/gcx/internal/query/dataframe"
+	"github.com/grafana/gcx/internal/query/synth"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// TestExampleInvocation_PlaceholdersAreShellSafeAndOrdered guards two bugs
+// flagged in PR review: bare `-p job=<job>` is not shell-runnable (bash reads
+// `<job>` as redirection), and sorting Required alphabetically disagrees with
+// the schema order the REQUIRED table column uses, so an agent that copies
+// both fields sees two different orders for the same query.
+func TestExampleInvocation_PlaceholdersAreShellSafeAndOrdered(t *testing.T) {
+	tests := []struct {
+		name string
+		qt   synth.QueryType
+		want string
+	}{
+		{
+			name: "no required params",
+			qt:   synth.QueryType{Name: "checks_uptime"},
+			want: "gcx synthetic-monitoring query checks_uptime",
+		},
+		{
+			// Alphabetical order would be frequency, instance, job -- this
+			// asserts schema order (as given in Required) is preserved instead.
+			name: "required params are single-quoted and keep schema order",
+			qt: synth.QueryType{
+				Name:     "checks_uptime",
+				Required: []string{"job", "frequency", "instance"},
+			},
+			want: "gcx synthetic-monitoring query checks_uptime" +
+				" -p 'job=<job>' -p 'frequency=<frequency>' -p 'instance=<instance>'",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := exampleInvocation(tt.qt)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
 
 func TestParseParams(t *testing.T) {
 	tests := []struct {
