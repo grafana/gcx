@@ -1,30 +1,38 @@
-## gcx irm oncall integrations get-templates
+## gcx agento11y model-rates list
 
-Get the alert templates of an integration.
+List the rates you have configured.
 
 ### Synopsis
 
-Get the alert templates of an integration.
+List the rates you have configured.
 
-The templates decide what a responder reads and hears: the alert title, the
-message, the grouping identifier, the resolve condition, and a separate
-rendering for each channel (web, phone call, Short Message Service, email,
-Slack, and Microsoft Teams).
-
-The command emits the whole template document. Edit that document, then pass
-it back through update-templates.
+Superseded rates are listed too. A change records a new rate rather than
+replacing the old one, so a model can appear more than once — the newest
+effective-from is the one in force, and the others are what priced the
+generations that arrived while they applied.
 
 ```
-gcx irm oncall integrations get-templates <id> [flags]
+gcx agento11y model-rates list [flags]
+```
+
+### Examples
+
+```
+  # The rates you have configured, up to --limit (default 50), newest first per model.
+  gcx agento11y model-rates list
+
+  # With every rate column.
+  gcx agento11y model-rates list -o wide
 ```
 
 ### Options
 
 ```
-  -h, --help            help for get-templates
+  -h, --help            help for list
       --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string   Output format. One of: agents, json, yaml (default "yaml")
+      --limit int       Maximum number of rates to return (0 for no limit) (default 50)
+  -o, --output string   Output format. One of: agents, json, table, wide, yaml (default "table")
 ```
 
 ### Options inherited from parent commands
@@ -41,5 +49,5 @@ gcx irm oncall integrations get-templates <id> [flags]
 
 ### SEE ALSO
 
-* [gcx irm oncall integrations](gcx_irm_oncall_integrations.md)	 - Manage OnCall integrations.
+* [gcx agento11y model-rates](gcx_agento11y_model-rates.md)	 - Configure your own negotiated model prices.
 

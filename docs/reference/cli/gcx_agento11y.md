@@ -31,6 +31,7 @@ Manage Grafana Agent Observability resources
 * [gcx agento11y generations](gcx_agento11y_generations.md)	 - Inspect individual LLM generations.
 * [gcx agento11y guards](gcx_agento11y_guards.md)	 - Manage synchronous policy guards (hook rules) that evaluate generations on the request path.
 * [gcx agento11y judge](gcx_agento11y_judge.md)	 - List LLM providers and models available for LLM-judge evaluators.
+* [gcx agento11y model-rates](gcx_agento11y_model-rates.md)	 - Configure your own negotiated model prices.
 * [gcx agento11y rules](gcx_agento11y_rules.md)	 - Manage rules that route generations to evaluators.
 * [gcx agento11y saved-conversations](gcx_agento11y_saved-conversations.md)	 - Bookmark live conversations as fixed inputs for evaluation runs.
 * [gcx agento11y templates](gcx_agento11y_templates.md)	 - Browse reusable evaluator blueprints (global and tenant-scoped).
