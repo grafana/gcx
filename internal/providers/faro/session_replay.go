@@ -235,9 +235,6 @@ func saveSessionReplayEvents(ctx context.Context, client *Client, appID, session
 			return 0, err
 		}
 	}
-	if count == 0 {
-		return 0, errors.New("replay contains no events")
-	}
 	if _, err := io.WriteString(out, "]}\n"); err != nil {
 		return 0, err
 	}

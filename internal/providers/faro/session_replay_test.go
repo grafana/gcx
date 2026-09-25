@@ -98,6 +98,29 @@ func TestSessionsGetReplayBundlesAllRecordingsAsOneFile(t *testing.T) {
 	}
 }
 
+func TestSessionsGetReplayWritesEmptyRecording(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/sess-1/recordings"):
+			_, _ = w.Write([]byte(`{"items":[{"id":"rec-1"}],"page":{}}`))
+		case strings.HasSuffix(r.URL.Path, "/rec-1/manifest"):
+			_, _ = w.Write([]byte(`{"id":"rec-1","session_id":"sess-1","segments":[]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+	path := filepath.Join(t.TempDir(), "replay.json")
+	cmd := newSessionsGetReplayCommand(&fakeConfigLoader{grafanaURL: server.URL})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetArgs([]string{"sess-1", "--app", "42", "--save", path})
+	require.NoError(t, cmd.Execute())
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"app_id":"42","session_id":"sess-1","recordings":[{"id":"rec-1","events":[]}]}`, string(data))
+}
+
 func TestSessionsGetReplayFetchesBoundedSegmentsInManifestOrder(t *testing.T) {
 	const segmentCount = 12
 	var active, maxActive, started atomic.Int32

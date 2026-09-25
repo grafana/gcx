@@ -319,22 +319,25 @@ func pinotEventsTable(serverURL string) string {
 	return pinotEventsTableDev
 }
 
-// pinotReplayStartsQuery scans the same events table used by sessions get.
-// The limit bounds source events, like the Loki replay-session discovery query.
-func pinotReplayStartsQuery(appID, serverURL string, limit int) (string, error) {
+// pinotReplayStartsQuery groups replay-start events into distinct sessions.
+// Stable ordering makes OFFSET paging safe when --limit 0 drains the result.
+func pinotReplayStartsQuery(appID, serverURL string, limit, offset int) (string, error) {
 	numericAppID, err := pinot.FormatSQLInt(appID)
 	if err != nil {
 		return "", fmt.Errorf("invalid app id %q: must be an integer", appID)
 	}
 	return fmt.Sprintf(`SET useMultistageEngine = true;
-SELECT sessionId AS session_id, "timestamp" AS last_seen,
-  browserName AS browser_name, browserVersion AS browser_version, appName AS app_name
+SELECT sessionId AS session_id, MAX("timestamp") AS last_seen,
+  LASTWITHTIME(browserName, "timestamp", 'STRING') AS browser_name,
+  LASTWITHTIME(browserVersion, "timestamp", 'STRING') AS browser_version,
+  LASTWITHTIME(appName, "timestamp", 'STRING') AS app_name
 FROM %s
 WHERE appId = %s
   AND eventName = 'faro.session_recording.started'
   AND $__timeFilter("timestamp")
-ORDER BY "timestamp" DESC
-LIMIT %d`, pinotEventsTable(serverURL), numericAppID, limit), nil
+GROUP BY sessionId
+ORDER BY last_seen DESC, session_id ASC
+LIMIT %d OFFSET %d`, pinotEventsTable(serverURL), numericAppID, limit, offset), nil
 }
 
 func hostnameFromServerURL(serverURL string) string {

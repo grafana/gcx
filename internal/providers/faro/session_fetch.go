@@ -340,6 +340,13 @@ func fetchLokiEventsByKind(ctx context.Context, client lokiQuerier, uid string, 
 }
 
 func fetchLokiEventPages(ctx context.Context, client lokiQuerier, uid, query string, start, end time.Time, timeout time.Duration) (*loki.QueryResponse, error) {
+	resp, _, err := fetchLokiEventPagesUntil(ctx, client, uid, query, start, end, timeout, nil)
+	return resp, err
+}
+
+// fetchLokiEventPagesUntil walks complete timestamp buckets, stopping early
+// only when the caller has enough data. A nil stop function drains the range.
+func fetchLokiEventPagesUntil(ctx context.Context, client lokiQuerier, uid, query string, start, end time.Time, timeout time.Duration, stop func(*loki.QueryResponse) bool) (*loki.QueryResponse, bool, error) {
 	merged := &loki.QueryResponse{Data: loki.QueryResultData{ResultType: "streams"}}
 	seen := make(map[string]struct{})
 	cursor := end
@@ -351,7 +358,7 @@ func fetchLokiEventPages(ctx context.Context, client lokiQuerier, uid, query str
 			Limit: lokiEventsPageSize,
 		}, timeout)
 		if err != nil {
-			return nil, fmt.Errorf("loki events query failed: %w", err)
+			return nil, false, fmt.Errorf("loki events query failed: %w", err)
 		}
 		n := lokiEntryCount(resp)
 		appendLokiEvents(merged, resp)
@@ -361,7 +368,7 @@ func fetchLokiEventPages(ctx context.Context, client lokiQuerier, uid, query str
 		}
 		earliest, ok := minLokiTime(resp)
 		if !ok {
-			break
+			return nil, false, errors.New("loki events: full page has no valid timestamp for pagination")
 		}
 		// Refetch the earliest instant so leftover rows that share that
 		// timestamp are kept. Stepping End back 1ms would drop them.
@@ -372,18 +379,21 @@ func fetchLokiEventPages(ctx context.Context, client lokiQuerier, uid, query str
 			Limit: lokiEventsPageSize,
 		}, timeout)
 		if err != nil {
-			return nil, fmt.Errorf("loki events query failed: %w", err)
+			return nil, false, fmt.Errorf("loki events query failed: %w", err)
 		}
 		appendLokiEventsUnseen(merged, bucket, seen)
 		if lokiEntryCount(bucket) >= lokiEventsPageSize {
-			return nil, fmt.Errorf("loki events: more than %d rows share timestamp %s; dump would be truncated", lokiEventsPageSize, earliest.UTC().Format(time.RFC3339Nano))
+			return nil, false, fmt.Errorf("loki events: more than %d rows share timestamp %s; dump would be truncated", lokiEventsPageSize, earliest.UTC().Format(time.RFC3339Nano))
+		}
+		if stop != nil && stop(merged) {
+			return merged, true, nil
 		}
 		if !earliest.Before(cursor) {
 			break
 		}
 		cursor = earliest
 	}
-	return merged, nil
+	return merged, false, nil
 }
 
 func appendLokiEvents(dst, src *loki.QueryResponse) {

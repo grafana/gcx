@@ -88,7 +88,7 @@ func parseReplayAppID(name string) (string, error) {
 func (o *listReplaySessionsOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&o.Datasource, "datasource", "d", "", "Loki or Pinot datasource UID (Loki auto-discovered if omitted)")
 	flags.StringVar(&o.Since, "since", "1h", "How far back to search (e.g., 1h, 24h, 7d)")
-	flags.IntVar(&o.Limit, "limit", 1000, "Maximum replay-start events to scan (gcx caps Loki scans at 1000; not the number of sessions)")
+	o.IO.BindListLimit(flags, &o.Limit, "sessions", 1000)
 	o.IO.RegisterCustomCodec(cmdio.FormatText, replaySessionTableCodec{table: replaySessionTable().Codec(cmdio.FormatText)})
 	o.IO.DefaultFormat(cmdio.FormatText)
 	o.IO.BindFlags(flags)
@@ -102,9 +102,6 @@ func (o *listReplaySessionsOpts) Validate() error {
 	if o.datasourceSet && o.Datasource == "" {
 		return errors.New("--datasource cannot be empty")
 	}
-	if o.Limit <= 0 {
-		return errors.New("--limit must be positive")
-	}
 	since, err := shared.ParseDuration(o.Since)
 	if err != nil {
 		return fmt.Errorf("invalid --since value: %w", err)
@@ -116,32 +113,12 @@ func (o *listReplaySessionsOpts) Validate() error {
 	return nil
 }
 
-// --limit bounds replay-start events, which can deduplicate to fewer sessions.
-// ListMeta.Returned counts sessions while ListMeta.Cap names the fetch bound
-// in events. The stderr hint names the unit explicitly when Loki hits its cap.
-func replaySessionListMeta(returned int, atLimit, isLoki bool, limit int, argv []string) *cmdio.ListMeta {
-	if !atLimit {
-		return nil
-	}
-	meta := &cmdio.ListMeta{Truncated: true, Returned: returned}
-	if isLoki && limit >= lokiEventsPageSize {
-		meta.Cap = lokiEventsPageSize
-	} else {
-		nextLimit := 2 * limit
-		if isLoki {
-			nextLimit = min(nextLimit, lokiEventsPageSize)
-		}
-		meta.Continue = cmdio.BuildListLimitCommand(argv, nextLimit)
-	}
-	return meta
-}
-
 func newListReplaySessionsCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &listReplaySessionsOpts{}
 	cmd := &cobra.Command{
 		Use:   "list-replay-sessions <slug-id-or-numeric-id>",
 		Short: "List Frontend Observability sessions that have replay recordings.",
-		Long:  "Discovers regular session IDs that have replay recordings by querying Loki or Pinot for faro.session_recording.started events. This does not list all Frontend Observability sessions. The default datasource is Loki; pass a Pinot datasource UID with -d to query Pinot. An empty result means no replay-start event was found for the app ID and time window; this command does not verify that the app exists. JSON output has an items envelope and includes list_meta when the event scan reaches its limit.",
+		Long:  "Discovers regular session IDs that have replay recordings by querying Loki or Pinot for faro.session_recording.started events. This does not list all Frontend Observability sessions. The default datasource is Loki; pass a Pinot datasource UID with -d to query Pinot. Loki reads replay-start events in pages of 1000, with a 60s timeout per query. An empty result means no replay-start event was found for the app ID and time window; this command does not verify that the app exists. JSON output has an items envelope and includes list_meta when more sessions are available.",
 		Example: `  # List regular session IDs with replay recordings in the last hour.
   gcx frontend apps list-replay-sessions my-web-app-42
 
@@ -170,14 +147,13 @@ func newListReplaySessionsCommand(loader *providers.ConfigLoader) *cobra.Command
 			now := time.Now()
 			start := now.Add(-opts.sinceDuration)
 			var rows []replaySessionListRow
-			var atLimit bool
-			isLoki := opts.Datasource == ""
+			var meta *cmdio.ListMeta
 			if opts.Datasource == "" {
 				dsUID, _, resolveErr := dsquery.ResolveValidateAndSaveDatasource(ctx, loader, "", cfgCtx, cfg, datasourceLoki)
 				if resolveErr != nil {
 					return fmt.Errorf("resolving Loki datasource: %w", resolveErr)
 				}
-				rows, atLimit, err = queryLokiReplaySessions(ctx, cfg, dsUID, appID, start, now, opts.Limit)
+				rows, meta, err = queryLokiReplaySessions(ctx, cfg, dsUID, appID, start, now, opts.Limit)
 			} else {
 				dsType, typeErr := dsquery.GetDatasourceType(ctx, cfg, opts.Datasource)
 				if typeErr != nil {
@@ -189,10 +165,9 @@ func newListReplaySessionsCommand(loader *providers.ConfigLoader) *cobra.Command
 				}
 				switch kind {
 				case datasourceLoki:
-					isLoki = true
-					rows, atLimit, err = queryLokiReplaySessions(ctx, cfg, opts.Datasource, appID, start, now, opts.Limit)
+					rows, meta, err = queryLokiReplaySessions(ctx, cfg, opts.Datasource, appID, start, now, opts.Limit)
 				case datasourcePinot:
-					rows, atLimit, err = queryPinotReplaySessions(ctx, cfg, opts.Datasource, appID, start, now, opts.Limit)
+					rows, meta, err = queryPinotReplaySessions(ctx, cfg, opts.Datasource, appID, start, now, opts.Limit)
 				}
 			}
 			if err != nil {
@@ -202,17 +177,11 @@ func newListReplaySessionsCommand(loader *providers.ConfigLoader) *cobra.Command
 				rows = []replaySessionListRow{}
 			}
 			result := replaySessionListResult{AppID: appID, Items: rows}
-			result.ListMeta = replaySessionListMeta(len(rows), atLimit, isLoki, opts.Limit, os.Args)
+			result.ListMeta = cmdio.AttachListMeta(meta, os.Args)
 			if err := opts.IO.Encode(cmd.OutOrStdout(), result); err != nil {
 				return err
 			}
-			if atLimit && isLoki && opts.Limit >= lokiEventsPageSize {
-				// The shared cap hint assumes Returned and Cap have the same unit.
-				// Here they count sessions and scanned events, respectively.
-				cmdio.EmitHint(cmd.ErrOrStderr(), fmt.Sprintf("scanned %d replay-start events (gcx Loki safety cap); showing %d sessions. Narrow --since or use Pinot", lokiEventsPageSize, len(rows)), "")
-			} else {
-				cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), result.ListMeta)
-			}
+			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), result.ListMeta)
 			return nil
 		},
 	}
@@ -220,39 +189,58 @@ func newListReplaySessionsCommand(loader *providers.ConfigLoader) *cobra.Command
 	return cmd
 }
 
-func queryLokiReplaySessions(ctx context.Context, cfg config.NamespacedRESTConfig, uid, appID string, start, end time.Time, limit int) ([]replaySessionListRow, bool, error) {
+func queryLokiReplaySessions(ctx context.Context, cfg config.NamespacedRESTConfig, uid, appID string, start, end time.Time, limit int) ([]replaySessionListRow, *cmdio.ListMeta, error) {
 	client, err := loki.NewClient(cfg)
 	if err != nil {
-		return nil, false, fmt.Errorf("creating Loki client: %w", err)
+		return nil, nil, fmt.Errorf("creating Loki client: %w", err)
 	}
-	effectiveLimit := min(limit, lokiEventsPageSize)
-	query := lokiReplayDiscoveryQuery(appID)
-	resp, err := client.Query(ctx, uid, loki.QueryRequest{Query: query, Start: start, End: end, Limit: effectiveLimit})
+	resp, stopped, err := fetchLokiEventPagesUntil(ctx, client, uid, lokiReplayDiscoveryQuery(appID), start, end, sessionLokiQueryTimeout, func(page *loki.QueryResponse) bool {
+		return limit > 0 && len(extractReplaySessionRows(page)) > limit
+	})
 	if err != nil {
-		return nil, false, fmt.Errorf("querying Loki: %w", err)
+		return nil, nil, fmt.Errorf("querying Loki: %w", err)
 	}
-	events := 0
-	for _, stream := range resp.Data.Result {
-		events += len(stream.Values)
+	rows := extractReplaySessionRows(resp)
+	if stopped {
+		page, meta := cmdio.TruncatePagedList(rows, limit)
+		return page, meta, nil
 	}
-	return extractReplaySessionRows(resp), events >= effectiveLimit, nil
+	page, meta := cmdio.TruncateCompleteList(rows, limit)
+	return page, meta, nil
 }
 
-func queryPinotReplaySessions(ctx context.Context, cfg config.NamespacedRESTConfig, uid, appID string, start, end time.Time, limit int) ([]replaySessionListRow, bool, error) {
+func queryPinotReplaySessions(ctx context.Context, cfg config.NamespacedRESTConfig, uid, appID string, start, end time.Time, limit int) ([]replaySessionListRow, *cmdio.ListMeta, error) {
 	client, err := pinot.NewClient(cfg)
 	if err != nil {
-		return nil, false, fmt.Errorf("creating Pinot client: %w", err)
+		return nil, nil, fmt.Errorf("creating Pinot client: %w", err)
 	}
-	query, err := pinotReplayStartsQuery(appID, cfg.GrafanaURL, limit)
-	if err != nil {
-		return nil, false, err
+	pageSize := pinotJourneyPageSize
+	if limit > 0 && limit < pageSize {
+		pageSize = limit + 1
 	}
-	resp, err := client.Query(ctx, uid, pinot.QueryRequest{RawSQL: query, TableName: pinotEventsTable(cfg.GrafanaURL), Start: start, End: end})
-	if err != nil {
-		return nil, false, fmt.Errorf("querying Pinot: %w", err)
+	rows := make([]replaySessionListRow, 0)
+	for offset := 0; ; offset += pageSize {
+		query, err := pinotReplayStartsQuery(appID, cfg.GrafanaURL, pageSize, offset)
+		if err != nil {
+			return nil, nil, err
+		}
+		resp, err := client.Query(ctx, uid, pinot.QueryRequest{RawSQL: query, TableName: pinotEventsTable(cfg.GrafanaURL), Start: start, End: end})
+		if err != nil {
+			return nil, nil, fmt.Errorf("querying Pinot: %w", err)
+		}
+		page, err := extractPinotReplaySessionRows(resp)
+		if err != nil {
+			return nil, nil, err
+		}
+		rows = append(rows, page...)
+		if limit > 0 && len(rows) > limit {
+			items, meta := cmdio.TruncatePagedList(rows, limit)
+			return items, meta, nil
+		}
+		if resp == nil || len(resp.Rows) < pageSize {
+			return rows, nil, nil
+		}
 	}
-	rows, err := extractPinotReplaySessionRows(resp)
-	return rows, resp != nil && len(resp.Rows) >= limit, err
 }
 
 func extractPinotReplaySessionRows(resp *querysql.QueryResponse) ([]replaySessionListRow, error) {
@@ -321,7 +309,10 @@ func extractReplaySessionRows(resp *loki.QueryResponse) []replaySessionListRow {
 				continue
 			}
 
-			ts, _ := parseLokiUnixNano(entry.Timestamp)
+			ts, valid := parseLokiUnixNano(entry.Timestamp)
+			if !valid {
+				continue
+			}
 			browser := fields["browser_name"]
 			if v := fields["browser_version"]; v != "" {
 				browser = strings.TrimSpace(browser + " " + v)
@@ -338,22 +329,32 @@ func extractReplaySessionRows(resp *loki.QueryResponse) []replaySessionListRow {
 		}
 	}
 
-	rows := make([]replaySessionListRow, 0, len(sessions))
+	type timedRow struct {
+		row      replaySessionListRow
+		lastSeen time.Time
+	}
+	ordered := make([]timedRow, 0, len(sessions))
 	for sid, info := range sessions {
-		rows = append(rows, replaySessionListRow{
-			SessionID: sid,
-			Browser:   info.browser,
-			AppName:   info.appName,
-			LastSeen:  info.lastSeen.UTC().Format(time.RFC3339),
+		ordered = append(ordered, timedRow{
+			row: replaySessionListRow{
+				SessionID: sid,
+				Browser:   info.browser,
+				AppName:   info.appName,
+				LastSeen:  info.lastSeen.UTC().Format(time.RFC3339),
+			},
+			lastSeen: info.lastSeen,
 		})
 	}
 
-	sort.Slice(rows, func(i, j int) bool {
-		if rows[i].LastSeen != rows[j].LastSeen {
-			return rows[i].LastSeen > rows[j].LastSeen
+	sort.Slice(ordered, func(i, j int) bool {
+		if !ordered[i].lastSeen.Equal(ordered[j].lastSeen) {
+			return ordered[i].lastSeen.After(ordered[j].lastSeen)
 		}
-		return rows[i].SessionID < rows[j].SessionID
+		return ordered[i].row.SessionID < ordered[j].row.SessionID
 	})
-
+	rows := make([]replaySessionListRow, len(ordered))
+	for i := range ordered {
+		rows[i] = ordered[i].row
+	}
 	return rows
 }

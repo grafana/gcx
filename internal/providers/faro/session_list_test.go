@@ -7,6 +7,7 @@ import (
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/query/loki"
 	"github.com/grafana/gcx/internal/testutils"
+	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -92,6 +93,35 @@ func TestExtractReplaySessionRows_Empty(t *testing.T) {
 	assert.Empty(t, rows)
 }
 
+func TestExtractReplaySessionRowsSkipsInvalidTimestamp(t *testing.T) {
+	resp := &loki.QueryResponse{Data: loki.QueryResultData{Result: []loki.StreamEntry{{Values: []loki.LogEntry{
+		{Timestamp: "bad", Line: "session_id=invalid"},
+		{Timestamp: "1779187750000000000", Line: "session_id=valid"},
+	}}}}}
+	rows := extractReplaySessionRows(resp)
+	require.Len(t, rows, 1)
+	assert.Equal(t, "valid", rows[0].SessionID)
+}
+
+func TestExtractReplaySessionRowsOrdersWithinOneSecond(t *testing.T) {
+	resp := &loki.QueryResponse{Data: loki.QueryResultData{Result: []loki.StreamEntry{{Values: []loki.LogEntry{
+		{Timestamp: "1779187750000000001", Line: "session_id=a"},
+		{Timestamp: "1779187750000000002", Line: "session_id=z"},
+	}}}}}
+	rows := extractReplaySessionRows(resp)
+	require.Len(t, rows, 2)
+	assert.Equal(t, "z", rows[0].SessionID)
+	assert.Equal(t, "a", rows[1].SessionID)
+}
+
+func TestListReplaySessionsAllowsZeroLimit(t *testing.T) {
+	opts := &listReplaySessionsOpts{}
+	flags := pflag.NewFlagSet("replay", pflag.ContinueOnError)
+	opts.setup(flags)
+	require.NoError(t, flags.Parse([]string{"--limit", "0"}))
+	require.NoError(t, opts.Validate())
+}
+
 func TestReplaySessionTable_Encode(t *testing.T) {
 	rows := []replaySessionListRow{
 		{SessionID: "sess-1", Browser: "Chrome 136.0", AppName: "my-app", LastSeen: "2026-05-19T10:00:00Z"},
@@ -122,18 +152,18 @@ func TestReplaySessionListEnvelopeCarriesTruncation(t *testing.T) {
 	result := replaySessionListResult{
 		AppID:    "42",
 		Items:    []replaySessionListRow{{SessionID: "sess-1"}},
-		ListMeta: &cmdio.ListMeta{Truncated: true, Returned: 1, Cap: lokiEventsPageSize},
+		ListMeta: &cmdio.ListMeta{Truncated: true, Returned: 1, Continue: "gcx frontend apps list-replay-sessions 42 --limit 2"},
 	}
 	var output bytes.Buffer
 	opts := cmdio.Options{OutputFormat: "json"}
 	err := opts.Encode(&output, result)
 	require.NoError(t, err)
-	assert.JSONEq(t, `{"app_id":"42","items":[{"session_id":"sess-1","browser":"","app_name":"","last_seen":""}],"list_meta":{"truncated":true,"returned":1,"cap":1000}}`, output.String())
+	assert.JSONEq(t, `{"app_id":"42","items":[{"session_id":"sess-1","browser":"","app_name":"","last_seen":""}],"list_meta":{"truncated":true,"returned":1,"continue":"gcx frontend apps list-replay-sessions 42 --limit 2"}}`, output.String())
 	opts.JSONFields = []string{"session_id"}
 	output.Reset()
 	err = opts.Encode(&output, result)
 	require.NoError(t, err)
-	assert.JSONEq(t, `{"app_id":"42","items":[{"session_id":"sess-1"}],"list_meta":{"truncated":true,"returned":1,"cap":1000}}`, output.String())
+	assert.JSONEq(t, `{"app_id":"42","items":[{"session_id":"sess-1"}],"list_meta":{"truncated":true,"returned":1,"continue":"gcx frontend apps list-replay-sessions 42 --limit 2"}}`, output.String())
 	opts.JSONFields = nil
 	result.ListMeta = nil
 	output.Reset()
@@ -167,8 +197,7 @@ func TestListReplaySessionsRejectsInvalidFlags(t *testing.T) {
 		args    []string
 		wantErr string
 	}{
-		{name: "zero limit", args: []string{"my-web-app-42", "--limit", "0"}, wantErr: "--limit must be positive"},
-		{name: "negative limit", args: []string{"my-web-app-42", "--limit", "-1"}, wantErr: "--limit must be positive"},
+		{name: "negative limit", args: []string{"my-web-app-42", "--limit", "-1"}, wantErr: "invalid --limit"},
 		{name: "invalid since", args: []string{"my-web-app-42", "--since", "not-a-duration"}, wantErr: "invalid --since value"},
 		{name: "zero since", args: []string{"my-web-app-42", "--since", "0s"}, wantErr: "--since must be positive"},
 		{name: "negative since", args: []string{"my-web-app-42", "--since=-1h"}, wantErr: "--since must be positive"},

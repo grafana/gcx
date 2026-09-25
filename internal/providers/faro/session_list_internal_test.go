@@ -1,13 +1,17 @@
 package faro
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/grafana/gcx/internal/config"
+	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/query/loki"
 	querysql "github.com/grafana/gcx/internal/query/sql"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -23,7 +27,7 @@ func TestLokiReplayDiscoveryQueryUsesIndexedEventFilter(t *testing.T) {
 	assert.Contains(t, query, `app_id="`+escapeLogQLString(appID)+`"`)
 }
 
-func TestLokiReplayScanHonorsEffectiveCap(t *testing.T) {
+func TestLokiReplayScanUsesBoundedPages(t *testing.T) {
 	var maxLines []float64
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Decode only maxLines; the other query fields are intentionally ignored.
@@ -40,47 +44,60 @@ func TestLokiReplayScanHonorsEffectiveCap(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 	cfg := config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}, Namespace: "default"}
-	for _, limit := range []int{5000, 30} {
+	for _, limit := range []int{5000, 30, 0} {
 		_, _, err := queryLokiReplaySessions(t.Context(), cfg, "loki-uid", "42", time.Unix(1, 0), time.Unix(2, 0), limit)
 		require.NoError(t, err)
 	}
-	assert.Equal(t, []float64{1000, 30}, maxLines)
+	assert.Equal(t, []float64{1000, 1000, 1000}, maxLines)
 }
 
-func TestReplaySessionListMetaKeepsEventAndSessionCountsSeparate(t *testing.T) {
-	argv := []string{"gcx", "frontend", "apps", "list-replay-sessions", "42", "--limit", "600"}
-	meta := replaySessionListMeta(12, true, true, 600, argv)
-	require.NotNil(t, meta)
-	assert.Equal(t, 12, meta.Returned)
-	assert.Zero(t, meta.Cap, "this scan has not reached the Loki event cap")
-	assert.Contains(t, meta.Continue, "--limit 1000")
+func TestLokiReplayPagesStopAfterSessionLimit(t *testing.T) {
+	dataset := make([]loki.LogEntry, 0, lokiEventsPageSize+2)
+	for i := 1; i <= lokiEventsPageSize+2; i++ {
+		dataset = append(dataset, loki.LogEntry{
+			Timestamp: lokiUnixNanoMS(int64(i) * 1000),
+			Line:      fmt.Sprintf("session_id=sess-%d", i),
+		})
+	}
+	query := `{kind="event"}`
+	stop := func(page *loki.QueryResponse) bool {
+		return len(extractReplaySessionRows(page)) > 50
+	}
+	page, stopped, err := fetchLokiEventPagesUntil(t.Context(), &rangeLoki{dataset: dataset}, "uid", query, time.UnixMilli(0), time.UnixMilli(2000000), sessionLokiQueryTimeout, stop)
+	require.NoError(t, err)
+	assert.True(t, stopped)
+	assert.Greater(t, len(extractReplaySessionRows(page)), 50)
+	items, meta := cmdio.TruncatePagedList(extractReplaySessionRows(page), 50)
+	assert.Len(t, items, 50)
+	assert.Equal(t, 50, meta.Returned)
+	assert.Zero(t, meta.Cap)
+	assert.Equal(t, "sess-1002", items[0].SessionID)
+}
 
-	meta = replaySessionListMeta(12, true, true, 1000, argv)
-	require.NotNil(t, meta)
-	assert.True(t, meta.Truncated)
-	assert.Equal(t, 12, meta.Returned)
-	assert.Equal(t, lokiEventsPageSize, meta.Cap, "cap bounds fetched events, while returned counts sessions")
-	assert.Empty(t, meta.Continue, "increasing the Loki scan limit cannot help past the cap")
-	assert.Nil(t, replaySessionListMeta(12, false, true, 1000, argv))
+func TestLokiReplayDiscoveryQueryTimesOut(t *testing.T) {
+	_, _, err := fetchLokiEventPagesUntil(t.Context(), hangLoki{}, "uid", `{kind="event"}`, time.Unix(1, 0), time.Unix(2, 0), 20*time.Millisecond, nil)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
 }
 
 func TestPinotReplayStartsQueryUsesSessionFetcherTable(t *testing.T) {
 	t.Parallel()
-	query, err := pinotReplayStartsQuery("66", "https://ops.grafana-ops.net", 25)
+	query, err := pinotReplayStartsQuery("66", "https://ops.grafana-ops.net", 26, 0)
 	require.NoError(t, err)
 	assert.Contains(t, query, "FROM faro_pinot_events_v2")
 	assert.Contains(t, query, "appId = 66")
 	assert.Contains(t, query, "eventName = 'faro.session_recording.started'")
-	assert.Contains(t, query, "LIMIT 25")
+	assert.Contains(t, query, "GROUP BY sessionId")
+	assert.Contains(t, query, "LIMIT 26 OFFSET 0")
 
-	query, err = pinotReplayStartsQuery("66", "https://example.grafana.net", 25)
+	query, err = pinotReplayStartsQuery("66", "https://example.grafana.net", 25, 100)
 	require.NoError(t, err)
 	assert.Contains(t, query, "FROM faro_pinot_events_v1")
+	assert.Contains(t, query, "LIMIT 25 OFFSET 100")
 }
 
 func TestPinotReplayStartsQueryRejectsNonNumericAppID(t *testing.T) {
 	t.Parallel()
-	_, err := pinotReplayStartsQuery("66; DROP TABLE events", "https://ops.grafana-ops.net", 10)
+	_, err := pinotReplayStartsQuery("66; DROP TABLE events", "https://ops.grafana-ops.net", 10, 0)
 	require.ErrorContains(t, err, "invalid app id")
 }
 

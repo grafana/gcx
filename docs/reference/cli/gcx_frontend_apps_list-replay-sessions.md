@@ -4,7 +4,7 @@ List Frontend Observability sessions that have replay recordings.
 
 ### Synopsis
 
-Discovers regular session IDs that have replay recordings by querying Loki or Pinot for faro.session_recording.started events. This does not list all Frontend Observability sessions. The default datasource is Loki; pass a Pinot datasource UID with -d to query Pinot. An empty result means no replay-start event was found for the app ID and time window; this command does not verify that the app exists. JSON output has an items envelope and includes list_meta when the event scan reaches its limit.
+Discovers regular session IDs that have replay recordings by querying Loki or Pinot for faro.session_recording.started events. This does not list all Frontend Observability sessions. The default datasource is Loki; pass a Pinot datasource UID with -d to query Pinot. Loki reads replay-start events in pages of 1000, with a 60s timeout per query. An empty result means no replay-start event was found for the app ID and time window; this command does not verify that the app exists. JSON output has an items envelope and includes list_meta when more sessions are available.
 
 ```
 gcx frontend apps list-replay-sessions <slug-id-or-numeric-id> [flags]
@@ -30,7 +30,7 @@ gcx frontend apps list-replay-sessions <slug-id-or-numeric-id> [flags]
   -h, --help                help for list-replay-sessions
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --limit int           Maximum replay-start events to scan (gcx caps Loki scans at 1000; not the number of sessions) (default 1000)
+      --limit int           Maximum number of sessions to return. 0 means all results are returned (default 1000)
   -o, --output string       Output format. One of: agents, json, text, yaml (default "text")
       --since string        How far back to search (e.g., 1h, 24h, 7d) (default "1h")
 ```
