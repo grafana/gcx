@@ -33,6 +33,16 @@ func okDoc() docFetcher {
 	}
 }
 
+func schemeRejectingFetcher() docFetcher {
+	return func(ctx context.Context, u string) (*grafanadocs.Doc, error) {
+		if !strings.HasPrefix(u, "https://") {
+			scheme := strings.SplitN(u, "://", 2)[0]
+			return nil, fmt.Errorf("grafanadocs: rejected scheme %q (only https allowed)", scheme)
+		}
+		return okDoc()(ctx, u)
+	}
+}
+
 func TestGetCommandSuccess(t *testing.T) {
 	disableAgentMode(t)
 	const url = "https://grafana.com/docs/tempo/latest/"
@@ -107,7 +117,7 @@ func TestGetPartialityHint(t *testing.T) {
 		require.NoError(t, err)
 		assert.Contains(t, stderr, "showing lines 1-3 of 10")
 		assert.Contains(t, stderr, "--offset 3 --limit 3")
-		assert.Contains(t, stderr, shellQuote(url))
+		assert.Contains(t, stderr, fmt.Sprintf("%q", url))
 	})
 
 	t.Run("full page emits no hint", func(t *testing.T) {
@@ -131,6 +141,65 @@ func TestGetPartialityHint(t *testing.T) {
 		assert.Contains(t, stderr, `"class":"hint"`)
 		assert.Contains(t, stderr, "showing lines 1-3 of 10")
 		assert.True(t, strings.HasPrefix(strings.TrimSpace(stderr), "{"), "agent-mode hint must be JSONL")
+	})
+}
+
+func TestGetShorthandResolution(t *testing.T) {
+	disableAgentMode(t)
+	idx := loadTestIndex(t)
+
+	t.Run("shorthand resolves and fetches", func(t *testing.T) {
+		stdout, stderr, err := testCommand(t, idx, okDoc(), "get", "clustering", "-o", "json")
+		require.NoError(t, err)
+
+		var res struct {
+			URL string `json:"url"`
+		}
+		require.NoError(t, json.Unmarshal([]byte(stdout), &res))
+		assert.Contains(t, res.URL, "clustering")
+		assert.Contains(t, stderr, `resolved "clustering"`)
+		assert.Contains(t, stderr, res.URL)
+	})
+
+	t.Run("full URL skips shorthand and emits no resolution hint", func(t *testing.T) {
+		const url = "https://grafana.com/docs/tempo/latest/"
+		_, stderr, err := testCommand(t, idx, okDoc(), "get", url, "--limit", "100", "-o", "json")
+		require.NoError(t, err)
+		assert.NotContains(t, stderr, "resolved")
+	})
+
+	t.Run("http URL is passed to fetcher not search", func(t *testing.T) {
+		const url = "http://grafana.com/docs/tempo/latest/"
+		_, _, err := testCommand(t, idx, schemeRejectingFetcher(), "get", url)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "rejected scheme")
+		assert.NotContains(t, err.Error(), "no matching page found")
+	})
+
+	t.Run("product flag scopes resolution", func(t *testing.T) {
+		stdout, _, err := testCommand(t, idx, okDoc(), "get", "configuration", "--product", "tempo", "-o", "json")
+		require.NoError(t, err)
+
+		var res struct {
+			URL string `json:"url"`
+		}
+		require.NoError(t, json.Unmarshal([]byte(stdout), &res))
+		assert.Contains(t, res.URL, "configuration")
+		assert.Contains(t, res.URL, "tempo")
+	})
+
+	t.Run("product filter excludes non-matching products", func(t *testing.T) {
+		// sample-index has Configuration under Tempo only; agent product must not match.
+		_, _, err := testCommand(t, idx, okDoc(), "get", "configuration", "--product", "agent")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "no matching page found")
+		assert.Contains(t, err.Error(), "gcx docs list-products")
+	})
+
+	t.Run("no match gives guidance", func(t *testing.T) {
+		_, _, err := testCommand(t, idx, okDoc(), "get", "zzzznotathing")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "no matching page found")
 	})
 }
 
