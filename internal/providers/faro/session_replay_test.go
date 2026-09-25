@@ -48,7 +48,7 @@ func TestSessionsGetReplayBundlesAllRecordingsAsOneFile(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	path := filepath.Join(t.TempDir(), "replay.json")
-	cmd := newSessionsGetReplayCommand(&fakeConfigLoader{grafanaURL: server.URL})
+	cmd := newSessionsGetReplayCommand(&fakeConfigLoader{grafanaURL: server.URL, deepLinkURL: "https://public.example.net"})
 	var stdout bytes.Buffer
 	cmd.SetOut(&stdout)
 	cmd.SetArgs([]string{"sess-1", "--app", "my-app-42", "--save", path})
@@ -58,7 +58,7 @@ func TestSessionsGetReplayBundlesAllRecordingsAsOneFile(t *testing.T) {
 	require.NoError(t, json.Unmarshal(stdout.Bytes(), &receipt))
 	assert.Equal(t, 3, receipt.EventCount)
 	assert.Equal(t, 2, receipt.RecordingCount)
-	assert.Equal(t, server.URL+"/a/grafana-sessionreplay-app/app/42/session/sess-1", receipt.ReplayURL)
+	assert.Equal(t, "https://public.example.net/a/grafana-sessionreplay-app/app/42/session/sess-1", receipt.ReplayURL)
 	assert.Equal(t, path, receipt.Files[0].Path)
 	assert.Len(t, paths, 7)
 

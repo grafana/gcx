@@ -481,38 +481,6 @@ func TestClient_DeleteSourcemaps(t *testing.T) {
 	}
 }
 
-func TestListRecordings(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, http.MethodGet, r.Method)
-		assert.Equal(t, "/api/plugin-proxy/grafana-sessionreplay-app/faro-api-proxy/api/v1/sessions/sess-abc/recordings", r.URL.Path)
-		assert.Equal(t, "app-42", r.URL.Query().Get("app_id"))
-		assert.Equal(t, "10", r.URL.Query().Get("limit"))
-
-		writeJSON(w, faro.SessionRecordingsListResponse{
-			SessionID: "sess-abc",
-			Items: []faro.RecordingListItem{
-				{ID: "rec-1", Status: "complete"},
-				{ID: "rec-2", Status: "in_progress"},
-			},
-			Page: faro.SessionPage{
-				HasNext:    false,
-				Limit:      10,
-				TotalItems: 2,
-			},
-		})
-	}))
-	defer server.Close()
-
-	c := newTestClient(t, server)
-	resp, err := c.ListRecordings(t.Context(), "app-42", "sess-abc", 10)
-
-	require.NoError(t, err)
-	assert.Equal(t, "sess-abc", resp.SessionID)
-	assert.Len(t, resp.Items, 2)
-	assert.Equal(t, "rec-1", resp.Items[0].ID)
-	assert.Equal(t, "rec-2", resp.Items[1].ID)
-}
-
 func TestListRecordingsAutoPagination(t *testing.T) {
 	callCount := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -554,7 +522,7 @@ func TestListRecordingsAutoPagination(t *testing.T) {
 	defer server.Close()
 
 	c := newTestClient(t, server)
-	resp, err := c.ListRecordings(t.Context(), "app-42", "sess-abc", 0)
+	resp, err := c.ListRecordings(t.Context(), "app-42", "sess-abc")
 
 	require.NoError(t, err)
 	assert.Equal(t, 2, callCount)
@@ -562,18 +530,6 @@ func TestListRecordingsAutoPagination(t *testing.T) {
 	assert.Equal(t, "rec-1", resp.Items[0].ID)
 	assert.Equal(t, "rec-2", resp.Items[1].ID)
 	assert.Equal(t, "rec-3", resp.Items[2].ID)
-}
-
-func TestListRecordingsRejectsNegativeLimit(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		t.Fatal("server should not be called for an invalid limit")
-	}))
-	defer server.Close()
-
-	c := newTestClient(t, server)
-	_, err := c.ListRecordings(t.Context(), "app-42", "sess-abc", -1)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "limit must be zero or positive")
 }
 
 func TestListRecordingsAutoPaginationRequiresNextCursor(t *testing.T) {
@@ -594,7 +550,7 @@ func TestListRecordingsAutoPaginationRequiresNextCursor(t *testing.T) {
 	defer server.Close()
 
 	c := newTestClient(t, server)
-	_, err := c.ListRecordings(t.Context(), "app-42", "sess-abc", 0)
+	_, err := c.ListRecordings(t.Context(), "app-42", "sess-abc")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "missing next pagination cursor")
 }
@@ -638,7 +594,7 @@ func TestListRecordingsAutoPaginationRejectsRepeatedCursor(t *testing.T) {
 	defer server.Close()
 
 	c := newTestClient(t, server)
-	_, err := c.ListRecordings(t.Context(), "app-42", "sess-abc", 0)
+	_, err := c.ListRecordings(t.Context(), "app-42", "sess-abc")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "repeated pagination cursor")
 	assert.Equal(t, 2, callCount)

@@ -78,7 +78,7 @@ Recording boundaries are preserved because separate recordings can overlap in ti
 			}
 			appID := resolveAppID(opts.App)
 			sessionID := strings.TrimSpace(args[0])
-			list, err := client.ListRecordings(ctx, appID, sessionID, 0)
+			list, err := client.ListRecordings(ctx, appID, sessionID)
 			if err != nil {
 				return err
 			}
@@ -89,7 +89,7 @@ Recording boundaries are preserved because separate recordings can overlap in ti
 			if err != nil {
 				return err
 			}
-			replayURL := sessionReplayURL(cfg.Host, appID, sessionID)
+			replayURL := sessionReplayURL(cfg.GrafanaURL, appID, sessionID)
 			receipt := replayArtifactReceipt{
 				ArtifactReceipt: cmdio.NewArtifactReceipt("get-replay", "json"),
 				RecordingCount:  len(list.Items),

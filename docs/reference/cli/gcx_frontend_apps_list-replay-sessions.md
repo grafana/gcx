@@ -7,7 +7,7 @@ List Frontend Observability sessions that have replay recordings.
 Discovers regular session IDs that have replay recordings by querying Loki or Pinot for faro.session_recording.started events. This does not list all Frontend Observability sessions. The default datasource is Loki; pass a Pinot datasource UID with -d to query Pinot.
 
 ```
-gcx frontend apps list-replay-sessions <app-name> [flags]
+gcx frontend apps list-replay-sessions <slug-id> [flags]
 ```
 
 ### Examples
@@ -30,7 +30,7 @@ gcx frontend apps list-replay-sessions <app-name> [flags]
   -h, --help                help for list-replay-sessions
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --limit int           Maximum replay-start events to scan (not the number of sessions) (default 1000)
+      --limit int           Maximum replay-start events to scan (Loki caps at 1000; not the number of sessions) (default 1000)
   -o, --output string       Output format. One of: agents, json, text, yaml (default "text")
       --since string        How far back to search (e.g., 1h, 24h, 7d) (default "1h")
 ```

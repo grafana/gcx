@@ -304,21 +304,10 @@ func (c *Client) DeleteSourcemaps(ctx context.Context, appID string, bundleIDs [
 	return nil
 }
 
-// ListRecordings retrieves recordings for a session.
-// If limit is 0, all pages are fetched via auto-pagination (page size 50).
-// If limit > 0, only a single page of that size is returned.
-func (c *Client) ListRecordings(ctx context.Context, appID, sessionID string, limit int) (*SessionRecordingsListResponse, error) {
-	if limit < 0 {
-		return nil, fmt.Errorf("faro: list recordings for session %s: limit must be zero or positive", sessionID)
-	}
-
+// ListRecordings retrieves every recording for a session using pagination.
+func (c *Client) ListRecordings(ctx context.Context, appID, sessionID string) (*SessionRecordingsListResponse, error) {
 	log := logging.FromContext(ctx)
 	log.Debug("Listing recordings", "app_id", appID, "session_id", sessionID)
-
-	autoPaginate := limit == 0
-	if limit == 0 {
-		limit = 50
-	}
 
 	var allItems []RecordingListItem
 	var lastResp SessionRecordingsListResponse
@@ -330,7 +319,7 @@ func (c *Client) ListRecordings(ctx context.Context, appID, sessionID string, li
 
 		q := url.Values{}
 		q.Set("app_id", appID)
-		q.Set("limit", strconv.Itoa(limit))
+		q.Set("limit", "50")
 		if nextPage != "" {
 			if _, ok := seenPages[nextPage]; ok {
 				return nil, fmt.Errorf("faro: list recordings for session %s: repeated pagination cursor %q", sessionID, nextPage)
@@ -358,7 +347,7 @@ func (c *Client) ListRecordings(ctx context.Context, appID, sessionID string, li
 		allItems = append(allItems, page.Items...)
 		lastResp = page
 
-		if !autoPaginate || !page.Page.HasNext {
+		if !page.Page.HasNext {
 			break
 		}
 		if page.Page.Next == "" {

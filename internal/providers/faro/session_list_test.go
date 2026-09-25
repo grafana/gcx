@@ -1,10 +1,9 @@
-package faro_test
+package faro //nolint:testpackage // Tests the unexported replay session parser and codec.
 
 import (
 	"bytes"
 	"testing"
 
-	faro "github.com/grafana/gcx/internal/providers/faro"
 	"github.com/grafana/gcx/internal/query/loki"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -28,7 +27,7 @@ func TestExtractReplaySessionRows(t *testing.T) {
 		},
 	}
 
-	rows := faro.ExtractReplaySessionRows(resp)
+	rows := extractReplaySessionRows(resp)
 	require.Len(t, rows, 2)
 
 	assert.Equal(t, "sess-1", rows[0].SessionID, "most recent session should be first")
@@ -55,7 +54,7 @@ func TestExtractReplaySessionRows_QuotedLogfmt(t *testing.T) {
 		},
 	}
 
-	rows := faro.ExtractReplaySessionRows(resp)
+	rows := extractReplaySessionRows(resp)
 	require.Len(t, rows, 1)
 	assert.Equal(t, "Brave Browser 1.0", rows[0].Browser)
 	assert.Equal(t, "my app", rows[0].AppName)
@@ -73,7 +72,7 @@ func TestExtractReplaySessionRows_EmptyBrowserName(t *testing.T) {
 		},
 	}
 
-	rows := faro.ExtractReplaySessionRows(resp)
+	rows := extractReplaySessionRows(resp)
 	require.Len(t, rows, 1)
 	assert.Equal(t, "1.0", rows[0].Browser)
 }
@@ -87,16 +86,16 @@ func TestExtractReplaySessionRows_Empty(t *testing.T) {
 		},
 	}
 
-	rows := faro.ExtractReplaySessionRows(resp)
+	rows := extractReplaySessionRows(resp)
 	assert.Empty(t, rows)
 }
 
 func TestReplaySessionListCodec_Encode(t *testing.T) {
-	rows := []faro.ReplaySessionListRow{
+	rows := []replaySessionListRow{
 		{SessionID: "sess-1", Browser: "Chrome 136.0", AppName: "my-app", LastSeen: "2026-05-19T10:00:00Z"},
 	}
 
-	codec := &faro.ReplaySessionListCodec{}
+	codec := &replaySessionListCodec{}
 	var buf bytes.Buffer
 	err := codec.Encode(&buf, rows)
 	require.NoError(t, err)
@@ -109,15 +108,15 @@ func TestReplaySessionListCodec_Encode(t *testing.T) {
 }
 
 func TestReplaySessionListCodec_EncodeEmpty(t *testing.T) {
-	codec := &faro.ReplaySessionListCodec{}
+	codec := &replaySessionListCodec{}
 	var buf bytes.Buffer
-	err := codec.Encode(&buf, []faro.ReplaySessionListRow{})
+	err := codec.Encode(&buf, []replaySessionListRow{})
 	require.NoError(t, err)
 	assert.Contains(t, buf.String(), "No session replays")
 }
 
 func TestListReplaySessionsCommandRegistered(t *testing.T) {
-	p := &faro.FaroProvider{}
+	p := &FaroProvider{}
 	cmds := p.Commands()
 	require.Len(t, cmds, 1)
 
@@ -146,11 +145,12 @@ func TestListReplaySessionsRejectsInvalidFlags(t *testing.T) {
 		{name: "invalid since", args: []string{"my-web-app-42", "--since", "not-a-duration"}, wantErr: "invalid --since value"},
 		{name: "zero since", args: []string{"my-web-app-42", "--since", "0s"}, wantErr: "--since must be positive"},
 		{name: "negative since", args: []string{"my-web-app-42", "--since=-1h"}, wantErr: "--since must be positive"},
+		{name: "bare app name", args: []string{"my-web-app"}, wantErr: "expected a numeric ID or slug-id"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p := &faro.FaroProvider{}
+			p := &FaroProvider{}
 			cmds := p.Commands()
 			require.Len(t, cmds, 1)
 

@@ -456,6 +456,13 @@ func lokiReplayStartQuery(p sessionQueryParams) string {
 	)
 }
 
+func lokiReplayDiscoveryQuery(appID string) string {
+	return fmt.Sprintf(
+		`{app_id="%s", kind="event"} |= "faro.session_recording.started" | logfmt | event_name="faro.session_recording.started"`,
+		escapeLogQLString(appID),
+	)
+}
+
 // lokiSessionEventKinds is the Pinot journey split: events, exceptions, logs,
 // measurements as separate indexed Loki streams.
 func lokiSessionEventKinds() []string {

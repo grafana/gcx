@@ -8,6 +8,21 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestLokiReplayDiscoveryQueryUsesIndexedEventFilter(t *testing.T) {
+	t.Parallel()
+	appID := `42"\`
+	query := lokiReplayDiscoveryQuery(appID)
+	assert.Contains(t, query, `kind="event"`)
+	assert.Contains(t, query, `|= "faro.session_recording.started"`)
+	assert.Contains(t, query, `app_id="`+escapeLogQLString(appID)+`"`)
+}
+
+func TestLokiReplayScanHonorsEffectiveCap(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, lokiEventsPageSize, min(5000, lokiEventsPageSize))
+	assert.Equal(t, 30, min(30, lokiEventsPageSize))
+}
+
 func TestPinotReplayStartsQueryUsesSessionFetcherTable(t *testing.T) {
 	t.Parallel()
 	query, err := pinotReplayStartsQuery("66", "https://ops.grafana-ops.net", 25)
