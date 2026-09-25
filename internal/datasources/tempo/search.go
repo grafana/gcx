@@ -16,6 +16,7 @@ import (
 func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
 	shared := &dsquery.SharedOpts{}
 	share := &dsquery.ExploreLinkOpts{}
+	drilldown := &dsquery.DrilldownLinkOpts{}
 	var limit int
 	var datasource string
 
@@ -29,7 +30,10 @@ TRACEQL is the TraceQL expression to evaluate.
 Datasource is resolved from -d flag or datasources.tempo in your context.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
 open it in your browser after the query succeeds. Share links require an
-explicit time range via --since or --from/--to.`,
+explicit time range via --since or --from/--to. Use --drilldown-link or
+--open-drilldown for the equivalent Grafana Traces Drilldown URL (only
+available for a flat, &&-joined spanset of scope.tag comparisons; anything
+else falls back to the Explore URL).`,
 		Example: `
   # Search traces using configured default datasource
   gcx datasources tempo query '{ span.http.status_code >= 500 }'
@@ -39,6 +43,9 @@ explicit time range via --since or --from/--to.`,
 
   # Print a Grafana Explore share link for the query
   gcx datasources tempo query '{ span.http.status_code >= 500 }' --share-link
+
+  # Print a Grafana Traces Drilldown link for the query
+  gcx datasources tempo query '{ span.http.status_code = 500 }' --drilldown-link
 
   # With custom limit
   gcx datasources tempo query -d UID '{ span.http.status_code >= 500 }' --since 1h --limit 50
@@ -109,16 +116,26 @@ explicit time range via --since or --from/--to.`,
 				}, limit)
 			}
 
-			resultErr := dsquery.EncodeAndHandleExplore(cmd, func() error {
+			if err := dsquery.EncodeAndHandleExplore(cmd, func() error {
 				return shared.IO.Encode(cmd.OutOrStdout(), resp)
 			}, *share, dsquery.ExploreLink{
 				URL:            exploreURL,
 				UnavailableMsg: unavailableMsg,
 				FailedOpenMsg:  failedOpenMsg,
-			})
-			if resultErr != nil {
-				return resultErr
+			}); err != nil {
+				return err
 			}
+
+			var drilldownURL string
+			if drilldown.Enabled() {
+				drilldownURL, _ = TracesDrilldownURL(cfg.GrafanaURL, datasourceUID, expr, start, end)
+			}
+			drilldownUnavailableMsg, drilldownFailedOpenMsg := dsquery.DrilldownMessages("search", "Traces Drilldown")
+			if err := dsquery.HandleDrilldownLinkWithExploreFallback(cmd, *drilldown, drilldownURL, drilldownUnavailableMsg, drilldownFailedOpenMsg,
+				share.Enabled(), exploreURL, unavailableMsg, failedOpenMsg); err != nil {
+				return err
+			}
+
 			if shared.ErrorOnEmpty {
 				return dsquery.ErrorOnEmptyWithContext(resp, dsquery.EmptyResultContext{
 					Expr: expr, DatasourceUID: datasourceUID, Start: start, End: end,
@@ -138,6 +155,7 @@ explicit time range via --since or --from/--to.`,
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.tempo is configured)")
 	cmd.Flags().IntVar(&limit, "limit", 20, "Maximum number of traces to return (0 means no limit)")
 	share.Setup(cmd.Flags(), "executed query")
+	drilldown.Setup(cmd.Flags(), "executed query", "Traces Drilldown")
 
 	return cmd
 }

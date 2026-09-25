@@ -10,7 +10,11 @@ EXPR is the PromQL expression to evaluate, passed as a positional argument or
 via --expr (familiar to promtool users).
 Datasource is resolved from -d flag or datasources.prometheus in your context.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
-open it in your browser after the query succeeds.
+open it in your browser after the query succeeds. Use --drilldown-link or
+--open-drilldown for the equivalent Grafana Metrics Drilldown URL (only
+available for a bare metric or a single function/aggregation wrapper around
+one metric; expressions referencing more than one metric fall back to the
+Explore URL).
 
 ```
 gcx datasources prometheus query [EXPR] [flags]
@@ -35,6 +39,9 @@ gcx datasources prometheus query [EXPR] [flags]
   # Print a Grafana Explore share link for the executed query
   gcx datasources prometheus query 'up' --share-link
 
+  # Print a Grafana Metrics Drilldown link for the executed query
+  gcx datasources prometheus query 'rate(http_requests_total[5m])' --drilldown-link
+
   # Output as JSON
   gcx datasources prometheus query -d UID 'up' -o json
 ```
@@ -43,6 +50,7 @@ gcx datasources prometheus query [EXPR] [flags]
 
 ```
   -d, --datasource string   Datasource UID (required unless datasources.prometheus is configured)
+      --drilldown-link      Print the Grafana Metrics Drilldown URL for the executed query to stderr
       --error-on-empty      Fail if the query returns no results
       --expr string         Query expression (alternative to positional argument)
       --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
@@ -50,6 +58,7 @@ gcx datasources prometheus query [EXPR] [flags]
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --open                Open the executed query in Grafana Explore
+      --open-drilldown      Open the executed query in Grafana Metrics Drilldown
   -o, --output string       Output format. One of: agents, graph, json, table, wide, yaml (default "table")
       --share-link          Print the Grafana Explore URL for the executed query to stderr
       --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from

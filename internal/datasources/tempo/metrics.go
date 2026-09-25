@@ -34,7 +34,10 @@ Instant vs range is deduced from time flags: no time flags = instant query,
 even when a time range is provided. If no time flags are set, gcx queries the
 last hour by default.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
-open it in your browser after the query succeeds.`,
+open it in your browser after the query succeeds. There is no
+--drilldown-link here: every TraceQL metrics query uses a pipeline stage
+like "| rate()", which Traces Drilldown's filter model can never
+represent — use 'tempo query' for Drilldown links.`,
 		Example: `
   # Instant query over the last hour (default, no time flags)
   gcx datasources tempo metrics '{ } | rate()'
@@ -116,16 +119,16 @@ open it in your browser after the query succeeds.`,
 			}, 20)
 			unavailableMsg, failedOpenMsg := dsquery.ExploreMessages("metrics query")
 
-			resultErr := dsquery.EncodeAndHandleExplore(cmd, func() error {
+			if err := dsquery.EncodeAndHandleExplore(cmd, func() error {
 				return shared.IO.Encode(cmd.OutOrStdout(), resp)
 			}, *share, dsquery.ExploreLink{
 				URL:            exploreURL,
 				UnavailableMsg: unavailableMsg,
 				FailedOpenMsg:  failedOpenMsg,
-			})
-			if resultErr != nil {
-				return resultErr
+			}); err != nil {
+				return err
 			}
+
 			if shared.ErrorOnEmpty {
 				return dsquery.ErrorOnEmptyWithContext(resp, dsquery.EmptyResultContext{
 					Expr: expr, DatasourceUID: datasourceUID, Start: req.Start, End: req.End,

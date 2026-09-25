@@ -15,7 +15,10 @@ time-series data with proper table, graph, and JSON formatters.
 Instant vs range is deduced from time flags: no time flags = instant query,
 --since or --from/--to = range query.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
-open it in your browser after the query succeeds.
+open it in your browser after the query succeeds. There is no
+--drilldown-link here: every metric LogQL expression is wrapped in an
+aggregation function (rate, count_over_time, ...), which Logs Drilldown's
+filter model can never represent — use 'loki query' for Drilldown links.
 
 ```
 gcx logs metrics [EXPR] [flags]
