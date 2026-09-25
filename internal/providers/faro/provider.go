@@ -61,8 +61,6 @@ func (p *FaroProvider) Commands() []*cobra.Command {
 		newApplySourcemapCommand(loader),
 		newDeleteSourcemapCommand(loader),
 		newListReplaySessionsCommand(loader),
-		newListReplayRecordingsCommand(loader),
-		newInspectReplaySegmentCommand(loader),
 	)
 
 	faroCmd.AddCommand(appsCmd)
@@ -72,7 +70,7 @@ func (p *FaroProvider) Commands() []*cobra.Command {
 		Short:   "Inspect Frontend Observability sessions.",
 		Aliases: []string{"session"},
 	}
-	sessionsCmd.AddCommand(newSessionsGetCommand(loader))
+	sessionsCmd.AddCommand(newSessionsGetCommand(loader), newSessionsGetReplayCommand(loader))
 	faroCmd.AddCommand(sessionsCmd)
 
 	return []*cobra.Command{faroCmd}

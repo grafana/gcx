@@ -468,7 +468,7 @@ gcx provides dedicated commands for each Grafana Cloud product:
 | **k6 Cloud** | `gcx k6` | `k6 load-tests list`, `k6 runs list` |
 | **Fleet Management** | `gcx fleet` | `fleet pipelines list`, `fleet collectors list` |
 | **Knowledge Graph** | `gcx kg` | `kg status`, `kg entities list`, `kg entities inspect` |
-| **Frontend Observability** | `gcx frontend` | `frontend apps list`, `frontend apps get` |
+| **Frontend Observability** | `gcx frontend` | `frontend apps list`, `frontend sessions get`, `frontend sessions get-replay <session-id> --app <app> --save replay.json` |
 | **App Observability** | `gcx appo11y` | `appo11y overrides get`, `appo11y settings get` |
 | **Agent Observability** | `gcx agento11y` | `agento11y conversations list`, `agento11y experiments pull`, `agento11y rules list` |
 | **Assistant** | `gcx assistant` | `assistant prompt`, `assistant investigations list`, `assistant mcp-servers list` |

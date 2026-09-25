@@ -1,11 +1,31 @@
-## gcx frontend sessions
+## gcx frontend sessions get-replay
 
-Inspect Frontend Observability sessions.
+Save a playable replay for a Frontend Observability session.
+
+### Synopsis
+
+Save the recording the Session Replay viewer opens by default as one
+rrweb event JSON file. All of that recording's segments are included in order.
+The returned viewer URL pins the selected recording, so later session activity
+cannot change which replay it opens.
+
+```
+gcx frontend sessions get-replay <session-id> [flags]
+```
+
+### Examples
+
+```
+  # Save the replay for a session to a private JSON file.
+  gcx frontend sessions get-replay abc-session-123 --app my-web-app-42 --save replay.json
+```
 
 ### Options
 
 ```
-  -h, --help   help for sessions
+      --app string    Frontend Observability app slug-id or numeric id (required)
+  -h, --help          help for get-replay
+      --save string   Path for the complete replay event JSON (required)
 ```
 
 ### Options inherited from parent commands
@@ -22,7 +42,5 @@ Inspect Frontend Observability sessions.
 
 ### SEE ALSO
 
-* [gcx frontend](gcx_frontend.md)	 - Manage Grafana Frontend Observability resources
-* [gcx frontend sessions get](gcx_frontend_sessions_get.md)	 - Write Frontend Observability session telemetry to a text file.
-* [gcx frontend sessions get-replay](gcx_frontend_sessions_get-replay.md)	 - Save a playable replay for a Frontend Observability session.
+* [gcx frontend sessions](gcx_frontend_sessions.md)	 - Inspect Frontend Observability sessions.
 
