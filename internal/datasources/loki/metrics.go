@@ -15,6 +15,7 @@ import (
 func MetricsCmd(loader *providers.ConfigLoader) *cobra.Command {
 	shared := &dsquery.SharedOpts{}
 	share := &dsquery.ExploreLinkOpts{}
+	preflight := &statsPreflightOpts{}
 	var datasource string
 
 	cmd := &cobra.Command{
@@ -31,7 +32,19 @@ time-series data with proper table, graph, and JSON formatters.
 Instant vs range is deduced from time flags: no time flags = instant query,
 --since or --from/--to = range query.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
-open it in your browser after the query succeeds.`,
+open it in your browser after the query succeeds.
+
+Before executing, a pre-flight index-stats check estimates the bytes this
+query would scan and prints a non-blocking warning if it exceeds
+--stats-warn-bytes (default 10GiB). Set --stats-max-bytes to refuse to run the
+query at all above that many bytes — this is blocking, so unlike the default
+warn-only check it does add the pre-flight call's latency to the command.
+Use --skip-stats to disable both checks entirely.
+Only the query's stream selector is used for the estimate, since Loki's index
+tracks streams, not line filters or parsing stages. The checked window is
+widened by any range-vector duration or offset in EXPR (e.g. '[24h]',
+'offset 1h'), since Loki evaluates further back than the query's own time
+range alone would suggest.`,
 		Example: `
   # Rate of log lines over 5 minutes
   gcx datasources loki metrics 'rate({job="varlogs"}[5m])' --since 1h -o table
@@ -42,6 +55,9 @@ open it in your browser after the query succeeds.`,
   # Print a Grafana Explore share link for the query
   gcx datasources loki metrics 'rate({job="varlogs"}[5m])' --share-link
 
+  # Refuse to run if the query would scan more than 5GiB
+  gcx datasources loki metrics 'rate({job="varlogs"}[5m])' --stats-max-bytes 5GiB
+
   # Line chart output
   gcx datasources loki metrics -d loki-001 'rate({job="varlogs"}[5m])' --since 1h -o graph
 
@@ -50,6 +66,9 @@ open it in your browser after the query succeeds.`,
 		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := shared.Validate(); err != nil {
+				return err
+			}
+			if err := preflight.Validate(); err != nil {
 				return err
 			}
 
@@ -89,7 +108,14 @@ open it in your browser after the query succeeds.`,
 				Step:  step,
 			}
 
+			wait, cancelPreflight, err := startStatsPreflight(ctx, client, cmd.ErrOrStderr(), datasourceUID, expr, req.IsRange(), start, end, now, preflight)
+			if err != nil {
+				return err
+			}
+
 			resp, err := client.MetricQuery(ctx, datasourceUID, req)
+			// Grace window avoids losing the check to a fast query (see statsPreflightGraceAfterQuery).
+			finishStatsPreflight(wait, cancelPreflight)
 			if err != nil {
 				return fmt.Errorf("metric query failed: %w", err)
 			}
@@ -133,6 +159,7 @@ open it in your browser after the query succeeds.`,
 	shared.SetupErrorOnEmptyFlag(cmd.Flags())
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.loki is configured)")
 	share.Setup(cmd.Flags(), "executed query")
+	preflight.setup(cmd.Flags())
 
 	return cmd
 }
