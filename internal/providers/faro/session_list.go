@@ -32,9 +32,12 @@ type replaySessionListRow struct {
 }
 
 type replaySessionListResult struct {
+	AppID    string                 `json:"app_id" yaml:"app_id"`
 	Items    []replaySessionListRow `json:"items" yaml:"items"`
 	ListMeta *cmdio.ListMeta        `json:"list_meta,omitempty" yaml:"list_meta,omitempty"`
 }
+
+func (replaySessionListResult) ListItemsKey() string { return "items" }
 
 type replaySessionTableCodec struct{ table format.Codec }
 
@@ -47,6 +50,10 @@ func (c replaySessionTableCodec) Encode(w io.Writer, v any) error {
 	if !ok {
 		return fmt.Errorf("replay session table: expected replaySessionListResult, got %T", v)
 	}
+	if len(result.Items) == 0 {
+		_, err := fmt.Fprintf(w, "No session replays found for app ID %s.\n", result.AppID)
+		return err
+	}
 	return c.table.Encode(w, result.Items)
 }
 
@@ -57,10 +64,6 @@ func replaySessionTable() cmdio.Table[replaySessionListRow] {
 			{Header: "BROWSER", Content: func(r replaySessionListRow) string { return r.Browser }},
 			{Header: "APP NAME", Content: func(r replaySessionListRow) string { return r.AppName }},
 			{Header: "LAST SEEN", Content: func(r replaySessionListRow) string { return r.LastSeen }},
-		},
-		Empty: func(w io.Writer) error {
-			_, err := fmt.Fprintln(w, "No session replays found.")
-			return err
 		},
 	}
 }
@@ -94,6 +97,7 @@ func (o *listReplaySessionsOpts) Validate() error {
 	if err := o.IO.Validate(); err != nil {
 		return err
 	}
+	o.Datasource = strings.TrimSpace(o.Datasource)
 	if o.Limit <= 0 {
 		return errors.New("--limit must be positive")
 	}
@@ -108,12 +112,30 @@ func (o *listReplaySessionsOpts) Validate() error {
 	return nil
 }
 
+// --limit bounds replay-start events, which can deduplicate to fewer sessions.
+// The shared ListMeta counts returned sessions, so its Cap must never carry the
+// Loki event cap. A separate hint names that bound when it is reached.
+func replaySessionListMeta(returned int, atLimit, isLoki bool, limit int, argv []string) *cmdio.ListMeta {
+	if !atLimit {
+		return nil
+	}
+	meta := &cmdio.ListMeta{Truncated: true, Returned: returned}
+	if !isLoki || limit < lokiEventsPageSize {
+		nextLimit := 2 * limit
+		if isLoki {
+			nextLimit = min(nextLimit, lokiEventsPageSize)
+		}
+		meta.Continue = cmdio.BuildListLimitCommand(argv, nextLimit)
+	}
+	return meta
+}
+
 func newListReplaySessionsCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &listReplaySessionsOpts{}
 	cmd := &cobra.Command{
-		Use:   "list-replay-sessions <slug-id>",
+		Use:   "list-replay-sessions <slug-id-or-numeric-id>",
 		Short: "List Frontend Observability sessions that have replay recordings.",
-		Long:  "Discovers regular session IDs that have replay recordings by querying Loki or Pinot for faro.session_recording.started events. This does not list all Frontend Observability sessions. The default datasource is Loki; pass a Pinot datasource UID with -d to query Pinot. JSON output has an items envelope and includes list_meta when the event scan reaches its limit.",
+		Long:  "Discovers regular session IDs that have replay recordings by querying Loki or Pinot for faro.session_recording.started events. This does not list all Frontend Observability sessions. The default datasource is Loki; pass a Pinot datasource UID with -d to query Pinot. An empty result means no replay-start event was found for the app ID and time window; this command does not verify that the app exists. JSON output has an items envelope and includes list_meta when the event scan reaches its limit.",
 		Example: `  # List regular session IDs with replay recordings in the last hour.
   gcx frontend apps list-replay-sessions my-web-app-42
 
@@ -124,6 +146,9 @@ func newListReplaySessionsCommand(loader *providers.ConfigLoader) *cobra.Command
   gcx frontend apps list-replay-sessions my-web-app-42 -d P8E80F9AEF21F6940`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if cmd.Flags().Changed("datasource") && strings.TrimSpace(opts.Datasource) == "" {
+				return errors.New("--datasource cannot be empty")
+			}
 			if err := opts.Validate(); err != nil {
 				return err
 			}
@@ -133,16 +158,10 @@ func newListReplaySessionsCommand(loader *providers.ConfigLoader) *cobra.Command
 			}
 			ctx := cmd.Context()
 
-			cfg, err := loader.LoadGrafanaConfig(ctx)
+			cfgCtx, cfg, err := dsquery.LoadContextAndConfig(ctx, loader)
 			if err != nil {
 				return err
 			}
-
-			fullCfg, err := loader.LoadFullConfig(ctx)
-			if err != nil {
-				return err
-			}
-			cfgCtx := fullCfg.Contexts[fullCfg.CurrentContext]
 
 			now := time.Now()
 			start := now.Add(-opts.sinceDuration)
@@ -178,25 +197,15 @@ func newListReplaySessionsCommand(loader *providers.ConfigLoader) *cobra.Command
 			if rows == nil {
 				rows = []replaySessionListRow{}
 			}
-			result := replaySessionListResult{Items: rows}
-			if atLimit {
-				meta := &cmdio.ListMeta{Truncated: true, Returned: len(rows)}
-				if isLoki && opts.Limit >= lokiEventsPageSize {
-					meta.Cap = lokiEventsPageSize
-				} else {
-					// --limit bounds replay-start events, which can deduplicate to fewer sessions.
-					nextLimit := 2 * opts.Limit
-					if isLoki {
-						nextLimit = min(nextLimit, lokiEventsPageSize)
-					}
-					meta.Continue = cmdio.BuildListLimitCommand(os.Args, nextLimit)
-				}
-				result.ListMeta = meta
-			}
+			result := replaySessionListResult{AppID: appID, Items: rows}
+			result.ListMeta = replaySessionListMeta(len(rows), atLimit, isLoki, opts.Limit, os.Args)
 			if err := opts.IO.Encode(cmd.OutOrStdout(), result); err != nil {
 				return err
 			}
 			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), result.ListMeta)
+			if atLimit && isLoki && opts.Limit >= lokiEventsPageSize {
+				cmdio.EmitHint(cmd.ErrOrStderr(), "scanned 1000 replay-start events (gcx Loki safety cap); narrow --since or use Pinot", "")
+			}
 			return nil
 		},
 	}

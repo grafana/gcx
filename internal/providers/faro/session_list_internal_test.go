@@ -47,6 +47,23 @@ func TestLokiReplayScanHonorsEffectiveCap(t *testing.T) {
 	assert.Equal(t, []float64{1000, 30}, maxLines)
 }
 
+func TestReplaySessionListMetaKeepsEventAndSessionCountsSeparate(t *testing.T) {
+	argv := []string{"gcx", "frontend", "apps", "list-replay-sessions", "42", "--limit", "600"}
+	meta := replaySessionListMeta(12, true, true, 600, argv)
+	require.NotNil(t, meta)
+	assert.Equal(t, 12, meta.Returned)
+	assert.Zero(t, meta.Cap, "the event cap is not a cap on returned sessions")
+	assert.Contains(t, meta.Continue, "--limit 1000")
+
+	meta = replaySessionListMeta(12, true, true, 1000, argv)
+	require.NotNil(t, meta)
+	assert.True(t, meta.Truncated)
+	assert.Equal(t, 12, meta.Returned)
+	assert.Zero(t, meta.Cap)
+	assert.Empty(t, meta.Continue, "increasing the Loki scan limit cannot help past the cap")
+	assert.Nil(t, replaySessionListMeta(12, false, true, 1000, argv))
+}
+
 func TestPinotReplayStartsQueryUsesSessionFetcherTable(t *testing.T) {
 	t.Parallel()
 	query, err := pinotReplayStartsQuery("66", "https://ops.grafana-ops.net", 25)

@@ -42,9 +42,8 @@ func (o *sessionsGetReplayOpts) Validate() error {
 type replayArtifactReceipt struct {
 	cmdio.ArtifactReceipt
 
-	RecordingCount int    `json:"recording_count"`
-	EventCount     int    `json:"event_count"`
-	ReplayURL      string `json:"replay_url"`
+	EventCount int    `json:"event_count"`
+	ReplayURL  string `json:"replay_url"`
 }
 
 func newSessionsGetReplayCommand(loader RESTConfigLoader) *cobra.Command {
@@ -86,7 +85,7 @@ Recording boundaries are preserved because separate recordings can overlap in ti
 				return err
 			}
 			if len(recordings) == 0 {
-				return fmt.Errorf("no replay found for session %s", sessionID)
+				return fmt.Errorf("no replay found for session %s with app ID %s (the app may not exist or have no replay)", sessionID, appID)
 			}
 			count, err := saveSessionReplayEvents(ctx, client, appID, sessionID, recordings, opts.Save)
 			if err != nil {
@@ -95,11 +94,10 @@ Recording boundaries are preserved because separate recordings can overlap in ti
 			replayURL := sessionReplayURL(cfg.GrafanaURL, appID, sessionID)
 			receipt := replayArtifactReceipt{
 				ArtifactReceipt: cmdio.NewArtifactReceipt("get-replay", "json"),
-				RecordingCount:  len(recordings),
 				EventCount:      count,
 				ReplayURL:       replayURL,
 			}
-			receipt.Files = append(receipt.Files, cmdio.ArtifactFile{Path: opts.Save, Kind: "session-replay"})
+			receipt.Files = append(receipt.Files, cmdio.ArtifactFile{Path: opts.Save, Kind: "session-replay", Count: len(recordings)})
 			receipt.Summary = cmdio.MutationSummary{Succeeded: 1}
 			return cmdio.EmitArtifactResult(cmd.OutOrStdout(), receipt, func(w io.Writer) error {
 				_, err := fmt.Fprintf(w, "Wrote %d events from %d recordings to %s\nReplay: %s\n", count, len(recordings), opts.Save, replayURL)

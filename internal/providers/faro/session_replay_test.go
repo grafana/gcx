@@ -57,7 +57,8 @@ func TestSessionsGetReplayBundlesAllRecordingsAsOneFile(t *testing.T) {
 	var receipt replayArtifactReceipt
 	require.NoError(t, json.Unmarshal(stdout.Bytes(), &receipt))
 	assert.Equal(t, 3, receipt.EventCount)
-	assert.Equal(t, 2, receipt.RecordingCount)
+	require.Len(t, receipt.Files, 1)
+	assert.Equal(t, 2, receipt.Files[0].Count)
 	assert.Equal(t, "https://public.example.net/a/grafana-sessionreplay-app/app/42/session/sess-1", receipt.ReplayURL)
 	assert.Equal(t, path, receipt.Files[0].Path)
 	assert.Len(t, paths, 7)

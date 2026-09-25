@@ -112,22 +112,29 @@ func TestReplaySessionTable_Encode(t *testing.T) {
 func TestReplaySessionTable_EncodeEmpty(t *testing.T) {
 	codec := replaySessionTableCodec{table: replaySessionTable().Codec(cmdio.FormatText)}
 	var buf bytes.Buffer
-	err := codec.Encode(&buf, replaySessionListResult{Items: []replaySessionListRow{}})
+	err := codec.Encode(&buf, replaySessionListResult{AppID: "42", Items: []replaySessionListRow{}})
 	require.NoError(t, err)
-	assert.Contains(t, buf.String(), "No session replays")
+	assert.Contains(t, buf.String(), "No session replays found for app ID 42")
 }
 
 func TestReplaySessionListEnvelopeCarriesTruncation(t *testing.T) {
 	testutils.SetAgentMode(t, false)
 	result := replaySessionListResult{
+		AppID:    "42",
 		Items:    []replaySessionListRow{{SessionID: "sess-1"}},
-		ListMeta: &cmdio.ListMeta{Truncated: true, Returned: 1, Cap: lokiEventsPageSize},
+		ListMeta: &cmdio.ListMeta{Truncated: true, Returned: 1},
 	}
 	var output bytes.Buffer
 	opts := cmdio.Options{OutputFormat: "json"}
 	err := opts.Encode(&output, result)
 	require.NoError(t, err)
-	assert.JSONEq(t, `{"items":[{"session_id":"sess-1","browser":"","app_name":"","last_seen":""}],"list_meta":{"truncated":true,"returned":1,"cap":1000}}`, output.String())
+	assert.JSONEq(t, `{"app_id":"42","items":[{"session_id":"sess-1","browser":"","app_name":"","last_seen":""}],"list_meta":{"truncated":true,"returned":1}}`, output.String())
+	opts.JSONFields = []string{"session_id"}
+	output.Reset()
+	err = opts.Encode(&output, result)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"app_id":"42","items":[{"session_id":"sess-1"}],"list_meta":{"truncated":true,"returned":1}}`, output.String())
+	opts.JSONFields = nil
 	result.ListMeta = nil
 	output.Reset()
 	err = opts.Encode(&output, result)
@@ -166,6 +173,8 @@ func TestListReplaySessionsRejectsInvalidFlags(t *testing.T) {
 		{name: "zero since", args: []string{"my-web-app-42", "--since", "0s"}, wantErr: "--since must be positive"},
 		{name: "negative since", args: []string{"my-web-app-42", "--since=-1h"}, wantErr: "--since must be positive"},
 		{name: "bare app name", args: []string{"my-web-app"}, wantErr: "expected a numeric ID or slug-id"},
+		{name: "empty datasource", args: []string{"my-web-app-42", "-d", ""}, wantErr: "--datasource cannot be empty"},
+		{name: "blank datasource", args: []string{"my-web-app-42", "-d", "   "}, wantErr: "--datasource cannot be empty"},
 	}
 
 	for _, tt := range tests {

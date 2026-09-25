@@ -4,10 +4,10 @@ List Frontend Observability sessions that have replay recordings.
 
 ### Synopsis
 
-Discovers regular session IDs that have replay recordings by querying Loki or Pinot for faro.session_recording.started events. This does not list all Frontend Observability sessions. The default datasource is Loki; pass a Pinot datasource UID with -d to query Pinot. JSON output has an items envelope and includes list_meta when the event scan reaches its limit.
+Discovers regular session IDs that have replay recordings by querying Loki or Pinot for faro.session_recording.started events. This does not list all Frontend Observability sessions. The default datasource is Loki; pass a Pinot datasource UID with -d to query Pinot. An empty result means no replay-start event was found for the app ID and time window; this command does not verify that the app exists. JSON output has an items envelope and includes list_meta when the event scan reaches its limit.
 
 ```
-gcx frontend apps list-replay-sessions <slug-id> [flags]
+gcx frontend apps list-replay-sessions <slug-id-or-numeric-id> [flags]
 ```
 
 ### Examples
