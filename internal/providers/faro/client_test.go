@@ -481,6 +481,165 @@ func TestClient_DeleteSourcemaps(t *testing.T) {
 	}
 }
 
+func TestListRecordingsAutoPagination(t *testing.T) {
+	callCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		assert.Equal(t, "app-42", r.URL.Query().Get("app_id"))
+		assert.Equal(t, "50", r.URL.Query().Get("limit"))
+
+		switch pageParam := r.URL.Query().Get("page"); pageParam {
+		case "":
+			writeJSON(w, faro.SessionRecordingsListResponse{
+				Items: []faro.RecordingListItem{
+					{ID: "rec-1"},
+				},
+				Page: faro.SessionPage{
+					HasNext: true,
+					Next:    "cursor-page2",
+				},
+			})
+		case "cursor-page2":
+			writeJSON(w, faro.SessionRecordingsListResponse{
+				Items: []faro.RecordingListItem{
+					{ID: "rec-2"},
+					{ID: "rec-3"},
+				},
+				Page: faro.SessionPage{
+					HasNext: false,
+				},
+			})
+		default:
+			http.Error(w, "unexpected page param: "+pageParam, http.StatusBadRequest)
+		}
+	}))
+	defer server.Close()
+
+	c := newTestClient(t, server)
+	resp, err := c.ListRecordings(t.Context(), "app-42", "sess-abc")
+
+	require.NoError(t, err)
+	assert.Equal(t, 2, callCount)
+	assert.Len(t, resp, 3)
+	assert.Equal(t, "rec-1", resp[0].ID)
+	assert.Equal(t, "rec-2", resp[1].ID)
+	assert.Equal(t, "rec-3", resp[2].ID)
+}
+
+func TestListRecordingsAutoPaginationRequiresNextCursor(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Empty(t, r.URL.Query().Get("page"))
+		writeJSON(w, faro.SessionRecordingsListResponse{
+			Items: []faro.RecordingListItem{
+				{ID: "rec-1"},
+			},
+			Page: faro.SessionPage{
+				HasNext: true,
+			},
+		})
+	}))
+	defer server.Close()
+
+	c := newTestClient(t, server)
+	_, err := c.ListRecordings(t.Context(), "app-42", "sess-abc")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "missing next pagination cursor")
+}
+
+func TestListRecordingsAutoPaginationRejectsRepeatedCursor(t *testing.T) {
+	callCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+
+		switch pageParam := r.URL.Query().Get("page"); pageParam {
+		case "":
+			writeJSON(w, faro.SessionRecordingsListResponse{
+				Items: []faro.RecordingListItem{
+					{ID: "rec-1"},
+				},
+				Page: faro.SessionPage{
+					HasNext: true,
+					Next:    "cursor-page2",
+				},
+			})
+		case "cursor-page2":
+			writeJSON(w, faro.SessionRecordingsListResponse{
+				Items: []faro.RecordingListItem{
+					{ID: "rec-2"},
+				},
+				Page: faro.SessionPage{
+					HasNext: true,
+					Next:    "cursor-page2",
+				},
+			})
+		default:
+			http.Error(w, "unexpected page param: "+pageParam, http.StatusBadRequest)
+		}
+	}))
+	defer server.Close()
+
+	c := newTestClient(t, server)
+	_, err := c.ListRecordings(t.Context(), "app-42", "sess-abc")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "repeated pagination cursor")
+	assert.Equal(t, 2, callCount)
+}
+
+func TestGetManifest(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "/api/plugin-proxy/grafana-sessionreplay-app/faro-api-proxy/api/v1/sessions/sess-abc/recordings/rec-1/manifest", r.URL.Path)
+		assert.Equal(t, "app-42", r.URL.Query().Get("app_id"))
+
+		writeJSON(w, faro.RecordingManifestResponse{
+			ID:        "rec-1",
+			SessionID: "sess-abc",
+			Segments: []faro.ManifestSegment{
+				{ID: 0},
+				{ID: 1},
+			},
+		})
+	}))
+	defer server.Close()
+
+	c := newTestClient(t, server)
+	resp, err := c.GetManifest(t.Context(), "app-42", "sess-abc", "rec-1")
+
+	require.NoError(t, err)
+	assert.Equal(t, "rec-1", resp.ID)
+	assert.Equal(t, "sess-abc", resp.SessionID)
+	require.Len(t, resp.Segments, 2)
+	assert.Equal(t, int64(0), resp.Segments[0].ID)
+	assert.Equal(t, int64(1), resp.Segments[1].ID)
+}
+
+func TestGetSegment(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "/api/plugin-proxy/grafana-sessionreplay-app/faro-api-proxy/api/v1/sessions/sess-abc/recordings/rec-1/segments/seg-0", r.URL.Path)
+		assert.Equal(t, "app-42", r.URL.Query().Get("app_id"))
+
+		writeJSON(w, faro.RecordingSegmentResponse{
+			RecordingID: "rec-1",
+			Events: []faro.RRWebEvent{
+				json.RawMessage(`{"type":4,"timestamp":1700000000000,"data":{"source":0}}`),
+				json.RawMessage(`{"type":3,"timestamp":"1700000001000","data":{"source":1}}`),
+			},
+		})
+	}))
+	defer server.Close()
+
+	c := newTestClient(t, server)
+	resp, err := c.GetSegment(t.Context(), "app-42", "sess-abc", "rec-1", "seg-0")
+
+	require.NoError(t, err)
+	assert.Equal(t, "rec-1", resp.RecordingID)
+
+	require.Len(t, resp.Events, 2)
+	assert.JSONEq(t, `{"type":4,"timestamp":1700000000000,"data":{"source":0}}`, string(resp.Events[0]))
+	assert.JSONEq(t, `{"type":3,"timestamp":"1700000001000","data":{"source":1}}`, string(resp.Events[1]))
+}
+
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(v); err != nil {
