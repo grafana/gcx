@@ -29,6 +29,9 @@ gcx (root)
 │   └── view
 │       └── --output / -o   [yaml|json, default: yaml]
 │
+├── login  [CONTEXT_NAME]    [cmd/gcx/login/command.go]  Log in to a Grafana instance (token, browser OAuth, Basic auth)
+├── signup [CONTEXT_NAME]    [cmd/gcx/login/signup.go]   Create a Grafana Cloud account and save a connection to its first stack
+│
 ├── resources                [cmd/gcx/resources/command.go]
 │   ├── --config             [persistent: inherited from config.Options]
 │   ├── --context            [persistent: inherited from config.Options]
@@ -290,6 +293,9 @@ cmd/gcx/
 │   └── command.go           Root cobra command: logging setup, PersistentPreRun
 ├── config/
 │   └── command.go           config group + all config subcommands + Options type
+├── login/
+│   ├── command.go           login command; runLogin is the pipeline signup shares
+│   └── signup.go            signup command: preflight, recovery commands
 ├── resources/
 │   ├── command.go           resources group (wires configOpts to all subcommands)
 │   ├── get.go               resources get

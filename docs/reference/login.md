@@ -10,14 +10,64 @@ This page walks through the common login paths, the mental model behind them, an
 
 ## Pick your scenario
 
-1. **Setting up Grafana Cloud interactively** → [Grafana Cloud (interactive OAuth)](#grafana-cloud-interactive-oauth)
-2. **Running gcx over SSH, with the browser on another computer** → [Remote host or SSH session](#remote-host-or-ssh-session)
-3. **Setting up on-premises Grafana** → [Service account token](#service-account-token) or [Basic authentication](#basic-authentication)
-4. **Setting up CI, an agent, or any non-interactive environment** → [Environment variables for CI and agents](#environment-variables-for-ci-and-agents)
-5. **Adding Grafana Cloud product API access to an existing context** → [Grafana Cloud product APIs](#grafana-cloud-product-apis)
-6. **Re-authenticating or switching between contexts** → [Re-authenticating and switching contexts](#re-authenticating-and-switching-contexts)
+1. **New to Grafana Cloud, or no stack URL at hand** → [First-time Grafana Cloud login](#first-time-grafana-cloud-login)
+2. **Setting up Grafana Cloud interactively** → [Grafana Cloud (interactive OAuth)](#grafana-cloud-interactive-oauth)
+3. **Running gcx over SSH, with the browser on another computer** → [Remote host or SSH session](#remote-host-or-ssh-session)
+4. **Setting up on-premises Grafana** → [Service account token](#service-account-token) or [Basic authentication](#basic-authentication)
+5. **Setting up CI, an agent, or any non-interactive environment** → [Environment variables for CI and agents](#environment-variables-for-ci-and-agents)
+6. **Adding Grafana Cloud product API access to an existing context** → [Grafana Cloud product APIs](#grafana-cloud-product-apis)
+7. **Re-authenticating or switching between contexts** → [Re-authenticating and switching contexts](#re-authenticating-and-switching-contexts)
 
 ## Procedures
+
+### First-time Grafana Cloud login
+
+- **No Grafana Cloud account yet: run `gcx signup`.** gcx opens the grafana.com
+  sign-up page. Create the account, verify your email (the emailed link may
+  open a new tab), and create your first stack. The browser then goes to the
+  stack's "Connect gcx" page. Approve it, and gcx saves the connection.
+- **An account, but no stack URL at hand: run `gcx login`** and leave the
+  server URL empty. gcx opens the grafana.com stack launcher. Sign in, pick a
+  stack, and approve "Connect gcx". gcx then offers the optional grafana.com
+  management login, as after any interactive Grafana Cloud login.
+
+gcx waits in the terminal while you work in the browser, and prints a
+verification code that the consent page repeats. Press Ctrl-C to stop. If the
+browser loses the page (a refresh, or the tab closed), press Enter and gcx opens
+the launcher again with the same login; once your account and stack exist, the
+launcher takes you straight to the consent page. The Enter shortcut works in a
+local terminal only; over SSH, or where gcx cannot watch the terminal (for
+example on Windows), open the printed URL again instead.
+
+`gcx signup` saves the connection to the context name you pass
+(`gcx signup my-stack`), otherwise to the current context, or to `default` when
+none is set. It only ever saves a new connection. Before it opens the browser,
+it refuses a context that already has a stack or Grafana Cloud entry, a name
+that an existing stack entry uses, and `GRAFANA_SERVER`,
+`GRAFANA_PROXY_ENDPOINT` or `GRAFANA_TLS_*` in the environment. It asks no
+questions and saves no Grafana Cloud management credentials, not even
+`GRAFANA_CLOUD_TOKEN`; run `gcx cloud login` later if you need Cloud
+management features.
+
+If signup fails once the browser step has started, do not run `gcx signup`
+again: it would start a second account. The error shows the `gcx login`
+command that finishes the connection in the same context and config file:
+`gcx login <context> --server <stack URL> --oauth` when the browser step
+finished, or `gcx login <context> --cloud --oauth`, which signs in and lets you
+pick the new stack, when it did not. Over SSH, the remote session hint also
+offers a sign in (`gcx login <context> --cloud --oauth-manual`), because the
+unreachable callback shows up only at the end, after the account exists.
+
+Coding agents can run `gcx signup` too. A person still completes the browser
+steps; in agent mode gcx does not open the browser, and prints the URL for the
+person to open. For an existing account, `gcx login --cloud --oauth` starts the
+stack launcher without prompting when no server is known (no `--server`,
+`GRAFANA_SERVER`, or server in the target context), and saves the connection
+without the optional grafana.com step.
+
+`GRAFANA_CLOUD_OAUTH_URL` moves the launcher and the sign-up page to another
+Grafana Cloud environment, for example `https://grafana-dev.com`, together with
+the Cloud OAuth endpoint. For `gcx login`, `--cloud-api-url` does the same.
 
 ### Grafana Cloud (interactive OAuth)
 

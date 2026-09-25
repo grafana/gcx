@@ -538,6 +538,7 @@
  "gcx resources push": "finite",
  "gcx resources validate": "finite",
  "gcx setup status": "finite",
+ "gcx signup": "interactive",
  "gcx slo definitions delete": "finite",
  "gcx slo definitions get": "finite",
  "gcx slo definitions list": "finite",

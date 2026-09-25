@@ -28,6 +28,9 @@ before choosing a command, provider, or datasource path.
 ## Quick Start
 
 ```sh
+# New to Grafana Cloud? Create a free account; gcx connects to its first stack when you approve
+gcx signup
+
 # For Grafana Cloud instances
 gcx login prod --server https://<your-cloud-instance>.grafana.net  # select oauth, then press Enter to skip cloud token selection
 
@@ -131,6 +134,14 @@ gcx completion fish > ~/.config/fish/completions/gcx.fish  # fish
 ## Authentication
 
 `gcx login` creates or re-authenticates a context. It auto-detects whether the server is Grafana Cloud (`*.grafana.net`) or on-premises and adjusts the prompt accordingly. Pick the path below that matches your setup.
+
+**No Grafana Cloud account yet:**
+
+```bash
+gcx signup
+```
+
+gcx opens the Grafana Cloud sign-up page. After you create the account, verify your email, create your first stack, and approve "Connect gcx", the browser returns to gcx, which saves the connection. For an account you already have but no stack URL at hand, run `gcx login` and leave the server empty, or `gcx login --cloud --oauth` from a script or agent. See [First-time Grafana Cloud login](docs/reference/login.md#first-time-grafana-cloud-login).
 
 **Grafana Cloud, browser-based OAuth (interactive, recommended):**
 

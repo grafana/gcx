@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 
@@ -96,10 +97,27 @@ type Inputs struct {
 	// touches process streams. CLI callers pass cmd.InOrStdin().
 	Reader io.Reader
 	Yes    bool
-	// UseCloudInstanceSelector is only used internally to mark the case in which
-	// a user explicitly left the server empty to be directed to the cloud
-	// instance selector
+	// UseCloudInstanceSelector marks a login without a stack URL: the browser
+	// goes to the Grafana Cloud stack launcher, the user signs in and picks a
+	// stack, and the consent page returns that stack's URL. The CLI sets it for
+	// the "Sign in to Grafana Cloud" choice and for --cloud --oauth without a
+	// server.
 	UseCloudInstanceSelector bool
+	// CloudSignup starts the launcher login on the Grafana Cloud account
+	// creation page, for a person who has no account yet. It implies
+	// UseCloudInstanceSelector. It also skips the optional grafana.com login
+	// step, so the new stack connection is saved as soon as the browser
+	// approves it.
+	CloudSignup bool
+	// Interactive reports that a person at a terminal answers prompts. It
+	// enables waiting aids that read the terminal, such as pressing Enter to
+	// reopen the launcher login page.
+	Interactive bool
+	// ManualRetryCommand, when set, is the command that the remote session
+	// hint tells the user to run for the manual browser flow, in place of the
+	// flow's default. Signup sets it: after the browser step the account may
+	// exist, so the rerun must sign in, not sign up again.
+	ManualRetryCommand string
 
 	// TLS carries client-side TLS settings (mTLS cert/key, custom CA).
 	// When non-nil, these settings are used for target detection, connectivity
@@ -330,6 +348,9 @@ const (
 //nolint:gocyclo // The ordered login state machine is easier to audit when its validation and persistence gates remain explicit.
 func Run(ctx context.Context, opts *Options) (Result, error) {
 	// Step 1: check if the server is set
+	if opts.CloudSignup {
+		opts.UseCloudInstanceSelector = true
+	}
 	if opts.Server == "" && !opts.UseCloudInstanceSelector {
 		return Result{}, &ErrNeedInput{Fields: []string{"server"}}
 	}
@@ -469,10 +490,7 @@ func Run(ctx context.Context, opts *Options) (Result, error) {
 			// token without losing core access in the meantime.
 			warnCloudTokenUnvalidated(opts.Writer, capErr)
 
-		case opts.Yes || agent.IsAgentMode():
-			// Non-interactive callers with --yes get a hard fail — they did not
-			// opt in to "save anyway". The debug prompt is an interactive-only
-			// escape hatch that requires explicit confirmation.
+		case !opts.mayOfferUnvalidatedSave():
 			return Result{}, err
 
 		default:
@@ -707,12 +725,24 @@ func resolveGrafanaAuth(ctx context.Context, opts Options, target Target) (strin
 		if w == nil {
 			w = io.Discard
 		}
-		flow := opts.NewAuthFlow(opts.Server, auth.Options{
+		authOpts := auth.Options{
 			Writer: w,
 			Reader: opts.Reader,
 			Port:   opts.OAuthCallbackPort,
 			Manual: opts.OAuthManual,
-		})
+		}
+		if opts.Server == "" {
+			// No stack yet: the browser starts at the Grafana Cloud launcher.
+			// It lives on the same portal as the Cloud OAuth origin, so the
+			// existing environment override (for example a development portal)
+			// moves both together.
+			oauthURL, _ := ResolveCloudEndpoints(opts)
+			authOpts.LaunchOrigin = cloudLaunchOrigin(w, oauthURL)
+			authOpts.Signup = opts.CloudSignup
+			authOpts.ReopenOnEnter = opts.Interactive
+			authOpts.ManualCommand = opts.ManualRetryCommand
+		}
+		flow := opts.NewAuthFlow(opts.Server, authOpts)
 		result, err := flow.Run(ctx)
 		if err != nil {
 			return "", nil, fmt.Errorf("OAuth flow failed: %w", err)
@@ -779,10 +809,14 @@ func resolveCloudAuth(opts Options, target Target) (*config.CloudEntry, string, 
 		return cloudEntryForToken(opts), slug, nil
 	}
 
-	// Cloud target with no token: skip if Yes or agent mode (D9, D10).
+	// Cloud target with no token: skip if Yes or agent mode (D9, D10). Also
+	// skip on the signup path, where a second browser login would stand between
+	// a new user and their saved stack connection, and on a non-interactive
+	// launcher login (--cloud --oauth from a script): nobody can answer the
+	// optional prompt, and failing on it would throw away the browser login.
 	// Still persist the stack slug when derivable so datasource auto-discovery
 	// works on stacks with multiple signal datasources.
-	if opts.Yes || agent.IsAgentMode() {
+	if opts.Yes || opts.CloudSignup || (opts.UseCloudInstanceSelector && !opts.Interactive) || agent.IsAgentMode() {
 		return nil, slug, nil
 	}
 
@@ -794,6 +828,40 @@ func resolveCloudAuth(opts Options, target Target) (*config.CloudEntry, string, 
 		Optional: true,
 		Hint:     cloudTokenHint(opts.Server),
 	}
+}
+
+// mayOfferUnvalidatedSave reports whether a failed connectivity validation may
+// end in the interactive "save anyway?" question. Non-interactive callers with
+// --yes get a hard fail: they did not opt in to "save anyway", a debug escape
+// hatch that requires explicit confirmation. Signup never asks it: a person who
+// just created an account cannot judge a connection that failed validation, and
+// the stack it names exists either way, so `gcx login` can connect it once it
+// answers.
+func (opts *Options) mayOfferUnvalidatedSave() bool {
+	return !opts.Yes && !opts.CloudSignup && !agent.IsAgentMode()
+}
+
+// cloudLaunchOrigin reduces the resolved Cloud OAuth URL (ResolveCloudEndpoints,
+// the pair the optional Cloud step also uses) to the scheme and host of the
+// Grafana Cloud portal that serves the stack launcher. A URL that names no
+// trusted portal, such as an API proxy, cannot serve the launcher: the result
+// is then "", which selects the production portal as before the override
+// existed, and w says so.
+func cloudLaunchOrigin(w io.Writer, cloudOAuthURL string) string {
+	raw := strings.TrimSpace(cloudOAuthURL)
+	u, err := url.Parse(raw)
+	if err == nil && u.Scheme != "" && u.Host != "" {
+		origin := u.Scheme + "://" + u.Host
+		if auth.ValidateLaunchOrigin(origin) == nil {
+			return origin
+		}
+		fmt.Fprintf(w, "Note: %s is not a Grafana Cloud portal, so the browser login starts at https://grafana.com.\n", u.Host)
+		return ""
+	}
+	if raw != "" {
+		fmt.Fprintln(w, "Note: the Grafana Cloud URL is not a valid URL, so the browser login starts at https://grafana.com.")
+	}
+	return ""
 }
 
 // ResolveCloudEndpoints resolves the OAuth origin and API destination as one
@@ -998,7 +1066,9 @@ func mergeAuthIntoExisting(
 
 // mergeGrafanaAuthIntoStack writes the incoming grafana auth onto the
 // context's stack entry, creating a stack named after the context when it has
-// none.
+// none. The gcx signup preflight (signupTargetConflict in cmd/gcx/login)
+// relies on this naming to refuse a save that would reuse an existing entry;
+// keep the two in step.
 func mergeGrafanaAuthIntoStack(cfg *config.Config, existing *config.Context, src *config.GrafanaConfig, explicitOrgID int, stackSlug string) error {
 	if existing.Stack == "" {
 		if cfg.Stacks[existing.Name] == nil {

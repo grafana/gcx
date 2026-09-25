@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"crypto/subtle"
 	"errors"
 	"fmt"
 	"io"
@@ -15,11 +16,37 @@ import (
 // attempt.
 var errStateMismatch = errors.New("invalid state - possible CSRF attack")
 
+// ErrBrowserCancelled reports that the user pressed Cancel on the consent page.
+// The page redirects with error=user_cancelled, and gcx stops waiting instead
+// of reporting a failed login or asking for another redirect URL.
+var ErrBrowserCancelled = errors.New("login cancelled in the browser")
+
+// callbackBelongsToFlow reports whether a callback carries the state that this
+// flow generated. It is the ownership test: only a callback that passes it may
+// consume the one-shot callback handler. Any local process can reach the
+// loopback listener, and a tab left over from an earlier login attempt lands on
+// the same port when the new attempt picks it again. The comparison is constant
+// time because the state is the value an attacker would be guessing.
+func callbackBelongsToFlow(q url.Values, expectedState string) bool {
+	got := q.Get("state")
+	if got == "" || expectedState == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(got), []byte(expectedState)) == 1
+}
+
 // callbackError pairs the error reported to the caller with the short message
 // rendered on the browser error page. The manual paste path uses only err.
+//
+// retryable marks a rejection that came before the token exchange and spent
+// nothing: the code is missing, or the endpoint to exchange it at is missing
+// or untrusted. The callback server answers it and keeps waiting, as the paste
+// route re-prompts, so a malformed request cannot use up the one-shot handler
+// that the real callback needs.
 type callbackError struct {
-	err  error
-	page string
+	err       error
+	page      string
+	retryable bool
 }
 
 // errExchangeClaimed reports that the other route already exchanged the
@@ -48,10 +75,15 @@ func (g *exchangeGuard) claim() bool {
 
 // checkCallbackBasics runs the three checks that every flow shares: the state
 // must match, the provider must report no error, and an authorization code must
-// be present. It returns that code.
+// be present. It returns that code. A cancellation on the consent page is
+// reported as ErrBrowserCancelled, so every route can stop instead of retrying.
 func checkCallbackBasics(q url.Values, expectedState string) (string, *callbackError) {
-	if q.Get("state") != expectedState {
+	if !callbackBelongsToFlow(q, expectedState) {
 		return "", &callbackError{err: errStateMismatch, page: "Invalid state parameter"}
+	}
+
+	if q.Get("error") == "user_cancelled" {
+		return "", &callbackError{err: ErrBrowserCancelled, page: "Login cancelled"}
 	}
 
 	if errMsg := q.Get("error"); errMsg != "" {
@@ -61,7 +93,7 @@ func checkCallbackBasics(q url.Values, expectedState string) (string, *callbackE
 
 	code := q.Get("code")
 	if code == "" {
-		return "", &callbackError{err: errors.New("no authorization code received"), page: "No authorization code received"}
+		return "", &callbackError{err: errors.New("no authorization code received"), page: "No authorization code received", retryable: true}
 	}
 
 	return code, nil
@@ -82,17 +114,20 @@ const manualPasteTries = 3
 // address bar and pastes it here.
 //
 // A URL that fails a check re-prompts, up to manualPasteTries lines. A read
-// error ends the flow at once, because the next read reports it again.
+// error ends the flow at once, because the next read reports it again. So does
+// a URL that reports a cancellation from the consent page.
 //
-// Pass an empty verification string for a flow that shows no verification code.
+// browserStep is what the user does in the browser before the consent page;
+// pass "" when the URL opens the consent page directly. Pass an empty
+// verification string for a flow that shows no verification code.
 func runManualPaste[T any](
 	ctx context.Context,
 	w io.Writer,
 	r io.Reader,
-	authURL, verification string,
+	authURL, browserStep, verification string,
 	handle paramHandler[T],
 ) (*T, error) {
-	printManualInstructions(w, authURL, verification)
+	printManualInstructions(w, authURL, browserStep, verification)
 
 	// A pasted line is on screen from the first read on, so the notice belongs
 	// on every return below, not on the success return alone. A state mismatch
@@ -126,6 +161,9 @@ func runManualPaste[T any](
 			if cerr == nil {
 				return result, nil
 			}
+			if errors.Is(cerr.err, ErrBrowserCancelled) {
+				return nil, cerr.err
+			}
 			lastErr = pasteRejection(cerr.err)
 		}
 
@@ -138,11 +176,14 @@ func runManualPaste[T any](
 
 // awaitCallbackOrPaste waits for whichever route completes first: the callback
 // server, or a redirect URL that the user pastes. A pasted URL that fails the
-// semantic checks re-prompts, because the callback server still listens.
+// semantic checks re-prompts, because the callback server still listens. In a
+// local session the watcher instead reports that the user asked to open the
+// login page again, and reopen does that; a nil reopen ignores the request.
 func awaitCallbackOrPaste[T any](
 	ctx context.Context,
 	w io.Writer,
 	paste *pasteWatcher,
+	reopen func(),
 	resultCh <-chan *T,
 	errCh <-chan error,
 	handle paramHandler[T],
@@ -163,8 +204,28 @@ func awaitCallbackOrPaste[T any](
 		case err := <-errCh:
 			return nil, err
 		case pasted := <-paste.Input():
+			if pasted.Reopen {
+				// select picks at random among ready cases, so a result that
+				// arrived with the keypress must win: reopening after a
+				// finished login would leave a consent tab that cannot return.
+				select {
+				case result := <-resultCh:
+					return result, nil
+				case err := <-errCh:
+					return nil, err
+				default:
+				}
+				if reopen != nil {
+					reopen()
+				}
+				continue
+			}
 			if pasted.Closed {
-				fmt.Fprintln(w, "\nThe paste route ended. gcx still waits for the browser.")
+				if paste.reopen {
+					fmt.Fprintln(w, "\nThe Enter shortcut stopped. gcx still waits for the browser.")
+				} else {
+					fmt.Fprintln(w, "\nThe paste route ended. gcx still waits for the browser.")
+				}
 				continue
 			}
 			pasteSeen = true
@@ -174,6 +235,9 @@ func awaitCallbackOrPaste[T any](
 			}
 			result, cerr := handle(pasted.Values)
 			if cerr != nil {
+				if errors.Is(cerr.err, ErrBrowserCancelled) {
+					return nil, cerr.err
+				}
 				if errors.Is(cerr.err, errExchangeClaimed) {
 					// The callback server won the race. Its result is already on
 					// its way, so say nothing and let the next round deliver it.
@@ -204,10 +268,10 @@ func handleCallbackParams(ctx context.Context, q url.Values, expectedState, code
 
 	endpoint := q.Get("endpoint")
 	if endpoint == "" {
-		return nil, &callbackError{err: errors.New("no API endpoint received"), page: "No API endpoint received"}
+		return nil, &callbackError{err: errors.New("no API endpoint received"), page: "No API endpoint received", retryable: true}
 	}
 	if err := ValidateEndpointURL(endpoint); err != nil {
-		return nil, &callbackError{err: fmt.Errorf("invalid API endpoint: %w", err), page: "Invalid API endpoint"}
+		return nil, &callbackError{err: fmt.Errorf("invalid API endpoint: %w", err), page: "Invalid API endpoint", retryable: true}
 	}
 
 	if !guard.claim() {

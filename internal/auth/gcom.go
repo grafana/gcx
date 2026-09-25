@@ -14,7 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/grafana/gcx/internal/deeplink"
 	"github.com/grafana/gcx/internal/httputils"
 )
 
@@ -130,7 +129,7 @@ func (f *GCOMFlow) runManual(ctx context.Context) (*GCOMResult, error) {
 	authURL := f.buildAuthURL(redirectURI, state, codeChallenge)
 	// No callback server runs here, so no route can race the paste. A nil guard
 	// always grants the claim.
-	return runManualPaste(ctx, f.writer, f.reader, authURL, "",
+	return runManualPaste(ctx, f.writer, f.reader, authURL, "", "",
 		func(q url.Values) (*GCOMResult, *callbackError) {
 			return f.handleGCOMCallbackParams(ctx, q, state, codeVerifier, redirectURI, nil)
 		})
@@ -172,7 +171,7 @@ func (f *GCOMFlow) runWithCallbackServer(ctx context.Context) (*GCOMResult, erro
 	fmt.Fprintln(f.writer, "Opening browser to authenticate with Grafana Cloud...")
 	fmt.Fprintf(f.writer, "If browser doesn't open, visit:\n  %s\n\n", authURL)
 
-	if opened, err := deeplink.OpenWithStatus(authURL); err != nil {
+	if opened, err := openBrowser(authURL); err != nil {
 		fmt.Fprintln(f.writer, "(Could not open browser automatically)")
 	} else if !opened {
 		fmt.Fprintln(f.writer, "(Browser launch skipped in agent mode — open the URL above manually)")
@@ -187,7 +186,7 @@ func (f *GCOMFlow) runWithCallbackServer(ctx context.Context) (*GCOMResult, erro
 		fmt.Fprintln(f.writer, "Waiting for authentication...")
 	}
 
-	return awaitCallbackOrPaste(ctx, f.writer, paste, resultCh, errCh,
+	return awaitCallbackOrPaste(ctx, f.writer, paste, nil, resultCh, errCh,
 		func(q url.Values) (*GCOMResult, *callbackError) {
 			return f.handleGCOMCallbackParams(ctx, q, state, codeVerifier, redirectURI, guard)
 		})
@@ -210,22 +209,15 @@ func (f *GCOMFlow) buildAuthURL(redirectURI, state, codeChallenge string) string
 }
 
 func (f *GCOMFlow) startGCOMCallbackServer(ctx context.Context, listener net.Listener, expectedState, codeVerifier, redirectURI string, guard *exchangeGuard, resultCh chan<- *GCOMResult, errCh chan<- error) *http.Server {
-	return newCallbackServer(listener, errCh, func(w http.ResponseWriter, r *http.Request) {
+	return newCallbackServer(listener, expectedState, errCh, func(w http.ResponseWriter, r *http.Request) bool {
 		result, cerr := f.handleGCOMCallbackParams(ctx, r.URL.Query(), expectedState, codeVerifier, redirectURI, guard)
 		if cerr != nil {
-			if errors.Is(cerr.err, errExchangeClaimed) {
-				// The paste route won the race, and the login is complete. Do
-				// not send to errCh: that would end a flow that succeeded.
-				renderSuccessPage(w)
-				return
-			}
-			errCh <- cerr.err
-			renderErrorPage(w, cerr.page)
-			return
+			return answerCallbackError(w, f.writer, cerr, errCh)
 		}
 
 		resultCh <- result
 		renderSuccessPage(w)
+		return true
 	})
 }
 
