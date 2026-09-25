@@ -1,18 +1,15 @@
 ---
 name: agento11y-test-starter
 description: >
-  Use early in an AI-agent project — before ship, before real traffic — to build a starter
-  test suite for the agent and run it offline. Reads the agent's own code (system prompt, tools,
-  task), writes a labeled draft suite of test cases (happy/edge/adversarial) grounded in real
-  lines, and recommends how to score each case (the evaluators/judges the offline runner uses).
-  Assesses how runnable the agent is: for an easily-invoked agent it generates a runner stub
-  (run_experiment.py) with two holes to fill and can optionally run it (only with permission, only
-  against the endpoint the developer configured); for agents needing a harness or full runtime it
-  points to the existing eval infra. It runs OFFLINE and never creates tenant-level evaluators,
-  rules, or guards — that is `agento11y-prod-setup`, for a deployed agent with real traffic.
-  Trigger on phrases like "how do I test my agent before shipping", "write test cases for my
-  agent", "set up tests for my agent", "check my agent before prod", "I have no traffic yet, how
-  do I evaluate it", "test my agent offline".
+  Builds a starter offline test suite for an AI agent before shipping or real traffic.
+  Reads the agent's prompt, tools, and task; writes labeled draft happy/edge/adversarial
+  cases grounded in the agent's code and recommends evaluators/judges. Assesses runnability, generates
+  a runner stub where suitable, or points to existing eval infrastructure. Optionally runs
+  with explicit permission against the developer's configured endpoint. Never creates tenant-level
+  evaluators, rules, or guards; use `agento11y-prod-setup` for those on deployed agents with
+  real traffic. Use for "how do I test my agent before shipping", "write test cases for my
+  agent", "set up tests for my agent", "check my agent before prod", "I have no traffic yet,
+  how do I evaluate it", or "test my agent offline".
 ---
 
 # agento11y test starter
