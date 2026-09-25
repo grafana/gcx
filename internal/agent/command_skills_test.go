@@ -23,6 +23,18 @@ func TestSkillsForCommand_NearestAncestor(t *testing.T) {
 	unmapped.AddCommand(list)
 	root.AddCommand(unmapped)
 
+	profiles := &cobra.Command{Use: "profiles"}
+	profileQuery := &cobra.Command{Use: "query"}
+	profiles.AddCommand(profileQuery)
+	root.AddCommand(profiles)
+
+	datasources := &cobra.Command{Use: "datasources"}
+	pyroscope := &cobra.Command{Use: "pyroscope"}
+	pyroscopeQuery := &cobra.Command{Use: "query"}
+	pyroscope.AddCommand(pyroscopeQuery)
+	datasources.AddCommand(pyroscope)
+	root.AddCommand(datasources)
+
 	cases := []struct {
 		name string
 		cmd  *cobra.Command
@@ -30,6 +42,9 @@ func TestSkillsForCommand_NearestAncestor(t *testing.T) {
 	}{
 		{name: "mapped area node", cmd: dashboards, want: []string{"create-dashboard", "manage-dashboards"}},
 		{name: "leaf inherits from area ancestor", cmd: get, want: []string{"create-dashboard", "manage-dashboards"}},
+		{name: "profiles retains general debugging alongside profiling RCA", cmd: profileQuery, want: []string{"performance-rca", "debug-with-grafana"}},
+		{name: "typed Pyroscope overrides general datasource routing", cmd: pyroscopeQuery, want: []string{"performance-rca"}},
+		{name: "other datasources retain general debugging", cmd: datasources, want: []string{"debug-with-grafana"}},
 		{name: "unmapped area", cmd: unmapped, want: nil},
 		{name: "unmapped leaf", cmd: list, want: nil},
 		{name: "root", cmd: root, want: nil},
