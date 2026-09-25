@@ -39,6 +39,8 @@
   "gcx datasources pyroscope exemplars span",
   "gcx datasources tempo diff",
   "gcx frontend apps apply-sourcemap",
+  "gcx frontend apps inspect-replay-segment",
+  "gcx frontend apps inspect-replay-session",
   "gcx instrumentation check",
   "gcx instrumentation clusters apps configure",
   "gcx instrumentation clusters apps remove",

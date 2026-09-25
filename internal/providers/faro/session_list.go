@@ -15,6 +15,7 @@ import (
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/loki"
+	"github.com/grafana/gcx/internal/shared"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -76,7 +77,7 @@ func (o *listReplaySessionsOpts) Validate() error {
 	if o.Limit <= 0 {
 		return errors.New("--limit must be positive")
 	}
-	since, err := parseDuration(o.Since)
+	since, err := shared.ParseDuration(o.Since)
 	if err != nil {
 		return fmt.Errorf("invalid --since value: %w", err)
 	}
@@ -134,7 +135,7 @@ func newListReplaySessionsCommand(loader *providers.ConfigLoader) *cobra.Command
 			escapedAppID := strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(appID)
 			query := fmt.Sprintf(`{app_id="%s"} | logfmt | event_name=%sfaro.session_recording.started%s`, escapedAppID, "`", "`")
 
-			since, err := parseDuration(opts.Since)
+			since, err := shared.ParseDuration(opts.Since)
 			if err != nil {
 				return fmt.Errorf("invalid --since value: %w", err)
 			}
@@ -183,7 +184,7 @@ func ExtractReplaySessionRows(resp *loki.QueryResponse) []ReplaySessionListRow {
 			ts := parseNanoTimestamp(entry.Timestamp)
 			browser := fields["browser_name"]
 			if v := fields["browser_version"]; v != "" {
-				browser += " " + v
+				browser = strings.TrimSpace(browser + " " + v)
 			}
 
 			existing, ok := sessions[sid]
@@ -234,16 +235,4 @@ func parseNanoTimestamp(s string) time.Time {
 		return time.Time{}
 	}
 	return time.Unix(0, ns)
-}
-
-// parseDuration parses durations like "1h", "24h", "7d".
-func parseDuration(s string) (time.Duration, error) {
-	if dayStr, ok := strings.CutSuffix(s, "d"); ok {
-		days, err := strconv.Atoi(dayStr)
-		if err != nil {
-			return 0, err
-		}
-		return time.Duration(days) * 24 * time.Hour, nil
-	}
-	return time.ParseDuration(s)
 }

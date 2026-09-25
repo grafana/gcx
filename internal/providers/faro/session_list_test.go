@@ -61,6 +61,23 @@ func TestExtractReplaySessionRows_QuotedLogfmt(t *testing.T) {
 	assert.Equal(t, "my app", rows[0].AppName)
 }
 
+func TestExtractReplaySessionRows_EmptyBrowserName(t *testing.T) {
+	resp := &loki.QueryResponse{
+		Data: loki.QueryResultData{
+			Result: []loki.StreamEntry{{
+				Values: []loki.LogEntry{{
+					Timestamp: "1779187750000000000",
+					Line:      `session_id=sess-1 browser_version=1.0`,
+				}},
+			}},
+		},
+	}
+
+	rows := faro.ExtractReplaySessionRows(resp)
+	require.Len(t, rows, 1)
+	assert.Equal(t, "1.0", rows[0].Browser)
+}
+
 func TestExtractReplaySessionRows_Empty(t *testing.T) {
 	resp := &loki.QueryResponse{
 		Status: "success",

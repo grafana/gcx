@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/grafana/gcx/internal/format"
@@ -29,10 +31,19 @@ type ReplayRecordingRow struct {
 	Duration          time.Duration `json:"-"`
 	DurationHuman     string        `json:"duration"`
 	Segments          int           `json:"segments"`
+	SegmentIDs        []int64       `json:"segment_ids,omitempty"`
 	InactivityPeriods int           `json:"inactivity_periods"`
+	ManifestAvailable bool          `json:"manifest_available"`
 }
 
-// ReplayRecordingTableCodec renders []ReplayRecordingRow as a table.
+// ReplayRecordingList is the structured result for replay recording inspection.
+type ReplayRecordingList struct {
+	Items      []ReplayRecordingRow `json:"items"`
+	TotalItems int64                `json:"total_items"`
+	HasMore    bool                 `json:"has_more"`
+}
+
+// ReplayRecordingTableCodec renders ReplayRecordingList as a table.
 type ReplayRecordingTableCodec struct{}
 
 // Format returns the output format name.
@@ -40,21 +51,43 @@ func (c *ReplayRecordingTableCodec) Format() format.Format { return FormatText }
 
 // Encode writes replay recording table rows to the writer as a table.
 func (c *ReplayRecordingTableCodec) Encode(w io.Writer, v any) error {
-	rows, ok := v.([]ReplayRecordingRow)
+	result, ok := v.(ReplayRecordingList)
 	if !ok {
-		return fmt.Errorf("invalid data type for replay recording table codec: expected []ReplayRecordingRow, got %T", v)
+		return fmt.Errorf("invalid data type for replay recording table codec: expected ReplayRecordingList, got %T", v)
 	}
 
-	if len(rows) == 0 {
-		_, err := fmt.Fprintln(w, "No replay recordings found.")
-		return err
+	if len(result.Items) == 0 {
+		if _, err := fmt.Fprintln(w, "No replay recordings found."); err != nil {
+			return err
+		}
+		return writeMoreRecordingsHint(w, result)
 	}
 
 	t := style.NewTable("RECORDING ID", "STATUS", "DURATION", "SEGMENTS", "INACTIVITY PERIODS")
-	for _, r := range rows {
-		t.Row(r.RecordingID, r.Status, r.DurationHuman, strconv.Itoa(r.Segments), strconv.Itoa(r.InactivityPeriods))
+	for _, r := range result.Items {
+		segments, inactivity := "n/a", "n/a"
+		if r.ManifestAvailable {
+			segments = strconv.Itoa(r.Segments)
+			inactivity = strconv.Itoa(r.InactivityPeriods)
+		}
+		t.Row(r.RecordingID, r.Status, r.DurationHuman, segments, inactivity)
 	}
-	return t.Render(w)
+	if err := t.Render(w); err != nil {
+		return err
+	}
+	return writeMoreRecordingsHint(w, result)
+}
+
+func writeMoreRecordingsHint(w io.Writer, result ReplayRecordingList) error {
+	if !result.HasMore {
+		return nil
+	}
+	if result.TotalItems > 0 {
+		_, err := fmt.Fprintf(w, "More recordings are available (%d total); increase --limit or use --limit 0 to list all.\n", result.TotalItems)
+		return err
+	}
+	_, err := fmt.Fprintln(w, "More recordings are available; increase --limit or use --limit 0 to list all.")
+	return err
 }
 
 // Decode is not supported for text format.
@@ -114,6 +147,9 @@ func newInspectReplaySessionCommand(loader RESTConfigLoader) *cobra.Command {
   # Inspect replay recordings with JSON output.
   gcx frontend apps inspect-replay-session my-web-app-42 abc-session-123 -o json
 
+  # Include segment IDs so you can inspect a specific segment.
+  gcx frontend apps inspect-replay-session my-web-app-42 abc-session-123 -o json --json items
+
   # Inspect all replay recordings attached to a session ID.
   gcx frontend apps inspect-replay-session my-web-app-42 abc-session-123 --limit 0`,
 		Args: cobra.ExactArgs(2),
@@ -147,21 +183,31 @@ func newInspectReplaySessionCommand(loader RESTConfigLoader) *cobra.Command {
 			g.SetLimit(10)
 
 			for i, item := range resp.Items {
+				duration, durationHuman := formatRecordingDuration(item.StartTS, item.EndTS)
+				rows[i] = ReplayRecordingRow{
+					RecordingID:   item.ID,
+					Status:        item.Status,
+					Duration:      duration,
+					DurationHuman: durationHuman,
+				}
 				g.Go(func() error {
 					manifest, err := client.GetManifest(gctx, appID, sessionID, item.ID)
 					if err != nil {
-						return fmt.Errorf("fetching manifest for recording %s: %w", item.ID, err)
+						if ctx.Err() != nil {
+							return ctx.Err()
+						}
+						logging.FromContext(ctx).Debug("Could not fetch replay recording manifest", "recording_id", item.ID, "error", err)
+						return nil
 					}
 
-					duration, durationHuman := formatRecordingDuration(item.StartTS, item.EndTS)
-					rows[i] = ReplayRecordingRow{
-						RecordingID:       item.ID,
-						Status:            item.Status,
-						Duration:          duration,
-						DurationHuman:     durationHuman,
-						Segments:          len(manifest.Segments),
-						InactivityPeriods: len(manifest.InactivityPeriods),
+					segmentIDs := make([]int64, len(manifest.Segments))
+					for j, segment := range manifest.Segments {
+						segmentIDs[j] = segment.ID
 					}
+					rows[i].ManifestAvailable = true
+					rows[i].Segments = len(manifest.Segments)
+					rows[i].SegmentIDs = segmentIDs
+					rows[i].InactivityPeriods = len(manifest.InactivityPeriods)
 					return nil
 				})
 			}
@@ -169,7 +215,17 @@ func newInspectReplaySessionCommand(loader RESTConfigLoader) *cobra.Command {
 				return err
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), rows)
+			for _, row := range rows {
+				if !row.ManifestAvailable {
+					cmdio.Warning(cmd.ErrOrStderr(), "Manifest unavailable for recording %s; segment and inactivity data are omitted.", row.RecordingID)
+				}
+			}
+
+			return opts.IO.Encode(cmd.OutOrStdout(), ReplayRecordingList{
+				Items:      rows,
+				TotalItems: resp.Page.TotalItems,
+				HasMore:    resp.Page.HasNext,
+			})
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -194,15 +250,25 @@ func formatRecordingDuration(start, end time.Time) (time.Duration, string) {
 // Event type name mappings
 // ---------------------------------------------------------------------------
 
+const (
+	rrwebDOMContentLoaded = iota
+	rrwebLoad
+	rrwebFullSnapshot
+	rrwebIncrementalSnapshot
+	rrwebMeta
+	rrwebCustom
+	rrwebPlugin
+)
+
 //nolint:gochecknoglobals // Static lookup table for rrweb event types.
 var eventTypeNames = map[int]string{
-	0: "DomContentLoaded",
-	1: "Load",
-	2: "FullSnapshot",
-	3: "IncrementalSnapshot",
-	4: "Meta",
-	5: "Custom",
-	6: "Plugin",
+	rrwebDOMContentLoaded:    "DomContentLoaded",
+	rrwebLoad:                "Load",
+	rrwebFullSnapshot:        "FullSnapshot",
+	rrwebIncrementalSnapshot: "IncrementalSnapshot",
+	rrwebMeta:                "Meta",
+	rrwebCustom:              "Custom",
+	rrwebPlugin:              "Plugin",
 }
 
 // EventTypeName returns a human-readable name for an rrweb event type code.
@@ -249,9 +315,13 @@ func (c *SegmentSummaryCodec) Format() format.Format { return FormatText }
 
 // Encode writes event summary rows to the writer as a table.
 func (c *SegmentSummaryCodec) Encode(w io.Writer, v any) error {
+	if result, ok := v.(ReplaySegmentSaveResult); ok {
+		_, err := fmt.Fprintf(w, "Saved %d replay events to %s\n", result.EventCount, result.Path)
+		return err
+	}
 	rows, ok := v.([]EventSummaryRow)
 	if !ok {
-		return fmt.Errorf("invalid data type for segment summary codec: expected []EventSummaryRow, got %T", v)
+		return fmt.Errorf("invalid data type for segment summary codec: expected []EventSummaryRow or ReplaySegmentSaveResult, got %T", v)
 	}
 	if len(rows) == 0 {
 		_, err := fmt.Fprintln(w, "No events in segment.")
@@ -275,7 +345,7 @@ func EventsToSummaryRows(events []RRWebEvent) []EventSummaryRow {
 	for i, e := range events {
 		typeName := EventTypeName(e.Type)
 		source := "-"
-		if e.Type == 3 {
+		if e.Type == rrwebIncrementalSnapshot {
 			var data struct {
 				Source int `json:"source"`
 			}
@@ -303,8 +373,14 @@ type inspectReplaySegmentOpts struct {
 	RecordingID string
 }
 
+// ReplaySegmentSaveResult is the machine-readable confirmation for a saved segment.
+type ReplaySegmentSaveResult struct {
+	Path       string `json:"path"`
+	EventCount int    `json:"event_count"`
+}
+
 func (o *inspectReplaySegmentOpts) setup(flags *pflag.FlagSet) {
-	flags.StringVar(&o.Save, "save", "", "Write full replay event JSON to a file")
+	flags.StringVar(&o.Save, "save", "", "Write replay event JSON to a file; output reports the saved path and event count")
 	flags.StringVar(&o.RecordingID, "recording-id", "", "Replay recording ID to use (defaults to the first recording for the session ID)")
 	o.IO.RegisterCustomCodec("text", &SegmentSummaryCodec{})
 	o.IO.DefaultFormat("text")
@@ -336,6 +412,10 @@ func newInspectReplaySegmentCommand(loader RESTConfigLoader) *cobra.Command {
 			if err := opts.Validate(); err != nil {
 				return err
 			}
+			segmentNumber, err := parseReplaySegmentID(args[2])
+			if err != nil {
+				return err
+			}
 			ctx := cmd.Context()
 			cfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
@@ -348,7 +428,7 @@ func newInspectReplaySegmentCommand(loader RESTConfigLoader) *cobra.Command {
 
 			appID := resolveAppID(args[0])
 			sessionID := args[1]
-			segmentID := args[2]
+			segmentID := strconv.FormatInt(segmentNumber, 10)
 
 			recordingID := opts.RecordingID
 			if recordingID == "" {
@@ -365,10 +445,15 @@ func newInspectReplaySegmentCommand(loader RESTConfigLoader) *cobra.Command {
 
 			// Warn if segment has dependency.
 			manifest, manifestErr := client.GetManifest(ctx, appID, sessionID, recordingID)
-			if manifestErr == nil {
-				segID, _ := strconv.ParseInt(segmentID, 10, 64)
+			if manifestErr != nil {
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
+				logging.FromContext(ctx).Debug("Could not fetch replay recording manifest", "recording_id", recordingID, "error", manifestErr)
+				cmdio.Warning(cmd.ErrOrStderr(), "Manifest unavailable for recording %s; segment dependency information is unavailable.", recordingID)
+			} else {
 				for _, s := range manifest.Segments {
-					if s.ID == segID && s.RequiresSegmentID != nil {
+					if s.ID == segmentNumber && s.RequiresSegmentID != nil {
 						cmdio.Warning(cmd.ErrOrStderr(), "Segment %s depends on segment %d (full snapshot). Events may not be interpretable without it.", segmentID, *s.RequiresSegmentID)
 						break
 					}
@@ -380,11 +465,10 @@ func newInspectReplaySegmentCommand(loader RESTConfigLoader) *cobra.Command {
 				if err != nil {
 					return fmt.Errorf("marshaling events: %w", err)
 				}
-				if err := os.WriteFile(opts.Save, data, 0o600); err != nil {
+				if err := writePrivateReplayFile(opts.Save, data); err != nil {
 					return fmt.Errorf("writing events to %s: %w", opts.Save, err)
 				}
-				cmdio.Success(cmd.ErrOrStderr(), "Saved %d replay events to %s", len(segment.Events), opts.Save)
-				return nil
+				return opts.IO.Encode(cmd.OutOrStdout(), ReplaySegmentSaveResult{Path: opts.Save, EventCount: len(segment.Events)})
 			}
 
 			if opts.IO.OutputFormat != string(FormatText) {
@@ -397,4 +481,39 @@ func newInspectReplaySegmentCommand(loader RESTConfigLoader) *cobra.Command {
 	}
 	opts.setup(cmd.Flags())
 	return cmd
+}
+
+func parseReplaySegmentID(value string) (int64, error) {
+	segmentID, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+	if err != nil || segmentID < 0 {
+		return 0, fmt.Errorf("invalid segment ID %q: expected a non-negative integer", value)
+	}
+	return segmentID, nil
+}
+
+// writePrivateReplayFile replaces a destination with a private temporary file,
+// so replay data stays private even when the destination already exists.
+func writePrivateReplayFile(path string, data []byte) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".gcx-replay-*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+
+	if err := tmp.Chmod(0o600); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		return err
+	}
+	return nil
 }

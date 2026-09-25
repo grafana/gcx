@@ -3,9 +3,11 @@ package faro_test
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"testing"
 	"time"
 
+	cmdio "github.com/grafana/gcx/internal/output"
 	faro "github.com/grafana/gcx/internal/providers/faro"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -20,7 +22,9 @@ func TestReplayRecordingTableCodec_Encode(t *testing.T) {
 			Duration:          2*time.Minute + 30*time.Second,
 			DurationHuman:     (2*time.Minute + 30*time.Second).Truncate(time.Second).String(),
 			Segments:          5,
+			SegmentIDs:        []int64{1, 2, 4, 8, 12},
 			InactivityPeriods: 1,
+			ManifestAvailable: true,
 		},
 		{
 			RecordingID:       "rec-002",
@@ -29,13 +33,14 @@ func TestReplayRecordingTableCodec_Encode(t *testing.T) {
 			DurationHuman:     (45 * time.Second).String(),
 			Segments:          2,
 			InactivityPeriods: 0,
+			ManifestAvailable: true,
 		},
 	}
 
 	codec := &faro.ReplayRecordingTableCodec{}
 	var buf bytes.Buffer
 
-	err := codec.Encode(&buf, rows)
+	err := codec.Encode(&buf, faro.ReplayRecordingList{Items: rows, TotalItems: 3, HasMore: true})
 	require.NoError(t, err)
 
 	output := buf.String()
@@ -57,6 +62,7 @@ func TestReplayRecordingTableCodec_Encode(t *testing.T) {
 	assert.Contains(t, output, "active")
 	assert.Contains(t, output, "2")
 	assert.Contains(t, output, "0")
+	assert.Contains(t, output, "More recordings are available (3 total)")
 
 	// Check format name.
 	assert.Equal(t, faro.FormatText, codec.Format())
@@ -66,7 +72,7 @@ func TestReplayRecordingTableCodec_EncodeEmpty(t *testing.T) {
 	codec := &faro.ReplayRecordingTableCodec{}
 	var buf bytes.Buffer
 
-	err := codec.Encode(&buf, []faro.ReplayRecordingRow{})
+	err := codec.Encode(&buf, faro.ReplayRecordingList{})
 	require.NoError(t, err)
 
 	assert.Contains(t, buf.String(), "No replay recordings found.")
@@ -78,7 +84,18 @@ func TestReplayRecordingTableCodec_EncodeWrongType(t *testing.T) {
 
 	err := codec.Encode(&buf, "not a slice")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "expected []ReplayRecordingRow")
+	assert.Contains(t, err.Error(), "expected ReplayRecordingList")
+}
+
+func TestReplayRecordingTableCodec_ManifestUnavailable(t *testing.T) {
+	codec := &faro.ReplayRecordingTableCodec{}
+	var buf bytes.Buffer
+	err := codec.Encode(&buf, faro.ReplayRecordingList{
+		Items: []faro.ReplayRecordingRow{{RecordingID: "rec-1", Status: "complete", ManifestAvailable: false}},
+	})
+	require.NoError(t, err)
+	assert.Contains(t, buf.String(), "rec-1")
+	assert.Contains(t, buf.String(), "n/a", "missing manifest counts should not look like zero")
 }
 
 func TestReplayRecordingTableCodec_Decode(t *testing.T) {
@@ -225,6 +242,38 @@ func TestSegmentSummaryCodec_EncodeEmpty(t *testing.T) {
 	err := codec.Encode(&buf, []faro.EventSummaryRow{})
 	require.NoError(t, err)
 	assert.Contains(t, buf.String(), "No events")
+}
+
+func TestReplaySegmentSaveResultUsesOutputCodec(t *testing.T) {
+	var textOutput bytes.Buffer
+	codec := &faro.SegmentSummaryCodec{}
+	require.NoError(t, codec.Encode(&textOutput, faro.ReplaySegmentSaveResult{Path: "events.json", EventCount: 12}))
+	assert.Contains(t, textOutput.String(), "Saved 12 replay events to events.json")
+
+	var jsonOutput bytes.Buffer
+	opts := cmdio.Options{}
+	opts.DefaultFormat("json")
+	opts.OutputFormat = "json"
+	opts.ErrWriter = &bytes.Buffer{}
+	require.NoError(t, opts.Encode(&jsonOutput, faro.ReplaySegmentSaveResult{Path: "events.json", EventCount: 12}))
+	assert.JSONEq(t, `{"path":"events.json","event_count":12}`, jsonOutput.String())
+
+	var agentsOutput bytes.Buffer
+	opts.DefaultFormat("agents")
+	opts.OutputFormat = "agents"
+	require.NoError(t, opts.Encode(&agentsOutput, faro.ReplaySegmentSaveResult{Path: "events.json", EventCount: 12}))
+	assert.NotEmpty(t, agentsOutput.String(), "agent mode must receive a structured save receipt on stdout")
+	decoder := json.NewDecoder(bytes.NewReader(agentsOutput.Bytes()))
+	var result map[string]any
+	require.NoError(t, decoder.Decode(&result))
+	var extra any
+	require.ErrorIs(t, decoder.Decode(&extra), io.EOF, "agent output must contain exactly one JSON value")
+}
+
+func TestInspectReplaySegmentRejectsInvalidSegmentIDBeforeLoadingConfig(t *testing.T) {
+	err := executeFaroCommand(t, "apps", "inspect-replay-segment", "my-web-app-42", "sess-1", "invalid")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "expected a non-negative integer")
 }
 
 func TestInspectReplaySegmentCommandRegistered(t *testing.T) {
