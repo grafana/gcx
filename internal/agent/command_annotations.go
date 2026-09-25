@@ -565,7 +565,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx agento11y templates list-versions": {Cost: "small"},
 
 	"gcx agento11y model-rates list":   {Cost: "small"},
-	"gcx agento11y model-rates create": {Cost: "small", Hint: "--provider openai --model gpt-5.5 --price-input 2.00 --price-output 8.00 -o json"},
+	"gcx agento11y model-rates create": {Cost: "small", Hint: "--provider openai --model gpt-5.5 --price-input 2.00 --price-output 8.00"},
 	"gcx agento11y model-rates delete": {Cost: "small", Hint: "--provider openai --model gpt-5.5 --effective-from <ts>"},
 
 	"gcx agento11y saved-conversations list":        {Cost: "small"},
