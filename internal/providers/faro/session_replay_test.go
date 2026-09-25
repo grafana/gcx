@@ -3,13 +3,18 @@ package faro //nolint:testpackage // Exercises the unexported replay command and
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/grafana/gcx/internal/testutils"
 	"github.com/stretchr/testify/assert"
@@ -19,8 +24,11 @@ import (
 func TestSessionsGetReplayBundlesAllRecordingsAsOneFile(t *testing.T) {
 	testutils.SetAgentMode(t, true)
 	var paths []string
+	var pathsMu sync.Mutex
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		pathsMu.Lock()
 		paths = append(paths, r.URL.Path)
+		pathsMu.Unlock()
 		assert.Equal(t, "42", r.URL.Query().Get("app_id"))
 		w.Header().Set("Content-Type", "application/json")
 		switch {
@@ -87,6 +95,73 @@ func TestSessionsGetReplayBundlesAllRecordingsAsOneFile(t *testing.T) {
 		info, statErr := os.Stat(path)
 		require.NoError(t, statErr)
 		assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+	}
+}
+
+func TestSessionsGetReplayFetchesBoundedSegmentsInManifestOrder(t *testing.T) {
+	const segmentCount = 12
+	var active, maxActive, started atomic.Int32
+	barrier := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/sess-1/recordings"):
+			_, _ = w.Write([]byte(`{"items":[{"id":"rec-1"}],"page":{}}`))
+		case strings.HasSuffix(r.URL.Path, "/rec-1/manifest"):
+			segments := make([]ManifestSegment, segmentCount)
+			for i := range segments {
+				segments[i].ID = int64(i)
+			}
+			_ = json.NewEncoder(w).Encode(RecordingManifestResponse{ID: "rec-1", SessionID: "sess-1", Segments: segments})
+		case strings.Contains(r.URL.Path, "/rec-1/segments/"):
+			current := active.Add(1)
+			for {
+				previous := maxActive.Load()
+				if current <= previous || maxActive.CompareAndSwap(previous, current) {
+					break
+				}
+			}
+			defer active.Add(-1)
+			if started.Add(1) == replayFetchConcurrency {
+				close(barrier)
+			}
+			select {
+			case <-barrier:
+			case <-time.After(5 * time.Second):
+				http.Error(w, "segments were not fetched concurrently", http.StatusInternalServerError)
+				return
+			}
+			id, err := strconv.Atoi(r.URL.Path[strings.LastIndexByte(r.URL.Path, '/')+1:])
+			if !assert.NoError(t, err) {
+				return
+			}
+			_ = json.NewEncoder(w).Encode(RecordingSegmentResponse{RecordingID: "rec-1", Events: []RRWebEvent{json.RawMessage(fmt.Sprintf(`{"type":3,"timestamp":%d}`, id))}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	path := filepath.Join(t.TempDir(), "replay.json")
+	cmd := newSessionsGetReplayCommand(&fakeConfigLoader{grafanaURL: server.URL})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetArgs([]string{"sess-1", "--app", "42", "--save", path})
+	require.NoError(t, cmd.Execute())
+	assert.Equal(t, int32(replayFetchConcurrency), maxActive.Load())
+	var bundle struct {
+		Recordings []struct {
+			Events []struct {
+				Timestamp int `json:"timestamp"`
+			} `json:"events"`
+		} `json:"recordings"`
+	}
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(data, &bundle))
+	require.Len(t, bundle.Recordings, 1)
+	require.Len(t, bundle.Recordings[0].Events, segmentCount)
+	for i, event := range bundle.Recordings[0].Events {
+		assert.Equal(t, i, event.Timestamp)
 	}
 }
 

@@ -52,14 +52,14 @@ func TestReplaySessionListMetaKeepsEventAndSessionCountsSeparate(t *testing.T) {
 	meta := replaySessionListMeta(12, true, true, 600, argv)
 	require.NotNil(t, meta)
 	assert.Equal(t, 12, meta.Returned)
-	assert.Zero(t, meta.Cap, "the event cap is not a cap on returned sessions")
+	assert.Zero(t, meta.Cap, "this scan has not reached the Loki event cap")
 	assert.Contains(t, meta.Continue, "--limit 1000")
 
 	meta = replaySessionListMeta(12, true, true, 1000, argv)
 	require.NotNil(t, meta)
 	assert.True(t, meta.Truncated)
 	assert.Equal(t, 12, meta.Returned)
-	assert.Zero(t, meta.Cap)
+	assert.Equal(t, lokiEventsPageSize, meta.Cap, "cap bounds fetched events, while returned counts sessions")
 	assert.Empty(t, meta.Continue, "increasing the Loki scan limit cannot help past the cap")
 	assert.Nil(t, replaySessionListMeta(12, false, true, 1000, argv))
 }

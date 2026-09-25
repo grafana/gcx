@@ -1,6 +1,7 @@
 package faro
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -15,7 +16,56 @@ import (
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"golang.org/x/sync/errgroup"
 )
+
+const replayFetchConcurrency = 10
+
+func fetchReplayManifests(ctx context.Context, client *Client, appID, sessionID string, recordings []RecordingListItem) ([]*RecordingManifestResponse, error) {
+	manifests := make([]*RecordingManifestResponse, len(recordings))
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(replayFetchConcurrency)
+	for i, recording := range recordings {
+		g.Go(func() error {
+			manifest, err := client.GetManifest(gctx, appID, sessionID, recording.ID)
+			if err != nil {
+				return fmt.Errorf("fetching replay manifest %s: %w", recording.ID, err)
+			}
+			if manifest.ID != recording.ID || manifest.SessionID != sessionID {
+				return fmt.Errorf("replay manifest identity does not match session %s recording %s", sessionID, recording.ID)
+			}
+			manifests[i] = manifest
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+	return manifests, nil
+}
+
+func fetchReplaySegmentBatch(ctx context.Context, client *Client, appID, sessionID, recordingID string, metadata []ManifestSegment) ([]*RecordingSegmentResponse, error) {
+	segments := make([]*RecordingSegmentResponse, len(metadata))
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(replayFetchConcurrency)
+	for i, segmentMeta := range metadata {
+		g.Go(func() error {
+			segment, err := client.GetSegment(gctx, appID, sessionID, recordingID, strconv.FormatInt(segmentMeta.ID, 10))
+			if err != nil {
+				return fmt.Errorf("fetching replay segment %d of recording %s: %w", segmentMeta.ID, recordingID, err)
+			}
+			if segment.RecordingID != recordingID {
+				return fmt.Errorf("replay segment %d belongs to a different recording", segmentMeta.ID)
+			}
+			segments[i] = segment
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+	return segments, nil
+}
 
 type sessionsGetReplayOpts struct {
 	App  string
@@ -117,6 +167,11 @@ func sessionReplayURL(host, appID, sessionID string) string {
 // saveSessionReplayEvents bundles every recording, preserving boundaries and
 // manifest segment order. The destination stays intact if any read fails.
 func saveSessionReplayEvents(ctx context.Context, client *Client, appID, sessionID string, recordings []RecordingListItem, path string) (int, error) {
+	manifests, err := fetchReplayManifests(ctx, client, appID, sessionID, recordings)
+	if err != nil {
+		return 0, err
+	}
+
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".gcx-replay-*.tmp")
 	if err != nil {
 		return 0, fmt.Errorf("creating replay file: %w", err)
@@ -126,6 +181,7 @@ func saveSessionReplayEvents(ctx context.Context, client *Client, appID, session
 	if err := tmp.Chmod(0o600); err != nil {
 		return 0, err
 	}
+	out := bufio.NewWriterSize(tmp, 64*1024)
 	sessionJSON, err := json.Marshal(sessionID)
 	if err != nil {
 		return 0, err
@@ -134,21 +190,15 @@ func saveSessionReplayEvents(ctx context.Context, client *Client, appID, session
 	if err != nil {
 		return 0, err
 	}
-	if _, err := fmt.Fprintf(tmp, "{\"app_id\":%s,\"session_id\":%s,\"recordings\":[\n", appJSON, sessionJSON); err != nil {
+	if _, err := fmt.Fprintf(out, "{\"app_id\":%s,\"session_id\":%s,\"recordings\":[\n", appJSON, sessionJSON); err != nil {
 		return 0, err
 	}
-	encoder := json.NewEncoder(tmp)
+	encoder := json.NewEncoder(out)
 	count := 0
 	for i, recording := range recordings {
-		manifest, err := client.GetManifest(ctx, appID, sessionID, recording.ID)
-		if err != nil {
-			return 0, fmt.Errorf("fetching replay manifest %s: %w", recording.ID, err)
-		}
-		if manifest.ID != recording.ID || manifest.SessionID != sessionID {
-			return 0, fmt.Errorf("replay manifest identity does not match session %s recording %s", sessionID, recording.ID)
-		}
+		manifest := manifests[i]
 		if i > 0 {
-			if _, err := io.WriteString(tmp, ",\n"); err != nil {
+			if _, err := io.WriteString(out, ",\n"); err != nil {
 				return 0, err
 			}
 		}
@@ -156,40 +206,43 @@ func saveSessionReplayEvents(ctx context.Context, client *Client, appID, session
 		if err != nil {
 			return 0, err
 		}
-		if _, err := fmt.Fprintf(tmp, "{\"id\":%s,\"events\":[\n", idJSON); err != nil {
+		if _, err := fmt.Fprintf(out, "{\"id\":%s,\"events\":[\n", idJSON); err != nil {
 			return 0, err
 		}
 		recordingCount := 0
-		for _, metadata := range manifest.Segments {
-			segment, err := client.GetSegment(ctx, appID, sessionID, recording.ID, strconv.FormatInt(metadata.ID, 10))
+		for start := 0; start < len(manifest.Segments); start += replayFetchConcurrency {
+			end := min(start+replayFetchConcurrency, len(manifest.Segments))
+			segments, err := fetchReplaySegmentBatch(ctx, client, appID, sessionID, recording.ID, manifest.Segments[start:end])
 			if err != nil {
-				return 0, fmt.Errorf("fetching replay segment %d of recording %s: %w", metadata.ID, recording.ID, err)
+				return 0, err
 			}
-			if segment.RecordingID != recording.ID {
-				return 0, fmt.Errorf("replay segment %d belongs to a different recording", metadata.ID)
-			}
-			for _, event := range segment.Events {
-				if recordingCount > 0 {
-					if _, err := io.WriteString(tmp, ",\n"); err != nil {
-						return 0, err
+			for _, segment := range segments {
+				for _, event := range segment.Events {
+					if recordingCount > 0 {
+						if _, err := io.WriteString(out, ",\n"); err != nil {
+							return 0, err
+						}
 					}
+					if err := encoder.Encode(event); err != nil {
+						return 0, fmt.Errorf("encoding replay event: %w", err)
+					}
+					recordingCount++
+					count++
 				}
-				if err := encoder.Encode(event); err != nil {
-					return 0, fmt.Errorf("encoding replay event: %w", err)
-				}
-				recordingCount++
-				count++
 			}
 		}
-		if _, err := io.WriteString(tmp, "]}"); err != nil {
+		if _, err := io.WriteString(out, "]}"); err != nil {
 			return 0, err
 		}
 	}
 	if count == 0 {
 		return 0, errors.New("replay contains no events")
 	}
-	if _, err := io.WriteString(tmp, "]}\n"); err != nil {
+	if _, err := io.WriteString(out, "]}\n"); err != nil {
 		return 0, err
+	}
+	if err := out.Flush(); err != nil {
+		return 0, fmt.Errorf("flushing replay file: %w", err)
 	}
 	if err := tmp.Close(); err != nil {
 		return 0, err

@@ -122,18 +122,18 @@ func TestReplaySessionListEnvelopeCarriesTruncation(t *testing.T) {
 	result := replaySessionListResult{
 		AppID:    "42",
 		Items:    []replaySessionListRow{{SessionID: "sess-1"}},
-		ListMeta: &cmdio.ListMeta{Truncated: true, Returned: 1},
+		ListMeta: &cmdio.ListMeta{Truncated: true, Returned: 1, Cap: lokiEventsPageSize},
 	}
 	var output bytes.Buffer
 	opts := cmdio.Options{OutputFormat: "json"}
 	err := opts.Encode(&output, result)
 	require.NoError(t, err)
-	assert.JSONEq(t, `{"app_id":"42","items":[{"session_id":"sess-1","browser":"","app_name":"","last_seen":""}],"list_meta":{"truncated":true,"returned":1}}`, output.String())
+	assert.JSONEq(t, `{"app_id":"42","items":[{"session_id":"sess-1","browser":"","app_name":"","last_seen":""}],"list_meta":{"truncated":true,"returned":1,"cap":1000}}`, output.String())
 	opts.JSONFields = []string{"session_id"}
 	output.Reset()
 	err = opts.Encode(&output, result)
 	require.NoError(t, err)
-	assert.JSONEq(t, `{"app_id":"42","items":[{"session_id":"sess-1"}],"list_meta":{"truncated":true,"returned":1}}`, output.String())
+	assert.JSONEq(t, `{"app_id":"42","items":[{"session_id":"sess-1"}],"list_meta":{"truncated":true,"returned":1,"cap":1000}}`, output.String())
 	opts.JSONFields = nil
 	result.ListMeta = nil
 	output.Reset()

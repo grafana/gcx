@@ -73,13 +73,14 @@ type listReplaySessionsOpts struct {
 	Datasource    string
 	Since         string
 	Limit         int
+	datasourceSet bool
 	sinceDuration time.Duration
 }
 
 func parseReplayAppID(name string) (string, error) {
 	appID := resolveAppID(name)
 	if _, err := pinot.FormatSQLInt(appID); err != nil {
-		return "", fmt.Errorf("invalid app id %q: expected a numeric ID or slug-id", name)
+		return "", fmt.Errorf("invalid app id %q: expected a numeric ID or slug-id, e.g. my-web-app-42 or 42 (find it with: gcx frontend apps list)", name)
 	}
 	return appID, nil
 }
@@ -98,6 +99,9 @@ func (o *listReplaySessionsOpts) Validate() error {
 		return err
 	}
 	o.Datasource = strings.TrimSpace(o.Datasource)
+	if o.datasourceSet && o.Datasource == "" {
+		return errors.New("--datasource cannot be empty")
+	}
 	if o.Limit <= 0 {
 		return errors.New("--limit must be positive")
 	}
@@ -113,14 +117,16 @@ func (o *listReplaySessionsOpts) Validate() error {
 }
 
 // --limit bounds replay-start events, which can deduplicate to fewer sessions.
-// The shared ListMeta counts returned sessions, so its Cap must never carry the
-// Loki event cap. A separate hint names that bound when it is reached.
+// ListMeta.Returned counts sessions while ListMeta.Cap names the fetch bound
+// in events. The stderr hint names the unit explicitly when Loki hits its cap.
 func replaySessionListMeta(returned int, atLimit, isLoki bool, limit int, argv []string) *cmdio.ListMeta {
 	if !atLimit {
 		return nil
 	}
 	meta := &cmdio.ListMeta{Truncated: true, Returned: returned}
-	if !isLoki || limit < lokiEventsPageSize {
+	if isLoki && limit >= lokiEventsPageSize {
+		meta.Cap = lokiEventsPageSize
+	} else {
 		nextLimit := 2 * limit
 		if isLoki {
 			nextLimit = min(nextLimit, lokiEventsPageSize)
@@ -146,9 +152,7 @@ func newListReplaySessionsCommand(loader *providers.ConfigLoader) *cobra.Command
   gcx frontend apps list-replay-sessions my-web-app-42 -d P8E80F9AEF21F6940`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if cmd.Flags().Changed("datasource") && strings.TrimSpace(opts.Datasource) == "" {
-				return errors.New("--datasource cannot be empty")
-			}
+			opts.datasourceSet = cmd.Flags().Changed("datasource")
 			if err := opts.Validate(); err != nil {
 				return err
 			}
@@ -202,9 +206,12 @@ func newListReplaySessionsCommand(loader *providers.ConfigLoader) *cobra.Command
 			if err := opts.IO.Encode(cmd.OutOrStdout(), result); err != nil {
 				return err
 			}
-			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), result.ListMeta)
 			if atLimit && isLoki && opts.Limit >= lokiEventsPageSize {
-				cmdio.EmitHint(cmd.ErrOrStderr(), "scanned 1000 replay-start events (gcx Loki safety cap); narrow --since or use Pinot", "")
+				// The shared cap hint assumes Returned and Cap have the same unit.
+				// Here they count sessions and scanned events, respectively.
+				cmdio.EmitHint(cmd.ErrOrStderr(), fmt.Sprintf("scanned %d replay-start events (gcx Loki safety cap); showing %d sessions. Narrow --since or use Pinot", lokiEventsPageSize, len(rows)), "")
+			} else {
+				cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), result.ListMeta)
 			}
 			return nil
 		},
