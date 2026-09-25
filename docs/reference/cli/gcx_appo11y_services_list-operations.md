@@ -53,6 +53,7 @@ gcx appo11y services list-operations <service> [--namespace ns] [flags]
   -h, --help                  help for list-operations
       --jq string             jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string           Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --kg string             Knowledge Graph catalog consumption: auto (annotate rows with what the graph knows, when it's active) or off (never contact the Knowledge Graph). The annotation appears in JSON/YAML/agents output only — table and wide render nothing extra (default "auto")
       --kind string           Span kinds to include. One of: inbound (server+consumer), server, consumer, all, or a comma-separated list of SPAN_KIND_* literals (default "inbound")
       --limit int             Limit the number of operations returned (0 = unlimited; applied after sorting by time-share desc) (default 15)
       --metrics-mode string   Span-metrics family. One of: auto (probes the stack), v3 (traces_span_metrics_*), tempo (traces_spanmetrics_*), or otel (bare calls_total + duration_seconds_bucket) (default "auto")
@@ -67,7 +68,7 @@ gcx appo11y services list-operations <service> [--namespace ns] [flags]
       --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
       --config string               Path to the configuration file to use
       --context string              Name of the context to use (overrides current-context in config)
-      --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.
+      --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Requires -vvv. Do not ship these logs.
       --no-color                    Disable color output
       --no-truncate                 Disable table column truncation (auto-enabled when stdout is piped)
   -v, --verbose count               Verbose mode. Multiple -v options increase the verbosity (maximum: 3).

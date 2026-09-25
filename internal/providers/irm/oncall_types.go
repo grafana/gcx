@@ -119,6 +119,10 @@ type OnCallAPI interface {
 	CreateIntegration(ctx context.Context, i Integration) (*Integration, error)
 	UpdateIntegration(ctx context.Context, id string, i Integration) (*Integration, error)
 	DeleteIntegration(ctx context.Context, id string) error
+	GetIntegrationTemplates(ctx context.Context, id string) (map[string]any, error)
+	UpdateIntegrationTemplates(ctx context.Context, id string, templates map[string]any) (map[string]any, error)
+	StartIntegrationMaintenance(ctx context.Context, id string, mode MaintenanceMode, durationSeconds int) error
+	StopIntegrationMaintenance(ctx context.Context, id string) error
 
 	ListEscalationChains(ctx context.Context) ([]EscalationChain, error)
 	GetEscalationChain(ctx context.Context, id string) (*EscalationChain, error)
@@ -249,6 +253,28 @@ type Integration struct {
 	MaintenanceTill  any    `json:"maintenance_till,omitempty"`
 	Labels           any    `json:"labels,omitempty"`
 	AlertGroupLabels any    `json:"alert_group_labels,omitempty"`
+}
+
+// MaintenanceMode is the wire value of the mode field that
+// StartIntegrationMaintenance sends. The backend encodes the mode as an
+// integer.
+type MaintenanceMode int
+
+const (
+	// MaintenanceModeDebug routes alerts to the author only. Escalation does
+	// not run, and no responder is paged.
+	MaintenanceModeDebug MaintenanceMode = 0
+	// MaintenanceModeMaintenance groups all alerts of the integration into a
+	// single alert group and suppresses escalation. Use it for planned work.
+	MaintenanceModeMaintenance MaintenanceMode = 1
+)
+
+// maintenanceModeNames maps the flag value a caller types to the wire value.
+//
+//nolint:gochecknoglobals // a lookup table, written once at package level
+var maintenanceModeNames = map[string]MaintenanceMode{
+	"debug":       MaintenanceModeDebug,
+	"maintenance": MaintenanceModeMaintenance,
 }
 
 //nolint:recvcheck

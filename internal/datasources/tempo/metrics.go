@@ -97,7 +97,6 @@ open it in your browser after the query succeeds.`,
 			if err != nil {
 				return fmt.Errorf("metrics query failed: %w", err)
 			}
-
 			from := shared.From
 			to := shared.To
 			if from == "" && !req.Start.IsZero() {
@@ -117,13 +116,22 @@ open it in your browser after the query succeeds.`,
 			}, 20)
 			unavailableMsg, failedOpenMsg := dsquery.ExploreMessages("metrics query")
 
-			return dsquery.EncodeAndHandleExplore(cmd, func() error {
+			resultErr := dsquery.EncodeAndHandleExplore(cmd, func() error {
 				return shared.IO.Encode(cmd.OutOrStdout(), resp)
 			}, *share, dsquery.ExploreLink{
 				URL:            exploreURL,
 				UnavailableMsg: unavailableMsg,
 				FailedOpenMsg:  failedOpenMsg,
 			})
+			if resultErr != nil {
+				return resultErr
+			}
+			if shared.ErrorOnEmpty {
+				return dsquery.ErrorOnEmptyWithContext(resp, dsquery.EmptyResultContext{
+					Expr: expr, DatasourceUID: datasourceUID, Start: req.Start, End: req.End,
+				})
+			}
+			return nil
 		},
 	}
 
@@ -133,6 +141,7 @@ open it in your browser after the query succeeds.`,
 	}
 
 	shared.Setup(cmd.Flags(), true)
+	shared.SetupErrorOnEmptyFlag(cmd.Flags())
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.tempo is configured)")
 	cmd.Flags().BoolVar(&instant, "instant", false, "Run an instant query over the selected time range instead of a range query")
 	share.Setup(cmd.Flags(), "executed query")

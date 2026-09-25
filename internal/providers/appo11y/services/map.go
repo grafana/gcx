@@ -30,6 +30,7 @@ type mapOpts struct {
 	Namespace  string
 	Filters    []string
 	GroupBy    []string
+	KG         kgFlags
 }
 
 func (o *mapOpts) setup(flags *pflag.FlagSet) {
@@ -45,6 +46,7 @@ func (o *mapOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&o.Since, "since", defaultRedWindow, "Rate/quantile window applied to service-graph metrics (e.g. 1m, 5m, 1h, 1d) — PromQL duration syntax")
 	flags.StringArrayVar(&o.Filters, "filter", nil, "Scope the map to service-graph edges matching a label matcher, e.g. --filter k8s_cluster_name=prod-us (repeatable). Use to break a multi-cluster/multi-region service down one cluster at a time; the label must exist on the service-graph metrics")
 	flags.StringSliceVar(&o.GroupBy, "group-by", nil, "Split each edge per distinct value of a label, e.g. --group-by k8s_cluster_name (comma-separated or repeatable). The label must exist on the service-graph metrics — note the Tempo service-graph family often omits cluster labels, in which case no edges match")
+	o.KG.register(flags)
 }
 
 func (o *mapOpts) Validate(cmd *cobra.Command) error {
@@ -56,6 +58,9 @@ func (o *mapOpts) Validate(cmd *cobra.Command) error {
 	}
 	if _, err := model.ParseDuration(o.Since); err != nil {
 		return fail.NewCommandUsageError(cmd, fmt.Sprintf("--since %q is not a valid PromQL duration", o.Since), err)
+	}
+	if _, err := o.KG.resolve(); err != nil {
+		return fail.NewCommandUsageError(cmd, "", err)
 	}
 	return nil
 }
@@ -144,6 +149,7 @@ func runMap(loader *providers.ConfigLoader, opts *mapOpts) func(*cobra.Command, 
 			return err
 		}
 		activation.Gate(ctx, cfg, cmd.ErrOrStderr())
+		cat := opts.KG.catalog(cfg)
 
 		datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "prometheus")
 		if err != nil {
@@ -167,6 +173,10 @@ func runMap(loader *providers.ConfigLoader, opts *mapOpts) func(*cobra.Command, 
 		result, err := fetchServiceMap(ctx, client, datasourceUID, namespace, name, opts.Since, matchers, groupBy)
 		if err != nil {
 			return err
+		}
+		if cat != nil {
+			startMs, endMs := windowMs(opts.Since)
+			result.Service.KG = warnKGLookup(cmd.ErrOrStderr(), cat.lookupVerbose(ctx, name, startMs, endMs))
 		}
 
 		notFound := len(result.Callers) == 0 && len(result.Callees) == 0

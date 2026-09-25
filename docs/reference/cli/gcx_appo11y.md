@@ -14,7 +14,7 @@ Manage Grafana App Observability settings
 ```
       --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
       --context string              Name of the context to use (overrides current-context in config)
-      --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.
+      --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Requires -vvv. Do not ship these logs.
       --no-color                    Disable color output
       --no-truncate                 Disable table column truncation (auto-enabled when stdout is piped)
   -v, --verbose count               Verbose mode. Multiple -v options increase the verbosity (maximum: 3).
@@ -23,6 +23,7 @@ Manage Grafana App Observability settings
 ### SEE ALSO
 
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
+* [gcx appo11y operations](gcx_appo11y_operations.md)	 - Rank and inspect operations (span names) across App Observability services
 * [gcx appo11y overrides](gcx_appo11y_overrides.md)	 - Manage App Observability metrics generator overrides.
 * [gcx appo11y services](gcx_appo11y_services.md)	 - Inspect Application Observability services discovered from telemetry
 * [gcx appo11y settings](gcx_appo11y_settings.md)	 - Manage App Observability plugin settings.

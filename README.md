@@ -301,6 +301,9 @@ gcx logs query '{app="nginx"} |= "error"' --since 1h
 gcx traces query '{.cluster="dev-us-central-0"}' --since 1h
 ```
 
+For an empty dashboard or missing application telemetry, follow
+[Diagnose missing telemetry with gcx](docs/guides/diagnose-missing-telemetry.md).
+
 ## Install Agent Skills
 
 gcx ships a portable Agent Skills bundle for setup, dashboard creation and

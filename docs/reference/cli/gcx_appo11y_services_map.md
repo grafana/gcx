@@ -66,6 +66,7 @@ gcx appo11y services map <service> [--namespace ns] [flags]
   -h, --help                 help for map
       --jq string            jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --kg string            Knowledge Graph catalog consumption: auto (annotate rows with what the graph knows, when it's active) or off (never contact the Knowledge Graph). The annotation appears in JSON/YAML/agents output only — table and wide render nothing extra (default "auto")
   -n, --namespace string     Service namespace (only needed when the argument is the bare service name and multiple namespaces are in play)
   -o, --output string        Output format. One of: agents, dot, json, mermaid, table, wide, yaml (default "table")
       --since string         Rate/quantile window applied to service-graph metrics (e.g. 1m, 5m, 1h, 1d) — PromQL duration syntax (default "5m")
@@ -77,7 +78,7 @@ gcx appo11y services map <service> [--namespace ns] [flags]
       --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
       --config string               Path to the configuration file to use
       --context string              Name of the context to use (overrides current-context in config)
-      --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.
+      --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Requires -vvv. Do not ship these logs.
       --no-color                    Disable color output
       --no-truncate                 Disable table column truncation (auto-enabled when stdout is piped)
   -v, --verbose count               Verbose mode. Multiple -v options increase the verbosity (maximum: 3).

@@ -1,5 +1,12 @@
 ## Unreleased
 
+- Label the `--insecure-log-http-payload` dumps `http request dump` and `http response dump`, so you can find them in the debug log. A wire dump holds no word that identifies it, so a search for "body" never matched.
+- Show the OAuth bearer token in the `--insecure-log-http-payload` dump. The dump is now the innermost transport layer, so it shows every header that reaches the wire. Before this change the dump ran before the OAuth transport added the header, and the flag help promised the token. One consequence: the dump now also shows the OAuth token refresh exchange, which carries the refresh token and the rotated token pair.
+- Dump an outgoing request with `httputil.DumpRequestOut`, so `Content-Length` and `Accept-Encoding` appear.
+- Report the reason when a payload dump fails. The error was discarded, which logged an empty line.
+- Correct the recommended verbosity in the `--insecure-log-http-payload` reference and flag help: the dumps log at Debug level, which needs `-vvv`.
+
+- Added experimental Tempo TraceByID V2 params to `gcx traces get` / `gcx datasources tempo get`: `--filter` filters the trace to spans matching a TraceQL spanset expression, with `--keep-hierarchy`, `--match-depth`, and `--ancestor-depth` shaping how much surrounding context is kept; `--prune` (plus `--prune-group-by`, `--prune-min-spans`, `--prune-max-parent-depth`) collapses repeated sibling spans into a single aggregated span. `--prune` is off unless set. Both are aimed at shrinking large traces before `--llm` analysis.
 ## v1.3.1 (2026-09-22)
 
 **Synthetic Monitoring**
@@ -145,7 +152,6 @@
 
 - irm: `gcx irm oncall alert-groups list --limit 0` returns every matching alert group instead of stopping at 1000, and `--limit N` above 1000 is honored (#1157).
 - instrumentation: app and service writes (`clusters apps configure`/`remove`, `services include`/`exclude`/`clear`) no longer fail with `otlp_url is required`.
-
 ## v1.1.0 (2026-08-14)
 
 **Breaking changes**

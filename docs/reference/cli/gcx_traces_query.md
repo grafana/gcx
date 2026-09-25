@@ -34,6 +34,7 @@ gcx traces query [TRACEQL] [flags]
 
 ```
   -d, --datasource string   Datasource UID (required unless datasources.tempo is configured)
+      --error-on-empty      Fail if the query returns no results
       --expr string         Query expression (alternative to positional argument)
       --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                help for query
@@ -54,7 +55,7 @@ gcx traces query [TRACEQL] [flags]
       --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
       --config string               Path to the configuration file to use
       --context string              Name of the context to use (overrides current-context in config)
-      --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.
+      --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Requires -vvv. Do not ship these logs.
       --no-color                    Disable color output
       --no-truncate                 Disable table column truncation (auto-enabled when stdout is piped)
   -v, --verbose count               Verbose mode. Multiple -v options increase the verbosity (maximum: 3).
