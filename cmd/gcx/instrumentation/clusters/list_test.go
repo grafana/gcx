@@ -17,6 +17,13 @@ import (
 //nolint:modernize // boolVal(x) is clearer than new(*bool) + dereference assignment in test data.
 func boolVal(b bool) *bool { return &b }
 
+func TestListCommandRejectsPositionalArgs(t *testing.T) {
+	cmd := newListCommand(nil)
+	cmd.SetArgs([]string{"unexpected"})
+
+	require.Error(t, cmd.ExecuteContext(context.Background()))
+}
+
 func TestRunList(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -221,8 +228,8 @@ func TestRunList_JSONEnvelope_NonEmpty(t *testing.T) {
 	assert.Len(t, itemsSlice, 1)
 }
 
-// TestRunList_JSONFieldSelection_Unknown verifies --json with unknown field
-// returns UnknownFieldSelectionError.
+// TestRunList_JSONFieldSelection_Unknown verifies --json with an unknown field
+// emits an advisory warning and a null-filled field.
 func TestRunList_JSONFieldSelection_Unknown(t *testing.T) {
 	monClient := &fakeMonitoringClient{
 		RunK8sMonitoringFn: func(_ context.Context) ([]instrumentation.ClusterObservedState, error) {
@@ -247,10 +254,10 @@ func TestRunList_JSONFieldSelection_Unknown(t *testing.T) {
 	opts.IO.OutputFormat = "json"
 	opts.IO.JSONFields = []string{"bogus", "name"}
 
-	var buf bytes.Buffer
+	var buf, warnings bytes.Buffer
+	opts.IO.ErrWriter = &warnings
 	err := runList(context.Background(), opts, monClient, pipeClient, instrClient, &buf)
-	require.Error(t, err)
-	var fieldErr cmdio.UnknownFieldSelectionError
-	require.ErrorAs(t, err, &fieldErr)
-	assert.Contains(t, fieldErr.Fields, "bogus")
+	require.NoError(t, err)
+	assert.Contains(t, warnings.String(), "unknown field(s) in --json: bogus")
+	assert.Contains(t, buf.String(), `"bogus": null`)
 }

@@ -202,3 +202,30 @@ func TestCommandsAgentMode_SingleJSONDocument(t *testing.T) {
 		t.Fatal("catalog document missing resource_types field")
 	}
 }
+
+// TestCommandsArrayPathWarningUsesGeneralRecovery drives a real command
+// through field selection. The warning must apply to this command without
+// turning it into a failure or suggesting an unrelated datasource query.
+func TestCommandsArrayPathWarningUsesGeneralRecovery(t *testing.T) {
+	root := buildTestTree()
+	cmd := commands.NewTestCommand(root)
+	var stdout, stderr bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	cmd.SetArgs([]string{"--json", "commands.flags.name"})
+
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if !strings.Contains(stderr.String(), "Use --jq to read a value inside an array") {
+		t.Fatalf("stderr = %q, want general --jq recovery", stderr.String())
+	}
+	if strings.Contains(stderr.String(), "data.result") {
+		t.Fatalf("warning contains an unrelated Prometheus path: %q", stderr.String())
+	}
+	doc := assertSingleJSONValue(t, stdout.String())
+	if value, ok := doc["commands.flags.name"]; !ok || value != nil {
+		t.Fatalf("stdout = %s, want null-filled selected path", stdout.String())
+	}
+}

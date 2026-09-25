@@ -11,7 +11,7 @@ gcx logs adaptive patterns list [flags]
 ```
   -h, --help             help for list
       --jq string        jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string      Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --json string      Comma-separated list of dotted field paths to include in JSON output (e.g. spec.name), or 'list' (or '?') to discover the available paths
   -o, --output string    Output format. One of: agents, json, table, wide, yaml (default "table")
       --segment string   Only include patterns for this segment (ID column from patterns stats, or API map key / selector)
       --top int          Table only: show top N patterns by volume; 0 shows all rows with no rollup (default 10)

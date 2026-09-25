@@ -54,7 +54,7 @@ gcx appo11y operations list [flags]
       --group-by strings      Break each operation out per distinct value of a label, e.g. --group-by k8s_cluster_name (comma-separated or repeatable); the label must exist on the span metrics
   -h, --help                  help for list
       --jq string             jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string           Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --json string           Comma-separated list of dotted field paths to include in JSON output (e.g. spec.name), or 'list' (or '?') to discover the available paths
       --kg string             Knowledge Graph catalog consumption: auto (annotate rows with what the graph knows, when it's active) or off (never contact the Knowledge Graph). The annotation appears in JSON/YAML/agents output only — table and wide render nothing extra (default "auto")
       --kind string           Span kinds to include. One of: inbound (server+consumer), server, consumer, all, or a comma-separated list of SPAN_KIND_* literals (default "inbound")
       --limit int             Return at most N rows fleet-wide, ranked by busy-seconds-per-second desc (must be 1-500; unlike other list commands, 0 is rejected — the unbounded fleet shape is #services x #operations). With --group-by a single operation may occupy more than one row, so N rows can cover fewer than N distinct operations (default 20)

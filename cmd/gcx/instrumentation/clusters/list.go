@@ -34,6 +34,7 @@ func newListCommand(loader fleet.ConfigLoader) *cobra.Command {
 	opts := &listOpts{}
 	cmd := &cobra.Command{
 		Use:   "list",
+		Args:  cobra.NoArgs,
 		Short: "List all clusters with their instrumentation status",
 		Long: `List all clusters with their K8s monitoring configuration and observed status.
 
@@ -66,6 +67,7 @@ GetK8SInstrumentation (up to 10 concurrent requests).`,
 			monClient := &monitoringAdapter{client: client, promHeaders: promHeaders}
 			pipeClient := &pipelineAdapter{client: client}
 
+			opts.IO.ErrWriter = cmd.ErrOrStderr()
 			return runList(ctx, opts, monClient, pipeClient, client, cmd.OutOrStdout())
 		},
 	}

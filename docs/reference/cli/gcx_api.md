@@ -44,7 +44,7 @@ gcx api PATH [flags]
   -H, --header stringArray   Custom headers (repeatable)
   -h, --help                 help for api
       --jq string            jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --json string          Comma-separated list of dotted field paths to include in JSON output (e.g. spec.name), or 'list' (or '?') to discover the available paths
   -X, --method string        HTTP method (default: GET, or POST if -d is set)
   -o, --output string        Output format for JSON responses. One of: agents, json, yaml (default "json")
 ```
