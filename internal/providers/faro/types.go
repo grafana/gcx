@@ -11,10 +11,14 @@ import (
 //
 //nolint:recvcheck // Mixed receivers are intentional for Go generics TypedCRUD compatibility.
 type FaroApp struct {
-	ID                 string `json:"id,omitempty"`
-	Name               string `json:"name"`
-	AppKey             string `json:"appKey,omitempty"`
-	CollectEndpointURL string `json:"collectEndpointURL,omitempty"`
+	// AppType is set at creation; the API ignores changes on update.
+	AppType string `json:"appType,omitempty"`
+	// A nil Runtime leaves the stored runtime unchanged on update.
+	Runtime            *string `json:"runtime,omitempty"`
+	ID                 string  `json:"id,omitempty"`
+	Name               string  `json:"name"`
+	AppKey             string  `json:"appKey,omitempty"`
+	CollectEndpointURL string  `json:"collectEndpointURL,omitempty"`
 	// OTLPIngestEndpointURL is the base endpoint the native mobile SDKs (Android
 	// and iOS OpenTelemetry) send to. The web SDK uses CollectEndpointURL.
 	// The API returns the base URL only — append AppKey to make it usable.
@@ -39,6 +43,8 @@ func (app *FaroApp) SetResourceName(name string) {
 
 // faroAppAPI is the API wire representation with array-based extraLogLabels.
 type faroAppAPI struct {
+	AppType               string           `json:"appType,omitempty"`
+	Runtime               *string          `json:"runtime,omitempty"`
 	ID                    int64            `json:"id,omitempty"`
 	Name                  string           `json:"name"`
 	AppKey                string           `json:"appKey,omitempty"`
@@ -83,6 +89,8 @@ func (app *FaroApp) toAPI() faroAppAPI {
 	// why StripFields keeps them in pulled manifests: they cannot leak one
 	// stack's collector host into another on push.
 	return faroAppAPI{
+		AppType:               app.AppType,
+		Runtime:               app.Runtime,
 		ID:                    id,
 		Name:                  app.Name,
 		AppKey:                app.AppKey,
@@ -105,6 +113,8 @@ func fromAPI(api faroAppAPI) FaroApp {
 		id = strconv.FormatInt(api.ID, 10)
 	}
 	return FaroApp{
+		AppType:               api.AppType,
+		Runtime:               api.Runtime,
 		ID:                    id,
 		Name:                  api.Name,
 		AppKey:                api.AppKey,

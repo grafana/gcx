@@ -309,7 +309,7 @@ func TestFaroMutations_ExplicitOutputOverride(t *testing.T) {
 }
 
 // TestFaroCreate_AdvisoryWarningIsTypedStderrDiagnostic pins the create
-// command's extraLogLabels/settings warning to the typed diagnostic stream:
+// command's settings warning to the typed diagnostic stream:
 // plain "warn:" prose on stderr for humans, a JSONL warning record on stderr
 // in agent mode, and never any of it on stdout.
 func TestFaroCreate_AdvisoryWarningIsTypedStderrDiagnostic(t *testing.T) {
@@ -321,10 +321,10 @@ metadata:
   name: my-app-42
 spec:
   name: my-app
-  extraLogLabels:
-    team: web
+  settings:
+    geolocationEnabled: true
 `
-	const warning = "extraLogLabels and settings are ignored during creation (API limitation); use update to apply them"
+	const warning = "settings are ignored during creation (API limitation)"
 
 	tests := []struct {
 		name      string
@@ -364,4 +364,23 @@ spec:
 			assert.Equal(t, "✔ Created Frontend Observability app \"my-app\" (id=42)\n", stdout)
 		})
 	}
+}
+
+func TestFaroCreate_LabelsDoNotWarn(t *testing.T) {
+	manifest := `apiVersion: faro.ext.grafana.app/v1alpha1
+kind: FaroApp
+metadata:
+  name: my-app-42
+spec:
+  name: my-app
+  extraLogLabels:
+    team: web
+    is_mobile: "true"
+`
+	path := writeTestFile(t, "app.yaml", manifest)
+	_, stderr, err := runFaroCommand(t, func(l *fakeConfigLoader) *cobra.Command {
+		return newCreateCommand(l)
+	}, []string{"-f", path})
+	require.NoError(t, err)
+	assert.Empty(t, stderr)
 }

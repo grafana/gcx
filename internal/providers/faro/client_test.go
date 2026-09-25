@@ -147,7 +147,7 @@ func TestClient_Get(t *testing.T) {
 }
 
 func TestClient_Create(t *testing.T) {
-	t.Run("strips ExtraLogLabels and Settings from request body", func(t *testing.T) {
+	t.Run("preserves ExtraLogLabels and strips Settings from request body", func(t *testing.T) {
 		var capturedBody map[string]any
 		calls := 0
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -181,7 +181,8 @@ func TestClient_Create(t *testing.T) {
 				{URL: "https://example.com"},
 			},
 			ExtraLogLabels: map[string]string{
-				"team": "frontend",
+				"team":      "frontend",
+				"is_mobile": "true",
 			},
 			Settings: &faro.FaroAppSettings{
 				GeolocationEnabled: true,
@@ -192,8 +193,10 @@ func TestClient_Create(t *testing.T) {
 		result, err := c.Create(t.Context(), app)
 		require.NoError(t, err)
 
-		// Verify ExtraLogLabels was stripped from request.
-		assert.Nil(t, capturedBody["extraLogLabels"], "extraLogLabels should be stripped from create request")
+		assert.ElementsMatch(t, []any{
+			map[string]any{"label": "team", "value": "frontend"},
+			map[string]any{"label": "is_mobile", "value": "true"},
+		}, capturedBody["extraLogLabels"])
 		// Verify Settings was stripped from request.
 		assert.Nil(t, capturedBody["settings"], "settings should be stripped from create request")
 

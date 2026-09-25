@@ -123,7 +123,7 @@ and ID (string ↔ int64).
 
 | Quirk | Behavior | Source reference |
 |---|---|---|
-| ExtraLogLabels stripped on create | API returns 409 if included | `faro.go:171` |
+| ExtraLogLabels preserved on create | Current API accepts `{label, value}` entries | `internal/providers/faro/client.go` |
 | Settings stripped on create AND update | API returns 500 if included | `faro.go:173, 219` |
 | Create re-fetches via List | Response missing collectEndpointURL/appKey | `faro.go:189` |
 | Update requires ID in URL and body | API rejects otherwise | `faro.go:215-216` |
