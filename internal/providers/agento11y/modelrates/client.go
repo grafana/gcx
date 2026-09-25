@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 	"net/url"
-	"time"
 
 	"github.com/grafana/gcx/internal/providers/agento11y/agento11yhttp"
 )
@@ -38,11 +37,16 @@ func (c *Client) Set(ctx context.Context, rate *RateWrite) (*Rate, error) {
 
 // Delete removes one rate. It takes the full key including effectiveFrom
 // because a model can carry several rates, one per change, and a delete has to
-// name which. The timestamp comes from List.
-func (c *Client) Delete(ctx context.Context, provider, model string, effectiveFrom time.Time) error {
+// name which.
+//
+// effectiveFrom is sent exactly as List reported it. The caller checks it
+// parses as RFC 3339, but the string itself is what travels: re-serialising a
+// parsed time would drop trailing zeros from the fractional second, and the
+// help promises to accept what List prints.
+func (c *Client) Delete(ctx context.Context, provider, model, effectiveFrom string) error {
 	query := url.Values{}
 	query.Set("provider", provider)
 	query.Set("model", model)
-	query.Set("effective_from", effectiveFrom.UTC().Format(time.RFC3339Nano))
+	query.Set("effective_from", effectiveFrom)
 	return agento11yhttp.DoStatus[any](ctx, c.base, http.MethodDelete, basePath+"?"+query.Encode(), nil, http.StatusOK, http.StatusNoContent)
 }

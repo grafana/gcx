@@ -162,6 +162,7 @@ func newCreateCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &createOpts{}
 	cmd := &cobra.Command{
 		Use:   "create",
+		Args:  cobra.NoArgs,
 		Short: "Record your price for one model, in force from now.",
 		Long: `Record your price for one model, in force from now.
 
@@ -235,6 +236,7 @@ func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &listOpts{}
 	cmd := &cobra.Command{
 		Use:   "list",
+		Args:  cobra.NoArgs,
 		Short: "List the rates you have configured.",
 		Long: `List the rates you have configured.
 
@@ -242,7 +244,7 @@ Superseded rates are listed too. A change records a new rate rather than
 replacing the old one, so a model can appear more than once — the newest
 effective-from is the one in force, and the others are what priced the
 generations that arrived while they applied.`,
-		Example: `  # Everything configured, newest first per model.
+		Example: `  # The rates you have configured, up to --limit (default 50), newest first per model.
   gcx agento11y model-rates list
 
   # With every rate column.
@@ -293,6 +295,7 @@ func newDeleteCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &deleteOpts{}
 	cmd := &cobra.Command{
 		Use:   "delete",
+		Args:  cobra.NoArgs,
 		Short: "Delete one configured rate.",
 		Long: `Delete one configured rate.
 
@@ -316,8 +319,10 @@ What changes is the price applied from now on.`,
 			if provider == "" || model == "" || raw == "" {
 				return errors.New("--provider, --model and --effective-from are all required")
 			}
-			effectiveFrom, err := time.Parse(time.RFC3339Nano, raw)
-			if err != nil {
+			// Checked, not converted: the string list printed is what gets
+			// sent, so the value the help promises to accept is the value
+			// that travels.
+			if _, err := time.Parse(time.RFC3339Nano, raw); err != nil {
 				return fmt.Errorf("--effective-from must be an RFC 3339 timestamp as 'list' reports it: %w", err)
 			}
 			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
@@ -341,7 +346,7 @@ What changes is the price applied from now on.`,
 			return commandutil.RunBatchDelete(cmd.OutOrStdout(), cmd.ErrOrStderr(), &opts.IO,
 				"rate", "Deleted rate %s", "deleting rate %s", []string{target},
 				func(string) error {
-					return client.Delete(cmd.Context(), provider, model, effectiveFrom)
+					return client.Delete(cmd.Context(), provider, model, raw)
 				})
 		},
 	}

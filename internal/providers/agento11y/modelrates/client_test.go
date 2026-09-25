@@ -8,7 +8,6 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"testing"
-	"time"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers/agento11y/agento11yhttp"
@@ -120,11 +119,13 @@ func TestClient_Delete(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 
-	effectiveFrom, err := time.Parse(time.RFC3339Nano, "2026-09-23T09:14:22.481739Z")
-	require.NoError(t, err)
-	require.NoError(t, client.Delete(context.Background(), "openai", "gpt-5.5", effectiveFrom))
+	// Trailing zeros on purpose. Parsing this and re-serialising it with
+	// RFC3339Nano would send ".4817Z" instead, which is the same instant but
+	// not the string list printed — and the --effective-from help promises to
+	// accept what list prints.
+	require.NoError(t, client.Delete(context.Background(), "openai", "gpt-5.5", "2026-09-23T09:14:22.481700Z"))
 
 	assert.Equal(t, "openai", query.Get("provider"))
 	assert.Equal(t, "gpt-5.5", query.Get("model"))
-	assert.Equal(t, "2026-09-23T09:14:22.481739Z", query.Get("effective_from"))
+	assert.Equal(t, "2026-09-23T09:14:22.481700Z", query.Get("effective_from"))
 }

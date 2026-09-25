@@ -3,6 +3,7 @@ package modelrates
 import (
 	"testing"
 
+	"github.com/grafana/gcx/internal/providers"
 	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -155,4 +156,23 @@ func TestPerMillionDistinguishesUnsetFromZero(t *testing.T) {
 	assert.Equal(t, "0", perMillion(new(float64(0))))
 	assert.Equal(t, "2", perMillion(new(float64(2))))
 	assert.Equal(t, "0.5", perMillion(new(float64(0.5))))
+}
+
+// TestLeafCommandsRejectPositionalArgs guards a silent failure rather than a
+// loud one. Every command here is flags-only, and Cobra's default is
+// ArbitraryArgs, so without this a stray word is dropped without a word:
+// `model-rates list openai` listed every rate and answered a different
+// question from the one asked.
+func TestLeafCommandsRejectPositionalArgs(t *testing.T) {
+	group := Commands(&providers.ConfigLoader{})
+	leaves := group.Commands()
+	require.NotEmpty(t, leaves)
+
+	for _, leaf := range leaves {
+		t.Run(leaf.Name(), func(t *testing.T) {
+			require.NotNil(t, leaf.Args, "a flags-only leaf must declare Args")
+			assert.Error(t, leaf.Args(leaf, []string{"openai"}),
+				"a positional argument must be refused, not ignored")
+		})
+	}
 }

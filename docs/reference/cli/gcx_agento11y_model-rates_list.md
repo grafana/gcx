@@ -18,7 +18,7 @@ gcx agento11y model-rates list [flags]
 ### Examples
 
 ```
-  # Everything configured, newest first per model.
+  # The rates you have configured, up to --limit (default 50), newest first per model.
   gcx agento11y model-rates list
 
   # With every rate column.
