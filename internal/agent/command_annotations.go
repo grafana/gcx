@@ -30,6 +30,14 @@ var commandAnnotations = map[string]annotation{
 
 	"gcx api": {Cost: "large", Hint: "Run gcx help-tree --depth 1 to discover dedicated commands. Prefer gcx slo, gcx metrics query, gcx logs query, gcx alert, etc. Reserve gcx api for endpoints without a dedicated command. Example: GET /api/health -o json"},
 
+	"gcx annotations list":        {Cost: "medium", Hint: "--lookback 24h --tags deploy --limit 20 -o json"},
+	"gcx annotations get":         {Cost: "small", Hint: "<id> -o json"},
+	"gcx annotations create":      {Cost: "small", Hint: "-f annotation.json"},
+	"gcx annotations update":      {Cost: "small", Hint: "<id> -f patch.json"},
+	"gcx annotations delete":      {Cost: "small"},
+	"gcx annotations list-tags":   {Cost: "small", Hint: "-o json"},
+	"gcx annotations delete-many": {Cost: "small", Hint: "--dashboard-uid <uid> --panel-id <n>"},
+
 	// assistant
 	"gcx assistant investigations cancel":          {Cost: "small"},
 	"gcx assistant investigations create":          {Cost: "small", Hint: "Use for deep cross-signal root cause analysis. Dispatches specialist agents for metrics, logs, traces, and profiles in parallel — more efficient than chaining individual gcx query commands. Example: --instruction=\"Checkout latency spike after deploy\""},
