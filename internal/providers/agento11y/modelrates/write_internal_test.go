@@ -20,9 +20,11 @@ func newCreateFlags(t *testing.T, args ...string) (*createOpts, *pflag.FlagSet) 
 }
 
 // TestToWriteDistinguishesUnsetFromZero is the property the whole flag layer
-// rests on. A rate nobody mentioned must not be sent, because the server reads
-// an absent rate as "nothing configured for this bucket" and a zero as "this
-// model does not charge for it" — two different statements about a contract.
+// rests on. A rate nobody mentioned must not be sent as zero. Among the base
+// rates the two bill the same, but only a value sent counts toward the server's
+// requirement that a row price something, and only a value sent records that
+// the contract says so. Inside the tier the two are different prices, which
+// TestToWriteSendsATierZeroRatherThanDroppingIt covers.
 func TestToWriteDistinguishesUnsetFromZero(t *testing.T) {
 	opts, flags := newCreateFlags(t,
 		"--provider", "openai", "--model", "gpt-5.5",
@@ -80,6 +82,15 @@ func TestToWriteRejectsIncompleteInput(t *testing.T) {
 			args:   []string{"--provider", "openai", "--model", "gpt-5.5", "--price-input", "2", "--long-context-threshold", "0"},
 			wantIn: "--long-context-threshold is required",
 		},
+		{
+			// A threshold with no tier rate is not "free above the threshold":
+			// every bucket falls back to its base rate, so the tier changes no
+			// price. The server takes it, so refusing it here is the only thing
+			// between a caller and believing they configured something.
+			name:   "a threshold with no tier rate changes nothing",
+			args:   []string{"--provider", "openai", "--model", "gpt-5.5", "--price-input", "2", "--long-context-threshold", "272000"},
+			wantIn: "--long-context-threshold alone changes no price",
+		},
 	}
 
 	for _, tc := range cases {
@@ -113,6 +124,27 @@ func TestToWriteCarriesTheLongContextTier(t *testing.T) {
 	assert.InDelta(t, 4.0, *write.LongContext.InputUSDPerMillion, 0)
 	// A tier rate left unset falls back to this row's own base rate, so it is
 	// absent rather than a copy of it.
+	assert.Nil(t, write.LongContext.OutputUSDPerMillion)
+}
+
+// TestToWriteSendsATierZeroRatherThanDroppingIt is where unset and zero stop
+// being the same bill. A tier rate left unset keeps charging the base rate
+// above the threshold, so a zero the caller typed has to arrive as a zero: drop
+// it and the bucket is billed at the base rate instead of free.
+func TestToWriteSendsATierZeroRatherThanDroppingIt(t *testing.T) {
+	opts, flags := newCreateFlags(t,
+		"--provider", "openai", "--model", "gpt-5.5",
+		"--price-input", "5.00", "--price-output", "30.00",
+		"--long-context-threshold", "272000",
+		"--long-context-price-input", "0",
+	)
+	write, err := opts.toWrite(flags)
+	require.NoError(t, err)
+
+	require.NotNil(t, write.LongContext)
+	require.NotNil(t, write.LongContext.InputUSDPerMillion, "a typed zero must reach the server, not be dropped as empty")
+	assert.InDelta(t, 0.0, *write.LongContext.InputUSDPerMillion, 0)
+	// Left unset, so it keeps charging --price-output above the threshold.
 	assert.Nil(t, write.LongContext.OutputUSDPerMillion)
 }
 

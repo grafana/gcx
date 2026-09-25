@@ -39,6 +39,11 @@ type Rate struct {
 // LongContextRate is the tier billed above its threshold. A rate left unset
 // falls back to the same row's base rate, which is coherent because both
 // numbers come from one contract.
+//
+// So here, unlike the base rates, unset and zero are different prices: unset
+// keeps charging the base rate above the threshold, zero makes that bucket
+// free. A tier carrying only a threshold therefore changes nothing at all
+// rather than pricing the request at nothing.
 type LongContextRate struct {
 	ThresholdInputTokens    int64    `json:"threshold_input_tokens" yaml:"threshold_input_tokens"`
 	InputUSDPerMillion      *float64 `json:"input_usd_per_million,omitempty" yaml:"input_usd_per_million,omitempty"`

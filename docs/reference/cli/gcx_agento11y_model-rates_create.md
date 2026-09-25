@@ -15,6 +15,11 @@ difference is what it records: 0 says your contract prices that bucket at
 nothing, while leaving the flag off says nothing about it at all. At least one
 rate has to be set, and an explicit 0 counts.
 
+The long-context flags do not work that way. They are changes on top of the
+rates above, so a bucket you leave unset there keeps charging its base rate
+above the threshold, and only an explicit 0 makes it free. Omitting
+--long-context-price-input is not the same as setting it to 0.
+
 Generations already recorded keep the price they were given. A later call
 records a new rate rather than overwriting this one.
 
@@ -46,10 +51,10 @@ gcx agento11y model-rates create [flags]
   -h, --help                                   help for create
       --jq string                              jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string                            Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --long-context-price-cache-read float    USD per million cache-read tokens above the threshold
-      --long-context-price-cache-write float   USD per million cache-write tokens above the threshold
-      --long-context-price-input float         USD per million input tokens above the threshold
-      --long-context-price-output float        USD per million output tokens above the threshold
+      --long-context-price-cache-read float    USD per million cache-read tokens above the threshold. Omit to keep --price-cache-read above it; pass 0 to charge nothing
+      --long-context-price-cache-write float   USD per million cache-write tokens above the threshold. Omit to keep --price-cache-write above it; pass 0 to charge nothing
+      --long-context-price-input float         USD per million input tokens above the threshold. Omit to keep --price-input above it; pass 0 to charge nothing
+      --long-context-price-output float        USD per million output tokens above the threshold. Omit to keep --price-output above it; pass 0 to charge nothing
       --long-context-threshold int             Input tokens above which the long-context rates apply
       --model string                           Model the rate applies to, as your telemetry reports it (required)
   -o, --output string                          Output format. One of: agents, json, yaml (default "yaml")

@@ -83,16 +83,17 @@ func (o *createOpts) setup(flags *pflag.FlagSet) {
 	flags.Float64Var(&o.CacheWrite, "price-cache-write", 0, "USD per million tokens written to the prompt cache")
 
 	flags.Int64Var(&o.LongContextThreshold, "long-context-threshold", 0, "Input tokens above which the long-context rates apply")
-	flags.Float64Var(&o.LongContextInput, "long-context-price-input", 0, "USD per million input tokens above the threshold")
-	flags.Float64Var(&o.LongContextOutput, "long-context-price-output", 0, "USD per million output tokens above the threshold")
-	flags.Float64Var(&o.LongContextCacheRead, "long-context-price-cache-read", 0, "USD per million cache-read tokens above the threshold")
-	flags.Float64Var(&o.LongContextCacheWrite, "long-context-price-cache-write", 0, "USD per million cache-write tokens above the threshold")
+	flags.Float64Var(&o.LongContextInput, "long-context-price-input", 0, "USD per million input tokens above the threshold. Omit to keep --price-input above it; pass 0 to charge nothing")
+	flags.Float64Var(&o.LongContextOutput, "long-context-price-output", 0, "USD per million output tokens above the threshold. Omit to keep --price-output above it; pass 0 to charge nothing")
+	flags.Float64Var(&o.LongContextCacheRead, "long-context-price-cache-read", 0, "USD per million cache-read tokens above the threshold. Omit to keep --price-cache-read above it; pass 0 to charge nothing")
+	flags.Float64Var(&o.LongContextCacheWrite, "long-context-price-cache-write", 0, "USD per million cache-write tokens above the threshold. Omit to keep --price-cache-write above it; pass 0 to charge nothing")
 }
 
 // toWrite builds the request from the flags the caller actually set. An unset
-// rate is left out rather than sent as zero, because the two mean different
-// things: zero says the model does not charge for that bucket, and absent says
-// nothing is configured for it.
+// rate is left out rather than sent as zero. For a base rate that changes no
+// bill — both charge nothing — but only a value sent counts toward the server's
+// requirement that a row price something. Inside the tier it changes the bill
+// outright, because there an unset rate keeps the base rate.
 func (o *createOpts) toWrite(flags *pflag.FlagSet) (*RateWrite, error) {
 	provider := strings.TrimSpace(o.Provider)
 	model := strings.TrimSpace(o.Model)
@@ -126,6 +127,16 @@ func (o *createOpts) toWrite(flags *pflag.FlagSet) (*RateWrite, error) {
 	if flags.Changed("long-context-threshold") || tierSet {
 		if o.LongContextThreshold <= 0 {
 			return nil, errors.New("--long-context-threshold is required, and must be positive, to price a long-context tier")
+		}
+		// A threshold on its own prices nothing. Unlike the base rates, an
+		// unset tier rate keeps charging the base rate rather than nothing, so
+		// such a tier is not "free above the threshold" — it changes no price
+		// at all. The server accepts it, which is how someone ends up
+		// believing they configured a long-context price and configured
+		// silence.
+		if !tierSet {
+			return nil, errors.New("--long-context-threshold alone changes no price: also set at least one of " +
+				"--long-context-price-input, --long-context-price-output, --long-context-price-cache-read or --long-context-price-cache-write")
 		}
 		write.LongContext = &LongContextRate{
 			ThresholdInputTokens:    o.LongContextThreshold,
@@ -162,6 +173,11 @@ A bucket you leave unset is not charged, and passing 0 charges the same. The
 difference is what it records: 0 says your contract prices that bucket at
 nothing, while leaving the flag off says nothing about it at all. At least one
 rate has to be set, and an explicit 0 counts.
+
+The long-context flags do not work that way. They are changes on top of the
+rates above, so a bucket you leave unset there keeps charging its base rate
+above the threshold, and only an explicit 0 makes it free. Omitting
+--long-context-price-input is not the same as setting it to 0.
 
 Generations already recorded keep the price they were given. A later call
 records a new rate rather than overwriting this one.`,
