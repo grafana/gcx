@@ -14,7 +14,7 @@ Manage Grafana Agent Observability resources
 ```
       --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
       --context string              Name of the context to use (overrides current-context in config)
-      --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.
+      --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Requires -vvv. Do not ship these logs.
       --no-color                    Disable color output
       --no-truncate                 Disable table column truncation (auto-enabled when stdout is piped)
   -v, --verbose count               Verbose mode. Multiple -v options increase the verbosity (maximum: 3).
@@ -31,6 +31,7 @@ Manage Grafana Agent Observability resources
 * [gcx agento11y generations](gcx_agento11y_generations.md)	 - Inspect individual LLM generations.
 * [gcx agento11y guards](gcx_agento11y_guards.md)	 - Manage synchronous policy guards (hook rules) that evaluate generations on the request path.
 * [gcx agento11y judge](gcx_agento11y_judge.md)	 - List LLM providers and models available for LLM-judge evaluators.
+* [gcx agento11y model-rates](gcx_agento11y_model-rates.md)	 - Configure your own negotiated model prices.
 * [gcx agento11y rules](gcx_agento11y_rules.md)	 - Manage rules that route generations to evaluators.
 * [gcx agento11y saved-conversations](gcx_agento11y_saved-conversations.md)	 - Bookmark live conversations as fixed inputs for evaluation runs.
 * [gcx agento11y templates](gcx_agento11y_templates.md)	 - Browse reusable evaluator blueprints (global and tenant-scoped).
