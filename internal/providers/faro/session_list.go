@@ -5,12 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/grafana/gcx/internal/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
+	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/loki"
@@ -27,6 +29,25 @@ type replaySessionListRow struct {
 	Browser   string `json:"browser"`
 	AppName   string `json:"app_name"`
 	LastSeen  string `json:"last_seen"`
+}
+
+type replaySessionListResult struct {
+	Items    []replaySessionListRow `json:"items" yaml:"items"`
+	ListMeta *cmdio.ListMeta        `json:"list_meta,omitempty" yaml:"list_meta,omitempty"`
+}
+
+type replaySessionTableCodec struct{ table format.Codec }
+
+func (c replaySessionTableCodec) Format() format.Format { return c.table.Format() }
+
+func (c replaySessionTableCodec) Decode(r io.Reader, v any) error { return c.table.Decode(r, v) }
+
+func (c replaySessionTableCodec) Encode(w io.Writer, v any) error {
+	result, ok := v.(replaySessionListResult)
+	if !ok {
+		return fmt.Errorf("replay session table: expected replaySessionListResult, got %T", v)
+	}
+	return c.table.Encode(w, result.Items)
 }
 
 func replaySessionTable() cmdio.Table[replaySessionListRow] {
@@ -63,8 +84,8 @@ func parseReplayAppID(name string) (string, error) {
 func (o *listReplaySessionsOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&o.Datasource, "datasource", "d", "", "Loki or Pinot datasource UID (Loki auto-discovered if omitted)")
 	flags.StringVar(&o.Since, "since", "1h", "How far back to search (e.g., 1h, 24h, 7d)")
-	flags.IntVar(&o.Limit, "limit", 1000, "Maximum replay-start events to scan (Loki caps at 1000; not the number of sessions)")
-	cmdio.RegisterTableAs(&o.IO, replaySessionTable(), cmdio.FormatText)
+	flags.IntVar(&o.Limit, "limit", 1000, "Maximum replay-start events to scan (gcx caps Loki scans at 1000; not the number of sessions)")
+	o.IO.RegisterCustomCodec(cmdio.FormatText, replaySessionTableCodec{table: replaySessionTable().Codec(cmdio.FormatText)})
 	o.IO.DefaultFormat(cmdio.FormatText)
 	o.IO.BindFlags(flags)
 }
@@ -92,7 +113,7 @@ func newListReplaySessionsCommand(loader *providers.ConfigLoader) *cobra.Command
 	cmd := &cobra.Command{
 		Use:   "list-replay-sessions <slug-id>",
 		Short: "List Frontend Observability sessions that have replay recordings.",
-		Long:  "Discovers regular session IDs that have replay recordings by querying Loki or Pinot for faro.session_recording.started events. This does not list all Frontend Observability sessions. The default datasource is Loki; pass a Pinot datasource UID with -d to query Pinot.",
+		Long:  "Discovers regular session IDs that have replay recordings by querying Loki or Pinot for faro.session_recording.started events. This does not list all Frontend Observability sessions. The default datasource is Loki; pass a Pinot datasource UID with -d to query Pinot. JSON output has an items envelope and includes list_meta when the event scan reaches its limit.",
 		Example: `  # List regular session IDs with replay recordings in the last hour.
   gcx frontend apps list-replay-sessions my-web-app-42
 
@@ -154,14 +175,29 @@ func newListReplaySessionsCommand(loader *providers.ConfigLoader) *cobra.Command
 			if err != nil {
 				return err
 			}
-			if atLimit {
-				if opts.Limit >= lokiEventsPageSize && isLoki {
-					cmdio.Warning(cmd.ErrOrStderr(), "Result may be incomplete after scanning %d replay-start events; Loki may clamp larger --limit values. Narrow --since or use Pinot.", lokiEventsPageSize)
-				} else {
-					cmdio.Warning(cmd.ErrOrStderr(), "Result may be incomplete after scanning --limit %d replay-start events; increase --limit and retry.", opts.Limit)
-				}
+			if rows == nil {
+				rows = []replaySessionListRow{}
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), rows)
+			result := replaySessionListResult{Items: rows}
+			if atLimit {
+				meta := &cmdio.ListMeta{Truncated: true, Returned: len(rows)}
+				if isLoki && opts.Limit >= lokiEventsPageSize {
+					meta.Cap = lokiEventsPageSize
+				} else {
+					// --limit bounds replay-start events, which can deduplicate to fewer sessions.
+					nextLimit := 2 * opts.Limit
+					if isLoki {
+						nextLimit = min(nextLimit, lokiEventsPageSize)
+					}
+					meta.Continue = cmdio.BuildListLimitCommand(os.Args, nextLimit)
+				}
+				result.ListMeta = meta
+			}
+			if err := opts.IO.Encode(cmd.OutOrStdout(), result); err != nil {
+				return err
+			}
+			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), result.ListMeta)
+			return nil
 		},
 	}
 	opts.setup(cmd.Flags())

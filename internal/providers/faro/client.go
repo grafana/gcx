@@ -305,12 +305,11 @@ func (c *Client) DeleteSourcemaps(ctx context.Context, appID string, bundleIDs [
 }
 
 // ListRecordings retrieves every recording for a session using pagination.
-func (c *Client) ListRecordings(ctx context.Context, appID, sessionID string) (*SessionRecordingsListResponse, error) {
+func (c *Client) ListRecordings(ctx context.Context, appID, sessionID string) ([]RecordingListItem, error) {
 	log := logging.FromContext(ctx)
 	log.Debug("Listing recordings", "app_id", appID, "session_id", sessionID)
 
 	var allItems []RecordingListItem
-	var lastResp SessionRecordingsListResponse
 	nextPage := ""
 	seenPages := map[string]struct{}{}
 
@@ -345,7 +344,6 @@ func (c *Client) ListRecordings(ctx context.Context, appID, sessionID string) (*
 		}
 
 		allItems = append(allItems, page.Items...)
-		lastResp = page
 
 		if !page.Page.HasNext {
 			break
@@ -356,9 +354,8 @@ func (c *Client) ListRecordings(ctx context.Context, appID, sessionID string) (*
 		nextPage = page.Page.Next
 	}
 
-	lastResp.Items = allItems
 	log.Debug("Listed recordings", "app_id", appID, "session_id", sessionID, "count", len(allItems))
-	return &lastResp, nil
+	return allItems, nil
 }
 
 // GetManifest retrieves the manifest for a recording.

@@ -117,6 +117,45 @@ func TestSessionsGetReplaySegmentFailurePreservesDestination(t *testing.T) {
 	assert.Equal(t, "original", string(contents))
 }
 
+func TestSessionsGetReplayRejectsMismatchedResponseIdentity(t *testing.T) {
+	for _, tt := range []struct {
+		name       string
+		manifestID string
+		segmentID  string
+		wantErr    string
+	}{
+		{name: "manifest", manifestID: "another-recording", segmentID: "rec-1", wantErr: "manifest identity"},
+		{name: "segment", manifestID: "rec-1", segmentID: "another-recording", wantErr: "different recording"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				switch {
+				case strings.HasSuffix(r.URL.Path, "/sess-1/recordings"):
+					_, _ = w.Write([]byte(`{"items":[{"id":"rec-1"}],"page":{}}`))
+				case strings.HasSuffix(r.URL.Path, "/rec-1/manifest"):
+					_ = json.NewEncoder(w).Encode(RecordingManifestResponse{ID: tt.manifestID, SessionID: "sess-1", Segments: []ManifestSegment{{ID: 0}}})
+				case strings.HasSuffix(r.URL.Path, "/rec-1/segments/0"):
+					_ = json.NewEncoder(w).Encode(RecordingSegmentResponse{RecordingID: tt.segmentID, Events: []RRWebEvent{json.RawMessage(`{"type":4}`)}})
+				default:
+					http.NotFound(w, r)
+				}
+			}))
+			t.Cleanup(server.Close)
+			path := filepath.Join(t.TempDir(), "replay.json")
+			require.NoError(t, os.WriteFile(path, []byte("original"), 0o600))
+			cmd := newSessionsGetReplayCommand(&fakeConfigLoader{grafanaURL: server.URL})
+			cmd.SetOut(&bytes.Buffer{})
+			cmd.SetErr(&bytes.Buffer{})
+			cmd.SetArgs([]string{"sess-1", "--app", "42", "--save", path})
+			require.ErrorContains(t, cmd.Execute(), tt.wantErr)
+			contents, err := os.ReadFile(path)
+			require.NoError(t, err)
+			assert.Equal(t, "original", string(contents))
+		})
+	}
+}
+
 func TestSessionsGetReplayValidatesFlagsBeforeIO(t *testing.T) {
 	tests := []struct {
 		args    []string

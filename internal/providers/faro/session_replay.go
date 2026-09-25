@@ -81,28 +81,28 @@ Recording boundaries are preserved because separate recordings can overlap in ti
 				return err
 			}
 			sessionID := strings.TrimSpace(args[0])
-			list, err := client.ListRecordings(ctx, appID, sessionID)
+			recordings, err := client.ListRecordings(ctx, appID, sessionID)
 			if err != nil {
 				return err
 			}
-			if len(list.Items) == 0 {
+			if len(recordings) == 0 {
 				return fmt.Errorf("no replay found for session %s", sessionID)
 			}
-			count, err := saveSessionReplayEvents(ctx, client, appID, sessionID, list.Items, opts.Save)
+			count, err := saveSessionReplayEvents(ctx, client, appID, sessionID, recordings, opts.Save)
 			if err != nil {
 				return err
 			}
 			replayURL := sessionReplayURL(cfg.GrafanaURL, appID, sessionID)
 			receipt := replayArtifactReceipt{
 				ArtifactReceipt: cmdio.NewArtifactReceipt("get-replay", "json"),
-				RecordingCount:  len(list.Items),
+				RecordingCount:  len(recordings),
 				EventCount:      count,
 				ReplayURL:       replayURL,
 			}
 			receipt.Files = append(receipt.Files, cmdio.ArtifactFile{Path: opts.Save, Kind: "session-replay"})
 			receipt.Summary = cmdio.MutationSummary{Succeeded: 1}
 			return cmdio.EmitArtifactResult(cmd.OutOrStdout(), receipt, func(w io.Writer) error {
-				_, err := fmt.Fprintf(w, "Wrote %d events from %d recordings to %s\nReplay: %s\n", count, len(list.Items), opts.Save, replayURL)
+				_, err := fmt.Fprintf(w, "Wrote %d events from %d recordings to %s\nReplay: %s\n", count, len(recordings), opts.Save, replayURL)
 				return err
 			})
 		},
@@ -141,15 +141,7 @@ func saveSessionReplayEvents(ctx context.Context, client *Client, appID, session
 	}
 	encoder := json.NewEncoder(tmp)
 	count := 0
-	seen := make(map[string]struct{}, len(recordings))
 	for i, recording := range recordings {
-		if recording.ID == "" {
-			return 0, errors.New("replay list contains a recording without an ID")
-		}
-		if _, exists := seen[recording.ID]; exists {
-			return 0, fmt.Errorf("replay list repeats recording %s", recording.ID)
-		}
-		seen[recording.ID] = struct{}{}
 		manifest, err := client.GetManifest(ctx, appID, sessionID, recording.ID)
 		if err != nil {
 			return 0, fmt.Errorf("fetching replay manifest %s: %w", recording.ID, err)

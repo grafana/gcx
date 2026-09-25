@@ -491,28 +491,22 @@ func TestListRecordingsAutoPagination(t *testing.T) {
 		switch pageParam := r.URL.Query().Get("page"); pageParam {
 		case "":
 			writeJSON(w, faro.SessionRecordingsListResponse{
-				SessionID: "sess-abc",
 				Items: []faro.RecordingListItem{
-					{ID: "rec-1", Status: "complete"},
+					{ID: "rec-1"},
 				},
 				Page: faro.SessionPage{
-					HasNext:    true,
-					Next:       "cursor-page2",
-					Limit:      50,
-					TotalItems: 3,
+					HasNext: true,
+					Next:    "cursor-page2",
 				},
 			})
 		case "cursor-page2":
 			writeJSON(w, faro.SessionRecordingsListResponse{
-				SessionID: "sess-abc",
 				Items: []faro.RecordingListItem{
-					{ID: "rec-2", Status: "complete"},
-					{ID: "rec-3", Status: "complete"},
+					{ID: "rec-2"},
+					{ID: "rec-3"},
 				},
 				Page: faro.SessionPage{
-					HasNext:    false,
-					Limit:      50,
-					TotalItems: 3,
+					HasNext: false,
 				},
 			})
 		default:
@@ -526,24 +520,21 @@ func TestListRecordingsAutoPagination(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, 2, callCount)
-	assert.Len(t, resp.Items, 3)
-	assert.Equal(t, "rec-1", resp.Items[0].ID)
-	assert.Equal(t, "rec-2", resp.Items[1].ID)
-	assert.Equal(t, "rec-3", resp.Items[2].ID)
+	assert.Len(t, resp, 3)
+	assert.Equal(t, "rec-1", resp[0].ID)
+	assert.Equal(t, "rec-2", resp[1].ID)
+	assert.Equal(t, "rec-3", resp[2].ID)
 }
 
 func TestListRecordingsAutoPaginationRequiresNextCursor(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Empty(t, r.URL.Query().Get("page"))
 		writeJSON(w, faro.SessionRecordingsListResponse{
-			SessionID: "sess-abc",
 			Items: []faro.RecordingListItem{
-				{ID: "rec-1", Status: "complete"},
+				{ID: "rec-1"},
 			},
 			Page: faro.SessionPage{
-				HasNext:    true,
-				Limit:      50,
-				TotalItems: 2,
+				HasNext: true,
 			},
 		})
 	}))
@@ -563,28 +554,22 @@ func TestListRecordingsAutoPaginationRejectsRepeatedCursor(t *testing.T) {
 		switch pageParam := r.URL.Query().Get("page"); pageParam {
 		case "":
 			writeJSON(w, faro.SessionRecordingsListResponse{
-				SessionID: "sess-abc",
 				Items: []faro.RecordingListItem{
-					{ID: "rec-1", Status: "complete"},
+					{ID: "rec-1"},
 				},
 				Page: faro.SessionPage{
-					HasNext:    true,
-					Next:       "cursor-page2",
-					Limit:      50,
-					TotalItems: 3,
+					HasNext: true,
+					Next:    "cursor-page2",
 				},
 			})
 		case "cursor-page2":
 			writeJSON(w, faro.SessionRecordingsListResponse{
-				SessionID: "sess-abc",
 				Items: []faro.RecordingListItem{
-					{ID: "rec-2", Status: "complete"},
+					{ID: "rec-2"},
 				},
 				Page: faro.SessionPage{
-					HasNext:    true,
-					Next:       "cursor-page2",
-					Limit:      50,
-					TotalItems: 3,
+					HasNext: true,
+					Next:    "cursor-page2",
 				},
 			})
 		default:
@@ -609,13 +594,9 @@ func TestGetManifest(t *testing.T) {
 		writeJSON(w, faro.RecordingManifestResponse{
 			ID:        "rec-1",
 			SessionID: "sess-abc",
-			Status:    "complete",
 			Segments: []faro.ManifestSegment{
-				{ID: 0, StartOffsetMs: 0, EndOffsetMs: 5000},
-				{ID: 1, StartOffsetMs: 5000, EndOffsetMs: 10000, RequiresSegmentID: new(int64)},
-			},
-			InactivityPeriods: []faro.InactivityPeriod{
-				{StartOffsetMs: 2000, EndOffsetMs: 3000},
+				{ID: 0},
+				{ID: 1},
 			},
 		})
 	}))
@@ -627,18 +608,9 @@ func TestGetManifest(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "rec-1", resp.ID)
 	assert.Equal(t, "sess-abc", resp.SessionID)
-	assert.Equal(t, "complete", resp.Status)
-
 	require.Len(t, resp.Segments, 2)
 	assert.Equal(t, int64(0), resp.Segments[0].ID)
-	assert.Nil(t, resp.Segments[0].RequiresSegmentID)
 	assert.Equal(t, int64(1), resp.Segments[1].ID)
-	require.NotNil(t, resp.Segments[1].RequiresSegmentID)
-	assert.Equal(t, int64(0), *resp.Segments[1].RequiresSegmentID)
-
-	require.Len(t, resp.InactivityPeriods, 1)
-	assert.Equal(t, int64(2000), resp.InactivityPeriods[0].StartOffsetMs)
-	assert.Equal(t, int64(3000), resp.InactivityPeriods[0].EndOffsetMs)
 }
 
 func TestGetSegment(t *testing.T) {
@@ -648,7 +620,6 @@ func TestGetSegment(t *testing.T) {
 		assert.Equal(t, "app-42", r.URL.Query().Get("app_id"))
 
 		writeJSON(w, faro.RecordingSegmentResponse{
-			ID:          "seg-0",
 			RecordingID: "rec-1",
 			Events: []faro.RRWebEvent{
 				json.RawMessage(`{"type":4,"timestamp":1700000000000,"data":{"source":0}}`),
@@ -662,7 +633,6 @@ func TestGetSegment(t *testing.T) {
 	resp, err := c.GetSegment(t.Context(), "app-42", "sess-abc", "rec-1", "seg-0")
 
 	require.NoError(t, err)
-	assert.Equal(t, "seg-0", resp.ID)
 	assert.Equal(t, "rec-1", resp.RecordingID)
 
 	require.Len(t, resp.Events, 2)

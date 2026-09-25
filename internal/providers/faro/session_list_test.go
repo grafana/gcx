@@ -6,6 +6,7 @@ import (
 
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/query/loki"
+	"github.com/grafana/gcx/internal/testutils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -96,9 +97,9 @@ func TestReplaySessionTable_Encode(t *testing.T) {
 		{SessionID: "sess-1", Browser: "Chrome 136.0", AppName: "my-app", LastSeen: "2026-05-19T10:00:00Z"},
 	}
 
-	codec := replaySessionTable().Codec(cmdio.FormatText)
+	codec := replaySessionTableCodec{table: replaySessionTable().Codec(cmdio.FormatText)}
 	var buf bytes.Buffer
-	err := codec.Encode(&buf, rows)
+	err := codec.Encode(&buf, replaySessionListResult{Items: rows})
 	require.NoError(t, err)
 
 	out := buf.String()
@@ -109,11 +110,29 @@ func TestReplaySessionTable_Encode(t *testing.T) {
 }
 
 func TestReplaySessionTable_EncodeEmpty(t *testing.T) {
-	codec := replaySessionTable().Codec(cmdio.FormatText)
+	codec := replaySessionTableCodec{table: replaySessionTable().Codec(cmdio.FormatText)}
 	var buf bytes.Buffer
-	err := codec.Encode(&buf, []replaySessionListRow{})
+	err := codec.Encode(&buf, replaySessionListResult{Items: []replaySessionListRow{}})
 	require.NoError(t, err)
 	assert.Contains(t, buf.String(), "No session replays")
+}
+
+func TestReplaySessionListEnvelopeCarriesTruncation(t *testing.T) {
+	testutils.SetAgentMode(t, false)
+	result := replaySessionListResult{
+		Items:    []replaySessionListRow{{SessionID: "sess-1"}},
+		ListMeta: &cmdio.ListMeta{Truncated: true, Returned: 1, Cap: lokiEventsPageSize},
+	}
+	var output bytes.Buffer
+	opts := cmdio.Options{OutputFormat: "json"}
+	err := opts.Encode(&output, result)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"items":[{"session_id":"sess-1","browser":"","app_name":"","last_seen":""}],"list_meta":{"truncated":true,"returned":1,"cap":1000}}`, output.String())
+	result.ListMeta = nil
+	output.Reset()
+	err = opts.Encode(&output, result)
+	require.NoError(t, err)
+	assert.NotContains(t, output.String(), "list_meta")
 }
 
 func TestListReplaySessionsCommandRegistered(t *testing.T) {

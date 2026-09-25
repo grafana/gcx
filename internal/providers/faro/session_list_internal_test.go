@@ -1,11 +1,17 @@
 package faro
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 
+	"github.com/grafana/gcx/internal/config"
 	querysql "github.com/grafana/gcx/internal/query/sql"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"k8s.io/client-go/rest"
 )
 
 func TestLokiReplayDiscoveryQueryUsesIndexedEventFilter(t *testing.T) {
@@ -18,9 +24,27 @@ func TestLokiReplayDiscoveryQueryUsesIndexedEventFilter(t *testing.T) {
 }
 
 func TestLokiReplayScanHonorsEffectiveCap(t *testing.T) {
-	t.Parallel()
-	assert.Equal(t, lokiEventsPageSize, min(5000, lokiEventsPageSize))
-	assert.Equal(t, 30, min(30, lokiEventsPageSize))
+	var maxLines []float64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Decode only maxLines; the other query fields are intentionally ignored.
+		var body struct {
+			Queries []struct {
+				MaxLines float64 `json:"maxLines"`
+			} `json:"queries"`
+		}
+		if assert.NoError(t, json.NewDecoder(r.Body).Decode(&body)) && assert.Len(t, body.Queries, 1) {
+			maxLines = append(maxLines, body.Queries[0].MaxLines)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"results":{"A":{"frames":[]}}}`))
+	}))
+	t.Cleanup(server.Close)
+	cfg := config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}, Namespace: "default"}
+	for _, limit := range []int{5000, 30} {
+		_, _, err := queryLokiReplaySessions(t.Context(), cfg, "loki-uid", "42", time.Unix(1, 0), time.Unix(2, 0), limit)
+		require.NoError(t, err)
+	}
+	assert.Equal(t, []float64{1000, 30}, maxLines)
 }
 
 func TestPinotReplayStartsQueryUsesSessionFetcherTable(t *testing.T) {
