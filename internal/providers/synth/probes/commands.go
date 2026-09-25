@@ -197,7 +197,7 @@ func newCreateCommand(loader smcfg.Loader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			client, err := NewClient(restCfg, uid, loader)
+			client, err := NewClient(ctx, restCfg, uid, loader)
 			if err != nil {
 				return err
 			}
@@ -457,7 +457,7 @@ func newResetTokenCommand(loader smcfg.Loader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			client, err := NewClient(restCfg, uid, loader)
+			client, err := NewClient(ctx, restCfg, uid, loader)
 			if err != nil {
 				return err
 			}

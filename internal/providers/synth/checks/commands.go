@@ -665,7 +665,7 @@ func existingSensitivity(ctx context.Context, loader smcfg.Loader, checkID int64
 	if err != nil {
 		return fallback
 	}
-	client, err := NewClient(restCfg, uid, loader)
+	client, err := NewClient(ctx, restCfg, uid, loader)
 	if err != nil {
 		return fallback
 	}
@@ -808,7 +808,7 @@ executions. See ` + docs.SyntheticMonitoringInvoice + `.`,
 			if err != nil {
 				return err
 			}
-			client, err := NewClient(smRestCfg, smDSUID, loader)
+			client, err := NewClient(ctx, smRestCfg, smDSUID, loader)
 			if err != nil {
 				return err
 			}

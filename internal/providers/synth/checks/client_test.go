@@ -9,6 +9,7 @@ import (
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers/synth/checks"
+	"github.com/grafana/gcx/pkg/gfc/sm"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/client-go/rest"
@@ -26,7 +27,7 @@ func proxyPath(smPath string) string {
 func proxyClient(t *testing.T, srv *httptest.Server) *checks.Client {
 	t.Helper()
 	cfg := config.NamespacedRESTConfig{Config: rest.Config{Host: srv.URL}}
-	client, err := checks.NewClient(cfg, testDSUID, nil)
+	client, err := checks.NewClient(context.Background(), cfg, testDSUID, nil)
 	require.NoError(t, err)
 	return client
 }
@@ -124,7 +125,7 @@ func TestClient_Get(t *testing.T) {
 				w.WriteHeader(http.StatusNotFound)
 			},
 			wantErr: true,
-			errIs:   checks.ErrNotFound,
+			errIs:   sm.ErrCheckNotFound,
 		},
 		{
 			name: "server error",
