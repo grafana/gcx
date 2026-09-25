@@ -538,18 +538,28 @@ many contexts, one session's `gcx config use-context` silently retargets every
 later command in every other session, including commands run by coding agents.
 
 An invocation satisfies the requirement with `--context <name>` (root's
-persistent flag or a subtree-bound one) or a `GRAFANA_SERVER` override, both of
-which name the destination for that invocation alone. Anything else fails with
-exit code 2.
+persistent flag or a subtree-bound one), which names the destination for that
+invocation alone. Anything else fails with exit code 2.
+
+A `GRAFANA_SERVER` override does not satisfy it. The override is applied onto
+the context that `current-context` selects, which still supplies the token,
+`org-id`, `stack-id`, TLS, provider config, and — for `gcx cloud` — the cloud
+entry, so it does not stop a retarget. The one exception is `gcx login`, which
+derives its target context from `CONTEXT_NAME`, `--server`, or `GRAFANA_SERVER`
+before it falls back to `current-context`; any of those satisfies the guard
+there. `gcx cloud login` has no such argument and needs `--context`.
 
 The check lives in `EnforceContextSelection` (`cmd/gcx/root/contextguard.go`) and
 runs pre-dispatch from `main()`, not in root's `PersistentPreRun`. Cobra runs
 only the closest `PersistentPreRun` in the chain, and several provider groups
 define their own and chain back to root's by hand, so a guard in that hook would
 be skipped by any subtree that forgot to chain — a fail-open outcome. Commands
-are enforced by default; `contextExemptRoutes` lists the routes that are not
-(local metadata, shell plumbing, config-file editing, and the bootstrapping
-`login` commands, which name their own destination).
+are enforced by default. `internal/agent/context_policy.go` lists the
+`cmd.CommandPath()` prefixes that are not (local metadata, shell plumbing, and
+config-file editing), using the same matcher as the Cloud-only availability
+registry. Commands whose reach depends on a flag are decided in the guard:
+`gcx commands` only with `--validate`, and `gcx instrumentation check` only
+with `--fix-plan=assistant`.
 
 ---
 
@@ -955,23 +965,31 @@ affect command behavior but are not tied to any specific Grafana context.
 ```go
 // internal/config/cli_options.go
 type CLIOptions struct {
-    AutoApprove      bool   `env:"GCX_AUTO_APPROVE"`
+    AutoApprove           bool   `env:"GCX_AUTO_APPROVE"`
     DisableUpdateNotifier string `env:"GCX_NO_UPDATE_NOTIFIER"`
-    Keychain         string `env:"GCX_KEYCHAIN"`
-    RequireContext   string `env:"GCX_REQUIRE_CONTEXT"`
+    Keychain              string `env:"GCX_KEYCHAIN"`
+    RequireContext        string `env:"GCX_REQUIRE_CONTEXT"`
 }
 
 func LoadCLIOptions() (CLIOptions, error)
 ```
 
-`LoadCLIOptions()` parses these tags into a `CLIOptions` struct. Unlike context
-overrides, they are loaded independently — they do not read from the config file
-or change any context.
+`LoadCLIOptions()` uses `caarlos0/env/v11` (the same library used for
+context-scoped env vars) to parse global environment variables into a
+`CLIOptions` struct. Unlike context overrides, these options are loaded
+independently — they do not read from the config file or affect any context.
+
+**`AutoApprove` usage:** The `delete` command calls `LoadCLIOptions()` in its
+`RunE` and, when `AutoApprove` is true (or `--yes`/`-y` is passed),
+automatically enables the `--force` flag for non-interactive operation in CI/CD
+pipelines.
 
 | Env Var | CLI Flag | Effect |
 |---------|----------|--------|
 | `GCX_AUTO_APPROVE` | `--yes` / `-y` | Auto-enables `--force` on delete |
-| `GCX_REQUIRE_CONTEXT` | (none) | Require `--context` or `GRAFANA_SERVER` on commands that reach Grafana; see [Strict Context Mode](#strict-context-mode) |
+| `GCX_NO_UPDATE_NOTIFIER` | (none) | Disables the periodic gcx/skill update notifier when non-empty |
+| `GCX_KEYCHAIN` | (none) | `off` stores credentials in plaintext in the config file instead of the OS keychain |
+| `GCX_REQUIRE_CONTEXT` | (none) | Require `--context` on commands that reach Grafana; see [Strict Context Mode](#strict-context-mode) |
 
 See [environment-variables.md](../design/environment-variables.md) for the full environment
 variable reference.

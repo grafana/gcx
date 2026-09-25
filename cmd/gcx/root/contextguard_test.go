@@ -6,7 +6,6 @@ import (
 
 	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/cmd/gcx/root"
-	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -72,6 +71,10 @@ func TestEnforceContextSelection_RequiresContext(t *testing.T) {
 		{name: "cloud stacks list", args: []string{"cloud", "stacks", "list"}},
 		{name: "dev import", args: []string{"dev", "import", "dashboards"}},
 		{name: "empty context value", args: []string{"--context=", "slo", "definitions", "list"}},
+		{name: "resources list-examples uses server discovery", args: []string{"resources", "list-examples"}},
+		{name: "commands --validate reaches the instance", args: []string{"commands", "--validate"}},
+		{name: "bare login re-authenticates current-context", args: []string{"login"}},
+		{name: "cloud login writes to current-context", args: []string{"cloud", "login"}},
 	}
 
 	for _, tc := range tests {
@@ -119,9 +122,25 @@ func TestEnforceContextSelection_SatisfiedByExplicitTarget(t *testing.T) {
 			args: []string{"--context", "prospect-a", "config", "check"},
 		},
 		{
-			name:          "server override names the destination",
-			args:          []string{"slo", "definitions", "list"},
+			name: "login names its context",
+			args: []string{"login", "prospect-a"},
+		},
+		{
+			name: "login derives its context from --server",
+			args: []string{"login", "--server", "https://prospect-a.grafana.net"},
+		},
+		{
+			name:          "login derives its context from GRAFANA_SERVER",
+			args:          []string{"login"},
 			grafanaServer: "https://prospect-a.grafana.net",
+		},
+		{
+			name: "cloud login with a context",
+			args: []string{"cloud", "login", "--context", "prospect-a"},
+		},
+		{
+			name: "commands --validate with a context",
+			args: []string{"commands", "--validate", "--context", "prospect-a"},
 		},
 	}
 
@@ -155,11 +174,8 @@ func TestEnforceContextSelection_ExemptCommands(t *testing.T) {
 		{name: "skills installer", args: []string{"agent", "skills", "list"}},
 		{name: "config view", args: []string{"config", "view"}},
 		{name: "config use-context", args: []string{"config", "use-context", "prospect-a"}},
-		{name: "login names its own destination", args: []string{"login", "prospect-a"}},
-		{name: "cloud login", args: []string{"cloud", "login"}},
 		{name: "local lint", args: []string{"dev", "lint", "run", "./dashboards"}},
 		{name: "scaffold", args: []string{"dev", "scaffold", "myproject"}},
-		{name: "resources list-examples", args: []string{"resources", "list-examples"}},
 		{name: "local instrumentation check", args: []string{"instrumentation", "check"}},
 		{name: "instrumentation explain", args: []string{"instrumentation", "explain", "some-id"}},
 	}
@@ -226,23 +242,19 @@ func TestEnforceContextSelection_CoversSubtreesWithOwnPreRun(t *testing.T) {
 	}
 }
 
-// The exempt list must keep naming real commands, so a rename or removal shows
-// up here rather than silently widening or narrowing what the guard covers.
-func TestContextExemptRoutesExist(t *testing.T) {
-	rootCmd := root.Command(guardTestVersion)
+// GRAFANA_SERVER is overlaid onto the current context, which still supplies
+// the credentials and the rest of the target, so it must not satisfy the guard.
+func TestEnforceContextSelection_ServerOverrideDoesNotNameContext(t *testing.T) {
+	for _, args := range [][]string{
+		{"slo", "definitions", "list"},
+		{"cloud", "stacks", "delete", "foo"},
+		{"resources", "list-types"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			enableStrictContext(t)
+			t.Setenv("GRAFANA_SERVER", "https://prospect-a.grafana.net")
 
-	routes := map[string]bool{}
-	agent.WalkCommands(rootCmd, func(cmd *cobra.Command) {
-		names := []string{}
-		for c := cmd; c.HasParent(); c = c.Parent() {
-			names = append([]string{c.Name()}, names...)
-		}
-		if len(names) > 0 {
-			routes[strings.Join(names, " ")] = true
-		}
-	})
-
-	for _, route := range root.ContextPolicyRoutesForTest() {
-		assert.True(t, routes[route], "route %q is in the context policy but not in the command tree", route)
+			assert.Error(t, root.EnforceContextSelection(guardTestVersion, args))
+		})
 	}
 }

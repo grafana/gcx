@@ -177,6 +177,27 @@ func TestConsistency_CloudOnlyPathsResolveToCommands(t *testing.T) {
 	}
 }
 
+// TestConsistency_ContextPolicyPathsResolveToCommands verifies every path in
+// the strict context policy matches an actual command in the tree, so a rename
+// or removal shows up here rather than silently widening or narrowing what the
+// guard covers.
+func TestConsistency_ContextPolicyPathsResolveToCommands(t *testing.T) {
+	rootCmd := buildRootCmd()
+
+	paths := make(map[string]bool)
+	agent.WalkCommands(rootCmd, func(cmd *cobra.Command) {
+		paths[cmd.CommandPath()] = true
+	})
+
+	for _, policyPath := range agent.ContextPolicyPaths() {
+		t.Run(policyPath, func(t *testing.T) {
+			if !paths[policyPath] {
+				t.Errorf("context policy path %q does not match any command in the tree", policyPath)
+			}
+		})
+	}
+}
+
 // TestConsistency_AvailabilityValuesValid verifies the availability annotation
 // only ever carries the single supported value.
 func TestConsistency_AvailabilityValuesValid(t *testing.T) {

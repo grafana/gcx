@@ -55,11 +55,17 @@ var cloudOnlyPaths = []string{
 // a registered cloud-only path or a descendant of one.
 func IsCloudOnlyPath(path string) bool {
 	for _, p := range cloudOnlyPaths {
-		if path == p || strings.HasPrefix(path, p+" ") {
+		if pathCovers(p, path) {
 			return true
 		}
 	}
 	return false
+}
+
+// pathCovers reports whether path is prefix, or a command below it. Matching
+// is per path component, so "gcx dev lint" does not cover "gcx dev lint-preview".
+func pathCovers(prefix, path string) bool {
+	return path == prefix || strings.HasPrefix(path, prefix+" ")
 }
 
 // CloudOnlyPaths returns the registered Grafana Cloud-only command paths. Used

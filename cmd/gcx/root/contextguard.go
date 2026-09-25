@@ -5,48 +5,12 @@ import (
 	"os"
 	"strings"
 
+	"github.com/grafana/gcx/internal/agent"
 	internalconfig "github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
-
-// contextExemptRoutes are the command routes that may run without naming a
-// context under strict context mode, expressed relative to the root command. A
-// route covers its whole subtree.
-//
-// Two kinds of command belong here: those that never reach a Grafana or Cloud
-// environment (local metadata, local file operations, shell plumbing), and
-// bootstrapping commands that carry their own destination — `login` takes the
-// context name as its argument, so it cannot inherit the wrong one.
-//
-//nolint:gochecknoglobals // Static policy table, read through requiresExplicitContext.
-var contextExemptRoutes = []string{
-	"agent",       // Local: skills installer, invocation-log pruning.
-	"cloud login", // Bootstrapping: names its own destination.
-	"commands",    // Local: command catalog for agents.
-	"completion",  // Shell plumbing.
-	"config",      // Operates on the config file itself (see contextRequiredRoutes).
-	"dev generate",
-	"dev lint",
-	"dev scaffold",
-	"help",      // Cobra's help command.
-	"help-tree", // Local: command tree for agent context.
-	"instrumentation check",
-	"instrumentation explain",
-	"instrumentation list-explanations",
-	"login",     // Bootstrapping: names its own destination.
-	"providers", // Local: registered provider list.
-	"resources list-examples",
-	"version",
-}
-
-// contextRequiredRoutes are enforced even though an ancestor route is exempt.
-//
-//nolint:gochecknoglobals // Static policy table, read through requiresExplicitContext.
-var contextRequiredRoutes = []string{
-	"config check", // Connects to the environment to verify it.
-}
 
 // EnforceContextSelection refuses an invocation that would silently fall back
 // to current-context while strict context mode (GCX_REQUIRE_CONTEXT) is on.
@@ -108,8 +72,8 @@ func enforceContextSelection(rootCmd *cobra.Command, args []string) error {
 		return nil // Cobra reports the flag error itself.
 	}
 
-	// A group node or a help/version request only prints text.
-	if !cmd.Runnable() || boolFlagSet(cmd, "help") || boolFlagSet(cmd, "version") {
+	// A group node or a help request only prints text.
+	if !cmd.Runnable() || boolFlagSet(cmd, "help") {
 		return nil
 	}
 
@@ -121,35 +85,24 @@ func enforceContextSelection(rootCmd *cobra.Command, args []string) error {
 }
 
 // requiresExplicitContext reports whether cmd may reach a Grafana or Cloud
-// environment, and so must name the one it means. Commands are enforced unless
-// listed as exempt, so a newly added command is covered by default.
+// environment, and so must name the one it means. Commands whose reach depends
+// on their flags are decided here; everything else follows the path policy in
+// internal/agent, which enforces any command it does not list as exempt.
 func requiresExplicitContext(cmd *cobra.Command) bool {
-	route := commandRoute(cmd)
-
-	// `instrumentation check` validates the local workstation and reaches a
-	// stack only to have Grafana Assistant write the fix plan.
-	if route == "instrumentation check" {
+	switch cmd.CommandPath() {
+	case "gcx instrumentation check":
+		// Validates the local workstation, and reaches a stack only to have
+		// Grafana Assistant write the fix plan.
 		return flagValue(cmd, "fix-plan") == "assistant"
+	case "gcx commands":
+		// A local catalog unless --validate checks it against a live instance.
+		return boolFlagSet(cmd, "validate")
 	}
-
-	for _, required := range contextRequiredRoutes {
-		if routeCovers(required, route) {
-			return true
-		}
-	}
-	for _, exempt := range contextExemptRoutes {
-		if routeCovers(exempt, route) {
-			return false
-		}
-	}
-	return true
+	return agent.RequiresExplicitContextPath(cmd.CommandPath())
 }
 
 // contextIsExplicit reports whether the invocation names its target itself,
 // rather than inheriting whichever context the config file currently selects.
-//
-// GRAFANA_SERVER counts: it overrides the destination for the invocation, so
-// the command cannot be redirected by another session's `config use-context`.
 func contextIsExplicit(rootCmd, cmd *cobra.Command) bool {
 	// Both flag sets are consulted because subtrees such as `config` bind their
 	// own --context, which shadows root's in the resolved command's flag set.
@@ -162,6 +115,27 @@ func contextIsExplicit(rootCmd, cmd *cobra.Command) bool {
 		}
 	}
 
+	if cmd.CommandPath() == "gcx login" {
+		return loginNamesTarget(cmd)
+	}
+	return false
+}
+
+// loginNamesTarget reports whether a `gcx login` invocation selects its target
+// without current-context: login writes to the CONTEXT_NAME argument when one
+// is given, otherwise to the context derived from --server or GRAFANA_SERVER,
+// and only then falls back to current-context.
+//
+// GRAFANA_SERVER is honored here and nowhere else. On every other command it is
+// overlaid onto the current context, which still supplies the credentials and
+// the rest of the target, so it does not stop a retarget.
+func loginNamesTarget(cmd *cobra.Command) bool {
+	if len(cmd.Flags().Args()) > 0 {
+		return true
+	}
+	if strings.TrimSpace(flagValue(cmd, "server")) != "" {
+		return true
+	}
 	return strings.TrimSpace(os.Getenv("GRAFANA_SERVER")) != ""
 }
 
@@ -180,23 +154,6 @@ func missingContextError(cmd *cobra.Command) error {
 		},
 		ExitCode: &exitCode,
 	}
-}
-
-// commandRoute returns cmd's path relative to the root command, e.g.
-// "config check". The root's own name is dropped because it comes from
-// path.Base(os.Args[0]) and therefore changes when the binary is renamed.
-func commandRoute(cmd *cobra.Command) string {
-	names := []string{}
-	for c := cmd; c.HasParent(); c = c.Parent() {
-		names = append([]string{c.Name()}, names...)
-	}
-	return strings.Join(names, " ")
-}
-
-// routeCovers reports whether route is prefix, or a command below it. Matching
-// is per path component, so "dev lint" does not cover "dev lint-preview".
-func routeCovers(prefix, route string) bool {
-	return route == prefix || strings.HasPrefix(route, prefix+" ")
 }
 
 func flagValue(cmd *cobra.Command, name string) string {
