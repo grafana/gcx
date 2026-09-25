@@ -12,7 +12,7 @@ This page walks through the common login paths, the mental model behind them, an
 
 1. **Setting up Grafana Cloud interactively** → [Grafana Cloud (interactive OAuth)](#grafana-cloud-interactive-oauth)
 2. **Running gcx over SSH, with the browser on another computer** → [Remote host or SSH session](#remote-host-or-ssh-session)
-3. **Setting up on-premises Grafana** → [Service account token](#service-account-token)
+3. **Setting up on-premises Grafana** → [Service account token](#service-account-token) or [Basic authentication](#basic-authentication)
 4. **Setting up CI, an agent, or any non-interactive environment** → [Environment variables for CI and agents](#environment-variables-for-ci-and-agents)
 5. **Adding Grafana Cloud product API access to an existing context** → [Grafana Cloud product APIs](#grafana-cloud-product-apis)
 6. **Re-authenticating or switching between contexts** → [Re-authenticating and switching contexts](#re-authenticating-and-switching-contexts)
@@ -124,9 +124,7 @@ login succeeds or fails. Clear the terminal if other people can read it.
 
 Works for both Grafana Cloud and on-premises and is the recommended path for
 non-interactive use. Browser OAuth is Cloud-only; on-premises stacks can also
-use configured mTLS client certificates. Basic auth remains supported by
-manually configured contexts, but unified login does not offer a basic-auth
-prompt.
+use [Basic authentication](#basic-authentication) or configured mTLS client certificates.
 
 **Non-interactive (recommended for automation):**
 
@@ -147,6 +145,69 @@ gcx login my-grafana --server https://your-instance.grafana.net
 Use a [Grafana service account token](https://grafana.com/docs/grafana/latest/administration/service-accounts/) with a role matching what the token needs to do: **Viewer** is enough for querying (metrics, logs, traces, profiles) and reading dashboards or folders; **Editor** covers pushing and editing dashboards and folders; managing datasource configuration needs **Admin**. On Grafana Cloud and Enterprise, RBAC custom roles can scope query access tighter (for example `datasources:read` plus `datasources:query` on specific datasources).
 
 For on-premises instances, gcx defaults the organization ID to 1 if you do not specify one — the common case for single-tenant Grafana OSS. If you need a different org ID, set it with `gcx config set stacks.<name>.grafana.org-id N` after login (on the context's stack entry).
+
+### Basic authentication
+
+Use a Grafana username and password for self-hosted Grafana OSS or Enterprise
+with Basic authentication enabled. This is useful for server administration:
+[Admin API endpoints](https://grafana.com/docs/grafana/latest/developer-resources/api-reference/http-api/api-legacy/admin/)
+require Basic authentication and Grafana server administrator permissions.
+Logging in does not grant those permissions. Use HTTPS when connecting to a
+remote instance.
+
+**Interactive:**
+
+```bash
+gcx login my-grafana --server https://grafana.example.com
+# Pick "Basic auth (username/password)" and enter your username and password.
+```
+
+The password prompt does not echo your password. To select Basic authentication
+directly and supply the username:
+
+```bash
+gcx login my-grafana --server https://grafana.example.com --basic-auth --user admin
+```
+
+**Non-interactive:** supply `GRAFANA_PASSWORD` through your environment or CI
+secret store. There is no password command-line flag.
+
+```bash
+# GRAFANA_PASSWORD is already supplied by your secret store.
+export GRAFANA_USER=admin
+gcx login my-grafana --server https://grafana.example.com --basic-auth --yes
+```
+
+`--user` takes precedence over `GRAFANA_USER`. `--basic-auth` selects Basic
+authentication even if a stored token, OAuth login, or `GRAFANA_TOKEN` exists.
+It cannot be combined with `--token`, `--oauth`, or `--oauth-manual`.
+Supply the username and password again when re-authenticating; login does not
+reuse a stored password.
+
+Before saving, gcx makes a fresh authenticated `GET /api/user` request.
+Successful health checks or cached API discovery do not replace this check.
+If Grafana rejects the credentials, login fails without changing the config or
+keychain; it does not offer to save them anyway. Check the username/password,
+whether Basic authentication is enabled, and whether a proxy blocks the request.
+
+Successful login stores `auth-method: basic`, the username, and the password
+through the existing [credential storage policy](configuration/keychain.md),
+and clears previous token/OAuth credentials for that stack entry. On subsequent
+commands, a non-blank `GRAFANA_TOKEN` still selects token authentication for that
+invocation; unset it to use the saved Basic login.
+
+**Manual configuration:** the equivalent fields on the context's stack entry
+are `grafana.auth-method: basic`, `grafana.user`, and `grafana.password`.
+Use `gcx config edit` to configure them through the same credential storage
+policy. `GRAFANA_USER` and `GRAFANA_PASSWORD` can also supply credentials at
+runtime; a password override alone does not switch an explicit token/OAuth
+context to Basic authentication.
+
+For organisation-scoped operations, login defaults to organisation 1 on-premises.
+Use `--org-id N` to select another organisation. This does not grant membership
+or server administrator permissions. The separate
+[org-selection issue](https://github.com/grafana/gcx/issues/1340) tracks clients
+that do not consistently honour the configured organisation.
 
 ### Grafana Cloud product APIs
 

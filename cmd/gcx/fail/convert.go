@@ -923,6 +923,23 @@ func isEmittedError(err error) bool {
 }
 
 func convertLoginValidationErrors(err error) (*gcxerrors.DetailedError, bool) {
+	var basicErr *login.BasicAuthCheckError
+	if errors.As(err, &basicErr) {
+		detail := &gcxerrors.DetailedError{
+			Parent:  err,
+			Summary: "Authentication failed",
+			Details: basicErr.Error(),
+			Suggestions: []string{
+				"Check the Grafana username and password, and confirm Basic authentication is enabled",
+				"Check network/proxy access to the Grafana /api/user endpoint",
+			},
+		}
+		if basicErr.Status == http.StatusUnauthorized || basicErr.Status == http.StatusForbidden {
+			detail.ExitCode = new(gcxerrors.ExitAuthFailure)
+		}
+		return detail, true
+	}
+
 	var gcomErr *login.GCOMStackError
 	if errors.As(err, &gcomErr) {
 		return convertGCOMStackError(gcomErr), true

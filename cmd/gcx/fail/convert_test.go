@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -1499,6 +1500,21 @@ func TestErrorToDetailedError_RestrictedCredentialSession(t *testing.T) {
 			assert.Equal(t, "OS credential store access is restricted", got.Summary)
 			assert.NotEqual(t, "Keychain locked", got.Summary)
 			assert.Equal(t, docs.Keychain, got.DocsLink)
+		})
+	}
+}
+
+func TestBasicAuthCheckError(t *testing.T) {
+	for _, status := range []int{401, 403, 500, 0} {
+		t.Run(strconv.Itoa(status), func(t *testing.T) {
+			result := fail.ErrorToDetailedError(&login.BasicAuthCheckError{Status: status})
+			assert.Equal(t, "Authentication failed", result.Summary)
+			if status == 401 || status == 403 {
+				require.NotNil(t, result.ExitCode)
+				assert.Equal(t, gcxerrors.ExitAuthFailure, *result.ExitCode)
+			} else {
+				assert.Nil(t, result.ExitCode)
+			}
 		})
 	}
 }

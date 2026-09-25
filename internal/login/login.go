@@ -52,10 +52,13 @@ const (
 // All fields are directly populated from CLI flags or interactive prompts;
 // none carry internal state or injection hooks.
 type Inputs struct {
-	Server       string
-	ContextName  string
-	Target       Target
-	GrafanaToken string
+	Server          string
+	ContextName     string
+	Target          Target
+	GrafanaToken    string
+	UseBasicAuth    bool
+	GrafanaUser     string
+	GrafanaPassword string
 	// ExistingGrafanaAuthMethod records a previously persisted explicit auth
 	// method for pre-auth request safety. It never supplies a credential or
 	// selects the final login method; it only prevents target detection from
@@ -106,7 +109,7 @@ type Inputs struct {
 	TLS *config.TLS
 	// PreserveStoredTLS keeps process-environment TLS overrides runtime-only.
 	// Detection and validation use TLS, while persistence restores StoredTLS.
-	// A token/OAuth login fails before network use when that would create a
+	// A token/OAuth/Basic login fails before network use when that would create a
 	// credential that the next invocation cannot resolve. Programmatic callers
 	// retain the historical behavior unless they opt in.
 	PreserveStoredTLS bool
@@ -264,7 +267,7 @@ func (e *ErrNeedClarification) Error() string {
 	return fmt.Sprintf("clarification needed for %s: %s", e.Field, e.Question)
 }
 
-// RuntimeOnlyBearerDestinationError is returned when a token or OAuth login
+// RuntimeOnlyBearerDestinationError is returned when a token, OAuth or Basic login
 // would use proxy/TLS destination settings that are present only in the process
 // environment. Saving the credential without those settings would create a
 // context whose next invocation rejects its own destination-bound credential.
@@ -285,7 +288,7 @@ func (e *RuntimeOnlyBearerDestinationError) Error() string {
 	if e.OAuthIssuerProxyMismatch {
 		return "GRAFANA_PROXY_ENDPOINT conflicts with the proxy endpoint selected by the OAuth issuer; unset the environment override and retry"
 	}
-	return "runtime-only Grafana proxy/TLS settings cannot be used to save a token or OAuth credential; persist GRAFANA_PROXY_ENDPOINT and GRAFANA_TLS_* settings in the selected config, or unset the overrides and retry"
+	return "runtime-only Grafana proxy/TLS settings cannot be used to save a token, OAuth or Basic credential; persist GRAFANA_PROXY_ENDPOINT and GRAFANA_TLS_* settings in the selected config, or unset the overrides and retry"
 }
 
 // AuthFlow is the interface implemented by auth.Flow (and test stubs).
@@ -312,7 +315,7 @@ const (
 //
 //  1. Validate server is set
 //  2. Detect target (Cloud vs OnPrem)
-//  3. Resolve Grafana auth (token or OAuth)
+//  3. Resolve Grafana auth (token, OAuth, Basic or mTLS)
 //  4. Derive context name
 //  5. Resolve Cloud API token (Cloud targets only)
 //  6. Build REST config and run connectivity validation
@@ -333,6 +336,10 @@ func Run(ctx context.Context, opts *Options) (Result, error) {
 	if opts.UseCloudInstanceSelector {
 		opts.UseOAuth = true
 		opts.Target = TargetCloud
+	}
+
+	if opts.UseBasicAuth && (strings.TrimSpace(opts.GrafanaUser) == "" || strings.TrimSpace(opts.GrafanaPassword) == "") {
+		return Result{}, &ErrNeedInput{Fields: []string{"basic-credentials"}}
 	}
 
 	// Normalize: missing scheme → default to https. Users who meant http://
@@ -431,6 +438,13 @@ func Run(ctx context.Context, opts *Options) (Result, error) {
 		tempCtx.Grafana.StackID = sid
 	}
 
+	// Authentication must still be verified when connectivity checks are bypassed.
+	if authMethod == "basic" {
+		if err := validateBasicAuth(ctx, tempCtx); err != nil {
+			return Result{}, err
+		}
+	}
+
 	var grafanaVersion string
 	if !opts.ForceSave {
 		validateFn := opts.ValidateFn
@@ -496,21 +510,21 @@ func Run(ctx context.Context, opts *Options) (Result, error) {
 }
 
 // validateRuntimeOnlyBearerDestination prevents a successful login from
-// persisting a token/OAuth credential against a different destination than the
+// persisting a token/OAuth/Basic credential against a different destination than the
 // runtime-only proxy/TLS settings that authorized the invocation. Without this
 // gate the next process would apply the same environment, reject the new
 // keychain generation as destination-mismatched, and leave a seemingly
 // successful login unusable.
 //
-// Before authMethod is resolved, explicit token/OAuth intent is enough to
+// Before authMethod is resolved, explicit token/OAuth/Basic intent is enough to
 // reject known mismatches before target detection or a browser flow. After
 // OAuth resolves, the second call also compares the issuer-provided proxy that
 // will actually be persisted.
 func validateRuntimeOnlyBearerDestination(opts Options, authMethod string, resolved ...*config.GrafanaConfig) error {
-	if authMethod == "" && opts.GrafanaToken == "" && !opts.UseOAuth {
+	if authMethod == "" && opts.GrafanaToken == "" && !opts.UseOAuth && !opts.UseBasicAuth {
 		return nil
 	}
-	if authMethod != "" && authMethod != "token" && authMethod != "oauth" {
+	if authMethod != "" && authMethod != "token" && authMethod != "oauth" && authMethod != "basic" {
 		return nil
 	}
 
@@ -554,6 +568,7 @@ func validateRuntimeOnlyBearerDestination(opts Options, authMethod string, resol
 		runtime.ProxyEndpoint = proxyEndpoint
 	}
 
+	// The username is unchanged here; only proxy/TLS overrides can differ.
 	if config.GrafanaBearerCredentialDestinationMatches(durable, runtime) {
 		return nil
 	}
@@ -602,7 +617,7 @@ func detectTarget(ctx context.Context, opts Options) (Target, error) {
 }
 
 // preAuthTLS returns the TLS view authorized for requests that run before
-// login has built a fully resolved Context. Explicit token/OAuth intent, and a
+// login has built a fully resolved Context. Explicit token/OAuth/Basic intent, and a
 // persisted explicit non-mTLS method, retain CA/SNI/ALPN trust settings but do
 // not present a potentially stale client identity to the probed destination.
 func preAuthTLS(opts Options) *config.TLS {
@@ -610,7 +625,7 @@ func preAuthTLS(opts Options) *config.TLS {
 		return nil
 	}
 	method := strings.ToLower(strings.TrimSpace(opts.ExistingGrafanaAuthMethod))
-	if opts.GrafanaToken != "" || opts.UseOAuth || (method != "" && method != "mtls") {
+	if opts.GrafanaToken != "" || opts.UseOAuth || opts.UseBasicAuth || (method != "" && method != "mtls") {
 		return opts.TLS.ServerTrustOnly()
 	}
 	return opts.TLS
@@ -631,7 +646,7 @@ func tlsAwareClient(ctx context.Context, tlsCfg *config.TLS) (*http.Client, erro
 }
 
 // resolveGrafanaAuth determines how to authenticate against Grafana (step 4).
-// Priority: explicit GrafanaToken → UseOAuth flag → ErrNeedInput.
+// Explicit Basic, token or OAuth inputs select the requested method.
 // OAuth is attempted only when UseOAuth is set; the caller (CLI) is responsible
 // for setting UseOAuth based on user intent or interactive prompts.
 //
@@ -655,6 +670,12 @@ func resolveGrafanaAuth(ctx context.Context, opts Options, target Target) (strin
 
 	var method string
 	switch {
+	case opts.UseBasicAuth:
+		grafanaCfg.User = opts.GrafanaUser
+		grafanaCfg.Password = opts.GrafanaPassword
+		grafanaCfg.AuthMethod = "basic"
+		method = "basic"
+
 	case opts.GrafanaToken != "":
 		grafanaCfg.APIToken = opts.GrafanaToken
 		grafanaCfg.AuthMethod = "token"
