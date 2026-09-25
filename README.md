@@ -478,6 +478,11 @@ gcx provides dedicated commands for each Grafana Cloud product:
 | **Profiles (Pyroscope)** | `gcx profiles` | `profiles query`, `profiles labels` |
 | **Traces (Tempo)** | `gcx traces` | `traces query`, `traces get`, `traces labels` |
 
+For native Android apps, use `spec.appType: mobile` and `spec.runtime: android-native`
+in the manifest passed to `gcx frontend apps create -f app.yaml`.
+Creation preserves `spec.extraLogLabels`, including the legacy `is_mobile` label.
+The API sets the app type at creation. Omit `runtime` on update to keep its stored value.
+
 > **Note — Grafana Cloud costs:** gcx itself is free, but some of these products are billed based on usage: Grafana Assistant per token consumed (including requests made through gcx), Synthetic Monitoring per test execution, k6 per Virtual User Hour, and IRM per monthly active user. Queries and resource push/pull are not billed. See [Costs and billing](docs/reference/costs.md) and the [Grafana Cloud Cost Management and Billing documentation](https://grafana.com/docs/grafana-cloud/cost-management-and-billing/).
 
 ## Resource Management
