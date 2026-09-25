@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/login"
 	"github.com/grafana/gcx/internal/resources/discovery"
 	"github.com/stretchr/testify/assert"
@@ -148,6 +149,12 @@ func TestBasicLoginInvalidInputs(t *testing.T) {
 			require.ErrorContains(t, err, tt.want)
 			if strings.Contains(tt.want, "requires additional") {
 				assert.Contains(t, fmt.Sprint(err), "GRAFANA_PASSWORD")
+			} else {
+				var detail gcxerrors.DetailedError
+				require.ErrorAs(t, err, &detail)
+				assert.NotEmpty(t, detail.Summary)
+				assert.Contains(t, detail.Details, tt.want)
+				assert.NotEmpty(t, detail.Suggestions)
 			}
 			assert.Zero(t, requests.Load())
 			_, err = os.Stat(path)

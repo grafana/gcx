@@ -92,7 +92,11 @@ func (opts *loginOpts) Validate(args []string) error {
 	userProvided := opts.UserSet || opts.User != ""
 	opts.User = strings.TrimSpace(opts.User)
 	if userProvided && opts.User == "" {
-		return errors.New("--user must not be empty")
+		return gcxerrors.DetailedError{
+			Summary:     "invalid username",
+			Details:     "--user must not be empty",
+			Suggestions: []string{"Provide a Grafana username: gcx login --basic-auth --user <username>"},
+		}
 	}
 	if len(args) == 1 && opts.Config.Context != "" {
 		return gcxerrors.DetailedError{
@@ -119,10 +123,18 @@ func (opts *loginOpts) Validate(args []string) error {
 		return err
 	}
 	if opts.BasicAuth && (opts.OAuth || opts.OAuthManual || opts.Token != "") {
-		return errors.New("--basic-auth is mutually exclusive with --oauth, --oauth-manual and --token")
+		return gcxerrors.DetailedError{
+			Summary:     "conflicting authentication methods",
+			Details:     "--basic-auth is mutually exclusive with --oauth, --oauth-manual and --token",
+			Suggestions: []string{"Use --basic-auth --user <username> for password login, or remove --basic-auth to use OAuth or a service account token"},
+		}
 	}
 	if opts.User != "" && !opts.BasicAuth {
-		return errors.New("--user requires --basic-auth")
+		return gcxerrors.DetailedError{
+			Summary:     "missing authentication method",
+			Details:     "--user requires --basic-auth",
+			Suggestions: []string{"Add --basic-auth: gcx login --basic-auth --user <username>"},
+		}
 	}
 	if opts.OAuthCallbackPort < 0 || opts.OAuthCallbackPort > 65535 {
 		return gcxerrors.DetailedError{
@@ -319,7 +331,6 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 		grafanaTokenExplicit,
 	)
 	if flags.BasicAuth {
-		flags.Token = ""
 		storedGrafanaTokenBlocked = false
 	}
 	if storedGrafanaTokenBlocked {
@@ -1530,7 +1541,11 @@ func askBasicAuth(opts *login.Options) error {
 	if len(fields) == 0 {
 		return nil
 	}
-	return huh.NewForm(huh.NewGroup(fields...)).Run()
+	if err := huh.NewForm(huh.NewGroup(fields...)).Run(); err != nil {
+		return err
+	}
+	opts.GrafanaUser = strings.TrimSpace(opts.GrafanaUser)
+	return nil
 }
 
 // askForClarification shows a huh select for ErrNeedClarification (e.g. cloud vs on-prem).

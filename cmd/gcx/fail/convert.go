@@ -941,6 +941,12 @@ func convertLoginValidationErrors(err error) (*gcxerrors.DetailedError, bool) {
 			detail.ExitCode = new(gcxerrors.ExitAuthFailure)
 			detail.Suggestions = []string{"Check that the user and any proxy allow access to the Grafana /api/user endpoint"}
 		case 0:
+			if basicErr.Cause == nil {
+				detail.Summary = "Authentication failed"
+				detail.ExitCode = new(gcxerrors.ExitAuthFailure)
+				detail.Suggestions = []string{"Check the Grafana username and password, and confirm Basic authentication is enabled and anonymous access is not answering for the user"}
+				break
+			}
 			detail.Summary = "Network error"
 			detail.Suggestions = []string{"Check network/proxy access and TLS settings for the Grafana server"}
 		}

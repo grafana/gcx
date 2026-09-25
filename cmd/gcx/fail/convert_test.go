@@ -1505,6 +1505,13 @@ func TestErrorToDetailedError_RestrictedCredentialSession(t *testing.T) {
 }
 
 func TestBasicAuthCheckError(t *testing.T) {
+	t.Run("empty identity", func(t *testing.T) {
+		result := fail.ErrorToDetailedError(&login.BasicAuthCheckError{})
+		assert.Equal(t, "Authentication failed", result.Summary)
+		require.NotNil(t, result.ExitCode)
+		assert.Equal(t, gcxerrors.ExitAuthFailure, *result.ExitCode)
+		assert.Contains(t, strings.Join(result.Suggestions, " "), "anonymous access")
+	})
 	for _, tt := range []struct {
 		status  int
 		summary string
