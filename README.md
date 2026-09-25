@@ -152,6 +152,16 @@ gcx login my-grafana --server https://your-instance.grafana.net --token glsa_xxx
 
 Use a [Grafana service account token](https://grafana.com/docs/grafana/latest/administration/service-accounts/) with a role matching what the token needs to do: **Viewer** is enough for querying (metrics, logs, traces, profiles) and reading dashboards or folders; **Editor** covers pushing and editing dashboards and folders; managing datasource configuration needs **Admin**. On Grafana Cloud and Enterprise, RBAC custom roles can scope query access tighter (for example `datasources:read` plus `datasources:query` on specific datasources). Tokens work for both Cloud and on-premises and are recommended for automation. On-premises stacks can also use basic authentication or configured mTLS client certificates.
 
+**Basic authentication (self-hosted Grafana):**
+
+```bash
+gcx login my-grafana --server https://grafana.example.com --basic-auth --user admin
+```
+
+Prompts for a password without echoing it. For automation, supply `GRAFANA_PASSWORD`
+and add `--yes`. See [Basic authentication](docs/reference/login.md#basic-authentication)
+for credential storage, auth switching, and validation behaviour.
+
 **Grafana Cloud product APIs (SLO, Synthetic Monitoring, IRM, etc.):**
 
 Cloud product commands need a separate Grafana Cloud platform credential in

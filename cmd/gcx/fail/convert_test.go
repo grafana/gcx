@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -1499,6 +1500,48 @@ func TestErrorToDetailedError_RestrictedCredentialSession(t *testing.T) {
 			assert.Equal(t, "OS credential store access is restricted", got.Summary)
 			assert.NotEqual(t, "Keychain locked", got.Summary)
 			assert.Equal(t, docs.Keychain, got.DocsLink)
+		})
+	}
+}
+
+func TestBasicAuthCheckError(t *testing.T) {
+	t.Run("empty identity", func(t *testing.T) {
+		result := fail.ErrorToDetailedError(&login.BasicAuthCheckError{})
+		assert.Equal(t, "Authentication failed", result.Summary)
+		require.NotNil(t, result.ExitCode)
+		assert.Equal(t, gcxerrors.ExitAuthFailure, *result.ExitCode)
+		assert.Contains(t, strings.Join(result.Suggestions, " "), "anonymous access")
+	})
+	for _, tt := range []struct {
+		status  int
+		summary string
+	}{
+		{401, "Authentication failed"},
+		{403, "Authorization failed"},
+		{404, "API error"},
+		{500, "API error"},
+		{0, "Network error"},
+	} {
+		t.Run(strconv.Itoa(tt.status), func(t *testing.T) {
+			err := &login.BasicAuthCheckError{Status: tt.status}
+			if tt.status == 0 {
+				err.Cause = errors.New("TLS handshake failed")
+			}
+			result := fail.ErrorToDetailedError(err)
+			assert.Equal(t, tt.summary, result.Summary)
+			if tt.status == 401 || tt.status == 403 {
+				require.NotNil(t, result.ExitCode)
+				assert.Equal(t, gcxerrors.ExitAuthFailure, *result.ExitCode)
+			} else {
+				assert.Nil(t, result.ExitCode)
+			}
+			if tt.status != 401 {
+				assert.NotContains(t, strings.Join(result.Suggestions, " "), "password")
+			}
+			if tt.status == 0 {
+				assert.Contains(t, result.Details, "TLS handshake failed")
+				assert.ErrorIs(t, err, err.Cause)
+			}
 		})
 	}
 }

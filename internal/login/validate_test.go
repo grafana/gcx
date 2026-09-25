@@ -4,12 +4,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/grafana/gcx/internal/cloud"
 	"github.com/grafana/gcx/internal/config"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // stubGrafanaClient implements grafanaClient for testing.
@@ -207,6 +213,64 @@ func TestValidate(t *testing.T) {
 
 			if gcomStub != nil && tt.wantGCOMHit != gcomStub.called {
 				t.Fatalf("GCOM GetStack called=%v, want %v", gcomStub.called, tt.wantGCOMHit)
+			}
+		})
+	}
+}
+
+func TestBasicAuthProbeErrors(t *testing.T) {
+	for _, status := range []int{401, 403, 404, 500} {
+		t.Run(strconv.Itoa(status), func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, "/api/user", r.URL.Path)
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(status)
+				_, _ = w.Write([]byte(`{"message":"password-secret-echo"}`))
+			}))
+			defer server.Close()
+			err := validateBasicAuth(t.Context(), config.Context{Grafana: &config.GrafanaConfig{
+				Server: server.URL, AuthMethod: "basic", User: "admin", Password: "password-secret-echo",
+			}})
+			var probeErr *BasicAuthCheckError
+			require.ErrorAs(t, err, &probeErr)
+			assert.Equal(t, status, probeErr.Status)
+			assert.NotContains(t, err.Error(), "password-secret-echo")
+			assert.NoError(t, errors.Unwrap(probeErr))
+		})
+	}
+}
+
+func TestBasicAuthProbeRetainsCause(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		closeServer bool
+	}{
+		{"transport failure", true},
+		{"decode failure", false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`<html>password-secret-echo</html>`))
+			}))
+			defer server.Close()
+			if test.closeServer {
+				server.Close()
+			}
+			err := validateBasicAuth(t.Context(), config.Context{Grafana: &config.GrafanaConfig{
+				Server: server.URL, AuthMethod: "basic", User: "admin", Password: "password-secret-echo",
+			}})
+			var probeErr *BasicAuthCheckError
+			require.ErrorAs(t, err, &probeErr)
+			assert.Zero(t, probeErr.Status)
+			require.Error(t, probeErr.Cause)
+			require.ErrorIs(t, err, probeErr.Cause)
+			assert.NotContains(t, err.Error(), "password-secret-echo")
+			if test.closeServer {
+				var transportErr *url.Error
+				assert.ErrorAs(t, err, &transportErr)
+			} else {
+				assert.Contains(t, err.Error(), "invalid character")
 			}
 		})
 	}

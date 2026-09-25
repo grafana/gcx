@@ -1663,6 +1663,7 @@ func TestLoginRejectsFreshCredentialsForAutoLocalBeforeNetwork(t *testing.T) {
 	}{
 		{name: "Grafana token flag", args: []string{"--token", "fresh-grafana-token"}, wantKind: "self-hosted"},
 		{name: "Grafana token environment", env: "GRAFANA_TOKEN", wantKind: "self-hosted"},
+		{name: "Grafana Basic", args: []string{"--basic-auth", "--user", "admin"}, wantKind: "self-hosted"},
 		{name: "Grafana OAuth", args: []string{"--oauth"}, wantKind: "self-hosted"},
 		{name: "Cloud token flag", args: []string{"--cloud-token", "fresh-cloud-token"}, wantKind: "self-hosted"},
 		{name: "Cloud token environment", env: "GRAFANA_CLOUD_TOKEN", wantKind: "self-hosted"},
@@ -2444,24 +2445,24 @@ func TestGrafanaAuthOptions(t *testing.T) {
 		{
 			name:   "unknown_without_mtls",
 			target: internallogin.TargetUnknown,
-			want:   []string{"token", "oauth", "oauth-manual"},
+			want:   []string{"token", "basic", "oauth", "oauth-manual"},
 		},
 		{
 			name:    "unknown_with_mtls",
 			target:  internallogin.TargetUnknown,
 			hasMTLS: true,
-			want:    []string{"mtls", "token", "oauth", "oauth-manual"},
+			want:    []string{"mtls", "token", "basic", "oauth", "oauth-manual"},
 		},
 		{
 			name:   "onprem_offers_no_oauth",
 			target: internallogin.TargetOnPrem,
-			want:   []string{"token"},
+			want:   []string{"token", "basic"},
 		},
 		{
 			name:    "onprem_with_mtls",
 			target:  internallogin.TargetOnPrem,
 			hasMTLS: true,
-			want:    []string{"mtls", "token"},
+			want:    []string{"mtls", "token", "basic"},
 		},
 	}
 
