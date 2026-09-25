@@ -395,6 +395,7 @@ The agentic workflow above is one example. gcx supports a wide range of workflow
 - **Resource GitOps** — Pull resources to local files, let your agent edit them, push back to Grafana (`gcx resources pull` / `gcx resources push`)
 - **Explore your data** — Discover datasources, metrics, labels, and log streams before writing queries (`gcx datasources list`, `gcx metrics labels`)
 - **Bring Assistant context into your agent** — Read a conversation by ID or a shared Grafana Assistant URL, including AI SDK main-thread transcripts (`gcx assistant conversation get <id-or-url> -o json`)
+- **Look up product docs** — Search and read Grafana documentation from the terminal (`gcx docs search`, `gcx docs get`)
 - **SLO management** — Create, monitor, and investigate SLOs from your terminal (`gcx slo definitions list`, `gcx slo reports list`)
 - **Onboarding & setup** — Instrument a Kubernetes cluster and configure Grafana Cloud products (`gcx instrumentation setup`)
 - **Observability as Code** — Scaffold a project, import existing dashboards as Go code, lint, and deploy (`gcx dev scaffold`, `gcx dev import`)
