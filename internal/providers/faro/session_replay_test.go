@@ -78,8 +78,9 @@ func TestSessionsGetReplayBundlesAllRecordingsAsOneFile(t *testing.T) {
 	require.Len(t, bundle.Recordings, 2)
 	assert.Equal(t, "newest", bundle.Recordings[0].ID)
 	assert.Equal(t, "older", bundle.Recordings[1].ID)
-	assert.Equal(t, []int64{1000, 2000}, []int64{bundle.Recordings[0].Events[0].Timestamp, bundle.Recordings[0].Events[1].Timestamp})
-	assert.Equal(t, int64(1500), bundle.Recordings[1].Events[0].Timestamp)
+	assert.JSONEq(t, `{"type":4,"timestamp":1000,"data":{"href":"/"}}`, string(bundle.Recordings[0].Events[0]))
+	assert.JSONEq(t, `{"type":3,"timestamp":2000,"data":{"source":2}}`, string(bundle.Recordings[0].Events[1]))
+	assert.JSONEq(t, `{"type":4,"timestamp":1500,"data":{"href":"/older"},"extra":"preserved"}`, string(bundle.Recordings[1].Events[0]))
 	assert.Contains(t, string(contents), `"extra":"preserved"`)
 	if runtime.GOOS != "windows" {
 		info, statErr := os.Stat(path)
@@ -123,6 +124,7 @@ func TestSessionsGetReplayValidatesFlagsBeforeIO(t *testing.T) {
 	}{
 		{args: []string{"sess-1", "--save", "replay.json"}, wantErr: "--app is required"},
 		{args: []string{"sess-1", "--app", "42"}, wantErr: "--save is required"},
+		{args: []string{"sess-1", "--app", "my-web-app", "--save", "replay.json"}, wantErr: "expected a numeric ID or slug-id"},
 		{args: []string{"", "--app", "42", "--save", "replay.json"}, wantErr: "non-empty session ID"},
 	}
 	for _, tt := range tests {

@@ -6,21 +6,17 @@ import (
 	"fmt"
 	"io"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
-	"github.com/go-logfmt/logfmt"
 	"github.com/grafana/gcx/internal/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
-	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/loki"
 	"github.com/grafana/gcx/internal/query/pinot"
 	querysql "github.com/grafana/gcx/internal/query/sql"
 	"github.com/grafana/gcx/internal/shared"
-	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -33,29 +29,19 @@ type replaySessionListRow struct {
 	LastSeen  string `json:"last_seen"`
 }
 
-// replaySessionListCodec renders []replaySessionListRow as a table.
-type replaySessionListCodec struct{}
-
-func (c *replaySessionListCodec) Format() format.Format { return format.Format(cmdio.FormatText) }
-
-func (c *replaySessionListCodec) Encode(w io.Writer, v any) error {
-	rows, ok := v.([]replaySessionListRow)
-	if !ok {
-		return fmt.Errorf("invalid data type for replay session list codec: expected []replaySessionListRow, got %T", v)
+func replaySessionTable() cmdio.Table[replaySessionListRow] {
+	return cmdio.Table[replaySessionListRow]{
+		Columns: []cmdio.Column[replaySessionListRow]{
+			{Header: "SESSION ID", Content: func(r replaySessionListRow) string { return r.SessionID }},
+			{Header: "BROWSER", Content: func(r replaySessionListRow) string { return r.Browser }},
+			{Header: "APP NAME", Content: func(r replaySessionListRow) string { return r.AppName }},
+			{Header: "LAST SEEN", Content: func(r replaySessionListRow) string { return r.LastSeen }},
+		},
+		Empty: func(w io.Writer) error {
+			_, err := fmt.Fprintln(w, "No session replays found.")
+			return err
+		},
 	}
-	if len(rows) == 0 {
-		_, err := fmt.Fprintln(w, "No session replays found.")
-		return err
-	}
-	t := style.NewTable("SESSION ID", "BROWSER", "APP NAME", "LAST SEEN")
-	for _, r := range rows {
-		t.Row(r.SessionID, r.Browser, r.AppName, r.LastSeen)
-	}
-	return t.Render(w)
-}
-
-func (c *replaySessionListCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("text format does not support decoding")
 }
 
 type listReplaySessionsOpts struct {
@@ -66,12 +52,20 @@ type listReplaySessionsOpts struct {
 	sinceDuration time.Duration
 }
 
+func parseReplayAppID(name string) (string, error) {
+	appID := resolveAppID(name)
+	if _, err := pinot.FormatSQLInt(appID); err != nil {
+		return "", fmt.Errorf("invalid app id %q: expected a numeric ID or slug-id", name)
+	}
+	return appID, nil
+}
+
 func (o *listReplaySessionsOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&o.Datasource, "datasource", "d", "", "Loki or Pinot datasource UID (Loki auto-discovered if omitted)")
 	flags.StringVar(&o.Since, "since", "1h", "How far back to search (e.g., 1h, 24h, 7d)")
 	flags.IntVar(&o.Limit, "limit", 1000, "Maximum replay-start events to scan (Loki caps at 1000; not the number of sessions)")
-	o.IO.RegisterCustomCodec("text", &replaySessionListCodec{})
-	o.IO.DefaultFormat("text")
+	cmdio.RegisterTableAs(&o.IO, replaySessionTable(), cmdio.FormatText)
+	o.IO.DefaultFormat(cmdio.FormatText)
 	o.IO.BindFlags(flags)
 }
 
@@ -112,9 +106,9 @@ func newListReplaySessionsCommand(loader *providers.ConfigLoader) *cobra.Command
 			if err := opts.Validate(); err != nil {
 				return err
 			}
-			appID := resolveAppID(args[0])
-			if _, idErr := pinot.FormatSQLInt(appID); idErr != nil {
-				return fmt.Errorf("invalid app id %q: expected a numeric ID or slug-id", args[0])
+			appID, err := parseReplayAppID(args[0])
+			if err != nil {
+				return err
 			}
 			ctx := cmd.Context()
 
@@ -269,13 +263,13 @@ func extractReplaySessionRows(resp *loki.QueryResponse) []replaySessionListRow {
 
 	for _, stream := range resp.Data.Result {
 		for _, entry := range stream.Values {
-			fields := parseLogfmtLine(entry.Line)
+			fields := parseLogfmt(entry.Line)
 			sid := fields["session_id"]
 			if sid == "" {
 				continue
 			}
 
-			ts := parseNanoTimestamp(entry.Timestamp)
+			ts, _ := parseLokiUnixNano(entry.Timestamp)
 			browser := fields["browser_name"]
 			if v := fields["browser_version"]; v != "" {
 				browser = strings.TrimSpace(browser + " " + v)
@@ -310,23 +304,4 @@ func extractReplaySessionRows(resp *loki.QueryResponse) []replaySessionListRow {
 	})
 
 	return rows
-}
-
-func parseLogfmtLine(line string) map[string]string {
-	fields := make(map[string]string)
-	d := logfmt.NewDecoder(strings.NewReader(line))
-	for d.ScanRecord() {
-		for d.ScanKeyval() {
-			fields[string(d.Key())] = string(d.Value())
-		}
-	}
-	return fields
-}
-
-func parseNanoTimestamp(s string) time.Time {
-	ns, err := strconv.ParseInt(s, 10, 64)
-	if err != nil {
-		return time.Time{}
-	}
-	return time.Unix(0, ns)
 }

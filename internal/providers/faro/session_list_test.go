@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"testing"
 
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/query/loki"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -90,12 +91,12 @@ func TestExtractReplaySessionRows_Empty(t *testing.T) {
 	assert.Empty(t, rows)
 }
 
-func TestReplaySessionListCodec_Encode(t *testing.T) {
+func TestReplaySessionTable_Encode(t *testing.T) {
 	rows := []replaySessionListRow{
 		{SessionID: "sess-1", Browser: "Chrome 136.0", AppName: "my-app", LastSeen: "2026-05-19T10:00:00Z"},
 	}
 
-	codec := &replaySessionListCodec{}
+	codec := replaySessionTable().Codec(cmdio.FormatText)
 	var buf bytes.Buffer
 	err := codec.Encode(&buf, rows)
 	require.NoError(t, err)
@@ -107,8 +108,8 @@ func TestReplaySessionListCodec_Encode(t *testing.T) {
 	assert.Contains(t, out, "Chrome 136.0")
 }
 
-func TestReplaySessionListCodec_EncodeEmpty(t *testing.T) {
-	codec := &replaySessionListCodec{}
+func TestReplaySessionTable_EncodeEmpty(t *testing.T) {
+	codec := replaySessionTable().Codec(cmdio.FormatText)
 	var buf bytes.Buffer
 	err := codec.Encode(&buf, []replaySessionListRow{})
 	require.NoError(t, err)

@@ -651,8 +651,8 @@ func TestGetSegment(t *testing.T) {
 			ID:          "seg-0",
 			RecordingID: "rec-1",
 			Events: []faro.RRWebEvent{
-				{Type: 4, Timestamp: 1700000000000, Data: json.RawMessage(`{"source":0}`)},
-				{Type: 3, Timestamp: 1700000001000, Data: json.RawMessage(`{"source":1}`)},
+				json.RawMessage(`{"type":4,"timestamp":1700000000000,"data":{"source":0}}`),
+				json.RawMessage(`{"type":3,"timestamp":"1700000001000","data":{"source":1}}`),
 			},
 		})
 	}))
@@ -666,10 +666,8 @@ func TestGetSegment(t *testing.T) {
 	assert.Equal(t, "rec-1", resp.RecordingID)
 
 	require.Len(t, resp.Events, 2)
-	assert.Equal(t, 4, resp.Events[0].Type)
-	assert.Equal(t, int64(1700000000000), resp.Events[0].Timestamp)
-	assert.Equal(t, 3, resp.Events[1].Type)
-	assert.JSONEq(t, `{"source":0}`, string(resp.Events[0].Data))
+	assert.JSONEq(t, `{"type":4,"timestamp":1700000000000,"data":{"source":0}}`, string(resp.Events[0]))
+	assert.JSONEq(t, `{"type":3,"timestamp":"1700000001000","data":{"source":1}}`, string(resp.Events[1]))
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

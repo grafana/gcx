@@ -67,6 +67,10 @@ Recording boundaries are preserved because separate recordings can overlap in ti
 			if err := opts.Validate(); err != nil {
 				return err
 			}
+			appID, err := parseReplayAppID(opts.App)
+			if err != nil {
+				return err
+			}
 			ctx := cmd.Context()
 			cfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
@@ -76,7 +80,6 @@ Recording boundaries are preserved because separate recordings can overlap in ti
 			if err != nil {
 				return err
 			}
-			appID := resolveAppID(opts.App)
 			sessionID := strings.TrimSpace(args[0])
 			list, err := client.ListRecordings(ctx, appID, sessionID)
 			if err != nil {
