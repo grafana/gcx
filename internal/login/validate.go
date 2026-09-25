@@ -183,7 +183,7 @@ func validateBasicAuth(ctx context.Context, cfg config.Context) error {
 	client.WithHTTPClient(httputils.NewDefaultClientWithTLS(ctx, tlsConfig))
 	user, err := client.SignedInUser.GetSignedInUserWithParams(signed_in_user.NewGetSignedInUserParams().WithContext(ctx))
 	if err != nil {
-		// Server error bodies can echo credentials. Only expose the status.
+		// HTTP error bodies can echo credentials; retain causes only without a status.
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -191,6 +191,9 @@ func validateBasicAuth(ctx context.Context, cfg config.Context) error {
 		var response interface{ Code() int }
 		if errors.As(err, &response) {
 			status = response.Code()
+		}
+		if status == 0 {
+			return &BasicAuthCheckError{Cause: err}
 		}
 		return &BasicAuthCheckError{Status: status}
 	}

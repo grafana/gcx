@@ -51,6 +51,7 @@ type loginOpts struct {
 	OAuth               bool
 	BasicAuth           bool
 	User                string
+	UserSet             bool
 	Cloud               bool
 	Yes                 bool
 	AllowServerOverride bool
@@ -88,6 +89,11 @@ func (opts *loginOpts) setup(flags *pflag.FlagSet) {
 // --context flag (they're mutually exclusive to prevent silent confusion).
 // Also validates the output codec options (format name, --json flag shape).
 func (opts *loginOpts) Validate(args []string) error {
+	userProvided := opts.UserSet || opts.User != ""
+	opts.User = strings.TrimSpace(opts.User)
+	if userProvided && opts.User == "" {
+		return errors.New("--user must not be empty")
+	}
 	if len(args) == 1 && opts.Config.Context != "" {
 		return gcxerrors.DetailedError{
 			Summary: "conflicting context specification",
@@ -176,9 +182,7 @@ Auth sources (for non-interactive use):
   gcx login --yes prod --token glsa_xxx
   gcx login --yes --server https://localhost:3000 --token glsa_xxx`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if cmd.Flags().Changed("user") && strings.TrimSpace(opts.User) == "" {
-				return errors.New("--user must not be empty")
-			}
+			opts.UserSet = cmd.Flags().Changed("user")
 			opts.Token = strings.TrimSpace(opts.Token)
 			opts.CloudToken = strings.TrimSpace(opts.CloudToken)
 			if err := opts.Validate(args); err != nil {
@@ -430,7 +434,7 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 		},
 	}
 	if opts.UseBasicAuth {
-		readBasicAuthEnvironment(&opts)
+		readBasicAuthEnvironment(&opts, isInteractive)
 	}
 	if err := reuseNonInteractiveCloudCredential(&opts, cloudTokenExplicit, credentialSourceCtx, isInteractive); err != nil {
 		return err
@@ -1449,7 +1453,7 @@ func askGrafanaAuth(opts *login.Options, existingToken string) error {
 	}
 	if authMethod == "basic" {
 		opts.UseBasicAuth = true
-		readBasicAuthEnvironment(opts)
+		readBasicAuthEnvironment(opts, true)
 		return askBasicAuth(opts)
 	}
 	if authMethod == "oauth-manual" {
@@ -1494,11 +1498,13 @@ func askGrafanaAuth(opts *login.Options, existingToken string) error {
 	return nil
 }
 
-func readBasicAuthEnvironment(opts *login.Options) {
+func readBasicAuthEnvironment(opts *login.Options, interactive bool) {
 	if opts.GrafanaUser == "" {
-		opts.GrafanaUser = os.Getenv("GRAFANA_USER")
+		opts.GrafanaUser = strings.TrimSpace(os.Getenv("GRAFANA_USER"))
 	}
-	opts.GrafanaPassword = os.Getenv("GRAFANA_PASSWORD")
+	if !interactive {
+		opts.GrafanaPassword = os.Getenv("GRAFANA_PASSWORD")
+	}
 }
 
 func askBasicAuth(opts *login.Options) error {

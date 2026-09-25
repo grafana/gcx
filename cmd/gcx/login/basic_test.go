@@ -59,7 +59,7 @@ func TestBasicLogin(t *testing.T) {
 		var output bytes.Buffer
 		cmd.SetOut(&output)
 		cmd.SetErr(&output)
-		cmd.SetArgs([]string{"local", "--config", path, "--server", server.URL, "--basic-auth", "--user", "admin", "--yes", "-o", "json"})
+		cmd.SetArgs([]string{"local", "--config", path, "--server", server.URL, "--basic-auth", "--user", " admin ", "--yes", "-o", "json"})
 		err := cmd.ExecuteContext(t.Context())
 		return output.String(), err
 	}
@@ -127,7 +127,8 @@ func TestBasicLoginInvalidInputs(t *testing.T) {
 		{"oauth conflict", []string{"--basic-auth", "--oauth"}, "mutually exclusive"},
 		{"manual oauth conflict", []string{"--basic-auth", "--oauth-manual"}, "mutually exclusive"},
 		{"user without method", []string{"--user", "admin"}, "--user requires --basic-auth"},
-		{"explicit empty user", []string{"--basic-auth", "--user", " "}, "--user must not be empty"},
+		{"explicit empty user", []string{"--basic-auth", "--user", ""}, "--user must not be empty"},
+		{"whitespace user", []string{"--basic-auth", "--user", " "}, "--user must not be empty"},
 		{"missing credentials", []string{"--basic-auth"}, "Login requires additional input"},
 	}
 	for _, tt := range tests {
@@ -168,4 +169,28 @@ func TestBasicLoginRejectsRuntimeOnlyDestination(t *testing.T) {
 	err := cmd.ExecuteContext(t.Context())
 	require.ErrorContains(t, err, "runtime-only Grafana proxy/TLS settings")
 	assert.Zero(t, requests.Load())
+}
+
+func TestReadBasicAuthEnvironment(t *testing.T) {
+	t.Setenv("GRAFANA_USER", " env-user ")
+	t.Setenv("GRAFANA_PASSWORD", " exported password ")
+	for _, tt := range []struct {
+		name         string
+		interactive  bool
+		user         string
+		wantUser     string
+		wantPassword string
+	}{
+		{"interactive with flag", true, "flag-user", "flag-user", ""},
+		{"interactive with environment username", true, "", "env-user", ""},
+		{"non-interactive with flag", false, "flag-user", "flag-user", " exported password "},
+		{"non-interactive with environment username", false, "", "env-user", " exported password "},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			opts := &login.Options{Inputs: login.Inputs{GrafanaUser: tt.user}}
+			readBasicAuthEnvironment(opts, tt.interactive)
+			assert.Equal(t, tt.wantUser, opts.GrafanaUser)
+			assert.Equal(t, tt.wantPassword, opts.GrafanaPassword)
+		})
+	}
 }

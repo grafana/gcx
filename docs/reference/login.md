@@ -162,7 +162,8 @@ gcx login my-grafana --server https://grafana.example.com
 # Pick "Basic auth (username/password)" and enter your username and password.
 ```
 
-The password prompt does not echo your password. To select Basic authentication
+Interactive login always prompts for the password, even if `GRAFANA_PASSWORD`
+is exported, and does not echo it. To select Basic authentication
 directly and supply the username:
 
 ```bash
@@ -170,7 +171,8 @@ gcx login my-grafana --server https://grafana.example.com --basic-auth --user ad
 ```
 
 **Non-interactive:** supply `GRAFANA_PASSWORD` through your environment or CI
-secret store. There is no password command-line flag.
+secret store and pass `--yes` to disable prompts. There is no password
+command-line flag.
 
 ```bash
 # GRAFANA_PASSWORD is already supplied by your secret store.
