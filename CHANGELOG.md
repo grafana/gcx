@@ -1,5 +1,11 @@
 ## Unreleased
 
+- Keep `basicMetricsOnly: false` on Synthetic Monitoring checks. gcx dropped a
+  false value from the request, so the API applied its default of `true`, and
+  `checks update` switched a full-metrics check back to basic metrics.
+  `checks get` and `checks list` now also show `basicMetricsOnly: false`, so
+  a get and update round trip keeps full metrics. A spec that leaves the field
+  out still gets the API default (#1395)
 - Anonymous usage statistics for `gcx signup` now record the last step it
   reached (`signup_stage`), and a failed OAuth token exchange in `gcx login` or
   `gcx signup` reports its HTTP status. The one-time telemetry notice is shown

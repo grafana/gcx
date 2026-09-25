@@ -25,8 +25,8 @@ type Check struct {
 	Enabled          bool           `json:"enabled"`
 	Labels           []Label        `json:"labels,omitempty"`
 	Settings         CheckSettings  `json:"settings"`
-	Probes           []int64        `json:"probes"` // probe IDs — only used in API requests
-	BasicMetricsOnly bool           `json:"basicMetricsOnly,omitempty"`
+	Probes           []int64        `json:"probes"`                     // probe IDs — only used in API requests
+	BasicMetricsOnly *bool          `json:"basicMetricsOnly,omitempty"` // nil: omitted, SM API default (true) applies
 	AlertSensitivity string         `json:"alertSensitivity,omitempty"`
 	FolderUID        *string        `json:"folderUid,omitempty"` // nil preserves the assignment on update; empty clears it.
 	Channels         map[string]any `json:"channels,omitempty"`
@@ -45,8 +45,8 @@ type CheckSpec struct {
 	Enabled          bool           `json:"enabled"`
 	Labels           []Label        `json:"labels,omitempty"`
 	Settings         CheckSettings  `json:"settings"`
-	Probes           []string       `json:"probes"` // probe NAMES in YAML files
-	BasicMetricsOnly bool           `json:"basicMetricsOnly,omitempty"`
+	Probes           []string       `json:"probes"`                     // probe NAMES in YAML files
+	BasicMetricsOnly *bool          `json:"basicMetricsOnly,omitempty"` // pointer so an explicit false round-trips
 	AlertSensitivity string         `json:"alertSensitivity,omitempty"`
 	FolderUID        *string        `json:"folderUid,omitempty" jsonschema:"description=Grafana folder UID; does not create a folder. On create omit or use an empty string for no explicit assignment. On update omit to preserve the assignment or use an empty string to clear it."`
 	Channels         map[string]any `json:"channels,omitempty"`
