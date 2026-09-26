@@ -360,6 +360,13 @@ EOF
   "version": "${version}"
 }
 EOF
+	cat >"$dir/claude-plugin/plugin.json" <<EOF
+{
+  "\$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "gcx",
+  "version": "${version}"
+}
+EOF
 	git -C "$dir" add .
 	git -C "$dir" commit -q -m "chore: add plugin manifests"
 }
@@ -374,14 +381,15 @@ test_plugin_version_bumped() {
 
 	(cd "$dir" && PATH="$mock:$PATH" DRY_RUN=1 bash "$SCRIPT" patch 2>&1) || true
 
-	local marketplace_ver plugin_ver
+	local marketplace_ver plugin_ver portable_ver
 	marketplace_ver=$(grep '"version"' "$dir/.claude-plugin/marketplace.json" | head -1 | sed 's/.*"\([0-9][^"]*\)".*/\1/')
 	plugin_ver=$(grep '"version"' "$dir/claude-plugin/.claude-plugin/plugin.json" | head -1 | sed 's/.*"\([0-9][^"]*\)".*/\1/')
+	portable_ver=$(grep '"version"' "$dir/claude-plugin/plugin.json" | head -1 | sed 's/.*"\([0-9][^"]*\)".*/\1/')
 
-	if [[ "$marketplace_ver" == "0.5.1" && "$plugin_ver" == "0.5.1" ]]; then
-		pass "plugin version bumped: 0.5.0 → 0.5.1 in both files"
+	if [[ "$marketplace_ver" == "0.5.1" && "$plugin_ver" == "0.5.1" && "$portable_ver" == "0.5.1" ]]; then
+		pass "plugin version bumped: 0.5.0 → 0.5.1 in all three files"
 	else
-		fail "plugin version bumped: expected 0.5.1, got marketplace=${marketplace_ver} plugin=${plugin_ver}"
+		fail "plugin version bumped: expected 0.5.1, got marketplace=${marketplace_ver} plugin=${plugin_ver} portable=${portable_ver}"
 	fi
 	rm -rf "$dir" "$mock"
 }

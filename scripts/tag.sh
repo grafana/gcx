@@ -148,13 +148,14 @@ echo "Updated ${CHANGELOG}"
 printf '%s\n' "$NEW_ENTRY" | tail -n +3 >.release-notes.md
 echo "Updated .release-notes.md"
 
-# ── bump Claude plugin version ──────────────────────────────────────────────
+# ── bump plugin versions ──────────────────────────────────────────────
 
 SEMVER="${NEW_TAG#v}"
 PLUGIN_JSON="claude-plugin/.claude-plugin/plugin.json"
+PORTABLE_JSON="claude-plugin/plugin.json"
 MARKETPLACE_JSON=".claude-plugin/marketplace.json"
 
-for f in "$PLUGIN_JSON" "$MARKETPLACE_JSON"; do
+for f in "$PLUGIN_JSON" "$PORTABLE_JSON" "$MARKETPLACE_JSON"; do
 	if [[ -f "$f" ]]; then
 		sed -i.bak 's/"version": "[^"]*"/"version": "'"${SEMVER}"'"/' "$f" && rm -f "${f}.bak"
 		echo "Updated plugin version in ${f} → ${SEMVER}"
@@ -175,6 +176,7 @@ git checkout -b "$RELEASE_BRANCH"
 
 git add "$CHANGELOG" .release-notes.md
 [[ -f "$PLUGIN_JSON" ]] && git add "$PLUGIN_JSON"
+[[ -f "$PORTABLE_JSON" ]] && git add "$PORTABLE_JSON"
 [[ -f "$MARKETPLACE_JSON" ]] && git add "$MARKETPLACE_JSON"
 git commit -m "chore(release): ${NEW_TAG} changelog"
 
