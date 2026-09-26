@@ -107,7 +107,7 @@ func (o *deleteOpts) setup(flags *pflag.FlagSet, label string) {
 	// system: the default text codec reproduces the familiar
 	// "Deleted <label> <id>" line byte-for-byte; agent mode and explicit
 	// -o json/yaml get the structured document.
-	o.IO.RegisterCustomCodec("text", &singleMutationTextCodec{
+	o.IO.RegisterCustomCodec("text", &mutationResultTextCodec[cmdio.SingleMutation]{
 		render: func(w io.Writer, m cmdio.SingleMutation) {
 			cmdio.Success(w, "Deleted %s %s", label, m.Target.ID)
 		},
@@ -441,6 +441,7 @@ func newEscalationPoliciesCmd(loader OnCallConfigLoader) *cobra.Command {
 		newCreateSubcommand(loader, "Create an escalation policy.", escalationPolicyCRUDOpts()),
 		newUpdateSubcommand(loader, "Update an escalation policy by ID.", escalationPolicyCRUDOpts()),
 		newDeleteSubcommand(loader, "Delete an escalation policy by ID.", "EscalationPolicy", "escalation policy", escalationPolicyCRUDOpts()),
+		newEscalationPolicyUpdatePositionCommand(loader),
 	)
 	cmd.AddCommand(newEscalationStepCmds(loader)...)
 	return cmd
@@ -504,6 +505,7 @@ func newRoutesCmd(loader OnCallConfigLoader) *cobra.Command {
 		newCreateSubcommand(loader, "Create a route.", routeCRUDOpts()),
 		newUpdateSubcommand(loader, "Update a route by ID.", routeCRUDOpts()),
 		newDeleteSubcommand(loader, "Delete a route by ID.", "Route", "route", routeCRUDOpts()),
+		newRouteUpdatePositionCommand(loader),
 	)
 	cmd.AddCommand(newRouteFilterTypeCmds(loader)...)
 	return cmd
