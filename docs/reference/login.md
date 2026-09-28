@@ -26,27 +26,24 @@ This page walks through the common login paths, the mental model behind them, an
   sign-up page. Create the account, verify your email (the emailed link may
   open a new tab), and create your first stack. The browser then signs in to
   the new stack and goes to its "Connect gcx" page. Approve it, and gcx saves
-  the connection and prints a summary with the next steps:
+  the connection and prints a summary with the way back to your stack (in a
+  color terminal, the gcx logo comes first):
 
   ```
-  ✔ Connected to your Grafana Cloud stack
+  ✔ You're connected to Grafana Cloud
 
-    Stack:    https://mystack.grafana.net
-    Context:  default
-    Version:  12.0.0
+    Stack     https://mystack.grafana.net
+    Context   default
 
   Next steps
-    Connect your first app or service
-      https://mystack.grafana.net/connections/add-new-connection
-    Check the connection anytime
-      gcx config check --context default
-    Manage SLOs, Synthetic Monitoring, k6 and more with a Cloud Access Policy token
-      gcx cloud login --context default --cloud-token <token>
-      https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/create-access-policies/
+    Open Grafana
+      https://mystack.grafana.net
   ```
 
-  With `-o json`, `-o yaml` or in agent mode, stdout carries the same result as
-  `gcx login`, and the next steps come as hints on stderr.
+  The browser page after "Connect gcx" has the same "Open Grafana" button, which
+  takes that tab back to the stack. With `-o json`, `-o yaml` or in agent mode,
+  stdout carries the same result as `gcx login`, and the next steps come as
+  hints on stderr.
 - **An account, but no stack URL at hand: run `gcx login`** and leave the
   server URL empty. gcx opens the grafana.com stack launcher. Sign in, pick a
   stack, and approve "Connect gcx". gcx then offers the optional grafana.com

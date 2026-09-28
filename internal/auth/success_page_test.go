@@ -10,8 +10,8 @@ import (
 
 // TestSuccessPageLinksBackToTheStack pins the link on the page a successful
 // callback gets. The consent page redirects its own tab to the callback, so
-// the link is how the person gets back to the stack. It is shown only for an
-// https origin on a trusted Grafana domain, and it never replaces the claim
+// the link is an easy way back to the stack in that tab. It is shown only for
+// an https origin on a trusted Grafana domain, and it never replaces the claim
 // that only the browser step is done.
 func TestSuccessPageLinksBackToTheStack(t *testing.T) {
 	t.Parallel()
@@ -42,18 +42,23 @@ func TestSuccessPageLinksBackToTheStack(t *testing.T) {
 			auth.RenderSuccessPage(rec, tt.instanceEndpoint)
 			body := rec.Body.String()
 
-			assert.Contains(t, body, "Authorization complete")
-			assert.Contains(t, body, "Return to your terminal")
+			assert.Contains(t, body, "<html lang=\"en\">")
+			assert.Contains(t, body, "<h1>You've authorized gcx</h1>")
+			assert.Contains(t, body, "Return to your terminal to see the connection result.")
+			assert.Contains(t, body, "You can close this tab.")
 			assert.NotContains(t, body, "Connected")
 			assert.NotContains(t, body, "<script>")
+			// The page URL carries the callback's code and state, so the page
+			// sends no referrer at all, not only from its link.
+			assert.Contains(t, body, `<meta name="referrer" content="no-referrer">`)
 			if tt.wantHref == "" {
 				assert.NotContains(t, body, "<a ")
 				return
 			}
 			// The page URL carries the callback's code and state, so the link
 			// sends no referrer.
-			assert.Contains(t, body, `href="`+tt.wantHref+`" rel="noreferrer"`)
-			assert.Contains(t, body, "Go to "+tt.wantHref[len("https://"):])
+			assert.Contains(t, body, `href="`+tt.wantHref+`" rel="noreferrer">Open Grafana</a>`)
+			assert.Contains(t, body, `<p class="stack-host">`+tt.wantHref[len("https://"):]+`</p>`)
 		})
 	}
 }

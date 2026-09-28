@@ -200,10 +200,11 @@ func TestCallbackServerIgnoresCallbacksFromOtherAttempts(t *testing.T) {
 	assert.Equal(t, http.StatusOK, status)
 	// The browser page claims only the browser step: gcx validates and saves
 	// the connection afterwards, and either can still fail.
-	assert.Contains(t, body, "Authorization complete")
+	assert.Contains(t, body, "You've authorized gcx")
 	assert.Contains(t, body, "Return to your terminal")
 	assert.NotContains(t, body, "Connected")
 	// The consent page sent this tab away from the stack, so the page links back.
+	assert.Contains(t, body, ">Open Grafana</a>")
 	assert.Contains(t, body, `href="https://mystack.grafana.net"`)
 	outcome := waitForOutcome(t, done)
 	require.NoError(t, outcome.err)
@@ -792,7 +793,7 @@ func TestCallbackServerKeepsWaitingAfterAnIncompleteCallback(t *testing.T) {
 
 	status, body := sendCallback(t, http.MethodGet, callbackURL(port, ours))
 	assert.Equal(t, http.StatusOK, status)
-	assert.Contains(t, body, "Authorization complete")
+	assert.Contains(t, body, "You've authorized gcx")
 	outcome := waitForOutcome(t, done)
 	require.NoError(t, outcome.err)
 	assert.Equal(t, "gat_token", outcome.result.Token)

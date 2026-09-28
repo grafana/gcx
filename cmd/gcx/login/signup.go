@@ -191,6 +191,15 @@ func signupLoginCommand(flags *loginOpts, contextName, server string, oauthArgs 
 	return signupFollowUpCommand(flags, strings.Join(parts, " "))
 }
 
+// signupFollowUpCommand appends the signup's --config to command, so a
+// command that signup prints acts on the file the connection is saved to.
+func signupFollowUpCommand(flags *loginOpts, command string) string {
+	if flags.Config.ConfigFile == "" {
+		return command
+	}
+	return command + " --config " + shellArg(flags.Config.ConfigFile)
+}
+
 // signupOAuthArgs are the gcx login flags that reach the browser the way the
 // signup did. A signup run with --oauth-manual has no callback the browser can
 // reach, and one run with --oauth-callback-port may rely on a port forward for

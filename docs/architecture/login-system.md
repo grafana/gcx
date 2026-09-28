@@ -171,9 +171,13 @@ save, are returned as they are.
 Signup's output is its own, and its structured output is not. `gcx signup`
 registers `signupTextCodec` as its "text" codec in place of `loginTextCodec`,
 and `printSignupResult` replaces `printResult`: stdout gets the same
-`LoginResult` (the text codec renders it as the success summary, with no check
-mark in agent mode, so signup's own text stays plain ASCII), and stderr gets the
-next steps, a plain list in text mode and `EmitHint` hints otherwise. With
+`LoginResult` (the text codec renders it as the success summary: the gcx logo
+from `style.RenderLogo` when stdout is a terminal and styling is on, then the
+heading, with no check mark in agent mode, so signup's own text stays plain
+ASCII), and stderr gets the next step, a plain list in text mode and an
+`EmitHint` hint otherwise. That step is "Open Grafana" with the saved stack URL
+(`stackBrowserURL`, https only), the way back to the stack whose consent page
+took the browser tab. Signup suggests no further credential. With
 `CloudSignup`, `announceOAuthLogin` reports the browser approval as "Approved
 in the browser ... Checking the connection to <stack>..." with no success
 mark, so the summary, printed only after the save, is the one success line.
