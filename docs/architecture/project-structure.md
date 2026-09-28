@@ -75,6 +75,7 @@ gcx/
 │   │   │   ├── search/       # Full-text search via dashboard.grafana.app search endpoint
 │   │   │   ├── snapshot/     # Snapshot rendering via Dashboard Image Renderer API
 │   │   │   └── versions/     # Version history list + restore via dashboard.grafana.app
+│   │   ├── experiments/      # Experimental Odin app-plugin experiment listing — CLI: `gcx experiments list`
 │   │   ├── faro/             # Frontend Observability provider (apps CRUD, sourcemaps sub-resource) — CLI: `gcx frontend`
 │   │   ├── fleet/            # Fleet Management provider (pipeline and collector resources)
 │   │   ├── instrumentation/  # Instrumentation Hub provider (clusters, apps, services; helm formatter; RMW helper; output codecs; enumerate helper)

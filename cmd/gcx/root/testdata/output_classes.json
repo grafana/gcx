@@ -266,6 +266,7 @@
  "gcx dev lint test": "finite",
  "gcx dev scaffold": "interactive",
  "gcx dev serve": "server",
+ "gcx experiments list": "finite",
  "gcx fleet collectors create": "finite",
  "gcx fleet collectors delete": "finite",
  "gcx fleet collectors get": "finite",
