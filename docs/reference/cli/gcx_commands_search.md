@@ -1,13 +1,15 @@
 ## gcx commands search
 
-Find CLI commands by intent using local text search
+Find commands and workflow guides by intent
 
 ### Synopsis
 
 Search the installed CLI's command paths, aliases, descriptions and parameters.
 Quote a task description to receive up to five ranked suggestions. Matching uses
 case-insensitive words, prefixes and single-character typo correction, not semantic
-understanding. Commands matching more query words rank above partial matches.
+understanding. Strong subject matches are required; weak matches are omitted.
+Common compound words and adjacent-letter typos are supported. Workflow results
+open bundled guides for multistep tasks; they do not execute those tasks.
 Suggestions may only match part of your query; inspect the selected command with
 --help before using it. No Grafana connection or credentials are required, and
 suggestions are not checked for availability in your current context.
@@ -24,6 +26,7 @@ gcx commands search <query> [flags]
   gcx commands search "create an uptime check"
   gcx commands search "export dashboards" --limit 10
   gcx commands search "query metrics" -o json
+  gcx commands search "investigate high CPU usage"
 ```
 
 ### Options
@@ -32,7 +35,7 @@ gcx commands search <query> [flags]
   -h, --help            help for search
       --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --limit int       Maximum number of command suggestions to return. 0 means all results are returned (default 5)
+      --limit int       Maximum number of command and workflow suggestions to return. 0 means all results are returned (default 5)
   -o, --output string   Output format. One of: agents, json, text, yaml (default "text")
 ```
 

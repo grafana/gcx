@@ -24,10 +24,13 @@ Use **progressive disclosure** to minimize token cost:
 ```bash
 gcx commands search "create an uptime check"
 ```
-Search uses local word matching with typo tolerance and returns five suggestions.
-Inspect the best match with `--help` before acting; matches may cover only part of
-the task and do not verify availability in the current context. Query text is
-not sent in usage statistics. Use the tree below when you want to browse instead.
+Search uses local word matching with typo tolerance and returns up to five strong
+suggestions. Weak matches are omitted; no result means try more specific wording
+or browse the tree. For `kind: command`, inspect the command with `--help` before
+acting. For `kind: workflow`, use its `invocation` to read the bundled skill guide;
+it is an entry point for a multistep task, not a command that completes the task.
+Suggestions do not verify availability in the current context. Query text is not
+sent in usage statistics. Use the tree below when you want to browse instead.
 
 **Step 1 — Orient** (30 lines, all top-level groups):
 ```bash

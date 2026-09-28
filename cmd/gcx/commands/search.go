@@ -26,7 +26,7 @@ func (o *searchOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("text")
 	o.IO.RegisterCustomCodec("text", &searchTextCodec{})
 	o.IO.BindFlags(flags)
-	o.IO.BindListLimit(flags, &o.Limit, "command suggestions", 5)
+	o.IO.BindListLimit(flags, &o.Limit, "command and workflow suggestions", 5)
 }
 
 func (o *searchOpts) Validate() error {
@@ -37,6 +37,8 @@ func (o *searchOpts) Validate() error {
 }
 
 type searchResult struct {
+	Kind         string `json:"kind" yaml:"kind"`
+	Invocation   string `json:"invocation,omitempty" yaml:"invocation,omitempty"`
 	FullPath     string `json:"full_path" yaml:"full_path"`
 	Description  string `json:"description" yaml:"description"`
 	Skill        string `json:"skill,omitempty" yaml:"skill,omitempty"`
@@ -53,11 +55,13 @@ func searchCommand(root *cobra.Command) *cobra.Command {
 	opts := &searchOpts{}
 	cmd := &cobra.Command{
 		Use:   "search <query>",
-		Short: "Find CLI commands by intent using local text search",
+		Short: "Find commands and workflow guides by intent",
 		Long: `Search the installed CLI's command paths, aliases, descriptions and parameters.
 Quote a task description to receive up to five ranked suggestions. Matching uses
 case-insensitive words, prefixes and single-character typo correction, not semantic
-understanding. Commands matching more query words rank above partial matches.
+understanding. Strong subject matches are required; weak matches are omitted.
+Common compound words and adjacent-letter typos are supported. Workflow results
+open bundled guides for multistep tasks; they do not execute those tasks.
 Suggestions may only match part of your query; inspect the selected command with
 --help before using it. No Grafana connection or credentials are required, and
 suggestions are not checked for availability in your current context.
@@ -65,7 +69,8 @@ suggestions are not checked for availability in your current context.
 Use --limit 0 for all matches or help-tree to browse a known command group.`,
 		Example: `  gcx commands search "create an uptime check"
   gcx commands search "export dashboards" --limit 10
-  gcx commands search "query metrics" -o json`,
+  gcx commands search "query metrics" -o json
+  gcx commands search "investigate high CPU usage"`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.Query = args[0]
@@ -94,8 +99,9 @@ Use --limit 0 for all matches or help-tree to browse a known command group.`,
 func searchDocuments(root, search *cobra.Command) ([]agent.SearchDocument, map[string]searchResult) {
 	var documents []agent.SearchDocument
 	results := make(map[string]searchResult)
-	var walk func(*cobra.Command, string, string, string)
-	walk = func(cmd *cobra.Command, parent, ancestors, aliases string) {
+	intents := agent.CommandSearchTerms()
+	var walk func(*cobra.Command, string, string)
+	walk = func(cmd *cobra.Command, parent, aliases string) {
 		if cmd.Hidden || cmd.Deprecated != "" || cmd == search || cmd.Name() == "completion" {
 			return
 		}
@@ -106,7 +112,7 @@ func searchDocuments(root, search *cobra.Command) ([]agent.SearchDocument, map[s
 		aliases = strings.TrimSpace(aliases + " " + strings.Join(cmd.Aliases, " "))
 		if cmd.Runnable() && cmd != root {
 			var context strings.Builder
-			context.WriteString(ancestors + " " + info.Args + " " + info.Skill)
+			context.WriteString(info.Args + " " + info.Skill)
 			for _, flag := range info.Flags {
 				// Presentation flags are shared infrastructure, not command intent.
 				switch flag.Name {
@@ -117,18 +123,25 @@ func searchDocuments(root, search *cobra.Command) ([]agent.SearchDocument, map[s
 			}
 			documents = append(documents, agent.SearchDocument{
 				Path: info.FullPath, Aliases: aliases, Summary: info.Description,
-				Description: info.Long, Context: context.String(),
+				Description: info.Long, Context: context.String(), Terms: intents[info.FullPath],
 			})
 			results[info.FullPath] = searchResult{
-				FullPath: info.FullPath, Description: info.Description, Skill: info.Skill,
+				Kind: "command", FullPath: info.FullPath, Description: info.Description, Skill: info.Skill,
 				Availability: info.Availability, Stability: info.Stability,
 			}
 		}
 		for _, child := range cmd.Commands() {
-			walk(child, info.FullPath, ancestors+" "+cmd.Short, aliases)
+			walk(child, info.FullPath, aliases)
 		}
 	}
-	walk(root, "", "", "")
+	walk(root, "", "")
+	if _, ok := results["gcx agent skills get"]; ok {
+		for _, workflow := range agent.SearchWorkflows() {
+			invocation := "gcx agent skills get " + workflow.Skill
+			documents = append(documents, agent.SearchDocument{Path: "gcx agent skills get", Key: invocation, Terms: workflow.Terms, Workflow: true})
+			results[invocation] = searchResult{Kind: "workflow", FullPath: "gcx agent skills get", Invocation: invocation, Skill: workflow.Skill, Description: workflow.Description}
+		}
+	}
 	return documents, results
 }
 
@@ -146,12 +159,16 @@ func (c *searchTextCodec) Encode(w io.Writer, value any) error {
 		return fmt.Errorf("unsupported search output: %T", value)
 	}
 	if len(result.Items) == 0 {
-		_, err := fmt.Fprintln(w, "No matching commands. Try different words or browse gcx help-tree --depth 1.")
+		_, err := fmt.Fprintln(w, "No strong matches. Try more specific words or browse gcx help-tree --depth 1.")
 		return err
 	}
-	table := style.NewTable("COMMAND", "DESCRIPTION", "AVAILABILITY", "STABILITY", "SKILL")
+	table := style.NewTable("KIND", "COMMAND", "DESCRIPTION", "AVAILABILITY", "STABILITY", "SKILL")
 	for _, item := range result.Items {
-		table.Row(item.FullPath, item.Description, item.Availability, item.Stability, item.Skill)
+		invocation := item.FullPath
+		if item.Invocation != "" {
+			invocation = item.Invocation
+		}
+		table.Row(item.Kind, invocation, item.Description, item.Availability, item.Stability, item.Skill)
 	}
 	return table.Render(w)
 }

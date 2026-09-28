@@ -57,7 +57,7 @@ var commandAnnotations = map[string]annotation{
 
 	// commands
 	"gcx commands":        {Cost: "medium", Hint: "--flat -o json"},
-	"gcx commands search": {Cost: "small (large with --limit 0)", Hint: "\"describe your task\"; returns five suggestions by default, then use the selected command's --help"},
+	"gcx commands search": {Cost: "small (large with --limit 0)", Hint: "\"describe your task\"; returns up to five strong command/workflow suggestions; use command --help or read a workflow via its invocation"},
 
 	// config
 	"gcx config check":           {Cost: "small"},

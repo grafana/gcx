@@ -159,14 +159,29 @@ Key: SELECTOR = `kind[/name[,name...]]` or long form `kind.group/name`
 `commands search` collects visible, non-deprecated runnable commands from the
 registered Cobra tree after annotations are applied. It reuses catalog metadata
 extraction and passes plain documents to the lexical ranker in `internal/agent`.
-Complete command-path word matches rank first, followed by query-word coverage
-and weighted matches (path/aliases, summary, description, then argument/flag and
-ancestor metadata). Prefix matching and single-edit typo fallback support
-discovery without a persisted index, new dependency, or backend call.
+Complete normalized command-path matches rank first. Other candidates require a
+subject match in primary metadata (path, aliases, short help, curated intent terms)
+and at least 60% inverse-document-frequency-weighted query coverage. Unknown
+content words count against coverage. Ranking uses weighted coverage, field scores
+and supporting help text, with deterministic ties. Long help and flags cannot
+qualify a result alone. Common compound/word forms and unique single-edit typo
+correction (including transpositions) improve recall without a persistent index,
+new dependency or backend call. Simple read intents filter known write verbs;
+explicit negated operations are excluded without claiming general language parsing.
+
+The intent registry in `internal/agent` adds positive vocabulary for verified
+command capabilities and curated routes to active bundled workflow skills. Drift
+tests validate command paths and skill availability. Workflow results identify
+`gcx agent skills get` as the canonical path and include an invocation to open the
+specific guide. Commands are keyed by path; workflows by guide. Both share the
+same limit and output codecs. Results carry `kind: command` or `kind: workflow`;
+only workflow results carry `invocation`.
+
 Results are suggestions rather than semantic answers or permission checks.
 Output uses the existing codecs and list truncation metadata; query text never
-enters usage statistics. The command's own suggestion list excludes itself,
-hidden/deprecated subtrees, and shell-completion plumbing.
+enters usage statistics. Weak matches are removed before limit metadata is built.
+The command's own suggestion list excludes itself, hidden/deprecated subtrees,
+and shell-completion plumbing. Search never executes a suggested command.
 
 ---
 
