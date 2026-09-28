@@ -13,7 +13,8 @@ import (
 type FaroApp struct {
 	// AppType is set at creation; the API ignores changes on update.
 	AppType string `json:"appType,omitempty"`
-	// A nil Runtime leaves the stored runtime unchanged on update.
+	// A nil Runtime preserves the stored runtime on update.
+	// A pointer preserves explicit empty input so the API can reject it.
 	Runtime            *string `json:"runtime,omitempty"`
 	ID                 string  `json:"id,omitempty"`
 	Name               string  `json:"name"`

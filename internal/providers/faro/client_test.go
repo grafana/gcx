@@ -146,6 +146,46 @@ func TestClient_Get(t *testing.T) {
 	}
 }
 
+func TestClient_CreateClassificationError(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		appType string
+	}{
+		{name: "missing app type"},
+		{name: "conflicting app type", appType: "web"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			const message = `runtime "android-native" belongs to a mobile app, but the app is web`
+			calls := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				assert.Equal(t, http.MethodPost, r.Method)
+				var payload map[string]any
+				if err := json.NewDecoder(r.Body).Decode(&payload); !assert.NoError(t, err) {
+					w.WriteHeader(http.StatusInternalServerError)
+					return
+				}
+				assert.Equal(t, "android-native", payload["runtime"])
+				if tc.appType == "" {
+					assert.NotContains(t, payload, "appType")
+				} else {
+					assert.Equal(t, tc.appType, payload["appType"])
+				}
+				http.Error(w, message, http.StatusBadRequest)
+			}))
+			defer server.Close()
+
+			runtime := "android-native"
+			result, err := newTestClient(t, server).Create(t.Context(), &faro.FaroApp{
+				Name: "mobile-app", AppType: tc.appType, Runtime: &runtime,
+			})
+			require.ErrorContains(t, err, message)
+			assert.Nil(t, result)
+			assert.Equal(t, 1, calls, "a rejected create must not retry or re-fetch")
+		})
+	}
+}
+
 func TestClient_Create(t *testing.T) {
 	t.Run("preserves ExtraLogLabels and strips Settings from request body", func(t *testing.T) {
 		var capturedBody map[string]any
