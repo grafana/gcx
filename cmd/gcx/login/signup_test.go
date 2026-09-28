@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	internallogin "github.com/grafana/gcx/internal/login"
+	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -367,10 +368,16 @@ func TestSignupFailureAfterTheBrowserGivesTheLoginRecovery(t *testing.T) {
 		terminal     bool
 		validate     func() error
 		beforeReturn func(path string) func() error
+		// args are extra signup flags, for the browser options the recovery
+		// must keep.
+		args []string
 		// wantServer is whether the failure came after the browser step
 		// finished, so the stack URL is known.
 		wantServer   bool
 		wantRecovery string
+		// wantOAuth is how the recovery runs the browser login; empty means
+		// --oauth.
+		wantOAuth string
 	}{
 		{name: "validation failure in agent mode", agentMode: "true", validate: healthFailure, wantServer: true, wantRecovery: "Wait a few minutes"},
 		{name: "validation failure from a script", agentMode: "false", validate: healthFailure, wantServer: true, wantRecovery: "Wait a few minutes"},
@@ -397,6 +404,30 @@ func TestSignupFailureAfterTheBrowserGivesTheLoginRecovery(t *testing.T) {
 			},
 			wantRecovery: "Sign in instead of signing up again",
 		},
+		// A signup without a reachable callback must not be sent back to one.
+		{
+			name: "validation failure after a manual signup", agentMode: "true", args: []string{"--oauth-manual"},
+			validate: healthFailure, wantServer: true, wantRecovery: "Wait a few minutes", wantOAuth: "--oauth-manual",
+		},
+		{
+			name: "Cancel during a manual signup", agentMode: "true", args: []string{"--oauth-manual"},
+			beforeReturn: func(string) func() error {
+				return func() error { return internalauth.ErrBrowserCancelled }
+			},
+			wantRecovery: "Sign in instead of signing up again", wantOAuth: "--oauth-manual",
+		},
+		// A fixed callback port may be the one an ssh -L forward covers.
+		{
+			name: "validation failure after a fixed port signup", agentMode: "true", args: []string{"--oauth-callback-port", "60123"},
+			validate: healthFailure, wantServer: true, wantRecovery: "Wait a few minutes", wantOAuth: "--oauth --oauth-callback-port 60123",
+		},
+		{
+			name: "Cancel during a fixed port signup", agentMode: "true", args: []string{"--oauth-callback-port", "60123"},
+			beforeReturn: func(string) func() error {
+				return func() error { return internalauth.ErrBrowserCancelled }
+			},
+			wantRecovery: "Sign in instead of signing up again", wantOAuth: "--oauth --oauth-callback-port 60123",
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -410,7 +441,7 @@ func TestSignupFailureAfterTheBrowserGivesTheLoginRecovery(t *testing.T) {
 				browser.beforeReturn = tc.beforeReturn(path)
 			}
 
-			stderr, err := runSignup(t, "my-stack", "--config", path)
+			stderr, err := runSignup(t, append([]string{"my-stack", "--config", path}, tc.args...)...)
 			require.Error(t, err)
 			assert.NotContains(t, stderr, "Save the context anyway")
 
@@ -423,12 +454,17 @@ func TestSignupFailureAfterTheBrowserGivesTheLoginRecovery(t *testing.T) {
 
 			var incomplete *internallogin.SignupIncompleteError
 			require.ErrorAs(t, err, &incomplete)
-			wantCommand := "gcx login my-stack --cloud --oauth --config " + path
+			oauth := tc.wantOAuth
+			if oauth == "" {
+				oauth = "--oauth"
+			}
+			wantCommand := "gcx login my-stack --cloud " + oauth + " --config " + path
 			if tc.wantServer {
 				assert.Equal(t, browser.stack, incomplete.Server)
-				wantCommand = "gcx login my-stack --server " + browser.stack + " --oauth --config " + path
+				wantCommand = "gcx login my-stack --server " + browser.stack + " " + oauth + " --config " + path
 			}
 			assert.Equal(t, wantCommand, incomplete.Recovery)
+			assertLoginAccepts(t, incomplete.Recovery)
 
 			inner := fail.ErrorToDetailedError(incomplete.Err)
 			det := fail.ErrorToDetailedError(err)
@@ -442,6 +478,22 @@ func TestSignupFailureAfterTheBrowserGivesTheLoginRecovery(t *testing.T) {
 			assert.NotContains(t, strings.Join(det.Suggestions, "\n")+det.Details, "gcx signup")
 		})
 	}
+}
+
+// assertLoginAccepts checks that a printed gcx login command parses with gcx
+// login's own flags and passes its validation, so a recovery never offers a
+// flag login rejects. The command must need no shell quoting.
+func assertLoginAccepts(t *testing.T, command string) {
+	t.Helper()
+	words := strings.Fields(command)
+	require.GreaterOrEqual(t, len(words), 2, command)
+	require.Equal(t, []string{"gcx", "login"}, words[:2], command)
+
+	opts := &loginOpts{}
+	fs := pflag.NewFlagSet("login", pflag.ContinueOnError)
+	opts.setup(fs)
+	require.NoError(t, fs.Parse(words[2:]), command)
+	require.NoError(t, opts.Validate(fs.Args()), command)
 }
 
 // TestSignupOutputFailureIsNotAnUnfinishedSignup pins that an error from
