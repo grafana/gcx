@@ -478,11 +478,6 @@ gcx provides dedicated commands for each Grafana Cloud product:
 | **Profiles (Pyroscope)** | `gcx profiles` | `profiles query`, `profiles labels` |
 | **Traces (Tempo)** | `gcx traces` | `traces query`, `traces get`, `traces labels` |
 
-For native Android apps, use `spec.appType: mobile` and `spec.runtime: android-native`
-in the manifest passed to `gcx frontend apps create -f app.yaml`.
-Creation preserves `spec.extraLogLabels`, including the legacy `is_mobile` label.
-The API sets the app type at creation. Omit `runtime` on update to keep its stored value.
-
 > **Note — Grafana Cloud costs:** gcx itself is free, but some of these products are billed based on usage: Grafana Assistant per token consumed (including requests made through gcx), Synthetic Monitoring per test execution, k6 per Virtual User Hour, and IRM per monthly active user. Queries and resource push/pull are not billed. See [Costs and billing](docs/reference/costs.md) and the [Grafana Cloud Cost Management and Billing documentation](https://grafana.com/docs/grafana-cloud/cost-management-and-billing/).
 
 ## Resource Management
@@ -509,6 +504,30 @@ gcx resources edit dashboards/my-dashboard
 # Delete a resource
 gcx resources delete dashboards/my-dashboard
 ```
+
+### Mobile Frontend Observability apps
+
+For mobile apps, set `spec.appType: mobile` and select the matching runtime:
+`flutter`, `react-native`, `android-native`, or `swift-native`.
+The caller selects the app type at creation; the API ignores later changes to it.
+Omit `runtime` on update to preserve its stored value. An empty runtime is invalid.
+Creation preserves `spec.extraLogLabels`, including the legacy `is_mobile` label.
+Settings are ignored on both create and update.
+
+For example, save this native Android manifest as `app.yaml`:
+
+```yaml
+apiVersion: faro.ext.grafana.app/v1alpha1
+kind: FaroApp
+metadata:
+  name: my-mobile-app
+spec:
+  name: my-mobile-app
+  appType: mobile
+  runtime: android-native
+```
+
+Create the app with `gcx frontend apps create -f app.yaml`.
 
 ## Alerting & Datasource Queries
 

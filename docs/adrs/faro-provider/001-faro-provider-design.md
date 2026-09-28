@@ -119,11 +119,13 @@ and ID (string ↔ int64).
 > tag shipped, so the server stored an empty label name and Loki rejected every
 > write for the app. The array is `{label, value}`.
 
+> **Correction (2026-09-28):** creation now preserves `extraLogLabels`. The API accepts
+> `{label, value}` entries; stripping these labels is no longer required.
+
 **API quirks preserved from gcx source:**
 
 | Quirk | Behavior | Source reference |
 |---|---|---|
-| ExtraLogLabels preserved on create | Current API accepts `{label, value}` entries | `internal/providers/faro/client.go` |
 | Settings stripped on create AND update | API returns 500 if included | `faro.go:173, 219` |
 | Create re-fetches via List | Response missing collectEndpointURL/appKey | `faro.go:189` |
 | Update requires ID in URL and body | API rejects otherwise | `faro.go:215-216` |

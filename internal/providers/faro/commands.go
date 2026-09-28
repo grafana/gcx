@@ -307,7 +307,7 @@ func newCreateCommand(loader RESTConfigLoader) *cobra.Command {
 
 			if app.Settings != nil {
 				cmdio.EmitWarn(cmd.ErrOrStderr(),
-					"settings are ignored during creation (API limitation)")
+					"settings are ignored on create and update (API limitation)")
 			}
 
 			typedObj := &adapter.TypedObject[FaroApp]{Spec: *app}

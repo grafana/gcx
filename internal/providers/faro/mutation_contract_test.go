@@ -324,7 +324,7 @@ spec:
   settings:
     geolocationEnabled: true
 `
-	const warning = "settings are ignored during creation (API limitation)"
+	const warning = "settings are ignored on create and update (API limitation)"
 
 	tests := []struct {
 		name      string
