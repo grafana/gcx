@@ -5,12 +5,51 @@ import (
 	"encoding/json"
 	"os"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/cmd/gcx/root"
 	"github.com/grafana/gcx/internal/agent"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 )
+
+func TestCommandSearchAllCanonicalPaths(t *testing.T) {
+	t.Setenv("GCX_NO_UPDATE_NOTIFIER", "1")
+	cmd := buildRootCmd()
+	cmd.Use = "gcx"
+	var paths []string
+	agent.WalkCommands(cmd, func(leaf *cobra.Command) {
+		path := leaf.CommandPath()
+		if leaf == cmd || !leaf.Runnable() || path == "gcx commands search" || strings.HasPrefix(path, "gcx completion") {
+			return
+		}
+		for node := leaf; node != nil; node = node.Parent() {
+			if node.Hidden || node.Deprecated != "" {
+				return
+			}
+		}
+		paths = append(paths, path)
+	})
+	require.NotEmpty(t, paths)
+	for _, path := range paths {
+		t.Run(path, func(t *testing.T) {
+			var out, stderr bytes.Buffer
+			cmd.SetOut(&out)
+			cmd.SetErr(&stderr)
+			cmd.SetArgs([]string{"commands", "search", path, "-o", "json"})
+			require.NoError(t, cmd.Execute())
+			var result struct {
+				Items []struct {
+					Path string `json:"full_path"`
+				} `json:"items"`
+			}
+			require.NoError(t, json.Unmarshal(out.Bytes(), &result))
+			require.NotEmpty(t, result.Items)
+			require.Equal(t, path, result.Items[0].Path)
+		})
+	}
+}
 
 func TestCommandSearchRelevance(t *testing.T) {
 	t.Setenv("GCX_NO_UPDATE_NOTIFIER", "1")

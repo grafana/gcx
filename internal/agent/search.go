@@ -25,6 +25,7 @@ type searchIndex struct {
 
 type searchMatch struct {
 	key                      string
+	pathExact                bool
 	exact                    bool
 	workflow                 bool
 	coverage, score, support float64
@@ -33,6 +34,7 @@ type searchMatch struct {
 // SearchCommands returns document keys (or paths) in deterministic relevance
 // order. Eligibility measures lexical evidence, not confidence or permissions.
 func SearchCommands(documents []SearchDocument, query string) []string {
+	pathQuery := strings.TrimPrefix(strings.ToLower(strings.Join(strings.Fields(query), " ")), "gcx ")
 	terms, excluded := searchQuery(query)
 	if len(terms) == 0 {
 		return []string{}
@@ -80,6 +82,9 @@ func SearchCommands(documents []SearchDocument, query string) []string {
 			key = doc.Path
 		}
 		m := searchMatch{key: key, workflow: doc.Workflow, exact: !doc.Workflow && len(terms) == len(idx.path)}
+		// Keep command boundaries and repeated words when recognizing a full
+		// path: lexical normalization can collapse distinct command paths.
+		m.pathExact = !doc.Workflow && pathQuery == strings.TrimPrefix(strings.ToLower(doc.Path), "gcx ")
 		anchor := false
 		for _, term := range terms {
 			m.exact = m.exact && slices.Contains(idx.path, term)
@@ -123,13 +128,23 @@ func correctSearchTerms(terms []string, vocabulary map[string]int) []string {
 		if vocabulary[term] == 0 && len([]rune(term)) >= 4 {
 			candidate := ""
 			count := 0
+			pluralCandidate := ""
+			pluralCount := 0
 			hasPrefix := false
 			for word := range vocabulary {
 				hasPrefix = hasPrefix || prefixMatch(term, word)
-				if oneEditApart(term, word) || oneEditApart(term, word+"s") {
+				if oneEditApart(term, word) {
 					candidate = word
 					count++
+				} else if oneEditApart(term, word+"s") {
+					pluralCandidate = word
+					pluralCount++
 				}
+			}
+			// Prefer spellings present in the index. Otherwise a singular's
+			// synthetic plural can make its indexed plural look ambiguous.
+			if count == 0 {
+				candidate, count = pluralCandidate, pluralCount
 			}
 			if !hasPrefix && count == 1 {
 				term = candidate
@@ -172,6 +187,12 @@ func oneEditApart(a, b string) bool {
 }
 
 func compareSearchMatches(a, b searchMatch) int {
+	if a.pathExact != b.pathExact {
+		if a.pathExact {
+			return -1
+		}
+		return 1
+	}
 	if a.exact != b.exact {
 		if a.exact {
 			return -1

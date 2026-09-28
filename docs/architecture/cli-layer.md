@@ -159,7 +159,9 @@ Key: SELECTOR = `kind[/name[,name...]]` or long form `kind.group/name`
 `commands search` collects visible, non-deprecated runnable commands from the
 registered Cobra tree after annotations are applied. It reuses catalog metadata
 extraction and passes plain documents to the lexical ranker in `internal/agent`.
-Complete normalized command-path matches rank first. Other candidates require a
+Complete command paths rank first, ignoring case, surrounding/repeated whitespace,
+and the optional `gcx` prefix, while preserving word order and command boundaries.
+Normalized path matches rank next. Other candidates require a
 subject match in primary metadata (path, aliases, short help, curated intent terms)
 and at least 60% inverse-document-frequency-weighted query coverage. Unknown
 content words count against coverage. Ranking uses weighted coverage, field scores

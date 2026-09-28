@@ -105,7 +105,12 @@ func searchAction(word string) bool {
 }
 
 func searchQuery(query string) ([]string, []string) {
-	words := strings.Fields(strings.ToLower(query))
+	// Recognize exclusions before tokenization removes their negation. Keep
+	// contractions intact, including typographic apostrophes from pasted text.
+	query = strings.ReplaceAll(strings.ToLower(query), "’", "'")
+	words := strings.FieldsFunc(query, func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsNumber(r) && r != '\'' && r != '-'
+	})
 	var excluded []string
 	kept := make([]string, 0, len(words))
 	for i := 0; i < len(words); i++ {

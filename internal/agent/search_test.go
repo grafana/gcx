@@ -50,6 +50,8 @@ func TestSearchRanking(t *testing.T) {
 		{"unknown subject counts against coverage", "create a Kubernetes deployment", []agent.SearchDocument{{Path: "gcx widgets create", Summary: "Create widgets"}}, []string{}},
 		{"generic subject cannot qualify", "create JSON files", []agent.SearchDocument{{Path: "gcx widgets create", Summary: "Create JSON files"}}, []string{}},
 		{"unique correction", "list cats", []agent.SearchDocument{{Path: "gcx bats list"}}, []string{"gcx bats list"}},
+		{"indexed plural before synthetic plural", "porjects list", []agent.SearchDocument{{Path: "gcx projects list", Summary: "List project details"}}, []string{"gcx projects list"}},
+		{"synthetic plural fallback", "porjects list", []agent.SearchDocument{{Path: "gcx project list"}}, []string{"gcx project list"}},
 		{"ambiguous correction", "list cats", []agent.SearchDocument{{Path: "gcx bats list"}, {Path: "gcx hats list"}}, []string{}},
 		{"exact term suppresses fuzzy", "list cats", []agent.SearchDocument{{Path: "gcx cats list"}, {Path: "gcx bats list"}}, []string{"gcx cats list"}},
 		{"short typo is not corrected", "cts", []agent.SearchDocument{{Path: "gcx cats list"}}, []string{}},
@@ -78,4 +80,44 @@ func TestSearchRepeatedTextDoesNotImproveRanking(t *testing.T) {
 	before := agent.SearchCommands(docs, "widgets")
 	docs[0].Summary += " Get widgets Get widgets"
 	require.Equal(t, before, agent.SearchCommands(docs, "widgets widgets")) //nolint:dupword // Deliberate repeated query terms.
+}
+
+func TestSearchFullPathPrecedence(t *testing.T) {
+	docs := []agent.SearchDocument{
+		{Path: "gcx alert notification-history list"},
+		{Path: "gcx alert notification-history list-alerts", Summary: "List notification history alerts"},
+		{Path: "gcx projects list-zones"},
+		{Path: "gcx zones list-projects", Summary: "List projects zones"},
+		{Path: "gcx webhooks presets list"},
+		{Path: "gcx webhooks list-presets", Summary: "List webhook presets"},
+	}
+	for _, tc := range []struct{ query, want string }{
+		{"gcx alert notification-history list", "gcx alert notification-history list"},
+		{"alert notification-history list-alerts", "gcx alert notification-history list-alerts"},
+		{"gcx projects list-zones", "gcx projects list-zones"},
+		{"gcx zones list-projects", "gcx zones list-projects"},
+		{"gcx webhooks presets list", "gcx webhooks presets list"},
+		{"webhooks list-presets", "gcx webhooks list-presets"},
+		{"  GCX  WEBHOOKS\tPRESETS LIST  ", "gcx webhooks presets list"},
+	} {
+		t.Run(tc.query, func(t *testing.T) {
+			matches := agent.SearchCommands(docs, tc.query)
+			require.NotEmpty(t, matches)
+			require.Equal(t, tc.want, matches[0])
+		})
+	}
+}
+
+func TestSearchExclusionPunctuation(t *testing.T) {
+	docs := []agent.SearchDocument{{Path: "gcx widgets list"}, {Path: "gcx widgets delete"}}
+	// No read verb: these cases must exercise exclusions, not the read filter.
+	for _, query := range []string{
+		"widgets don't delete", "widgets don’t delete", "widgets not: delete",
+		"widgets (not delete)", "widgets without: deleting", "widgets — not delete",
+		"widgets NOT DELETE", "widgets do not remove", "widgets not\tdelete",
+	} {
+		t.Run(query, func(t *testing.T) {
+			require.Equal(t, []string{"gcx widgets list"}, agent.SearchCommands(docs, query))
+		})
+	}
 }
