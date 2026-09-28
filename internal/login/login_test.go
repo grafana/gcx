@@ -1629,10 +1629,12 @@ func TestRun_WarnsWhenCloudCredentialIsNotAppliedToNonCloudTarget(t *testing.T) 
 	tests := []struct {
 		name       string
 		cloudToken string
+		explicit   bool
 		wantWarn   bool
 	}{
-		{"cloud token supplied", "glc_test", true},
-		{"no cloud token", "", false},
+		{"cloud token supplied", "glc_test", true, true},
+		{"no cloud token", "", false, false},
+		{"stored cloud token", "glc_stored", false, false},
 	}
 
 	for _, tt := range tests {
@@ -1643,12 +1645,13 @@ func TestRun_WarnsWhenCloudCredentialIsNotAppliedToNonCloudTarget(t *testing.T) 
 			var writer bytes.Buffer
 			opts := login.Options{
 				Inputs: login.Inputs{
-					Server:       "https://grafana.example.com",
-					GrafanaToken: "glsa_test",
-					CloudToken:   tt.cloudToken,
-					Target:       login.TargetOnPrem,
-					Yes:          true,
-					Writer:       &writer,
+					Server:             "https://grafana.example.com",
+					GrafanaToken:       "glsa_test",
+					CloudToken:         tt.cloudToken,
+					CloudTokenExplicit: tt.explicit,
+					Target:             login.TargetOnPrem,
+					Yes:                true,
+					Writer:             &writer,
 				},
 				Hooks: login.Hooks{
 					ConfigSource: configSource(dir),
@@ -1678,11 +1681,12 @@ func TestRun_WarnsOnceWhenCloudTokenIsDroppedAcrossRetry(t *testing.T) {
 	var writer bytes.Buffer
 	opts := login.Options{
 		Inputs: login.Inputs{
-			Server:       "https://grafana.example.com",
-			GrafanaToken: "glsa_test",
-			CloudToken:   "glc_test",
-			Target:       login.TargetOnPrem,
-			Writer:       &writer,
+			Server:             "https://grafana.example.com",
+			GrafanaToken:       "glsa_test",
+			CloudToken:         "glc_test",
+			CloudTokenExplicit: true,
+			Target:             login.TargetOnPrem,
+			Writer:             &writer,
 		},
 		Hooks: login.Hooks{
 			ConfigSource: configSource(dir),

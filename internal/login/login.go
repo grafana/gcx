@@ -66,8 +66,11 @@ type Inputs struct {
 	// to be token, OAuth, or Basic.
 	ExistingGrafanaAuthMethod string
 	CloudToken                string
-	CloudAPIURL               string
-	CloudOAuthURL             string
+	// CloudTokenExplicit records a credential supplied by flag or environment,
+	// rather than one reused from saved config.
+	CloudTokenExplicit bool
+	CloudAPIURL        string
+	CloudOAuthURL      string
 	// CloudCredentialKind controls which CloudEntry field receives CloudToken.
 	// It is deliberately independent from CloudTokenTrusted: credential type and
 	// validation policy are separate concerns. The zero value means CAP so
@@ -179,7 +182,8 @@ type Hooks struct {
 // sentinel (ErrNeedInput / ErrNeedClarification) and is re-invoked after
 // the caller resolves the missing value. Some fields may be set on the first
 // invocation and should be treated as internal protocol between
-// Run and its retry-loop caller.
+// Run and its retry-loop caller. Run itself records advisory delivery on the
+// first invocation so later retries do not repeat it.
 type RetryState struct {
 	// StagedContext carries partially-resolved state across sentinel
 	// retries. The CLI allocates it once as &config.Context{} before the
@@ -352,7 +356,7 @@ func Run(ctx context.Context, opts *Options) (Result, error) {
 	// A Grafana Cloud portal root manages stacks; it serves no Grafana instance
 	// API. Reject it here, before target detection, before any prompt, and
 	// before the OAuth browser opens on a route the portal does not have.
-	if err := rejectPortalServerURL(opts.Server); err != nil {
+	if err := RejectPortalServerURL(opts.Server); err != nil {
 		return Result{}, err
 	}
 	if err := validateRuntimeOnlyBearerDestination(*opts, ""); err != nil {
@@ -608,11 +612,12 @@ func NormalizeServerURL(raw string) string {
 	return raw
 }
 
-// rejectPortalServerURL returns a *PortalServerURLError when server names a
+// RejectPortalServerURL returns a *PortalServerURLError when server names a
 // Grafana Cloud portal root instead of a Grafana stack. It returns nil for
 // every other URL, including custom Cloud domains and on-premises hosts.
-func rejectPortalServerURL(server string) error {
-	host, suffix, ok := config.GCOMPortalServerURL(server)
+// Bare hostnames are normalized to HTTPS before checking.
+func RejectPortalServerURL(server string) error {
+	host, suffix, ok := config.GCOMPortalServerURL(NormalizeServerURL(server))
 	if !ok {
 		return nil
 	}
@@ -795,7 +800,7 @@ func resolveCloudAuth(opts *Options, target Target) (*config.CloudEntry, string,
 		// Do not apply a Cloud credential to a non-Cloud target. An existing
 		// saved Cloud entry can remain bound to the context during re-auth, so
 		// the advisory must not claim that Cloud commands are unavailable.
-		if !opts.CloudCredentialNotAppliedWarned && opts.CloudToken != "" {
+		if !opts.CloudCredentialNotAppliedWarned && opts.CloudTokenExplicit && opts.CloudToken != "" {
 			warnCloudCredentialNotApplied(opts.Writer)
 			opts.CloudCredentialNotAppliedWarned = true
 		}

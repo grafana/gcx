@@ -191,7 +191,7 @@ Grafana instance authentication (choose one, for non-interactive use):
 
 Grafana Cloud platform credential (optional, and in addition to the above):
   --cloud-token  Grafana Cloud access-policy token (created at grafana.com).
-                 It authenticates the Grafana Cloud product commands, including cloud, sm, k6, irm, slo, and frontend.
+                 It supports cloud stacks and direct k6 API access, plus Synthetic Monitoring discovery and frontend sourcemap upload.
                  It cannot authenticate the Grafana instance, so pass --oauth or --token as well.
                  See: ` + docs.AccessPolicies,
 		Example: `  gcx login
@@ -422,6 +422,7 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 			GrafanaToken:                flags.Token,
 			ExistingGrafanaAuthMethod:   existingGrafanaAuthMethod,
 			CloudToken:                  flags.CloudToken,
+			CloudTokenExplicit:          cloudTokenExplicit,
 			CloudAPIURL:                 cloudAPIURL,
 			CloudOAuthURL:               cloudOAuthURL,
 			UseOAuth:                    flags.OAuth,
@@ -466,8 +467,8 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 	if flags.AllowServerOverride {
 		opts.AllowOverride = true
 	}
-	if host, suffix, ok := config.GCOMPortalServerURL(opts.Server); ok {
-		return &login.PortalServerURLError{Server: opts.Server, Host: host, StackSuffix: suffix}
+	if err := login.RejectPortalServerURL(opts.Server); err != nil {
+		return err
 	}
 	if err := preflightServerOverride(&opts, persistedSourceCtx, isInteractive); err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
@@ -1856,8 +1857,8 @@ func printResult(cmd *cobra.Command, ioOpts *cmdio.Options, server string, resul
 	if result.IsCloud && !result.HasCloudToken {
 		fmt.Fprintln(ew)
 		fmt.Fprintln(ew, "You're authenticated for the Grafana API (dashboards, datasources, queries, alerts, folders).")
-		fmt.Fprintln(ew, "Grafana Cloud product management (SLOs, Synthetic Monitoring, Fleet, k6, IRM, Adaptive telemetry)")
-		fmt.Fprintln(ew, "additionally requires a Cloud Access Policy (CAP) token.")
+		fmt.Fprintln(ew, "Cloud stack management, direct k6 API access, Synthetic Monitoring discovery, and frontend sourcemap upload")
+		fmt.Fprintln(ew, "can additionally require a Cloud Access Policy (CAP) token.")
 		fmt.Fprintln(ew, "See: https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/")
 		fmt.Fprintf(ew, "Add one with: gcx login --context %s --cloud-token <token>\n", result.ContextName)
 	}

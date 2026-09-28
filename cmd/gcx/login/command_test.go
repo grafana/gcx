@@ -2176,7 +2176,7 @@ func TestPrintResult_TextCodec(t *testing.T) {
 			wantStderrSubs: []string{
 				"Verify access anytime with: gcx config check",
 				"authenticated for the Grafana API",
-				"requires a Cloud Access Policy (CAP) token.",
+				"can additionally require a Cloud Access Policy (CAP) token.",
 				"grafana.com/docs/grafana-cloud/security-and-account-management",
 				"gcx login --context stack --cloud-token",
 			},
@@ -2533,4 +2533,50 @@ func TestRunCloudOAuthPropagatesManualPaste(t *testing.T) {
 	require.NoError(t, runCloudOAuth(context.Background(), &opts))
 	assert.True(t, gotFlowOpts.Manual)
 	assert.Same(t, reader, gotFlowOpts.Reader)
+}
+
+func TestLoginNonCloudCredentialAdvisoryUsesExplicitInput(t *testing.T) {
+	for _, source := range []string{"stored", "flag", "environment"} {
+		t.Run(source, func(t *testing.T) {
+			isolateAutoLocalLoginEnv(t)
+			t.Setenv("GCX_KEYCHAIN", "off")
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				switch r.URL.Path {
+				case "/api/health":
+					_, _ = w.Write([]byte(`{"version":"12.0.0"}`))
+				case "/api":
+					_, _ = w.Write([]byte(`{"kind":"APIVersions","apiVersion":"v1","versions":[]}`))
+				case "/apis":
+					_, _ = w.Write([]byte(`{"kind":"APIGroupList","apiVersion":"v1","groups":[]}`))
+				default:
+					http.NotFound(w, r)
+				}
+			}))
+			t.Cleanup(server.Close)
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			seed := config.Config{}
+			seed.SetStack("prod", config.StackConfig{Grafana: &config.GrafanaConfig{Server: server.URL, APIToken: "stored-instance-token", AuthMethod: "token", OrgID: 1}})
+			seed.SetCloudEntry("grafana-com", config.CloudEntry{Token: "stored-cloud-token", APIUrl: "https://grafana.com", OAuthUrl: "https://grafana.com"})
+			seed.SetContext("prod", true, config.Context{Stack: "prod", Cloud: "grafana-com"})
+			require.NoError(t, config.Write(t.Context(), config.ExplicitConfigFile(path), seed))
+			args := []string{"prod", "--config", path, "--yes"}
+			switch source {
+			case "flag":
+				args = append(args, "--cloud-token", "supplied-cloud-token")
+			case "environment":
+				t.Setenv("GRAFANA_CLOUD_TOKEN", "supplied-cloud-token")
+			}
+			var stderr bytes.Buffer
+			cmd := Command()
+			cmd.SetOut(&bytes.Buffer{})
+			cmd.SetErr(&stderr)
+			cmd.SetArgs(args)
+			require.NoError(t, cmd.ExecuteContext(t.Context()))
+			assert.Equal(t, source != "stored", strings.Contains(stderr.String(), "this login did not apply the Cloud credential"))
+			saved, err := config.Load(t.Context(), config.ExplicitConfigFile(path))
+			require.NoError(t, err)
+			assert.Equal(t, "stored-cloud-token", saved.Cloud["grafana-com"].Token)
+		})
+	}
 }

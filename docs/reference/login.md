@@ -249,7 +249,7 @@ reaches its API through the `grafana-collector-app` plugin proxy on your stack,
 so your Grafana login alone is enough. See
 [ADR-023](../adrs/fleet-plugin-proxy/001-fleet-via-collector-app-proxy.md).
 
-The Cloud Access Policy token is for Grafana Cloud product APIs (GCOM stack management, Synthetic Monitoring, k6, IRM, SLO, Faro). Signal queries (`gcx metrics`, `gcx logs`, `gcx traces`, `gcx profiles`) authenticate with your Grafana token (OAuth or service account), not this token. When in doubt, start narrow and widen the policy as commands report missing-scope errors — the token can be re-scoped without re-running `gcx login`.
+The Cloud Access Policy token is for Cloud stack management and direct k6 API access, plus Synthetic Monitoring discovery and frontend sourcemap upload. IRM, SLO, other frontend commands, and normal Synthetic Monitoring operations use Grafana credentials. Signal queries (`gcx metrics`, `gcx logs`, `gcx traces`, `gcx profiles`) authenticate with your Grafana token (OAuth or service account), not this token. When in doubt, start narrow and widen the policy as commands report missing-scope errors — the token can be re-scoped without re-running `gcx login`.
 
 `--cloud-token` never replaces Grafana instance authentication. It is a second
 credential that sits beside `--oauth` or `--token`, not an alternative to them.

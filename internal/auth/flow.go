@@ -352,7 +352,7 @@ func validateGCOMURL(rawURL string) error {
 		return errors.New("URL has no host")
 	}
 
-	hostname := u.Hostname()
+	hostname := strings.ToLower(u.Hostname())
 
 	if hostname == "localhost" || hostname == "127.0.0.1" || hostname == "::1" {
 		return nil
@@ -362,7 +362,7 @@ func validateGCOMURL(rawURL string) error {
 		return fmt.Errorf("URL must use HTTPS, got %q", u.Scheme)
 	}
 
-	if slices.Contains(allowedGCOMHosts, strings.ToLower(hostname)) {
+	if slices.Contains(allowedGCOMHosts, hostname) {
 		return nil
 	}
 

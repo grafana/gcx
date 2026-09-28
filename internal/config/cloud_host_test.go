@@ -50,31 +50,32 @@ func TestGCOMPortalServerURL(t *testing.T) {
 		name       string
 		serverURL  string
 		wantSuffix string
+		wantHost   string
 		wantOK     bool
 	}{
 		// Portal roots: each maps to the stack suffix of its own environment.
-		{"prod portal", "https://grafana.com", ".grafana.net", true},
-		{"www prod portal", "https://www.grafana.com", ".grafana.net", true},
-		{"dev portal", "https://grafana-dev.com", ".grafana-dev.net", true},
-		{"www dev portal", "https://www.grafana-dev.com", ".grafana-dev.net", true},
-		{"ops portal", "https://grafana-ops.com", ".grafana-ops.net", true},
-		{"www ops portal", "https://www.grafana-ops.com", ".grafana-ops.net", true},
-		{"portal with a path", "https://grafana.com/orgs/example", ".grafana.net", true},
-		{"portal with a port", "https://grafana.com:443", ".grafana.net", true},
-		{"portal in uppercase", "https://GRAFANA.COM", ".grafana.net", true},
-		{"portal over http", "http://grafana.com", ".grafana.net", true},
+		{"prod portal", "https://grafana.com", ".grafana.net", "grafana.com", true},
+		{"www prod portal", "https://www.grafana.com", ".grafana.net", "www.grafana.com", true},
+		{"dev portal", "https://grafana-dev.com", ".grafana-dev.net", "grafana-dev.com", true},
+		{"www dev portal", "https://www.grafana-dev.com", ".grafana-dev.net", "www.grafana-dev.com", true},
+		{"ops portal", "https://grafana-ops.com", ".grafana-ops.net", "grafana-ops.com", true},
+		{"www ops portal", "https://www.grafana-ops.com", ".grafana-ops.net", "www.grafana-ops.com", true},
+		{"portal with a path", "https://grafana.com/orgs/example", ".grafana.net", "grafana.com", true},
+		{"portal with a port", "https://grafana.com:443", ".grafana.net", "grafana.com", true},
+		{"portal in uppercase", "https://GRAFANA.COM", ".grafana.net", "grafana.com", true},
+		{"portal over http", "http://grafana.com", ".grafana.net", "grafana.com", true},
 		// Stack URLs are the correct input and must pass through.
-		{"prod stack", "https://mystack.grafana.net", "", false},
-		{"ops stack", "https://mystack.grafana-ops.net", "", false},
-		{"regional stack", "https://mystack.us.grafana.net", "", false},
+		{"prod stack", "https://mystack.grafana.net", "", "", false},
+		{"ops stack", "https://mystack.grafana-ops.net", "", "", false},
+		{"regional stack", "https://mystack.us.grafana.net", "", "", false},
 		// A subdomain of a portal root is not a portal root.
-		{"portal subdomain", "https://help.grafana.com", "", false},
+		{"portal subdomain", "https://help.grafana.com", "", "", false},
 		// Everything else.
-		{"custom cloud domain", "https://mystack.cloud.example.grafana.com", "", false},
-		{"on-premises host", "https://grafana.example.com", "", false},
-		{"localhost", "http://localhost:3000", "", false},
-		{"empty string", "", "", false},
-		{"no scheme", "grafana.com", "", false},
+		{"custom cloud domain", "https://mystack.cloud.example.grafana.com", "", "", false},
+		{"on-premises host", "https://grafana.example.com", "", "", false},
+		{"localhost", "http://localhost:3000", "", "", false},
+		{"empty string", "", "", "", false},
+		{"no scheme", "grafana.com", "", "", false},
 	}
 
 	for _, tc := range cases {
@@ -86,8 +87,8 @@ func TestGCOMPortalServerURL(t *testing.T) {
 			if suffix != tc.wantSuffix {
 				t.Fatalf("GCOMPortalServerURL(%q) suffix = %q, want %q", tc.serverURL, suffix, tc.wantSuffix)
 			}
-			if ok && host == "" {
-				t.Fatalf("GCOMPortalServerURL(%q) returned empty portal host", tc.serverURL)
+			if host != tc.wantHost {
+				t.Fatalf("GCOMPortalServerURL(%q) host = %q, want %q", tc.serverURL, host, tc.wantHost)
 			}
 		})
 	}
