@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/grafana/gcx/internal/config"
@@ -175,18 +176,35 @@ func printSignupHeader(cmd *cobra.Command, contextName string) {
 }
 
 // signupLoginCommand is the gcx login command that finishes a signup whose
-// browser step already ran: it keeps the signup's context and config file.
-// With server it connects that stack; without, it signs in through the stack
-// launcher, which cannot create a second account.
-func signupLoginCommand(flags *loginOpts, contextName, server string, extra ...string) string {
+// browser step already ran: it keeps the signup's context and config file, and
+// runs the browser login with oauthArgs. With server it connects that stack;
+// without, it signs in through the stack launcher, which cannot create a
+// second account.
+func signupLoginCommand(flags *loginOpts, contextName, server string, oauthArgs ...string) string {
 	parts := []string{"gcx login", shellArg(contextName)}
 	if server != "" {
-		parts = append(parts, "--server", shellArg(server), "--oauth")
+		parts = append(parts, "--server", shellArg(server))
 	} else {
 		parts = append(parts, "--cloud")
 	}
-	parts = append(parts, extra...)
+	parts = append(parts, oauthArgs...)
 	return signupFollowUpCommand(flags, strings.Join(parts, " "))
+}
+
+// signupOAuthArgs are the gcx login flags that reach the browser the way the
+// signup did. A signup run with --oauth-manual has no callback the browser can
+// reach, and one run with --oauth-callback-port may rely on a port forward for
+// that port, so the recovery must keep either choice.
+func signupOAuthArgs(flags *loginOpts) []string {
+	switch {
+	case flags.OAuthManual:
+		// --oauth-manual implies --oauth.
+		return []string{"--oauth-manual"}
+	case flags.OAuthCallbackPort != 0:
+		return []string{"--oauth", "--oauth-callback-port", strconv.Itoa(flags.OAuthCallbackPort)}
+	default:
+		return []string{"--oauth"}
+	}
 }
 
 // shellArg quotes value for a printed command only when a shell would
@@ -213,9 +231,6 @@ func signupManualRetryCommand(flags *loginOpts, contextName string) string {
 // signupIncompleteError wraps a failure that came after signup's browser step
 // started. server is set once the browser step finished.
 func signupIncompleteError(err error, flags *loginOpts, contextName, server string) error {
-	recovery := signupLoginCommand(flags, contextName, server)
-	if server == "" {
-		recovery = signupLoginCommand(flags, contextName, "", "--oauth")
-	}
+	recovery := signupLoginCommand(flags, contextName, server, signupOAuthArgs(flags)...)
 	return &login.SignupIncompleteError{Err: err, Server: server, Recovery: recovery}
 }

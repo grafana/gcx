@@ -164,7 +164,8 @@ a sign in command as `ManualRetryCommand` for the SSH hint, and wraps any error
 from `login.Run` once the browser flow has been constructed in
 `SignupIncompleteError`. The error converter renders that with the gcx login
 recovery: `--server <stack> --oauth` when the browser step finished, and
-`--cloud --oauth` when it did not. Errors from printing the result, after the
+`--cloud --oauth` when it did not, with the signup's own `--oauth-manual` or
+`--oauth-callback-port` carried over (`signupOAuthArgs`). Errors from printing the result, after the
 save, are returned as they are.
 
 Signup's output is its own, and its structured output is not. `gcx signup`

@@ -77,7 +77,10 @@ again: it would start a second account. The error shows the `gcx login`
 command that finishes the connection in the same context and config file:
 `gcx login <context> --server <stack URL> --oauth` when the browser step
 finished, or `gcx login <context> --cloud --oauth`, which signs in and lets you
-pick the new stack, when it did not. Over SSH, the remote session hint also
+pick the new stack, when it did not. It keeps the way the signup reached the
+browser: after `gcx signup --oauth-manual` it uses `--oauth-manual` in place of
+`--oauth`, and after `--oauth-callback-port <port>` it adds the same port. Over
+SSH, the remote session hint also
 offers a sign in (`gcx login <context> --cloud --oauth-manual`), because the
 unreachable callback shows up only at the end, after the account exists.
 
