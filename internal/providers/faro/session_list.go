@@ -168,6 +168,8 @@ func newListReplaySessionsCommand(loader *providers.ConfigLoader) *cobra.Command
 					rows, meta, err = queryLokiReplaySessions(ctx, cfg, opts.Datasource, appID, start, now, opts.Limit)
 				case datasourcePinot:
 					rows, meta, err = queryPinotReplaySessions(ctx, cfg, opts.Datasource, appID, start, now, opts.Limit)
+				default:
+					return fmt.Errorf("unsupported replay datasource kind %q", kind)
 				}
 			}
 			if err != nil {
@@ -194,8 +196,19 @@ func queryLokiReplaySessions(ctx context.Context, cfg config.NamespacedRESTConfi
 	if err != nil {
 		return nil, nil, fmt.Errorf("creating Loki client: %w", err)
 	}
+	seen := make(map[string]struct{})
 	resp, stopped, err := fetchLokiEventPagesUntil(ctx, client, uid, lokiReplayDiscoveryQuery(appID), start, end, sessionLokiQueryTimeout, func(page *loki.QueryResponse) bool {
-		return limit > 0 && len(extractReplaySessionRows(page)) > limit
+		for _, stream := range page.Data.Result {
+			for _, entry := range stream.Values {
+				if _, valid := parseLokiUnixNano(entry.Timestamp); !valid {
+					continue
+				}
+				if sessionID := parseLogfmt(entry.Line)["session_id"]; sessionID != "" {
+					seen[sessionID] = struct{}{}
+				}
+			}
+		}
+		return limit > 0 && len(seen) > limit
 	})
 	if err != nil {
 		return nil, nil, fmt.Errorf("querying Loki: %w", err)
@@ -214,23 +227,32 @@ func queryPinotReplaySessions(ctx context.Context, cfg config.NamespacedRESTConf
 	if err != nil {
 		return nil, nil, fmt.Errorf("creating Pinot client: %w", err)
 	}
+	return fetchPinotReplaySessions(ctx, client, uid, appID, cfg.GrafanaURL, start, end, limit)
+}
+
+func fetchPinotReplaySessions(ctx context.Context, client pinotQuerier, uid, appID, serverURL string, start, end time.Time, limit int) ([]replaySessionListRow, *cmdio.ListMeta, error) {
 	pageSize := pinotJourneyPageSize
 	if limit > 0 && limit < pageSize {
 		pageSize = limit + 1
 	}
 	rows := make([]replaySessionListRow, 0)
-	for offset := 0; ; offset += pageSize {
-		query, err := pinotReplayStartsQuery(appID, cfg.GrafanaURL, pageSize, offset)
+	seen := make(map[string]struct{})
+	for pageNum := range pinotJourneyMaxPages {
+		offset := pageNum * pageSize
+		query, err := pinotReplayStartsQuery(appID, serverURL, pageSize, offset)
 		if err != nil {
 			return nil, nil, err
 		}
-		resp, err := client.Query(ctx, uid, pinot.QueryRequest{RawSQL: query, TableName: pinotEventsTable(cfg.GrafanaURL), Start: start, End: end})
+		resp, err := client.Query(ctx, uid, pinot.QueryRequest{RawSQL: query, TableName: pinotEventsTable(serverURL), Start: start, End: end})
 		if err != nil {
 			return nil, nil, fmt.Errorf("querying Pinot: %w", err)
 		}
-		page, err := extractPinotReplaySessionRows(resp)
+		page, err := extractPinotReplaySessionRows(resp, seen)
 		if err != nil {
 			return nil, nil, err
+		}
+		if len(page) == 0 && resp != nil && len(resp.Rows) == pageSize {
+			return nil, nil, fmt.Errorf("pinot replay sessions page %d repeated without new sessions", pageNum+1)
 		}
 		rows = append(rows, page...)
 		if limit > 0 && len(rows) > limit {
@@ -241,9 +263,10 @@ func queryPinotReplaySessions(ctx context.Context, cfg config.NamespacedRESTConf
 			return rows, nil, nil
 		}
 	}
+	return nil, nil, fmt.Errorf("pinot replay sessions exceeded %d pages of %d rows", pinotJourneyMaxPages, pageSize)
 }
 
-func extractPinotReplaySessionRows(resp *querysql.QueryResponse) ([]replaySessionListRow, error) {
+func extractPinotReplaySessionRows(resp *querysql.QueryResponse, seen map[string]struct{}) ([]replaySessionListRow, error) {
 	rows := make([]replaySessionListRow, 0)
 	if resp == nil || len(resp.Rows) == 0 {
 		return rows, nil
@@ -257,7 +280,6 @@ func extractPinotReplaySessionRows(resp *querysql.QueryResponse) ([]replaySessio
 			return nil, fmt.Errorf("pinot replay sessions response missing %s column", name)
 		}
 	}
-	seen := make(map[string]struct{}, len(resp.Rows))
 	for _, row := range resp.Rows {
 		if len(row) < len(resp.Columns) {
 			return nil, errors.New("pinot replay sessions response has an incomplete row")

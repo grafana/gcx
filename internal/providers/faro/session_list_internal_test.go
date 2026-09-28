@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/grafana/gcx/internal/config"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/query/loki"
+	"github.com/grafana/gcx/internal/query/pinot"
 	querysql "github.com/grafana/gcx/internal/query/sql"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -79,6 +81,25 @@ func TestLokiReplayDiscoveryQueryTimesOut(t *testing.T) {
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 }
 
+type invalidTimestampLoki struct{}
+
+func (invalidTimestampLoki) Query(_ context.Context, _ string, _ loki.QueryRequest) (*loki.QueryResponse, error) {
+	entries := make([]loki.LogEntry, lokiEventsPageSize)
+	for i := range entries {
+		entries[i] = loki.LogEntry{Timestamp: "invalid", Line: fmt.Sprintf("session_id=sess-%d", i)}
+	}
+	return &loki.QueryResponse{Data: loki.QueryResultData{Result: []loki.StreamEntry{{Values: entries}}}}, nil
+}
+
+func TestLokiReplayPagerPreservesExistingSessionDumpBehavior(t *testing.T) {
+	start, end := time.Unix(1, 0), time.Unix(2, 0)
+	resp, err := fetchLokiEventPages(t.Context(), invalidTimestampLoki{}, "uid", `{kind="event"}`, start, end, time.Second)
+	require.NoError(t, err)
+	assert.Equal(t, lokiEventsPageSize, lokiEntryCount(resp))
+	_, _, err = fetchLokiEventPagesUntil(t.Context(), invalidTimestampLoki{}, "uid", `{kind="event"}`, start, end, time.Second, func(*loki.QueryResponse) bool { return false })
+	require.ErrorContains(t, err, "no valid timestamp")
+}
+
 func TestPinotReplayStartsQueryUsesSessionFetcherTable(t *testing.T) {
 	t.Parallel()
 	query, err := pinotReplayStartsQuery("66", "https://ops.grafana-ops.net", 26, 0)
@@ -114,7 +135,7 @@ func TestExtractPinotReplaySessionRows(t *testing.T) {
 			{"sess-2", float64(1790340840000), "Firefox", "", "web"},
 		},
 	}
-	rows, err := extractPinotReplaySessionRows(response)
+	rows, err := extractPinotReplaySessionRows(response, make(map[string]struct{}))
 	require.NoError(t, err)
 	require.Len(t, rows, 2)
 	assert.Equal(t, "sess-1", rows[0].SessionID)
@@ -123,11 +144,50 @@ func TestExtractPinotReplaySessionRows(t *testing.T) {
 	assert.Equal(t, "Firefox", rows[1].Browser)
 }
 
+type replayPinotPages struct {
+	first  *querysql.QueryResponse
+	second *querysql.QueryResponse
+}
+
+func (p replayPinotPages) Query(_ context.Context, _ string, req pinot.QueryRequest) (*querysql.QueryResponse, error) {
+	if strings.Contains(req.RawSQL, "OFFSET 0") {
+		return p.first, nil
+	}
+	return p.second, nil
+}
+
+func replayPinotRows(count int) *querysql.QueryResponse {
+	resp := &querysql.QueryResponse{Columns: []querysql.Column{
+		{Name: "session_id"}, {Name: "last_seen"}, {Name: "browser_name"}, {Name: "browser_version"}, {Name: "app_name"},
+	}}
+	for i := range count {
+		resp.Rows = append(resp.Rows, []any{fmt.Sprintf("sess-%d", i), float64(1790340861602), "Chrome", "153", "web"})
+	}
+	return resp
+}
+
+func TestPinotReplaySessionPagerDeduplicatesAcrossPages(t *testing.T) {
+	first := replayPinotRows(pinotJourneyPageSize)
+	second := replayPinotRows(2)
+	second.Rows[1][0] = "new-session"
+	rows, meta, err := fetchPinotReplaySessions(t.Context(), replayPinotPages{first: first, second: second}, "uid", "66", "https://example.grafana.net", time.Unix(1, 0), time.Unix(2, 0), 0)
+	require.NoError(t, err)
+	assert.Nil(t, meta)
+	assert.Len(t, rows, pinotJourneyPageSize+1)
+	assert.Equal(t, "new-session", rows[len(rows)-1].SessionID)
+}
+
+func TestPinotReplaySessionPagerRejectsRepeatedPage(t *testing.T) {
+	page := replayPinotRows(pinotJourneyPageSize)
+	_, _, err := fetchPinotReplaySessions(t.Context(), replayPinotPages{first: page, second: page}, "uid", "66", "https://example.grafana.net", time.Unix(1, 0), time.Unix(2, 0), 0)
+	require.ErrorContains(t, err, "repeated without new sessions")
+}
+
 func TestExtractPinotReplaySessionRowsRejectsMalformedResult(t *testing.T) {
 	t.Parallel()
 	_, err := extractPinotReplaySessionRows(&querysql.QueryResponse{
 		Columns: []querysql.Column{{Name: "session_id"}},
 		Rows:    [][]any{{"sess-1"}},
-	})
+	}, make(map[string]struct{}))
 	require.ErrorContains(t, err, "missing last_seen column")
 }

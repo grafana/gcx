@@ -361,13 +361,19 @@ func fetchLokiEventPagesUntil(ctx context.Context, client lokiQuerier, uid, quer
 			return nil, false, fmt.Errorf("loki events query failed: %w", err)
 		}
 		n := lokiEntryCount(resp)
-		appendLokiEvents(merged, resp)
+		page := &loki.QueryResponse{Data: loki.QueryResultData{ResultType: "streams"}}
+		appendLokiEvents(page, resp)
 		recordLokiFingerprints(resp, seen)
 		if n < lokiEventsPageSize {
+			appendLokiEvents(merged, page)
 			break
 		}
 		earliest, ok := minLokiTime(resp)
 		if !ok {
+			if stop == nil {
+				appendLokiEvents(merged, page)
+				break
+			}
 			return nil, false, errors.New("loki events: full page has no valid timestamp for pagination")
 		}
 		// Refetch the earliest instant so leftover rows that share that
@@ -381,11 +387,12 @@ func fetchLokiEventPagesUntil(ctx context.Context, client lokiQuerier, uid, quer
 		if err != nil {
 			return nil, false, fmt.Errorf("loki events query failed: %w", err)
 		}
-		appendLokiEventsUnseen(merged, bucket, seen)
+		appendLokiEventsUnseen(page, bucket, seen)
 		if lokiEntryCount(bucket) >= lokiEventsPageSize {
 			return nil, false, fmt.Errorf("loki events: more than %d rows share timestamp %s; dump would be truncated", lokiEventsPageSize, earliest.UTC().Format(time.RFC3339Nano))
 		}
-		if stop != nil && stop(merged) {
+		appendLokiEvents(merged, page)
+		if stop != nil && stop(page) {
 			return merged, true, nil
 		}
 		if !earliest.Before(cursor) {

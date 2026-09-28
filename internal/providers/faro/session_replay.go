@@ -194,6 +194,7 @@ func saveSessionReplayEvents(ctx context.Context, client *Client, appID, session
 		return 0, err
 	}
 	encoder := json.NewEncoder(out)
+	encoder.SetEscapeHTML(false)
 	count := 0
 	for i, recording := range recordings {
 		manifest := manifests[i]

@@ -44,7 +44,7 @@ func TestSessionsGetReplayBundlesAllRecordingsAsOneFile(t *testing.T) {
 		case strings.HasSuffix(r.URL.Path, "/older/manifest"):
 			_, _ = w.Write([]byte(`{"id":"older","session_id":"sess-1","status":"finished","segments":[{"id":0}]}`))
 		case strings.HasSuffix(r.URL.Path, "/newest/segments/0"):
-			_, _ = w.Write([]byte(`{"id":"0","recording_id":"newest","events":[{"type":4,"timestamp":1000,"data":{"href":"/"}}]}`))
+			_, _ = w.Write([]byte(`{"id":"0","recording_id":"newest","events":[{"type":4,"timestamp":1000,"data":{"href":"/?a=1&b=<x>"}}]}`))
 		case strings.HasSuffix(r.URL.Path, "/newest/segments/3"):
 			_, _ = w.Write([]byte(`{"id":"3","recording_id":"newest","events":[{"type":3,"timestamp":2000,"data":{"source":2}}]}`))
 		case strings.HasSuffix(r.URL.Path, "/older/segments/0"):
@@ -87,10 +87,11 @@ func TestSessionsGetReplayBundlesAllRecordingsAsOneFile(t *testing.T) {
 	require.Len(t, bundle.Recordings, 2)
 	assert.Equal(t, "newest", bundle.Recordings[0].ID)
 	assert.Equal(t, "older", bundle.Recordings[1].ID)
-	assert.JSONEq(t, `{"type":4,"timestamp":1000,"data":{"href":"/"}}`, string(bundle.Recordings[0].Events[0]))
+	assert.JSONEq(t, `{"type":4,"timestamp":1000,"data":{"href":"/?a=1&b=<x>"}}`, string(bundle.Recordings[0].Events[0]))
 	assert.JSONEq(t, `{"type":3,"timestamp":2000,"data":{"source":2}}`, string(bundle.Recordings[0].Events[1]))
 	assert.JSONEq(t, `{"type":4,"timestamp":1500,"data":{"href":"/older"},"extra":"preserved"}`, string(bundle.Recordings[1].Events[0]))
 	assert.Contains(t, string(contents), `"extra":"preserved"`)
+	assert.Contains(t, string(contents), `"href":"/?a=1&b=<x>"`)
 	if runtime.GOOS != "windows" {
 		info, statErr := os.Stat(path)
 		require.NoError(t, statErr)
