@@ -87,19 +87,20 @@ var (
 )
 
 // bindConfigAndOutputFlags binds the config selection and output flags that
-// `gcx login` and `gcx signup` share.
-func (opts *loginOpts) bindConfigAndOutputFlags(flags *pflag.FlagSet) {
+// `gcx login` and `gcx signup` share. Each command passes its own human-text
+// codec.
+func (opts *loginOpts) bindConfigAndOutputFlags(flags *pflag.FlagSet, text format.Codec) {
 	opts.Config.BindFlags(flags)
-	// Register a human-text codec and use it as the default for interactive
-	// terminals. cmdio.BindFlags overrides the default with "json" when
-	// agent.IsAgentMode() is true, so we don't branch on agent mode here.
-	opts.IO.RegisterCustomCodec("text", &loginTextCodec{})
+	// Register the human-text codec and use it as the default for interactive
+	// terminals. cmdio.BindFlags overrides the default with the agents codec
+	// when agent.IsAgentMode() is true, so we don't branch on agent mode here.
+	opts.IO.RegisterCustomCodec("text", text)
 	opts.IO.DefaultFormat("text")
 	opts.IO.BindFlags(flags)
 }
 
 func (opts *loginOpts) setup(flags *pflag.FlagSet) {
-	opts.bindConfigAndOutputFlags(flags)
+	opts.bindConfigAndOutputFlags(flags, &loginTextCodec{})
 
 	flags.StringVar(&opts.Server, "server", "", "Grafana server URL (e.g. https://my-stack.grafana.net)")
 	flags.StringVar(&opts.Token, "token", "", "Grafana service account token")
@@ -604,7 +605,10 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 	// opts.Server (the canonical runtime value mutated by interactive prompts
 	// and retries) rather than flags.Server, which can be empty on first-time
 	// setup when the user typed the URL into the huh form.
-	return printResult(cmd, &flags.IO, opts.Server, result, flags.signup)
+	if flags.signup {
+		return printSignupResult(cmd, flags, opts.Server, result)
+	}
+	return printResult(cmd, &flags.IO, opts.Server, result)
 }
 
 // errLoginAborted reports that the user left an interactive prompt. The
@@ -1956,20 +1960,8 @@ func existingContextNames(cfg config.Config) []string {
 // stdout using the configured output codec. Advisory prose (next-step and
 // CAP-token guidance) is routed to stderr so that JSON/YAML consumers receive
 // clean, parseable output on stdout.
-func printResult(cmd *cobra.Command, ioOpts *cmdio.Options, server string, result login.Result, signup bool) error {
-	if server == "" {
-		server = result.ContextName
-	}
-	lr := LoginResult{
-		ContextName:    result.ContextName,
-		Server:         server,
-		AuthMethod:     result.AuthMethod,
-		Cloud:          result.IsCloud,
-		GrafanaVersion: result.GrafanaVersion,
-		StackSlug:      result.StackSlug,
-		HasCloudToken:  result.HasCloudToken,
-	}
-	if err := ioOpts.Encode(cmd.OutOrStdout(), lr); err != nil {
+func printResult(cmd *cobra.Command, ioOpts *cmdio.Options, server string, result login.Result) error {
+	if err := ioOpts.Encode(cmd.OutOrStdout(), newLoginResult(server, result)); err != nil {
 		return err
 	}
 
@@ -1987,13 +1979,27 @@ func printResult(cmd *cobra.Command, ioOpts *cmdio.Options, server string, resul
 		fmt.Fprintln(ew, "Grafana Cloud product management (SLOs, Synthetic Monitoring, Fleet, k6, IRM, Adaptive telemetry)")
 		fmt.Fprintln(ew, "additionally requires a Cloud Access Policy (CAP) token.")
 		fmt.Fprintln(ew, "See: https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/")
-		if signup {
-			fmt.Fprintf(ew, "Add one with: gcx cloud login --context %s\n", result.ContextName)
-		} else {
-			fmt.Fprintf(ew, "Add one with: gcx login --context %s --cloud-token <token>\n", result.ContextName)
-		}
+		fmt.Fprintf(ew, "Add one with: gcx login --context %s --cloud-token <token>\n", result.ContextName)
 	}
 	return nil
+}
+
+// newLoginResult converts the login.Result into the LoginResult that the
+// output codecs render. server is the canonical runtime value (opts.Server);
+// when it is empty the context name stands in for it.
+func newLoginResult(server string, result login.Result) LoginResult {
+	if server == "" {
+		server = result.ContextName
+	}
+	return LoginResult{
+		ContextName:    result.ContextName,
+		Server:         server,
+		AuthMethod:     result.AuthMethod,
+		Cloud:          result.IsCloud,
+		GrafanaVersion: result.GrafanaVersion,
+		StackSlug:      result.StackSlug,
+		HasCloudToken:  result.HasCloudToken,
+	}
 }
 
 // loginTextCodec renders LoginResult as the human-friendly multi-line summary

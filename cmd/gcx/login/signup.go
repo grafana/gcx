@@ -43,10 +43,11 @@ run gcx login.
 
 A person completes the browser steps. In agent mode gcx prints the URL instead
 of opening the browser, and asks no questions. signup does not save Grafana
-Cloud management credentials; run gcx cloud login for those. If signup fails
-once the browser step has started, the error shows the gcx login command that
-finishes the connection; do not run signup again, which would start a second
-account.`,
+Cloud management credentials. To manage Grafana Cloud products (SLOs,
+Synthetic Monitoring, k6 and more), save a Cloud Access Policy token afterwards
+with gcx cloud login --cloud-token <token>. If signup fails once the browser
+step has started, the error shows the gcx login command that finishes the
+connection; do not run signup again, which would start a second account.`,
 		Example: `  gcx signup
   gcx signup my-stack
   gcx signup --oauth-manual`,
@@ -70,7 +71,7 @@ account.`,
 }
 
 func (opts *loginOpts) setupSignup(flags *pflag.FlagSet) {
-	opts.bindConfigAndOutputFlags(flags)
+	opts.bindConfigAndOutputFlags(flags, &signupTextCodec{})
 
 	flags.IntVar(&opts.OAuthCallbackPort, "oauth-callback-port", 0, oauthCallbackPortUsage)
 	flags.BoolVar(&opts.OAuthManual, "oauth-manual", false, oauthManualUsage)
@@ -185,10 +186,7 @@ func signupLoginCommand(flags *loginOpts, contextName, server string, extra ...s
 		parts = append(parts, "--cloud")
 	}
 	parts = append(parts, extra...)
-	if flags.Config.ConfigFile != "" {
-		parts = append(parts, "--config", shellArg(flags.Config.ConfigFile))
-	}
-	return strings.Join(parts, " ")
+	return signupFollowUpCommand(flags, strings.Join(parts, " "))
 }
 
 // shellArg quotes value for a printed command only when a shell would

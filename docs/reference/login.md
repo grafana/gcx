@@ -24,8 +24,29 @@ This page walks through the common login paths, the mental model behind them, an
 
 - **No Grafana Cloud account yet: run `gcx signup`.** gcx opens the grafana.com
   sign-up page. Create the account, verify your email (the emailed link may
-  open a new tab), and create your first stack. The browser then goes to the
-  stack's "Connect gcx" page. Approve it, and gcx saves the connection.
+  open a new tab), and create your first stack. The browser then signs in to
+  the new stack and goes to its "Connect gcx" page. Approve it, and gcx saves
+  the connection and prints a summary with the next steps:
+
+  ```
+  ✔ Connected to your Grafana Cloud stack
+
+    Stack:    https://mystack.grafana.net
+    Context:  default
+    Version:  12.0.0
+
+  Next steps
+    Connect your first app or service
+      https://mystack.grafana.net/connections/add-new-connection
+    Check the connection anytime
+      gcx config check --context default
+    Manage SLOs, Synthetic Monitoring, k6 and more with a Cloud Access Policy token
+      gcx cloud login --context default --cloud-token <token>
+      https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/create-access-policies/
+  ```
+
+  With `-o json`, `-o yaml` or in agent mode, stdout carries the same result as
+  `gcx login`, and the next steps come as hints on stderr.
 - **An account, but no stack URL at hand: run `gcx login`** and leave the
   server URL empty. gcx opens the grafana.com stack launcher. Sign in, pick a
   stack, and approve "Connect gcx". gcx then offers the optional grafana.com
@@ -46,8 +67,10 @@ it refuses a context that already has a stack or Grafana Cloud entry, a name
 that an existing stack entry uses, and `GRAFANA_SERVER`,
 `GRAFANA_PROXY_ENDPOINT` or `GRAFANA_TLS_*` in the environment. It asks no
 questions and saves no Grafana Cloud management credentials, not even
-`GRAFANA_CLOUD_TOKEN`; run `gcx cloud login` later if you need Cloud
-management features.
+`GRAFANA_CLOUD_TOKEN`. To manage Grafana Cloud products (SLOs, Synthetic
+Monitoring, k6 and more), save a Cloud Access Policy token afterwards with
+`gcx cloud login --context <context> --cloud-token <token>`; see
+[Grafana Cloud product APIs](#grafana-cloud-product-apis).
 
 If signup fails once the browser step has started, do not run `gcx signup`
 again: it would start a second account. The error shows the `gcx login`

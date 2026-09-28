@@ -2211,7 +2211,7 @@ func TestPrintResult_TextCodec(t *testing.T) {
 			ioOpts.BindFlags(fs)
 			require.NoError(t, ioOpts.Validate())
 
-			err := printResult(cmd, ioOpts, tt.server, tt.result, false)
+			err := printResult(cmd, ioOpts, tt.server, tt.result)
 			require.NoError(t, err)
 
 			assert.Equal(t, tt.wantStdout, stdout.String(), "stdout mismatch")

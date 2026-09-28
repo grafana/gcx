@@ -167,6 +167,16 @@ recovery: `--server <stack> --oauth` when the browser step finished, and
 `--cloud --oauth` when it did not. Errors from printing the result, after the
 save, are returned as they are.
 
+Signup's output is its own, and its structured output is not. `gcx signup`
+registers `signupTextCodec` as its "text" codec in place of `loginTextCodec`,
+and `printSignupResult` replaces `printResult`: stdout gets the same
+`LoginResult` (the text codec renders it as the success summary, with no check
+mark in agent mode, so signup's own text stays plain ASCII), and stderr gets the
+next steps, a plain list in text mode and `EmitHint` hints otherwise. With
+`CloudSignup`, `announceOAuthLogin` reports the browser approval as "Approved
+in the browser ... Checking the connection to <stack>..." with no success
+mark, so the summary, printed only after the save, is the one success line.
+
 The pipeline reads top-to-bottom in `Run()` (login.go:180). Each step returns
 early on failure; sentinel branches unwind to the CLI for interactive
 resolution and re-entry:

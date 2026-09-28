@@ -98,7 +98,8 @@ type Options struct {
 
 	// Signup opens the Grafana Cloud account creation page first, for a person
 	// who has no account yet. That page returns to the stack launcher once the
-	// account and its first stack exist. It applies only when no stack
+	// account and its first stack exist, and the launcher signs the browser in
+	// to the stack before its consent page. It applies only when no stack
 	// endpoint is known.
 	Signup bool
 
@@ -222,7 +223,7 @@ func (f *Flow) runWithCallbackServer(ctx context.Context) (*Result, error) {
 	if opened, err := openBrowser(entryURL); err != nil {
 		fmt.Fprintln(f.writer, "(Could not open browser automatically)")
 	} else if !opened {
-		fmt.Fprintln(f.writer, "(Browser launch skipped in agent mode — open the URL above manually)")
+		fmt.Fprintln(f.writer, "(Browser launch skipped in agent mode; open the URL above manually)")
 	}
 
 	f.printLauncherSteps()
@@ -256,10 +257,11 @@ func (f *Flow) runWithCallbackServer(ctx context.Context) (*Result, error) {
 		fmt.Fprintln(f.writer, "gcx is waiting. If you lose the page, press Enter to open it again. Press Ctrl-C to cancel.")
 	}
 
-	// Reopening goes to the launcher, never to the signup page: by the time a
-	// page is lost the account usually exists, and the launcher takes a
-	// signed-in user straight to their stack. The URL carries the same state,
-	// challenge and port, so every open tab stays valid.
+	// Reopening goes to the launcher (for a signup, through the stack sign-in
+	// route), never to the signup page: by the time a page is lost the
+	// account usually exists, and the launcher takes a signed-in user straight
+	// to their stack. The URL carries the same state, challenge and port, so
+	// every open tab stays valid.
 	var lastReopen time.Time
 	reopen := func() {
 		// A claimed guard means the callback arrived and its token exchange
@@ -350,25 +352,45 @@ func ValidateLaunchOrigin(origin string) error {
 
 // buildAuthURL renders the plugin consent URL for the given callback port.
 // Without a stack endpoint it renders the Grafana Cloud stack launcher, which
-// forwards the same path and query to the stack the user picks.
+// forwards the same path and query to the stack the user picks. For a signup
+// the launcher forwards to the stack's sign-in route instead, which then opens
+// the consent page (see launchWithStackSignIn).
 func (f *Flow) buildAuthURL(port int, state, codeChallenge string) string {
-	authEndpoint := strings.TrimSuffix(f.endpoint, "/")
-	if authEndpoint == "" {
-		authEndpoint = f.launchOrigin() + "/launch"
-	}
-
-	authURL := fmt.Sprintf("%s/a/grafana-assistant-app/cli/auth?callback_port=%d&state=%s&code_challenge=%s&code_challenge_method=S256",
-		authEndpoint, port, url.QueryEscape(state), url.QueryEscape(codeChallenge))
-
-	if hostname, err := os.Hostname(); err == nil && hostname != "" {
-		authURL += "&device_name=" + url.QueryEscape(hostname)
-	}
+	consent := fmt.Sprintf("/a/grafana-assistant-app/cli/auth?callback_port=%d&state=%s&code_challenge=%s&code_challenge_method=S256",
+		port, url.QueryEscape(state), url.QueryEscape(codeChallenge))
 
 	if len(f.opts.Scopes) > 0 {
-		authURL += "&scopes=" + url.QueryEscape(strings.Join(f.opts.Scopes, ","))
+		consent += "&scopes=" + url.QueryEscape(strings.Join(f.opts.Scopes, ","))
 	}
 
-	return authURL
+	// The host name comes last: it is the one value gcx does not control, and
+	// on the signup route Grafana may unescape the consent query once more, so
+	// an & or # in it can then only cut the name itself short.
+	if hostname, err := os.Hostname(); err == nil && hostname != "" {
+		consent += "&device_name=" + url.QueryEscape(hostname)
+	}
+
+	endpoint := strings.TrimSuffix(f.endpoint, "/")
+	switch {
+	case endpoint != "":
+		return endpoint + consent
+	case f.opts.Signup:
+		return launchWithStackSignIn(f.launchOrigin(), consent)
+	default:
+		return f.launchOrigin() + "/launch" + consent
+	}
+}
+
+// launchWithStackSignIn returns the launcher URL that sends the browser to
+// stackPath through the chosen stack's set-redirect-and-login route. That is
+// the route grafana.com's own signup uses to land a new user on their stack:
+// it signs the browser in to the stack with the grafana.com session the
+// signup just created, then opens stackPath. Without it, the new stack shows
+// its login page first and the person has to click "Sign in with Grafana.com"
+// before the consent page. The launcher keeps the route and query when it
+// forwards to the stack.
+func launchWithStackSignIn(origin, stackPath string) string {
+	return origin + "/launch/set-redirect-and-login?url=" + url.QueryEscape(stackPath)
 }
 
 // buildEntryURL returns the URL that the browser opens first. It is authURL
@@ -376,7 +398,8 @@ func (f *Flow) buildAuthURL(port int, state, codeChallenge string) string {
 // account creation page, carrying the launcher path and query as its
 // grafana.com-relative return target: the signup pages keep that target
 // through email verification and first-stack creation, then send the browser
-// to the launcher, which forwards to the new stack's consent page.
+// to the launcher, which forwards to the new stack's sign-in route and from
+// there to its consent page.
 func (f *Flow) buildEntryURL(authURL string) string {
 	if !f.opts.Signup || f.endpoint != "" {
 		return authURL
@@ -413,7 +436,7 @@ func (f *Flow) startCallbackServer(ctx context.Context, listener net.Listener, e
 		}
 
 		resultCh <- result
-		renderSuccessPage(w)
+		renderSuccessPage(w, stackLink(result.InstanceEndpoint))
 		return true
 	})
 }
@@ -444,7 +467,7 @@ func answerCallbackError(w http.ResponseWriter, out io.Writer, cerr *callbackErr
 	case errors.Is(cerr.err, errExchangeClaimed):
 		// The paste route won the race, and the login is complete. Do not send
 		// to errCh: that would end a flow that succeeded.
-		renderSuccessPage(w)
+		renderSuccessPage(w, nil)
 		return true
 	case cerr.retryable:
 		fmt.Fprintf(out, "\nThe browser sent this login's callback without what gcx needs (%s), so gcx ignored it and is still waiting. "+
@@ -539,13 +562,22 @@ func ValidateEndpointURL(endpoint string) error {
 		return fmt.Errorf("endpoint must use HTTPS, got %q", u.Scheme)
 	}
 
-	for _, suffix := range allowedDomainSuffixes {
-		if strings.HasSuffix(hostname, suffix) {
-			return nil
-		}
+	if hasTrustedDomainSuffix(hostname) {
+		return nil
 	}
 
 	return fmt.Errorf("endpoint host %q is not a trusted Grafana domain", hostname)
+}
+
+// hasTrustedDomainSuffix reports whether hostname is on a Grafana Cloud stack
+// domain (allowedDomainSuffixes).
+func hasTrustedDomainSuffix(hostname string) bool {
+	for _, suffix := range allowedDomainSuffixes {
+		if strings.HasSuffix(hostname, suffix) {
+			return true
+		}
+	}
+	return false
 }
 
 var allowedGCOMHosts = []string{ //nolint:gochecknoglobals
@@ -736,15 +768,33 @@ func StripControlChars(s string) string {
 // renderSuccessPage answers the callback that delivered the credential. It
 // claims only the browser step: gcx still validates the connection and saves
 // it afterwards, and either can fail, so the terminal reports the result.
-func renderSuccessPage(w http.ResponseWriter) {
+// The consent page sent this tab away from the stack, so a stack (from
+// stackLink) adds a link back to it.
+func renderSuccessPage(w http.ResponseWriter, stack *url.URL) {
 	tmpl := template.Must(template.ParseFS(templateFS, "templates/success.html"))
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	data := struct{ StackURL, StackHost string }{}
+	if stack != nil {
+		data.StackURL, data.StackHost = stack.String(), stack.Host
+	}
 	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, nil); err != nil {
+	if err := tmpl.Execute(&buf, data); err != nil {
 		http.Error(w, "Internal error", http.StatusInternalServerError)
 		return
 	}
 	_, _ = w.Write(buf.Bytes())
+}
+
+// stackLink returns the origin of the stack whose consent page sent the
+// callback, for the success page's link back to it. It returns nil unless the
+// endpoint is an https URL on a trusted Grafana domain. ValidateEndpointURL is
+// not enough here: it also admits local addresses.
+func stackLink(instanceEndpoint string) *url.URL {
+	u, err := url.Parse(instanceEndpoint)
+	if err != nil || u.Scheme != "https" || u.User != nil || !hasTrustedDomainSuffix(u.Hostname()) {
+		return nil
+	}
+	return &url.URL{Scheme: u.Scheme, Host: u.Host}
 }
 
 // renderCallbackFailure answers a callback that ended the login without a

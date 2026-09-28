@@ -199,6 +199,46 @@ func TestRunCloudSignupSavesWithoutTheOptionalCloudStep(t *testing.T) {
 	})
 }
 
+// TestRunCloudSignupAnnouncesApprovalWithoutASuccessMark pins that a signup
+// reports the browser approval as a step, not a success: the connection is
+// still to be checked and saved, and signup's summary is its one success line.
+func TestRunCloudSignupAnnouncesApprovalWithoutASuccessMark(t *testing.T) {
+	agentModeOffForTest(t)
+	usePlaintextCredentialStorage(t)
+
+	withEmail := launcherOAuthResult()
+	withEmail.Email = "you@example.com"
+	for _, tc := range []struct {
+		result *auth.Result
+		want   string
+	}{
+		{withEmail, "Approved in the browser as you@example.com. Checking the connection to https://mystack.grafana.net..."},
+		{launcherOAuthResult(), "Approved in the browser. Checking the connection to https://mystack.grafana.net..."},
+	} {
+		var progress bytes.Buffer
+		opts := login.Options{
+			Inputs: login.Inputs{CloudSignup: true, Writer: &progress},
+			Hooks: login.Hooks{
+				ConfigSource: configSource(t.TempDir()),
+				ValidateFn:   noopValidate,
+				NewAuthFlow: func(string, auth.Options) login.AuthFlow {
+					return &stubAuthFlow{result: tc.result}
+				},
+			},
+			RetryState: login.RetryState{StagedContext: &config.Context{}},
+		}
+		_, err := login.Run(context.Background(), &opts)
+		require.NoError(t, err)
+
+		out := progress.String()
+		assert.Contains(t, out, tc.want)
+		assert.NotContains(t, out, "Signed in")
+		for i := range len(out) {
+			require.Less(t, out[i], byte(0x80), "progress text must stay plain ASCII: %q", out)
+		}
+	}
+}
+
 // TestRunCloudSignupNeverAsksToSaveAnUnvalidatedConnection pins that a signup
 // in a terminal reports a failed validation instead of asking "save anyway?".
 // The person just created the account and cannot judge the failure; the stack

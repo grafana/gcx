@@ -112,6 +112,46 @@ func TestLoginCloudOAuthWithoutServerStartsTheLauncher(t *testing.T) {
 	})
 }
 
+// TestSignupOpensTheSignUpPageWithStackSignIn pins the real entry URL of gcx
+// signup: the account creation page, returning to the launcher through the
+// new stack's sign-in route, so the stack's login page never asks for a click
+// before the consent page.
+func TestSignupOpensTheSignUpPageWithStackSignIn(t *testing.T) {
+	signupEnvironment(t, "true") // no browser launch; the URL is printed
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	var stderr lockedBuffer
+	cmd := SignupCommand()
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&stderr)
+	cmd.SetArgs([]string{"--config", path})
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- cmd.ExecuteContext(ctx) }()
+
+	const entry = "https://grafana.com/auth/sign-up/create-user?to=" +
+		"%2Flaunch%2Fset-redirect-and-login%3Furl%3D%252Fa%252Fgrafana-assistant-app%252Fcli%252Fauth%253Fcallback_port%253D"
+	require.Eventually(t, func() bool { return strings.Contains(stderr.String(), entry) },
+		10*time.Second, 10*time.Millisecond, "stderr never showed the signup entry URL: %q", stderr.String())
+	cancel()
+
+	select {
+	case err := <-done:
+		require.ErrorIs(t, err, context.Canceled)
+	case <-time.After(10 * time.Second):
+		t.Fatal("signup did not stop after cancellation")
+	}
+
+	// The real browser flow prints here too, and agent mode keeps it ASCII.
+	out := stderr.String()
+	for i := range len(out) {
+		require.Less(t, out[i], byte(0x80), "agent mode stderr must stay plain ASCII: %q", out)
+	}
+}
+
 // TestServerPromptPointsAtSignup keeps main's server prompt, where an empty
 // answer signs in to Grafana Cloud, and adds the signup route for a person
 // with no account. A credential bound to one server needs a URL instead.

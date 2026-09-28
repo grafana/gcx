@@ -120,7 +120,8 @@ func assertStillWaiting(t *testing.T, done <-chan flowOutcome) {
 }
 
 // consentParams returns the consent query of an opened URL. For the signup
-// entry page it reads the query of the nested return target.
+// entry page it reads the query of the nested return target, and for the
+// stack sign-in route the query of the consent path it carries.
 func consentParams(t *testing.T, raw string) url.Values {
 	t.Helper()
 	u, err := url.Parse(raw)
@@ -128,6 +129,11 @@ func consentParams(t *testing.T, raw string) url.Values {
 	q := u.Query()
 	if to := q.Get("to"); to != "" {
 		inner, err := url.Parse(to)
+		require.NoError(t, err)
+		q = inner.Query()
+	}
+	if signIn := q.Get("url"); signIn != "" {
+		inner, err := url.Parse(signIn)
 		require.NoError(t, err)
 		q = inner.Query()
 	}
@@ -197,6 +203,8 @@ func TestCallbackServerIgnoresCallbacksFromOtherAttempts(t *testing.T) {
 	assert.Contains(t, body, "Authorization complete")
 	assert.Contains(t, body, "Return to your terminal")
 	assert.NotContains(t, body, "Connected")
+	// The consent page sent this tab away from the stack, so the page links back.
+	assert.Contains(t, body, `href="https://mystack.grafana.net"`)
 	outcome := waitForOutcome(t, done)
 	require.NoError(t, outcome.err)
 	assert.Equal(t, "gat_token", outcome.result.Token)
@@ -273,9 +281,11 @@ func TestPasteRouteStopsOnBrowserCancel(t *testing.T) {
 }
 
 // TestLauncherAndSignupURLs pins where the browser goes. Without a stack the
-// consent URL is the Grafana Cloud launcher on the configured portal. The
-// signup entry is the account creation page, whose grafana.com-relative return
-// target is exactly that launcher path and query.
+// consent URL is the Grafana Cloud launcher on the configured portal. A signup
+// goes through the launcher to the stack's sign-in route, which carries the
+// very consent path and query the plain launcher forwards. The signup entry is
+// the account creation page, whose grafana.com-relative return target is
+// exactly that launcher URL.
 func TestLauncherAndSignupURLs(t *testing.T) {
 	t.Parallel()
 
@@ -305,7 +315,7 @@ func TestLauncherAndSignupURLs(t *testing.T) {
 		{
 			name:       "signup starts on the account creation page",
 			opts:       auth.Options{LaunchOrigin: "https://grafana-dev.com", Signup: true},
-			wantAuth:   "https://grafana-dev.com/launch" + consentPath,
+			wantAuth:   "https://grafana-dev.com/launch/set-redirect-and-login",
 			wantSignup: true,
 		},
 	}
@@ -320,13 +330,28 @@ func TestLauncherAndSignupURLs(t *testing.T) {
 			consent, err := url.Parse(authURL)
 			require.NoError(t, err)
 			assert.Equal(t, tc.wantAuth, consent.Scheme+"://"+consent.Host+consent.Path)
+			query := consent.Query()
+			if tc.wantSignup {
+				// The sign-in route's one parameter is the stack-relative consent
+				// path and query, byte for byte what the plain launcher forwards.
+				assert.Equal(t, []string{"url"}, keys(query))
+				signIn := query.Get("url")
+				plain, _ := auth.NewFlow("", auth.Options{LaunchOrigin: tc.opts.LaunchOrigin}).
+					AuthAndEntryURLs(54399, "synthetic-state", "synthetic-challenge")
+				assert.Equal(t, strings.TrimPrefix(plain, "https://grafana-dev.com/launch"), signIn)
+				stackConsent, err := url.Parse(signIn)
+				require.NoError(t, err)
+				assert.Empty(t, stackConsent.Scheme+stackConsent.Host, "the sign-in target must be stack-relative")
+				assert.Equal(t, consentPath, stackConsent.Path)
+				query = stackConsent.Query()
+			}
 			for key, want := range map[string]string{
 				"callback_port":         "54399",
 				"state":                 "synthetic-state",
 				"code_challenge":        "synthetic-challenge",
 				"code_challenge_method": "S256",
 			} {
-				assert.Equal(t, want, consent.Query().Get(key), key)
+				assert.Equal(t, want, query.Get(key), key)
 			}
 
 			if !tc.wantSignup {
@@ -427,6 +452,8 @@ func TestFlowRun_SignupReopensTheLauncherOnEnter(t *testing.T) {
 	second := browser.next(t)
 	assert.Equal(t, "https://grafana-dev.com"+first.Query().Get("to"), second,
 		"Enter reopens the launcher that the signup page returns to")
+	assert.True(t, strings.HasPrefix(second, "https://grafana-dev.com/launch/set-redirect-and-login?url="),
+		"the reopened launcher still signs the browser in to the stack: %s", second)
 	assert.Contains(t, out.String(), "Opening the login page again")
 
 	params := consentParams(t, second)
@@ -436,8 +463,9 @@ func TestFlowRun_SignupReopensTheLauncherOnEnter(t *testing.T) {
 		"endpoint":         {exchange.URL},
 		"instanceEndpoint": {"https://mystack.grafana-dev.net"},
 	}
-	status, _ := sendCallback(t, http.MethodGet, callbackURL(params.Get("callback_port"), ours))
+	status, body := sendCallback(t, http.MethodGet, callbackURL(params.Get("callback_port"), ours))
 	assert.Equal(t, http.StatusOK, status)
+	assert.Contains(t, body, `href="https://mystack.grafana-dev.net"`)
 	outcome := waitForOutcome(t, done)
 	require.NoError(t, outcome.err)
 	assert.Equal(t, "https://mystack.grafana-dev.net", outcome.result.InstanceEndpoint)
