@@ -75,7 +75,9 @@ a first stack, and approves "Connect gcx"; gcx then saves the connection to the
 a new connection, so it refuses a context or stack entry that already exists:
 do not run Step 1 first. If it fails once the browser step has started, run
 the `gcx login` command the error shows, not `gcx signup` again, which would
-start a second account.
+start a second account. It saves no Grafana Cloud management credentials; for
+Cloud product APIs (SLOs, Synthetic Monitoring, k6), add a Cloud Access Policy
+token afterwards with `gcx cloud login --context cloud --cloud-token <token>`.
 
 ### Step 1: Create a stack and context
 

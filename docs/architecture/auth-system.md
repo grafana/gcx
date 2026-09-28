@@ -257,6 +257,31 @@ pages keep that grafana.com-relative return target through email verification
 and first-stack creation. In a local interactive session, Enter reopens the
 launcher URL with the same state and challenge.
 
+A signup's launcher URL is
+`<portal>/launch/set-redirect-and-login?url=<consent path and query>`
+(`launchWithStackSignIn`). The launcher forwards it to the chosen stack, whose
+gateway route signs the browser in to the stack with the grafana.com session
+and then opens the consent path. That is the route grafana.com's own signup
+uses to land a new user on their stack; without it the new stack shows its
+login page first. Each hop decodes one layer: the signup page decodes `to`
+(also when it carries `to` through the emailed confirmation link, whose `u`
+parameter is decoded once and rebuilt without decoding by the portal's
+confirm page), and the launcher and the stack gateway each decode `url`.
+Grafana's legacy `redirect_to` cookie path unescapes the gateway's raw value
+once more. The consent parameters gcx controls survive that (hex state,
+base64url challenge, escaped scopes), and the host name, the one value gcx
+does not control, goes last, so an `&` or `#` in it can only cut the name
+itself short. The plain launcher, used by `gcx login`, is unchanged: existing
+stacks can use other sign in setups.
+
+The success page claims only the browser step. For the stack flow it also
+links back to the stack (`stackLink`: the https origin of the consent page's
+`instanceEndpoint`, on a trusted Grafana stack domain only, never a local
+address), because the consent page redirects its own tab to the callback. The
+link sends no referrer, since the page URL carries the callback's code and
+state. The grafana.com flow, and the callback that loses the race to the
+paste route, render the page without a link.
+
 ### Manual callback (no local listener)
 
 `--oauth-manual` runs the same flow without a callback server. It exists for

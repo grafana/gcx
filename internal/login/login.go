@@ -800,7 +800,7 @@ func resolveGrafanaAuth(ctx context.Context, opts Options, target Target) (strin
 		// Wrap up the OAuth step with a clear success line before any
 		// subsequent prompts (e.g. the optional Cloud API token). This runs
 		// once: retries hit the StagedContext cache above and skip OAuth.
-		announceOAuthLogin(w, result)
+		announceOAuthLogin(w, result, opts.CloudSignup)
 
 	case authTLS != nil && (len(authTLS.CertData) > 0 || authTLS.CertFile != ""):
 		// mTLS-only auth: the client certificate authenticates at the transport
@@ -956,13 +956,30 @@ func cloudEntryForToken(opts Options) *config.CloudEntry {
 // PKCE flow completes, before any subsequent prompts. It writes to w (the
 // caller-supplied progress writer); a nil writer discards, keeping
 // internal/login free of process streams (NC-001).
-func announceOAuthLogin(w io.Writer, result *auth.Result) {
+//
+// A signup reports the approval without a success mark: gcx still checks and
+// saves the connection, and signup's summary is the one success line, printed
+// only once the connection is saved. The line stays plain ASCII, as agent mode
+// requires.
+func announceOAuthLogin(w io.Writer, result *auth.Result, signup bool) {
 	if w == nil {
 		w = io.Discard
 	}
 	endpoint := result.InstanceEndpoint
 	if endpoint == "" {
 		endpoint = result.APIEndpoint
+	}
+	if signup {
+		approved := "\nApproved in the browser"
+		if result.Email != "" {
+			approved += " as " + result.Email
+		}
+		if endpoint != "" {
+			fmt.Fprintf(w, "%s. Checking the connection to %s...\n", approved, endpoint)
+		} else {
+			fmt.Fprintf(w, "%s. Checking the connection...\n", approved)
+		}
+		return
 	}
 	switch {
 	case endpoint != "" && result.Email != "":

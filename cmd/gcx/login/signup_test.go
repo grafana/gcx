@@ -340,7 +340,7 @@ func TestSignupNeverSavesCloudCredentials(t *testing.T) {
 			stderr, err := runSignup(t, "--config", path)
 			require.NoError(t, err, stderr)
 			require.Equal(t, 1, browser.started())
-			assert.Contains(t, stderr, "Add one with: gcx cloud login --context default")
+			assert.Contains(t, stderr, "gcx cloud login --context default --cloud-token <token> --config "+path)
 
 			raw, err := os.ReadFile(path)
 			require.NoError(t, err)

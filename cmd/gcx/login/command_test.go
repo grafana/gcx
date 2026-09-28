@@ -2294,7 +2294,7 @@ func TestPrintResult_TextCodec(t *testing.T) {
 			ioOpts.BindFlags(fs)
 			require.NoError(t, ioOpts.Validate())
 
-			err := printResult(cmd, ioOpts, tt.server, tt.result, false)
+			err := printResult(cmd, ioOpts, tt.server, tt.result)
 			require.NoError(t, err)
 
 			assert.Equal(t, tt.wantStdout, stdout.String(), "stdout mismatch")
@@ -2338,7 +2338,7 @@ func TestPrintResult_GuideHintStdoutClean(t *testing.T) {
 		IsCloud:             true,
 		HasCloudToken:       true,
 		PathfinderInstalled: true,
-	}, false)
+	})
 	require.NoError(t, err)
 	// Structured stdout stays clean.
 	assert.NotContains(t, stdout.String(), "grafana-pathfinder-app")

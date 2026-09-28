@@ -145,3 +145,9 @@ func StartGCOMCallbackServer(ctx context.Context, listener net.Listener, state s
 	server := f.startGCOMCallbackServer(ctx, listener, state, "verifier", "http://127.0.0.1/callback", &exchangeGuard{}, make(chan *GCOMResult, 1), errCh)
 	return server, errCh
 }
+
+// RenderSuccessPage exposes the success page the stack flow renders for a
+// callback whose consent page ran on instanceEndpoint.
+func RenderSuccessPage(w http.ResponseWriter, instanceEndpoint string) {
+	renderSuccessPage(w, stackLink(instanceEndpoint))
+}

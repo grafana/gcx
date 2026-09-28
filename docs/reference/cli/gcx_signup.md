@@ -23,10 +23,11 @@ run gcx login.
 
 A person completes the browser steps. In agent mode gcx prints the URL instead
 of opening the browser, and asks no questions. signup does not save Grafana
-Cloud management credentials; run gcx cloud login for those. If signup fails
-once the browser step has started, the error shows the gcx login command that
-finishes the connection; do not run signup again, which would start a second
-account.
+Cloud management credentials. To manage Grafana Cloud products (SLOs,
+Synthetic Monitoring, k6 and more), save a Cloud Access Policy token afterwards
+with gcx cloud login --cloud-token <token>. If signup fails once the browser
+step has started, the error shows the gcx login command that finishes the
+connection; do not run signup again, which would start a second account.
 
 ```
 gcx signup [CONTEXT_NAME] [flags]

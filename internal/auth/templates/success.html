@@ -44,6 +44,18 @@
                 margin: 0 0 24px 0;
                 line-height: 1.5;
             }
+            .stack-link {
+                display: inline-block;
+                padding: 10px 20px;
+                border-radius: 6px;
+                background: #3d71d9;
+                color: #fff;
+                font-weight: 500;
+                text-decoration: none;
+            }
+            .stack-link:hover {
+                background: #5a8af0;
+            }
             .close-note {
                 margin-top: 24px;
                 font-size: 13px;
@@ -60,6 +72,7 @@
             </div>
             <h1>Authorization complete</h1>
             <p>Return to your terminal to see the connection result.</p>
+            {{with .StackURL}}<p><a class="stack-link" href="{{.}}" rel="noreferrer">Go to {{$.StackHost}}</a></p>{{end}}
             <p class="close-note">You can close this tab.</p>
         </div>
     </body>

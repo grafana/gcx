@@ -176,7 +176,7 @@ func (f *GCOMFlow) runWithCallbackServer(ctx context.Context) (*GCOMResult, erro
 	if opened, err := openBrowser(authURL); err != nil {
 		fmt.Fprintln(f.writer, "(Could not open browser automatically)")
 	} else if !opened {
-		fmt.Fprintln(f.writer, "(Browser launch skipped in agent mode — open the URL above manually)")
+		fmt.Fprintln(f.writer, "(Browser launch skipped in agent mode; open the URL above manually)")
 	}
 
 	// Over SSH the browser cannot reach the callback address. Accept a pasted
@@ -218,7 +218,7 @@ func (f *GCOMFlow) startGCOMCallbackServer(ctx context.Context, listener net.Lis
 		}
 
 		resultCh <- result
-		renderSuccessPage(w)
+		renderSuccessPage(w, nil)
 		return true
 	})
 }
