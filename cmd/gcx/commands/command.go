@@ -144,12 +144,24 @@ against live resource discovery and report uncovered or stale types.`,
 	}
 
 	opts.setup(cmd.Flags())
+	cmd.AddCommand(searchCommand(root))
 
 	return cmd
 }
 
 // walkCommandWithOptions walks the command tree with configurable hidden command inclusion.
 func walkCommandWithOptions(cmd *cobra.Command, parentPath string, includeHidden bool) CommandInfo {
+	info := commandInfo(cmd, parentPath)
+	for _, sub := range cmd.Commands() {
+		if sub.Hidden && !includeHidden {
+			continue
+		}
+		info.Subcommands = append(info.Subcommands, walkCommandWithOptions(sub, info.FullPath, includeHidden))
+	}
+	return info
+}
+
+func commandInfo(cmd *cobra.Command, parentPath string) CommandInfo {
 	fullPath := cmd.Name()
 	if parentPath != "" {
 		fullPath = parentPath + " " + cmd.Name()
@@ -181,14 +193,6 @@ func walkCommandWithOptions(cmd *cobra.Command, parentPath string, includeHidden
 			Description: f.Usage,
 		})
 	})
-
-	// Recurse into subcommands.
-	for _, sub := range cmd.Commands() {
-		if sub.Hidden && !includeHidden {
-			continue
-		}
-		info.Subcommands = append(info.Subcommands, walkCommandWithOptions(sub, fullPath, includeHidden))
-	}
 
 	return info
 }

@@ -20,6 +20,15 @@ structured output, and a consistent verb model across all resource types.
 gcx has a built-in command catalog. Never guess a command — discover it first.
 Use **progressive disclosure** to minimize token cost:
 
+**Find a command by intent** when you know the task but not its command:
+```bash
+gcx commands search "create an uptime check"
+```
+Search uses local word matching with typo tolerance and returns five suggestions.
+Inspect the best match with `--help` before acting; matches may cover only part of
+the task and do not verify availability in the current context. Query text is
+not sent in usage statistics. Use the tree below when you want to browse instead.
+
 **Step 1 — Orient** (30 lines, all top-level groups):
 ```bash
 gcx help-tree --depth 1 -o text

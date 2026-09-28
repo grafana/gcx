@@ -125,6 +125,9 @@ gcx (root)
 │       ├── exclude          Exclude a workload
 │       └── clear            Clear workload inclusion override
 │
+├── commands                 Full command catalog (existing --flat and --validate modes)
+│   └── search <query>        Offline ranked command suggestions (--limit 5; 0 = all)
+│
 ├── agent skills             [cmd/gcx/skills/command.go]
 │   ├── install             Install the canonical portable gcx Agent Skills bundle into a .agents root
 │   │   ├── --dir           .agents root directory (default: ~/.agents)
@@ -152,6 +155,18 @@ gcx (root)
 ```
 
 Key: SELECTOR = `kind[/name[,name...]]` or long form `kind.group/name`
+
+`commands search` collects visible, non-deprecated runnable commands from the
+registered Cobra tree after annotations are applied. It reuses catalog metadata
+extraction and passes plain documents to the lexical ranker in `internal/agent`.
+Complete command-path word matches rank first, followed by query-word coverage
+and weighted matches (path/aliases, summary, description, then argument/flag and
+ancestor metadata). Prefix matching and single-edit typo fallback support
+discovery without a persisted index, new dependency, or backend call.
+Results are suggestions rather than semantic answers or permission checks.
+Output uses the existing codecs and list truncation metadata; query text never
+enters usage statistics. The command's own suggestion list excludes itself,
+hidden/deprecated subtrees, and shell-completion plumbing.
 
 ---
 

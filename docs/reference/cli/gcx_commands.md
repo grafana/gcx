@@ -42,4 +42,5 @@ gcx commands [flags]
 ### SEE ALSO
 
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
+* [gcx commands search](gcx_commands_search.md)	 - Find CLI commands by intent using local text search
 

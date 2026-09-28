@@ -56,7 +56,8 @@ var commandAnnotations = map[string]annotation{
 	"gcx cloud login": {Cost: "small", Hint: "Authenticate to the Grafana Cloud platform API (grafana.com) for managing stacks and access policies, distinct from 'gcx login' which targets a single stack. Browser OAuth by default; non-interactive: gcx cloud login --cloud-token <cap-token>. Cloud access-policy tokens are created at grafana.com, see " + docs.AccessPolicies + "."},
 
 	// commands
-	"gcx commands": {Cost: "medium", Hint: "--flat -o json"},
+	"gcx commands":        {Cost: "medium", Hint: "--flat -o json"},
+	"gcx commands search": {Cost: "small (large with --limit 0)", Hint: "\"describe your task\"; returns five suggestions by default, then use the selected command's --help"},
 
 	// config
 	"gcx config check":           {Cost: "small"},

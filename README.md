@@ -19,6 +19,13 @@ Query production. Investigate alerts. Let the Assistant root-cause issues. Ship 
 
 gcx is a CLI for Grafana — Cloud, Enterprise, and OSS alike. It gives you and your AI coding agent structured access to your Grafana instance: dashboards, alerts, SLOs, metrics, logs, traces, and more. Core features (resources, alerting, signal queries) work on any Grafana 12+; Grafana Cloud adds product-specific commands on top.
 
+Find a command with `gcx commands search "create an uptime check"`, then inspect
+its `--help`. Search runs locally without Grafana credentials and returns five
+ranked suggestions by default (`--limit 0` shows all matches). It matches words,
+prefixes, and simple typos; suggestions may cover only part of the task and do
+not verify access in your current context. Use `gcx help-tree` to browse or
+`gcx commands --flat -o json` for the full catalog.
+
 gcx works with any agentic coding tool. It ships with a suite of agent skills for common workflows like alert investigation, dashboard creation and GitOps, SLO management, and observability setup - ready to use out of the box.
 
 Contributing a new Grafana domain capability to gcx? Ask your coding agent to
