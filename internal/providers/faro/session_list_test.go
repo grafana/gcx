@@ -2,6 +2,7 @@ package faro //nolint:testpackage // Tests the unexported replay session parser 
 
 import (
 	"bytes"
+	"strconv"
 	"testing"
 
 	cmdio "github.com/grafana/gcx/internal/output"
@@ -120,6 +121,15 @@ func TestListReplaySessionsAllowsZeroLimit(t *testing.T) {
 	opts.setup(flags)
 	require.NoError(t, flags.Parse([]string{"--limit", "0"}))
 	require.NoError(t, opts.Validate())
+}
+
+func TestListReplaySessionsLimitHelpDisclosesPinotCap(t *testing.T) {
+	cmd := newListReplaySessionsCommand(nil)
+	limit, err := cmd.Flags().GetInt("limit")
+	require.NoError(t, err)
+	assert.Equal(t, 1000, limit)
+	assert.Contains(t, cmd.Flags().Lookup("limit").Usage, strconv.Itoa(pinotReplaySessionsSafetyCap))
+	assert.Contains(t, cmd.Flags().Lookup("limit").Usage, "Loki")
 }
 
 func TestReplaySessionTable_Encode(t *testing.T) {

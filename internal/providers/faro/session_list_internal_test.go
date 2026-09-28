@@ -234,9 +234,13 @@ func TestPinotReplaySessionPagerRejectsRepeatedPage(t *testing.T) {
 func TestPinotReplaySessionPagerStopsAtPageLimit(t *testing.T) {
 	client := &replayPinotChangingPages{}
 	rows, meta, err := fetchPinotReplaySessions(t.Context(), client, "uid", "66", "https://example.grafana.net", time.Unix(1, 0), time.Unix(2, 0), 0)
-	require.ErrorContains(t, err, "exceeded 100 pages")
-	assert.Nil(t, rows)
-	assert.Nil(t, meta)
+	require.NoError(t, err)
+	assert.Len(t, rows, pinotReplaySessionsSafetyCap)
+	require.NotNil(t, meta)
+	assert.Equal(t, pinotReplaySessionsSafetyCap, meta.Cap)
+	assert.Equal(t, pinotReplaySessionsSafetyCap, meta.Returned)
+	assert.True(t, meta.Truncated)
+	assert.Empty(t, meta.Continue)
 	require.Len(t, client.offsets, pinotJourneyMaxPages)
 	for page, offset := range client.offsets {
 		assert.Equal(t, page*pinotJourneyPageSize, offset)

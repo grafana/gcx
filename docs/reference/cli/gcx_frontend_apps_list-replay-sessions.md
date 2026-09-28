@@ -30,7 +30,7 @@ gcx frontend apps list-replay-sessions <slug-id-or-numeric-id> [flags]
   -h, --help                help for list-replay-sessions
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --limit int           Maximum number of sessions to return. 0 means all results are returned (default 1000)
+      --limit int           Maximum number of sessions to return. 0 returns all Loki results or up to 100000 Pinot sessions (default 1000)
   -o, --output string       Output format. One of: agents, json, text, yaml (default "text")
       --since string        How far back to search (e.g., 1h, 24h, 7d) (default "1h")
 ```

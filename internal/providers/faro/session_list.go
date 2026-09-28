@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -22,6 +23,8 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
+
+const pinotReplaySessionsSafetyCap = pinotJourneyMaxPages * pinotJourneyPageSize
 
 // replaySessionListRow holds data for one regular session ID with replay recordings.
 type replaySessionListRow struct {
@@ -79,7 +82,7 @@ type listReplaySessionsOpts struct {
 
 func parseReplayAppID(name string) (string, error) {
 	appID := resolveAppID(name)
-	if _, err := pinot.FormatSQLInt(appID); err != nil {
+	if _, err := strconv.ParseInt(appID, 10, 64); err != nil {
 		return "", fmt.Errorf("invalid app id %q: expected a numeric ID or slug-id, e.g. my-web-app-42 or 42 (find it with: gcx frontend apps list)", name)
 	}
 	return appID, nil
@@ -88,15 +91,18 @@ func parseReplayAppID(name string) (string, error) {
 func (o *listReplaySessionsOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&o.Datasource, "datasource", "d", "", "Loki or Pinot datasource UID (Loki auto-discovered if omitted)")
 	flags.StringVar(&o.Since, "since", "1h", "How far back to search (e.g., 1h, 24h, 7d)")
-	o.IO.BindListLimit(flags, &o.Limit, "sessions", 1000)
 	o.IO.RegisterCustomCodec(cmdio.FormatText, replaySessionTableCodec{table: replaySessionTable().Codec(cmdio.FormatText)})
 	o.IO.DefaultFormat(cmdio.FormatText)
+	flags.IntVar(&o.Limit, "limit", 1000, fmt.Sprintf("Maximum number of sessions to return. 0 returns all Loki results or up to %d Pinot sessions", pinotReplaySessionsSafetyCap))
 	o.IO.BindFlags(flags)
 }
 
 func (o *listReplaySessionsOpts) Validate() error {
 	if err := o.IO.Validate(); err != nil {
 		return err
+	}
+	if o.Limit < 0 {
+		return fmt.Errorf("invalid --limit %d: must be >= 0 (0 returns all Loki results or up to %d Pinot sessions)", o.Limit, pinotReplaySessionsSafetyCap)
 	}
 	o.Datasource = strings.TrimSpace(o.Datasource)
 	if o.datasourceSet && o.Datasource == "" {
@@ -267,7 +273,7 @@ func fetchPinotReplaySessions(ctx context.Context, client pinotQuerier, uid, app
 			return rows, nil, nil
 		}
 	}
-	return nil, nil, fmt.Errorf("pinot replay sessions exceeded %d pages of %d rows", pinotJourneyMaxPages, pageSize)
+	return rows, cmdio.PagedListMeta(len(rows), limit, true, pinotReplaySessionsSafetyCap), nil
 }
 
 func extractPinotReplaySessionRows(resp *querysql.QueryResponse, seen map[string]struct{}) ([]replaySessionListRow, error) {

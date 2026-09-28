@@ -47,7 +47,6 @@ func fetchReplayManifests(ctx context.Context, client *Client, appID, sessionID 
 func fetchReplaySegmentBatch(ctx context.Context, client *Client, appID, sessionID, recordingID string, metadata []ManifestSegment) ([]*RecordingSegmentResponse, error) {
 	segments := make([]*RecordingSegmentResponse, len(metadata))
 	g, gctx := errgroup.WithContext(ctx)
-	g.SetLimit(replayFetchConcurrency)
 	for i, segmentMeta := range metadata {
 		g.Go(func() error {
 			segment, err := client.GetSegment(gctx, appID, sessionID, recordingID, strconv.FormatInt(segmentMeta.ID, 10))
