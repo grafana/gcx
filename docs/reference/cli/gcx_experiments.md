@@ -6,7 +6,7 @@
 
 This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
 
-Read experiments from the Odin app plugin on the selected Grafana instance.
+Read and create experiments through the Odin app plugin on the selected Grafana instance.
 
 ### Options
 
@@ -29,4 +29,6 @@ Read experiments from the Odin app plugin on the selected Grafana instance.
 ### SEE ALSO
 
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
+* [gcx experiments create](gcx_experiments_create.md)	 - [experimental] Create an Odin experiment from a manifest.
 * [gcx experiments list](gcx_experiments_list.md)	 - [experimental] List Odin experiments.
+

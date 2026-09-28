@@ -15,9 +15,10 @@ import (
 )
 
 const (
-	listPath             = "/api/plugins/grafana-odin-app/resources/v1/experiments"
-	pluginPageSize       = 500
-	maxListResponseBytes = 32 << 20
+	listPath               = "/api/plugins/grafana-odin-app/resources/v1/experiments"
+	pluginPageSize         = 500
+	maxListResponseBytes   = 32 << 20
+	maxCreateResponseBytes = 4 << 20
 )
 
 // Experiment retains every field in Odin's resource object for JSON and YAML output.
@@ -80,4 +81,62 @@ func (c *Client) List(ctx context.Context) ([]Experiment, error) {
 		return nil, fmt.Errorf("decode Odin experiments items: %w", err)
 	}
 	return items, nil
+}
+
+// Create submits one complete Experiment resource through Odin's app plugin.
+func (c *Client) Create(ctx context.Context, manifest []byte) (Experiment, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.host+listPath, bytes.NewReader(manifest))
+	if err != nil {
+		return nil, fmt.Errorf("create Odin request: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("create Odin experiment: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		message := createErrorMessage(body)
+		switch resp.StatusCode {
+		case http.StatusNotFound:
+			return nil, errors.New("odin experiments endpoint returned 404; check that grafana-odin-app is enabled in this Grafana context")
+		case http.StatusConflict:
+			return nil, fmt.Errorf("create Odin experiment: conflict (HTTP 409): %s", message)
+		default:
+			return nil, fmt.Errorf("create Odin experiment: HTTP %d: %s", resp.StatusCode, message)
+		}
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxCreateResponseBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("read created Odin experiment: %w", err)
+	}
+	if len(body) > maxCreateResponseBytes {
+		return nil, fmt.Errorf("created Odin experiment response exceeds %d bytes", maxCreateResponseBytes)
+	}
+	var created Experiment
+	if err := json.Unmarshal(body, &created); err != nil {
+		return nil, fmt.Errorf("decode created Odin experiment: %w", err)
+	}
+	if created == nil {
+		return nil, errors.New("decode created Odin experiment: empty resource")
+	}
+	return created, nil
+}
+
+func createErrorMessage(body []byte) string {
+	var payload struct {
+		Message string `json:"message"`
+	}
+	if json.Unmarshal(body, &payload) == nil && strings.TrimSpace(payload.Message) != "" {
+		return strings.TrimSpace(payload.Message)
+	}
+	if message := strings.TrimSpace(string(body)); message != "" {
+		return message
+	}
+	return "request failed"
 }

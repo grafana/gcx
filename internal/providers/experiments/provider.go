@@ -17,7 +17,7 @@ type Provider struct{}
 var _ providers.Provider = &Provider{}
 
 func (*Provider) Name() string                               { return "experiments" }
-func (*Provider) ShortDesc() string                          { return "List Odin experiments." }
+func (*Provider) ShortDesc() string                          { return "Work with Odin experiments." }
 func (*Provider) Validate(map[string]string) error           { return nil }
 func (*Provider) ConfigKeys() []providers.ConfigKey          { return nil }
 func (*Provider) TypedRegistrations() []adapter.Registration { return nil }
@@ -29,10 +29,11 @@ func (*Provider) Commands() []*cobra.Command {
 		Short: "[experimental] Work with Odin experiments.",
 		Long: `This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
 
-Read experiments from the Odin app plugin on the selected Grafana instance.`,
+Read and create experiments through the Odin app plugin on the selected Grafana instance.`,
 		Annotations: map[string]string{agent.AnnotationStability: agent.StabilityExperimental},
 	}
 	loader.BindFlags(cmd.PersistentFlags())
 	cmd.AddCommand(newListCommand(loader))
+	cmd.AddCommand(newCreateCommand(loader))
 	return []*cobra.Command{cmd}
 }
