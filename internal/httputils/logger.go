@@ -44,7 +44,7 @@ func (rt RequestResponseLoggingRoundTripper) RoundTrip(req *http.Request) (*http
 		req.Body = logRequest.Body
 	}
 	if err != nil {
-		logger.Debug("cannot dump http request", "error", secrets.ErrorString(req.Context(), req.URL, err))
+		logger.Debug("cannot dump http request", "error", secrets.Error(req.Context(), req.URL, err))
 	} else {
 		logger.Debug(requestDumpMessage + "\n" + string(reqStr))
 	}

@@ -334,6 +334,7 @@ func TestRequestResponseLoggingRoundTripper_RedactsQueryAndPreservesBody(t *test
 	const secret = "credential-that-must-not-leak"
 	var sentBody string
 	base := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		assert.Equal(t, secret, req.URL.Query().Get("X-Amz-Credential"))
 		body, err := io.ReadAll(req.Body)
 		require.NoError(t, err)
 		sentBody = string(body)
@@ -351,6 +352,8 @@ func TestRequestResponseLoggingRoundTripper_RedactsQueryAndPreservesBody(t *test
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	assert.Equal(t, "request-body", sentBody)
+	assert.Contains(t, logs.String(), "http request dump")
+	assert.Contains(t, logs.String(), "Content-Length: 12")
 	assert.Contains(t, logs.String(), "?REDACTED")
 	assert.NotContains(t, logs.String(), secret)
 }
