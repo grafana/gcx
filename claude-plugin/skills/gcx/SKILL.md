@@ -54,8 +54,8 @@ for automation - the output is hundreds of kilobytes and unsuitable for orientat
 
 ### Intent-to-Group Quick Reference
 
-When you already know the user's intent, skip discovery and go straight to the
-right group:
+When you already know the command group, go straight to that group's `--help`
+to discover the exact command and flags:
 
 | Intent | Group | Example |
 |--------|-------|---------|
