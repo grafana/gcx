@@ -275,9 +275,6 @@ func decodeSearchStream(body io.Reader, limit int64) ([]searchResultRaw, bool, [
 			}
 			if counter.n > limit {
 				size := fmt.Sprintf("%d MiB", limit>>20)
-				if limit < 1<<20 {
-					size = fmt.Sprintf("%d-byte", limit)
-				}
 				return nil, false, nil, fmt.Errorf("search response exceeded the %s limit after %d results; request a smaller limit or narrow the match selectors", size, len(results))
 			}
 			return nil, false, nil, fmt.Errorf("search stream ended after %d results without a completion trailer (connection interrupted?); refusing to return possibly incomplete results", len(results))
