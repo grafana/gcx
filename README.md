@@ -27,17 +27,17 @@ before choosing a command, provider, or datasource path.
 
 ## Choosing between gcx and Grafana MCP
 
-gcx gives people and coding agents access to Grafana through shell commands.
+`gcx` gives you and your coding agents access to Grafana through shell commands.
 Grafana MCP gives AI clients access through Model Context Protocol tools.
 
-Use **gcx** for terminal work, scripts, and CI/CD pipelines. It supports
+Use **`gcx`** for terminal work, scripts, and CI/CD pipelines. It supports
 Grafana OSS, Enterprise, and Cloud; see the [compatibility matrix](#compatibility)
 for supported versions. You can pull resources into files, track changes in
 Git, and push resources to another environment. Dedicated commands
 also manage Grafana Cloud products such as SLOs, Synthetic Monitoring, k6, and
 Fleet.
 
-If your coding agent supports both shell commands and MCP, start with gcx for
+If your coding agent supports both shell commands and MCP, start with `gcx` for
 these workflows. Choose MCP when a specific tool or its connection model better
 meets your needs.
 
