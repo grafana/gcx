@@ -76,6 +76,37 @@ func TestLokiReplayPagesStopAfterSessionLimit(t *testing.T) {
 	assert.Equal(t, "sess-1002", items[0].SessionID)
 }
 
+func TestLokiReplayPagerPassesOnlyNewPageToStopPredicate(t *testing.T) {
+	dataset := make([]loki.LogEntry, 0, 2*lokiEventsPageSize+1)
+	for i := 1; i <= 2*lokiEventsPageSize+1; i++ {
+		dataset = append(dataset, loki.LogEntry{
+			Timestamp: lokiUnixNanoMS(int64(i) * 1000),
+			Line:      fmt.Sprintf("session_id=sess-%d", i),
+		})
+	}
+	var pageSizes []int
+	_, stopped, err := fetchLokiEventPagesUntil(t.Context(), &rangeLoki{dataset: dataset}, "uid", `{kind="event"}`, time.UnixMilli(0), time.UnixMilli(3_000_000), sessionLokiQueryTimeout, func(page *loki.QueryResponse) bool {
+		pageSizes = append(pageSizes, lokiEntryCount(page))
+		return len(pageSizes) == 2
+	})
+	require.NoError(t, err)
+	assert.True(t, stopped)
+	assert.Equal(t, []int{lokiEventsPageSize, lokiEventsPageSize}, pageSizes)
+}
+
+func TestReplaySessionLimitStopCountsDistinctSessionsAcrossPages(t *testing.T) {
+	stop := replaySessionLimitStop(2)
+	page := func(ids ...string) *loki.QueryResponse {
+		entries := make([]loki.LogEntry, 0, len(ids))
+		for i, id := range ids {
+			entries = append(entries, loki.LogEntry{Timestamp: lokiUnixNanoMS(int64(i + 1)), Line: "session_id=" + id})
+		}
+		return &loki.QueryResponse{Data: loki.QueryResultData{Result: []loki.StreamEntry{{Values: entries}}}}
+	}
+	assert.False(t, stop(page("sess-a", "sess-b")))
+	assert.True(t, stop(page("sess-b", "sess-c")))
+}
+
 func TestLokiReplayDiscoveryQueryTimesOut(t *testing.T) {
 	_, _, err := fetchLokiEventPagesUntil(t.Context(), hangLoki{}, "uid", `{kind="event"}`, time.Unix(1, 0), time.Unix(2, 0), 20*time.Millisecond, nil)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
@@ -149,6 +180,19 @@ type replayPinotPages struct {
 	second *querysql.QueryResponse
 }
 
+type replayPinotChangingPages struct {
+	offsets []int
+}
+
+func (p *replayPinotChangingPages) Query(_ context.Context, _ string, req pinot.QueryRequest) (*querysql.QueryResponse, error) {
+	expectedOffset := len(p.offsets) * pinotJourneyPageSize
+	if !strings.Contains(req.RawSQL, fmt.Sprintf("OFFSET %d", expectedOffset)) {
+		return nil, fmt.Errorf("unexpected Pinot page offset: want %d in %q", expectedOffset, req.RawSQL)
+	}
+	p.offsets = append(p.offsets, expectedOffset)
+	return replayPinotRowsFrom(expectedOffset, pinotJourneyPageSize), nil
+}
+
 func (p replayPinotPages) Query(_ context.Context, _ string, req pinot.QueryRequest) (*querysql.QueryResponse, error) {
 	if strings.Contains(req.RawSQL, "OFFSET 0") {
 		return p.first, nil
@@ -157,11 +201,15 @@ func (p replayPinotPages) Query(_ context.Context, _ string, req pinot.QueryRequ
 }
 
 func replayPinotRows(count int) *querysql.QueryResponse {
+	return replayPinotRowsFrom(0, count)
+}
+
+func replayPinotRowsFrom(first, count int) *querysql.QueryResponse {
 	resp := &querysql.QueryResponse{Columns: []querysql.Column{
 		{Name: "session_id"}, {Name: "last_seen"}, {Name: "browser_name"}, {Name: "browser_version"}, {Name: "app_name"},
 	}}
 	for i := range count {
-		resp.Rows = append(resp.Rows, []any{fmt.Sprintf("sess-%d", i), float64(1790340861602), "Chrome", "153", "web"})
+		resp.Rows = append(resp.Rows, []any{fmt.Sprintf("sess-%d", first+i), float64(1790340861602), "Chrome", "153", "web"})
 	}
 	return resp
 }
@@ -181,6 +229,18 @@ func TestPinotReplaySessionPagerRejectsRepeatedPage(t *testing.T) {
 	page := replayPinotRows(pinotJourneyPageSize)
 	_, _, err := fetchPinotReplaySessions(t.Context(), replayPinotPages{first: page, second: page}, "uid", "66", "https://example.grafana.net", time.Unix(1, 0), time.Unix(2, 0), 0)
 	require.ErrorContains(t, err, "repeated without new sessions")
+}
+
+func TestPinotReplaySessionPagerStopsAtPageLimit(t *testing.T) {
+	client := &replayPinotChangingPages{}
+	rows, meta, err := fetchPinotReplaySessions(t.Context(), client, "uid", "66", "https://example.grafana.net", time.Unix(1, 0), time.Unix(2, 0), 0)
+	require.ErrorContains(t, err, "exceeded 100 pages")
+	assert.Nil(t, rows)
+	assert.Nil(t, meta)
+	require.Len(t, client.offsets, pinotJourneyMaxPages)
+	for page, offset := range client.offsets {
+		assert.Equal(t, page*pinotJourneyPageSize, offset)
+	}
 }
 
 func TestExtractPinotReplaySessionRowsRejectsMalformedResult(t *testing.T) {

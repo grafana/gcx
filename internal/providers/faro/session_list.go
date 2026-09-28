@@ -196,8 +196,22 @@ func queryLokiReplaySessions(ctx context.Context, cfg config.NamespacedRESTConfi
 	if err != nil {
 		return nil, nil, fmt.Errorf("creating Loki client: %w", err)
 	}
+	resp, stopped, err := fetchLokiEventPagesUntil(ctx, client, uid, lokiReplayDiscoveryQuery(appID), start, end, sessionLokiQueryTimeout, replaySessionLimitStop(limit))
+	if err != nil {
+		return nil, nil, fmt.Errorf("querying Loki: %w", err)
+	}
+	rows := extractReplaySessionRows(resp)
+	if stopped {
+		page, meta := cmdio.TruncatePagedList(rows, limit)
+		return page, meta, nil
+	}
+	page, meta := cmdio.TruncateCompleteList(rows, limit)
+	return page, meta, nil
+}
+
+func replaySessionLimitStop(limit int) func(*loki.QueryResponse) bool {
 	seen := make(map[string]struct{})
-	resp, stopped, err := fetchLokiEventPagesUntil(ctx, client, uid, lokiReplayDiscoveryQuery(appID), start, end, sessionLokiQueryTimeout, func(page *loki.QueryResponse) bool {
+	return func(page *loki.QueryResponse) bool {
 		for _, stream := range page.Data.Result {
 			for _, entry := range stream.Values {
 				if _, valid := parseLokiUnixNano(entry.Timestamp); !valid {
@@ -209,17 +223,7 @@ func queryLokiReplaySessions(ctx context.Context, cfg config.NamespacedRESTConfi
 			}
 		}
 		return limit > 0 && len(seen) > limit
-	})
-	if err != nil {
-		return nil, nil, fmt.Errorf("querying Loki: %w", err)
 	}
-	rows := extractReplaySessionRows(resp)
-	if stopped {
-		page, meta := cmdio.TruncatePagedList(rows, limit)
-		return page, meta, nil
-	}
-	page, meta := cmdio.TruncateCompleteList(rows, limit)
-	return page, meta, nil
 }
 
 func queryPinotReplaySessions(ctx context.Context, cfg config.NamespacedRESTConfig, uid, appID string, start, end time.Time, limit int) ([]replaySessionListRow, *cmdio.ListMeta, error) {
