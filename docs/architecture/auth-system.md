@@ -274,13 +274,15 @@ does not control, goes last, so an `&` or `#` in it can only cut the name
 itself short. The plain launcher, used by `gcx login`, is unchanged: existing
 stacks can use other sign in setups.
 
-The success page claims only the browser step. For the stack flow it also
-links back to the stack (`stackLink`: the https origin of the consent page's
-`instanceEndpoint`, on a trusted Grafana stack domain only, never a local
-address), because the consent page redirects its own tab to the callback. The
-link sends no referrer, since the page URL carries the callback's code and
-state. The grafana.com flow, and the callback that loses the race to the
-paste route, render the page without a link.
+The success page claims only the browser step: "You've authorized gcx", then
+"Return to your terminal to see the connection result." For the stack flow its
+one button, "Open Grafana", links back to the stack in the same tab
+(`stackLink`: the https origin of the consent page's `instanceEndpoint`, on a
+trusted Grafana stack domain only, never a local address), because the consent
+page redirects its own tab to the callback. The page sends no referrer (a
+`no-referrer` meta tag and the link's `rel`), since its URL carries the
+callback's code and state. The grafana.com flow, and the callback that loses
+the race to the paste route, render the page without a link.
 
 ### Manual callback (no local listener)
 

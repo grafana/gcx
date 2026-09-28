@@ -6,31 +6,25 @@ import (
 	"io"
 	"net/url"
 
+	"charm.land/lipgloss/v2"
 	"github.com/grafana/gcx/internal/agent"
-	"github.com/grafana/gcx/internal/docs"
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/login"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 )
 
 // signupSuccessHeading is the line signup's text output opens with. It does
 // not say the account was created: the sign-up page also lets someone sign in
 // to an account they already have.
-const signupSuccessHeading = "Connected to your Grafana Cloud stack"
-
-// signupNextStep is one entry of the list signup prints after the saved
-// connection: a command to run, a page to open or read, or both.
-type signupNextStep struct {
-	Summary string
-	Command string
-	Link    string
-}
+const signupSuccessHeading = "You're connected to Grafana Cloud"
 
 // printSignupResult is printResult for gcx signup. Stdout carries the same
 // LoginResult as gcx login, so structured output is unchanged; the human text
-// codec renders it as the success summary. The next steps are advice and go
-// to stderr: a plain list in text mode, hints otherwise.
+// codec renders it as the success summary. The next step is advice and goes to
+// stderr: a plain list in text mode, a hint otherwise. The consent page moved
+// its browser tab away from the stack, so that step is the way back to it.
 func printSignupResult(cmd *cobra.Command, flags *loginOpts, server string, result login.Result) error {
 	lr := newLoginResult(server, result)
 	ew := cmd.ErrOrStderr()
@@ -43,83 +37,29 @@ func printSignupResult(cmd *cobra.Command, flags *loginOpts, server string, resu
 		return err
 	}
 
-	steps := signupNextSteps(flags, lr)
-	if !text {
-		for _, step := range steps {
-			summary := step.Summary
-			if step.Link != "" {
-				summary += ": " + step.Link
-			}
-			cmdio.EmitHint(ew, summary, step.Command)
-		}
+	link := stackBrowserURL(lr.Server)
+	switch {
+	case link == "":
+		return nil
+	case !text:
+		cmdio.EmitHint(ew, "Open Grafana: "+link, "")
 		return nil
 	}
-
 	fmt.Fprintln(ew)
 	fmt.Fprintln(ew, "Next steps")
-	for _, step := range steps {
-		fmt.Fprintf(ew, "  %s\n", step.Summary)
-		if step.Command != "" {
-			fmt.Fprintf(ew, "    %s\n", step.Command)
-		}
-		if step.Link != "" {
-			fmt.Fprintf(ew, "    %s\n", step.Link)
-		}
-	}
+	fmt.Fprintln(ew, "  Open Grafana")
+	fmt.Fprintf(ew, "    %s\n", link)
 	return nil
 }
 
-// signupNextSteps lists what to do once the new stack is connected. Commands
-// keep the signup's context and config file, like the recovery commands.
-func signupNextSteps(flags *loginOpts, lr LoginResult) []signupNextStep {
-	var steps []signupNextStep
-
-	if link := addConnectionURL(lr.Server); link != "" {
-		steps = append(steps, signupNextStep{
-			Summary: "Connect your first app or service",
-			Link:    link,
-		})
-	}
-
-	steps = append(steps, signupNextStep{
-		Summary: "Check the connection anytime",
-		Command: signupFollowUpCommand(flags, "gcx config check --context "+shellArg(lr.ContextName)),
-	})
-
-	if lr.Cloud && !lr.HasCloudToken {
-		// Agents get the Markdown rendering of the docs page, people the HTML one.
-		link := docs.AccessPolicies
-		if !agent.IsAgentMode() {
-			link = docs.HumanURL(link)
-		}
-		steps = append(steps, signupNextStep{
-			Summary: "Manage SLOs, Synthetic Monitoring, k6 and more with a Cloud Access Policy token",
-			Command: signupFollowUpCommand(flags, "gcx cloud login --context "+shellArg(lr.ContextName)+" --cloud-token <token>"),
-			Link:    link,
-		})
-	}
-
-	return steps
-}
-
-// signupFollowUpCommand appends the signup's --config to command, so a
-// command that signup prints acts on the file the connection is saved to.
-func signupFollowUpCommand(flags *loginOpts, command string) string {
-	if flags.Config.ConfigFile == "" {
-		return command
-	}
-	return command + " --config " + shellArg(flags.Config.ConfigFile)
-}
-
-// addConnectionURL returns the stack's Add new connection page, Grafana's
-// starting point for sending data from an app or service, or "" when server
-// is not an https URL.
-func addConnectionURL(server string) string {
+// stackBrowserURL returns server, the saved stack URL, for a browser to open,
+// or "" when it is not an https URL.
+func stackBrowserURL(server string) string {
 	u, err := url.Parse(server)
 	if err != nil || u.Scheme != "https" || u.Host == "" {
 		return ""
 	}
-	return u.JoinPath("connections", "add-new-connection").String()
+	return server
 }
 
 // signupTextCodec renders LoginResult as signup's success summary. It is
@@ -134,6 +74,15 @@ func (c *signupTextCodec) Encode(w io.Writer, value any) error {
 	if !ok {
 		return fmt.Errorf("signup text codec: unsupported type %T", value)
 	}
+	// The logo goes only to a terminal, and RenderLogo is empty unless styling
+	// is on, which agent mode, a pipe, NO_COLOR and --no-color all turn off.
+	if style.IsTerminalWriter(w) {
+		if logo := style.RenderLogo(); logo != "" {
+			if _, err := lipgloss.Fprintln(w, logo); err != nil {
+				return err
+			}
+		}
+	}
 	if agent.IsAgentMode() {
 		// Agent mode keeps every format plain ASCII, so no check mark.
 		fmt.Fprintln(w, signupSuccessHeading)
@@ -141,11 +90,8 @@ func (c *signupTextCodec) Encode(w io.Writer, value any) error {
 		cmdio.Success(w, "%s", cmdio.Bold(signupSuccessHeading))
 	}
 	fmt.Fprintln(w)
-	fmt.Fprintf(w, "  Stack:    %s\n", lr.Server)
-	fmt.Fprintf(w, "  Context:  %s\n", lr.ContextName)
-	if lr.GrafanaVersion != "" {
-		fmt.Fprintf(w, "  Version:  %s\n", lr.GrafanaVersion)
-	}
+	fmt.Fprintf(w, "  Stack     %s\n", lr.Server)
+	fmt.Fprintf(w, "  Context   %s\n", lr.ContextName)
 	return nil
 }
 
