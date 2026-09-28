@@ -19,12 +19,15 @@ import (
 	"github.com/grafana/gcx/internal/query/loki"
 	"github.com/grafana/gcx/internal/query/pinot"
 	querysql "github.com/grafana/gcx/internal/query/sql"
-	"github.com/grafana/gcx/internal/shared"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
 
 const pinotReplaySessionsSafetyCap = pinotJourneyMaxPages * pinotJourneyPageSize
+
+const replayLokiDiscoveryMaxPages = 100
+
+const replayLokiSessionsSafetyCap = replayLokiDiscoveryMaxPages * lokiEventsPageSize
 
 // replaySessionListRow holds data for one regular session ID with replay recordings.
 type replaySessionListRow struct {
@@ -72,12 +75,12 @@ func replaySessionTable() cmdio.Table[replaySessionListRow] {
 }
 
 type listReplaySessionsOpts struct {
+	dsquery.TimeRangeOpts
+
 	IO            cmdio.Options
 	Datasource    string
-	Since         string
 	Limit         int
 	datasourceSet bool
-	sinceDuration time.Duration
 }
 
 func parseReplayAppID(name string) (string, error) {
@@ -90,10 +93,10 @@ func parseReplayAppID(name string) (string, error) {
 
 func (o *listReplaySessionsOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&o.Datasource, "datasource", "d", "", "Loki or Pinot datasource UID (Loki auto-discovered if omitted)")
-	flags.StringVar(&o.Since, "since", "1h", "How far back to search (e.g., 1h, 24h, 7d)")
+	o.SetupTimeFlags(flags)
 	o.IO.RegisterCustomCodec(cmdio.FormatText, replaySessionTableCodec{table: replaySessionTable().Codec(cmdio.FormatText)})
 	o.IO.DefaultFormat(cmdio.FormatText)
-	flags.IntVar(&o.Limit, "limit", 1000, fmt.Sprintf("Maximum number of sessions to return. 0 returns all Loki results or up to %d Pinot sessions", pinotReplaySessionsSafetyCap))
+	flags.IntVar(&o.Limit, "limit", 1000, fmt.Sprintf("Maximum sessions to return. 0 reads up to %d Loki replay-start events or %d Pinot sessions", replayLokiSessionsSafetyCap, pinotReplaySessionsSafetyCap))
 	o.IO.BindFlags(flags)
 }
 
@@ -102,20 +105,18 @@ func (o *listReplaySessionsOpts) Validate() error {
 		return err
 	}
 	if o.Limit < 0 {
-		return fmt.Errorf("invalid --limit %d: must be >= 0 (0 returns all Loki results or up to %d Pinot sessions)", o.Limit, pinotReplaySessionsSafetyCap)
+		return fmt.Errorf("invalid --limit %d: must be >= 0 (0 reads up to %d Loki replay-start events or %d Pinot sessions)", o.Limit, replayLokiSessionsSafetyCap, pinotReplaySessionsSafetyCap)
 	}
 	o.Datasource = strings.TrimSpace(o.Datasource)
 	if o.datasourceSet && o.Datasource == "" {
 		return errors.New("--datasource cannot be empty")
 	}
-	since, err := shared.ParseDuration(o.Since)
-	if err != nil {
-		return fmt.Errorf("invalid --since value: %w", err)
+	if err := o.ValidateTimeRange(); err != nil {
+		return err
 	}
-	if since <= 0 {
-		return errors.New("--since must be positive")
+	if !o.IsRange() {
+		return errors.New("--since or --from/--to is required")
 	}
-	o.sinceDuration = since
 	return nil
 }
 
@@ -124,12 +125,15 @@ func newListReplaySessionsCommand(loader *providers.ConfigLoader) *cobra.Command
 	cmd := &cobra.Command{
 		Use:   "list-replay-sessions <slug-id-or-numeric-id>",
 		Short: "List Frontend Observability sessions that have replay recordings.",
-		Long:  "Discovers regular session IDs that have replay recordings by querying Loki or Pinot for faro.session_recording.started events. This does not list all Frontend Observability sessions. The default datasource is Loki; pass a Pinot datasource UID with -d to query Pinot. Loki reads replay-start events in pages of 1000, with a 60s timeout per query. An empty result means no replay-start event was found for the app ID and time window; this command does not verify that the app exists. JSON output has an items envelope and includes list_meta when more sessions are available.",
+		Long:  fmt.Sprintf("Discovers regular session IDs that have replay recordings by querying Loki or Pinot for faro.session_recording.started events. This does not list all Frontend Observability sessions. The default datasource is Loki; pass a Pinot datasource UID with -d to query Pinot. Loki scans at most %d replay-start events and applies a 60s timeout per query. An empty result means no replay-start event was found for the app ID and time window; this command does not verify that the app exists. JSON output has an items envelope and includes list_meta when more sessions are available.", replayLokiSessionsSafetyCap),
 		Example: `  # List regular session IDs with replay recordings in the last hour.
-  gcx frontend apps list-replay-sessions my-web-app-42
+  gcx frontend apps list-replay-sessions my-web-app-42 --since 1h
 
   # Search the last 24 hours.
   gcx frontend apps list-replay-sessions my-web-app-42 --since 24h
+
+  # Search an absolute time range.
+  gcx frontend apps list-replay-sessions my-web-app-42 --from 2026-09-01T00:00:00Z --to 2026-09-02T00:00:00Z
 
   # Use a specific Loki or Pinot datasource.
   gcx frontend apps list-replay-sessions my-web-app-42 -d P8E80F9AEF21F6940`,
@@ -150,8 +154,10 @@ func newListReplaySessionsCommand(loader *providers.ConfigLoader) *cobra.Command
 				return err
 			}
 
-			now := time.Now()
-			start := now.Add(-opts.sinceDuration)
+			start, end, err := opts.ParseTimeRange(time.Now())
+			if err != nil {
+				return err
+			}
 			var rows []replaySessionListRow
 			var meta *cmdio.ListMeta
 			if opts.Datasource == "" {
@@ -159,7 +165,7 @@ func newListReplaySessionsCommand(loader *providers.ConfigLoader) *cobra.Command
 				if resolveErr != nil {
 					return fmt.Errorf("resolving Loki datasource: %w", resolveErr)
 				}
-				rows, meta, err = queryLokiReplaySessions(ctx, cfg, dsUID, appID, start, now, opts.Limit)
+				rows, meta, err = queryLokiReplaySessions(ctx, cfg, dsUID, appID, start, end, opts.Limit)
 			} else {
 				dsType, typeErr := dsquery.GetDatasourceType(ctx, cfg, opts.Datasource)
 				if typeErr != nil {
@@ -171,9 +177,9 @@ func newListReplaySessionsCommand(loader *providers.ConfigLoader) *cobra.Command
 				}
 				switch kind {
 				case datasourceLoki:
-					rows, meta, err = queryLokiReplaySessions(ctx, cfg, opts.Datasource, appID, start, now, opts.Limit)
+					rows, meta, err = queryLokiReplaySessions(ctx, cfg, opts.Datasource, appID, start, end, opts.Limit)
 				case datasourcePinot:
-					rows, meta, err = queryPinotReplaySessions(ctx, cfg, opts.Datasource, appID, start, now, opts.Limit)
+					rows, meta, err = queryPinotReplaySessions(ctx, cfg, opts.Datasource, appID, start, end, opts.Limit)
 				default:
 					return fmt.Errorf("unsupported replay datasource kind %q", kind)
 				}
@@ -202,17 +208,32 @@ func queryLokiReplaySessions(ctx context.Context, cfg config.NamespacedRESTConfi
 	if err != nil {
 		return nil, nil, fmt.Errorf("creating Loki client: %w", err)
 	}
-	resp, stopped, err := fetchLokiEventPagesUntil(ctx, client, uid, lokiReplayDiscoveryQuery(appID), start, end, sessionLokiQueryTimeout, replaySessionLimitStop(limit))
+	resp, stopped, capped, err := fetchLokiReplayDiscoveryPages(ctx, client, uid, lokiReplayDiscoveryQuery(appID), start, end, sessionLokiQueryTimeout, replaySessionLimitStop(limit))
 	if err != nil {
-		return nil, nil, fmt.Errorf("querying Loki: %w", err)
+		return nil, nil, wrapLokiReplayDiscoveryErr(err)
 	}
 	rows := extractReplaySessionRows(resp)
+	if capped {
+		page, meta := rows, cmdio.PagedListMeta(len(rows), limit, true, replayLokiSessionsSafetyCap)
+		return page, meta, nil
+	}
 	if stopped {
 		page, meta := cmdio.TruncatePagedList(rows, limit)
 		return page, meta, nil
 	}
 	page, meta := cmdio.TruncateCompleteList(rows, limit)
 	return page, meta, nil
+}
+
+func fetchLokiReplayDiscoveryPages(ctx context.Context, client lokiQuerier, uid, query string, start, end time.Time, timeout time.Duration, stop func(*loki.QueryResponse) bool) (*loki.QueryResponse, bool, bool, error) {
+	return fetchLokiEventPagesUntilWithPageCap(ctx, client, uid, query, start, end, timeout, stop, replayLokiDiscoveryMaxPages)
+}
+
+func wrapLokiReplayDiscoveryErr(err error) error {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return fmt.Errorf("loki replay discovery timed out after %s (scan did not finish; this is not an empty result); try a narrower --from/--to or a Pinot datasource UID (-d)", sessionLokiQueryTimeout)
+	}
+	return fmt.Errorf("querying Loki: %w", err)
 }
 
 func replaySessionLimitStop(limit int) func(*loki.QueryResponse) bool {

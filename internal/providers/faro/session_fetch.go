@@ -347,9 +347,18 @@ func fetchLokiEventPages(ctx context.Context, client lokiQuerier, uid, query str
 // fetchLokiEventPagesUntil walks complete timestamp buckets, stopping early
 // only when the caller has enough data. A nil stop function drains the range.
 func fetchLokiEventPagesUntil(ctx context.Context, client lokiQuerier, uid, query string, start, end time.Time, timeout time.Duration, stop func(*loki.QueryResponse) bool) (*loki.QueryResponse, bool, error) {
+	resp, stopped, _, err := fetchLokiEventPagesUntilWithPageCap(ctx, client, uid, query, start, end, timeout, stop, 0)
+	return resp, stopped, err
+}
+
+// fetchLokiEventPagesUntilWithPageCap optionally bounds the number of full
+// pages scanned. A capped result is returned with capHit=true so callers can
+// report that the result is incomplete rather than presenting it as complete.
+func fetchLokiEventPagesUntilWithPageCap(ctx context.Context, client lokiQuerier, uid, query string, start, end time.Time, timeout time.Duration, stop func(*loki.QueryResponse) bool, maxPages int) (*loki.QueryResponse, bool, bool, error) {
 	merged := &loki.QueryResponse{Data: loki.QueryResultData{ResultType: "streams"}}
 	seen := make(map[string]struct{})
 	cursor := end
+	pages := 0
 	for cursor.After(start) {
 		resp, err := queryLoki(ctx, client, uid, loki.QueryRequest{
 			Query: query,
@@ -358,8 +367,9 @@ func fetchLokiEventPagesUntil(ctx context.Context, client lokiQuerier, uid, quer
 			Limit: lokiEventsPageSize,
 		}, timeout)
 		if err != nil {
-			return nil, false, fmt.Errorf("loki events query failed: %w", err)
+			return nil, false, false, fmt.Errorf("loki events query failed: %w", err)
 		}
+		pages++
 		n := lokiEntryCount(resp)
 		page := &loki.QueryResponse{Data: loki.QueryResultData{ResultType: "streams"}}
 		appendLokiEvents(page, resp)
@@ -374,7 +384,7 @@ func fetchLokiEventPagesUntil(ctx context.Context, client lokiQuerier, uid, quer
 				appendLokiEvents(merged, page)
 				break
 			}
-			return nil, false, errors.New("loki events: full page has no valid timestamp for pagination")
+			return nil, false, false, errors.New("loki events: full page has no valid timestamp for pagination")
 		}
 		// Refetch the earliest instant so leftover rows that share that
 		// timestamp are kept. Stepping End back 1ms would drop them.
@@ -385,22 +395,25 @@ func fetchLokiEventPagesUntil(ctx context.Context, client lokiQuerier, uid, quer
 			Limit: lokiEventsPageSize,
 		}, timeout)
 		if err != nil {
-			return nil, false, fmt.Errorf("loki events query failed: %w", err)
+			return nil, false, false, fmt.Errorf("loki events query failed: %w", err)
 		}
 		appendLokiEventsUnseen(page, bucket, seen)
 		if lokiEntryCount(bucket) >= lokiEventsPageSize {
-			return nil, false, fmt.Errorf("loki events: more than %d rows share timestamp %s; dump would be truncated", lokiEventsPageSize, earliest.UTC().Format(time.RFC3339Nano))
+			return nil, false, false, fmt.Errorf("loki events: more than %d rows share timestamp %s; dump would be truncated", lokiEventsPageSize, earliest.UTC().Format(time.RFC3339Nano))
 		}
 		appendLokiEvents(merged, page)
 		if stop != nil && stop(page) {
-			return merged, true, nil
+			return merged, true, false, nil
+		}
+		if maxPages > 0 && pages >= maxPages {
+			return merged, false, true, nil
 		}
 		if !earliest.Before(cursor) {
 			break
 		}
 		cursor = earliest
 	}
-	return merged, false, nil
+	return merged, false, false, nil
 }
 
 func appendLokiEvents(dst, src *loki.QueryResponse) {

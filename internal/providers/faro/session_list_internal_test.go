@@ -76,6 +76,40 @@ func TestLokiReplayPagesStopAfterSessionLimit(t *testing.T) {
 	assert.Equal(t, "sess-1002", items[0].SessionID)
 }
 
+type cappedReplayLoki struct{ queries int }
+
+func (c *cappedReplayLoki) Query(_ context.Context, _ string, req loki.QueryRequest) (*loki.QueryResponse, error) {
+	c.queries++
+	// The pager re-queries the earliest timestamp to preserve ties. Return just
+	// that boundary row; regular page requests get a full page with unique IDs.
+	if req.End.Sub(req.Start) <= time.Millisecond {
+		return &loki.QueryResponse{Data: loki.QueryResultData{Result: []loki.StreamEntry{{Values: []loki.LogEntry{{
+			Timestamp: lokiUnixNanoMS(req.Start.UnixMilli()), Line: fmt.Sprintf("session_id=session-%d", req.Start.UnixMilli()),
+		}}}}}}, nil
+	}
+	entries := make([]loki.LogEntry, lokiEventsPageSize)
+	for i := range entries {
+		millis := req.End.Add(-time.Duration(i+1) * time.Second).UnixMilli()
+		entries[i] = loki.LogEntry{Timestamp: lokiUnixNanoMS(millis), Line: fmt.Sprintf("session_id=session-%d", millis)}
+	}
+	return &loki.QueryResponse{Data: loki.QueryResultData{Result: []loki.StreamEntry{{Values: entries}}}}, nil
+}
+
+func TestLokiReplayDiscoveryStopsAtSafetyCap(t *testing.T) {
+	client := &cappedReplayLoki{}
+	resp, stopped, capped, err := fetchLokiReplayDiscoveryPages(t.Context(), client, "uid", `{kind="event"}`, time.Unix(0, 0), time.Unix(1_000_000, 0), sessionLokiQueryTimeout, replaySessionLimitStop(0))
+	require.NoError(t, err)
+	assert.False(t, stopped)
+	assert.True(t, capped)
+	assert.Equal(t, replayLokiDiscoveryMaxPages*2, client.queries) // data page plus boundary check
+	assert.Equal(t, replayLokiSessionsSafetyCap, lokiEntryCount(resp))
+	rows := extractReplaySessionRows(resp)
+	meta := cmdio.PagedListMeta(len(rows), 0, true, replayLokiSessionsSafetyCap)
+	require.NotNil(t, meta)
+	assert.True(t, meta.Truncated)
+	assert.Equal(t, replayLokiSessionsSafetyCap, meta.Cap)
+}
+
 func TestLokiReplayPagerPassesOnlyNewPageToStopPredicate(t *testing.T) {
 	dataset := make([]loki.LogEntry, 0, 2*lokiEventsPageSize+1)
 	for i := 1; i <= 2*lokiEventsPageSize+1; i++ {
@@ -110,6 +144,9 @@ func TestReplaySessionLimitStopCountsDistinctSessionsAcrossPages(t *testing.T) {
 func TestLokiReplayDiscoveryQueryTimesOut(t *testing.T) {
 	_, _, err := fetchLokiEventPagesUntil(t.Context(), hangLoki{}, "uid", `{kind="event"}`, time.Unix(1, 0), time.Unix(2, 0), 20*time.Millisecond, nil)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
+	wrapped := wrapLokiReplayDiscoveryErr(err)
+	assert.Contains(t, wrapped.Error(), "scan did not finish; this is not an empty result")
+	assert.Contains(t, wrapped.Error(), "narrower --from/--to")
 }
 
 type invalidTimestampLoki struct{}

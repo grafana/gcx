@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"strconv"
 	"testing"
+	"time"
 
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/query/loki"
@@ -119,7 +120,7 @@ func TestListReplaySessionsAllowsZeroLimit(t *testing.T) {
 	opts := &listReplaySessionsOpts{}
 	flags := pflag.NewFlagSet("replay", pflag.ContinueOnError)
 	opts.setup(flags)
-	require.NoError(t, flags.Parse([]string{"--limit", "0"}))
+	require.NoError(t, flags.Parse([]string{"--limit", "0", "--since", "1h"}))
 	require.NoError(t, opts.Validate())
 }
 
@@ -208,10 +209,11 @@ func TestListReplaySessionsRejectsInvalidFlags(t *testing.T) {
 		wantErr string
 	}{
 		{name: "negative limit", args: []string{"my-web-app-42", "--limit", "-1"}, wantErr: "invalid --limit"},
-		{name: "invalid since", args: []string{"my-web-app-42", "--since", "not-a-duration"}, wantErr: "invalid --since value"},
-		{name: "zero since", args: []string{"my-web-app-42", "--since", "0s"}, wantErr: "--since must be positive"},
-		{name: "negative since", args: []string{"my-web-app-42", "--since=-1h"}, wantErr: "--since must be positive"},
-		{name: "bare app name", args: []string{"my-web-app"}, wantErr: "expected a numeric ID or slug-id"},
+		{name: "missing time range", args: []string{"my-web-app-42"}, wantErr: "--since or --from/--to is required"},
+		{name: "invalid since", args: []string{"my-web-app-42", "--since", "not-a-duration"}, wantErr: "invalid --since duration"},
+		{name: "zero since", args: []string{"my-web-app-42", "--since", "0s"}, wantErr: "--since must be greater than 0"},
+		{name: "negative since", args: []string{"my-web-app-42", "--since=-1h"}, wantErr: "--since must be greater than 0"},
+		{name: "bare app name", args: []string{"my-web-app", "--since", "1h"}, wantErr: "expected a numeric ID or slug-id"},
 		{name: "empty datasource", args: []string{"my-web-app-42", "-d", ""}, wantErr: "--datasource cannot be empty"},
 		{name: "blank datasource", args: []string{"my-web-app-42", "-d", "   "}, wantErr: "--datasource cannot be empty"},
 	}
@@ -234,4 +236,17 @@ func TestListReplaySessionsRejectsInvalidFlags(t *testing.T) {
 			assert.Contains(t, err.Error(), tt.wantErr)
 		})
 	}
+}
+
+func TestListReplaySessionsAcceptsAbsoluteTimeRange(t *testing.T) {
+	opts := &listReplaySessionsOpts{}
+	flags := pflag.NewFlagSet("replay", pflag.ContinueOnError)
+	opts.setup(flags)
+	opts.From = "2026-09-01T00:00:00Z"
+	opts.To = "2026-09-02T00:00:00Z"
+	require.NoError(t, opts.Validate())
+	start, end, err := opts.ParseTimeRange(time.Now())
+	require.NoError(t, err)
+	assert.Equal(t, time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC), start)
+	assert.Equal(t, time.Date(2026, 9, 2, 0, 0, 0, 0, time.UTC), end)
 }

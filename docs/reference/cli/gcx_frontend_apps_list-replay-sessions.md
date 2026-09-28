@@ -4,7 +4,7 @@ List Frontend Observability sessions that have replay recordings.
 
 ### Synopsis
 
-Discovers regular session IDs that have replay recordings by querying Loki or Pinot for faro.session_recording.started events. This does not list all Frontend Observability sessions. The default datasource is Loki; pass a Pinot datasource UID with -d to query Pinot. Loki reads replay-start events in pages of 1000, with a 60s timeout per query. An empty result means no replay-start event was found for the app ID and time window; this command does not verify that the app exists. JSON output has an items envelope and includes list_meta when more sessions are available.
+Discovers regular session IDs that have replay recordings by querying Loki or Pinot for faro.session_recording.started events. This does not list all Frontend Observability sessions. The default datasource is Loki; pass a Pinot datasource UID with -d to query Pinot. Loki scans at most 100000 replay-start events and applies a 60s timeout per query. An empty result means no replay-start event was found for the app ID and time window; this command does not verify that the app exists. JSON output has an items envelope and includes list_meta when more sessions are available.
 
 ```
 gcx frontend apps list-replay-sessions <slug-id-or-numeric-id> [flags]
@@ -14,10 +14,13 @@ gcx frontend apps list-replay-sessions <slug-id-or-numeric-id> [flags]
 
 ```
   # List regular session IDs with replay recordings in the last hour.
-  gcx frontend apps list-replay-sessions my-web-app-42
+  gcx frontend apps list-replay-sessions my-web-app-42 --since 1h
 
   # Search the last 24 hours.
   gcx frontend apps list-replay-sessions my-web-app-42 --since 24h
+
+  # Search an absolute time range.
+  gcx frontend apps list-replay-sessions my-web-app-42 --from 2026-09-01T00:00:00Z --to 2026-09-02T00:00:00Z
 
   # Use a specific Loki or Pinot datasource.
   gcx frontend apps list-replay-sessions my-web-app-42 -d P8E80F9AEF21F6940
@@ -27,12 +30,14 @@ gcx frontend apps list-replay-sessions <slug-id-or-numeric-id> [flags]
 
 ```
   -d, --datasource string   Loki or Pinot datasource UID (Loki auto-discovered if omitted)
+      --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                help for list-replay-sessions
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --limit int           Maximum number of sessions to return. 0 returns all Loki results or up to 100000 Pinot sessions (default 1000)
+      --limit int           Maximum sessions to return. 0 reads up to 100000 Loki replay-start events or 100000 Pinot sessions (default 1000)
   -o, --output string       Output format. One of: agents, json, text, yaml (default "text")
-      --since string        How far back to search (e.g., 1h, 24h, 7d) (default "1h")
+      --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
+      --to string           End time (RFC3339, Unix timestamp, or relative like 'now')
 ```
 
 ### Options inherited from parent commands
