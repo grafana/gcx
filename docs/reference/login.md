@@ -44,6 +44,13 @@ This page walks through the common login paths, the mental model behind them, an
   takes that tab back to the stack. With `-o json`, `-o yaml` or in agent mode,
   stdout carries the same result as `gcx login`, and the next steps come as
   hints on stderr.
+
+  If the browser asks you to choose a stack instead of showing the sign-up
+  form, it is already signed in to Grafana Cloud. Choose one and approve
+  "Connect gcx"; gcx saves a connection to that stack the same way. With one
+  organization and one stack, the browser goes straight to "Connect gcx". To
+  create a separate account instead, sign out of Grafana Cloud in that browser
+  first.
 - **An account, but no stack URL at hand: run `gcx login`** and leave the
   server URL empty. gcx opens the grafana.com stack launcher. Sign in, pick a
   stack, and approve "Connect gcx". gcx then offers the optional grafana.com
@@ -52,10 +59,10 @@ This page walks through the common login paths, the mental model behind them, an
 gcx waits in the terminal while you work in the browser, and prints a
 verification code that the consent page repeats. Press Ctrl-C to stop. If the
 browser loses the page (a refresh, or the tab closed), press Enter and gcx opens
-the launcher again with the same login; once your account and stack exist, the
-launcher takes you straight to the consent page. The Enter shortcut works in a
-local terminal only; over SSH, or where gcx cannot watch the terminal (for
-example on Windows), open the printed URL again instead.
+the stack launcher again with the same login, where you sign in if needed and
+choose a stack. The Enter shortcut works in a local terminal only; over SSH, or
+where gcx cannot watch the terminal (for example on Windows), open the printed
+URL again instead.
 
 `gcx signup` saves the connection to the context name you pass
 (`gcx signup my-stack`), otherwise to the current context, or to `default` when
@@ -70,7 +77,7 @@ Monitoring, k6 and more), save a Cloud Access Policy token afterwards with
 [Grafana Cloud product APIs](#grafana-cloud-product-apis).
 
 If signup fails once the browser step has started, do not run `gcx signup`
-again: it would start a second account. The error shows the `gcx login`
+again: it could start a second account. The error shows the `gcx login`
 command that finishes the connection in the same context and config file:
 `gcx login <context> --server <stack URL> --oauth` when the browser step
 finished, or `gcx login <context> --cloud --oauth`, which signs in and lets you

@@ -80,7 +80,7 @@ func (e *BasicAuthCheckError) Error() string {
 // SignupIncompleteError reports a `gcx signup` that failed once the browser
 // step had started. The person may already have created the Grafana Cloud
 // account, and when Server is set the browser step finished, so the account
-// and the stack at Server exist. Running signup again would start a second
+// and the stack at Server exist. Running signup again could start a second
 // account. Recovery is the gcx login command in Recovery. Err is the failure
 // itself; the CLI renders it as usual and adds the recovery.
 type SignupIncompleteError struct {

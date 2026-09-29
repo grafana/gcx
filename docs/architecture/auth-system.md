@@ -254,8 +254,10 @@ Without a stack URL, the flow opens the Grafana Cloud stack launcher
 path and query to the stack the user picks. For signup it first opens
 `<portal>/auth/sign-up/create-user?to=<launcher path and query>`; the signup
 pages keep that grafana.com-relative return target through email verification
-and first-stack creation. In a local interactive session, Enter reopens the
-launcher URL with the same state and challenge.
+and first-stack creation. A browser already signed in to Grafana Cloud, with a
+confirmed email, skips those pages and goes straight to the launcher, so signup
+can also reach an existing stack. In a local interactive session, Enter reopens
+the launcher URL with the same state and challenge.
 
 A signup's launcher URL is
 `<portal>/launch/set-redirect-and-login?url=<consent path and query>`
@@ -272,7 +274,8 @@ once more. The consent parameters gcx controls survive that (hex state,
 base64url challenge, escaped scopes), and the host name, the one value gcx
 does not control, goes last, so an `&` or `#` in it can only cut the name
 itself short. The plain launcher, used by `gcx login`, is unchanged: existing
-stacks can use other sign in setups.
+stacks can use other sign in setups, and signup reaches one only when the
+browser is already signed in.
 
 The success page claims only the browser step: "You've authorized gcx", then
 "Return to your terminal to see the connection result." For the stack flow its

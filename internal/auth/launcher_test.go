@@ -447,6 +447,15 @@ func TestFlowRun_SignupReopensTheLauncherOnEnter(t *testing.T) {
 	assert.Equal(t, "/auth/sign-up/create-user", first.Path)
 	waitForOutput(t, &out, "Create your Grafana Cloud account")
 	waitForOutput(t, &out, "press Enter to open it again")
+	// A browser already signed in to Grafana Cloud skips the sign-up form, so
+	// the steps name what it shows instead and where to rejoin them.
+	steps := out.String()
+	approve := strings.Index(steps, "3. Approve \"Connect gcx\"")
+	signedIn := strings.Index(steps, "If the browser asks you to choose a stack instead, it is already signed in")
+	require.NotEqual(t, -1, approve, steps)
+	require.NotEqual(t, -1, signedIn, steps)
+	assert.Less(t, approve, signedIn, "the note follows the steps it points back to")
+	assert.Contains(t, steps, "continue with step 3.")
 
 	_, err = writerEnd.WriteString("\n")
 	require.NoError(t, err)
@@ -510,6 +519,7 @@ func TestFlowRun_ReopenOnlyForTheLauncherInALocalSession(t *testing.T) {
 
 			waitForOutput(t, &out, tc.want)
 			assert.NotContains(t, out.String(), "press Enter to open it again")
+			assert.NotContains(t, out.String(), "choose a stack instead", "only signup offers the signed-in alternative")
 			cancel()
 			outcome := waitForOutcome(t, done)
 			require.ErrorIs(t, outcome.err, context.Canceled)
@@ -709,14 +719,23 @@ func TestFlowRun_ManualSignupPrintsTheSteps(t *testing.T) {
 	// account, approve, then paste the redirect URL back.
 	openURL := strings.Index(out, "1. Open this URL")
 	createAccount := strings.Index(out, "2. Create your Grafana Cloud account")
+	signedIn := strings.Index(out, "   If the browser asks you to choose a stack instead, it is already signed in")
 	verify := strings.Index(out, "3. Verification code")
 	copyAddress := strings.Index(out, "Copy the full address")
 	require.NotEqual(t, -1, openURL, out)
 	require.NotEqual(t, -1, createAccount, out)
+	require.NotEqual(t, -1, signedIn, out)
 	assert.Less(t, openURL, createAccount)
-	assert.Less(t, createAccount, verify)
+	assert.Less(t, createAccount, signedIn, "the signed-in alternative belongs to the account step")
+	assert.Less(t, signedIn, verify)
 	assert.Less(t, verify, copyAddress)
 	assert.NotContains(t, out, "In the browser:", "the callback route's separate list does not repeat here")
+
+	var plain bytes.Buffer
+	_, err = auth.NewFlow("", auth.Options{Manual: true, Writer: &plain, Reader: strings.NewReader("")}).Run(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, plain.String(), "Sign in to Grafana Cloud and choose a stack.")
+	assert.NotContains(t, plain.String(), "choose a stack instead", "only signup offers the signed-in alternative")
 }
 
 // TestFlowRun_LauncherSSHHintKeepsCloud checks the rerun command that the SSH

@@ -99,8 +99,9 @@ type Options struct {
 	// Signup opens the Grafana Cloud account creation page first, for a person
 	// who has no account yet. That page returns to the stack launcher once the
 	// account and its first stack exist, and the launcher signs the browser in
-	// to the stack before its consent page. It applies only when no stack
-	// endpoint is known.
+	// to the stack before its consent page. A browser already signed in, with a
+	// confirmed email, skips the form and goes straight to the launcher. It
+	// applies only when no stack endpoint is known.
 	Signup bool
 
 	// ManualCommand, when set, is the exact command that the remote session
@@ -259,9 +260,9 @@ func (f *Flow) runWithCallbackServer(ctx context.Context) (*Result, error) {
 
 	// Reopening goes to the launcher (for a signup, through the stack sign-in
 	// route), never to the signup page: by the time a page is lost the
-	// account usually exists, and the launcher takes a signed-in user straight
-	// to their stack. The URL carries the same state, challenge and port, so
-	// every open tab stays valid.
+	// account usually exists, and the launcher takes a signed-in user to their
+	// stacks. The URL carries the same state, challenge and port, so every
+	// open tab stays valid.
 	var lastReopen time.Time
 	reopen := func() {
 		// A claimed guard means the callback arrived and its token exchange
@@ -291,6 +292,8 @@ const reopenDebounce = 2 * time.Second
 
 // printLauncherSteps says what the browser asks for when no stack endpoint is
 // known, because the signup detour can take several minutes and several pages.
+// The sign-up page sends a browser that is already signed in, with a confirmed
+// email, on to the launcher, so the signup steps name what that browser shows.
 func (f *Flow) printLauncherSteps() {
 	if f.endpoint != "" {
 		return
@@ -300,6 +303,8 @@ func (f *Flow) printLauncherSteps() {
 		fmt.Fprintln(f.writer, "  1. Create your Grafana Cloud account and verify your email.")
 		fmt.Fprintln(f.writer, "  2. Create your first stack. It can take a few minutes to start.")
 		fmt.Fprintln(f.writer, "  3. Approve \"Connect gcx\" after checking the verification code.")
+		fmt.Fprintln(f.writer, "If the browser asks you to choose a stack instead, it is already signed in to")
+		fmt.Fprintln(f.writer, "Grafana Cloud. Choose one, then continue with step 3.")
 	} else {
 		fmt.Fprintln(f.writer, "In the browser, sign in to Grafana Cloud, choose a stack, and approve \"Connect gcx\".")
 	}
@@ -316,7 +321,9 @@ func (f *Flow) launcherBrowserStep() string {
 		return ""
 	case f.opts.Signup:
 		return "Create your Grafana Cloud account, verify your email, and create your first stack.\n" +
-			"   The stack can take a few minutes to start."
+			"   The stack can take a few minutes to start.\n" +
+			"   If the browser asks you to choose a stack instead, it is already signed in\n" +
+			"   to Grafana Cloud. Choose one."
 	default:
 		return "Sign in to Grafana Cloud and choose a stack."
 	}
@@ -384,11 +391,11 @@ func (f *Flow) buildAuthURL(port int, state, codeChallenge string) string {
 // launchWithStackSignIn returns the launcher URL that sends the browser to
 // stackPath through the chosen stack's set-redirect-and-login route. That is
 // the route grafana.com's own signup uses to land a new user on their stack:
-// it signs the browser in to the stack with the grafana.com session the
-// signup just created, then opens stackPath. Without it, the new stack shows
-// its login page first and the person has to click "Sign in with Grafana.com"
-// before the consent page. The launcher keeps the route and query when it
-// forwards to the stack.
+// it signs the browser in to the stack with the browser's grafana.com
+// session, usually the one the signup just created, then opens stackPath.
+// Without it, the new stack shows its login page first and the person has to
+// click "Sign in with Grafana.com" before the consent page. The launcher keeps
+// the route and query when it forwards to the stack.
 func launchWithStackSignIn(origin, stackPath string) string {
 	return origin + "/launch/set-redirect-and-login?url=" + url.QueryEscape(stackPath)
 }

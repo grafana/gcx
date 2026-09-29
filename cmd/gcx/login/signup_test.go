@@ -152,7 +152,7 @@ func TestSignupSavesTheNewStack(t *testing.T) {
 
 	stderr, err := runSignup(t, "--config", path)
 	require.NoError(t, err, stderr)
-	assert.Contains(t, stderr, `gcx saves the new stack as context "default"`)
+	assert.Contains(t, stderr, `Connecting gcx to Grafana Cloud. The connection will be saved as context "default".`)
 
 	require.Equal(t, 1, browser.started())
 	assert.Empty(t, browser.servers[0], "signup starts without a stack endpoint")
