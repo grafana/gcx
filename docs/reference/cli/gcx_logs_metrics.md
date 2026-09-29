@@ -17,8 +17,8 @@ Instant vs range is deduced from time flags: no time flags = instant query,
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
 open it in your browser after the query succeeds.
 
-Loki scans are estimated before execution. Above 10GB, approve a finite
-volume with --approve-scan (not a runtime ceiling). Use --estimate to inspect
+Loki scans are estimated before execution. Above 10GB, interactive queries
+prompt for approval; noninteractive queries require --yes. Use --estimate to inspect
 volume without executing. Unknown volume requires --approve-unknown-scan.
 Metric LogQL volume is currently unknown and requires explicit approval.
 
@@ -43,7 +43,6 @@ gcx logs metrics [EXPR] [flags]
 ### Options
 
 ```
-      --approve-scan string    Approve up to this estimated Loki volume for this invocation (e.g. 25GB); default gate is 10GB, not a runtime ceiling
       --approve-unknown-scan   Approve this Loki query when scan volume cannot be estimated
   -d, --datasource string      Datasource UID (required unless datasources.loki is configured)
       --error-on-empty         Fail if the query returns no results
@@ -59,6 +58,7 @@ gcx logs metrics [EXPR] [flags]
       --since string           Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --step string            Query step (e.g., '15s', '1m')
       --to string              End time (RFC3339, Unix timestamp, or relative like 'now')
+      --yes                    Approve this Loki query if its estimated scan exceeds 10GB (not a runtime ceiling)
 ```
 
 ### Options inherited from parent commands

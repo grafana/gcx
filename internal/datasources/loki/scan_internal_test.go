@@ -18,7 +18,6 @@ import (
 	"github.com/grafana/gcx/internal/queryerror"
 	"github.com/grafana/gcx/internal/testutils"
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -39,9 +38,9 @@ func TestScanCommands(t *testing.T) {
 		{name: "below", body: `{"bytes":9999999999}`, wantQuery: true},
 		{name: "boundary", body: `{"bytes":10000000000}`, wantQuery: true},
 		{name: "above blocks even auto approve", body: `{"bytes":10000000001}`, wantError: true},
-		{name: "finite approval", body: `{"bytes":25000000000}`, flags: []string{"--approve-scan=25GB"}, wantQuery: true},
-		{name: "insufficient", body: `{"bytes":25000000001}`, flags: []string{"--approve-scan=25GB"}, wantError: true},
-		{name: "lower approval", body: `{"bytes":1001}`, flags: []string{"--approve-scan=1KB"}, wantError: true},
+		{name: "yes false blocks", body: `{"bytes":25000000000}`, flags: []string{"--yes=false"}, wantError: true},
+		{name: "estimate never executes with yes", body: `{"bytes":25000000000}`, flags: []string{"--estimate", "--yes"}},
+		{name: "yes approval", body: `{"bytes":25000000000}`, flags: []string{"--yes"}, wantQuery: true},
 		{name: "unknown cannot bypass known", body: `{"bytes":10000000001}`, flags: []string{"--approve-unknown-scan"}, wantError: true},
 		{name: "estimate only", body: `{"bytes":99999999999}`, flags: []string{"--estimate"}},
 		{name: "zero", body: `{"bytes":0}`, wantQuery: true},
@@ -53,7 +52,7 @@ func TestScanCommands(t *testing.T) {
 		{name: "unavailable", status: 404, wantError: true},
 		{name: "unavailable estimate", status: 404, flags: []string{"--estimate"}},
 		{name: "unavailable approved", status: 404, flags: []string{"--approve-unknown-scan"}, wantQuery: true},
-		{name: "numeric cannot approve unknown", status: 404, flags: []string{"--approve-scan=25GB"}, wantError: true},
+		{name: "yes cannot approve unknown", status: 404, flags: []string{"--yes"}, wantError: true},
 		{name: "auth", status: 401, flags: []string{"--approve-unknown-scan"}, wantError: true},
 		{name: "forbidden", status: 403, flags: []string{"--approve-unknown-scan"}, wantError: true},
 		{name: "metric unknown", metric: true, wantError: true},
@@ -106,7 +105,7 @@ func TestScanCommands(t *testing.T) {
 			var stdout, stderr bytes.Buffer
 			root.SetOut(&stdout)
 			root.SetErr(&stderr)
-			root.SetIn(strings.NewReader("25GB\n"))
+			root.SetIn(strings.NewReader("yes\n"))
 			args := []string{cmd.Name(), expr, "-d", "uid", "--since=1h", "-o=json"}
 			root.SetArgs(append(args, tt.flags...))
 			err := root.Execute()
@@ -140,23 +139,6 @@ func TestScanCommands(t *testing.T) {
 }
 
 func TestScanValidation(t *testing.T) {
-	for _, value := range []string{"", "0GB", "-1GB", "NaNGB", "InfGB", "1e3GB", "unlimited", "1", "1GiB", "0.1B", "999999999999999TB"} {
-		t.Run(value, func(t *testing.T) {
-			o := &ScanOpts{}
-			flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
-			o.Setup(flags)
-			require.NoError(t, flags.Set("approve-scan", value))
-			err := o.Validate("json")
-			var detailed *gcxerrors.DetailedError
-			require.ErrorAs(t, err, &detailed)
-			assert.Equal(t, gcxerrors.ExitUsageError, *detailed.ExitCode)
-		})
-	}
-	for _, value := range []string{"1B", "1.5KB", "0.001GB", "25GB", "1TB"} {
-		_, err := parseScanBytes(value)
-		require.NoError(t, err)
-	}
-	require.Error(t, (&ScanOpts{ApproveScan: "1GB", ApproveUnknown: true}).Validate("json"))
 	require.Error(t, (&ScanOpts{Estimate: true}).Validate("raw"))
 	require.Error(t, (&ScanOpts{Estimate: true}).Validate("graph"))
 }
@@ -167,7 +149,7 @@ func TestScanPrompt(t *testing.T) {
 		unknown bool
 		code    int
 	}{
-		{"25GB\n", false, 0}, {"1GB\n", false, 2}, {"\n", false, 5}, {"", false, 5},
+		{"y\n", false, 0}, {"yes\n", false, 0}, {"no\n", false, 5}, {"25GB\n", false, 5}, {"\n", false, 5}, {"", false, 5},
 		{"yes\n", true, 0}, {"no\n", true, 5}, {"\n", true, 5},
 	} {
 		e := &lokiclient.ScanEstimate{}

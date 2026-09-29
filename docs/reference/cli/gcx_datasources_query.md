@@ -12,8 +12,9 @@ EXPR is the query expression appropriate for the datasource type.
 The datasource type is detected via the Grafana API and the appropriate query
 client is used automatically. This is the escape hatch for datasource types
 that do not have a dedicated subcommand.
-Loki queries require finite approval above an estimated 10GB, or explicit
-acknowledgment of unknown volume. Use --estimate to inspect without querying.
+Loki queries above an estimated 10GB prompt for approval interactively;
+noninteractive queries require --yes. Unknown volume requires explicit
+acknowledgment. Use --estimate to inspect without querying.
 
 ```
 gcx datasources query DATASOURCE_UID [EXPR] [flags]
@@ -37,7 +38,6 @@ gcx datasources query DATASOURCE_UID [EXPR] [flags]
 ### Options
 
 ```
-      --approve-scan string    Approve up to this estimated Loki volume for this invocation (e.g. 25GB); default gate is 10GB, not a runtime ceiling
       --approve-unknown-scan   Approve this Loki query when scan volume cannot be estimated
       --config string          Path to the configuration file to use
       --context string         Name of the context to use
@@ -55,6 +55,7 @@ gcx datasources query DATASOURCE_UID [EXPR] [flags]
       --step string            Query step (e.g., '15s', '1m')
       --table string           StarTree table name for pinot queries when the SQL has no extractable FROM
       --to string              End time (RFC3339, Unix timestamp, or relative like 'now')
+      --yes                    Approve this Loki query if its estimated scan exceeds 10GB (not a runtime ceiling)
 ```
 
 ### Options inherited from parent commands

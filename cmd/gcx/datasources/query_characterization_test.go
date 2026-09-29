@@ -564,8 +564,8 @@ func TestGenericLokiScanGuard(t *testing.T) {
 	}{
 		{name: "blocked", wantError: true},
 		{name: "estimate", flags: []string{"--estimate"}},
-		{name: "approved", flags: []string{"--approve-scan=25GB"}, wantPost: true},
-		{name: "insufficient", flags: []string{"--approve-scan=1GB"}, wantError: true},
+		{name: "approved", flags: []string{"--yes"}, wantPost: true},
+		{name: "yes false", flags: []string{"--yes=false"}, wantError: true},
 		{name: "unknown does not bypass", flags: []string{"--approve-unknown-scan"}, wantError: true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

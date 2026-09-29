@@ -83,7 +83,7 @@ func (o *genericQueryOpts) run(cmd *cobra.Command, args []string) error {
 	}
 	dsType := dsquery.NormalizeKind(rawType)
 	if dsType != "loki" && o.scan.Requested() {
-		return errors.New("--estimate, --approve-scan, and --approve-unknown-scan apply only to Loki datasources")
+		return errors.New("--estimate, --yes, and --approve-unknown-scan apply only to Loki datasources")
 	}
 
 	// Redirects run before the expression is resolved, so an argument-less call
@@ -146,8 +146,9 @@ EXPR is the query expression appropriate for the datasource type.
 The datasource type is detected via the Grafana API and the appropriate query
 client is used automatically. This is the escape hatch for datasource types
 that do not have a dedicated subcommand.
-Loki queries require finite approval above an estimated 10GB, or explicit
-acknowledgment of unknown volume. Use --estimate to inspect without querying.`,
+Loki queries above an estimated 10GB prompt for approval interactively;
+noninteractive queries require --yes. Unknown volume requires explicit
+acknowledgment. Use --estimate to inspect without querying.`,
 		Example: `
   # Auto-detect and query any supported datasource
   gcx datasources query ds-001 'up{job="grafana"}' --from now-1h --to now

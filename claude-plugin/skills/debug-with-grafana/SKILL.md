@@ -20,11 +20,9 @@ is a prerequisite: a known trace or targeted log can be the first check.
 Start log searches with a short explicit time range (for example `--since 5m`)
 and specific indexed labels. Use `--estimate` to inspect volume without executing
 logs. gcx requires approval above 10 GB estimated volume. Obtain user consent
-before passing `--approve-scan=25GB` (choose the authorized finite amount), or
-`--approve-unknown-scan` when volume cannot be estimated. Metric LogQL currently
+before passing `--yes`, or `--approve-unknown-scan` when volume cannot be estimated. Metric LogQL currently
 requires the unknown-volume acknowledgment. Reuse approval only within the scope
-the user authorized; do not invent consent, automatically raise budgets, or split
-queries to evade approval. Global auto-approval does not authorize scan volume.
+the user authorized; do not invent consent or split queries to evade approval. Global auto-approval does not authorize scan volume.
 
 Widen time ranges deliberately, avoid repeated identical queries, and check
 returned scan statistics. `--limit` limits returned lines, not GB scanned. Put

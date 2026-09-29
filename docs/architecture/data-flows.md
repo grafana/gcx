@@ -887,6 +887,6 @@ same flow: resolve datasource and times → estimate matching indexed volume via
 Grafana's datasource resource API → return estimate-only output or approve →
 execute through the shared Grafana query transport → report processed-volume
 statistics and encode results. Unknown volume stops execution unless explicitly
-acknowledged. Numeric approval is checked against a fresh estimate on every
+acknowledged. The 10 GB threshold is checked against a fresh estimate on every
 invocation. See [query safety](../design/safety.md#36-loki-query-scan-approval) for
 thresholds, compatibility, and limitations.

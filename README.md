@@ -526,7 +526,7 @@ gcx logs series --match '{app="nginx"}'
 ```
 
 Loki queries estimate scanned volume before execution. Use `--estimate` to inspect
-it; estimates above 10 GB require a finite `--approve-scan` amount. Unknown volume
+it; estimates above 10 GB prompt for approval interactively and require `--yes` noninteractively. Unknown volume
 (including metric LogQL) requires `--approve-unknown-scan`. Existing scripts may
 now stop for approval. These are estimated-volume approvals, not hard scan or
 billing ceilings. See [query safety](docs/design/safety.md#36-loki-query-scan-approval).

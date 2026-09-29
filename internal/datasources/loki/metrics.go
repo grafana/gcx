@@ -34,8 +34,8 @@ Instant vs range is deduced from time flags: no time flags = instant query,
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
 open it in your browser after the query succeeds.
 
-Loki scans are estimated before execution. Above 10GB, approve a finite
-volume with --approve-scan (not a runtime ceiling). Use --estimate to inspect
+Loki scans are estimated before execution. Above 10GB, interactive queries
+prompt for approval; noninteractive queries require --yes. Use --estimate to inspect
 volume without executing. Unknown volume requires --approve-unknown-scan.
 Metric LogQL volume is currently unknown and requires explicit approval.`,
 		Example: `
