@@ -15,6 +15,20 @@ description: >
 Answer the user's question with the least expensive reliable evidence. No signal
 is a prerequisite: a known trace or targeted log can be the first check.
 
+## Loki scan approval
+
+Start log searches with a short explicit time range (for example `--since 5m`)
+and specific indexed labels. Use `--estimate-scan` to inspect volume without executing
+logs. gcx requires approval above 10 GB estimated volume. Obtain user consent
+before passing `--yes`, or `--approve-unknown-scan` when volume cannot be estimated. Single-selector metric LogQL is estimated with its lookback and positive offset;
+multi-selector and unsupported expressions still require unknown-volume acknowledgment. Reuse approval only within the scope
+the user authorized; do not invent consent or split queries to evade approval. Global auto-approval does not authorize scan volume.
+
+Widen time ranges deliberately, avoid repeated identical queries, and check
+returned scan statistics. `--limit` limits returned lines, not GB scanned. Put
+inexpensive line filters before parsers where semantics permit. Estimates exclude
+ingester data and are not hard runtime or billing caps.
+
 ## Scope and safety
 
 Reuse supplied scope, alert/panel queries, links, IDs, incident times, and known

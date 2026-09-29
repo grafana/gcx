@@ -12,6 +12,9 @@ EXPR is the query expression appropriate for the datasource type.
 The datasource type is detected via the Grafana API and the appropriate query
 client is used automatically. This is the escape hatch for datasource types
 that do not have a dedicated subcommand.
+Loki queries above an estimated 10GB prompt for approval interactively;
+noninteractive queries require --yes. Unknown volume requires explicit
+acknowledgment. Use --estimate-scan to inspect without querying.
 
 ```
 gcx datasources query DATASOURCE_UID [EXPR] [flags]
@@ -35,21 +38,24 @@ gcx datasources query DATASOURCE_UID [EXPR] [flags]
 ### Options
 
 ```
-      --config string         Path to the configuration file to use
-      --context string        Name of the context to use
-      --expr string           Query expression (alternative to positional argument)
-      --from string           Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
-  -h, --help                  help for query
-      --jq string             jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string           Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --limit int             Maximum log lines for loki, or max rows for pinot (0 means no limit). Pinot uses 100 when --limit is omitted; stderr notes when PinotQL is adjusted (default 50)
-      --max-nodes int         Maximum nodes in flame graph (pyroscope only) (default 1024)
-  -o, --output string         Output format. One of: agents, graph, json, table, wide, yaml (default "table")
-      --profile-type string   Profile type ID for pyroscope queries (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds')
-      --since string          Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
-      --step string           Query step (e.g., '15s', '1m')
-      --table string          StarTree table name for pinot queries when the SQL has no extractable FROM
-      --to string             End time (RFC3339, Unix timestamp, or relative like 'now')
+      --approve-unknown-scan   Approve this Loki query when scan volume cannot be estimated
+      --config string          Path to the configuration file to use
+      --context string         Name of the context to use
+      --estimate-scan          Estimate indexed log volume to scan, in bytes, without executing the query
+      --expr string            Query expression (alternative to positional argument)
+      --from string            Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
+  -h, --help                   help for query
+      --jq string              jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string            Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --limit int              Maximum log lines for loki, or max rows for pinot (0 means no limit). Pinot uses 100 when --limit is omitted; stderr notes when PinotQL is adjusted (default 50)
+      --max-nodes int          Maximum nodes in flame graph (pyroscope only) (default 1024)
+  -o, --output string          Output format. One of: agents, graph, json, table, wide, yaml (default "table")
+      --profile-type string    Profile type ID for pyroscope queries (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds')
+      --since string           Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
+      --step string            Query step (e.g., '15s', '1m')
+      --table string           StarTree table name for pinot queries when the SQL has no extractable FROM
+      --to string              End time (RFC3339, Unix timestamp, or relative like 'now')
+      --yes                    Approve this Loki query if its estimated scan exceeds 10GB (not a runtime ceiling)
 ```
 
 ### Options inherited from parent commands

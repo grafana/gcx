@@ -94,3 +94,55 @@ gcx resources push ./dashboards/
 ```
 
 Reference: `data-flows.md` Section 2 (PUSH Pipeline)
+
+### 3.6 Loki query scan approval
+
+All Loki query entry points (`logs query`, `logs metrics`, typed datasource
+commands, and generic datasource queries) estimate matching indexed volume
+before execution. Estimates at or below 10 GB proceed; larger estimates require
+an interactive default-no `[y/N]` prompt, or explicit `--yes` approval.
+Noninteractive queries above the threshold fail with an actionable error unless
+`--yes` is passed. There is no configurable byte budget; `--yes=false` does not
+approve execution.
+
+`--estimate-scan` returns the estimate, time range, threshold, approval requirement,
+limitations, and efficiency hints without executing the log query. Table, wide,
+JSON, YAML, and agents output are supported; raw and graph are rejected.
+Simple log-stream expressions with an explicit range and single-selector metric
+expressions with one literal lookback and an optional positive offset are estimated.
+Metric estimates use the same stream selector's index statistics: for evaluation
+bounds `[start, end]`, lookback `L`, and offset `O`, scan `[start-L-O, end-O]`.
+Instant metrics use the frozen evaluation timestamp for both evaluation bounds.
+The original expression and execution bounds are unchanged. Optional `scanStart`
+and `scanEnd` fields expose the effective scan interval when it differs from the
+requested `start` and `end`; human output and approval details show it too.
+Multiple selectors, ambiguous syntax, unsupported time modifiers, unavailable
+endpoints, and malformed statistics produce unknown volume, never a fabricated zero.
+Unsupported-expression hints recommend simplification or unknown-volume consent;
+narrowing time cannot fix unsupported syntax. Statistics-failure hints recommend
+resolving the failure before retrying estimate-only, or unknown-volume consent. Unknown
+volume requires `--approve-unknown-scan` or a separate default-no terminal prompt.
+`--approve-unknown-scan` cannot bypass a known estimate above 10 GB, and `--yes`
+does not approve unknown volume. The flags can be combined to explicitly approve
+either outcome. Authentication failures and cancellation remain errors.
+
+Agents and scripts receive a structured approval-required error (exit 2), never a
+prompt. Interactive prompting requires terminal input and stderr; declining
+exits 5. `--force`, `GCX_AUTO_APPROVE`, and agent mode cannot bypass scan approval.
+Agents must obtain user consent through their host workflow before adding either
+approval flag; gcx cannot attest that a human supplied a flag.
+
+**Compatibility:** Existing scripts may now stop for approval. Add an explicit
+time range and inspect with `--estimate-scan`; approve the estimated query with `--yes`
+or acknowledge unknown volume only after review. There is no persistent blanket approval.
+
+The index estimate excludes ingester data and may count chunks more than once.
+It is neither a guaranteed scan ceiling nor a billable-GB estimate. `--limit`
+caps returned lines, not scanned bytes. Execution reports actual processed
+volume when available; missing statistics remain unknown. No automatic query
+splitting or cumulative investigation accounting is performed.
+Raw API passthrough and queries run from Explore links are outside this guard.
+
+Sources: [Loki index statistics](https://grafana.com/docs/loki/latest/reference/loki-http-api/#query-log-statistics),
+[Loki query best practices](https://grafana.com/docs/loki/latest/query/bp-query/),
+[Grafana Cloud Logs pricing](https://grafana.com/docs/grafana-cloud/platform/pricing-and-usage/logs/).

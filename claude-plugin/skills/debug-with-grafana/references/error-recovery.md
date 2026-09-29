@@ -63,6 +63,17 @@ labels. Labels aggregated away cannot establish the requested scope. A rejected
 raw selector is not proof the metric is absent. If requested and returned
 resolution differ, report actual coverage; do not assume which layer caused it.
 
+## Loki scan approval required
+
+For a known large estimate, narrow the time window or indexed labels, or obtain
+user approval before adding `--yes`. For unsupported expressions, explain the
+limitation: narrowing the time range or repeating `--estimate-scan` cannot fix
+unsupported syntax. Simplify to a supported single-selector expression or obtain
+consent before `--approve-unknown-scan`. Single-selector metric estimates include
+the lookback and positive offset. For unavailable or malformed index statistics,
+resolve that failure before retrying `--estimate-scan`, or obtain unknown-volume
+consent. Do not automatically add approval flags or divide queries to evade the gate.
+
 ## Timeout, rate limit, or server failure
 
 Narrow time and indexed selectors, reuse a recording rule, or reduce resolution

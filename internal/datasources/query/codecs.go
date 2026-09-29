@@ -32,6 +32,8 @@ func (c *queryTableCodec) Format() format.Format {
 
 func (c *queryTableCodec) Encode(w io.Writer, data any) error {
 	switch resp := data.(type) {
+	case *loki.ScanEstimate:
+		return loki.FormatScanEstimate(w, resp)
 	case *prometheus.QueryResponse:
 		return prometheus.FormatTable(w, resp)
 	case *loki.QueryResponse:
@@ -95,6 +97,8 @@ func (c *queryWideCodec) Format() format.Format {
 
 func (c *queryWideCodec) Encode(w io.Writer, data any) error {
 	switch resp := data.(type) {
+	case *loki.ScanEstimate:
+		return loki.FormatScanEstimate(w, resp)
 	case *prometheus.QueryResponse:
 		return prometheus.FormatWideTable(w, resp)
 	case *loki.QueryResponse:

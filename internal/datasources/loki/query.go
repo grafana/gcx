@@ -15,6 +15,7 @@ import (
 func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
 	shared := &dsquery.SharedOpts{}
 	share := &dsquery.ExploreLinkOpts{}
+	scan := &ScanOpts{}
 	var limit int
 	var datasource string
 
@@ -31,25 +32,34 @@ bodies or -o json for the full structured response.
 
 Default --limit is 50; use --limit 0 for no cap.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
-open it in your browser after the query succeeds.`,
+open it in your browser after the query succeeds.
+
+Loki scans are estimated before execution. Above 10GB, interactive queries
+prompt for approval; noninteractive queries require --yes. Use --estimate-scan to inspect
+volume without executing. Unknown volume requires --approve-unknown-scan.
+--limit caps returned lines, not bytes scanned.`,
 		Example: `
   # Query logs using configured default datasource
-  gcx datasources loki query '{job="varlogs"}'
+  gcx datasources loki query '{job="varlogs"}' --since 5m
 
   # Query with explicit datasource UID
-  gcx datasources loki query -d UID '{job="varlogs"} |= "error"'
+  gcx datasources loki query -d UID '{job="varlogs"} |= "error"' --since 5m
 
   # Print a Grafana Explore share link for the query
-  gcx datasources loki query '{job="varlogs"}' --share-link
+  gcx datasources loki query '{job="varlogs"}' --since 5m --share-link
 
   # Raw line bodies only
-  gcx datasources loki query -d UID '{job="varlogs"}' -o raw
+  gcx datasources loki query -d UID '{job="varlogs"}' --since 5m -o raw
 
   # Output as JSON
-  gcx datasources loki query -d UID '{job="varlogs"}' -o json`,
+  gcx datasources loki query -d UID '{job="varlogs"}' --since 5m -o json`,
 		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := shared.Validate(); err != nil {
+				return err
+			}
+
+			if err := scan.Validate(shared.IO.OutputFormat); err != nil {
 				return err
 			}
 
@@ -90,10 +100,14 @@ open it in your browser after the query succeeds.`,
 				Limit: limit,
 			}
 
-			resp, err := client.Query(ctx, datasourceUID, req)
+			resp, err := scan.Run(ctx, client, datasourceUID, req, false, cmd.InOrStdin(), cmd.ErrOrStderr())
 			if err != nil {
 				return fmt.Errorf("query failed: %w", err)
 			}
+			if scan.Estimate {
+				return shared.IO.Encode(cmd.OutOrStdout(), resp)
+			}
+
 			exploreURL := LogsExploreURL(cfg.GrafanaURL, dsquery.ExploreQuery{
 				DatasourceUID:  datasourceUID,
 				DatasourceType: dsType,
@@ -125,7 +139,7 @@ open it in your browser after the query succeeds.`,
 
 	cmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "medium",
-		agent.AnnotationLLMHint:   `gcx datasources loki query -d UID '{job="grafana"}' -o json`,
+		agent.AnnotationLLMHint:   `gcx datasources loki query -d UID '{job="grafana"}' --since 5m --estimate-scan -o json; obtain user approval before adding scan approval flags.`,
 	}
 
 	dsquery.RegisterCodecs(&shared.IO, false)
@@ -137,6 +151,7 @@ open it in your browser after the query succeeds.`,
 	shared.SetupExprFlag(cmd.Flags())
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.loki is configured)")
 	cmd.Flags().IntVar(&limit, "limit", dsquery.DefaultLokiLimit, "Maximum number of log lines to return (0 means no limit)")
+	scan.Setup(cmd.Flags())
 	share.Setup(cmd.Flags(), "executed query")
 
 	return cmd

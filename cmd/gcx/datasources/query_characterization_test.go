@@ -13,6 +13,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -40,6 +41,7 @@ type fakeGrafana struct {
 	failDatasourceGetAfter int
 	queryStatus            int
 
+	scanBytes      int64
 	mu             sync.Mutex
 	datasourceGets int
 	postPath       string
@@ -57,6 +59,9 @@ func (f *fakeGrafana) start() *httptest.Server {
 
 func (f *fakeGrafana) serve(w http.ResponseWriter, r *http.Request) {
 	switch {
+	case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/resources/index/stats"):
+		_, _ = fmt.Fprintf(w, `{"bytes":%d}`, f.scanBytes)
+		return
 	case r.Method == http.MethodGet && r.URL.Path == "/bootdata":
 		http.NotFound(w, r)
 
@@ -548,4 +553,47 @@ func decodeNext(dec *json.Decoder, v any) error {
 	}
 
 	return errors.New("a second JSON value was present")
+}
+
+func TestGenericLokiScanGuard(t *testing.T) {
+	for _, tt := range []struct {
+		name      string
+		expr      string
+		scanBytes int64
+		flags     []string
+		wantPost  bool
+		wantError bool
+	}{
+		{name: "metric below", expr: `sum(count_over_time({app="test"}[5m]))`, scanBytes: 123, wantPost: true},
+		{name: "metric estimate", expr: `sum(count_over_time({app="test"}[5m]))`, flags: []string{"--estimate-scan"}},
+		{name: "metric above", expr: `count_over_time({app="test"}[5m])`, wantError: true},
+		{name: "metric approved", expr: `count_over_time({app="test"}[5m])`, flags: []string{"--yes"}, wantPost: true},
+		{name: "multi selector unknown", expr: `rate({app="test"}[5m])+rate({app="other"}[5m])`, flags: []string{"--yes"}, wantError: true},
+		{name: "blocked", wantError: true},
+		{name: "estimate", flags: []string{"--estimate-scan"}},
+		{name: "approved", flags: []string{"--yes"}, wantPost: true},
+		{name: "yes false", flags: []string{"--yes=false"}, wantError: true},
+		{name: "unknown does not bypass", flags: []string{"--approve-unknown-scan"}, wantError: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			scanBytes := tt.scanBytes
+			if scanBytes == 0 {
+				scanBytes = 25_000_000_000
+			}
+			f := &fakeGrafana{t: t, dsType: "loki", scanBytes: scanBytes}
+			expr := tt.expr
+			if expr == "" {
+				expr = `{app="test"}`
+			}
+			args := []string{"query", "uid", expr, "--since=1h", "-o=json"}
+			_, err := runGeneric(t, f, append(args, tt.flags...)...)
+			if tt.wantError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+			_, body := f.seenPost()
+			assert.Equal(t, tt.wantPost, body != nil)
+		})
+	}
 }

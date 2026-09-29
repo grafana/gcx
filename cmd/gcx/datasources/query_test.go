@@ -56,6 +56,9 @@ func newQueryCaptureServer(t *testing.T, datasourceType string, capture func(str
 
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/resources/index/stats"):
+			_, _ = w.Write([]byte(`{"bytes":1000}`))
+			return
 		case r.Method == http.MethodGet && r.URL.Path == "/bootdata":
 			http.NotFound(w, r)
 			return

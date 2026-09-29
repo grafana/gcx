@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"time"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/httputils"
@@ -89,6 +90,10 @@ func (c *Client) buildQueryBody(datasourceUID string, req QueryRequest, includeM
 		from = "now-1m"
 		to = "now"
 		query["instant"] = true
+		if !req.EvaluationTime.IsZero() {
+			from = strconv.FormatInt(req.EvaluationTime.Add(-time.Minute).UnixMilli(), 10)
+			to = strconv.FormatInt(req.EvaluationTime.UnixMilli(), 10)
+		}
 	}
 
 	if includeMaxLines && req.Limit > 0 {
@@ -267,17 +272,9 @@ func convertGrafanaResponse(grafanaResp *GrafanaQueryResponse) *QueryResponse {
 	for _, frame := range grafanaResult.Frames {
 		// Extract stats and notices from frame metadata
 		if frame.Schema.Meta != nil {
-			frameStats := extractStats(frame.Schema.Meta.Stats)
-			if frameStats != nil {
-				if result.Data.Stats == nil {
-					result.Data.Stats = frameStats
-				} else {
-					result.Data.Stats.Summary.BytesProcessedPerSecond += frameStats.Summary.BytesProcessedPerSecond
-					result.Data.Stats.Summary.LinesProcessedPerSecond += frameStats.Summary.LinesProcessedPerSecond
-					result.Data.Stats.Summary.TotalBytesProcessed += frameStats.Summary.TotalBytesProcessed
-					result.Data.Stats.Summary.TotalLinesProcessed += frameStats.Summary.TotalLinesProcessed
-					result.Data.Stats.Summary.ExecTime += frameStats.Summary.ExecTime
-				}
+			// Grafana repeats query-wide statistics on frames; never sum them.
+			if result.Data.Stats == nil {
+				result.Data.Stats = extractStats(frame.Schema.Meta.Stats)
 			}
 			result.Data.Notices = append(result.Data.Notices, frame.Schema.Meta.Notices...)
 		}
@@ -485,6 +482,7 @@ func extractStats(frameStats []FrameStat) *QueryStats {
 	}
 
 	stats := &QueryStats{}
+	hasBytes := false
 	for _, s := range frameStats {
 		switch s.DisplayName {
 		case "Summary: bytes processed per second":
@@ -492,12 +490,16 @@ func extractStats(frameStats []FrameStat) *QueryStats {
 		case "Summary: lines processed per second":
 			stats.Summary.LinesProcessedPerSecond = int64(s.Value)
 		case "Summary: total bytes processed":
+			hasBytes = true
 			stats.Summary.TotalBytesProcessed = int64(s.Value)
 		case "Summary: total lines processed":
 			stats.Summary.TotalLinesProcessed = int64(s.Value)
 		case "Summary: exec time":
 			stats.Summary.ExecTime = s.Value
 		}
+	}
+	if !hasBytes {
+		return nil
 	}
 	return stats
 }
@@ -604,6 +606,9 @@ func convertMetricResponse(grafanaResp *GrafanaQueryResponse) *MetricQueryRespon
 	}
 
 	for _, frame := range grafanaResult.Frames {
+		if result.Data.Stats == nil && frame.Schema.Meta != nil {
+			result.Data.Stats = extractStats(frame.Schema.Meta.Stats)
+		}
 		if len(frame.Schema.Fields) < 2 || len(frame.Data.Values) < 2 {
 			continue
 		}

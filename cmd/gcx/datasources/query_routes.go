@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/grafana/gcx/internal/config"
+	dsloki "github.com/grafana/gcx/internal/datasources/loki"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/query/bigquery"
@@ -62,6 +63,8 @@ type genericQueryRequest struct {
 	// warn is the command's stderr. dispatchPostgres and dispatchPinot write
 	// LIMIT-cap (and, for Pinot, skip) notices here so they stay off stdout.
 	warn io.Writer
+	in   io.Reader
+	scan *dsloki.ScanOpts
 }
 
 // queryDispatch runs the generic form for one kind and returns the value the
@@ -191,13 +194,17 @@ func dispatchLoki(ctx context.Context, req genericQueryRequest) (any, error) {
 		return nil, fmt.Errorf("failed to create client: %w", err)
 	}
 
-	resp, err := client.Query(ctx, req.uid, loki.QueryRequest{
+	scan := req.scan
+	if scan == nil {
+		scan = &dsloki.ScanOpts{}
+	}
+	resp, err := scan.Run(ctx, client, req.uid, loki.QueryRequest{
 		Query: req.expr,
 		Start: req.start,
 		End:   req.end,
 		Step:  req.step,
 		Limit: req.limit,
-	})
+	}, false, req.in, req.warn)
 	if err != nil {
 		return nil, fmt.Errorf("query failed: %w", err)
 	}
