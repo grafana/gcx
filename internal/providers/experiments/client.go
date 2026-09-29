@@ -183,12 +183,63 @@ func (c *Client) Create(ctx context.Context, manifest []byte) (Experiment, error
 	return created, nil
 }
 
+// Update replaces one Experiment through Odin's app plugin. The manifest must
+// include the current resourceVersion so Odin can reject stale writes.
+func (c *Client) Update(ctx context.Context, name string, manifest []byte) (Experiment, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, c.host+listPath+"/"+url.PathEscape(name), bytes.NewReader(manifest))
+	if err != nil {
+		return nil, fmt.Errorf("build Odin update request: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("update Odin experiment %q: %w", name, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		message := responseErrorMessage(body)
+		if resp.StatusCode == http.StatusNotFound && isOdinExperimentNotFound(body, name) {
+			return nil, fmt.Errorf("odin experiment %q not found", name)
+		}
+		if resp.StatusCode == http.StatusNotFound {
+			return nil, errors.New("odin experiments endpoint returned 404; check that grafana-odin-app is enabled in this Grafana context")
+		}
+		return nil, fmt.Errorf("update Odin experiment %q: HTTP %d: %s", name, resp.StatusCode, message)
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxGetResponseBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("read updated Odin experiment %q: %w", name, err)
+	}
+	if len(body) > maxGetResponseBytes {
+		return nil, fmt.Errorf("updated odin experiment %q response exceeds %d bytes", name, maxGetResponseBytes)
+	}
+	var updated Experiment
+	if err := json.Unmarshal(body, &updated); err != nil {
+		return nil, fmt.Errorf("decode updated Odin experiment %q: %w", name, err)
+	}
+	if updated == nil {
+		return nil, fmt.Errorf("decode updated Odin experiment %q: empty resource", name)
+	}
+	return updated, nil
+}
+
 func responseErrorMessage(body []byte) string {
 	var payload struct {
 		Message string `json:"message"`
+		Error   string `json:"error"`
 	}
-	if json.Unmarshal(body, &payload) == nil && strings.TrimSpace(payload.Message) != "" {
-		return strings.TrimSpace(payload.Message)
+	if json.Unmarshal(body, &payload) == nil {
+		if message := strings.TrimSpace(payload.Message); message != "" {
+			return message
+		}
+		if message := strings.TrimSpace(payload.Error); message != "" {
+			return message
+		}
 	}
 	if message := strings.TrimSpace(string(body)); message != "" {
 		return message

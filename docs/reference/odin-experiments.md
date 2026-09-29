@@ -36,3 +36,21 @@ sample and does not validate or create anything.
 - A create fails if the name already exists; it never updates an experiment.
 
 See the [CLI reference](cli/gcx_experiments_create.md) for flags and examples.
+
+## Update an existing experiment
+
+`gcx experiments update <name> -f FILE` replaces the stored experiment with
+the complete YAML or JSON resource. Use `-f -` to read from stdin. Start with
+`gcx experiments get` so the document includes the current namespace, UID, and
+resource version:
+
+```sh
+gcx experiments get checkout-conversion -o json \
+  | jq '.spec.title = "New title"' \
+  | gcx experiments update checkout-conversion -f - -o json
+```
+
+Keep unrelated fields in the document. Odin checks `metadata.resourceVersion`
+and rejects stale edits with HTTP 409; run `get` again before retrying. The
+command returns the full updated resource, including its new resource version.
+See the [update CLI reference](cli/gcx_experiments_update.md) for flags and examples.

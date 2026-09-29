@@ -269,6 +269,7 @@
  "gcx experiments create": "finite",
  "gcx experiments get": "finite",
  "gcx experiments list": "finite",
+ "gcx experiments update": "finite",
  "gcx fleet collectors create": "finite",
  "gcx fleet collectors delete": "finite",
  "gcx fleet collectors get": "finite",

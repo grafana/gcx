@@ -6,7 +6,7 @@
 
 This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
 
-List, get, and create experiments through the Odin app plugin on the selected Grafana instance.
+List, get, create, and update experiments through the Odin app plugin on the selected Grafana instance.
 
 ### Options
 
@@ -32,4 +32,5 @@ List, get, and create experiments through the Odin app plugin on the selected Gr
 * [gcx experiments create](gcx_experiments_create.md)	 - [experimental] Create an Odin experiment from a manifest.
 * [gcx experiments get](gcx_experiments_get.md)	 - [experimental] Get one Odin experiment.
 * [gcx experiments list](gcx_experiments_list.md)	 - [experimental] List Odin experiments.
+* [gcx experiments update](gcx_experiments_update.md)	 - [experimental] Update an Odin experiment from a manifest.
 
