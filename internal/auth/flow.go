@@ -90,7 +90,36 @@ type Options struct {
 	// Reader supplies the pasted redirect URL in manual mode.
 	// Defaults to os.Stdin.
 	Reader io.Reader
+
+	// LaunchOrigin is the Grafana Cloud portal origin (scheme and host) that
+	// serves the stack launcher when no stack endpoint is known yet. Empty
+	// means https://grafana.com. It must be a trusted Grafana Cloud origin.
+	LaunchOrigin string
+
+	// Signup opens the Grafana Cloud account creation page first, for a person
+	// who has no account yet. That page returns to the stack launcher once the
+	// account and its first stack exist, and the launcher signs the browser in
+	// to the stack before its consent page. A browser already signed in, with a
+	// confirmed email, skips the form and goes straight to the launcher. It
+	// applies only when no stack endpoint is known.
+	Signup bool
+
+	// ManualCommand, when set, is the exact command that the remote session
+	// hint tells the user to run for the manual flow. It applies only when no
+	// stack endpoint is known. Empty selects gcx login --cloud --oauth-manual.
+	ManualCommand string
+
+	// ReopenOnEnter lets the user press Enter in the terminal to open the
+	// login page again while gcx waits, for example after the browser lost it
+	// during signup. It applies only when no stack endpoint is known, and only
+	// in a local terminal session: over SSH the paste watcher owns the
+	// terminal.
+	ReopenOnEnter bool
 }
+
+// openBrowser opens a URL in the user's browser. It is a variable so tests can
+// count the opens without starting a real browser.
+var openBrowser = deeplink.OpenWithStatus //nolint:gochecknoglobals // test seam
 
 // Flow manages the browser-based authentication process.
 type Flow struct {
@@ -121,6 +150,11 @@ func NewFlow(endpoint string, opts Options) *Flow {
 
 // Run executes the authentication flow.
 func (f *Flow) Run(ctx context.Context) (*Result, error) {
+	if f.opts.LaunchOrigin != "" && f.endpoint == "" {
+		if err := ValidateLaunchOrigin(f.opts.LaunchOrigin); err != nil {
+			return nil, err
+		}
+	}
 	if f.opts.Manual {
 		if f.opts.Port != 0 {
 			return nil, errors.New("manual OAuth does not use a callback port")
@@ -139,10 +173,10 @@ func (f *Flow) runManual(ctx context.Context) (*Result, error) {
 		return nil, err
 	}
 
-	authURL := f.buildAuthURL(manualCallbackPort, state, codeChallenge)
+	authURL := f.buildEntryURL(f.buildAuthURL(manualCallbackPort, state, codeChallenge))
 	// No callback server runs here, so no route can race the paste. A nil guard
 	// always grants the claim.
-	return runManualPaste(ctx, f.writer, f.reader, authURL, verificationCode(codeChallenge),
+	return runManualPaste(ctx, f.writer, f.reader, authURL, f.launcherBrowserStep(), verificationCode(codeChallenge),
 		func(q url.Values) (*Result, *callbackError) {
 			return handleCallbackParams(ctx, q, state, codeVerifier, nil)
 		})
@@ -177,54 +211,212 @@ func (f *Flow) runWithCallbackServer(ctx context.Context) (*Result, error) {
 	}()
 
 	authURL := f.buildAuthURL(port, state, codeChallenge)
+	entryURL := f.buildEntryURL(authURL)
+	code := verificationCode(codeChallenge)
 
 	fmt.Fprintln(f.writer, "Opening browser to authenticate...")
-	fmt.Fprintf(f.writer, "If browser doesn't open, visit:\n  %s\n\n", authURL)
+	fmt.Fprintf(f.writer, "If browser doesn't open, visit:\n  %s\n\n", entryURL)
 
-	fmt.Fprintf(f.writer, "Verification code: %s\n", verificationCode(codeChallenge))
+	fmt.Fprintf(f.writer, "Verification code: %s\n", code)
 	fmt.Fprintln(f.writer, "Check that this code matches what is shown in the browser before approving.")
 	fmt.Fprintln(f.writer)
 
-	if opened, err := deeplink.OpenWithStatus(authURL); err != nil {
+	if opened, err := openBrowser(entryURL); err != nil {
 		fmt.Fprintln(f.writer, "(Could not open browser automatically)")
 	} else if !opened {
-		fmt.Fprintln(f.writer, "(Browser launch skipped in agent mode — open the URL above manually)")
+		fmt.Fprintln(f.writer, "(Browser launch skipped in agent mode; open the URL above manually)")
 	}
+
+	f.printLauncherSteps()
 
 	// Over SSH the browser cannot reach the callback address. Accept a pasted
 	// redirect URL alongside the callback so the user never has to restart.
 	paste := startPasteWatcher(f.writer, port)
+	if paste == nil && f.opts.ReopenOnEnter && f.endpoint == "" {
+		paste = startReopenWatcher(f.writer)
+	}
 	defer paste.Close()
-	if paste == nil {
-		printRemoteSessionHint(f.writer, port, "gcx login --oauth-manual")
+	switch {
+	case paste == nil:
+		manualCommand := "gcx login --oauth-manual"
+		switch {
+		case f.endpoint == "" && f.opts.ManualCommand != "":
+			manualCommand = f.opts.ManualCommand
+		case f.endpoint == "":
+			// Without --cloud a rerun with no server has no launcher to go to.
+			manualCommand = "gcx login --cloud --oauth-manual"
+		}
+		printRemoteSessionHint(f.writer, port, manualCommand)
 		fmt.Fprintln(f.writer, "Waiting for authentication...")
+		if f.endpoint == "" {
+			// No Enter shortcut here (agent mode, a non-interactive run, or
+			// no terminal gcx can watch, as on Windows), but the printed URL
+			// recovers a lost page just as well.
+			fmt.Fprintln(f.writer, "If you lose the page, open the URL above again. Press Ctrl-C to cancel.")
+		}
+	case paste.reopen:
+		fmt.Fprintln(f.writer, "gcx is waiting. If you lose the page, press Enter to open it again. Press Ctrl-C to cancel.")
 	}
 
-	return awaitCallbackOrPaste(ctx, f.writer, paste, resultCh, errCh,
+	// Reopening goes to the launcher (for a signup, through the stack sign-in
+	// route), never to the signup page: by the time a page is lost the
+	// account usually exists, and the launcher takes a signed-in user to their
+	// stacks. The URL carries the same state, challenge and port, so every
+	// open tab stays valid.
+	var lastReopen time.Time
+	reopen := func() {
+		// A claimed guard means the callback arrived and its token exchange
+		// is running, so a new consent tab could only end on 410 Gone.
+		if guard.taken.Load() || ctx.Err() != nil {
+			return
+		}
+		// Repeated Enter presses open one tab, not one per press.
+		if time.Since(lastReopen) < reopenDebounce {
+			return
+		}
+		lastReopen = time.Now()
+		fmt.Fprintf(f.writer, "\nOpening the login page again:\n  %s\nVerification code: %s\n", authURL, code)
+		if _, err := openBrowser(authURL); err != nil {
+			fmt.Fprintln(f.writer, "(Could not open browser automatically)")
+		}
+	}
+
+	return awaitCallbackOrPaste(ctx, f.writer, paste, reopen, resultCh, errCh,
 		func(q url.Values) (*Result, *callbackError) {
 			return handleCallbackParams(ctx, q, state, codeVerifier, guard)
 		})
 }
 
+// reopenDebounce is the shortest interval between two reopened login pages.
+const reopenDebounce = 2 * time.Second
+
+// printLauncherSteps says what the browser asks for when no stack endpoint is
+// known, because the signup detour can take several minutes and several pages.
+// The sign-up page sends a browser that is already signed in, with a confirmed
+// email, on to the launcher, so the signup steps name what that browser shows.
+func (f *Flow) printLauncherSteps() {
+	if f.endpoint != "" {
+		return
+	}
+	if f.opts.Signup {
+		fmt.Fprintln(f.writer, "In the browser:")
+		fmt.Fprintln(f.writer, "  1. Create your Grafana Cloud account and verify your email.")
+		fmt.Fprintln(f.writer, "  2. Create your first stack. It can take a few minutes to start.")
+		fmt.Fprintln(f.writer, "  3. Approve \"Connect gcx\" after checking the verification code.")
+		fmt.Fprintln(f.writer, "If the browser asks you to choose a stack instead, it is already signed in to")
+		fmt.Fprintln(f.writer, "Grafana Cloud. Choose one, then continue with step 3.")
+	} else {
+		fmt.Fprintln(f.writer, "In the browser, sign in to Grafana Cloud, choose a stack, and approve \"Connect gcx\".")
+	}
+	fmt.Fprintln(f.writer)
+}
+
+// launcherBrowserStep is the manual route's version of printLauncherSteps: one
+// numbered step, placed between opening the URL and approving, so the manual
+// instructions read in the order the user acts. It is empty when a stack
+// endpoint is known.
+func (f *Flow) launcherBrowserStep() string {
+	switch {
+	case f.endpoint != "":
+		return ""
+	case f.opts.Signup:
+		return "Create your Grafana Cloud account, verify your email, and create your first stack.\n" +
+			"   The stack can take a few minutes to start.\n" +
+			"   If the browser asks you to choose a stack instead, it is already signed in\n" +
+			"   to Grafana Cloud. Choose one."
+	default:
+		return "Sign in to Grafana Cloud and choose a stack."
+	}
+}
+
+// defaultLaunchOrigin serves the stack launcher when no LaunchOrigin is set.
+const defaultLaunchOrigin = "https://grafana.com"
+
+// launchOrigin returns the Grafana Cloud portal origin for the no-stack path.
+func (f *Flow) launchOrigin() string {
+	if f.opts.LaunchOrigin == "" {
+		return defaultLaunchOrigin
+	}
+	return strings.TrimSuffix(f.opts.LaunchOrigin, "/")
+}
+
+// ValidateLaunchOrigin accepts a trusted Grafana Cloud portal origin that
+// consists of a scheme and host only. Flow.Run checks LaunchOrigin with it
+// before the flow prints or binds anything.
+func ValidateLaunchOrigin(origin string) error {
+	if err := validateGCOMURL(origin); err != nil {
+		return fmt.Errorf("invalid Grafana Cloud URL for the browser login: %w", err)
+	}
+	u, err := url.Parse(origin)
+	if err != nil {
+		return fmt.Errorf("invalid Grafana Cloud URL for the browser login: %w", err)
+	}
+	if u.User != nil || (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" {
+		return fmt.Errorf("invalid Grafana Cloud URL for the browser login: %q must contain only a scheme and host", origin)
+	}
+	return nil
+}
+
 // buildAuthURL renders the plugin consent URL for the given callback port.
+// Without a stack endpoint it renders the Grafana Cloud stack launcher, which
+// forwards the same path and query to the stack the user picks. For a signup
+// the launcher forwards to the stack's sign-in route instead, which then opens
+// the consent page (see launchWithStackSignIn).
 func (f *Flow) buildAuthURL(port int, state, codeChallenge string) string {
-	authEndpoint := strings.TrimSuffix(f.endpoint, "/")
-	if authEndpoint == "" {
-		authEndpoint = "https://grafana.com/launch"
-	}
-
-	authURL := fmt.Sprintf("%s/a/grafana-assistant-app/cli/auth?callback_port=%d&state=%s&code_challenge=%s&code_challenge_method=S256",
-		authEndpoint, port, url.QueryEscape(state), url.QueryEscape(codeChallenge))
-
-	if hostname, err := os.Hostname(); err == nil && hostname != "" {
-		authURL += "&device_name=" + url.QueryEscape(hostname)
-	}
+	consent := fmt.Sprintf("/a/grafana-assistant-app/cli/auth?callback_port=%d&state=%s&code_challenge=%s&code_challenge_method=S256",
+		port, url.QueryEscape(state), url.QueryEscape(codeChallenge))
 
 	if len(f.opts.Scopes) > 0 {
-		authURL += "&scopes=" + url.QueryEscape(strings.Join(f.opts.Scopes, ","))
+		consent += "&scopes=" + url.QueryEscape(strings.Join(f.opts.Scopes, ","))
 	}
 
-	return authURL
+	// The host name comes last: it is the one value gcx does not control, and
+	// on the signup route Grafana may unescape the consent query once more, so
+	// an & or # in it can then only cut the name itself short.
+	if hostname, err := os.Hostname(); err == nil && hostname != "" {
+		consent += "&device_name=" + url.QueryEscape(hostname)
+	}
+
+	endpoint := strings.TrimSuffix(f.endpoint, "/")
+	switch {
+	case endpoint != "":
+		return endpoint + consent
+	case f.opts.Signup:
+		return launchWithStackSignIn(f.launchOrigin(), consent)
+	default:
+		return f.launchOrigin() + "/launch" + consent
+	}
+}
+
+// launchWithStackSignIn returns the launcher URL that sends the browser to
+// stackPath through the chosen stack's set-redirect-and-login route. That is
+// the route grafana.com's own signup uses to land a new user on their stack:
+// it signs the browser in to the stack with the browser's grafana.com
+// session, usually the one the signup just created, then opens stackPath.
+// Without it, the new stack shows its login page first and the person has to
+// click "Sign in with Grafana.com" before the consent page. The launcher keeps
+// the route and query when it forwards to the stack.
+func launchWithStackSignIn(origin, stackPath string) string {
+	return origin + "/launch/set-redirect-and-login?url=" + url.QueryEscape(stackPath)
+}
+
+// buildEntryURL returns the URL that the browser opens first. It is authURL
+// itself, except on the no-stack signup path. There it is the Grafana Cloud
+// account creation page, carrying the launcher path and query as its
+// grafana.com-relative return target: the signup pages keep that target
+// through email verification and first-stack creation, then send the browser
+// to the launcher, which forwards to the new stack's sign-in route and from
+// there to its consent page.
+func (f *Flow) buildEntryURL(authURL string) string {
+	if !f.opts.Signup || f.endpoint != "" {
+		return authURL
+	}
+	u, err := url.Parse(authURL)
+	if err != nil {
+		return authURL
+	}
+	returnTo := u.EscapedPath() + "?" + u.RawQuery
+	return f.launchOrigin() + "/auth/sign-up/create-user?to=" + url.QueryEscape(returnTo)
 }
 
 // newFlowSecrets generates the CSRF state and the PKCE verifier and challenge,
@@ -244,41 +436,95 @@ func newFlowSecrets() (string, string, string, error) {
 }
 
 func (f *Flow) startCallbackServer(ctx context.Context, listener net.Listener, expectedState, codeVerifier string, guard *exchangeGuard, resultCh chan<- *Result, errCh chan<- error) *http.Server {
-	return newCallbackServer(listener, errCh, func(w http.ResponseWriter, r *http.Request) {
+	return newCallbackServer(listener, expectedState, errCh, func(w http.ResponseWriter, r *http.Request) bool {
 		result, cerr := handleCallbackParams(ctx, r.URL.Query(), expectedState, codeVerifier, guard)
 		if cerr != nil {
-			if errors.Is(cerr.err, errExchangeClaimed) {
-				// The paste route won the race, and the login is complete. Do
-				// not send to errCh: that would end a flow that succeeded.
-				renderSuccessPage(w)
-				return
-			}
-			errCh <- cerr.err
-			renderErrorPage(w, cerr.page)
-			return
+			return answerCallbackError(w, f.writer, cerr, errCh)
 		}
 
 		resultCh <- result
-		renderSuccessPage(w)
+		renderSuccessPage(w, stackLink(result.InstanceEndpoint))
+		return true
 	})
 }
 
+// foreignCallbackMessage is shown in the browser for a callback that does not
+// belong to the login waiting in the terminal. It names the likely cause
+// instead of an attack, and says the waiting login is unaffected, because it is.
+const foreignCallbackMessage = "This page does not belong to the login waiting in your terminal, so gcx ignored it. " +
+	"It is most likely from an earlier login attempt. " +
+	"The waiting login is still running: finish it from the page it opened, " +
+	"or press Ctrl-C in the terminal and run the command again."
+
+// incompleteCallbackMessage is shown in the browser for a callback of the
+// waiting login that lacks what the token exchange needs. The %s names what is
+// wrong. The login keeps waiting, so the page says so instead of reporting a
+// failure.
+const incompleteCallbackMessage = "This page is missing part of the login (%s), so gcx ignored it. " +
+	"The login waiting in your terminal is still running: finish it from the page it opened, " +
+	"or press Ctrl-C in the terminal and run the command again."
+
+// answerCallbackError answers a callback that handle rejected and reports
+// whether the rejection ends the login. A retryable rejection spent nothing, so
+// the login keeps waiting for the real callback. It still says so in the
+// terminal on out: when the consent page itself sends the incomplete callback,
+// every attempt fails the same way, and a silent wait would hide why.
+func answerCallbackError(w http.ResponseWriter, out io.Writer, cerr *callbackError, errCh chan<- error) bool {
+	switch {
+	case errors.Is(cerr.err, errExchangeClaimed):
+		// The paste route won the race, and the login is complete. Do not send
+		// to errCh: that would end a flow that succeeded.
+		renderSuccessPage(w, nil)
+		return true
+	case cerr.retryable:
+		fmt.Fprintf(out, "\nThe browser sent this login's callback without what gcx needs (%s), so gcx ignored it and is still waiting. "+
+			"If this happens again, press Ctrl-C and report it.\n", cerr.page)
+		renderNoticePage(w, http.StatusBadRequest, "Nothing to do here", fmt.Sprintf(incompleteCallbackMessage, cerr.page))
+		return false
+	default:
+		errCh <- cerr.err
+		renderCallbackFailure(w, cerr)
+		return true
+	}
+}
+
 // newCallbackServer binds a single-use /callback handler to listener and starts
-// serving in a goroutine. handle runs at most once; replayed callbacks get 410
-// Gone. Serve errors are reported on errCh.
-func newCallbackServer(listener net.Listener, errCh chan<- error, handle http.HandlerFunc) *http.Server {
-	var once sync.Once
+// serving in a goroutine. Serve errors are reported on errCh.
+//
+// Only a GET that carries expectedState may run handle. handle reports whether
+// the request ended the login; once one has, a replayed callback gets 410 Gone.
+// Anything else is answered and ignored, so it cannot end the login: every
+// local process can reach the loopback listener, and a tab from an earlier
+// attempt lands on the same port when the new attempt picks it again.
+//
+// Requests run handle one at a time, so a second callback waits for the token
+// exchange of the first and then sees whether it ended the login.
+func newCallbackServer(listener net.Listener, expectedState string, errCh chan<- error, handle func(http.ResponseWriter, *http.Request) bool) *http.Server {
+	var mu sync.Mutex
+	consumed := false
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
-		handled := false
-		once.Do(func() {
-			handled = true
-			handle(w, r)
-		})
-		if !handled {
-			http.Error(w, "Authentication already processed", http.StatusGone)
+		// An explicit check, not a "GET /callback" ServeMux pattern: that
+		// pattern also matches HEAD, which would let a HEAD request run the
+		// token exchange as a side effect.
+		if r.Method != http.MethodGet {
+			w.Header().Set("Allow", http.MethodGet)
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
 		}
+		if !callbackBelongsToFlow(r.URL.Query(), expectedState) {
+			renderNoticePage(w, http.StatusBadRequest, "Nothing to do here", foreignCallbackMessage)
+			return
+		}
+
+		mu.Lock()
+		defer mu.Unlock()
+		if consumed {
+			http.Error(w, "Authentication already processed", http.StatusGone)
+			return
+		}
+		consumed = handle(w, r)
 	})
 
 	server := &http.Server{
@@ -323,13 +569,22 @@ func ValidateEndpointURL(endpoint string) error {
 		return fmt.Errorf("endpoint must use HTTPS, got %q", u.Scheme)
 	}
 
-	for _, suffix := range allowedDomainSuffixes {
-		if strings.HasSuffix(hostname, suffix) {
-			return nil
-		}
+	if hasTrustedDomainSuffix(hostname) {
+		return nil
 	}
 
 	return fmt.Errorf("endpoint host %q is not a trusted Grafana domain", hostname)
+}
+
+// hasTrustedDomainSuffix reports whether hostname is on a Grafana Cloud stack
+// domain (allowedDomainSuffixes).
+func hasTrustedDomainSuffix(hostname string) bool {
+	for _, suffix := range allowedDomainSuffixes {
+		if strings.HasSuffix(hostname, suffix) {
+			return true
+		}
+	}
+	return false
 }
 
 var allowedGCOMHosts = []string{ //nolint:gochecknoglobals
@@ -366,6 +621,19 @@ func validateGCOMURL(rawURL string) error {
 	}
 
 	return fmt.Errorf("URL host %q is not a trusted Grafana Cloud domain", hostname)
+}
+
+// ExchangeStatusError reports a token exchange that the Grafana Cloud backend
+// answered with a status other than 200. The response body is never included:
+// it may echo request data. The authorization code is spent either way, so
+// recovery always means a new login.
+type ExchangeStatusError struct {
+	StatusCode int
+	Path       string
+}
+
+func (e *ExchangeStatusError) Error() string {
+	return fmt.Sprintf("oauth token exchange failed: status %d from %s", e.StatusCode, e.Path)
 }
 
 type exchangeResponse struct {
@@ -423,7 +691,7 @@ func exchangeCodeForToken(ctx context.Context, endpoint, code, codeVerifier stri
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("oauth token exchange failed: status %d from %s", resp.StatusCode, req.URL.Path)
+		return nil, &ExchangeStatusError{StatusCode: resp.StatusCode, Path: req.URL.Path}
 	}
 
 	var result exchangeResponse
@@ -504,14 +772,59 @@ func StripControlChars(s string) string {
 	}, s)
 }
 
-func renderSuccessPage(w http.ResponseWriter) {
+// renderSuccessPage answers the callback that delivered the credential. It
+// claims only the browser step: gcx still validates the connection and saves
+// it afterwards, and either can fail, so the terminal reports the result.
+// The consent page sent this tab away from the stack, so a stack (from
+// stackLink) adds a link back to it.
+func renderSuccessPage(w http.ResponseWriter, stack *url.URL) {
 	tmpl := template.Must(template.ParseFS(templateFS, "templates/success.html"))
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	data := struct{ StackURL, StackHost string }{}
+	if stack != nil {
+		data.StackURL, data.StackHost = stack.String(), stack.Host
+	}
 	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, nil); err != nil {
+	if err := tmpl.Execute(&buf, data); err != nil {
 		http.Error(w, "Internal error", http.StatusInternalServerError)
 		return
 	}
+	_, _ = w.Write(buf.Bytes())
+}
+
+// stackLink returns the origin of the stack whose consent page sent the
+// callback, for the success page's link back to it. It returns nil unless the
+// endpoint is an https URL on a trusted Grafana domain. ValidateEndpointURL is
+// not enough here: it also admits local addresses.
+func stackLink(instanceEndpoint string) *url.URL {
+	u, err := url.Parse(instanceEndpoint)
+	if err != nil || u.Scheme != "https" || u.User != nil || !hasTrustedDomainSuffix(u.Hostname()) {
+		return nil
+	}
+	return &url.URL{Scheme: u.Scheme, Host: u.Host}
+}
+
+// renderCallbackFailure answers a callback that ended the login without a
+// token. A cancellation is the user's own choice, so it gets a neutral page
+// rather than the failure page.
+func renderCallbackFailure(w http.ResponseWriter, cerr *callbackError) {
+	if errors.Is(cerr.err, ErrBrowserCancelled) {
+		renderNoticePage(w, http.StatusOK, "Login cancelled", "gcx stopped waiting for this login. The terminal says what to do next.")
+		return
+	}
+	renderErrorPage(w, cerr.page)
+}
+
+func renderNoticePage(w http.ResponseWriter, status int, title, message string) {
+	tmpl := template.Must(template.ParseFS(templateFS, "templates/notice.html"))
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	data := struct{ Title, Message string }{Title: title, Message: message}
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(status)
 	_, _ = w.Write(buf.Bytes())
 }
 
