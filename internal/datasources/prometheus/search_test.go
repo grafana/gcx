@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -433,7 +434,7 @@ func TestSearchLabelNamesCmd_MetricAndRegexMutuallyExclusive(t *testing.T) {
 	assert.Empty(t, path, "no request should be made when --metric and --metric-regex are both set")
 }
 
-func TestSearchLabelNamesCmd_RequiresTermUnlessMetricScopeGiven(t *testing.T) {
+func TestSearchLabelNamesCmd_RequiresTermUnlessScopeGiven(t *testing.T) {
 	tests := []struct {
 		name    string
 		args    []string
@@ -442,6 +443,7 @@ func TestSearchLabelNamesCmd_RequiresTermUnlessMetricScopeGiven(t *testing.T) {
 		{name: "no term, no scope: error", args: []string{"search-label-names", "-d", "prom-uid"}, wantErr: true},
 		{name: "no term, --metric: ok", args: []string{"search-label-names", "-d", "prom-uid", "--metric", "up"}, wantErr: false},
 		{name: "no term, --metric-regex: ok", args: []string{"search-label-names", "-d", "prom-uid", "--metric-regex", "up.*"}, wantErr: false},
+		{name: "no term, --match: ok", args: []string{"search-label-names", "-d", "prom-uid", "--match", `{job="api"}`}, wantErr: false},
 	}
 
 	for _, tc := range tests {
@@ -470,15 +472,104 @@ func TestSearchLabelNamesCmd_NoTermFallsBackToAlphaSort(t *testing.T) {
 	assert.Equal(t, "alpha", query.Get("sort_by"), "sort_by=score requires a term; omitting TERM should fall back to alpha")
 }
 
-func TestSearchLabelNamesCmd_ExplicitScoreSortWithoutTermIsRespected(t *testing.T) {
+// TestSearchCmds_RejectBeforeAnyRequest proves inputs that would widen the
+// search, or that both servers always reject, fail in gcx before any request
+// is sent. An empty TERM matters most: Prometheus treats it as no filter and
+// returns every name.
+func TestSearchCmds_RejectBeforeAnyRequest(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr string
+	}{
+		{name: "metric-names: empty TERM", args: []string{"search-metric-names", ""}, wantErr: `invalid TERM ""`},
+		{name: "metric-names: blank TERM", args: []string{"search-metric-names", "  "}, wantErr: `invalid TERM "  ": value is empty or blank`},
+		{name: "metric-names: empty TERM among others", args: []string{"search-metric-names", "up", ""}, wantErr: `invalid TERM ""`},
+		{name: "label-names: empty TERM", args: []string{"search-label-names", ""}, wantErr: `invalid TERM ""`},
+		{name: "label-values: empty TERM", args: []string{"search-label-values", "job", ""}, wantErr: `invalid TERM ""`},
+		{name: "label-values: blank LABEL", args: []string{"search-label-values", " "}, wantErr: "invalid LABEL: value is empty or blank"},
+		{name: "explicit --sort-by=score without TERM", args: []string{"search-label-names", "--metric", "up", "--sort-by", "score"}, wantErr: "--sort-by=score requires a search TERM"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			root, _, captured := newSearchTestRoot(t, `{"status":"success","has_more":false}`+"\n")
+			root.SetArgs(append(tc.args, "-d", "prom-uid"))
+
+			err := root.Execute()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.wantErr)
+
+			path, _ := captured()
+			assert.Empty(t, path, "no request may be sent")
+		})
+	}
+}
+
+// TestSearchLabelNamesCmd_MatchAloneScopes proves --match on its own is an
+// accepted scope, like --metric, and reaches the request unchanged.
+func TestSearchLabelNamesCmd_MatchAloneScopes(t *testing.T) {
 	ndjson := strings.Join([]string{`{"results":[]}`, `{"status":"success","has_more":false}`}, "\n") + "\n"
 
 	root, _, captured := newSearchTestRoot(t, ndjson)
-	root.SetArgs([]string{"search-label-names", "-d", "prom-uid", "--metric", "up", "--sort-by", "score"})
+	root.SetArgs([]string{"search-label-names", "-d", "prom-uid", "--match", `{job="api"}`})
 	require.NoError(t, root.Execute())
 
 	_, query := captured()
-	assert.Equal(t, "score", query.Get("sort_by"), "an explicit --sort-by=score must not be silently overridden")
+	assert.Equal(t, []string{`{job="api"}`}, query["match[]"])
+	assert.Equal(t, "alpha", query.Get("sort_by"))
+	assert.False(t, query.Has("search[]"))
+}
+
+// TestSearchCmds_TimeRangeReachesRequest proves the time flags reach the
+// request as Unix seconds, and that omitting them sends no range, which
+// leaves the server searching only the last hour.
+func TestSearchCmds_TimeRangeReachesRequest(t *testing.T) {
+	ndjson := strings.Join([]string{`{"results":[]}`, `{"status":"success","has_more":false}`}, "\n") + "\n"
+
+	t.Run("--from and --to", func(t *testing.T) {
+		root, _, captured := newSearchTestRoot(t, ndjson)
+		root.SetArgs([]string{"search-metric-names", "up", "-d", "prom-uid", "--from", "2026-01-01T00:00:00Z", "--to", "2026-01-01T01:00:00Z"})
+		require.NoError(t, root.Execute())
+
+		_, query := captured()
+		assert.Equal(t, "1767225600", query.Get("start"))
+		assert.Equal(t, "1767229200", query.Get("end"))
+	})
+
+	t.Run("--since", func(t *testing.T) {
+		root, _, captured := newSearchTestRoot(t, ndjson)
+		root.SetArgs([]string{"search-label-values", "job", "-d", "prom-uid", "--since", "1h"})
+		require.NoError(t, root.Execute())
+
+		_, query := captured()
+		start, err := strconv.ParseInt(query.Get("start"), 10, 64)
+		require.NoError(t, err)
+		end, err := strconv.ParseInt(query.Get("end"), 10, 64)
+		require.NoError(t, err)
+		assert.Equal(t, int64(3600), end-start)
+	})
+
+	t.Run("no time flags", func(t *testing.T) {
+		root, _, captured := newSearchTestRoot(t, ndjson)
+		root.SetArgs([]string{"search-label-names", "job", "-d", "prom-uid"})
+		require.NoError(t, root.Execute())
+
+		_, query := captured()
+		assert.False(t, query.Has("start"))
+		assert.False(t, query.Has("end"))
+	})
+}
+
+// TestSearchCmds_EmptyResultIsEmptyArray proves a stream with no results
+// encodes "results" as [] rather than null.
+func TestSearchCmds_EmptyResultIsEmptyArray(t *testing.T) {
+	root, stdout, _ := newSearchTestRoot(t, `{"status":"success","has_more":false}`+"\n")
+	root.SetArgs([]string{"search-label-names", "job", "-d", "prom-uid", "-o", "json"})
+	require.NoError(t, root.Execute())
+
+	assert.Contains(t, stdout.String(), `"results": []`)
+	assert.NotContains(t, stdout.String(), "null")
 }
 
 func TestSearchLabelValuesCmd_NoTermAllowedWithMetric(t *testing.T) {

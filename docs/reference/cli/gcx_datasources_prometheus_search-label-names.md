@@ -1,18 +1,24 @@
 ## gcx datasources prometheus search-label-names
 
-Search label names (experimental)
+[experimental] Search label names
 
 ### Synopsis
 
-Search label names from a Prometheus/Mimir datasource. Requires TERM (performs a fuzzy search; multiple TERM values combine as OR), or --metric / --metric-regex to scope by metric name instead.
+This command is experimental. It may be removed, or its subcommands, flags and
+responses may change without following the normal semantic versioning conventions.
+
+Search label names from a Prometheus/Mimir datasource. Requires TERM (performs a fuzzy search; multiple TERM values combine as OR), or a scope instead: --metric, --metric-regex or --match.
 
 sort_by=score (the default) requires a search term — omitting TERM in favor
-of a metric scope falls back to sort_by=alpha unless --sort-by is set
-explicitly.
+of a scope falls back to sort_by=alpha, and an explicit --sort-by=score
+without TERM is rejected.
 
 --metric-regex is used exactly as given — PromQL anchors =~ at ^...$, so
 "kube" matches only a metric literally named "kube", not one containing
 it. Write ".*kube.*" for a contains search.
+
+Without --from/--to or --since, the server searches only the last hour; use
+--since (for example --since 7d) to look further back.
 
 This API is experimental and disabled by default on both self-hosted
 Prometheus (requires --enable-feature=search-api) and self-hosted Mimir
@@ -31,14 +37,20 @@ gcx datasources prometheus search-label-names [TERM...] [flags]
   # Fuzzy search label names (use datasource UID, not name)
   gcx datasources prometheus search-label-names job -d UID
 
-  # Show all label names available on a given metric
+  # Show label names available on a given metric
   gcx datasources prometheus search-label-names -d UID --metric http_requests_total
+
+  # Show label names on series matching a selector
+  gcx datasources prometheus search-label-names -d UID --match '{job="api"}'
 
   # Search for label names on a given metric
   gcx datasources prometheus search-label-names namespace -d UID --metric http_requests_total
 
   # Search for label names across a range of metrics
   gcx datasources prometheus search-label-names namespace -d UID --metric-regex '.*kube.*'
+
+  # Search label names seen in the last 7 days (default: the last hour)
+  gcx datasources prometheus search-label-names job -d UID --since 7d
 
   # Output as JSON
   gcx datasources prometheus search-label-names job -d UID -o json
@@ -51,9 +63,9 @@ gcx datasources prometheus search-label-names [TERM...] [flags]
   -d, --datasource string     Datasource UID (required unless datasources.prometheus is configured)
       --from string           Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
       --fuzz-alg string       Fuzzy match algorithm: jarowinkler or subsequence (default "jarowinkler")
-      --fuzz-threshold int    Minimum fuzzy match score 0-100 (with jarowinkler, 0 disables fuzzy matching, leaving substring matches only) (default 70)
+      --fuzz-threshold int    Minimum fuzzy match score as a percentage, 0-100; scores are reported from 0 to 1. With jarowinkler the threshold applies only to fuzzy matches: substring matches are always kept, and 0 turns fuzzy matching off (default 70)
   -h, --help                  help for search-label-names
-      --include-score         Include each result's relevance score
+      --include-score         Include each result's relevance score (0 to 1; higher is a closer match)
       --jq string             jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string           Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int             Maximum results to return (0: unlimited on Mimir, subject to server-side caps; Prometheus requires a positive value) (default 50)

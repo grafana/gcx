@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"testing"
 
+	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/providers/metrics"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -22,10 +23,10 @@ func TestSearchCommands_Structure(t *testing.T) {
 }
 
 // TestSearchCommands_ExampleOverridesReferenceMetricsPath proves the reused
-// datasources/prometheus commands' Example text was overridden to say
-// "gcx metrics search <name>", not the original "gcx datasources prometheus
-// search-<name>" — otherwise a caller copying the example gets the wrong
-// command.
+// datasources/prometheus commands' Example text and LLM hint were
+// overridden to say "gcx metrics search <name>", not the original
+// "gcx datasources prometheus search-<name>" — otherwise a caller copying
+// the example gets the wrong command.
 func TestSearchCommands_ExampleOverridesReferenceMetricsPath(t *testing.T) {
 	byName := map[string]*cobra.Command{}
 	for _, sub := range metrics.SearchCommands(nil).Commands() {
@@ -37,6 +38,20 @@ func TestSearchCommands_ExampleOverridesReferenceMetricsPath(t *testing.T) {
 		require.True(t, ok, "missing subcommand %q", name)
 		assert.Contains(t, cmd.Example, "gcx metrics search "+name, "Example for %q should reference the metrics search path", name)
 		assert.NotContains(t, cmd.Example, "datasources prometheus", "Example for %q should not reference the datasources path", name)
+		assert.Contains(t, cmd.Annotations[agent.AnnotationLLMHint], "gcx metrics search "+name)
+	}
+}
+
+// TestSearchCommands_Experimental proves the group and every leaf are
+// marked experimental, and that rewriting the leaves' LLM hint keeps the
+// annotations the datasource commands set.
+func TestSearchCommands_Experimental(t *testing.T) {
+	group := metrics.SearchCommands(nil)
+	assert.Equal(t, agent.StabilityExperimental, group.Annotations[agent.AnnotationStability])
+
+	for _, sub := range group.Commands() {
+		assert.Equal(t, agent.StabilityExperimental, sub.Annotations[agent.AnnotationStability], "%q must stay experimental", sub.Name())
+		assert.Equal(t, "small", sub.Annotations[agent.AnnotationTokenCost], "%q must keep its token cost", sub.Name())
 	}
 }
 

@@ -45,7 +45,10 @@ func (opts *labelsOpts) setup(flags *pflag.FlagSet) {
 // narrows. Repeated --match selectors remain a union: the Prometheus API
 // returns results from series matching any match[] parameter.
 func (opts *labelsOpts) selectors() ([]string, error) {
-	return foldMetricNameSelector("metric", opts.Metric, opts.Match)
+	if opts.Metric == "" {
+		return foldNameMatcherSelector("metric", nil, opts.Match)
+	}
+	return foldNameMatcherSelector("metric", newEqualNameMatcher(opts.Metric), opts.Match)
 }
 
 func (opts *labelsOpts) Validate() error {

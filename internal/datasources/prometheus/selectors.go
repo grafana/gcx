@@ -11,18 +11,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// foldMetricNameSelector folds metric into every match selector as an equal
-// __name__ matcher, so metric always narrows. It is a thin wrapper over
-// foldNameMatcherSelector for the labels command's --metric flag, which has
-// no regex counterpart.
-func foldMetricNameSelector(flagName, metric string, match []string) ([]string, error) {
-	var nameMatcher *promlabels.Matcher
-	if metric != "" {
-		nameMatcher = newEqualNameMatcher(metric)
-	}
-	return foldNameMatcherSelector(flagName, nameMatcher, match)
-}
-
 // newEqualNameMatcher builds a __name__="metric" matcher for the labels
 // command's --metric flag and the search commands' --metric flag.
 func newEqualNameMatcher(metric string) *promlabels.Matcher {

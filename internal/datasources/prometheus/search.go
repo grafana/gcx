@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/grafana/gcx/internal/agent"
@@ -19,8 +20,17 @@ import (
 	"github.com/spf13/pflag"
 )
 
-// SearchOpts holds the flags common to all three search subcommands.
-type SearchOpts struct {
+// searchAPINotes documents the server behavior all three search commands
+// share.
+const searchAPINotes = `Without --from/--to or --since, the server searches only the last hour; use
+--since (for example --since 7d) to look further back.
+
+This API is experimental and disabled by default on both self-hosted
+Prometheus (requires --enable-feature=search-api) and self-hosted Mimir
+(requires -querier.experimental-search-api-enabled).`
+
+// searchOpts holds the flags common to all three search subcommands.
+type searchOpts struct {
 	dsquery.TimeRangeOpts
 
 	IO         cmdio.Options
@@ -47,7 +57,7 @@ type SearchOpts struct {
 	IncludeMetadata bool
 }
 
-func (opts *SearchOpts) SetupCommon(flags *pflag.FlagSet, withMetric bool) {
+func (opts *searchOpts) setup(flags *pflag.FlagSet, withMetric bool) {
 	opts.SetupTimeFlags(flags)
 
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.prometheus is configured)")
@@ -58,14 +68,14 @@ func (opts *SearchOpts) SetupCommon(flags *pflag.FlagSet, withMetric bool) {
 	}
 	flags.BoolVar(&opts.CaseSensitive, "case-sensitive", false, "Case-sensitive search term matching (case-insensitive by default)")
 	flags.StringVar(&opts.FuzzAlg, "fuzz-alg", "jarowinkler", "Fuzzy match algorithm: jarowinkler or subsequence")
-	flags.IntVar(&opts.FuzzThreshold, "fuzz-threshold", 70, "Minimum fuzzy match score 0-100 (with jarowinkler, 0 disables fuzzy matching, leaving substring matches only)")
+	flags.IntVar(&opts.FuzzThreshold, "fuzz-threshold", 70, "Minimum fuzzy match score as a percentage, 0-100; scores are reported from 0 to 1. With jarowinkler the threshold applies only to fuzzy matches: substring matches are always kept, and 0 turns fuzzy matching off")
 	flags.StringVar(&opts.SortBy, "sort-by", "score", "Sort by: score (requires a search term) or alpha")
 	flags.StringVar(&opts.SortDir, "sort-dir", "", "Sort direction for --sort-by alpha: asc (default) or dsc")
 	flags.IntVar(&opts.Limit, "limit", 50, "Maximum results to return (0: unlimited on Mimir, subject to server-side caps; Prometheus requires a positive value)")
-	flags.BoolVar(&opts.IncludeScore, "include-score", false, "Include each result's relevance score")
+	flags.BoolVar(&opts.IncludeScore, "include-score", false, "Include each result's relevance score (0 to 1; higher is a closer match)")
 }
 
-func (opts *SearchOpts) Validate() error {
+func (opts *searchOpts) Validate() error {
 	if err := opts.IO.Validate(); err != nil {
 		return err
 	}
@@ -80,8 +90,8 @@ func (opts *SearchOpts) Validate() error {
 	default:
 		return fmt.Errorf(`invalid --sort-dir %q: must be "asc" or "dsc"`, opts.SortDir)
 	}
-	// The --sort-dir/--sort-by=score incompatibility is checked in ToOptions,
-	// not here: ToOptions may downgrade SortBy to "alpha" when no term is
+	// The --sort-dir/--sort-by=score incompatibility is checked in toOptions,
+	// not here: toOptions may downgrade SortBy to "alpha" when no term is
 	// given, and that resolved value — not the raw flag default — is what
 	// determines compatibility.
 	switch opts.FuzzAlg {
@@ -99,11 +109,19 @@ func (opts *SearchOpts) Validate() error {
 	return opts.ValidateTimeRange()
 }
 
-// ToOptions resolves the parsed flags into a prometheus.SearchOptions.
-// SortBy falls back to alpha when no search term is issued and the caller
-// didn't explicitly pass --sort-by; an explicit --sort-by=score with no
-// term is left alone.
-func (opts *SearchOpts) ToOptions(terms []string, sortByExplicit bool) (prometheus.SearchOptions, error) {
+// toOptions resolves the parsed flags and search terms into a
+// prometheus.SearchOptions, rejecting before any I/O the inputs both servers
+// reject. SortBy falls back to alpha when no term is given and --sort-by was
+// not passed explicitly.
+func (opts *searchOpts) toOptions(terms []string, sortByExplicit bool) (prometheus.SearchOptions, error) {
+	for _, term := range terms {
+		// An empty term, typically an unset shell variable, makes Prometheus
+		// drop the filter and return every name instead of failing.
+		if strings.TrimSpace(term) == "" {
+			return prometheus.SearchOptions{}, fmt.Errorf("invalid TERM %q: value is empty or blank (unset shell variable?)", term)
+		}
+	}
+
 	start, end, err := opts.ParseTimeRange(time.Now())
 	if err != nil {
 		return prometheus.SearchOptions{}, err
@@ -120,7 +138,10 @@ func (opts *SearchOpts) ToOptions(terms []string, sortByExplicit bool) (promethe
 	}
 
 	sortBy := opts.SortBy
-	if len(terms) == 0 && sortBy == "score" && !sortByExplicit {
+	if len(terms) == 0 && sortBy == "score" {
+		if sortByExplicit {
+			return prometheus.SearchOptions{}, errors.New("--sort-by=score requires a search TERM; pass a TERM or use --sort-by=alpha")
+		}
 		sortBy = "alpha"
 	}
 	if opts.SortDir != "" && sortBy == "score" {
@@ -132,7 +153,7 @@ func (opts *SearchOpts) ToOptions(terms []string, sortByExplicit bool) (promethe
 		Match:           match,
 		Start:           start,
 		End:             end,
-		CaseSensitive:   new(opts.CaseSensitive),
+		CaseSensitive:   opts.CaseSensitive,
 		FuzzAlg:         opts.FuzzAlg,
 		FuzzThreshold:   opts.FuzzThreshold,
 		SortBy:          sortBy,
@@ -196,20 +217,21 @@ func emitSearchDiagnostics(w io.Writer, warnings []string, meta *cmdio.ListMeta)
 // `label-names`/`label-values` children would not pass the canonical-verb
 // naming gate.
 func SearchMetricNamesCmd(loader *providers.ConfigLoader) *cobra.Command {
-	opts := &SearchOpts{}
+	opts := &searchOpts{}
 
 	cmd := &cobra.Command{
 		Use:   "search-metric-names TERM...",
-		Short: "Search metric names (experimental)",
-		Long: `Search metric names from a Prometheus/Mimir datasource. At least one TERM is required.
+		Short: "[experimental] Search metric names",
+		Long: `This command is experimental. It may be removed, or its subcommands, flags and
+responses may change without following the normal semantic versioning conventions.
+
+Search metric names from a Prometheus/Mimir datasource. At least one TERM is required.
 
 This API allows for metric names to be discovered via a configurable fuzzy search. Multiple TERM values combine as OR.
 
 Search terms can be augmented with matchers for additional filtering of considered series.
 
-This API is experimental and disabled by default on both self-hosted
-Prometheus (requires --enable-feature=search-api) and self-hosted Mimir
-(requires -querier.experimental-search-api-enabled).
+` + searchAPINotes + `
 
 See also the sibling label-name search and label-value search commands.`,
 		Args: cobra.MinimumNArgs(1),
@@ -217,8 +239,11 @@ See also the sibling label-name search and label-value search commands.`,
   # Fuzzy search metric names (use datasource UID, not name)
   gcx datasources prometheus search-metric-names http -d UID
 
+  # Search metric names seen in the last 7 days (default: the last hour)
+  gcx datasources prometheus search-metric-names http -d UID --since 7d
+
   # Refine fuzzy search algorithm
-  gcx datasources prometheus search-metric-names http -d UID --fuzz-alg=subsequence --fuzz-threshold=70
+  gcx datasources prometheus search-metric-names http -d UID --fuzz-alg=subsequence --fuzz-threshold=85
 
   # Limit result sets and control ordering
   gcx datasources prometheus search-metric-names http -d UID --limit=10 --sort-by=alpha
@@ -233,7 +258,7 @@ See also the sibling label-name search and label-value search commands.`,
 				return err
 			}
 
-			searchOptions, err := opts.ToOptions(args, cmd.Flags().Changed("sort-by"))
+			searchOptions, err := opts.toOptions(args, cmd.Flags().Changed("sort-by"))
 			if err != nil {
 				return err
 			}
@@ -260,12 +285,13 @@ See also the sibling label-name search and label-value search commands.`,
 	cmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "small",
 		agent.AnnotationLLMHint:   "gcx datasources prometheus search-metric-names TERM -d UID -o json",
+		agent.AnnotationStability: agent.StabilityExperimental,
 	}
 
 	opts.IO.RegisterCustomCodec("table", &searchMetricNamesTableCodec{includeScore: &opts.IncludeScore, includeMetadata: &opts.IncludeMetadata})
 	opts.IO.DefaultFormat("table")
 	opts.IO.BindFlags(cmd.Flags())
-	opts.SetupCommon(cmd.Flags(), false)
+	opts.setup(cmd.Flags(), false)
 	cmd.Flags().BoolVar(&opts.IncludeMetadata, "include-metadata", false, "Include each result's metric type, help text, and unit (when available)")
 
 	return cmd
@@ -274,24 +300,25 @@ See also the sibling label-name search and label-value search commands.`,
 // SearchLabelNamesCmd returns the `search-label-names` leaf command. See
 // SearchMetricNamesCmd for why this is a flat leaf, not a `search` subgroup.
 func SearchLabelNamesCmd(loader *providers.ConfigLoader) *cobra.Command {
-	opts := &SearchOpts{}
+	opts := &searchOpts{}
 
 	cmd := &cobra.Command{
 		Use:   "search-label-names [TERM...]",
-		Short: "Search label names (experimental)",
-		Long: `Search label names from a Prometheus/Mimir datasource. Requires TERM (performs a fuzzy search; multiple TERM values combine as OR), or --metric / --metric-regex to scope by metric name instead.
+		Short: "[experimental] Search label names",
+		Long: `This command is experimental. It may be removed, or its subcommands, flags and
+responses may change without following the normal semantic versioning conventions.
+
+Search label names from a Prometheus/Mimir datasource. Requires TERM (performs a fuzzy search; multiple TERM values combine as OR), or a scope instead: --metric, --metric-regex or --match.
 
 sort_by=score (the default) requires a search term — omitting TERM in favor
-of a metric scope falls back to sort_by=alpha unless --sort-by is set
-explicitly.
+of a scope falls back to sort_by=alpha, and an explicit --sort-by=score
+without TERM is rejected.
 
 --metric-regex is used exactly as given — PromQL anchors =~ at ^...$, so
 "kube" matches only a metric literally named "kube", not one containing
 it. Write ".*kube.*" for a contains search.
 
-This API is experimental and disabled by default on both self-hosted
-Prometheus (requires --enable-feature=search-api) and self-hosted Mimir
-(requires -querier.experimental-search-api-enabled).
+` + searchAPINotes + `
 
 See also the sibling metric-name search and label-value search commands.`,
 		Args: cobra.ArbitraryArgs,
@@ -299,14 +326,20 @@ See also the sibling metric-name search and label-value search commands.`,
   # Fuzzy search label names (use datasource UID, not name)
   gcx datasources prometheus search-label-names job -d UID
 
-  # Show all label names available on a given metric
+  # Show label names available on a given metric
   gcx datasources prometheus search-label-names -d UID --metric http_requests_total
+
+  # Show label names on series matching a selector
+  gcx datasources prometheus search-label-names -d UID --match '{job="api"}'
 
   # Search for label names on a given metric
   gcx datasources prometheus search-label-names namespace -d UID --metric http_requests_total
 
   # Search for label names across a range of metrics
   gcx datasources prometheus search-label-names namespace -d UID --metric-regex '.*kube.*'
+
+  # Search label names seen in the last 7 days (default: the last hour)
+  gcx datasources prometheus search-label-names job -d UID --since 7d
 
   # Output as JSON
   gcx datasources prometheus search-label-names job -d UID -o json`,
@@ -319,11 +352,11 @@ See also the sibling metric-name search and label-value search commands.`,
 				return err
 			}
 
-			if len(args) == 0 && opts.Metric == "" && opts.MetricRegex == "" {
-				return errors.New("requires TERM, or --metric, or --metric-regex")
+			if len(args) == 0 && opts.Metric == "" && opts.MetricRegex == "" && len(opts.Match) == 0 {
+				return errors.New("requires TERM, or a scope: --metric, --metric-regex or --match")
 			}
 
-			searchOptions, err := opts.ToOptions(args, cmd.Flags().Changed("sort-by"))
+			searchOptions, err := opts.toOptions(args, cmd.Flags().Changed("sort-by"))
 			if err != nil {
 				return err
 			}
@@ -350,12 +383,17 @@ See also the sibling metric-name search and label-value search commands.`,
 	cmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "small",
 		agent.AnnotationLLMHint:   "gcx datasources prometheus search-label-names TERM -d UID -o json",
+		agent.AnnotationStability: agent.StabilityExperimental,
 	}
 
-	opts.IO.RegisterCustomCodec("table", &searchLabelNamesTableCodec{includeScore: &opts.IncludeScore})
+	opts.IO.RegisterCustomCodec("table", &searchValueTableCodec[prometheus.LabelNameResult]{
+		header:       "NAME",
+		row:          func(r prometheus.LabelNameResult) (string, float64) { return r.Name, r.Score },
+		includeScore: &opts.IncludeScore,
+	})
 	opts.IO.DefaultFormat("table")
 	opts.IO.BindFlags(cmd.Flags())
-	opts.SetupCommon(cmd.Flags(), true)
+	opts.setup(cmd.Flags(), true)
 
 	return cmd
 }
@@ -363,38 +401,43 @@ See also the sibling metric-name search and label-value search commands.`,
 // SearchLabelValuesCmd returns the `search-label-values` leaf command. See
 // SearchMetricNamesCmd for why this is a flat leaf, not a `search` subgroup.
 func SearchLabelValuesCmd(loader *providers.ConfigLoader) *cobra.Command {
-	opts := &SearchOpts{}
+	opts := &searchOpts{}
 
 	cmd := &cobra.Command{
 		Use:   "search-label-values LABEL [TERM...]",
-		Short: "Search the values of a label (experimental)",
-		Long: `Search the values of a single label from a Prometheus/Mimir datasource. LABEL is always required; TERM (multiple values combine as OR), --metric, and --metric-regex are all optional and may be combined or omitted — LABEL alone lists every value of that label.
+		Short: "[experimental] Search the values of a label",
+		Long: `This command is experimental. It may be removed, or its subcommands, flags and
+responses may change without following the normal semantic versioning conventions.
+
+Search the values of a single label from a Prometheus/Mimir datasource. LABEL is always required; TERM (multiple values combine as OR), --metric, --metric-regex and --match are all optional and may be combined or omitted — LABEL alone lists that label's values.
 
 sort_by=score (the default) requires a search term — omitting TERM falls
-back to sort_by=alpha unless --sort-by is set explicitly.
+back to sort_by=alpha, and an explicit --sort-by=score without TERM is
+rejected.
 
 --metric-regex is used exactly as given — PromQL anchors =~ at ^...$, so
 "kube" matches only a metric literally named "kube", not one containing
 it. Write ".*kube.*" for a contains search.
 
-This API is experimental and disabled by default on both self-hosted
-Prometheus (requires --enable-feature=search-api) and self-hosted Mimir
-(requires -querier.experimental-search-api-enabled).
+` + searchAPINotes + `
 
 See also the sibling metric-name search and label-name search commands.`,
 		Args: cobra.MinimumNArgs(1),
 		Example: `
-  # List every value of the "job" label (use datasource UID, not name)
+  # List values of the "job" label (use datasource UID, not name)
   gcx datasources prometheus search-label-values job -d UID
 
   # Fuzzy search values of the "job" label
   gcx datasources prometheus search-label-values job pro -d UID
 
-  # List every "job" label value present on a specific metric
+  # List "job" label values present on a specific metric
   gcx datasources prometheus search-label-values job -d UID --metric http_requests_total
 
-  # List every "job" label value present on a range of metrics
+  # List "job" label values present on a range of metrics
   gcx datasources prometheus search-label-values job -d UID --metric-regex '.*kube.*'
+
+  # List "job" label values seen in the last 7 days (default: the last hour)
+  gcx datasources prometheus search-label-values job -d UID --since 7d
 
   # Output as JSON
   gcx datasources prometheus search-label-values job pro -d UID -o json`,
@@ -408,12 +451,12 @@ See also the sibling metric-name search and label-name search commands.`,
 			}
 
 			label := args[0]
-			if label == "" {
-				return errors.New("invalid LABEL: value is empty (unset shell variable?)")
+			if strings.TrimSpace(label) == "" {
+				return errors.New("invalid LABEL: value is empty or blank (unset shell variable?)")
 			}
 			terms := args[1:]
 
-			searchOptions, err := opts.ToOptions(terms, cmd.Flags().Changed("sort-by"))
+			searchOptions, err := opts.toOptions(terms, cmd.Flags().Changed("sort-by"))
 			if err != nil {
 				return err
 			}
@@ -440,12 +483,17 @@ See also the sibling metric-name search and label-name search commands.`,
 	cmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "small",
 		agent.AnnotationLLMHint:   "gcx datasources prometheus search-label-values LABEL TERM -d UID -o json",
+		agent.AnnotationStability: agent.StabilityExperimental,
 	}
 
-	opts.IO.RegisterCustomCodec("table", &searchLabelValuesTableCodec{includeScore: &opts.IncludeScore})
+	opts.IO.RegisterCustomCodec("table", &searchValueTableCodec[prometheus.LabelValueResult]{
+		header:       "VALUE",
+		row:          func(r prometheus.LabelValueResult) (string, float64) { return r.Value, r.Score },
+		includeScore: &opts.IncludeScore,
+	})
 	opts.IO.DefaultFormat("table")
 	opts.IO.BindFlags(cmd.Flags())
-	opts.SetupCommon(cmd.Flags(), true)
+	opts.setup(cmd.Flags(), true)
 
 	return cmd
 }
@@ -489,66 +537,39 @@ func (c *searchMetricNamesTableCodec) Decode(io.Reader, any) error {
 	return errors.New("search metric-names table codec does not support decoding")
 }
 
-type searchLabelNamesTableCodec struct {
+// searchValueTableCodec renders a label-name or label-value search result as
+// a single-column table, plus a SCORE column when scores were requested.
+type searchValueTableCodec[T any] struct {
+	header       string
+	row          func(T) (value string, score float64)
 	includeScore *bool
 }
 
-func (c *searchLabelNamesTableCodec) Format() format.Format { return "table" }
+func (c *searchValueTableCodec[T]) Format() format.Format { return "table" }
 
-func (c *searchLabelNamesTableCodec) Encode(w io.Writer, data any) error {
-	resp, ok := data.(*searchResult[prometheus.LabelNameResult])
+func (c *searchValueTableCodec[T]) Encode(w io.Writer, data any) error {
+	resp, ok := data.(*searchResult[T])
 	if !ok {
-		return errors.New("invalid data type for search label-names table codec")
+		return errors.New("invalid data type for search table codec")
 	}
 
-	headers := []string{"NAME"}
+	headers := []string{c.header}
 	if *c.includeScore {
 		headers = append(headers, "SCORE")
 	}
 
 	t := style.NewTable(headers...)
 	for _, r := range resp.Results {
-		row := []string{r.Name}
+		value, score := c.row(r)
+		row := []string{value}
 		if *c.includeScore {
-			row = append(row, strconv.FormatFloat(r.Score, 'f', -1, 64))
+			row = append(row, strconv.FormatFloat(score, 'f', -1, 64))
 		}
 		t.Row(row...)
 	}
 	return t.Render(w)
 }
 
-func (c *searchLabelNamesTableCodec) Decode(io.Reader, any) error {
-	return errors.New("search label-names table codec does not support decoding")
-}
-
-type searchLabelValuesTableCodec struct {
-	includeScore *bool
-}
-
-func (c *searchLabelValuesTableCodec) Format() format.Format { return "table" }
-
-func (c *searchLabelValuesTableCodec) Encode(w io.Writer, data any) error {
-	resp, ok := data.(*searchResult[prometheus.LabelValueResult])
-	if !ok {
-		return errors.New("invalid data type for search label-values table codec")
-	}
-
-	headers := []string{"VALUE"}
-	if *c.includeScore {
-		headers = append(headers, "SCORE")
-	}
-
-	t := style.NewTable(headers...)
-	for _, r := range resp.Results {
-		row := []string{r.Value}
-		if *c.includeScore {
-			row = append(row, strconv.FormatFloat(r.Score, 'f', -1, 64))
-		}
-		t.Row(row...)
-	}
-	return t.Render(w)
-}
-
-func (c *searchLabelValuesTableCodec) Decode(io.Reader, any) error {
-	return errors.New("search label-values table codec does not support decoding")
+func (c *searchValueTableCodec[T]) Decode(io.Reader, any) error {
+	return errors.New("search table codec does not support decoding")
 }

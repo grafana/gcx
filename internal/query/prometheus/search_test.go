@@ -5,8 +5,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/grafana/gcx/internal/queryerror"
@@ -89,7 +91,7 @@ func TestClient_SearchMetricNames_OmitsUnsetOptionalParams(t *testing.T) {
 	_, err := client.SearchMetricNames(context.Background(), "prom", prometheus.SearchOptions{})
 	require.NoError(t, err)
 
-	for _, key := range []string{"search[]", "match[]", "case_sensitive", "fuzz_alg", "fuzz_threshold", "sort_by", "sort_dir", "include_score", "include_metadata"} {
+	for _, key := range []string{"search[]", "match[]", "start", "end", "fuzz_alg", "fuzz_threshold", "sort_by", "sort_dir", "include_score", "include_metadata"} {
 		_, present := capturedQuery[key]
 		assert.False(t, present, "expected %q to be omitted", key)
 	}
@@ -97,9 +99,33 @@ func TestClient_SearchMetricNames_OmitsUnsetOptionalParams(t *testing.T) {
 	// "unlimited"), so an unset Go zero value must not be indistinguishable
 	// from an explicit request for it.
 	assert.Equal(t, "0", capturedQuery.Get("limit"))
+	// case_sensitive is always sent, since false differs from the server
+	// default (true).
+	assert.Equal(t, "false", capturedQuery.Get("case_sensitive"))
 }
 
-func TestClient_SearchMetricNames_CaseSensitiveFalse(t *testing.T) {
+func TestClient_SearchMetricNames_CaseSensitive(t *testing.T) {
+	for _, caseSensitive := range []bool{false, true} {
+		t.Run(strconv.FormatBool(caseSensitive), func(t *testing.T) {
+			var capturedQuery url.Values
+
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				capturedQuery = r.URL.Query()
+				writeNDJSON(w, `{"status":"success"}`)
+			}))
+			defer srv.Close()
+
+			_, err := newTestClient(t, srv.URL).SearchMetricNames(context.Background(), "prom", prometheus.SearchOptions{CaseSensitive: caseSensitive})
+			require.NoError(t, err)
+
+			assert.Equal(t, strconv.FormatBool(caseSensitive), capturedQuery.Get("case_sensitive"))
+		})
+	}
+}
+
+// TestClient_SearchMetricNames_TimeRange pins start and end to Unix seconds,
+// the form both servers parse.
+func TestClient_SearchMetricNames_TimeRange(t *testing.T) {
 	var capturedQuery url.Values
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -108,13 +134,15 @@ func TestClient_SearchMetricNames_CaseSensitiveFalse(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := newTestClient(t, srv.URL)
-
-	caseSensitive := false
-	_, err := client.SearchMetricNames(context.Background(), "prom", prometheus.SearchOptions{CaseSensitive: &caseSensitive})
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	_, err := newTestClient(t, srv.URL).SearchMetricNames(context.Background(), "prom", prometheus.SearchOptions{
+		Start: start,
+		End:   start.Add(time.Hour),
+	})
 	require.NoError(t, err)
 
-	assert.Equal(t, "false", capturedQuery.Get("case_sensitive"))
+	assert.Equal(t, "1767225600", capturedQuery.Get("start"))
+	assert.Equal(t, "1767229200", capturedQuery.Get("end"))
 }
 
 // TestClient_SearchMetricNames_FractionalScore proves Score decodes as

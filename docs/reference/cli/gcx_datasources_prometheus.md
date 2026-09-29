@@ -26,7 +26,7 @@ Query Prometheus datasources
 * [gcx datasources prometheus labels](gcx_datasources_prometheus_labels.md)	 - List labels or label values
 * [gcx datasources prometheus metadata](gcx_datasources_prometheus_metadata.md)	 - Get metric metadata
 * [gcx datasources prometheus query](gcx_datasources_prometheus_query.md)	 - Execute a PromQL query against a Prometheus datasource
-* [gcx datasources prometheus search-label-names](gcx_datasources_prometheus_search-label-names.md)	 - Search label names (experimental)
-* [gcx datasources prometheus search-label-values](gcx_datasources_prometheus_search-label-values.md)	 - Search the values of a label (experimental)
-* [gcx datasources prometheus search-metric-names](gcx_datasources_prometheus_search-metric-names.md)	 - Search metric names (experimental)
+* [gcx datasources prometheus search-label-names](gcx_datasources_prometheus_search-label-names.md)	 - [experimental] Search label names
+* [gcx datasources prometheus search-label-values](gcx_datasources_prometheus_search-label-values.md)	 - [experimental] Search the values of a label
+* [gcx datasources prometheus search-metric-names](gcx_datasources_prometheus_search-metric-names.md)	 - [experimental] Search metric names
 
