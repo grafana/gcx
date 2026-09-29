@@ -83,7 +83,7 @@ Accepts the `strconv.ParseBool` vocabulary and nothing else. Setting it is not t
 | `GCX_AGENT_NAME` | Explicit identity | A supported name enables agent mode and sets the telemetry `agent` label. A `name@version` value uses only the name. Unknown names are ignored. |
 | `AI_AGENT` | Shared identity | A supported name enables agent mode. A `name@version` value uses only the name. Unknown names are ignored. |
 | `AGENT` | Goose | The value `goose` enables agent mode. Other values are ignored. |
-| `GCX_AGENT_SPILL_BYTES` | Output tuning | Spill threshold in bytes for the `agents` codec (default `102400` = 100 KiB). `0` disables spilling. Invalid values use the default. See [output.md](output.md#111-agents-codec). |
+| `GCX_AGENT_SPILL_BYTES` | Output tuning | Spill threshold in bytes for the `agents` codec (default `24576` = 24 KiB). `0` disables spilling. Invalid values use the default. See [output.md](output.md#111-agents-codec). |
 | `CLAUDECODE`, `CLAUDE_CODE` | Claude Code | Boolean identity signal |
 | `CURSOR_AGENT` | Cursor | Boolean identity signal |
 | `GITHUB_COPILOT`, `COPILOT_CLI` | GitHub Copilot | Boolean identity signal |

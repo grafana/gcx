@@ -27,7 +27,14 @@ ioOpts.BindFlags(cmd.Flags())
 
 The `agents` codec is optimised for AI-agent contexts. It emits compact JSON
 (no indentation, no HTML escaping) when the serialised payload is within the
-spill threshold (default **100 KiB**), and spills to a temp file otherwise.
+spill threshold (default **24 KiB**), and spills to a temp file otherwise.
+
+**Why 24 KiB:** an agent host can keep a large tool result out of the model
+context. Claude Code, for example, writes a tool result above approximately
+30 KB to a file and shows the model only a preview of approximately 2 KB.
+The agents codec writes one line of JSON, thus `| head` cannot make the
+result shorter. With a threshold below the limit of the host, gcx spills
+first, and the model gets the complete receipt instead of a fragment.
 
 **Below threshold** — output is compact JSON, content-equivalent to `-o json`
 (NOT byte-identical: `-o json` is indented, the agents codec is compact).
@@ -43,8 +50,9 @@ spill threshold (default **100 KiB**), and spills to a temp file otherwise.
   "bytes": 143200,
   "content_format": "json",
   "total_items": 312,
-  "preview_sample": [ { ... }, { ... }, { ... } ],
-  "message": "Response too large for stdout (143200 bytes). Full data written to ..."
+  "preview_sample": [ { "uid": "a1", "title": "API" }, { ... }, { ... } ],
+  "message": "Response too large for stdout (143200 bytes). Full data written to ...",
+  "hint": "To get a smaller inline result, select fields with --json <fields> or --jq '<expr>'. Run with --json list to see the fields."
 }
 ```
 
@@ -64,17 +72,34 @@ keeps the spill. The same exemption applies to the jq JSONL stream (§ 1.6).
 | `content_format` | yes | `json` for documents; `jsonl` for jq streams (see § 1.6) |
 | `spilled_to` | yes | Absolute path to the full-payload file |
 | `bytes` | yes | Byte size of the full payload |
-| `total_items` | only for lists | Element count — named `total_items` (not `items`) to avoid collision with the k8s list `items` array shape |
+| `total_items` | only for lists | Element count — named `total_items` (not `items`) to avoid collision with the k8s list `items` array shape. Set for every list shape: a top-level array, the declared key of a `ListEnvelope`, an `items` array, and a single-key list envelope (with an optional `list_meta` sibling) |
 | `total_values` | only for jq streams | Yielded-value count, not list elements; replaces `total_items` |
-| `preview_sample` | yes | First 3 items for list shapes; sorted top-level key names for object/map shapes; `null` for other shapes and jq streams. Named `preview_sample` (not `preview`) to signal it is never the complete dataset |
+| `preview_sample` | yes | A bounded sample, never the complete dataset (thus not named `preview`). For list shapes: the first 3 items, each reduced to its identifying fields (see below). For object/map shapes: the sorted top-level key names. `null` for other shapes and jq streams. The encoded sample is never larger than 2 KiB |
 | `message` | yes | Human-readable guidance: references `spilled_to` path and opt-outs |
+| `hint` | yes | Short instruction to get a result that stays inline: select fields with `--json <fields>` or `--jq`, and discover fields with `--json list`. For jq streams, the hint tells the agent to select less in the `--jq` expression |
+
+**Preview rule:** each list item in `preview_sample` keeps only the
+identifying fields that it has: `metadata.name`, `spec.title`, `name`,
+`title`, `uid`, and `id`. The keys are the dot paths, as in `--json` field
+selection. An item without an identifying field keeps its top-level string,
+number, and boolean fields. Other items stay unchanged. If the encoded sample
+is larger than 2 KiB, the codec removes items from the end until it fits. If
+the first item alone does not fit, `preview_sample` is `null`. Thus a list of
+large items (for example alert rule groups) cannot make the receipt larger
+than the spill threshold.
+
+**Schema version:** `schema_version` changes only when a field is removed,
+renamed, or changes its JSON type. A new field (for example `hint`) and a
+change to the contents of `preview_sample` keep the version. The items in
+`preview_sample` have no fixed shape, thus a consumer must not parse them as
+complete domain objects.
 
 **Override:** `-o json` forces the full document inline to stdout regardless
 of size (standard indented JSON — see the byte-identity note above).
 `-o text` renders the human table.
 
 **Threshold configuration:** `GCX_AGENT_SPILL_BYTES` (int, bytes; default
-`102400`). `0` disables spilling: output is always written in full, for
+`24576`). `0` disables spilling: output is always written in full, for
 callers that cannot read gcx's temp files (e.g. gcx embedded in a sandbox).
 Invalid or missing values fall back to the default.
 
@@ -134,7 +159,7 @@ JSON/YAML to silently omit fields. See Pattern 13 in `patterns.md`.
 | `config view` | `yaml` | Config is YAML-native |
 | `push`, `delete` | a structured summary (see [§ 12](#12-mutation-command-output)) | Operations, not data |
 | `resources pull` | `json` (pinned; selects the *file* format, see [§ 14](#14-pull-format-consistency)) | Files are the output; deprecated SLO pulls retain fixed YAML |
-| Agent mode ([agent-mode.md](agent-mode.md)) | `agents` | Token-efficient: compact JSON below 100 KiB, temp-file spill above (see [§ 1.1.1](#111-agents-codec)) |
+| Agent mode ([agent-mode.md](agent-mode.md)) | `agents` | Token-efficient: compact JSON below 24 KiB, temp-file spill above (see [§ 1.1.1](#111-agents-codec)) |
 
 **There is no repo-wide format set.** `text` and `table` are both sanctioned
 names for the narrow table codec and both ship today; `agents` is the agent-mode
@@ -259,7 +284,7 @@ remain separate, never implicitly wrapped in an array. A yielded `null` emits
 `null\n`. Pretty-printed JSON can span lines; only agents output is JSONL.
 
 **Spilling with explicit `-o agents`:**
-- `GCX_AGENT_SPILL_BYTES` (default 100 KiB) limits the **entire transformed
+- `GCX_AGENT_SPILL_BYTES` (default 24 KiB) limits the **entire transformed
   stream**, including newlines—not each value or the original payload.
 - At or below the threshold, stdout gets the complete stream. Above it, the
   same bytes go to one `$TMPDIR/gcx-results-<random>.jsonl` file; stdout gets
