@@ -2,7 +2,13 @@
 title: Odin experiments
 ---
 
-# Create an Odin experiment
+# Odin experiments
+
+Use `gcx experiments list` to find names, then `gcx experiments get <name>` to
+read the complete stored resource. The get command defaults to YAML; use
+`-o json` or `--jq` to select fields for an agent.
+
+## Create an Odin experiment
 
 `gcx experiments create` accepts one complete `Experiment` resource. It is
 non-interactive, so a person or an agent can author the same YAML or JSON file.

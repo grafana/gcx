@@ -29,11 +29,12 @@ func (*Provider) Commands() []*cobra.Command {
 		Short: "[experimental] Work with Odin experiments.",
 		Long: `This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
 
-Read and create experiments through the Odin app plugin on the selected Grafana instance.`,
+List, get, and create experiments through the Odin app plugin on the selected Grafana instance.`,
 		Annotations: map[string]string{agent.AnnotationStability: agent.StabilityExperimental},
 	}
 	loader.BindFlags(cmd.PersistentFlags())
 	cmd.AddCommand(newListCommand(loader))
+	cmd.AddCommand(newGetCommand(loader))
 	cmd.AddCommand(newCreateCommand(loader))
 	return []*cobra.Command{cmd}
 }

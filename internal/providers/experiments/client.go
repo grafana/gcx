@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/grafana/gcx/internal/config"
@@ -18,6 +19,7 @@ const (
 	listPath               = "/api/plugins/grafana-odin-app/resources/v1/experiments"
 	pluginPageSize         = 500
 	maxListResponseBytes   = 32 << 20
+	maxGetResponseBytes    = 4 << 20
 	maxCreateResponseBytes = 4 << 20
 )
 
@@ -83,6 +85,59 @@ func (c *Client) List(ctx context.Context) ([]Experiment, error) {
 	return items, nil
 }
 
+// Get reads one complete Experiment resource through Odin's app plugin.
+func (c *Client) Get(ctx context.Context, name string) (Experiment, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.host+listPath+"/"+url.PathEscape(name), nil)
+	if err != nil {
+		return nil, fmt.Errorf("build Odin get request: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("get Odin experiment %q: %w", name, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		message := responseErrorMessage(body)
+		if resp.StatusCode == http.StatusNotFound {
+			if isOdinExperimentNotFound(body, name) || strings.Contains(strings.ToLower(message), "experiment not found") {
+				return nil, fmt.Errorf("odin experiment %q not found", name)
+			}
+			return nil, fmt.Errorf("odin experiment %q was not found; check the name and that grafana-odin-app is enabled in this Grafana context", name)
+		}
+		return nil, fmt.Errorf("get Odin experiment %q: HTTP %d: %s", name, resp.StatusCode, message)
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxGetResponseBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("read Odin experiment %q: %w", name, err)
+	}
+	if len(body) > maxGetResponseBytes {
+		return nil, fmt.Errorf("odin experiment %q response exceeds %d bytes", name, maxGetResponseBytes)
+	}
+	var experiment Experiment
+	if err := json.Unmarshal(body, &experiment); err != nil {
+		return nil, fmt.Errorf("decode Odin experiment %q: %w", name, err)
+	}
+	if experiment == nil {
+		return nil, fmt.Errorf("decode Odin experiment %q: empty resource", name)
+	}
+	return experiment, nil
+}
+
+func isOdinExperimentNotFound(body []byte, name string) bool {
+	var payload struct {
+		Code  int    `json:"code"`
+		Error string `json:"error"`
+	}
+	return json.Unmarshal(body, &payload) == nil &&
+		payload.Code == http.StatusNotFound &&
+		payload.Error == fmt.Sprintf("experiments.odin.ext.grafana.com %q not found", name)
+}
+
 // Create submits one complete Experiment resource through Odin's app plugin.
 func (c *Client) Create(ctx context.Context, manifest []byte) (Experiment, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.host+listPath, bytes.NewReader(manifest))
@@ -100,7 +155,7 @@ func (c *Client) Create(ctx context.Context, manifest []byte) (Experiment, error
 
 	if resp.StatusCode != http.StatusCreated {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		message := createErrorMessage(body)
+		message := responseErrorMessage(body)
 		switch resp.StatusCode {
 		case http.StatusNotFound:
 			return nil, errors.New("odin experiments endpoint returned 404; check that grafana-odin-app is enabled in this Grafana context")
@@ -128,7 +183,7 @@ func (c *Client) Create(ctx context.Context, manifest []byte) (Experiment, error
 	return created, nil
 }
 
-func createErrorMessage(body []byte) string {
+func responseErrorMessage(body []byte) string {
 	var payload struct {
 		Message string `json:"message"`
 	}

@@ -267,6 +267,7 @@
  "gcx dev scaffold": "interactive",
  "gcx dev serve": "server",
  "gcx experiments create": "finite",
+ "gcx experiments get": "finite",
  "gcx experiments list": "finite",
  "gcx fleet collectors create": "finite",
  "gcx fleet collectors delete": "finite",

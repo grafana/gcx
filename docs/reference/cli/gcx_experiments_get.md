@@ -1,24 +1,40 @@
-## gcx experiments
+## gcx experiments get
 
-[experimental] Work with Odin experiments.
+[experimental] Get one Odin experiment.
 
 ### Synopsis
 
 This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
 
-List, get, and create experiments through the Odin app plugin on the selected Grafana instance.
+Get the complete stored Experiment by metadata.name through the Odin app plugin
+on the selected Grafana instance. Use list to discover experiment names.
+
+```
+gcx experiments get <name> [flags]
+```
+
+### Examples
+
+```
+  gcx experiments get checkout-conversion
+  gcx experiments get checkout-conversion -o json
+  gcx experiments get checkout-conversion --jq '{name: .metadata.name, status: .spec.status, analytics: .spec.analyticsConfig}'
+```
 
 ### Options
 
 ```
-      --config string   Path to the configuration file to use
-  -h, --help            help for experiments
+  -h, --help            help for get
+      --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string   Output format. One of: agents, json, yaml (default "yaml")
 ```
 
 ### Options inherited from parent commands
 
 ```
       --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
+      --config string               Path to the configuration file to use
       --context string              Name of the context to use (overrides current-context in config)
       --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Requires -vvv. Do not ship these logs.
       --no-color                    Disable color output
@@ -28,8 +44,5 @@ List, get, and create experiments through the Odin app plugin on the selected Gr
 
 ### SEE ALSO
 
-* [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
-* [gcx experiments create](gcx_experiments_create.md)	 - [experimental] Create an Odin experiment from a manifest.
-* [gcx experiments get](gcx_experiments_get.md)	 - [experimental] Get one Odin experiment.
-* [gcx experiments list](gcx_experiments_list.md)	 - [experimental] List Odin experiments.
+* [gcx experiments](gcx_experiments.md)	 - [experimental] Work with Odin experiments.
 
