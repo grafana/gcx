@@ -111,7 +111,7 @@ func newListCommand(loader RESTConfigLoader) *cobra.Command {
 			typedObjs, meta := cmdio.TruncateCompleteList(all, opts.Limit)
 			meta = cmdio.AttachListMeta(meta, os.Args)
 
-			if err := opts.IO.Encode(cmd.OutOrStdout(), typedObjs); err != nil {
+			if err := cmdio.EncodeList(&opts.IO, cmd.OutOrStdout(), typedObjs, meta); err != nil {
 				return err
 			}
 			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)

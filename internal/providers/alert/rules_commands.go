@@ -57,7 +57,7 @@ func (o *rulesListOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&o.FolderUID, "folder", "", "Filter by folder UID")
 	flags.StringVar(&o.State, "state", "", "Filter by rule state (firing, pending, inactive)")
 	// The limit counts rules in every output format. The table shows rules,
-	// and JSON/YAML shows the groups that hold the first N rules.
+	// and the structured envelope holds the groups of the first N rules.
 	o.IO.BindListLimit(flags, &o.Limit, "alert rules", 50)
 }
 
@@ -109,15 +109,16 @@ func newRulesListCommand(loader GrafanaConfigLoader) *cobra.Command {
 			page, meta := cmdio.TruncateCompleteList(rules, opts.Limit)
 			meta = cmdio.AttachListMeta(meta, os.Args)
 
-			// The table shows the rules. JSON/YAML output is a bare array of
-			// the groups that hold those rules, without empty groups. A bare
-			// array cannot carry list_meta, so the stderr hint reports the
-			// truncation in all formats.
-			var out any = limitGroupRules(resp.Data.Groups, len(page))
+			// The table shows the rules. Structured output is an envelope:
+			// "items" holds the groups that hold those rules, without empty
+			// groups, and list_meta counts rules. The stderr hint also
+			// reports the truncation.
 			if codec.Format() == "table" || codec.Format() == "wide" {
-				out = page
+				err = opts.IO.Encode(cmd.OutOrStdout(), page)
+			} else {
+				err = cmdio.EncodeList(&opts.IO, cmd.OutOrStdout(), limitGroupRules(resp.Data.Groups, len(page)), meta)
 			}
-			if err := opts.IO.Encode(cmd.OutOrStdout(), out); err != nil {
+			if err != nil {
 				return err
 			}
 			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)

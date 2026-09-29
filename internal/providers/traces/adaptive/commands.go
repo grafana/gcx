@@ -388,7 +388,7 @@ func (h *tracesHelper) policiesListCommand() *cobra.Command {
 				policies[i] = typedObjs[i].Spec
 			}
 
-			if err := opts.IO.Encode(cmd.OutOrStdout(), policies); err != nil {
+			if err := cmdio.EncodeList(&opts.IO, cmd.OutOrStdout(), policies, meta); err != nil {
 				return err
 			}
 			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)

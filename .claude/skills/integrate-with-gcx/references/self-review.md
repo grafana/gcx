@@ -160,14 +160,15 @@ is not "always in the payload":
 | Output shape | Disclosure |
 |---|---|
 | Envelope (items + sibling keys) | `list_meta` in the payload, via the shared helpers |
-| **Bare array**, already released | **stderr hint only.** §15.2: bare arrays "cannot carry the signal; they get the stderr hint only and should migrate to an envelope when their consumers can absorb the shape change". So the envelope migration is sanctioned, but it is a breaking output change: treat it as an explicit compatibility migration — verify consumers can absorb it, and do not slip it into an unrelated feature PR. Otherwise keep the array, emit the stderr hint, and record the migration as a follow-up. (The frozen-surface rule is not the authority here — it covers command paths, aliases, flags and positional syntax. CONSTITUTION does lock payload shape in one narrower place: pre-contract envelopes named in § Dual-Purpose Design "retain their locked forms until their own versioned migrations") |
+| **Bare array**, already released | **Migrate to the envelope.** §15.2: a list command with a limit must not write a bare array, because agents discard stderr (`2>/dev/null \| jq`) and a stderr hint alone does not reach them. Use `cmdio.EncodeList`, which writes `{"items": [...]}` always and `list_meta` for a truncated page, and keeps the table unchanged. This is a breaking output change: update the in-repo consumers (skills, docs, tests) and name the command in CHANGELOG.md. Keep the stderr hint too. (The frozen-surface rule is not the authority here — it covers command paths, aliases, flags and positional syntax. CONSTITUTION does lock payload shape in one narrower place: pre-contract envelopes named in § Dual-Purpose Design "retain their locked forms until their own versioned migrations") |
 | New command, your choice of shape | choose an envelope, so the signal has somewhere to live |
 
 **The shared mechanism** (for the envelope case): `internal/output/listmeta.go` —
 `BindListLimit` to bind the flag, the constructor matching your source shape
 (`TruncateCompleteList` for cheaply-complete sources, `PagedListMeta` or
-`TruncatePagedList` for paginated ones), `AttachListMeta` to finalize, and
-`EmitListTruncationHint` after the payload.
+`TruncatePagedList` for paginated ones), `AttachListMeta` to finalize,
+`EncodeList` (or your own envelope struct with the reserved `list_meta` field)
+to write the payload, and `EmitListTruncationHint` after the payload.
 
 **Its status, stated accurately:** `docs/design/output.md` §15 is marked
 **PROPOSED** (#387 Track C) and is implemented as an *opt-in* contract, migrated

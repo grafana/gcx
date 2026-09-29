@@ -132,12 +132,12 @@ To query the SLO's own recording rule metrics instead (`grafana_slo_sli_window`,
 ### Step 5: Search for Related Alert Rules
 
 ```bash
-gcx alert rules list --limit 0 -o json | jq '[.[] | .rules[]? | select(.name | test("<slo-name>"; "i"))]'
+gcx alert rules list --limit 0 -o json | jq '[.items[] | .rules[]? | select(.name | test("<slo-name>"; "i"))]'
 ```
 
 Also try searching by UUID fragment if the name-based search returns no results:
 ```bash
-gcx alert rules list --limit 0 -o json | jq '[.[] | .rules[]? | select(.labels.grafana_slo_uuid == "<UUID>" or (.name | test("<slo-name>"; "i")))]'
+gcx alert rules list --limit 0 -o json | jq '[.items[] | .rules[]? | select(.labels.grafana_slo_uuid == "<UUID>" or (.name | test("<slo-name>"; "i")))]'
 ```
 
 Extract for each matching rule: name, state (firing/pending/inactive), labels, and annotations.
@@ -196,7 +196,7 @@ Next actions:
 - **gcx slo definitions status returns empty**: No status available — SLO may be newly created. Check if recording rules are running (STATUS may show NODATA).
 - **gcx metrics query fails with datasource error**: Datasource UID may be wrong. Run `gcx datasources list --type prometheus` to find the correct UID. If that list is empty (blank `type` fields in the payload), rerun without `--type` and select by name.
 - **gcx metrics query returns no data**: The SLO metrics may write to a separate datasource (check `.spec.destinationDatasource.uid`). Try both the destination datasource and the default Prometheus datasource.
-- **alert rules list returns empty**: Alert rules may be in a different folder. Try without filters: `gcx alert rules list --limit 0 -o json | jq '[.[].rules[]] | length'` to count all the rules.
+- **alert rules list returns empty**: Alert rules may be in a different folder. Try without filters: `gcx alert rules list --limit 0 -o json | jq '[.items[].rules[]] | length'` to count all the rules.
 - **gh api fails**: If `gh` is not authenticated or unavailable, report the runbook URL directly and skip content fetching.
 - **SLO has no groupByLabels (ratio query)**: Try common breakdown dimensions: `cluster`, `namespace`, `service`, `endpoint`, `status_code`. Report which ones return data.
 - **Multiple SLOs with similar names**: When searching alert rules by name pattern, report all matches and their states — don't silently drop duplicates.

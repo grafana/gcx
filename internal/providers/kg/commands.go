@@ -490,7 +490,7 @@ func newRulesCommand(loader RESTConfigLoader) *cobra.Command {
 				objs = append(objs, res.ToUnstructured())
 			}
 
-			if err := rulesListOpts.IO.Encode(cmd.OutOrStdout(), objs); err != nil {
+			if err := cmdio.EncodeList(&rulesListOpts.IO, cmd.OutOrStdout(), objs, meta); err != nil {
 				return err
 			}
 			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)

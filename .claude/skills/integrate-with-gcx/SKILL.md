@@ -174,11 +174,13 @@ Never state proposed or conventional guidance as law.
 result with no signal reads a page as the whole inventory — wrong but plausible
 instead of big but correct. The trigger is the mechanism (a `--limit`, a slice, an
 early paging stop, a source cap), never a guess about whether truncation is
-"likely". *Where* to disclose depends on the output shape: an envelope carries
-`list_meta`, but a **released bare array gets the stderr hint only** — wrapping it
-in an envelope is a breaking output change belonging to a deliberate
-compatibility migration, not a feature PR. Shared helpers, §15's real status and
-the full shape table: [references/self-review.md](references/self-review.md) T3.
+"likely". Disclose it **on stdout**: agents discard stderr
+(`2>/dev/null | jq`), so a stderr hint alone does not reach them. A list with a
+limit writes the `{"items": [...]}` envelope with `list_meta` through
+`cmdio.EncodeList`, never a bare array (§15.2). Moving a released bare array to
+the envelope is a breaking output change: update its in-repo consumers and name
+it in CHANGELOG.md. Shared helpers, §15's real status and the full shape table:
+[references/self-review.md](references/self-review.md) T3.
 
 **Empty results are schema fidelity, not a mode rule** — an array your schema
 declares must not serialize as `null` when empty, in the machine formats your

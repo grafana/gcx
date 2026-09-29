@@ -24,6 +24,7 @@ import (
 	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/providers"
 	metrics "github.com/grafana/gcx/internal/providers/metrics/adaptive"
+	"github.com/grafana/gcx/internal/testutils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -291,12 +292,15 @@ func TestRecommendationsApply_TotalFailure(t *testing.T) {
 }
 
 func TestAdaptiveLists_EmptyStillEmitsOneDoc(t *testing.T) {
+	// enveloped marks a list whose structured output is the list envelope
+	// {"items": [...]} and not a bare array.
 	lists := []struct {
-		name string
-		args []string
+		name      string
+		args      []string
+		enveloped bool
 	}{
 		{name: "recommendations list", args: []string{"recommendations", "list"}},
-		{name: "rules list", args: []string{"rules", "list"}},
+		{name: "rules list", args: []string{"rules", "list"}, enveloped: true},
 		{name: "segments list", args: []string{"segments", "list"}},
 		{name: "exemptions list", args: []string{"exemptions", "list"}},
 		{name: "exemptions list --all-segments", args: []string{"exemptions", "list", "--all-segments"}},
@@ -309,6 +313,12 @@ func TestAdaptiveLists_EmptyStillEmitsOneDoc(t *testing.T) {
 				res := runAdaptiveCmd(t, loader, true, tc.args...)
 				require.NoError(t, res.err, "stderr: %s", res.stderr)
 				doc := decodeOneJSONValue(t, res.stdout)
+				if tc.enveloped {
+					page := testutils.DecodeListPage(t, res.stdout)
+					assert.Empty(t, page.Items)
+					assert.Nil(t, page.ListMeta)
+					return
+				}
 				arr, ok := doc.([]any)
 				require.True(t, ok, "stdout document must be an array, got %T", doc)
 				assert.Empty(t, arr)
@@ -326,6 +336,10 @@ func TestAdaptiveLists_EmptyStillEmitsOneDoc(t *testing.T) {
 				res := runAdaptiveCmd(t, loader, false, append(append([]string{}, tc.args...), "-o", "json")...)
 				require.NoError(t, res.err, "stderr: %s", res.stderr)
 				doc := decodeOneJSONValue(t, res.stdout)
+				if tc.enveloped {
+					testutils.DecodeListPage(t, res.stdout)
+					return
+				}
 				_, ok := doc.([]any)
 				require.True(t, ok, "stdout document must be an array, got %T", doc)
 			})

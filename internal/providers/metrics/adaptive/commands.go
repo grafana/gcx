@@ -633,10 +633,10 @@ func (h *metricsHelper) rulesListCommand() *cobra.Command {
 			fmt.Fprintf(cmd.ErrOrStderr(), "%d rule(s)\n", len(rules))
 
 			// Always encode, even when empty: agent mode and explicit
-			// -o json/yaml must emit exactly one document ([] rather than
-			// nothing). The table codec prints nothing for an empty list,
-			// keeping default human stdout byte-identical.
-			if err := opts.Encode(cmd.OutOrStdout(), rules); err != nil {
+			// -o json/yaml must emit exactly one document ({"items": []}
+			// rather than nothing). The table codec prints nothing for an
+			// empty list, keeping default human stdout byte-identical.
+			if err := cmdio.EncodeList(&opts.Options, cmd.OutOrStdout(), rules, meta); err != nil {
 				return err
 			}
 			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)

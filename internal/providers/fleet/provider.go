@@ -266,7 +266,7 @@ func (h *fleetHelper) newPipelineListCommand() *cobra.Command {
 				objs = append(objs, res.ToUnstructured())
 			}
 
-			if err := opts.IO.Encode(cmd.OutOrStdout(), objs); err != nil {
+			if err := cmdio.EncodeList(&opts.IO, cmd.OutOrStdout(), objs, meta); err != nil {
 				return err
 			}
 			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
@@ -603,7 +603,7 @@ remote attributes plus the timestamps that the Fleet API reports.`,
   gcx fleet collectors list --limit 0 --json spec.id,spec.local_attributes,spec.updated_at
 
   # Build a compact version inventory
-  gcx fleet collectors list --limit 0 --jq '[.[] | {id: .spec.id, version: .spec.local_attributes["collector.version"], os: (.spec.local_attributes["collector.os"] // .spec.local_attributes["os.type"]), updated_at: .spec.updated_at}]'`,
+  gcx fleet collectors list --limit 0 --jq '[.items[] | {id: .spec.id, version: .spec.local_attributes["collector.version"], os: (.spec.local_attributes["collector.os"] // .spec.local_attributes["os.type"]), updated_at: .spec.updated_at}]'`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -635,7 +635,7 @@ remote attributes plus the timestamps that the Fleet API reports.`,
 				}
 				encodeErr = opts.IO.Encode(cmd.OutOrStdout(), rows)
 			} else {
-				encodeErr = opts.IO.Encode(cmd.OutOrStdout(), collectors)
+				encodeErr = cmdio.EncodeList(&opts.IO, cmd.OutOrStdout(), collectors, meta)
 			}
 			if encodeErr != nil {
 				return encodeErr

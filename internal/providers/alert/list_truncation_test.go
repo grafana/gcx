@@ -71,11 +71,12 @@ func TestAlertListTruncation(t *testing.T) {
 		name     string
 		limit    string
 		wantLen  int
+		wantMeta bool
 		wantHint string
 	}{
-		{"truncated", "2", 2, "hint: showing first 2 of 5. See all results with: gcx alert list -o json --limit 0"},
-		{"limit equals total", "5", 5, ""},
-		{"no limit", "0", 5, ""},
+		{"truncated", "2", 2, true, "hint: showing first 2 of 5. See all results with: gcx alert list -o json --limit 0"},
+		{"limit equals total", "5", 5, false, ""},
+		{"no limit", "0", 5, false, ""},
 	}
 
 	for _, c := range commands {
@@ -88,9 +89,18 @@ func TestAlertListTruncation(t *testing.T) {
 				stdout, stderr, err := runCmdSplit(t, c.newCmd(loader), []string{"list", "-o", "json", "--limit", l.limit}, "")
 				require.NoError(t, err)
 
-				doc, ok := decodeSingleJSONDocument(t, stdout).([]any)
-				require.True(t, ok, "stdout must stay a bare JSON array")
-				assert.Len(t, doc, l.wantLen)
+				page := testutils.DecodeListPage(t, stdout)
+				assert.Len(t, page.Items, l.wantLen)
+				if l.wantMeta {
+					require.NotNil(t, page.ListMeta, "a truncated page must carry list_meta")
+					assert.True(t, page.ListMeta.Truncated)
+					assert.Equal(t, l.wantLen, page.ListMeta.Returned)
+					require.NotNil(t, page.ListMeta.Total)
+					assert.Equal(t, 5, *page.ListMeta.Total)
+					assert.Equal(t, "gcx alert list -o json --limit 0", page.ListMeta.Continue)
+				} else {
+					assert.Nil(t, page.ListMeta, "a complete set must not carry list_meta")
+				}
 				if l.wantHint == "" {
 					assert.NotContains(t, stderr, "showing first")
 				} else {
@@ -130,14 +140,29 @@ func TestRulesListLimitCountsRules(t *testing.T) {
 			require.NoError(t, err)
 
 			if tc.format == "json" {
-				var got []alert.RuleGroup
+				var got struct {
+					Items    []alert.RuleGroup `json:"items"`
+					ListMeta *struct {
+						Returned int  `json:"returned"`
+						Total    *int `json:"total"`
+					} `json:"list_meta"`
+				}
 				require.NoError(t, json.Unmarshal([]byte(stdout), &got))
-				assert.Len(t, got, tc.wantGroups)
+				assert.Len(t, got.Items, tc.wantGroups)
 				n := 0
-				for _, g := range got {
+				for _, g := range got.Items {
 					n += len(g.Rules)
 				}
 				assert.Equal(t, tc.wantRules, n)
+				// list_meta counts rules, not groups.
+				if tc.wantHint {
+					require.NotNil(t, got.ListMeta)
+					assert.Equal(t, tc.wantRules, got.ListMeta.Returned)
+					require.NotNil(t, got.ListMeta.Total)
+					assert.Equal(t, 6, *got.ListMeta.Total)
+				} else {
+					assert.Nil(t, got.ListMeta)
+				}
 			} else {
 				assert.Equal(t, tc.wantRules, strings.Count(stdout, "uid-"))
 			}
@@ -148,6 +173,53 @@ func TestRulesListLimitCountsRules(t *testing.T) {
 			} else {
 				assert.NotContains(t, stderr, "showing first")
 			}
+		})
+	}
+}
+
+// TestAlertListEnvelopeSelection checks that --json field selection and --jq
+// operate on the list envelope: selection applies to the items and keeps
+// list_meta, and jq reads the items under .items.
+func TestAlertListEnvelopeSelection(t *testing.T) {
+	handler := func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, namedItems("cp", 3))
+	}
+	tests := []struct {
+		name     string
+		args     []string
+		wantJSON string
+	}{
+		{
+			name: "json field selection keeps list_meta",
+			args: []string{"--json", "uid", "--limit", "2"},
+			wantJSON: `{"items":[{"uid":"cp-0"},{"uid":"cp-1"}],` +
+				`"list_meta":{"truncated":true,"returned":2,"total":3,"continue":"gcx alert contact-points list --json uid --limit 0"}}`,
+		},
+		{
+			name:     "json field selection on a complete set",
+			args:     []string{"--json", "uid", "--limit", "0"},
+			wantJSON: `{"items":[{"uid":"cp-0"},{"uid":"cp-1"},{"uid":"cp-2"}]}`,
+		},
+		{
+			name:     "jq reads the items",
+			args:     []string{"--jq", "[.items[].uid]", "--limit", "2"},
+			wantJSON: `["cp-0","cp-1"]`,
+		},
+		{
+			name:     "jq reads list_meta",
+			args:     []string{"--jq", ".list_meta.total", "--limit", "2"},
+			wantJSON: `3`,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			setAgentMode(t, false)
+			testutils.PinArgv(t, append([]string{"gcx", "alert", "contact-points", "list"}, tc.args...)...)
+			loader := newAlertFixture(t, handler)
+
+			stdout, _, err := runCmdSplit(t, alert.NewContactPointsListCommandForTest(loader), append([]string{"list"}, tc.args...), "")
+			require.NoError(t, err)
+			assert.JSONEq(t, tc.wantJSON, stdout)
 		})
 	}
 }

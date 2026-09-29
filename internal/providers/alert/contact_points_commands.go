@@ -64,7 +64,7 @@ func newContactPointsListCommand(loader GrafanaConfigLoader) *cobra.Command {
 			}
 			points, meta := cmdio.TruncateCompleteList(points, opts.Limit)
 			meta = cmdio.AttachListMeta(meta, os.Args)
-			if err := opts.IO.Encode(cmd.OutOrStdout(), points); err != nil {
+			if err := cmdio.EncodeList(&opts.IO, cmd.OutOrStdout(), points, meta); err != nil {
 				return err
 			}
 			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)

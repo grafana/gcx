@@ -72,7 +72,7 @@ func newGroupsListCommand(loader GrafanaConfigLoader) *cobra.Command {
 
 			groups, meta := cmdio.TruncateCompleteList(groups, opts.Limit)
 			meta = cmdio.AttachListMeta(meta, os.Args)
-			if err := opts.IO.Encode(cmd.OutOrStdout(), groups); err != nil {
+			if err := cmdio.EncodeList(&opts.IO, cmd.OutOrStdout(), groups, meta); err != nil {
 				return err
 			}
 			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)

@@ -34,10 +34,11 @@ func TestChecksListFiltersBeforeLimit(t *testing.T) {
 	srv := newCheckServer(t, st)
 
 	tests := []struct {
-		name     string
-		args     []string
-		wantLen  int
-		wantHint string
+		name      string
+		args      []string
+		wantLen   int
+		wantTotal int // 0 means that list_meta must be absent
+		wantHint  string
 	}{
 		{
 			name:    "job filter with fewer matches than the limit",
@@ -45,10 +46,11 @@ func TestChecksListFiltersBeforeLimit(t *testing.T) {
 			wantLen: 10,
 		},
 		{
-			name:     "job filter with more matches than the limit",
-			args:     []string{"list", "-o", "json", "--job", "api-*"},
-			wantLen:  50,
-			wantHint: "hint: showing first 50 of 55. See all results with: gcx synthetic-monitoring checks list -o json --job 'api-*' --limit 0",
+			name:      "job filter with more matches than the limit",
+			args:      []string{"list", "-o", "json", "--job", "api-*"},
+			wantLen:   50,
+			wantTotal: 55,
+			wantHint:  "hint: showing first 50 of 55. See all results with: gcx synthetic-monitoring checks list -o json --job 'api-*' --limit 0",
 		},
 		{
 			name:    "label filter with no limit",
@@ -56,10 +58,11 @@ func TestChecksListFiltersBeforeLimit(t *testing.T) {
 			wantLen: 55,
 		},
 		{
-			name:     "no filter",
-			args:     []string{"list", "-o", "json"},
-			wantLen:  50,
-			wantHint: "showing first 50 of 115",
+			name:      "no filter",
+			args:      []string{"list", "-o", "json"},
+			wantLen:   50,
+			wantTotal: 115,
+			wantHint:  "showing first 50 of 115",
 		},
 	}
 	for _, tc := range tests {
@@ -68,9 +71,17 @@ func TestChecksListFiltersBeforeLimit(t *testing.T) {
 			stdout, stderr, err := runChecks(t, srv.URL, false, "", tc.args...)
 			require.NoError(t, err)
 
-			items, ok := decodeSingleJSONValue(t, stdout).([]any)
-			require.True(t, ok, "stdout must stay a bare JSON array")
-			assert.Len(t, items, tc.wantLen)
+			page := testutils.DecodeListPage(t, stdout)
+			assert.Len(t, page.Items, tc.wantLen)
+			if tc.wantTotal == 0 {
+				assert.Nil(t, page.ListMeta, "a complete set must not carry list_meta")
+			} else {
+				require.NotNil(t, page.ListMeta, "a truncated page must carry list_meta")
+				assert.Equal(t, tc.wantLen, page.ListMeta.Returned)
+				require.NotNil(t, page.ListMeta.Total)
+				assert.Equal(t, tc.wantTotal, *page.ListMeta.Total)
+				assert.Contains(t, page.ListMeta.Continue, "--limit 0")
+			}
 			if tc.wantHint == "" {
 				assert.NotContains(t, stderr, "showing first")
 			} else {
@@ -78,4 +89,48 @@ func TestChecksListFiltersBeforeLimit(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestChecksListEnvelopeFieldSelection checks that --json field selection
+// applies to the items of the envelope and keeps list_meta.
+func TestChecksListEnvelopeFieldSelection(t *testing.T) {
+	st := &checkAPIState{checks: map[int64]checks.Check{}}
+	for i := range 3 {
+		id := int64(1000 + i)
+		st.checks[id] = checks.Check{ID: id, Job: fmt.Sprintf("web-%d", i), Target: "https://example.com",
+			Settings: checks.CheckSettings{"http": map[string]any{"method": "GET"}}}
+	}
+	srv := newCheckServer(t, st)
+
+	tests := []struct {
+		name     string
+		args     []string
+		wantLen  int
+		wantMeta bool
+	}{
+		{"truncated", []string{"list", "--json", "spec.job", "--limit", "2"}, 2, true},
+		{"complete", []string{"list", "--json", "spec.job", "--limit", "0"}, 3, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			testutils.PinArgv(t, append([]string{"gcx", "synthetic-monitoring", "checks"}, tc.args...)...)
+			stdout, _, err := runChecks(t, srv.URL, false, "", tc.args...)
+			require.NoError(t, err)
+
+			page := testutils.DecodeListPage(t, stdout)
+			require.Len(t, page.Items, tc.wantLen)
+			for _, item := range page.Items {
+				assert.Equal(t, []string{"spec.job"}, keysOf(item), "selection must apply to each item")
+			}
+			assert.Equal(t, tc.wantMeta, page.ListMeta != nil)
+		})
+	}
+}
+
+func keysOf(m map[string]any) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
 }

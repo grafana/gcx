@@ -23,7 +23,7 @@ gcx fleet collectors list [flags]
   gcx fleet collectors list --limit 0 --json spec.id,spec.local_attributes,spec.updated_at
 
   # Build a compact version inventory
-  gcx fleet collectors list --limit 0 --jq '[.[] | {id: .spec.id, version: .spec.local_attributes["collector.version"], os: (.spec.local_attributes["collector.os"] // .spec.local_attributes["os.type"]), updated_at: .spec.updated_at}]'
+  gcx fleet collectors list --limit 0 --jq '[.items[] | {id: .spec.id, version: .spec.local_attributes["collector.version"], os: (.spec.local_attributes["collector.os"] // .spec.local_attributes["os.type"]), updated_at: .spec.updated_at}]'
 ```
 
 ### Options

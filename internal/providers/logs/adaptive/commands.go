@@ -650,7 +650,7 @@ func (h *logsHelper) exemptionsListCommand() *cobra.Command {
 				exemptions[i] = typedObjs[i].Spec
 			}
 
-			if err := opts.IO.Encode(cmd.OutOrStdout(), exemptions); err != nil {
+			if err := cmdio.EncodeList(&opts.IO, cmd.OutOrStdout(), exemptions, meta); err != nil {
 				return err
 			}
 			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
@@ -882,7 +882,7 @@ func (h *logsHelper) segmentsListCommand() *cobra.Command {
 				segments[i] = typedObjs[i].Spec
 			}
 
-			if err := opts.IO.Encode(cmd.OutOrStdout(), segments); err != nil {
+			if err := cmdio.EncodeList(&opts.IO, cmd.OutOrStdout(), segments, meta); err != nil {
 				return err
 			}
 			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
@@ -1129,11 +1129,10 @@ func (h *logsHelper) dropRulesListCommand() *cobra.Command {
 			rules, meta := cmdio.TruncateCompleteList(rules, opts.Limit)
 			meta = cmdio.AttachListMeta(meta, os.Args)
 
-			out := any(rules)
 			if opts.IO.JSONDiscovery {
-				out = ValueForJSONFieldDiscovery(rules)
+				return opts.IO.Encode(cmd.OutOrStdout(), ValueForJSONFieldDiscovery(rules))
 			}
-			if err := opts.IO.Encode(cmd.OutOrStdout(), out); err != nil {
+			if err := cmdio.EncodeList(&opts.IO, cmd.OutOrStdout(), rules, meta); err != nil {
 				return err
 			}
 			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)

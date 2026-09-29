@@ -122,13 +122,12 @@ func newListCommand(loader smcfg.Loader) *cobra.Command {
 				return err
 			}
 
-			var out any
 			if codec.Format() == "table" || codec.Format() == "wide" {
 				checkList := make([]Check, 0, len(typedObjs))
 				for i := range typedObjs {
 					checkList = append(checkList, checkFromResource(typedObjs[i].Spec))
 				}
-				out = checkList
+				err = opts.IO.Encode(cmd.OutOrStdout(), checkList)
 			} else {
 				// For yaml/json output, marshal the typed objects.
 				objs := make([]unstructured.Unstructured, 0, len(typedObjs))
@@ -143,11 +142,10 @@ func newListCommand(loader smcfg.Loader) *cobra.Command {
 					}
 					objs = append(objs, obj)
 				}
-				out = objs
+				// Structured output is an envelope that carries list_meta.
+				err = cmdio.EncodeList(&opts.IO, cmd.OutOrStdout(), objs, meta)
 			}
-			// The output is a bare array, so it cannot carry list_meta. The
-			// stderr hint reports the truncation.
-			if err := opts.IO.Encode(cmd.OutOrStdout(), out); err != nil {
+			if err != nil {
 				return err
 			}
 			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)

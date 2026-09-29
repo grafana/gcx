@@ -105,7 +105,7 @@ func newListCommand(resource providers.BoundResource[Report]) *cobra.Command {
 				objs = append(objs, obj)
 			}
 
-			if err := opts.IO.Encode(cmd.OutOrStdout(), objs); err != nil {
+			if err := cmdio.EncodeList(&opts.IO, cmd.OutOrStdout(), objs, meta); err != nil {
 				return err
 			}
 			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)

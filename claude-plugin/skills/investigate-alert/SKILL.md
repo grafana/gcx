@@ -28,7 +28,7 @@ Check context if needed (`gcx config view`). If multiple contexts exist and none
 
 Fetch the alert by listing all alerts and filtering by name. Replace `<AlertName>` with the actual alert name:
 ```bash
-gcx alert rules list --limit 0 -o json | jq -r '.[] | .rules[]? | select(.name == "<AlertName>")'
+gcx alert rules list --limit 0 -o json | jq -r '.items[] | .rules[]? | select(.name == "<AlertName>")'
 ```
 
 Server-side filters (use instead of downloading all rules and filtering with jq):

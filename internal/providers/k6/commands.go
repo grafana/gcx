@@ -225,7 +225,7 @@ func newProjectsListCommand(loader CloudConfigLoader) *cobra.Command {
 				}
 				objs = append(objs, res.ToUnstructured())
 			}
-			if err := opts.IO.Encode(cmd.OutOrStdout(), objs); err != nil {
+			if err := cmdio.EncodeList(&opts.IO, cmd.OutOrStdout(), objs, meta); err != nil {
 				return err
 			}
 			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
@@ -617,9 +617,9 @@ func newTestsListCommand(loader CloudConfigLoader) *cobra.Command {
 				tests, meta = cmdio.TruncatePagedList(fetched, opts.Limit)
 			}
 			meta = cmdio.AttachListMeta(meta, os.Args)
-			// The output is a bare array, so it cannot carry list_meta. The
-			// stderr hint reports the truncation.
-			if err := opts.IO.Encode(cmd.OutOrStdout(), tests); err != nil {
+			// Structured output is an envelope that carries list_meta. The
+			// stderr hint also reports the truncation.
+			if err := cmdio.EncodeList(&opts.IO, cmd.OutOrStdout(), tests, meta); err != nil {
 				return err
 			}
 			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
@@ -1043,7 +1043,7 @@ func newRunsListCommand(loader CloudConfigLoader) *cobra.Command {
 			}
 			runs, meta := cmdio.TruncateCompleteList(runs, opts.Limit)
 			meta = cmdio.AttachListMeta(meta, os.Args)
-			if err := opts.IO.Encode(cmd.OutOrStdout(), runs); err != nil {
+			if err := cmdio.EncodeList(&opts.IO, cmd.OutOrStdout(), runs, meta); err != nil {
 				return err
 			}
 			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
@@ -1157,7 +1157,7 @@ func newEnvVarsListCommand(loader CloudConfigLoader) *cobra.Command {
 			}
 			envVars, meta := cmdio.TruncateCompleteList(envVars, opts.Limit)
 			meta = cmdio.AttachListMeta(meta, os.Args)
-			if err := opts.IO.Encode(cmd.OutOrStdout(), envVars); err != nil {
+			if err := cmdio.EncodeList(&opts.IO, cmd.OutOrStdout(), envVars, meta); err != nil {
 				return err
 			}
 			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
@@ -1481,7 +1481,7 @@ func newSchedulesListCommand(loader CloudConfigLoader) *cobra.Command {
 			}
 			schedules, meta := cmdio.TruncateCompleteList(schedules, opts.Limit)
 			meta = cmdio.AttachListMeta(meta, os.Args)
-			if err := opts.IO.Encode(cmd.OutOrStdout(), schedules); err != nil {
+			if err := cmdio.EncodeList(&opts.IO, cmd.OutOrStdout(), schedules, meta); err != nil {
 				return err
 			}
 			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
@@ -1730,7 +1730,7 @@ func newLoadZonesListCommand(loader CloudConfigLoader) *cobra.Command {
 			}
 			zones, meta := cmdio.TruncateCompleteList(zones, opts.Limit)
 			meta = cmdio.AttachListMeta(meta, os.Args)
-			if err := opts.IO.Encode(cmd.OutOrStdout(), zones); err != nil {
+			if err := cmdio.EncodeList(&opts.IO, cmd.OutOrStdout(), zones, meta); err != nil {
 				return err
 			}
 			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
@@ -2304,7 +2304,7 @@ func newTestrunRunsListCommand(loader CloudConfigLoader) *cobra.Command {
 			}
 			runs, meta := cmdio.TruncateCompleteList(runs, opts.Limit)
 			meta = cmdio.AttachListMeta(meta, os.Args)
-			if err := opts.IO.Encode(cmd.OutOrStdout(), runs); err != nil {
+			if err := cmdio.EncodeList(&opts.IO, cmd.OutOrStdout(), runs, meta); err != nil {
 				return err
 			}
 			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)

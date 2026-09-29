@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 
@@ -117,10 +118,10 @@ func TestLoadTestsListTruncation(t *testing.T) {
 			stdout, stderr, err := runK6Command(t, false, loader, newTestsListCommand, tc.args, "")
 			require.NoError(t, err)
 
-			var got []LoadTest
-			require.NoError(t, json.Unmarshal([]byte(stdout), &got), "stdout must stay a bare JSON array")
-			assert.Len(t, got, tc.wantLen)
+			page := testutils.DecodeListPage(t, stdout)
+			assert.Len(t, page.Items, tc.wantLen)
 			assert.Equal(t, tc.wantTops, tops)
+			assertListMetaMatchesHint(t, page.ListMeta, tc.wantLen, tc.wantHint)
 			if tc.wantHint == "" {
 				assert.NotContains(t, stderr, "showing first")
 			} else {
@@ -151,9 +152,11 @@ func TestProjectsListTruncation(t *testing.T) {
 			require.NoError(t, err)
 
 			if tc.wantLen >= 0 {
-				var got []map[string]any
-				require.NoError(t, json.Unmarshal([]byte(stdout), &got), "stdout must stay a bare JSON array")
-				assert.Len(t, got, tc.wantLen)
+				page := testutils.DecodeListPage(t, stdout)
+				assert.Len(t, page.Items, tc.wantLen)
+				assertListMetaMatchesHint(t, page.ListMeta, tc.wantLen, tc.wantHint)
+			} else {
+				assert.NotContains(t, stdout, "list_meta", "the table must not show list_meta")
 			}
 			if tc.wantHint == "" {
 				assert.NotContains(t, stderr, "showing first")
@@ -162,4 +165,23 @@ func TestProjectsListTruncation(t *testing.T) {
 			}
 		})
 	}
+}
+
+// assertListMetaMatchesHint checks that list_meta is present only when the
+// stderr hint is expected, and that its continuation is the command that the
+// hint gives.
+func assertListMetaMatchesHint(t *testing.T, meta *testutils.ListPageMeta, wantReturned int, wantHint string) {
+	t.Helper()
+	if wantHint == "" {
+		assert.Nil(t, meta, "a complete set must not carry list_meta")
+		return
+	}
+	require.NotNil(t, meta, "a truncated page must carry list_meta")
+	assert.True(t, meta.Truncated)
+	assert.Equal(t, wantReturned, meta.Returned)
+	_, wantContinue, ok := strings.Cut(wantHint, "with: ")
+	require.True(t, ok)
+	assert.Equal(t, wantContinue, meta.Continue)
+	// The hint gives "of N" only when the command knows the total.
+	assert.Equal(t, strings.Contains(wantHint, " of "), meta.Total != nil)
 }

@@ -63,8 +63,14 @@ func TestCollectorListSelectsHealthFields(t *testing.T) {
 	})
 	require.NoError(t, cmd.Execute())
 
-	var items []map[string]any
-	require.NoError(t, json.Unmarshal(stdout.Bytes(), &items))
+	// Field selection applies to the items of the list envelope.
+	var page struct {
+		Items    []map[string]any `json:"items"`
+		ListMeta map[string]any   `json:"list_meta"`
+	}
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &page))
+	assert.Nil(t, page.ListMeta, "a complete set must not carry list_meta")
+	items := page.Items
 	require.Len(t, items, 1)
 	assert.Equal(t, "collector-1", items[0]["spec.id"])
 	assert.Equal(t, map[string]any{"collector.os": "linux", "collector.version": "1.10.2"}, items[0]["spec.local_attributes"])

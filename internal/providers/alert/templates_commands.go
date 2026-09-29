@@ -64,7 +64,7 @@ func newTemplatesListCommand(loader GrafanaConfigLoader) *cobra.Command {
 			}
 			templates, meta := cmdio.TruncateCompleteList(templates, opts.Limit)
 			meta = cmdio.AttachListMeta(meta, os.Args)
-			if err := opts.IO.Encode(cmd.OutOrStdout(), templates); err != nil {
+			if err := cmdio.EncodeList(&opts.IO, cmd.OutOrStdout(), templates, meta); err != nil {
 				return err
 			}
 			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)

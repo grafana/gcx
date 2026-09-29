@@ -66,7 +66,7 @@ func newMuteTimingsListCommand(loader GrafanaConfigLoader) *cobra.Command {
 			}
 			timings, meta := cmdio.TruncateCompleteList(timings, opts.Limit)
 			meta = cmdio.AttachListMeta(meta, os.Args)
-			if err := opts.IO.Encode(cmd.OutOrStdout(), timings); err != nil {
+			if err := cmdio.EncodeList(&opts.IO, cmd.OutOrStdout(), timings, meta); err != nil {
 				return err
 			}
 			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
