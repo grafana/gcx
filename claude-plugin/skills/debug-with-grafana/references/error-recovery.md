@@ -65,11 +65,14 @@ resolution differ, report actual coverage; do not assume which layer caused it.
 
 ## Loki scan approval required
 
-This is a safety stop, not a transient query error. Inspect with `--estimate-scan`,
-narrow the time window or indexed labels, or obtain user approval before adding
-`--yes`. If volume is unknown, explain that limitation and obtain
-consent before `--approve-unknown-scan`. Do not automatically add approval flags
-or divide the query into smaller calls to evade the gate. Metric LogQL currently requires the unknown-volume acknowledgment.
+For a known large estimate, narrow the time window or indexed labels, or obtain
+user approval before adding `--yes`. For unsupported expressions, explain the
+limitation: narrowing the time range or repeating `--estimate-scan` cannot fix
+unsupported syntax. Simplify to a supported single-selector expression or obtain
+consent before `--approve-unknown-scan`. Single-selector metric estimates include
+the lookback and positive offset. For unavailable or malformed index statistics,
+resolve that failure before retrying `--estimate-scan`, or obtain unknown-volume
+consent. Do not automatically add approval flags or divide queries to evade the gate.
 
 ## Timeout, rate limit, or server failure
 

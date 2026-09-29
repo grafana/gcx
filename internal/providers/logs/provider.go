@@ -44,7 +44,7 @@ func (p *Provider) descriptor() signals.Descriptor {
 			{
 				Build:     dsloki.MetricsCmd,
 				TokenCost: "medium",
-				LLMHint:   `gcx logs metrics -d abc123 'rate({job="grafana"}[5m])' --since 5m --estimate-scan -o json; metric LogQL volume is unknown; obtain user consent before --approve-unknown-scan.`,
+				LLMHint:   `gcx logs metrics -d abc123 'rate({job="grafana"}[5m])' --since 5m --estimate-scan -o json; single-selector metrics include lookback and offset; obtain consent before approval flags.`,
 				Example: `
   # Run a metric query over logs
   gcx logs metrics -d UID 'rate({job="grafana"}[5m])' --since 1h

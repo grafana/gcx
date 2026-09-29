@@ -20,7 +20,8 @@ open it in your browser after the query succeeds.
 Loki scans are estimated before execution. Above 10GB, interactive queries
 prompt for approval; noninteractive queries require --yes. Use --estimate-scan to inspect
 volume without executing. Unknown volume requires --approve-unknown-scan.
-Metric LogQL volume is currently unknown and requires explicit approval.
+Single-selector metric queries include their lookback and positive offset in the
+estimate. Multiple selectors and unsupported expressions require unknown-volume approval.
 
 ```
 gcx datasources loki metrics [EXPR] [flags]

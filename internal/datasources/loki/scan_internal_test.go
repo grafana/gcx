@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/grafana/gcx/internal/agent"
+	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/providers"
 	lokiclient "github.com/grafana/gcx/internal/query/loki"
@@ -20,6 +21,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"k8s.io/client-go/rest"
 )
 
 func TestScanCommands(t *testing.T) {
@@ -55,8 +57,13 @@ func TestScanCommands(t *testing.T) {
 		{name: "yes cannot approve unknown", status: 404, flags: []string{"--yes"}, wantError: true},
 		{name: "auth", status: 401, flags: []string{"--approve-unknown-scan"}, wantError: true},
 		{name: "forbidden", status: 403, flags: []string{"--approve-unknown-scan"}, wantError: true},
-		{name: "metric unknown", metric: true, wantError: true},
-		{name: "metric approved", metric: true, flags: []string{"--approve-unknown-scan"}, wantQuery: true},
+		{name: "metric below", metric: true, body: `{"bytes":123}`, wantQuery: true},
+		{name: "metric boundary", metric: true, body: `{"bytes":10000000000}`, wantQuery: true},
+		{name: "metric above", metric: true, body: `{"bytes":10000000001}`, wantError: true},
+		{name: "metric known approval", metric: true, body: `{"bytes":10000000001}`, flags: []string{"--yes"}, wantQuery: true},
+		{name: "metric estimate only", metric: true, body: `{"bytes":123}`, flags: []string{"--estimate-scan"}},
+		{name: "metric unknown", metric: true, status: 404, wantError: true},
+		{name: "metric approved", metric: true, status: 404, flags: []string{"--approve-unknown-scan"}, wantQuery: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -81,10 +88,12 @@ func TestScanCommands(t *testing.T) {
 					sequence = append(sequence, "query")
 					var body map[string]any
 					assert.NoError(t, json.NewDecoder(r.Body).Decode(&body))
-					if !tt.metric {
-						assert.Equal(t, strconv.FormatInt(estimateStart/int64(time.Millisecond), 10), body["from"])
-						assert.Equal(t, strconv.FormatInt(estimateEnd/int64(time.Millisecond), 10), body["to"])
+					queryStart := estimateStart
+					if tt.metric {
+						queryStart += int64(5 * time.Minute)
 					}
+					assert.Equal(t, strconv.FormatInt(queryStart/int64(time.Millisecond), 10), body["from"])
+					assert.Equal(t, strconv.FormatInt(estimateEnd/int64(time.Millisecond), 10), body["to"])
 					_, _ = w.Write([]byte(`{"results":{"A":{"frames":[]}}}`))
 				default:
 					t.Errorf("unexpected request: %s", r.URL.Path)
@@ -125,14 +134,11 @@ func TestScanCommands(t *testing.T) {
 				assert.True(t, json.Valid(stdout.Bytes()), stdout.String())
 			}
 			assert.Equal(t, tt.wantQuery, strings.Contains(strings.Join(sequence, ","), "query"))
-			if tt.wantQuery && !tt.metric {
+			if tt.wantQuery {
 				assert.Equal(t, []string{"estimate", "query"}, sequence)
 			}
-			if !tt.wantQuery && !tt.metric {
+			if !tt.wantQuery {
 				assert.Equal(t, []string{"estimate"}, sequence)
-			}
-			if tt.metric {
-				assert.NotContains(t, sequence, "estimate")
 			}
 		})
 	}
@@ -164,5 +170,49 @@ func TestScanPrompt(t *testing.T) {
 			require.ErrorAs(t, err, &detailed)
 			assert.Equal(t, tt.code, *detailed.ExitCode)
 		}
+	}
+}
+
+func TestScanRecoveryHints(t *testing.T) {
+	agent.SetFlag(true)
+	t.Cleanup(agent.ResetForTesting)
+	for _, tt := range []struct {
+		name, expr, body string
+		status           int
+		want, absent     string
+	}{
+		{"unsupported", `rate({app="test"}[5m])+rate({app="other"}[5m])`, `{"bytes":1}`, 200, "Simplify to a supported", "retry with --estimate-scan"},
+		{"malformed", `count_over_time({app="test"}[5m])`, `{}`, 200, "Resolve the index-statistics failure", "narrow --since"},
+		{"unavailable", `count_over_time({app="test"}[5m])`, `{}`, 404, "Resolve the index-statistics failure", "narrow --since"},
+		{"large", `count_over_time({app="test"}[5m])`, `{"bytes":10000000001}`, 200, "Narrow the time range", "--approve-unknown-scan"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			calls := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				assert.Equal(t, http.MethodGet, r.Method)
+				assert.True(t, strings.HasSuffix(r.URL.Path, "/resources/index/stats"))
+				w.WriteHeader(tt.status)
+				_, _ = w.Write([]byte(tt.body))
+			}))
+			t.Cleanup(server.Close)
+			client, err := lokiclient.NewClient(config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}})
+			require.NoError(t, err)
+			end := time.Date(2026, 9, 29, 7, 15, 0, 0, time.UTC)
+			req := lokiclient.QueryRequest{Query: tt.expr, Start: end.Add(-5 * time.Minute), End: end}
+			var stderr bytes.Buffer
+			_, err = (&ScanOpts{}).Run(t.Context(), client, "uid", req, true, strings.NewReader(""), &stderr)
+			var detailed *gcxerrors.DetailedError
+			require.ErrorAs(t, err, &detailed)
+			hints := strings.Join(detailed.Suggestions, " ")
+			assert.Contains(t, hints, tt.want)
+			assert.NotContains(t, hints, tt.absent)
+			if tt.name == "unsupported" {
+				assert.Equal(t, 0, calls)
+			} else {
+				assert.Equal(t, 1, calls)
+				assert.Contains(t, detailed.Details, "Scan range: 2026-09-29T07:05:00Z to 2026-09-29T07:15:00Z")
+			}
+		})
 	}
 }

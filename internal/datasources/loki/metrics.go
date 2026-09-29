@@ -37,7 +37,8 @@ open it in your browser after the query succeeds.
 Loki scans are estimated before execution. Above 10GB, interactive queries
 prompt for approval; noninteractive queries require --yes. Use --estimate-scan to inspect
 volume without executing. Unknown volume requires --approve-unknown-scan.
-Metric LogQL volume is currently unknown and requires explicit approval.`,
+Single-selector metric queries include their lookback and positive offset in the
+estimate. Multiple selectors and unsupported expressions require unknown-volume approval.`,
 		Example: `
   # Rate of log lines over 5 minutes
   gcx datasources loki metrics 'rate({job="varlogs"}[5m])' --since 1h -o table
@@ -140,7 +141,7 @@ Metric LogQL volume is currently unknown and requires explicit approval.`,
 
 	cmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "medium",
-		agent.AnnotationLLMHint:   `gcx datasources loki metrics -d UID 'rate({job="grafana"}[5m])' --since 5m --estimate-scan -o json; metric LogQL volume is unknown; obtain user consent before --approve-unknown-scan.`,
+		agent.AnnotationLLMHint:   `gcx datasources loki metrics -d UID 'rate({job="grafana"}[5m])' --since 5m --estimate-scan -o json; single-selector metrics include lookback and offset; obtain consent before approval flags.`,
 	}
 
 	shared.Setup(cmd.Flags(), true)

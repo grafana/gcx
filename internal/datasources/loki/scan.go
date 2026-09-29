@@ -63,6 +63,7 @@ func (o *ScanOpts) Run(ctx context.Context, client *loki.Client, uid string, req
 	if req.EvaluationTime.IsZero() {
 		req.EvaluationTime = time.Now()
 	}
+	req.EvaluationTime = req.EvaluationTime.Truncate(time.Millisecond)
 	estimate, err := client.EstimateScan(ctx, uid, req)
 	if err != nil {
 		var apiErr *queryerror.APIError
@@ -73,13 +74,9 @@ func (o *ScanOpts) Run(ctx context.Context, client *loki.Client, uid string, req
 			(errors.As(err, &apiErr) && (apiErr.StatusCode == http.StatusUnauthorized || apiErr.StatusCode == http.StatusForbidden)) {
 			return nil, err
 		}
-		estimate = &loki.ScanEstimate{DatasourceUID: uid, Query: req.Query, Start: req.Start, End: req.End,
-			Reason: err.Error(), Caveat: "Scan volume is unknown; approval does not establish a runtime ceiling.",
-			Hints: []string{"Retry with --estimate-scan, narrow --since, or explicitly approve unknown volume."}}
-	}
-	if !req.IsRange() {
-		estimate.Start = req.EvaluationTime.Add(-time.Minute)
-		estimate.End = req.EvaluationTime
+		estimate.Reason = err.Error()
+		estimate.Caveat = "Scan volume is unknown; approval does not establish a runtime ceiling."
+		estimate.Hints = []string{loki.ScanStatsRecoveryHint}
 	}
 	estimate.Threshold = defaultScanBytes
 	estimate.ApprovalRequired = estimate.Bytes == nil || *estimate.Bytes > defaultScanBytes
@@ -111,6 +108,9 @@ func (o *ScanOpts) authorize(e *loki.ScanEstimate, in io.Reader, out io.Writer) 
 		return nil
 	}
 	details := fmt.Sprintf("Datasource: %s\nQuery: %s\nRange: %s to %s\n%s", e.DatasourceUID, e.Query, e.Start.Format(time.RFC3339Nano), e.End.Format(time.RFC3339Nano), e.Caveat)
+	if e.ScanStart != nil && e.ScanEnd != nil {
+		details += fmt.Sprintf("\nScan range: %s to %s", e.ScanStart.Format(time.RFC3339Nano), e.ScanEnd.Format(time.RFC3339Nano))
+	}
 	var suggestion string
 	if e.Bytes == nil {
 		details += "\nEstimated scan: unknown. " + e.Reason
@@ -121,7 +121,7 @@ func (o *ScanOpts) authorize(e *loki.ScanEstimate, in io.Reader, out io.Writer) 
 	}
 	if agent.IsAgentMode() || !scanTerminal(in) || !scanTerminal(out) {
 		return &gcxerrors.DetailedError{Summary: "Query scan approval required", Details: details,
-			Suggestions: []string{"Repeat this invocation with --estimate-scan to inspect volume, or narrow --since and indexed labels.", suggestion}, ExitCode: new(gcxerrors.ExitUsageError)}
+			Suggestions: append(append([]string{}, e.Hints...), suggestion), ExitCode: new(gcxerrors.ExitUsageError)}
 	}
 	fmt.Fprintln(out, details)
 	return o.prompt(e, in, out)

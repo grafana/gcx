@@ -272,7 +272,8 @@ Only sequence commands when a later call needs output from an earlier one.
 
 Use a short explicit window and specific indexed labels. `--estimate-scan` inspects
 indexed volume without executing logs. Above 10 GB, obtain user approval before
-adding `--yes`. Unknown volume, including metric LogQL,
+adding `--yes`. Single-selector metric queries include lookback and positive offset in their estimates.
+Unknown volume, including unsupported or multi-selector expressions,
 requires consent before `--approve-unknown-scan`. Do not split
 queries to evade approval. Global auto-approval does not apply; `--limit` caps
 returned lines, not scanned GB. Estimates are not hard runtime or billing caps.

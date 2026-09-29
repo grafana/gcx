@@ -108,9 +108,19 @@ approve execution.
 `--estimate-scan` returns the estimate, time range, threshold, approval requirement,
 limitations, and efficiency hints without executing the log query. Table, wide,
 JSON, YAML, and agents output are supported; raw and graph are rejected.
-Only simple log-stream expressions with an explicit time range are estimated in
-this version. Complex expressions, metric LogQL, unavailable endpoints, and
-malformed statistics produce unknown volume, never a fabricated zero. Unknown
+Simple log-stream expressions with an explicit range and single-selector metric
+expressions with one literal lookback and an optional positive offset are estimated.
+Metric estimates use the same stream selector's index statistics: for evaluation
+bounds `[start, end]`, lookback `L`, and offset `O`, scan `[start-L-O, end-O]`.
+Instant metrics use the frozen evaluation timestamp for both evaluation bounds.
+The original expression and execution bounds are unchanged. Optional `scanStart`
+and `scanEnd` fields expose the effective scan interval when it differs from the
+requested `start` and `end`; human output and approval details show it too.
+Multiple selectors, ambiguous syntax, unsupported time modifiers, unavailable
+endpoints, and malformed statistics produce unknown volume, never a fabricated zero.
+Unsupported-expression hints recommend simplification or unknown-volume consent;
+narrowing time cannot fix unsupported syntax. Statistics-failure hints recommend
+resolving the failure before retrying estimate-only, or unknown-volume consent. Unknown
 volume requires `--approve-unknown-scan` or a separate default-no terminal prompt.
 `--approve-unknown-scan` cannot bypass a known estimate above 10 GB, and `--yes`
 does not approve unknown volume. The flags can be combined to explicitly approve

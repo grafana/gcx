@@ -888,5 +888,10 @@ Grafana's datasource resource API → return estimate-only output or approve →
 execute through the shared Grafana query transport → report processed-volume
 statistics and encode results. Unknown volume stops execution unless explicitly
 acknowledged. The 10 GB threshold is checked against a fresh estimate on every
-invocation. See [query safety](../design/safety.md#36-loki-query-scan-approval) for
+invocation. Single-selector metric expressions reuse the log selector's index
+statistics over an interval extended by the literal lookback and shifted by its
+positive offset. Instant metrics anchor this interval to the frozen evaluation
+time. Estimation never rewrites the query or its execution bounds. Unsupported
+expressions remain unknown, with different recovery advice from a failed
+statistics request. See [query safety](../design/safety.md#36-loki-query-scan-approval) for
 thresholds, compatibility, and limitations.

@@ -18,16 +18,18 @@ import (
 // ScanEstimate describes indexed data matching a selector, not a billing or
 // runtime byte ceiling. Bytes is nil when the volume is unknown, never a fake zero.
 type ScanEstimate struct {
-	DatasourceUID    string    `json:"datasourceUid"`
-	Query            string    `json:"query"`
-	Start            time.Time `json:"start"`
-	End              time.Time `json:"end"`
-	Bytes            *int64    `json:"estimatedBytes"`
-	Threshold        int64     `json:"approvalThresholdBytes"`
-	ApprovalRequired bool      `json:"approvalRequired"`
-	Reason           string    `json:"reason,omitempty"`
-	Caveat           string    `json:"caveat"`
-	Hints            []string  `json:"hints"`
+	DatasourceUID    string     `json:"datasourceUid"`
+	Query            string     `json:"query"`
+	Start            time.Time  `json:"start"`
+	End              time.Time  `json:"end"`
+	ScanStart        *time.Time `json:"scanStart,omitempty"`
+	ScanEnd          *time.Time `json:"scanEnd,omitempty"`
+	Bytes            *int64     `json:"estimatedBytes"`
+	Threshold        int64      `json:"approvalThresholdBytes"`
+	ApprovalRequired bool       `json:"approvalRequired"`
+	Reason           string     `json:"reason,omitempty"`
+	Caveat           string     `json:"caveat"`
+	Hints            []string   `json:"hints"`
 }
 
 // FormatScanEstimate renders estimate-only output without mixing it with logs.
@@ -45,6 +47,11 @@ func FormatScanEstimate(w io.Writer, e *ScanEstimate) error {
 			return err
 		}
 	}
+	if e.ScanStart != nil && e.ScanEnd != nil {
+		if _, err := fmt.Fprintf(w, "Scan range: %s to %s\n", e.ScanStart.Format(time.RFC3339Nano), e.ScanEnd.Format(time.RFC3339Nano)); err != nil {
+			return err
+		}
+	}
 	for _, hint := range e.Hints {
 		if _, err := fmt.Fprintln(w, hint); err != nil {
 			return err
@@ -54,7 +61,9 @@ func FormatScanEstimate(w io.Writer, e *ScanEstimate) error {
 }
 
 // EstimateScan uses the same datasource resource endpoint as Grafana Explore.
-// Only simple log-stream queries with an explicit range are estimated in v1.
+// Single-selector metric queries use the same indexed volume as log queries,
+// with their lookback and offset included in the scan interval. The returned
+// estimate retains query context even when the statistics request fails.
 func (c *Client) EstimateScan(ctx context.Context, uid string, req QueryRequest) (*ScanEstimate, error) {
 	e := &ScanEstimate{
 		DatasourceUID: uid, Query: req.Query, Start: req.Start, End: req.End,
@@ -65,34 +74,53 @@ func (c *Client) EstimateScan(ctx context.Context, uid string, req QueryRequest)
 			"--limit caps returned lines, not scanned bytes.",
 		},
 	}
-	selector, ok := logSelector(req.Query)
-	if !ok || !req.IsRange() {
-		e.Reason = "Volume estimation requires a simple log-stream expression and an explicit time range; metric LogQL and complex expressions are not estimated."
+	if !req.IsRange() {
+		e.Start, e.End = req.EvaluationTime, req.EvaluationTime
+	}
+	selector, lookback, offset, ok := scanSelector(req.Query)
+	if !ok {
+		e.Reason = "Volume estimation supports simple log queries and single-selector metric expressions with one literal lookback and an optional positive offset; this expression is unsupported."
+		e.Hints = []string{"Simplify to a supported single-selector expression, or obtain approval for unknown volume. Narrowing the time range does not resolve unsupported syntax."}
 		return e, nil
 	}
-	values := url.Values{"query": {selector}, "start": {strconv.FormatInt(req.Start.UnixNano(), 10)}, "end": {strconv.FormatInt(req.End.UnixNano(), 10)}}
+	if !req.IsRange() && (lookback == 0 || req.EvaluationTime.IsZero()) {
+		e.Reason = "Volume estimation requires an explicit log-query range or a metric lookback with a fixed evaluation time."
+		e.Hints = []string{"Supply --since or --from/--to for a log query, or obtain approval for unknown volume."}
+		return e, nil
+	}
+	scanStart, scanEnd := e.Start.Add(-offset).Add(-lookback), e.End.Add(-offset)
+	if !time.Unix(0, scanStart.UnixNano()).Equal(scanStart) || !time.Unix(0, scanEnd.UnixNano()).Equal(scanEnd) {
+		e.Reason = "The effective scan interval is outside the supported nanosecond timestamp range."
+		e.Hints = []string{"Use representable timestamps, lookback, and offset, or obtain approval for unknown volume."}
+		return e, nil
+	}
+	if !scanStart.Equal(e.Start) || !scanEnd.Equal(e.End) {
+		e.ScanStart, e.ScanEnd = &scanStart, &scanEnd
+	}
+	values := url.Values{"query": {selector}, "start": {strconv.FormatInt(scanStart.UnixNano(), 10)}, "end": {strconv.FormatInt(scanEnd.UnixNano(), 10)}}
 	path := "/api/datasources/uid/" + url.PathEscape(uid) + "/resources/index/stats"
 	r, err := http.NewRequestWithContext(ctx, http.MethodGet, c.restConfig.Host+path+"?"+values.Encode(), nil)
 	if err != nil {
-		return nil, fmt.Errorf("create scan estimate request: %w", err)
+		return e, fmt.Errorf("create scan estimate request: %w", err)
 	}
 	resp, err := c.httpClient.Do(r)
 	if err != nil {
-		return nil, fmt.Errorf("estimate scan volume: %w", err)
+		return e, fmt.Errorf("estimate scan volume: %w", err)
 	}
 	defer resp.Body.Close()
 	body, err := httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
 	if err != nil {
-		return nil, fmt.Errorf("read scan estimate: %w", err)
+		return e, fmt.Errorf("read scan estimate: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, queryerror.FromBody("loki", "scan estimate", resp.StatusCode, body)
+		return e, queryerror.FromBody("loki", "scan estimate", resp.StatusCode, body)
 	}
 	var stats struct {
 		Bytes *int64 `json:"bytes"`
 	}
 	if err := json.Unmarshal(body, &stats); err != nil || stats.Bytes == nil || *stats.Bytes < 0 {
 		e.Reason = "The index statistics response did not contain a valid non-negative byte count."
+		e.Hints = []string{ScanStatsRecoveryHint}
 		return e, nil
 	}
 	e.Bytes = stats.Bytes

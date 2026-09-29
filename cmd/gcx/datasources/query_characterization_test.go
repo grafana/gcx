@@ -558,10 +558,17 @@ func decodeNext(dec *json.Decoder, v any) error {
 func TestGenericLokiScanGuard(t *testing.T) {
 	for _, tt := range []struct {
 		name      string
+		expr      string
+		scanBytes int64
 		flags     []string
 		wantPost  bool
 		wantError bool
 	}{
+		{name: "metric below", expr: `sum(count_over_time({app="test"}[5m]))`, scanBytes: 123, wantPost: true},
+		{name: "metric estimate", expr: `sum(count_over_time({app="test"}[5m]))`, flags: []string{"--estimate-scan"}},
+		{name: "metric above", expr: `count_over_time({app="test"}[5m])`, wantError: true},
+		{name: "metric approved", expr: `count_over_time({app="test"}[5m])`, flags: []string{"--yes"}, wantPost: true},
+		{name: "multi selector unknown", expr: `rate({app="test"}[5m])+rate({app="other"}[5m])`, flags: []string{"--yes"}, wantError: true},
 		{name: "blocked", wantError: true},
 		{name: "estimate", flags: []string{"--estimate-scan"}},
 		{name: "approved", flags: []string{"--yes"}, wantPost: true},
@@ -569,8 +576,16 @@ func TestGenericLokiScanGuard(t *testing.T) {
 		{name: "unknown does not bypass", flags: []string{"--approve-unknown-scan"}, wantError: true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			f := &fakeGrafana{t: t, dsType: "loki", scanBytes: 25_000_000_000}
-			args := []string{"query", "uid", `{app="test"}`, "--since=1h", "-o=json"}
+			scanBytes := tt.scanBytes
+			if scanBytes == 0 {
+				scanBytes = 25_000_000_000
+			}
+			f := &fakeGrafana{t: t, dsType: "loki", scanBytes: scanBytes}
+			expr := tt.expr
+			if expr == "" {
+				expr = `{app="test"}`
+			}
+			args := []string{"query", "uid", expr, "--since=1h", "-o=json"}
 			_, err := runGeneric(t, f, append(args, tt.flags...)...)
 			if tt.wantError {
 				require.Error(t, err)
