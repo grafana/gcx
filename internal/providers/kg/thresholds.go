@@ -114,8 +114,7 @@ type thresholdsGetOpts struct {
 }
 
 func (o *thresholdsGetOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec(cmdio.FormatTable, &RuleTableCodec{})
-	o.IO.RegisterCustomCodec(cmdio.FormatWide, &RuleWideTableCodec{})
+	cmdio.RegisterTable(&o.IO, RuleTable())
 	o.IO.DefaultFormat(cmdio.FormatTable)
 	o.IO.BindFlags(flags)
 }
@@ -217,55 +216,110 @@ func thresholdTable() cmdio.Table[thresholdRow] {
 	}
 }
 
-// compactExpr folds whitespace outside quoted strings without truncating the
-// expression. This keeps one threshold on one table row while preserving
-// whitespace that is meaningful inside PromQL string literals.
+// compactExpr folds whitespace without changing the expression's meaning.
+// PromQL comments are discarded before their terminating newline is folded,
+// and raw strings are rewritten as equivalent escaped quoted strings so their
+// embedded whitespace can remain visible on one table row.
 func compactExpr(expr string) string {
-	var b strings.Builder
-	b.Grow(len(expr))
-
-	var quote rune
-	escaped := false
-	pendingSpace := false
+	c := promQLCompactor{}
+	c.output.Grow(len(expr))
 	for _, r := range expr {
-		if quote != 0 {
-			switch r {
-			case '\n':
-				b.WriteString(`\n`)
-				continue
-			case '\r':
-				b.WriteString(`\r`)
-				continue
-			case '\t':
-				b.WriteString(`\t`)
-				continue
-			}
-			b.WriteRune(r)
-			switch {
-			case escaped:
-				escaped = false
-			case r == '\\' && quote != '`':
-				escaped = true
-			case r == quote:
-				quote = 0
-			}
-			continue
-		}
-
-		if unicode.IsSpace(r) {
-			pendingSpace = b.Len() > 0
-			continue
-		}
-		if pendingSpace {
-			b.WriteByte(' ')
-			pendingSpace = false
-		}
-		if r == '"' || r == '\'' || r == '`' {
-			quote = r
-		}
-		b.WriteRune(r)
+		c.writeRune(r)
 	}
-	return b.String()
+	c.finish()
+	return c.output.String()
+}
+
+type promQLCompactor struct {
+	output       strings.Builder
+	raw          strings.Builder
+	quote        rune
+	escaped      bool
+	inComment    bool
+	pendingSpace bool
+}
+
+func (c *promQLCompactor) writeRune(r rune) {
+	switch {
+	case c.inComment:
+		c.writeCommentRune(r)
+	case c.quote == '`':
+		c.writeRawRune(r)
+	case c.quote != 0:
+		c.writeQuotedRune(r)
+	default:
+		c.writeUnquotedRune(r)
+	}
+}
+
+func (c *promQLCompactor) writeCommentRune(r rune) {
+	if r == '\n' || r == '\r' {
+		c.inComment = false
+		c.pendingSpace = c.output.Len() > 0
+	}
+}
+
+func (c *promQLCompactor) writeRawRune(r rune) {
+	if r != '`' {
+		c.raw.WriteRune(r)
+		return
+	}
+	c.output.WriteString(strconv.Quote(c.raw.String()))
+	c.raw.Reset()
+	c.quote = 0
+}
+
+func (c *promQLCompactor) writeQuotedRune(r rune) {
+	switch r {
+	case '\n':
+		c.output.WriteString(`\n`)
+		return
+	case '\r':
+		c.output.WriteString(`\r`)
+		return
+	case '\t':
+		c.output.WriteString(`\t`)
+		return
+	}
+	c.output.WriteRune(r)
+	switch {
+	case c.escaped:
+		c.escaped = false
+	case r == '\\':
+		c.escaped = true
+	case r == c.quote:
+		c.quote = 0
+	}
+}
+
+func (c *promQLCompactor) writeUnquotedRune(r rune) {
+	if unicode.IsSpace(r) {
+		c.pendingSpace = c.output.Len() > 0
+		return
+	}
+	if r == '#' {
+		c.inComment = true
+		return
+	}
+	if c.pendingSpace {
+		c.output.WriteByte(' ')
+		c.pendingSpace = false
+	}
+	if r == '`' {
+		c.quote = r
+		return
+	}
+	if r == '"' || r == '\'' {
+		c.quote = r
+	}
+	c.output.WriteRune(r)
+}
+
+func (c *promQLCompactor) finish() {
+	if c.quote == '`' {
+		c.output.WriteRune('`')
+		c.output.WriteString(c.raw.String())
+	}
 }
 
 // renderLabels renders a label map as a stable, comma-separated key=value string.
