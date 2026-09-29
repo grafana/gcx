@@ -228,19 +228,16 @@ func TestGenericQueryCharacterization_LokiLimit(t *testing.T) {
 	assert.InDelta(t, float64(7), q["maxLines"], 0, "--limit must reach maxLines")
 }
 
-func TestGenericQueryCharacterization_LokiRejectsZeroLimit(t *testing.T) {
+func TestGenericQueryCharacterization_LokiZeroLimitUsesBackendDefault(t *testing.T) {
 	f := &fakeGrafana{t: t, dsType: "loki"}
 
 	_, err := runGeneric(t, f,
 		"query", "uid", `{job="varlogs"}`,
 		"--from", "now-1h", "--to", "now", "--limit", "0", "-o", "json")
 
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "--limit must be positive")
-	assert.Contains(t, err.Error(), "gcx logs metrics")
-	path, body := f.seenPost()
-	assert.Empty(t, path)
-	assert.Nil(t, body)
+	require.NoError(t, err)
+	_, body := f.seenPost()
+	assert.NotContains(t, firstQuery(t, body), "maxLines")
 }
 
 func TestGenericQueryCharacterization_PinotDefaultLimit(t *testing.T) {
