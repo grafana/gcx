@@ -7,6 +7,7 @@ import (
 	"time"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
+	dsloki "github.com/grafana/gcx/internal/datasources/loki"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/query/pinot"
 	"github.com/spf13/cobra"
@@ -18,6 +19,7 @@ import (
 type genericQueryOpts struct {
 	config cmdconfig.Options
 	shared dsquery.SharedOpts
+	scan   dsloki.ScanOpts
 
 	profileType string
 	maxNodes    int64
@@ -30,6 +32,7 @@ type genericQueryOpts struct {
 func (o *genericQueryOpts) setup(flags *pflag.FlagSet) {
 	o.config.BindFlags(flags)
 	o.shared.Setup(flags, true)
+	o.scan.Setup(flags)
 	flags.StringVar(&o.profileType, "profile-type", "", "Profile type ID for pyroscope queries (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds')")
 	flags.Int64Var(&o.maxNodes, "max-nodes", 1024, "Maximum nodes in flame graph (pyroscope only)")
 	flags.IntVar(&o.limit, "limit", dsquery.DefaultLokiLimit, fmt.Sprintf("Maximum log lines for loki, or max rows for pinot (0 means no limit). Pinot uses %d when --limit is omitted; stderr notes when PinotQL is adjusted", pinot.DefaultLimit))
@@ -40,6 +43,10 @@ func (o *genericQueryOpts) setup(flags *pflag.FlagSet) {
 // positional expression, which cannot be combined with --expr.
 func (o *genericQueryOpts) Validate(args []string) error {
 	if err := o.shared.Validate(); err != nil {
+		return err
+	}
+
+	if err := o.scan.Validate(o.shared.IO.OutputFormat); err != nil {
 		return err
 	}
 
@@ -75,6 +82,9 @@ func (o *genericQueryOpts) run(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	dsType := dsquery.NormalizeKind(rawType)
+	if dsType != "loki" && o.scan.Requested() {
+		return errors.New("--estimate, --approve-scan, and --approve-unknown-scan apply only to Loki datasources")
+	}
 
 	// Redirects run before the expression is resolved, so an argument-less call
 	// gets the typed-command redirect instead of "expression is required".
@@ -111,6 +121,8 @@ func (o *genericQueryOpts) run(cmd *cobra.Command, args []string) error {
 		limitSet:    cmd.Flags().Changed("limit"),
 		table:       o.table,
 		warn:        cmd.ErrOrStderr(),
+		scan:        &o.scan,
+		in:          cmd.InOrStdin(),
 	})
 	if err != nil {
 		return err
@@ -133,7 +145,9 @@ EXPR is the query expression appropriate for the datasource type.
 
 The datasource type is detected via the Grafana API and the appropriate query
 client is used automatically. This is the escape hatch for datasource types
-that do not have a dedicated subcommand.`,
+that do not have a dedicated subcommand.
+Loki queries require finite approval above an estimated 10GB, or explicit
+acknowledgment of unknown volume. Use --estimate to inspect without querying.`,
 		Example: `
   # Auto-detect and query any supported datasource
   gcx datasources query ds-001 'up{job="grafana"}' --from now-1h --to now

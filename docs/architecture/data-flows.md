@@ -879,3 +879,14 @@ Default `MaxConcurrent` = 10 (set in `push.go:30`, `pull.go`, etc.).
 7. **upsertResource reads resourceVersion before update.** `pusher.go:259` copies
    `resourceVersion` from the existing object. Any code doing updates outside of
    the Pusher must do the same or Grafana's API will reject the update with a conflict.
+
+## Loki query approval flow
+
+Typed and top-level Loki commands, plus generic datasource dispatch, use the
+same flow: resolve datasource and times → estimate matching indexed volume via
+Grafana's datasource resource API → return estimate-only output or approve →
+execute through the shared Grafana query transport → report processed-volume
+statistics and encode results. Unknown volume stops execution unless explicitly
+acknowledged. Numeric approval is checked against a fresh estimate on every
+invocation. See [query safety](../design/safety.md#36-loki-query-scan-approval) for
+thresholds, compatibility, and limitations.

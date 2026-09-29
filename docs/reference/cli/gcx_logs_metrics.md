@@ -17,6 +17,11 @@ Instant vs range is deduced from time flags: no time flags = instant query,
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
 open it in your browser after the query succeeds.
 
+Loki scans are estimated before execution. Above 10GB, approve a finite
+volume with --approve-scan (not a runtime ceiling). Use --estimate to inspect
+volume without executing. Unknown volume requires --approve-unknown-scan.
+Metric LogQL volume is currently unknown and requires explicit approval.
+
 ```
 gcx logs metrics [EXPR] [flags]
 ```
@@ -32,25 +37,28 @@ gcx logs metrics [EXPR] [flags]
   gcx logs metrics 'rate({job="grafana"}[5m])' --share-link
 
   # Output as JSON
-  gcx logs metrics -d UID 'rate({job="grafana"}[5m])' --since 1h -o json
+  gcx logs metrics -d UID 'rate({job="grafana"}[5m])' --since 5m --estimate -o json
 ```
 
 ### Options
 
 ```
-  -d, --datasource string   Datasource UID (required unless datasources.loki is configured)
-      --error-on-empty      Fail if the query returns no results
-      --expr string         Query expression (alternative to positional argument)
-      --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
-  -h, --help                help for metrics
-      --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --open                Open the executed query in Grafana Explore
-  -o, --output string       Output format. One of: agents, graph, json, table, wide, yaml (default "table")
-      --share-link          Print the Grafana Explore URL for the executed query to stderr
-      --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
-      --step string         Query step (e.g., '15s', '1m')
-      --to string           End time (RFC3339, Unix timestamp, or relative like 'now')
+      --approve-scan string    Approve up to this estimated Loki volume for this invocation (e.g. 25GB); default gate is 10GB, not a runtime ceiling
+      --approve-unknown-scan   Approve this Loki query when scan volume cannot be estimated
+  -d, --datasource string      Datasource UID (required unless datasources.loki is configured)
+      --error-on-empty         Fail if the query returns no results
+      --estimate               Estimate Loki indexed scan volume without executing the query
+      --expr string            Query expression (alternative to positional argument)
+      --from string            Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
+  -h, --help                   help for metrics
+      --jq string              jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string            Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --open                   Open the executed query in Grafana Explore
+  -o, --output string          Output format. One of: agents, graph, json, table, wide, yaml (default "table")
+      --share-link             Print the Grafana Explore URL for the executed query to stderr
+      --since string           Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
+      --step string            Query step (e.g., '15s', '1m')
+      --to string              End time (RFC3339, Unix timestamp, or relative like 'now')
 ```
 
 ### Options inherited from parent commands

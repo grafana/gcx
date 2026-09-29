@@ -15,6 +15,7 @@ import (
 func MetricsCmd(loader *providers.ConfigLoader) *cobra.Command {
 	shared := &dsquery.SharedOpts{}
 	share := &dsquery.ExploreLinkOpts{}
+	scan := &ScanOpts{}
 	var datasource string
 
 	cmd := &cobra.Command{
@@ -31,7 +32,12 @@ time-series data with proper table, graph, and JSON formatters.
 Instant vs range is deduced from time flags: no time flags = instant query,
 --since or --from/--to = range query.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
-open it in your browser after the query succeeds.`,
+open it in your browser after the query succeeds.
+
+Loki scans are estimated before execution. Above 10GB, approve a finite
+volume with --approve-scan (not a runtime ceiling). Use --estimate to inspect
+volume without executing. Unknown volume requires --approve-unknown-scan.
+Metric LogQL volume is currently unknown and requires explicit approval.`,
 		Example: `
   # Rate of log lines over 5 minutes
   gcx datasources loki metrics 'rate({job="varlogs"}[5m])' --since 1h -o table
@@ -50,6 +56,10 @@ open it in your browser after the query succeeds.`,
 		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := shared.Validate(); err != nil {
+				return err
+			}
+
+			if err := scan.Validate(shared.IO.OutputFormat); err != nil {
 				return err
 			}
 
@@ -89,10 +99,14 @@ open it in your browser after the query succeeds.`,
 				Step:  step,
 			}
 
-			resp, err := client.MetricQuery(ctx, datasourceUID, req)
+			resp, err := scan.Run(ctx, client, datasourceUID, req, true, cmd.InOrStdin(), cmd.ErrOrStderr())
 			if err != nil {
 				return fmt.Errorf("metric query failed: %w", err)
 			}
+			if scan.Estimate {
+				return shared.IO.Encode(cmd.OutOrStdout(), resp)
+			}
+
 			exploreURL := MetricsExploreURL(cfg.GrafanaURL, dsquery.ExploreQuery{
 				DatasourceUID:  datasourceUID,
 				DatasourceType: dsType,
@@ -126,12 +140,13 @@ open it in your browser after the query succeeds.`,
 
 	cmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "medium",
-		agent.AnnotationLLMHint:   `gcx datasources loki metrics -d UID 'rate({job="grafana"}[5m])' --since 1h -o json`,
+		agent.AnnotationLLMHint:   `gcx datasources loki metrics -d UID 'rate({job="grafana"}[5m])' --since 5m --estimate -o json; metric LogQL volume is unknown; obtain user consent before --approve-unknown-scan.`,
 	}
 
 	shared.Setup(cmd.Flags(), true)
 	shared.SetupErrorOnEmptyFlag(cmd.Flags())
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.loki is configured)")
+	scan.Setup(cmd.Flags())
 	share.Setup(cmd.Flags(), "executed query")
 
 	return cmd

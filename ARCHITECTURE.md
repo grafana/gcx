@@ -95,6 +95,8 @@ Codec Pipeline               table (default) | graph (terminal chart) | json | y
 
 **Adaptive telemetry** nests under each signal provider (`metrics adaptive`, `logs adaptive`, `traces adaptive`) with its own CRUD resources (rules, policies, exemptions, segments) and operational views (recommendations, patterns). Uses `internal/auth/adaptive/` for shared, GCOM-resolved Basic auth.
 
+**Loki scan approval:** All Loki query command routes share the approval flow in `internal/datasources/loki`; `internal/query/loki` owns index-statistics transport and execution statistics. The command layer freezes request times, estimates volume, and requires explicit approval above 10 GB or for unknown volume before execution. See [query safety](docs/design/safety.md#36-loki-query-scan-approval).
+
 **Graph rendering:** `internal/graph/` converts query responses to terminal charts via ntcharts + lipgloss. Available as `-o graph` on all query commands and SLO/synth timeline commands.
 
 ### 4. Developer Tooling (`gcx dev`)

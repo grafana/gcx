@@ -8,11 +8,12 @@ import (
 
 // QueryRequest represents a Loki query request.
 type QueryRequest struct {
-	Query string
-	Start time.Time
-	End   time.Time
-	Step  time.Duration
-	Limit int
+	Query          string
+	EvaluationTime time.Time
+	Start          time.Time
+	End            time.Time
+	Step           time.Duration
+	Limit          int
 }
 
 // IsRange returns true if this is a range query.
@@ -74,7 +75,7 @@ type QueryStats struct {
 type QuerySummary struct {
 	BytesProcessedPerSecond int64   `json:"bytesProcessedPerSecond,omitempty"`
 	LinesProcessedPerSecond int64   `json:"linesProcessedPerSecond,omitempty"`
-	TotalBytesProcessed     int64   `json:"totalBytesProcessed,omitempty"`
+	TotalBytesProcessed     int64   `json:"totalBytesProcessed"`
 	TotalLinesProcessed     int64   `json:"totalLinesProcessed,omitempty"`
 	ExecTime                float64 `json:"execTime,omitempty"`
 }
@@ -100,6 +101,7 @@ type MetricQueryResponse struct {
 
 // MetricQueryData holds the metric query result data.
 type MetricQueryData struct {
+	Stats      *QueryStats         `json:"stats,omitempty"`
 	ResultType string              `json:"resultType"`
 	Result     []MetricQuerySample `json:"result"`
 }

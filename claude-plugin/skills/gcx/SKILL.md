@@ -56,7 +56,7 @@ right group:
 | IRM (OnCall + Incidents) | `irm` | `gcx irm oncall schedules list`, `gcx irm incidents list` |
 | k6 load tests, projects, runs | `k6` | `gcx k6 load-tests list` |
 | PromQL / Adaptive Metrics | `metrics` | `gcx metrics query -d <uid> 'up'` |
-| LogQL / Adaptive Logs | `logs` | `gcx logs query -d <uid> '{app="foo"}'` |
+| LogQL / Adaptive Logs | `logs` | `gcx logs query -d <uid> '{app="foo"}' --since 5m --estimate` |
 | Profiling (Pyroscope) | `profiles` | `gcx profiles query` |
 | Tracing (Tempo) | `traces` | `gcx traces query -d <uid> '{ status = error }'` (see Tempo LLM-friendly output below) |
 | Datasource info and queries | `datasources` | `gcx datasources list` |
@@ -267,6 +267,15 @@ a single message. This applies to:
 - Concurrent datasource queries
 
 Only sequence commands when a later call needs output from an earlier one.
+
+## Loki query costs
+
+Use a short explicit window and specific indexed labels. `--estimate` inspects
+indexed volume without executing logs. Above 10 GB, obtain user approval before
+adding a finite `--approve-scan` amount. Unknown volume, including metric LogQL,
+requires consent before `--approve-unknown-scan`. Do not raise budgets or split
+queries to evade approval. Global auto-approval does not apply; `--limit` caps
+returned lines, not scanned GB. Estimates are not hard runtime or billing caps.
 
 ## Secret Safety
 
