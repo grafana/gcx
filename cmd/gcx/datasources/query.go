@@ -32,7 +32,7 @@ func (o *genericQueryOpts) setup(flags *pflag.FlagSet) {
 	o.shared.Setup(flags, true)
 	flags.StringVar(&o.profileType, "profile-type", "", "Profile type ID for pyroscope queries (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds')")
 	flags.Int64Var(&o.maxNodes, "max-nodes", 1024, "Maximum nodes in flame graph (pyroscope only)")
-	flags.IntVar(&o.limit, "limit", dsquery.DefaultLokiLimit, fmt.Sprintf("Maximum log lines for loki, or max rows for pinot (0 means no limit). Pinot uses %d when --limit is omitted; stderr notes when PinotQL is adjusted", pinot.DefaultLimit))
+	flags.IntVar(&o.limit, "limit", dsquery.DefaultLokiLimit, fmt.Sprintf("Maximum log lines for loki (must be positive), or max rows for pinot (0 means no limit). Pinot uses %d when --limit is omitted; stderr notes when PinotQL is adjusted", pinot.DefaultLimit))
 	flags.StringVar(&o.table, "table", "", "StarTree table name for pinot queries when the SQL has no extractable FROM")
 }
 
@@ -75,6 +75,11 @@ func (o *genericQueryOpts) run(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	dsType := dsquery.NormalizeKind(rawType)
+	if dsType == "loki" {
+		if err := dsquery.ValidateLokiLogLimit(o.limit); err != nil {
+			return err
+		}
+	}
 
 	// Redirects run before the expression is resolved, so an argument-less call
 	// gets the typed-command redirect instead of "expression is required".

@@ -521,6 +521,8 @@ gcx metrics metadata
 
 # LogQL queries
 gcx logs query '{app="nginx"} |= "error"' --since 1h
+# Use a LogQL metric query for complete counts
+gcx logs metrics 'count_over_time({app="nginx"}[1h])' --since 1h
 gcx logs labels
 gcx logs series --match '{app="nginx"}'
 ```

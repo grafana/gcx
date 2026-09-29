@@ -8,7 +8,34 @@ import (
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	querysql "github.com/grafana/gcx/internal/query/sql"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+func TestValidateLokiLogLimit(t *testing.T) {
+	tests := []struct {
+		name    string
+		limit   int
+		wantErr bool
+	}{
+		{name: "positive", limit: 1},
+		{name: "zero", limit: 0, wantErr: true},
+		{name: "negative", limit: -1, wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := dsquery.ValidateLokiLogLimit(tt.limit)
+			if !tt.wantErr {
+				require.NoError(t, err)
+				return
+			}
+
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "--limit must be positive")
+			assert.Contains(t, err.Error(), "gcx logs metrics")
+		})
+	}
+}
 
 func rows(n int) [][]any {
 	out := make([][]any, n)

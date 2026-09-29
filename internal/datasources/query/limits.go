@@ -1,6 +1,7 @@
 package query
 
 import (
+	"fmt"
 	"io"
 
 	cmdio "github.com/grafana/gcx/internal/output"
@@ -9,10 +10,18 @@ import (
 
 const (
 	// DefaultLokiLimit is the default result cap for Loki queries when --limit
-	// is not explicitly provided. A smaller value avoids overwhelming output;
-	// use --limit 0 for no cap or --limit N for a custom value.
+	// is not explicitly provided. A smaller value avoids overwhelming output.
 	DefaultLokiLimit = 50
 )
+
+// ValidateLokiLogLimit rejects values that Grafana does not honor as unlimited.
+func ValidateLokiLogLimit(limit int) error {
+	if limit < 1 {
+		return fmt.Errorf("--limit must be positive for Loki log queries, got %d; use `gcx logs metrics` for totals", limit)
+	}
+
+	return nil
+}
 
 // SurfaceRowLimits reports to the user (on stderr, w) when a SQL query's results
 // were capped. It handles two independent truncation sources:
