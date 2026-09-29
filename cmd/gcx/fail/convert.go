@@ -1725,7 +1725,7 @@ func convertBrowserCancelled(err error) (*gcxerrors.DetailedError, bool) {
 // signupIncompleteDetailedError renders the failure that stopped a signup once
 // its browser step had started, keeping the failure's summary, details,
 // suggestions and exit code, and puts the gcx login recovery first. It never
-// suggests signup again: that would start a second account.
+// suggests signup again: that could start a second account.
 func signupIncompleteDetailedError(e *login.SignupIncompleteError) *gcxerrors.DetailedError {
 	inner := ErrorToDetailedError(e.Err)
 	if inner == nil {

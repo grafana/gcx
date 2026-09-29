@@ -31,9 +31,10 @@ account's first stack.
 gcx opens the Grafana Cloud sign-up page and waits. In the browser, create the
 account, verify your email (the emailed link may open a new tab), create your
 first stack, and approve "Connect gcx". The browser then returns to gcx, which
-saves the connection. No stack URL or token is needed. If the browser loses
-the page, press Enter in a local terminal to open it again, or open the
-printed URL.
+saves the connection. No stack URL or token is needed. If the browser asks you
+to choose a stack instead of creating an account, it is already signed in to
+Grafana Cloud: choose one and approve "Connect gcx". If the browser loses the
+page, press Enter in a local terminal to open it again, or open the printed URL.
 
 The connection is saved to CONTEXT_NAME. Without it, gcx uses the current
 context, or a context named "default" when none is set. signup only ever saves
@@ -48,7 +49,7 @@ Cloud management credentials. To manage Grafana Cloud products (SLOs,
 Synthetic Monitoring, k6 and more), save a Cloud Access Policy token afterwards
 with gcx cloud login --cloud-token <token>. If signup fails once the browser
 step has started, the error shows the gcx login command that finishes the
-connection; do not run signup again, which would start a second account.`,
+connection; do not run signup again, which could start a second account.`,
 		Example: `  gcx signup
   gcx signup my-stack
   gcx signup --oauth-manual`,
@@ -171,8 +172,11 @@ func quotedList(names []string) string {
 	return strings.Join(quoted, ", ")
 }
 
+// printSignupHeader does not promise a new account: the sign-up page sends a
+// browser that is already signed in to Grafana Cloud, with a confirmed email,
+// on to its stacks.
 func printSignupHeader(cmd *cobra.Command, contextName string) {
-	fmt.Fprintf(cmd.ErrOrStderr(), "Creating a Grafana Cloud account. gcx saves the new stack as context %q.\n\n", contextName)
+	fmt.Fprintf(cmd.ErrOrStderr(), "Connecting gcx to Grafana Cloud. The connection will be saved as context %q.\n\n", contextName)
 }
 
 // signupLoginCommand is the gcx login command that finishes a signup whose

@@ -71,10 +71,14 @@ gcx signup cloud
 It opens the Grafana Cloud sign-up page (in agent mode it prints the URL for
 the user to open). The user creates the account, verifies their email, creates
 a first stack, and approves "Connect gcx"; gcx then saves the connection to the
-`cloud` context and makes it current. It asks no questions, and it only saves
-a new connection, so it refuses a context or stack entry that already exists:
+`cloud` context and makes it current. A browser already signed in to Grafana
+Cloud skips sign-up and asks for one of that account's stacks, or goes straight
+to "Connect gcx" with one organization and one stack; the user then approves as
+usual. To create a separate account instead, the user signs out of Grafana
+Cloud in that browser first. Signup asks no questions, and it only saves a new
+connection, so it refuses a context or stack entry that already exists:
 do not run Step 1 first. If it fails once the browser step has started, run
-the `gcx login` command the error shows, not `gcx signup` again, which would
+the `gcx login` command the error shows, not `gcx signup` again, which could
 start a second account. It saves no Grafana Cloud management credentials; for
 Cloud product APIs (SLOs, Synthetic Monitoring, k6), add a Cloud Access Policy
 token afterwards with `gcx cloud login --context cloud --cloud-token <token>`.
