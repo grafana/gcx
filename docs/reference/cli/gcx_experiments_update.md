@@ -1,15 +1,16 @@
 ## gcx experiments update
 
-[experimental] Update an Odin experiment from a manifest.
+[experimental] Update an Odin experiment.
 
 ### Synopsis
 
 This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
 
-Replace an existing Experiment through the Odin app plugin on the selected
-Grafana instance. Start with the complete object from experiments get, change
-the desired fields, and retain metadata.name, namespace, uid, and resourceVersion.
-Odin rejects a stale resourceVersion instead of overwriting a concurrent edit.
+Update common fields with --title, --description, or --status. The command
+fetches the current experiment, preserves its other fields, and sends the
+current resourceVersion. For larger changes, pass the complete resource with
+-f after running experiments get. Odin rejects a stale resourceVersion instead
+of overwriting a concurrent edit.
 
 ```
 gcx experiments update <name> [flags]
@@ -18,19 +19,24 @@ gcx experiments update <name> [flags]
 ### Examples
 
 ```
+  gcx experiments update checkout-conversion --title "New title"
+  gcx experiments update checkout-conversion --description "Measure checkout conversion" --status draft
   gcx experiments get checkout-conversion -o yaml > experiment.yaml
   gcx experiments update checkout-conversion -f experiment.yaml
-  gcx experiments get checkout-conversion -o json | jq '.spec.title = "New title"' | gcx experiments update checkout-conversion -f -
+  gcx experiments update checkout-conversion -f - < experiment.json
 ```
 
 ### Options
 
 ```
-  -f, --filename string   Updated complete Experiment YAML or JSON manifest (use - for stdin)
-  -h, --help              help for update
-      --jq string         jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string       Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string     Output format. One of: agents, json, yaml (default "yaml")
+      --description string   New experiment description
+  -f, --filename string      Updated complete Experiment YAML or JSON manifest (use - for stdin)
+  -h, --help                 help for update
+      --jq string            jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string        Output format. One of: agents, json, yaml (default "yaml")
+      --status string        New experiment lifecycle status
+      --title string         New experiment title
 ```
 
 ### Options inherited from parent commands

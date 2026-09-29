@@ -39,18 +39,18 @@ See the [CLI reference](cli/gcx_experiments_create.md) for flags and examples.
 
 ## Update an existing experiment
 
-`gcx experiments update <name> -f FILE` replaces the stored experiment with
-the complete YAML or JSON resource. Use `-f -` to read from stdin. Start with
-`gcx experiments get` so the document includes the current namespace, UID, and
-resource version:
+For common changes, pass the new values directly. gcx reads the current
+experiment and preserves other fields:
 
 ```sh
-gcx experiments get checkout-conversion -o json \
-  | jq '.spec.title = "New title"' \
-  | gcx experiments update checkout-conversion -f - -o json
+gcx experiments update checkout-conversion --title "New title"
+gcx experiments update checkout-conversion --description "Measure checkout conversion" --status draft
 ```
 
-Keep unrelated fields in the document. Odin checks `metadata.resourceVersion`
-and rejects stale edits with HTTP 409; run `get` again before retrying. The
-command returns the full updated resource, including its new resource version.
-See the [update CLI reference](cli/gcx_experiments_update.md) for flags and examples.
+For analytics or other fields, `gcx experiments update <name> -f FILE` accepts
+the complete YAML or JSON resource. Use `-f -` for stdin. Start with
+`gcx experiments get` so the document includes the current namespace, UID, and
+resource version. Keep unrelated fields in the document. Odin rejects stale
+edits with HTTP 409; run `get` again before retrying. The command returns the
+full updated resource, including its new resource version. See the
+[update CLI reference](cli/gcx_experiments_update.md) for flags and examples.
