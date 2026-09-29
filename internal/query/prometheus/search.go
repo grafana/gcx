@@ -26,20 +26,21 @@ import (
 // "unlimited" (distinct from its own default of 100), so a Go zero value
 // must not be indistinguishable from that request. Prometheus rejects 0.
 type SearchOptions struct {
-	// Search holds fuzzy search terms (max 32); repeated terms combine as OR.
+	// Search holds fuzzy search terms (both servers currently accept at most
+	// 32); repeated terms combine as OR.
 	Search []string
 	// Match holds PromQL series selectors restricting candidates.
 	Match []string
 	// Start and End bound the time range; a zero value omits that bound.
 	Start, End time.Time
-	// CaseSensitive controls Search matching; nil omits the parameter
-	// (server default: true).
-	CaseSensitive *bool
+	// CaseSensitive controls Search matching. Always sent, since its zero
+	// value differs from the server default (true).
+	CaseSensitive bool
 	// FuzzAlg is "subsequence" (server default) or "jarowinkler".
 	FuzzAlg string
 	// FuzzThreshold is the minimum match score, 0-100 (server default: 0).
-	// With "jarowinkler", 0 disables fuzzy matching, leaving substring
-	// matches only.
+	// With "jarowinkler", it applies only to fuzzy matches: substring matches
+	// are always kept, and 0 disables fuzzy matching.
 	FuzzThreshold int
 	// SortBy is "alpha" (server default) or "score".
 	SortBy string
@@ -63,24 +64,10 @@ type MetricNameResult struct {
 	Unit  string  `json:"unit,omitempty"`
 }
 
-// SearchMetricNamesResponse is the response from SearchMetricNames.
-type SearchMetricNamesResponse struct {
-	Results  []MetricNameResult
-	HasMore  bool
-	Warnings []string
-}
-
 // LabelNameResult is one result from SearchLabelNames.
 type LabelNameResult struct {
 	Name  string  `json:"name"`
 	Score float64 `json:"score,omitempty"`
-}
-
-// SearchLabelNamesResponse is the response from SearchLabelNames.
-type SearchLabelNamesResponse struct {
-	Results  []LabelNameResult
-	HasMore  bool
-	Warnings []string
 }
 
 // LabelValueResult is one result from SearchLabelValues.
@@ -89,66 +76,41 @@ type LabelValueResult struct {
 	Score float64 `json:"score,omitempty"`
 }
 
-// SearchLabelValuesResponse is the response from SearchLabelValues.
-type SearchLabelValuesResponse struct {
-	Results  []LabelValueResult
+// SearchResponse is the response from a search endpoint. Results is never
+// nil.
+type SearchResponse[T any] struct {
+	Results  []T
 	HasMore  bool
 	Warnings []string
 }
 
 // SearchMetricNames searches metric names (and, with IncludeMetadata, their
 // type/help/unit) via the experimental search API.
-func (c *Client) SearchMetricNames(ctx context.Context, datasourceUID string, opts SearchOptions) (*SearchMetricNamesResponse, error) {
-	results, hasMore, warnings, err := c.search(ctx, c.buildSearchMetricNamesPath(datasourceUID), nil, opts, "search metric names")
-	if err != nil {
-		return nil, err
-	}
-
-	out := make([]MetricNameResult, 0, len(results))
-	for _, r := range results {
-		out = append(out, MetricNameResult{Name: r.Name, Score: r.Score, Type: r.Type, Help: r.Help, Unit: r.Unit})
-	}
-	return &SearchMetricNamesResponse{Results: out, HasMore: hasMore, Warnings: warnings}, nil
+func (c *Client) SearchMetricNames(ctx context.Context, datasourceUID string, opts SearchOptions) (*SearchResponse[MetricNameResult], error) {
+	return search[MetricNameResult](ctx, c, c.buildSearchMetricNamesPath(datasourceUID), nil, opts, "search metric names")
 }
 
 // SearchLabelNames searches label names via the experimental search API.
-func (c *Client) SearchLabelNames(ctx context.Context, datasourceUID string, opts SearchOptions) (*SearchLabelNamesResponse, error) {
-	results, hasMore, warnings, err := c.search(ctx, c.buildSearchLabelNamesPath(datasourceUID), nil, opts, "search label names")
-	if err != nil {
-		return nil, err
-	}
-
-	out := make([]LabelNameResult, 0, len(results))
-	for _, r := range results {
-		out = append(out, LabelNameResult{Name: r.Name, Score: r.Score})
-	}
-	return &SearchLabelNamesResponse{Results: out, HasMore: hasMore, Warnings: warnings}, nil
+func (c *Client) SearchLabelNames(ctx context.Context, datasourceUID string, opts SearchOptions) (*SearchResponse[LabelNameResult], error) {
+	return search[LabelNameResult](ctx, c, c.buildSearchLabelNamesPath(datasourceUID), nil, opts, "search label names")
 }
 
 // SearchLabelValues searches the values of a single label via the
 // experimental search API.
-func (c *Client) SearchLabelValues(ctx context.Context, datasourceUID, label string, opts SearchOptions) (*SearchLabelValuesResponse, error) {
+func (c *Client) SearchLabelValues(ctx context.Context, datasourceUID, label string, opts SearchOptions) (*SearchResponse[LabelValueResult], error) {
 	extra := url.Values{"label": []string{label}}
-	results, hasMore, warnings, err := c.search(ctx, c.buildSearchLabelValuesPath(datasourceUID), extra, opts, "search label values")
-	if err != nil {
-		return nil, err
-	}
-
-	out := make([]LabelValueResult, 0, len(results))
-	for _, r := range results {
-		out = append(out, LabelValueResult{Value: r.Value, Score: r.Score})
-	}
-	return &SearchLabelValuesResponse{Results: out, HasMore: hasMore, Warnings: warnings}, nil
+	return search[LabelValueResult](ctx, c, c.buildSearchLabelValuesPath(datasourceUID), extra, opts, "search label values")
 }
 
 // search performs a GET against a search endpoint and streams the NDJSON
 // response. extra carries endpoint-specific query parameters (e.g. "label"
 // for search/label_values) alongside the parameters common to all three
-// endpoints.
-func (c *Client) search(ctx context.Context, apiPath string, extra url.Values, opts SearchOptions, operation string) ([]searchResultRaw, bool, []string, error) {
+// endpoints. It is a function rather than a method because methods cannot
+// take type parameters.
+func search[T any](ctx context.Context, c *Client, apiPath string, extra url.Values, opts SearchOptions, operation string) (*SearchResponse[T], error) {
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, c.restConfig.Host+apiPath, nil)
 	if err != nil {
-		return nil, false, nil, fmt.Errorf("failed to create request: %w", err)
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	q := httpReq.URL.Query()
@@ -162,28 +124,29 @@ func (c *Client) search(ctx context.Context, apiPath string, extra url.Values, o
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
-		return nil, false, nil, fmt.Errorf("failed to %s: %w", operation, err)
+		return nil, fmt.Errorf("failed to %s: %w", operation, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		body, readErr := httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
 		if readErr != nil {
-			return nil, false, nil, fmt.Errorf("failed to read response: %w", readErr)
+			return nil, fmt.Errorf("failed to read response: %w", readErr)
 		}
-		return nil, false, nil, searchError(operation, resp.StatusCode, body, opts.Limit)
+		return nil, searchError(operation, resp.StatusCode, body, opts.Limit)
 	}
 
-	results, hasMore, warnings, err := decodeSearchStream(resp.Body, httputils.DefaultResponseLimit)
+	results, hasMore, warnings, err := decodeSearchStream[T](resp.Body, httputils.DefaultResponseLimit)
 	if err != nil {
-		return nil, false, nil, fmt.Errorf("failed to %s: %w", operation, err)
+		return nil, fmt.Errorf("failed to %s: %w", operation, err)
 	}
-	return results, hasMore, warnings, nil
+	return &SearchResponse[T]{Results: results, HasMore: hasMore, Warnings: warnings}, nil
 }
 
 // addSearchParams appends the parameters common to all three search
 // endpoints. Optional parameters are omitted when unset so the server's own
-// default applies; Limit is always sent (see SearchOptions).
+// default applies; Limit and CaseSensitive are always sent (see
+// SearchOptions).
 func addSearchParams(q url.Values, opts SearchOptions) {
 	for _, s := range opts.Search {
 		q.Add("search[]", s)
@@ -197,9 +160,7 @@ func addSearchParams(q url.Values, opts SearchOptions) {
 	if !opts.End.IsZero() {
 		q.Set("end", strconv.FormatInt(opts.End.Unix(), 10))
 	}
-	if opts.CaseSensitive != nil {
-		q.Set("case_sensitive", strconv.FormatBool(*opts.CaseSensitive))
-	}
+	q.Set("case_sensitive", strconv.FormatBool(opts.CaseSensitive))
 	if opts.FuzzAlg != "" {
 		q.Set("fuzz_alg", opts.FuzzAlg)
 	}
@@ -221,31 +182,19 @@ func addSearchParams(q url.Values, opts SearchOptions) {
 	}
 }
 
-// searchResultRaw carries every field any of the three search endpoints may
-// return per result; a field the endpoint doesn't use decodes to its zero
-// value.
-type searchResultRaw struct {
-	Name  string  `json:"name"`
-	Value string  `json:"value"`
-	Score float64 `json:"score"`
-	Type  string  `json:"type"`
-	Help  string  `json:"help"`
-	Unit  string  `json:"unit"`
-}
-
 // searchStreamFrame decodes one line of the NDJSON response. A batch frame
 // carries Results; the final trailer frame carries a non-empty Status
 // instead, so that field distinguishes the two — Results is absent from
 // every trailer the API sends. Either kind may carry Warnings: Prometheus
 // sends them on the first batch (the trailer only repeats a changed set),
 // Mimir on the trailer.
-type searchStreamFrame struct {
-	Results   []searchResultRaw `json:"results"`
-	Status    string            `json:"status"`
-	HasMore   bool              `json:"has_more"`
-	Warnings  []string          `json:"warnings"`
-	ErrorType string            `json:"errorType"`
-	Error     string            `json:"error"`
+type searchStreamFrame[T any] struct {
+	Results   []T      `json:"results"`
+	Status    string   `json:"status"`
+	HasMore   bool     `json:"has_more"`
+	Warnings  []string `json:"warnings"`
+	ErrorType string   `json:"errorType"`
+	Error     string   `json:"error"`
 }
 
 // decodeSearchStream reads an NDJSON search response: zero or more batch
@@ -257,18 +206,17 @@ type searchStreamFrame struct {
 // be incomplete: it was cut by the cap, or by an interrupted upstream
 // connection, which Grafana's datasource proxy forwards as a clean end of
 // stream.
-func decodeSearchStream(body io.Reader, limit int64) ([]searchResultRaw, bool, []string, error) {
+func decodeSearchStream[T any](body io.Reader, limit int64) ([]T, bool, []string, error) {
 	// Read one byte past the cap so hitting it is distinguishable from a
 	// stream that ends exactly at the cap.
 	counter := &countingReader{r: io.LimitReader(body, limit+1)}
 	dec := json.NewDecoder(counter)
 
-	var (
-		results  []searchResultRaw
-		warnings []string
-	)
+	// Start non-nil so an empty result encodes as [] rather than null.
+	results := []T{}
+	var warnings []string
 	for {
-		var frame searchStreamFrame
+		var frame searchStreamFrame[T]
 		if err := dec.Decode(&frame); err != nil {
 			if !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
 				return nil, false, nil, fmt.Errorf("failed to parse response: %w", err)

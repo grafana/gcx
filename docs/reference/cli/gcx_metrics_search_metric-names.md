@@ -1,14 +1,20 @@
 ## gcx metrics search metric-names
 
-Search metric names (experimental)
+[experimental] Search metric names
 
 ### Synopsis
+
+This command is experimental. It may be removed, or its subcommands, flags and
+responses may change without following the normal semantic versioning conventions.
 
 Search metric names from a Prometheus/Mimir datasource. At least one TERM is required.
 
 This API allows for metric names to be discovered via a configurable fuzzy search. Multiple TERM values combine as OR.
 
 Search terms can be augmented with matchers for additional filtering of considered series.
+
+Without --from/--to or --since, the server searches only the last hour; use
+--since (for example --since 7d) to look further back.
 
 This API is experimental and disabled by default on both self-hosted
 Prometheus (requires --enable-feature=search-api) and self-hosted Mimir
@@ -27,8 +33,11 @@ gcx metrics search metric-names TERM... [flags]
   # Fuzzy search metric names (configured default datasource)
   gcx metrics search metric-names http
 
+  # Search metric names seen in the last 7 days (default: the last hour)
+  gcx metrics search metric-names http --since 7d
+
   # Refine fuzzy search algorithm
-  gcx metrics search metric-names http --fuzz-alg=subsequence --fuzz-threshold=70
+  gcx metrics search metric-names http --fuzz-alg=subsequence --fuzz-threshold=85
 
   # Limit result sets and control ordering
   gcx metrics search metric-names http --limit=10 --sort-by=alpha
@@ -47,10 +56,10 @@ gcx metrics search metric-names TERM... [flags]
   -d, --datasource string    Datasource UID (required unless datasources.prometheus is configured)
       --from string          Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
       --fuzz-alg string      Fuzzy match algorithm: jarowinkler or subsequence (default "jarowinkler")
-      --fuzz-threshold int   Minimum fuzzy match score 0-100 (with jarowinkler, 0 disables fuzzy matching, leaving substring matches only) (default 70)
+      --fuzz-threshold int   Minimum fuzzy match score as a percentage, 0-100; scores are reported from 0 to 1. With jarowinkler the threshold applies only to fuzzy matches: substring matches are always kept, and 0 turns fuzzy matching off (default 70)
   -h, --help                 help for metric-names
       --include-metadata     Include each result's metric type, help text, and unit (when available)
-      --include-score        Include each result's relevance score
+      --include-score        Include each result's relevance score (0 to 1; higher is a closer match)
       --jq string            jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int            Maximum results to return (0: unlimited on Mimir, subject to server-side caps; Prometheus requires a positive value) (default 50)
@@ -76,5 +85,5 @@ gcx metrics search metric-names TERM... [flags]
 
 ### SEE ALSO
 
-* [gcx metrics search](gcx_metrics_search.md)	 - Search for metric names, label names or label values (experimental)
+* [gcx metrics search](gcx_metrics_search.md)	 - [experimental] Search for metric names, label names or label values
 

@@ -1,8 +1,11 @@
 ## gcx metrics search
 
-Search for metric names, label names or label values (experimental)
+[experimental] Search for metric names, label names or label values
 
 ### Synopsis
+
+This command is experimental. It may be removed, or its subcommands, flags and
+responses may change without following the normal semantic versioning conventions.
 
 Search for metric names, label names or label values via the experimental search API.
 
@@ -31,7 +34,7 @@ Prometheus (requires --enable-feature=search-api) and self-hosted Mimir
 ### SEE ALSO
 
 * [gcx metrics](gcx_metrics.md)	 - Query Prometheus datasources and manage Adaptive Metrics
-* [gcx metrics search label-names](gcx_metrics_search_label-names.md)	 - Search label names (experimental)
-* [gcx metrics search label-values](gcx_metrics_search_label-values.md)	 - Search the values of a label (experimental)
-* [gcx metrics search metric-names](gcx_metrics_search_metric-names.md)	 - Search metric names (experimental)
+* [gcx metrics search label-names](gcx_metrics_search_label-names.md)	 - [experimental] Search label names
+* [gcx metrics search label-values](gcx_metrics_search_label-values.md)	 - [experimental] Search the values of a label
+* [gcx metrics search metric-names](gcx_metrics_search_metric-names.md)	 - [experimental] Search metric names
 

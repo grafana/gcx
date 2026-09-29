@@ -19,18 +19,28 @@ import (
 func SearchCommands(loader *providers.ConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "search",
-		Short: "Search for metric names, label names or label values (experimental)",
-		Long: `Search for metric names, label names or label values via the experimental search API.
+		Short: "[experimental] Search for metric names, label names or label values",
+		Long: `This command is experimental. It may be removed, or its subcommands, flags and
+responses may change without following the normal semantic versioning conventions.
+
+Search for metric names, label names or label values via the experimental search API.
 
 This API is experimental and disabled by default on both self-hosted
 Prometheus (requires --enable-feature=search-api) and self-hosted Mimir
 (requires -querier.experimental-search-api-enabled).`,
+		Annotations: map[string]string{
+			agent.AnnotationStability: agent.StabilityExperimental,
+		},
 	}
 
 	cmd.AddCommand(searchMetricNamesCmd(loader), searchLabelNamesCmd(loader), searchLabelValuesCmd(loader))
 
 	return cmd
 }
+
+// The leaves reuse the datasources/prometheus constructors, keeping their
+// flags, validation and annotations, and only rewrite the name, examples and
+// LLM hint to the metrics path.
 
 func searchMetricNamesCmd(loader *providers.ConfigLoader) *cobra.Command {
 	c := dsprometheus.SearchMetricNamesCmd(loader)
@@ -39,8 +49,11 @@ func searchMetricNamesCmd(loader *providers.ConfigLoader) *cobra.Command {
   # Fuzzy search metric names (configured default datasource)
   gcx metrics search metric-names http
 
+  # Search metric names seen in the last 7 days (default: the last hour)
+  gcx metrics search metric-names http --since 7d
+
   # Refine fuzzy search algorithm
-  gcx metrics search metric-names http --fuzz-alg=subsequence --fuzz-threshold=70
+  gcx metrics search metric-names http --fuzz-alg=subsequence --fuzz-threshold=85
 
   # Limit result sets and control ordering
   gcx metrics search metric-names http --limit=10 --sort-by=alpha
@@ -50,10 +63,7 @@ func searchMetricNamesCmd(loader *providers.ConfigLoader) *cobra.Command {
 
   # Output as JSON
   gcx metrics search metric-names http -o json`
-	c.Annotations = map[string]string{
-		agent.AnnotationTokenCost: "small",
-		agent.AnnotationLLMHint:   "gcx metrics search metric-names TERM -o json",
-	}
+	c.Annotations[agent.AnnotationLLMHint] = "gcx metrics search metric-names TERM -o json"
 	return c
 }
 
@@ -64,8 +74,11 @@ func searchLabelNamesCmd(loader *providers.ConfigLoader) *cobra.Command {
   # Fuzzy search label names (configured default datasource)
   gcx metrics search label-names job
 
-  # Show all label names available on a given metric
+  # Show label names available on a given metric
   gcx metrics search label-names --metric http_requests_total
+
+  # Show label names on series matching a selector
+  gcx metrics search label-names --match '{job="api"}'
 
   # Search for label names on a given metric
   gcx metrics search label-names namespace --metric http_requests_total
@@ -73,12 +86,12 @@ func searchLabelNamesCmd(loader *providers.ConfigLoader) *cobra.Command {
   # Search for label names across a range of metrics
   gcx metrics search label-names namespace --metric-regex '.*kube.*'
 
+  # Search label names seen in the last 7 days (default: the last hour)
+  gcx metrics search label-names job --since 7d
+
   # Output as JSON
   gcx metrics search label-names job -o json`
-	c.Annotations = map[string]string{
-		agent.AnnotationTokenCost: "small",
-		agent.AnnotationLLMHint:   "gcx metrics search label-names TERM -o json",
-	}
+	c.Annotations[agent.AnnotationLLMHint] = "gcx metrics search label-names TERM -o json"
 	return c
 }
 
@@ -86,23 +99,23 @@ func searchLabelValuesCmd(loader *providers.ConfigLoader) *cobra.Command {
 	c := dsprometheus.SearchLabelValuesCmd(loader)
 	c.Use = "label-values LABEL [TERM...]"
 	c.Example = `
-  # List every value of the "job" label (configured default datasource)
+  # List values of the "job" label (configured default datasource)
   gcx metrics search label-values job
 
   # Fuzzy search values of the "job" label
   gcx metrics search label-values job pro
 
-  # List every "job" label value present on a specific metric
+  # List "job" label values present on a specific metric
   gcx metrics search label-values job --metric http_requests_total
 
-  # List every "job" label value present on a range of metrics
+  # List "job" label values present on a range of metrics
   gcx metrics search label-values job --metric-regex '.*kube.*'
+
+  # List "job" label values seen in the last 7 days (default: the last hour)
+  gcx metrics search label-values job --since 7d
 
   # Output as JSON
   gcx metrics search label-values job pro -o json`
-	c.Annotations = map[string]string{
-		agent.AnnotationTokenCost: "small",
-		agent.AnnotationLLMHint:   "gcx metrics search label-values LABEL TERM -o json",
-	}
+	c.Annotations[agent.AnnotationLLMHint] = "gcx metrics search label-values LABEL TERM -o json"
 	return c
 }
