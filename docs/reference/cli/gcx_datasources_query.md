@@ -14,7 +14,7 @@ client is used automatically. This is the escape hatch for datasource types
 that do not have a dedicated subcommand.
 Loki queries above an estimated 10GB prompt for approval interactively;
 noninteractive queries require --yes. Unknown volume requires explicit
-acknowledgment. Use --estimate to inspect without querying.
+acknowledgment. Use --estimate-scan to inspect without querying.
 
 ```
 gcx datasources query DATASOURCE_UID [EXPR] [flags]
@@ -41,7 +41,7 @@ gcx datasources query DATASOURCE_UID [EXPR] [flags]
       --approve-unknown-scan   Approve this Loki query when scan volume cannot be estimated
       --config string          Path to the configuration file to use
       --context string         Name of the context to use
-      --estimate               Estimate Loki indexed scan volume without executing the query
+      --estimate-scan          Estimate indexed log volume to scan, in bytes, without executing the query
       --expr string            Query expression (alternative to positional argument)
       --from string            Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                   help for query

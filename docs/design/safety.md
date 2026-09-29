@@ -105,7 +105,7 @@ Noninteractive queries above the threshold fail with an actionable error unless
 `--yes` is passed. There is no configurable byte budget; `--yes=false` does not
 approve execution.
 
-`--estimate` returns the estimate, time range, threshold, approval requirement,
+`--estimate-scan` returns the estimate, time range, threshold, approval requirement,
 limitations, and efficiency hints without executing the log query. Table, wide,
 JSON, YAML, and agents output are supported; raw and graph are rejected.
 Only simple log-stream expressions with an explicit time range are estimated in
@@ -123,7 +123,7 @@ Agents must obtain user consent through their host workflow before adding either
 approval flag; gcx cannot attest that a human supplied a flag.
 
 **Compatibility:** Existing scripts may now stop for approval. Add an explicit
-time range and inspect with `--estimate`; approve the estimated query with `--yes`
+time range and inspect with `--estimate-scan`; approve the estimated query with `--yes`
 or acknowledge unknown volume only after review. There is no persistent blanket approval.
 
 The index estimate excludes ingester data and may count chunks more than once.

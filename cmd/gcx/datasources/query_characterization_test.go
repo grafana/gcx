@@ -563,7 +563,7 @@ func TestGenericLokiScanGuard(t *testing.T) {
 		wantError bool
 	}{
 		{name: "blocked", wantError: true},
-		{name: "estimate", flags: []string{"--estimate"}},
+		{name: "estimate", flags: []string{"--estimate-scan"}},
 		{name: "approved", flags: []string{"--yes"}, wantPost: true},
 		{name: "yes false", flags: []string{"--yes=false"}, wantError: true},
 		{name: "unknown does not bypass", flags: []string{"--approve-unknown-scan"}, wantError: true},

@@ -10,7 +10,7 @@ Investigate Grafana alerts by analyzing state, querying datasources, and identif
 ## Loki scan approval
 
 Start log searches with a short explicit time range (for example `--since 5m`)
-and specific indexed labels. Use `--estimate` to inspect volume without executing
+and specific indexed labels. Use `--estimate-scan` to inspect volume without executing
 logs. gcx requires approval above 10 GB estimated volume. Obtain user consent
 before passing `--yes`, or `--approve-unknown-scan` when volume cannot be estimated. Metric LogQL currently
 requires the unknown-volume acknowledgment. Reuse approval only within the scope

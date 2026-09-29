@@ -83,7 +83,7 @@ func (o *genericQueryOpts) run(cmd *cobra.Command, args []string) error {
 	}
 	dsType := dsquery.NormalizeKind(rawType)
 	if dsType != "loki" && o.scan.Requested() {
-		return errors.New("--estimate, --yes, and --approve-unknown-scan apply only to Loki datasources")
+		return errors.New("--estimate-scan, --yes, and --approve-unknown-scan apply only to Loki datasources")
 	}
 
 	// Redirects run before the expression is resolved, so an argument-less call
@@ -148,7 +148,7 @@ client is used automatically. This is the escape hatch for datasource types
 that do not have a dedicated subcommand.
 Loki queries above an estimated 10GB prompt for approval interactively;
 noninteractive queries require --yes. Unknown volume requires explicit
-acknowledgment. Use --estimate to inspect without querying.`,
+acknowledgment. Use --estimate-scan to inspect without querying.`,
 		Example: `
   # Auto-detect and query any supported datasource
   gcx datasources query ds-001 'up{job="grafana"}' --from now-1h --to now

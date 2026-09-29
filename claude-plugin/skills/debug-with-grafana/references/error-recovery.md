@@ -65,7 +65,7 @@ resolution differ, report actual coverage; do not assume which layer caused it.
 
 ## Loki scan approval required
 
-This is a safety stop, not a transient query error. Inspect with `--estimate`,
+This is a safety stop, not a transient query error. Inspect with `--estimate-scan`,
 narrow the time window or indexed labels, or obtain user approval before adding
 `--yes`. If volume is unknown, explain that limitation and obtain
 consent before `--approve-unknown-scan`. Do not automatically add approval flags

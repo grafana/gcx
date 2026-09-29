@@ -24,7 +24,7 @@ func (p *Provider) descriptor() signals.Descriptor {
 			{
 				Build:     dsloki.QueryCmd,
 				TokenCost: "medium",
-				LLMHint:   `gcx logs query -d abc123 '{job="grafana"}' --since 5m --estimate -o json; obtain user approval before adding scan approval flags.`,
+				LLMHint:   `gcx logs query -d abc123 '{job="grafana"}' --since 5m --estimate-scan -o json; obtain user approval before adding scan approval flags.`,
 				Example: `
   # Query logs using configured default datasource
   gcx logs query '{job="varlogs"}' --since 5m
@@ -44,7 +44,7 @@ func (p *Provider) descriptor() signals.Descriptor {
 			{
 				Build:     dsloki.MetricsCmd,
 				TokenCost: "medium",
-				LLMHint:   `gcx logs metrics -d abc123 'rate({job="grafana"}[5m])' --since 5m --estimate -o json; metric LogQL volume is unknown; obtain user consent before --approve-unknown-scan.`,
+				LLMHint:   `gcx logs metrics -d abc123 'rate({job="grafana"}[5m])' --since 5m --estimate-scan -o json; metric LogQL volume is unknown; obtain user consent before --approve-unknown-scan.`,
 				Example: `
   # Run a metric query over logs
   gcx logs metrics -d UID 'rate({job="grafana"}[5m])' --since 1h
@@ -53,7 +53,7 @@ func (p *Provider) descriptor() signals.Descriptor {
   gcx logs metrics 'rate({job="grafana"}[5m])' --share-link
 
   # Output as JSON
-  gcx logs metrics -d UID 'rate({job="grafana"}[5m])' --since 5m --estimate -o json`,
+  gcx logs metrics -d UID 'rate({job="grafana"}[5m])' --since 5m --estimate-scan -o json`,
 			},
 			{
 				Build:     dsloki.LabelsCmd,

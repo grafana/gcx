@@ -35,7 +35,7 @@ Use --share-link to print the equivalent Grafana Explore URL, or --open to
 open it in your browser after the query succeeds.
 
 Loki scans are estimated before execution. Above 10GB, interactive queries
-prompt for approval; noninteractive queries require --yes. Use --estimate to inspect
+prompt for approval; noninteractive queries require --yes. Use --estimate-scan to inspect
 volume without executing. Unknown volume requires --approve-unknown-scan.
 --limit caps returned lines, not bytes scanned.`,
 		Example: `
@@ -139,7 +139,7 @@ volume without executing. Unknown volume requires --approve-unknown-scan.
 
 	cmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "medium",
-		agent.AnnotationLLMHint:   `gcx datasources loki query -d UID '{job="grafana"}' --since 5m --estimate -o json; obtain user approval before adding scan approval flags.`,
+		agent.AnnotationLLMHint:   `gcx datasources loki query -d UID '{job="grafana"}' --since 5m --estimate-scan -o json; obtain user approval before adding scan approval flags.`,
 	}
 
 	dsquery.RegisterCodecs(&shared.IO, false)

@@ -31,18 +31,18 @@ type ScanOpts struct {
 
 func (o *ScanOpts) Setup(flags *pflag.FlagSet) {
 	o.flags = flags
-	flags.BoolVar(&o.Estimate, "estimate", false, "Estimate Loki indexed scan volume without executing the query")
+	flags.BoolVar(&o.Estimate, "estimate-scan", false, "Estimate indexed log volume to scan, in bytes, without executing the query")
 	flags.BoolVar(&o.Yes, "yes", false, "Approve this Loki query if its estimated scan exceeds 10GB (not a runtime ceiling)")
 	flags.BoolVar(&o.ApproveUnknown, "approve-unknown-scan", false, "Approve this Loki query when scan volume cannot be estimated")
 }
 
 func (o *ScanOpts) Requested() bool {
-	return o.flags != nil && (o.flags.Changed("estimate") || o.flags.Changed("yes") || o.flags.Changed("approve-unknown-scan"))
+	return o.flags != nil && (o.flags.Changed("estimate-scan") || o.flags.Changed("yes") || o.flags.Changed("approve-unknown-scan"))
 }
 
 func (o *ScanOpts) Validate(output string) error {
 	if o.Estimate && (output == "raw" || output == "graph") {
-		return scanUsage("--estimate requires table, wide, json, yaml, or agents output")
+		return scanUsage("--estimate-scan requires table, wide, json, yaml, or agents output")
 	}
 	return nil
 }
@@ -75,7 +75,7 @@ func (o *ScanOpts) Run(ctx context.Context, client *loki.Client, uid string, req
 		}
 		estimate = &loki.ScanEstimate{DatasourceUID: uid, Query: req.Query, Start: req.Start, End: req.End,
 			Reason: err.Error(), Caveat: "Scan volume is unknown; approval does not establish a runtime ceiling.",
-			Hints: []string{"Retry with --estimate, narrow --since, or explicitly approve unknown volume."}}
+			Hints: []string{"Retry with --estimate-scan, narrow --since, or explicitly approve unknown volume."}}
 	}
 	if !req.IsRange() {
 		estimate.Start = req.EvaluationTime.Add(-time.Minute)
@@ -121,7 +121,7 @@ func (o *ScanOpts) authorize(e *loki.ScanEstimate, in io.Reader, out io.Writer) 
 	}
 	if agent.IsAgentMode() || !scanTerminal(in) || !scanTerminal(out) {
 		return &gcxerrors.DetailedError{Summary: "Query scan approval required", Details: details,
-			Suggestions: []string{"Repeat this invocation with --estimate to inspect volume, or narrow --since and indexed labels.", suggestion}, ExitCode: new(gcxerrors.ExitUsageError)}
+			Suggestions: []string{"Repeat this invocation with --estimate-scan to inspect volume, or narrow --since and indexed labels.", suggestion}, ExitCode: new(gcxerrors.ExitUsageError)}
 	}
 	fmt.Fprintln(out, details)
 	return o.prompt(e, in, out)

@@ -18,7 +18,7 @@ Use --share-link to print the equivalent Grafana Explore URL, or --open to
 open it in your browser after the query succeeds.
 
 Loki scans are estimated before execution. Above 10GB, interactive queries
-prompt for approval; noninteractive queries require --yes. Use --estimate to inspect
+prompt for approval; noninteractive queries require --yes. Use --estimate-scan to inspect
 volume without executing. Unknown volume requires --approve-unknown-scan.
 Metric LogQL volume is currently unknown and requires explicit approval.
 
@@ -37,7 +37,7 @@ gcx logs metrics [EXPR] [flags]
   gcx logs metrics 'rate({job="grafana"}[5m])' --share-link
 
   # Output as JSON
-  gcx logs metrics -d UID 'rate({job="grafana"}[5m])' --since 5m --estimate -o json
+  gcx logs metrics -d UID 'rate({job="grafana"}[5m])' --since 5m --estimate-scan -o json
 ```
 
 ### Options
@@ -46,7 +46,7 @@ gcx logs metrics [EXPR] [flags]
       --approve-unknown-scan   Approve this Loki query when scan volume cannot be estimated
   -d, --datasource string      Datasource UID (required unless datasources.loki is configured)
       --error-on-empty         Fail if the query returns no results
-      --estimate               Estimate Loki indexed scan volume without executing the query
+      --estimate-scan          Estimate indexed log volume to scan, in bytes, without executing the query
       --expr string            Query expression (alternative to positional argument)
       --from string            Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                   help for metrics
