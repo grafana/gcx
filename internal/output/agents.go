@@ -7,25 +7,38 @@ import (
 	"fmt"
 	"io"
 	"iter"
+	"maps"
 	"os"
-	"reflect"
-	"sort"
+	"slices"
 	"strconv"
-	"strings"
 
 	"github.com/grafana/gcx/internal/format"
 )
 
-const (
-	agentsFormat      format.Format = "agents"
-	agentsSpillEnv                  = "GCX_AGENT_SPILL_BYTES"
-	defaultSpillBytes               = 100 * 1024 // 100 KiB
-	spillPreviewItems               = 3
+const agentsFormat format.Format = "agents"
 
+const (
+	agentsSpillEnv = "GCX_AGENT_SPILL_BYTES"
 	// SpillFilePattern matches document spills for gcx agent prune.
 	SpillFilePattern = "gcx-results-*.json"
 	// SpillStreamFilePattern is the equivalent pattern for jq JSONL streams.
 	SpillStreamFilePattern = "gcx-results-*.jsonl"
+)
+
+const (
+	// defaultSpillBytes is 24 KiB. An agent host can keep a large tool
+	// result out of the model context. Claude Code, for example, writes a
+	// tool result above approximately 30 KB to a file and shows the model
+	// only a preview of approximately 2 KB. The agents codec writes one
+	// line of JSON, thus "| head" cannot make it shorter. The threshold is
+	// below the limit of the host, thus gcx spills first and the receipt
+	// gets to the model complete.
+	defaultSpillBytes = 24 * 1024
+	// spillPreviewItems is the maximum number of items in preview_sample.
+	spillPreviewItems = 3
+	// spillPreviewBytes is the maximum encoded size of preview_sample. A
+	// preview that is larger than this limit loses items from the end.
+	spillPreviewBytes = 2 * 1024
 )
 
 type agentsCodec struct {
@@ -41,6 +54,7 @@ type spillSummary struct {
 	ContentFormat string `json:"content_format"`
 	PreviewSample any    `json:"preview_sample"`
 	Message       string `json:"message"`
+	Hint          string `json:"hint"`
 	TotalItems    *int   `json:"total_items,omitempty"`
 	TotalValues   *int   `json:"total_values,omitempty"` // jq stream values, not array elements
 }
@@ -135,6 +149,7 @@ func (c *agentsCodec) encodeJQ(dst io.Writer, results iter.Seq2[any, error]) err
 		Bytes:         size,
 		ContentFormat: "jsonl",
 		TotalValues:   &count,
+		Hint:          spillStreamHint,
 	})
 	success = err == nil
 	return err
@@ -158,11 +173,9 @@ func (c *agentsCodec) spill(dst io.Writer, value any, payload []byte) error {
 		SpilledTo:     f.Name(),
 		Bytes:         len(payload),
 		ContentFormat: "json",
-		PreviewSample: previewOf(value),
+		Hint:          spillDocumentHint,
 	}
-	if n, ok := itemCount(value); ok {
-		s.TotalItems = &n
-	}
+	s.PreviewSample, s.TotalItems = previewOf(value, payload)
 	return c.writeSpillSummary(dst, s)
 }
 
@@ -201,108 +214,138 @@ func SpillThreshold() int {
 	return defaultSpillBytes
 }
 
-// listEnvelopeItemsValue resolves the item slice of a ListEnvelope value by
-// its declared JSON key. Returns an invalid Value when value is not a
-// ListEnvelope or has no matching exported slice field.
-func listEnvelopeItemsValue(value any) reflect.Value {
-	env, ok := value.(ListEnvelope)
+// The receipt hints tell the agent how to get a result that is small enough
+// to stay inline.
+const (
+	spillDocumentHint = "To get a smaller inline result, select fields with --json <fields> or --jq '<expr>'. Run with --json list to see the fields."
+	spillStreamHint   = "To get a smaller inline result, select fewer values or fields in the --jq expression."
+)
+
+// previewIDFields returns the fields that identify an item in most gcx
+// results. The preview keeps only these fields of each item.
+func previewIDFields() []string {
+	return []string{"metadata.name", "spec.title", "name", "title", "uid", "id"}
+}
+
+// previewOf makes the preview_sample and total_items of a document spill from
+// the encoded payload. The value supplies the items key of a ListEnvelope.
+//
+// For a list shape, the preview contains the identifying fields of the first
+// spillPreviewItems items, and total_items is the item count. For an object
+// that is not a list, the preview contains the sorted top-level key names,
+// and total_items is nil. The encoded preview is never larger than
+// spillPreviewBytes: the preview loses entries from the end until it fits.
+// If no entry fits, the preview is nil.
+func previewOf(value any, payload []byte) (any, *int) {
+	dec := json.NewDecoder(bytes.NewReader(payload))
+	dec.UseNumber()
+	var doc any
+	if err := dec.Decode(&doc); err != nil {
+		return nil, nil
+	}
+
+	items, ok := spillItems(value, doc)
+	if ok {
+		n := len(items)
+		preview := make([]any, 0, spillPreviewItems)
+		for _, item := range items[:min(n, spillPreviewItems)] {
+			preview = append(preview, previewItem(item))
+		}
+		return fitPreview(preview), &n
+	}
+
+	m, ok := doc.(map[string]any)
 	if !ok {
-		return reflect.Value{}
+		return nil, nil
 	}
-	v := reflect.ValueOf(value)
-	for v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface {
-		if v.IsNil() {
-			return reflect.Value{}
-		}
-		v = v.Elem()
+	names := make([]any, 0, len(m))
+	for _, k := range slices.Sorted(maps.Keys(m)) {
+		names = append(names, k)
 	}
-	if v.Kind() != reflect.Struct {
-		return reflect.Value{}
-	}
-	key := env.ListItemsKey()
-	t := v.Type()
-	for i := range t.NumField() {
-		f := t.Field(i)
-		if !f.IsExported() || f.Type.Kind() != reflect.Slice {
-			continue
-		}
-		tag := f.Tag.Get("json")
-		if tag == "-" {
-			continue
-		}
-		name, _, _ := strings.Cut(tag, ",")
-		if name == "" {
-			name = f.Name
-		}
-		if name == key {
-			return v.Field(i)
-		}
-	}
-	return reflect.Value{}
+	return fitPreview(names), nil
 }
 
-// itemCount returns the length of slice/array values and a true bool.
-// Also handles structs with an Items slice field (e.g. unstructured.UnstructuredList)
-// and ListEnvelope wrappers (item slice under the declared key).
-func itemCount(value any) (int, bool) {
-	if items := listEnvelopeItemsValue(value); items.IsValid() {
-		return items.Len(), true
-	}
-	v := reflect.ValueOf(value)
-	for v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface {
-		if v.IsNil() {
-			return 0, false
-		}
-		v = v.Elem()
-	}
-	switch v.Kind() {
-	case reflect.Slice, reflect.Array:
-		return v.Len(), true
-	case reflect.Struct:
-		items := v.FieldByName("Items")
-		if items.IsValid() && (items.Kind() == reflect.Slice || items.Kind() == reflect.Array) {
-			return items.Len(), true
-		}
-	}
-	return 0, false
-}
-
-// previewOf returns the first spillPreviewItems elements for slices/lists
-// (including ListEnvelope item slices), the sorted top-level key names for
-// map shapes, or nil for other shapes.
-func previewOf(value any) any {
-	take := func(slice reflect.Value) any {
-		n := min(slice.Len(), spillPreviewItems)
-		return slice.Slice(0, n).Interface()
-	}
-	if items := listEnvelopeItemsValue(value); items.IsValid() {
-		return take(items)
-	}
-	v := reflect.ValueOf(value)
-	for v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface {
-		if v.IsNil() {
-			return nil
-		}
-		v = v.Elem()
-	}
-	switch v.Kind() {
-	case reflect.Slice, reflect.Array:
-		return take(v)
-	case reflect.Struct:
-		items := v.FieldByName("Items")
-		if items.IsValid() && (items.Kind() == reflect.Slice || items.Kind() == reflect.Array) {
-			return take(items)
-		}
-	case reflect.Map:
-		keys := v.MapKeys()
-		names := make([]string, 0, len(keys))
-		for _, k := range keys {
-			if k.Kind() == reflect.String {
-				names = append(names, k.String())
+// spillItems returns the item array of a list shape in the decoded payload.
+// It recognizes the same shapes as --json field selection: a top-level
+// array, the declared key of a ListEnvelope, an "items" array, and a
+// single-key list envelope (with an optional list_meta sibling).
+func spillItems(value any, doc any) ([]any, bool) {
+	switch d := doc.(type) {
+	case []any:
+		return d, true
+	case map[string]any:
+		if env, ok := value.(ListEnvelope); ok {
+			if arr, ok := d[env.ListItemsKey()].([]any); ok {
+				return arr, true
 			}
 		}
-		sort.Strings(names)
-		return names
+		for _, key := range []string{"items", "Items"} {
+			if arr, ok := d[key].([]any); ok {
+				return arr, true
+			}
+		}
+		if nonListMetaKeyCount(d) == 1 {
+			for key, raw := range d {
+				if isListMetaEntry(key, raw) {
+					continue
+				}
+				if arr, ok := raw.([]any); ok {
+					return arr, true
+				}
+			}
+		}
+	}
+	return nil, false
+}
+
+// previewItem returns the identifying fields of an object item. If the item
+// has no identifying field, previewItem returns its top-level scalar fields.
+// If the item also has no scalar field, or is not an object, previewItem
+// returns the item unchanged. fitPreview enforces the size limit.
+func previewItem(item any) any {
+	m, ok := item.(map[string]any)
+	if !ok {
+		return item
+	}
+	proj := extractFields(m, previewIDFields())
+	maps.DeleteFunc(proj, func(_ string, v any) bool { return v == nil })
+	if len(proj) > 0 {
+		return proj
+	}
+	for k, v := range m {
+		switch v.(type) {
+		case string, json.Number, bool:
+			proj[k] = v
+		}
+	}
+	if len(proj) > 0 {
+		return proj
+	}
+	return item
+}
+
+// fitPreview removes entries from the end of preview until its encoded size
+// is not more than spillPreviewBytes. It returns nil if a non-empty preview
+// has no entry that fits.
+func fitPreview(preview []any) any {
+	if len(preview) == 0 {
+		return preview
+	}
+	for n := len(preview); n > 0; n-- {
+		if encodedLen(preview[:n]) <= spillPreviewBytes {
+			return preview[:n]
+		}
 	}
 	return nil
+}
+
+// encodedLen returns the size of v in the encoding that the receipt uses.
+func encodedLen(v any) int {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
+		return spillPreviewBytes + 1
+	}
+	return buf.Len() - 1 // Encode appends a newline.
 }
