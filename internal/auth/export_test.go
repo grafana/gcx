@@ -151,3 +151,9 @@ func StartGCOMCallbackServer(ctx context.Context, listener net.Listener, state s
 func RenderSuccessPage(w http.ResponseWriter, instanceEndpoint string) {
 	renderSuccessPage(w, stackLink(instanceEndpoint))
 }
+
+// RenderSuccessPageWithLink renders the success page with link as its stack
+// link, bypassing stackLink, to pin what the template does on its own.
+func RenderSuccessPageWithLink(w http.ResponseWriter, link *url.URL) {
+	renderSuccessPage(w, link)
+}

@@ -2,6 +2,7 @@ package auth_test
 
 import (
 	"net/http/httptest"
+	"net/url"
 	"testing"
 
 	"github.com/grafana/gcx/internal/auth"
@@ -61,4 +62,19 @@ func TestSuccessPageLinksBackToTheStack(t *testing.T) {
 			assert.Contains(t, body, `<p class="stack-host">`+tt.wantHref[len("https://"):]+`</p>`)
 		})
 	}
+}
+
+// TestSuccessPageTemplateEscapesTheLink pins the template's own guard under
+// stackLink's: html/template escapes the href by context, so a script URL that
+// got past stackLink still renders as an inert link. The nosemgrep comment on
+// the link in success.html relies on this.
+func TestSuccessPageTemplateEscapesTheLink(t *testing.T) {
+	t.Parallel()
+
+	rec := httptest.NewRecorder()
+	auth.RenderSuccessPageWithLink(rec, &url.URL{Scheme: "javascript", Opaque: "alert(1)"})
+	body := rec.Body.String()
+
+	assert.Contains(t, body, `href="#ZgotmplZ"`)
+	assert.NotContains(t, body, "javascript:")
 }
