@@ -529,31 +529,54 @@ func TestSearchLabelValuesCmd_SortDirAllowedWithNoTerm(t *testing.T) {
 	assert.Equal(t, "dsc", query.Get("sort_dir"))
 }
 
+// TestSearchMetricNamesCmd_FeatureNotEnabled proves each server's real
+// disabled response surfaces the enable hint.
 func TestSearchMetricNamesCmd_FeatureNotEnabled(t *testing.T) {
-	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/bootdata" {
-			http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
-			return
-		}
-		w.WriteHeader(http.StatusNotFound)
-		_, _ = w.Write([]byte(`{"error":"feature_not_enabled"}`))
-	}))
-	defer srv.Close()
+	tests := []struct {
+		name   string
+		status int
+		body   string
+	}{
+		{
+			name:   "Mimir",
+			status: http.StatusNotFound,
+			body:   `{"status":"error","errorType":"feature_not_enabled","error":"the experimental search API is not enabled"}`,
+		},
+		{
+			name:   "Prometheus",
+			status: http.StatusInternalServerError,
+			body:   `{"status":"error","errorType":"unavailable","error":"search API disabled"}`,
+		},
+	}
 
-	loader := &providers.ConfigLoader{}
-	loader.SetConfigFile(writeSearchTestConfig(t, srv.URL))
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/bootdata" {
+					http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
+					return
+				}
+				w.WriteHeader(tc.status)
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			defer srv.Close()
 
-	root := &cobra.Command{Use: "test"}
-	root.AddCommand(dsprometheus.SearchMetricNamesCmd(loader))
+			loader := &providers.ConfigLoader{}
+			loader.SetConfigFile(writeSearchTestConfig(t, srv.URL))
 
-	var stdout, stderr bytes.Buffer
-	root.SetOut(&stdout)
-	root.SetErr(&stderr)
-	root.SetArgs([]string{"search-metric-names", "up", "-d", "prom-uid"})
+			root := &cobra.Command{Use: "test"}
+			root.AddCommand(dsprometheus.SearchMetricNamesCmd(loader))
 
-	err := root.Execute()
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "experimental")
+			var stdout, stderr bytes.Buffer
+			root.SetOut(&stdout)
+			root.SetErr(&stderr)
+			root.SetArgs([]string{"search-metric-names", "up", "-d", "prom-uid"})
+
+			err := root.Execute()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "search API is not enabled on this server")
+		})
+	}
 }
 
 // TestSearchMetricNamesCmd_JSONKeysAreSnakeCase proves the output envelope
@@ -658,36 +681,61 @@ func TestSearchMetricNamesCmd_CompleteResultSetHasNoListMeta(t *testing.T) {
 }
 
 // TestSearchMetricNamesCmd_EmitsWarningsToStderr proves each server-reported
-// warning (e.g. per-tenant limit clamping) is emitted as a stderr
-// diagnostic, not silently dropped.
+// warning is emitted as a stderr diagnostic, not silently dropped, wherever
+// the server puts it: on the trailer (Mimir, e.g. per-tenant limit
+// clamping) or on the first batch (Prometheus).
 func TestSearchMetricNamesCmd_EmitsWarningsToStderr(t *testing.T) {
-	ndjson := strings.Join([]string{
-		`{"results":[{"name":"up"}]}`,
-		`{"status":"success","has_more":false,"warnings":["limit reached"]}`,
-	}, "\n") + "\n"
+	tests := []struct {
+		name        string
+		frames      []string
+		wantWarning string
+	}{
+		{
+			name: "Mimir trailer warning",
+			frames: []string{
+				`{"results":[{"name":"up"}]}`,
+				`{"status":"success","has_more":false,"warnings":["limit reached"]}`,
+			},
+			wantWarning: "limit reached",
+		},
+		{
+			name: "Prometheus first-batch warning",
+			frames: []string{
+				`{"results":[{"name":"up"}],"warnings":["partial result: store unavailable"]}`,
+				`{"status":"success","has_more":false}`,
+			},
+			wantWarning: "partial result: store unavailable",
+		},
+	}
 
-	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/bootdata" {
-			http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
-			return
-		}
-		w.Header().Set("Content-Type", "application/x-ndjson; charset=utf-8")
-		_, _ = w.Write([]byte(ndjson))
-	}))
-	defer srv.Close()
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ndjson := strings.Join(tc.frames, "\n") + "\n"
 
-	loader := &providers.ConfigLoader{}
-	loader.SetConfigFile(writeSearchTestConfig(t, srv.URL))
+			srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/bootdata" {
+					http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
+					return
+				}
+				w.Header().Set("Content-Type", "application/x-ndjson; charset=utf-8")
+				_, _ = w.Write([]byte(ndjson))
+			}))
+			defer srv.Close()
 
-	root := &cobra.Command{Use: "test"}
-	root.AddCommand(dsprometheus.SearchMetricNamesCmd(loader))
+			loader := &providers.ConfigLoader{}
+			loader.SetConfigFile(writeSearchTestConfig(t, srv.URL))
 
-	var stdout, stderr bytes.Buffer
-	root.SetOut(&stdout)
-	root.SetErr(&stderr)
-	root.SetArgs([]string{"search-metric-names", "up", "-d", "prom-uid", "-o", "json"})
+			root := &cobra.Command{Use: "test"}
+			root.AddCommand(dsprometheus.SearchMetricNamesCmd(loader))
 
-	require.NoError(t, root.Execute())
+			var stdout, stderr bytes.Buffer
+			root.SetOut(&stdout)
+			root.SetErr(&stderr)
+			root.SetArgs([]string{"search-metric-names", "up", "-d", "prom-uid", "-o", "json"})
 
-	assert.Contains(t, stderr.String(), "limit reached")
+			require.NoError(t, root.Execute())
+
+			assert.Contains(t, stderr.String(), tc.wantWarning)
+		})
+	}
 }

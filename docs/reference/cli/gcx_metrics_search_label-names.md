@@ -51,12 +51,12 @@ gcx metrics search label-names [TERM...] [flags]
   -d, --datasource string     Datasource UID (required unless datasources.prometheus is configured)
       --from string           Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
       --fuzz-alg string       Fuzzy match algorithm: jarowinkler or subsequence (default "jarowinkler")
-      --fuzz-threshold int    Minimum match score 0-100 (0: no minimum) (default 70)
+      --fuzz-threshold int    Minimum fuzzy match score 0-100 (with jarowinkler, 0 disables fuzzy matching, leaving substring matches only) (default 70)
   -h, --help                  help for label-names
       --include-score         Include each result's relevance score
       --jq string             jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string           Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --limit int             Maximum results to return (0: unlimited but may be limited server side) (default 50)
+      --limit int             Maximum results to return (0: unlimited on Mimir, subject to server-side caps; Prometheus requires a positive value) (default 50)
       --match stringArray     PromQL series selector(s) restricting candidates; repeatable (repeated selectors combine as a union, per the Prometheus match[] API)
       --metric string         Only results from series of this metric name; mutually exclusive with --metric-regex
       --metric-regex string   Only results from series whose metric name matches this regex. Used exactly as given. To match all metric names which contain "kube" use ".*kube.*". Mutually exclusive with --metric.

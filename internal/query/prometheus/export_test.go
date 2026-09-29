@@ -1,5 +1,7 @@
 package prometheus
 
+import "io"
+
 // Test helpers — expose internal path builders for external test package.
 
 func (c *Client) BuildLabelsPath(datasourceUID string) string {
@@ -41,4 +43,11 @@ func (c *Client) BuildSearchLabelValuesPath(datasourceUID string) string {
 // ConvertGrafanaResponse exposes the unexported converter for the external test package.
 func ConvertGrafanaResponse(grafanaResp *GrafanaQueryResponse, isRange bool) *QueryResponse {
 	return convertGrafanaResponse(grafanaResp, isRange)
+}
+
+// DecodeSearchStream exposes the unexported NDJSON search decoder with a
+// caller-chosen size cap, returning the result count.
+func DecodeSearchStream(body io.Reader, limit int64) (int, bool, []string, error) {
+	results, hasMore, warnings, err := decodeSearchStream(body, limit)
+	return len(results), hasMore, warnings, err
 }

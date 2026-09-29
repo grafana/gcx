@@ -58,10 +58,10 @@ func (opts *SearchOpts) SetupCommon(flags *pflag.FlagSet, withMetric bool) {
 	}
 	flags.BoolVar(&opts.CaseSensitive, "case-sensitive", false, "Case-sensitive search term matching (case-insensitive by default)")
 	flags.StringVar(&opts.FuzzAlg, "fuzz-alg", "jarowinkler", "Fuzzy match algorithm: jarowinkler or subsequence")
-	flags.IntVar(&opts.FuzzThreshold, "fuzz-threshold", 70, "Minimum match score 0-100 (0: no minimum)")
+	flags.IntVar(&opts.FuzzThreshold, "fuzz-threshold", 70, "Minimum fuzzy match score 0-100 (with jarowinkler, 0 disables fuzzy matching, leaving substring matches only)")
 	flags.StringVar(&opts.SortBy, "sort-by", "score", "Sort by: score (requires a search term) or alpha")
 	flags.StringVar(&opts.SortDir, "sort-dir", "", "Sort direction for --sort-by alpha: asc (default) or dsc")
-	flags.IntVar(&opts.Limit, "limit", 50, "Maximum results to return (0: unlimited but may be limited server side)")
+	flags.IntVar(&opts.Limit, "limit", 50, "Maximum results to return (0: unlimited on Mimir, subject to server-side caps; Prometheus requires a positive value)")
 	flags.BoolVar(&opts.IncludeScore, "include-score", false, "Include each result's relevance score")
 }
 
@@ -93,7 +93,7 @@ func (opts *SearchOpts) Validate() error {
 		return fmt.Errorf("invalid --fuzz-threshold %d: must be between 0 and 100", opts.FuzzThreshold)
 	}
 	if opts.Limit < 0 {
-		return fmt.Errorf("invalid --limit %d: must be >= 0 (0 means unlimited)", opts.Limit)
+		return fmt.Errorf("invalid --limit %d: must be >= 0 (0 means unlimited on Mimir)", opts.Limit)
 	}
 
 	return opts.ValidateTimeRange()

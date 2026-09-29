@@ -9,12 +9,13 @@ import (
 	"testing"
 
 	"github.com/grafana/gcx/internal/query/prometheus"
+	"github.com/grafana/gcx/internal/queryerror"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// writeNDJSON writes each frame as its own JSON line, matching the Mimir
-// search API's streamed response shape (batches, then a trailer).
+// writeNDJSON writes each frame as its own JSON line, matching the search
+// API's streamed response shape (batches, then a trailer).
 func writeNDJSON(w http.ResponseWriter, frames ...string) {
 	w.Header().Set("Content-Type", "application/x-ndjson; charset=utf-8")
 	_, _ = w.Write([]byte(strings.Join(frames, "\n") + "\n"))
@@ -207,19 +208,205 @@ func TestClient_Search_ErrorTrailer(t *testing.T) {
 	assert.Contains(t, err.Error(), "timeout")
 }
 
+// TestClient_Search_FeatureNotEnabled pins each server's real disabled
+// response to the enable hint, and proves other failures don't get it.
 func TestClient_Search_FeatureNotEnabled(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusNotFound)
-		_, _ = w.Write([]byte(`{"error":"feature_not_enabled"}`))
-	}))
-	defer srv.Close()
+	tests := []struct {
+		name     string
+		status   int
+		body     string
+		wantHint bool
+	}{
+		{
+			name:     "Mimir 404 feature_not_enabled",
+			status:   http.StatusNotFound,
+			body:     `{"status":"error","errorType":"feature_not_enabled","error":"the experimental search API is not enabled"}`,
+			wantHint: true,
+		},
+		{
+			// Prometheus maps errorType unavailable to HTTP 500 by default.
+			name:     "Prometheus 500 search API disabled",
+			status:   http.StatusInternalServerError,
+			body:     `{"status":"error","errorType":"unavailable","error":"search API disabled"}`,
+			wantHint: true,
+		},
+		{
+			name:   "bare 404 from a server without the endpoint",
+			status: http.StatusNotFound,
+			body:   "404 page not found\n",
+		},
+		{
+			// Same errorType and status as the disabled case, so only the
+			// message may trigger the hint.
+			name:   "Prometheus 500 TSDB not ready",
+			status: http.StatusInternalServerError,
+			body:   `{"status":"error","errorType":"unavailable","error":"TSDB not ready"}`,
+		},
+	}
 
-	client := newTestClient(t, srv.URL)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(tc.status)
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			defer srv.Close()
 
-	_, err := client.SearchMetricNames(context.Background(), "prom", prometheus.SearchOptions{})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "experimental")
-	assert.Contains(t, err.Error(), "-querier.experimental-search-api-enabled")
+			_, err := newTestClient(t, srv.URL).SearchMetricNames(context.Background(), "prom", prometheus.SearchOptions{Limit: 50})
+			require.Error(t, err)
+
+			// Flagged experimental so the CLI's route-absent handling
+			// applies to the bare-404 case.
+			var apiErr *queryerror.APIError
+			require.ErrorAs(t, err, &apiErr)
+			assert.True(t, apiErr.Experimental)
+			assert.Equal(t, tc.status, apiErr.StatusCode)
+
+			if tc.wantHint {
+				assert.Contains(t, err.Error(), "search API is not enabled on this server")
+				assert.Contains(t, err.Error(), "--enable-feature=search-api")
+				assert.Contains(t, err.Error(), "-querier.experimental-search-api-enabled")
+			} else {
+				assert.NotContains(t, err.Error(), "not enabled on this server")
+			}
+		})
+	}
+}
+
+// TestClient_Search_LimitZeroRejectedByPrometheus proves Prometheus's
+// rejection of limit=0 (which Mimir accepts as unlimited) gets a hint, and
+// only when limit 0 was actually sent.
+func TestClient_Search_LimitZeroRejectedByPrometheus(t *testing.T) {
+	const body = `{"status":"error","errorType":"bad_data","error":"invalid limit \"0\": must be a positive integer"}`
+
+	tests := []struct {
+		name     string
+		limit    int
+		wantHint bool
+	}{
+		{name: "limit 0", limit: 0, wantHint: true},
+		{name: "positive limit", limit: 5},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write([]byte(body))
+			}))
+			defer srv.Close()
+
+			_, err := newTestClient(t, srv.URL).SearchMetricNames(context.Background(), "prom", prometheus.SearchOptions{Limit: tc.limit})
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), `invalid limit "0"`, "the upstream error must stay in the chain")
+			if tc.wantHint {
+				assert.Contains(t, err.Error(), "only supported by Mimir")
+			} else {
+				assert.NotContains(t, err.Error(), "only supported by Mimir")
+			}
+		})
+	}
+}
+
+// TestClient_Search_Warnings pins where each server puts warnings:
+// Prometheus on the first batch (the trailer repeats only a changed set),
+// Mimir on the trailer. All are surfaced, each once, in arrival order.
+func TestClient_Search_Warnings(t *testing.T) {
+	tests := []struct {
+		name   string
+		frames []string
+		want   []string
+	}{
+		{
+			name: "Prometheus: first batch only",
+			frames: []string{
+				`{"results":[{"name":"up"}],"warnings":["partial result: store unavailable"]}`,
+				`{"results":[{"name":"go_goroutines"}]}`,
+				`{"status":"success","has_more":false}`,
+			},
+			want: []string{"partial result: store unavailable"},
+		},
+		{
+			name: "Prometheus: trailer re-sends a grown set",
+			frames: []string{
+				`{"results":[{"name":"up"}],"warnings":["a"]}`,
+				`{"status":"success","has_more":false,"warnings":["a","b"]}`,
+			},
+			want: []string{"a", "b"},
+		},
+		{
+			name: "Mimir: trailer only",
+			frames: []string{
+				`{"results":[{"name":"up"}]}`,
+				`{"status":"success","has_more":true,"warnings":["limit reached"]}`,
+			},
+			want: []string{"limit reached"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				writeNDJSON(w, tc.frames...)
+			}))
+			defer srv.Close()
+
+			resp, err := newTestClient(t, srv.URL).SearchMetricNames(context.Background(), "prom", prometheus.SearchOptions{})
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, resp.Warnings)
+		})
+	}
+}
+
+// TestDecodeSearchStream_IncompleteStream proves a stream without a trailer
+// fails with an error saying why, instead of returning results that may be
+// incomplete.
+func TestDecodeSearchStream_IncompleteStream(t *testing.T) {
+	const (
+		batch   = `{"results":[{"name":"up"},{"name":"go_goroutines"}]}` + "\n"
+		trailer = `{"status":"success","has_more":false}` + "\n"
+	)
+
+	tests := []struct {
+		name    string
+		body    string
+		limit   int64
+		wantErr string
+	}{
+		{
+			name:    "no trailer",
+			body:    batch,
+			limit:   1 << 20,
+			wantErr: "search stream ended after 2 results without a completion trailer",
+		},
+		{
+			name:    "cut mid-line",
+			body:    batch + `{"results":[{"na`,
+			limit:   1 << 20,
+			wantErr: "search stream ended after 2 results without a completion trailer",
+		},
+		{
+			name:    "size cap hit",
+			body:    batch + batch + trailer,
+			limit:   int64(len(batch)) + 10,
+			wantErr: "search response exceeded the",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, _, _, err := prometheus.DecodeSearchStream(strings.NewReader(tc.body), tc.limit)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.wantErr)
+		})
+	}
+
+	t.Run("stream ending exactly at the cap is complete", func(t *testing.T) {
+		body := batch + trailer
+		n, _, _, err := prometheus.DecodeSearchStream(strings.NewReader(body), int64(len(body)))
+		require.NoError(t, err)
+		assert.Equal(t, 2, n)
+	})
 }
 
 func TestClient_Search_OtherHTTPErrorIsRaw(t *testing.T) {
