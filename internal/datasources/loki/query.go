@@ -29,8 +29,8 @@ Datasource is resolved from -d flag or datasources.loki in your context.
 Default table output is optimized for humans. Use -o raw for original line
 bodies or -o json for the full structured response.
 
-Default --limit is 50. Values must be positive because Grafana applies an
-implicit cap when maxLines is omitted. Use 'gcx logs metrics' for totals.
+Default --limit is 50. Use --limit 0 for the backend default limit, not unlimited
+results. Use 'gcx logs metrics' for totals.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
 open it in your browser after the query succeeds.`,
 		Example: `
@@ -53,8 +53,8 @@ open it in your browser after the query succeeds.`,
 			if err := shared.Validate(); err != nil {
 				return err
 			}
-			if err := dsquery.ValidateLokiLogLimit(limit); err != nil {
-				return err
+			if limit < 0 {
+				return fmt.Errorf("--limit must be >= 0, got %d", limit)
 			}
 
 			expr, err := shared.ResolveExpr(args, 0)
@@ -140,7 +140,7 @@ open it in your browser after the query succeeds.`,
 	cmd.Flags().StringVar(&shared.Step, "step", "", "Query step (e.g., '15s', '1m')")
 	shared.SetupExprFlag(cmd.Flags())
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.loki is configured)")
-	cmd.Flags().IntVar(&limit, "limit", dsquery.DefaultLokiLimit, "Maximum number of log lines to return (must be positive)")
+	cmd.Flags().IntVar(&limit, "limit", dsquery.DefaultLokiLimit, "Maximum number of log lines to return (0 uses the backend default limit)")
 	share.Setup(cmd.Flags(), "executed query")
 
 	return cmd
