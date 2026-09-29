@@ -89,7 +89,11 @@
             </div>
             <h1>You've authorized gcx</h1>
             <p>Return to your terminal to see the connection result.</p>
-            {{with .StackURL}}<div><a class="stack-link" href="{{.}}" rel="noreferrer">Open Grafana</a><p class="stack-host">{{$.StackHost}}</p></div>{{end}}
+            {{with .StackURL}}<div>
+                {{/* nosemgrep: generic.html-templates.security.var-in-href.var-in-href -- html/template escapes this href by context (a javascript: URL renders as #ZgotmplZ), and stackLink passes only an https origin on a trusted Grafana domain. */}}
+                <a class="stack-link" href="{{.}}" rel="noreferrer">Open Grafana</a>
+                <p class="stack-host">{{$.StackHost}}</p>
+            </div>{{end}}
             <p class="close-note">You can close this tab.</p>
         </main>
     </body>
