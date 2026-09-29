@@ -243,13 +243,18 @@ func (h *fleetHelper) newPipelineListCommand() *cobra.Command {
 				return err
 			}
 
-			pipelines = adapter.TruncateSlice(pipelines, opts.Limit)
+			pipelines, meta := cmdio.TruncateCompleteList(pipelines, opts.Limit)
+			meta = cmdio.AttachListMeta(meta, os.Args)
 
 			// Table codec operates on raw []Pipeline for direct field access.
 			// Other formats (yaml/json) convert to K8s envelope Resources
 			// for consistency with get/pull and round-trip support.
 			if opts.IO.OutputFormat == "table" || opts.IO.OutputFormat == "wide" {
-				return opts.IO.Encode(cmd.OutOrStdout(), pipelines)
+				if err := opts.IO.Encode(cmd.OutOrStdout(), pipelines); err != nil {
+					return err
+				}
+				cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
+				return nil
 			}
 
 			var objs []unstructured.Unstructured
@@ -261,7 +266,11 @@ func (h *fleetHelper) newPipelineListCommand() *cobra.Command {
 				objs = append(objs, res.ToUnstructured())
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), objs)
+			if err := opts.IO.Encode(cmd.OutOrStdout(), objs); err != nil {
+				return err
+			}
+			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
+			return nil
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -270,7 +279,7 @@ func (h *fleetHelper) newPipelineListCommand() *cobra.Command {
 
 type pipelineListOpts struct {
 	IO    cmdio.Options
-	Limit int64
+	Limit int
 }
 
 func (o *pipelineListOpts) setup(flags *pflag.FlagSet) {
@@ -279,7 +288,7 @@ func (o *pipelineListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
+	o.IO.BindListLimit(flags, &o.Limit, "pipelines", 50)
 }
 
 func (h *fleetHelper) newPipelineGetCommand() *cobra.Command {

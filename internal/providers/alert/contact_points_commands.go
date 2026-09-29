@@ -1,9 +1,10 @@
 package alert
 
 import (
+	"os"
+
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
-	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -28,16 +29,17 @@ func contactPointsCommands(loader GrafanaConfigLoader) *cobra.Command {
 
 type contactPointsListOpts struct {
 	IO    cmdio.Options
-	Limit int64
+	Limit int
 }
 
 func (o *contactPointsListOpts) setup(flags *pflag.FlagSet) {
 	cmdio.RegisterTable(&o.IO, ContactPointsTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for unlimited)")
+	o.IO.BindListLimit(flags, &o.Limit, "contact points", 50)
 }
 
+//nolint:dupl // The alert list commands share one fetch, truncate, and encode flow.
 func newContactPointsListCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &contactPointsListOpts{}
 	cmd := &cobra.Command{
@@ -60,8 +62,13 @@ func newContactPointsListCommand(loader GrafanaConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			points = adapter.TruncateSlice(points, opts.Limit)
-			return opts.IO.Encode(cmd.OutOrStdout(), points)
+			points, meta := cmdio.TruncateCompleteList(points, opts.Limit)
+			meta = cmdio.AttachListMeta(meta, os.Args)
+			if err := opts.IO.Encode(cmd.OutOrStdout(), points); err != nil {
+				return err
+			}
+			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
+			return nil
 		},
 	}
 	opts.setup(cmd.Flags())

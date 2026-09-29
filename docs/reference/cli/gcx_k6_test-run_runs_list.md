@@ -13,7 +13,7 @@ gcx k6 test-run runs list [test-name] [flags]
       --id int           Load test ID (skip name lookup)
       --jq string        jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string      Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --limit int        Maximum number of items to return (0 for all) (default 50)
+      --limit int        Maximum number of test runs to return. 0 means all results are returned (default 50)
   -o, --output string    Output format. One of: agents, json, table, yaml (default "table")
       --project-id int   k6 Cloud project ID (required when using name lookup)
 ```

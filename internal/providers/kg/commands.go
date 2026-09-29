@@ -471,10 +471,12 @@ func newRulesCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			typedObjs, err := crud.List(ctx, rulesListOpts.Limit)
+			all, err := crud.List(ctx, 0)
 			if err != nil {
 				return err
 			}
+			typedObjs, meta := cmdio.TruncateCompleteList(all, rulesListOpts.Limit)
+			meta = cmdio.AttachListMeta(meta, os.Args)
 
 			// Convert to K8s envelope unstructured once; all codecs (table,
 			// wide, yaml, json) consume the same shape.
@@ -488,7 +490,11 @@ func newRulesCommand(loader RESTConfigLoader) *cobra.Command {
 				objs = append(objs, res.ToUnstructured())
 			}
 
-			return rulesListOpts.IO.Encode(cmd.OutOrStdout(), objs)
+			if err := rulesListOpts.IO.Encode(cmd.OutOrStdout(), objs); err != nil {
+				return err
+			}
+			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
+			return nil
 		},
 	}
 	rulesListOpts.setup(listCmd.Flags())
@@ -595,14 +601,14 @@ func (o *rulesSchemaOpts) setup(flags *pflag.FlagSet) {
 
 type rulesListOpts struct {
 	IO    cmdio.Options
-	Limit int64
+	Limit int
 }
 
 func (o *rulesListOpts) setup(flags *pflag.FlagSet) {
 	cmdio.RegisterTable(&o.IO, RuleTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
+	o.IO.BindListLimit(flags, &o.Limit, "rules", 50)
 }
 
 type rulesGetOpts struct {

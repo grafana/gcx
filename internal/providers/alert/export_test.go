@@ -65,3 +65,28 @@ func RulerSubtypeForDatasourceType(dsType string) (string, error) {
 func RulerCommands(loader GrafanaConfigLoader) *cobra.Command {
 	return rulerCommands(loader)
 }
+
+// NewRulesListCommandForTest wraps newRulesListCommand.
+func NewRulesListCommandForTest(loader GrafanaConfigLoader) *cobra.Command {
+	return newRulesListCommand(loader)
+}
+
+// NewGroupsListCommandForTest wraps newGroupsListCommand.
+func NewGroupsListCommandForTest(loader GrafanaConfigLoader) *cobra.Command {
+	return newGroupsListCommand(loader)
+}
+
+// NewContactPointsListCommandForTest wraps newContactPointsListCommand.
+func NewContactPointsListCommandForTest(loader GrafanaConfigLoader) *cobra.Command {
+	return newContactPointsListCommand(loader)
+}
+
+// NewTemplatesListCommandForTest wraps newTemplatesListCommand.
+func NewTemplatesListCommandForTest(loader GrafanaConfigLoader) *cobra.Command {
+	return newTemplatesListCommand(loader)
+}
+
+// NewMuteTimingsListCommandForTest wraps newMuteTimingsListCommand.
+func NewMuteTimingsListCommandForTest(loader GrafanaConfigLoader) *cobra.Command {
+	return newMuteTimingsListCommand(loader)
+}

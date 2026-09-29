@@ -383,7 +383,9 @@ ListMeta *cmdio.ListMeta `json:"list_meta,omitempty" yaml:"list_meta,omitempty"`
 
 Bare-array list outputs (no envelope) cannot carry the signal; they get the
 stderr hint only and should migrate to an envelope when their consumers can
-absorb the shape change (`alert rules list` is the tracked example).
+absorb the shape change (`alert rules list` is the tracked example). A
+bare-array command must still apply its client-side filters before the
+limit, so that the hint and the page describe the filtered set.
 
 ### 15.3 Constructors by source shape
 
@@ -477,9 +479,22 @@ research doc's remaining-migration section).
   paginated source, both server-reported (`PagedListMeta`, no safety cap:
   `--limit 0` drains every `next` cursor) and over-fetch-by-one
   (`TruncatePagedList`, alternate-implementation fallback path) variants.
+- Hint-only migrations (bare-array output, stderr hint, no `list_meta`):
+  `alert rules/groups/contact-points/templates/mute-timings list`,
+  `synthetic-monitoring checks/probes list`, `k6 projects/load-tests/runs/
+  env-vars/schedules/load-zones list`, `frontend apps list`,
+  `fleet pipelines/collectors list`, the adaptive logs/metrics/traces list
+  commands, `slo definitions/reports list`, `kg rules list`, and the
+  `agento11y` rules/evaluators/guards lists. `k6 load-tests list`
+  without `--project-id` over-fetches by one (`TruncatePagedList`); the others
+  hold the complete set (`TruncateCompleteList`).
+- `dashboards search` — envelope output, `list_meta` with the `totalHits`
+  total from the server. `--limit 0` sends a second request for all the hits
+  that the first response counted.
 
-`alert rules list` is deliberately not migrated yet: its JSON/YAML output is
-a bare array (no envelope to carry `list_meta`) and its `--limit` counts
-different units per format (flattened rules in the table, groups in JSON).
-The envelope and unit decisions are tracked in
+`alert rules list` counts `--limit` in rules for every format. The table
+shows the first N rules. JSON/YAML shows the groups that hold those N rules;
+the last group can hold only a part of its rules. The JSON/YAML payload stays
+a bare array of groups, so the stderr hint is the only truncation signal.
+The envelope decision is tracked in
 `docs/research/2026-07-17-global-limit-investigation.md` §6–7.

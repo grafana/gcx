@@ -16,7 +16,6 @@ import (
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources"
-	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/grafana/gcx/internal/terminal"
 	"github.com/spf13/cobra"
@@ -173,7 +172,7 @@ func newProjectsCommand(loader CloudConfigLoader) *cobra.Command {
 
 type projectsListOpts struct {
 	IO    cmdio.Options
-	Limit int64
+	Limit int
 }
 
 func (o *projectsListOpts) setup(flags *pflag.FlagSet) {
@@ -181,7 +180,7 @@ func (o *projectsListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("wide", &ProjectTableCodec{Wide: true})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
+	o.IO.BindListLimit(flags, &o.Limit, "projects", 50)
 }
 
 func newProjectsListCommand(loader CloudConfigLoader) *cobra.Command {
@@ -198,10 +197,12 @@ func newProjectsListCommand(loader CloudConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			typedObjs, err := crud.List(ctx, opts.Limit)
+			all, err := crud.List(ctx, 0)
 			if err != nil {
 				return err
 			}
+			typedObjs, meta := cmdio.TruncateCompleteList(all, opts.Limit)
+			meta = cmdio.AttachListMeta(meta, os.Args)
 
 			// Extract projects from TypedObject
 			projects := make([]Project, len(typedObjs))
@@ -210,7 +211,11 @@ func newProjectsListCommand(loader CloudConfigLoader) *cobra.Command {
 			}
 
 			if opts.IO.OutputFormat == "table" || opts.IO.OutputFormat == "wide" {
-				return opts.IO.Encode(cmd.OutOrStdout(), projects)
+				if err := opts.IO.Encode(cmd.OutOrStdout(), projects); err != nil {
+					return err
+				}
+				cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
+				return nil
 			}
 			var objs []unstructured.Unstructured
 			for _, p := range projects {
@@ -220,7 +225,11 @@ func newProjectsListCommand(loader CloudConfigLoader) *cobra.Command {
 				}
 				objs = append(objs, res.ToUnstructured())
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), objs)
+			if err := opts.IO.Encode(cmd.OutOrStdout(), objs); err != nil {
+				return err
+			}
+			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
+			return nil
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -559,7 +568,7 @@ func newTestsCommand(loader CloudConfigLoader) *cobra.Command {
 type testsListOpts struct {
 	IO        cmdio.Options
 	ProjectID int
-	Limit     int64
+	Limit     int
 }
 
 func (o *testsListOpts) setup(flags *pflag.FlagSet) {
@@ -568,7 +577,7 @@ func (o *testsListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.IntVar(&o.ProjectID, "project-id", 0, "Filter by project ID")
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
+	o.IO.BindListLimit(flags, &o.Limit, "load tests", 50)
 }
 
 func newTestsListCommand(loader CloudConfigLoader) *cobra.Command {
@@ -586,21 +595,35 @@ func newTestsListCommand(loader CloudConfigLoader) *cobra.Command {
 				return err
 			}
 			var tests []LoadTest
+			var meta *cmdio.ListMeta
 			if opts.ProjectID != 0 {
-				tests, err = client.ListLoadTestsByProject(ctx, opts.ProjectID)
+				// The project filter returns the full set, so the total is exact.
+				all, err := client.ListLoadTestsByProject(ctx, opts.ProjectID)
 				if err != nil {
 					return err
 				}
-				if l := int(opts.Limit); l > 0 && len(tests) > l {
-					tests = tests[:l]
-				}
+				tests, meta = cmdio.TruncateCompleteList(all, opts.Limit)
 			} else {
-				tests, err = client.ListLoadTestsWithLimit(ctx, int(opts.Limit))
+				// Request one more item than the limit. A spare item shows
+				// that more load tests exist. The total stays unknown.
+				wireLimit := 0
+				if opts.Limit > 0 {
+					wireLimit = opts.Limit + 1
+				}
+				fetched, err := client.ListLoadTestsWithLimit(ctx, wireLimit)
 				if err != nil {
 					return err
 				}
+				tests, meta = cmdio.TruncatePagedList(fetched, opts.Limit)
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), tests)
+			meta = cmdio.AttachListMeta(meta, os.Args)
+			// The output is a bare array, so it cannot carry list_meta. The
+			// stderr hint reports the truncation.
+			if err := opts.IO.Encode(cmd.OutOrStdout(), tests); err != nil {
+				return err
+			}
+			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
+			return nil
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -967,7 +990,7 @@ type runsListOpts struct {
 	IO        cmdio.Options
 	ProjectID int
 	TestID    int
-	Limit     int64
+	Limit     int
 }
 
 func (o *runsListOpts) setup(flags *pflag.FlagSet) {
@@ -976,7 +999,7 @@ func (o *runsListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 	flags.IntVar(&o.ProjectID, "project-id", 0, "Project ID (required when looking up by name)")
 	flags.IntVar(&o.TestID, "id", 0, "Load test ID (skip name lookup)")
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
+	o.IO.BindListLimit(flags, &o.Limit, "test runs", 50)
 }
 
 func newRunsListCommand(loader CloudConfigLoader) *cobra.Command {
@@ -1018,8 +1041,13 @@ func newRunsListCommand(loader CloudConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			runs = adapter.TruncateSlice(runs, opts.Limit)
-			return opts.IO.Encode(cmd.OutOrStdout(), runs)
+			runs, meta := cmdio.TruncateCompleteList(runs, opts.Limit)
+			meta = cmdio.AttachListMeta(meta, os.Args)
+			if err := opts.IO.Encode(cmd.OutOrStdout(), runs); err != nil {
+				return err
+			}
+			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
+			return nil
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -1098,16 +1126,17 @@ func newEnvVarsCommand(loader CloudConfigLoader) *cobra.Command {
 
 type envVarsListOpts struct {
 	IO    cmdio.Options
-	Limit int64
+	Limit int
 }
 
 func (o *envVarsListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("table", &EnvVarTableCodec{})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
+	o.IO.BindListLimit(flags, &o.Limit, "environment variables", 50)
 }
 
+//nolint:dupl // The k6 list commands share one fetch, truncate, and encode flow.
 func newEnvVarsListCommand(loader CloudConfigLoader) *cobra.Command {
 	opts := &envVarsListOpts{}
 	cmd := &cobra.Command{
@@ -1126,8 +1155,13 @@ func newEnvVarsListCommand(loader CloudConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			envVars = adapter.TruncateSlice(envVars, opts.Limit)
-			return opts.IO.Encode(cmd.OutOrStdout(), envVars)
+			envVars, meta := cmdio.TruncateCompleteList(envVars, opts.Limit)
+			meta = cmdio.AttachListMeta(meta, os.Args)
+			if err := opts.IO.Encode(cmd.OutOrStdout(), envVars); err != nil {
+				return err
+			}
+			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
+			return nil
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -1416,16 +1450,17 @@ func (c *ScheduleTableCodec) Decode(_ io.Reader, _ any) error {
 
 type schedulesListOpts struct {
 	IO    cmdio.Options
-	Limit int64
+	Limit int
 }
 
 func (o *schedulesListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("table", &ScheduleTableCodec{})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
+	o.IO.BindListLimit(flags, &o.Limit, "schedules", 50)
 }
 
+//nolint:dupl // The k6 list commands share one fetch, truncate, and encode flow.
 func newSchedulesListCommand(loader CloudConfigLoader) *cobra.Command {
 	opts := &schedulesListOpts{}
 	cmd := &cobra.Command{
@@ -1444,8 +1479,13 @@ func newSchedulesListCommand(loader CloudConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			schedules = adapter.TruncateSlice(schedules, opts.Limit)
-			return opts.IO.Encode(cmd.OutOrStdout(), schedules)
+			schedules, meta := cmdio.TruncateCompleteList(schedules, opts.Limit)
+			meta = cmdio.AttachListMeta(meta, os.Args)
+			if err := opts.IO.Encode(cmd.OutOrStdout(), schedules); err != nil {
+				return err
+			}
+			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
+			return nil
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -1659,16 +1699,17 @@ func (c *LoadZoneTableCodec) Decode(_ io.Reader, _ any) error {
 
 type loadZonesListOpts struct {
 	IO    cmdio.Options
-	Limit int64
+	Limit int
 }
 
 func (o *loadZonesListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("table", &LoadZoneTableCodec{})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
+	o.IO.BindListLimit(flags, &o.Limit, "load zones", 50)
 }
 
+//nolint:dupl // The k6 list commands share one fetch, truncate, and encode flow.
 func newLoadZonesListCommand(loader CloudConfigLoader) *cobra.Command {
 	opts := &loadZonesListOpts{}
 	cmd := &cobra.Command{
@@ -1687,8 +1728,13 @@ func newLoadZonesListCommand(loader CloudConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			zones = adapter.TruncateSlice(zones, opts.Limit)
-			return opts.IO.Encode(cmd.OutOrStdout(), zones)
+			zones, meta := cmdio.TruncateCompleteList(zones, opts.Limit)
+			meta = cmdio.AttachListMeta(meta, os.Args)
+			if err := opts.IO.Encode(cmd.OutOrStdout(), zones); err != nil {
+				return err
+			}
+			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
+			return nil
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -2216,7 +2262,7 @@ type testrunRunsListOpts struct {
 	IO        cmdio.Options
 	ProjectID int
 	ID        int
-	Limit     int64
+	Limit     int
 }
 
 func (o *testrunRunsListOpts) setup(flags *pflag.FlagSet) {
@@ -2225,7 +2271,7 @@ func (o *testrunRunsListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 	flags.IntVar(&o.ProjectID, "project-id", 0, "k6 Cloud project ID (required when using name lookup)")
 	flags.IntVar(&o.ID, "id", 0, "Load test ID (skip name lookup)")
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
+	o.IO.BindListLimit(flags, &o.Limit, "test runs", 50)
 }
 
 func newTestrunRunsListCommand(loader CloudConfigLoader) *cobra.Command {
@@ -2256,8 +2302,13 @@ func newTestrunRunsListCommand(loader CloudConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			runs = adapter.TruncateSlice(runs, opts.Limit)
-			return opts.IO.Encode(cmd.OutOrStdout(), runs)
+			runs, meta := cmdio.TruncateCompleteList(runs, opts.Limit)
+			meta = cmdio.AttachListMeta(meta, os.Args)
+			if err := opts.IO.Encode(cmd.OutOrStdout(), runs); err != nil {
+				return err
+			}
+			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
+			return nil
 		},
 	}
 	opts.setup(cmd.Flags())

@@ -5,11 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
-	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -46,7 +46,7 @@ type rulesListOpts struct {
 	GroupName string
 	FolderUID string
 	State     string
-	Limit     int64
+	Limit     int
 }
 
 func (o *rulesListOpts) setup(flags *pflag.FlagSet) {
@@ -56,7 +56,9 @@ func (o *rulesListOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&o.GroupName, "group", "", "Filter by group name")
 	flags.StringVar(&o.FolderUID, "folder", "", "Filter by folder UID")
 	flags.StringVar(&o.State, "state", "", "Filter by rule state (firing, pending, inactive)")
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for unlimited)")
+	// The limit counts rules in every output format. The table shows rules,
+	// and JSON/YAML shows the groups that hold the first N rules.
+	o.IO.BindListLimit(flags, &o.Limit, "alert rules", 50)
 }
 
 func newRulesListCommand(loader GrafanaConfigLoader) *cobra.Command {
@@ -98,28 +100,53 @@ func newRulesListCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 
-			if codec.Format() == "table" || codec.Format() == "wide" {
-				var rules []RuleStatus
-				for _, g := range resp.Data.Groups {
-					rules = append(rules, g.Rules...)
-				}
-				rules = adapter.TruncateSlice(rules, opts.Limit)
-				return codec.Encode(cmd.OutOrStdout(), rules)
-			}
-
-			// Filter out groups with no rules to avoid empty groups in JSON/YAML output.
-			var nonEmpty []RuleGroup
+			// The ruler API returns the full set, so the total is exact. The
+			// limit applies to rules, not to groups, in every output format.
+			var rules []RuleStatus
 			for _, g := range resp.Data.Groups {
-				if len(g.Rules) > 0 {
-					nonEmpty = append(nonEmpty, g)
-				}
+				rules = append(rules, g.Rules...)
 			}
-			nonEmpty = adapter.TruncateSlice(nonEmpty, opts.Limit)
-			return opts.IO.Encode(cmd.OutOrStdout(), nonEmpty)
+			page, meta := cmdio.TruncateCompleteList(rules, opts.Limit)
+			meta = cmdio.AttachListMeta(meta, os.Args)
+
+			// The table shows the rules. JSON/YAML output is a bare array of
+			// the groups that hold those rules, without empty groups. A bare
+			// array cannot carry list_meta, so the stderr hint reports the
+			// truncation in all formats.
+			var out any = limitGroupRules(resp.Data.Groups, len(page))
+			if codec.Format() == "table" || codec.Format() == "wide" {
+				out = page
+			}
+			if err := opts.IO.Encode(cmd.OutOrStdout(), out); err != nil {
+				return err
+			}
+			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
+			return nil
 		},
 	}
 	opts.setup(cmd.Flags())
 	return cmd
+}
+
+// limitGroupRules returns the groups that hold the first n rules, in API
+// order. It removes groups with no rules. The last group that it returns can
+// hold only a part of its rules.
+func limitGroupRules(groups []RuleGroup, n int) []RuleGroup {
+	var out []RuleGroup
+	for _, g := range groups {
+		if n <= 0 {
+			break
+		}
+		if len(g.Rules) == 0 {
+			continue
+		}
+		if len(g.Rules) > n {
+			g.Rules = g.Rules[:n]
+		}
+		n -= len(g.Rules)
+		out = append(out, g)
+	}
+	return out
 }
 
 func RulesTable() cmdio.Table[RuleStatus] {

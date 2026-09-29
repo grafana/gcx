@@ -80,15 +80,15 @@ group contains an array of rules:
 
 ```bash
 # Get the query for a specific alert
-gcx alert rules list -o json | \
+gcx alert rules list --limit 0 -o json | \
   jq -r '.[] | .rules[] | select(.name == "<AlertName>") | .query'
 
 # Get the datasource UID for a specific alert
-gcx alert rules list -o json | \
+gcx alert rules list --limit 0 -o json | \
   jq -r '.[] | .rules[] | select(.name == "<AlertName>") | .datasourceUID'
 
 # Get all currently firing instances with their label sets
-gcx alert rules list -o json | \
+gcx alert rules list --limit 0 -o json | \
   jq '.[] | .rules[] | select(.name == "<AlertName>") | .alerts[] | select(.state == "firing")'
 ```
 

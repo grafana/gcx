@@ -42,7 +42,7 @@ func Commands(loader smcfg.Loader) *cobra.Command {
 
 type listOpts struct {
 	IO    cmdio.Options
-	Limit int64
+	Limit int
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
@@ -50,7 +50,7 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
+	o.IO.BindListLimit(flags, &o.Limit, "probes", 50)
 }
 
 func newListCommand(loader smcfg.Loader) *cobra.Command {
@@ -70,10 +70,12 @@ func newListCommand(loader smcfg.Loader) *cobra.Command {
 				return err
 			}
 
-			typedObjs, err := crud.List(ctx, opts.Limit)
+			all, err := crud.List(ctx, 0)
 			if err != nil {
 				return err
 			}
+			typedObjs, meta := cmdio.TruncateCompleteList(all, opts.Limit)
+			meta = cmdio.AttachListMeta(meta, os.Args)
 
 			// Extract probes from TypedObject
 			probeList := make([]Probe, len(typedObjs))
@@ -87,7 +89,11 @@ func newListCommand(loader smcfg.Loader) *cobra.Command {
 			}
 
 			if codec.Format() == "table" {
-				return codec.Encode(cmd.OutOrStdout(), probeList)
+				if err := codec.Encode(cmd.OutOrStdout(), probeList); err != nil {
+					return err
+				}
+				cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
+				return nil
 			}
 
 			var objs []unstructured.Unstructured
@@ -98,7 +104,11 @@ func newListCommand(loader smcfg.Loader) *cobra.Command {
 				}
 				objs = append(objs, res.ToUnstructured())
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), objs)
+			if err := opts.IO.Encode(cmd.OutOrStdout(), objs); err != nil {
+				return err
+			}
+			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
+			return nil
 		},
 	}
 	opts.setup(cmd.Flags())

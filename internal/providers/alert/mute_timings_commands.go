@@ -1,12 +1,12 @@
 package alert
 
 import (
+	"os"
 	"strconv"
 	"strings"
 
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
-	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -31,16 +31,17 @@ func muteTimingsCommands(loader GrafanaConfigLoader) *cobra.Command {
 
 type muteTimingsListOpts struct {
 	IO    cmdio.Options
-	Limit int64
+	Limit int
 }
 
 func (o *muteTimingsListOpts) setup(flags *pflag.FlagSet) {
 	cmdio.RegisterTable(&o.IO, MuteTimingsTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for unlimited)")
+	o.IO.BindListLimit(flags, &o.Limit, "mute timings", 50)
 }
 
+//nolint:dupl // The alert list commands share one fetch, truncate, and encode flow.
 func newMuteTimingsListCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &muteTimingsListOpts{}
 	cmd := &cobra.Command{
@@ -63,8 +64,13 @@ func newMuteTimingsListCommand(loader GrafanaConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			timings = adapter.TruncateSlice(timings, opts.Limit)
-			return opts.IO.Encode(cmd.OutOrStdout(), timings)
+			timings, meta := cmdio.TruncateCompleteList(timings, opts.Limit)
+			meta = cmdio.AttachListMeta(meta, os.Args)
+			if err := opts.IO.Encode(cmd.OutOrStdout(), timings); err != nil {
+				return err
+			}
+			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
+			return nil
 		},
 	}
 	opts.setup(cmd.Flags())
