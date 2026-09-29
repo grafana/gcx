@@ -8,7 +8,7 @@ description: >
   ingest, with separate checks for traces and metrics. Proposes changes with
   file:line evidence and applies them only after explicit confirmation.
   For offline tests use agento11y-test-starter; for online eval rules and guards
-  use agento11y-prod-setup. Excludes coding-agent telemetry plugins
+  use agento11y-prod-setup. Excludes coding-agent telemetry plugins.
 allowed-tools: Bash, Read, Grep, Glob, Edit, Write, WebFetch
 ---
 
