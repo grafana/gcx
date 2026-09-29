@@ -2,7 +2,9 @@ package output_test
 
 import (
 	"bytes"
+	"encoding/json"
 	goio "io"
+	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/internal/agent"
@@ -197,50 +199,78 @@ func TestJSONFlag_Parsing(t *testing.T) {
 }
 
 func TestEncode_AgentModeHint(t *testing.T) {
-	// The agent-mode hint nudges agents toward --json field selection and
-	// --jq transformation, steering them away from external Python pipelines.
-	// It is emitted to stderr (not stdout) and suppressed when --json or --jq
-	// is already in use, or outside agent mode.
+	// The agent-mode field-selection hint goes to stderr only when it can
+	// help: a large payload without --json or --jq. A small payload gets no
+	// hint, because "2>&1 | jq" then sees an extra JSONL line and fails.
+	large := strings.Repeat("x", 9*1024)
 	tests := []struct {
 		name      string
 		agentMode bool
+		output    string // if set, pass -o
 		jsonField string // if set, pass --json flag
 		jqExpr    string // if set, pass --jq flag
 		pinned    bool   // if set, pin the default format (file-writing command)
+		value     string // value of the "name" field in the payload
 		wantHint  bool
 	}{
 		{
-			name:      "agent mode without --json or --jq: emits hint",
+			name:      "agent mode + small payload: no hint",
 			agentMode: true,
+			value:     "test",
+			wantHint:  false,
+		},
+		{
+			name:      "agent mode + large payload: emits hint",
+			agentMode: true,
+			value:     large,
 			wantHint:  true,
 		},
 		{
-			name:      "agent mode + pinned default (file-writing command): hint suppressed",
+			name:      "agent mode + -o json + large payload: emits hint",
+			agentMode: true,
+			output:    "json",
+			value:     large,
+			wantHint:  true,
+		},
+		{
+			name:      "agent mode + -o json + small payload: no hint",
+			agentMode: true,
+			output:    "json",
+			value:     "test",
+			wantHint:  false,
+		},
+		{
+			name:      "agent mode + pinned default (file-writing command): no hint",
 			agentMode: true,
 			pinned:    true,
+			value:     large,
 			wantHint:  false,
 		},
 		{
-			name:      "agent mode + --json field selection: hint still fires (nudges toward --jq)",
+			name:      "agent mode + --json field selection: no hint",
 			agentMode: true,
 			jsonField: "name",
-			wantHint:  true,
+			value:     large,
+			wantHint:  false,
 		},
 		{
-			name:      "agent mode + --json list (discovery): hint suppressed",
+			name:      "agent mode + --json list (discovery): no hint",
 			agentMode: true,
 			jsonField: "list",
+			value:     large,
 			wantHint:  false,
 		},
 		{
-			name:      "agent mode + --jq: hint suppressed",
+			name:      "agent mode + --jq: no hint",
 			agentMode: true,
 			jqExpr:    ".name",
+			value:     large,
 			wantHint:  false,
 		},
 		{
-			name:      "non-agent mode: no hint",
+			name:      "non-agent mode + large payload: no hint",
 			agentMode: false,
+			value:     large,
 			wantHint:  false,
 		},
 	}
@@ -249,6 +279,7 @@ func TestEncode_AgentModeHint(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			agent.SetFlag(tc.agentMode)
 			t.Cleanup(func() { agent.SetFlag(false) })
+			t.Setenv("GCX_AGENT_SPILL_BYTES", "")
 
 			var errBuf bytes.Buffer
 			opts := &cmdio.Options{ErrWriter: &errBuf}
@@ -258,6 +289,9 @@ func TestEncode_AgentModeHint(t *testing.T) {
 			flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
 			opts.BindFlags(flags)
 
+			if tc.output != "" {
+				require.NoError(t, flags.Set("output", tc.output))
+			}
 			if tc.jsonField != "" {
 				require.NoError(t, flags.Set("json", tc.jsonField))
 			}
@@ -268,20 +302,69 @@ func TestEncode_AgentModeHint(t *testing.T) {
 			require.NoError(t, opts.Validate())
 
 			var buf bytes.Buffer
-			require.NoError(t, opts.Encode(&buf, map[string]any{"name": "test"}))
+			require.NoError(t, opts.Encode(&buf, map[string]any{"name": tc.value}))
 
 			// Hint never lands on stdout.
-			assert.NotContains(t, buf.String(), "hint:")
+			assert.NotContains(t, buf.String(), "no external parsing needed")
 
 			if tc.wantHint {
-				assert.Contains(t, errBuf.String(), "--json list")
-				assert.Contains(t, errBuf.String(), "--jq")
-				assert.Contains(t, errBuf.String(), "no external parsing needed")
+				line := strings.TrimSpace(errBuf.String())
+				var event map[string]any
+				require.NoError(t, json.Unmarshal([]byte(line), &event), "agent-mode hint must be one JSONL record, got %q", line)
+				assert.Equal(t, "hint", event["class"])
+				assert.Contains(t, event["summary"], "--json list")
+				assert.Contains(t, event["summary"], "--jq")
 			} else {
 				assert.Empty(t, errBuf.String())
 			}
 		})
 	}
+}
+
+// TestEncode_AgentModeHint_OncePerOptions makes sure that repeated Encode
+// calls on one Options value emit the hint one time only.
+func TestEncode_AgentModeHint_OncePerOptions(t *testing.T) {
+	agent.SetFlag(true)
+	t.Cleanup(func() { agent.SetFlag(false) })
+	t.Setenv("GCX_AGENT_SPILL_BYTES", "")
+
+	var errBuf bytes.Buffer
+	opts := &cmdio.Options{ErrWriter: &errBuf}
+	opts.BindFlags(pflag.NewFlagSet("test", pflag.ContinueOnError))
+	require.NoError(t, opts.Validate())
+
+	value := map[string]any{"name": strings.Repeat("x", 9*1024)}
+	var buf bytes.Buffer
+	require.NoError(t, opts.Encode(&buf, value))
+	require.NoError(t, opts.Encode(&buf, value))
+
+	assert.Equal(t, 1, strings.Count(errBuf.String(), "\n"), "hint must appear one time, got %q", errBuf.String())
+}
+
+// TestEncode_AgentModeSpill_HintInReceipt makes sure that a spill in agent
+// mode writes nothing to stderr. The receipt carries the file path and the
+// field-selection hint.
+func TestEncode_AgentModeSpill_HintInReceipt(t *testing.T) {
+	agent.SetFlag(true)
+	t.Cleanup(func() { agent.SetFlag(false) })
+	t.Setenv("GCX_AGENT_SPILL_BYTES", "64")
+	t.Setenv("TMPDIR", t.TempDir())
+
+	var errBuf bytes.Buffer
+	opts := &cmdio.Options{ErrWriter: &errBuf}
+	opts.BindFlags(pflag.NewFlagSet("test", pflag.ContinueOnError))
+	require.NoError(t, opts.Validate())
+
+	var buf bytes.Buffer
+	require.NoError(t, opts.Encode(&buf, map[string]any{"name": strings.Repeat("x", 256)}))
+
+	assert.Empty(t, errBuf.String(), "agent-mode spill must not write to stderr")
+
+	var receipt map[string]any
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &receipt), "stdout must be one receipt")
+	assert.Equal(t, cmdio.SpillReferenceType, receipt["type"])
+	assert.NotEmpty(t, receipt["spilled_to"])
+	assert.Contains(t, receipt["hint"], "--json list")
 }
 
 func TestEncodeDiscovery_EmptyTypedSlice(t *testing.T) {
