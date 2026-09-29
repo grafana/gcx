@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/format"
 )
 
@@ -30,6 +31,11 @@ const (
 
 type agentsCodec struct {
 	errWriter io.Writer
+	// receiptHint is an optional hint that a spill receipt carries in its
+	// "hint" field. Options.Encode sets it.
+	receiptHint string
+	// spilled is true after Encode wrote a spill receipt instead of the payload.
+	spilled bool
 }
 
 // spillSummary replaces oversized output with a typed, versioned file reference.
@@ -41,6 +47,7 @@ type spillSummary struct {
 	ContentFormat string `json:"content_format"`
 	PreviewSample any    `json:"preview_sample"`
 	Message       string `json:"message"`
+	Hint          string `json:"hint,omitempty"`
 	TotalItems    *int   `json:"total_items,omitempty"`
 	TotalValues   *int   `json:"total_values,omitempty"` // jq stream values, not array elements
 }
@@ -163,7 +170,12 @@ func (c *agentsCodec) spill(dst io.Writer, value any, payload []byte) error {
 	if n, ok := itemCount(value); ok {
 		s.TotalItems = &n
 	}
-	return c.writeSpillSummary(dst, s)
+	s.Hint = c.receiptHint
+	if err := c.writeSpillSummary(dst, s); err != nil {
+		return err
+	}
+	c.spilled = true
+	return nil
 }
 
 func (c *agentsCodec) writeSpillSummary(dst io.Writer, s spillSummary) error {
@@ -180,6 +192,11 @@ func (c *agentsCodec) writeSpillSummary(dst io.Writer, s spillSummary) error {
 		return err
 	}
 
+	// In agent mode, the receipt on stdout names the file. A stderr hint only
+	// repeats it, and it breaks a parse of the merged stream ("2>&1 | jq").
+	if agent.IsAgentMode() {
+		return nil
+	}
 	emitHint(c.errWriter,
 		fmt.Sprintf("response too large for stdout (%d bytes) — read %s for full data, or use -o json to force inline",
 			s.Bytes, s.SpilledTo),

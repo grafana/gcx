@@ -56,6 +56,12 @@ spill threshold (default **100 KiB**), and spills to a temp file otherwise.
 | `total_values` | only for jq streams | Yielded-value count, not list elements; replaces `total_items` |
 | `preview_sample` | yes | First 3 items for list shapes; sorted top-level key names for object/map shapes; `null` for other shapes and jq streams. Named `preview_sample` (not `preview`) to signal it is never the complete dataset |
 | `message` | yes | Human-readable guidance: references `spilled_to` path and opt-outs |
+| `hint` | no | Agent-mode field-selection hint. Present only when agent mode supplies the format and the command uses no `--json` or `--jq` (see [agent-mode.md § 6.2](agent-mode.md#62-behavior-changes)). Additive field; `schema_version` stays `1` |
+
+**stderr on a spill:** in agent mode, a spill writes nothing to stderr. The
+receipt on stdout names the file, and a stderr line breaks a parse of a merged
+stream (`2>&1 | jq`). Outside agent mode, an explicit `-o agents` spill also
+writes one `hint: ...` line to stderr.
 
 **Override:** `-o json` forces the full document inline to stdout regardless
 of size (standard indented JSON — see the byte-identity note above).
@@ -199,7 +205,8 @@ remain separate, never implicitly wrapped in an array. A yielded `null` emits
   stream**, including newlines—not each value or the original payload.
 - At or below the threshold, stdout gets the complete stream. Above it, the
   same bytes go to one `$TMPDIR/gcx-results-<random>.jsonl` file; stdout gets
-  only a spill receipt, and stderr gets a hint.
+  only a spill receipt. Outside agent mode, stderr also gets a hint; in agent
+  mode, stderr stays empty (see § 1.1.1).
 - The receipt uses `content_format: "jsonl"`, `total_values`, no `total_items`,
   and `preview_sample: null` to avoid unbounded previews. Its fixed metadata
   may exceed a very small threshold. `gcx agent prune` includes JSONL spills.

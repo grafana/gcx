@@ -299,10 +299,10 @@ func TestAgentsCodec_Spill_EmitsStderrHint(t *testing.T) {
 	assert.Contains(t, hint, spillPath, "hint must reference the spill file path")
 }
 
-// TestAgentsCodec_Spill_AgentModeHintIsJSONL pins the stderr contract in agent
-// mode: diagnostics must be JSONL records with a typed class (FR-104), never
-// raw prose — a bare "hint: ..." line would break agent stderr parsing.
-func TestAgentsCodec_Spill_AgentModeHintIsJSONL(t *testing.T) {
+// TestAgentsCodec_Spill_AgentModeNoStderrHint pins the stderr contract in
+// agent mode: the receipt on stdout names the spill file, so stderr stays
+// empty. A stderr line breaks a parse of the merged stream ("2>&1 | jq").
+func TestAgentsCodec_Spill_AgentModeNoStderrHint(t *testing.T) {
 	t.Setenv("GCX_AGENT_SPILL_BYTES", "1")
 	t.Setenv("TMPDIR", t.TempDir())
 
@@ -315,18 +315,14 @@ func TestAgentsCodec_Spill_AgentModeHintIsJSONL(t *testing.T) {
 	var buf bytes.Buffer
 	require.NoError(t, codec.Encode(&buf, map[string]any{"name": "alpha"}))
 
-	line := strings.TrimSpace(errBuf.String())
-	require.NotEmpty(t, line, "spill must emit a hint to errWriter")
-
-	var event map[string]any
-	require.NoError(t, json.Unmarshal([]byte(line), &event), "agent-mode hint must be a JSONL record, got %q", line)
-	assert.Equal(t, "hint", event["class"])
+	assert.Empty(t, errBuf.String(), "agent-mode spill must not write a stderr hint")
 
 	var summary map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &summary))
 	spillPath, _ := summary["spilled_to"].(string)
-	sum, _ := event["summary"].(string)
-	assert.Contains(t, sum, spillPath, "hint summary must reference the spill file path")
+	assert.NotEmpty(t, spillPath)
+	assert.Contains(t, summary["message"], spillPath, "receipt message must name the spill file")
+	assert.NotContains(t, summary, "hint", "a bare codec sets no receipt hint")
 }
 
 func TestAgentsCodec_NoSpill_NoStderrHint(t *testing.T) {
