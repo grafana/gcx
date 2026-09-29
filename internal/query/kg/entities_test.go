@@ -191,3 +191,60 @@ func TestClient_ListEntities(t *testing.T) {
 		require.Error(t, err)
 	})
 }
+
+func TestClient_SearchEntitiesByName(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Contains(t, r.URL.Path, "v1/search")
+
+		var body struct {
+			TimeCriteria struct {
+				Start int64 `json:"start"`
+				End   int64 `json:"end"`
+			} `json:"timeCriteria"`
+			FilterCriteria []struct {
+				EntityType       string `json:"entityType"`
+				PropertyMatchers []struct {
+					Name  string `json:"name"`
+					Op    string `json:"op"`
+					Value string `json:"value"`
+				} `json:"propertyMatchers"`
+			} `json:"filterCriteria"`
+			PageNum int `json:"pageNum"`
+		}
+		if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&body)) {
+			return
+		}
+
+		assert.Equal(t, int64(1000), body.TimeCriteria.Start)
+		assert.Equal(t, int64(2000), body.TimeCriteria.End)
+		assert.Equal(t, 0, body.PageNum)
+		if assert.Len(t, body.FilterCriteria, 1) {
+			assert.Equal(t, "Service", body.FilterCriteria[0].EntityType)
+			if assert.Len(t, body.FilterCriteria[0].PropertyMatchers, 1) {
+				matcher := body.FilterCriteria[0].PropertyMatchers[0]
+				assert.Equal(t, "name", matcher.Name)
+				assert.Equal(t, "=", matcher.Op)
+				assert.Equal(t, "checkout", matcher.Value)
+			}
+		}
+
+		writeJSON(w, map[string]any{
+			"data": map[string]any{
+				"entities": []map[string]any{
+					{"entityType": "Service", "name": "checkout", "scope": map[string]string{"env": "prod"}},
+				},
+				"lastPage": true,
+			},
+		})
+	}))
+	defer server.Close()
+	client := newTestClient(t, server)
+
+	page, err := client.SearchEntitiesByName(t.Context(), "Service", "checkout", 1000, 2000)
+	require.NoError(t, err)
+	require.Len(t, page.Entities, 1)
+	assert.Equal(t, "Service", page.Entities[0].Type)
+	assert.Equal(t, "checkout", page.Entities[0].Name)
+	assert.Equal(t, map[string]string{"env": "prod"}, page.Entities[0].Scope)
+}

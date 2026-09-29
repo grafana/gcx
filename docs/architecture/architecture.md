@@ -811,6 +811,7 @@ Provider command tree backed by fleet-management `Set/Get` + observed-state RPCs
 | `internal/providers/irm/provider.go` | `IRMProvider` implementing the `providers.Provider` interface (registers `gcx irm` with `oncall` and `incidents` subcommands) |
 | `internal/providers/irm/oncall_client.go` | OnCall REST client |
 | `internal/providers/irm/oncall_commands.go` | OnCall CLI commands (schedules, integrations, escalation chains) |
+| `internal/providers/irm/oncall_integration_commands.go` | Integration sub-resource verbs (get-templates, update-templates, start-maintenance, stop-maintenance) |
 | `internal/providers/irm/oncall_adapter.go` | Resource adapter for OnCall resources |
 | `internal/providers/irm/incidents_client.go` | Incidents REST client |
 | `internal/providers/irm/incidents_commands.go` | IRM Incidents CLI commands (list, get, create, close, open, list-activity, list-contexts, activity add, severities, update) |
@@ -826,6 +827,8 @@ Provider command tree backed by fleet-management `Set/Get` + observed-state RPCs
 | `internal/providers/faro/resource_adapter.go` | TypedCRUD[FaroApp] adapter (GVK: `app.v1alpha1.faro.ext.grafana.app`) |
 
 ### Knowledge Graph (Asserts) Provider
+
+The shared transport in `internal/query/kg` serves both the KG provider and App Observability enrichment. For a single service whose scope is unknown, App Observability falls back from the exact entity lookup to a server-side exact-name search. This avoids missing a known service outside the first page of the full service inventory. Bulk enrichment still uses a bounded first page and reports truncation.
 
 | File | Purpose |
 |------|---------|

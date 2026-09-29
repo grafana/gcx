@@ -14,7 +14,7 @@ Manage OnCall integrations.
       --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
       --config string               Path to the configuration file to use
       --context string              Name of the context to use (overrides current-context in config)
-      --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.
+      --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Requires -vvv. Do not ship these logs.
       --no-color                    Disable color output
       --no-truncate                 Disable table column truncation (auto-enabled when stdout is piped)
   -v, --verbose count               Verbose mode. Multiple -v options increase the verbosity (maximum: 3).
@@ -26,6 +26,10 @@ Manage OnCall integrations.
 * [gcx irm oncall integrations create](gcx_irm_oncall_integrations_create.md)	 - Create an integration.
 * [gcx irm oncall integrations delete](gcx_irm_oncall_integrations_delete.md)	 - Delete an integration by ID.
 * [gcx irm oncall integrations get](gcx_irm_oncall_integrations_get.md)	 - Get an integration by ID.
+* [gcx irm oncall integrations get-templates](gcx_irm_oncall_integrations_get-templates.md)	 - Get the alert templates of an integration.
 * [gcx irm oncall integrations list](gcx_irm_oncall_integrations_list.md)	 - List OnCall integrations.
+* [gcx irm oncall integrations start-maintenance](gcx_irm_oncall_integrations_start-maintenance.md)	 - Start maintenance on an integration.
+* [gcx irm oncall integrations stop-maintenance](gcx_irm_oncall_integrations_stop-maintenance.md)	 - Stop maintenance on an integration.
 * [gcx irm oncall integrations update](gcx_irm_oncall_integrations_update.md)	 - Update an integration by ID.
+* [gcx irm oncall integrations update-templates](gcx_irm_oncall_integrations_update-templates.md)	 - Replace the alert templates of an integration.
 

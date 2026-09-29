@@ -18,7 +18,7 @@ func LoggingMiddleware(rt http.RoundTripper) http.RoundTripper {
 }
 
 // RequestResponseLoggingMiddleware wraps a transport with RequestResponseLoggingRoundTripper
-// (full request/response body dump via httputil.DumpRequest/DumpResponse).
+// (full request/response body dump via httputil.DumpRequestOut/DumpResponse).
 func RequestResponseLoggingMiddleware(rt http.RoundTripper) http.RoundTripper {
 	return &RequestResponseLoggingRoundTripper{DecoratedTransport: rt}
 }
@@ -60,8 +60,9 @@ func NewClient(opts ClientOpts) *http.Client {
 // must set auth headers per request.
 //
 // Reads context for configuration:
-//   - PayloadLogging(ctx): when true, adds RequestResponseLoggingMiddleware for full
-//     request/response body dumps (includes raw credentials — see --insecure-log-http-payload).
+//   - PayloadLogging(ctx): when true, adds RequestResponseLoggingMiddleware as the
+//     innermost layer for full request/response body dumps (includes raw
+//     credentials — see --insecure-log-http-payload).
 func NewDefaultClient(ctx context.Context) *http.Client {
 	return NewDefaultClientWithTLS(ctx, nil)
 }
@@ -72,7 +73,9 @@ func NewDefaultClient(ctx context.Context) *http.Client {
 func NewDefaultClientWithTLS(ctx context.Context, tlsConfig *tls.Config) *http.Client {
 	opts := ClientOpts{TLSConfig: tlsConfig}
 	if PayloadLogging(ctx) {
-		opts.Middlewares = []Middleware{LoggingMiddleware, RequestResponseLoggingMiddleware}
+		// NewClient applies the first middleware closest to the base transport,
+		// so the dump runs last and shows every header that reaches the wire.
+		opts.Middlewares = []Middleware{RequestResponseLoggingMiddleware, LoggingMiddleware}
 	}
 	return NewClient(opts)
 }

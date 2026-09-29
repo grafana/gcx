@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -83,6 +84,41 @@ func TestErrorToDetailedError_ColonSeparatedMessageSplitsSummaryAndDetails(t *te
 	require.NotNil(t, got)
 	assert.Equal(t, "Datasource UID is required", got.Summary)
 	assert.Equal(t, "use -d flag or set datasources.loki in config", got.Details)
+}
+
+func TestErrorToDetailedError_ContextNotFoundListsAvailable(t *testing.T) {
+	got := fail.ErrorToDetailedError(config.ContextNotFound("ops", []string{"auth", "default", "dev"}))
+
+	require.NotNil(t, got)
+	assert.Equal(t, "Invalid configuration", got.Summary)
+	require.NotEmpty(t, got.Suggestions)
+	// The first suggestion is a runnable command (docs/design/errors.md 4.2).
+	assert.Equal(t,
+		"Use one of the configured contexts (auth, default, dev), for example: gcx config use-context auth",
+		got.Suggestions[0])
+	assert.Contains(t, got.Suggestions, "Check for typos in the context name")
+	assert.Contains(t, got.Suggestions, "Review your configuration: gcx config view")
+}
+
+func TestErrorToDetailedError_ContextNotFoundCapsList(t *testing.T) {
+	got := fail.ErrorToDetailedError(config.ContextNotFound(
+		"ops", []string{"a", "b", "c", "d", "e", "f", "g"}))
+
+	require.NotNil(t, got)
+	require.NotEmpty(t, got.Suggestions)
+	assert.Equal(t,
+		"Use one of the configured contexts (a, b, c, d, e, +2 more), for example: gcx config use-context a",
+		got.Suggestions[0], "the inline list is capped so a large config does not emit a huge line")
+}
+
+func TestErrorToDetailedError_ContextNotFoundWithoutAvailable(t *testing.T) {
+	got := fail.ErrorToDetailedError(config.ContextNotFound("ops", nil))
+
+	require.NotNil(t, got)
+	require.Len(t, got.Suggestions, 2)
+	for _, s := range got.Suggestions {
+		assert.NotContains(t, s, "configured contexts")
+	}
 }
 
 func TestErrorToDetailedError_AuthExitCode(t *testing.T) {
@@ -1464,6 +1500,48 @@ func TestErrorToDetailedError_RestrictedCredentialSession(t *testing.T) {
 			assert.Equal(t, "OS credential store access is restricted", got.Summary)
 			assert.NotEqual(t, "Keychain locked", got.Summary)
 			assert.Equal(t, docs.Keychain, got.DocsLink)
+		})
+	}
+}
+
+func TestBasicAuthCheckError(t *testing.T) {
+	t.Run("empty identity", func(t *testing.T) {
+		result := fail.ErrorToDetailedError(&login.BasicAuthCheckError{})
+		assert.Equal(t, "Authentication failed", result.Summary)
+		require.NotNil(t, result.ExitCode)
+		assert.Equal(t, gcxerrors.ExitAuthFailure, *result.ExitCode)
+		assert.Contains(t, strings.Join(result.Suggestions, " "), "anonymous access")
+	})
+	for _, tt := range []struct {
+		status  int
+		summary string
+	}{
+		{401, "Authentication failed"},
+		{403, "Authorization failed"},
+		{404, "API error"},
+		{500, "API error"},
+		{0, "Network error"},
+	} {
+		t.Run(strconv.Itoa(tt.status), func(t *testing.T) {
+			err := &login.BasicAuthCheckError{Status: tt.status}
+			if tt.status == 0 {
+				err.Cause = errors.New("TLS handshake failed")
+			}
+			result := fail.ErrorToDetailedError(err)
+			assert.Equal(t, tt.summary, result.Summary)
+			if tt.status == 401 || tt.status == 403 {
+				require.NotNil(t, result.ExitCode)
+				assert.Equal(t, gcxerrors.ExitAuthFailure, *result.ExitCode)
+			} else {
+				assert.Nil(t, result.ExitCode)
+			}
+			if tt.status != 401 {
+				assert.NotContains(t, strings.Join(result.Suggestions, " "), "password")
+			}
+			if tt.status == 0 {
+				assert.Contains(t, result.Details, "TLS handshake failed")
+				assert.ErrorIs(t, err, err.Cause)
+			}
 		})
 	}
 }

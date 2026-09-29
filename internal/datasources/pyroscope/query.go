@@ -70,6 +70,7 @@ func (opts *pyroscopeQueryOpts) setup(flags *pflag.FlagSet) {
 	opts.shared.IO.RegisterCustomCodec("pprof", &pprofCodec{})
 	opts.shared.IO.RegisterCustomCodec("dot", &dotCodec{})
 	opts.shared.Setup(flags, true)
+	opts.shared.SetupErrorOnEmptyFlag(flags)
 
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.pyroscope is configured)")
 	flags.StringVar(&opts.ProfileType, "profile-type", "", "Profile type ID (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds'); use 'gcx profiles list-profile-types' to list available (required)")
@@ -90,6 +91,9 @@ func (opts *pyroscopeQueryOpts) Validate(flags *pflag.FlagSet) error {
 	}
 	if err := opts.shared.Validate(); err != nil {
 		return err
+	}
+	if opts.shared.ErrorOnEmpty && opts.shared.IO.OutputFormat == "pprof" {
+		return errors.New("--error-on-empty is not supported with -o pprof")
 	}
 	if opts.ProfileType == "" {
 		return errors.New("--profile-type is required for pyroscope queries")
@@ -144,7 +148,7 @@ func isDotUnsupportedErr(err error) bool {
 // without the format field and renders the standard table. An explicit
 // --max-nodes survives the fallback; only the dot-mode 0 (server-side graph
 // default) is replaced by the regular table default.
-func queryDotV1Fallback(ctx context.Context, cmd *cobra.Command, client *pyroscope.Client, datasourceUID string, req pyroscope.QueryRequest) error {
+func queryDotV1Fallback(ctx context.Context, cmd *cobra.Command, client *pyroscope.Client, datasourceUID string, req pyroscope.QueryRequest, errorOnEmpty bool) error {
 	cmdio.EmitHint(cmd.ErrOrStderr(), "backend does not support DOT output (requires -architecture.storage=v2); showing table instead", "")
 	req.Format = ""
 	if !cmd.Flags().Changed("max-nodes") {
@@ -154,7 +158,15 @@ func queryDotV1Fallback(ctx context.Context, cmd *cobra.Command, client *pyrosco
 	if err != nil {
 		return fmt.Errorf("query failed: %w", err)
 	}
-	return pyroscope.FormatQueryTable(cmd.OutOrStdout(), resp)
+	if err := pyroscope.FormatQueryTable(cmd.OutOrStdout(), resp); err != nil {
+		return err
+	}
+	if errorOnEmpty {
+		return dsquery.ErrorOnEmptyWithContext(resp, dsquery.EmptyResultContext{
+			Expr: req.LabelSelector, DatasourceUID: datasourceUID, Start: req.Start, End: req.End,
+		})
+	}
+	return nil
 }
 
 // stackTraceSelector builds the StackTraceSelector message from the
@@ -335,34 +347,41 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 			resp, err := client.Query(ctx, datasourceUID, req)
 			if err != nil {
 				if isDot && isDotUnsupportedErr(err) {
-					return queryDotV1Fallback(ctx, cmd, client, datasourceUID, req)
+					return queryDotV1Fallback(ctx, cmd, client, datasourceUID, req, opts.shared.ErrorOnEmpty)
 				}
 				return fmt.Errorf("query failed: %w", err)
 			}
-
-			if isDot {
+			var renderErr error
+			switch {
+			case isDot:
 				switch {
 				case pyroscope.DotHasNodes(resp.Dot):
-					_, err := fmt.Fprintln(cmd.OutOrStdout(), pyroscope.CleanDot(resp.Dot))
-					return err
+					_, renderErr = fmt.Fprintln(cmd.OutOrStdout(), pyroscope.CleanDot(resp.Dot))
 				case resp.Flamegraph != nil:
 					// v1-v2-dual read paths silently downgrade DOT to a
 					// flame graph; render it as the standard table.
 					cmdio.EmitHint(cmd.ErrOrStderr(), "backend runs v1-v2-dual and downgraded DOT to a flame graph (requires -architecture.storage=v2); showing table instead", "")
-					return pyroscope.FormatQueryTable(cmd.OutOrStdout(), resp)
+					renderErr = pyroscope.FormatQueryTable(cmd.OutOrStdout(), resp)
 				default:
 					// No dot payload and no flame graph: the query matched
 					// no samples. The table renders "(no profile data)".
 					emitEmptyWindowHint(cmd.ErrOrStderr(), "profile data", start, end, req.IsRange())
-					return pyroscope.FormatQueryTable(cmd.OutOrStdout(), resp)
+					renderErr = pyroscope.FormatQueryTable(cmd.OutOrStdout(), resp)
 				}
+			case opts.shared.IO.OutputFormat == "table":
+				renderErr = pyroscope.FormatQueryTable(cmd.OutOrStdout(), resp)
+			default:
+				renderErr = opts.shared.IO.Encode(cmd.OutOrStdout(), resp)
 			}
-
-			if opts.shared.IO.OutputFormat == "table" {
-				return pyroscope.FormatQueryTable(cmd.OutOrStdout(), resp)
+			if renderErr != nil {
+				return renderErr
 			}
-
-			return opts.shared.IO.Encode(cmd.OutOrStdout(), resp)
+			if opts.shared.ErrorOnEmpty {
+				return dsquery.ErrorOnEmptyWithContext(resp, dsquery.EmptyResultContext{
+					Expr: expr, DatasourceUID: datasourceUID, Start: start, End: end,
+				})
+			}
+			return nil
 		},
 	}
 

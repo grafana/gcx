@@ -1013,10 +1013,30 @@ func buildOperationsAvgLatencyQuery(names metricNames, namespace, name, window s
 	return expr.String(), nil
 }
 
-// scopedSpanMetric returns a vector selector for `metric` filtered by a
-// single `job="<ns>/<name>"` (or bare `job="<name>"`) label plus a
-// span_kind regex, then any caller-supplied matchers. Range is applied so
-// the caller can wrap in `rate()`.
+// buildServiceTotalBusyQuery returns sum(rate(<latencySum>[window])) with
+// no by(...) clause, scoped to one service — the parent-service
+// denominator `operations get` uses to normalize an operation's
+// TimeSharePercent against its own service's wall-clock time (mirrors
+// buildFleetTotalTimeQuery in operations_fleet_query.go, scoped instead
+// of fleet-wide).
+func buildServiceTotalBusyQuery(names metricNames, namespace, name, window string, kinds []string, matchers []Matcher) (string, error) {
+	if name == "" {
+		return "", errors.New("service name is required")
+	}
+	v := scopedSpanMetric(names.latencySum, namespace, name, kinds, window, matchers)
+	expr, err := promql.Sum(promql.Rate(v)).Build()
+	if err != nil {
+		return "", err
+	}
+	return expr.String(), nil
+}
+
+// spanMetricSelector returns a vector selector for `metric` filtered by an
+// optional `job="<job>"` label plus a span_kind regex, then any
+// caller-supplied matchers. Range is applied so the caller can wrap in
+// `rate()`. An empty job skips the `job` label entirely — the fleet-wide
+// builders in operations_fleet_query.go use this to query across every
+// service instead of one.
 //
 // We keep `service` + `service_namespace` out of the selector on purpose:
 // not every metric family emits them. Newer stacks emit both, but the
@@ -1028,14 +1048,21 @@ func buildOperationsAvgLatencyQuery(names metricNames, namespace, name, window s
 // numbers to a dimension the span metric happens to carry — most
 // commonly a cluster label (k8s_cluster_name / cluster) so a service
 // deployed across regions can be broken out one region at a time.
-func scopedSpanMetric(metric, namespace, name string, kinds []string, window string, matchers []Matcher) *promql.VectorExprBuilder {
-	v := promql.Vector(metric).
-		Label("job", escapePromqlValue(jobLabel(namespace, name))).
-		LabelMatchRegexp("span_kind", spanKindRegex(kinds))
+func spanMetricSelector(metric, job string, kinds []string, window string, matchers []Matcher) *promql.VectorExprBuilder {
+	v := promql.Vector(metric)
+	if job != "" {
+		v = v.Label("job", escapePromqlValue(job))
+	}
+	v = v.LabelMatchRegexp("span_kind", spanKindRegex(kinds))
 	for _, m := range matchers {
 		v = m.apply(v)
 	}
 	return v.Range(window)
+}
+
+// scopedSpanMetric is spanMetricSelector scoped to a single service.
+func scopedSpanMetric(metric, namespace, name string, kinds []string, window string, matchers []Matcher) *promql.VectorExprBuilder {
+	return spanMetricSelector(metric, jobLabel(namespace, name), kinds, window, matchers)
 }
 
 // instantScalar pulls the first sample's value out of a Prometheus instant

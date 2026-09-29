@@ -185,13 +185,33 @@ func convertConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 	}
 
 	if errors.Is(err, config.ErrContextNotFound) {
+		suggestions := []string{
+			"Check for typos in the context name",
+			"Review your configuration: gcx config view",
+		}
+
+		var ctxErr *config.ContextNotFoundError
+		if errors.As(err, &ctxErr) && len(ctxErr.Available) > 0 {
+			// Keep the suggestion a command the user can run (see
+			// docs/design/errors.md 4.2), and cap the inline list so a large
+			// config does not emit one very long line on every failure.
+			const maxListed = 5
+			listed := ctxErr.Available
+			tail := ""
+			if len(listed) > maxListed {
+				tail = fmt.Sprintf(", +%d more", len(listed)-maxListed)
+				listed = listed[:maxListed]
+			}
+			suggestions = append([]string{
+				fmt.Sprintf("Use one of the configured contexts (%s%s), for example: gcx config use-context %s",
+					strings.Join(listed, ", "), tail, ctxErr.Available[0]),
+			}, suggestions...)
+		}
+
 		return &gcxerrors.DetailedError{
-			Summary: "Invalid configuration",
-			Parent:  err,
-			Suggestions: []string{
-				"Check for typos in the context name",
-				"Review your configuration: gcx config view",
-			},
+			Summary:     "Invalid configuration",
+			Parent:      err,
+			Suggestions: suggestions,
 		}, true
 	}
 
@@ -903,6 +923,36 @@ func isEmittedError(err error) bool {
 }
 
 func convertLoginValidationErrors(err error) (*gcxerrors.DetailedError, bool) {
+	var basicErr *login.BasicAuthCheckError
+	if errors.As(err, &basicErr) {
+		detail := &gcxerrors.DetailedError{
+			Parent:      err,
+			Summary:     "API error",
+			Details:     basicErr.Error(),
+			Suggestions: []string{"Check the Grafana server URL and the response from /api/user"},
+		}
+		switch basicErr.Status {
+		case http.StatusUnauthorized:
+			detail.Summary = "Authentication failed"
+			detail.ExitCode = new(gcxerrors.ExitAuthFailure)
+			detail.Suggestions = []string{"Check the Grafana username and password, and confirm Basic authentication is enabled"}
+		case http.StatusForbidden:
+			detail.Summary = "Authorization failed"
+			detail.ExitCode = new(gcxerrors.ExitAuthFailure)
+			detail.Suggestions = []string{"Check that the user and any proxy allow access to the Grafana /api/user endpoint"}
+		case 0:
+			if basicErr.Cause == nil {
+				detail.Summary = "Authentication failed"
+				detail.ExitCode = new(gcxerrors.ExitAuthFailure)
+				detail.Suggestions = []string{"Check the Grafana username and password, and confirm Basic authentication is enabled and anonymous access is not answering for the user"}
+				break
+			}
+			detail.Summary = "Network error"
+			detail.Suggestions = []string{"Check network/proxy access and TLS settings for the Grafana server"}
+		}
+		return detail, true
+	}
+
 	var gcomErr *login.GCOMStackError
 	if errors.As(err, &gcomErr) {
 		return convertGCOMStackError(gcomErr), true

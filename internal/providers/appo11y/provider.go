@@ -51,6 +51,7 @@ func (p *AppO11yProvider) Commands() []*cobra.Command {
 
 	cmd.AddCommand(overrides.Commands(loader))
 	cmd.AddCommand(services.Commands(loader))
+	cmd.AddCommand(services.OperationsCommands(loader))
 	cmd.AddCommand(settings.Commands(loader))
 	return []*cobra.Command{cmd}
 }
