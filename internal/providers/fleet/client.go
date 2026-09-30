@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	fleetbase "github.com/grafana/gcx/internal/fleet"
 )
@@ -24,7 +25,46 @@ const (
 	pathDeleteCollector = "/collector.v1.CollectorService/DeleteCollector"
 
 	pathGetLimits = "/tenant.v1.TenantService/GetLimits"
+
+	// pathCallCollector is on a different backend (the tunnel service, not
+	// fleet-management-api), but reaches it through the same plugin proxy
+	// under a distinct path prefix declared in grafana-collector-app's
+	// plugin.json (tunnelClusterUrl, not agmClusterUrl).
+	pathCallCollector = "/tunnel-api/tunnel.v1.TunnelService/CallCollector"
 )
+
+// TunnelHTTPRequest mirrors tunnel.v1.HTTPRequest. Method uses the proto enum's
+// string name (e.g. "HTTP_REQUEST_METHOD_GET"); see httpMethodToProto.
+type TunnelHTTPRequest struct {
+	Method      string `json:"method"`
+	RequestURI  string `json:"requestUri"`
+	ContentType string `json:"contentType,omitempty"`
+	Body        []byte `json:"body,omitempty"` // encoding/json base64-encodes []byte, matching protojson's bytes representation.
+}
+
+// TunnelHTTPResponse mirrors tunnel.v1.HTTPResponse.
+type TunnelHTTPResponse struct {
+	Status     int    `json:"status"`
+	RequestURI string `json:"requestUri"`
+	Body       []byte `json:"body,omitempty"`
+}
+
+// httpMethodToProto maps a plain HTTP method string to tunnel.v1.HTTPRequestMethod's
+// proto enum name. Empty or unrecognized input defaults to GET.
+func httpMethodToProto(method string) string {
+	switch strings.ToUpper(method) {
+	case "POST":
+		return "HTTP_REQUEST_METHOD_POST"
+	case "PUT":
+		return "HTTP_REQUEST_METHOD_PUT"
+	case "DELETE":
+		return "HTTP_REQUEST_METHOD_DELETE"
+	case "PATCH":
+		return "HTTP_REQUEST_METHOD_PATCH"
+	default:
+		return "HTTP_REQUEST_METHOD_GET"
+	}
+}
 
 // Client is an HTTP client for the Grafana Fleet Management API.
 // It wraps the shared base client from internal/fleet/ and adds
@@ -284,4 +324,33 @@ func (c *Client) GetLimits(ctx context.Context) (*Limits, error) {
 	}
 
 	return &result, nil
+}
+
+// CallCollector sends an HTTP request to a collector through its open Fleet
+// Management tunnel (tunnel.v1.TunnelService/CallCollector) and returns the
+// collector's response. Returns a not-found-shaped error if the collector
+// has no open tunnel.
+func (c *Client) CallCollector(ctx context.Context, collectorID string, req TunnelHTTPRequest) (*TunnelHTTPResponse, error) {
+	resp, err := c.doRequest(ctx, pathCallCollector, map[string]any{
+		"collectorId": collectorID,
+		"request":     req,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("fleet: call collector %s: %w", collectorID, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("fleet: call collector %s: %w", collectorID, httpError(resp, pathCallCollector))
+	}
+
+	var result struct {
+		CollectorID string             `json:"collectorId"`
+		Response    TunnelHTTPResponse `json:"response"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("fleet: call collector %s: decode: %w", collectorID, err)
+	}
+
+	return &result.Response, nil
 }

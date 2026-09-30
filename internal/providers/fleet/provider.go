@@ -128,7 +128,10 @@ func (p *FleetProvider) Commands() []*cobra.Command {
 		helper.tenantCommand(),
 	)
 
-	return []*cobra.Command{fleetCmd}
+	dialCmd := helper.dialCommand()
+	loader.BindFlags(dialCmd.PersistentFlags())
+
+	return []*cobra.Command{fleetCmd, dialCmd}
 }
 
 // Validate checks that the given provider configuration is valid.
@@ -365,6 +368,87 @@ func resolveCollector(ctx context.Context, client *Client, ref string) (*Collect
 		}
 	}
 	return nil, fmt.Errorf("collector %q not found", ref)
+}
+
+// ---------------------------------------------------------------------------
+// Dial command — top-level (gcx dial), not nested under fleet
+// ---------------------------------------------------------------------------
+
+// dialResult is the shape `gcx dial` prints.
+type dialResult struct {
+	CollectorID string `json:"collectorId"`
+	Status      int    `json:"status,omitempty"`
+	Body        string `json:"body,omitempty"`
+}
+
+type dialOpts struct {
+	IO     cmdio.Options
+	Method string
+	Path   string
+}
+
+func (o *dialOpts) setup(flags *pflag.FlagSet) {
+	o.IO.DefaultFormat("json")
+	o.IO.BindFlags(flags)
+
+	flags.StringVar(&o.Method, "method", "GET", "HTTP method to send to the collector.")
+	flags.StringVar(&o.Path, "path", "/-/ready", "Request path to call on the collector.")
+}
+
+// dialCommand sends one HTTP request to a collector through its Fleet
+// Management tunnel (tunnel.v1.TunnelService/CallCollector).
+//
+// As of hackathon-18-superfleet, the tunnel server exists but no Alloy build
+// opens the RegisterCollector stream yet, so every call currently returns
+// "collector not connected" (HTTP 404) for a real, otherwise-healthy
+// collector. That's expected: this command exists to prove gcx, the plugin
+// proxy, and the tunnel service are wired up correctly ahead of the Alloy
+// side landing, not to prove a collector actually answers yet.
+func (h *fleetHelper) dialCommand() *cobra.Command {
+	opts := &dialOpts{}
+	cmd := &cobra.Command{
+		Use:   "dial <collector-id|name>",
+		Short: "Send one HTTP request to a collector through its Fleet Management tunnel.",
+		Long: "Sends one HTTP request to a collector through its Fleet Management tunnel " +
+			"(tunnel.v1.TunnelService/CallCollector) and prints the response.\n\n" +
+			"This only returns a real response once the collector itself opens the tunnel " +
+			"(RegisterCollector). As of hackathon-18-superfleet no Alloy build does that " +
+			"yet, so expect \"collector not connected\" for now — that still confirms gcx, " +
+			"the plugin proxy, and the tunnel service are wired up correctly.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+
+			ctx := cmd.Context()
+			client, _, err := h.loadClient(ctx)
+			if err != nil {
+				return err
+			}
+
+			collector, err := resolveCollector(ctx, client, args[0])
+			if err != nil {
+				return err
+			}
+
+			resp, err := client.CallCollector(ctx, collector.ID, TunnelHTTPRequest{
+				Method:     httpMethodToProto(opts.Method),
+				RequestURI: opts.Path,
+			})
+			if err != nil {
+				return err
+			}
+
+			return opts.IO.Encode(cmd.OutOrStdout(), &dialResult{
+				CollectorID: collector.ID,
+				Status:      resp.Status,
+				Body:        string(resp.Body),
+			})
+		},
+	}
+	opts.setup(cmd.Flags())
+	return cmd
 }
 
 type pipelineGetOpts struct {
