@@ -54,6 +54,16 @@ gcx (root)
 │   │   └── restore NAME     Restore a dashboard to a previous version
 │   └── snapshot UID...      Render dashboard/panel PNG snapshots via Image Renderer
 │
+├── dynamic-observability    [internal/providers/dynamicobservability/ — experimental, via provider self-registration]
+│   ├── rulesets
+│   │   ├── list             List rulesets with derived attachment status
+│   │   ├── status NAME      Show per-node and target attachment status
+│   │   ├── pause NAME       Pause a ruleset
+│   │   └── resume NAME      Resume a ruleset
+│   └── agents
+│       ├── list             List node agents with heartbeat and readiness
+│       └── status NAME      Show one node agent's health
+│
 ├── datasources              [cmd/gcx/datasources/command.go]
 │   ├── --config             [persistent: inherited from config.Options]
 │   ├── --context            [persistent: inherited from config.Options]

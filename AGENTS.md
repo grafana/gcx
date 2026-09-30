@@ -84,6 +84,7 @@ cmd/gcx/
   fail/         Structured error conversion
 
 internal/        Non-public packages — full annotated map: docs/architecture/project-structure.md
+  providers/dynamicobservability/  Experimental probe ruleset and node-agent commands
 ```
 
 ## What to Read Before You Start

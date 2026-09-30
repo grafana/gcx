@@ -604,6 +604,7 @@ Files most important for understanding the codebase. Organized by architectural 
 |------|---------|
 | `internal/resources/remote/pusher.go` | Pusher, PushClient interface, upsert logic |
 | `internal/resources/remote/puller.go` | Puller, PullClient interface, concurrent fetch |
+| `internal/resources/remote/client.go` | Discovery-backed resource client for focused provider operations |
 | `internal/resources/remote/deleter.go` | Deleter, concurrent delete |
 | `internal/resources/remote/remote.go` | Processor interface definition |
 | `internal/resources/remote/folder_hierarchy.go` | SortFoldersByDependency (topological sort) |
@@ -692,6 +693,7 @@ Files most important for understanding the codebase. Organized by architectural 
 | `internal/providers/redact.go` | `RedactSecrets()` — secure-by-default secret redaction |
 | `cmd/gcx/providers/command.go` | `providers` command (list registered providers) |
 | `internal/providers/configloader.go` | Shared `ConfigLoader` — binds the `--config` flag and loads REST config for all providers (`--context` is owned by the root command and threaded via `context.Context`) |
+| `internal/providers/dynamicobservability/` | Experimental ruleset status, node-agent health, and pause/resume commands routed through the native resource tier |
 
 ### Signal Providers (Metrics, Logs, Traces, Profiles)
 
