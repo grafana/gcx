@@ -57,11 +57,31 @@ The following applies:
 
 - `gcx` works across a wide range of Grafana product offerings. Feature availability depends on your Grafana deployment. For more information, refer to the [Compatibility matrix](https://github.com/grafana/gcx#compatibility).
 
-## Experimental commands
+## CLI command reference
 
-Some commands are labelled `[experimental]` in their help text and carry a `stability` field of `experimental` in `gcx commands` output. An experimental command may be removed, or its subcommands, flags, and responses may change, without following the normal semantic versioning conventions. Every other command is stable within a major version.
+You can find the up-to-date command reference guide in the [CLI command reference](https://github.com/grafana/gcx/tree/main/docs/reference/cli) in GitHub.
 
-Commands are labelled experimental when they are not yet stable, or when they operate a Grafana Cloud feature that is not yet Generally Available. For more information, refer to [Release life cycle for Grafana Labs](https://grafana.com/docs/release-life-cycle/).
+### Configure `gcx`
+
+Refer to [Configuration commands](https://grafana.com/docs/grafana/latest/as-code/observability-as-code/grafana-cli/gcx/configuration/#useful-commands) for an overview of useful commands to check your configuration.
+
+### Experimental commands
+
+In general terms, commands are stable within any major version.
+
+However, some commands are labelled `[experimental]` in their help text and carry a `stability` field of `experimental` in `gcx commands` output. Commands are labelled experimental when they are not yet stable, or when they operate a Grafana Cloud feature that is not yet Generally Available. For more information, refer to [Release life cycle for Grafana Labs](https://grafana.com/docs/release-life-cycle/). **An experimental command may be removed, or its subcommands, flags, and responses may change, without following the normal semantic versioning conventions**. 
+
+## Manage your resources
+
+You can manage your resources using the `gcx resources` set of commands. Refer to the [Resource Model guide](https://github.com/grafana/gcx/blob/main/docs/architecture/resource-model.md) for more information on the architecture and resource model used by `gcx`.
+
+### Work with resources from other tools 
+
+If you want to work with resources managed by other tools, such as Terraform or Git Sync, use the flag `--include-managed` with commands such as [`gcx resources pull`](https://github.com/grafana/gcx/blob/main/docs/reference/cli/gcx_resources_pull.md) or [`gcx resources push`](https://github.com/grafana/gcx/blob/main/docs/reference/cli/gcx_resources_push.md).
+
+### Extract dashboards
+
+At the moment, you can only extract dashboards (`gcx resources pull dashboards`) in their original JSON version.
 
 ## Migrate from `grafanactl`
 
@@ -75,4 +95,4 @@ Refer to the [`gcx` repository](https://github.com/grafana/gcx) in GitHub for th
 - How to manage resources, including dashboards-as-code
 - Architecture
 - User guides
-- CLI command reference
+
