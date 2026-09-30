@@ -45,14 +45,14 @@ Unlike eval rules (gcx agento11y rules), guards run inline on the request path a
 
 type listOpts struct {
 	IO    cmdio.Options
-	Limit int64
+	Limit int
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
 	cmdio.RegisterTable(&o.IO, Table())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of hook rules to return (0 for no limit)")
+	o.IO.BindListLimit(flags, &o.Limit, "hook rules", 50)
 }
 
 func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
@@ -71,10 +71,12 @@ func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
 				return err
 			}
 
-			typedObjs, err := crud.List(ctx, opts.Limit)
+			all, err := crud.List(ctx, 0)
 			if err != nil {
 				return err
 			}
+			typedObjs, meta := cmdio.TruncateCompleteList(all, opts.Limit)
+			meta = cmdio.AttachListMeta(meta, os.Args)
 
 			specs := make([]eval.HookRuleDefinition, len(typedObjs))
 			for i := range typedObjs {
@@ -82,7 +84,11 @@ func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
 			}
 
 			if opts.IO.OutputFormat == "table" || opts.IO.OutputFormat == "wide" {
-				return opts.IO.Encode(cmd.OutOrStdout(), specs)
+				if err := opts.IO.Encode(cmd.OutOrStdout(), specs); err != nil {
+					return err
+				}
+				cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
+				return nil
 			}
 
 			objs := make([]unstructured.Unstructured, 0, len(specs))
@@ -93,7 +99,11 @@ func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
 				}
 				objs = append(objs, u)
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), objs)
+			if err := cmdio.EncodeList(&opts.IO, cmd.OutOrStdout(), objs, meta); err != nil {
+				return err
+			}
+			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
+			return nil
 		},
 	}
 	opts.setup(cmd.Flags())

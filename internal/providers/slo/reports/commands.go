@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strconv"
 	"strings"
 
@@ -44,7 +45,7 @@ func Commands(loader providers.GrafanaConfigLoader) *cobra.Command {
 
 type listOpts struct {
 	IO    cmdio.Options
-	Limit int64
+	Limit int
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
@@ -52,7 +53,7 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
+	o.IO.BindListLimit(flags, &o.Limit, "SLO reports", 50)
 }
 
 func newListCommand(resource providers.BoundResource[Report]) *cobra.Command {
@@ -72,10 +73,12 @@ func newListCommand(resource providers.BoundResource[Report]) *cobra.Command {
 				return err
 			}
 
-			items, err := crud.List(ctx, opts.Limit)
+			all, err := crud.List(ctx, 0)
 			if err != nil {
 				return err
 			}
+			items, meta := cmdio.TruncateCompleteList(all, opts.Limit)
+			meta = cmdio.AttachListMeta(meta, os.Args)
 
 			rpts := make([]Report, len(items))
 			for i := range items {
@@ -86,7 +89,11 @@ func newListCommand(resource providers.BoundResource[Report]) *cobra.Command {
 			// Other formats (yaml/json) convert to K8s envelope Resources
 			// for consistency with get/pull and round-trip support.
 			if opts.IO.OutputFormat == "table" || opts.IO.OutputFormat == "wide" {
-				return opts.IO.Encode(cmd.OutOrStdout(), rpts)
+				if err := opts.IO.Encode(cmd.OutOrStdout(), rpts); err != nil {
+					return err
+				}
+				cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
+				return nil
 			}
 
 			var objs []unstructured.Unstructured
@@ -98,7 +105,11 @@ func newListCommand(resource providers.BoundResource[Report]) *cobra.Command {
 				objs = append(objs, obj)
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), objs)
+			if err := cmdio.EncodeList(&opts.IO, cmd.OutOrStdout(), objs, meta); err != nil {
+				return err
+			}
+			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
+			return nil
 		},
 	}
 	opts.setup(cmd.Flags())

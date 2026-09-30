@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/gcxerrors"
@@ -42,7 +43,7 @@ func Commands(loader providers.GrafanaConfigLoader) *cobra.Command {
 
 type listOpts struct {
 	IO    cmdio.Options
-	Limit int64
+	Limit int
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
@@ -50,7 +51,7 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 
-	flags.Int64Var(&o.Limit, "limit", 0, "Maximum number of items to return after fetch (0 for all; use a positive value to trim output only)")
+	o.IO.BindListLimit(flags, &o.Limit, "SLO definitions", 0)
 }
 
 func newListCommand(resource providers.BoundResource[Slo]) *cobra.Command {
@@ -70,10 +71,12 @@ func newListCommand(resource providers.BoundResource[Slo]) *cobra.Command {
 				return err
 			}
 
-			typedObjs, err := crud.List(ctx, opts.Limit)
+			all, err := crud.List(ctx, 0)
 			if err != nil {
 				return err
 			}
+			typedObjs, meta := cmdio.TruncateCompleteList(all, opts.Limit)
+			meta = cmdio.AttachListMeta(meta, os.Args)
 
 			// Extract Slo from TypedObject
 			slos := make([]Slo, len(typedObjs))
@@ -85,7 +88,11 @@ func newListCommand(resource providers.BoundResource[Slo]) *cobra.Command {
 			// Other formats (yaml/json) convert to K8s envelope Resources
 			// for consistency with get/pull and round-trip support.
 			if opts.IO.OutputFormat == "table" || opts.IO.OutputFormat == "wide" {
-				return opts.IO.Encode(cmd.OutOrStdout(), slos)
+				if err := opts.IO.Encode(cmd.OutOrStdout(), slos); err != nil {
+					return err
+				}
+				cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
+				return nil
 			}
 
 			var objs []unstructured.Unstructured
@@ -97,7 +104,11 @@ func newListCommand(resource providers.BoundResource[Slo]) *cobra.Command {
 				objs = append(objs, obj)
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), objs)
+			if err := cmdio.EncodeList(&opts.IO, cmd.OutOrStdout(), objs, meta); err != nil {
+				return err
+			}
+			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
+			return nil
 		},
 	}
 	opts.setup(cmd.Flags())

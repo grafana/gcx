@@ -611,7 +611,7 @@ func (h *logsHelper) exemptionsCommand() *cobra.Command {
 
 type exemptionsListOpts struct {
 	IO    cmdio.Options
-	Limit int64
+	Limit int
 }
 
 func (o *exemptionsListOpts) setup(cmd *cobra.Command) {
@@ -619,7 +619,7 @@ func (o *exemptionsListOpts) setup(cmd *cobra.Command) {
 	o.IO.RegisterCustomCodec("wide", &exemptionsTableCodec{wide: true})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(cmd.Flags())
-	cmd.Flags().Int64Var(&o.Limit, "limit", 50, "Maximum number of exemptions to return (0 for no limit)")
+	o.IO.BindListLimit(cmd.Flags(), &o.Limit, "exemptions", 50)
 }
 
 //nolint:dupl // exemptions and segments list follow identical TypedCRUD pattern
@@ -639,16 +639,22 @@ func (h *logsHelper) exemptionsListCommand() *cobra.Command {
 				return err
 			}
 
-			typedObjs, err := crud.List(ctx, opts.Limit)
+			all, err := crud.List(ctx, 0)
 			if err != nil {
 				return err
 			}
+			typedObjs, meta := cmdio.TruncateCompleteList(all, opts.Limit)
+			meta = cmdio.AttachListMeta(meta, os.Args)
 			exemptions := make([]Exemption, len(typedObjs))
 			for i := range typedObjs {
 				exemptions[i] = typedObjs[i].Spec
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), exemptions)
+			if err := cmdio.EncodeList(&opts.IO, cmd.OutOrStdout(), exemptions, meta); err != nil {
+				return err
+			}
+			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
+			return nil
 		},
 	}
 	opts.setup(cmd)
@@ -837,7 +843,7 @@ func (h *logsHelper) segmentsCommand() *cobra.Command {
 
 type segmentsListOpts struct {
 	IO    cmdio.Options
-	Limit int64
+	Limit int
 }
 
 func (o *segmentsListOpts) setup(cmd *cobra.Command) {
@@ -845,7 +851,7 @@ func (o *segmentsListOpts) setup(cmd *cobra.Command) {
 	o.IO.RegisterCustomCodec("wide", &segmentsTableCodec{wide: true})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(cmd.Flags())
-	cmd.Flags().Int64Var(&o.Limit, "limit", 50, "Maximum number of segments to return (0 for no limit)")
+	o.IO.BindListLimit(cmd.Flags(), &o.Limit, "segments", 50)
 }
 
 //nolint:dupl // segments and exemptions list follow identical TypedCRUD pattern
@@ -865,16 +871,22 @@ func (h *logsHelper) segmentsListCommand() *cobra.Command {
 				return err
 			}
 
-			typedObjs, err := crud.List(ctx, opts.Limit)
+			all, err := crud.List(ctx, 0)
 			if err != nil {
 				return err
 			}
+			typedObjs, meta := cmdio.TruncateCompleteList(all, opts.Limit)
+			meta = cmdio.AttachListMeta(meta, os.Args)
 			segments := make([]LogSegment, len(typedObjs))
 			for i := range typedObjs {
 				segments[i] = typedObjs[i].Spec
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), segments)
+			if err := cmdio.EncodeList(&opts.IO, cmd.OutOrStdout(), segments, meta); err != nil {
+				return err
+			}
+			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
+			return nil
 		},
 	}
 	opts.setup(cmd)
@@ -1078,7 +1090,7 @@ func (h *logsHelper) dropRulesCommand() *cobra.Command {
 type dropRulesListOpts struct {
 	IO               cmdio.Options
 	ExpirationFilter string
-	Limit            int64
+	Limit            int
 }
 
 func (o *dropRulesListOpts) setup(cmd *cobra.Command) {
@@ -1088,7 +1100,7 @@ func (o *dropRulesListOpts) setup(cmd *cobra.Command) {
 	o.IO.RegisterCustomCodec("wide", &dropRulesTableCodec{wide: true})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(cmd.Flags())
-	cmd.Flags().Int64Var(&o.Limit, "limit", 50, "Maximum number of drop rules to return (0 for no limit)")
+	o.IO.BindListLimit(cmd.Flags(), &o.Limit, "drop rules", 50)
 }
 
 func (h *logsHelper) dropRulesListCommand() *cobra.Command {
@@ -1114,13 +1126,17 @@ func (h *logsHelper) dropRulesListCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			rules = adapter.TruncateSlice(rules, opts.Limit)
+			rules, meta := cmdio.TruncateCompleteList(rules, opts.Limit)
+			meta = cmdio.AttachListMeta(meta, os.Args)
 
-			out := any(rules)
 			if opts.IO.JSONDiscovery {
-				out = ValueForJSONFieldDiscovery(rules)
+				return opts.IO.Encode(cmd.OutOrStdout(), ValueForJSONFieldDiscovery(rules))
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), out)
+			if err := cmdio.EncodeList(&opts.IO, cmd.OutOrStdout(), rules, meta); err != nil {
+				return err
+			}
+			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
+			return nil
 		},
 	}
 	opts.setup(cmd)

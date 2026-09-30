@@ -2,11 +2,11 @@ package alert
 
 import (
 	"errors"
+	"os"
 	"strconv"
 
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
-	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -29,16 +29,17 @@ func templatesCommands(loader GrafanaConfigLoader) *cobra.Command {
 
 type templatesListOpts struct {
 	IO    cmdio.Options
-	Limit int64
+	Limit int
 }
 
 func (o *templatesListOpts) setup(flags *pflag.FlagSet) {
 	cmdio.RegisterTable(&o.IO, TemplatesTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for unlimited)")
+	o.IO.BindListLimit(flags, &o.Limit, "notification templates", 50)
 }
 
+//nolint:dupl // The alert list commands share one fetch, truncate, and encode flow.
 func newTemplatesListCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &templatesListOpts{}
 	cmd := &cobra.Command{
@@ -61,8 +62,13 @@ func newTemplatesListCommand(loader GrafanaConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			templates = adapter.TruncateSlice(templates, opts.Limit)
-			return opts.IO.Encode(cmd.OutOrStdout(), templates)
+			templates, meta := cmdio.TruncateCompleteList(templates, opts.Limit)
+			meta = cmdio.AttachListMeta(meta, os.Args)
+			if err := cmdio.EncodeList(&opts.IO, cmd.OutOrStdout(), templates, meta); err != nil {
+				return err
+			}
+			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
+			return nil
 		},
 	}
 	opts.setup(cmd.Flags())

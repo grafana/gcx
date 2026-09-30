@@ -1,5 +1,7 @@
 package search
 
+import cmdio "github.com/grafana/gcx/internal/output"
+
 // wireSearchHit is the JSON representation of a single hit from the Grafana
 // dashboard search API (GET /apis/dashboard.grafana.app/v0alpha1/.../search).
 // The client always sends type=dashboard so resource is always "dashboards".
@@ -58,4 +60,7 @@ type DashboardSearchResultList struct {
 	Kind       string         `json:"kind"`
 	APIVersion string         `json:"apiVersion"`
 	Items      []DashboardHit `json:"items"`
+	// ListMeta is present only when the output is a truncated page. Reserved
+	// key: see docs/design/output.md § 15 (List Truncation Contract).
+	ListMeta *cmdio.ListMeta `json:"list_meta,omitempty" yaml:"list_meta,omitempty"`
 }

@@ -33,10 +33,12 @@ known folder/group before inspecting a bounded list:
 gcx alert rules list --folder <folder-uid> --state firing --limit 20 -o agents
 ```
 
-JSON is an array of groups, each with a `rules` array. `rules[].state` is current
-evaluation state; this is not incident history. The current build's structured
-list limit applies to groups, not individual rules. No result on a limited
-page is not proof that no relevant alert exists. For historical investigations,
+JSON is an envelope. Its `items` array holds groups, each with a `rules` array.
+`rules[].state` is current evaluation state; this is not incident history. The
+`--limit` flag counts rules, not groups. A `list_meta` object in the output
+means that the page is truncated; its `continue` field gives the command that
+gets more. No result on a limited page is not proof that no relevant alert
+exists. For historical investigations,
 use supplied notification/history evidence rather than treating today's state
 as the state during the incident.
 

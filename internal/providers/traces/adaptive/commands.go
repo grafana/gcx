@@ -348,7 +348,7 @@ func (h *tracesHelper) policiesCommand() *cobra.Command {
 
 type policiesListOpts struct {
 	IO    cmdio.Options
-	Limit int64
+	Limit int
 }
 
 func (o *policiesListOpts) setup(flags *pflag.FlagSet) {
@@ -356,7 +356,7 @@ func (o *policiesListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("wide", &policyTableCodec{Wide: true})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of policies to return (0 for no limit)")
+	o.IO.BindListLimit(flags, &o.Limit, "policies", 50)
 }
 
 func (h *tracesHelper) policiesListCommand() *cobra.Command {
@@ -376,17 +376,23 @@ func (h *tracesHelper) policiesListCommand() *cobra.Command {
 				return err
 			}
 
-			typedObjs, err := crud.List(ctx, opts.Limit)
+			all, err := crud.List(ctx, 0)
 			if err != nil {
 				return err
 			}
+			typedObjs, meta := cmdio.TruncateCompleteList(all, opts.Limit)
+			meta = cmdio.AttachListMeta(meta, os.Args)
 
 			policies := make([]Policy, len(typedObjs))
 			for i := range typedObjs {
 				policies[i] = typedObjs[i].Spec
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), policies)
+			if err := cmdio.EncodeList(&opts.IO, cmd.OutOrStdout(), policies, meta); err != nil {
+				return err
+			}
+			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
+			return nil
 		},
 	}
 	opts.setup(cmd.Flags())

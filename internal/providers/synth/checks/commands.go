@@ -54,7 +54,7 @@ type listOpts struct {
 	IO         cmdio.Options
 	Labels     []string
 	JobPattern string
-	Limit      int64
+	Limit      int
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
@@ -64,7 +64,7 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 
 	flags.StringArrayVar(&o.Labels, "label", nil, "Filter by label key=value (repeatable, e.g. --label env=prod)")
 	flags.StringVar(&o.JobPattern, "job", "", "Filter by job name glob pattern (e.g. --job 'shopk8s-*')")
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
+	o.IO.BindListLimit(flags, &o.Limit, "checks", 50)
 }
 
 func newListCommand(loader smcfg.Loader) *cobra.Command {
@@ -101,71 +101,78 @@ func newListCommand(loader smcfg.Loader) *cobra.Command {
 				return err
 			}
 
-			typedObjs, err := crud.List(ctx, opts.Limit)
+			// Fetch the full set. The SM API has no server-side filter or
+			// limit, so the command applies the filters first and the limit
+			// after them. The total is then the number of matches.
+			all, err := crud.List(ctx, 0)
 			if err != nil {
 				return err
 			}
+			matched := make([]adapter.TypedObject[checkResource], 0, len(all))
+			for _, obj := range all {
+				if filter.MatchCheck(checkFromResource(obj.Spec)) {
+					matched = append(matched, obj)
+				}
+			}
+			typedObjs, meta := cmdio.TruncateCompleteList(matched, opts.Limit)
+			meta = cmdio.AttachListMeta(meta, os.Args)
 
 			codec, err := opts.IO.Codec()
 			if err != nil {
 				return err
 			}
 
-			// Build Check list for table codecs, applying filters.
-			checkList := make([]Check, 0, len(typedObjs))
-			for i := range typedObjs {
-				cr := typedObjs[i].Spec
-				c := Check{
-					ID:               cr.checkID,
-					Job:              cr.Job,
-					Target:           cr.Target,
-					Frequency:        cr.Frequency,
-					Offset:           cr.Offset,
-					Timeout:          cr.Timeout,
-					Enabled:          cr.Enabled,
-					Labels:           cr.Labels,
-					Settings:         cr.Settings,
-					BasicMetricsOnly: cr.BasicMetricsOnly,
-					AlertSensitivity: cr.AlertSensitivity,
-					Probes:           []int64{},
-				}
-				if filter.MatchCheck(c) {
-					checkList = append(checkList, c)
-				}
-			}
-
 			if codec.Format() == "table" || codec.Format() == "wide" {
-				return codec.Encode(cmd.OutOrStdout(), checkList)
+				checkList := make([]Check, 0, len(typedObjs))
+				for i := range typedObjs {
+					checkList = append(checkList, checkFromResource(typedObjs[i].Spec))
+				}
+				err = opts.IO.Encode(cmd.OutOrStdout(), checkList)
+			} else {
+				// For yaml/json output, marshal the typed objects.
+				objs := make([]unstructured.Unstructured, 0, len(typedObjs))
+				for _, typedObj := range typedObjs {
+					objData, err := json.Marshal(typedObj)
+					if err != nil {
+						return fmt.Errorf("marshaling typed object: %w", err)
+					}
+					var obj unstructured.Unstructured
+					if err := json.Unmarshal(objData, &obj); err != nil {
+						return fmt.Errorf("unmarshaling to unstructured: %w", err)
+					}
+					objs = append(objs, obj)
+				}
+				// Structured output is an envelope that carries list_meta.
+				err = cmdio.EncodeList(&opts.IO, cmd.OutOrStdout(), objs, meta)
 			}
-
-			// For yaml/json output, marshal typed objects that pass the filter.
-			var objs []unstructured.Unstructured
-			for _, typedObj := range typedObjs {
-				cr := typedObj.Spec
-				c := Check{
-					ID:     cr.checkID,
-					Job:    cr.Job,
-					Target: cr.Target,
-					Labels: cr.Labels,
-				}
-				if !filter.MatchCheck(c) {
-					continue
-				}
-				objData, err := json.Marshal(typedObj)
-				if err != nil {
-					return fmt.Errorf("marshaling typed object: %w", err)
-				}
-				var obj unstructured.Unstructured
-				if err := json.Unmarshal(objData, &obj); err != nil {
-					return fmt.Errorf("unmarshaling to unstructured: %w", err)
-				}
-				objs = append(objs, obj)
+			if err != nil {
+				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), objs)
+			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
+			return nil
 		},
 	}
 	opts.setup(cmd.Flags())
 	return cmd
+}
+
+// checkFromResource converts a check resource to the Check shape that the
+// table codec and the list filter use.
+func checkFromResource(cr checkResource) Check {
+	return Check{
+		ID:               cr.checkID,
+		Job:              cr.Job,
+		Target:           cr.Target,
+		Frequency:        cr.Frequency,
+		Offset:           cr.Offset,
+		Timeout:          cr.Timeout,
+		Enabled:          cr.Enabled,
+		Labels:           cr.Labels,
+		Settings:         cr.Settings,
+		BasicMetricsOnly: cr.BasicMetricsOnly,
+		AlertSensitivity: cr.AlertSensitivity,
+		Probes:           []int64{},
+	}
 }
 
 // CheckTable declares the synthetic check table. The wide columns are the

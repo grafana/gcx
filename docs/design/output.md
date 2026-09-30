@@ -13,6 +13,9 @@ Reference alongside [cli-layer.md](../architecture/cli-layer.md) for command str
 Every command gets `json`, `yaml`, and `agents` output for free via `io.Options`.
 The `json` and `yaml` codecs produce the full resource object as returned by
 the API — no envelope wrapping, no field filtering. This output is stable.
+Exception: a list command with a limit writes the `{"items": [...]}` list
+envelope with the optional `list_meta` object (see
+[§ 15.2](#152-machine-readable-payload-signal-list_meta)).
 The `agents` codec is described in [§ 1.1.1](#111-agents-codec) below.
 
 ```go
@@ -311,10 +314,10 @@ change that landed this contract.
 
 ## 15. List Truncation Contract [PROPOSED — #387 Track C]
 
-> **Status: proposed.** Implemented as an opt-in shared contract in
-> `internal/output/listmeta.go` and migrated to two exemplar commands
-> (`datasources list`, `irm oncall alert-groups list`).
-> Not yet a repo-wide requirement; see
+> **Status: proposed.** Implemented as a shared contract in
+> `internal/output/listmeta.go` and migrated to the commands in §15.6.
+> A list command with a limit must not write a bare array (§15.2).
+> Not yet a repo-wide requirement for other list commands; see
 > `docs/research/2026-07-17-global-limit-investigation.md` for the migration
 > plan and open questions.
 
@@ -381,9 +384,34 @@ absence-means-complete rule and confuse the discovery path):
 ListMeta *cmdio.ListMeta `json:"list_meta,omitempty" yaml:"list_meta,omitempty"`
 ```
 
-Bare-array list outputs (no envelope) cannot carry the signal; they get the
-stderr hint only and should migrate to an envelope when their consumers can
-absorb the shape change (`alert rules list` is the tracked example).
+**A list command with a limit must not write a bare array.** A bare array
+cannot carry `list_meta`, so the stderr hint is then the only truncation
+signal, and agents do not see stderr. Agents usually run
+`gcx ... -o json 2>/dev/null | jq ...`, which discards stderr. An eval with
+Claude agents confirmed this: in 4 of 4 failed trials the agent discarded the
+stderr notice and reported a truncated page as the complete set (for
+example, 47 alert rules instead of 253). CONSTITUTION requires that stdout
+alone gives the outcome. Thus the structured formats (json, yaml, agents)
+write the envelope **always**, also for a complete set, so that the shape
+does not change with the data:
+
+```text
+complete set:    {"items": [ ... ]}
+truncated page:  {"items": [ ... ], "list_meta": {"truncated": true, ...}}
+```
+
+Use `cmdio.EncodeList(&opts.IO, w, items, meta)`. It writes the
+`cmdio.ListPage` envelope (`items` plus the reserved `list_meta`) for the
+structured formats, and the bare items for table, wide, and text codecs, so
+that the human output does not change. The items key is `items` (the k8s list
+shape, as in `irm oncall alert-groups list` and `dashboards search`), so one
+jq path (`.items[]`) works for every migrated command. Keep the stderr hint:
+humans see it. A command must still apply its client-side filters before the
+limit, so that the hint and the page describe the filtered set.
+
+The move from a bare array to the envelope is a breaking change of the output
+shape. The maintainers accepted it for the default-limited list commands in
+§15.6, because a silent truncation gives wrong answers.
 
 ### 15.3 Constructors by source shape
 
@@ -451,6 +479,10 @@ The reserved key is transparent to field selection and discovery
 - `--json list` / `--json ?` discovery samples the first item; `list_meta.*`
   paths are never listed, and the reserved field on the envelope struct does
   not break empty-envelope discovery.
+- `--json field1,field2` on an `items` envelope keeps the envelope shape
+  (`{"items": [...]}`), also for a complete set.
+- `--jq` runs on the whole envelope: read the items with `.items[]` and the
+  truncation signal with `.list_meta`.
 
 Only the reserved `list_meta` key gets this treatment; envelopes with other
 extra keys keep the pre-existing selection behavior.
@@ -477,9 +509,23 @@ research doc's remaining-migration section).
   paginated source, both server-reported (`PagedListMeta`, no safety cap:
   `--limit 0` drains every `next` cursor) and over-fetch-by-one
   (`TruncatePagedList`, alternate-implementation fallback path) variants.
+- `ListPage` envelope migrations (`cmdio.EncodeList`, `{"items": [...]}`
+  always, `list_meta` when truncated, stderr hint): `alert rules/groups/
+  contact-points/templates/mute-timings list`, `synthetic-monitoring checks/
+  probes list`, `k6 projects/load-tests/runs/env-vars/schedules/load-zones
+  list`, `k6 test-run runs list`, `frontend apps list`, `fleet pipelines/
+  collectors list`, `logs adaptive exemptions/segments/drop-rules list`,
+  `metrics adaptive rules list`, `traces adaptive policies list`,
+  `slo definitions/reports list`, `kg prom-rules list`, and
+  `agento11y rules/evaluators/guards list`. Before, these commands wrote a
+  bare array with the stderr hint only. `k6 load-tests list` without
+  `--project-id` over-fetches by one (`TruncatePagedList`); the others hold
+  the complete set (`TruncateCompleteList`).
+- `dashboards search` — envelope output, `list_meta` with the `totalHits`
+  total from the server. `--limit 0` sends a second request for all the hits
+  that the first response counted.
 
-`alert rules list` is deliberately not migrated yet: its JSON/YAML output is
-a bare array (no envelope to carry `list_meta`) and its `--limit` counts
-different units per format (flattened rules in the table, groups in JSON).
-The envelope and unit decisions are tracked in
-`docs/research/2026-07-17-global-limit-investigation.md` §6–7.
+`alert rules list` counts `--limit` in rules for every format. The table
+shows the first N rules. The structured envelope holds, under `items`, the
+groups that hold those N rules; the last group can hold only a part of its
+rules. `list_meta.returned` and `list_meta.total` count rules, not groups.

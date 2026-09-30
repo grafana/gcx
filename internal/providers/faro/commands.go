@@ -77,14 +77,14 @@ func NewTypedCRUD(ctx context.Context, loader RESTConfigLoader) (*adapter.TypedC
 
 type listOpts struct {
 	IO    cmdio.Options
-	Limit int64
+	Limit int
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
 	cmdio.RegisterTable(&o.IO, AppTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for unlimited)")
+	o.IO.BindListLimit(flags, &o.Limit, "Frontend Observability apps", 50)
 }
 
 func newListCommand(loader RESTConfigLoader) *cobra.Command {
@@ -104,12 +104,18 @@ func newListCommand(loader RESTConfigLoader) *cobra.Command {
 				return err
 			}
 
-			typedObjs, err := crud.List(ctx, opts.Limit)
+			all, err := crud.List(ctx, 0)
 			if err != nil {
 				return err
 			}
+			typedObjs, meta := cmdio.TruncateCompleteList(all, opts.Limit)
+			meta = cmdio.AttachListMeta(meta, os.Args)
 
-			return opts.IO.Encode(cmd.OutOrStdout(), typedObjs)
+			if err := cmdio.EncodeList(&opts.IO, cmd.OutOrStdout(), typedObjs, meta); err != nil {
+				return err
+			}
+			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
+			return nil
 		},
 	}
 	opts.setup(cmd.Flags())

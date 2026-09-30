@@ -1,5 +1,17 @@
 ## Unreleased
 
+**Breaking changes**
+- The default-limited list commands now write an envelope in the structured formats (`-o json`, `-o yaml`, and the agents format), not a bare array. The output is `{"items": [...]}` always. A truncated page also has a `list_meta` object with `truncated`, `returned`, `total` (when known), and `continue` (the command that gets more). Before, these commands wrote a bare array and reported the truncation only on stderr, which agents discard. Update jq filters from `.[]` to `.items[]`. `--json field,...` selects fields inside the items and keeps `list_meta`. The table, wide, and text output does not change. The stderr hint stays. The affected commands are:
+  - `gcx alert rules list` (`items` holds rule groups; `--limit` and `list_meta` count rules), `gcx alert groups list`, `gcx alert contact-points list`, `gcx alert templates list`, `gcx alert mute-timings list`
+  - `gcx synthetic-monitoring checks list`, `gcx synthetic-monitoring probes list`
+  - `gcx k6 projects list`, `gcx k6 load-tests list`, `gcx k6 runs list`, `gcx k6 env-vars list`, `gcx k6 schedules list`, `gcx k6 load-zones list`, `gcx k6 test-run runs list`
+  - `gcx frontend apps list`
+  - `gcx fleet pipelines list`, `gcx fleet collectors list`
+  - `gcx logs adaptive exemptions list`, `gcx logs adaptive segments list`, `gcx logs adaptive drop-rules list`, `gcx metrics adaptive rules list`, `gcx traces adaptive policies list`
+  - `gcx slo definitions list`, `gcx slo reports list`
+  - `gcx kg prom-rules list`
+  - `gcx agento11y rules list`, `gcx agento11y evaluators list`, `gcx agento11y guards list`
+
 - Label the `--insecure-log-http-payload` dumps `http request dump` and `http response dump`, so you can find them in the debug log. A wire dump holds no word that identifies it, so a search for "body" never matched.
 - Show the OAuth bearer token in the `--insecure-log-http-payload` dump. The dump is now the innermost transport layer, so it shows every header that reaches the wire. Before this change the dump ran before the OAuth transport added the header, and the flag help promised the token. One consequence: the dump now also shows the OAuth token refresh exchange, which carries the refresh token and the rotated token pair.
 - Dump an outgoing request with `httputil.DumpRequestOut`, so `Content-Length` and `Accept-Encoding` appear.

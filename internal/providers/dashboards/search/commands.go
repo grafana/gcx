@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 
 	"github.com/grafana/gcx/internal/config"
 	cmdio "github.com/grafana/gcx/internal/output"
@@ -52,7 +53,7 @@ func (o *searchOpts) setup(flags *pflag.FlagSet) {
 
 	flags.StringArrayVar(&o.Folders, "folder", nil, "Filter by folder name (repeatable)")
 	flags.StringArrayVar(&o.Tags, "tag", nil, "Filter by tag (repeatable)")
-	flags.IntVar(&o.Limit, "limit", 50, "Maximum number of results (0 for no limit)")
+	o.IO.BindListLimit(flags, &o.Limit, "dashboards", 50)
 	flags.StringVar(&o.Sort, "sort", "", "Sort key (e.g. name_sort)")
 	flags.BoolVar(&o.Deleted, "deleted", false, "Include recently deleted dashboards")
 	// --api-version is defined so cobra parses it without an "unknown flag" error,
@@ -141,6 +142,18 @@ filter is supplied.`,
 			if err != nil {
 				return err
 			}
+			// Without a limit parameter, the server returns its default page
+			// size. For --limit 0, send a second request that asks for all
+			// the hits that the first response counted.
+			if opts.Limit == 0 && int(wire.TotalHits) > len(wire.Hits) {
+				params.Limit = int(wire.TotalHits)
+				wire, err = client.Search(ctx, params)
+				if err != nil {
+					return err
+				}
+			}
+			meta := searchListMeta(wire, opts.Limit)
+			meta = cmdio.AttachListMeta(meta, os.Args)
 
 			// Build the K8s-style envelope.
 			// type=dashboard is sent to the server, so all hits are dashboards.
@@ -148,6 +161,7 @@ filter is supplied.`,
 				Kind:       searchResultKind,
 				APIVersion: searchResultAPIVersion,
 				Items:      make([]DashboardHit, 0, len(wire.Hits)),
+				ListMeta:   meta,
 			}
 			for _, hit := range wire.Hits {
 				result.Items = append(result.Items, DashboardHit{
@@ -164,11 +178,36 @@ filter is supplied.`,
 				})
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			if err := opts.IO.Encode(cmd.OutOrStdout(), result); err != nil {
+				return err
+			}
+			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
+			return nil
 		},
 	}
 
 	opts.setup(cmd.Flags())
 
 	return cmd
+}
+
+// searchListMeta returns the truncation metadata for a search response. The
+// server applies the limit and reports the number of matches in totalHits,
+// so the total is observed. It returns nil when the response holds all the
+// matches.
+func searchListMeta(wire *wireSearchResponse, limit int) *cmdio.ListMeta {
+	returned := len(wire.Hits)
+	total := int(wire.TotalHits)
+	if total <= returned {
+		return nil
+	}
+	meta := &cmdio.ListMeta{Truncated: true, Returned: returned}
+	// For --limit 0 the command already asked for all the hits. A total in
+	// the metadata would make the continuation "--limit 0" again, which
+	// cannot return more. Without the total, the continuation doubles the
+	// limit.
+	if limit > 0 {
+		meta.Total = &total
+	}
+	return meta
 }

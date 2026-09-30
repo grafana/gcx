@@ -16,49 +16,53 @@ JSON structure, common investigation query patterns, and graph interpretation.
 
 ## Alert JSON Structure
 
-`gcx alert rules list -o json` returns an array of alert groups. Each
-group contains an array of rules:
+`gcx alert rules list -o json` returns an envelope. The `items` array holds
+the alert groups. Each group contains an array of rules. A truncated list also
+has a `list_meta` object (`truncated`, `returned`, `total`, `continue`). The
+`--limit` flag and `list_meta` count rules, not groups:
 
 ```json
-[
-  {
-    "name": "MyAlertGroup",
-    "file": "grafana",
-    "rules": [
-      {
-        "state": "firing",
-        "name": "HighErrorRate",
-        "query": "rate(http_requests_total{status=~\"5..\"}[5m]) / rate(http_requests_total[5m]) > 0.05",
-        "duration": 300,
-        "labels": {
-          "severity": "critical",
-          "cluster": "us-east-1"
-        },
-        "annotations": {
-          "summary": "High error rate detected on {{ $labels.job }}",
-          "description": "Error rate is {{ $value | humanizePercentage }}",
-          "runbook_url": "https://github.com/myorg/runbooks/blob/main/alerts/HighErrorRate.md",
-          "dashboard_url": "https://grafana.example.com/d/abc123"
-        },
-        "alerts": [
-          {
-            "labels": {
-              "alertname": "HighErrorRate",
-              "job": "api-server",
-              "namespace": "production"
-            },
-            "annotations": { ... },
-            "state": "firing",
-            "activeAt": "2024-01-15T10:23:45Z",
-            "value": "0.08"
-          }
-        ],
-        "type": "alerting",
-        "datasourceUID": "prometheus-uid-abc123"
-      }
-    ]
-  }
-]
+{
+  "items": [
+    {
+      "name": "MyAlertGroup",
+      "file": "grafana",
+      "rules": [
+        {
+          "state": "firing",
+          "name": "HighErrorRate",
+          "query": "rate(http_requests_total{status=~\"5..\"}[5m]) / rate(http_requests_total[5m]) > 0.05",
+          "duration": 300,
+          "labels": {
+            "severity": "critical",
+            "cluster": "us-east-1"
+          },
+          "annotations": {
+            "summary": "High error rate detected on {{ $labels.job }}",
+            "description": "Error rate is {{ $value | humanizePercentage }}",
+            "runbook_url": "https://github.com/myorg/runbooks/blob/main/alerts/HighErrorRate.md",
+            "dashboard_url": "https://grafana.example.com/d/abc123"
+          },
+          "alerts": [
+            {
+              "labels": {
+                "alertname": "HighErrorRate",
+                "job": "api-server",
+                "namespace": "production"
+              },
+              "annotations": { ... },
+              "state": "firing",
+              "activeAt": "2024-01-15T10:23:45Z",
+              "value": "0.08"
+            }
+          ],
+          "type": "alerting",
+          "datasourceUID": "prometheus-uid-abc123"
+        }
+      ]
+    }
+  ]
+}
 ```
 
 ### Key Fields
@@ -80,16 +84,16 @@ group contains an array of rules:
 
 ```bash
 # Get the query for a specific alert
-gcx alert rules list -o json | \
-  jq -r '.[] | .rules[] | select(.name == "<AlertName>") | .query'
+gcx alert rules list --limit 0 -o json | \
+  jq -r '.items[] | .rules[] | select(.name == "<AlertName>") | .query'
 
 # Get the datasource UID for a specific alert
-gcx alert rules list -o json | \
-  jq -r '.[] | .rules[] | select(.name == "<AlertName>") | .datasourceUID'
+gcx alert rules list --limit 0 -o json | \
+  jq -r '.items[] | .rules[] | select(.name == "<AlertName>") | .datasourceUID'
 
 # Get all currently firing instances with their label sets
-gcx alert rules list -o json | \
-  jq '.[] | .rules[] | select(.name == "<AlertName>") | .alerts[] | select(.state == "firing")'
+gcx alert rules list --limit 0 -o json | \
+  jq '.items[] | .rules[] | select(.name == "<AlertName>") | .alerts[] | select(.state == "firing")'
 ```
 
 ---
@@ -100,7 +104,7 @@ Quick reference for `-o json` output to avoid jq guessing:
 
 | Command | Envelope | jq Access Pattern |
 |---------|----------|-------------------|
-| `alert rules list` | `[{name, rules: [...]}]` | `.[] \| .rules[]` |
+| `alert rules list` | `{"items": [{name, rules: [...]}], "list_meta"?: {...}}` | `.items[] \| .rules[]` |
 | `datasources list` | `{"datasources": [...]}` | `.datasources[]` |
 | `query` (Prometheus) | `{"status", "data": {"resultType", "result": [...]}}` | `.data.result[]` |
 

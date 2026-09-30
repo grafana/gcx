@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"slices"
 	"sort"
 	"strings"
@@ -590,7 +591,7 @@ type rulesListOpts struct {
 	cmdio.Options
 
 	Segment string
-	Limit   int64
+	Limit   int
 }
 
 func (o *rulesListOpts) setup(flags *pflag.FlagSet) {
@@ -599,7 +600,7 @@ func (o *rulesListOpts) setup(flags *pflag.FlagSet) {
 	o.RegisterCustomCodec("wide", &rulesTableCodec{wide: true})
 	o.BindFlags(flags)
 	flags.StringVar(&o.Segment, "segment", "", "Segment ID")
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of rules to return (0 for no limit)")
+	o.BindListLimit(flags, &o.Limit, "rules", 50)
 }
 
 func (h *metricsHelper) rulesListCommand() *cobra.Command {
@@ -618,10 +619,12 @@ func (h *metricsHelper) rulesListCommand() *cobra.Command {
 				return err
 			}
 
-			typedObjs, err := crud.List(ctx, opts.Limit)
+			all, err := crud.List(ctx, 0)
 			if err != nil {
 				return err
 			}
+			typedObjs, meta := cmdio.TruncateCompleteList(all, opts.Limit)
+			meta = cmdio.AttachListMeta(meta, os.Args)
 			rules := make([]MetricRule, len(typedObjs))
 			for i := range typedObjs {
 				rules[i] = typedObjs[i].Spec
@@ -630,10 +633,14 @@ func (h *metricsHelper) rulesListCommand() *cobra.Command {
 			fmt.Fprintf(cmd.ErrOrStderr(), "%d rule(s)\n", len(rules))
 
 			// Always encode, even when empty: agent mode and explicit
-			// -o json/yaml must emit exactly one document ([] rather than
-			// nothing). The table codec prints nothing for an empty list,
-			// keeping default human stdout byte-identical.
-			return opts.Encode(cmd.OutOrStdout(), rules)
+			// -o json/yaml must emit exactly one document ({"items": []}
+			// rather than nothing). The table codec prints nothing for an
+			// empty list, keeping default human stdout byte-identical.
+			if err := cmdio.EncodeList(&opts.Options, cmd.OutOrStdout(), rules, meta); err != nil {
+				return err
+			}
+			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
+			return nil
 		},
 	}
 	opts.setup(cmd.Flags())

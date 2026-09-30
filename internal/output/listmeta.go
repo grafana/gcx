@@ -5,6 +5,7 @@ import (
 	"io"
 
 	"github.com/grafana/gcx/internal/agent"
+	"github.com/grafana/gcx/internal/format"
 	"github.com/spf13/pflag"
 )
 
@@ -226,4 +227,52 @@ func EmitListTruncationHint(w io.Writer, meta *ListMeta) {
 func (opts *Options) BindListLimit(flags *pflag.FlagSet, p *int, subject string, def int) {
 	flags.IntVar(p, "limit", def, fmt.Sprintf("Maximum number of %s to return. 0 means all results are returned", subject))
 	opts.listLimit = p
+}
+
+// ListPage is the structured envelope of a list command: the items under the
+// "items" key and, for a truncated page only, the reserved list_meta object.
+// The envelope is always present, so the shape of the output does not change
+// with truncation. A missing list_meta means that the items are the complete
+// result set (see docs/design/output.md § 15.2).
+type ListPage[T any] struct {
+	Items []T `json:"items" yaml:"items"`
+	// ListMeta is set only for a truncated page. Reserved key.
+	ListMeta *ListMeta `json:"list_meta,omitempty" yaml:"list_meta,omitempty"`
+}
+
+// NewListPage returns the envelope for items and meta. A nil items slice
+// becomes an empty slice, so the payload has "items": [] and not null.
+func NewListPage[T any](items []T, meta *ListMeta) ListPage[T] {
+	if items == nil {
+		items = []T{}
+	}
+	return ListPage[T]{Items: items, ListMeta: meta}
+}
+
+// IsStructuredFormat reports whether the selected output format is a
+// structured payload format (json, yaml, or agents). The --json and --jq
+// flags use the json format, so they are structured too. Table, wide, text,
+// and other custom formats are not structured.
+func (opts *Options) IsStructuredFormat() bool {
+	codec, err := opts.Codec()
+	if err != nil {
+		return false
+	}
+	switch codec.Format() {
+	case format.JSON, format.YAML, agentsFormat:
+		return true
+	default:
+		return false
+	}
+}
+
+// EncodeList writes a list page to dst. A structured format gets the
+// [ListPage] envelope with meta. Other formats (table, wide, text) get the
+// bare items, so their codecs do not change. EncodeList does not write the
+// stderr hint: call [EmitListTruncationHint] after it.
+func EncodeList[T any](opts *Options, dst io.Writer, items []T, meta *ListMeta) error {
+	if opts.IsStructuredFormat() {
+		return opts.Encode(dst, NewListPage(items, meta))
+	}
+	return opts.Encode(dst, items)
 }
