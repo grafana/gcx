@@ -10,6 +10,8 @@ const (
 // Check represents a Synthetic Monitoring check as returned by the SM API.
 // Field names match the JSON API — ensures lossless round-trips.
 type Check struct {
+	// FolderUID preserves omitted (unchanged on update) versus empty (clear assignment).
+	FolderUID        *string        `json:"folderUid,omitempty"`
 	ID               int64          `json:"id,omitempty"`
 	TenantID         int64          `json:"tenantId,omitempty"`
 	Job              string         `json:"job"`
@@ -31,6 +33,8 @@ type Check struct {
 // CheckSpec is the user-facing representation stored in YAML files.
 // Probes are stored as human-readable names, not IDs.
 type CheckSpec struct {
+	// FolderUID is a Grafana folder UID, not a folder title.
+	FolderUID        *string        `json:"folderUid,omitempty" jsonschema:"description=Grafana folder UID. Omit to preserve the assignment on update; use an empty string to clear it."`
 	Job              string         `json:"job"`
 	Target           string         `json:"target"`
 	Frequency        int64          `json:"frequency"`

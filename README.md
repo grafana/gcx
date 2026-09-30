@@ -314,6 +314,14 @@ gcx traces query '{.cluster="dev-us-central-0"}' --since 1h
 For an empty dashboard or missing application telemetry, follow
 [Diagnose missing telemetry with gcx](docs/guides/diagnose-missing-telemetry.md).
 
+Synthetic Monitoring check manifests accept an optional `spec.folderUid` containing
+a Grafana folder UID (for example, `folderUid: production-folder-uid`). Existing
+`synthetic-monitoring checks create/update -f check.yaml` and resource pull/push
+workflows preserve this field. On update, omit it to keep the current assignment
+or set `folderUid: ""` to clear it. On create, omission or an empty string leaves
+the check without an explicit assignment; the SM app groups it in the default
+Synthetic Monitoring folder. This field references a folder; it does not create one.
+
 ## Install Agent Skills
 
 gcx ships a portable Agent Skills bundle for setup, dashboard creation and

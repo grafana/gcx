@@ -127,6 +127,7 @@ func newListCommand(loader smcfg.Loader) *cobra.Command {
 					Settings:         cr.Settings,
 					BasicMetricsOnly: cr.BasicMetricsOnly,
 					AlertSensitivity: cr.AlertSensitivity,
+					FolderUID:        cr.FolderUID,
 					Probes:           []int64{},
 				}
 				if filter.MatchCheck(c) {
@@ -262,6 +263,7 @@ func newGetCommand(loader smcfg.StatusLoader) *cobra.Command {
 				Settings:         cr.Settings,
 				BasicMetricsOnly: cr.BasicMetricsOnly,
 				AlertSensitivity: cr.AlertSensitivity,
+				FolderUID:        cr.FolderUID,
 				Probes:           []int64{},
 			}
 
