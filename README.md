@@ -304,6 +304,8 @@ gcx alert rules list                            # list alert rules
 # Grafana Cloud products
 gcx synthetic-monitoring checks list            # list synthetic monitoring checks
 gcx irm oncall schedules list                   # list on-call schedules
+# Page a responder for an existing incident
+gcx irm oncall escalate --title "Database outage" --user-ids U123 --incident-id INC-123
 gcx k6 load-tests list                          # list k6 load tests
 
 # Query more datasources
