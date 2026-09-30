@@ -614,7 +614,7 @@ that only surfaced during smoke testing:
   - Sourcemaps: `/api/plugins/grafana-kowalski-app/resources/api/v1/app/{id}/sourcemaps`
 - Auth: standard Grafana SA token via `rest.HTTPClientFor` — no separate token needed.
 - **API quirks preserved from the legacy CLI source:**
-  - Create MUST strip `ExtraLogLabels` (API returns 409) and `Settings` (API returns 500).
+  - Create MUST strip `Settings` (API returns 500).
   - Update MUST strip `Settings` (API returns 500).
   - Create response is incomplete (missing `collectEndpointURL`, `appKey`) — must re-fetch
     via List after creation to get full details.
