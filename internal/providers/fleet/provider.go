@@ -128,10 +128,7 @@ func (p *FleetProvider) Commands() []*cobra.Command {
 		helper.tenantCommand(),
 	)
 
-	dialCmd := helper.dialCommand()
-	loader.BindFlags(dialCmd.PersistentFlags())
-
-	return []*cobra.Command{fleetCmd, dialCmd}
+	return []*cobra.Command{fleetCmd}
 }
 
 // Validate checks that the given provider configuration is valid.
@@ -371,53 +368,51 @@ func resolveCollector(ctx context.Context, client *Client, ref string) (*Collect
 }
 
 // ---------------------------------------------------------------------------
-// Dial command — top-level (gcx dial), not nested under fleet
+// Collector API invocation
 // ---------------------------------------------------------------------------
 
-// dialResult is the shape `gcx dial` prints.
-type dialResult struct {
+// invokeResult is the shape `gcx fleet collectors invoke` prints.
+type invokeResult struct {
 	CollectorID string `json:"collectorId"`
 	Status      int    `json:"status,omitempty"`
 	Body        string `json:"body,omitempty"`
 }
 
-type dialOpts struct {
+type invokeOpts struct {
 	IO     cmdio.Options
 	Method string
 	Path   string
+	JSON   string
 }
 
-func (o *dialOpts) setup(flags *pflag.FlagSet) {
+func (o *invokeOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("json")
 	o.IO.BindFlags(flags)
 
-	flags.StringVar(&o.Method, "method", "GET", "HTTP method to send to the collector.")
-	flags.StringVar(&o.Path, "path", "/-/ready", "Request path to call on the collector.")
+	flags.StringVar(&o.Method, "method", "", "HTTP method to send to the collector. Defaults to POST with --json-body, otherwise GET.")
+	flags.StringVar(&o.Path, "path", "", "Request path to invoke on the collector.")
+	flags.StringVar(&o.JSON, "json-body", "", "JSON request body, or @<file> / @- to read JSON from a file or standard input.")
 }
 
-// dialCommand sends one HTTP request to a collector through its Fleet
+// newCollectorInvokeCommand invokes one collector API through its Fleet
 // Management tunnel (tunnel.v1.TunnelService/CallCollector).
-//
-// As of hackathon-18-superfleet, the tunnel server exists but no Alloy build
-// opens the RegisterCollector stream yet, so every call currently returns
-// "collector not connected" (HTTP 404) for a real, otherwise-healthy
-// collector. That's expected: this command exists to prove gcx, the plugin
-// proxy, and the tunnel service are wired up correctly ahead of the Alloy
-// side landing, not to prove a collector actually answers yet.
-func (h *fleetHelper) dialCommand() *cobra.Command {
-	opts := &dialOpts{}
+func (h *fleetHelper) newCollectorInvokeCommand() *cobra.Command {
+	opts := &invokeOpts{}
 	cmd := &cobra.Command{
-		Use:   "dial <collector-id|name>",
-		Short: "Send one HTTP request to a collector through its Fleet Management tunnel.",
-		Long: "Sends one HTTP request to a collector through its Fleet Management tunnel " +
-			"(tunnel.v1.TunnelService/CallCollector) and prints the response.\n\n" +
-			"This only returns a real response once the collector itself opens the tunnel " +
-			"(RegisterCollector). As of hackathon-18-superfleet no Alloy build does that " +
-			"yet, so expect \"collector not connected\" for now — that still confirms gcx, " +
-			"the plugin proxy, and the tunnel service are wired up correctly.",
+		Use:   "invoke <collector-id|name>",
+		Short: "Invoke a collector API through the Fleet Management tunnel.",
+		Long: "Invokes a collector API through the Fleet Management tunnel " +
+			"(tunnel.v1.TunnelService/CallCollector) and prints the response.",
+		Example: `  # Run a GraphQL query against a connected Alloy collector
+  gcx fleet collectors invoke <collector-id> --path /graphql \
+    --json-body '{"query":"{ components { id name } }"}'`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
+				return err
+			}
+			body, err := invokeJSONBody(opts.JSON, cmd.InOrStdin())
+			if err != nil {
 				return err
 			}
 
@@ -432,15 +427,28 @@ func (h *fleetHelper) dialCommand() *cobra.Command {
 				return err
 			}
 
-			resp, err := client.CallCollector(ctx, collector.ID, TunnelHTTPRequest{
-				Method:     httpMethodToProto(opts.Method),
+			method := opts.Method
+			if method == "" {
+				method = "GET"
+				if body != nil {
+					method = "POST"
+				}
+			}
+			request := TunnelHTTPRequest{
+				Method:     httpMethodToProto(method),
 				RequestURI: opts.Path,
-			})
+			}
+			if body != nil {
+				request.ContentType = "application/json"
+				request.Body = body
+			}
+
+			resp, err := client.CallCollector(ctx, collector.ID, request)
 			if err != nil {
 				return err
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), &dialResult{
+			return opts.IO.Encode(cmd.OutOrStdout(), &invokeResult{
 				CollectorID: collector.ID,
 				Status:      resp.Status,
 				Body:        string(resp.Body),
@@ -448,7 +456,34 @@ func (h *fleetHelper) dialCommand() *cobra.Command {
 		},
 	}
 	opts.setup(cmd.Flags())
+	_ = cmd.MarkFlagRequired("path")
 	return cmd
+}
+
+func invokeJSONBody(value string, stdin io.Reader) ([]byte, error) {
+	if value == "" {
+		return nil, nil
+	}
+
+	var (
+		body []byte
+		err  error
+	)
+	switch {
+	case value == "@-":
+		body, err = io.ReadAll(stdin)
+	case strings.HasPrefix(value, "@"):
+		body, err = os.ReadFile(strings.TrimPrefix(value, "@"))
+	default:
+		body = []byte(value)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read --json-body: %w", err)
+	}
+	if !json.Valid(body) {
+		return nil, errors.New("--json-body must contain valid JSON")
+	}
+	return body, nil
 }
 
 type pipelineGetOpts struct {
@@ -657,6 +692,7 @@ func (h *fleetHelper) collectorsCommand() *cobra.Command {
 		h.newCollectorCreateCommand(),
 		h.newCollectorUpdateCommand(),
 		h.newCollectorDeleteCommand(),
+		h.newCollectorInvokeCommand(),
 	)
 
 	return cmd
