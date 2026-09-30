@@ -83,6 +83,9 @@ Configuration guidance:
   default folder). On update, omission preserves the existing assignment;
   `folderUid: ""` clears it. This also applies to `gcx resources push`: removing
   the line from a pulled manifest does not clear the assignment.
+  Cross-stack pushes preserve the UID literally; gcx does not remap it by folder
+  title. Verify that it identifies the intended folder in the destination stack
+  and change it before pushing if necessary.
 
 ### Step 4: Create the Check
 

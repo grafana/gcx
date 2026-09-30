@@ -314,15 +314,9 @@ gcx traces query '{.cluster="dev-us-central-0"}' --since 1h
 For an empty dashboard or missing application telemetry, follow
 [Diagnose missing telemetry with gcx](docs/guides/diagnose-missing-telemetry.md).
 
-Synthetic Monitoring check manifests accept an optional `spec.folderUid` containing
-a Grafana folder UID (for example, `folderUid: production-folder-uid`). Existing
-`synthetic-monitoring checks create/update -f check.yaml` and resource pull/push
-workflows preserve this field. On update, omit it to keep the current assignment
-or set `folderUid: ""` to clear it. On create, omission or an empty string leaves
-the check without an explicit assignment; the SM app groups it in the default
-Synthetic Monitoring folder. This field references a folder; it does not create one.
-For `gcx resources push`, removing the `folderUid` line from a pulled manifest
-also preserves the existing assignment. Set `folderUid: ""` explicitly to clear it.
+Synthetic Monitoring check manifests support optional `spec.folderUid` for folder
+assignment. See the [check management guide](claude-plugin/skills/synth-manage-checks/SKILL.md#step-3-build-yaml-definition)
+for create/update semantics and cross-stack push guidance.
 
 ## Install Agent Skills
 

@@ -43,7 +43,7 @@ type CheckSpec struct {
 	Probes           []string       `json:"probes"` // probe NAMES in YAML files
 	BasicMetricsOnly bool           `json:"basicMetricsOnly,omitempty"`
 	AlertSensitivity string         `json:"alertSensitivity,omitempty"`
-	FolderUID        *string        `json:"folderUid,omitempty" jsonschema:"description=Grafana folder UID. Omit to preserve the assignment on update; use an empty string to clear it."`
+	FolderUID        *string        `json:"folderUid,omitempty" jsonschema:"description=Grafana folder UID; does not create a folder. On create omit or use an empty string for no explicit assignment. On update omit to preserve the assignment or use an empty string to clear it."`
 	Channels         map[string]any `json:"channels,omitempty"`
 }
 
