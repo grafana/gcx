@@ -890,6 +890,48 @@ func TestSearchMetricNamesCmd_LimitZeroTruncatedIsCapBoundedNotContinuable(t *te
 	assert.NotContains(t, stderr.String(), "--limit", "a --limit 0 request that still got capped must not suggest any specific --limit value")
 }
 
+// TestSearchMetricNamesCmd_IncompleteStreamWithPositiveLimitIsCapBounded
+// proves the same cap-bounded, no-continuation hint applies when a positive
+// --limit was used and the stream itself was cut short (no completion
+// trailer) rather than the server reporting a real has_more=true page. A
+// stream cut after 2 of a requested --limit 5 must never suggest "--limit
+// 4": that is both narrower than what was already asked for and contradicts
+// the incomplete-stream warning's own "request a smaller limit" advice.
+func TestSearchMetricNamesCmd_IncompleteStreamWithPositiveLimitIsCapBounded(t *testing.T) {
+	// No trailer: the server (or an interrupting proxy) ends the stream
+	// after one batch, with no completion line.
+	ndjson := `{"results":[{"name":"up"},{"name":"up2"}]}` + "\n"
+
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/bootdata" {
+			http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/x-ndjson; charset=utf-8")
+		_, _ = w.Write([]byte(ndjson))
+	}))
+	defer srv.Close()
+
+	loader := &providers.ConfigLoader{}
+	loader.SetConfigFile(writeSearchTestConfig(t, srv.URL))
+
+	root := &cobra.Command{Use: "test"}
+	root.AddCommand(dsprometheus.SearchMetricNamesCmd(loader))
+
+	var stdout, stderr bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{"search-metric-names", "up", "-d", "prom-uid", "-o", "json", "--limit", "5"})
+
+	require.NoError(t, root.Execute())
+
+	assert.Contains(t, stdout.String(), `"cap": 2`)
+	assert.NotContains(t, stdout.String(), `"continue"`)
+	assert.Contains(t, stderr.String(), "safety cap")
+	assert.Contains(t, stderr.String(), "Refine filters")
+	assert.NotContains(t, stderr.String(), "--limit", "an incomplete stream must not suggest any specific --limit value, larger or smaller than the one already used")
+}
+
 // TestSearchMetricNamesCmd_CompleteResultSetHasNoListMeta proves a complete
 // result set (has_more=false) carries no list_meta and emits no stderr hint.
 func TestSearchMetricNamesCmd_CompleteResultSetHasNoListMeta(t *testing.T) {

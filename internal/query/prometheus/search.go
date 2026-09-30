@@ -82,6 +82,13 @@ type SearchResponse[T any] struct {
 	Results  []T
 	HasMore  bool
 	Warnings []string
+	// Incomplete is true when the stream ended without a completion trailer
+	// (cut by decodeSearchStream's size cap, or by an interrupted upstream
+	// connection) rather than because the server's own trailer said
+	// has_more=true. Callers need this distinction: an incomplete stream is
+	// never continuable by raising --limit — regardless of what --limit the
+	// caller already used — while a real has_more=true page may be.
+	Incomplete bool
 }
 
 // SearchMetricNames searches metric names (and, with IncludeMetadata, their
@@ -124,7 +131,7 @@ func search[T any](ctx context.Context, c *Client, apiPath string, extra url.Val
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("failed to %s: %w", operation, err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
@@ -139,15 +146,11 @@ func search[T any](ctx context.Context, c *Client, apiPath string, extra url.Val
 		return nil, searchError(operation, resp.StatusCode, body, opts.Limit)
 	}
 
-	results, hasMore, warnings, err := decodeSearchStream[T](ctx, resp.Body, httputils.DefaultResponseLimit, operation)
+	results, hasMore, warnings, incomplete, err := decodeSearchStream[T](ctx, resp.Body, httputils.DefaultResponseLimit, operation)
 	if err != nil {
-		var apiErr *queryerror.APIError
-		if errors.As(err, &apiErr) {
-			return nil, apiErr
-		}
-		return nil, fmt.Errorf("failed to %s: %w", operation, err)
+		return nil, err
 	}
-	return &SearchResponse[T]{Results: results, HasMore: hasMore, Warnings: warnings}, nil
+	return &SearchResponse[T]{Results: results, HasMore: hasMore, Warnings: warnings, Incomplete: incomplete}, nil
 }
 
 // addSearchParams appends the parameters common to all three search
@@ -213,11 +216,15 @@ type searchStreamFrame[T any] struct {
 // connection, which Grafana's datasource proxy forwards as a clean end of
 // stream — is not an error: the API's client contract requires tolerating an
 // abrupt EOF without a trailer, so the results read so far are returned,
-// flagged as truncated (hasMore forced true) with a warning explaining why,
-// rather than discarded. ctx cancellation is checked first and reported as
-// such, rather than folding into the same "no trailer" handling: it is the
-// caller aborting, not the server or proxy ending the stream.
-func decodeSearchStream[T any](ctx context.Context, body io.Reader, limit int64, operation string) ([]T, bool, []string, error) {
+// flagged as truncated (hasMore forced true, incomplete true) with a warning
+// explaining why, rather than discarded. incomplete distinguishes this case
+// from a real trailer reporting has_more=true: callers must never treat an
+// incomplete stream as continuable by raising --limit, no matter what
+// --limit was already used, whereas a real has_more=true page may be. ctx
+// cancellation is checked first and reported as such, rather than folding
+// into the same "no trailer" handling: it is the caller aborting, not the
+// server or proxy ending the stream.
+func decodeSearchStream[T any](ctx context.Context, body io.Reader, limit int64, operation string) ([]T, bool, []string, bool, error) {
 	// Read one byte past the cap so hitting it is distinguishable from a
 	// stream that ends exactly at the cap.
 	counter := &countingReader{r: io.LimitReader(body, limit+1)}
@@ -230,30 +237,59 @@ func decodeSearchStream[T any](ctx context.Context, body io.Reader, limit int64,
 		var frame searchStreamFrame[T]
 		if err := dec.Decode(&frame); err != nil {
 			if ctxErr := ctx.Err(); ctxErr != nil {
-				return nil, false, nil, fmt.Errorf("search cancelled: %w", ctxErr)
+				return nil, false, nil, false, fmt.Errorf("search cancelled: %w", ctxErr)
 			}
 			if !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
-				return nil, false, nil, fmt.Errorf("failed to parse response: %w", err)
+				return nil, false, nil, false, fmt.Errorf("failed to parse response: %w", err)
 			}
 			warning := "search stream ended after " + strconv.Itoa(len(results)) + " results without a completion trailer (connection interrupted?); results may be incomplete"
 			if counter.n > limit {
 				warning = fmt.Sprintf("search response exceeded the %d MiB limit after %d results; results may be incomplete — request a smaller limit or narrow the match selectors", limit>>20, len(results))
 			}
-			return results, true, appendNewWarnings(warnings, []string{warning}), nil
+			return results, true, appendNewWarnings(warnings, []string{warning}), true, nil
 		}
 
 		warnings = appendNewWarnings(warnings, frame.Warnings)
 
 		if frame.Status != "" {
 			if frame.Status == "error" {
-				apiErr := queryerror.New("prometheus", operation, http.StatusInternalServerError, frame.Error, frame.ErrorType).WithAvailability(false, true)
+				message := frame.Error
+				switch {
+				case frame.ErrorType != "" && frame.Error != "":
+					message = frame.ErrorType + ": " + frame.Error
+				case frame.ErrorType != "":
+					message = frame.ErrorType
+				}
+				apiErr := queryerror.New("prometheus", operation, searchTrailerStatusCode(frame.ErrorType), message, "").WithAvailability(false, true)
 				apiErr.TransportStatus = http.StatusOK
-				return nil, false, nil, apiErr
+				return nil, false, nil, false, apiErr
 			}
-			return results, frame.HasMore, warnings, nil
+			return results, frame.HasMore, warnings, false, nil
 		}
 
 		results = append(results, frame.Results...)
+	}
+}
+
+// searchTrailerStatusCode maps an in-band error trailer's errorType to the
+// HTTP status Prometheus's own getDefaultErrorCode (web/api/v1/api.go)
+// would assign the same failure had it occurred before the first batch was
+// sent (as a normal 4xx/5xx response instead of an in-band trailer) — so a
+// timeout, cancellation, or bad-data error mid-stream gets the same
+// status-driven handling as one that isn't. Mimir's Prometheus-compatible
+// API uses the same errorType strings.
+func searchTrailerStatusCode(errorType string) int {
+	switch errorType {
+	case "bad_data":
+		return http.StatusBadRequest
+	case "execution":
+		return http.StatusUnprocessableEntity
+	case "canceled":
+		return 499 // Prometheus's statusClientClosedConnection; net/http has no named constant for it.
+	case "timeout":
+		return http.StatusServiceUnavailable
+	default:
+		return http.StatusInternalServerError
 	}
 }
 

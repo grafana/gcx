@@ -2,6 +2,7 @@ package prometheus_test
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -244,29 +245,50 @@ func TestClient_SearchLabelValues(t *testing.T) {
 // TestClient_Search_ErrorTrailer proves an in-band error trailer (the
 // storage backend failing mid-stream, after a 200 OK and at least one batch)
 // routes through queryerror.APIError like every other search failure —
-// datasource/operation framing, ErrorSource, and Experimental/CloudOnly
-// availability hints — rather than a bare, untyped error.
+// datasource/operation framing, the errorType folded into the message, and
+// Experimental/CloudOnly availability hints — rather than a bare, untyped
+// error. StatusCode follows Prometheus's own getDefaultErrorCode mapping
+// (web/api/v1/api.go) for the errorType, rather than being hardcoded to 500
+// for every in-band failure regardless of cause.
 func TestClient_Search_ErrorTrailer(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		writeNDJSON(w,
-			`{"results":[{"name":"up"}]}`,
-			`{"status":"error","errorType":"timeout","error":"context deadline exceeded"}`,
-		)
-	}))
-	defer srv.Close()
+	tests := []struct {
+		errorType  string
+		wantStatus int
+	}{
+		{errorType: "bad_data", wantStatus: http.StatusBadRequest},
+		{errorType: "execution", wantStatus: http.StatusUnprocessableEntity},
+		{errorType: "canceled", wantStatus: 499},
+		{errorType: "timeout", wantStatus: http.StatusServiceUnavailable},
+		{errorType: "internal", wantStatus: http.StatusInternalServerError},
+		{errorType: "some-future-errortype-unavailable-in-this-release", wantStatus: http.StatusInternalServerError},
+	}
 
-	client := newTestClient(t, srv.URL)
+	for _, tc := range tests {
+		t.Run(tc.errorType, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				writeNDJSON(w,
+					`{"results":[{"name":"up"}]}`,
+					fmt.Sprintf(`{"status":"error","errorType":%q,"error":"context deadline exceeded"}`, tc.errorType),
+				)
+			}))
+			defer srv.Close()
 
-	_, err := client.SearchMetricNames(context.Background(), "prom", prometheus.SearchOptions{})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "context deadline exceeded")
+			client := newTestClient(t, srv.URL)
 
-	var apiErr *queryerror.APIError
-	require.ErrorAs(t, err, &apiErr)
-	assert.Equal(t, "timeout", apiErr.ErrorSource)
-	assert.True(t, apiErr.Experimental)
-	assert.False(t, apiErr.CloudOnly)
-	assert.Equal(t, http.StatusOK, apiErr.TransportStatus, "the transport itself returned 200; only the in-band trailer failed")
+			_, err := client.SearchMetricNames(context.Background(), "prom", prometheus.SearchOptions{})
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "context deadline exceeded")
+			assert.Contains(t, err.Error(), tc.errorType, "the errorType is folded into the message, not carried in ErrorSource")
+
+			var apiErr *queryerror.APIError
+			require.ErrorAs(t, err, &apiErr)
+			assert.Equal(t, tc.wantStatus, apiErr.StatusCode)
+			assert.Empty(t, apiErr.ErrorSource, "ErrorSource is reserved for Grafana's downstream/plugin source, not the search API's errorType")
+			assert.True(t, apiErr.Experimental)
+			assert.False(t, apiErr.CloudOnly)
+			assert.Equal(t, http.StatusOK, apiErr.TransportStatus, "the transport itself returned 200; only the in-band trailer failed")
+		})
+	}
 }
 
 // TestClient_Search_ErrorTrailer_EmptyFieldsDoNotProduceBlankMessage proves
@@ -477,10 +499,11 @@ func TestDecodeSearchStream_IncompleteStream(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			n, hasMore, warnings, err := prometheus.DecodeSearchStream(context.Background(), strings.NewReader(tc.body), tc.limit)
+			n, hasMore, warnings, incomplete, err := prometheus.DecodeSearchStream(context.Background(), strings.NewReader(tc.body), tc.limit)
 			require.NoError(t, err)
 			assert.Equal(t, 2, n)
 			assert.True(t, hasMore, "an incomplete stream must be flagged as truncated, never silently reported as complete")
+			assert.True(t, incomplete, "cut short by our own cap or an interrupted connection, not a real has_more=true trailer")
 			require.Len(t, warnings, 1)
 			assert.Contains(t, warnings[0], tc.wantWarning)
 		})
@@ -488,10 +511,11 @@ func TestDecodeSearchStream_IncompleteStream(t *testing.T) {
 
 	t.Run("stream ending exactly at the cap is complete", func(t *testing.T) {
 		body := batch + trailer
-		n, hasMore, warnings, err := prometheus.DecodeSearchStream(context.Background(), strings.NewReader(body), int64(len(body)))
+		n, hasMore, warnings, incomplete, err := prometheus.DecodeSearchStream(context.Background(), strings.NewReader(body), int64(len(body)))
 		require.NoError(t, err)
 		assert.Equal(t, 2, n)
 		assert.False(t, hasMore)
+		assert.False(t, incomplete)
 		assert.Empty(t, warnings)
 	})
 }
@@ -505,9 +529,12 @@ func TestDecodeSearchStream_ContextCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, _, warnings, err := prometheus.DecodeSearchStream(ctx, strings.NewReader(`{"results":[{"name":"up"}]}`+"\n"), 1<<20)
+	n, hasMore, warnings, incomplete, err := prometheus.DecodeSearchStream(ctx, strings.NewReader(`{"results":[{"name":"up"}]}`+"\n"), 1<<20)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "cancelled")
+	assert.Equal(t, 0, n)
+	assert.False(t, hasMore)
+	assert.False(t, incomplete)
 	assert.Empty(t, warnings)
 }
 

@@ -193,14 +193,20 @@ type searchResult[T any] struct {
 	ListMeta *cmdio.ListMeta `json:"list_meta,omitempty" yaml:"list_meta,omitempty"`
 }
 
-func buildSearchResult[T any](results []T, hasMore bool, warnings []string, limit int) (*searchResult[T], *cmdio.ListMeta) {
+func buildSearchResult[T any](results []T, hasMore bool, incomplete bool, warnings []string, limit int) (*searchResult[T], *cmdio.ListMeta) {
 	var safetyCap int
-	if limit <= 0 {
-		// --limit 0 asks for everything, so any truncation here is a bound
-		// gcx did not request — a server-side cap (Mimir) or a stream cut
-		// short (see decodeSearchStream). No larger --limit can retrieve
-		// more, so this is the cap case, not the "ask for more" case: no
-		// continuation, refine filters instead (see PagedListMeta).
+	if limit <= 0 || incomplete {
+		// Either --limit 0 asked for everything, or the stream itself was
+		// cut short (decodeSearchStream's own size cap, or an interrupted
+		// connection) rather than stopping because a real trailer reported
+		// has_more=true. Either way this is a bound gcx did not request and
+		// a larger --limit cannot fix — including when the user's --limit
+		// was already positive: a stream cut after 2 of a requested 5 must
+		// not suggest "--limit 4", which is both smaller than what was
+		// already asked for and contradicts the incomplete-stream warning's
+		// own "request a smaller limit" advice. So this is the cap case, not
+		// the "ask for more" case: no continuation, refine filters instead
+		// (see PagedListMeta).
 		safetyCap = len(results)
 	}
 	meta := cmdio.AttachListMeta(cmdio.PagedListMeta(len(results), limit, hasMore, safetyCap), os.Args)
@@ -282,7 +288,7 @@ See also the sibling label-name search and label-value search commands.`,
 				return fmt.Errorf("failed to search metric names: %w", err)
 			}
 
-			result, meta := buildSearchResult(resp.Results, resp.HasMore, resp.Warnings, opts.Limit)
+			result, meta := buildSearchResult(resp.Results, resp.HasMore, resp.Incomplete, resp.Warnings, opts.Limit)
 			if err := opts.IO.Encode(cmd.OutOrStdout(), result); err != nil {
 				return err
 			}
@@ -380,7 +386,7 @@ See also the sibling metric-name search and label-value search commands.`,
 				return fmt.Errorf("failed to search label names: %w", err)
 			}
 
-			result, meta := buildSearchResult(resp.Results, resp.HasMore, resp.Warnings, opts.Limit)
+			result, meta := buildSearchResult(resp.Results, resp.HasMore, resp.Incomplete, resp.Warnings, opts.Limit)
 			if err := opts.IO.Encode(cmd.OutOrStdout(), result); err != nil {
 				return err
 			}
@@ -480,7 +486,7 @@ See also the sibling metric-name search and label-name search commands.`,
 				return fmt.Errorf("failed to search label values: %w", err)
 			}
 
-			result, meta := buildSearchResult(resp.Results, resp.HasMore, resp.Warnings, opts.Limit)
+			result, meta := buildSearchResult(resp.Results, resp.HasMore, resp.Incomplete, resp.Warnings, opts.Limit)
 			if err := opts.IO.Encode(cmd.OutOrStdout(), result); err != nil {
 				return err
 			}

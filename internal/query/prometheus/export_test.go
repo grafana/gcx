@@ -50,7 +50,7 @@ func ConvertGrafanaResponse(grafanaResp *GrafanaQueryResponse, isRange bool) *Qu
 
 // DecodeSearchStream exposes the unexported NDJSON search decoder with a
 // caller-chosen size cap, returning the result count.
-func DecodeSearchStream(ctx context.Context, body io.Reader, limit int64) (int, bool, []string, error) {
-	results, hasMore, warnings, err := decodeSearchStream[MetricNameResult](ctx, body, limit, "search metric names")
-	return len(results), hasMore, warnings, err
+func DecodeSearchStream(ctx context.Context, body io.Reader, limit int64) (int, bool, []string, bool, error) {
+	results, hasMore, warnings, incomplete, err := decodeSearchStream[MetricNameResult](ctx, body, limit, "search metric names")
+	return len(results), hasMore, warnings, incomplete, err
 }
