@@ -13,6 +13,9 @@ Reference alongside [cli-layer.md](../architecture/cli-layer.md) for command str
 Every command gets `json`, `yaml`, and `agents` output for free via `io.Options`.
 The `json` and `yaml` codecs produce the full resource object as returned by
 the API — no envelope wrapping, no field filtering. This output is stable.
+Exception: a list command with a limit writes the `{"items": [...]}` list
+envelope with the optional `list_meta` object (see
+[§ 15.2](#152-machine-readable-payload-signal-list_meta)).
 The `agents` codec is described in [§ 1.1.1](#111-agents-codec) below.
 
 ```go
