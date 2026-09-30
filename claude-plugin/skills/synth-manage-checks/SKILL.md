@@ -66,6 +66,7 @@ spec:
     - Singapore
   alertSensitivity: none    # none unless the stack uses legacy sensitivity alerts
   basicMetricsOnly: false   # true = fewer metrics, lower cardinality
+  # folderUid: production-folder-uid  # Optional: UID of an existing Grafana folder
   settings:
     http: {}   # Replace with type-specific settings
 ```
@@ -77,6 +78,11 @@ Configuration guidance:
   [references/check-types.md](references/check-types.md) for why non-`none`
   values can 403 on some stacks.
 - **basicMetricsOnly**: `true` reduces metric cardinality (fewer label dimensions); `false` emits full metrics
+- **folderUid**: optional Grafana folder UID, not its title; does not create a folder.
+  On create, omission or `""` leaves no explicit assignment (the SM app uses the
+  default folder). On update, omission preserves the existing assignment;
+  `folderUid: ""` clears it. This also applies to `gcx resources push`: removing
+  the line from a pulled manifest does not clear the assignment.
 
 ### Step 4: Create the Check
 

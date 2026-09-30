@@ -321,6 +321,8 @@ workflows preserve this field. On update, omit it to keep the current assignment
 or set `folderUid: ""` to clear it. On create, omission or an empty string leaves
 the check without an explicit assignment; the SM app groups it in the default
 Synthetic Monitoring folder. This field references a folder; it does not create one.
+For `gcx resources push`, removing the `folderUid` line from a pulled manifest
+also preserves the existing assignment. Set `folderUid: ""` explicitly to clear it.
 
 ## Install Agent Skills
 
