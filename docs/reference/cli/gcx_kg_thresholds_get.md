@@ -6,7 +6,8 @@ Summarize the whole threshold config.
 
 Fetches the entire threshold configuration. The default table summarizes the
 config name and its group and rule counts. Use -o json or -o yaml for the full
-PrometheusRules resource envelope.
+resource envelope (kind Thresholds, deliberately distinct from the prom-rules
+Rule kind so it cannot be mistaken for, or pushed as, a prom-rules document).
 
 ```
 gcx kg thresholds get [flags]

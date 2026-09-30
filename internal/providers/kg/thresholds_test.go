@@ -145,6 +145,10 @@ func TestThresholdsGetCommand(t *testing.T) {
 		// root, because a Contains check on "kind: Rule" passes either way.
 		assert.True(t, strings.HasPrefix(out, "apiVersion: "), "envelope must be top-level, got:\n%s", out)
 		assert.NotContains(t, out, "Object:")
+		// Thresholds must not share the prom-rules kind, or a round-tripped
+		// document would resolve to the prom-rules adapter.
+		assert.Contains(t, out, "kind: Thresholds")
+		assert.NotContains(t, out, "kind: Rule\n")
 	})
 }
 

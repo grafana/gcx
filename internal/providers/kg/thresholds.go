@@ -15,6 +15,25 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
+// ThresholdsKind is the resource kind emitted by `thresholds get`. It is kept
+// separate from Kind ("Rule") because thresholds live on /v1/config/threshold-rules,
+// not /v1/config/prom-rules; sharing the kind would let a round-tripped document
+// resolve to the prom-rules adapter.
+const ThresholdsKind = "Thresholds"
+
+// thresholdsToResource wraps the threshold config in a resource envelope with
+// its own kind. The kind is intentionally not registered with the resources
+// adapter registry, so pushing the document fails instead of reaching prom-rules.
+func thresholdsToResource(rf Rule, namespace string) (unstructured.Unstructured, error) {
+	res, err := RuleToResource(rf, namespace)
+	if err != nil {
+		return unstructured.Unstructured{}, err
+	}
+	obj := res.ToUnstructured()
+	obj.SetKind(ThresholdsKind)
+	return obj, nil
+}
+
 func newThresholdsCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "thresholds",
@@ -31,7 +50,8 @@ user-configured thresholds run on.`,
 		Short: "Summarize the whole threshold config.",
 		Long: `Fetches the entire threshold configuration. The default table summarizes the
 config name and its group and rule counts. Use -o json or -o yaml for the full
-PrometheusRules resource envelope.`,
+resource envelope (kind Thresholds, deliberately distinct from the prom-rules
+Rule kind so it cannot be mistaken for, or pushed as, a prom-rules document).`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := getOpts.IO.Validate(); err != nil {
@@ -50,7 +70,7 @@ PrometheusRules resource envelope.`,
 			if err != nil {
 				return err
 			}
-			res, err := RuleToResource(*rule, cfg.Namespace)
+			obj, err := thresholdsToResource(*rule, cfg.Namespace)
 			if err != nil {
 				return fmt.Errorf("failed to convert threshold config to resource: %w", err)
 			}
@@ -58,7 +78,6 @@ PrometheusRules resource envelope.`,
 			// MarshalJSON on the pointer receiver, so a bare value passed as
 			// any falls back to struct-field encoding and leaks the wrapper as
 			// a top-level "Object" key.
-			obj := res.ToUnstructured()
 			return encodeThresholdRowsOrValue(
 				&getOpts.IO,
 				cmd.OutOrStdout(),
