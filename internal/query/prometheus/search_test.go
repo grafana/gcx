@@ -2,6 +2,7 @@ package prometheus_test
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -152,7 +153,7 @@ func TestClient_SearchMetricNames_TimeRange(t *testing.T) {
 func TestClient_SearchMetricNames_FractionalScore(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		writeNDJSON(w,
-			`{"results":[{"name":"up","score":92.5}]}`,
+			`{"results":[{"name":"up","score":0.925}]}`,
 			`{"status":"success"}`,
 		)
 	}))
@@ -164,7 +165,28 @@ func TestClient_SearchMetricNames_FractionalScore(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Len(t, resp.Results, 1)
-	assert.InDelta(t, 92.5, resp.Results[0].Score, 0)
+	assert.InDelta(t, 0.925, resp.Results[0].Score, 0)
+}
+
+// TestClient_SearchMetricNames_IncompleteStreamReturnsPartialResults proves
+// the full client path — not just the decoder — surfaces a trailerless
+// stream (a server shutdown or interrupted upstream connection mid-batch) as
+// a successful, truncated response instead of an error.
+func TestClient_SearchMetricNames_IncompleteStreamReturnsPartialResults(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/x-ndjson; charset=utf-8")
+		_, _ = w.Write([]byte(`{"results":[{"name":"up"},{"name":"go_goroutines"}]}` + "\n"))
+	}))
+	defer srv.Close()
+
+	client := newTestClient(t, srv.URL)
+
+	resp, err := client.SearchMetricNames(context.Background(), "prom", prometheus.SearchOptions{})
+	require.NoError(t, err)
+	require.Len(t, resp.Results, 2)
+	assert.True(t, resp.HasMore, "an incomplete stream must be flagged as truncated, never silently reported as complete")
+	require.Len(t, resp.Warnings, 1)
+	assert.Contains(t, resp.Warnings[0], "without a completion trailer")
 }
 
 func TestClient_SearchLabelNames(t *testing.T) {
@@ -219,6 +241,11 @@ func TestClient_SearchLabelValues(t *testing.T) {
 	assert.Equal(t, "node", resp.Results[1].Value)
 }
 
+// TestClient_Search_ErrorTrailer proves an in-band error trailer (the
+// storage backend failing mid-stream, after a 200 OK and at least one batch)
+// routes through queryerror.APIError like every other search failure —
+// datasource/operation framing, ErrorSource, and Experimental/CloudOnly
+// availability hints — rather than a bare, untyped error.
 func TestClient_Search_ErrorTrailer(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		writeNDJSON(w,
@@ -233,7 +260,31 @@ func TestClient_Search_ErrorTrailer(t *testing.T) {
 	_, err := client.SearchMetricNames(context.Background(), "prom", prometheus.SearchOptions{})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "context deadline exceeded")
-	assert.Contains(t, err.Error(), "timeout")
+
+	var apiErr *queryerror.APIError
+	require.ErrorAs(t, err, &apiErr)
+	assert.Equal(t, "timeout", apiErr.ErrorSource)
+	assert.True(t, apiErr.Experimental)
+	assert.False(t, apiErr.CloudOnly)
+	assert.Equal(t, http.StatusOK, apiErr.TransportStatus, "the transport itself returned 200; only the in-band trailer failed")
+}
+
+// TestClient_Search_ErrorTrailer_EmptyFieldsDoNotProduceBlankMessage proves
+// an error trailer with empty error/errorType fields (permitted by the wire
+// contract, even if unusual) doesn't render as a bare "()" — the Message
+// field is empty rather than a formatted "empty (empty)" string.
+func TestClient_Search_ErrorTrailer_EmptyFieldsDoNotProduceBlankMessage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeNDJSON(w, `{"status":"error"}`)
+	}))
+	defer srv.Close()
+
+	client := newTestClient(t, srv.URL)
+
+	_, err := client.SearchMetricNames(context.Background(), "prom", prometheus.SearchOptions{})
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "()")
+	assert.NotContains(t, err.Error(), ": ")
 }
 
 // TestClient_Search_FeatureNotEnabled pins each server's real disabled
@@ -387,8 +438,11 @@ func TestClient_Search_Warnings(t *testing.T) {
 }
 
 // TestDecodeSearchStream_IncompleteStream proves a stream without a trailer
-// fails with an error saying why, instead of returning results that may be
-// incomplete.
+// returns the results read so far — flagged as truncated, with a warning
+// explaining why — instead of discarding them as an error. The search API's
+// client contract requires tolerating an abrupt EOF without a trailer (e.g.
+// transport failures or server shutdown); Grafana's datasource proxy
+// forwards an interrupted upstream connection the same way.
 func TestDecodeSearchStream_IncompleteStream(t *testing.T) {
 	const (
 		batch   = `{"results":[{"name":"up"},{"name":"go_goroutines"}]}` + "\n"
@@ -396,45 +450,65 @@ func TestDecodeSearchStream_IncompleteStream(t *testing.T) {
 	)
 
 	tests := []struct {
-		name    string
-		body    string
-		limit   int64
-		wantErr string
+		name        string
+		body        string
+		limit       int64
+		wantWarning string
 	}{
 		{
-			name:    "no trailer",
-			body:    batch,
-			limit:   1 << 20,
-			wantErr: "search stream ended after 2 results without a completion trailer",
+			name:        "no trailer",
+			body:        batch,
+			limit:       1 << 20,
+			wantWarning: "search stream ended after 2 results without a completion trailer",
 		},
 		{
-			name:    "cut mid-line",
-			body:    batch + `{"results":[{"na`,
-			limit:   1 << 20,
-			wantErr: "search stream ended after 2 results without a completion trailer",
+			name:        "cut mid-line",
+			body:        batch + `{"results":[{"na`,
+			limit:       1 << 20,
+			wantWarning: "search stream ended after 2 results without a completion trailer",
 		},
 		{
-			name:    "size cap hit",
-			body:    batch + batch + trailer,
-			limit:   int64(len(batch)) + 10,
-			wantErr: "search response exceeded the",
+			name:        "size cap hit",
+			body:        batch + batch + trailer,
+			limit:       int64(len(batch)) + 10,
+			wantWarning: "search response exceeded the",
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			_, _, _, err := prometheus.DecodeSearchStream(strings.NewReader(tc.body), tc.limit)
-			require.Error(t, err)
-			assert.Contains(t, err.Error(), tc.wantErr)
+			n, hasMore, warnings, err := prometheus.DecodeSearchStream(context.Background(), strings.NewReader(tc.body), tc.limit)
+			require.NoError(t, err)
+			assert.Equal(t, 2, n)
+			assert.True(t, hasMore, "an incomplete stream must be flagged as truncated, never silently reported as complete")
+			require.Len(t, warnings, 1)
+			assert.Contains(t, warnings[0], tc.wantWarning)
 		})
 	}
 
 	t.Run("stream ending exactly at the cap is complete", func(t *testing.T) {
 		body := batch + trailer
-		n, _, _, err := prometheus.DecodeSearchStream(strings.NewReader(body), int64(len(body)))
+		n, hasMore, warnings, err := prometheus.DecodeSearchStream(context.Background(), strings.NewReader(body), int64(len(body)))
 		require.NoError(t, err)
 		assert.Equal(t, 2, n)
+		assert.False(t, hasMore)
+		assert.Empty(t, warnings)
 	})
+}
+
+// TestDecodeSearchStream_ContextCancelled proves a cancelled context is
+// reported as a cancellation, not folded into the generic "failed to parse
+// response" or "no completion trailer" messages — a caller aborting the
+// request is a different situation from the server or proxy ending the
+// stream early.
+func TestDecodeSearchStream_ContextCancelled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, _, warnings, err := prometheus.DecodeSearchStream(ctx, strings.NewReader(`{"results":[{"name":"up"}]}`+"\n"), 1<<20)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cancelled")
+	assert.Empty(t, warnings)
 }
 
 func TestClient_Search_OtherHTTPErrorIsRaw(t *testing.T) {
@@ -450,6 +524,39 @@ func TestClient_Search_OtherHTTPErrorIsRaw(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "403")
 	assert.NotContains(t, err.Error(), "experimental")
+}
+
+// TestClient_Search_NonOKBodyReadFailurePreservesStatusCode proves that when
+// reading a non-200 response body itself fails (a truncated response, here:
+// the server promises more body than it sends before closing), the real
+// HTTP status code is still preserved on the resulting APIError — and with
+// it, the auth-suggestion and availability handling that status code
+// drives — instead of being lost in a generic wrapped error.
+func TestClient_Search_NonOKBodyReadFailurePreservesStatusCode(t *testing.T) {
+	ln, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer ln.Close()
+
+	go func() {
+		conn, acceptErr := ln.Accept()
+		if acceptErr != nil {
+			return
+		}
+		defer conn.Close()
+		_ = conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		// Content-Length promises 1000 bytes of body; the connection closes
+		// after far fewer, so the client's body read fails.
+		_, _ = conn.Write([]byte("HTTP/1.1 401 Unauthorized\r\nContent-Length: 1000\r\nConnection: close\r\n\r\n{\"error\":\"short\""))
+	}()
+
+	client := newTestClient(t, "http://"+ln.Addr().String())
+
+	_, err = client.SearchMetricNames(context.Background(), "prom", prometheus.SearchOptions{})
+	require.Error(t, err)
+
+	var apiErr *queryerror.APIError
+	require.ErrorAs(t, err, &apiErr)
+	assert.Equal(t, http.StatusUnauthorized, apiErr.StatusCode)
 }
 
 func TestClient_BuildSearchPathsEscapeUID(t *testing.T) {

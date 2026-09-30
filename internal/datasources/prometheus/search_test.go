@@ -78,7 +78,7 @@ func newSearchTestRoot(t *testing.T, ndjson string) (*cobra.Command, *bytes.Buff
 
 func TestSearchMetricNamesCmd(t *testing.T) {
 	ndjson := strings.Join([]string{
-		`{"results":[{"name":"up","score":95}]}`,
+		`{"results":[{"name":"up","score":0.95}]}`,
 		`{"status":"success","has_more":false}`,
 	}, "\n") + "\n"
 
@@ -91,7 +91,7 @@ func TestSearchMetricNamesCmd(t *testing.T) {
 	assert.Equal(t, []string{"up"}, query["search[]"])
 	assert.Equal(t, "true", query.Get("include_score"))
 	assert.Contains(t, stdout.String(), `"name": "up"`)
-	assert.Contains(t, stdout.String(), `"score": 95`)
+	assert.Contains(t, stdout.String(), `"score": 0.95`)
 }
 
 func TestSearchLabelNamesCmd(t *testing.T) {
@@ -108,6 +108,47 @@ func TestSearchLabelNamesCmd(t *testing.T) {
 	assert.Equal(t, "/api/datasources/uid/prom-uid/resources/api/v1/search/label_names", path)
 	assert.Equal(t, []string{"jo"}, query["search[]"])
 	assert.Contains(t, stdout.String(), `"name": "job"`)
+}
+
+// TestSearchLabelNamesCmd_TableOutput_IncludeScore proves the SCORE column
+// header and each row's score line up: searchValueTableCodec builds the
+// header and row slices separately (one appends "SCORE", the other appends
+// the formatted score), so a header/row mismatch would go undetected
+// without a test that actually renders a row with --include-score.
+func TestSearchLabelNamesCmd_TableOutput_IncludeScore(t *testing.T) {
+	ndjson := strings.Join([]string{
+		`{"results":[{"name":"job","score":0.8}]}`,
+		`{"status":"success","has_more":false}`,
+	}, "\n") + "\n"
+
+	root, stdout, _ := newSearchTestRoot(t, ndjson)
+	root.SetArgs([]string{"search-label-names", "jo", "-d", "prom-uid", "-o", "table", "--include-score"})
+	require.NoError(t, root.Execute())
+
+	out := stdout.String()
+	assert.Contains(t, out, "NAME")
+	assert.Contains(t, out, "SCORE")
+	assert.Contains(t, out, "job")
+	assert.Contains(t, out, "0.8000")
+}
+
+// TestSearchLabelValuesCmd_TableOutput_IncludeScore is the label-values
+// mirror of TestSearchLabelNamesCmd_TableOutput_IncludeScore.
+func TestSearchLabelValuesCmd_TableOutput_IncludeScore(t *testing.T) {
+	ndjson := strings.Join([]string{
+		`{"results":[{"value":"prometheus","score":0.8}]}`,
+		`{"status":"success","has_more":false}`,
+	}, "\n") + "\n"
+
+	root, stdout, _ := newSearchTestRoot(t, ndjson)
+	root.SetArgs([]string{"search-label-values", "job", "pro", "-d", "prom-uid", "-o", "table", "--include-score"})
+	require.NoError(t, root.Execute())
+
+	out := stdout.String()
+	assert.Contains(t, out, "VALUE")
+	assert.Contains(t, out, "SCORE")
+	assert.Contains(t, out, "prometheus")
+	assert.Contains(t, out, "0.8000")
 }
 
 // TestSearchCmds_CaseSensitiveDefaultsFalse proves case_sensitive=false is
@@ -216,7 +257,7 @@ func TestSearchLabelValuesCmd_RejectsExplicitlyEmptyLabel(t *testing.T) {
 
 func TestSearchMetricNamesCmd_TableOutput(t *testing.T) {
 	ndjson := strings.Join([]string{
-		`{"results":[{"name":"up","score":95,"type":"gauge","help":"1 if up"}]}`,
+		`{"results":[{"name":"up","score":0.95,"type":"gauge","help":"1 if up"}]}`,
 		`{"status":"success","has_more":false}`,
 	}, "\n") + "\n"
 
@@ -233,11 +274,11 @@ func TestSearchMetricNamesCmd_TableOutput(t *testing.T) {
 }
 
 // TestSearchMetricNamesCmd_TableOutput_FractionalScore proves a fractional
-// score renders cleanly (via strconv.FormatFloat), not truncated to an
-// integer and not over-precise.
+// score renders at fixed precision (via strconv.FormatFloat), not truncated
+// to an integer and not over-precise.
 func TestSearchMetricNamesCmd_TableOutput_FractionalScore(t *testing.T) {
 	ndjson := strings.Join([]string{
-		`{"results":[{"name":"up","score":92.5}]}`,
+		`{"results":[{"name":"up","score":0.925}]}`,
 		`{"status":"success","has_more":false}`,
 	}, "\n") + "\n"
 
@@ -246,8 +287,27 @@ func TestSearchMetricNamesCmd_TableOutput_FractionalScore(t *testing.T) {
 	require.NoError(t, root.Execute())
 
 	out := stdout.String()
-	assert.Contains(t, out, "92.5")
-	assert.NotContains(t, out, "92.500000")
+	assert.Contains(t, out, "0.9250")
+}
+
+// TestSearchMetricNamesCmd_TableOutput_NonTerminatingScore proves a real
+// Jaro-Winkler score with a non-terminating binary decimal expansion (11/12,
+// here) renders at fixed precision rather than strconv.FormatFloat's -1
+// ("shortest exact") precision, which would print 0.9166666666666666.
+func TestSearchMetricNamesCmd_TableOutput_NonTerminatingScore(t *testing.T) {
+	score := strconv.FormatFloat(11.0/12.0, 'f', -1, 64)
+	ndjson := strings.Join([]string{
+		`{"results":[{"name":"up","score":` + score + `}]}`,
+		`{"status":"success","has_more":false}`,
+	}, "\n") + "\n"
+
+	root, stdout, _ := newSearchTestRoot(t, ndjson)
+	root.SetArgs([]string{"search-metric-names", "up", "-d", "prom-uid", "-o", "table", "--include-score"})
+	require.NoError(t, root.Execute())
+
+	out := stdout.String()
+	assert.Contains(t, out, "0.9167")
+	assert.NotContains(t, out, "0.91666666")
 }
 
 func TestSearchLabelNamesCmd_MetricFoldsIntoMatch(t *testing.T) {
@@ -420,6 +480,57 @@ func TestSearchLabelNamesCmd_MetricRegexRejectsInvalidPattern(t *testing.T) {
 
 	path, _ := captured()
 	assert.Empty(t, path, "no request should be made for an invalid --metric-regex pattern")
+}
+
+func TestSearchLabelNamesCmd_ContradictoryMetricRegexFailsBeforeAnyRequest(t *testing.T) {
+	root, _, captured := newSearchTestRoot(t, "")
+	root.SetArgs([]string{
+		"search-label-names", "jo", "-d", "prom-uid",
+		"--metric-regex", ".*kube.*",
+		"--match", `{__name__="http_requests_total"}`,
+	})
+
+	err := root.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "the intersection matches nothing")
+
+	path, _ := captured()
+	assert.Empty(t, path, "no request should be made when --metric-regex contradicts an equality --match")
+}
+
+func TestSearchLabelNamesCmd_MetricRegexCombinesWithEqualityMatch(t *testing.T) {
+	ndjson := strings.Join([]string{`{"results":[]}`, `{"status":"success","has_more":false}`}, "\n") + "\n"
+
+	root, _, captured := newSearchTestRoot(t, ndjson)
+	root.SetArgs([]string{
+		"search-label-names", "jo", "-d", "prom-uid",
+		"--metric-regex", ".*kube.*",
+		"--match", `{__name__="kube_pod_info"}`,
+	})
+	require.NoError(t, root.Execute())
+
+	_, query := captured()
+	// A match matching the regex is not redundant with it — an equality
+	// matcher is strictly narrower, so both stay in the folded selector.
+	assert.Equal(t, []string{`{__name__="kube_pod_info",__name__=~".*kube.*"}`}, query["match[]"])
+}
+
+func TestSearchLabelNamesCmd_MetricRegexCombinesWithRegexMatch(t *testing.T) {
+	ndjson := strings.Join([]string{`{"results":[]}`, `{"status":"success","has_more":false}`}, "\n") + "\n"
+
+	root, _, captured := newSearchTestRoot(t, ndjson)
+	root.SetArgs([]string{
+		"search-label-names", "jo", "-d", "prom-uid",
+		"--metric-regex", ".*kube.*",
+		"--match", `{__name__=~".*pod.*"}`,
+	})
+	require.NoError(t, root.Execute())
+
+	_, query := captured()
+	// Two distinct regexes: whether their languages intersect is
+	// undecidable in general, so both are folded in (ANDed) rather than
+	// rejected or treated as redundant.
+	assert.Equal(t, []string{`{__name__=~".*pod.*",__name__=~".*kube.*"}`}, query["match[]"])
 }
 
 func TestSearchLabelNamesCmd_MetricAndRegexMutuallyExclusive(t *testing.T) {
@@ -677,7 +788,7 @@ func TestSearchMetricNamesCmd_FeatureNotEnabled(t *testing.T) {
 // of this envelope.
 func TestSearchMetricNamesCmd_JSONKeysAreSnakeCase(t *testing.T) {
 	ndjson := strings.Join([]string{
-		`{"results":[{"name":"up","score":95,"type":"gauge","help":"1 if up","unit":"1"}]}`,
+		`{"results":[{"name":"up","score":0.95,"type":"gauge","help":"1 if up","unit":"1"}]}`,
 		`{"status":"success","has_more":false}`,
 	}, "\n") + "\n"
 
@@ -688,7 +799,7 @@ func TestSearchMetricNamesCmd_JSONKeysAreSnakeCase(t *testing.T) {
 	out := stdout.String()
 	assert.Contains(t, out, `"results"`)
 	assert.Contains(t, out, `"name": "up"`)
-	assert.Contains(t, out, `"score": 95`)
+	assert.Contains(t, out, `"score": 0.95`)
 	assert.Contains(t, out, `"type": "gauge"`)
 	assert.Contains(t, out, `"help": "1 if up"`)
 	assert.Contains(t, out, `"unit": "1"`)
@@ -734,6 +845,49 @@ func TestSearchMetricNamesCmd_ExposesHasMoreAsListMeta(t *testing.T) {
 	assert.Contains(t, stdout.String(), `"truncated": true`)
 	assert.NotContains(t, stdout.String(), `"HasMore"`)
 	assert.NotEmpty(t, stderr.String(), "expected a truncation hint on stderr")
+}
+
+// TestSearchMetricNamesCmd_LimitZeroTruncatedIsCapBoundedNotContinuable
+// proves that when --limit 0 ("give me everything") still comes back
+// truncated (has_more=true) — a server-side cap Mimir applied despite the
+// unlimited request, or a stream cut short — the hint is the cap variant
+// ("refine filters", no continuation), never a suggestion to pass a larger
+// --limit: the user already asked for unlimited, so a positive number is
+// strictly narrower advice than what they requested.
+func TestSearchMetricNamesCmd_LimitZeroTruncatedIsCapBoundedNotContinuable(t *testing.T) {
+	ndjson := strings.Join([]string{
+		`{"results":[{"name":"up"}]}`,
+		`{"status":"success","has_more":true}`,
+	}, "\n") + "\n"
+
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/bootdata" {
+			http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/x-ndjson; charset=utf-8")
+		_, _ = w.Write([]byte(ndjson))
+	}))
+	defer srv.Close()
+
+	loader := &providers.ConfigLoader{}
+	loader.SetConfigFile(writeSearchTestConfig(t, srv.URL))
+
+	root := &cobra.Command{Use: "test"}
+	root.AddCommand(dsprometheus.SearchMetricNamesCmd(loader))
+
+	var stdout, stderr bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{"search-metric-names", "up", "-d", "prom-uid", "-o", "json", "--limit", "0"})
+
+	require.NoError(t, root.Execute())
+
+	assert.Contains(t, stdout.String(), `"cap": 1`)
+	assert.NotContains(t, stdout.String(), `"continue"`)
+	assert.Contains(t, stderr.String(), "safety cap")
+	assert.Contains(t, stderr.String(), "Refine filters")
+	assert.NotContains(t, stderr.String(), "--limit", "a --limit 0 request that still got capped must not suggest any specific --limit value")
 }
 
 // TestSearchMetricNamesCmd_CompleteResultSetHasNoListMeta proves a complete

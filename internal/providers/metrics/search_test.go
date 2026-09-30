@@ -2,9 +2,13 @@ package metrics_test
 
 import (
 	"bytes"
+	"net/http"
+	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/grafana/gcx/internal/agent"
+	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/metrics"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -72,25 +76,61 @@ func TestSearchCommands_MetricFlagPlacement(t *testing.T) {
 	assert.NotNil(t, byName["label-values"].Flags().Lookup("metric-regex"))
 }
 
+// TestSearchCommands_RequireTerm proves each command rejects a missing
+// TERM/scope before any config is loaded or request made. It binds a real
+// (unreachable-by-design) config rather than passing a nil loader: a nil
+// *providers.ConfigLoader is valid and falls through to layered config
+// discovery (see ConfigLoader's doc comment), so an unbound test would pass
+// today only because the argument-count/scope guard fires first — and would
+// silently start depending on the machine's own Grafana config if that
+// guard were ever removed. Asserting the specific error message closes the
+// same gap: a coincidental error from reaching a live config would also
+// satisfy a bare require.Error.
 func TestSearchCommands_RequireTerm(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("unexpected request to %s: a missing TERM/scope must fail before any request is made", r.URL.Path)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	f, err := os.CreateTemp(t.TempDir(), "gcx-metrics-search-config-*.yaml")
+	require.NoError(t, err)
+	_, err = f.WriteString(`
+contexts:
+  default:
+    grafana:
+      server: "` + srv.URL + `"
+      token: "test-token"
+      org-id: 1
+current-context: default
+`)
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+
+	loader := &providers.ConfigLoader{}
+	loader.SetConfigFile(f.Name())
+
 	tests := []struct {
-		name string
-		args []string
+		name    string
+		args    []string
+		wantErr string
 	}{
-		{name: "metric-names", args: []string{"metric-names"}},
-		{name: "label-names", args: []string{"label-names"}},
-		{name: "label-values missing LABEL", args: []string{"label-values"}},
+		{name: "metric-names", args: []string{"metric-names"}, wantErr: "requires at least 1 arg"},
+		{name: "label-names", args: []string{"label-names"}, wantErr: "requires TERM, or a scope"},
+		{name: "label-values missing LABEL", args: []string{"label-values"}, wantErr: "requires at least 1 arg"},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			root := &cobra.Command{Use: "test"}
-			root.AddCommand(metrics.SearchCommands(nil))
+			root.AddCommand(metrics.SearchCommands(loader))
 			root.SetOut(&bytes.Buffer{})
 			root.SetErr(&bytes.Buffer{})
 			root.SetArgs(append([]string{"search"}, tc.args...))
 
-			require.Error(t, root.Execute())
+			err := root.Execute()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.wantErr)
 		})
 	}
 }

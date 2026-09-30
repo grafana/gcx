@@ -1,6 +1,9 @@
 package prometheus
 
-import "io"
+import (
+	"context"
+	"io"
+)
 
 // Test helpers — expose internal path builders for external test package.
 
@@ -47,7 +50,7 @@ func ConvertGrafanaResponse(grafanaResp *GrafanaQueryResponse, isRange bool) *Qu
 
 // DecodeSearchStream exposes the unexported NDJSON search decoder with a
 // caller-chosen size cap, returning the result count.
-func DecodeSearchStream(body io.Reader, limit int64) (int, bool, []string, error) {
-	results, hasMore, warnings, err := decodeSearchStream[MetricNameResult](body, limit)
+func DecodeSearchStream(ctx context.Context, body io.Reader, limit int64) (int, bool, []string, error) {
+	results, hasMore, warnings, err := decodeSearchStream[MetricNameResult](ctx, body, limit, "search metric names")
 	return len(results), hasMore, warnings, err
 }

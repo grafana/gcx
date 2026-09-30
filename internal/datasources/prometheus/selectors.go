@@ -100,11 +100,22 @@ func foldNameMatcherSelector(flagName string, nameMatcher *promlabels.Matcher, m
 				}
 				continue
 			}
-			// nameMatcher is itself a regex: whether two regexes'
-			// languages intersect is undecidable in general, so only an
-			// exact duplicate is treated as redundant. Anything else is
-			// folded in as an additional __name__ matcher — valid PromQL,
-			// ANDed with the existing one.
+			// nameMatcher is itself a regex.
+			if m.Type == promlabels.MatchEqual {
+				// Regex-against-equality is decidable: does the regex match
+				// m's literal value? Unlike the MatchEqual case above, a
+				// match never makes m redundant — an equality matcher is
+				// strictly narrower than the regex, so both stay in the
+				// folded selector.
+				if !nameMatcher.Matches(m.Value) {
+					return nil, fmt.Errorf("--%s %q contradicts the __name__ matcher in --match selector %q: the intersection matches nothing", flagName, nameMatcher.Value, sel)
+				}
+				continue
+			}
+			// Both are regexes: whether their languages intersect is
+			// undecidable in general, so only an exact duplicate is treated
+			// as redundant. Anything else is folded in as an additional
+			// __name__ matcher — valid PromQL, ANDed with the existing one.
 			if m.Type == nameMatcher.Type && m.Value == nameMatcher.Value {
 				redundant = true
 			}

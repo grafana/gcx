@@ -194,7 +194,16 @@ type searchResult[T any] struct {
 }
 
 func buildSearchResult[T any](results []T, hasMore bool, warnings []string, limit int) (*searchResult[T], *cmdio.ListMeta) {
-	meta := cmdio.AttachListMeta(cmdio.PagedListMeta(len(results), limit, hasMore, 0), os.Args)
+	var safetyCap int
+	if limit <= 0 {
+		// --limit 0 asks for everything, so any truncation here is a bound
+		// gcx did not request — a server-side cap (Mimir) or a stream cut
+		// short (see decodeSearchStream). No larger --limit can retrieve
+		// more, so this is the cap case, not the "ask for more" case: no
+		// continuation, refine filters instead (see PagedListMeta).
+		safetyCap = len(results)
+	}
+	meta := cmdio.AttachListMeta(cmdio.PagedListMeta(len(results), limit, hasMore, safetyCap), os.Args)
 	return &searchResult[T]{Results: results, Warnings: warnings, ListMeta: meta}, meta
 }
 
@@ -523,7 +532,7 @@ func (c *searchMetricNamesTableCodec) Encode(w io.Writer, data any) error {
 	for _, r := range resp.Results {
 		row := []string{r.Name}
 		if *c.includeScore {
-			row = append(row, strconv.FormatFloat(r.Score, 'f', -1, 64))
+			row = append(row, strconv.FormatFloat(r.Score, 'f', 4, 64))
 		}
 		if *c.includeMetadata {
 			row = append(row, r.Type, r.Help, r.Unit)
@@ -563,7 +572,7 @@ func (c *searchValueTableCodec[T]) Encode(w io.Writer, data any) error {
 		value, score := c.row(r)
 		row := []string{value}
 		if *c.includeScore {
-			row = append(row, strconv.FormatFloat(score, 'f', -1, 64))
+			row = append(row, strconv.FormatFloat(score, 'f', 4, 64))
 		}
 		t.Row(row...)
 	}

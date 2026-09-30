@@ -131,13 +131,20 @@ func search[T any](ctx context.Context, c *Client, apiPath string, extra url.Val
 	if resp.StatusCode != http.StatusOK {
 		body, readErr := httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
 		if readErr != nil {
-			return nil, fmt.Errorf("failed to read response: %w", readErr)
+			// The status code is still known even though the body isn't; keep
+			// it — and the auth/availability handling it drives — instead of
+			// discarding it in a generic wrapped error.
+			return nil, queryerror.New("prometheus", operation, resp.StatusCode, readErr.Error(), "").WithAvailability(false, true)
 		}
 		return nil, searchError(operation, resp.StatusCode, body, opts.Limit)
 	}
 
-	results, hasMore, warnings, err := decodeSearchStream[T](resp.Body, httputils.DefaultResponseLimit)
+	results, hasMore, warnings, err := decodeSearchStream[T](ctx, resp.Body, httputils.DefaultResponseLimit, operation)
 	if err != nil {
+		var apiErr *queryerror.APIError
+		if errors.As(err, &apiErr) {
+			return nil, apiErr
+		}
 		return nil, fmt.Errorf("failed to %s: %w", operation, err)
 	}
 	return &SearchResponse[T]{Results: results, HasMore: hasMore, Warnings: warnings}, nil
@@ -202,11 +209,15 @@ type searchStreamFrame[T any] struct {
 // since the response is not a single JSON document, and the body is capped
 // at limit bytes so a huge or misbehaving stream cannot exhaust memory.
 //
-// A stream without a trailer is an error, since the results read so far may
-// be incomplete: it was cut by the cap, or by an interrupted upstream
+// A stream without a trailer — cut by the cap, or by an interrupted upstream
 // connection, which Grafana's datasource proxy forwards as a clean end of
-// stream.
-func decodeSearchStream[T any](body io.Reader, limit int64) ([]T, bool, []string, error) {
+// stream — is not an error: the API's client contract requires tolerating an
+// abrupt EOF without a trailer, so the results read so far are returned,
+// flagged as truncated (hasMore forced true) with a warning explaining why,
+// rather than discarded. ctx cancellation is checked first and reported as
+// such, rather than folding into the same "no trailer" handling: it is the
+// caller aborting, not the server or proxy ending the stream.
+func decodeSearchStream[T any](ctx context.Context, body io.Reader, limit int64, operation string) ([]T, bool, []string, error) {
 	// Read one byte past the cap so hitting it is distinguishable from a
 	// stream that ends exactly at the cap.
 	counter := &countingReader{r: io.LimitReader(body, limit+1)}
@@ -218,21 +229,26 @@ func decodeSearchStream[T any](body io.Reader, limit int64) ([]T, bool, []string
 	for {
 		var frame searchStreamFrame[T]
 		if err := dec.Decode(&frame); err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return nil, false, nil, fmt.Errorf("search cancelled: %w", ctxErr)
+			}
 			if !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
 				return nil, false, nil, fmt.Errorf("failed to parse response: %w", err)
 			}
+			warning := "search stream ended after " + strconv.Itoa(len(results)) + " results without a completion trailer (connection interrupted?); results may be incomplete"
 			if counter.n > limit {
-				size := fmt.Sprintf("%d MiB", limit>>20)
-				return nil, false, nil, fmt.Errorf("search response exceeded the %s limit after %d results; request a smaller limit or narrow the match selectors", size, len(results))
+				warning = fmt.Sprintf("search response exceeded the %d MiB limit after %d results; results may be incomplete — request a smaller limit or narrow the match selectors", limit>>20, len(results))
 			}
-			return nil, false, nil, fmt.Errorf("search stream ended after %d results without a completion trailer (connection interrupted?); refusing to return possibly incomplete results", len(results))
+			return results, true, appendNewWarnings(warnings, []string{warning}), nil
 		}
 
 		warnings = appendNewWarnings(warnings, frame.Warnings)
 
 		if frame.Status != "" {
 			if frame.Status == "error" {
-				return nil, false, nil, fmt.Errorf("%s (%s)", frame.Error, frame.ErrorType)
+				apiErr := queryerror.New("prometheus", operation, http.StatusInternalServerError, frame.Error, frame.ErrorType).WithAvailability(false, true)
+				apiErr.TransportStatus = http.StatusOK
+				return nil, false, nil, apiErr
 			}
 			return results, frame.HasMore, warnings, nil
 		}
