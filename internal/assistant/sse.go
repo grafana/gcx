@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/grafana/gcx/internal/assistant/assistanthttp"
+	"github.com/grafana/gcx/internal/httputils"
 )
 
 // ApprovalHandler handles approval requests during streaming.
@@ -90,7 +90,7 @@ func StreamChatWithApproval(ctx context.Context, baseURL, token, agentID, prompt
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "text/event-stream")
 	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set(assistanthttp.AppSourceHeader, assistanthttp.AppSourceCLI)
+	req.Header.Set(httputils.AppSourceHeader, httputils.AppSourceCLI)
 
 	logger.Debug("Sending A2A request to " + url)
 

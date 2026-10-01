@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/httputils"
 	"k8s.io/client-go/rest"
 )
 
@@ -18,14 +19,6 @@ import (
 // "/api/v2/investigations/{id}/snapshot") so a single client can talk to both
 // the v1 and v2 surfaces.
 const pluginBasePath = "/api/plugins/grafana-assistant-app/resources"
-
-// AppSourceHeader and AppSourceCLI identify gcx as the request origin to the
-// Assistant backend, which records the value as the source of usage events
-// and falls back to "assistant" when unset.
-const (
-	AppSourceHeader = "X-App-Source"
-	AppSourceCLI    = "cli"
-)
 
 // Client is a base HTTP client for the Grafana Assistant plugin API.
 type Client struct {
@@ -59,7 +52,7 @@ func (c *Client) DoRequestWithHeaders(ctx context.Context, method, path string, 
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	req.Header.Set(AppSourceHeader, AppSourceCLI)
+	req.Header.Set(httputils.AppSourceHeader, httputils.AppSourceCLI)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
