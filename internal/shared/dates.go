@@ -12,9 +12,19 @@ import (
 
 var relativeTimeRegex = regexp.MustCompile(`^now(?:([+-])(\d+)([smhdwMy]))?$`)
 
+// numericTimestampPattern matches a bare (optionally signed) integer Unix
+// timestamp, with an optional fractional-seconds component.
+var numericTimestampPattern = regexp.MustCompile(`^(-?\d+)(?:\.(\d+))?$`)
+
 // ParseTime parses a time string that can be either:
 // - RFC3339 format (e.g., "2024-01-15T10:30:00Z").
-// - Unix timestamp (e.g., "1705315800").
+// - A bare Unix timestamp, with digit count deciding the unit: seconds
+// (<=10 digits), milliseconds (11-13), microseconds (14-16), or nanoseconds
+// (17-19) — matching how a value copied from a Drilldown/Explore permalink's
+// startNs/endNs param (a bare nanosecond-epoch integer) or a dashboard URL's
+// from/to param (milliseconds) actually looks. An integer with a
+// fractional-seconds part (e.g. "1705315800.123456789") is always seconds
+// plus that many fractional digits, regardless of length.
 // - Relative time (e.g., "now", "now-1h", "now-30m", "now-7d").
 func ParseTime(s string, now time.Time) (time.Time, error) {
 	if s == "" {
@@ -31,13 +41,66 @@ func ParseTime(s string, now time.Time) (time.Time, error) {
 		return t, nil
 	}
 
-	if ts, err := strconv.ParseFloat(s, 64); err == nil {
-		sec := int64(ts)
-		nsec := int64((ts - float64(sec)) * 1e9)
-		return time.Unix(sec, nsec), nil
+	if numericTimestampPattern.MatchString(s) {
+		return parseNumericTimestamp(s)
 	}
 
 	return time.Time{}, fmt.Errorf("unable to parse time: %s", s)
+}
+
+// parseNumericTimestamp parses a bare Unix timestamp matched by
+// numericTimestampPattern, using exact integer arithmetic throughout —
+// unlike a float64 round trip, this never loses precision on a
+// nanosecond-epoch value (19 significant digits, beyond float64's ~15-17).
+func parseNumericTimestamp(s string) (time.Time, error) {
+	matches := numericTimestampPattern.FindStringSubmatch(s)
+
+	sec, err := strconv.ParseInt(matches[1], 10, 64)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("unable to parse time: %s", s)
+	}
+
+	if matches[2] != "" {
+		nsec, err := fractionToNanos(matches[2])
+		if err != nil {
+			return time.Time{}, fmt.Errorf("unable to parse time: %s", s)
+		}
+		if strings.HasPrefix(matches[1], "-") {
+			nsec = -nsec
+		}
+		return time.Unix(sec, nsec), nil
+	}
+
+	// Decompose into (seconds, nanosecond remainder) in the value's own
+	// unit rather than first scaling to a single nanosecond int64 — a
+	// 10-digit seconds value times 1e9, or a 13-digit milliseconds value
+	// times 1e6, can itself overflow int64 for timestamps a couple
+	// centuries out, even though the final (sec, nsec) pair never would.
+	switch digits := len(strings.TrimPrefix(matches[1], "-")); {
+	case digits <= 10: // seconds
+		return time.Unix(sec, 0), nil
+	case digits <= 13: // milliseconds
+		return time.Unix(sec/1e3, (sec%1e3)*1e6), nil
+	case digits <= 16: // microseconds
+		return time.Unix(sec/1e6, (sec%1e6)*1e3), nil
+	case digits <= 19: // nanoseconds
+		return time.Unix(0, sec), nil
+	default:
+		return time.Time{}, fmt.Errorf("unable to parse time: %s", s)
+	}
+}
+
+// fractionToNanos converts a fractional-seconds digit string (the part
+// after the decimal point) to nanoseconds, padding or truncating to exactly
+// 9 digits — time.Time itself can't represent anything finer.
+func fractionToNanos(digits string) (int64, error) {
+	switch {
+	case len(digits) > 9:
+		digits = digits[:9]
+	case len(digits) < 9:
+		digits += strings.Repeat("0", 9-len(digits))
+	}
+	return strconv.ParseInt(digits, 10, 64)
 }
 
 func parseRelativeTime(s string, now time.Time) (time.Time, error) {

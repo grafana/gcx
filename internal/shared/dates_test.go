@@ -9,6 +9,66 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestParseTime_NumericMagnitudeDetection(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  time.Time
+	}{
+		{name: "seconds (10 digits)", input: "1705315800", want: time.Unix(1705315800, 0)},
+		{name: "milliseconds (13 digits)", input: "1705315800123", want: time.Unix(1705315800, 123*int64(time.Millisecond))},
+		{name: "microseconds (16 digits)", input: "1705315800123456", want: time.Unix(1705315800, 123456*int64(time.Microsecond))},
+		{name: "nanoseconds (19 digits)", input: "1705315800123456789", want: time.Unix(0, 1705315800123456789)},
+		{
+			name:  "fractional seconds with full nanosecond precision",
+			input: "1705315800.123456789",
+			want:  time.Unix(1705315800, 123456789),
+		},
+		{
+			name:  "fractional seconds padded to nanoseconds",
+			input: "1705315800.5",
+			want:  time.Unix(1705315800, 500000000),
+		},
+		{
+			name:  "fractional seconds truncated beyond nanosecond precision",
+			input: "1705315800.1234567891",
+			want:  time.Unix(1705315800, 123456789),
+		},
+		{
+			name:  "negative timestamp before the epoch",
+			input: "-100",
+			want:  time.Unix(-100, 0),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := shared.ParseTime(tt.input, time.Now())
+			require.NoError(t, err)
+			assert.True(t, got.Equal(tt.want), "ParseTime(%q) = %v (UnixNano=%d), want %v (UnixNano=%d)",
+				tt.input, got, got.UnixNano(), tt.want, tt.want.UnixNano())
+		})
+	}
+}
+
+// TestParseTime_NanosecondPrecisionSurvivesFloat64Range pins the actual bug
+// fix: a float64 round trip can't exactly represent a 19-digit nanosecond
+// epoch value (float64 only has ~15-17 significant digits), so the old
+// strconv.ParseFloat-based implementation silently corrupted it.
+func TestParseTime_NanosecondPrecisionSurvivesFloat64Range(t *testing.T) {
+	const input = "1764021019123456789"
+	want := int64(1764021019123456789)
+
+	got, err := shared.ParseTime(input, time.Now())
+	require.NoError(t, err)
+	assert.Equal(t, want, got.UnixNano(), "nanosecond value was not preserved exactly")
+}
+
+func TestParseTime_RejectsTooManyDigits(t *testing.T) {
+	_, err := shared.ParseTime("17050315800123456789123", time.Now())
+	require.Error(t, err)
+}
+
 func TestParseDuration(t *testing.T) {
 	tests := []struct {
 		name     string
