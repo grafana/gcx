@@ -16,6 +16,7 @@ import (
 
 	"github.com/grafana/gcx/cmd/gcx/root"
 	"github.com/grafana/gcx/embed"
+	"github.com/grafana/gcx/internal/host"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -55,12 +56,13 @@ func TestEveryCommandIsSafeEmbedded(t *testing.T) {
 		mu.Lock()
 		reached[r.Header.Get("X-Test-Command")] = true
 		mu.Unlock()
-		if cmd := r.Header.Get("X-Test-Command"); r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions {
-			if !strings.HasSuffix(r.URL.Path, "/query") && !strings.HasSuffix(r.URL.Path, "/search") {
-				mu.Lock()
-				writes[cmd] = append(writes[cmd], r.Method+" "+r.URL.Path)
-				mu.Unlock()
-			}
+		// Anything arriving here that needs more than read access bypassed
+		// the access guard; the classification itself is tested in host.
+		if host.RequiredAccess(r.Method, r.URL.Path) > host.AccessRead {
+			mu.Lock()
+			cmd := r.Header.Get("X-Test-Command")
+			writes[cmd] = append(writes[cmd], r.Method+" "+r.URL.Path)
+			mu.Unlock()
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{}`))
