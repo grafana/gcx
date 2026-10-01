@@ -3,6 +3,7 @@ package resources
 import (
 	"context"
 	"errors"
+	"io"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/internal/config"
@@ -145,6 +146,7 @@ func deleteCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			if len(opts.Path) == 0 {
 				fetchRes, err := FetchResources(ctx, FetchRequest{
 					Config:      cfg,
+					Warn:        cmd.ErrOrStderr(),
 					StopOnError: opts.OnError.StopOnError(),
 				}, args)
 				if err != nil {
@@ -155,7 +157,7 @@ func deleteCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			} else {
 				// Load resources from the filesystem
 				res = *resources.NewResources()
-				if err := loadResourcesFromDirectories(ctx, cfg, &res, opts, sels); err != nil {
+				if err := loadResourcesFromDirectories(ctx, cfg, &res, opts, sels, cmd.ErrOrStderr()); err != nil {
 					return err
 				}
 			}
@@ -215,7 +217,7 @@ func deleteCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	return cmd
 }
 
-func loadResourcesFromDirectories(ctx context.Context, cfg config.NamespacedRESTConfig, res *resources.Resources, opts *deleteOpts, selectors resources.Selectors) error {
+func loadResourcesFromDirectories(ctx context.Context, cfg config.NamespacedRESTConfig, res *resources.Resources, opts *deleteOpts, selectors resources.Selectors, warn io.Writer) error {
 	reg, err := discovery.NewDefaultRegistry(ctx, cfg)
 	if err != nil {
 		return err
@@ -223,12 +225,14 @@ func loadResourcesFromDirectories(ctx context.Context, cfg config.NamespacedREST
 
 	reader := local.FSReader{
 		Decoders:           format.Codecs(),
+		Warn:               warn,
 		MaxConcurrentReads: opts.MaxConcurrent,
 		StopOnError:        opts.OnError.StopOnError(),
 	}
 
 	filters, err := reg.MakeFilters(discovery.MakeFiltersOptions{
 		Selectors: selectors,
+		Warn:      warn,
 	})
 	if err != nil {
 		return err

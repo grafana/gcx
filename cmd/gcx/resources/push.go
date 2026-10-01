@@ -139,6 +139,7 @@ func pushCmd(configOpts *cmdconfig.Options) *cobra.Command {
 
 			filters, err := reg.MakeFilters(discovery.MakeFiltersOptions{
 				Selectors: sels,
+				Warn:      cmd.ErrOrStderr(),
 			})
 			if err != nil {
 				return err
@@ -146,6 +147,7 @@ func pushCmd(configOpts *cmdconfig.Options) *cobra.Command {
 
 			reader := local.FSReader{
 				Decoders:           format.Codecs(),
+				Warn:               cmd.ErrOrStderr(),
 				MaxConcurrentReads: opts.MaxConcurrent,
 				StopOnError:        opts.OnError.StopOnError(),
 			}

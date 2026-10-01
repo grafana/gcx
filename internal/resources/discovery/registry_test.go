@@ -1,10 +1,12 @@
 package discovery_test
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/discovery"
+	"github.com/grafana/gcx/internal/testutils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -296,6 +298,50 @@ func TestRegistry_MakeFilters(t *testing.T) {
 
 			require.NoError(t, err)
 			assert.ElementsMatch(t, test.want, got)
+		})
+	}
+}
+
+func TestRegistry_MakeFilters_GroupAliasWarnings(t *testing.T) {
+	testutils.SetAgentMode(t, false)
+	desc := resources.Descriptor{
+		GroupVersion: schema.GroupVersion{Group: "current.warning-test.app", Version: "v1"},
+		Kind:         "Widget", Plural: "widgets", Singular: "widget",
+	}
+	resources.RegisterGroupAliases(desc.GroupVersionKind(), []string{"legacy.warning-test.app"})
+	reg := discovery.NewStaticRegistry()
+	reg.RegisterAdapter(nil, desc, nil)
+	for _, tt := range []struct {
+		name, selector, warning string
+		silent, wantErr         bool
+	}{
+		{name: "unqualified", selector: "widgets"},
+		{name: "current short", selector: "widgets.current"},
+		{name: "current full", selector: "widgets.v1.current.warning-test.app"},
+		{name: "legacy short", selector: "widgets.legacy", warning: "warn: resource group \"legacy\" is deprecated; use \"current.warning-test.app\" instead\n"},
+		{name: "legacy full", selector: "widgets.v1.legacy.warning-test.app", warning: "warn: resource group \"legacy.warning-test.app\" is deprecated; use \"current.warning-test.app\" instead\n"},
+		{name: "nil writer", selector: "widgets.legacy", silent: true},
+		{name: "unknown version", selector: "widgets.v99.legacy.warning-test.app", wantErr: true},
+		{name: "unknown kind", selector: "others.legacy", wantErr: true},
+		{name: "unknown group", selector: "widgets.other", wantErr: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			selectors, err := resources.ParseSelectors([]string{tt.selector + "/one", tt.selector + "/two"})
+			require.NoError(t, err)
+			var warnings bytes.Buffer
+			opts := discovery.MakeFiltersOptions{Selectors: selectors}
+			if !tt.silent {
+				opts.Warn = &warnings
+			}
+			filters, err := reg.MakeFilters(opts)
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				require.Len(t, filters, 2)
+				assert.Equal(t, desc, filters[0].Descriptor)
+			}
+			assert.Equal(t, tt.warning, warnings.String())
 		})
 	}
 }

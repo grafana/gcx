@@ -18,14 +18,15 @@ type RegistryAccess interface {
 // Registration holds a pre-resolved adapter factory with its descriptor and aliases.
 // Populated lazily by calling the factory once to extract descriptor metadata.
 type Registration struct {
-	Factory     Factory
-	Descriptor  resources.Descriptor
-	Aliases     []string
-	GVK         schema.GroupVersionKind
-	Schema      json.RawMessage                // Required, non-nil JSON Schema for this resource type (per CONSTITUTION.md).
-	Example     json.RawMessage                // Example manifest (YAML-compatible JSON, per CONSTITUTION.md). MAY be nil for read-only resources.
-	Operations  map[string]agent.OperationHint // Agent metadata: per-operation token cost and hint, keyed by "get", "push", "pull", "delete".
-	URLTemplate string                         // URL path template for deep links (e.g., "/a/grafana-slo-app/slo/{name}"). Empty means no deep link.
+	Factory      Factory
+	Descriptor   resources.Descriptor
+	Aliases      []string
+	GroupAliases []string // Compatibility groups, not additional resource types.
+	GVK          schema.GroupVersionKind
+	Schema       json.RawMessage                // Required, non-nil JSON Schema for this resource type (per CONSTITUTION.md).
+	Example      json.RawMessage                // Example manifest (YAML-compatible JSON, per CONSTITUTION.md). MAY be nil for read-only resources.
+	Operations   map[string]agent.OperationHint // Agent metadata: per-operation token cost and hint, keyed by "get", "push", "pull", "delete".
+	URLTemplate  string                         // URL path template for deep links (e.g., "/a/grafana-slo-app/slo/{name}"). Empty means no deep link.
 }
 
 // registrations holds all adapter registrations collected from providers.
@@ -38,6 +39,7 @@ var registrations []Registration
 // Provider.TypedRegistrations() — provider code must not call it directly
 // (CONSTITUTION.md § Architecture Invariants, unified provider registration).
 func Register(reg Registration) {
+	resources.RegisterGroupAliases(reg.Descriptor.GroupVersionKind(), reg.GroupAliases)
 	registrations = append(registrations, reg)
 }
 

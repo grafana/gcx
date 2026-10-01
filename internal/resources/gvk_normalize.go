@@ -1,6 +1,7 @@
 package resources
 
 import (
+	"strings"
 	"sync"
 
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -21,7 +22,31 @@ type GVKNormalizer func(schema.GroupVersionKind) (schema.GroupVersionKind, bool)
 var (
 	gvkNormalizerMu sync.RWMutex
 	gvkNormalizers  []GVKNormalizer
+	groupAliases    = make(map[schema.GroupVersionKind]schema.GroupVersionKind)
 )
+
+// RegisterGroupAliases keeps compatibility scoped to an exact kind and version.
+func RegisterGroupAliases(canonical schema.GroupVersionKind, groups []string) {
+	gvkNormalizerMu.Lock()
+	defer gvkNormalizerMu.Unlock()
+	for _, group := range groups {
+		alias := canonical
+		alias.Group = group
+		groupAliases[alias] = canonical
+	}
+}
+
+// MatchesGroupAlias accepts full groups and their first DNS label in selectors.
+func MatchesGroupAlias(canonical schema.GroupVersionKind, group string) bool {
+	gvkNormalizerMu.RLock()
+	defer gvkNormalizerMu.RUnlock()
+	for alias, target := range groupAliases {
+		if target == canonical && (group == alias.Group || group == strings.SplitN(alias.Group, ".", 2)[0]) {
+			return true
+		}
+	}
+	return false
+}
 
 // RegisterGVKNormalizer registers a normalizer. Providers call this during init
 // to make manifests with alternate API groups route to their canonical adapter.
@@ -31,10 +56,13 @@ func RegisterGVKNormalizer(fn GVKNormalizer) {
 	gvkNormalizers = append(gvkNormalizers, fn)
 }
 
-// NormalizeGVK applies the registered normalizers in registration order and
-// returns the first canonical GVK produced. When no normalizer applies, the
-// input GVK is returned unchanged.
+// NormalizeGVK resolves exact group aliases first, then applies normalizers in
+// registration order and returns the first matching GVK. If neither applies,
+// the input GVK is returned unchanged.
 func NormalizeGVK(gvk schema.GroupVersionKind) schema.GroupVersionKind {
+	if target := normalizeGroupAlias(gvk); target != gvk {
+		return target
+	}
 	gvkNormalizerMu.RLock()
 	defer gvkNormalizerMu.RUnlock()
 	for _, fn := range gvkNormalizers {
@@ -45,9 +73,19 @@ func NormalizeGVK(gvk schema.GroupVersionKind) schema.GroupVersionKind {
 	return gvk
 }
 
+func normalizeGroupAlias(gvk schema.GroupVersionKind) schema.GroupVersionKind {
+	gvkNormalizerMu.RLock()
+	defer gvkNormalizerMu.RUnlock()
+	if target, ok := groupAliases[gvk]; ok {
+		return target
+	}
+	return gvk
+}
+
 // resetGVKNormalizers clears the registry (for testing only).
 func resetGVKNormalizers() {
 	gvkNormalizerMu.Lock()
 	defer gvkNormalizerMu.Unlock()
 	gvkNormalizers = nil
+	clear(groupAliases)
 }
