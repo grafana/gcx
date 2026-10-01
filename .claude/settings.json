@@ -28,7 +28,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "go mod download"
+            "command": "mise exec -- go mod download"
           }
         ]
       }

@@ -106,7 +106,7 @@ Dumps the full request and response bodies (via `httputil.DumpRequestOut` /
 `httputil.DumpResponse`) at Debug level. Requires `-vvv` to be visible.
 
 ```
-gcx --insecure-log-http-payload -vvv slo list
+gcx --insecure-log-http-payload -vvv slo definitions list
 ```
 
 Each dump carries a label, so you can find it in the log: `http request dump`

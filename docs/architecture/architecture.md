@@ -353,12 +353,17 @@ The codebase has four distinct communication paths to Grafana:
 
 ### Auth Flow
 
-API token takes priority over basic auth in both paths:
+All Grafana client paths share the validated auth selection:
 
 ```
-APIToken set?  --> rest.Config.BearerToken (dynamic) / TransportConfig.APIKey (OpenAPI)
-User set?      --> rest.Config.Username+Password (dynamic) / TransportConfig.BasicAuth (OpenAPI)
+Resolved context -> validated auth method + selected TLS view -> HTTP transport
 ```
+
+Reuse `Context.ToRESTConfig`; clients that cannot do so must use
+`EffectiveGrafanaAuthMethod` and `EffectiveGrafanaTLS`. Never choose credentials
+by inspecting populated fields. [auth-system.md § Grafana auth selection](auth-system.md#grafana-auth-selection)
+owns explicit-method behavior, the complete `GRAFANA_TOKEN` invocation override,
+and legacy inference.
 
 ### Error Translation
 
@@ -379,7 +384,7 @@ gcx
   +-- resources          (--config, --context as persistent flags)
   |     +-- get, list-types, list-examples, pull, push, delete, edit, validate
   +-- datasources        (--config, --context as persistent flags)
-  |     +-- get, list, prometheus, loki, pyroscope, tempo, generic
+  |     +-- get, list, query, prometheus, loki, pyroscope, tempo
   |     (each kind subgroup exposes its own `query` subcommand)
   +-- providers
   |     (single command: list registered providers)
@@ -434,11 +439,11 @@ time, ensuring flags are already parsed.
 | Operation | Mechanism | Limit | Configurable? |
 |-----------|-----------|-------|---------------|
 | File reads (FSReader) | errgroup + SetLimit | MaxConcurrentReads | Yes (--max-concurrent) |
-| Pull API fetches | errgroup (one per filter) | = number of filters | No |
+| Pull API fetches | errgroup + SetLimit | 10 by default | Constructor option (`WithMaxConcurrentListRequests`) |
 | Push (folders) | ForEachConcurrently per level | MaxConcurrency | Yes (--max-concurrent) |
 | Push (non-folders) | ForEachConcurrently | MaxConcurrency | Yes (--max-concurrent) |
 | Delete | ForEachConcurrently | MaxConcurrency | Yes (--max-concurrent) |
-| `NamespacedClient.GetMultiple` | errgroup (no SetLimit) | Unbounded (QPS/Burst only) | No |
+| `NamespacedClient.GetMultiple` | errgroup + SetLimit | 10 by default | Constructor option (`WithMaxConcurrentGetRequests`) |
 | `ResourceClientRouter.GetMultiple` (adapter path) | errgroup + SetLimit(10) | 10 | No |
 | HTTP rate limiting | k8s token bucket | QPS=50, Burst=100 | No (hardcoded) |
 
@@ -545,10 +550,6 @@ and checked for drift in CI.
 6. **Hardcoded rate limits.** QPS=50 and Burst=100 are not configurable. This
    could be limiting for large deployments or too aggressive for rate-limited
    environments.
-
-7. **GetMultiple concurrency unbounded.** `NamespacedClient.GetMultiple` runs all
-   Gets concurrently without `SetLimit`. For large resource lists, this could
-   overwhelm the HTTP transport despite QPS limiting.
 
 8. **CI drift check incomplete.** Only CLI reference drift is checked in CI; env-var
    and config reference drift checks exist in `mise.toml` but may not be wired

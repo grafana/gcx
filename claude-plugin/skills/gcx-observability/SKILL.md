@@ -21,12 +21,18 @@ Work interactively - explain each phase, generate YAML from `gcx resources list-
 
 **Command discovery:** Before executing any action in a phase, use `gcx <group> --help` to discover the exact commands and flags available. Use `gcx commands --flat -o json` to see all command groups. Never assume a command's exact syntax - always discover it first. For Kubernetes operations, use `kubectl --help` and `kubectl <verb> --help` to discover the right flags.
 
-**Parallelism rules:**
-- Use `TaskCreate` to register every unit of work before starting anything, so the user can see progress.
-- Use the `Agent` tool to run independent operations concurrently. Launch multiple agents in a single message whenever their inputs don't depend on each other.
-- Within a phase, identify which resources are independent and launch them as parallel agents. Only serialize when there is a true dependency (e.g. a contact point must exist before a notification policy references it).
-- Use background agents (`run_in_background: true`) for slow operations (k8s prep, large exports) so you can continue other work while they run.
-- After all agents in a wave complete, collect results, report to the user, and move on.
+**Progress and parallel work:**
+- Use the host's progress and worker tools when available. Otherwise keep a short
+  checklist and perform the work sequentially, respecting the same dependencies.
+- Record the selected phases before execution. Within a phase, parallelize only
+  independent operations; a contact point must exist before a policy references it.
+- Use background workers for slow operations only if the host supports them.
+  Collect and verify their results before starting dependent work.
+- The references use “Agent A/B” for independent work units and “mark task” for
+  progress updates. These are roles, not required tool APIs. In Claude Code,
+  `Agent` and `TaskCreate`/`TaskUpdate`/`TaskList` can implement them.
+- For unresolved choices, use the host's supported question tool or ask in prose;
+  `AskUserQuestion` is a Claude Code option, not a prerequisite.
 
 ---
 
@@ -56,7 +62,7 @@ Grafana Cloud Observability Setup
 Enter phases to run (e.g. "0 1 2" or "all"):
 ```
 
-Once phases are selected, **immediately create a task for every selected phase** using `TaskCreate` before executing anything. This gives the user a live progress view.
+Once phases are selected, record them in the host progress tool or a short checklist before execution.
 
 ---
 
@@ -69,8 +75,11 @@ Phases have dependencies:
 - Phase 3 should complete before Phase 4 (signals must flow before SLOs are meaningful).
 - Phase 4 must complete before Phase 7 (IRM wires into alerting contact points).
 - Phases 5, 6, 8, 9 are independent of each other and of Phase 7 - run them in parallel after Phase 3.
-- Phase 10 must be last (exports everything created).
-- Phase 11 must be last (validates everything).
+- Phase 11 runs after the selected setup phases: review, complete any authorized
+  remediation, and verify the affected resources.
+- Phase 10 runs after Phase 11 when both are selected: export the final state and
+  verify the export. If review is not selected, export follows all selected
+  setup phases. A later resource change requires refreshing the export.
 
 **Verification principle:** After every create operation, verify the resource exists and is healthy using list or get. Do not mark a phase completed until all resources pass verification. If a resource fails verification, debug before moving on.
 
@@ -81,12 +90,13 @@ Phases have dependencies:
 ```
 Wave A (parallel): Phases 4, 5, 6, 8, 9
 Wave B (after Wave A): Phase 7  (needs Phase 4 contact points)
-Wave C (after Wave B): Phases 10, 11  (parallel with each other)
+Wave C (after Wave B): Phase 11  (review, remediation, verification)
+Wave D (after Wave C): Phase 10  (export, then verify export)
 ```
 
-Launch Wave A agents in a single message. Do not wait for one to finish before starting another.
+Run the independent Wave A work concurrently when workers are available; otherwise execute it sequentially.
 
-Within each phase, also parallelize at the resource level (see the per-phase instructions in references/).
+The per-phase references identify additional independent resource work. Apply the same host-tool fallback there.
 
 ---
 
@@ -106,7 +116,7 @@ The detailed per-phase instructions (pre-checks, commands, parallel agent breakd
 
 After all tasks are completed:
 
-1. Call `TaskList` to confirm all tasks are marked completed.
+1. Check the host progress view or checklist. Report completed work and any blocked or unverified phases accurately.
 2. Show a summary table:
 
 ```
