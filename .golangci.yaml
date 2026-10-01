@@ -44,6 +44,58 @@ linters:
           deny:
             - pkg: "github.com/davecgh/go-spew"
               desc: debug statements should be removed
+        host_bypassing_libs:
+          # otel-checker reads env and files, runs build tools and prints to
+          # os.Stdout itself; only the check command may call it, through
+          # runWith's host.CaptureStdout.
+          files:
+            - "$all"
+            - "!**/cmd/gcx/instrumentation/check/command.go"
+          deny:
+            - pkg: "github.com/grafana/otel-checker/checks$"
+              desc: otel-checker touches the host directly; call it only via the instrumentation check command
+    forbidigo:
+      analyze-types: true
+      forbid:
+        # forbidigo's default rule; listing any rule replaces the defaults.
+        - pattern: ^(fmt\.Print(|f|ln)|print|println)$
+        # All host access goes through internal/host so that gcx can run
+        # embedded in another process (e.g. a multi-tenant MCP server) without
+        # touching that process's filesystem, environment, stdio, argv,
+        # subprocesses, listeners or signals. See internal/host.
+        - pattern: ^os\.(Getenv|LookupEnv|Environ|Setenv|Unsetenv|Args|Stdin|Stdout|Stderr|Pipe|Hostname|Getwd|Chdir|UserHomeDir|UserConfigDir|UserCacheDir|TempDir)$
+          msg: use the context-aware equivalent in internal/host
+        - pattern: ^os\.(ReadFile|WriteFile|Open|OpenFile|Create|CreateTemp|MkdirTemp|Mkdir|MkdirAll|Remove|RemoveAll|Rename|Link|Symlink|Chmod|Chown|Chtimes|Truncate|Stat|Lstat|ReadDir|DirFS)$
+          msg: use the context-aware equivalent in internal/host
+        - pattern: ^filepath\.(Walk|WalkDir|Glob|EvalSymlinks|Abs)$
+          msg: use the context-aware equivalent in internal/host
+        - pattern: ^(ioutil\..*|user\.(Current|Lookup|LookupId))$
+          msg: use the context-aware equivalent in internal/host
+        - pattern: ^exec\.(Command|CommandContext|LookPath)$
+          msg: use host.Command / host.LookPath
+        - pattern: ^net\.(Listen|ListenTCP|ListenUDP|ListenUnix|ListenPacket|ListenConfig)$
+          msg: use host.Listen
+        - pattern: ^(http\.ListenAndServe(TLS)?|http\.Server\.ListenAndServe(TLS)?)$
+          msg: use host.Listen and http.Server.Serve
+        - pattern: ^(os\.(StartProcess|FindProcess|Chdir)|syscall\.(Exec|ForkExec|StartProcess|Kill)|unix\.(Renameat|Renameat2|RenameatxNp|Unlinkat|Openat|Mkdirat|Symlinkat|Linkat))$
+          msg: use the context-aware equivalent in internal/host
+        - pattern: ^windows\.(MoveFile|MoveFileEx|DeleteFile|CreateFile|CreateDirectory|RemoveDirectory)$
+          msg: use the context-aware equivalent in internal/host
+        - pattern: ^signal\.(Notify|NotifyContext|Ignore|Reset)$
+          msg: use host.NotifyContext
+        - pattern: ^os\.Exit$
+          msg: return an error; only cmd/gcx/main.go may exit the process
+        # Third-party libraries that touch the host on their own.
+        - pattern: ^keyring\.(Get|Set|Delete|DeleteAll)$
+          pkg: ^github\.com/zalando/go-keyring$
+          msg: use host.OpenKeyring
+        - pattern: ^fsnotify\.(NewWatcher|NewBufferedWatcher)$
+          pkg: ^github\.com/fsnotify/fsnotify$
+          msg: use host.NewWatcher
+        - pattern: ^disk\.(NewCachedDiscoveryClientForConfig|NewCachedDiscoveryClient)$
+          pkg: ^k8s\.io/client-go/discovery/cached/disk$
+          msg: use host.NewCachedDiscoveryClientForConfig
+
     gomoddirectives:
       replace-allow-list:
         - github.com/hashicorp/memberlist
@@ -69,6 +121,13 @@ linters:
       - linters: [gosec]
         text: "G115"
         path: "(terminal|graph)/.*\\.go$"
+      # internal/host is the one place allowed to touch the host directly;
+      # tests, test helpers and build scripts run as their own processes.
+      - linters: [forbidigo]
+        path: "^internal/host/|_test\\.go$|^internal/testutils/|^scripts/"
+      - linters: [forbidigo]
+        path: "^cmd/gcx/main\\.go$"
+        text: "os\\.Exit"
       # Build scripts: parser.ParseDir works fine; go/packages is overkill here.
       - linters: [staticcheck]
         text: "SA1019.*ParseDir"
