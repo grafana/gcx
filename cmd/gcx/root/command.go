@@ -150,6 +150,18 @@ func configureProcessOutput(ctx context.Context, cmd *cobra.Command, noColors, n
 	}
 }
 
+// invocationStdout writes to the stdout of the invocation running cmd: the
+// process stdout for the CLI, the sandbox's for an embedded run.
+type invocationStdout struct{ cmd *cobra.Command }
+
+func (w invocationStdout) Write(p []byte) (int, error) {
+	ctx := w.cmd.Context()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return host.Stdout(ctx).Write(p)
+}
+
 // renamedFlag is a pflag.Value that errors immediately when set, directing users
 // to use the new flag name. Used to give a better error than "unknown flag".
 type renamedFlag struct{ newName string }
@@ -315,7 +327,12 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	// traversing the command tree before ExecuteContext() sees the same shape
 	// that Cobra will execute.
 	rootCmd.InitDefaultHelpCmd()
+	// Cobra's completion commands capture OutOrStdout() here, at
+	// construction, so give them a writer that resolves stdout per
+	// invocation instead of the process's os.Stdout.
+	rootCmd.SetOut(invocationStdout{rootCmd})
 	rootCmd.InitDefaultCompletionCmd()
+	rootCmd.SetOut(nil)
 
 	// Apply centralized agent annotations (token_cost, llm_hint) to the
 	// full command tree. Must run after all commands are registered.
