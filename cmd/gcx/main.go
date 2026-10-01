@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/agentlog"
 	"github.com/grafana/gcx/internal/gcxerrors"
+	"github.com/grafana/gcx/internal/terminal"
 	appversion "github.com/grafana/gcx/internal/version"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -220,11 +221,16 @@ func reportError(err error, boolFlags map[string]struct{}, subCmds map[string]bo
 
 	// A command that has already written its complete result document —
 	// including its error content — signals it with EmittedError. Honor the
-	// carried exit code and write nothing more: a second document on stdout
-	// would corrupt the exactly-one-JSON-value contract machine consumers
-	// rely on, and a stderr rendering would duplicate the in-band error.
+	// carried exit code and write no second document: it would corrupt the
+	// exactly-one-JSON-value contract machine consumers rely on. Only the
+	// one-line advisory notice may follow, on stderr (see writeErrorNotice).
 	var emitted *gcxerrors.EmittedError
 	if errors.As(err, &emitted) {
+		if emitted.Cause != nil && (agent.IsAgentMode() || root.IsJSONFlagActive()) {
+			writeErrorNotice(func() error {
+				return gcxerrors.WriteNotice(os.Stderr, emitted.Cause.Error(), "", nil, emitted.Code)
+			})
+		}
 		if agent.IsAgentMode() && agentlog.IsEnabled() {
 			_ = agentlog.Append(agentlog.Entry{
 				Timestamp: time.Now(),
@@ -264,6 +270,8 @@ func reportError(err error, boolFlags map[string]struct{}, subCmds map[string]bo
 		// stderr error is noise for agents and scripts.
 		if writeErr := detailedErr.WriteJSON(os.Stdout, exitCode); writeErr != nil {
 			fmt.Fprintln(os.Stderr, detailedErr.Error())
+		} else {
+			writeErrorNotice(func() error { return detailedErr.WriteNotice(os.Stderr, exitCode) })
 		}
 	} else {
 		// Human consumers get the formatted error on stderr.
@@ -271,6 +279,21 @@ func reportError(err error, boolFlags map[string]struct{}, subCmds map[string]bo
 	}
 
 	return exitCode
+}
+
+// stdoutIsTerminal is replaced in tests.
+var stdoutIsTerminal = terminal.StdoutIsTerminal //nolint:gochecknoglobals
+
+// writeErrorNotice copies an in-band error to stderr when stdout is not a
+// terminal. A pipeline such as `gcx ... | jq '.data'` consumes the stdout error
+// document and reports the filter's exit status, so without the notice the
+// caller sees only `null` and may read a rejected request as an empty result.
+// On a terminal the stdout document is already visible.
+func writeErrorNotice(write func() error) {
+	if stdoutIsTerminal() {
+		return
+	}
+	_ = write()
 }
 
 // collectBoolFlags walks the full command tree and returns a set of all boolean
