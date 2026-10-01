@@ -67,7 +67,7 @@ Prefer table-driven tests. See existing `_test.go` files for patterns.
 ```
 cmd/gcx/
   root/         CLI root (logging, global flags)
-  login/        Unified login command (token + OAuth PKCE, interactive prompts)
+  login/        Unified login command (token + OAuth PKCE + Basic auth, interactive prompts)
   config/       Config management (set, use-context, view, check)
   resources/    Resource commands (get, list-types, list-examples, push, pull, delete, edit, validate)
   datasources/  Datasource commands (list, get, query, per-type subcommands via DatasourceProvider)

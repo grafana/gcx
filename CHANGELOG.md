@@ -1,5 +1,6 @@
 ## Unreleased
 
+- Add experimental Prometheus/Mimir search API support: `gcx datasources prometheus search-metric-names/search-label-names/search-label-values` and `gcx metrics search metric-names/label-names/label-values` (#1374)
 - Label the `--insecure-log-http-payload` dumps `http request dump` and `http response dump`, so you can find them in the debug log. A wire dump holds no word that identifies it, so a search for "body" never matched.
 - Show the OAuth bearer token in the `--insecure-log-http-payload` dump. The dump is now the innermost transport layer, so it shows every header that reaches the wire. Before this change the dump ran before the OAuth transport added the header, and the flag help promised the token. One consequence: the dump now also shows the OAuth token refresh exchange, which carries the refresh token and the rotated token pair.
 - Dump an outgoing request with `httputil.DumpRequestOut`, so `Content-Length` and `Accept-Encoding` appear.

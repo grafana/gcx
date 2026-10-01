@@ -923,6 +923,36 @@ func isEmittedError(err error) bool {
 }
 
 func convertLoginValidationErrors(err error) (*gcxerrors.DetailedError, bool) {
+	var basicErr *login.BasicAuthCheckError
+	if errors.As(err, &basicErr) {
+		detail := &gcxerrors.DetailedError{
+			Parent:      err,
+			Summary:     "API error",
+			Details:     basicErr.Error(),
+			Suggestions: []string{"Check the Grafana server URL and the response from /api/user"},
+		}
+		switch basicErr.Status {
+		case http.StatusUnauthorized:
+			detail.Summary = "Authentication failed"
+			detail.ExitCode = new(gcxerrors.ExitAuthFailure)
+			detail.Suggestions = []string{"Check the Grafana username and password, and confirm Basic authentication is enabled"}
+		case http.StatusForbidden:
+			detail.Summary = "Authorization failed"
+			detail.ExitCode = new(gcxerrors.ExitAuthFailure)
+			detail.Suggestions = []string{"Check that the user and any proxy allow access to the Grafana /api/user endpoint"}
+		case 0:
+			if basicErr.Cause == nil {
+				detail.Summary = "Authentication failed"
+				detail.ExitCode = new(gcxerrors.ExitAuthFailure)
+				detail.Suggestions = []string{"Check the Grafana username and password, and confirm Basic authentication is enabled and anonymous access is not answering for the user"}
+				break
+			}
+			detail.Summary = "Network error"
+			detail.Suggestions = []string{"Check network/proxy access and TLS settings for the Grafana server"}
+		}
+		return detail, true
+	}
+
 	var gcomErr *login.GCOMStackError
 	if errors.As(err, &gcomErr) {
 		return convertGCOMStackError(gcomErr), true

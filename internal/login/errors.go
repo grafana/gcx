@@ -57,3 +57,22 @@ func (e *GCOMStackError) Error() string {
 }
 
 func (e *GCOMStackError) Unwrap() error { return e.Cause }
+
+// BasicAuthCheckError prevents failed credential verification from being saved.
+// It deliberately omits the response body, which may contain secrets.
+type BasicAuthCheckError struct {
+	Status int
+	Cause  error
+}
+
+func (e *BasicAuthCheckError) Unwrap() error { return e.Cause }
+
+func (e *BasicAuthCheckError) Error() string {
+	if e.Cause != nil {
+		return fmt.Sprintf("basic authentication verification failed: %s", e.Cause)
+	}
+	if e.Status != 0 {
+		return fmt.Sprintf("basic authentication verification failed: /api/user returned HTTP %d", e.Status)
+	}
+	return "basic authentication verification failed: could not retrieve the signed-in user"
+}
