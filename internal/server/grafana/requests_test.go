@@ -4,8 +4,9 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/grafana/gcx/internal/config"
 	servergrafana "github.com/grafana/gcx/internal/server/grafana"
@@ -18,6 +19,7 @@ func TestAuthenticateAndProxyHandlerUsesOnlySelectedAuth(t *testing.T) {
 		name              string
 		grafana           config.GrafanaConfig
 		wantAuthorization string
+		wantRequestURI    string
 	}{
 		{
 			name: "token ignores stale Basic credentials",
@@ -28,6 +30,7 @@ func TestAuthenticateAndProxyHandlerUsesOnlySelectedAuth(t *testing.T) {
 				Password:   "stale-password",
 			},
 			wantAuthorization: "Bearer selected-token",
+			wantRequestURI:    "/api/example?panel=1",
 		},
 		{
 			name: "Basic ignores stale token",
@@ -38,6 +41,20 @@ func TestAuthenticateAndProxyHandlerUsesOnlySelectedAuth(t *testing.T) {
 				Password:   "selected-password",
 			},
 			wantAuthorization: "Basic c2VsZWN0ZWQtdXNlcjpzZWxlY3RlZC1wYXNzd29yZA==",
+			wantRequestURI:    "/api/example?panel=1",
+		},
+		{
+			name: "OAuth proxies through the proxy endpoint",
+			grafana: config.GrafanaConfig{
+				AuthMethod:          "oauth",
+				APIToken:            "stale-token",
+				OAuthToken:          "oauth-access",
+				OAuthTokenExpiresAt: time.Now().Add(time.Hour).Format(time.RFC3339),
+			},
+			wantAuthorization: "Bearer oauth-access",
+			// OAuth rewrites Host to the proxy endpoint, and the proxy path
+			// prefix must survive into the target URL.
+			wantRequestURI: "/api/cli/v1/proxy/api/example?panel=1",
 		},
 	}
 
@@ -56,9 +73,14 @@ func TestAuthenticateAndProxyHandlerUsesOnlySelectedAuth(t *testing.T) {
 
 			grafanaCfg := tc.grafana
 			grafanaCfg.Server = upstream.URL
+			grafanaCfg.ProxyEndpoint = upstream.URL
 			grafanaCfg.StackID = 12345
-			ctx := &config.Context{Name: "selected", Grafana: &grafanaCfg}
-			handler := servergrafana.AuthenticateAndProxyHandler(ctx)
+			cfgCtx := &config.Context{Name: "selected", Grafana: &grafanaCfg}
+			restCfg, err := cfgCtx.ToRESTConfig(context.Background())
+			if err != nil {
+				t.Fatalf("ToRESTConfig() error = %v", err)
+			}
+			handler := servergrafana.AuthenticateAndProxyHandler(restCfg)
 
 			req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/example?panel=1", nil)
 			req.Header.Set("Authorization", "Bearer browser-supplied")
@@ -71,67 +93,54 @@ func TestAuthenticateAndProxyHandlerUsesOnlySelectedAuth(t *testing.T) {
 			if gotAuthorization != tc.wantAuthorization {
 				t.Errorf("Authorization = %q, want %q", gotAuthorization, tc.wantAuthorization)
 			}
-			if gotRequestURI != "/api/example?panel=1" {
-				t.Errorf("request URI = %q, want query and path preserved", gotRequestURI)
+			if gotRequestURI != tc.wantRequestURI {
+				t.Errorf("request URI = %q, want %q", gotRequestURI, tc.wantRequestURI)
 			}
 		})
 	}
 }
 
-func TestAuthenticateAndProxyHandlerRejectsUnsupportedAuthBeforeNetwork(t *testing.T) {
+// Concurrent proxy requests must share one HTTP client. Building it per request
+// re-runs the REST config's WrapTransport, which mutates the shared OAuth
+// RefreshTransport and races under -race.
+func TestAuthenticateAndProxyHandlerServesConcurrentOAuthRequests(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name        string
-		grafana     config.GrafanaConfig
-		wantMessage string
-	}{
-		{
-			name: "partial token",
-			grafana: config.GrafanaConfig{
-				AuthMethod: "token",
-			},
-			wantMessage: "requires a non-empty Grafana service-account token",
-		},
-		{
-			name: "OAuth without persistence wiring",
-			grafana: config.GrafanaConfig{
-				AuthMethod:        "oauth",
-				OAuthToken:        "oauth-access",
-				OAuthRefreshToken: "oauth-refresh",
-			},
-			wantMessage: "OAuth authentication is not supported by `gcx dev serve`",
-		},
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("proxied"))
+	}))
+	t.Cleanup(upstream.Close)
+
+	cfgCtx := &config.Context{Name: "selected", Grafana: &config.GrafanaConfig{
+		AuthMethod:          "oauth",
+		OAuthToken:          "oauth-access",
+		OAuthTokenExpiresAt: time.Now().Add(time.Hour).Format(time.RFC3339),
+		Server:              upstream.URL,
+		ProxyEndpoint:       upstream.URL,
+		StackID:             12345,
+	}}
+	restCfg, err := cfgCtx.ToRESTConfig(context.Background())
+	if err != nil {
+		t.Fatalf("ToRESTConfig() error = %v", err)
 	}
+	handler := servergrafana.AuthenticateAndProxyHandler(restCfg)
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			requests := 0
-			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-				requests++
-				w.WriteHeader(http.StatusOK)
-			}))
-			t.Cleanup(upstream.Close)
-
-			grafanaCfg := tc.grafana
-			grafanaCfg.Server = upstream.URL
-			grafanaCfg.ProxyEndpoint = upstream.URL
-			grafanaCfg.StackID = 12345
-			handler := servergrafana.AuthenticateAndProxyHandler(&config.Context{Name: "selected", Grafana: &grafanaCfg})
+	var wg sync.WaitGroup
+	codes := make([]int, 16)
+	for i := range codes {
+		wg.Go(func() {
+			req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/example", nil)
 			response := httptest.NewRecorder()
-			handler.ServeHTTP(response, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/example", nil))
-
-			if response.Code != http.StatusBadRequest {
-				t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusBadRequest, response.Body.String())
-			}
-			if requests != 0 {
-				t.Fatalf("upstream requests = %d, want 0", requests)
-			}
-			if !strings.Contains(response.Body.String(), tc.wantMessage) {
-				t.Errorf("body %q does not contain %q", response.Body.String(), tc.wantMessage)
-			}
+			handler.ServeHTTP(response, req)
+			codes[i] = response.Code
 		})
+	}
+	wg.Wait()
+
+	for i, code := range codes {
+		if code != http.StatusOK {
+			t.Errorf("request %d: status = %d, want %d", i, code, http.StatusOK)
+		}
 	}
 }
