@@ -5,16 +5,21 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/gcx/internal/host"
 	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/retry"
 )
 
 func TestNewDefaultClient_HasRetryAndLoggingTransport(t *testing.T) {
 	client := httputils.NewDefaultClient(context.Background())
-	// Outermost layer is UserAgentTransport.
-	uaRT, ok := client.Transport.(*httputils.UserAgentTransport)
+	// Outermost layer is the sandbox access guard, then UserAgentTransport.
+	guard, ok := client.Transport.(*host.GuardedTransport)
 	if !ok {
-		t.Fatalf("expected outermost Transport to be *httputils.UserAgentTransport, got %T", client.Transport)
+		t.Fatalf("expected outermost Transport to be *host.GuardedTransport, got %T", client.Transport)
+	}
+	uaRT, ok := guard.Base.(*httputils.UserAgentTransport)
+	if !ok {
+		t.Fatalf("expected GuardedTransport.Base to be *httputils.UserAgentTransport, got %T", guard.Base)
 	}
 	// Next layer is retry.Transport.
 	retryRT, ok := uaRT.Base.(*retry.Transport)
@@ -30,10 +35,14 @@ func TestNewDefaultClient_HasRetryAndLoggingTransport(t *testing.T) {
 func TestNewDefaultClient_WithPayloadLogging(t *testing.T) {
 	ctx := httputils.WithPayloadLogging(context.Background(), true)
 	client := httputils.NewDefaultClient(ctx)
-	// Outermost layer is UserAgentTransport.
-	uaRT, ok := client.Transport.(*httputils.UserAgentTransport)
+	// Outermost layer is the sandbox access guard, then UserAgentTransport.
+	guard, ok := client.Transport.(*host.GuardedTransport)
 	if !ok {
-		t.Fatalf("expected outermost Transport to be *httputils.UserAgentTransport, got %T", client.Transport)
+		t.Fatalf("expected outermost Transport to be *host.GuardedTransport, got %T", client.Transport)
+	}
+	uaRT, ok := guard.Base.(*httputils.UserAgentTransport)
+	if !ok {
+		t.Fatalf("expected GuardedTransport.Base to be *httputils.UserAgentTransport, got %T", guard.Base)
 	}
 	// Next layer is retry.Transport.
 	retryRT, ok := uaRT.Base.(*retry.Transport)
@@ -56,10 +65,14 @@ func TestNewClient_CustomMiddleware(t *testing.T) {
 	client := httputils.NewClient(httputils.ClientOpts{
 		Middlewares: []httputils.Middleware{httputils.RequestResponseLoggingMiddleware},
 	})
-	// Outermost layer is UserAgentTransport.
-	uaRT, ok := client.Transport.(*httputils.UserAgentTransport)
+	// Outermost layer is the sandbox access guard, then UserAgentTransport.
+	guard, ok := client.Transport.(*host.GuardedTransport)
 	if !ok {
-		t.Fatalf("expected outermost Transport to be *httputils.UserAgentTransport, got %T", client.Transport)
+		t.Fatalf("expected outermost Transport to be *host.GuardedTransport, got %T", client.Transport)
+	}
+	uaRT, ok := guard.Base.(*httputils.UserAgentTransport)
+	if !ok {
+		t.Fatalf("expected GuardedTransport.Base to be *httputils.UserAgentTransport, got %T", guard.Base)
 	}
 	// Next layer is retry.Transport.
 	retryRT, ok := uaRT.Base.(*retry.Transport)

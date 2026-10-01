@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/grafana/gcx/internal/host"
 	"github.com/grafana/gcx/internal/retry"
 )
 
@@ -52,6 +53,9 @@ func NewClient(opts ClientOpts) *http.Client {
 	// Outermost layers: User-Agent injection, then retry for rate limiting (429) and transient errors.
 	rt = &retry.Transport{Base: rt}
 	rt = &UserAgentTransport{Base: rt}
+	// Outermost: refuse requests the invocation's sandbox does not permit
+	// before they are logged or retried.
+	rt = host.GuardTransport(rt)
 	return &http.Client{Timeout: timeout, Transport: rt, CheckRedirect: opts.CheckRedirect}
 }
 

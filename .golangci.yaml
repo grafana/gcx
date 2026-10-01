@@ -83,6 +83,8 @@ linters:
           msg: use the context-aware equivalent in internal/host
         - pattern: ^signal\.(Notify|NotifyContext|Ignore|Reset)$
           msg: use host.NotifyContext
+        - pattern: ^http\.(DefaultTransport|DefaultClient|Get|Head|Post|PostForm)$
+          msg: use host.DefaultTransport / host.DefaultClient so requests are subject to the sandbox's access guard
         - pattern: ^os\.Exit$
           msg: return an error; only cmd/gcx/main.go may exit the process
         # Third-party libraries that touch the host on their own.

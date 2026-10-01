@@ -13,6 +13,7 @@ import (
 
 	authlib "github.com/grafana/authlib/types"
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/host"
 	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/logs"
 	"github.com/grafana/gcx/internal/retry"
@@ -418,9 +419,13 @@ func TestNamespacedRESTConfig_SetOnRefresh(t *testing.T) {
 		t.Fatal("expected WrapTransport to be set for OAuth proxy mode")
 	}
 	rt := restCfg.WrapTransport(http.DefaultTransport)
-	callerRT, ok := rt.(*httputils.CallerIDTransport)
+	guard, ok := rt.(*host.GuardedTransport)
 	if !ok {
-		t.Fatalf("expected outermost transport to be *httputils.CallerIDTransport, got %T", rt)
+		t.Fatalf("expected outermost transport to be *host.GuardedTransport, got %T", rt)
+	}
+	callerRT, ok := guard.Base.(*httputils.CallerIDTransport)
+	if !ok {
+		t.Fatalf("expected GuardedTransport.Base to be *httputils.CallerIDTransport, got %T", guard.Base)
 	}
 	retryRT, ok := callerRT.Base.(*retry.Transport)
 	if !ok {

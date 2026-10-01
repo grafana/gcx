@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/host"
 	"github.com/grafana/grafana-app-sdk/logging"
 	"k8s.io/client-go/rest"
 )
@@ -86,7 +87,7 @@ func UploadSourcemap(ctx context.Context, faroAPIURL string, stackID int, token 
 	req.Header.Set("Content-Type", contentType)
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %d:%s", stackID, token))
 
-	httpClient := &http.Client{Timeout: 5 * time.Minute}
+	httpClient := &http.Client{Timeout: 5 * time.Minute, Transport: host.DefaultTransport()}
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("faro: upload sourcemap: %w", err)

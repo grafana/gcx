@@ -12,6 +12,7 @@ import (
 	"github.com/gofrs/flock"
 	"github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/credentials"
+	"github.com/grafana/gcx/internal/host"
 	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/retry"
 	"github.com/grafana/gcx/internal/version"
@@ -513,7 +514,9 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) (NamespacedRESTCo
 		// Outermost layer: stamp the caller-id header so every datasource query
 		// (unified query API and legacy proxy alike) is attributable upstream,
 		// and so it's visible to the logging transports above.
-		return &httputils.CallerIDTransport{Base: rt}
+		// Outermost of all: refuse requests the invocation's sandbox does
+		// not permit before they are logged or retried.
+		return host.GuardTransport(&httputils.CallerIDTransport{Base: rt})
 	}
 
 	return NamespacedRESTConfig{

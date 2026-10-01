@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/grafana/gcx/internal/host"
 )
 
 var (
@@ -147,7 +149,7 @@ func (t *RefreshTransport) base() http.RoundTripper {
 	if t.Base != nil {
 		return t.Base
 	}
-	return http.DefaultTransport
+	return host.DefaultTransport()
 }
 
 // adoptFreshStoredTokens reloads tokens from disk and, if they're both usable

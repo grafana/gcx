@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/gcx/internal/host"
 	"github.com/grafana/grafana-app-sdk/logging"
 )
 
@@ -54,7 +55,7 @@ func (t *Transport) base() http.RoundTripper {
 	if t.Base != nil {
 		return t.Base
 	}
-	return http.DefaultTransport
+	return host.DefaultTransport()
 }
 
 func (t *Transport) maxRetries() int {

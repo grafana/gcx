@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 
+	"github.com/grafana/gcx/internal/host"
 	"github.com/grafana/grafana-app-sdk/logging"
 )
 
@@ -25,7 +26,7 @@ type RequestResponseLoggingRoundTripper struct {
 }
 
 func (rt RequestResponseLoggingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	transport := http.DefaultTransport
+	transport := host.DefaultTransport()
 	if rt.DecoratedTransport != nil {
 		transport = rt.DecoratedTransport
 	}

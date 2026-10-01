@@ -1,6 +1,10 @@
 package httputils
 
-import "net/http"
+import (
+	"net/http"
+
+	"github.com/grafana/gcx/internal/host"
+)
 
 // HeaderTransport sets fixed headers on every outgoing request, overriding
 // any value already present.
@@ -12,7 +16,7 @@ type HeaderTransport struct {
 func (t *HeaderTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	base := t.Base
 	if base == nil {
-		base = http.DefaultTransport
+		base = host.DefaultTransport()
 	}
 	if len(t.Headers) == 0 {
 		return base.RoundTrip(req)

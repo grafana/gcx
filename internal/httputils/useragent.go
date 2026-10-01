@@ -3,6 +3,7 @@ package httputils
 import (
 	"net/http"
 
+	"github.com/grafana/gcx/internal/host"
 	"github.com/grafana/gcx/internal/version"
 )
 
@@ -14,7 +15,7 @@ type UserAgentTransport struct {
 func (t *UserAgentTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	base := t.Base
 	if base == nil {
-		base = http.DefaultTransport
+		base = host.DefaultTransport()
 	}
 
 	clone := req.Clone(req.Context())

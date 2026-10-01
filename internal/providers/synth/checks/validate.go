@@ -1,10 +1,13 @@
 package checks
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/grafana/gcx/internal/host"
 )
 
 // knownCheckTypes is the set of valid SM check type names.
@@ -68,13 +71,17 @@ func AllProbesOffline(probeNames []string, onlineMap map[string]bool) bool {
 // Only validates checks of type "http"; all other types return nil immediately.
 // Returns nil on success (2xx/3xx/4xx responses are acceptable — only 5xx and
 // connection errors are reported). This is advisory — callers should warn, not fail.
-func ValidateHTTPTarget(checkType, target string, timeout time.Duration) error {
+func ValidateHTTPTarget(ctx context.Context, checkType, target string, timeout time.Duration) error {
 	if checkType != "http" {
 		return nil
 	}
 
-	client := &http.Client{Timeout: timeout}
-	resp, err := client.Head(target) //nolint:noctx // advisory validation, timeout is set on the client
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, target, nil)
+	if err != nil {
+		return fmt.Errorf("target %q is not a valid URL: %w", target, err)
+	}
+	client := &http.Client{Timeout: timeout, Transport: host.DefaultTransport()}
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("target %q is unreachable: %w", target, err)
 	}

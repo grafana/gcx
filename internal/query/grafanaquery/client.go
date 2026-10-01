@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/host"
 	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/queryerror"
 	"k8s.io/client-go/rest"
@@ -33,7 +34,7 @@ func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
 // NewClientWithHTTPClient creates a datasource query API client using an existing HTTP client.
 func NewClientWithHTTPClient(cfg config.NamespacedRESTConfig, httpClient *http.Client) *Client {
 	if httpClient == nil {
-		httpClient = http.DefaultClient
+		httpClient = host.DefaultClient()
 	}
 
 	return &Client{

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	claudeplugin "github.com/grafana/gcx/claude-plugin"
+	"github.com/grafana/gcx/internal/host"
 	skillops "github.com/grafana/gcx/internal/skills"
 )
 
@@ -33,7 +34,7 @@ func MaybeNotifySkills(ctx context.Context, dst io.Writer) error {
 // MaybeNotifyVersion runs the default gcx version update check. Network errors
 // are treated as silent misses so notification checks never affect CLI commands.
 func MaybeNotifyVersion(ctx context.Context, dst io.Writer, currentVersion string) error {
-	return maybeNotifyVersionAt(ctx, dst, StatePath(ctx), currentVersion, time.Now(), http.DefaultClient, latestReleaseURL)
+	return maybeNotifyVersionAt(ctx, dst, StatePath(ctx), currentVersion, time.Now(), host.DefaultClient(), latestReleaseURL)
 }
 
 func maybeNotifySkillsAt(ctx context.Context, source fs.FS, catalog []byte, dst io.Writer, statePath, root string, now time.Time) error {

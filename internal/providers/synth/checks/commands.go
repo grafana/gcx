@@ -432,7 +432,7 @@ and logs usage. See ` + docs.SyntheticMonitoringInvoice + `.`,
 
 			// Optional HTTP target pre-flight.
 			if opts.ValidateTargets {
-				if err := ValidateHTTPTarget(spec.Settings.CheckType(), spec.Target, 5*time.Second); err != nil {
+				if err := ValidateHTTPTarget(ctx, spec.Settings.CheckType(), spec.Target, 5*time.Second); err != nil {
 					cmdio.Warning(cmd.ErrOrStderr(), "target validation: %v", err)
 				}
 			}
@@ -606,7 +606,7 @@ toward your metrics and logs usage. See ` + docs.SyntheticMonitoringInvoice + `.
 
 			// Optional HTTP target pre-flight.
 			if opts.ValidateTargets {
-				if err := ValidateHTTPTarget(spec.Settings.CheckType(), spec.Target, 5*time.Second); err != nil {
+				if err := ValidateHTTPTarget(ctx, spec.Settings.CheckType(), spec.Target, 5*time.Second); err != nil {
 					cmdio.Warning(cmd.ErrOrStderr(), "target validation: %v", err)
 				}
 			}

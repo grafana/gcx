@@ -34,17 +34,18 @@ func GuardTransport(base http.RoundTripper) http.RoundTripper {
 	if base == nil {
 		base = http.DefaultTransport
 	}
-	if _, ok := base.(guardTransport); ok {
+	if _, ok := base.(*GuardedTransport); ok {
 		return base
 	}
-	return guardTransport{base: base}
+	return &GuardedTransport{Base: base}
 }
 
-type guardTransport struct {
-	base http.RoundTripper
+// GuardedTransport is the transport returned by [GuardTransport].
+type GuardedTransport struct {
+	Base http.RoundTripper
 }
 
-func (t guardTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+func (t *GuardedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if sb := sandbox(req.Context()); sb != nil {
 		if need := requiredAccess(req); need > sb.Access {
 			if req.Body != nil {
@@ -53,7 +54,19 @@ func (t guardTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 			return nil, fmt.Errorf("%w: %s %s needs %s access, this invocation is %s", ErrAccessDenied, req.Method, req.URL.Path, need, sb.Access)
 		}
 	}
-	return t.base.RoundTrip(req)
+	return t.Base.RoundTrip(req)
+}
+
+// DefaultTransport returns [http.DefaultTransport] behind [GuardTransport].
+// Use it wherever a nil transport would otherwise fall back to the default.
+func DefaultTransport() http.RoundTripper {
+	return GuardTransport(http.DefaultTransport)
+}
+
+// DefaultClient returns a client using [DefaultTransport], in place of
+// [http.DefaultClient].
+func DefaultClient() *http.Client {
+	return &http.Client{Transport: DefaultTransport()}
 }
 
 // requiredAccess classifies a request. Unknown methods need full access.

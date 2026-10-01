@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/host"
 	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/queryerror"
 	"google.golang.org/protobuf/encoding/protowire"
@@ -49,7 +50,7 @@ type clientCapabilitiesTransport struct {
 func (t *clientCapabilitiesTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	base := t.base
 	if base == nil {
-		base = http.DefaultTransport
+		base = host.DefaultTransport()
 	}
 
 	clone := req.Clone(req.Context())

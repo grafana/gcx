@@ -12,6 +12,7 @@ import (
 	"time"
 
 	authlib "github.com/grafana/authlib/types"
+	"github.com/grafana/gcx/internal/host"
 	"github.com/grafana/gcx/internal/httputils"
 )
 
@@ -181,6 +182,6 @@ func newBootdataHTTPClient(ctx context.Context, cfg GrafanaConfig) (*http.Client
 
 	return &http.Client{
 		Timeout:   5 * time.Second,
-		Transport: &httputils.HeaderTransport{Base: transport, Headers: cfg.Headers},
+		Transport: host.GuardTransport(&httputils.HeaderTransport{Base: transport, Headers: cfg.Headers}),
 	}, nil
 }

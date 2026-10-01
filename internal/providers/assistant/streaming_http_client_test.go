@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/host"
 	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/providers/assistant"
 	"github.com/grafana/gcx/internal/retry"
@@ -37,9 +38,13 @@ func TestNewAssistantStreamingHTTPClientPayloadDumpIsInnermost(t *testing.T) {
 	ctx := httputils.WithPayloadLogging(t.Context(), true)
 	client := assistant.NewAssistantStreamingHTTPClient(ctx, 300)
 
-	userAgentTransport, ok := client.Transport.(*httputils.UserAgentTransport)
+	guard, ok := client.Transport.(*host.GuardedTransport)
 	if !ok {
-		t.Fatalf("client transport = %T, want *httputils.UserAgentTransport", client.Transport)
+		t.Fatalf("client transport = %T, want *host.GuardedTransport", client.Transport)
+	}
+	userAgentTransport, ok := guard.Base.(*httputils.UserAgentTransport)
+	if !ok {
+		t.Fatalf("guard base = %T, want *httputils.UserAgentTransport", guard.Base)
 	}
 	retryTransport, ok := userAgentTransport.Base.(*retry.Transport)
 	if !ok {

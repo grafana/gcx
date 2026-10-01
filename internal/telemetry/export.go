@@ -50,7 +50,7 @@ func export(ctx context.Context, event Event, endpoint string) {
 	// Deliberately not the shared httputils client: its retry transport would
 	// burn the whole exportTimeout budget on an unreachable endpoint, and this
 	// runs synchronously before exit on every telemetry-enabled invocation.
-	client := &http.Client{Timeout: exportTimeout}
+	client := &http.Client{Timeout: exportTimeout, Transport: host.DefaultTransport()}
 	resp, err := client.Do(req)
 	if err != nil {
 		return
