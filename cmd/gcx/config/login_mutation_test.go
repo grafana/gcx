@@ -39,7 +39,7 @@ contexts:
 	cfg, err := opts.LoadConfigTolerant(t.Context())
 	require.NoError(t, err)
 
-	target, err := opts.PlanLoginMutation(cfg, "prod", config.LoginMutationUnified)
+	target, err := opts.PlanLoginMutation(t.Context(), cfg, "prod", config.LoginMutationUnified)
 	require.NoError(t, err)
 	assert.Equal(t, userPath, target.Path)
 	assert.Equal(t, "user", target.Type)
@@ -67,7 +67,7 @@ contexts:
 	opts := &configcmd.Options{}
 	cfg, err := opts.LoadConfigTolerant(t.Context())
 	require.NoError(t, err)
-	target, err := opts.PlanLoginMutation(cfg, "prod", config.LoginMutationCloud)
+	target, err := opts.PlanLoginMutation(t.Context(), cfg, "prod", config.LoginMutationCloud)
 	require.NoError(t, err)
 	assert.Equal(t, userPath, target.Path)
 	assert.Equal(t, "user", target.Type)
@@ -107,13 +107,13 @@ contexts:
 	cloudOpts := &configcmd.Options{}
 	cfg, err := cloudOpts.LoadConfigTolerant(t.Context())
 	require.NoError(t, err)
-	target, err := cloudOpts.PlanLoginMutation(cfg, "prod", config.LoginMutationCloud)
+	target, err := cloudOpts.PlanLoginMutation(t.Context(), cfg, "prod", config.LoginMutationCloud)
 	require.NoError(t, err)
 	assert.Equal(t, userPath, target.Path)
 	assert.Equal(t, "user", target.Type)
 
 	unifiedOpts := &configcmd.Options{}
-	_, err = unifiedOpts.PlanLoginMutation(cfg, "prod", config.LoginMutationUnified)
+	_, err = unifiedOpts.PlanLoginMutation(t.Context(), cfg, "prod", config.LoginMutationUnified)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "different files")
 	require.ErrorContains(t, err, systemPath)
@@ -150,7 +150,7 @@ contexts:
 			opts := &configcmd.Options{}
 			cfg, err := opts.LoadConfigTolerant(t.Context())
 			require.NoError(t, err)
-			_, err = opts.PlanLoginMutation(cfg, "prod", intent)
+			_, err = opts.PlanLoginMutation(t.Context(), cfg, "prod", intent)
 			require.ErrorContains(t, err, "different files")
 			require.ErrorContains(t, err, userPath)
 			require.ErrorContains(t, err, localPath)
@@ -187,7 +187,7 @@ contexts:
 	opts := &configcmd.Options{}
 	cfg, err := opts.LoadConfigTolerant(t.Context())
 	require.NoError(t, err)
-	_, err = opts.PlanLoginMutation(cfg, "prod", config.LoginMutationUnified)
+	_, err = opts.PlanLoginMutation(t.Context(), cfg, "prod", config.LoginMutationUnified)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "different files")
 	require.ErrorContains(t, err, systemPath)
@@ -216,7 +216,7 @@ current-context: prod
 	opts := &configcmd.Options{}
 	cfg, err := opts.LoadConfigTolerant(t.Context())
 	require.NoError(t, err)
-	target, err := opts.PlanLoginMutation(cfg, "prod", config.LoginMutationUnified)
+	target, err := opts.PlanLoginMutation(t.Context(), cfg, "prod", config.LoginMutationUnified)
 	require.NoError(t, err)
 	assert.Equal(t, localPath, target.Path)
 	assert.Equal(t, "local", target.Type, "the caller must retain auto-local trust provenance")
@@ -239,7 +239,7 @@ contexts:
 	opts := &configcmd.Options{}
 	cfg, err := opts.LoadConfigTolerant(t.Context())
 	require.NoError(t, err)
-	_, err = opts.PlanLoginMutation(cfg, "new-context", config.LoginMutationUnified)
+	_, err = opts.PlanLoginMutation(t.Context(), cfg, "new-context", config.LoginMutationUnified)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "does not exist")
 	require.ErrorContains(t, err, userPath)
@@ -267,7 +267,7 @@ contexts:
 	opts := &configcmd.Options{}
 	cfg, err := opts.LoadConfigTolerant(t.Context())
 	require.NoError(t, err)
-	_, err = opts.PlanLoginMutation(cfg, "prod", config.LoginMutationUnified)
+	_, err = opts.PlanLoginMutation(t.Context(), cfg, "prod", config.LoginMutationUnified)
 	require.ErrorContains(t, err, "Stack entry \"prod\" already exists outside the selected context owner")
 	require.ErrorContains(t, err, userPath)
 	require.ErrorContains(t, err, localPath)
@@ -300,7 +300,7 @@ contexts:
 	opts := &configcmd.Options{}
 	cfg, err := opts.LoadConfigTolerant(t.Context())
 	require.NoError(t, err)
-	_, err = opts.PlanLoginMutation(cfg, "prod", config.LoginMutationUnified)
+	_, err = opts.PlanLoginMutation(t.Context(), cfg, "prod", config.LoginMutationUnified)
 	require.ErrorContains(t, err, "Stack entry \"prod\" already exists outside the selected context owner")
 	require.ErrorContains(t, err, userPath)
 	require.ErrorContains(t, err, localPath)
@@ -314,7 +314,7 @@ func TestPlanLoginMutationKeepsZeroOneAndExplicitSelectionBehavior(t *testing.T)
 		opts := &configcmd.Options{}
 		cfg, err := opts.LoadConfigTolerant(t.Context())
 		require.NoError(t, err)
-		target, err := opts.PlanLoginMutation(cfg, "default", config.LoginMutationUnified)
+		target, err := opts.PlanLoginMutation(t.Context(), cfg, "default", config.LoginMutationUnified)
 		require.NoError(t, err)
 		assert.Equal(t, localPath, target.Path)
 		assert.Equal(t, "local", target.Type)
@@ -327,7 +327,7 @@ func TestPlanLoginMutationKeepsZeroOneAndExplicitSelectionBehavior(t *testing.T)
 		explicit := filepath.Join(t.TempDir(), "selected.yaml")
 		opts := &configcmd.Options{ConfigFile: explicit}
 
-		target, err := opts.PlanLoginMutation(config.Config{}, "new-context", config.LoginMutationUnified)
+		target, err := opts.PlanLoginMutation(t.Context(), config.Config{}, "new-context", config.LoginMutationUnified)
 		require.NoError(t, err)
 		assert.Equal(t, explicit, target.Path)
 		assert.Equal(t, "explicit", target.Type)
@@ -339,7 +339,7 @@ func TestPlanLoginMutationKeepsZeroOneAndExplicitSelectionBehavior(t *testing.T)
 		t.Setenv(config.ConfigFileEnvVar, explicit)
 		opts := &configcmd.Options{}
 
-		target, err := opts.PlanLoginMutation(config.Config{}, "new-context", config.LoginMutationUnified)
+		target, err := opts.PlanLoginMutation(t.Context(), config.Config{}, "new-context", config.LoginMutationUnified)
 		require.NoError(t, err)
 		assert.Equal(t, explicit, target.Path)
 		assert.Equal(t, "explicit", target.Type)

@@ -32,8 +32,8 @@ type gcomOAuthFlow interface {
 }
 
 //nolint:gochecknoglobals // narrow test seam that proves config preflight precedes OAuth side effects.
-var newGCOMOAuthFlow = func(opts auth.GCOMOptions) gcomOAuthFlow {
-	return auth.NewGCOMFlow(opts)
+var newGCOMOAuthFlow = func(ctx context.Context, opts auth.GCOMOptions) gcomOAuthFlow {
+	return auth.NewGCOMFlow(ctx, opts)
 }
 
 func (opts *loginOpts) bindFlags(flags *pflag.FlagSet) {
@@ -106,7 +106,7 @@ both preserves the explicit OAuth-origin/API-destination pair.`,
 		Example: "  gcx cloud login\n  gcx cloud login --cloud-token glc_abc123",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			opts.cloudToken = strings.TrimSpace(opts.cloudToken)
-			preflightTarget, targetIsDeterministic, err := configOpts.PreflightLoginMutationTarget()
+			preflightTarget, targetIsDeterministic, err := configOpts.PreflightLoginMutationTarget(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -117,7 +117,7 @@ both preserves the explicit OAuth-origin/API-destination pair.`,
 			if err != nil {
 				return err
 			}
-			mutationTarget, err := configOpts.PlanLoginMutation(cfg, contextName, config.LoginMutationCloud)
+			mutationTarget, err := configOpts.PlanLoginMutation(cmd.Context(), cfg, contextName, config.LoginMutationCloud)
 			if err != nil {
 				return err
 			}
@@ -162,13 +162,13 @@ both preserves the explicit OAuth-origin/API-destination pair.`,
 			if err := opts.Validate(); err != nil {
 				return err
 			}
-			cloudSafety, err := cfg.LoginCloudMutationSafety(contextName, mutationTarget)
+			cloudSafety, err := cfg.LoginCloudMutationSafety(cmd.Context(), contextName, mutationTarget)
 			if err != nil {
 				return err
 			}
 			mutationGuard := persistedConfig.NewLoginMutationGuard(contextName, config.LoginMutationCloud)
 			if mutationTarget.Type != "explicit" {
-				mutationGuard, err = mutationGuard.WithDiscoverySnapshot(&cfg)
+				mutationGuard, err = mutationGuard.WithDiscoverySnapshot(cmd.Context(), &cfg)
 				if err != nil {
 					return err
 				}
@@ -231,7 +231,7 @@ func loadPersistedCloudConfig(ctx context.Context, source config.Source, context
 	if err != nil {
 		return config.Config{}, nil, err
 	}
-	cfg.ResolveContext(contextName)
+	cfg.ResolveContext(ctx, contextName)
 	return cfg, cfg.Contexts[contextName], nil
 }
 
@@ -271,7 +271,7 @@ func runOAuthLogin(
 	fmt.Fprintln(stderr, "Warning: interactive OAuth login is experimental. It stores an OAuth-issued token in the cloud entry's oauth-token field.")
 	fmt.Fprintln(stderr, "Some commands that talk to grafana.com do not yet work with an OAuth token. For full functionality, use --cloud-token with a Cloud Access Policy token.")
 
-	flow := newGCOMOAuthFlow(auth.GCOMOptions{
+	flow := newGCOMOAuthFlow(ctx, auth.GCOMOptions{
 		ClientID: defaultClientID,
 		GCOMURL:  opts.oauthURL,
 		Scopes:   opts.scopes,

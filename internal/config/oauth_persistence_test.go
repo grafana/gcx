@@ -74,7 +74,7 @@ func TestCheckOAuthCredentialPersistence(t *testing.T) {
 			restore := config.SetKeychainStoreFnForTest(func() credentials.Store { return tt.store })
 			t.Cleanup(restore)
 
-			err := config.CheckOAuthCredentialPersistence()
+			err := config.CheckOAuthCredentialPersistence(t.Context())
 			if tt.wantErr == nil {
 				require.NoError(t, err)
 				return
@@ -91,7 +91,7 @@ func TestCheckOAuthCredentialPersistenceKeepsUnknownFailuresFatal(t *testing.T) 
 	})
 	t.Cleanup(restore)
 
-	require.ErrorIs(t, config.CheckOAuthCredentialPersistence(), want)
+	require.ErrorIs(t, config.CheckOAuthCredentialPersistence(t.Context()), want)
 }
 
 func TestConfigCheckOAuthCredentialPersistenceHonorsResolvedPolicy(t *testing.T) {
@@ -118,7 +118,7 @@ func TestConfigCheckOAuthCredentialPersistenceHonorsResolvedPolicy(t *testing.T)
 			cfg, err := config.Load(t.Context(), config.ExplicitConfigFile(path))
 			require.NoError(t, err)
 
-			err = cfg.CheckOAuthCredentialPersistence()
+			err = cfg.CheckOAuthCredentialPersistence(t.Context())
 			if tt.wantErr == nil {
 				require.NoError(t, err)
 				return

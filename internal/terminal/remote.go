@@ -1,8 +1,10 @@
 package terminal
 
 import (
-	"os"
+	"context"
 	"strings"
+
+	"github.com/grafana/gcx/internal/host"
 )
 
 // sshSessionEnvVars are the environment variables that OpenSSH sets in an
@@ -27,9 +29,9 @@ var sshSessionEnvVars = []string{ //nolint:gochecknoglobals
 //
 // The result is deliberately not cached: callers read it at most twice per
 // process, and tests set the environment with t.Setenv.
-func IsRemoteSession() bool {
+func IsRemoteSession(ctx context.Context) bool {
 	for _, name := range sshSessionEnvVars {
-		if strings.TrimSpace(os.Getenv(name)) != "" {
+		if strings.TrimSpace(host.Getenv(ctx, name)) != "" {
 			return true
 		}
 	}

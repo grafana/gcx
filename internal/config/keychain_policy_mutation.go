@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gofrs/flock"
+	"github.com/grafana/gcx/internal/host"
 )
 
 // MutateKeychainPolicy sets or clears credentials.keychain using the intended
@@ -66,7 +67,7 @@ func mutateKeychainPolicy(
 	intendedValue string,
 	apply func(cfg *Config),
 ) (Source, error) {
-	target, sources, targetIndex, err := keychainPolicyMutationTarget(explicitFile, fileType)
+	target, sources, targetIndex, err := keychainPolicyMutationTarget(ctx, explicitFile, fileType)
 	if err != nil {
 		return nil, err
 	}
@@ -78,11 +79,11 @@ func mutateKeychainPolicy(
 		return nil, err
 	}
 
-	sourceIdentity, err := canonicalConfigSourceForLayer(target.Path, target.Type)
+	sourceIdentity, err := canonicalConfigSourceForLayer(ctx, target.Path, target.Type)
 	if err != nil {
 		return nil, err
 	}
-	lockPath, err := configLockFile(sourceIdentity)
+	lockPath, err := configLockFile(ctx, sourceIdentity)
 	if err != nil {
 		return nil, err
 	}
@@ -137,22 +138,22 @@ func normalizedKeychainPolicyValue(value string) (string, error) {
 // file on disk without ever changing the effective policy. Callers must
 // instead pick a trusted layer with --file user, --file system, or select
 // the repository file explicitly with --config.
-func keychainPolicyMutationTarget(explicitFile, fileType string) (ConfigSource, []ConfigSource, int, error) {
+func keychainPolicyMutationTarget(ctx context.Context, explicitFile, fileType string) (ConfigSource, []ConfigSource, int, error) {
 	if explicitFile != "" {
 		target := ConfigSource{Path: explicitFile, Type: "explicit"}
-		contents, err := readConfigSource(target)
+		contents, err := readConfigSource(ctx, target)
 		if err != nil && !errors.Is(err, os.ErrNotExist) {
 			return ConfigSource{}, nil, 0, err
 		}
 		target.snapshot = contents
 		return target, []ConfigSource{target}, 0, nil
 	}
-	if fileType != "" && os.Getenv(ConfigFileEnvVar) != "" {
+	if fileType != "" && host.Getenv(ctx, ConfigFileEnvVar) != "" {
 		return ConfigSource{}, nil, 0, fmt.Errorf("no %s config file found", fileType)
 	}
-	if envPath := os.Getenv(ConfigFileEnvVar); envPath != "" {
+	if envPath := host.Getenv(ctx, ConfigFileEnvVar); envPath != "" {
 		target := ConfigSource{Path: envPath, Type: "explicit"}
-		contents, err := readConfigSource(target)
+		contents, err := readConfigSource(ctx, target)
 		if err != nil {
 			return ConfigSource{}, nil, 0, err
 		}
@@ -160,12 +161,12 @@ func keychainPolicyMutationTarget(explicitFile, fileType string) (ConfigSource, 
 		return target, []ConfigSource{target}, 0, nil
 	}
 
-	sources, err := DiscoverSources()
+	sources, err := DiscoverSources(ctx)
 	if err != nil {
 		return ConfigSource{}, nil, 0, err
 	}
 	for i := range sources {
-		contents, readErr := readConfigSource(sources[i])
+		contents, readErr := readConfigSource(ctx, sources[i])
 		if readErr != nil {
 			return ConfigSource{}, nil, 0, readErr
 		}
@@ -175,12 +176,12 @@ func keychainPolicyMutationTarget(explicitFile, fileType string) (ConfigSource, 
 	target, index, selErr := selectConfigSource(sources, fileType)
 	switch {
 	case errors.Is(selErr, errNoConfigSourcesDiscovered):
-		path, err := StandardLocation()()
+		path, err := StandardLocation()(ctx)
 		if err != nil {
 			return ConfigSource{}, nil, 0, err
 		}
 		created := ConfigSource{Path: path, Type: "user"}
-		contents, err := readConfigSource(created)
+		contents, err := readConfigSource(ctx, created)
 		if err != nil {
 			return ConfigSource{}, nil, 0, err
 		}

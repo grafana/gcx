@@ -294,7 +294,7 @@ func TestConfirmDestructive(t *testing.T) {
 
 			var w bytes.Buffer
 			force := tt.name == "force flag"
-			got, err := providers.ConfirmDestructive(r, &w, force, `Delete dashboard "my-dashboard"?`)
+			got, err := providers.ConfirmDestructive(t.Context(), r, &w, force, `Delete dashboard "my-dashboard"?`)
 
 			if tt.wantErr {
 				if err == nil {

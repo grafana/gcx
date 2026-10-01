@@ -2386,7 +2386,7 @@ narrow to one entity), which is cheaper and returns those fields directly.`,
 				}
 				if ioOpts.Open {
 					cmdio.Info(cmd.ErrOrStderr(), "Opening RCA Workbench for %s/%s", entityType, name)
-					if err := deeplink.Open(u); err != nil {
+					if err := deeplink.Open(cmd.Context(), u); err != nil {
 						cmdio.Warning(cmd.ErrOrStderr(), "could not open browser: %v", err)
 					}
 				}
@@ -2650,7 +2650,7 @@ func newOpenCommand(loader RESTConfigLoader) *cobra.Command {
 			}
 			url := strings.TrimRight(cfg.GrafanaURL, "/") + "/a/grafana-asserts-app"
 			cmdio.Info(cmd.ErrOrStderr(), "Opening %s", url)
-			if err := deeplink.Open(url); err != nil {
+			if err := deeplink.Open(cmd.Context(), url); err != nil {
 				return err
 			}
 			// The browser launch is the command's real effect; the stdout

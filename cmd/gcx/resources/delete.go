@@ -107,7 +107,7 @@ func deleteCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			}
 
 			// Apply auto-approval if enabled
-			cliOpts, err := config.LoadCLIOptions()
+			cliOpts, err := config.LoadCLIOptions(ctx)
 			if err != nil {
 				return err
 			}

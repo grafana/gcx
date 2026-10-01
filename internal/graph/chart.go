@@ -3,7 +3,6 @@ package graph
 import (
 	"fmt"
 	"io"
-	"os"
 	"strings"
 	"time"
 
@@ -11,7 +10,7 @@ import (
 	"github.com/NimbleMarkets/ntcharts/v2/barchart"
 	"github.com/NimbleMarkets/ntcharts/v2/canvas/runes"
 	"github.com/NimbleMarkets/ntcharts/v2/linechart/timeserieslinechart"
-	"golang.org/x/term"
+	"github.com/grafana/gcx/internal/terminal"
 )
 
 // ChartOptions configures chart rendering.
@@ -434,7 +433,7 @@ func getTerminalSize() (int, int) {
 	width := 80
 	height := 24
 
-	if w, h, err := term.GetSize(int(os.Stdout.Fd())); err == nil {
+	if w, h, err := terminal.StdoutSize(); err == nil {
 		width = w
 		height = h
 	}

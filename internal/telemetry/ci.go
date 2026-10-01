@@ -1,8 +1,10 @@
 package telemetry
 
 import (
-	"os"
+	"context"
 	"strings"
+
+	"github.com/grafana/gcx/internal/host"
 )
 
 // ciProviders maps CI providers to their signature environment variable.
@@ -34,8 +36,8 @@ var genericCIVars = []string{"CI", "CONTINUOUS_INTEGRATION", "BUILD_NUMBER"} //n
 // DetectCI reports the CI provider label and whether gcx is running under
 // CI. A recognised provider returns its fixed label; a generic CI signal
 // with no recognised provider returns "unknown"; no CI returns "" and false.
-func DetectCI() (string, bool) {
-	return detectCI(os.Getenv)
+func DetectCI(ctx context.Context) (string, bool) {
+	return detectCI(func(key string) string { return host.Getenv(ctx, key) })
 }
 
 func detectCI(getenv func(string) string) (string, bool) {

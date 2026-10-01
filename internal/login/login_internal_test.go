@@ -21,7 +21,7 @@ func TestResolveGrafanaOAuthChecksPersistenceBeforeFlow(t *testing.T) {
 			UseOAuth: true,
 		},
 		Hooks: Hooks{
-			CheckCredentialPersistence: func() error { return want },
+			CheckCredentialPersistence: func(context.Context) error { return want },
 			NewAuthFlow: func(string, auth.Options) AuthFlow {
 				flowCalls++
 				return nil
@@ -82,7 +82,7 @@ func TestRuntimeOnlyOAuthDestinationChecksBeforeAndAfterFlow(t *testing.T) {
 				RuntimeProxyEndpoint:        "https://runtime-proxy.example.invalid",
 			},
 			Hooks: Hooks{
-				CheckCredentialPersistence: func() error { return nil },
+				CheckCredentialPersistence: func(context.Context) error { return nil },
 				NewAuthFlow: func(string, auth.Options) AuthFlow {
 					return &stubInternalAuthFlow{result: &auth.Result{
 						Token:        "oauth-token",
@@ -162,7 +162,7 @@ func TestMergeGrafanaAuthMaterializesDanglingReferencedStack(t *testing.T) {
 	existing := cfg.Contexts["repair"]
 	require.Nil(t, existing.StackEntry)
 
-	err := mergeGrafanaAuthIntoStack(&cfg, existing, &config.GrafanaConfig{
+	err := mergeGrafanaAuthIntoStack(t.Context(), &cfg, existing, &config.GrafanaConfig{
 		Server:     "https://example.invalid",
 		APIToken:   "fresh-token",
 		AuthMethod: "token",
@@ -191,7 +191,7 @@ func TestMergeGrafanaAuthBindsSameNamedStackWithoutReplacingSettings(t *testing.
 	existing := cfg.Contexts["prod"]
 	originalStack := cfg.Stacks["prod"]
 
-	err := mergeGrafanaAuthIntoStack(&cfg, existing, &config.GrafanaConfig{
+	err := mergeGrafanaAuthIntoStack(t.Context(), &cfg, existing, &config.GrafanaConfig{
 		Server:     "https://prod.example.invalid",
 		APIToken:   "fresh-token",
 		AuthMethod: "token",

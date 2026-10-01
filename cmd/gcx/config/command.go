@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"maps"
-	"os"
 	"slices"
 	"sort"
 	"strings"
@@ -19,6 +18,7 @@ import (
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/grafana"
+	"github.com/grafana/gcx/internal/host"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/discovery"
@@ -57,7 +57,7 @@ func (opts *Options) LoadConfigTolerant(ctx context.Context, extraOverrides ...c
 	// variables. Otherwise --context switches only after env values have already
 	// been written into the context named by current-context.
 	if opts.Context != "" {
-		overrides = append(overrides, func(cfg *config.Config) error {
+		overrides = append(overrides, func(_ context.Context, cfg *config.Config) error {
 			if !cfg.HasContext(opts.Context) {
 				return config.ContextNotFound(opts.Context, cfg.ContextNames())
 			}
@@ -70,7 +70,7 @@ func (opts *Options) LoadConfigTolerant(ctx context.Context, extraOverrides ...c
 	overrides = append(overrides,
 		// If Grafana-related env variables are set, use them to configure the
 		// current context and Grafana config.
-		func(cfg *config.Config) error {
+		func(ctx context.Context, cfg *config.Config) error {
 			if cfg.CurrentContext == "" {
 				cfg.CurrentContext = config.DefaultContextName
 			}
@@ -81,14 +81,14 @@ func (opts *Options) LoadConfigTolerant(ctx context.Context, extraOverrides ...c
 
 			curCtx := cfg.Contexts[cfg.CurrentContext]
 
-			if err := config.ParseEnvIntoContext(curCtx); err != nil {
+			if err := config.ParseEnvIntoContext(ctx, curCtx); err != nil {
 				return err
 			}
 
 			// Resolve GRAFANA_PROVIDER_{NAME}_{KEY} environment variables
 			// into the current context's Providers map.
 			const providerEnvPrefix = "GRAFANA_PROVIDER_"
-			for _, envVar := range os.Environ() {
+			for _, envVar := range host.Environ(ctx) {
 				parts := strings.SplitN(envVar, "=", 2)
 				if len(parts) != 2 {
 					continue
@@ -132,7 +132,7 @@ func (opts *Options) LoadConfigTolerant(ctx context.Context, extraOverrides ...c
 
 // LoadConfig loads the configuration file (default, or explicitly set via flags) and validates it.
 func (opts *Options) LoadConfig(ctx context.Context) (config.Config, error) {
-	validator := func(cfg *config.Config) error {
+	validator := func(ctx context.Context, cfg *config.Config) error {
 		// Ensure that the current context actually exists.
 		if !cfg.HasContext(cfg.CurrentContext) {
 			return config.ContextNotFound(cfg.CurrentContext, cfg.ContextNames())
@@ -193,8 +193,9 @@ func (opts *Options) ConfigSource() config.Source {
 // authoritative; otherwise a sole discovered source is used and ambiguity is
 // rejected with guidance to choose one.
 func (opts *Options) MutationConfigSource() config.Source {
-	return func() (string, error) {
-		target, err := opts.resolveMutationConfigTarget()
+	return func(ctx context.Context) (string, error) {
+
+		target, err := opts.resolveMutationConfigTarget(ctx)
 		return target.Path, err
 	}
 }
@@ -204,30 +205,30 @@ func (opts *Options) MutationConfigSource() config.Source {
 // commands use the provenance to require an explicit --config/GCX_CONFIG trust
 // decision before handing a fresh secret to an auto-discovered repository
 // config.
-func (opts *Options) MutationConfigTarget() (config.ConfigSource, error) {
-	return opts.resolveMutationConfigTarget()
+func (opts *Options) MutationConfigTarget(ctx context.Context) (config.ConfigSource, error) {
+	return opts.resolveMutationConfigTarget(ctx)
 }
 
-func (opts *Options) resolveMutationConfigTarget() (config.ConfigSource, error) {
+func (opts *Options) resolveMutationConfigTarget(ctx context.Context) (config.ConfigSource, error) {
 	if !opts.mutationResolved {
 		opts.mutationResolved = true
 		switch {
 		case opts.ConfigFile != "":
 			opts.mutationTarget = config.ConfigSource{Path: opts.ConfigFile, Type: "explicit"}
 			return opts.mutationTarget, nil
-		case os.Getenv(config.ConfigFileEnvVar) != "":
-			opts.mutationTarget = config.ConfigSource{Path: os.Getenv(config.ConfigFileEnvVar), Type: "explicit"}
+		case host.Getenv(ctx, config.ConfigFileEnvVar) != "":
+			opts.mutationTarget = config.ConfigSource{Path: host.Getenv(ctx, config.ConfigFileEnvVar), Type: "explicit"}
 			return opts.mutationTarget, nil
 		}
 
-		sources, err := config.DiscoverSources()
+		sources, err := config.DiscoverSources(ctx)
 		if err != nil {
 			opts.mutationErr = fmt.Errorf("discover config write target: %w", err)
 			return opts.mutationTarget, opts.mutationErr
 		}
 		switch len(sources) {
 		case 0:
-			path, err := config.StandardLocation()()
+			path, err := config.StandardLocation()(ctx)
 			if err != nil {
 				opts.mutationErr = err
 				return opts.mutationTarget, opts.mutationErr
@@ -606,7 +607,7 @@ Without --context, checks every configured context. With --context, checks only 
 			// typed rejection evidence and are therefore reported with
 			// connectivity skipped instead of being sent upstream.
 			for _, name := range names {
-				cfg.ResolveContext(name)
+				cfg.ResolveContext(cmd.Context(), name)
 			}
 
 			bufs := make([]bytes.Buffer, len(names))
@@ -846,7 +847,7 @@ user config), use --file to choose which layer to update.`,
 				return err
 			}
 
-			target, err := resolveUseContextTarget(layered, args)
+			target, err := resolveUseContextTarget(cmd.Context(), layered, args)
 			if err != nil {
 				if errors.Is(err, huh.ErrUserAborted) {
 					// Interactive-only path (the picker requires a TTY and is
@@ -883,7 +884,7 @@ user config), use --file to choose which layer to update.`,
 
 			if prev != "" {
 				if err := config.WritePreviousContext(cmd.Context(), prev); err != nil {
-					fmt.Fprintf(cmd.ErrOrStderr(), "warning: could not record previous context at %s: %v\n", config.PreviousContextPath(), err)
+					fmt.Fprintf(cmd.ErrOrStderr(), "warning: could not record previous context at %s: %v\n", config.PreviousContextPath(cmd.Context()), err)
 				}
 			}
 
@@ -899,13 +900,13 @@ user config), use --file to choose which layer to update.`,
 	return cmd
 }
 
-func resolveUseContextTarget(cfg config.Config, args []string) (string, error) {
+func resolveUseContextTarget(ctx context.Context, cfg config.Config, args []string) (string, error) {
 	if len(args) == 0 {
 		return pickContextInteractively(cfg)
 	}
 	name := args[0]
 	if name == "-" {
-		prev, err := config.ReadPreviousContext()
+		prev, err := config.ReadPreviousContext(ctx)
 		if err != nil {
 			return "", err
 		}
@@ -1006,7 +1007,7 @@ type configMutation struct {
 // newConfigMutation builds the result document for a completed config write.
 // The file path is resolved best-effort from the write target: the write
 // already succeeded, so a resolution error only omits the field.
-func newConfigMutation(action, property string, target config.Source) configMutation {
+func newConfigMutation(ctx context.Context, action, property string, target config.Source) configMutation {
 	result := configMutation{
 		Type:          "gcx.config.mutation",
 		SchemaVersion: "1",
@@ -1014,7 +1015,7 @@ func newConfigMutation(action, property string, target config.Source) configMuta
 		Property:      property,
 	}
 	if target != nil {
-		if path, err := target(); err == nil {
+		if path, err := target(ctx); err == nil {
 			result.File = path
 		}
 	}
@@ -1075,7 +1076,7 @@ PROPERTY_VALUE is the new value to set.`,
 				if err != nil {
 					return err
 				}
-				return opts.IO.Encode(cmd.OutOrStdout(), newConfigMutation("set", args[0], target))
+				return opts.IO.Encode(cmd.OutOrStdout(), newConfigMutation(cmd.Context(), "set", args[0], target))
 			}
 
 			cfg, target, err := config.LoadForWrite(cmd.Context(), configOpts.ConfigFile, fileType)
@@ -1093,7 +1094,7 @@ PROPERTY_VALUE is the new value to set.`,
 				return err
 			}
 
-			if err := setConfigValue(&cfg, path, args[1]); err != nil {
+			if err := setConfigValue(cmd.Context(), &cfg, path, args[1]); err != nil {
 				return err
 			}
 
@@ -1101,7 +1102,7 @@ PROPERTY_VALUE is the new value to set.`,
 				return err
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), newConfigMutation("set", path, target))
+			return opts.IO.Encode(cmd.OutOrStdout(), newConfigMutation(cmd.Context(), "set", path, target))
 		},
 	}
 
@@ -1111,7 +1112,7 @@ PROPERTY_VALUE is the new value to set.`,
 	return cmd
 }
 
-func setConfigValue(cfg *config.Config, path, value string) error {
+func setConfigValue(ctx context.Context, cfg *config.Config, path, value string) error {
 	mutationPaths := []string{path}
 	clearPaths := []string{}
 	parts := strings.Split(path, ".")
@@ -1137,7 +1138,7 @@ func setConfigValue(cfg *config.Config, path, value string) error {
 
 	completeMutations := make([]func() error, 0, len(mutationPaths))
 	for _, mutationPath := range mutationPaths {
-		completeMutations = append(completeMutations, cfg.PrepareSecretPathMutation(mutationPath))
+		completeMutations = append(completeMutations, cfg.PrepareSecretPathMutation(ctx, mutationPath))
 	}
 	if err := config.SetValue(cfg, path, value); err != nil {
 		return err
@@ -1190,7 +1191,7 @@ Paths are literal: they name the exact location in the configuration file, start
 				if err != nil {
 					return err
 				}
-				return opts.IO.Encode(cmd.OutOrStdout(), newConfigMutation("unset", args[0], target))
+				return opts.IO.Encode(cmd.OutOrStdout(), newConfigMutation(cmd.Context(), "unset", args[0], target))
 			}
 
 			cfg, target, err := config.LoadForWrite(cmd.Context(), configOpts.ConfigFile, fileType)
@@ -1203,7 +1204,7 @@ Paths are literal: they name the exact location in the configuration file, start
 				return err
 			}
 
-			completeSecretMutation := cfg.PrepareSecretPathMutation(path)
+			completeSecretMutation := cfg.PrepareSecretPathMutation(cmd.Context(), path)
 			if err := config.UnsetValue(&cfg, path); err != nil {
 				return err
 			}
@@ -1215,7 +1216,7 @@ Paths are literal: they name the exact location in the configuration file, start
 				return err
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), newConfigMutation("unset", path, target))
+			return opts.IO.Encode(cmd.OutOrStdout(), newConfigMutation(cmd.Context(), "unset", path, target))
 		},
 	}
 

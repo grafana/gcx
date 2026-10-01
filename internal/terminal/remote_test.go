@@ -62,7 +62,7 @@ func TestIsRemoteSession(t *testing.T) {
 				t.Setenv(name, value)
 			}
 
-			assert.Equal(t, tc.want, terminal.IsRemoteSession())
+			assert.Equal(t, tc.want, terminal.IsRemoteSession(t.Context()))
 		})
 	}
 }

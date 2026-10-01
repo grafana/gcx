@@ -2,6 +2,7 @@ package assistant //nolint:testpackage // exercises the unexported stream emitte
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -23,7 +24,7 @@ import (
 func setAgentMode(t *testing.T, enabled bool) {
 	t.Helper()
 	agent.SetFlag(enabled)
-	t.Cleanup(agent.ResetForTesting)
+	t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 }
 
 func TestNewStreamEmitterModeResolution(t *testing.T) {
@@ -108,7 +109,7 @@ func runStream(t *testing.T, em *streamEmitter, client *assistant.Client) error 
 	t.Setenv("HOME", t.TempDir())
 	streamOpts := assistant.StreamOptions{Timeout: 30, OnEvent: em.onEvent()}
 	result := client.ChatWithApproval(t.Context(), "hello", streamOpts, em.approvalHandler(nil))
-	return em.finish(result, 30)
+	return em.finish(t.Context(), result, 30)
 }
 
 // TestAgentModeStreamIsTypedJSONL is the agent-output-contract test for the
@@ -296,7 +297,7 @@ func TestFinishFailureOutcomesPerMode(t *testing.T) {
 			var stdout, stderr bytes.Buffer
 			em := newStreamEmitter(&stdout, &stderr, &promptOpts{})
 
-			err := em.finish(oc.result, 30)
+			err := em.finish(t.Context(), oc.result, 30)
 			requireEmittedCode(t, err, oc.wantAgentCode)
 			require.ErrorContains(t, err, oc.wantErr)
 
@@ -320,7 +321,7 @@ func TestFinishFailureOutcomesPerMode(t *testing.T) {
 			var stdout, stderr bytes.Buffer
 			em := newStreamEmitter(&stdout, &stderr, &promptOpts{})
 
-			err := em.finish(oc.result, 30)
+			err := em.finish(t.Context(), oc.result, 30)
 			require.EqualError(t, err, oc.wantErr)
 			var emitted *gcxerrors.EmittedError
 			assert.NotErrorAs(t, err, &emitted, "human mode must return the bare error so the reporter renders it on stderr")
@@ -333,7 +334,7 @@ func TestFinishFailureOutcomesPerMode(t *testing.T) {
 			var stdout, stderr bytes.Buffer
 			em := newStreamEmitter(&stdout, &stderr, &promptOpts{jsonOut: true, noStream: true})
 
-			err := em.finish(oc.result, 30)
+			err := em.finish(t.Context(), oc.result, 30)
 			requireEmittedGeneralError(t, err)
 
 			var doc map[string]any
@@ -354,7 +355,7 @@ func TestFinishJSONStreamFailureShapes(t *testing.T) {
 	t.Run("timeout emits legacy error event", func(t *testing.T) {
 		var stdout bytes.Buffer
 		em := newStreamEmitter(&stdout, &bytes.Buffer{}, &promptOpts{jsonOut: true})
-		err := em.finish(assistant.StreamResult{TimedOut: true}, 5)
+		err := em.finish(t.Context(), assistant.StreamResult{TimedOut: true}, 5)
 		requireEmittedGeneralError(t, err)
 		assert.Equal(t,
 			[]string{`{"type":"error","error":"request timed out after 5s","timeout":5}`, ""},
@@ -364,7 +365,7 @@ func TestFinishJSONStreamFailureShapes(t *testing.T) {
 	t.Run("failed emits legacy error event when not already streamed", func(t *testing.T) {
 		var stdout bytes.Buffer
 		em := newStreamEmitter(&stdout, &bytes.Buffer{}, &promptOpts{jsonOut: true})
-		err := em.finish(assistant.StreamResult{Failed: true, ErrorMessage: "boom", TaskID: "task-1", ContextID: "ctx-1"}, 5)
+		err := em.finish(t.Context(), assistant.StreamResult{Failed: true, ErrorMessage: "boom", TaskID: "task-1", ContextID: "ctx-1"}, 5)
 		requireEmittedGeneralError(t, err)
 		assert.Equal(t,
 			[]string{`{"type":"error","taskId":"task-1","contextId":"ctx-1","error":"boom"}`, ""},
@@ -374,7 +375,7 @@ func TestFinishJSONStreamFailureShapes(t *testing.T) {
 	t.Run("failed emits nothing when error event already streamed", func(t *testing.T) {
 		var stdout bytes.Buffer
 		em := newStreamEmitter(&stdout, &bytes.Buffer{}, &promptOpts{jsonOut: true})
-		err := em.finish(assistant.StreamResult{Failed: true, ErrorMessage: "boom", ErrorEventEmitted: true}, 5)
+		err := em.finish(t.Context(), assistant.StreamResult{Failed: true, ErrorMessage: "boom", ErrorEventEmitted: true}, 5)
 		requireEmittedGeneralError(t, err)
 		assert.Empty(t, stdout.String())
 	})
@@ -382,7 +383,7 @@ func TestFinishJSONStreamFailureShapes(t *testing.T) {
 	t.Run("canceled emits nothing extra", func(t *testing.T) {
 		var stdout bytes.Buffer
 		em := newStreamEmitter(&stdout, &bytes.Buffer{}, &promptOpts{jsonOut: true})
-		err := em.finish(assistant.StreamResult{Canceled: true}, 5)
+		err := em.finish(t.Context(), assistant.StreamResult{Canceled: true}, 5)
 		requireEmittedGeneralError(t, err)
 		assert.Empty(t, stdout.String())
 	})
@@ -390,7 +391,7 @@ func TestFinishJSONStreamFailureShapes(t *testing.T) {
 	t.Run("unknown emits legacy error event", func(t *testing.T) {
 		var stdout bytes.Buffer
 		em := newStreamEmitter(&stdout, &bytes.Buffer{}, &promptOpts{jsonOut: true})
-		err := em.finish(assistant.StreamResult{}, 5)
+		err := em.finish(t.Context(), assistant.StreamResult{}, 5)
 		requireEmittedGeneralError(t, err)
 		assert.Equal(t,
 			[]string{`{"type":"error","error":"stream ended unexpectedly"}`, ""},
@@ -449,7 +450,7 @@ func TestFinishTerminalWriteFailureSurfaces(t *testing.T) {
 			t.Setenv("HOME", t.TempDir()) // keep SaveLastContextID away from the real home
 			em := newStreamEmitter(&failingWriter{err: writeErr}, &bytes.Buffer{}, &tt.opts)
 
-			err := em.finish(tt.result, 30)
+			err := em.finish(t.Context(), tt.result, 30)
 			requireBareWriteError(t, err, writeErr)
 		})
 	}
@@ -488,7 +489,7 @@ func TestStreamEventWriteFailureAbortsStream(t *testing.T) {
 			assert.Equal(t, 1, w.writes, "no further writes after the pipe broke")
 
 			// finish surfaces the recorded write error without writing more.
-			err := em.finish(assistant.StreamResult{Completed: true, Response: "hi"}, 30)
+			err := em.finish(t.Context(), assistant.StreamResult{Completed: true, Response: "hi"}, 30)
 			requireBareWriteError(t, err, writeErr)
 			assert.Equal(t, 1, w.writes, "finish must not attempt a terminal line on a broken stream")
 		})
@@ -558,11 +559,11 @@ func TestFinishPersistsContextIDDespiteWriteFailure(t *testing.T) {
 	em := newStreamEmitter(&stdout, &stderr, &promptOpts{})
 
 	var saved string
-	em.saveContextID = func(id string) error { saved = id; return nil }
+	em.saveContextID = func(_ context.Context, id string) error { saved = id; return nil }
 	writeErr := errors.New("broken pipe")
 	em.writeErr = writeErr
 
-	err := em.finish(assistant.StreamResult{Completed: true, ContextID: "ctx-42"}, 30)
+	err := em.finish(t.Context(), assistant.StreamResult{Completed: true, ContextID: "ctx-42"}, 30)
 
 	require.ErrorIs(t, err, writeErr, "the write error stays the honest outcome")
 	assert.Equal(t, "ctx-42", saved, "context ID must persist despite the write failure")

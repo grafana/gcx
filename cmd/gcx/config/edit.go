@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -13,6 +11,7 @@ import (
 	"github.com/grafana/gcx/internal/agent"
 	internalConfig "github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/gcxerrors"
+	"github.com/grafana/gcx/internal/host"
 	"github.com/spf13/cobra"
 )
 
@@ -44,7 +43,7 @@ If only one config file exists, it is opened directly.`,
 				}
 			}
 
-			target, err := resolveRawEditTarget(configOpts.ConfigFile, args, create)
+			target, err := resolveRawEditTarget(cmd.Context(), configOpts.ConfigFile, args, create)
 			if err != nil {
 				return err
 			}
@@ -61,12 +60,12 @@ If only one config file exists, it is opened directly.`,
 // Editing is the recovery path for malformed YAML, unsupported future versions,
 // and semantic errors that prevent the ordinary loader from returning a Config.
 // It must therefore depend only on explicit selection and filesystem discovery.
-func resolveRawEditTarget(explicitFile string, args []string, create bool) (string, error) {
+func resolveRawEditTarget(ctx context.Context, explicitFile string, args []string, create bool) (string, error) {
 	if explicitFile != "" {
 		if len(args) != 0 {
 			return "", errors.New("cannot combine --config with a config layer; remove the layer argument to edit the explicit file")
 		}
-		if err := ensureEditableConfigExists(explicitFile); err != nil {
+		if err := ensureEditableConfigExists(ctx, explicitFile); err != nil {
 			return "", err
 		}
 		return explicitFile, nil
@@ -75,12 +74,12 @@ func resolveRawEditTarget(explicitFile string, args []string, create bool) (stri
 	if len(args) == 1 {
 		typ := args[0]
 		if create {
-			return createConfigForType(typ)
+			return createConfigForType(ctx, typ)
 		}
 		// A named layer is an explicit repair choice and therefore wins over
 		// GCX_CONFIG. This lets users repair a discovered document even while
 		// their shell normally selects a separate explicit config.
-		sources, err := internalConfig.DiscoverSources()
+		sources, err := internalConfig.DiscoverSources(ctx)
 		if err != nil {
 			return "", err
 		}
@@ -95,14 +94,14 @@ func resolveRawEditTarget(explicitFile string, args []string, create bool) (stri
 	// With no named layer, GCX_CONFIG is the same explicit-file bypass used by
 	// the ordinary loader. Do not fall through to discovery and accidentally
 	// open a different document.
-	if envFile := os.Getenv(internalConfig.ConfigFileEnvVar); envFile != "" {
-		if err := ensureEditableConfigExists(envFile); err != nil {
+	if envFile := host.Getenv(ctx, internalConfig.ConfigFileEnvVar); envFile != "" {
+		if err := ensureEditableConfigExists(ctx, envFile); err != nil {
 			return "", err
 		}
 		return envFile, nil
 	}
 
-	sources, err := internalConfig.DiscoverSources()
+	sources, err := internalConfig.DiscoverSources(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -121,8 +120,8 @@ func resolveRawEditTarget(explicitFile string, args []string, create bool) (stri
 	}
 }
 
-func ensureEditableConfigExists(path string) error {
-	info, err := os.Stat(path)
+func ensureEditableConfigExists(ctx context.Context, path string) error {
+	info, err := host.Stat(ctx, path)
 	if err != nil {
 		return fmt.Errorf("cannot edit config %s: %w", path, err)
 	}
@@ -132,21 +131,21 @@ func ensureEditableConfigExists(path string) error {
 	return nil
 }
 
-func createConfigForType(typ string) (string, error) {
+func createConfigForType(ctx context.Context, typ string) (string, error) {
 	switch typ {
 	case "local":
 		localPath, err := filepath.Abs(internalConfig.LocalConfigFileName)
 		if err != nil {
 			return "", err
 		}
-		if err := internalConfig.CreateDefaultConfigFile(localPath); err != nil {
+		if err := internalConfig.CreateDefaultConfigFile(ctx, localPath); err != nil {
 			return "", fmt.Errorf("failed to create %s: %w", localPath, err)
 		}
 		return localPath, nil
 	case "user":
 		// Use XDG to find the user config path.
 		source := internalConfig.StandardLocation()
-		path, err := source()
+		path, err := source(ctx)
 		if err != nil {
 			return "", fmt.Errorf("failed to create user config: %w", err)
 		}
@@ -157,7 +156,7 @@ func createConfigForType(typ string) (string, error) {
 }
 
 func openInEditor(ctx context.Context, path string) error {
-	editor := os.Getenv("EDITOR")
+	editor := host.Getenv(ctx, "EDITOR")
 	if editor == "" {
 		if runtime.GOOS == "windows" {
 			editor = "notepad"
@@ -171,9 +170,12 @@ func openInEditor(ctx context.Context, path string) error {
 		return err
 	}
 
-	editorCmd := exec.CommandContext(ctx, editor, abs)
-	editorCmd.Stdin = os.Stdin
-	editorCmd.Stdout = os.Stdout
-	editorCmd.Stderr = os.Stderr
+	editorCmd, err := host.Command(ctx, editor, abs)
+	if err != nil {
+		return err
+	}
+	editorCmd.Stdin = host.Stdin(ctx)
+	editorCmd.Stdout = host.Stdout(ctx)
+	editorCmd.Stderr = host.Stderr(ctx)
 	return editorCmd.Run()
 }

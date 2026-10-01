@@ -28,8 +28,8 @@ func setAgentModeExt(t *testing.T, on bool) {
 	} else {
 		t.Setenv("GCX_AGENT_MODE", "false")
 	}
-	agent.ResetForTesting()
-	t.Cleanup(agent.ResetForTesting)
+	agent.ResetForTesting(t.Context())
+	t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 }
 
 // decodeOneJSONValue asserts raw is exactly one JSON value followed by EOF

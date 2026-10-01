@@ -195,7 +195,7 @@ func TestBoundKeychainDeleteThenErrorRestoresConfigAndGeneration(t *testing.T) {
 func useBoundTestStore(t *testing.T, store *boundTestStore) {
 	t.Helper()
 	original := keychainStoreFn
-	keychainStoreFn = func() credentials.Store { return store }
+	keychainStoreFn = func(context.Context) credentials.Store { return store }
 	t.Cleanup(func() { keychainStoreFn = original })
 }
 
@@ -253,7 +253,7 @@ func TestGrafanaTokenBindingMatchesCompleteAuthorityBoundary(t *testing.T) {
 	require.NoError(t, err)
 	effective, err := Load(t.Context(), ExplicitConfigFile(pathA))
 	require.NoError(t, err)
-	assert.True(t, GrafanaTokenBindingMatches(
+	assert.True(t, GrafanaTokenBindingMatches(t.Context(),
 		stored.Contexts["default"],
 		effective.Contexts["default"],
 		server,
@@ -261,14 +261,14 @@ func TestGrafanaTokenBindingMatchesCompleteAuthorityBoundary(t *testing.T) {
 
 	otherSource, err := Load(t.Context(), ExplicitConfigFile(pathB))
 	require.NoError(t, err)
-	assert.False(t, GrafanaTokenBindingMatches(
+	assert.False(t, GrafanaTokenBindingMatches(t.Context(),
 		stored.Contexts["default"],
 		otherSource.Contexts["default"],
 		server,
 	), "an identical destination in another config file is a different credential authority")
 
 	effective.Contexts["default"].Grafana.ProxyEndpoint = "https://proxy.example.invalid"
-	assert.False(t, GrafanaTokenBindingMatches(
+	assert.False(t, GrafanaTokenBindingMatches(t.Context(),
 		stored.Contexts["default"],
 		effective.Contexts["default"],
 		server,
@@ -277,10 +277,10 @@ func TestGrafanaTokenBindingMatchesCompleteAuthorityBoundary(t *testing.T) {
 
 func boundStackTestBinding(t *testing.T, path, name, server string, field credentials.Field) credentials.Binding {
 	t.Helper()
-	source, err := canonicalConfigSource(path)
+	source, err := canonicalConfigSource(t.Context(), path)
 	require.NoError(t, err)
 	stack := &StackConfig{sourceIdentity: source, Grafana: &GrafanaConfig{Server: server}}
-	return stackOwner(name, stack).binding(field)
+	return stackOwner(name, stack).binding(t.Context(), field)
 }
 
 func writeBoundTestYAML(t *testing.T, path, server, fieldName, sentinel string) {
@@ -439,7 +439,7 @@ current-context: prod
 	require.NoError(t, err)
 	assert.Empty(t, store.gets, "a moved config must not retrieve any foreign generation")
 	for _, name := range names {
-		cfg.ResolveContext(name)
+		cfg.ResolveContext(t.Context(), name)
 		assert.Empty(t, cfg.Stacks[name].Grafana.APIToken)
 	}
 
@@ -458,7 +458,7 @@ current-context: prod
 	for _, name := range []string{"dev", "prod", "staging"} {
 		cfg, err = Load(context.Background(), ExplicitConfigFile(movedPath))
 		require.NoError(t, err)
-		cfg.ResolveContext(name)
+		cfg.ResolveContext(t.Context(), name)
 		cfg.Stacks[name].Grafana.APIToken = "fresh-" + name
 		cfg.MarkSecretMutation(credentials.StackOwner(name), credentials.FieldGrafanaToken)
 		require.NoError(t, Write(context.Background(), ExplicitConfigFile(movedPath), cfg))
@@ -467,7 +467,7 @@ current-context: prod
 	final, err := Load(context.Background(), ExplicitConfigFile(movedPath))
 	require.NoError(t, err)
 	for _, name := range names {
-		final.ResolveContext(name)
+		final.ResolveContext(t.Context(), name)
 		assert.Equal(t, "fresh-"+name, final.Stacks[name].Grafana.APIToken)
 		assert.NotContains(t, store.gets, oldAccounts[name], "foreign generations must never be read")
 		assert.Equal(t, "old-"+name, store.entries[oldAccounts[name]], "foreign generations must never be deleted")
@@ -507,7 +507,7 @@ current-context: prod
 	assert.Equal(t, "prod-token", cfg.Stacks["prod"].Grafana.OAuthToken)
 	assert.Equal(t, credentials.FormatBoundSentinel(stagingBinding), cfg.Stacks["staging"].Grafana.OAuthToken)
 
-	cfg.ResolveContext("staging")
+	cfg.ResolveContext(t.Context(), "staging")
 	assert.Equal(t, "staging-token", cfg.Stacks["staging"].Grafana.OAuthToken)
 	assert.Equal(t, []string{
 		credentials.BoundAccountKey(prodBinding),
@@ -564,11 +564,11 @@ func TestBoundKeychainUnavailableGrafanaTokenCanBeOverriddenByEnvironment(t *tes
 	t.Setenv("GRAFANA_TOKEN", "env-token")
 
 	loaded, err := Load(t.Context(), ExplicitConfigFile(path),
-		func(cfg *Config) error {
-			return ParseEnvIntoContext(cfg.Contexts["default"])
+		func(ctx context.Context, cfg *Config) error {
+			return ParseEnvIntoContext(ctx, cfg.Contexts["default"])
 		},
-		func(cfg *Config) error {
-			return cfg.GetCurrentContext().Validate(t.Context())
+		func(ctx context.Context, cfg *Config) error {
+			return cfg.GetCurrentContext().Validate(ctx)
 		},
 	)
 	require.NoError(t, err)
@@ -639,7 +639,7 @@ func TestGrafanaServerMutationInvalidatesBoundSMToken(t *testing.T) {
 	require.NoError(t, Write(context.Background(), ExplicitConfigFile(path), cfg))
 	loaded, err := Load(context.Background(), ExplicitConfigFile(path))
 	require.NoError(t, err)
-	finish := loaded.PrepareSecretPathMutation("stacks.default.grafana.server")
+	finish := loaded.PrepareSecretPathMutation(t.Context(), "stacks.default.grafana.server")
 	loaded.Stacks["default"].Grafana.Server = "https://new-grafana.invalid"
 	require.NoError(t, finish())
 	assert.Empty(t, loaded.Stacks["default"].Providers["synth"]["sm-token"])
@@ -685,7 +685,7 @@ current-context: default
 	assert.Equal(t, "secret-oauth-refresh", stack.Grafana.OAuthRefreshToken)
 	assert.Equal(t, "secret-synth", stack.Providers["synth"]["sm-token"])
 
-	finish := loaded.PrepareSecretPathMutation("stacks.default.grafana.tls")
+	finish := loaded.PrepareSecretPathMutation(t.Context(), "stacks.default.grafana.tls")
 	stack.Grafana.TLS = nil
 	require.NoError(t, finish())
 	assert.Empty(t, stack.Grafana.APIToken)
@@ -788,7 +788,7 @@ func TestBoundKeychainRenameFailureRollsBackSameAccountRotation(t *testing.T) {
 	cfg.Stacks["default"].Grafana.APIToken = "new-token"
 
 	originalRename := renameConfigFile
-	renameConfigFile = func(string, string) error { return errors.New("injected rename failure") }
+	renameConfigFile = func(context.Context, string, string) error { return errors.New("injected rename failure") }
 	t.Cleanup(func() { renameConfigFile = originalRename })
 	err = Write(context.Background(), ExplicitConfigFile(path), cfg)
 	require.ErrorContains(t, err, "injected rename failure")
@@ -822,7 +822,7 @@ func TestBoundKeychainRenameFailureRollsBackDestinationRotation(t *testing.T) {
 	newBinding := boundStackTestBinding(t, path, "default", newServer, credentials.FieldGrafanaToken)
 
 	originalRename := renameConfigFile
-	renameConfigFile = func(string, string) error { return errors.New("injected rename failure") }
+	renameConfigFile = func(context.Context, string, string) error { return errors.New("injected rename failure") }
 	t.Cleanup(func() { renameConfigFile = originalRename })
 	err = Write(context.Background(), ExplicitConfigFile(path), cfg)
 	require.ErrorContains(t, err, "injected rename failure")
@@ -845,7 +845,7 @@ func TestBoundKeychainRenameFailureKeepsDeletedOwnerAccount(t *testing.T) {
 	delete(cfg.Stacks, "default")
 
 	originalRename := renameConfigFile
-	renameConfigFile = func(string, string) error { return errors.New("injected rename failure") }
+	renameConfigFile = func(context.Context, string, string) error { return errors.New("injected rename failure") }
 	t.Cleanup(func() { renameConfigFile = originalRename })
 	err = Write(context.Background(), ExplicitConfigFile(path), cfg)
 	require.ErrorContains(t, err, "injected rename failure")
@@ -903,7 +903,7 @@ func TestAutoDiscoveredLocalSymlinkIsRejectedWithoutSideEffects(t *testing.T) {
 	require.NoError(t, os.WriteFile(target, original, 0o600))
 	require.NoError(t, os.Symlink(target, filepath.Join(dir, LocalConfigFileName)))
 
-	_, err := DiscoverSources(WithSystemDir(filepath.Join(dir, "no-system")), WithUserDir(filepath.Join(dir, "no-user")), WithWorkDir(dir))
+	_, err := DiscoverSources(t.Context(), WithSystemDir(filepath.Join(dir, "no-system")), WithUserDir(filepath.Join(dir, "no-user")), WithWorkDir(dir))
 	require.ErrorContains(t, err, "symlinks are not allowed")
 	after, readErr := os.ReadFile(target)
 	require.NoError(t, readErr)
@@ -921,8 +921,8 @@ func TestBoundKeychainGrafanaDestinationOverrideClearsStoredCredential(t *testin
 
 	t.Run("destination only", func(t *testing.T) {
 		t.Setenv("GRAFANA_SERVER", "https://override.invalid")
-		cfg, err := Load(context.Background(), ExplicitConfigFile(path), func(cfg *Config) error {
-			return ParseEnvIntoContext(cfg.Contexts[cfg.CurrentContext])
+		cfg, err := Load(context.Background(), ExplicitConfigFile(path), func(ctx context.Context, cfg *Config) error {
+			return ParseEnvIntoContext(ctx, cfg.Contexts[cfg.CurrentContext])
 		})
 		require.NoError(t, err)
 		assert.Equal(t, "https://override.invalid", cfg.Contexts["default"].Grafana.Server)
@@ -932,8 +932,8 @@ func TestBoundKeychainGrafanaDestinationOverrideClearsStoredCredential(t *testin
 	t.Run("explicit env credential", func(t *testing.T) {
 		t.Setenv("GRAFANA_SERVER", "https://override.invalid")
 		t.Setenv("GRAFANA_TOKEN", "stored-token")
-		cfg, err := Load(context.Background(), ExplicitConfigFile(path), func(cfg *Config) error {
-			return ParseEnvIntoContext(cfg.Contexts[cfg.CurrentContext])
+		cfg, err := Load(context.Background(), ExplicitConfigFile(path), func(ctx context.Context, cfg *Config) error {
+			return ParseEnvIntoContext(ctx, cfg.Contexts[cfg.CurrentContext])
 		})
 		require.NoError(t, err)
 		assert.Equal(t, "stored-token", cfg.Contexts["default"].Grafana.APIToken)
@@ -956,8 +956,8 @@ func TestBoundKeychainCloudDestinationOverrideClearsCAPAndOAuth(t *testing.T) {
 
 	t.Run("destination only", func(t *testing.T) {
 		t.Setenv("GRAFANA_CLOUD_API_URL", "https://override.invalid")
-		loaded, err := Load(context.Background(), ExplicitConfigFile(path), func(cfg *Config) error {
-			return ParseEnvIntoContext(cfg.Contexts[cfg.CurrentContext])
+		loaded, err := Load(context.Background(), ExplicitConfigFile(path), func(ctx context.Context, cfg *Config) error {
+			return ParseEnvIntoContext(ctx, cfg.Contexts[cfg.CurrentContext])
 		})
 		require.NoError(t, err)
 		assert.Equal(t, "https://override.invalid", loaded.Contexts["default"].CloudEntry.APIUrl)
@@ -968,8 +968,8 @@ func TestBoundKeychainCloudDestinationOverrideClearsCAPAndOAuth(t *testing.T) {
 	t.Run("explicit env CAP", func(t *testing.T) {
 		t.Setenv("GRAFANA_CLOUD_API_URL", "https://override.invalid")
 		t.Setenv("GRAFANA_CLOUD_TOKEN", "stored-cap")
-		loaded, err := Load(context.Background(), ExplicitConfigFile(path), func(cfg *Config) error {
-			return ParseEnvIntoContext(cfg.Contexts[cfg.CurrentContext])
+		loaded, err := Load(context.Background(), ExplicitConfigFile(path), func(ctx context.Context, cfg *Config) error {
+			return ParseEnvIntoContext(ctx, cfg.Contexts[cfg.CurrentContext])
 		})
 		require.NoError(t, err)
 		assert.Equal(t, "stored-cap", loaded.Contexts["default"].CloudEntry.Token)
@@ -987,14 +987,14 @@ func TestBoundKeychainSynthDestinationOverrideClearsStoredCredential(t *testing.
 	}
 	require.NoError(t, Write(context.Background(), ExplicitConfigFile(path), cfg))
 
-	loaded, err := Load(context.Background(), ExplicitConfigFile(path), func(cfg *Config) error {
+	loaded, err := Load(context.Background(), ExplicitConfigFile(path), func(_ context.Context, cfg *Config) error {
 		cfg.Contexts["default"].Providers["synth"]["sm-url"] = "https://sm-override.invalid"
 		return nil
 	})
 	require.NoError(t, err)
 	assert.Empty(t, loaded.Contexts["default"].Providers["synth"]["sm-token"])
 
-	explicit, err := Load(context.Background(), ExplicitConfigFile(path), func(cfg *Config) error {
+	explicit, err := Load(context.Background(), ExplicitConfigFile(path), func(_ context.Context, cfg *Config) error {
 		cfg.Contexts["default"].Providers["synth"]["sm-url"] = "https://sm-override.invalid"
 		cfg.Contexts["default"].Providers["synth"]["sm-token"] = "explicit-sm-token"
 		return nil
@@ -1023,7 +1023,7 @@ contexts:
     stack: default
 current-context: default
 `,
-			override: func(cfg *Config) error {
+			override: func(_ context.Context, cfg *Config) error {
 				cfg.Contexts["default"].Grafana.Server = "https://override.invalid"
 				return nil
 			},
@@ -1041,7 +1041,7 @@ contexts:
     cloud: grafana-com
 current-context: default
 `,
-			override: func(cfg *Config) error {
+			override: func(_ context.Context, cfg *Config) error {
 				detached := *cfg.Contexts["default"].CloudEntry
 				detached.APIUrl = "https://override.invalid"
 				cfg.Contexts["default"].CloudEntry = &detached
@@ -1067,7 +1067,7 @@ contexts:
     stack: default
 current-context: default
 `,
-			override: func(cfg *Config) error {
+			override: func(_ context.Context, cfg *Config) error {
 				cfg.Contexts["default"].Providers["synth"]["sm-url"] = "https://sm-override.invalid"
 				return nil
 			},
@@ -1100,8 +1100,8 @@ func TestRuntimeExplicitCredentialOnSharedStackIsNotClearedByOtherContext(t *tes
 	t.Setenv("GRAFANA_SERVER", "https://override.invalid")
 	t.Setenv("GRAFANA_TOKEN", "stored-token")
 
-	loaded, err := Load(context.Background(), ExplicitConfigFile(path), func(cfg *Config) error {
-		return ParseEnvIntoContext(cfg.Contexts[cfg.CurrentContext])
+	loaded, err := Load(context.Background(), ExplicitConfigFile(path), func(ctx context.Context, cfg *Config) error {
+		return ParseEnvIntoContext(ctx, cfg.Contexts[cfg.CurrentContext])
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "stored-token", loaded.Contexts["default"].Grafana.APIToken)
@@ -1305,12 +1305,12 @@ func TestBoundKeychainWriteUnavailableRotationAbortsWithoutWarning(t *testing.T)
 	cfg.Stacks["default"].Grafana.User = "alice"
 	cfg.Stacks["default"].Grafana.Password = "old-password"
 	require.NoError(t, Write(context.Background(), ExplicitConfigFile(path), cfg))
-	source, err := canonicalConfigSource(path)
+	source, err := canonicalConfigSource(t.Context(), path)
 	require.NoError(t, err)
 	passwordBinding := stackOwner("default", &StackConfig{
 		sourceIdentity: source,
 		Grafana:        &GrafanaConfig{Server: server, User: "alice"},
-	}).binding(credentials.FieldGrafanaPassword)
+	}).binding(t.Context(), credentials.FieldGrafanaPassword)
 	oldAccount := storedBoundAccount(t, store, passwordBinding, "old-password")
 	rawBefore, err := os.ReadFile(path)
 	require.NoError(t, err)
@@ -1406,7 +1406,7 @@ func TestBoundKeychainDirectorySyncFailureKeepsBothGenerations(t *testing.T) {
 	cfg.Stacks["default"].Grafana.APIToken = "new-token"
 
 	originalSync := syncConfigDirectory
-	syncConfigDirectory = func(string) error { return errors.New("injected directory sync failure") }
+	syncConfigDirectory = func(context.Context, string) error { return errors.New("injected directory sync failure") }
 	t.Cleanup(func() { syncConfigDirectory = originalSync })
 	err = Write(context.Background(), ExplicitConfigFile(path), cfg)
 	var durabilityErr *configDurabilityError
@@ -1541,14 +1541,14 @@ func TestCredentialDestinationURLNormalizationPreservesSecurityRelevantBytes(t *
 func TestBoundPasswordBindingIncludesExactUsername(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	stack := &StackConfig{Grafana: &GrafanaConfig{Server: "https://example.invalid", User: "alice"}}
-	source, err := canonicalConfigSource(path)
+	source, err := canonicalConfigSource(t.Context(), path)
 	require.NoError(t, err)
 	stack.sourceIdentity = source
-	alice := stackOwner("default", stack).binding(credentials.FieldGrafanaPassword)
+	alice := stackOwner("default", stack).binding(t.Context(), credentials.FieldGrafanaPassword)
 	stack.Grafana.User = " alice "
-	spaced := stackOwner("default", stack).binding(credentials.FieldGrafanaPassword)
+	spaced := stackOwner("default", stack).binding(t.Context(), credentials.FieldGrafanaPassword)
 	stack.Grafana.User = "bob"
-	bob := stackOwner("default", stack).binding(credentials.FieldGrafanaPassword)
+	bob := stackOwner("default", stack).binding(t.Context(), credentials.FieldGrafanaPassword)
 	assert.NotEqual(t, alice.Destination, spaced.Destination)
 	assert.NotEqual(t, alice.Destination, bob.Destination)
 }
@@ -1564,8 +1564,8 @@ func TestBoundCredentialTLSAndUsernameOverridesClearStoredSecrets(t *testing.T) 
 
 	t.Run("username", func(t *testing.T) {
 		t.Setenv("GRAFANA_USER", "bob")
-		loaded, err := Load(context.Background(), ExplicitConfigFile(path), func(cfg *Config) error {
-			return ParseEnvIntoContext(cfg.Contexts["default"])
+		loaded, err := Load(context.Background(), ExplicitConfigFile(path), func(ctx context.Context, cfg *Config) error {
+			return ParseEnvIntoContext(ctx, cfg.Contexts["default"])
 		})
 		require.NoError(t, err)
 		assert.Empty(t, loaded.Contexts["default"].Grafana.Password)
@@ -1578,8 +1578,8 @@ func TestBoundCredentialTLSAndUsernameOverridesClearStoredSecrets(t *testing.T) 
 		caPath := filepath.Join(t.TempDir(), "ca.pem")
 		require.NoError(t, os.WriteFile(caPath, []byte("test CA"), 0o600))
 		t.Setenv("GRAFANA_TLS_CA_FILE", caPath)
-		loaded, err := Load(context.Background(), ExplicitConfigFile(path), func(cfg *Config) error {
-			return ParseEnvIntoContext(cfg.Contexts["default"])
+		loaded, err := Load(context.Background(), ExplicitConfigFile(path), func(ctx context.Context, cfg *Config) error {
+			return ParseEnvIntoContext(ctx, cfg.Contexts["default"])
 		})
 		require.NoError(t, err)
 		assert.Empty(t, loaded.Contexts["default"].Grafana.APIToken)
@@ -1646,8 +1646,8 @@ func TestTLSPathOverrideRecapturesEffectiveBytesBeforeTransport(t *testing.T) {
 
 	t.Setenv("GRAFANA_TOKEN", "token")
 	t.Setenv("GRAFANA_TLS_CA_FILE", overrideCAPath)
-	loaded, err := Load(context.Background(), ExplicitConfigFile(path), func(runtime *Config) error {
-		return ParseEnvIntoContext(runtime.Contexts["default"])
+	loaded, err := Load(context.Background(), ExplicitConfigFile(path), func(ctx context.Context, runtime *Config) error {
+		return ParseEnvIntoContext(ctx, runtime.Contexts["default"])
 	})
 	require.NoError(t, err)
 	require.Equal(t, "token", loaded.Contexts["default"].Grafana.APIToken)
@@ -1725,8 +1725,8 @@ func TestLocalConfigCannotPairRepositoryDestinationWithEnvironmentCredential(t *
 			require.NoError(t, os.WriteFile(path, []byte(tt.yaml), 0o600))
 			t.Setenv(tt.secretEnv, tt.secret)
 			ctx := ContextWithConfigSource(context.Background(), ConfigSource{Path: path, Type: "local"})
-			cfg, err := Load(ctx, ExplicitConfigFile(path), func(cfg *Config) error {
-				return ParseEnvIntoContext(cfg.Contexts["default"])
+			cfg, err := Load(ctx, ExplicitConfigFile(path), func(_ context.Context, cfg *Config) error {
+				return ParseEnvIntoContext(ctx, cfg.Contexts["default"])
 			})
 			require.NoError(t, err)
 			assert.Empty(t, tt.credential(cfg))
@@ -1745,8 +1745,8 @@ func TestExplicitlySelectedLocalConfigMayUseEnvironmentCredential(t *testing.T) 
 	t.Setenv("GRAFANA_SERVER", "https://user-authorized.invalid")
 	t.Setenv("GRAFANA_TOKEN", "exported-token")
 	ctx := ContextWithConfigSource(context.Background(), ConfigSource{Path: path, Type: "explicit"})
-	cfg, err := Load(ctx, ExplicitConfigFile(path), func(cfg *Config) error {
-		return ParseEnvIntoContext(cfg.Contexts["default"])
+	cfg, err := Load(ctx, ExplicitConfigFile(path), func(_ context.Context, cfg *Config) error {
+		return ParseEnvIntoContext(ctx, cfg.Contexts["default"])
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "https://user-authorized.invalid", cfg.Contexts["default"].Grafana.Server)
@@ -1770,9 +1770,9 @@ func TestLocalSourceClassificationSurvivesFileRemovalBeforeEnvironmentOverride(t
 	localPath := filepath.Join(work, LocalConfigFileName)
 	require.NoError(t, os.WriteFile(localPath, []byte("version: 1\nstacks:\n  default:\n    grafana:\n      server: https://attacker.invalid\ncontexts:\n  default:\n    stack: default\ncurrent-context: default\n"), 0o600))
 
-	cfg, err := LoadLayered(context.Background(), "", func(cfg *Config) error {
+	cfg, err := LoadLayered(context.Background(), "", func(ctx context.Context, cfg *Config) error {
 		require.NoError(t, os.Remove(localPath))
-		return ParseEnvIntoContext(cfg.Contexts["default"])
+		return ParseEnvIntoContext(ctx, cfg.Contexts["default"])
 	})
 	require.NoError(t, err)
 	assert.Empty(t, cfg.Contexts["default"].Grafana.APIToken)
@@ -1792,10 +1792,10 @@ func TestLocalConfigCannotSelectExternalMTLSCredentials(t *testing.T) {
 		{
 			name: "environment fields",
 			yaml: "version: 1\nstacks:\n  default:\n    grafana:\n      server: https://attacker.invalid\ncontexts:\n  default:\n    stack: default\ncurrent-context: default\n",
-			override: func(cfg *Config) error {
+			override: func(ctx context.Context, cfg *Config) error {
 				t.Setenv("GRAFANA_TLS_CERT_FILE", "/tmp/user-client.crt")
 				t.Setenv("GRAFANA_TLS_KEY_FILE", "/tmp/user-client.key")
-				return ParseEnvIntoContext(cfg.Contexts["default"])
+				return ParseEnvIntoContext(ctx, cfg.Contexts["default"])
 			},
 		},
 	}

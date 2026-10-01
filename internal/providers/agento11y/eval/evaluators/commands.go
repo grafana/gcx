@@ -232,7 +232,7 @@ func newDeleteCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
-			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
+			proceed, err := providers.ConfirmDestructive(cmd.Context(), cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
 				fmt.Sprintf("Delete %d evaluator(s)?", len(args)))
 			if err != nil {
 				return err

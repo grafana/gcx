@@ -2,6 +2,7 @@ package providers
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -25,12 +26,12 @@ var ErrAgentModeRequiresForce = errors.New("destructive operation in agent mode:
 // This is the single source of truth for bypass logic. Both
 // [ConfirmDestructive] and callers with custom prompts (e.g. slug-typing
 // confirmation for stack deletion) should use this.
-func CheckDestructiveBypass(force bool) (bool, error) {
+func CheckDestructiveBypass(ctx context.Context, force bool) (bool, error) {
 	if force {
 		return true, nil
 	}
 
-	cliOpts, err := config.LoadCLIOptions()
+	cliOpts, err := config.LoadCLIOptions(ctx)
 	if err != nil {
 		return false, err
 	}
@@ -56,8 +57,8 @@ func CheckDestructiveBypass(force bool) (bool, error) {
 //
 // Agent mode requires explicit --force so that agents must deliberately
 // acknowledge destructive operations rather than silently proceeding.
-func ConfirmDestructive(in io.Reader, out io.Writer, force bool, prompt string) (bool, error) {
-	bypass, err := CheckDestructiveBypass(force)
+func ConfirmDestructive(ctx context.Context, in io.Reader, out io.Writer, force bool, prompt string) (bool, error) {
+	bypass, err := CheckDestructiveBypass(ctx, force)
 	if bypass || err != nil {
 		return bypass, err
 	}

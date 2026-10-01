@@ -197,7 +197,7 @@ func runPrompt(cmd *cobra.Command, message string, opts *promptOpts, configOpts 
 	// Resolve context ID
 	contextID := opts.contextID
 	if opts.cont {
-		lastContextID, err := assistant.GetLastContextID()
+		lastContextID, err := assistant.GetLastContextID(ctx)
 		if err != nil {
 			return err
 		}
@@ -235,7 +235,7 @@ func runPrompt(cmd *cobra.Command, message string, opts *promptOpts, configOpts 
 
 	result := c.ChatWithApproval(ctx, message, streamOpts, em.approvalHandler(logger))
 
-	return em.finish(result, opts.timeout)
+	return em.finish(ctx, result, opts.timeout)
 }
 
 // ResolveClientOptions loads the gcx config and returns assistant

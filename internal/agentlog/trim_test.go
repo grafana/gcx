@@ -41,7 +41,7 @@ func TestTrimLog(t *testing.T) {
 	t.Run("no-op when under limit", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "log.jsonl")
 		write(t, path, 5)
-		if err := trimLog(path, 10); err != nil {
+		if err := trimLog(t.Context(), path, 10); err != nil {
 			t.Fatal(err)
 		}
 		if got := countLines(t, path); got != 5 {
@@ -52,7 +52,7 @@ func TestTrimLog(t *testing.T) {
 	t.Run("no-op at exactly limit", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "log.jsonl")
 		write(t, path, 10)
-		if err := trimLog(path, 10); err != nil {
+		if err := trimLog(t.Context(), path, 10); err != nil {
 			t.Fatal(err)
 		}
 		if got := countLines(t, path); got != 10 {
@@ -63,7 +63,7 @@ func TestTrimLog(t *testing.T) {
 	t.Run("trims oldest entries", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "log.jsonl")
 		write(t, path, 15)
-		if err := trimLog(path, 10); err != nil {
+		if err := trimLog(t.Context(), path, 10); err != nil {
 			t.Fatal(err)
 		}
 		if got := countLines(t, path); got != 10 {

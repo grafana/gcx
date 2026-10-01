@@ -29,7 +29,7 @@ func TestValidateOpenURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := deeplink.Open(tt.rawURL)
+			err := deeplink.Open(t.Context(), tt.rawURL)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), "refusing to open non-http URL")
 		})

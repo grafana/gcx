@@ -87,7 +87,7 @@ func withFakeKeychain(t *testing.T) *fakeKeychain {
 	t.Helper()
 	store := newFakeKeychain()
 	orig := keychainStoreFn
-	keychainStoreFn = func() credentials.Store { return store }
+	keychainStoreFn = func(context.Context) credentials.Store { return store }
 	t.Cleanup(func() { keychainStoreFn = orig })
 	return store
 }
@@ -398,8 +398,8 @@ current-context: dev
 
 	// Values were copied to source-bound owner keys; the legacy keys survive
 	// so the .legacy.bak sentinels stay resolvable.
-	stackBinding := stackOwner("dev", cfg.Stacks["dev"]).binding(credentials.FieldGrafanaToken)
-	cloudBinding := cloudOwner("grafana-com", cfg.Cloud["grafana-com"]).binding(credentials.FieldCloudToken)
+	stackBinding := stackOwner("dev", cfg.Stacks["dev"]).binding(t.Context(), credentials.FieldGrafanaToken)
+	cloudBinding := cloudOwner("grafana-com", cfg.Cloud["grafana-com"]).binding(t.Context(), credentials.FieldCloudToken)
 	storedFakeBoundAccount(t, store, cloudBinding, "secret-cloud")
 	storedFakeBoundAccount(t, store, stackBinding, "secret-grafana")
 	assert.Equal(t, "secret-cloud", store.entries["dev:cloud-token"])
@@ -556,7 +556,7 @@ current-context: prod
 			cfg, err := tc.load(t, t.Context(), path)
 			require.NoError(t, err)
 			assert.Equal(t, "prod-secret", cfg.Contexts["prod"].Grafana.APIToken)
-			binding := stackOwner("prod", cfg.Stacks["prod"]).binding(credentials.FieldGrafanaToken)
+			binding := stackOwner("prod", cfg.Stacks["prod"]).binding(t.Context(), credentials.FieldGrafanaToken)
 			assertOnlyAuthorizedLegacyGet(t, store, "prod:grafana-token", binding)
 		})
 	}
@@ -643,7 +643,7 @@ current-context: prod
 	cfg, err := LoadLayered(t.Context(), "")
 	require.NoError(t, err)
 	assert.Equal(t, "prod-secret", cfg.Contexts["prod"].Grafana.APIToken)
-	binding := stackOwner("prod", cfg.Stacks["prod"]).binding(credentials.FieldGrafanaToken)
+	binding := stackOwner("prod", cfg.Stacks["prod"]).binding(t.Context(), credentials.FieldGrafanaToken)
 	assertOnlyAuthorizedLegacyGet(t, store, "prod:grafana-token", binding)
 }
 
@@ -983,7 +983,7 @@ current-context: dev
 	before, err := os.ReadFile(path)
 	require.NoError(t, err)
 	originalRename := renameConfigFile
-	renameConfigFile = func(string, string) error { return errors.New("injected rename failure") }
+	renameConfigFile = func(context.Context, string, string) error { return errors.New("injected rename failure") }
 	t.Cleanup(func() { renameConfigFile = originalRename })
 
 	var warnings bytes.Buffer
@@ -1082,7 +1082,7 @@ contexts:
       token: local-token
 `), 0o600))
 
-	sources, err := DiscoverSources(WithSystemDir(filepath.Join(userDir, "no-system")), WithUserDir(userDir), WithWorkDir(workDir))
+	sources, err := DiscoverSources(t.Context(), WithSystemDir(filepath.Join(userDir, "no-system")), WithUserDir(userDir), WithWorkDir(workDir))
 	require.NoError(t, err)
 	require.Len(t, sources, 2)
 
@@ -1177,7 +1177,7 @@ diagnostics:
 `
 	path := writeTestConfig(t, legacy)
 
-	d, err := readDiagnostics(path)
+	d, err := readDiagnostics(t.Context(), path)
 	require.NoError(t, err)
 	require.NotNil(t, d)
 	assert.Equal(t, "disabled", d.Telemetry)

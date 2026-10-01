@@ -176,7 +176,7 @@ func Validate(ctx context.Context, opts Options, restCfg config.NamespacedRESTCo
 }
 
 func validateBasicAuth(ctx context.Context, cfg config.Context) error {
-	client, tlsConfig, err := intgrafana.ClientFromContextWithTLS(&cfg)
+	client, tlsConfig, err := intgrafana.ClientFromContextWithTLS(ctx, &cfg)
 	if err != nil {
 		return err
 	}

@@ -578,7 +578,7 @@ func NewOpenCommand(loader GrafanaConfigLoader) *cobra.Command {
 			}
 
 			cmdio.Info(cmd.ErrOrStderr(), "Opening %s", url)
-			return deeplink.Open(url)
+			return deeplink.Open(ctx, url)
 		},
 	}
 	opts.setup(cmd.Flags())

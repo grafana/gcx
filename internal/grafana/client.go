@@ -33,23 +33,23 @@ type clientResult struct {
 	tlsConfig *tls.Config // nil when no TLS is configured
 }
 
-func clientFromContextWithTLS(ctx *config.Context) (clientResult, error) {
-	if ctx == nil {
+func clientFromContextWithTLS(ctx context.Context, cfgCtx *config.Context) (clientResult, error) {
+	if cfgCtx == nil {
 		return clientResult{}, errors.New("no context provided")
 	}
-	if ctx.Grafana == nil {
+	if cfgCtx.Grafana == nil {
 		return clientResult{}, errors.New("grafana not configured")
 	}
-	authMethod, err := ctx.EffectiveGrafanaAuthMethod()
+	authMethod, err := cfgCtx.EffectiveGrafanaAuthMethod()
 	if err != nil {
 		return clientResult{}, fmt.Errorf("grafana authentication: %w", err)
 	}
-	selectedTLS, err := ctx.EffectiveGrafanaTLS()
+	selectedTLS, err := cfgCtx.EffectiveGrafanaTLS()
 	if err != nil {
 		return clientResult{}, fmt.Errorf("grafana TLS configuration: %w", err)
 	}
 
-	grafanaURL, err := url.Parse(ctx.Grafana.Server)
+	grafanaURL, err := url.Parse(cfgCtx.Grafana.Server)
 	if err != nil {
 		return clientResult{}, err
 	}
@@ -65,7 +65,7 @@ func clientFromContextWithTLS(ctx *config.Context) (clientResult, error) {
 
 	var stdTLS *tls.Config
 	if selectedTLS != nil {
-		stdTLS, err = selectedTLS.ToStdTLSConfig()
+		stdTLS, err = selectedTLS.ToStdTLSConfig(ctx)
 		if err != nil {
 			return clientResult{}, fmt.Errorf("TLS configuration: %w", err)
 		}
@@ -79,12 +79,12 @@ func clientFromContextWithTLS(ctx *config.Context) (clientResult, error) {
 	// transport layer and carries no Authorization header.
 	switch authMethod {
 	case "basic":
-		cfg.BasicAuth = url.UserPassword(ctx.Grafana.User, ctx.Grafana.Password)
+		cfg.BasicAuth = url.UserPassword(cfgCtx.Grafana.User, cfgCtx.Grafana.Password)
 	case "token":
-		cfg.APIKey = ctx.Grafana.APIToken
+		cfg.APIKey = cfgCtx.Grafana.APIToken
 	}
-	if ctx.Grafana.OrgID != 0 {
-		cfg.OrgID = ctx.Grafana.OrgID
+	if cfgCtx.Grafana.OrgID != 0 {
+		cfg.OrgID = cfgCtx.Grafana.OrgID
 	}
 
 	return clientResult{
@@ -97,8 +97,8 @@ func clientFromContextWithTLS(ctx *config.Context) (clientResult, error) {
 // The returned client's default transport does NOT include TLS configuration;
 // callers that need to wrap the client with middleware via WithHTTPClient
 // should use ClientFromContextWithTLS instead to avoid silently losing mTLS.
-func ClientFromContext(ctx *config.Context) (*goapi.GrafanaHTTPAPI, error) {
-	res, err := clientFromContextWithTLS(ctx)
+func ClientFromContext(ctx context.Context, cfgCtx *config.Context) (*goapi.GrafanaHTTPAPI, error) {
+	res, err := clientFromContextWithTLS(ctx, cfgCtx)
 	if err != nil {
 		return nil, err
 	}
@@ -108,8 +108,8 @@ func ClientFromContext(ctx *config.Context) (*goapi.GrafanaHTTPAPI, error) {
 // ClientFromContextWithTLS returns both the goapi client and the resolved
 // *tls.Config. Use this when wrapping the client with WithHTTPClient to
 // ensure TLS settings are preserved (see GetVersion for an example).
-func ClientFromContextWithTLS(ctx *config.Context) (*goapi.GrafanaHTTPAPI, *tls.Config, error) {
-	res, err := clientFromContextWithTLS(ctx)
+func ClientFromContextWithTLS(ctx context.Context, cfgCtx *config.Context) (*goapi.GrafanaHTTPAPI, *tls.Config, error) {
+	res, err := clientFromContextWithTLS(ctx, cfgCtx)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -131,7 +131,7 @@ func ClientFromContextWithTLS(ctx *config.Context) (*goapi.GrafanaHTTPAPI, *tls.
 //   - err == nil, parsed != nil: fully parseable semver; raw is the
 //     original string.
 func GetVersion(ctx context.Context, cfgCtx *config.Context) (*semver.Version, string, error) {
-	res, err := clientFromContextWithTLS(cfgCtx)
+	res, err := clientFromContextWithTLS(ctx, cfgCtx)
 	if err != nil {
 		return nil, "", err
 	}

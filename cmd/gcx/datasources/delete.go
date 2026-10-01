@@ -87,7 +87,7 @@ Exit codes: 0 (all deleted), 4 (some deletions failed).`,
 			}
 
 			if !opts.DryRun {
-				proceed, err := providers.ConfirmDestructive(
+				proceed, err := providers.ConfirmDestructive(ctx,
 					cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
 					fmt.Sprintf("Delete %d datasource(s)?", len(args)))
 				if err != nil {

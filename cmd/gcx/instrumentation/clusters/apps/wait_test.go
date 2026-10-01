@@ -23,8 +23,8 @@ import (
 func pinAgentMode(t *testing.T) {
 	t.Helper()
 	t.Setenv("GCX_AGENT_MODE", "true")
-	agent.ResetForTesting()
-	t.Cleanup(func() { agent.ResetForTesting() })
+	agent.ResetForTesting(t.Context())
+	t.Cleanup(func() { agent.ResetForTesting(t.Context()) })
 }
 
 // pinHumanMode forces agent-mode detection off (GCX_AGENT_MODE=false overrides
@@ -32,8 +32,8 @@ func pinAgentMode(t *testing.T) {
 func pinHumanMode(t *testing.T) {
 	t.Helper()
 	t.Setenv("GCX_AGENT_MODE", "false")
-	agent.ResetForTesting()
-	t.Cleanup(func() { agent.ResetForTesting() })
+	agent.ResetForTesting(t.Context())
+	t.Cleanup(func() { agent.ResetForTesting(t.Context()) })
 }
 
 // parseJSONLines fails the test unless every non-empty line of s is one JSON

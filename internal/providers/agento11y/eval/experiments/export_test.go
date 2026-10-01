@@ -90,7 +90,7 @@ func decodeOneJSONDocument(t *testing.T, data string) map[string]any {
 
 func TestExport_CommandWritesLosslessBundle(t *testing.T) {
 	agent.SetFlag(true)
-	t.Cleanup(agent.ResetForTesting)
+	t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 	const experimentBody = `{"experiment_id":"run-1","name":"nightly","future_field":{"kept":true}}`
 	const reportBody = `{"experiment":{"experiment_id":"run-1"},"summary":{"trial_count":4},"rows":[{"test_case_id":"case-1","trials":[{"trial":{"trial_id":"trial-1"},"final_score":{"score_id":"score-1","value":0.9},"scores":[{"score_id":"score-1","future_score_field":"kept"}],"artifacts":[{"artifact_id":"artifact-1","future_artifact_field":"kept"}]}]}],"future_report_field":17}`
@@ -242,7 +242,7 @@ func TestExport_CommandWritesLosslessBundle(t *testing.T) {
 
 func TestExport_IncludesArtifactPayloadAndChecksum(t *testing.T) {
 	agent.SetFlag(true)
-	t.Cleanup(agent.ResetForTesting)
+	t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 	const artifactBody = `{"request":"exact bytes"}`
 	const artifactID = "artifact-1"
@@ -309,7 +309,7 @@ func TestExport_IncludesArtifactPayloadAndChecksum(t *testing.T) {
 
 func TestExport_ArtifactSizeMismatchFailsClosedWithReceipt(t *testing.T) {
 	agent.SetFlag(true)
-	t.Cleanup(agent.ResetForTesting)
+	t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 	const artifactID = "artifact-1"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -348,7 +348,7 @@ func TestExport_ArtifactSizeMismatchFailsClosedWithReceipt(t *testing.T) {
 
 func TestExport_MixedArtifactAndConversationResultsExitFour(t *testing.T) {
 	agent.SetFlag(true)
-	t.Cleanup(agent.ResetForTesting)
+	t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -391,7 +391,7 @@ func TestExtractReportArtifacts_RejectsInvalidDeclaredSizes(t *testing.T) {
 
 func TestExport_DefaultWritesConversationIDsWithoutPayloads(t *testing.T) {
 	agent.SetFlag(true)
-	t.Cleanup(agent.ResetForTesting)
+	t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 	var conversationCalls atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -451,7 +451,7 @@ func TestExport_DefaultWritesConversationIDsWithoutPayloads(t *testing.T) {
 
 func TestExport_PartialFailureWritesManifestAndExitFour(t *testing.T) {
 	agent.SetFlag(true)
-	t.Cleanup(agent.ResetForTesting)
+	t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -504,7 +504,7 @@ func TestExport_PartialFailureWritesManifestAndExitFour(t *testing.T) {
 
 func TestExport_TotalConversationFailureEmitsReceiptAndExitOne(t *testing.T) {
 	agent.SetFlag(true)
-	t.Cleanup(agent.ResetForTesting)
+	t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -543,7 +543,7 @@ func TestExport_TotalConversationFailureEmitsReceiptAndExitOne(t *testing.T) {
 
 func TestExport_CancellationDoesNotPublish(t *testing.T) {
 	agent.SetFlag(true)
-	t.Cleanup(agent.ResetForTesting)
+	t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)

@@ -117,7 +117,7 @@ func TestIsAgentMode(t *testing.T) {
 				t.Setenv(k, v)
 			}
 
-			agent.ResetForTesting()
+			agent.ResetForTesting(t.Context())
 
 			if tc.setFlag != nil {
 				agent.SetFlag(*tc.setFlag)
@@ -182,7 +182,7 @@ func TestDetectedFromEnv(t *testing.T) {
 				t.Setenv(k, v)
 			}
 
-			agent.ResetForTesting()
+			agent.ResetForTesting(t.Context())
 
 			if tc.setFlag != nil {
 				agent.SetFlag(*tc.setFlag)
@@ -242,7 +242,7 @@ func TestName(t *testing.T) {
 				t.Setenv(k, v)
 			}
 
-			assert.Equal(t, tc.want, agent.Name())
+			assert.Equal(t, tc.want, agent.Name(t.Context()))
 		})
 	}
 }

@@ -51,3 +51,12 @@ func CurrentUser(ctx context.Context) (*user.User, error) {
 	}
 	return user.Current()
 }
+
+// IgnoreSignals mirrors [signal.Ignore]. Inside a sandbox signals belong to
+// the embedding process, so it does nothing.
+func IgnoreSignals(ctx context.Context, signals ...os.Signal) {
+	if Sandboxed(ctx) {
+		return
+	}
+	signal.Ignore(signals...)
+}

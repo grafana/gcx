@@ -263,7 +263,7 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 					return fmt.Errorf("no deep link URL available for investigation %s", args[0])
 				}
 				cmdio.Info(cmd.ErrOrStderr(), "Opening %s", url)
-				return deeplink.Open(url)
+				return deeplink.Open(cmd.Context(), url)
 			}
 			client, mode, err := loadClientAndAPIMode(cmd, loader)
 			if err != nil {

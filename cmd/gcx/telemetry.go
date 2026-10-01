@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"runtime"
 	"strings"
 	"sync"
@@ -15,6 +14,7 @@ import (
 	"github.com/grafana/gcx/internal/agentlog"
 	internalconfig "github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/gcxerrors"
+	"github.com/grafana/gcx/internal/host"
 	"github.com/grafana/gcx/internal/telemetry"
 	"github.com/grafana/gcx/internal/telemetry/capture"
 	"github.com/grafana/gcx/internal/terminal"
@@ -26,42 +26,50 @@ import (
 // at startup and telemetry mode resolution at exit.
 //
 //nolint:gochecknoglobals
-var diagnosticsConfig = sync.OnceValue(func() *internalconfig.DiagnosticsConfig {
-	return internalconfig.LoadDiagnostics(context.Background())
-})
+var (
+	diagnosticsConfigOnce  sync.Once
+	diagnosticsConfigValue *internalconfig.DiagnosticsConfig
+)
+
+func diagnosticsConfig(ctx context.Context) *internalconfig.DiagnosticsConfig {
+	diagnosticsConfigOnce.Do(func() {
+		diagnosticsConfigValue = internalconfig.LoadDiagnostics(ctx)
+	})
+	return diagnosticsConfigValue
+}
 
 // emitUsageEvent builds and emits the anonymous usage event for this
 // invocation. It must never affect the command's exit code or prompt the user.
 // It must only be called once per invocation.
-func emitUsageEvent(cmd *cobra.Command, start time.Time, exitCode int) {
+func emitUsageEvent(ctx context.Context, cmd *cobra.Command, start time.Time, exitCode int) {
 	info := root.CurrentTelemetryInfo()
 	if info == nil {
-		info = root.FallbackTelemetryInfo(cmd, os.Args[1:], exitCode)
+		info = root.FallbackTelemetryInfo(cmd, host.Args(ctx)[1:], exitCode)
 	}
 	if info.Suppress {
 		return
 	}
 
-	mode := telemetry.ResolveMode(diagnosticsTelemetryValue)
+	mode := telemetry.ResolveMode(ctx, func() string { return diagnosticsTelemetryValue(ctx) })
 
 	// One-time opt-out notice for interactive users; the command's own output
 	// has already been written by this point. Gated on stderr's TTY state
 	// because that is where the notice goes: piped stdout must not hide it,
 	// and discarded stderr must not consume the one-shot flag.
-	_, isCI := telemetry.DetectCI()
-	telemetry.MaybeShowFirstRunNotice(os.Stderr, mode, terminal.StderrIsTerminal(), isCI, agent.IsAgentMode())
+	_, isCI := telemetry.DetectCI(ctx)
+	telemetry.MaybeShowFirstRunNotice(ctx, host.Stderr(ctx), mode, terminal.StderrIsTerminal(), isCI, agent.IsAgentMode())
 
 	switch mode {
 	case telemetry.ModeLog:
-		if data, err := json.Marshal(buildUsageEvent(info, start, exitCode)); err == nil {
-			fmt.Fprintln(os.Stderr, string(data))
+		if data, err := json.Marshal(buildUsageEvent(ctx, info, start, exitCode)); err == nil {
+			fmt.Fprintln(host.Stderr(ctx), string(data))
 		}
 	case telemetry.ModeEnabled:
-		telemetry.Export(buildUsageEvent(info, start, exitCode))
+		telemetry.Export(ctx, buildUsageEvent(ctx, info, start, exitCode))
 	}
 }
 
-func buildUsageEvent(info *root.TelemetryInfo, start time.Time, exitCode int) telemetry.Event {
+func buildUsageEvent(ctx context.Context, info *root.TelemetryInfo, start time.Time, exitCode int) telemetry.Event {
 	event := telemetry.Event{
 		Service: telemetry.ServiceName,
 		Version: appversion.Get(),
@@ -76,7 +84,7 @@ func buildUsageEvent(info *root.TelemetryInfo, start time.Time, exitCode int) te
 
 		IsTTY:      terminal.StdoutIsTerminal(),
 		IsAgent:    agent.IsAgentMode(),
-		Agent:      agent.Name(),
+		Agent:      agent.Name(ctx),
 		TargetKind: internalconfig.CapturedTargetKind(),
 	}
 
@@ -101,8 +109,8 @@ func buildUsageEvent(info *root.TelemetryInfo, start time.Time, exitCode int) te
 		event.DryRun = &dryRun
 	}
 
-	event.DeviceID, event.DeviceIDPersisted = telemetry.DeviceID()
-	event.CIProvider, event.IsCI = telemetry.DetectCI()
+	event.DeviceID, event.DeviceIDPersisted = telemetry.DeviceID(ctx)
+	event.CIProvider, event.IsCI = telemetry.DetectCI(ctx)
 
 	// Sanitized api-command detail, recorded by the api command itself and
 	// already reduced to closed vocabularies (see telemetry.RecordAPIRequest).
@@ -148,8 +156,8 @@ func buildUsageEvent(info *root.TelemetryInfo, start time.Time, exitCode int) te
 	return event
 }
 
-func diagnosticsTelemetryValue() string {
-	if d := diagnosticsConfig(); d != nil {
+func diagnosticsTelemetryValue(ctx context.Context) string {
+	if d := diagnosticsConfig(ctx); d != nil {
 		return d.Telemetry
 	}
 	return ""

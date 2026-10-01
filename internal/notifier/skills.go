@@ -1,6 +1,7 @@
 package notifier
 
 import (
+	"context"
 	"io/fs"
 	"strings"
 
@@ -12,8 +13,8 @@ const skillsUpdateCommand = "gcx agent skills update"
 // SkillsUpdateMessage reports pending content updates and retired installations
 // independently, with an explicit action for each. It returns an empty string
 // when neither condition needs attention.
-func SkillsUpdateMessage(source fs.FS, catalog []byte, root string) (string, error) {
-	result, err := skillops.Update(source, catalog, root, nil, true)
+func SkillsUpdateMessage(ctx context.Context, source fs.FS, catalog []byte, root string) (string, error) {
+	result, err := skillops.Update(ctx, source, catalog, root, nil, true)
 	if err != nil {
 		return "", err
 	}

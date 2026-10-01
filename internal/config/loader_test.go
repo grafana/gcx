@@ -2,6 +2,7 @@ package config_test
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"os"
 	"path/filepath"
@@ -535,7 +536,7 @@ func TestLoad_standardLocation_envVarTakesPrecedence(t *testing.T) {
 func TestLoad_withOverride(t *testing.T) {
 	req := require.New(t)
 
-	cfg, err := config.Load(t.Context(), config.ExplicitConfigFile("./testdata/config.yaml"), func(cfg *config.Config) error {
+	cfg, err := config.Load(t.Context(), config.ExplicitConfigFile("./testdata/config.yaml"), func(_ context.Context, cfg *config.Config) error {
 		cfg.CurrentContext = "overridden"
 		return nil
 	})
@@ -682,6 +683,7 @@ func TestDiscoverSources(t *testing.T) {
 	require.NoError(t, os.WriteFile(localFile, []byte("contexts:\n  lcl: {}\n"), 0o600))
 
 	sources, err := config.DiscoverSources(
+		t.Context(),
 		config.WithSystemDir(systemDir),
 		config.WithUserDir(userDir),
 		config.WithWorkDir(localDir),
@@ -704,6 +706,7 @@ func TestDiscoverSources_SkipsMissing(t *testing.T) {
 	require.NoError(t, os.WriteFile(userFile, []byte("contexts:\n  usr: {}\ncurrent-context: usr\n"), 0o600))
 
 	sources, err := config.DiscoverSources(
+		t.Context(),
 		config.WithSystemDir(t.TempDir()), // empty, no config
 		config.WithUserDir(userDir),
 		config.WithWorkDir(t.TempDir()), // empty, no .gcx.yaml
@@ -729,6 +732,7 @@ func TestDiscoverSources_DotConfigPreferredOverXDG(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", xdgDir) // empty, no config
 
 	sources, err := config.DiscoverSources(
+		t.Context(),
 		config.WithSystemDir(t.TempDir()),
 		config.WithWorkDir(t.TempDir()),
 	)
@@ -753,6 +757,7 @@ func TestDiscoverSources_FallsBackToXDGWhenDotConfigMissing(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", xdgDir)
 
 	sources, err := config.DiscoverSources(
+		t.Context(),
 		config.WithSystemDir(t.TempDir()),
 		config.WithWorkDir(t.TempDir()),
 	)
@@ -779,7 +784,7 @@ func TestCheckDuplicateUserConfig_BothExist(t *testing.T) {
 	t.Setenv("HOME", homeDir)
 	t.Setenv("XDG_CONFIG_HOME", xdgDir)
 
-	dup := config.CheckDuplicateUserConfig()
+	dup := config.CheckDuplicateUserConfig(t.Context())
 	require.NotNil(t, dup)
 	assert.Equal(t, dotConfigFile, dup.Active)
 	assert.Equal(t, xdgFile, dup.Ignored)
@@ -814,7 +819,7 @@ func TestLoadForWrite_explicitFile(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "dev", cfg.CurrentContext)
 
-	filename, err := src()
+	filename, err := src(t.Context())
 	require.NoError(t, err)
 	require.Equal(t, userPath, filename)
 }
@@ -865,7 +870,7 @@ func TestLoadForWrite_fileType_user_freshSystem_autoCreates(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, src)
 
-	filename, err := src()
+	filename, err := src(t.Context())
 	require.NoError(t, err)
 	require.FileExists(t, filename)
 }
@@ -943,6 +948,6 @@ func TestCheckDuplicateUserConfig_NoDuplicate(t *testing.T) {
 	t.Setenv("HOME", homeDir)
 	t.Setenv("XDG_CONFIG_HOME", xdgDir) // empty, no config
 
-	dup := config.CheckDuplicateUserConfig()
+	dup := config.CheckDuplicateUserConfig(t.Context())
 	assert.Nil(t, dup)
 }

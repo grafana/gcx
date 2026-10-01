@@ -40,8 +40,8 @@ func setAgentMode(t *testing.T, on bool) {
 	} else {
 		t.Setenv("GCX_AGENT_MODE", "false")
 	}
-	agent.ResetForTesting()
-	t.Cleanup(agent.ResetForTesting)
+	agent.ResetForTesting(t.Context())
+	t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 }
 
 // fakeDeleteAPI stubs the delete surface for the nouns exercised below.

@@ -141,7 +141,7 @@ so the same command handles both create and update.`,
 				return err
 			}
 			var t NotificationTemplate
-			if err := providers.ReadFileOrStdin(opts.File, cmd.InOrStdin(), &t); err != nil {
+			if err := providers.ReadFileOrStdin(cmd.Context(), opts.File, cmd.InOrStdin(), &t); err != nil {
 				return err
 			}
 			if t.Name == "" {
@@ -199,7 +199,7 @@ func newTemplatesDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
 			// The confirmation exchange is a diagnostic, not the result —
 			// stderr keeps the prompt and "Aborted." out of the stdout
 			// document.
-			ok, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
+			ok, err := providers.ConfirmDestructive(ctx, cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
 				"Delete notification template "+args[0]+"?")
 			if err != nil {
 				return err

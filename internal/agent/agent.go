@@ -7,8 +7,10 @@
 package agent
 
 import (
-	"os"
+	"context"
 	"strings"
+
+	"github.com/grafana/gcx/internal/host"
 )
 
 // Environment variables that signal agent mode, with the harness name each
@@ -30,13 +32,14 @@ var (
 )
 
 func init() { //nolint:gochecknoinits
-	detectFromEnv()
+	// Detection reads the process environment once at startup.
+	detectFromEnv(context.Background())
 }
 
 // ResetForTesting re-runs environment detection from current env vars.
 // Exported for use in tests only.
-func ResetForTesting() {
-	detectFromEnv()
+func ResetForTesting(ctx context.Context) {
+	detectFromEnv(ctx)
 }
 
 // IsAgentMode reports whether gcx is running in agent mode.
@@ -61,13 +64,13 @@ func SetFlag(enabled bool) {
 
 // detectFromEnv reads environment variables and sets the package-level state.
 // It is called by init() and can be re-called from tests after modifying env.
-func detectFromEnv() {
+func detectFromEnv(ctx context.Context) {
 	detectedFromEnv = false
 	agentMode = false
 
 	// GCX_AGENT_MODE has the highest priority: an explicit falsy
 	// value disables agent mode regardless of other variables.
-	if v, ok := os.LookupEnv("GCX_AGENT_MODE"); ok {
+	if v, ok := host.LookupEnv(ctx, "GCX_AGENT_MODE"); ok {
 		if isFalsy(v) {
 			return
 		}
@@ -82,7 +85,7 @@ func detectFromEnv() {
 
 	// Check harness env vars for a truthy value.
 	for _, h := range harnessEnvVars {
-		if isTruthy(os.Getenv(h.envVar)) {
+		if isTruthy(host.Getenv(ctx, h.envVar)) {
 			detectedFromEnv = true
 			agentMode = true
 
@@ -95,9 +98,9 @@ func detectFromEnv() {
 // when no known agent env var is set. It reports the name even when agent
 // mode was explicitly disabled via GCX_AGENT_MODE or --agent=false; callers
 // should combine it with [IsAgentMode].
-func Name() string {
+func Name(ctx context.Context) string {
 	for _, h := range harnessEnvVars {
-		if isTruthy(os.Getenv(h.envVar)) {
+		if isTruthy(host.Getenv(ctx, h.envVar)) {
 			return h.name
 		}
 	}

@@ -274,7 +274,7 @@ func newDeleteCommand(resource providers.BoundResource[Report]) *cobra.Command {
 
 			// The prompt and the decline note are diagnostics — stderr keeps
 			// them out of the stdout result document.
-			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
+			proceed, err := providers.ConfirmDestructive(ctx, cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
 				fmt.Sprintf("Delete %d report(s)?", len(args)))
 			if err != nil {
 				return err

@@ -1,11 +1,13 @@
 package notifier
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 
+	"github.com/grafana/gcx/internal/host"
 	"gopkg.in/yaml.v3"
 )
 
@@ -22,8 +24,8 @@ type CheckState struct {
 // LoadState reads notifier state from path. Missing files and corrupt YAML
 // both yield an empty state — the state is non-critical UX bookkeeping, so
 // self-healing avoids permanently silencing the notifier on a partial write.
-func LoadState(path string) (State, error) {
-	data, err := os.ReadFile(path)
+func LoadState(ctx context.Context, path string) (State, error) {
+	data, err := host.ReadFile(ctx, path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return State{}, nil
@@ -44,8 +46,8 @@ func LoadState(path string) (State, error) {
 // SaveState writes notifier state to path atomically, creating parent
 // directories as needed. The write goes through a sibling .tmp file followed
 // by os.Rename so a crash mid-write cannot leave a corrupt state file.
-func SaveState(path string, state State) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+func SaveState(ctx context.Context, path string, state State) error {
+	if err := host.MkdirAll(ctx, filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("create notifier state dir for %q: %w", path, err)
 	}
 
@@ -55,11 +57,11 @@ func SaveState(path string, state State) error {
 	}
 
 	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+	if err := host.WriteFile(ctx, tmp, data, 0o600); err != nil {
 		return fmt.Errorf("write notifier state %q: %w", path, err)
 	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
+	if err := host.Rename(ctx, tmp, path); err != nil {
+		_ = host.Remove(ctx, tmp)
 		return fmt.Errorf("rename notifier state %q: %w", path, err)
 	}
 	return nil

@@ -111,7 +111,7 @@ func TestSaveCloudConfigDoesNotReplaceConcurrentCreate(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	external := []byte("version: 1\ncontexts:\n  external: {}\ncurrent-context: external\n")
 	calls := 0
-	source := func() (string, error) {
+	source := func(context.Context) (string, error) {
 		calls++
 		if calls == 2 {
 			if err := os.WriteFile(path, external, 0o600); err != nil {
@@ -207,10 +207,10 @@ func TestSaveCloudConfigCollisionDoesNotReplaceSharedEntry(t *testing.T) {
 
 	got, err := config.Load(ctx, source)
 	require.NoError(t, err)
-	got.ResolveContext("prod")
+	got.ResolveContext(ctx, "prod")
 	assert.Equal(t, "org-wide-cap", got.Contexts["prod"].CloudEntry.Token,
 		"shared entry must not be replaced by another context's login")
-	got.ResolveContext("ci")
+	got.ResolveContext(ctx, "ci")
 	assert.Equal(t, "stack-scoped-cap", got.Contexts["ci"].CloudEntry.Token)
 
 	// Same credential from yet another context → dedups onto the shared entry.
@@ -245,8 +245,8 @@ func TestSaveCloudConfigSharedEntryUsesCopyOnWrite(t *testing.T) {
 
 	got, err := config.Load(ctx, source)
 	require.NoError(t, err)
-	got.ResolveContext("prod")
-	got.ResolveContext("staging")
+	got.ResolveContext(ctx, "prod")
+	got.ResolveContext(ctx, "staging")
 	assert.Equal(t, "grafana-com", got.Contexts["prod"].Cloud)
 	assert.Equal(t, "shared-cap", got.Contexts["prod"].CloudEntry.Token)
 	assert.Equal(t, "grafana-com-staging", got.Contexts["staging"].Cloud)
@@ -288,7 +288,7 @@ func TestSaveCloudConfigSafetyReservesEffectiveLayerNames(t *testing.T) {
 	got, err := config.Load(ctx, source)
 	require.NoError(t, err)
 	assert.True(t, credentials.IsBoundSentinel(got.Cloud["grafana-com"].Token))
-	got.ResolveContext("prod")
+	got.ResolveContext(ctx, "prod")
 	assert.Equal(t, "prod-cap", got.Contexts["prod"].CloudEntry.Token)
 	assert.Equal(t, entryName, got.Contexts["prod"].Cloud)
 }
@@ -320,7 +320,7 @@ func TestSaveCloudConfigSafetyReservesUnboundEffectiveLayerName(t *testing.T) {
 	got, err := config.Load(ctx, source)
 	require.NoError(t, err)
 	assert.Nil(t, got.Cloud["grafana-com"], "a name owned by another effective layer must not be shadowed")
-	got.ResolveContext("prod")
+	got.ResolveContext(ctx, "prod")
 	assert.Equal(t, "prod-cap", got.Contexts["prod"].CloudEntry.Token)
 	assert.Equal(t, entryName, got.Contexts["prod"].Cloud)
 }
@@ -499,9 +499,9 @@ func TestSaveCloudConfigCopyOnWriteNameCollisionIsSafe(t *testing.T) {
 
 	got, err := config.Load(ctx, source)
 	require.NoError(t, err)
-	got.ResolveContext("other")
+	got.ResolveContext(ctx, "other")
 	assert.Equal(t, "occupied-cap", got.Contexts["other"].CloudEntry.Token)
-	got.ResolveContext("staging")
+	got.ResolveContext(ctx, "staging")
 	assert.Equal(t, "new-cap", got.Contexts["staging"].CloudEntry.Token)
 }
 
@@ -545,7 +545,7 @@ func TestLoginServerChangeInvalidatesStoredSMToken(t *testing.T) {
 		Contexts: map[string]*config.Context{"default": {Stack: "default"}},
 	}
 	require.NoError(t, config.Write(t.Context(), config.ExplicitConfigFile(path), seed))
-	oldSMBinding, err := config.StackBindingForTest(path, "default", "https://old.example.invalid", credentials.FieldSMToken)
+	oldSMBinding, err := config.StackBindingForTest(t.Context(), path, "default", "https://old.example.invalid", credentials.FieldSMToken)
 	require.NoError(t, err)
 	oldSMAccount := storedBoundValue(t, store, oldSMBinding, "old-sm-token")
 
@@ -579,7 +579,7 @@ func TestSaveCloudConfigAuthSwitchFailsClosedWhenKeychainUnavailable(t *testing.
 	store := withFakeStore(t)
 	store.setGetErr(credentials.ErrUnavailable)
 	path := filepath.Join(t.TempDir(), "config.yaml")
-	oldBinding, err := config.CloudBindingForTest(path, "grafana-com", credentials.FieldOAuthToken)
+	oldBinding, err := config.CloudBindingForTest(t.Context(), path, "grafana-com", credentials.FieldOAuthToken)
 	require.NoError(t, err)
 	oldAccount := credentials.BoundAccountKey(oldBinding)
 	store.entries[oldAccount] = "old-oauth-token"
@@ -631,7 +631,7 @@ func TestLoginAuthSwitchFailsClosedWhenKeychainUnavailable(t *testing.T) {
 		"oauth-token":         credentials.FieldOAuthToken,
 		"oauth-refresh-token": credentials.FieldOAuthRefreshToken,
 	} {
-		binding, err := config.StackBindingWithUserForTest(path, "default", server, "old-user", field)
+		binding, err := config.StackBindingWithUserForTest(t.Context(), path, "default", server, "old-user", field)
 		require.NoError(t, err)
 		bindings[name] = binding
 	}

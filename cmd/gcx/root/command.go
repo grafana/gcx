@@ -1,10 +1,10 @@
 package root
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
-	"os"
 	"path"
 	"strings"
 	"sync/atomic"
@@ -28,6 +28,7 @@ import (
 	"github.com/grafana/gcx/internal/agent"
 	internalconfig "github.com/grafana/gcx/internal/config"
 	_ "github.com/grafana/gcx/internal/datasources/providers" // DatasourceProvider registrations — blank imports trigger init() self-registration.
+	"github.com/grafana/gcx/internal/host"
 	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/logs"
 	"github.com/grafana/gcx/internal/notifier"
@@ -75,7 +76,7 @@ func IsJSONFlagActive() bool {
 }
 
 func shouldNotifySkills(cmd *cobra.Command) bool {
-	if cliOpts, err := internalconfig.LoadCLIOptions(); err == nil && cliOpts.DisableUpdateNotifier != "" {
+	if cliOpts, err := internalconfig.LoadCLIOptions(cmd.Context()); err == nil && cliOpts.DisableUpdateNotifier != "" {
 		return false
 	}
 	if agent.IsAgentMode() || IsJSONFlagActive() || terminal.IsPiped() {
@@ -144,7 +145,8 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	insecureLogHTTPPayload := false
 
 	rootCmd := &cobra.Command{
-		Use:           path.Base(os.Args[0]),
+		// The CLI entrypoint renames this after the binary (see SetProgramName).
+		Use:           "gcx",
 		Short:         "Control plane for Grafana Cloud operations",
 		Long:          "gcx is a unified CLI for managing Grafana resources, dashboards, datasources, alerting, and Cloud product APIs (SLO, IRM, Synthetic Monitoring, Fleet, k6, and more).\n\nRun 'gcx agent skills list' to see bundled Agent Skills with task-specific guidance.",
 		SilenceUsage:  true,
@@ -160,7 +162,7 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 			}
 
 			// Detect TTY state first so all downstream decisions can use it.
-			terminal.Detect()
+			terminal.Detect(cmd.Context())
 
 			// Agent mode implies all pipe-aware behaviors regardless of actual TTY state.
 			if agent.IsAgentMode() {
@@ -176,7 +178,7 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 			}
 
 			// Explicit --no-color flag, NO_COLOR env var, or piped stdout disable color.
-			if noColors || os.Getenv("NO_COLOR") != "" || terminal.IsPiped() {
+			if noColors || host.Getenv(cmd.Context(), "NO_COLOR") != "" || terminal.IsPiped() {
 				color.NoColor = true // globally disables colorized output
 				style.SetEnabled(false)
 			}
@@ -187,7 +189,7 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 			// allows us to increase the logger's verbosity.
 			logLevel.Set(logLevel.Level() - slog.Level(min(verbosity, 3)*4))
 
-			logHandler := logs.NewHandler(os.Stderr, &logs.Options{
+			logHandler := logs.NewHandler(cmd.ErrOrStderr(), &logs.Options{
 				Level: logLevel,
 			})
 			logger := logging.NewSLogLogger(logHandler)
@@ -220,7 +222,7 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 			if !shouldNotifySkills(cmd) {
 				return
 			}
-			_ = notifier.MaybeNotifySkills(cmd.ErrOrStderr())
+			_ = notifier.MaybeNotifySkills(cmd.Context(), cmd.ErrOrStderr())
 			_ = notifier.MaybeNotifyVersion(cmd.Context(), cmd.ErrOrStderr(), appversion.Get())
 		},
 		Annotations: map[string]string{
@@ -237,10 +239,6 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 
 	defaultHelp := rootCmd.HelpFunc()
 	rootCmd.SetHelpFunc(style.HelpFunc(defaultHelp))
-
-	rootCmd.SetOut(os.Stdout)
-	rootCmd.SetErr(os.Stderr)
-	rootCmd.SetIn(os.Stdin)
 
 	rootCmd.AddCommand(agentcmd.Command())
 	rootCmd.AddCommand(api.Command())
@@ -303,4 +301,12 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	// full command tree. Must run after all commands are registered.
 	agent.ApplyAnnotations(rootCmd)
 	return rootCmd
+}
+
+// SetProgramName names the root command after the invoked binary, as the
+// process argv reports it.
+func SetProgramName(ctx context.Context, rootCmd *cobra.Command) {
+	if args := host.Args(ctx); len(args) > 0 {
+		rootCmd.Use = path.Base(args[0])
+	}
 }

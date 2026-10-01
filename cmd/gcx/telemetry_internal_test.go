@@ -72,7 +72,7 @@ func marshalEvent(t *testing.T, event telemetry.Event) map[string]any {
 func TestBuildUsageEventOmitsBatchFieldsWithoutCapture(t *testing.T) {
 	isolate(t)
 
-	event := buildUsageEvent(&root.TelemetryInfo{Command: "resources get"}, time.Now(), 0)
+	event := buildUsageEvent(t.Context(), &root.TelemetryInfo{Command: "resources get"}, time.Now(), 0)
 
 	assert.Nil(t, event.BatchSucceededBucket)
 	assert.Nil(t, event.BatchFailedBucket)
@@ -85,7 +85,7 @@ func TestBuildUsageEventBucketsCapturedBatch(t *testing.T) {
 	isolate(t)
 	capture.SetBatch(capture.Batch{Succeeded: 47, Failed: 2, Skipped: 1, DryRun: false})
 
-	event := buildUsageEvent(pushInfo(), time.Now(), 0)
+	event := buildUsageEvent(t.Context(), pushInfo(), time.Now(), 0)
 
 	require.NotNil(t, event.BatchSucceededBucket)
 	require.NotNil(t, event.DryRun)
@@ -101,7 +101,7 @@ func TestBuildUsageEventReportsEmptyBatch(t *testing.T) {
 	isolate(t)
 	capture.SetBatch(capture.Batch{})
 
-	event := buildUsageEvent(pushInfo(), time.Now(), 0)
+	event := buildUsageEvent(t.Context(), pushInfo(), time.Now(), 0)
 
 	require.NotNil(t, event.BatchSucceededBucket)
 	assert.Equal(t, telemetry.BucketZero, *event.BatchSucceededBucket)
@@ -113,7 +113,7 @@ func TestBuildUsageEventCarriesDryRun(t *testing.T) {
 	isolate(t)
 	capture.SetBatch(capture.Batch{Succeeded: 3, DryRun: true})
 
-	event := buildUsageEvent(pushInfo(), time.Now(), 0)
+	event := buildUsageEvent(t.Context(), pushInfo(), time.Now(), 0)
 
 	require.NotNil(t, event.DryRun)
 	assert.True(t, *event.DryRun, "a dry-run operation must be distinguishable from an applied one")
@@ -125,7 +125,7 @@ func TestBuildUsageEventKeepsBatchOnPartialFailure(t *testing.T) {
 	isolate(t)
 	capture.SetBatch(capture.Batch{Succeeded: 8, Failed: 2})
 
-	event := buildUsageEvent(pushInfo(), time.Now(), 4)
+	event := buildUsageEvent(t.Context(), pushInfo(), time.Now(), 4)
 
 	require.NotNil(t, event.BatchSucceededBucket)
 	assert.Equal(t, telemetry.BucketSixToTwenty, *event.BatchSucceededBucket)
@@ -150,7 +150,7 @@ func TestBuildUsageEventSendsOnlyCategoryLabelsForBatchSizes(t *testing.T) {
 	const succeeded, failed, skipped = 4312, 77, 913
 	capture.SetBatch(capture.Batch{Succeeded: succeeded, Failed: failed, Skipped: skipped})
 
-	data, err := json.Marshal(buildUsageEvent(pushInfo(), time.Now(), 0))
+	data, err := json.Marshal(buildUsageEvent(t.Context(), pushInfo(), time.Now(), 0))
 	require.NoError(t, err)
 
 	var fields map[string]any
@@ -185,7 +185,7 @@ func TestBuildUsageEventKeepsSingletonCategoriesExact(t *testing.T) {
 		isolate(t)
 		capture.SetBatch(capture.Batch{Succeeded: count})
 
-		event := buildUsageEvent(pushInfo(), time.Now(), 0)
+		event := buildUsageEvent(t.Context(), pushInfo(), time.Now(), 0)
 
 		require.NotNil(t, event.BatchSucceededBucket)
 		assert.Equal(t, want, *event.BatchSucceededBucket,
@@ -205,7 +205,7 @@ func TestBuildUsageEventEmitsOnlyDeclaredBuckets(t *testing.T) {
 		isolate(t)
 		capture.SetBatch(capture.Batch{Succeeded: n, Failed: n, Skipped: n})
 
-		event := buildUsageEvent(pushInfo(), time.Now(), 0)
+		event := buildUsageEvent(t.Context(), pushInfo(), time.Now(), 0)
 
 		for _, got := range []*string{
 			event.BatchSucceededBucket, event.BatchFailedBucket, event.BatchSkippedBucket,
@@ -222,7 +222,7 @@ func TestBuildUsageEventEmitsOnlyDeclaredBuckets(t *testing.T) {
 func TestBuildUsageEventReportsCanceled(t *testing.T) {
 	isolate(t)
 
-	fields := marshalEvent(t, buildUsageEvent(pushInfo(), time.Now(), gcxerrors.ExitCancelled))
+	fields := marshalEvent(t, buildUsageEvent(t.Context(), pushInfo(), time.Now(), gcxerrors.ExitCancelled))
 
 	assert.Equal(t, telemetry.OutcomeCanceled, fields["outcome"])
 	assert.InDelta(t, float64(gcxerrors.ExitCancelled), fields["exit_code"], 0)
@@ -242,10 +242,10 @@ func TestBuildUsageEventReportsCanceledFromEmittedError(t *testing.T) {
 
 	err := fmt.Errorf("push: %w",
 		gcxerrors.NewEmittedError(gcxerrors.ExitCancelled, context.Canceled))
-	exitCode := reportError(err, nil, nil)
+	exitCode := reportError(t.Context(), err, nil, nil)
 	require.Equal(t, gcxerrors.ExitCancelled, exitCode)
 
-	event := buildUsageEvent(pushInfo(), time.Now(), exitCode)
+	event := buildUsageEvent(t.Context(), pushInfo(), time.Now(), exitCode)
 
 	assert.Equal(t, telemetry.OutcomeCanceled, event.Outcome)
 	assert.Empty(t, event.ErrorKind)
@@ -275,7 +275,7 @@ func TestBuildUsageEventOutcomeVocabulary(t *testing.T) {
 			info := pushInfo()
 			info.Help = tc.help
 
-			event := buildUsageEvent(info, time.Now(), tc.exitCode)
+			event := buildUsageEvent(t.Context(), info, time.Now(), tc.exitCode)
 
 			assert.Equal(t, tc.wantOutcome, event.Outcome)
 			assert.Equal(t, tc.wantErrorKind, event.ErrorKind)
@@ -290,7 +290,7 @@ func TestBuildUsageEventAlwaysEmitsErrorKind(t *testing.T) {
 	for _, exitCode := range []int{0, 1, 2, 3, 4, 5, 6} {
 		isolate(t)
 
-		fields := marshalEvent(t, buildUsageEvent(pushInfo(), time.Now(), exitCode))
+		fields := marshalEvent(t, buildUsageEvent(t.Context(), pushInfo(), time.Now(), exitCode))
 
 		assert.Contains(t, fields, "error_kind",
 			"error_kind must be present for exit code %d, even when empty", exitCode)
@@ -316,7 +316,7 @@ func TestBuildUsageEventEmitsTransportHTTPStatusOnly(t *testing.T) {
 		isolate(t)
 		capture.SetHTTPStatus(status)
 
-		fields := marshalEvent(t, buildUsageEvent(pushInfo(), time.Now(), 1))
+		fields := marshalEvent(t, buildUsageEvent(t.Context(), pushInfo(), time.Now(), 1))
 
 		if want == nil {
 			assert.NotContains(t, fields, "http_status",
@@ -338,18 +338,18 @@ func TestBuildUsageEventClampsK8sReasonToAllowlist(t *testing.T) {
 		isolate(t)
 		capture.SetK8sReason(reason)
 
-		event := buildUsageEvent(pushInfo(), time.Now(), 1)
+		event := buildUsageEvent(t.Context(), pushInfo(), time.Now(), 1)
 		assert.Equal(t, reason, event.K8sReason, "listed reason must pass through unchanged")
 	}
 
 	isolate(t)
 	capture.SetK8sReason("SomeFutureServerReason")
-	event := buildUsageEvent(pushInfo(), time.Now(), 1)
+	event := buildUsageEvent(t.Context(), pushInfo(), time.Now(), 1)
 	assert.Equal(t, telemetry.K8sReasonOther, event.K8sReason,
 		"a server-controlled reason string must never travel verbatim")
 
 	isolate(t)
-	fields := marshalEvent(t, buildUsageEvent(pushInfo(), time.Now(), 1))
+	fields := marshalEvent(t, buildUsageEvent(t.Context(), pushInfo(), time.Now(), 1))
 	assert.NotContains(t, fields, "k8s_reason", "no captured reason means no field")
 }
 
@@ -361,18 +361,18 @@ func TestBuildUsageEventClampsGrafanaAuthMethod(t *testing.T) {
 		isolate(t)
 		capture.SetGrafanaAuthMethod(method)
 
-		event := buildUsageEvent(pushInfo(), time.Now(), 0)
+		event := buildUsageEvent(t.Context(), pushInfo(), time.Now(), 0)
 		assert.Equal(t, method, event.GrafanaAuthMethod, "listed method must pass through unchanged")
 	}
 
 	isolate(t)
 	capture.SetGrafanaAuthMethod("Bearer secret-token-value")
-	event := buildUsageEvent(pushInfo(), time.Now(), 0)
+	event := buildUsageEvent(t.Context(), pushInfo(), time.Now(), 0)
 	assert.Equal(t, telemetry.AuthMethodUnknown, event.GrafanaAuthMethod,
 		"an arbitrary captured string must be clamped, not forwarded")
 
 	isolate(t)
-	fields := marshalEvent(t, buildUsageEvent(pushInfo(), time.Now(), 0))
+	fields := marshalEvent(t, buildUsageEvent(t.Context(), pushInfo(), time.Now(), 0))
 	assert.NotContains(t, fields, "grafana_auth_method", "no decided method means no field")
 }
 
@@ -388,7 +388,7 @@ func TestBuildUsageEventSuppressesErrorSignalsOnPartialFailure(t *testing.T) {
 	capture.SetHTTPStatus(500)
 	capture.SetK8sReason("Conflict")
 
-	fields := marshalEvent(t, buildUsageEvent(pushInfo(), time.Now(), gcxerrors.ExitPartialFailure))
+	fields := marshalEvent(t, buildUsageEvent(t.Context(), pushInfo(), time.Now(), gcxerrors.ExitPartialFailure))
 
 	assert.NotContains(t, fields, "http_status")
 	assert.NotContains(t, fields, "k8s_reason")
@@ -405,7 +405,7 @@ func TestBuildUsageEventSuppressesErrorSignalsOnCanceled(t *testing.T) {
 	capture.SetHTTPStatus(502)
 	capture.SetK8sReason("Timeout")
 
-	fields := marshalEvent(t, buildUsageEvent(pushInfo(), time.Now(), gcxerrors.ExitCancelled))
+	fields := marshalEvent(t, buildUsageEvent(t.Context(), pushInfo(), time.Now(), gcxerrors.ExitCancelled))
 
 	assert.NotContains(t, fields, "http_status")
 	assert.NotContains(t, fields, "k8s_reason")
@@ -477,7 +477,7 @@ func TestReportErrorCapturesSignalsAndPreservesExitCodes(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			isolate(t)
 
-			exitCode := reportError(tc.err, nil, nil)
+			exitCode := reportError(t.Context(), tc.err, nil, nil)
 
 			assert.Equal(t, tc.wantExit, exitCode, "the extraction must not move any exit code")
 			assert.Equal(t, tc.wantStatus, capture.CurrentHTTPStatus())
@@ -496,9 +496,9 @@ func TestReportErrorEmbedded200NeverReachesTheEvent(t *testing.T) {
 	t.Cleanup(func() { agent.SetFlag(false) })
 
 	err := queryerror.FromBody("loki", "query", 200, []byte(`{"results":{"A":{"error":"bad query","status":400}}}`))
-	exitCode := reportError(err, nil, nil)
+	exitCode := reportError(t.Context(), err, nil, nil)
 
-	fields := marshalEvent(t, buildUsageEvent(pushInfo(), time.Now(), exitCode))
+	fields := marshalEvent(t, buildUsageEvent(t.Context(), pushInfo(), time.Now(), exitCode))
 	assert.NotContains(t, fields, "http_status",
 		"a 2xx transport status is not a failure and must never be sent")
 }
@@ -514,7 +514,7 @@ func TestBuildUsageEventKeepsGrafanaAuthMethodOnEveryOutcome(t *testing.T) {
 		isolate(t)
 		capture.SetGrafanaAuthMethod("token")
 
-		event := buildUsageEvent(pushInfo(), time.Now(), exitCode)
+		event := buildUsageEvent(t.Context(), pushInfo(), time.Now(), exitCode)
 
 		assert.Equal(t, "token", event.GrafanaAuthMethod,
 			"auth method must survive exit code %d", exitCode)
@@ -532,7 +532,7 @@ func TestBuildUsageEventNewFieldsLeakNothing(t *testing.T) {
 	capture.SetK8sReason(`dashboards "acme-revenue-2026" not found in namespace stacks-777`)
 	capture.SetGrafanaAuthMethod("Bearer glsa_v3ry5ecret")
 
-	data, err := json.Marshal(buildUsageEvent(pushInfo(), time.Now(), 1))
+	data, err := json.Marshal(buildUsageEvent(t.Context(), pushInfo(), time.Now(), 1))
 	require.NoError(t, err)
 
 	wire := string(data)

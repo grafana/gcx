@@ -1,6 +1,7 @@
 package credentials
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/grafana/gcx/internal/host"
 	keyring "github.com/zalando/go-keyring"
 )
 
@@ -21,7 +23,9 @@ const probeAccount = "__gcx_probe__"
 // github.com/zalando/go-keyring: macOS Keychain (/usr/bin/security), Windows
 // Credential Manager, and the Linux/BSD Secret Service DBus interface (GNOME
 // Keyring, or KWallet when it exposes org.freedesktop.secrets).
-type keychainStore struct{}
+type keychainStore struct {
+	keyring host.Keyring
+}
 
 // Open returns a Store backed by the OS keychain. If no working backend is
 // reachable (unsupported platform, headless box, missing DBus), it returns a
@@ -30,11 +34,15 @@ type keychainStore struct{}
 // is reachable but locked, every operation reports ErrLocked instead, so no
 // secret ever falls back to plaintext either. Plaintext is only ever chosen
 // through the separate, explicit GCX_KEYCHAIN=off opt-out, not through Open.
-func Open() Store {
+func Open(ctx context.Context) Store {
+	kr, err := host.OpenKeyring(ctx)
+	if err != nil {
+		return unavailableStore{}
+	}
 	// Probe with a read for an account we never write. A working backend
 	// returns ErrNotFound; an unreachable one returns a transport/platform
 	// error, which the caller must treat as fatal.
-	if _, err := keyring.Get(service, probeAccount); err != nil && !errors.Is(err, keyring.ErrNotFound) {
+	if _, err := kr.Get(service, probeAccount); err != nil && !errors.Is(err, keyring.ErrNotFound) {
 		err = normalizeKeyringError(err)
 		if errors.Is(err, ErrUnavailable) {
 			return unavailableStore{}
@@ -44,11 +52,11 @@ func Open() Store {
 		// permanent or programming error as permission to write plaintext.
 		return errorStore{err: err}
 	}
-	return keychainStore{}
+	return keychainStore{keyring: kr}
 }
 
-func (keychainStore) Get(key string) (string, error) {
-	value, err := keyring.Get(service, key)
+func (s keychainStore) Get(key string) (string, error) {
+	value, err := s.keyring.Get(service, key)
 	if errors.Is(err, keyring.ErrNotFound) {
 		return "", ErrNotFound
 	}
@@ -58,12 +66,12 @@ func (keychainStore) Get(key string) (string, error) {
 	return value, nil
 }
 
-func (keychainStore) Set(key, value string) error {
-	return normalizeKeyringError(keyring.Set(service, key, value))
+func (s keychainStore) Set(key, value string) error {
+	return normalizeKeyringError(s.keyring.Set(service, key, value))
 }
 
-func (keychainStore) Delete(key string) error {
-	err := keyring.Delete(service, key)
+func (s keychainStore) Delete(key string) error {
+	err := s.keyring.Delete(service, key)
 	if errors.Is(err, keyring.ErrNotFound) {
 		return nil
 	}

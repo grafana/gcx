@@ -160,8 +160,8 @@ func TestRouteDeleteCommandAborted(t *testing.T) {
 
 func TestRouteDeleteCommandAgentModeRequiresForce(t *testing.T) {
 	t.Setenv("GCX_AGENT_MODE", "true")
-	agent.ResetForTesting()
-	t.Cleanup(agent.ResetForTesting)
+	agent.ResetForTesting(t.Context())
+	t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 	fake := &fakeCRUDAPI{}
 	_, err := runRoutesCmd(t, fake, "", "delete", "R42")

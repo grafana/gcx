@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"strings"
 
 	"github.com/grafana/gcx/internal/assistant/assistanthttp"
+	"github.com/grafana/gcx/internal/host"
 	"github.com/grafana/gcx/internal/providers"
 )
 
@@ -54,7 +54,7 @@ func DetectAPIMode(ctx context.Context, loader *providers.ConfigLoader, base *as
 }
 
 func detectAPIModeWith(ctx context.Context, loader *providers.ConfigLoader, base *assistanthttp.Client, probe capabilityProbe) (APIMode, error) {
-	if m, ok := apiModeFromEnv(); ok {
+	if m, ok := apiModeFromEnv(ctx); ok {
 		return m, nil
 	}
 
@@ -107,8 +107,8 @@ func probeOK(ctx context.Context, base *assistanthttp.Client, path string) (bool
 	}
 }
 
-func apiModeFromEnv() (APIMode, bool) {
-	v := strings.ToLower(strings.TrimSpace(os.Getenv(envAPIVersionOverride)))
+func apiModeFromEnv(ctx context.Context) (APIMode, bool) {
+	v := strings.ToLower(strings.TrimSpace(host.Getenv(ctx, envAPIVersionOverride)))
 	switch v {
 	case "v1":
 		return APIModeLegacy, true
@@ -150,7 +150,7 @@ var errV2NotSupported = errors.New("the v2 investigations API is not available")
 // Returns APIModeLegacy (the zero functional value) when there is no cached
 // entry; never probes the network. Honours GCX_ASSISTANT_API_VERSION.
 func CachedAPIMode(ctx context.Context, loader *providers.ConfigLoader) APIMode {
-	if m, ok := apiModeFromEnv(); ok {
+	if m, ok := apiModeFromEnv(ctx); ok {
 		return m
 	}
 	if m, ok := loadCachedMode(ctx, loader); ok {

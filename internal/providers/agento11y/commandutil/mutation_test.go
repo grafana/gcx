@@ -17,6 +17,7 @@ package commandutil_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -44,7 +45,7 @@ func withPlainColors(t *testing.T) {
 func setAgentMode(t *testing.T, enabled bool) {
 	t.Helper()
 	agent.SetFlag(enabled)
-	t.Cleanup(agent.ResetForTesting)
+	t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 }
 
 // newIOForTest builds cmdio.Options exactly the way the delete commands do:

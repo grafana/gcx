@@ -52,7 +52,7 @@ func TestReportError_EmittedError(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := reportError(tc.err, nil, nil)
+			got := reportError(t.Context(), tc.err, nil, nil)
 			if got != tc.want {
 				t.Fatalf("reportError() = %d, want %d", got, tc.want)
 			}
@@ -150,7 +150,7 @@ func TestReportErrorEmittedCancellationKeepsExitFive(t *testing.T) {
 	t.Cleanup(func() { agent.SetFlag(false) })
 
 	err := fmt.Errorf("push: %w", gcxerrors.NewEmittedError(gcxerrors.ExitCancelled, context.Canceled))
-	if got := reportError(err, nil, nil); got != gcxerrors.ExitCancelled {
+	if got := reportError(t.Context(), err, nil, nil); got != gcxerrors.ExitCancelled {
 		t.Fatalf("reportError() = %d, want %d", got, gcxerrors.ExitCancelled)
 	}
 }
@@ -301,16 +301,18 @@ func TestConfigSetPlaintextFallbackProcessHelper(_ *testing.T) {
 		return
 	}
 
-	agent.ResetForTesting()
+	agent.ResetForTesting(context.Background())
 	os.Args = []string{
 		"gcx", "config", "set",
 		"--config", os.Getenv("GCX_CONFIG_SET_FALLBACK_PATH"),
 		"stacks.smoke.grafana.token", os.Getenv("GCX_CONFIG_SET_FALLBACK_TOKEN"),
 	}
-	preParseAgentFlag()
+	ctx := context.Background()
+	preParseAgentFlag(ctx)
 	cmd := root.Command("test")
-	err := cmd.ExecuteContext(context.Background())
-	os.Exit(reportError(err, collectBoolFlags(cmd), collectSubCmds(cmd)))
+	root.SetProgramName(ctx, cmd)
+	err := cmd.ExecuteContext(ctx)
+	os.Exit(reportError(ctx, err, collectBoolFlags(cmd), collectSubCmds(cmd)))
 }
 
 func TestConfigCheckProcessExit(t *testing.T) {
@@ -439,12 +441,14 @@ func TestConfigCheckProcessHelper(_ *testing.T) {
 		return
 	}
 
-	agent.ResetForTesting()
+	agent.ResetForTesting(context.Background())
 	os.Args = []string{"gcx", "config", "check", "--config", os.Getenv("GCX_CONFIG_CHECK_PATH")}
-	preParseAgentFlag()
+	ctx := context.Background()
+	preParseAgentFlag(ctx)
 	cmd := root.Command("test")
-	err := cmd.ExecuteContext(context.Background())
-	os.Exit(reportError(err, collectBoolFlags(cmd), collectSubCmds(cmd)))
+	root.SetProgramName(ctx, cmd)
+	err := cmd.ExecuteContext(ctx)
+	os.Exit(reportError(ctx, err, collectBoolFlags(cmd), collectSubCmds(cmd)))
 }
 
 func TestParsePseudoVersion(t *testing.T) {
@@ -522,7 +526,7 @@ func TestBuildUsageEvent_APIRequestDetail(t *testing.T) {
 	telemetry.RecordAPIRequest("POST", "/api/ds/query",
 		[]byte(`{"queries":[{"datasource":{"type":"prometheus","uid":"abc"}}]}`))
 
-	event := buildUsageEvent(&root.TelemetryInfo{Command: "api"}, time.Now(), 0)
+	event := buildUsageEvent(t.Context(), &root.TelemetryInfo{Command: "api"}, time.Now(), 0)
 
 	if event.APIMethod != "POST" {
 		t.Errorf("APIMethod = %q, want %q", event.APIMethod, "POST")

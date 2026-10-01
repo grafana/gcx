@@ -165,7 +165,7 @@ func runAssistant(ctx context.Context, loader *providers.ConfigLoader, message s
 // the rationale.
 type alwaysApprove struct{}
 
-func (alwaysApprove) HandleApproval(_ assistant.ApprovalRequest) bool { return true }
+func (alwaysApprove) HandleApproval(context.Context, assistant.ApprovalRequest) bool { return true }
 
 // checkCloud runs the Grafana-Cloud precondition for the Assistant path.
 // It resolves the current context and returns a user-facing error when

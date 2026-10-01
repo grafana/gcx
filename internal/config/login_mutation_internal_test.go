@@ -73,7 +73,7 @@ func TestGuardedLoginLoadRejectsNonTargetPlaintextWithoutKeychainWrites(t *testi
 	mutationCtx := ContextWithConfigSource(t.Context(), userSource)
 	persisted, err := Load(mutationCtx, ExplicitConfigFile(userPath))
 	require.NoError(t, err)
-	guard, err := persisted.NewLoginMutationGuard("prod", LoginMutationUnified).WithDiscoverySnapshot(&effective)
+	guard, err := persisted.NewLoginMutationGuard("prod", LoginMutationUnified).WithDiscoverySnapshot(t.Context(), &effective)
 	require.NoError(t, err)
 	changedLocal := []byte(`version: 1
 cloud:

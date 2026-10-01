@@ -8,8 +8,10 @@
 package telemetry
 
 import (
-	"os"
+	"context"
 	"strings"
+
+	"github.com/grafana/gcx/internal/host"
 )
 
 // Mode is the resolved telemetry state for an invocation.
@@ -56,8 +58,8 @@ type Env struct {
 // level; unrecognised non-empty values resolve to disabled. configValue is a
 // func so callers only pay the config-file read when the environment doesn't
 // already decide the mode.
-func ResolveMode(configValue func() string) Mode {
-	return resolveMode(os.Getenv, configValue)
+func ResolveMode(ctx context.Context, configValue func() string) Mode {
+	return resolveMode(func(key string) string { return host.Getenv(ctx, key) }, configValue)
 }
 
 // Env var names read by this package. envConsistencyTest asserts they match

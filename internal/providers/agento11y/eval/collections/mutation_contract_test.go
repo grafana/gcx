@@ -10,6 +10,7 @@ package collections //nolint:testpackage // Tests drive the unexported runDelete
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -81,7 +82,7 @@ func TestDelete_OutputContract(t *testing.T) {
 
 	t.Run("human default stays byte-identical", func(t *testing.T) {
 		agent.SetFlag(false)
-		t.Cleanup(agent.ResetForTesting)
+		t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 		opts := newDeleteOptsForTest(t, "")
 		var stdout, stderr bytes.Buffer
@@ -92,7 +93,7 @@ func TestDelete_OutputContract(t *testing.T) {
 
 	t.Run("agent mode emits exactly one JSON value", func(t *testing.T) {
 		agent.SetFlag(true)
-		t.Cleanup(agent.ResetForTesting)
+		t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 		opts := newDeleteOptsForTest(t, "")
 		var stdout, stderr bytes.Buffer
@@ -104,7 +105,7 @@ func TestDelete_OutputContract(t *testing.T) {
 
 	t.Run("partial failure returns EmittedError with exit 4", func(t *testing.T) {
 		agent.SetFlag(true)
-		t.Cleanup(agent.ResetForTesting)
+		t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 		opts := newDeleteOptsForTest(t, "")
 		var stdout, stderr bytes.Buffer
@@ -117,7 +118,7 @@ func TestDelete_OutputContract(t *testing.T) {
 
 	t.Run("explicit -o json and -o yaml override honored", func(t *testing.T) {
 		agent.SetFlag(false)
-		t.Cleanup(agent.ResetForTesting)
+		t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 		var stdout, stderr bytes.Buffer
 		require.NoError(t, runDelete(&stdout, &stderr, newDeleteOptsForTest(t, "json"), []string{"c-1"}, del("")))
@@ -201,7 +202,7 @@ func TestMembership_OutputContract(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			agent.SetFlag(tc.agentMode)
-			t.Cleanup(agent.ResetForTesting)
+			t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 			opts := newMembershipOptsForTest(t, tc.output)
 			var stdout, stderr bytes.Buffer
@@ -223,7 +224,7 @@ func TestMembership_OutputContract(t *testing.T) {
 
 func TestMembership_ExplicitYAMLOverride(t *testing.T) {
 	agent.SetFlag(false)
-	t.Cleanup(agent.ResetForTesting)
+	t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 	opts := newMembershipOptsForTest(t, "yaml")
 	var stdout, stderr bytes.Buffer

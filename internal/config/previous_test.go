@@ -18,7 +18,7 @@ func setStateHome(t *testing.T, dir string) {
 func TestPreviousContext_RoundTrip(t *testing.T) {
 	setStateHome(t, t.TempDir())
 
-	got, err := config.ReadPreviousContext()
+	got, err := config.ReadPreviousContext(t.Context())
 	if err != nil {
 		t.Fatalf("ReadPreviousContext on empty state: unexpected error: %v", err)
 	}
@@ -30,7 +30,7 @@ func TestPreviousContext_RoundTrip(t *testing.T) {
 		t.Fatalf("WritePreviousContext: %v", err)
 	}
 
-	got, err = config.ReadPreviousContext()
+	got, err = config.ReadPreviousContext(t.Context())
 	if err != nil {
 		t.Fatalf("ReadPreviousContext after write: %v", err)
 	}
@@ -46,7 +46,7 @@ func TestPreviousContext_Overwrites(t *testing.T) {
 		if err := config.WritePreviousContext(t.Context(), name); err != nil {
 			t.Fatalf("WritePreviousContext(%q): %v", name, err)
 		}
-		got, err := config.ReadPreviousContext()
+		got, err := config.ReadPreviousContext(t.Context())
 		if err != nil {
 			t.Fatalf("ReadPreviousContext: %v", err)
 		}
@@ -90,7 +90,7 @@ func TestPreviousContext_TrimsWhitespace(t *testing.T) {
 		t.Fatalf("seeding file: %v", err)
 	}
 
-	got, err := config.ReadPreviousContext()
+	got, err := config.ReadPreviousContext(t.Context())
 	if err != nil {
 		t.Fatalf("ReadPreviousContext: %v", err)
 	}
@@ -128,7 +128,7 @@ func TestPreviousContext_ConcurrentWrites(t *testing.T) {
 		t.Errorf("concurrent write failed: %v", err)
 	}
 
-	got, err := config.ReadPreviousContext()
+	got, err := config.ReadPreviousContext(ctx)
 	if err != nil {
 		t.Fatalf("ReadPreviousContext after concurrent writes: %v", err)
 	}

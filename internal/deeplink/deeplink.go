@@ -1,13 +1,14 @@
 package deeplink
 
 import (
+	"context"
 	"fmt"
 	"net/url"
-	"os"
 	"strings"
 	"sync"
 
 	"github.com/grafana/gcx/internal/agent"
+	"github.com/grafana/gcx/internal/host"
 	"github.com/grafana/gcx/internal/output"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -90,8 +91,8 @@ func InjectURLs(items []unstructured.Unstructured, host string) {
 // {"class":"hint"} record) and Open reports success: the link reached the
 // consumer. This is the single shared guard — command code must not add
 // its own agent-mode branches around browser opens.
-func Open(rawURL string) error {
-	_, err := OpenWithStatus(rawURL)
+func Open(ctx context.Context, rawURL string) error {
+	_, err := OpenWithStatus(ctx, rawURL)
 	return err
 }
 
@@ -100,15 +101,15 @@ func Open(rawURL string) error {
 // Blocking flows that guide a user (OAuth login) use the status to keep
 // their manual-fallback instructions accurate instead of assuming a
 // browser appeared.
-func OpenWithStatus(rawURL string) (bool, error) {
+func OpenWithStatus(ctx context.Context, rawURL string) (bool, error) {
 	if err := validateOpenURL(rawURL); err != nil {
 		return false, err
 	}
 	if agent.IsAgentMode() {
-		output.EmitHint(os.Stderr, "browser launch skipped in agent mode; open this URL", rawURL)
+		output.EmitHint(host.Stderr(ctx), "browser launch skipped in agent mode; open this URL", rawURL)
 		return false, nil
 	}
-	return true, openURL(rawURL)
+	return true, openURL(ctx, rawURL)
 }
 
 func validateOpenURL(rawURL string) error {

@@ -20,7 +20,7 @@ func TestCreateConfigForTypeLocalDoesNotFollowExistingSymlink(t *testing.T) {
 	require.NoError(t, os.WriteFile(target, original, 0o600))
 	require.NoError(t, os.Symlink(target, filepath.Join(work, internalConfig.LocalConfigFileName)))
 
-	path, err := createConfigForType("local")
+	path, err := createConfigForType(t.Context(), "local")
 	require.ErrorContains(t, err, "symlinks are not allowed")
 	assert.Empty(t, path)
 	after, readErr := os.ReadFile(target)
@@ -35,7 +35,7 @@ func TestCreateConfigForTypeLocalCreatesWithoutReplacingExistingFile(t *testing.
 	original := []byte("version: 1\ncontexts:\n  existing: {}\ncurrent-context: existing\n")
 	require.NoError(t, os.WriteFile(path, original, 0o600))
 
-	createdPath, err := createConfigForType("local")
+	createdPath, err := createConfigForType(t.Context(), "local")
 	require.NoError(t, err)
 	assert.Equal(t, path, createdPath)
 	after, readErr := os.ReadFile(path)
@@ -47,7 +47,7 @@ func TestResolveRawEditTargetExplicitDoesNotParseConfig(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "future.yaml")
 	require.NoError(t, os.WriteFile(path, []byte("version: 999\nnot-valid-for-this-build: true\n"), 0o600))
 
-	target, err := resolveRawEditTarget(path, nil, false)
+	target, err := resolveRawEditTarget(t.Context(), path, nil, false)
 	require.NoError(t, err)
 	assert.Equal(t, path, target)
 }
@@ -78,7 +78,7 @@ current-context: prod
 
 	_, err := internalConfig.LoadLayered(t.Context(), path)
 	require.ErrorContains(t, err, "referenced by contexts in different Cloud environments")
-	target, err := resolveRawEditTarget(path, nil, false)
+	target, err := resolveRawEditTarget(t.Context(), path, nil, false)
 	require.NoError(t, err)
 	assert.Equal(t, path, target)
 }
@@ -88,7 +88,7 @@ func TestResolveRawEditTargetHonorsGCXConfigWithoutParsing(t *testing.T) {
 	require.NoError(t, os.WriteFile(path, []byte("contexts: [not-valid-yaml\n"), 0o600))
 	t.Setenv(internalConfig.ConfigFileEnvVar, path)
 
-	target, err := resolveRawEditTarget("", nil, false)
+	target, err := resolveRawEditTarget(t.Context(), "", nil, false)
 	require.NoError(t, err)
 	assert.Equal(t, path, target)
 }
@@ -108,10 +108,10 @@ func TestResolveRawEditTargetSelectsBrokenDiscoveredLayer(t *testing.T) {
 	localPath := filepath.Join(work, internalConfig.LocalConfigFileName)
 	require.NoError(t, os.WriteFile(localPath, []byte("cloud: [semantically-broken\n"), 0o600))
 
-	target, err := resolveRawEditTarget("", []string{"user"}, false)
+	target, err := resolveRawEditTarget(t.Context(), "", []string{"user"}, false)
 	require.NoError(t, err)
 	assert.Equal(t, userPath, target)
-	target, err = resolveRawEditTarget("", []string{"local"}, false)
+	target, err = resolveRawEditTarget(t.Context(), "", []string{"local"}, false)
 	require.NoError(t, err)
 	assert.Equal(t, localPath, target)
 
@@ -120,12 +120,12 @@ func TestResolveRawEditTargetSelectsBrokenDiscoveredLayer(t *testing.T) {
 	explicitPath := filepath.Join(t.TempDir(), "explicit.yaml")
 	require.NoError(t, os.WriteFile(explicitPath, []byte("version: 999\n"), 0o600))
 	t.Setenv(internalConfig.ConfigFileEnvVar, explicitPath)
-	target, err = resolveRawEditTarget("", []string{"user"}, false)
+	target, err = resolveRawEditTarget(t.Context(), "", []string{"user"}, false)
 	require.NoError(t, err)
 	assert.Equal(t, userPath, target)
 	t.Setenv(internalConfig.ConfigFileEnvVar, "")
 
-	_, err = resolveRawEditTarget("", nil, false)
+	_, err = resolveRawEditTarget(t.Context(), "", nil, false)
 	require.ErrorContains(t, err, "multiple config files loaded")
 }
 
@@ -133,7 +133,7 @@ func TestResolveRawEditTargetRejectsConflictingExplicitAndLayerSelection(t *test
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	require.NoError(t, os.WriteFile(path, []byte("version: 1\n"), 0o600))
 
-	_, err := resolveRawEditTarget(path, []string{"user"}, false)
+	_, err := resolveRawEditTarget(t.Context(), path, []string{"user"}, false)
 	require.ErrorContains(t, err, "cannot combine --config with a config layer")
 }
 

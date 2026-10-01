@@ -113,7 +113,7 @@ current-context: current
 			loaded, err := (&commandconfig.Options{ConfigFile: path}).LoadConfigTolerant(t.Context())
 			require.NoError(t, err)
 			require.Equal(t, reference.Sentinel, loaded.Contexts["non-current"].Grafana.APIToken)
-			loaded.ResolveContext("non-current")
+			loaded.ResolveContext(t.Context(), "non-current")
 			if tc.wantTypedReject {
 				validationErr := loaded.Contexts["non-current"].Validate(t.Context())
 				var rejected config.CredentialRejectedError

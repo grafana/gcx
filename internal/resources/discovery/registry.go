@@ -11,11 +11,11 @@ import (
 	"time"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/host"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	diskcached "k8s.io/client-go/discovery/cached/disk"
 )
 
 // ignoredResourceGroups is a list of resource groups that are supported by Grafana API.
@@ -61,7 +61,7 @@ func NewDefaultRegistry(ctx context.Context, cfg config.NamespacedRESTConfig) (*
 // NewDefaultRegistryWithCacheDir creates a new discovery registry using a disk-cached
 // discovery client with the specified cache directory.
 func NewDefaultRegistryWithCacheDir(ctx context.Context, cfg config.NamespacedRESTConfig, cacheDir string) (*Registry, error) {
-	client, err := diskcached.NewCachedDiscoveryClientForConfig(&cfg.Config, cacheDir, "", defaultDiscoveryCacheTTL)
+	client, err := host.NewCachedDiscoveryClientForConfig(ctx, &cfg.Config, cacheDir, "", defaultDiscoveryCacheTTL)
 	if err != nil {
 		return nil, err
 	}

@@ -64,7 +64,7 @@ func TestParseEnvIntoContextDetachesSharedStackRuntimeView(t *testing.T) {
 	require.Same(t, originalStack, sibling.StackEntry)
 	require.Same(t, originalStack, selected.StackEntry)
 
-	require.NoError(t, ParseEnvIntoContext(selected))
+	require.NoError(t, ParseEnvIntoContext(t.Context(), selected))
 
 	assert.NotSame(t, originalStack, selected.StackEntry)
 	assert.NotSame(t, originalGrafana, selected.Grafana)
@@ -136,19 +136,19 @@ func TestRuntimeBindingEnforcementUsesDetachedStackIdentity(t *testing.T) {
 		CurrentContext: "selected",
 	}
 	cfg.Resolve()
-	cfg.capturePlaintextCredentialOrigins()
+	cfg.capturePlaintextCredentialOrigins(t.Context())
 
-	originalBinding := stackOwner("shared", stack).binding(credentials.FieldGrafanaToken)
+	originalBinding := stackOwner("shared", stack).binding(t.Context(), credentials.FieldGrafanaToken)
 	selected := cfg.Contexts["selected"]
-	require.NoError(t, ParseEnvIntoContext(selected))
-	runtimeBinding := stackOwner("shared", selected.StackEntry).binding(credentials.FieldGrafanaToken)
+	require.NoError(t, ParseEnvIntoContext(t.Context(), selected))
+	runtimeBinding := stackOwner("shared", selected.StackEntry).binding(t.Context(), credentials.FieldGrafanaToken)
 	assert.Equal(t, originalBinding.Source, runtimeBinding.Source)
 	assert.Equal(t, originalBinding.Owner, runtimeBinding.Owner)
 	assert.Equal(t, originalBinding.Field, runtimeBinding.Field)
 	assert.NotEqual(t, originalBinding.Destination, runtimeBinding.Destination)
 	assert.True(t, runtimeBinding.Valid())
 
-	require.NoError(t, enforceRuntimeCredentialBindings(&cfg))
+	require.NoError(t, enforceRuntimeCredentialBindings(t.Context(), &cfg))
 	assert.Equal(t, "runtime-token", selected.Grafana.APIToken)
 	require.NoError(t, selected.StackEntry.credentialRejection(credentials.FieldGrafanaToken))
 	assert.Equal(t, "persisted-token", cfg.Stacks["shared"].Grafana.APIToken)
@@ -172,7 +172,7 @@ func TestParseEnvIntoContextLinksSynthesizedRuntimeFieldsToDetachedStack(t *test
 	cfg.Resolve()
 	selected := cfg.Contexts["selected"]
 
-	require.NoError(t, ParseEnvIntoContext(selected))
+	require.NoError(t, ParseEnvIntoContext(t.Context(), selected))
 	require.NotNil(t, selected.Grafana)
 	require.NotNil(t, selected.Providers)
 	assert.Same(t, selected.Grafana, selected.StackEntry.Grafana)

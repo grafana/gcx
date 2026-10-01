@@ -10,6 +10,7 @@ package stacks_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -34,7 +35,7 @@ import (
 func setAgentMode(t *testing.T, enabled bool) {
 	t.Helper()
 	agent.SetFlag(enabled)
-	t.Cleanup(agent.ResetForTesting)
+	t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 }
 
 // newCloudFixture starts a mock GCOM server with the given handler and

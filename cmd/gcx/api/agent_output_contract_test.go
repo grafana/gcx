@@ -66,6 +66,7 @@ func TestOutputResponse_AgentModeSingleJSONDocument(t *testing.T) {
 
 	var stdout bytes.Buffer
 	cmd := &cobra.Command{}
+	cmd.SetContext(t.Context())
 	cmd.SetOut(&stdout)
 	cmd.SetErr(io.Discard)
 	opts.IO.ErrWriter = io.Discard
@@ -96,6 +97,7 @@ func TestOutputResponse_ExplicitOutputOverridesAgentDefault(t *testing.T) {
 
 	var stdout bytes.Buffer
 	cmd := &cobra.Command{}
+	cmd.SetContext(t.Context())
 	cmd.SetOut(&stdout)
 	cmd.SetErr(io.Discard)
 
@@ -117,6 +119,7 @@ func TestOutputResponse_RawPassthroughUnchangedInAgentMode(t *testing.T) {
 
 	var stdout bytes.Buffer
 	cmd := &cobra.Command{}
+	cmd.SetContext(t.Context())
 	cmd.SetOut(&stdout)
 	cmd.SetErr(io.Discard)
 	opts.IO.ErrWriter = io.Discard

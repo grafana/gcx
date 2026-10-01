@@ -216,7 +216,7 @@ func (h *tracesHelper) recommendationsApplyCommand() *cobra.Command {
 				return opts.IO.Encode(cmd.OutOrStdout(), result)
 			}
 
-			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
+			proceed, err := providers.ConfirmDestructive(cmd.Context(), cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
 				fmt.Sprintf("Apply recommendation %q?", id))
 			if err != nil {
 				return err
@@ -293,7 +293,7 @@ func (h *tracesHelper) recommendationsDismissCommand() *cobra.Command {
 				return opts.IO.Encode(cmd.OutOrStdout(), result)
 			}
 
-			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
+			proceed, err := providers.ConfirmDestructive(cmd.Context(), cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
 				fmt.Sprintf("Dismiss recommendation %q?", id))
 			if err != nil {
 				return err
@@ -616,7 +616,7 @@ func (h *tracesHelper) policiesDeleteCommand() *cobra.Command {
 				return err
 			}
 
-			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
+			proceed, err := providers.ConfirmDestructive(cmd.Context(), cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
 				fmt.Sprintf("Delete %d policy(ies)?", len(args)))
 			if err != nil {
 				return err

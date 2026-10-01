@@ -8,10 +8,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/grafana/gcx/internal/host"
 )
 
 // ApprovalHandler handles approval requests during streaming.
@@ -19,7 +20,7 @@ import (
 type ApprovalHandler interface {
 	// HandleApproval is called when an approval request is received.
 	// Returns true if approved, false if denied.
-	HandleApproval(req ApprovalRequest) bool
+	HandleApproval(ctx context.Context, req ApprovalRequest) bool
 }
 
 // InteractiveApprovalHandler prompts the user via stdin for approval.
@@ -28,7 +29,7 @@ type InteractiveApprovalHandler struct {
 }
 
 // HandleApproval prompts the user for approval via stdin.
-func (h *InteractiveApprovalHandler) HandleApproval(req ApprovalRequest) bool {
+func (h *InteractiveApprovalHandler) HandleApproval(ctx context.Context, req ApprovalRequest) bool {
 	prompt := "Approve " + req.ToolName
 	if req.Description != "" {
 		prompt += " - " + req.Description
@@ -38,10 +39,10 @@ func (h *InteractiveApprovalHandler) HandleApproval(req ApprovalRequest) bool {
 	if h.Logger != nil {
 		h.Logger.Info(prompt)
 	} else {
-		fmt.Fprint(os.Stdout, prompt)
+		fmt.Fprint(host.Stdout(ctx), prompt)
 	}
 
-	reader := bufio.NewReader(os.Stdin)
+	reader := bufio.NewReader(host.Stdin(ctx))
 	input, err := reader.ReadString('\n')
 	if err != nil {
 		return false
@@ -307,7 +308,7 @@ func (s *streamState) handleArtifactApproval(ctx context.Context, artifactUpdate
 
 		approved := false
 		if s.approvalHandler != nil {
-			approved = s.approvalHandler.HandleApproval(approvalReq)
+			approved = s.approvalHandler.HandleApproval(ctx, approvalReq)
 		} else {
 			s.logger.Warning(fmt.Sprintf("Approval required for %s but no handler available - auto-denying", approvalReq.ToolName))
 		}

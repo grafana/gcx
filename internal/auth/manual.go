@@ -160,8 +160,8 @@ func printRemoteSessionPreamble(w io.Writer) {
 // remote host and has no terminal to read a pasted URL from. It prints nothing
 // for a local session. command is the exact invocation to repeat, for example
 // "gcx login --oauth-manual".
-func printRemoteSessionHint(w io.Writer, port int, command string) {
-	if !terminal.IsRemoteSession() {
+func printRemoteSessionHint(ctx context.Context, w io.Writer, port int, command string) {
+	if !terminal.IsRemoteSession(ctx) {
 		return
 	}
 	printRemoteSessionPreamble(w)

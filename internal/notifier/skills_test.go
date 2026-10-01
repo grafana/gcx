@@ -46,7 +46,7 @@ func TestSkillsUpdateMessage(t *testing.T) {
 				require.NoError(t, os.MkdirAll(dir, 0o755))
 				require.NoError(t, os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(content), 0o600))
 			}
-			message, err := SkillsUpdateMessage(source, catalog, root)
+			message, err := SkillsUpdateMessage(t.Context(), source, catalog, root)
 			require.NoError(t, err)
 			require.Equal(t, tc.message, message)
 			for name, content := range tc.installed {
@@ -74,16 +74,16 @@ func TestSkillsUpdateMessage_ActionsClearOnlyTheirOwnNotice(t *testing.T) {
 			}
 			actions := map[string]func(){
 				"update": func() {
-					_, err := skillops.Update(source, catalog, root, nil, false)
+					_, err := skillops.Update(t.Context(), source, catalog, root, nil, false)
 					require.NoError(t, err)
 				},
 				"uninstall": func() {
-					_, err := skillops.Uninstall(source, catalog, root, []string{"old"}, false, false)
+					_, err := skillops.Uninstall(t.Context(), source, catalog, root, []string{"old"}, false, false)
 					require.NoError(t, err)
 				},
 			}
 			actions[firstAction]()
-			message, err := SkillsUpdateMessage(source, catalog, root)
+			message, err := SkillsUpdateMessage(t.Context(), source, catalog, root)
 			require.NoError(t, err)
 			if firstAction == "update" {
 				require.NotContains(t, message, "Run: gcx agent skills update")
@@ -95,7 +95,7 @@ func TestSkillsUpdateMessage_ActionsClearOnlyTheirOwnNotice(t *testing.T) {
 				require.NotContains(t, message, "Run: gcx agent skills uninstall")
 				actions["update"]()
 			}
-			message, err = SkillsUpdateMessage(source, catalog, root)
+			message, err = SkillsUpdateMessage(t.Context(), source, catalog, root)
 			require.NoError(t, err)
 			require.Empty(t, message)
 		})

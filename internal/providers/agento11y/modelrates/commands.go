@@ -325,7 +325,7 @@ What changes is the price applied from now on.`,
 			if _, err := time.Parse(time.RFC3339Nano, raw); err != nil {
 				return fmt.Errorf("--effective-from must be an RFC 3339 timestamp as 'list' reports it: %w", err)
 			}
-			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
+			proceed, err := providers.ConfirmDestructive(cmd.Context(), cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
 				fmt.Sprintf("Delete the %s/%s rate effective from %s?", provider, model, raw))
 			if err != nil {
 				return err

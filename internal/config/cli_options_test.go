@@ -9,7 +9,7 @@ import (
 func TestLoadCLIOptions_AutoApproveTrue(t *testing.T) {
 	t.Setenv("GCX_AUTO_APPROVE", "1")
 
-	opts, err := config.LoadCLIOptions()
+	opts, err := config.LoadCLIOptions(t.Context())
 	if err != nil {
 		t.Fatalf("LoadCLIOptions() error = %v, want nil", err)
 	}
@@ -22,7 +22,7 @@ func TestLoadCLIOptions_AutoApproveTrue(t *testing.T) {
 func TestLoadCLIOptions_AutoApproveTrueString(t *testing.T) {
 	t.Setenv("GCX_AUTO_APPROVE", "true")
 
-	opts, err := config.LoadCLIOptions()
+	opts, err := config.LoadCLIOptions(t.Context())
 	if err != nil {
 		t.Fatalf("LoadCLIOptions() error = %v, want nil", err)
 	}
@@ -35,7 +35,7 @@ func TestLoadCLIOptions_AutoApproveTrueString(t *testing.T) {
 func TestLoadCLIOptions_AutoApproveFalse(t *testing.T) {
 	t.Setenv("GCX_AUTO_APPROVE", "0")
 
-	opts, err := config.LoadCLIOptions()
+	opts, err := config.LoadCLIOptions(t.Context())
 	if err != nil {
 		t.Fatalf("LoadCLIOptions() error = %v, want nil", err)
 	}
@@ -48,7 +48,7 @@ func TestLoadCLIOptions_AutoApproveFalse(t *testing.T) {
 func TestLoadCLIOptions_AutoApproveEmpty(t *testing.T) {
 	t.Setenv("GCX_AUTO_APPROVE", "")
 
-	opts, err := config.LoadCLIOptions()
+	opts, err := config.LoadCLIOptions(t.Context())
 	if err != nil {
 		t.Fatalf("LoadCLIOptions() error = %v, want nil", err)
 	}

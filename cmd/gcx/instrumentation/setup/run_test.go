@@ -392,7 +392,7 @@ func TestRun(t *testing.T) { //nolint:maintidx // intentionally large table-driv
 
 // setAgentMode sets GCX_AGENT_MODE and re-runs agent detection, then restores
 // the previous state via t.Cleanup. This is needed because agent.IsAgentMode()
-// caches its result at init() time and requires agent.ResetForTesting() to
+// caches its result at init() time and requires agent.ResetForTesting(t.Context()) to
 // re-read env vars set via t.Setenv.
 func setAgentMode(t *testing.T, enabled bool) {
 	t.Helper()
@@ -403,11 +403,11 @@ func setAgentMode(t *testing.T, enabled bool) {
 	// t.Setenv cleans up the env var after the test; we also need to reset the
 	// cached agent mode state.
 	t.Setenv("GCX_AGENT_MODE", v)
-	agent.ResetForTesting()
+	agent.ResetForTesting(t.Context())
 	t.Cleanup(func() {
 		// agent.ResetForTesting re-reads env; after t.Setenv restores the original
 		// value, we must also re-run detection so the cache is consistent.
-		agent.ResetForTesting()
+		agent.ResetForTesting(t.Context())
 	})
 }
 
@@ -425,7 +425,7 @@ func TestPrintHelmCommand_OrgSlug(t *testing.T) {
 
 	t.Run("human mode contains substituted URL", func(t *testing.T) {
 		// Force human mode: agent.IsAgentMode() is cached at init(); setAgentMode
-		// calls agent.ResetForTesting() so the change takes effect immediately.
+		// calls agent.ResetForTesting(t.Context()) so the change takes effect immediately.
 		setAgentMode(t, false)
 
 		var buf bytes.Buffer

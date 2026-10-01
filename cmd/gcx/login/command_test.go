@@ -181,7 +181,7 @@ func TestResolveNonInteractiveTokens(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			gotToken, gotCloud := resolveNonInteractiveTokens(
+			gotToken, gotCloud := resolveNonInteractiveTokens(t.Context(),
 				tt.flagToken,
 				tt.flagCloud,
 				tt.sourceCtx,
@@ -198,7 +198,7 @@ func TestResolveNonInteractiveTokensUsesEnvForNewContext(t *testing.T) {
 	t.Setenv("GRAFANA_TOKEN", "new-context-grafana-token")
 	t.Setenv("GRAFANA_CLOUD_TOKEN", "new-context-cloud-token")
 
-	grafanaToken, cloudToken := resolveNonInteractiveTokens("", "", nil, false, false)
+	grafanaToken, cloudToken := resolveNonInteractiveTokens(t.Context(), "", "", nil, false, false)
 	assert.Equal(t, "new-context-grafana-token", grafanaToken)
 	assert.Equal(t, "new-context-cloud-token", cloudToken)
 }
@@ -207,7 +207,7 @@ func TestResolveNonInteractiveTokensExplicitOAuthIgnoresEnvironmentToken(t *test
 	t.Setenv("GRAFANA_TOKEN", "environment-grafana-token")
 	t.Setenv("GRAFANA_CLOUD_TOKEN", "environment-cloud-token")
 
-	grafanaToken, cloudToken := resolveNonInteractiveTokens("", "", nil, false, true)
+	grafanaToken, cloudToken := resolveNonInteractiveTokens(t.Context(), "", "", nil, false, true)
 
 	assert.Empty(t, grafanaToken)
 	assert.Equal(t, "environment-cloud-token", cloudToken)
@@ -360,7 +360,7 @@ func TestUseExistingCloudEntryEndpointChangeFailsClosed(t *testing.T) {
 			CloudEntry: &config.CloudEntry{Token: "copied-prod-cap"},
 		}
 
-		err := reuseNonInteractiveCloudCredential(&opts, false, sourceCtx, false)
+		err := reuseNonInteractiveCloudCredential(t.Context(), &opts, false, sourceCtx, false)
 		require.ErrorContains(t, err, "cannot be reused for different endpoints")
 		assert.Empty(t, opts.CloudToken, "the copied token must be cleared before validation")
 	})
@@ -370,8 +370,8 @@ func TestServerChangeRejectsStoredGrafanaTokenBeforeNetwork(t *testing.T) {
 	t.Setenv("GCX_AGENT_MODE", "false")
 	t.Setenv("GCX_KEYCHAIN", "off")
 	t.Setenv("GRAFANA_TOKEN", " \t ")
-	agent.ResetForTesting()
-	t.Cleanup(agent.ResetForTesting)
+	agent.ResetForTesting(t.Context())
+	t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	seed := config.Config{}
@@ -444,8 +444,8 @@ func TestProxyOrTLSChangeRejectsStoredGrafanaTokenBeforeNetwork(t *testing.T) {
 			unsetEnvForTest(t, "GRAFANA_TLS_CERT_FILE")
 			unsetEnvForTest(t, "GRAFANA_TLS_KEY_FILE")
 			unsetEnvForTest(t, "GRAFANA_TLS_CA_FILE")
-			agent.ResetForTesting()
-			t.Cleanup(agent.ResetForTesting)
+			agent.ResetForTesting(t.Context())
+			t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 			var requests atomic.Int32
 			server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
@@ -515,8 +515,8 @@ func TestRuntimeOnlyDestinationRejectsFreshTokenBeforeNonDurablePersistence(t *t
 			unsetEnvForTest(t, "GRAFANA_TLS_CERT_FILE")
 			unsetEnvForTest(t, "GRAFANA_TLS_KEY_FILE")
 			unsetEnvForTest(t, "GRAFANA_TLS_CA_FILE")
-			agent.ResetForTesting()
-			t.Cleanup(agent.ResetForTesting)
+			agent.ResetForTesting(t.Context())
+			t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 			tt.configure(t)
 
 			var requests atomic.Int32
@@ -556,8 +556,8 @@ func TestRuntimeOnlyDestinationRejectsFreshTokenBeforeNonDurablePersistence(t *t
 			require.NoError(t, readErr)
 			assert.Equal(t, before, after, "failed login must not persist the fresh credential")
 
-			fresh, loadErr := config.Load(t.Context(), config.ExplicitConfigFile(path), func(cfg *config.Config) error {
-				return config.ParseEnvIntoContext(cfg.Contexts[cfg.CurrentContext])
+			fresh, loadErr := config.Load(t.Context(), config.ExplicitConfigFile(path), func(ctx context.Context, cfg *config.Config) error {
+				return config.ParseEnvIntoContext(ctx, cfg.Contexts[cfg.CurrentContext])
 			})
 			require.NoError(t, loadErr)
 			assert.Empty(t, fresh.Contexts["default"].Grafana.APIToken,
@@ -629,7 +629,7 @@ func TestRuntimeOnlyTLSRecoveryCommandsInitializeFreshExplicitConfigAndUnblockLo
 		PreserveStoredTLS:    true,
 		RuntimeProxyEndpoint: "",
 	}}
-	recovery, keys := runtimeOnlyDestinationRecoveryCommands(path, nil, recoveryOpts)
+	recovery, keys := runtimeOnlyDestinationRecoveryCommands(t.Context(), path, nil, recoveryOpts)
 	assert.Equal(t, []string{"GRAFANA_TLS_CA_FILE"}, keys)
 	for _, operation := range recovery {
 		assert.Contains(t, detailed.Suggestions, operation.String())
@@ -666,7 +666,7 @@ func TestRuntimeOnlyOAuthIssuerProxyConflictDoesNotSuggestIneffectivePersistence
 		RuntimeProxyEndpoint:     "https://runtime-proxy.example.invalid",
 		OAuthIssuerProxyEndpoint: "https://issuer-proxy.example.invalid",
 	}
-	err := runtimeOnlyBearerDestinationError(
+	err := runtimeOnlyBearerDestinationError(t.Context(),
 		config.ConfigSource{Path: filepath.Join(t.TempDir(), "config.yaml"), Type: "explicit"},
 		nil,
 		&internallogin.Options{},
@@ -698,7 +698,7 @@ func TestRuntimeOnlyDestinationRecoveryHandlesDottedNamesWithoutInvalidDotPaths(
 		}}
 		persisted := &config.Context{Stack: "prod-stack"}
 		assert.False(t, runtimeOnlyDestinationRecoveryNeedsEditor(persisted, opts))
-		commands, _ := runtimeOnlyDestinationRecoveryCommands(configPath, persisted, opts)
+		commands, _ := runtimeOnlyDestinationRecoveryCommands(t.Context(), configPath, persisted, opts)
 		for _, command := range commands {
 			assert.NotContains(t, command.Path, "contexts.",
 				"an existing binding must not emit an unaddressable dotted context path")
@@ -720,7 +720,7 @@ func TestRuntimeOnlyDestinationRecoveryHandlesDottedNamesWithoutInvalidDotPaths(
 				ContextName: tt.context,
 				TLS:         &config.TLS{CAFile: "/tmp/test-ca.pem"},
 			}}
-			err := runtimeOnlyBearerDestinationError(
+			err := runtimeOnlyBearerDestinationError(t.Context(),
 				config.ConfigSource{Path: configPath, Type: "explicit"}, tt.persisted, opts, cause,
 			)
 			var detailed gcxerrors.DetailedError
@@ -754,19 +754,19 @@ func TestExistingGrafanaTokenIsOfferedOnlyForMatchingCompleteBinding(t *testing.
 	require.NoError(t, err)
 	effective, err := config.Load(t.Context(), config.ExplicitConfigFile(path))
 	require.NoError(t, err)
-	assert.Equal(t, "old-token", existingGrafanaTokenForDestination(
+	assert.Equal(t, "old-token", existingGrafanaTokenForDestination(t.Context(),
 		"https://old.example.invalid",
 		stored.Contexts["default"],
 		effective.Contexts["default"],
 	))
-	assert.Empty(t, existingGrafanaTokenForDestination(
+	assert.Empty(t, existingGrafanaTokenForDestination(t.Context(),
 		"https://new.example.invalid",
 		stored.Contexts["default"],
 		effective.Contexts["default"],
 	))
 
 	effective.Contexts["default"].Grafana.ProxyEndpoint = "https://other-proxy.example.invalid"
-	assert.Empty(t, existingGrafanaTokenForDestination(
+	assert.Empty(t, existingGrafanaTokenForDestination(t.Context(),
 		"https://old.example.invalid",
 		stored.Contexts["default"],
 		effective.Contexts["default"],
@@ -776,8 +776,8 @@ func TestExistingGrafanaTokenIsOfferedOnlyForMatchingCompleteBinding(t *testing.
 func TestEnvironmentTokensCountAsExplicitCredentialIntent(t *testing.T) {
 	t.Setenv("GRAFANA_TOKEN", "fresh-grafana-token")
 	t.Setenv("GRAFANA_CLOUD_TOKEN", "fresh-cloud-token")
-	assert.True(t, credentialProvided("", "GRAFANA_TOKEN"))
-	assert.True(t, credentialProvided("", "GRAFANA_CLOUD_TOKEN"))
+	assert.True(t, credentialProvided(t.Context(), "", "GRAFANA_TOKEN"))
+	assert.True(t, credentialProvided(t.Context(), "", "GRAFANA_CLOUD_TOKEN"))
 
 	opts := internallogin.Options{Inputs: internallogin.Inputs{
 		Server:        "https://stack.grafana-ops.net",
@@ -794,7 +794,7 @@ func TestEnvironmentTokensCountAsExplicitCredentialIntent(t *testing.T) {
 		},
 	}
 
-	require.NoError(t, reuseNonInteractiveCloudCredential(&opts, true, sourceCtx, false))
+	require.NoError(t, reuseNonInteractiveCloudCredential(t.Context(), &opts, true, sourceCtx, false))
 	assert.Equal(t, "fresh-cloud-token", opts.CloudToken)
 	assert.False(t, opts.CloudTokenTrusted, "environment credentials must still be validated")
 }
@@ -802,15 +802,15 @@ func TestEnvironmentTokensCountAsExplicitCredentialIntent(t *testing.T) {
 func TestWhitespaceEnvironmentTokensAreNotExplicitOrSelected(t *testing.T) {
 	t.Setenv("GRAFANA_TOKEN", " \t ")
 	t.Setenv("GRAFANA_CLOUD_TOKEN", "\n ")
-	assert.False(t, credentialProvided("", "GRAFANA_TOKEN"))
-	assert.False(t, credentialProvided("", "GRAFANA_CLOUD_TOKEN"))
-	assert.False(t, credentialProvided(" \t", "GRAFANA_TOKEN"))
+	assert.False(t, credentialProvided(t.Context(), "", "GRAFANA_TOKEN"))
+	assert.False(t, credentialProvided(t.Context(), "", "GRAFANA_CLOUD_TOKEN"))
+	assert.False(t, credentialProvided(t.Context(), " \t", "GRAFANA_TOKEN"))
 
 	sourceCtx := &config.Context{
 		Grafana:    &config.GrafanaConfig{APIToken: "stored-grafana-token"},
 		CloudEntry: &config.CloudEntry{Token: "stored-cloud-token"},
 	}
-	grafanaToken, cloudToken := resolveNonInteractiveTokens("", "", sourceCtx, false, false)
+	grafanaToken, cloudToken := resolveNonInteractiveTokens(t.Context(), "", "", sourceCtx, false, false)
 	assert.Equal(t, "stored-grafana-token", grafanaToken)
 	assert.Equal(t, "stored-cloud-token", cloudToken)
 }
@@ -962,8 +962,8 @@ func TestLoginNewContextWithoutServerReportsNoTarget(t *testing.T) {
 	unsetEnvForTest(t, "GRAFANA_TOKEN")
 	unsetEnvForTest(t, "GRAFANA_CLOUD_API_URL")
 	unsetEnvForTest(t, "GRAFANA_CLOUD_OAUTH_URL")
-	agent.ResetForTesting()
-	t.Cleanup(agent.ResetForTesting)
+	agent.ResetForTesting(t.Context())
+	t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	seed := config.Config{}
@@ -993,8 +993,8 @@ func TestLoginRejectedStoredTokenReportsRequestedTarget(t *testing.T) {
 	unsetEnvForTest(t, "GRAFANA_TOKEN")
 	unsetEnvForTest(t, "GRAFANA_CLOUD_API_URL")
 	unsetEnvForTest(t, "GRAFANA_CLOUD_OAUTH_URL")
-	agent.ResetForTesting()
-	t.Cleanup(agent.ResetForTesting)
+	agent.ResetForTesting(t.Context())
+	t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	seed := config.Config{}
@@ -1058,8 +1058,8 @@ func TestLoginRejectedByServerOverridePreflightReportsRequestedTarget(t *testing
 	unsetEnvForTest(t, "GRAFANA_SERVER")
 	unsetEnvForTest(t, "GRAFANA_CLOUD_API_URL")
 	unsetEnvForTest(t, "GRAFANA_CLOUD_OAUTH_URL")
-	agent.ResetForTesting()
-	t.Cleanup(agent.ResetForTesting)
+	agent.ResetForTesting(t.Context())
+	t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	seed := config.Config{}
@@ -1087,8 +1087,8 @@ func TestLoginForcedCloudTargetOnCustomDomainReportsCloud(t *testing.T) {
 	unsetEnvForTest(t, "GRAFANA_SERVER")
 	unsetEnvForTest(t, "GRAFANA_CLOUD_API_URL")
 	unsetEnvForTest(t, "GRAFANA_CLOUD_OAUTH_URL")
-	agent.ResetForTesting()
-	t.Cleanup(agent.ResetForTesting)
+	agent.ResetForTesting(t.Context())
+	t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	seed := config.Config{}
@@ -1156,8 +1156,8 @@ func TestLoadPersistedLoginSourceContextAllowsNewExplicitConfig(t *testing.T) {
 
 func TestRequestedLoginServerUsesEnvironmentForNewContext(t *testing.T) {
 	t.Setenv("GRAFANA_SERVER", "new-context.example.invalid")
-	assert.Equal(t, "https://new-context.example.invalid", requestedLoginServer("", nil))
-	assert.Equal(t, "https://flag.example.invalid", requestedLoginServer("flag.example.invalid", nil),
+	assert.Equal(t, "https://new-context.example.invalid", requestedLoginServer(t.Context(), "", nil))
+	assert.Equal(t, "https://flag.example.invalid", requestedLoginServer(t.Context(), "flag.example.invalid", nil),
 		"an explicit flag must win over the environment")
 }
 
@@ -1173,7 +1173,7 @@ func TestLoginTLSFromEnvironmentSupportsNewContext(t *testing.T) {
 	t.Setenv("GRAFANA_TLS_KEY_FILE", "/tmp/client.key")
 	t.Setenv("GRAFANA_TLS_CA_FILE", "/tmp/ca.crt")
 
-	tlsConfig := loginTLSFromEnvironment()
+	tlsConfig := loginTLSFromEnvironment(t.Context())
 	require.NotNil(t, tlsConfig)
 	assert.Equal(t, "/tmp/client.crt", tlsConfig.CertFile)
 	assert.Equal(t, "/tmp/client.key", tlsConfig.KeyFile)
@@ -1203,7 +1203,7 @@ func TestCloudLoginEndpointsUseCoherentEnvironmentIntent(t *testing.T) {
 	t.Run("new context API env selects both endpoints", func(t *testing.T) {
 		t.Setenv("GRAFANA_CLOUD_API_URL", "grafana-ops.com")
 		unsetEnvForTest(t, "GRAFANA_CLOUD_OAUTH_URL")
-		apiURL, oauthURL, err := cloudLoginEndpoints(&loginOpts{}, nil, false)
+		apiURL, oauthURL, err := cloudLoginEndpoints(t.Context(), &loginOpts{}, nil, false)
 		require.NoError(t, err)
 		assert.Equal(t, "https://grafana-ops.com", apiURL)
 		assert.Equal(t, "https://grafana-ops.com", oauthURL)
@@ -1212,7 +1212,7 @@ func TestCloudLoginEndpointsUseCoherentEnvironmentIntent(t *testing.T) {
 	t.Run("existing context OAuth env replaces the stored pair", func(t *testing.T) {
 		unsetEnvForTest(t, "GRAFANA_CLOUD_API_URL")
 		t.Setenv("GRAFANA_CLOUD_OAUTH_URL", "grafana-dev.com")
-		apiURL, oauthURL, err := cloudLoginEndpoints(&loginOpts{}, stored, false)
+		apiURL, oauthURL, err := cloudLoginEndpoints(t.Context(), &loginOpts{}, stored, false)
 		require.NoError(t, err)
 		assert.Equal(t, "https://grafana-dev.com", apiURL)
 		assert.Equal(t, "https://grafana-dev.com", oauthURL)
@@ -1221,7 +1221,7 @@ func TestCloudLoginEndpointsUseCoherentEnvironmentIntent(t *testing.T) {
 	t.Run("two explicit env endpoints remain an exact pair", func(t *testing.T) {
 		t.Setenv("GRAFANA_CLOUD_API_URL", "https://grafana-ops.com")
 		t.Setenv("GRAFANA_CLOUD_OAUTH_URL", "https://grafana-dev.com")
-		apiURL, oauthURL, err := cloudLoginEndpoints(&loginOpts{}, stored, false)
+		apiURL, oauthURL, err := cloudLoginEndpoints(t.Context(), &loginOpts{}, stored, false)
 		require.NoError(t, err)
 		assert.Equal(t, "https://grafana-ops.com", apiURL)
 		assert.Equal(t, "https://grafana-dev.com", oauthURL)
@@ -1230,7 +1230,7 @@ func TestCloudLoginEndpointsUseCoherentEnvironmentIntent(t *testing.T) {
 	t.Run("CLI endpoint wins and selects both", func(t *testing.T) {
 		t.Setenv("GRAFANA_CLOUD_API_URL", "https://grafana-ops.com")
 		t.Setenv("GRAFANA_CLOUD_OAUTH_URL", "https://grafana-dev.com")
-		apiURL, oauthURL, err := cloudLoginEndpoints(&loginOpts{CloudAPIURL: "https://explicit.invalid"}, stored, true)
+		apiURL, oauthURL, err := cloudLoginEndpoints(t.Context(), &loginOpts{CloudAPIURL: "https://explicit.invalid"}, stored, true)
 		require.NoError(t, err)
 		assert.Equal(t, "https://explicit.invalid", apiURL)
 		assert.Equal(t, "https://explicit.invalid", oauthURL)
@@ -1243,8 +1243,8 @@ func TestLoginEnvironmentServerChangeRequiresPreflightConfirmation(t *testing.T)
 	t.Setenv("GRAFANA_TOKEN", "fresh-env-token")
 	unsetEnvForTest(t, "GRAFANA_CLOUD_API_URL")
 	unsetEnvForTest(t, "GRAFANA_CLOUD_OAUTH_URL")
-	agent.ResetForTesting()
-	t.Cleanup(agent.ResetForTesting)
+	agent.ResetForTesting(t.Context())
+	t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	seed := config.Config{}
@@ -1376,8 +1376,8 @@ func TestLoginRejectsFreshCredentialForLayeredLocalOwnerBeforeNetwork(t *testing
 	t.Setenv("XDG_CONFIG_DIRS", t.TempDir())
 	t.Setenv("GCX_CONFIG", "")
 	unsetEnvForTest(t, "GRAFANA_TOKEN")
-	agent.ResetForTesting()
-	t.Cleanup(agent.ResetForTesting)
+	agent.ResetForTesting(t.Context())
+	t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 	workDir := t.TempDir()
 	t.Chdir(workDir)
 
@@ -1434,8 +1434,8 @@ func TestLoginRejectsDifferentGrafanaAndCloudOwnersBeforeNetwork(t *testing.T) {
 	t.Setenv("GCX_CONFIG", "")
 	unsetEnvForTest(t, "GRAFANA_TOKEN")
 	unsetEnvForTest(t, "GRAFANA_CLOUD_TOKEN")
-	agent.ResetForTesting()
-	t.Cleanup(agent.ResetForTesting)
+	agent.ResetForTesting(t.Context())
+	t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 	workDir := t.TempDir()
 	t.Chdir(workDir)
 
@@ -1506,8 +1506,8 @@ func TestLoginRejectsSameNamedStackOutsideContextOwnerBeforeNetwork(t *testing.T
 	t.Setenv("XDG_CONFIG_DIRS", t.TempDir())
 	t.Setenv("GCX_CONFIG", "")
 	unsetEnvForTest(t, "GRAFANA_TOKEN")
-	agent.ResetForTesting()
-	t.Cleanup(agent.ResetForTesting)
+	agent.ResetForTesting(t.Context())
+	t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 	workDir := t.TempDir()
 	t.Chdir(workDir)
 
@@ -1571,8 +1571,8 @@ func TestLoginCopyOnWritesCloudEntrySharedByAnotherLayer(t *testing.T) {
 	t.Setenv("GCX_CONFIG", "")
 	unsetEnvForTest(t, "GRAFANA_TOKEN")
 	unsetEnvForTest(t, "GRAFANA_CLOUD_TOKEN")
-	agent.ResetForTesting()
-	t.Cleanup(agent.ResetForTesting)
+	agent.ResetForTesting(t.Context())
+	t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 	workDir := t.TempDir()
 	t.Chdir(workDir)
 
@@ -1778,8 +1778,8 @@ func isolateAutoLocalLoginEnv(t *testing.T) string {
 	t.Setenv("GRAFANA_CLOUD_TOKEN", "")
 	workDir := t.TempDir()
 	t.Chdir(workDir)
-	agent.ResetForTesting()
-	t.Cleanup(agent.ResetForTesting)
+	agent.ResetForTesting(t.Context())
+	t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 	return workDir
 }
 
@@ -2353,8 +2353,8 @@ func disableAgentMode(t *testing.T) {
 	}
 	// GCX_AGENT_MODE=false is the authoritative override.
 	t.Setenv("GCX_AGENT_MODE", "false")
-	agent.ResetForTesting()
-	t.Cleanup(agent.ResetForTesting)
+	agent.ResetForTesting(t.Context())
+	t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 }
 
 // TestOAuthManualFlagParses confirms setup() registers --oauth-manual and that

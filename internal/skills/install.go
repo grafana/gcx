@@ -2,6 +2,7 @@ package skills
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -9,6 +10,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/grafana/gcx/internal/host"
 )
 
 // InstallResult summarizes an install/update operation against a .agents root.
@@ -28,8 +31,8 @@ type InstallResult struct {
 
 // Install installs current bundled skills. A nil filter selects all active and
 // deprecated skills; retired and unmanaged local skills are never installed.
-func Install(source fs.FS, catalog []byte, root string, filter map[string]struct{}, force bool, dryRun bool) (InstallResult, error) {
-	states, err := Reconcile(source, catalog, root)
+func Install(ctx context.Context, source fs.FS, catalog []byte, root string, filter map[string]struct{}, force bool, dryRun bool) (InstallResult, error) {
+	states, err := Reconcile(ctx, source, catalog, root)
 	if err != nil {
 		return InstallResult{}, err
 	}
@@ -57,14 +60,14 @@ func Install(source fs.FS, catalog []byte, root string, filter map[string]struct
 			return InstallResult{}, fmt.Errorf("unknown skill %q (use 'gcx agent skills list' to see available skills)", name)
 		}
 	}
-	result, err := installFiles(source, root, selected, force, dryRun)
+	result, err := installFiles(ctx, source, root, selected, force, dryRun)
 	result.Notices = notices
 	return result, err
 }
 
 // installFiles only copies selected bundled files. Lifecycle targeting happens
 // before this function, and it never prunes obsolete local files.
-func installFiles(source fs.FS, root string, filter map[string]struct{}, force bool, dryRun bool) (InstallResult, error) {
+func installFiles(ctx context.Context, source fs.FS, root string, filter map[string]struct{}, force bool, dryRun bool) (InstallResult, error) {
 	root = filepath.Clean(root)
 	result := InstallResult{
 		Root:      root,
@@ -95,15 +98,15 @@ func installFiles(source fs.FS, root string, filter map[string]struct{}, force b
 
 		targetPath := filepath.Join(result.SkillsDir, filepath.FromSlash(path))
 		if d.IsDir() {
-			return ensureDirectory(targetPath, dryRun)
+			return ensureDirectory(ctx, targetPath, dryRun)
 		}
 
 		result.FileCount++
-		if err := ensureDirectory(filepath.Dir(targetPath), dryRun); err != nil {
+		if err := ensureDirectory(ctx, filepath.Dir(targetPath), dryRun); err != nil {
 			return err
 		}
 
-		changed, overwritten, err := syncFile(source, path, targetPath, force, dryRun)
+		changed, overwritten, err := syncFile(ctx, source, path, targetPath, force, dryRun)
 		if err != nil {
 			return err
 		}
@@ -128,8 +131,8 @@ func installFiles(source fs.FS, root string, filter map[string]struct{}, force b
 
 // Update refreshes installed bundled skills and reports retired installations
 // without changing them. Explicit targets are all validated before any writes.
-func Update(source fs.FS, catalog []byte, root string, targets []string, dryRun bool) (InstallResult, error) {
-	states, err := Reconcile(source, catalog, root)
+func Update(ctx context.Context, source fs.FS, catalog []byte, root string, targets []string, dryRun bool) (InstallResult, error) {
+	states, err := Reconcile(ctx, source, catalog, root)
 	if err != nil {
 		return InstallResult{}, err
 	}
@@ -169,15 +172,15 @@ func Update(source fs.FS, catalog []byte, root string, targets []string, dryRun 
 			filter[state.Name] = struct{}{}
 		}
 	}
-	result, err := installFiles(source, root, filter, true, dryRun)
+	result, err := installFiles(ctx, source, root, filter, true, dryRun)
 	result.Notices = notices
 	return result, err
 }
 
 // ResolveInstallRoot resolves ~ and returns an absolute .agents root path.
-func ResolveInstallRoot(root string) (string, error) {
+func ResolveInstallRoot(ctx context.Context, root string) (string, error) {
 	if strings.TrimSpace(root) == "" {
-		defaultRoot, err := defaultAgentsRoot()
+		defaultRoot, err := defaultAgentsRoot(ctx)
 		if err != nil {
 			return "", err
 		}
@@ -185,7 +188,7 @@ func ResolveInstallRoot(root string) (string, error) {
 	}
 
 	if root == "~" || strings.HasPrefix(root, "~/") {
-		home, err := os.UserHomeDir()
+		home, err := host.UserHomeDir(ctx)
 		if err != nil {
 			return "", fmt.Errorf("determine home directory: %w", err)
 		}
@@ -204,13 +207,13 @@ func ResolveInstallRoot(root string) (string, error) {
 	return filepath.Clean(absRoot), nil
 }
 
-func syncFile(source fs.FS, sourcePath string, targetPath string, force bool, dryRun bool) (bool, bool, error) {
+func syncFile(ctx context.Context, source fs.FS, sourcePath string, targetPath string, force bool, dryRun bool) (bool, bool, error) {
 	sourceData, err := fs.ReadFile(source, sourcePath)
 	if err != nil {
 		return false, false, err
 	}
 
-	existingData, err := os.ReadFile(targetPath)
+	existingData, err := host.ReadFile(ctx, targetPath)
 	switch {
 	case err == nil:
 		if bytes.Equal(existingData, sourceData) {
@@ -224,22 +227,22 @@ func syncFile(source fs.FS, sourcePath string, targetPath string, force bool, dr
 		}
 		// handle cases where existing skills files are read-only - WriteFile
 		// doesn't override permissions on existing files.
-		if err := os.Chmod(targetPath, installedFileMode); err != nil {
+		if err := host.Chmod(ctx, targetPath, installedFileMode); err != nil {
 			return false, false, err
 		}
-		return true, true, os.WriteFile(targetPath, sourceData, installedFileMode)
+		return true, true, host.WriteFile(ctx, targetPath, sourceData, installedFileMode)
 	case errors.Is(err, os.ErrNotExist):
 		if dryRun {
 			return true, false, nil
 		}
-		return true, false, os.WriteFile(targetPath, sourceData, installedFileMode)
+		return true, false, host.WriteFile(ctx, targetPath, sourceData, installedFileMode)
 	default:
 		return false, false, err
 	}
 }
 
-func ensureDirectory(path string, dryRun bool) error {
-	info, err := os.Stat(path)
+func ensureDirectory(ctx context.Context, path string, dryRun bool) error {
+	info, err := host.Stat(ctx, path)
 	if err == nil {
 		if !info.IsDir() {
 			return fmt.Errorf("destination path exists and is not a directory: %s", path)
@@ -252,7 +255,7 @@ func ensureDirectory(path string, dryRun bool) error {
 	if dryRun {
 		return nil
 	}
-	return os.MkdirAll(path, 0o755)
+	return host.MkdirAll(ctx, path, 0o755)
 }
 
 // installedFileMode is the install permission applied to bundled skill files.
@@ -260,8 +263,8 @@ func ensureDirectory(path string, dryRun bool) error {
 // user-writable regardless of the more restrictive 0o444 that embed.FS reports.
 const installedFileMode fs.FileMode = 0o644
 
-func defaultAgentsRoot() (string, error) {
-	home, err := os.UserHomeDir()
+func defaultAgentsRoot(ctx context.Context) (string, error) {
+	home, err := host.UserHomeDir(ctx)
 	if err != nil {
 		return "", fmt.Errorf("determine home directory: %w", err)
 	}

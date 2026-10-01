@@ -195,7 +195,7 @@ func TestReadBasicAuthEnvironment(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			opts := &login.Options{Inputs: login.Inputs{GrafanaUser: tt.user}}
-			readBasicAuthEnvironment(opts, tt.interactive)
+			readBasicAuthEnvironment(t.Context(), opts, tt.interactive)
 			assert.Equal(t, tt.wantUser, opts.GrafanaUser)
 			assert.Equal(t, tt.wantPassword, opts.GrafanaPassword)
 		})

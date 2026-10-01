@@ -364,7 +364,7 @@ func applyAllRecommendations(cmd *cobra.Command, client *Client, opts *recommend
 		return opts.Encode(cmd.OutOrStdout(), result)
 	}
 
-	proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), stderr, opts.Force,
+	proceed, err := providers.ConfirmDestructive(ctx, cmd.InOrStdin(), stderr, opts.Force,
 		fmt.Sprintf("Apply all recommendations (%d rules)?", len(rules)))
 	if err != nil {
 		return err
@@ -458,7 +458,7 @@ func applySelectiveRecommendations(cmd *cobra.Command, client *Client, opts *rec
 	}
 
 	if actionCount > 0 {
-		proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), stderr, opts.Force,
+		proceed, err := providers.ConfirmDestructive(ctx, cmd.InOrStdin(), stderr, opts.Force,
 			fmt.Sprintf("Apply %d recommendation(s)?", actionCount))
 		if err != nil {
 			return err
@@ -889,7 +889,7 @@ func (h *metricsHelper) rulesDeleteCommand() *cobra.Command {
 			metric := args[0]
 			stderr := cmd.ErrOrStderr()
 
-			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), stderr, opts.Force,
+			proceed, err := providers.ConfirmDestructive(cmd.Context(), cmd.InOrStdin(), stderr, opts.Force,
 				fmt.Sprintf("Delete rule for %s?", metric))
 			if err != nil {
 				return err
@@ -1452,7 +1452,7 @@ func (h *metricsHelper) segmentsDeleteCommand() *cobra.Command {
 			id := args[0]
 			stderr := cmd.ErrOrStderr()
 
-			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), stderr, opts.Force,
+			proceed, err := providers.ConfirmDestructive(cmd.Context(), cmd.InOrStdin(), stderr, opts.Force,
 				fmt.Sprintf("Delete segment %s?", id))
 			if err != nil {
 				return err
@@ -1946,7 +1946,7 @@ func (h *metricsHelper) exemptionsDeleteCommand() *cobra.Command {
 			id := args[0]
 			stderr := cmd.ErrOrStderr()
 
-			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), stderr, opts.Force,
+			proceed, err := providers.ConfirmDestructive(cmd.Context(), cmd.InOrStdin(), stderr, opts.Force,
 				fmt.Sprintf("Delete exemption %s?", id))
 			if err != nil {
 				return err

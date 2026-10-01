@@ -174,7 +174,7 @@ func TestMutationCommands_HumanDefaultByteIdentical(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.verb, func(t *testing.T) {
 			agent.SetFlag(false)
-			t.Cleanup(agent.ResetForTesting)
+			t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 			oldNoColor := color.NoColor
 			color.NoColor = true
 			t.Cleanup(func() { color.NoColor = oldNoColor })
@@ -224,7 +224,7 @@ func TestMutationCommands_AgentModeSingleJSONDoc(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.verb, func(t *testing.T) {
 			agent.SetFlag(true)
-			t.Cleanup(agent.ResetForTesting)
+			t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 			fc := &fakeMutationClient{}
 			cmd := buildCommand(tt.verb, fc)
@@ -288,7 +288,7 @@ func TestMutationCommands_ExplicitFormatOverride(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			agent.SetFlag(tt.agentMode)
-			t.Cleanup(agent.ResetForTesting)
+			t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 			fc := &fakeMutationClient{}
 			cmd := buildCommand(tt.verb, fc)
@@ -357,7 +357,7 @@ func TestDeleteCommand_PromptContract(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			agent.SetFlag(false)
-			t.Cleanup(agent.ResetForTesting)
+			t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 			oldNoColor := color.NoColor
 			color.NoColor = true
 			t.Cleanup(func() { color.NoColor = oldNoColor })
@@ -389,7 +389,7 @@ func TestDeleteCommand_PromptContract(t *testing.T) {
 
 func TestDeleteCommand_AgentModeRequiresForce(t *testing.T) {
 	agent.SetFlag(true)
-	t.Cleanup(agent.ResetForTesting)
+	t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 	t.Setenv("GCX_AUTO_APPROVE", "false")
 
 	fc := &fakeMutationClient{}

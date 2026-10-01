@@ -176,7 +176,7 @@ func TestFlowRun_ManualExchangesPastedURL(t *testing.T) {
 		return strings.NewReader("http://127.0.0.1:54321/callback?" + values.Encode() + "\n")
 	}}
 
-	flow := auth.NewFlow("https://mystack.grafana.net", auth.Options{
+	flow := auth.NewFlow(t.Context(), "https://mystack.grafana.net", auth.Options{
 		Manual: true,
 		Writer: &writer,
 		Reader: reader,
@@ -213,7 +213,7 @@ func TestFlowRun_ManualRejectsForeignState(t *testing.T) {
 	values.Set("endpoint", server.URL)
 	values.Set("instanceEndpoint", "https://mystack.grafana.net")
 
-	flow := auth.NewFlow("https://mystack.grafana.net", auth.Options{
+	flow := auth.NewFlow(t.Context(), "https://mystack.grafana.net", auth.Options{
 		Manual: true,
 		Writer: &writer,
 		Reader: strings.NewReader("http://127.0.0.1:54321/callback?" + values.Encode() + "\n"),
@@ -253,7 +253,7 @@ func TestFlowRun_ManualDoesNotBindAPort(t *testing.T) {
 		return strings.NewReader("http://127.0.0.1:54321/callback?" + values.Encode() + "\n")
 	}}
 
-	flow := auth.NewFlow("https://mystack.grafana.net", auth.Options{
+	flow := auth.NewFlow(t.Context(), "https://mystack.grafana.net", auth.Options{
 		Manual: true,
 		Writer: &writer,
 		Reader: reader,
@@ -268,7 +268,7 @@ func TestFlowRun_ManualRejectsFixedPort(t *testing.T) {
 	t.Parallel()
 
 	var writer bytes.Buffer
-	flow := auth.NewFlow("https://mystack.grafana.net", auth.Options{
+	flow := auth.NewFlow(t.Context(), "https://mystack.grafana.net", auth.Options{
 		Manual: true,
 		Port:   1234,
 		Writer: &writer,
@@ -288,7 +288,7 @@ func TestFlowRun_ManualHonoursContextCancellation(t *testing.T) {
 	t.Cleanup(func() { _ = pw.Close() })
 
 	var writer bytes.Buffer
-	flow := auth.NewFlow("https://mystack.grafana.net", auth.Options{
+	flow := auth.NewFlow(t.Context(), "https://mystack.grafana.net", auth.Options{
 		Manual: true,
 		Writer: &writer,
 		Reader: pr,
@@ -325,7 +325,7 @@ func TestFlowRun_ManualErrorsDoNotEchoPastedURL(t *testing.T) {
 			t.Parallel()
 
 			var writer bytes.Buffer
-			flow := auth.NewFlow("https://mystack.grafana.net", auth.Options{
+			flow := auth.NewFlow(t.Context(), "https://mystack.grafana.net", auth.Options{
 				Manual: true,
 				Writer: &writer,
 				Reader: strings.NewReader(tc.input),
@@ -342,7 +342,7 @@ func TestFlowRun_ManualReportsMissingInput(t *testing.T) {
 	t.Parallel()
 
 	var writer bytes.Buffer
-	flow := auth.NewFlow("https://mystack.grafana.net", auth.Options{
+	flow := auth.NewFlow(t.Context(), "https://mystack.grafana.net", auth.Options{
 		Manual: true,
 		Writer: &writer,
 		Reader: strings.NewReader(""),
@@ -372,7 +372,7 @@ func TestFlowRun_ManualRetriesAfterABadURL(t *testing.T) {
 		return strings.NewReader("typo-not-a-url\n" + good + "\n")
 	}}
 
-	flow := auth.NewFlow("https://mystack.grafana.net", auth.Options{
+	flow := auth.NewFlow(t.Context(), "https://mystack.grafana.net", auth.Options{
 		Manual: true,
 		Writer: &writer,
 		Reader: reader,
@@ -396,7 +396,7 @@ func TestFlowRun_ManualStopsAtTheTryBound(t *testing.T) {
 	t.Parallel()
 
 	var writer bytes.Buffer
-	flow := auth.NewFlow("https://mystack.grafana.net", auth.Options{
+	flow := auth.NewFlow(t.Context(), "https://mystack.grafana.net", auth.Options{
 		Manual: true,
 		Writer: &writer,
 		Reader: strings.NewReader(strings.Repeat("typo-not-a-url\n", auth.ManualPasteTries+2)),
@@ -423,7 +423,7 @@ func TestFlowRun_ManualReportsTheURLFailureNotTheEndOfInput(t *testing.T) {
 	values.Set("code", "auth-code")
 	values.Set("state", "state-from-another-attempt")
 
-	flow := auth.NewFlow("https://mystack.grafana.net", auth.Options{
+	flow := auth.NewFlow(t.Context(), "https://mystack.grafana.net", auth.Options{
 		Manual: true,
 		Writer: &writer,
 		Reader: strings.NewReader("http://127.0.0.1:54321/callback?" + values.Encode() + "\n"),
@@ -457,7 +457,7 @@ func TestGCOMFlowRun_ManualSendsMatchingRedirectURI(t *testing.T) {
 		return strings.NewReader("http://127.0.0.1:54321/callback?" + values.Encode() + "\n")
 	}}
 
-	flow := auth.NewGCOMFlow(auth.GCOMOptions{
+	flow := auth.NewGCOMFlow(t.Context(), auth.GCOMOptions{
 		ClientID: "gcx",
 		GCOMURL:  server.URL,
 		Scopes:   []string{"stacks:read"},
@@ -517,7 +517,7 @@ func TestPrintRemoteSessionHint(t *testing.T) {
 			}
 
 			var writer bytes.Buffer
-			auth.PrintRemoteSessionHint(&writer, 54321, "gcx login --oauth-manual")
+			auth.PrintRemoteSessionHint(t.Context(), &writer, 54321, "gcx login --oauth-manual")
 
 			if !tc.wantOut {
 				assert.Zero(t, writer.Len())
@@ -559,11 +559,11 @@ func TestStartPasteWatcherRequiresRemoteSession(t *testing.T) {
 			for name, value := range tc.env {
 				t.Setenv(name, value)
 			}
-			agent.ResetForTesting()
-			t.Cleanup(agent.ResetForTesting)
+			agent.ResetForTesting(t.Context())
+			t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 			var writer bytes.Buffer
-			watcher := auth.StartPasteWatcher(&writer, 54321)
+			watcher := auth.StartPasteWatcher(t.Context(), &writer, 54321)
 			if watcher != nil {
 				defer watcher.Close()
 			}
@@ -583,8 +583,8 @@ func remoteSessionForTest(t *testing.T) {
 	t.Setenv("SSH_CLIENT", "")
 	t.Setenv("SSH_TTY", "")
 	t.Setenv("GCX_AGENT_MODE", "0")
-	agent.ResetForTesting()
-	t.Cleanup(agent.ResetForTesting)
+	agent.ResetForTesting(t.Context())
+	t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 }
 
 // TestPasteWatcherCloseReleasesTheTerminal pins the property that makes the
@@ -601,7 +601,7 @@ func TestPasteWatcherCloseReleasesTheTerminal(t *testing.T) {
 	t.Cleanup(restore)
 
 	var out bytes.Buffer
-	watcher := auth.StartPasteWatcher(&out, 54321)
+	watcher := auth.StartPasteWatcher(t.Context(), &out, 54321)
 	require.NotNil(t, watcher)
 	assert.Contains(t, out.String(), "-L 54321:127.0.0.1:54321")
 	assert.Contains(t, out.String(), "Redirect URL")
@@ -632,7 +632,7 @@ func TestPasteWatcherDeliversAndRejects(t *testing.T) {
 	t.Cleanup(restore)
 
 	var out bytes.Buffer
-	watcher := auth.StartPasteWatcher(&out, 54321)
+	watcher := auth.StartPasteWatcher(t.Context(), &out, 54321)
 	require.NotNil(t, watcher)
 	t.Cleanup(watcher.Close)
 
@@ -682,7 +682,7 @@ func TestPasteWatcherKeepsReadingAfterCallerRejection(t *testing.T) {
 	t.Cleanup(restore)
 
 	var out bytes.Buffer
-	watcher := auth.StartPasteWatcher(&out, 54321)
+	watcher := auth.StartPasteWatcher(t.Context(), &out, 54321)
 	require.NotNil(t, watcher)
 	t.Cleanup(watcher.Close)
 
@@ -728,7 +728,7 @@ func TestPasteWatcherDropsTheEmptyLine(t *testing.T) {
 	t.Cleanup(restore)
 
 	var out bytes.Buffer
-	watcher := auth.StartPasteWatcher(&out, 54321)
+	watcher := auth.StartPasteWatcher(t.Context(), &out, 54321)
 	require.NotNil(t, watcher)
 	t.Cleanup(watcher.Close)
 
@@ -765,7 +765,7 @@ func TestPasteWatcherReportsThatTheReaderEnded(t *testing.T) {
 	t.Cleanup(restore)
 
 	var out bytes.Buffer
-	watcher := auth.StartPasteWatcher(&out, 54321)
+	watcher := auth.StartPasteWatcher(t.Context(), &out, 54321)
 	require.NotNil(t, watcher)
 	t.Cleanup(watcher.Close)
 
@@ -802,7 +802,7 @@ func TestPasteWatcherRejectionDoesNotEchoTheURL(t *testing.T) {
 	t.Cleanup(restore)
 
 	var out bytes.Buffer
-	watcher := auth.StartPasteWatcher(&out, 54321)
+	watcher := auth.StartPasteWatcher(t.Context(), &out, 54321)
 	require.NotNil(t, watcher)
 	t.Cleanup(watcher.Close)
 
@@ -904,7 +904,7 @@ func TestFlushTerminalInputHandlesANonTerminal(t *testing.T) {
 // terminal. The flush discards what the user typed without a newline, which the
 // shell would otherwise read after gcx exits.
 func TestFlushTerminalInputClearsTheQueue(t *testing.T) {
-	tty, ok := auth.OpenPasteTerminal()
+	tty, ok := auth.OpenPasteTerminal(t.Context())
 	if !ok {
 		t.Skip("no controlling terminal available")
 	}
@@ -921,7 +921,7 @@ func TestFlushTerminalInputClearsTheQueue(t *testing.T) {
 //
 // The test needs a controlling terminal, so it skips where there is none.
 func TestOpenPasteTerminalReadIsCancellable(t *testing.T) {
-	tty, ok := auth.OpenPasteTerminal()
+	tty, ok := auth.OpenPasteTerminal(t.Context())
 	if !ok {
 		t.Skip("no controlling terminal available")
 	}

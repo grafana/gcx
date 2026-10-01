@@ -9,6 +9,7 @@ package settings //nolint:testpackage // Tests drive the unexported writeUpdateR
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"strings"
@@ -70,7 +71,7 @@ func TestUpdateReceipt_OutputContract(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			agent.SetFlag(tc.agentMode)
-			t.Cleanup(agent.ResetForTesting)
+			t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 			opts := newUpdateOptsForTest(t, tc.output)
 			var stdout bytes.Buffer
@@ -100,7 +101,7 @@ func TestUpdateReceipt_OutputContract(t *testing.T) {
 
 func TestUpdateReceipt_ExplicitYAMLOverride(t *testing.T) {
 	agent.SetFlag(false)
-	t.Cleanup(agent.ResetForTesting)
+	t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 	opts := newUpdateOptsForTest(t, "yaml")
 	var stdout bytes.Buffer

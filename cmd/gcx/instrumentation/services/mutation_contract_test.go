@@ -88,8 +88,8 @@ func TestServicesMutations_HumanDefault_ByteIdentical(t *testing.T) {
 	for _, tc := range serviceMutationCases() {
 		t.Run(tc.verb, func(t *testing.T) {
 			t.Setenv("GCX_AGENT_MODE", "false")
-			agent.ResetForTesting()
-			t.Cleanup(agent.ResetForTesting)
+			agent.ResetForTesting(t.Context())
+			t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 			out, err := runServiceMutation(t, tc.verb, services.NewMutationTestIO(t))
 			require.NoError(t, err)
@@ -142,8 +142,8 @@ func TestServicesMutations_ExplicitOutputOverrides(t *testing.T) {
 
 	t.Run("-o json in human mode", func(t *testing.T) {
 		t.Setenv("GCX_AGENT_MODE", "false")
-		agent.ResetForTesting()
-		t.Cleanup(agent.ResetForTesting)
+		agent.ResetForTesting(t.Context())
+		t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 		out, err := runServiceMutation(t, "clear", services.NewMutationTestIO(t, "-o", "json"))
 		require.NoError(t, err)

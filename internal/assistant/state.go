@@ -1,11 +1,13 @@
 package assistant
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 
+	"github.com/grafana/gcx/internal/host"
 	"gopkg.in/yaml.v3"
 )
 
@@ -16,8 +18,8 @@ type State struct {
 }
 
 // statePath returns the path to the assistant state file.
-func statePath() (string, error) {
-	configDir, err := os.UserConfigDir()
+func statePath(ctx context.Context) (string, error) {
+	configDir, err := host.UserConfigDir(ctx)
 	if err != nil {
 		return "", fmt.Errorf("failed to get config directory: %w", err)
 	}
@@ -25,13 +27,13 @@ func statePath() (string, error) {
 }
 
 // LoadState loads the state from the state file.
-func LoadState() (*State, error) {
-	path, err := statePath()
+func LoadState(ctx context.Context) (*State, error) {
+	path, err := statePath(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	data, err := os.ReadFile(path)
+	data, err := host.ReadFile(ctx, path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return &State{}, nil
@@ -48,14 +50,14 @@ func LoadState() (*State, error) {
 }
 
 // Save saves the state to the state file.
-func (s *State) Save() error {
-	path, err := statePath()
+func (s *State) Save(ctx context.Context) error {
+	path, err := statePath(ctx)
 	if err != nil {
 		return err
 	}
 
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0700); err != nil {
+	if err := host.MkdirAll(ctx, dir, 0700); err != nil {
 		return fmt.Errorf("failed to create state directory: %w", err)
 	}
 
@@ -64,7 +66,7 @@ func (s *State) Save() error {
 		return fmt.Errorf("failed to marshal state: %w", err)
 	}
 
-	if err := os.WriteFile(path, data, 0600); err != nil {
+	if err := host.WriteFile(ctx, path, data, 0600); err != nil {
 		return fmt.Errorf("failed to write state file: %w", err)
 	}
 
@@ -72,18 +74,18 @@ func (s *State) Save() error {
 }
 
 // SaveLastContextID saves the last context ID to state.
-func SaveLastContextID(contextID string) error {
-	state, err := LoadState()
+func SaveLastContextID(ctx context.Context, contextID string) error {
+	state, err := LoadState(ctx)
 	if err != nil {
 		state = &State{}
 	}
 	state.LastContextID = contextID
-	return state.Save()
+	return state.Save(ctx)
 }
 
 // GetLastContextID returns the last context ID from state.
-func GetLastContextID() (string, error) {
-	state, err := LoadState()
+func GetLastContextID(ctx context.Context) (string, error) {
+	state, err := LoadState(ctx)
 	if err != nil {
 		return "", err
 	}

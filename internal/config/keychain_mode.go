@@ -3,11 +3,11 @@ package config
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 	"sync"
 
 	"github.com/goccy/go-yaml"
+	"github.com/grafana/gcx/internal/host"
 	"github.com/grafana/gcx/internal/output"
 )
 
@@ -41,8 +41,8 @@ const envKeychain = "GCX_KEYCHAIN"
 // keychainModeForProcess resolves the environment-only policy used by legacy
 // callers. Config loading uses resolveKeychainPolicy so trusted config layers
 // participate before the credential store is constructed.
-func keychainModeForProcess() keychainMode {
-	return overlayKeychainEnvironment(defaultKeychainPolicy()).mode
+func keychainModeForProcess(ctx context.Context) keychainMode {
+	return overlayKeychainEnvironment(ctx, defaultKeychainPolicy()).mode
 }
 
 // parseKeychainEnv returns the environment mode, plus the value to warn about
@@ -97,7 +97,7 @@ func resolveKeychainPolicy(ctx context.Context, sources []ConfigSource) (keychai
 		}
 		policy = keychainPolicy{mode: mode, source: source.Path}
 	}
-	return overlayKeychainEnvironment(policy), nil
+	return overlayKeychainEnvironment(ctx, policy), nil
 }
 
 // resolveKeychainPolicyForSources honours a policy the caller already resolved
@@ -129,7 +129,7 @@ func resolveKeychainPolicyForSource(ctx context.Context, path string, opts loadO
 // not come from the auto-discovered local layer: resolveKeychainPolicy
 // already ignores that layer's value during policy resolution, so validating
 // it here too would hard-fail a write over a typo in an untrusted file.
-func resolveKeychainPolicyForWrite(cfg *Config, source string) (keychainPolicy, error) {
+func resolveKeychainPolicyForWrite(ctx context.Context, cfg *Config, source string) (keychainPolicy, error) {
 	if cfg.sourceLayer != "local" && cfg.Credentials != nil && cfg.Credentials.Keychain != "" {
 		if _, ok := parseKeychainValue(cfg.Credentials.Keychain); !ok {
 			return keychainPolicy{}, invalidKeychainConfigValue(source, cfg.Credentials.Keychain)
@@ -147,7 +147,7 @@ func resolveKeychainPolicyForWrite(cfg *Config, source string) (keychainPolicy, 
 	if cfg.Credentials != nil && cfg.Credentials.Keychain != "" {
 		return keychainPolicy{}, fmt.Errorf("keychain policy not resolved before write to %s", source)
 	}
-	return overlayKeychainEnvironment(defaultKeychainPolicy()), nil
+	return overlayKeychainEnvironment(ctx, defaultKeychainPolicy()), nil
 }
 
 func decodeKeychainConfigValue(contents []byte) (keychainConfigValue, error) {
@@ -207,14 +207,14 @@ func typedConfigContents(contents []byte, layer string) ([]byte, error) {
 	return sanitizeLocalKeychainPolicyForDecode(contents)
 }
 
-func overlayKeychainEnvironment(policy keychainPolicy) keychainPolicy {
-	raw := os.Getenv(envKeychain)
+func overlayKeychainEnvironment(ctx context.Context, policy keychainPolicy) keychainPolicy {
+	raw := host.Getenv(ctx, envKeychain)
 	if strings.TrimSpace(raw) == "" {
 		return policy
 	}
 	mode, rejected := parseKeychainEnv(raw)
 	if rejected != "" {
-		warnUnrecognisedKeychainValue(rejected)
+		warnUnrecognisedKeychainValue(ctx, rejected)
 	}
 	return keychainPolicy{mode: mode, source: envKeychain}
 }
@@ -236,7 +236,7 @@ func warnIgnoredLocalKeychainPolicy(ctx context.Context, source, value string) {
 	warnIgnoredLocalKeychainPolicyOnce.Do(func() {
 		writer := warningWriterFromCtx(ctx)
 		if writer == nil {
-			writer = os.Stderr
+			writer = host.Stderr(ctx)
 		}
 		output.EmitWarn(writer, fmt.Sprintf(
 			"credentials.keychain=%q in auto-discovered local config %s was ignored; select the file explicitly to use this policy",
@@ -257,8 +257,8 @@ func unrecognisedKeychainWarning(value string) string {
 //nolint:gochecknoglobals // process-wide latch for a once-per-invocation notice.
 var warnUnrecognisedKeychainValueOnce sync.Once
 
-func warnUnrecognisedKeychainValue(value string) {
+func warnUnrecognisedKeychainValue(ctx context.Context, value string) {
 	warnUnrecognisedKeychainValueOnce.Do(func() {
-		output.EmitWarn(os.Stderr, unrecognisedKeychainWarning(value))
+		output.EmitWarn(host.Stderr(ctx), unrecognisedKeychainWarning(value))
 	})
 }

@@ -192,7 +192,7 @@ func TestConversationGetCommand_OutputFormatParityAndFieldSelection(t *testing.T
 	assert.Equal(t, len(tests)*2, requestCount)
 
 	agent.SetFlag(true)
-	t.Cleanup(agent.ResetForTesting)
+	t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 	root := assistantcmd.Command()
 	root.SetContext(context.Background())
 	root.SilenceUsage = true

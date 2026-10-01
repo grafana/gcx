@@ -1,13 +1,14 @@
 package datasources
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 
 	"github.com/goccy/go-yaml"
+	"github.com/grafana/gcx/internal/host"
 )
 
 const (
@@ -120,8 +121,8 @@ func (m *DataSourceManifest) PluginType() string {
 // ReadManifestFile reads a DataSourceManifest from a file path, or from stdin
 // when path is "-". It accepts both YAML and JSON (YAML is a JSON superset).
 // The plugin type must be resolvable from spec.type or the apiVersion group.
-func ReadManifestFile(path string, stdin io.Reader) (*DataSourceManifest, error) {
-	data, err := readBytes(path, stdin)
+func ReadManifestFile(ctx context.Context, path string, stdin io.Reader) (*DataSourceManifest, error) {
+	data, err := readBytes(ctx, path, stdin)
 	if err != nil {
 		return nil, fmt.Errorf("reading %s: %w", manifestSource(path), err)
 	}
@@ -143,11 +144,11 @@ func ReadManifestFile(path string, stdin io.Reader) (*DataSourceManifest, error)
 	return &manifest, nil
 }
 
-func readBytes(path string, stdin io.Reader) ([]byte, error) {
+func readBytes(ctx context.Context, path string, stdin io.Reader) ([]byte, error) {
 	if path == "-" {
 		return io.ReadAll(stdin)
 	}
-	return os.ReadFile(path)
+	return host.ReadFile(ctx, path)
 }
 
 func manifestSource(path string) string {

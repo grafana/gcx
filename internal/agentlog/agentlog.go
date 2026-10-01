@@ -2,12 +2,14 @@ package agentlog
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/grafana/gcx/internal/host"
 	"github.com/grafana/gcx/internal/xdg"
 )
 
@@ -34,10 +36,10 @@ func Configure(c Config) { cfg = c }
 func IsEnabled() bool { return cfg.Enabled }
 
 // LogPath returns the full path to the log file.
-func LogPath() string {
+func LogPath(ctx context.Context) string {
 	dir := cfg.LogDir
 	if dir == "" {
-		dir = filepath.Join(xdg.StateHome(), "gcx")
+		dir = filepath.Join(xdg.StateHome(ctx), "gcx")
 	}
 	return filepath.Join(dir, logFileName)
 }
@@ -53,9 +55,9 @@ type Entry struct {
 }
 
 // Append writes entry to the log file as a JSONL record and trims to maxEntries.
-func Append(entry Entry) error {
-	path := LogPath()
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+func Append(ctx context.Context, entry Entry) error {
+	path := LogPath(ctx)
+	if err := host.MkdirAll(ctx, filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
 	data, err := json.Marshal(entry)
@@ -63,7 +65,7 @@ func Append(entry Entry) error {
 		return err
 	}
 	data = append(data, '\n')
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	f, err := host.OpenFile(ctx, path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
 	}
@@ -72,13 +74,13 @@ func Append(entry Entry) error {
 	if writeErr != nil {
 		return writeErr
 	}
-	return trimLog(path, maxEntries)
+	return trimLog(ctx, path, maxEntries)
 }
 
 // trimLog keeps only the last max entries in the JSONL file, dropping the oldest.
 // It is a no-op when the file has max or fewer entries.
-func trimLog(path string, limit int) error {
-	data, err := os.ReadFile(path)
+func trimLog(ctx context.Context, path string, limit int) error {
+	data, err := host.ReadFile(ctx, path)
 	if err != nil {
 		return err
 	}
@@ -96,7 +98,7 @@ func trimLog(path string, limit int) error {
 			}
 		}
 	}
-	return os.WriteFile(path, data, 0o600)
+	return host.WriteFile(ctx, path, data, 0o600)
 }
 
 // StripArgValues returns a copy of args with all flag values replaced by

@@ -5,9 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"os"
 	"time"
 
+	"github.com/grafana/gcx/internal/host"
 	"github.com/grafana/gcx/internal/version"
 )
 
@@ -28,20 +28,20 @@ const exportTimeout = time.Second
 // lost event is fine: the export is a single attempt with no retries, so an
 // unreachable endpoint costs one fast failure rather than the full
 // exportTimeout, which caps the whole exchange.
-func Export(event Event) {
+func Export(ctx context.Context, event Event) {
 	endpoint := defaultEndpoint
-	if override := os.Getenv(envEndpoint); override != "" {
+	if override := host.Getenv(ctx, envEndpoint); override != "" {
 		endpoint = override
 	}
-	export(event, endpoint)
+	export(ctx, event, endpoint)
 }
 
-func export(event Event, endpoint string) {
+func export(ctx context.Context, event Event, endpoint string) {
 	body, err := json.Marshal(event)
 	if err != nil {
 		return
 	}
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, endpoint, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
 		return
 	}

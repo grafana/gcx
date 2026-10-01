@@ -41,7 +41,7 @@ func TestGrafanaTokenEnvironmentSelectsTokenWithoutChangingPersistedAuthMethod(t
 			grafana.OrgID = 1
 			ctx := config.Context{Name: "prod", Grafana: &grafana}
 
-			require.NoError(t, config.ParseEnvIntoContext(&ctx))
+			require.NoError(t, config.ParseEnvIntoContext(t.Context(), &ctx))
 			assert.Equal(t, persistedMethod, ctx.Grafana.AuthMethod,
 				"environment selection must not mutate the persisted selector")
 			method, err := ctx.EffectiveGrafanaAuthMethod()
@@ -78,8 +78,8 @@ current-context: prod
 `)
 	require.NoError(t, os.WriteFile(path, original, 0o600))
 
-	loaded, err := config.Load(context.Background(), config.ExplicitConfigFile(path), func(cfg *config.Config) error {
-		return config.ParseEnvIntoContext(cfg.Contexts[cfg.CurrentContext])
+	loaded, err := config.Load(context.Background(), config.ExplicitConfigFile(path), func(ctx context.Context, cfg *config.Config) error {
+		return config.ParseEnvIntoContext(ctx, cfg.Contexts[cfg.CurrentContext])
 	})
 	require.NoError(t, err)
 	method, err := loaded.Contexts["prod"].EffectiveGrafanaAuthMethod()
@@ -128,7 +128,7 @@ func TestGrafanaPasswordEnvironmentDoesNotSwitchPersistedAuthMethod(t *testing.T
 			grafana.OrgID = 1
 			ctx := config.Context{Name: "prod", Grafana: &grafana}
 
-			require.NoError(t, config.ParseEnvIntoContext(&ctx))
+			require.NoError(t, config.ParseEnvIntoContext(t.Context(), &ctx))
 			method, err := ctx.EffectiveGrafanaAuthMethod()
 			require.NoError(t, err)
 			assert.Equal(t, grafana.AuthMethod, method)
@@ -141,7 +141,7 @@ func TestParseEnvIntoContext_StringFields(t *testing.T) {
 	t.Setenv("GRAFANA_SERVER", "https://example.com")
 
 	var ctx config.Context
-	require.NoError(t, config.ParseEnvIntoContext(&ctx))
+	require.NoError(t, config.ParseEnvIntoContext(t.Context(), &ctx))
 	assert.Equal(t, "https://example.com", ctx.Grafana.Server)
 }
 
@@ -150,7 +150,7 @@ func TestParseEnvIntoContext_CloudFields(t *testing.T) {
 	t.Setenv("GRAFANA_CLOUD_TOKEN", "env-token")
 
 	var ctx config.Context
-	require.NoError(t, config.ParseEnvIntoContext(&ctx))
+	require.NoError(t, config.ParseEnvIntoContext(t.Context(), &ctx))
 	assert.Equal(t, "mystack", ctx.ResolveStackSlug())
 	require.NotNil(t, ctx.CloudEntry)
 	assert.Equal(t, "env-token", ctx.CloudEntry.Token)
@@ -160,14 +160,14 @@ func TestParseEnvIntoContext_Int64Fields(t *testing.T) {
 	t.Setenv("GRAFANA_STACK_ID", "12345")
 
 	var ctx config.Context
-	require.NoError(t, config.ParseEnvIntoContext(&ctx))
+	require.NoError(t, config.ParseEnvIntoContext(t.Context(), &ctx))
 	assert.Equal(t, int64(12345), ctx.Grafana.StackID)
 }
 
 func TestParseEnvIntoContext_EmptyBoolSkipped(t *testing.T) {
 	t.Setenv("GCX_AUTO_APPROVE", "")
 
-	opts, err := config.LoadCLIOptions()
+	opts, err := config.LoadCLIOptions(t.Context())
 	require.NoError(t, err)
 	assert.False(t, opts.AutoApprove)
 }
@@ -176,7 +176,7 @@ func TestParseEnvIntoContext_EmptyInt64Skipped(t *testing.T) {
 	t.Setenv("GRAFANA_STACK_ID", "")
 
 	var ctx config.Context
-	require.NoError(t, config.ParseEnvIntoContext(&ctx))
+	require.NoError(t, config.ParseEnvIntoContext(t.Context(), &ctx))
 	assert.Equal(t, int64(0), ctx.Grafana.StackID)
 }
 
@@ -184,7 +184,7 @@ func TestParseEnvIntoContext_EmptyStringIsSet(t *testing.T) {
 	t.Setenv("GRAFANA_SERVER", "")
 
 	var ctx config.Context
-	require.NoError(t, config.ParseEnvIntoContext(&ctx))
+	require.NoError(t, config.ParseEnvIntoContext(t.Context(), &ctx))
 	assert.Empty(t, ctx.Grafana.Server)
 }
 
@@ -192,7 +192,7 @@ func TestParseEnvIntoContext_NestedTLS(t *testing.T) {
 	t.Setenv("GRAFANA_TLS_CERT_FILE", "/path/to/cert.pem")
 
 	var ctx config.Context
-	require.NoError(t, config.ParseEnvIntoContext(&ctx))
+	require.NoError(t, config.ParseEnvIntoContext(t.Context(), &ctx))
 	require.NotNil(t, ctx.Grafana.TLS)
 	assert.Equal(t, "/path/to/cert.pem", ctx.Grafana.TLS.CertFile)
 }
@@ -200,14 +200,14 @@ func TestParseEnvIntoContext_NestedTLS(t *testing.T) {
 func TestParseEnvIntoContext_CleansUpEmptyTLS(t *testing.T) {
 	// No TLS env vars set - TLS struct should be nil after cleanup.
 	var ctx config.Context
-	require.NoError(t, config.ParseEnvIntoContext(&ctx))
+	require.NoError(t, config.ParseEnvIntoContext(t.Context(), &ctx))
 	assert.Nil(t, ctx.Grafana.TLS)
 }
 
 func TestLoadCLIOptions_BoolTrue(t *testing.T) {
 	t.Setenv("GCX_AUTO_APPROVE", "true")
 
-	opts, err := config.LoadCLIOptions()
+	opts, err := config.LoadCLIOptions(t.Context())
 	require.NoError(t, err)
 	assert.True(t, opts.AutoApprove)
 }
@@ -215,7 +215,7 @@ func TestLoadCLIOptions_BoolTrue(t *testing.T) {
 func TestLoadCLIOptions_InvalidBoolErrors(t *testing.T) {
 	t.Setenv("GCX_AUTO_APPROVE", "notabool")
 
-	_, err := config.LoadCLIOptions()
+	_, err := config.LoadCLIOptions(t.Context())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "GCX_AUTO_APPROVE")
 }

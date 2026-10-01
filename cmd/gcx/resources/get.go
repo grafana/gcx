@@ -274,7 +274,7 @@ func getCmd(configOpts *cmdconfig.Options) *cobra.Command {
 					return fmt.Errorf("no deep link URL available for %s/%s", output.Items[0].GetKind(), output.Items[0].GetName())
 				}
 				cmdio.Info(cmd.ErrOrStderr(), "Opening %s", url)
-				return deeplink.Open(url)
+				return deeplink.Open(ctx, url)
 			}
 
 			return writeGetOutput(cmd.OutOrStdout(), cmd.ErrOrStderr(), opts, res, output)

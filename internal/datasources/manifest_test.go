@@ -28,7 +28,7 @@ secure:
 		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		m, err := dsclient.ReadManifestFile(path, nil)
+		m, err := dsclient.ReadManifestFile(t.Context(), path, nil)
 		if err != nil {
 			t.Fatalf("ReadManifestFile: %v", err)
 		}
@@ -47,7 +47,7 @@ secure:
 		json := `{"apiVersion":"grafana-sentry-datasource.datasource.grafana.app/v0alpha1",` +
 			`"kind":"DataSource","metadata":{"name":"x"},` +
 			`"spec":{"type":"grafana-sentry-datasource","url":"https://e"}}`
-		m, err := dsclient.ReadManifestFile("-", strings.NewReader(json))
+		m, err := dsclient.ReadManifestFile(t.Context(), "-", strings.NewReader(json))
 		if err != nil {
 			t.Fatalf("ReadManifestFile stdin: %v", err)
 		}
@@ -57,7 +57,7 @@ secure:
 	})
 
 	t.Run("missing type", func(t *testing.T) {
-		_, err := dsclient.ReadManifestFile("-", strings.NewReader(`{"kind":"DataSource","spec":{}}`))
+		_, err := dsclient.ReadManifestFile(t.Context(), "-", strings.NewReader(`{"kind":"DataSource","spec":{}}`))
 		if err == nil {
 			t.Fatal("expected error for missing spec.type")
 		}
@@ -70,7 +70,7 @@ func TestResolveSecrets(t *testing.T) {
 		m := &dsclient.DataSourceManifest{
 			Secure: map[string]dsclient.SecureValue{"authToken": {FromEnv: "MY_TOKEN"}},
 		}
-		if err := m.ResolveSecrets(""); err != nil {
+		if err := m.ResolveSecrets(t.Context(), ""); err != nil {
 			t.Fatalf("ResolveSecrets: %v", err)
 		}
 		got := m.Secure["authToken"]
@@ -86,7 +86,7 @@ func TestResolveSecrets(t *testing.T) {
 		m := &dsclient.DataSourceManifest{
 			Secure: map[string]dsclient.SecureValue{"authToken": {FromEnv: "DEFINITELY_UNSET_VAR_XYZ"}},
 		}
-		if err := m.ResolveSecrets(""); err == nil {
+		if err := m.ResolveSecrets(t.Context(), ""); err == nil {
 			t.Fatal("expected error for missing env var")
 		}
 	})
@@ -100,7 +100,7 @@ func TestResolveSecrets(t *testing.T) {
 		m := &dsclient.DataSourceManifest{
 			Secure: map[string]dsclient.SecureValue{"authToken": {FromFile: path}},
 		}
-		if err := m.ResolveSecrets(""); err != nil {
+		if err := m.ResolveSecrets(t.Context(), ""); err != nil {
 			t.Fatalf("ResolveSecrets: %v", err)
 		}
 		if got := m.Secure["authToken"].Create; got != "file-secret" {
@@ -112,7 +112,7 @@ func TestResolveSecrets(t *testing.T) {
 		m := &dsclient.DataSourceManifest{
 			Secure: map[string]dsclient.SecureValue{"authToken": {Create: "a", FromEnv: "B"}},
 		}
-		if err := m.ResolveSecrets(""); err == nil {
+		if err := m.ResolveSecrets(t.Context(), ""); err == nil {
 			t.Fatal("expected error for multiple secret sources")
 		}
 	})
@@ -121,7 +121,7 @@ func TestResolveSecrets(t *testing.T) {
 		m := &dsclient.DataSourceManifest{
 			Secure: map[string]dsclient.SecureValue{"authToken": {}},
 		}
-		if err := m.ResolveSecrets(""); err == nil {
+		if err := m.ResolveSecrets(t.Context(), ""); err == nil {
 			t.Fatal("expected error for no secret source")
 		}
 	})
@@ -133,7 +133,7 @@ func TestResolveSecrets(t *testing.T) {
 		m := &dsclient.DataSourceManifest{
 			Secure: map[string]dsclient.SecureValue{"authToken": {Name: "authToken"}},
 		}
-		if err := m.ResolveSecrets(""); err != nil {
+		if err := m.ResolveSecrets(t.Context(), ""); err != nil {
 			t.Fatalf("ResolveSecrets: %v", err)
 		}
 		if _, ok := m.Secure["authToken"]; ok {
@@ -145,7 +145,7 @@ func TestResolveSecrets(t *testing.T) {
 		m := &dsclient.DataSourceManifest{
 			Secure: map[string]dsclient.SecureValue{"authToken": {Remove: true}},
 		}
-		if err := m.ResolveSecrets(""); err != nil {
+		if err := m.ResolveSecrets(t.Context(), ""); err != nil {
 			t.Fatalf("ResolveSecrets: %v", err)
 		}
 	})
@@ -157,7 +157,7 @@ func TestResolveSecrets(t *testing.T) {
 			t.Fatal(err)
 		}
 		m := &dsclient.DataSourceManifest{}
-		if err := m.ResolveSecrets(path); err != nil {
+		if err := m.ResolveSecrets(t.Context(), path); err != nil {
 			t.Fatalf("ResolveSecrets: %v", err)
 		}
 		if got := m.Secure["authToken"].Create; got != "sf-secret" {
@@ -255,7 +255,7 @@ func TestMappingRoundTrip(t *testing.T) {
 
 func TestReadManifest_TypeFromApiVersionAndConflict(t *testing.T) {
 	// spec.type derived from apiVersion when omitted.
-	m, err := dsclient.ReadManifestFile("-", strings.NewReader(
+	m, err := dsclient.ReadManifestFile(t.Context(), "-", strings.NewReader(
 		`{"apiVersion":"prometheus.datasource.grafana.app/v0alpha1","kind":"DataSource","spec":{}}`))
 	if err != nil {
 		t.Fatalf("ReadManifestFile: %v", err)
@@ -265,7 +265,7 @@ func TestReadManifest_TypeFromApiVersionAndConflict(t *testing.T) {
 	}
 
 	// Conflicting spec.type vs apiVersion group is rejected.
-	_, err = dsclient.ReadManifestFile("-", strings.NewReader(
+	_, err = dsclient.ReadManifestFile(t.Context(), "-", strings.NewReader(
 		`{"apiVersion":"prometheus.datasource.grafana.app/v0alpha1","kind":"DataSource","spec":{"type":"loki"}}`))
 	if err == nil {
 		t.Fatal("expected conflict error for mismatched spec.type and apiVersion group")

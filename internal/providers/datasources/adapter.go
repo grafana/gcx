@@ -70,7 +70,7 @@ func (a *datasourceAdapter) Get(ctx context.Context, name string, _ metav1.GetOp
 }
 
 func (a *datasourceAdapter) Create(ctx context.Context, obj *unstructured.Unstructured, opts metav1.CreateOptions) (*unstructured.Unstructured, error) {
-	ds, err := unstructuredToDatasource(obj)
+	ds, err := unstructuredToDatasource(ctx, obj)
 	if err != nil {
 		return nil, err
 	}
@@ -88,7 +88,7 @@ func (a *datasourceAdapter) Create(ctx context.Context, obj *unstructured.Unstru
 }
 
 func (a *datasourceAdapter) Update(ctx context.Context, obj *unstructured.Unstructured, opts metav1.UpdateOptions) (*unstructured.Unstructured, error) {
-	ds, err := unstructuredToDatasource(obj)
+	ds, err := unstructuredToDatasource(ctx, obj)
 	if err != nil {
 		return nil, err
 	}
@@ -146,7 +146,7 @@ func datasourceToUnstructured(ds *dsclient.Datasource, namespace string) (*unstr
 // fromFile indirection) into secureJsonData before send. The datasource type is
 // read from spec.type, which is required on the resources path because the group
 // is normalized to the canonical descriptor before routing.
-func unstructuredToDatasource(obj *unstructured.Unstructured) (*dsclient.Datasource, error) {
+func unstructuredToDatasource(ctx context.Context, obj *unstructured.Unstructured) (*dsclient.Datasource, error) {
 	b, err := json.Marshal(obj.Object)
 	if err != nil {
 		return nil, fmt.Errorf("marshal object: %w", err)
@@ -155,7 +155,7 @@ func unstructuredToDatasource(obj *unstructured.Unstructured) (*dsclient.Datasou
 	if err := json.Unmarshal(b, &m); err != nil {
 		return nil, fmt.Errorf("unmarshal datasource manifest: %w", err)
 	}
-	if err := m.ResolveSecrets(""); err != nil {
+	if err := m.ResolveSecrets(ctx, ""); err != nil {
 		return nil, err
 	}
 	ds := m.ToDatasource()

@@ -39,7 +39,7 @@ func TestResolveTokenPersistenceSource_ExplicitWins(t *testing.T) {
 		"default",
 		[]config.ConfigSource{{Path: explicitFile, Type: "explicit"}},
 	)
-	path, err := got()
+	path, err := got(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, explicitFile, path)
 }
@@ -92,7 +92,7 @@ contexts:
 			{Path: localFile, Type: "local"},
 		},
 	)
-	path, err := got()
+	path, err := got(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, localFile, path)
 }
@@ -114,7 +114,7 @@ func TestResolveTokenPersistenceSource_FallsBackToUserWhenStackNotFound(t *testi
 			{Path: localFile, Type: "local"},
 		},
 	)
-	path, err := got()
+	path, err := got(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, userFile, path)
 }
@@ -144,7 +144,7 @@ contexts:
 			{Path: localFile, Type: "local"},
 		},
 	)
-	_, err := resolved()
+	_, err := resolved(t.Context())
 	require.ErrorContains(t, err, "rescan OAuth persistence source")
 }
 

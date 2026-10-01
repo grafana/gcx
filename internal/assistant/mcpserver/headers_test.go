@@ -12,7 +12,7 @@ import (
 )
 
 func TestResolveHeaders_InlineValueOverwrites(t *testing.T) {
-	resolved, err := mcpserver.ResolveHeaders([]mcpserver.MCPServerHeader{
+	resolved, err := mcpserver.ResolveHeaders(t.Context(), []mcpserver.MCPServerHeader{
 		{Name: "Authorization", Value: "Bearer secret"},
 	})
 	require.NoError(t, err)
@@ -23,7 +23,7 @@ func TestResolveHeaders_NameOnlyResolvesToEmptyValue(t *testing.T) {
 	// Name-only is the preserve-on-update signal consumed by the client's
 	// Update -- ResolveHeaders itself does not classify
 	// overwrite/preserve/remove.
-	resolved, err := mcpserver.ResolveHeaders([]mcpserver.MCPServerHeader{
+	resolved, err := mcpserver.ResolveHeaders(t.Context(), []mcpserver.MCPServerHeader{
 		{Name: "Authorization"},
 	})
 	require.NoError(t, err)
@@ -33,7 +33,7 @@ func TestResolveHeaders_NameOnlyResolvesToEmptyValue(t *testing.T) {
 func TestResolveHeaders_FromEnvResolvesValue(t *testing.T) {
 	t.Setenv("GITHUB_MCP_TOKEN", "env-secret")
 
-	resolved, err := mcpserver.ResolveHeaders([]mcpserver.MCPServerHeader{
+	resolved, err := mcpserver.ResolveHeaders(t.Context(), []mcpserver.MCPServerHeader{
 		{Name: "Authorization", FromEnv: "GITHUB_MCP_TOKEN"},
 	})
 	require.NoError(t, err)
@@ -41,7 +41,7 @@ func TestResolveHeaders_FromEnvResolvesValue(t *testing.T) {
 }
 
 func TestResolveHeaders_FromEnvUnsetErrors(t *testing.T) {
-	_, err := mcpserver.ResolveHeaders([]mcpserver.MCPServerHeader{
+	_, err := mcpserver.ResolveHeaders(t.Context(), []mcpserver.MCPServerHeader{
 		{Name: "Authorization", FromEnv: "GCX_TEST_DOES_NOT_EXIST_MCP_TOKEN"},
 	})
 	require.Error(t, err)
@@ -54,7 +54,7 @@ func TestResolveHeaders_FromFileResolvesValue(t *testing.T) {
 	path := filepath.Join(dir, "token")
 	require.NoError(t, os.WriteFile(path, []byte("file-secret\n"), 0o600))
 
-	resolved, err := mcpserver.ResolveHeaders([]mcpserver.MCPServerHeader{
+	resolved, err := mcpserver.ResolveHeaders(t.Context(), []mcpserver.MCPServerHeader{
 		{Name: "Authorization", FromFile: path},
 	})
 	require.NoError(t, err)
@@ -62,7 +62,7 @@ func TestResolveHeaders_FromFileResolvesValue(t *testing.T) {
 }
 
 func TestResolveHeaders_FromFileMissingErrors(t *testing.T) {
-	_, err := mcpserver.ResolveHeaders([]mcpserver.MCPServerHeader{
+	_, err := mcpserver.ResolveHeaders(t.Context(), []mcpserver.MCPServerHeader{
 		{Name: "Authorization", FromFile: filepath.Join(t.TempDir(), "does-not-exist")},
 	})
 	require.Error(t, err)
@@ -74,7 +74,7 @@ func TestResolveHeaders_FromFileEmptyErrors(t *testing.T) {
 	path := filepath.Join(dir, "empty")
 	require.NoError(t, os.WriteFile(path, nil, 0o600))
 
-	_, err := mcpserver.ResolveHeaders([]mcpserver.MCPServerHeader{
+	_, err := mcpserver.ResolveHeaders(t.Context(), []mcpserver.MCPServerHeader{
 		{Name: "Authorization", FromFile: path},
 	})
 	require.Error(t, err)
@@ -82,7 +82,7 @@ func TestResolveHeaders_FromFileEmptyErrors(t *testing.T) {
 }
 
 func TestResolveHeaders_MultipleSourcesErrors(t *testing.T) {
-	_, err := mcpserver.ResolveHeaders([]mcpserver.MCPServerHeader{
+	_, err := mcpserver.ResolveHeaders(t.Context(), []mcpserver.MCPServerHeader{
 		{Name: "Authorization", Value: "inline", FromEnv: "SOME_VAR"},
 	})
 	require.Error(t, err)

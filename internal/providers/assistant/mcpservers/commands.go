@@ -671,7 +671,7 @@ while agent mode still requires explicit --force for destructive operations.`,
 			if err := opts.Validate(); err != nil {
 				return err
 			}
-			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
+			proceed, err := providers.ConfirmDestructive(cmd.Context(), cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
 				fmt.Sprintf("Delete MCP server %q?", args[0]))
 			if err != nil {
 				return err
@@ -825,7 +825,7 @@ func maybeOpenAuthURL(cmd *cobra.Command, result *assistantmcp.MutationResult) {
 	if result == nil || result.AuthURL == "" {
 		return
 	}
-	opened, err := openURL(result.AuthURL)
+	opened, err := openURL(cmd.Context(), result.AuthURL)
 	switch {
 	case err != nil:
 		cmdio.Warning(cmd.ErrOrStderr(), "Could not open browser: %v", err)

@@ -108,7 +108,7 @@ current-context: default
 
 	started := false
 	previousFactory := newGCOMOAuthFlow
-	newGCOMOAuthFlow = func(auth.GCOMOptions) gcomOAuthFlow {
+	newGCOMOAuthFlow = func(context.Context, auth.GCOMOptions) gcomOAuthFlow {
 		started = true
 		return gcomOAuthFlowFunc(func(context.Context) (*auth.GCOMResult, error) {
 			return nil, nil
@@ -335,7 +335,7 @@ current-context: default
 `)
 
 	previousFactory := newGCOMOAuthFlow
-	newGCOMOAuthFlow = func(auth.GCOMOptions) gcomOAuthFlow {
+	newGCOMOAuthFlow = func(context.Context, auth.GCOMOptions) gcomOAuthFlow {
 		return gcomOAuthFlowFunc(func(context.Context) (*auth.GCOMResult, error) {
 			require.NoError(t, os.WriteFile(path, changed, 0o600))
 			result := &auth.GCOMResult{AccessToken: "fresh-oauth", ExpiresAt: "2030-01-01T00:00:00Z", Scope: "stacks:read"}
@@ -406,7 +406,7 @@ func TestCloudLoginDoesNotPersistAmbientEnvironmentToken(t *testing.T) {
 
 	started := false
 	previousFactory := newGCOMOAuthFlow
-	newGCOMOAuthFlow = func(auth.GCOMOptions) gcomOAuthFlow {
+	newGCOMOAuthFlow = func(context.Context, auth.GCOMOptions) gcomOAuthFlow {
 		started = true
 		return gcomOAuthFlowFunc(func(context.Context) (*auth.GCOMResult, error) {
 			result := &auth.GCOMResult{
@@ -442,7 +442,7 @@ func TestCloudLoginWhitespaceTokenFlagUsesOAuthInsteadOfPersistingBlankCAP(t *te
 
 	started := false
 	previousFactory := newGCOMOAuthFlow
-	newGCOMOAuthFlow = func(auth.GCOMOptions) gcomOAuthFlow {
+	newGCOMOAuthFlow = func(context.Context, auth.GCOMOptions) gcomOAuthFlow {
 		started = true
 		return gcomOAuthFlowFunc(func(context.Context) (*auth.GCOMResult, error) {
 			result := &auth.GCOMResult{AccessToken: "oauth-access", ExpiresAt: "2030-01-01T00:00:00Z", Scope: "stacks:read"}
@@ -507,7 +507,7 @@ func TestCloudLoginRejectsUnsupportedConfigBeforeStartingOAuth(t *testing.T) {
 
 	started := false
 	previousFactory := newGCOMOAuthFlow
-	newGCOMOAuthFlow = func(auth.GCOMOptions) gcomOAuthFlow {
+	newGCOMOAuthFlow = func(context.Context, auth.GCOMOptions) gcomOAuthFlow {
 		started = true
 		return gcomOAuthFlowFunc(func(context.Context) (*auth.GCOMResult, error) {
 			return nil, nil
@@ -678,7 +678,7 @@ func TestCloudLoginManualReachesGCOMOptions(t *testing.T) {
 
 	var gotOpts auth.GCOMOptions
 	previousFactory := newGCOMOAuthFlow
-	newGCOMOAuthFlow = func(opts auth.GCOMOptions) gcomOAuthFlow {
+	newGCOMOAuthFlow = func(_ context.Context, opts auth.GCOMOptions) gcomOAuthFlow {
 		gotOpts = opts
 		return gcomOAuthFlowFunc(func(context.Context) (*auth.GCOMResult, error) {
 			return &auth.GCOMResult{AccessToken: "oauth-access", ExpiresAt: "2030-01-01T00:00:00Z", Scope: "stacks:read"}, nil

@@ -14,31 +14,31 @@ import (
 func TestDeviceIDCreatesAndReuses(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 
-	id, persisted := telemetry.DeviceID()
+	id, persisted := telemetry.DeviceID(t.Context())
 	require.True(t, persisted)
 	_, err := uuid.Parse(id)
 	require.NoError(t, err)
 
-	again, persisted := telemetry.DeviceID()
+	again, persisted := telemetry.DeviceID(t.Context())
 	assert.True(t, persisted)
 	assert.Equal(t, id, again, "second call must return the persisted ID")
 
-	info, err := os.Stat(telemetry.DeviceIDPath())
+	info, err := os.Stat(telemetry.DeviceIDPath(t.Context()))
 	require.NoError(t, err)
 	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
 }
 
 func TestDeviceIDRewritesCorruptFile(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
-	require.NoError(t, os.MkdirAll(filepath.Dir(telemetry.DeviceIDPath()), 0o700))
-	require.NoError(t, os.WriteFile(telemetry.DeviceIDPath(), []byte("not-a-uuid\n"), 0o600))
+	require.NoError(t, os.MkdirAll(filepath.Dir(telemetry.DeviceIDPath(t.Context())), 0o700))
+	require.NoError(t, os.WriteFile(telemetry.DeviceIDPath(t.Context()), []byte("not-a-uuid\n"), 0o600))
 
-	id, persisted := telemetry.DeviceID()
+	id, persisted := telemetry.DeviceID(t.Context())
 	assert.True(t, persisted)
 	_, err := uuid.Parse(id)
 	require.NoError(t, err)
 
-	data, err := os.ReadFile(telemetry.DeviceIDPath())
+	data, err := os.ReadFile(telemetry.DeviceIDPath(t.Context()))
 	require.NoError(t, err)
 	assert.Equal(t, id+"\n", string(data), "corrupt file must be replaced with the fresh ID")
 }
@@ -46,9 +46,9 @@ func TestDeviceIDRewritesCorruptFile(t *testing.T) {
 func TestDeviceIDEphemeralWhenStateHomeUnknown(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", "")
 	t.Setenv("HOME", "")
-	assert.Empty(t, telemetry.DeviceIDPath(), "unknown state home must not yield a relative path")
+	assert.Empty(t, telemetry.DeviceIDPath(t.Context()), "unknown state home must not yield a relative path")
 
-	id, persisted := telemetry.DeviceID()
+	id, persisted := telemetry.DeviceID(t.Context())
 	assert.False(t, persisted, "unknown state home must yield an ephemeral ID")
 	_, err := uuid.Parse(id)
 	require.NoError(t, err)
@@ -62,11 +62,11 @@ func TestDeviceIDEphemeralWhenStateDirUnwritable(t *testing.T) {
 	require.NoError(t, os.MkdirAll(stateHome, 0o500))
 	t.Setenv("XDG_STATE_HOME", stateHome)
 
-	id, persisted := telemetry.DeviceID()
+	id, persisted := telemetry.DeviceID(t.Context())
 	assert.False(t, persisted, "unwritable state dir must yield an ephemeral ID")
 	_, err := uuid.Parse(id)
 	require.NoError(t, err)
 
-	other, _ := telemetry.DeviceID()
+	other, _ := telemetry.DeviceID(t.Context())
 	assert.NotEqual(t, id, other, "ephemeral IDs must not repeat across invocations")
 }

@@ -2,6 +2,7 @@ package investigations //nolint:testpackage // exercises the unexported narrativ
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"testing"
 
@@ -22,7 +23,7 @@ const narrativeFixture = "## Findings\n\np99 latency spiked at 14:02."
 func setAgentModeInv(t *testing.T, enabled bool) {
 	t.Helper()
 	agent.SetFlag(enabled)
-	t.Cleanup(agent.ResetForTesting)
+	t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 }
 
 func TestNarrativeAgentModeEmitsSingleJSONValue(t *testing.T) {

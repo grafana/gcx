@@ -151,7 +151,7 @@ func newMuteTimingsCreateCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 			var mt MuteTiming
-			if err := providers.ReadFileOrStdin(opts.File, cmd.InOrStdin(), &mt); err != nil {
+			if err := providers.ReadFileOrStdin(cmd.Context(), opts.File, cmd.InOrStdin(), &mt); err != nil {
 				return err
 			}
 			ctx := cmd.Context()
@@ -185,7 +185,7 @@ func newMuteTimingsUpdateCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 			var mt MuteTiming
-			if err := providers.ReadFileOrStdin(opts.File, cmd.InOrStdin(), &mt); err != nil {
+			if err := providers.ReadFileOrStdin(cmd.Context(), opts.File, cmd.InOrStdin(), &mt); err != nil {
 				return err
 			}
 			ctx := cmd.Context()
@@ -240,7 +240,7 @@ func newMuteTimingsDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
 			// The confirmation exchange is a diagnostic, not the result —
 			// stderr keeps the prompt and "Aborted." out of the stdout
 			// document.
-			ok, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
+			ok, err := providers.ConfirmDestructive(ctx, cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
 				"Delete mute timing "+args[0]+"?")
 			if err != nil {
 				return err

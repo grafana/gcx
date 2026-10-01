@@ -2,6 +2,7 @@ package mcpservers //nolint:testpackage
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -270,7 +271,7 @@ func TestDeletePromptsAndAbortsWithoutConfigLoad(t *testing.T) {
 // with the actionable typed error, even when stdin has an answer ready.
 func TestDeleteAgentModeRequiresForce(t *testing.T) {
 	agent.SetFlag(true)
-	t.Cleanup(agent.ResetForTesting)
+	t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 	t.Setenv("GCX_AUTO_APPROVE", "")
 
 	cmd := newDeleteCommand(&providers.ConfigLoader{})
@@ -295,7 +296,7 @@ func TestMaybeOpenAuthURLWarnsWhenBrowserOpenFails(t *testing.T) {
 	setAgentModeMCP(t, false)
 
 	origOpenURL := openURL
-	openURL = func(string) (bool, error) {
+	openURL = func(context.Context, string) (bool, error) {
 		return true, errors.New("browser unavailable")
 	}
 	t.Cleanup(func() { openURL = origOpenURL })

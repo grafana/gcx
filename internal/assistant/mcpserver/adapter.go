@@ -89,7 +89,7 @@ func NewTypedCRUDForClient(client *assistantmcp.Client, namespace string) *adapt
 		// name-only header, since there is no existing secret to preserve
 		// there.
 		CreateFn: func(ctx context.Context, item *MCPServer) (*MCPServer, error) {
-			headers, err := ResolveHeaders(item.Headers)
+			headers, err := ResolveHeaders(ctx, item.Headers)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create MCP server %q: %w", item.Name, err)
 			}
@@ -113,7 +113,7 @@ func NewTypedCRUDForClient(client *assistantmcp.Client, namespace string) *adapt
 			if err != nil {
 				return nil, fmt.Errorf("failed to resolve MCP server %q (scope %q) for update: %w", item.Name, item.Scope, err)
 			}
-			headers, err := ResolveHeaders(item.Headers)
+			headers, err := ResolveHeaders(ctx, item.Headers)
 			if err != nil {
 				return nil, fmt.Errorf("failed to update MCP server %q: %w", item.Name, err)
 			}

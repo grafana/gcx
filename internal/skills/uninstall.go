@@ -1,11 +1,14 @@
 package skills
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+
+	"github.com/grafana/gcx/internal/host"
 )
 
 // UninstallResult summarizes explicit removal, preserving the existing receipt.
@@ -23,8 +26,8 @@ type UninstallResult struct {
 
 // Uninstall accepts current and retired catalog names, never unmanaged names.
 // Approval for --all belongs to the CLI; this function only executes its plan.
-func Uninstall(source fs.FS, catalog []byte, root string, names []string, all, dryRun bool) (UninstallResult, error) {
-	states, err := Reconcile(source, catalog, root)
+func Uninstall(ctx context.Context, source fs.FS, catalog []byte, root string, names []string, all, dryRun bool) (UninstallResult, error) {
+	states, err := Reconcile(ctx, source, catalog, root)
 	if err != nil {
 		return UninstallResult{}, err
 	}
@@ -61,7 +64,7 @@ func Uninstall(source fs.FS, catalog []byte, root string, names []string, all, d
 	// Check every destination before removing any of them.
 	for _, name := range result.Requested {
 		target := filepath.Join(result.SkillsDir, name)
-		info, err := os.Lstat(target)
+		info, err := host.Lstat(ctx, target)
 		if errors.Is(err, os.ErrNotExist) {
 			result.Missing = append(result.Missing, name)
 			continue
@@ -77,7 +80,7 @@ func Uninstall(source fs.FS, catalog []byte, root string, names []string, all, d
 	if !dryRun {
 		for _, name := range result.Removed {
 			// RemoveAll unlinks symlinks without following them.
-			if err := os.RemoveAll(filepath.Join(result.SkillsDir, name)); err != nil {
+			if err := host.RemoveAll(ctx, filepath.Join(result.SkillsDir, name)); err != nil {
 				return UninstallResult{}, err
 			}
 		}

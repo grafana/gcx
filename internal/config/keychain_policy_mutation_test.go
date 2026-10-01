@@ -222,7 +222,7 @@ func TestClearKeychainPolicyRunsLockedTransaction(t *testing.T) {
 
 	source, err := config.MutateKeychainPolicy(t.Context(), "", "", nil)
 	require.NoError(t, err)
-	path, pathErr := source()
+	path, pathErr := source(t.Context())
 	require.NoError(t, pathErr)
 	require.Equal(t, fixture.user, path)
 
@@ -247,7 +247,7 @@ func TestMutateKeychainPolicyInitializesMissingExplicitFile(t *testing.T) {
 	off := "off"
 	source, mutateErr := config.MutateKeychainPolicy(t.Context(), fixture.explicit, "", &off)
 	require.NoError(t, mutateErr)
-	path, pathErr := source()
+	path, pathErr := source(t.Context())
 	require.NoError(t, pathErr)
 	require.Equal(t, fixture.explicit, path)
 

@@ -90,13 +90,13 @@ func newNotificationPoliciesSetCommand(loader GrafanaConfigLoader) *cobra.Comman
 				return err
 			}
 			var policy NotificationPolicy
-			if err := providers.ReadFileOrStdin(opts.File, cmd.InOrStdin(), &policy); err != nil {
+			if err := providers.ReadFileOrStdin(cmd.Context(), opts.File, cmd.InOrStdin(), &policy); err != nil {
 				return err
 			}
 			// The confirmation exchange is a diagnostic, not the result —
 			// stderr keeps the prompt and "Aborted." out of the stdout
 			// document.
-			ok, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
+			ok, err := providers.ConfirmDestructive(cmd.Context(), cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
 				"Replace notification policy tree? This overwrites the entire existing tree.")
 			if err != nil {
 				return err
@@ -154,7 +154,7 @@ func newNotificationPoliciesResetCommand(loader GrafanaConfigLoader) *cobra.Comm
 			// The confirmation exchange is a diagnostic, not the result —
 			// stderr keeps the prompt and "Aborted." out of the stdout
 			// document.
-			ok, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
+			ok, err := providers.ConfirmDestructive(ctx, cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
 				"Reset notification policy tree to default? This replaces the entire tree.")
 			if err != nil {
 				return err

@@ -668,12 +668,12 @@ func runActionVerbSingle(ctx context.Context, client OnCallAPI, id string, stdou
 // chain (--force, GCX_AUTO_APPROVE, agent-mode guard) and the [y/N] prompt.
 // Agent-mode rejection is re-wrapped into a typed DetailedError so the user
 // gets actionable suggestions and the documented exit-2 usage-error code.
-func confirmBulkAction(count int, force bool, verb string, stdin io.Reader, stderr io.Writer) error {
+func confirmBulkAction(ctx context.Context, count int, force bool, verb string, stdin io.Reader, stderr io.Writer) error {
 	if count <= 1 {
 		return nil
 	}
 	prompt := fmt.Sprintf("About to %s %d alert groups. Continue?", verb, count)
-	ok, err := providers.ConfirmDestructive(stdin, stderr, force, prompt)
+	ok, err := providers.ConfirmDestructive(ctx, stdin, stderr, force, prompt)
 	if err != nil {
 		if errors.Is(err, providers.ErrAgentModeRequiresForce) {
 			return agentModeRequiresForceError(count)
@@ -727,7 +727,7 @@ func runActionVerbBulk(ctx context.Context, client OnCallAPI, opts *alertGroupAc
 
 	// Confirm if the matched set exceeds 1. Extracted to a helper to reduce
 	// nesting depth (nestif).
-	if err := confirmBulkAction(len(targets), opts.Force, cfg.Name, stdin, stderr); err != nil {
+	if err := confirmBulkAction(ctx, len(targets), opts.Force, cfg.Name, stdin, stderr); err != nil {
 		return err
 	}
 

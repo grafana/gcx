@@ -87,7 +87,7 @@ func ResolveDatasource(ctx context.Context, flagValue string, cfgCtx *config.Con
 		return DatasourceResolution{UID: uid}, nil
 	}
 
-	stackSlug := configuredCloudStack(cfgCtx)
+	stackSlug := configuredCloudStack(ctx, cfgCtx)
 
 	return discoverDatasourceUID(ctx, restCfg, kind, stackSlug)
 }
@@ -270,7 +270,7 @@ func discoverDatasourceUID(ctx context.Context, restCfg config.NamespacedRESTCon
 	return DatasourceResolution{}, fmt.Errorf("multiple %s datasources found (%s): use -d flag or set contexts.<name>.datasources.%s in config", kind, formatDatasourceChoices(matches), kind)
 }
 
-func configuredCloudStack(cfgCtx *config.Context) string {
+func configuredCloudStack(ctx context.Context, cfgCtx *config.Context) string {
 	if cfgCtx != nil {
 		if slug := strings.TrimSpace(cfgCtx.ResolveStackSlug()); slug != "" {
 			return slug
@@ -279,7 +279,7 @@ func configuredCloudStack(cfgCtx *config.Context) string {
 
 	var fallback config.Context
 	fallback.Grafana = &config.GrafanaConfig{}
-	_ = config.ParseEnvIntoContext(&fallback)
+	_ = config.ParseEnvIntoContext(ctx, &fallback)
 	return strings.TrimSpace(fallback.ResolveStackSlug())
 }
 

@@ -688,8 +688,8 @@ func TestEmitWarnEmitNote_Format(t *testing.T) {
 
 	t.Run("agent mode JSONL", func(t *testing.T) {
 		t.Setenv("GCX_AGENT_MODE", "true")
-		agent.ResetForTesting()
-		defer agent.ResetForTesting()
+		agent.ResetForTesting(t.Context())
+		defer agent.ResetForTesting(t.Context())
 
 		var warnBuf, noteBuf bytes.Buffer
 		emitWarn(&warnBuf, "near the cap")

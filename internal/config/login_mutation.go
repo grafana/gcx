@@ -98,12 +98,12 @@ func LoadLoginMutationGuarded(ctx context.Context, source Source, guard LoginMut
 		return load(ctx, source, loadOptions{layer: configLayerFromCtx(ctx)})
 	}
 
-	snapshot, err := guard.currentSelectedSourceSnapshot()
+	snapshot, err := guard.currentSelectedSourceSnapshot(ctx)
 	if err != nil {
 		return Config{}, err
 	}
 	if guard.verifyDiscovery {
-		matches, reason := guard.discoverySnapshotMatches()
+		matches, reason := guard.discoverySnapshotMatches(ctx)
 		if !matches {
 			return Config{}, guard.changedDuringAuthenticationError(reason)
 		}
@@ -123,10 +123,10 @@ func LoadLoginMutationGuarded(ctx context.Context, source Source, guard LoginMut
 	if loadErr != nil && !errors.Is(loadErr, os.ErrNotExist) {
 		return cfg, loadErr
 	}
-	if err := guard.VerifyCurrentSources(); err != nil {
+	if err := guard.VerifyCurrentSources(ctx); err != nil {
 		return Config{}, err
 	}
-	if err := guard.Verify(&cfg); err != nil {
+	if err := guard.Verify(ctx, &cfg); err != nil {
 		return Config{}, err
 	}
 	if snapshot != nil && !isLegacyConfig(snapshot) {
@@ -141,15 +141,15 @@ func LoadLoginMutationGuarded(ctx context.Context, source Source, guard LoginMut
 // VerifyCurrentSources rechecks both the selected raw owner and, for
 // auto-discovered login, every contributing source. Call it immediately before
 // the intentional Write so a non-target layer cannot change after decoding.
-func (guard LoginMutationGuard) VerifyCurrentSources() error {
+func (guard LoginMutationGuard) VerifyCurrentSources(ctx context.Context) error {
 	if !guard.enabled {
 		return nil
 	}
-	if _, err := guard.currentSelectedSourceSnapshot(); err != nil {
+	if _, err := guard.currentSelectedSourceSnapshot(ctx); err != nil {
 		return err
 	}
 	if guard.verifyDiscovery {
-		matches, reason := guard.discoverySnapshotMatches()
+		matches, reason := guard.discoverySnapshotMatches(ctx)
 		if !matches {
 			return guard.changedDuringAuthenticationError(reason)
 		}
@@ -157,8 +157,8 @@ func (guard LoginMutationGuard) VerifyCurrentSources() error {
 	return nil
 }
 
-func (guard LoginMutationGuard) currentSelectedSourceSnapshot() ([]byte, error) {
-	contents, err := readConfigSource(ConfigSource{Path: guard.sourcePath, Type: guard.sourceLayer})
+func (guard LoginMutationGuard) currentSelectedSourceSnapshot(ctx context.Context) ([]byte, error) {
+	contents, err := readConfigSource(ctx, ConfigSource{Path: guard.sourcePath, Type: guard.sourceLayer})
 	if guard.expectSourceAbsent {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil
@@ -168,7 +168,7 @@ func (guard LoginMutationGuard) currentSelectedSourceSnapshot() ([]byte, error) 
 	if err != nil {
 		return nil, guard.changedDuringAuthenticationError(fmt.Sprintf("read selected config: %v", err))
 	}
-	identity, err := canonicalConfigSourceForLayer(guard.sourcePath, guard.sourceLayer)
+	identity, err := canonicalConfigSourceForLayer(ctx, guard.sourcePath, guard.sourceLayer)
 	if err != nil {
 		return nil, guard.changedDuringAuthenticationError(fmt.Sprintf("identify selected config: %v", err))
 	}
@@ -184,7 +184,7 @@ func (guard LoginMutationGuard) currentSelectedSourceSnapshot() ([]byte, error) 
 // in progress and otherwise shadow the context or entry receiving the fresh
 // credential. Explicit --config/GCX_CONFIG callers deliberately do not enable
 // this check; their selected document is authoritative.
-func (guard LoginMutationGuard) WithDiscoverySnapshot(effective *Config) (LoginMutationGuard, error) {
+func (guard LoginMutationGuard) WithDiscoverySnapshot(ctx context.Context, effective *Config) (LoginMutationGuard, error) {
 	if effective == nil {
 		return guard, errors.New("capture login discovery snapshot: nil effective config")
 	}
@@ -199,12 +199,12 @@ func (guard LoginMutationGuard) WithDiscoverySnapshot(effective *Config) (LoginM
 		contents := source.snapshot
 		if contents == nil {
 			var err error
-			contents, err = readConfigSource(source)
+			contents, err = readConfigSource(ctx, source)
 			if err != nil {
 				return guard, fmt.Errorf("capture login source %s: %w", source.Path, err)
 			}
 		}
-		identity, err := canonicalConfigSourceForLayer(source.Path, source.Type)
+		identity, err := canonicalConfigSourceForLayer(ctx, source.Path, source.Type)
 		if err != nil {
 			return guard, fmt.Errorf("identify login source %s: %w", source.Path, err)
 		}
@@ -216,7 +216,7 @@ func (guard LoginMutationGuard) WithDiscoverySnapshot(effective *Config) (LoginM
 		})
 	}
 
-	matches, reason := guard.discoverySnapshotMatches()
+	matches, reason := guard.discoverySnapshotMatches(ctx)
 	if !matches {
 		return guard, guard.changedDuringPlanningError(reason)
 	}
@@ -227,7 +227,7 @@ func (guard LoginMutationGuard) WithDiscoverySnapshot(effective *Config) (LoginM
 // was approved before authentication. This extends the ordinary Write CAS
 // across the authentication interval: a later Load must not reset the CAS
 // baseline after a context, destination, or credential owner changes.
-func (guard LoginMutationGuard) Verify(config *Config) error {
+func (guard LoginMutationGuard) Verify(ctx context.Context, config *Config) error {
 	if !guard.enabled {
 		return nil
 	}
@@ -247,7 +247,7 @@ func (guard LoginMutationGuard) Verify(config *Config) error {
 		return guard.changedDuringAuthenticationError("the selected config changed")
 	}
 	if guard.verifyDiscovery {
-		matches, reason := guard.discoverySnapshotMatches()
+		matches, reason := guard.discoverySnapshotMatches(ctx)
 		if !matches {
 			return guard.changedDuringAuthenticationError(reason)
 		}
@@ -270,8 +270,8 @@ func (guard LoginMutationGuard) Verify(config *Config) error {
 	return guard.changedDuringAuthenticationError("the selected context bindings changed")
 }
 
-func (guard LoginMutationGuard) discoverySnapshotMatches() (bool, string) {
-	sources, err := DiscoverSources()
+func (guard LoginMutationGuard) discoverySnapshotMatches(ctx context.Context) (bool, string) {
+	sources, err := DiscoverSources(ctx)
 	if err != nil {
 		return false, fmt.Sprintf("config source discovery failed: %v", err)
 	}
@@ -280,14 +280,14 @@ func (guard LoginMutationGuard) discoverySnapshotMatches() (bool, string) {
 	}
 	for i, expected := range guard.discoveredSources {
 		actual := sources[i]
-		identity, err := canonicalConfigSourceForLayer(actual.Path, actual.Type)
+		identity, err := canonicalConfigSourceForLayer(ctx, actual.Path, actual.Type)
 		if err != nil {
 			return false, fmt.Sprintf("identify config source %s: %v", actual.Path, err)
 		}
 		if actual.Path != expected.path || actual.Type != expected.typeName || identity != expected.identity {
 			return false, "the discovered config source set changed"
 		}
-		contents, err := readConfigSource(actual)
+		contents, err := readConfigSource(ctx, actual)
 		if err != nil {
 			return false, fmt.Sprintf("read config source %s: %v", actual.Path, err)
 		}
@@ -342,7 +342,7 @@ func (guard LoginMutationGuard) changedDuringAuthenticationError(reason string) 
 // from one layer into another layer. A singular local owner is returned with
 // its "local" provenance intact; credential-accepting callers then allow only
 // an unchanged bound credential and require explicit --config for fresh auth.
-func (config *Config) PlanLoginMutation(contextName string, intent LoginMutationIntent) (ConfigSource, error) {
+func (config *Config) PlanLoginMutation(ctx context.Context, contextName string, intent LoginMutationIntent) (ConfigSource, error) {
 	if len(config.Sources) < 2 {
 		return ConfigSource{}, errors.New("layered login planning requires at least two config sources")
 	}
@@ -353,23 +353,23 @@ func (config *Config) PlanLoginMutation(contextName string, intent LoginMutation
 	if contextName == "" {
 		contextName = ResolveContextName("", *config)
 	}
-	ctx := config.Contexts[contextName]
-	if ctx == nil {
+	cfgCtx := config.Contexts[contextName]
+	if cfgCtx == nil {
 		return ConfigSource{}, config.loginMutationTargetError(
 			contextName,
 			fmt.Sprintf("Context %q does not exist in the effective layered configuration. Creating a context cannot be assigned to a layer implicitly.", contextName),
 		)
 	}
 
-	cloudBindingIdentity, err := config.contextCloudBindingOwnerIdentity(contextName)
+	cloudBindingIdentity, err := config.contextCloudBindingOwnerIdentity(ctx, contextName)
 	if err != nil {
 		return ConfigSource{}, config.loginMutationTargetError(contextName, err.Error())
 	}
-	ownerIdentities := loginMutationOwnerIdentities(ctx, intent, cloudBindingIdentity)
+	ownerIdentities := loginMutationOwnerIdentities(cfgCtx, intent, cloudBindingIdentity)
 	if len(ownerIdentities) > 1 {
 		ownerPaths := make([]string, 0, len(ownerIdentities))
 		for _, identity := range ownerIdentities {
-			if source, ok := config.sourceForIdentity(identity); ok {
+			if source, ok := config.sourceForIdentity(ctx, identity); ok {
 				ownerPaths = append(ownerPaths, source.Path)
 				continue
 			}
@@ -387,7 +387,7 @@ func (config *Config) PlanLoginMutation(contextName string, intent LoginMutation
 
 	var candidates []ConfigSource
 	if len(ownerIdentities) == 1 {
-		if source, ok := config.sourceForIdentity(ownerIdentities[0]); ok {
+		if source, ok := config.sourceForIdentity(ctx, ownerIdentities[0]); ok {
 			candidates = append(candidates, source)
 		}
 	} else {
@@ -396,7 +396,7 @@ func (config *Config) PlanLoginMutation(contextName string, intent LoginMutation
 		// This permits Cloud login to attach an entry to an existing context,
 		// without inventing a user-layer shadow context.
 		for _, source := range config.Sources {
-			matches, err := sourceContainsContextBindings(source, contextName, ctx, intent)
+			matches, err := sourceContainsContextBindings(ctx, source, contextName, cfgCtx, intent)
 			if err != nil {
 				return ConfigSource{}, config.loginMutationTargetError(contextName, err.Error())
 			}
@@ -419,7 +419,7 @@ func (config *Config) PlanLoginMutation(contextName string, intent LoginMutation
 	}
 
 	target := candidates[0]
-	matches, err := sourceContainsContextBindings(target, contextName, ctx, intent)
+	matches, err := sourceContainsContextBindings(ctx, target, contextName, cfgCtx, intent)
 	if err != nil {
 		return ConfigSource{}, config.loginMutationTargetError(contextName, err.Error())
 	}
@@ -430,13 +430,13 @@ func (config *Config) PlanLoginMutation(contextName string, intent LoginMutation
 				"The credential owner %s does not contain context %q with the effective stack/cloud bindings (%q / %q).",
 				target.Path,
 				contextName,
-				ctx.Stack,
-				ctx.Cloud,
+				cfgCtx.Stack,
+				cfgCtx.Cloud,
 			),
 		)
 	}
-	if intent == LoginMutationUnified && ctx.Stack == "" && config.Stacks[contextName] != nil {
-		targetIdentity, err := canonicalConfigSourceForLayer(target.Path, target.Type)
+	if intent == LoginMutationUnified && cfgCtx.Stack == "" && config.Stacks[contextName] != nil {
+		targetIdentity, err := canonicalConfigSourceForLayer(ctx, target.Path, target.Type)
 		if err != nil {
 			return ConfigSource{}, config.loginMutationTargetError(contextName, err.Error())
 		}
@@ -494,18 +494,18 @@ func loginMutationOwnerIdentities(ctx *Context, intent LoginMutationIntent, clou
 // explicitly supplies context.cloud. Contexts merge field-by-field, so entry
 // ownership alone is insufficient: a higher layer can repeat the same binding
 // and later shadow a copy-on-write rebind made in the entry's lower owner.
-func (config *Config) contextCloudBindingOwnerIdentity(contextName string) (string, error) {
+func (config *Config) contextCloudBindingOwnerIdentity(ctx context.Context, contextName string) (string, error) {
 	var identity string
 	for _, source := range config.Sources {
-		raw, err := decodeLoginMutationSource(source)
+		raw, err := decodeLoginMutationSource(ctx, source)
 		if err != nil {
 			return "", err
 		}
-		ctx := raw.Contexts[contextName]
-		if ctx == nil || ctx.Cloud == "" {
+		cfgCtx := raw.Contexts[contextName]
+		if cfgCtx == nil || cfgCtx.Cloud == "" {
 			continue
 		}
-		identity, err = canonicalConfigSourceForLayer(source.Path, source.Type)
+		identity, err = canonicalConfigSourceForLayer(ctx, source.Path, source.Type)
 		if err != nil {
 			return "", fmt.Errorf("resolve Cloud binding owner %s: %w", source.Path, err)
 		}
@@ -513,9 +513,9 @@ func (config *Config) contextCloudBindingOwnerIdentity(contextName string) (stri
 	return identity, nil
 }
 
-func (config *Config) sourceForIdentity(identity string) (ConfigSource, bool) {
+func (config *Config) sourceForIdentity(ctx context.Context, identity string) (ConfigSource, bool) {
 	for _, source := range config.Sources {
-		canonical, err := canonicalConfigSourceForLayer(source.Path, source.Type)
+		canonical, err := canonicalConfigSourceForLayer(ctx, source.Path, source.Type)
 		if err == nil && canonical == identity {
 			return source, true
 		}
@@ -523,13 +523,13 @@ func (config *Config) sourceForIdentity(identity string) (ConfigSource, bool) {
 	return ConfigSource{}, false
 }
 
-func sourceContainsContextBindings(
+func sourceContainsContextBindings(ctx context.Context,
 	source ConfigSource,
 	contextName string,
 	effective *Context,
 	intent LoginMutationIntent,
 ) (bool, error) {
-	raw, err := decodeLoginMutationSource(source)
+	raw, err := decodeLoginMutationSource(ctx, source)
 	if err != nil {
 		return false, err
 	}
@@ -545,11 +545,11 @@ func sourceContainsContextBindings(
 	return rawCtx.Stack == effective.Stack && rawCtx.Cloud == effective.Cloud, nil
 }
 
-func decodeLoginMutationSource(source ConfigSource) (Config, error) {
+func decodeLoginMutationSource(ctx context.Context, source ConfigSource) (Config, error) {
 	contents := source.snapshot
 	if contents == nil {
 		var err error
-		contents, err = readConfigSource(source)
+		contents, err = readConfigSource(ctx, source)
 		if err != nil {
 			return Config{}, fmt.Errorf("read candidate config %s: %w", source.Path, err)
 		}
@@ -613,9 +613,9 @@ func VerifyLoginMutationBindings(
 // LoginCloudMutationSafety snapshots shared-reference and name-collision
 // evidence from the complete layered view before login reloads a single raw
 // owner for persistence.
-func (config *Config) LoginCloudMutationSafety(contextName string, target ConfigSource) (CloudMutationSafety, error) {
+func (config *Config) LoginCloudMutationSafety(ctx context.Context, contextName string, target ConfigSource) (CloudMutationSafety, error) {
 	safety := CloudMutationSafety{ReservedEntryNames: make([]string, 0, len(config.Cloud))}
-	targetIdentity, err := canonicalConfigSourceForLayer(target.Path, target.Type)
+	targetIdentity, err := canonicalConfigSourceForLayer(ctx, target.Path, target.Type)
 	if err != nil {
 		return CloudMutationSafety{}, fmt.Errorf("identify Cloud login mutation owner %s: %w", target.Path, err)
 	}

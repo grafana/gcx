@@ -96,19 +96,19 @@ func TestResolve(t *testing.T) {
 
 func TestOpen(t *testing.T) {
 	t.Run("rejects javascript scheme", func(t *testing.T) {
-		err := deeplink.Open("javascript:alert(1)")
+		err := deeplink.Open(t.Context(), "javascript:alert(1)")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "refusing to open non-http URL")
 	})
 
 	t.Run("rejects file scheme", func(t *testing.T) {
-		err := deeplink.Open("file:///etc/passwd")
+		err := deeplink.Open(t.Context(), "file:///etc/passwd")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "refusing to open non-http URL")
 	})
 
 	t.Run("rejects schemeless URL", func(t *testing.T) {
-		err := deeplink.Open("mystack.grafana.net/d/abc")
+		err := deeplink.Open(t.Context(), "mystack.grafana.net/d/abc")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "refusing to open non-http URL")
 	})

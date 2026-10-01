@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/gcx/internal/credentials"
 	"github.com/grafana/gcx/internal/docs"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/host"
 	"github.com/grafana/gcx/internal/xdg"
 	"github.com/grafana/grafana-app-sdk/logging"
 )
@@ -49,13 +50,13 @@ var keychainStoreFn = defaultKeychainStore
 // atomic replacement fails.
 //
 //nolint:gochecknoglobals // narrow filesystem failure-injection seam.
-var renameConfigFile = os.Rename
+var renameConfigFile = host.Rename
 
 // syncConfigDirectory is a test seam for the post-rename durability barrier.
 // Old keychain generations are deleted only after it succeeds.
 //
 //nolint:gochecknoglobals // narrow filesystem failure-injection seam.
-var syncConfigDirectory = func(dir string) error {
+var syncConfigDirectory = func(ctx context.Context, dir string) error {
 	// Windows does not expose a portable write-capable directory handle through
 	// os.Open, and FlushFileBuffers on its read-only handle fails after rename.
 	// The atomic replace still completes; retain the Unix durability barrier
@@ -63,7 +64,7 @@ var syncConfigDirectory = func(dir string) error {
 	if runtime.GOOS == "windows" {
 		return nil
 	}
-	directory, err := os.Open(dir)
+	directory, err := host.Open(ctx, dir)
 	if err != nil {
 		return err
 	}
@@ -82,32 +83,36 @@ var (
 	openedStore   credentials.Store
 )
 
-func defaultKeychainStore() credentials.Store {
-	if keychainModeForProcess() == keychainModeDisabled {
+func defaultKeychainStore(ctx context.Context) credentials.Store {
+	if keychainModeForProcess(ctx) == keychainModeDisabled {
 		return disabledStore{}
 	}
 	if testing.Testing() {
 		return testingNoopStore{}
 	}
-	return keychainStoreForMode(keychainModeEnabled)
+	return keychainStoreForMode(ctx, keychainModeEnabled)
 }
 
-func keychainStoreForMode(mode keychainMode) credentials.Store {
+func keychainStoreForMode(ctx context.Context, mode keychainMode) credentials.Store {
 	if mode == keychainModeDisabled {
 		return disabledStore{}
 	}
-	openStoreOnce.Do(func() { openedStore = credentials.Open() })
+	if host.Sandboxed(ctx) {
+		// Never memoize a sandbox's refusal for the whole process.
+		return credentials.Open(ctx)
+	}
+	openStoreOnce.Do(func() { openedStore = credentials.Open(ctx) })
 	return openedStore
 }
 
 // keychainStoreForPolicy is the sole selector for which credential store
 // backs a resolved policy: the already-resolved policy decides disabled vs.
 // enabled, so nothing here re-reads GCX_KEYCHAIN.
-func keychainStoreForPolicy(policy keychainPolicy) credentials.Store {
+func keychainStoreForPolicy(ctx context.Context, policy keychainPolicy) credentials.Store {
 	if policy.mode == keychainModeDisabled {
 		return disabledStore{}
 	}
-	return keychainStoreFn()
+	return keychainStoreFn(ctx)
 }
 
 type testingNoopStore struct{}
@@ -191,7 +196,7 @@ func WithWorkDir(dir string) DiscoverOption { return func(o *discoverOpts) { o.w
 // directory (which differs on macOS: ~/Library/Application Support). The first
 // found wins. Use [CheckDuplicateUserConfig] to detect when both locations
 // contain a config file.
-func DiscoverSources(opts ...DiscoverOption) ([]ConfigSource, error) {
+func DiscoverSources(ctx context.Context, opts ...DiscoverOption) ([]ConfigSource, error) {
 	o := discoverOpts{}
 	for _, opt := range opts {
 		opt(&o)
@@ -202,10 +207,10 @@ func DiscoverSources(opts ...DiscoverOption) ([]ConfigSource, error) {
 	// --- System ---
 	sysDir := o.systemDir
 	if sysDir == "" {
-		sysDir = xdgSystemConfigDir()
+		sysDir = xdgSystemConfigDir(ctx)
 	}
 	if sysDir != "" {
-		if src, ok, err := probeConfigSource(userConfigFile(sysDir), "system"); err != nil {
+		if src, ok, err := probeConfigSource(ctx, userConfigFile(sysDir), "system"); err != nil {
 			return nil, err
 		} else if ok {
 			sources = append(sources, src)
@@ -215,7 +220,7 @@ func DiscoverSources(opts ...DiscoverOption) ([]ConfigSource, error) {
 	// --- User ---
 	// When overridden via WithUserDir (tests), check only that directory.
 	// Otherwise check $HOME/.config first, then XDG_CONFIG_HOME. First found wins.
-	if userSrc, ok, err := discoverUserSource(o.userDir); err != nil {
+	if userSrc, ok, err := discoverUserSource(ctx, o.userDir); err != nil {
 		return nil, err
 	} else if ok {
 		sources = append(sources, userSrc)
@@ -224,10 +229,10 @@ func DiscoverSources(opts ...DiscoverOption) ([]ConfigSource, error) {
 	// --- Local ---
 	workDir := o.workDir
 	if workDir == "" {
-		workDir, _ = os.Getwd()
+		workDir, _ = host.Getwd(ctx)
 	}
 	if workDir != "" {
-		if src, ok, err := probeConfigSource(filepath.Join(workDir, LocalConfigFileName), "local"); err != nil {
+		if src, ok, err := probeConfigSource(ctx, filepath.Join(workDir, LocalConfigFileName), "local"); err != nil {
 			return nil, err
 		} else if ok {
 			sources = append(sources, src)
@@ -240,13 +245,13 @@ func DiscoverSources(opts ...DiscoverOption) ([]ConfigSource, error) {
 // discoverUserSource finds the user config source, checking either the
 // override dir or the standard search path ($HOME/.config then XDG).
 // Returns (source, true) when found, (empty, false) when no config exists.
-func discoverUserSource(overrideDir string) (ConfigSource, bool, error) {
-	dirs := userConfigDirs()
+func discoverUserSource(ctx context.Context, overrideDir string) (ConfigSource, bool, error) {
+	dirs := userConfigDirs(ctx)
 	if overrideDir != "" {
 		dirs = []string{overrideDir}
 	}
 	for _, dir := range dirs {
-		src, ok, err := probeConfigSource(userConfigFile(dir), "user")
+		src, ok, err := probeConfigSource(ctx, userConfigFile(dir), "user")
 		if err != nil {
 			return ConfigSource{}, false, err
 		}
@@ -259,8 +264,8 @@ func discoverUserSource(overrideDir string) (ConfigSource, bool, error) {
 
 // probeConfigSource checks whether a config file exists at path and returns
 // a ConfigSource if it does.
-func probeConfigSource(path, typ string) (ConfigSource, bool, error) {
-	info, err := os.Lstat(path)
+func probeConfigSource(ctx context.Context, path, typ string) (ConfigSource, bool, error) {
+	info, err := host.Lstat(ctx, path)
 	if os.IsNotExist(err) {
 		return ConfigSource{}, false, nil
 	}
@@ -277,18 +282,18 @@ func probeConfigSource(path, typ string) (ConfigSource, bool, error) {
 // proves that the opened descriptor is the same regular file observed before
 // and after open. Explicit config paths remain user-authorized and may be
 // symlinks.
-func readConfigSource(source ConfigSource) ([]byte, error) {
+func readConfigSource(ctx context.Context, source ConfigSource) ([]byte, error) {
 	if source.Type != "local" {
-		return os.ReadFile(source.Path)
+		return host.ReadFile(ctx, source.Path)
 	}
-	before, err := os.Lstat(source.Path)
+	before, err := host.Lstat(ctx, source.Path)
 	if err != nil {
 		return nil, err
 	}
 	if !before.Mode().IsRegular() {
 		return nil, fmt.Errorf("refusing auto-discovered local config %s: file must be regular (symlinks are not allowed)", source.Path)
 	}
-	file, err := os.Open(source.Path)
+	file, err := host.Open(ctx, source.Path)
 	if err != nil {
 		return nil, err
 	}
@@ -297,7 +302,7 @@ func readConfigSource(source ConfigSource) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	afterOpen, err := os.Lstat(source.Path)
+	afterOpen, err := host.Lstat(ctx, source.Path)
 	if err != nil {
 		return nil, err
 	}
@@ -309,7 +314,7 @@ func readConfigSource(source ConfigSource) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	afterRead, err := os.Lstat(source.Path)
+	afterRead, err := host.Lstat(ctx, source.Path)
 	if err != nil {
 		return nil, err
 	}
@@ -327,10 +332,10 @@ func userConfigFile(dir string) string {
 // findExistingUserConfigFile returns the path of the first existing user config
 // file across candidate directories (dotconfig first, then platform XDG).
 // Returns empty string if none found.
-func findExistingUserConfigFile() string {
-	for _, dir := range userConfigDirs() {
+func findExistingUserConfigFile(ctx context.Context) string {
+	for _, dir := range userConfigDirs(ctx) {
 		path := userConfigFile(dir)
-		if _, err := os.Stat(path); err == nil {
+		if _, err := host.Stat(ctx, path); err == nil {
 			return path
 		}
 	}
@@ -347,17 +352,17 @@ type DuplicateUserConfig struct {
 // CheckDuplicateUserConfig reports whether config files exist in both
 // $HOME/.config/gcx/ and the platform XDG directory. Returns nil when there is
 // no ambiguity (same directory, one missing, etc.).
-func CheckDuplicateUserConfig() *DuplicateUserConfig {
-	dirs := userConfigDirs()
+func CheckDuplicateUserConfig(ctx context.Context) *DuplicateUserConfig {
+	dirs := userConfigDirs(ctx)
 	if len(dirs) < 2 {
 		return nil
 	}
 	active := userConfigFile(dirs[0])
 	ignored := userConfigFile(dirs[1])
-	if _, err := os.Stat(active); err != nil {
+	if _, err := host.Stat(ctx, active); err != nil {
 		return nil
 	}
-	if _, err := os.Stat(ignored); err != nil {
+	if _, err := host.Stat(ctx, ignored); err != nil {
 		return nil
 	}
 	return &DuplicateUserConfig{Active: active, Ignored: ignored}
@@ -367,9 +372,9 @@ func CheckDuplicateUserConfig() *DuplicateUserConfig {
 // order. $HOME/.config is always checked first (cross-platform convention),
 // followed by the platform XDG_CONFIG_HOME (which differs on macOS).
 // Duplicates are removed.
-func userConfigDirs() []string {
-	dotConfig := dotConfigDir()
-	xdgConfig := xdgUserConfigDir()
+func userConfigDirs(ctx context.Context) []string {
+	dotConfig := dotConfigDir(ctx)
+	xdgConfig := xdgUserConfigDir(ctx)
 
 	switch {
 	case dotConfig == "" && xdgConfig == "":
@@ -385,8 +390,8 @@ func userConfigDirs() []string {
 
 // dotConfigDir returns $HOME/.config as a cross-platform config directory.
 // Returns empty string if $HOME cannot be determined.
-func dotConfigDir() string {
-	home, err := os.UserHomeDir()
+func dotConfigDir(ctx context.Context) string {
+	home, err := host.UserHomeDir(ctx)
 	if err != nil {
 		return ""
 	}
@@ -394,54 +399,54 @@ func dotConfigDir() string {
 }
 
 // xdgSystemConfigDir returns the first XDG system config directory.
-func xdgSystemConfigDir() string {
-	if dirs := xdg.ConfigDirs(); len(dirs) > 0 {
+func xdgSystemConfigDir(ctx context.Context) string {
+	if dirs := xdg.ConfigDirs(ctx); len(dirs) > 0 {
 		return dirs[0]
 	}
 	return ""
 }
 
 // xdgUserConfigDir returns the XDG user config directory.
-func xdgUserConfigDir() string {
-	return xdg.ConfigHome()
+func xdgUserConfigDir(ctx context.Context) string {
+	return xdg.ConfigHome(ctx)
 }
 
-type Override func(cfg *Config) error
+type Override func(ctx context.Context, cfg *Config) error
 
-type Source func() (string, error)
+type Source func(ctx context.Context) (string, error)
 
 func ExplicitConfigFile(path string) Source {
-	return func() (string, error) {
+	return func(context.Context) (string, error) {
 		return path, nil
 	}
 }
 
 func StandardLocation() Source {
-	return func() (string, error) {
-		if envPath := os.Getenv(ConfigFileEnvVar); envPath != "" {
+	return func(ctx context.Context) (string, error) {
+		if envPath := host.Getenv(ctx, ConfigFileEnvVar); envPath != "" {
 			return envPath, nil
 		}
 
 		// Return the first existing config ($HOME/.config wins over platform XDG).
-		if existing := findExistingUserConfigFile(); existing != "" {
+		if existing := findExistingUserConfigFile(ctx); existing != "" {
 			return existing, nil
 		}
 
 		// No existing config — create in $HOME/.config if available,
 		// otherwise fall back to the platform XDG directory.
-		return createDefaultConfig()
+		return createDefaultConfig(ctx)
 	}
 }
 
 // createDefaultConfig creates a new empty config file in the preferred location
 // ($HOME/.config, falling back to platform XDG) and returns its path.
-func createDefaultConfig() (string, error) {
-	if dir := dotConfigDir(); dir != "" {
+func createDefaultConfig(ctx context.Context) (string, error) {
+	if dir := dotConfigDir(ctx); dir != "" {
 		file := userConfigFile(dir)
-		if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
+		if err := host.MkdirAll(ctx, filepath.Dir(file), 0o755); err != nil {
 			return "", err
 		}
-		if err := CreateDefaultConfigFile(file); err != nil {
+		if err := CreateDefaultConfigFile(ctx, file); err != nil {
 			return "", err
 		}
 		return file, nil
@@ -449,11 +454,11 @@ func createDefaultConfig() (string, error) {
 
 	// Last resort: platform XDG (ConfigFile creates parent dirs).
 	configSubpath := filepath.Join(StandardConfigFolder, StandardConfigFileName)
-	file, err := xdg.ConfigFile(configSubpath)
+	file, err := xdg.ConfigFile(ctx, configSubpath)
 	if err != nil {
 		return "", err
 	}
-	if err := CreateDefaultConfigFile(file); err != nil {
+	if err := CreateDefaultConfigFile(ctx, file); err != nil {
 		return "", err
 	}
 	return file, nil
@@ -461,10 +466,10 @@ func createDefaultConfig() (string, error) {
 
 // CreateDefaultConfigFile atomically creates a new empty config without ever
 // replacing an existing file or following an existing symlink.
-func CreateDefaultConfigFile(file string) error {
-	created, err := os.OpenFile(file, os.O_WRONLY|os.O_CREATE|os.O_EXCL, configFilePermissions)
+func CreateDefaultConfigFile(ctx context.Context, file string) error {
+	created, err := host.OpenFile(ctx, file, os.O_WRONLY|os.O_CREATE|os.O_EXCL, configFilePermissions)
 	if errors.Is(err, os.ErrExist) {
-		info, inspectErr := os.Lstat(file)
+		info, inspectErr := host.Lstat(ctx, file)
 		if inspectErr != nil {
 			return inspectErr
 		}
@@ -483,7 +488,7 @@ func CreateDefaultConfigFile(file string) error {
 			_ = created.Close()
 		}
 		if !complete {
-			_ = os.Remove(file)
+			_ = host.Remove(ctx, file)
 		}
 	}()
 	if _, err := io.WriteString(created, defaultEmptyConfigFile); err != nil {
@@ -497,7 +502,7 @@ func CreateDefaultConfigFile(file string) error {
 	if closeErr != nil {
 		return closeErr
 	}
-	if err := syncConfigDirectory(filepath.Dir(file)); err != nil {
+	if err := syncConfigDirectory(ctx, filepath.Dir(file)); err != nil {
 		return err
 	}
 	complete = true
@@ -536,7 +541,7 @@ func LoadUnderResolvedPolicy(ctx context.Context, source Source, resolved Config
 func load(ctx context.Context, source Source, opts loadOptions, overrides ...Override) (Config, error) {
 	config := Config{}
 
-	filename, err := source()
+	filename, err := source(ctx)
 	if err != nil {
 		return config, err
 	}
@@ -553,10 +558,10 @@ func load(ctx context.Context, source Source, opts loadOptions, overrides ...Ove
 
 	contents, snapshotted := opts.snapshotFor(filename)
 	if !snapshotted {
-		contents, err = readConfigFileForLayer(filename, opts.layer)
+		contents, err = readConfigFileForLayer(ctx, filename, opts.layer)
 		if err != nil {
 			if os.IsNotExist(err) {
-				sourceIdentity, identityErr := canonicalConfigSourceForLayer(filename, opts.layer)
+				sourceIdentity, identityErr := canonicalConfigSourceForLayer(ctx, filename, opts.layer)
 				if identityErr != nil {
 					return config, identityErr
 				}
@@ -584,7 +589,7 @@ func load(ctx context.Context, source Source, opts loadOptions, overrides ...Ove
 		}
 		config.Source = filename
 		if !config.migrationDeferred {
-			persisted, readErr := readConfigFileForLayer(filename, opts.layer)
+			persisted, readErr := readConfigFileForLayer(ctx, filename, opts.layer)
 			if readErr != nil {
 				return config, readErr
 			}
@@ -606,7 +611,7 @@ func load(ctx context.Context, source Source, opts loadOptions, overrides ...Ove
 		}
 	}
 
-	sourceIdentity, err := canonicalConfigSourceForLayer(filename, opts.layer)
+	sourceIdentity, err := canonicalConfigSourceForLayer(ctx, filename, opts.layer)
 	if err != nil {
 		return config, err
 	}
@@ -626,26 +631,26 @@ func load(ctx context.Context, source Source, opts loadOptions, overrides ...Ove
 	if err := validateLocalExternalTLSCredentials(&config); err != nil {
 		return config, err
 	}
-	inventoryBoundSentinels(&config)
-	config.capturePlaintextCredentialOrigins()
+	inventoryBoundSentinels(ctx, &config)
+	config.capturePlaintextCredentialOrigins(ctx)
 
 	log := logging.FromContext(ctx)
 	// Defer opening the keychain until a sentinel actually needs resolving or a
 	// plaintext secret needs migrating; configs with no keychain-backed secrets
 	// then never probe the OS keychain.
-	store := newLazyStore(func() credentials.Store { return keychainStoreForPolicy(policy) })
+	store := newLazyStore(func() credentials.Store { return keychainStoreForPolicy(ctx, policy) })
 	config.keychainStore = store
 
 	// Only resolve sentinels for the current context eagerly. Other contexts
 	// are resolved on demand via Config.ResolveContext to avoid redundant
 	// keychain lookups.
 	if cur := config.Contexts[config.CurrentContext]; cur != nil {
-		backed, preserve, states := resolveSentinelsForContext(cur, store)
+		backed, preserve, states := resolveSentinelsForContext(ctx, cur, store)
 		config.trackKeychainResults(backed, preserve, states)
 	}
 	if loadedLegacy && !config.migrationDeferred {
 		for name := range config.Contexts {
-			config.ResolveContext(name)
+			config.ResolveContext(ctx, name)
 		}
 	}
 
@@ -654,7 +659,7 @@ func load(ctx context.Context, source Source, opts loadOptions, overrides ...Ove
 		var durabilityErr *configDurabilityError
 		switch {
 		case errors.As(writeErr, &durabilityErr) && migrated > 0:
-			if err := refreshKeychainRuntimeAfterWrite(&config, filename, sourceIdentity, opts.layer, store); err != nil {
+			if err := refreshKeychainRuntimeAfterWrite(ctx, &config, filename, sourceIdentity, opts.layer, store); err != nil {
 				return config, err
 			}
 			log.Warn("config was replaced but its directory durability barrier failed; old and new keychain generations were retained",
@@ -668,7 +673,7 @@ func load(ctx context.Context, source Source, opts loadOptions, overrides ...Ove
 			log.Info("migrated plaintext credentials into OS keychain",
 				"count", migrated,
 				"file", filename)
-			if err := refreshKeychainRuntimeAfterWrite(&config, filename, sourceIdentity, opts.layer, store); err != nil {
+			if err := refreshKeychainRuntimeAfterWrite(ctx, &config, filename, sourceIdentity, opts.layer, store); err != nil {
 				return config, err
 			}
 		}
@@ -676,7 +681,7 @@ func load(ctx context.Context, source Source, opts loadOptions, overrides ...Ove
 
 	initialContext := config.CurrentContext
 	for _, override := range overrides {
-		if err := override(&config); err != nil {
+		if err := override(ctx, &config); err != nil {
 			return config, annotateErrorWithSource(filename, contents, err)
 		}
 	}
@@ -684,9 +689,9 @@ func load(ctx context.Context, source Source, opts loadOptions, overrides ...Ove
 	// If an override (e.g. --context flag) switched the current context,
 	// resolve that context's keychain sentinels too.
 	if config.CurrentContext != initialContext {
-		config.ResolveContext(config.CurrentContext)
+		config.ResolveContext(ctx, config.CurrentContext)
 	}
-	if err := enforceRuntimeCredentialBindings(&config); err != nil {
+	if err := enforceRuntimeCredentialBindings(ctx, &config); err != nil {
 		return config, err
 	}
 
@@ -711,8 +716,8 @@ func write(ctx context.Context, source Source, cfg Config, opts writeOptions) er
 	return err
 }
 
-func refreshKeychainRuntimeAfterWrite(cfg *Config, filename, sourceIdentity, layer string, store credentials.Store) error {
-	contents, err := readConfigFileForLayer(filename, layer)
+func refreshKeychainRuntimeAfterWrite(ctx context.Context, cfg *Config, filename, sourceIdentity, layer string, store credentials.Store) error {
+	contents, err := readConfigFileForLayer(ctx, filename, layer)
 	if err != nil {
 		return err
 	}
@@ -734,13 +739,13 @@ func refreshKeychainRuntimeAfterWrite(cfg *Config, filename, sourceIdentity, lay
 	if err := disk.materializeCloudCredentialDestinations(); err != nil {
 		return err
 	}
-	inventoryBoundSentinels(&disk)
+	inventoryBoundSentinels(ctx, &disk)
 	disk.keychainStore = store
 	if cur := disk.Contexts[disk.CurrentContext]; cur != nil {
-		backed, preserve, states := resolveSentinelsForContext(cur, store)
+		backed, preserve, states := resolveSentinelsForContext(ctx, cur, store)
 		disk.trackKeychainResults(backed, preserve, states)
 	}
-	disk.capturePlaintextCredentialOrigins()
+	disk.capturePlaintextCredentialOrigins(ctx)
 	disk.Source = cfg.Source
 	disk.Sources = cfg.Sources
 	disk.sourceLayer = cfg.sourceLayer
@@ -750,24 +755,24 @@ func refreshKeychainRuntimeAfterWrite(cfg *Config, filename, sourceIdentity, lay
 	return nil
 }
 
-func readConfigFileForLayer(filename, layer string) ([]byte, error) {
+func readConfigFileForLayer(ctx context.Context, filename, layer string) ([]byte, error) {
 	if layer == "local" {
-		return readConfigSource(ConfigSource{Path: filename, Type: layer})
+		return readConfigSource(ctx, ConfigSource{Path: filename, Type: layer})
 	}
-	return os.ReadFile(filename)
+	return host.ReadFile(ctx, filename)
 }
 
-func prepareConfigRuntimeForWrite(filename string, cfg *Config) error {
+func prepareConfigRuntimeForWrite(ctx context.Context, filename string, cfg *Config) error {
 	if err := validateConfigForWrite(filename, cfg); err != nil {
 		return err
 	}
-	policy, err := resolveKeychainPolicyForWrite(cfg, filename)
+	policy, err := resolveKeychainPolicyForWrite(ctx, cfg, filename)
 	if err != nil {
 		return err
 	}
 	cfg.keychainPolicy = policy
 	if cfg.keychainStore == nil {
-		cfg.keychainStore = newLazyStore(func() credentials.Store { return keychainStoreForPolicy(policy) })
+		cfg.keychainStore = newLazyStore(func() credentials.Store { return keychainStoreForPolicy(ctx, policy) })
 	}
 	return nil
 }
@@ -782,7 +787,7 @@ func writeConfig(ctx context.Context, source Source, cfg Config, opts writeOptio
 	// isolated copy so validation failures and temporary keychain sentinel swaps
 	// cannot mutate the caller's in-memory configuration.
 	cfg = cloneConfigForWrite(cfg)
-	filename, err := source()
+	filename, err := source(ctx)
 	if err != nil {
 		return 0, err
 	}
@@ -792,7 +797,7 @@ func writeConfig(ctx context.Context, source Source, cfg Config, opts writeOptio
 	if cfg.migrationDeferred {
 		return 0, fmt.Errorf("legacy config migration is deferred; resolve the reported migration blocker before writing %s (%s)", filename, docs.ConfigMigration)
 	}
-	if err := prepareConfigRuntimeForWrite(filename, &cfg); err != nil {
+	if err := prepareConfigRuntimeForWrite(ctx, filename, &cfg); err != nil {
 		return 0, err
 	}
 	layer := cfg.sourceLayer
@@ -804,11 +809,11 @@ func writeConfig(ctx context.Context, source Source, cfg Config, opts writeOptio
 		return 0, err
 	}
 	cfg.sourceLayer = layer
-	sourceIdentity, err := canonicalConfigSourceForLayer(filename, layer)
+	sourceIdentity, err := canonicalConfigSourceForLayer(ctx, filename, layer)
 	if err != nil {
 		return 0, err
 	}
-	writeFilename, err := configWriteTarget(filename, sourceIdentity, layer != "local")
+	writeFilename, err := configWriteTarget(ctx, filename, sourceIdentity, layer != "local")
 	if err != nil {
 		return 0, err
 	}
@@ -817,7 +822,7 @@ func writeConfig(ctx context.Context, source Source, cfg Config, opts writeOptio
 		return 0, err
 	}
 	if !writeLockCovered {
-		writeLockPath, err := configLockFile(sourceIdentity)
+		writeLockPath, err := configLockFile(ctx, sourceIdentity)
 		if err != nil {
 			return 0, err
 		}
@@ -836,7 +841,7 @@ func writeConfig(ctx context.Context, source Source, cfg Config, opts writeOptio
 	if err := prepareConfigSourceForWrite(&cfg, sourceIdentity); err != nil {
 		return 0, err
 	}
-	if err := validateConfigWriteSnapshot(writeFilename, sourceIdentity, &cfg); err != nil {
+	if err := validateConfigWriteSnapshot(ctx, writeFilename, sourceIdentity, &cfg); err != nil {
 		return 0, err
 	}
 	cfg.Resolve()
@@ -847,7 +852,7 @@ func writeConfig(ctx context.Context, source Source, cfg Config, opts writeOptio
 	var keychainTxn *keychainWriteTransaction
 	configRenamed := false
 	if cfg.hasSecretsToReconcile() {
-		keychainTxn, err = reconcileKeychain(&cfg, cfg.keychainStore, log)
+		keychainTxn, err = reconcileKeychain(ctx, &cfg, cfg.keychainStore, log)
 		if err != nil {
 			return 0, err
 		}
@@ -872,7 +877,7 @@ func writeConfig(ctx context.Context, source Source, cfg Config, opts writeOptio
 	}
 	var previousContents []byte
 	if keychainTxn != nil && len(keychainTxn.deletes) > 0 {
-		previousContents, err = os.ReadFile(writeFilename)
+		previousContents, err = host.ReadFile(ctx, writeFilename)
 		if err != nil {
 			return 0, fmt.Errorf("capture config before keychain deletion: %w", err)
 		}
@@ -881,12 +886,12 @@ func writeConfig(ctx context.Context, source Source, cfg Config, opts writeOptio
 	// Write to a temp file and rename it into place so concurrent readers
 	// never observe a truncated config. Token persistence rewrites this file
 	// while other gcx invocations Load it without holding the refresh flock.
-	tmp, err := os.CreateTemp(filepath.Dir(writeFilename), filepath.Base(writeFilename)+"-*.tmp")
+	tmp, err := host.CreateTemp(ctx, filepath.Dir(writeFilename), filepath.Base(writeFilename)+"-*.tmp")
 	if err != nil {
 		return 0, err
 	}
 	tmpName := tmp.Name()
-	defer func() { _ = os.Remove(tmpName) }() // no-op once renamed
+	defer func() { _ = host.Remove(ctx, tmpName) }() // no-op once renamed
 
 	codec := &format.YAMLCodec{BytesAsBase64: true}
 	if err := codec.Encode(tmp, cfg); err != nil {
@@ -907,19 +912,19 @@ func writeConfig(ctx context.Context, source Source, cfg Config, opts writeOptio
 		return 0, err
 	}
 	if cfg.expectSourceAbsent {
-		if err := os.Link(tmpName, writeFilename); err != nil {
+		if err := host.Link(ctx, tmpName, writeFilename); err != nil {
 			if os.IsExist(err) {
 				return 0, fmt.Errorf("config was created since it was loaded; reload %s before writing", filename)
 			}
 			return 0, fmt.Errorf("install new config without replacement: %w", err)
 		}
 	} else {
-		if err := renameConfigFile(tmpName, writeFilename); err != nil {
+		if err := renameConfigFile(ctx, tmpName, writeFilename); err != nil {
 			return 0, err
 		}
 	}
 	configRenamed = true
-	if err := syncConfigDirectory(filepath.Dir(writeFilename)); err != nil {
+	if err := syncConfigDirectory(ctx, filepath.Dir(writeFilename)); err != nil {
 		return staged, &configDurabilityError{err: fmt.Errorf("sync config directory after rename: %w", err)}
 	}
 	if keychainTxn != nil {
@@ -933,7 +938,7 @@ func writeConfig(ctx context.Context, source Source, cfg Config, opts writeOptio
 				// harmless orphaned old accounts.
 				return staged, fmt.Errorf("keychain cleanup failed and an old credential generation could not be restored; retained the committed config and new credential generations: %w", err)
 			}
-			if restoreErr := restoreConfigContents(writeFilename, previousContents); restoreErr != nil {
+			if restoreErr := restoreConfigContents(ctx, writeFilename, previousContents); restoreErr != nil {
 				return staged, errors.Join(err, fmt.Errorf("restore config after keychain deletion failure: %w", restoreErr))
 			}
 			configRenamed = false
@@ -943,13 +948,13 @@ func writeConfig(ctx context.Context, source Source, cfg Config, opts writeOptio
 	return staged, nil
 }
 
-func restoreConfigContents(filename string, contents []byte) error {
-	tmp, err := os.CreateTemp(filepath.Dir(filename), filepath.Base(filename)+"-restore-*.tmp")
+func restoreConfigContents(ctx context.Context, filename string, contents []byte) error {
+	tmp, err := host.CreateTemp(ctx, filepath.Dir(filename), filepath.Base(filename)+"-restore-*.tmp")
 	if err != nil {
 		return err
 	}
 	tmpName := tmp.Name()
-	defer func() { _ = os.Remove(tmpName) }()
+	defer func() { _ = host.Remove(ctx, tmpName) }()
 	if _, err := tmp.Write(contents); err != nil {
 		_ = tmp.Close()
 		return err
@@ -965,10 +970,10 @@ func restoreConfigContents(filename string, contents []byte) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	if err := renameConfigFile(tmpName, filename); err != nil {
+	if err := renameConfigFile(ctx, tmpName, filename); err != nil {
 		return err
 	}
-	return syncConfigDirectory(filepath.Dir(filename))
+	return syncConfigDirectory(ctx, filepath.Dir(filename))
 }
 
 func configLayerForPath(filename, declared string) (string, error) {
@@ -979,34 +984,38 @@ func configLayerForPath(filename, declared string) (string, error) {
 // configLockFile returns the path of the write lock for one config source.
 // Locks are per-source: two config files never contend, and a lock held for
 // one says nothing about another.
-func configLockFile(sourceIdentity string) (string, error) {
-	stateHome := xdg.StateHome()
+func configLockFile(ctx context.Context, sourceIdentity string) (string, error) {
+	stateHome := xdg.StateHome(ctx)
 	if testing.Testing() {
-		stateHome = filepath.Join(os.TempDir(), "gcx-test-state")
+		tempDir, err := host.TempDir(ctx)
+		if err != nil {
+			return "", err
+		}
+		stateHome = filepath.Join(tempDir, "gcx-test-state")
 	}
 	if stateHome == "" {
 		return "", errors.New("cannot determine state directory for config lock")
 	}
 	lockDir := filepath.Join(stateHome, "gcx", "locks")
-	if err := os.MkdirAll(lockDir, 0o700); err != nil {
+	if err := host.MkdirAll(ctx, lockDir, 0o700); err != nil {
 		return "", fmt.Errorf("create private config lock directory: %w", err)
 	}
-	info, err := os.Lstat(lockDir)
+	info, err := host.Lstat(ctx, lockDir)
 	if err != nil {
 		return "", err
 	}
 	if !info.Mode().IsDir() || info.Mode()&os.ModeSymlink != 0 {
 		return "", fmt.Errorf("config lock directory is not a private directory: %s", lockDir)
 	}
-	if err := os.Chmod(lockDir, 0o700); err != nil {
+	if err := host.Chmod(ctx, lockDir, 0o700); err != nil {
 		return "", fmt.Errorf("secure config lock directory: %w", err)
 	}
 	digest := sha256.Sum256([]byte(sourceIdentity))
 	return filepath.Join(lockDir, fmt.Sprintf("%x.write.lock", digest)), nil
 }
 
-func validateConfigWriteSnapshot(filename, sourceIdentity string, cfg *Config) error {
-	contents, err := os.ReadFile(filename)
+func validateConfigWriteSnapshot(ctx context.Context, filename, sourceIdentity string, cfg *Config) error {
+	contents, err := host.ReadFile(ctx, filename)
 	if err != nil {
 		if os.IsNotExist(err) && !cfg.hasSourceRevision {
 			return nil
@@ -1123,8 +1132,8 @@ func cloneConfigForWrite(cfg Config) Config {
 	return cloned
 }
 
-func configWriteTarget(filename, canonicalSource string, allowSymlink bool) (string, error) {
-	info, err := os.Lstat(filename)
+func configWriteTarget(ctx context.Context, filename, canonicalSource string, allowSymlink bool) (string, error) {
+	info, err := host.Lstat(ctx, filename)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return filename, nil
@@ -1137,7 +1146,7 @@ func configWriteTarget(filename, canonicalSource string, allowSymlink bool) (str
 	if !allowSymlink {
 		return "", fmt.Errorf("refusing to write auto-discovered local config symlink: %s", filename)
 	}
-	if _, err := filepath.EvalSymlinks(filename); err != nil {
+	if _, err := host.EvalSymlinks(ctx, filename); err != nil {
 		return "", fmt.Errorf("resolve config symlink %s: %w", filename, err)
 	}
 	return canonicalSource, nil
@@ -1180,17 +1189,17 @@ func loadLayered(ctx context.Context, explicitFile string, opts loadOptions, ove
 	}
 
 	// GCX_CONFIG env var also bypasses layering (preserving existing behavior).
-	if envPath := os.Getenv(ConfigFileEnvVar); envPath != "" {
+	if envPath := host.Getenv(ctx, ConfigFileEnvVar); envPath != "" {
 		return loadExplicit(ctx, envPath, opts, overrides...)
 	}
 
 	// Warn when configs exist in both $HOME/.config and the platform XDG dir.
-	if dup := CheckDuplicateUserConfig(); dup != nil && !agent.IsAgentMode() {
-		fmt.Fprintf(os.Stderr, "Warning: config found in both %s and %s; using %s\n",
+	if dup := CheckDuplicateUserConfig(ctx); dup != nil && !agent.IsAgentMode() {
+		fmt.Fprintf(host.Stderr(ctx), "Warning: config found in both %s and %s; using %s\n",
 			dup.Active, dup.Ignored, dup.Active)
 	}
 
-	sources, err := DiscoverSources()
+	sources, err := DiscoverSources(ctx)
 	if err != nil {
 		return Config{}, err
 	}
@@ -1201,12 +1210,12 @@ func loadLayered(ctx context.Context, explicitFile string, opts loadOptions, ove
 		if err != nil {
 			return cfg, err
 		}
-		newSources, _ := DiscoverSources()
+		newSources, _ := DiscoverSources(ctx)
 		cfg.Sources = newSources
 		return cfg, nil
 	}
 	var hasLegacyLayer bool
-	if err := preflightLayeredSources(sources, &hasLegacyLayer); err != nil {
+	if err := preflightLayeredSources(ctx, sources, &hasLegacyLayer); err != nil {
 		return Config{}, err
 	}
 	// Resolve the credential-storage policy once, from every trusted layer,
@@ -1251,7 +1260,7 @@ func loadLayered(ctx context.Context, explicitFile string, opts loadOptions, ove
 		if src.Type == "local" && i > 0 {
 			loaded.Credentials = nil
 		}
-		current, err := readConfigSource(src)
+		current, err := readConfigSource(ctx, src)
 		if err != nil {
 			return Config{}, err
 		}
@@ -1259,7 +1268,7 @@ func loadLayered(ctx context.Context, explicitFile string, opts loadOptions, ove
 			return Config{}, fmt.Errorf("config %s changed while loading layered configuration; retry", src.Path)
 		}
 		sources[i].snapshot = bytes.Clone(current)
-		if info, statErr := os.Lstat(src.Path); statErr == nil {
+		if info, statErr := host.Lstat(ctx, src.Path); statErr == nil {
 			sources[i].ModTime = info.ModTime()
 		}
 		if i == 0 {
@@ -1280,7 +1289,7 @@ func loadLayered(ctx context.Context, explicitFile string, opts loadOptions, ove
 
 	// Apply overrides on the merged config.
 	for _, override := range overrides {
-		if err := override(&merged); err != nil {
+		if err := override(ctx, &merged); err != nil {
 			return merged, err
 		}
 	}
@@ -1289,8 +1298,8 @@ func loadLayered(ctx context.Context, explicitFile string, opts loadOptions, ove
 	// context after merge and overrides (e.g. a --context selecting a context
 	// that was current in no layer) may still hold raw keychain sentinels.
 	// Idempotent for already-resolved fields.
-	merged.ResolveContext(merged.CurrentContext)
-	if err := enforceRuntimeCredentialBindings(&merged); err != nil {
+	merged.ResolveContext(ctx, merged.CurrentContext)
+	if err := enforceRuntimeCredentialBindings(ctx, &merged); err != nil {
 		return merged, err
 	}
 
@@ -1322,15 +1331,15 @@ func loadForWrite(ctx context.Context, explicitFile, fileType string, opts loadO
 		// keychain sentinels just to discard all but one). Honor the explicit-file
 		// env bypass exactly as LoadLayered does: when set, layering is bypassed
 		// and there is no named layer to select.
-		if os.Getenv(ConfigFileEnvVar) != "" {
+		if host.Getenv(ctx, ConfigFileEnvVar) != "" {
 			return Config{}, nil, fmt.Errorf("no %s config file found", fileType)
 		}
-		sources, err := DiscoverSources()
+		sources, err := DiscoverSources(ctx)
 		if err != nil {
 			return Config{}, nil, err
 		}
 		for i := range sources {
-			contents, readErr := readConfigSource(sources[i])
+			contents, readErr := readConfigSource(ctx, sources[i])
 			if readErr != nil {
 				return Config{}, nil, readErr
 			}
@@ -1369,7 +1378,7 @@ func loadForWrite(ctx context.Context, explicitFile, fileType string, opts loadO
 		layerOpts = layerOpts.withKeychainPolicy(policy)
 		targetWasLegacy := isLegacyConfig(contents)
 		if targetWasLegacy && len(sources) > 1 {
-			preflightErr := preflightLayeredSources(sources)
+			preflightErr := preflightLayeredSources(ctx, sources)
 			if preflightErr != nil {
 				var incomplete *layeredMigrationIncompleteError
 				if !errors.As(preflightErr, &incomplete) || !incomplete.includesLayer(fileType) {
@@ -1521,7 +1530,7 @@ func loadExplicit(ctx context.Context, path string, opts loadOptions, overrides 
 	// migration; constructing an ExplicitConfigFile Source and calling Load
 	// directly is only a path resolver and does not itself grant legacy-keychain
 	// authority.
-	consentIdentity, err := canonicalConfigSource(path)
+	consentIdentity, err := canonicalConfigSource(ctx, path)
 	if err != nil {
 		return Config{}, err
 	}
@@ -1531,7 +1540,7 @@ func loadExplicit(ctx context.Context, path string, opts loadOptions, overrides 
 	if err != nil {
 		return cfg, err
 	}
-	info, _ := os.Stat(path)
+	info, _ := host.Stat(ctx, path)
 	modTime := time.Time{}
 	if info != nil {
 		modTime = info.ModTime()
@@ -1548,7 +1557,7 @@ func loadExplicit(ctx context.Context, path string, opts loadOptions, overrides 
 func LoadDiagnostics(ctx context.Context) *DiagnosticsConfig {
 	var result *DiagnosticsConfig
 	for _, path := range diagnosticsSourcePaths(ctx) {
-		d, err := readDiagnostics(path)
+		d, err := readDiagnostics(ctx, path)
 		if err != nil || d == nil {
 			continue
 		}
@@ -1565,10 +1574,10 @@ func LoadDiagnostics(ctx context.Context) *DiagnosticsConfig {
 // diagnosticsSourcePaths returns config file paths in low→high precedence order,
 // honoring the GCX_CONFIG explicit-file bypass exactly as LoadLayered does.
 func diagnosticsSourcePaths(ctx context.Context) []string {
-	if envPath := os.Getenv(ConfigFileEnvVar); envPath != "" {
+	if envPath := host.Getenv(ctx, ConfigFileEnvVar); envPath != "" {
 		return []string{envPath}
 	}
-	sources, err := DiscoverSources()
+	sources, err := DiscoverSources(ctx)
 	if err != nil {
 		logging.FromContext(ctx).Debug("diagnostics: source discovery failed", "error", err.Error())
 		return nil
@@ -1587,8 +1596,9 @@ func diagnosticsSourcePaths(ctx context.Context) []string {
 // files are read through the legacy struct (never migrated here) so settings
 // like `telemetry: disabled` are honoured even on the run that performs the
 // migration. Missing or malformed files yield (nil, err).
-func readDiagnostics(path string) (*DiagnosticsConfig, error) {
-	contents, err := os.ReadFile(path)
+func readDiagnostics(ctx context.Context, path string) (*DiagnosticsConfig, error) {
+	contents, err := host.ReadFile(ctx, path)
+
 	if err != nil {
 		return nil, err
 	}

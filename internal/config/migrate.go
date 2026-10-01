@@ -10,7 +10,6 @@ import (
 	"maps"
 	"net/url"
 	"os"
-	"os/user"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -26,6 +25,7 @@ import (
 	"github.com/grafana/gcx/internal/credentials"
 	"github.com/grafana/gcx/internal/docs"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/host"
 	"github.com/grafana/grafana-app-sdk/logging"
 )
 
@@ -684,12 +684,12 @@ func verifyLegacyConversion(input, baseline *legacyConfig, cfg *Config, secrets 
 // legacyMigrationKeychainRuntime returns the credential store a legacy
 // migration must use. The policy the caller resolved wins; a migration reached
 // with no resolved policy falls back to the environment-only decision.
-func legacyMigrationKeychainRuntime(opts loadOptions) (keychainPolicy, credentials.Store) {
+func legacyMigrationKeychainRuntime(ctx context.Context, opts loadOptions) (keychainPolicy, credentials.Store) {
 	policy, ok := opts.resolvedKeychainPolicy()
 	if !ok {
-		policy = overlayKeychainEnvironment(defaultKeychainPolicy())
+		policy = overlayKeychainEnvironment(ctx, defaultKeychainPolicy())
 	}
-	return policy, newLazyStore(func() credentials.Store { return keychainStoreForPolicy(policy) })
+	return policy, newLazyStore(func() credentials.Store { return keychainStoreForPolicy(ctx, policy) })
 }
 
 // applyLegacyKeychainRuntime attaches the resolved policy and its store to the
@@ -725,7 +725,7 @@ func acquireLegacyMigrationWriteLock(
 	if !requested || writeLockHeld {
 		return requested, nil, func() {}, nil
 	}
-	lockPath, err := configLockFile(migrationPath)
+	lockPath, err := configLockFile(ctx, migrationPath)
 	if err != nil {
 		return false, nil, nil, err
 	}
@@ -745,8 +745,8 @@ func acquireLegacyMigrationWriteLock(
 // rereading the file would have the migration write a document the lock does
 // not protect — and, because the reread happens before the backup is taken,
 // replace a file nothing has a rollback copy of.
-func readLegacyMigrationSource(filename, layer, expectedIdentity string) ([]byte, error) {
-	file, err := os.Open(filename)
+func readLegacyMigrationSource(ctx context.Context, filename, layer, expectedIdentity string) ([]byte, error) {
+	file, err := host.Open(ctx, filename)
 	if err != nil {
 		return nil, err
 	}
@@ -756,7 +756,7 @@ func readLegacyMigrationSource(filename, layer, expectedIdentity string) ([]byte
 	if err != nil {
 		return nil, err
 	}
-	expected, err := os.Stat(expectedIdentity)
+	expected, err := host.Stat(ctx, expectedIdentity)
 	if err != nil {
 		return nil, err
 	}
@@ -772,11 +772,11 @@ func readLegacyMigrationSource(filename, layer, expectedIdentity string) ([]byte
 	if err != nil {
 		return nil, err
 	}
-	currentIdentity, err := canonicalConfigSourceForLayer(filename, layer)
+	currentIdentity, err := canonicalConfigSourceForLayer(ctx, filename, layer)
 	if err != nil {
 		return nil, err
 	}
-	current, err := os.Stat(filename)
+	current, err := host.Stat(ctx, filename)
 	if err != nil {
 		return nil, err
 	}
@@ -799,7 +799,7 @@ func readLegacyMigrationSource(filename, layer, expectedIdentity string) ([]byte
 // load retries.
 func migrateLegacyConfig(ctx context.Context, source Source, filename string, contents []byte, opts loadOptions) (Config, error) {
 	log := logging.FromContext(ctx)
-	migrationPath, err := canonicalConfigSourceForLayer(filename, opts.layer)
+	migrationPath, err := canonicalConfigSourceForLayer(ctx, filename, opts.layer)
 	if err != nil {
 		return Config{}, err
 	}
@@ -827,7 +827,7 @@ func migrateLegacyConfig(ctx context.Context, source Source, filename string, co
 	}
 
 	if canPersist {
-		freshContents, err := readLegacyMigrationSource(filename, opts.layer, migrationPath)
+		freshContents, err := readLegacyMigrationSource(ctx, filename, opts.layer, migrationPath)
 		if err != nil {
 			return Config{}, err
 		}
@@ -855,12 +855,12 @@ func migrateLegacyConfig(ctx context.Context, source Source, filename string, co
 		return Config{}, UnmarshalError{File: filename, Err: err}
 	}
 
-	policy, store := legacyMigrationKeychainRuntime(opts)
+	policy, store := legacyMigrationKeychainRuntime(ctx, opts)
 	layerType := opts.layer
 	// Auto-discovered repository, system, and arbitrary explicit configs cannot
 	// read predictable per-user legacy accounts. Compatibility is limited to the
 	// canonical discovered user config with secure write permissions.
-	allowLegacyGet := trustedLegacyKeychainSource(opts.explicitLegacyMigrationConsent, layerType, filename)
+	allowLegacyGet := trustedLegacyKeychainSource(ctx, opts.explicitLegacyMigrationConsent, layerType, filename)
 	secrets, transientLegacyFailure, legacyDisabledByPolicy, err := collectLegacySecrets(&lc, store, allowLegacyGet)
 	if err != nil {
 		return Config{}, err
@@ -881,7 +881,7 @@ func migrateLegacyConfig(ctx context.Context, source Source, filename string, co
 	// pushed through predictable legacy account names: doing so could overwrite
 	// a credential owned by another config source. The converted v1 Write below
 	// stores plaintext under source-bound v2 account names.
-	backupOK, deferredReason := prepareLegacyBackup(canPersist, deferredReason, filename, contents, codec)
+	backupOK, deferredReason := prepareLegacyBackup(ctx, canPersist, deferredReason, filename, contents, codec)
 
 	cfg := convertLegacyConfig(&lc, layerType, secrets)
 	cfg.Source = filename
@@ -943,7 +943,7 @@ func migrateLegacyConfig(ctx context.Context, source Source, filename string, co
 
 	log.Info("migrated config to the current format", "file", filename, "backup", filename+legacyBackupSuffix)
 	if !agent.IsAgentMode() {
-		fmt.Fprintf(os.Stderr, "Your gcx config file %s has been migrated to the new v1 format, with a backup of the old file at %s.\nRead about what changed here: %s\n",
+		fmt.Fprintf(host.Stderr(ctx), "Your gcx config file %s has been migrated to the new v1 format, with a backup of the old file at %s.\nRead about what changed here: %s\n",
 			filename, filename+legacyBackupSuffix, docs.HumanURL(docs.ConfigMigration))
 	}
 	return *cfg, nil
@@ -962,11 +962,11 @@ func warnInMemoryMigration(ctx context.Context, collector *inMemoryMigrationWarn
 	logging.FromContext(ctx).Warn(message, "file", filename, "error", reason, "guide", docs.ConfigMigration)
 }
 
-func prepareLegacyBackup(canPersist bool, deferredReason, filename string, contents []byte, codec *format.YAMLCodec) (bool, string) {
+func prepareLegacyBackup(ctx context.Context, canPersist bool, deferredReason, filename string, contents []byte, codec *format.YAMLCodec) (bool, string) {
 	if !canPersist {
 		return false, deferredReason
 	}
-	backupOK, err := writeLegacyBackup(filename, contents, codec)
+	backupOK, err := writeLegacyBackup(ctx, filename, contents, codec)
 	if err != nil {
 		return false, err.Error()
 	}
@@ -981,27 +981,27 @@ func prepareLegacyBackup(canPersist bool, deferredReason, filename string, conte
 // it is empty when no such consent was given. secureLegacyConfigIdentity
 // returns a non-empty canonical identity only together with ok, so an empty
 // consent can never match a verified target.
-func trustedLegacyKeychainSource(consentedIdentity, layerType, filename string) bool {
+func trustedLegacyKeychainSource(ctx context.Context, consentedIdentity, layerType, filename string) bool {
 	if layerType == "explicit" {
-		canonical, ok := secureLegacyConfigIdentity(filename)
+		canonical, ok := secureLegacyConfigIdentity(ctx, filename)
 		if !ok {
 			return false
 		}
 		return consentedIdentity != "" && consentedIdentity == canonical
 	}
-	return layerType == "user" && trustedDiscoveredUserLegacySource(filename)
+	return layerType == "user" && trustedDiscoveredUserLegacySource(ctx, filename)
 }
 
-func trustedDiscoveredUserLegacySource(filename string) bool {
-	canonical, ok := secureLegacyConfigIdentity(filename)
+func trustedDiscoveredUserLegacySource(ctx context.Context, filename string) bool {
+	canonical, ok := secureLegacyConfigIdentity(ctx, filename)
 	if !ok {
 		return false
 	}
 	// A discovered user source is trusted only when its resolved identity is one
 	// of the standard user locations. Resolve both sides so a symlinked HOME,
 	// XDG root, or config path does not strand credentials owned by that source.
-	for _, dir := range userConfigDirs() {
-		expected, err := canonicalConfigSource(userConfigFile(dir))
+	for _, dir := range userConfigDirs(ctx) {
+		expected, err := canonicalConfigSource(ctx, userConfigFile(dir))
 		if err == nil && expected == canonical {
 			return true
 		}
@@ -1013,25 +1013,25 @@ func trustedDiscoveredUserLegacySource(filename string) bool {
 // a lexical path. Legacy keychain account names are predictable, so the file
 // must be a stable regular file, owned by the current user where the platform
 // exposes ownership, and not writable by group or others.
-func secureLegacyConfigIdentity(filename string) (string, bool) {
-	file, err := os.Open(filename)
+func secureLegacyConfigIdentity(ctx context.Context, filename string) (string, bool) {
+	file, err := host.Open(ctx, filename)
 	if err != nil {
 		return "", false
 	}
 	defer func() { _ = file.Close() }()
 	opened, err := file.Stat()
-	if err != nil || !opened.Mode().IsRegular() || opened.Mode().Perm()&0o022 != 0 || !legacyConfigOwnedByCurrentUser(opened) {
+	if err != nil || !opened.Mode().IsRegular() || opened.Mode().Perm()&0o022 != 0 || !legacyConfigOwnedByCurrentUser(ctx, opened) {
 		return "", false
 	}
-	current, err := os.Stat(filename)
+	current, err := host.Stat(ctx, filename)
 	if err != nil || !os.SameFile(opened, current) {
 		return "", false
 	}
-	canonical, err := canonicalConfigSource(filename)
+	canonical, err := canonicalConfigSource(ctx, filename)
 	if err != nil {
 		return "", false
 	}
-	canonicalInfo, err := os.Stat(canonical)
+	canonicalInfo, err := host.Stat(ctx, canonical)
 	if err != nil || !os.SameFile(opened, canonicalInfo) {
 		return "", false
 	}
@@ -1041,7 +1041,7 @@ func secureLegacyConfigIdentity(filename string) (string, bool) {
 // legacyConfigOwnedByCurrentUser checks Unix-style FileInfo ownership when the
 // platform exposes a numeric Uid field. Platforms without that metadata retain
 // the regular-file and permission checks above.
-func legacyConfigOwnedByCurrentUser(info os.FileInfo) bool {
+func legacyConfigOwnedByCurrentUser(ctx context.Context, info os.FileInfo) bool {
 	stat := reflect.ValueOf(info.Sys())
 	if !stat.IsValid() {
 		return true
@@ -1059,7 +1059,7 @@ func legacyConfigOwnedByCurrentUser(info os.FileInfo) bool {
 	if !uid.IsValid() || !uid.CanUint() {
 		return true
 	}
-	current, err := user.Current()
+	current, err := host.CurrentUser(ctx)
 	if err != nil {
 		return false
 	}
@@ -1148,12 +1148,12 @@ func configLayerFromCtx(ctx context.Context) string {
 // re-migration, which must not clobber a known-good backup). A false result
 // includes an actionable reason; the caller must not replace the legacy file
 // without rollback safety.
-func writeLegacyBackup(filename string, contents []byte, codec *format.YAMLCodec) (bool, error) {
+func writeLegacyBackup(ctx context.Context, filename string, contents []byte, codec *format.YAMLCodec) (bool, error) {
 	backupPath := filename + legacyBackupSuffix
 
-	backup, err := os.OpenFile(backupPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, configFilePermissions)
+	backup, err := host.OpenFile(ctx, backupPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, configFilePermissions)
 	if errors.Is(err, os.ErrExist) {
-		if err := validateExistingLegacyBackup(backupPath, contents, codec); err != nil {
+		if err := validateExistingLegacyBackup(ctx, backupPath, contents, codec); err != nil {
 			return false, err
 		}
 		return true, nil
@@ -1165,7 +1165,7 @@ func writeLegacyBackup(filename string, contents []byte, codec *format.YAMLCodec
 	defer func() {
 		_ = backup.Close()
 		if !complete {
-			_ = os.Remove(backupPath)
+			_ = host.Remove(ctx, backupPath)
 		}
 	}()
 	if _, err := backup.Write(contents); err != nil {
@@ -1177,7 +1177,7 @@ func writeLegacyBackup(filename string, contents []byte, codec *format.YAMLCodec
 	if err := backup.Close(); err != nil {
 		return false, fmt.Errorf("could not close legacy config backup %s: %w", backupPath, err)
 	}
-	if err := syncConfigDirectory(filepath.Dir(backupPath)); err != nil {
+	if err := syncConfigDirectory(ctx, filepath.Dir(backupPath)); err != nil {
 		return false, fmt.Errorf("could not sync legacy config backup directory for %s: %w", backupPath, err)
 	}
 	complete = true
@@ -1187,8 +1187,8 @@ func writeLegacyBackup(filename string, contents []byte, codec *format.YAMLCodec
 // validateExistingLegacyBackup refuses to treat an arbitrary, partial, or
 // symlinked path as rollback safety. A prior complete legacy backup is valid;
 // anything else leaves migration in memory and the original source untouched.
-func validateExistingLegacyBackup(path string, expected []byte, codec *format.YAMLCodec) error {
-	info, err := os.Lstat(path)
+func validateExistingLegacyBackup(ctx context.Context, path string, expected []byte, codec *format.YAMLCodec) error {
+	info, err := host.Lstat(ctx, path)
 	if err != nil {
 		return fmt.Errorf("could not inspect existing legacy config backup %s: %w", path, err)
 	}
@@ -1198,7 +1198,7 @@ func validateExistingLegacyBackup(path string, expected []byte, codec *format.YA
 	if info.Mode().Perm()&0o077 != 0 {
 		return fmt.Errorf("existing legacy config backup has insecure permissions: %s (mode %s)", path, info.Mode().Perm())
 	}
-	contents, err := os.ReadFile(path)
+	contents, err := host.ReadFile(ctx, path)
 	if err != nil {
 		return fmt.Errorf("could not read existing legacy config backup %s: %w", path, err)
 	}

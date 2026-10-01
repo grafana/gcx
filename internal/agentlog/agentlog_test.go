@@ -197,10 +197,10 @@ func TestAppend(t *testing.T) {
 		ExitCode:  1,
 	}
 
-	if err := agentlog.Append(e1); err != nil {
+	if err := agentlog.Append(t.Context(), e1); err != nil {
 		t.Fatalf("first Append: %v", err)
 	}
-	if err := agentlog.Append(e2); err != nil {
+	if err := agentlog.Append(t.Context(), e2); err != nil {
 		t.Fatalf("second Append: %v", err)
 	}
 

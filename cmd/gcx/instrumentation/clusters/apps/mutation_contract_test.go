@@ -15,6 +15,7 @@ package apps
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -101,8 +102,8 @@ func TestAppsMutations_HumanDefault_ByteIdentical(t *testing.T) {
 	for _, tc := range appsMutationCases() {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("GCX_AGENT_MODE", "false")
-			agent.ResetForTesting()
-			t.Cleanup(agent.ResetForTesting)
+			agent.ResetForTesting(t.Context())
+			t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 			stdout, err := runAppsMutation(t, verbOf(tc.wantAction), tc.args)
 			require.NoError(t, err)
@@ -155,8 +156,8 @@ func TestAppsMutations_ExplicitOutputOverrides(t *testing.T) {
 
 	t.Run("-o json in human mode", func(t *testing.T) {
 		t.Setenv("GCX_AGENT_MODE", "false")
-		agent.ResetForTesting()
-		t.Cleanup(agent.ResetForTesting)
+		agent.ResetForTesting(t.Context())
+		t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 		stdout, err := runAppsMutation(t, "remove", []string{"c1", "grotshop", "--yes"}, "-o", "json")
 		require.NoError(t, err)
@@ -206,8 +207,8 @@ func TestAppsConfigure_PostWriteDiscoveryFailure_StillEmitsResult(t *testing.T) 
 // partial stdout write).
 func TestAppsConfigure_PreWriteDiscoveryFailure_ReturnsError(t *testing.T) {
 	t.Setenv("GCX_AGENT_MODE", "false")
-	agent.ResetForTesting()
-	t.Cleanup(agent.ResetForTesting)
+	agent.ResetForTesting(t.Context())
+	t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 	client := &fakeAppsClient{
 		getResponses: []getResponse{{namespaces: []instrumentation.App{

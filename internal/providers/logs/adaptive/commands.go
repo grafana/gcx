@@ -97,7 +97,7 @@ func adaptiveDeleteCommand(short, noun, kind string, del func(ctx context.Contex
 				return err
 			}
 
-			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
+			proceed, err := providers.ConfirmDestructive(cmd.Context(), cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
 				fmt.Sprintf("Delete %s %q?", noun, args[0]))
 			if err != nil {
 				return err

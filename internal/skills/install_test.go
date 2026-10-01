@@ -49,7 +49,7 @@ func TestInstall(t *testing.T) {
 				require.NoError(t, os.MkdirAll(filepath.Dir(file), 0o755))
 				require.NoError(t, os.WriteFile(file, []byte(tc.initial), 0o600))
 			}
-			result, err := skills.Install(source, catalog, root, tc.filter, tc.force, tc.dryRun)
+			result, err := skills.Install(t.Context(), source, catalog, root, tc.filter, tc.force, tc.dryRun)
 			if tc.err != "" {
 				require.ErrorContains(t, err, tc.err)
 				return
@@ -90,12 +90,12 @@ func TestRetiredInstallationWithoutSkillDocument(t *testing.T) {
 			require.NoError(t, os.MkdirAll(dir, 0o755))
 			require.NoError(t, os.WriteFile(filepath.Join(dir, "notes.md"), []byte("local edits"), 0o600))
 			catalog := []byte("skills: {old: {status: retired}}")
-			result, err := skills.Update(fstest.MapFS{}, catalog, root, nil, false)
+			result, err := skills.Update(t.Context(), fstest.MapFS{}, catalog, root, nil, false)
 			require.NoError(t, err)
 			require.Len(t, result.Notices, 1)
 			require.Equal(t, skills.Retired, result.Notices[0].Status)
 			require.FileExists(t, filepath.Join(dir, "notes.md"))
-			removed, err := skills.Uninstall(fstest.MapFS{}, catalog, root, []string{"old"}, false, dryRun)
+			removed, err := skills.Uninstall(t.Context(), fstest.MapFS{}, catalog, root, []string{"old"}, false, dryRun)
 			require.NoError(t, err)
 			require.Equal(t, []string{"old"}, removed.Removed)
 			if dryRun {
@@ -113,7 +113,7 @@ func TestUninstallSymlink(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(target, "SKILL.md"), []byte("external"), 0o600))
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "skills"), 0o755))
 	require.NoError(t, os.Symlink(target, filepath.Join(root, "skills", "old")))
-	result, err := skills.Uninstall(fstest.MapFS{}, []byte("skills: {old: {status: retired}}"), root, nil, true, false)
+	result, err := skills.Uninstall(t.Context(), fstest.MapFS{}, []byte("skills: {old: {status: retired}}"), root, nil, true, false)
 	require.NoError(t, err)
 	require.Equal(t, []string{"old"}, result.Removed)
 	require.FileExists(t, filepath.Join(target, "SKILL.md"))

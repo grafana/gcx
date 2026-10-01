@@ -21,23 +21,23 @@ const (
 // MaybeNotifySkills runs the default skills notifier check and writes a message
 // to dst when installed gcx skills can be updated or retired copies remain. The check is throttled
 // via persisted state; repeated calls within the interval are silent.
-func MaybeNotifySkills(dst io.Writer) error {
-	root, err := skillops.ResolveInstallRoot("")
+func MaybeNotifySkills(ctx context.Context, dst io.Writer) error {
+	root, err := skillops.ResolveInstallRoot(ctx, "")
 	if err != nil {
 		return err
 	}
 
-	return maybeNotifySkillsAt(claudeplugin.SkillsFS(), claudeplugin.SkillsCatalog(), dst, StatePath(), root, time.Now())
+	return maybeNotifySkillsAt(ctx, claudeplugin.SkillsFS(), claudeplugin.SkillsCatalog(), dst, StatePath(ctx), root, time.Now())
 }
 
 // MaybeNotifyVersion runs the default gcx version update check. Network errors
 // are treated as silent misses so notification checks never affect CLI commands.
 func MaybeNotifyVersion(ctx context.Context, dst io.Writer, currentVersion string) error {
-	return maybeNotifyVersionAt(ctx, dst, StatePath(), currentVersion, time.Now(), http.DefaultClient, latestReleaseURL)
+	return maybeNotifyVersionAt(ctx, dst, StatePath(ctx), currentVersion, time.Now(), http.DefaultClient, latestReleaseURL)
 }
 
-func maybeNotifySkillsAt(source fs.FS, catalog []byte, dst io.Writer, statePath, root string, now time.Time) error {
-	state, err := LoadState(statePath)
+func maybeNotifySkillsAt(ctx context.Context, source fs.FS, catalog []byte, dst io.Writer, statePath, root string, now time.Time) error {
+	state, err := LoadState(ctx, statePath)
 	if err != nil {
 		return err
 	}
@@ -45,13 +45,13 @@ func maybeNotifySkillsAt(source fs.FS, catalog []byte, dst io.Writer, statePath,
 		return nil
 	}
 
-	msg, err := SkillsUpdateMessage(source, catalog, root)
+	msg, err := SkillsUpdateMessage(ctx, source, catalog, root)
 	if err != nil {
 		return err
 	}
 
 	MarkRan(&state, SkillsCheckKey, now)
-	if err := SaveState(statePath, state); err != nil {
+	if err := SaveState(ctx, statePath, state); err != nil {
 		return err
 	}
 	if msg == "" {
@@ -63,7 +63,7 @@ func maybeNotifySkillsAt(source fs.FS, catalog []byte, dst io.Writer, statePath,
 }
 
 func maybeNotifyVersionAt(ctx context.Context, dst io.Writer, statePath, currentVersion string, now time.Time, client *http.Client, url string) error {
-	state, err := LoadState(statePath)
+	state, err := LoadState(ctx, statePath)
 	if err != nil {
 		return err
 	}
@@ -77,7 +77,7 @@ func maybeNotifyVersionAt(ctx context.Context, dst io.Writer, statePath, current
 	}
 
 	MarkRan(&state, VersionCheckKey, now)
-	if err := SaveState(statePath, state); err != nil {
+	if err := SaveState(ctx, statePath, state); err != nil {
 		return err
 	}
 	if msg == "" {

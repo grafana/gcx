@@ -11,7 +11,7 @@ func TestLoadState_MissingFileReturnsEmptyState(t *testing.T) {
 	t.Parallel()
 
 	path := filepath.Join(t.TempDir(), "state.yml")
-	state, err := LoadState(path)
+	state, err := LoadState(t.Context(), path)
 	if err != nil {
 		t.Fatalf("LoadState() error = %v", err)
 	}
@@ -32,7 +32,7 @@ func TestSaveState_RoundTrip(t *testing.T) {
 		},
 	}
 
-	if err := SaveState(path, original); err != nil {
+	if err := SaveState(t.Context(), path, original); err != nil {
 		t.Fatalf("SaveState() error = %v", err)
 	}
 
@@ -44,7 +44,7 @@ func TestSaveState_RoundTrip(t *testing.T) {
 		t.Fatalf("state file perms = %v, want 0600", got)
 	}
 
-	loaded, err := LoadState(path)
+	loaded, err := LoadState(t.Context(), path)
 	if err != nil {
 		t.Fatalf("LoadState() error = %v", err)
 	}
@@ -67,7 +67,7 @@ func TestLoadState_CorruptYAMLSelfHeals(t *testing.T) {
 		t.Fatalf("seed corrupt state: %v", err)
 	}
 
-	state, err := LoadState(path)
+	state, err := LoadState(t.Context(), path)
 	if err != nil {
 		t.Fatalf("LoadState() error = %v, want nil (self-heal)", err)
 	}
@@ -83,7 +83,7 @@ func TestSaveState_AtomicWriteCleansTmpFile(t *testing.T) {
 	path := filepath.Join(dir, "state.yml")
 	now := time.Date(2026, 4, 24, 12, 0, 0, 0, time.UTC)
 
-	if err := SaveState(path, State{Checks: map[string]CheckState{"skills": {LastCheckedAt: now}}}); err != nil {
+	if err := SaveState(t.Context(), path, State{Checks: map[string]CheckState{"skills": {LastCheckedAt: now}}}); err != nil {
 		t.Fatalf("SaveState() error = %v", err)
 	}
 

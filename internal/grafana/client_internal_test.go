@@ -134,7 +134,7 @@ func TestGetVersionUsesOnlySelectedGrafanaAuth(t *testing.T) {
 			resolved := &config.Context{Name: "selected", Grafana: &grafanaCfg}
 			if tc.runtimeToken != "" {
 				t.Setenv("GRAFANA_TOKEN", tc.runtimeToken)
-				if err := config.ParseEnvIntoContext(resolved); err != nil {
+				if err := config.ParseEnvIntoContext(t.Context(), resolved); err != nil {
 					t.Fatalf("ParseEnvIntoContext() error = %v", err)
 				}
 			}

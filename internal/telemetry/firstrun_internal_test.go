@@ -14,7 +14,7 @@ func TestFirstRunNoticeShownOnceThenSuppressed(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "gcx", firstRunNoticeFileName)
 
 	var first strings.Builder
-	maybeShowFirstRunNotice(&first, ModeEnabled, true, false, false, path)
+	maybeShowFirstRunNotice(t.Context(), &first, ModeEnabled, true, false, false, path)
 	assert.Equal(t, firstRunNotice, first.String())
 	assert.Contains(t, first.String(), "GCX_TELEMETRY=disabled")
 	// The config opt-out must be paste-ready YAML, not an inline key that the
@@ -28,7 +28,7 @@ func TestFirstRunNoticeShownOnceThenSuppressed(t *testing.T) {
 	require.NoError(t, err, "showing the notice must write the flag file")
 
 	var second strings.Builder
-	maybeShowFirstRunNotice(&second, ModeEnabled, true, false, false, path)
+	maybeShowFirstRunNotice(t.Context(), &second, ModeEnabled, true, false, false, path)
 	assert.Empty(t, second.String(), "flag file must suppress the notice")
 }
 
@@ -52,7 +52,7 @@ func TestFirstRunNoticeReshownAfterRevisionBump(t *testing.T) {
 			require.NoError(t, os.WriteFile(path, stale.content, 0o600))
 
 			var out strings.Builder
-			maybeShowFirstRunNotice(&out, ModeEnabled, true, false, false, path)
+			maybeShowFirstRunNotice(t.Context(), &out, ModeEnabled, true, false, false, path)
 			assert.Equal(t, firstRunNotice, out.String(),
 				"a changed disclosure must reach installs that saw an earlier one")
 
@@ -62,7 +62,7 @@ func TestFirstRunNoticeReshownAfterRevisionBump(t *testing.T) {
 				"the flag file must record the revision just shown")
 
 			var again strings.Builder
-			maybeShowFirstRunNotice(&again, ModeEnabled, true, false, false, path)
+			maybeShowFirstRunNotice(t.Context(), &again, ModeEnabled, true, false, false, path)
 			assert.Empty(t, again.String(), "the revised notice must then be suppressed")
 		})
 	}
@@ -149,7 +149,7 @@ func TestFirstRunNoticeSuppressedWhenNotInteractive(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "gcx", firstRunNoticeFileName)
 
 			var out strings.Builder
-			maybeShowFirstRunNotice(&out, ModeEnabled, tc.isTTY, tc.isCI, tc.isAgent, path)
+			maybeShowFirstRunNotice(t.Context(), &out, ModeEnabled, tc.isTTY, tc.isCI, tc.isAgent, path)
 			assert.Empty(t, out.String())
 
 			_, err := os.Stat(path)
@@ -164,7 +164,7 @@ func TestFirstRunNoticeSuppressedWhenModeNotEnabled(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "gcx", firstRunNoticeFileName)
 
 			var out strings.Builder
-			maybeShowFirstRunNotice(&out, mode, true, false, false, path)
+			maybeShowFirstRunNotice(t.Context(), &out, mode, true, false, false, path)
 			assert.Empty(t, out.String())
 
 			_, err := os.Stat(path)
@@ -176,10 +176,10 @@ func TestFirstRunNoticeSuppressedWhenModeNotEnabled(t *testing.T) {
 func TestFirstRunNoticeSkippedWhenStateHomeUnknown(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", "")
 	t.Setenv("HOME", "")
-	assert.Empty(t, FirstRunNoticePath(), "unknown state home must not yield a relative path")
+	assert.Empty(t, FirstRunNoticePath(t.Context()), "unknown state home must not yield a relative path")
 
 	var out strings.Builder
-	maybeShowFirstRunNotice(&out, ModeEnabled, true, false, false, FirstRunNoticePath())
+	maybeShowFirstRunNotice(t.Context(), &out, ModeEnabled, true, false, false, FirstRunNoticePath(t.Context()))
 	assert.Empty(t, out.String(), "unknown state home must skip the notice, not repeat it")
 }
 
@@ -197,7 +197,7 @@ func TestFirstRunNoticeSkippedWhenStateFileUnreadable(t *testing.T) {
 	require.NoError(t, os.WriteFile(path, []byte(noticeRevision+"\n"), 0o200))
 
 	var out strings.Builder
-	maybeShowFirstRunNotice(&out, ModeEnabled, true, false, false, path)
+	maybeShowFirstRunNotice(t.Context(), &out, ModeEnabled, true, false, false, path)
 	assert.Empty(t, out.String(), "an unreadable flag file must skip the notice, not repeat it")
 }
 
@@ -240,6 +240,6 @@ func TestFirstRunNoticeSkippedWhenStateDirUnwritable(t *testing.T) {
 	path := filepath.Join(readonly, "gcx", firstRunNoticeFileName)
 
 	var out strings.Builder
-	maybeShowFirstRunNotice(&out, ModeEnabled, true, false, false, path)
+	maybeShowFirstRunNotice(t.Context(), &out, ModeEnabled, true, false, false, path)
 	assert.Empty(t, out.String(), "unwritable flag file must skip the notice, not repeat it")
 }

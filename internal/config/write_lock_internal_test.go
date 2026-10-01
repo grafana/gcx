@@ -66,9 +66,9 @@ func TestWriteLockIdentityGovernsWriteLockSkip(t *testing.T) {
 			targetPath := writeTestConfig(t, writeLockTestConfig)
 			otherPath := writeTestConfig(t, writeLockTestConfig)
 
-			targetIdentity, err := canonicalConfigSourceForLayer(targetPath, "")
+			targetIdentity, err := canonicalConfigSourceForLayer(t.Context(), targetPath, "")
 			require.NoError(t, err)
-			otherIdentity, err := canonicalConfigSourceForLayer(otherPath, "")
+			otherIdentity, err := canonicalConfigSourceForLayer(t.Context(), otherPath, "")
 			require.NoError(t, err)
 			require.NotEqual(t, targetIdentity, otherIdentity)
 
@@ -84,7 +84,7 @@ func TestWriteLockIdentityGovernsWriteLockSkip(t *testing.T) {
 			require.NoError(t, err)
 
 			// Stand in for another process that holds the target's write lock.
-			targetLockPath, err := configLockFile(targetIdentity)
+			targetLockPath, err := configLockFile(t.Context(), targetIdentity)
 			require.NoError(t, err)
 			foreign := flock.New(targetLockPath)
 			locked, err := foreign.TryLock()

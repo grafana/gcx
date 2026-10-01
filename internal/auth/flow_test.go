@@ -65,7 +65,7 @@ func TestGCOMFlowRun_RejectsUntrustedURL(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var writer bytes.Buffer
-			flow := auth.NewGCOMFlow(auth.GCOMOptions{
+			flow := auth.NewGCOMFlow(t.Context(), auth.GCOMOptions{
 				GCOMURL: tt.gcomURL,
 				Writer:  &writer,
 			})
@@ -98,7 +98,7 @@ func TestFlowRun_FailsBeforeBrowserOutputWhenFixedPortUnavailable(t *testing.T) 
 	}
 	port := tcpAddr.Port
 	var writer bytes.Buffer
-	flow := auth.NewFlow("https://mystack.grafana.net", auth.Options{
+	flow := auth.NewFlow(t.Context(), "https://mystack.grafana.net", auth.Options{
 		Port:   port,
 		Writer: &writer,
 	})

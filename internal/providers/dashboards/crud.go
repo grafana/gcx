@@ -513,7 +513,7 @@ func newDeleteCommandWithDeps(deps *mutationDeps) *cobra.Command {
 			// The prompt and the "Aborted." note are interaction
 			// diagnostics, not the result — stderr keeps them out of the
 			// stdout document (Constitution: stdout is the result).
-			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
+			proceed, err := providers.ConfirmDestructive(cmd.Context(), cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
 				fmt.Sprintf("Delete dashboard %q?", name))
 			if err != nil {
 				return err

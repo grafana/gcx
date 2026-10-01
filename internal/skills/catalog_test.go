@@ -119,7 +119,7 @@ func TestReconcile(t *testing.T) {
 					require.NoError(t, os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("local"), 0o600))
 				}
 			}
-			states, err := skills.Reconcile(source, catalog, root)
+			states, err := skills.Reconcile(t.Context(), source, catalog, root)
 			require.NoError(t, err)
 			byName := make(map[string]skills.SkillState)
 			for _, state := range states {
@@ -180,7 +180,7 @@ func TestReconcile_StatErrorsDoNotBlockOtherSkills(t *testing.T) {
 				require.NotErrorIs(t, err, os.ErrNotExist)
 			}
 
-			states, err := skills.Reconcile(source, catalog, root)
+			states, err := skills.Reconcile(t.Context(), source, catalog, root)
 			require.NoError(t, err)
 			require.Len(t, states, 3)
 			for _, state := range states {
@@ -191,21 +191,21 @@ func TestReconcile_StatErrorsDoNotBlockOtherSkills(t *testing.T) {
 					require.Empty(t, state.Status)
 				}
 			}
-			listed, err := skills.List(source, catalog, root)
+			listed, err := skills.List(t.Context(), source, catalog, root)
 			require.NoError(t, err)
 			require.Len(t, listed.Skills, 2)
 			require.Equal(t, "broken", listed.Skills[0].Name)
 			require.False(t, listed.Skills[0].Installed)
-			_, err = skills.Install(source, catalog, root, map[string]struct{}{"healthy": {}}, false, true)
+			_, err = skills.Install(t.Context(), source, catalog, root, map[string]struct{}{"healthy": {}}, false, true)
 			require.NoError(t, err)
-			_, err = skills.Update(source, catalog, root, nil, true)
+			_, err = skills.Update(t.Context(), source, catalog, root, nil, true)
 			require.NoError(t, err)
-			removed, err := skills.Uninstall(source, catalog, root, []string{"healthy"}, false, false)
+			removed, err := skills.Uninstall(t.Context(), source, catalog, root, []string{"healthy"}, false, false)
 			require.NoError(t, err)
 			require.Equal(t, []string{"healthy"}, removed.Removed)
 			require.NoDirExists(t, healthy)
 			if failure == "symlink loop" {
-				removed, err = skills.Uninstall(source, catalog, root, []string{"broken"}, false, false)
+				removed, err = skills.Uninstall(t.Context(), source, catalog, root, []string{"broken"}, false, false)
 				require.NoError(t, err)
 				require.Equal(t, []string{"broken"}, removed.Removed)
 			}

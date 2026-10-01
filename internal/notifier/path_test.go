@@ -9,7 +9,7 @@ import (
 func TestStatePath_UsesXDGStateHomeWhenSet(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", "/tmp/xdg-state")
 
-	path := StatePath()
+	path := StatePath(t.Context())
 	want := filepath.Join("/tmp/xdg-state", "gcx", "notifier.yml")
 	if path != want {
 		t.Fatalf("StatePath() = %q, want %q", path, want)
@@ -26,12 +26,12 @@ func TestStatePath_RoundTripsStateViaLoadAndSave(t *testing.T) {
 		"skills": {LastCheckedAt: now},
 	}}
 
-	path := StatePath()
-	if err := SaveState(path, state); err != nil {
+	path := StatePath(t.Context())
+	if err := SaveState(t.Context(), path, state); err != nil {
 		t.Fatalf("SaveState() error = %v", err)
 	}
 
-	loaded, err := LoadState(path)
+	loaded, err := LoadState(t.Context(), path)
 	if err != nil {
 		t.Fatalf("LoadState() error = %v", err)
 	}

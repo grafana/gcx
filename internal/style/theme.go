@@ -4,15 +4,16 @@
 package style
 
 import (
+	"context"
 	"fmt"
 	"image/color"
 	"math"
-	"os"
 	"strings"
 	"sync/atomic"
 
 	"charm.land/lipgloss/v2"
 	"github.com/grafana/gcx/internal/agent"
+	"github.com/grafana/gcx/internal/host"
 	"github.com/grafana/gcx/internal/terminal"
 )
 
@@ -49,6 +50,17 @@ var (
 //nolint:gochecknoglobals
 var disabledOverride atomic.Bool
 
+// noColorEnv records whether NO_COLOR was set in the process environment.
+// Per-invocation NO_COLOR is applied through SetEnabled by the CLI layer.
+//
+//nolint:gochecknoglobals
+var noColorEnv atomic.Bool
+
+func init() { //nolint:gochecknoinits
+	// The process environment, read once at startup.
+	noColorEnv.Store(host.Getenv(context.Background(), "NO_COLOR") != "")
+}
+
 // SetEnabled controls whether styling is active. Pass false to force plain
 // output (used by --no-color). The default is determined by TTY detection.
 func SetEnabled(enabled bool) {
@@ -59,7 +71,7 @@ func SetEnabled(enabled bool) {
 // Returns false when stdout is piped, agent mode is active, the user
 // passed --no-color, or stdout is not a real TTY.
 func IsStylingEnabled() bool {
-	if disabledOverride.Load() || os.Getenv("NO_COLOR") != "" {
+	if disabledOverride.Load() || noColorEnv.Load() {
 		return false
 	}
 	if terminal.IsPiped() || agent.IsAgentMode() {

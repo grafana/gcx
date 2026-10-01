@@ -66,12 +66,12 @@ prompt; use --dry-run to preview the change.`,
 			ctx := cmd.Context()
 			uid := args[0]
 
-			manifest, err := dsclient.ReadManifestFile(opts.File, cmd.InOrStdin())
+			manifest, err := dsclient.ReadManifestFile(ctx, opts.File, cmd.InOrStdin())
 			if err != nil {
 				return err
 			}
 			manifest.Metadata.Name = uid
-			if err := manifest.ResolveSecrets(opts.SecretsFile); err != nil {
+			if err := manifest.ResolveSecrets(ctx, opts.SecretsFile); err != nil {
 				return err
 			}
 

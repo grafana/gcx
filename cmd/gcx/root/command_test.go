@@ -206,7 +206,7 @@ func TestValidateArgs_AllowsHelpAndCompletionCommands(t *testing.T) {
 func TestSkillsInstallUpdate_EndToEndThroughRootCommand(t *testing.T) {
 	t.Setenv("GCX_NO_UPDATE_NOTIFIER", "1")
 	t.Setenv("GCX_AGENT_MODE", "false")
-	agent.ResetForTesting()
+	agent.ResetForTesting(t.Context())
 
 	installRoot := filepath.Join(t.TempDir(), ".agents")
 

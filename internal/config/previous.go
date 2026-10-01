@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gofrs/flock"
+	"github.com/grafana/gcx/internal/host"
 	"github.com/grafana/gcx/internal/xdg"
 )
 
@@ -18,8 +19,8 @@ const previousContextFileName = "previous-context"
 // PreviousContextPath returns the file path where the previous context name
 // is persisted. The file lives under the platform-appropriate XDG state
 // directory and is created on demand by WritePreviousContext.
-func PreviousContextPath() string {
-	return filepath.Join(xdg.StateHome(), "gcx", previousContextFileName)
+func PreviousContextPath(ctx context.Context) string {
+	return filepath.Join(xdg.StateHome(ctx), "gcx", previousContextFileName)
 }
 
 // ReadPreviousContext returns the previous context name as last persisted by
@@ -29,8 +30,8 @@ func PreviousContextPath() string {
 // Reads are unlocked: WritePreviousContext swaps the file in via an atomic
 // rename, so a concurrent read always observes either the complete old or the
 // complete new file, never a partial write.
-func ReadPreviousContext() (string, error) {
-	data, err := os.ReadFile(PreviousContextPath())
+func ReadPreviousContext(ctx context.Context) (string, error) {
+	data, err := host.ReadFile(ctx, PreviousContextPath(ctx))
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return "", nil
@@ -57,9 +58,9 @@ func WritePreviousContext(ctx context.Context, name string) error {
 		return errors.New("previous context name cannot be empty")
 	}
 
-	path := PreviousContextPath()
+	path := PreviousContextPath(ctx)
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := host.MkdirAll(ctx, dir, 0o755); err != nil {
 		return fmt.Errorf("create previous-context dir: %w", err)
 	}
 
@@ -76,12 +77,12 @@ func WritePreviousContext(ctx context.Context, name string) error {
 
 	// os.CreateTemp creates the file with 0o600 perms, matching the previous
 	// fixed-name write.
-	tmp, err := os.CreateTemp(dir, previousContextFileName+"-*.tmp")
+	tmp, err := host.CreateTemp(ctx, dir, previousContextFileName+"-*.tmp")
 	if err != nil {
 		return fmt.Errorf("create previous-context temp: %w", err)
 	}
 	tmpName := tmp.Name()
-	defer func() { _ = os.Remove(tmpName) }() // no-op once renamed
+	defer func() { _ = host.Remove(ctx, tmpName) }() // no-op once renamed
 
 	if _, err := tmp.WriteString(name + "\n"); err != nil {
 		_ = tmp.Close()
@@ -90,7 +91,7 @@ func WritePreviousContext(ctx context.Context, name string) error {
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("close previous-context temp: %w", err)
 	}
-	if err := os.Rename(tmpName, path); err != nil {
+	if err := host.Rename(ctx, tmpName, path); err != nil {
 		return fmt.Errorf("rename previous-context: %w", err)
 	}
 	return nil

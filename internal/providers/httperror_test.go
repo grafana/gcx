@@ -1,6 +1,7 @@
 package providers_test
 
 import (
+	"context"
 	"errors"
 	"io"
 	"net/http"
@@ -124,13 +125,13 @@ func TestConfirmDestructive_NonInteractiveEOF(t *testing.T) {
 	// GCX_AUTO_APPROVE would bypass the prompt entirely.
 	t.Setenv("GCX_AGENT_MODE", "false")
 	t.Setenv("GCX_AUTO_APPROVE", "false")
-	agent.ResetForTesting()
-	t.Cleanup(agent.ResetForTesting)
+	agent.ResetForTesting(t.Context())
+	t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 	// Empty stdin (no newline): the read fails with EOF and the error must
 	// tell the user how to proceed rather than leaking a bare read error.
 	var out strings.Builder
-	ok, err := providers.ConfirmDestructive(strings.NewReader(""), &out, false, "Delete it?")
+	ok, err := providers.ConfirmDestructive(t.Context(), strings.NewReader(""), &out, false, "Delete it?")
 	require.Error(t, err)
 	assert.False(t, ok)
 	assert.Contains(t, err.Error(), "use --force")

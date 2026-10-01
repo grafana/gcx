@@ -36,14 +36,14 @@ func TestMaybeNotifySkillsAt_WritesMessageAndStateWhenDue(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	if err := maybeNotifySkillsAt(testRunSkillsFS(), []byte("skills:\n  alpha: {status: active}\n"), &out, statePath, root, now); err != nil {
+	if err := maybeNotifySkillsAt(t.Context(), testRunSkillsFS(), []byte("skills:\n  alpha: {status: active}\n"), &out, statePath, root, now); err != nil {
 		t.Fatalf("maybeNotifySkillsAt() error = %v", err)
 	}
 	if !strings.Contains(out.String(), "Run: gcx agent skills update") {
 		t.Fatalf("output = %q, want skills update hint", out.String())
 	}
 
-	state, err := LoadState(statePath)
+	state, err := LoadState(t.Context(), statePath)
 	if err != nil {
 		t.Fatalf("LoadState() error = %v", err)
 	}
@@ -62,19 +62,19 @@ func TestMaybeNotifySkillsAt_SkipsWhenNotDue(t *testing.T) {
 	state := State{Checks: map[string]CheckState{
 		SkillsCheckKey: {LastCheckedAt: now.Add(-time.Hour)},
 	}}
-	if err := SaveState(statePath, state); err != nil {
+	if err := SaveState(t.Context(), statePath, state); err != nil {
 		t.Fatalf("SaveState() error = %v", err)
 	}
 
 	var out bytes.Buffer
-	if err := maybeNotifySkillsAt(testRunSkillsFS(), []byte("skills:\n  alpha: {status: active}\n"), &out, statePath, root, now); err != nil {
+	if err := maybeNotifySkillsAt(t.Context(), testRunSkillsFS(), []byte("skills:\n  alpha: {status: active}\n"), &out, statePath, root, now); err != nil {
 		t.Fatalf("maybeNotifySkillsAt() error = %v", err)
 	}
 	if out.Len() != 0 {
 		t.Fatalf("output = %q, want empty", out.String())
 	}
 
-	loaded, err := LoadState(statePath)
+	loaded, err := LoadState(t.Context(), statePath)
 	if err != nil {
 		t.Fatalf("LoadState() error = %v", err)
 	}
@@ -101,14 +101,14 @@ func TestMaybeNotifySkillsAt_NoUpdateNeededMarksStateWithoutOutput(t *testing.T)
 	}
 
 	var out bytes.Buffer
-	if err := maybeNotifySkillsAt(testRunSkillsFS(), []byte("skills:\n  alpha: {status: active}\n"), &out, statePath, root, now); err != nil {
+	if err := maybeNotifySkillsAt(t.Context(), testRunSkillsFS(), []byte("skills:\n  alpha: {status: active}\n"), &out, statePath, root, now); err != nil {
 		t.Fatalf("maybeNotifySkillsAt() error = %v", err)
 	}
 	if out.Len() != 0 {
 		t.Fatalf("output = %q, want empty", out.String())
 	}
 
-	state, err := LoadState(statePath)
+	state, err := LoadState(t.Context(), statePath)
 	if err != nil {
 		t.Fatalf("LoadState() error = %v", err)
 	}
@@ -135,7 +135,7 @@ func TestMaybeNotifyVersionAt_WritesMessageAndStateWhenDue(t *testing.T) {
 		t.Fatalf("output = %q, want version update notice", out.String())
 	}
 
-	state, err := LoadState(statePath)
+	state, err := LoadState(t.Context(), statePath)
 	if err != nil {
 		t.Fatalf("LoadState() error = %v", err)
 	}
@@ -152,7 +152,7 @@ func TestMaybeNotifyVersionAt_SkipsWhenNotDue(t *testing.T) {
 	state := State{Checks: map[string]CheckState{
 		VersionCheckKey: {LastCheckedAt: now.Add(-time.Hour)},
 	}}
-	if err := SaveState(statePath, state); err != nil {
+	if err := SaveState(t.Context(), statePath, state); err != nil {
 		t.Fatalf("SaveState() error = %v", err)
 	}
 
@@ -193,7 +193,7 @@ func TestMaybeNotifyVersionAt_FetchErrorIsSilentAndDoesNotMarkState(t *testing.T
 		t.Fatalf("output = %q, want empty", out.String())
 	}
 
-	state, err := LoadState(statePath)
+	state, err := LoadState(t.Context(), statePath)
 	if err != nil {
 		t.Fatalf("LoadState() error = %v", err)
 	}

@@ -65,7 +65,7 @@ func TestReconcileMarksTheAbandonedGenerationWhenDisabled(t *testing.T) {
 	require.NoError(t, err)
 	cfg.Stacks["default"].Grafana.APIToken = "replacement-token"
 
-	txn, err := reconcileKeychain(&cfg, store, &boundTestLogger{})
+	txn, err := reconcileKeychain(t.Context(), &cfg, store, &boundTestLogger{})
 	require.NoError(t, err)
 	assert.True(t, txn.abandonedGeneration,
 		"replacing a referenced credential through a disabled store abandons the old generation")

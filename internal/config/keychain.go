@@ -1,6 +1,7 @@
 package config
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/grafana/gcx/internal/credentials"
 	"github.com/grafana/gcx/internal/gcxerrors"
+	"github.com/grafana/gcx/internal/host"
 	"github.com/grafana/gcx/internal/output"
 	"github.com/grafana/grafana-app-sdk/logging"
 )
@@ -125,7 +127,7 @@ type secretOwner struct {
 	layer       string
 	fields      []credentials.Field
 	ref         func(field credentials.Field) (secretRef, bool)
-	destination func(field credentials.Field) string
+	destination func(ctx context.Context, field credentials.Field) string
 	reject      func(field credentials.Field, reason string, causes ...error)
 	clearReject func(field credentials.Field)
 }
@@ -147,12 +149,14 @@ var (
 
 func stackOwner(name string, stack *StackConfig) secretOwner {
 	return secretOwner{
-		key:         credentials.StackOwner(name),
-		source:      stack.sourceIdentity,
-		layer:       stack.sourceLayer,
-		fields:      stackSecretFields,
-		ref:         func(field credentials.Field) (secretRef, bool) { return stackFieldRef(stack, field) },
-		destination: func(field credentials.Field) string { return stackSecretDestination(stack, field) },
+		key:    credentials.StackOwner(name),
+		source: stack.sourceIdentity,
+		layer:  stack.sourceLayer,
+		fields: stackSecretFields,
+		ref:    func(field credentials.Field) (secretRef, bool) { return stackFieldRef(stack, field) },
+		destination: func(ctx context.Context, field credentials.Field) string {
+			return stackSecretDestination(ctx, stack, field)
+		},
 		reject:      stack.rejectCredential,
 		clearReject: stack.clearCredentialRejection,
 	}
@@ -165,7 +169,7 @@ func cloudOwner(name string, entry *CloudEntry) secretOwner {
 		layer:       entry.sourceLayer,
 		fields:      cloudSecretFields,
 		ref:         func(field credentials.Field) (secretRef, bool) { return cloudFieldRef(entry, field) },
-		destination: func(credentials.Field) string { return cloudSecretDestination(entry) },
+		destination: func(context.Context, credentials.Field) string { return cloudSecretDestination(entry) },
 		reject:      entry.rejectCredential,
 		clearReject: entry.clearCredentialRejection,
 	}
@@ -175,12 +179,12 @@ func (owner secretOwner) stateKey(field credentials.Field) keychainStateKey {
 	return keychainStateKey{source: owner.source, owner: owner.key, field: field}
 }
 
-func (owner secretOwner) binding(field credentials.Field) credentials.Binding {
+func (owner secretOwner) binding(ctx context.Context, field credentials.Field) credentials.Binding {
 	return credentials.Binding{
 		Source:      owner.source,
 		Owner:       owner.key,
 		Field:       field,
-		Destination: owner.destination(field),
+		Destination: owner.destination(ctx, field),
 	}
 }
 
@@ -201,29 +205,29 @@ func (cfg *Config) secretOwners() []secretOwner {
 	return owners
 }
 
-func canonicalConfigSource(path string) (string, error) {
+func canonicalConfigSource(ctx context.Context, path string) (string, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return "", fmt.Errorf("resolve config path: %w", err)
 	}
 	abs = filepath.Clean(abs)
-	if resolved, err := filepath.EvalSymlinks(abs); err == nil {
+	if resolved, err := host.EvalSymlinks(ctx, abs); err == nil {
 		return filepath.Clean(resolved), nil
 	}
 	// A new config file may not exist yet. Canonicalize its parent so aliases
 	// through a symlinked directory still share one credential namespace.
 	parent := filepath.Dir(abs)
-	if resolvedParent, err := filepath.EvalSymlinks(parent); err == nil {
+	if resolvedParent, err := host.EvalSymlinks(ctx, parent); err == nil {
 		return filepath.Join(resolvedParent, filepath.Base(abs)), nil
 	}
 	return abs, nil
 }
 
-func canonicalConfigSourceForLayer(path, layer string) (string, error) {
+func canonicalConfigSourceForLayer(ctx context.Context, path, layer string) (string, error) {
 	if layer != "local" {
-		return canonicalConfigSource(path)
+		return canonicalConfigSource(ctx, path)
 	}
-	info, err := os.Lstat(path)
+	info, err := host.Lstat(ctx, path)
 	if err != nil {
 		return "", err
 	}
@@ -235,7 +239,7 @@ func canonicalConfigSourceForLayer(path, layer string) (string, error) {
 		return "", fmt.Errorf("resolve config path: %w", err)
 	}
 	parent := filepath.Dir(filepath.Clean(abs))
-	if resolvedParent, err := filepath.EvalSymlinks(parent); err == nil {
+	if resolvedParent, err := host.EvalSymlinks(ctx, parent); err == nil {
 		parent = resolvedParent
 	}
 	return filepath.Join(parent, filepath.Base(abs)), nil
@@ -261,7 +265,7 @@ func (cfg *Config) bindSourceIdentity(source string) {
 // override can redirect its destination. This covers keychain-unavailable and
 // intentionally plaintext configs; successfully resolved sentinels are tracked
 // by keychainStates instead.
-func (cfg *Config) capturePlaintextCredentialOrigins() {
+func (cfg *Config) capturePlaintextCredentialOrigins(ctx context.Context) {
 	if cfg.credentialOrigins == nil {
 		cfg.credentialOrigins = credentialOriginSet{}
 	}
@@ -276,17 +280,17 @@ func (cfg *Config) capturePlaintextCredentialOrigins() {
 				continue
 			}
 			cfg.credentialOrigins[owner.stateKey(field)] = credentialOrigin{
-				binding: owner.binding(field),
+				binding: owner.binding(ctx, field),
 				value:   value,
 			}
 		}
 	}
 }
 
-func stackSecretDestination(stack *StackConfig, field credentials.Field) string {
+func stackSecretDestination(ctx context.Context, stack *StackConfig, field credentials.Field) string {
 	grafanaDestination := "server=" + grafanaServerDestination(stack) +
 		"|proxy=" + grafanaProxyDestination(stack) +
-		"|tls=" + grafanaTLSDestination(stack)
+		"|tls=" + grafanaTLSDestination(ctx, stack)
 	if field == credentials.FieldSMToken {
 		var smURL string
 		if stack.Providers != nil && stack.Providers["synth"] != nil {
@@ -310,14 +314,14 @@ func stackSecretDestination(stack *StackConfig, field credentials.Field) string 
 // Evaluating the destination captures any file-backed TLS material exactly as
 // the keychain binding does. Callers can therefore use this before network or
 // persistence without reimplementing the security-critical fingerprint rules.
-func GrafanaBearerCredentialDestinationMatches(left, right *GrafanaConfig) bool {
+func GrafanaBearerCredentialDestinationMatches(ctx context.Context, left, right *GrafanaConfig) bool {
 	if left == nil || right == nil {
 		return false
 	}
 	leftStack := &StackConfig{Grafana: left}
 	rightStack := &StackConfig{Grafana: right}
-	return stackSecretDestination(leftStack, credentials.FieldGrafanaToken) ==
-		stackSecretDestination(rightStack, credentials.FieldGrafanaToken)
+	return stackSecretDestination(ctx, leftStack, credentials.FieldGrafanaToken) ==
+		stackSecretDestination(ctx, rightStack, credentials.FieldGrafanaToken)
 }
 
 // GrafanaTokenBindingMatches reports whether a stored service-account token's
@@ -325,16 +329,16 @@ func GrafanaBearerCredentialDestinationMatches(left, right *GrafanaConfig) bool 
 // destination. requestedServer is the CLI-selected server after flag and
 // environment precedence; the effective context supplies proxy and TLS state.
 // A missing or unbound context fails closed.
-func GrafanaTokenBindingMatches(stored, effective *Context, requestedServer string) bool {
-	storedBinding, ok := grafanaTokenBinding(stored, "")
+func GrafanaTokenBindingMatches(ctx context.Context, stored, effective *Context, requestedServer string) bool {
+	storedBinding, ok := grafanaTokenBinding(ctx, stored, "")
 	if !ok {
 		return false
 	}
-	effectiveBinding, ok := grafanaTokenBinding(effective, requestedServer)
+	effectiveBinding, ok := grafanaTokenBinding(ctx, effective, requestedServer)
 	return ok && storedBinding == effectiveBinding
 }
 
-func grafanaTokenBinding(context *Context, serverOverride string) (credentials.Binding, bool) {
+func grafanaTokenBinding(ctx context.Context, context *Context, serverOverride string) (credentials.Binding, bool) {
 	if context == nil || context.StackEntry == nil || context.Grafana == nil {
 		return credentials.Binding{}, false
 	}
@@ -344,7 +348,7 @@ func grafanaTokenBinding(context *Context, serverOverride string) (credentials.B
 		grafana.Server = serverOverride
 	}
 	stack.Grafana = &grafana
-	binding := stackOwner(context.stackName(), &stack).binding(credentials.FieldGrafanaToken)
+	binding := stackOwner(context.stackName(), &stack).binding(ctx, credentials.FieldGrafanaToken)
 	return binding, binding.Valid()
 }
 
@@ -362,7 +366,7 @@ func grafanaProxyDestination(stack *StackConfig) string {
 	return normalizeCredentialURL(stack.Grafana.ProxyEndpoint, "")
 }
 
-func grafanaTLSDestination(stack *StackConfig) string {
+func grafanaTLSDestination(ctx context.Context, stack *StackConfig) string {
 	tlsConfig := (*TLS)(nil)
 	if stack != nil && stack.Grafana != nil {
 		tlsConfig = stack.Grafana.TLS
@@ -373,16 +377,16 @@ func grafanaTLSDestination(stack *StackConfig) string {
 		_, _ = hash.Write([]byte{0})
 	}
 	if tlsConfig != nil {
-		tlsConfig.captureCredentialFileSnapshots()
+		tlsConfig.captureCredentialFileSnapshots(ctx)
 		insecure := ""
 		if tlsConfig.Insecure {
 			insecure = "insecure"
 		}
 		writeComponent(insecure)
 		writeComponent(strings.ToLower(strings.TrimSpace(tlsConfig.ServerName)))
-		writeComponent(tlsConfig.effectiveTLSMaterialFingerprint(tlsConfig.CertFile, tlsConfig.CertData, tlsConfig.credentialCertFile))
-		writeComponent(tlsConfig.effectiveTLSMaterialFingerprint(tlsConfig.KeyFile, tlsConfig.KeyData, tlsConfig.credentialKeyFile))
-		writeComponent(tlsConfig.effectiveTLSMaterialFingerprint(tlsConfig.CAFile, tlsConfig.CAData, tlsConfig.credentialCAFile))
+		writeComponent(tlsConfig.effectiveTLSMaterialFingerprint(ctx, tlsConfig.CertFile, tlsConfig.CertData, tlsConfig.credentialCertFile))
+		writeComponent(tlsConfig.effectiveTLSMaterialFingerprint(ctx, tlsConfig.KeyFile, tlsConfig.KeyData, tlsConfig.credentialKeyFile))
+		writeComponent(tlsConfig.effectiveTLSMaterialFingerprint(ctx, tlsConfig.CAFile, tlsConfig.CAData, tlsConfig.credentialCAFile))
 		protocolCount := ""
 		if len(tlsConfig.NextProtos) > 0 {
 			protocolCount = strconv.Itoa(len(tlsConfig.NextProtos))
@@ -399,7 +403,7 @@ func grafanaTLSDestination(stack *StackConfig) string {
 	return hex.EncodeToString(hash.Sum(nil))
 }
 
-func (cfg *TLS) captureCredentialFileSnapshots() {
+func (cfg *TLS) captureCredentialFileSnapshots(ctx context.Context) {
 	if cfg == nil {
 		return
 	}
@@ -416,12 +420,12 @@ func (cfg *TLS) captureCredentialFileSnapshots() {
 		return
 	}
 	cfg.credentialFilesCaptured = true
-	cfg.credentialCertFile = snapshotTLSFile(cfg.CertFile)
-	cfg.credentialKeyFile = snapshotTLSFile(cfg.KeyFile)
-	cfg.credentialCAFile = snapshotTLSFile(cfg.CAFile)
+	cfg.credentialCertFile = snapshotTLSFile(ctx, cfg.CertFile)
+	cfg.credentialKeyFile = snapshotTLSFile(ctx, cfg.KeyFile)
+	cfg.credentialCAFile = snapshotTLSFile(ctx, cfg.CAFile)
 }
 
-func snapshotTLSFile(path string) tlsFileSnapshot {
+func snapshotTLSFile(ctx context.Context, path string) tlsFileSnapshot {
 	snapshot := tlsFileSnapshot{path: path}
 	if path == "" {
 		return snapshot
@@ -430,7 +434,7 @@ func snapshotTLSFile(path string) tlsFileSnapshot {
 	if err != nil {
 		identity = path
 	}
-	snapshot.contents, snapshot.err = os.ReadFile(path)
+	snapshot.contents, snapshot.err = host.ReadFile(ctx, path)
 	if snapshot.err != nil {
 		status := "unreadable"
 		if os.IsNotExist(snapshot.err) {
@@ -444,16 +448,16 @@ func snapshotTLSFile(path string) tlsFileSnapshot {
 	return snapshot
 }
 
-func fingerprintTLSFile(path string) string {
-	return snapshotTLSFile(path).fingerprint
+func fingerprintTLSFile(ctx context.Context, path string) string {
+	return snapshotTLSFile(ctx, path).fingerprint
 }
 
-func (cfg *TLS) effectiveTLSMaterialFingerprint(path string, data []byte, captured tlsFileSnapshot) string {
+func (cfg *TLS) effectiveTLSMaterialFingerprint(ctx context.Context, path string, data []byte, captured tlsFileSnapshot) string {
 	if path != "" {
 		if cfg.credentialFilesCaptured && captured.path == path {
 			return captured.fingerprint
 		}
-		return fingerprintTLSFile(path)
+		return fingerprintTLSFile(ctx, path)
 	}
 	if len(data) == 0 {
 		return ""
@@ -564,7 +568,7 @@ func ambiguousCloudCredentialDestinationError(
 // quarantined as rejected for every owner, including non-current and orphaned
 // entries, so unrelated writes preserve them verbatim instead of becoming
 // impossible to repair.
-func inventoryBoundSentinels(cfg *Config) {
+func inventoryBoundSentinels(ctx context.Context, cfg *Config) {
 	if cfg.keychainStates == nil {
 		cfg.keychainStates = keychainState{}
 	}
@@ -578,7 +582,7 @@ func inventoryBoundSentinels(cfg *Config) {
 			if !credentials.IsBoundSentinel(sentinel) {
 				continue
 			}
-			binding := owner.binding(field)
+			binding := owner.binding(ctx, field)
 			account, ok := credentials.AccountForBoundSentinel(sentinel, binding)
 			key := owner.stateKey(field)
 			if _, exists := cfg.keychainStates[key]; exists {
@@ -745,7 +749,7 @@ func parseSecretPathImpact(path string) secretPathImpact {
 // destination edits are no-ops; actual destination changes clear only that
 // owner's affected credentials and schedule old generations for post-rename
 // deletion.
-func (cfg *Config) PrepareSecretPathMutation(path string) func() error {
+func (cfg *Config) PrepareSecretPathMutation(ctx context.Context, path string) func() error {
 	impact := parseSecretPathImpact(path)
 	if impact.owner == "" {
 		return func() error { return nil }
@@ -766,12 +770,12 @@ func (cfg *Config) PrepareSecretPathMutation(path string) func() error {
 			continue
 		}
 		if cfg.keychainStore != nil {
-			backed, preserve, states := resolveSentinelsForOwner(owner, cfg.keychainStore)
+			backed, preserve, states := resolveSentinelsForOwner(ctx, owner, cfg.keychainStore)
 			cfg.trackKeychainResults(backed, preserve, states)
 		}
 		before = map[credentials.Field]credentials.Binding{}
 		for _, field := range impact.destinationFields {
-			before[field] = owner.binding(field)
+			before[field] = owner.binding(ctx, field)
 		}
 		break
 	}
@@ -789,7 +793,7 @@ func (cfg *Config) PrepareSecretPathMutation(path string) func() error {
 				continue
 			}
 			for _, field := range impact.destinationFields {
-				if before[field] == owner.binding(field) {
+				if before[field] == owner.binding(ctx, field) {
 					continue
 				}
 				if ref, ok := owner.ref(field); ok {
@@ -924,7 +928,7 @@ func providerFieldRef(stack *StackConfig, provider, key string) (secretRef, bool
 // Legacy or foreign sentinels are cleared in memory without any keychain Get,
 // then preserved verbatim for an unrelated write. Trusted legacy migration has
 // a separate explicit path in migrate.go.
-func resolveSentinelsForOwner(owner secretOwner, store credentials.Store) (keychainBacked, keychainPreserved, keychainState) {
+func resolveSentinelsForOwner(ctx context.Context, owner secretOwner, store credentials.Store) (keychainBacked, keychainPreserved, keychainState) {
 	backed, preserve, states := keychainBacked{}, keychainPreserved{}, keychainState{}
 	for _, field := range owner.fields {
 		ref, ok := owner.ref(field)
@@ -936,7 +940,7 @@ func resolveSentinelsForOwner(owner secretOwner, store credentials.Store) (keych
 			continue
 		}
 
-		binding := owner.binding(field)
+		binding := owner.binding(ctx, field)
 		stateKey := owner.stateKey(field)
 		if !credentials.MatchesBoundSentinel(cur, binding) {
 			ref.set("")
@@ -1014,10 +1018,10 @@ func keychainReadRejectionReason(err error) string {
 // resolveSentinelsForContext resolves keychain sentinels on the stack and
 // cloud entries referenced by a single context. Idempotent: already-resolved
 // fields hold plaintext and are skipped.
-func resolveSentinelsForContext(ctx *Context, store credentials.Store) (keychainBacked, keychainPreserved, keychainState) {
+func resolveSentinelsForContext(ctx context.Context, cfgCtx *Context, store credentials.Store) (keychainBacked, keychainPreserved, keychainState) {
 	backed, preserve, states := keychainBacked{}, keychainPreserved{}, keychainState{}
-	for _, owner := range contextOwners(ctx) {
-		b, p, s := resolveSentinelsForOwner(owner, store)
+	for _, owner := range contextOwners(cfgCtx) {
+		b, p, s := resolveSentinelsForOwner(ctx, owner, store)
 		for ownerKey, fields := range b {
 			for field := range fields {
 				backed.mark(ownerKey, field)
@@ -1037,7 +1041,7 @@ func resolveSentinelsForContext(ctx *Context, store credentials.Store) (keychain
 // value resolved before an endpoint override must not be presented to the new
 // destination. Values explicitly supplied by the override (different from the
 // resolved plaintext, or marked by ParseEnvIntoContext) are safe to retain.
-func enforceRuntimeCredentialBindings(cfg *Config) error {
+func enforceRuntimeCredentialBindings(ctx context.Context, cfg *Config) error {
 	if err := validateLocalExternalTLSCredentials(cfg); err != nil {
 		return err
 	}
@@ -1045,17 +1049,17 @@ func enforceRuntimeCredentialBindings(cfg *Config) error {
 	if current := cfg.Contexts[cfg.CurrentContext]; current != nil {
 		contexts = append(contexts, current)
 	}
-	for name, ctx := range cfg.Contexts {
+	for name, cfgCtx := range cfg.Contexts {
 		if name != cfg.CurrentContext {
-			contexts = append(contexts, ctx)
+			contexts = append(contexts, cfgCtx)
 		}
 	}
 	processed := map[keychainStateKey]bool{}
-	for _, ctx := range contexts {
-		if ctx == nil {
+	for _, cfgCtx := range contexts {
+		if cfgCtx == nil {
 			continue
 		}
-		for _, owner := range contextOwners(ctx) {
+		for _, owner := range contextOwners(cfgCtx) {
 			for _, field := range owner.fields {
 				ref, ok := owner.ref(field)
 				if !ok {
@@ -1065,7 +1069,7 @@ func enforceRuntimeCredentialBindings(cfg *Config) error {
 				if processed[key] {
 					continue
 				}
-				if ownerComesFromLocalLayer(owner) && ctx.runtimeSecretOverrides[field] {
+				if ownerComesFromLocalLayer(owner) && cfgCtx.runtimeSecretOverrides[field] {
 					ref.set("")
 					owner.reject(field, "environment credentials cannot be combined with an auto-discovered repository destination")
 					processed[key] = true
@@ -1077,15 +1081,15 @@ func enforceRuntimeCredentialBindings(cfg *Config) error {
 				} else {
 					original = cfg.credentialOrigins[key]
 				}
-				if !original.binding.Valid() || original.binding == owner.binding(field) {
-					if ctx.runtimeSecretOverrides[field] {
+				if !original.binding.Valid() || original.binding == owner.binding(ctx, field) {
+					if cfgCtx.runtimeSecretOverrides[field] {
 						owner.clearReject(field)
 					}
 					continue
 				}
 				processed[key] = true
 				current := ref.get()
-				explicit := ctx.runtimeSecretOverrides[field] || (current != "" && current != original.value)
+				explicit := cfgCtx.runtimeSecretOverrides[field] || (current != "" && current != original.value)
 				if !explicit {
 					ref.set("")
 					owner.reject(field, "the credential destination changed after configuration overrides")
@@ -1122,15 +1126,15 @@ func validateLocalExternalTLSCredentials(cfg *Config) error {
 	// ParseEnvIntoContext detaches the selected runtime stack from Config.Stacks.
 	// Inspect resolved views as well so process-local TLS overrides retain the
 	// same repository trust boundary after that isolation step.
-	for name, ctx := range cfg.Contexts {
-		if ctx == nil {
+	for name, cfgCtx := range cfg.Contexts {
+		if cfgCtx == nil {
 			continue
 		}
-		stackName := ctx.Stack
+		stackName := cfgCtx.Stack
 		if stackName == "" {
 			stackName = name
 		}
-		if err := validate(stackName, ctx.StackEntry); err != nil {
+		if err := validate(stackName, cfgCtx.StackEntry); err != nil {
 			return err
 		}
 	}
@@ -1553,7 +1557,7 @@ func (txn *keychainWriteTransaction) commit(warningWriter io.Writer) error {
 // failure it must be rolled back. In-memory swaps must always be restored.
 //
 //nolint:gocyclo // Reconciliation exhaustively models each plaintext, bound, missing, preserved, mutated, and deleted secret state.
-func reconcileKeychain(cfg *Config, store credentials.Store, log logging.Logger) (*keychainWriteTransaction, error) {
+func reconcileKeychain(ctx context.Context, cfg *Config, store credentials.Store, log logging.Logger) (*keychainWriteTransaction, error) {
 	slots := make(map[keychainStateKey]keychainSlot)
 	for _, owner := range cfg.secretOwners() {
 		for _, field := range owner.fields {
@@ -1562,7 +1566,7 @@ func reconcileKeychain(cfg *Config, store credentials.Store, log logging.Logger)
 				continue
 			}
 			key := owner.stateKey(field)
-			binding := owner.binding(field)
+			binding := owner.binding(ctx, field)
 			current := ref.get()
 			state, hasState := cfg.keychainStates[key]
 			dirty := cfg.secretMutations[key]

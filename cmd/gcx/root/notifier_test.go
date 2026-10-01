@@ -12,6 +12,7 @@ func TestShouldNotifySkills_DefaultInteractiveTextCommand(t *testing.T) {
 	resetNotifierTestState(t)
 
 	cmd := &cobra.Command{Use: "list"}
+	cmd.SetContext(t.Context())
 	cmd.Flags().StringP("output", "o", "text", "")
 
 	if !shouldNotifySkills(cmd) {
@@ -36,7 +37,7 @@ func TestShouldNotifySkills_SuppressesNonInteractiveCases(t *testing.T) {
 			setup: func(t *testing.T, _ *cobra.Command) {
 				t.Helper()
 				t.Setenv("GCX_AGENT_MODE", "1")
-				agent.ResetForTesting()
+				agent.ResetForTesting(t.Context())
 			},
 		},
 		{
@@ -109,6 +110,7 @@ func TestShouldNotifySkills_SuppressesNonInteractiveCases(t *testing.T) {
 			resetNotifierTestState(t)
 
 			cmd := &cobra.Command{Use: "list"}
+			cmd.SetContext(t.Context())
 			tc.setup(t, cmd)
 			if cmd.Flags().Lookup("output") == nil {
 				cmd.Flags().StringP("output", "o", "text", "")
@@ -126,6 +128,7 @@ func TestHasInteractiveTextOutput_AllowsKnownTextFormats(t *testing.T) {
 	for _, format := range tests {
 		t.Run(format, func(t *testing.T) {
 			cmd := &cobra.Command{Use: "list"}
+			cmd.SetContext(t.Context())
 			cmd.Flags().StringP("output", "o", format, "")
 
 			if !hasInteractiveTextOutput(cmd) {
@@ -152,7 +155,7 @@ func resetNotifierTestState(t *testing.T) {
 		t.Setenv(env, "")
 	}
 
-	agent.ResetForTesting()
+	agent.ResetForTesting(t.Context())
 	terminal.ResetForTesting()
 	jsonFlagActive.Store(false)
 }

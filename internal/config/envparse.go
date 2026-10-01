@@ -1,15 +1,16 @@
 package config
 
 import (
+	"context"
 	"fmt"
 	"maps"
-	"os"
 	"reflect"
 	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/grafana/gcx/internal/credentials"
+	"github.com/grafana/gcx/internal/host"
 )
 
 // PrepareForEnvParse initializes nested pointer fields on the Context so that
@@ -39,35 +40,35 @@ func CleanupAfterEnvParse(ctx *Context) {
 // ParseEnvIntoContext is a convenience that combines the cloud-entry env
 // override, PrepareForEnvParse, parseEnvTags, and CleanupAfterEnvParse into a
 // single call.
-func ParseEnvIntoContext(ctx *Context) error {
-	detachStackRuntimeView(ctx)
-	ctx.runtimeSecretOverrides = map[credentials.Field]bool{}
+func ParseEnvIntoContext(ctx context.Context, cfgCtx *Context) error {
+	detachStackRuntimeView(cfgCtx)
+	cfgCtx.runtimeSecretOverrides = map[credentials.Field]bool{}
 	for envKey, field := range map[string]credentials.Field{
 		"GRAFANA_TOKEN":                   credentials.FieldGrafanaToken,
 		"GRAFANA_PASSWORD":                credentials.FieldGrafanaPassword,
 		"GRAFANA_CLOUD_TOKEN":             credentials.FieldCloudToken,
 		"GRAFANA_PROVIDER_SYNTH_SM_TOKEN": credentials.FieldSMToken,
 	} {
-		if value, ok := os.LookupEnv(envKey); ok && !IsBlankCredentialEnvironmentOverride(envKey, value) {
-			ctx.runtimeSecretOverrides[field] = true
+		if value, ok := host.LookupEnv(ctx, envKey); ok && !IsBlankCredentialEnvironmentOverride(envKey, value) {
+			cfgCtx.runtimeSecretOverrides[field] = true
 		}
 	}
-	applyCloudEnvOverride(ctx)
-	PrepareForEnvParse(ctx)
-	if err := parseEnvTags(ctx); err != nil {
+	applyCloudEnvOverride(ctx, cfgCtx)
+	PrepareForEnvParse(cfgCtx)
+	if err := parseEnvTags(ctx, cfgCtx); err != nil {
 		return err
 	}
-	CleanupAfterEnvParse(ctx)
-	clearRuntimeCredentialRejections(ctx)
-	if ctx.StackEntry != nil {
+	CleanupAfterEnvParse(cfgCtx)
+	clearRuntimeCredentialRejections(cfgCtx)
+	if cfgCtx.StackEntry != nil {
 		// PrepareForEnvParse may have created Grafana for a named stack that had
 		// no persisted Grafana block. Keep binding checks on the detached stack
 		// pointed at the effective runtime view.
-		ctx.StackEntry.Grafana = ctx.Grafana
-		ctx.StackEntry.Providers = ctx.Providers
+		cfgCtx.StackEntry.Grafana = cfgCtx.Grafana
+		cfgCtx.StackEntry.Providers = cfgCtx.Providers
 	}
-	if slug, ok := os.LookupEnv("GRAFANA_CLOUD_STACK"); ok {
-		ctx.envStackSlug = slug
+	if slug, ok := host.LookupEnv(ctx, "GRAFANA_CLOUD_STACK"); ok {
+		cfgCtx.envStackSlug = slug
 	}
 	return nil
 }
@@ -145,36 +146,36 @@ func cloneRuntimeProviders(source map[string]map[string]string) map[string]map[s
 // GRAFANA_CLOUD_* auth variable is set, starting from a copy of the entry the
 // context references (if any). The copy keeps env values out of the shared
 // named entry, which other contexts reference and Write would persist.
-func applyCloudEnvOverride(ctx *Context) {
-	token, hasToken := os.LookupEnv("GRAFANA_CLOUD_TOKEN")
+func applyCloudEnvOverride(ctx context.Context, cfgCtx *Context) {
+	token, hasToken := host.LookupEnv(ctx, "GRAFANA_CLOUD_TOKEN")
 	hasToken = hasToken && !IsBlankCredentialEnvironmentOverride("GRAFANA_CLOUD_TOKEN", token)
-	_, hasAPIURL := os.LookupEnv("GRAFANA_CLOUD_API_URL")
-	_, hasOAuthURL := os.LookupEnv("GRAFANA_CLOUD_OAUTH_URL")
+	_, hasAPIURL := host.LookupEnv(ctx, "GRAFANA_CLOUD_API_URL")
+	_, hasOAuthURL := host.LookupEnv(ctx, "GRAFANA_CLOUD_OAUTH_URL")
 	if !hasToken && !hasAPIURL && !hasOAuthURL {
 		return
 	}
 	detached := CloudEntry{}
-	if ctx.CloudEntry != nil {
-		detached = *ctx.CloudEntry
-		detached.credentialRejections = maps.Clone(ctx.CloudEntry.credentialRejections)
+	if cfgCtx.CloudEntry != nil {
+		detached = *cfgCtx.CloudEntry
+		detached.credentialRejections = maps.Clone(cfgCtx.CloudEntry.credentialRejections)
 	}
 	// parseEnvTags fills the env-tagged fields on the detached copy.
-	ctx.CloudEntry = &detached
+	cfgCtx.CloudEntry = &detached
 }
 
 // parseEnvTags walks the struct fields of v (which must be a pointer to a struct)
 // and populates fields that have an `env` struct tag from the corresponding
 // environment variable. Nested struct pointers are followed if non-nil.
 // Supported field types: string, bool, int64.
-func parseEnvTags(v any) error {
+func parseEnvTags(ctx context.Context, v any) error {
 	rv := reflect.ValueOf(v)
 	if rv.Kind() != reflect.Pointer || rv.Elem().Kind() != reflect.Struct {
 		return fmt.Errorf("parseEnvTags: expected pointer to struct, got %T", v)
 	}
-	return walkStruct(rv.Elem())
+	return walkStruct(ctx, rv.Elem())
 }
 
-func walkStruct(sv reflect.Value) error {
+func walkStruct(ctx context.Context, sv reflect.Value) error {
 	st := sv.Type()
 	for i := range st.NumField() {
 		field := st.Field(i)
@@ -183,7 +184,7 @@ func walkStruct(sv reflect.Value) error {
 		// Follow non-nil struct pointers into nested structs.
 		if field.Type.Kind() == reflect.Pointer && field.Type.Elem().Kind() == reflect.Struct {
 			if !fv.IsNil() {
-				if err := walkStruct(fv.Elem()); err != nil {
+				if err := walkStruct(ctx, fv.Elem()); err != nil {
 					return err
 				}
 			}
@@ -200,7 +201,7 @@ func walkStruct(sv reflect.Value) error {
 			envKey = envKey[:idx]
 		}
 
-		val, ok := os.LookupEnv(envKey)
+		val, ok := host.LookupEnv(ctx, envKey)
 		if !ok {
 			continue
 		}

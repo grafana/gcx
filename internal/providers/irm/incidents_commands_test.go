@@ -396,8 +396,8 @@ func (l fakeGrafanaConfigLoader) LoadGrafanaConfig(context.Context) (config.Name
 // fields for them) but are enforced client-side.
 func TestIncidentsListCommand_BuildsQuery(t *testing.T) {
 	t.Setenv("GCX_AGENT_MODE", "false")
-	agent.ResetForTesting()
-	t.Cleanup(agent.ResetForTesting)
+	agent.ResetForTesting(t.Context())
+	t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 	var query map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

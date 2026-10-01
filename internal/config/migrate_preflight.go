@@ -2,10 +2,10 @@ package config
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"maps"
-	"os"
 	"reflect"
 	"strings"
 
@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/gcx/internal/credentials"
 	"github.com/grafana/gcx/internal/docs"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/host"
 )
 
 type migrationLayer struct {
@@ -141,14 +142,14 @@ func remainingLegacySources(layers []migrationLayer) []ConfigSource {
 // by v1's atomic entry merge preserves the effective legacy view. A partial
 // overlay that cannot cross that boundary safely is left entirely untouched for
 // manual migration.
-func preflightLayeredSources(sources []ConfigSource, legacyFound ...*bool) error {
+func preflightLayeredSources(ctx context.Context, sources []ConfigSource, legacyFound ...*bool) error {
 	layers := make([]migrationLayer, 0, len(sources))
 	hasLegacy := false
 	allLegacy := len(sources) > 0
 
 	for i := range sources {
 		source := sources[i]
-		contents, err := readConfigSource(source)
+		contents, err := readConfigSource(ctx, source)
 		if err != nil {
 			return err
 		}
@@ -165,7 +166,7 @@ func preflightLayeredSources(sources []ConfigSource, legacyFound ...*bool) error
 				return UnmarshalError{File: source.Path, Err: err}
 			}
 			layer.legacy = decoded
-			if err := validateLegacyLayerReferences(source, decoded); err != nil {
+			if err := validateLegacyLayerReferences(ctx, source, decoded); err != nil {
 				return err
 			}
 			hasLegacy = true
@@ -191,7 +192,7 @@ func preflightLayeredSources(sources []ConfigSource, legacyFound ...*bool) error
 			// used before the first file changed. An arbitrary v1 file plus a partial
 			// legacy overlay must never receive a command that atomically shadows the
 			// complete entry below it.
-			reconstructed, reconstructErr := reconstructInterruptedLegacyLayers(layers)
+			reconstructed, reconstructErr := reconstructInterruptedLegacyLayers(ctx, layers)
 			allowTargeted := reconstructErr == nil && proveLayeredLegacyConversion(reconstructed) == nil
 			return &layeredMigrationIncompleteError{
 				cause:                    err,
@@ -233,7 +234,7 @@ func decodeCurrentMigrationLayer(source ConfigSource, contents []byte) (*Config,
 // interrupted migration rather than an arbitrary combination of current and
 // legacy files. Every current layer must have a secure legacy backup whose
 // conversion matches the current document apart from opaque credential values.
-func reconstructInterruptedLegacyLayers(layers []migrationLayer) ([]migrationLayer, error) {
+func reconstructInterruptedLegacyLayers(ctx context.Context, layers []migrationLayer) ([]migrationLayer, error) {
 	reconstructed := make([]migrationLayer, 0, len(layers))
 	for _, layer := range layers {
 		if layer.legacy != nil {
@@ -241,14 +242,14 @@ func reconstructInterruptedLegacyLayers(layers []migrationLayer) ([]migrationLay
 			continue
 		}
 		backupPath := layer.source.Path + legacyBackupSuffix
-		info, err := os.Lstat(backupPath)
+		info, err := host.Lstat(ctx, backupPath)
 		if err != nil {
 			return nil, fmt.Errorf("inspect migration backup %s: %w", backupPath, err)
 		}
 		if !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 {
 			return nil, fmt.Errorf("migration backup %s is not a private regular file", backupPath)
 		}
-		contents, err := os.ReadFile(backupPath)
+		contents, err := host.ReadFile(ctx, backupPath)
 		if err != nil {
 			return nil, fmt.Errorf("read migration backup %s: %w", backupPath, err)
 		}
@@ -373,8 +374,8 @@ func proveLayeredLegacyConversion(layers []migrationLayer) error {
 	return compareMigratedEffectiveViews(expected, &actual)
 }
 
-func validateLegacyLayerReferences(source ConfigSource, legacy *legacyConfig) error {
-	trusted := source.Type == "user" && trustedDiscoveredUserLegacySource(source.Path)
+func validateLegacyLayerReferences(ctx context.Context, source ConfigSource, legacy *legacyConfig) error {
+	trusted := source.Type == "user" && trustedDiscoveredUserLegacySource(ctx, source.Path)
 	for name, legacyContext := range legacy.Contexts {
 		if legacyContext == nil {
 			continue

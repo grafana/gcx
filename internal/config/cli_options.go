@@ -1,6 +1,9 @@
 package config
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+)
 
 // CLIOptions holds CLI-level configuration options that affect command behavior
 // but are not specific to any Grafana context.
@@ -22,9 +25,9 @@ type CLIOptions struct {
 }
 
 // LoadCLIOptions loads CLI options from environment variables.
-func LoadCLIOptions() (CLIOptions, error) {
+func LoadCLIOptions(ctx context.Context) (CLIOptions, error) {
 	opts := CLIOptions{}
-	if err := parseEnvTags(&opts); err != nil {
+	if err := parseEnvTags(ctx, &opts); err != nil {
 		return opts, fmt.Errorf("failed to parse CLI options: %w", err)
 	}
 	return opts, nil

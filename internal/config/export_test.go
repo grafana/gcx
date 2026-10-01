@@ -1,6 +1,7 @@
 package config
 
 import (
+	"context"
 	"strings"
 	"sync"
 
@@ -13,7 +14,7 @@ import (
 // tests in config_test.
 func SetKeychainStoreFnForTest(fn func() credentials.Store) func() {
 	original := keychainStoreFn
-	keychainStoreFn = fn
+	keychainStoreFn = func(context.Context) credentials.Store { return fn() }
 	return func() { keychainStoreFn = original }
 }
 
@@ -31,14 +32,14 @@ func ResetIgnoredLocalKeychainWarningForTest() {
 
 // StackBindingForTest builds the production credential binding for external
 // integration tests without duplicating destination canonicalization rules.
-func StackBindingForTest(path, name, server string, field credentials.Field) (credentials.Binding, error) {
-	return StackBindingWithUserForTest(path, name, server, "", field)
+func StackBindingForTest(ctx context.Context, path, name, server string, field credentials.Field) (credentials.Binding, error) {
+	return StackBindingWithUserForTest(ctx, path, name, server, "", field)
 }
 
 // StackBindingWithUserForTest is StackBindingForTest with the basic-auth
 // username included in password bindings.
-func StackBindingWithUserForTest(path, name, server, user string, field credentials.Field) (credentials.Binding, error) {
-	source, err := canonicalConfigSource(path)
+func StackBindingWithUserForTest(ctx context.Context, path, name, server, user string, field credentials.Field) (credentials.Binding, error) {
+	source, err := canonicalConfigSource(ctx, path)
 	if err != nil {
 		return credentials.Binding{}, err
 	}
@@ -49,18 +50,18 @@ func StackBindingWithUserForTest(path, name, server, user string, field credenti
 	if field == credentials.FieldSMToken {
 		stack.Providers = map[string]map[string]string{"synth": {"sm-url": "https://sm.example.invalid"}}
 	}
-	return stackOwner(name, stack).binding(field), nil
+	return stackOwner(name, stack).binding(ctx, field), nil
 }
 
 // CloudBindingForTest builds the production Cloud credential binding for
 // external integration tests.
-func CloudBindingForTest(path, name string, field credentials.Field) (credentials.Binding, error) {
-	source, err := canonicalConfigSource(path)
+func CloudBindingForTest(ctx context.Context, path, name string, field credentials.Field) (credentials.Binding, error) {
+	source, err := canonicalConfigSource(ctx, path)
 	if err != nil {
 		return credentials.Binding{}, err
 	}
 	entry := &CloudEntry{sourceIdentity: source, APIUrl: "https://grafana.com", OAuthUrl: "https://grafana.com"}
-	return cloudOwner(name, entry).binding(field), nil
+	return cloudOwner(name, entry).binding(ctx, field), nil
 }
 
 // OnRefreshForTest returns the OnRefresh callback wired by WireTokenPersistence.

@@ -1,15 +1,16 @@
 package telemetry
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
-	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/grafana/gcx/internal/docs"
+	"github.com/grafana/gcx/internal/host"
 	"github.com/grafana/gcx/internal/xdg"
 )
 
@@ -56,8 +57,8 @@ Find out more at ` + strings.TrimSuffix(docs.AnonymousUsageStats, ".md") + "/\n"
 // FirstRunNoticePath returns the flag file that records the notice was shown,
 // or "" when no state home is known (HOME and XDG_STATE_HOME both unset), so
 // the flag file cannot land relative to the current directory.
-func FirstRunNoticePath() string {
-	stateHome := xdg.StateHome()
+func FirstRunNoticePath(ctx context.Context) string {
+	stateHome := xdg.StateHome(ctx)
 	if stateHome == "" {
 		return ""
 	}
@@ -74,11 +75,11 @@ func FirstRunNoticePath() string {
 // "Once per revision" rather than once per install: bumping noticeRevision
 // re-shows a materially changed disclosure to existing installs, which is the
 // only way an amended notice reaches anyone who has already run gcx.
-func MaybeShowFirstRunNotice(w io.Writer, mode Mode, isTTY, isCI, isAgent bool) {
-	maybeShowFirstRunNotice(w, mode, isTTY, isCI, isAgent, FirstRunNoticePath())
+func MaybeShowFirstRunNotice(ctx context.Context, w io.Writer, mode Mode, isTTY, isCI, isAgent bool) {
+	maybeShowFirstRunNotice(ctx, w, mode, isTTY, isCI, isAgent, FirstRunNoticePath(ctx))
 }
 
-func maybeShowFirstRunNotice(w io.Writer, mode Mode, isTTY, isCI, isAgent bool, path string) {
+func maybeShowFirstRunNotice(ctx context.Context, w io.Writer, mode Mode, isTTY, isCI, isAgent bool, path string) {
 	if mode != ModeEnabled || !isTTY || isCI || isAgent {
 		return
 	}
@@ -122,7 +123,7 @@ func maybeShowFirstRunNotice(w io.Writer, mode Mode, isTTY, isCI, isAgent bool, 
 	// like the pre-revision flag file we deliberately re-show for. That is
 	// inherent to keying the decision on content, which is what lets a revised
 	// disclosure reach installs that already have a flag file.
-	data, err := os.ReadFile(path)
+	data, err := host.ReadFile(ctx, path)
 	switch {
 	case err == nil && strings.TrimSpace(string(data)) == noticeRevision:
 		return
@@ -131,10 +132,10 @@ func maybeShowFirstRunNotice(w io.Writer, mode Mode, isTTY, isCI, isAgent bool, 
 	}
 	// Record before showing: when the state dir is unwritable, skipping the
 	// notice beats printing it on every invocation.
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+	if err := host.MkdirAll(ctx, filepath.Dir(path), 0o700); err != nil {
 		return
 	}
-	if err := os.WriteFile(path, []byte(noticeRevision+"\n"), 0o600); err != nil {
+	if err := host.WriteFile(ctx, path, []byte(noticeRevision+"\n"), 0o600); err != nil {
 		return
 	}
 	fmt.Fprint(w, firstRunNotice)

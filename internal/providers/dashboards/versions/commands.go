@@ -345,7 +345,7 @@ func newRestoreCommand(deps *commandDeps) *cobra.Command {
 			}
 
 			// Step 5: Prompt unless --force.
-			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
+			proceed, err := providers.ConfirmDestructive(ctx, cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
 				fmt.Sprintf("Restore dashboard %q to version %d?", name, targetGen))
 			if err != nil {
 				return err

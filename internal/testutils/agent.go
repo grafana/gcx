@@ -1,6 +1,7 @@
 package testutils
 
 import (
+	"context"
 	"os"
 	"testing"
 
@@ -25,7 +26,7 @@ func init() { //nolint:gochecknoinits
 		os.Unsetenv(env)
 	}
 
-	agent.ResetForTesting()
+	agent.ResetForTesting(context.Background())
 }
 
 // SetAgentMode pins agent-mode detection for the duration of a test, so TTY
@@ -36,13 +37,13 @@ func init() { //nolint:gochecknoinits
 // (t.Setenv enforces this).
 func SetAgentMode(t *testing.T, enabled bool) {
 	t.Helper()
-	t.Cleanup(agent.ResetForTesting)
+	t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 	if enabled {
 		t.Setenv("GCX_AGENT_MODE", "true")
 	} else {
 		t.Setenv("GCX_AGENT_MODE", "false")
 	}
-	agent.ResetForTesting()
+	agent.ResetForTesting(t.Context())
 }
 
 // PinArgv fixes os.Args for the duration of a test so behavior derived from

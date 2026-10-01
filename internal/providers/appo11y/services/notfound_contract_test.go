@@ -12,6 +12,7 @@ package services //nolint:testpackage // Tests drive the unexported notFoundEmit
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"strings"
@@ -43,7 +44,7 @@ func TestNotFoundEmitted(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			agent.SetFlag(tc.agentMode)
-			t.Cleanup(agent.ResetForTesting)
+			t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 			var stderr bytes.Buffer
 			err := notFoundEmitted(&stderr, msg)
@@ -159,7 +160,7 @@ func TestNotFound_AgentStdoutSingleDocument(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			agent.SetFlag(true)
-			t.Cleanup(agent.ResetForTesting)
+			t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 			var stdout, stderr bytes.Buffer
 			require.NoError(t, tc.encode(t, &stdout))
@@ -189,7 +190,7 @@ func TestNotFound_HumanTableDefaultUnchanged(t *testing.T) {
 	t.Cleanup(func() { color.NoColor = prev })
 
 	agent.SetFlag(false)
-	t.Cleanup(agent.ResetForTesting)
+	t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 	opts := &getOpts{}
 	opts.IO.ErrWriter = io.Discard

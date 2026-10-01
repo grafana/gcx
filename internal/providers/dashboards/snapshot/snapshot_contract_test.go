@@ -207,7 +207,7 @@ func TestSnapshot_OmittedTimeoutDoesNotSetRenderQuery(t *testing.T) {
 
 func TestSnapshot_HumanDefaultByteIdentical(t *testing.T) {
 	agent.SetFlag(false)
-	t.Cleanup(agent.ResetForTesting)
+	t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 	server := newRenderServer(t)
 	outputDir := t.TempDir()
@@ -252,7 +252,7 @@ func TestSnapshot_HumanDefaultByteIdentical(t *testing.T) {
 
 func TestSnapshot_AgentModeSingleReceiptDoc(t *testing.T) {
 	agent.SetFlag(true)
-	t.Cleanup(agent.ResetForTesting)
+	t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 	server := newRenderServer(t)
 	outputDir := t.TempDir()
@@ -314,7 +314,7 @@ func TestSnapshot_PartialFailure_OneDocAndExit4(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			agent.SetFlag(tt.agentMode)
-			t.Cleanup(agent.ResetForTesting)
+			t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 			server := newRenderServer(t)
 			outputDir := t.TempDir()
@@ -407,7 +407,7 @@ func assertSuccessOnlyTable(t *testing.T, stdout, outputDir string) {
 
 func TestSnapshot_AllFail_RawErrorNotPartial(t *testing.T) {
 	agent.SetFlag(true)
-	t.Cleanup(agent.ResetForTesting)
+	t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 	server := newRenderServer(t)
 	outputDir := t.TempDir()
@@ -444,7 +444,7 @@ func TestSnapshot_ExplicitFormatOverride(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			agent.SetFlag(tt.agentMode)
-			t.Cleanup(agent.ResetForTesting)
+			t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 			server := newRenderServer(t)
 			outputDir := t.TempDir()

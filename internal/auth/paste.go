@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/url"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/grafana/gcx/internal/agent"
+	"github.com/grafana/gcx/internal/host"
 	"github.com/grafana/gcx/internal/terminal"
 )
 
@@ -39,12 +41,12 @@ type pasteWatcher struct {
 // redirect URLs from the terminal. It returns nil when the paste path does not
 // apply: a local session, agent mode, or no usable terminal. A nil watcher is
 // safe to use — every method handles it.
-func startPasteWatcher(w io.Writer, port int) *pasteWatcher {
-	if !terminal.IsRemoteSession() || agent.IsAgentMode() {
+func startPasteWatcher(ctx context.Context, w io.Writer, port int) *pasteWatcher {
+	if !terminal.IsRemoteSession(ctx) || agent.IsAgentMode() {
 		return nil
 	}
 
-	tty, ok := openPasteTerminal()
+	tty, ok := openPasteTerminal(ctx)
 	if !ok {
 		return nil
 	}
@@ -77,8 +79,8 @@ func startPasteWatcher(w io.Writer, port int) *pasteWatcher {
 // Close can no longer stop it. That is also why there is no term.IsTerminal
 // check here: /dev/tty is the controlling terminal by definition, and the open
 // fails when the process has none.
-var openPasteTerminal = func() (*os.File, bool) { //nolint:gochecknoglobals // test seam
-	tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
+var openPasteTerminal = func(ctx context.Context) (*os.File, bool) { //nolint:gochecknoglobals // test seam
+	tty, err := host.OpenFile(ctx, "/dev/tty", os.O_RDWR, 0)
 	if err != nil {
 		return nil, false
 	}

@@ -8,6 +8,7 @@ package rules //nolint:testpackage // Tests drive the unexported runDelete seam 
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -91,7 +92,7 @@ func TestDelete_OutputContract(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			agent.SetFlag(tc.agentMode)
-			t.Cleanup(agent.ResetForTesting)
+			t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 			opts := newDeleteOptsForTest(t, tc.output)
 			var stdout, stderr bytes.Buffer
@@ -127,7 +128,7 @@ func TestDelete_OutputContract(t *testing.T) {
 
 func TestDelete_ExplicitYAMLOverride(t *testing.T) {
 	agent.SetFlag(false)
-	t.Cleanup(agent.ResetForTesting)
+	t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 	opts := newDeleteOptsForTest(t, "yaml")
 	var stdout, stderr bytes.Buffer

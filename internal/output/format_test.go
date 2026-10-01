@@ -2,6 +2,7 @@ package output_test
 
 import (
 	"bytes"
+	"context"
 	goio "io"
 	"testing"
 
@@ -79,7 +80,7 @@ func TestBindFlags_AgentModeOverridesDefaultFormat(t *testing.T) {
 
 func TestJSONFlag_Parsing(t *testing.T) {
 	agent.SetFlag(false)
-	t.Cleanup(agent.ResetForTesting)
+	t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 	tests := []struct {
 		name              string

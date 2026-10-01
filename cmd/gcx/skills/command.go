@@ -95,7 +95,7 @@ func newInstallCommand(source fs.FS, catalog []byte) *cobra.Command {
 				return err
 			}
 
-			root, err := skillops.ResolveInstallRoot(opts.Dir)
+			root, err := skillops.ResolveInstallRoot(cmd.Context(), opts.Dir)
 			if err != nil {
 				return err
 			}
@@ -108,7 +108,7 @@ func newInstallCommand(source fs.FS, catalog []byte) *cobra.Command {
 				}
 			}
 
-			result, err := skillops.Install(opts.Source, opts.Catalog, root, filter, opts.Force, opts.DryRun)
+			result, err := skillops.Install(cmd.Context(), opts.Source, opts.Catalog, root, filter, opts.Force, opts.DryRun)
 			if err != nil {
 				return err
 			}
@@ -253,12 +253,12 @@ func newUpdateCommand(source fs.FS, catalog []byte) *cobra.Command {
 				return err
 			}
 
-			root, err := skillops.ResolveInstallRoot(opts.Dir)
+			root, err := skillops.ResolveInstallRoot(cmd.Context(), opts.Dir)
 			if err != nil {
 				return err
 			}
 
-			result, err := skillops.Update(opts.Source, opts.Catalog, root, args, opts.DryRun)
+			result, err := skillops.Update(cmd.Context(), opts.Source, opts.Catalog, root, args, opts.DryRun)
 			if err != nil {
 				return err
 			}
@@ -327,12 +327,12 @@ func newListCommand(source fs.FS, catalog []byte) *cobra.Command {
 				return err
 			}
 
-			root, err := skillops.ResolveInstallRoot(opts.Dir)
+			root, err := skillops.ResolveInstallRoot(cmd.Context(), opts.Dir)
 			if err != nil {
 				return err
 			}
 
-			result, err := skillops.List(opts.Source, opts.Catalog, root)
+			result, err := skillops.List(cmd.Context(), opts.Source, opts.Catalog, root)
 			if err != nil {
 				return err
 			}
@@ -555,7 +555,7 @@ func newUninstallCommand(source fs.FS, catalog []byte) *cobra.Command {
 				return err
 			}
 
-			cliOpts, err := config.LoadCLIOptions()
+			cliOpts, err := config.LoadCLIOptions(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -564,12 +564,12 @@ func newUninstallCommand(source fs.FS, catalog []byte) *cobra.Command {
 				return errors.New("refusing to uninstall all gcx skills without --yes (or GCX_AUTO_APPROVE=1)")
 			}
 
-			root, err := skillops.ResolveInstallRoot(opts.Dir)
+			root, err := skillops.ResolveInstallRoot(cmd.Context(), opts.Dir)
 			if err != nil {
 				return err
 			}
 
-			result, err := skillops.Uninstall(opts.Source, opts.Catalog, root, args, opts.All, opts.DryRun)
+			result, err := skillops.Uninstall(cmd.Context(), opts.Source, opts.Catalog, root, args, opts.All, opts.DryRun)
 			if err != nil {
 				return err
 			}

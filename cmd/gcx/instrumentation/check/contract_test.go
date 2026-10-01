@@ -112,8 +112,8 @@ func TestCheck_AgentMode_AllPassing_SingleDocumentExitZero(t *testing.T) {
 // CheckTableCodec output), with nothing appended after it.
 func TestCheck_HumanDefault_ByteIdenticalTable(t *testing.T) {
 	t.Setenv("GCX_AGENT_MODE", "false")
-	agent.ResetForTesting()
-	t.Cleanup(agent.ResetForTesting)
+	agent.ResetForTesting(t.Context())
+	t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 	stdout, _, err := executeCheck(t, failingChecker())
 
@@ -133,8 +133,8 @@ func TestCheck_HumanDefault_ByteIdenticalTable(t *testing.T) {
 
 func TestCheck_ExplicitJSONOverride(t *testing.T) {
 	t.Setenv("GCX_AGENT_MODE", "false")
-	agent.ResetForTesting()
-	t.Cleanup(agent.ResetForTesting)
+	agent.ResetForTesting(t.Context())
+	t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 	stdout, _, err := executeCheck(t, failingChecker(), "-o", "json")
 

@@ -2,6 +2,7 @@ package mcpservers //nolint:testpackage
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -37,7 +38,7 @@ const contractBasePath = "/api/plugins/grafana-assistant-app/resources/api/v1"
 func setAgentModeMCP(t *testing.T, enabled bool) {
 	t.Helper()
 	agent.SetFlag(enabled)
-	t.Cleanup(agent.ResetForTesting)
+	t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 }
 
 // newRoutedClient serves the given mux and returns a client pointed at it.
@@ -205,7 +206,7 @@ func TestRunCreateEmitsResultThenPartialFailureWhenOAuthCheckFails(t *testing.T)
 
 	var opened []string
 	origOpenURL := openURL
-	openURL = func(u string) (bool, error) { opened = append(opened, u); return true, nil }
+	openURL = func(_ context.Context, u string) (bool, error) { opened = append(opened, u); return true, nil }
 	t.Cleanup(func() { openURL = origOpenURL })
 
 	opts := &createOpts{}
@@ -329,7 +330,7 @@ func TestFinishMutationHumanModeStillOpensBrowser(t *testing.T) {
 
 	var opened []string
 	origOpenURL := openURL
-	openURL = func(u string) (bool, error) { opened = append(opened, u); return true, nil }
+	openURL = func(_ context.Context, u string) (bool, error) { opened = append(opened, u); return true, nil }
 	t.Cleanup(func() { openURL = origOpenURL })
 
 	ioOpts := cmdio.Options{OutputFormat: "yaml"}
@@ -402,7 +403,7 @@ func TestFinishMutationNoOAuthNeededIsPlainSuccess(t *testing.T) {
 
 	var opened []string
 	origOpenURL := openURL
-	openURL = func(u string) (bool, error) { opened = append(opened, u); return true, nil }
+	openURL = func(_ context.Context, u string) (bool, error) { opened = append(opened, u); return true, nil }
 	t.Cleanup(func() { openURL = origOpenURL })
 
 	ioOpts := cmdio.Options{OutputFormat: "json"}

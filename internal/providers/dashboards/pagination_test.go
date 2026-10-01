@@ -2,6 +2,7 @@ package dashboards_test
 
 import (
 	"bytes"
+	"context"
 	"strings"
 	"testing"
 
@@ -12,9 +13,9 @@ import (
 )
 
 func TestListOptsDefaultLimit(t *testing.T) {
-	t.Cleanup(agent.ResetForTesting)
+	t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 	t.Setenv("GCX_AGENT_MODE", "false")
-	agent.ResetForTesting()
+	agent.ResetForTesting(t.Context())
 
 	opts := dashboards.NewListOptsForTest(pflag.NewFlagSet("list", pflag.ContinueOnError))
 
@@ -24,9 +25,9 @@ func TestListOptsDefaultLimit(t *testing.T) {
 }
 
 func TestListOptsValidateContinueRequiresLimit(t *testing.T) {
-	t.Cleanup(agent.ResetForTesting)
+	t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 	t.Setenv("GCX_AGENT_MODE", "false")
-	agent.ResetForTesting()
+	agent.ResetForTesting(t.Context())
 
 	opts := dashboards.NewListOptsForTest(pflag.NewFlagSet("list", pflag.ContinueOnError))
 	opts.Limit = 0
@@ -42,9 +43,9 @@ func TestListOptsValidateContinueRequiresLimit(t *testing.T) {
 }
 
 func TestEmitListPaginationHint(t *testing.T) {
-	t.Cleanup(agent.ResetForTesting)
+	t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 	t.Setenv("GCX_AGENT_MODE", "false")
-	agent.ResetForTesting()
+	agent.ResetForTesting(t.Context())
 
 	list := &unstructured.UnstructuredList{
 		Items: []unstructured.Unstructured{

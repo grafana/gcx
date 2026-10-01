@@ -1,11 +1,12 @@
 package mcpserver
 
 import (
+	"context"
 	"fmt"
-	"os"
 	"strings"
 
 	assistantmcp "github.com/grafana/gcx/internal/assistant/mcpservers"
+	"github.com/grafana/gcx/internal/host"
 )
 
 // resolveHeaderValue resolves h's supplied source -- inline Value, FromEnv
@@ -15,7 +16,7 @@ import (
 // treats as the preserve-on-update signal. A referenced env var or file
 // that is missing/empty is a hard error so an empty secret is never
 // written silently.
-func resolveHeaderValue(h MCPServerHeader) (string, error) {
+func resolveHeaderValue(ctx context.Context, h MCPServerHeader) (string, error) {
 	sources := 0
 	if h.Value != "" {
 		sources++
@@ -34,13 +35,13 @@ func resolveHeaderValue(h MCPServerHeader) (string, error) {
 	case h.Value != "":
 		return h.Value, nil
 	case h.FromEnv != "":
-		val, ok := os.LookupEnv(h.FromEnv)
+		val, ok := host.LookupEnv(ctx, h.FromEnv)
 		if !ok || val == "" {
 			return "", fmt.Errorf("header %q: environment variable %q (fromEnv) is not set or empty", h.Name, h.FromEnv)
 		}
 		return val, nil
 	case h.FromFile != "":
-		data, err := os.ReadFile(h.FromFile)
+		data, err := host.ReadFile(ctx, h.FromFile)
 		if err != nil {
 			return "", fmt.Errorf("header %q: reading fromFile %q: %w", h.Name, h.FromFile, err)
 		}
@@ -75,10 +76,10 @@ func resolveHeaderValue(h MCPServerHeader) (string, error) {
 // mcp-servers CLI command path (which distinguishes "no --header flags at
 // all" from "an explicit empty header list") and is never exercised via
 // the adapter.
-func ResolveHeaders(headers []MCPServerHeader) ([]assistantmcp.Header, error) {
+func ResolveHeaders(ctx context.Context, headers []MCPServerHeader) ([]assistantmcp.Header, error) {
 	resolved := make([]assistantmcp.Header, 0, len(headers))
 	for _, h := range headers {
-		value, err := resolveHeaderValue(h)
+		value, err := resolveHeaderValue(ctx, h)
 		if err != nil {
 			return nil, err
 		}

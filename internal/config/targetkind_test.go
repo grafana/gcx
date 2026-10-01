@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -25,14 +26,14 @@ func scrubTargetKindEnv(t *testing.T) {
 // testEnvOverride mirrors the env override every command load path applies
 // (providers.envOverride / cloudEnvOverride): ensure a current context exists
 // and parse GRAFANA_* env vars into it.
-func testEnvOverride(cfg *config.Config) error {
+func testEnvOverride(ctx context.Context, cfg *config.Config) error {
 	if cfg.CurrentContext == "" {
 		cfg.CurrentContext = config.DefaultContextName
 	}
 	if !cfg.HasContext(cfg.CurrentContext) {
 		cfg.SetContext(cfg.CurrentContext, true, config.Context{})
 	}
-	return config.ParseEnvIntoContext(cfg.Contexts[cfg.CurrentContext])
+	return config.ParseEnvIntoContext(ctx, cfg.Contexts[cfg.CurrentContext])
 }
 
 func TestCapturedTargetKind(t *testing.T) {
@@ -273,7 +274,7 @@ contexts:
 current-context: dev
 `)
 
-	selectLocal := func(cfg *config.Config) error {
+	selectLocal := func(_ context.Context, cfg *config.Config) error {
 		cfg.CurrentContext = "local"
 		return nil
 	}
@@ -340,7 +341,7 @@ current-context: dev
 	// org-id, for instance — reaches this path with a fully merged config. The
 	// target is known and must be recorded, otherwise those invocations look
 	// identical to ones that had no config at all.
-	failValidation := func(*config.Config) error {
+	failValidation := func(context.Context, *config.Config) error {
 		return errors.New("missing stacks.onprem.grafana.org-id")
 	}
 
@@ -372,7 +373,7 @@ current-context: dev
 	// changing CurrentContext, so the merged config still describes the
 	// previously current self-hosted context. That context is not what the
 	// invocation targeted and must not be reported as though it were.
-	selectMissing := func(*config.Config) error {
+	selectMissing := func(context.Context, *config.Config) error {
 		return config.ContextNotFound("does-not-exist", nil)
 	}
 

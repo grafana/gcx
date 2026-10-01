@@ -75,7 +75,7 @@ func TestTLS_ResolveFiles(t *testing.T) {
 		CAFile:   caPath,
 	}
 
-	require.NoError(t, cfg.ResolveFiles())
+	require.NoError(t, cfg.ResolveFiles(t.Context()))
 	require.Equal(t, material.certPEM, cfg.CertData)
 	require.Equal(t, material.keyPEM, cfg.KeyData)
 	require.Equal(t, material.caPEM, cfg.CAData)
@@ -87,7 +87,7 @@ func TestTLS_ResolveFiles_MissingFile(t *testing.T) {
 		KeyFile:  "/nonexistent/key.pem",
 	}
 
-	err := cfg.ResolveFiles()
+	err := cfg.ResolveFiles(t.Context())
 	require.Error(t, err)
 	require.ErrorContains(t, err, "TLS client certificate file not found")
 }
@@ -97,7 +97,7 @@ func TestTLS_ResolveFiles_CertWithoutKey(t *testing.T) {
 		CertFile: "/some/cert.pem",
 	}
 
-	err := cfg.ResolveFiles()
+	err := cfg.ResolveFiles(t.Context())
 	require.Error(t, err)
 	require.ErrorContains(t, err, "both cert-file and key-file must be provided together")
 }
@@ -116,7 +116,7 @@ func TestTLS_ResolveFiles_FileOverridesData(t *testing.T) {
 		CertData: []byte("old-data"),
 	}
 
-	require.NoError(t, cfg.ResolveFiles())
+	require.NoError(t, cfg.ResolveFiles(t.Context()))
 	require.Equal(t, material.certPEM, cfg.CertData)
 }
 
@@ -126,7 +126,7 @@ func TestTLS_ToStdTLSConfig_InsecureOnly(t *testing.T) {
 		ServerName: "example.com",
 	}
 
-	tlsCfg, err := cfg.ToStdTLSConfig()
+	tlsCfg, err := cfg.ToStdTLSConfig(t.Context())
 	require.NoError(t, err)
 	require.True(t, tlsCfg.InsecureSkipVerify)
 	require.Equal(t, "example.com", tlsCfg.ServerName)
@@ -139,7 +139,7 @@ func TestTLS_ToStdTLSConfig_WithCAData(t *testing.T) {
 		CAData: material.caPEM,
 	}
 
-	tlsCfg, err := cfg.ToStdTLSConfig()
+	tlsCfg, err := cfg.ToStdTLSConfig(t.Context())
 	require.NoError(t, err)
 	require.NotNil(t, tlsCfg.RootCAs)
 	require.Equal(t, uint16(tls.VersionTLS12), tlsCfg.MinVersion)
@@ -150,7 +150,7 @@ func TestTLS_ToStdTLSConfig_WithInvalidCAData(t *testing.T) {
 		CAData: []byte("not-a-cert"),
 	}
 
-	_, err := cfg.ToStdTLSConfig()
+	_, err := cfg.ToStdTLSConfig(t.Context())
 	require.Error(t, err)
 	require.ErrorContains(t, err, "failed to parse TLS CA certificate data")
 }
@@ -169,7 +169,7 @@ func TestTLS_ToStdTLSConfig_WithCertFiles(t *testing.T) {
 		KeyFile:  keyPath,
 	}
 
-	tlsCfg, err := cfg.ToStdTLSConfig()
+	tlsCfg, err := cfg.ToStdTLSConfig(t.Context())
 	require.NoError(t, err)
 	require.Len(t, tlsCfg.Certificates, 1)
 	require.Equal(t, uint16(tls.VersionTLS12), tlsCfg.MinVersion)
@@ -182,7 +182,7 @@ func TestTLS_ToStdTLSConfig_WithCertData(t *testing.T) {
 		KeyData:  material.keyPEM,
 	}
 
-	tlsCfg, err := cfg.ToStdTLSConfig()
+	tlsCfg, err := cfg.ToStdTLSConfig(t.Context())
 	require.NoError(t, err)
 	require.Len(t, tlsCfg.Certificates, 1)
 	require.Equal(t, uint16(tls.VersionTLS12), tlsCfg.MinVersion)
@@ -195,7 +195,7 @@ func TestTLS_ToStdTLSConfig_WithMalformedCertData(t *testing.T) {
 		KeyData:  material.keyPEM,
 	}
 
-	_, err := cfg.ToStdTLSConfig()
+	_, err := cfg.ToStdTLSConfig(t.Context())
 	require.Error(t, err)
 }
 
@@ -207,7 +207,7 @@ func TestTLS_ToStdTLSConfig_HalfConfiguredCertData(t *testing.T) {
 			CertData: material.certPEM,
 		}
 
-		_, err := cfg.ToStdTLSConfig()
+		_, err := cfg.ToStdTLSConfig(t.Context())
 		require.Error(t, err)
 		require.ErrorContains(t, err, "both cert-data and key-data must be provided together")
 	})
@@ -217,7 +217,7 @@ func TestTLS_ToStdTLSConfig_HalfConfiguredCertData(t *testing.T) {
 			KeyData: material.keyPEM,
 		}
 
-		_, err := cfg.ToStdTLSConfig()
+		_, err := cfg.ToStdTLSConfig(t.Context())
 		require.Error(t, err)
 		require.ErrorContains(t, err, "both cert-data and key-data must be provided together")
 	})
@@ -226,7 +226,7 @@ func TestTLS_ToStdTLSConfig_HalfConfiguredCertData(t *testing.T) {
 func TestTLS_ToStdTLSConfig_PinsMinVersionTLS12(t *testing.T) {
 	cfg := &config.TLS{}
 
-	tlsCfg, err := cfg.ToStdTLSConfig()
+	tlsCfg, err := cfg.ToStdTLSConfig(t.Context())
 	require.NoError(t, err)
 	require.Equal(t, uint16(tls.VersionTLS12), tlsCfg.MinVersion)
 }
@@ -237,7 +237,7 @@ func TestTLS_ToStdTLSConfig_CADataAddsToSystemRoots(t *testing.T) {
 		CAData: material.caPEM,
 	}
 
-	tlsCfg, err := cfg.ToStdTLSConfig()
+	tlsCfg, err := cfg.ToStdTLSConfig(t.Context())
 	require.NoError(t, err)
 	require.NotNil(t, tlsCfg.RootCAs)
 

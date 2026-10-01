@@ -79,7 +79,7 @@ The command emits the stored document.`,
 			}
 
 			var templates map[string]any
-			if err := providers.ReadFileOrStdin(opts.File, cmd.InOrStdin(), &templates); err != nil {
+			if err := providers.ReadFileOrStdin(cmd.Context(), opts.File, cmd.InOrStdin(), &templates); err != nil {
 				return err
 			}
 

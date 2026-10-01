@@ -70,7 +70,7 @@ func HandleExploreLink(cmd *cobra.Command, opts ExploreLinkOpts, url string, una
 		cmdio.Info(cmd.ErrOrStderr(), "Explore link: %s", url)
 	}
 	if opts.Open {
-		if err := deeplink.Open(url); err != nil {
+		if err := deeplink.Open(cmd.Context(), url); err != nil {
 			cmdio.Warning(cmd.ErrOrStderr(), "%s: %v", failedOpenMsg, err)
 		}
 	}

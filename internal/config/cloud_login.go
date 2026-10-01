@@ -48,8 +48,8 @@ func MergeCloudInto(existing, incoming *CloudEntry) *CloudEntry {
 // copy-on-write and leaves the shared entry untouched. An entry referenced only
 // by the target context is updated in place. Host-name and copy-on-write name
 // collisions are allocated safely, while exact matches are reused.
-func (config *Config) EnsureCloudEntry(existingRef string, entry CloudEntry, contextName string) string {
-	return config.EnsureCloudEntryWithSafety(existingRef, entry, contextName, CloudMutationSafety{})
+func (config *Config) EnsureCloudEntry(ctx context.Context, existingRef string, entry CloudEntry, contextName string) string {
+	return config.EnsureCloudEntryWithSafety(ctx, existingRef, entry, contextName, CloudMutationSafety{})
 }
 
 // CloudMutationSafety carries evidence from the complete layered view into a
@@ -67,7 +67,7 @@ type CloudMutationSafety struct {
 // evidence. When the current entry is referenced outside the raw owner, a
 // changed credential/destination is always written to a fresh name that is not
 // present anywhere in the effective layered configuration.
-func (config *Config) EnsureCloudEntryWithSafety(
+func (config *Config) EnsureCloudEntryWithSafety(ctx context.Context,
 	existingRef string,
 	entry CloudEntry,
 	contextName string,
@@ -76,34 +76,34 @@ func (config *Config) EnsureCloudEntryWithSafety(
 	// The target may not be the file's current context, whose sentinels Load
 	// resolved eagerly. Resolve it before comparing or cloning its entry so a new
 	// entry never inherits a sentinel owned by a different name.
-	config.ResolveContext(contextName)
+	config.ResolveContext(ctx, contextName)
 
 	if existingRef == "" {
-		return config.ensureUnboundCloudEntry(entry, contextName, safety)
+		return config.ensureUnboundCloudEntry(ctx, entry, contextName, safety)
 	}
-	return config.ensureBoundCloudEntry(existingRef, entry, contextName, safety)
+	return config.ensureBoundCloudEntry(ctx, existingRef, entry, contextName, safety)
 }
 
-func (config *Config) ensureUnboundCloudEntry(entry CloudEntry, contextName string, safety CloudMutationSafety) string {
+func (config *Config) ensureUnboundCloudEntry(ctx context.Context, entry CloudEntry, contextName string, safety CloudMutationSafety) string {
 	base := cloudEntryName(entry.APIUrl)
 	if slices.Contains(safety.ForeignEntryNames, base) {
-		name := config.availableIsolatedCloudEntryName(base+"-"+contextName, &entry, safety.ReservedEntryNames)
+		name := config.availableIsolatedCloudEntryName(ctx, base+"-"+contextName, &entry, safety.ReservedEntryNames)
 		config.setCloudAuthEntry(name, entry)
 		return name
 	}
 	if existing := config.Cloud[base]; existing != nil {
 		desired := mergedCloudEntry(existing, &entry)
-		if sameCloudEntry(existing, &desired, config.keychainStore) {
+		if sameCloudEntry(ctx, existing, &desired, config.keychainStore) {
 			return base
 		}
-		name := config.availableIsolatedCloudEntryName(base+"-"+contextName, &desired, safety.ReservedEntryNames)
+		name := config.availableIsolatedCloudEntryName(ctx, base+"-"+contextName, &desired, safety.ReservedEntryNames)
 		if config.Cloud[name] == nil {
 			config.setCloudAuthEntry(name, desired)
 		}
 		return name
 	}
 	if slices.Contains(safety.ReservedEntryNames, base) {
-		name := config.availableIsolatedCloudEntryName(base+"-"+contextName, &entry, safety.ReservedEntryNames)
+		name := config.availableIsolatedCloudEntryName(ctx, base+"-"+contextName, &entry, safety.ReservedEntryNames)
 		config.setCloudAuthEntry(name, entry)
 		return name
 	}
@@ -112,7 +112,7 @@ func (config *Config) ensureUnboundCloudEntry(entry CloudEntry, contextName stri
 	return base
 }
 
-func (config *Config) ensureBoundCloudEntry(
+func (config *Config) ensureBoundCloudEntry(ctx context.Context,
 	existingRef string,
 	entry CloudEntry,
 	contextName string,
@@ -125,11 +125,11 @@ func (config *Config) ensureBoundCloudEntry(
 	}
 
 	desired := mergedCloudEntry(existing, &entry)
-	if sameCloudEntry(existing, &desired, config.keychainStore) {
+	if sameCloudEntry(ctx, existing, &desired, config.keychainStore) {
 		return existingRef
 	}
 	if safety.SharedInEffectiveConfig {
-		name := config.availableIsolatedCloudEntryName(existingRef+"-"+contextName, &desired, safety.ReservedEntryNames)
+		name := config.availableIsolatedCloudEntryName(ctx, existingRef+"-"+contextName, &desired, safety.ReservedEntryNames)
 		config.setCloudAuthEntry(name, desired)
 		return name
 	}
@@ -138,14 +138,14 @@ func (config *Config) ensureBoundCloudEntry(
 		return existingRef
 	}
 
-	name := config.availableCloudEntryName(existingRef+"-"+contextName, &desired)
+	name := config.availableCloudEntryName(ctx, existingRef+"-"+contextName, &desired)
 	if config.Cloud[name] == nil {
 		config.setCloudAuthEntry(name, desired)
 	}
 	return name
 }
 
-func (config *Config) availableIsolatedCloudEntryName(base string, desired *CloudEntry, reserved []string) string {
+func (config *Config) availableIsolatedCloudEntryName(ctx context.Context, base string, desired *CloudEntry, reserved []string) string {
 	for i := 1; ; i++ {
 		name := base
 		if i > 1 {
@@ -155,7 +155,7 @@ func (config *Config) availableIsolatedCloudEntryName(base string, desired *Clou
 			continue
 		}
 		existing := config.Cloud[name]
-		if existing == nil || sameCloudEntry(existing, desired, config.keychainStore) {
+		if existing == nil || sameCloudEntry(ctx, existing, desired, config.keychainStore) {
 			return name
 		}
 	}
@@ -182,11 +182,11 @@ func mergedCloudEntry(existing, incoming *CloudEntry) CloudEntry {
 // sameCloudEntry compares the complete credential/destination tuple. Existing
 // may still contain keychain sentinels, so compare against a resolved copy.
 // Resolution failures compare different, choosing isolation over mutation.
-func sameCloudEntry(existing, desired *CloudEntry, store credentials.Store) bool {
+func sameCloudEntry(ctx context.Context, existing, desired *CloudEntry, store credentials.Store) bool {
 	resolved := *existing
 	resolved.OAuthScopes = append([]string(nil), existing.OAuthScopes...)
 	if store != nil {
-		resolveSentinelsForOwner(cloudOwner(existing.Name, &resolved), store)
+		resolveSentinelsForOwner(ctx, cloudOwner(existing.Name, &resolved), store)
 	}
 	return resolved.Token == desired.Token &&
 		resolved.OAuthToken == desired.OAuthToken &&
@@ -217,14 +217,14 @@ func (config *Config) cloudEntryRefCount(name string) int {
 
 // availableCloudEntryName returns base when free, reuses it when it already
 // contains the desired tuple, or appends a numeric suffix until one is safe.
-func (config *Config) availableCloudEntryName(base string, desired *CloudEntry) string {
+func (config *Config) availableCloudEntryName(ctx context.Context, base string, desired *CloudEntry) string {
 	for i := 1; ; i++ {
 		name := base
 		if i > 1 {
 			name = fmt.Sprintf("%s-%d", base, i)
 		}
 		existing := config.Cloud[name]
-		if existing == nil || sameCloudEntry(existing, desired, config.keychainStore) {
+		if existing == nil || sameCloudEntry(ctx, existing, desired, config.keychainStore) {
 			return name
 		}
 	}
@@ -297,10 +297,10 @@ func SaveCloudConfigGuarded(
 
 	// Merge the incoming auth fields onto the existing entry so
 	// re-authenticating refreshes credentials without dropping other fields.
-	entryName := cfg.EnsureCloudEntryWithSafety(curCtx.Cloud, *entry, contextName, safety)
+	entryName := cfg.EnsureCloudEntryWithSafety(ctx, curCtx.Cloud, *entry, contextName, safety)
 	curCtx.Cloud = entryName
 	cfg.Resolve()
-	if err := guard.VerifyCurrentSources(); err != nil {
+	if err := guard.VerifyCurrentSources(ctx); err != nil {
 		return "", "", err
 	}
 

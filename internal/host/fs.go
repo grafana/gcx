@@ -216,3 +216,11 @@ func Hostname(ctx context.Context) (string, error) {
 	}
 	return os.Hostname()
 }
+
+// EvalSymlinks mirrors [filepath.EvalSymlinks].
+func EvalSymlinks(ctx context.Context, path string) (string, error) {
+	if Sandboxed(ctx) {
+		return "", pathErr("lstat", path)
+	}
+	return filepath.EvalSymlinks(path)
+}

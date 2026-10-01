@@ -206,7 +206,7 @@ func newRulerNamespacesDeleteCommand(loader GrafanaConfigLoader) *cobra.Command 
 			// The confirmation exchange is a diagnostic, not the result —
 			// stderr keeps the prompt and "Aborted." out of the stdout
 			// document.
-			ok, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
+			ok, err := providers.ConfirmDestructive(ctx, cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
 				"Delete ruler namespace "+args[0]+" and all rule groups in it?")
 			if err != nil {
 				return err
@@ -413,7 +413,7 @@ bare rule group. Upserting a group replaces the group with the same name.`,
 			}
 			namespace := args[0]
 			var input RulerUpsertInput
-			if err := providers.ReadFileOrStdin(opts.File, cmd.InOrStdin(), &input); err != nil {
+			if err := providers.ReadFileOrStdin(cmd.Context(), opts.File, cmd.InOrStdin(), &input); err != nil {
 				return err
 			}
 			groups, err := input.RuleGroups()
@@ -532,7 +532,7 @@ func newRulerGroupsDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
 			// The confirmation exchange is a diagnostic, not the result —
 			// stderr keeps the prompt and "Aborted." out of the stdout
 			// document.
-			ok, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
+			ok, err := providers.ConfirmDestructive(ctx, cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
 				"Delete ruler rule group "+args[1]+" in namespace "+args[0]+"?")
 			if err != nil {
 				return err

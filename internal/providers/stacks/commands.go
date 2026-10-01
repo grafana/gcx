@@ -467,7 +467,7 @@ Use --dry-run to preview the operation first.`,
 // The bypass chain (--force, AutoApprove, agent mode guard) is delegated to
 // providers.CheckDestructiveBypass so it stays in sync with ConfirmDestructive.
 func confirmStackDelete(cmd *cobra.Command, slug string, force bool) error {
-	bypass, err := providers.CheckDestructiveBypass(force)
+	bypass, err := providers.CheckDestructiveBypass(cmd.Context(), force)
 	if err != nil {
 		return err
 	}

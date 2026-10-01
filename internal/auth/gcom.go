@@ -10,11 +10,11 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 	"time"
 
 	"github.com/grafana/gcx/internal/deeplink"
+	"github.com/grafana/gcx/internal/host"
 	"github.com/grafana/gcx/internal/httputils"
 )
 
@@ -87,17 +87,17 @@ type GCOMFlow struct {
 }
 
 // NewGCOMFlow creates a new GCOM OAuth2 PKCE flow.
-func NewGCOMFlow(opts GCOMOptions) *GCOMFlow {
+func NewGCOMFlow(ctx context.Context, opts GCOMOptions) *GCOMFlow {
 	if opts.GCOMURL == "" {
 		opts.GCOMURL = "https://grafana.com"
 	}
 	w := opts.Writer
 	if w == nil {
-		w = os.Stderr
+		w = host.Stderr(ctx)
 	}
 	r := opts.Reader
 	if r == nil {
-		r = os.Stdin
+		r = host.Stdin(ctx)
 	}
 	return &GCOMFlow{opts: opts, writer: w, reader: r}
 }
@@ -172,7 +172,7 @@ func (f *GCOMFlow) runWithCallbackServer(ctx context.Context) (*GCOMResult, erro
 	fmt.Fprintln(f.writer, "Opening browser to authenticate with Grafana Cloud...")
 	fmt.Fprintf(f.writer, "If browser doesn't open, visit:\n  %s\n\n", authURL)
 
-	if opened, err := deeplink.OpenWithStatus(authURL); err != nil {
+	if opened, err := deeplink.OpenWithStatus(ctx, authURL); err != nil {
 		fmt.Fprintln(f.writer, "(Could not open browser automatically)")
 	} else if !opened {
 		fmt.Fprintln(f.writer, "(Browser launch skipped in agent mode — open the URL above manually)")
@@ -180,10 +180,10 @@ func (f *GCOMFlow) runWithCallbackServer(ctx context.Context) (*GCOMResult, erro
 
 	// Over SSH the browser cannot reach the callback address. Accept a pasted
 	// redirect URL alongside the callback so the user never has to restart.
-	paste := startPasteWatcher(f.writer, port)
+	paste := startPasteWatcher(ctx, f.writer, port)
 	defer paste.Close()
 	if paste == nil {
-		printRemoteSessionHint(f.writer, port, "gcx cloud login --oauth-manual")
+		printRemoteSessionHint(ctx, f.writer, port, "gcx cloud login --oauth-manual")
 		fmt.Fprintln(f.writer, "Waiting for authentication...")
 	}
 

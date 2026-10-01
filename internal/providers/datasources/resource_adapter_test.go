@@ -160,7 +160,7 @@ func TestUnstructuredToDatasource(t *testing.T) {
 		var obj map[string]any
 		require.NoError(t, json.Unmarshal([]byte(raw), &obj))
 
-		ds, err := provds.UnstructuredToDatasource(&unstructured.Unstructured{Object: obj})
+		ds, err := provds.UnstructuredToDatasource(t.Context(), &unstructured.Unstructured{Object: obj})
 		require.NoError(t, err)
 		assert.Equal(t, "abc", ds.UID)
 		assert.Equal(t, "My Prom", ds.Name)
@@ -173,7 +173,7 @@ func TestUnstructuredToDatasource(t *testing.T) {
 		var obj map[string]any
 		require.NoError(t, json.Unmarshal([]byte(raw), &obj))
 
-		_, err := provds.UnstructuredToDatasource(&unstructured.Unstructured{Object: obj})
+		_, err := provds.UnstructuredToDatasource(t.Context(), &unstructured.Unstructured{Object: obj})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "spec.type is required")
 	})

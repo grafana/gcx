@@ -157,7 +157,7 @@ type Hooks struct {
 
 	// CheckCredentialPersistence verifies that OAuth results can be stored
 	// before the browser flow starts. Nil uses the configured OS store.
-	CheckCredentialPersistence func() error
+	CheckCredentialPersistence func(ctx context.Context) error
 
 	// NewCloudAuthFlow constructs the direct GCOM OAuth PKCE flow used by the
 	// optional Cloud follow-up. Nil selects auth.NewGCOMFlow. The seam keeps the
@@ -345,7 +345,7 @@ func Run(ctx context.Context, opts *Options) (Result, error) {
 	// Normalize: missing scheme → default to https. Users who meant http://
 	// must pass the full URL explicitly; defaulting to https is safer.
 	opts.Server = NormalizeServerURL(opts.Server)
-	if err := validateRuntimeOnlyBearerDestination(*opts, ""); err != nil {
+	if err := validateRuntimeOnlyBearerDestination(ctx, *opts, ""); err != nil {
 		return Result{}, err
 	}
 
@@ -382,7 +382,7 @@ func Run(ctx context.Context, opts *Options) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	if err := validateRuntimeOnlyBearerDestination(*opts, authMethod, grafanaCfg); err != nil {
+	if err := validateRuntimeOnlyBearerDestination(ctx, *opts, authMethod, grafanaCfg); err != nil {
 		return Result{}, err
 	}
 
@@ -520,7 +520,7 @@ func Run(ctx context.Context, opts *Options) (Result, error) {
 // reject known mismatches before target detection or a browser flow. After
 // OAuth resolves, the second call also compares the issuer-provided proxy that
 // will actually be persisted.
-func validateRuntimeOnlyBearerDestination(opts Options, authMethod string, resolved ...*config.GrafanaConfig) error {
+func validateRuntimeOnlyBearerDestination(ctx context.Context, opts Options, authMethod string, resolved ...*config.GrafanaConfig) error {
 	if authMethod == "" && opts.GrafanaToken == "" && !opts.UseOAuth && !opts.UseBasicAuth {
 		return nil
 	}
@@ -569,13 +569,13 @@ func validateRuntimeOnlyBearerDestination(opts Options, authMethod string, resol
 	}
 
 	// The username is unchanged here; only proxy/TLS overrides can differ.
-	if config.GrafanaBearerCredentialDestinationMatches(durable, runtime) {
+	if config.GrafanaBearerCredentialDestinationMatches(ctx, durable, runtime) {
 		return nil
 	}
 	if authMethod == "oauth" && resolvedDestination != nil && opts.PreserveStoredProxyEndpoint {
 		proxyAligned := *durable
 		proxyAligned.ProxyEndpoint = runtime.ProxyEndpoint
-		if config.GrafanaBearerCredentialDestinationMatches(&proxyAligned, runtime) {
+		if config.GrafanaBearerCredentialDestinationMatches(ctx, &proxyAligned, runtime) {
 			return &RuntimeOnlyBearerDestinationError{
 				OAuthIssuerProxyMismatch: true,
 				RuntimeProxyEndpoint:     runtime.ProxyEndpoint,
@@ -638,7 +638,7 @@ func tlsAwareClient(ctx context.Context, tlsCfg *config.TLS) (*http.Client, erro
 	if tlsCfg == nil || tlsCfg.IsEmpty() {
 		return httputils.NewDefaultClient(ctx), nil
 	}
-	stdTLS, err := tlsCfg.ToStdTLSConfig()
+	stdTLS, err := tlsCfg.ToStdTLSConfig(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -695,7 +695,7 @@ func resolveGrafanaAuth(ctx context.Context, opts Options, target Target) (strin
 		if checkPersistence == nil {
 			checkPersistence = config.CheckOAuthCredentialPersistence
 		}
-		if err := checkPersistence(); err != nil {
+		if err := checkPersistence(ctx); err != nil {
 			return "", nil, fmt.Errorf("%w: %w", ErrCredentialPersistencePreflight, err)
 		}
 		// The internal/login package is UI-free (NC-001) — it never touches
@@ -915,7 +915,7 @@ func persistContext(ctx context.Context, opts Options, contextName string, tempC
 	// Load resolves only the file's current context. A login may target another
 	// existing context; resolve its deferred keychain references before merging
 	// auth so Write can replace and delete the exact old credential generation.
-	cfg.ResolveContext(contextName)
+	cfg.ResolveContext(ctx, contextName)
 
 	existing := cfg.Contexts[contextName]
 	// An unbound context may already have a same-named raw stack containing
@@ -956,10 +956,10 @@ func persistContext(ctx context.Context, opts Options, contextName string, tempC
 	} else {
 		cfg.CurrentContext = contextName // make current on success, same as new-context path
 	}
-	if err := mergeAuthIntoExisting(&cfg, existing, tempCtx, opts.OrgID, stackSlug, opts.CloudMutationSafety); err != nil {
+	if err := mergeAuthIntoExisting(ctx, &cfg, existing, tempCtx, opts.OrgID, stackSlug, opts.CloudMutationSafety); err != nil {
 		return err
 	}
-	if err := opts.LoginMutationGuard.VerifyCurrentSources(); err != nil {
+	if err := opts.LoginMutationGuard.VerifyCurrentSources(ctx); err != nil {
 		return err
 	}
 
@@ -973,7 +973,7 @@ func persistContext(ctx context.Context, opts Options, contextName string, tempC
 // stack and cloud entries, preserving all other user-configured fields
 // (OrgID, Datasources, Providers, etc.). Missing entries are created: the
 // stack named after the context, the cloud entry via EnsureCloudEntry.
-func mergeAuthIntoExisting(
+func mergeAuthIntoExisting(ctx context.Context,
 	cfg *config.Config,
 	existing *config.Context,
 	incoming config.Context,
@@ -982,14 +982,14 @@ func mergeAuthIntoExisting(
 	cloudSafety config.CloudMutationSafety,
 ) error {
 	if incoming.Grafana != nil {
-		if err := mergeGrafanaAuthIntoStack(cfg, existing, incoming.Grafana, explicitOrgID, stackSlug); err != nil {
+		if err := mergeGrafanaAuthIntoStack(ctx, cfg, existing, incoming.Grafana, explicitOrgID, stackSlug); err != nil {
 			return err
 		}
 	}
 
 	// Update the cloud entry if the incoming context carries cloud auth.
 	if incoming.CloudEntry != nil {
-		existing.Cloud = cfg.EnsureCloudEntryWithSafety(existing.Cloud, *incoming.CloudEntry, existing.Name, cloudSafety)
+		existing.Cloud = cfg.EnsureCloudEntryWithSafety(ctx, existing.Cloud, *incoming.CloudEntry, existing.Name, cloudSafety)
 	}
 
 	cfg.Resolve()
@@ -999,7 +999,7 @@ func mergeAuthIntoExisting(
 // mergeGrafanaAuthIntoStack writes the incoming grafana auth onto the
 // context's stack entry, creating a stack named after the context when it has
 // none.
-func mergeGrafanaAuthIntoStack(cfg *config.Config, existing *config.Context, src *config.GrafanaConfig, explicitOrgID int, stackSlug string) error {
+func mergeGrafanaAuthIntoStack(ctx context.Context, cfg *config.Config, existing *config.Context, src *config.GrafanaConfig, explicitOrgID int, stackSlug string) error {
 	if existing.Stack == "" {
 		if cfg.Stacks[existing.Name] == nil {
 			cfg.SetStack(existing.Name, config.StackConfig{})
@@ -1021,7 +1021,7 @@ func mergeGrafanaAuthIntoStack(cfg *config.Config, existing *config.Context, src
 		cfg.Resolve()
 	}
 	g := stack.Grafana
-	finishDestinationMutation := cfg.PrepareSecretPathMutation("stacks." + existing.Stack + ".grafana.server")
+	finishDestinationMutation := cfg.PrepareSecretPathMutation(ctx, "stacks."+existing.Stack+".grafana.server")
 
 	// Update every credential destination before assigning incoming secrets.
 	// The completion callback clears old Grafana and SM generations whose

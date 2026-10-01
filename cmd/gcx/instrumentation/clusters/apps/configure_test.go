@@ -330,8 +330,8 @@ func TestConfigureCmd_Discovered(t *testing.T) {
 			// agent.IsAgentMode() uses a cached init()-time value, so ResetForTesting()
 			// must be called after t.Setenv to re-run detection from the new env.
 			t.Setenv("GCX_AGENT_MODE", "true")
-			agent.ResetForTesting()
-			t.Cleanup(func() { agent.ResetForTesting() }) // restore after test
+			agent.ResetForTesting(t.Context())
+			t.Cleanup(func() { agent.ResetForTesting(t.Context()) }) // restore after test
 
 			responses := []getResponse{
 				{namespaces: tc.initial},

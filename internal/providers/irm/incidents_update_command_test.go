@@ -16,8 +16,8 @@ import (
 func runIncidentUpdateCmdWithMode(t *testing.T, srv *severityServer, agentMode string, args ...string) (string, error) {
 	t.Helper()
 	t.Setenv("GCX_AGENT_MODE", agentMode)
-	agent.ResetForTesting()
-	t.Cleanup(agent.ResetForTesting)
+	agent.ResetForTesting(t.Context())
+	t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 	server := httptest.NewServer(srv.handler(t))
 	t.Cleanup(server.Close)

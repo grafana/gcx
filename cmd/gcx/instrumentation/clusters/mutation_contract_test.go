@@ -128,8 +128,8 @@ func TestClustersMutations_HumanDefault_ByteIdentical(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv("GCX_AGENT_MODE", "false")
-			agent.ResetForTesting()
-			t.Cleanup(agent.ResetForTesting)
+			agent.ResetForTesting(t.Context())
+			t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 			got := runClustersMutation(t, tt.verb, tt.args)
 			assert.Equal(t, tt.want, got, "default human stdout must stay byte-identical")
@@ -180,8 +180,8 @@ func TestClustersMutations_AgentMode_SingleJSONDocument(t *testing.T) {
 func TestClustersMutations_ExplicitOutputOverrides(t *testing.T) {
 	t.Run("-o json in human mode", func(t *testing.T) {
 		t.Setenv("GCX_AGENT_MODE", "false")
-		agent.ResetForTesting()
-		t.Cleanup(agent.ResetForTesting)
+		agent.ResetForTesting(t.Context())
+		t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 		doc := decodeSingleJSONValue(t, runClustersMutation(t, "configure", []string{"--cost-metrics", "-o", "json"}))
 		assert.Equal(t, instoutput.MutationResultType, doc["type"])

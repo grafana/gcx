@@ -216,7 +216,7 @@ func newCreateSubcommand[T adapter.ResourceNamer](
 			}
 
 			var item T
-			if err := providers.ReadFileOrStdin(mo.File, cmd.InOrStdin(), &item); err != nil {
+			if err := providers.ReadFileOrStdin(cmd.Context(), mo.File, cmd.InOrStdin(), &item); err != nil {
 				return err
 			}
 
@@ -255,7 +255,7 @@ func newUpdateSubcommand[T adapter.ResourceNamer](
 			}
 
 			var item T
-			if err := providers.ReadFileOrStdin(mo.File, cmd.InOrStdin(), &item); err != nil {
+			if err := providers.ReadFileOrStdin(cmd.Context(), mo.File, cmd.InOrStdin(), &item); err != nil {
 				return err
 			}
 
@@ -298,7 +298,7 @@ func newDeleteSubcommand[T adapter.ResourceNamer](
 
 			// The prompt and abort notice are diagnostics, not the result —
 			// stderr keeps them out of the stdout document.
-			ok, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), do.Force,
+			ok, err := providers.ConfirmDestructive(cmd.Context(), cmd.InOrStdin(), cmd.ErrOrStderr(), do.Force,
 				fmt.Sprintf("Delete %s %s?", label, id))
 			if err != nil {
 				return err

@@ -7,11 +7,11 @@ import (
 	"log/slog"
 	"maps"
 	"net/http"
-	"os"
 	"strings"
 
 	"github.com/grafana/gcx/internal/cloud"
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/host"
 	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/spf13/pflag"
@@ -150,7 +150,7 @@ func (l *ConfigLoader) resolvedConfigFile(ctx context.Context) string {
 }
 
 func contextSelectionOverride(ctxName string) config.Override {
-	return func(cfg *config.Config) error {
+	return func(_ context.Context, cfg *config.Config) error {
 		if ctxName == "" {
 			return nil
 		}
@@ -162,7 +162,7 @@ func contextSelectionOverride(ctxName string) config.Override {
 	}
 }
 
-func cloudEnvOverride(cfg *config.Config) error {
+func cloudEnvOverride(ctx context.Context, cfg *config.Config) error {
 	if cfg.CurrentContext == "" {
 		cfg.CurrentContext = config.DefaultContextName
 	}
@@ -173,11 +173,11 @@ func cloudEnvOverride(cfg *config.Config) error {
 
 	// ParseEnvIntoContext synthesizes an ephemeral cloud entry from the
 	// GRAFANA_CLOUD_* env vars, winning over whatever the context references.
-	return config.ParseEnvIntoContext(cfg.Contexts[cfg.CurrentContext])
+	return config.ParseEnvIntoContext(ctx, cfg.Contexts[cfg.CurrentContext])
 }
 
 // contextMustExist is a config.Override that validates the current context exists.
-func contextMustExist(cfg *config.Config) error {
+func contextMustExist(_ context.Context, cfg *config.Config) error {
 	if !cfg.HasContext(cfg.CurrentContext) {
 		return config.ContextNotFound(cfg.CurrentContext, cfg.ContextNames())
 	}
@@ -210,7 +210,7 @@ func (l *ConfigLoader) SetConfigFile(path string) {
 // envOverride applies environment variable overrides to the config.
 // It ensures a current context exists, parses env vars into the context,
 // and resolves GRAFANA_PROVIDER_{NAME}_{KEY} env vars into provider config.
-func envOverride(cfg *config.Config) error {
+func envOverride(ctx context.Context, cfg *config.Config) error {
 	if cfg.CurrentContext == "" {
 		cfg.CurrentContext = config.DefaultContextName
 	}
@@ -220,13 +220,13 @@ func envOverride(cfg *config.Config) error {
 	}
 
 	curCtx := cfg.Contexts[cfg.CurrentContext]
-	if err := config.ParseEnvIntoContext(curCtx); err != nil {
+	if err := config.ParseEnvIntoContext(ctx, curCtx); err != nil {
 		return err
 	}
 
 	// Resolve GRAFANA_PROVIDER_{NAME}_{KEY} environment variables.
 	const providerEnvPrefix = "GRAFANA_PROVIDER_"
-	for _, envVar := range os.Environ() {
+	for _, envVar := range host.Environ(ctx) {
 		parts := strings.SplitN(envVar, "=", 2)
 		if len(parts) != 2 {
 			continue
@@ -274,7 +274,7 @@ func (l *ConfigLoader) LoadGrafanaConfig(ctx context.Context) (config.Namespaced
 		contextSelectionOverride(ctxName),
 		envOverride,
 		contextMustExist,
-		func(cfg *config.Config) error {
+		func(ctx context.Context, cfg *config.Config) error {
 			return cfg.GetCurrentContext().Validate(ctx)
 		},
 	}
@@ -493,9 +493,9 @@ func (l *ConfigLoader) LoadDirectProviderSnapshot(ctx context.Context, policy Di
 	envEndpoints := make(map[string]bool, len(policy.EndpointKeys))
 	for _, key := range policy.EndpointKeys {
 		envKey := providerEnvironmentKey(policy.ProviderName, key)
-		_, fromEnv := os.LookupEnv(envKey)
+		_, fromEnv := host.LookupEnv(ctx, envKey)
 		envEndpoints[key] = fromEnv
-		if providerCfg[key] != "" && fromEnv && strings.TrimSpace(os.Getenv(policy.CredentialEnv)) == "" {
+		if providerCfg[key] != "" && fromEnv && strings.TrimSpace(host.Getenv(ctx, policy.CredentialEnv)) == "" {
 			return DirectProviderSnapshot{}, fmt.Errorf(
 				"refusing provider endpoint %s from %s without a matching runtime credential: set %s too, or put the endpoint in an explicitly selected --config file",
 				key, envKey, policy.CredentialEnv,
@@ -681,11 +681,11 @@ func (l *ConfigLoader) writeBackSourceWithPolicy(ctx context.Context, descriptio
 	if configFile := l.resolvedConfigFile(ctx); configFile != "" {
 		return config.ExplicitConfigFile(configFile), config.ConfigSource{Path: configFile, Type: "explicit"}, nil
 	}
-	if envPath := os.Getenv(config.ConfigFileEnvVar); envPath != "" {
+	if envPath := host.Getenv(ctx, config.ConfigFileEnvVar); envPath != "" {
 		return config.ExplicitConfigFile(envPath), config.ConfigSource{Path: envPath, Type: "explicit"}, nil
 	}
 
-	sources, err := config.DiscoverSources()
+	sources, err := config.DiscoverSources(ctx)
 	if err != nil {
 		return nil, config.ConfigSource{}, err
 	}
@@ -743,7 +743,7 @@ func (l *ConfigLoader) SaveProviderConfig(ctx context.Context, providerName, key
 	// Load resolves keychain values eagerly only for current-context. Resolve an
 	// explicitly selected non-current context before mutating its stack so Write
 	// can round-trip any sentinels safely.
-	loaded.ResolveContext(ctxName)
+	loaded.ResolveContext(ctx, ctxName)
 	curCtx := loaded.Contexts[ctxName]
 	if curCtx == nil {
 		return fmt.Errorf("context %q not found", ctxName)
@@ -757,7 +757,7 @@ func (l *ConfigLoader) SaveProviderConfig(ctx context.Context, providerName, key
 		stack = curCtx.StackEntry
 	}
 
-	finishMutation := loaded.PrepareSecretPathMutation("stacks." + curCtx.Stack + ".providers." + providerName + "." + key)
+	finishMutation := loaded.PrepareSecretPathMutation(ctx, "stacks."+curCtx.Stack+".providers."+providerName+"."+key)
 	if stack.Providers == nil {
 		stack.Providers = make(map[string]map[string]string)
 	}
@@ -793,7 +793,7 @@ func (l *ConfigLoader) LoadConfigTolerant(ctx context.Context, extraOverrides ..
 // cmd/gcx/config.Options.LoadConfig: LoadConfigTolerant plus a validator that
 // requires the current context to exist and pass Validate().
 func (l *ConfigLoader) LoadConfig(ctx context.Context) (config.Config, error) {
-	validator := func(cfg *config.Config) error {
+	validator := func(_ context.Context, cfg *config.Config) error {
 		if !cfg.HasContext(cfg.CurrentContext) {
 			return config.ContextNotFound(cfg.CurrentContext, cfg.ContextNames())
 		}

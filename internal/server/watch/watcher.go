@@ -5,11 +5,10 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/grafana/gcx/internal/host"
 	"github.com/grafana/gcx/internal/logs"
 	"github.com/grafana/grafana-app-sdk/logging"
 )
@@ -21,7 +20,7 @@ type Watcher struct {
 }
 
 func NewWatcher(ctx context.Context, callback func(string)) (*Watcher, error) {
-	notifier, err := fsnotify.NewWatcher()
+	notifier, err := host.NewWatcher(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -35,7 +34,7 @@ func NewWatcher(ctx context.Context, callback func(string)) (*Watcher, error) {
 
 func (w *Watcher) Add(ctx context.Context, watchPaths ...string) error {
 	for _, watchPath := range watchPaths {
-		isDir, err := isDirectory(watchPath)
+		isDir, err := isDirectory(ctx, watchPath)
 		if err != nil {
 			return err
 		}
@@ -43,7 +42,7 @@ func (w *Watcher) Add(ctx context.Context, watchPaths ...string) error {
 			return fmt.Errorf("%s id not a directory", watchPath)
 		}
 
-		err = filepath.WalkDir(watchPath, func(path string, d fs.DirEntry, err error) error {
+		err = host.WalkDir(ctx, watchPath, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
 				return err
 			}
@@ -100,8 +99,8 @@ func (w *Watcher) Watch(ctx context.Context) {
 	}()
 }
 
-func isDirectory(path string) (bool, error) {
-	fileInfo, err := os.Stat(path)
+func isDirectory(ctx context.Context, path string) (bool, error) {
+	fileInfo, err := host.Stat(ctx, path)
 	if err != nil {
 		return false, err
 	}

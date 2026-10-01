@@ -101,14 +101,14 @@ func (n *NamespacedRESTConfig) WireTokenPersistence(ctx context.Context, source 
 	persistCtx := context.WithoutCancel(ctx)
 
 	persistLoad := func() (Config, error) {
-		path, err := persistSource()
+		path, err := persistSource(ctx)
 		if err != nil {
 			return Config{}, err
 		}
 		loadOpts := loadOptions{layer: configLayerFromCtx(persistCtx)}
 		if selected, ok := configSourceForPath(sources, path); ok {
 			loadOpts.layer = selected.Type
-			current, readErr := readConfigSource(selected)
+			current, readErr := readConfigSource(ctx, selected)
 			if readErr != nil {
 				return Config{}, readErr
 			}
@@ -119,7 +119,7 @@ func (n *NamespacedRESTConfig) WireTokenPersistence(ctx context.Context, source 
 		// The Lock callback below holds the write lock for exactly this
 		// identity, so any write the load performs on our behalf is already
 		// protected. Naming the identity is what makes that claim checkable.
-		identity, err := tokenPersistenceIdentity(sources, path)
+		identity, err := tokenPersistenceIdentity(ctx, sources, path)
 		if err != nil {
 			return Config{}, err
 		}
@@ -138,7 +138,7 @@ func (n *NamespacedRESTConfig) WireTokenPersistence(ctx context.Context, source 
 		if stack == nil || stack.Grafana == nil {
 			return Config{}, fmt.Errorf("OAuth credential owner %q disappeared from %s; reload configuration before retrying", stackName, path)
 		}
-		freshBinding := stackOwner(stackName, stack).binding(credentials.FieldOAuthRefreshToken)
+		freshBinding := stackOwner(stackName, stack).binding(ctx, credentials.FieldOAuthRefreshToken)
 		bindingChanged := freshBinding.Destination != expectedBinding.Destination
 		if expectedBinding.Valid() {
 			bindingChanged = freshBinding != expectedBinding
@@ -147,18 +147,18 @@ func (n *NamespacedRESTConfig) WireTokenPersistence(ctx context.Context, source 
 			return Config{}, fmt.Errorf("OAuth credential destination for %q changed in %s; reload configuration before retrying", stackName, path)
 		}
 		if fresh.keychainStore != nil {
-			backed, preserve, states := resolveSentinelsForOwner(stackOwner(stackName, stack), fresh.keychainStore)
+			backed, preserve, states := resolveSentinelsForOwner(ctx, stackOwner(stackName, stack), fresh.keychainStore)
 			fresh.trackKeychainResults(backed, preserve, states)
 		}
 		return fresh, nil
 	}
 
 	n.oauthTransport.Lock = func(reqCtx context.Context) (func(), error) {
-		path, identity, err := tokenPersistenceIdentityFor(persistSource, sources)
+		path, identity, err := tokenPersistenceIdentityFor(ctx, persistSource, sources)
 		if err != nil {
 			return nil, err
 		}
-		lockPath, err := configLockFile(identity)
+		lockPath, err := configLockFile(ctx, identity)
 		if err != nil {
 			return nil, err
 		}
@@ -263,7 +263,7 @@ func (n *NamespacedRESTConfig) WireTokenPersistence(ctx context.Context, source 
 		// same helper the Lock callback and persistLoad use, so the three
 		// cannot disagree. fresh.sourceIdentity agrees with it, but only by
 		// following the path and layer four hops back through the load.
-		_, identity, err := tokenPersistenceIdentityFor(persistSource, sources)
+		_, identity, err := tokenPersistenceIdentityFor(ctx, persistSource, sources)
 		if err != nil {
 			return err
 		}
@@ -274,12 +274,12 @@ func (n *NamespacedRESTConfig) WireTokenPersistence(ctx context.Context, source 
 // tokenPersistenceIdentityFor resolves the persistence target path and its
 // canonical write-lock identity together, so a caller cannot name one without
 // the other.
-func tokenPersistenceIdentityFor(source Source, sources []ConfigSource) (string, string, error) {
-	path, err := source()
+func tokenPersistenceIdentityFor(ctx context.Context, source Source, sources []ConfigSource) (string, string, error) {
+	path, err := source(ctx)
 	if err != nil {
 		return "", "", err
 	}
-	identity, err := tokenPersistenceIdentity(sources, path)
+	identity, err := tokenPersistenceIdentity(ctx, sources, path)
 	if err != nil {
 		return "", "", err
 	}
@@ -289,26 +289,26 @@ func tokenPersistenceIdentityFor(source Source, sources []ConfigSource) (string,
 // tokenPersistenceIdentity returns the canonical identity of the config source
 // at path. The lock callback, the reload, and the write all derive the write
 // lock's identity here so the three cannot disagree.
-func tokenPersistenceIdentity(sources []ConfigSource, path string) (string, error) {
+func tokenPersistenceIdentity(ctx context.Context, sources []ConfigSource, path string) (string, error) {
 	layer := ""
 	if selected, ok := configSourceForPath(sources, path); ok {
 		layer = selected.Type
 	}
-	return canonicalConfigSourceForLayer(path, layer)
+	return canonicalConfigSourceForLayer(ctx, path, layer)
 }
 
 // CheckOAuthCredentialPersistence verifies that a new OAuth credential can be
 // persisted before gcx starts a browser flow. A disabled store keeps the
 // documented plaintext fallback.
-func CheckOAuthCredentialPersistence() error {
-	return checkOAuthCredentialPersistence(keychainStoreFn())
+func CheckOAuthCredentialPersistence(ctx context.Context) error {
+	return checkOAuthCredentialPersistence(keychainStoreFn(ctx))
 }
 
 // CheckOAuthCredentialPersistence verifies OAuth persistence with the
 // credential-store policy that was resolved when cfg was loaded.
-func (cfg *Config) CheckOAuthCredentialPersistence() error {
+func (cfg *Config) CheckOAuthCredentialPersistence(ctx context.Context) error {
 	if cfg == nil || cfg.keychainStore == nil {
-		return CheckOAuthCredentialPersistence()
+		return CheckOAuthCredentialPersistence(ctx)
 	}
 	return checkOAuthCredentialPersistence(cfg.keychainStore)
 }
@@ -339,7 +339,7 @@ func configSourceForPath(sources []ConfigSource, path string) (ConfigSource, boo
 func ResolveTokenPersistenceSource(ctx context.Context, fallback Source, stackName string, sources []ConfigSource) Source {
 	resolved, err := resolveTokenPersistenceSource(ctx, fallback, stackName, sources)
 	if err != nil {
-		return func() (string, error) { return "", err }
+		return func(context.Context) (string, error) { return "", err }
 	}
 	return resolved
 }
@@ -431,7 +431,7 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) (NamespacedRESTCo
 	if selectedGrafana.TLS != nil {
 		resolvedTLS := *selectedGrafana.TLS
 		// Resolve file paths to data before passing to the k8s REST client.
-		if err := resolvedTLS.ResolveFiles(); err != nil {
+		if err := resolvedTLS.ResolveFiles(ctx); err != nil {
 			return NamespacedRESTConfig{}, fmt.Errorf("TLS configuration: %w", err)
 		}
 		// Kubernetes really is wonderful, huh.
@@ -475,7 +475,7 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) (NamespacedRESTCo
 		if bindingStack == nil {
 			bindingStack = &StackConfig{Grafana: cfg.Grafana}
 		}
-		oauthCredentialBinding = stackOwner(cfg.stackName(), bindingStack).binding(credentials.FieldOAuthRefreshToken)
+		oauthCredentialBinding = stackOwner(cfg.stackName(), bindingStack).binding(ctx, credentials.FieldOAuthRefreshToken)
 		rcfg.WrapTransport = func(rt http.RoundTripper) http.RoundTripper {
 			oauthTransport.Base = rt
 			return oauthTransport

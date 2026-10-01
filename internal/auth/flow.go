@@ -18,13 +18,13 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"os"
 	"slices"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/grafana/gcx/internal/deeplink"
+	"github.com/grafana/gcx/internal/host"
 )
 
 //go:embed templates/*.html
@@ -101,7 +101,7 @@ type Flow struct {
 }
 
 // NewFlow creates a new authentication flow for the given Grafana endpoint.
-func NewFlow(endpoint string, opts Options) *Flow {
+func NewFlow(ctx context.Context, endpoint string, opts Options) *Flow {
 	if opts.BindAddress == "" {
 		opts.BindAddress = "127.0.0.1"
 	}
@@ -110,11 +110,11 @@ func NewFlow(endpoint string, opts Options) *Flow {
 	}
 	w := opts.Writer
 	if w == nil {
-		w = os.Stderr
+		w = host.Stderr(ctx)
 	}
 	r := opts.Reader
 	if r == nil {
-		r = os.Stdin
+		r = host.Stdin(ctx)
 	}
 	return &Flow{endpoint: endpoint, opts: opts, writer: w, reader: r}
 }
@@ -139,7 +139,7 @@ func (f *Flow) runManual(ctx context.Context) (*Result, error) {
 		return nil, err
 	}
 
-	authURL := f.buildAuthURL(manualCallbackPort, state, codeChallenge)
+	authURL := f.buildAuthURL(ctx, manualCallbackPort, state, codeChallenge)
 	// No callback server runs here, so no route can race the paste. A nil guard
 	// always grants the claim.
 	return runManualPaste(ctx, f.writer, f.reader, authURL, verificationCode(codeChallenge),
@@ -176,7 +176,7 @@ func (f *Flow) runWithCallbackServer(ctx context.Context) (*Result, error) {
 		_ = server.Shutdown(shutdownCtx)
 	}()
 
-	authURL := f.buildAuthURL(port, state, codeChallenge)
+	authURL := f.buildAuthURL(ctx, port, state, codeChallenge)
 
 	fmt.Fprintln(f.writer, "Opening browser to authenticate...")
 	fmt.Fprintf(f.writer, "If browser doesn't open, visit:\n  %s\n\n", authURL)
@@ -185,7 +185,7 @@ func (f *Flow) runWithCallbackServer(ctx context.Context) (*Result, error) {
 	fmt.Fprintln(f.writer, "Check that this code matches what is shown in the browser before approving.")
 	fmt.Fprintln(f.writer)
 
-	if opened, err := deeplink.OpenWithStatus(authURL); err != nil {
+	if opened, err := deeplink.OpenWithStatus(ctx, authURL); err != nil {
 		fmt.Fprintln(f.writer, "(Could not open browser automatically)")
 	} else if !opened {
 		fmt.Fprintln(f.writer, "(Browser launch skipped in agent mode — open the URL above manually)")
@@ -193,10 +193,10 @@ func (f *Flow) runWithCallbackServer(ctx context.Context) (*Result, error) {
 
 	// Over SSH the browser cannot reach the callback address. Accept a pasted
 	// redirect URL alongside the callback so the user never has to restart.
-	paste := startPasteWatcher(f.writer, port)
+	paste := startPasteWatcher(ctx, f.writer, port)
 	defer paste.Close()
 	if paste == nil {
-		printRemoteSessionHint(f.writer, port, "gcx login --oauth-manual")
+		printRemoteSessionHint(ctx, f.writer, port, "gcx login --oauth-manual")
 		fmt.Fprintln(f.writer, "Waiting for authentication...")
 	}
 
@@ -207,7 +207,7 @@ func (f *Flow) runWithCallbackServer(ctx context.Context) (*Result, error) {
 }
 
 // buildAuthURL renders the plugin consent URL for the given callback port.
-func (f *Flow) buildAuthURL(port int, state, codeChallenge string) string {
+func (f *Flow) buildAuthURL(ctx context.Context, port int, state, codeChallenge string) string {
 	authEndpoint := strings.TrimSuffix(f.endpoint, "/")
 	if authEndpoint == "" {
 		authEndpoint = "https://grafana.com/launch"
@@ -216,7 +216,7 @@ func (f *Flow) buildAuthURL(port int, state, codeChallenge string) string {
 	authURL := fmt.Sprintf("%s/a/grafana-assistant-app/cli/auth?callback_port=%d&state=%s&code_challenge=%s&code_challenge_method=S256",
 		authEndpoint, port, url.QueryEscape(state), url.QueryEscape(codeChallenge))
 
-	if hostname, err := os.Hostname(); err == nil && hostname != "" {
+	if hostname, err := host.Hostname(ctx); err == nil && hostname != "" {
 		authURL += "&device_name=" + url.QueryEscape(hostname)
 	}
 
@@ -445,9 +445,8 @@ func exchangeCodeForToken(ctx context.Context, endpoint, code, codeVerifier stri
 }
 
 func listenOnCallbackPort(ctx context.Context, bindAddress string, fixedPort int) (net.Listener, int, error) {
-	var lc net.ListenConfig
 	if fixedPort != 0 {
-		listener, err := lc.Listen(ctx, "tcp", fmt.Sprintf("%s:%d", bindAddress, fixedPort))
+		listener, err := host.Listen(ctx, "tcp", fmt.Sprintf("%s:%d", bindAddress, fixedPort))
 		if err != nil {
 			return nil, 0, fmt.Errorf("callback port %d unavailable: %w", fixedPort, err)
 		}
@@ -455,7 +454,7 @@ func listenOnCallbackPort(ctx context.Context, bindAddress string, fixedPort int
 	}
 
 	for port := 54321; port < 54400; port++ {
-		listener, err := lc.Listen(ctx, "tcp", fmt.Sprintf("%s:%d", bindAddress, port))
+		listener, err := host.Listen(ctx, "tcp", fmt.Sprintf("%s:%d", bindAddress, port))
 		if err == nil {
 			return listener, port, nil
 		}

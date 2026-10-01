@@ -67,11 +67,11 @@ in the top-level secure block via {create: <value>}, {fromEnv: <VAR>}, or
 
 			ctx := cmd.Context()
 
-			manifest, err := dsclient.ReadManifestFile(opts.File, cmd.InOrStdin())
+			manifest, err := dsclient.ReadManifestFile(ctx, opts.File, cmd.InOrStdin())
 			if err != nil {
 				return err
 			}
-			if err := manifest.ResolveSecrets(opts.SecretsFile); err != nil {
+			if err := manifest.ResolveSecrets(ctx, opts.SecretsFile); err != nil {
 				return err
 			}
 

@@ -289,7 +289,7 @@ This command uses the Knowledge Graph write API, which is gated server-side.`,
 			if err := validateKgKeys(scope, "scope"); err != nil {
 				return err
 			}
-			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), force,
+			proceed, err := providers.ConfirmDestructive(cmd.Context(), cmd.InOrStdin(), cmd.ErrOrStderr(), force,
 				fmt.Sprintf("Delete entity %s--%s in domain %q?", et, n, domain))
 			if err != nil {
 				return err
@@ -641,7 +641,7 @@ This command uses the Knowledge Graph write API, which is gated server-side.`,
 			if err != nil {
 				return fmt.Errorf("--to: %w", err)
 			}
-			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), force,
+			proceed, err := providers.ConfirmDestructive(cmd.Context(), cmd.InOrStdin(), cmd.ErrOrStderr(), force,
 				fmt.Sprintf("Delete relationship %q from %s to %s?", relType, from, to))
 			if err != nil {
 				return err

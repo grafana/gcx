@@ -1,11 +1,12 @@
 package telemetry
 
 import (
-	"os"
+	"context"
 	"path/filepath"
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/grafana/gcx/internal/host"
 	"github.com/grafana/gcx/internal/xdg"
 )
 
@@ -15,8 +16,8 @@ const deviceIDFileName = "device-id"
 // when no state home is known (HOME and XDG_STATE_HOME both unset), so the ID
 // file cannot land relative to the current directory. Deleting the file
 // resets the ID.
-func DeviceIDPath() string {
-	stateHome := xdg.StateHome()
+func DeviceIDPath(ctx context.Context) string {
+	stateHome := xdg.StateHome(ctx)
 	if stateHome == "" {
 		return ""
 	}
@@ -28,9 +29,9 @@ func DeviceIDPath() string {
 // state dir is unwritable (or the ID file is corrupt and cannot be
 // rewritten) it returns a fresh ephemeral ID with persisted=false, so
 // ephemeral IDs can be excluded from install counts.
-func DeviceID() (string, bool) {
-	path := DeviceIDPath()
-	if data, err := os.ReadFile(path); err == nil {
+func DeviceID(ctx context.Context) (string, bool) {
+	path := DeviceIDPath(ctx)
+	if data, err := host.ReadFile(ctx, path); err == nil {
 		if parsed, err := uuid.Parse(strings.TrimSpace(string(data))); err == nil {
 			return parsed.String(), true
 		}
@@ -44,10 +45,10 @@ func DeviceID() (string, bool) {
 	if path == "" {
 		return id, false
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+	if err := host.MkdirAll(ctx, filepath.Dir(path), 0o700); err != nil {
 		return id, false
 	}
-	if err := os.WriteFile(path, []byte(id+"\n"), 0o600); err != nil {
+	if err := host.WriteFile(ctx, path, []byte(id+"\n"), 0o600); err != nil {
 		return id, false
 	}
 	return id, true

@@ -9,6 +9,7 @@ package versions_test
 //   - explicit -o json/yaml overrides are honored.
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -64,7 +65,7 @@ func TestVersionsRestore_HumanDefaultStdoutStaysEmpty(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			agent.SetFlag(false)
-			t.Cleanup(agent.ResetForTesting)
+			t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 			stdout, stderr, err := runVersionsCmd(t, restoreFake(),
 				[]string{"restore", "foo", tt.version, "--force"}, "")
@@ -137,7 +138,7 @@ func TestVersionsRestore_StructuredResultDocument(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			agent.SetFlag(tt.agentMode)
-			t.Cleanup(agent.ResetForTesting)
+			t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 			fc := restoreFake()
 			args := append([]string{"restore", "foo", tt.version, "--force"}, tt.extraArgs...)
@@ -194,7 +195,7 @@ func TestVersionsRestore_StructuredResultDocument(t *testing.T) {
 
 func TestVersionsRestore_DeclinedPromptEmitsNoDocument(t *testing.T) {
 	agent.SetFlag(false)
-	t.Cleanup(agent.ResetForTesting)
+	t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 	t.Setenv("GCX_AUTO_APPROVE", "false")
 
 	fc := restoreFake()

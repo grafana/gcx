@@ -40,7 +40,7 @@ func setAgentMode(t *testing.T, enabled bool) {
 	// test, so pin it off for the test's duration.
 	t.Setenv("GCX_AUTO_APPROVE", "0")
 	agent.SetFlag(enabled)
-	t.Cleanup(agent.ResetForTesting)
+	t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 }
 
 // fakeGrafanaConfigLoader implements alert.GrafanaConfigLoader for command tests.

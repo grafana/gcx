@@ -2,6 +2,7 @@ package skills
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/grafana/gcx/internal/host"
 	"gopkg.in/yaml.v3"
 )
 
@@ -81,13 +83,13 @@ type SkillState struct {
 
 // Reconcile is read-only. It includes missing catalog entries and uncataloged
 // local directories, allowing every command to make the same targeting decision.
-func Reconcile(source fs.FS, data []byte, root string) ([]SkillState, error) {
+func Reconcile(ctx context.Context, source fs.FS, data []byte, root string) ([]SkillState, error) {
 	catalog, err := LoadCatalog(data)
 	if err != nil {
 		return nil, err
 	}
 	skillsDir := filepath.Join(root, "skills")
-	local, err := os.ReadDir(skillsDir)
+	local, err := host.ReadDir(ctx, skillsDir)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, err
 	}
@@ -108,10 +110,10 @@ func Reconcile(source fs.FS, data []byte, root string) ([]SkillState, error) {
 			state.ShortDescription = ShortDescription(source, name)
 		}
 		localPath := filepath.Join(skillsDir, name)
-		info, err := os.Lstat(localPath)
+		info, err := host.Lstat(ctx, localPath)
 		state.Present = err == nil
 		if state.Present && (info.IsDir() || info.Mode()&os.ModeSymlink != 0) {
-			info, err := os.Stat(filepath.Join(localPath, "SKILL.md"))
+			info, err := host.Stat(ctx, filepath.Join(localPath, "SKILL.md"))
 			state.Installed = err == nil && info.Mode().IsRegular()
 		}
 		states = append(states, state)
@@ -127,8 +129,8 @@ type ListResult struct {
 }
 
 // List omits unmanaged skills and absent retirements from the user-facing list.
-func List(source fs.FS, catalog []byte, root string) (ListResult, error) {
-	states, err := Reconcile(source, catalog, root)
+func List(ctx context.Context, source fs.FS, catalog []byte, root string) (ListResult, error) {
+	states, err := Reconcile(ctx, source, catalog, root)
 	if err != nil {
 		return ListResult{}, err
 	}

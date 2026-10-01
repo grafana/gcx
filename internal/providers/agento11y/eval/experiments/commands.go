@@ -336,7 +336,7 @@ func newCancelCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
-			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
+			proceed, err := providers.ConfirmDestructive(cmd.Context(), cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
 				fmt.Sprintf("Cancel experiment %s?", args[0]))
 			if err != nil {
 				return err
@@ -887,7 +887,7 @@ func newCasesDeleteCommand(loader *providers.ConfigLoader) *cobra.Command {
 		Short: "Delete a test case from a mutable suite version.",
 		Args:  cobra.ExactArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
+			proceed, err := providers.ConfirmDestructive(cmd.Context(), cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
 				fmt.Sprintf("Delete test case %s from %s/%s?", args[2], args[0], args[1]))
 			if err != nil {
 				return err

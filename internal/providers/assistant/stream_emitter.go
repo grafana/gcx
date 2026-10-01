@@ -1,6 +1,7 @@
 package assistant
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -74,7 +75,7 @@ type streamEmitter struct {
 	writeErr error
 	// saveContextID persists the completed task's context ID for --continue.
 	// Defaults to assistant.SaveLastContextID; a test seam.
-	saveContextID func(string) error
+	saveContextID func(context.Context, string) error
 }
 
 // newStreamEmitter resolves the consumer mode from the explicit flags and
@@ -199,7 +200,7 @@ type agentDenyApprovalHandler struct {
 	errW io.Writer
 }
 
-func (h agentDenyApprovalHandler) HandleApproval(req assistant.ApprovalRequest) bool {
+func (h agentDenyApprovalHandler) HandleApproval(_ context.Context, req assistant.ApprovalRequest) bool {
 	cmdio.EmitWarn(h.errW, fmt.Sprintf(
 		"approval for tool %q auto-declined: gcx never auto-approves assistant tool actions in agent mode; run the command interactively (without agent mode) to approve",
 		req.ToolName))
@@ -212,12 +213,12 @@ func (h agentDenyApprovalHandler) HandleApproval(req assistant.ApprovalRequest) 
 // When any stdout write failed — a streamed event line or the terminal line
 // itself — finish returns the write error instead: the EmittedError sentinel
 // may only report a complete, successfully written result.
-func (e *streamEmitter) finish(result assistant.StreamResult, timeoutSeconds int) error {
+func (e *streamEmitter) finish(ctx context.Context, result assistant.StreamResult, timeoutSeconds int) error {
 	// A completed task's context ID persists regardless of stdout health:
 	// --continue must keep working after a broken pipe — the conversation
 	// happened whether or not the consumer read the tail of the stream.
 	if result.Completed && result.ContextID != "" && e.saveContextID != nil {
-		_ = e.saveContextID(result.ContextID)
+		_ = e.saveContextID(ctx, result.ContextID)
 	}
 	if e.writeErr != nil {
 		// The event stream broke mid-flight (recorded by writeEventLine).

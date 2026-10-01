@@ -78,7 +78,7 @@ func runGuardedDelete(cmd *cobra.Command, opts *guardedDeleteOpts, loader RESTCo
 	if err := opts.IO.Validate(); err != nil {
 		return err
 	}
-	proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force, prompt)
+	proceed, err := providers.ConfirmDestructive(cmd.Context(), cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force, prompt)
 	if err != nil {
 		return err
 	}

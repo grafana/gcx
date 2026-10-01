@@ -1,13 +1,14 @@
 package datasources
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"maps"
-	"os"
 	"strings"
 
 	"github.com/goccy/go-yaml"
+	"github.com/grafana/gcx/internal/host"
 )
 
 // ResolveSecrets resolves every entry in the manifest's secure block to an
@@ -16,15 +17,15 @@ import (
 // conflict). Each secure key may set exactly one source — create / fromEnv /
 // fromFile — or remove. A referenced env var or file that is missing/empty is a
 // hard error so an empty secret is never written silently.
-func (m *DataSourceManifest) ResolveSecrets(secretsFile string) error {
+func (m *DataSourceManifest) ResolveSecrets(ctx context.Context, secretsFile string) error {
 	if secretsFile != "" {
-		if err := m.mergeSecretsFile(secretsFile); err != nil {
+		if err := m.mergeSecretsFile(ctx, secretsFile); err != nil {
 			return err
 		}
 	}
 
 	for key, sv := range m.Secure {
-		keep, err := resolveSecureValue(key, &sv)
+		keep, err := resolveSecureValue(ctx, key, &sv)
 		if err != nil {
 			return err
 		}
@@ -42,7 +43,7 @@ func (m *DataSourceManifest) ResolveSecrets(secretsFile string) error {
 // resolveSecureValue resolves a secure entry to an inline value. It returns
 // keep=false when the entry carries no write source (a read-back placeholder
 // with only name set), meaning the stored secret should be left unchanged.
-func resolveSecureValue(key string, sv *SecureValue) (bool, error) {
+func resolveSecureValue(ctx context.Context, key string, sv *SecureValue) (bool, error) {
 	sources := 0
 	if sv.Create != "" {
 		sources++
@@ -72,13 +73,13 @@ func resolveSecureValue(key string, sv *SecureValue) (bool, error) {
 
 	switch {
 	case sv.FromEnv != "":
-		val, ok := os.LookupEnv(sv.FromEnv)
+		val, ok := host.LookupEnv(ctx, sv.FromEnv)
 		if !ok || val == "" {
 			return false, fmt.Errorf("secure.%s: environment variable %q is not set or empty", key, sv.FromEnv)
 		}
 		sv.Create = val
 	case sv.FromFile != "":
-		data, err := os.ReadFile(sv.FromFile)
+		data, err := host.ReadFile(ctx, sv.FromFile)
 		if err != nil {
 			return false, fmt.Errorf("secure.%s: reading %q: %w", key, sv.FromFile, err)
 		}
@@ -95,8 +96,8 @@ func resolveSecureValue(key string, sv *SecureValue) (bool, error) {
 	return true, nil
 }
 
-func (m *DataSourceManifest) mergeSecretsFile(path string) error {
-	data, err := os.ReadFile(path)
+func (m *DataSourceManifest) mergeSecretsFile(ctx context.Context, path string) error {
+	data, err := host.ReadFile(ctx, path)
 	if err != nil {
 		return fmt.Errorf("reading secrets file %q: %w", path, err)
 	}

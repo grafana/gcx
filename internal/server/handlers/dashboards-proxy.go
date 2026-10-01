@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/host"
 	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/server/grafana"
@@ -208,7 +209,7 @@ func (c *DashboardProxy) dashboardJSONPostHandler() http.HandlerFunc {
 		// Reset the generation to 0.
 		object.SetGeneration(0)
 
-		file, err := os.OpenFile(resource.SourcePath(), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+		file, err := host.OpenFile(r.Context(), resource.SourcePath(), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 		if err != nil {
 			httputils.Error(r, w, err.Error(), err, http.StatusInternalServerError)
 			return

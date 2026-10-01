@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/signal"
 	"runtime/debug"
 	"strings"
 	"time"
@@ -15,6 +14,7 @@ import (
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/agentlog"
 	"github.com/grafana/gcx/internal/gcxerrors"
+	"github.com/grafana/gcx/internal/host"
 	appversion "github.com/grafana/gcx/internal/version"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -43,7 +43,8 @@ func main() {
 	// stop runs in the watcher rather than a defer: every path out of main ends
 	// in os.Exit. The watcher stands down once the command has returned; from
 	// there exitWith owns the disposition — see interruptGate.
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	// The process-level root context: main is the only place that owns one.
+	ctx, stop := host.NotifyContext(context.Background(), os.Interrupt)
 	gate := newInterruptGate()
 	go func() {
 		select {
@@ -58,9 +59,9 @@ func main() {
 	// Pre-parse --agent flag before Cobra sees it. This must happen before
 	// root.Command() because io.Options.BindFlags() reads agent.IsAgentMode()
 	// during command construction to set the default output format.
-	preParseAgentFlag()
+	preParseAgentFlag(ctx)
 	if agent.IsAgentMode() {
-		agentlog.Configure(loadDiagnosticsConfig())
+		agentlog.Configure(loadDiagnosticsConfig(ctx))
 	}
 
 	formattedVersion := formatVersion()
@@ -68,13 +69,14 @@ func main() {
 	appversion.SetBuildInfo(commit, date)
 
 	cmd := root.Command(formattedVersion)
+	root.SetProgramName(ctx, cmd)
 	boolFlags := collectBoolFlags(cmd)
 	subCmds := collectSubCmds(cmd)
 
 	// prefer sticking to err != nil format, than optimizing for calling exitWith
 	// once
-	if err := root.ValidateArgs(cmd, os.Args[1:]); err != nil {
-		exitWith(cmd, gate, start, reportError(err, boolFlags, subCmds))
+	if err := root.ValidateArgs(cmd, host.Args(ctx)[1:]); err != nil {
+		exitWith(ctx, cmd, gate, start, reportError(ctx, err, boolFlags, subCmds))
 	}
 
 	err := cmd.ExecuteContext(ctx)
@@ -83,10 +85,10 @@ func main() {
 	// contradict a command interrupted before it wrote its result. It still
 	// exits through exitWith, so the event is emitted like any other outcome.
 	if isSilentCancellation(ctx, err) {
-		exitWith(cmd, gate, start, gcxerrors.ExitCancelled)
+		exitWith(ctx, cmd, gate, start, gcxerrors.ExitCancelled)
 	}
 
-	exitWith(cmd, gate, start, reportError(err, boolFlags, subCmds))
+	exitWith(ctx, cmd, gate, start, reportError(ctx, err, boolFlags, subCmds))
 }
 
 // interruptGate hands the SIGINT disposition from the watcher main installs to
@@ -154,14 +156,15 @@ func isSilentCancellation(ctx context.Context, err error) bool {
 // down first, then holds SIGINT for the length of the export unless the
 // invocation is abandoning it — see abandonsExport.
 //
-// The invocation context is deliberately not passed in. The export must not
-// inherit it: for the case this whole path exists to report it is already
-// cancelled, so passing it would abort the very event being sent.
-func exitWith(cmd *cobra.Command, gate interruptGate, start time.Time, exitCode int) {
+// The export must not inherit the invocation context's cancellation: for the
+// case this whole path exists to report it is already cancelled, so inheriting
+// it would abort the very event being sent. Only its values are kept.
+func exitWith(ctx context.Context, cmd *cobra.Command, gate interruptGate, start time.Time, exitCode int) {
+	ctx = context.WithoutCancel(ctx)
 	if !abandonsExport(gate.settle(), exitCode) {
-		signal.Ignore(os.Interrupt)
+		host.IgnoreSignals(ctx, os.Interrupt)
 	}
-	emitUsageEvent(cmd, start, exitCode)
+	emitUsageEvent(ctx, cmd, start, exitCode)
 	os.Exit(exitCode)
 }
 
@@ -182,8 +185,8 @@ func abandonsExport(interrupted bool, exitCode int) bool {
 // preParseAgentFlag scans os.Args for --agent / --agent=true / --agent=false
 // and calls agent.SetFlag() accordingly. This runs before Cobra's flag parsing
 // so that agent mode state is available during command construction.
-func preParseAgentFlag() {
-	for _, arg := range os.Args[1:] {
+func preParseAgentFlag(ctx context.Context) {
+	for _, arg := range host.Args(ctx)[1:] {
 		if arg == "--" {
 			return // stop scanning after double-dash
 		}
@@ -204,7 +207,7 @@ func preParseAgentFlag() {
 // appends the agent invocation log entry, and returns the process exit code.
 // It never exits; context cancellation is already handled in main before this
 // is called.
-func reportError(err error, boolFlags map[string]struct{}, subCmds map[string]bool) int {
+func reportError(ctx context.Context, err error, boolFlags map[string]struct{}, subCmds map[string]bool) int {
 	// On the raw error, before every short-circuit below: the AlreadyReported
 	// and EmittedError paths return without converting anything, and an
 	// EmittedError's cause chain is where an agent-mode in-band failure
@@ -226,10 +229,10 @@ func reportError(err error, boolFlags map[string]struct{}, subCmds map[string]bo
 	var emitted *gcxerrors.EmittedError
 	if errors.As(err, &emitted) {
 		if agent.IsAgentMode() && agentlog.IsEnabled() {
-			_ = agentlog.Append(agentlog.Entry{
+			_ = agentlog.Append(ctx, agentlog.Entry{
 				Timestamp: time.Now(),
 				Version:   appversion.Get(),
-				Args:      agentlog.StripArgValues(os.Args[1:], boolFlags, subCmds),
+				Args:      agentlog.StripArgValues(host.Args(ctx)[1:], boolFlags, subCmds),
 				ErrorKind: agentlog.KindFromExitCode(emitted.Code),
 				Error:     truncate(emitted.Error(), 200),
 				ExitCode:  emitted.Code,
@@ -249,10 +252,10 @@ func reportError(err error, boolFlags map[string]struct{}, subCmds map[string]bo
 	}
 
 	if agent.IsAgentMode() && agentlog.IsEnabled() {
-		_ = agentlog.Append(agentlog.Entry{
+		_ = agentlog.Append(ctx, agentlog.Entry{
 			Timestamp: time.Now(),
 			Version:   appversion.Get(),
-			Args:      agentlog.StripArgValues(os.Args[1:], boolFlags, subCmds),
+			Args:      agentlog.StripArgValues(host.Args(ctx)[1:], boolFlags, subCmds),
 			ErrorKind: agentlog.KindFromExitCode(exitCode),
 			Error:     truncate(detailedErr.Summary, 200),
 			ExitCode:  exitCode,
@@ -262,12 +265,12 @@ func reportError(err error, boolFlags map[string]struct{}, subCmds map[string]bo
 	if agent.IsAgentMode() || root.IsJSONFlagActive() {
 		// Machine consumers get JSON on stdout only — the human-formatted
 		// stderr error is noise for agents and scripts.
-		if writeErr := detailedErr.WriteJSON(os.Stdout, exitCode); writeErr != nil {
-			fmt.Fprintln(os.Stderr, detailedErr.Error())
+		if writeErr := detailedErr.WriteJSON(host.Stdout(ctx), exitCode); writeErr != nil {
+			fmt.Fprintln(host.Stderr(ctx), detailedErr.Error())
 		}
 	} else {
 		// Human consumers get the formatted error on stderr.
-		fmt.Fprintln(os.Stderr, detailedErr.Error())
+		fmt.Fprintln(host.Stderr(ctx), detailedErr.Error())
 	}
 
 	return exitCode
@@ -320,8 +323,8 @@ func collectSubCmds(cmd *cobra.Command) map[string]bool {
 // loadDiagnosticsConfig reads diagnostics settings from the layered gcx config.
 // It runs on every invocation, so it uses a memoized result to avoid excessive
 // reads.
-func loadDiagnosticsConfig() agentlog.Config {
-	d := diagnosticsConfig()
+func loadDiagnosticsConfig(ctx context.Context) agentlog.Config {
+	d := diagnosticsConfig(ctx)
 	if d == nil || !d.AgentInvocationLog {
 		return agentlog.Config{}
 	}

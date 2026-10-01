@@ -16,8 +16,8 @@ import (
 // across all output formats.
 func TestTableBuilder_AgentModeRendersPlain(t *testing.T) {
 	t.Setenv("CLAUDECODE", "1")
-	agent.ResetForTesting()
-	t.Cleanup(func() { agent.ResetForTesting() })
+	agent.ResetForTesting(t.Context())
+	t.Cleanup(func() { agent.ResetForTesting(t.Context()) })
 
 	tb := style.NewTable("NAME", "STATUS")
 	tb.Row("prod-eu", "OK")

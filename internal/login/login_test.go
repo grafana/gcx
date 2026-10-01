@@ -103,7 +103,7 @@ contexts:
 	mutationCtx := config.ContextWithConfigSource(t.Context(), userSource)
 	persisted, err := config.Load(mutationCtx, config.ExplicitConfigFile(userPath))
 	require.NoError(t, err)
-	guard, err := persisted.NewLoginMutationGuard("prod", config.LoginMutationUnified).WithDiscoverySnapshot(&effective)
+	guard, err := persisted.NewLoginMutationGuard("prod", config.LoginMutationUnified).WithDiscoverySnapshot(t.Context(), &effective)
 	require.NoError(t, err)
 
 	changedLocal := []byte(`version: 1
@@ -929,10 +929,10 @@ func TestRuntimeOnlyMTLSFailsClosedOnNextInvocation(t *testing.T) {
 // ErrNeedInput when the server field is empty (AC-008: server is always required).
 func TestRunAgentModeMissingServer(t *testing.T) {
 	t.Setenv("GCX_AGENT_MODE", "1")
-	agent.ResetForTesting()
+	agent.ResetForTesting(t.Context())
 	t.Cleanup(func() {
 		t.Setenv("GCX_AGENT_MODE", "0")
-		agent.ResetForTesting()
+		agent.ResetForTesting(t.Context())
 	})
 
 	_, err := login.Run(context.Background(), &login.Options{
@@ -952,10 +952,10 @@ func TestRunAgentModeMissingServer(t *testing.T) {
 func TestRunAgentModeAmbiguousURL(t *testing.T) {
 	usePlaintextCredentialStorage(t)
 	t.Setenv("GCX_AGENT_MODE", "1")
-	agent.ResetForTesting()
+	agent.ResetForTesting(t.Context())
 	t.Cleanup(func() {
 		t.Setenv("GCX_AGENT_MODE", "0")
-		agent.ResetForTesting()
+		agent.ResetForTesting(t.Context())
 	})
 
 	dir := t.TempDir()
@@ -994,8 +994,8 @@ func TestRun_OAuthRunsOnceAcrossRetries(t *testing.T) {
 
 	// Ensure agent mode is off so resolveCloudAuth returns ErrNeedInput instead of skipping.
 	t.Setenv("GCX_AGENT_MODE", "0")
-	agent.ResetForTesting()
-	t.Cleanup(func() { agent.ResetForTesting() })
+	agent.ResetForTesting(t.Context())
+	t.Cleanup(func() { agent.ResetForTesting(t.Context()) })
 
 	dir := t.TempDir()
 	calls := 0
@@ -1328,7 +1328,7 @@ func TestPersist_ServerMismatch_YesDoesNotBypass(t *testing.T) {
 
 func TestRun_ValidationFailure_EmitsSaveUnvalidatedClarification(t *testing.T) {
 	t.Setenv("GCX_AGENT_MODE", "0")
-	agent.ResetForTesting()
+	agent.ResetForTesting(t.Context())
 
 	dir := t.TempDir()
 	opts := login.Options{
@@ -1371,7 +1371,7 @@ func TestRun_ValidationFailure_EmitsSaveUnvalidatedClarification(t *testing.T) {
 func TestRun_OptionalCloudTokenRejected_WarnsAndPersists(t *testing.T) {
 	usePlaintextCredentialStorage(t)
 	t.Setenv("GCX_AGENT_MODE", "0")
-	agent.ResetForTesting()
+	agent.ResetForTesting(t.Context())
 
 	dir := t.TempDir()
 	var warnBuf bytes.Buffer
@@ -1725,8 +1725,8 @@ func TestRun_MTLSOnlyAuth(t *testing.T) {
 func TestRun_CloudTokenHintGuidance(t *testing.T) {
 	usePlaintextCredentialStorage(t)
 	t.Setenv("GCX_AGENT_MODE", "0")
-	agent.ResetForTesting()
-	t.Cleanup(func() { agent.ResetForTesting() })
+	agent.ResetForTesting(t.Context())
+	t.Cleanup(func() { agent.ResetForTesting(t.Context()) })
 
 	dir := t.TempDir()
 	opts := login.Options{
@@ -1818,7 +1818,7 @@ func TestRun_PersistsDiscoveredStackID(t *testing.T) {
 func TestRun_OAuthSuccess_AnnouncesSignInBeforeCloudTokenPrompt(t *testing.T) {
 	usePlaintextCredentialStorage(t)
 	t.Setenv("GCX_AGENT_MODE", "0")
-	agent.ResetForTesting()
+	agent.ResetForTesting(t.Context())
 
 	var buf bytes.Buffer
 	opts := login.Options{
@@ -1862,7 +1862,7 @@ func TestRun_OAuthSuccess_AnnouncesSignInBeforeCloudTokenPrompt(t *testing.T) {
 func TestRun_OAuthSuccess_AnnouncesSignInWithoutEmail(t *testing.T) {
 	usePlaintextCredentialStorage(t)
 	t.Setenv("GCX_AGENT_MODE", "0")
-	agent.ResetForTesting()
+	agent.ResetForTesting(t.Context())
 
 	var buf bytes.Buffer
 	opts := login.Options{

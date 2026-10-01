@@ -4,12 +4,15 @@ import (
 	"bytes"
 	"io"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/grafana/gcx/internal/host"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"k8s.io/client-go/rest"
 )
 
 func TestSandboxRefusesHostAccess(t *testing.T) {
@@ -38,6 +41,19 @@ func TestSandboxRefusesHostAccess(t *testing.T) {
 	require.ErrorIs(t, err, host.ErrUnavailable)
 	_, err = host.StdinFile(ctx)
 	require.ErrorIs(t, err, host.ErrUnavailable)
+	_, err = host.EvalSymlinks(ctx, existing)
+	require.ErrorIs(t, err, host.ErrUnavailable)
+	_, err = host.OpenKeyring(ctx)
+	require.ErrorIs(t, err, host.ErrUnavailable)
+	_, err = host.NewWatcher(ctx)
+	require.ErrorIs(t, err, host.ErrUnavailable)
+	host.IgnoreSignals(ctx, os.Interrupt) // must not touch the process disposition
+
+	// Discovery still works inside a sandbox, cached in memory instead of on disk.
+	discovery, err := host.NewCachedDiscoveryClientForConfig(ctx, &rest.Config{Host: "https://example.invalid"}, filepath.Join(dir, "discovery"), "", time.Minute)
+	require.NoError(t, err)
+	assert.NotNil(t, discovery)
+	assert.NoDirExists(t, filepath.Join(dir, "discovery"))
 
 	var walked error
 	_ = host.WalkDir(ctx, dir, func(_ string, _ fs.DirEntry, err error) error {

@@ -103,7 +103,7 @@ contexts:
 	require.NoError(t, os.WriteFile(userPath, user, 0o600))
 	require.NoError(t, os.WriteFile(localPath, local, 0o600))
 
-	err := preflightLayeredSources([]ConfigSource{
+	err := preflightLayeredSources(t.Context(), []ConfigSource{
 		{Path: userPath, Type: "user"},
 		{Path: localPath, Type: "local"},
 	})
@@ -140,7 +140,7 @@ contexts:
     default-tempo-datasource: local-tempo
 `), 0o600))
 
-	err := preflightLayeredSources([]ConfigSource{
+	err := preflightLayeredSources(t.Context(), []ConfigSource{
 		{Path: userPath, Type: "user"},
 		{Path: localPath, Type: "local"},
 	})
@@ -166,7 +166,7 @@ contexts:
       token: local-token
 `), 0o600))
 
-	err := preflightLayeredSources([]ConfigSource{
+	err := preflightLayeredSources(t.Context(), []ConfigSource{
 		{Path: userPath, Type: "user"},
 		{Path: localPath, Type: "local"},
 	})
@@ -190,7 +190,7 @@ contexts:
 current-context: prod
 `), 0o600))
 
-	err := preflightLayeredSources([]ConfigSource{
+	err := preflightLayeredSources(t.Context(), []ConfigSource{
 		{Path: legacyPath, Type: "user"},
 		{Path: futurePath, Type: "local"},
 	})

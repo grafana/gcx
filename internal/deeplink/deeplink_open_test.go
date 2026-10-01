@@ -14,7 +14,7 @@ func TestOpen_AgentModeSkipsBrowser(t *testing.T) {
 	agent.SetFlag(true)
 	t.Cleanup(func() { agent.SetFlag(false) })
 
-	if err := deeplink.Open("https://example.grafana.net/d/abc"); err != nil {
+	if err := deeplink.Open(t.Context(), "https://example.grafana.net/d/abc"); err != nil {
 		t.Fatalf("Open() in agent mode = %v, want nil (browser skipped)", err)
 	}
 }
@@ -23,7 +23,7 @@ func TestOpen_RejectsNonHTTPURLsInAgentModeToo(t *testing.T) {
 	agent.SetFlag(true)
 	t.Cleanup(func() { agent.SetFlag(false) })
 
-	if err := deeplink.Open("file:///etc/passwd"); err == nil {
+	if err := deeplink.Open(t.Context(), "file:///etc/passwd"); err == nil {
 		t.Fatal("Open() accepted a non-http URL")
 	}
 }

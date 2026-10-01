@@ -1,14 +1,15 @@
 package providers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"reflect"
 	"strings"
 
+	"github.com/grafana/gcx/internal/host"
 	"sigs.k8s.io/yaml"
 )
 
@@ -22,7 +23,7 @@ import (
 // envelope. Decoding such an envelope into the bare target matches no field
 // and silently produces an empty object, so unwrap the envelope first. See
 // issue #1185.
-func ReadFileOrStdin(file string, stdin io.Reader, out any) error {
+func ReadFileOrStdin(ctx context.Context, file string, stdin io.Reader, out any) error {
 	if file == "" {
 		return errors.New("--filename is required (use - to read from stdin)")
 	}
@@ -31,7 +32,7 @@ func ReadFileOrStdin(file string, stdin io.Reader, out any) error {
 	if file == "-" {
 		reader = stdin
 	} else {
-		f, err := os.Open(file)
+		f, err := host.Open(ctx, file)
 		if err != nil {
 			return fmt.Errorf("failed to open file %s: %w", file, err)
 		}

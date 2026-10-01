@@ -88,7 +88,7 @@ diagnostics:
   telemetry: enabled
 `), 0o600))
 
-	diagnostics, err := readDiagnostics(path)
+	diagnostics, err := readDiagnostics(t.Context(), path)
 	var versionErr UnsupportedVersionError
 	require.ErrorAs(t, err, &versionErr)
 	assert.Nil(t, diagnostics)

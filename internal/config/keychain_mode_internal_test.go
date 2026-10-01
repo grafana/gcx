@@ -29,8 +29,8 @@ func TestKeychainModeForProcess_InvalidValueWarnsOnce(t *testing.T) {
 	t.Setenv(envKeychain, "invalid")
 
 	stderr := captureKeychainModeStderr(t, func() {
-		assert.Equal(t, keychainModeEnabled, keychainModeForProcess())
-		assert.Equal(t, keychainModeEnabled, keychainModeForProcess())
+		assert.Equal(t, keychainModeEnabled, keychainModeForProcess(t.Context()))
+		assert.Equal(t, keychainModeEnabled, keychainModeForProcess(t.Context()))
 	})
 
 	assert.Equal(t, 1, strings.Count(stderr, "warn:"), stderr)
@@ -78,7 +78,7 @@ func TestKeychainModeForProcess(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Setenv(envKeychain, test.env)
 
-			assert.Equal(t, test.want, keychainModeForProcess())
+			assert.Equal(t, test.want, keychainModeForProcess(t.Context()))
 		})
 	}
 }
@@ -153,9 +153,9 @@ func TestKeychainModeIgnoresUnrelatedMalformedOptions(t *testing.T) {
 	t.Setenv("GCX_AUTO_APPROVE", "not-a-bool")
 	t.Setenv(envKeychain, "off")
 
-	_, err := LoadCLIOptions()
+	_, err := LoadCLIOptions(t.Context())
 	require.Error(t, err, "guards the premise: a bad bool must still fail CLI option parsing")
-	assert.Equal(t, keychainModeDisabled, keychainModeForProcess())
+	assert.Equal(t, keychainModeDisabled, keychainModeForProcess(t.Context()))
 }
 
 // A Config carrying a Credentials.Keychain value but no propagated
@@ -168,7 +168,7 @@ func TestResolveKeychainPolicyForWriteErrorsWhenPolicyNotPropagated(t *testing.T
 		sourceLayer: "local",
 	}
 
-	_, err := resolveKeychainPolicyForWrite(cfg, "/tmp/example.yaml")
+	_, err := resolveKeychainPolicyForWrite(t.Context(), cfg, "/tmp/example.yaml")
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "keychain policy not resolved")
@@ -182,7 +182,7 @@ func TestResolveKeychainPolicyForWriteErrorsWhenPolicyNotPropagated(t *testing.T
 func TestResolveKeychainPolicyForWriteDefaultsWhenNothingToAdopt(t *testing.T) {
 	cfg := &Config{}
 
-	policy, err := resolveKeychainPolicyForWrite(cfg, "/tmp/example.yaml")
+	policy, err := resolveKeychainPolicyForWrite(t.Context(), cfg, "/tmp/example.yaml")
 
 	require.NoError(t, err)
 	assert.Equal(t, keychainModeEnabled, policy.mode)
@@ -198,7 +198,7 @@ func TestResolveKeychainPolicyForWriteIgnoresInvalidLocalLayerValue(t *testing.T
 		keychainPolicy: keychainPolicy{mode: keychainModeEnabled, source: "higher-priority-policy"},
 	}
 
-	policy, err := resolveKeychainPolicyForWrite(cfg, "/tmp/example.yaml")
+	policy, err := resolveKeychainPolicyForWrite(t.Context(), cfg, "/tmp/example.yaml")
 
 	require.NoError(t, err)
 	assert.Equal(t, cfg.keychainPolicy, policy)
@@ -208,7 +208,7 @@ func TestResolveKeychainPolicyForWriteIgnoresInvalidLocalLayerValue(t *testing.T
 // store selection rather than the probe. The enabled branch is deliberately
 // untested here: it would probe the real OS keychain.
 func TestKeychainStoreForDisabledModeNeverTouchesTheOSKeychain(t *testing.T) {
-	store := keychainStoreForMode(keychainModeDisabled)
+	store := keychainStoreForMode(t.Context(), keychainModeDisabled)
 
 	_, err := store.Get("any-account")
 	require.ErrorIs(t, err, credentials.ErrDisabled)
@@ -224,7 +224,7 @@ func TestKeychainStoreForDisabledModeNeverTouchesTheOSKeychain(t *testing.T) {
 func TestDefaultKeychainStoreHonoursDisabledModeBeforeTestingShortCircuit(t *testing.T) {
 	t.Setenv(envKeychain, "off")
 
-	err := defaultKeychainStore().Set("a", "b")
+	err := defaultKeychainStore(t.Context()).Set("a", "b")
 
 	require.ErrorIs(t, err, credentials.ErrDisabled)
 }

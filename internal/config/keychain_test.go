@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -116,14 +117,14 @@ func withFakeStore(t *testing.T) *fakeStore {
 
 func testStackBinding(t *testing.T, path, name, server string, field credentials.Field) credentials.Binding {
 	t.Helper()
-	binding, err := config.StackBindingForTest(path, name, server, field)
+	binding, err := config.StackBindingForTest(t.Context(), path, name, server, field)
 	require.NoError(t, err)
 	return binding
 }
 
 func testCloudBinding(t *testing.T, path, name string, field credentials.Field) credentials.Binding {
 	t.Helper()
-	binding, err := config.CloudBindingForTest(path, name, field)
+	binding, err := config.CloudBindingForTest(t.Context(), path, name, field)
 	require.NoError(t, err)
 	return binding
 }
@@ -658,7 +659,7 @@ current-context: prod
 	assert.Equal(t, stagingRef.Sentinel, cfg.Contexts["staging"].Grafana.OAuthToken,
 		"non-current context must keep its raw sentinel until resolved on demand")
 
-	cfg.ResolveContext("staging")
+	cfg.ResolveContext(t.Context(), "staging")
 	assert.Equal(t, "gat_staging", cfg.Contexts["staging"].Grafana.OAuthToken,
 		"ResolveContext must resolve sentinels for the named context")
 }
@@ -699,7 +700,7 @@ contexts:
 current-context: prod
 `, ref.Sentinel), 0o600))
 
-	cfg, err := config.Load(t.Context(), config.ExplicitConfigFile(path), func(c *config.Config) error {
+	cfg, err := config.Load(t.Context(), config.ExplicitConfigFile(path), func(_ context.Context, c *config.Config) error {
 		c.CurrentContext = "staging"
 		return nil
 	})
@@ -721,7 +722,7 @@ func TestResolveContext_NoOps(t *testing.T) {
 		},
 	}
 	direct.Resolve()
-	direct.ResolveContext("default")
+	direct.ResolveContext(t.Context(), "default")
 	assert.Equal(t, "keychain:gcx:stack:default:oauth-token", direct.Stacks["default"].Grafana.OAuthToken,
 		"ResolveContext with no keychain store must leave the sentinel untouched")
 
@@ -753,10 +754,10 @@ current-context: default
 	require.NoError(t, err)
 
 	// Unknown context name: no-op, no panic.
-	cfg.ResolveContext("does-not-exist")
+	cfg.ResolveContext(t.Context(), "does-not-exist")
 
 	// Already-resolved current context: idempotent.
-	cfg.ResolveContext("default")
+	cfg.ResolveContext(t.Context(), "default")
 	assert.Equal(t, "gat_resolved", cfg.Contexts["default"].Grafana.OAuthToken)
 }
 
@@ -809,7 +810,7 @@ stacks:
       server: https://prod-local.invalid
 `)
 
-	cfg, err := config.LoadLayered(t.Context(), "", func(c *config.Config) error {
+	cfg, err := config.LoadLayered(t.Context(), "", func(_ context.Context, c *config.Config) error {
 		c.CurrentContext = "staging"
 		return nil
 	})

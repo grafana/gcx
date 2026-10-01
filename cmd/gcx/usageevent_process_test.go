@@ -8,6 +8,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -61,7 +62,7 @@ func TestUsageEventProcessHelper(_ *testing.T) {
 		return
 	}
 
-	agent.ResetForTesting()
+	agent.ResetForTesting(context.Background())
 	os.Args = append([]string{"gcx"}, helperArgs()...)
 	main()
 }

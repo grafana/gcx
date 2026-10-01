@@ -17,13 +17,13 @@ func TestLoginMutationGuardRejectsSelectedSourceChange(t *testing.T) {
 	before, err := config.Load(t.Context(), config.ExplicitConfigFile(path))
 	require.NoError(t, err)
 	guard := before.NewLoginMutationGuard("prod", config.LoginMutationUnified)
-	require.NoError(t, guard.Verify(&before))
+	require.NoError(t, guard.Verify(t.Context(), &before))
 
 	changed := []byte("version: 1\ncontexts:\n  attacker: {}\ncurrent-context: attacker\n")
 	require.NoError(t, os.WriteFile(path, changed, 0o600))
 	after, err := config.Load(t.Context(), config.ExplicitConfigFile(path))
 	require.NoError(t, err)
-	err = guard.Verify(&after)
+	err = guard.Verify(t.Context(), &after)
 	require.ErrorContains(t, err, "Configuration changed during authentication")
 	require.ErrorContains(t, err, "freshly authenticated credential was not written")
 }
@@ -50,7 +50,7 @@ func TestLoginMutationGuardRejectsNewlyDiscoveredLayer(t *testing.T) {
 		config.ExplicitConfigFile(userPath),
 	)
 	require.NoError(t, err)
-	guard, err := persisted.NewLoginMutationGuard("prod", config.LoginMutationUnified).WithDiscoverySnapshot(&effective)
+	guard, err := persisted.NewLoginMutationGuard("prod", config.LoginMutationUnified).WithDiscoverySnapshot(t.Context(), &effective)
 	require.NoError(t, err)
 
 	require.NoError(t, os.WriteFile(
@@ -63,7 +63,7 @@ func TestLoginMutationGuardRejectsNewlyDiscoveredLayer(t *testing.T) {
 		config.ExplicitConfigFile(userPath),
 	)
 	require.NoError(t, err)
-	err = guard.Verify(&reloaded)
+	err = guard.Verify(t.Context(), &reloaded)
 	require.ErrorContains(t, err, "Configuration changed during authentication")
 	require.ErrorContains(t, err, "source set changed")
 }

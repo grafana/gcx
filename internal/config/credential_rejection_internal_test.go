@@ -75,8 +75,8 @@ func TestEmptyCredentialEnvironmentDoesNotEraseOrRebindStoredCredential(t *testi
 					boundStackTestConfig("https://original.invalid", "stored-token")))
 				t.Setenv("GRAFANA_TOKEN", value)
 
-				loaded, err := Load(context.Background(), ExplicitConfigFile(path), func(cfg *Config) error {
-					return ParseEnvIntoContext(cfg.Contexts[cfg.CurrentContext])
+				loaded, err := Load(context.Background(), ExplicitConfigFile(path), func(ctx context.Context, cfg *Config) error {
+					return ParseEnvIntoContext(ctx, cfg.Contexts[cfg.CurrentContext])
 				})
 				require.NoError(t, err)
 				assert.Equal(t, "stored-token", loaded.Contexts["default"].Grafana.APIToken)
@@ -92,8 +92,8 @@ func TestEmptyCredentialEnvironmentDoesNotEraseOrRebindStoredCredential(t *testi
 				t.Setenv("GRAFANA_SERVER", "https://override.invalid")
 				t.Setenv("GRAFANA_TOKEN", value)
 
-				loaded, err := Load(context.Background(), ExplicitConfigFile(path), func(cfg *Config) error {
-					return ParseEnvIntoContext(cfg.Contexts[cfg.CurrentContext])
+				loaded, err := Load(context.Background(), ExplicitConfigFile(path), func(ctx context.Context, cfg *Config) error {
+					return ParseEnvIntoContext(ctx, cfg.Contexts[cfg.CurrentContext])
 				})
 				require.NoError(t, err)
 				assert.Empty(t, loaded.Contexts["default"].Grafana.APIToken)

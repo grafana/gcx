@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/grafana/gcx/internal/credentials"
+	"github.com/grafana/gcx/internal/host"
 )
 
 const (
@@ -180,15 +181,15 @@ func (config *Config) GetCurrentContext() *Context {
 // referenced by a named context that was not resolved during Load (i.e. a
 // non-current context). This is a no-op when the referenced entries have
 // already been resolved or when no keychain store is available.
-func (config *Config) ResolveContext(name string) {
+func (config *Config) ResolveContext(ctx context.Context, name string) {
 	if config.keychainStore == nil {
 		return
 	}
-	ctx := config.Contexts[name]
-	if ctx == nil {
+	cfgCtx := config.Contexts[name]
+	if cfgCtx == nil {
 		return
 	}
-	backed, preserve, states := resolveSentinelsForContext(ctx, config.keychainStore)
+	backed, preserve, states := resolveSentinelsForContext(ctx, cfgCtx, config.keychainStore)
 	config.trackKeychainResults(backed, preserve, states)
 }
 
@@ -980,30 +981,30 @@ func tlsFileError(description, path string, err error) error {
 // ResolveFiles reads CertFile, KeyFile, and CAFile from disk and populates
 // the corresponding CertData, KeyData, and CAData fields. File-based fields
 // take precedence: if both CertFile and CertData are set, CertFile wins.
-func (cfg *TLS) ResolveFiles() error {
+func (cfg *TLS) ResolveFiles(ctx context.Context) error {
 	// Some runtime-only configurations have no persisted credential whose
 	// binding would have captured TLS material. Freeze their effective paths at
 	// transport construction as well, and recapture paths changed by overrides.
-	cfg.captureCredentialFileSnapshots()
+	cfg.captureCredentialFileSnapshots(ctx)
 	if (cfg.CertFile != "") != (cfg.KeyFile != "") {
 		return errors.New("both cert-file and key-file must be provided together")
 	}
 	if cfg.CertFile != "" {
-		data, err := cfg.readCredentialTLSFile("client certificate", cfg.CertFile, cfg.credentialCertFile)
+		data, err := cfg.readCredentialTLSFile(ctx, "client certificate", cfg.CertFile, cfg.credentialCertFile)
 		if err != nil {
 			return err
 		}
 		cfg.CertData = data
 	}
 	if cfg.KeyFile != "" {
-		data, err := cfg.readCredentialTLSFile("client key", cfg.KeyFile, cfg.credentialKeyFile)
+		data, err := cfg.readCredentialTLSFile(ctx, "client key", cfg.KeyFile, cfg.credentialKeyFile)
 		if err != nil {
 			return err
 		}
 		cfg.KeyData = data
 	}
 	if cfg.CAFile != "" {
-		data, err := cfg.readCredentialTLSFile("CA certificate", cfg.CAFile, cfg.credentialCAFile)
+		data, err := cfg.readCredentialTLSFile(ctx, "CA certificate", cfg.CAFile, cfg.credentialCAFile)
 		if err != nil {
 			return err
 		}
@@ -1012,14 +1013,14 @@ func (cfg *TLS) ResolveFiles() error {
 	return nil
 }
 
-func (cfg *TLS) readCredentialTLSFile(description, path string, captured tlsFileSnapshot) ([]byte, error) {
+func (cfg *TLS) readCredentialTLSFile(ctx context.Context, description, path string, captured tlsFileSnapshot) ([]byte, error) {
 	if cfg.credentialFilesCaptured && captured.path == path {
 		if captured.err != nil {
 			return nil, tlsFileError(description, path, captured.err)
 		}
 		return slices.Clone(captured.contents), nil
 	}
-	data, err := os.ReadFile(path)
+	data, err := host.ReadFile(ctx, path)
 	if err != nil {
 		return nil, tlsFileError(description, path, err)
 	}
@@ -1029,8 +1030,8 @@ func (cfg *TLS) readCredentialTLSFile(description, path string, captured tlsFile
 // ToStdTLSConfig converts the TLS configuration into a standard crypto/tls
 // Config. It loads client certificates from CertData/KeyData and adds custom
 // CA certificates from CAData to the root CA pool.
-func (cfg *TLS) ToStdTLSConfig() (*tls.Config, error) {
-	if err := cfg.ResolveFiles(); err != nil {
+func (cfg *TLS) ToStdTLSConfig(ctx context.Context) (*tls.Config, error) {
+	if err := cfg.ResolveFiles(ctx); err != nil {
 		return nil, err
 	}
 

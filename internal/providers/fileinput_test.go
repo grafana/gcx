@@ -133,7 +133,7 @@ contactPoints:
 			t.Parallel()
 
 			var got Schedule
-			err := providers.ReadFileOrStdin("-", strings.NewReader(tt.input), &got)
+			err := providers.ReadFileOrStdin(t.Context(), "-", strings.NewReader(tt.input), &got)
 
 			if tt.wantErr != "" {
 				if err == nil {

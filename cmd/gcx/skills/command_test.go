@@ -52,7 +52,7 @@ func executeCommand(t *testing.T, cmd *cobra.Command, args ...string) (string, s
 
 func TestInstallCommand(t *testing.T) {
 	t.Setenv("GCX_AGENT_MODE", "false")
-	agent.ResetForTesting()
+	agent.ResetForTesting(t.Context())
 	for _, tc := range []struct {
 		name    string
 		args    []string
@@ -104,7 +104,7 @@ func TestInstallCommand(t *testing.T) {
 
 func TestInstallCommand_DefaultRoot(t *testing.T) {
 	t.Setenv("GCX_AGENT_MODE", "false")
-	agent.ResetForTesting()
+	agent.ResetForTesting(t.Context())
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
@@ -116,7 +116,7 @@ func TestInstallCommand_DefaultRoot(t *testing.T) {
 
 func TestUpdateCommand(t *testing.T) {
 	t.Setenv("GCX_AGENT_MODE", "false")
-	agent.ResetForTesting()
+	agent.ResetForTesting(t.Context())
 	for _, tc := range []struct {
 		name      string
 		installed []string
@@ -185,7 +185,7 @@ func TestUpdateCommand(t *testing.T) {
 
 func TestListCommand(t *testing.T) {
 	t.Setenv("GCX_AGENT_MODE", "false")
-	agent.ResetForTesting()
+	agent.ResetForTesting(t.Context())
 	for _, format := range []string{"json", "text"} {
 		t.Run(format, func(t *testing.T) {
 			root := t.TempDir()
@@ -215,7 +215,7 @@ func TestListCommand(t *testing.T) {
 
 func TestGetCommand(t *testing.T) {
 	t.Setenv("GCX_AGENT_MODE", "false")
-	agent.ResetForTesting()
+	agent.ResetForTesting(t.Context())
 	for _, tc := range []struct {
 		name string
 		args []string
@@ -255,7 +255,7 @@ func TestGetCommand(t *testing.T) {
 func TestUninstallCommand(t *testing.T) {
 	t.Setenv("GCX_AGENT_MODE", "false")
 	t.Setenv("GCX_AUTO_APPROVE", "0")
-	agent.ResetForTesting()
+	agent.ResetForTesting(t.Context())
 	for _, tc := range []struct {
 		name    string
 		args    []string
@@ -311,7 +311,7 @@ func TestUninstallCommand(t *testing.T) {
 
 func TestUninstallCommand_IgnoresBundleMismatch(t *testing.T) {
 	t.Setenv("GCX_AGENT_MODE", "false")
-	agent.ResetForTesting()
+	agent.ResetForTesting(t.Context())
 	for _, tc := range []struct {
 		name    string
 		source  fs.FS

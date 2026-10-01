@@ -98,7 +98,7 @@ func TestGrafanaAuthCaptureRuntimeTokenOverridesPersistedOAuth(t *testing.T) {
 		ProxyEndpoint:     "https://assistant.example.invalid",
 		OAuthRefreshToken: "refresh",
 	}}
-	require.NoError(t, config.ParseEnvIntoContext(&ctx))
+	require.NoError(t, config.ParseEnvIntoContext(t.Context(), &ctx))
 
 	method, err := ctx.EffectiveGrafanaAuthMethod()
 	require.NoError(t, err)
@@ -215,7 +215,7 @@ func TestGrafanaAuthCaptureEmptyGrafanaBlockRecordsNothing(t *testing.T) {
 	capture.SetGrafanaAuthMethod("oauth")
 
 	ctx := config.Context{Name: "cloud-only"}
-	require.NoError(t, config.ParseEnvIntoContext(&ctx))
+	require.NoError(t, config.ParseEnvIntoContext(t.Context(), &ctx))
 	require.NotNil(t, ctx.Grafana, "env parsing installs a Grafana block where the context had none")
 	require.True(t, ctx.Grafana.IsEmpty(), "and leaves it empty when no Grafana env var is set")
 

@@ -88,7 +88,7 @@ func runAck(t *testing.T, args []string, opts *alertGroupActionVerbOpts, client 
 func resetAgentMode(t *testing.T) {
 	t.Helper()
 	t.Setenv("GCX_AGENT_MODE", "false")
-	agent.ResetForTesting()
+	agent.ResetForTesting(t.Context())
 }
 
 // topLevelKeys returns the sorted set of top-level keys in a JSON document.

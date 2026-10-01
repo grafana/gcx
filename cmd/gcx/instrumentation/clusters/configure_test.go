@@ -56,8 +56,8 @@ func TestRunConfigure_ChangeDetection(t *testing.T) {
 			// output ("no changes" / "done") that we can assert against consistently,
 			// regardless of whether CLAUDECODE or similar env vars are set.
 			t.Setenv("GCX_AGENT_MODE", "false")
-			agent.ResetForTesting()
-			t.Cleanup(agent.ResetForTesting)
+			agent.ResetForTesting(t.Context())
+			t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 			var setCalls int
 			client := &fakeClient{
