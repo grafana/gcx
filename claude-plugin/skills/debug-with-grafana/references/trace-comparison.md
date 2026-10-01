@@ -72,6 +72,9 @@ and can include the same incident. `--window` widens that padding; explicit
 `--from` and `--to` override it. Baseline has no `--since` flag. Use the same
 context and datasource as the seed.
 
+Pass `--seed-from`/`--seed-to` (e.g. the search's time range) to make the seed
+lookup much faster. The range must cover the seed trace, or it won't be found.
+
 ## Assess candidates iteratively
 
 Baseline returns candidates in search order, **not a ranking**. It matches root

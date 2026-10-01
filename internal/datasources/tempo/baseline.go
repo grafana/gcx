@@ -38,6 +38,8 @@ type baselineOpts struct {
 	Filters    []string
 	Limit      int
 	Window     string
+	SeedFrom   string
+	SeedTo     string
 }
 
 func (opts *baselineOpts) setup(flags *pflag.FlagSet) {
@@ -54,6 +56,8 @@ func (opts *baselineOpts) setup(flags *pflag.FlagSet) {
 	// which is wrong for a seed trace that may be hours or days old.
 	flags.StringVar(&opts.From, "from", "", "Absolute start time override (RFC3339, Unix timestamp, or relative like 'now-1h'); requires --to")
 	flags.StringVar(&opts.To, "to", "", "Absolute end time override (RFC3339, Unix timestamp, or relative like 'now'); requires --from")
+	flags.StringVar(&opts.SeedFrom, "seed-from", "", "Start of the seed trace lookup range (RFC3339, Unix timestamp, or relative like 'now-1h'); requires --seed-to")
+	flags.StringVar(&opts.SeedTo, "seed-to", "", "End of the seed trace lookup range (RFC3339, Unix timestamp, or relative like 'now'); requires --seed-from")
 }
 
 func (opts *baselineOpts) Validate() error {
@@ -78,7 +82,30 @@ func (opts *baselineOpts) Validate() error {
 	if pad < 0 {
 		return errors.New("--window must not be negative")
 	}
+	if (opts.SeedFrom == "") != (opts.SeedTo == "") {
+		return errors.New("--seed-from and --seed-to must be set together")
+	}
 	return opts.ValidateTimeRange()
+}
+
+// seedLookupRange returns the --seed-from/--seed-to range, or zero times when
+// unset so the seed lookup stays unbounded.
+func (opts *baselineOpts) seedLookupRange(now time.Time) (time.Time, time.Time, error) {
+	if opts.SeedFrom == "" {
+		return time.Time{}, time.Time{}, nil
+	}
+	start, err := dsquery.ParseTime(opts.SeedFrom, now)
+	if err != nil {
+		return time.Time{}, time.Time{}, fmt.Errorf("invalid --seed-from time: %w", err)
+	}
+	end, err := dsquery.ParseTime(opts.SeedTo, now)
+	if err != nil {
+		return time.Time{}, time.Time{}, fmt.Errorf("invalid --seed-to time: %w", err)
+	}
+	if !end.After(start) {
+		return time.Time{}, time.Time{}, errors.New("--seed-to must be after --seed-from")
+	}
+	return start, end, nil
 }
 
 // BaselineCmd returns the `baseline` subcommand: given a seed trace, it finds
@@ -94,6 +121,9 @@ responses may change without following the normal semantic versioning convention
 
 Find unranked candidates when you have a seed trace (TRACE_ID) but need a useful
 comparison; if you already have both trace IDs, use 'gcx traces diff' directly.
+
+Pass --seed-from/--seed-to (e.g. the search's time range) to make the seed
+lookup much faster. The range must cover the seed trace, or it won't be found.
 
 Retrieval fetches the seed, matches its root service/operation, requires root
 status != error (including unset), retains downstream errors, and pins up to
@@ -122,7 +152,11 @@ diff or treating the first result as healthy.`,
 
   # Set the candidate window; this does not bound the seed trace lookup
   gcx traces baseline --context prod -d UID <seed-id> --filter "$COHORT" --limit 5 \
-    --from 2026-01-15T08:00:00Z --to 2026-01-15T09:00:00Z`,
+    --from 2026-01-15T08:00:00Z --to 2026-01-15T09:00:00Z
+
+  # Bound the seed trace lookup to the range the seed was found in
+  gcx traces baseline --context prod -d UID <seed-id> --limit 5 \
+    --seed-from 2026-01-15T08:00:00Z --seed-to 2026-01-15T09:00:00Z`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
@@ -148,9 +182,14 @@ diff or treating the first result as healthy.`,
 				return fmt.Errorf("failed to create client: %w", err)
 			}
 
-			// Fetch the seed trace (no time range → full lookup) and read its
-			// root identity and span time range.
-			seed, err := client.GetTrace(ctx, datasourceUID, tempo.GetTraceRequest{TraceID: seedID})
+			seedStart, seedEnd, err := opts.seedLookupRange(time.Now())
+			if err != nil {
+				return err
+			}
+
+			// Fetch the seed trace and read its root identity and span time range.
+			// Without --seed-from/--seed-to the lookup scans the full retention.
+			seed, err := client.GetTrace(ctx, datasourceUID, tempo.GetTraceRequest{TraceID: seedID, Start: seedStart, End: seedEnd})
 			if err != nil {
 				return fmt.Errorf("failed to fetch seed trace: %w", err)
 			}
@@ -211,7 +250,7 @@ diff or treating the first result as healthy.`,
 
 	cmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "medium",
-		agent.AnnotationLLMHint:   "gcx datasources tempo baseline --context <context> -d UID <seed-id> --limit 5 -o agents",
+		agent.AnnotationLLMHint:   "gcx datasources tempo baseline --context <context> -d UID <seed-id> --seed-from <search-from> --seed-to <search-to> --limit 5 -o agents",
 		agent.AnnotationStability: agent.StabilityExperimental,
 	}
 

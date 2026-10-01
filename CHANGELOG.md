@@ -1,5 +1,7 @@
 ## Unreleased
 
+- Add `--seed-from`/`--seed-to` to `gcx traces baseline` to bound the seed trace lookup. Without them, Tempo searches the tenant's full retention for the seed (#1421)
+
 ## v1.4.0 (2026-10-02)
 
 **Metrics and traces**

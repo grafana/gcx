@@ -109,6 +109,52 @@ func TestValidate_RejectsEmptyFilter(t *testing.T) {
 	assert.Contains(t, err.Error(), "--filter")
 }
 
+func TestValidate_RejectsUnpairedSeedRange(t *testing.T) {
+	opts := newTestOpts("30m")
+	opts.SeedFrom = "2026-01-15T08:00:00Z"
+	require.ErrorContains(t, opts.Validate(), "--seed-from and --seed-to must be set together")
+
+	opts = newTestOpts("30m")
+	opts.SeedTo = "2026-01-15T09:00:00Z"
+	require.ErrorContains(t, opts.Validate(), "--seed-from and --seed-to must be set together")
+}
+
+func TestSeedLookupRange(t *testing.T) {
+	now := time.Date(2026, 1, 15, 10, 0, 0, 0, time.UTC)
+
+	tests := []struct {
+		name      string
+		from, to  string
+		wantStart time.Time
+		wantEnd   time.Time
+		wantErr   string
+	}{
+		{name: "unset stays unbounded"},
+		{
+			name:      "absolute range",
+			from:      "2026-01-15T08:00:00Z",
+			to:        "2026-01-15T09:00:00Z",
+			wantStart: time.Date(2026, 1, 15, 8, 0, 0, 0, time.UTC),
+			wantEnd:   time.Date(2026, 1, 15, 9, 0, 0, 0, time.UTC),
+		},
+		{name: "end not after start", from: "2026-01-15T09:00:00Z", to: "2026-01-15T09:00:00Z", wantErr: "--seed-to must be after --seed-from"},
+		{name: "invalid start", from: "nonsense", to: "2026-01-15T09:00:00Z", wantErr: "invalid --seed-from time"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			opts := &baselineOpts{SeedFrom: tc.from, SeedTo: tc.to}
+			start, end, err := opts.seedLookupRange(now)
+			if tc.wantErr != "" {
+				require.ErrorContains(t, err, tc.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			assert.True(t, tc.wantStart.Equal(start), "start = %v", start)
+			assert.True(t, tc.wantEnd.Equal(end), "end = %v", end)
+		})
+	}
+}
+
 func TestSetup_FilterFlagIsRepeatable(t *testing.T) {
 	opts := &baselineOpts{}
 	flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
@@ -202,6 +248,58 @@ current-context: default
 	assert.Contains(t, result.ListMeta.Continue, "--limit 40")
 	assert.Contains(t, stderr.String(), fmt.Sprintf(`warn: seed trace %q is partial; baseline retrieval uses only the spans returned by Tempo`, seedID))
 	assert.Contains(t, stderr.String(), "showing first 20; more results are available")
+}
+
+func TestBaselineCmd_SeedRangeBoundsSeedLookup(t *testing.T) {
+	testutils.SandboxConfigEnv(t)
+
+	const seedID = "00000000000000000000000000000001"
+	var gotSeedStart, gotSeedEnd string
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/bootdata":
+			http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
+		case "/api/datasources/proxy/uid/tempo-uid/api/v2/traces/" + seedID:
+			gotSeedStart = r.URL.Query().Get("start")
+			gotSeedEnd = r.URL.Query().Get("end")
+			w.Header().Set("Content-Type", "application/json")
+			assert.NoError(t, json.NewEncoder(w).Encode(map[string]any{"trace": otlpTrace()}))
+		case "/api/datasources/proxy/uid/tempo-uid/api/search":
+			w.Header().Set("Content-Type", "application/json")
+			assert.NoError(t, json.NewEncoder(w).Encode(map[string]any{"traces": []any{}}))
+		default:
+			t.Fatalf("unexpected request path: %s", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	cfgFile := writeBaselineTestConfig(t, `
+contexts:
+  default:
+    grafana:
+      server: "`+srv.URL+`"
+      token: "test-token"
+      org-id: 1
+      tls:
+        insecure-skip-verify: true
+    datasources:
+      tempo: tempo-uid
+current-context: default
+`)
+	loader := &providers.ConfigLoader{}
+	loader.SetConfigFile(cfgFile)
+
+	root := &cobra.Command{Use: "test"}
+	root.AddCommand(BaselineCmd(loader))
+	var stdout, stderr bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{"baseline", seedID, "-o", "json",
+		"--seed-from", "2023-11-14T21:00:00Z", "--seed-to", "2023-11-14T23:00:00Z"})
+
+	require.NoError(t, root.Execute())
+	assert.Equal(t, "1699995600", gotSeedStart)
+	assert.Equal(t, "1700002800", gotSeedEnd)
 }
 
 func writeBaselineTestConfig(t *testing.T, content string) string {

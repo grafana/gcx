@@ -10,6 +10,9 @@ responses may change without following the normal semantic versioning convention
 Find unranked candidates when you have a seed trace (TRACE_ID) but need a useful
 comparison; if you already have both trace IDs, use 'gcx traces diff' directly.
 
+Pass --seed-from/--seed-to (e.g. the search's time range) to make the seed
+lookup much faster. The range must cover the seed trace, or it won't be found.
+
 Retrieval fetches the seed, matches its root service/operation, requires root
 status != error (including unset), retains downstream errors, and pins up to
 three busiest downstream services; these heuristics do not prove health or
@@ -46,6 +49,10 @@ gcx datasources tempo baseline TRACE_ID [flags]
   # Set the candidate window; this does not bound the seed trace lookup
   gcx traces baseline --context prod -d UID <seed-id> --filter "$COHORT" --limit 5 \
     --from 2026-01-15T08:00:00Z --to 2026-01-15T09:00:00Z
+
+  # Bound the seed trace lookup to the range the seed was found in
+  gcx traces baseline --context prod -d UID <seed-id> --limit 5 \
+    --seed-from 2026-01-15T08:00:00Z --seed-to 2026-01-15T09:00:00Z
 ```
 
 ### Options
@@ -59,6 +66,8 @@ gcx datasources tempo baseline TRACE_ID [flags]
       --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int            Maximum number of candidates to return; must be at least 1 (default 20)
   -o, --output string        Output format. One of: agents, json, table, wide, yaml (default "table")
+      --seed-from string     Start of the seed trace lookup range (RFC3339, Unix timestamp, or relative like 'now-1h'); requires --seed-to
+      --seed-to string       End of the seed trace lookup range (RFC3339, Unix timestamp, or relative like 'now'); requires --seed-from
       --to string            Absolute end time override (RFC3339, Unix timestamp, or relative like 'now'); requires --from
       --window string        Search window padding applied before and after the seed trace's time range, so candidates from before or after the seed are eligible (e.g., 30m, 6h, 7d). Ignored when --from/--to are set (default "30m")
 ```
