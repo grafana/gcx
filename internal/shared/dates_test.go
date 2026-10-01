@@ -69,6 +69,30 @@ func TestParseTime_RejectsTooManyDigits(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestHasSubMillisecondPrecision(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  bool
+	}{
+		{name: "RFC3339", input: "2024-01-15T10:30:00Z", want: false},
+		{name: "relative", input: "now-1h", want: false},
+		{name: "seconds", input: "1705315800", want: false},
+		{name: "milliseconds", input: "1705315800123", want: false},
+		{name: "microseconds", input: "1705315800123456", want: true},
+		{name: "nanoseconds", input: "1705315800123456789", want: true},
+		{name: "fractional seconds, millisecond precision", input: "1705315800.123", want: false},
+		{name: "fractional seconds, microsecond precision", input: "1705315800.123456", want: true},
+		{name: "fractional seconds, trailing zeros beyond ms don't count", input: "1705315800.1230000", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, shared.HasSubMillisecondPrecision(tt.input))
+		})
+	}
+}
+
 func TestParseDuration(t *testing.T) {
 	tests := []struct {
 		name     string

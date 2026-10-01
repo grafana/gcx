@@ -90,6 +90,23 @@ func parseNumericTimestamp(s string) (time.Time, error) {
 	}
 }
 
+// HasSubMillisecondPrecision reports whether s, as parsed by ParseTime,
+// carries meaningful precision finer than a millisecond: a bare
+// microsecond- or nanosecond-magnitude timestamp (14+ digits), or a
+// fractional-seconds value with more than 3 significant fractional digits.
+// Callers use this to decide whether a query needs Loki's own nanosecond-
+// capable API instead of Grafana's millisecond-capped query proxy.
+func HasSubMillisecondPrecision(s string) bool {
+	matches := numericTimestampPattern.FindStringSubmatch(strings.TrimSpace(s))
+	if matches == nil {
+		return false
+	}
+	if matches[2] != "" {
+		return len(strings.TrimRight(matches[2], "0")) > 3
+	}
+	return len(strings.TrimPrefix(matches[1], "-")) >= 14
+}
+
 // fractionToNanos converts a fractional-seconds digit string (the part
 // after the decimal point) to nanoseconds, padding or truncating to exactly
 // 9 digits — time.Time itself can't represent anything finer.

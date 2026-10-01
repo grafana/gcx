@@ -17,3 +17,8 @@ func ParseTime(s string, now time.Time) (time.Time, error) {
 func ParseDuration(s string) (time.Duration, error) {
 	return shared.ParseDuration(s)
 }
+
+// HasSubMillisecondPrecision delegates to shared.HasSubMillisecondPrecision.
+func HasSubMillisecondPrecision(s string) bool {
+	return shared.HasSubMillisecondPrecision(s)
+}
