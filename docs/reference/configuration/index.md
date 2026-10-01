@@ -58,6 +58,12 @@ stacks:
       # Note: required when targeting a Grafana Cloud instance.
       # See OrgID for on-prem Grafana instances.
       stack-id: int
+      # Headers are extra HTTP headers sent with every request to Grafana, e.g.
+      # for an authenticating proxy in front of the instance. Values are treated
+      # as secrets.
+      headers:
+        ${string}:
+          string
       # TLS contains TLS-related configuration settings.
       tls:
         # TLS contains settings to enable transport layer security.
