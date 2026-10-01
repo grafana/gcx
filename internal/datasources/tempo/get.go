@@ -145,7 +145,7 @@ TRACE_ID is the hex-encoded trace identifier to retrieve.
 Datasource is resolved from -d flag or datasources.tempo in your context.
 
 Pass --since or --from/--to (e.g. the search's time range) to make the lookup
-much faster.
+much faster. The range must cover the trace, or it won't be found.
 
 Use --share-link to print a Grafana Explore URL for the trace, or --open to
 open it in your browser after retrieval succeeds. Share links require an
@@ -254,7 +254,7 @@ with a hint to read it directly or re-run narrower (e.g. with --filter or
 
 	cmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "medium",
-		agent.AnnotationLLMHint:   "gcx datasources tempo get -d UID <trace-id> --from <trace-start> --to <trace-end> --llm -o json; pass --since or --from/--to (e.g. the search's time range) to make the lookup much faster; for a large trace, narrow with --filter '{ status = error }' --keep-hierarchy or shrink fan-outs with --prune",
+		agent.AnnotationLLMHint:   "gcx datasources tempo get -d UID <trace-id> --from <search-from> --to <search-to> --llm -o json; pass --since or --from/--to (e.g. the search's time range) to make the lookup much faster; for a large trace, narrow with --filter '{ status = error }' --keep-hierarchy or shrink fan-outs with --prune",
 	}
 
 	opts.setup(cmd.Flags())
