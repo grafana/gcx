@@ -56,6 +56,9 @@ type Sandbox struct {
 	Stdin io.Reader
 	// Stdout and Stderr receive the invocation's output. Nil discards.
 	Stdout, Stderr io.Writer
+	// Access limits the HTTP requests the invocation may send; see
+	// [GuardTransport]. The zero value is read-only.
+	Access Access
 }
 
 type sandboxKey struct{}
