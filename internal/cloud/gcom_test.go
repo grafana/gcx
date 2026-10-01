@@ -566,8 +566,8 @@ func TestGCOMClient_ListRegions_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if capturedPath != "/api/stack-regions" {
-		t.Errorf("expected path /api/stack-regions, got %q", capturedPath)
+	if capturedPath != "/api/v1/stack-regions" {
+		t.Errorf("expected path /api/v1/stack-regions, got %q", capturedPath)
 	}
 	if len(got) != 2 {
 		t.Fatalf("expected 2 regions, got %d", len(got))

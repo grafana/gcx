@@ -45,7 +45,7 @@ above any individual stack.
 ```
 /api/orgs/{slug}                          org + members
 /api/stacks, /api/instances/{id}          stack lifecycle
-/api/stack-regions                        region catalog
+/api/v1/stack-regions                     region catalog
 /api/v1/accesspolicies, /api/v1/tokens    IAM for Cloud itself
 /api/plugins, /api/instances/{id}/plugins plugin catalog + install
 /api/stacks/{id}/integrations             prebuilt integrations installer

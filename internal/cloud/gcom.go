@@ -19,7 +19,7 @@ import (
 
 const (
 	instancesPath    = "/api/instances/"
-	stackRegionsPath = "/api/stack-regions"
+	stackRegionsPath = "/api/v1/stack-regions"
 	orgsPath         = "/api/orgs/"
 )
 
@@ -373,7 +373,7 @@ func (c *GCOMClient) DeleteStack(ctx context.Context, slug string) error {
 	return nil
 }
 
-// ListRegions calls GET /api/stack-regions on the GCOM API and returns
+// ListRegions calls GET /api/v1/stack-regions on the GCOM API and returns
 // the available regions for stack creation.
 func (c *GCOMClient) ListRegions(ctx context.Context) ([]Region, error) {
 	endpoint, err := c.buildURL(stackRegionsPath)
