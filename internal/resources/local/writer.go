@@ -125,11 +125,11 @@ func (writer *FSWriter) writeSingle(ctx context.Context, resource *resources.Res
 		return fmt.Errorf("resource filename must be relative, got %q", filename)
 	}
 
-	rootAbs, err := filepath.Abs(writer.Path)
+	rootAbs, err := host.Abs(ctx, writer.Path)
 	if err != nil {
 		return fmt.Errorf("could not resolve writer root path: %w", err)
 	}
-	targetAbs, err := filepath.Abs(filepath.Join(rootAbs, filename))
+	targetAbs, err := host.Abs(ctx, filepath.Join(rootAbs, filename))
 	if err != nil {
 		return fmt.Errorf("could not resolve target path: %w", err)
 	}

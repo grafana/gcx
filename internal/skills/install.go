@@ -199,7 +199,7 @@ func ResolveInstallRoot(ctx context.Context, root string) (string, error) {
 		}
 	}
 
-	absRoot, err := filepath.Abs(root)
+	absRoot, err := host.Abs(ctx, root)
 	if err != nil {
 		return "", fmt.Errorf("resolve install root %q: %w", root, err)
 	}

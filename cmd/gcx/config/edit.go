@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"runtime"
 	"strings"
 
@@ -134,7 +133,7 @@ func ensureEditableConfigExists(ctx context.Context, path string) error {
 func createConfigForType(ctx context.Context, typ string) (string, error) {
 	switch typ {
 	case "local":
-		localPath, err := filepath.Abs(internalConfig.LocalConfigFileName)
+		localPath, err := host.Abs(ctx, internalConfig.LocalConfigFileName)
 		if err != nil {
 			return "", err
 		}
@@ -165,7 +164,7 @@ func openInEditor(ctx context.Context, path string) error {
 		}
 	}
 
-	abs, err := filepath.Abs(path)
+	abs, err := host.Abs(ctx, path)
 	if err != nil {
 		return err
 	}

@@ -3,6 +3,7 @@ package local
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -83,7 +84,9 @@ func (reader *FSReader) Read(
 		for _, path := range paths {
 			info, err := host.Stat(ctx, path)
 			if err != nil {
-				if reader.StopOnError {
+				// Embedded gcx has no filesystem at all; that is never a
+				// per-path problem worth skipping.
+				if reader.StopOnError || errors.Is(err, host.ErrUnavailable) {
 					return err
 				}
 

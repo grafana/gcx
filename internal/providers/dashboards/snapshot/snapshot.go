@@ -284,7 +284,7 @@ func Commands(loader GrafanaConfigLoader) *cobra.Command {
 						filename = name + ".png"
 					}
 
-					filePath, err := filepath.Abs(filepath.Join(opts.OutputDir, filename))
+					filePath, err := host.Abs(ctx, filepath.Join(opts.OutputDir, filename))
 					if err != nil {
 						errs[i] = fmt.Errorf("failed to resolve output path: %w", err)
 						return nil

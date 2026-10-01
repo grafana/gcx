@@ -4,7 +4,6 @@ import (
 	"context"
 	"io"
 	"log/slog"
-	"path/filepath"
 	"runtime"
 
 	"github.com/grafana/gcx/internal/host"
@@ -67,7 +66,7 @@ func (e editor) Open(ctx context.Context, file string) error {
 	logger := logging.FromContext(ctx).With(slog.String("component", "editor"))
 	logger.Debug("Opening file", slog.String("path", file))
 
-	absPath, err := filepath.Abs(file)
+	absPath, err := host.Abs(ctx, file)
 	if err != nil {
 		return err
 	}

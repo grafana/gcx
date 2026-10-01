@@ -242,3 +242,15 @@ func RenameNoReplace(ctx context.Context, oldpath, newpath string) error {
 	}
 	return renameNoReplace(oldpath, newpath)
 }
+
+// Abs mirrors [filepath.Abs]. A sandbox has no working directory, so relative
+// paths fail there; absolute paths are only cleaned.
+func Abs(ctx context.Context, path string) (string, error) {
+	if Sandboxed(ctx) {
+		if filepath.IsAbs(path) {
+			return filepath.Clean(path), nil
+		}
+		return "", pathErr("abs", path)
+	}
+	return filepath.Abs(path)
+}

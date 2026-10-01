@@ -122,3 +122,18 @@ func TestNoSandboxUsesProcess(t *testing.T) {
 	}
 	require.NoError(t, host.RenameNoReplace(t.Context(), from, filepath.Join(dir, "moved")))
 }
+
+func TestAbs(t *testing.T) {
+	ctx := host.WithSandbox(t.Context(), &host.Sandbox{})
+
+	abs, err := host.Abs(ctx, "/a/b/../c")
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Clean("/a/c"), abs)
+
+	_, err = host.Abs(ctx, "relative")
+	require.ErrorIs(t, err, host.ErrUnavailable, "a sandbox has no working directory")
+
+	abs, err = host.Abs(t.Context(), "relative")
+	require.NoError(t, err)
+	assert.True(t, filepath.IsAbs(abs))
+}

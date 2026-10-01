@@ -206,7 +206,7 @@ func (cfg *Config) secretOwners() []secretOwner {
 }
 
 func canonicalConfigSource(ctx context.Context, path string) (string, error) {
-	abs, err := filepath.Abs(path)
+	abs, err := host.Abs(ctx, path)
 	if err != nil {
 		return "", fmt.Errorf("resolve config path: %w", err)
 	}
@@ -234,7 +234,7 @@ func canonicalConfigSourceForLayer(ctx context.Context, path, layer string) (str
 	if !info.Mode().IsRegular() {
 		return "", fmt.Errorf("refusing auto-discovered local config %s: file must be regular (symlinks are not allowed)", path)
 	}
-	abs, err := filepath.Abs(path)
+	abs, err := host.Abs(ctx, path)
 	if err != nil {
 		return "", fmt.Errorf("resolve config path: %w", err)
 	}
@@ -430,7 +430,7 @@ func snapshotTLSFile(ctx context.Context, path string) tlsFileSnapshot {
 	if path == "" {
 		return snapshot
 	}
-	identity, err := filepath.Abs(path)
+	identity, err := host.Abs(ctx, path)
 	if err != nil {
 		identity = path
 	}

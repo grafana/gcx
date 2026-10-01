@@ -167,7 +167,7 @@ entire bundle from Git by default.`,
 				return errors.New("run ID cannot be empty: use gcx agento11y experiments list to discover run IDs")
 			}
 
-			outputDir, err := filepath.Abs(opts.OutputDir)
+			outputDir, err := host.Abs(cmd.Context(), opts.OutputDir)
 			if err != nil {
 				return fmt.Errorf("resolve output directory %q: %w", opts.OutputDir, err)
 			}
