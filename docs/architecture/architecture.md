@@ -98,9 +98,12 @@
    dry-run, error handling, and unstructured object support for free. The trade-off
    is a large dependency graph, but the implementation savings are substantial.
 
-2. **No public Go API.** Everything is under `internal/`. gcx is a CLI tool,
-   not a library. This gives the team freedom to refactor without worrying about
-   external API stability.
+2. **Narrow public Go API.** Everything is under `internal/` except `embed/`,
+   which runs a gcx command line in-process for embedders such as MCP servers.
+   gcx is a CLI tool, not a library; keeping the public surface to one call
+   gives the team freedom to refactor without worrying about external API
+   stability. All host access goes through `internal/host` so embedded calls
+   stay sandboxed (see [ADR-026](../adrs/embedded-execution/001-embedded-execution-and-host-seam.md)).
 
 3. **Dynamic resource types.** Resources are discovered at runtime via the Grafana
    API's discovery endpoint, not hardcoded. This means new resource types added to

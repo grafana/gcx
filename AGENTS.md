@@ -83,7 +83,9 @@ cmd/gcx/
   dev/          Developer tools (import, scaffold, generate, lint, serve)
   fail/         Structured error conversion
 
+embed/          Public in-process API: embed.Run executes a gcx command line sandboxed (ADR-026)
 internal/        Non-public packages — full annotated map: docs/architecture/project-structure.md
+  host/         The only package allowed to touch the host process (fs, env, stdio, exec, listeners, signals); lint-enforced
 ```
 
 ## What to Read Before You Start

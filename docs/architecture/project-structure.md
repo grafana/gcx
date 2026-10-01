@@ -29,6 +29,8 @@ gcx/
 │       ├── providers/        # 'providers' subcommand implementation
 │       └── fail/             # Error → DetailedError conversion, exit codes
 │
+├── embed/                    # Public in-process API: embed.Run(ctx, commandLine, Options) runs one gcx command sandboxed, returns captured stdout/stderr + exit code (ADR-026)
+│
 ├── internal/                 # All non-public packages (Go enforced)
 │   ├── agent/                # Agent-mode detection, command annotations, known-resource registry with operation hints
 │   ├── agentlog/             # Agent invocation failure logger (opt-in JSONL disk log, XDG state dir — wired into handleError in cmd/gcx/main.go)
@@ -44,6 +46,7 @@ gcx/
 │   ├── credentials/          # OS-keychain backend for token-shaped secrets; sentinel format + Store interface; auto-disabled under `go test`
 │   ├── format/               # JSON/YAML codec, format auto-detection
 │   ├── output/               # Output codec registry (json, yaml, text, wide), field selection, user-facing messages
+│   ├── host/                 # The only package that touches the host process (fs, env, argv, stdio, exec, listeners, signals, keychain, fsnotify, discovery disk cache); refuses or serves from a host.Sandbox in ctx; GuardTransport enforces per-sandbox HTTP Access (ADR-026)
 │   ├── gcxerrors/            # Shared error contracts: exit codes, DetailedError + JSON error envelope, EmittedError, PartialFailureError, HTTPStatusError (typed transport-status carrier)
 │   ├── grafana/              # Thin wrapper over grafana-openapi-client-go
 │   ├── graph/                # Terminal chart rendering (ntcharts + lipgloss)
@@ -192,7 +195,9 @@ gcx/
 output formatting, and error translation. It holds no business logic.
 
 `internal/` enforces Go's package visibility rule — external consumers cannot
-import these packages. This is intentional: gcx has no public Go API.
+import these packages. This is intentional: the only public Go API is `embed/`,
+a deliberately narrow entry point for running gcx commands in-process (see
+[ADR-026](../adrs/embedded-execution/001-embedded-execution-and-host-seam.md)).
 The split within `internal/` mirrors functional layers (config, resources,
 server) rather than technical concerns, making it easy to locate code by feature.
 
@@ -434,7 +439,12 @@ set of linters that conflict with the project's style:
 **Notable settings:**
 - `errcheck` excludes `fmt.*` functions (formatted print errors not checked)
 - `depguard` denies `github.com/davecgh/go-spew` — debug statements must
-  be removed before merging
+  be removed before merging — and confines host-touching libraries
+  (otel-checker) to the one command that wraps them
+- `forbidigo` forbids direct host access (`os` env/stdio/fs, `os/exec`,
+  `net.Listen`, `signal`, `http.DefaultTransport`, keyring, fsnotify, …)
+  outside `internal/host`, tests, `internal/testutils` and `scripts/`, and
+  `os.Exit` outside `cmd/gcx/main.go` — see ADR-026
 - `revive`'s `var-naming` rule is disabled (allows non-standard naming)
 - `modules-download-mode: readonly` — resolves deps from the module cache (no `vendor/`)
 

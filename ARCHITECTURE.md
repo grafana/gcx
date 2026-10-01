@@ -240,6 +240,7 @@ See [CLI layer: Portable Skill Lifecycle](docs/architecture/cli-layer.md#portabl
 | [023](docs/adrs/fleet-plugin-proxy/001-fleet-via-collector-app-proxy.md) | Fleet Management through the collector app plugin proxy | accepted |
 | [024](docs/adrs/provider-consolidation/002-shared-table-declaration.md) | Providers declare table columns instead of writing codecs | accepted |
 | [025](docs/adrs/declarative-provider-registration/001-declarative-resource-front-door.md) | Declarative `adapter.Resource[T]` + `adapter.NewProvider` registration front door | accepted |
+| [026](docs/adrs/embedded-execution/001-embedded-execution-and-host-seam.md) | Embedded in-process execution (`embed.Run`) and the `internal/host` seam | proposed |
 
 See [docs/adrs/](docs/adrs/) for all ADRs.
 
