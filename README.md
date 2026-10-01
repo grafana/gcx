@@ -105,6 +105,8 @@ This toggle is experimental in 12.x, requires a restart, and Unified Alerting mu
 | **Profiles (Pyroscope)** | `gcx profiles` | `profiles query`, `profiles labels` |
 | **Traces (Tempo)** | `gcx traces` | `traces query`, `traces get`, `traces labels` |
 
+For paging responders to an incident, see [gcx irm oncall escalate](docs/sources/cli-reference.md#gcx-irm-oncall-escalate).
+
 > **Keep in mind Grafana Cloud costs.** `gcx` itself is free, but some of these products are billed based on usage: Grafana Assistant is charged per token consumed (including requests made through `gcx`), Synthetic Monitoring per test execution, k6 per Virtual User Hour, and IRM per monthly active user. Queries and resource push/pull are not billed. Refer to [Costs and billing](docs/reference/costs.md) and the [Grafana Cloud Cost Management and Billing documentation](https://grafana.com/docs/grafana-cloud/cost-management-and-billing/) for more details.
 
 ## New to `gcx` or Grafana? Start here!

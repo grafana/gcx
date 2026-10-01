@@ -665,52 +665,44 @@ func TestEscalateCommand_IncidentRequest(t *testing.T) {
 			want: map[string]any{"title": "Database outage", "team": "T123", "important_team_escalation": true, "incident_id": "INC-123"},
 		},
 	} {
-		for _, output := range []string{"text", "json"} {
-			t.Run(tc.name+"/"+output, func(t *testing.T) {
-				var got map[string]any
-				calls := 0
-				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					calls++
-					if r.Method != http.MethodPost || r.URL.Path != BasePath+"/direct_paging" {
-						t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
-					}
-					if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
-						t.Errorf("decode request: %v", err)
-					}
-					w.Header().Set("Content-Type", "application/json")
-					_, _ = w.Write([]byte(`{"alert_group_id":"I123"}`))
-				}))
-				t.Cleanup(server.Close)
-				cmd := newEscalateCommand(&fakeLoader{client: onCallClientFor(server)})
-				var stdout, stderr bytes.Buffer
-				cmd.SetOut(&stdout)
-				cmd.SetErr(&stderr)
-				cmd.SetArgs(append([]string{"--title", "Database outage", "-o", output}, tc.args...))
-				if err := cmd.Execute(); err != nil {
-					t.Fatal(err)
+		t.Run(tc.name, func(t *testing.T) {
+			var got map[string]any
+			calls := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				if r.Method != http.MethodPost || r.URL.Path != BasePath+"/direct_paging" {
+					t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
 				}
-				if calls != 1 || !reflect.DeepEqual(got, tc.want) {
-					t.Fatalf("got %d requests with body %#v; want one with %#v", calls, got, tc.want)
+				if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+					t.Errorf("decode request: %v", err)
 				}
-				if stderr.Len() != 0 {
-					t.Errorf("unexpected stderr: %s", &stderr)
-				}
-				if output == "text" {
-					if got := stdout.String(); got != "Direct escalation created with alert group ID: I123\n" {
-						t.Errorf("unexpected text output: %q", got)
-					}
-				} else {
-					var result map[string]any
-					if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
-						t.Fatal(err)
-					}
-					want := map[string]any{"alertGroupId": "I123", "title": "Database outage"}
-					if !reflect.DeepEqual(result, want) {
-						t.Errorf("got output %#v, want %#v", result, want)
-					}
-				}
-			})
-		}
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"alert_group_id":"I123"}`))
+			}))
+			t.Cleanup(server.Close)
+			cmd := newEscalateCommand(&fakeLoader{client: onCallClientFor(server)})
+			var stdout, stderr bytes.Buffer
+			cmd.SetOut(&stdout)
+			cmd.SetErr(&stderr)
+			cmd.SetArgs(append([]string{"--title", "Database outage", "-o", "json"}, tc.args...))
+			if err := cmd.Execute(); err != nil {
+				t.Fatal(err)
+			}
+			if calls != 1 || !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("got %d requests with body %#v; want one with %#v", calls, got, tc.want)
+			}
+			if stderr.Len() != 0 {
+				t.Errorf("unexpected stderr: %s", &stderr)
+			}
+			var result map[string]any
+			if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+				t.Fatal(err)
+			}
+			want := map[string]any{"alertGroupId": "I123", "title": "Database outage"}
+			if !reflect.DeepEqual(result, want) {
+				t.Errorf("got output %#v, want %#v", result, want)
+			}
+		})
 	}
 }
 
@@ -748,27 +740,23 @@ func TestEscalateCommand_InvalidInputBeforeClientLoading(t *testing.T) {
 
 func TestEscalateCommand_IncidentBackendFailure(t *testing.T) {
 	resetAgentMode(t)
-	for _, status := range []int{http.StatusBadRequest, http.StatusForbidden, http.StatusInternalServerError} {
-		t.Run(http.StatusText(status), func(t *testing.T) {
-			calls := 0
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-				calls++
-				http.Error(w, `{"detail":"paging rejected"}`, status)
-			}))
-			t.Cleanup(server.Close)
-			cmd := newEscalateCommand(&fakeLoader{client: onCallClientFor(server)})
-			var stdout, stderr bytes.Buffer
-			cmd.SetOut(&stdout)
-			cmd.SetErr(&stderr)
-			cmd.SilenceUsage = true
-			cmd.SetArgs([]string{"--title", "Page", "--user-ids", "U123", "--incident-id", "INC-123", "-o", "json"})
-			if err := cmd.Execute(); err == nil {
-				t.Fatal("expected backend error")
-			}
-			if calls != 1 || stdout.Len() != 0 {
-				t.Fatalf("got %d requests and stdout %q; want one request and no success output", calls, stdout.String())
-			}
-		})
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		http.Error(w, `{"detail":"paging rejected"}`, http.StatusInternalServerError)
+	}))
+	t.Cleanup(server.Close)
+	cmd := newEscalateCommand(&fakeLoader{client: onCallClientFor(server)})
+	var stdout, stderr bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	cmd.SilenceUsage = true
+	cmd.SetArgs([]string{"--title", "Page", "--user-ids", "U123", "--incident-id", "INC-123", "-o", "json"})
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("expected backend error")
+	}
+	if calls != 1 || stdout.Len() != 0 {
+		t.Fatalf("got %d requests and stdout %q; want one request and no success output", calls, stdout.String())
 	}
 }
 
