@@ -22,6 +22,7 @@ import (
 	"github.com/grafana/gcx/internal/fleet"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/grafana"
+	"github.com/grafana/gcx/internal/host"
 	"github.com/grafana/gcx/internal/linter"
 	"github.com/grafana/gcx/internal/login"
 	cmdoutput "github.com/grafana/gcx/internal/output"
@@ -63,6 +64,7 @@ func ErrorToDetailedError(err error) *gcxerrors.DetailedError {
 		convertUsageErrors,
 		convertCobraUnknownCommandErrors,
 		convertContextCanceled,                      // Context cancellation (must be first — cancellation can wrap other errors)
+		convertHostUnavailable,                      // Host access refused when embedded — must precede config/FS errors it looks like
 		convertRequiredFlagErrors,                   // Cobra required-flag errors — must appear before generic checks
 		convertCredentialsErrors,                    // OS credential-store failures — must precede config errors that wrap them
 		convertConfigErrors,                         // Config-related
@@ -859,6 +861,29 @@ func convertResourcesErrors(err error) (*gcxerrors.DetailedError, bool) {
 	}
 
 	return nil, false
+}
+
+// convertHostUnavailable explains host access (files, subprocesses,
+// listeners, the keychain) refused because gcx is running embedded in another
+// program. Those errors also satisfy fs.ErrNotExist, so without this they
+// would read as a missing file.
+func convertHostUnavailable(err error) (*gcxerrors.DetailedError, bool) {
+	if !errors.Is(err, host.ErrUnavailable) {
+		return nil, false
+	}
+	details := err.Error()
+	if pathErr := (&fs.PathError{}); errors.As(err, &pathErr) {
+		details = fmt.Sprintf("%s %s", pathErr.Op, pathErr.Path)
+	}
+	return &gcxerrors.DetailedError{
+		Summary: "Not available when gcx is embedded",
+		Details: details,
+		Parent:  err,
+		Suggestions: []string{
+			"This gcx runs inside another program and cannot use local files, the keychain, subprocesses or local servers",
+			"Pass file content on stdin with -f - where the command supports it",
+		},
+	}, true
 }
 
 func convertFSErrors(err error) (*gcxerrors.DetailedError, bool) {

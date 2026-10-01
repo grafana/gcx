@@ -116,6 +116,40 @@ func hasInteractiveTextOutput(cmd *cobra.Command) bool {
 	}
 }
 
+// configureProcessOutput sets the process-wide output state for a CLI
+// invocation: the --json marker, TTY detection, truncation and color.
+func configureProcessOutput(ctx context.Context, cmd *cobra.Command, noColors, noTruncate bool) {
+	jsonFlagActive.Store(false)
+	// Track whether --json was explicitly set on the resolved command.
+	// Only mark active when the command actually declares a --json flag,
+	// preventing false positives for subcommands that don't support it.
+	if f := cmd.Flags().Lookup("json"); f != nil && f.Changed {
+		jsonFlagActive.Store(true)
+	}
+
+	// Detect TTY state first so all downstream decisions can use it.
+	terminal.Detect(ctx)
+
+	// Agent mode implies all pipe-aware behaviors regardless of actual TTY state.
+	if agent.IsAgentMode() {
+		terminal.SetPiped(true)
+		terminal.SetNoTruncate(true)
+		color.NoColor = true
+		style.SetEnabled(false)
+	}
+
+	// Explicit --no-truncate flag overrides auto-detection.
+	if noTruncate {
+		terminal.SetNoTruncate(true)
+	}
+
+	// Explicit --no-color flag, NO_COLOR env var, or piped stdout disable color.
+	if noColors || host.Getenv(ctx, "NO_COLOR") != "" || terminal.IsPiped() {
+		color.NoColor = true // globally disables colorized output
+		style.SetEnabled(false)
+	}
+}
+
 // renamedFlag is a pflag.Value that errors immediately when set, directing users
 // to use the new flag name. Used to give a better error than "unknown flag".
 type renamedFlag struct{ newName string }
@@ -153,34 +187,13 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 		SilenceErrors: true, // We want to print errors ourselves
 		Version:       version,
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
-			jsonFlagActive.Store(false)
-			// Track whether --json was explicitly set on the resolved command.
-			// Only mark active when the command actually declares a --json flag,
-			// preventing false positives for subcommands that don't support it.
-			if f := cmd.Flags().Lookup("json"); f != nil && f.Changed {
-				jsonFlagActive.Store(true)
-			}
-
-			// Detect TTY state first so all downstream decisions can use it.
-			terminal.Detect(cmd.Context())
-
-			// Agent mode implies all pipe-aware behaviors regardless of actual TTY state.
-			if agent.IsAgentMode() {
-				terminal.SetPiped(true)
-				terminal.SetNoTruncate(true)
-				color.NoColor = true
-				style.SetEnabled(false)
-			}
-
-			// Explicit --no-truncate flag overrides auto-detection.
-			if noTruncate {
-				terminal.SetNoTruncate(true)
-			}
-
-			// Explicit --no-color flag, NO_COLOR env var, or piped stdout disable color.
-			if noColors || host.Getenv(cmd.Context(), "NO_COLOR") != "" || terminal.IsPiped() {
-				color.NoColor = true // globally disables colorized output
-				style.SetEnabled(false)
+			// Process-wide output state (TTY detection, color, the --json
+			// marker for main's error reporting) belongs to the CLI process.
+			// An embedded invocation shares its process with concurrent
+			// invocations, so package embed configures that state once instead.
+			sandboxed := host.Sandboxed(cmd.Context())
+			if !sandboxed {
+				configureProcessOutput(cmd.Context(), cmd, noColors, noTruncate)
 			}
 
 			logLevel := new(slog.LevelVar)
@@ -194,11 +207,15 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 			})
 			logger := logging.NewSLogLogger(logHandler)
 
-			// Also set klog logger (used by k8s/client-go).
-			klog.SetLoggerWithOptions(
-				logr.FromSlogHandler(logHandler),
-				klog.ContextualLogger(true),
-			)
+			// Also set klog logger (used by k8s/client-go). klog's logger is
+			// process-global, so embedded invocations rely on the contextual
+			// logger below instead.
+			if !sandboxed {
+				klog.SetLoggerWithOptions(
+					logr.FromSlogHandler(logHandler),
+					klog.ContextualLogger(true),
+				)
+			}
 
 			ctx := logging.Context(cmd.Context(), logger)
 			ctx = internalconfig.ContextWithWarningWriter(ctx, cmd.ErrOrStderr())
@@ -216,7 +233,10 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 
 			cmd.SetContext(ctx)
 
-			recordTelemetryInfo(cmd, args)
+			// Telemetry is only exported by main.
+			if !sandboxed {
+				recordTelemetryInfo(cmd, args)
+			}
 		},
 		PersistentPostRun: func(cmd *cobra.Command, _ []string) {
 			if !shouldNotifySkills(cmd) {

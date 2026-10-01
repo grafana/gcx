@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"iter"
+	"math"
 	"os"
 	"reflect"
 	"sort"
@@ -201,6 +202,11 @@ func (c *agentsCodec) writeSpillSummary(ctx context.Context, dst io.Writer, s sp
 // server-side (e.g. gcx traces get --prune) can budget against the same
 // number the codec uses.
 func SpillThreshold(ctx context.Context) int {
+	// A sandboxed invocation has no filesystem to spill to; the embedder gets
+	// the full output and decides how much of it to keep.
+	if host.Sandboxed(ctx) {
+		return math.MaxInt
+	}
 	if v := host.Getenv(ctx, agentsSpillEnv); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			return n
