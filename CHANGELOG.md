@@ -8,6 +8,8 @@
 - Correct the recommended verbosity in the `--insecure-log-http-payload` reference and flag help: the dumps log at Debug level, which needs `-vvv`.
 
 - Added experimental Tempo TraceByID V2 params to `gcx traces get` / `gcx datasources tempo get`: `--filter` filters the trace to spans matching a TraceQL spanset expression, with `--keep-hierarchy`, `--match-depth`, and `--ancestor-depth` shaping how much surrounding context is kept; `--prune` (plus `--prune-group-by`, `--prune-min-spans`, `--prune-max-parent-depth`) collapses repeated sibling spans into a single aggregated span. `--prune` is off unless set. Both are aimed at shrinking large traces before `--llm` analysis.
+
+- Keep `basicMetricsOnly: false` on Synthetic Monitoring checks. gcx dropped a false value from the request, so the API applied its default of `true`, and `checks update` switched a full-metrics check back to basic metrics. `checks get` and `checks list` now also show `basicMetricsOnly: false`, so a get and update round trip keeps full metrics. A spec that leaves the field out still gets the API default.
 ## v1.3.1 (2026-09-22)
 
 **Synthetic Monitoring**

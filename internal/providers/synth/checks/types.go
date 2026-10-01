@@ -20,8 +20,8 @@ type Check struct {
 	Enabled          bool           `json:"enabled"`
 	Labels           []Label        `json:"labels,omitempty"`
 	Settings         CheckSettings  `json:"settings"`
-	Probes           []int64        `json:"probes"` // probe IDs — only used in API requests
-	BasicMetricsOnly bool           `json:"basicMetricsOnly,omitempty"`
+	Probes           []int64        `json:"probes"`                     // probe IDs — only used in API requests
+	BasicMetricsOnly *bool          `json:"basicMetricsOnly,omitempty"` // nil: omitted, SM API default (true) applies
 	AlertSensitivity string         `json:"alertSensitivity,omitempty"`
 	Channels         map[string]any `json:"channels,omitempty"`
 	Created          float64        `json:"created,omitempty"`
@@ -39,8 +39,8 @@ type CheckSpec struct {
 	Enabled          bool           `json:"enabled"`
 	Labels           []Label        `json:"labels,omitempty"`
 	Settings         CheckSettings  `json:"settings"`
-	Probes           []string       `json:"probes"` // probe NAMES in YAML files
-	BasicMetricsOnly bool           `json:"basicMetricsOnly,omitempty"`
+	Probes           []string       `json:"probes"`                     // probe NAMES in YAML files
+	BasicMetricsOnly *bool          `json:"basicMetricsOnly,omitempty"` // pointer so an explicit false round-trips
 	AlertSensitivity string         `json:"alertSensitivity,omitempty"`
 	Channels         map[string]any `json:"channels,omitempty"`
 }

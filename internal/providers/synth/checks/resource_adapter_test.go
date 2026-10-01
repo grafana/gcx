@@ -16,6 +16,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"sigs.k8s.io/yaml"
 )
 
 // fakeLoader implements smcfg.Loader using a fixed base URL and token.
@@ -377,6 +378,117 @@ func TestResourceAdapter_Update_PlaintextScript_IsReEncoded(t *testing.T) {
 
 	_, decodeErr := base64.StdEncoding.DecodeString(sentScript)
 	assert.NoError(t, decodeErr, "script sent to the SM API must be base64-encoded, got plaintext %q", sentScript)
+}
+
+// TestResourceAdapter_Update_BasicMetricsOnly checks that an explicit
+// basicMetricsOnly in the YAML spec reaches the SM API request, including
+// false. When the field is absent from the YAML it must stay absent from the
+// request, so the SM API applies its own default (true).
+func TestResourceAdapter_Update_BasicMetricsOnly(t *testing.T) {
+	tests := []struct {
+		name      string
+		specYAML  string
+		wantSent  bool
+		wantValue bool
+	}{
+		{name: "unset is omitted", specYAML: "", wantSent: false},
+		{name: "false is sent", specYAML: "basicMetricsOnly: false\n", wantSent: true, wantValue: false},
+		{name: "true is sent", specYAML: "basicMetricsOnly: true\n", wantSent: true, wantValue: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mux := buildTestMux(t)
+
+			var sent map[string]any
+			mux.HandleFunc("/api/v1/check/update", func(w http.ResponseWriter, r *http.Request) {
+				if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&sent)) {
+					http.Error(w, "invalid request", http.StatusBadRequest)
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(stubCheckList[0])
+			})
+			srv := newAdapterTestServer(t, mux)
+
+			loader := &fakeLoader{baseURL: srv.URL, token: "test-token", namespace: "default"}
+			a, err := checks.NewAdapterFactory(loader)(context.Background())
+			require.NoError(t, err)
+
+			specYAML := "job: web-check\n" +
+				"target: https://grafana.com\n" +
+				"frequency: 60000\n" +
+				"timeout: 10000\n" +
+				"enabled: true\n" +
+				"settings:\n  http:\n    method: GET\n" +
+				"probes: [Oregon]\n" +
+				tc.specYAML
+			var spec map[string]any
+			require.NoError(t, yaml.Unmarshal([]byte(specYAML), &spec))
+
+			obj := &unstructured.Unstructured{
+				Object: map[string]any{
+					"apiVersion": checks.APIVersion,
+					"kind":       checks.Kind,
+					"metadata": map[string]any{
+						"name":      "web-check-1001",
+						"namespace": "default",
+					},
+					"spec": spec,
+				},
+			}
+
+			_, err = a.Update(context.Background(), obj, metav1.UpdateOptions{})
+			require.NoError(t, err)
+			require.NotNil(t, sent, "update request was not sent")
+
+			value, ok := sent["basicMetricsOnly"]
+			if !tc.wantSent {
+				assert.False(t, ok, "basicMetricsOnly must be absent from the request, got %v", value)
+				return
+			}
+			require.True(t, ok, "basicMetricsOnly must be present in the request")
+			assert.Equal(t, tc.wantValue, value)
+		})
+	}
+}
+
+// TestResourceAdapter_Get_BasicMetricsOnly checks that the value the SM API
+// returns appears in the YAML output, including false, so a get/update round
+// trip keeps a check in full-metrics mode.
+func TestResourceAdapter_Get_BasicMetricsOnly(t *testing.T) {
+	tests := []struct {
+		name     string
+		apiValue string
+		wantYAML string
+	}{
+		{name: "false is shown", apiValue: "false", wantYAML: "basicMetricsOnly: false"},
+		{name: "true is shown", apiValue: "true", wantYAML: "basicMetricsOnly: true"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mux := buildTestMux(t)
+			mux.HandleFunc("/api/v1/check/2002", func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"id":2002,"tenantId":214,"job":"full-metrics","target":"https://grafana.com",` +
+					`"frequency":60000,"timeout":10000,"enabled":true,"settings":{"http":{"method":"GET"}},` +
+					`"probes":[1],"basicMetricsOnly":` + tc.apiValue + `}`))
+			})
+			srv := newAdapterTestServer(t, mux)
+
+			loader := &fakeLoader{baseURL: srv.URL, token: "test-token", namespace: "default"}
+			a, err := checks.NewAdapterFactory(loader)(context.Background())
+			require.NoError(t, err)
+
+			obj, err := a.Get(context.Background(), "full-metrics-2002", metav1.GetOptions{})
+			require.NoError(t, err)
+
+			out, err := yaml.Marshal(obj.Object)
+			require.NoError(t, err)
+			assert.Contains(t, string(out), tc.wantYAML)
+		})
+	}
 }
 
 func TestResourceAdapter_Descriptor(t *testing.T) {
