@@ -6,6 +6,7 @@ import (
 
 	"github.com/grafana/gcx/internal/agent"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/loki"
 	"github.com/spf13/cobra"
@@ -30,7 +31,8 @@ Default table output is optimized for humans. Use -o raw for original line
 bodies or -o json for the full structured response.
 
 Default --limit is 50. Use --limit 0 for the backend default limit, not unlimited
-results. Use 'gcx logs metrics' for totals.
+results. For counts, use 'gcx datasources loki metrics' with no time flags: an
+instant query returns one value per series.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
 open it in your browser after the query succeeds.`,
 		Example: `
@@ -53,8 +55,11 @@ open it in your browser after the query succeeds.`,
 			if err := shared.Validate(); err != nil {
 				return err
 			}
-			if limit < 0 {
-				return fmt.Errorf("--limit must be >= 0, got %d", limit)
+			if err := dsquery.ValidateLimit(limit); err != nil {
+				return err
+			}
+			if limit == 0 {
+				cmdio.Warning(cmd.ErrOrStderr(), "%s", dsquery.LokiZeroLimitNotice)
 			}
 
 			expr, err := shared.ResolveExpr(args, 0)
