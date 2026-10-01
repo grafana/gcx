@@ -304,14 +304,14 @@ gcx alert rules list                            # list alert rules
 # Grafana Cloud products
 gcx synthetic-monitoring checks list            # list synthetic monitoring checks
 gcx irm oncall schedules list                   # list on-call schedules
-# Page a responder for an existing incident
-gcx irm oncall escalate --title "Database outage" --user-ids U123 --incident-id INC-123
 gcx k6 load-tests list                          # list k6 load tests
 
 # Query more datasources
 gcx logs query '{app="nginx"} |= "error"' --since 1h
 gcx traces query '{.cluster="dev-us-central-0"}' --since 1h
 ```
+
+For paging responders to an incident, see [gcx irm oncall escalate](docs/reference/cli/gcx_irm_oncall_escalate.md).
 
 For an empty dashboard or missing application telemetry, follow
 [Diagnose missing telemetry with gcx](docs/guides/diagnose-missing-telemetry.md).

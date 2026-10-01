@@ -18,11 +18,11 @@ gcx irm oncall escalate [flags]
   # Page a user
   gcx irm oncall escalate --title "Database outage" --user-ids U123
 
-  # Page a team for an incident
-  gcx irm oncall escalate --title "Database outage" --team T123 --incident-id INC-123
+  # Page a team for an incident (IDs: gcx irm incidents list)
+  gcx irm oncall escalate --title "Database outage" --team T123 --incident-id 4
 
   # Send an important page to multiple users for an incident
-  gcx irm oncall escalate --title "Database outage" --user-ids U123,U456 --important --incident-id INC-123
+  gcx irm oncall escalate --title "Database outage" --user-ids U123,U456 --important --incident-id 4
 ```
 
 ### Options
