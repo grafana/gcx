@@ -12,6 +12,8 @@ import (
 	"net/url"
 	"strings"
 	"unicode"
+
+	"github.com/grafana/gcx/internal/assistant/assistanthttp"
 )
 
 type assistantAPIError struct {
@@ -282,7 +284,7 @@ func (c *Client) doTranscriptRequest(ctx context.Context, operation, endpoint st
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("X-App-Source", "cli")
+	req.Header.Set(assistanthttp.AppSourceHeader, assistanthttp.AppSourceCLI)
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("send Assistant %s request: %w", operation, err)

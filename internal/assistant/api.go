@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+
+	"github.com/grafana/gcx/internal/assistant/assistanthttp"
 )
 
 // A2AEndpoints holds the A2A API endpoints for a Grafana instance.
@@ -68,7 +70,7 @@ func FetchChat(ctx context.Context, baseURL, token, chatID string, httpClient *h
 
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("X-App-Source", "cli")
+	req.Header.Set(assistanthttp.AppSourceHeader, assistanthttp.AppSourceCLI)
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
@@ -150,7 +152,7 @@ func FetchChats(ctx context.Context, baseURL, token string, opts ListChatsOption
 
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("X-App-Source", "cli")
+	req.Header.Set(assistanthttp.AppSourceHeader, assistanthttp.AppSourceCLI)
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
@@ -262,7 +264,7 @@ func SubmitApproval(ctx context.Context, baseURL, token, approvalID, chatID, ten
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("X-App-Source", "cli")
+	req.Header.Set(assistanthttp.AppSourceHeader, assistanthttp.AppSourceCLI)
 
 	resp, err := httpClient.Do(req)
 	if err != nil {

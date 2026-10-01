@@ -19,6 +19,14 @@ import (
 // the v1 and v2 surfaces.
 const pluginBasePath = "/api/plugins/grafana-assistant-app/resources"
 
+// AppSourceHeader and AppSourceCLI identify gcx as the request origin to the
+// Assistant backend, which records the value as the source of usage events
+// (e.g. investigation.created) and falls back to "assistant" when unset.
+const (
+	AppSourceHeader = "X-App-Source"
+	AppSourceCLI    = "cli"
+)
+
 // Client is a base HTTP client for the Grafana Assistant plugin API.
 type Client struct {
 	restConfig config.NamespacedRESTConfig
@@ -51,6 +59,7 @@ func (c *Client) DoRequestWithHeaders(ctx context.Context, method, path string, 
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
+	req.Header.Set(AppSourceHeader, AppSourceCLI)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
