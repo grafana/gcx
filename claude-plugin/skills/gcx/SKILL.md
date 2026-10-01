@@ -181,8 +181,10 @@ gcx datasources tempo get -d <tempo-uid> <trace-id> --llm -o json
 
 Use `gcx traces labels -d <tempo-uid>` to discover attribute names first. Use
 `gcx traces query` to find trace IDs, then `gcx traces get --llm -o json` to inspect
-a selected trace. Omit `--llm` only when the user explicitly needs raw Tempo/OTLP
-JSON or the standard `tagValues: [{type, value}]` shape for schema/debugging work.
+a selected trace. Pass `--since` or `--from`/`--to` (e.g. the search's time range)
+to make the lookup much faster. Omit `--llm` only when the
+user explicitly needs raw Tempo/OTLP JSON or the standard
+`tagValues: [{type, value}]` shape for schema/debugging work.
 
 ### Shrinking large traces before analysis
 
