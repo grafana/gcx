@@ -1,15 +1,15 @@
 //go:build darwin
 
-package experiments
+package host
 
 import "golang.org/x/sys/unix"
 
-func publishDirectoryNoReplace(stagingDir, outputDir string) error {
+func renameNoReplace(oldpath, newpath string) error {
 	return unix.RenameatxNp(
 		unix.AT_FDCWD,
-		stagingDir,
+		oldpath,
 		unix.AT_FDCWD,
-		outputDir,
+		newpath,
 		unix.RENAME_EXCL,
 	)
 }

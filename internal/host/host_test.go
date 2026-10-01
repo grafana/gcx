@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -27,6 +28,8 @@ func TestSandboxRefusesHostAccess(t *testing.T) {
 	require.ErrorIs(t, err, fs.ErrNotExist, "sandboxed reads look like an empty filesystem")
 
 	require.ErrorIs(t, host.WriteFile(ctx, filepath.Join(dir, "new"), nil, 0o600), host.ErrUnavailable)
+	require.ErrorIs(t, host.RenameNoReplace(ctx, existing, filepath.Join(dir, "renamed")), host.ErrUnavailable)
+	require.FileExists(t, existing)
 	_, err = host.Stat(ctx, filepath.Join(dir, "new"))
 	require.ErrorIs(t, err, fs.ErrNotExist)
 
@@ -108,5 +111,14 @@ func TestNoSandboxUsesProcess(t *testing.T) {
 
 	_, err := host.ReadFile(t.Context(), filepath.Join(t.TempDir(), "missing"))
 	require.ErrorIs(t, err, fs.ErrNotExist)
-	assert.NotErrorIs(t, err, host.ErrUnavailable)
+	require.NotErrorIs(t, err, host.ErrUnavailable)
+
+	dir := t.TempDir()
+	from, to := filepath.Join(dir, "from"), filepath.Join(dir, "to")
+	require.NoError(t, host.Mkdir(t.Context(), from, 0o700))
+	require.NoError(t, host.Mkdir(t.Context(), to, 0o700))
+	if runtime.GOOS == "linux" || runtime.GOOS == "darwin" || runtime.GOOS == "windows" {
+		require.Error(t, host.RenameNoReplace(t.Context(), from, to), "must not replace an existing directory")
+	}
+	require.NoError(t, host.RenameNoReplace(t.Context(), from, filepath.Join(dir, "moved")))
 }

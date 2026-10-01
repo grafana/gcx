@@ -232,3 +232,13 @@ func Glob(ctx context.Context, pattern string) ([]string, error) {
 	}
 	return filepath.Glob(pattern)
 }
+
+// RenameNoReplace renames oldpath to newpath, failing if newpath already
+// exists. Linux, macOS and Windows enforce this atomically; elsewhere it falls
+// back to [os.Rename] and callers must check newpath is absent first.
+func RenameNoReplace(ctx context.Context, oldpath, newpath string) error {
+	if Sandboxed(ctx) {
+		return pathErr("rename", oldpath)
+	}
+	return renameNoReplace(oldpath, newpath)
+}

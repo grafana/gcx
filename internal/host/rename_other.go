@@ -1,12 +1,12 @@
 //go:build !darwin && !linux && !windows
 
-package experiments
+package host
 
 import "os"
 
-// The caller checks that outputDir is absent before reaching this portable
+// Callers check that newpath is absent before reaching this portable
 // fallback. Unlike the Linux, macOS, and Windows implementations, os.Rename
 // cannot prevent a concurrently created empty directory from being replaced.
-func publishDirectoryNoReplace(stagingDir, outputDir string) error {
-	return os.Rename(stagingDir, outputDir)
+func renameNoReplace(oldpath, newpath string) error {
+	return os.Rename(oldpath, newpath)
 }

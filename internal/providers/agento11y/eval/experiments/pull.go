@@ -174,7 +174,7 @@ entire bundle from Git by default.`,
 			if err := requireMissingDirectory(cmd.Context(), outputDir); err != nil {
 				return err
 			}
-			if err := preflightDirectoryPublication(cmd.Context(), outputDir, publishDirectoryNoReplace); err != nil {
+			if err := preflightDirectoryPublication(cmd.Context(), outputDir, func(from, to string) error { return host.RenameNoReplace(cmd.Context(), from, to) }); err != nil {
 				return err
 			}
 
@@ -494,7 +494,7 @@ func exportExperimentBundle(ctx context.Context, base *agento11yhttp.Client, run
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	retainStaging, err := publishCompletedBundle(ctx, stagingDir, outputDir, publishDirectoryNoReplace)
+	retainStaging, err := publishCompletedBundle(ctx, stagingDir, outputDir, func(from, to string) error { return host.RenameNoReplace(ctx, from, to) })
 	if err != nil {
 		cleanupStaging = !retainStaging
 		return nil, err
