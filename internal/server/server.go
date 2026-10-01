@@ -17,6 +17,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/gorilla/websocket"
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/host"
 	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/logs"
 	"github.com/grafana/gcx/internal/resources"
@@ -216,7 +217,11 @@ func (s *Server) Start(ctx context.Context) error {
 		}
 	}()
 
-	if err := httpServer.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+	listener, err := host.Listen(ctx, "tcp", httpServer.Addr)
+	if err != nil {
+		return err
+	}
+	if err := httpServer.Serve(listener); !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
 	return nil
