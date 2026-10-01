@@ -65,9 +65,9 @@ You can find the up-to-date command reference guide in the [CLI command referenc
 
 Refer to [Configuration commands](https://grafana.com/docs/grafana/latest/as-code/observability-as-code/grafana-cli/gcx/configuration/#useful-commands) for an overview of useful commands to check your configuration.
 
-### Experimental commands
+## Experimental commands
 
-In general terms, commands are stable within any major version.
+Commands are stable within a major version, with the exception of those labelled experimental.
 
 However, some commands are labelled `[experimental]` in their help text and carry a `stability` field of `experimental` in `gcx commands` output. Commands are labelled experimental when they are not yet stable, or when they operate a Grafana Cloud feature that is not yet Generally Available. For more information, refer to [Release life cycle for Grafana Labs](https://grafana.com/docs/release-life-cycle/). **An experimental command may be removed, or its subcommands, flags, and responses may change, without following the normal semantic versioning conventions**. 
 
@@ -81,7 +81,7 @@ If you want to work with resources managed by other tools, such as Terraform or 
 
 ### Extract dashboards
 
-At the moment, you can only extract dashboards (`gcx resources pull dashboards`) in their original JSON version.
+At the moment, if you extract a dashboard as a JSON (`gcx resources pull dashboards -o json`), `gcx` only returns the original JSON, and can't convert it to a different version.
 
 ## Migrate from `grafanactl`
 
@@ -95,4 +95,3 @@ Refer to the [`gcx` repository](https://github.com/grafana/gcx) in GitHub for th
 - How to manage resources, including dashboards-as-code
 - Architecture
 - User guides
-
