@@ -44,7 +44,22 @@ type Options struct {
 	Env map[string]string
 	// Stdin is supplied to commands reading from "-" (e.g. -f -).
 	Stdin string
+	// Access limits what the command may do over HTTP. The zero value,
+	// AccessRead, refuses requests that would change anything.
+	Access Access
 }
+
+// Access is the most a command may do over HTTP: AccessRead, AccessWrite or
+// AccessDelete. Requests above it fail without being sent. POSTs that only
+// carry a query (datasource queries and similar) count as reads.
+type Access = host.Access
+
+// Access levels; see [Access].
+const (
+	AccessRead   = host.AccessRead
+	AccessWrite  = host.AccessWrite
+	AccessDelete = host.AccessDelete
+)
 
 // Grafana describes a Grafana instance and how to authenticate to it. Set at
 // most one of Token or User/Password.
@@ -133,6 +148,7 @@ func Run(ctx context.Context, command string, opts Options) (Result, error) {
 		Stdin:  strings.NewReader(opts.Stdin),
 		Stdout: &stdout,
 		Stderr: &stderr,
+		Access: opts.Access,
 	})
 	ctx = config.ContextWithInMemoryConfig(ctx, opts.config())
 
