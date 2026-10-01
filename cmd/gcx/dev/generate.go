@@ -12,6 +12,7 @@ import (
 
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/gcxerrors"
+	"github.com/grafana/gcx/internal/host"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/strcase"
 	"github.com/spf13/cobra"
@@ -134,7 +135,7 @@ func runGenerate(cmd *cobra.Command, opts *generateOpts, args []string) error {
 		return fmt.Errorf("parsing templates: %w", err)
 	}
 
-	receipt := generateFiles(tmpl, opts, args, cmd.ErrOrStderr())
+	receipt := generateFiles(cmd.Context(), tmpl, opts, args, cmd.ErrOrStderr())
 
 	// Total failure: no receipt — exit 4 would misreport a complete failure
 	// as partial. The raw error takes the standard path (one gcx.error
@@ -176,11 +177,11 @@ func receiptFailuresError(failures []cmdio.MutationFailure) error {
 // generateFiles processes each argument, streaming per-file failure notes to
 // warn (stderr — diagnostics, not results), and returns the artifact receipt:
 // written files, counts, and enumerated failures.
-func generateFiles(tmpl *template.Template, opts *generateOpts, args []string, warn io.Writer) cmdio.ArtifactReceipt {
+func generateFiles(ctx context.Context, tmpl *template.Template, opts *generateOpts, args []string, warn io.Writer) cmdio.ArtifactReceipt {
 	receipt := cmdio.NewArtifactReceipt("generated", "go")
 
 	for _, arg := range args {
-		outputFile, resourceType, err := processGenerateArg(tmpl, opts, arg)
+		outputFile, resourceType, err := processGenerateArg(ctx, tmpl, opts, arg)
 		if err != nil {
 			cmdio.Error(warn, "%s: %s", arg, err)
 			receipt.Summary.Failed++
@@ -200,7 +201,7 @@ func generateFiles(tmpl *template.Template, opts *generateOpts, args []string, w
 
 // processGenerateArg generates one stub file and returns its path and
 // resource type.
-func processGenerateArg(tmpl *template.Template, opts *generateOpts, arg string) (string, string, error) {
+func processGenerateArg(ctx context.Context, tmpl *template.Template, opts *generateOpts, arg string) (string, string, error) {
 	dir := filepath.Dir(arg)
 	base := filepath.Base(arg)
 
@@ -220,12 +221,12 @@ func processGenerateArg(tmpl *template.Template, opts *generateOpts, arg string)
 	outputFile := filepath.Join(dir, strcase.ToSnakeCase(name)+".go")
 
 	// Check if file already exists.
-	if _, err := os.Stat(outputFile); err == nil {
+	if _, err := host.Stat(ctx, outputFile); err == nil {
 		return "", "", fmt.Errorf("file already exists: %s. Delete it first or use a different name", outputFile)
 	}
 
 	// Ensure output directory exists.
-	if err := ensureDirectory(filepath.Dir(outputFile)); err != nil {
+	if err := ensureDirectory(ctx, filepath.Dir(outputFile)); err != nil {
 		return "", "", fmt.Errorf("creating directory: %w", err)
 	}
 
@@ -240,7 +241,7 @@ func processGenerateArg(tmpl *template.Template, opts *generateOpts, arg string)
 		"Name":     name,
 	}
 
-	fileHandle, err := os.OpenFile(outputFile, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
+	fileHandle, err := host.OpenFile(ctx, outputFile, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
 	if err != nil {
 		return "", "", fmt.Errorf("creating file: %w", err)
 	}

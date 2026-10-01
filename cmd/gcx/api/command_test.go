@@ -21,6 +21,7 @@ import (
 
 func TestResolveBody_EmptyData(t *testing.T) {
 	cmd := &cobra.Command{}
+	cmd.SetContext(t.Context())
 	body, err := resolveBody(cmd, "")
 	require.NoError(t, err)
 	assert.Nil(t, body)
@@ -28,6 +29,7 @@ func TestResolveBody_EmptyData(t *testing.T) {
 
 func TestResolveBody_DirectString(t *testing.T) {
 	cmd := &cobra.Command{}
+	cmd.SetContext(t.Context())
 	data := `{"title":"test"}`
 	body, err := resolveBody(cmd, data)
 	require.NoError(t, err)
@@ -39,6 +41,7 @@ func TestResolveBody_FromFile(t *testing.T) {
 	filePath := testutils.CreateTempFile(t, content)
 
 	cmd := &cobra.Command{}
+	cmd.SetContext(t.Context())
 	body, err := resolveBody(cmd, "@"+filePath)
 	require.NoError(t, err)
 	assert.Equal(t, content, string(body))
@@ -47,6 +50,7 @@ func TestResolveBody_FromFile(t *testing.T) {
 func TestResolveBody_FromStdin(t *testing.T) {
 	content := `{"name":"test"}`
 	cmd := &cobra.Command{}
+	cmd.SetContext(t.Context())
 	cmd.SetIn(strings.NewReader(content))
 
 	body, err := resolveBody(cmd, "@-")
@@ -56,6 +60,7 @@ func TestResolveBody_FromStdin(t *testing.T) {
 
 func TestResolveBody_FileNotFound(t *testing.T) {
 	cmd := &cobra.Command{}
+	cmd.SetContext(t.Context())
 	_, err := resolveBody(cmd, "@/nonexistent/file.json")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to read file")
@@ -70,6 +75,7 @@ func TestOutputResponse_JSONSuccess(t *testing.T) {
 
 	var output bytes.Buffer
 	cmd := &cobra.Command{}
+	cmd.SetContext(t.Context())
 	cmd.SetOut(&output)
 
 	opts := &apiOpts{}
@@ -93,6 +99,7 @@ func TestOutputResponse_JSONAsYAML(t *testing.T) {
 
 	var output bytes.Buffer
 	cmd := &cobra.Command{}
+	cmd.SetContext(t.Context())
 	cmd.SetOut(&output)
 
 	opts := &apiOpts{}
@@ -116,6 +123,7 @@ func TestOutputResponse_NonJSONRawOutput(t *testing.T) {
 
 	var output, errOut bytes.Buffer
 	cmd := &cobra.Command{}
+	cmd.SetContext(t.Context())
 	cmd.SetOut(&output)
 	cmd.SetErr(&errOut)
 
@@ -142,6 +150,7 @@ func TestOutputResponse_HTMLContentTypeWarns(t *testing.T) {
 
 	var output, errOut bytes.Buffer
 	cmd := &cobra.Command{}
+	cmd.SetContext(t.Context())
 	cmd.SetOut(&output)
 	cmd.SetErr(&errOut)
 
@@ -171,6 +180,7 @@ func TestOutputResponse_HTMLContentTypeNoRequest(t *testing.T) {
 
 	var output, errOut bytes.Buffer
 	cmd := &cobra.Command{}
+	cmd.SetContext(t.Context())
 	cmd.SetOut(&output)
 	cmd.SetErr(&errOut)
 
@@ -218,6 +228,7 @@ func TestOutputResponse_ErrorWithBody(t *testing.T) {
 	}
 
 	cmd := &cobra.Command{}
+	cmd.SetContext(t.Context())
 	opts := &apiOpts{}
 
 	err := outputResponse(cmd, opts, resp)
@@ -238,6 +249,7 @@ func TestOutputResponse_ErrorWithoutBody(t *testing.T) {
 	}
 
 	cmd := &cobra.Command{}
+	cmd.SetContext(t.Context())
 	opts := &apiOpts{}
 
 	err := outputResponse(cmd, opts, resp)

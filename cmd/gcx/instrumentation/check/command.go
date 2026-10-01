@@ -182,7 +182,10 @@ Powered by github.com/grafana/otel-checker.`,
 				return fmt.Errorf("instrumentation check: %w", err)
 			}
 
-			results := runWith(cmd.Context(), opts.toCommands(), c, cmd.ErrOrStderr())
+			results, err := runWith(cmd.Context(), opts.toCommands(), c, cmd.ErrOrStderr())
+			if err != nil {
+				return fmt.Errorf("instrumentation check: %w", err)
+			}
 
 			envelope := ResultsWithFixPlan{
 				Checks:   results.Checks,

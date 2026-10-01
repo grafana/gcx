@@ -221,7 +221,7 @@ func TestImportResources_ReceiptAndDiagnostics(t *testing.T) {
 	})
 
 	var warn bytes.Buffer
-	receipt, err := importResources(model.NewResources(okDashboard, noConverter, badDashboard), tmp, &warn)
+	receipt, err := importResources(t.Context(), model.NewResources(okDashboard, noConverter, badDashboard), tmp, &warn)
 	require.NoError(t, err)
 
 	require.Equal(t, cmdio.MutationSummary{Succeeded: 1, Failed: 1, Skipped: 1}, receipt.Summary)

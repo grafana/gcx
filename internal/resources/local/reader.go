@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/host"
 	"github.com/grafana/gcx/internal/logs"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/grafana-app-sdk/logging"
@@ -80,7 +81,7 @@ func (reader *FSReader) Read(
 		defer close(pathCh)
 
 		for _, path := range paths {
-			info, err := os.Stat(path)
+			info, err := host.Stat(ctx, path)
 			if err != nil {
 				if reader.StopOnError {
 					return err
@@ -102,7 +103,7 @@ func (reader *FSReader) Read(
 				continue
 			}
 
-			if err := filepath.WalkDir(path, func(path string, info os.DirEntry, err error) error {
+			if err := host.WalkDir(ctx, path, func(path string, info os.DirEntry, err error) error {
 				// Early return if context is cancelled
 				if ctx.Err() != nil {
 					return filepath.SkipAll
@@ -233,7 +234,7 @@ func (reader *FSReader) ReadFile(ctx context.Context, result *resources.Resource
 
 	logger.Debug("Parsing file", slog.String("file", filePath), slog.String("codec", string(decoder.Format())))
 
-	data, err := os.ReadFile(filePath)
+	data, err := host.ReadFile(ctx, filePath)
 	if err != nil {
 		return err
 	}

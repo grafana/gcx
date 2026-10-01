@@ -5,15 +5,16 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"maps"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 
+	"github.com/grafana/gcx/internal/host"
 	"github.com/grafana/gcx/internal/resources"
 	"golang.org/x/sync/errgroup"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -30,14 +31,15 @@ type SchemaFetcher struct {
 
 // NewSchemaFetcher creates a SchemaFetcher using the given REST config for
 // authentication and base URL.
-func NewSchemaFetcher(cfg *rest.Config) (*SchemaFetcher, error) {
+func NewSchemaFetcher(ctx context.Context, cfg *rest.Config) (*SchemaFetcher, error) {
 	httpClient, err := rest.HTTPClientFor(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("creating HTTP client: %w", err)
 	}
 
-	cacheDir, err := defaultCacheDir()
-	if err != nil {
+	// Without host access (embedded gcx) documents are simply not cached.
+	cacheDir, err := defaultCacheDir(ctx)
+	if err != nil && !errors.Is(err, host.ErrUnavailable) {
 		return nil, fmt.Errorf("resolving cache directory: %w", err)
 	}
 
@@ -140,7 +142,7 @@ func (f *SchemaFetcher) fetchDocument(ctx context.Context, relativeURL string) (
 	// Extract hash from URL for caching.
 	hash := extractHash(relativeURL)
 	if hash != "" {
-		if cached, ok := f.cache.Get(hash); ok {
+		if cached, ok := f.cache.Get(ctx, hash); ok {
 			var doc map[string]any
 			if err := json.Unmarshal(cached, &doc); err == nil {
 				return doc, nil
@@ -156,7 +158,7 @@ func (f *SchemaFetcher) fetchDocument(ctx context.Context, relativeURL string) (
 
 	// Cache the response.
 	if hash != "" {
-		_ = f.cache.Set(hash, body)
+		_ = f.cache.Set(ctx, hash, body)
 	}
 
 	var doc map[string]any
@@ -308,28 +310,28 @@ type diskCache struct {
 	dir string
 }
 
-func defaultCacheDir() (string, error) {
-	if dir := os.Getenv("GCX_OPENAPI_CACHE_DIR"); dir != "" {
+func defaultCacheDir(ctx context.Context) (string, error) {
+	if dir := host.Getenv(ctx, "GCX_OPENAPI_CACHE_DIR"); dir != "" {
 		return dir, nil
 	}
-	home, err := os.UserHomeDir()
+	home, err := host.UserHomeDir(ctx)
 	if err != nil {
 		return "", err
 	}
 	return filepath.Join(home, ".cache", "gcx", "openapi"), nil
 }
 
-func (c *diskCache) Get(hash string) ([]byte, bool) {
-	data, err := os.ReadFile(filepath.Join(c.dir, hash+".json"))
+func (c *diskCache) Get(ctx context.Context, hash string) ([]byte, bool) {
+	data, err := host.ReadFile(ctx, filepath.Join(c.dir, hash+".json"))
 	if err != nil {
 		return nil, false
 	}
 	return data, true
 }
 
-func (c *diskCache) Set(hash string, data []byte) error {
-	if err := os.MkdirAll(c.dir, 0o755); err != nil {
+func (c *diskCache) Set(ctx context.Context, hash string, data []byte) error {
+	if err := host.MkdirAll(ctx, c.dir, 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(c.dir, hash+".json"), data, 0o600)
+	return host.WriteFile(ctx, filepath.Join(c.dir, hash+".json"), data, 0o600)
 }

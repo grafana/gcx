@@ -121,7 +121,8 @@ func TestCheck_HumanDefault_ByteIdenticalTable(t *testing.T) {
 	require.ErrorAs(t, err, &emitted, "failed checks must exit non-zero in human mode too")
 
 	var want bytes.Buffer
-	results := runWith(context.Background(), otelutils.Commands{}, failingChecker(), io.Discard)
+	results, err := runWith(context.Background(), otelutils.Commands{}, failingChecker(), io.Discard)
+	require.NoError(t, err)
 	require.NoError(t, (&CheckTableCodec{}).Encode(t.Context(), &want, ResultsWithFixPlan{
 		Checks:   results.Checks,
 		Warnings: results.Warnings,

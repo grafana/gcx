@@ -3,8 +3,8 @@ package check
 import (
 	"context"
 	"io"
-	"os"
 
+	"github.com/grafana/gcx/internal/host"
 	otelutils "github.com/grafana/otel-checker/checks/utils"
 )
 
@@ -22,12 +22,17 @@ type checker func(ctx context.Context, cmd otelutils.Commands) *otelutils.Report
 // process-global os.Stdout (e.g. "Error parsing JSON: ..." on Java/Maven
 // dependency parse failures, checks/sdk/java/maven.go). Left alone, those
 // bytes would interleave with the single result document this command writes
-// to stdout. The library call therefore runs under captureStdout, which
-// forwards any such stray prints to diag (stderr) as diagnostics.
-func runWith(ctx context.Context, cmd otelutils.Commands, c checker, diag io.Writer) otelutils.Results {
-	reporter := captureStdout(diag, func() *otelutils.Reporter {
-		return c(ctx, cmd)
-	})
+// to stdout. The library call therefore runs under host.CaptureStdout, which
+// forwards any such stray prints to diag (stderr) as diagnostics. The library
+// inspects the local machine (env, files, toolchain subprocesses), so inside
+// a sandbox it is not run at all and runWith returns an error.
+func runWith(ctx context.Context, cmd otelutils.Commands, c checker, diag io.Writer) (otelutils.Results, error) {
+	var reporter *otelutils.Reporter
+	if err := host.CaptureStdout(ctx, diag, func() {
+		reporter = c(ctx, cmd)
+	}); err != nil {
+		return otelutils.Results{}, err
+	}
 	results := reporter.Results()
 
 	if results.Checks == nil {
@@ -39,33 +44,5 @@ func runWith(ctx context.Context, cmd otelutils.Commands, c checker, diag io.Wri
 	if results.Errors == nil {
 		results.Errors = []otelutils.ComponentResult{}
 	}
-	return results
-}
-
-// captureStdout redirects the process-global os.Stdout for the duration of fn
-// and forwards everything written there to diag. If the capture pipe cannot
-// be created, fn runs uncaptured — a stray diagnostics leak is preferable to
-// failing the checks.
-func captureStdout(diag io.Writer, fn func() *otelutils.Reporter) *otelutils.Reporter {
-	orig := os.Stdout
-	r, w, err := os.Pipe()
-	if err != nil {
-		return fn()
-	}
-	os.Stdout = w
-
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		_, _ = io.Copy(diag, r)
-	}()
-
-	defer func() {
-		os.Stdout = orig
-		_ = w.Close()
-		<-done
-		_ = r.Close()
-	}()
-
-	return fn()
+	return results, nil
 }

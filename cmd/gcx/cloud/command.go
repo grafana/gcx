@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/gcxerrors"
+	"github.com/grafana/gcx/internal/host"
 	"github.com/grafana/gcx/internal/providers/stacks"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -147,11 +148,11 @@ both preserves the explicit OAuth-origin/API-destination pair.`,
 			// runtime intent. Read them directly so new contexts do not lose them
 			// when config env parsing initially targets another context.
 			if !oauthSelected && !apiSelected {
-				if envOAuth := strings.TrimSpace(os.Getenv("GRAFANA_CLOUD_OAUTH_URL")); envOAuth != "" {
+				if envOAuth := strings.TrimSpace(host.Getenv(cmd.Context(), "GRAFANA_CLOUD_OAUTH_URL")); envOAuth != "" {
 					opts.oauthURL = envOAuth
 					oauthSelected = true
 				}
-				if envAPI := strings.TrimSpace(os.Getenv("GRAFANA_CLOUD_API_URL")); envAPI != "" {
+				if envAPI := strings.TrimSpace(host.Getenv(cmd.Context(), "GRAFANA_CLOUD_API_URL")); envAPI != "" {
 					opts.apiURL = envAPI
 					apiSelected = true
 				}
@@ -174,7 +175,7 @@ both preserves the explicit OAuth-origin/API-destination pair.`,
 				}
 			}
 			if opts.cloudToken != "" {
-				return runTokenLogin(mutationCtx, opts, mutationSource, contextName, cloudSafety, mutationGuard)
+				return runTokenLogin(mutationCtx, opts, mutationSource, contextName, cloudSafety, mutationGuard, cmd.ErrOrStderr())
 			}
 			return runOAuthLogin(mutationCtx, opts, mutationSource, contextName, cloudSafety, mutationGuard, cmd.InOrStdin(), cmd.ErrOrStderr())
 		},
@@ -242,6 +243,7 @@ func runTokenLogin(
 	contextName string,
 	cloudSafety config.CloudMutationSafety,
 	mutationGuard config.LoginMutationGuard,
+	stderr io.Writer,
 ) error {
 	oauthURL, apiURL := resolveCloudLoginEndpoints(opts.oauthURL, opts.apiURL)
 	entry := &config.CloudEntry{
@@ -253,8 +255,8 @@ func runTokenLogin(
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "Token saved to cloud entry %q (context %q)\n", entryName, contextName)
-	fmt.Fprintln(os.Stderr, "Cloud token saved.")
+	fmt.Fprintf(stderr, "Token saved to cloud entry %q (context %q)\n", entryName, contextName)
+	fmt.Fprintln(stderr, "Cloud token saved.")
 	return nil
 }
 

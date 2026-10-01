@@ -83,7 +83,7 @@ func discoverFieldsViaOpenAPI(ctx context.Context, cfg config.NamespacedRESTConf
 	desc := filters[0].Descriptor
 	descs := resources.Descriptors{desc}
 
-	fetcher, err := discovery.NewSchemaFetcher(&cfg.Config)
+	fetcher, err := discovery.NewSchemaFetcher(ctx, &cfg.Config)
 	if err != nil {
 		return nil, err
 	}

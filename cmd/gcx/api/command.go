@@ -7,12 +7,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/gcxerrors"
+	"github.com/grafana/gcx/internal/host"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/telemetry"
 	"github.com/spf13/cobra"
@@ -156,7 +156,7 @@ func resolveBody(cmd *cobra.Command, data string) ([]byte, error) {
 		return b, nil
 	}
 	if strings.HasPrefix(data, "@") {
-		b, err := os.ReadFile(data[1:])
+		b, err := host.ReadFile(cmd.Context(), data[1:])
 		if err != nil {
 			return nil, fmt.Errorf("failed to read file: %w", err)
 		}

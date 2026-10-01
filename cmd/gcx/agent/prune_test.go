@@ -25,7 +25,7 @@ func TestPrune_DeletesOldSpillFiles(t *testing.T) {
 	oldTime := time.Now().Add(-31 * time.Minute)
 	require.NoError(t, os.Chtimes(old, oldTime, oldTime))
 
-	deleted, err := agent.PruneSpillFiles(dir, 30*time.Minute)
+	deleted, err := agent.PruneSpillFiles(t.Context(), dir, 30*time.Minute)
 	require.NoError(t, err)
 	assert.Equal(t, 1, deleted)
 	_, statErr := os.Stat(old)
@@ -38,7 +38,7 @@ func TestPrune_KeepsRecentSpillFiles(t *testing.T) {
 	recent := filepath.Join(dir, "gcx-results-recent.json")
 	require.NoError(t, os.WriteFile(recent, []byte(`{"test":true}`), 0o600))
 
-	deleted, err := agent.PruneSpillFiles(dir, 30*time.Minute)
+	deleted, err := agent.PruneSpillFiles(t.Context(), dir, 30*time.Minute)
 	require.NoError(t, err)
 	assert.Equal(t, 0, deleted)
 	_, statErr := os.Stat(recent)
@@ -53,7 +53,7 @@ func TestPrune_IgnoresNonSpillFiles(t *testing.T) {
 	oldTime := time.Now().Add(-60 * time.Minute)
 	require.NoError(t, os.Chtimes(other, oldTime, oldTime))
 
-	deleted, err := agent.PruneSpillFiles(dir, 30*time.Minute)
+	deleted, err := agent.PruneSpillFiles(t.Context(), dir, 30*time.Minute)
 	require.NoError(t, err)
 	assert.Equal(t, 0, deleted, "non-spill files must not be deleted")
 	_, statErr := os.Stat(other)
@@ -79,7 +79,7 @@ func TestPrune_JSONLSpillFiles(t *testing.T) {
 			require.NoError(t, os.WriteFile(path, []byte("1\n2\n"), 0o600))
 			modified := time.Now().Add(-tt.age)
 			require.NoError(t, os.Chtimes(path, modified, modified))
-			deleted, err := agent.PruneSpillFiles(dir, 30*time.Minute)
+			deleted, err := agent.PruneSpillFiles(t.Context(), dir, 30*time.Minute)
 			require.NoError(t, err)
 			assert.Equal(t, tt.deleted, deleted)
 			_, err = os.Stat(path)
@@ -94,7 +94,7 @@ func TestPrune_JSONLSpillFiles(t *testing.T) {
 
 func TestPrune_NoFiles_ReturnsZero(t *testing.T) {
 	dir := t.TempDir()
-	deleted, err := agent.PruneSpillFiles(dir, 30*time.Minute)
+	deleted, err := agent.PruneSpillFiles(t.Context(), dir, 30*time.Minute)
 	require.NoError(t, err)
 	assert.Equal(t, 0, deleted)
 }

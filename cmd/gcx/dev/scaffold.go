@@ -1,6 +1,7 @@
 package dev
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -14,6 +15,7 @@ import (
 	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/gcxerrors"
+	"github.com/grafana/gcx/internal/host"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/strcase"
 	"github.com/spf13/cobra"
@@ -51,7 +53,7 @@ func scaffoldCmd() *cobra.Command {
 			// is only for real terminals. Agents and pipes cannot answer a
 			// TUI — fail fast with the exact flags to pass instead of
 			// rendering an interactive form into a captured stream.
-			if missing := missingScaffoldFlags(opts); len(missing) > 0 && !isInteractiveTerminal() {
+			if missing := missingScaffoldFlags(opts); len(missing) > 0 && !isInteractiveTerminal(cmd.Context()) {
 				return &fail.UsageError{Message: fmt.Sprintf(
 					"missing %s: interactive prompts require a terminal. Pass the flags explicitly, e.g. gcx dev scaffold --project my-dashboards --go-module-path github.com/example/my-dashboards",
 					strings.Join(missing, " and "),
@@ -71,7 +73,7 @@ func scaffoldCmd() *cobra.Command {
 			}
 
 			destinationRoot := strcase.ToKebabCase(opts.ProjectName)
-			if err := scaffoldProject(destinationRoot, opts); err != nil {
+			if err := scaffoldProject(cmd.Context(), destinationRoot, opts); err != nil {
 				return err
 			}
 
@@ -103,8 +105,9 @@ func missingScaffoldFlags(opts *scaffoldOpts) []string {
 // prompt: stdin is a real terminal and no agent is driving the CLI. Same
 // guard as the login command — agent mode requires explicit flags even on a
 // TTY, so an agent never hangs on (or garbles its transcript with) a TUI.
-func isInteractiveTerminal() bool {
-	return term.IsTerminal(int(os.Stdin.Fd())) && !agent.IsAgentMode()
+func isInteractiveTerminal(ctx context.Context) bool {
+	stdin, err := host.StdinFile(ctx)
+	return err == nil && term.IsTerminal(int(stdin.Fd())) && !agent.IsAgentMode()
 }
 
 func requiredField(name string) func(s string) error {
@@ -149,7 +152,7 @@ func askMissingOpts(opts *scaffoldOpts) error {
 	return form.Run()
 }
 
-func scaffoldProject(destinationRoot string, opts *scaffoldOpts) error {
+func scaffoldProject(ctx context.Context, destinationRoot string, opts *scaffoldOpts) error {
 	templatesRoot := "templates/scaffold"
 	tmpl := template.New("").Option("missingkey=error")
 
@@ -181,11 +184,11 @@ func scaffoldProject(destinationRoot string, opts *scaffoldOpts) error {
 			return err
 		}
 
-		if err := ensureDirectory(filepath.Dir(fileName)); err != nil {
+		if err := ensureDirectory(ctx, filepath.Dir(fileName)); err != nil {
 			return err
 		}
 
-		targetFile, err := os.OpenFile(fileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+		targetFile, err := host.OpenFile(ctx, fileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 		if err != nil {
 			return err
 		}
@@ -202,9 +205,9 @@ func scaffoldProject(destinationRoot string, opts *scaffoldOpts) error {
 	return nil
 }
 
-func ensureDirectory(dir string) error {
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		return os.MkdirAll(dir, 0744)
+func ensureDirectory(ctx context.Context, dir string) error {
+	if _, err := host.Stat(ctx, dir); os.IsNotExist(err) {
+		return host.MkdirAll(ctx, dir, 0744)
 	}
 
 	return nil

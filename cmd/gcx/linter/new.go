@@ -1,6 +1,7 @@
 package linter
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -9,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/grafana/gcx/internal/host"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -76,7 +78,7 @@ func newCmd() *cobra.Command {
 				return err
 			}
 
-			return scaffoldCustomRule(cmd.OutOrStdout(), opts, args[0], args[1])
+			return scaffoldCustomRule(cmd.Context(), cmd.OutOrStdout(), opts, args[0], args[1])
 		},
 	}
 
@@ -85,7 +87,7 @@ func newCmd() *cobra.Command {
 	return cmd
 }
 
-func scaffoldCustomRule(stdout io.Writer, opts newRuleOpts, resourceType string, name string) error {
+func scaffoldCustomRule(ctx context.Context, stdout io.Writer, opts newRuleOpts, resourceType string, name string) error {
 	ruleDir := filepath.Join(
 		opts.output, "rules", "custom", "gcx", "rules", resourceType, opts.category, name,
 	)
@@ -95,7 +97,7 @@ func scaffoldCustomRule(stdout io.Writer, opts newRuleOpts, resourceType string,
 	ruleTestFileName := strings.ToLower(strings.ReplaceAll(name, "-", "_")) + "_test.rego"
 	ruleTestFile := filepath.Join(ruleDir, ruleTestFileName)
 
-	exists, err := pathExists(ruleFile)
+	exists, err := pathExists(ctx, ruleFile)
 	if err != nil {
 		return err
 	}
@@ -103,7 +105,7 @@ func scaffoldCustomRule(stdout io.Writer, opts newRuleOpts, resourceType string,
 		return fmt.Errorf("%s already exists", ruleFile)
 	}
 
-	if err := os.MkdirAll(ruleDir, 0770); err != nil {
+	if err := host.MkdirAll(ctx, ruleDir, 0770); err != nil {
 		return err
 	}
 
@@ -115,11 +117,11 @@ func scaffoldCustomRule(stdout io.Writer, opts newRuleOpts, resourceType string,
 		return rendered
 	}
 
-	if err := os.WriteFile(ruleFile, []byte(render(customRuleTemplate)), 0600); err != nil {
+	if err := host.WriteFile(ctx, ruleFile, []byte(render(customRuleTemplate)), 0600); err != nil {
 		return err
 	}
 
-	if err := os.WriteFile(ruleTestFile, []byte(render(customRuleTestTemplate)), 0600); err != nil {
+	if err := host.WriteFile(ctx, ruleTestFile, []byte(render(customRuleTestTemplate)), 0600); err != nil {
 		return err
 	}
 
@@ -210,8 +212,8 @@ test_dashboard_v1_with_timezone_browser_is_rejected if {
 }
 `
 
-func pathExists(name string) (bool, error) {
-	_, err := os.Stat(name)
+func pathExists(ctx context.Context, name string) (bool, error) {
+	_, err := host.Stat(ctx, name)
 	if err == nil {
 		return true, nil
 	}

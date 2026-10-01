@@ -6,10 +6,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"os"
-	"os/exec"
 	"strings"
 
+	"github.com/grafana/gcx/internal/host"
 	"github.com/grafana/grafana-app-sdk/logging"
 )
 
@@ -23,12 +22,14 @@ func (e editor) openEditor(ctx context.Context, file string) error {
 
 	logger.Debug("Starting editor", slog.String("command", strings.Join(args, " ")))
 
-	//nolint:gosec
-	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
+	cmd, err := host.Command(ctx, args[0], args[1:]...)
+	if err != nil {
+		return err
+	}
 
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Stdin = os.Stdin
+	cmd.Stdout = e.stdout
+	cmd.Stderr = e.stderr
+	cmd.Stdin = e.stdin
 
 	return cmd.Run()
 }

@@ -204,7 +204,7 @@ func TestGenerateEndToEnd(t *testing.T) {
 			opts := &generateOpts{Type: tt.typeFlag}
 
 			for _, arg := range adjustedArgs {
-				outputFile, resourceType, err := processGenerateArg(tmpl, opts, arg)
+				outputFile, resourceType, err := processGenerateArg(t.Context(), tmpl, opts, arg)
 				require.NoError(t, err)
 				assert.NotEmpty(t, outputFile)
 				assert.NotEmpty(t, resourceType)
@@ -240,7 +240,7 @@ func TestGenerateFileAlreadyExists(t *testing.T) {
 
 	opts := &generateOpts{}
 
-	_, _, err = processGenerateArg(tmpl, opts, filepath.Join(tmpDir, "dashboards/existing.go"))
+	_, _, err = processGenerateArg(t.Context(), tmpl, opts, filepath.Join(tmpDir, "dashboards/existing.go"))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "file already exists")
 }

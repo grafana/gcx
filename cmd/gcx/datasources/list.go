@@ -5,13 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/internal/agent"
 	dsclient "github.com/grafana/gcx/internal/datasources"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/host"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
@@ -118,7 +118,7 @@ func listCmd() *cobra.Command {
 			// and the observed total is exact. Truncation is machine-legible
 			// (list_meta in the envelope) and human-legible (stderr hint).
 			infos, meta := cmdio.TruncateCompleteList(infos, opts.Limit)
-			meta = cmdio.AttachListMeta(meta, os.Args)
+			meta = cmdio.AttachListMeta(meta, host.Args(ctx))
 
 			// Pattern 13: single shape for all formats. The table codec extracts
 			// .Datasources to render rows; JSON/YAML serialize the envelope.

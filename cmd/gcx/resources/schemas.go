@@ -124,7 +124,7 @@ func listTypesCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			// not the output format. Tabular codecs simply ignore the schema data.
 			var schemas map[string]map[string]any
 			if !opts.NoSchema {
-				fetcher, fetchErr := discovery.NewSchemaFetcher(&cfg.Config)
+				fetcher, fetchErr := discovery.NewSchemaFetcher(ctx, &cfg.Config)
 				if fetchErr != nil {
 					return fmt.Errorf("initializing schema fetcher: %w", fetchErr)
 				}

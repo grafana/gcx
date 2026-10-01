@@ -11,6 +11,7 @@ import (
 
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/host"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -21,10 +22,10 @@ const pruneOlderThan = 30 * time.Minute
 
 // PruneSpillFiles deletes gcx agent spill files in dir that are older than olderThan.
 // Returns the number of files deleted.
-func PruneSpillFiles(dir string, olderThan time.Duration) (int, error) {
+func PruneSpillFiles(ctx context.Context, dir string, olderThan time.Duration) (int, error) {
 	var matches []string
 	for _, pattern := range []string{cmdio.SpillFilePattern, cmdio.SpillStreamFilePattern} {
-		files, err := filepath.Glob(filepath.Join(dir, pattern))
+		files, err := host.Glob(ctx, filepath.Join(dir, pattern))
 		if err != nil {
 			return 0, fmt.Errorf("glob spill files: %w", err)
 		}
@@ -34,12 +35,12 @@ func PruneSpillFiles(dir string, olderThan time.Duration) (int, error) {
 	cutoff := time.Now().Add(-olderThan)
 	var deleted int
 	for _, match := range matches {
-		info, err := os.Stat(match)
+		info, err := host.Stat(ctx, match)
 		if err != nil {
 			continue // deleted between glob and stat
 		}
 		if info.ModTime().Before(cutoff) {
-			if err := os.Remove(match); err != nil && !os.IsNotExist(err) {
+			if err := host.Remove(ctx, match); err != nil && !os.IsNotExist(err) {
 				return deleted, fmt.Errorf("remove %s: %w", match, err)
 			}
 			deleted++
@@ -106,7 +107,11 @@ These files are created when a command response exceeds the spill threshold (def
 				return err
 			}
 
-			n, err := PruneSpillFiles(os.TempDir(), pruneOlderThan)
+			tmp, err := host.TempDir(cmd.Context())
+			if err != nil {
+				return err
+			}
+			n, err := PruneSpillFiles(cmd.Context(), tmp, pruneOlderThan)
 			if err != nil {
 				// Nothing has been written to stdout yet — the standard
 				// error path (single fused error document in agent mode)

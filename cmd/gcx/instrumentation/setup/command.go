@@ -3,11 +3,12 @@
 package setup
 
 import (
+	"context"
 	"fmt"
-	"os"
 
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/fleet"
+	"github.com/grafana/gcx/internal/host"
 	instrum "github.com/grafana/gcx/internal/providers/instrumentation"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -138,7 +139,7 @@ Cloud Access Policy token scoped to metrics:read and set:alloy-data-write.`,
 				orgSlug:  r.Stack.OrgSlug,
 				stdout:   cmd.OutOrStdout(),
 				stderr:   cmd.ErrOrStderr(),
-				isTTY:    promptingAllowed(term.IsTerminal(int(os.Stdin.Fd()))),
+				isTTY:    promptingAllowed(stdinIsTerminal(ctx)),
 				promptFn: defaultPromptFn(cmd.InOrStdin(), cmd.ErrOrStderr()),
 			}
 
@@ -153,4 +154,11 @@ Cloud Access Policy token scoped to metrics:read and set:alloy-data-write.`,
 	}
 	o.setup(cmd.Flags())
 	return cmd
+}
+
+// stdinIsTerminal reports whether the process stdin is a terminal; embedded
+// invocations have no process stdin and never are.
+func stdinIsTerminal(ctx context.Context) bool {
+	stdin, err := host.StdinFile(ctx)
+	return err == nil && term.IsTerminal(int(stdin.Fd()))
 }

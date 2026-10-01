@@ -4,11 +4,10 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"os"
-	"os/exec"
 	"strings"
 	"syscall"
 
+	"github.com/grafana/gcx/internal/host"
 	"github.com/grafana/grafana-app-sdk/logging"
 )
 
@@ -26,14 +25,16 @@ func (e editor) openEditor(ctx context.Context, file string) error {
 
 	// Pass all arguments to cmd.exe as one string
 	// See https://pkg.go.dev/os/exec#Command
-	//nolint:gosec
-	cmd := exec.Command(args[0])
+	cmd, err := host.Command(ctx, args[0])
+	if err != nil {
+		return err
+	}
 	cmd.SysProcAttr = &syscall.SysProcAttr{}
 	cmd.SysProcAttr.CmdLine = strings.Join(args, " ")
 
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Stdin = os.Stdin
+	cmd.Stdout = e.stdout
+	cmd.Stderr = e.stderr
+	cmd.Stdin = e.stdin
 
 	return cmd.Run()
 }

@@ -13,6 +13,7 @@ import (
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/gcxerrors"
+	"github.com/grafana/gcx/internal/host"
 	"github.com/grafana/gcx/internal/logs"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources"
@@ -210,10 +211,14 @@ func executeWatchScript(ctx context.Context, command string) ([]byte, error) {
 	logger.Debug("executing script")
 
 	var cmd *exec.Cmd
+	var err error
 	if runtime.GOOS == "windows" {
-		cmd = exec.CommandContext(ctx, "cmd", "/c", command)
+		cmd, err = host.Command(ctx, "cmd", "/c", command)
 	} else {
-		cmd = exec.CommandContext(ctx, "sh", "-c", command)
+		cmd, err = host.Command(ctx, "sh", "-c", command)
+	}
+	if err != nil {
+		return nil, err
 	}
 
 	// If the script exits with a non-zero code, stderr will be used to populate an error.
@@ -226,7 +231,7 @@ func executeWatchScript(ctx context.Context, command string) ([]byte, error) {
 
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	err := cmd.Run()
+	err = cmd.Run()
 	if err != nil {
 		details := stderr.String()
 		stderr.Reset()

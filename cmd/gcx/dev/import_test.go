@@ -161,7 +161,7 @@ func TestConvertResourceEmitsCompleteImports(t *testing.T) {
 	require.NoError(t, err)
 
 	dir := filepath.Join(t.TempDir(), "imported")
-	writtenFile, err := convertResource(dir, res)
+	writtenFile, err := convertResource(t.Context(), dir, res)
 	require.NoError(t, err)
 	require.Equal(t, filepath.Join(dir, "import_test.go"), writtenFile)
 

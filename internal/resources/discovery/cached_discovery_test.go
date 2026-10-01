@@ -41,8 +41,8 @@ func TestNewCachedRegistry(t *testing.T) {
 }
 
 func TestDiscoveryCacheDir_DifferentServers(t *testing.T) {
-	dir1 := discovery.DiscoveryCacheDir("https://grafana-a.grafana.net", "")
-	dir2 := discovery.DiscoveryCacheDir("https://grafana-b.grafana.net", "")
+	dir1 := discovery.DiscoveryCacheDir(t.Context(), "https://grafana-a.grafana.net", "")
+	dir2 := discovery.DiscoveryCacheDir(t.Context(), "https://grafana-b.grafana.net", "")
 
 	assert.NotEqual(t, dir1, dir2, "different servers should have different cache dirs")
 	assert.NotEmpty(t, dir1)
@@ -50,15 +50,15 @@ func TestDiscoveryCacheDir_DifferentServers(t *testing.T) {
 }
 
 func TestDiscoveryCacheDir_StableForSameServer(t *testing.T) {
-	dir1 := discovery.DiscoveryCacheDir("https://grafana.grafana.net", "")
-	dir2 := discovery.DiscoveryCacheDir("https://grafana.grafana.net", "")
+	dir1 := discovery.DiscoveryCacheDir(t.Context(), "https://grafana.grafana.net", "")
+	dir2 := discovery.DiscoveryCacheDir(t.Context(), "https://grafana.grafana.net", "")
 
 	assert.Equal(t, dir1, dir2, "same server should produce same cache dir")
 }
 
 func TestDiscoveryCacheDir_HashLength(t *testing.T) {
 	// Hash should be 16 bytes = 32 hex chars for sufficient collision resistance.
-	dir := discovery.DiscoveryCacheDir("https://grafana.grafana.net", "")
+	dir := discovery.DiscoveryCacheDir(t.Context(), "https://grafana.grafana.net", "")
 	parts := strings.Split(dir, "/")
 	hash := parts[len(parts)-1]
 	assert.Len(t, hash, 32, "hash should be 32 hex chars (16 bytes)")
@@ -69,7 +69,7 @@ func TestDiscoveryCacheDir_EnvOverridesDefault(t *testing.T) {
 	t.Setenv("GCX_DISCOVERY_CACHE_DIR", customDir)
 
 	// Env var should override even when no explicit overrideDir is passed.
-	dir := discovery.DiscoveryCacheDir("https://grafana.grafana.net", "")
+	dir := discovery.DiscoveryCacheDir(t.Context(), "https://grafana.grafana.net", "")
 	assert.Equal(t, customDir, dir, "env var should override default")
 }
 
@@ -79,7 +79,7 @@ func TestDiscoveryCacheDir_EnvOverridesExplicitDir(t *testing.T) {
 	t.Setenv("GCX_DISCOVERY_CACHE_DIR", envDir)
 
 	// Env var takes precedence over explicit overrideDir.
-	dir := discovery.DiscoveryCacheDir("https://grafana.grafana.net", explicitDir)
+	dir := discovery.DiscoveryCacheDir(t.Context(), "https://grafana.grafana.net", explicitDir)
 	assert.Equal(t, envDir, dir, "env var should override explicit dir")
 }
 
@@ -87,7 +87,7 @@ func TestDiscoveryCacheDir_RelativeEnvIgnored(t *testing.T) {
 	t.Setenv("GCX_DISCOVERY_CACHE_DIR", "relative/path")
 
 	// Relative path in env var should be ignored.
-	dir := discovery.DiscoveryCacheDir("https://grafana.grafana.net", "")
+	dir := discovery.DiscoveryCacheDir(t.Context(), "https://grafana.grafana.net", "")
 	assert.NotEqual(t, "relative/path", dir, "relative env var should be ignored")
 	assert.True(t, strings.HasPrefix(dir, "/"), "should fall through to absolute default path")
 }
@@ -95,7 +95,7 @@ func TestDiscoveryCacheDir_RelativeEnvIgnored(t *testing.T) {
 func TestDiscoveryCacheDir_ExplicitOverrideDir(t *testing.T) {
 	explicitDir := t.TempDir()
 
-	dir := discovery.DiscoveryCacheDir("https://grafana.grafana.net", explicitDir)
+	dir := discovery.DiscoveryCacheDir(t.Context(), "https://grafana.grafana.net", explicitDir)
 	assert.Equal(t, explicitDir, dir, "explicit dir should be used when no env var set")
 }
 

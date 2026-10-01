@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/host"
 	"github.com/grafana/gcx/internal/logs"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/grafana-app-sdk/logging"
@@ -92,7 +93,7 @@ func (writer *FSWriter) Write(ctx context.Context, resources *resources.Resource
 	logger.Debug("Writing resources", slog.Int("resources", resources.Len()))
 
 	// Create the directory if it doesn't exist
-	if err := ensureDirectoryExists(writer.Path); err != nil {
+	if err := ensureDirectoryExists(ctx, writer.Path); err != nil {
 		return err
 	}
 
@@ -138,11 +139,11 @@ func (writer *FSWriter) writeSingle(ctx context.Context, resource *resources.Res
 	}
 
 	fullFileName := targetAbs
-	if err := ensureDirectoryExists(filepath.Dir(fullFileName)); err != nil {
+	if err := ensureDirectoryExists(ctx, filepath.Dir(fullFileName)); err != nil {
 		return fmt.Errorf("could ensure resource directory exists: %w", err)
 	}
 
-	file, err := os.OpenFile(fullFileName, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	file, err := host.OpenFile(ctx, fullFileName, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
 		return fmt.Errorf("could open resource file: %w", err)
 	}
@@ -163,10 +164,10 @@ func (writer *FSWriter) writeSingle(ctx context.Context, resource *resources.Res
 	return nil
 }
 
-func ensureDirectoryExists(directory string) error {
-	info, err := os.Stat(directory)
+func ensureDirectoryExists(ctx context.Context, directory string) error {
+	info, err := host.Stat(ctx, directory)
 	if os.IsNotExist(err) {
-		return os.MkdirAll(directory, 0755)
+		return host.MkdirAll(ctx, directory, 0755)
 	}
 
 	if err != nil {

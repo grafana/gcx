@@ -114,7 +114,7 @@ func TestSchemaFetcher_FetchSpecSchemas(t *testing.T) {
 	t.Setenv("GCX_OPENAPI_CACHE_DIR", cacheDir)
 
 	cfg := &rest.Config{Host: srv.URL}
-	fetcher, err := discovery.NewSchemaFetcher(cfg)
+	fetcher, err := discovery.NewSchemaFetcher(t.Context(), cfg)
 	require.NoError(t, err)
 
 	descs := resources.Descriptors{
@@ -147,7 +147,7 @@ func TestSchemaFetcher_UnknownGVSkipped(t *testing.T) {
 	t.Setenv("GCX_OPENAPI_CACHE_DIR", t.TempDir())
 
 	cfg := &rest.Config{Host: srv.URL}
-	fetcher, err := discovery.NewSchemaFetcher(cfg)
+	fetcher, err := discovery.NewSchemaFetcher(t.Context(), cfg)
 	require.NoError(t, err)
 
 	// Request a GV that doesn't exist in the OpenAPI index.

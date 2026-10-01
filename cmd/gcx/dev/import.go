@@ -11,7 +11,6 @@ import (
 	"go/token"
 	"go/types"
 	"io"
-	"os"
 	"path/filepath"
 	"sort"
 	"text/template"
@@ -20,6 +19,7 @@ import (
 	"github.com/grafana/gcx/cmd/gcx/resources"
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/gcxerrors"
+	"github.com/grafana/gcx/internal/host"
 	cmdio "github.com/grafana/gcx/internal/output"
 	model "github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/strcase"
@@ -131,7 +131,7 @@ func importCmd() *cobra.Command {
 
 			plugins.RegisterDefaultPlugins()
 
-			receipt, err := importResources(&res.Resources, opts.Path, cmd.ErrOrStderr())
+			receipt, err := importResources(ctx, &res.Resources, opts.Path, cmd.ErrOrStderr())
 			if err != nil {
 				return err
 			}
@@ -173,12 +173,12 @@ func importCmd() *cobra.Command {
 // files, counts, and enumerated failures. Resources without a registered
 // converter are an expected capability gap and count as skipped; any other
 // conversion error counts as failed.
-func importResources(list *model.Resources, path string, warn io.Writer) (cmdio.ArtifactReceipt, error) {
+func importResources(ctx context.Context, list *model.Resources, path string, warn io.Writer) (cmdio.ArtifactReceipt, error) {
 	receipt := cmdio.NewArtifactReceipt("imported", "go")
 	receipt.Dir = path
 
 	err := list.ForEach(func(resource *model.Resource) error {
-		file, err := convertResource(path, resource)
+		file, err := convertResource(ctx, path, resource)
 		if err != nil {
 			resourceId := fmt.Sprintf("%s.%s", resource.Kind(), resource.Name())
 			cmdio.Info(warn, "Skipping resource '%s': %s", resourceId, err)
@@ -272,7 +272,7 @@ func computeSDKImports(src []byte) ([]string, error) {
 
 // convertResource renders one resource as a Go builder file and returns the
 // written file path.
-func convertResource(destinationRoot string, resource *model.Resource) (string, error) {
+func convertResource(ctx context.Context, destinationRoot string, resource *model.Resource) (string, error) {
 	tmpl, err := template.New("").Option("missingkey=error").ParseFS(templatesFS, "templates/import/*.tmpl")
 	if err != nil {
 		return "", err
@@ -293,7 +293,7 @@ func convertResource(destinationRoot string, resource *model.Resource) (string, 
 
 	convertedFile := filepath.Join(destinationRoot, strcase.ToSnakeCase(resource.Name())) + ".go"
 
-	if err := ensureDirectory(filepath.Dir(convertedFile)); err != nil {
+	if err := ensureDirectory(ctx, filepath.Dir(convertedFile)); err != nil {
 		return "", err
 	}
 
@@ -341,7 +341,7 @@ func convertResource(destinationRoot string, resource *model.Resource) (string, 
 		formatted = buf.Bytes()
 	}
 
-	if err := os.WriteFile(convertedFile, formatted, 0600); err != nil {
+	if err := host.WriteFile(ctx, convertedFile, formatted, 0600); err != nil {
 		return "", err
 	}
 

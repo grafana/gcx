@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -54,7 +53,7 @@ const defaultDiscoveryCacheTTL = 10 * time.Minute
 // Discovery results are cached under ~/.cache/gcx/discovery/ (overridable via GCX_DISCOVERY_CACHE_DIR)
 // with a 10-minute TTL to avoid redundant API round-trips across CLI invocations.
 func NewDefaultRegistry(ctx context.Context, cfg config.NamespacedRESTConfig) (*Registry, error) {
-	cacheDir := DiscoveryCacheDir(cfg.Host, "")
+	cacheDir := DiscoveryCacheDir(ctx, cfg.Host, "")
 	return NewDefaultRegistryWithCacheDir(ctx, cfg, cacheDir)
 }
 
@@ -81,16 +80,19 @@ func NewDefaultRegistryWithCacheDir(ctx context.Context, cfg config.NamespacedRE
 // The computed default is a per-server subdirectory under ~/.cache/gcx/discovery/
 // using a SHA-256 hash of the server URL. Relative paths in GCX_DISCOVERY_CACHE_DIR
 // are ignored to prevent cache writes to unexpected locations.
-func DiscoveryCacheDir(serverURL, overrideDir string) string {
-	if dir := os.Getenv("GCX_DISCOVERY_CACHE_DIR"); dir != "" && filepath.IsAbs(dir) {
+func DiscoveryCacheDir(ctx context.Context, serverURL, overrideDir string) string {
+	if dir := host.Getenv(ctx, "GCX_DISCOVERY_CACHE_DIR"); dir != "" && filepath.IsAbs(dir) {
 		return dir
 	}
 	if overrideDir != "" {
 		return overrideDir
 	}
-	home, err := os.UserHomeDir()
+	home, err := host.UserHomeDir(ctx)
 	if err != nil {
-		return filepath.Join(os.TempDir(), "gcx", "discovery")
+		// Embedded gcx has no temp directory either; its discovery cache is
+		// kept in memory and never uses this path.
+		tmp, _ := host.TempDir(ctx)
+		return filepath.Join(tmp, "gcx", "discovery")
 	}
 	h := sha256.Sum256([]byte(serverURL))
 	return filepath.Join(home, ".cache", "gcx", "discovery", hex.EncodeToString(h[:16]))
