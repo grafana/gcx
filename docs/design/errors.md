@@ -102,6 +102,18 @@ stream. The stderr fallback appears only if the stdout write itself fails.
 the stderr output; the implementation intentionally converged on
 either/or in `reportError`, `cmd/gcx/main.go`.)
 
+**Advisory error notice.** When stdout is not a terminal, `reportError` also
+writes one JSONL record to stderr:
+`{"class": "error", "summary": "...", "exitCode": N, "details": "...", "suggestion": "..."}`.
+This also applies after an `EmittedError` that carries a cause. Pipelines such
+as `gcx ... | jq '.data'` consume the stdout document, and the shell reports
+the filter's exit status, so without the notice the caller sees only `null`
+and can mistake a rejected request for an empty result. The notice is
+advisory, like the hint, warning and note classes: stdout remains the
+authoritative outcome, and consumers never need to parse both streams.
+Details and the first suggestion are clipped to 500 characters. On a
+terminal stdout the document is already visible, so no notice is written.
+
 The envelope carries collision-resistant discriminators:
 `{"type": "gcx.error", "schema_version": "1", "error": {...}}`. The fused
 partial-failure envelope uses `"type": "gcx.partial_result"` with `items`

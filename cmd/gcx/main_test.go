@@ -258,16 +258,7 @@ current-context: smoke
 			// The typed error envelope must be emitted in agent mode; the human
 			// diagnostic belongs on stderr without corrupting stdout.
 			if agentMode == "true" {
-				var doc map[string]any
-				if err := json.Unmarshal(stdout.Bytes(), &doc); err != nil {
-					t.Fatalf("agent stdout is not one JSON error document: %v; stdout=%q", err, stdout.String())
-				}
-				if doc["type"] != "gcx.error" {
-					t.Fatalf("agent stdout document type = %v, want gcx.error", doc["type"])
-				}
-				if stderr.Len() != 0 {
-					t.Fatalf("agent error wrote unexpected stderr: %q", stderr.String())
-				}
+				assertAgentErrorStreams(t, stdout.Bytes(), stderr.Bytes())
 			} else if stdout.Len() != 0 {
 				t.Fatalf("config set wrote unexpected stdout: %q", stdout.String())
 			}
@@ -532,5 +523,45 @@ func TestBuildUsageEvent_APIRequestDetail(t *testing.T) {
 	}
 	if event.APIDatasourceTypes != "prometheus" {
 		t.Errorf("APIDatasourceTypes = %q, want %q", event.APIDatasourceTypes, "prometheus")
+	}
+}
+
+func TestWriteErrorNoticeSkipsTerminalStdout(t *testing.T) {
+	original := stdoutIsTerminal
+	t.Cleanup(func() { stdoutIsTerminal = original })
+
+	for _, terminal := range []bool{true, false} {
+		t.Run(fmt.Sprintf("terminal=%t", terminal), func(t *testing.T) {
+			stdoutIsTerminal = func() bool { return terminal }
+			called := false
+			writeErrorNotice(func() error {
+				called = true
+				return nil
+			})
+			if called == terminal {
+				t.Fatalf("notice written = %t with terminal stdout = %t", called, terminal)
+			}
+		})
+	}
+}
+
+// assertAgentErrorStreams checks the agent failure contract for a piped
+// stdout: one gcx.error document on stdout and one advisory error notice on
+// stderr.
+func assertAgentErrorStreams(t *testing.T, stdout, stderr []byte) {
+	t.Helper()
+	var doc map[string]any
+	if err := json.Unmarshal(stdout, &doc); err != nil {
+		t.Fatalf("agent stdout is not one JSON error document: %v; stdout=%q", err, stdout)
+	}
+	if doc["type"] != "gcx.error" {
+		t.Fatalf("agent stdout document type = %v, want gcx.error", doc["type"])
+	}
+	var notice map[string]any
+	if err := json.Unmarshal(stderr, &notice); err != nil {
+		t.Fatalf("agent stderr is not one error notice: %v; stderr=%q", err, stderr)
+	}
+	if notice["class"] != gcxerrors.ErrorNoticeClass {
+		t.Fatalf("agent stderr notice class = %v, want %q", notice["class"], gcxerrors.ErrorNoticeClass)
 	}
 }
