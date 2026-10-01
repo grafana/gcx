@@ -10,6 +10,7 @@ import (
 	"maps"
 	"net/url"
 	"os"
+	"reflect"
 	"slices"
 	"strings"
 	"time"
@@ -806,6 +807,11 @@ type GrafanaConfig struct {
 	// See OrgID for on-prem Grafana instances.
 	StackID int64 `env:"GRAFANA_STACK_ID" json:"stack-id,omitempty" yaml:"stack-id,omitempty"`
 
+	// Headers are extra HTTP headers sent with every request to Grafana, e.g.
+	// for an authenticating proxy in front of the instance. Values are treated
+	// as secrets.
+	Headers map[string]string `datapolicy:"secret" json:"headers,omitempty" yaml:"headers,omitempty"`
+
 	// TLS contains TLS-related configuration settings.
 	TLS *TLS `json:"tls,omitempty" yaml:"tls,omitempty"`
 }
@@ -885,7 +891,7 @@ func (grafana GrafanaConfig) validateWithAuthSelection(ctx context.Context, cont
 }
 
 func (grafana GrafanaConfig) IsEmpty() bool {
-	return grafana == GrafanaConfig{}
+	return reflect.ValueOf(grafana).IsZero()
 }
 
 // InferredAuthMethod returns the effective authentication method for this config.

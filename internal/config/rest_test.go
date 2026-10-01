@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/gcx/internal/logs"
 	"github.com/grafana/gcx/internal/retry"
 	"github.com/grafana/grafana-app-sdk/logging"
+	"k8s.io/client-go/rest"
 )
 
 func TestNewNamespacedRESTConfig_PropagatesTLSConfig(t *testing.T) {
@@ -442,5 +443,49 @@ func TestNamespacedRESTConfig_SetOnRefresh(t *testing.T) {
 
 	if !callbackCalled {
 		t.Fatal("expected OnRefresh callback to be called after token refresh")
+	}
+}
+
+func TestNewNamespacedRESTConfig_SendsConfiguredHeaders(t *testing.T) {
+	var got http.Header
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		got = r.Header.Clone()
+	}))
+	defer server.Close()
+
+	restCfg, err := config.NewNamespacedRESTConfig(t.Context(), config.Context{
+		Grafana: &config.GrafanaConfig{
+			Server:   server.URL,
+			APIToken: "glsa_test",
+			StackID:  1,
+			Headers:  map[string]string{"X-Grafana-Id": "id-token", "X-Access-Token": "access"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	client, err := rest.HTTPClientFor(&restCfg.Config)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL+"/api/health", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	resp.Body.Close()
+
+	for k, want := range map[string]string{
+		"X-Grafana-Id":   "id-token",
+		"X-Access-Token": "access",
+		"Authorization":  "Bearer glsa_test",
+	} {
+		if v := got.Get(k); v != want {
+			t.Errorf("header %s = %q, want %q", k, v, want)
+		}
 	}
 }

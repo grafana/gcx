@@ -505,6 +505,9 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) (NamespacedRESTCo
 		if prevWrap != nil {
 			rt = prevWrap(rt)
 		}
+		if len(selectedGrafana.Headers) > 0 {
+			rt = &httputils.HeaderTransport{Base: rt, Headers: selectedGrafana.Headers}
+		}
 		rt = &httputils.LoggingRoundTripper{Base: rt}
 		rt = &retry.Transport{Base: rt}
 		// Outermost layer: stamp the caller-id header so every datasource query

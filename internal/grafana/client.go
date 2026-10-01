@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"maps"
 	"net/url"
 	"strings"
 
@@ -62,6 +63,7 @@ func clientFromContextWithTLS(ctx context.Context, cfgCtx *config.Context) (clie
 			"User-Agent": version.UserAgent(),
 		},
 	}
+	maps.Copy(cfg.HTTPHeaders, cfgCtx.Grafana.Headers)
 
 	var stdTLS *tls.Config
 	if selectedTLS != nil {

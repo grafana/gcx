@@ -12,6 +12,7 @@ import (
 	"time"
 
 	authlib "github.com/grafana/authlib/types"
+	"github.com/grafana/gcx/internal/httputils"
 )
 
 var errBootdataNonOK = errors.New("bootdata request failed")
@@ -180,6 +181,6 @@ func newBootdataHTTPClient(ctx context.Context, cfg GrafanaConfig) (*http.Client
 
 	return &http.Client{
 		Timeout:   5 * time.Second,
-		Transport: transport,
+		Transport: &httputils.HeaderTransport{Base: transport, Headers: cfg.Headers},
 	}, nil
 }
