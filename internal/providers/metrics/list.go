@@ -2,10 +2,10 @@ package metrics
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
+	"github.com/grafana/gcx/internal/host"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/prometheus"
@@ -160,7 +160,7 @@ func listCmd(loader *providers.ConfigLoader) *cobra.Command {
 			// is machine-legible (list_meta in the envelope) and human-legible
 			// (stderr hint), per the list truncation contract.
 			names, meta := cmdio.TruncateCompleteList(filtered, opts.Limit)
-			meta = cmdio.AttachListMeta(meta, os.Args)
+			meta = cmdio.AttachListMeta(meta, host.Args(cmd.Context()))
 
 			if err := opts.IO.Encode(ctx, cmd.OutOrStdout(), &metricNamesListResult{Data: names, ListMeta: meta}); err != nil {
 				return err

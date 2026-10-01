@@ -5,12 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strconv"
 	"strings"
 
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/gcxerrors"
+	"github.com/grafana/gcx/internal/host"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/synth/smcfg"
@@ -558,7 +558,7 @@ func readProbeToken(r io.Reader) (string, error) {
 	return token, nil
 }
 
-func (o *deployOpts) loadToken(flags *pflag.FlagSet, stdin io.Reader) (string, error) {
+func (o *deployOpts) loadToken(ctx context.Context, flags *pflag.FlagSet, stdin io.Reader) (string, error) {
 	switch {
 	case flags.Changed("token-file"):
 		if o.TokenFile == "" {
@@ -572,7 +572,7 @@ func (o *deployOpts) loadToken(flags *pflag.FlagSet, stdin io.Reader) (string, e
 			return token, nil
 		}
 
-		f, err := os.Open(o.TokenFile)
+		f, err := host.Open(ctx, o.TokenFile)
 		if err != nil {
 			return "", fmt.Errorf("opening probe token file %q: %w", o.TokenFile, err)
 		}
@@ -591,7 +591,7 @@ func (o *deployOpts) loadToken(flags *pflag.FlagSet, stdin io.Reader) (string, e
 		if o.TokenEnv == "" {
 			return "", errors.New("--token-env must name an environment variable")
 		}
-		token, ok := os.LookupEnv(o.TokenEnv)
+		token, ok := host.LookupEnv(ctx, o.TokenEnv)
 		if !ok {
 			return "", fmt.Errorf("environment variable %q is not set", o.TokenEnv)
 		}
@@ -623,7 +623,7 @@ func newDeployCommand() *cobra.Command {
 			if err := opts.Validate(cmd.Flags()); err != nil {
 				return err
 			}
-			token, err := opts.loadToken(cmd.Flags(), cmd.InOrStdin())
+			token, err := opts.loadToken(cmd.Context(), cmd.Flags(), cmd.InOrStdin())
 			if err != nil {
 				return err
 			}

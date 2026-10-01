@@ -6,10 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 
 	"github.com/goccy/go-yaml"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/host"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/agento11y/agento11yhttp"
@@ -100,7 +100,7 @@ func newTestCommand(loader *providers.ConfigLoader) *cobra.Command {
 
 func buildTestRequest(cmd *cobra.Command, client *Client, opts *testOpts) (*eval.EvalTestRequest, error) {
 	if opts.File != "" {
-		req, err := ReadTestRequestFile(opts.File, cmd.InOrStdin())
+		req, err := ReadTestRequestFile(cmd.Context(), opts.File, cmd.InOrStdin())
 		if err != nil {
 			return nil, err
 		}
@@ -126,13 +126,13 @@ func buildTestRequest(cmd *cobra.Command, client *Client, opts *testOpts) (*eval
 	}, nil
 }
 
-func ReadTestRequestFile(path string, stdin io.Reader) (*eval.EvalTestRequest, error) {
+func ReadTestRequestFile(ctx context.Context, path string, stdin io.Reader) (*eval.EvalTestRequest, error) {
 	var data []byte
 	var err error
 	if path == "-" {
 		data, err = io.ReadAll(stdin)
 	} else {
-		data, err = os.ReadFile(path)
+		data, err = host.ReadFile(ctx, path)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("reading %s: %w", path, err)

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -13,6 +12,7 @@ import (
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/deeplink"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/host"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/shared"
@@ -421,7 +421,7 @@ func NewCreateCommand(loader GrafanaConfigLoader) *cobra.Command {
 			if opts.File == "-" {
 				reader = cmd.InOrStdin()
 			} else {
-				f, err := os.Open(opts.File)
+				f, err := host.Open(ctx, opts.File)
 				if err != nil {
 					return fmt.Errorf("failed to open file %s: %w", opts.File, err)
 				}

@@ -16,7 +16,7 @@ func Test_ReadEvaluatorFile_YAMLErrorReported(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "bad.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
 
-	_, err := evaluators.ReadEvaluatorFile(path, nil)
+	_, err := evaluators.ReadEvaluatorFile(t.Context(), path, nil)
 	require.Error(t, err)
 	assert.NotContains(t, err.Error(), "looking for beginning of value")
 }
@@ -36,7 +36,7 @@ generation_id: gen-abc
 	path := filepath.Join(t.TempDir(), "request.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
 
-	req, err := evaluators.ReadTestRequestFile(path, nil)
+	req, err := evaluators.ReadTestRequestFile(t.Context(), path, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "llm_judge", req.Kind)
 	assert.Equal(t, "gen-abc", req.GenerationID)
@@ -48,7 +48,7 @@ func Test_ReadTestRequestFile_YAMLErrorReported(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "bad.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
 
-	_, err := evaluators.ReadTestRequestFile(path, nil)
+	_, err := evaluators.ReadTestRequestFile(t.Context(), path, nil)
 	require.Error(t, err)
 	assert.NotContains(t, err.Error(), "looking for beginning of value")
 }
@@ -62,7 +62,7 @@ config:
 	path := filepath.Join(t.TempDir(), "eval.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
 
-	def, err := evaluators.ReadEvaluatorFile(path, nil)
+	def, err := evaluators.ReadEvaluatorFile(t.Context(), path, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "my-eval", def.EvaluatorID)
 	assert.Equal(t, "llm_judge", def.Kind)
@@ -73,7 +73,7 @@ func Test_ReadEvaluatorFile_ValidJSON(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "eval.json")
 	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
 
-	def, err := evaluators.ReadEvaluatorFile(path, nil)
+	def, err := evaluators.ReadEvaluatorFile(t.Context(), path, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "my-eval", def.EvaluatorID)
 	assert.Equal(t, "regex", def.Kind)
@@ -83,7 +83,7 @@ func Test_ReadEvaluatorFile_Stdin(t *testing.T) {
 	content := `{"evaluator_id":"stdin-eval","kind":"heuristic"}`
 	reader := strings.NewReader(content)
 
-	def, err := evaluators.ReadEvaluatorFile("-", reader)
+	def, err := evaluators.ReadEvaluatorFile(t.Context(), "-", reader)
 	require.NoError(t, err)
 	assert.Equal(t, "stdin-eval", def.EvaluatorID)
 }

@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/host"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
@@ -208,7 +208,7 @@ func newApplySourcemapCommand(loader sourcemapUploadConfigLoader) *cobra.Command
 			}
 
 			// Open and read the sourcemap file.
-			f, err := os.Open(opts.File)
+			f, err := host.Open(ctx, opts.File)
 			if err != nil {
 				return fmt.Errorf("opening sourcemap file: %w", err)
 			}

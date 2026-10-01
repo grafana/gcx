@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -13,6 +12,7 @@ import (
 	"github.com/grafana/gcx/internal/agent"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/host"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/prometheus"
@@ -194,7 +194,7 @@ type searchResult[T any] struct {
 	ListMeta *cmdio.ListMeta `json:"list_meta,omitempty" yaml:"list_meta,omitempty"`
 }
 
-func buildSearchResult[T any](results []T, hasMore bool, incomplete bool, warnings []string, limit int) (*searchResult[T], *cmdio.ListMeta) {
+func buildSearchResult[T any](ctx context.Context, results []T, hasMore bool, incomplete bool, warnings []string, limit int) (*searchResult[T], *cmdio.ListMeta) {
 	var safetyCap int
 	if limit <= 0 || incomplete {
 		// Either --limit 0 asked for everything, or the stream itself was
@@ -210,7 +210,7 @@ func buildSearchResult[T any](results []T, hasMore bool, incomplete bool, warnin
 		// (see PagedListMeta).
 		safetyCap = len(results)
 	}
-	meta := cmdio.AttachListMeta(cmdio.PagedListMeta(len(results), limit, hasMore, safetyCap), os.Args)
+	meta := cmdio.AttachListMeta(cmdio.PagedListMeta(len(results), limit, hasMore, safetyCap), host.Args(ctx))
 	return &searchResult[T]{Results: results, Warnings: warnings, ListMeta: meta}, meta
 }
 
@@ -289,7 +289,7 @@ See also the sibling label-name search and label-value search commands.`,
 				return fmt.Errorf("failed to search metric names: %w", err)
 			}
 
-			result, meta := buildSearchResult(resp.Results, resp.HasMore, resp.Incomplete, resp.Warnings, opts.Limit)
+			result, meta := buildSearchResult(cmd.Context(), resp.Results, resp.HasMore, resp.Incomplete, resp.Warnings, opts.Limit)
 			if err := opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), result); err != nil {
 				return err
 			}
@@ -387,7 +387,7 @@ See also the sibling metric-name search and label-value search commands.`,
 				return fmt.Errorf("failed to search label names: %w", err)
 			}
 
-			result, meta := buildSearchResult(resp.Results, resp.HasMore, resp.Incomplete, resp.Warnings, opts.Limit)
+			result, meta := buildSearchResult(cmd.Context(), resp.Results, resp.HasMore, resp.Incomplete, resp.Warnings, opts.Limit)
 			if err := opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), result); err != nil {
 				return err
 			}
@@ -487,7 +487,7 @@ See also the sibling metric-name search and label-name search commands.`,
 				return fmt.Errorf("failed to search label values: %w", err)
 			}
 
-			result, meta := buildSearchResult(resp.Results, resp.HasMore, resp.Incomplete, resp.Warnings, opts.Limit)
+			result, meta := buildSearchResult(cmd.Context(), resp.Results, resp.HasMore, resp.Incomplete, resp.Warnings, opts.Limit)
 			if err := opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), result); err != nil {
 				return err
 			}

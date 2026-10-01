@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -19,6 +18,7 @@ import (
 	"github.com/grafana/gcx/internal/dashboards"
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/gcxerrors"
+	"github.com/grafana/gcx/internal/host"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
@@ -229,7 +229,7 @@ func Commands(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 
-			if err := os.MkdirAll(opts.OutputDir, 0o755); err != nil {
+			if err := host.MkdirAll(ctx, opts.OutputDir, 0o755); err != nil {
 				return fmt.Errorf("failed to create output directory: %w", err)
 			}
 
@@ -290,11 +290,11 @@ func Commands(loader GrafanaConfigLoader) *cobra.Command {
 						return nil
 					}
 
-					if _, statErr := os.Stat(filePath); statErr == nil {
+					if _, statErr := host.Stat(ctx, filePath); statErr == nil {
 						slog.Debug("overwriting existing snapshot", "path", filePath)
 					}
 
-					if err := os.WriteFile(filePath, png, 0o600); err != nil {
+					if err := host.WriteFile(ctx, filePath, png, 0o600); err != nil {
 						errs[i] = fmt.Errorf("failed to write %q: %w", filePath, err)
 						return nil
 					}

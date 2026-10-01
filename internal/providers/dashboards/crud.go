@@ -6,10 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/host"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/dashboards/descriptor"
@@ -199,7 +199,7 @@ func newListCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 
-			emitListPaginationHint(cmd.ErrOrStderr(), os.Args, list, opts)
+			emitListPaginationHint(cmd.ErrOrStderr(), host.Args(ctx), list, opts)
 			return nil
 		},
 	}
@@ -354,7 +354,7 @@ func newCreateCommandWithDeps(deps *mutationDeps) *cobra.Command {
 				return err
 			}
 
-			obj, err := readManifest(opts.Filename)
+			obj, err := readManifest(cmd.Context(), opts.Filename)
 			if err != nil {
 				return err
 			}
@@ -439,7 +439,7 @@ Recommended workflow:
 				return err
 			}
 
-			obj, err := readManifest(opts.Filename)
+			obj, err := readManifest(cmd.Context(), opts.Filename)
 			if err != nil {
 				return err
 			}
@@ -562,16 +562,16 @@ func wrapUpdateError(name string, err error) error {
 
 // readManifest reads an unstructured K8s object from the given file path
 // or from stdin when filename is "-".
-func readManifest(filename string) (*unstructured.Unstructured, error) {
+func readManifest(ctx context.Context, filename string) (*unstructured.Unstructured, error) {
 	if filename == "" {
 		return nil, errors.New("--filename / -f is required")
 	}
 
 	var reader io.Reader
 	if filename == "-" {
-		reader = io.LimitReader(os.Stdin, 32<<20)
+		reader = io.LimitReader(host.Stdin(ctx), 32<<20)
 	} else {
-		f, err := os.Open(filename)
+		f, err := host.Open(ctx, filename)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open %q: %w", filename, err)
 		}

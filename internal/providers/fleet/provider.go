@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -16,6 +15,7 @@ import (
 	fleetbase "github.com/grafana/gcx/internal/fleet"
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/gcxerrors"
+	"github.com/grafana/gcx/internal/host"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources"
@@ -392,7 +392,7 @@ func (h *fleetHelper) newPipelineCreateCommand() *cobra.Command {
 				return err
 			}
 
-			pipeline, err := readPipelineFromFile(opts.File, cmd.InOrStdin())
+			pipeline, err := readPipelineFromFile(cmd.Context(), opts.File, cmd.InOrStdin())
 			if err != nil {
 				return err
 			}
@@ -445,7 +445,7 @@ func (h *fleetHelper) newPipelineUpdateCommand() *cobra.Command {
 				return errPipelineManagedByInstrumentation(existing.Name)
 			}
 
-			pipeline, err := readPipelineFromFile(opts.File, cmd.InOrStdin())
+			pipeline, err := readPipelineFromFile(cmd.Context(), opts.File, cmd.InOrStdin())
 			if err != nil {
 				return err
 			}
@@ -616,7 +616,7 @@ remote attributes plus the timestamps that the Fleet API reports.`,
 			}
 
 			collectors, meta := cmdio.TruncateCompleteList(collectors, opts.Limit)
-			meta = cmdio.AttachListMeta(meta, os.Args)
+			meta = cmdio.AttachListMeta(meta, host.Args(cmd.Context()))
 
 			var encodeErr error
 			if opts.IO.OutputFormat == "table" || opts.IO.OutputFormat == "wide" {
@@ -726,7 +726,7 @@ func (h *fleetHelper) newCollectorCreateCommand() *cobra.Command {
 				return err
 			}
 
-			collector, err := readCollectorFromFile(opts.File, cmd.InOrStdin())
+			collector, err := readCollectorFromFile(cmd.Context(), opts.File, cmd.InOrStdin())
 			if err != nil {
 				return err
 			}
@@ -770,7 +770,7 @@ func (h *fleetHelper) newCollectorUpdateCommand() *cobra.Command {
 				return err
 			}
 
-			collector, err := readCollectorFromFile(opts.File, cmd.InOrStdin())
+			collector, err := readCollectorFromFile(cmd.Context(), opts.File, cmd.InOrStdin())
 			if err != nil {
 				return err
 			}
@@ -1222,12 +1222,12 @@ func CollectorFromResource(res *resources.Resource) (*Collector, error) {
 // ---------------------------------------------------------------------------
 
 // readPipelineFromFile reads a K8s-envelope manifest and extracts a Pipeline from its spec.
-func readPipelineFromFile(filename string, stdin io.Reader) (*Pipeline, error) {
+func readPipelineFromFile(ctx context.Context, filename string, stdin io.Reader) (*Pipeline, error) {
 	var reader io.Reader
 	if filename == "-" {
 		reader = stdin
 	} else {
-		f, err := os.Open(filename)
+		f, err := host.Open(ctx, filename)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open file %s: %w", filename, err)
 		}
@@ -1250,12 +1250,12 @@ func readPipelineFromFile(filename string, stdin io.Reader) (*Pipeline, error) {
 }
 
 // readCollectorFromFile reads a K8s-envelope manifest and extracts a Collector from its spec.
-func readCollectorFromFile(filename string, stdin io.Reader) (*Collector, error) {
+func readCollectorFromFile(ctx context.Context, filename string, stdin io.Reader) (*Collector, error) {
 	var reader io.Reader
 	if filename == "-" {
 		reader = stdin
 	} else {
-		f, err := os.Open(filename)
+		f, err := host.Open(ctx, filename)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open file %s: %w", filename, err)
 		}

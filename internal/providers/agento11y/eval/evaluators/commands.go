@@ -6,10 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strconv"
 
 	"github.com/goccy/go-yaml"
+	"github.com/grafana/gcx/internal/host"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/agento11y/agento11yhttp"
@@ -180,7 +180,7 @@ func newCreateCommand(loader *providers.ConfigLoader) *cobra.Command {
 				return err
 			}
 
-			def, err := ReadEvaluatorFile(opts.File, cmd.InOrStdin())
+			def, err := ReadEvaluatorFile(cmd.Context(), opts.File, cmd.InOrStdin())
 			if err != nil {
 				return err
 			}
@@ -264,13 +264,13 @@ func runDelete(ctx context.Context, stdout, stderr io.Writer, opts *deleteOpts, 
 		"evaluator", "Deleted evaluator %s", "deleting evaluator %s", ids, del)
 }
 
-func ReadEvaluatorFile(path string, stdin io.Reader) (*eval.EvaluatorDefinition, error) {
+func ReadEvaluatorFile(ctx context.Context, path string, stdin io.Reader) (*eval.EvaluatorDefinition, error) {
 	var data []byte
 	var err error
 	if path == "-" {
 		data, err = io.ReadAll(stdin)
 	} else {
-		data, err = os.ReadFile(path)
+		data, err = host.ReadFile(ctx, path)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("reading %s: %w", path, err)

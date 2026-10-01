@@ -5,11 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/host"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources"
@@ -177,7 +177,7 @@ func newUpdateCommand(loader *providers.ConfigLoader) *cobra.Command {
 
 			ctx := cmd.Context()
 
-			data, err := os.ReadFile(opts.File)
+			data, err := host.ReadFile(ctx, opts.File)
 			if err != nil {
 				return fmt.Errorf("failed to read file %s: %w", opts.File, err)
 			}

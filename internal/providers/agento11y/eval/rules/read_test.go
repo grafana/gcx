@@ -15,7 +15,7 @@ func Test_readRuleFile_YAMLErrorReported(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "bad.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
 
-	_, err := rules.ReadRuleFile(path, nil)
+	_, err := rules.ReadRuleFile(t.Context(), path, nil)
 	require.Error(t, err)
 	assert.NotContains(t, err.Error(), "looking for beginning of value")
 }
@@ -31,7 +31,7 @@ evaluator_ids:
 	path := filepath.Join(t.TempDir(), "rule.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
 
-	def, err := rules.ReadRuleFile(path, nil)
+	def, err := rules.ReadRuleFile(t.Context(), path, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "my-rule", def.RuleID)
 	assert.True(t, def.Enabled)
@@ -54,7 +54,7 @@ evaluator_ids:
 	path := filepath.Join(t.TempDir(), "conversation-rule.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
 
-	def, err := rules.ReadRuleFile(path, nil)
+	def, err := rules.ReadRuleFile(t.Context(), path, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "conversation", def.Selector)
 	require.NotNil(t, def.MinIdleSeconds)

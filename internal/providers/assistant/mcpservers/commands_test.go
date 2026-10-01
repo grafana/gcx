@@ -27,12 +27,12 @@ import (
 
 func TestCreateOptsValidateRequiresNameAndURL(t *testing.T) {
 	opts := &createOpts{}
-	err := opts.Validate()
+	err := opts.Validate(t.Context())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "--name is required")
 
 	opts.Name = "Remote MCP"
-	err = opts.Validate()
+	err = opts.Validate(t.Context())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "--url is required")
 }
@@ -80,7 +80,7 @@ func TestCreateOptsBuildInputMergesHeaders(t *testing.T) {
 		Headers: []string{"Authorization=Bearer token"},
 	}}
 
-	input, err := opts.buildInput()
+	input, err := opts.buildInput(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, "Remote MCP", input.Name)
 	assert.Equal(t, "https://mcp.example.com/mcp", input.URL)
@@ -96,7 +96,7 @@ func TestCreateOptsValidateRejectsInvalidScope(t *testing.T) {
 		Scope: "stack",
 	}}
 
-	err := opts.Validate()
+	err := opts.Validate(t.Context())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "--scope must be one of: user, tenant")
 }
@@ -114,7 +114,7 @@ func TestCreateOptsValidateRejectsInvalidURL(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			opts := &createOpts{inputFlags: inputFlags{Name: "Remote MCP", URL: tt.raw}}
 
-			err := opts.Validate()
+			err := opts.Validate(t.Context())
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), "--url")
 		})
@@ -128,7 +128,7 @@ func TestCreateOptsValidateRequiresHeadersForTenantScope(t *testing.T) {
 		Scope: "tenant",
 	}}
 
-	err := opts.Validate()
+	err := opts.Validate(t.Context())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "--scope tenant requires at least one authentication --header with a value")
 }
@@ -141,7 +141,7 @@ func TestCreateOptsValidateRequiresAuthHeaderForTenantScope(t *testing.T) {
 		Headers: []string{"X-Trace-ID=abc"},
 	}}
 
-	err := opts.Validate()
+	err := opts.Validate(t.Context())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "--scope tenant requires at least one authentication --header with a value")
 }
@@ -154,7 +154,7 @@ func TestCreateOptsValidateRequiresAuthHeaderValueForTenantScope(t *testing.T) {
 		Headers: []string{"Authorization="},
 	}}
 
-	err := opts.Validate()
+	err := opts.Validate(t.Context())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "--scope tenant requires at least one authentication --header with a value")
 }
@@ -167,7 +167,7 @@ func TestCreateOptsValidateAcceptsAuthHeaderForTenantScope(t *testing.T) {
 		Headers: []string{"Authorization=Bearer token"},
 	}}
 
-	require.NoError(t, opts.Validate())
+	require.NoError(t, opts.Validate(t.Context()))
 }
 
 func TestCreateOptsValidateRejectsTenantScopeWithEmailHeaderOnly(t *testing.T) {
@@ -178,7 +178,7 @@ func TestCreateOptsValidateRejectsTenantScopeWithEmailHeaderOnly(t *testing.T) {
 		Headers: []string{"X-CH-Auth-Email=user@example.com"},
 	}}
 
-	err := opts.Validate()
+	err := opts.Validate(t.Context())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "--scope tenant requires at least one authentication --header with a value")
 }
@@ -191,7 +191,7 @@ func TestCreateOptsValidateAcceptsClickHouseTokenHeaderForTenantScope(t *testing
 		Headers: []string{"X-CH-Auth-Email=user@example.com", "X-CH-Auth-API-Token=token"},
 	}}
 
-	require.NoError(t, opts.Validate())
+	require.NoError(t, opts.Validate(t.Context()))
 }
 
 // TestRunListEmitsShowingFirstHintWhenMoreMayExist: the

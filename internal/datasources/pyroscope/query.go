@@ -5,13 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 	"time"
 
 	"github.com/grafana/gcx/internal/agent"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/host"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/pyroscope"
@@ -298,7 +298,7 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 				if dest == "" {
 					dest = now.Format("profile-2006-01-02-150405.pb.gz")
 				}
-				if _, err := os.Stat(dest); err == nil && !opts.PprofOverwrite {
+				if _, err := host.Stat(ctx, dest); err == nil && !opts.PprofOverwrite {
 					return fmt.Errorf("%s already exists; use --pprof-overwrite to overwrite", dest)
 				}
 				data, err := client.Pprof(ctx, datasourceUID, pyroscope.PprofRequest{
@@ -312,7 +312,7 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 				if err != nil {
 					return fmt.Errorf("pprof fetch failed: %w", err)
 				}
-				if err := os.WriteFile(dest, data, 0o600); err != nil {
+				if err := host.WriteFile(ctx, dest, data, 0o600); err != nil {
 					return fmt.Errorf("writing pprof profile: %w", err)
 				}
 				result := &pyroscope.PprofWriteResult{Path: dest}

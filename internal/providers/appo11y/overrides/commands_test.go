@@ -239,7 +239,7 @@ spec:
 			f := t.TempDir() + "/overrides" + tt.ext
 			writeTestFile(t, f, tt.content)
 
-			typedObj, err := parseOverridesFile(f)
+			typedObj, err := parseOverridesFile(t.Context(), f)
 			if tt.wantErr {
 				require.Error(t, err)
 				return
@@ -262,7 +262,7 @@ metadata:
   name: default
 `), 0600))
 
-	_, err := parseOverridesFile(f)
+	_, err := parseOverridesFile(t.Context(), f)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "spec")
 }

@@ -10,6 +10,7 @@ import (
 
 	"github.com/grafana/gcx/internal/agent"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
+	"github.com/grafana/gcx/internal/host"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/loki"
@@ -219,7 +220,7 @@ app_memory / app_cpu_usage). Pass --app-type to override.`,
 				return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 			}
 
-			f, fileErr := os.OpenFile(opts.Save, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+			f, fileErr := host.OpenFile(ctx, opts.Save, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 			if fileErr != nil {
 				return fmt.Errorf("writing session dump: %w", fileErr)
 			}

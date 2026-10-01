@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -14,6 +13,7 @@ import (
 	"github.com/grafana/gcx/internal/docs"
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/gcxerrors"
+	"github.com/grafana/gcx/internal/host"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/synth/smcfg"
@@ -414,7 +414,7 @@ and logs usage. See ` + docs.SyntheticMonitoringInvoice + `.`,
 				return err
 			}
 
-			spec, err := readCheckSpec(opts.File)
+			spec, err := readCheckSpec(cmd.Context(), opts.File)
 			if err != nil {
 				return err
 			}
@@ -466,7 +466,7 @@ and logs usage. See ` + docs.SyntheticMonitoringInvoice + `.`,
 			}
 
 			// Write back the slug-id composite name so subsequent updates use the correct resource name.
-			if err := updateNameInFile(opts.File, created.Spec.name); err != nil {
+			if err := updateNameInFile(cmd.Context(), opts.File, created.Spec.name); err != nil {
 				cmdio.Warning(cmd.ErrOrStderr(), "check created but could not update %s: %v", opts.File, err)
 			}
 
@@ -588,7 +588,7 @@ toward your metrics and logs usage. See ` + docs.SyntheticMonitoringInvoice + `.
 				return err
 			}
 
-			spec, err := readCheckSpec(opts.File)
+			spec, err := readCheckSpec(cmd.Context(), opts.File)
 			if err != nil {
 				return err
 			}
@@ -786,7 +786,7 @@ executions. See ` + docs.SyntheticMonitoringInvoice + `.`,
 				return err
 			}
 
-			spec, err := readCheckSpec(opts.File)
+			spec, err := readCheckSpec(cmd.Context(), opts.File)
 			if err != nil {
 				return err
 			}
@@ -1036,8 +1036,8 @@ func checkDisplayName(c Check) string {
 
 // readCheckSpec reads and parses a single-document check YAML file into a CheckSpec.
 // Returns an error if the file contains multiple YAML documents (use "gcx resources push" for batch).
-func readCheckSpec(filePath string) (*CheckSpec, error) {
-	data, err := os.ReadFile(filePath)
+func readCheckSpec(ctx context.Context, filePath string) (*CheckSpec, error) {
+	data, err := host.ReadFile(ctx, filePath)
 	if err != nil {
 		return nil, fmt.Errorf("reading %s: %w", filePath, err)
 	}
@@ -1101,8 +1101,8 @@ func hasMultipleDocuments(data []byte) bool {
 
 // updateNameInFile rewrites metadata.name in a YAML file to newName.
 // This is used after a create to persist the server-assigned resource name.
-func updateNameInFile(filePath, newName string) error {
-	data, err := os.ReadFile(filePath)
+func updateNameInFile(ctx context.Context, filePath, newName string) error {
+	data, err := host.ReadFile(ctx, filePath)
 	if err != nil {
 		return err
 	}
@@ -1127,5 +1127,5 @@ func updateNameInFile(filePath, newName string) error {
 		}
 	}
 
-	return os.WriteFile(filePath, []byte(strings.Join(lines, "\n")), 0600)
+	return host.WriteFile(ctx, filePath, []byte(strings.Join(lines, "\n")), 0600)
 }

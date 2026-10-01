@@ -6,11 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strconv"
 	"strings"
 
 	"github.com/goccy/go-yaml"
+	"github.com/grafana/gcx/internal/host"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/agento11y/agento11yhttp"
@@ -181,13 +181,13 @@ func (o *createOpts) Validate() error {
 
 // readCollectionFile reads a Collection from a JSON or YAML file. For
 // envelope-shaped YAMLs use `gcx resources push`.
-func readCollectionFile(path string, stdin io.Reader) (*Collection, error) {
+func readCollectionFile(ctx context.Context, path string, stdin io.Reader) (*Collection, error) {
 	var data []byte
 	var err error
 	if path == "-" {
 		data, err = io.ReadAll(stdin)
 	} else {
-		data, err = os.ReadFile(path)
+		data, err = host.ReadFile(ctx, path)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("reading %s: %w", path, err)
@@ -224,7 +224,7 @@ func newCreateCommand(loader *providers.ConfigLoader) *cobra.Command {
 
 			var spec Collection
 			if opts.File != "" {
-				col, err := readCollectionFile(opts.File, cmd.InOrStdin())
+				col, err := readCollectionFile(cmd.Context(), opts.File, cmd.InOrStdin())
 				if err != nil {
 					return err
 				}

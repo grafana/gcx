@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"os"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/host"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/agento11y/agento11yhttp"
@@ -24,8 +24,8 @@ import (
 // page: nil when the page is complete, otherwise a ListMeta carrying the
 // safety-cap flag (when safetyCap bounded the fetch) and an argv-derived
 // continuation command. safetyCap is 0 for sources with no client-side cap.
-func scoreListMeta(returned, limit int, hasMore bool, safetyCap int) *cmdio.ListMeta {
-	return cmdio.AttachListMeta(cmdio.PagedListMeta(returned, limit, hasMore, safetyCap), os.Args)
+func scoreListMeta(ctx context.Context, returned, limit int, hasMore bool, safetyCap int) *cmdio.ListMeta {
+	return cmdio.AttachListMeta(cmdio.PagedListMeta(returned, limit, hasMore, safetyCap), host.Args(ctx))
 }
 
 func newClient(cmd *cobra.Command, loader *providers.ConfigLoader) (*Client, error) {
@@ -336,7 +336,7 @@ Filter by evaluator, time range, agent, model, or provider as needed.`,
 			}
 			// New command: use the list envelope so truncation rides in-band in
 			// list_meta, and report the client-side safety cap (ScoreHardCap).
-			meta := scoreListMeta(len(scores), opts.Limit, hasMore, ScoreHardCap())
+			meta := scoreListMeta(cmd.Context(), len(scores), opts.Limit, hasMore, ScoreHardCap())
 			if err := opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), ruleScoresEnvelope{Items: scores, ListMeta: meta}); err != nil {
 				return err
 			}

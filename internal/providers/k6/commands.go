@@ -6,14 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
-	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/grafana/gcx/internal/docs"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/host"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/adapter"
@@ -92,7 +91,7 @@ func resolveTestCreateInput(cmd *cobra.Command, opts *testsCreateOpts) (string, 
 	if opts.File != "" {
 		return resolveTestCreateFromFile(cmd, opts)
 	}
-	return resolveTestCreateFromFlags(opts)
+	return resolveTestCreateFromFlags(cmd.Context(), opts)
 }
 
 func resolveTestCreateFromFile(cmd *cobra.Command, opts *testsCreateOpts) (string, int, string, error) {
@@ -118,7 +117,7 @@ func resolveTestCreateFromFile(cmd *cobra.Command, opts *testsCreateOpts) (strin
 	return name, projectID, lt.Script, nil
 }
 
-func resolveTestCreateFromFlags(opts *testsCreateOpts) (string, int, string, error) {
+func resolveTestCreateFromFlags(ctx context.Context, opts *testsCreateOpts) (string, int, string, error) {
 	if opts.Name == "" {
 		return "", 0, "", errors.New("--name is required when --filename is not provided")
 	}
@@ -128,7 +127,7 @@ func resolveTestCreateFromFlags(opts *testsCreateOpts) (string, int, string, err
 	if opts.ProjectID == 0 {
 		return "", 0, "", errors.New("--project-id is required")
 	}
-	scriptBytes, err := os.ReadFile(opts.Script)
+	scriptBytes, err := host.ReadFile(ctx, opts.Script)
 	if err != nil {
 		return "", 0, "", fmt.Errorf("failed to read script file: %w", err)
 	}
@@ -140,7 +139,7 @@ func readFileOrStdin(cmd *cobra.Command, path string) ([]byte, error) {
 	if path == "-" {
 		return io.ReadAll(cmd.InOrStdin())
 	}
-	return os.ReadFile(path)
+	return host.ReadFile(cmd.Context(), path)
 }
 
 // decodeYAMLOrJSON decodes YAML or JSON data into the target.
@@ -369,7 +368,7 @@ func newProjectsCreateCommand(loader CloudConfigLoader) *cobra.Command {
 			if opts.File == "-" {
 				reader = cmd.InOrStdin()
 			} else {
-				f, err := os.Open(opts.File)
+				f, err := host.Open(ctx, opts.File)
 				if err != nil {
 					return fmt.Errorf("failed to open file %s: %w", opts.File, err)
 				}
@@ -456,7 +455,7 @@ func newProjectsUpdateCommand(loader CloudConfigLoader) *cobra.Command {
 			if opts.File == "-" {
 				reader = cmd.InOrStdin()
 			} else {
-				f, err := os.Open(opts.File)
+				f, err := host.Open(ctx, opts.File)
 				if err != nil {
 					return fmt.Errorf("failed to open file %s: %w", opts.File, err)
 				}
@@ -1201,7 +1200,7 @@ func newEnvVarsCreateCommand(loader CloudConfigLoader) *cobra.Command {
 			if opts.File == "-" {
 				reader = cmd.InOrStdin()
 			} else {
-				f, err := os.Open(opts.File)
+				f, err := host.Open(ctx, opts.File)
 				if err != nil {
 					return fmt.Errorf("failed to open file %s: %w", opts.File, err)
 				}
@@ -1273,7 +1272,7 @@ func newEnvVarsUpdateCommand(loader CloudConfigLoader) *cobra.Command {
 			if opts.File == "-" {
 				reader = cmd.InOrStdin()
 			} else {
-				f, err := os.Open(opts.File)
+				f, err := host.Open(ctx, opts.File)
 				if err != nil {
 					return fmt.Errorf("failed to open file %s: %w", opts.File, err)
 				}
@@ -2135,7 +2134,10 @@ Virtual User Hours (VUh). See ` + docs.PerformanceTestingInvoice + `.`,
 
 			if opts.Apply {
 				applyManifests := testrunK8sManifests(opts.Namespace, opts.TokenSecret, test.Name, script, opts.Parallelism, opts.ProjectID, false)
-				kubectl := exec.CommandContext(ctx, "kubectl", "apply", "-f", "-")
+				kubectl, err := host.Command(ctx, "kubectl", "apply", "-f", "-")
+				if err != nil {
+					return fmt.Errorf("kubectl apply failed: %w", err)
+				}
 				kubectl.Stdin = strings.NewReader(applyManifests)
 				kubectl.Stdout = cmd.ErrOrStderr()
 				kubectl.Stderr = cmd.ErrOrStderr()

@@ -20,6 +20,7 @@ import (
 
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/gcxerrors"
+	"github.com/grafana/gcx/internal/host"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/agento11y/agento11yhttp"
@@ -170,10 +171,10 @@ entire bundle from Git by default.`,
 			if err != nil {
 				return fmt.Errorf("resolve output directory %q: %w", opts.OutputDir, err)
 			}
-			if err := requireMissingDirectory(outputDir); err != nil {
+			if err := requireMissingDirectory(cmd.Context(), outputDir); err != nil {
 				return err
 			}
-			if err := preflightDirectoryPublication(outputDir, publishDirectoryNoReplace); err != nil {
+			if err := preflightDirectoryPublication(cmd.Context(), outputDir, publishDirectoryNoReplace); err != nil {
 				return err
 			}
 
@@ -359,14 +360,14 @@ func exportExperimentBundle(ctx context.Context, base *agento11yhttp.Client, run
 		return nil, fmt.Errorf("decode artifacts for experiment %q: %w", runID, err)
 	}
 
-	stagingDir, err := createPrivateStagingDirectory(outputDir)
+	stagingDir, err := createPrivateStagingDirectory(ctx, outputDir)
 	if err != nil {
 		return nil, err
 	}
 	cleanupStaging := true
 	defer func() {
 		if cleanupStaging {
-			_ = os.RemoveAll(stagingDir)
+			_ = host.RemoveAll(ctx, stagingDir)
 		}
 	}()
 
@@ -383,12 +384,12 @@ func exportExperimentBundle(ctx context.Context, base *agento11yhttp.Client, run
 		Failures: []cmdio.MutationFailure{},
 	}
 
-	if err := writeExportPreamble(stagingDir, runID, experimentBody, reportBody, &manifest); err != nil {
+	if err := writeExportPreamble(ctx, stagingDir, runID, experimentBody, reportBody, &manifest); err != nil {
 		return nil, err
 	}
 	for i, page := range trialPages {
 		rel := fmt.Sprintf("raw/trial-pages/%06d.json", i+1)
-		if err := writeExportFile(stagingDir, rel, "trial-page", strconv.Itoa(i+1), page.body, len(page.trials), &manifest); err != nil {
+		if err := writeExportFile(ctx, stagingDir, rel, "trial-page", strconv.Itoa(i+1), page.body, len(page.trials), &manifest); err != nil {
 			return nil, err
 		}
 	}
@@ -445,7 +446,7 @@ func exportExperimentBundle(ctx context.Context, base *agento11yhttp.Client, run
 	if err != nil {
 		return nil, fmt.Errorf("encode trial index: %w", err)
 	}
-	if err := writeExportFile(stagingDir, "indexes/trials.jsonl", "trial-index", "", indexBody, len(trials), &manifest); err != nil {
+	if err := writeExportFile(ctx, stagingDir, "indexes/trials.jsonl", "trial-index", "", indexBody, len(trials), &manifest); err != nil {
 		return nil, err
 	}
 
@@ -469,7 +470,7 @@ func exportExperimentBundle(ctx context.Context, base *agento11yhttp.Client, run
 	if err != nil {
 		return nil, fmt.Errorf("encode artifact index: %w", err)
 	}
-	if err := writeExportFile(stagingDir, "indexes/artifacts.jsonl", "artifact-index", "", artifactIndexBody, len(artifacts), &manifest); err != nil {
+	if err := writeExportFile(ctx, stagingDir, "indexes/artifacts.jsonl", "artifact-index", "", artifactIndexBody, len(artifacts), &manifest); err != nil {
 		return nil, err
 	}
 
@@ -487,13 +488,13 @@ func exportExperimentBundle(ctx context.Context, base *agento11yhttp.Client, run
 		return nil, fmt.Errorf("encode export manifest: %w", err)
 	}
 	manifestBody = append(manifestBody, '\n')
-	if err := writePrivateFile(filepath.Join(stagingDir, "manifest.json"), manifestBody); err != nil {
+	if err := writePrivateFile(ctx, filepath.Join(stagingDir, "manifest.json"), manifestBody); err != nil {
 		return nil, fmt.Errorf("write export manifest: %w", err)
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	retainStaging, err := publishCompletedBundle(stagingDir, outputDir, publishDirectoryNoReplace)
+	retainStaging, err := publishCompletedBundle(ctx, stagingDir, outputDir, publishDirectoryNoReplace)
 	if err != nil {
 		cleanupStaging = !retainStaging
 		return nil, err
@@ -623,7 +624,7 @@ func fetchArtifactPayloads(ctx context.Context, base *agento11yhttp.Client, stag
 				return nil
 			}
 			rel := filepath.ToSlash(filepath.Join("raw", "artifacts", artifactFileName(artifact.ArtifactID)))
-			if writeErr := writePrivateFile(filepath.Join(stagingDir, filepath.FromSlash(rel)), body); writeErr != nil {
+			if writeErr := writePrivateFile(ctx, filepath.Join(stagingDir, filepath.FromSlash(rel)), body); writeErr != nil {
 				fetched[i] = fetchedArtifact{id: artifact.ArtifactID, err: fmt.Errorf("write artifact %q: %w", artifact.ArtifactID, writeErr)}
 				return nil
 			}
@@ -686,7 +687,7 @@ func fetchConversationPayloads(ctx context.Context, base *agento11yhttp.Client, 
 				return nil
 			}
 			rel := filepath.ToSlash(filepath.Join("raw", "conversations", conversationFileName(id)))
-			if writeErr := writePrivateFile(filepath.Join(stagingDir, filepath.FromSlash(rel)), body); writeErr != nil {
+			if writeErr := writePrivateFile(ctx, filepath.Join(stagingDir, filepath.FromSlash(rel)), body); writeErr != nil {
 				fetched[i] = fetchedConversation{id: id, err: fmt.Errorf("write conversation %q: %w", id, writeErr)}
 				return nil
 			}
@@ -802,8 +803,8 @@ func readBoundedResponse(resp *http.Response, limit int64, label string) ([]byte
 	return body, nil
 }
 
-func requireMissingDirectory(path string) error {
-	_, err := os.Lstat(path)
+func requireMissingDirectory(ctx context.Context, path string) error {
+	_, err := host.Lstat(ctx, path)
 	switch {
 	case err == nil:
 		return fmt.Errorf("output directory %q already exists: choose a new directory", path)
@@ -814,24 +815,24 @@ func requireMissingDirectory(path string) error {
 	}
 }
 
-func preflightDirectoryPublication(outputDir string, publish func(string, string) error) error {
+func preflightDirectoryPublication(ctx context.Context, outputDir string, publish func(string, string) error) error {
 	parent := filepath.Dir(outputDir)
-	if err := os.MkdirAll(parent, 0o700); err != nil {
+	if err := host.MkdirAll(ctx, parent, 0o700); err != nil {
 		return fmt.Errorf("create output directory parent %q: %w", parent, err)
 	}
-	probeDir, err := os.MkdirTemp(parent, ".gcx-agento11y-publish-probe-*")
+	probeDir, err := host.MkdirTemp(ctx, parent, ".gcx-agento11y-publish-probe-*")
 	if err != nil {
 		return fmt.Errorf("create publication probe: %w", err)
 	}
 	probeTarget := probeDir + "-published"
-	probeCollision, err := os.MkdirTemp(parent, ".gcx-agento11y-publish-collision-*")
+	probeCollision, err := host.MkdirTemp(ctx, parent, ".gcx-agento11y-publish-collision-*")
 	if err != nil {
-		_ = os.RemoveAll(probeDir)
+		_ = host.RemoveAll(ctx, probeDir)
 		return fmt.Errorf("create publication collision probe: %w", err)
 	}
-	defer os.RemoveAll(probeDir)
-	defer os.RemoveAll(probeTarget)
-	defer os.RemoveAll(probeCollision)
+	defer func() { _ = host.RemoveAll(ctx, probeDir) }()
+	defer func() { _ = host.RemoveAll(ctx, probeTarget) }()
+	defer func() { _ = host.RemoveAll(ctx, probeCollision) }()
 
 	if err := publish(probeDir, probeTarget); err != nil {
 		return fmt.Errorf("output filesystem does not support required atomic no-replace directory publication: %w", err)
@@ -842,9 +843,9 @@ func preflightDirectoryPublication(outputDir string, publish func(string, string
 	return nil
 }
 
-func publishCompletedBundle(stagingDir, outputDir string, publish func(string, string) error) (bool, error) {
+func publishCompletedBundle(ctx context.Context, stagingDir, outputDir string, publish func(string, string) error) (bool, error) {
 	if err := publish(stagingDir, outputDir); err != nil {
-		if _, statErr := os.Lstat(outputDir); errors.Is(statErr, os.ErrNotExist) {
+		if _, statErr := host.Lstat(ctx, outputDir); errors.Is(statErr, os.ErrNotExist) {
 			return true, fmt.Errorf("publish output directory %q: completed bundle retained in private staging directory %q: %w", outputDir, stagingDir, err)
 		}
 		return false, fmt.Errorf("publish output directory %q: %w", outputDir, err)
@@ -852,17 +853,17 @@ func publishCompletedBundle(stagingDir, outputDir string, publish func(string, s
 	return false, nil
 }
 
-func createPrivateStagingDirectory(outputDir string) (string, error) {
+func createPrivateStagingDirectory(ctx context.Context, outputDir string) (string, error) {
 	parent := filepath.Dir(outputDir)
-	if err := os.MkdirAll(parent, 0o700); err != nil {
+	if err := host.MkdirAll(ctx, parent, 0o700); err != nil {
 		return "", fmt.Errorf("create output directory parent %q: %w", parent, err)
 	}
-	stagingDir, err := os.MkdirTemp(parent, ".gcx-agento11y-export-*")
+	stagingDir, err := host.MkdirTemp(ctx, parent, ".gcx-agento11y-export-*")
 	if err != nil {
 		return "", fmt.Errorf("create export staging directory: %w", err)
 	}
-	if err := os.Chmod(stagingDir, 0o700); err != nil {
-		_ = os.RemoveAll(stagingDir)
+	if err := host.Chmod(ctx, stagingDir, 0o700); err != nil {
+		_ = host.RemoveAll(ctx, stagingDir)
 		return "", fmt.Errorf("secure export staging directory: %w", err)
 	}
 	for _, dir := range []string{
@@ -871,15 +872,15 @@ func createPrivateStagingDirectory(outputDir string) (string, error) {
 		filepath.Join(stagingDir, "raw", "artifacts"),
 		filepath.Join(stagingDir, "indexes"),
 	} {
-		if err := os.MkdirAll(dir, 0o700); err != nil {
-			_ = os.RemoveAll(stagingDir)
+		if err := host.MkdirAll(ctx, dir, 0o700); err != nil {
+			_ = host.RemoveAll(ctx, stagingDir)
 			return "", fmt.Errorf("create export directory %q: %w", dir, err)
 		}
 	}
 	return stagingDir, nil
 }
 
-func writeExportPreamble(outputDir, runID string, experimentBody, reportBody []byte, manifest *experimentExportManifest) error {
+func writeExportPreamble(ctx context.Context, outputDir, runID string, experimentBody, reportBody []byte, manifest *experimentExportManifest) error {
 	files := []struct {
 		path string
 		kind string
@@ -892,16 +893,16 @@ func writeExportPreamble(outputDir, runID string, experimentBody, reportBody []b
 		{path: "raw/report.json", kind: "report", id: runID, body: reportBody},
 	}
 	for _, file := range files {
-		if err := writeExportFile(outputDir, file.path, file.kind, file.id, file.body, 0, manifest); err != nil {
+		if err := writeExportFile(ctx, outputDir, file.path, file.kind, file.id, file.body, 0, manifest); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func writeExportFile(outputDir, relativePath, kind, id string, body []byte, count int, manifest *experimentExportManifest) error {
+func writeExportFile(ctx context.Context, outputDir, relativePath, kind, id string, body []byte, count int, manifest *experimentExportManifest) error {
 	path := filepath.Join(outputDir, filepath.FromSlash(relativePath))
-	if err := writePrivateFile(path, body); err != nil {
+	if err := writePrivateFile(ctx, path, body); err != nil {
 		return fmt.Errorf("write %s: %w", relativePath, err)
 	}
 	manifest.Files = append(manifest.Files, experimentExportFile{
@@ -915,16 +916,16 @@ func writeExportFile(outputDir, relativePath, kind, id string, body []byte, coun
 	return nil
 }
 
-func writePrivateFile(path string, body []byte) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+func writePrivateFile(ctx context.Context, path string, body []byte) error {
+	if err := host.MkdirAll(ctx, filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".gcx-export-*")
+	tmp, err := host.CreateTemp(ctx, filepath.Dir(path), ".gcx-export-*")
 	if err != nil {
 		return err
 	}
 	tmpPath := tmp.Name()
-	defer os.Remove(tmpPath)
+	defer func() { _ = host.Remove(ctx, tmpPath) }()
 
 	if err := tmp.Chmod(0o600); err != nil {
 		tmp.Close()
@@ -941,7 +942,7 @@ func writePrivateFile(path string, body []byte) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmpPath, path)
+	return host.Rename(ctx, tmpPath, path)
 }
 
 func encodeJSONLines[T any](items []T) ([]byte, error) {

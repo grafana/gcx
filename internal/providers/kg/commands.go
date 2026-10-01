@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/gcx/internal/deeplink"
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/gcxerrors"
+	"github.com/grafana/gcx/internal/host"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/shared"
@@ -330,13 +331,16 @@ func readFileOrStdin(cmd *cobra.Command, path string) ([]byte, error) {
 		return io.ReadAll(cmd.InOrStdin())
 	}
 	if path == "" {
-		fi, err := os.Stdin.Stat()
-		if err != nil || (fi.Mode()&os.ModeCharDevice) != 0 {
-			return nil, errors.New("no input: use -f <file> or pipe YAML via stdin")
+		// No host stdin (e.g. embedded): fall through to the command's reader.
+		if stdin, err := host.StdinFile(cmd.Context()); err == nil {
+			fi, err := stdin.Stat()
+			if err != nil || (fi.Mode()&os.ModeCharDevice) != 0 {
+				return nil, errors.New("no input: use -f <file> or pipe YAML via stdin")
+			}
 		}
 		return io.ReadAll(cmd.InOrStdin())
 	}
-	return os.ReadFile(path)
+	return host.ReadFile(cmd.Context(), path)
 }
 
 // searchByTypes fans out Search across multiple entity types and merges results.

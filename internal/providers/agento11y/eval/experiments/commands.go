@@ -6,13 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/goccy/go-yaml"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/host"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/agento11y/agento11yhttp"
@@ -51,13 +51,13 @@ func Commands(loader *providers.ConfigLoader) *cobra.Command {
 	return cmd
 }
 
-func readDataFile[T any](path string, stdin io.Reader) (*T, error) {
+func readDataFile[T any](ctx context.Context, path string, stdin io.Reader) (*T, error) {
 	var data []byte
 	var err error
 	if path == "-" {
 		data, err = io.ReadAll(stdin)
 	} else {
-		data, err = os.ReadFile(path)
+		data, err = host.ReadFile(ctx, path)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("reading %s: %w", path, err)
@@ -191,8 +191,8 @@ func (o *createOpts) Validate() error {
 	return o.IO.Validate()
 }
 
-func readExperimentFile(path string, stdin io.Reader) (*Experiment, error) {
-	exp, err := readDataFile[Experiment](path, stdin)
+func readExperimentFile(ctx context.Context, path string, stdin io.Reader) (*Experiment, error) {
+	exp, err := readDataFile[Experiment](ctx, path, stdin)
 	if err != nil {
 		return nil, err
 	}
@@ -217,7 +217,7 @@ func newCreateCommand(loader *providers.ConfigLoader) *cobra.Command {
 				return err
 			}
 
-			exp, err := readExperimentFile(opts.File, cmd.InOrStdin())
+			exp, err := readExperimentFile(cmd.Context(), opts.File, cmd.InOrStdin())
 			if err != nil {
 				return err
 			}
@@ -557,7 +557,7 @@ func newSuitesCreateCommand(loader *providers.ConfigLoader) *cobra.Command {
 			var suite *TestSuite
 			var err error
 			if opts.File != "" {
-				suite, err = readDataFile[TestSuite](opts.File, cmd.InOrStdin())
+				suite, err = readDataFile[TestSuite](cmd.Context(), opts.File, cmd.InOrStdin())
 				if err != nil {
 					return err
 				}
@@ -822,7 +822,7 @@ func newCasesUpsertCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err := opts.Validate(); err != nil {
 				return err
 			}
-			tc, err := readDataFile[TestCase](opts.File, cmd.InOrStdin())
+			tc, err := readDataFile[TestCase](cmd.Context(), opts.File, cmd.InOrStdin())
 			if err != nil {
 				return err
 			}
@@ -852,7 +852,7 @@ func newCasesUpdateCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err := opts.Validate(); err != nil {
 				return err
 			}
-			patch, err := readDataFile[map[string]any](opts.File, cmd.InOrStdin())
+			patch, err := readDataFile[map[string]any](cmd.Context(), opts.File, cmd.InOrStdin())
 			if err != nil {
 				return err
 			}
@@ -1006,7 +1006,7 @@ func newTrialMutationCommand[T any](
 			if err := opts.Validate(); err != nil {
 				return err
 			}
-			payload, err := readDataFile[T](opts.File, cmd.InOrStdin())
+			payload, err := readDataFile[T](cmd.Context(), opts.File, cmd.InOrStdin())
 			if err != nil {
 				return err
 			}

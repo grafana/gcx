@@ -6,11 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/host"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
@@ -188,7 +188,7 @@ func newUpdateCommand(loader *providers.ConfigLoader) *cobra.Command {
 
 			ctx := cmd.Context()
 
-			typedObj, err := parseOverridesFile(opts.File)
+			typedObj, err := parseOverridesFile(cmd.Context(), opts.File)
 			if err != nil {
 				return fmt.Errorf("failed to parse overrides file: %w", err)
 			}
@@ -238,8 +238,8 @@ func (c *updateReceiptCodec) Decode(io.Reader, any) error {
 
 // parseOverridesFile reads a JSON or YAML file and returns a TypedObject[MetricsGeneratorConfig].
 // The ETag annotation (if present) is restored onto the spec via SetETag.
-func parseOverridesFile(filePath string) (*adapter.TypedObject[MetricsGeneratorConfig], error) {
-	data, err := os.ReadFile(filePath)
+func parseOverridesFile(ctx context.Context, filePath string) (*adapter.TypedObject[MetricsGeneratorConfig], error) {
+	data, err := host.ReadFile(ctx, filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read file: %w", err)
 	}

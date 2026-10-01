@@ -6,12 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"sort"
 	"strings"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/host"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
@@ -300,7 +300,7 @@ func newCreateCommand(loader RESTConfigLoader) *cobra.Command {
 				return err
 			}
 
-			app, err := readAppFromFile(opts.File, cmd.InOrStdin())
+			app, err := readAppFromFile(cmd.Context(), opts.File, cmd.InOrStdin())
 			if err != nil {
 				return err
 			}
@@ -377,7 +377,7 @@ func newUpdateCommand(loader RESTConfigLoader) *cobra.Command {
 				return err
 			}
 
-			app, err := readAppFromFile(opts.File, cmd.InOrStdin())
+			app, err := readAppFromFile(cmd.Context(), opts.File, cmd.InOrStdin())
 			if err != nil {
 				return err
 			}
@@ -462,12 +462,12 @@ func newDeleteCommand(loader RESTConfigLoader) *cobra.Command {
 // readAppFromFile reads a FaroApp spec from a file path or stdin.
 // It decodes a Kubernetes-style manifest and JSON-round-trips the spec
 // into a FaroApp, so new fields are handled automatically.
-func readAppFromFile(file string, stdin io.Reader) (*FaroApp, error) {
+func readAppFromFile(ctx context.Context, file string, stdin io.Reader) (*FaroApp, error) {
 	var reader io.Reader
 	if file == "-" {
 		reader = stdin
 	} else {
-		f, err := os.Open(file)
+		f, err := host.Open(ctx, file)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open file %s: %w", file, err)
 		}

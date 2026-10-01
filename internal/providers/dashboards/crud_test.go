@@ -152,7 +152,7 @@ func TestReadManifest(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			obj, err := dashboards.ReadManifestForTest(tt.filename)
+			obj, err := dashboards.ReadManifestForTest(t.Context(), tt.filename)
 
 			if tt.wantErr {
 				if err == nil {

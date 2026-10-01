@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -12,6 +11,7 @@ import (
 
 	"github.com/grafana/gcx/internal/agent"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
+	"github.com/grafana/gcx/internal/host"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/tempo"
@@ -196,7 +196,7 @@ diff or treating the first result as healthy.`,
 			}
 			traces, meta := cmdio.TruncatePagedList(resp.Traces, opts.Limit)
 			resp.Traces = traces
-			meta = cmdio.AttachListMeta(meta, os.Args)
+			meta = cmdio.AttachListMeta(meta, host.Args(cmd.Context()))
 
 			result := buildBaselineResult(seedID, profile, resp, req.Query)
 			result.SeedPartial = seedPartial

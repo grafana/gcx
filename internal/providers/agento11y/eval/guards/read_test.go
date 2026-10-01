@@ -15,7 +15,7 @@ func Test_readHookRuleFile_YAMLErrorReported(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "bad.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
 
-	_, err := guards.ReadHookRuleFile(path, nil)
+	_, err := guards.ReadHookRuleFile(t.Context(), path, nil)
 	require.Error(t, err)
 	assert.NotContains(t, err.Error(), "looking for beginning of value")
 }
@@ -38,7 +38,7 @@ redact:
 	path := filepath.Join(t.TempDir(), "guard.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
 
-	def, err := guards.ReadHookRuleFile(path, nil)
+	def, err := guards.ReadHookRuleFile(t.Context(), path, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "my-guard", def.RuleID)
 	assert.True(t, def.Enabled)

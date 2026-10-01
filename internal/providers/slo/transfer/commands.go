@@ -8,11 +8,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/gcxerrors"
+	"github.com/grafana/gcx/internal/host"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources"
@@ -154,7 +154,7 @@ The preview shows manifest identities only; it does not resolve the remote UUID 
 			}
 			for i, file := range paths {
 				target := cmdio.MutationTarget{Kind: crud.Descriptor.Kind, Name: file}
-				data, err := os.ReadFile(file)
+				data, err := host.ReadFile(ctx, file)
 				if err != nil {
 					return fail(file, len(paths)-i-1, target, err)
 				}
@@ -240,7 +240,7 @@ This compatibility command retains its Kind/name.yaml layout.`, label, selector)
 				return err
 			}
 			dir := filepath.Join(opts.OutputDir, crud.Descriptor.Kind)
-			if err := os.MkdirAll(dir, 0755); err != nil {
+			if err := host.MkdirAll(ctx, dir, 0755); err != nil {
 				return err
 			}
 			writer := local.FSWriter{

@@ -6,13 +6,13 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"os"
 	"sort"
 	"strconv"
 	"strings"
 
 	auth "github.com/grafana/gcx/internal/auth/adaptive"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/host"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
@@ -1223,12 +1223,12 @@ func (c *dropRulesTableCodec) Decode(_ io.Reader, _ any) error {
 }
 
 // readDropRuleFromFile reads and decodes a DropRuleFileSpec from a file path or stdin ("-").
-func readDropRuleFromFile(filePath string, stdin io.Reader) (*DropRuleFileSpec, error) {
+func readDropRuleFromFile(ctx context.Context, filePath string, stdin io.Reader) (*DropRuleFileSpec, error) {
 	var reader io.Reader
 	if filePath == "-" {
 		reader = stdin
 	} else {
-		f, err := os.Open(filePath)
+		f, err := host.Open(ctx, filePath)
 		if err != nil {
 			return nil, fmt.Errorf("opening file %s: %w", filePath, err)
 		}
@@ -1275,7 +1275,7 @@ func (h *logsHelper) dropRulesCreateCommand() *cobra.Command {
 				return err
 			}
 
-			spec, err := readDropRuleFromFile(opts.File, cmd.InOrStdin())
+			spec, err := readDropRuleFromFile(cmd.Context(), opts.File, cmd.InOrStdin())
 			if err != nil {
 				return err
 			}
@@ -1343,7 +1343,7 @@ func (h *logsHelper) dropRulesUpdateCommand() *cobra.Command {
 				return err
 			}
 
-			spec, err := readDropRuleFromFile(opts.File, cmd.InOrStdin())
+			spec, err := readDropRuleFromFile(cmd.Context(), opts.File, cmd.InOrStdin())
 			if err != nil {
 				return err
 			}

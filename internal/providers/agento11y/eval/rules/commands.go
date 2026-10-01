@@ -6,11 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strconv"
 	"strings"
 
 	"github.com/goccy/go-yaml"
+	"github.com/grafana/gcx/internal/host"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/agento11y/agento11yhttp"
@@ -181,7 +181,7 @@ func newCreateCommand(loader *providers.ConfigLoader) *cobra.Command {
 				return err
 			}
 
-			rule, err := ReadRuleFile(opts.File, cmd.InOrStdin())
+			rule, err := ReadRuleFile(cmd.Context(), opts.File, cmd.InOrStdin())
 			if err != nil {
 				return err
 			}
@@ -239,7 +239,7 @@ func newUpdateCommand(loader *providers.ConfigLoader) *cobra.Command {
 				return err
 			}
 
-			rule, err := ReadRuleFile(opts.File, cmd.InOrStdin())
+			rule, err := ReadRuleFile(cmd.Context(), opts.File, cmd.InOrStdin())
 			if err != nil {
 				return err
 			}
@@ -323,15 +323,15 @@ func runDelete(ctx context.Context, stdout, stderr io.Writer, opts *deleteOpts, 
 		"rule", "Deleted rule %s", "deleting rule %s", ids, del)
 }
 
-func ReadFile(path string, stdin io.Reader) ([]byte, error) {
+func ReadFile(ctx context.Context, path string, stdin io.Reader) ([]byte, error) {
 	if path == "-" {
 		return io.ReadAll(stdin)
 	}
-	return os.ReadFile(path)
+	return host.ReadFile(ctx, path)
 }
 
-func ReadRuleFile(path string, stdin io.Reader) (*eval.RuleDefinition, error) {
-	data, err := ReadFile(path, stdin)
+func ReadRuleFile(ctx context.Context, path string, stdin io.Reader) (*eval.RuleDefinition, error) {
+	data, err := ReadFile(ctx, path, stdin)
 	if err != nil {
 		return nil, fmt.Errorf("reading %s: %w", path, err)
 	}

@@ -8,12 +8,12 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/host"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/shared"
 	"github.com/grafana/gcx/internal/style"
@@ -431,7 +431,7 @@ func newAlertGroupListCommand(loader OnCallConfigLoader) *cobra.Command {
 			if meta != nil && pageInfo.Total != nil {
 				meta.Total = pageInfo.Total
 			}
-			meta = cmdio.AttachListMeta(meta, os.Args)
+			meta = cmdio.AttachListMeta(meta, host.Args(cmd.Context()))
 
 			// List envelope MUST be `{"items": [...]}` (never bare
 			// array, never null). Empty result is `{"items": []}`.
@@ -750,7 +750,7 @@ func listAlertGroupsLegacy(cmd *cobra.Command, opts *alertGroupListOpts, filters
 	// A spare (limit+1) row proves more data exists; Total stays unknown —
 	// the source was not drained.
 	items, meta := cmdio.TruncatePagedList(items, opts.Limit)
-	meta = cmdio.AttachListMeta(meta, os.Args)
+	meta = cmdio.AttachListMeta(meta, host.Args(cmd.Context()))
 	// SA-token mode doesn't get the rich shape (no internal API access). The
 	// envelope type is the same — most status fields stay empty (omitempty);
 	// only AlertsCount/Status (decoded) are populated from the public payload.

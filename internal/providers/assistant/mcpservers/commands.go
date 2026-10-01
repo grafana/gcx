@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strconv"
 	"strings"
 
@@ -15,6 +14,7 @@ import (
 	"github.com/grafana/gcx/internal/deeplink"
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/gcxerrors"
+	"github.com/grafana/gcx/internal/host"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
@@ -438,8 +438,8 @@ func (o *createOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&o.IfNotExists, "if-not-exists", false, "Return an existing server with the same name, URL, and scope instead of failing")
 }
 
-func (o *createOpts) Validate() error {
-	input, err := o.buildInput()
+func (o *createOpts) Validate(ctx context.Context) error {
+	input, err := o.buildInput(ctx)
 	if err != nil {
 		return err
 	}
@@ -475,10 +475,10 @@ reports that OAuth is required.`,
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
-			if err := opts.Validate(); err != nil {
+			if err := opts.Validate(cmd.Context()); err != nil {
 				return err
 			}
-			input, err := opts.buildInput()
+			input, err := opts.buildInput(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -601,7 +601,7 @@ header list, so any existing header you don't list is removed.`,
 			if err := opts.Validate(); err != nil {
 				return err
 			}
-			input, err := opts.buildInput()
+			input, err := opts.buildInput(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -754,13 +754,13 @@ func (in *inputFlags) bind(flags *pflag.FlagSet) {
 	flags.StringArrayVar(&in.Applications, "application", nil, "Assistant application allowed to use this server (repeatable)")
 }
 
-func (in *inputFlags) buildInput() (assistantmcp.ServerInput, error) {
+func (in *inputFlags) buildInput(ctx context.Context) (assistantmcp.ServerInput, error) {
 	input := assistantmcp.ServerInput{}
 	if in.Enabled && in.Disabled {
 		return input, errors.New("cannot use both --enabled and --disabled")
 	}
 	if in.File != "" {
-		loaded, err := loadInputFile(in.File)
+		loaded, err := loadInputFile(ctx, in.File)
 		if err != nil {
 			return input, err
 		}
@@ -802,8 +802,8 @@ func (in *inputFlags) buildInput() (assistantmcp.ServerInput, error) {
 	return input, nil
 }
 
-func loadInputFile(path string) (assistantmcp.ServerInput, error) {
-	data, err := os.ReadFile(path)
+func loadInputFile(ctx context.Context, path string) (assistantmcp.ServerInput, error) {
+	data, err := host.ReadFile(ctx, path)
 	if err != nil {
 		return assistantmcp.ServerInput{}, fmt.Errorf("failed to read %s: %w", path, err)
 	}

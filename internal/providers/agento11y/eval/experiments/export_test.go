@@ -654,7 +654,7 @@ func TestPreflightDirectoryPublication_RejectsUnsupportedFilesystem(t *testing.T
 	var probeDir, probeTarget string
 	unsupported := errors.New("no-replace rename unsupported")
 
-	err := preflightDirectoryPublication(outputDir, func(from, to string) error {
+	err := preflightDirectoryPublication(t.Context(), outputDir, func(from, to string) error {
 		probeDir, probeTarget = from, to
 		assert.DirExists(t, from)
 		assert.NoDirExists(t, to)
@@ -677,7 +677,7 @@ func TestPreflightDirectoryPublication_RejectsReplacingPublisher(t *testing.T) {
 		return os.Rename(from, to)
 	}
 
-	err := preflightDirectoryPublication(outputDir, replacingPublish)
+	err := preflightDirectoryPublication(t.Context(), outputDir, replacingPublish)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "atomic no-replace semantics are unavailable")
 	assert.NoDirExists(t, outputDir)
@@ -690,7 +690,7 @@ func TestPublishCompletedBundle_RetainsStagingWhenDestinationIsAbsent(t *testing
 	require.NoError(t, os.Mkdir(stagingDir, 0o700))
 	publishErr := errors.New("publication failed")
 
-	retained, err := publishCompletedBundle(stagingDir, outputDir, func(string, string) error {
+	retained, err := publishCompletedBundle(t.Context(), stagingDir, outputDir, func(string, string) error {
 		return publishErr
 	})
 
@@ -709,7 +709,7 @@ func TestPublishCompletedBundle_DoesNotRetainStagingAfterDestinationRace(t *test
 	require.NoError(t, os.Mkdir(outputDir, 0o700))
 	publishErr := errors.New("destination exists")
 
-	retained, err := publishCompletedBundle(stagingDir, outputDir, func(string, string) error {
+	retained, err := publishCompletedBundle(t.Context(), stagingDir, outputDir, func(string, string) error {
 		return publishErr
 	})
 
