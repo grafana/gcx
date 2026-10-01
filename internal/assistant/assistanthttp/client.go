@@ -21,7 +21,7 @@ const pluginBasePath = "/api/plugins/grafana-assistant-app/resources"
 
 // AppSourceHeader and AppSourceCLI identify gcx as the request origin to the
 // Assistant backend, which records the value as the source of usage events
-// (e.g. investigation.created) and falls back to "assistant" when unset.
+// and falls back to "assistant" when unset.
 const (
 	AppSourceHeader = "X-App-Source"
 	AppSourceCLI    = "cli"
