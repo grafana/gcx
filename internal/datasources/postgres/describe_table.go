@@ -133,7 +133,7 @@ disambiguate when the same table name exists in multiple schemas.`,
 				return fmt.Errorf("table %q not found", table)
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), resp)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), resp)
 		},
 	}
 

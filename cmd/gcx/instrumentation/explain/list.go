@@ -1,6 +1,7 @@
 package explain
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -44,7 +45,7 @@ full explanation for a specific finding.`,
 				return fmt.Errorf("instrumentation list-explanations: %w", err)
 			}
 			envelope := EntryListEnvelope{Items: allEntries()}
-			if err := opts.IO.Encode(c.OutOrStdout(), envelope); err != nil {
+			if err := opts.IO.Encode(c.Context(), c.OutOrStdout(), envelope); err != nil {
 				return fmt.Errorf("instrumentation list-explanations: %w", err)
 			}
 			return nil
@@ -113,7 +114,7 @@ func (c *entryTableCodec) Format() format.Format {
 	return "table"
 }
 
-func (c *entryTableCodec) Encode(w io.Writer, v any) error {
+func (c *entryTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	envelope, ok := v.(EntryListEnvelope)
 	if !ok {
 		return fmt.Errorf("entryTableCodec: expected EntryListEnvelope, got %T", v)

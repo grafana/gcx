@@ -129,7 +129,7 @@ func TestOverridesTableCodec_Encode_Columns(t *testing.T) {
 			codec := &overridesTableCodec{Wide: tt.wide}
 			var buf bytes.Buffer
 
-			err := codec.Encode(&buf, tt.cfg)
+			err := codec.Encode(t.Context(), &buf, tt.cfg)
 			require.NoError(t, err)
 
 			output := buf.String()
@@ -145,7 +145,7 @@ func TestOverridesTableCodec_Encode_Columns(t *testing.T) {
 
 func TestOverridesTableCodec_Encode_WrongType(t *testing.T) {
 	codec := &overridesTableCodec{}
-	err := codec.Encode(io.Discard, "not a MetricsGeneratorConfig")
+	err := codec.Encode(t.Context(), io.Discard, "not a MetricsGeneratorConfig")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "MetricsGeneratorConfig")
 }

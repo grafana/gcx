@@ -22,7 +22,7 @@ func TestRuleDetailTableCodec_Encode(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	err := codec.Encode(&buf, rule)
+	err := codec.Encode(t.Context(), &buf, rule)
 	require.NoError(t, err)
 
 	output := buf.String()
@@ -35,6 +35,6 @@ func TestRuleDetailTableCodec_Encode(t *testing.T) {
 func TestRuleDetailTableCodec_InvalidType(t *testing.T) {
 	codec := &alert.RuleDetailTableCodec{}
 	var buf bytes.Buffer
-	err := codec.Encode(&buf, []alert.RuleStatus{})
+	err := codec.Encode(t.Context(), &buf, []alert.RuleStatus{})
 	require.Error(t, err)
 }

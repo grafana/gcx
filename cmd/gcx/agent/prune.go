@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -75,7 +76,7 @@ func (c *pruneTextCodec) Decode(io.Reader, any) error {
 	return errors.New("prune text codec does not support decoding")
 }
 
-func (c *pruneTextCodec) Encode(w io.Writer, value any) error {
+func (c *pruneTextCodec) Encode(ctx context.Context, w io.Writer, value any) error {
 	result, ok := value.(cmdio.BatchMutation)
 	if !ok {
 		return errors.New("invalid data type for prune text codec: expected BatchMutation")
@@ -115,7 +116,7 @@ These files are created when a command response exceeds the spill threshold (def
 
 			result := cmdio.NewBatchMutation("pruned")
 			result.Summary = cmdio.MutationSummary{Succeeded: n}
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), result)
 		},
 	}
 

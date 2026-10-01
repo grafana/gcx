@@ -1,6 +1,7 @@
 package search
 
 import (
+	"context"
 	"errors"
 	"io"
 	"strings"
@@ -32,7 +33,7 @@ func (c *searchTableCodec) Decode(_ io.Reader, _ any) error {
 
 // Encode writes the search results table to w.
 // Accepts *DashboardSearchResultList.
-func (c *searchTableCodec) Encode(w io.Writer, v any) error {
+func (c *searchTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	list, ok := v.(*DashboardSearchResultList)
 	if !ok {
 		return errors.New("searchTableCodec: expected *DashboardSearchResultList")

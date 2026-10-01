@@ -40,7 +40,7 @@ func TestListTableCodec_Encode(t *testing.T) {
 		assert.Equal(t, "table", string(codec.Format()))
 
 		var buf bytes.Buffer
-		require.NoError(t, codec.Encode(&buf, summaries))
+		require.NoError(t, codec.Encode(t.Context(), &buf, summaries))
 		out := buf.String()
 		assert.Contains(t, out, "ID")
 		assert.Contains(t, out, "TITLE")
@@ -57,7 +57,7 @@ func TestListTableCodec_Encode(t *testing.T) {
 		assert.Equal(t, "wide", string(codec.Format()))
 
 		var buf bytes.Buffer
-		require.NoError(t, codec.Encode(&buf, summaries))
+		require.NoError(t, codec.Encode(t.Context(), &buf, summaries))
 		out := buf.String()
 		assert.Contains(t, out, "CREATED BY")
 		assert.Contains(t, out, "CREATED")
@@ -66,7 +66,7 @@ func TestListTableCodec_Encode(t *testing.T) {
 
 	t.Run("wrong type", func(t *testing.T) {
 		codec := &investigations.ListTableCodec{}
-		err := codec.Encode(&bytes.Buffer{}, "wrong")
+		err := codec.Encode(t.Context(), &bytes.Buffer{}, "wrong")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "expected []InvestigationSummary or *LodestoneList")
 	})
@@ -101,7 +101,7 @@ func TestListTableCodec_EncodeLodestone(t *testing.T) {
 	t.Run("table", func(t *testing.T) {
 		codec := &investigations.ListTableCodec{}
 		var buf bytes.Buffer
-		require.NoError(t, codec.Encode(&buf, list))
+		require.NoError(t, codec.Encode(t.Context(), &buf, list))
 		out := buf.String()
 		assert.Contains(t, out, "ID")
 		assert.Contains(t, out, "STATUS")
@@ -114,7 +114,7 @@ func TestListTableCodec_EncodeLodestone(t *testing.T) {
 	t.Run("wide falls back to owner when source is absent", func(t *testing.T) {
 		codec := &investigations.ListTableCodec{Wide: true}
 		var buf bytes.Buffer
-		require.NoError(t, codec.Encode(&buf, list))
+		require.NoError(t, codec.Encode(t.Context(), &buf, list))
 		out := buf.String()
 		assert.Contains(t, out, "CREATED BY")
 		assert.Contains(t, out, "admin")   // inv-1: source.userId wins
@@ -133,7 +133,7 @@ func TestListTableCodec_TitleTruncation(t *testing.T) {
 
 	var buf bytes.Buffer
 	codec := &investigations.ListTableCodec{}
-	require.NoError(t, codec.Encode(&buf, summaries))
+	require.NoError(t, codec.Encode(t.Context(), &buf, summaries))
 	assert.Contains(t, buf.String(), "...")
 }
 
@@ -157,7 +157,7 @@ func TestEvidenceTableCodec_Encode(t *testing.T) {
 		assert.Equal(t, "table", string(codec.Format()))
 
 		var buf bytes.Buffer
-		require.NoError(t, codec.Encode(&buf, resp))
+		require.NoError(t, codec.Encode(t.Context(), &buf, resp))
 		out := buf.String()
 		assert.Contains(t, out, "PANEL")
 		assert.Contains(t, out, "TOOL")
@@ -178,7 +178,7 @@ func TestEvidenceTableCodec_Encode(t *testing.T) {
 		assert.Equal(t, "wide", string(codec.Format()))
 
 		var buf bytes.Buffer
-		require.NoError(t, codec.Encode(&buf, resp))
+		require.NoError(t, codec.Encode(t.Context(), &buf, resp))
 		out := buf.String()
 		assert.Contains(t, out, "TOOL USE ID")
 		assert.Contains(t, out, "toolu_1")
@@ -195,7 +195,7 @@ func TestEvidenceTableCodec_Encode(t *testing.T) {
 		}
 		for _, codec := range []*investigations.EvidenceTableCodec{{}, {Wide: true}} {
 			var buf bytes.Buffer
-			require.NoError(t, codec.Encode(&buf, multiline))
+			require.NoError(t, codec.Encode(t.Context(), &buf, multiline))
 			out := buf.String()
 			// Header + one row: embedded newlines/tabs must not split the row.
 			assert.Len(t, strings.Split(strings.TrimRight(out, "\n"), "\n"), 2)
@@ -208,13 +208,13 @@ func TestEvidenceTableCodec_Encode(t *testing.T) {
 	t.Run("empty", func(t *testing.T) {
 		codec := &investigations.EvidenceTableCodec{}
 		var buf bytes.Buffer
-		require.NoError(t, codec.Encode(&buf, &investigations.EvidenceResponse{Evidence: []investigations.EvidenceItem{}}))
+		require.NoError(t, codec.Encode(t.Context(), &buf, &investigations.EvidenceResponse{Evidence: []investigations.EvidenceItem{}}))
 		assert.Contains(t, buf.String(), "PANEL")
 	})
 
 	t.Run("wrong type", func(t *testing.T) {
 		codec := &investigations.EvidenceTableCodec{}
-		err := codec.Encode(&bytes.Buffer{}, "wrong")
+		err := codec.Encode(t.Context(), &bytes.Buffer{}, "wrong")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "expected *EvidenceResponse")
 	})

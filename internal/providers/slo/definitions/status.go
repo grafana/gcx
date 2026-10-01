@@ -126,7 +126,7 @@ grafana_slo_* metrics.`,
 					cmdio.Info(cmd.OutOrStdout(), "No SLO definitions found.")
 					return nil
 				}
-				return opts.IO.Encode(cmd.OutOrStdout(), []StatusResult{})
+				return opts.IO.Encode(ctx, cmd.OutOrStdout(), []StatusResult{})
 			}
 
 			// Create Prometheus client for metric queries.
@@ -140,7 +140,7 @@ grafana_slo_* metrics.`,
 			// Merge SLO data with metrics.
 			results := BuildStatusResults(slos, metrics)
 
-			return opts.IO.Encode(cmd.OutOrStdout(), results)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), results)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -396,7 +396,7 @@ func (c *StatusTableCodec) Format() format.Format {
 }
 
 // Encode writes the status results as a formatted table.
-func (c *StatusTableCodec) Encode(w io.Writer, v any) error {
+func (c *StatusTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	results, ok := v.([]StatusResult)
 	if !ok {
 		return errors.New("invalid data type for status table codec: expected []StatusResult")
@@ -443,7 +443,7 @@ func (c *statusGraphCodec) Format() format.Format {
 	return "graph"
 }
 
-func (c *statusGraphCodec) Encode(w io.Writer, v any) error {
+func (c *statusGraphCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	results, ok := v.([]StatusResult)
 	if !ok {
 		return errors.New("invalid data type for status graph codec: expected []StatusResult")

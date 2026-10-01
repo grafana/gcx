@@ -1,6 +1,7 @@
 package investigations
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -199,7 +200,7 @@ func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				return opts.IO.Encode(cmd.OutOrStdout(), summaries)
+				return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), summaries)
 			}
 			if err := opts.validateForV2(); err != nil {
 				return err
@@ -222,7 +223,7 @@ func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), list)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), list)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -275,7 +276,7 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 					return err
 				}
 				if ok {
-					return opts.IO.Encode(cmd.OutOrStdout(), state)
+					return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), state)
 				}
 				// Not a v2 investigation; fall through to legacy detail.
 			}
@@ -283,7 +284,7 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), inv)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), inv)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -409,7 +410,7 @@ func newCreateCommand(loader *providers.ConfigLoader) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				return opts.IO.Encode(cmd.OutOrStdout(), resp)
+				return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), resp)
 			}
 			if err := opts.validateForV2(); err != nil {
 				return err
@@ -427,7 +428,7 @@ func newCreateCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), resp)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), resp)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -463,7 +464,7 @@ func newCancelCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := opts.IO.Encode(cmd.OutOrStdout(), resp); err != nil {
+			if err := opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), resp); err != nil {
 				return err
 			}
 			printV2Hint(cmd, loader, fmt.Sprintf("v2 investigations API is enabled — consider `gcx assistant investigations pause %s` (resumable) instead of cancel", args[0]))
@@ -489,7 +490,7 @@ func (c *ListTableCodec) Format() format.Format {
 	return "table"
 }
 
-func (c *ListTableCodec) Encode(w io.Writer, v any) error {
+func (c *ListTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
 	if c.Wide {
 		fmt.Fprintln(tw, "ID\tTITLE\tSTATUS\tCREATED BY\tCREATED\tUPDATED")

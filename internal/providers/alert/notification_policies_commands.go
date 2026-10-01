@@ -54,7 +54,7 @@ func newNotificationPoliciesGetCommand(loader GrafanaConfigLoader) *cobra.Comman
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), policy)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), policy)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -117,7 +117,7 @@ func newNotificationPoliciesSetCommand(loader GrafanaConfigLoader) *cobra.Comman
 				return err
 			}
 			result := cmdio.NewSingleMutation("updated", cmdio.MutationTarget{Kind: "notification-policy"})
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -174,7 +174,7 @@ func newNotificationPoliciesResetCommand(loader GrafanaConfigLoader) *cobra.Comm
 				return err
 			}
 			result := cmdio.NewSingleMutation("reset", cmdio.MutationTarget{Kind: "notification-policy"})
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())

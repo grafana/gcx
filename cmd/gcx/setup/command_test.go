@@ -143,7 +143,7 @@ func TestSetupStatus_OutputContract(t *testing.T) {
 			opts.IO.ErrWriter = &stderr
 
 			doc := setup.StatusDocForTest(tc.enabled, tc.clusters)
-			if err := opts.IO.Encode(&stdout, doc); err != nil {
+			if err := opts.IO.Encode(t.Context(), &stdout, doc); err != nil {
 				t.Fatalf("Encode() = %v", err)
 			}
 

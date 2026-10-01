@@ -8,6 +8,7 @@ package k6
 // get the structured document for free.
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -29,7 +30,7 @@ func (c *successLineCodec) Decode(io.Reader, any) error {
 	return errors.New("text format does not support decoding")
 }
 
-func (c *successLineCodec) Encode(w io.Writer, v any) error {
+func (c *successLineCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	msg, err := c.render(v)
 	if err != nil {
 		return err
@@ -61,7 +62,7 @@ func (c *testRunStatusTextCodec) Decode(io.Reader, any) error {
 	return errors.New("text format does not support decoding")
 }
 
-func (c *testRunStatusTextCodec) Encode(w io.Writer, v any) error {
+func (c *testRunStatusTextCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	run, ok := v.(TestRunStatus)
 	if !ok {
 		return fmt.Errorf("invalid data type for text codec: expected TestRunStatus, got %T", v)

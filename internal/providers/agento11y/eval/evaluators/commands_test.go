@@ -27,7 +27,7 @@ func TestTestTableCodec_Encode(t *testing.T) {
 
 	codec := &evaluators.TestTableCodec{}
 	var buf bytes.Buffer
-	require.NoError(t, codec.Encode(&buf, resp))
+	require.NoError(t, codec.Encode(t.Context(), &buf, resp))
 
 	output := buf.String()
 	assert.Contains(t, output, "KEY")
@@ -52,7 +52,7 @@ func TestTestTableCodec_UTF8Truncation(t *testing.T) {
 
 	codec := &evaluators.TestTableCodec{}
 	var buf bytes.Buffer
-	require.NoError(t, codec.Encode(&buf, resp))
+	require.NoError(t, codec.Encode(t.Context(), &buf, resp))
 
 	output := buf.String()
 	// The output must be valid UTF-8 (no mid-rune slice).
@@ -71,7 +71,7 @@ func TestTestTableCodec_NilPassed(t *testing.T) {
 
 	codec := &evaluators.TestTableCodec{}
 	var buf bytes.Buffer
-	require.NoError(t, codec.Encode(&buf, resp))
+	require.NoError(t, codec.Encode(t.Context(), &buf, resp))
 
 	output := buf.String()
 	assert.Contains(t, output, "sentiment")
@@ -90,7 +90,7 @@ func TestTestTableCodec_NilPassed(t *testing.T) {
 func TestTestTableCodec_WrongType(t *testing.T) {
 	codec := &evaluators.TestTableCodec{}
 	var buf bytes.Buffer
-	err := codec.Encode(&buf, "not-a-response")
+	err := codec.Encode(t.Context(), &buf, "not-a-response")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "expected *EvalTestResponse")
 }

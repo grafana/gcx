@@ -1,6 +1,7 @@
 package scores
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -73,7 +74,7 @@ func NewListScoresCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), scores)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), scores)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -336,7 +337,7 @@ Filter by evaluator, time range, agent, model, or provider as needed.`,
 			// New command: use the list envelope so truncation rides in-band in
 			// list_meta, and report the client-side safety cap (ScoreHardCap).
 			meta := scoreListMeta(len(scores), opts.Limit, hasMore, ScoreHardCap())
-			if err := opts.IO.Encode(cmd.OutOrStdout(), ruleScoresEnvelope{Items: scores, ListMeta: meta}); err != nil {
+			if err := opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), ruleScoresEnvelope{Items: scores, ListMeta: meta}); err != nil {
 				return err
 			}
 			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
@@ -365,7 +366,7 @@ func (c *TableCodec) Format() format.Format {
 	return "table"
 }
 
-func (c *TableCodec) Encode(w io.Writer, v any) error {
+func (c *TableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	// Accept both the bare slice (generation list-scores) and the rule
 	// list-scores envelope, so the codec renders the rows either way.
 	var items []Score

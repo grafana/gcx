@@ -23,7 +23,7 @@ func AssertTableGolden[T any](t *testing.T, table cmdio.Table[T], row T, formats
 			} {
 				t.Run(rows.name, func(t *testing.T) {
 					var buf bytes.Buffer
-					require.NoError(t, table.Codec(name).Encode(&buf, rows.items))
+					require.NoError(t, table.Codec(name).Encode(t.Context(), &buf, rows.items))
 					Golden(t, t.Name(), buf.String())
 				})
 			}

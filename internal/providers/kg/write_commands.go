@@ -1,6 +1,7 @@
 package kg
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -142,7 +143,7 @@ and entries already written stay written if a later entry fails.`,
 			if len(reqs) == 1 {
 				doc = responses[0]
 			}
-			if err := opts.IO.Encode(cmd.OutOrStdout(), doc); err != nil {
+			if err := opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), doc); err != nil {
 				return err
 			}
 			if failure != nil {
@@ -229,7 +230,7 @@ type EntityWriteTableCodec struct{}
 
 func (c *EntityWriteTableCodec) Format() format.Format { return "table" }
 
-func (c *EntityWriteTableCodec) Encode(w io.Writer, v any) error {
+func (c *EntityWriteTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	var responses []*EntityWriteResponse
 	switch resp := v.(type) {
 	case *EntityWriteResponse:
@@ -311,7 +312,7 @@ This command uses the Knowledge Graph write API, which is gated server-side.`,
 				}
 				return err
 			}
-			return ioOpts.Encode(cmd.OutOrStdout(),
+			return ioOpts.Encode(cmd.Context(), cmd.OutOrStdout(),
 				cmdio.NewSingleMutation("deleted", cmdio.MutationTarget{Kind: et, Name: n}))
 		},
 	}
@@ -490,7 +491,7 @@ and entries already written stay written if a later entry fails.`,
 			if len(reqs) == 1 {
 				doc = responses[0]
 			}
-			if err := opts.IO.Encode(cmd.OutOrStdout(), doc); err != nil {
+			if err := opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), doc); err != nil {
 				return err
 			}
 			if failure != nil {
@@ -580,7 +581,7 @@ type RelationshipWriteTableCodec struct{}
 
 func (c *RelationshipWriteTableCodec) Format() format.Format { return "table" }
 
-func (c *RelationshipWriteTableCodec) Encode(w io.Writer, v any) error {
+func (c *RelationshipWriteTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	var responses []*RelationshipWriteResponse
 	switch resp := v.(type) {
 	case *RelationshipWriteResponse:
@@ -663,7 +664,7 @@ This command uses the Knowledge Graph write API, which is gated server-side.`,
 				}
 				return err
 			}
-			return ioOpts.Encode(cmd.OutOrStdout(),
+			return ioOpts.Encode(cmd.Context(), cmd.OutOrStdout(),
 				cmdio.NewSingleMutation("deleted", cmdio.MutationTarget{Kind: "Relationship", Name: relType}))
 		},
 	}

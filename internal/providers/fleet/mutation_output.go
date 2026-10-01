@@ -1,6 +1,7 @@
 package fleet
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -26,7 +27,7 @@ func (c *successLineCodec) Decode(io.Reader, any) error {
 }
 
 // Encode renders the success one-liner for the mutation result.
-func (c *successLineCodec) Encode(w io.Writer, v any) error {
+func (c *successLineCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	line, err := c.render(v)
 	if err != nil {
 		return err

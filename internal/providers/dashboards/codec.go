@@ -1,6 +1,7 @@
 package dashboards
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -57,7 +58,7 @@ func (c *dashboardTableCodec) Decode(_ io.Reader, _ any) error {
 //   - *unstructured.Unstructured   (wrapped in a synthetic list)
 //   - unstructured.Unstructured
 //   - []unstructured.Unstructured
-func (c *dashboardTableCodec) Encode(w io.Writer, v any) error {
+func (c *dashboardTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	items, err := toUnstructuredSlice(v)
 	if err != nil {
 		return err

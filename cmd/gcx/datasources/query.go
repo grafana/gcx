@@ -116,7 +116,7 @@ func (o *genericQueryOpts) run(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	return o.shared.IO.Encode(cmd.OutOrStdout(), resp)
+	return o.shared.IO.Encode(ctx, cmd.OutOrStdout(), resp)
 }
 
 // QueryCmd returns the auto-detecting query command for the datasources group.

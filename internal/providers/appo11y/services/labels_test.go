@@ -47,7 +47,7 @@ func TestLabelsTableCodec_Summary(t *testing.T) {
 	}
 	var buf bytes.Buffer
 	c := &labelsTableCodec{opts: &labelsOpts{}}
-	if err := c.Encode(&buf, resp); err != nil {
+	if err := c.Encode(t.Context(), &buf, resp); err != nil {
 		t.Fatalf("encode err = %v", err)
 	}
 	out := buf.String()
@@ -67,7 +67,7 @@ func TestLabelsTableCodec_LabelDrilldown(t *testing.T) {
 	}
 	var buf bytes.Buffer
 	c := &labelsTableCodec{opts: &labelsOpts{Label: "k8s_cluster_name"}}
-	if err := c.Encode(&buf, resp); err != nil {
+	if err := c.Encode(t.Context(), &buf, resp); err != nil {
 		t.Fatalf("encode err = %v", err)
 	}
 	out := buf.String()

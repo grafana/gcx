@@ -1,6 +1,7 @@
 package assistant
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -22,7 +23,7 @@ func (c *ConversationListCodec) Format() format.Format {
 	return "table"
 }
 
-func (c *ConversationListCodec) Encode(dst io.Writer, value any) error {
+func (c *ConversationListCodec) Encode(ctx context.Context, dst io.Writer, value any) error {
 	chats, ok := value.([]Chat)
 	if !ok {
 		return fmt.Errorf("expected []Chat, got %T", value)

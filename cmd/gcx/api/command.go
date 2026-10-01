@@ -238,7 +238,7 @@ func outputResponse(cmd *cobra.Command, opts *apiOpts, resp *http.Response) erro
 		return err
 	}
 
-	return opts.IO.Encode(cmd.OutOrStdout(), data)
+	return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), data)
 }
 
 // isHTMLResponse reports whether the response Content-Type indicates HTML.

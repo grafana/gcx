@@ -109,7 +109,7 @@ func newListCommand(loader RESTConfigLoader) *cobra.Command {
 				return err
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), typedObjs)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), typedObjs)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -246,7 +246,7 @@ func newGetCommand(loader RESTConfigLoader) *cobra.Command {
 				return err
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), []adapter.TypedObject[FaroApp]{*typedObj})
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), []adapter.TypedObject[FaroApp]{*typedObj})
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -324,7 +324,7 @@ func newCreateCommand(loader RESTConfigLoader) *cobra.Command {
 				Name: created.Spec.Name,
 				ID:   created.Spec.ID,
 			})
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -396,7 +396,7 @@ func newUpdateCommand(loader RESTConfigLoader) *cobra.Command {
 				Name: updated.Spec.Name,
 				ID:   updated.Spec.ID,
 			})
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -448,7 +448,7 @@ func newDeleteCommand(loader RESTConfigLoader) *cobra.Command {
 				Kind: Kind,
 				Name: name,
 			})
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())

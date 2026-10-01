@@ -450,7 +450,7 @@ func TestGroupsStatusOutputContract(t *testing.T) {
 
 		// Byte-identical to the (unchanged) table codec rendering.
 		var want bytes.Buffer
-		require.NoError(t, (&alert.GroupsStatusTableCodec{}).Encode(&want, testStatusGroups()))
+		require.NoError(t, (&alert.GroupsStatusTableCodec{}).Encode(t.Context(), &want, testStatusGroups()))
 		assert.Equal(t, want.String(), stdout)
 	})
 }
@@ -485,7 +485,7 @@ func TestInstancesListOutputContract(t *testing.T) {
 		require.NoError(t, err)
 
 		var want bytes.Buffer
-		require.NoError(t, (alert.InstancesTable().Codec("table")).Encode(&want, []alert.AlertInstanceRecord{{
+		require.NoError(t, (alert.InstancesTable().Codec("table")).Encode(t.Context(), &want, []alert.AlertInstanceRecord{{
 			RuleUID:   "uid-1",
 			RuleName:  "Rule 1",
 			GroupName: "group-1",

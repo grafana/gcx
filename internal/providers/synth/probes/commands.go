@@ -1,6 +1,7 @@
 package probes
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -87,7 +88,7 @@ func newListCommand(loader smcfg.Loader) *cobra.Command {
 			}
 
 			if codec.Format() == "table" {
-				return codec.Encode(cmd.OutOrStdout(), probeList)
+				return codec.Encode(ctx, cmd.OutOrStdout(), probeList)
 			}
 
 			var objs []unstructured.Unstructured
@@ -98,7 +99,7 @@ func newListCommand(loader smcfg.Loader) *cobra.Command {
 				}
 				objs = append(objs, res.ToUnstructured())
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), objs)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), objs)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -164,7 +165,7 @@ func (c *probeCreateCodec) Decode(io.Reader, any) error {
 	return errors.New("text codec does not support decoding")
 }
 
-func (c *probeCreateCodec) Encode(w io.Writer, v any) error {
+func (c *probeCreateCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	r, ok := v.(probeCreateResult)
 	if !ok {
 		return errors.New("invalid data type for probe create codec: expected probeCreateResult")
@@ -237,7 +238,7 @@ func newCreateCommand(loader smcfg.Loader) *cobra.Command {
 				ID:            resp.Probe.ID,
 				Token:         resp.Token,
 			}
-			return opts.IO.Encode(w, result)
+			return opts.IO.Encode(ctx, w, result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -300,7 +301,7 @@ func (c *deleteResultCodec) Decode(io.Reader, any) error {
 	return errors.New("text codec does not support decoding")
 }
 
-func (c *deleteResultCodec) Encode(w io.Writer, v any) error {
+func (c *deleteResultCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	result, ok := v.(deleteBatchResult)
 	if !ok {
 		return errors.New("invalid data type for delete result codec: expected deleteBatchResult")
@@ -317,7 +318,7 @@ func (c *deleteResultCodec) Encode(w io.Writer, v any) error {
 // reportError writes nothing more for an EmittedError.
 func emitPartialResult(cmd *cobra.Command, io *cmdio.Options, result any, cause error) error {
 	cmdio.Error(cmd.ErrOrStderr(), "%v", cause)
-	if err := io.Encode(cmd.OutOrStdout(), result); err != nil {
+	if err := io.Encode(cmd.Context(), cmd.OutOrStdout(), result); err != nil {
 		return err
 	}
 	return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, cause)
@@ -371,7 +372,7 @@ func newDeleteCommand(loader smcfg.Loader) *cobra.Command {
 				result.Summary.Succeeded++
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -418,7 +419,7 @@ func (c *resetTokenCodec) Decode(io.Reader, any) error {
 	return errors.New("text codec does not support decoding")
 }
 
-func (c *resetTokenCodec) Encode(w io.Writer, v any) error {
+func (c *resetTokenCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	r, ok := v.(probeTokenResetResult)
 	if !ok {
 		return errors.New("invalid data type for reset-token codec: expected probeTokenResetResult")
@@ -480,7 +481,7 @@ func newResetTokenCommand(loader smcfg.Loader) *cobra.Command {
 				ID:            updated.Probe.ID,
 				Token:         updated.Token,
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -637,7 +638,7 @@ type probeTableCodec struct{}
 
 func (c *probeTableCodec) Format() format.Format { return "table" }
 
-func (c *probeTableCodec) Encode(w io.Writer, v any) error {
+func (c *probeTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	probeList, ok := v.([]Probe)
 	if !ok {
 		return errors.New("invalid data type for table codec: expected []Probe")

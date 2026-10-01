@@ -1,6 +1,7 @@
 package providers
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	goio "io"
@@ -52,7 +53,7 @@ func newListCommand(pp []coreproviders.Provider) *cobra.Command {
 				items = append(items, providerItem{Name: p.Name(), Description: p.ShortDesc()})
 			}
 
-			return opts.Encode(cmd.OutOrStdout(), items)
+			return opts.Encode(cmd.Context(), cmd.OutOrStdout(), items)
 		},
 	}
 
@@ -68,7 +69,7 @@ type providersTextCodec struct {
 
 func (c *providersTextCodec) Format() format.Format { return "text" }
 
-func (c *providersTextCodec) Encode(output goio.Writer, _ any) error {
+func (c *providersTextCodec) Encode(ctx context.Context, output goio.Writer, _ any) error {
 	if len(c.pp) == 0 {
 		fmt.Fprintf(output, "No providers registered.\n")
 		return nil

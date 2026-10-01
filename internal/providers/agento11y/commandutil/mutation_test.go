@@ -91,7 +91,7 @@ func decodeSingleJSONValue(t *testing.T, raw string) map[string]any {
 func runBatchDelete(t *testing.T, opts *cmdio.Options, ids []string, del func(string) error) (string, string, error) {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
-	err := commandutil.RunBatchDelete(&stdout, &stderr, opts,
+	err := commandutil.RunBatchDelete(t.Context(), &stdout, &stderr, opts,
 		"evaluator", "Deleted evaluator %s", "deleting evaluator %s", ids, del)
 	return stdout.String(), stderr.String(), err
 }
@@ -260,7 +260,7 @@ func TestSilentTextCodec(t *testing.T) {
 	assert.Equal(t, "text", string(codec.Format()))
 
 	var buf bytes.Buffer
-	require.NoError(t, codec.Encode(&buf, cmdio.NewBatchMutation("deleted")))
+	require.NoError(t, codec.Encode(t.Context(), &buf, cmdio.NewBatchMutation("deleted")))
 	assert.Empty(t, buf.String(), "silent text codec must write zero bytes")
 
 	require.Error(t, codec.Decode(nil, nil))

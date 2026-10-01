@@ -145,7 +145,7 @@ func newRulerNamespacesListCommand(loader GrafanaConfigLoader) *cobra.Command {
 				views = append(views, RulerNamespaceView{Namespace: ns, Groups: len(groups), Rules: rules})
 			}
 			sort.Slice(views, func(i, j int) bool { return views[i].Namespace < views[j].Namespace })
-			return opts.IO.Encode(cmd.OutOrStdout(), views)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), views)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -221,7 +221,7 @@ func newRulerNamespacesDeleteCommand(loader GrafanaConfigLoader) *cobra.Command 
 				Kind:      "ruler-namespace",
 				Namespace: args[0],
 			})
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -313,7 +313,7 @@ func newRulerGroupsListCommand(loader GrafanaConfigLoader) *cobra.Command {
 				}
 				return views[i].Group < views[j].Group
 			})
-			return opts.IO.Encode(cmd.OutOrStdout(), views)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), views)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -363,7 +363,7 @@ func newRulerGroupsGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), group)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), group)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -443,7 +443,7 @@ bare rule group. Upserting a group replaces the group with the same name.`,
 				}
 				result.DryRun = true
 				result.Summary.Succeeded = len(groups)
-				return opts.IO.Encode(cmd.OutOrStdout(), result)
+				return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 			}
 
 			// Every group is attempted, so no target is ever left unattempted
@@ -473,13 +473,13 @@ bare rule group. Upserting a group replaces the group with the same name.`,
 				// A genuine partial failure. The complete document goes to
 				// stdout and the EmittedError carries ExitPartialFailure
 				// without emitting a second document.
-				if err := opts.IO.Encode(cmd.OutOrStdout(), result); err != nil {
+				if err := opts.IO.Encode(ctx, cmd.OutOrStdout(), result); err != nil {
 					return err
 				}
 				cmdio.EmitWarn(stderr, failErr.Error())
 				return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, failErr)
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -548,7 +548,7 @@ func newRulerGroupsDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
 				Namespace: args[0],
 				Name:      args[1],
 			})
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())

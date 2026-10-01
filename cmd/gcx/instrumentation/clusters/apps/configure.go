@@ -204,7 +204,7 @@ func emitConfigureResult(
 			fmt.Sprintf("apps configure: configuration applied, but the discovery probe failed: %v", discErr))
 	}
 
-	return opts.IO.Encode(cmd.OutOrStdout(), result)
+	return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 }
 
 // newConfigureCmd is a test-facing constructor that injects a pre-built

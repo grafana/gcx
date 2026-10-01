@@ -150,7 +150,7 @@ func runConfigure(
 		result := instoutput.NewMutationResult("configure", instoutput.Target{Cluster: clusterName})
 		result.Changed = true
 		result.Fields = []instoutput.FieldChange{{Name: "use-defaults", From: "custom", To: "defaults"}}
-		return opts.IO.Encode(w, result)
+		return opts.IO.Encode(ctx, w, result)
 	}
 
 	// RMW mode: set listed flags, preserve unspecified.
@@ -193,7 +193,7 @@ func runConfigure(
 	}
 	post := mutateFn(preResp.Cluster)
 	if equal, _ := rmw.ClusterEqual(preResp.Cluster, post); equal {
-		return opts.IO.Encode(w, instoutput.NewMutationResult("configure", instoutput.Target{Cluster: clusterName}))
+		return opts.IO.Encode(ctx, w, instoutput.NewMutationResult("configure", instoutput.Target{Cluster: clusterName}))
 	}
 
 	err = rmw.Update[instrumentation.Cluster](ctx, getFn, mutateFn, setFn, rmw.ClusterEqual, 2)
@@ -207,5 +207,5 @@ func runConfigure(
 	}
 	result := instoutput.NewMutationResult("configure", instoutput.Target{Cluster: clusterName})
 	result.Changed = true
-	return opts.IO.Encode(w, result)
+	return opts.IO.Encode(ctx, w, result)
 }

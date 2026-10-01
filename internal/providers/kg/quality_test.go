@@ -116,14 +116,14 @@ func TestQualityReportListTable_Encode(t *testing.T) {
 	items := []kg.QualityReportListItem{
 		{EntityName: "svc-a", EntityType: "Service", Env: "prod", QualityPercent: 60, FailedCheckIDs: []string{"span-metrics", "service-logs"}},
 	}
-	require.NoError(t, codec.Encode(&buf, items))
+	require.NoError(t, codec.Encode(t.Context(), &buf, items))
 	out := buf.String()
 	assert.Contains(t, out, "svc-a")
 	assert.Contains(t, out, "60%")
 	assert.Contains(t, out, "span-metrics")
 
 	// Wrong type is a decode-safe error, not a panic.
-	require.Error(t, codec.Encode(&bytes.Buffer{}, "not a slice"))
+	require.Error(t, codec.Encode(t.Context(), &bytes.Buffer{}, "not a slice"))
 	require.Error(t, codec.Decode(&bytes.Buffer{}, nil))
 }
 
@@ -270,7 +270,7 @@ func TestQualityReportTableCodec_Encode(t *testing.T) {
 			},
 		},
 	}
-	require.NoError(t, codec.Encode(&buf, report))
+	require.NoError(t, codec.Encode(t.Context(), &buf, report))
 	out := buf.String()
 	assert.Contains(t, out, "my-service")
 	assert.Contains(t, out, "80%")
@@ -285,5 +285,5 @@ func TestQualityReportTableCodec_Encode(t *testing.T) {
 	// SUCCESS checks are excluded from the footer.
 	assert.NotContains(t, out, "should not show")
 
-	require.Error(t, codec.Encode(&bytes.Buffer{}, "not a report"))
+	require.Error(t, codec.Encode(t.Context(), &bytes.Buffer{}, "not a report"))
 }

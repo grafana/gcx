@@ -108,7 +108,7 @@ Datasource is resolved from -d flag or datasources.influxdb in your context.`,
 				return fmt.Errorf("query failed: %w", err)
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), resp)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), resp)
 		},
 	}
 

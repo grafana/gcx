@@ -69,7 +69,7 @@ func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), templates)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), templates)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -112,7 +112,7 @@ customize it, and create an evaluator with 'evaluators upsert -f'.`,
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), detail)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), detail)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -149,7 +149,7 @@ func newVersionsCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), versions)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), versions)
 		},
 	}
 	opts.setup(cmd.Flags())

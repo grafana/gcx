@@ -159,7 +159,7 @@ func TestTableCodec_MultiSeriesRendersOneRowPerSeries(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	require.NoError(t, (&tableCodec{}).Encode(&buf, res))
+	require.NoError(t, (&tableCodec{}).Encode(t.Context(), &buf, res))
 
 	out := buf.String()
 	assert.Contains(t, out, "LABELS")
@@ -177,7 +177,7 @@ func TestTableCodec_SingleUnlabeledSeriesMatchesLegacyFormat(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	require.NoError(t, (&tableCodec{}).Encode(&buf, res))
+	require.NoError(t, (&tableCodec{}).Encode(t.Context(), &buf, res))
 
 	out := buf.String()
 	assert.NotContains(t, out, "LABELS")

@@ -23,7 +23,7 @@ func TestPatternsTableCodec_TopNAndRollup(t *testing.T) {
 	codec := &patternsTableCodec{wide: false, opts: opts}
 
 	var buf bytes.Buffer
-	require.NoError(t, codec.Encode(&buf, recs))
+	require.NoError(t, codec.Encode(t.Context(), &buf, recs))
 
 	out := buf.String()
 	assert.Contains(t, out, "top")
@@ -45,7 +45,7 @@ func TestPatternsTableCodec_TopZeroShowsAll(t *testing.T) {
 	codec := &patternsTableCodec{wide: false, opts: opts}
 
 	var buf bytes.Buffer
-	require.NoError(t, codec.Encode(&buf, recs))
+	require.NoError(t, codec.Encode(t.Context(), &buf, recs))
 
 	out := buf.String()
 	assert.Contains(t, out, "b")
@@ -87,7 +87,7 @@ func TestSegmentStatsTableCodec(t *testing.T) {
 	codec := &segmentStatsTableCodec{wide: false}
 
 	var buf bytes.Buffer
-	require.NoError(t, codec.Encode(&buf, stats))
+	require.NoError(t, codec.Encode(t.Context(), &buf, stats))
 
 	out := buf.String()
 	lines := strings.Split(strings.TrimSpace(out), "\n")
@@ -114,7 +114,7 @@ func TestPatternsTableCodec_RecommendedRateAsterisk(t *testing.T) {
 	codec := &patternsTableCodec{wide: false, opts: opts}
 
 	var buf bytes.Buffer
-	require.NoError(t, codec.Encode(&buf, recs))
+	require.NoError(t, codec.Encode(t.Context(), &buf, recs))
 
 	out := buf.String()
 	assert.Contains(t, out, "50.00 *")

@@ -364,9 +364,9 @@ func runList(cmd *cobra.Command, client *assistantmcp.Client, namespace string, 
 		if err != nil {
 			return err
 		}
-		return opts.IO.Encode(cmd.OutOrStdout(), envelopeList{Items: items})
+		return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), envelopeList{Items: items})
 	}
-	return opts.IO.Encode(cmd.OutOrStdout(), result.Servers)
+	return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), result.Servers)
 }
 
 type getOpts struct {
@@ -419,9 +419,9 @@ func runGet(cmd *cobra.Command, client *assistantmcp.Client, namespace string, o
 		if err != nil {
 			return err
 		}
-		return opts.IO.Encode(cmd.OutOrStdout(), u.Object)
+		return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), u.Object)
 	}
-	return opts.IO.Encode(cmd.OutOrStdout(), server)
+	return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), server)
 }
 
 type createOpts struct {
@@ -513,7 +513,7 @@ func runCreate(cmd *cobra.Command, crud *adapter.TypedCRUD[mcpserver.MCPServer],
 	if found {
 		if opts.IfNotExists {
 			result := &assistantmcp.MutationResult{Operation: "unchanged", Server: displayServer(existing.Spec)}
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), result)
 		}
 		return fmt.Errorf(
 			"MCP server %q (scope %q) already exists at %s; use `gcx assistant mcp-servers update` to modify it, or --if-not-exists to no-op",
@@ -553,7 +553,7 @@ func finishMutation(cmd *cobra.Command, client *assistantmcp.Client, io *cmdio.O
 			"MCP server %s, but the OAuth requirement check failed: %v — if the server needs OAuth, authorize it in Grafana's Assistant settings",
 			result.Operation, authErr)
 	}
-	if err := io.Encode(cmd.OutOrStdout(), result); err != nil {
+	if err := io.Encode(cmd.Context(), cmd.OutOrStdout(), result); err != nil {
 		return err
 	}
 	if authErr != nil {
@@ -724,7 +724,7 @@ func runDelete(cmd *cobra.Command, crud *adapter.TypedCRUD[mcpserver.MCPServer],
 		return err
 	}
 	result := &assistantmcp.MutationResult{Operation: "deleted", Server: displayServer(current.Spec)}
-	return opts.IO.Encode(cmd.OutOrStdout(), result)
+	return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), result)
 }
 
 // inputFlags holds the flags shared by create and update for building a
@@ -869,7 +869,7 @@ func (c *ListTableCodec) Format() format.Format {
 	return "text"
 }
 
-func (c *ListTableCodec) Encode(dst io.Writer, value any) error {
+func (c *ListTableCodec) Encode(ctx context.Context, dst io.Writer, value any) error {
 	servers, ok := value.([]assistantmcp.Server)
 	if !ok {
 		return fmt.Errorf("expected []mcpservers.Server, got %T", value)

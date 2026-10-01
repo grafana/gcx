@@ -1,6 +1,7 @@
 package pyroscope
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -86,7 +87,7 @@ func DataRangeCmd(loader *providers.ConfigLoader) *cobra.Command {
 				return fmt.Errorf("failed to get data range: %w", err)
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), resp)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), resp)
 		},
 	}
 
@@ -105,7 +106,7 @@ func (c *dataRangeTableCodec) Format() format.Format {
 	return "table"
 }
 
-func (c *dataRangeTableCodec) Encode(w io.Writer, data any) error {
+func (c *dataRangeTableCodec) Encode(ctx context.Context, w io.Writer, data any) error {
 	resp, ok := data.(*pyroscope.ProfileStatsResponse)
 	if !ok {
 		return errors.New("invalid data type for data-range table codec")

@@ -194,7 +194,7 @@ func deleteCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			// or stdout failure does not restore anything.
 			captureBatchVolume(result.Summary, result.DryRun, err)
 
-			if err := opts.IO.Encode(cmd.OutOrStdout(), result); err != nil {
+			if err := opts.IO.Encode(ctx, cmd.OutOrStdout(), result); err != nil {
 				return err
 			}
 

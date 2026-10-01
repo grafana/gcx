@@ -3,6 +3,7 @@
 package versions
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -36,7 +37,7 @@ func (c *versionsTableCodec) Decode(_ io.Reader, _ any) error {
 // Encode writes the versions table to w.
 // It accepts []unstructured.Unstructured (the slice returned after sorting
 // history items by descending generation).
-func (c *versionsTableCodec) Encode(w io.Writer, v any) error {
+func (c *versionsTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	items, err := toVersionsSlice(v)
 	if err != nil {
 		return err

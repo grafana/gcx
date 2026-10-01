@@ -249,7 +249,7 @@ func (h *fleetHelper) newPipelineListCommand() *cobra.Command {
 			// Other formats (yaml/json) convert to K8s envelope Resources
 			// for consistency with get/pull and round-trip support.
 			if opts.IO.OutputFormat == "table" || opts.IO.OutputFormat == "wide" {
-				return opts.IO.Encode(cmd.OutOrStdout(), pipelines)
+				return opts.IO.Encode(ctx, cmd.OutOrStdout(), pipelines)
 			}
 
 			var objs []unstructured.Unstructured
@@ -261,7 +261,7 @@ func (h *fleetHelper) newPipelineListCommand() *cobra.Command {
 				objs = append(objs, res.ToUnstructured())
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), objs)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), objs)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -310,7 +310,7 @@ func (h *fleetHelper) newPipelineGetCommand() *cobra.Command {
 			}
 
 			obj := res.ToUnstructured()
-			return opts.IO.Encode(cmd.OutOrStdout(), &obj)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), &obj)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -411,7 +411,7 @@ func (h *fleetHelper) newPipelineCreateCommand() *cobra.Command {
 				Name: created.Name,
 				ID:   created.ID,
 			})
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags(), singleMutationLine(func(m cmdio.SingleMutation) string {
@@ -459,7 +459,7 @@ func (h *fleetHelper) newPipelineUpdateCommand() *cobra.Command {
 				Name: args[0],
 				ID:   existing.ID,
 			})
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags(), singleMutationLine(func(m cmdio.SingleMutation) string {
@@ -502,7 +502,7 @@ func (h *fleetHelper) newPipelineDeleteCommand() *cobra.Command {
 				Name: args[0],
 				ID:   existing.ID,
 			})
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags(), singleMutationLine(func(m cmdio.SingleMutation) string {
@@ -624,9 +624,9 @@ remote attributes plus the timestamps that the Fleet API reports.`,
 				for i := range collectors {
 					rows[i] = collectors[i].Spec
 				}
-				encodeErr = opts.IO.Encode(cmd.OutOrStdout(), rows)
+				encodeErr = opts.IO.Encode(ctx, cmd.OutOrStdout(), rows)
 			} else {
-				encodeErr = opts.IO.Encode(cmd.OutOrStdout(), collectors)
+				encodeErr = opts.IO.Encode(ctx, cmd.OutOrStdout(), collectors)
 			}
 			if encodeErr != nil {
 				return encodeErr
@@ -690,9 +690,9 @@ the Fleet API reports. Use table or wide output for a human-readable health view
 			}
 
 			if opts.IO.OutputFormat == "table" || opts.IO.OutputFormat == "wide" {
-				return opts.IO.Encode(cmd.OutOrStdout(), []Collector{collector.Spec})
+				return opts.IO.Encode(ctx, cmd.OutOrStdout(), []Collector{collector.Spec})
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), collector)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), collector)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -744,7 +744,7 @@ func (h *fleetHelper) newCollectorCreateCommand() *cobra.Command {
 				Name: created.Name,
 				ID:   created.ID,
 			})
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags(), singleMutationLine(func(m cmdio.SingleMutation) string {
@@ -785,7 +785,7 @@ func (h *fleetHelper) newCollectorUpdateCommand() *cobra.Command {
 				Name: collector.Name,
 				ID:   args[0],
 			})
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags(), singleMutationLine(func(m cmdio.SingleMutation) string {
@@ -819,7 +819,7 @@ func (h *fleetHelper) newCollectorDeleteCommand() *cobra.Command {
 				Kind: CollectorKind,
 				ID:   args[0],
 			})
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags(), singleMutationLine(func(m cmdio.SingleMutation) string {
@@ -895,7 +895,7 @@ func (h *fleetHelper) newTenantGetLimitsCommand() *cobra.Command {
 				return err
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), limits)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), limits)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -929,7 +929,7 @@ func (c *PipelineTableCodec) Format() format.Format {
 }
 
 // Encode writes the pipeline list as a table.
-func (c *PipelineTableCodec) Encode(w io.Writer, v any) error {
+func (c *PipelineTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	pipelines, ok := v.([]Pipeline)
 	if !ok {
 		return errors.New("invalid data type for table codec: expected []Pipeline")
@@ -984,7 +984,7 @@ func (c *CollectorTableCodec) Format() format.Format {
 }
 
 // Encode writes the collector list as a table.
-func (c *CollectorTableCodec) Encode(w io.Writer, v any) error {
+func (c *CollectorTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	collectors, ok := v.([]Collector)
 	if !ok {
 		return errors.New("invalid data type for table codec: expected []Collector")

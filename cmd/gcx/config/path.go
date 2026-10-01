@@ -1,6 +1,7 @@
 package config
 
 import (
+	"context"
 	"errors"
 	"io"
 	"strconv"
@@ -29,7 +30,7 @@ func (c *configPathTableCodec) Decode(io.Reader, any) error {
 	return errors.New("table codec does not support decoding")
 }
 
-func (c *configPathTableCodec) Encode(w io.Writer, value any) error {
+func (c *configPathTableCodec) Encode(ctx context.Context, w io.Writer, value any) error {
 	entries, ok := value.([]configPathEntry)
 	if !ok {
 		return errors.New("invalid data type for config path table codec: expected []configPathEntry")
@@ -81,7 +82,7 @@ func pathCmd(configOpts *Options) *cobra.Command {
 				entries[i], entries[j] = entries[j], entries[i]
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), entries)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), entries)
 		},
 	}
 

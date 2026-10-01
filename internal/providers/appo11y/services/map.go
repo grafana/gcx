@@ -183,7 +183,7 @@ func runMap(loader *providers.ConfigLoader, opts *mapOpts) func(*cobra.Command, 
 		if notFound {
 			emitNoDataHint(cmd.ErrOrStderr(), namespace, name)
 		}
-		if err := opts.IO.Encode(cmd.OutOrStdout(), result); err != nil {
+		if err := opts.IO.Encode(ctx, cmd.OutOrStdout(), result); err != nil {
 			return err
 		}
 		if notFound {
@@ -337,7 +337,7 @@ func (c *serviceMapTableCodec) Decode(io.Reader, any) error {
 	return errors.New("services map table codec does not support decoding")
 }
 
-func (c *serviceMapTableCodec) Encode(w io.Writer, v any) error {
+func (c *serviceMapTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	resp, ok := v.(*ServiceMap)
 	if !ok {
 		return fmt.Errorf("invalid data type for services map table codec: %T", v)
@@ -453,7 +453,7 @@ func (c *serviceMapMermaidCodec) Decode(io.Reader, any) error {
 	return errors.New("services map mermaid codec does not support decoding")
 }
 
-func (c *serviceMapMermaidCodec) Encode(w io.Writer, v any) error {
+func (c *serviceMapMermaidCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	resp, ok := v.(*ServiceMap)
 	if !ok {
 		return fmt.Errorf("invalid data type for services map mermaid codec: %T", v)
@@ -502,7 +502,7 @@ func (c *serviceMapDOTCodec) Decode(io.Reader, any) error {
 	return errors.New("services map dot codec does not support decoding")
 }
 
-func (c *serviceMapDOTCodec) Encode(w io.Writer, v any) error {
+func (c *serviceMapDOTCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	resp, ok := v.(*ServiceMap)
 	if !ok {
 		return fmt.Errorf("invalid data type for services map dot codec: %T", v)

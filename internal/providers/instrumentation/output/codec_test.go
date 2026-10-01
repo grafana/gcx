@@ -148,7 +148,7 @@ func TestClusterTableCodec_Decode_ReturnsError(t *testing.T) {
 func TestClusterTableCodec_Encode_InvalidType(t *testing.T) {
 	t.Parallel()
 
-	err := instroutput.ClusterTable().Codec(cmdio.FormatTable).Encode(&bytes.Buffer{}, "not a slice")
+	err := instroutput.ClusterTable().Codec(cmdio.FormatTable).Encode(t.Context(), &bytes.Buffer{}, "not a slice")
 	require.Error(t, err)
 }
 
@@ -169,7 +169,7 @@ func TestClusterTableCodec_DefaultColumns(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	require.NoError(t, instroutput.ClusterTable().Codec(cmdio.FormatTable).Encode(&buf, clusters))
+	require.NoError(t, instroutput.ClusterTable().Codec(cmdio.FormatTable).Encode(t.Context(), &buf, clusters))
 	out := buf.String()
 
 	// Default columns present in headers.
@@ -217,7 +217,7 @@ func TestClusterTableCodec_DefaultColumns_StatusNormalization(t *testing.T) {
 			t.Parallel()
 			clusters := []instroutput.ClusterView{{Name: "c1", InstrumentationStatus: tc.status}}
 			var buf bytes.Buffer
-			require.NoError(t, instroutput.ClusterTable().Codec(cmdio.FormatTable).Encode(&buf, clusters))
+			require.NoError(t, instroutput.ClusterTable().Codec(cmdio.FormatTable).Encode(t.Context(), &buf, clusters))
 			assert.Contains(t, buf.String(), tc.want)
 		})
 	}
@@ -244,7 +244,7 @@ func TestClusterTableCodec_WideColumns(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	require.NoError(t, instroutput.ClusterTable().Codec(cmdio.FormatWide).Encode(&buf, clusters))
+	require.NoError(t, instroutput.ClusterTable().Codec(cmdio.FormatWide).Encode(t.Context(), &buf, clusters))
 	out := buf.String()
 
 	// Wide adds extra columns.
@@ -277,7 +277,7 @@ func TestClusterTableCodec_EmptySlice(t *testing.T) {
 	t.Parallel()
 
 	var buf bytes.Buffer
-	require.NoError(t, instroutput.ClusterTable().Codec(cmdio.FormatTable).Encode(&buf, []instroutput.ClusterView{}))
+	require.NoError(t, instroutput.ClusterTable().Codec(cmdio.FormatTable).Encode(t.Context(), &buf, []instroutput.ClusterView{}))
 	out := buf.String()
 	// Headers still rendered even for empty slice.
 	assert.Contains(t, out, "NAME")
@@ -305,7 +305,7 @@ func TestAppTableCodec_Decode_ReturnsError(t *testing.T) {
 func TestAppTableCodec_Encode_InvalidType(t *testing.T) {
 	t.Parallel()
 
-	err := instroutput.AppTable().Codec(cmdio.FormatText).Encode(&bytes.Buffer{}, 42)
+	err := instroutput.AppTable().Codec(cmdio.FormatText).Encode(t.Context(), &bytes.Buffer{}, 42)
 	require.Error(t, err)
 }
 
@@ -326,7 +326,7 @@ func TestAppTableCodec_DefaultColumns(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	require.NoError(t, instroutput.AppTable().Codec(cmdio.FormatText).Encode(&buf, apps))
+	require.NoError(t, instroutput.AppTable().Codec(cmdio.FormatText).Encode(t.Context(), &buf, apps))
 	out := buf.String()
 
 	// Default columns present in headers.
@@ -377,7 +377,7 @@ func TestAppTableCodec_WideColumns(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	require.NoError(t, instroutput.AppTable().Codec(cmdio.FormatWide).Encode(&buf, apps))
+	require.NoError(t, instroutput.AppTable().Codec(cmdio.FormatWide).Encode(t.Context(), &buf, apps))
 	out := buf.String()
 
 	// Wide columns present.
@@ -424,7 +424,7 @@ func TestServiceTableCodec_Decode_ReturnsError(t *testing.T) {
 func TestServiceTableCodec_Encode_InvalidType(t *testing.T) {
 	t.Parallel()
 
-	err := instroutput.ServiceTable().Codec(cmdio.FormatText).Encode(&bytes.Buffer{}, struct{}{})
+	err := instroutput.ServiceTable().Codec(cmdio.FormatText).Encode(t.Context(), &bytes.Buffer{}, struct{}{})
 	require.Error(t, err)
 }
 
@@ -444,7 +444,7 @@ func TestServiceTableCodec_DefaultColumns(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	require.NoError(t, instroutput.ServiceTable().Codec(cmdio.FormatText).Encode(&buf, services))
+	require.NoError(t, instroutput.ServiceTable().Codec(cmdio.FormatText).Encode(t.Context(), &buf, services))
 	out := buf.String()
 
 	// Default columns present in headers.
@@ -497,7 +497,7 @@ func TestServiceTableCodec_DisplayNameFallback(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	require.NoError(t, instroutput.ServiceTable().Codec(cmdio.FormatText).Encode(&buf, services))
+	require.NoError(t, instroutput.ServiceTable().Codec(cmdio.FormatText).Encode(t.Context(), &buf, services))
 	out := buf.String()
 
 	// DisplayName and DisplayNamespace used when set.
@@ -527,7 +527,7 @@ func TestServiceTableCodec_WideColumns(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	require.NoError(t, instroutput.ServiceTable().Codec(cmdio.FormatWide).Encode(&buf, services))
+	require.NoError(t, instroutput.ServiceTable().Codec(cmdio.FormatWide).Encode(t.Context(), &buf, services))
 	out := buf.String()
 
 	// Wide columns present.

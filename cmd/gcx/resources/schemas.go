@@ -1,6 +1,7 @@
 package resources
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -115,7 +116,7 @@ func listTypesCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				for _, d := range res {
 					items = append(items, descriptorToMap(d))
 				}
-				return codec.Encode(cmd.OutOrStdout(), map[string]any{"items": items})
+				return codec.Encode(ctx, cmd.OutOrStdout(), map[string]any{"items": items})
 			}
 
 			// Fetch schemas regardless of output format (Pattern 13: format-agnostic
@@ -139,10 +140,10 @@ func listTypesCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				// fetched schemas. "agents" must be here: the agent-mode
 				// default previously fell into the tabular branch, silently
 				// dropping every schema the command had just fetched.
-				return opts.IO.Encode(cmd.OutOrStdout(), descriptorsToNested(res, schemas))
+				return opts.IO.Encode(ctx, cmd.OutOrStdout(), descriptorsToNested(res, schemas))
 			default:
 				// text/table/wide: tabular output.
-				return opts.IO.Encode(cmd.OutOrStdout(), res)
+				return opts.IO.Encode(ctx, cmd.OutOrStdout(), res)
 			}
 		},
 	}
@@ -225,7 +226,7 @@ func (c *tabCodec) Format() format.Format {
 	return "text"
 }
 
-func (c *tabCodec) Encode(output io.Writer, input any) error {
+func (c *tabCodec) Encode(ctx context.Context, output io.Writer, input any) error {
 	descs, ok := input.(resources.Descriptors)
 	if !ok {
 		return fmt.Errorf("expected resources.Descriptors, got %T", input)

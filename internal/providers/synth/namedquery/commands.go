@@ -9,6 +9,7 @@
 package namedquery
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -167,7 +168,7 @@ validated by the backend, which reports the expression it ran.`,
 				Executed: res.ExecutedQuery,
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), out)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), out)
 		},
 	}
 
@@ -275,7 +276,7 @@ type tableCodec struct{}
 
 func (c *tableCodec) Format() format.Format { return "table" }
 
-func (c *tableCodec) Encode(w io.Writer, v any) error {
+func (c *tableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	res, ok := v.(Result)
 	if !ok {
 		return fmt.Errorf("expected Result, got %T", v)

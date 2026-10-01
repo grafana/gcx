@@ -78,7 +78,7 @@ func TestListCommand_RejectsPositionalArgs(t *testing.T) {
 }
 
 func TestEntryTableCodec_WrongType(t *testing.T) {
-	err := (&entryTableCodec{}).Encode(&bytes.Buffer{}, "nope")
+	err := (&entryTableCodec{}).Encode(t.Context(), &bytes.Buffer{}, "nope")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "EntryListEnvelope")
 }

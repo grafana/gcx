@@ -1,6 +1,7 @@
 package cloudwatch
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -71,7 +72,7 @@ func ListRegionsCmd(loader *providers.ConfigLoader) *cobra.Command {
 				return fmt.Errorf("failed to list regions: %w", err)
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), regions)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), regions)
 		},
 	}
 
@@ -88,7 +89,7 @@ type listRegionsTableCodec struct{}
 
 func (c *listRegionsTableCodec) Format() format.Format { return "table" }
 
-func (c *listRegionsTableCodec) Encode(w io.Writer, data any) error {
+func (c *listRegionsTableCodec) Encode(ctx context.Context, w io.Writer, data any) error {
 	regions, ok := data.([]string)
 	if !ok {
 		return fmt.Errorf("listRegionsTableCodec: unexpected type %T", data)

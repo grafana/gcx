@@ -30,7 +30,7 @@ type mutationTextCodec struct{}
 
 func (c *mutationTextCodec) Format() format.Format { return "text" }
 
-func (c *mutationTextCodec) Encode(_ io.Writer, v any) error {
+func (c *mutationTextCodec) Encode(ctx context.Context, _ io.Writer, v any) error {
 	switch v.(type) {
 	case cmdio.SingleMutation, cmdio.BatchMutation:
 		return nil
@@ -162,7 +162,7 @@ func (h *metricsHelper) recommendationsListCommand() *cobra.Command {
 			if recs == nil {
 				recs = []MetricRecommendation{}
 			}
-			return opts.Encode(cmd.OutOrStdout(), recs)
+			return opts.Encode(ctx, cmd.OutOrStdout(), recs)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -258,7 +258,7 @@ func (h *metricsHelper) recommendationsDiffCommand() *cobra.Command {
 				entries = append(entries, entry)
 			}
 
-			return opts.Encode(cmd.OutOrStdout(), entries)
+			return opts.Encode(ctx, cmd.OutOrStdout(), entries)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -361,7 +361,7 @@ func applyAllRecommendations(cmd *cobra.Command, client *Client, opts *recommend
 		cmdio.Info(stderr, "Dry run — would apply all recommendations (%d rules): %d add, %d update, %d remove, %d keep.",
 			len(rules), counts["add"], counts["update"], counts["remove"], counts["keep"])
 		result.DryRun = true
-		return opts.Encode(cmd.OutOrStdout(), result)
+		return opts.Encode(ctx, cmd.OutOrStdout(), result)
 	}
 
 	proceed, err := providers.ConfirmDestructive(ctx, cmd.InOrStdin(), stderr, opts.Force,
@@ -385,7 +385,7 @@ func applyAllRecommendations(cmd *cobra.Command, client *Client, opts *recommend
 
 	cmdio.Success(stderr, "Applied all recommendations (%d rules): %d add, %d update, %d remove, %d keep.",
 		len(rules), counts["add"], counts["update"], counts["remove"], counts["keep"])
-	return opts.Encode(cmd.OutOrStdout(), result)
+	return opts.Encode(ctx, cmd.OutOrStdout(), result)
 }
 
 type applyItem struct {
@@ -454,7 +454,7 @@ func applySelectiveRecommendations(cmd *cobra.Command, client *Client, opts *rec
 		result := cmdio.NewBatchMutation("applied")
 		result.Summary = cmdio.MutationSummary{Succeeded: actionCount, Skipped: len(items) - actionCount}
 		result.DryRun = true
-		return opts.Encode(cmd.OutOrStdout(), result)
+		return opts.Encode(ctx, cmd.OutOrStdout(), result)
 	}
 
 	if actionCount > 0 {
@@ -510,7 +510,7 @@ func applySelectiveRecommendations(cmd *cobra.Command, client *Client, opts *rec
 			len(failed), len(items), strings.Join(failed, ", "))
 	}
 
-	if err := opts.Encode(cmd.OutOrStdout(), result); err != nil {
+	if err := opts.Encode(ctx, cmd.OutOrStdout(), result); err != nil {
 		return err
 	}
 
@@ -633,7 +633,7 @@ func (h *metricsHelper) rulesListCommand() *cobra.Command {
 			// -o json/yaml must emit exactly one document ([] rather than
 			// nothing). The table codec prints nothing for an empty list,
 			// keeping default human stdout byte-identical.
-			return opts.Encode(cmd.OutOrStdout(), rules)
+			return opts.Encode(ctx, cmd.OutOrStdout(), rules)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -676,7 +676,7 @@ func (h *metricsHelper) rulesGetCommand() *cobra.Command {
 				return err
 			}
 
-			return opts.Encode(cmd.OutOrStdout(), obj.Spec)
+			return opts.Encode(ctx, cmd.OutOrStdout(), obj.Spec)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -751,7 +751,7 @@ func (h *metricsHelper) rulesCreateCommand() *cobra.Command {
 			} else {
 				cmdio.Success(cmd.ErrOrStderr(), "Created rule for %s.", opts.Metric)
 			}
-			return opts.Encode(cmd.OutOrStdout(), created.Spec)
+			return opts.Encode(ctx, cmd.OutOrStdout(), created.Spec)
 		},
 	}
 	opts.setup(cmd)
@@ -847,7 +847,7 @@ func (h *metricsHelper) rulesUpdateCommand() *cobra.Command {
 			} else {
 				cmdio.Success(cmd.ErrOrStderr(), "Updated rule for %s.", args[0])
 			}
-			return opts.Encode(cmd.OutOrStdout(), updated.Spec)
+			return opts.Encode(ctx, cmd.OutOrStdout(), updated.Spec)
 		},
 	}
 	opts.setup(cmd)
@@ -916,7 +916,7 @@ func (h *metricsHelper) rulesDeleteCommand() *cobra.Command {
 			changed := true
 			result := cmdio.NewSingleMutation("deleted", cmdio.MutationTarget{Kind: "rule", Name: metric, Namespace: opts.Segment})
 			result.Changed = &changed
-			return opts.Encode(cmd.OutOrStdout(), result)
+			return opts.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -938,7 +938,7 @@ func (c *rulesTableCodec) Format() format.Format {
 	return "table"
 }
 
-func (c *rulesTableCodec) Encode(w io.Writer, v any) error {
+func (c *rulesTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	rules, ok := v.([]MetricRule)
 	if !ok {
 		return fmt.Errorf("adaptive-metrics: rules table codec: expected []MetricRule, got %T", v)
@@ -1034,7 +1034,7 @@ func (c *recommendationsTableCodec) Format() format.Format {
 	return "table"
 }
 
-func (c *recommendationsTableCodec) Encode(w io.Writer, v any) error {
+func (c *recommendationsTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	recs, ok := v.([]MetricRecommendation)
 	if !ok {
 		return fmt.Errorf("adaptive-metrics: recommendations table codec: expected []MetricRecommendation, got %T", v)
@@ -1088,7 +1088,7 @@ type recommendationsDiffTableCodec struct{}
 
 func (c *recommendationsDiffTableCodec) Format() format.Format { return "table" }
 
-func (c *recommendationsDiffTableCodec) Encode(w io.Writer, v any) error {
+func (c *recommendationsDiffTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	entries, ok := v.([]diffEntry)
 	if !ok {
 		return fmt.Errorf("adaptive-metrics: diff table codec: expected []diffEntry, got %T", v)
@@ -1234,7 +1234,7 @@ func (h *metricsHelper) segmentsListCommand() *cobra.Command {
 			if segments == nil {
 				segments = []MetricSegment{}
 			}
-			return opts.Encode(cmd.OutOrStdout(), segments)
+			return opts.Encode(ctx, cmd.OutOrStdout(), segments)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -1276,7 +1276,7 @@ func (h *metricsHelper) segmentsGetCommand() *cobra.Command {
 				return err
 			}
 
-			return opts.Encode(cmd.OutOrStdout(), segment)
+			return opts.Encode(ctx, cmd.OutOrStdout(), segment)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -1334,7 +1334,7 @@ func (h *metricsHelper) segmentsCreateCommand() *cobra.Command {
 			}
 
 			cmdio.Success(cmd.ErrOrStderr(), "Created segment %s.", created.ID)
-			return opts.Encode(cmd.OutOrStdout(), created)
+			return opts.Encode(ctx, cmd.OutOrStdout(), created)
 		},
 	}
 	opts.setup(cmd)
@@ -1412,7 +1412,7 @@ func (h *metricsHelper) segmentsUpdateCommand() *cobra.Command {
 			}
 
 			cmdio.Success(cmd.ErrOrStderr(), "Updated segment %s.", id)
-			return opts.Encode(cmd.OutOrStdout(), updated)
+			return opts.Encode(ctx, cmd.OutOrStdout(), updated)
 		},
 	}
 	opts.setup(cmd)
@@ -1475,7 +1475,7 @@ func (h *metricsHelper) segmentsDeleteCommand() *cobra.Command {
 			changed := true
 			result := cmdio.NewSingleMutation("deleted", cmdio.MutationTarget{Kind: "segment", ID: id})
 			result.Changed = &changed
-			return opts.Encode(cmd.OutOrStdout(), result)
+			return opts.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -1497,7 +1497,7 @@ func (c *segmentsTableCodec) Format() format.Format {
 	return "table"
 }
 
-func (c *segmentsTableCodec) Encode(w io.Writer, v any) error {
+func (c *segmentsTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	segments, ok := v.([]MetricSegment)
 	if !ok {
 		// Also accept *MetricSegment for single-item returns.
@@ -1629,7 +1629,7 @@ func (h *metricsHelper) exemptionsListCommand() *cobra.Command {
 				if entries == nil {
 					entries = []ExemptionsBySegmentEntry{}
 				}
-				return opts.Encode(cmd.OutOrStdout(), entries)
+				return opts.Encode(ctx, cmd.OutOrStdout(), entries)
 			}
 
 			exemptions, err := client.ListExemptions(ctx, opts.Segment)
@@ -1656,7 +1656,7 @@ func (h *metricsHelper) exemptionsListCommand() *cobra.Command {
 			if exemptions == nil {
 				exemptions = []MetricExemption{}
 			}
-			return opts.Encode(cmd.OutOrStdout(), exemptions)
+			return opts.Encode(ctx, cmd.OutOrStdout(), exemptions)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -1702,7 +1702,7 @@ func (h *metricsHelper) exemptionsGetCommand() *cobra.Command {
 			}
 
 			normalizeExemption(exemption)
-			return opts.Encode(cmd.OutOrStdout(), exemption)
+			return opts.Encode(ctx, cmd.OutOrStdout(), exemption)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -1802,7 +1802,7 @@ func (h *metricsHelper) exemptionsCreateCommand() *cobra.Command {
 			} else {
 				cmdio.Success(cmd.ErrOrStderr(), "Created exemption %s.", created.ID)
 			}
-			return opts.Encode(cmd.OutOrStdout(), created)
+			return opts.Encode(ctx, cmd.OutOrStdout(), created)
 		},
 	}
 	opts.setup(cmd)
@@ -1904,7 +1904,7 @@ func (h *metricsHelper) exemptionsUpdateCommand() *cobra.Command {
 				return fmt.Errorf("re-fetch after update: %w", err)
 			}
 			normalizeExemption(fresh)
-			return opts.Encode(cmd.OutOrStdout(), fresh)
+			return opts.Encode(ctx, cmd.OutOrStdout(), fresh)
 		},
 	}
 	opts.setup(cmd)
@@ -1973,7 +1973,7 @@ func (h *metricsHelper) exemptionsDeleteCommand() *cobra.Command {
 			changed := true
 			result := cmdio.NewSingleMutation("deleted", cmdio.MutationTarget{Kind: "exemption", ID: id, Namespace: opts.Segment})
 			result.Changed = &changed
-			return opts.Encode(cmd.OutOrStdout(), result)
+			return opts.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -1995,7 +1995,7 @@ func (c *exemptionsTableCodec) Format() format.Format {
 	return "table"
 }
 
-func (c *exemptionsTableCodec) Encode(w io.Writer, v any) error {
+func (c *exemptionsTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	// Handle []MetricExemption, *MetricExemption (single get), and []ExemptionsBySegmentEntry (--all-segments).
 	switch data := v.(type) {
 	case []MetricExemption:

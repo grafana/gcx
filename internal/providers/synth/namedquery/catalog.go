@@ -107,7 +107,7 @@ not available on older deployments.`,
 				})
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), summaries)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), summaries)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -170,7 +170,7 @@ Requires Synthetic Monitoring app v1.62.0 or later.`,
 					continue
 				}
 
-				return opts.IO.Encode(cmd.OutOrStdout(), QueryTypeDetail{
+				return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), QueryTypeDetail{
 					Name:        qt.Name,
 					Description: qt.Description,
 					Required:    requiredOrEmpty(qt.Required),
@@ -221,7 +221,7 @@ type queryTypeDetailCodec struct{}
 
 func (c *queryTypeDetailCodec) Format() format.Format { return "table" }
 
-func (c *queryTypeDetailCodec) Encode(w io.Writer, v any) error {
+func (c *queryTypeDetailCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	detail, ok := v.(QueryTypeDetail)
 	if !ok {
 		return fmt.Errorf("expected QueryTypeDetail, got %T", v)

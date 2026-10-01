@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -96,7 +97,7 @@ func runSeries(cmd *cobra.Command, loader *providers.ConfigLoader, opts *seriesO
 		return fmt.Errorf("failed to list series: %w", err)
 	}
 
-	return opts.IO.Encode(cmd.OutOrStdout(), resp)
+	return opts.IO.Encode(ctx, cmd.OutOrStdout(), resp)
 }
 
 func seriesCmd(loader *providers.ConfigLoader) *cobra.Command {
@@ -139,7 +140,7 @@ func (c *seriesTableCodec) Format() format.Format {
 	return "table"
 }
 
-func (c *seriesTableCodec) Encode(w io.Writer, data any) error {
+func (c *seriesTableCodec) Encode(ctx context.Context, w io.Writer, data any) error {
 	resp, ok := data.(*prometheus.SeriesResponse)
 	if !ok {
 		return errors.New("invalid data type for series table codec")

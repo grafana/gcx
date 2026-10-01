@@ -70,7 +70,7 @@ func TestGetPartialFailure_AtomicStdout(t *testing.T) {
 
 			var stdout, stderr bytes.Buffer
 			opts.IO.ErrWriter = &stderr
-			err := resources.WriteGetOutputForTest(&stdout, &stderr, opts, res, output)
+			err := resources.WriteGetOutputForTest(t.Context(), &stdout, &stderr, opts, res, output)
 
 			// The error must be an EmittedError carrying ExitPartialFailure:
 			// the document on stdout is complete, and reportError must not
@@ -158,7 +158,7 @@ func TestGetPartialFailure_JQKeepsShape(t *testing.T) {
 
 			var stdout, stderr bytes.Buffer
 			opts.IO.ErrWriter = &stderr
-			err := resources.WriteGetOutputForTest(&stdout, &stderr, opts, res, output)
+			err := resources.WriteGetOutputForTest(t.Context(), &stdout, &stderr, opts, res, output)
 
 			var emitted *gcxerrors.EmittedError
 			if !errors.As(err, &emitted) {

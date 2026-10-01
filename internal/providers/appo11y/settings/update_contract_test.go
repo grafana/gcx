@@ -75,7 +75,7 @@ func TestUpdateReceipt_OutputContract(t *testing.T) {
 
 			opts := newUpdateOptsForTest(t, tc.output)
 			var stdout bytes.Buffer
-			require.NoError(t, writeUpdateReceipt(&stdout, opts))
+			require.NoError(t, writeUpdateReceipt(t.Context(), &stdout, opts))
 
 			if tc.wantDoc != nil {
 				dec := json.NewDecoder(strings.NewReader(stdout.String()))
@@ -105,7 +105,7 @@ func TestUpdateReceipt_ExplicitYAMLOverride(t *testing.T) {
 
 	opts := newUpdateOptsForTest(t, "yaml")
 	var stdout bytes.Buffer
-	require.NoError(t, writeUpdateReceipt(&stdout, opts))
+	require.NoError(t, writeUpdateReceipt(t.Context(), &stdout, opts))
 	assert.Contains(t, stdout.String(), "type: gcx.mutation")
 	assert.Contains(t, stdout.String(), "action: updated")
 	assert.NotContains(t, stdout.String(), "✔", "explicit -o yaml must not carry the styled human line")

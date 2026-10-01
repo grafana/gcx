@@ -230,8 +230,8 @@ func NewDescribeAllCommand(loader RESTConfigLoader) *cobra.Command {
 }
 
 // EncodeDiagnoseResult wraps encodeDiagnoseResult for testing.
-func EncodeDiagnoseResult(w io.Writer, ioOpts *cmdio.Options, result any, failed, total int) error {
-	return encodeDiagnoseResult(w, ioOpts, result, failed, total)
+func EncodeDiagnoseResult(ctx context.Context, w io.Writer, ioOpts *cmdio.Options, result any, failed, total int) error {
+	return encodeDiagnoseResult(ctx, w, ioOpts, result, failed, total)
 }
 
 // NewKGOpenLinkForTest wraps newKGOpenLink for encoding-level tests (the full

@@ -137,5 +137,5 @@ func runList(
 		})
 	}
 
-	return instrumout.EncodeList(outOpts, out, views)
+	return instrumout.EncodeList(ctx, outOpts, out, views)
 }

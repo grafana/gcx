@@ -134,7 +134,7 @@ func LabelsCmdWithDefault(loader *providers.ConfigLoader, defaultDS string) *cob
 					return fmt.Errorf("failed to get label values: %w", err)
 				}
 
-				return opts.IO.Encode(cmd.OutOrStdout(), resp)
+				return opts.IO.Encode(ctx, cmd.OutOrStdout(), resp)
 			}
 
 			resp, err := client.Labels(ctx, datasourceUID, selectors)
@@ -142,7 +142,7 @@ func LabelsCmdWithDefault(loader *providers.ConfigLoader, defaultDS string) *cob
 				return fmt.Errorf("failed to get labels: %w", err)
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), resp)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), resp)
 		},
 	}
 

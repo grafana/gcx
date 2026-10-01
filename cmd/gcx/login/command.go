@@ -306,7 +306,6 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 	stdin, stdinErr := host.StdinFile(cmd.Context())
 	isInteractive := stdinErr == nil && term.IsTerminal(int(stdin.Fd())) &&
 		!flags.Yes &&
-
 		!agent.IsAgentMode()
 	grafanaTokenExplicit := credentialProvided(ctx, flags.Token, "GRAFANA_TOKEN")
 	cloudTokenExplicit := credentialProvided(ctx, flags.CloudToken, "GRAFANA_CLOUD_TOKEN")
@@ -1831,7 +1830,7 @@ func printResult(cmd *cobra.Command, ioOpts *cmdio.Options, server string, resul
 		StackSlug:      result.StackSlug,
 		HasCloudToken:  result.HasCloudToken,
 	}
-	if err := ioOpts.Encode(cmd.OutOrStdout(), lr); err != nil {
+	if err := ioOpts.Encode(cmd.Context(), cmd.OutOrStdout(), lr); err != nil {
 		return err
 	}
 
@@ -1861,7 +1860,7 @@ type loginTextCodec struct{}
 
 func (c *loginTextCodec) Format() format.Format { return "text" }
 
-func (c *loginTextCodec) Encode(w io.Writer, value any) error {
+func (c *loginTextCodec) Encode(ctx context.Context, w io.Writer, value any) error {
 	lr, ok := value.(LoginResult)
 	if !ok {
 		return fmt.Errorf("login text codec: unsupported type %T", value)

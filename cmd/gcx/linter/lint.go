@@ -181,7 +181,7 @@ func lint(cmd *cobra.Command, inputPaths []string, opts lintOpts) error {
 		return err
 	}
 
-	if err := opts.IO.Encode(cmd.OutOrStdout(), report); err != nil {
+	if err := opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), report); err != nil {
 		return err
 	}
 
@@ -201,9 +201,9 @@ type reporterCodec struct {
 	reporter linter.Reporter
 }
 
-func (c *reporterCodec) Encode(output io.Writer, input any) error {
+func (c *reporterCodec) Encode(ctx context.Context, output io.Writer, input any) error {
 	//nolint:forcetypeassert
-	return c.reporter.Publish(context.Background(), output, input.(linter.Report))
+	return c.reporter.Publish(ctx, output, input.(linter.Report))
 }
 
 func (c *reporterCodec) Decode(_ io.Reader, _ any) error {

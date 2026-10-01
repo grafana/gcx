@@ -64,7 +64,7 @@ func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), agents)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), agents)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -103,7 +103,7 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), detail)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), detail)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -140,7 +140,7 @@ func newVersionsCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), versions)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), versions)
 		},
 	}
 	opts.setup(cmd.Flags())

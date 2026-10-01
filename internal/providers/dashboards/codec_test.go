@@ -114,7 +114,7 @@ func TestDashboardTableCodec_Encode_Default(t *testing.T) {
 			codec := dashboards.NewDashboardTableCodecForTest(false, "")
 
 			var buf bytes.Buffer
-			if err := codec.Encode(&buf, list); err != nil {
+			if err := codec.Encode(t.Context(), &buf, list); err != nil {
 				t.Fatalf("Encode() error = %v", err)
 			}
 
@@ -201,7 +201,7 @@ func TestDashboardTableCodec_Encode_Wide(t *testing.T) {
 			codec := dashboards.NewDashboardTableCodecForTest(true, tt.grafanaURL)
 
 			var buf bytes.Buffer
-			if err := codec.Encode(&buf, list); err != nil {
+			if err := codec.Encode(t.Context(), &buf, list); err != nil {
 				t.Fatalf("Encode() error = %v", err)
 			}
 

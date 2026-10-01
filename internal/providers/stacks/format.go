@@ -1,6 +1,7 @@
 package stacks
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -61,9 +62,9 @@ func (c *stackTableCodec) Format() format.Format {
 	return "table"
 }
 
-func (c *stackTableCodec) Encode(w io.Writer, v any) error {
+func (c *stackTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	if p, ok := v.(dryRunPreview); ok {
-		dryRunSummary(w, p.Method, p.Endpoint, p.Request)
+		dryRunSummary(ctx, w, p.Method, p.Endpoint, p.Request)
 		return nil
 	}
 
@@ -111,7 +112,7 @@ type regionTableCodec struct{}
 
 func (c *regionTableCodec) Format() format.Format { return "table" }
 
-func (c *regionTableCodec) Encode(w io.Writer, v any) error {
+func (c *regionTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	regions, ok := v.([]cloud.Region)
 	if !ok {
 		return errors.New("invalid data type for table codec: expected []cloud.Region")
@@ -129,12 +130,12 @@ func (c *regionTableCodec) Decode(_ io.Reader, _ any) error {
 }
 
 // dryRunSummary prints a human-readable dry-run preview.
-func dryRunSummary(w io.Writer, method, endpoint string, body any) {
+func dryRunSummary(ctx context.Context, w io.Writer, method, endpoint string, body any) {
 	fmt.Fprintf(w, "Dry run: %s %s\n", method, endpoint)
 	if body != nil {
 		fmt.Fprintln(w)
 		codec := format.NewJSONCodec()
-		_ = codec.Encode(w, body)
+		_ = codec.Encode(ctx, w, body)
 	}
 }
 
@@ -146,7 +147,7 @@ type deleteTextCodec struct{}
 
 func (c *deleteTextCodec) Format() format.Format { return "text" }
 
-func (c *deleteTextCodec) Encode(w io.Writer, v any) error {
+func (c *deleteTextCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	m, ok := v.(cmdio.SingleMutation)
 	if !ok {
 		return errors.New("invalid data type for text codec: expected SingleMutation")

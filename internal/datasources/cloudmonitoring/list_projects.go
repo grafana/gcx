@@ -1,6 +1,7 @@
 package cloudmonitoring
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -70,7 +71,7 @@ func ListProjectsCmd(loader *providers.ConfigLoader) *cobra.Command {
 				return fmt.Errorf("failed to list projects: %w", err)
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), projects)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), projects)
 		},
 	}
 
@@ -87,7 +88,7 @@ type listProjectsTableCodec struct{}
 
 func (c *listProjectsTableCodec) Format() format.Format { return "table" }
 
-func (c *listProjectsTableCodec) Encode(w io.Writer, data any) error {
+func (c *listProjectsTableCodec) Encode(ctx context.Context, w io.Writer, data any) error {
 	projects, ok := data.([]gcmclient.Project)
 	if !ok {
 		return fmt.Errorf("listProjectsTableCodec: unexpected type %T", data)

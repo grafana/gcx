@@ -1,6 +1,7 @@
 package reports
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -171,7 +172,7 @@ metrics, and computes combined SLI and error budget per report.`,
 			// Build report-level status results.
 			results := BuildReportStatusResults(reports, sloIndex, sloResultIndex)
 
-			return opts.IO.Encode(cmd.OutOrStdout(), results)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), results)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -296,7 +297,7 @@ func (c *ReportStatusTableCodec) Format() format.Format {
 	return "table"
 }
 
-func (c *ReportStatusTableCodec) Encode(w io.Writer, v any) error {
+func (c *ReportStatusTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	results, ok := v.([]ReportStatusResult)
 	if !ok {
 		return errors.New("invalid data type for report status table codec: expected []ReportStatusResult")
@@ -335,7 +336,7 @@ func (c *ReportStatusGraphCodec) Format() format.Format {
 	return "graph"
 }
 
-func (c *ReportStatusGraphCodec) Encode(w io.Writer, v any) error {
+func (c *ReportStatusGraphCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	results, ok := v.([]ReportStatusResult)
 	if !ok {
 		return errors.New("invalid data type for report status graph codec: expected []ReportStatusResult")

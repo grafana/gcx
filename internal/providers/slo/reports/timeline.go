@@ -1,6 +1,7 @@
 package reports
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -197,7 +198,7 @@ grafana_slo_sli_window metrics.`,
 				points = make(map[string][]definitions.SLOTimeSeriesPoint)
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), ReportTimelinePayload{
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), ReportTimelinePayload{
 				Reports:  rpts,
 				SLOIndex: sloIndex,
 				Points:   points,
@@ -227,7 +228,7 @@ type ReportTimelineGraphCodec struct{}
 func (c *ReportTimelineGraphCodec) Format() format.Format { return "graph" }
 
 // Encode writes per-report SLI trend line charts.
-func (c *ReportTimelineGraphCodec) Encode(w io.Writer, v any) error {
+func (c *ReportTimelineGraphCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	payload, ok := v.(ReportTimelinePayload)
 	if !ok {
 		return fmt.Errorf("reportTimelineGraphCodec: expected ReportTimelinePayload, got %T", v)
@@ -319,7 +320,7 @@ type ReportTimelineTableCodec struct{}
 func (c *ReportTimelineTableCodec) Format() format.Format { return "table" }
 
 // Encode writes per-report SLI trends as a table with one row per (report, SLO, timestamp).
-func (c *ReportTimelineTableCodec) Encode(w io.Writer, v any) error {
+func (c *ReportTimelineTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	payload, ok := v.(ReportTimelinePayload)
 	if !ok {
 		return fmt.Errorf("reportTimelineTableCodec: expected ReportTimelinePayload, got %T", v)

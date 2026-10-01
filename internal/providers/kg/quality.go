@@ -1,6 +1,7 @@
 package kg
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -126,7 +127,7 @@ func newQualityListCommand(loader RESTConfigLoader) *cobra.Command {
 				fmt.Fprintf(cmd.ErrOrStderr(), "hint: page %d of %d (%d total reports) — use --page/--page-size to see more\n",
 					page.Number+1, page.TotalPages, page.TotalElements)
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), page.Content)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), page.Content)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -191,7 +192,7 @@ func newQualityGetCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), report)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), report)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -234,7 +235,7 @@ type QualityReportTableCodec struct{}
 
 func (c *QualityReportTableCodec) Format() format.Format { return "table" }
 
-func (c *QualityReportTableCodec) Encode(w io.Writer, v any) error {
+func (c *QualityReportTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	r, ok := v.(*QualityReport)
 	if !ok {
 		return errors.New("invalid data type for table codec: expected *QualityReport")

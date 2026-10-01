@@ -97,7 +97,7 @@ func TestFieldSelectCodec_SingleUnstructured(t *testing.T) {
 
 			item := unstructured.Unstructured{Object: tc.obj}
 			var buf bytes.Buffer
-			err := codec.Encode(&buf, item)
+			err := codec.Encode(t.Context(), &buf, item)
 			require.NoError(t, err)
 
 			var got map[string]any
@@ -148,7 +148,7 @@ func TestFieldSelectCodec_ListWrapping(t *testing.T) {
 			}
 
 			var buf bytes.Buffer
-			err := codec.Encode(&buf, list)
+			err := codec.Encode(t.Context(), &buf, list)
 			require.NoError(t, err)
 
 			var got map[string]any
@@ -182,7 +182,7 @@ func TestFieldSelectCodec_UnstructuredListPreservesPaginationMetadata(t *testing
 	list.SetResourceVersion("rv-1")
 
 	var buf bytes.Buffer
-	require.NoError(t, codec.Encode(&buf, list))
+	require.NoError(t, codec.Encode(t.Context(), &buf, list))
 
 	var got map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &got))
@@ -207,7 +207,7 @@ func TestFieldSelectCodec_PrintItemsType(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	require.NoError(t, codec.Encode(&buf, input))
+	require.NoError(t, codec.Encode(t.Context(), &buf, input))
 
 	var got map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &got))
@@ -232,7 +232,7 @@ func TestFieldSelectCodec_PreservesArrayShape(t *testing.T) {
 		{"name": "bar", "extra": "y"},
 	}
 	var buf bytes.Buffer
-	require.NoError(t, codec.Encode(&buf, input))
+	require.NoError(t, codec.Encode(t.Context(), &buf, input))
 
 	// Must be a JSON array, not {"items":[...]}
 	var result []map[string]any
@@ -342,7 +342,7 @@ func TestFieldSelectCodec_WithValidator(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			codec := cmdio.NewFieldSelectCodecWithValidator(tc.fields, validator)
 			var buf bytes.Buffer
-			err := codec.Encode(&buf, tc.value)
+			err := codec.Encode(t.Context(), &buf, tc.value)
 			if tc.wantErr {
 				require.Error(t, err)
 				var fieldErr cmdio.UnknownFieldSelectionError
@@ -440,7 +440,7 @@ func TestFieldSelectCodec_ScalarArrayEnvelopeKeepsListMeta(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	require.NoError(t, cmdio.NewFieldSelectCodec([]string{"data"}).Encode(&buf, truncated))
+	require.NoError(t, cmdio.NewFieldSelectCodec([]string{"data"}).Encode(t.Context(), &buf, truncated))
 
 	var got map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &got))
@@ -452,7 +452,7 @@ func TestFieldSelectCodec_ScalarArrayEnvelopeKeepsListMeta(t *testing.T) {
 
 	buf.Reset()
 	complete := &scalarEnvelope{Data: []string{"a_total"}}
-	require.NoError(t, cmdio.NewFieldSelectCodec([]string{"data"}).Encode(&buf, complete))
+	require.NoError(t, cmdio.NewFieldSelectCodec([]string{"data"}).Encode(t.Context(), &buf, complete))
 
 	got = nil
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &got))

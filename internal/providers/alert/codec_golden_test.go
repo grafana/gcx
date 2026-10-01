@@ -38,10 +38,10 @@ func TestAlertTableGolden(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			require.NoError(t, tt.codec.Encode(&buf, tt.rows))
+			require.NoError(t, tt.codec.Encode(t.Context(), &buf, tt.rows))
 			testutils.Golden(t, tt.name, buf.String())
 			buf.Reset()
-			require.NoError(t, tt.codec.Encode(&buf, tt.empty))
+			require.NoError(t, tt.codec.Encode(t.Context(), &buf, tt.empty))
 			testutils.Golden(t, tt.name+"_empty", buf.String())
 		})
 	}

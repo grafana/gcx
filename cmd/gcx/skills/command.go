@@ -1,6 +1,7 @@
 package skills
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	goio "io"
@@ -113,7 +114,7 @@ func newInstallCommand(source fs.FS, catalog []byte) *cobra.Command {
 				return err
 			}
 			emitLifecycleNotices(cmd.ErrOrStderr(), result.Notices)
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), result)
 		},
 	}
 
@@ -196,7 +197,7 @@ func renderInstallResultText(dst goio.Writer, result installResult, status strin
 	return nil
 }
 
-func (c *installTextCodec) Encode(dst goio.Writer, value any) error {
+func (c *installTextCodec) Encode(ctx context.Context, dst goio.Writer, value any) error {
 	result, err := decodeInstallResult(value, "install")
 	if err != nil {
 		return err
@@ -263,7 +264,7 @@ func newUpdateCommand(source fs.FS, catalog []byte) *cobra.Command {
 				return err
 			}
 			emitLifecycleNotices(cmd.ErrOrStderr(), result.Notices)
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), result)
 		},
 	}
 
@@ -276,7 +277,7 @@ type updateTextCodec struct{}
 
 func (c *updateTextCodec) Format() format.Format { return "text" }
 
-func (c *updateTextCodec) Encode(dst goio.Writer, value any) error {
+func (c *updateTextCodec) Encode(ctx context.Context, dst goio.Writer, value any) error {
 	result, err := decodeInstallResult(value, "update")
 	if err != nil {
 		return err
@@ -337,7 +338,7 @@ func newListCommand(source fs.FS, catalog []byte) *cobra.Command {
 				return err
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), result)
 		},
 	}
 
@@ -354,7 +355,7 @@ type listTextCodec struct{}
 
 func (c *listTextCodec) Format() format.Format { return "text" }
 
-func (c *listTextCodec) Encode(dst goio.Writer, value any) error {
+func (c *listTextCodec) Encode(ctx context.Context, dst goio.Writer, value any) error {
 	var result listResult
 	switch v := value.(type) {
 	case listResult:
@@ -464,7 +465,7 @@ By default the skill's SKILL.md body is printed. Pass a reference path (e.g. ref
 			if result.Status == skillops.Deprecated {
 				emitLifecycleNotices(cmd.ErrOrStderr(), []skillops.LifecycleNotice{{Name: name, CatalogEntry: result.CatalogEntry}})
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), result)
 		},
 	}
 
@@ -479,7 +480,7 @@ type getTextCodec struct{}
 
 func (c *getTextCodec) Format() format.Format { return "text" }
 
-func (c *getTextCodec) Encode(dst goio.Writer, value any) error {
+func (c *getTextCodec) Encode(ctx context.Context, dst goio.Writer, value any) error {
 	var result getResult
 	switch v := value.(type) {
 	case getResult:
@@ -574,7 +575,7 @@ func newUninstallCommand(source fs.FS, catalog []byte) *cobra.Command {
 				return err
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), result)
 		},
 	}
 
@@ -589,7 +590,7 @@ type uninstallTextCodec struct{}
 
 func (c *uninstallTextCodec) Format() format.Format { return "text" }
 
-func (c *uninstallTextCodec) Encode(dst goio.Writer, value any) error {
+func (c *uninstallTextCodec) Encode(ctx context.Context, dst goio.Writer, value any) error {
 	var result uninstallResult
 	switch v := value.(type) {
 	case uninstallResult:

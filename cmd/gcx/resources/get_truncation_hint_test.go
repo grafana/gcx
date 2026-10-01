@@ -89,7 +89,7 @@ func TestGetTruncationHint(t *testing.T) {
 
 			var stdout, stderr bytes.Buffer
 			opts.IO.ErrWriter = &stderr
-			if err := resources.WriteGetOutputForTest(&stdout, &stderr, opts, res, output); err != nil {
+			if err := resources.WriteGetOutputForTest(t.Context(), &stdout, &stderr, opts, res, output); err != nil {
 				t.Fatalf("writeGetOutput() = %v, want nil", err)
 			}
 			if stdout.Len() == 0 {

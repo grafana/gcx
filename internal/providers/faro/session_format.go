@@ -2,6 +2,7 @@ package faro
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -34,7 +35,7 @@ func (sessionDumpCodec) Decode(io.Reader, any) error {
 	return errors.New("text codec does not support decoding")
 }
 
-func (sessionDumpCodec) Encode(w io.Writer, v any) error {
+func (sessionDumpCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	switch d := v.(type) {
 	case string:
 		_, err := io.WriteString(w, d)

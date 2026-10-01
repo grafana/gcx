@@ -277,7 +277,7 @@ func getCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				return deeplink.Open(ctx, url)
 			}
 
-			return writeGetOutput(cmd.OutOrStdout(), cmd.ErrOrStderr(), opts, res, output)
+			return writeGetOutput(ctx, cmd.OutOrStdout(), cmd.ErrOrStderr(), opts, res, output)
 		},
 	}
 
@@ -290,13 +290,13 @@ func getCmd(configOpts *cmdconfig.Options) *cobra.Command {
 // output mode (--json field selection, single object, list envelope, or
 // table) and surfaces the truncation hint on stderr. Split from RunE so the
 // output path is testable without a live server.
-func writeGetOutput(stdout, stderr io.Writer, opts *getOpts, res *FetchResponse, output unstructured.UnstructuredList) error {
+func writeGetOutput(ctx context.Context, stdout, stderr io.Writer, opts *getOpts, res *FetchResponse, output unstructured.UnstructuredList) error {
 	// --json field1,field2: use FieldSelectCodec for output. The truncation
 	// hint must fire on this path too — field-selected output is truncated by
 	// the same per-resource-type limit as every other mode — but, as on the
 	// path below, only after a successful encode.
 	if len(opts.IO.JSONFields) > 0 {
-		err := writeFieldSelect(stdout, stderr, opts, res, output)
+		err := writeFieldSelect(ctx, stdout, stderr, opts, res, output)
 		// The truncation hint fires whenever the document was written
 		// successfully — including the partial-failure case, which returns
 		// an EmittedError precisely because the document is complete.
@@ -338,7 +338,7 @@ func writeGetOutput(stdout, stderr io.Writer, opts *getOpts, res *FetchResponse,
 		// Avoid printing a list of results if a single resource is being pulled,
 		// and we are not using the table output format.
 		if res.IsSingleTarget && len(output.Items) == 1 {
-			encodeErr = opts.IO.Encode(stdout, output.Items[0].Object)
+			encodeErr = opts.IO.Encode(ctx, stdout, output.Items[0].Object)
 		} else {
 			// For JSON / YAML output we don't want to have "object" keys in the output,
 			// so use the custom printItems type instead.
@@ -348,10 +348,10 @@ func writeGetOutput(stdout, stderr io.Writer, opts *getOpts, res *FetchResponse,
 			for i, item := range output.Items {
 				formatted.Items[i] = item.Object
 			}
-			encodeErr = opts.IO.Encode(stdout, formatted)
+			encodeErr = opts.IO.Encode(ctx, stdout, formatted)
 		}
 	} else {
-		encodeErr = opts.IO.Encode(stdout, output)
+		encodeErr = opts.IO.Encode(ctx, stdout, output)
 	}
 
 	if encodeErr != nil {
@@ -396,7 +396,7 @@ func emitGetTruncationHint(stderr io.Writer, opts *getOpts, res *FetchResponse) 
 // writeFieldSelect handles --json field1,field2 output for the get command.
 // It uses FieldSelectCodec to emit only selected fields, and emits a combined
 // {"items": [...], "error": {...}} envelope (FR-012) on partial failure in agent mode.
-func writeFieldSelect(out, stderr io.Writer, opts *getOpts, res *FetchResponse, output unstructured.UnstructuredList) error {
+func writeFieldSelect(ctx context.Context, out, stderr io.Writer, opts *getOpts, res *FetchResponse, output unstructured.UnstructuredList) error {
 	codec := cmdio.NewFieldSelectCodec(opts.IO.JSONFields)
 	hasPartialFailure := opts.OnError.FailOnErrors() && res.PullSummary.FailedCount() > 0
 
@@ -421,9 +421,9 @@ func writeFieldSelect(out, stderr io.Writer, opts *getOpts, res *FetchResponse, 
 
 	var encodeErr error
 	if res.IsSingleTarget && len(output.Items) == 1 {
-		encodeErr = codec.Encode(out, output.Items[0])
+		encodeErr = codec.Encode(ctx, out, output.Items[0])
 	} else {
-		encodeErr = codec.Encode(out, output)
+		encodeErr = codec.Encode(ctx, out, output)
 	}
 	if encodeErr != nil {
 		return encodeErr
@@ -452,7 +452,7 @@ func (c *tableCodec) Format() format.Format {
 	return "text"
 }
 
-func (c *tableCodec) Encode(output io.Writer, input any) error {
+func (c *tableCodec) Encode(ctx context.Context, output io.Writer, input any) error {
 	//nolint:forcetypeassert
 	items := input.(unstructured.UnstructuredList)
 

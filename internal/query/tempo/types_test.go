@@ -27,7 +27,7 @@ func TestBaselineResultJSONFieldSelectionTargetsCandidates(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	require.NoError(t, cmdio.NewFieldSelectCodec([]string{"traceID", "errorCount"}).Encode(&out, result))
+	require.NoError(t, cmdio.NewFieldSelectCodec([]string{"traceID", "errorCount"}).Encode(t.Context(), &out, result))
 
 	assert.JSONEq(t, `{
 		"seedTraceID": "seed",

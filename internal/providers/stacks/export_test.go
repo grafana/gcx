@@ -2,6 +2,7 @@ package stacks
 
 import (
 	"bytes"
+	"context"
 	"io"
 
 	"github.com/grafana/gcx/internal/cloud"
@@ -58,41 +59,41 @@ func NewTestListRegionsCommandWithLoader(loader *providers.ConfigLoader) *cobra.
 func ExportLabelsFromFlag(labels []string) (map[string]string, error) { return labelsFromFlag(labels) }
 
 // ExportDryRunSummary exposes dryRunSummary for external tests.
-func ExportDryRunSummary(w io.Writer, method, endpoint string, body any) {
-	dryRunSummary(w, method, endpoint, body)
+func ExportDryRunSummary(ctx context.Context, w io.Writer, method, endpoint string, body any) {
+	dryRunSummary(ctx, w, method, endpoint, body)
 }
 
 // ExportStackTableCodec returns a stackTableCodec for external tests.
 func ExportStackTableCodec(wide bool) interface {
-	Encode(w io.Writer, v any) error
+	Encode(ctx context.Context, w io.Writer, v any) error
 } {
 	return &stackTableCodec{Wide: wide}
 }
 
 // ExportRegionTableCodec returns a regionTableCodec for external tests.
 func ExportRegionTableCodec() interface {
-	Encode(w io.Writer, v any) error
+	Encode(ctx context.Context, w io.Writer, v any) error
 } {
 	return &regionTableCodec{}
 }
 
 // ExportEncodeStackTable encodes stacks using the table codec and returns the output.
-func ExportEncodeStackTable(stacks []cloud.StackInfo, wide bool) (string, error) {
+func ExportEncodeStackTable(ctx context.Context, stacks []cloud.StackInfo, wide bool) (string, error) {
 	var buf bytes.Buffer
-	err := (&stackTableCodec{Wide: wide}).Encode(&buf, stacks)
+	err := (&stackTableCodec{Wide: wide}).Encode(ctx, &buf, stacks)
 	return buf.String(), err
 }
 
 // ExportEncodeStackTableSingle encodes a single stack using the table codec.
-func ExportEncodeStackTableSingle(stack cloud.StackInfo) (string, error) {
+func ExportEncodeStackTableSingle(ctx context.Context, stack cloud.StackInfo) (string, error) {
 	var buf bytes.Buffer
-	err := (&stackTableCodec{}).Encode(&buf, stack)
+	err := (&stackTableCodec{}).Encode(ctx, &buf, stack)
 	return buf.String(), err
 }
 
 // ExportEncodeRegionTable encodes regions using the table codec and returns the output.
-func ExportEncodeRegionTable(regions []cloud.Region) (string, error) {
+func ExportEncodeRegionTable(ctx context.Context, regions []cloud.Region) (string, error) {
 	var buf bytes.Buffer
-	err := (&regionTableCodec{}).Encode(&buf, regions)
+	err := (&regionTableCodec{}).Encode(ctx, &buf, regions)
 	return buf.String(), err
 }

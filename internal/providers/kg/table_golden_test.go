@@ -34,7 +34,7 @@ func TestTableGolden(t *testing.T) {
 				value  any
 			}{{"", tc.rows}, {"_empty", tc.empty}} {
 				var buf bytes.Buffer
-				require.NoError(t, tc.codec.Encode(&buf, data.value))
+				require.NoError(t, tc.codec.Encode(t.Context(), &buf, data.value))
 				testutils.Golden(t, tc.name+data.suffix, buf.String())
 			}
 		})

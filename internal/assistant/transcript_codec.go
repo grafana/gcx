@@ -1,6 +1,7 @@
 package assistant
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -15,7 +16,7 @@ func (c *ConversationTextCodec) Format() format.Format {
 	return "text"
 }
 
-func (c *ConversationTextCodec) Encode(dst io.Writer, value any) error {
+func (c *ConversationTextCodec) Encode(ctx context.Context, dst io.Writer, value any) error {
 	transcript, ok := value.(ConversationTranscript)
 	if !ok {
 		return fmt.Errorf("expected ConversationTranscript, got %T", value)

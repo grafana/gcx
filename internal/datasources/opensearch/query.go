@@ -167,7 +167,7 @@ func executeQuery(cmd *cobra.Command, opts *queryOpts, resolved *resolvedQuery, 
 	unavailableMsg, failedOpenMsg := dsquery.ExploreMessages(exploreSubject)
 
 	return dsquery.EncodeAndHandleExplore(cmd, func() error {
-		return opts.IO.Encode(cmd.OutOrStdout(), resp)
+		return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), resp)
 	}, share, dsquery.ExploreLink{
 		URL:            exploreURL,
 		UnavailableMsg: unavailableMsg,

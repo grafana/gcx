@@ -1,6 +1,7 @@
 package output
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	goio "io"
@@ -74,7 +75,7 @@ func (c *FieldSelectCodec) Format() format.Format {
 // If a validator was configured (via NewFieldSelectCodecWithValidator), it is
 // invoked before any field extraction. If the validator returns an error,
 // Encode returns that error immediately.
-func (c *FieldSelectCodec) Encode(dst goio.Writer, value any) error {
+func (c *FieldSelectCodec) Encode(ctx context.Context, dst goio.Writer, value any) error {
 	if c.validator != nil {
 		if err := c.validator(c.fields); err != nil {
 			return err
@@ -87,23 +88,23 @@ func (c *FieldSelectCodec) Encode(dst goio.Writer, value any) error {
 		for i, item := range v.Items {
 			items[i] = extractFields(item.Object, c.fields)
 		}
-		return c.json.Encode(dst, listFieldSelectionOutput(items, paginationMetadataFromUnstructuredList(v)))
+		return c.json.Encode(ctx, dst, listFieldSelectionOutput(items, paginationMetadataFromUnstructuredList(v)))
 
 	case *unstructured.UnstructuredList:
 		if v == nil {
-			return c.json.Encode(dst, listFieldSelectionOutput(nil, nil))
+			return c.json.Encode(ctx, dst, listFieldSelectionOutput(nil, nil))
 		}
 		items := make([]map[string]any, len(v.Items))
 		for i, item := range v.Items {
 			items[i] = extractFields(item.Object, c.fields)
 		}
-		return c.json.Encode(dst, listFieldSelectionOutput(items, paginationMetadataFromUnstructuredList(*v)))
+		return c.json.Encode(ctx, dst, listFieldSelectionOutput(items, paginationMetadataFromUnstructuredList(*v)))
 
 	case unstructured.Unstructured:
-		return c.json.Encode(dst, extractFields(v.Object, c.fields))
+		return c.json.Encode(ctx, dst, extractFields(v.Object, c.fields))
 
 	case *unstructured.Unstructured:
-		return c.json.Encode(dst, extractFields(v.Object, c.fields))
+		return c.json.Encode(ctx, dst, extractFields(v.Object, c.fields))
 
 	case map[string]any:
 		// A dynamic map is treated as a list envelope only when it carries
@@ -118,11 +119,11 @@ func (c *FieldSelectCodec) Encode(dst goio.Writer, value any) error {
 		if _, ok := v[ListMetaKey]; ok {
 			if m, err := toMap(v); err == nil && hasListMetaEntry(m) {
 				if out, ok := c.envelopeFieldSelection(m); ok {
-					return c.json.Encode(dst, out)
+					return c.json.Encode(ctx, dst, out)
 				}
 			}
 		}
-		return c.json.Encode(dst, extractFields(v, c.fields))
+		return c.json.Encode(ctx, dst, extractFields(v, c.fields))
 
 	default:
 		// For arbitrary types: marshal → map → extract fields.
@@ -142,7 +143,7 @@ func (c *FieldSelectCodec) Encode(dst goio.Writer, value any) error {
 				out := make(map[string]any, len(m))
 				maps.Copy(out, m)
 				out[key] = extracted
-				return c.json.Encode(dst, out)
+				return c.json.Encode(ctx, dst, out)
 			}
 		}
 		if err != nil {
@@ -157,14 +158,14 @@ func (c *FieldSelectCodec) Encode(dst goio.Writer, value any) error {
 				extracted[i] = extractFields(item, c.fields)
 			}
 			// Preserve array shape: output [...] not {"items":[...]}
-			return c.json.Encode(dst, extracted)
+			return c.json.Encode(ctx, dst, extracted)
 		}
 
 		if out, ok := c.envelopeFieldSelection(m); ok {
-			return c.json.Encode(dst, out)
+			return c.json.Encode(ctx, dst, out)
 		}
 
-		return c.json.Encode(dst, extractFields(m, c.fields))
+		return c.json.Encode(ctx, dst, extractFields(m, c.fields))
 	}
 }
 

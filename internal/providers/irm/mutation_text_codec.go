@@ -1,6 +1,7 @@
 package irm
 
 import (
+	"context"
 	"errors"
 	"io"
 
@@ -28,7 +29,7 @@ func (c *singleMutationTextCodec) Decode(io.Reader, any) error {
 	return errors.New("text codec does not support decoding")
 }
 
-func (c *singleMutationTextCodec) Encode(w io.Writer, v any) error {
+func (c *singleMutationTextCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	m, ok := v.(cmdio.SingleMutation)
 	if !ok {
 		return errors.New("invalid data type for text codec: expected SingleMutation")

@@ -158,7 +158,7 @@ func newListSubcommand[T adapter.ResourceNamer](
 				return err
 			}
 
-			return lo.IO.Encode(cmd.OutOrStdout(), objs)
+			return lo.IO.Encode(ctx, cmd.OutOrStdout(), objs)
 		},
 	}
 	lo.setup(cmd.Flags(), resource)
@@ -191,7 +191,7 @@ func newGetSubcommand[T adapter.ResourceNamer](
 				return err
 			}
 
-			return go2.IO.Encode(cmd.OutOrStdout(), typedObj.Spec)
+			return go2.IO.Encode(ctx, cmd.OutOrStdout(), typedObj.Spec)
 		},
 	}
 	go2.setup(cmd.Flags())
@@ -231,7 +231,7 @@ func newCreateSubcommand[T adapter.ResourceNamer](
 				return err
 			}
 
-			return mo.IO.Encode(cmd.OutOrStdout(), result.Spec)
+			return mo.IO.Encode(ctx, cmd.OutOrStdout(), result.Spec)
 		},
 	}
 	mo.setup(cmd.Flags())
@@ -270,7 +270,7 @@ func newUpdateSubcommand[T adapter.ResourceNamer](
 				return err
 			}
 
-			return mo.IO.Encode(cmd.OutOrStdout(), result.Spec)
+			return mo.IO.Encode(ctx, cmd.OutOrStdout(), result.Spec)
 		},
 	}
 	mo.setup(cmd.Flags())
@@ -320,7 +320,7 @@ func newDeleteSubcommand[T adapter.ResourceNamer](
 			result := cmdio.NewSingleMutation("deleted", cmdio.MutationTarget{Kind: kind, ID: id})
 			changed := true
 			result.Changed = &changed
-			return do.IO.Encode(cmd.OutOrStdout(), result)
+			return do.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 	do.setup(cmd.Flags(), label)
@@ -601,7 +601,7 @@ func newOrganizationsCmd(loader OnCallConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), org)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), org)
 		},
 	}
 	opts.setup(getCmd.Flags())
@@ -1083,7 +1083,7 @@ func (c *alertGroupTableCodec) Format() format.Format {
 	return "table"
 }
 
-func (c *alertGroupTableCodec) Encode(w io.Writer, v any) error {
+func (c *alertGroupTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	// Accept three shapes:
 	//   - `alertGroupItemsEnvelope` — what `alert-groups list` passes
 	//     (JSON shape `{"items": [...]}`; the table view renders the items
@@ -1348,7 +1348,7 @@ func alertRuleCell(env alertEnvelope) string {
 	return "-"
 }
 
-func (c *alertTableCodec) Encode(w io.Writer, v any) error {
+func (c *alertTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	// Accept the items envelope for `alert-groups list-alerts` plus
 	// the bare slice form (back-compat for tests / legacy callers).
 	var envs []alertEnvelope

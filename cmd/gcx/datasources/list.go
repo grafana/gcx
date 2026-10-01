@@ -1,6 +1,7 @@
 package datasources
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -121,7 +122,7 @@ func listCmd() *cobra.Command {
 
 			// Pattern 13: single shape for all formats. The table codec extracts
 			// .Datasources to render rows; JSON/YAML serialize the envelope.
-			if err := opts.IO.Encode(cmd.OutOrStdout(), &datasourceListResult{Datasources: infos, ListMeta: meta}); err != nil {
+			if err := opts.IO.Encode(ctx, cmd.OutOrStdout(), &datasourceListResult{Datasources: infos, ListMeta: meta}); err != nil {
 				return err
 			}
 			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
@@ -161,7 +162,7 @@ func (c *datasourceTableCodec) Format() format.Format {
 	return "table"
 }
 
-func (c *datasourceTableCodec) Encode(w io.Writer, data any) error {
+func (c *datasourceTableCodec) Encode(ctx context.Context, w io.Writer, data any) error {
 	result, ok := data.(*datasourceListResult)
 	if !ok {
 		return errors.New("invalid data type for table codec")

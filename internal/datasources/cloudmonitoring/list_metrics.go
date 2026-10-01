@@ -1,6 +1,7 @@
 package cloudmonitoring
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -87,7 +88,7 @@ unfiltered listings page through every metric in the project and can be slow).`,
 				return fmt.Errorf("failed to list metrics: %w", err)
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), descriptors)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), descriptors)
 		},
 	}
 
@@ -104,7 +105,7 @@ type listMetricsTableCodec struct{}
 
 func (c *listMetricsTableCodec) Format() format.Format { return "table" }
 
-func (c *listMetricsTableCodec) Encode(w io.Writer, data any) error {
+func (c *listMetricsTableCodec) Encode(ctx context.Context, w io.Writer, data any) error {
 	descriptors, ok := data.([]gcmclient.MetricDescriptor)
 	if !ok {
 		return fmt.Errorf("listMetricsTableCodec: unexpected type %T", data)

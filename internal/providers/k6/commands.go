@@ -210,7 +210,7 @@ func newProjectsListCommand(loader CloudConfigLoader) *cobra.Command {
 			}
 
 			if opts.IO.OutputFormat == "table" || opts.IO.OutputFormat == "wide" {
-				return opts.IO.Encode(cmd.OutOrStdout(), projects)
+				return opts.IO.Encode(ctx, cmd.OutOrStdout(), projects)
 			}
 			var objs []unstructured.Unstructured
 			for _, p := range projects {
@@ -220,7 +220,7 @@ func newProjectsListCommand(loader CloudConfigLoader) *cobra.Command {
 				}
 				objs = append(objs, res.ToUnstructured())
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), objs)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), objs)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -239,7 +239,7 @@ func (c *ProjectTableCodec) Format() format.Format {
 	return "table"
 }
 
-func (c *ProjectTableCodec) Encode(w io.Writer, v any) error {
+func (c *ProjectTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	projects, ok := v.([]Project)
 	if !ok {
 		return errors.New("invalid data type for table codec: expected []Project")
@@ -329,7 +329,7 @@ func newProjectsGetCommand(loader CloudConfigLoader) *cobra.Command {
 				return fmt.Errorf("failed to convert project to resource: %w", convErr)
 			}
 			obj := res.ToUnstructured()
-			return opts.IO.Encode(cmd.OutOrStdout(), &obj)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), &obj)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -407,7 +407,7 @@ func newProjectsCreateCommand(loader CloudConfigLoader) *cobra.Command {
 			// document (the created object) for both humans and agents.
 			cmdio.Success(cmd.ErrOrStderr(), "Created project %q (id=%d)", created.Name, created.ID)
 			createdObj := createdRes.ToUnstructured()
-			return opts.IO.Encode(cmd.OutOrStdout(), &createdObj)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), &createdObj)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -485,7 +485,7 @@ func newProjectsUpdateCommand(loader CloudConfigLoader) *cobra.Command {
 			}
 
 			result := cmdio.NewSingleMutation("updated", cmdio.MutationTarget{Kind: "project", ID: strconv.Itoa(id)})
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -527,7 +527,7 @@ func newProjectsDeleteCommand(loader CloudConfigLoader) *cobra.Command {
 				return err
 			}
 			result := cmdio.NewSingleMutation("deleted", cmdio.MutationTarget{Kind: "project", ID: strconv.Itoa(id)})
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -600,7 +600,7 @@ func newTestsListCommand(loader CloudConfigLoader) *cobra.Command {
 					return err
 				}
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), tests)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), tests)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -619,7 +619,7 @@ func (c *LoadTestTableCodec) Format() format.Format {
 	return "table"
 }
 
-func (c *LoadTestTableCodec) Encode(w io.Writer, v any) error {
+func (c *LoadTestTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	tests, ok := v.([]LoadTest)
 	if !ok {
 		return errors.New("invalid data type for table codec: expected []LoadTest")
@@ -693,7 +693,7 @@ func newTestsGetCommand(loader CloudConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), test)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), test)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -749,7 +749,7 @@ Hours (VUh). See ` + docs.PerformanceTestingInvoice + `.`,
 			// Status note goes to stderr: stdout carries exactly one result
 			// document (the created object) for both humans and agents.
 			cmdio.Success(cmd.ErrOrStderr(), "Created load test %q (id=%d)", test.Name, test.ID)
-			return opts.IO.Encode(cmd.OutOrStdout(), test)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), test)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -807,7 +807,7 @@ func newTestsUpdateCommand(loader CloudConfigLoader) *cobra.Command {
 			}
 
 			result := cmdio.NewSingleMutation("updated", cmdio.MutationTarget{Kind: "load-test", ID: strconv.Itoa(id)})
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -861,7 +861,7 @@ func newTestsUpdateScriptCommand(loader CloudConfigLoader) *cobra.Command {
 			}
 
 			result := cmdio.NewSingleMutation("updated-script", cmdio.MutationTarget{Kind: "load-test", ID: strconv.Itoa(id)})
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -904,7 +904,7 @@ func newDeleteByIDCommand(loader CloudConfigLoader, spec deleteByIDSpec) *cobra.
 				return err
 			}
 			result := cmdio.NewSingleMutation(spec.operation, cmdio.MutationTarget{Kind: spec.targetKind, ID: strconv.Itoa(id)})
-			return opts.Encode(cmd.OutOrStdout(), result)
+			return opts.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 	opts.RegisterCustomCodec("text", singleMutationTextCodec(spec.successText))
@@ -1019,7 +1019,7 @@ func newRunsListCommand(loader CloudConfigLoader) *cobra.Command {
 				return err
 			}
 			runs = adapter.TruncateSlice(runs, opts.Limit)
-			return opts.IO.Encode(cmd.OutOrStdout(), runs)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), runs)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -1031,7 +1031,7 @@ type TestRunTableCodec struct{}
 
 func (c *TestRunTableCodec) Format() format.Format { return "table" }
 
-func (c *TestRunTableCodec) Encode(w io.Writer, v any) error {
+func (c *TestRunTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	runs, ok := v.([]TestRunStatus)
 	if !ok {
 		return errors.New("invalid data type for table codec: expected []TestRunStatus")
@@ -1127,7 +1127,7 @@ func newEnvVarsListCommand(loader CloudConfigLoader) *cobra.Command {
 				return err
 			}
 			envVars = adapter.TruncateSlice(envVars, opts.Limit)
-			return opts.IO.Encode(cmd.OutOrStdout(), envVars)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), envVars)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -1139,7 +1139,7 @@ type EnvVarTableCodec struct{}
 
 func (c *EnvVarTableCodec) Format() format.Format { return "table" }
 
-func (c *EnvVarTableCodec) Encode(w io.Writer, v any) error {
+func (c *EnvVarTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	envVars, ok := v.([]EnvVar)
 	if !ok {
 		return errors.New("invalid data type for table codec: expected []EnvVar")
@@ -1225,7 +1225,7 @@ func newEnvVarsCreateCommand(loader CloudConfigLoader) *cobra.Command {
 				Name: created.Name,
 				ID:   strconv.Itoa(created.ID),
 			})
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -1292,7 +1292,7 @@ func newEnvVarsUpdateCommand(loader CloudConfigLoader) *cobra.Command {
 			}
 
 			result := cmdio.NewSingleMutation("updated", cmdio.MutationTarget{Kind: "env-var", ID: strconv.Itoa(id)})
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -1378,7 +1378,7 @@ type ScheduleTableCodec struct{}
 
 func (c *ScheduleTableCodec) Format() format.Format { return "table" }
 
-func (c *ScheduleTableCodec) Encode(w io.Writer, v any) error {
+func (c *ScheduleTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	schedules, ok := v.([]Schedule)
 	if !ok {
 		return errors.New("invalid data type for table codec: expected []Schedule")
@@ -1445,7 +1445,7 @@ func newSchedulesListCommand(loader CloudConfigLoader) *cobra.Command {
 				return err
 			}
 			schedules = adapter.TruncateSlice(schedules, opts.Limit)
-			return opts.IO.Encode(cmd.OutOrStdout(), schedules)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), schedules)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -1484,7 +1484,7 @@ func newSchedulesGetCommand(loader CloudConfigLoader) *cobra.Command { //nolint:
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), schedule)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), schedule)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -1545,7 +1545,7 @@ func newSchedulesCreateCommand(loader CloudConfigLoader) *cobra.Command {
 			}
 
 			result := cmdio.NewSingleMutation("created", cmdio.MutationTarget{Kind: "schedule", ID: strconv.Itoa(schedule.ID)})
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -1603,7 +1603,7 @@ func newSchedulesUpdateCommand(loader CloudConfigLoader) *cobra.Command {
 			}
 
 			result := cmdio.NewSingleMutation("updated", cmdio.MutationTarget{Kind: "schedule", ID: strconv.Itoa(id)})
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -1635,7 +1635,7 @@ type LoadZoneTableCodec struct{}
 
 func (c *LoadZoneTableCodec) Format() format.Format { return "table" }
 
-func (c *LoadZoneTableCodec) Encode(w io.Writer, v any) error {
+func (c *LoadZoneTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	zones, ok := v.([]LoadZone)
 	if !ok {
 		return errors.New("invalid data type for table codec: expected []LoadZone")
@@ -1688,7 +1688,7 @@ func newLoadZonesListCommand(loader CloudConfigLoader) *cobra.Command {
 				return err
 			}
 			zones = adapter.TruncateSlice(zones, opts.Limit)
-			return opts.IO.Encode(cmd.OutOrStdout(), zones)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), zones)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -1750,7 +1750,7 @@ func newLoadZonesCreateCommand(loader CloudConfigLoader) *cobra.Command {
 			}
 
 			result := cmdio.NewSingleMutation("registered", cmdio.MutationTarget{Kind: "load-zone", Name: resp.Name})
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -1788,7 +1788,7 @@ func newLoadZonesDeleteCommand(loader CloudConfigLoader) *cobra.Command {
 				return err
 			}
 			result := cmdio.NewSingleMutation("deregistered", cmdio.MutationTarget{Kind: "load-zone", Name: args[0]})
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -1809,7 +1809,7 @@ type AllowedProjectTableCodec struct{}
 
 func (c *AllowedProjectTableCodec) Format() format.Format { return "table" }
 
-func (c *AllowedProjectTableCodec) Encode(w io.Writer, v any) error {
+func (c *AllowedProjectTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	projects, ok := v.([]AllowedProject)
 	if !ok {
 		return errors.New("invalid data type for table codec: expected []AllowedProject")
@@ -1863,7 +1863,7 @@ func newListAllowedProjectsCommand(loader CloudConfigLoader) *cobra.Command { //
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), projects)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), projects)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -1921,7 +1921,7 @@ func newUpdateAllowedProjectsCommand(loader CloudConfigLoader) *cobra.Command { 
 			}
 
 			result := cmdio.NewSingleMutation("updated-allowed-projects", cmdio.MutationTarget{Kind: "load-zone", ID: strconv.Itoa(id)})
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -1943,7 +1943,7 @@ type AllowedLoadZoneTableCodec struct{}
 
 func (c *AllowedLoadZoneTableCodec) Format() format.Format { return "table" }
 
-func (c *AllowedLoadZoneTableCodec) Encode(w io.Writer, v any) error {
+func (c *AllowedLoadZoneTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	zones, ok := v.([]AllowedLoadZone)
 	if !ok {
 		return errors.New("invalid data type for table codec: expected []AllowedLoadZone")
@@ -1997,7 +1997,7 @@ func newListAllowedLoadZonesCommand(loader CloudConfigLoader) *cobra.Command { /
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), zones)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), zones)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -2055,7 +2055,7 @@ func newUpdateAllowedLoadZonesCommand(loader CloudConfigLoader) *cobra.Command {
 			}
 
 			result := cmdio.NewSingleMutation("updated-allowed-load-zones", cmdio.MutationTarget{Kind: "project", ID: strconv.Itoa(id)})
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -2196,7 +2196,7 @@ func newTestrunStatusCommand(loader CloudConfigLoader) *cobra.Command {
 				return fmt.Errorf("no test runs found for load test %d", test.ID)
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), runs[0])
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), runs[0])
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -2257,7 +2257,7 @@ func newTestrunRunsListCommand(loader CloudConfigLoader) *cobra.Command {
 				return err
 			}
 			runs = adapter.TruncateSlice(runs, opts.Limit)
-			return opts.IO.Encode(cmd.OutOrStdout(), runs)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), runs)
 		},
 	}
 	opts.setup(cmd.Flags())

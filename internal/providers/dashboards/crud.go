@@ -89,7 +89,7 @@ func (c *singleMutationTextCodec) Decode(io.Reader, any) error {
 	return errors.New("text codec does not support decoding")
 }
 
-func (c *singleMutationTextCodec) Encode(w io.Writer, value any) error {
+func (c *singleMutationTextCodec) Encode(ctx context.Context, w io.Writer, value any) error {
 	result, ok := value.(cmdio.SingleMutation)
 	if !ok {
 		return errors.New("invalid data type for mutation text codec: expected SingleMutation")
@@ -195,7 +195,7 @@ func newListCommand(loader GrafanaConfigLoader) *cobra.Command {
 				opts.IO.RegisterCustomCodec("wide", newDashboardTableCodec(true, cfg.GrafanaURL))
 			}
 
-			if err := opts.IO.Encode(cmd.OutOrStdout(), list); err != nil {
+			if err := opts.IO.Encode(ctx, cmd.OutOrStdout(), list); err != nil {
 				return err
 			}
 
@@ -293,7 +293,7 @@ func newGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 				opts.IO.RegisterCustomCodec("wide", newDashboardTableCodec(true, cfg.GrafanaURL))
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), item)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), item)
 		},
 	}
 
@@ -365,7 +365,7 @@ func newCreateCommandWithDeps(deps *mutationDeps) *cobra.Command {
 			}
 
 			result := newDashboardMutation("created", desc, created.GetName(), created)
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 
@@ -453,7 +453,7 @@ Recommended workflow:
 			}
 
 			result := newDashboardMutation("updated", desc, updated.GetName(), updated)
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 
@@ -533,7 +533,7 @@ func newDeleteCommandWithDeps(deps *mutationDeps) *cobra.Command {
 			}
 
 			result := newDashboardMutation("deleted", desc, name, nil)
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 

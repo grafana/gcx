@@ -1,6 +1,7 @@
 package tempo
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -126,7 +127,7 @@ not support this format return the standard response.`,
 					return tempo.FormatTagValuesTable(cmd.OutOrStdout(), resp)
 				}
 
-				return opts.IO.Encode(cmd.OutOrStdout(), resp)
+				return opts.IO.Encode(ctx, cmd.OutOrStdout(), resp)
 			}
 
 			resp, err := client.Tags(ctx, datasourceUID, tempo.TagsRequest{
@@ -141,7 +142,7 @@ not support this format return the standard response.`,
 				return tempo.FormatTagsTable(cmd.OutOrStdout(), resp)
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), resp)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), resp)
 		},
 	}
 
@@ -162,7 +163,7 @@ func (c *tempoLabelsTableCodec) Format() format.Format {
 	return "table"
 }
 
-func (c *tempoLabelsTableCodec) Encode(w io.Writer, data any) error {
+func (c *tempoLabelsTableCodec) Encode(ctx context.Context, w io.Writer, data any) error {
 	switch resp := data.(type) {
 	case *tempo.TagsResponse:
 		return tempo.FormatTagsTable(w, resp)

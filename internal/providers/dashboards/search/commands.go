@@ -164,7 +164,7 @@ filter is supplied.`,
 				})
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 

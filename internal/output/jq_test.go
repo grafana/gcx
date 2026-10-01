@@ -145,7 +145,7 @@ func TestJQCodec_Encode(t *testing.T) {
 			require.NoError(t, err, "test query must parse")
 
 			var buf bytes.Buffer
-			err = cmdio.NewJQCodec(query).Encode(&buf, tt.value)
+			err = cmdio.NewJQCodec(query).Encode(t.Context(), &buf, tt.value)
 
 			if tt.wantErr != "" {
 				require.Error(t, err)
@@ -176,7 +176,7 @@ func TestJQCodec_EncodePreservesLargeIntegerPrecision(t *testing.T) {
 	}}
 
 	var buf bytes.Buffer
-	require.NoError(t, cmdio.NewJQCodec(query).Encode(&buf, value))
+	require.NoError(t, cmdio.NewJQCodec(query).Encode(t.Context(), &buf, value))
 	assert.Equal(t, "9007199254740994\n", buf.String())
 }
 
@@ -291,7 +291,7 @@ func TestJQCodec_RuntimeErrorShape(t *testing.T) {
 			require.NoError(t, err, "test query must parse")
 
 			var buf bytes.Buffer
-			err = cmdio.NewJQCodec(query).Encode(&buf, tt.value)
+			err = cmdio.NewJQCodec(query).Encode(t.Context(), &buf, tt.value)
 			require.Error(t, err)
 
 			var jqErr cmdio.JQRuntimeError
@@ -432,7 +432,7 @@ func TestOptions_JQ_EncodeAppliesFilter(t *testing.T) {
 
 	var buf bytes.Buffer
 	value := map[string]any{"items": []any{1, 2, 3, 4}}
-	require.NoError(t, opts.Encode(&buf, value))
+	require.NoError(t, opts.Encode(t.Context(), &buf, value))
 
 	assert.Equal(t, "4", strings.TrimSpace(buf.String()))
 }

@@ -162,7 +162,7 @@ func listCmd(loader *providers.ConfigLoader) *cobra.Command {
 			names, meta := cmdio.TruncateCompleteList(filtered, opts.Limit)
 			meta = cmdio.AttachListMeta(meta, os.Args)
 
-			if err := opts.IO.Encode(cmd.OutOrStdout(), &metricNamesListResult{Data: names, ListMeta: meta}); err != nil {
+			if err := opts.IO.Encode(ctx, cmd.OutOrStdout(), &metricNamesListResult{Data: names, ListMeta: meta}); err != nil {
 				return err
 			}
 			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)

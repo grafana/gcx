@@ -269,7 +269,7 @@ func TestEncode_AgentModeHint(t *testing.T) {
 			require.NoError(t, opts.Validate())
 
 			var buf bytes.Buffer
-			require.NoError(t, opts.Encode(&buf, map[string]any{"name": "test"}))
+			require.NoError(t, opts.Encode(t.Context(), &buf, map[string]any{"name": "test"}))
 
 			// Hint never lands on stdout.
 			assert.NotContains(t, buf.String(), "hint:")
@@ -300,7 +300,7 @@ func TestEncodeDiscovery_EmptyTypedSlice(t *testing.T) {
 	require.NoError(t, opts.Validate())
 
 	var buf bytes.Buffer
-	err := opts.Encode(&buf, []ClusterView{})
+	err := opts.Encode(t.Context(), &buf, []ClusterView{})
 	require.NoError(t, err, "field discovery on empty typed slice must not error")
 
 	out := buf.String()
@@ -339,7 +339,7 @@ func TestEncodeDiscovery_EmptySingleKeyEnvelope(t *testing.T) {
 			require.NoError(t, opts.Validate())
 
 			var buf bytes.Buffer
-			require.NoError(t, opts.Encode(&buf, tt.value))
+			require.NoError(t, opts.Encode(t.Context(), &buf, tt.value))
 
 			out := buf.String()
 			assert.Contains(t, out, "uid", "field 'uid' must appear in discovered fields")
@@ -353,6 +353,6 @@ func TestEncodeDiscovery_EmptySingleKeyEnvelope(t *testing.T) {
 // dummyCodec satisfies format.Codec for testing.
 type dummyCodec struct{}
 
-func (*dummyCodec) Encode(_ goio.Writer, _ any) error { return nil }
-func (*dummyCodec) Decode(_ goio.Reader, _ any) error { return nil }
-func (*dummyCodec) Format() format.Format             { return "text" }
+func (*dummyCodec) Encode(ctx context.Context, _ goio.Writer, _ any) error { return nil }
+func (*dummyCodec) Decode(_ goio.Reader, _ any) error                      { return nil }
+func (*dummyCodec) Format() format.Format                                  { return "text" }

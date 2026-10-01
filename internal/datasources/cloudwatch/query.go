@@ -200,7 +200,7 @@ accounts, pass --account-id <id> (run list-accounts to discover IDs) or
 			unavailableMsg, failedOpenMsg := dsquery.ExploreMessages("query")
 
 			return dsquery.EncodeAndHandleExplore(cmd, func() error {
-				return opts.IO.Encode(cmd.OutOrStdout(), resp)
+				return opts.IO.Encode(ctx, cmd.OutOrStdout(), resp)
 			}, *share, dsquery.ExploreLink{
 				URL:            exploreURL,
 				UnavailableMsg: unavailableMsg,

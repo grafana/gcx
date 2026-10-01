@@ -94,7 +94,7 @@ func runClear(
 	ns := findNamespace(resp.Namespaces, namespace)
 	if ns == nil {
 		// Namespace not configured — nothing to clear; idempotent no-op.
-		return outOpts.Encode(out, instoutput.NewMutationResult("clear",
+		return outOpts.Encode(ctx, out, instoutput.NewMutationResult("clear",
 			instoutput.Target{Cluster: cluster, Namespace: namespace, Service: service}))
 	}
 
@@ -102,7 +102,7 @@ func runClear(
 	equal, _ := rmw.AppEqual(*ns, proposed)
 	if equal {
 		// No override exists for the service — idempotent no-op.
-		return outOpts.Encode(out, instoutput.NewMutationResult("clear",
+		return outOpts.Encode(ctx, out, instoutput.NewMutationResult("clear",
 			instoutput.Target{Cluster: cluster, Namespace: namespace, Service: service}))
 	}
 
@@ -135,5 +135,5 @@ func runClear(
 	result := instoutput.NewMutationResult("clear",
 		instoutput.Target{Cluster: cluster, Namespace: namespace, Service: service})
 	result.Changed = true
-	return outOpts.Encode(out, result)
+	return outOpts.Encode(ctx, out, result)
 }

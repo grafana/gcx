@@ -60,7 +60,7 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), detail)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), detail)
 		},
 	}
 	opts.setup(cmd.Flags())

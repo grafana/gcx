@@ -125,7 +125,7 @@ Exit codes distinguish resource failure from command failure:
 				rows = append(rows, row)
 			}
 
-			if err := opts.IO.Encode(cmd.OutOrStdout(), &healthResult{Results: rows}); err != nil {
+			if err := opts.IO.Encode(ctx, cmd.OutOrStdout(), &healthResult{Results: rows}); err != nil {
 				return err
 			}
 
@@ -191,7 +191,7 @@ type healthTableCodec struct{}
 
 func (c *healthTableCodec) Format() format.Format { return "table" }
 
-func (c *healthTableCodec) Encode(w io.Writer, data any) error {
+func (c *healthTableCodec) Encode(ctx context.Context, w io.Writer, data any) error {
 	result, ok := data.(*healthResult)
 	if !ok {
 		return errors.New("invalid data type for table codec")

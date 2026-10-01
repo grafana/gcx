@@ -279,7 +279,7 @@ func runGet(loader *providers.ConfigLoader, opts *getOpts) func(*cobra.Command, 
 		if notFound {
 			emitNoDataHint(cmd.ErrOrStderr(), namespace, name)
 		}
-		if err := opts.IO.Encode(cmd.OutOrStdout(), detail); err != nil {
+		if err := opts.IO.Encode(ctx, cmd.OutOrStdout(), detail); err != nil {
 			return err
 		}
 		if notFound {
@@ -309,7 +309,7 @@ func emitGroupedServiceDetail(ctx context.Context, cmd *cobra.Command, opts *get
 	if notFound {
 		emitNoDataHint(cmd.ErrOrStderr(), namespace, name)
 	}
-	if err := opts.IO.Encode(cmd.OutOrStdout(), grouped); err != nil {
+	if err := opts.IO.Encode(ctx, cmd.OutOrStdout(), grouped); err != nil {
 		return err
 	}
 	if notFound {
@@ -764,7 +764,7 @@ func (c *serviceDetailCodec) Decode(io.Reader, any) error {
 	return errors.New("services get table codec does not support decoding")
 }
 
-func (c *serviceDetailCodec) Encode(w io.Writer, v any) error {
+func (c *serviceDetailCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	if grouped, ok := v.(*GroupedServiceDetail); ok {
 		return c.encodeGrouped(w, grouped)
 	}

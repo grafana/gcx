@@ -97,5 +97,5 @@ func runRemove(
 	}
 	result := instoutput.NewMutationResult("remove", instoutput.Target{Cluster: clusterName})
 	result.Changed = true
-	return outOpts.Encode(w, result)
+	return outOpts.Encode(ctx, w, result)
 }

@@ -217,7 +217,7 @@ func TestCheckTableCodec_Encode(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	require.NoError(t, codec.Encode(&buf, envelope))
+	require.NoError(t, codec.Encode(t.Context(), &buf, envelope))
 
 	out := buf.String()
 	// All three rows present, in failure-first order.
@@ -243,7 +243,7 @@ func TestResultsWithFixPlan_JSONFieldValidatorSeesAllFields(t *testing.T) {
 
 func TestCheckTableCodec_WrongType(t *testing.T) {
 	codec := &CheckTableCodec{}
-	err := codec.Encode(&bytes.Buffer{}, "nope")
+	err := codec.Encode(t.Context(), &bytes.Buffer{}, "nope")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "ResultsWithFixPlan")
 }
@@ -286,7 +286,7 @@ func TestCheckTableCodec_RendersFixPlanBelowTable(t *testing.T) {
 		},
 	}
 	var buf bytes.Buffer
-	require.NoError(t, (&CheckTableCodec{}).Encode(&buf, envelope))
+	require.NoError(t, (&CheckTableCodec{}).Encode(t.Context(), &buf, envelope))
 
 	out := buf.String()
 	assert.Contains(t, out, "FAIL")

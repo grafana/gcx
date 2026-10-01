@@ -178,7 +178,7 @@ open it in your browser after the query succeeds.`,
 			unavailableMsg, failedOpenMsg := dsquery.ExploreMessages("query")
 
 			return dsquery.EncodeAndHandleExplore(cmd, func() error {
-				return opts.IO.Encode(cmd.OutOrStdout(), resp)
+				return opts.IO.Encode(ctx, cmd.OutOrStdout(), resp)
 			}, opts.Share, dsquery.ExploreLink{
 				URL:            exploreURL,
 				UnavailableMsg: unavailableMsg,

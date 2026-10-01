@@ -1,6 +1,7 @@
 package collections
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -89,7 +90,7 @@ func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
 			}
 
 			if opts.IO.OutputFormat == "table" || opts.IO.OutputFormat == "wide" {
-				return opts.IO.Encode(cmd.OutOrStdout(), specs)
+				return opts.IO.Encode(ctx, cmd.OutOrStdout(), specs)
 			}
 
 			objs := make([]unstructured.Unstructured, 0, len(specs))
@@ -100,7 +101,7 @@ func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
 				}
 				objs = append(objs, u)
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), objs)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), objs)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -144,7 +145,7 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), &u)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), &u)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -244,7 +245,7 @@ func newCreateCommand(loader *providers.ConfigLoader) *cobra.Command {
 			}
 
 			cmdio.Success(cmd.ErrOrStderr(), "Collection %s created", created.Spec.CollectionID)
-			return opts.IO.Encode(cmd.OutOrStdout(), created.Spec)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), created.Spec)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -310,7 +311,7 @@ func newUpdateCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), &u)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), &u)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -360,7 +361,7 @@ func newDeleteCommand(loader *providers.ConfigLoader) *cobra.Command {
 				return err
 			}
 
-			return runDelete(cmd.OutOrStdout(), cmd.ErrOrStderr(), opts, args, func(id string) error {
+			return runDelete(ctx, cmd.OutOrStdout(), cmd.ErrOrStderr(), opts, args, func(id string) error {
 				return crud.Delete(ctx, id)
 			})
 		},
@@ -371,8 +372,8 @@ func newDeleteCommand(loader *providers.ConfigLoader) *cobra.Command {
 
 // runDelete performs the delete loop and writes the result document. Split
 // from RunE so the output contract is testable without a live plugin API.
-func runDelete(stdout, stderr io.Writer, opts *deleteOpts, ids []string, del func(id string) error) error {
-	return commandutil.RunBatchDelete(stdout, stderr, &opts.IO,
+func runDelete(ctx context.Context, stdout, stderr io.Writer, opts *deleteOpts, ids []string, del func(id string) error) error {
+	return commandutil.RunBatchDelete(ctx, stdout, stderr, &opts.IO,
 		"collection", "Deleted collection %s", "deleting collection %s", ids, del)
 }
 
@@ -413,7 +414,7 @@ func newListConversationsCommand(loader *providers.ConfigLoader) *cobra.Command 
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), items)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), items)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -477,7 +478,7 @@ func newAddConversationsCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err := client.AddMembers(cmd.Context(), collectionID, savedIDs); err != nil {
 				return err
 			}
-			return emitAddConversationsReceipt(cmd.OutOrStdout(), cmd.ErrOrStderr(), opts, collectionID, savedIDs)
+			return emitAddConversationsReceipt(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), opts, collectionID, savedIDs)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -487,9 +488,9 @@ func newAddConversationsCommand(loader *providers.ConfigLoader) *cobra.Command {
 // emitAddConversationsReceipt writes the stderr receipt and the stdout result
 // document for a completed add-conversations call. Split from RunE so the
 // output contract is testable without a live plugin API.
-func emitAddConversationsReceipt(stdout, stderr io.Writer, opts *membershipOpts, collectionID string, savedIDs []string) error {
+func emitAddConversationsReceipt(ctx context.Context, stdout, stderr io.Writer, opts *membershipOpts, collectionID string, savedIDs []string) error {
 	cmdio.Success(stderr, "Added %d conversation(s) to collection %s", len(savedIDs), collectionID)
-	return opts.IO.Encode(stdout, newMembershipResult("added", collectionID, savedIDs))
+	return opts.IO.Encode(ctx, stdout, newMembershipResult("added", collectionID, savedIDs))
 }
 
 func newRemoveConversationCommand(loader *providers.ConfigLoader) *cobra.Command {
@@ -511,7 +512,7 @@ func newRemoveConversationCommand(loader *providers.ConfigLoader) *cobra.Command
 			if err := client.RemoveMember(cmd.Context(), collectionID, savedID); err != nil {
 				return err
 			}
-			return emitRemoveConversationReceipt(cmd.OutOrStdout(), cmd.ErrOrStderr(), opts, collectionID, savedID)
+			return emitRemoveConversationReceipt(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), opts, collectionID, savedID)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -521,9 +522,9 @@ func newRemoveConversationCommand(loader *providers.ConfigLoader) *cobra.Command
 // emitRemoveConversationReceipt writes the stderr receipt and the stdout
 // result document for a completed remove-conversation call. Split from RunE
 // so the output contract is testable without a live plugin API.
-func emitRemoveConversationReceipt(stdout, stderr io.Writer, opts *membershipOpts, collectionID, savedID string) error {
+func emitRemoveConversationReceipt(ctx context.Context, stdout, stderr io.Writer, opts *membershipOpts, collectionID, savedID string) error {
 	cmdio.Success(stderr, "Removed %s from collection %s", savedID, collectionID)
-	return opts.IO.Encode(stdout, newMembershipResult("removed", collectionID, []string{savedID}))
+	return opts.IO.Encode(ctx, stdout, newMembershipResult("removed", collectionID, []string{savedID}))
 }
 
 // --- table codecs ---

@@ -117,7 +117,7 @@ The command prints one line that names the fields it changed. Use -o json or
 			})
 			changedValue := len(changed) > 0
 			result.Changed = &changedValue
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())

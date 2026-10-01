@@ -70,7 +70,7 @@ func TestIncidentTableGolden(t *testing.T) {
 	for _, name := range []string{"table", "wide"} {
 		t.Run(name, func(t *testing.T) {
 			var buf bytes.Buffer
-			require.NoError(t, irm.IncidentTable().Codec(name).Encode(&buf, goldenIncidents()))
+			require.NoError(t, irm.IncidentTable().Codec(name).Encode(t.Context(), &buf, goldenIncidents()))
 
 			testutils.Golden(t, "incidents_"+name, buf.String())
 		})
@@ -81,7 +81,7 @@ func TestIncidentContextTableGolden(t *testing.T) {
 	for _, name := range []string{"table", "wide"} {
 		t.Run(name, func(t *testing.T) {
 			var buf bytes.Buffer
-			require.NoError(t, irm.IncidentContextTable().Codec(name).Encode(&buf, goldenIncidentContexts()))
+			require.NoError(t, irm.IncidentContextTable().Codec(name).Encode(t.Context(), &buf, goldenIncidentContexts()))
 
 			testutils.Golden(t, "incident_contexts_"+name, buf.String())
 		})
@@ -90,21 +90,21 @@ func TestIncidentContextTableGolden(t *testing.T) {
 
 func TestActivityTableGolden(t *testing.T) {
 	var buf bytes.Buffer
-	require.NoError(t, irm.ActivityTable().Codec("table").Encode(&buf, goldenActivityItems()))
+	require.NoError(t, irm.ActivityTable().Codec("table").Encode(t.Context(), &buf, goldenActivityItems()))
 
 	testutils.Golden(t, "incident_activity_table", buf.String())
 }
 
 func TestSeverityTableGolden(t *testing.T) {
 	var buf bytes.Buffer
-	require.NoError(t, irm.SeverityTable().Codec("table").Encode(&buf, goldenSeverities()))
+	require.NoError(t, irm.SeverityTable().Codec("table").Encode(t.Context(), &buf, goldenSeverities()))
 
 	testutils.Golden(t, "incident_severities_table", buf.String())
 }
 
 func TestIncidentTableGoldenEmpty(t *testing.T) {
 	var buf bytes.Buffer
-	require.NoError(t, irm.IncidentTable().Codec("table").Encode(&buf, []irm.Incident{}))
+	require.NoError(t, irm.IncidentTable().Codec("table").Encode(t.Context(), &buf, []irm.Incident{}))
 
 	testutils.Golden(t, "incidents_table_empty", buf.String())
 }

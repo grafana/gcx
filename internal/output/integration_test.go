@@ -84,7 +84,7 @@ func TestPipeDetection_NoANSIWhenPiped(t *testing.T) {
 	}}
 
 	var buf bytes.Buffer
-	require.NoError(t, opts.Encode(&buf, item))
+	require.NoError(t, opts.Encode(t.Context(), &buf, item))
 
 	output := buf.String()
 	assert.False(t, containsANSI(output), "output must not contain ANSI escape sequences when piped\nGot: %q", output)
@@ -176,7 +176,7 @@ func TestPipeDetection_JSONOutputIsValidWhenPiped(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	require.NoError(t, opts.Encode(&buf, list))
+	require.NoError(t, opts.Encode(t.Context(), &buf, list))
 
 	// Must parse as valid JSON.
 	var decoded any

@@ -345,7 +345,7 @@ type LabelsDiagnoseTableCodec struct{}
 
 func (c *LabelsDiagnoseTableCodec) Format() format.Format { return "table" }
 
-func (c *LabelsDiagnoseTableCodec) Encode(w io.Writer, v any) error {
+func (c *LabelsDiagnoseTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	r, ok := v.(LabelsDiagnoseResult)
 	if !ok {
 		return errors.New("invalid data type for table codec: expected LabelsDiagnoseResult")

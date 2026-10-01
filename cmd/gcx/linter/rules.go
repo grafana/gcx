@@ -70,5 +70,5 @@ func listRules(cmd *cobra.Command, opts rulesOpts) error {
 		return err
 	}
 
-	return opts.IO.Encode(cmd.OutOrStdout(), rules)
+	return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), rules)
 }

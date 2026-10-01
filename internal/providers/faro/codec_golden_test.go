@@ -36,7 +36,7 @@ func TestAppTableGolden(t *testing.T) {
 			codec := faro.AppTable().Codec(name)
 
 			var buf bytes.Buffer
-			require.NoError(t, codec.Encode(&buf, toTypedObjs(goldenApps())))
+			require.NoError(t, codec.Encode(t.Context(), &buf, toTypedObjs(goldenApps())))
 
 			testutils.Golden(t, "apps_"+name, buf.String())
 		})
@@ -47,7 +47,7 @@ func TestAppTableGoldenEmpty(t *testing.T) {
 	codec := faro.AppTable().Codec("table")
 
 	var buf bytes.Buffer
-	require.NoError(t, codec.Encode(&buf, toTypedObjs(nil)))
+	require.NoError(t, codec.Encode(t.Context(), &buf, toTypedObjs(nil)))
 
 	testutils.Golden(t, "apps_table_empty", buf.String())
 }

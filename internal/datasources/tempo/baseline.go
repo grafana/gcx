@@ -201,7 +201,7 @@ diff or treating the first result as healthy.`,
 			result := buildBaselineResult(seedID, profile, resp, req.Query)
 			result.SeedPartial = seedPartial
 			result.ListMeta = meta
-			if err := opts.IO.Encode(cmd.OutOrStdout(), result); err != nil {
+			if err := opts.IO.Encode(ctx, cmd.OutOrStdout(), result); err != nil {
 				return err
 			}
 			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)

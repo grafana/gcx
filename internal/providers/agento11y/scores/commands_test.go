@@ -79,7 +79,7 @@ func TestTableCodec_Encode(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			codec := &scores.TableCodec{Wide: tc.wide, GenMeta: tc.genMeta}
 			var buf bytes.Buffer
-			require.NoError(t, codec.Encode(&buf, items))
+			require.NoError(t, codec.Encode(t.Context(), &buf, items))
 
 			output := buf.String()
 			for _, s := range tc.want {
@@ -494,7 +494,7 @@ func TestTableCodec_WideWithAgentModel(t *testing.T) {
 
 	codec := &scores.TableCodec{Wide: true, GenMeta: true}
 	var buf bytes.Buffer
-	require.NoError(t, codec.Encode(&buf, items))
+	require.NoError(t, codec.Encode(t.Context(), &buf, items))
 	output := buf.String()
 	assert.Contains(t, output, "billing-bot")
 	assert.Contains(t, output, "gpt-4")
@@ -504,7 +504,7 @@ func TestTableCodec_WideWithAgentModel(t *testing.T) {
 func TestTableCodec_WrongType(t *testing.T) {
 	codec := &scores.TableCodec{}
 	var buf bytes.Buffer
-	err := codec.Encode(&buf, "not-a-slice")
+	err := codec.Encode(t.Context(), &buf, "not-a-slice")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "expected []Score")
 }

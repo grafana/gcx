@@ -80,7 +80,7 @@ in the top-level secure block via {create: <value>}, {fromEnv: <VAR>}, or
 				cmdio.Info(cmd.ErrOrStderr(), "Dry run — no datasource was created.\n%s", summary.Render())
 				manifest.Sanitize()
 				redactSecrets(manifest)
-				return opts.IO.Encode(cmd.OutOrStdout(), manifest)
+				return opts.IO.Encode(ctx, cmd.OutOrStdout(), manifest)
 			}
 
 			restCfg, err := configOpts.LoadGrafanaConfig(ctx)
@@ -102,7 +102,7 @@ in the top-level secure block via {create: <value>}, {fromEnv: <VAR>}, or
 			}
 
 			cmdio.Success(cmd.ErrOrStderr(), "Created datasource %q (uid=%s)", created.Name, created.UID)
-			return opts.IO.Encode(cmd.OutOrStdout(), dsclient.ManifestFromDatasource(created))
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), dsclient.ManifestFromDatasource(created))
 		},
 	}
 

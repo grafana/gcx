@@ -33,7 +33,7 @@ func encodeGolden(t *testing.T, name string, codec format.Codec, rows []unstruct
 	t.Helper()
 
 	var buf bytes.Buffer
-	require.NoError(t, codec.Encode(&buf, rows))
+	require.NoError(t, codec.Encode(t.Context(), &buf, rows))
 	testutils.Golden(t, name, buf.String())
 }
 

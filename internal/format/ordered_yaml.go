@@ -1,6 +1,7 @@
 package format
 
 import (
+	"context"
 	"io"
 
 	goyaml "github.com/goccy/go-yaml"
@@ -28,7 +29,7 @@ func NewOrderedYAMLCodec() Codec { //nolint:ireturn
 
 func (c *orderedYAMLCodec) Format() Format { return YAML }
 
-func (c *orderedYAMLCodec) Encode(w io.Writer, v any) error {
+func (c *orderedYAMLCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	return goyaml.NewEncoder(w,
 		goyaml.Indent(2),
 		goyaml.IndentSequence(true),

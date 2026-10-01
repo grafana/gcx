@@ -1,6 +1,7 @@
 package prometheus
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -289,7 +290,7 @@ See also the sibling label-name search and label-value search commands.`,
 			}
 
 			result, meta := buildSearchResult(resp.Results, resp.HasMore, resp.Incomplete, resp.Warnings, opts.Limit)
-			if err := opts.IO.Encode(cmd.OutOrStdout(), result); err != nil {
+			if err := opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), result); err != nil {
 				return err
 			}
 			emitSearchDiagnostics(cmd.ErrOrStderr(), resp.Warnings, meta)
@@ -387,7 +388,7 @@ See also the sibling metric-name search and label-value search commands.`,
 			}
 
 			result, meta := buildSearchResult(resp.Results, resp.HasMore, resp.Incomplete, resp.Warnings, opts.Limit)
-			if err := opts.IO.Encode(cmd.OutOrStdout(), result); err != nil {
+			if err := opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), result); err != nil {
 				return err
 			}
 			emitSearchDiagnostics(cmd.ErrOrStderr(), resp.Warnings, meta)
@@ -487,7 +488,7 @@ See also the sibling metric-name search and label-name search commands.`,
 			}
 
 			result, meta := buildSearchResult(resp.Results, resp.HasMore, resp.Incomplete, resp.Warnings, opts.Limit)
-			if err := opts.IO.Encode(cmd.OutOrStdout(), result); err != nil {
+			if err := opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), result); err != nil {
 				return err
 			}
 			emitSearchDiagnostics(cmd.ErrOrStderr(), resp.Warnings, meta)
@@ -520,7 +521,7 @@ type searchMetricNamesTableCodec struct {
 
 func (c *searchMetricNamesTableCodec) Format() format.Format { return "table" }
 
-func (c *searchMetricNamesTableCodec) Encode(w io.Writer, data any) error {
+func (c *searchMetricNamesTableCodec) Encode(ctx context.Context, w io.Writer, data any) error {
 	resp, ok := data.(*searchResult[prometheus.MetricNameResult])
 	if !ok {
 		return errors.New("invalid data type for search metric-names table codec")
@@ -562,7 +563,7 @@ type searchValueTableCodec[T any] struct {
 
 func (c *searchValueTableCodec[T]) Format() format.Format { return "table" }
 
-func (c *searchValueTableCodec[T]) Encode(w io.Writer, data any) error {
+func (c *searchValueTableCodec[T]) Encode(ctx context.Context, w io.Writer, data any) error {
 	resp, ok := data.(*searchResult[T])
 	if !ok {
 		return errors.New("invalid data type for search table codec")

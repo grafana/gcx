@@ -50,22 +50,22 @@ func goldenRouteFilterTypes() []RouteFilterType {
 
 func TestDiscoveryTableGolden(t *testing.T) {
 	var esc bytes.Buffer
-	require.NoError(t, escalationStepOptionTable().Codec(cmdio.FormatTable).Encode(&esc, goldenEscalationStepOptions()))
+	require.NoError(t, escalationStepOptionTable().Codec(cmdio.FormatTable).Encode(t.Context(), &esc, goldenEscalationStepOptions()))
 	testutils.Golden(t, "discovery_escalation_steps", esc.String())
 
 	var trig bytes.Buffer
-	require.NoError(t, webhookTriggerOptionTable().Codec(cmdio.FormatTable).Encode(&trig, goldenWebhookTriggerOptions()))
+	require.NoError(t, webhookTriggerOptionTable().Codec(cmdio.FormatTable).Encode(t.Context(), &trig, goldenWebhookTriggerOptions()))
 	testutils.Golden(t, "discovery_webhook_triggers", trig.String())
 
 	var preset bytes.Buffer
-	require.NoError(t, webhookPresetTable().Codec(cmdio.FormatTable).Encode(&preset, goldenWebhookPresets()))
+	require.NoError(t, webhookPresetTable().Codec(cmdio.FormatTable).Encode(t.Context(), &preset, goldenWebhookPresets()))
 	testutils.Golden(t, "discovery_webhook_presets", preset.String())
 
 	var filter bytes.Buffer
-	require.NoError(t, routeFilterTypeTable().Codec(cmdio.FormatTable).Encode(&filter, goldenRouteFilterTypes()))
+	require.NoError(t, routeFilterTypeTable().Codec(cmdio.FormatTable).Encode(t.Context(), &filter, goldenRouteFilterTypes()))
 	testutils.Golden(t, "discovery_route_filter_types", filter.String())
 
 	var empty bytes.Buffer
-	require.NoError(t, routeFilterTypeTable().Codec(cmdio.FormatTable).Encode(&empty, []RouteFilterType{}))
+	require.NoError(t, routeFilterTypeTable().Codec(cmdio.FormatTable).Encode(t.Context(), &empty, []RouteFilterType{}))
 	testutils.Golden(t, "discovery_route_filter_types_empty", empty.String())
 }

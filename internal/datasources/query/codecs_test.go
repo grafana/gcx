@@ -32,7 +32,7 @@ func TestGraphCodecRejectsUnsupportedResponseTypes(t *testing.T) {
 
 	t.Run("rejects loki log stream responses", func(t *testing.T) {
 		var out bytes.Buffer
-		err := newGraphIO().Encode(&out, &loki.QueryResponse{})
+		err := newGraphIO().Encode(t.Context(), &out, &loki.QueryResponse{})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "graph output is not supported for log stream queries")
 		assert.Contains(t, err.Error(), "gcx logs metrics")
@@ -40,14 +40,14 @@ func TestGraphCodecRejectsUnsupportedResponseTypes(t *testing.T) {
 
 	t.Run("rejects tempo trace search responses", func(t *testing.T) {
 		var out bytes.Buffer
-		err := newGraphIO().Encode(&out, &tempo.SearchResponse{})
+		err := newGraphIO().Encode(t.Context(), &out, &tempo.SearchResponse{})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "graph output is not supported for trace search results")
 	})
 
 	t.Run("rejects infinity query responses", func(t *testing.T) {
 		var out bytes.Buffer
-		err := newGraphIO().Encode(&out, &infinity.QueryResponse{})
+		err := newGraphIO().Encode(t.Context(), &out, &infinity.QueryResponse{})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "Infinity")
 	})
@@ -63,13 +63,13 @@ func TestQueryCodecsAcceptAzureMonitorResponses(t *testing.T) {
 
 	t.Run("table codec renders azuremonitor responses", func(t *testing.T) {
 		var out bytes.Buffer
-		require.NoError(t, newIO("table").Encode(&out, &azuremonitor.QueryResponse{}))
+		require.NoError(t, newIO("table").Encode(t.Context(), &out, &azuremonitor.QueryResponse{}))
 		assert.Contains(t, out.String(), "No data")
 	})
 
 	t.Run("wide codec renders azuremonitor responses", func(t *testing.T) {
 		var out bytes.Buffer
-		require.NoError(t, newIO("wide").Encode(&out, &azuremonitor.QueryResponse{}))
+		require.NoError(t, newIO("wide").Encode(t.Context(), &out, &azuremonitor.QueryResponse{}))
 		assert.Contains(t, out.String(), "No data")
 	})
 
@@ -79,13 +79,13 @@ func TestQueryCodecsAcceptAzureMonitorResponses(t *testing.T) {
 			Columns: []azuremonitor.Column{{Name: "name", Type: "string"}},
 			Rows:    [][]any{{"vm-a"}},
 		}
-		require.NoError(t, newIO("table").Encode(&out, resp))
+		require.NoError(t, newIO("table").Encode(t.Context(), &out, resp))
 		assert.Contains(t, out.String(), "vm-a")
 	})
 
 	t.Run("wide codec renders azuremonitor KQL table responses", func(t *testing.T) {
 		var out bytes.Buffer
-		require.NoError(t, newIO("wide").Encode(&out, &azuremonitor.TableResponse{}))
+		require.NoError(t, newIO("wide").Encode(t.Context(), &out, &azuremonitor.TableResponse{}))
 		assert.Contains(t, out.String(), "No data")
 	})
 
@@ -93,7 +93,7 @@ func TestQueryCodecsAcceptAzureMonitorResponses(t *testing.T) {
 		ioOpts := &cmdio.Options{OutputFormat: "graph"}
 		dsquery.RegisterCodecs(ioOpts, true)
 		var out bytes.Buffer
-		err := ioOpts.Encode(&out, &azuremonitor.TableResponse{})
+		err := ioOpts.Encode(t.Context(), &out, &azuremonitor.TableResponse{})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "KQL table results")
 	})
@@ -117,14 +117,14 @@ func TestQueryCodecsElasticsearchMetrics(t *testing.T) {
 
 	t.Run("table codec renders series rows", func(t *testing.T) {
 		var out bytes.Buffer
-		require.NoError(t, newIO("table").Encode(&out, resp))
+		require.NoError(t, newIO("table").Encode(t.Context(), &out, resp))
 		assert.Contains(t, out.String(), "tempo")
 		assert.Contains(t, out.String(), "8")
 	})
 
 	t.Run("graph codec renders a chart", func(t *testing.T) {
 		var out bytes.Buffer
-		require.NoError(t, newIO("graph").Encode(&out, resp))
+		require.NoError(t, newIO("graph").Encode(t.Context(), &out, resp))
 		assert.Contains(t, out.String(), "tempo")
 	})
 }
@@ -147,21 +147,21 @@ func TestQueryCodecsOpenSearchMetrics(t *testing.T) {
 
 	t.Run("table codec renders series rows", func(t *testing.T) {
 		var out bytes.Buffer
-		require.NoError(t, newIO("table").Encode(&out, resp))
+		require.NoError(t, newIO("table").Encode(t.Context(), &out, resp))
 		assert.Contains(t, out.String(), "tempo")
 		assert.Contains(t, out.String(), "8")
 	})
 
 	t.Run("wide codec renders series rows", func(t *testing.T) {
 		var out bytes.Buffer
-		require.NoError(t, newIO("wide").Encode(&out, resp))
+		require.NoError(t, newIO("wide").Encode(t.Context(), &out, resp))
 		assert.Contains(t, out.String(), "tempo")
 		assert.Contains(t, out.String(), "8")
 	})
 
 	t.Run("graph codec renders a chart", func(t *testing.T) {
 		var out bytes.Buffer
-		require.NoError(t, newIO("graph").Encode(&out, resp))
+		require.NoError(t, newIO("graph").Encode(t.Context(), &out, resp))
 		assert.Contains(t, out.String(), "tempo")
 	})
 }
@@ -187,7 +187,7 @@ func TestQueryJSONCodecInfluxDBTimestamps(t *testing.T) {
 		}
 
 		var out bytes.Buffer
-		err := newJSONIO().Encode(&out, resp)
+		err := newJSONIO().Encode(t.Context(), &out, resp)
 		require.NoError(t, err)
 
 		output := out.String()
@@ -199,7 +199,7 @@ func TestQueryJSONCodecInfluxDBTimestamps(t *testing.T) {
 		resp := &prometheus.QueryResponse{}
 
 		var out bytes.Buffer
-		err := newJSONIO().Encode(&out, resp)
+		err := newJSONIO().Encode(t.Context(), &out, resp)
 		require.NoError(t, err)
 
 		// Just verify it encoded without error -- the exact content depends
@@ -218,7 +218,7 @@ func TestQueryJSONCodecInfluxDBTimestamps(t *testing.T) {
 		}
 
 		var out bytes.Buffer
-		err := newJSONIO().Encode(&out, resp)
+		err := newJSONIO().Encode(t.Context(), &out, resp)
 		require.NoError(t, err)
 
 		output := out.String()
@@ -236,7 +236,7 @@ func TestQueryJSONCodecInfluxDBTimestamps(t *testing.T) {
 		}
 
 		var out bytes.Buffer
-		err := newJSONIO().Encode(&out, resp)
+		err := newJSONIO().Encode(t.Context(), &out, resp)
 		require.NoError(t, err)
 
 		assert.True(t, json.Valid(out.Bytes()), "output should be valid JSON")
@@ -259,7 +259,7 @@ func TestQueryYAMLCodecInfluxDBTimestamps(t *testing.T) {
 		}
 
 		var out bytes.Buffer
-		err := newYAMLIO().Encode(&out, resp)
+		err := newYAMLIO().Encode(t.Context(), &out, resp)
 		require.NoError(t, err)
 
 		output := out.String()
@@ -278,7 +278,7 @@ func TestQueryYAMLCodecInfluxDBTimestamps(t *testing.T) {
 		}
 
 		var out bytes.Buffer
-		err := newYAMLIO().Encode(&out, resp)
+		err := newYAMLIO().Encode(t.Context(), &out, resp)
 		require.NoError(t, err)
 
 		output := out.String()
@@ -315,7 +315,7 @@ func TestRegisterStructuredCodecs(t *testing.T) {
 
 	t.Run("json encodes a free-form map", func(t *testing.T) {
 		var out bytes.Buffer
-		err := newIO("json").Encode(&out, payload)
+		err := newIO("json").Encode(t.Context(), &out, payload)
 		require.NoError(t, err)
 		assert.True(t, json.Valid(out.Bytes()))
 		assert.Contains(t, out.String(), "regression")
@@ -323,7 +323,7 @@ func TestRegisterStructuredCodecs(t *testing.T) {
 
 	t.Run("yaml encodes a free-form map", func(t *testing.T) {
 		var out bytes.Buffer
-		err := newIO("yaml").Encode(&out, payload)
+		err := newIO("yaml").Encode(t.Context(), &out, payload)
 		require.NoError(t, err)
 		assert.Contains(t, out.String(), "regression")
 	})
@@ -331,7 +331,7 @@ func TestRegisterStructuredCodecs(t *testing.T) {
 	for _, format := range []string{"table", "wide", "graph"} {
 		t.Run(format+" is not an allowed format", func(t *testing.T) {
 			var out bytes.Buffer
-			err := newIO(format).Encode(&out, payload)
+			err := newIO(format).Encode(t.Context(), &out, payload)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), "unknown output format")
 			// The advertised menu must list only structured formats.
@@ -356,7 +356,7 @@ func TestTraceGetCodecDispatch(t *testing.T) {
 
 	t.Run("table dispatches to FormatTraceTable", func(t *testing.T) {
 		var out bytes.Buffer
-		err := newIO("table").Encode(&out, resp)
+		err := newIO("table").Encode(t.Context(), &out, resp)
 		require.NoError(t, err)
 		assert.Contains(t, out.String(), "spans: 0")
 		assert.Contains(t, out.String(), "services: 0")
@@ -364,7 +364,7 @@ func TestTraceGetCodecDispatch(t *testing.T) {
 
 	t.Run("wide dispatches to FormatTraceWide", func(t *testing.T) {
 		var out bytes.Buffer
-		err := newIO("wide").Encode(&out, resp)
+		err := newIO("wide").Encode(t.Context(), &out, resp)
 		require.NoError(t, err)
 		assert.Contains(t, out.String(), "spans: 0")
 		assert.Contains(t, out.String(), "services: 0")
@@ -390,13 +390,13 @@ func TestQueryCodecsCloudMonitoring(t *testing.T) {
 
 	t.Run("table codec renders frames", func(t *testing.T) {
 		var out bytes.Buffer
-		require.NoError(t, newIO("table").Encode(&out, resp))
+		require.NoError(t, newIO("table").Encode(t.Context(), &out, resp))
 		assert.Contains(t, out.String(), "cpu/utilization")
 	})
 
 	t.Run("graph codec renders a chart", func(t *testing.T) {
 		var out bytes.Buffer
-		require.NoError(t, newIO("graph").Encode(&out, resp))
+		require.NoError(t, newIO("graph").Encode(t.Context(), &out, resp))
 		assert.Contains(t, out.String(), "cpu/utilization")
 	})
 }

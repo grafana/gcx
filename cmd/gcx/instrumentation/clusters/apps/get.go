@@ -76,9 +76,9 @@ namespace has no declared configuration.`,
 				}
 				// Table/wide codecs expect []AppView; JSON/YAML encode the single view directly.
 				if opts.OutputFormat == "text" || opts.OutputFormat == "wide" {
-					return opts.Encode(cmd.OutOrStdout(), []instoutput.AppView{view})
+					return opts.Encode(ctx, cmd.OutOrStdout(), []instoutput.AppView{view})
 				}
-				return opts.Encode(cmd.OutOrStdout(), view)
+				return opts.Encode(ctx, cmd.OutOrStdout(), view)
 			}
 
 			// Namespace is neither declared nor discovered — exit 1.
@@ -101,9 +101,9 @@ namespace has no declared configuration.`,
 				Discovered:  true,
 			}
 			if opts.OutputFormat == "text" || opts.OutputFormat == "wide" {
-				return opts.Encode(cmd.OutOrStdout(), []instoutput.AppView{view})
+				return opts.Encode(ctx, cmd.OutOrStdout(), []instoutput.AppView{view})
 			}
-			return opts.Encode(cmd.OutOrStdout(), view)
+			return opts.Encode(ctx, cmd.OutOrStdout(), view)
 		},
 	}
 

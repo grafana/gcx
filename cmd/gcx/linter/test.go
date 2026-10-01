@@ -2,6 +2,7 @@ package linter
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -49,9 +50,9 @@ func (c *opaRenderedCodec) Decode(io.Reader, any) error {
 	return errors.New("test report codec does not support decoding")
 }
 
-func (c *opaRenderedCodec) Encode(w io.Writer, value any) error {
+func (c *opaRenderedCodec) Encode(ctx context.Context, w io.Writer, value any) error {
 	if c.fallback != nil {
-		return c.fallback.Encode(w, value) //nolint:wrapcheck
+		return c.fallback.Encode(ctx, w, value) //nolint:wrapcheck
 	}
 	return errors.New("internal error: test report output is rendered by the OPA reporter, not the codec system")
 }
@@ -163,7 +164,7 @@ func runLintTests(cmd *cobra.Command, args []string, opts *testOpts) error {
 		return fmt.Errorf("decoding test report: %w", err)
 	}
 
-	if err := opts.IO.Encode(cmd.OutOrStdout(), report); err != nil {
+	if err := opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), report); err != nil {
 		return err
 	}
 

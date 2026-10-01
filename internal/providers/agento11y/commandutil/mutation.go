@@ -12,6 +12,7 @@ package commandutil
 // the structured document.
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -32,7 +33,7 @@ func (SilentTextCodec) Format() format.Format { return "text" }
 
 // Encode writes nothing: the human result of these mutations is the stderr
 // receipt stream, not a stdout document.
-func (SilentTextCodec) Encode(io.Writer, any) error { return nil }
+func (SilentTextCodec) Encode(context.Context, io.Writer, any) error { return nil }
 
 // Decode is unsupported.
 func (SilentTextCodec) Decode(io.Reader, any) error {
@@ -58,7 +59,7 @@ func (SilentTextCodec) Decode(io.Reader, any) error {
 //     succeeded count, the failed target, unattempted ids as skipped — is
 //     encoded to stdout, a warn diagnostic goes to stderr, and the returned
 //     EmittedError carries ExitPartialFailure without a second document.
-func RunBatchDelete(stdout, stderr io.Writer, opts *cmdio.Options, kind, successFormat, errorFormat string, ids []string, del func(id string) error) error {
+func RunBatchDelete(ctx context.Context, stdout, stderr io.Writer, opts *cmdio.Options, kind, successFormat, errorFormat string, ids []string, del func(id string) error) error {
 	result := cmdio.NewBatchMutation("deleted")
 	for i, id := range ids {
 		err := del(id)
@@ -79,11 +80,11 @@ func RunBatchDelete(stdout, stderr io.Writer, opts *cmdio.Options, kind, success
 			Target: cmdio.MutationTarget{Kind: kind, ID: id},
 			Error:  err.Error(),
 		})
-		if encErr := opts.Encode(stdout, result); encErr != nil {
+		if encErr := opts.Encode(ctx, stdout, result); encErr != nil {
 			return encErr
 		}
 		cmdio.EmitWarn(stderr, wrapped.Error())
 		return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, wrapped)
 	}
-	return opts.Encode(stdout, result)
+	return opts.Encode(ctx, stdout, result)
 }

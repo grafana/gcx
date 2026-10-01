@@ -1,6 +1,7 @@
 package resources
 
 import (
+	"context"
 	"errors"
 	"io"
 
@@ -140,7 +141,7 @@ func validateCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			// the success count is deliberately not read back from the output.
 			captureBatchVolume(summaryCounts(summary), true, err)
 
-			if err := reportValidation(cmd.OutOrStdout(), opts.IO, summary); err != nil {
+			if err := reportValidation(ctx, cmd.OutOrStdout(), opts.IO, summary); err != nil {
 				return err
 			}
 
@@ -165,14 +166,14 @@ func validateCmd(configOpts *cmdconfig.Options) *cobra.Command {
 // reportValidation prints the validation outcome. Resources whose API can't do server-side
 // dry-run are reported as skipped (not falsely "valid"), and the skipped count shows in every
 // output mode, including the JSON/YAML that agents read.
-func reportValidation(w io.Writer, ioOpts cmdio.Options, summary *remote.OperationSummary) error {
+func reportValidation(ctx context.Context, w io.Writer, ioOpts cmdio.Options, summary *remote.OperationSummary) error {
 	if ioOpts.OutputFormat != "text" {
-		return encodeValidationSummary(w, ioOpts, summary)
+		return encodeValidationSummary(ctx, w, ioOpts, summary)
 	}
-	return reportValidationText(w, ioOpts, summary)
+	return reportValidationText(ctx, w, ioOpts, summary)
 }
 
-func reportValidationText(w io.Writer, ioOpts cmdio.Options, summary *remote.OperationSummary) error {
+func reportValidationText(ctx context.Context, w io.Writer, ioOpts cmdio.Options, summary *remote.OperationSummary) error {
 	skipped := summary.SkippedCount()
 
 	if summary.FailedCount() == 0 {
@@ -184,7 +185,7 @@ func reportValidationText(w io.Writer, ioOpts cmdio.Options, summary *remote.Ope
 		return nil
 	}
 
-	if err := ioOpts.Encode(w, summary); err != nil {
+	if err := ioOpts.Encode(ctx, w, summary); err != nil {
 		return err
 	}
 	if skipped > 0 {
@@ -193,7 +194,7 @@ func reportValidationText(w io.Writer, ioOpts cmdio.Options, summary *remote.Ope
 	return nil
 }
 
-func encodeValidationSummary(w io.Writer, ioOpts cmdio.Options, summary *remote.OperationSummary) error {
+func encodeValidationSummary(ctx context.Context, w io.Writer, ioOpts cmdio.Options, summary *remote.OperationSummary) error {
 	printableSummary := struct {
 		Failures []map[string]string `json:"failures" yaml:"failures"`
 		Skipped  int                 `json:"skipped" yaml:"skipped"`
@@ -213,7 +214,7 @@ func encodeValidationSummary(w io.Writer, ioOpts cmdio.Options, summary *remote.
 		})
 	}
 
-	return ioOpts.Encode(w, printableSummary)
+	return ioOpts.Encode(ctx, w, printableSummary)
 }
 
 type validationTableCodec struct{}
@@ -222,7 +223,7 @@ func (c *validationTableCodec) Format() format.Format {
 	return "text"
 }
 
-func (c *validationTableCodec) Encode(output io.Writer, input any) error {
+func (c *validationTableCodec) Encode(ctx context.Context, output io.Writer, input any) error {
 	//nolint:forcetypeassert
 	summary := input.(*remote.OperationSummary)
 

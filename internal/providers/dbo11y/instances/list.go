@@ -1,6 +1,7 @@
 package instances
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -137,7 +138,7 @@ func runList(loader *providers.ConfigLoader, opts *listOpts) func(*cobra.Command
 			// to the generic table message below rather than blocking.
 			if activated, actErr := checkActivation(ctx, cfg); actErr == nil && !activated {
 				cmdio.EmitWarn(cmd.ErrOrStderr(), notActivatedError().Error())
-				if err := opts.IO.Encode(cmd.OutOrStdout(), &InstancesResponse{Items: items}); err != nil {
+				if err := opts.IO.Encode(ctx, cmd.OutOrStdout(), &InstancesResponse{Items: items}); err != nil {
 					return err
 				}
 				return gcxerrors.NewEmittedError(gcxerrors.ExitGeneralError, notActivatedError())
@@ -155,7 +156,7 @@ func runList(loader *providers.ConfigLoader, opts *listOpts) func(*cobra.Command
 				fmt.Sprintf("gcx dbo11y instances list --limit %d", opts.Limit*2))
 		}
 
-		return opts.IO.Encode(cmd.OutOrStdout(), &InstancesResponse{Items: items})
+		return opts.IO.Encode(ctx, cmd.OutOrStdout(), &InstancesResponse{Items: items})
 	}
 }
 
@@ -175,7 +176,7 @@ func (c *instancesTableCodec) Decode(io.Reader, any) error {
 	return errors.New("instances table codec does not support decoding")
 }
 
-func (c *instancesTableCodec) Encode(w io.Writer, v any) error {
+func (c *instancesTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	resp, ok := v.(*InstancesResponse)
 	if !ok {
 		return fmt.Errorf("invalid data type for instances table codec: %T", v)

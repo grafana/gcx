@@ -1,6 +1,7 @@
 package investigations
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -61,7 +62,7 @@ func newChatCommand(loader *providers.ConfigLoader) *cobra.Command {
 				return err
 			}
 			messages = filterMessages(messages, opts.Role, opts.Hidden)
-			return opts.IO.Encode(cmd.OutOrStdout(), messages)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), messages)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -123,7 +124,7 @@ func newNarrativeCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), Narrative(messages))
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), Narrative(messages))
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -178,7 +179,7 @@ func newToolsCommand(loader *providers.ConfigLoader) *cobra.Command {
 				}
 				calls = filtered
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), calls)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), calls)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -197,7 +198,7 @@ func (c *ChatThreadTextCodec) Format() format.Format {
 	return "table"
 }
 
-func (c *ChatThreadTextCodec) Encode(w io.Writer, v any) error {
+func (c *ChatThreadTextCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	messages, ok := v.([]ChatThreadMessage)
 	if !ok {
 		return errors.New("invalid data type for chat codec: expected []ChatThreadMessage")
@@ -357,7 +358,7 @@ func (c NarrativeCodec) Format() format.Format {
 	return "table"
 }
 
-func (NarrativeCodec) Encode(w io.Writer, v any) error {
+func (NarrativeCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	s, ok := v.(string)
 	if !ok {
 		return errors.New("invalid data type for narrative codec: expected string")
@@ -389,7 +390,7 @@ func (c *ToolsTableCodec) Format() format.Format {
 	return "table"
 }
 
-func (c *ToolsTableCodec) Encode(w io.Writer, v any) error {
+func (c *ToolsTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	calls, ok := v.([]ToolCall)
 	if !ok {
 		return errors.New("invalid data type for table codec: expected []ToolCall")

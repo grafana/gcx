@@ -39,7 +39,7 @@ Use "gcx instrumentation status" for observed-state status.`,
 			// --json list (field discovery): introspect AppView shape without
 			// requiring a cluster positional or making any API call.
 			if opts.JSONDiscovery {
-				return opts.Encode(cmd.OutOrStdout(), instoutput.ListEnvelope[instoutput.AppView]{Items: []instoutput.AppView{{}}})
+				return opts.Encode(cmd.Context(), cmd.OutOrStdout(), instoutput.ListEnvelope[instoutput.AppView]{Items: []instoutput.AppView{{}}})
 			}
 
 			if len(args) != 1 {
@@ -87,7 +87,7 @@ Use "gcx instrumentation status" for observed-state status.`,
 				})
 			}
 
-			return instoutput.EncodeList(opts, cmd.OutOrStdout(), views)
+			return instoutput.EncodeList(ctx, opts, cmd.OutOrStdout(), views)
 		},
 	}
 

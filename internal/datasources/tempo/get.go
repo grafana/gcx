@@ -239,7 +239,7 @@ with a hint to read it directly or re-run narrower (e.g. with --filter or
 			}
 
 			return dsquery.EncodeAndHandleExplore(cmd, func() error {
-				return opts.IO.Encode(cmd.OutOrStdout(), resp)
+				return opts.IO.Encode(ctx, cmd.OutOrStdout(), resp)
 			}, opts.Share, dsquery.ExploreLink{
 				URL:            exploreURL,
 				UnavailableMsg: unavailableMsg,

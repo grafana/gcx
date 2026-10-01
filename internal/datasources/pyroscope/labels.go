@@ -1,6 +1,7 @@
 package pyroscope
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -103,7 +104,7 @@ func LabelsCmd(loader *providers.ConfigLoader) *cobra.Command {
 				if opts.IO.OutputFormat == "table" {
 					return pyroscope.FormatLabelsTable(cmd.OutOrStdout(), resp.Names)
 				}
-				return opts.IO.Encode(cmd.OutOrStdout(), resp)
+				return opts.IO.Encode(ctx, cmd.OutOrStdout(), resp)
 			}
 
 			resp, err := client.LabelNames(ctx, datasourceUID, pyroscope.LabelNamesRequest{
@@ -120,7 +121,7 @@ func LabelsCmd(loader *providers.ConfigLoader) *cobra.Command {
 			if opts.IO.OutputFormat == "table" {
 				return pyroscope.FormatLabelsTable(cmd.OutOrStdout(), resp.Names)
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), resp)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), resp)
 		},
 	}
 
@@ -139,7 +140,7 @@ func (c *pyroscopeLabelsTableCodec) Format() format.Format {
 	return "table"
 }
 
-func (c *pyroscopeLabelsTableCodec) Encode(w io.Writer, data any) error {
+func (c *pyroscopeLabelsTableCodec) Encode(ctx context.Context, w io.Writer, data any) error {
 	switch v := data.(type) {
 	case *pyroscope.LabelNamesResponse:
 		return pyroscope.FormatLabelsTable(w, v.Names)

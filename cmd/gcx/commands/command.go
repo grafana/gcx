@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -132,14 +133,14 @@ against live resource discovery and report uncovered or stale types.`,
 					Commands:      flat,
 					ResourceTypes: resourceTypes,
 				}
-				return opts.IO.Encode(cmd.OutOrStdout(), output)
+				return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), output)
 			}
 
 			output := CatalogOutput{
 				Commands:      tree,
 				ResourceTypes: resourceTypes,
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), output)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), output)
 		},
 	}
 
@@ -261,7 +262,7 @@ type commandsTextCodec struct{}
 
 func (c *commandsTextCodec) Format() format.Format { return "text" }
 
-func (c *commandsTextCodec) Encode(output io.Writer, value any) error {
+func (c *commandsTextCodec) Encode(ctx context.Context, output io.Writer, value any) error {
 	switch v := value.(type) {
 	case CatalogOutput:
 		t := style.NewTable("COMMAND", "DESCRIPTION", "TOKEN_COST")
@@ -306,5 +307,5 @@ func runValidation(cmd *cobra.Command, cfgOpts *cmdconfig.Options, resourceTypes
 	if err != nil {
 		return err
 	}
-	return emitValidationResult(cmd.OutOrStdout(), io, result)
+	return emitValidationResult(ctx, cmd.OutOrStdout(), io, result)
 }

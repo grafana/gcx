@@ -6,6 +6,7 @@
 package output
 
 import (
+	"context"
 	"io"
 	"strconv"
 
@@ -370,7 +371,7 @@ func ServiceTable() cmdio.Table[ServiceView] {
 // selected, and wraps them in the list envelope otherwise. The table codecs
 // render a row slice while JSON and YAML render the envelope, so the payload
 // depends on the resolved format rather than on what the command fetched.
-func EncodeList[T any](opts *cmdio.Options, w io.Writer, rows []T) error {
+func EncodeList[T any](ctx context.Context, opts *cmdio.Options, w io.Writer, rows []T) error {
 	codec, err := opts.Codec()
 	if err != nil {
 		return err
@@ -378,8 +379,8 @@ func EncodeList[T any](opts *cmdio.Options, w io.Writer, rows []T) error {
 
 	switch string(codec.Format()) {
 	case cmdio.FormatTable, cmdio.FormatWide, cmdio.FormatText:
-		return codec.Encode(w, rows)
+		return codec.Encode(ctx, w, rows)
 	default:
-		return opts.Encode(w, ListEnvelope[T]{Items: rows})
+		return opts.Encode(ctx, w, ListEnvelope[T]{Items: rows})
 	}
 }

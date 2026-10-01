@@ -1,6 +1,7 @@
 package azuremonitor
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -71,7 +72,7 @@ func ListSubscriptionsCmd(loader *providers.ConfigLoader) *cobra.Command {
 				return fmt.Errorf("failed to list subscriptions: %w", err)
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), subs)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), subs)
 		},
 	}
 
@@ -88,7 +89,7 @@ type listSubscriptionsTableCodec struct{}
 
 func (c *listSubscriptionsTableCodec) Format() format.Format { return "table" }
 
-func (c *listSubscriptionsTableCodec) Encode(w io.Writer, data any) error {
+func (c *listSubscriptionsTableCodec) Encode(ctx context.Context, w io.Writer, data any) error {
 	subs, ok := data.([]azclient.Subscription)
 	if !ok {
 		return fmt.Errorf("listSubscriptionsTableCodec: unexpected type %T", data)

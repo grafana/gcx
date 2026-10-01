@@ -95,7 +95,7 @@ func DescribeTableCmd(loader *providers.ConfigLoader) *cobra.Command {
 			}
 
 			cols := clickhouse.ParseColumnInfoRows(resp)
-			return opts.IO.Encode(cmd.OutOrStdout(), cols)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), cols)
 		},
 	}
 

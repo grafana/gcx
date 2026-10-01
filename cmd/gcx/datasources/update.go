@@ -100,7 +100,7 @@ prompt; use --dry-run to preview the change.`,
 				cmdio.Info(cmd.ErrOrStderr(), "Dry run — no changes applied.\n%s", summary.Render())
 				manifest.Sanitize()
 				redactSecrets(manifest)
-				return opts.IO.Encode(cmd.OutOrStdout(), manifest)
+				return opts.IO.Encode(ctx, cmd.OutOrStdout(), manifest)
 			}
 
 			ds := manifest.ToDatasource()
@@ -112,7 +112,7 @@ prompt; use --dry-run to preview the change.`,
 			}
 
 			cmdio.Success(cmd.ErrOrStderr(), "Updated datasource %q (uid=%s)", updated.Name, updated.UID)
-			return opts.IO.Encode(cmd.OutOrStdout(), dsclient.ManifestFromDatasource(updated))
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), dsclient.ManifestFromDatasource(updated))
 		},
 	}
 

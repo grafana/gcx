@@ -74,7 +74,7 @@ func TestJSONFieldSelection_SingleResource(t *testing.T) {
 
 			item := unstructured.Unstructured{Object: tc.obj}
 			var buf bytes.Buffer
-			require.NoError(t, codec.Encode(&buf, item))
+			require.NoError(t, codec.Encode(t.Context(), &buf, item))
 
 			var got map[string]any
 			require.NoError(t, json.Unmarshal(buf.Bytes(), &got))
@@ -107,7 +107,7 @@ func TestJSONFieldSelection_MultipleResources(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	require.NoError(t, codec.Encode(&buf, list))
+	require.NoError(t, codec.Encode(t.Context(), &buf, list))
 
 	var got map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &got))
@@ -153,7 +153,7 @@ func TestJSONFieldSelection_MissingFieldIsNull(t *testing.T) {
 	}}
 
 	var buf bytes.Buffer
-	require.NoError(t, codec.Encode(&buf, item))
+	require.NoError(t, codec.Encode(t.Context(), &buf, item))
 
 	var got map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &got))

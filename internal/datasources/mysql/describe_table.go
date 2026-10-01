@@ -136,7 +136,7 @@ platform and lower_case_table_names setting.`,
 				return fmt.Errorf("table %q not found", table)
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), resp)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), resp)
 		},
 	}
 

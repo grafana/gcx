@@ -311,7 +311,7 @@ func TestOperationsTableCodec(t *testing.T) {
 		},
 	}
 	var buf bytes.Buffer
-	if err := codec.Encode(&buf, resp); err != nil {
+	if err := codec.Encode(t.Context(), &buf, resp); err != nil {
 		t.Fatalf("Encode err = %v", err)
 	}
 	out := buf.String()
@@ -331,7 +331,7 @@ func TestOperationsTableCodec(t *testing.T) {
 	// Wide view: P50, P99, ERRORS appear.
 	buf.Reset()
 	wide := &operationsTableCodec{Wide: true}
-	if err := wide.Encode(&buf, resp); err != nil {
+	if err := wide.Encode(t.Context(), &buf, resp); err != nil {
 		t.Fatalf("Encode err = %v", err)
 	}
 	out = buf.String()
@@ -343,7 +343,7 @@ func TestOperationsTableCodec(t *testing.T) {
 
 	// Empty items path: friendly message, no crash.
 	buf.Reset()
-	if err := codec.Encode(&buf, &OperationsResponse{Service: Service{Name: "auth"}}); err != nil {
+	if err := codec.Encode(t.Context(), &buf, &OperationsResponse{Service: Service{Name: "auth"}}); err != nil {
 		t.Fatalf("Encode err = %v", err)
 	}
 	if !strings.Contains(buf.String(), "No operations found") {
@@ -351,7 +351,7 @@ func TestOperationsTableCodec(t *testing.T) {
 	}
 
 	// Wrong type rejected.
-	if err := codec.Encode(&buf, "not a response"); err == nil {
+	if err := codec.Encode(t.Context(), &buf, "not a response"); err == nil {
 		t.Error("expected error on wrong type")
 	}
 }

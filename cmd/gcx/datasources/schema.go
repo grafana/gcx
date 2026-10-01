@@ -90,7 +90,7 @@ as spec.type when authoring a datasource manifest.`,
 
 			// Pattern 13: single shape for all formats. The table codec extracts
 			// .Types to render rows; JSON/YAML serialize the envelope.
-			return opts.IO.Encode(cmd.OutOrStdout(), &pluginTypesResult{Types: types})
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), &pluginTypesResult{Types: types})
 		},
 	}
 
@@ -112,7 +112,7 @@ func (c *pluginTypeTableCodec) Format() format.Format {
 	return "table"
 }
 
-func (c *pluginTypeTableCodec) Encode(w io.Writer, data any) error {
+func (c *pluginTypeTableCodec) Encode(ctx context.Context, w io.Writer, data any) error {
 	result, ok := data.(*pluginTypesResult)
 	if !ok {
 		return errors.New("invalid data type for table codec")
@@ -212,7 +212,7 @@ the server's OpenAPI document. Use it to author create/update manifests.`,
 			if err := json.Unmarshal(raw, &schema); err != nil {
 				return fmt.Errorf("failed to decode schema: %w", err)
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), schema)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), schema)
 		},
 	}
 

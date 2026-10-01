@@ -432,7 +432,7 @@ func newStatusCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), status)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), status)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -488,7 +488,7 @@ func newRulesCommand(loader RESTConfigLoader) *cobra.Command {
 				objs = append(objs, res.ToUnstructured())
 			}
 
-			return rulesListOpts.IO.Encode(cmd.OutOrStdout(), objs)
+			return rulesListOpts.IO.Encode(ctx, cmd.OutOrStdout(), objs)
 		},
 	}
 	rulesListOpts.setup(listCmd.Flags())
@@ -518,7 +518,7 @@ func newRulesCommand(loader RESTConfigLoader) *cobra.Command {
 				return fmt.Errorf("failed to convert rule %s to resource: %w", typedObj.Spec.Name, err)
 			}
 
-			return getOpts.IO.Encode(cmd.OutOrStdout(), res.ToUnstructured())
+			return getOpts.IO.Encode(ctx, cmd.OutOrStdout(), res.ToUnstructured())
 		},
 	}
 	getOpts.setup(getCmd.Flags())
@@ -575,7 +575,7 @@ deep validation when authoring prom-rules manifests.`,
 			if err != nil {
 				return err
 			}
-			return schemaOpts.IO.Encode(cmd.OutOrStdout(), schema)
+			return schemaOpts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), schema)
 		},
 	}
 	schemaOpts.setup(schemaCmd.Flags())
@@ -703,7 +703,7 @@ func newModelRulesCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return listOpts.IO.Encode(cmd.OutOrStdout(), names)
+			return listOpts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), names)
 		},
 	}
 	listOpts.setup(listCmd.Flags())
@@ -729,7 +729,7 @@ func newModelRulesCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return getOpts.IO.Encode(cmd.OutOrStdout(), rules)
+			return getOpts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), rules)
 		},
 	}
 	getOpts.setup(getCmd.Flags())
@@ -774,7 +774,7 @@ deep validation when authoring model rules manifests.`,
 			if err != nil {
 				return err
 			}
-			return schemaOpts.IO.Encode(cmd.OutOrStdout(), schema)
+			return schemaOpts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), schema)
 		},
 	}
 	schemaOpts.setup(schemaCmd.Flags())
@@ -843,7 +843,7 @@ func newSuppressionsCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return listOpts.IO.Encode(cmd.OutOrStdout(), suppressions.DisabledAlertConfigs)
+			return listOpts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), suppressions.DisabledAlertConfigs)
 		},
 	}
 	listOpts.setup(listCmd.Flags())
@@ -913,7 +913,7 @@ scoped to the entries in the input file, without uploading.`,
 						Error:  err.Error(),
 					})
 					cmdio.EmitWarn(cmd.ErrOrStderr(), failure.Error())
-					if encErr := createOpts.IO.Encode(cmd.OutOrStdout(), result); encErr != nil {
+					if encErr := createOpts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), result); encErr != nil {
 						return encErr
 					}
 					// The result document (with the enumerated failure) is
@@ -923,7 +923,7 @@ scoped to the entries in the input file, without uploading.`,
 				}
 			}
 			result.Summary = cmdio.MutationSummary{Succeeded: total}
-			return createOpts.IO.Encode(cmd.OutOrStdout(), result)
+			return createOpts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), result)
 		},
 	}
 	createOpts.setup(createCmd.Flags())
@@ -984,7 +984,7 @@ flag. Distinct from "gcx kg suppressions", which manages disabled-alert configs.
 			if err != nil {
 				return err
 			}
-			return listOpts.IO.Encode(cmd.OutOrStdout(), configs.AlertConfigs)
+			return listOpts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), configs.AlertConfigs)
 		},
 	}
 	listOpts.setup(listCmd.Flags())
@@ -1010,7 +1010,7 @@ flag. Distinct from "gcx kg suppressions", which manages disabled-alert configs.
 			if err != nil {
 				return err
 			}
-			return getOpts.IO.Encode(cmd.OutOrStdout(), config)
+			return getOpts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), config)
 		},
 	}
 	getOpts.setup(getCmd.Flags())
@@ -1079,7 +1079,7 @@ deleted.`,
 						Error:  err.Error(),
 					})
 					cmdio.EmitWarn(cmd.ErrOrStderr(), failure.Error())
-					if encErr := createOpts.IO.Encode(cmd.OutOrStdout(), result); encErr != nil {
+					if encErr := createOpts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), result); encErr != nil {
 						return encErr
 					}
 					// The result document (with the enumerated failure) is
@@ -1089,7 +1089,7 @@ deleted.`,
 				}
 			}
 			result.Summary = cmdio.MutationSummary{Succeeded: total}
-			return createOpts.IO.Encode(cmd.OutOrStdout(), result)
+			return createOpts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), result)
 		},
 	}
 	createOpts.setup(createCmd.Flags())
@@ -1155,7 +1155,7 @@ type NotificationsUpsertTextCodec struct{}
 
 func (c *NotificationsUpsertTextCodec) Format() format.Format { return "text" }
 
-func (c *NotificationsUpsertTextCodec) Encode(w io.Writer, v any) error {
+func (c *NotificationsUpsertTextCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	result, ok := v.(cmdio.BatchMutation)
 	if !ok {
 		return errors.New("invalid data type for text codec: expected cmdio.BatchMutation")
@@ -1249,7 +1249,7 @@ func runSuppressionsDryRun(cmd *cobra.Command, ioOpts *cmdio.Options, client *Cl
 	} else {
 		cmdio.Info(cmd.ErrOrStderr(), "[dry-run] suppressions are valid; no changes")
 	}
-	return ioOpts.Encode(cmd.OutOrStdout(), result)
+	return ioOpts.Encode(cmd.Context(), cmd.OutOrStdout(), result)
 }
 
 // buildSuppressionsDryRunResult compares the input file's entries against their
@@ -1335,7 +1335,7 @@ type SuppressionsDryRunTextCodec struct{}
 
 func (c *SuppressionsDryRunTextCodec) Format() format.Format { return "text" }
 
-func (c *SuppressionsDryRunTextCodec) Encode(w io.Writer, v any) error {
+func (c *SuppressionsDryRunTextCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	switch result := v.(type) {
 	case SuppressionsDryRunResult:
 		if result.Diff == "" {
@@ -1449,7 +1449,7 @@ func newRulesUpsertCommand(
 			if err := upload(client, cmd.Context(), string(data)); err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(),
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(),
 				cmdio.NewSingleMutation("upserted", cmdio.MutationTarget{Kind: kind}))
 		},
 	}
@@ -1516,7 +1516,7 @@ func runModelRulesDryRun(cmd *cobra.Command, ioOpts *cmdio.Options, client *Clie
 		return err
 	}
 	reportRulesDryRun(cmd, "model rules", result)
-	return ioOpts.Encode(cmd.OutOrStdout(), result)
+	return ioOpts.Encode(ctx, cmd.OutOrStdout(), result)
 }
 
 // runPromRulesDryRun is the prom-rules counterpart to runModelRulesDryRun.
@@ -1557,7 +1557,7 @@ func runPromRulesDryRun(cmd *cobra.Command, ioOpts *cmdio.Options, client *Clien
 		return err
 	}
 	reportRulesDryRun(cmd, "prom-rules", result)
-	return ioOpts.Encode(cmd.OutOrStdout(), result)
+	return ioOpts.Encode(ctx, cmd.OutOrStdout(), result)
 }
 
 // buildRulesDryRunResult compares a single local config's canonical YAML against
@@ -1625,7 +1625,7 @@ type RulesDryRunTextCodec struct {
 
 func (c *RulesDryRunTextCodec) Format() format.Format { return "text" }
 
-func (c *RulesDryRunTextCodec) Encode(w io.Writer, v any) error {
+func (c *RulesDryRunTextCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	switch result := v.(type) {
 	case RulesDryRunResult:
 		if result.Diff == "" {
@@ -1704,7 +1704,7 @@ func newRelabelRulesCommand(loader RESTConfigLoader) *cobra.Command {
 				// exactly one JSON value (null) instead of empty stdout.
 				cmdio.Info(cmd.ErrOrStderr(), "No %s relabel rules configured.", t)
 			}
-			return io.Encode(cmd.OutOrStdout(), rules)
+			return io.Encode(cmd.Context(), cmd.OutOrStdout(), rules)
 		},
 	}
 	getCmd.Flags().StringVar(&ruleType, "type", string(RelabelRuleTypeGenerated),
@@ -1722,7 +1722,7 @@ type RelabelRuleTableCodec struct{}
 
 func (c *RelabelRuleTableCodec) Format() format.Format { return "table" }
 
-func (c *RelabelRuleTableCodec) Encode(w io.Writer, v any) error {
+func (c *RelabelRuleTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	group, ok := v.(map[string]any)
 	if !ok {
 		return errors.New("invalid data type for table codec: expected map[string]any")
@@ -1896,7 +1896,7 @@ analysis, use 'gcx kg entities inspect' instead.`,
 					fmt.Sprintf("--limit of %d reached — results may be truncated; raise --limit or pass --limit 0 for all", listOpts.Limit),
 					"")
 			}
-			return listOpts.IO.Encode(cmd.OutOrStdout(), results)
+			return listOpts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), results)
 		},
 	}
 	listCmd.Flags().StringVar(&listType, "type", "", "Entity type to list (run 'gcx kg meta schema' to see available types)")
@@ -2020,7 +2020,7 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return chartOpts.IO.Encode(cmd.OutOrStdout(), result)
+			return chartOpts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), result)
 		},
 	}
 	chartOpts.setup(entityMetricCmd.Flags())
@@ -2102,7 +2102,7 @@ func newAssertionsCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return sourcesOpts.IO.Encode(cmd.OutOrStdout(), results)
+			return sourcesOpts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), results)
 		},
 	}
 	sourcesOpts.setup(sourceMetricsCmd.Flags())
@@ -2391,7 +2391,7 @@ narrow to one entity), which is cheaper and returns those fields directly.`,
 					}
 				}
 			}
-			return ioOpts.IO.Encode(cmd.OutOrStdout(), result)
+			return ioOpts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), result)
 		},
 	}
 	cmd.Flags().String("type", "", "Entity type (run 'gcx kg meta schema' to see available types)")
@@ -2592,7 +2592,7 @@ func newSummaryCommand(loader RESTConfigLoader) *cobra.Command {
 				BySeverity map[string]int `json:"bySeverity" yaml:"bySeverity"`
 				ByName     map[string]int `json:"byName" yaml:"byName"`
 			}
-			return ioOpts.IO.Encode(cmd.OutOrStdout(), struct {
+			return ioOpts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), struct {
 				Entities entitiesSummary `json:"entities" yaml:"entities"`
 				Insights insightsSummary `json:"insights" yaml:"insights"`
 			}{
@@ -2657,7 +2657,7 @@ func newOpenCommand(loader RESTConfigLoader) *cobra.Command {
 			// document is a receipt carrying the opened URL. The text codec
 			// prints nothing, matching the command's historical (empty)
 			// human stdout.
-			return ioOpts.Encode(cmd.OutOrStdout(), newKGOpenLink(url))
+			return ioOpts.Encode(cmd.Context(), cmd.OutOrStdout(), newKGOpenLink(url))
 		},
 	}
 	ioOpts.RegisterCustomCodec("text", &textLineCodec{render: func(io.Writer, any) error { return nil }})
@@ -2733,7 +2733,7 @@ Tips:
 			if err != nil {
 				return err
 			}
-			return ioOpts.IO.Encode(cmd.OutOrStdout(), resp)
+			return ioOpts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), resp)
 		},
 	}
 	cmd.Flags().StringVar(&cypherScope.from, "from", "", "Start time (RFC3339, Unix timestamp, or relative like 'now-1h')")
@@ -2760,7 +2760,7 @@ type CypherTableCodec struct{}
 
 func (c *CypherTableCodec) Format() format.Format { return "table" }
 
-func (c *CypherTableCodec) Encode(w io.Writer, v any) error {
+func (c *CypherTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	resp, ok := v.(*CypherSearchResponse)
 	if !ok {
 		return errors.New("invalid data type for table codec: expected *CypherSearchResponse")
@@ -2870,7 +2870,7 @@ here — the backend fallback is unreliable today; use alert labels instead.`,
 			// Return the bare entities slice (like 'entities list') rather than
 			// the full graph envelope — agents only need the entities, and the
 			// envelope's edges/paging fields are noise for this command.
-			return ioOpts.IO.Encode(cmd.OutOrStdout(), resp.Data.Entities)
+			return ioOpts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), resp.Data.Entities)
 		},
 	}
 	cmd.Flags().StringArrayVar(&alertLabelsRaw, "alert-labels", nil, "Firing alert label set as comma-separated key=value pairs; one flag per alert (repeatable)")
@@ -3156,7 +3156,7 @@ type DescribeTextCodec struct{}
 
 func (c *DescribeTextCodec) Format() format.Format { return "text" }
 
-func (c *DescribeTextCodec) Encode(w io.Writer, v any) error {
+func (c *DescribeTextCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	out, ok := v.(KGMetadataOutput)
 	if !ok {
 		return errors.New("invalid data type for text codec: expected KGMetadataOutput")
@@ -3265,7 +3265,7 @@ func newDescribeSchemaCmd(loader RESTConfigLoader) *cobra.Command {
 				return err
 			}
 			result := processGraphSchema(schemaResp)
-			return opts.IO.Encode(cmd.OutOrStdout(), KGMetadataOutput{Schema: &result})
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), KGMetadataOutput{Schema: &result})
 		},
 	}
 	opts.setupWithTime(cmd.Flags())
@@ -3297,7 +3297,7 @@ func newDescribeScopesCmd(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), KGMetadataOutput{Scopes: scopes})
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), KGMetadataOutput{Scopes: scopes})
 		},
 	}
 	opts.setupWithTime(cmd.Flags())
@@ -3325,7 +3325,7 @@ func newDescribeLogsCmd(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), KGMetadataOutput{Logs: logResp.LogDrilldownConfigs})
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), KGMetadataOutput{Logs: logResp.LogDrilldownConfigs})
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -3353,7 +3353,7 @@ func newDescribeTracesCmd(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), KGMetadataOutput{Traces: traceResp.TraceDrilldownConfigs})
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), KGMetadataOutput{Traces: traceResp.TraceDrilldownConfigs})
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -3381,7 +3381,7 @@ func newDescribeProfilesCmd(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), KGMetadataOutput{Profiles: profileResp.ProfileDrilldownConfigs})
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), KGMetadataOutput{Profiles: profileResp.ProfileDrilldownConfigs})
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -3493,7 +3493,7 @@ func newDescribeAllCmd(loader RESTConfigLoader) *cobra.Command {
 			// so it's set directly rather than via an errgroup fetch.
 			guide := DefaultAssertsMetricGuide()
 			out.Metrics = &guide
-			return opts.IO.Encode(cmd.OutOrStdout(), out)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), out)
 		},
 	}
 	opts.setupWithTime(cmd.Flags())

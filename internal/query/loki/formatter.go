@@ -1,6 +1,7 @@
 package loki
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -27,7 +28,7 @@ func (c *rawQueryCodec) Format() format.Format {
 	return "raw"
 }
 
-func (c *rawQueryCodec) Encode(w io.Writer, data any) error {
+func (c *rawQueryCodec) Encode(ctx context.Context, w io.Writer, data any) error {
 	switch resp := data.(type) {
 	case *QueryResponse:
 		return FormatQueryRaw(w, resp)

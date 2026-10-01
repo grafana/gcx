@@ -10,6 +10,7 @@
 package explain
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -56,7 +57,7 @@ Powered by github.com/grafana/otel-checker.`,
 			if err := opts.IO.Validate(); err != nil {
 				return fmt.Errorf("instrumentation explain: %w", err)
 			}
-			if err := runShow(c.OutOrStdout(), args[0], opts); err != nil {
+			if err := runShow(c.Context(), c.OutOrStdout(), args[0], opts); err != nil {
 				return fmt.Errorf("instrumentation explain: %w", err)
 			}
 			return nil
@@ -82,12 +83,12 @@ func (o *showOpts) setup(flags *pflag.FlagSet) {
 // runShow looks up the doc and encodes it through the configured codec.
 // For text output the codec falls through to markdown rendering; JSON/YAML
 // serialize the DocView struct directly.
-func runShow(w io.Writer, id string, opts *showOpts) error {
+func runShow(ctx context.Context, w io.Writer, id string, opts *showOpts) error {
 	doc, ok := otelexplain.Lookup(id)
 	if !ok {
 		return fmt.Errorf("unknown explain ID %q. Run `gcx instrumentation list-explanations` to see every available ID", id)
 	}
-	return opts.IO.Encode(w, DocView{
+	return opts.IO.Encode(ctx, w, DocView{
 		ID:       doc.ID,
 		Title:    doc.Title,
 		Severity: doc.Severity,
@@ -117,7 +118,7 @@ var _ format.Codec = (*docTextCodec)(nil)
 
 func (*docTextCodec) Format() format.Format { return "text" }
 
-func (*docTextCodec) Encode(w io.Writer, v any) error {
+func (*docTextCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	doc, ok := v.(DocView)
 	if !ok {
 		return fmt.Errorf("docTextCodec: expected DocView, got %T", v)

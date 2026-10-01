@@ -1,6 +1,7 @@
 package query
 
 import (
+	"context"
 	"errors"
 	"io"
 
@@ -30,7 +31,7 @@ func (c *queryTableCodec) Format() format.Format {
 	return "table"
 }
 
-func (c *queryTableCodec) Encode(w io.Writer, data any) error {
+func (c *queryTableCodec) Encode(ctx context.Context, w io.Writer, data any) error {
 	switch resp := data.(type) {
 	case *prometheus.QueryResponse:
 		return prometheus.FormatTable(w, resp)
@@ -93,7 +94,7 @@ func (c *queryWideCodec) Format() format.Format {
 	return "wide"
 }
 
-func (c *queryWideCodec) Encode(w io.Writer, data any) error {
+func (c *queryWideCodec) Encode(ctx context.Context, w io.Writer, data any) error {
 	switch resp := data.(type) {
 	case *prometheus.QueryResponse:
 		return prometheus.FormatWideTable(w, resp)
@@ -144,7 +145,7 @@ func (c *queryGraphCodec) Format() format.Format {
 	return "graph"
 }
 
-func (c *queryGraphCodec) Encode(w io.Writer, data any) error {
+func (c *queryGraphCodec) Encode(ctx context.Context, w io.Writer, data any) error {
 	var chartData *graph.ChartData
 	var err error
 
@@ -220,14 +221,14 @@ func (c *queryJSONCodec) Format() format.Format {
 	return format.JSON
 }
 
-func (c *queryJSONCodec) Encode(w io.Writer, data any) error {
+func (c *queryJSONCodec) Encode(ctx context.Context, w io.Writer, data any) error {
 	// InfluxDB responses carry millisecond-epoch timestamps in time columns.
 	// FormatQueryJSON converts those to RFC3339 strings so the JSON output
 	// matches what users expect rather than raw numeric epoch values.
 	if resp, ok := data.(*influxdb.QueryResponse); ok {
-		return c.inner.Encode(w, influxdb.FormatQueryJSON(resp))
+		return c.inner.Encode(ctx, w, influxdb.FormatQueryJSON(resp))
 	}
-	return c.inner.Encode(w, data)
+	return c.inner.Encode(ctx, w, data)
 }
 
 func (c *queryJSONCodec) Decode(r io.Reader, v any) error {
@@ -242,13 +243,13 @@ func (c *queryYAMLCodec) Format() format.Format {
 	return format.YAML
 }
 
-func (c *queryYAMLCodec) Encode(w io.Writer, data any) error {
+func (c *queryYAMLCodec) Encode(ctx context.Context, w io.Writer, data any) error {
 	// Same as the JSON codec: convert millisecond-epoch time columns to
 	// RFC3339 strings before serializing so the output is human-readable.
 	if resp, ok := data.(*influxdb.QueryResponse); ok {
-		return c.inner.Encode(w, influxdb.FormatQueryJSON(resp))
+		return c.inner.Encode(ctx, w, influxdb.FormatQueryJSON(resp))
 	}
-	return c.inner.Encode(w, data)
+	return c.inner.Encode(ctx, w, data)
 }
 
 func (c *queryYAMLCodec) Decode(r io.Reader, v any) error {

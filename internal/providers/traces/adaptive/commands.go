@@ -46,7 +46,7 @@ type mutationTextCodec struct{}
 
 func (c *mutationTextCodec) Format() format.Format { return "text" }
 
-func (c *mutationTextCodec) Encode(_ io.Writer, v any) error {
+func (c *mutationTextCodec) Encode(ctx context.Context, _ io.Writer, v any) error {
 	switch v.(type) {
 	case cmdio.SingleMutation, cmdio.BatchMutation:
 		return nil
@@ -122,7 +122,7 @@ func (h *tracesHelper) recommendationsListCommand() *cobra.Command {
 				return err
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), recs)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), recs)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -140,7 +140,7 @@ func (c *recommendationTableCodec) Format() format.Format {
 	return "table"
 }
 
-func (c *recommendationTableCodec) Encode(w io.Writer, v any) error {
+func (c *recommendationTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	recs, ok := v.([]Recommendation)
 	if !ok {
 		return errors.New("invalid data type for table codec: expected []Recommendation")
@@ -213,7 +213,7 @@ func (h *tracesHelper) recommendationsApplyCommand() *cobra.Command {
 			if opts.DryRun {
 				cmdio.Info(cmd.ErrOrStderr(), "[dry-run] Would apply recommendation %q", id)
 				result.DryRun = true
-				return opts.IO.Encode(cmd.OutOrStdout(), result)
+				return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), result)
 			}
 
 			proceed, err := providers.ConfirmDestructive(cmd.Context(), cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
@@ -239,7 +239,7 @@ func (h *tracesHelper) recommendationsApplyCommand() *cobra.Command {
 			cmdio.Success(cmd.ErrOrStderr(), "Applied recommendation %q", id)
 			changed := true
 			result.Changed = &changed
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -290,7 +290,7 @@ func (h *tracesHelper) recommendationsDismissCommand() *cobra.Command {
 			if opts.DryRun {
 				cmdio.Info(cmd.ErrOrStderr(), "[dry-run] Would dismiss recommendation %q", id)
 				result.DryRun = true
-				return opts.IO.Encode(cmd.OutOrStdout(), result)
+				return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), result)
 			}
 
 			proceed, err := providers.ConfirmDestructive(cmd.Context(), cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force,
@@ -316,7 +316,7 @@ func (h *tracesHelper) recommendationsDismissCommand() *cobra.Command {
 			cmdio.Success(cmd.ErrOrStderr(), "Dismissed recommendation %q", id)
 			changed := true
 			result.Changed = &changed
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -386,7 +386,7 @@ func (h *tracesHelper) policiesListCommand() *cobra.Command {
 				policies[i] = typedObjs[i].Spec
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), policies)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), policies)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -409,7 +409,7 @@ func (c *policyTableCodec) Format() format.Format {
 	return "table"
 }
 
-func (c *policyTableCodec) Encode(w io.Writer, v any) error {
+func (c *policyTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	policies, ok := v.([]Policy)
 	if !ok {
 		return errors.New("invalid data type for table codec: expected []Policy")
@@ -473,7 +473,7 @@ func (h *tracesHelper) policiesGetCommand() *cobra.Command {
 				return err
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), &typedObj.Spec)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), &typedObj.Spec)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -534,7 +534,7 @@ func (h *tracesHelper) policiesCreateCommand() *cobra.Command {
 			}
 
 			cmdio.Success(cmd.ErrOrStderr(), "Created policy %q (id=%s)", created.Spec.Name, created.Spec.ID)
-			return opts.IO.Encode(cmd.OutOrStdout(), &created.Spec)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), &created.Spec)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -574,7 +574,7 @@ func (h *tracesHelper) policiesUpdateCommand() *cobra.Command {
 			}
 
 			cmdio.Success(cmd.ErrOrStderr(), "Updated policy %q (id=%s)", updated.Spec.Name, updated.Spec.ID)
-			return opts.IO.Encode(cmd.OutOrStdout(), &updated.Spec)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), &updated.Spec)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -657,7 +657,7 @@ func (h *tracesHelper) policiesDeleteCommand() *cobra.Command {
 				return errors.Join(errs...)
 			}
 
-			if err := opts.IO.Encode(cmd.OutOrStdout(), result); err != nil {
+			if err := opts.IO.Encode(ctx, cmd.OutOrStdout(), result); err != nil {
 				return err
 			}
 

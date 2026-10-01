@@ -1,6 +1,7 @@
 package check
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -55,7 +56,7 @@ func (c *CheckTableCodec) Format() format.Format {
 	return "table"
 }
 
-func (c *CheckTableCodec) Encode(w io.Writer, v any) error {
+func (c *CheckTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	envelope, ok := v.(ResultsWithFixPlan)
 	if !ok {
 		return errCheckTableCodecExpectedResults

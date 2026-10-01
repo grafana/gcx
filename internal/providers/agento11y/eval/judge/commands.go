@@ -66,7 +66,7 @@ func newProvidersCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), providers)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), providers)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -112,7 +112,7 @@ func newModelsCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), models)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), models)
 		},
 	}
 	opts.setup(cmd.Flags())

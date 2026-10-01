@@ -1,6 +1,7 @@
 package pyroscope
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -165,7 +166,7 @@ EXPR is the label selector (e.g. '{service_name="frontend"}').`,
 			}
 
 			result := pyroscope.BuildProfileExemplarsResult(resp, start, end, opts.ProfileType, int(opts.TopN))
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 
@@ -244,7 +245,7 @@ EXPR is the label selector (e.g. '{service_name="frontend"}').`,
 			}
 
 			result := pyroscope.BuildSpanExemplarsResult(resp, start, end, opts.ProfileType, int(opts.TopN))
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 
@@ -290,7 +291,7 @@ type profileExemplarsTableCodec struct {
 
 func (c *profileExemplarsTableCodec) Format() format.Format { return "table" }
 
-func (c *profileExemplarsTableCodec) Encode(w io.Writer, data any) error {
+func (c *profileExemplarsTableCodec) Encode(ctx context.Context, w io.Writer, data any) error {
 	v, ok := data.(*pyroscope.ProfileExemplarsResult)
 	if !ok {
 		return errors.New("invalid data type for profile exemplars table codec")
@@ -308,7 +309,7 @@ type spanExemplarsTableCodec struct {
 
 func (c *spanExemplarsTableCodec) Format() format.Format { return "table" }
 
-func (c *spanExemplarsTableCodec) Encode(w io.Writer, data any) error {
+func (c *spanExemplarsTableCodec) Encode(ctx context.Context, w io.Writer, data any) error {
 	v, ok := data.(*pyroscope.SpanExemplarsResult)
 	if !ok {
 		return errors.New("invalid data type for span exemplars table codec")

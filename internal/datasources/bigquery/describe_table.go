@@ -135,7 +135,7 @@ on stderr rather than silently truncating.`,
 			warnIfMetadataTruncated(cmd.ErrOrStderr(), resp, "columns")
 
 			cols := bigquery.ParseColumnInfoRows(resp)
-			return opts.IO.Encode(cmd.OutOrStdout(), cols)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), cols)
 		},
 	}
 

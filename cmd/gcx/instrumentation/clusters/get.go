@@ -140,7 +140,7 @@ func runGet(
 	// For table/wide formats, the codec expects []ClusterView; for JSON/YAML
 	// encode the single view directly.
 	if opts.IO.OutputFormat == "table" || opts.IO.OutputFormat == "wide" {
-		return opts.IO.Encode(w, []instrOutput.ClusterView{cv})
+		return opts.IO.Encode(ctx, w, []instrOutput.ClusterView{cv})
 	}
-	return opts.IO.Encode(w, cv)
+	return opts.IO.Encode(ctx, w, cv)
 }

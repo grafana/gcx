@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -331,12 +332,12 @@ func runList(loader *providers.ConfigLoader, opts *listOpts) func(*cobra.Command
 		}
 
 		if opts.Count {
-			return opts.IO.Encode(cmd.OutOrStdout(), summarizeByLanguage(items))
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), summarizeByLanguage(items))
 		}
 		if truncated {
 			emitLimitHint(cmd.ErrOrStderr(), opts.Limit)
 		}
-		return opts.IO.Encode(cmd.OutOrStdout(), &ServicesResponse{Items: items})
+		return opts.IO.Encode(ctx, cmd.OutOrStdout(), &ServicesResponse{Items: items})
 	}
 }
 
@@ -422,7 +423,7 @@ func allTargetInfoLabels() []string {
 	return append(labels, metadataLabels()...)
 }
 
-func (c *servicesTableCodec) Encode(w io.Writer, v any) error {
+func (c *servicesTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	switch data := v.(type) {
 	case *CountSummary:
 		return encodeCountTable(w, data)

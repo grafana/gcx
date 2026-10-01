@@ -27,7 +27,7 @@ const defaultMaxNodes int64 = 50000
 type pprofCodec struct{}
 
 func (c *pprofCodec) Format() format.Format { return "pprof" }
-func (c *pprofCodec) Encode(_ io.Writer, _ any) error {
+func (c *pprofCodec) Encode(ctx context.Context, _ io.Writer, _ any) error {
 	return errors.New("pprof output is written to a file; use --pprof-path to specify the destination")
 }
 func (c *pprofCodec) Decode(_ io.Reader, _ any) error {
@@ -45,7 +45,7 @@ func (c *pprofCodec) Decode(_ io.Reader, _ any) error {
 type dotCodec struct{}
 
 func (c *dotCodec) Format() format.Format { return "dot" }
-func (c *dotCodec) Encode(_ io.Writer, _ any) error {
+func (c *dotCodec) Encode(ctx context.Context, _ io.Writer, _ any) error {
 	return errors.New("dot output is written by the query command directly")
 }
 func (c *dotCodec) Decode(_ io.Reader, _ any) error {
@@ -371,7 +371,7 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 			case opts.shared.IO.OutputFormat == "table":
 				renderErr = pyroscope.FormatQueryTable(cmd.OutOrStdout(), resp)
 			default:
-				renderErr = opts.shared.IO.Encode(cmd.OutOrStdout(), resp)
+				renderErr = opts.shared.IO.Encode(ctx, cmd.OutOrStdout(), resp)
 			}
 			if renderErr != nil {
 				return renderErr

@@ -220,7 +220,7 @@ func TestServiceMapTableCodec(t *testing.T) {
 		},
 	}
 	var buf bytes.Buffer
-	if err := codec.Encode(&buf, resp); err != nil {
+	if err := codec.Encode(t.Context(), &buf, resp); err != nil {
 		t.Fatalf("Encode err = %v", err)
 	}
 	out := buf.String()
@@ -232,14 +232,14 @@ func TestServiceMapTableCodec(t *testing.T) {
 
 	// Empty section renders "(none)" instead of an empty table.
 	buf.Reset()
-	if err := codec.Encode(&buf, &ServiceMap{Service: Service{Name: "lonely"}}); err != nil {
+	if err := codec.Encode(t.Context(), &buf, &ServiceMap{Service: Service{Name: "lonely"}}); err != nil {
 		t.Fatalf("Encode err = %v", err)
 	}
 	if out := buf.String(); !strings.Contains(out, "CALLERS: (none)") || !strings.Contains(out, "CALLEES: (none)") {
 		t.Errorf("expected `(none)` placeholders, got:\n%s", out)
 	}
 
-	if err := codec.Encode(&buf, "not a response"); err == nil {
+	if err := codec.Encode(t.Context(), &buf, "not a response"); err == nil {
 		t.Error("expected error on wrong type")
 	}
 }
@@ -259,7 +259,7 @@ func TestServiceMapMermaidCodec(t *testing.T) {
 		},
 	}
 	var buf bytes.Buffer
-	if err := codec.Encode(&buf, resp); err != nil {
+	if err := codec.Encode(t.Context(), &buf, resp); err != nil {
 		t.Fatalf("Encode err = %v", err)
 	}
 	out := buf.String()
@@ -305,7 +305,7 @@ func TestServiceMapDOTCodec(t *testing.T) {
 		},
 	}
 	var buf bytes.Buffer
-	if err := codec.Encode(&buf, resp); err != nil {
+	if err := codec.Encode(t.Context(), &buf, resp); err != nil {
 		t.Fatalf("Encode err = %v", err)
 	}
 	out := buf.String()

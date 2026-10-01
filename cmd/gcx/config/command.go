@@ -194,7 +194,6 @@ func (opts *Options) ConfigSource() config.Source {
 // rejected with guidance to choose one.
 func (opts *Options) MutationConfigSource() config.Source {
 	return func(ctx context.Context) (string, error) {
-
 		target, err := opts.resolveMutationConfigTarget(ctx)
 		return target.Path, err
 	}
@@ -358,7 +357,7 @@ func viewCmd(configOpts *Options) *cobra.Command {
 				}
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), cfg)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), cfg)
 		},
 	}
 
@@ -403,7 +402,7 @@ func (c *currentContextTextCodec) Decode(io.Reader, any) error {
 	return errors.New("text codec does not support decoding")
 }
 
-func (c *currentContextTextCodec) Encode(w io.Writer, value any) error {
+func (c *currentContextTextCodec) Encode(ctx context.Context, w io.Writer, value any) error {
 	result, ok := value.(currentContextResult)
 	if !ok {
 		return errors.New("invalid data type for current-context text codec: expected currentContextResult")
@@ -431,7 +430,7 @@ func currentContextCmd(configOpts *Options) *cobra.Command {
 				return err
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), currentContextResult{CurrentContext: cfg.CurrentContext})
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), currentContextResult{CurrentContext: cfg.CurrentContext})
 		},
 	}
 
@@ -463,7 +462,7 @@ func (c *contextsTableCodec) Decode(io.Reader, any) error {
 	return errors.New("table codec does not support decoding")
 }
 
-func (c *contextsTableCodec) Encode(w io.Writer, value any) error {
+func (c *contextsTableCodec) Encode(ctx context.Context, w io.Writer, value any) error {
 	result, ok := value.(contextListResult)
 	if !ok {
 		return errors.New("invalid data type for contexts table codec: expected contextListResult")
@@ -523,7 +522,7 @@ func listContextsCmd(configOpts *Options) *cobra.Command {
 				})
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), contextListResult{Contexts: entries})
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), contextListResult{Contexts: entries})
 		},
 	}
 
@@ -796,7 +795,7 @@ func (c *useContextTextCodec) Decode(io.Reader, any) error {
 	return errors.New("text codec does not support decoding")
 }
 
-func (c *useContextTextCodec) Encode(w io.Writer, value any) error {
+func (c *useContextTextCodec) Encode(ctx context.Context, w io.Writer, value any) error {
 	result, ok := value.(cmdio.SingleMutation)
 	if !ok {
 		return errors.New("invalid data type for use-context text codec: expected SingleMutation")
@@ -874,7 +873,7 @@ user config), use --file to choose which layer to update.`,
 			if prev == target {
 				changed := false
 				result.Changed = &changed
-				return opts.IO.Encode(cmd.OutOrStdout(), result)
+				return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), result)
 			}
 
 			cfg.CurrentContext = target
@@ -890,7 +889,7 @@ user config), use --file to choose which layer to update.`,
 
 			changed := true
 			result.Changed = &changed
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), result)
 		},
 	}
 
@@ -1033,7 +1032,7 @@ func (c *silentTextCodec) Decode(io.Reader, any) error {
 	return errors.New("text codec does not support decoding")
 }
 
-func (c *silentTextCodec) Encode(io.Writer, any) error { return nil }
+func (c *silentTextCodec) Encode(context.Context, io.Writer, any) error { return nil }
 
 func setCmd(configOpts *Options) *cobra.Command {
 	var fileType string
@@ -1076,7 +1075,7 @@ PROPERTY_VALUE is the new value to set.`,
 				if err != nil {
 					return err
 				}
-				return opts.IO.Encode(cmd.OutOrStdout(), newConfigMutation(cmd.Context(), "set", args[0], target))
+				return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), newConfigMutation(cmd.Context(), "set", args[0], target))
 			}
 
 			cfg, target, err := config.LoadForWrite(cmd.Context(), configOpts.ConfigFile, fileType)
@@ -1102,7 +1101,7 @@ PROPERTY_VALUE is the new value to set.`,
 				return err
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), newConfigMutation(cmd.Context(), "set", path, target))
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), newConfigMutation(cmd.Context(), "set", path, target))
 		},
 	}
 
@@ -1191,7 +1190,7 @@ Paths are literal: they name the exact location in the configuration file, start
 				if err != nil {
 					return err
 				}
-				return opts.IO.Encode(cmd.OutOrStdout(), newConfigMutation(cmd.Context(), "unset", args[0], target))
+				return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), newConfigMutation(cmd.Context(), "unset", args[0], target))
 			}
 
 			cfg, target, err := config.LoadForWrite(cmd.Context(), configOpts.ConfigFile, fileType)
@@ -1216,7 +1215,7 @@ Paths are literal: they name the exact location in the configuration file, start
 				return err
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), newConfigMutation(cmd.Context(), "unset", path, target))
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), newConfigMutation(cmd.Context(), "unset", path, target))
 		},
 	}
 

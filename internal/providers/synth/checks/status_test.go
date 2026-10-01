@@ -188,7 +188,7 @@ func TestStatusTableCodec_Encode(t *testing.T) {
 	t.Run("table output", func(t *testing.T) {
 		codec := &checks.StatusTableCodec{}
 		var buf bytes.Buffer
-		err := codec.Encode(&buf, results)
+		err := codec.Encode(t.Context(), &buf, results)
 		if err != nil {
 			t.Fatalf("Encode() error = %v", err)
 		}
@@ -254,7 +254,7 @@ func TestStatusTableCodec_Encode(t *testing.T) {
 
 		codec := &checks.StatusTableCodec{Wide: true}
 		var buf bytes.Buffer
-		err := codec.Encode(&buf, wideResults)
+		err := codec.Encode(t.Context(), &buf, wideResults)
 		if err != nil {
 			t.Fatalf("Encode() error = %v", err)
 		}
@@ -282,7 +282,7 @@ func TestStatusTableCodec_Encode(t *testing.T) {
 func TestStatusTableCodec_InvalidType(t *testing.T) {
 	codec := &checks.StatusTableCodec{}
 	var buf bytes.Buffer
-	err := codec.Encode(&buf, "invalid")
+	err := codec.Encode(t.Context(), &buf, "invalid")
 	if err == nil {
 		t.Error("expected error for invalid data type")
 	}
@@ -510,7 +510,7 @@ func TestTimelineTableCodec_Encode(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			err := codec.Encode(&buf, tt.payload)
+			err := codec.Encode(t.Context(), &buf, tt.payload)
 
 			if tt.wantErr {
 				if err == nil {

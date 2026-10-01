@@ -97,9 +97,9 @@ func runGet(
 			// For table/text/wide: wrap in a slice so the codec can render a single row.
 			// For JSON/YAML: encode the single object directly (mirrors clusters/get.go pattern).
 			if outOpts.OutputFormat == "text" || outOpts.OutputFormat == "wide" {
-				return outOpts.Encode(out, []instrumout.ServiceView{view})
+				return outOpts.Encode(ctx, out, []instrumout.ServiceView{view})
 			}
-			return outOpts.Encode(out, view)
+			return outOpts.Encode(ctx, out, view)
 		}
 	}
 

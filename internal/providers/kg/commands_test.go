@@ -330,7 +330,7 @@ func TestRelabelRuleTableCodec_Encode(t *testing.T) {
 		},
 	}
 	var buf bytes.Buffer
-	require.NoError(t, (&kg.RelabelRuleTableCodec{}).Encode(&buf, group))
+	require.NoError(t, (&kg.RelabelRuleTableCodec{}).Encode(t.Context(), &buf, group))
 	out := buf.String()
 	for _, want := range []string{
 		"SELECTOR", "TARGET LABEL", "JOIN LABELS", "RANKED CHOICE", "REPLACEMENT", "DROP",
@@ -344,7 +344,7 @@ func TestRelabelRuleTableCodec_Encode(t *testing.T) {
 }
 
 func TestRelabelRuleTableCodec_RejectsWrongType(t *testing.T) {
-	err := (&kg.RelabelRuleTableCodec{}).Encode(&bytes.Buffer{}, "nope")
+	err := (&kg.RelabelRuleTableCodec{}).Encode(t.Context(), &bytes.Buffer{}, "nope")
 	require.Error(t, err)
 }
 
@@ -375,9 +375,9 @@ func ruleObj(name string, groups []any) unstructured.Unstructured {
 }
 
 func TestRuleTable_RejectsWrongType(t *testing.T) {
-	err := kg.RuleTable().Codec("table").Encode(&bytes.Buffer{}, []string{"nope"})
+	err := kg.RuleTable().Codec("table").Encode(t.Context(), &bytes.Buffer{}, []string{"nope"})
 	require.Error(t, err)
-	err = kg.RuleTable().Codec("wide").Encode(&bytes.Buffer{}, []string{"nope"})
+	err = kg.RuleTable().Codec("wide").Encode(t.Context(), &bytes.Buffer{}, []string{"nope"})
 	require.Error(t, err)
 }
 

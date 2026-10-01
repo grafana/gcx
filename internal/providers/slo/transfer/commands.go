@@ -74,7 +74,7 @@ func (c *pushResultCodec) Decode(io.Reader, any) error {
 	return errors.New("text codec does not support decoding")
 }
 
-func (c *pushResultCodec) Encode(w io.Writer, v any) error {
+func (c *pushResultCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	result, ok := v.(pushBatchResult)
 	if !ok {
 		return errors.New("invalid data type for push result codec: expected pushBatchResult")
@@ -147,7 +147,7 @@ The preview shows manifest identities only; it does not resolve the remote UUID 
 					return fmt.Errorf("%s: %w", file, cause)
 				}
 				cmdio.Error(cmd.ErrOrStderr(), "%v", cause)
-				if err := opts.IO.Encode(cmd.OutOrStdout(), result); err != nil {
+				if err := opts.IO.Encode(ctx, cmd.OutOrStdout(), result); err != nil {
 					return err
 				}
 				return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, cause)
@@ -207,7 +207,7 @@ The preview shows manifest identities only; it does not resolve the remote UUID 
 				result.Items = append(result.Items, outcome)
 				result.Summary.Succeeded++
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags(), label)

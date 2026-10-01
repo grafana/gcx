@@ -69,14 +69,14 @@ func TestMutationTextCodec_HumanLines(t *testing.T) {
 			r.Changed = tt.changed
 
 			var buf bytes.Buffer
-			require.NoError(t, output.MutationTextCodec{}.Encode(&buf, r))
+			require.NoError(t, output.MutationTextCodec{}.Encode(t.Context(), &buf, r))
 			assert.Equal(t, tt.want, buf.String())
 		})
 	}
 }
 
 func TestMutationTextCodec_RejectsWrongType(t *testing.T) {
-	err := output.MutationTextCodec{}.Encode(&bytes.Buffer{}, struct{}{})
+	err := output.MutationTextCodec{}.Encode(t.Context(), &bytes.Buffer{}, struct{}{})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "expected MutationResult")
 }
@@ -96,7 +96,7 @@ func TestBindMutationIO_AgentMode_SingleJSONDocument(t *testing.T) {
 	r.Changed = true
 
 	var buf bytes.Buffer
-	require.NoError(t, opts.Encode(&buf, r))
+	require.NoError(t, opts.Encode(t.Context(), &buf, r))
 
 	dec := json.NewDecoder(strings.NewReader(buf.String()))
 	var doc map[string]any
@@ -130,6 +130,6 @@ func TestBindMutationIO_HumanDefault_TextCodec(t *testing.T) {
 	r := output.NewMutationResult("clear", output.Target{Cluster: "c", Namespace: "ns", Service: "svc"})
 
 	var buf bytes.Buffer
-	require.NoError(t, opts.Encode(&buf, r))
+	require.NoError(t, opts.Encode(t.Context(), &buf, r))
 	assert.Equal(t, "clear \"c/ns/svc\": no changes\n", buf.String())
 }

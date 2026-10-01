@@ -1,6 +1,7 @@
 package influxdb
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -88,7 +89,7 @@ func MeasurementsCmd(loader *providers.ConfigLoader) *cobra.Command {
 				return fmt.Errorf("failed to get measurements: %w", err)
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), resp)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), resp)
 		},
 	}
 
@@ -108,7 +109,7 @@ func (c *measurementsTableCodec) Format() format.Format {
 	return "table"
 }
 
-func (c *measurementsTableCodec) Encode(w io.Writer, data any) error {
+func (c *measurementsTableCodec) Encode(ctx context.Context, w io.Writer, data any) error {
 	resp, ok := data.(*influxdb.MeasurementsResponse)
 	if !ok {
 		return errors.New("invalid data type for measurements table codec")

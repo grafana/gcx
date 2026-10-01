@@ -183,7 +183,7 @@ func runGet(loader *providers.ConfigLoader, opts *getOpts) func(*cobra.Command, 
 				fmt.Sprintf("showing top %d queries by time share", opts.Top),
 				fmt.Sprintf("gcx dbo11y instances get %s --top %d", name, opts.Top*2))
 		}
-		if err := opts.IO.Encode(cmd.OutOrStdout(), detail); err != nil {
+		if err := opts.IO.Encode(ctx, cmd.OutOrStdout(), detail); err != nil {
 			return err
 		}
 		if notActivated {
@@ -350,7 +350,7 @@ func (c *instanceDetailCodec) Decode(io.Reader, any) error {
 	return errors.New("instances get table codec does not support decoding")
 }
 
-func (c *instanceDetailCodec) Encode(w io.Writer, v any) error {
+func (c *instanceDetailCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	detail, ok := v.(*InstanceDetail)
 	if !ok {
 		return fmt.Errorf("invalid data type for instances get table codec: %T", v)

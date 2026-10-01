@@ -143,7 +143,7 @@ func TestCollectorWideAttributeCells(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var stdout bytes.Buffer
 			codec := CollectorTableCodec{Wide: true}
-			require.NoError(t, codec.Encode(&stdout, []Collector{{ID: "c-1", RemoteAttributes: tt.attributes}}))
+			require.NoError(t, codec.Encode(t.Context(), &stdout, []Collector{{ID: "c-1", RemoteAttributes: tt.attributes}}))
 			lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
 			require.Len(t, lines, 2)
 			assert.True(t, strings.HasSuffix(strings.TrimSpace(lines[1]), tt.want), stdout.String())

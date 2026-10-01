@@ -221,7 +221,7 @@ func (c *DashboardProxy) dashboardJSONPostHandler() http.HandlerFunc {
 			codec = format.NewYAMLCodec()
 		}
 
-		if err := codec.Encode(file, object); err != nil {
+		if err := codec.Encode(r.Context(), file, object); err != nil {
 			httputils.Error(r, w, err.Error(), err, http.StatusInternalServerError)
 			return
 		}

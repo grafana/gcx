@@ -898,7 +898,7 @@ func migrateLegacyConfig(ctx context.Context, source Source, filename string, co
 	// Round-trip the converted config through the codec to prove the bytes we
 	// are about to persist decode back into an equivalent config.
 	var encoded bytes.Buffer
-	if err := codec.Encode(&encoded, cfg); err != nil {
+	if err := codec.Encode(ctx, &encoded, cfg); err != nil {
 		return Config{}, migrationFailedError("config migration failed to encode the converted config", err, filename)
 	}
 	var back Config

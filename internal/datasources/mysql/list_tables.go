@@ -118,7 +118,7 @@ is case-sensitive.`,
 
 			warnIfTruncated(cmd.ErrOrStderr(), resp, listTablesRowCap)
 
-			return opts.IO.Encode(cmd.OutOrStdout(), resp)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), resp)
 		},
 	}
 

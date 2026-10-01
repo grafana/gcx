@@ -127,7 +127,7 @@ func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), items)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), items)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -164,7 +164,7 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), exp)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), exp)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -232,7 +232,7 @@ func newCreateCommand(loader *providers.ConfigLoader) *cobra.Command {
 			}
 
 			cmdio.Success(cmd.ErrOrStderr(), "Experiment %s created", created.ID())
-			return opts.IO.Encode(cmd.OutOrStdout(), created)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), created)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -298,7 +298,7 @@ func newUpdateCommand(loader *providers.ConfigLoader) *cobra.Command {
 				return err
 			}
 			cmdio.Success(cmd.ErrOrStderr(), "Experiment %s updated", updated.ID())
-			return opts.IO.Encode(cmd.OutOrStdout(), updated)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), updated)
 		},
 	}
 	cmd.InitDefaultHelpFlag()
@@ -352,7 +352,7 @@ func newCancelCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err := client.Cancel(cmd.Context(), args[0]); err != nil {
 				return err
 			}
-			return emitCancelReceipt(cmd.OutOrStdout(), cmd.ErrOrStderr(), opts, args[0])
+			return emitCancelReceipt(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), opts, args[0])
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -362,10 +362,10 @@ func newCancelCommand(loader *providers.ConfigLoader) *cobra.Command {
 // emitCancelReceipt writes the stderr receipt and the stdout result document
 // for a completed cancel call. Split from RunE so the output contract is
 // testable without a live plugin API.
-func emitCancelReceipt(stdout, stderr io.Writer, opts *cancelOpts, runID string) error {
+func emitCancelReceipt(ctx context.Context, stdout, stderr io.Writer, opts *cancelOpts, runID string) error {
 	cmdio.Success(stderr, "Experiment %s canceled", runID)
 	result := cmdio.NewSingleMutation("canceled", cmdio.MutationTarget{Kind: "experiment", ID: runID})
-	return opts.IO.Encode(stdout, result)
+	return opts.IO.Encode(ctx, stdout, result)
 }
 
 // --- list-scores ---
@@ -401,7 +401,7 @@ func newListScoresCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), items)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), items)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -439,7 +439,7 @@ func newGetReportCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), report)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), report)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -494,7 +494,7 @@ func newSuitesListCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), items)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), items)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -519,7 +519,7 @@ func newSuitesGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), suite)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), suite)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -579,7 +579,7 @@ func newSuitesCreateCommand(loader *providers.ConfigLoader) *cobra.Command {
 				return err
 			}
 			cmdio.Success(cmd.ErrOrStderr(), "Test suite %s created", created.SuiteID)
-			return opts.IO.Encode(cmd.OutOrStdout(), created)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), created)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -636,7 +636,7 @@ func newSuitesUpdateCommand(loader *providers.ConfigLoader) *cobra.Command {
 				return err
 			}
 			cmdio.Success(cmd.ErrOrStderr(), "Test suite %s updated", updated.SuiteID)
-			return opts.IO.Encode(cmd.OutOrStdout(), updated)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), updated)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -684,7 +684,7 @@ func newSuiteVersionCreateCommand(loader *providers.ConfigLoader) *cobra.Command
 				return err
 			}
 			cmdio.Success(cmd.ErrOrStderr(), "Test suite version %s/%s created", version.SuiteID, version.Version)
-			return opts.IO.Encode(cmd.OutOrStdout(), version)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), version)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -710,7 +710,7 @@ func newSuiteVersionPublishCommand(loader *providers.ConfigLoader) *cobra.Comman
 				return err
 			}
 			cmdio.Success(cmd.ErrOrStderr(), "Test suite version %s/%s published", version.SuiteID, version.Version)
-			return opts.IO.Encode(cmd.OutOrStdout(), version)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), version)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -762,7 +762,7 @@ func newCasesListCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), items)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), items)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -787,7 +787,7 @@ func newCasesGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), tc)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), tc)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -835,7 +835,7 @@ func newCasesUpsertCommand(loader *providers.ConfigLoader) *cobra.Command {
 				return err
 			}
 			cmdio.Success(cmd.ErrOrStderr(), "Test case %s upserted", out.TestCaseID)
-			return opts.IO.Encode(cmd.OutOrStdout(), out)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), out)
 		},
 	}
 	opts.setup(cmd.Flags(), "File containing the test case payload (use - for stdin)")
@@ -865,7 +865,7 @@ func newCasesUpdateCommand(loader *providers.ConfigLoader) *cobra.Command {
 				return err
 			}
 			cmdio.Success(cmd.ErrOrStderr(), "Test case %s updated", out.TestCaseID)
-			return opts.IO.Encode(cmd.OutOrStdout(), out)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), out)
 		},
 	}
 	opts.setup(cmd.Flags(), "File containing the test case patch payload (use - for stdin)")
@@ -957,7 +957,7 @@ func newListTrialsCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), items)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), items)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -982,7 +982,7 @@ func newTrialsGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), trial)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), trial)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -1019,7 +1019,7 @@ func newTrialMutationCommand[T any](
 				return err
 			}
 			cmdio.Success(cmd.ErrOrStderr(), "Trial %s %s", out.TrialID, successVerb)
-			return opts.IO.Encode(cmd.OutOrStdout(), out)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), out)
 		},
 	}
 	opts.setup(cmd.Flags(), fileHelp)
@@ -1070,7 +1070,7 @@ func newTrialListScoresCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), items)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), items)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -1107,7 +1107,7 @@ func newTrialListArtifactsCommand(loader *providers.ConfigLoader) *cobra.Command
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), items)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), items)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -1268,7 +1268,7 @@ func (c *ReportTextCodec) Format() format.Format {
 	return "text"
 }
 
-func (c *ReportTextCodec) Encode(w io.Writer, v any) error {
+func (c *ReportTextCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	var r *ExperimentReport
 	switch val := v.(type) {
 	case *ExperimentReport:

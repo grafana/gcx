@@ -243,7 +243,7 @@ func runFleetOperationsList(loader *providers.ConfigLoader, opts *fleetOperation
 		if truncated {
 			emitFleetOperationsLimitHint(cmd.ErrOrStderr(), opts.Limit)
 		}
-		if err := opts.IO.Encode(cmd.OutOrStdout(), response); err != nil {
+		if err := opts.IO.Encode(ctx, cmd.OutOrStdout(), response); err != nil {
 			return err
 		}
 		if notFound {
@@ -472,7 +472,7 @@ func (c *fleetOperationsTableCodec) Decode(io.Reader, any) error {
 	return errors.New("appo11y operations list table codec does not support decoding")
 }
 
-func (c *fleetOperationsTableCodec) Encode(w io.Writer, v any) error {
+func (c *fleetOperationsTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	resp, ok := v.(*FleetOperationsResponse)
 	if !ok {
 		return fmt.Errorf("invalid data type for appo11y operations list table codec: %T", v)
@@ -707,7 +707,7 @@ func runOperationGet(loader *providers.ConfigLoader, opts *operationDetailOpts) 
 		if notFound {
 			emitNoDataHint(cmd.ErrOrStderr(), namespace, name)
 		}
-		if err := opts.IO.Encode(cmd.OutOrStdout(), detail); err != nil {
+		if err := opts.IO.Encode(ctx, cmd.OutOrStdout(), detail); err != nil {
 			return err
 		}
 		if notFound {
@@ -876,7 +876,7 @@ func (c *operationDetailCodec) Decode(io.Reader, any) error {
 	return errors.New("appo11y operations get table codec does not support decoding")
 }
 
-func (c *operationDetailCodec) Encode(w io.Writer, v any) error {
+func (c *operationDetailCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	detail, ok := v.(*OperationDetail)
 	if !ok {
 		return fmt.Errorf("invalid data type for appo11y operations get table codec: %T", v)

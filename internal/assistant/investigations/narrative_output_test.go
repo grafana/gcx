@@ -34,7 +34,7 @@ func TestNarrativeAgentModeEmitsSingleJSONValue(t *testing.T) {
 
 	var out, errOut bytes.Buffer
 	opts.IO.ErrWriter = &errOut
-	require.NoError(t, opts.IO.Encode(&out, narrativeFixture))
+	require.NoError(t, opts.IO.Encode(t.Context(), &out, narrativeFixture))
 
 	dec := json.NewDecoder(bytes.NewReader(out.Bytes()))
 	var got string
@@ -50,7 +50,7 @@ func TestNarrativeHumanDefaultUnchanged(t *testing.T) {
 	require.Equal(t, "table", opts.IO.OutputFormat)
 
 	var out bytes.Buffer
-	require.NoError(t, opts.IO.Encode(&out, narrativeFixture))
+	require.NoError(t, opts.IO.Encode(t.Context(), &out, narrativeFixture))
 	assert.Equal(t, narrativeFixture+"\n", out.String(), "human default stays raw markdown with a trailing newline")
 }
 
@@ -61,7 +61,7 @@ func TestNarrativeExplicitJSONUnchanged(t *testing.T) {
 	opts.IO.OutputFormat = "json"
 
 	var out bytes.Buffer
-	require.NoError(t, opts.IO.Encode(&out, narrativeFixture))
+	require.NoError(t, opts.IO.Encode(t.Context(), &out, narrativeFixture))
 	var got string
 	require.NoError(t, json.Unmarshal(out.Bytes(), &got), "-o json keeps the JSON-quoted string: %s", out.String())
 	assert.Equal(t, narrativeFixture, got)

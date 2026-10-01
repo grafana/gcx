@@ -239,7 +239,7 @@ func TestPipelineTableCodec_Encode(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			err := tt.codec.Encode(&buf, pipelines)
+			err := tt.codec.Encode(t.Context(), &buf, pipelines)
 			require.NoError(t, err)
 
 			output := buf.String()
@@ -280,7 +280,7 @@ func TestPipelineTableCodec_WideShowsConfigType(t *testing.T) {
 
 	var buf bytes.Buffer
 	codec := fleet.PipelineTableCodec{Wide: true}
-	require.NoError(t, codec.Encode(&buf, pipelines))
+	require.NoError(t, codec.Encode(t.Context(), &buf, pipelines))
 
 	output := buf.String()
 	assert.Contains(t, output, "CONFIG TYPE", "wide header should include CONFIG TYPE")
@@ -300,7 +300,7 @@ func TestPipelineTableCodec_WideShowsConfigType(t *testing.T) {
 func TestPipelineTableCodec_WrongType(t *testing.T) {
 	codec := fleet.PipelineTableCodec{}
 	var buf bytes.Buffer
-	err := codec.Encode(&buf, "not a pipeline slice")
+	err := codec.Encode(t.Context(), &buf, "not a pipeline slice")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid data type")
 }
@@ -351,7 +351,7 @@ func TestCollectorTableCodec_Encode(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			err := tt.codec.Encode(&buf, collectors)
+			err := tt.codec.Encode(t.Context(), &buf, collectors)
 			require.NoError(t, err)
 
 			output := buf.String()
@@ -374,7 +374,7 @@ func TestCollectorTableCodec_Encode(t *testing.T) {
 func TestCollectorTableCodec_WrongType(t *testing.T) {
 	codec := fleet.CollectorTableCodec{}
 	var buf bytes.Buffer
-	err := codec.Encode(&buf, "not a collector slice")
+	err := codec.Encode(t.Context(), &buf, "not a collector slice")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid data type")
 }

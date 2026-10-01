@@ -174,7 +174,7 @@ func (c *snapshotTableCodec) Decode(io.Reader, any) error {
 	return errors.New("table codec does not support decoding")
 }
 
-func (c *snapshotTableCodec) Encode(w io.Writer, value any) error {
+func (c *snapshotTableCodec) Encode(ctx context.Context, w io.Writer, value any) error {
 	receipt, ok := value.(snapshotReceipt)
 	if !ok {
 		return errors.New("invalid data type for snapshot table codec: expected snapshotReceipt")
@@ -350,7 +350,7 @@ func Commands(loader GrafanaConfigLoader) *cobra.Command {
 				return errors.Join(renderErrs...)
 			}
 
-			if err := opts.IO.Encode(cmd.OutOrStdout(), receipt); err != nil {
+			if err := opts.IO.Encode(ctx, cmd.OutOrStdout(), receipt); err != nil {
 				return err
 			}
 

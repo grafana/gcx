@@ -50,7 +50,7 @@ type deleteConfirmationCodec struct{ noun string }
 
 func (c *deleteConfirmationCodec) Format() format.Format { return "text" }
 
-func (c *deleteConfirmationCodec) Encode(w io.Writer, v any) error {
+func (c *deleteConfirmationCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	m, ok := v.(cmdio.SingleMutation)
 	if !ok {
 		return fmt.Errorf("adaptive-logs: delete text codec: expected SingleMutation, got %T", v)
@@ -113,7 +113,7 @@ func adaptiveDeleteCommand(short, noun, kind string, del func(ctx context.Contex
 			changed := true
 			result := cmdio.NewSingleMutation("deleted", cmdio.MutationTarget{Kind: kind, ID: args[0]})
 			result.Changed = &changed
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd, noun)
@@ -189,7 +189,7 @@ func (h *logsHelper) patternsListCommand() *cobra.Command {
 				recs = filterPatternsBySegment(recs, opts.SegmentID, segments)
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), recs)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), recs)
 		},
 	}
 	opts.setup(cmd)
@@ -247,7 +247,7 @@ func (h *logsHelper) patternsStatsCommand() *cobra.Command {
 			}
 
 			stats := AggregateSegmentVolumes(recs, segments)
-			return opts.IO.Encode(cmd.OutOrStdout(), stats)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), stats)
 		},
 	}
 	opts.setup(cmd)
@@ -266,7 +266,7 @@ func (c *segmentStatsTableCodec) Format() format.Format {
 	return "table"
 }
 
-func (c *segmentStatsTableCodec) Encode(w io.Writer, v any) error {
+func (c *segmentStatsTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	stats, ok := v.([]SegmentPatternStat)
 	if !ok {
 		return errors.New("invalid data type for table codec: expected []SegmentPatternStat")
@@ -314,7 +314,7 @@ func (c *patternsTableCodec) Format() format.Format {
 	return "table"
 }
 
-func (c *patternsTableCodec) Encode(w io.Writer, v any) error {
+func (c *patternsTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	recs, ok := v.([]LogRecommendation)
 	if !ok {
 		return errors.New("invalid data type for table codec: expected []LogRecommendation")
@@ -648,7 +648,7 @@ func (h *logsHelper) exemptionsListCommand() *cobra.Command {
 				exemptions[i] = typedObjs[i].Spec
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), exemptions)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), exemptions)
 		},
 	}
 	opts.setup(cmd)
@@ -664,7 +664,7 @@ func (c *exemptionsTableCodec) Format() format.Format {
 	return "table"
 }
 
-func (c *exemptionsTableCodec) Encode(w io.Writer, v any) error {
+func (c *exemptionsTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	exemptions, ok := v.([]Exemption)
 	if !ok {
 		return errors.New("invalid data type for table codec: expected []Exemption")
@@ -735,7 +735,7 @@ func (h *logsHelper) exemptionsCreateCommand() *cobra.Command {
 				return err
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), created.Spec)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), created.Spec)
 		},
 	}
 	opts.setup(cmd)
@@ -795,7 +795,7 @@ func (h *logsHelper) exemptionsUpdateCommand() *cobra.Command {
 				return err
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), updated.Spec)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), updated.Spec)
 		},
 	}
 	opts.setup(cmd)
@@ -874,7 +874,7 @@ func (h *logsHelper) segmentsListCommand() *cobra.Command {
 				segments[i] = typedObjs[i].Spec
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), segments)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), segments)
 		},
 	}
 	opts.setup(cmd)
@@ -890,7 +890,7 @@ func (c *segmentsTableCodec) Format() format.Format {
 	return "table"
 }
 
-func (c *segmentsTableCodec) Encode(w io.Writer, v any) error {
+func (c *segmentsTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	segments, ok := v.([]LogSegment)
 	if !ok {
 		return errors.New("invalid data type for table codec: expected []LogSegment")
@@ -964,7 +964,7 @@ func (h *logsHelper) segmentsCreateCommand() *cobra.Command {
 				return err
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), created.Spec)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), created.Spec)
 		},
 	}
 	opts.setup(cmd)
@@ -1029,7 +1029,7 @@ func (h *logsHelper) segmentsUpdateCommand() *cobra.Command {
 				return err
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), updated.Spec)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), updated.Spec)
 		},
 	}
 	opts.setup(cmd)
@@ -1120,7 +1120,7 @@ func (h *logsHelper) dropRulesListCommand() *cobra.Command {
 			if opts.IO.JSONDiscovery {
 				out = ValueForJSONFieldDiscovery(rules)
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), out)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), out)
 		},
 	}
 	opts.setup(cmd)
@@ -1168,7 +1168,7 @@ func (h *logsHelper) dropRulesGetCommand() *cobra.Command {
 			if opts.IO.JSONDiscovery {
 				out = ValueForJSONFieldDiscovery([]DropRule{got.Spec})
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), out)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), out)
 		},
 	}
 	opts.setup(cmd)
@@ -1184,7 +1184,7 @@ func (c *dropRulesTableCodec) Format() format.Format {
 	return "table"
 }
 
-func (c *dropRulesTableCodec) Encode(w io.Writer, v any) error {
+func (c *dropRulesTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	var rules []DropRule
 	switch t := v.(type) {
 	case []DropRule:
@@ -1299,7 +1299,7 @@ func (h *logsHelper) dropRulesCreateCommand() *cobra.Command {
 			// Confirmation prose is a diagnostic — stderr keeps stdout a
 			// single parseable document (the created rule echo below).
 			cmdio.Success(cmd.ErrOrStderr(), "Created drop rule %q (id=%s)", created.Spec.Name, created.Spec.ID)
-			return opts.IO.Encode(cmd.OutOrStdout(), created.Spec)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), created.Spec)
 		},
 	}
 	opts.setup(cmd)
@@ -1367,7 +1367,7 @@ func (h *logsHelper) dropRulesUpdateCommand() *cobra.Command {
 			// Confirmation prose is a diagnostic — stderr keeps stdout a
 			// single parseable document (the updated rule echo below).
 			cmdio.Success(cmd.ErrOrStderr(), "Updated drop rule %q (id=%s)", updated.Spec.Name, updated.Spec.ID)
-			return opts.IO.Encode(cmd.OutOrStdout(), updated.Spec)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), updated.Spec)
 		},
 	}
 	opts.setup(cmd)

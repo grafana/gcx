@@ -1,6 +1,7 @@
 package resources
 
 import (
+	"context"
 	"errors"
 	"io"
 
@@ -157,7 +158,7 @@ func (c *mutationSummaryCodec) Decode(io.Reader, any) error {
 	return errors.New("text codec does not support decoding")
 }
 
-func (c *mutationSummaryCodec) Encode(w io.Writer, value any) error {
+func (c *mutationSummaryCodec) Encode(ctx context.Context, w io.Writer, value any) error {
 	result, ok := value.(cmdio.BatchMutation)
 	if !ok {
 		return errors.New("invalid data type for mutation summary codec: expected BatchMutation")

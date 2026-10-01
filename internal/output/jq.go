@@ -2,6 +2,7 @@ package output
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -124,7 +125,7 @@ func (c *JQCodec) Format() format.Format {
 	return format.JSON
 }
 
-func (c *JQCodec) Encode(dst io.Writer, value any) error {
+func (c *JQCodec) Encode(ctx context.Context, dst io.Writer, value any) error {
 	encoder := json.NewEncoder(dst)
 	encoder.SetIndent("", "  ")
 

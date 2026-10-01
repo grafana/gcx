@@ -26,7 +26,7 @@ func TestPolicyTableCodec_List(t *testing.T) {
 	t.Run("table format", func(t *testing.T) {
 		var buf bytes.Buffer
 		codec := traces.NewPolicyTableCodec(false)
-		err := codec.Encode(&buf, policies)
+		err := codec.Encode(t.Context(), &buf, policies)
 		require.NoError(t, err)
 
 		output := buf.String()
@@ -46,7 +46,7 @@ func TestPolicyTableCodec_List(t *testing.T) {
 	t.Run("wide format", func(t *testing.T) {
 		var buf bytes.Buffer
 		codec := traces.NewPolicyTableCodec(true)
-		err := codec.Encode(&buf, policies)
+		err := codec.Encode(t.Context(), &buf, policies)
 		require.NoError(t, err)
 
 		output := buf.String()
@@ -57,7 +57,7 @@ func TestPolicyTableCodec_List(t *testing.T) {
 	t.Run("wrong type", func(t *testing.T) {
 		var buf bytes.Buffer
 		codec := traces.NewPolicyTableCodec(false)
-		err := codec.Encode(&buf, "not a slice")
+		err := codec.Encode(t.Context(), &buf, "not a slice")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "expected []Policy")
 	})
@@ -65,7 +65,7 @@ func TestPolicyTableCodec_List(t *testing.T) {
 	t.Run("empty list", func(t *testing.T) {
 		var buf bytes.Buffer
 		codec := traces.NewPolicyTableCodec(false)
-		err := codec.Encode(&buf, []traces.Policy{})
+		err := codec.Encode(t.Context(), &buf, []traces.Policy{})
 		require.NoError(t, err)
 		// Should still have header
 		assert.Contains(t, buf.String(), "ID")
@@ -133,7 +133,7 @@ func TestPoliciesList_Integration(t *testing.T) {
 	// Verify table output works end-to-end
 	var buf bytes.Buffer
 	codec := traces.NewPolicyTableCodec(false)
-	require.NoError(t, codec.Encode(&buf, got))
+	require.NoError(t, codec.Encode(t.Context(), &buf, got))
 	assert.Contains(t, buf.String(), "p1")
 	assert.Contains(t, buf.String(), "p2")
 }

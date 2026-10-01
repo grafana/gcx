@@ -105,7 +105,7 @@ func runAppRemove(
 
 	result := instoutput.NewMutationResult("remove", instoutput.Target{Cluster: cluster, Namespace: namespace})
 	result.Changed = true
-	return outOpts.Encode(w, result)
+	return outOpts.Encode(ctx, w, result)
 }
 
 // newRemoveCmd is a test-facing constructor that injects a pre-built appsClient

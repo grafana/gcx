@@ -176,7 +176,7 @@ grafana_slo_sli_window metrics.`,
 
 			points := FetchMetricsRange(ctx, promClient, slos, start, end, step)
 
-			return opts.IO.Encode(cmd.OutOrStdout(), SLITrendPayload{
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), SLITrendPayload{
 				SLOs:   slos,
 				Points: points,
 				Start:  start,
@@ -486,7 +486,7 @@ type TimelineGraphCodec struct{}
 func (c *TimelineGraphCodec) Format() format.Format { return "graph" }
 
 // Encode writes the SLI trend as one line chart per SLO.
-func (c *TimelineGraphCodec) Encode(w io.Writer, v any) error {
+func (c *TimelineGraphCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	payload, ok := v.(SLITrendPayload)
 	if !ok {
 		return fmt.Errorf("timelineGraphCodec: expected SLITrendPayload, got %T", v)
@@ -543,7 +543,7 @@ type TimelineTableCodec struct{}
 func (c *TimelineTableCodec) Format() format.Format { return "table" }
 
 // Encode writes the SLI trend as a table with one row per (SLO, timestamp).
-func (c *TimelineTableCodec) Encode(w io.Writer, v any) error {
+func (c *TimelineTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	payload, ok := v.(SLITrendPayload)
 	if !ok {
 		return fmt.Errorf("timelineTableCodec: expected SLITrendPayload, got %T", v)

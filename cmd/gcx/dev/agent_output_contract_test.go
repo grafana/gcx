@@ -250,7 +250,7 @@ func TestImportReceiptCodec_HumanDefaultByteIdentical(t *testing.T) {
 	receipt.Summary.Succeeded = 2
 
 	var buf bytes.Buffer
-	require.NoError(t, (&importReceiptCodec{}).Encode(&buf, receipt))
+	require.NoError(t, (&importReceiptCodec{}).Encode(t.Context(), &buf, receipt))
 
 	// Exact pre-migration summary line.
 	require.Equal(t, "✔ Imported 2 resources in imported\n", buf.String())
@@ -286,7 +286,7 @@ func TestImportOpts_AgentModeSingleJSONDocument(t *testing.T) {
 
 			var stdout bytes.Buffer
 			opts.IO.ErrWriter = io.Discard
-			require.NoError(t, opts.IO.Encode(&stdout, receipt))
+			require.NoError(t, opts.IO.Encode(t.Context(), &stdout, receipt))
 
 			if tc.wantFormat == "agents" {
 				doc := decodeSingleJSONValue(t, stdout.String())

@@ -79,14 +79,14 @@ func TestCommand_ShowKnownID_JSONOutput(t *testing.T) {
 }
 
 func TestDocTextCodec_WrongType(t *testing.T) {
-	err := (&docTextCodec{}).Encode(&bytes.Buffer{}, "nope")
+	err := (&docTextCodec{}).Encode(t.Context(), &bytes.Buffer{}, "nope")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "DocView")
 }
 
 func TestDocTextCodec_NonTerminalOutputsRawMarkdown(t *testing.T) {
 	var buf bytes.Buffer
-	err := (&docTextCodec{}).Encode(&buf, DocView{
+	err := (&docTextCodec{}).Encode(t.Context(), &buf, DocView{
 		ID:       "test.id",
 		Title:    "Test Title",
 		Severity: "error",

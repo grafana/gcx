@@ -1,6 +1,7 @@
 package azuremonitor
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -89,7 +90,7 @@ func ListResourcesCmd(loader *providers.ConfigLoader) *cobra.Command {
 				return fmt.Errorf("failed to list resources: %w", err)
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), resources)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), resources)
 		},
 	}
 
@@ -106,7 +107,7 @@ type listResourcesTableCodec struct{}
 
 func (c *listResourcesTableCodec) Format() format.Format { return "table" }
 
-func (c *listResourcesTableCodec) Encode(w io.Writer, data any) error {
+func (c *listResourcesTableCodec) Encode(ctx context.Context, w io.Writer, data any) error {
 	resources, ok := data.([]azclient.Resource)
 	if !ok {
 		return fmt.Errorf("listResourcesTableCodec: unexpected type %T", data)

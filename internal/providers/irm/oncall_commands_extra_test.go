@@ -550,14 +550,14 @@ func TestAlertGroupTableCodec_AcceptsSingleAndItemsEnvelope(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			var buf bytes.Buffer
-			if err := codec.Encode(&buf, tc.v); err != nil {
+			if err := codec.Encode(t.Context(), &buf, tc.v); err != nil {
 				t.Errorf("default codec encode failed: %v", err)
 			}
 			if buf.Len() == 0 {
 				t.Errorf("default codec produced empty output for %T", tc.v)
 			}
 			buf.Reset()
-			if err := wide.Encode(&buf, tc.v); err != nil {
+			if err := wide.Encode(t.Context(), &buf, tc.v); err != nil {
 				t.Errorf("wide codec encode failed: %v", err)
 			}
 			if buf.Len() == 0 {
@@ -579,7 +579,7 @@ func TestAlertTableCodec_AcceptsItemsEnvelope(t *testing.T) {
 		Status:     AlertStatus{State: "firing"},
 	}}
 	var buf bytes.Buffer
-	if err := codec.Encode(&buf, alertItemsEnvelope{Items: envs}); err != nil {
+	if err := codec.Encode(t.Context(), &buf, alertItemsEnvelope{Items: envs}); err != nil {
 		t.Fatalf("encode items envelope: %v", err)
 	}
 	if buf.Len() == 0 {
@@ -587,7 +587,7 @@ func TestAlertTableCodec_AcceptsItemsEnvelope(t *testing.T) {
 	}
 	buf.Reset()
 	// Back-compat: bare slice still works.
-	if err := codec.Encode(&buf, envs); err != nil {
+	if err := codec.Encode(t.Context(), &buf, envs); err != nil {
 		t.Fatalf("encode bare slice: %v", err)
 	}
 }
@@ -639,7 +639,7 @@ func TestEscalationResult_Codecs(t *testing.T) {
 	t.Run("text", func(t *testing.T) {
 		t.Parallel()
 		var buf bytes.Buffer
-		if err := (&escalationTextCodec{}).Encode(&buf, res); err != nil {
+		if err := (&escalationTextCodec{}).Encode(t.Context(), &buf, res); err != nil {
 			t.Fatalf("text encode: %v", err)
 		}
 		want := "Direct escalation created with alert group ID: I123\n"
@@ -661,7 +661,7 @@ func TestEscalationResult_Codecs(t *testing.T) {
 
 	t.Run("text codec rejects foreign type", func(t *testing.T) {
 		t.Parallel()
-		if err := (&escalationTextCodec{}).Encode(&bytes.Buffer{}, struct{}{}); err == nil {
+		if err := (&escalationTextCodec{}).Encode(t.Context(), &bytes.Buffer{}, struct{}{}); err == nil {
 			t.Error("text codec must reject non-escalationResult values")
 		}
 	})

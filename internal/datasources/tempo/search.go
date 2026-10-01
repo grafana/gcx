@@ -110,7 +110,7 @@ explicit time range via --since or --from/--to.`,
 			}
 
 			resultErr := dsquery.EncodeAndHandleExplore(cmd, func() error {
-				return shared.IO.Encode(cmd.OutOrStdout(), resp)
+				return shared.IO.Encode(ctx, cmd.OutOrStdout(), resp)
 			}, *share, dsquery.ExploreLink{
 				URL:            exploreURL,
 				UnavailableMsg: unavailableMsg,

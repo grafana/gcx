@@ -1,6 +1,7 @@
 package guards
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -82,7 +83,7 @@ func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
 			}
 
 			if opts.IO.OutputFormat == "table" || opts.IO.OutputFormat == "wide" {
-				return opts.IO.Encode(cmd.OutOrStdout(), specs)
+				return opts.IO.Encode(ctx, cmd.OutOrStdout(), specs)
 			}
 
 			objs := make([]unstructured.Unstructured, 0, len(specs))
@@ -93,7 +94,7 @@ func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
 				}
 				objs = append(objs, u)
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), objs)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), objs)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -137,7 +138,7 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), &u)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), &u)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -200,7 +201,7 @@ func newCreateCommand(loader *providers.ConfigLoader) *cobra.Command {
 			}
 
 			cmdio.Success(cmd.ErrOrStderr(), "Guard %s created", created.Spec.RuleID)
-			return opts.IO.Encode(cmd.OutOrStdout(), created.Spec)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), created.Spec)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -258,7 +259,7 @@ func newUpdateCommand(loader *providers.ConfigLoader) *cobra.Command {
 			}
 
 			cmdio.Success(cmd.ErrOrStderr(), "Guard %s updated", updated.Spec.RuleID)
-			return opts.IO.Encode(cmd.OutOrStdout(), updated.Spec)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), updated.Spec)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -308,7 +309,7 @@ func newDeleteCommand(loader *providers.ConfigLoader) *cobra.Command {
 				return err
 			}
 
-			return runDelete(cmd.OutOrStdout(), cmd.ErrOrStderr(), opts, args, func(id string) error {
+			return runDelete(ctx, cmd.OutOrStdout(), cmd.ErrOrStderr(), opts, args, func(id string) error {
 				return crud.Delete(ctx, id)
 			})
 		},
@@ -319,8 +320,8 @@ func newDeleteCommand(loader *providers.ConfigLoader) *cobra.Command {
 
 // runDelete performs the delete loop and writes the result document. Split
 // from RunE so the output contract is testable without a live plugin API.
-func runDelete(stdout, stderr io.Writer, opts *deleteOpts, ids []string, del func(id string) error) error {
-	return commandutil.RunBatchDelete(stdout, stderr, &opts.IO,
+func runDelete(ctx context.Context, stdout, stderr io.Writer, opts *deleteOpts, ids []string, del func(id string) error) error {
+	return commandutil.RunBatchDelete(ctx, stdout, stderr, &opts.IO,
 		"guard", "Deleted guard %s", "deleting hook rule %s", ids, del)
 }
 

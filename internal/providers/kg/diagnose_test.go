@@ -220,7 +220,7 @@ func TestDiagnoseTableCodec_Encode(t *testing.T) {
 
 	codec := &kg.DiagnoseTableCodec{}
 	var buf bytes.Buffer
-	err := codec.Encode(&buf, result)
+	err := codec.Encode(t.Context(), &buf, result)
 	require.NoError(t, err)
 
 	output := buf.String()
@@ -770,7 +770,7 @@ func TestServiceDiagnoseTableCodec(t *testing.T) {
 
 	codec := &kg.ServiceDiagnoseTableCodec{}
 	var buf bytes.Buffer
-	err := codec.Encode(&buf, result)
+	err := codec.Encode(t.Context(), &buf, result)
 	require.NoError(t, err)
 
 	output := buf.String()
@@ -911,7 +911,7 @@ func TestLabelsDiagnoseTableCodec(t *testing.T) {
 
 	codec := &kg.LabelsDiagnoseTableCodec{}
 	var buf bytes.Buffer
-	err := codec.Encode(&buf, result)
+	err := codec.Encode(t.Context(), &buf, result)
 	require.NoError(t, err)
 
 	output := buf.String()

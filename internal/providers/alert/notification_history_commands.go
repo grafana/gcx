@@ -118,7 +118,7 @@ func newNotificationHistoryListCommand(loader GrafanaConfigLoader) *cobra.Comman
 				return err
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), entries)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), entries)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -204,7 +204,7 @@ widen --since (or set --from/--to) if the notification is older.`,
 				return err
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), alerts)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), alerts)
 		},
 	}
 	opts.setup(cmd.Flags())

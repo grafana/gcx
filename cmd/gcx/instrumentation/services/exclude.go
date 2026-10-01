@@ -105,7 +105,7 @@ func runExclude(
 	equal, _ := rmw.AppEqual(*ns, proposed)
 	if equal {
 		// Already in the desired state — idempotent no-op.
-		return outOpts.Encode(out, instoutput.NewMutationResult("exclude",
+		return outOpts.Encode(ctx, out, instoutput.NewMutationResult("exclude",
 			instoutput.Target{Cluster: cluster, Namespace: namespace, Service: service}))
 	}
 
@@ -138,5 +138,5 @@ func runExclude(
 	result := instoutput.NewMutationResult("exclude",
 		instoutput.Target{Cluster: cluster, Namespace: namespace, Service: service})
 	result.Changed = true
-	return outOpts.Encode(out, result)
+	return outOpts.Encode(ctx, out, result)
 }

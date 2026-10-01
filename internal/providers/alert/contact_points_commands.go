@@ -61,7 +61,7 @@ func newContactPointsListCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 			points = adapter.TruncateSlice(points, opts.Limit)
-			return opts.IO.Encode(cmd.OutOrStdout(), points)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), points)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -109,7 +109,7 @@ func newContactPointsGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), cp)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), cp)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -153,7 +153,7 @@ func newContactPointsCreateCommand(loader GrafanaConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), created)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), created)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -187,7 +187,7 @@ func newContactPointsUpdateCommand(loader GrafanaConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), updated)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), updated)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -246,7 +246,7 @@ func newContactPointsDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 			result := cmdio.NewSingleMutation("deleted", cmdio.MutationTarget{Kind: "contact-point", UID: args[0]})
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())

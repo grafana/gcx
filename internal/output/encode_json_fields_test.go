@@ -49,7 +49,7 @@ func TestEncode_JSONFields_SingleObject(t *testing.T) {
 	}}
 
 	var buf bytes.Buffer
-	require.NoError(t, opts.Encode(&buf, item))
+	require.NoError(t, opts.Encode(t.Context(), &buf, item))
 
 	var got map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &got))
@@ -68,7 +68,7 @@ func TestEncode_JSONFields_MapValue(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	require.NoError(t, opts.Encode(&buf, value))
+	require.NoError(t, opts.Encode(t.Context(), &buf, value))
 
 	var got map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &got))
@@ -86,7 +86,7 @@ func TestEncode_JSONFields_UnstructuredList(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	require.NoError(t, opts.Encode(&buf, list))
+	require.NoError(t, opts.Encode(t.Context(), &buf, list))
 
 	var got map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &got))
@@ -123,7 +123,7 @@ func TestEncode_JSONFields_ListEnvelopePreservesPaginationMetadata(t *testing.T)
 	}
 
 	var buf bytes.Buffer
-	require.NoError(t, opts.Encode(&buf, value))
+	require.NoError(t, opts.Encode(t.Context(), &buf, value))
 
 	var got map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &got))
@@ -159,7 +159,7 @@ func TestEncode_JSONFields_ArbitrarySlice(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	require.NoError(t, opts.Encode(&buf, value))
+	require.NoError(t, opts.Encode(t.Context(), &buf, value))
 
 	var got []map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &got),
@@ -231,7 +231,7 @@ func TestEncode_JSONFields_SingleKeyEnvelope(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			opts := optsWithJSONFields(t, []string{"uid", "name"})
 			var buf bytes.Buffer
-			require.NoError(t, opts.Encode(&buf, tt.value))
+			require.NoError(t, opts.Encode(t.Context(), &buf, tt.value))
 			assert.JSONEq(t, tt.want, buf.String())
 		})
 	}
@@ -282,7 +282,7 @@ func TestEncode_JSONFields_ListEnvelope(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			opts := optsWithJSONFields(t, []string{"uid", "name"})
 			var buf bytes.Buffer
-			require.NoError(t, opts.Encode(&buf, tt.value))
+			require.NoError(t, opts.Encode(t.Context(), &buf, tt.value))
 			assert.JSONEq(t, tt.want, buf.String())
 		})
 	}
@@ -312,7 +312,7 @@ func TestEncode_JSONDiscovery_ListEnvelope(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			opts := optsWithJSONDiscovery(t)
 			var buf bytes.Buffer
-			require.NoError(t, opts.Encode(&buf, tt.value))
+			require.NoError(t, opts.Encode(t.Context(), &buf, tt.value))
 			lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
 			assert.Contains(t, lines, "uid")
 			assert.Contains(t, lines, "name")
@@ -335,7 +335,7 @@ func TestEncode_JSONDiscovery_SingleKeyEnvelope(t *testing.T) {
 
 	opts := optsWithJSONDiscovery(t)
 	var buf bytes.Buffer
-	require.NoError(t, opts.Encode(&buf, &envelope{Datasources: []item{{UID: "a", Name: "x"}}}))
+	require.NoError(t, opts.Encode(t.Context(), &buf, &envelope{Datasources: []item{{UID: "a", Name: "x"}}}))
 
 	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
 	assert.Contains(t, lines, "uid")
@@ -357,7 +357,7 @@ func TestEncode_JSONDiscovery_PrintsFieldNames(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	require.NoError(t, opts.Encode(&buf, value))
+	require.NoError(t, opts.Encode(t.Context(), &buf, value))
 
 	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
 	// Should contain field names, not JSON
@@ -382,7 +382,7 @@ func TestEncode_JSONDiscovery_SliceInput(t *testing.T) {
 	value := []item{{Name: "a", Status: "ok"}, {Name: "b", Status: "err"}}
 
 	var buf bytes.Buffer
-	require.NoError(t, opts.Encode(&buf, value))
+	require.NoError(t, opts.Encode(t.Context(), &buf, value))
 
 	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
 	assert.Contains(t, lines, "name")
@@ -406,7 +406,7 @@ func TestEncode_NonJSONCodec_JSONFieldsIgnored(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	require.NoError(t, opts.Encode(&buf, item))
+	require.NoError(t, opts.Encode(t.Context(), &buf, item))
 
 	// Output should contain ALL fields (YAML, not filtered).
 	output := buf.String()
@@ -425,7 +425,7 @@ func TestFieldSelectCodec_SliceOfUnstructured(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	require.NoError(t, codec.Encode(&buf, value))
+	require.NoError(t, codec.Encode(t.Context(), &buf, value))
 
 	var got []map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &got),

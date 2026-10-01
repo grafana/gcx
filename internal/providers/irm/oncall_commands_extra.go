@@ -435,7 +435,7 @@ func newAlertGroupListCommand(loader OnCallConfigLoader) *cobra.Command {
 
 			// List envelope MUST be `{"items": [...]}` (never bare
 			// array, never null). Empty result is `{"items": []}`.
-			if err := opts.IO.Encode(cmd.OutOrStdout(), alertGroupItemsEnvelope{Items: envs, ListMeta: meta}); err != nil {
+			if err := opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), alertGroupItemsEnvelope{Items: envs, ListMeta: meta}); err != nil {
 				return err
 			}
 
@@ -778,7 +778,7 @@ func listAlertGroupsLegacy(cmd *cobra.Command, opts *alertGroupListOpts, filters
 	// Wrap in the items envelope on every list path, including the
 	// alternate-implementation fallback (e.g. test doubles; not reachable
 	// via the production loader today).
-	if err := opts.IO.Encode(cmd.OutOrStdout(), alertGroupItemsEnvelope{Items: envs, ListMeta: meta}); err != nil {
+	if err := opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), alertGroupItemsEnvelope{Items: envs, ListMeta: meta}); err != nil {
 		return err
 	}
 	cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
@@ -1132,7 +1132,7 @@ func newAlertGroupGetRichCommand(loader OnCallConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := opts.IO.Encode(cmd.OutOrStdout(), env); err != nil {
+			if err := opts.IO.Encode(ctx, cmd.OutOrStdout(), env); err != nil {
 				return err
 			}
 			// Post-result drilldown hints on success.
@@ -1213,7 +1213,7 @@ func newAlertGroupListAlertsCommand(loader OnCallConfigLoader) *cobra.Command {
 						Spec: AlertSpec{AlertGroupID: groupID},
 					})
 				}
-				return opts.IO.Encode(cmd.OutOrStdout(), alertItemsEnvelope{Items: envs})
+				return opts.IO.Encode(ctx, cmd.OutOrStdout(), alertItemsEnvelope{Items: envs})
 			}
 
 			limit := opts.Limit
@@ -1236,7 +1236,7 @@ func newAlertGroupListAlertsCommand(loader OnCallConfigLoader) *cobra.Command {
 				for _, id := range ids {
 					envs = append(envs, slimAlertEnvelope(id, groupID, namespace))
 				}
-				return opts.IO.Encode(cmd.OutOrStdout(), alertItemsEnvelope{Items: envs})
+				return opts.IO.Encode(ctx, cmd.OutOrStdout(), alertItemsEnvelope{Items: envs})
 			}
 
 			envs, err := fetchAlertsRichConcurrent(ctx, reader, ids, groupID, namespace, opts.IncludeRaw)
@@ -1251,7 +1251,7 @@ func newAlertGroupListAlertsCommand(loader OnCallConfigLoader) *cobra.Command {
 			// own row with occurrences=1.
 			envs = applyAlertCollapse(envs, opts.History)
 
-			if err := opts.IO.Encode(cmd.OutOrStdout(), alertItemsEnvelope{Items: envs}); err != nil {
+			if err := opts.IO.Encode(ctx, cmd.OutOrStdout(), alertItemsEnvelope{Items: envs}); err != nil {
 				return err
 			}
 
@@ -1438,7 +1438,7 @@ func newScheduleListFinalShiftsCommand(loader OnCallConfigLoader) *cobra.Command
 				}
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), shifts)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), shifts)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -1497,7 +1497,7 @@ func newUsersCurrentCommand(loader OnCallConfigLoader) *cobra.Command {
 				return err
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), user)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), user)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -1586,7 +1586,7 @@ func newEscalateCommand(loader OnCallConfigLoader) *cobra.Command {
 				AlertGroupID: result.AlertGroupID,
 				Title:        opts.Title,
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), res)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), res)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -1607,7 +1607,7 @@ type escalationTextCodec struct{}
 
 func (c *escalationTextCodec) Format() format.Format { return format.Format("text") }
 
-func (c *escalationTextCodec) Encode(w io.Writer, v any) error {
+func (c *escalationTextCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	r, ok := v.(escalationResult)
 	if !ok {
 		return fmt.Errorf("text codec: unsupported value type %T (expected escalationResult)", v)
@@ -1804,7 +1804,7 @@ type finalShiftTableCodec struct{ noDecodeCodec }
 
 func (c *finalShiftTableCodec) Format() format.Format { return "table" }
 
-func (c *finalShiftTableCodec) Encode(w io.Writer, v any) error {
+func (c *finalShiftTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	items, ok := v.([]FlatShift)
 	if !ok {
 		return errors.New("invalid data type for table codec: expected []FlatShift")

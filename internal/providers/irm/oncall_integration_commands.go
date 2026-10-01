@@ -53,7 +53,7 @@ it back through update-templates.`,
 				return err
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), templates)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), templates)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -93,7 +93,7 @@ The command emits the stored document.`,
 				return err
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), stored)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), stored)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -257,5 +257,5 @@ once.`,
 // tell an idempotent repeat from a real change and leaves Changed unset.
 func encodeIntegrationMutation(cmd *cobra.Command, opts *cmdio.Options, action, id string) error {
 	result := cmdio.NewSingleMutation(action, cmdio.MutationTarget{Kind: "Integration", ID: id})
-	return opts.Encode(cmd.OutOrStdout(), result)
+	return opts.Encode(cmd.Context(), cmd.OutOrStdout(), result)
 }

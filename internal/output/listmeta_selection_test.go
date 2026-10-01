@@ -47,7 +47,7 @@ func encodeWithJSONFlag(t *testing.T, jsonFlag string, value any) string {
 	require.NoError(t, opts.Validate())
 
 	var buf bytes.Buffer
-	require.NoError(t, opts.Encode(&buf, value))
+	require.NoError(t, opts.Encode(t.Context(), &buf, value))
 	return buf.String()
 }
 
@@ -154,7 +154,7 @@ func TestDiscoveryOnEmptyEnvelopeWithListMetaField(t *testing.T) {
 func TestSingleKeyEnvelopeWithUnrelatedSecondKey(t *testing.T) {
 	codec := cmdio.NewFieldSelectCodec([]string{"uid"})
 	var buf bytes.Buffer
-	require.NoError(t, codec.Encode(&buf, struct {
+	require.NoError(t, codec.Encode(t.Context(), &buf, struct {
 		Datasources []dsRow        `json:"datasources"`
 		Summary     map[string]any `json:"summary"`
 	}{

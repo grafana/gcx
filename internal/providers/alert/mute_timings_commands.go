@@ -64,7 +64,7 @@ func newMuteTimingsListCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 			timings = adapter.TruncateSlice(timings, opts.Limit)
-			return opts.IO.Encode(cmd.OutOrStdout(), timings)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), timings)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -123,7 +123,7 @@ func newMuteTimingsGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), mt)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), mt)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -167,7 +167,7 @@ func newMuteTimingsCreateCommand(loader GrafanaConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), created)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), created)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -201,7 +201,7 @@ func newMuteTimingsUpdateCommand(loader GrafanaConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), updated)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), updated)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -260,7 +260,7 @@ func newMuteTimingsDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 			result := cmdio.NewSingleMutation("deleted", cmdio.MutationTarget{Kind: "mute-timing", Name: args[0]})
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())

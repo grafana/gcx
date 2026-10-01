@@ -63,7 +63,7 @@ func TestOptions_JQ_FormatAndFlagOrder(t *testing.T) {
 							}
 							if output == "" || output == "json" {
 								var out bytes.Buffer
-								require.NoError(t, opts.Encode(&out, map[string]string{"name": "<a>&"}))
+								require.NoError(t, opts.Encode(t.Context(), &out, map[string]string{"name": "<a>&"}))
 								//nolint:testifylint // JSONEq would hide changes to indentation and HTML escaping.
 								assert.Equal(t, "{\n  \"name\": \"\\u003ca\\u003e\\u0026\"\n}\n", out.String())
 							}
@@ -102,7 +102,7 @@ func TestOptions_JQ_JSONStreamCompatibility(t *testing.T) {
 				require.NoError(t, flags.Parse(args))
 				require.NoError(t, opts.Validate())
 				var stdout bytes.Buffer
-				err := opts.Encode(&stdout, nil)
+				err := opts.Encode(t.Context(), &stdout, nil)
 				if tt.wantErr != "" {
 					require.ErrorContains(t, err, tt.wantErr)
 				} else {
@@ -199,7 +199,7 @@ func TestOptions_JQ_AgentsStream(t *testing.T) {
 			t.Setenv("TMPDIR", dir)
 			var stdout, stderr bytes.Buffer
 			opts := jqAgentsOptions(t, tt.query, &stderr)
-			require.NoError(t, opts.Encode(&stdout, tt.value))
+			require.NoError(t, opts.Encode(t.Context(), &stdout, tt.value))
 
 			files, err := os.ReadDir(dir)
 			require.NoError(t, err)
@@ -272,7 +272,7 @@ func TestOptions_JQ_AgentsErrors(t *testing.T) {
 				dir := t.TempDir()
 				t.Setenv("TMPDIR", dir)
 				var stdout, stderr bytes.Buffer
-				err := jqAgentsOptions(t, tt.query, &stderr).Encode(&stdout, tt.value)
+				err := jqAgentsOptions(t, tt.query, &stderr).Encode(t.Context(), &stdout, tt.value)
 				require.ErrorContains(t, err, tt.wantErr)
 				if strings.HasPrefix(tt.wantErr, "jq runtime") {
 					var jqErr cmdio.JQRuntimeError
@@ -298,7 +298,7 @@ func TestOptions_JQ_AgentsIOErrors(t *testing.T) {
 		t.Setenv("TMPDIR", filepath.Join(t.TempDir(), "missing"))
 		t.Setenv("GCX_AGENT_SPILL_BYTES", "1")
 		var stdout bytes.Buffer
-		err := jqAgentsOptions(t, "1", io.Discard).Encode(&stdout, nil)
+		err := jqAgentsOptions(t, "1", io.Discard).Encode(t.Context(), &stdout, nil)
 		require.ErrorContains(t, err, "create spill file")
 		assert.Empty(t, stdout.String())
 	})
@@ -309,7 +309,7 @@ func TestOptions_JQ_AgentsIOErrors(t *testing.T) {
 			t.Setenv("GCX_AGENT_SPILL_BYTES", threshold)
 			wantErr := errors.New("stdout failed")
 			var stderr bytes.Buffer
-			err := jqAgentsOptions(t, "1", &stderr).Encode(jqErrorWriter{err: wantErr}, nil)
+			err := jqAgentsOptions(t, "1", &stderr).Encode(t.Context(), jqErrorWriter{err: wantErr}, nil)
 			require.ErrorIs(t, err, wantErr)
 			assert.Empty(t, stderr.String(), "no success hint if stdout failed")
 			files, err := os.ReadDir(dir)

@@ -93,7 +93,7 @@ stderr rather than silently truncating.`,
 			warnIfMetadataTruncated(cmd.ErrOrStderr(), resp, "datasets")
 
 			datasets := bigquery.ParseStringColumn(resp)
-			return opts.IO.Encode(cmd.OutOrStdout(), bigquery.StringList{Items: datasets, Header: "DATASET"})
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), bigquery.StringList{Items: datasets, Header: "DATASET"})
 		},
 	}
 

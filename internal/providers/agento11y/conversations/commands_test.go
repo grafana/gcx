@@ -17,7 +17,7 @@ func TestTableCodec_TitleTruncation(t *testing.T) {
 
 	codec := conversations.Table().Codec("table")
 	var buf bytes.Buffer
-	require.NoError(t, codec.Encode(&buf, convs))
+	require.NoError(t, codec.Encode(t.Context(), &buf, convs))
 	assert.Contains(t, buf.String(), "...")
 	assert.NotContains(t, buf.String(), strings.Repeat("A", 50))
 }

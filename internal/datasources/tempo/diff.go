@@ -113,7 +113,7 @@ manually instead.`,
 				return fmt.Errorf("trace diff failed: %w", err)
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), resp)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), resp)
 		},
 	}
 

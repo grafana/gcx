@@ -22,7 +22,7 @@ func TestAgentsCodec_BelowThreshold(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	require.NoError(t, codec.Encode(&buf, data))
+	require.NoError(t, codec.Encode(t.Context(), &buf, data))
 
 	var got []map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &got))
@@ -44,7 +44,7 @@ func TestAgentsCodec_AboveThreshold_Spills(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	require.NoError(t, codec.Encode(&buf, data))
+	require.NoError(t, codec.Encode(t.Context(), &buf, data))
 
 	var summary map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &summary))
@@ -84,7 +84,7 @@ func TestAgentsCodec_BelowThreshold_NoDiscriminator(t *testing.T) {
 	codec := cmdio.NewAgentsCodecForTesting()
 
 	var buf bytes.Buffer
-	require.NoError(t, codec.Encode(&buf, []map[string]any{{"name": "alpha"}}))
+	require.NoError(t, codec.Encode(t.Context(), &buf, []map[string]any{{"name": "alpha"}}))
 
 	var value []map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &value))
@@ -110,7 +110,7 @@ func TestAgentsCodec_Spill_ListEnvelope(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	require.NoError(t, codec.Encode(&buf, value))
+	require.NoError(t, codec.Encode(t.Context(), &buf, value))
 
 	var summary map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &summary))
@@ -136,7 +136,7 @@ func TestAgentsCodec_NonSlice_OmitsItems(t *testing.T) {
 	data := map[string]any{"name": "alpha", "kind": "Dashboard"}
 
 	var buf bytes.Buffer
-	require.NoError(t, codec.Encode(&buf, data))
+	require.NoError(t, codec.Encode(t.Context(), &buf, data))
 
 	var summary map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &summary))
@@ -158,7 +158,7 @@ func TestAgentsCodec_NonSlice_PreviewIsKeyNames(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	require.NoError(t, codec.Encode(&buf, data))
+	require.NoError(t, codec.Encode(t.Context(), &buf, data))
 
 	var summary map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &summary))
@@ -193,7 +193,7 @@ func TestAgentsCodec_StructWithItems_CountsItems(t *testing.T) {
 	}}
 
 	var buf bytes.Buffer
-	require.NoError(t, codec.Encode(&buf, data))
+	require.NoError(t, codec.Encode(t.Context(), &buf, data))
 
 	var summary map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &summary))
@@ -214,7 +214,7 @@ func TestAgentsCodec_InvalidEnvVar_FallsBackToDefault(t *testing.T) {
 	data := map[string]string{"payload": strings.Repeat("x", 100*1024-200)}
 
 	var buf bytes.Buffer
-	require.NoError(t, codec.Encode(&buf, data))
+	require.NoError(t, codec.Encode(t.Context(), &buf, data))
 
 	// Output should be raw JSON, not a spill summary.
 	var got map[string]string
@@ -230,7 +230,7 @@ func TestAgentsCodec_SpillEnvelope_UsesTotalItems(t *testing.T) {
 	data := []map[string]any{{"name": "alpha"}, {"name": "beta"}}
 
 	var buf bytes.Buffer
-	require.NoError(t, codec.Encode(&buf, data))
+	require.NoError(t, codec.Encode(t.Context(), &buf, data))
 
 	var summary map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &summary))
@@ -247,7 +247,7 @@ func TestAgentsCodec_SpillEnvelope_UsesPreviewSample(t *testing.T) {
 	data := []map[string]any{{"name": "alpha"}, {"name": "beta"}}
 
 	var buf bytes.Buffer
-	require.NoError(t, codec.Encode(&buf, data))
+	require.NoError(t, codec.Encode(t.Context(), &buf, data))
 
 	var summary map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &summary))
@@ -264,7 +264,7 @@ func TestAgentsCodec_Spill_HasMessageField(t *testing.T) {
 	codec := cmdio.NewAgentsCodecWithErrWriter(&errBuf)
 
 	var buf bytes.Buffer
-	require.NoError(t, codec.Encode(&buf, map[string]any{"name": "alpha"}))
+	require.NoError(t, codec.Encode(t.Context(), &buf, map[string]any{"name": "alpha"}))
 
 	var summary map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &summary))
@@ -287,7 +287,7 @@ func TestAgentsCodec_Spill_EmitsStderrHint(t *testing.T) {
 	codec := cmdio.NewAgentsCodecWithErrWriter(&errBuf)
 
 	var buf bytes.Buffer
-	require.NoError(t, codec.Encode(&buf, map[string]any{"name": "alpha"}))
+	require.NoError(t, codec.Encode(t.Context(), &buf, map[string]any{"name": "alpha"}))
 
 	hint := errBuf.String()
 	require.NotEmpty(t, hint, "spill must emit a hint to errWriter")
@@ -313,7 +313,7 @@ func TestAgentsCodec_Spill_AgentModeHintIsJSONL(t *testing.T) {
 	codec := cmdio.NewAgentsCodecWithErrWriter(&errBuf)
 
 	var buf bytes.Buffer
-	require.NoError(t, codec.Encode(&buf, map[string]any{"name": "alpha"}))
+	require.NoError(t, codec.Encode(t.Context(), &buf, map[string]any{"name": "alpha"}))
 
 	line := strings.TrimSpace(errBuf.String())
 	require.NotEmpty(t, line, "spill must emit a hint to errWriter")
@@ -336,7 +336,7 @@ func TestAgentsCodec_NoSpill_NoStderrHint(t *testing.T) {
 	codec := cmdio.NewAgentsCodecWithErrWriter(&errBuf)
 
 	var buf bytes.Buffer
-	require.NoError(t, codec.Encode(&buf, map[string]any{"name": "alpha"}))
+	require.NoError(t, codec.Encode(t.Context(), &buf, map[string]any{"name": "alpha"}))
 
 	assert.Empty(t, errBuf.String(), "no spill means no stderr hint")
 }

@@ -1,6 +1,7 @@
 package alert
 
 import (
+	"context"
 	"errors"
 	"io"
 
@@ -23,7 +24,7 @@ type singleMutationTextCodec struct {
 
 func (c *singleMutationTextCodec) Format() format.Format { return "text" }
 
-func (c *singleMutationTextCodec) Encode(w io.Writer, v any) error {
+func (c *singleMutationTextCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	m, ok := v.(cmdio.SingleMutation)
 	if !ok {
 		return errors.New("invalid data type for text codec: expected SingleMutation")
@@ -44,7 +45,7 @@ type silentTextCodec struct{}
 
 func (silentTextCodec) Format() format.Format { return "text" }
 
-func (silentTextCodec) Encode(io.Writer, any) error { return nil }
+func (silentTextCodec) Encode(context.Context, io.Writer, any) error { return nil }
 
 func (silentTextCodec) Decode(io.Reader, any) error {
 	return errors.New("text codec does not support decoding")

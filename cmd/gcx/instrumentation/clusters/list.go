@@ -135,5 +135,5 @@ func runList(
 		views[i] = cv
 	}
 
-	return instrOutput.EncodeList(&opts.IO, w, views)
+	return instrOutput.EncodeList(ctx, &opts.IO, w, views)
 }

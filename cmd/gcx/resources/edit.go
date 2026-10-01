@@ -175,7 +175,7 @@ The edition will be cancelled if no changes are written to the file or if the fi
 			}
 
 			obj := list[0].ToUnstructured()
-			if err := opts.IO.Encode(buffer, &obj); err != nil {
+			if err := opts.IO.Encode(ctx, buffer, &obj); err != nil {
 				return err
 			}
 

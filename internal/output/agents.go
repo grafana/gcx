@@ -2,6 +2,7 @@ package output
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/host"
 )
 
 const (
@@ -52,11 +54,17 @@ const (
 	spillSchemaVersion = "1"
 )
 
+// newAgentsCodec returns the agents codec. A nil errWriter sends hints to the
+// invocation's stderr.
 func newAgentsCodec(errWriter io.Writer) *agentsCodec {
-	if errWriter == nil {
-		errWriter = os.Stderr
-	}
 	return &agentsCodec{errWriter: errWriter}
+}
+
+func (c *agentsCodec) hintWriter(ctx context.Context) io.Writer {
+	if c.errWriter == nil {
+		return host.Stderr(ctx)
+	}
+	return c.errWriter
 }
 
 func (c *agentsCodec) Format() format.Format { return agentsFormat }
@@ -65,7 +73,7 @@ func (c *agentsCodec) Decode(io.Reader, any) error {
 	return errors.New("agents codec does not support decoding")
 }
 
-func (c *agentsCodec) Encode(dst io.Writer, value any) error {
+func (c *agentsCodec) Encode(ctx context.Context, dst io.Writer, value any) error {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
@@ -73,28 +81,28 @@ func (c *agentsCodec) Encode(dst io.Writer, value any) error {
 		return err
 	}
 
-	if buf.Len() <= SpillThreshold() {
+	if buf.Len() <= SpillThreshold(ctx) {
 		_, err := io.Copy(dst, &buf)
 		return err
 	}
 
-	return c.spill(dst, value, buf.Bytes())
+	return c.spill(ctx, dst, value, buf.Bytes())
 }
 
 // encodeJQ budgets the whole JSONL stream and delays stdout until evaluation
 // succeeds, so late errors leave neither partial output nor a success receipt.
-func (c *agentsCodec) encodeJQ(dst io.Writer, results iter.Seq2[any, error]) error {
+func (c *agentsCodec) encodeJQ(ctx context.Context, dst io.Writer, results iter.Seq2[any, error]) error {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
-	threshold := SpillThreshold()
+	threshold := SpillThreshold(ctx)
 	var f *os.File
 	success := false
 	defer func() {
 		if f != nil {
 			f.Close()
 			if !success {
-				os.Remove(f.Name())
+				_ = host.Remove(ctx, f.Name())
 			}
 		}
 	}()
@@ -109,7 +117,7 @@ func (c *agentsCodec) encodeJQ(dst io.Writer, results iter.Seq2[any, error]) err
 		}
 		count++
 		if f == nil && buf.Len() > threshold {
-			f, err = os.CreateTemp("", SpillStreamFilePattern)
+			f, err = host.CreateTemp(ctx, "", SpillStreamFilePattern)
 			if err != nil {
 				return fmt.Errorf("create spill file: %w", err)
 			}
@@ -130,7 +138,7 @@ func (c *agentsCodec) encodeJQ(dst io.Writer, results iter.Seq2[any, error]) err
 		return fmt.Errorf("close spill file: %w", err)
 	}
 	// Omit previews: a single yielded value could make the receipt unbounded.
-	err := c.writeSpillSummary(dst, spillSummary{
+	err := c.writeSpillSummary(ctx, dst, spillSummary{
 		SpilledTo:     f.Name(),
 		Bytes:         size,
 		ContentFormat: "jsonl",
@@ -140,14 +148,14 @@ func (c *agentsCodec) encodeJQ(dst io.Writer, results iter.Seq2[any, error]) err
 	return err
 }
 
-func (c *agentsCodec) spill(dst io.Writer, value any, payload []byte) error {
-	f, err := os.CreateTemp("", SpillFilePattern)
+func (c *agentsCodec) spill(ctx context.Context, dst io.Writer, value any, payload []byte) error {
+	f, err := host.CreateTemp(ctx, "", SpillFilePattern)
 	if err != nil {
 		return fmt.Errorf("create spill file: %w", err)
 	}
 	if _, err := f.Write(payload); err != nil {
 		f.Close()
-		os.Remove(f.Name())
+		_ = host.Remove(ctx, f.Name())
 		return fmt.Errorf("write spill file: %w", err)
 	}
 	if err := f.Close(); err != nil {
@@ -163,10 +171,10 @@ func (c *agentsCodec) spill(dst io.Writer, value any, payload []byte) error {
 	if n, ok := itemCount(value); ok {
 		s.TotalItems = &n
 	}
-	return c.writeSpillSummary(dst, s)
+	return c.writeSpillSummary(ctx, dst, s)
 }
 
-func (c *agentsCodec) writeSpillSummary(dst io.Writer, s spillSummary) error {
+func (c *agentsCodec) writeSpillSummary(ctx context.Context, dst io.Writer, s spillSummary) error {
 	s.Type = SpillReferenceType
 	s.SchemaVersion = spillSchemaVersion
 	s.Message = fmt.Sprintf(
@@ -180,7 +188,7 @@ func (c *agentsCodec) writeSpillSummary(dst io.Writer, s spillSummary) error {
 		return err
 	}
 
-	emitHint(c.errWriter,
+	emitHint(c.hintWriter(ctx),
 		fmt.Sprintf("response too large for stdout (%d bytes) — read %s for full data, or use -o json to force inline",
 			s.Bytes, s.SpilledTo),
 		"")
@@ -192,8 +200,8 @@ func (c *agentsCodec) writeSpillSummary(dst io.Writer, s spillSummary) error {
 // codec spills to a file. Exported so commands that can shrink a response
 // server-side (e.g. gcx traces get --prune) can budget against the same
 // number the codec uses.
-func SpillThreshold() int {
-	if v := os.Getenv(agentsSpillEnv); v != "" {
+func SpillThreshold(ctx context.Context) int {
+	if v := host.Getenv(ctx, agentsSpillEnv); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			return n
 		}

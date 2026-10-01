@@ -1,6 +1,7 @@
 package cloudwatch
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -86,7 +87,7 @@ func ListMetricsCmd(loader *providers.ConfigLoader) *cobra.Command {
 				return fmt.Errorf("failed to list metrics: %w", err)
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), metrics)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), metrics)
 		},
 	}
 
@@ -103,7 +104,7 @@ type listMetricsTableCodec struct{}
 
 func (c *listMetricsTableCodec) Format() format.Format { return "table" }
 
-func (c *listMetricsTableCodec) Encode(w io.Writer, data any) error {
+func (c *listMetricsTableCodec) Encode(ctx context.Context, w io.Writer, data any) error {
 	metrics, ok := data.([]cwclient.Metric)
 	if !ok {
 		return fmt.Errorf("listMetricsTableCodec: unexpected type %T", data)

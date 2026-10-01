@@ -41,8 +41,8 @@ func validateAgainstLive(ctx context.Context, cfg config.NamespacedRESTConfig, c
 // with EmittedError: reportError honors the carried ExitPartialFailure
 // (covered types succeeded, uncovered types failed) without appending a
 // second error document to the stream.
-func emitValidationResult(w io.Writer, ioOpts *cmdio.Options, result *agent.ValidationResult) error {
-	if err := ioOpts.Encode(w, result); err != nil {
+func emitValidationResult(ctx context.Context, w io.Writer, ioOpts *cmdio.Options, result *agent.ValidationResult) error {
+	if err := ioOpts.Encode(ctx, w, result); err != nil {
 		// Encoding failed midway — the stream is already broken, so the
 		// standard error path is the honest one.
 		return err

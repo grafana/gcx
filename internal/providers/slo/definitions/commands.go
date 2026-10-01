@@ -1,6 +1,7 @@
 package definitions
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -85,7 +86,7 @@ func newListCommand(resource providers.BoundResource[Slo]) *cobra.Command {
 			// Other formats (yaml/json) convert to K8s envelope Resources
 			// for consistency with get/pull and round-trip support.
 			if opts.IO.OutputFormat == "table" || opts.IO.OutputFormat == "wide" {
-				return opts.IO.Encode(cmd.OutOrStdout(), slos)
+				return opts.IO.Encode(ctx, cmd.OutOrStdout(), slos)
 			}
 
 			var objs []unstructured.Unstructured
@@ -97,7 +98,7 @@ func newListCommand(resource providers.BoundResource[Slo]) *cobra.Command {
 				objs = append(objs, obj)
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), objs)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), objs)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -173,7 +174,7 @@ func newGetCommand(resource providers.BoundResource[Slo]) *cobra.Command {
 				return fmt.Errorf("failed to convert SLO to resource: %w", err)
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), &obj)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), &obj)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -186,7 +187,7 @@ func newGetCommand(resource providers.BoundResource[Slo]) *cobra.Command {
 // reportError writes nothing more for an EmittedError.
 func emitPartialResult(cmd *cobra.Command, io *cmdio.Options, result any, cause error) error {
 	cmdio.Error(cmd.ErrOrStderr(), "%v", cause)
-	if err := io.Encode(cmd.OutOrStdout(), result); err != nil {
+	if err := io.Encode(cmd.Context(), cmd.OutOrStdout(), result); err != nil {
 		return err
 	}
 	return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, cause)
@@ -245,7 +246,7 @@ func (c *deleteResultCodec) Decode(io.Reader, any) error {
 	return errors.New("text codec does not support decoding")
 }
 
-func (c *deleteResultCodec) Encode(w io.Writer, v any) error {
+func (c *deleteResultCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	result, ok := v.(deleteBatchResult)
 	if !ok {
 		return errors.New("invalid data type for delete result codec: expected deleteBatchResult")
@@ -304,7 +305,7 @@ func newDeleteCommand(resource providers.BoundResource[Slo]) *cobra.Command {
 				result.Summary.Succeeded++
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())

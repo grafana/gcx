@@ -103,7 +103,7 @@ stderr rather than silently truncating.`,
 			warnIfMetadataTruncated(cmd.ErrOrStderr(), resp, "tables")
 
 			tables := bigquery.ParseTableInfoRows(resp)
-			return opts.IO.Encode(cmd.OutOrStdout(), tables)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), tables)
 		},
 	}
 

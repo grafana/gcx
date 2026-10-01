@@ -158,7 +158,7 @@ func executeMetrics(cmd *cobra.Command, opts *metricsOpts, resolved *resolvedQue
 	unavailableMsg, failedOpenMsg := dsquery.ExploreMessages("metric query")
 
 	return dsquery.EncodeAndHandleExplore(cmd, func() error {
-		return opts.IO.Encode(cmd.OutOrStdout(), resp)
+		return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), resp)
 	}, share, dsquery.ExploreLink{
 		URL:            exploreURL,
 		UnavailableMsg: unavailableMsg,

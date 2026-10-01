@@ -21,14 +21,14 @@ func TestSessionDumpCodecEncode(t *testing.T) {
 		},
 	}
 	var buf bytes.Buffer
-	require.NoError(t, sessionDumpCodec{}.Encode(&buf, result))
+	require.NoError(t, sessionDumpCodec{}.Encode(t.Context(), &buf, result))
 	assert.Equal(t, result.dump(), buf.String())
 
 	buf.Reset()
-	require.NoError(t, sessionDumpCodec{}.Encode(&buf, "plain"))
+	require.NoError(t, sessionDumpCodec{}.Encode(t.Context(), &buf, "plain"))
 	assert.Equal(t, "plain", buf.String())
 
-	err := sessionDumpCodec{}.Encode(&buf, 3)
+	err := sessionDumpCodec{}.Encode(t.Context(), &buf, 3)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "expected session dump")
 	assert.Equal(t, "text", string(sessionDumpCodec{}.Format()))

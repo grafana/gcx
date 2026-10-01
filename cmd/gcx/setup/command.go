@@ -126,7 +126,7 @@ func newStatusCommand(loader *providers.ConfigLoader) *cobra.Command {
 					Health:  "unknown",
 					Details: "needs the " + fleetbase.CollectorAppID + " plugin",
 				})
-				if err := opts.IO.Encode(cmd.OutOrStdout(), newSetupStatus(products)); err != nil {
+				if err := opts.IO.Encode(ctx, cmd.OutOrStdout(), newSetupStatus(products)); err != nil {
 					return err
 				}
 				return gcxerrors.NewEmittedError(
@@ -141,7 +141,7 @@ func newStatusCommand(loader *providers.ConfigLoader) *cobra.Command {
 			// code with EmittedError, so stdout holds exactly one document.
 			row, statusErr := instrumentationRow(ctx, loader)
 			products = append(products, row)
-			if err := opts.IO.Encode(cmd.OutOrStdout(), newSetupStatus(products)); err != nil {
+			if err := opts.IO.Encode(ctx, cmd.OutOrStdout(), newSetupStatus(products)); err != nil {
 				return err
 			}
 			if statusErr != nil {
@@ -199,7 +199,7 @@ func (c *setupStatusTextCodec) Decode(io.Reader, any) error {
 	return errors.New("setup status text codec does not support decoding")
 }
 
-func (c *setupStatusTextCodec) Encode(w io.Writer, value any) error {
+func (c *setupStatusTextCodec) Encode(ctx context.Context, w io.Writer, value any) error {
 	status, ok := value.(setupStatus)
 	if !ok {
 		return errors.New("invalid data type for setup status text codec: expected setupStatus")

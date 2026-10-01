@@ -88,7 +88,7 @@ Shows database, name, engine, total_rows, and total_bytes for each table.`,
 			}
 
 			tables := clickhouse.ParseTableInfoRows(resp)
-			return opts.IO.Encode(cmd.OutOrStdout(), tables)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), tables)
 		},
 	}
 

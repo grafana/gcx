@@ -1,6 +1,7 @@
 package cloudwatch
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -81,7 +82,7 @@ may return a 404 which is surfaced as a clear error.`,
 				return fmt.Errorf("failed to list accounts: %w", err)
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), accounts)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), accounts)
 		},
 	}
 
@@ -98,7 +99,7 @@ type listAccountsTableCodec struct{}
 
 func (c *listAccountsTableCodec) Format() format.Format { return "table" }
 
-func (c *listAccountsTableCodec) Encode(w io.Writer, data any) error {
+func (c *listAccountsTableCodec) Encode(ctx context.Context, w io.Writer, data any) error {
 	accounts, ok := data.([]cwclient.Account)
 	if !ok {
 		return fmt.Errorf("listAccountsTableCodec: unexpected type %T", data)

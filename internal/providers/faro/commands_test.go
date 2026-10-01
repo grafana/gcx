@@ -111,7 +111,7 @@ func TestAppTable_Encode(t *testing.T) {
 			codec := faro.AppTable().Codec(formatName(tt.wide))
 			var buf bytes.Buffer
 
-			err := codec.Encode(&buf, toTypedObjs(tt.apps))
+			err := codec.Encode(t.Context(), &buf, toTypedObjs(tt.apps))
 			require.NoError(t, err)
 
 			rows := tableCells(buf.String())
@@ -128,7 +128,7 @@ func TestAppTable_Encode_InvalidType(t *testing.T) {
 	codec := faro.AppTable().Codec("table")
 	var buf bytes.Buffer
 
-	err := codec.Encode(&buf, "not a slice")
+	err := codec.Encode(t.Context(), &buf, "not a slice")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid data type for table codec")
 }

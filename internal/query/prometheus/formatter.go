@@ -1,6 +1,7 @@
 package prometheus
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"sort"
@@ -225,7 +226,7 @@ func (c *SingleColumnTableCodec) Format() format.Format {
 	return "table"
 }
 
-func (c *SingleColumnTableCodec) Encode(w io.Writer, data any) error {
+func (c *SingleColumnTableCodec) Encode(ctx context.Context, w io.Writer, data any) error {
 	rows, ok := c.Rows(data)
 	if !ok {
 		return fmt.Errorf("invalid data type for %s table codec", strings.ToLower(c.Header))

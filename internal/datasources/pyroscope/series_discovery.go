@@ -1,6 +1,7 @@
 package pyroscope
 
 import (
+	"context"
 	"errors"
 	"io"
 	"time"
@@ -113,7 +114,7 @@ labels.`,
 			if len(resp.LabelsSet) == 0 {
 				emitEmptyWindowHint(cmd.ErrOrStderr(), "profile series", start, end, opts.TimeRange.IsRange())
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), resp)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), resp)
 		},
 	}
 
@@ -129,7 +130,7 @@ type profileSeriesTableCodec struct{}
 
 func (c *profileSeriesTableCodec) Format() format.Format { return "table" }
 
-func (c *profileSeriesTableCodec) Encode(w io.Writer, data any) error {
+func (c *profileSeriesTableCodec) Encode(ctx context.Context, w io.Writer, data any) error {
 	resp, ok := data.(*pyroscope.SeriesResponse)
 	if !ok {
 		return errors.New("invalid data type for profile series table codec")
@@ -145,7 +146,7 @@ type profileSeriesWideCodec struct{}
 
 func (c *profileSeriesWideCodec) Format() format.Format { return "wide" }
 
-func (c *profileSeriesWideCodec) Encode(w io.Writer, data any) error {
+func (c *profileSeriesWideCodec) Encode(ctx context.Context, w io.Writer, data any) error {
 	resp, ok := data.(*pyroscope.SeriesResponse)
 	if !ok {
 		return errors.New("invalid data type for profile series wide codec")

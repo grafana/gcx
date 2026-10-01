@@ -111,7 +111,7 @@ func newStateHistoryListCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), transitions)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), transitions)
 		},
 	}
 	opts.setup(cmd.Flags())

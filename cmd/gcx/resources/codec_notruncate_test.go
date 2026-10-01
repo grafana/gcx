@@ -62,7 +62,7 @@ func TestTableCodec_NoTruncate_StripsNewlines(t *testing.T) {
 			list := unstructured.UnstructuredList{Items: []unstructured.Unstructured{item}}
 
 			var buf bytes.Buffer
-			err := codec.Encode(&buf, list)
+			err := codec.Encode(t.Context(), &buf, list)
 			require.NoError(t, err)
 
 			output := buf.String()
@@ -115,7 +115,7 @@ func TestTabCodec_NoTruncate_StripsNewlines(t *testing.T) {
 
 			codec := &resources.TabCodecForTest{} // wide: false (zero value)
 			var buf bytes.Buffer
-			err := codec.Encode(&buf, descs)
+			err := codec.Encode(t.Context(), &buf, descs)
 			require.NoError(t, err)
 
 			output := buf.String()
@@ -189,7 +189,7 @@ func TestTableCodec_Columns(t *testing.T) {
 			list := unstructured.UnstructuredList{Items: tc.items}
 
 			var buf bytes.Buffer
-			require.NoError(t, codec.Encode(&buf, list))
+			require.NoError(t, codec.Encode(t.Context(), &buf, list))
 			output := buf.String()
 
 			for _, col := range tc.wantCols {

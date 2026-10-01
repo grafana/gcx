@@ -1,6 +1,7 @@
 package version
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	goio "io"
@@ -39,7 +40,7 @@ func Command() *cobra.Command {
 			if err := opts.Validate(); err != nil {
 				return err
 			}
-			return opts.Encode(cmd.OutOrStdout(), appversion.Info())
+			return opts.Encode(cmd.Context(), cmd.OutOrStdout(), appversion.Info())
 		},
 	}
 
@@ -53,7 +54,7 @@ type versionTextCodec struct{}
 
 func (c *versionTextCodec) Format() format.Format { return "text" }
 
-func (c *versionTextCodec) Encode(output goio.Writer, value any) error {
+func (c *versionTextCodec) Encode(ctx context.Context, output goio.Writer, value any) error {
 	info, ok := value.(appversion.InfoData)
 	if !ok {
 		return fmt.Errorf("unexpected type %T", value)

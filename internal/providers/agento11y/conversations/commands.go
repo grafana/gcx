@@ -73,7 +73,7 @@ func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), convs)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), convs)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -109,7 +109,7 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), detail)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), detail)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -181,7 +181,7 @@ shown when more results are available.`,
 			if err != nil {
 				return err
 			}
-			if err := opts.IO.Encode(cmd.OutOrStdout(), resp.Conversations); err != nil {
+			if err := opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), resp.Conversations); err != nil {
 				return err
 			}
 			if resp.HasMore {
@@ -271,9 +271,9 @@ func newListAnnotationsCommand(loader *providers.ConfigLoader) *cobra.Command {
 				return err
 			}
 			if opts.IO.OutputFormat == "table" || opts.IO.OutputFormat == "wide" {
-				return opts.IO.Encode(cmd.OutOrStdout(), resp.Items)
+				return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), resp.Items)
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), resp)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), resp)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -354,7 +354,7 @@ func newAnnotateCommand(loader *providers.ConfigLoader) *cobra.Command {
 				return err
 			}
 			cmdio.Success(cmd.ErrOrStderr(), "Added annotation %s", resp.Annotation.AnnotationID)
-			return opts.IO.Encode(cmd.OutOrStdout(), resp)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), resp)
 		},
 	}
 	opts.setup(cmd.Flags())

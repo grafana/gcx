@@ -1,6 +1,7 @@
 package output
 
 import (
+	"context"
 	"fmt"
 	"io"
 
@@ -104,7 +105,7 @@ func (c *tableCodec[T]) Decode(io.Reader, any) error {
 	return fmt.Errorf("%s format does not support decoding", c.name)
 }
 
-func (c *tableCodec[T]) Encode(w io.Writer, v any) error {
+func (c *tableCodec[T]) Encode(ctx context.Context, w io.Writer, v any) error {
 	rows, ok := v.([]T)
 	if !ok {
 		return fmt.Errorf("invalid data type for %s codec: expected %T, got %T", c.name, rows, v)

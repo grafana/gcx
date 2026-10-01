@@ -127,7 +127,7 @@ database on the same server.`,
 			// capped/eff/maxLimit are all zero.
 			dsquery.SurfaceRowLimits(cmd.ErrOrStderr(), resp, false, 0, 0)
 
-			return opts.IO.Encode(cmd.OutOrStdout(), resp)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), resp)
 		},
 	}
 

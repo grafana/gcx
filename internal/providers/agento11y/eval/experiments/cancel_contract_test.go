@@ -73,7 +73,7 @@ func TestCancel_OutputContract(t *testing.T) {
 
 			opts := newCancelOptsForTest(t, tc.output)
 			var stdout, stderr bytes.Buffer
-			require.NoError(t, emitCancelReceipt(&stdout, &stderr, opts, "r-1"))
+			require.NoError(t, emitCancelReceipt(t.Context(), &stdout, &stderr, opts, "r-1"))
 
 			if tc.wantDoc != nil {
 				dec := json.NewDecoder(strings.NewReader(stdout.String()))
@@ -104,7 +104,7 @@ func TestCancel_ExplicitYAMLOverride(t *testing.T) {
 
 	opts := newCancelOptsForTest(t, "yaml")
 	var stdout, stderr bytes.Buffer
-	require.NoError(t, emitCancelReceipt(&stdout, &stderr, opts, "r-1"))
+	require.NoError(t, emitCancelReceipt(t.Context(), &stdout, &stderr, opts, "r-1"))
 	assert.Contains(t, stdout.String(), "type: gcx.mutation")
 	assert.Contains(t, stdout.String(), "action: canceled")
 }

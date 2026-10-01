@@ -1,6 +1,7 @@
 package influxdb //nolint:dupl
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -87,7 +88,7 @@ func FieldKeysCmd(loader *providers.ConfigLoader) *cobra.Command {
 				return fmt.Errorf("failed to get field keys: %w", err)
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), resp)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), resp)
 		},
 	}
 
@@ -107,7 +108,7 @@ func (c *fieldKeysTableCodec) Format() format.Format {
 	return "table"
 }
 
-func (c *fieldKeysTableCodec) Encode(w io.Writer, data any) error {
+func (c *fieldKeysTableCodec) Encode(ctx context.Context, w io.Writer, data any) error {
 	resp, ok := data.(*influxdb.FieldKeysResponse)
 	if !ok {
 		return errors.New("invalid data type for field keys table codec")

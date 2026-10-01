@@ -1,6 +1,7 @@
 package irm
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -153,7 +154,7 @@ func NewListCommand(loader GrafanaConfigLoader) *cobra.Command {
 			// Other formats (yaml/json) convert to K8s envelope Resources
 			// for consistency with get and round-trip support.
 			if opts.IO.OutputFormat == "table" || opts.IO.OutputFormat == "wide" {
-				return opts.IO.Encode(cmd.OutOrStdout(), incs)
+				return opts.IO.Encode(ctx, cmd.OutOrStdout(), incs)
 			}
 
 			// Initialized (not nil) so an empty result encodes as [] — never
@@ -167,7 +168,7 @@ func NewListCommand(loader GrafanaConfigLoader) *cobra.Command {
 				objs = append(objs, res.ToUnstructured())
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), objs)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), objs)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -250,7 +251,7 @@ func NewGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 			}
 
 			obj := res.ToUnstructured()
-			return opts.IO.Encode(cmd.OutOrStdout(), &obj)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), &obj)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -328,7 +329,7 @@ func NewGetPIRCommand(loader GrafanaConfigLoader) *cobra.Command {
 					incidentID)
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), IncidentPIR{IncidentID: incidentID, PIRURL: url})
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), IncidentPIR{IncidentID: incidentID, PIRURL: url})
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -341,7 +342,7 @@ type IncidentPIRTextCodec struct{}
 
 func (c *IncidentPIRTextCodec) Format() format.Format { return "text" }
 
-func (c *IncidentPIRTextCodec) Encode(w io.Writer, v any) error {
+func (c *IncidentPIRTextCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	pir, ok := v.(IncidentPIR)
 	if !ok {
 		return errors.New("invalid data type for text codec: expected IncidentPIR")
@@ -471,7 +472,7 @@ func NewCreateCommand(loader GrafanaConfigLoader) *cobra.Command {
 			// incident below is the result).
 			cmdio.Success(cmd.ErrOrStderr(), "Created incident %s (id=%s)", created.Title, created.IncidentID)
 			createdObj := createdRes.ToUnstructured()
-			return opts.IO.Encode(cmd.OutOrStdout(), &createdObj)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), &createdObj)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -539,7 +540,7 @@ func NewCloseCommand(loader GrafanaConfigLoader) *cobra.Command {
 			})
 			changed := true
 			result.Changed = &changed
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -646,7 +647,7 @@ func NewListActivityCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), items)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), items)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -740,7 +741,7 @@ func newActivityAddCommand(loader GrafanaConfigLoader) *cobra.Command {
 			})
 			changed := true
 			result.Changed = &changed
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -798,7 +799,7 @@ func newSeveritiesListCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), severities)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), severities)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -879,7 +880,7 @@ func NewListContextsCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), contexts)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), contexts)
 		},
 	}
 	opts.setup(cmd.Flags())

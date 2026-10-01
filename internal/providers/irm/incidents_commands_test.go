@@ -73,7 +73,7 @@ func TestIncidentTableCodec_Encode(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			codec := irm.IncidentTable().Codec(incidentFormat(tt.wide))
 			var buf bytes.Buffer
-			err := codec.Encode(&buf, incs)
+			err := codec.Encode(t.Context(), &buf, incs)
 			require.NoError(t, err)
 
 			output := buf.String()
@@ -90,7 +90,7 @@ func TestIncidentTableCodec_Encode(t *testing.T) {
 func TestIncidentTableCodec_EncodeWrongType(t *testing.T) {
 	codec := irm.IncidentTable().Codec("table")
 	var buf bytes.Buffer
-	err := codec.Encode(&buf, "not-a-slice-of-incidents")
+	err := codec.Encode(t.Context(), &buf, "not-a-slice-of-incidents")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid data type for table codec")
 }
@@ -107,7 +107,7 @@ func TestIncidentTableCodec_TitleTruncation(t *testing.T) {
 
 	codec := irm.IncidentTable().Codec("table")
 	var buf bytes.Buffer
-	err := codec.Encode(&buf, incs)
+	err := codec.Encode(t.Context(), &buf, incs)
 	require.NoError(t, err)
 
 	output := buf.String()
@@ -127,7 +127,7 @@ func TestIncidentTableCodec_WideTitleNotTruncated(t *testing.T) {
 
 	codec := irm.IncidentTable().Codec("wide")
 	var buf bytes.Buffer
-	err := codec.Encode(&buf, incs)
+	err := codec.Encode(t.Context(), &buf, incs)
 	require.NoError(t, err)
 
 	output := buf.String()
@@ -172,7 +172,7 @@ func TestActivityTableCodec_Encode(t *testing.T) {
 
 	codec := irm.ActivityTable().Codec("table")
 	var buf bytes.Buffer
-	err := codec.Encode(&buf, items)
+	err := codec.Encode(t.Context(), &buf, items)
 	require.NoError(t, err)
 
 	output := buf.String()
@@ -197,7 +197,7 @@ func TestActivityTableCodec_LongBodyTruncated(t *testing.T) {
 
 	codec := irm.ActivityTable().Codec("table")
 	var buf bytes.Buffer
-	err := codec.Encode(&buf, items)
+	err := codec.Encode(t.Context(), &buf, items)
 	require.NoError(t, err)
 
 	output := buf.String()
@@ -259,7 +259,7 @@ func TestIncidentContextTableCodec_Encode(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			codec := irm.IncidentContextTable().Codec(incidentFormat(tt.wide))
 			var buf bytes.Buffer
-			err := codec.Encode(&buf, contexts)
+			err := codec.Encode(t.Context(), &buf, contexts)
 			require.NoError(t, err)
 
 			out := buf.String()
@@ -560,7 +560,7 @@ func TestSeverityTableCodec_Encode(t *testing.T) {
 
 	codec := irm.SeverityTable().Codec("table")
 	var buf bytes.Buffer
-	err := codec.Encode(&buf, sevs)
+	err := codec.Encode(t.Context(), &buf, sevs)
 	require.NoError(t, err)
 
 	output := buf.String()

@@ -129,8 +129,8 @@ func (r *DiagnoseResult) computeSummary() {
 // the top-level reporter honors the exit code and writes nothing more — a
 // second error document would corrupt the one-JSON-value contract. Warned
 // checks do not affect the exit code.
-func encodeDiagnoseResult(w io.Writer, ioOpts *cmdio.Options, result any, failed, total int) error {
-	if err := ioOpts.Encode(w, result); err != nil {
+func encodeDiagnoseResult(ctx context.Context, w io.Writer, ioOpts *cmdio.Options, result any, failed, total int) error {
+	if err := ioOpts.Encode(ctx, w, result); err != nil {
 		return err
 	}
 	if failed > 0 {
@@ -182,7 +182,7 @@ auto-discovery. If unavailable, metric checks are skipped.`,
 			promClient, datasourceUID := resolvePromClient(ctx, loader, cfg, opts.Datasource, cmd)
 
 			result := runDiagnose(ctx, client, &opts.Scope, promClient, datasourceUID)
-			return encodeDiagnoseResult(cmd.OutOrStdout(), &opts.IO, result,
+			return encodeDiagnoseResult(ctx, cmd.OutOrStdout(), &opts.IO, result,
 				result.Summary.Failed, result.Summary.Total)
 		},
 	}
@@ -234,7 +234,7 @@ with suggested next steps.`,
 			promClient, datasourceUID := resolvePromClient(ctx, loader, cfg, opts.Datasource, cmd)
 
 			result := runServiceDiagnose(ctx, client, args[0], &opts.Scope, promClient, datasourceUID)
-			return encodeDiagnoseResult(cmd.OutOrStdout(), &opts.IO, result,
+			return encodeDiagnoseResult(ctx, cmd.OutOrStdout(), &opts.IO, result,
 				result.Summary.Failed, result.Summary.Total)
 		},
 	}
@@ -281,7 +281,7 @@ asserts_env values with no deployment_environment source.`,
 			promClient, dsUID := resolvePromClient(ctx, loader, cfg, datasource, cmd)
 
 			result := runLabelsDiagnose(ctx, kgClient, promClient, dsUID)
-			return encodeDiagnoseResult(cmd.OutOrStdout(), &ioOpts, result,
+			return encodeDiagnoseResult(ctx, cmd.OutOrStdout(), &ioOpts, result,
 				result.Summary.Failed, result.Summary.Total)
 		},
 	}
@@ -1374,7 +1374,7 @@ type DiagnoseTableCodec struct{}
 
 func (c *DiagnoseTableCodec) Format() format.Format { return "table" }
 
-func (c *DiagnoseTableCodec) Encode(w io.Writer, v any) error {
+func (c *DiagnoseTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	result, ok := v.(DiagnoseResult)
 	if !ok {
 		return errors.New("invalid data type for table codec: expected DiagnoseResult")

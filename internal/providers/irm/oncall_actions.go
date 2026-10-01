@@ -633,7 +633,7 @@ func runActionVerbSingle(ctx context.Context, client OnCallAPI, id string, stdou
 		env.Changed = boolPtr(result.changed) //nolint:modernize
 	}
 
-	if werr := ioOpts.Encode(stdout, env); werr != nil {
+	if werr := ioOpts.Encode(ctx, stdout, env); werr != nil {
 		return werr
 	}
 
@@ -738,7 +738,7 @@ func runActionVerbBulk(ctx context.Context, client OnCallAPI, opts *alertGroupAc
 	}
 
 	env := buildBulkMutationResult(cfg.Name, results)
-	if werr := ioOpts.Encode(stdout, env); werr != nil {
+	if werr := ioOpts.Encode(ctx, stdout, env); werr != nil {
 		return werr
 	}
 
@@ -983,7 +983,7 @@ type mutationTextCodec struct{}
 
 func (c *mutationTextCodec) Format() format.Format { return format.Format("text") }
 
-func (c *mutationTextCodec) Encode(w io.Writer, v any) error {
+func (c *mutationTextCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	switch r := v.(type) {
 	case singleMutationResult:
 		// Order matters: failure path has Changed=nil and Error!=nil, so

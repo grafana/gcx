@@ -87,7 +87,7 @@ func TestClusterTableGolden(t *testing.T) {
 	for _, name := range []string{cmdio.FormatTable, cmdio.FormatWide} {
 		t.Run(name, func(t *testing.T) {
 			var buf bytes.Buffer
-			require.NoError(t, instroutput.ClusterTable().Codec(name).Encode(&buf, goldenClusters()))
+			require.NoError(t, instroutput.ClusterTable().Codec(name).Encode(t.Context(), &buf, goldenClusters()))
 
 			testutils.Golden(t, "clusters_"+name, buf.String())
 		})
@@ -98,7 +98,7 @@ func TestAppTableGolden(t *testing.T) {
 	for _, name := range []string{cmdio.FormatText, cmdio.FormatWide} {
 		t.Run(name, func(t *testing.T) {
 			var buf bytes.Buffer
-			require.NoError(t, instroutput.AppTable().Codec(name).Encode(&buf, goldenApps()))
+			require.NoError(t, instroutput.AppTable().Codec(name).Encode(t.Context(), &buf, goldenApps()))
 
 			testutils.Golden(t, "apps_"+name, buf.String())
 		})
@@ -109,7 +109,7 @@ func TestServiceTableGolden(t *testing.T) {
 	for _, name := range []string{cmdio.FormatText, cmdio.FormatWide} {
 		t.Run(name, func(t *testing.T) {
 			var buf bytes.Buffer
-			require.NoError(t, instroutput.ServiceTable().Codec(name).Encode(&buf, goldenServices()))
+			require.NoError(t, instroutput.ServiceTable().Codec(name).Encode(t.Context(), &buf, goldenServices()))
 
 			testutils.Golden(t, "services_"+name, buf.String())
 		})
@@ -118,7 +118,7 @@ func TestServiceTableGolden(t *testing.T) {
 
 func TestClusterTableGoldenEmpty(t *testing.T) {
 	var buf bytes.Buffer
-	require.NoError(t, instroutput.ClusterTable().Codec(cmdio.FormatTable).Encode(&buf, []instroutput.ClusterView{}))
+	require.NoError(t, instroutput.ClusterTable().Codec(cmdio.FormatTable).Encode(t.Context(), &buf, []instroutput.ClusterView{}))
 
 	testutils.Golden(t, "clusters_table_empty", buf.String())
 }

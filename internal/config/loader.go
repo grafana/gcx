@@ -894,7 +894,7 @@ func writeConfig(ctx context.Context, source Source, cfg Config, opts writeOptio
 	defer func() { _ = host.Remove(ctx, tmpName) }() // no-op once renamed
 
 	codec := &format.YAMLCodec{BytesAsBase64: true}
-	if err := codec.Encode(tmp, cfg); err != nil {
+	if err := codec.Encode(ctx, tmp, cfg); err != nil {
 		_ = tmp.Close()
 		return 0, err
 	}
@@ -1598,7 +1598,6 @@ func diagnosticsSourcePaths(ctx context.Context) []string {
 // migration. Missing or malformed files yield (nil, err).
 func readDiagnostics(ctx context.Context, path string) (*DiagnosticsConfig, error) {
 	contents, err := host.ReadFile(ctx, path)
-
 	if err != nil {
 		return nil, err
 	}

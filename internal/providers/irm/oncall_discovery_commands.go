@@ -85,7 +85,7 @@ func (c discoveryCatalog[T]) newListCmd(loader OnCallConfigLoader, use, short st
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), items)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), items)
 		},
 	}
 	opts.setup(cmd.Flags(), c.codec)

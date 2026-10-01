@@ -1,6 +1,7 @@
 package prometheus
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -83,7 +84,7 @@ func MetadataCmd(loader *providers.ConfigLoader) *cobra.Command {
 				return prometheus.FormatMetadataTable(cmd.OutOrStdout(), resp)
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), resp)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), resp)
 		},
 	}
 
@@ -102,7 +103,7 @@ func (c *metadataTableCodec) Format() format.Format {
 	return "table"
 }
 
-func (c *metadataTableCodec) Encode(w io.Writer, data any) error {
+func (c *metadataTableCodec) Encode(ctx context.Context, w io.Writer, data any) error {
 	resp, ok := data.(*prometheus.MetadataResponse)
 	if !ok {
 		return errors.New("invalid data type for metadata table codec")

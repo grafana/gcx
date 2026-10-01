@@ -92,7 +92,7 @@ func TestNotFound_AgentStdoutSingleDocument(t *testing.T) {
 				opts := &getOpts{}
 				opts.IO.ErrWriter = io.Discard
 				opts.setup(pflag.NewFlagSet("get", pflag.ContinueOnError))
-				return opts.IO.Encode(stdout, &ServiceDetail{})
+				return opts.IO.Encode(t.Context(), stdout, &ServiceDetail{})
 			},
 		},
 		{
@@ -102,7 +102,7 @@ func TestNotFound_AgentStdoutSingleDocument(t *testing.T) {
 				opts := &getOpts{}
 				opts.IO.ErrWriter = io.Discard
 				opts.setup(pflag.NewFlagSet("get", pflag.ContinueOnError))
-				return opts.IO.Encode(stdout, &GroupedServiceDetail{GroupBy: []string{"k8s_cluster_name"}})
+				return opts.IO.Encode(t.Context(), stdout, &GroupedServiceDetail{GroupBy: []string{"k8s_cluster_name"}})
 			},
 		},
 		{
@@ -112,7 +112,7 @@ func TestNotFound_AgentStdoutSingleDocument(t *testing.T) {
 				opts := &mapOpts{}
 				opts.IO.ErrWriter = io.Discard
 				opts.setup(pflag.NewFlagSet("map", pflag.ContinueOnError))
-				return opts.IO.Encode(stdout, &ServiceMap{})
+				return opts.IO.Encode(t.Context(), stdout, &ServiceMap{})
 			},
 		},
 		{
@@ -122,7 +122,7 @@ func TestNotFound_AgentStdoutSingleDocument(t *testing.T) {
 				opts := &operationsOpts{}
 				opts.IO.ErrWriter = io.Discard
 				opts.setup(pflag.NewFlagSet("list-operations", pflag.ContinueOnError))
-				return opts.IO.Encode(stdout, &OperationsResponse{})
+				return opts.IO.Encode(t.Context(), stdout, &OperationsResponse{})
 			},
 		},
 		{
@@ -132,7 +132,7 @@ func TestNotFound_AgentStdoutSingleDocument(t *testing.T) {
 				opts := &labelsOpts{}
 				opts.IO.ErrWriter = io.Discard
 				opts.setup(pflag.NewFlagSet("list-labels", pflag.ContinueOnError))
-				return opts.IO.Encode(stdout, &ServiceLabelsResponse{})
+				return opts.IO.Encode(t.Context(), stdout, &ServiceLabelsResponse{})
 			},
 		},
 		{
@@ -142,7 +142,7 @@ func TestNotFound_AgentStdoutSingleDocument(t *testing.T) {
 				opts := &operationDetailOpts{}
 				opts.IO.ErrWriter = io.Discard
 				opts.setup(pflag.NewFlagSet("get", pflag.ContinueOnError))
-				return opts.IO.Encode(stdout, &OperationDetail{})
+				return opts.IO.Encode(t.Context(), stdout, &OperationDetail{})
 			},
 		},
 		{
@@ -152,7 +152,7 @@ func TestNotFound_AgentStdoutSingleDocument(t *testing.T) {
 				opts := &fleetOperationsListOpts{}
 				opts.IO.ErrWriter = io.Discard
 				opts.setup(pflag.NewFlagSet("list", pflag.ContinueOnError))
-				return opts.IO.Encode(stdout, &FleetOperationsResponse{})
+				return opts.IO.Encode(t.Context(), stdout, &FleetOperationsResponse{})
 			},
 		},
 	}
@@ -199,7 +199,7 @@ func TestNotFound_HumanTableDefaultUnchanged(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	detail := &ServiceDetail{Service: Service{Name: "checkout", Namespace: "payments"}}
-	require.NoError(t, opts.IO.Encode(&stdout, detail))
+	require.NoError(t, opts.IO.Encode(t.Context(), &stdout, detail))
 	err := notFoundEmitted(&stderr, `service "payments/checkout" has no telemetry in the requested window`)
 
 	var emitted *gcxerrors.EmittedError

@@ -98,11 +98,11 @@ workload-level status for a specific namespace, powered by RunK8sDiscovery.`,
 			// each branch instantiates EncodeList for a different row type.
 			switch v := result.(type) {
 			case []instroutput.ClusterView:
-				return instroutput.EncodeList(&opts.IO, cmd.OutOrStdout(), v)
+				return instroutput.EncodeList(ctx, &opts.IO, cmd.OutOrStdout(), v)
 			case []instroutput.ServiceView:
-				return instroutput.EncodeList(&opts.IO, cmd.OutOrStdout(), v)
+				return instroutput.EncodeList(ctx, &opts.IO, cmd.OutOrStdout(), v)
 			default:
-				return opts.IO.Encode(cmd.OutOrStdout(), result)
+				return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 			}
 		},
 	}

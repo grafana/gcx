@@ -94,7 +94,7 @@ func ListTablesCmd(loader *providers.ConfigLoader) *cobra.Command {
 				return fmt.Errorf("failed to parse response: %w", err)
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), athena.StringList{Items: tables, Header: "TABLE"})
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), athena.StringList{Items: tables, Header: "TABLE"})
 		},
 	}
 

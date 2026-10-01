@@ -66,7 +66,7 @@ func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
 				return fmt.Errorf("failed to list stacks: %w", err)
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), stacks)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), stacks)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -115,7 +115,7 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 				return fmt.Errorf("failed to get stack: %w", err)
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), stack)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), stack)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -250,7 +250,7 @@ the stack's <slug>.grafana.net subdomain.`,
 				// codec so agent mode and explicit -o json/yaml receive one
 				// structured document while the default table codec keeps the
 				// classic human rendering.
-				return opts.IO.Encode(cmd.OutOrStdout(),
+				return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(),
 					newDryRunPreview("created", http.MethodPost, instancesPath, req))
 			}
 
@@ -265,7 +265,7 @@ the stack's <slug>.grafana.net subdomain.`,
 				return fmt.Errorf("failed to create stack: %w", err)
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), stack)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), stack)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -363,7 +363,7 @@ Use --dry-run to preview the request first.`,
 			if opts.DryRun {
 				// See create: the preview is the result and flows through the
 				// codec system.
-				return opts.IO.Encode(cmd.OutOrStdout(),
+				return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(),
 					newDryRunPreview("updated", http.MethodPost, instancesPath+"/"+slug, req))
 			}
 
@@ -378,7 +378,7 @@ Use --dry-run to preview the request first.`,
 				return fmt.Errorf("failed to update stack: %w", err)
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), stack)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), stack)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -433,7 +433,7 @@ Use --dry-run to preview the operation first.`,
 
 			if opts.DryRun {
 				result.DryRun = true
-				return opts.IO.Encode(cmd.OutOrStdout(), result)
+				return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), result)
 			}
 
 			if err := confirmStackDelete(cmd, slug, opts.Force); err != nil {
@@ -452,7 +452,7 @@ Use --dry-run to preview the operation first.`,
 
 			changed := true
 			result.Changed = &changed
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -529,7 +529,7 @@ func newListRegionsCommand(loader *providers.ConfigLoader) *cobra.Command {
 				return fmt.Errorf("failed to list regions: %w", err)
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), regions)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), regions)
 		},
 	}
 	opts.setup(cmd.Flags())

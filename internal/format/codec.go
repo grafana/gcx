@@ -1,6 +1,7 @@
 package format
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"io"
@@ -26,7 +27,7 @@ func Codecs() map[Format]Codec {
 
 // Encoder encodes values to an io.Writer in a specific format.
 type Encoder interface {
-	Encode(dst io.Writer, value any) error
+	Encode(ctx context.Context, dst io.Writer, value any) error
 }
 
 // Decoder decodes values from an io.Reader in a specific format.
@@ -59,7 +60,7 @@ func (c *YAMLCodec) Format() Format {
 	return YAML
 }
 
-func (c *YAMLCodec) Encode(dst io.Writer, value any) error {
+func (c *YAMLCodec) Encode(ctx context.Context, dst io.Writer, value any) error {
 	// Use encoding/json → sigs.k8s.io/yaml for the JSON-marshal path.
 	// go-yaml's UseJSONMarshaler chokes on strings containing literal \r bytes
 	// (e.g. PromQL expressions with Windows line endings), whereas the
@@ -128,7 +129,7 @@ func (c *JSONCodec) Format() Format {
 	return JSON
 }
 
-func (c *JSONCodec) Encode(dst io.Writer, value any) error {
+func (c *JSONCodec) Encode(ctx context.Context, dst io.Writer, value any) error {
 	encoder := json.NewEncoder(dst)
 	encoder.SetIndent("", "  ")
 

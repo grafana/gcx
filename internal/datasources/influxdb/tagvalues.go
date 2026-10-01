@@ -1,6 +1,7 @@
 package influxdb
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -92,7 +93,7 @@ func TagValuesCmd(loader *providers.ConfigLoader) *cobra.Command {
 				return fmt.Errorf("failed to get tag values: %w", err)
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), resp)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), resp)
 		},
 	}
 
@@ -112,7 +113,7 @@ func (c *tagValuesTableCodec) Format() format.Format {
 	return "table"
 }
 
-func (c *tagValuesTableCodec) Encode(w io.Writer, data any) error {
+func (c *tagValuesTableCodec) Encode(ctx context.Context, w io.Writer, data any) error {
 	resp, ok := data.(*influxdb.TagValuesResponse)
 	if !ok {
 		return errors.New("invalid data type for tag values table codec")

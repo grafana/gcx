@@ -116,7 +116,7 @@ Server-side macros ($__timeFilter, $__timeGroup, etc.) are supported.`,
 				return fmt.Errorf("query failed: %w", err)
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), resp)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), resp)
 		},
 	}
 

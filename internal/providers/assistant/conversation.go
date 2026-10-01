@@ -102,7 +102,7 @@ Use this to discover conversation IDs, then pull a transcript with
 				return fmt.Errorf("failed to list conversations: %w", err)
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), chats)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), chats)
 		},
 	}
 
@@ -175,7 +175,7 @@ that a conversation can be continued with 'gcx assistant prompt --context-id'.`,
 			if err != nil {
 				return fmt.Errorf("failed to fetch conversation: %w", err)
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), *transcript)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), *transcript)
 		},
 	}
 

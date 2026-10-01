@@ -187,7 +187,7 @@ func runLabels(loader *providers.ConfigLoader, opts *labelsOpts) func(*cobra.Com
 		if notFound {
 			emitLabelsNoDataHint(cmd.ErrOrStderr(), namespace, name, opts.Label)
 		}
-		if err := opts.IO.Encode(cmd.OutOrStdout(), response); err != nil {
+		if err := opts.IO.Encode(ctx, cmd.OutOrStdout(), response); err != nil {
 			return err
 		}
 		if notFound {
@@ -271,7 +271,7 @@ func (c *labelsTableCodec) Decode(io.Reader, any) error {
 	return errors.New("services list-labels table codec does not support decoding")
 }
 
-func (c *labelsTableCodec) Encode(w io.Writer, v any) error {
+func (c *labelsTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	resp, ok := v.(*ServiceLabelsResponse)
 	if !ok {
 		return fmt.Errorf("invalid data type for services list-labels table codec: %T", v)

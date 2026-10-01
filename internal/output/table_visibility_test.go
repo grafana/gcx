@@ -25,7 +25,7 @@ func TestTableCodecNarrowIsAnyNonWideFormat(t *testing.T) {
 	for _, narrow := range []string{cmdio.FormatTable, cmdio.FormatText} {
 		t.Run(narrow, func(t *testing.T) {
 			var buf bytes.Buffer
-			require.NoError(t, table.Codec(narrow).Encode(&buf, rows))
+			require.NoError(t, table.Codec(narrow).Encode(t.Context(), &buf, rows))
 
 			assert.Contains(t, buf.String(), "NARROW_CELL")
 			assert.NotContains(t, buf.String(), "EXTRA_CELL")
@@ -33,7 +33,7 @@ func TestTableCodecNarrowIsAnyNonWideFormat(t *testing.T) {
 	}
 
 	var wide bytes.Buffer
-	require.NoError(t, table.Codec(cmdio.FormatWide).Encode(&wide, rows))
+	require.NoError(t, table.Codec(cmdio.FormatWide).Encode(t.Context(), &wide, rows))
 
 	assert.Contains(t, wide.String(), "EXTRA_CELL")
 	assert.NotContains(t, wide.String(), "NARROW_CELL")

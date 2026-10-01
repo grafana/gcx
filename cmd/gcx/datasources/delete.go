@@ -1,6 +1,7 @@
 package datasources
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -123,7 +124,7 @@ Exit codes: 0 (all deleted), 4 (some deletions failed).`,
 				results = append(results, res)
 			}
 
-			if err := opts.IO.Encode(cmd.OutOrStdout(), results); err != nil {
+			if err := opts.IO.Encode(ctx, cmd.OutOrStdout(), results); err != nil {
 				return err
 			}
 			if failed > 0 {
@@ -147,7 +148,7 @@ type deleteResultCodec struct{}
 
 func (c *deleteResultCodec) Format() format.Format { return "text" }
 
-func (c *deleteResultCodec) Encode(w io.Writer, data any) error {
+func (c *deleteResultCodec) Encode(ctx context.Context, w io.Writer, data any) error {
 	results, ok := data.([]*deleteResult)
 	if !ok {
 		return errors.New("invalid data type for text codec")

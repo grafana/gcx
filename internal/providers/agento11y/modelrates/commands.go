@@ -211,7 +211,7 @@ records a new rate rather than overwriting this one.`,
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), stored)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), stored)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -261,7 +261,7 @@ generations that arrived while they applied.`,
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), rates)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), rates)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -343,7 +343,7 @@ What changes is the price applied from now on.`,
 			// requires. Writing a sentence here instead made -o json print
 			// English and put prose on an agent's stdout.
 			target := fmt.Sprintf("%s/%s@%s", provider, model, raw)
-			return commandutil.RunBatchDelete(cmd.OutOrStdout(), cmd.ErrOrStderr(), &opts.IO,
+			return commandutil.RunBatchDelete(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), &opts.IO,
 				"rate", "Deleted rate %s", "deleting rate %s", []string{target},
 				func(string) error {
 					return client.Delete(cmd.Context(), provider, model, raw)

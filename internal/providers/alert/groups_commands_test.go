@@ -23,7 +23,7 @@ func TestGroupRulesTableCodec_Encode(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	err := codec.Encode(&buf, group)
+	err := codec.Encode(t.Context(), &buf, group)
 	require.NoError(t, err)
 
 	output := buf.String()
@@ -60,7 +60,7 @@ func TestGroupsStatusTableCodec_Encode(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	err := codec.Encode(&buf, groups)
+	err := codec.Encode(t.Context(), &buf, groups)
 	require.NoError(t, err)
 
 	output := buf.String()
@@ -83,6 +83,6 @@ func TestGroupsStatusTableCodec_Encode(t *testing.T) {
 func TestGroupsStatusTableCodec_InvalidType(t *testing.T) {
 	codec := &alert.GroupsStatusTableCodec{}
 	var buf bytes.Buffer
-	err := codec.Encode(&buf, "not a slice")
+	err := codec.Encode(t.Context(), &buf, "not a slice")
 	require.Error(t, err)
 }

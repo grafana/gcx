@@ -1,6 +1,7 @@
 package loki
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -82,7 +83,7 @@ func LabelsCmd(loader *providers.ConfigLoader) *cobra.Command {
 					return loki.FormatLabelsTable(cmd.OutOrStdout(), resp)
 				}
 
-				return opts.IO.Encode(cmd.OutOrStdout(), resp)
+				return opts.IO.Encode(ctx, cmd.OutOrStdout(), resp)
 			}
 
 			resp, err := client.Labels(ctx, datasourceUID)
@@ -94,7 +95,7 @@ func LabelsCmd(loader *providers.ConfigLoader) *cobra.Command {
 				return loki.FormatLabelsTable(cmd.OutOrStdout(), resp)
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), resp)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), resp)
 		},
 	}
 
@@ -114,7 +115,7 @@ func (c *lokiLabelsTableCodec) Format() format.Format {
 	return "table"
 }
 
-func (c *lokiLabelsTableCodec) Encode(w io.Writer, data any) error {
+func (c *lokiLabelsTableCodec) Encode(ctx context.Context, w io.Writer, data any) error {
 	resp, ok := data.(*loki.LabelsResponse)
 	if !ok {
 		return errors.New("invalid data type for loki labels table codec")

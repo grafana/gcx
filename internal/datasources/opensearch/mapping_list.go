@@ -91,7 +91,7 @@ func newMappingListCmd(loader *providers.ConfigLoader, spec mappingListSpec) *co
 				return err
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 
@@ -115,7 +115,7 @@ type mappingListTableCodec struct {
 
 func (c *mappingListTableCodec) Format() format.Format { return "table" }
 
-func (c *mappingListTableCodec) Encode(w io.Writer, data any) error {
+func (c *mappingListTableCodec) Encode(ctx context.Context, w io.Writer, data any) error {
 	return c.spec.formatTable(w, data)
 }
 

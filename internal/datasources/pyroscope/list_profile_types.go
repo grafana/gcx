@@ -1,6 +1,7 @@
 package pyroscope
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -100,7 +101,7 @@ func ListProfileTypesCmd(loader *providers.ConfigLoader) *cobra.Command {
 			if opts.IO.OutputFormat == "table" {
 				return pyroscope.FormatProfileTypesTable(cmd.OutOrStdout(), resp)
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), resp)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), resp)
 		},
 	}
 
@@ -119,7 +120,7 @@ func (c *profileTypesTableCodec) Format() format.Format {
 	return "table"
 }
 
-func (c *profileTypesTableCodec) Encode(w io.Writer, data any) error {
+func (c *profileTypesTableCodec) Encode(ctx context.Context, w io.Writer, data any) error {
 	resp, ok := data.(*pyroscope.ProfileTypesResponse)
 	if !ok {
 		return errors.New("invalid data type for profile types table codec")

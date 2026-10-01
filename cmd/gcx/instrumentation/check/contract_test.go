@@ -122,7 +122,7 @@ func TestCheck_HumanDefault_ByteIdenticalTable(t *testing.T) {
 
 	var want bytes.Buffer
 	results := runWith(context.Background(), otelutils.Commands{}, failingChecker(), io.Discard)
-	require.NoError(t, (&CheckTableCodec{}).Encode(&want, ResultsWithFixPlan{
+	require.NoError(t, (&CheckTableCodec{}).Encode(t.Context(), &want, ResultsWithFixPlan{
 		Checks:   results.Checks,
 		Warnings: results.Warnings,
 		Errors:   results.Errors,

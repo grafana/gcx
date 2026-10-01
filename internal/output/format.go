@@ -1,12 +1,12 @@
 package output
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"maps"
-	"os"
 	"reflect"
 	"slices"
 	"sort"
@@ -14,6 +14,7 @@ import (
 
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/host"
 	"github.com/grafana/gcx/internal/terminal"
 	"github.com/itchyny/gojq"
 	"github.com/spf13/pflag"
@@ -249,7 +250,7 @@ func (opts *Options) Codec() (format.Codec, error) { //nolint:ireturn
 	return codec, nil
 }
 
-func (opts *Options) Encode(dst io.Writer, value any) error {
+func (opts *Options) Encode(ctx context.Context, dst io.Writer, value any) error {
 	codec, err := opts.Codec()
 	if err != nil {
 		return err
@@ -262,7 +263,7 @@ func (opts *Options) Encode(dst io.Writer, value any) error {
 		opts.jsonFieldsHintShown = true
 		w := opts.ErrWriter
 		if w == nil {
-			w = os.Stderr
+			w = host.Stderr(ctx)
 		}
 		emitHint(w,
 			"use --json list / --json field1,field2 for field selection, or --jq '<expr>' for transformation (group_by, filter, count) — no external parsing needed",
@@ -272,23 +273,23 @@ func (opts *Options) Encode(dst io.Writer, value any) error {
 
 	// Apply JSON transformations before encoding or spilling.
 	if !isJSONLike {
-		return codec.Encode(dst, value)
+		return codec.Encode(ctx, dst, value)
 	}
 	if opts.jqQuery != nil {
 		jq := NewJQCodec(opts.jqQuery)
 		if agents, ok := codec.(*agentsCodec); ok {
-			return agents.encodeJQ(dst, jq.results(value))
+			return agents.encodeJQ(ctx, dst, jq.results(value))
 		}
-		return jq.Encode(dst, value)
+		return jq.Encode(ctx, dst, value)
 	}
 	if opts.JSONDiscovery {
 		return opts.encodeDiscovery(dst, value)
 	}
 	if len(opts.JSONFields) > 0 {
-		return NewFieldSelectCodecWithValidator(opts.JSONFields, opts.jsonFieldValidator).Encode(dst, value)
+		return NewFieldSelectCodecWithValidator(opts.JSONFields, opts.jsonFieldValidator).Encode(ctx, dst, value)
 	}
 
-	return codec.Encode(dst, value)
+	return codec.Encode(ctx, dst, value)
 }
 
 // encodeDiscovery marshals value to discover its available field names, prints
@@ -559,14 +560,10 @@ func (opts *Options) codecFor(format string) format.Codec { //nolint:ireturn
 }
 
 func (opts *Options) builtinCodecs() map[string]format.Codec {
-	errWriter := opts.ErrWriter
-	if errWriter == nil {
-		errWriter = os.Stderr
-	}
 	return map[string]format.Codec{
 		"yaml":   format.NewYAMLCodec(),
 		"json":   format.NewJSONCodec(),
-		"agents": newAgentsCodec(errWriter),
+		"agents": newAgentsCodec(opts.ErrWriter),
 	}
 }
 

@@ -1,6 +1,7 @@
 package datasources
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -80,7 +81,7 @@ an apply-ready manifest that can be edited and re-applied via update -f -.`,
 			// renders the human detail view directly from its fields.
 			manifest := dsclient.ManifestFromDatasource(ds)
 			manifest.Sanitize()
-			return opts.IO.Encode(cmd.OutOrStdout(), manifest)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), manifest)
 		},
 	}
 
@@ -95,7 +96,7 @@ type datasourceDetailCodec struct{}
 
 func (c *datasourceDetailCodec) Format() format.Format { return "text" }
 
-func (c *datasourceDetailCodec) Encode(w io.Writer, data any) error {
+func (c *datasourceDetailCodec) Encode(ctx context.Context, w io.Writer, data any) error {
 	m, ok := data.(*dsclient.DataSourceManifest)
 	if !ok {
 		return errors.New("invalid data type for text codec")

@@ -30,7 +30,7 @@ type textLineCodec struct {
 
 func (c *textLineCodec) Format() format.Format { return "text" }
 
-func (c *textLineCodec) Encode(w io.Writer, v any) error { return c.render(w, v) }
+func (c *textLineCodec) Encode(ctx context.Context, w io.Writer, v any) error { return c.render(w, v) }
 
 func (c *textLineCodec) Decode(io.Reader, any) error {
 	return errors.New("text format does not support decoding")
@@ -96,6 +96,6 @@ func runGuardedDelete(cmd *cobra.Command, opts *guardedDeleteOpts, loader RESTCo
 	if err := del(cmd.Context(), client); err != nil {
 		return err
 	}
-	return opts.IO.Encode(cmd.OutOrStdout(),
+	return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(),
 		cmdio.NewSingleMutation("deleted", cmdio.MutationTarget{Kind: kind, Name: name}))
 }

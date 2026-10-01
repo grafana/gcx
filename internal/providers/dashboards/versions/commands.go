@@ -167,7 +167,7 @@ func newListVersionsCommand(deps *commandDeps) *cobra.Command {
 				return list.Items[i].GetGeneration() > list.Items[j].GetGeneration()
 			})
 
-			return opts.IO.Encode(cmd.OutOrStdout(), list)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), list)
 		},
 	}
 
@@ -258,7 +258,7 @@ func (c *restoreTextCodec) Decode(io.Reader, any) error {
 	return errors.New("text codec does not support decoding")
 }
 
-func (c *restoreTextCodec) Encode(_ io.Writer, value any) error {
+func (c *restoreTextCodec) Encode(ctx context.Context, _ io.Writer, value any) error {
 	if _, ok := value.(restoreResult); !ok {
 		return errors.New("invalid data type for restore text codec: expected restoreResult")
 	}
@@ -340,7 +340,7 @@ func newRestoreCommand(deps *commandDeps) *cobra.Command {
 			// Step 4: No-op if already at target version.
 			if currentGen == targetGen {
 				cmdio.Success(cmd.ErrOrStderr(), "already at version %d", targetGen)
-				return opts.IO.Encode(cmd.OutOrStdout(),
+				return opts.IO.Encode(ctx, cmd.OutOrStdout(),
 					newRestoreResult(desc, name, false, targetGen, currentGen))
 			}
 
@@ -397,7 +397,7 @@ func newRestoreCommand(deps *commandDeps) *cobra.Command {
 
 			newGen := updated.GetGeneration()
 			cmdio.Success(cmd.ErrOrStderr(), "restored to version %d (new generation %d)", targetGen, newGen)
-			return opts.IO.Encode(cmd.OutOrStdout(),
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(),
 				newRestoreResult(desc, name, true, targetGen, newGen))
 		},
 	}

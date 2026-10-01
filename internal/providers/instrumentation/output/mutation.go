@@ -1,6 +1,7 @@
 package output
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -89,7 +90,7 @@ func (MutationTextCodec) Decode(io.Reader, any) error {
 }
 
 // Encode renders the legacy human one-liner for a MutationResult.
-func (MutationTextCodec) Encode(w io.Writer, value any) error {
+func (MutationTextCodec) Encode(ctx context.Context, w io.Writer, value any) error {
 	r, ok := value.(MutationResult)
 	if !ok {
 		return fmt.Errorf("invalid data type for mutation text codec: expected MutationResult, got %T", value)

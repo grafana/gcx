@@ -1,6 +1,7 @@
 package alert
 
 import (
+	"context"
 	"errors"
 	"io"
 	"strconv"
@@ -71,7 +72,7 @@ func newGroupsListCommand(loader GrafanaConfigLoader) *cobra.Command {
 
 			groups = adapter.TruncateSlice(groups, opts.Limit)
 
-			return opts.IO.Encode(cmd.OutOrStdout(), groups)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), groups)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -128,7 +129,7 @@ func newGroupsGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), group)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), group)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -140,7 +141,7 @@ type GroupRulesTableCodec struct{}
 
 func (c *GroupRulesTableCodec) Format() format.Format { return "table" }
 
-func (c *GroupRulesTableCodec) Encode(w io.Writer, v any) error {
+func (c *GroupRulesTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	group, ok := v.(*RuleGroup)
 	if !ok {
 		return errors.New("invalid data type for table codec: expected *RuleGroup")
@@ -215,7 +216,7 @@ func newGroupsStatusCommand(loader GrafanaConfigLoader) *cobra.Command {
 				groups = []RuleGroup{}
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), groups)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), groups)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -227,7 +228,7 @@ type GroupsStatusTableCodec struct{}
 
 func (c *GroupsStatusTableCodec) Format() format.Format { return "table" }
 
-func (c *GroupsStatusTableCodec) Encode(w io.Writer, v any) error {
+func (c *GroupsStatusTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	groups, ok := v.([]RuleGroup)
 	if !ok {
 		return errors.New("invalid data type for status table codec: expected []RuleGroup")

@@ -77,7 +77,7 @@ func TestSettingsTableCodec_Encode_Table(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			codec := &settingsTableCodec{}
 			var buf bytes.Buffer
-			err := codec.Encode(&buf, tc.settings)
+			err := codec.Encode(t.Context(), &buf, tc.settings)
 			require.NoError(t, err)
 
 			output := buf.String()
@@ -128,7 +128,7 @@ func TestSettingsTableCodec_Encode_Wide(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			codec := &settingsTableCodec{Wide: true}
 			var buf bytes.Buffer
-			err := codec.Encode(&buf, tc.settings)
+			err := codec.Encode(t.Context(), &buf, tc.settings)
 			require.NoError(t, err)
 
 			output := buf.String()
@@ -142,7 +142,7 @@ func TestSettingsTableCodec_Encode_Wide(t *testing.T) {
 func TestSettingsTableCodec_Encode_InvalidType(t *testing.T) {
 	codec := &settingsTableCodec{}
 	var buf bytes.Buffer
-	err := codec.Encode(&buf, "not a PluginSettings")
+	err := codec.Encode(t.Context(), &buf, "not a PluginSettings")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid data type")
 }

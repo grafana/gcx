@@ -2,6 +2,7 @@ package dev
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -76,7 +77,7 @@ func (c *importReceiptCodec) Decode(io.Reader, any) error {
 	return errors.New("text codec does not support decoding")
 }
 
-func (c *importReceiptCodec) Encode(w io.Writer, value any) error {
+func (c *importReceiptCodec) Encode(ctx context.Context, w io.Writer, value any) error {
 	receipt, ok := value.(cmdio.ArtifactReceipt)
 	if !ok {
 		return errors.New("invalid data type for import receipt codec: expected ArtifactReceipt")
@@ -143,7 +144,7 @@ func importCmd() *cobra.Command {
 				return receiptFailuresError(receipt.Failures)
 			}
 
-			if err := opts.IO.Encode(cmd.OutOrStdout(), receipt); err != nil {
+			if err := opts.IO.Encode(ctx, cmd.OutOrStdout(), receipt); err != nil {
 				return err
 			}
 

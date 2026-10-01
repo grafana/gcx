@@ -11,7 +11,7 @@ import (
 )
 
 func TestStackTableCodec_Encode_Slice(t *testing.T) {
-	out, err := stacks.ExportEncodeStackTable([]cloud.StackInfo{
+	out, err := stacks.ExportEncodeStackTable(t.Context(), []cloud.StackInfo{
 		{Slug: "prod", Name: "Production", Status: "active", RegionSlug: "us", URL: "https://prod.grafana.net"},
 		{Slug: "dev", Name: "Development", Status: "active", RegionSlug: "eu", URL: "https://dev.grafana.net"},
 	}, false)
@@ -28,7 +28,7 @@ func TestStackTableCodec_Encode_Slice(t *testing.T) {
 }
 
 func TestStackTableCodec_Encode_Wide(t *testing.T) {
-	out, err := stacks.ExportEncodeStackTable([]cloud.StackInfo{
+	out, err := stacks.ExportEncodeStackTable(t.Context(), []cloud.StackInfo{
 		{
 			Slug: "prod", Name: "Production", Status: "active", RegionSlug: "us",
 			URL: "https://prod.grafana.net", PlanName: "Pro", DeleteProtection: true,
@@ -46,7 +46,7 @@ func TestStackTableCodec_Encode_Wide(t *testing.T) {
 }
 
 func TestStackTableCodec_Encode_SingleStack(t *testing.T) {
-	out, err := stacks.ExportEncodeStackTableSingle(cloud.StackInfo{
+	out, err := stacks.ExportEncodeStackTableSingle(t.Context(), cloud.StackInfo{
 		Slug: "mystack", Name: "My Stack", Status: "active", RegionSlug: "us",
 		URL: "https://mystack.grafana.net",
 	})
@@ -58,13 +58,13 @@ func TestStackTableCodec_Encode_SingleStack(t *testing.T) {
 
 func TestStackTableCodec_Encode_InvalidType(t *testing.T) {
 	var buf bytes.Buffer
-	err := stacks.ExportStackTableCodec(false).Encode(&buf, "not a stack")
+	err := stacks.ExportStackTableCodec(false).Encode(t.Context(), &buf, "not a stack")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid data type")
 }
 
 func TestRegionTableCodec_Encode(t *testing.T) {
-	out, err := stacks.ExportEncodeRegionTable([]cloud.Region{
+	out, err := stacks.ExportEncodeRegionTable(t.Context(), []cloud.Region{
 		{Slug: "us", Name: "US Central", Description: "United States", Provider: "gcp"},
 		{Slug: "eu", Name: "Belgium", Description: "Europe", Provider: "gcp"},
 	})
@@ -79,14 +79,14 @@ func TestRegionTableCodec_Encode(t *testing.T) {
 
 func TestRegionTableCodec_Encode_InvalidType(t *testing.T) {
 	var buf bytes.Buffer
-	err := stacks.ExportRegionTableCodec().Encode(&buf, "not regions")
+	err := stacks.ExportRegionTableCodec().Encode(t.Context(), &buf, "not regions")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid data type")
 }
 
 func TestDryRunSummary(t *testing.T) {
 	var buf bytes.Buffer
-	stacks.ExportDryRunSummary(&buf, "POST", "/api/instances", map[string]string{"name": "test"})
+	stacks.ExportDryRunSummary(t.Context(), &buf, "POST", "/api/instances", map[string]string{"name": "test"})
 
 	out := buf.String()
 	assert.Contains(t, out, "Dry run: POST /api/instances")
@@ -96,7 +96,7 @@ func TestDryRunSummary(t *testing.T) {
 
 func TestDryRunSummary_NilBody(t *testing.T) {
 	var buf bytes.Buffer
-	stacks.ExportDryRunSummary(&buf, "DELETE", "/api/instances/mystack", nil)
+	stacks.ExportDryRunSummary(t.Context(), &buf, "DELETE", "/api/instances/mystack", nil)
 
 	out := buf.String()
 	assert.Contains(t, out, "Dry run: DELETE /api/instances/mystack")

@@ -62,7 +62,7 @@ func newTemplatesListCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 			templates = adapter.TruncateSlice(templates, opts.Limit)
-			return opts.IO.Encode(cmd.OutOrStdout(), templates)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), templates)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -109,7 +109,7 @@ func newTemplatesGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), tmpl)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), tmpl)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -160,7 +160,7 @@ so the same command handles both create and update.`,
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), saved)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), saved)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -219,7 +219,7 @@ func newTemplatesDeleteCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 			result := cmdio.NewSingleMutation("deleted", cmdio.MutationTarget{Kind: "template", Name: args[0]})
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())

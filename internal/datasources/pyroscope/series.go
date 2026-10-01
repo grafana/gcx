@@ -173,11 +173,11 @@ Datasource is resolved from -d flag or datasources.pyroscope in your context.`,
 
 			if opts.Top {
 				topResp := pyroscope.AggregateTopSeries(resp, opts.ProfileType, groupBy, int(opts.Limit), start.UnixMilli())
-				return opts.shared.IO.Encode(cmd.OutOrStdout(), topResp)
+				return opts.shared.IO.Encode(ctx, cmd.OutOrStdout(), topResp)
 			}
 
 			resp.StepSeconds = stepSeconds
-			return opts.shared.IO.Encode(cmd.OutOrStdout(), resp)
+			return opts.shared.IO.Encode(ctx, cmd.OutOrStdout(), resp)
 		},
 	}
 
@@ -212,7 +212,7 @@ type pyroscopeSeriesTableCodec struct{}
 
 func (c *pyroscopeSeriesTableCodec) Format() format.Format { return "table" }
 
-func (c *pyroscopeSeriesTableCodec) Encode(w io.Writer, data any) error {
+func (c *pyroscopeSeriesTableCodec) Encode(ctx context.Context, w io.Writer, data any) error {
 	switch resp := data.(type) {
 	case *pyroscope.SelectSeriesResponse:
 		return pyroscope.FormatSeriesTable(w, resp)
@@ -232,7 +232,7 @@ type pyroscopeSeriesWideCodec struct{}
 
 func (c *pyroscopeSeriesWideCodec) Format() format.Format { return "wide" }
 
-func (c *pyroscopeSeriesWideCodec) Encode(w io.Writer, data any) error {
+func (c *pyroscopeSeriesWideCodec) Encode(ctx context.Context, w io.Writer, data any) error {
 	switch resp := data.(type) {
 	case *pyroscope.SelectSeriesResponse:
 		return pyroscope.FormatSeriesTableWide(w, resp)
@@ -252,7 +252,7 @@ type pyroscopeSeriesGraphCodec struct{}
 
 func (c *pyroscopeSeriesGraphCodec) Format() format.Format { return "graph" }
 
-func (c *pyroscopeSeriesGraphCodec) Encode(w io.Writer, data any) error {
+func (c *pyroscopeSeriesGraphCodec) Encode(ctx context.Context, w io.Writer, data any) error {
 	switch resp := data.(type) {
 	case *pyroscope.SelectSeriesResponse:
 		chartData, err := graph.FromPyroscopeSeriesResponse(resp)

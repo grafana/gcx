@@ -86,7 +86,7 @@ func TestDelete_OutputContract(t *testing.T) {
 
 		opts := newDeleteOptsForTest(t, "")
 		var stdout, stderr bytes.Buffer
-		require.NoError(t, runDelete(&stdout, &stderr, opts, []string{"c-1", "c-2"}, del("")))
+		require.NoError(t, runDelete(t.Context(), &stdout, &stderr, opts, []string{"c-1", "c-2"}, del("")))
 		assert.Empty(t, stdout.String(), "default human stdout must stay empty")
 		assert.Equal(t, "✔ Deleted collection c-1\n✔ Deleted collection c-2\n", stderr.String())
 	})
@@ -97,7 +97,7 @@ func TestDelete_OutputContract(t *testing.T) {
 
 		opts := newDeleteOptsForTest(t, "")
 		var stdout, stderr bytes.Buffer
-		require.NoError(t, runDelete(&stdout, &stderr, opts, []string{"c-1"}, del("")))
+		require.NoError(t, runDelete(t.Context(), &stdout, &stderr, opts, []string{"c-1"}, del("")))
 		doc := decodeSingleJSONValue(t, stdout.String())
 		assert.Equal(t, "gcx.mutation_batch", doc["type"])
 		assert.Equal(t, "deleted", doc["action"])
@@ -109,7 +109,7 @@ func TestDelete_OutputContract(t *testing.T) {
 
 		opts := newDeleteOptsForTest(t, "")
 		var stdout, stderr bytes.Buffer
-		err := runDelete(&stdout, &stderr, opts, []string{"c-1", "c-2"}, del("c-2"))
+		err := runDelete(t.Context(), &stdout, &stderr, opts, []string{"c-1", "c-2"}, del("c-2"))
 		var emitted *gcxerrors.EmittedError
 		require.ErrorAs(t, err, &emitted)
 		assert.Equal(t, gcxerrors.ExitPartialFailure, emitted.Code)
@@ -121,12 +121,12 @@ func TestDelete_OutputContract(t *testing.T) {
 		t.Cleanup(func() { agent.ResetForTesting(context.Background()) })
 
 		var stdout, stderr bytes.Buffer
-		require.NoError(t, runDelete(&stdout, &stderr, newDeleteOptsForTest(t, "json"), []string{"c-1"}, del("")))
+		require.NoError(t, runDelete(t.Context(), &stdout, &stderr, newDeleteOptsForTest(t, "json"), []string{"c-1"}, del("")))
 		doc := decodeSingleJSONValue(t, stdout.String())
 		assert.Equal(t, "gcx.mutation_batch", doc["type"])
 
 		stdout.Reset()
-		require.NoError(t, runDelete(&stdout, &stderr, newDeleteOptsForTest(t, "yaml"), []string{"c-1"}, del("")))
+		require.NoError(t, runDelete(t.Context(), &stdout, &stderr, newDeleteOptsForTest(t, "yaml"), []string{"c-1"}, del("")))
 		assert.Contains(t, stdout.String(), "type: gcx.mutation_batch")
 	})
 }
@@ -146,7 +146,7 @@ func TestMembership_OutputContract(t *testing.T) {
 			name: "add human default stays byte-identical",
 			emit: func(t *testing.T, stdout, stderr io.Writer, opts *membershipOpts) error {
 				t.Helper()
-				return emitAddConversationsReceipt(stdout, stderr, opts, "c-1", []string{"s-1", "s-2"})
+				return emitAddConversationsReceipt(t.Context(), stdout, stderr, opts, "c-1", []string{"s-1", "s-2"})
 			},
 			wantStderr: "✔ Added 2 conversation(s) to collection c-1\n",
 		},
@@ -154,7 +154,7 @@ func TestMembership_OutputContract(t *testing.T) {
 			name: "remove human default stays byte-identical",
 			emit: func(t *testing.T, stdout, stderr io.Writer, opts *membershipOpts) error {
 				t.Helper()
-				return emitRemoveConversationReceipt(stdout, stderr, opts, "c-1", "s-1")
+				return emitRemoveConversationReceipt(t.Context(), stdout, stderr, opts, "c-1", "s-1")
 			},
 			wantStderr: "✔ Removed s-1 from collection c-1\n",
 		},
@@ -163,7 +163,7 @@ func TestMembership_OutputContract(t *testing.T) {
 			agentMode: true,
 			emit: func(t *testing.T, stdout, stderr io.Writer, opts *membershipOpts) error {
 				t.Helper()
-				return emitAddConversationsReceipt(stdout, stderr, opts, "c-1", []string{"s-1", "s-2"})
+				return emitAddConversationsReceipt(t.Context(), stdout, stderr, opts, "c-1", []string{"s-1", "s-2"})
 			},
 			wantDoc: map[string]any{
 				"type":           "gcx.agento11y.collection_membership",
@@ -178,7 +178,7 @@ func TestMembership_OutputContract(t *testing.T) {
 			agentMode: true,
 			emit: func(t *testing.T, stdout, stderr io.Writer, opts *membershipOpts) error {
 				t.Helper()
-				return emitRemoveConversationReceipt(stdout, stderr, opts, "c-1", "s-1")
+				return emitRemoveConversationReceipt(t.Context(), stdout, stderr, opts, "c-1", "s-1")
 			},
 			wantDoc: map[string]any{
 				"type":           "gcx.agento11y.collection_membership",
@@ -193,7 +193,7 @@ func TestMembership_OutputContract(t *testing.T) {
 			output: "json",
 			emit: func(t *testing.T, stdout, stderr io.Writer, opts *membershipOpts) error {
 				t.Helper()
-				return emitAddConversationsReceipt(stdout, stderr, opts, "c-1", []string{"s-1"})
+				return emitAddConversationsReceipt(t.Context(), stdout, stderr, opts, "c-1", []string{"s-1"})
 			},
 			wantDoc: map[string]any{"type": "gcx.agento11y.collection_membership", "action": "added"},
 		},
@@ -228,7 +228,7 @@ func TestMembership_ExplicitYAMLOverride(t *testing.T) {
 
 	opts := newMembershipOptsForTest(t, "yaml")
 	var stdout, stderr bytes.Buffer
-	require.NoError(t, emitRemoveConversationReceipt(&stdout, &stderr, opts, "c-1", "s-1"))
+	require.NoError(t, emitRemoveConversationReceipt(t.Context(), &stdout, &stderr, opts, "c-1", "s-1"))
 	assert.Contains(t, stdout.String(), "type: gcx.agento11y.collection_membership")
 	assert.Contains(t, stdout.String(), "action: removed")
 }

@@ -1,6 +1,7 @@
 package evaluators
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -90,7 +91,7 @@ func newTestCommand(loader *providers.ConfigLoader) *cobra.Command {
 				return err
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -153,7 +154,7 @@ type TestTableCodec struct{}
 
 func (c *TestTableCodec) Format() format.Format { return "table" }
 
-func (c *TestTableCodec) Encode(w io.Writer, v any) error {
+func (c *TestTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	resp, ok := v.(*eval.EvalTestResponse)
 	if !ok {
 		return errors.New("invalid data type for table codec: expected *EvalTestResponse")

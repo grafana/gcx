@@ -100,7 +100,7 @@ func newPauseCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), msg)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), msg)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -138,7 +138,7 @@ func newResumeCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), msg)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), msg)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -197,7 +197,7 @@ func newModeCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), resp)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), resp)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -250,7 +250,7 @@ func newShareCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), resp)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), resp)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -292,7 +292,7 @@ func newEvidenceCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), resp)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), resp)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -309,7 +309,7 @@ func (c *EvidenceTableCodec) Format() format.Format {
 	return "table"
 }
 
-func (c *EvidenceTableCodec) Encode(w io.Writer, v any) error {
+func (c *EvidenceTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	resp, ok := v.(*EvidenceResponse)
 	if !ok {
 		return errors.New("invalid data type for table codec: expected *EvidenceResponse")

@@ -104,7 +104,7 @@ func newRulesListCommand(loader GrafanaConfigLoader) *cobra.Command {
 					rules = append(rules, g.Rules...)
 				}
 				rules = adapter.TruncateSlice(rules, opts.Limit)
-				return codec.Encode(cmd.OutOrStdout(), rules)
+				return codec.Encode(ctx, cmd.OutOrStdout(), rules)
 			}
 
 			// Filter out groups with no rules to avoid empty groups in JSON/YAML output.
@@ -115,7 +115,7 @@ func newRulesListCommand(loader GrafanaConfigLoader) *cobra.Command {
 				}
 			}
 			nonEmpty = adapter.TruncateSlice(nonEmpty, opts.Limit)
-			return opts.IO.Encode(cmd.OutOrStdout(), nonEmpty)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), nonEmpty)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -185,7 +185,7 @@ func newRulesGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 				return err
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), rule)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), rule)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -197,7 +197,7 @@ type RuleDetailTableCodec struct{}
 
 func (c *RuleDetailTableCodec) Format() format.Format { return "table" }
 
-func (c *RuleDetailTableCodec) Encode(w io.Writer, v any) error {
+func (c *RuleDetailTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	rule, ok := v.(*RuleStatus)
 	if !ok {
 		return errors.New("invalid data type for table codec: expected *RuleStatus")

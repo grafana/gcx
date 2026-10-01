@@ -97,7 +97,7 @@ func (writer *FSWriter) Write(ctx context.Context, resources *resources.Resource
 	}
 
 	for _, resource := range resources.AsList() {
-		if err := writer.writeSingle(resource); err != nil {
+		if err := writer.writeSingle(ctx, resource); err != nil {
 			if writer.StopOnError {
 				return err
 			}
@@ -112,7 +112,7 @@ func (writer *FSWriter) Write(ctx context.Context, resources *resources.Resource
 	return nil
 }
 
-func (writer *FSWriter) writeSingle(resource *resources.Resource) error {
+func (writer *FSWriter) writeSingle(ctx context.Context, resource *resources.Resource) error {
 	filename, err := writer.Namer(resource)
 	if err != nil {
 		return fmt.Errorf("could not generate resource path: %w", err)
@@ -152,7 +152,7 @@ func (writer *FSWriter) writeSingle(resource *resources.Resource) error {
 	// MarshalJSON() methods for [unstructured.UnstructuredList] and
 	// [unstructured.Unstructured] types are defined on pointer receivers,
 	// so we need to make sure we dereference `resource` before formatting it.
-	if err := writer.Encoder.Encode(file, &obj); err != nil {
+	if err := writer.Encoder.Encode(ctx, file, &obj); err != nil {
 		return fmt.Errorf("could write resource: %w", err)
 	}
 

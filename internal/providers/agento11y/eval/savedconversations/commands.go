@@ -1,6 +1,7 @@
 package savedconversations
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -72,7 +73,7 @@ func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), items)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), items)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -108,7 +109,7 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), sc)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), sc)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -198,7 +199,7 @@ plugin UI; pass --saved-id to override.`,
 				return err
 			}
 			cmdio.Success(cmd.ErrOrStderr(), "Saved conversation %s", sc.SavedID)
-			return opts.IO.Encode(cmd.OutOrStdout(), sc)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), sc)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -246,7 +247,7 @@ func newDeleteCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return runDelete(cmd.OutOrStdout(), cmd.ErrOrStderr(), opts, args, func(id string) error {
+			return runDelete(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), opts, args, func(id string) error {
 				return client.Delete(cmd.Context(), id)
 			})
 		},
@@ -257,8 +258,8 @@ func newDeleteCommand(loader *providers.ConfigLoader) *cobra.Command {
 
 // runDelete performs the delete loop and writes the result document. Split
 // from RunE so the output contract is testable without a live plugin API.
-func runDelete(stdout, stderr io.Writer, opts *deleteOpts, ids []string, del func(id string) error) error {
-	return commandutil.RunBatchDelete(stdout, stderr, &opts.IO,
+func runDelete(ctx context.Context, stdout, stderr io.Writer, opts *deleteOpts, ids []string, del func(id string) error) error {
+	return commandutil.RunBatchDelete(ctx, stdout, stderr, &opts.IO,
 		"saved-conversation", "Deleted saved conversation %s", "deleting saved conversation %s", ids, del)
 }
 
@@ -292,7 +293,7 @@ func newCollectionsCommand(loader *providers.ConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), items)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), items)
 		},
 	}
 	opts.setup(cmd.Flags())

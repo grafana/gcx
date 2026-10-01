@@ -47,7 +47,7 @@ func TestChatThreadTextCodec_Encode(t *testing.T) {
 	t.Run("table", func(t *testing.T) {
 		var buf bytes.Buffer
 		codec := &investigations.ChatThreadTextCodec{}
-		require.NoError(t, codec.Encode(&buf, messages))
+		require.NoError(t, codec.Encode(t.Context(), &buf, messages))
 		out := buf.String()
 		assert.Contains(t, out, "[assistant]")
 		assert.Contains(t, out, "[internal]")
@@ -65,7 +65,7 @@ func TestChatThreadTextCodec_Encode(t *testing.T) {
 	t.Run("wide includes IDs", func(t *testing.T) {
 		var buf bytes.Buffer
 		codec := &investigations.ChatThreadTextCodec{Wide: true}
-		require.NoError(t, codec.Encode(&buf, messages))
+		require.NoError(t, codec.Encode(t.Context(), &buf, messages))
 		out := buf.String()
 		assert.Contains(t, out, "id=m1")
 		assert.Contains(t, out, "for=tu_1")
@@ -74,7 +74,7 @@ func TestChatThreadTextCodec_Encode(t *testing.T) {
 
 	t.Run("wrong type", func(t *testing.T) {
 		codec := &investigations.ChatThreadTextCodec{}
-		require.Error(t, codec.Encode(&bytes.Buffer{}, "wrong"))
+		require.Error(t, codec.Encode(t.Context(), &bytes.Buffer{}, "wrong"))
 	})
 }
 
@@ -91,20 +91,20 @@ func TestChatThreadTextCodec_ErrorMarker(t *testing.T) {
 	}
 	var buf bytes.Buffer
 	codec := &investigations.ChatThreadTextCodec{}
-	require.NoError(t, codec.Encode(&buf, messages))
+	require.NoError(t, codec.Encode(t.Context(), &buf, messages))
 	assert.Contains(t, buf.String(), "✗")
 }
 
 func TestNarrativeCodec_Encode(t *testing.T) {
 	var buf bytes.Buffer
 	codec := investigations.NarrativeCodec{}
-	require.NoError(t, codec.Encode(&buf, "p99 latency spiked at 14:02."))
+	require.NoError(t, codec.Encode(t.Context(), &buf, "p99 latency spiked at 14:02."))
 	assert.Equal(t, "p99 latency spiked at 14:02.\n", buf.String())
 }
 
 func TestNarrativeCodec_EmptyString(t *testing.T) {
 	var buf bytes.Buffer
-	require.NoError(t, investigations.NarrativeCodec{}.Encode(&buf, ""))
+	require.NoError(t, investigations.NarrativeCodec{}.Encode(t.Context(), &buf, ""))
 	assert.Empty(t, buf.String())
 }
 
@@ -133,7 +133,7 @@ func TestToolsTableCodec_Encode(t *testing.T) {
 	t.Run("table shows status", func(t *testing.T) {
 		var buf bytes.Buffer
 		codec := &investigations.ToolsTableCodec{}
-		require.NoError(t, codec.Encode(&buf, calls))
+		require.NoError(t, codec.Encode(t.Context(), &buf, calls))
 		out := buf.String()
 		assert.Contains(t, out, "search_skills")
 		assert.Contains(t, out, "ok")
@@ -145,11 +145,11 @@ func TestToolsTableCodec_Encode(t *testing.T) {
 	t.Run("wide includes ID", func(t *testing.T) {
 		var buf bytes.Buffer
 		codec := &investigations.ToolsTableCodec{Wide: true}
-		require.NoError(t, codec.Encode(&buf, calls))
+		require.NoError(t, codec.Encode(t.Context(), &buf, calls))
 		assert.Contains(t, buf.String(), "tu_1")
 	})
 
 	t.Run("wrong type", func(t *testing.T) {
-		require.Error(t, (&investigations.ToolsTableCodec{}).Encode(&bytes.Buffer{}, "wrong"))
+		require.Error(t, (&investigations.ToolsTableCodec{}).Encode(t.Context(), &bytes.Buffer{}, "wrong"))
 	})
 }

@@ -143,7 +143,7 @@ func TestEmitValidationResult_OutputContract(t *testing.T) {
 			var stdout, stderr bytes.Buffer
 			opts.IO.ErrWriter = &stderr
 
-			err := commands.EmitValidationResultForTest(&stdout, &opts.IO, tc.result)
+			err := commands.EmitValidationResultForTest(t.Context(), &stdout, &opts.IO, tc.result)
 
 			if tc.wantErr {
 				var emitted *gcxerrors.EmittedError

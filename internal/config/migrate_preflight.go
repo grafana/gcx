@@ -262,7 +262,7 @@ func reconstructInterruptedLegacyLayers(ctx context.Context, layers []migrationL
 			return nil, UnmarshalError{File: backupPath, Err: err}
 		}
 		converted := convertLegacyConfig(&legacy, layer.source.Type, nil)
-		matches, err := sameMigrationDocumentShape(converted, layer.current)
+		matches, err := sameMigrationDocumentShape(ctx, converted, layer.current)
 		if err != nil {
 			return nil, err
 		}
@@ -278,22 +278,22 @@ func reconstructInterruptedLegacyLayers(ctx context.Context, layers []migrationL
 	return reconstructed, nil
 }
 
-func sameMigrationDocumentShape(expected, actual *Config) (bool, error) {
-	want, err := migrationDocumentShape(expected)
+func sameMigrationDocumentShape(ctx context.Context, expected, actual *Config) (bool, error) {
+	want, err := migrationDocumentShape(ctx, expected)
 	if err != nil {
 		return false, err
 	}
-	got, err := migrationDocumentShape(actual)
+	got, err := migrationDocumentShape(ctx, actual)
 	if err != nil {
 		return false, err
 	}
 	return reflect.DeepEqual(want, got), nil
 }
 
-func migrationDocumentShape(cfg *Config) (map[string]any, error) {
+func migrationDocumentShape(ctx context.Context, cfg *Config) (map[string]any, error) {
 	codec := &format.YAMLCodec{BytesAsBase64: true}
 	var encoded bytes.Buffer
-	if err := codec.Encode(&encoded, cfg); err != nil {
+	if err := codec.Encode(ctx, &encoded, cfg); err != nil {
 		return nil, err
 	}
 	var clone Config
@@ -324,7 +324,7 @@ func migrationDocumentShape(cfg *Config) (map[string]any, error) {
 		entry.OAuthToken = configuredCredentialMarker(entry.OAuthToken)
 	}
 	encoded.Reset()
-	if err := codec.Encode(&encoded, &clone); err != nil {
+	if err := codec.Encode(ctx, &encoded, &clone); err != nil {
 		return nil, err
 	}
 	var shape map[string]any

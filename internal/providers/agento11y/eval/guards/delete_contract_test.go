@@ -97,7 +97,7 @@ func TestDelete_OutputContract(t *testing.T) {
 
 			opts := newDeleteOptsForTest(t, tc.output)
 			var stdout, stderr bytes.Buffer
-			err := runDelete(&stdout, &stderr, opts, tc.ids, del(tc.failID))
+			err := runDelete(t.Context(), &stdout, &stderr, opts, tc.ids, del(tc.failID))
 
 			if tc.wantErr {
 				var emitted *gcxerrors.EmittedError
@@ -135,6 +135,6 @@ func TestDelete_ExplicitYAMLOverride(t *testing.T) {
 
 	opts := newDeleteOptsForTest(t, "yaml")
 	var stdout, stderr bytes.Buffer
-	require.NoError(t, runDelete(&stdout, &stderr, opts, []string{"g-1"}, func(string) error { return nil }))
+	require.NoError(t, runDelete(t.Context(), &stdout, &stderr, opts, []string{"g-1"}, func(string) error { return nil }))
 	assert.Contains(t, stdout.String(), "type: gcx.mutation_batch")
 }

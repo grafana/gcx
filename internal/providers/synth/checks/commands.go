@@ -135,7 +135,7 @@ func newListCommand(loader smcfg.Loader) *cobra.Command {
 			}
 
 			if codec.Format() == "table" || codec.Format() == "wide" {
-				return codec.Encode(cmd.OutOrStdout(), checkList)
+				return codec.Encode(ctx, cmd.OutOrStdout(), checkList)
 			}
 
 			// For yaml/json output, marshal typed objects that pass the filter.
@@ -161,7 +161,7 @@ func newListCommand(loader smcfg.Loader) *cobra.Command {
 				}
 				objs = append(objs, obj)
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), objs)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), objs)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -308,7 +308,7 @@ func newGetCommand(loader smcfg.StatusLoader) *cobra.Command {
 				}
 				obj.Object["status"] = status
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), &obj)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), &obj)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -371,7 +371,7 @@ func (c *checkCreateCodec) Decode(io.Reader, any) error {
 	return errors.New("text codec does not support decoding")
 }
 
-func (c *checkCreateCodec) Encode(w io.Writer, v any) error {
+func (c *checkCreateCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	r, ok := v.(checkCreateResult)
 	if !ok {
 		return errors.New("invalid data type for check create codec: expected checkCreateResult")
@@ -479,7 +479,7 @@ and logs usage. See ` + docs.SyntheticMonitoringInvoice + `.`,
 				}
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -539,7 +539,7 @@ func (c *checkUpdateCodec) Decode(io.Reader, any) error {
 	return errors.New("text codec does not support decoding")
 }
 
-func (c *checkUpdateCodec) Encode(w io.Writer, v any) error {
+func (c *checkUpdateCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	r, ok := v.(checkUpdateResult)
 	if !ok {
 		return errors.New("invalid data type for check update codec: expected checkUpdateResult")
@@ -650,7 +650,7 @@ toward your metrics and logs usage. See ` + docs.SyntheticMonitoringInvoice + `.
 				Name:           name,
 				PreviousStatus: prevStatus,
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -726,7 +726,7 @@ func (c *checkTestCodec) Decode(io.Reader, any) error {
 	return errors.New("text codec does not support decoding")
 }
 
-func (c *checkTestCodec) Encode(w io.Writer, v any) error {
+func (c *checkTestCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	r, ok := v.(checkTestResult)
 	if !ok {
 		return errors.New("invalid data type for check test codec: expected checkTestResult")
@@ -850,7 +850,7 @@ executions. See ` + docs.SyntheticMonitoringInvoice + `.`,
 				AdHocID:       resp.ID,
 				Probes:        probeResults,
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -910,7 +910,7 @@ func (c *deleteResultCodec) Decode(io.Reader, any) error {
 	return errors.New("text codec does not support decoding")
 }
 
-func (c *deleteResultCodec) Encode(w io.Writer, v any) error {
+func (c *deleteResultCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	result, ok := v.(deleteBatchResult)
 	if !ok {
 		return errors.New("invalid data type for delete result codec: expected deleteBatchResult")
@@ -927,7 +927,7 @@ func (c *deleteResultCodec) Encode(w io.Writer, v any) error {
 // reportError writes nothing more for an EmittedError.
 func emitPartialResult(cmd *cobra.Command, io *cmdio.Options, result any, cause error) error {
 	cmdio.Error(cmd.ErrOrStderr(), "%v", cause)
-	if err := io.Encode(cmd.OutOrStdout(), result); err != nil {
+	if err := io.Encode(cmd.Context(), cmd.OutOrStdout(), result); err != nil {
 		return err
 	}
 	return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, cause)
@@ -983,7 +983,7 @@ func newDeleteCommand(loader smcfg.Loader) *cobra.Command {
 				result.Summary.Succeeded++
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())

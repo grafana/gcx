@@ -1,6 +1,7 @@
 package cloudwatch
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -91,7 +92,7 @@ func ListDimensionsCmd(loader *providers.ConfigLoader) *cobra.Command {
 				return fmt.Errorf("failed to list dimension keys: %w", err)
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), keys)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), keys)
 		},
 	}
 
@@ -108,7 +109,7 @@ type listDimensionsTableCodec struct{}
 
 func (c *listDimensionsTableCodec) Format() format.Format { return "table" }
 
-func (c *listDimensionsTableCodec) Encode(w io.Writer, data any) error {
+func (c *listDimensionsTableCodec) Encode(ctx context.Context, w io.Writer, data any) error {
 	keys, ok := data.([]string)
 	if !ok {
 		return fmt.Errorf("listDimensionsTableCodec: unexpected type %T", data)

@@ -231,7 +231,7 @@ Requires a Prometheus datasource containing SM metrics.`,
 					cmdio.Info(cmd.OutOrStdout(), "No checks found.")
 					return nil
 				}
-				return opts.IO.Encode(cmd.OutOrStdout(), []CheckStatusResult{})
+				return opts.IO.Encode(ctx, cmd.OutOrStdout(), []CheckStatusResult{})
 			}
 
 			promClient, err := prometheus.NewClient(restCfg)
@@ -289,7 +289,7 @@ Requires a Prometheus datasource containing SM metrics.`,
 				results = statusFiltered
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), results)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), results)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -445,7 +445,7 @@ Requires a Prometheus datasource containing SM metrics.`,
 				series = []TimelineSeries{}
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), CheckTimelinePayload{
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), CheckTimelinePayload{
 				Check:  *c,
 				Series: series,
 				Start:  start,
@@ -1139,7 +1139,7 @@ func (c *StatusTableCodec) Format() format.Format {
 	return "table"
 }
 
-func (c *StatusTableCodec) Encode(w io.Writer, v any) error {
+func (c *StatusTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	results, ok := v.([]CheckStatusResult)
 	if !ok {
 		return errors.New("invalid data type for status table codec: expected []CheckStatusResult")
@@ -1188,7 +1188,7 @@ type TimelineGraphCodec struct{}
 
 func (c *TimelineGraphCodec) Format() format.Format { return "graph" }
 
-func (c *TimelineGraphCodec) Encode(w io.Writer, v any) error {
+func (c *TimelineGraphCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	payload, ok := v.(CheckTimelinePayload)
 	if !ok {
 		return fmt.Errorf("TimelineGraphCodec: expected CheckTimelinePayload, got %T", v)
@@ -1234,7 +1234,7 @@ type TimelineTableCodec struct{}
 
 func (c *TimelineTableCodec) Format() format.Format { return "table" }
 
-func (c *TimelineTableCodec) Encode(w io.Writer, v any) error {
+func (c *TimelineTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	payload, ok := v.(CheckTimelinePayload)
 	if !ok {
 		return fmt.Errorf("TimelineTableCodec: expected CheckTimelinePayload, got %T", v)
@@ -1267,7 +1267,7 @@ type StatusGraphCodec struct{}
 
 func (c *StatusGraphCodec) Format() format.Format { return "graph" }
 
-func (c *StatusGraphCodec) Encode(w io.Writer, v any) error {
+func (c *StatusGraphCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	results, ok := v.([]CheckStatusResult)
 	if !ok {
 		return fmt.Errorf("StatusGraphCodec: expected []CheckStatusResult, got %T", v)

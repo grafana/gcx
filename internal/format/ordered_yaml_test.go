@@ -34,7 +34,7 @@ func TestNewOrderedYAMLCodec_PreservesFieldOrder(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if err := codec.Encode(&buf, v); err != nil {
+	if err := codec.Encode(t.Context(), &buf, v); err != nil {
 		t.Fatalf("Encode: %v", err)
 	}
 
@@ -72,7 +72,7 @@ func TestNewOrderedYAMLCodec_RoundTrip(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if err := codec.Encode(&buf, original); err != nil {
+	if err := codec.Encode(t.Context(), &buf, original); err != nil {
 		t.Fatalf("Encode: %v", err)
 	}
 

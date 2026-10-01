@@ -300,7 +300,7 @@ func TestTableCodec_Encode(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			codec := experiments.Table().Codec(tc.format)
 			var buf bytes.Buffer
-			require.NoError(t, codec.Encode(&buf, items))
+			require.NoError(t, codec.Encode(t.Context(), &buf, items))
 			out := buf.String()
 			for _, s := range tc.want {
 				assert.Contains(t, out, s)
@@ -384,7 +384,7 @@ func TestTrialsTableCodec_Encode(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			codec := experiments.TrialsTable().Codec(tc.format)
 			var buf bytes.Buffer
-			require.NoError(t, codec.Encode(&buf, items))
+			require.NoError(t, codec.Encode(t.Context(), &buf, items))
 			out := buf.String()
 			for _, s := range tc.want {
 				assert.Contains(t, out, s)
@@ -478,7 +478,7 @@ func TestReportTextCodec_Encode(t *testing.T) {
 			}
 			codec := &experiments.ReportTextCodec{}
 			var buf bytes.Buffer
-			require.NoError(t, codec.Encode(&buf, report))
+			require.NoError(t, codec.Encode(t.Context(), &buf, report))
 			out := buf.String()
 			for _, s := range tc.want {
 				assert.Contains(t, out, s)
@@ -498,14 +498,14 @@ func TestReportTextCodec_Encode_Value(t *testing.T) {
 	}
 	codec := &experiments.ReportTextCodec{}
 	var buf bytes.Buffer
-	require.NoError(t, codec.Encode(&buf, report))
+	require.NoError(t, codec.Encode(t.Context(), &buf, report))
 	assert.Contains(t, buf.String(), "Trials:")
 }
 
 func TestReportTextCodec_WrongType(t *testing.T) {
 	codec := &experiments.ReportTextCodec{}
 	var buf bytes.Buffer
-	err := codec.Encode(&buf, "not-a-report")
+	err := codec.Encode(t.Context(), &buf, "not-a-report")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "expected *ExperimentReport")
 }

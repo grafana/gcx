@@ -543,7 +543,7 @@ func TestServiceDetailCodec(t *testing.T) {
 		},
 	}
 	var buf bytes.Buffer
-	if err := codec.Encode(&buf, d); err != nil {
+	if err := codec.Encode(t.Context(), &buf, d); err != nil {
 		t.Fatalf("Encode err = %v", err)
 	}
 	out := buf.String()
@@ -578,7 +578,7 @@ func TestServiceDetailCodec(t *testing.T) {
 		RED:     REDStats{Window: "5m", SpanKinds: "SPAN_KIND_SERVER"},
 	}
 	buf.Reset()
-	if err := codec.Encode(&buf, d2); err != nil {
+	if err := codec.Encode(t.Context(), &buf, d2); err != nil {
 		t.Fatalf("Encode err = %v", err)
 	}
 	out = buf.String()
@@ -591,7 +591,7 @@ func TestServiceDetailCodec(t *testing.T) {
 		t.Errorf("expected several dash rows for no-data, got:\n%s", out)
 	}
 
-	if err := codec.Encode(&buf, "not a *ServiceDetail"); err == nil {
+	if err := codec.Encode(t.Context(), &buf, "not a *ServiceDetail"); err == nil {
 		t.Error("expected error on wrong type")
 	}
 }

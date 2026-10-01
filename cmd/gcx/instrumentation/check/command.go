@@ -203,7 +203,7 @@ Powered by github.com/grafana/otel-checker.`,
 				}
 			}
 
-			if err := opts.IO.Encode(cmd.OutOrStdout(), envelope); err != nil {
+			if err := opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), envelope); err != nil {
 				return fmt.Errorf("instrumentation check: %w", err)
 			}
 

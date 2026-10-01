@@ -976,20 +976,20 @@ func TestEncodeDiagnoseResult(t *testing.T) {
 
 	t.Run("healthy exits clean", func(t *testing.T) {
 		var stdout bytes.Buffer
-		err := kg.EncodeDiagnoseResult(&stdout, newIO(t), healthy, healthy.Summary.Failed, healthy.Summary.Total)
+		err := kg.EncodeDiagnoseResult(t.Context(), &stdout, newIO(t), healthy, healthy.Summary.Failed, healthy.Summary.Total)
 		require.NoError(t, err)
 		assert.NotEmpty(t, stdout.String())
 	})
 
 	t.Run("warned checks do not change the exit code", func(t *testing.T) {
 		var stdout bytes.Buffer
-		err := kg.EncodeDiagnoseResult(&stdout, newIO(t), warned, warned.Summary.Failed, warned.Summary.Total)
+		err := kg.EncodeDiagnoseResult(t.Context(), &stdout, newIO(t), warned, warned.Summary.Failed, warned.Summary.Total)
 		require.NoError(t, err)
 	})
 
 	t.Run("failed checks return EmittedError with ExitPartialFailure", func(t *testing.T) {
 		var stdout bytes.Buffer
-		err := kg.EncodeDiagnoseResult(&stdout, newIO(t), failing, failing.Summary.Failed, failing.Summary.Total)
+		err := kg.EncodeDiagnoseResult(t.Context(), &stdout, newIO(t), failing, failing.Summary.Failed, failing.Summary.Total)
 		var emitted *gcxerrors.EmittedError
 		require.ErrorAs(t, err, &emitted)
 		assert.Equal(t, gcxerrors.ExitPartialFailure, emitted.Code)
@@ -1005,7 +1005,7 @@ func TestEncodeDiagnoseResult(t *testing.T) {
 		opts.BindFlags(pflag.NewFlagSet("diagnose", pflag.ContinueOnError))
 		require.NoError(t, opts.Validate())
 
-		err := kg.EncodeDiagnoseResult(&stdout, opts, failing, failing.Summary.Failed, failing.Summary.Total)
+		err := kg.EncodeDiagnoseResult(t.Context(), &stdout, opts, failing, failing.Summary.Failed, failing.Summary.Total)
 		var emitted *gcxerrors.EmittedError
 		require.ErrorAs(t, err, &emitted)
 		assert.Equal(t, gcxerrors.ExitPartialFailure, emitted.Code)
@@ -1024,7 +1024,7 @@ func TestEncodeDiagnoseResult(t *testing.T) {
 func TestKgOpenLinkReceipt(t *testing.T) {
 	var stdout bytes.Buffer
 	opts := &cmdio.Options{OutputFormat: "agents", ErrWriter: io.Discard}
-	require.NoError(t, opts.Encode(&stdout, kg.NewKGOpenLinkForTest("https://example.grafana.net/a/grafana-asserts-app")))
+	require.NoError(t, opts.Encode(t.Context(), &stdout, kg.NewKGOpenLinkForTest("https://example.grafana.net/a/grafana-asserts-app")))
 	doc, ok := decodeSingleJSON(t, stdout.Bytes()).(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, "gcx.kg.deeplink", doc["type"])

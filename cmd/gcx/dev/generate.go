@@ -1,6 +1,7 @@
 package dev
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -67,7 +68,7 @@ func (c *generateReceiptCodec) Decode(io.Reader, any) error {
 	return errors.New("text codec does not support decoding")
 }
 
-func (c *generateReceiptCodec) Encode(w io.Writer, value any) error {
+func (c *generateReceiptCodec) Encode(ctx context.Context, w io.Writer, value any) error {
 	receipt, ok := value.(cmdio.ArtifactReceipt)
 	if !ok {
 		return errors.New("invalid data type for generate receipt codec: expected ArtifactReceipt")
@@ -143,7 +144,7 @@ func runGenerate(cmd *cobra.Command, opts *generateOpts, args []string) error {
 		return receiptFailuresError(receipt.Failures)
 	}
 
-	if err := opts.IO.Encode(cmd.OutOrStdout(), receipt); err != nil {
+	if err := opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), receipt); err != nil {
 		return err
 	}
 

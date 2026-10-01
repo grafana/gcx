@@ -1,6 +1,7 @@
 package helptree
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	goio "io"
@@ -78,7 +79,7 @@ type treeTextCodec struct {
 
 func (c *treeTextCodec) Format() format.Format { return "text" }
 
-func (c *treeTextCodec) Encode(output goio.Writer, _ any) error {
+func (c *treeTextCodec) Encode(ctx context.Context, output goio.Writer, _ any) error {
 	renderOpts := RenderOptions{MaxDepth: c.opts.Depth}
 	text := RenderTree(c.opts.root, renderOpts)
 	_, err := fmt.Fprint(output, text)
@@ -124,7 +125,7 @@ Use --depth to limit nesting depth.`,
 
 			renderOpts := RenderOptions{MaxDepth: opts.Depth}
 			node := buildTreeNode(target, 0, renderOpts)
-			return opts.IO.Encode(cmd.OutOrStdout(), node)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), node)
 		},
 	}
 

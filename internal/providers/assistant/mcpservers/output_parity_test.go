@@ -58,7 +58,7 @@ func resourcesPathBytes(t *testing.T, client *assistantmcp.Client, namespace, na
 
 	var buf bytes.Buffer
 	io := cmdio.Options{OutputFormat: outputFormat}
-	require.NoError(t, io.Encode(&buf, obj.Object))
+	require.NoError(t, io.Encode(t.Context(), &buf, obj.Object))
 	return buf.Bytes()
 }
 

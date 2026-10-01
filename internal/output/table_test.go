@@ -40,7 +40,7 @@ func TestTableCodecColumnsSelectByFormat(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.format, func(t *testing.T) {
 			var buf bytes.Buffer
-			require.NoError(t, testTable().Codec(tt.format).Encode(&buf, rows))
+			require.NoError(t, testTable().Codec(tt.format).Encode(t.Context(), &buf, rows))
 
 			out := buf.String()
 			for _, h := range tt.wantHeaders {
@@ -57,7 +57,7 @@ func TestTableCodecColumnsSelectByFormat(t *testing.T) {
 // so a shared buffer would render the last row N times.
 func TestTableCodecRowsAreIndependent(t *testing.T) {
 	var buf bytes.Buffer
-	require.NoError(t, testTable().Codec(cmdio.FormatTable).Encode(&buf, []row{{name: "alpha"}, {name: "beta"}}))
+	require.NoError(t, testTable().Codec(cmdio.FormatTable).Encode(t.Context(), &buf, []row{{name: "alpha"}, {name: "beta"}}))
 
 	assert.Contains(t, buf.String(), "alpha")
 	assert.Contains(t, buf.String(), "beta")
@@ -66,7 +66,7 @@ func TestTableCodecRowsAreIndependent(t *testing.T) {
 func TestTableCodecEmpty(t *testing.T) {
 	t.Run("renders headers when Empty is nil", func(t *testing.T) {
 		var buf bytes.Buffer
-		require.NoError(t, testTable().Codec(cmdio.FormatTable).Encode(&buf, []row{}))
+		require.NoError(t, testTable().Codec(cmdio.FormatTable).Encode(t.Context(), &buf, []row{}))
 
 		assert.Equal(t, "NAME", strings.TrimSpace(buf.String()))
 	})
@@ -79,7 +79,7 @@ func TestTableCodecEmpty(t *testing.T) {
 		}
 
 		var buf bytes.Buffer
-		require.NoError(t, table.Codec(cmdio.FormatTable).Encode(&buf, []row{}))
+		require.NoError(t, table.Codec(cmdio.FormatTable).Encode(t.Context(), &buf, []row{}))
 
 		assert.Equal(t, "No rows found\n", buf.String())
 	})
@@ -92,7 +92,7 @@ func TestTableCodecFormatIsRegistrationName(t *testing.T) {
 
 func TestTableCodecRejectsWrongPayload(t *testing.T) {
 	var buf bytes.Buffer
-	err := testTable().Codec(cmdio.FormatTable).Encode(&buf, "not a slice")
+	err := testTable().Codec(cmdio.FormatTable).Encode(t.Context(), &buf, "not a slice")
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid data type for table codec")
@@ -147,13 +147,13 @@ func TestTableCodecSharedHeaderPerFormat(t *testing.T) {
 	rows := []row{{name: "alpha"}}
 
 	var narrow bytes.Buffer
-	require.NoError(t, table.Codec(cmdio.FormatTable).Encode(&narrow, rows))
+	require.NoError(t, table.Codec(cmdio.FormatTable).Encode(t.Context(), &narrow, rows))
 	assert.Contains(t, narrow.String(), "NORMALISED")
 	assert.NotContains(t, narrow.String(), "RAW_ENUM")
 	assert.Equal(t, 1, strings.Count(narrow.String(), "STATUS"), "header appears once")
 
 	var wide bytes.Buffer
-	require.NoError(t, table.Codec(cmdio.FormatWide).Encode(&wide, rows))
+	require.NoError(t, table.Codec(cmdio.FormatWide).Encode(t.Context(), &wide, rows))
 	assert.Contains(t, wide.String(), "RAW_ENUM")
 	assert.NotContains(t, wide.String(), "NORMALISED")
 	assert.Equal(t, 1, strings.Count(wide.String(), "STATUS"), "header appears once")

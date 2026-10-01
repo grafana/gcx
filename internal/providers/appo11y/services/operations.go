@@ -215,7 +215,7 @@ func runOperations(loader *providers.ConfigLoader, opts *operationsOpts) func(*c
 			emitOperationsLimitHint(cmd.ErrOrStderr(), opts.Limit)
 		}
 
-		if err := opts.IO.Encode(cmd.OutOrStdout(), response); err != nil {
+		if err := opts.IO.Encode(ctx, cmd.OutOrStdout(), response); err != nil {
 			return err
 		}
 		if notFound {
@@ -363,7 +363,7 @@ func (c *operationsTableCodec) Decode(io.Reader, any) error {
 	return errors.New("services operations table codec does not support decoding")
 }
 
-func (c *operationsTableCodec) Encode(w io.Writer, v any) error {
+func (c *operationsTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	resp, ok := v.(*OperationsResponse)
 	if !ok {
 		return fmt.Errorf("invalid data type for services operations table codec: %T", v)

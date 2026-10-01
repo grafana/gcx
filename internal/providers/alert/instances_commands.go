@@ -105,7 +105,7 @@ func newInstancesListCommand(loader GrafanaConfigLoader) *cobra.Command {
 				instances = filterInstancesByName(instances, re)
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), instances)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), instances)
 		},
 	}
 	opts.setup(cmd.Flags())

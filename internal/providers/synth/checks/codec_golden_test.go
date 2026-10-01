@@ -37,7 +37,7 @@ func TestCheckTableGolden(t *testing.T) {
 	for _, name := range []string{"table", "wide"} {
 		t.Run(name, func(t *testing.T) {
 			var buf bytes.Buffer
-			require.NoError(t, checks.CheckTable().Codec(name).Encode(&buf, goldenChecks()))
+			require.NoError(t, checks.CheckTable().Codec(name).Encode(t.Context(), &buf, goldenChecks()))
 
 			testutils.Golden(t, "checks_"+name, buf.String())
 		})
@@ -46,7 +46,7 @@ func TestCheckTableGolden(t *testing.T) {
 
 func TestCheckTableGoldenEmpty(t *testing.T) {
 	var buf bytes.Buffer
-	require.NoError(t, checks.CheckTable().Codec("table").Encode(&buf, []checks.Check{}))
+	require.NoError(t, checks.CheckTable().Codec("table").Encode(t.Context(), &buf, []checks.Check{}))
 
 	testutils.Golden(t, "checks_table_empty", buf.String())
 }

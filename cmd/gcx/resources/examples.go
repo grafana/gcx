@@ -109,10 +109,10 @@ func listExamplesCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				// tabular branch, which lists descriptors WITHOUT the example
 				// manifests — the command's entire payload was absent for
 				// agents.
-				return opts.IO.Encode(cmd.OutOrStdout(), examplesToNested(descs, examples))
+				return opts.IO.Encode(ctx, cmd.OutOrStdout(), examplesToNested(descs, examples))
 			default:
 				// text/wide: tabular output listing resources that have examples.
-				return opts.IO.Encode(cmd.OutOrStdout(), descs)
+				return opts.IO.Encode(ctx, cmd.OutOrStdout(), descs)
 			}
 		},
 	}

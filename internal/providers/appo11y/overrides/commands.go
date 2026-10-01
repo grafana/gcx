@@ -1,6 +1,7 @@
 package overrides
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -73,7 +74,7 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 			}
 
 			if opts.IO.OutputFormat == "table" || opts.IO.OutputFormat == "wide" {
-				return opts.IO.Encode(cmd.OutOrStdout(), typedObj.Spec)
+				return opts.IO.Encode(ctx, cmd.OutOrStdout(), typedObj.Spec)
 			}
 
 			res, err := ToResource(typedObj.Spec, cfg.Namespace)
@@ -82,7 +83,7 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 			}
 
 			obj := res.ToUnstructured()
-			return opts.IO.Encode(cmd.OutOrStdout(), &obj)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), &obj)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -101,7 +102,7 @@ func (c *overridesTableCodec) Format() format.Format {
 	return "table"
 }
 
-func (c *overridesTableCodec) Encode(w io.Writer, v any) error {
+func (c *overridesTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	cfg, ok := v.(MetricsGeneratorConfig)
 	if !ok {
 		return errors.New("invalid data type for table codec: expected MetricsGeneratorConfig")
@@ -201,7 +202,7 @@ func newUpdateCommand(loader *providers.ConfigLoader) *cobra.Command {
 				return fmt.Errorf("failed to update overrides: %w", err)
 			}
 
-			return writeUpdateReceipt(cmd.OutOrStdout(), opts)
+			return writeUpdateReceipt(ctx, cmd.OutOrStdout(), opts)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -211,9 +212,9 @@ func newUpdateCommand(loader *providers.ConfigLoader) *cobra.Command {
 // writeUpdateReceipt writes the update result document through the codec
 // system. Split from RunE so the output contract is testable without a live
 // plugin API.
-func writeUpdateReceipt(stdout io.Writer, opts *updateOpts) error {
+func writeUpdateReceipt(ctx context.Context, stdout io.Writer, opts *updateOpts) error {
 	result := cmdio.NewSingleMutation("updated", cmdio.MutationTarget{Kind: "Overrides", Name: "default"})
-	return opts.IO.Encode(stdout, result)
+	return opts.IO.Encode(ctx, stdout, result)
 }
 
 // updateReceiptCodec is the human "text" codec for the update receipt: it
@@ -223,7 +224,7 @@ type updateReceiptCodec struct{}
 
 func (c *updateReceiptCodec) Format() format.Format { return "text" }
 
-func (c *updateReceiptCodec) Encode(w io.Writer, v any) error {
+func (c *updateReceiptCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	if _, ok := v.(cmdio.SingleMutation); !ok {
 		return errors.New("invalid data type for update receipt codec: expected SingleMutation")
 	}

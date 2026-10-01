@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -148,7 +149,7 @@ func newCardinalityLabelNamesCmd(loader *providers.ConfigLoader) *cobra.Command 
 				return fmt.Errorf("failed to get label names cardinality: %w", err)
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), resp)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), resp)
 		},
 	}
 
@@ -191,7 +192,7 @@ func newCardinalityLabelValuesCmd(loader *providers.ConfigLoader) *cobra.Command
 				return fmt.Errorf("failed to get label values cardinality: %w", err)
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), resp)
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), resp)
 		},
 	}
 
@@ -211,7 +212,7 @@ func (c *cardinalityLabelNamesTableCodec) Format() format.Format {
 	return "table"
 }
 
-func (c *cardinalityLabelNamesTableCodec) Encode(w io.Writer, data any) error {
+func (c *cardinalityLabelNamesTableCodec) Encode(ctx context.Context, w io.Writer, data any) error {
 	resp, ok := data.(*prometheus.CardinalityLabelNamesResponse)
 	if !ok {
 		return errors.New("invalid data type for cardinality label names table codec")
@@ -230,7 +231,7 @@ func (c *cardinalityLabelValuesTableCodec) Format() format.Format {
 	return "table"
 }
 
-func (c *cardinalityLabelValuesTableCodec) Encode(w io.Writer, data any) error {
+func (c *cardinalityLabelValuesTableCodec) Encode(ctx context.Context, w io.Writer, data any) error {
 	resp, ok := data.(*prometheus.CardinalityLabelValuesResponse)
 	if !ok {
 		return errors.New("invalid data type for cardinality label values table codec")

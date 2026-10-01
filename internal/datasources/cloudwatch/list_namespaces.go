@@ -1,6 +1,7 @@
 package cloudwatch
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -81,7 +82,7 @@ func ListNamespacesCmd(loader *providers.ConfigLoader) *cobra.Command {
 				return fmt.Errorf("failed to list namespaces: %w", err)
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), namespaces)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), namespaces)
 		},
 	}
 
@@ -98,7 +99,7 @@ type listNamespacesTableCodec struct{}
 
 func (c *listNamespacesTableCodec) Format() format.Format { return "table" }
 
-func (c *listNamespacesTableCodec) Encode(w io.Writer, data any) error {
+func (c *listNamespacesTableCodec) Encode(ctx context.Context, w io.Writer, data any) error {
 	ns, ok := data.([]string)
 	if !ok {
 		return fmt.Errorf("listNamespacesTableCodec: unexpected type %T", data)

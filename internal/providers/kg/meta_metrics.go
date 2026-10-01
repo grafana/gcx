@@ -206,7 +206,7 @@ func newDescribeMetricsCmd(_ RESTConfigLoader) *cobra.Command {
 				return err
 			}
 			guide := DefaultAssertsMetricGuide()
-			return opts.IO.Encode(cmd.OutOrStdout(), KGMetadataOutput{Metrics: &guide})
+			return opts.IO.Encode(cmd.Context(), cmd.OutOrStdout(), KGMetadataOutput{Metrics: &guide})
 		},
 	}
 	opts.setup(cmd.Flags())

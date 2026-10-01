@@ -22,7 +22,7 @@ type SourcemapTableCodec struct{}
 
 func (c *SourcemapTableCodec) Format() format.Format { return "text" }
 
-func (c *SourcemapTableCodec) Encode(w io.Writer, v any) error {
+func (c *SourcemapTableCodec) Encode(ctx context.Context, w io.Writer, v any) error {
 	bundles, ok := v.([]SourcemapBundle)
 	if !ok {
 		return fmt.Errorf("invalid data type for sourcemap table codec: expected []SourcemapBundle, got %T", v)
@@ -98,7 +98,7 @@ func newListSourcemapsCommand(loader *providers.ConfigLoader) *cobra.Command {
 				return err
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), bundles)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), bundles)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -233,7 +233,7 @@ func newApplySourcemapCommand(loader sourcemapUploadConfigLoader) *cobra.Command
 				AppID:         appID,
 				BundleID:      bundleID,
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -317,7 +317,7 @@ func newDeleteSourcemapCommand(loader RESTConfigLoader) *cobra.Command {
 				BundleIDs:     bundleIDs,
 				Deleted:       len(bundleIDs),
 			}
-			return opts.IO.Encode(cmd.OutOrStdout(), result)
+			return opts.IO.Encode(ctx, cmd.OutOrStdout(), result)
 		},
 	}
 	opts.setup(cmd.Flags())
