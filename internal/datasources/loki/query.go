@@ -55,7 +55,8 @@ Default table output is optimized for humans. Use -o raw for original line
 bodies, -o csv for original lines and separate label columns, or -o json for the full structured response.
 
 Default --limit is 50. Use --limit 0 for the backend default limit, not unlimited
-results. Use 'gcx logs metrics' for totals.
+results. For counts, use 'gcx datasources loki metrics' with no time flags: an
+instant query returns one value per series.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
 open it in your browser after the query succeeds.
 Use -o graph for a log-volume-over-time chart of the lines the query
@@ -84,8 +85,11 @@ backend's own line limits, so it can undercount a busy time range.`,
 			if err := shared.Validate(); err != nil {
 				return err
 			}
-			if limit < 0 {
-				return fmt.Errorf("--limit must be >= 0, got %d", limit)
+			if err := dsquery.ValidateLimit(limit); err != nil {
+				return err
+			}
+			if limit == 0 {
+				cmdio.Warning(cmd.ErrOrStderr(), "%s", dsquery.LokiZeroLimitNotice)
 			}
 
 			expr, err := shared.ResolveExpr(args, 0)

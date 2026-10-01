@@ -186,6 +186,10 @@ func dispatchPrometheus(ctx context.Context, req genericQueryRequest) (any, erro
 }
 
 func dispatchLoki(ctx context.Context, req genericQueryRequest) (any, error) {
+	if req.limit == 0 {
+		cmdio.Warning(req.warn, "%s", dsquery.LokiZeroLimitNotice)
+	}
+
 	client, err := loki.NewClient(req.cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create client: %w", err)

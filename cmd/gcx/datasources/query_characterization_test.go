@@ -231,13 +231,14 @@ func TestGenericQueryCharacterization_LokiLimit(t *testing.T) {
 func TestGenericQueryCharacterization_LokiZeroLimitUsesBackendDefault(t *testing.T) {
 	f := &fakeGrafana{t: t, dsType: "loki"}
 
-	_, err := runGeneric(t, f,
+	_, stderr, err := runGenericStreams(t, f,
 		"query", "uid", `{job="varlogs"}`,
 		"--from", "now-1h", "--to", "now", "--limit", "0", "-o", "json")
 
 	require.NoError(t, err)
 	_, body := f.seenPost()
 	assert.NotContains(t, firstQuery(t, body), "maxLines")
+	assert.Contains(t, stderr, "backend default limit")
 }
 
 func TestGenericQueryCharacterization_PinotDefaultLimit(t *testing.T) {
