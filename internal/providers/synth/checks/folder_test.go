@@ -126,3 +126,50 @@ func assertFolderSpec(t *testing.T, obj map[string]any, want any) {
 	assert.Equal(t, want != nil, present)
 	assert.Equal(t, want, got)
 }
+
+// The server already holds a folder assignment and the manifest omits
+// folderUid. gcx must send no folderUid key so the backend preserves it; it
+// must not backfill from the existing check or invent a default (the SM app's
+// default-folder UID bug was a client inventing a folder identity).
+func TestChecksFolderUIDOmittedDoesNotOverwriteExisting(t *testing.T) {
+	existing := stubCheckList[0]
+	existing.ID = 1234
+	existing.Probes = []int64{1}
+	folder := "existing-folder"
+	existing.FolderUID = &folder
+
+	t.Run("update command", func(t *testing.T) {
+		st := &checkAPIState{probesOnline: true, checks: map[int64]checks.Check{1234: existing}}
+		srv := newCheckServer(t, st)
+		manifest := writeCheckManifest(t, t.TempDir())
+
+		_, _, err := runChecks(t, srv.URL, false, "", "update", "1234", "-f", manifest)
+		require.NoError(t, err)
+
+		st.mu.Lock()
+		updated := st.lastUpdated
+		st.mu.Unlock()
+		assertCheckFolderJSON(t, updated, nil)
+	})
+
+	t.Run("resource adapter", func(t *testing.T) {
+		st := &checkAPIState{probesOnline: true, checks: map[int64]checks.Check{1234: existing}}
+		srv := newCheckServer(t, st)
+
+		a, err := checks.NewAdapterFactory(&fakeLoader{baseURL: srv.URL, token: "test-token", namespace: "default"})(context.Background())
+		require.NoError(t, err)
+		exported, err := a.Get(context.Background(), "web-check-1234", metav1.GetOptions{})
+		require.NoError(t, err)
+		assertFolderSpec(t, exported.Object, folder)
+
+		// Simulate the user deleting the line from a pulled manifest.
+		unstructured.RemoveNestedField(exported.Object, "spec", "folderUid")
+		_, err = a.Update(context.Background(), exported, metav1.UpdateOptions{})
+		require.NoError(t, err)
+
+		st.mu.Lock()
+		updated := st.lastUpdated
+		st.mu.Unlock()
+		assertCheckFolderJSON(t, updated, nil)
+	})
+}
