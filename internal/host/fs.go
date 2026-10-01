@@ -224,3 +224,11 @@ func EvalSymlinks(ctx context.Context, path string) (string, error) {
 	}
 	return filepath.EvalSymlinks(path)
 }
+
+// Glob mirrors [filepath.Glob].
+func Glob(ctx context.Context, pattern string) ([]string, error) {
+	if Sandboxed(ctx) {
+		return nil, pathErr("glob", pattern)
+	}
+	return filepath.Glob(pattern)
+}

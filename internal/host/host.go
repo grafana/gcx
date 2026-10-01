@@ -186,3 +186,38 @@ func StderrFile(ctx context.Context) (*os.File, error) {
 	}
 	return os.Stderr, nil
 }
+
+// CaptureStdout runs fn with the process-global os.Stdout redirected to w,
+// for third-party libraries that print there directly. If the redirect cannot
+// be set up, fn runs uncaptured. Inside a sandbox fn is not run at all:
+// swapping os.Stdout would leak into concurrent invocations, and libraries
+// that print to the process stdout reach the host in other ways too.
+func CaptureStdout(ctx context.Context, w io.Writer, fn func()) error {
+	if Sandboxed(ctx) {
+		return opErr("stdout")
+	}
+
+	orig := os.Stdout
+	r, pw, err := os.Pipe()
+	if err != nil {
+		fn()
+		return nil
+	}
+	os.Stdout = pw
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _ = io.Copy(w, r)
+	}()
+
+	defer func() {
+		os.Stdout = orig
+		_ = pw.Close()
+		<-done
+		_ = r.Close()
+	}()
+
+	fn()
+	return nil
+}

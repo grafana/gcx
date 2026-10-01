@@ -43,11 +43,14 @@ func TestSandboxRefusesHostAccess(t *testing.T) {
 	require.ErrorIs(t, err, host.ErrUnavailable)
 	_, err = host.EvalSymlinks(ctx, existing)
 	require.ErrorIs(t, err, host.ErrUnavailable)
+	_, err = host.Glob(ctx, filepath.Join(dir, "*"))
+	require.ErrorIs(t, err, host.ErrUnavailable)
 	_, err = host.OpenKeyring(ctx)
 	require.ErrorIs(t, err, host.ErrUnavailable)
 	_, err = host.NewWatcher(ctx)
 	require.ErrorIs(t, err, host.ErrUnavailable)
 	host.IgnoreSignals(ctx, os.Interrupt) // must not touch the process disposition
+	require.ErrorIs(t, host.CaptureStdout(ctx, io.Discard, func() { t.Fatal("must not run inside a sandbox") }), host.ErrUnavailable)
 
 	// Discovery still works inside a sandbox, cached in memory instead of on disk.
 	discovery, err := host.NewCachedDiscoveryClientForConfig(ctx, &rest.Config{Host: "https://example.invalid"}, filepath.Join(dir, "discovery"), "", time.Minute)
