@@ -1087,6 +1087,7 @@ func cloneConfigForWrite(cfg Config) Config {
 		stackCopy := *stack
 		if stack.Grafana != nil {
 			grafanaCopy := *stack.Grafana
+			grafanaCopy.Headers = maps.Clone(stack.Grafana.Headers)
 			if stack.Grafana.TLS != nil {
 				tlsCopy := *stack.Grafana.TLS
 				tlsCopy.CertData = slices.Clone(stack.Grafana.TLS.CertData)
@@ -1182,15 +1183,29 @@ func loadLayeredTracked(ctx context.Context, explicitFile string, opts loadOptio
 	return cfg, err
 }
 
-func loadLayered(ctx context.Context, explicitFile string, opts loadOptions, overrides ...Override) (Config, error) {
-	// --config flag bypasses layering.
+// loadBypassingLayers handles the config selections that replace layered
+// discovery: the --config flag, the GCX_CONFIG env var (preserving existing
+// behavior) and an embedder's in-memory config, in that order. ok is false
+// when none applies.
+func loadBypassingLayers(ctx context.Context, explicitFile string, opts loadOptions, overrides ...Override) (Config, bool, error) {
 	if explicitFile != "" {
-		return loadExplicit(ctx, explicitFile, opts, overrides...)
+		cfg, err := loadExplicit(ctx, explicitFile, opts, overrides...)
+		return cfg, true, err
 	}
-
-	// GCX_CONFIG env var also bypasses layering (preserving existing behavior).
 	if envPath := host.Getenv(ctx, ConfigFileEnvVar); envPath != "" {
-		return loadExplicit(ctx, envPath, opts, overrides...)
+		cfg, err := loadExplicit(ctx, envPath, opts, overrides...)
+		return cfg, true, err
+	}
+	if mem, ok := inMemoryConfigFromCtx(ctx); ok {
+		cfg, err := loadInMemory(ctx, mem, overrides...)
+		return cfg, true, err
+	}
+	return Config{}, false, nil
+}
+
+func loadLayered(ctx context.Context, explicitFile string, opts loadOptions, overrides ...Override) (Config, error) {
+	if cfg, ok, err := loadBypassingLayers(ctx, explicitFile, opts, overrides...); ok {
+		return cfg, err
 	}
 
 	// Warn when configs exist in both $HOME/.config and the platform XDG dir.
@@ -1304,6 +1319,19 @@ func loadLayered(ctx context.Context, explicitFile string, opts loadOptions, ove
 	}
 
 	return merged, nil
+}
+
+// loadInMemory resolves a config supplied through ContextWithInMemoryConfig.
+// Each call works on a copy, so overrides never leak between loads.
+func loadInMemory(ctx context.Context, mem Config, overrides ...Override) (Config, error) {
+	cfg := cloneConfigForWrite(mem)
+	cfg.Resolve()
+	for _, override := range overrides {
+		if err := override(ctx, &cfg); err != nil {
+			return cfg, err
+		}
+	}
+	return cfg, nil
 }
 
 // LoadForWrite resolves the target config layer, loads only that layer, and

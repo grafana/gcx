@@ -74,3 +74,19 @@ func warningWriterFromCtx(ctx context.Context) io.Writer {
 	writer, _ := ctx.Value(warningWriterContextKey{}).(io.Writer)
 	return writer
 }
+
+// inMemoryConfigContextKey carries a config that replaces file-based loading.
+type inMemoryConfigContextKey struct{}
+
+// ContextWithInMemoryConfig makes LoadLayered resolve cfg instead of
+// discovering config files. Embedders (see package embed) use it to hand gcx
+// per-invocation credentials without touching the host filesystem or
+// environment. Overrides such as --context still apply on top.
+func ContextWithInMemoryConfig(ctx context.Context, cfg Config) context.Context {
+	return context.WithValue(ctx, inMemoryConfigContextKey{}, cfg)
+}
+
+func inMemoryConfigFromCtx(ctx context.Context) (Config, bool) {
+	cfg, ok := ctx.Value(inMemoryConfigContextKey{}).(Config)
+	return cfg, ok
+}
