@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers/synth/checks"
 	"github.com/grafana/gcx/internal/providers/synth/smcfg"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -427,4 +428,136 @@ func (l *countingLoader) LoadSMConfig(_ context.Context) (string, string, string
 func (l *countingLoader) LoadSMProxyConfig(_ context.Context) (config.NamespacedRESTConfig, string, string, error) {
 	*l.callCount++
 	return config.NamespacedRESTConfig{}, "", "default", nil
+}
+
+// validateEnvelope builds the unstructured check envelope the push pipeline
+// hands to the adapter.
+func validateEnvelope(name string) *unstructured.Unstructured {
+	return &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": checks.APIVersion,
+			"kind":       checks.Kind,
+			"metadata":   map[string]any{"name": name, "namespace": "default"},
+			"spec": map[string]any{
+				"job":       "web-check",
+				"target":    "https://grafana.com",
+				"frequency": float64(60000),
+				"timeout":   float64(3000),
+				"enabled":   true,
+				"settings":  map[string]any{"http": map[string]any{"method": "GET"}},
+				"probes":    []any{"Oregon", "Spain"},
+			},
+		},
+	}
+}
+
+// validateMux serves check/validate with handler and fails the test if any
+// write endpoint is hit: a dry-run must never mutate.
+func validateMux(t *testing.T, validate http.HandlerFunc) *http.ServeMux {
+	t.Helper()
+	mux := buildTestMux(t)
+	mux.HandleFunc("/api/v1/check/validate", validate)
+	for _, p := range []string{"/api/v1/check/add", "/api/v1/check/update"} {
+		mux.HandleFunc(p, func(w http.ResponseWriter, r *http.Request) {
+			t.Errorf("dry-run must not call %s", r.URL.Path)
+			http.Error(w, "unexpected write", http.StatusInternalServerError)
+		})
+	}
+	return mux
+}
+
+func newValidateAdapter(t *testing.T, mux *http.ServeMux) adapter.ResourceAdapter {
+	t.Helper()
+	srv := newAdapterTestServer(t, mux)
+	loader := &fakeLoader{baseURL: srv.URL, token: "test-token", namespace: "default"}
+	a, err := checks.NewAdapterFactory(loader)(context.Background())
+	require.NoError(t, err)
+	return a
+}
+
+func TestResourceAdapter_DryRun_Create_Validates(t *testing.T) {
+	var gotBody map[string]any
+	calls := 0
+	a := newValidateAdapter(t, validateMux(t, func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		assert.NoError(t, json.NewDecoder(r.Body).Decode(&gotBody))
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"valid": true, "findings": []any{}})
+	}))
+
+	got, err := a.Create(context.Background(), validateEnvelope("web-check"), metav1.CreateOptions{DryRun: []string{metav1.DryRunAll}})
+	require.NoError(t, err)
+	require.NotNil(t, got)
+
+	assert.Equal(t, 1, calls)
+	assert.Equal(t, "web-check", gotBody["job"])
+	assert.Equal(t, []any{"Oregon", "Spain"}, gotBody["probes"], "probe names are sent as-is")
+	assert.NotContains(t, gotBody, "id", "a create has no check ID")
+}
+
+func TestResourceAdapter_DryRun_Update_SendsCheckID(t *testing.T) {
+	var gotBody map[string]any
+	a := newValidateAdapter(t, validateMux(t, func(w http.ResponseWriter, r *http.Request) {
+		assert.NoError(t, json.NewDecoder(r.Body).Decode(&gotBody))
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"valid": true, "findings": []any{}})
+	}))
+
+	_, err := a.Update(context.Background(), validateEnvelope("web-check-1001"), metav1.UpdateOptions{DryRun: []string{metav1.DryRunAll}})
+	require.NoError(t, err)
+
+	assert.InDelta(t, 1001, gotBody["id"], 0, "an update validates against its own check ID")
+}
+
+func TestResourceAdapter_DryRun_InvalidCheck(t *testing.T) {
+	a := newValidateAdapter(t, validateMux(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"valid": false,
+			"findings": []map[string]string{
+				{"severity": "error", "field": "probes", "msg": "invalid probe identifier"},
+				{"severity": "warning", "field": "frequency", "msg": "below the app minimum"},
+			},
+		})
+	}))
+
+	_, err := a.Create(context.Background(), validateEnvelope("web-check"), metav1.CreateOptions{DryRun: []string{metav1.DryRunAll}})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "probes: invalid probe identifier")
+	assert.NotContains(t, err.Error(), "below the app minimum", "warnings must not fail validation")
+	assert.NotErrorIs(t, err, adapter.ErrDryRunUnverified)
+}
+
+func TestResourceAdapter_DryRun_WarningsDoNotFail(t *testing.T) {
+	a := newValidateAdapter(t, validateMux(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"valid":    true,
+			"findings": []map[string]string{{"severity": "warning", "field": "frequency", "msg": "below the app minimum"}},
+		})
+	}))
+
+	_, err := a.Create(context.Background(), validateEnvelope("web-check"), metav1.CreateOptions{DryRun: []string{metav1.DryRunAll}})
+	require.NoError(t, err)
+}
+
+func TestResourceAdapter_DryRun_ServerWithoutValidate_IsUnverified(t *testing.T) {
+	a := newValidateAdapter(t, validateMux(t, func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	}))
+
+	_, err := a.Create(context.Background(), validateEnvelope("web-check"), metav1.CreateOptions{DryRun: []string{metav1.DryRunAll}})
+	require.ErrorIs(t, err, adapter.ErrDryRunUnverified,
+		"an old server must be reported as skipped, not as a failure or a false success")
+}
+
+func TestResourceAdapter_DryRun_ServerError_IsFailure(t *testing.T) {
+	a := newValidateAdapter(t, validateMux(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+
+	_, err := a.Create(context.Background(), validateEnvelope("web-check"), metav1.CreateOptions{DryRun: []string{metav1.DryRunAll}})
+	require.Error(t, err)
+	assert.NotErrorIs(t, err, adapter.ErrDryRunUnverified)
 }

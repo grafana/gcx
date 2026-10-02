@@ -2,6 +2,7 @@ package checks
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 
@@ -173,6 +174,29 @@ func NewTypedCRUD(ctx context.Context, loader smcfg.Loader) (*adapter.TypedCRUD[
 			nameMap := invertIDMap(idMap)
 			cr := checkToResource(*updated, nameMap)
 			return &cr, nil
+		},
+
+		// ValidateFn backs `resources push --dry-run`. It asks the SM API to
+		// validate each check without persisting it. Probe names are sent as-is
+		// (the server resolves them), so no tenant or probe lookup is needed.
+		ValidateFn: func(ctx context.Context, items []*checkResource) error {
+			var errs []error
+			for _, item := range items {
+				result, err := checksClient.Validate(ctx, item.CheckSpec, item.checkID)
+				if errors.Is(err, ErrValidateUnsupported) {
+					// Older servers can't validate: report "skipped", not a false success.
+					return fmt.Errorf("%w: %w", adapter.ErrDryRunUnverified, err)
+				}
+				if err != nil {
+					return fmt.Errorf("failed to validate check %q: %w", item.Job, err)
+				}
+
+				if err := result.Error(); err != nil {
+					errs = append(errs, fmt.Errorf("check %q failed validation:\n%w", item.Job, err))
+				}
+			}
+
+			return errors.Join(errs...)
 		},
 
 		DeleteFn: func(ctx context.Context, name string) error {

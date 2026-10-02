@@ -319,17 +319,23 @@ func newGetCommand(loader smcfg.StatusLoader) *cobra.Command {
 // create
 // ---------------------------------------------------------------------------
 
+// actionValidated is the result action reported by `create`/`update --dry-run`:
+// the check was validated by the SM API and nothing was persisted.
+const actionValidated = "validated"
+
 type createOpts struct {
 	IO              cmdio.Options
 	File            string
 	ShowStatus      bool
 	ValidateTargets bool
+	DryRun          bool
 }
 
 func (o *createOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&o.File, "filename", "f", "", "File containing the check manifest (YAML)")
 	flags.BoolVar(&o.ShowStatus, "show-status", false, "Query and display check status after creation")
 	flags.BoolVar(&o.ValidateTargets, "validate-targets", false, "Pre-flight HTTP HEAD request for HTTP check targets (warning only)")
+	flags.BoolVar(&o.DryRun, "dry-run", false, "Validate the check with the Synthetic Monitoring API without creating it")
 	// The create result flows through the codec system: the default text
 	// codec reproduces the historical lines byte-for-byte; agent mode and
 	// explicit -o json/yaml get the structured document.
@@ -341,6 +347,9 @@ func (o *createOpts) setup(flags *pflag.FlagSet) {
 func (o *createOpts) Validate() error {
 	if o.File == "" {
 		return errors.New("--filename/-f is required")
+	}
+	if o.DryRun && o.ShowStatus {
+		return errors.New("--dry-run cannot be combined with --show-status: no check is created")
 	}
 	return o.IO.Validate()
 }
@@ -376,6 +385,10 @@ func (c *checkCreateCodec) Encode(w io.Writer, v any) error {
 	if !ok {
 		return errors.New("invalid data type for check create codec: expected checkCreateResult")
 	}
+	if r.Action == actionValidated {
+		cmdio.Success(w, "Check %q is valid (dry-run: nothing was created)", r.Job)
+		return nil
+	}
 	cmdio.Success(w, "Created check %q (id=%d)", r.Job, r.ID)
 	if r.Status != "" {
 		cmdio.Info(w, "status: %s", r.Status)
@@ -400,7 +413,10 @@ and logs usage. See ` + docs.SyntheticMonitoringInvoice + `.`,
   gcx synthetic-monitoring checks create -f check.yaml --show-status
 
   # Validate HTTP target before creating.
-  gcx synthetic-monitoring checks create -f check.yaml --validate-targets`,
+  gcx synthetic-monitoring checks create -f check.yaml --validate-targets
+
+  # Validate with the Synthetic Monitoring API without creating anything.
+  gcx synthetic-monitoring checks create -f check.yaml --dry-run`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
@@ -435,6 +451,25 @@ and logs usage. See ` + docs.SyntheticMonitoringInvoice + `.`,
 				if err := ValidateHTTPTarget(spec.Settings.CheckType(), spec.Target, 5*time.Second); err != nil {
 					cmdio.Warning(cmd.ErrOrStderr(), "target validation: %v", err)
 				}
+			}
+
+			if opts.DryRun {
+				client, err := newDryRunClient(ctx, loader)
+				if err != nil {
+					return err
+				}
+				if err := validateRemote(ctx, client, cmd.ErrOrStderr(), spec, 0); err != nil {
+					return err
+				}
+				// Nothing is created, so there is no ID: Name is the slug a create
+				// would start from, and ID stays 0.
+				return opts.IO.Encode(cmd.OutOrStdout(), checkCreateResult{
+					Type:          "gcx.synth.check_create",
+					SchemaVersion: "1",
+					Action:        actionValidated,
+					Job:           spec.Job,
+					Name:          slugifyJob(spec.Job),
+				})
 			}
 
 			crud, namespace, err := NewTypedCRUD(ctx, loader)
@@ -495,12 +530,14 @@ type updateOpts struct {
 	File            string
 	ShowStatus      bool
 	ValidateTargets bool
+	DryRun          bool
 }
 
 func (o *updateOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&o.File, "filename", "f", "", "File containing the check manifest (YAML)")
 	flags.BoolVar(&o.ShowStatus, "show-status", false, "Query and display the previous check status after update")
 	flags.BoolVar(&o.ValidateTargets, "validate-targets", false, "Pre-flight HTTP HEAD request for HTTP check targets (warning only)")
+	flags.BoolVar(&o.DryRun, "dry-run", false, "Validate the check with the Synthetic Monitoring API without updating it")
 	// The update result flows through the codec system: the default text
 	// codec reproduces the historical line byte-for-byte; agent mode and
 	// explicit -o json/yaml get the structured document.
@@ -512,6 +549,9 @@ func (o *updateOpts) setup(flags *pflag.FlagSet) {
 func (o *updateOpts) Validate() error {
 	if o.File == "" {
 		return errors.New("--filename/-f is required")
+	}
+	if o.DryRun && o.ShowStatus {
+		return errors.New("--dry-run cannot be combined with --show-status: no check is updated")
 	}
 	return o.IO.Validate()
 }
@@ -544,6 +584,10 @@ func (c *checkUpdateCodec) Encode(w io.Writer, v any) error {
 	if !ok {
 		return errors.New("invalid data type for check update codec: expected checkUpdateResult")
 	}
+	if r.Action == actionValidated {
+		cmdio.Success(w, "Check %q (id=%d) is valid (dry-run: nothing was updated)", r.Job, r.ID)
+		return nil
+	}
 	if r.PreviousStatus != "" {
 		cmdio.Success(w, "Updated check %q (id=%d) — previous status: %s", r.Job, r.ID, r.PreviousStatus)
 	} else {
@@ -566,7 +610,10 @@ toward your metrics and logs usage. See ` + docs.SyntheticMonitoringInvoice + `.
   gcx synthetic-monitoring checks update web-check-1234 -f check.yaml
 
   # Update and show previous status.
-  gcx synthetic-monitoring checks update web-check-1234 -f check.yaml --show-status`,
+  gcx synthetic-monitoring checks update web-check-1234 -f check.yaml --show-status
+
+  # Validate the update with the Synthetic Monitoring API without applying it.
+  gcx synthetic-monitoring checks update web-check-1234 -f check.yaml --dry-run`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
@@ -580,6 +627,23 @@ toward your metrics and logs usage. See ` + docs.SyntheticMonitoringInvoice + `.
 			checkID, ok := extractIDFromSlug(name)
 			if !ok || checkID == 0 {
 				return fmt.Errorf("could not extract numeric check ID from name %q — use the resource name from 'gcx synthetic-monitoring checks list'", name)
+			}
+
+			// A dry-run must not report success for a check that cannot be
+			// updated, so existence is checked before any validation.
+			var dryRunClient *Client
+			if opts.DryRun {
+				var err error
+				dryRunClient, err = newDryRunClient(ctx, loader)
+				if err != nil {
+					return err
+				}
+				if _, err := dryRunClient.Get(ctx, checkID); err != nil {
+					if errors.Is(err, ErrNotFound) {
+						return fmt.Errorf("check %q (id=%d) not found: nothing to update", name, checkID)
+					}
+					return fmt.Errorf("looking up check %q (id=%d): %w", name, checkID, err)
+				}
 			}
 
 			// Fetch probe info for validation and offline probe warning.
@@ -609,6 +673,20 @@ toward your metrics and logs usage. See ` + docs.SyntheticMonitoringInvoice + `.
 				if err := ValidateHTTPTarget(spec.Settings.CheckType(), spec.Target, 5*time.Second); err != nil {
 					cmdio.Warning(cmd.ErrOrStderr(), "target validation: %v", err)
 				}
+			}
+
+			if opts.DryRun {
+				if err := validateRemote(ctx, dryRunClient, cmd.ErrOrStderr(), spec, checkID); err != nil {
+					return err
+				}
+				return opts.IO.Encode(cmd.OutOrStdout(), checkUpdateResult{
+					Type:          "gcx.synth.check_update",
+					SchemaVersion: "1",
+					Action:        actionValidated,
+					Job:           spec.Job,
+					ID:            checkID,
+					Name:          name,
+				})
 			}
 
 			crud, namespace, err := NewTypedCRUD(ctx, loader)
@@ -655,6 +733,40 @@ toward your metrics and logs usage. See ` + docs.SyntheticMonitoringInvoice + `.
 	}
 	opts.setup(cmd.Flags())
 	return cmd
+}
+
+// newDryRunClient builds the SM checks client used by `--dry-run`.
+func newDryRunClient(ctx context.Context, loader smcfg.Loader) (*Client, error) {
+	restCfg, uid, _, err := loader.LoadSMProxyConfig(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load SM config: %w", err)
+	}
+	client, err := NewClient(restCfg, uid, loader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create SM checks client: %w", err)
+	}
+	return client, nil
+}
+
+// validateRemote asks the SM API to validate spec — as a new check when id is
+// 0, otherwise as an update of check id — without persisting anything. Warning
+// findings are advisory and go to stderr; error findings are returned.
+func validateRemote(ctx context.Context, client *Client, stderr io.Writer, spec *CheckSpec, id int64) error {
+	result, err := client.Validate(ctx, *spec, id)
+	if err != nil {
+		return fmt.Errorf("validating check %q: %w", spec.Job, err)
+	}
+
+	for _, f := range result.Findings {
+		if f.Severity == SeverityWarning {
+			cmdio.Warning(stderr, "%s", f)
+		}
+	}
+
+	if err := result.Error(); err != nil {
+		return fmt.Errorf("check %q failed validation:\n%w", spec.Job, err)
+	}
+	return nil
 }
 
 // existingSensitivity fetches the current alertSensitivity for a check so that
