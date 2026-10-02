@@ -1,27 +1,14 @@
 ---
 name: agento11y-instrument
 description: >
-  Sets up and instruments a developer's own LLM app or agent to send generations and
-  agentic workflow to Grafana Agent Observability (the Agent Observability SDKs) — greenfield setup,
-  fixing broken instrumentation, or filling gaps in existing instrumentation. Uses gcx
-  for the parts a static prompt can't do: `gcx login` / `gcx cloud stacks` to find the
-  stack, and `gcx agento11y agents|conversations|generations` to VERIFY that data actually
-  lands — so it iterates (instrument → run → verify → fix) until generations arrive, not
-  blindly. Reads the app's code, detects language/framework, classifies instrumentation
-  state (none / partial / broken), then runs a fixed gap checklist whose #1 item is the
-  silent failure no other prompt catches: the SDK emits OTel spans/metrics but never
-  creates a TracerProvider/MeterProvider, so without them all metrics go to a no-op and are
-  lost. Also checks agent_version (required for per-version Performance charts), set_result
-  completeness, SYNC vs STREAM, parent_generation_ids DAG links, and workflow-step coverage.
-  Recommends changes citing file:line and, only with explicit confirmation, applies minimal
-  diffs that don't change app behavior. Pulls SDK reference from agento11y's llms.txt rather
-  than restating it, and hands off to `agento11y-test-starter` once data flows. It does NOT
-  write test suites or set up tenant evaluations, rules, or guards — offline test suites are
-  `agento11y-test-starter`, tenant eval rules + guards are `agento11y-prod-setup`;
-  does NOT install coding-agent telemetry plugins (that is llms.txt "Path A"); does NOT mint
-  or store credentials or invent endpoints. Trigger on phrases like "instrument my app",
-  "send my agent's traces to Grafana", "set up AI observability for my app", "my generations
-  aren't showing up", "why is Performance empty", "add Agent Observability to my code", "fix my instrumentation".
+  Instrument a developer's own LLM app or agent with Grafana Agent Observability.
+  Use for initial setup, incomplete or broken instrumentation, missing generations,
+  or empty Performance charts. Reads the code, checks SDK and OpenTelemetry setup,
+  and iterates instrument → run → verify → fix using gcx to confirm generation
+  ingest, with separate checks for traces and metrics. Proposes changes with
+  file:line evidence and applies them only after explicit confirmation.
+  For offline tests use agento11y-test-starter; for online eval rules and guards
+  use agento11y-prod-setup. Excludes coding-agent telemetry plugins.
 allowed-tools: Bash, Read, Grep, Glob, Edit, Write, WebFetch
 ---
 
