@@ -1,6 +1,9 @@
 ---
 name: investigate-alert
-description: Investigate Grafana alerts to determine why they are firing, their scope, and impact. Use when the user asks about a specific alert, wants to understand alert behavior, or needs to diagnose why an alert is in a firing or pending state. Trigger on phrases like "why is this alert firing", "investigate this alert", "what is this alert rule doing", or a named alert rule. For triaging what is actively paging in OnCall (alert groups, ack/silence/resolve) use oncall-triage instead.
+description: >-
+  Investigates a Grafana alert rule: why it is firing or pending, its scope, and
+  its impact. Use for a named alert rule or "why is this alert firing". For
+  active OnCall pages (ack, silence, resolve) use oncall-triage.
 ---
 
 # Grafana Alert Investigator

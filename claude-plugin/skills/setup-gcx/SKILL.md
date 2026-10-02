@@ -1,13 +1,10 @@
 ---
 name: setup-gcx
-description: >
-  Sets up gcx: installation, context creation, authentication, and connection
-  to a Grafana instance. Covers Grafana Cloud and on-premise deployments,
-  environment variable overrides for CI/CD, default datasource configuration,
-  and troubleshooting connection and authentication problems. Use when
-  installing gcx, connecting gcx to a Grafana instance for the first time, or
-  when gcx commands fail with auth or connectivity errors (401, 403,
-  connection refused, missing namespace).
+description: >-
+  Installs and configures gcx: contexts, authentication, connection to Grafana
+  Cloud or on-premise Grafana, env var overrides for CI/CD, default datasources.
+  Use for first-time setup, or when gcx fails with auth or connection errors
+  (401, 403, connection refused, missing namespace).
 ---
 
 # Setup gcx
