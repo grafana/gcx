@@ -197,14 +197,16 @@ organisation memberships.
 To list your Cloud organisation memberships (slugs and roles):
 
 ```bash
-gcx cloud login --scope profile --context my-stack
+gcx cloud login --context my-stack
 gcx cloud orgs list --context my-stack
 ```
 
-Fresh default Cloud logins include `profile`. For existing logins, request it as
-shown above, or rerun `gcx cloud login` to request the full default scope set.
-`--scope profile` replaces the requested scope set; use the default login if you
-also need stack management. The command uses the selected context's Cloud API
+Default Cloud logins include `profile` alongside stack-management scopes.
+Rerun login for existing credentials. `--scope profile` replaces the scope set,
+so use the default login to retain stack access. If `GRAFANA_CLOUD_TOKEN` or
+`cloud.<entry>.token` is set, unset it when using browser OAuth for organisation
+listing: access-policy tokens take precedence over OAuth tokens.
+The command uses the selected context's Cloud API
 endpoint, including dev and ops environments. Membership is not a guarantee of
 stack-creation permission. This differs from `gcx api /api/orgs`, which targets
 organisations inside a Grafana instance.

@@ -36,7 +36,10 @@ func orgsCommand() *cobra.Command {
 		Long: `List all organisation memberships returned by the Grafana Cloud OAuth API.
 Requires a browser Cloud login with the profile scope. Cloud access-policy tokens
 cannot enumerate user memberships. Existing logins may need re-authentication:
-  gcx cloud login --scope profile
+  gcx cloud login
+The default scopes include profile and stack management. Access-policy tokens
+from GRAFANA_CLOUD_TOKEN or cloud.<entry>.token take precedence over OAuth;
+unset them when using this command with a browser login.
 
 Returns organisation slugs and membership roles, not names or numeric IDs.
 Membership does not guarantee permission to create stacks. To list stacks within
@@ -60,7 +63,7 @@ an organisation, use gcx cloud stacks list --org <slug>.`,
 			if err != nil {
 				var apiErr *cloudapi.GCOMHTTPError
 				if errors.As(err, &apiErr) && (apiErr.Status == http.StatusUnauthorized || apiErr.Status == http.StatusForbidden) {
-					return &gcxerrors.DetailedError{Summary: "cloud organisation access denied", Parent: err, Suggestions: []string{"Run gcx cloud login --scope profile using the same config/context; access-policy tokens cannot list user memberships"}}
+					return &gcxerrors.DetailedError{Summary: "cloud organisation access denied", Parent: err, Suggestions: []string{"Run gcx cloud login using the same config/context; the default scopes include profile and stack management", "Unset GRAFANA_CLOUD_TOKEN or cloud.<entry>.token if set: access-policy tokens take precedence over OAuth and cannot list user memberships"}}
 				}
 				return err
 			}

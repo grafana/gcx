@@ -7,7 +7,10 @@ List the signed-in user's Grafana Cloud organisation memberships.
 List all organisation memberships returned by the Grafana Cloud OAuth API.
 Requires a browser Cloud login with the profile scope. Cloud access-policy tokens
 cannot enumerate user memberships. Existing logins may need re-authentication:
-  gcx cloud login --scope profile
+  gcx cloud login
+The default scopes include profile and stack management. Access-policy tokens
+from GRAFANA_CLOUD_TOKEN or cloud.<entry>.token take precedence over OAuth;
+unset them when using this command with a browser login.
 
 Returns organisation slugs and membership roles, not names or numeric IDs.
 Membership does not guarantee permission to create stacks. To list stacks within

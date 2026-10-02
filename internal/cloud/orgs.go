@@ -48,12 +48,12 @@ func (c *GCOMClient) ListOrgs(ctx context.Context) ([]OrgMembership, error) {
 		return nil, fmt.Errorf("gcom client: decode organisations: %w", err)
 	}
 	if rows == nil {
-		return nil, errors.New("organisation listing requires a user OAuth login; run gcx cloud login --scope profile")
+		return nil, errors.New("organisation listing requires a user OAuth login; run gcx cloud login using the same config/context (default scopes include profile); unset GRAFANA_CLOUD_TOKEN or cloud.<entry>.token if set, because access-policy tokens take precedence over OAuth")
 	}
 	result := make([]OrgMembership, 0, len(rows))
-	for _, row := range rows {
+	for i, row := range rows {
 		if row.Login == "" {
-			return nil, errors.New("gcom client: organisation membership has no slug")
+			return nil, fmt.Errorf("gcom client: organisation membership at index %d has no slug", i)
 		}
 		result = append(result, OrgMembership{Slug: row.Login, Role: row.Role})
 	}
