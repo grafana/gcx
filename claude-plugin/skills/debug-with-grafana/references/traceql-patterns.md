@@ -128,7 +128,7 @@ around each `--filter` match are kept, and are ignored without `--filter`.
 `--prune-max-parent-depth` tune the pruning behavior and apply only when
 `--prune` enables pruning.
 
-A response too large for `-o agents` (100 KiB, overridable via
+A response too large for `-o agents` (24 KiB, overridable via
 `GCX_AGENT_SPILL_BYTES`) spills to a file with a hint to read it directly or
 re-run narrower with `--filter` or `--prune`.
 

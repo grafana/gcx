@@ -166,8 +166,8 @@ func TestAgentsCodec_NonSlice_PreviewIsKeyNames(t *testing.T) {
 	// stdout must be much smaller than the full 10KB payload — the preview
 	// must not embed the full map values. The cap allows the fixed receipt
 	// fields (type/schema_version/content_format discriminators, path,
-	// message) but nothing payload-proportional.
-	assert.Less(t, buf.Len(), 700, "spill envelope must not embed the full payload")
+	// message, hint) but nothing payload-proportional.
+	assert.Less(t, buf.Len(), 900, "spill envelope must not embed the full payload")
 
 	// Preview should be the sorted top-level key names, not the full value.
 	preview, ok := summary["preview_sample"].([]any)
@@ -205,21 +205,204 @@ func TestAgentsCodec_StructWithItems_CountsItems(t *testing.T) {
 	assert.LessOrEqual(t, len(preview), 3)
 }
 
-func TestAgentsCodec_InvalidEnvVar_FallsBackToDefault(t *testing.T) {
-	t.Setenv("GCX_AGENT_SPILL_BYTES", "not-a-number")
+// TestAgentsCodec_Threshold pins the spill threshold: the 24 KiB default,
+// the GCX_AGENT_SPILL_BYTES override, and the fallback for a bad value.
+func TestAgentsCodec_Threshold(t *testing.T) {
+	// An encoded string value is len+3 bytes: two quotes and a newline.
+	const defaultBytes = 24 * 1024
+	tests := []struct {
+		name      string
+		env       string
+		payload   int
+		wantSpill bool
+	}{
+		{name: "default: at threshold stays inline", payload: defaultBytes - 3},
+		{name: "default: above threshold spills", payload: defaultBytes - 2, wantSpill: true},
+		{name: "default: old 100 KiB size spills", payload: 60 * 1024, wantSpill: true},
+		{name: "override: larger threshold keeps inline", env: "204800", payload: 60 * 1024},
+		{name: "override: smaller threshold spills", env: "100", payload: 98, wantSpill: true},
+		{name: "invalid value falls back to default", env: "not-a-number", payload: defaultBytes - 3},
+		{name: "zero falls back to default", env: "0", payload: defaultBytes - 2, wantSpill: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("GCX_AGENT_SPILL_BYTES", tt.env)
+			dir := t.TempDir()
+			t.Setenv("TMPDIR", dir)
 
-	codec := cmdio.NewAgentsCodecForTesting()
+			value := strings.Repeat("x", tt.payload)
+			var buf bytes.Buffer
+			require.NoError(t, cmdio.NewAgentsCodecWithErrWriter(&bytes.Buffer{}).Encode(&buf, value))
 
-	// Build a payload just under 100 KiB — should NOT spill.
-	data := map[string]string{"payload": strings.Repeat("x", 100*1024-200)}
+			files, err := os.ReadDir(dir)
+			require.NoError(t, err)
+			if !tt.wantSpill {
+				assert.Empty(t, files)
+				assert.Equal(t, `"`+value+"\"\n", buf.String())
+				return
+			}
+			require.Len(t, files, 1)
+			var summary map[string]any
+			require.NoError(t, json.Unmarshal(buf.Bytes(), &summary))
+			assert.Equal(t, cmdio.SpillReferenceType, summary["type"])
+		})
+	}
+}
+
+// TestAgentsCodec_SpillPreview pins the receipt preview: identifying fields
+// only, a byte cap, and total_items for every list shape.
+func TestAgentsCodec_SpillPreview(t *testing.T) {
+	big := strings.Repeat("x", 4096)
+	tests := []struct {
+		name        string
+		value       any
+		wantPreview any // nil means preview_sample is JSON null
+		wantTotal   any // nil means total_items is absent
+	}{
+		{
+			name: "projects identifying fields",
+			value: []map[string]any{
+				{"uid": "a", "title": "A", "panels": big},
+				{"uid": "b", "title": "B", "panels": big},
+				{"uid": "c", "title": "C", "panels": big},
+				{"uid": "d", "title": "D", "panels": big},
+			},
+			wantPreview: []any{
+				map[string]any{"uid": "a", "title": "A"},
+				map[string]any{"uid": "b", "title": "B"},
+				map[string]any{"uid": "c", "title": "C"},
+			},
+			wantTotal: 4.0,
+		},
+		{
+			name: "projects nested k8s fields",
+			value: map[string]any{
+				"apiVersion": "v1",
+				"items": []any{
+					map[string]any{"metadata": map[string]any{"name": "d1", "labels": big}, "spec": map[string]any{"title": "Dash 1", "panels": big}},
+				},
+			},
+			wantPreview: []any{map[string]any{"metadata.name": "d1", "spec.title": "Dash 1"}},
+			wantTotal:   1.0,
+		},
+		{
+			name:        "single-key envelope counts items",
+			value:       map[string]any{"datasources": []any{map[string]any{"name": "prom", "jsonData": big}, map[string]any{"name": "loki", "jsonData": big}}},
+			wantPreview: []any{map[string]any{"name": "prom"}, map[string]any{"name": "loki"}},
+			wantTotal:   2.0,
+		},
+		{
+			name:        "single-key envelope with list_meta counts items",
+			value:       map[string]any{"datasources": []any{map[string]any{"id": 7, "blob": big}}, "list_meta": map[string]any{"truncated": true}},
+			wantPreview: []any{map[string]any{"id": 7.0}},
+			wantTotal:   1.0,
+		},
+		{
+			name:        "no identifying field keeps scalar fields",
+			value:       []map[string]any{{"state": "firing", "labels": map[string]any{"a": big}}},
+			wantPreview: []any{map[string]any{"state": "firing"}},
+			wantTotal:   1.0,
+		},
+		{
+			name: "drops items that do not fit",
+			value: []map[string]any{
+				{"name": strings.Repeat("a", 900)},
+				{"name": strings.Repeat("b", 900)},
+				{"name": strings.Repeat("c", 900)},
+			},
+			wantPreview: []any{
+				map[string]any{"name": strings.Repeat("a", 900)},
+				map[string]any{"name": strings.Repeat("b", 900)},
+			},
+			wantTotal: 3.0,
+		},
+		{
+			name:        "omits preview when one item does not fit",
+			value:       []map[string]any{{"name": big}, {"name": "small"}},
+			wantPreview: nil,
+			wantTotal:   2.0,
+		},
+		{
+			name:        "huge item with no scalar field is omitted",
+			value:       []any{map[string]any{"rules": []any{big, big}}},
+			wantPreview: nil,
+			wantTotal:   1.0,
+		},
+		{
+			name:        "scalar items are kept",
+			value:       []string{"a", "b", "c", "d", big},
+			wantPreview: []any{"a", "b", "c"},
+			wantTotal:   5.0,
+		},
+		{
+			name:        "object preview is sorted key names",
+			value:       map[string]any{"zeta": big, "alpha": 1},
+			wantPreview: []any{"alpha", "zeta"},
+		},
+		{
+			name:        "empty list has empty preview",
+			value:       map[string]any{"items": []any{}, "metadata": map[string]any{"blob": big}},
+			wantPreview: []any{},
+			wantTotal:   0.0,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("GCX_AGENT_SPILL_BYTES", "1")
+			t.Setenv("TMPDIR", t.TempDir())
+
+			var buf bytes.Buffer
+			require.NoError(t, cmdio.NewAgentsCodecWithErrWriter(&bytes.Buffer{}).Encode(&buf, tt.value))
+
+			var summary map[string]any
+			require.NoError(t, json.Unmarshal(buf.Bytes(), &summary))
+
+			require.Contains(t, summary, "preview_sample")
+			assert.Equal(t, tt.wantPreview, summary["preview_sample"])
+			preview, err := json.Marshal(summary["preview_sample"])
+			require.NoError(t, err)
+			assert.LessOrEqual(t, len(preview), 2048, "preview must fit the byte cap")
+
+			if tt.wantTotal == nil {
+				assert.NotContains(t, summary, "total_items")
+			} else {
+				assert.Equal(t, tt.wantTotal, summary["total_items"])
+			}
+
+			hint, _ := summary["hint"].(string)
+			assert.Contains(t, hint, "--json <fields>")
+			assert.Contains(t, hint, "--json list")
+		})
+	}
+}
+
+// TestAgentsCodec_Spill_ReceiptIsBounded pins the receipt size for items that
+// are very large (for example alert rule groups): the receipt must stay far
+// below the spill threshold.
+func TestAgentsCodec_Spill_ReceiptIsBounded(t *testing.T) {
+	t.Setenv("GCX_AGENT_SPILL_BYTES", "")
+	t.Setenv("TMPDIR", t.TempDir())
+
+	groups := make([]map[string]any, 50)
+	for i := range groups {
+		groups[i] = map[string]any{
+			"name":  "group",
+			"rules": []any{map[string]any{"expr": strings.Repeat("x", 60*1024)}},
+		}
+	}
 
 	var buf bytes.Buffer
-	require.NoError(t, codec.Encode(&buf, data))
+	require.NoError(t, cmdio.NewAgentsCodecWithErrWriter(&bytes.Buffer{}).Encode(&buf, groups))
 
-	// Output should be raw JSON, not a spill summary.
-	var got map[string]string
-	require.NoError(t, json.Unmarshal(buf.Bytes(), &got), "expected plain JSON, not spill summary")
-	assert.Equal(t, data, got)
+	assert.Less(t, buf.Len(), 4096, "receipt must be bounded")
+	var summary map[string]any
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &summary))
+	assert.EqualValues(t, 50, summary["total_items"])
+	assert.Equal(t, []any{
+		map[string]any{"name": "group"},
+		map[string]any{"name": "group"},
+		map[string]any{"name": "group"},
+	}, summary["preview_sample"])
 }
 
 func TestAgentsCodec_SpillEnvelope_UsesTotalItems(t *testing.T) {

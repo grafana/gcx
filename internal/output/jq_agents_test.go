@@ -187,8 +187,8 @@ func TestOptions_JQ_AgentsStream(t *testing.T) {
 		{name: "continue after spilling", query: "(\"x\" * 2048), 1, 2", threshold: "1024", want: "\"" + strings.Repeat("x", 2048) + "\"\n1\n2\n", values: 3, spill: true},
 		{name: "large integer inline", query: ".spec.id + 1", value: unstructured.Unstructured{Object: map[string]any{"spec": map[string]any{"id": int64(9007199254740993)}}}, threshold: "100", want: "9007199254740994\n", values: 1},
 		{name: "big integer spilled", query: "18446744073709551616 + 1", threshold: "1", want: "18446744073709551617\n", values: 1, spill: true},
-		{name: "default threshold", query: ".", value: strings.Repeat("x", 102397), threshold: "", want: "\"" + strings.Repeat("x", 102397) + "\"\n", values: 1},
-		{name: "default threshold exceeded", query: ".", value: strings.Repeat("x", 102398), threshold: "", want: "\"" + strings.Repeat("x", 102398) + "\"\n", values: 1, spill: true},
+		{name: "default threshold", query: ".", value: strings.Repeat("x", 24573), threshold: "", want: "\"" + strings.Repeat("x", 24573) + "\"\n", values: 1},
+		{name: "default threshold exceeded", query: ".", value: strings.Repeat("x", 24574), threshold: "", want: "\"" + strings.Repeat("x", 24574) + "\"\n", values: 1, spill: true},
 		{name: "invalid threshold falls back", query: "1", threshold: "invalid", want: "1\n", values: 1},
 	}
 	for _, tt := range tests {
