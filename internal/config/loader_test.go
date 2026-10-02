@@ -546,6 +546,37 @@ func TestLoad_withOverride(t *testing.T) {
 	req.Equal("http://localhost:3000/", cfg.Contexts["local"].Grafana.Server)
 }
 
+func TestLoadLayered_ContextEnvironmentSelectsMergedContext(t *testing.T) {
+	fixture := newKeychainPolicyFixture(t)
+	require.NoError(t, os.MkdirAll(filepath.Dir(fixture.user), 0o700))
+	require.NoError(t, os.WriteFile(fixture.user, []byte("version: 1\ncontexts:\n  user: {}\n  local: {}\ncurrent-context: user\n"), 0o600))
+	require.NoError(t, os.WriteFile(fixture.local, []byte("version: 1\ncurrent-context: user\n"), 0o600))
+	t.Setenv(config.ContextEnvVar, "local")
+
+	cfg, err := config.LoadLayered(t.Context(), "")
+	require.NoError(t, err)
+	require.Equal(t, "local", cfg.CurrentContext)
+	require.Len(t, cfg.Sources, 2)
+
+	contents, err := os.ReadFile(fixture.user)
+	require.NoError(t, err)
+	require.Contains(t, string(contents), "current-context: user")
+}
+
+func TestLoadLayered_ContextEnvironmentRequiresExistingContext(t *testing.T) {
+	t.Setenv(config.ContextEnvVar, "missing")
+	_, err := config.LoadLayered(t.Context(), "./testdata/config.yaml")
+	require.ErrorIs(t, err, config.ErrContextNotFound)
+	require.ErrorContains(t, err, `invalid context "missing"`)
+}
+
+func TestLoadLayered_EmptyContextEnvironmentUsesFileSelection(t *testing.T) {
+	t.Setenv(config.ContextEnvVar, "")
+	cfg, err := config.LoadLayered(t.Context(), "./testdata/config.yaml")
+	require.NoError(t, err)
+	require.Equal(t, "local", cfg.CurrentContext)
+}
+
 func TestLoad_withInvalidYaml(t *testing.T) {
 	req := require.New(t)
 

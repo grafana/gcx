@@ -5,6 +5,9 @@ import "fmt"
 // CLIOptions holds CLI-level configuration options that affect command behavior
 // but are not specific to any Grafana context.
 type CLIOptions struct {
+	// Context selects the named config context for this invocation.
+	Context string `env:"GCX_CONTEXT"`
+
 	// AutoApprove automatically enables the --force flag on delete operations,
 	// enabling non-interactive operation in CI/CD pipelines.
 	AutoApprove bool `env:"GCX_AUTO_APPROVE"`

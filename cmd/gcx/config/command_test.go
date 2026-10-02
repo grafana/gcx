@@ -428,6 +428,62 @@ current-context: prod`)
 	require.Equal(t, "prod-token", cfg.Contexts["prod"].Grafana.APIToken)
 }
 
+func TestOptions_LoadConfigTolerant_EnvironmentContextSelection(t *testing.T) {
+	configFile := testutils.CreateTempFile(t, `version: 1
+stacks:
+  prod:
+    grafana:
+      server: https://prod.grafana.net
+      token: prod-token
+      org-id: 1
+  staging:
+    grafana:
+      server: https://staging.grafana.net
+      token: staging-token
+      org-id: 1
+contexts:
+  prod:
+    stack: prod
+  staging:
+    stack: staging
+current-context: prod`)
+	t.Setenv(internalconfig.ContextEnvVar, "staging")
+	t.Setenv("GRAFANA_TOKEN", "env-token")
+
+	cfg, err := (&config.Options{ConfigFile: configFile}).LoadConfigTolerant(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, "staging", cfg.CurrentContext)
+	require.Equal(t, "env-token", cfg.Contexts["staging"].Grafana.APIToken)
+	require.Equal(t, "prod-token", cfg.Contexts["prod"].Grafana.APIToken)
+
+	cfg, err = (&config.Options{ConfigFile: configFile, Context: "prod"}).LoadConfigTolerant(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, "prod", cfg.CurrentContext)
+	require.Equal(t, "env-token", cfg.Contexts["prod"].Grafana.APIToken)
+	require.Equal(t, "staging-token", cfg.Contexts["staging"].Grafana.APIToken)
+
+	contents, err := os.ReadFile(configFile)
+	require.NoError(t, err)
+	require.Contains(t, string(contents), "current-context: prod")
+	require.NotContains(t, string(contents), "env-token")
+}
+
+func TestCurrentContextEnvironmentSelection(t *testing.T) {
+	t.Setenv(internalconfig.ContextEnvVar, "prod")
+	output, err := runConfigCmd(t, "current-context", "--config", "testdata/config.yaml")
+	require.NoError(t, err)
+	require.Equal(t, "prod\n", output)
+
+	output, err = runConfigCmd(t, "current-context", "--config", "testdata/config.yaml", "--context", "local")
+	require.NoError(t, err)
+	require.Equal(t, "local\n", output)
+
+	t.Setenv(internalconfig.ContextEnvVar, "missing")
+	output, err = runConfigCmd(t, "current-context", "--config", "testdata/config.yaml", "--context", "prod")
+	require.NoError(t, err)
+	require.Equal(t, "prod\n", output)
+}
+
 func TestOptions_LoadConfig_ValidatesSelectedContext(t *testing.T) {
 	tests := []struct {
 		name       string
