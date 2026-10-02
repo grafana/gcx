@@ -23,17 +23,24 @@ depends = ["lint", "tests", "build"]
 # DEVELOPMENT
 # =============================================================================
 
+# pkg/gfc is a separate Go module, so the root run does not descend into it; it
+# is linted explicitly with the same config. The two runs are sequential
+# entries rather than parallel `depends` because golangci-lint takes an
+# exclusive lock and refuses to run concurrently.
 [tasks.lint]
-description = "Lint the codebase with golangci-lint"
-run = "golangci-lint run -c .golangci.yaml"
+description = "Lint the codebase with golangci-lint (root + pkg/gfc)"
+run = [
+  "golangci-lint run -c .golangci.yaml",
+  "cd pkg/gfc && golangci-lint run -c ../../.golangci.yaml",
+]
 
 [tasks."validate-skills"]
 description = "Validate skill front matter (claude-plugin/skills + .claude/skills)"
 run = "go run ./scripts/validate-skills"
 
 [tasks.tests]
-description = "Run all tests (CLI + linter rules + install script)"
-depends = ["tests:cli", "tests:linter", "tests:install"]
+description = "Run all tests (CLI + gfc module + linter rules + install script)"
+depends = ["tests:cli", "tests:gfc", "tests:linter", "tests:install"]
 
 # GCX_AGENT_MODE is pinned on the leaf tasks (mise env does not propagate
 # through `depends`). Without it, agent-mode auto-detection picks up CLAUDECODE
@@ -43,6 +50,13 @@ depends = ["tests:cli", "tests:linter", "tests:install"]
 [tasks."tests:cli"]
 description = "Run CLI tests"
 env = { GCX_AGENT_MODE = "false" }
+run = "go test ./..."
+
+# pkg/gfc is a separate Go module, so `go test ./...` at the root does not
+# reach it.
+[tasks."tests:gfc"]
+description = "Run pkg/gfc module tests"
+dir = "pkg/gfc"
 run = "go test ./..."
 
 [tasks."tests:linter"]

@@ -14,6 +14,7 @@ require (
 	github.com/google/go-cmp v0.7.0
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
 	github.com/grafana/authlib/types v0.0.0-20260427145542-9c256e2dbcb2
+	github.com/grafana/gcx/pkg/gfc v0.0.0
 	github.com/grafana/grafana-app-sdk/logging v0.59.0
 	github.com/grafana/grafana-foundation-sdk/go v0.0.20
 	github.com/grafana/grafana-openapi-client-go v0.0.0-20260414120814-5b95bb183fae
@@ -189,3 +190,5 @@ require (
 	sigs.k8s.io/randfill v1.0.0 // indirect
 	sigs.k8s.io/structured-merge-diff/v6 v6.4.2 // indirect
 )
+
+replace github.com/grafana/gcx/pkg/gfc => ./pkg/gfc

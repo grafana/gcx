@@ -66,11 +66,11 @@ func NewTypedCRUD(ctx context.Context, loader smcfg.Loader) (*adapter.TypedCRUD[
 		return nil, "", fmt.Errorf("failed to load SM config for checks: %w", err)
 	}
 
-	checksClient, err := NewClient(restCfg, uid, loader)
+	checksClient, err := NewClient(ctx, restCfg, uid, loader)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to create SM checks client: %w", err)
 	}
-	probesClient, err := probes.NewClient(restCfg, uid, loader)
+	probesClient, err := probes.NewClient(ctx, restCfg, uid, loader)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to create SM probes client: %w", err)
 	}
@@ -322,7 +322,7 @@ func FetchProbeInfo(ctx context.Context, loader smcfg.Loader) (map[string]int64,
 		return nil, nil, fmt.Errorf("loading SM config for probe fetch: %w", err)
 	}
 
-	probesClient, err := probes.NewClient(restCfg, uid, loader)
+	probesClient, err := probes.NewClient(ctx, restCfg, uid, loader)
 	if err != nil {
 		return nil, nil, fmt.Errorf("creating SM probes client: %w", err)
 	}

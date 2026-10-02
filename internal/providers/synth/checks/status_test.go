@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/grafana/gcx/internal/providers/synth/checks"
+	"github.com/grafana/gcx/pkg/gfc/sm"
 )
 
 // ---------------------------------------------------------------------------
@@ -36,7 +37,7 @@ func TestBuildSuccessRateQuery(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := checks.BuildSuccessRateQuery(tt.job, tt.instance)
+			got, err := sm.BuildSuccessRateQuery(tt.job, tt.instance)
 			if err != nil {
 				t.Fatalf("BuildSuccessRateQuery() error = %v", err)
 			}
@@ -64,7 +65,7 @@ func TestBuildProbeCountQuery(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := checks.BuildProbeCountQuery(tt.job, tt.instance)
+			got, err := sm.BuildProbeCountQuery(tt.job, tt.instance)
 			if err != nil {
 				t.Fatalf("BuildProbeCountQuery() error = %v", err)
 			}
@@ -92,7 +93,7 @@ func TestBuildLatencyQuery(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := checks.BuildLatencyQuery(tt.job, tt.instance)
+			got, err := sm.BuildLatencyQuery(tt.job, tt.instance)
 			if err != nil {
 				t.Fatalf("BuildLatencyQuery() error = %v", err)
 			}
@@ -104,7 +105,7 @@ func TestBuildLatencyQuery(t *testing.T) {
 }
 
 func TestBuildAllLatencyQuery(t *testing.T) {
-	got, err := checks.BuildAllLatencyQuery()
+	got, err := sm.BuildAllLatencyQuery()
 	if err != nil {
 		t.Fatalf("BuildAllLatencyQuery() error = %v", err)
 	}
@@ -131,7 +132,7 @@ func TestBuildTimelineQuery(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := checks.BuildTimelineQuery(tt.job, tt.instance)
+			got, err := sm.BuildTimelineQuery(tt.job, tt.instance)
 			if err != nil {
 				t.Fatalf("BuildTimelineQuery() error = %v", err)
 			}
@@ -410,7 +411,7 @@ func TestBuildCheckStatusResults(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			results := checks.BuildCheckStatusResults(tt.checks, tt.successMap, tt.probeMap, tt.latencyMap, probeNameMap)
+			results := sm.BuildCheckStatusResults(tt.checks, tt.successMap, tt.probeMap, tt.latencyMap, probeNameMap)
 			if len(results) != tt.wantLen {
 				t.Fatalf("expected %d results, got %d", tt.wantLen, len(results))
 			}
@@ -449,7 +450,7 @@ func TestBuildCheckStatusResults_AlertSensitivity(t *testing.T) {
 				Settings:         checks.CheckSettings{"http": map[string]any{}},
 			}
 			key := tt.job + "/" + tt.target
-			results := checks.BuildCheckStatusResults(
+			results := sm.BuildCheckStatusResults(
 				[]checks.Check{c},
 				map[string]float64{key: tt.success},
 				map[string]float64{key: 1},

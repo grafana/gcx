@@ -1,15 +1,15 @@
-package synth
-
-// Named queries are the second, distinct way to talk to the Synthetic Monitoring
-// datasource. The rest of this package proxies the SM REST API (checks, probes)
-// through the plugin's `sm` routes; this file queries the plugin's Go *backend*,
-// which owns the PromQL and LogQL for check telemetry.
+// Package synth queries the Synthetic Monitoring plugin's Go *backend* via
+// named queries, which own the PromQL and LogQL for check telemetry.
+//
+// The SM REST API (checks, probes) is reached through the shared dual-mode
+// transport in pkg/gfc/sm, not from here.
 //
 // The contract is deliberately thin: gcx sends a query *name* plus parameters and
 // receives Grafana data frames. It never sends an expression, never names a
 // Prometheus or Loki datasource, and never learns which metric backs a number.
 // That is what keeps `gcx` and the SM app reporting the same values -- the
 // definition lives in exactly one place, the plugin's query registry.
+package synth
 
 import (
 	"context"

@@ -55,7 +55,7 @@ func NewTypedCRUD(ctx context.Context, loader smcfg.Loader) (*adapter.TypedCRUD[
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to load SM config for probes: %w", err)
 	}
-	client, err := NewClient(restCfg, uid, loader)
+	client, err := NewClient(ctx, restCfg, uid, loader)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to create SM probes client: %w", err)
 	}

@@ -26,7 +26,7 @@ func proxyPath(smPath string) string {
 func proxyClient(t *testing.T, srv *httptest.Server) *probes.Client {
 	t.Helper()
 	cfg := config.NamespacedRESTConfig{Config: rest.Config{Host: srv.URL}}
-	client, err := probes.NewClient(cfg, testDSUID, nil)
+	client, err := probes.NewClient(context.Background(), cfg, testDSUID, nil)
 	require.NoError(t, err)
 	return client
 }
