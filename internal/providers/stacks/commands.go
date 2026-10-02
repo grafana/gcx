@@ -134,6 +134,7 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 var stackSlugRe = regexp.MustCompile(`^[a-z0-9]+$`)
 
 type createOpts struct {
+	Org              string
 	IO               cmdio.Options
 	Name             string
 	Slug             string
@@ -146,14 +147,14 @@ type createOpts struct {
 }
 
 func (o *createOpts) Validate() error {
-	if o.Name == "" || o.Slug == "" {
+	o.Org = strings.TrimSpace(o.Org)
+	o.Name = strings.TrimSpace(o.Name)
+	if o.Org == "" || o.Name == "" || o.Slug == "" {
 		return &gcxerrors.DetailedError{
-			Summary:  "Invalid command usage",
-			Details:  "--name and --slug are required",
-			ExitCode: new(gcxerrors.ExitUsageError),
-			Suggestions: []string{
-				"Provide both flags: gcx cloud stacks create --name <name> --slug <slug> --region <region>",
-			},
+			Summary:     "Invalid command usage",
+			Details:     "--org, --name and --slug must have nonblank values",
+			ExitCode:    new(gcxerrors.ExitUsageError),
+			Suggestions: []string{"Specify the destination and stack: gcx cloud stacks create --org <org-slug> --name <name> --slug <slug> --region <region>"},
 		}
 	}
 	if !stackSlugRe.MatchString(o.Slug) {
@@ -191,6 +192,7 @@ func validateLabels(labels []string) error {
 }
 
 func (o *createOpts) setup(flags *pflag.FlagSet) {
+	flags.StringVar(&o.Org, "org", "", "Destination organisation slug (required)")
 	o.IO.RegisterCustomCodec("table", &stackTableCodec{})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
@@ -207,20 +209,24 @@ func (o *createOpts) setup(flags *pflag.FlagSet) {
 func newCreateCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &createOpts{}
 	cmd := &cobra.Command{
-		Use:   "create",
-		Short: "Create a new Grafana Cloud stack.",
+		Use:     "create",
+		Example: "  gcx cloud stacks create --org example-org --name my-stack --slug mystack --region us --dry-run",
+		Short:   "Create a new Grafana Cloud stack.",
 		Long: `Create a new Grafana Cloud stack.
 
 This provisions new infrastructure and may incur costs. The stack name, slug,
 and region cannot be changed after creation - double-check before running.
 Use --dry-run to preview the request first.
 
+Specify the destination organisation slug with --org.
+Use gcx cloud orgs list to discover your organisation slugs.
+
 Stack slugs may only contain lowercase letters and digits: the slug becomes
 the stack's <slug>.grafana.net subdomain.`,
 		Annotations: map[string]string{
 			agent.AnnotationRequiredScope: "stacks:write",
 			agent.AnnotationTokenCost:     "small",
-			agent.AnnotationLLMHint:       "This command creates a new Grafana Cloud stack, which provisions infrastructure and may incur costs. Always confirm the stack name, slug, and region with the user before executing. Prefer --dry-run first. Stack slugs may only contain lowercase letters and digits (they become <slug>.grafana.net).",
+			agent.AnnotationLLMHint:       "This command creates a new Grafana Cloud stack, which provisions infrastructure and may incur costs. Always confirm the organisation slug, stack name, slug, and region with the user before executing. --org is required to select the destination organisation. Prefer --dry-run first. Stack slugs may only contain lowercase letters and digits (they become <slug>.grafana.net).",
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
@@ -233,6 +239,7 @@ the stack's <slug>.grafana.net subdomain.`,
 			}
 
 			req := cloud.CreateStackRequest{
+				Org:         opts.Org,
 				Name:        opts.Name,
 				Slug:        opts.Slug,
 				Region:      opts.Region,
@@ -269,6 +276,7 @@ the stack's <slug>.grafana.net subdomain.`,
 		},
 	}
 	opts.setup(cmd.Flags())
+	_ = cmd.MarkFlagRequired("org")
 	_ = cmd.MarkFlagRequired("name")
 	_ = cmd.MarkFlagRequired("slug")
 	return cmd

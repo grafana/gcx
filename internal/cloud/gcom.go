@@ -85,6 +85,7 @@ type Region struct {
 
 // CreateStackRequest is the request body for creating a new Grafana Cloud stack.
 type CreateStackRequest struct {
+	Org              string            `json:"org"`
 	Name             string            `json:"name"`
 	Slug             string            `json:"slug"`
 	URL              string            `json:"url,omitempty"`
