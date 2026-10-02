@@ -111,7 +111,7 @@ func pullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 		Use:   "pull [RESOURCE_SELECTOR]...",
 		Args:  cobra.ArbitraryArgs,
 		Short: "Pull resources from Grafana",
-		Long:  "Pull resources from Grafana using a specific format. See examples below for more details.",
+		Long:  "Export resources such as dashboards, folders, and alert rules from Grafana to local manifest files for backup, version control, or migration. Choose the file format with --output. See examples below for more details.",
 		Example: `
 	# Everything:
 

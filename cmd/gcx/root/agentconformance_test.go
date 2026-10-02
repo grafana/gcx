@@ -148,6 +148,8 @@ func TestAgentConformance_FiniteCommandsEmitOneJSONValue(t *testing.T) {
 	}{
 		{name: "providers list", args: []string{"providers", "list"}},
 		{name: "commands catalog", args: []string{"commands"}},
+		{name: "command search", args: []string{"commands", "search", "query metrics"}},
+		{name: "empty command search", args: []string{"commands", "search", "zzzxxyyqq"}},
 		{name: "skills list", args: []string{"agent", "skills", "list"}},
 		{name: "dev lint list-rules", args: []string{"dev", "lint", "list-rules"}},
 	}

@@ -19,7 +19,7 @@ You are helping the user implement comprehensive Grafana Cloud observability for
 
 Work interactively - explain each phase, generate YAML from `gcx resources list-examples <type>` where one exists (not every kind ships an example — fall back to `gcx resources list-types <type>` and a minimal manifest), confirm before creating anything, and validate success.
 
-**Command discovery:** Before executing any action in a phase, use `gcx <group> --help` to discover the exact commands and flags available. Use `gcx commands --flat -o json` to see all command groups. Never assume a command's exact syntax - always discover it first. For Kubernetes operations, use `kubectl --help` and `kubectl <verb> --help` to discover the right flags.
+**Command discovery:** When you know the task but not its command, use `gcx commands search "describe your task"`. For a command suggestion, inspect its `--help`; for a workflow suggestion, read the bundled guide using its `invocation`. If no strong match is returned, try more specific wording or browse `gcx help-tree --depth 1 -o text`. When you already know the group, use `gcx <group> --help` to discover the exact commands and flags available. Reserve `gcx commands --flat -o json` for complete catalog metadata. Never assume a command's exact syntax - always discover it first. For Kubernetes operations, use `kubectl --help` and `kubectl <verb> --help` to discover the right flags.
 
 **Parallelism rules:**
 - Use `TaskCreate` to register every unit of work before starting anything, so the user can see progress.

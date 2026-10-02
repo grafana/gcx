@@ -20,6 +20,18 @@ structured output, and a consistent verb model across all resource types.
 gcx has a built-in command catalog. Never guess a command — discover it first.
 Use **progressive disclosure** to minimize token cost:
 
+**Find a command by intent** when you know the task but not its command:
+```bash
+gcx commands search "create an uptime check"
+```
+Search uses local word matching with typo tolerance and returns up to five strong
+suggestions. Weak matches are omitted; no result means try more specific wording
+or browse the tree. For `kind: command`, inspect the command with `--help` before
+acting. For `kind: workflow`, use its `invocation` to read the bundled skill guide;
+it is an entry point for a multistep task, not a command that completes the task.
+Suggestions do not verify availability in the current context. Query text is not
+sent in usage statistics. Use the tree below when you want to browse instead.
+
 **Step 1 — Orient** (30 lines, all top-level groups):
 ```bash
 gcx help-tree --depth 1 -o text
@@ -42,8 +54,8 @@ for automation - the output is hundreds of kilobytes and unsuitable for orientat
 
 ### Intent-to-Group Quick Reference
 
-When you already know the user's intent, skip discovery and go straight to the
-right group:
+When you already know the command group, go straight to that group's `--help`
+to discover the exact command and flags:
 
 | Intent | Group | Example |
 |--------|-------|---------|
