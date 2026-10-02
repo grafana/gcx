@@ -311,6 +311,8 @@ gcx logs query '{app="nginx"} |= "error"' --since 1h
 gcx traces query '{.cluster="dev-us-central-0"}' --since 1h
 ```
 
+For paging responders to an incident, see [gcx irm oncall escalate](docs/reference/cli/gcx_irm_oncall_escalate.md).
+
 For an empty dashboard or missing application telemetry, follow
 [Diagnose missing telemetry with gcx](docs/guides/diagnose-missing-telemetry.md).
 
