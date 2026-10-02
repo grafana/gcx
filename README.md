@@ -322,6 +322,7 @@ gcx alert rules list                            # list alert rules
 # Grafana Cloud products
 gcx synthetic-monitoring checks list            # list synthetic monitoring checks
 gcx irm oncall schedules list                   # list on-call schedules
+gcx irm oncall alert-groups list --label service:api # filter alert groups by label
 gcx k6 load-tests list                          # list k6 load tests
 
 # Query more datasources

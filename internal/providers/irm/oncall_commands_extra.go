@@ -55,6 +55,7 @@ type alertGroupListOpts struct {
 	EscalationChains   []string
 	AcknowledgedBy     []string
 	ResolvedBy         []string
+	Labels             []string
 	Mine               bool
 	WithResolutionNote bool
 	HasRelatedIncident bool
@@ -85,6 +86,7 @@ func (o *alertGroupListOpts) setup(flags *pflag.FlagSet) {
 	flags.StringSliceVar(&o.EscalationChains, "escalation-chain", nil, "Filter by escalation chain ID (repeatable, comma-separated; see: gcx irm oncall escalation-chains list)")
 	flags.StringSliceVar(&o.AcknowledgedBy, "acknowledged-by", nil, "Filter by acknowledging user ID (repeatable, comma-separated; see: gcx irm oncall users list)")
 	flags.StringSliceVar(&o.ResolvedBy, "resolved-by", nil, "Filter by resolving user ID (repeatable, comma-separated; see: gcx irm oncall users list)")
+	flags.StringArrayVar(&o.Labels, "label", nil, "Filter server-side by label key:value names (repeatable; all must match; case matching follows the server)")
 	flags.StringVar(&o.From, "from", "", "Start of the started-at window (RFC3339, unix timestamp, or relative e.g. now-30d); cannot be combined with --max-age")
 	flags.StringVar(&o.To, "to", "", "End of the started-at window (RFC3339, unix timestamp, or relative e.g. now-7d); defaults to now")
 	flags.StringVar(&o.ResolvedFrom, "resolved-from", "", "Start of the resolved-at window (RFC3339, unix timestamp, or relative e.g. now-30d)")
@@ -96,7 +98,7 @@ func (o *alertGroupListOpts) setup(flags *pflag.FlagSet) {
 	flags.BoolVar(&o.IncludeChildGroups, "include-child-groups", false, "Include child groups (drops the is_root filter while keeping the status default)")
 }
 
-// Validate checks the time-window flags before any config or network work.
+// Validate checks label and time-window flags before any config or network work.
 // Negative --limit values are rejected by the shared binder's validation
 // (Options.Validate, internal/output/format.go), which RunE calls immediately
 // after this method — the fetch is no longer bounded by a client-side safety
@@ -104,6 +106,14 @@ func (o *alertGroupListOpts) setup(flags *pflag.FlagSet) {
 // contract rather than bespoke capped-source wording (docs/design/output.md
 // § 15.1).
 func (o *alertGroupListOpts) Validate() error {
+	for _, label := range o.Labels {
+		key, value, ok := strings.Cut(label, ":")
+		// The API ignores pairs with extra colons, which would silently
+		// broaden the query. Preserve valid names exactly, including commas.
+		if !ok || strings.TrimSpace(key) == "" || strings.TrimSpace(value) == "" || strings.Contains(value, ":") {
+			return fmt.Errorf("invalid --label %q: expected key:value with non-empty names and no extra colons (e.g. --label service:api)", label)
+		}
+	}
 	// --max-age and --from/--to both compile into the same started_at range
 	// param, so combining them would be ambiguous.
 	if o.MaxAge != "" && (o.From != "" || o.To != "") {
@@ -233,6 +243,7 @@ type alertGroupListFilters struct {
 	EscalationChains   []string
 	AcknowledgedBy     []string
 	ResolvedBy         []string
+	Labels             []string
 	Mine               bool
 	WithResolutionNote bool
 	HasRelatedIncident bool
@@ -265,6 +276,7 @@ func resolveAlertGroupListFilters(cmd *cobra.Command, opts *alertGroupListOpts) 
 		EscalationChains:   opts.EscalationChains,
 		AcknowledgedBy:     opts.AcknowledgedBy,
 		ResolvedBy:         opts.ResolvedBy,
+		Labels:             opts.Labels,
 		Mine:               opts.Mine,
 		WithResolutionNote: opts.WithResolutionNote,
 		HasRelatedIncident: opts.HasRelatedIncident,
@@ -339,6 +351,11 @@ Alert group records carry no escalation chain field, so --escalation-chain is th
 only way to attribute alert load to the rotation that was actually paged. It is not
 interchangeable with --integration: one integration routes to several chains.
 
+Use --label key:value to filter by alert-group label names, not IDs. Repeat the
+flag to require all labels, e.g. --label service:api --label env:prod. Filtering
+happens on the server before pagination. Names are sent unchanged; case matching
+follows the server. Commas are literal; colons cannot occur inside names.
+
 --max-age anchors to now; use --from/--to for a historical started-at window, and
 --resolved-from/--resolved-to for a resolved-at window. They accept RFC3339, a unix
 timestamp, or a relative expression like now-30d. --max-age and --from/--to cannot
@@ -354,8 +371,8 @@ const alertGroupListExample = `  # List firing, acknowledged, and silenced root 
   # Narrow to one team, most recent day
   gcx irm oncall alert-groups list --team <team-id> --max-age 24h
 
-  # Attribute load to a rotation (chain IDs: gcx irm oncall escalation-chains list)
-  gcx irm oncall alert-groups list --escalation-chain <chain-id> --all
+  # Attribute one service's load to a rotation (chain IDs: gcx irm oncall escalation-chains list)
+  gcx irm oncall alert-groups list --escalation-chain <chain-id> --label service:api --all
 
   # Historical window, including resolved groups
   gcx irm oncall alert-groups list --from now-30d --to now-7d --all
@@ -518,6 +535,9 @@ func stringifyAlertGroupListFilters(opts *alertGroupListOpts) string {
 	if len(opts.ResolvedBy) > 0 {
 		parts = append(parts, "resolved-by="+strings.Join(opts.ResolvedBy, ","))
 	}
+	if len(opts.Labels) > 0 {
+		parts = append(parts, "label="+strings.Join(opts.Labels, ","))
+	}
 	if opts.MaxAge != "" {
 		parts = append(parts, "max-age="+opts.MaxAge)
 	}
@@ -581,6 +601,7 @@ func alertGroupListHasExplicitFilter(opts *alertGroupListOpts) bool {
 		len(opts.EscalationChains) > 0 ||
 		len(opts.AcknowledgedBy) > 0 ||
 		len(opts.ResolvedBy) > 0 ||
+		len(opts.Labels) > 0 ||
 		opts.Mine ||
 		opts.WithResolutionNote ||
 		opts.HasRelatedIncident ||
@@ -724,6 +745,9 @@ func listAlertGroupsLegacy(cmd *cobra.Command, opts *alertGroupListOpts, filters
 	if len(filters.ResolvedBy) > 0 {
 		unsupported = append(unsupported, "--resolved-by")
 	}
+	if len(filters.Labels) > 0 {
+		unsupported = append(unsupported, "--label")
+	}
 	// --from's lower bound survives as started_after above; the upper bound
 	// and the whole resolved_at window have no public-API equivalent.
 	if opts.To != "" {
@@ -860,6 +884,9 @@ func listAlertGroupsRaw(ctx context.Context, c *OnCallClient, filters alertGroup
 	}
 	for _, u := range filters.ResolvedBy {
 		params.Add("resolved_by", u)
+	}
+	for _, label := range filters.Labels {
+		params.Add("label", label)
 	}
 	if filters.Mine {
 		params.Set("mine", "true")
