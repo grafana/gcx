@@ -155,3 +155,91 @@ Time flags normally select a range query; `--instant` requests an instant query
 over the supplied interval when supported. Do not copy Prometheus `--time` or
 PromQL `rate(metric[5m])` syntax into TraceQL. If metrics are unsupported, keep
 using usable trace exemplars and state the population-measurement limitation.
+
+### Metrics arithmetic
+
+TraceQL metrics supports `+`, `-`, `*`, and `/` between metrics queries and
+numeric scalars; ratios do not require separate queries and client-side math.
+Wrap **each metrics subquery** in parentheses. These examples follow Tempo's
+[arithmetic expressions reference](https://grafana.com/docs/tempo/latest/metrics-from-traces/metrics-queries/functions/#arithmetic-expressions).
+Support depends on the deployed Tempo backend, not the gcx version. If the
+backend rejects arithmetic, retain usable individual metrics queries and state
+the limitation rather than declaring the syntax invalid everywhere.
+
+Use verified attributes and values in place of the placeholders. Apply the same
+environment, cluster, service, and operation constraints to numerator and
+denominator, except for the condition whose share is being measured. The
+examples below measure stored server spans, not automatically unique requests
+or unsampled traffic.
+
+```bash
+# Error percentage for one service: multiply the ratio by 100.
+gcx traces metrics -d "$TEMPO_UID" \
+  '100 * ({ resource.service.name = "<service>" && kind = server && status = error } | rate()) / ({ resource.service.name = "<service>" && kind = server } | rate())' \
+  --from "$FROM" --to "$TO" --step 1m -o agents
+
+# Per-service error percentage; match both sides by the same labels.
+# At each time step, keep up to five highest percentages, then retain points > 5.
+# The selected services can change across steps; the range can contain > 5 series.
+gcx traces metrics -d "$TEMPO_UID" \
+  '100 * ({ kind = server && status = error } | rate() by (resource.service.name)) / ({ kind = server } | rate() by (resource.service.name)) | topk(5) > 5' \
+  --from "$FROM" --to "$TO" --step 1m -o agents
+
+# Each service's share of observed server-span throughput.
+# The unlabeled denominator is broadcast to every labeled numerator series.
+gcx traces metrics -d "$TEMPO_UID" \
+  '100 * ({ kind = server } | rate() by (resource.service.name)) / ({ kind = server } | rate())' \
+  --from "$FROM" --to "$TO" --step 1m -o agents
+
+# Convert spans/second to spans/minute (not a count over the whole window).
+gcx traces metrics -d "$TEMPO_UID" \
+  '({ resource.service.name = "<service>" && kind = server } | rate()) * 60' \
+  --from "$FROM" --to "$TO" --step 1m -o agents
+
+# Add rates for two distinct services; this counts spans across both services,
+# not deduplicated end-to-end requests.
+gcx traces metrics -d "$TEMPO_UID" \
+  '({ resource.service.name = "<service-a>" && kind = server } | rate()) + ({ resource.service.name = "<service-b>" && kind = server } | rate())' \
+  --from "$FROM" --to "$TO" --step 1m -o agents
+
+# Signed distance from an illustrative 100-server-spans/minute threshold.
+# Replace 100 with the threshold relevant to the investigation.
+gcx traces metrics -d "$TEMPO_UID" \
+  '({ resource.service.name = "<service>" && kind = server } | rate()) * 60 - 100' \
+  --from "$FROM" --to "$TO" --step 1m -o agents
+
+# Mean response size in MiB; first verify this numeric byte attribute exists.
+gcx traces metrics -d "$TEMPO_UID" \
+  '({ resource.service.name = "<service>" && kind = server } | avg_over_time(span.http.response.body.size)) / (1024 * 1024)' \
+  --from "$FROM" --to "$TO" --step 1m -o agents
+```
+
+For count ratios, use `count_over_time()` on both sides instead of `rate()`.
+Keep units compatible: adding a per-second rate to a bucket count is not a
+meaningful total, even if the expression parses.
+
+Rules that differ from common PromQL assumptions:
+
+- Same `by(...)` attributes on both sides match series by label. An unlabeled
+  side is applied to every labeled series on the other side; do not add PromQL
+  `on(...)`, `ignoring(...)`, or `group_left` syntax to these examples.
+- Trailing `topk`, `bottomk`, and comparisons apply to the **whole arithmetic
+  expression**, not its final operand. In the example above, Tempo computes
+  `100 * numerator / denominator`, then applies `topk(5)`, then `> 5`.
+  Outer parentheses around the arithmetic expression are optional; each metrics
+  subquery still requires its own parentheses. A percentage query uses `> 5`
+  for five percent; an unscaled ratio uses `> 0.05`.
+- `topk(k)` and `bottomk(k)` select independently at each time step, not once
+  across the range. They retain up to `k` values per step; changing membership
+  means a range query can return more than `k` distinct series. Non-selected
+  points become `NaN`, not zero.
+- Division by zero and a bucket with no matching spans produce `NaN`.
+  Arithmetic propagates it: neither `+ 0` nor `* 0` repairs missing data.
+  A missing error bucket is not evidence of a zero-percent error rate.
+- Scalar-only integer arithmetic truncates: `1 / 2` is `0`; use `1.0 / 2.0`
+  for `0.5`. Scalars can appear on either side; use `(-100)` for a negative
+  operand when multiplying.
+- Duration literals such as `10s` are not valid scalar operands, and
+  `compare()` cannot be used in arithmetic expressions.
+- Bare `{} | rate() + {} | rate()` is invalid; use
+  `({} | rate()) + ({} | rate())`.

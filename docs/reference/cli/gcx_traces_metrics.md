@@ -8,6 +8,8 @@ Execute a TraceQL metrics query against a Tempo datasource.
 
 TRACEQL is the TraceQL metrics expression to evaluate.
 Datasource is resolved from -d flag or datasources.tempo in your context.
+Metrics queries support arithmetic (+, -, *, /) with other queries or numeric
+scalars on supported Tempo backends. Wrap each metrics subquery in parentheses.
 
 Instant vs range is deduced from time flags: no time flags = instant query,
 --since or --from/--to = range query. Use --instant to force an instant query
@@ -30,8 +32,11 @@ gcx traces metrics [TRACEQL] [flags]
   # Print a Grafana Explore share link for the query
   gcx traces metrics '{ } | rate()' --share-link
 
-  # Output as JSON
-  gcx traces metrics -d UID '{ } | rate()' --since 1h -o json
+  # Error percentage among observed server spans (not unsampled traffic)
+  gcx traces metrics '100 * ({ kind = server && status = error } | rate()) / ({ kind = server } | rate())' --since 1h -o json
+
+  # Each service's share of observed server-span throughput
+  gcx traces metrics '({ kind = server } | rate() by (resource.service.name)) / ({ kind = server } | rate())' --since 1h
 ```
 
 ### Options
