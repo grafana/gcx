@@ -118,7 +118,10 @@ Check work against these docs during planning, design, and implementation — in
 
 ## Releasing
 
-Release steps live in the `release` skill ([.claude/skills/release/SKILL.md](.claude/skills/release/SKILL.md)) — invoke it when tagging a release.
+Use the [`release`](.claude/skills/release/SKILL.md) entry point to select a stage:
+
+- [`prepare-release`](.claude/skills/prepare-release/SKILL.md) creates or refreshes the release PR, including required What's New/Next drafts, then stops for review.
+- [`publish-release`](.claude/skills/publish-release/SKILL.md) is invoked explicitly after approval to merge, tag the exact merge commit, verify GoReleaser, approve/merge the Grafana tap PR, and announce in Slack. It checks Homebrew core and customer-communications status separately and resumes unfinished work safely.
 
 ## Mandatory Pull Request Checklist
 
