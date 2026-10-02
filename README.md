@@ -505,6 +505,14 @@ gcx resources edit dashboards/my-dashboard
 gcx resources delete dashboards/my-dashboard
 ```
 
+### Dynamic Observability hackathon prototype
+
+When the Dynamic Observability plugin is installed, the experimental
+`gcx dynamic-observability` commands show ruleset attachment status and node-agent
+health, and can pause or resume a ruleset. Use `gcx resources` to create, edit,
+or delete the underlying `dynamicprobes` and `nodeagents` resources. See the
+[CLI reference](docs/reference/cli/gcx_dynamic-observability.md).
+
 ## Alerting & Datasource Queries
 
 Inspect alerting rules and query datasources directly:
