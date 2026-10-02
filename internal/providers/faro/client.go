@@ -125,18 +125,15 @@ func (c *Client) GetByName(ctx context.Context, name string) (*FaroApp, error) {
 }
 
 // Create creates a new Faro app.
-// ExtraLogLabels and Settings are stripped from the create payload due to Faro API constraints.
+// Settings are stripped from the create payload due to Faro API constraints.
 // After creation, the app is re-fetched via List to get complete fields (collectEndpointURL, appKey).
 func (c *Client) Create(ctx context.Context, app *FaroApp) (*FaroApp, error) {
 	log := logging.FromContext(ctx)
 	log.Info("Creating Faro app", "name", app.Name)
 	apiApp := app.toAPI()
-	// Don't send extraLogLabels on create -- the Faro API has a constraint bug
-	// that causes 409 errors.
-	apiApp.ExtraLogLabels = nil
 	// Don't send settings on create -- the Faro API returns 500 if settings are included.
 	apiApp.Settings = nil
-	log.Debug("Create payload: stripped ExtraLogLabels and Settings (Faro API constraints)")
+	log.Debug("Create payload: stripped Settings (Faro API constraint)")
 
 	body, statusCode, err := c.doRequest(ctx, http.MethodPost, basePath, apiApp)
 	if err != nil {
