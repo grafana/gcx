@@ -10,10 +10,11 @@ import (
 
 // singleMutationTextCodec is the human "text" codec for cmdio.SingleMutation
 // results emitted by IRM mutation commands (OnCall CRUD delete, incidents
-// close, incidents activity add). Each command supplies a render function
-// that reproduces exactly the one-line styled message it has always printed,
-// so default human stdout stays byte-identical to the pre-codec output while
-// agent mode and explicit -o json/yaml get the structured document.
+// close, incidents activity add, plugin sync). Each command supplies a render
+// function that reproduces exactly the one-line styled message it has always
+// printed, so default human stdout stays byte-identical to the pre-codec
+// output while agent mode and explicit -o json/yaml get the structured
+// document.
 //
 // This codec is for the shared cmdio result family only. The alert-group
 // action verbs (oncall_actions.go) keep their own locked single/bulk
