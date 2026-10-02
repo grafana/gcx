@@ -1,0 +1,4 @@
+SCOPE   RECORD                                     ACTIVE  EXPR
+custom  asserts:latency:average:threshold          false   0.1
+custom  asserts:latency:p99:threshold              true    0.5
+global  asserts:resource:rate:threshold_by_stddev  true    2

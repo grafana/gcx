@@ -332,6 +332,8 @@ var commandAnnotations = map[string]annotation{
 	"gcx kg quality list":         {Cost: "medium", Hint: "--env <env> [--namespace <ns>] [--sort asc|desc] [--failed-check <id> ...] -o json | rank entities by instrumentation quality percent; --sort asc surfaces the worst-instrumented services first; filter to specific gaps with --failed-check (e.g. span-metrics, service-graph-metrics)"},
 	"gcx kg quality get":          {Cost: "small", Hint: "<entity-name> --env <env> [--namespace <ns>] -o json | full quality report for one entity: per-check state/impact, remediation doc links, and resolved query templates"},
 	"gcx kg status":               {Cost: "small"},
+	"gcx kg thresholds get":       {Cost: "small", Hint: "summarize the whole v1 threshold config; use -o yaml for the full PrometheusRules resource envelope"},
+	"gcx kg thresholds list":      {Cost: "small", Hint: "--category request|resource | per-category thresholds as items with scope=custom|global (v1 has no health category)"},
 	"gcx kg suppressions upsert":  {Cost: "small", Hint: "-f suppressions.yaml (or pipe YAML via stdin) | upsert (create or update) one or more alert suppressions; never deletes remote entries absent from the file; add --dry-run to validate against the backend and preview the remote->local diff without uploading"},
 	"gcx kg suppressions delete":  {Cost: "small"},
 	"gcx kg suppressions list":    {Cost: "small"},
