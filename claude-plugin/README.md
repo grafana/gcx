@@ -68,6 +68,7 @@ canonical portable skill bundle.
 | Skill | Purpose |
 |-------|---------|
 | `setup-gcx` | Install gcx if needed, configure authentication, and verify connectivity to Grafana |
+| `agent-ping` | Set up phone notifications and ping the user when an agent finishes or needs input |
 | `gcx` | Use gcx as the default control plane for Grafana resources and queries |
 | `scaffold-project` | Scaffold a new gcx resources-as-code project |
 | `generate-resource-stubs` | Generate typed Grafana resource stubs as Go code |

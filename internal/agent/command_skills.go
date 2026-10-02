@@ -13,6 +13,7 @@ import (
 //
 //nolint:gochecknoglobals // centralized skill registry, accessed via SkillsForCommand
 var commandSkills = map[string][]string{
+	"gcx agent ping":           {"agent-ping"},
 	"gcx dashboards":           {"create-dashboard", "manage-dashboards"},
 	"gcx resources":            {"generate-resource-stubs", "import-dashboards", "scaffold-project"},
 	"gcx slo":                  {"slo-manage", "slo-investigate", "slo-optimize", "slo-check-status"},

@@ -336,6 +336,23 @@ Synthetic Monitoring check manifests support optional `spec.folderUid` for folde
 assignment. See the [check management guide](claude-plugin/skills/synth-manage-checks/SKILL.md#step-3-build-yaml-definition)
 for create/update semantics and cross-stack push guidance.
 
+## Agent phone notifications (experimental)
+
+Sign in with `gcx login` using your user identity, then connect the Grafana
+mobile app to the same stack and account. Cloud-platform login and service
+account tokens do not provide the user identity needed for phone notifications.
+
+```sh
+gcx agent ping --text "Ready for review." --body "Tests passed. See the session for details."
+gcx agent ping --text "Which deployment target should I use?" --title "Input needed"
+gcx agent skills install agent-ping
+```
+
+The bundled [agent-ping skill](claude-plugin/skills/agent-ping/SKILL.md) walks
+through login, phone setup, and a test notification. Pings are one-way; success
+reports API acceptance, not delivery or a reply from the phone.
+The command defaults to `--inbox agents`, which the API requires for agent metadata.
+
 ## Install Agent Skills
 
 gcx ships a portable Agent Skills bundle for setup, dashboard creation and
