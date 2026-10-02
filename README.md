@@ -191,7 +191,23 @@ gcx cloud login --context my-stack
 
 Direct Cloud OAuth stores the OAuth token, expiry, granted scopes, and endpoint
 pair, but it is experimental and not every Cloud product command supports it
-yet. Use a CAP for full compatibility.
+yet. A CAP supports many Cloud management operations, but cannot enumerate user
+organisation memberships.
+
+To list your Cloud organisation memberships (slugs and roles):
+
+```bash
+gcx cloud login --scope profile --context my-stack
+gcx cloud orgs list --context my-stack
+```
+
+Fresh default Cloud logins include `profile`. For existing logins, request it as
+shown above, or rerun `gcx cloud login` to request the full default scope set.
+`--scope profile` replaces the requested scope set; use the default login if you
+also need stack management. The command uses the selected context's Cloud API
+endpoint, including dev and ops environments. Membership is not a guarantee of
+stack-creation permission. This differs from `gcx api /api/orgs`, which targets
+organisations inside a Grafana instance.
 
 `gcx` derives the Cloud stack slug from `--server` when possible. Set it explicitly only for custom domains where gcx cannot derive it:
 

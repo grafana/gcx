@@ -1,11 +1,12 @@
-## gcx cloud
+## gcx cloud orgs
 
-Manage your Grafana Cloud resources
+Discover your Grafana Cloud organisations
 
 ### Options
 
 ```
-  -h, --help   help for cloud
+      --config string   Path to the configuration file to use
+  -h, --help            help for orgs
 ```
 
 ### Options inherited from parent commands
@@ -21,8 +22,6 @@ Manage your Grafana Cloud resources
 
 ### SEE ALSO
 
-* [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
-* [gcx cloud login](gcx_cloud_login.md)	 - Authenticate with the Grafana Cloud API (GCOM)
-* [gcx cloud orgs](gcx_cloud_orgs.md)	 - Discover your Grafana Cloud organisations
-* [gcx cloud stacks](gcx_cloud_stacks.md)	 - Manage Grafana Cloud stacks (list, create, update, delete)
+* [gcx cloud](gcx_cloud.md)	 - Manage your Grafana Cloud resources
+* [gcx cloud orgs list](gcx_cloud_orgs_list.md)	 - List the signed-in user's Grafana Cloud organisation memberships.
 
