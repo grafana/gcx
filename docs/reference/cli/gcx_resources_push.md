@@ -6,6 +6,8 @@ Push resources to Grafana
 
 Push resources to Grafana using a specific format. See examples below for more details.
 
+By default, gcx marks pushed resources as owned by gcx and sets AllowsEdits on all of them. For dashboards, that combination is confirmed to keep them editable in the Grafana UI afterward. Effect on other resource types has not been verified. Pass --omit-manager-fields to push without marking gcx as the owner.
+
 ```
 gcx resources push [RESOURCE_SELECTOR]... [flags]
 ```
@@ -74,7 +76,7 @@ gcx resources push [RESOURCE_SELECTOR]... [flags]
       --jq string                       jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string                     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --max-concurrent int              Maximum number of concurrent operations (default 10)
-      --omit-manager-fields             If set, the manager fields will not be appended to the resources
+      --omit-manager-fields             If set, pushed resources are not marked as owned by gcx. If unset (default), gcx marks them as owned and sets AllowsEdits on all of them; dashboards are confirmed to stay editable in the Grafana UI as a result, effect on other resource types is not verified
       --on-error string                 How to handle errors during resource operations:
                                           ignore — continue processing all resources and exit 0
                                           fail   — continue processing all resources and exit 4 (partial failure) if any failed (default)
