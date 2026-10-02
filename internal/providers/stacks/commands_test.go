@@ -71,24 +71,23 @@ func TestListCommand_OrgRequired(t *testing.T) {
 // create — validation
 // ---------------------------------------------------------------------------
 
-func TestCreateCommand_NameAndSlugRequired(t *testing.T) {
+func TestCreateCommand_RequiredFlags(t *testing.T) {
 	tests := []struct {
 		name    string
 		args    []string
 		wantErr string
 	}{
-		{"missing both", []string{"create"}, "Required flags"},
-		{"missing slug", []string{"create", "--name", "foo"}, "Required flags"},
-		{"missing name", []string{"create", "--slug", "foo"}, "Required flags"},
+		{"all missing", []string{"create"}, `required flag(s) "name", "org", "slug" not set`},
+		{"missing org", []string{"create", "--name", "foo", "--slug", "foo"}, `required flag(s) "org" not set`},
+		{"missing slug", []string{"create", "--name", "foo"}, "required flag"},
+		{"missing name", []string{"create", "--slug", "foo"}, "required flag"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := runCmd(t, stacks.NewTestCreateCommand(), tt.args, "")
 			require.Error(t, err)
-			var detailed *gcxerrors.DetailedError
-			require.ErrorAs(t, err, &detailed)
-			assert.Contains(t, detailed.Details, tt.wantErr)
+			assert.Contains(t, err.Error(), tt.wantErr)
 		})
 	}
 }
@@ -107,6 +106,7 @@ func TestCreateCommand_SlugValidation(t *testing.T) {
 		{"space", "my slug", "t", "lowercase"},
 		{"all uppercase", "MYSLUG", "t", "lowercase"},
 		{"explicit empty slug hits required check", "", "t", "--slug"},
+		{"whitespace name", "myslug", " \t", "nonblank"},
 		{"explicit empty name hits required check", "myslug", "", "--name"},
 	}
 
