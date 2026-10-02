@@ -135,6 +135,7 @@ var stackSlugRe = regexp.MustCompile(`^[a-z0-9]+$`)
 
 type createOpts struct {
 	Org              string
+	OrgSet           bool
 	IO               cmdio.Options
 	Name             string
 	Slug             string
@@ -147,10 +148,10 @@ type createOpts struct {
 }
 
 func (o *createOpts) Validate() error {
-	if strings.TrimSpace(o.Org) == "" {
+	if o.OrgSet && strings.TrimSpace(o.Org) == "" {
 		return &gcxerrors.DetailedError{
 			Summary:     "Invalid command usage",
-			Details:     "--org is required and must be a nonblank organisation slug",
+			Details:     "--org must be a nonblank organisation slug when supplied",
 			ExitCode:    new(gcxerrors.ExitUsageError),
 			Suggestions: []string{"Specify the destination organisation: gcx cloud stacks create --org <org-slug> --name <name> --slug <slug> --region <region>"},
 		}
@@ -161,7 +162,7 @@ func (o *createOpts) Validate() error {
 			Details:  "--name and --slug are required",
 			ExitCode: new(gcxerrors.ExitUsageError),
 			Suggestions: []string{
-				"Provide both flags: gcx cloud stacks create --org <org-slug> --name <name> --slug <slug> --region <region>",
+				"Provide both flags: gcx cloud stacks create --name <name> --slug <slug> --region <region>",
 			},
 		}
 	}
@@ -200,7 +201,7 @@ func validateLabels(labels []string) error {
 }
 
 func (o *createOpts) setup(flags *pflag.FlagSet) {
-	flags.StringVar(&o.Org, "org", "", "Destination organisation slug (required; Cloud API validates access)")
+	flags.StringVar(&o.Org, "org", "", "Override the destination organisation slug (default: Cloud API selects from your credentials)")
 	o.IO.RegisterCustomCodec("table", &stackTableCodec{})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
@@ -218,7 +219,6 @@ func newCreateCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &createOpts{}
 	cmd := &cobra.Command{
 		Use:     "create",
-		Args:    cobra.NoArgs,
 		Example: "  gcx cloud stacks create --org example-org --name my-stack --slug mystack --region us --dry-run",
 		Short:   "Create a new Grafana Cloud stack.",
 		Long: `Create a new Grafana Cloud stack.
@@ -227,7 +227,8 @@ This provisions new infrastructure and may incur costs. The stack name, slug,
 and region cannot be changed after creation - double-check before running.
 Use --dry-run to preview the request first.
 
---org is required: pass the destination organisation slug, not its display name.
+Use --org to override the destination organisation with its slug.
+When omitted, the Cloud API uses the organisation associated with your credentials.
 The Cloud API validates access; no OAuth membership lookup is performed.
 
 Stack slugs may only contain lowercase letters and digits: the slug becomes
@@ -235,9 +236,10 @@ the stack's <slug>.grafana.net subdomain.`,
 		Annotations: map[string]string{
 			agent.AnnotationRequiredScope: "stacks:write",
 			agent.AnnotationTokenCost:     "small",
-			agent.AnnotationLLMHint:       "This command creates a new Grafana Cloud stack, which provisions infrastructure and may incur costs. Always confirm the organisation slug, stack name, slug, and region with the user before executing. --org is required and the Cloud API validates organisation access. Prefer --dry-run first. Stack slugs may only contain lowercase letters and digits (they become <slug>.grafana.net).",
+			agent.AnnotationLLMHint:       "This command creates a new Grafana Cloud stack, which provisions infrastructure and may incur costs. Always confirm the organisation slug, stack name, slug, and region with the user before executing. --org optionally overrides the destination organisation; the Cloud API validates access. Prefer --dry-run first. Stack slugs may only contain lowercase letters and digits (they become <slug>.grafana.net).",
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			opts.OrgSet = cmd.Flags().Changed("org")
 			if err := opts.Validate(); err != nil {
 				return err
 			}
@@ -285,7 +287,6 @@ the stack's <slug>.grafana.net subdomain.`,
 		},
 	}
 	opts.setup(cmd.Flags())
-	_ = cmd.MarkFlagRequired("org")
 	_ = cmd.MarkFlagRequired("name")
 	_ = cmd.MarkFlagRequired("slug")
 	return cmd
