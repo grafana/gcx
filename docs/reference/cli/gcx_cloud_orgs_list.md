@@ -1,16 +1,10 @@
 ## gcx cloud orgs list
 
-[experimental] List the signed-in user's Grafana Cloud organisation memberships.
+List your Grafana Cloud organisations.
 
 ### Synopsis
 
-This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
-
 List all organisation memberships returned by the Grafana Cloud.
-Requires a browser Cloud login with the profile scope. Cloud access-policy tokens
-cannot enumerate user memberships. Existing logins may need re-authentication:
-  gcx cloud login
-The default scopes include profile and stack management. 
 
 Returns organisation slugs and membership roles. To list stacks within
 an organisation, use gcx cloud stacks list --org <slug>.
