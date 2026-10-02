@@ -148,20 +148,11 @@ type createOpts struct {
 
 func (o *createOpts) Validate() error {
 	o.Org = strings.TrimSpace(o.Org)
-	var missing []string
-	if o.Org == "" {
-		missing = append(missing, "--org")
-	}
-	if o.Name == "" {
-		missing = append(missing, "--name")
-	}
-	if o.Slug == "" {
-		missing = append(missing, "--slug")
-	}
-	if len(missing) > 0 {
+	o.Name = strings.TrimSpace(o.Name)
+	if o.Org == "" || o.Name == "" || o.Slug == "" {
 		return &gcxerrors.DetailedError{
 			Summary:     "Invalid command usage",
-			Details:     "Required flags must have nonblank values: " + strings.Join(missing, ", "),
+			Details:     "--org, --name and --slug must have nonblank values",
 			ExitCode:    new(gcxerrors.ExitUsageError),
 			Suggestions: []string{"Specify the destination and stack: gcx cloud stacks create --org <org-slug> --name <name> --slug <slug> --region <region>"},
 		}
@@ -237,12 +228,11 @@ the stack's <slug>.grafana.net subdomain.`,
 			agent.AnnotationTokenCost:     "small",
 			agent.AnnotationLLMHint:       "This command creates a new Grafana Cloud stack, which provisions infrastructure and may incur costs. Always confirm the organisation slug, stack name, slug, and region with the user before executing. --org is required to select the destination organisation. Prefer --dry-run first. Stack slugs may only contain lowercase letters and digits (they become <slug>.grafana.net).",
 		},
-		// Validate before Cobra checks required flags so all missing values
-		// use the structured usage error and exit code 2.
-		PreRunE: func(_ *cobra.Command, _ []string) error {
-			return opts.Validate()
-		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
 			labels, err := labelsFromFlag(opts.Labels)
 			if err != nil {
 				return err

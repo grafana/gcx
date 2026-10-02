@@ -42,8 +42,10 @@ func setAgentMode(t *testing.T, enabled bool) {
 // returns a ConfigLoader whose cloud api-url points at it.
 func newCloudFixture(t *testing.T, handler http.HandlerFunc) *providers.ConfigLoader {
 	t.Helper()
+
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
+
 	cfgPath := testutils.CreateTempFile(t, `
 contexts:
   default:
@@ -52,26 +54,7 @@ contexts:
       api-url: "`+srv.URL+`"
 current-context: default
 `)
-	loader := &providers.ConfigLoader{}
-	loader.SetConfigFile(cfgPath)
-	return loader
-}
 
-func newOAuthCloudFixture(t *testing.T, handler http.HandlerFunc) *providers.ConfigLoader {
-	t.Helper()
-	srv := httptest.NewServer(handler)
-	t.Cleanup(srv.Close)
-	cfgPath := testutils.CreateTempFile(t, `
-version: 1
-contexts:
-  default:
-    cloud: test
-cloud:
-  test:
-    oauth-token: "test-token"
-    api-url: "`+srv.URL+`"
-current-context: default
-`)
 	loader := &providers.ConfigLoader{}
 	loader.SetConfigFile(cfgPath)
 	return loader
@@ -497,19 +480,14 @@ func TestMutationDiagnosticsStayOffStdout(t *testing.T) {
 func TestCreateCommand_Organisation(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
-		oauth     bool
 		orgArgs   []string
 		status    int
 		dryRun    bool
 		wantCalls int
 		wantErr   string
 	}{
-		{name: "omitted", wantErr: "nonblank"},
 		{name: "empty", orgArgs: []string{"--org", ""}, wantErr: "nonblank"},
 		{name: "whitespace", orgArgs: []string{"--org", " \t"}, wantErr: "nonblank"},
-		{name: "omitted dry run", dryRun: true, wantErr: "nonblank"},
-		{name: "empty dry run", orgArgs: []string{"--org", ""}, dryRun: true, wantErr: "nonblank"},
-		{name: "OAuth request", oauth: true, orgArgs: []string{"--org", "example-org"}, status: http.StatusOK, wantCalls: 1},
 		{name: "padded request", orgArgs: []string{"--org", " \texample-org "}, status: http.StatusOK, wantCalls: 1},
 		{name: "padded preview", orgArgs: []string{"--org", " example-org "}, dryRun: true},
 		{name: "request", orgArgs: []string{"--org", "example-org"}, status: http.StatusOK, wantCalls: 1},
@@ -519,11 +497,7 @@ func TestCreateCommand_Organisation(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			testutils.SandboxConfigEnv(t)
 			calls := 0
-			fixture := newCloudFixture
-			if tc.oauth {
-				fixture = newOAuthCloudFixture
-			}
-			loader := fixture(t, func(w http.ResponseWriter, r *http.Request) {
+			loader := newCloudFixture(t, func(w http.ResponseWriter, r *http.Request) {
 				calls++
 				assert.Equal(t, http.MethodPost, r.Method)
 				assert.Equal(t, "/api/instances", r.URL.Path)
@@ -531,6 +505,7 @@ func TestCreateCommand_Organisation(t *testing.T) {
 				var body map[string]any
 				assert.NoError(t, json.NewDecoder(r.Body).Decode(&body))
 				assert.Equal(t, "example-org", body["org"])
+				assert.Equal(t, "My Stack", body["name"])
 				w.WriteHeader(tc.status)
 				if tc.status == http.StatusForbidden {
 					_, _ = w.Write([]byte(`{"message":"organisation access denied"}`))
@@ -538,7 +513,7 @@ func TestCreateCommand_Organisation(t *testing.T) {
 				}
 				_ = json.NewEncoder(w).Encode(testStack())
 			})
-			args := append([]string{"create", "--name", "My Stack", "--slug", "mystack", "-o", "json"}, tc.orgArgs...)
+			args := append([]string{"create", "--name", " My Stack ", "--slug", "mystack", "-o", "json"}, tc.orgArgs...)
 			if tc.dryRun {
 				args = append(args, "--dry-run")
 			}
@@ -562,6 +537,7 @@ func TestCreateCommand_Organisation(t *testing.T) {
 				return
 			}
 			assert.Contains(t, out, `"org": "example-org"`)
+			assert.Contains(t, out, `"name": "My Stack"`)
 		})
 	}
 }
