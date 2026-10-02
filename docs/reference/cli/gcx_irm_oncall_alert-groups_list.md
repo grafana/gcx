@@ -17,6 +17,11 @@ Alert group records carry no escalation chain field, so --escalation-chain is th
 only way to attribute alert load to the rotation that was actually paged. It is not
 interchangeable with --integration: one integration routes to several chains.
 
+Use --label key:value to filter by alert-group label names, not IDs. Repeat the
+flag to require all labels, e.g. --label service:api --label env:prod. Filtering
+happens on the server before pagination. Names are sent unchanged; case matching
+follows the server. Commas are literal; colons cannot occur inside names.
+
 --max-age anchors to now; use --from/--to for a historical started-at window, and
 --resolved-from/--resolved-to for a resolved-at window. They accept RFC3339, a unix
 timestamp, or a relative expression like now-30d. --max-age and --from/--to cannot
@@ -39,8 +44,8 @@ gcx irm oncall alert-groups list [flags]
   # Narrow to one team, most recent day
   gcx irm oncall alert-groups list --team <team-id> --max-age 24h
 
-  # Attribute load to a rotation (chain IDs: gcx irm oncall escalation-chains list)
-  gcx irm oncall alert-groups list --escalation-chain <chain-id> --all
+  # Attribute one service's load to a rotation (chain IDs: gcx irm oncall escalation-chains list)
+  gcx irm oncall alert-groups list --escalation-chain <chain-id> --label service:api --all
 
   # Historical window, including resolved groups
   gcx irm oncall alert-groups list --from now-30d --to now-7d --all
@@ -62,6 +67,7 @@ gcx irm oncall alert-groups list [flags]
       --integration strings        Filter by integration PK (repeatable, comma-separated)
       --jq string                  jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string                Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --label stringArray          Filter server-side by label key:value names (repeatable; all must match; case matching follows the server)
       --limit int                  Maximum number of alert groups to return. 0 means all results are returned (default 50)
       --max-age string             Exclude groups older than this duration (e.g. 1h, 24h, 7d)
       --mine                       Limit to alert groups for the authenticated user
