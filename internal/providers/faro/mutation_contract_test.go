@@ -41,14 +41,20 @@ import (
 // fakeConfigLoader satisfies RESTConfigLoader and sourcemapUploadConfigLoader
 // so a single fake drives every faro mutation command.
 type fakeConfigLoader struct {
-	grafanaURL string
-	faroAPIURL string
+	grafanaURL  string
+	deepLinkURL string
+	faroAPIURL  string
 }
 
 func (f *fakeConfigLoader) LoadGrafanaConfig(context.Context) (internalconfig.NamespacedRESTConfig, error) {
+	deepLinkURL := f.deepLinkURL
+	if deepLinkURL == "" {
+		deepLinkURL = f.grafanaURL
+	}
 	return internalconfig.NamespacedRESTConfig{
-		Config:    rest.Config{Host: f.grafanaURL},
-		Namespace: "stack-1",
+		Config:     rest.Config{Host: f.grafanaURL},
+		Namespace:  "stack-1",
+		GrafanaURL: deepLinkURL,
 	}, nil
 }
 
