@@ -14,12 +14,20 @@ Pass CONTEXT_NAME to target a specific context:
 Without CONTEXT_NAME, re-authenticates the current context, or starts a
 first-time setup if no current context is configured.
 
-Auth sources (for non-interactive use):
+--server takes the URL of a Grafana stack, such as https://my-stack.grafana.net.
+It does not take the Grafana Cloud portal at grafana.com, which manages stacks
+but serves no Grafana instance API.
+
+Grafana instance authentication (choose one, for non-interactive use):
   --oauth        Browser-based OAuth (recommended for Grafana Cloud). Opens a browser for the user to approve; works in agent mode.
   --basic-auth   Grafana username/password. Use --user or GRAFANA_USER, and GRAFANA_PASSWORD.
   --token        Grafana service-account token (created inside the Grafana instance).
                  See: https://grafana.com/docs/grafana/latest/administration/service-accounts.md
+
+Grafana Cloud platform credential (optional, and in addition to the above):
   --cloud-token  Grafana Cloud access-policy token (created at grafana.com).
+                 It supports cloud stacks and direct k6 API access, plus Synthetic Monitoring discovery and frontend sourcemap upload.
+                 It cannot authenticate the Grafana instance, so pass --oauth or --token as well.
                  See: https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/create-access-policies.md
 
 ```
@@ -35,6 +43,7 @@ gcx login [CONTEXT_NAME] [flags]
   gcx login prod --server https://prod.grafana.net --oauth
   gcx login local --server https://grafana.example.com --basic-auth --user admin
   gcx login --yes prod --token glsa_xxx
+  gcx login --yes prod --server https://prod.grafana.net --token glsa_xxx --cloud-token glc_xxx
   gcx login --yes --server https://localhost:3000 --token glsa_xxx
 ```
 
@@ -45,7 +54,7 @@ gcx login [CONTEXT_NAME] [flags]
       --basic-auth                Authenticate with a Grafana username and password (GRAFANA_USER / GRAFANA_PASSWORD, or interactive prompts)
       --cloud                     Force Grafana Cloud target (skip auto-detection)
       --cloud-api-url string      Override Grafana Cloud API URL
-      --cloud-token string        Grafana Cloud API token (enables Cloud management features)
+      --cloud-token string        Grafana Cloud access-policy token for the Cloud product commands (does not authenticate the Grafana instance)
       --config string             Path to the configuration file to use
       --context string            Name of the context to use
   -h, --help                      help for login
@@ -56,7 +65,7 @@ gcx login [CONTEXT_NAME] [flags]
       --oauth-manual              Complete browser OAuth without a local callback server: gcx prints the URL, then reads the redirect URL that you copy from the browser address bar. Use this when gcx runs on a remote host and the browser runs on your own computer. Implies --oauth
       --org-id int                Grafana organization ID (defaults to 1 for on-prem)
   -o, --output string             Output format. One of: agents, json, text, yaml (default "text")
-      --server string             Grafana server URL (e.g. https://my-stack.grafana.net)
+      --server string             Grafana stack URL (e.g. https://my-stack.grafana.net), not the grafana.com portal
       --token string              Grafana service account token
       --user string               Grafana username for --basic-auth (defaults to GRAFANA_USER)
       --yes                       Non-interactive: skip optional prompts and use defaults

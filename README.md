@@ -162,10 +162,11 @@ Prompts for a password without echoing it. For automation, supply `GRAFANA_PASSW
 and add `--yes`. See [Basic authentication](docs/reference/login.md#basic-authentication)
 for credential storage, auth switching, and validation behaviour.
 
-**Grafana Cloud product APIs (SLO, Synthetic Monitoring, IRM, etc.):**
+**Grafana Cloud platform credentials:**
 
-Cloud product commands need a separate Grafana Cloud platform credential in
-addition to Grafana instance auth. A
+Cloud stack management and direct k6 API access, plus Synthetic Monitoring discovery and frontend
+sourcemap upload, use a separate Grafana Cloud platform credential. IRM, SLO,
+and other Grafana APIs use your Grafana instance credential. A
 [Cloud Access Policy token](https://grafana.com/docs/grafana-cloud/account-management/authentication-and-permissions/access-policies/)
 has the widest command compatibility and is recommended for automation. Provide
 one at login:
@@ -173,6 +174,9 @@ one at login:
 ```bash
 gcx login my-stack --server https://my-stack.grafana.net --token glsa_xxx --cloud-token glc_xxx --yes
 ```
+
+`--server` must name your Grafana stack, such as `https://my-stack.grafana.net`,
+not the `grafana.com` portal. `--cloud-token` does not replace instance authentication.
 
 Or add Cloud access later by re-running `gcx login` against the same context.
 The interactive Cloud step can keep the existing CAP or unexpired OAuth

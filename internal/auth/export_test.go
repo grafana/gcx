@@ -83,3 +83,6 @@ func HandleCallbackParams(ctx context.Context, q url.Values, expectedState, code
 	}
 	return cerr.err
 }
+
+// ValidateGCOMURL exposes trusted-host validation for black-box tests.
+func ValidateGCOMURL(rawURL string) error { return validateGCOMURL(rawURL) }
