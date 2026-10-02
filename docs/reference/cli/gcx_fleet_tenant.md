@@ -22,6 +22,6 @@ Fleet Management tenant settings.
 
 ### SEE ALSO
 
-* [gcx fleet](gcx_fleet.md)	 - Manage Grafana Fleet Management pipelines and collectors
+* [gcx fleet](gcx_fleet.md)	 - Manage Grafana Fleet Management pipelines, collectors, clusters, and collector CRs
 * [gcx fleet tenant get-limits](gcx_fleet_tenant_get-limits.md)	 - Get tenant limits.
 

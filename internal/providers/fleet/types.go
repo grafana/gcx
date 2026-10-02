@@ -124,3 +124,32 @@ type Limits struct {
 	RequestsPerSecondCollector *int64 `json:"requests_per_second_collector,omitempty"`
 	RequestsPerSecondAPI       *int64 `json:"requests_per_second_api,omitempty"`
 }
+
+// Cluster is one cluster registered with Fleet Management remote manager.
+// The in-cluster operator can also introduce it. This is not an
+// instrumentation-hub cluster: those are configured with gcx instrumentation clusters.
+//
+// JSON names match the Connect protojson wire format.
+type Cluster struct {
+	ID        string `json:"id" yaml:"id"`
+	Name      string `json:"name" yaml:"name"`
+	Namespace string `json:"namespace" yaml:"namespace"`
+}
+
+// CollectorCR is one desired collector custom resource in a cluster.
+// Revision is server-assigned from namespace, name, release, and spec.
+// AppliedRevision and ApplyError are reported by the operator and are
+// ignored on create and update.
+//
+// JSON names match the Connect protojson wire format.
+type CollectorCR struct {
+	ID              string `json:"id" yaml:"id"`
+	ClusterID       string `json:"clusterId" yaml:"clusterId"`
+	Namespace       string `json:"namespace" yaml:"namespace"`
+	Name            string `json:"name" yaml:"name"`
+	Release         string `json:"release" yaml:"release"`
+	Spec            string `json:"spec" yaml:"spec"`
+	Revision        string `json:"revision" yaml:"revision"`
+	AppliedRevision string `json:"appliedRevision" yaml:"appliedRevision"`
+	ApplyError      string `json:"applyError" yaml:"applyError"`
+}

@@ -2,6 +2,13 @@
 
 Manage Fleet Management collectors.
 
+### Synopsis
+
+Manage collectors that have registered with Fleet Management.
+
+Desired Collector custom resources that an in-cluster operator should apply
+are a different resource: gcx fleet collector-crs.
+
 ### Options
 
 ```
@@ -22,7 +29,7 @@ Manage Fleet Management collectors.
 
 ### SEE ALSO
 
-* [gcx fleet](gcx_fleet.md)	 - Manage Grafana Fleet Management pipelines and collectors
+* [gcx fleet](gcx_fleet.md)	 - Manage Grafana Fleet Management pipelines, collectors, clusters, and collector CRs
 * [gcx fleet collectors create](gcx_fleet_collectors_create.md)	 - Create a collector from a file.
 * [gcx fleet collectors delete](gcx_fleet_collectors_delete.md)	 - Delete a collector.
 * [gcx fleet collectors get](gcx_fleet_collectors_get.md)	 - Get a collector by ID or name.

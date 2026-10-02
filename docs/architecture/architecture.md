@@ -750,7 +750,15 @@ Each LGTM signal has its own provider in `internal/providers/{signal}/` that reg
 | File | Purpose |
 |------|---------|
 | `internal/providers/fleet/provider.go` | `FleetProvider` implementing the `providers.Provider` interface |
-| `internal/providers/fleet/client.go` | Fleet Management REST client |
+| `internal/providers/fleet/client.go` | Fleet Management REST client for pipelines, collectors, and tenant limits |
+| `internal/providers/fleet/remotemanager.go` | Experimental `gcx fleet clusters` and `gcx fleet collector-crs` commands |
+| `internal/providers/fleet/remotemanager_client.go` | Remote manager cluster and Collector CR RPCs |
+
+Pipelines and collectors are adapter-backed resources. Clusters and Collector
+CRs are commands only: they call `remotemanager.v1.RemoteManagerService` and
+are not registered in the `gcx resources` pipeline. The operator channel
+(`ClusterConnection`) is not a command. These commands are experimental
+because that API is not generally available.
 
 ### Shared Fleet Client
 

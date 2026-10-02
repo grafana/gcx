@@ -106,7 +106,7 @@ func (p *FleetProvider) Name() string { return "fleet" }
 
 // ShortDesc returns a one-line description of the provider.
 func (p *FleetProvider) ShortDesc() string {
-	return "Manage Grafana Fleet Management pipelines and collectors"
+	return "Manage Grafana Fleet Management pipelines, collectors, clusters, and collector CRs"
 }
 
 // Commands returns the Cobra commands contributed by this provider.
@@ -125,6 +125,8 @@ func (p *FleetProvider) Commands() []*cobra.Command {
 	fleetCmd.AddCommand(
 		helper.pipelinesCommand(),
 		helper.collectorsCommand(),
+		helper.clustersCommand(),
+		helper.collectorCRsCommand(),
 		helper.tenantCommand(),
 	)
 
@@ -562,8 +564,12 @@ func IsManagedPipeline(name string) bool {
 
 func (h *fleetHelper) collectorsCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "collectors",
-		Short:   "Manage Fleet Management collectors.",
+		Use:   "collectors",
+		Short: "Manage Fleet Management collectors.",
+		Long: `Manage collectors that have registered with Fleet Management.
+
+Desired Collector custom resources that an in-cluster operator should apply
+are a different resource: gcx fleet collector-crs.`,
 		Aliases: []string{"collector"},
 	}
 

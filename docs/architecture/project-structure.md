@@ -76,7 +76,7 @@ gcx/
 │   │   │   ├── snapshot/     # Snapshot rendering via Dashboard Image Renderer API
 │   │   │   └── versions/     # Version history list + restore via dashboard.grafana.app
 │   │   ├── faro/             # Frontend Observability provider (apps CRUD, sourcemaps sub-resource) — CLI: `gcx frontend`
-│   │   ├── fleet/            # Fleet Management provider (pipeline and collector resources)
+│   │   ├── fleet/            # Fleet Management provider (pipelines, collectors, and experimental remote-manager clusters and collector CRs)
 │   │   ├── instrumentation/  # Instrumentation Hub provider (clusters, apps, services; helm formatter; RMW helper; output codecs; enumerate helper)
 │   │   │   ├── enumerate/    # Cluster enumeration helper (RunK8sMonitoring ⋃ ListPipelines merge)
 │   │   │   ├── helm/         # Helm command formatter for the setup wizard
