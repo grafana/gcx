@@ -25,6 +25,7 @@ Run 'gcx agent skills list' to see bundled Agent Skills with task-specific guida
 * [gcx agent](gcx_agent.md)	 - Agent mode utilities
 * [gcx agento11y](gcx_agento11y.md)	 - Manage Grafana Agent Observability resources
 * [gcx alert](gcx_alert.md)	 - Manage Grafana alert rules and alert groups
+* [gcx annotations](gcx_annotations.md)	 - Manage Grafana annotations
 * [gcx api](gcx_api.md)	 - Make direct HTTP requests to the Grafana API
 * [gcx appo11y](gcx_appo11y.md)	 - Manage Grafana App Observability settings
 * [gcx assistant](gcx_assistant.md)	 - Interact with Grafana Assistant

@@ -84,6 +84,7 @@ cmd/gcx/
   fail/         Structured error conversion
 
 internal/        Non-public packages — full annotated map: docs/architecture/project-structure.md
+  providers/annotations/  Grafana annotations commands and resource adapter
 ```
 
 ## What to Read Before You Start
