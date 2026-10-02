@@ -10,9 +10,8 @@ This provisions new infrastructure and may incur costs. The stack name, slug,
 and region cannot be changed after creation - double-check before running.
 Use --dry-run to preview the request first.
 
-Use --org to override the destination organisation with its slug.
-When omitted, the Cloud API uses the organisation associated with your credentials.
-The Cloud API validates access; no OAuth membership lookup is performed.
+Specify the destination organisation slug with --org.
+Use gcx cloud orgs list to discover your organisation slugs.
 
 Stack slugs may only contain lowercase letters and digits: the slug becomes
 the stack's <slug>.grafana.net subdomain.
@@ -38,7 +37,7 @@ gcx cloud stacks create [flags]
       --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --labels strings       Labels in key=value format (may be repeated)
       --name string          Stack name (required)
-      --org string           Override the destination organisation slug (default: Cloud API selects from your credentials)
+      --org string           Destination organisation slug (required)
   -o, --output string        Output format. One of: agents, json, table, yaml (default "table")
       --region string        Region slug (e.g. us, eu). Use 'gcx cloud stacks list-regions' to list.
       --slug string          Stack slug / subdomain (lowercase letters and digits only; required)

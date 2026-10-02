@@ -11,7 +11,6 @@ package stacks_test
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -43,16 +42,23 @@ func setAgentMode(t *testing.T, enabled bool) {
 // returns a ConfigLoader whose cloud api-url points at it.
 func newCloudFixture(t *testing.T, handler http.HandlerFunc) *providers.ConfigLoader {
 	t.Helper()
+	return newCloudFixtureWithAuth(t, handler, "token")
+}
 
+func newCloudFixtureWithAuth(t *testing.T, handler http.HandlerFunc, tokenField string) *providers.ConfigLoader {
+	t.Helper()
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
 
 	cfgPath := testutils.CreateTempFile(t, `
+version: 1
 contexts:
   default:
-    cloud:
-      token: "test-token"
-      api-url: "`+srv.URL+`"
+    cloud: test
+cloud:
+  test:
+    `+tokenField+`: "test-token"
+    api-url: "`+srv.URL+`"
 current-context: default
 `)
 
@@ -195,7 +201,7 @@ func TestAgentMode_SingleJSONDocument(t *testing.T) {
 				t.Helper()
 				return serveJSON(t, testStack())
 			},
-			args: []string{"create", "--name", "My Stack", "--slug", "mystack"},
+			args: []string{"create", "--org", "example-org", "--name", "My Stack", "--slug", "mystack"},
 			check: func(t *testing.T, doc any) {
 				t.Helper()
 				obj, ok := doc.(map[string]any)
@@ -207,7 +213,7 @@ func TestAgentMode_SingleJSONDocument(t *testing.T) {
 			name:    "create --dry-run emits structured preview",
 			newCmd:  stacks.NewTestCreateCommandWithLoader,
 			handler: rejectCalls,
-			args:    []string{"create", "--name", "My Stack", "--slug", "mystack", "--region", "us", "--dry-run"},
+			args:    []string{"create", "--org", "example-org", "--name", "My Stack", "--slug", "mystack", "--region", "us", "--dry-run"},
 			check: func(t *testing.T, doc any) {
 				t.Helper()
 				obj, ok := doc.(map[string]any)
@@ -339,10 +345,11 @@ func TestHumanDefault_ByteIdentical(t *testing.T) {
 			name:    "create --dry-run",
 			newCmd:  stacks.NewTestCreateCommandWithLoader,
 			handler: rejectCalls,
-			args:    []string{"create", "--name", "My Stack", "--slug", "mystack", "--region", "us", "--dry-run"},
+			args:    []string{"create", "--org", "example-org", "--name", "My Stack", "--slug", "mystack", "--region", "us", "--dry-run"},
 			want: "Dry run: POST /api/instances\n" +
 				"\n" +
 				"{\n" +
+				"  \"org\": \"example-org\",\n" +
 				"  \"name\": \"My Stack\",\n" +
 				"  \"slug\": \"mystack\",\n" +
 				"  \"region\": \"us\"\n" +
@@ -410,7 +417,7 @@ func TestExplicitOutputOverride(t *testing.T) {
 
 		loader := newCloudFixture(t, rejectCalls(t))
 		stdout, _, err := runCmdSplit(t, stacks.NewTestCreateCommandWithLoader(loader),
-			[]string{"create", "--name", "My Stack", "--slug", "mystack", "--dry-run", "-o", "json"}, "")
+			[]string{"create", "--org", "example-org", "--name", "My Stack", "--slug", "mystack", "--dry-run", "-o", "json"}, "")
 		require.NoError(t, err)
 
 		doc, ok := decodeSingleJSONDocument(t, stdout).(map[string]any)
@@ -479,18 +486,20 @@ func TestMutationDiagnosticsStayOffStdout(t *testing.T) {
 
 func TestCreateCommand_Organisation(t *testing.T) {
 	for _, tc := range []struct {
-		name      string
-		orgArgs   []string
-		status    int
-		dryRun    bool
-		wantCalls int
-		wantErr   string
+		name       string
+		tokenField string
+		orgArgs    []string
+		status     int
+		dryRun     bool
+		wantCalls  int
+		wantErr    string
 	}{
-		{name: "omitted uses API default", status: http.StatusOK, wantCalls: 1},
+		{name: "omitted", wantErr: "nonblank"},
 		{name: "empty", orgArgs: []string{"--org", ""}, wantErr: "nonblank"},
 		{name: "whitespace", orgArgs: []string{"--org", " \t"}, wantErr: "nonblank"},
-		{name: "omitted dry run", dryRun: true},
+		{name: "omitted dry run", dryRun: true, wantErr: "nonblank"},
 		{name: "empty dry run", orgArgs: []string{"--org", ""}, dryRun: true, wantErr: "nonblank"},
+		{name: "OAuth request", tokenField: "oauth-token", orgArgs: []string{"--org", "example-org"}, status: http.StatusOK, wantCalls: 1},
 		{name: "request", orgArgs: []string{"--org", "example-org"}, status: http.StatusOK, wantCalls: 1},
 		{name: "denied by API", orgArgs: []string{"--org", "example-org"}, status: http.StatusForbidden, wantCalls: 1, wantErr: "403"},
 		{name: "dry run", orgArgs: []string{"--org", "example-org"}, dryRun: true},
@@ -498,25 +507,25 @@ func TestCreateCommand_Organisation(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			testutils.SandboxConfigEnv(t)
 			calls := 0
-			loader := newCloudFixture(t, func(w http.ResponseWriter, r *http.Request) {
+			tokenField := tc.tokenField
+			if tokenField == "" {
+				tokenField = "token"
+			}
+			loader := newCloudFixtureWithAuth(t, func(w http.ResponseWriter, r *http.Request) {
 				calls++
 				assert.Equal(t, http.MethodPost, r.Method)
 				assert.Equal(t, "/api/instances", r.URL.Path)
 				assert.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
 				var body map[string]any
 				assert.NoError(t, json.NewDecoder(r.Body).Decode(&body))
-				if len(tc.orgArgs) == 0 {
-					assert.NotContains(t, body, "org")
-				} else {
-					assert.Equal(t, "example-org", body["org"])
-				}
+				assert.Equal(t, "example-org", body["org"])
 				w.WriteHeader(tc.status)
 				if tc.status == http.StatusForbidden {
 					_, _ = w.Write([]byte(`{"message":"organisation access denied"}`))
 					return
 				}
 				_ = json.NewEncoder(w).Encode(testStack())
-			})
+			}, tokenField)
 			args := append([]string{"create", "--name", "My Stack", "--slug", "mystack", "-o", "json"}, tc.orgArgs...)
 			if tc.dryRun {
 				args = append(args, "--dry-run")
@@ -526,7 +535,10 @@ func TestCreateCommand_Organisation(t *testing.T) {
 			if tc.wantErr != "" {
 				require.Error(t, err)
 				var detailed *gcxerrors.DetailedError
-				if errors.As(err, &detailed) {
+				if tc.status == 0 {
+					require.ErrorAs(t, err, &detailed)
+					require.NotNil(t, detailed.ExitCode)
+					assert.Equal(t, gcxerrors.ExitUsageError, *detailed.ExitCode)
 					assert.Contains(t, detailed.Details, tc.wantErr)
 				} else {
 					assert.Contains(t, err.Error(), tc.wantErr)
@@ -537,11 +549,7 @@ func TestCreateCommand_Organisation(t *testing.T) {
 			if !tc.dryRun {
 				return
 			}
-			if len(tc.orgArgs) == 0 {
-				assert.NotContains(t, out, `"org"`)
-			} else {
-				assert.Contains(t, out, `"org": "example-org"`)
-			}
+			assert.Contains(t, out, `"org": "example-org"`)
 		})
 	}
 }
