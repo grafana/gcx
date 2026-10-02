@@ -30,4 +30,5 @@ Manage OnCall routes.
 * [gcx irm oncall routes list](gcx_irm_oncall_routes_list.md)	 - List OnCall routes.
 * [gcx irm oncall routes list-filter-types](gcx_irm_oncall_routes_list-filter-types.md)	 - List allowed values for a route's filtering_term_type field.
 * [gcx irm oncall routes update](gcx_irm_oncall_routes_update.md)	 - Update a route by ID.
+* [gcx irm oncall routes update-position](gcx_irm_oncall_routes_update-position.md)	 - Update the position of a route in its integration.
 
