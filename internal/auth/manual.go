@@ -14,10 +14,9 @@ import (
 // manualCallbackPort is the port gcx puts in the callback URL when it runs
 // without a listener. The browser cannot connect to that port, and that
 // failure is the point: the full redirect URL stays in the address bar for the
-// user to copy. 54321 is the first port of the normal auto-pick range, so both
-// the Grafana plugin (which requires 1024-65535) and grafana.com already
-// accept it.
-const manualCallbackPort = 54321
+// user to copy. No listener ever binds this port, so any value accepted by
+// the Grafana plugin and grafana.com (both require 1024-65535) works.
+const manualCallbackPort = 20000
 
 // maxPastedURLBytes bounds one pasted line.
 const maxPastedURLBytes = 8192
