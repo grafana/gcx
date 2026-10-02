@@ -14,13 +14,16 @@ func TestStackCreateOrganisationUsageProtocol(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		args []string
+		want string
 	}{
-		{"missing", nil},
-		{"empty", []string{"--org", ""}},
-		{"blank", []string{"--org", " \t"}},
+		{"all missing", nil, "--org, --name, --slug"},
+		{"missing org", []string{"--name", "Demo", "--slug", "demo"}, "--org"},
+		{"missing name and slug", []string{"--org", "example-org"}, "--name, --slug"},
+		{"empty", []string{"--name", "Demo", "--slug", "demo", "--org", ""}, "--org"},
+		{"blank", []string{"--name", "Demo", "--slug", "demo", "--org", " \t"}, "--org"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			args := append([]string{"cloud", "stacks", "create", "--name", "Demo", "--slug", "demo", "--dry-run"}, tc.args...)
+			args := append([]string{"cloud", "stacks", "create", "--dry-run"}, tc.args...)
 			stdout, code := runGcx(t, args...)
 			require.Equal(t, 2, code)
 			doc, ok := assertOneJSONValue(t, stdout).(map[string]any)
@@ -30,7 +33,7 @@ func TestStackCreateOrganisationUsageProtocol(t *testing.T) {
 			require.True(t, ok)
 			assert.EqualValues(t, 2, failure["exitCode"])
 			assert.Equal(t, "Invalid command usage", failure["summary"])
-			assert.Contains(t, failure["details"], "--org is required")
+			assert.Equal(t, "Required flags must have nonblank values: "+tc.want, failure["details"])
 		})
 	}
 }

@@ -77,16 +77,18 @@ func TestCreateCommand_NameAndSlugRequired(t *testing.T) {
 		args    []string
 		wantErr string
 	}{
-		{"missing both", []string{"create"}, "required flag"},
-		{"missing slug", []string{"create", "--org", "example-org", "--name", "foo"}, "required flag"},
-		{"missing name", []string{"create", "--slug", "foo"}, "required flag"},
+		{"missing both", []string{"create"}, "Required flags"},
+		{"missing slug", []string{"create", "--name", "foo"}, "Required flags"},
+		{"missing name", []string{"create", "--slug", "foo"}, "Required flags"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := runCmd(t, stacks.NewTestCreateCommand(), tt.args, "")
 			require.Error(t, err)
-			assert.Contains(t, err.Error(), tt.wantErr)
+			var detailed *gcxerrors.DetailedError
+			require.ErrorAs(t, err, &detailed)
+			assert.Contains(t, detailed.Details, tt.wantErr)
 		})
 	}
 }
@@ -104,8 +106,8 @@ func TestCreateCommand_SlugValidation(t *testing.T) {
 		{"dot", "my.slug", "t", "lowercase"},
 		{"space", "my slug", "t", "lowercase"},
 		{"all uppercase", "MYSLUG", "t", "lowercase"},
-		{"explicit empty slug hits required check", "", "t", "--name and --slug are required"},
-		{"explicit empty name hits required check", "myslug", "", "--name and --slug are required"},
+		{"explicit empty slug hits required check", "", "t", "--slug"},
+		{"explicit empty name hits required check", "myslug", "", "--name"},
 	}
 
 	for _, tt := range tests {
