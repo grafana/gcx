@@ -111,8 +111,7 @@ Keep `gcx cloud orgs list`. Under [command naming: place each operation by the
 identity it requires](../design/command-naming.md#place-each-operation-by-the-identity-it-requires),
 a noun group applies when an operation enumerates a resource group without a
 parent identity. This command lists the user's organisation memberships without
-requiring a parent identity. The command name was confirmed in the
-[maintainer's PR #1424 review comment](https://github.com/grafana/gcx/pull/1424#discussion_r4165744653).
+requiring a parent identity.
 This command only lists memberships and does not change stack creation.
 
 ### cloud — tail sweep (wave 2)
