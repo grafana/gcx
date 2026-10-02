@@ -88,8 +88,19 @@ type checkAPIState struct {
 	checks       map[int64]checks.Check
 	probesOnline bool
 	failCreate   bool
+	failGet      bool // GET check/<id> answers 500
 	failDelete   map[int64]bool
 	lastUpdated  checks.Check // last body posted to /api/v1/check/update
+	// writes counts POSTs to check/add and check/update, so dry-run tests can
+	// prove nothing was persisted.
+	writes int
+	// validateStatus, when non-zero, enables /api/v1/check/validate and makes it
+	// answer with this status and validateBody. When zero the endpoint is absent
+	// (404), as on a server that predates it.
+	validateStatus int
+	validateBody   any
+	validateCalls  int
+	lastValidate   map[string]any // last body posted to /api/v1/check/validate
 	// adhocLines, when non-empty, are served as raw Loki log lines from the
 	// query endpoints (as `checks test` polls) instead of an empty result.
 	adhocLines []string
@@ -129,6 +140,7 @@ func newCheckServer(t *testing.T, st *checkAPIState) *httptest.Server {
 		_ = json.NewDecoder(r.Body).Decode(&c)
 		c.ID = 1234
 		st.mu.Lock()
+		st.writes++
 		st.checks[c.ID] = c
 		st.mu.Unlock()
 		writeJSON(w, c)
@@ -137,10 +149,24 @@ func newCheckServer(t *testing.T, st *checkAPIState) *httptest.Server {
 		var c checks.Check
 		_ = json.NewDecoder(r.Body).Decode(&c)
 		st.mu.Lock()
+		st.writes++
 		st.lastUpdated = c
 		st.mu.Unlock()
 		writeJSON(w, c)
 	})
+	if st.validateStatus != 0 {
+		mux.HandleFunc("/api/v1/check/validate", func(w http.ResponseWriter, r *http.Request) {
+			var body map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			st.mu.Lock()
+			st.validateCalls++
+			st.lastValidate = body
+			st.mu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(st.validateStatus)
+			_ = json.NewEncoder(w).Encode(st.validateBody)
+		})
+	}
 	mux.HandleFunc("/api/v1/check/delete/", func(w http.ResponseWriter, r *http.Request) {
 		idStr := strings.TrimPrefix(r.URL.Path, "/api/v1/check/delete/")
 		var id int64
@@ -165,6 +191,11 @@ func newCheckServer(t *testing.T, st *checkAPIState) *httptest.Server {
 		})
 	})
 	mux.HandleFunc("/api/v1/check/", func(w http.ResponseWriter, r *http.Request) {
+		if st.failGet {
+			w.WriteHeader(http.StatusInternalServerError)
+			writeJSON(w, map[string]string{"error": "boom"})
+			return
+		}
 		idStr := strings.TrimPrefix(r.URL.Path, "/api/v1/check/")
 		var id int64
 		_, _ = fmt.Sscanf(idStr, "%d", &id)

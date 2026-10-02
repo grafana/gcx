@@ -25,11 +25,15 @@ gcx synthetic-monitoring checks create [flags]
 
   # Validate HTTP target before creating.
   gcx synthetic-monitoring checks create -f check.yaml --validate-targets
+
+  # Validate with the Synthetic Monitoring API without creating anything.
+  gcx synthetic-monitoring checks create -f check.yaml --dry-run
 ```
 
 ### Options
 
 ```
+      --dry-run            Validate the check with the Synthetic Monitoring API without creating it
   -f, --filename string    File containing the check manifest (YAML)
   -h, --help               help for create
       --jq string          jq expression to apply to JSON output. Mutually exclusive with --json.
