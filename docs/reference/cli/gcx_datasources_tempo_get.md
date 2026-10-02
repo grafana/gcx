@@ -9,8 +9,9 @@ Retrieve a single trace by its trace ID from a Tempo datasource.
 TRACE_ID is the hex-encoded trace identifier to retrieve.
 Datasource is resolved from -d flag or datasources.tempo in your context.
 
-Pass --since or --from/--to (e.g. the search's time range) to make the lookup
-much faster. The range must cover the trace, or it won't be found.
+If you know when the trace happened (e.g. from search results), pass --since or
+--from/--to to make the lookup much faster. Otherwise, leave them out; a range
+that misses the trace returns not found.
 
 Use --share-link to print a Grafana Explore URL for the trace, or --open to
 open it in your browser after retrieval succeeds. Share links require an

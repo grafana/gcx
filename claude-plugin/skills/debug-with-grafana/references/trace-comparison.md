@@ -72,8 +72,9 @@ and can include the same incident. `--window` widens that padding; explicit
 `--from` and `--to` override it. Baseline has no `--since` flag. Use the same
 context and datasource as the seed.
 
-Pass `--seed-from`/`--seed-to` (e.g. the search's time range) to make the seed
-lookup much faster. The range must cover the seed trace, or it won't be found.
+If you know when the seed trace happened (e.g. from search results), pass
+`--seed-from`/`--seed-to` to make the seed lookup much faster. Otherwise, leave
+them out; a range that misses the seed returns not found.
 
 ## Assess candidates iteratively
 

@@ -122,8 +122,9 @@ responses may change without following the normal semantic versioning convention
 Find unranked candidates when you have a seed trace (TRACE_ID) but need a useful
 comparison; if you already have both trace IDs, use 'gcx traces diff' directly.
 
-Pass --seed-from/--seed-to (e.g. the search's time range) to make the seed
-lookup much faster. The range must cover the seed trace, or it won't be found.
+If you know when the seed trace happened (e.g. from search results), pass
+--seed-from/--seed-to to make the seed lookup much faster. Otherwise, leave them
+out; a range that misses the seed returns not found.
 
 Retrieval fetches the seed, matches its root service/operation, requires root
 status != error (including unset), retains downstream errors, and pins up to
@@ -154,7 +155,7 @@ diff or treating the first result as healthy.`,
   gcx traces baseline --context prod -d UID <seed-id> --filter "$COHORT" --limit 5 \
     --from 2026-01-15T08:00:00Z --to 2026-01-15T09:00:00Z
 
-  # Bound the seed trace lookup to the range the seed was found in
+  # When the seed's time range is known, bound the seed trace lookup to it
   gcx traces baseline --context prod -d UID <seed-id> --limit 5 \
     --seed-from 2026-01-15T08:00:00Z --seed-to 2026-01-15T09:00:00Z`,
 		Args: cobra.ExactArgs(1),
@@ -250,7 +251,7 @@ diff or treating the first result as healthy.`,
 
 	cmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "medium",
-		agent.AnnotationLLMHint:   "gcx datasources tempo baseline --context <context> -d UID <seed-id> --seed-from <search-from> --seed-to <search-to> --limit 5 -o agents",
+		agent.AnnotationLLMHint:   "gcx datasources tempo baseline --context <context> -d UID <seed-id> --limit 5 -o agents; add --seed-from/--seed-to (e.g. the search's time range) only when known, to make the seed lookup much faster",
 		agent.AnnotationStability: agent.StabilityExperimental,
 	}
 
