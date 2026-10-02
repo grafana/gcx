@@ -10,9 +10,9 @@ responses may change without following the normal semantic versioning convention
 Find unranked candidates when you have a seed trace (TRACE_ID) but need a useful
 comparison; if you already have both trace IDs, use 'gcx traces diff' directly.
 
-If you know when the seed trace happened (e.g. from search results), pass
---seed-from/--seed-to to make the seed lookup much faster. Otherwise, leave them
-out; a range that misses the seed returns not found.
+Pass --seed-from/--seed-to (e.g. the search's time range) to make the seed
+lookup much faster. Omit them when the time range is unknown; a range that
+misses the seed returns not found.
 
 Retrieval fetches the seed, matches its root service/operation, requires root
 status != error (including unset), retains downstream errors, and pins up to
