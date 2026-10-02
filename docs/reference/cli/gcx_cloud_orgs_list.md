@@ -6,7 +6,7 @@
 
 This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
 
-List all organisation memberships returned by the Grafana Cloud OAuth API.
+List all organisation memberships returned by the Grafana Cloud.
 Requires a browser Cloud login with the profile scope. Cloud access-policy tokens
 cannot enumerate user memberships. Existing logins may need re-authentication:
   gcx cloud login
