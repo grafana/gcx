@@ -70,7 +70,7 @@ See [../architecture/config-system.md](../architecture/config-system.md) for the
 |----------|--------|---------------|
 | `GCX_AUTO_APPROVE` | Auto-enable `--force` on delete operations | See `docs/reference/environment-variables/` |
 
-Accepts: `1`, `true`, `0`, `false` (parsed by `caarlos0/env/v11`)
+Accepts the `strconv.ParseBool` vocabulary and nothing else. Setting it is not the same as enabling it, and an unparseable value fails the command outright — [safety.md](safety.md) § 3.3 owns the truth table.
 
 **Implementation:** `internal/config/cli_options.go` - `CLIOptions` struct loaded via `LoadCLIOptions()`
 
@@ -78,7 +78,7 @@ Accepts: `1`, `true`, `0`, `false` (parsed by `caarlos0/env/v11`)
 
 | Variable | Source | Effect |
 |----------|--------|--------|
-| `GCX_AGENT_MODE` | Explicit opt-in/out | `1`/`true`/`yes` enables agent mode; `0`/`false`/`no` disables (overrides all others) |
+| `GCX_AGENT_MODE` | Explicit opt-in/out | `1`/`true`/`yes` enables agent mode; `0`/`false`/`no` disables (overrides the other environment variables; an explicitly passed `--agent` still wins). Any other value is ignored and harness detection continues — [agent-mode.md](agent-mode.md) § 6.1 owns the order |
 | `GCX_AGENT_SPILL_BYTES` | Output tuning | Spill threshold in bytes for the `agents` codec (default `102400` = 100 KiB). Payloads above this are written to a temp file; a summary is printed instead. Invalid values fall back to the default. See [output.md § Agents Codec](output.md#111-agents-codec) |
 | `CLAUDECODE` | Claude Code | Truthy value activates agent mode |
 | `CLAUDE_CODE` | Claude Code | Truthy value activates agent mode |
