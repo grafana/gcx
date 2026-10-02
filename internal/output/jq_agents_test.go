@@ -232,10 +232,8 @@ func TestOptions_JQ_AgentsStream(t *testing.T) {
 			info, err := os.Stat(path)
 			require.NoError(t, err)
 			assert.Equal(t, os.FileMode(0600), info.Mode().Perm())
-			var hint map[string]any
-			require.NoError(t, json.Unmarshal(stderr.Bytes(), &hint), "one typed spill hint")
-			assert.Equal(t, "hint", hint["class"])
-			assert.Contains(t, hint["summary"], path)
+			assert.Empty(t, stderr.String(), "agent-mode spill writes no stderr hint")
+			assert.NotContains(t, receipt, "hint", "jq output gets no field-selection hint")
 		})
 	}
 }
