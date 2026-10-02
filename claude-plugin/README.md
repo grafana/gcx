@@ -77,6 +77,7 @@ canonical portable skill bundle.
 | `investigate-alert` | Investigate why a Grafana alert is firing and what it impacts |
 | `oncall-triage` | Triage active Grafana OnCall alert groups: list, inspect, acknowledge, silence, resolve |
 | `debug-with-grafana` | Investigate with metrics, logs, and traces; use baseline candidates and trace diff to localize request regressions |
+| `performance-rca` | Locate CPU, memory, or contention cost in a service's own code with Pyroscope profiles, qualified against a baseline |
 | `diagnose-entity-graph` | Diagnose Knowledge Graph problems: missing entities, missing edges, broken trace context propagation, service-name collisions |
 | `slo-check-status` | Check SLO health and summarize current status |
 | `slo-investigate` | Diagnose why a specific SLO is breaching or alerting |

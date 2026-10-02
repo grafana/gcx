@@ -7,7 +7,8 @@ description: >
   execution changes. Accepts alert payloads, dashboard links, and trace IDs;
   does not require IRM or all three signals. For alert-rule semantics use
   investigate-alert; dashboard authoring uses create-dashboard and inventory
-  uses manage-dashboards.
+  uses manage-dashboards. When profiles can explain CPU,
+  allocations, or contention in the suspect service, use performance-rca.
 ---
 
 # Debug with Grafana
@@ -41,6 +42,11 @@ leading explanation. Use metrics for onset, magnitude, and population scope;
 traces for request execution; targeted logs, configuration, deployment, or
 resource evidence for mechanisms. Reuse relevant alert/recording-rule/panel
 queries rather than surveying dashboards or probing every configured signal.
+
+When CPU, allocations, or contention point to a suspect service, use
+`performance-rca` with the symptom, fixed windows, qualified controls, and
+trace/change evidence. Use the returned stack and profile differences to test
+the mechanism against the original symptom.
 
 Follow the strongest lead before opening another branch. Group reads already
 justified by the same question; let their results determine further checks.
