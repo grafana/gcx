@@ -147,22 +147,23 @@ type createOpts struct {
 }
 
 func (o *createOpts) Validate() error {
-	if strings.TrimSpace(o.Org) == "" {
+	o.Org = strings.TrimSpace(o.Org)
+	var missing []string
+	if o.Org == "" {
+		missing = append(missing, "--org")
+	}
+	if o.Name == "" {
+		missing = append(missing, "--name")
+	}
+	if o.Slug == "" {
+		missing = append(missing, "--slug")
+	}
+	if len(missing) > 0 {
 		return &gcxerrors.DetailedError{
 			Summary:     "Invalid command usage",
-			Details:     "--org is required and must be a nonblank organisation slug",
+			Details:     "Required flags must have nonblank values: " + strings.Join(missing, ", "),
 			ExitCode:    new(gcxerrors.ExitUsageError),
-			Suggestions: []string{"Specify the destination organisation: gcx cloud stacks create --org <org-slug> --name <name> --slug <slug> --region <region>"},
-		}
-	}
-	if o.Name == "" || o.Slug == "" {
-		return &gcxerrors.DetailedError{
-			Summary:  "Invalid command usage",
-			Details:  "--name and --slug are required",
-			ExitCode: new(gcxerrors.ExitUsageError),
-			Suggestions: []string{
-				"Provide both flags: gcx cloud stacks create --org <org-slug> --name <name> --slug <slug> --region <region>",
-			},
+			Suggestions: []string{"Specify the destination and stack: gcx cloud stacks create --org <org-slug> --name <name> --slug <slug> --region <region>"},
 		}
 	}
 	if !stackSlugRe.MatchString(o.Slug) {
@@ -236,11 +237,12 @@ the stack's <slug>.grafana.net subdomain.`,
 			agent.AnnotationTokenCost:     "small",
 			agent.AnnotationLLMHint:       "This command creates a new Grafana Cloud stack, which provisions infrastructure and may incur costs. Always confirm the organisation slug, stack name, slug, and region with the user before executing. --org is required to select the destination organisation. Prefer --dry-run first. Stack slugs may only contain lowercase letters and digits (they become <slug>.grafana.net).",
 		},
+		// Validate before Cobra checks required flags so all missing values
+		// use the structured usage error and exit code 2.
+		PreRunE: func(_ *cobra.Command, _ []string) error {
+			return opts.Validate()
+		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := opts.Validate(); err != nil {
-				return err
-			}
-
 			labels, err := labelsFromFlag(opts.Labels)
 			if err != nil {
 				return err
@@ -284,6 +286,7 @@ the stack's <slug>.grafana.net subdomain.`,
 		},
 	}
 	opts.setup(cmd.Flags())
+	_ = cmd.MarkFlagRequired("org")
 	_ = cmd.MarkFlagRequired("name")
 	_ = cmd.MarkFlagRequired("slug")
 	return cmd

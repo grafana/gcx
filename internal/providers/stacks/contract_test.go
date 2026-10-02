@@ -42,14 +42,25 @@ func setAgentMode(t *testing.T, enabled bool) {
 // returns a ConfigLoader whose cloud api-url points at it.
 func newCloudFixture(t *testing.T, handler http.HandlerFunc) *providers.ConfigLoader {
 	t.Helper()
-	return newCloudFixtureWithAuth(t, handler, "token")
+	srv := httptest.NewServer(handler)
+	t.Cleanup(srv.Close)
+	cfgPath := testutils.CreateTempFile(t, `
+contexts:
+  default:
+    cloud:
+      token: "test-token"
+      api-url: "`+srv.URL+`"
+current-context: default
+`)
+	loader := &providers.ConfigLoader{}
+	loader.SetConfigFile(cfgPath)
+	return loader
 }
 
-func newCloudFixtureWithAuth(t *testing.T, handler http.HandlerFunc, tokenField string) *providers.ConfigLoader {
+func newOAuthCloudFixture(t *testing.T, handler http.HandlerFunc) *providers.ConfigLoader {
 	t.Helper()
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
-
 	cfgPath := testutils.CreateTempFile(t, `
 version: 1
 contexts:
@@ -57,11 +68,10 @@ contexts:
     cloud: test
 cloud:
   test:
-    `+tokenField+`: "test-token"
+    oauth-token: "test-token"
     api-url: "`+srv.URL+`"
 current-context: default
 `)
-
 	loader := &providers.ConfigLoader{}
 	loader.SetConfigFile(cfgPath)
 	return loader
@@ -486,20 +496,22 @@ func TestMutationDiagnosticsStayOffStdout(t *testing.T) {
 
 func TestCreateCommand_Organisation(t *testing.T) {
 	for _, tc := range []struct {
-		name       string
-		tokenField string
-		orgArgs    []string
-		status     int
-		dryRun     bool
-		wantCalls  int
-		wantErr    string
+		name      string
+		oauth     bool
+		orgArgs   []string
+		status    int
+		dryRun    bool
+		wantCalls int
+		wantErr   string
 	}{
 		{name: "omitted", wantErr: "nonblank"},
 		{name: "empty", orgArgs: []string{"--org", ""}, wantErr: "nonblank"},
 		{name: "whitespace", orgArgs: []string{"--org", " \t"}, wantErr: "nonblank"},
 		{name: "omitted dry run", dryRun: true, wantErr: "nonblank"},
 		{name: "empty dry run", orgArgs: []string{"--org", ""}, dryRun: true, wantErr: "nonblank"},
-		{name: "OAuth request", tokenField: "oauth-token", orgArgs: []string{"--org", "example-org"}, status: http.StatusOK, wantCalls: 1},
+		{name: "OAuth request", oauth: true, orgArgs: []string{"--org", "example-org"}, status: http.StatusOK, wantCalls: 1},
+		{name: "padded request", orgArgs: []string{"--org", " \texample-org "}, status: http.StatusOK, wantCalls: 1},
+		{name: "padded preview", orgArgs: []string{"--org", " example-org "}, dryRun: true},
 		{name: "request", orgArgs: []string{"--org", "example-org"}, status: http.StatusOK, wantCalls: 1},
 		{name: "denied by API", orgArgs: []string{"--org", "example-org"}, status: http.StatusForbidden, wantCalls: 1, wantErr: "403"},
 		{name: "dry run", orgArgs: []string{"--org", "example-org"}, dryRun: true},
@@ -507,11 +519,11 @@ func TestCreateCommand_Organisation(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			testutils.SandboxConfigEnv(t)
 			calls := 0
-			tokenField := tc.tokenField
-			if tokenField == "" {
-				tokenField = "token"
+			fixture := newCloudFixture
+			if tc.oauth {
+				fixture = newOAuthCloudFixture
 			}
-			loader := newCloudFixtureWithAuth(t, func(w http.ResponseWriter, r *http.Request) {
+			loader := fixture(t, func(w http.ResponseWriter, r *http.Request) {
 				calls++
 				assert.Equal(t, http.MethodPost, r.Method)
 				assert.Equal(t, "/api/instances", r.URL.Path)
@@ -525,7 +537,7 @@ func TestCreateCommand_Organisation(t *testing.T) {
 					return
 				}
 				_ = json.NewEncoder(w).Encode(testStack())
-			}, tokenField)
+			})
 			args := append([]string{"create", "--name", "My Stack", "--slug", "mystack", "-o", "json"}, tc.orgArgs...)
 			if tc.dryRun {
 				args = append(args, "--dry-run")
