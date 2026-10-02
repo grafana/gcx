@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	goio "io"
-	"strconv"
 	"strings"
 
 	"github.com/grafana/gcx/internal/format"
@@ -24,6 +23,7 @@ type getOpts struct {
 	IO      cmdio.Options
 	url     string
 	section string
+	product string
 	offset  int
 	limit   int
 }
@@ -33,13 +33,14 @@ func (o *getOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("text", &getTextCodec{})
 	o.IO.BindFlags(flags)
 	flags.StringVar(&o.section, "section", "", "Heading text to extract (returns only that section)")
+	flags.StringVar(&o.product, "product", "", "Scope shorthand resolution to a product (case-insensitive; matches exact, then prefix, then substring; empty = all products; ignored when the argument is a full URL)")
 	flags.IntVar(&o.offset, "offset", 0, "Line offset for paging (0-indexed)")
 	flags.IntVar(&o.limit, "limit", 0, "Maximum lines to return (0 or negative uses the default of 80)")
 }
 
 func (o *getOpts) Validate() error {
 	if strings.TrimSpace(o.url) == "" {
-		return errors.New("url is required")
+		return errors.New("url or query is required")
 	}
 	if o.offset < 0 {
 		return fmt.Errorf("--offset must be non-negative, got %d", o.offset)
@@ -50,6 +51,9 @@ func (o *getOpts) Validate() error {
 func (o *getOpts) validateExplicitFlags(cmd *cobra.Command) error {
 	if cmd.Flags().Changed("section") && strings.TrimSpace(o.section) == "" {
 		return errors.New("--section must not be empty")
+	}
+	if cmd.Flags().Changed("product") && strings.TrimSpace(o.product) == "" {
+		return errors.New("--product must not be empty")
 	}
 	return nil
 }
@@ -62,15 +66,22 @@ type getResult struct {
 	ReturnedRange [2]int `json:"returned_range"`
 }
 
-func getCommand(fetch docFetcher) *cobra.Command {
+func getCommand(loader *indexLoader, fetch docFetcher) *cobra.Command {
 	opts := &getOpts{}
 	cmd := &cobra.Command{
-		Use:   "get <url>",
+		Use:   "get <url-or-query>",
 		Short: "Fetch a Grafana documentation page.",
-		Long: "Fetch a documentation page as cleaned markdown. Supports section " +
-			"extraction and offset/limit paging for bounded retrieval.",
-		Example: `  # Fetch a doc
+		Long: "Fetch a documentation page as cleaned markdown. The argument can be " +
+			"a full URL or a shorthand query that is resolved via the docs index. " +
+			"Supports section extraction and offset/limit paging for bounded retrieval.",
+		Example: `  # Fetch by full URL
   gcx docs get https://grafana.com/docs/tempo/latest/traceql/construct-traceql-queries/
+
+  # Fetch by shorthand query (resolved via docs index)
+  gcx docs get traceql
+
+  # Scope shorthand resolution to a product
+  gcx docs get configuration --product tempo
 
   # Extract a single section
   gcx docs get https://grafana.com/docs/tempo/latest/traceql/construct-traceql-queries/ --section "Comparison operators"
@@ -86,6 +97,13 @@ func getCommand(fetch docFetcher) *cobra.Command {
 			if err := opts.validateExplicitFlags(cmd); err != nil {
 				return err
 			}
+			rawInput := opts.url
+			resolved, err := resolveIfShorthand(cmd.Context(), loader, opts.url, opts.product)
+			if err != nil {
+				return err
+			}
+			emitShorthandResolutionHint(cmd.ErrOrStderr(), "get", rawInput, resolved)
+			opts.url = resolved
 			doc, err := fetch(cmd.Context(), opts.url)
 			if err != nil {
 				return cleanFetchErr(opts.url, err)
@@ -100,7 +118,7 @@ func getCommand(fetch docFetcher) *cobra.Command {
 				Limit:   effectiveLimit,
 			})
 			if res.Content == "" && opts.section != "" {
-				return fmt.Errorf("section %q not found; run `gcx docs outline %s` to see available headings", opts.section, shellQuote(opts.url))
+				return fmt.Errorf("section %q not found; run `gcx docs outline %q` to see available headings", opts.section, opts.url)
 			}
 			if err := opts.IO.Encode(cmd.OutOrStdout(), getResult{
 				Content:       res.Content,
@@ -140,10 +158,6 @@ func (c *getTextCodec) Decode(_ goio.Reader, _ any) error {
 
 func emitGetPartialityHint(w goio.Writer, rawURL string, start, end, total, effectiveLimit int) {
 	summary := fmt.Sprintf("showing lines %d-%d of %d", start, end, total)
-	continuation := fmt.Sprintf("gcx docs get %s --offset %d --limit %d", shellQuote(rawURL), end, effectiveLimit)
+	continuation := fmt.Sprintf("gcx docs get %q --offset %d --limit %d", rawURL, end, effectiveLimit)
 	cmdio.EmitHint(w, summary, continuation)
-}
-
-func shellQuote(value string) string {
-	return strconv.Quote(value)
 }

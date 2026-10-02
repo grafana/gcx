@@ -3,10 +3,13 @@ package docs
 import (
 	"context"
 	"fmt"
+	goio "io"
 	"os"
 	"strings"
 	"sync"
 
+	"github.com/grafana/gcx/internal/docsindex"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/mcp-doc-server/pkg/grafanadocs"
 	"github.com/spf13/cobra"
 )
@@ -29,9 +32,10 @@ func cleanFetchErr(rawURL string, err error) error {
 }
 
 // indexLoader provides lazy, once-only loading of the documentation index.
-// The index is fetched on the first subcommand that needs it (search,
-// list-products) and cached for the lifetime of the process. Commands that only
-// need FetchDoc (get, outline) never trigger the load.
+// The index is fetched on the first subcommand that needs it and cached for
+// the lifetime of the process. Commands that always use the index: search,
+// list-products. Commands that use it conditionally: get and outline load the
+// index only when the argument is a shorthand query (not a full URL).
 //
 // Lazy loading avoids a network fetch on unrelated commands or --help.
 type indexLoader struct {
@@ -63,6 +67,32 @@ func Command() *cobra.Command {
 	return newDocsCommand(&indexLoader{}, grafanadocs.FetchDoc)
 }
 
+// resolveIfShorthand resolves a URL-or-query argument to a full documentation
+// URL. If the input contains a URL scheme ("://"), it is returned as-is so
+// FetchDoc can validate or reject the scheme. Otherwise the docs index is
+// loaded and the shorthand query is resolved via search, optionally scoped to
+// a product.
+func resolveIfShorthand(ctx context.Context, loader *indexLoader, input, product string) (string, error) {
+	if strings.Contains(input, "://") {
+		return input, nil
+	}
+	idx, err := loader.get(ctx)
+	if err != nil {
+		return "", err
+	}
+	return docsindex.ResolveShorthand(idx, input, product)
+}
+
+func emitShorthandResolutionHint(w goio.Writer, subcommand, original, resolved string) {
+	if original == resolved {
+		return
+	}
+	cmdio.EmitHint(w,
+		fmt.Sprintf("resolved %q to documentation URL", original),
+		fmt.Sprintf("gcx docs %s %q", subcommand, resolved),
+	)
+}
+
 func newDocsCommand(loader *indexLoader, fetch docFetcher) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "docs",
@@ -73,8 +103,8 @@ func newDocsCommand(loader *indexLoader, fetch docFetcher) *cobra.Command {
 
 	cmd.AddCommand(
 		searchCommand(loader),
-		getCommand(fetch),
-		outlineCommand(fetch),
+		getCommand(loader, fetch),
+		outlineCommand(loader, fetch),
 		productsCommand(loader),
 		linksCommand(),
 	)
