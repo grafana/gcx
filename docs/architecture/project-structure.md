@@ -9,6 +9,7 @@ gcx/
 │       ├── main.go           # Version vars, main(), error handler
 │       ├── root/             # Root Cobra command, global flags, logging setup
 │       ├── auth/             # OAuth login command (browser-based PKCE flow)
+│       ├── cloud/            # Cloud login, stack management, and OAuth user organisation memberships
 │       ├── config/           # 'config' subcommand implementations
 │       ├── resources/        # 'resources' subcommand implementations
 │       ├── datasources/      # 'datasources' subcommand (list, get, query)
@@ -38,7 +39,7 @@ gcx/
 │   │   └── mcpserver/        # MCPServer manifest domain type + TypedCRUD adapter wiring + header write-intent mapping
 │   ├── auth/                 # OAuth PKCE flow, token refresh transport
 │   │   └── adaptive/         # Shared adaptive telemetry auth (GCOM caching, Basic auth)
-│   ├── cloud/                # Grafana Cloud stack discovery via GCOM API
+│   ├── cloud/                # Grafana Cloud stack discovery and user organisation memberships via GCOM API
 │   ├── fleet/                # Shared fleet base client (HTTP + stack config, over the grafana-collector-app plugin proxy — shared by fleet provider and instrumentation provider)
 │   ├── config/               # Config loading, context management, auth types (auto-migrates plaintext token-shaped secrets into the OS keychain via internal/credentials)
 │   │   └── testdata/         # YAML fixtures for config unit tests

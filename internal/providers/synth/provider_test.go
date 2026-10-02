@@ -1,6 +1,7 @@
 package synth_test
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/grafana/gcx/internal/providers"
@@ -63,4 +64,28 @@ func TestSynthProvider_Validate(t *testing.T) {
 			require.NoError(t, p.Validate(tc.cfg))
 		})
 	}
+}
+
+func TestCheckSchemaFolderUID(t *testing.T) {
+	p := &synth.SynthProvider{}
+	for _, registration := range p.TypedRegistrations() {
+		if registration.Descriptor.Kind != "Check" {
+			continue
+		}
+		var schema map[string]any
+		require.NoError(t, json.Unmarshal(registration.Schema, &schema))
+		properties, ok := schema["properties"].(map[string]any)
+		require.True(t, ok)
+		spec, ok := properties["spec"].(map[string]any)
+		require.True(t, ok)
+		fields, ok := spec["properties"].(map[string]any)
+		require.True(t, ok)
+		folder, ok := fields["folderUid"].(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, "string", folder["type"])
+		assert.NotContains(t, spec["required"], "folderUid")
+		assert.NotContains(t, folder, "minLength", "empty string clears the assignment")
+		return
+	}
+	t.Fatal("Check registration not found")
 }

@@ -254,6 +254,7 @@ func checkToResource(check Check, probeNames map[int64]string) checkResource {
 			BasicMetricsOnly: check.BasicMetricsOnly,
 			AlertSensitivity: check.AlertSensitivity,
 			Channels:         check.Channels,
+			FolderUID:        check.FolderUID,
 		},
 		name:    name,
 		checkID: check.ID,

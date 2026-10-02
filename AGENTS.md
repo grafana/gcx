@@ -73,7 +73,7 @@ cmd/gcx/
   datasources/  Datasource commands (list, get, query, per-type subcommands via DatasourceProvider)
   docs/         Documentation lookup (search, get, outline, list-products, list-links)
   providers/    Provider list command
-  cloud/        Cloud platform command group (mounts gcx cloud stacks)
+  cloud/        Cloud platform commands (login, stack management, user org memberships)
   api/          Raw API passthrough
   linter/       Linting (mounted under dev lint)
   commands/     Commands catalog (agent metadata)
