@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/testutils"
@@ -40,7 +41,7 @@ func TestOrgsListCommand(t *testing.T) {
 		{name: "scope denied", body: `{}`, status: 403, want: "profile", fail: true, wantDetailed: true, wantRequests: 1},
 		{name: "configured CAP shadows OAuth", capToken: "example-cap", body: `{}`, status: 403, want: "profile", fail: true, wantDetailed: true, wantRequests: 1},
 		{name: "environment CAP shadows OAuth", envToken: "example-env-cap", body: `{}`, status: 403, want: "profile", fail: true, wantDetailed: true, wantRequests: 1},
-		{name: "not a user", body: `null`, status: 200, want: "GRAFANA_CLOUD_TOKEN", fail: true, wantRequests: 1},
+		{name: "not a user", body: `null`, status: 200, want: "profile", fail: true, wantDetailed: true, wantRequests: 1},
 		{name: "extra arg", args: []string{"extra"}, fail: true},
 		{name: "bad format", args: []string{"-o", "bogus"}, fail: true},
 	} {
@@ -78,8 +79,8 @@ func TestOrgsListCommand(t *testing.T) {
 			if tc.fail {
 				require.Error(t, err)
 				if tc.wantDetailed {
-					var detailed *gcxerrors.DetailedError
-					require.ErrorAs(t, err, &detailed)
+					detailed := fail.ErrorToDetailedError(err)
+					require.Equal(t, gcxerrors.ExitAuthFailure, *detailed.ExitCode)
 					require.Contains(t, detailed.Suggestions[0], tc.want)
 					require.Contains(t, detailed.Suggestions[0], "gcx cloud login")
 					require.NotContains(t, detailed.Suggestions[0], "--scope profile")

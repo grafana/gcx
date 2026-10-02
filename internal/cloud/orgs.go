@@ -9,6 +9,9 @@ import (
 	"net/http"
 )
 
+// ErrUserOAuthRequired indicates that the API returned no authenticated user.
+var ErrUserOAuthRequired = errors.New("cloud organisation listing requires a user OAuth identity")
+
 // OrgMembership is a Cloud organisation membership of the authenticated user.
 // Membership does not imply permission to create stacks.
 type OrgMembership struct {
@@ -48,7 +51,7 @@ func (c *GCOMClient) ListOrgs(ctx context.Context) ([]OrgMembership, error) {
 		return nil, fmt.Errorf("gcom client: decode organisations: %w", err)
 	}
 	if rows == nil {
-		return nil, errors.New("organisation listing requires a user OAuth login; run gcx cloud login using the same config/context (default scopes include profile); unset GRAFANA_CLOUD_TOKEN or cloud.<entry>.token if set, because access-policy tokens take precedence over OAuth")
+		return nil, ErrUserOAuthRequired
 	}
 	result := make([]OrgMembership, 0, len(rows))
 	for i, row := range rows {

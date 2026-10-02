@@ -2,13 +2,12 @@ package cloud
 
 import (
 	"errors"
+	"fmt"
 	"io"
-	"net/http"
 
 	"github.com/grafana/gcx/internal/agent"
 	cloudapi "github.com/grafana/gcx/internal/cloud"
 	"github.com/grafana/gcx/internal/format"
-	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/style"
@@ -61,11 +60,7 @@ an organisation, use gcx cloud stacks list --org <slug>.`,
 			}
 			orgs, err := cfg.Client.ListOrgs(cmd.Context())
 			if err != nil {
-				var apiErr *cloudapi.GCOMHTTPError
-				if errors.As(err, &apiErr) && (apiErr.Status == http.StatusUnauthorized || apiErr.Status == http.StatusForbidden) {
-					return &gcxerrors.DetailedError{Summary: "cloud organisation access denied", Parent: err, Suggestions: []string{"Run gcx cloud login using the same config/context; the default scopes include profile and stack management", "Unset GRAFANA_CLOUD_TOKEN or cloud.<entry>.token if set: access-policy tokens take precedence over OAuth and cannot list user memberships"}}
-				}
-				return err
+				return fmt.Errorf("failed to list cloud organisations: %w", err)
 			}
 			return opts.IO.Encode(cmd.OutOrStdout(), orgs)
 		},
