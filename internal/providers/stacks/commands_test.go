@@ -78,7 +78,7 @@ func TestCreateCommand_NameAndSlugRequired(t *testing.T) {
 		wantErr string
 	}{
 		{"missing both", []string{"create"}, "required flag"},
-		{"missing slug", []string{"create", "--name", "foo"}, "required flag"},
+		{"missing slug", []string{"create", "--org", "example-org", "--name", "foo"}, "required flag"},
 		{"missing name", []string{"create", "--slug", "foo"}, "required flag"},
 	}
 
@@ -111,7 +111,7 @@ func TestCreateCommand_SlugValidation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := runCmd(t, stacks.NewTestCreateCommand(), []string{
-				"create", "--name", tt.nameFlag, "--slug", tt.slug,
+				"create", "--org", "example-org", "--name", tt.nameFlag, "--slug", tt.slug,
 			}, "")
 			require.Error(t, err)
 
@@ -136,7 +136,7 @@ func TestCreateCommand_SlugValidation_ValidSlugsPass(t *testing.T) {
 	for _, slug := range []string{"mygcxeval1", "123abc"} {
 		t.Run(slug, func(t *testing.T) {
 			out, err := runCmd(t, stacks.NewTestCreateCommand(), []string{
-				"create", "--name", "My Stack", "--slug", slug, "--dry-run", "-o", "table",
+				"create", "--org", "example-org", "--name", "My Stack", "--slug", slug, "--dry-run", "-o", "table",
 			}, "")
 			require.NoError(t, err)
 			assert.Contains(t, out, "Dry run:")
@@ -148,7 +148,7 @@ func TestCreateCommand_DryRun_InvalidSlugRejected(t *testing.T) {
 	// Validation must run before the dry-run branch: an invalid slug fails
 	// and no preview is rendered (issue #950 item 3).
 	out, err := runCmd(t, stacks.NewTestCreateCommand(), []string{
-		"create", "--name", "t", "--slug", "my-gcx-eval", "--dry-run", "-o", "table",
+		"create", "--org", "example-org", "--name", "t", "--slug", "my-gcx-eval", "--dry-run", "-o", "table",
 	}, "")
 	require.Error(t, err)
 	assert.NotContains(t, out, "Dry run:")
@@ -164,7 +164,7 @@ func TestCreateCommand_DryRun_InvalidSlugRejected(t *testing.T) {
 
 func TestCreateCommand_DryRun(t *testing.T) {
 	out, err := runCmd(t, stacks.NewTestCreateCommand(), []string{
-		"create", "--name", "My Stack", "--slug", "mystack", "--region", "us",
+		"create", "--org", "example-org", "--name", "My Stack", "--slug", "mystack", "--region", "us",
 		"--dry-run", "-o", "table",
 	}, "")
 
@@ -179,7 +179,7 @@ func TestCreateCommand_DryRun(t *testing.T) {
 
 func TestCreateCommand_DryRun_WithLabels(t *testing.T) {
 	out, err := runCmd(t, stacks.NewTestCreateCommand(), []string{
-		"create", "--name", "My Stack", "--slug", "mystack",
+		"create", "--org", "example-org", "--name", "My Stack", "--slug", "mystack",
 		"--labels", "env=prod", "--labels", "team=platform",
 		"--dry-run", "-o", "table",
 	}, "")
@@ -195,7 +195,7 @@ func TestCreateCommand_DryRun_WithLabels(t *testing.T) {
 
 func TestCreateCommand_DryRun_DeleteProtectionFlag(t *testing.T) {
 	out, err := runCmd(t, stacks.NewTestCreateCommand(), []string{
-		"create", "--name", "My Stack", "--slug", "mystack",
+		"create", "--org", "example-org", "--name", "My Stack", "--slug", "mystack",
 		"--delete-protection",
 		"--dry-run", "-o", "table",
 	}, "")
@@ -208,7 +208,7 @@ func TestCreateCommand_DryRun_DeleteProtectionFlag(t *testing.T) {
 
 func TestCreateCommand_DryRun_InvalidLabels(t *testing.T) {
 	_, err := runCmd(t, stacks.NewTestCreateCommand(), []string{
-		"create", "--name", "My Stack", "--slug", "mystack",
+		"create", "--org", "example-org", "--name", "My Stack", "--slug", "mystack",
 		"--labels", "noequalssign",
 		"--dry-run", "-o", "table",
 	}, "")
@@ -229,7 +229,7 @@ func TestCreateCommand_DryRun_DoesNotCallAPI(t *testing.T) {
 	// Dry-run should return before reaching the config loader. If it tried
 	// to load config, it would error because there's no config context set up.
 	_, err := runCmd(t, stacks.NewTestCreateCommand(), []string{
-		"create", "--name", "X", "--slug", "x", "--dry-run", "-o", "table",
+		"create", "--org", "example-org", "--name", "X", "--slug", "x", "--dry-run", "-o", "table",
 	}, "")
 	require.NoError(t, err)
 }

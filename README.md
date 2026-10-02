@@ -211,16 +211,14 @@ endpoint, including dev and ops environments. Membership is not a guarantee of
 stack-creation permission. This differs from `gcx api /api/orgs`, which targets
 organisations inside a Grafana instance.
 
-Override the organisation used for stack creation with an explicit slug:
+Specify the destination organisation slug when creating a stack:
 
 ```bash
 gcx cloud stacks create --org example-org --name my-stack --slug mystack --region us --dry-run
 ```
 
-Review the preview, then omit `--dry-run` to create the stack. The Cloud API
-validates organisation access using your Cloud OAuth or access-policy token.
-Omit `--org` to preserve the default organisation selected by the Cloud API
-from your credentials.
+Review the preview, then omit `--dry-run` to create the stack. Both
+`stacks create` and `stacks list` require `--org <slug>`.
 
 `gcx` derives the Cloud stack slug from `--server` when possible. Set it explicitly only for custom domains where gcx cannot derive it:
 
