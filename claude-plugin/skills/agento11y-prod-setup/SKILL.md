@@ -1,20 +1,15 @@
 ---
 name: agento11y-prod-setup
 description: >
-  Sets up production evaluation and guardrails for a DEPLOYED AI agent in Grafana
-  Agent Observability, grounded in the agent's own code and its real ingested traffic.
-  The judgment layer on top of the `agento11y` skill: it reads the agent's source
-  (system prompt, tools, entrypoint) AND samples its live traffic via gcx, checks
-  what evaluators/rules/guards already exist, then recommends only what's missing —
-  online eval rules (score live conversations for regressions) and guards (warn-first
-  request-path policies that redact / tool-filter and may later be promoted to deny).
-  It drafts reviewable YAML and, only with explicit confirmation, applies via
-  `gcx agento11y`. New guards are drafted in warn mode (safe on live traffic — warn records but
-  never blocks). It DOES create stack-level objects —
-  that is the point — but every write is confirmed. It never rewrites or redeploys the
-  agent. Trigger on phrases like "set up production evaluation", "my agent is in prod
-  what should I evaluate", "catch quality regressions", "add guardrails to my agent",
-  "redact PII from my agent", "block dangerous tools", "set up online evals and guards".
+  Sets up production evaluation and guardrails for a deployed AI agent with real traffic
+  in Grafana Agent Observability. Reads source and samples live traffic via gcx, checks
+  existing evaluators/rules/guards, and recommends missing online eval rules and request-path
+  guards. Drafts reviewable YAML for eval rules and warn-mode guards; creates stack-level objects via
+  `gcx agento11y` only with explicit confirmation. Never rewrites or redeploys the agent.
+  Use for "set up production evaluation", "my agent is in prod what should I evaluate",
+  "catch quality regressions", "add guardrails to my agent", "redact PII from my agent",
+  "block dangerous tools", or "set up online evals and guards". For pre-ship offline tests
+  use `agento11y-test-starter`; for direct management of Agent Observability resources use `agento11y`.
 allowed-tools: Bash, Read, Write, Edit
 ---
 
