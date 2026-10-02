@@ -1,10 +1,10 @@
 ## gcx agent
 
-Agent mode utilities
+Utilities for AI agents
 
 ### Synopsis
 
-Utilities for gcx agent mode: manage spill files, install and update Agent Skills, and other agent session housekeeping.
+Utilities for AI agents: send phone notifications, manage spill files, and install and update Agent Skills.
 
 ### Options
 
@@ -26,6 +26,7 @@ Utilities for gcx agent mode: manage spill files, install and update Agent Skill
 ### SEE ALSO
 
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
+* [gcx agent ping](gcx_agent_ping.md)	 - [experimental] Send a notification to your paired phone
 * [gcx agent prune](gcx_agent_prune.md)	 - Remove gcx agent spill files older than 30 minutes
 * [gcx agent skills](gcx_agent_skills.md)	 - Manage portable gcx Agent Skills
 
