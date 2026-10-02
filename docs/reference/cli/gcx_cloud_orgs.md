@@ -23,5 +23,5 @@ Discover your Grafana Cloud organisations
 ### SEE ALSO
 
 * [gcx cloud](gcx_cloud.md)	 - Manage your Grafana Cloud resources
-* [gcx cloud orgs list](gcx_cloud_orgs_list.md)	 - List the signed-in user's Grafana Cloud organisation memberships.
+* [gcx cloud orgs list](gcx_cloud_orgs_list.md)	 - [experimental] List the signed-in user's Grafana Cloud organisation memberships.
 

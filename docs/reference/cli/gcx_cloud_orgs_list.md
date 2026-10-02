@@ -1,8 +1,10 @@
 ## gcx cloud orgs list
 
-List the signed-in user's Grafana Cloud organisation memberships.
+[experimental] List the signed-in user's Grafana Cloud organisation memberships.
 
 ### Synopsis
+
+This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
 
 List all organisation memberships returned by the Grafana Cloud OAuth API.
 Requires a browser Cloud login with the profile scope. Cloud access-policy tokens

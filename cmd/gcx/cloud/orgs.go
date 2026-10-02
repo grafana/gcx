@@ -31,8 +31,10 @@ func orgsCommand() *cobra.Command {
 	loader.BindFlags(parent.PersistentFlags())
 	opts := &orgListOpts{}
 	cmd := &cobra.Command{
-		Use: "list", Short: "List the signed-in user's Grafana Cloud organisation memberships.",
-		Long: `List all organisation memberships returned by the Grafana Cloud OAuth API.
+		Use: "list", Short: "[experimental] List the signed-in user's Grafana Cloud organisation memberships.",
+		Long: `This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
+
+List all organisation memberships returned by the Grafana Cloud OAuth API.
 Requires a browser Cloud login with the profile scope. Cloud access-policy tokens
 cannot enumerate user memberships. Existing logins may need re-authentication:
   gcx cloud login
@@ -47,6 +49,7 @@ an organisation, use gcx cloud stacks list --org <slug>.`,
 		Args:    cobra.NoArgs,
 		Annotations: map[string]string{
 			agent.AnnotationRequiredScope: "profile",
+			agent.AnnotationStability:     agent.StabilityExperimental,
 			agent.AnnotationTokenCost:     "small",
 			agent.AnnotationLLMHint:       "Discover Cloud organisation slugs for the signed-in user. Requires Cloud browser OAuth with profile scope; not a Grafana instance org list or access-policy token inventory.",
 		},
