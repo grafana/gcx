@@ -41,7 +41,7 @@ func requireGrafanaCloud(ctx *config.Context) error {
 // Command returns the assistant command group.
 func Command() *cobra.Command {
 	// A single ConfigLoader is shared across every subcommand (prompt,
-	// conversation, investigations, mcp-servers). --config is bound
+	// conversation, investigations, mcp-servers, search). --config is bound
 	// on the group's persistent flags; --context is the root command's global
 	// flag, threaded into context.Context and read back via
 	// config.ContextNameFromCtx — so no per-subcommand flag-copying is needed.
@@ -50,10 +50,12 @@ func Command() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "assistant",
 		Short: "Interact with Grafana Assistant",
-		Long: `Send prompts to Grafana Assistant and receive streaming responses via the A2A protocol.
+		Long: `Send prompts to Grafana Assistant, read conversations and investigations,
+manage MCP integrations, or search indexed evidence.
 
-Requires Grafana Cloud with OAuth authentication (gcx login with browser flow).
-Service account tokens are not supported.
+Requires Grafana Cloud. Browser OAuth (gcx login with browser flow) is
+recommended. Plugin HTTP commands such as Assistant search also accept Grafana
+service account tokens with the required Assistant and resource permissions.
 
 Note: Grafana Assistant is billed based on tokens consumed, including requests
 made through gcx. See ` + docs.AssistantPricing + `.`,
@@ -89,6 +91,7 @@ made through gcx. See ` + docs.AssistantPricing + `.`,
 	cmd.AddCommand(conversationCommand(loader))
 	cmd.AddCommand(investigations.Commands(loader))
 	cmd.AddCommand(mcpserverscmd.Commands(loader))
+	cmd.AddCommand(searchCommand(loader))
 	return cmd
 }
 

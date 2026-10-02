@@ -143,6 +143,7 @@
  "gcx assistant mcp-servers get": "finite",
  "gcx assistant mcp-servers list": "finite",
  "gcx assistant mcp-servers update": "finite",
+ "gcx assistant search": "finite",
  "gcx assistant prompt": "stream",
  "gcx cloud login": "interactive",
  "gcx cloud stacks create": "finite",
