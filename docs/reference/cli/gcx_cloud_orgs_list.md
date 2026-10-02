@@ -14,8 +14,7 @@ The default scopes include profile and stack management. Access-policy tokens
 from GRAFANA_CLOUD_TOKEN or cloud.<entry>.token take precedence over OAuth;
 unset them when using this command with a browser login.
 
-Returns organisation slugs and membership roles, not names or numeric IDs.
-Membership does not guarantee permission to create stacks. To list stacks within
+Returns organisation slugs and membership roles. To list stacks within
 an organisation, use gcx cloud stacks list --org <slug>.
 
 ```
