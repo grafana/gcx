@@ -197,6 +197,7 @@ func RenderBarChart(w io.Writer, data *ChartData, opts ChartOptions) error {
 		sb.WriteString("\n")
 		sb.WriteString(legend)
 	}
+	sb.WriteString("\n")
 
 	_, err := lipgloss.Fprint(w, sb.String())
 	return err
@@ -310,6 +311,7 @@ func RenderLineChart(w io.Writer, data *ChartData, opts ChartOptions) error {
 		sb.WriteString("\n")
 		sb.WriteString(legend)
 	}
+	sb.WriteString("\n")
 
 	_, err := lipgloss.Fprint(w, sb.String())
 	return err

@@ -8,6 +8,12 @@ Execute a profiling query against a Pyroscope datasource.
 
 EXPR is the label selector (e.g., '{service_name="frontend"}').
 Datasource is resolved from -d flag or datasources.pyroscope in your context.
+Use --share-link to print the equivalent Grafana Explore URL, or --open to
+open it in your browser after the query succeeds (unavailable for --trace-id,
+which has no Explore-UI representation). Use --drilldown-link or
+--open-drilldown for the equivalent Grafana Profiles Drilldown URL (falls
+back to the Explore URL for --trace-id/--profile-id, neither of which has a
+Drilldown URL equivalent).
 
 ```
 gcx profiles query [EXPR] [flags]
@@ -64,6 +70,7 @@ gcx profiles query [EXPR] [flags]
 
 ```
   -d, --datasource string             Datasource UID (required unless datasources.pyroscope is configured)
+      --drilldown-link                Print the Grafana Profiles Drilldown URL for the executed query to stderr
       --error-on-empty                Fail if the query returns no results
       --expr string                   Query expression (alternative to positional argument)
       --from string                   Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
@@ -71,11 +78,14 @@ gcx profiles query [EXPR] [flags]
       --jq string                     jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string                   Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --max-nodes int                 Maximum nodes in the result (defaults: pprof 0/unlimited, dot 100-node call graph rendered server-side, 50000 for all other formats)
+      --open                          Open the executed query in Grafana Explore
+      --open-drilldown                Open the executed query in Grafana Profiles Drilldown
   -o, --output string                 Output format. One of: agents, dot, graph, json, pprof, table, wide, yaml (default "table")
       --pprof-overwrite               Overwrite the output file if it already exists (only with -o pprof)
       --pprof-path string             Destination path for pprof binary output (only with -o pprof; default: profile-YYYY-MM-DD-HHMMSS.pb.gz)
       --profile-id strings            Drill down to specific profile UUIDs from exemplar queries (repeatable)
       --profile-type string           Profile type ID (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds'); use 'gcx profiles list-profile-types' to list available (required)
+      --share-link                    Print the Grafana Explore URL for the executed query to stderr
       --since string                  Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --span-id strings               Only query profiles with these 16-character hex span IDs (repeatable; unavailable with -o pprof and -o dot)
       --stacktrace-selector strings   Only query locations with these function names, starting from the root (repeatable)

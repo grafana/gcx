@@ -14,7 +14,10 @@ Instant vs range is deduced from time flags: no time flags = instant query,
 even when a time range is provided. If no time flags are set, gcx queries the
 last hour by default.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
-open it in your browser after the query succeeds.
+open it in your browser after the query succeeds. There is no
+--drilldown-link here: every TraceQL metrics query uses a pipeline stage
+like "| rate()", which Traces Drilldown's filter model can never
+represent — use 'tempo query' for Drilldown links.
 
 ```
 gcx traces metrics [TRACEQL] [flags]
