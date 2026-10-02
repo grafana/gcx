@@ -23,6 +23,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -95,6 +97,14 @@ func newFakeK6Loader(t *testing.T) *mockLoader {
 	mux.HandleFunc("GET /cloud/v6/load_tests/4/test_runs", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"value":[{"id":11,"load_test_id":4,"status":"finished","result_status":1,` +
 			`"created":"2026-01-01T00:00:00Z","ended":"2026-01-01T01:00:00Z"}]}`))
+	})
+	mux.HandleFunc("GET /cloud/v6/test_runs", func(w http.ResponseWriter, r *http.Request) {
+		top, _ := strconv.Atoi(r.URL.Query().Get("$top"))
+		if top == 1 {
+			_, _ = w.Write([]byte(`{"value":[{"id":12,"created":"2026-01-02T00:00:00Z"}],"@count":2}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"value":[{"id":12,"created":"2026-01-02T00:00:00Z"},{"id":11,"created":"2026-01-01T00:00:00Z"}],"@count":2}`))
 	})
 
 	// schedules
@@ -534,4 +544,32 @@ func TestK6TestRunStatusCommand_OutputContract(t *testing.T) {
 			wantYAMLSubstrs: []string{"id: 11", "status: finished"},
 		},
 	})
+}
+
+func TestK6GlobalRunsListReportsTruncationWithoutChangingPayload(t *testing.T) {
+	oldArgs := os.Args
+	os.Args = []string{"gcx", "k6", "runs", "list", "--limit", "1", "-o", "json"}
+	t.Cleanup(func() { os.Args = oldArgs })
+
+	stdout, stderr, err := runK6Command(
+		t, false, newFakeK6Loader(t), newRunsListCommand, []string{"--limit", "1", "-o", "json"}, "",
+	)
+	require.NoError(t, err)
+	var runs []TestRun
+	require.NoError(t, json.Unmarshal([]byte(stdout), &runs))
+	require.Len(t, runs, 1)
+	assert.Equal(t, 12, runs[0].ID)
+	assert.Contains(t, stderr, "showing first 1 of 2")
+	assert.Contains(t, stderr, "--limit 0")
+}
+
+func TestK6GlobalRunsListOmitsHintForCompleteResults(t *testing.T) {
+	stdout, stderr, err := runK6Command(
+		t, false, newFakeK6Loader(t), newRunsListCommand, []string{"-o", "json"}, "",
+	)
+	require.NoError(t, err)
+	var runs []TestRun
+	require.NoError(t, json.Unmarshal([]byte(stdout), &runs))
+	assert.Len(t, runs, 2)
+	assert.Empty(t, stderr)
 }

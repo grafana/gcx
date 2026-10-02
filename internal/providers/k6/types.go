@@ -105,21 +105,32 @@ type Schedule struct {
 	LoadTestID     int             `json:"load_test_id,omitzero"`
 	Starts         string          `json:"starts,omitzero"`
 	RecurrenceRule *RecurrenceRule `json:"recurrence_rule,omitzero"`
+	Cron           *ScheduleCron   `json:"cron,omitzero"`
 	Deactivated    bool            `json:"deactivated,omitzero"`
-	Created        string          `json:"created,omitzero"`
-	NextRun        string          `json:"next_run,omitzero"`
+	NextRun        *string         `json:"next_run"`
+	CreatedBy      *string         `json:"created_by"`
 }
 
 // RecurrenceRule defines how often a schedule runs.
 type RecurrenceRule struct {
-	Frequency string `json:"frequency"` // HOURLY, DAILY, WEEKLY, MONTHLY
-	Interval  int    `json:"interval"`
+	Frequency string   `json:"frequency"` // HOURLY, DAILY, WEEKLY, MONTHLY
+	Interval  int      `json:"interval,omitzero"`
+	ByDay     []string `json:"byday,omitempty"`
+	Until     *string  `json:"until,omitempty"`
+	Count     *int     `json:"count,omitempty"`
+}
+
+// ScheduleCron defines a cron expression and its IANA timezone.
+type ScheduleCron struct {
+	Schedule string `json:"schedule"`
+	TimeZone string `json:"time_zone"`
 }
 
 // ScheduleRequest is the request body for creating or updating a schedule.
 type ScheduleRequest struct {
 	Starts         string          `json:"starts,omitzero"`
 	RecurrenceRule *RecurrenceRule `json:"recurrence_rule,omitzero"`
+	Cron           *ScheduleCron   `json:"cron,omitzero"`
 }
 
 // schedulesResponse is the response from listing schedules.

@@ -12,25 +12,9 @@ import (
 )
 
 func TestFormatVectorTableVariants(t *testing.T) {
-	resp := &prometheus.QueryResponse{
-		Status: "success",
-		Data: prometheus.ResultData{
-			ResultType: "vector",
-			Result: []prometheus.Sample{
-				{
-					Metric: map[string]string{
-						"__name__": "up",
-						"instance": "localhost:9090",
-						"job":      "prometheus",
-					},
-					Value: []any{float64(1700000000), "1"},
-				},
-			},
-		},
-	}
-
 	tests := []struct {
 		name           string
+		point          prometheus.Sample
 		format         func(io.Writer, *prometheus.QueryResponse) error
 		wantHeader     []string
 		wantLineCount  int
@@ -39,6 +23,7 @@ func TestFormatVectorTableVariants(t *testing.T) {
 	}{
 		{
 			name:           "table collapses labels into series column",
+			point:          prometheus.Sample{Value: []any{float64(1700000000), "1"}},
 			format:         prometheus.FormatTable,
 			wantHeader:     []string{"VALUE", "TIMESTAMP", "SERIES"},
 			wantLineCount:  2,
@@ -50,6 +35,7 @@ func TestFormatVectorTableVariants(t *testing.T) {
 		},
 		{
 			name:       "wide table explodes labels into columns",
+			point:      prometheus.Sample{Value: []any{float64(1700000000), "1"}},
 			format:     prometheus.FormatWideTable,
 			wantHeader: []string{"__NAME__", "INSTANCE", "JOB", "TIMESTAMP", "VALUE"},
 			wantContains: []string{
@@ -59,10 +45,40 @@ func TestFormatVectorTableVariants(t *testing.T) {
 				"2023-11-14T",
 			},
 		},
+		{
+			name:           "table accepts plural values from a vector API",
+			point:          prometheus.Sample{Values: [][]any{{float64(1700000000), "1"}}},
+			format:         prometheus.FormatTable,
+			wantHeader:     []string{"VALUE", "TIMESTAMP", "SERIES"},
+			wantLineCount:  2,
+			wantFirstValue: "1",
+		},
+		{
+			name:       "wide table accepts plural values from a vector API",
+			point:      prometheus.Sample{Values: [][]any{{float64(1700000000), "1"}}},
+			format:     prometheus.FormatWideTable,
+			wantHeader: []string{"__NAME__", "INSTANCE", "JOB", "TIMESTAMP", "VALUE"},
+			wantContains: []string{
+				"localhost:9090",
+				"2023-11-14T",
+			},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			tt.point.Metric = map[string]string{
+				"__name__": "up",
+				"instance": "localhost:9090",
+				"job":      "prometheus",
+			}
+			resp := &prometheus.QueryResponse{
+				Status: "success",
+				Data: prometheus.ResultData{
+					ResultType: "vector",
+					Result:     []prometheus.Sample{tt.point},
+				},
+			}
 			var buf bytes.Buffer
 			require.NoError(t, tt.format(&buf, resp))
 
