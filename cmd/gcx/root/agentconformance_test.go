@@ -236,7 +236,7 @@ func TestAgentConformance_InvalidStackSlugIsUsageError(t *testing.T) {
 		t.Skip("builds the gcx binary; skipped with -short")
 	}
 
-	stdout, code := runGcx(t, "cloud", "stacks", "create", "--org", "example-org",
+	stdout, code := runGcx(t, "cloud", "stacks", "create",
 		"--name", "t", "--slug", "my-gcx-eval", "--dry-run")
 	if code != 2 {
 		t.Fatalf("exit code = %d, want 2 (usage error)\nstdout:\n%s", code, stdout)
