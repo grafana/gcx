@@ -454,6 +454,10 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 	if flags.Cloud {
 		opts.Target = login.TargetCloud
 	}
+	// Probe for Pathfinder only when printResult can show its hint: a login
+	// rendered as human text. Agent mode defaults the output to json, so
+	// agents never trigger the probe.
+	opts.DetectPathfinder = flags.IO.OutputFormat == "text"
 	if flags.AllowServerOverride {
 		opts.AllowOverride = true
 	}
@@ -1816,6 +1820,7 @@ func existingContextNames(cfg config.Config) []string {
 // CAP-token guidance) is routed to stderr so that JSON/YAML consumers receive
 // clean, parseable output on stdout.
 func printResult(cmd *cobra.Command, ioOpts *cmdio.Options, server string, result login.Result) error {
+	stackURL := server
 	if server == "" {
 		server = result.ContextName
 	}
@@ -1847,6 +1852,13 @@ func printResult(cmd *cobra.Command, ioOpts *cmdio.Options, server string, resul
 		fmt.Fprintln(ew, "additionally requires a Cloud Access Policy (CAP) token.")
 		fmt.Fprintln(ew, "See: https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/")
 		fmt.Fprintf(ew, "Add one with: gcx login --context %s --cloud-token <token>\n", result.ContextName)
+	}
+	// Login only probes for Pathfinder when the output is text, so agents
+	// never see this hint. The probe works the same on Cloud and on-prem.
+	if ioOpts.OutputFormat == "text" && result.PathfinderInstalled && stackURL != "" {
+		fmt.Fprintln(ew)
+		fmt.Fprintln(ew, "Interactive guides can help you set up your stack:")
+		fmt.Fprintln(ew, "  "+login.PathfinderURL(stackURL))
 	}
 	return nil
 }
