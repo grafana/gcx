@@ -133,6 +133,27 @@ func TestDetailedError_WriteJSON(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "error with corrections",
+			err: gcxerrors.DetailedError{
+				Summary: "Invalid command usage",
+				Corrections: []gcxerrors.Correction{
+					{Command: "gcx resources get dashboards", Hint: "List dashboards."},
+					{Command: "gcx resources get folders"},
+				},
+			},
+			exitCode: 2,
+			wantJSON: map[string]any{
+				"error": map[string]any{
+					"summary":  "Invalid command usage",
+					"exitCode": float64(2),
+					"corrections": []any{
+						map[string]any{"command": "gcx resources get dashboards", "hint": "List dashboards."},
+						map[string]any{"command": "gcx resources get folders"},
+					},
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -309,6 +330,15 @@ func assertJSONEqual(t *testing.T, want, got map[string]any) {
 				continue
 			}
 			for i, witem := range wv {
+				if wmap, ok := witem.(map[string]any); ok {
+					gmap, ok := gv[i].(map[string]any)
+					if !ok {
+						t.Errorf("key %q[%d]: expected object, got %T", key, i, gv[i])
+						continue
+					}
+					assertJSONEqual(t, wmap, gmap)
+					continue
+				}
 				if witem != gv[i] {
 					t.Errorf("key %q[%d]: expected %v, got %v", key, i, witem, gv[i])
 				}

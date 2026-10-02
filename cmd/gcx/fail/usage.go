@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/spf13/cobra"
 )
 
@@ -13,6 +14,7 @@ type UsageError struct {
 	Message     string
 	Expected    string
 	Suggestions []string
+	Corrections []gcxerrors.Correction
 	Cause       error
 }
 
