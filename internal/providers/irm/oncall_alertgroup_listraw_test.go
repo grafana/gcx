@@ -87,6 +87,62 @@ func onCallClientFor(srv *httptest.Server) *OnCallClient {
 	return &OnCallClient{HTTPClient: srv.Client(), Host: srv.URL}
 }
 
+func TestAlertGroupListLabels(t *testing.T) {
+	cases := []struct {
+		name    string
+		labels  []string
+		invalid bool
+	}{
+		{name: "single label", labels: []string{"service:api"}},
+		{name: "repeated labels", labels: []string{"service:api", "env:prod"}},
+		{name: "literal case commas and URL characters", labels: []string{"service:API,worker & jobs+batch"}},
+		{name: "empty", labels: []string{""}, invalid: true},
+		{name: "whitespace", labels: []string{" "}, invalid: true},
+		{name: "missing separator", labels: []string{"service"}, invalid: true},
+		{name: "wrong separator", labels: []string{"service=api"}, invalid: true},
+		{name: "empty key", labels: []string{":api"}, invalid: true},
+		{name: "empty value", labels: []string{"service:"}, invalid: true},
+		{name: "blank key", labels: []string{" :api"}, invalid: true},
+		{name: "blank value", labels: []string{"service: "}, invalid: true},
+		{name: "extra separator", labels: []string{"service:api:worker"}, invalid: true},
+		{name: "invalid second label", labels: []string{"service:api", "env"}, invalid: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			resetAgentMode(t)
+			srv, state := newPagedAlertGroupsServer(t, []alertGroupPage{{items: rawAlertGroups(1)}})
+			cmd := newAlertGroupListCommand(&fakeLoader{client: onCallClientFor(srv)})
+			var stdout, stderr strings.Builder
+			cmd.SetOut(&stdout)
+			cmd.SetErr(&stderr)
+			args := []string{"-o", "json", "--all"}
+			for _, label := range tc.labels {
+				args = append(args, "--label", label)
+			}
+			cmd.SetArgs(args)
+			err := cmd.Execute()
+			if tc.invalid {
+				if err == nil || !strings.Contains(err.Error(), "invalid --label") || !strings.Contains(err.Error(), "expected key:value") {
+					t.Fatalf("Execute() = %v, want label format error", err)
+				}
+				if state.requests != 0 {
+					t.Errorf("requests = %d, want 0 for invalid labels", state.requests)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Execute() = %v", err)
+			}
+			if got := state.firstQuery["label"]; !reflect.DeepEqual(got, tc.labels) {
+				t.Errorf("wire labels = %q, want %q", got, tc.labels)
+			}
+			if !strings.Contains(stderr.String(), "label="+strings.Join(tc.labels, ",")) {
+				t.Errorf("filter hint omits labels: %s", stderr.String())
+			}
+		})
+	}
+}
+
 // TestListAlertGroupsRaw_MultiPageDrain drives the real pagination loop
 // across two pages to a natural end: everything is returned, no truncation
 // evidence, no observed total (nothing was trimmed).
