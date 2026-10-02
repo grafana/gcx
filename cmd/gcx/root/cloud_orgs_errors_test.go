@@ -22,10 +22,11 @@ func TestCloudOrgsAuthErrorProtocol(t *testing.T) {
 		status  int
 		body    string
 		details string
+		summary string
 	}{
-		{"unauthorized", 401, `{"message":"token expired"}`, "token expired"},
-		{"forbidden", 403, `{"message":"profile scope missing"}`, "profile scope missing"},
-		{"no user", 200, `null`, "Organisation listing requires a browser Cloud OAuth login."},
+		{"unauthorized", 401, `{"message":"token expired"}`, "token expired", "Authentication failed"},
+		{"forbidden", 403, `{"message":"profile scope missing"}`, "profile scope missing", "Authorization failed"},
+		{"no user", 200, `null`, "Organisation listing requires a browser Cloud OAuth login.", "Authentication failed"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -44,7 +45,7 @@ func TestCloudOrgsAuthErrorProtocol(t *testing.T) {
 			failure, ok := document["error"].(map[string]any)
 			require.True(t, ok)
 			assert.EqualValues(t, 3, failure["exitCode"])
-			assert.Equal(t, "Authorization failed", failure["summary"])
+			assert.Equal(t, tc.summary, failure["summary"])
 			details, ok := failure["details"].(string)
 			require.True(t, ok)
 			assert.True(t, strings.HasPrefix(details, tc.details), "details should start with %q, got %q", tc.details, details)

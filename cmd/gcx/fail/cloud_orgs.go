@@ -13,16 +13,20 @@ func convertCloudOrgsErrors(err error) (*gcxerrors.DetailedError, bool) {
 	if !strings.HasPrefix(err.Error(), "failed to list cloud organisations: ") {
 		return nil, false
 	}
+	summary := "Authentication failed"
 	details := "Organisation listing requires a browser Cloud OAuth login."
 	if !errors.Is(err, cloud.ErrUserOAuthRequired) {
 		var httpErr *cloud.GCOMHTTPError
 		if !errors.As(err, &httpErr) || (httpErr.Status != http.StatusUnauthorized && httpErr.Status != http.StatusForbidden) {
 			return nil, false
 		}
+		if httpErr.Status == http.StatusForbidden {
+			summary = "Authorization failed"
+		}
 		details = gcomErrorDetails(httpErr, err.Error())
 	}
 	return &gcxerrors.DetailedError{
-		Summary:  "Authorization failed",
+		Summary:  summary,
 		Details:  details,
 		Parent:   err,
 		ExitCode: new(gcxerrors.ExitAuthFailure),

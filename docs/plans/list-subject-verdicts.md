@@ -107,10 +107,13 @@ recorded verbatim.
 
 ### Cloud organisation discovery
 
-Keep `gcx cloud orgs list`. Organisations have independently addressable slug
-identities in GCOM (`/api/orgs/{slug}`), rather than being plain flag-value
-catalogues like stack regions. This placement was explicitly confirmed during
-review; this command only lists memberships and does not change stack creation.
+Keep `gcx cloud orgs list`. Under [command naming: place each operation by the
+identity it requires](../design/command-naming.md#place-each-operation-by-the-identity-it-requires),
+a noun group applies when an operation enumerates a resource group without a
+parent identity. This command lists the user's organisation memberships without
+requiring a parent identity. The command name was confirmed in the
+[maintainer's PR #1424 review comment](https://github.com/grafana/gcx/pull/1424#discussion_r4165744653).
+This command only lists memberships and does not change stack creation.
 
 ### cloud — tail sweep (wave 2)
 
