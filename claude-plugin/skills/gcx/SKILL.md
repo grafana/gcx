@@ -93,7 +93,7 @@ Before any operation, confirm which environment is targeted:
 | Intent | Flag |
 |--------|------|
 | Structured output for parsing | `-o json` |
-| Field selection | `--json <field1,field2>` (use `--json list` or `--json ?` to discover fields) |
+| Field selection | `--json <path>,<path>` (use `--json list` or `--json ?` to discover the paths) |
 | Full table output (no truncation) | `--no-truncate` |
 | YAML output | `-o yaml` |
 | Wide table with extra columns | `-o wide` |

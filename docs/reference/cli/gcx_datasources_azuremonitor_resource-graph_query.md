@@ -47,7 +47,7 @@ gcx datasources azuremonitor resource-graph query KQL [flags]
   -d, --datasource string          Datasource UID (required unless datasources.azuremonitor is configured)
   -h, --help                       help for query
       --jq string                  jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string                Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --json string                Comma-separated list of dotted field paths to include in JSON output (e.g. spec.name), or 'list' (or '?') to discover the available paths
       --open                       Open the executed query in Grafana Explore
   -o, --output string              Output format. One of: agents, json, table, wide, yaml (default "table")
       --share-link                 Print the Grafana Explore URL for the executed query to stderr

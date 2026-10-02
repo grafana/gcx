@@ -31,7 +31,7 @@ gcx metrics cardinality label-names [flags]
   -d, --datasource string     Datasource UID (required unless datasources.prometheus is configured)
   -h, --help                  help for label-names
       --jq string             jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string           Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --json string           Comma-separated list of dotted field paths to include in JSON output (e.g. spec.name), or 'list' (or '?') to discover the available paths
       --limit int             Maximum number of items to return (0-500) (default 20)
   -o, --output string         Output format. One of: agents, json, table, yaml (default "table")
       --selector string       PromQL series selector scoping the analysis

@@ -117,6 +117,7 @@ against live resource discovery and report uncovered or stale types.`,
 			if err := opts.Validate(); err != nil {
 				return err
 			}
+			opts.IO.ErrWriter = cmd.ErrOrStderr()
 
 			tree := walkCommandWithOptions(root, "", opts.IncludeHidden)
 			resourceTypes := collectResourceTypes(agent.KnownResources, adapter.AllRegistrations())

@@ -314,9 +314,8 @@ func TestRunList_JSONFieldSelection_Valid(t *testing.T) {
 	assert.NotContains(t, firstItem, "clusterName")
 }
 
-// TestRunList_JSONFieldSelection_Unknown verifies --json with an
-// unknown field name returns UnknownFieldSelectionError (which the converter
-// maps to exit 2 + DetailedError).
+// TestRunList_JSONFieldSelection_Unknown verifies --json with an unknown field
+// name emits an advisory warning and a null-filled field.
 func TestRunList_JSONFieldSelection_Unknown(t *testing.T) {
 	ts := &discoveryTestServer{
 		items: []map[string]any{
@@ -334,7 +333,8 @@ func TestRunList_JSONFieldSelection_Unknown(t *testing.T) {
 	require.NoError(t, fs.Set("json", "bogus,name"))
 	require.NoError(t, outOpts.Validate())
 
-	var buf bytes.Buffer
+	var buf, warnings bytes.Buffer
+	outOpts.ErrWriter = &warnings
 	err := services.RunList(
 		context.Background(),
 		&services.ListOpts{},
@@ -343,10 +343,9 @@ func TestRunList_JSONFieldSelection_Unknown(t *testing.T) {
 		instrumentation.PromHeaders{},
 		&buf,
 	)
-	require.Error(t, err)
-	var fieldErr cmdio.UnknownFieldSelectionError
-	require.ErrorAs(t, err, &fieldErr, "error must be UnknownFieldSelectionError")
-	assert.Contains(t, fieldErr.Fields, "bogus")
+	require.NoError(t, err)
+	assert.Contains(t, warnings.String(), "unknown field(s) in --json: bogus")
+	assert.Contains(t, buf.String(), `"bogus": null`)
 }
 
 // noopConfigLoader satisfies fleet.ConfigLoader but never makes a network call.
