@@ -168,6 +168,18 @@ Switch to a different context:
 gcx config use-context staging
 ```
 
+`current-context` is shared across every process that reads the same config
+file. If you keep many contexts on one machine, or run `gcx` from coding
+agents, set `GCX_REQUIRE_CONTEXT` so a command cannot inherit whichever
+context another session last selected. With it set, commands that reach Grafana
+must pass `--context <name>` or they exit 2. `GRAFANA_SERVER` does not count,
+because it overrides only the server URL of the current context.
+
+```shell
+export GCX_REQUIRE_CONTEXT=true
+gcx --context staging resources get dashboards
+```
+
 See the entire configuration:
 
 ```shell

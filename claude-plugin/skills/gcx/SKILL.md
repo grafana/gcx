@@ -88,6 +88,11 @@ Before any operation, confirm which environment is targeted:
 - `gcx config use-context <name>` — switch contexts
 - `--context <name>` flag on any command — target a specific context without switching
 
+If a command fails with "This invocation does not name a context",
+`GCX_REQUIRE_CONTEXT` is set. Do not fall back to `current-context`. Pass
+`--context <name>` on that invocation (or ask the user which context to use).
+`gcx config list-contexts` lists the names you can choose from.
+
 ## Output Control
 
 | Intent | Flag |
@@ -117,7 +122,7 @@ asks for speed.
 | Intent | Flag |
 |--------|------|
 | Preview without changing anything | `--dry-run` |
-| Target a specific context | `--context <name>` |
+| Target a specific context | `--context <name>` (required when `GCX_REQUIRE_CONTEXT` is set) |
 | Continue on errors vs stop | `--on-error fail\|ignore\|abort` |
 | Control concurrency | `--max-concurrent <n>` (default 10) |
 
