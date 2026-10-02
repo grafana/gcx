@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"unicode"
 )
 
 type assistantAPIError struct {
@@ -336,11 +335,5 @@ func transcriptErrorMessage(resp *http.Response) string {
 		}
 		message = plain
 	}
-	message = strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) {
-			return ' '
-		}
-		return r
-	}, message)
-	return strings.Join(strings.Fields(message), " ")
+	return singleLineTerminalText(message)
 }

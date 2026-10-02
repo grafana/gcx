@@ -215,9 +215,9 @@ to read it directly or re-run narrower (e.g. with `--filter` or `--prune`).
 
 ## Grafana Assistant
 
-gcx provides direct access to the Grafana Assistant — use it for **reasoning
-and exploration**, not data retrieval. Deterministic commands are faster and
-cheaper for known queries; the Assistant adds value when you need intelligence.
+gcx provides direct access to Grafana Assistant for reasoning and exploration.
+Use `assistant search` to retrieve indexed historical
+evidence without launching an agent. Use signal and product commands for live data.
 
 | Situation | Use | Example |
 |-----------|-----|---------|
@@ -225,11 +225,25 @@ cheaper for known queries; the Assistant adds value when you need intelligence.
 | You don't know which metrics/labels exist | `gcx assistant prompt` | `"What metrics exist for the checkout service?"` |
 | You need cross-signal root cause analysis | `gcx assistant investigations` | Multi-agent parallel exploration across metrics, logs, traces, profiles |
 | You need a precise, repeatable data point | Deterministic command | `gcx slo definitions status`, `gcx alert instances list --state firing` |
-| You need to understand service dependencies | `gcx assistant prompt` | `"How are services in namespace X connected?"` — Assistant Memories know your stack topology |
+| You need indexed service dependencies | `gcx assistant search` | `"checkout dependencies" --collections infrastructure` |
+| You need dashboards or past incident evidence | `gcx assistant search` | `"checkout latency" --collections dashboards,incidents` |
 
 ### Commands
 
+Memory search requires explicit collections: `infrastructure`, `dashboards`,
+`investigations`, `incidents`, or `alertRules`. Choose the smallest covering set.
+It returns ranked, source-capped results, not a complete inventory; `total` is
+the returned count. Inspect per-collection errors and `suppressedCollections`.
+Partial failure exits 4 and preserves successful results; failure of every
+searched collection exits 1. Investigation and incident searches default to the
+last three calendar months; use `--from` and `--to` for another window. Browser
+OAuth and Grafana service account tokens are supported; the current OAuth proxy
+requires `grafana-api:write` for this read-only POST endpoint.
+
 ```bash
+# Retrieve indexed evidence without generative query rewriting or enrichment
+gcx assistant search "checkout latency" --collections dashboards,investigations --from now-30d
+
 # Ask a question (Assistant uses Infrastructure Memories for context)
 gcx assistant prompt "What services are unhealthy in namespace checkout?"
 

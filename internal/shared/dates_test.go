@@ -43,3 +43,39 @@ func TestParseDuration(t *testing.T) {
 		})
 	}
 }
+
+func TestParseTimeRejectsRelativeOverflow(t *testing.T) {
+	now := time.Date(2026, time.October, 2, 12, 0, 0, 0, time.UTC)
+	for _, input := range []string{
+		"now-999999999999999999999y",
+		"now+9223372036854775807s",
+		"now-106752d",
+	} {
+		t.Run(input, func(t *testing.T) {
+			_, err := shared.ParseTime(input, now)
+			require.ErrorContains(t, err, "out of range")
+		})
+	}
+}
+
+func TestParseTimeRejectsInvalidUnixTimestamp(t *testing.T) {
+	now := time.Date(2026, time.October, 2, 12, 0, 0, 0, time.UTC)
+	for _, input := range []string{
+		"999999999999999999999",
+		"-999999999999999999999",
+		"NaN",
+		"+Inf",
+		"-Inf",
+	} {
+		t.Run(input, func(t *testing.T) {
+			_, err := shared.ParseTime(input, now)
+			require.ErrorContains(t, err, "out of range")
+		})
+	}
+}
+
+func TestParseTimeAcceptsFractionalUnixTimestamp(t *testing.T) {
+	got, err := shared.ParseTime("1705315800.5", time.Time{})
+	require.NoError(t, err)
+	assert.Equal(t, time.Unix(1705315800, 500_000_000), got)
+}

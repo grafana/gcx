@@ -171,6 +171,33 @@ contexts:
 	}
 }
 
+func TestAssistantCommandsRejectOverflowingTimeout(t *testing.T) {
+	cfgPath := filepath.Join(t.TempDir(), "config")
+	if err := os.WriteFile(cfgPath, []byte(`current-context: test
+contexts:
+  test:
+    grafana:
+      server: https://test.grafana.net
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, args := range [][]string{
+		{"prompt", "test", "--timeout", "9223372037"},
+		{"conversation", "list", "--timeout", "9223372037"},
+		{"conversation", "get", "chat-1", "--timeout", "9223372037"},
+	} {
+		cmd := assistant.Command()
+		cmd.SilenceUsage = true
+		cmd.SilenceErrors = true
+		cmd.SetArgs(append(args, "--config", cfgPath))
+		err := cmd.Execute()
+		if err == nil || err.Error() != "--timeout 9223372037 must not exceed 9223372036 seconds" {
+			t.Fatalf("expected overflow error for %v, got %v", args, err)
+		}
+	}
+}
+
 // TestConventions_PromptAnnotations verifies that commands have agent annotations
 // per project convention.
 func TestConventions_PromptAnnotations(t *testing.T) {
