@@ -1,3 +1,22 @@
+## v1.4.0 (2026-10-02)
+
+- Add `gcx metrics search` for metric and label lookups via Mimir search API
+- Add `search-*` commands to `gcx datasources prometheus`
+- Add Basic authentication to `gcx login`
+- Add `gcx synthetic-monitoring queries list/get` for named queries
+- Add `gcx agento11y model-rates` to set your negotiated model prices
+- Manage IRM OnCall integration alert templates and maintenance mode
+- Add `gcx appo11y operations list/get`
+- Show service metadata, Explore links and Knowledge Graph data in appo11y
+- Add span pruning options to `gcx traces get`
+- List available contexts when the requested context is not found
+- Label HTTP payload debug dumps and show every wire header
+- Fix appo11y lookup of scoped Knowledge Graph services to match exact name
+- Move Knowledge Graph transport into a shared internal client
+- Docs: add guides for managing resources and diagnosing missing telemetry
+- Docs: clarify MkDocs setup and fix broken links
+
+
 ## Unreleased
 
 - Add experimental Prometheus/Mimir search API support: `gcx datasources prometheus search-metric-names/search-label-names/search-label-values` and `gcx metrics search metric-names/label-names/label-values` (#1374)
