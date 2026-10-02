@@ -33,7 +33,7 @@ func PathfinderURL(server string) string {
 }
 
 // DetectPathfinder reports whether the Pathfinder plugin is installed and
-// enabled on the stack behind restCfg. The probe is advisory: any failure
+// enabled on the Grafana instance behind restCfg. The probe is advisory: any failure
 // (transport error, non-200 status, undecodable body) reports false, so it
 // never fails a login.
 func DetectPathfinder(ctx context.Context, restCfg config.NamespacedRESTConfig) bool {
@@ -75,10 +75,11 @@ func DetectPathfinder(ctx context.Context, restCfg config.NamespacedRESTConfig) 
 	return settings.Enabled
 }
 
-// probePathfinder runs the Pathfinder probe when the caller asked for it and
-// the target is a Cloud stack, honouring the PathfinderFn test seam.
-func probePathfinder(ctx context.Context, opts *Options, target Target, restCfg config.NamespacedRESTConfig) bool {
-	if !opts.DetectPathfinder || target != TargetCloud {
+// probePathfinder runs the Pathfinder probe when the caller asked for it,
+// honouring the PathfinderFn test seam. Cloud and on-prem instances are
+// probed alike: the plugin's installed-and-enabled state decides the answer.
+func probePathfinder(ctx context.Context, opts *Options, restCfg config.NamespacedRESTConfig) bool {
+	if !opts.DetectPathfinder {
 		return false
 	}
 	if opts.PathfinderFn != nil {

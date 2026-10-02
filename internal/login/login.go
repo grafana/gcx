@@ -100,10 +100,10 @@ type Inputs struct {
 	// a user explicitly left the server empty to be directed to the cloud
 	// instance selector
 	UseCloudInstanceSelector bool
-	// DetectPathfinder asks Run to probe a Cloud stack for the Pathfinder
-	// plugin after validation succeeds, reporting the answer in
+	// DetectPathfinder asks Run to probe the Grafana instance for the
+	// Pathfinder plugin after validation succeeds, reporting the answer in
 	// Result.PathfinderInstalled. The CLI sets it only when it will show the
-	// first-login guide hint, so other logins skip the extra request.
+	// guide hint (text output), so agent logins skip the extra request.
 	DetectPathfinder bool
 
 	// TLS carries client-side TLS settings (mTLS cert/key, custom CA).
@@ -247,7 +247,7 @@ type Result struct {
 	StackSlug      string   // non-empty for known Grafana Cloud domains
 	Capabilities   []string // reserved for future use
 	// PathfinderInstalled reports that the Pathfinder plugin is enabled on
-	// the stack. Only probed when Options.DetectPathfinder is set.
+	// the Grafana instance. Only probed when Options.DetectPathfinder is set.
 	PathfinderInstalled bool
 }
 
@@ -469,7 +469,7 @@ func Run(ctx context.Context, opts *Options) (Result, error) {
 		switch {
 		case err == nil:
 			grafanaVersion = v
-			pathfinderInstalled = probePathfinder(ctx, opts, target, restCfg)
+			pathfinderInstalled = probePathfinder(ctx, opts, restCfg)
 
 		case errors.As(err, &capErr):
 			// The Cloud Access Policy (CAP) token is optional: its absence does

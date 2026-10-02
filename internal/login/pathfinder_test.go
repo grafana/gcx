@@ -85,10 +85,11 @@ func TestRun_DetectPathfinder(t *testing.T) {
 		wantProbed    bool
 		wantInstalled bool
 	}{
-		{name: "cloud_first_login_installed", target: login.TargetCloud, detect: true, probeResult: true, wantProbed: true, wantInstalled: true},
-		{name: "cloud_first_login_not_installed", target: login.TargetCloud, detect: true, probeResult: false, wantProbed: true, wantInstalled: false},
+		{name: "cloud_installed", target: login.TargetCloud, detect: true, probeResult: true, wantProbed: true, wantInstalled: true},
+		{name: "cloud_not_installed", target: login.TargetCloud, detect: true, probeResult: false, wantProbed: true, wantInstalled: false},
 		{name: "cloud_not_requested", target: login.TargetCloud, detect: false, probeResult: true, wantProbed: false, wantInstalled: false},
-		{name: "onprem_never_probed", target: login.TargetOnPrem, detect: true, probeResult: true, wantProbed: false, wantInstalled: false},
+		{name: "onprem_installed", target: login.TargetOnPrem, detect: true, probeResult: true, wantProbed: true, wantInstalled: true},
+		{name: "onprem_not_requested", target: login.TargetOnPrem, detect: false, probeResult: true, wantProbed: false, wantInstalled: false},
 		{
 			// A rejected CAP token still completes the login, but validation
 			// did not fully succeed, so the advisory probe is skipped.

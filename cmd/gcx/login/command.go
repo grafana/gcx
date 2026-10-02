@@ -454,10 +454,10 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 	if flags.Cloud {
 		opts.Target = login.TargetCloud
 	}
-	// Probe for Pathfinder only when printResult can show its hint: a
-	// first-ever login rendered as human text. Agent mode defaults the
-	// output to json, so agents never trigger the probe.
-	opts.DetectPathfinder = isFirstLogin(cfg) && flags.IO.OutputFormat == "text"
+	// Probe for Pathfinder only when printResult can show its hint: a login
+	// rendered as human text. Agent mode defaults the output to json, so
+	// agents never trigger the probe.
+	opts.DetectPathfinder = flags.IO.OutputFormat == "text"
 	if flags.AllowServerOverride {
 		opts.AllowOverride = true
 	}
@@ -1805,19 +1805,6 @@ func printModeHeader(cmd *cobra.Command, cfg config.Config, contextName string, 
 	}
 }
 
-// isFirstLogin reports whether cfg holds no context with a Grafana server,
-// i.e. this login sets up the user's first stack. The synthetic default
-// context that LoadConfigTolerant injects has an empty server, so it does
-// not count.
-func isFirstLogin(cfg config.Config) bool {
-	for _, c := range cfg.Contexts {
-		if c != nil && c.Grafana != nil && c.Grafana.Server != "" {
-			return false
-		}
-	}
-	return true
-}
-
 // existingContextNames returns a sorted list of context names in the config.
 func existingContextNames(cfg config.Config) []string {
 	names := make([]string, 0, len(cfg.Contexts))
@@ -1866,9 +1853,9 @@ func printResult(cmd *cobra.Command, ioOpts *cmdio.Options, server string, resul
 		fmt.Fprintln(ew, "See: https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/")
 		fmt.Fprintf(ew, "Add one with: gcx login --context %s --cloud-token <token>\n", result.ContextName)
 	}
-	// Login only reports PathfinderInstalled on a first Cloud login rendered
-	// as text, so this hint shows once per user, never to agents.
-	if ioOpts.OutputFormat == "text" && result.IsCloud && result.PathfinderInstalled && stackURL != "" {
+	// Login only probes for Pathfinder when the output is text, so agents
+	// never see this hint. The probe works the same on Cloud and on-prem.
+	if ioOpts.OutputFormat == "text" && result.PathfinderInstalled && stackURL != "" {
 		fmt.Fprintln(ew)
 		fmt.Fprintln(ew, "Interactive guides can help you set up your stack:")
 		fmt.Fprintln(ew, "  "+login.PathfinderURL(stackURL))

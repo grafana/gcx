@@ -2174,7 +2174,7 @@ func TestPrintResult_TextCodec(t *testing.T) {
 			},
 		},
 		{
-			name:   "cloud_first_login_with_pathfinder_shows_guide_hint",
+			name:   "cloud_with_pathfinder_shows_guide_hint",
 			server: "https://mystack.grafana.net",
 			result: internallogin.Result{
 				ContextName:         "mystack",
@@ -2237,7 +2237,7 @@ func TestPrintResult_TextCodec(t *testing.T) {
 			notStderrSubs: []string{"grafana-pathfinder-app"},
 		},
 		{
-			name:   "onprem_never_shows_guide_hint",
+			name:   "onprem_with_pathfinder_shows_guide_hint",
 			server: "https://grafana.local",
 			result: internallogin.Result{
 				ContextName:         "local",
@@ -2249,7 +2249,11 @@ func TestPrintResult_TextCodec(t *testing.T) {
   Auth method: token
   Grafana Cloud: no
 `,
-			notStderrSubs: []string{"grafana-pathfinder-app"},
+			wantStderrSubs: []string{
+				"Interactive guides can help you set up your stack:",
+				"  https://grafana.local/a/grafana-pathfinder-app\n",
+			},
+			notStderrSubs: []string{"Cloud Access Policy"},
 		},
 		{
 			name:   "empty_server_falls_back_to_context_name",
@@ -2336,43 +2340,6 @@ func TestPrintResult_GuideHintTextOnly(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotContains(t, stdout.String(), "grafana-pathfinder-app")
 	assert.NotContains(t, stderr.String(), "grafana-pathfinder-app")
-}
-
-func TestIsFirstLogin(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name string
-		cfg  config.Config
-		want bool
-	}{
-		{name: "no_contexts", cfg: config.Config{}, want: true},
-		{
-			name: "synthetic_default_without_server",
-			cfg:  config.Config{Contexts: map[string]*config.Context{"default": {Name: "default", Grafana: &config.GrafanaConfig{}}}},
-			want: true,
-		},
-		{
-			name: "context_without_grafana",
-			cfg:  config.Config{Contexts: map[string]*config.Context{"default": {Name: "default"}}},
-			want: true,
-		},
-		{
-			name: "existing_stack",
-			cfg: config.Config{Contexts: map[string]*config.Context{
-				"default": {Name: "default", Grafana: &config.GrafanaConfig{}},
-				"prod":    {Name: "prod", Grafana: &config.GrafanaConfig{Server: "https://prod.grafana.net"}},
-			}},
-			want: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			assert.Equal(t, tt.want, isFirstLogin(tt.cfg))
-		})
-	}
 }
 
 // TestResolveSourceContext covers every branch of the context-selection
