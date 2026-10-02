@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/httputils"
 	"k8s.io/client-go/rest"
 )
 
@@ -51,6 +52,7 @@ func (c *Client) DoRequestWithHeaders(ctx context.Context, method, path string, 
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
+	req.Header.Set(httputils.AppSourceHeader, httputils.AppSourceCLI)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
