@@ -526,6 +526,8 @@
  "gcx metrics search label-values": "finite",
  "gcx metrics search metric-names": "finite",
  "gcx metrics series": "finite",
+ "gcx policies validation-policies evaluate": "finite",
+ "gcx policies validation-policies list": "finite",
  "gcx profiles adaptive": "prose",
  "gcx profiles data-range": "finite",
  "gcx profiles exemplars profile": "finite",

@@ -1331,7 +1331,9 @@ func TestErrorToDetailedError_ValueTypedPreservesExitCode(t *testing.T) {
 		},
 		{
 			name: "pointer-typed DetailedError wrapped via fmt.Errorf preserves ExitCode",
-			err:  fmt.Errorf("context: %w", &gcxerrors.DetailedError{ExitCode: &two, Summary: "test"}),
+			// Converted to error explicitly: Go 1.27's vet rejects wrapping a pointer to a type
+			// whose Error method has a value receiver, which is exactly the case under test.
+			err: fmt.Errorf("context: %w", error(&gcxerrors.DetailedError{ExitCode: &two, Summary: "test"})),
 		},
 	}
 

@@ -95,6 +95,7 @@
   "gcx metrics search label-names",
   "gcx metrics search label-values",
   "gcx metrics search metric-names",
+  "gcx policies validation-policies evaluate",
   "gcx profiles adaptive",
   "gcx profiles data-range",
   "gcx profiles exemplars profile",
