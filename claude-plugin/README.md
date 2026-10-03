@@ -35,6 +35,15 @@ To update the plugin later:
 /plugin install gcx@gcx-marketplace
 ```
 
+### Other hosts
+
+`plugin.json` next to this README is the same plugin in the portable
+[Agent Plugins](https://agent-plugins.org/) format, for hosts that read it
+(GitHub Copilot CLI, Codex, VS Code, Kiro, APM). A marketplace in that format
+lists the plugin from this repository at path `claude-plugin`. The format
+defines `skills/` and `mcp.json`; what a host does with the Claude-specific
+`agents/` directory is the host's own business.
+
 ## Quick Setup
 
 Once the plugin is installed, ask Claude to configure gcx:
@@ -145,7 +154,8 @@ Agents are specialist personas invoked automatically for multi-step tasks.
 ```
 claude-plugin/
 ├── .claude-plugin/
-│   └── plugin.json           # Plugin manifest
+│   └── plugin.json           # Claude Code plugin manifest
+├── plugin.json               # Portable Agent Plugins manifest (same version)
 ├── agents/
 │   └── grafana-debugger.md   # Claude-specific specialist agent
 ├── skills-catalog.yaml      # Release lifecycle metadata, including retired names

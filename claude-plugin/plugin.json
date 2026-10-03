@@ -1,0 +1,14 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "gcx",
+  "version": "1.3.0",
+  "description": "Debug, explore, and instrument with Grafana using gcx CLI",
+  "author": {
+    "name": "Grafana Labs",
+    "url": "https://grafana.com"
+  },
+  "homepage": "https://github.com/grafana/gcx/tree/main/claude-plugin",
+  "repository": "https://github.com/grafana/gcx",
+  "license": "Apache-2.0",
+  "keywords": ["grafana", "observability", "monitoring", "prometheus", "loki", "dashboards"]
+}
