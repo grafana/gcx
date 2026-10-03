@@ -427,6 +427,9 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) (NamespacedRESTCo
 		QPS:   50,
 		Burst: 100,
 	}
+	if writer := warningWriterFromCtx(ctx); writer != nil {
+		rcfg.WarningHandlerWithContext = newAPIWarningHandler(writer)
+	}
 
 	if selectedGrafana.TLS != nil {
 		resolvedTLS := *selectedGrafana.TLS
