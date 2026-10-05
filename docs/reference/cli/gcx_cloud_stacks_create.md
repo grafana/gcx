@@ -10,6 +10,9 @@ This provisions new infrastructure and may incur costs. The stack name, slug,
 and region cannot be changed after creation - double-check before running.
 Use --dry-run to preview the request first.
 
+Successful creation returns name, orgSlug, slug, status and url, defaulting to YAML.
+Use gcx cloud stacks get <slug> for full details.
+
 Specify the destination organisation slug with --org.
 With browser OAuth, use gcx cloud orgs list to discover your organisation slugs.
 With an access-policy token, supply your organisation slug directly; user
@@ -40,7 +43,7 @@ gcx cloud stacks create [flags]
       --labels strings       Labels in key=value format (may be repeated)
       --name string          Stack name (required)
       --org string           Destination organisation slug (required)
-  -o, --output string        Output format. One of: agents, json, table, yaml (default "table")
+  -o, --output string        Output format. One of: agents, json, table, yaml (default "yaml")
       --region string        Region slug (e.g. us, eu). Use 'gcx cloud stacks list-regions' to list.
       --slug string          Stack slug / subdomain (lowercase letters and digits only; required)
       --url string           Custom domain URL

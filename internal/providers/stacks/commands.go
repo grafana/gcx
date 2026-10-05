@@ -213,7 +213,7 @@ func validateLabels(labels []string) error {
 func (o *createOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&o.Org, "org", "", "Destination organisation slug (required)")
 	o.IO.RegisterCustomCodec("table", &stackTableCodec{})
-	o.IO.DefaultFormat("table")
+	o.IO.DefaultFormat("yaml")
 	o.IO.BindFlags(flags)
 	flags.StringVar(&o.Name, "name", "", "Stack name (required)")
 	flags.StringVar(&o.Slug, "slug", "", "Stack slug / subdomain (lowercase letters and digits only; required)")
@@ -236,6 +236,9 @@ func newCreateCommand(loader *providers.ConfigLoader) *cobra.Command {
 This provisions new infrastructure and may incur costs. The stack name, slug,
 and region cannot be changed after creation - double-check before running.
 Use --dry-run to preview the request first.
+
+Successful creation returns name, orgSlug, slug, status and url, defaulting to YAML.
+Use gcx cloud stacks get <slug> for full details.
 
 Specify the destination organisation slug with --org.
 With browser OAuth, use gcx cloud orgs list to discover your organisation slugs.
@@ -293,7 +296,10 @@ the stack's <slug>.grafana.net subdomain.`,
 				return fmt.Errorf("failed to create stack: %w", err)
 			}
 
-			return opts.IO.Encode(cmd.OutOrStdout(), stack)
+			return opts.IO.Encode(cmd.OutOrStdout(), createdStackSummary{
+				Name: stack.Name, OrgSlug: stack.OrgSlug, Slug: stack.Slug,
+				Status: stack.Status, URL: stack.URL,
+			})
 		},
 	}
 	opts.setup(cmd.Flags())
