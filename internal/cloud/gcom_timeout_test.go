@@ -61,3 +61,46 @@ func TestGCOMClient_OperationTimeouts(t *testing.T) {
 		})
 	}
 }
+
+// failingResponseBody simulates a timeout after response headers arrived.
+type failingResponseBody struct{}
+
+func (failingResponseBody) Read([]byte) (int, error) { return 0, context.DeadlineExceeded }
+func (failingResponseBody) Close() error             { return nil }
+
+func TestGCOMClient_CreationTimeoutOutcome(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		body   bool
+		create bool
+	}{
+		{"headers", false, true}, {"body", true, true}, {"read operation", false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			client, err := cloud.NewGCOMClient("https://example.com", "test-token")
+			require.NoError(t, err)
+			calls := 0
+			cloud.HTTPClientForTest(client).Transport = timeoutProbeTransport(func(_ *http.Request) (*http.Response, error) {
+				calls++
+				if !tc.body {
+					return nil, context.DeadlineExceeded
+				}
+				return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: failingResponseBody{}}, nil
+			})
+			if tc.create {
+				_, err = client.CreateStack(context.Background(), cloud.CreateStackRequest{Org: "example-org", Name: "demo", Slug: "demo"})
+			} else {
+				_, err = client.GetStack(context.Background(), "demo")
+			}
+			require.ErrorIs(t, err, context.DeadlineExceeded)
+			assert.Equal(t, 1, calls)
+			var timeout *cloud.StackCreationTimeoutError
+			if tc.create {
+				require.ErrorAs(t, err, &timeout)
+				assert.Equal(t, "demo", timeout.Slug)
+			} else {
+				assert.NotErrorAs(t, err, &timeout)
+			}
+		})
+	}
+}

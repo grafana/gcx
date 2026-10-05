@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -286,13 +287,13 @@ func (c *GCOMClient) CreateStack(ctx context.Context, r CreateStackRequest) (Sta
 	createClient.Timeout = 2 * time.Minute
 	resp, err := createClient.Do(req)
 	if err != nil {
-		return StackInfo{}, fmt.Errorf("gcom client: do request: %w", err)
+		return StackInfo{}, stackCreationError(r.Slug, fmt.Errorf("gcom client: do request: %w", err))
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return StackInfo{}, fmt.Errorf("gcom client: read response body: %w", err)
+		return StackInfo{}, stackCreationError(r.Slug, fmt.Errorf("gcom client: read response body: %w", err))
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -459,4 +460,20 @@ func isLoopbackHost(host string) bool {
 	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
+}
+
+// StackCreationTimeoutError identifies an uncertain creation outcome after a deadline.
+type StackCreationTimeoutError struct {
+	Slug string
+	Err  error
+}
+
+func (e *StackCreationTimeoutError) Error() string { return e.Err.Error() }
+func (e *StackCreationTimeoutError) Unwrap() error { return e.Err }
+
+func stackCreationError(slug string, err error) error {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return &StackCreationTimeoutError{Slug: slug, Err: err}
+	}
+	return err
 }

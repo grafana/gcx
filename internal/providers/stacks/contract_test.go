@@ -560,7 +560,7 @@ func TestListCommand_Organisation(t *testing.T) {
 			require.NotNil(t, detailed.ExitCode)
 			assert.Equal(t, gcxerrors.ExitUsageError, *detailed.ExitCode)
 			assert.Equal(t, "Invalid command usage", detailed.Summary)
-			assert.Contains(t, detailed.Details, "nonblank")
+			assert.Equal(t, "Flags must have nonblank values: --org", detailed.Details)
 			require.NotEmpty(t, detailed.Suggestions)
 			assert.Contains(t, detailed.Suggestions[0], "gcx cloud stacks list --org")
 		})

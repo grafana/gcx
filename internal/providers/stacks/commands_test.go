@@ -125,8 +125,7 @@ func TestCreateCommand_SlugValidation(t *testing.T) {
 			assert.Equal(t, gcxerrors.ExitUsageError, *detailed.ExitCode)
 			if tt.wantDetails != "lowercase" {
 				assert.Equal(t, tt.wantDetails, detailed.Details)
-			}
-			if tt.wantDetails == "lowercase" {
+			} else {
 				assert.Contains(t, detailed.Details, tt.wantDetails)
 				assert.Equal(t, docs.CloudAPI, detailed.DocsLink)
 				require.NotEmpty(t, detailed.Suggestions)

@@ -41,7 +41,7 @@ func (o *listOpts) Validate() error {
 	if o.Org == "" {
 		return &gcxerrors.DetailedError{
 			Summary:     "Invalid command usage",
-			Details:     "--org must have a nonblank value",
+			Details:     "Flags must have nonblank values: --org",
 			ExitCode:    new(gcxerrors.ExitUsageError),
 			Suggestions: []string{"Specify the organisation: gcx cloud stacks list --org <org-slug>"},
 		}
@@ -238,7 +238,9 @@ and region cannot be changed after creation - double-check before running.
 Use --dry-run to preview the request first.
 
 Specify the destination organisation slug with --org.
-Use gcx cloud orgs list to discover your organisation slugs.
+With browser OAuth, use gcx cloud orgs list to discover your organisation slugs.
+With an access-policy token, supply your organisation slug directly; user
+organisation discovery requires browser OAuth.
 
 Stack slugs may only contain lowercase letters and digits: the slug becomes
 the stack's <slug>.grafana.net subdomain.`,

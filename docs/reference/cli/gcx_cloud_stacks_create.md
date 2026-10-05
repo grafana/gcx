@@ -11,7 +11,9 @@ and region cannot be changed after creation - double-check before running.
 Use --dry-run to preview the request first.
 
 Specify the destination organisation slug with --org.
-Use gcx cloud orgs list to discover your organisation slugs.
+With browser OAuth, use gcx cloud orgs list to discover your organisation slugs.
+With an access-policy token, supply your organisation slug directly; user
+organisation discovery requires browser OAuth.
 
 Stack slugs may only contain lowercase letters and digits: the slug becomes
 the stack's <slug>.grafana.net subdomain.
