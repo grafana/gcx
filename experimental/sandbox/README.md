@@ -85,6 +85,14 @@ rt, err := sandbox.New(ctx, gcxWasm, sandbox.Config{
 })
 defer rt.Close(ctx)
 
+// Optional per-request policy, e.g. allow only reads.
+readOnly := func(r *http.Request) error {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		return fmt.Errorf("%s %s needs write access", r.Method, r.URL.Path)
+	}
+	return nil
+}
+
 // Per command: a fresh, isolated instance.
 ctx, cancel := context.WithTimeout(ctx, 60*time.Second) // stops the guest
 defer cancel()
@@ -101,7 +109,7 @@ res, err := rt.Run(ctx, sandbox.Invocation{
 		Host:   tenant.Host,
 		Header: http.Header{"Authorization": {"Bearer " + tenant.Token}},
 	}},
-	Authorize: sandbox.RequireAccess(sandbox.AccessRead), // optional per-request policy
+	Authorize: readOnly,
 })
 // res.ExitCode is gcx's exit status. err is set for host failures and when ctx
 // ends (it is then ctx.Err()).
@@ -129,11 +137,9 @@ Each `Run`:
     that.
   - Redirect hops are separate requests and are checked again.
 - **Per-request policy:** `Invocation.Authorize`, if set, judges every request
-  that `Egress` allows, before credentials are added.
-  - `RequireAccess(level)` is a ready-made authorizer. `AccessRead` allows GET,
-    HEAD, OPTIONS and read-only POSTs (datasource queries, read RPC methods and
-    similar). `AccessWrite` adds POST, PUT and PATCH. `AccessDelete` adds DELETE.
-  - Without `Authorize`, any method may reach an allowed host.
+  that `Egress` allows, before credentials are added, e.g. by method and path.
+  An error refuses the request, and the guest sees its text. Without
+  `Authorize`, any method may reach an allowed host.
 - **Credentials:** a destination's `Header` values are set by the host on every
   request to that host, replacing whatever the guest sent. They never follow a
   redirect to another host.

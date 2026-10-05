@@ -181,23 +181,29 @@ func TestRun(t *testing.T) {
 		}
 	})
 
-	t.Run("RequireAccess", func(t *testing.T) {
+	t.Run("Authorize refuses requests before they are sent", func(t *testing.T) {
 		const post = "POST /api/dashboards/db"
+		readOnly := func(r *http.Request) error {
+			if r.Method != http.MethodGet {
+				return fmt.Errorf("%s %s is not a read", r.Method, r.URL.Path)
+			}
+			return nil
+		}
 		inv, out := invocation(d, "x", "api", "/api/dashboards/db", "-X", "POST", "-d", "{}")
-		inv.Authorize = sandbox.RequireAccess(sandbox.AccessRead)
+		inv.Authorize = readOnly
 		res, err := rt.Run(ctx, inv)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if res.ExitCode == 0 || !strings.Contains(out.String(), "access denied: "+post+" needs read-write access") {
-			t.Errorf("exit %d, want failure logging access denied; output:\n%s", res.ExitCode, out)
+		if res.ExitCode == 0 || !strings.Contains(out.String(), "request refused: "+post+" is not a read") {
+			t.Errorf("exit %d, want failure logging the refusal; output:\n%s", res.ExitCode, out)
 		}
 		if d.saw(post) {
 			t.Error("refused POST reached the server")
 		}
 
 		inv, out = invocation(d, "x", "api", "/api/dashboards/db", "-X", "POST", "-d", "{}")
-		inv.Authorize = sandbox.RequireAccess(sandbox.AccessWrite)
+		inv.Authorize = nil // no policy: any method may reach an allowed host
 		if res, err := rt.Run(ctx, inv); err != nil || res.ExitCode != 0 {
 			t.Fatalf("exit %d, err %v, output:\n%s", res.ExitCode, err, out)
 		}
