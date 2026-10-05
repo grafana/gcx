@@ -142,7 +142,7 @@ type OnCallAPI interface {
 	CreateSchedule(ctx context.Context, s Schedule) (*Schedule, error)
 	UpdateSchedule(ctx context.Context, id string, s Schedule) (*Schedule, error)
 	DeleteSchedule(ctx context.Context, id string) error
-	ListFilterEvents(ctx context.Context, scheduleID, userTZ, startingDate string, days int) (*FilterEventsResponse, error)
+	ListFilterEvents(ctx context.Context, scheduleID, userTZ, date string, days int) (*FilterEventsResponse, error)
 
 	ListShifts(ctx context.Context) ([]Shift, error)
 	GetShift(ctx context.Context, id string) (*Shift, error)
