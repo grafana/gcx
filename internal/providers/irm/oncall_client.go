@@ -487,7 +487,7 @@ func (c *OnCallClient) ListFilterEvents(ctx context.Context, scheduleID, userTZ,
 	params := url.Values{}
 	params.Set("type", "final")
 	params.Set("user_tz", userTZ)
-	params.Set("starting_date", startingDate)
+	params.Set("date", startingDate)
 	params.Set("days", strconv.Itoa(days))
 	path := fmt.Sprintf("%s%s/filter_events/?%s", schedulesPath, url.PathEscape(scheduleID), params.Encode())
 
