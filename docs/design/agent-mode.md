@@ -38,7 +38,7 @@ Reference: `internal/agent/agent.go`
 When agent mode is active:
 1. **Default output format** becomes `agents` for all commands (overrides
    per-command `DefaultFormat()` in `io.Options.BindFlags()`). The `agents`
-   codec emits compact JSON when the payload is ≤ 100 KiB and spills to a
+   codec emits compact JSON when the payload is ≤ 24 KiB and spills to a
    temp file otherwise — see [output.md § Agents Codec](output.md#111-agents-codec)
 2. **Color** is disabled (`color.NoColor = true` in `PersistentPreRun`)
 3. **Pipe-aware behavior** is forced: `IsPiped=true`, `NoTruncate=true`
@@ -86,7 +86,7 @@ Explicit flags override agent mode defaults:
   operator has explicitly requested wide table format, so the JSON default is not applied)
 - `--agent=false` disables agent mode entirely (even when env vars are set)
 - `GCX_AGENT_MODE=0` disables agent mode regardless of other env vars
-- `GCX_AGENT_SPILL_BYTES=<n>` adjusts the spill threshold (bytes; default 102400)
+- `GCX_AGENT_SPILL_BYTES=<n>` adjusts the spill threshold (bytes; default 24576)
 
 ### 6.4 Output Protocol Classes
 
