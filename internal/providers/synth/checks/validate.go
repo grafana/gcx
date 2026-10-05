@@ -2,9 +2,10 @@ package checks
 
 import (
 	"fmt"
-	"net/http"
 	"strings"
 	"time"
+
+	"github.com/grafana/gcx/internal/httputils"
 )
 
 // knownCheckTypes is the set of valid SM check type names.
@@ -73,7 +74,8 @@ func ValidateHTTPTarget(checkType, target string, timeout time.Duration) error {
 		return nil
 	}
 
-	client := &http.Client{Timeout: timeout}
+	// No retry: this is an advisory reachability probe.
+	client := httputils.NewClient(httputils.ClientOpts{Timeout: timeout, DisableRetry: true})
 	resp, err := client.Head(target) //nolint:noctx // advisory validation, timeout is set on the client
 	if err != nil {
 		return fmt.Errorf("target %q is unreachable: %w", target, err)

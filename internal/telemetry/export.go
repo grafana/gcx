@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/version"
 )
 
@@ -47,10 +48,10 @@ func export(event Event, endpoint string) {
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", version.UserAgent())
-	// Deliberately not the shared httputils client: its retry transport would
-	// burn the whole exportTimeout budget on an unreachable endpoint, and this
-	// runs synchronously before exit on every telemetry-enabled invocation.
-	client := &http.Client{Timeout: exportTimeout}
+	// No retry: backoff would burn the whole exportTimeout budget on an
+	// unreachable endpoint, and this runs synchronously before exit on every
+	// telemetry-enabled invocation.
+	client := httputils.NewClient(httputils.ClientOpts{Timeout: exportTimeout, DisableRetry: true})
 	resp, err := client.Do(req)
 	if err != nil {
 		return
