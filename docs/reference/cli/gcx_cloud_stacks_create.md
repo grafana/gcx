@@ -13,10 +13,7 @@ Use --dry-run to preview the request first.
 Successful creation returns name, orgSlug, slug, status and url, defaulting to YAML.
 Use gcx cloud stacks get <slug> for full details.
 
-Specify the destination organisation slug with --org.
-With browser OAuth, use gcx cloud orgs list to discover your organisation slugs.
-With an access-policy token, supply your organisation slug directly; user
-organisation discovery requires browser OAuth.
+Specify which organisation to create the stack in with --org. Find out which orgs you are in with gcx cloud orgs list. With an access-policy token, supply your organisation slug directly.
 
 Stack slugs may only contain lowercase letters and digits: the slug becomes
 the stack's <slug>.grafana.net subdomain.
