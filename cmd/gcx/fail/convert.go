@@ -74,6 +74,7 @@ func ErrorToDetailedError(err error) *gcxerrors.DetailedError {
 		convertServiceAPIErrors,                     // Other structured HTTP API errors
 		convertFSErrors,                             // FS-related
 		convertResourcesErrors,                      // Resources-related
+		convertStackCreationTimeout,                 // Uncertain stack creation outcome before generic network errors
 		convertNetworkErrors,                        // Network-related errors
 		convertAPIErrors,                            // API-related errors
 		convertLoginValidationErrors,                // Login connectivity validation (must precede generic version check)
