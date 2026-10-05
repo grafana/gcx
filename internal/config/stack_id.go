@@ -167,7 +167,9 @@ func buildBootdataURL(server string) (*url.URL, error) {
 }
 
 func newBootdataHTTPClient(cfg GrafanaConfig) (*http.Client, error) {
-	opts := httputils.ClientOpts{Timeout: 5 * time.Second}
+	// No retry: discovery is optional (callers fall back to the org
+	// namespace) and runs on most commands, so it must fail fast.
+	opts := httputils.ClientOpts{Timeout: 5 * time.Second, DisableRetry: true}
 	if cfg.TLS != nil {
 		tlsCfg, err := cfg.TLS.ToStdTLSConfig()
 		if err != nil {

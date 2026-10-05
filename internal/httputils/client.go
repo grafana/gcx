@@ -52,7 +52,8 @@ func NewClient(opts ClientOpts) *http.Client {
 	for _, mw := range middlewares {
 		rt = mw(rt)
 	}
-	// Outermost layers: User-Agent injection, then retry for rate limiting (429) and transient errors.
+	// Outermost layers: User-Agent injection, then (unless DisableRetry) retry
+	// for rate limiting (429) and transient errors.
 	if !opts.DisableRetry {
 		rt = &retry.Transport{Base: rt}
 	}

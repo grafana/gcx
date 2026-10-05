@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/grafana/gcx/internal/httputils"
-	"github.com/grafana/gcx/internal/version"
 )
 
 // defaultEndpoint is the usage-stats receiver. GCX_TELEMETRY_ENDPOINT
@@ -47,11 +46,16 @@ func export(event Event, endpoint string) {
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", version.UserAgent())
 	// No retry: backoff would burn the whole exportTimeout budget on an
 	// unreachable endpoint, and this runs synchronously before exit on every
-	// telemetry-enabled invocation.
-	client := httputils.NewClient(httputils.ClientOpts{Timeout: exportTimeout, DisableRetry: true})
+	// telemetry-enabled invocation. No request logging either: the request
+	// has no command context, so its logger would not honour -v, and
+	// best-effort telemetry should stay silent.
+	client := httputils.NewClient(httputils.ClientOpts{
+		Timeout:      exportTimeout,
+		DisableRetry: true,
+		Middlewares:  []httputils.Middleware{},
+	})
 	resp, err := client.Do(req)
 	if err != nil {
 		return
