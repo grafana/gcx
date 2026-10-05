@@ -1,28 +1,30 @@
-## gcx synthetic-monitoring queries get
+## gcx cloud orgs list
 
-Show a named query's parameter schema.
+List your Grafana Cloud organisations.
 
 ### Synopsis
 
-Show one named query's description and full parameter schema, plus a
-ready-to-run 'gcx synthetic-monitoring query' invocation.
+List all organisation memberships returned by the Grafana Cloud.
 
-Requires Synthetic Monitoring app v1.62.0 or later.
+Returns organisation slugs and membership roles. To list stacks within
+an organisation, use gcx cloud stacks list --org <slug>.
 
 ```
-gcx synthetic-monitoring queries get NAME [flags]
+gcx cloud orgs list [flags]
 ```
 
 ### Examples
 
 ```
-  gcx synthetic-monitoring queries get checks_uptime
+  gcx cloud orgs list
+  gcx cloud orgs list -o json
+  gcx cloud orgs list --json slug,role
 ```
 
 ### Options
 
 ```
-  -h, --help            help for get
+  -h, --help            help for list
       --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string   Output format. One of: agents, json, table, yaml (default "table")
@@ -42,5 +44,5 @@ gcx synthetic-monitoring queries get NAME [flags]
 
 ### SEE ALSO
 
-* [gcx synthetic-monitoring queries](gcx_synthetic-monitoring_queries.md)	 - Discover Synthetic Monitoring named queries.
+* [gcx cloud orgs](gcx_cloud_orgs.md)	 - Discover your Grafana Cloud organisations
 

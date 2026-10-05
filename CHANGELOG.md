@@ -1,12 +1,51 @@
 ## Unreleased
 
-- Label the `--insecure-log-http-payload` dumps `http request dump` and `http response dump`, so you can find them in the debug log. A wire dump holds no word that identifies it, so a search for "body" never matched.
-- Show the OAuth bearer token in the `--insecure-log-http-payload` dump. The dump is now the innermost transport layer, so it shows every header that reaches the wire. Before this change the dump ran before the OAuth transport added the header, and the flag help promised the token. One consequence: the dump now also shows the OAuth token refresh exchange, which carries the refresh token and the rotated token pair.
-- Dump an outgoing request with `httputil.DumpRequestOut`, so `Content-Length` and `Accept-Encoding` appear.
-- Report the reason when a payload dump fails. The error was discarded, which logged an empty line.
-- Correct the recommended verbosity in the `--insecure-log-http-payload` reference and flag help: the dumps log at Debug level, which needs `-vvv`.
+## v1.4.0 (2026-10-02)
 
-- Added experimental Tempo TraceByID V2 params to `gcx traces get` / `gcx datasources tempo get`: `--filter` filters the trace to spans matching a TraceQL spanset expression, with `--keep-hierarchy`, `--match-depth`, and `--ancestor-depth` shaping how much surrounding context is kept; `--prune` (plus `--prune-group-by`, `--prune-min-spans`, `--prune-max-parent-depth`) collapses repeated sibling spans into a single aggregated span. `--prune` is off unless set. Both are aimed at shrinking large traces before `--llm` analysis.
+**Metrics and traces**
+- Add `gcx metrics search metric-names/label-names/label-values` and
+  `gcx datasources prometheus search-metric-names/search-label-names/search-label-values`,
+  backed by the experimental Prometheus/Mimir search API (#1374)
+- Add experimental TraceByID options to `gcx traces get` and
+  `gcx datasources tempo get`: `--filter` keeps the spans that match a TraceQL
+  spanset expression, shaped by `--keep-hierarchy`, `--match-depth` and
+  `--ancestor-depth`; `--prune` (with `--prune-group-by`, `--prune-min-spans`,
+  `--prune-max-parent-depth`) collapses repeated sibling spans. Both are off
+  unless set, and aim at shrinking large traces before `--llm` analysis (#1250)
+
+**Authentication and configuration**
+- Add Basic authentication to `gcx login` (#1389)
+- List the available contexts when the requested context is not found (#1210)
+
+**Agent Observability**
+- Add `gcx agento11y model-rates` to set your own negotiated model prices (#1377)
+
+**Synthetic Monitoring and IRM**
+- Add `gcx synthetic-monitoring queries list/get` for named queries (#1373)
+- Manage IRM OnCall integration alert templates and maintenance mode (#1188)
+
+**Application Observability**
+- Add `gcx appo11y operations list/get` (#1334)
+- Show service metadata, Explore links and Knowledge Graph data for services
+  (#1330, #1333)
+- Resolve scoped Knowledge Graph services by their exact name (#1384)
+
+**Security and debugging**
+- `--insecure-log-http-payload` dumps now run at the innermost transport layer
+  and show every header that reaches the wire, including the OAuth bearer
+  token. They also show the OAuth token refresh exchange, which carries the
+  refresh token and the rotated token pair. Treat captured debug logs as
+  secrets (#1190)
+- Label the dumps `http request dump` and `http response dump`, include
+  `Content-Length` and `Accept-Encoding` in request dumps, report why a dump
+  failed, and document that dumps log at Debug level (`-vvv`) (#1190)
+
+**Docs and internals**
+- Add guides for managing resources and diagnosing missing telemetry
+  (#1413, #1368)
+- Clarify the MkDocs setup and fix broken links (#1378, #1417)
+- Move Knowledge Graph transport into a shared internal client (#1331, #1332)
+
 ## v1.3.1 (2026-09-22)
 
 **Synthetic Monitoring**

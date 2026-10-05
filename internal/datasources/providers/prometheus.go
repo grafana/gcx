@@ -13,5 +13,8 @@ func init() { //nolint:gochecknoinits // Self-registration pattern (like databas
 		prometheus.QueryCmd,
 		prometheus.LabelsCmd,
 		prometheus.MetadataCmd,
+		prometheus.SearchMetricNamesCmd,
+		prometheus.SearchLabelNamesCmd,
+		prometheus.SearchLabelValuesCmd,
 	))
 }
