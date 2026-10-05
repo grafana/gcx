@@ -177,17 +177,11 @@ func (gvk *PartialGVK) String() string {
 	return build.String()
 }
 
-// GroupOnlyCandidate returns the alternative resource.group reading of a
-// resource.version.group identifier. Discovery must try the versioned reading
+// GroupOnlyCandidate returns the group name from the alternative resource.group
+// reading of a resource.version.group identifier. Discovery must try the versioned reading
 // first, since a group's first label can also look like a version.
-func (gvk *PartialGVK) GroupOnlyCandidate() (PartialGVK, bool) {
-	if gvk.FallbackGroup == "" {
-		return PartialGVK{}, false
-	}
-	return PartialGVK{
-		Resource: gvk.Resource,
-		Group:    gvk.FallbackGroup,
-	}, true
+func (gvk *PartialGVK) GroupOnlyCandidate() (string, bool) {
+	return gvk.FallbackGroup, gvk.FallbackGroup != ""
 }
 
 // ParseString parses a PartialGVK from a string. For identifiers with at least

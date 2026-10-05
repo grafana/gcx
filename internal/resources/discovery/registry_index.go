@@ -132,7 +132,7 @@ func (r *RegistryIndex) LookupPartialGVK(gvk resources.PartialGVK) (resources.De
 		return desc, true
 	}
 	if groupOnly, ok := gvk.GroupOnlyCandidate(); ok {
-		return r.filterCandidates(groupKindCandidates, groupOnly.Group, groupOnly.Version)
+		return r.filterCandidates(groupKindCandidates, groupOnly, "")
 	}
 	return resources.Descriptor{}, false
 }
@@ -203,7 +203,7 @@ func (r *RegistryIndex) LookupAllVersionsForPartialGVK(gvk resources.PartialGVK)
 		return descs, true
 	}
 	if groupOnly, ok := gvk.GroupOnlyCandidate(); ok {
-		return r.filterAllCandidates(groupKindCandidates, groupOnly.Group, groupOnly.Version)
+		return r.filterAllCandidates(groupKindCandidates, groupOnly, "")
 	}
 	return nil, false
 }

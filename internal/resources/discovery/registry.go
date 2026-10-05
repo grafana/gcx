@@ -228,8 +228,8 @@ func (r *Registry) makeFiltersForSelector(selector resources.Selector, preferred
 		gvk := selector.GroupVersionKind
 		if groupOnly, ambiguous := gvk.GroupOnlyCandidate(); ambiguous {
 			message += fmt.Sprintf(
-				" (tried resource.version.group: resource=%q, version=%q, group=%q; resource.group: resource=%q, group=%q)",
-				gvk.Resource, gvk.Version, gvk.Group, groupOnly.Resource, groupOnly.Group,
+				" (resource %q is not served by group %q at version %q, nor by group %q)",
+				gvk.Resource, gvk.Group, gvk.Version, groupOnly,
 			)
 		}
 		return nil, resources.InvalidSelectorError{

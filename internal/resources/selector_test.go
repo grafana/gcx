@@ -204,7 +204,7 @@ func TestPartialGVK_ParseStringClearsFallback(t *testing.T) {
 			require.NoError(t, gvk.ParseString("dashboards.dashboard.grafana.app"))
 			candidate, ok := gvk.GroupOnlyCandidate()
 			assert.True(t, ok)
-			assert.Equal(t, "dashboard.grafana.app", candidate.Group)
+			assert.Equal(t, "dashboard.grafana.app", candidate)
 			require.NoError(t, gvk.ParseString(selector))
 			_, ok = gvk.GroupOnlyCandidate()
 			assert.False(t, ok, "reparsing must clear the previous ambiguous group")

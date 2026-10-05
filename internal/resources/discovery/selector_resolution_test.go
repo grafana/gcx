@@ -108,20 +108,28 @@ func TestRegistry_SelectorCandidatePriority(t *testing.T) {
 }
 
 func TestRegistry_UnsupportedSelectorCandidates(t *testing.T) {
-	for _, selector := range []string{"missing.dashboard.grafana.app/foo,bar", "missing.v1.dashboard.grafana.app/foo"} {
-		t.Run(selector, func(t *testing.T) {
-			sels, err := resources.ParseSelectors([]string{selector})
+	for _, tt := range []struct {
+		selector string
+		wantErr  string
+	}{
+		{
+			selector: "missing.dashboard.grafana.app/foo,bar",
+			wantErr:  `the server does not support this resource (resource "missing" is not served by group "grafana.app" at version "dashboard", nor by group "dashboard.grafana.app")`,
+		},
+		{
+			selector: "missing.v1.dashboard.grafana.app/foo",
+			wantErr:  `the server does not support this resource (resource "missing" is not served by group "dashboard.grafana.app" at version "v1", nor by group "v1.dashboard.grafana.app")`,
+		},
+	} {
+		t.Run(tt.selector, func(t *testing.T) {
+			sels, err := resources.ParseSelectors([]string{tt.selector})
 			require.NoError(t, err)
 			_, err = discovery.NewStaticRegistry().MakeFilters(discovery.MakeFiltersOptions{Selectors: sels})
 			require.Error(t, err)
 			var invalid resources.InvalidSelectorError
 			require.ErrorAs(t, err, &invalid)
-			assert.Equal(t, selector, invalid.Command)
-			assert.Contains(t, invalid.Err, "resource.version.group")
-			assert.Contains(t, invalid.Err, "resource.group")
-			assert.Contains(t, invalid.Err, `group="`+sels[0].GroupVersionKind.Group+`"`)
-			assert.Contains(t, invalid.Err, `version="`+sels[0].GroupVersionKind.Version+`"`)
-			assert.Contains(t, invalid.Err, `group="`+sels[0].GroupVersionKind.Version+"."+sels[0].GroupVersionKind.Group+`"`)
+			assert.Equal(t, tt.selector, invalid.Command)
+			assert.Equal(t, tt.wantErr, invalid.Err)
 		})
 	}
 }

@@ -155,8 +155,8 @@ Parsing rules (SplitN on "."):
 
 For three or more dot-separated segments, discovery first tries the parsed
 `resource.version.group` reading. If that resource is not served at the given
-group and version, `PartialGVK.GroupOnlyCandidate()` supplies the `resource.group`
-reading retained in the parsed selector's `FallbackGroup`. For example,
+group and version, `PartialGVK.GroupOnlyCandidate()` supplies the alternate group
+name retained in the parsed selector's `FallbackGroup`, with no version. For example,
 `dashboards.dashboard.grafana.app` resolves to group `dashboard.grafana.app`
 without a version. This also works when a group's first label looks like a
 version, and applies to both discovered resources and static provider adapters.
