@@ -50,22 +50,46 @@ The following are **not yet implemented**:
    contract via `IsPiped` is in place for when they are added)
 6. Confirmation prompts auto-approved ([safety.md § Agent Mode Auto-Approve](safety.md#33-agent-mode-auto-approve))
 
-**Agent-mode hint banner.** When agent mode emits JSON-like output without
-`--json` field selection or `--jq` transformation in use, gcx writes a single
-hint line to stderr nudging the agent toward in-process parsing:
+**Agent-mode field-selection hint.** gcx shows this hint only when it can
+help and cannot break the output. The hint text is:
 
 ```
-hint: use --json list / --json field1,field2 for field selection, or --jq '<expr>' for transformation (group_by, filter, count) — no external parsing needed
+{"class":"hint","summary":"use --json list / --json field1,field2 for field selection, or --jq '<expr>' for transformation (group_by, filter, count) — no external parsing needed"}
 ```
 
-The hint fires at most once per command invocation (`jsonFieldsHintShown`
-guard in `internal/output/format.go`). It is suppressed when `--jq`,
-`--json list` (field discovery), or a non-JSON-like output format
-(`-o yaml`, `-o text`, `-o wide`) is in use, and it never appears outside
-agent mode. The hint **still fires** when `--json field1,field2` (field
-selection) is used — selection alone cannot do group_by / filter / count,
-so the nudge toward `--jq` remains useful. The goal is to steer agents away
-from `| python -c "..."` aggregation pipelines toward built-in transformation.
+gcx shows the hint when all of these conditions are true:
+
+1. Agent mode is active.
+2. The codec is JSON-like (`agents` or `json`).
+3. The command does not use `--json` (field selection or `--json list`).
+4. The command does not use `--jq`.
+5. The command does not pin its default format (file-output commands).
+6. The encoded payload is 8 KiB or larger (`fieldsHintMinBytes` in
+   `internal/output/format.go`).
+
+Where the hint goes:
+
+- **Payload on stdout:** one JSONL `class:"hint"` record on stderr, after the
+  payload.
+- **Payload spilled to a file:** the `hint` field of the spill receipt on
+  stdout. stderr stays empty.
+
+The hint appears no more than one time for each `Options` value
+(`jsonFieldsHintShown` guard). It never appears outside agent mode.
+
+**Why the rule is narrow.** Agents often merge the two streams
+(`gcx ... 2>&1 | jq ...`). An earlier version of gcx wrote the hint for
+almost each JSON result, also when `--json` fields were selected. The hint
+was then the first line of the merged stream, and `jq` failed
+(`jq: error (at <stdin>:1)`), or the agent used a turn to remove the line
+(`sed 1d`, `tail -n +2`). A token-efficiency eval found this problem in 31 of
+82 analyzed trials. A small payload costs few tokens, so the hint gives no
+value there. A command with `--json` fields already has the selection, so
+the hint gives no value there either.
+
+**Spill receipts in agent mode** do not write a stderr hint. The receipt on
+stdout already names the file in `spilled_to` and `message`. Outside agent
+mode, an explicit `-o agents` spill still writes a `hint: ...` line to stderr.
 
 ### 6.2a Format choice vs non-format presentation properties
 

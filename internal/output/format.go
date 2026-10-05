@@ -255,25 +255,69 @@ func (opts *Options) Encode(dst io.Writer, value any) error {
 		return err
 	}
 
-	// Nudge agents toward jq once, even with field selection. Pinned file-output
-	// commands reject --json/--jq, so recommending those flags would be wrong.
+	// Offer the field-selection hint only when it can help. The hint must not
+	// reach stderr for a small result: agents often merge stderr into stdout
+	// ("2>&1 | jq"), and an extra JSONL line then breaks the parse. Pinned
+	// file-output commands reject --json and --jq, so they get no hint.
 	isJSONLike := codec.Format() == format.JSON || codec.Format() == agentsFormat
-	if !opts.jsonFieldsHintShown && agent.IsAgentMode() && isJSONLike && !opts.JSONDiscovery && opts.jqQuery == nil && !opts.defaultFormatPinned {
+	offerHint := !opts.jsonFieldsHintShown && agent.IsAgentMode() && isJSONLike &&
+		!opts.JSONDiscovery && len(opts.JSONFields) == 0 && opts.jqQuery == nil && !opts.defaultFormatPinned
+
+	if !isJSONLike {
+		return codec.Encode(dst, value)
+	}
+	if !offerHint {
+		return opts.encodeJSONLike(dst, codec, value)
+	}
+
+	// A spill receipt carries the hint in its "hint" field. Other output gets
+	// the hint on stderr after the payload, and only when the payload is large.
+	agents, isAgents := codec.(*agentsCodec)
+	if isAgents {
+		agents.receiptHint = fieldsHintSummary
+	}
+	counter := &countingWriter{w: dst}
+	if err := codec.Encode(counter, value); err != nil {
+		return err
+	}
+	if isAgents && agents.spilled {
+		opts.jsonFieldsHintShown = true
+		return nil
+	}
+	if counter.n >= fieldsHintMinBytes {
 		opts.jsonFieldsHintShown = true
 		w := opts.ErrWriter
 		if w == nil {
 			w = os.Stderr
 		}
-		emitHint(w,
-			"use --json list / --json field1,field2 for field selection, or --jq '<expr>' for transformation (group_by, filter, count) — no external parsing needed",
-			"",
-		)
+		emitHint(w, fieldsHintSummary, "")
 	}
+	return nil
+}
 
-	// Apply JSON transformations before encoding or spilling.
-	if !isJSONLike {
-		return codec.Encode(dst, value)
-	}
+// fieldsHintSummary is the text of the agent-mode field-selection hint.
+const fieldsHintSummary = "use --json list / --json field1,field2 for field selection, or --jq '<expr>' for transformation (group_by, filter, count) — no external parsing needed"
+
+// fieldsHintMinBytes is the encoded payload size at which gcx shows the
+// field-selection hint. A smaller payload costs few tokens, so the hint
+// gives no value there.
+const fieldsHintMinBytes = 8 * 1024
+
+// countingWriter counts the bytes that pass through to w.
+type countingWriter struct {
+	w io.Writer
+	n int
+}
+
+func (c *countingWriter) Write(p []byte) (int, error) {
+	n, err := c.w.Write(p)
+	c.n += n
+	return n, err
+}
+
+// encodeJSONLike applies --jq, --json list, and --json field selection before
+// it encodes value with a JSON-like codec.
+func (opts *Options) encodeJSONLike(dst io.Writer, codec format.Codec, value any) error {
 	if opts.jqQuery != nil {
 		jq := NewJQCodec(opts.jqQuery)
 		if agents, ok := codec.(*agentsCodec); ok {
