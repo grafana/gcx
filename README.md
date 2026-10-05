@@ -211,7 +211,7 @@ endpoint, including dev and ops environments. Membership is not a guarantee of
 stack-creation permission. This differs from `gcx api /api/orgs`, which targets
 organisations inside a Grafana instance.
 
-Specify the destination organisation slug when creating a stack:
+Specify the organisation slug when creating a stack:
 
 ```bash
 gcx cloud stacks create --org example-org --name my-stack --slug mystack --region us --dry-run
