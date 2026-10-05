@@ -1,3 +1,53 @@
+## v1.5.0 (2026-10-05)
+
+## Breaking changes: Cloud stack creation
+
+- `gcx cloud stacks create` now requires `--org <org-slug>`, including
+  dry runs. The Cloud API validates access to the selected organisation.
+- Successful creation defaults to YAML and returns only `name`, `orgSlug`,
+  `slug`, `status`, and `url` in every output format. Use `-o json` when
+  parsing JSON and `gcx cloud stacks get <slug> -o json` for full details,
+  including the numeric stack ID. Dry runs still return a request preview.
+- Creation trims whitespace around `--org` and `--name`; stack slugs retain
+  strict lowercase-alphanumeric validation. Blank values are rejected.
+
+Update scripts before upgrading:
+
+```sh
+# Add the explicit destination organisation to existing create commands.
+gcx cloud stacks create --org example-org --name demo --slug demo --region us --dry-run
+
+# After creation, retrieve fields omitted from the concise result.
+gcx cloud stacks get demo -o json
+```
+
+## Cloud organisation discovery and creation
+
+- Add `gcx cloud orgs list` to show organisation slugs and membership roles
+  for the signed-in user. It uses the selected context's Cloud endpoint,
+  including dev and ops, and supports structured output.
+- Fresh Cloud OAuth logins request `profile`. Rerun `gcx cloud login` if
+  your saved login lacks that scope. Access-policy tokens cannot list user
+  memberships and take precedence over OAuth when configured; token users
+  supply the organisation slug directly when creating a stack.
+- Allow two minutes for stack creation. If it times out, check
+  `gcx cloud stacks get <slug>` with the same config/context before retrying:
+  the stack may already exist or still be provisioning.
+- Reject blank organisation values in `cloud stacks list`; that command
+  already required `--org` before this release.
+
+## Other improvements
+
+- Preserve Synthetic Monitoring `spec.folderUid` in check manifests,
+  responses, and resource workflows. Omit it to retain the assignment;
+  supply an empty string to clear it.
+- Explain how `--since` or `--from`/`--to` can speed up trace-ID lookup.
+  Use the correct time range; one that excludes the trace returns not found.
+- Show an Interactive Learning link after text-mode login when the
+  Pathfinder plugin is installed and enabled. JSON/YAML output is unchanged.
+- Add a contributor RFC for unified alerting resource workflows; it does
+  not introduce a new runtime alerting API.
+
 ## Unreleased
 
 ## v1.4.0 (2026-10-02)
