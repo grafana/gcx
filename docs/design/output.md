@@ -62,7 +62,9 @@ of size (standard indented JSON — see the byte-identity note above).
 `-o text` renders the human table.
 
 **Threshold configuration:** `GCX_AGENT_SPILL_BYTES` (int, bytes; default
-`102400`). Invalid or missing values fall back to the default.
+`102400`). `0` disables spilling: output is always written in full, for
+callers that cannot read gcx's temp files (e.g. gcx embedded in a sandbox).
+Invalid or missing values fall back to the default.
 
 **Guidance for provider authors:** Do **not** pre-truncate output for agent
 mode. The codec handles oversized payloads. Pre-truncation defeats the spill
