@@ -5,9 +5,9 @@
 - `gcx cloud stacks create` now requires `--org <org-slug>`, including
   dry runs. The Cloud API validates access to the selected organisation.
 - Successful creation defaults to YAML and returns only `name`, `orgSlug`,
-  `slug`, `status`, and `url` in every output format. Use `-o json` when
-  parsing JSON and `gcx cloud stacks get <slug> -o json` for full details,
-  including the numeric stack ID. Dry runs still return a request preview.
+  `slug`, `status`, and `url` in every output format. Use 
+  `gcx cloud stacks get <slug> -o json` for full details. Dry runs still
+  return a request preview.
 - Creation trims whitespace around `--org` and `--name`; stack slugs retain
   strict lowercase-alphanumeric validation. Blank values are rejected.
 
@@ -24,12 +24,9 @@ gcx cloud stacks get demo -o json
 ## Cloud organisation discovery and creation
 
 - Add `gcx cloud orgs list` to show organisation slugs and membership roles
-  for the signed-in user. It uses the selected context's Cloud endpoint,
-  including dev and ops, and supports structured output.
-- Fresh Cloud OAuth logins request `profile`. Rerun `gcx cloud login` if
-  your saved login lacks that scope. Access-policy tokens cannot list user
-  memberships and take precedence over OAuth when configured; token users
-  supply the organisation slug directly when creating a stack.
+  for the signed-in user.
+  - Fresh Cloud OAuth logins request `profile`. Rerun `gcx cloud login` if
+  your saved login lacks that scope. 
 - Allow two minutes for stack creation. If it times out, check
   `gcx cloud stacks get <slug>` with the same config/context before retrying:
   the stack may already exist or still be provisioning.
