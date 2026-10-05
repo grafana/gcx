@@ -31,6 +31,8 @@ skills:
     status: active
   oncall-triage:
     status: active
+  performance-rca:
+    status: active
   scaffold-project:
     status: active
   setup-gcx:

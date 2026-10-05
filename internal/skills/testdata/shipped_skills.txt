@@ -22,3 +22,4 @@ slo-optimize
 synth-check-status
 synth-investigate-check
 synth-manage-checks
+performance-rca
