@@ -36,7 +36,7 @@ func TestBuildAnomaliesResult(t *testing.T) {
 		},
 	}
 
-	result := pyroscope.BuildAnomaliesResult(resp, from, to)
+	result := pyroscope.BuildAnomaliesResult(resp, from, to, 0)
 
 	assert.Equal(t, from, result.From)
 	assert.Equal(t, to, result.To)
@@ -50,6 +50,25 @@ func TestBuildAnomaliesResult(t *testing.T) {
 
 	assert.Equal(t, "least-anomalous", result.Anomalies[1].ProfileID)
 	assert.NotContains(t, result.Anomalies[1].Labels, "__period_type__")
+}
+
+func TestBuildAnomaliesResult_TopN(t *testing.T) {
+	from := time.Unix(1000, 0).UTC()
+	to := time.Unix(2000, 0).UTC()
+
+	resp := &pyroscope.QueryAnomaliesResponse{
+		StacktraceAnomalies: []pyroscope.StacktraceAnomaly{
+			{ProfileID: "least-anomalous", Timestamp: num(1500100), Score: -0.1},
+			{ProfileID: "most-anomalous", Timestamp: num(1500200), Score: -0.9},
+			{ProfileID: "mid-anomalous", Timestamp: num(1500300), Score: -0.5},
+		},
+	}
+
+	result := pyroscope.BuildAnomaliesResult(resp, from, to, 2)
+
+	require.Len(t, result.Anomalies, 2)
+	assert.Equal(t, "most-anomalous", result.Anomalies[0].ProfileID)
+	assert.Equal(t, "mid-anomalous", result.Anomalies[1].ProfileID)
 }
 
 func TestFormatAnomaliesTable(t *testing.T) {

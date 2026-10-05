@@ -27,7 +27,7 @@ type Anomaly struct {
 
 // BuildAnomaliesResult only reads StacktraceAnomalies; a future anomaly
 // source gets its own field here, not a shared one.
-func BuildAnomaliesResult(resp *QueryAnomaliesResponse, from, to time.Time) *AnomaliesResult {
+func BuildAnomaliesResult(resp *QueryAnomaliesResponse, from, to time.Time, topN int) *AnomaliesResult {
 	entries := make([]Anomaly, len(resp.StacktraceAnomalies))
 	for i, a := range resp.StacktraceAnomalies {
 		entries[i] = Anomaly{
@@ -38,6 +38,9 @@ func BuildAnomaliesResult(resp *QueryAnomaliesResponse, from, to time.Time) *Ano
 		}
 	}
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Score < entries[j].Score })
+	if topN > 0 && len(entries) > topN {
+		entries = entries[:topN]
+	}
 
 	return &AnomaliesResult{
 		From:      from,

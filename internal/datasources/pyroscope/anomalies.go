@@ -25,6 +25,7 @@ type pyroscopeAnomaliesOpts struct {
 	Expr            string
 	ProfileType     string
 	AnomalyTypes    []string
+	TopN            int64
 	MaxLabelColumns int
 }
 
@@ -38,6 +39,7 @@ func (opts *pyroscopeAnomaliesOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.pyroscope is configured)")
 	flags.StringVar(&opts.ProfileType, "profile-type", defaultAnomaliesProfileType, "Profile type ID")
 	flags.StringSliceVar(&opts.AnomalyTypes, "anomaly-type", []string{"stacktrace"}, "Anomaly source(s) to query. Only 'stacktrace' is supported today. Repeatable")
+	flags.Int64Var(&opts.TopN, "top-n", 100, "Maximum number of anomalies to return")
 	flags.IntVar(&opts.MaxLabelColumns, "max-label-columns", 3, "Max label columns in table output (0 hides label columns)")
 }
 
@@ -53,6 +55,9 @@ func (opts *pyroscopeAnomaliesOpts) Validate() error {
 	}
 	if len(opts.AnomalyTypes) == 0 {
 		return errors.New("--anomaly-type must have at least one value")
+	}
+	if opts.TopN <= 0 {
+		return errors.New("--top-n must be greater than 0")
 	}
 	if opts.MaxLabelColumns < 0 {
 		return errors.New("--max-label-columns must be >= 0")
@@ -165,7 +170,7 @@ queried and confirmed in one call.`,
 				return fmt.Errorf("anomalies query failed: %w", err)
 			}
 
-			result := pyroscope.BuildAnomaliesResult(resp, start, end)
+			result := pyroscope.BuildAnomaliesResult(resp, start, end, int(opts.TopN))
 			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}

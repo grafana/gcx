@@ -50,6 +50,7 @@ gcx profiles anomalies [EXPR] [flags]
       --profile-type string     Profile type ID (default "process_cpu:cpu:nanoseconds:cpu:nanoseconds")
       --since string            Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --to string               End time (RFC3339, Unix timestamp, or relative like 'now')
+      --top-n int               Maximum number of anomalies to return (default 100)
 ```
 
 ### Options inherited from parent commands
