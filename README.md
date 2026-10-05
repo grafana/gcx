@@ -650,6 +650,7 @@ jobs:
 | [Dashboards as Code](docs/guides/dashboards-as-code.md) | Dashboard-as-code workflow with live dev server |
 | [Linting Resources](docs/guides/lint-resources.md) | Lint dashboards and alert rules with Rego policies |
 | [CLI Reference](docs/reference/cli/) | Full command reference (auto-generated) |
+| [Engineering RFCs](docs/rfcs/README.md) | Proposals, technical designs, and review workflows |
 
 ## Usage statistics
 
