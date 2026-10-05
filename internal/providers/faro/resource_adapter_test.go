@@ -221,9 +221,10 @@ func TestResourceAdapter_RoundTrip(t *testing.T) {
 			"otlpIngestEndpointURL": "https://collect.example.com/otlp",
 			"corsOrigins":           []map[string]any{{"url": "https://example.com"}},
 			"extraLogLabels":        []map[string]string{{"label": "team", "value": "frontend"}},
-			"settings": map[string]any{
-				"geolocationEnabled": true,
-				"geolocationLevel":   "country",
+			"settings": map[string]string{
+				"geolocation.enabled": "1",
+				"geolocation.level":   "1",
+				"combine_lab_data":    "1",
 			},
 		})
 	}))
@@ -245,6 +246,7 @@ func TestResourceAdapter_RoundTrip(t *testing.T) {
 	assert.Equal(t, "https://collect.example.com/otlp", spec["otlpIngestEndpointURL"])
 	// A "key" tag would decode the label name as "" and leave this map empty-keyed.
 	assert.Equal(t, map[string]any{"team": "frontend"}, spec["extraLogLabels"])
+	assert.Equal(t, map[string]any{"geolocationEnabled": true, "geolocationLevel": "country"}, spec["settings"])
 
 	// Verify metadata.
 	assert.Equal(t, "my-web-app-42", obj.GetName())

@@ -534,7 +534,8 @@ For mobile apps, set `spec.appType: mobile` and select the matching runtime:
 The caller selects the app type at creation; the API ignores later changes to it.
 Omit `runtime` on update to preserve its stored value. An empty runtime is invalid.
 Creation preserves `spec.extraLogLabels`, including the legacy `is_mobile` label.
-Settings are ignored on both create and update.
+Create and update send `spec.settings`. Set `geolocationLevel` to `continent`, `country`,
+`subdivision`, `city`, or `network`. Omitted settings keep their stored values.
 
 For example, save this native Android manifest as `app.yaml`:
 

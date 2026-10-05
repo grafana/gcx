@@ -187,7 +187,7 @@ func TestClient_CreateClassificationError(t *testing.T) {
 }
 
 func TestClient_Create(t *testing.T) {
-	t.Run("preserves ExtraLogLabels and strips Settings from request body", func(t *testing.T) {
+	t.Run("sends ExtraLogLabels and Settings in the API wire format", func(t *testing.T) {
 		var capturedBody map[string]any
 		calls := 0
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -225,7 +225,7 @@ func TestClient_Create(t *testing.T) {
 				"is_mobile": "true",
 			},
 			Settings: &faro.FaroAppSettings{
-				GeolocationEnabled: true,
+				GeolocationEnabled: new(true),
 				GeolocationLevel:   "country",
 			},
 		}
@@ -237,8 +237,9 @@ func TestClient_Create(t *testing.T) {
 			map[string]any{"label": "team", "value": "frontend"},
 			map[string]any{"label": "is_mobile", "value": "true"},
 		}, capturedBody["extraLogLabels"])
-		// Verify Settings was stripped from request.
-		assert.Nil(t, capturedBody["settings"], "settings should be stripped from create request")
+		assert.Equal(t,
+			map[string]any{"geolocation.enabled": "1", "geolocation.level": "1"},
+			capturedBody["settings"])
 
 		// Re-fetched via list returns full details.
 		assert.Equal(t, "100", result.ID)
@@ -249,7 +250,7 @@ func TestClient_Create(t *testing.T) {
 }
 
 func TestClient_Update(t *testing.T) {
-	t.Run("strips Settings, includes ID, and names labels correctly in body", func(t *testing.T) {
+	t.Run("sends Settings, includes ID, and names labels correctly in body", func(t *testing.T) {
 		var capturedBody map[string]any
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			assert.Equal(t, http.MethodPut, r.Method)
@@ -273,15 +274,15 @@ func TestClient_Update(t *testing.T) {
 				"team": "frontend",
 			},
 			Settings: &faro.FaroAppSettings{
-				GeolocationEnabled: true,
+				GeolocationEnabled: new(false),
 			},
 		}
 
 		result, err := c.Update(t.Context(), "42", app)
 		require.NoError(t, err)
 
-		// Settings should be stripped.
-		assert.Nil(t, capturedBody["settings"], "settings should be stripped from update request")
+		// An explicit false must reach the API so update can disable geolocation.
+		assert.Equal(t, map[string]any{"geolocation.enabled": "0"}, capturedBody["settings"])
 		// ID should be present in body.
 		assert.InDelta(t, float64(42), capturedBody["id"], 0.01, "id should be in update request body")
 		// The map key must reach the wire as "label"; "key" makes the server

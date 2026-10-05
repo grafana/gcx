@@ -125,15 +125,14 @@ func (c *Client) GetByName(ctx context.Context, name string) (*FaroApp, error) {
 }
 
 // Create creates a new Faro app.
-// Settings are stripped from the create payload due to Faro API constraints.
 // After creation, the app is re-fetched via List to get complete fields (collectEndpointURL, appKey).
 func (c *Client) Create(ctx context.Context, app *FaroApp) (*FaroApp, error) {
 	log := logging.FromContext(ctx)
 	log.Info("Creating Faro app", "name", app.Name)
-	apiApp := app.toAPI()
-	// Don't send settings on create -- the Faro API returns 500 if settings are included.
-	apiApp.Settings = nil
-	log.Debug("Create payload: stripped Settings (Faro API constraint)")
+	apiApp, err := app.toAPI()
+	if err != nil {
+		return nil, err
+	}
 
 	body, statusCode, err := c.doRequest(ctx, http.MethodPost, basePath, apiApp)
 	if err != nil {
@@ -175,7 +174,6 @@ func (c *Client) Create(ctx context.Context, app *FaroApp) (*FaroApp, error) {
 }
 
 // Update updates an existing Faro app by ID.
-// Settings are stripped from the update payload due to Faro API constraints.
 // The ID is included in both URL path and body.
 func (c *Client) Update(ctx context.Context, id string, app *FaroApp) (*FaroApp, error) {
 	path := fmt.Sprintf(appByIDPathFmt, url.PathEscape(id))
@@ -184,10 +182,10 @@ func (c *Client) Update(ctx context.Context, id string, app *FaroApp) (*FaroApp,
 	log.Info("Updating Faro app", "id", id, "name", app.Name)
 	// Faro API requires id in both URL path and body.
 	app.ID = id
-	apiApp := app.toAPI()
-	// Don't send settings on update -- the Faro API returns 500 if settings are included.
-	apiApp.Settings = nil
-	log.Debug("Update payload: stripped Settings (Faro API constraint)", "id", id)
+	apiApp, err := app.toAPI()
+	if err != nil {
+		return nil, err
+	}
 
 	body, statusCode, err := c.doRequest(ctx, http.MethodPut, path, apiApp)
 	if err != nil {

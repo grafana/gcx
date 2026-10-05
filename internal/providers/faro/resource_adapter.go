@@ -69,7 +69,7 @@ func FaroAppSchema() json.RawMessage {
 						"type": "object",
 						"properties": map[string]any{
 							"geolocationEnabled": map[string]any{"type": "boolean"},
-							"geolocationLevel":   map[string]any{"type": "string", "enum": []string{"country", "region", "city"}},
+							"geolocationLevel":   map[string]any{"type": "string", "enum": geolocationLevels()},
 						},
 					},
 				},

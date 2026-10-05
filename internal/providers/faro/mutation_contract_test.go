@@ -308,65 +308,7 @@ func TestFaroMutations_ExplicitOutputOverride(t *testing.T) {
 	}
 }
 
-// TestFaroCreate_AdvisoryWarningIsTypedStderrDiagnostic pins the create
-// command's settings warning to the typed diagnostic stream:
-// plain "warn:" prose on stderr for humans, a JSONL warning record on stderr
-// in agent mode, and never any of it on stdout.
-func TestFaroCreate_AdvisoryWarningIsTypedStderrDiagnostic(t *testing.T) {
-	withPlainColors(t)
-
-	manifest := `apiVersion: faro.ext.grafana.app/v1alpha1
-kind: FaroApp
-metadata:
-  name: my-app-42
-spec:
-  name: my-app
-  settings:
-    geolocationEnabled: true
-`
-	const warning = "settings are ignored on create and update (API limitation)"
-
-	tests := []struct {
-		name      string
-		agentMode bool
-	}{
-		{name: "human mode prose diagnostic", agentMode: false},
-		{name: "agent mode JSONL diagnostic", agentMode: true},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			agent.SetFlag(tc.agentMode)
-			t.Cleanup(func() { agent.SetFlag(false) })
-
-			path := writeTestFile(t, "app.yaml", manifest)
-			stdout, stderr, err := runFaroCommand(t, func(l *fakeConfigLoader) *cobra.Command {
-				return newCreateCommand(l)
-			}, []string{"-f", path})
-			require.NoError(t, err)
-
-			assert.NotContains(t, stdout, warning, "warning must never reach stdout")
-
-			if tc.agentMode {
-				// Stdout still holds exactly one JSON value.
-				decodeSingleJSONValue(t, stdout)
-
-				// The stderr warning is a JSONL typed-class record.
-				line, _, _ := strings.Cut(stderr, "\n")
-				var record map[string]any
-				require.NoError(t, json.Unmarshal([]byte(line), &record), "agent-mode stderr warning must be JSONL: %q", stderr)
-				assert.Equal(t, "warning", record["class"])
-				assert.Equal(t, warning, record["summary"])
-				return
-			}
-
-			assert.Contains(t, stderr, "warn: "+warning+"\n")
-			assert.Equal(t, "✔ Created Frontend Observability app \"my-app\" (id=42)\n", stdout)
-		})
-	}
-}
-
-func TestFaroCreate_LabelsDoNotWarn(t *testing.T) {
+func TestFaroCreate_LabelsAndSettingsDoNotWarn(t *testing.T) {
 	manifest := `apiVersion: faro.ext.grafana.app/v1alpha1
 kind: FaroApp
 metadata:
@@ -376,6 +318,8 @@ spec:
   extraLogLabels:
     team: web
     is_mobile: "true"
+  settings:
+    geolocationEnabled: true
 `
 	path := writeTestFile(t, "app.yaml", manifest)
 	_, stderr, err := runFaroCommand(t, func(l *fakeConfigLoader) *cobra.Command {

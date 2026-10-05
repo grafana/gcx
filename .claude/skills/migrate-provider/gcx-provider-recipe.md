@@ -614,14 +614,14 @@ that only surfaced during smoke testing:
   - Sourcemaps: `/api/plugins/grafana-kowalski-app/resources/api/v1/app/{id}/sourcemaps`
 - Auth: standard Grafana SA token via `rest.HTTPClientFor` — no separate token needed.
 - **API quirks preserved from the legacy CLI source:**
-  - Create MUST strip `Settings` (API returns 500).
-  - Update MUST strip `Settings` (API returns 500).
   - Create response is incomplete (missing `collectEndpointURL`, `appKey`) — must re-fetch
     via List after creation to get full details.
   - Update requires ID in both URL path and request body.
   - `GetByName` is client-side: list all apps, filter by name (no server-side endpoint).
 - **Wire format conversion:** `ExtraLogLabels` is `map[string]string` in Go but
   `[]{"label": k, "value": v}` on the wire. `ID` is `string` in Go but `int64` on wire.
+  `Settings` is typed in Go but a string map on the wire (`"geolocation.enabled": "1"`,
+  `"geolocation.level": "0"`–`"4"`); a non-string value makes the API return 500.
   Internal `toAPI()`/`fromAPI()` handles both conversions.
 - **Sourcemaps are sub-resources** (require parent app-id for all operations).
   Per CONSTITUTION § Sub-resources, they use `<operation>-<subject>` compounds

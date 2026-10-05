@@ -2,6 +2,8 @@
 package faro
 
 import (
+	"fmt"
+	"slices"
 	"strconv"
 
 	"github.com/grafana/gcx/internal/resources/adapter"
@@ -44,16 +46,17 @@ func (app *FaroApp) SetResourceName(name string) {
 
 // faroAppAPI is the API wire representation with array-based extraLogLabels.
 type faroAppAPI struct {
-	AppType               string           `json:"appType,omitempty"`
-	Runtime               *string          `json:"runtime,omitempty"`
-	ID                    int64            `json:"id,omitempty"`
-	Name                  string           `json:"name"`
-	AppKey                string           `json:"appKey,omitempty"`
-	CollectEndpointURL    string           `json:"collectEndpointURL,omitempty"`
-	OTLPIngestEndpointURL string           `json:"otlpIngestEndpointURL,omitempty"`
-	CORSOrigins           []CORSOrigin     `json:"corsOrigins,omitempty"`
-	ExtraLogLabels        []LogLabel       `json:"extraLogLabels,omitempty"`
-	Settings              *FaroAppSettings `json:"settings,omitempty"`
+	AppType               string       `json:"appType,omitempty"`
+	Runtime               *string      `json:"runtime,omitempty"`
+	ID                    int64        `json:"id,omitempty"`
+	Name                  string       `json:"name"`
+	AppKey                string       `json:"appKey,omitempty"`
+	CollectEndpointURL    string       `json:"collectEndpointURL,omitempty"`
+	OTLPIngestEndpointURL string       `json:"otlpIngestEndpointURL,omitempty"`
+	CORSOrigins           []CORSOrigin `json:"corsOrigins,omitempty"`
+	ExtraLogLabels        []LogLabel   `json:"extraLogLabels,omitempty"`
+	// The API stores settings as string pairs, e.g. "geolocation.enabled": "1".
+	Settings map[string]string `json:"settings,omitempty"`
 }
 
 // LogLabel represents a key-value log label for the API.
@@ -70,13 +73,67 @@ type CORSOrigin struct {
 }
 
 // FaroAppSettings represents Faro app settings.
+// Omitted fields keep their stored values on update: the API upserts the
+// settings it receives and never deletes the others.
 type FaroAppSettings struct {
-	GeolocationEnabled bool   `json:"geolocationEnabled,omitempty"`
-	GeolocationLevel   string `json:"geolocationLevel,omitempty"` // "country", "region", "city"
+	// A pointer keeps an explicit false, which disables geolocation.
+	GeolocationEnabled *bool  `json:"geolocationEnabled,omitempty"`
+	GeolocationLevel   string `json:"geolocationLevel,omitempty"`
+}
+
+const (
+	settingGeolocationEnabled = "geolocation.enabled"
+	settingGeolocationLevel   = "geolocation.level"
+)
+
+// geolocationLevels lists the manifest names in the API's index order:
+// "geolocation.level" "0" is continent, "4" is network.
+func geolocationLevels() []string {
+	return []string{"continent", "country", "subdivision", "city", "network"}
+}
+
+// toAPI returns an empty map when nothing is set; omitempty then drops it.
+func (s *FaroAppSettings) toAPI() (map[string]string, error) {
+	out := map[string]string{}
+	if s == nil {
+		return out, nil
+	}
+	if s.GeolocationEnabled != nil {
+		out[settingGeolocationEnabled] = "0"
+		if *s.GeolocationEnabled {
+			out[settingGeolocationEnabled] = "1"
+		}
+	}
+	if s.GeolocationLevel != "" {
+		i := slices.Index(geolocationLevels(), s.GeolocationLevel)
+		if i < 0 {
+			return nil, fmt.Errorf("faro: settings.geolocationLevel %q is invalid; use one of %v", s.GeolocationLevel, geolocationLevels())
+		}
+		out[settingGeolocationLevel] = strconv.Itoa(i)
+	}
+	return out, nil
+}
+
+// settingsFromAPI keeps the geolocation settings only. The others stay on the
+// server because updates do not delete settings they omit.
+func settingsFromAPI(m map[string]string) *FaroAppSettings {
+	var s FaroAppSettings
+	if v, ok := m[settingGeolocationEnabled]; ok {
+		enabled := v == "1"
+		s.GeolocationEnabled = &enabled
+	}
+	levels := geolocationLevels()
+	if i, err := strconv.Atoi(m[settingGeolocationLevel]); err == nil && i >= 0 && i < len(levels) {
+		s.GeolocationLevel = levels[i]
+	}
+	if s == (FaroAppSettings{}) {
+		return nil
+	}
+	return &s
 }
 
 // toAPI converts FaroApp to API wire format.
-func (app *FaroApp) toAPI() faroAppAPI {
+func (app *FaroApp) toAPI() (faroAppAPI, error) {
 	labels := make([]LogLabel, 0, len(app.ExtraLogLabels))
 	for k, v := range app.ExtraLogLabels {
 		labels = append(labels, LogLabel{Label: k, Value: v})
@@ -84,6 +141,10 @@ func (app *FaroApp) toAPI() faroAppAPI {
 	var id int64
 	if app.ID != "" {
 		id, _ = strconv.ParseInt(app.ID, 10, 64)
+	}
+	settings, err := app.Settings.toAPI()
+	if err != nil {
+		return faroAppAPI{}, err
 	}
 	// The API assigns AppKey, CollectEndpointURL and OTLPIngestEndpointURL and
 	// treats all three as read-only, so sending them back is harmless. This is
@@ -99,8 +160,8 @@ func (app *FaroApp) toAPI() faroAppAPI {
 		OTLPIngestEndpointURL: app.OTLPIngestEndpointURL,
 		CORSOrigins:           app.CORSOrigins,
 		ExtraLogLabels:        labels,
-		Settings:              app.Settings,
-	}
+		Settings:              settings,
+	}, nil
 }
 
 // fromAPI converts API wire format to FaroApp.
@@ -123,6 +184,6 @@ func fromAPI(api faroAppAPI) FaroApp {
 		OTLPIngestEndpointURL: api.OTLPIngestEndpointURL,
 		CORSOrigins:           api.CORSOrigins,
 		ExtraLogLabels:        labels,
-		Settings:              api.Settings,
+		Settings:              settingsFromAPI(api.Settings),
 	}
 }

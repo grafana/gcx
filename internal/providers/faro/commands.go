@@ -190,7 +190,7 @@ func labelsString(labels map[string]string) string {
 }
 
 func geolocationString(settings *FaroAppSettings) string {
-	if settings == nil || !settings.GeolocationEnabled {
+	if settings == nil || settings.GeolocationEnabled == nil || !*settings.GeolocationEnabled {
 		return "-"
 	}
 	level := settings.GeolocationLevel
@@ -310,11 +310,6 @@ func newCreateCommand(loader RESTConfigLoader) *cobra.Command {
 			app, err := readAppFromFile(opts.File, cmd.InOrStdin())
 			if err != nil {
 				return err
-			}
-
-			if app.Settings != nil {
-				cmdio.EmitWarn(cmd.ErrOrStderr(),
-					"settings are ignored on create and update (API limitation)")
 			}
 
 			typedObj := &adapter.TypedObject[FaroApp]{Spec: *app}
