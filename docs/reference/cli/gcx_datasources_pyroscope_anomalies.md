@@ -26,14 +26,14 @@ gcx datasources pyroscope anomalies [EXPR] [flags]
 ```
 
   # Anomalies for a service in the last hour
-  gcx profiles anomalies '{service_name="frontend"}' \
+  gcx datasources pyroscope anomalies -d UID '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h
 
   # Every service in a namespace
-  gcx profiles anomalies '{namespace="prod"}' --since 1h
+  gcx datasources pyroscope anomalies -d UID '{namespace="prod"}' --since 1h
 
   # JSON output
-  gcx profiles anomalies '{service_name="frontend"}' --since 1h -o json
+  gcx datasources pyroscope anomalies -d UID '{service_name="frontend"}' --since 1h -o json
 ```
 
 ### Options

@@ -105,14 +105,14 @@ to more than one service_name; anomalies from every matching service are
 queried and confirmed in one call.`,
 		Example: `
   # Anomalies for a service in the last hour
-  gcx profiles anomalies '{service_name="frontend"}' \
+  gcx datasources pyroscope anomalies -d UID '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h
 
   # Every service in a namespace
-  gcx profiles anomalies '{namespace="prod"}' --since 1h
+  gcx datasources pyroscope anomalies -d UID '{namespace="prod"}' --since 1h
 
   # JSON output
-  gcx profiles anomalies '{service_name="frontend"}' --since 1h -o json`,
+  gcx datasources pyroscope anomalies -d UID '{service_name="frontend"}' --since 1h -o json`,
 		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
@@ -172,7 +172,7 @@ queried and confirmed in one call.`,
 
 	cmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "small",
-		agent.AnnotationLLMHint:   "gcx profiles anomalies '{service_name=\"frontend\"}' --since 1h -o json",
+		agent.AnnotationLLMHint:   "gcx datasources pyroscope anomalies -d UID '{service_name=\"frontend\"}' --since 1h -o json",
 		agent.AnnotationStability: agent.StabilityExperimental,
 	}
 
