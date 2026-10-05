@@ -2,7 +2,6 @@ package stacks
 
 import (
 	"bufio"
-	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -37,6 +36,19 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&o.Org, "org", "", "Organisation slug (required)")
 }
 
+func (o *listOpts) Validate() error {
+	o.Org = strings.TrimSpace(o.Org)
+	if o.Org == "" {
+		return &gcxerrors.DetailedError{
+			Summary:     "Invalid command usage",
+			Details:     "--org must have a nonblank value",
+			ExitCode:    new(gcxerrors.ExitUsageError),
+			Suggestions: []string{"Specify the organisation: gcx cloud stacks list --org <org-slug>"},
+		}
+	}
+	return o.IO.Validate()
+}
+
 func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &listOpts{}
 	cmd := &cobra.Command{
@@ -48,10 +60,7 @@ func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
 			agent.AnnotationLLMHint:       "List all stacks in the organisation. Use get to view details of a single stack.",
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if opts.Org == "" {
-				return errors.New("--org is required")
-			}
-			if err := opts.IO.Validate(); err != nil {
+			if err := opts.Validate(); err != nil {
 				return err
 			}
 

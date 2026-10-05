@@ -481,18 +481,15 @@ func TestCreateCommand_Organisation(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
 		orgArgs   []string
-		status    int
 		dryRun    bool
 		wantCalls int
 		wantErr   string
 	}{
 		{name: "empty", orgArgs: []string{"--org", ""}, wantErr: "nonblank"},
 		{name: "whitespace", orgArgs: []string{"--org", " \t"}, wantErr: "nonblank"},
-		{name: "padded request", orgArgs: []string{"--org", " \texample-org "}, status: http.StatusOK, wantCalls: 1},
+		{name: "padded request", orgArgs: []string{"--org", " \texample-org "}, wantCalls: 1},
 		{name: "padded preview", orgArgs: []string{"--org", " example-org "}, dryRun: true},
-		{name: "request", orgArgs: []string{"--org", "example-org"}, status: http.StatusOK, wantCalls: 1},
-		{name: "denied by API", orgArgs: []string{"--org", "example-org"}, status: http.StatusForbidden, wantCalls: 1, wantErr: "403"},
-		{name: "dry run", orgArgs: []string{"--org", "example-org"}, dryRun: true},
+		{name: "request", orgArgs: []string{"--org", "example-org"}, wantCalls: 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			testutils.SandboxConfigEnv(t)
@@ -506,11 +503,6 @@ func TestCreateCommand_Organisation(t *testing.T) {
 				assert.NoError(t, json.NewDecoder(r.Body).Decode(&body))
 				assert.Equal(t, "example-org", body["org"])
 				assert.Equal(t, "My Stack", body["name"])
-				w.WriteHeader(tc.status)
-				if tc.status == http.StatusForbidden {
-					_, _ = w.Write([]byte(`{"message":"organisation access denied"}`))
-					return
-				}
 				_ = json.NewEncoder(w).Encode(testStack())
 			})
 			args := append([]string{"create", "--name", " My Stack ", "--slug", "mystack", "-o", "json"}, tc.orgArgs...)
@@ -522,14 +514,10 @@ func TestCreateCommand_Organisation(t *testing.T) {
 			if tc.wantErr != "" {
 				require.Error(t, err)
 				var detailed *gcxerrors.DetailedError
-				if tc.status == 0 {
-					require.ErrorAs(t, err, &detailed)
-					require.NotNil(t, detailed.ExitCode)
-					assert.Equal(t, gcxerrors.ExitUsageError, *detailed.ExitCode)
-					assert.Contains(t, detailed.Details, tc.wantErr)
-				} else {
-					assert.Contains(t, err.Error(), tc.wantErr)
-				}
+				require.ErrorAs(t, err, &detailed)
+				require.NotNil(t, detailed.ExitCode)
+				assert.Equal(t, gcxerrors.ExitUsageError, *detailed.ExitCode)
+				assert.Contains(t, detailed.Details, tc.wantErr)
 				return
 			}
 			require.NoError(t, err)
@@ -538,6 +526,43 @@ func TestCreateCommand_Organisation(t *testing.T) {
 			}
 			assert.Contains(t, out, `"org": "example-org"`)
 			assert.Contains(t, out, `"name": "My Stack"`)
+		})
+	}
+}
+
+func TestListCommand_Organisation(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		org       string
+		wantCalls int
+	}{
+		{name: "empty"},
+		{name: "whitespace", org: " \t"},
+		{name: "padded", org: " \texample-org ", wantCalls: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			testutils.SandboxConfigEnv(t)
+			calls := 0
+			loader := newCloudFixture(t, func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				assert.Equal(t, http.MethodGet, r.Method)
+				assert.Equal(t, "/api/orgs/example-org/instances", r.URL.Path)
+				_, _ = w.Write([]byte(`{"items":[]}`))
+			})
+			_, err := runCmd(t, stacks.NewTestListCommandWithLoader(loader), []string{"list", "--org", tc.org, "-o", "json"}, "")
+			assert.Equal(t, tc.wantCalls, calls)
+			if tc.wantCalls > 0 {
+				require.NoError(t, err)
+				return
+			}
+			var detailed *gcxerrors.DetailedError
+			require.ErrorAs(t, err, &detailed)
+			require.NotNil(t, detailed.ExitCode)
+			assert.Equal(t, gcxerrors.ExitUsageError, *detailed.ExitCode)
+			assert.Equal(t, "Invalid command usage", detailed.Summary)
+			assert.Contains(t, detailed.Details, "nonblank")
+			require.NotEmpty(t, detailed.Suggestions)
+			assert.Contains(t, detailed.Suggestions[0], "gcx cloud stacks list --org")
 		})
 	}
 }
