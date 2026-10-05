@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 
 	"github.com/grafana/gcx/internal/config"
@@ -477,9 +478,9 @@ func newValidateAdapter(t *testing.T, mux *http.ServeMux) adapter.ResourceAdapte
 
 func TestResourceAdapter_DryRun_Create_Validates(t *testing.T) {
 	var gotBody map[string]any
-	calls := 0
+	var calls atomic.Int32
 	a := newValidateAdapter(t, validateMux(t, func(w http.ResponseWriter, r *http.Request) {
-		calls++
+		calls.Add(1)
 		assert.NoError(t, json.NewDecoder(r.Body).Decode(&gotBody))
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"valid": true, "findings": []any{}})
@@ -489,10 +490,36 @@ func TestResourceAdapter_DryRun_Create_Validates(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, got)
 
-	assert.Equal(t, 1, calls)
+	assert.Equal(t, int32(1), calls.Load())
 	assert.Equal(t, "web-check", gotBody["job"])
 	assert.Equal(t, []any{"Oregon", "Spain"}, gotBody["probes"], "probe names are sent as-is")
 	assert.NotContains(t, gotBody, "id", "a create has no check ID")
+}
+
+func TestResourceAdapter_DryRun_Create_EncodesPlaintextScript(t *testing.T) {
+	const script = "export default function () {}"
+
+	var gotBody map[string]any
+	a := newValidateAdapter(t, validateMux(t, func(w http.ResponseWriter, r *http.Request) {
+		assert.NoError(t, json.NewDecoder(r.Body).Decode(&gotBody))
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"valid": true, "findings": []any{}})
+	}))
+
+	obj := validateEnvelope("web-check")
+	spec, ok := obj.Object["spec"].(map[string]any)
+	require.True(t, ok)
+	spec["settings"] = map[string]any{"scripted": map[string]any{"script": script}}
+
+	_, err := a.Create(context.Background(), obj, metav1.CreateOptions{DryRun: []string{metav1.DryRunAll}})
+	require.NoError(t, err)
+
+	settings, ok := gotBody["settings"].(map[string]any)
+	require.True(t, ok)
+	scripted, ok := settings["scripted"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, base64.StdEncoding.EncodeToString([]byte(script)), scripted["script"],
+		"the dry run must validate the base64 form that a push would send")
 }
 
 func TestResourceAdapter_DryRun_Update_SendsCheckID(t *testing.T) {

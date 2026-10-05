@@ -106,6 +106,26 @@ type checkAPIState struct {
 	adhocLines []string
 }
 
+// writeCount, validateCount and lastValidateBody read the fixture counters under
+// st.mu; handlers write them from the server goroutine.
+func (st *checkAPIState) writeCount() int {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	return st.writes
+}
+
+func (st *checkAPIState) validateCount() int {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	return st.validateCalls
+}
+
+func (st *checkAPIState) lastValidateBody() map[string]any {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	return st.lastValidate
+}
+
 func newCheckServer(t *testing.T, st *checkAPIState) *httptest.Server {
 	t.Helper()
 	if st.checks == nil {

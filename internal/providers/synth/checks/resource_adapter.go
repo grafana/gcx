@@ -179,10 +179,15 @@ func NewTypedCRUD(ctx context.Context, loader smcfg.Loader) (*adapter.TypedCRUD[
 		// ValidateFn backs `resources push --dry-run`. It asks the SM API to
 		// validate each check without persisting it. Probe names are sent as-is
 		// (the server resolves them), so no tenant or probe lookup is needed.
+		// Scripts are encoded the way CreateFn/UpdateFn (via SpecToCheck) send
+		// them, so the verdict is for the document a push would write.
 		ValidateFn: func(ctx context.Context, items []*checkResource) error {
 			var errs []error
 			for _, item := range items {
-				result, err := checksClient.Validate(ctx, item.CheckSpec, item.checkID)
+				spec := item.CheckSpec
+				spec.Settings = encodeScriptSettings(spec.Settings)
+
+				result, err := checksClient.Validate(ctx, spec, item.checkID)
 				if errors.Is(err, ErrValidateUnsupported) {
 					// Older servers can't validate: report "skipped", not a false success.
 					return fmt.Errorf("%w: %w", adapter.ErrDryRunUnverified, err)

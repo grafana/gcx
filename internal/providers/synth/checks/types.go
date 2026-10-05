@@ -91,11 +91,11 @@ type ValidateResult struct {
 }
 
 // Error returns nil when the check is valid, otherwise an error listing every
-// error-severity finding, one per line. Warning findings never fail validation.
+// error-severity finding, one per line. Findings of any other severity never fail validation.
 func (r ValidateResult) Error() error {
 	var lines []string
 	for _, f := range r.Findings {
-		if f.Severity == SeverityWarning {
+		if f.Severity != SeverityError {
 			continue
 		}
 		lines = append(lines, f.String())

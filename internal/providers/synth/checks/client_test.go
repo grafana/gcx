@@ -379,6 +379,19 @@ func TestValidateResult_Error(t *testing.T) {
 			}},
 		},
 		{
+			name: "unknown severity with valid true does not fail",
+			result: checks.ValidateResult{Valid: true, Findings: []checks.Finding{
+				{Severity: "info", Field: "frequency", Msg: "FYI"},
+			}},
+		},
+		{
+			name: "unknown severity with valid false falls back to the generic error",
+			result: checks.ValidateResult{Valid: false, Findings: []checks.Finding{
+				{Severity: "info", Field: "frequency", Msg: "FYI"},
+			}},
+			wantErr: "server reported the check as invalid",
+		},
+		{
 			name: "field and message",
 			result: checks.ValidateResult{Findings: []checks.Finding{
 				{Severity: "error", Field: "probes", Msg: "invalid probe identifier"},

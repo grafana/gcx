@@ -364,8 +364,9 @@ type checkCreateResult struct {
 	Action        string `json:"action" yaml:"action"`
 	Job           string `json:"job" yaml:"job"`
 	ID            int64  `json:"id" yaml:"id"`
-	// Name is the slug-id resource name used by get/update/delete.
-	Name string `json:"name" yaml:"name"`
+	// Name is the slug-id resource name used by get/update/delete. Empty (and
+	// omitted) for a dry-run, where nothing was created.
+	Name string `json:"name,omitempty" yaml:"name,omitempty"`
 	// Status is the post-create execution status (--show-status only).
 	Status string `json:"status,omitempty" yaml:"status,omitempty"`
 }
@@ -454,21 +455,21 @@ and logs usage. See ` + docs.SyntheticMonitoringInvoice + `.`,
 			}
 
 			if opts.DryRun {
-				client, err := newDryRunClient(ctx, loader)
+				client, err := newSMClient(ctx, loader)
 				if err != nil {
 					return err
 				}
 				if err := validateRemote(ctx, client, cmd.ErrOrStderr(), spec, 0); err != nil {
 					return err
 				}
-				// Nothing is created, so there is no ID: Name is the slug a create
-				// would start from, and ID stays 0.
+				// Nothing is created, so there is no ID and no resource name:
+				// both stay zero rather than carry a value get/update/delete
+				// would reject.
 				return opts.IO.Encode(cmd.OutOrStdout(), checkCreateResult{
 					Type:          "gcx.synth.check_create",
 					SchemaVersion: "1",
 					Action:        actionValidated,
 					Job:           spec.Job,
-					Name:          slugifyJob(spec.Job),
 				})
 			}
 
@@ -634,7 +635,7 @@ toward your metrics and logs usage. See ` + docs.SyntheticMonitoringInvoice + `.
 			var dryRunClient *Client
 			if opts.DryRun {
 				var err error
-				dryRunClient, err = newDryRunClient(ctx, loader)
+				dryRunClient, err = newSMClient(ctx, loader)
 				if err != nil {
 					return err
 				}
@@ -735,8 +736,8 @@ toward your metrics and logs usage. See ` + docs.SyntheticMonitoringInvoice + `.
 	return cmd
 }
 
-// newDryRunClient builds the SM checks client used by `--dry-run`.
-func newDryRunClient(ctx context.Context, loader smcfg.Loader) (*Client, error) {
+// newSMClient builds an SM checks client from the loader's proxy config.
+func newSMClient(ctx context.Context, loader smcfg.Loader) (*Client, error) {
 	restCfg, uid, _, err := loader.LoadSMProxyConfig(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load SM config: %w", err)
@@ -749,8 +750,9 @@ func newDryRunClient(ctx context.Context, loader smcfg.Loader) (*Client, error) 
 }
 
 // validateRemote asks the SM API to validate spec — as a new check when id is
-// 0, otherwise as an update of check id — without persisting anything. Warning
-// findings are advisory and go to stderr; error findings are returned.
+// 0, otherwise as an update of check id — without persisting anything. Findings
+// of any severity other than error are advisory and go to stderr; error
+// findings are returned.
 func validateRemote(ctx context.Context, client *Client, stderr io.Writer, spec *CheckSpec, id int64) error {
 	result, err := client.Validate(ctx, *spec, id)
 	if err != nil {
@@ -758,7 +760,7 @@ func validateRemote(ctx context.Context, client *Client, stderr io.Writer, spec 
 	}
 
 	for _, f := range result.Findings {
-		if f.Severity == SeverityWarning {
+		if f.Severity != SeverityError {
 			cmdio.Warning(stderr, "%s", f)
 		}
 	}
@@ -773,11 +775,7 @@ func validateRemote(ctx context.Context, client *Client, stderr io.Writer, spec 
 // "previous status" is evaluated against the old threshold, not the new spec's.
 // Falls back to fallback if the fetch fails for any reason.
 func existingSensitivity(ctx context.Context, loader smcfg.Loader, checkID int64, fallback string) string {
-	restCfg, uid, _, err := loader.LoadSMProxyConfig(ctx)
-	if err != nil {
-		return fallback
-	}
-	client, err := NewClient(restCfg, uid, loader)
+	client, err := newSMClient(ctx, loader)
 	if err != nil {
 		return fallback
 	}

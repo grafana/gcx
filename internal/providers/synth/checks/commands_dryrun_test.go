@@ -62,10 +62,10 @@ func TestChecksCreateDryRun(t *testing.T) {
 		require.NoError(t, err)
 
 		assert.Equal(t, "✔ Check \"web-check\" is valid (dry-run: nothing was created)\n", stdout)
-		assert.Equal(t, 1, st.validateCalls)
-		assert.Equal(t, 0, st.writes, "dry-run must not create anything")
-		assert.NotContains(t, st.lastValidate, "id", "a create has no check ID")
-		assert.Equal(t, "web-check", st.lastValidate["job"])
+		assert.Equal(t, 1, st.validateCount())
+		assert.Equal(t, 0, st.writeCount(), "dry-run must not create anything")
+		assert.NotContains(t, st.lastValidateBody(), "id", "a create has no check ID")
+		assert.Equal(t, "web-check", st.lastValidateBody()["job"])
 
 		after, err := os.ReadFile(manifest)
 		require.NoError(t, err)
@@ -85,6 +85,22 @@ func TestChecksCreateDryRun(t *testing.T) {
 		assert.Equal(t, "gcx.synth.check_create", doc["type"])
 		assert.Equal(t, "validated", doc["action"])
 		assert.Equal(t, "web-check", doc["job"])
+		assert.NotContains(t, doc, "name", "a validated create has no resource name that get/update/delete would accept")
+	})
+
+	t.Run("non-error findings of any severity go to stderr and do not fail", func(t *testing.T) {
+		body := map[string]any{
+			"valid":    true,
+			"findings": []map[string]string{{"severity": "info", "field": "frequency", "msg": "FYI only"}},
+		}
+		st := &checkAPIState{probesOnline: true, validateStatus: 200, validateBody: body}
+		srv := newCheckServer(t, st)
+		manifest := writeCheckManifest(t, t.TempDir())
+
+		stdout, stderr, err := runChecks(t, srv.URL, false, "", "create", "-f", manifest, "--dry-run")
+		require.NoError(t, err)
+		assert.Contains(t, stderr, "frequency: FYI only")
+		assert.NotContains(t, stdout, "FYI only")
 	})
 
 	t.Run("invalid check fails with every finding and writes nothing", func(t *testing.T) {
@@ -97,7 +113,7 @@ func TestChecksCreateDryRun(t *testing.T) {
 		assert.Contains(t, err.Error(), "invalid check timeout")
 		assert.Contains(t, err.Error(), "probes: invalid probe identifier")
 		assert.Empty(t, stdout, "stdout is reserved for the success document")
-		assert.Equal(t, 0, st.writes)
+		assert.Equal(t, 0, st.writeCount())
 	})
 
 	t.Run("warnings go to stderr and do not fail", func(t *testing.T) {
@@ -124,7 +140,7 @@ func TestChecksCreateDryRun(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "does not support check validation")
 		assert.Empty(t, stdout)
-		assert.Equal(t, 0, st.writes)
+		assert.Equal(t, 0, st.writeCount())
 	})
 
 	t.Run("local validation still runs first", func(t *testing.T) {
@@ -135,7 +151,7 @@ func TestChecksCreateDryRun(t *testing.T) {
 		_, _, err := runChecks(t, srv.URL, false, "", "create", "-f", manifest, "--dry-run")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "check validation failed")
-		assert.Equal(t, 0, st.validateCalls, "a locally invalid check must not reach the server")
+		assert.Equal(t, 0, st.validateCount(), "a locally invalid check must not reach the server")
 	})
 
 	t.Run("cannot be combined with --show-status", func(t *testing.T) {
@@ -146,7 +162,7 @@ func TestChecksCreateDryRun(t *testing.T) {
 		_, _, err := runChecks(t, srv.URL, false, "", "create", "-f", manifest, "--dry-run", "--show-status")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "--dry-run")
-		assert.Equal(t, 0, st.validateCalls)
+		assert.Equal(t, 0, st.validateCount())
 	})
 }
 
@@ -168,8 +184,8 @@ func TestChecksUpdateDryRun(t *testing.T) {
 		assert.Contains(t, err.Error(), "not found")
 		assert.Contains(t, err.Error(), "1234")
 		assert.Empty(t, stdout, "a missing check must not report success")
-		assert.Equal(t, 0, st.validateCalls, "a missing check must not reach the validate endpoint")
-		assert.Equal(t, 0, st.writes)
+		assert.Equal(t, 0, st.validateCount(), "a missing check must not reach the validate endpoint")
+		assert.Equal(t, 0, st.writeCount())
 	})
 
 	t.Run("existence is checked before local validation", func(t *testing.T) {
@@ -191,7 +207,7 @@ func TestChecksUpdateDryRun(t *testing.T) {
 		_, _, err := runChecks(t, srv.URL, false, "", "update", "web-check-1234", "-f", manifest, "--dry-run")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "check validation failed")
-		assert.Equal(t, 0, st.validateCalls)
+		assert.Equal(t, 0, st.validateCount())
 	})
 
 	t.Run("validates against the check's own ID and does not update", func(t *testing.T) {
@@ -203,8 +219,8 @@ func TestChecksUpdateDryRun(t *testing.T) {
 		require.NoError(t, err)
 
 		assert.Equal(t, "✔ Check \"web-check\" (id=1234) is valid (dry-run: nothing was updated)\n", stdout)
-		assert.InDelta(t, 1234, st.lastValidate["id"], 0)
-		assert.Equal(t, 0, st.writes, "dry-run must not update anything")
+		assert.InDelta(t, 1234, st.lastValidateBody()["id"], 0)
+		assert.Equal(t, 0, st.writeCount(), "dry-run must not update anything")
 	})
 
 	t.Run("agent mode emits one JSON document", func(t *testing.T) {
@@ -231,7 +247,7 @@ func TestChecksUpdateDryRun(t *testing.T) {
 		_, _, err := runChecks(t, srv.URL, false, "", "update", "web-check-1234", "-f", manifest, "--dry-run")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid check timeout")
-		assert.Equal(t, 0, st.writes)
+		assert.Equal(t, 0, st.writeCount())
 	})
 
 	t.Run("cannot be combined with --show-status", func(t *testing.T) {
@@ -254,7 +270,7 @@ func TestChecksUpdateDryRun(t *testing.T) {
 		assert.Contains(t, err.Error(), "looking up check")
 		assert.NotContains(t, err.Error(), "not found", "a server error is not a missing check")
 		assert.Empty(t, stdout)
-		assert.Equal(t, 0, st.validateCalls)
+		assert.Equal(t, 0, st.validateCount())
 	})
 
 	t.Run("server without the endpoint is an error, not a false success", func(t *testing.T) {
@@ -266,7 +282,7 @@ func TestChecksUpdateDryRun(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "does not support check validation")
 		assert.Empty(t, stdout)
-		assert.Equal(t, 0, st.writes)
+		assert.Equal(t, 0, st.writeCount())
 	})
 
 	t.Run("warnings go to stderr and do not fail", func(t *testing.T) {
@@ -297,6 +313,6 @@ func TestChecksCreateUpdateDoNotCallValidate(t *testing.T) {
 	_, _, err = runChecks(t, srv.URL, false, "", "update", "web-check-1234", "-f", manifest)
 	require.NoError(t, err)
 
-	assert.Equal(t, 0, st.validateCalls)
-	assert.Equal(t, 2, st.writes)
+	assert.Equal(t, 0, st.validateCount())
+	assert.Equal(t, 2, st.writeCount())
 }
