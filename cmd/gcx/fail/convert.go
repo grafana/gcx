@@ -66,6 +66,7 @@ func ErrorToDetailedError(err error) *gcxerrors.DetailedError {
 		convertRequiredFlagErrors,                   // Cobra required-flag errors — must appear before generic checks
 		convertCredentialsErrors,                    // OS credential-store failures — must precede config errors that wrap them
 		convertConfigErrors,                         // Config-related
+		convertCloudOrgsErrors,                      // Organisation discovery auth failures
 		convertAuthErrors,                           // Auth-related (expired tokens)
 		convertUnavailableEndpoint,                  // Experimental/Cloud-only endpoint route absent
 		convertQueryErrors,                          // Datasource query errors
@@ -73,6 +74,7 @@ func ErrorToDetailedError(err error) *gcxerrors.DetailedError {
 		convertServiceAPIErrors,                     // Other structured HTTP API errors
 		convertFSErrors,                             // FS-related
 		convertResourcesErrors,                      // Resources-related
+		convertStackCreationTimeout,                 // Uncertain stack creation outcome before generic network errors
 		convertNetworkErrors,                        // Network-related errors
 		convertAPIErrors,                            // API-related errors
 		convertLoginValidationErrors,                // Login connectivity validation (must precede generic version check)
