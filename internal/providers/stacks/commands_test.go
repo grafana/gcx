@@ -105,9 +105,10 @@ func TestCreateCommand_SlugValidation(t *testing.T) {
 		{"dot", "my.slug", "t", "lowercase"},
 		{"space", "my slug", "t", "lowercase"},
 		{"all uppercase", "MYSLUG", "t", "lowercase"},
-		{"explicit empty slug hits required check", "", "t", "--slug"},
-		{"whitespace name", "myslug", " \t", "nonblank"},
-		{"explicit empty name hits required check", "myslug", "", "--name"},
+		{"explicit empty slug hits required check", "", "t", "Flags must have nonblank values: --slug"},
+		{"whitespace name", "myslug", " \t", "Flags must have nonblank values: --name"},
+		{"both blank", "", "", "Flags must have nonblank values: --name, --slug"},
+		{"explicit empty name hits required check", "myslug", "", "Flags must have nonblank values: --name"},
 	}
 
 	for _, tt := range tests {
@@ -122,8 +123,11 @@ func TestCreateCommand_SlugValidation(t *testing.T) {
 			assert.Equal(t, "Invalid command usage", detailed.Summary)
 			require.NotNil(t, detailed.ExitCode)
 			assert.Equal(t, gcxerrors.ExitUsageError, *detailed.ExitCode)
-			assert.Contains(t, detailed.Details, tt.wantDetails)
+			if tt.wantDetails != "lowercase" {
+				assert.Equal(t, tt.wantDetails, detailed.Details)
+			}
 			if tt.wantDetails == "lowercase" {
+				assert.Contains(t, detailed.Details, tt.wantDetails)
 				assert.Equal(t, docs.CloudAPI, detailed.DocsLink)
 				require.NotEmpty(t, detailed.Suggestions)
 				assert.Contains(t, detailed.Suggestions[0], "--slug mygcxeval")

@@ -485,8 +485,8 @@ func TestCreateCommand_Organisation(t *testing.T) {
 		wantCalls int
 		wantErr   string
 	}{
-		{name: "empty", orgArgs: []string{"--org", ""}, wantErr: "nonblank"},
-		{name: "whitespace", orgArgs: []string{"--org", " \t"}, wantErr: "nonblank"},
+		{name: "empty", orgArgs: []string{"--org", ""}, wantErr: "Flags must have nonblank values: --org"},
+		{name: "whitespace", orgArgs: []string{"--org", " \t"}, wantErr: "Flags must have nonblank values: --org"},
 		{name: "padded request", orgArgs: []string{"--org", " \texample-org "}, wantCalls: 1},
 		{name: "padded preview", orgArgs: []string{"--org", " example-org "}, dryRun: true},
 		{name: "request", orgArgs: []string{"--org", "example-org"}, wantCalls: 1},
@@ -517,7 +517,7 @@ func TestCreateCommand_Organisation(t *testing.T) {
 				require.ErrorAs(t, err, &detailed)
 				require.NotNil(t, detailed.ExitCode)
 				assert.Equal(t, gcxerrors.ExitUsageError, *detailed.ExitCode)
-				assert.Contains(t, detailed.Details, tc.wantErr)
+				assert.Equal(t, tc.wantErr, detailed.Details)
 				return
 			}
 			require.NoError(t, err)

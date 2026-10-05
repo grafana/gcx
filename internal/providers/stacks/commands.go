@@ -158,10 +158,20 @@ type createOpts struct {
 func (o *createOpts) Validate() error {
 	o.Org = strings.TrimSpace(o.Org)
 	o.Name = strings.TrimSpace(o.Name)
-	if o.Org == "" || o.Name == "" || o.Slug == "" {
+	var blank []string
+	if o.Org == "" {
+		blank = append(blank, "--org")
+	}
+	if o.Name == "" {
+		blank = append(blank, "--name")
+	}
+	if o.Slug == "" {
+		blank = append(blank, "--slug")
+	}
+	if len(blank) > 0 {
 		return &gcxerrors.DetailedError{
 			Summary:     "Invalid command usage",
-			Details:     "--org, --name and --slug must have nonblank values",
+			Details:     "Flags must have nonblank values: " + strings.Join(blank, ", "),
 			ExitCode:    new(gcxerrors.ExitUsageError),
 			Suggestions: []string{"Specify the destination and stack: gcx cloud stacks create --org <org-slug> --name <name> --slug <slug> --region <region>"},
 		}
