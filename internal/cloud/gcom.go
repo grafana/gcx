@@ -153,8 +153,8 @@ type GCOMClient struct {
 // NewGCOMClient returns a new GCOMClient configured to call the given base URL
 // using the provided Bearer token.
 //
-// The client uses a 30-second timeout and will not follow HTTP redirects to a
-// different domain than baseURL.
+// The client uses a 30-second timeout, except stack creation allows two minutes.
+// It will not follow HTTP redirects to a different domain than baseURL.
 func NewGCOMClient(baseURL, token string) (*GCOMClient, error) {
 	baseURL = strings.TrimRight(baseURL, "/")
 
@@ -280,7 +280,11 @@ func (c *GCOMClient) CreateStack(ctx context.Context, r CreateStackRequest) (Sta
 	c.setHeaders(req)
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := c.http.Do(req)
+	// Provisioning can outlast the default timeout. Copy the client so other
+	// operations retain their timeout, including concurrent requests.
+	createClient := *c.http
+	createClient.Timeout = 2 * time.Minute
+	resp, err := createClient.Do(req)
 	if err != nil {
 		return StackInfo{}, fmt.Errorf("gcom client: do request: %w", err)
 	}
