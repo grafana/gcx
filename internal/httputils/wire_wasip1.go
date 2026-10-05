@@ -8,7 +8,6 @@ import (
 	"errors"
 	"net/http"
 	"time"
-	"unsafe"
 )
 
 // wasip1 has no outbound sockets, so requests are delegated to the host,
@@ -19,6 +18,15 @@ import (
 //	take(id u32, buf_ptr u32)               copy the response or error into buf and forget id
 //	cancel(id u32)                          abandon the request and forget id
 //
+// Rules the host must follow:
+//   - start copies the request bytes before it returns. The pointer is only
+//     valid for the duration of the call; afterwards the guest may reuse the
+//     memory.
+//   - start cannot fail. Any failure, including an unparseable or refused
+//     request, is reported by poll as an error.
+//   - Error text is at least one byte, because poll returning 0 means pending.
+//   - take writes exactly the length poll reported.
+//
 // The host never calls back into the guest: entering a //go:wasmexport while
 // an import is in flight lets the Go scheduler run other goroutines on the
 // same wasm stack, which corrupts it. Requests run concurrently on the host;
@@ -28,20 +36,24 @@ import (
 // client-go TLS settings have no effect in this build.
 
 //go:wasmimport gcx_http start
-func hostStart(reqPtr unsafe.Pointer, reqLen uint32) uint32
+func hostStart(req *byte, reqLen uint32) uint32
 
 //go:wasmimport gcx_http poll
 func hostPoll(id uint32) int64
 
 //go:wasmimport gcx_http take
-func hostTake(id uint32, buf unsafe.Pointer)
+func hostTake(id uint32, buf *byte)
 
 //go:wasmimport gcx_http cancel
 func hostCancel(id uint32)
 
 func init() {
-	// Route clients that fall back to http.DefaultTransport, or clone it, to
-	// the host. It must stay an *http.Transport: libraries type-assert it.
+	// Route clients that use http.DefaultTransport itself (directly, through a
+	// nil Base, or via a type assertion as grafana-openapi-client-go does) to
+	// the host. It must stay an *http.Transport for those type assertions.
+	// Clones do not inherit RegisterProtocol registrations, so a library that
+	// clones the default transport dials natively and fails; gcx's own
+	// clients do not depend on that, as they all go through WireTransport.
 	t := http.DefaultTransport.(*http.Transport)
 	t.RegisterProtocol("http", hostTransport{})
 	t.RegisterProtocol("https", hostTransport{})
@@ -54,12 +66,13 @@ type hostTransport struct{}
 
 func (hostTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	var b bytes.Buffer
-	// WriteProxy keeps the absolute URL (scheme and host) in the request line.
+	// WriteProxy keeps the absolute URL (scheme and host) in the request line,
+	// and always writes a request line, so raw is never empty.
 	if err := req.WriteProxy(&b); err != nil {
 		return nil, err
 	}
 	raw := b.Bytes()
-	id := hostStart(unsafe.Pointer(unsafe.SliceData(raw)), uint32(len(raw)))
+	id := hostStart(&raw[0], uint32(len(raw)))
 
 	wait := 50 * time.Microsecond
 	for {
@@ -75,7 +88,7 @@ func (hostTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 			continue
 		}
 		buf := make([]byte, max(n, -n))
-		hostTake(id, unsafe.Pointer(unsafe.SliceData(buf)))
+		hostTake(id, &buf[0])
 		if n < 0 {
 			return nil, errors.New(string(buf))
 		}

@@ -17,7 +17,7 @@ depends = ["validate-skills", "lint", "tests", "build", "docs"]
 
 [tasks.gate]
 description = "Fast pre-push gate for code changes: lint + tests + build (no docs)"
-depends = ["lint", "tests", "build"]
+depends = ["lint", "vet:wasip1", "tests", "build"]
 
 # =============================================================================
 # DEVELOPMENT
@@ -53,6 +53,10 @@ run = "go run ./cmd/gcx/ dev lint test ./internal/linter/bundle/gcx/"
 [tasks."tests:install"]
 description = "Run the install script tests"
 run = "bash scripts/install_test.sh"
+
+[tasks."vet:wasip1"]
+description = "Vet packages with wasip1-only files (*_wasip1.go), which host builds never compile"
+run = "GOOS=wasip1 GOARCH=wasm go vet ./internal/httputils/"
 
 [tasks.build]
 description = "Build binary to bin/gcx"
