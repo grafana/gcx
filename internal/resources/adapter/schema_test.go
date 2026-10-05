@@ -36,7 +36,7 @@ func TestSchemaFromType(t *testing.T) {
 		Plural:       "widgets",
 	}
 
-	raw := adapter.SchemaFromType[schemaTestWidget](desc)
+	raw := adapter.SchemaFromType[schemaTestWidget](desc)()
 	require.NotNil(t, raw)
 
 	var s map[string]any

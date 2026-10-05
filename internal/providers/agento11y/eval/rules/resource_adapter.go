@@ -29,7 +29,7 @@ func StaticDescriptor() resources.Descriptor {
 
 // RuleSchema returns a JSON Schema for the EvalRule resource type.
 func RuleSchema() json.RawMessage {
-	return adapter.SchemaFromType[eval.RuleDefinition](StaticDescriptor())
+	return adapter.SchemaFromType[eval.RuleDefinition](StaticDescriptor())()
 }
 
 func ruleStripFields() []string {

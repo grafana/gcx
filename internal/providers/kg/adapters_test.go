@@ -80,10 +80,10 @@ func TestKGProvider_TypedRegistrations(t *testing.T) {
 		assert.NotEmpty(t, reg.Descriptor.Plural, "kind %s missing plural", kind)
 		assert.NotNil(t, reg.Factory, "kind %s missing factory", kind)
 		assert.NotEmpty(t, reg.GVK.Kind, "kind %s missing GVK", kind)
-		assert.NotNil(t, reg.Schema, "kind %s missing schema", kind)
+		assert.NotNil(t, reg.Schema(), "kind %s missing schema", kind)
 
 		var m map[string]any
-		require.NoError(t, json.Unmarshal(reg.Schema, &m), "kind %s schema is invalid JSON", kind)
+		require.NoError(t, json.Unmarshal(reg.Schema(), &m), "kind %s schema is invalid JSON", kind)
 	}
 
 	for kind, found := range wantKinds {

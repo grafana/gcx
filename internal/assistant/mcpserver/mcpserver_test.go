@@ -187,11 +187,11 @@ func TestMCPServerRegistration_SchemaAndExampleSetDirectly(t *testing.T) {
 	reg := adapter.Registration{
 		Descriptor: mcpserver.MCPServerDescriptor(),
 		GVK:        mcpserver.MCPServerDescriptor().GroupVersionKind(),
-		Schema:     mcpserver.MCPServerSchema(),
+		Schema:     mcpserver.MCPServerSchema,
 		Example:    mcpserver.MCPServerExample(),
 	}
 
-	if reg.Schema == nil {
+	if reg.Schema == nil || len(reg.Schema()) == 0 {
 		t.Error("Registration.Schema is nil, want non-nil")
 	}
 	if reg.Example == nil {

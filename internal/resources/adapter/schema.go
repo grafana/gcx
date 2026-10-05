@@ -3,6 +3,7 @@ package adapter
 import (
 	"encoding/json"
 	"fmt"
+	"sync"
 
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/invopop/jsonschema"
@@ -15,7 +16,19 @@ import (
 // This is a convenience helper for providers that don't hand-write schemas.
 // Providers that need richer schema annotations (e.g., enums, descriptions)
 // should hand-write their schemas and pass them directly.
-func SchemaFromType[T any](desc resources.Descriptor) json.RawMessage {
+//
+// The schema is generated on first call and then reused: reflecting on every
+// resource type eagerly dominated gcx's start-up.
+func SchemaFromType[T any](desc resources.Descriptor) func() json.RawMessage {
+	return sync.OnceValue(func() json.RawMessage { return schemaFromType[T](desc) })
+}
+
+// StaticSchema adapts an already-built schema to Registration.Schema.
+func StaticSchema(schema json.RawMessage) func() json.RawMessage {
+	return func() json.RawMessage { return schema }
+}
+
+func schemaFromType[T any](desc resources.Descriptor) json.RawMessage {
 	// Generate spec schema from the Go type.
 	// DoNotReference inlines all nested types instead of using $ref.
 	// This produces larger schemas for complex types (e.g., OnCall Integration)

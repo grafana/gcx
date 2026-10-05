@@ -324,7 +324,7 @@ func (c *TypedCRUD[T]) fromUnstructured(obj *unstructured.Unstructured) (string,
 // typedAdapter wraps TypedCRUD[T] to implement the ResourceAdapter interface.
 type typedAdapter[T ResourceNamer] struct {
 	crud    *TypedCRUD[T]
-	schema  json.RawMessage
+	schema  func() json.RawMessage
 	example json.RawMessage
 }
 
@@ -337,7 +337,7 @@ func (a *typedAdapter[T]) Aliases() []string {
 }
 
 func (a *typedAdapter[T]) Schema() json.RawMessage {
-	return a.schema
+	return a.schema()
 }
 
 func (a *typedAdapter[T]) Example() json.RawMessage {
