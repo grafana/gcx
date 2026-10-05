@@ -2,6 +2,14 @@
 
 Delete a Frontend Observability app.
 
+### Synopsis
+
+Delete a Frontend Observability app.
+
+Deleting requires the grafana-kowalski-app.apps:delete permission (granted to
+Admin and Frontend Observability Admin by default). A user with only apps:write
+can create and update apps but cannot delete them.
+
 ```
 gcx frontend apps delete <name> [flags]
 ```
