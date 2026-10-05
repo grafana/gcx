@@ -191,8 +191,7 @@ func (c *agentsCodec) writeSpillSummary(dst io.Writer, s spillSummary) error {
 // SpillThreshold is the encoded-payload size in bytes above which the agents
 // codec spills to a file, or 0 when GCX_AGENT_SPILL_BYTES=0 disables
 // spilling (e.g. when gcx is embedded and its caller cannot read the spill
-// file). Exported so commands that can shrink a response server-side (e.g.
-// gcx traces get --prune) can budget against the same number the codec uses.
+// file). Exported so tests outside this package can assert the resolved value.
 func SpillThreshold() int {
 	if v := os.Getenv(agentsSpillEnv); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
