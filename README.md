@@ -220,8 +220,7 @@ gcx cloud stacks create --org example-org --name my-stack --slug mystack --regio
 Review the preview, then omit `--dry-run` to create the stack. Both
 `stacks create` and `stacks list` require `--org <slug>`.
 Creation defaults to YAML with `name`, `orgSlug`, `slug`, `status` and `url`.
-JSON and table output show the same fields; use `stacks get <slug>` for full
-details. Dry runs show the creation request.
+Use `stacks get <slug>` for full details. Dry runs show the creation request.
 
 `gcx` derives the Cloud stack slug from `--server` when possible. Set it explicitly only for custom domains where gcx cannot derive it:
 
