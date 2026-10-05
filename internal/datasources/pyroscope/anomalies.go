@@ -90,8 +90,11 @@ func AnomaliesCmd(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &pyroscopeAnomaliesOpts{}
 	cmd := &cobra.Command{
 		Use:   "anomalies [EXPR]",
-		Short: "Query profile anomalies from a Pyroscope datasource",
-		Long: `Query profiles flagged as anomalies by an external anomaly source and
+		Short: "[experimental] Query profile anomalies from a Pyroscope datasource",
+		Long: `This command is experimental. It may be removed, or its subcommands, flags and
+responses may change without following the normal semantic versioning conventions.
+
+Query profiles flagged as anomalies by an external anomaly source and
 confirmed present in ingested data for the given label selector and time range.
 
 Requires the datasource's query-frontend to have an anomaly source configured
@@ -170,6 +173,7 @@ queried and confirmed in one call.`,
 	cmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "small",
 		agent.AnnotationLLMHint:   "gcx profiles anomalies '{service_name=\"frontend\"}' --since 1h -o json",
+		agent.AnnotationStability: agent.StabilityExperimental,
 	}
 
 	opts.setup(cmd.Flags())

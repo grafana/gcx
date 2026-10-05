@@ -1,8 +1,11 @@
 ## gcx datasources pyroscope anomalies
 
-Query profile anomalies from a Pyroscope datasource
+[experimental] Query profile anomalies from a Pyroscope datasource
 
 ### Synopsis
+
+This command is experimental. It may be removed, or its subcommands, flags and
+responses may change without following the normal semantic versioning conventions.
 
 Query profiles flagged as anomalies by an external anomaly source and
 confirmed present in ingested data for the given label selector and time range.
