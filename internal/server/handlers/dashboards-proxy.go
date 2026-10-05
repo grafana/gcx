@@ -61,6 +61,16 @@ func (c *DashboardProxy) Endpoints(_ *httputil.ReverseProxy) []HTTPEndpoint {
 		},
 		{
 			Method:  http.MethodGet,
+			URL:     "/apis/dashboard.grafana.app/",
+			Handler: c.dashboardAPIGroupDiscoveryHandler(),
+		},
+		{
+			Method:  http.MethodGet,
+			URL:     "/apis/dashboard.grafana.app",
+			Handler: c.dashboardAPIGroupDiscoveryHandler(),
+		},
+		{
+			Method:  http.MethodGet,
 			URL:     "/apis/dashboard.grafana.app/{version}/namespaces/{namespace}/dashboards/{name}/dto",
 			Handler: c.dashboardJSONGetHandler(),
 		},
@@ -70,6 +80,97 @@ func (c *DashboardProxy) Endpoints(_ *httputil.ReverseProxy) []HTTPEndpoint {
 			Handler: c.dashboardJSONPostHandler(),
 		},
 	}
+}
+
+// dashboardAPIGroupDiscoveryHandler serves the k8s-style API group discovery
+// document for dashboard.grafana.app (GET /apis/dashboard.grafana.app/).
+// Grafana's frontend calls this once per session to negotiate which dashboard
+// API version to use, caching the result; if the call fails (as it did here
+// -- this route didn't exist at all), it silently falls back to its own
+// hardcoded default (v2beta1) regardless of what's actually on disk. Reporting
+// the version that's actually loaded as "preferred" lets the frontend
+// negotiate the right version itself, so dashboardJSONGetHandler sees a
+// version match and never needs to convert anything.
+func (c *DashboardProxy) dashboardAPIGroupDiscoveryHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		preferred := c.preferredDashboardVersion()
+
+		httputils.WriteJSON(r, w, map[string]any{
+			"kind":             "APIGroup",
+			"apiVersion":       "v1",
+			"name":             "dashboard.grafana.app",
+			"versions":         dashboardAPIGroupVersions(preferred),
+			"preferredVersion": dashboardAPIGroupVersion(preferred),
+		})
+	}
+}
+
+// dashboardAPIGroupVersions lists the known dashboard.grafana.app versions,
+// most-preferred-first, with `preferred` unioned in (and moved to the front)
+// even if it isn't one of the known six -- e.g. a hand-written or future
+// apiVersion gcx hasn't heard of. Without this, a client that validates
+// preferredVersion against the advertised list would reject the discovery
+// document and fall straight back to the hardcoded-fallback behaviour this
+// handler exists to avoid.
+func dashboardAPIGroupVersions(preferred string) []map[string]any {
+	known := []string{"v2", "v2beta1", "v2alpha1", "v1", "v1beta1", "v0alpha1"}
+
+	versions := make([]string, 0, len(known)+1)
+	versions = append(versions, preferred)
+	for _, v := range known {
+		if v != preferred {
+			versions = append(versions, v)
+		}
+	}
+
+	out := make([]map[string]any, len(versions))
+	for i, v := range versions {
+		out[i] = dashboardAPIGroupVersion(v)
+	}
+	return out
+}
+
+func dashboardAPIGroupVersion(version string) map[string]any {
+	return map[string]any{
+		"groupVersion": "dashboard.grafana.app/" + version,
+		"version":      version,
+	}
+}
+
+// preferredDashboardVersion returns whichever apiVersion is most common
+// among the currently loaded Dashboard resources (ties broken by first-seen
+// order), defaulting to "v2" if none are loaded. Iterates resources.AsList(),
+// which is sorted by group/version/kind/name -- Resources' underlying
+// collection is a map, so iterating it directly (e.g. via ForEach) would make
+// "first-seen order" meaningless, since Go randomises map iteration order.
+// Version negotiation on the frontend is resolved once per browser session
+// and cached, so a directory mixing multiple dashboard versions only gets
+// this benefit for whichever version "wins" here -- the rest fall back to
+// dashboardJSONGetHandler's existing mismatch handling.
+func (c *DashboardProxy) preferredDashboardVersion() string {
+	counts := map[string]int{}
+	order := make([]string, 0, 4)
+
+	for _, resource := range c.resources.AsList() {
+		if resource.Kind() != "Dashboard" {
+			continue
+		}
+
+		v := resource.Version()
+		if counts[v] == 0 {
+			order = append(order, v)
+		}
+		counts[v]++
+	}
+
+	best, bestCount := "v2", 0
+	for _, v := range order {
+		if counts[v] > bestCount {
+			best, bestCount = v, counts[v]
+		}
+	}
+
+	return best
 }
 
 func (c *DashboardProxy) StaticEndpoints() StaticProxyConfig {
