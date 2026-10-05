@@ -2191,7 +2191,7 @@ func TestPrintResult_TextCodec(t *testing.T) {
   Stack:       mystack
 `,
 			wantStderrSubs: []string{
-				"Interactive guides can help you set up your stack:",
+				"Interactive guides can help you get started:",
 				"  https://mystack.grafana.net/a/grafana-pathfinder-app\n",
 			},
 		},
@@ -2212,7 +2212,7 @@ func TestPrintResult_TextCodec(t *testing.T) {
   Stack:       stack
 `,
 			wantStderrSubs: []string{
-				"gcx login --context stack --cloud-token <token>\n\nInteractive guides can help",
+				"gcx login --context stack --cloud-token <token>\n\nInteractive guides can help you get started:",
 			},
 		},
 		{
@@ -2250,7 +2250,7 @@ func TestPrintResult_TextCodec(t *testing.T) {
   Grafana Cloud: no
 `,
 			wantStderrSubs: []string{
-				"Interactive guides can help you set up your stack:",
+				"Interactive guides can help you get started:",
 				"  https://grafana.local/a/grafana-pathfinder-app\n",
 			},
 			notStderrSubs: []string{"Cloud Access Policy"},
@@ -2312,10 +2312,12 @@ func TestPrintResult_TextCodec(t *testing.T) {
 	}
 }
 
-// TestPrintResult_GuideHintTextOnly pins that the Pathfinder hint is human
-// prose: json output (the agent-mode default) never carries it, even if the
-// result reports the plugin.
-func TestPrintResult_GuideHintTextOnly(t *testing.T) {
+// TestPrintResult_GuideHintStdoutClean pins that the Pathfinder hint is
+// advisory prose routed only to stderr: with json output the hint never mixes
+// into stdout, so structured consumers stay parseable, while a human reading
+// stderr still sees it. The human-vs-agent decision lives upstream at probe
+// time, so printResult no longer gates the hint on output format.
+func TestPrintResult_GuideHintStdoutClean(t *testing.T) {
 	disableAgentMode(t)
 
 	cmd := &cobra.Command{}
@@ -2338,8 +2340,38 @@ func TestPrintResult_GuideHintTextOnly(t *testing.T) {
 		PathfinderInstalled: true,
 	})
 	require.NoError(t, err)
+	// Structured stdout stays clean.
 	assert.NotContains(t, stdout.String(), "grafana-pathfinder-app")
-	assert.NotContains(t, stderr.String(), "grafana-pathfinder-app")
+	// The advisory hint is still delivered, on stderr.
+	assert.Contains(t, stderr.String(), "Interactive guides can help you get started:")
+	assert.Contains(t, stderr.String(), "grafana-pathfinder-app")
+}
+
+// TestPathfinderProbeWanted pins the gate that replaced the output-format proxy:
+// probe only for an interactive human whose target context has no cached
+// positive detection.
+func TestPathfinderProbeWanted(t *testing.T) {
+	cached := &config.Context{Grafana: &config.GrafanaConfig{PathfinderInstalled: true}}
+	uncached := &config.Context{Grafana: &config.GrafanaConfig{}}
+
+	t.Run("human_new_context_probes", func(t *testing.T) {
+		disableAgentMode(t)
+		assert.True(t, pathfinderProbeWanted(nil))
+		assert.True(t, pathfinderProbeWanted(uncached))
+	})
+
+	t.Run("human_cached_context_skips", func(t *testing.T) {
+		disableAgentMode(t)
+		assert.False(t, pathfinderProbeWanted(cached))
+	})
+
+	t.Run("agent_always_skips", func(t *testing.T) {
+		t.Setenv("GCX_AGENT_MODE", "true")
+		agent.ResetForTesting()
+		t.Cleanup(agent.ResetForTesting)
+		assert.False(t, pathfinderProbeWanted(nil))
+		assert.False(t, pathfinderProbeWanted(uncached))
+	})
 }
 
 // TestResolveSourceContext covers every branch of the context-selection

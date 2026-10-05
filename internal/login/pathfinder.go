@@ -12,13 +12,13 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-// PathfinderAppID is the plugin ID of Pathfinder, the in-product learning
+// pathfinderAppID is the plugin ID of Pathfinder, the in-product learning
 // app that serves interactive guides inside Grafana.
-const PathfinderAppID = "grafana-pathfinder-app"
+const pathfinderAppID = "grafana-pathfinder-app"
 
 const (
-	pathfinderSettingsPath = "/api/plugins/" + PathfinderAppID + "/settings"
-	pathfinderAppPath      = "/a/" + PathfinderAppID
+	pathfinderSettingsPath = "/api/plugins/" + pathfinderAppID + "/settings"
+	pathfinderAppPath      = "/a/" + pathfinderAppID
 
 	// pathfinderProbeTimeout bounds the probe so an unresponsive plugin API
 	// cannot delay a login that has already succeeded.
@@ -73,17 +73,4 @@ func DetectPathfinder(ctx context.Context, restCfg config.NamespacedRESTConfig) 
 		return false
 	}
 	return settings.Enabled
-}
-
-// probePathfinder runs the Pathfinder probe when the caller asked for it,
-// honouring the PathfinderFn test seam. Cloud and on-prem instances are
-// probed alike: the plugin's installed-and-enabled state decides the answer.
-func probePathfinder(ctx context.Context, opts *Options, restCfg config.NamespacedRESTConfig) bool {
-	if !opts.DetectPathfinder {
-		return false
-	}
-	if opts.PathfinderFn != nil {
-		return opts.PathfinderFn(ctx, restCfg)
-	}
-	return DetectPathfinder(ctx, restCfg)
 }

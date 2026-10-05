@@ -105,11 +105,11 @@ func TestRun_DetectPathfinder(t *testing.T) {
 			probed := false
 			opts := login.Options{
 				Inputs: login.Inputs{
-					Server:           "https://mystack.grafana.net",
-					Target:           tt.target,
-					GrafanaToken:     "glsa_test",
-					CloudToken:       "cap-token",
-					DetectPathfinder: tt.detect,
+					Server:          "https://mystack.grafana.net",
+					Target:          tt.target,
+					GrafanaToken:    "glsa_test",
+					CloudToken:      "cap-token",
+					ProbePathfinder: tt.detect,
 				},
 				Hooks: login.Hooks{
 					ConfigSource: configSource(dir),
@@ -130,6 +130,18 @@ func TestRun_DetectPathfinder(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, tt.wantProbed, probed, "probe invocation")
 			assert.Equal(t, tt.wantInstalled, result.PathfinderInstalled)
+
+			// A positive detection is cached onto the persisted context so
+			// later logins can skip the probe and the one-time hint.
+			persisted, loadErr := config.Load(context.Background(), configSource(dir))
+			require.NoError(t, loadErr)
+			cached := false
+			for _, c := range persisted.Contexts {
+				if c.Grafana != nil && c.Grafana.PathfinderInstalled {
+					cached = true
+				}
+			}
+			assert.Equal(t, tt.wantInstalled, cached, "cached PathfinderInstalled")
 		})
 	}
 }

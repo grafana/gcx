@@ -454,10 +454,11 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 	if flags.Cloud {
 		opts.Target = login.TargetCloud
 	}
-	// Probe for Pathfinder only when printResult can show its hint: a login
-	// rendered as human text. Agent mode defaults the output to json, so
-	// agents never trigger the probe.
-	opts.DetectPathfinder = flags.IO.OutputFormat == "text"
+	// Probe for Pathfinder only for an interactive human (never an agent) whose
+	// target context has not already cached a positive detection. This replaces
+	// the earlier output-format proxy with the dedicated agent detector and
+	// avoids an unnecessary request on consecutive logins.
+	opts.ProbePathfinder = pathfinderProbeWanted(persistedSourceCtx)
 	if flags.AllowServerOverride {
 		opts.AllowOverride = true
 	}
@@ -1815,6 +1816,17 @@ func existingContextNames(cfg config.Config) []string {
 	return names
 }
 
+// pathfinderProbeWanted reports whether `gcx login` should probe the target
+// Grafana instance for the Pathfinder plugin. It probes only for an interactive
+// human (never an agent) and only when the target context has no cached
+// positive detection, since the plugin is not uninstalled in practice.
+func pathfinderProbeWanted(existing *config.Context) bool {
+	if agent.IsAgentMode() {
+		return false
+	}
+	return existing == nil || existing.Grafana == nil || !existing.Grafana.PathfinderInstalled
+}
+
 // printResult converts the login.Result into a LoginResult and writes it to
 // stdout using the configured output codec. Advisory prose (next-step and
 // CAP-token guidance) is routed to stderr so that JSON/YAML consumers receive
@@ -1853,11 +1865,13 @@ func printResult(cmd *cobra.Command, ioOpts *cmdio.Options, server string, resul
 		fmt.Fprintln(ew, "See: https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/")
 		fmt.Fprintf(ew, "Add one with: gcx login --context %s --cloud-token <token>\n", result.ContextName)
 	}
-	// Login only probes for Pathfinder when the output is text, so agents
-	// never see this hint. The probe works the same on Cloud and on-prem.
-	if ioOpts.OutputFormat == "text" && result.PathfinderInstalled && stackURL != "" {
+	// The probe only runs for an interactive human and only once per context, so
+	// a positive result here means the one-time guide hint is wanted. Routed to
+	// stderr, keeping any structured stdout clean. Works the same on Cloud and
+	// on-prem.
+	if result.PathfinderInstalled && stackURL != "" {
 		fmt.Fprintln(ew)
-		fmt.Fprintln(ew, "Interactive guides can help you set up your stack:")
+		fmt.Fprintln(ew, "Interactive guides can help you get started:")
 		fmt.Fprintln(ew, "  "+login.PathfinderURL(stackURL))
 	}
 	return nil
