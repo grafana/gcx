@@ -17,8 +17,11 @@ import (
 // Providers that need richer schema annotations (e.g., enums, descriptions)
 // should hand-write their schemas and pass them directly.
 //
-// The schema is generated on first call and then reused: reflecting on every
-// resource type eagerly dominated gcx's start-up.
+// Generation is deferred until the returned func is called, because
+// reflecting on every resource type at init dominated gcx's start-up. The
+// returned func caches its result, so keep it (e.g. in a Registration or a
+// package-level var) to reuse the schema; calling SchemaFromType again
+// regenerates it.
 func SchemaFromType[T any](desc resources.Descriptor) func() json.RawMessage {
 	return sync.OnceValue(func() json.RawMessage { return schemaFromType[T](desc) })
 }

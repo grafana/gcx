@@ -124,7 +124,7 @@ func TestSLOProvider_Resources(t *testing.T) {
 	registrations := slo.NewSLOProvider().TypedRegistrations()
 	require.Len(t, registrations, 2)
 	for _, registration := range registrations {
-		assert.NotEmpty(t, registration.Schema())
+		assert.True(t, registration.Schema != nil && len(registration.Schema()) > 0, "Schema should not be empty")
 		assert.NotEmpty(t, registration.Example)
 		assert.NotNil(t, registration.Factory)
 	}

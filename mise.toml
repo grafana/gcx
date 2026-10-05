@@ -56,7 +56,9 @@ run = "bash scripts/install_test.sh"
 
 [tasks."vet:wasip1"]
 description = "Vet packages with wasip1-only files (*_wasip1.go), which host builds never compile"
-run = "GOOS=wasip1 GOARCH=wasm go vet ./internal/httputils/"
+# cmd/gcx/root needs the third-party wasip1 stubs; experimental/sandbox's
+# build covers it.
+run = "GOOS=wasip1 GOARCH=wasm go vet ./internal/httputils/ ./internal/style/ ./cmd/gcx/instrumentation/"
 
 [tasks.build]
 description = "Build binary to bin/gcx"

@@ -21,9 +21,6 @@ import (
 	"github.com/open-policy-agent/opa/v1/topdown"
 )
 
-// ErrTestsFailed is returned when linter rule tests fail.
-var ErrTestsFailed = linterr.ErrTestsFailed
-
 type TestsOptions struct {
 	OutputFormat string
 	Debug        bool
@@ -212,5 +209,5 @@ func runTests(ctx context.Context, store storage.Store, runner *tester.Runner, r
 		return nil
 	}
 
-	return ErrTestsFailed
+	return linterr.ErrTestsFailed
 }

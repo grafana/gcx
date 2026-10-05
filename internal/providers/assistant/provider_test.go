@@ -57,7 +57,7 @@ func TestProviderRegistration(t *testing.T) {
 		assert.Equal(t, mcpserver.MCPServerKind, reg.GVK.Kind)
 		assert.Equal(t, mcpserver.MCPServerAPIGroup, reg.GVK.Group)
 		assert.Equal(t, mcpserver.MCPServerVersion, reg.GVK.Version)
-		assert.NotNil(t, reg.Schema())
+		assert.True(t, reg.Schema != nil && reg.Schema() != nil, "Schema should not be nil")
 		assert.NotNil(t, reg.Example)
 		assert.NotNil(t, reg.Factory)
 	})
