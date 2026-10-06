@@ -34,7 +34,7 @@ Every command serves both humans and AI agents. Agent mode is auto-detected (Cla
 
 ## Observability as Code
 
-The `gcx dev` commands provide an end-to-end workflow for managing Grafana resources as Go code using the [grafana-foundation-sdk](https://github.com/grafana/grafana-foundation-sdk) — scaffold, import, lint, live-preview, and push. Developer tooling generates the same manifests that the `gcx resources` pipeline and GitOps workflows consume. See [ARCHITECTURE.md § Observability as Code](ARCHITECTURE.md#6-observability-as-code-gcx-dev) for the full workflow.
+The `gcx dev` commands provide an end-to-end workflow for managing Grafana resources as Go code using the [grafana-foundation-sdk](https://github.com/grafana/grafana-foundation-sdk) — scaffold, import, lint, live-preview, and push. Developer tooling generates the same manifests that the `gcx resources` pipeline and GitOps workflows consume. See [ARCHITECTURE.md § Developer Tooling](ARCHITECTURE.md#4-developer-tooling-gcx-dev) for the full workflow.
 
 ## Grafana Assistant
 

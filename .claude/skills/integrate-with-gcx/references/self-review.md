@@ -364,9 +364,12 @@ Resolve the actual base first. On a stacked branch it is not `main`:
 gh pr view --json baseRefName
 ```
 
-If `gh` is unavailable or there is no PR yet, use the branch you actually
-branched from (`git merge-base`) and say which base you used. Then re-run the
-triggers that fire, over **both** ranges:
+If `gh` is unavailable, read the PR target from available PR metadata. If no
+PR exists, establish the configured or user-requested target explicitly, per
+AGENTS.md. If that target cannot be determined, ask before rebasing.
+`git merge-base` checks ancestry only after both refs are named; it cannot
+choose the intended target. State the resolved base, then re-run the triggers
+that fire over **both** ranges:
 
 ```bash
 git diff <base>...HEAD -- <files the fix touched>
