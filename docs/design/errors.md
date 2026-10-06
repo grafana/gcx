@@ -96,11 +96,28 @@ responses in `internal/providers/instrumentation/client.go`.
 
 When agent mode (or `--json`) is active and a command fails, a JSON error
 object is written to **stdout** and the human-formatted stderr rendering is
-suppressed — machine consumers get exactly one error document, on one
-stream. The stderr fallback appears only if the stdout write itself fails.
+suppressed — machine consumers get exactly one error document, on stdout.
+The human stderr rendering appears only if the stdout write itself fails.
+The one exception on stderr is the advisory notice below.
 (Historical note: the original NC-003 design made in-band JSON additive to
 the stderr output; the implementation intentionally converged on
 either/or in `reportError`, `cmd/gcx/main.go`.)
+
+**Advisory error notice.** When stdout is not a terminal, `reportError` also
+writes one JSONL record to stderr:
+`{"class": "error", "summary": "...", "exitCode": N, "suggestion": "..."}`.
+It never carries error details: they can quote a raw HTTP response body,
+and stderr often ends up in logs even when a filter drops stdout.
+This also applies after an `EmittedError` that carries a cause. That notice
+has a fixed summary and the exit code only: the cause can hold a raw HTTP
+response body, and it is never rendered as output. Pipelines such
+as `gcx ... | jq '.data'` consume the stdout document, and the shell reports
+the filter's exit status, so without the notice the caller sees only `null`
+and can mistake a rejected request for an empty result. The notice is
+advisory, like the hint, warning and note classes: stdout remains the
+authoritative outcome, and consumers never need to parse both streams.
+The summary and first suggestion are each clipped to 500 runes. On a
+terminal stdout the document is already visible, so no notice is written.
 
 The envelope carries collision-resistant discriminators:
 `{"type": "gcx.error", "schema_version": "1", "error": {...}}`. The fused

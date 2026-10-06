@@ -47,6 +47,8 @@ gcx cloud stacks get demo -o json
 
 ## Unreleased
 
+- Keep failures visible in agent pipelines: when stdout is not a terminal, a failed command also writes a one-line `{"class":"error",...}` notice to stderr. A pipeline such as `gcx ... | jq '.data'` consumes the stdout error document, so before this change the caller saw only `null`. The stdout error document is unchanged.
+
 ## v1.4.0 (2026-10-02)
 
 **Metrics and traces**

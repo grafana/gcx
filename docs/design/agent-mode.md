@@ -43,7 +43,7 @@ When agent mode is active:
 2. **Color** is disabled (`color.NoColor = true` in `PersistentPreRun`)
 3. **Pipe-aware behavior** is forced: `IsPiped=true`, `NoTruncate=true`
    regardless of actual TTY state (see [pipe-awareness.md § TTY Detection](pipe-awareness.md#51-tty-detection))
-4. **In-band error JSON** is written to stdout on failure (see [errors.md § In-Band Error Reporting](errors.md#44-in-band-error-reporting))
+4. **In-band error JSON** is written to stdout on failure, with a one-line advisory `class:"error"` notice on stderr when stdout is not a terminal (see [errors.md § In-Band Error Reporting](errors.md#44-in-band-error-reporting))
 
 The following are **not yet implemented**:
 5. Spinners/progress indicators suppressed (none exist yet; the suppression

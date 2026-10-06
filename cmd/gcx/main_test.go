@@ -200,6 +200,7 @@ func TestAbandonsExport(t *testing.T) {
 
 const (
 	configCheckProcessHelper       = "GCX_CONFIG_CHECK_PROCESS_HELPER"
+	emittedNoticeProcessHelper     = "GCX_EMITTED_NOTICE_PROCESS_HELPER"
 	configSetFallbackProcessHelper = "GCX_CONFIG_SET_FALLBACK_PROCESS_HELPER"
 )
 
@@ -258,16 +259,7 @@ current-context: smoke
 			// The typed error envelope must be emitted in agent mode; the human
 			// diagnostic belongs on stderr without corrupting stdout.
 			if agentMode == "true" {
-				var doc map[string]any
-				if err := json.Unmarshal(stdout.Bytes(), &doc); err != nil {
-					t.Fatalf("agent stdout is not one JSON error document: %v; stdout=%q", err, stdout.String())
-				}
-				if doc["type"] != "gcx.error" {
-					t.Fatalf("agent stdout document type = %v, want gcx.error", doc["type"])
-				}
-				if stderr.Len() != 0 {
-					t.Fatalf("agent error wrote unexpected stderr: %q", stderr.String())
-				}
+				assertAgentErrorStreams(t, stdout.Bytes(), stderr.Bytes())
 			} else if stdout.Len() != 0 {
 				t.Fatalf("config set wrote unexpected stdout: %q", stdout.String())
 			}
@@ -533,4 +525,103 @@ func TestBuildUsageEvent_APIRequestDetail(t *testing.T) {
 	if event.APIDatasourceTypes != "prometheus" {
 		t.Errorf("APIDatasourceTypes = %q, want %q", event.APIDatasourceTypes, "prometheus")
 	}
+}
+
+func TestWriteErrorNoticeSkipsTerminalStdout(t *testing.T) {
+	original := stdoutIsTerminal
+	t.Cleanup(func() { stdoutIsTerminal = original })
+
+	for _, terminal := range []bool{true, false} {
+		t.Run(fmt.Sprintf("terminal=%t", terminal), func(t *testing.T) {
+			stdoutIsTerminal = func() bool { return terminal }
+			called := false
+			writeErrorNotice(func() error {
+				called = true
+				return nil
+			})
+			if called == terminal {
+				t.Fatalf("notice written = %t with terminal stdout = %t", called, terminal)
+			}
+		})
+	}
+}
+
+// assertAgentErrorStreams checks the agent failure contract for a piped
+// stdout: one gcx.error document on stdout and one advisory error notice on
+// stderr.
+func assertAgentErrorStreams(t *testing.T, stdout, stderr []byte) {
+	t.Helper()
+	var doc map[string]any
+	if err := json.Unmarshal(stdout, &doc); err != nil {
+		t.Fatalf("agent stdout is not one JSON error document: %v; stdout=%q", err, stdout)
+	}
+	if doc["type"] != "gcx.error" {
+		t.Fatalf("agent stdout document type = %v, want gcx.error", doc["type"])
+	}
+	var notice map[string]any
+	if err := json.Unmarshal(stderr, &notice); err != nil {
+		t.Fatalf("agent stderr is not one error notice: %v; stderr=%q", err, stderr)
+	}
+	if notice["class"] != gcxerrors.ErrorNoticeClass {
+		t.Fatalf("agent stderr notice class = %v, want %q", notice["class"], gcxerrors.ErrorNoticeClass)
+	}
+}
+
+// emittedNoticeSecret stands in for a credential echoed in a raw HTTP body.
+const emittedNoticeSecret = "glsa_notice_secret_value"
+
+// TestEmittedErrorNoticeProcess runs reportError in a child process with piped
+// stdout. The stderr notice must report the outcome and exit code, but never
+// the cause, which can hold a raw HTTP response body.
+func TestEmittedErrorNoticeProcess(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	// Re-exec the trusted current test binary to verify the actual process exit path.
+	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestEmittedErrorNoticeProcessHelper$") //nolint:gosec
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	cmd.Env = append(os.Environ(),
+		emittedNoticeProcessHelper+"=1",
+		"GCX_AGENT_MODE=true",
+		"GCX_TELEMETRY=disabled",
+		"NO_COLOR=1",
+	)
+
+	err := cmd.Run()
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("expected process failure, got %v; stdout=%q stderr=%q", err, stdout.String(), stderr.String())
+	}
+	if exitErr.ExitCode() != gcxerrors.ExitPartialFailure {
+		t.Fatalf("exit code = %d, want %d", exitErr.ExitCode(), gcxerrors.ExitPartialFailure)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("reportError wrote a second stdout document: %q", stdout.String())
+	}
+	if bytes.Contains(stderr.Bytes(), []byte(emittedNoticeSecret)) {
+		t.Fatalf("stderr notice rendered the emitted cause: %q", stderr.String())
+	}
+
+	var notice map[string]any
+	if err := json.Unmarshal(stderr.Bytes(), &notice); err != nil {
+		t.Fatalf("stderr is not one error notice: %v; stderr=%q", err, stderr.String())
+	}
+	if notice["class"] != gcxerrors.ErrorNoticeClass {
+		t.Fatalf("notice class = %v, want %q", notice["class"], gcxerrors.ErrorNoticeClass)
+	}
+	if notice["summary"] != emittedNoticeSummary {
+		t.Fatalf("notice summary = %v, want %q", notice["summary"], emittedNoticeSummary)
+	}
+	if notice["exitCode"] != float64(gcxerrors.ExitPartialFailure) {
+		t.Fatalf("notice exitCode = %v, want %d", notice["exitCode"], gcxerrors.ExitPartialFailure)
+	}
+}
+
+func TestEmittedErrorNoticeProcessHelper(_ *testing.T) {
+	if os.Getenv(emittedNoticeProcessHelper) != "1" {
+		return
+	}
+
+	agent.ResetForTesting()
+	cause := fmt.Errorf("request failed with status 500: token=%s", emittedNoticeSecret)
+	os.Exit(reportError(gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, cause), nil, nil))
 }
