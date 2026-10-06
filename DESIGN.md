@@ -35,7 +35,7 @@ Every command works identically for humans and agents. Agent mode changes defaul
 | Default output | `text` (table) | `agents` (compact JSON with spill) |
 | Colors | On (TTY) | Off |
 | Truncation | On (TTY) | Off |
-| Prompts | Interactive | Auto-approved |
+| Prompts | Interactive | Non-destructive prompts use defaults; destructive actions need `--force` or `GCX_AUTO_APPROVE` |
 
 Agent mode is active when `GCX_AGENT_MODE=true`, or when gcx detects a native
 agent marker or a supported explicit identity. See the

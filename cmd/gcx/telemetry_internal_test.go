@@ -41,7 +41,8 @@ import (
 // cross-case leak this helper exists to stop.
 //
 // Agent identity is pinned by agenttelemetry_process_test.go against the real
-// receiver path. CI and TTY assertions still need local environment controls.
+// receiver path. Assertions here on agent identity, CI, or TTY must pin their
+// environment inputs locally. This helper does not clear those host inputs.
 func isolate(t *testing.T) {
 	t.Helper()
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
