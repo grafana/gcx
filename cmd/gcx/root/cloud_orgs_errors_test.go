@@ -35,6 +35,7 @@ func TestCloudOrgsAuthErrorProtocol(t *testing.T) {
 				_, _ = fmt.Fprint(w, tc.body)
 			}))
 			defer server.Close()
+			// The fake token fixture must not read the host Keychain.
 			config := filepath.Join(t.TempDir(), "config.yaml")
 			// Keep the fake token out of the native credential store.
 			require.NoError(t, os.WriteFile(config, []byte("version: 1\ncredentials:\n  keychain: off\ncontexts:\n  test:\n    cloud: test\ncloud:\n  test:\n    token: fake-test-token\n    api-url: "+server.URL+"\ncurrent-context: test\n"), 0600))

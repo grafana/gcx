@@ -4,6 +4,8 @@ List all test runs for a k6 load test.
 
 ### Synopsis
 
+List all test runs for a k6 load test.
+
 Use JSON or YAML to inspect the returned run configuration, including options.thresholds. Threshold expressions are configuration, not evaluated results.
 
 ```
@@ -13,7 +15,8 @@ gcx k6 test-run runs list [test-name] [flags]
 ### Examples
 
 ```
-gcx k6 test-run runs list --id 6 --json id,options.thresholds
+  # Inspect configured run thresholds
+  gcx k6 test-run runs list --id 6 --json id,options.thresholds
 ```
 
 ### Options
