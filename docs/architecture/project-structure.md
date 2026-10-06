@@ -175,10 +175,13 @@ gcx/
 │   ├── default-config.yaml   # Default config fixture
 │   └── folder.yaml           # Sample resource manifest
 │
+├── experimental/             # Separate Go modules, outside the CLI's build and dependencies
+│   └── sandbox/              # Runs gcx as wasip1 in wazero for embedding (module: github.com/grafana/gcx/experimental/sandbox, v0)
+│
 ├── bin/                      # Build output (gitignored)
 ├── build/                    # mkdocs output (gitignored)
 │
-├── go.mod / go.sum           # Go module definition (module: github.com/grafana/gcx)
+├── go.mod / go.sum           # Main Go module definition (module: github.com/grafana/gcx)
 ├── .golangci.yaml            # Linter configuration (golangci-lint v2)
 ├── .goreleaser.yaml          # Release pipeline (cross-platform builds + GitHub Release)
 ├── mise.toml                 # Reproducible toolchain (Go, golangci-lint, goreleaser, Python)
@@ -193,7 +196,9 @@ gcx/
 output formatting, and error translation. It holds no business logic.
 
 `internal/` enforces Go's package visibility rule — external consumers cannot
-import these packages. This is intentional: gcx has no public Go API.
+import these packages. This is intentional: the main module has no public Go
+API. The one exception is `experimental/sandbox`, a separate v0 module for
+embedding gcx (see its README).
 The split within `internal/` mirrors functional layers (config, resources,
 server) rather than technical concerns, making it easy to locate code by feature.
 

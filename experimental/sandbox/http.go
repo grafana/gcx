@@ -35,14 +35,19 @@ func match(egress []Destination, u *url.URL) (*Destination, error) {
 		return nil, fmt.Errorf("egress denied: %s://%s: only https is allowed", u.Scheme, u.Host)
 	}
 	host := canonicalHost(u.Host, u.Scheme)
+	httpsOnly := false
 	for i := range egress {
 		if canonicalHost(egress[i].Host, u.Scheme) != host {
 			continue
 		}
 		if u.Scheme == "http" && !egress[i].AllowHTTP {
-			return nil, fmt.Errorf("egress denied: http://%s: only https is allowed", u.Host)
+			httpsOnly = true // a later entry for the same host may allow http
+			continue
 		}
 		return &egress[i], nil
+	}
+	if httpsOnly {
+		return nil, fmt.Errorf("egress denied: http://%s: only https is allowed", u.Host)
 	}
 	return nil, fmt.Errorf("egress denied: %s is not an allowed destination", u.Host)
 }
@@ -209,7 +214,7 @@ func (s *session) roundTrip(ctx context.Context, raw []byte) ([]byte, string) {
 	req.Host = "" // send the URL's host, which is what egress matched
 	resp, err := s.transport.RoundTrip(req.WithContext(ctx))
 	if err != nil {
-		return nil, err.Error()
+		return nil, "gcx_http: " + err.Error() // never empty, as poll requires
 	}
 	defer resp.Body.Close()
 	var b bytes.Buffer

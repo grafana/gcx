@@ -14,7 +14,7 @@ import (
 )
 
 func TestMatch(t *testing.T) {
-	egress := []Destination{{Host: "Stack.grafana.net"}, {Host: "localhost:8443"}, {Host: "grafana:3000", AllowHTTP: true}, {Host: "devgrafana", AllowHTTP: true}}
+	egress := []Destination{{Host: "Stack.grafana.net"}, {Host: "localhost:8443"}, {Host: "grafana:3000", AllowHTTP: true}, {Host: "devgrafana", AllowHTTP: true}, {Host: "dup.example"}, {Host: "dup.example", AllowHTTP: true}}
 	for _, tc := range []struct {
 		url   string
 		allow bool
@@ -37,6 +37,8 @@ func TestMatch(t *testing.T) {
 		{"http://devgrafana:443/api", false},
 		{"http://localhost:8443/x", false},
 		{"ftp://stack.grafana.net/x", false},
+		// Order doesn't matter: a later entry for the same host can allow http.
+		{"http://dup.example/x", true},
 	} {
 		u, _ := url.Parse(tc.url)
 		_, err := match(egress, u)

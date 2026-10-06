@@ -143,8 +143,10 @@ Each `Run`:
 - **Credentials:** a destination's `Header` values are set by the host on every
   request to that host, replacing whatever the guest sent. They never follow a
   redirect to another host.
-- **Memory:** capped by `Config.MemoryLimitBytes`. gcx needs about 94 MiB, and
-  `New` rejects anything lower.
+- **Memory:** the guest's is capped by `Config.MemoryLimitBytes`. gcx needs
+  about 94 MiB, and `New` rejects anything lower. The host also buffers each
+  response in full, outside that cap; to bound it, wrap `Config.Transport` in a
+  round tripper that limits response size.
 - **Time:** the guest stops when `ctx` is cancelled or its deadline passes.
   gcx's retry backoff sleeps can't be interrupted, so stopping can lag by up to
   one backoff interval.

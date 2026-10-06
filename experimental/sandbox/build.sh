@@ -12,7 +12,7 @@ out=${1:-$here/gcx.wasm}
 src=$here/build/src
 
 mkdir -p "$src"
-rsync -a --delete --exclude .git --exclude /bin --exclude /dist --exclude /vendor --exclude /experimental "$root/" "$src/"
+rsync -a --delete --exclude .git --exclude /bin --exclude /dist --exclude /vendor --exclude /build --exclude /experimental "$root/" "$src/"
 cd "$src"
 go mod vendor
 cp -r "$here/patches/." vendor/
