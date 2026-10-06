@@ -422,7 +422,7 @@ This applies to provider commands (`slo`, `synth`, `alert`) which each define a 
 
 ### 16. ResourceAdapter and Provider CRUD Routing
 
-Provider-backed resource types (SLO, Synthetic Monitoring, Alert) implement the
+Provider-backed resource types (SLO, Synthetic Monitoring) implement the
 `adapter.ResourceAdapter` interface to bridge their REST clients to the unified
 `resources` pipeline. Providers return their `adapter.Registration` values from
 `Provider.TypedRegistrations()`; the single `providers.Register()` call in the
