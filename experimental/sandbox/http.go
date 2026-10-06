@@ -1,15 +1,20 @@
 package sandbox
 
 import (
-	"bufio"
 	"bytes"
 	"context"
+	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
+	"math"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"syscall"
 
 	"github.com/tetratelabs/wazero"
 	"github.com/tetratelabs/wazero/api"
@@ -62,12 +67,36 @@ func canonicalHost(h, scheme string) string {
 	return strings.TrimSuffix(h, ":443")
 }
 
-// The "gcx_http" host module. The ABI is documented in gcx's
-// internal/httputils/wire_wasip1.go. The host never calls into the guest;
-// each request runs in its own goroutine and the guest polls for the result.
+// The "gcx_http" host module, shaped after wasi:http@0.3.1. The ABI is
+// documented in gcx's internal/httputils/wire_wasip1.go. The host never
+// calls into the guest; each request runs in its own goroutine and the guest
+// polls for its response and body.
 //
 // Host functions find their invocation's session through the context that
 // wazero passes them, so concurrent Runs never see each other's requests.
+
+// wasi:http@0.3.1 error-code case indices that the host reports.
+const (
+	codeDNSTimeout               = 0
+	codeDNSError                 = 1
+	codeConnectionRefused        = 6
+	codeConnectionTerminated     = 7
+	codeConnectionTimeout        = 8
+	codeTLSProtocolError         = 12
+	codeTLSCertificateError      = 13
+	codeTLSAlertReceived         = 14
+	codeHTTPRequestDenied        = 15
+	codeHTTPRequestMethodInvalid = 18
+	codeHTTPRequestURIInvalid    = 19
+	codeHTTPResponseIncomplete   = 25
+	codeInternalError            = 38
+)
+
+// callError is a failed exchange as the guest sees it.
+type callError struct {
+	code   uint32
+	detail string
+}
 
 type sessionKey struct{}
 
@@ -90,151 +119,344 @@ type session struct {
 
 	mu     sync.Mutex
 	nextID uint32
-	byID   map[uint32]*pendingRequest
+	byID   map[uint32]*exchange
 }
 
-type pendingRequest struct {
-	cancel context.CancelFunc
-	done   chan struct{}
-	resp   []byte // raw HTTP/1.1 response, set when done
-	err    string // set instead of resp on failure; never empty
+// wireRequest is a request as the guest describes it.
+type wireRequest struct {
+	method, scheme, authority, pathWithQuery string
+	header                                   http.Header
+	body                                     []byte
+}
+
+// exchange is one request and its response, from request_new to drop.
+// Guest calls arrive one at a time, so only fields that handle's goroutine
+// writes need synchronizing.
+type exchange struct {
+	req    wireRequest
+	cancel context.CancelFunc        // set by handle
+	done   chan struct{}             // set by handle; closed once resp or err is set
+	resp   *http.Response            // set before done closes
+	chunks chan []byte               // the body, set with resp; closed at its end
+	err    atomic.Pointer[callError] // why the request or its body failed
+	unread []byte                    // the part of the last chunk the guest has not read
 }
 
 func newSession(egress []Destination, authorize func(*http.Request) error, transport http.RoundTripper) *session {
-	return &session{egress: egress, authorize: authorize, transport: transport, byID: map[uint32]*pendingRequest{}}
+	return &session{egress: egress, authorize: authorize, transport: transport, byID: map[uint32]*exchange{}}
 }
 
 func instantiateHTTP(ctx context.Context, rt wazero.Runtime) error {
 	_, err := rt.NewHostModuleBuilder("gcx_http").
-		NewFunctionBuilder().WithFunc(hostStart).Export("start").
+		NewFunctionBuilder().WithFunc(hostRequestNew).Export("request_new").
+		NewFunctionBuilder().WithFunc(hostHandle).Export("handle").
 		NewFunctionBuilder().WithFunc(hostPoll).Export("poll").
-		NewFunctionBuilder().WithFunc(hostTake).Export("take").
-		NewFunctionBuilder().WithFunc(hostCancel).Export("cancel").
+		NewFunctionBuilder().WithFunc(hostGetStatusCode).Export("get_status_code").
+		NewFunctionBuilder().WithFunc(hostGetHeaders).Export("get_headers").
+		NewFunctionBuilder().WithFunc(hostBodyRead).Export("body_read").
+		NewFunctionBuilder().WithFunc(hostErrorCode).Export("error_code").
+		NewFunctionBuilder().WithFunc(hostErrorDetail).Export("error_detail").
+		NewFunctionBuilder().WithFunc(hostDrop).Export("drop").
 		Instantiate(ctx)
 	return err
 }
 
-func hostStart(ctx context.Context, m api.Module, ptr, n uint32) uint32 {
+func hostRequestNew(ctx context.Context, m api.Module,
+	methodPtr, methodLen, schemePtr, schemeLen, authorityPtr, authorityLen,
+	pathPtr, pathLen, headersPtr, headersLen, bodyPtr, bodyLen uint32,
+) uint32 {
 	s := sessionFrom(ctx)
-	raw, ok := m.Memory().Read(ptr, n)
-	if !ok {
-		panic("gcx_http.start: request out of bounds")
-	}
-	raw = bytes.Clone(raw) // Read aliases guest memory
-
-	// ctx is the Run call's context, which Run cancels when it returns, so
-	// requests still in flight then are abandoned.
-	reqCtx, cancel := context.WithCancel(ctx)
-	p := &pendingRequest{cancel: cancel, done: make(chan struct{})}
+	x := &exchange{req: wireRequest{
+		method:        string(read(m, methodPtr, methodLen)),
+		scheme:        string(read(m, schemePtr, schemeLen)),
+		authority:     string(read(m, authorityPtr, authorityLen)),
+		pathWithQuery: string(read(m, pathPtr, pathLen)),
+		header:        decodeHeaders(read(m, headersPtr, headersLen)),
+		body:          bytes.Clone(read(m, bodyPtr, bodyLen)),
+	}}
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.nextID++
-	id := s.nextID
-	s.byID[id] = p
-	s.mu.Unlock()
-
-	go func() {
-		// Authorize and Transport are the embedder's code, and a panic in
-		// this goroutine would take down the host process, so fail the
-		// request instead.
-		defer func() {
-			if r := recover(); r != nil {
-				p.resp, p.err = nil, fmt.Sprintf("gcx_http: host panic: %v", r)
-			}
-			close(p.done)
-		}()
-		p.resp, p.err = s.roundTrip(reqCtx, raw)
-	}()
-	return id
+	s.byID[s.nextID] = x
+	return s.nextID
 }
 
-func hostPoll(ctx context.Context, id uint32) int64 {
-	p := sessionFrom(ctx).get(id)
-	select {
-	case <-p.done:
-	default:
-		return 0
-	}
-	if p.err != "" {
-		return -int64(len(p.err))
-	}
-	return int64(len(p.resp))
-}
-
-func hostTake(ctx context.Context, m api.Module, id, ptr uint32) {
+func hostHandle(ctx context.Context, id uint32) {
 	s := sessionFrom(ctx)
-	p := s.get(id)
-	<-p.done
-	out := p.resp
-	if p.err != "" {
-		out = []byte(p.err)
+	x := s.get(id)
+	if x.done != nil {
+		panic("gcx_http.handle: request already sent")
 	}
-	if !m.Memory().Write(ptr, out) {
-		panic("gcx_http.take: buffer out of bounds")
-	}
-	s.forget(id)
+	// ctx is the Run call's context, which Run cancels when it returns, so
+	// requests and bodies still in flight then are abandoned.
+	reqCtx, cancel := context.WithCancel(ctx)
+	x.cancel, x.done = cancel, make(chan struct{})
+	go func() {
+		resp, err := s.roundTrip(reqCtx, x.req)
+		if err != nil {
+			x.err.Store(err)
+			close(x.done)
+			return
+		}
+		x.resp, x.chunks = resp, make(chan []byte, 1)
+		close(x.done)
+		x.pump(reqCtx, resp)
+	}()
 }
 
-func hostCancel(ctx context.Context, id uint32) {
-	sessionFrom(ctx).forget(id)
+func hostPoll(ctx context.Context, id uint32) int32 {
+	x := sessionFrom(ctx).get(id)
+	if x.done == nil {
+		panic("gcx_http.poll: request not sent")
+	}
+	return x.state()
 }
 
-func (s *session) get(id uint32) *pendingRequest {
+func hostGetStatusCode(ctx context.Context, id uint32) uint32 {
+	code := sessionFrom(ctx).ready(id).resp.StatusCode
+	if code < 0 || code > math.MaxUint16 { // net/http only returns 3-digit codes
+		panic("gcx_http.get_status_code: invalid status code")
+	}
+	return uint32(code)
+}
+
+func hostGetHeaders(ctx context.Context, m api.Module, id, ptr, capacity uint32) uint32 {
+	return writeSized(m, ptr, capacity, encodeHeaders(sessionFrom(ctx).ready(id).resp.Header))
+}
+
+func hostBodyRead(ctx context.Context, m api.Module, id, ptr, capacity uint32) int32 {
+	b, n := sessionFrom(ctx).ready(id).readBody(int(capacity))
+	if !m.Memory().Write(ptr, b) {
+		panic("gcx_http.body_read: buffer out of bounds")
+	}
+	return n
+}
+
+func hostErrorCode(ctx context.Context, id uint32) uint32 {
+	return sessionFrom(ctx).failure(id).code
+}
+
+func hostErrorDetail(ctx context.Context, m api.Module, id, ptr, capacity uint32) uint32 {
+	return writeSized(m, ptr, capacity, []byte(sessionFrom(ctx).failure(id).detail))
+}
+
+func hostDrop(ctx context.Context, id uint32) {
+	s := sessionFrom(ctx)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if x := s.lookup(id); x.cancel != nil {
+		x.cancel() // stops the request, or the body pump, which closes the body
+	}
+	delete(s.byID, id)
+}
+
+// readBody returns up to capacity bytes of the body and body_read's result.
+func (x *exchange) readBody(capacity int) ([]byte, int32) {
+	if len(x.unread) == 0 {
+		select {
+		case c, ok := <-x.chunks:
+			if !ok {
+				if x.err.Load() != nil {
+					return nil, -2
+				}
+				return nil, -1
+			}
+			x.unread = c
+		default:
+			return nil, 0
+		}
+	}
+	n := min(capacity, len(x.unread))
+	if n < 0 || n > math.MaxInt32 { // n is at most one chunk
+		panic("gcx_http.body_read: chunk too large")
+	}
+	b := x.unread[:n]
+	x.unread = x.unread[n:]
+	return b, int32(n)
+}
+
+// pump feeds resp.Body to the guest a chunk at a time, so the host holds at most
+// a couple of chunks however large the body is.
+func (x *exchange) pump(ctx context.Context, resp *http.Response) {
+	defer resp.Body.Close()
+	defer close(x.chunks)
+	for {
+		buf := make([]byte, 32<<10)
+		n, err := resp.Body.Read(buf)
+		if n > 0 {
+			select {
+			case x.chunks <- buf[:n]:
+			case <-ctx.Done():
+				return
+			}
+		}
+		if errors.Is(err, io.EOF) {
+			return
+		}
+		if err != nil {
+			x.err.Store(classify(err, codeHTTPResponseIncomplete))
+			return
+		}
+	}
+}
+
+func (s *session) get(id uint32) *exchange {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.lookup(id)
 }
 
-func (s *session) forget(id uint32) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.lookup(id).cancel()
-	delete(s.byID, id)
+// ready returns id's exchange, whose response the guest must have seen poll report.
+func (s *session) ready(id uint32) *exchange {
+	x := s.get(id)
+	if x.state() != 1 {
+		panic("gcx_http: no response yet")
+	}
+	return x
+}
+
+// failure returns why id failed, which the guest must have seen poll or body_read report.
+func (s *session) failure(id uint32) *callError {
+	err := s.get(id).err.Load()
+	if err == nil {
+		panic("gcx_http: request has not failed")
+	}
+	return err
+}
+
+// state is poll's result: 0 pending (or not sent), 1 response, 2 failed.
+func (x *exchange) state() int32 {
+	if x.done == nil {
+		return 0
+	}
+	select {
+	case <-x.done:
+	default:
+		return 0
+	}
+	if x.resp == nil {
+		return 2
+	}
+	return 1
 }
 
 // lookup requires s.mu. An unknown id is a guest bug; panicking traps the guest.
-func (s *session) lookup(id uint32) *pendingRequest {
-	p, ok := s.byID[id]
+func (s *session) lookup(id uint32) *exchange {
+	x, ok := s.byID[id]
 	if !ok {
 		panic("gcx_http: unknown request id")
 	}
-	return p
+	return x
 }
 
-// roundTrip applies the egress policy and authorizer to a raw HTTP/1.1 request, performs
-// it, and returns the raw response, buffered in full, or a non-empty error.
-func (s *session) roundTrip(ctx context.Context, raw []byte) ([]byte, string) {
-	req, err := http.ReadRequest(bufio.NewReader(bytes.NewReader(raw)))
-	if err != nil {
-		return nil, "gcx_http: parse request: " + err.Error()
+// roundTrip applies the egress policy and authorizer to a request, performs
+// it, and returns the response, whose body the caller must close.
+func (s *session) roundTrip(ctx context.Context, w wireRequest) (*http.Response, *callError) {
+	// The authority alone decides the destination, so it can't smuggle in a
+	// path, userinfo or another host.
+	if w.authority == "" || strings.ContainsAny(w.authority, "/?#@\\") || !strings.HasPrefix(w.pathWithQuery, "/") {
+		return nil, &callError{codeHTTPRequestURIInvalid, fmt.Sprintf("authority %q, path %q", w.authority, w.pathWithQuery)}
 	}
-	req.RequestURI = "" // must be empty on client requests
+	rawURL := w.scheme + "://" + w.authority + w.pathWithQuery
+	if _, err := url.Parse(rawURL); err != nil {
+		return nil, &callError{codeHTTPRequestURIInvalid, err.Error()}
+	}
+	req, err := http.NewRequestWithContext(ctx, w.method, rawURL, bytes.NewReader(w.body))
+	if err != nil { // the URL parsed, so only the method can be wrong
+		return nil, &callError{codeHTTPRequestMethodInvalid, err.Error()}
+	}
+	req.Header = w.header
 	dest, err := match(s.egress, req.URL)
 	if err != nil {
-		return nil, "gcx_http: " + err.Error()
+		return nil, &callError{codeHTTPRequestDenied, err.Error()}
 	}
 	if s.authorize != nil {
-		body, err := io.ReadAll(req.Body) // in memory already: raw holds it
-		if err != nil {
-			return nil, "gcx_http: read request body: " + err.Error()
-		}
-		req.Body = io.NopCloser(bytes.NewReader(body))
 		if err := s.authorize(req); err != nil {
-			return nil, "gcx_http: request refused: " + err.Error()
+			return nil, &callError{codeHTTPRequestDenied, "request refused: " + err.Error()}
 		}
-		req.Body = io.NopCloser(bytes.NewReader(body)) // in case authorize read it
+		req.Body, _ = req.GetBody() // in case authorize read it; NewRequest's GetBody never fails
 	}
 	for k, vs := range dest.Header {
 		req.Header[http.CanonicalHeaderKey(k)] = vs
 	}
-	req.Host = "" // send the URL's host, which is what egress matched
-	resp, err := s.transport.RoundTrip(req.WithContext(ctx))
+	resp, err := s.transport.RoundTrip(req)
 	if err != nil {
-		return nil, "gcx_http: " + err.Error() // never empty, as poll requires
+		return nil, classify(err, codeInternalError)
 	}
-	defer resp.Body.Close()
+	return resp, nil
+}
+
+// classify maps a transport error to the closest wasi:http error-code.
+func classify(err error, fallback uint32) *callError {
+	var (
+		dns   *net.DNSError
+		cert  *tls.CertificateVerificationError
+		alert tls.AlertError
+		rec   tls.RecordHeaderError
+		ne    net.Error
+	)
+	code := fallback
+	switch {
+	case errors.As(err, &dns) && dns.IsTimeout:
+		code = codeDNSTimeout
+	case errors.As(err, &dns):
+		code = codeDNSError
+	case errors.Is(err, syscall.ECONNREFUSED):
+		code = codeConnectionRefused
+	case errors.Is(err, syscall.ECONNRESET), errors.Is(err, io.ErrUnexpectedEOF):
+		code = codeConnectionTerminated
+	case errors.As(err, &cert):
+		code = codeTLSCertificateError
+	case errors.As(err, &alert):
+		code = codeTLSAlertReceived
+	case errors.As(err, &rec):
+		code = codeTLSProtocolError
+	case errors.As(err, &ne) && ne.Timeout():
+		code = codeConnectionTimeout
+	}
+	return &callError{code, err.Error()}
+}
+
+// read copies n bytes of guest memory at ptr.
+func read(m api.Module, ptr, n uint32) []byte {
+	b, ok := m.Memory().Read(ptr, n)
+	if !ok {
+		panic("gcx_http: guest memory out of bounds")
+	}
+	return bytes.Clone(b) // Read aliases guest memory
+}
+
+// writeSized writes b to the guest's buffer if it fits, and returns its length.
+func writeSized(m api.Module, ptr, capacity uint32, b []byte) uint32 {
+	n := len(b)
+	if n > math.MaxUint32 {
+		panic("gcx_http: value too large for guest memory")
+	}
+	if n <= int(capacity) && !m.Memory().Write(ptr, b) {
+		panic("gcx_http: buffer out of bounds")
+	}
+	return uint32(n)
+}
+
+// encodeHeaders and decodeHeaders use the ABI's "name\0value\0..." form.
+func encodeHeaders(h http.Header) []byte {
 	var b bytes.Buffer
-	if err := resp.Write(&b); err != nil {
-		return nil, "gcx_http: read response: " + err.Error()
+	for k, vs := range h {
+		for _, v := range vs {
+			b.WriteString(k)
+			b.WriteByte(0)
+			b.WriteString(v)
+			b.WriteByte(0)
+		}
 	}
-	return b.Bytes(), ""
+	return b.Bytes()
+}
+
+func decodeHeaders(b []byte) http.Header {
+	h := http.Header{}
+	parts := bytes.Split(b, []byte{0})
+	for i := 0; i+1 < len(parts); i += 2 {
+		h.Add(string(parts[i]), string(parts[i+1]))
+	}
+	return h
 }
