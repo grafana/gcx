@@ -143,15 +143,26 @@ type hostBody struct {
 }
 
 func (b *hostBody) Read(p []byte) (int, error) {
-	if b.closed {
-		return 0, http.ErrBodyReadAfterClose
-	}
 	if len(p) == 0 {
 		return 0, nil
 	}
 	var n int32
-	if err := waitFor(b.ctx, func() bool { n = hostBodyRead(b.id, &p[0], uint32(len(p))); return n != 0 }); err != nil {
+	// Check closed before every host call: another goroutine may Close the
+	// body (as client-go's StreamWatcher.Stop does) while this one sleeps,
+	// and the host traps on a dropped id. wasm runs one goroutine at a time,
+	// so nothing can close it between the check and the call.
+	ready := func() bool {
+		if b.closed {
+			return true
+		}
+		n = hostBodyRead(b.id, &p[0], uint32(len(p)))
+		return n != 0
+	}
+	if err := waitFor(b.ctx, ready); err != nil {
 		return 0, err
+	}
+	if b.closed {
+		return 0, http.ErrBodyReadAfterClose
 	}
 	switch n {
 	case -1:
