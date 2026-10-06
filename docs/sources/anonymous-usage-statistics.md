@@ -226,7 +226,8 @@ Two limits are worth stating plainly:
 Agent identity uses the fixed labels in the
 [agent environment reference](https://github.com/grafana/gcx/blob/main/docs/design/environment-variables.md#supported-harness-names).
 The `GCX_AGENT_NAME` override supports harnesses without a native marker.
-The shared `AI_AGENT` and `AGENT` variables also accept supported names.
+The shared `AI_AGENT` variable also accepts supported names.
+The bare `AGENT` variable is accepted only when its value is `goose`.
 Unknown names and version suffixes are not sent. Session markers are used only
 for detection; their values are not sent.
 

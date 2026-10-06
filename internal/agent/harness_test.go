@@ -29,15 +29,17 @@ func TestHarnessSignals(t *testing.T) {
 		{"shared version discarded", map[string]string{"AI_AGENT": "github-copilot-cli@synthetic-private-version"}, "github-copilot"},
 		{"normalized explicit name", map[string]string{"GCX_AGENT_NAME": "  CoDeX  "}, "codex"},
 		{"kilo alias", map[string]string{"AI_AGENT": "kilo"}, "kilo-code"},
-		{"kilocode alias", map[string]string{"AGENT": "kilocode"}, "kilo-code"},
+		{"kilocode alias", map[string]string{"AI_AGENT": "kilocode"}, "kilo-code"},
 		{"droid alias", map[string]string{"GCX_AGENT_NAME": "droid"}, "factory-droid"},
-		{"auggie alias", map[string]string{"AGENT": "auggie"}, "augment"},
+		{"auggie alias", map[string]string{"AI_AGENT": "auggie"}, "augment"},
+		{"bare AGENT is not a general override", map[string]string{"AGENT": "codex"}, ""},
+		{"bare AGENT falls through to native", map[string]string{"AGENT": "crush", "CODEX_SHELL": "1"}, "codex"},
 		{"goose shared identity", map[string]string{"AGENT": "goose"}, "goose"},
 		{"unknown identity falls through", map[string]string{"GCX_AGENT_NAME": "private-project", "CODEX_SHELL": "1"}, "codex"},
 		{"unknown identity ignored", map[string]string{"GCX_AGENT_NAME": "private-project"}, ""},
 		{"unknown shared identity ignored", map[string]string{"AI_AGENT": "private-project", "AGENT": "1"}, ""},
 		{"config and credentials are not identity", map[string]string{"AMP_HOME": "/tmp/amp", "AUGMENT_API_TOKEN": "synthetic-token", "TERM_PROGRAM": "kiro", "OPENAI_API_KEY": "synthetic-token"}, ""},
-		{"false session ignored", map[string]string{"CODEX_THREAD_ID": "false"}, ""},
+		{"empty session ignored", map[string]string{"CODEX_THREAD_ID": "", "COPILOT_AGENT_SESSION_ID": ""}, ""},
 		{"boolean marker needs boolean", map[string]string{"CODEX_SHELL": "arbitrary", "GEMINI_CLI": "0"}, ""},
 	}
 	for _, tc := range tests {
@@ -57,7 +59,7 @@ func TestHarnessSignals(t *testing.T) {
 func TestSupportedHarnessNames(t *testing.T) {
 	names := []string{"claude-code", "codex", "cursor", "github-copilot", "gemini-cli", "opencode", "cline", "kilo-code", "kiro", "factory-droid", "amp", "augment", "junie", "devin", "openhands", "goose", "aider", "qwen-code", "pi", "crush", "amazon-q"}
 	for _, name := range names {
-		for _, env := range []string{"GCX_AGENT_NAME", "AI_AGENT", "AGENT"} {
+		for _, env := range []string{"GCX_AGENT_NAME", "AI_AGENT"} {
 			t.Run(name+"/"+env, func(t *testing.T) {
 				clearAgentEnv(t)
 				t.Setenv(env, name)

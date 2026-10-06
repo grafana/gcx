@@ -11,6 +11,14 @@ import (
 	"strings"
 )
 
+// Keep these inputs in sync with the Env tags used by the docs generator.
+const (
+	envMode          = "GCX_AGENT_MODE"
+	envName          = "GCX_AGENT_NAME"
+	envAIIdentity    = "AI_AGENT"
+	envGooseIdentity = "AGENT"
+)
+
 // Env documents the explicit agent controls for the environment reference.
 // Detection reads these variables directly, before command construction.
 type Env struct {
@@ -21,6 +29,11 @@ type Env struct {
 	// explicitly. Use a supported name from the agent detection reference.
 	// Unknown names are ignored and are never sent in usage telemetry.
 	Name string `env:"GCX_AGENT_NAME"`
+	// AIIdentity follows the AI_AGENT convention. A supported name or
+	// name@version enables agent mode. Unknown names and versions are not sent.
+	AIIdentity string `env:"AI_AGENT"`
+	// GooseIdentity detects Goose when AGENT is goose. Other values are ignored.
+	GooseIdentity string `env:"AGENT"`
 }
 
 // Boolean signals accept only 1, true, or yes. Keep fork-specific signals
@@ -54,7 +67,7 @@ var harnessSessionVars = []struct{ envVar, name string }{ //nolint:gochecknoglob
 // list to clear inherited signals before they test human and agent behavior.
 func EnvironmentVariables() []string {
 	vars := make([]string, 0, 4+len(harnessEnvVars)+len(harnessSessionVars))
-	vars = append(vars, "GCX_AGENT_MODE", "GCX_AGENT_NAME", "AI_AGENT", "AGENT")
+	vars = append(vars, envMode, envName, envAIIdentity, envGooseIdentity)
 	for _, h := range harnessEnvVars {
 		vars = append(vars, h.envVar)
 	}
@@ -107,7 +120,7 @@ func detectFromEnv() {
 
 	// GCX_AGENT_MODE has the highest priority: an explicit falsy
 	// value disables agent mode regardless of other variables.
-	if v, ok := os.LookupEnv("GCX_AGENT_MODE"); ok {
+	if v, ok := os.LookupEnv(envMode); ok {
 		if isFalsy(v) {
 			return
 		}
@@ -131,10 +144,14 @@ func detectFromEnv() {
 // Explicit identity comes first, followed by shared identity variables, then
 // native signals in table order. An override can identify a nested agent.
 func Name() string {
-	for _, env := range []string{"GCX_AGENT_NAME", "AI_AGENT", "AGENT"} {
+	for _, env := range []string{envName, envAIIdentity} {
 		if name := supportedName(os.Getenv(env)); name != "" {
 			return name
 		}
+	}
+	// Only Goose's use of the bare AGENT variable has upstream evidence.
+	if strings.EqualFold(strings.TrimSpace(os.Getenv(envGooseIdentity)), "goose") {
+		return "goose"
 	}
 	for _, h := range harnessEnvVars {
 		if isTruthy(os.Getenv(h.envVar)) {
@@ -143,7 +160,7 @@ func Name() string {
 	}
 	for _, h := range harnessSessionVars {
 		v := os.Getenv(h.envVar)
-		if v != "" && !isFalsy(v) {
+		if v != "" {
 			return h.name
 		}
 	}

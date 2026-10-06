@@ -80,7 +80,8 @@ Accepts: `1`, `true`, `0`, `false` (parsed by `caarlos0/env/v11`)
 |----------|--------|--------|
 | `GCX_AGENT_MODE` | Explicit opt-in/out | `1`/`true`/`yes` enables agent mode; `0`/`false`/`no` disables it. The `--agent` flag takes precedence. |
 | `GCX_AGENT_NAME` | Explicit identity | A supported name enables agent mode and sets the telemetry `agent` label. Unknown names are ignored. |
-| `AI_AGENT`, `AGENT` | Shared identity | A supported name enables agent mode. A `name@version` value uses only the name. Boolean values do not identify a harness. |
+| `AI_AGENT` | Shared identity | A supported name enables agent mode. A `name@version` value uses only the name. Unknown names are ignored. |
+| `AGENT` | Goose | The value `goose` enables agent mode. Other values are ignored. |
 | `GCX_AGENT_SPILL_BYTES` | Output tuning | Spill threshold in bytes for the `agents` codec (default `102400` = 100 KiB). `0` disables spilling. Invalid values use the default. See [output.md](output.md#111-agents-codec). |
 | `CLAUDECODE`, `CLAUDE_CODE` | Claude Code | Boolean identity signal |
 | `CURSOR_AGENT` | Cursor | Boolean identity signal |
@@ -98,12 +99,12 @@ Accepts: `1`, `true`, `0`, `false` (parsed by `caarlos0/env/v11`)
 | `PI_CODING_AGENT` | Pi | Boolean identity signal |
 
 Boolean signals accept `1`, `true`, or `yes`, without case sensitivity.
-Session markers require a non-empty value other than `0`, `false`, or `no`.
+Session markers require a non-empty value.
 Session values are never sent in telemetry.
 
 #### Supported harness names
 
-Use the labels below with `GCX_AGENT_NAME`, `AI_AGENT`, or `AGENT`.
+Use the labels below with `GCX_AGENT_NAME` or `AI_AGENT`.
 Names are case-insensitive. Surrounding whitespace is removed.
 Only fixed labels reach telemetry. Unknown values fall through to other signals.
 
@@ -148,6 +149,15 @@ configuration directories, or the terminal application.
 
 #### Signal evidence
 
+- `GCX_AGENT_NAME` is gcx's explicit identity override. It accepts only the
+  labels listed above.
+- `AI_AGENT` follows Vercel's documented
+  [AI_AGENT convention](https://github.com/vercel/detect-agent#the-ai_agent-standard).
+  The convention accepts a tool name with an optional `@version` suffix.
+  gcx restricts the name to its fixed labels and discards the version.
+- The bare `AGENT` variable is accepted only for `AGENT=goose`, as shown
+  in the Goose source below. It is not a general identity override.
+
 - Codex: `CODEX_SHELL=1` and session markers were present in the Codex desktop
   command environment used to reproduce the missing telemetry identity.
 - Gemini CLI documents `GEMINI_CLI=1` in its
@@ -163,6 +173,7 @@ configuration directories, or the terminal application.
 - Goose sets `GOOSE_TERMINAL=1` and `AGENT=goose` in its
   [retry command path](https://github.com/aaif-goose/goose/blob/main/crates/goose/src/agents/retry.rs).
   These signals do not establish coverage of every shell path.
+  Goose moved from Block to AAIF. Its [governance document](https://github.com/aaif-goose/goose/blob/main/GOVERNANCE.md) confirms the project owner.
 
 Detection runs at `init()` time in `internal/agent/agent.go`.
 See [agent-mode.md](agent-mode.md#61-detection) for mode and identity precedence.

@@ -22,7 +22,7 @@ func TestAgentIdentityReachesUsageReceiver(t *testing.T) {
 		want string
 		mode bool
 	}
-	tests := make([]identityCase, 0, 28)
+	tests := make([]identityCase, 0, 30)
 	tests = append(tests, []identityCase{
 		{"codex shell", []string{"CODEX_SHELL=1"}, "codex", true},
 		{"codex thread", []string{"CODEX_THREAD_ID=synthetic-private-session"}, "codex", true},
@@ -31,6 +31,8 @@ func TestAgentIdentityReachesUsageReceiver(t *testing.T) {
 		{"kilo fork", []string{"KILO=1", "OPENCODE=1"}, "kilo-code", true},
 		{"shared name", []string{"AI_AGENT=goose@synthetic-private-session"}, "goose", true},
 		{"mode opt out", []string{"CODEX_SHELL=1", "GCX_AGENT_MODE=false"}, "codex", false},
+		{"Goose legacy marker", []string{"AGENT=goose"}, "goose", true},
+		{"unsupported legacy identity", []string{"AGENT=codex"}, "", false},
 		{"unknown name", []string{"GCX_AGENT_NAME=synthetic-private-session"}, "", false},
 	}...)
 	for _, name := range []string{"claude-code", "codex", "cursor", "github-copilot", "gemini-cli", "opencode", "cline", "kilo-code", "kiro", "factory-droid", "amp", "augment", "junie", "devin", "openhands", "goose", "aider", "qwen-code", "pi", "crush"} {

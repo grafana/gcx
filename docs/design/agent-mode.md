@@ -23,7 +23,7 @@ The full list is in the
 `GCX_AGENT_MODE=1` enables mode even when the harness name is unknown.
 
 **Identity priority:** supported `GCX_AGENT_NAME` > supported `AI_AGENT` >
-supported `AGENT` > native boolean signals in source order > native session
+`AGENT=goose` > native boolean signals in source order > native session
 markers in source order. Kilo precedes OpenCode. Qwen precedes Gemini CLI.
 An explicit identity can select a nested agent when inherited markers conflict.
 Environment signals alone cannot establish which parent process set a marker.
