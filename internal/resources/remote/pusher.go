@@ -281,7 +281,7 @@ func (p *Pusher) pushSingleResource(
 	logger.Info("Resource pushed")
 	summary.RecordSuccess()
 	if request.IncludeSuccesses && !request.DryRun && applied != nil && applied.GetName() != "" {
-		summary.RecordApplied(OperationSuccess{RequestedName: name, Action: action, Kind: desc.Kind, Name: applied.GetName(), UID: string(applied.GetUID()), Namespace: applied.GetNamespace()})
+		summary.RecordApplied(OperationSuccess{RequestedName: name, SourcePath: res.SourcePath(), Action: action, Kind: desc.Kind, Name: applied.GetName(), UID: string(applied.GetUID()), Namespace: applied.GetNamespace()})
 	}
 	return nil
 }

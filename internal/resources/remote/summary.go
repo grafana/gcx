@@ -91,6 +91,7 @@ func (s *OperationSummary) Failures() []OperationFailure {
 // OperationSuccess contains only the effective identity returned by a write.
 type OperationSuccess struct {
 	RequestedName string
+	SourcePath    string
 	Action        string
 	Kind          string
 	Name          string

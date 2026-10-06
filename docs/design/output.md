@@ -258,14 +258,15 @@ status messages as the primary output.
 **Rules:**
 - Default text summarizes successes by count.
 - With `resources push --include-successes`, structured results include
-  `successes` with real-write identity references. All default formats keep
-  success counts only. The option does not change data acquisition.
+  `successes` with real-write identity references in JSON, YAML, and agents output.
+  Without the option, output keeps success counts only. The option does not change data acquisition.
   Each entry has `action` (`created` or `updated`), `requested`
-  (the input kind and name), and `target`
+  (the input kind, name, and source path), and `target`
   (`kind`, `name`, `uid`, and `namespace` when available).
   These references use the API response. They contain no resource body.
   Dry-run and skipped operations do not produce applied identity references.
   API responses without a resource name also produce no reference.
+  If the option is set and no reference is returned, stderr gives a hint.
   Entries follow completion order, not input order.
   Large results use the agents codec spill receipt and file.
 - Failures are always enumerated individually — they require action.
