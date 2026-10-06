@@ -23,6 +23,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -543,7 +544,7 @@ func TestK6V6RunCommands(t *testing.T) {
 		case "/v3/account/grafana-app/start":
 			_, _ = w.Write([]byte(`{"organization_id":"42","v3_grafana_token":"cached-v3"}`))
 		case "/cloud/v6/load_tests/6/test_runs":
-			_, _ = w.Write([]byte(`{"value":[{"id":101,"test_id":6,"project_id":42,"status":"completed","result":"passed"}]}`))
+			_, _ = w.Write([]byte(`{"value":[{"id":101,"test_id":6,"project_id":42,"status":"completed","result":"passed","created":"2026-10-06T07:00:00Z","ended":"2026-10-06T07:01:00Z"}]}`))
 		default:
 			t.Errorf("Unexpected API route: %s", r.URL.Path)
 			w.WriteHeader(http.StatusNotFound)
@@ -569,13 +570,50 @@ func TestK6V6RunCommands(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, stdout, "completed")
 	assert.Contains(t, stdout, "passed")
+	assert.Contains(t, stdout, "2026-10-06T07:00")
+	assert.Contains(t, stdout, "2026-10-06T07:01")
 }
 
 func TestTestRunStatus_LegacyPendingZero(t *testing.T) {
 	var run TestRunStatus
 	require.NoError(t, json.Unmarshal([]byte(`{"id":101,"load_test_id":6,"result_status":0}`), &run))
 	assert.Equal(t, "pending", run.resultString())
+	assert.Equal(t, 6, run.TestID)
+	assert.Equal(t, "pending", run.Result)
 	data, err := json.Marshal(run)
 	require.NoError(t, err)
 	assert.Contains(t, string(data), `"result_status":0`)
+}
+
+func TestTestRunStatus_NormalizesLegacyFields(t *testing.T) {
+	for _, tc := range []struct {
+		name, body, result string
+		testID             int
+	}{
+		{"legacy passed", `{"load_test_id":6,"result_status":1}`, "passed", 6},
+		{"legacy failed", `{"load_test_id":6,"result_status":2}`, "failed", 6},
+		{"current wins", `{"test_id":7,"load_test_id":6,"result":"passed","result_status":2}`, "passed", 7},
+		{"absent", `{}`, "", 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var run TestRunStatus
+			require.NoError(t, json.Unmarshal([]byte(tc.body), &run))
+			encoded, err := json.Marshal(run)
+			require.NoError(t, err)
+			var output map[string]any
+			decoder := json.NewDecoder(bytes.NewReader(encoded))
+			decoder.UseNumber()
+			require.NoError(t, decoder.Decode(&output))
+			assert.Equal(t, tc.testID, run.TestID)
+			assert.Equal(t, tc.result, run.Result)
+			if tc.testID != 0 {
+				assert.Equal(t, json.Number(strconv.Itoa(tc.testID)), output["test_id"])
+			}
+			if tc.result != "" {
+				assert.Equal(t, tc.result, output["result"])
+			} else {
+				assert.NotContains(t, output, "result")
+			}
+		})
+	}
 }

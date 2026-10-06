@@ -1,7 +1,6 @@
 package k6_test
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -815,8 +814,4 @@ func TestProxyClient_ListTestRuns_V6Result(t *testing.T) {
 	assert.Equal(t, 6, runs[0].TestID)
 	assert.Equal(t, 42, runs[0].ProjectID)
 	assert.Equal(t, "failed", runs[0].Result)
-	var table bytes.Buffer
-	require.NoError(t, (&k6.TestRunTableCodec{}).Encode(&table, runs))
-	assert.Contains(t, table.String(), "failed")
-	assert.Contains(t, table.String(), "completed")
 }
