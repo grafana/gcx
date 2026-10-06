@@ -2,6 +2,7 @@
 package k6
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/grafana/gcx/internal/cloud"
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -108,6 +110,30 @@ func TestK6RunsList_ThresholdExpressionsOutput(t *testing.T) {
 				options, ok := runs[0]["options"].(map[string]any)
 				require.True(t, ok, "options must be an object")
 				assert.Equal(t, expectedThresholdExpressions(), options["thresholds"])
+			}
+		})
+	}
+}
+
+func TestRunThresholdOptions_PreserveOpenValues(t *testing.T) {
+	for _, thresholds := range []string{
+		`{"checks":null}`,
+		`{"checks":["rate==1",{"threshold":"rate<0.01","abortOnFail":"true","delayAbortEval":true,"futureField":42},null,42]}`,
+	} {
+		t.Run(thresholds, func(t *testing.T) {
+			body := `{"load_test_id":0,"result_status":0,"status":"completed","options":{"thresholds":` + thresholds + `}}`
+			var run TestRunStatus
+			require.NoError(t, json.Unmarshal([]byte(body), &run))
+			for _, codec := range []format.Codec{format.NewJSONCodec(), format.NewYAMLCodec()} {
+				t.Run(string(codec.Format()), func(t *testing.T) {
+					var out bytes.Buffer
+					require.NoError(t, codec.Encode(&out, run))
+					var decoded TestRunStatus
+					require.NoError(t, codec.Decode(&out, &decoded))
+					encoded, err := json.Marshal(decoded)
+					require.NoError(t, err)
+					assert.JSONEq(t, body, string(encoded))
+				})
 			}
 		})
 	}

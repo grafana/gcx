@@ -1,6 +1,9 @@
 package k6
 
-import "strconv"
+import (
+	"encoding/json"
+	"strconv"
+)
 
 // ---------- ResourceIdentity implementations ----------
 
@@ -193,5 +196,5 @@ type allowedLoadZonesResponse struct {
 // TestRunOptions contains the returned configuration for a k6 test run.
 type TestRunOptions struct {
 	// Thresholds contains configured expressions, not evaluated results.
-	Thresholds map[string][]TestRunThreshold `json:"thresholds,omitempty"`
+	Thresholds map[string]json.RawMessage `json:"thresholds,omitempty"`
 }
