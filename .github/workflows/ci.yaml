@@ -85,29 +85,5 @@ jobs:
         with:
           persist-credentials: false
 
-      # Reference generation runs `go run` — cache Go modules to avoid re-downloading
-      - name: Restore go module cache
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-        with:
-          path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
-          key: go-deps-${{ runner.os }}-${{ hashFiles('go.sum') }}
-          restore-keys: |
-            go-deps-${{ runner.os }}
-
-      - name: Setup mise
-        uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4
-        with:
-          install: true
-          cache: true
-
-      - name: Install dependencies
-        run: mise run deps
-
-      - name: Check for drift in the generated documentation references
-        run: mise run reference-drift
-        shell: bash
-
       - name: Build documentation
-        run: mise run docs
+        run: docker run --rm -v "$PWD/docs/sources:/hugo/content/docs/grafana/next/as-code/observability-as-code/grafana-cli/gcx:ro" grafana/docs-base:latest /bin/bash -c 'make hugo'

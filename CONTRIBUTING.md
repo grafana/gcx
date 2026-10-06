@@ -76,7 +76,7 @@ much easier to say yes to.
 "Not gcx" usually means a backend prerequisite: gcx wraps product APIs, it
 does not fix them. Missing pagination, unstable payloads or unclear RBAC need
 to be solved by the owning team first. In the meantime,
-[`gcx api`](docs/reference/cli/gcx_api.md) gives raw access to any Grafana API.
+[`gcx api`](docs/sources/cli-reference.md#gcx-api) gives raw access to any Grafana API.
 
 ## Prefer extending a command over adding one
 
@@ -191,10 +191,12 @@ Install mise and set up the project. For macOS:
 $ brew install mise        # or: curl https://mise.run | sh
 $ mise trust               # trust the mise.toml configuration
 $ mise install             # install tools (Go, golangci-lint, etc.)
-$ mise run deps            # install Go modules and Python requirements, including MkDocs
+$ mise run deps            # install Go modules
 ```
 
-Run `mise run deps` before `mise run docs` or `mise run all`.
+Run `mise run deps` before `mise run all`. Documentation builds require Docker.
+`mise run docs` builds `docs/sources` using Grafana’s website image without
+regenerating reference files; `mise run serve-docs` starts a local preview.
 
 Some mise commands for local development:
 
