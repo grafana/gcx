@@ -3,6 +3,7 @@ package sandbox_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -24,6 +25,9 @@ import (
 
 func loadGCX(t *testing.T) []byte {
 	t.Helper()
+	if testing.Short() {
+		t.Skip("end-to-end test; skipped with -short")
+	}
 	path := os.Getenv("GCX_SANDBOX_WASM")
 	if path != "" { // CI sets it, so a missing module fails rather than skipping every test
 		wasm, err := os.ReadFile(path)
@@ -53,7 +57,8 @@ func newRuntime(t *testing.T, cfg sandbox.Config) *sandbox.Runtime {
 
 // fakeGrafana answers /bootdata with a stack namespace and everything else
 // with a health body, recording each request's Authorization header, method
-// and path. /slow never answers until the client gives up.
+// and path. /slow never answers until the client gives up; /big answers with
+// bigBody.
 type fakeGrafana struct {
 	*httptest.Server
 
@@ -62,6 +67,9 @@ type fakeGrafana struct {
 	auths []string
 	reqs  []string // "METHOD /path"
 }
+
+// bigBody is well over gcx's 100 KiB agent-mode spill threshold.
+func bigBody() string { return strings.Repeat("x", 2<<20) }
 
 func newFakeGrafana(t *testing.T, name string) *fakeGrafana {
 	t.Helper()
@@ -74,6 +82,10 @@ func newFakeGrafana(t *testing.T, name string) *fakeGrafana {
 		switch r.URL.Path {
 		case "/slow":
 			<-r.Context().Done()
+			return
+		case "/big":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":"` + bigBody() + `"}`))
 			return
 		case "/bootdata": // gcx discovers the stack namespace before anything else
 			_, _ = w.Write([]byte(`{"settings":{"namespace":"stacks-12345"}}`))
@@ -166,6 +178,25 @@ func TestRun(t *testing.T) {
 			t.Errorf("output missing server response:\n%s", out)
 		}
 		a.sawOnly(t, "Bearer secret-a")
+	})
+
+	t.Run("agent mode writes large results to stdout", func(t *testing.T) {
+		// Without the GCX_AGENT_SPILL_BYTES=0 default, gcx would try to spill
+		// this to a /tmp the guest doesn't have.
+		var stdout, stderr bytes.Buffer
+		inv, _ := invocation(a, "secret-a", "api", "/big")
+		inv.Env["GCX_AGENT_MODE"] = "true"
+		inv.Stdout, inv.Stderr = &stdout, &stderr
+		res, err := rt.Run(ctx, inv)
+		if err != nil || res.ExitCode != 0 {
+			t.Fatalf("exit %d, err %v, stderr:\n%s", res.ExitCode, err, stderr.String())
+		}
+		if !json.Valid(stdout.Bytes()) || !strings.Contains(stdout.String(), bigBody()) {
+			t.Errorf("stdout (%d bytes) is not the JSON body; stderr:\n%s", stdout.Len(), stderr.String())
+		}
+		if strings.Contains(stderr.String(), bigBody()[:64]) {
+			t.Error("body leaked to stderr")
+		}
 	})
 
 	t.Run("denies other destinations", func(t *testing.T) {

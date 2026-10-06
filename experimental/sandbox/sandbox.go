@@ -45,7 +45,8 @@ type Runtime struct {
 	rt        wazero.Runtime
 	compiled  wazero.CompiledModule
 	transport http.RoundTripper
-	root      string // empty directory mounted read-only at /
+	cache     wazero.CompilationCache // nil without Config.CacheDir
+	root      string                  // empty directory mounted read-only at /
 }
 
 // New compiles the gcx wasip1 module (see build.sh).
@@ -54,14 +55,15 @@ func New(ctx context.Context, wasm []byte, cfg Config) (*Runtime, error) {
 	if cfg.MemoryLimitBytes > 0 {
 		rcfg = rcfg.WithMemoryLimitPages(memoryLimitPages(cfg.MemoryLimitBytes))
 	}
+	var cache wazero.CompilationCache
 	if cfg.CacheDir != "" {
-		cache, err := wazero.NewCompilationCacheWithDir(cfg.CacheDir)
-		if err != nil {
+		var err error
+		if cache, err = wazero.NewCompilationCacheWithDir(cfg.CacheDir); err != nil {
 			return nil, err
 		}
 		rcfg = rcfg.WithCompilationCache(cache)
 	}
-	r := &Runtime{rt: wazero.NewRuntimeWithConfig(ctx, rcfg), transport: cfg.Transport}
+	r := &Runtime{rt: wazero.NewRuntimeWithConfig(ctx, rcfg), transport: cfg.Transport, cache: cache}
 	if r.transport == nil {
 		r.transport = http.DefaultTransport
 	}
@@ -109,7 +111,11 @@ func (r *Runtime) Close(ctx context.Context) error {
 	if r.root != "" {
 		_ = os.RemoveAll(r.root)
 	}
-	return r.rt.Close(ctx)
+	err := r.rt.Close(ctx)
+	if r.cache != nil {
+		err = errors.Join(err, r.cache.Close(ctx))
+	}
+	return err
 }
 
 // Invocation is one gcx command and everything it may access.
@@ -117,7 +123,9 @@ type Invocation struct {
 	// Args are gcx's arguments, without the program name.
 	Args []string
 	// Env is the guest's entire environment, e.g. GRAFANA_SERVER. HOME is
-	// always /home. Credentials belong in Egress, not here.
+	// always /home. GCX_AGENT_SPILL_BYTES defaults to 0, because the guest
+	// has no /tmp to spill large agent-mode results to, and the caller
+	// couldn't read the files anyway. Credentials belong in Egress, not here.
 	Env map[string]string
 	// Stdin, Stdout and Stderr default to empty input and discarded output.
 	Stdin          io.Reader
@@ -129,9 +137,10 @@ type Invocation struct {
 	Egress []Destination
 	// Authorize, if set, is called for every request that Egress allows,
 	// before credentials are added and before it is sent. Returning an error
-	// refuses the request; the guest sees the error's text. It must not
-	// modify the request. Use it for policy beyond the destination, such as
-	// which methods and paths a caller may use.
+	// refuses the request; the guest sees the error's text. It may read the
+	// body, which is restored before sending, but must not otherwise modify
+	// the request. Use it for policy beyond the destination, such as which
+	// methods and paths a caller may use.
 	Authorize func(*http.Request) error
 }
 
@@ -163,6 +172,9 @@ func (r *Runtime) Run(ctx context.Context, inv Invocation) (Result, error) {
 			WithDirMount(home, "/home")).
 		WithEnv("HOME", "/home").
 		WithSysWalltime().WithSysNanotime().WithSysNanosleep()
+	if _, ok := inv.Env["GCX_AGENT_SPILL_BYTES"]; !ok {
+		cfg = cfg.WithEnv("GCX_AGENT_SPILL_BYTES", "0")
+	}
 	for k, v := range inv.Env {
 		if k != "HOME" {
 			cfg = cfg.WithEnv(k, v)

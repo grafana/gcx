@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -32,7 +33,7 @@ type Destination struct {
 // match returns the destination allowing u, or an error explaining why none does.
 func match(egress []Destination, u *url.URL) (*Destination, error) {
 	if u.Scheme != "https" && u.Scheme != "http" {
-		return nil, fmt.Errorf("egress denied: %s://%s: only https is allowed", u.Scheme, u.Host)
+		return nil, fmt.Errorf("egress denied: %s://%s: only http and https are supported", u.Scheme, u.Host)
 	}
 	host := canonicalHost(u.Host, u.Scheme)
 	httpsOnly := false
@@ -204,9 +205,15 @@ func (s *session) roundTrip(ctx context.Context, raw []byte) ([]byte, string) {
 		return nil, "gcx_http: " + err.Error()
 	}
 	if s.authorize != nil {
+		body, err := io.ReadAll(req.Body) // in memory already: raw holds it
+		if err != nil {
+			return nil, "gcx_http: read request body: " + err.Error()
+		}
+		req.Body = io.NopCloser(bytes.NewReader(body))
 		if err := s.authorize(req); err != nil {
 			return nil, "gcx_http: request refused: " + err.Error()
 		}
+		req.Body = io.NopCloser(bytes.NewReader(body)) // in case authorize read it
 	}
 	for k, vs := range dest.Header {
 		req.Header[http.CanonicalHeaderKey(k)] = vs

@@ -62,6 +62,7 @@ func TestRoundTripPolicy(t *testing.T) {
 	var sendMethod func(method, rawURL, hostHeader string) (body, errMsg string)
 	var authorized []string
 	authorize := func(r *http.Request) error {
+		_, _ = io.ReadAll(r.Body) // a policy may inspect the body; the server must still get it
 		authorized = append(authorized, r.Method+" "+r.URL.Path+" auth="+r.Header.Get("Authorization"))
 		if r.Method == http.MethodDelete {
 			return errors.New("DELETE needs write access")

@@ -99,9 +99,8 @@ defer cancel()
 res, err := rt.Run(ctx, sandbox.Invocation{
 	Args: []string{"dashboards", "list"},
 	Env: map[string]string{
-		"GRAFANA_SERVER":        tenant.URL, // no credentials here
-		"GCX_AGENT_MODE":        "true",     // machine-readable output
-		"GCX_AGENT_SPILL_BYTES": "0",        // keep large results inline, not in temp files
+		"GRAFANA_SERVER": tenant.URL, // no credentials here
+		"GCX_AGENT_MODE": "true",     // machine-readable output
 	},
 	Stdout: &out, Stderr: &errOut,
 	Home:   "", // fresh temp $HOME, removed afterwards; or a per-tenant dir
