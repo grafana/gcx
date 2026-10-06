@@ -196,15 +196,28 @@ func hostHandle(ctx context.Context, id uint32) {
 	reqCtx, cancel := context.WithCancel(ctx)
 	x.cancel, x.done = cancel, make(chan struct{})
 	go func() {
+		// Authorize and Transport are the embedder's code, and a panic in
+		// this goroutine would take down the host process, so fail the
+		// request instead.
+		answered := false
+		answer := func() { close(x.done); answered = true }
+		defer func() {
+			if r := recover(); r != nil {
+				x.err.Store(hostPanic(r))
+				if !answered {
+					answer()
+				}
+			}
+		}()
 		resp, err := s.roundTrip(reqCtx, x.req)
 		x.req = wireRequest{} // sent, so don't hold the body until drop
 		if err != nil {
 			x.err.Store(err)
-			close(x.done)
+			answer()
 			return
 		}
 		x.resp, x.chunks = resp, make(chan []byte, 1)
-		close(x.done)
+		answer()
 		x.pump(reqCtx, resp)
 	}()
 }
@@ -293,6 +306,11 @@ func (x *exchange) readBody(capacity int) ([]byte, int32) {
 func (x *exchange) pump(ctx context.Context, resp *http.Response) {
 	defer resp.Body.Close()
 	defer close(x.chunks)
+	defer func() { // before chunks closes, so the guest sees a failure, not the end
+		if r := recover(); r != nil {
+			x.err.Store(hostPanic(r))
+		}
+	}()
 	for {
 		buf := make([]byte, 32<<10)
 		n, err := resp.Body.Read(buf)
@@ -399,6 +417,11 @@ func (s *session) roundTrip(ctx context.Context, w wireRequest) (*http.Response,
 	return resp, nil
 }
 
+// hostPanic is how the guest sees a panic in the embedder's code.
+func hostPanic(r any) *callError {
+	return &callError{codeInternalError, fmt.Sprintf("host panic: %v", r)}
+}
+
 // classify maps a transport error to the closest wasi:http error-code.
 func classify(err error, fallback uint32) *callError {
 	var (
@@ -466,6 +489,9 @@ func encodeHeaders(h http.Header) []byte {
 	var b bytes.Buffer
 	for k, vs := range h {
 		for _, v := range vs {
+			if strings.ContainsRune(k+v, 0) { // would shift every later pair
+				continue
+			}
 			b.WriteString(k)
 			b.WriteByte(0)
 			b.WriteString(v)

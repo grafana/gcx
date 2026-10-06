@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
 	"strings"
 	"syscall"
 	"testing"
@@ -298,5 +299,43 @@ func TestClassify(t *testing.T) {
 		if got := classify(tc.err, codeInternalError); got.code != tc.want || got.detail != tc.err.Error() {
 			t.Errorf("%v: got %+v, want code %d", tc.err, got, tc.want)
 		}
+	}
+}
+
+type panickingBody struct{}
+
+func (panickingBody) Read([]byte) (int, error) { panic("body bug") }
+func (panickingBody) Close() error             { return nil }
+
+// A panic in the embedder's code fails the request instead of the host.
+func TestHostPanics(t *testing.T) {
+	t.Run("in Authorize", func(t *testing.T) {
+		s := newSession([]Destination{{Host: "a.example"}}, func(*http.Request) error { panic("policy bug") }, http.DefaultTransport)
+		s.nextID, s.byID[1] = 1, &exchange{req: wireRequest{method: "GET", scheme: "https", authority: "a.example", pathWithQuery: "/"}}
+		ctx := withSession(t.Context(), s)
+		hostHandle(ctx, 1)
+		for hostPoll(ctx, 1) == 0 {
+			time.Sleep(time.Millisecond)
+		}
+		if err := s.failure(1); err.code != codeInternalError || err.detail != "host panic: policy bug" {
+			t.Errorf("got %+v", err)
+		}
+	})
+	t.Run("reading the body", func(t *testing.T) {
+		x := &exchange{chunks: make(chan []byte, 1)}
+		go x.pump(t.Context(), &http.Response{Body: panickingBody{}})
+		if _, end, _ := drain(x); end != -2 {
+			t.Fatalf("body ended with %d, want -2 (failed)", end)
+		}
+		if err := x.err.Load(); err == nil || err.detail != "host panic: body bug" {
+			t.Errorf("got %+v", err)
+		}
+	})
+}
+
+func TestEncodeHeadersSkipsNUL(t *testing.T) {
+	got := decodeHeaders(encodeHeaders(http.Header{"A": {"b\x00c", "d"}, "E": {"f"}}))
+	if want := (http.Header{"A": {"d"}, "E": {"f"}}); !reflect.DeepEqual(got, want) {
+		t.Errorf("got %v, want %v", got, want)
 	}
 }
