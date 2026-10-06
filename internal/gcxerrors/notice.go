@@ -59,5 +59,6 @@ func clip(s string) string {
 	if len(runes) <= noticeDetailLimit {
 		return s
 	}
-	return string(runes[:noticeDetailLimit]) + "…"
+	// The ellipsis counts toward the limit.
+	return string(runes[:noticeDetailLimit-1]) + "…"
 }

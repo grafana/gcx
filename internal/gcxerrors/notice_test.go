@@ -74,7 +74,10 @@ func TestWriteNoticeClipsLongDetails(t *testing.T) {
 	if !ok {
 		t.Fatalf("details = %v, want a string", got["details"])
 	}
-	if n := len([]rune(details)); n != 501 {
-		t.Fatalf("clipped details length = %d, want 501", n)
+	if n := len([]rune(details)); n != 500 {
+		t.Fatalf("clipped details length = %d, want 500", n)
+	}
+	if !strings.HasSuffix(details, "…") {
+		t.Fatalf("clipped details = %q, want an ellipsis suffix", details)
 	}
 }
