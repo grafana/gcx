@@ -52,11 +52,14 @@ gcx resources pull [RESOURCE_SELECTOR]... [flags]
 
 	gcx resources pull dashboards.v1alpha1.dashboard.grafana.app/foo folders.v1alpha1.folder.grafana.app/qux
 
-	# Provider-backed resource types (SLO, Synthetic Monitoring, Alerting):
+	# Provider-backed resources (SLO and Synthetic Monitoring):
 
 	gcx resources pull slo -p ./slo-defs/
 	gcx resources pull checks -p ./checks/
-	gcx resources pull rules -p ./rules/
+
+	# Native Grafana alert rules:
+
+	gcx resources pull alertrules.v0alpha1.rules.alerting.grafana.app -p ./rules/
 ```
 
 ### Options
