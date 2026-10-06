@@ -48,6 +48,7 @@ func (p *KGProvider) Commands() []*cobra.Command {
 		newRelabelRulesCommand(loader),
 		// Entities
 		newEntitiesCommand(loader),
+		newGraphCommand(loader),
 		// Relationships (custom, API-origin)
 		newRelationshipsCommand(loader),
 		// Assertions

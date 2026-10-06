@@ -790,6 +790,21 @@ func (c *Client) FetchProfileConfigs(ctx context.Context) (ProfileConfigsRespons
 	return resp, nil
 }
 
+// CypherQuery executes a bounded read-only query and preserves its projected rows.
+func (c *Client) CypherQuery(ctx context.Context, req CypherQueryRequest) (*CypherQueryResponse, error) {
+	var result CypherQueryResponse
+	if err := c.PostJSON(ctx, pluginResourcePath+"/asserts/api-server/v1/query/cypher", req, &result); err != nil {
+		return nil, fmt.Errorf("kg: cypher query: %w", err)
+	}
+	if result.Columns == nil {
+		result.Columns = []string{}
+	}
+	if result.Rows == nil {
+		result.Rows = [][]json.RawMessage{}
+	}
+	return &result, nil
+}
+
 // CypherSearch runs a read-only Cypher query against the Knowledge Graph.
 func (c *Client) CypherSearch(ctx context.Context, req CypherSearchRequest) (*CypherSearchResponse, error) {
 	var result CypherSearchResponse

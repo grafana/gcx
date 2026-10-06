@@ -1,10 +1,16 @@
 ## gcx kg entities query
 
-Query entities by running a read-only Cypher query against the Knowledge Graph.
+Query entities with the legacy Cypher API (Deprecated: use gcx kg graph query).
 
 ### Synopsis
 
 Query entities by running a read-only Cypher query against the Knowledge Graph.
+
+Deprecated: use 'gcx kg graph query' for new workflows. That command returns
+columns/rows/stats, requires a literal LIMIT, and does not support --page or
+--insights-only. Update queries and output parsing when migrating.
+This command retains its search endpoint, entities/edges response, and flags
+through v1.x; it will not be removed before the next major release.
 
 Run 'gcx kg meta schema' to discover valid entity types, property names, and relationship names.
 

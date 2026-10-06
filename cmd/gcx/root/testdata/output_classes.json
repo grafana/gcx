@@ -446,6 +446,7 @@
  "gcx kg entities list": "finite",
  "gcx kg entities query": "finite",
  "gcx kg entities upsert": "finite",
+ "gcx kg graph query": "finite",
  "gcx kg insights chart": "finite",
  "gcx kg insights sources": "finite",
  "gcx kg meta all": "finite",

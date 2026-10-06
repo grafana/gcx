@@ -386,6 +386,29 @@ type CypherEdge struct {
 	DestinationScope map[string]any `json:"destinationScope,omitempty"`
 }
 
+// CypherQueryRequest is the body for POST /v1/query/cypher. Times are epoch milliseconds.
+type CypherQueryRequest struct {
+	Query string `json:"query"`
+	Start int64  `json:"start"`
+	End   int64  `json:"end"`
+}
+
+// CypherQueryResponse preserves projection order, duplicate columns, and arbitrary
+// JSON values (including nodes, relationships, and paths). Raw cells avoid losing
+// integer precision when the engine returns values larger than 2^53.
+type CypherQueryResponse struct {
+	Columns []string            `json:"columns"`
+	Rows    [][]json.RawMessage `json:"rows"`
+	Stats   CypherQueryStats    `json:"stats"`
+}
+
+// CypherQueryStats describes the returned result, not the total number of possible matches.
+type CypherQueryStats struct {
+	ColumnCount int   `json:"columnCount"`
+	ElapsedMs   int64 `json:"elapsedMs"`
+	RowCount    int   `json:"rowCount"`
+}
+
 // CypherSearchRequest is the request body for POST /v1/search/cypher.
 type CypherSearchRequest struct {
 	CypherQuery   string         `json:"cypherQuery"`
