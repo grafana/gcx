@@ -47,8 +47,7 @@ type MutationSummary struct {
 	Skipped   int `json:"skipped,omitempty" yaml:"skipped,omitempty"`
 }
 
-// MutationFailure is one failed target with the reason. Successes and skips
-// are counted, not enumerated — failures are what a consumer must act on.
+// MutationFailure is one failed target with the reason.
 type MutationFailure struct {
 	Target MutationTarget `json:"target" yaml:"target"`
 	Error  string         `json:"error" yaml:"error"`
@@ -77,14 +76,23 @@ func NewSingleMutation(action string, target MutationTarget) SingleMutation {
 	}
 }
 
+// MutationSuccess is the safe identity receipt for one real write.
+// It contains no resource body or credentials.
+type MutationSuccess struct {
+	Requested MutationTarget `json:"requested" yaml:"requested"`
+	Action    string         `json:"action" yaml:"action"`
+	Target    MutationTarget `json:"target" yaml:"target"`
+}
+
 // BatchMutation is the finite result of one verb applied across many targets.
 type BatchMutation struct {
 	Type          string          `json:"type" yaml:"type"`
 	SchemaVersion string          `json:"schema_version" yaml:"schema_version"`
 	Action        string          `json:"action" yaml:"action"`
 	Summary       MutationSummary `json:"summary" yaml:"summary"`
-	// Failures is always present — [] when nothing failed — so consumers
-	// never need a nil check before ranging.
+	// Successes contains only safe identities from real API writes.
+	Successes []MutationSuccess `json:"successes,omitempty" yaml:"successes,omitempty"`
+	// Failures is always present, including an empty slice.
 	Failures []MutationFailure `json:"failures" yaml:"failures"`
 	DryRun   bool              `json:"dry_run,omitempty" yaml:"dry_run,omitempty"`
 }

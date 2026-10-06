@@ -798,17 +798,24 @@ Browser's livereload client receives → navigates to /gcx/.../{name}
 
 `internal/resources/remote/summary.go` provides thread-safe counters for batch operations.
 
+Push also records the requested identity and the identity returned by each real
+API write. Dry-run and skipped operations do not produce these records. The
+CLI includes them in structured output only with `--include-successes`.
+Resource bodies are not stored in these records.
+
 ```go
 type OperationSummary struct {
     successCount atomic.Int64    // lock-free increment
     failedCount  atomic.Int64    // lock-free increment
-    mu           sync.Mutex      // protects failures slice
+    mu           sync.Mutex      // protects result slices
     failures     []OperationFailure
+    successes    []OperationSuccess
 }
 ```
 
 - `RecordSuccess()` — atomic increment, no lock
 - `RecordFailure(res, err)` — atomic increment + mutex-protected append to slice
+- `RecordApplied(result)` — mutex-protected append of a real push identity
 - `OperationFailure.Resource` may be nil (e.g. a List operation failed, no specific resource)
 
 Used by all three remote operations (push, pull, delete). The summary is returned

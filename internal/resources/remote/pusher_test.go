@@ -3,6 +3,7 @@ package remote_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -14,6 +15,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 func TestMockPushClient_SatisfiesInterfaces(t *testing.T) {
@@ -681,6 +683,7 @@ func makeExistingFolder(name, resourceVersion string) *unstructured.Unstructured
 // Mock implementations
 
 type mockPushClient struct {
+	createResults     map[string]*unstructured.Unstructured
 	operations        []string
 	mu                sync.Mutex
 	shouldFail        map[string]bool
@@ -704,6 +707,9 @@ func (m *mockPushClient) Create(
 		return nil, m.failureError
 	}
 
+	if result := m.createResults[name]; result != nil {
+		return result, nil
+	}
 	return obj, nil
 }
 
@@ -781,4 +787,41 @@ func TestPusher_UnnamedResourceDoesNotReadCollectionAsItem(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, summary.SuccessCount())
 	require.Equal(t, []string{"create-"}, client.operations)
+}
+
+func TestPusher_ReturnedIdentities(t *testing.T) {
+	desc := resources.Descriptor{GroupVersion: schema.GroupVersion{Group: "receipt.test.grafana.app", Version: "v1"}, Kind: "Item", Plural: "items"}
+	for _, dryRun := range []bool{false, true} {
+		t.Run(fmt.Sprintf("dryRun=%v", dryRun), func(t *testing.T) {
+			inputs := resources.NewResources()
+			client := &mockPushClient{createResults: map[string]*unstructured.Unstructured{}}
+			for _, name := range []string{"one", "two"} {
+				obj := &unstructured.Unstructured{Object: map[string]any{"apiVersion": "receipt.test.grafana.app/v1", "kind": "Item", "metadata": map[string]any{"name": name}, "spec": map[string]any{"secret": "must-not-be-in-receipt"}}}
+				inputs.Add(resources.MustFromUnstructured(obj))
+				returned := obj.DeepCopy()
+				returned.SetName("server-" + name)
+				returned.SetUID(types.UID("uid-" + name))
+				returned.SetNamespace("stack")
+				client.createResults[name] = returned
+			}
+			summary, err := remote.NewPusher(client, &mockPushRegistry{supportedResources: resources.Descriptors{desc}}).Push(t.Context(), remote.PushRequest{Resources: inputs, IncludeManaged: true, DryRun: dryRun, MaxConcurrency: 2})
+			require.NoError(t, err)
+			require.Equal(t, 2, summary.SuccessCount())
+			if dryRun {
+				require.Empty(t, summary.Successes())
+				return
+			}
+			require.ElementsMatch(t, []remote.OperationSuccess{{RequestedName: "one", Action: "created", Kind: "Item", Name: "server-one", UID: "uid-one", Namespace: "stack"}, {RequestedName: "two", Action: "created", Kind: "Item", Name: "server-two", UID: "uid-two", Namespace: "stack"}}, summary.Successes())
+		})
+	}
+}
+
+func TestPusher_MissingReturnedIdentityHasNoReceipt(t *testing.T) {
+	desc := resources.Descriptor{GroupVersion: schema.GroupVersion{Group: "receipt.test.grafana.app", Version: "v1"}, Kind: "Item", Plural: "items"}
+	obj := &unstructured.Unstructured{Object: map[string]any{"apiVersion": "receipt.test.grafana.app/v1", "kind": "Item", "metadata": map[string]any{"name": "requested"}}}
+	client := &mockPushClient{createResults: map[string]*unstructured.Unstructured{"requested": {Object: map[string]any{}}}}
+	summary, err := remote.NewPusher(client, &mockPushRegistry{supportedResources: resources.Descriptors{desc}}).Push(t.Context(), remote.PushRequest{Resources: resources.NewResources(resources.MustFromUnstructured(obj)), IncludeManaged: true})
+	require.NoError(t, err)
+	require.Equal(t, 1, summary.SuccessCount())
+	require.Empty(t, summary.Successes())
 }

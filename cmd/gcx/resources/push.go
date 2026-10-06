@@ -23,6 +23,7 @@ type pushOpts struct {
 	DryRun             bool
 	OmitManagerFields  bool
 	IncludeManaged     bool
+	IncludeSuccesses   bool
 	AssumeServerDryRun []string
 }
 
@@ -32,6 +33,7 @@ func (opts *pushOpts) setup(flags *pflag.FlagSet) {
 	bindOnErrorFlag(flags, &opts.OnError)
 	flags.BoolVar(&opts.DryRun, "dry-run", opts.DryRun, "If set, the push operation will be simulated, without actually creating or updating any resources")
 	flags.BoolVar(&opts.OmitManagerFields, "omit-manager-fields", opts.OmitManagerFields, "If set, the manager fields will not be appended to the resources")
+	flags.BoolVar(&opts.IncludeSuccesses, "include-successes", false, "Include safe requested and returned resource identities in structured push results")
 	flags.BoolVar(&opts.IncludeManaged, "include-managed", opts.IncludeManaged, "If set, resources managed by other tools will be included in the push operation")
 	bindAssumeServerDryRunFlag(flags, &opts.AssumeServerDryRun)
 	// The push result is a BatchMutation document through the codec system:
@@ -189,7 +191,7 @@ func pushCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				return err
 			}
 
-			result := batchMutationFromSummary("pushed", summary, opts.DryRun)
+			result := opts.mutationResult(summary)
 			// The push is done and its counts are final; a later rendering or
 			// stdout failure does not un-push anything.
 			captureBatchVolume(result.Summary, result.DryRun, err)
@@ -213,4 +215,13 @@ func pushCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	opts.setup(cmd.Flags())
 
 	return cmd
+}
+
+// mutationResult selects the opt-in success presentation after all writes finish.
+func (opts *pushOpts) mutationResult(summary *remote.OperationSummary) cmdio.BatchMutation {
+	result := batchMutationFromSummary("pushed", summary, opts.DryRun)
+	if !opts.IncludeSuccesses {
+		result.Successes = nil
+	}
+	return result
 }

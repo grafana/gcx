@@ -256,7 +256,15 @@ status messages as the primary output.
 | dashboards/checkout-funnel | 413 payload too large |
 
 **Rules:**
-- Successes are counted, never enumerated individually.
+- Default text summarizes successes by count.
+- With `resources push --include-successes`, structured results include
+  `successes` with real-write identity references. All default formats keep
+  success counts only. The option does not change data acquisition.
+  Each entry has `action` (`created` or `updated`), `requested`
+  (the input kind and name/ID), and `target`
+  (`kind`, `name`, `id`, `uid`, and `namespace` when available).
+  These references use the API response. They contain no resource body.
+  Dry-run and skipped operations do not produce applied identity references.
 - Failures are always enumerated individually — they require action.
 - Skipped resources are enumerated if count < 20, otherwise grouped.
 - `cmdio.Success/Warning/Error` remain for progress feedback *during*

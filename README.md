@@ -541,6 +541,9 @@ gcx resources pull folders -p ./resources -o yaml
 # Push local changes back to Grafana
 gcx resources push -p ./resources
 
+# Include the resource identities returned by successful writes
+gcx resources push -p ./resources --include-successes -o json
+
 # Preview changes without applying
 gcx resources push -p ./resources --dry-run
 

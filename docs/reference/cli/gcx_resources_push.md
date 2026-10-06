@@ -74,6 +74,7 @@ gcx resources push [RESOURCE_SELECTOR]... [flags]
       --dry-run                         If set, the push operation will be simulated, without actually creating or updating any resources
   -h, --help                            help for push
       --include-managed                 If set, resources managed by other tools will be included in the push operation
+      --include-successes               Include safe requested and returned resource identities in structured push results
       --jq string                       jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string                     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --max-concurrent int              Maximum number of concurrent operations (default 10)
