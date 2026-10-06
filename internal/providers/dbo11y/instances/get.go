@@ -319,26 +319,28 @@ func fetchInstanceDetail(ctx context.Context, client *prometheus.Client, datasou
 // selectInstanceMetadata accepts duplicate inventory samples only when they
 // identify the same database. A name alone cannot choose between scopes.
 func selectInstanceMetadata(metadata []Instance, name string) (Instance, error) {
-	type identityKey struct {
-		namespace, host, serverID, environment, cluster, engine string
-		native                                                  bool
-	}
-	key := func(inst Instance) identityKey {
-		if len(inst.identity) == 0 {
-			return identityKey{engine: inst.Engine}
-		}
-		return identityKey{inst.Namespace, inst.Host, inst.Labels["server_id"], inst.Environment, inst.Labels["cluster"], inst.Engine, true}
-	}
 	if len(metadata) == 0 {
 		return Instance{Name: name}, nil
 	}
+	// Preserve legacy reads while native and legacy collectors overlap.
+	for _, first := range metadata {
+		if first.native {
+			continue
+		}
+		for _, inst := range metadata {
+			if !inst.native && inst.Engine != first.Engine {
+				return Instance{}, fmt.Errorf("instance %q matches multiple engines; use gcx dbo11y instances list -o wide to inspect the matching rows", name)
+			}
+		}
+		return first, nil
+	}
 	first := metadata[0]
-	if len(first.identity) == 1 && first.identity[0].Label == "service" {
-		return Instance{}, fmt.Errorf("instance %q has no exporter identity; configure an instance or server_id label", name)
+	if first.Host == "" {
+		return Instance{}, fmt.Errorf("instance %q has no exporter instance label", name)
 	}
 	for _, inst := range metadata[1:] {
-		if key(inst) != key(first) {
-			return Instance{}, fmt.Errorf("instance %q matches multiple database identities; use gcx dbo11y instances list to inspect the matching rows and assign distinct service names", name)
+		if inst.Host != first.Host || inst.Engine != first.Engine {
+			return Instance{}, fmt.Errorf("instance %q matches multiple database hosts; use gcx dbo11y instances list -o wide to inspect hosts and select a datasource with one matching host", name)
 		}
 	}
 	return first, nil

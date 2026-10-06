@@ -136,6 +136,7 @@ func escapePromqlValue(v string) string {
 // database_observability_connection_info.
 type Instance struct {
 	identity []Matcher // Native Alloy labels shared with exporter metrics.
+	native   bool      // Inventory uses the native service label.
 
 	Name               string            `json:"name" yaml:"name"`
 	Namespace          string            `json:"namespace,omitempty" yaml:"namespace,omitempty"`
@@ -268,15 +269,11 @@ func parseInstancesResponse(resp *prometheus.QueryResponse) ([]Instance, error) 
 	for _, sample := range resp.Data.Result {
 		name := sample.Metric[serviceNameLabel]
 		var identity []Matcher
-		if name == "" {
+		native := name == ""
+		if native {
 			name = sample.Metric["service"]
-			for _, label := range []string{"instance", "server_id"} {
-				if value := sample.Metric[label]; value != "" {
-					identity = append(identity, Matcher{Label: label, Op: "=", Value: value})
-				}
-			}
-			if len(identity) == 0 {
-				identity = []Matcher{{Label: "service", Op: "=", Value: name}}
+			if value := sample.Metric["instance"]; value != "" {
+				identity = []Matcher{{Label: "instance", Op: "=", Value: value}}
 			}
 		}
 		if name == "" {
@@ -291,6 +288,7 @@ func parseInstancesResponse(resp *prometheus.QueryResponse) ([]Instance, error) 
 		}
 		out = append(out, Instance{
 			identity:           identity,
+			native:             native,
 			Name:               name,
 			Namespace:          sample.Metric["service_namespace"],
 			Engine:             sample.Metric["engine"],
@@ -340,14 +338,7 @@ func buildScrapeUpQuery(name string, identity ...Matcher) (string, error) {
 	if name == "" {
 		return "", errors.New("instance name is required")
 	}
-	// Scrape target labels include instance. Exporter metrics can add server_id.
-	scrapeIdentity := make([]Matcher, 0, len(identity))
-	for _, matcher := range identity {
-		if matcher.Label != "server_id" || len(identity) == 1 {
-			scrapeIdentity = append(scrapeIdentity, matcher)
-		}
-	}
-	v := scopedToInstance("up", name, nil, scrapeIdentity...).Label("job", dbo11yJobValue)
+	v := scopedToInstance("up", name, nil, identity...).Label("job", dbo11yJobValue)
 	expr, err := v.Build()
 	if err != nil {
 		return "", err

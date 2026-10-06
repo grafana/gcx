@@ -61,7 +61,7 @@ func nativeAlloyQueryHandler(t *testing.T) http.HandlerFunc {
 				t.Errorf("metadata must accept both labels: %s", expr)
 			}
 		default:
-			if !strings.Contains(expr, `instance="example-db"`) || (!strings.HasPrefix(expr, "up{") && !strings.Contains(expr, `server_id="server-123"`)) || strings.Contains(expr, "service_name=") {
+			if !strings.Contains(expr, `instance="example-db"`) || strings.Contains(expr, `server_id=`) || strings.Contains(expr, "service_name=") {
 				t.Errorf("exporter query does not use native identity: %s", expr)
 			}
 			switch {
@@ -101,7 +101,6 @@ func TestNativeAlloyIdentityFallback(t *testing.T) {
 	}{
 		{"legacy priority", map[string]string{"service_name": "legacy-db", "service": "native-db", "instance": "host"}, "legacy-db", false},
 		{"native without server ID", map[string]string{"service": "native-db", "instance": "host"}, "native-db", true},
-		{"native service only", map[string]string{"service": "native-db"}, "native-db", true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			got, err := parseInstancesResponse(sampleResponse(map[string]any{"metric": test.labels, "value": []any{float64(1), "1"}}))
@@ -118,9 +117,8 @@ func TestNativeAlloyIdentityFallback(t *testing.T) {
 
 func TestGetRejectsAmbiguousInventory(t *testing.T) {
 	for _, test := range []struct{ name, label, value string }{
-		{"namespace", "service_namespace", "other"},
-		{"server", "server_id", "other-server"},
-		{"environment", "deployment_environment", "other-env"},
+		{"host", "instance", "other-host"},
+		{"engine", "engine", "mysql"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			cfg := testRESTConfig(t, func(w http.ResponseWriter, r *http.Request) {
@@ -183,7 +181,7 @@ func TestNativeExporterDoesNotRequireInventoryScopeLabels(t *testing.T) {
 				}
 				_ = json.NewDecoder(r.Body).Decode(&body)
 				expr := body.Queries[0].Expr
-				labels := map[string]string{"instance": "host", "server_id": "server", "job": dbo11yJobValue}
+				labels := map[string]string{"instance": "host", "job": dbo11yJobValue}
 				if strings.Contains(expr, connectionInfoMetric) {
 					labels["service"] = "example-db"
 					labels["engine"] = "postgres"
@@ -223,6 +221,7 @@ func TestSelectInstanceMetadataDuplicatesAndLegacy(t *testing.T) {
 	for _, native := range []bool{false, true} {
 		first := Instance{Name: "example-db", Namespace: "example", Host: "host", Engine: "postgres", Labels: map[string]string{"server_id": "server"}}
 		if native {
+			first.native = true
 			first.identity = []Matcher{{Label: "instance", Op: "=", Value: "host"}}
 		}
 		got, err := selectInstanceMetadata([]Instance{first, first}, "example-db")
@@ -230,7 +229,7 @@ func TestSelectInstanceMetadataDuplicatesAndLegacy(t *testing.T) {
 			t.Fatalf("exact duplicates rejected: %+v %v", got, err)
 		}
 		other := first
-		other.Namespace = "other"
+		other.Host = "other"
 		if _, err := selectInstanceMetadata([]Instance{first, other}, "example-db"); (err != nil) != native {
 			t.Fatalf("namespace collision accepted, native=%v", native)
 		}
@@ -287,18 +286,48 @@ func TestNativeMissingExporterIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := selectInstanceMetadata(instances, "example-db"); err == nil || !strings.Contains(err.Error(), "no exporter identity") {
+	if _, err := selectInstanceMetadata(instances, "example-db"); err == nil || !strings.Contains(err.Error(), "no exporter instance label") {
 		t.Fatalf("missing identity error: %v", err)
 	}
 }
 
 func TestNativeScrapeTargetNeedsNoServerID(t *testing.T) {
-	expr, err := buildScrapeUpQuery("example-db", Matcher{Label: "instance", Op: "=", Value: "host"}, Matcher{Label: "server_id", Op: "=", Value: "server"})
+	instances, err := parseInstancesResponse(sampleResponse(map[string]any{"metric": map[string]string{"service": "example-db", "instance": "host", "server_id": "server"}, "value": []any{float64(1), "1"}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	expr, err := buildScrapeUpQuery("example-db", instances[0].identity...)
 	if err != nil {
 		t.Fatal(err)
 	}
 	matches, err := nativeSelectorMatches(expr, map[string]string{"instance": "host", "job": dbo11yJobValue})
 	if err != nil || !matches {
 		t.Fatalf("scrape target not matched: %s %v", expr, err)
+	}
+}
+
+func TestMixedInventoryPrefersLegacy(t *testing.T) {
+	for _, nativeFirst := range []bool{false, true} {
+		legacy := Instance{Name: "db", Host: "legacy-host", Engine: "postgres"}
+		native := Instance{Name: "db", Host: "native-host", Engine: "postgres", native: true}
+		rows := []Instance{legacy, native}
+		if nativeFirst {
+			rows[0], rows[1] = rows[1], rows[0]
+		}
+		got, err := selectInstanceMetadata(rows, "db")
+		if err != nil || got.native || got.Host != "legacy-host" {
+			t.Fatalf("legacy selection: %+v %v", got, err)
+		}
+	}
+}
+
+func TestNativeMetadataDifferencesDoNotChangeSelectors(t *testing.T) {
+	first := Instance{Name: "db", Host: "host", Engine: "postgres", native: true}
+	other := first
+	other.Namespace = "different"
+	other.Environment = "different"
+	other.Labels = map[string]string{"server_id": "different", "cluster": "different"}
+	if _, err := selectInstanceMetadata([]Instance{first, other}, "db"); err != nil {
+		t.Fatal(err)
 	}
 }
