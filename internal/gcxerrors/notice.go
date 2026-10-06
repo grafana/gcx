@@ -10,15 +10,14 @@ import (
 // extends the typed stderr classes (hint, warning, note).
 const ErrorNoticeClass = "error"
 
-// noticeDetailLimit bounds the advisory copy; the complete error document
+// noticeFieldLimit bounds each notice field; the complete error document
 // stays on stdout.
-const noticeDetailLimit = 500
+const noticeFieldLimit = 500
 
 type errorNotice struct {
 	Class      string `json:"class"`
 	Summary    string `json:"summary"`
 	ExitCode   int    `json:"exitCode"`
-	Details    string `json:"details,omitempty"`
 	Suggestion string `json:"suggestion,omitempty"`
 }
 
@@ -29,12 +28,15 @@ type errorNotice struct {
 // caller sees only the filter's output (for example `null`). The notice keeps
 // the failure visible. It is advisory: stdout still carries the authoritative
 // error document.
-func WriteNotice(w io.Writer, summary, details string, suggestions []string, exitCode int) error {
+//
+// The notice never carries error details. They can quote a raw HTTP response
+// body, and gcx has no redaction for error text. Stderr often ends up in logs
+// even when a filter drops the stdout document.
+func WriteNotice(w io.Writer, summary string, suggestions []string, exitCode int) error {
 	notice := errorNotice{
 		Class:    ErrorNoticeClass,
 		Summary:  clip(stripBoxChars(summary)),
 		ExitCode: exitCode,
-		Details:  clip(stripBoxChars(details)),
 	}
 	if len(suggestions) > 0 {
 		notice.Suggestion = clip(stripBoxChars(suggestions[0]))
@@ -51,14 +53,14 @@ func WriteNotice(w io.Writer, summary, details string, suggestions []string, exi
 
 // WriteNotice writes the advisory stderr copy of e. See [WriteNotice].
 func (e DetailedError) WriteNotice(w io.Writer, exitCode int) error {
-	return WriteNotice(w, e.Summary, e.resolvedDetails(), e.agentSuggestions(), exitCode)
+	return WriteNotice(w, e.Summary, e.agentSuggestions(), exitCode)
 }
 
 func clip(s string) string {
 	runes := []rune(s)
-	if len(runes) <= noticeDetailLimit {
+	if len(runes) <= noticeFieldLimit {
 		return s
 	}
 	// The ellipsis counts toward the limit.
-	return string(runes[:noticeDetailLimit-1]) + "…"
+	return string(runes[:noticeFieldLimit-1]) + "…"
 }

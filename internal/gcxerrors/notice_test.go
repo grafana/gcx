@@ -3,6 +3,7 @@ package gcxerrors_test
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -21,7 +22,7 @@ func TestDetailedErrorWriteNotice(t *testing.T) {
 			want: map[string]any{"class": "error", "summary": "Resource not found - code 404", "exitCode": float64(1)},
 		},
 		{
-			name: "details and first suggestion",
+			name: "first suggestion, no details",
 			err: gcxerrors.DetailedError{
 				Summary:     "Invalid filter",
 				Details:     "invalid character 's' looking for beginning of value",
@@ -31,9 +32,16 @@ func TestDetailedErrorWriteNotice(t *testing.T) {
 				"class":      "error",
 				"summary":    "Invalid filter",
 				"exitCode":   float64(1),
-				"details":    "invalid character 's' looking for beginning of value",
 				"suggestion": `use --filter '{"field":"status","op":"eq","value":502}'`,
 			},
+		},
+		{
+			name: "parent error is not copied",
+			err: gcxerrors.DetailedError{
+				Summary: "Request failed",
+				Parent:  errors.New("request failed with status 500: token=glsa_secret"),
+			},
+			want: map[string]any{"class": "error", "summary": "Request failed", "exitCode": float64(1)},
 		},
 	}
 	for _, tc := range cases {
@@ -61,23 +69,23 @@ func TestDetailedErrorWriteNotice(t *testing.T) {
 	}
 }
 
-func TestWriteNoticeClipsLongDetails(t *testing.T) {
+func TestWriteNoticeClipsLongSuggestion(t *testing.T) {
 	var buf bytes.Buffer
-	if err := gcxerrors.WriteNotice(&buf, "failed", strings.Repeat("x", 2000), nil, 1); err != nil {
+	if err := gcxerrors.WriteNotice(&buf, "failed", []string{strings.Repeat("x", 2000)}, 1); err != nil {
 		t.Fatal(err)
 	}
 	var got map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	details, ok := got["details"].(string)
+	suggestion, ok := got["suggestion"].(string)
 	if !ok {
-		t.Fatalf("details = %v, want a string", got["details"])
+		t.Fatalf("suggestion = %v, want a string", got["suggestion"])
 	}
-	if n := len([]rune(details)); n != 500 {
-		t.Fatalf("clipped details length = %d, want 500", n)
+	if n := len([]rune(suggestion)); n != 500 {
+		t.Fatalf("clipped suggestion length = %d, want 500", n)
 	}
-	if !strings.HasSuffix(details, "…") {
-		t.Fatalf("clipped details = %q, want an ellipsis suffix", details)
+	if !strings.HasSuffix(suggestion, "…") {
+		t.Fatalf("clipped suggestion = %q, want an ellipsis suffix", suggestion)
 	}
 }

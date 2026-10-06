@@ -230,7 +230,7 @@ func reportError(err error, boolFlags map[string]struct{}, subCmds map[string]bo
 			// The cause can hold a raw HTTP response body, and EmittedError
 			// promises never to render it, so the notice names only the outcome.
 			writeErrorNotice(func() error {
-				return gcxerrors.WriteNotice(os.Stderr, emittedNoticeSummary, "", nil, emitted.Code)
+				return gcxerrors.WriteNotice(os.Stderr, emittedNoticeSummary, nil, emitted.Code)
 			})
 		}
 		if agent.IsAgentMode() && agentlog.IsEnabled() {
