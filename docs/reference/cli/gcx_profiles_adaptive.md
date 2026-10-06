@@ -4,7 +4,7 @@ Adaptive Profiles management is not supported by gcx.
 
 ### Synopsis
 
-Adaptive Profiles is available in Grafana Cloud. gcx does not support its management commands. In Grafana Cloud, open Adaptive Telemetry > Adaptive Profiles. See https://grafana.com/docs/grafana-cloud/observe-and-act/adaptive-telemetry/adaptive-profiles/
+Adaptive Profiles is available in Grafana Cloud. gcx does not support its management commands. In Grafana Cloud, open Adaptive Telemetry > Adaptive Profiles. See https://grafana.com/docs/grafana-cloud/observe-and-act/adaptive-telemetry/adaptive-profiles.md
 
 ```
 gcx profiles adaptive [flags]

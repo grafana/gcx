@@ -59,5 +59,5 @@ func TestAdaptiveHelpMetadata(t *testing.T) {
 	cmd.SetArgs([]string{"profiles", "adaptive", "--help"})
 	require.NoError(t, cmd.Execute())
 	assert.Contains(t, out.String(), "gcx does not support its management commands")
-	assert.Contains(t, out.String(), docs.HumanURL(docs.AdaptiveProfiles))
+	assert.Contains(t, out.String(), docs.AdaptiveProfiles)
 }

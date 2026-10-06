@@ -152,7 +152,7 @@ func (p *Provider) descriptor() signals.Descriptor {
 			},
 		},
 		ExtraCommands: []signals.CommandBuilder{func(*providers.ConfigLoader) *cobra.Command {
-			return adaptiveStubCmd()
+			return adaptiveUnsupportedCmd()
 		}},
 		ConfigKeys: []providers.ConfigKey{
 			{Name: "profiles-tenant-id", Secret: false},
@@ -171,12 +171,12 @@ func (p *Provider) Commands() []*cobra.Command {
 	return []*cobra.Command{signals.Command(p.descriptor())}
 }
 
-func adaptiveStubCmd() *cobra.Command {
+func adaptiveUnsupportedCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "adaptive",
 		Short: "Adaptive Profiles management is not supported by gcx.",
 		Long: "Adaptive Profiles is available in Grafana Cloud. gcx does not support its management commands. " +
-			"In Grafana Cloud, open Adaptive Telemetry > Adaptive Profiles. See " + docs.HumanURL(docs.AdaptiveProfiles),
+			"In Grafana Cloud, open Adaptive Telemetry > Adaptive Profiles. See " + docs.AdaptiveProfiles,
 		Args: cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			return &gcxerrors.DetailedError{
