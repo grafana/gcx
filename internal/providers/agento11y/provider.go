@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/gcx/internal/providers/agento11y/eval/savedconversations"
 	"github.com/grafana/gcx/internal/providers/agento11y/eval/templates"
 	"github.com/grafana/gcx/internal/providers/agento11y/generations"
+	"github.com/grafana/gcx/internal/providers/agento11y/modelrates"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
 )
@@ -85,6 +86,12 @@ func (p *Agento11yProvider) Commands() []*cobra.Command {
 		agent.AnnotationLLMHint:   `gcx agento11y templates list -o json; gcx agento11y templates get <id> -o yaml; gcx agento11y templates list-versions <id> -o json; gcx agento11y templates list --scope global -o json`,
 	}
 
+	modelRatesCmd := modelrates.Commands(loader)
+	modelRatesCmd.Annotations = map[string]string{
+		agent.AnnotationTokenCost: "low",
+		agent.AnnotationLLMHint:   `gcx agento11y model-rates list; gcx agento11y model-rates create --provider openai --model gpt-5.5 --price-input 2.00 --price-output 8.00; gcx agento11y model-rates delete --provider openai --model gpt-5.5 --effective-from <ts>`,
+	}
+
 	generationsCmd := generations.Commands(loader)
 	generationsCmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "medium",
@@ -115,7 +122,7 @@ func (p *Agento11yProvider) Commands() []*cobra.Command {
 		agent.AnnotationLLMHint:   `gcx agento11y experiments list -o json; gcx agento11y experiments get <run-id> -o yaml; gcx agento11y experiments update <run-id> --description '...' --tag nightly --tag support -o json; gcx agento11y experiments list-scores <run-id> -o json; gcx agento11y experiments get-report <run-id> -o json; gcx agento11y experiments test-suites list -o json; gcx agento11y experiments test-suites cases list <suite-id> <version> -o json; gcx agento11y experiments list-trials <run-id> -o json; gcx agento11y experiments pull <run-id> -d ./exports/<run-id>`,
 	}
 
-	agento11yCmd.AddCommand(convsCmd, agentsCmd, evaluatorsCmd, rulesCmd, guardsCmd, templatesCmd, generationsCmd, judgeCmd, savedConvsCmd, collectionsCmd, experimentsCmd)
+	agento11yCmd.AddCommand(convsCmd, agentsCmd, evaluatorsCmd, rulesCmd, guardsCmd, templatesCmd, modelRatesCmd, generationsCmd, judgeCmd, savedConvsCmd, collectionsCmd, experimentsCmd)
 
 	return []*cobra.Command{agento11yCmd}
 }

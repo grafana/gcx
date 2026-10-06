@@ -10,11 +10,22 @@ This provisions new infrastructure and may incur costs. The stack name, slug,
 and region cannot be changed after creation - double-check before running.
 Use --dry-run to preview the request first.
 
+Successful creation returns name, orgSlug, slug, status and url.
+Use gcx cloud stacks get <slug> for full details.
+
+Specify which organisation to create the stack in with --org. Find out which orgs you are in with gcx cloud orgs list. With an access-policy token, supply your organisation slug directly.
+
 Stack slugs may only contain lowercase letters and digits: the slug becomes
 the stack's <slug>.grafana.net subdomain.
 
 ```
 gcx cloud stacks create [flags]
+```
+
+### Examples
+
+```
+  gcx cloud stacks create --org example-org --name my-stack --slug mystack --region us --dry-run
 ```
 
 ### Options
@@ -28,7 +39,8 @@ gcx cloud stacks create [flags]
       --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --labels strings       Labels in key=value format (may be repeated)
       --name string          Stack name (required)
-  -o, --output string        Output format. One of: agents, json, table, yaml (default "table")
+      --org string           Organisation slug (required)
+  -o, --output string        Output format. One of: agents, json, table, yaml (default "yaml")
       --region string        Region slug (e.g. us, eu). Use 'gcx cloud stacks list-regions' to list.
       --slug string          Stack slug / subdomain (lowercase letters and digits only; required)
       --url string           Custom domain URL
@@ -40,7 +52,7 @@ gcx cloud stacks create [flags]
       --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
       --config string               Path to the configuration file to use
       --context string              Name of the context to use (overrides current-context in config)
-      --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.
+      --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Requires -vvv. Do not ship these logs.
       --no-color                    Disable color output
       --no-truncate                 Disable table column truncation (auto-enabled when stdout is piped)
   -v, --verbose count               Verbose mode. Multiple -v options increase the verbosity (maximum: 3).

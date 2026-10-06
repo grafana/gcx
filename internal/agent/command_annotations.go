@@ -564,6 +564,10 @@ var commandAnnotations = map[string]annotation{
 	"gcx agento11y templates list":          {Cost: "small"},
 	"gcx agento11y templates list-versions": {Cost: "small"},
 
+	"gcx agento11y model-rates list":   {Cost: "small"},
+	"gcx agento11y model-rates create": {Cost: "small", Hint: "--provider openai --model gpt-5.5 --price-input 2.00 --price-output 8.00"},
+	"gcx agento11y model-rates delete": {Cost: "small", Hint: "--provider openai --model gpt-5.5 --effective-from <ts>"},
+
 	"gcx agento11y saved-conversations list":        {Cost: "small"},
 	"gcx agento11y saved-conversations get":         {Cost: "medium", Hint: "<saved-id> -o json"},
 	"gcx agento11y saved-conversations save":        {Cost: "small"},
@@ -642,6 +646,8 @@ var commandAnnotations = map[string]annotation{
 	"gcx synthetic-monitoring checks timeline":    {Cost: "medium", Hint: "<id> --since 1h -o json"},
 	"gcx synthetic-monitoring checks update":      {Cost: "small", Hint: "<name> -f <check.yaml>. Frequency and probe changes affect billable execution volume (" + docs.SyntheticMonitoringInvoice + ")."},
 	"gcx synthetic-monitoring query":              {Cost: "small", Hint: "<name> -p job=<job> -p instance=<target> -p frequency=<ms>"},
+	"gcx synthetic-monitoring queries get":        {Cost: "small", Hint: "<name>. Full parameter schema plus a ready-to-run 'query' invocation. Requires SM app v1.62.0+."},
+	"gcx synthetic-monitoring queries list":       {Cost: "small", Hint: "Requires SM app v1.62.0+."},
 	"gcx synthetic-monitoring probes create":      {Cost: "small"},
 	"gcx synthetic-monitoring probes delete":      {Cost: "small"},
 	"gcx synthetic-monitoring probes deploy":      {Cost: "small"},

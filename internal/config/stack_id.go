@@ -12,6 +12,7 @@ import (
 	"time"
 
 	authlib "github.com/grafana/authlib/types"
+	"github.com/grafana/gcx/internal/httputils"
 )
 
 var errBootdataNonOK = errors.New("bootdata request failed")
@@ -166,20 +167,16 @@ func buildBootdataURL(server string) (*url.URL, error) {
 }
 
 func newBootdataHTTPClient(cfg GrafanaConfig) (*http.Client, error) {
-	transport := &http.Transport{
-		Proxy: http.ProxyFromEnvironment,
-	}
-
+	// No retry: discovery is optional (callers fall back to the org
+	// namespace) and runs on most commands, so it must fail fast.
+	opts := httputils.ClientOpts{Timeout: 5 * time.Second, DisableRetry: true}
 	if cfg.TLS != nil {
 		tlsCfg, err := cfg.TLS.ToStdTLSConfig()
 		if err != nil {
 			return nil, fmt.Errorf("TLS configuration: %w", err)
 		}
-		transport.TLSClientConfig = tlsCfg
+		opts.TLSConfig = tlsCfg
 	}
 
-	return &http.Client{
-		Timeout:   5 * time.Second,
-		Transport: transport,
-	}, nil
+	return httputils.NewClient(opts), nil
 }

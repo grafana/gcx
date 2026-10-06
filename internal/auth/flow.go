@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/grafana/gcx/internal/deeplink"
+	"github.com/grafana/gcx/internal/httputils"
 )
 
 //go:embed templates/*.html
@@ -401,7 +402,7 @@ func exchangeCodeForToken(ctx context.Context, endpoint, code, codeVerifier stri
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{
+	client := httputils.NewClient(httputils.ClientOpts{
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			redirectEndpoint := req.URL.Scheme + "://" + req.URL.Host
 			if err := ValidateEndpointURL(redirectEndpoint); err != nil {
@@ -409,7 +410,7 @@ func exchangeCodeForToken(ctx context.Context, endpoint, code, codeVerifier stri
 			}
 			return nil
 		},
-	}
+	})
 
 	resp, err := client.Do(req)
 	if err != nil {

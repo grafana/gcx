@@ -22,7 +22,8 @@ import (
 const DefaultGCOMClientID = "gcx"
 
 // DefaultGCOMScopes returns the grafana.com API scopes gcx needs across all
-// commands: stacks (discovery + management) and the signal write scopes for
+// commands: profile (organisation memberships), stacks (discovery + management),
+// and the signal write scopes for
 // minting the Synthetic Monitoring token (metrics/logs/traces:write). Both
 // `gcx cloud login` and the `gcx login` cloud followup request this set. A
 // fresh slice is returned on each call so callers (e.g. a Cobra flag default)
@@ -33,6 +34,7 @@ const DefaultGCOMClientID = "gcx"
 // only.
 func DefaultGCOMScopes() []string {
 	return []string{
+		"profile",
 		"stacks:read", "stacks:write", "stacks:delete",
 		"metrics:write",
 		"logs:write",

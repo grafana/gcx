@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -208,25 +209,9 @@ func (r *Registry) Discover(ctx context.Context) error {
 }
 
 func (r *Registry) makeFiltersForSelector(selector resources.Selector, preferredVersionOnly bool) (resources.Filters, error) {
-	// Check if a specific version is provided
-	if selector.GroupVersionKind.Version != "" {
-		// Version is specified, use single descriptor lookup
-		desc, ok := r.index.LookupPartialGVK(selector.GroupVersionKind)
-		if !ok {
-			return nil, resources.InvalidSelectorError{
-				Command: selector.String(),
-				Err:     "the server does not support this resource",
-			}
-		}
-
-		return resources.Filters{{
-			Type:         selector.Type,
-			ResourceUIDs: selector.ResourceUIDs,
-			Descriptor:   desc,
-		}}, nil
-	}
-
-	// No version specified — resolve descriptors across groups.
+	// Resolve descriptors across groups and versions. Both lookup paths try the
+	// versioned reading first, then the group-only reading. A supported explicit
+	// version always returns a single descriptor, regardless of this option.
 	// LookupPreferredPerGroup returns the preferred version per group so that
 	// resource names spanning multiple API groups (e.g. datasources across
 	// *.datasource.grafana.app) produce one filter per group instead of
@@ -239,9 +224,17 @@ func (r *Registry) makeFiltersForSelector(selector resources.Selector, preferred
 		descs, ok = r.index.LookupAllVersionsForPartialGVK(selector.GroupVersionKind)
 	}
 	if !ok {
+		message := "the server does not support this resource"
+		gvk := selector.GroupVersionKind
+		if groupOnly, ambiguous := gvk.GroupOnlyCandidate(); ambiguous {
+			message += fmt.Sprintf(
+				" (resource %q is not served by group %q at version %q, nor by group %q)",
+				gvk.Resource, gvk.Group, gvk.Version, groupOnly,
+			)
+		}
 		return nil, resources.InvalidSelectorError{
 			Command: selector.String(),
-			Err:     "the server does not support this resource",
+			Err:     message,
 		}
 	}
 

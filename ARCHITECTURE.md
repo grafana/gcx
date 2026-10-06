@@ -38,6 +38,10 @@ Grafana K8s API                      /apis/{group}/{version}/namespaces/{ns}/{pl
 
 **Key abstractions** ([resource-model.md](docs/architecture/resource-model.md)): `Resource` wraps `unstructured.Unstructured` — no pre-generated Go types. `Selector` → `Filter` two-stage resolution keeps CLI ignorant of API details. `Processor` pipeline composes transformations at defined pipeline points. `Discovery` registry resolves plural names and short names to full GVKs at runtime.
 
+Selectors accept both `resource.version.group` and `resource.group`, including
+dotted API groups. Discovery tries the versioned reading first, then the full
+group name, for both native resources and provider adapters.
+
 **Data flows** ([data-flows.md](docs/architecture/data-flows.md)): Push reads local files, resolves selectors, applies processors, pushes via dynamic client with folder-before-dashboard ordering and bounded concurrency (errgroup, default 10). Pull fetches from API, strips server-managed fields, writes to disk grouped by kind.
 
 ### 2. Provider System
@@ -187,7 +191,7 @@ Multiple auth mechanisms for different tiers.
 | **Service account token** | Grafana K8s API (`/apis`), plugin APIs | Bearer token in `rest.Config` |
 | **Cloud Access Policy token** | GCOM stack discovery, Cloud product APIs | `internal/cloud/` GCOM client |
 | **OAuth PKCE** | Browser-based login (`gcx login`) | `internal/auth/` — token refresh transport persists to config |
-| **Basic auth** | Legacy Grafana instances | Username/password in `rest.Config` |
+| **Basic auth** | Self-hosted Grafana, including server administration | `gcx login --basic-auth`; username/password in `rest.Config`, verified via `/api/user` before saving |
 | **Adaptive auth** | Signal provider adaptive telemetry APIs | `internal/auth/adaptive/` — GCOM-resolved Basic auth shared across signal providers; stale provider cache fields are not credential destinations |
 
 **Runtime selection:** an explicit `grafana.auth-method` (`oauth`, `token`,

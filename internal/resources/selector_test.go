@@ -5,6 +5,7 @@ import (
 
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestParseSelectors(t *testing.T) {
@@ -65,9 +66,10 @@ func TestParseSelectors(t *testing.T) {
 				{
 					Type: resources.FilterTypeMultiple,
 					GroupVersionKind: resources.PartialGVK{
-						Group:    "dashboard.grafana.app",
-						Version:  "v1alpha1",
-						Resource: "dashboards",
+						Group:         "dashboard.grafana.app",
+						Version:       "v1alpha1",
+						Resource:      "dashboards",
+						FallbackGroup: "v1alpha1.dashboard.grafana.app",
 					},
 					ResourceUIDs: []string{"foo", "bar"},
 				},
@@ -164,18 +166,20 @@ func TestParseSelectors(t *testing.T) {
 				{
 					Type: resources.FilterTypeSingle,
 					GroupVersionKind: resources.PartialGVK{
-						Group:    "dashboard.grafana.app",
-						Version:  "v1alpha1",
-						Resource: "dashboards",
+						Group:         "dashboard.grafana.app",
+						Version:       "v1alpha1",
+						Resource:      "dashboards",
+						FallbackGroup: "v1alpha1.dashboard.grafana.app",
 					},
 					ResourceUIDs: []string{"foo"},
 				},
 				{
 					Type: resources.FilterTypeSingle,
 					GroupVersionKind: resources.PartialGVK{
-						Group:    "folder.grafana.app",
-						Version:  "v1alpha1",
-						Resource: "folders",
+						Group:         "folder.grafana.app",
+						Version:       "v1alpha1",
+						Resource:      "folders",
+						FallbackGroup: "v1alpha1.folder.grafana.app",
 					},
 					ResourceUIDs: []string{"bar"},
 				},
@@ -189,6 +193,21 @@ func TestParseSelectors(t *testing.T) {
 
 			assert.ElementsMatch(t, test.want, got)
 			assert.NoError(t, err)
+		})
+	}
+}
+
+func TestPartialGVK_ParseStringClearsFallback(t *testing.T) {
+	for _, selector := range []string{"dashboards", "dashboards.dashboard"} {
+		t.Run(selector, func(t *testing.T) {
+			var gvk resources.PartialGVK
+			require.NoError(t, gvk.ParseString("dashboards.dashboard.grafana.app"))
+			candidate, ok := gvk.GroupOnlyCandidate()
+			assert.True(t, ok)
+			assert.Equal(t, "dashboard.grafana.app", candidate)
+			require.NoError(t, gvk.ParseString(selector))
+			_, ok = gvk.GroupOnlyCandidate()
+			assert.False(t, ok, "reparsing must clear the previous ambiguous group")
 		})
 	}
 }

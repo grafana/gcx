@@ -152,6 +152,16 @@ gcx login my-grafana --server https://your-instance.grafana.net --token glsa_xxx
 
 Use a [Grafana service account token](https://grafana.com/docs/grafana/latest/administration/service-accounts/) with a role matching what the token needs to do: **Viewer** is enough for querying (metrics, logs, traces, profiles) and reading dashboards or folders; **Editor** covers pushing and editing dashboards and folders; managing datasource configuration needs **Admin**. On Grafana Cloud and Enterprise, RBAC custom roles can scope query access tighter (for example `datasources:read` plus `datasources:query` on specific datasources). Tokens work for both Cloud and on-premises and are recommended for automation. On-premises stacks can also use basic authentication or configured mTLS client certificates.
 
+**Basic authentication (self-hosted Grafana):**
+
+```bash
+gcx login my-grafana --server https://grafana.example.com --basic-auth --user admin
+```
+
+Prompts for a password without echoing it. For automation, supply `GRAFANA_PASSWORD`
+and add `--yes`. See [Basic authentication](docs/reference/login.md#basic-authentication)
+for credential storage, auth switching, and validation behaviour.
+
 **Grafana Cloud product APIs (SLO, Synthetic Monitoring, IRM, etc.):**
 
 Cloud product commands need a separate Grafana Cloud platform credential in
@@ -181,7 +191,36 @@ gcx cloud login --context my-stack
 
 Direct Cloud OAuth stores the OAuth token, expiry, granted scopes, and endpoint
 pair, but it is experimental and not every Cloud product command supports it
-yet. Use a CAP for full compatibility.
+yet. A CAP supports many Cloud management operations, but cannot enumerate user
+organisation memberships.
+
+To list your Cloud organisation memberships (slugs and roles):
+
+```bash
+gcx cloud login --context my-stack
+gcx cloud orgs list --context my-stack
+```
+
+Default Cloud logins include `profile` alongside stack-management scopes.
+Rerun login for existing credentials. `--scope profile` replaces the scope set,
+so use the default login to retain stack access. If `GRAFANA_CLOUD_TOKEN` or
+`cloud.<entry>.token` is set, unset it when using browser OAuth for organisation
+listing: access-policy tokens take precedence over OAuth tokens.
+The command uses the selected context's Cloud API
+endpoint, including dev and ops environments. Membership is not a guarantee of
+stack-creation permission. This differs from `gcx api /api/orgs`, which targets
+organisations inside a Grafana instance.
+
+Specify the organisation slug when creating a stack:
+
+```bash
+gcx cloud stacks create --org example-org --name my-stack --slug mystack --region us --dry-run
+```
+
+Review the preview, then omit `--dry-run` to create the stack. Both
+`stacks create` and `stacks list` require `--org <slug>`.
+Creation defaults to YAML with `name`, `orgSlug`, `slug`, `status` and `url`.
+Use `stacks get <slug>` for full details. Dry runs show the creation request.
 
 `gcx` derives the Cloud stack slug from `--server` when possible. Set it explicitly only for custom domains where gcx cannot derive it:
 
@@ -289,6 +328,7 @@ gcx resources list-types                        # discover available resource ty
 gcx dashboards list                             # list all dashboards
 gcx dashboards search "node exporter"           # full-text search by title/tag/folder
 gcx resources get folders                       # list all folders
+gcx resources get dashboards.dashboard.grafana.app/my-dash  # get by resource.group/name
 gcx alert rules list                            # list alert rules
 
 # Grafana Cloud products
@@ -303,6 +343,10 @@ gcx traces query '{.cluster="dev-us-central-0"}' --since 1h
 
 For an empty dashboard or missing application telemetry, follow
 [Diagnose missing telemetry with gcx](docs/guides/diagnose-missing-telemetry.md).
+
+Synthetic Monitoring check manifests support optional `spec.folderUid` for folder
+assignment. See the [check management guide](claude-plugin/skills/synth-manage-checks/SKILL.md#step-3-build-yaml-definition)
+for create/update semantics and cross-stack push guidance.
 
 ## Install Agent Skills
 
@@ -618,6 +662,7 @@ jobs:
 | [Dashboards as Code](docs/guides/dashboards-as-code.md) | Dashboard-as-code workflow with live dev server |
 | [Linting Resources](docs/guides/lint-resources.md) | Lint dashboards and alert rules with Rego policies |
 | [CLI Reference](docs/reference/cli/) | Full command reference (auto-generated) |
+| [Engineering RFCs](docs/rfcs/README.md) | Proposals, technical designs, and review workflows |
 
 ## Usage statistics
 

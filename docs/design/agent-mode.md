@@ -86,7 +86,7 @@ Explicit flags override agent mode defaults:
   operator has explicitly requested wide table format, so the JSON default is not applied)
 - `--agent=false` disables agent mode entirely (even when env vars are set)
 - `GCX_AGENT_MODE=0` disables agent mode regardless of other env vars
-- `GCX_AGENT_SPILL_BYTES=<n>` adjusts the spill threshold (bytes; default 102400)
+- `GCX_AGENT_SPILL_BYTES=<n>` adjusts the spill threshold (bytes; default 102400); `0` disables spilling
 
 ### 6.4 Output Protocol Classes
 

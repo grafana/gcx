@@ -164,12 +164,17 @@ gcx config set stacks.onprem.grafana.token glsa_XXXXXXXXXXXXXXXX
 **Option B-2: Username and password**
 
 ```bash
-gcx config set stacks.onprem.grafana.user admin
-gcx config set stacks.onprem.grafana.password mysecretpassword
+# Supply the password through GRAFANA_PASSWORD
+gcx login onprem --basic-auth --user admin --yes
 ```
 
+Agents must supply `GRAFANA_PASSWORD`; agent mode disables prompting. Humans
+running in a terminal can omit `--yes` to enter the password without echoing.
+Login verifies the credentials with a fresh `GET /api/user` before saving them
+through the configured credential store.
+
 Use Option B-1 when service accounts are available. Use Option B-2 for
-development or when service accounts are not configured.
+server administration or when service accounts are not configured.
 
 ### Step 3: Set the org ID
 
