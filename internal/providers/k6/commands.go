@@ -891,7 +891,7 @@ func newRunsListCommand(loader CloudConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list [id-or-name]",
 		Short: "List test runs for a load test.",
-		Long:  "List test runs for a load test.\n\nUse JSON or YAML to inspect the returned run configuration, including options.thresholds. Threshold expressions are configuration, not evaluated results.",
+		Long:  "List test runs for a load test. The RESULT column uses the current k6 Cloud result when present. Legacy numeric results remain supported. An absent result is shown as -.",
 		Example: `  # Inspect configured run thresholds
   gcx k6 runs list --id 6 --json id,options.thresholds`,
 		Args: cobra.RangeArgs(0, 1),
@@ -939,9 +939,9 @@ func newRunsListCommand(loader CloudConfigLoader) *cobra.Command {
 func TestRunTable() cmdio.Table[TestRunStatus] {
 	return cmdio.Table[TestRunStatus]{Columns: []cmdio.Column[TestRunStatus]{
 		{Header: "ID", Content: func(r TestRunStatus) string { return strconv.Itoa(r.ID) }},
-		{Header: "TEST ID", Content: func(r TestRunStatus) string { return strconv.Itoa(r.LoadTestID) }},
+		{Header: "TEST ID", Content: func(r TestRunStatus) string { return strconv.Itoa(r.TestID) }},
 		{Header: "STATUS", Content: func(r TestRunStatus) string { return r.Status }},
-		{Header: "RESULT", Content: func(r TestRunStatus) string { return resultStatusString(r.ResultStatus) }},
+		{Header: "RESULT", Content: func(r TestRunStatus) string { return r.resultString() }},
 		{Header: "CREATED", Content: func(r TestRunStatus) string { return tableTimestamp(r.Created) }},
 		{Header: "ENDED", Content: func(r TestRunStatus) string { return tableTimestamp(r.Ended) }},
 	}}

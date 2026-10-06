@@ -1,6 +1,7 @@
 package k6_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -370,7 +371,8 @@ func TestProxyClient_ListTestRuns(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, runs, 1)
 	assert.Equal(t, "finished", runs[0].Status)
-	assert.Equal(t, 1, runs[0].ResultStatus)
+	require.NotNil(t, runs[0].ResultStatus)
+	assert.Equal(t, 1, *runs[0].ResultStatus)
 }
 
 func TestProxyClient_ListEnvVars(t *testing.T) {
@@ -800,4 +802,21 @@ func writeJSON(t *testing.T, w http.ResponseWriter, v any) {
 	if err := json.NewEncoder(w).Encode(v); err != nil {
 		t.Fatalf("writeJSON: %v", err)
 	}
+}
+
+func TestProxyClient_ListTestRuns_V6Result(t *testing.T) {
+	client := newAuthenticatedProxyClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/cloud/v6/load_tests/6/test_runs", r.URL.Path)
+		writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": 101, "test_id": 6, "project_id": 42, "status": "completed", "result": "failed"}}})
+	}))
+	runs, err := client.ListTestRuns(t.Context(), 6)
+	require.NoError(t, err)
+	require.Len(t, runs, 1)
+	assert.Equal(t, 6, runs[0].TestID)
+	assert.Equal(t, 42, runs[0].ProjectID)
+	assert.Equal(t, "failed", runs[0].Result)
+	var table bytes.Buffer
+	require.NoError(t, (&k6.TestRunTableCodec{}).Encode(&table, runs))
+	assert.Contains(t, table.String(), "failed")
+	assert.Contains(t, table.String(), "completed")
 }
