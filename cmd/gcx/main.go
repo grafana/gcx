@@ -227,8 +227,10 @@ func reportError(err error, boolFlags map[string]struct{}, subCmds map[string]bo
 	var emitted *gcxerrors.EmittedError
 	if errors.As(err, &emitted) {
 		if emitted.Cause != nil && (agent.IsAgentMode() || root.IsJSONFlagActive()) {
+			// The cause can hold a raw HTTP response body, and EmittedError
+			// promises never to render it, so the notice names only the outcome.
 			writeErrorNotice(func() error {
-				return gcxerrors.WriteNotice(os.Stderr, emitted.Cause.Error(), "", nil, emitted.Code)
+				return gcxerrors.WriteNotice(os.Stderr, emittedNoticeSummary, "", nil, emitted.Code)
 			})
 		}
 		if agent.IsAgentMode() && agentlog.IsEnabled() {
@@ -280,6 +282,9 @@ func reportError(err error, boolFlags map[string]struct{}, subCmds map[string]bo
 
 	return exitCode
 }
+
+// emittedNoticeSummary is the stderr notice for an EmittedError.
+const emittedNoticeSummary = "command did not fully succeed; the result document on stdout lists the failures"
 
 // stdoutIsTerminal is replaced in tests.
 var stdoutIsTerminal = terminal.StdoutIsTerminal //nolint:gochecknoglobals
