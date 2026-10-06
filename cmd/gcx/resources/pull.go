@@ -154,11 +154,11 @@ func pullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	# Provider-backed resources (SLO and Synthetic Monitoring):
 
 	gcx resources pull slo -p ./slo-defs/
-	gcx resources pull checks -p ./checks/
+	gcx resources pull checks.syntheticmonitoring -p ./checks/
 
 	# Native Grafana alert rules:
 
-	gcx resources pull alertrules.v0alpha1.rules.alerting.grafana.app -p ./rules/`,
+	gcx resources pull alertrules -p ./rules/`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 

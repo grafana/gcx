@@ -108,11 +108,11 @@ func pushCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	# Provider-backed resources (SLO and Synthetic Monitoring):
 
 	gcx resources push slo -p ./slo-defs/
-	gcx resources push checks -p ./checks/
+	gcx resources push checks.syntheticmonitoring -p ./checks/
 
 	# Native Grafana alert rules:
 
-	gcx resources push alertrules.v0alpha1.rules.alerting.grafana.app -p ./rules/
+	gcx resources push alertrules -p ./rules/
 
 	# Mixed push: native and provider resources from the same directory
 	# (types auto-detected from apiVersion/kind in YAML files):

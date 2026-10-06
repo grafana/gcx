@@ -194,11 +194,11 @@ func getCmd(configOpts *cmdconfig.Options) *cobra.Command {
 
 	gcx resources get slo
 	gcx resources get slo/my-slo-uuid
-	gcx resources get checks
+	gcx resources get checks.syntheticmonitoring
 
 	# Native Grafana alert rules:
 
-	gcx resources get alertrules.v0alpha1.rules.alerting.grafana.app
+	gcx resources get alertrules
 
 	# Discover available JSON fields for a resource type:
 

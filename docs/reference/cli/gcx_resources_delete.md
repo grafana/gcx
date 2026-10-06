@@ -41,11 +41,11 @@ gcx resources delete [RESOURCE_SELECTOR]... [flags]
 	# Provider-backed resources (SLO and Synthetic Monitoring):
 
 	gcx resources delete slo/my-slo-uuid
-	gcx resources delete checks/my-check-uuid
+	gcx resources delete checks.syntheticmonitoring/my-check-uuid
 
 	# Native Grafana alert rules:
 
-	gcx resources delete alertrules.v0alpha1.rules.alerting.grafana.app/my-rule-uid
+	gcx resources delete alertrules/my-rule-uid
 
 ```
 
