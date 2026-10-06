@@ -3,11 +3,15 @@ package retry_test
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -457,4 +461,25 @@ func TestTransport_BytesBufferBodyGetBody(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	assert.Equal(t, int32(2), attempts.Load())
+}
+
+func TestIsTransientConnectionError(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"op error", &net.OpError{Op: "dial", Err: errors.New("x")}, true},
+		{"temporary DNS", &net.DNSError{IsTemporary: true}, true},
+		{"permanent DNS", &net.DNSError{IsNotFound: true}, false},
+		// Errnos outside a net.OpError, as the wasip1 host transport reports them.
+		{"wrapped ECONNREFUSED", fmt.Errorf("host: %w", syscall.ECONNREFUSED), true},
+		{"wrapped ECONNRESET", fmt.Errorf("host: %w", syscall.ECONNRESET), true},
+		{"other", errors.New("x"), false},
+		{"nil", nil, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, retry.IsTransientConnectionError(tc.err))
+		})
+	}
 }
