@@ -59,7 +59,7 @@ gcx resources pull [RESOURCE_SELECTOR]... [flags]
 
 	# Native Grafana alert rules:
 
-	gcx resources pull alertrules -p ./rules/
+	gcx resources pull alertrules -p ./alertrules/
 ```
 
 ### Options

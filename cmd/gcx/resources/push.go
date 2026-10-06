@@ -112,7 +112,7 @@ func pushCmd(configOpts *cmdconfig.Options) *cobra.Command {
 
 	# Native Grafana alert rules:
 
-	gcx resources push alertrules -p ./rules/
+	gcx resources push alertrules -p ./alertrules/
 
 	# Mixed push: native and provider resources from the same directory
 	# (types auto-detected from apiVersion/kind in YAML files):

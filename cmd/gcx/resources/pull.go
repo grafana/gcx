@@ -158,7 +158,7 @@ func pullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 
 	# Native Grafana alert rules:
 
-	gcx resources pull alertrules -p ./rules/`,
+	gcx resources pull alertrules -p ./alertrules/`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 

@@ -1044,7 +1044,7 @@ func readCheckSpec(filePath string) (*CheckSpec, error) {
 
 	// Reject multi-document YAML — create/update operate on a single check.
 	if hasMultipleDocuments(data) {
-		return nil, fmt.Errorf("%s contains multiple YAML documents — create/update operate on a single check; use 'gcx resources push checks' for batch operations", filePath)
+		return nil, fmt.Errorf("%s contains multiple YAML documents — create/update operate on a single check; use 'gcx resources push checks.syntheticmonitoring' for batch operations", filePath)
 	}
 
 	var obj unstructured.Unstructured
