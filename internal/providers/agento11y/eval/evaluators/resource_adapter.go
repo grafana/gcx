@@ -29,7 +29,7 @@ func StaticDescriptor() resources.Descriptor {
 
 // EvaluatorSchema returns a JSON Schema for the Evaluator resource type.
 func EvaluatorSchema() json.RawMessage {
-	return adapter.SchemaFromType[eval.EvaluatorDefinition](StaticDescriptor())
+	return adapter.SchemaFromType[eval.EvaluatorDefinition](StaticDescriptor())()
 }
 
 func evalStripFields() []string {

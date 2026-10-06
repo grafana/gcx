@@ -18,7 +18,7 @@ func buildIncidentRegistrations(loader *configLoader) []adapter.Registration {
 			Factory:     NewIncidentAdapterFactory(loader),
 			Descriptor:  desc,
 			GVK:         desc.GroupVersionKind(),
-			Schema:      IncidentSchema(),
+			Schema:      IncidentSchema,
 			Example:     IncidentExample(),
 			URLTemplate: "/a/grafana-irm-app/incidents/{name}",
 		},

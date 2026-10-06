@@ -109,7 +109,7 @@ func (p *Provider) descriptor() signals.Descriptor {
 					Factory:    adaptivetraces.NewPolicyAdapterFactory(loader),
 					Descriptor: adaptivetraces.PolicyDescriptor(),
 					GVK:        adaptivetraces.PolicyDescriptor().GroupVersionKind(),
-					Schema:     adaptivetraces.PolicySchema(),
+					Schema:     adaptivetraces.PolicySchema,
 					Example:    adaptivetraces.PolicyExample(),
 				},
 			}

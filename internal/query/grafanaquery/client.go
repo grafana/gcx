@@ -33,7 +33,7 @@ func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
 // NewClientWithHTTPClient creates a datasource query API client using an existing HTTP client.
 func NewClientWithHTTPClient(cfg config.NamespacedRESTConfig, httpClient *http.Client) *Client {
 	if httpClient == nil {
-		httpClient = http.DefaultClient
+		httpClient = httputils.NewClient(httputils.ClientOpts{})
 	}
 
 	return &Client{

@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/grafana/gcx/internal/httputils"
-	"github.com/grafana/gcx/internal/retry"
 )
 
 const (
@@ -168,9 +167,8 @@ func NewGCOMClient(baseURL, token string) (*GCOMClient, error) {
 		return nil, fmt.Errorf("gcom client: base URL must use HTTPS (got %q)", parsedBase.Scheme)
 	}
 
-	httpClient := &http.Client{
-		Timeout:   30 * time.Second,
-		Transport: &httputils.UserAgentTransport{Base: &retry.Transport{}},
+	httpClient := httputils.NewClient(httputils.ClientOpts{
+		Timeout: 30 * time.Second,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if req.URL.Host != parsedBase.Host {
 				return fmt.Errorf("gcom client: refusing cross-domain redirect to %s (configured base: %s)",
@@ -178,7 +176,7 @@ func NewGCOMClient(baseURL, token string) (*GCOMClient, error) {
 			}
 			return nil
 		},
-	}
+	})
 
 	return &GCOMClient{
 		baseURL: baseURL,

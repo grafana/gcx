@@ -36,7 +36,7 @@ func TestAppO11yProvider_TypedRegistrations(t *testing.T) {
 	require.Len(t, regs, 2, "expected 2 registrations: Overrides and Settings")
 
 	for i, reg := range regs {
-		assert.NotNil(t, reg.Schema, "registration[%d] Schema should not be nil", i)
+		assert.True(t, reg.Schema != nil && reg.Schema() != nil, "registration[%d] Schema should not be nil", i)
 		assert.NotNil(t, reg.Example, "registration[%d] Example should not be nil", i)
 		assert.NotNil(t, reg.Factory, "registration[%d] Factory should not be nil", i)
 	}

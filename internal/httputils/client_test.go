@@ -87,3 +87,15 @@ func TestNewClient_CustomTimeout(t *testing.T) {
 		t.Fatalf("expected 10s timeout, got %v", client.Timeout)
 	}
 }
+
+func TestNewClient_DisableRetry(t *testing.T) {
+	client := httputils.NewClient(httputils.ClientOpts{DisableRetry: true})
+	uaRT, ok := client.Transport.(*httputils.UserAgentTransport)
+	if !ok {
+		t.Fatalf("expected outermost Transport to be *httputils.UserAgentTransport, got %T", client.Transport)
+	}
+	// With retry disabled, User-Agent wraps the middlewares directly.
+	if _, ok := uaRT.Base.(*httputils.LoggingRoundTripper); !ok {
+		t.Fatalf("expected UserAgentTransport.Base to be *httputils.LoggingRoundTripper, got %T", uaRT.Base)
+	}
+}

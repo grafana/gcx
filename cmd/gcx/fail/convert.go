@@ -22,7 +22,7 @@ import (
 	"github.com/grafana/gcx/internal/fleet"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/grafana"
-	"github.com/grafana/gcx/internal/linter"
+	"github.com/grafana/gcx/internal/linter/linterr"
 	"github.com/grafana/gcx/internal/login"
 	cmdoutput "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers/instrumentation"
@@ -903,7 +903,7 @@ func convertFSErrors(err error) (*gcxerrors.DetailedError, bool) {
 }
 
 func convertLinterErrors(err error) (*gcxerrors.DetailedError, bool) {
-	if errors.Is(err, linter.ErrTestsFailed) {
+	if errors.Is(err, linterr.ErrTestsFailed) {
 		return nil, true
 	}
 

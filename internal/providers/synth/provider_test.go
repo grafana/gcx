@@ -73,7 +73,8 @@ func TestCheckSchemaFolderUID(t *testing.T) {
 			continue
 		}
 		var schema map[string]any
-		require.NoError(t, json.Unmarshal(registration.Schema, &schema))
+		require.NotNil(t, registration.Schema, "registration has no Schema")
+		require.NoError(t, json.Unmarshal(registration.Schema(), &schema))
 		properties, ok := schema["properties"].(map[string]any)
 		require.True(t, ok)
 		spec, ok := properties["spec"].(map[string]any)
