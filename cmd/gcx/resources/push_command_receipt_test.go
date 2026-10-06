@@ -13,6 +13,7 @@ import (
 	resourcescmd "github.com/grafana/gcx/cmd/gcx/resources"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
+	"sigs.k8s.io/yaml"
 )
 
 func TestPushCommandReturnedIdentity(t *testing.T) {
@@ -43,43 +44,59 @@ func TestPushCommandReturnedIdentity(t *testing.T) {
 	require.NoError(t, os.WriteFile(cfg, fmt.Appendf(nil, "version: 1\nstacks:\n  local:\n    grafana:\n      server: %s\n      org-id: 1\ncontexts:\n  local:\n    stack: local\ncurrent-context: local\n", server.URL), 0o600))
 	path := filepath.Join(t.TempDir(), "item.json")
 	require.NoError(t, os.WriteFile(path, []byte(`{"apiVersion":"receipt.test.grafana.app/v1","kind":"Item","metadata":{}}`), 0o600))
-	for _, tc := range []struct{ include, dryRun bool }{{false, false}, {true, false}, {true, true}} {
-		include := tc.include
-		root := &cobra.Command{Use: "gcx"}
-		root.AddCommand(resourcescmd.Command())
-		var stdout bytes.Buffer
-		root.SetOut(&stdout)
-		var stderr bytes.Buffer
-		root.SetErr(&stderr)
-		args := []string{"resources", "--config", cfg, "push", "--path", path, "--output", "json", "--omit-manager-fields"}
-		if include {
-			args = append(args, "--include-successes")
-		}
-		if tc.dryRun {
-			args = append(args, "--dry-run")
-		}
-		root.SetArgs(args)
-		err := root.Execute()
-		require.NoError(t, err, stdout.String())
-		var result struct {
-			Successes []struct {
-				Requested struct {
-					SourcePath string `json:"source_path"`
-				} `json:"requested"`
-				Target struct {
-					Name string `json:"name"`
-				} `json:"target"`
-			} `json:"successes"`
-		}
-		require.NoError(t, json.Unmarshal(stdout.Bytes(), &result))
-		if include && !tc.dryRun {
-			require.Len(t, result.Successes, 1)
-			require.Equal(t, path, result.Successes[0].Requested.SourcePath)
-			require.Equal(t, "server-name", result.Successes[0].Target.Name)
-		} else {
-			require.Empty(t, result.Successes)
+	for _, outputFormat := range []string{"json", "yaml"} {
+		for _, tc := range []struct{ include, dryRun bool }{{false, false}, {true, false}, {true, true}} {
+			include := tc.include
+			root := &cobra.Command{Use: "gcx"}
+			root.AddCommand(resourcescmd.Command())
+			var stdout bytes.Buffer
+			root.SetOut(&stdout)
+			var stderr bytes.Buffer
+			root.SetErr(&stderr)
+			args := []string{"resources", "--config", cfg, "push", "--path", path, "--output", outputFormat, "--omit-manager-fields"}
+			if include {
+				args = append(args, "--include-successes")
+			}
 			if tc.dryRun {
-				require.Contains(t, stderr.String(), "Returned identities were requested")
+				args = append(args, "--dry-run")
+			}
+			root.SetArgs(args)
+			err := root.Execute()
+			require.NoError(t, err, stdout.String())
+			var result struct {
+				Successes []struct {
+					Requested struct {
+						SourcePath string `json:"source_path"`
+					} `json:"requested"`
+					Target struct {
+						Name string `json:"name"`
+					} `json:"target"`
+				} `json:"successes"`
+			}
+			jsonData := stdout.Bytes()
+			if outputFormat == "yaml" {
+				var err error
+				jsonData, err = yaml.YAMLToJSON(jsonData)
+				require.NoError(t, err)
+			}
+			require.NoError(t, json.Unmarshal(jsonData, &result))
+			if !include {
+				var document map[string]any
+				require.NoError(t, json.Unmarshal(jsonData, &document))
+				require.NotContains(t, document, "successes")
+			}
+			if include && !tc.dryRun {
+				require.Len(t, result.Successes, 1)
+				require.Equal(t, path, result.Successes[0].Requested.SourcePath)
+				require.Equal(t, "server-name", result.Successes[0].Target.Name)
+			} else {
+				require.Empty(t, result.Successes)
+				if tc.dryRun {
+					require.NotContains(t, stderr.String(), "no real write")
+					var document map[string]any
+					require.NoError(t, json.Unmarshal(jsonData, &document))
+					require.Equal(t, []any{}, document["successes"])
+				}
 			}
 		}
 	}

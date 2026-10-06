@@ -92,7 +92,7 @@ type BatchMutation struct {
 	Action        string          `json:"action" yaml:"action"`
 	Summary       MutationSummary `json:"summary" yaml:"summary"`
 	// Successes contains only identities from real API writes.
-	Successes []MutationSuccess `json:"successes,omitempty" yaml:"successes,omitempty"`
+	Successes *[]MutationSuccess `json:"successes,omitempty" yaml:"successes,omitempty"`
 	// Failures is always present, including an empty slice.
 	Failures []MutationFailure `json:"failures" yaml:"failures"`
 	DryRun   bool              `json:"dry_run,omitempty" yaml:"dry_run,omitempty"`

@@ -196,8 +196,9 @@ func pushCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				cmdio.EmitHint(cmd.ErrOrStderr(), "Returned identities require a structured format (--output json, yaml, or agents); text output shows counts", "")
 			}
 			result := batchMutationFromSummary("pushed", summary, opts.DryRun)
-			if opts.IncludeSuccesses && len(result.Successes) == 0 {
-				cmdio.EmitHint(cmd.ErrOrStderr(), "Returned identities were requested, but no real write returned a named resource", "")
+			if opts.IncludeSuccesses && result.Successes == nil {
+				empty := []cmdio.MutationSuccess{}
+				result.Successes = &empty
 			}
 			// The push is done and its counts are final; a later rendering or
 			// stdout failure does not un-push anything.

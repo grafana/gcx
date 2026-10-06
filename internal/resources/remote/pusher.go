@@ -84,6 +84,7 @@ func NewPusher(client PushClient, registry PushRegistry) *Pusher {
 // PushRequest is a request for pushing resources to Grafana.
 type PushRequest struct {
 	// Include returned identities from successful writes.
+	// IncludeSuccesses bounds receipt storage to explicit requests.
 	IncludeSuccesses bool
 
 	// A list of resources to push.
