@@ -432,7 +432,7 @@ func read(m api.Module, ptr, n uint32) []byte {
 // writeSized writes b to the guest's buffer if it fits, and returns its length.
 func writeSized(m api.Module, ptr, capacity uint32, b []byte) uint32 {
 	n := len(b)
-	if n > math.MaxUint32 {
+	if uint64(n) > math.MaxUint32 { // uint64, so this compiles where int is 32 bits
 		panic("gcx_http: value too large for guest memory")
 	}
 	if n <= int(capacity) && !m.Memory().Write(ptr, b) {

@@ -161,7 +161,8 @@ Each `Run`:
   stubbed out.
 - **TLS:** handled by the host, so the guest's TLS settings (custom CA, mTLS)
   are ignored.
-- **Request bodies:** sent in one piece, not streamed. Responses stream.
+- **Request bodies:** sent in one piece, not streamed. Responses stream, except
+  under `--insecure-log-http-payload`, which reads each body to its end first.
 - **Stack discovery:** gcx needs `GRAFANA_SERVER/bootdata` to succeed, so the
   stack's host must be in `Egress`.
 - **Maintenance:** the `patches/` stubs need updating when gcx's dependencies
