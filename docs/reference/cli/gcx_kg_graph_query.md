@@ -67,3 +67,4 @@ gcx kg graph query <cypher-query> [flags]
 ### SEE ALSO
 
 * [gcx kg graph](gcx_kg_graph.md)	 - Query Knowledge Graph projections and paths.
+

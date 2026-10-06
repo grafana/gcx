@@ -17,7 +17,7 @@ import (
 )
 
 // Synthetic data pins the legacy entity/edge contract independently of graph rows.
-const legacyCypherResult = `{"entities":[{"type":"Service","name":"checkout","scope":{"namespace":"demo"},"properties":{"version":"v1"},"insights":[]}],"edges":[{"type":"CALLS","sourceName":"checkout","sourceType":"Service","destinationName":"database","destinationType":"Service"}],"pageNum":2,"lastPage":false}`
+const legacyCypherResult = `{"entities":[{"type":"Service","name":"checkout","scope":{"namespace":"demo"},"properties":{"version":"v1"},"insights":[{"name":"HighLatency","severity":"warning","category":"request"}]}],"edges":[{"type":"CALLS","sourceName":"checkout","sourceType":"Service","destinationName":"database","destinationType":"Service"}],"pageNum":2,"lastPage":false}`
 
 func TestLegacyCypherCommandCompatibility(t *testing.T) {
 	for _, tt := range []struct {
@@ -26,12 +26,12 @@ func TestLegacyCypherCommandCompatibility(t *testing.T) {
 		agent bool
 		want  string
 	}{
-		{name: "json", flags: []string{"-o", "json"}, want: `"pageNum": 2`},
+		{name: "json", flags: []string{"-o", "json"}},
 		{name: "yaml", flags: []string{"-o", "yaml"}, want: "pageNum: 2"},
 		{name: "table", flags: []string{"-o", "table"}, want: "namespace=demo"},
-		{name: "selected fields", flags: []string{"--json", "entities,edges,pageNum,lastPage"}, want: `"lastPage": false`},
+		{name: "selected fields", flags: []string{"--json", "entities,edges,pageNum,lastPage"}},
 		{name: "jq", flags: []string{"--jq", ".entities[0].name"}, want: "checkout"},
-		{name: "agent", agent: true, want: `"pageNum": 2`},
+		{name: "agent", agent: true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			pinHumanMode(t)
@@ -63,18 +63,16 @@ func TestLegacyCypherCommandCompatibility(t *testing.T) {
 			out, stderr, err := runKgCommand(t, func() *cobra.Command { return kg.NewCypherCommand(loader) }, args, "")
 			require.NoError(t, err)
 			assert.Equal(t, 1, calls)
-			assert.Contains(t, out, tt.want)
+			if tt.want != "" {
+				assert.Contains(t, out, tt.want)
+			}
 			assert.NotContains(t, out, "deprecated")
 			assert.Contains(t, stderr, "gcx kg entities query is deprecated")
 			assert.Contains(t, stderr, "gcx kg graph query")
 			assert.Contains(t, stderr, "supported through v1.x")
 			if tt.agent || tt.name == "json" || tt.name == "selected fields" {
 				decodeSingleJSON(t, []byte(out))
-				assert.Contains(t, out, `"entities"`)
-				assert.Contains(t, out, `"edges"`)
-				assert.Contains(t, out, `"lastPage": false`)
-				assert.NotContains(t, out, `"columns"`)
-				assert.NotContains(t, out, `"rows"`)
+				assert.JSONEq(t, legacyCypherResult, out)
 			}
 		})
 	}

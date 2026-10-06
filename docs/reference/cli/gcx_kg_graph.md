@@ -24,3 +24,4 @@ Query Knowledge Graph projections and paths.
 
 * [gcx kg](gcx_kg.md)	 - Manage Grafana Knowledge Graph rules, entities, and insights
 * [gcx kg graph query](gcx_kg_graph_query.md)	 - Run a read-only Cypher query and return its columns and rows.
+
