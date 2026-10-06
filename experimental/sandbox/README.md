@@ -33,7 +33,8 @@ Compiling gcx to WebAssembly (`GOOS=wasip1`) and running it with
 unmodified CLI, a fresh instance per command) with in-process isolation:
 
 - **Nothing is shared between calls.** Each command gets a new instance with its
-  own memory, args, env and filesystem view.
+  own memory, args, env and filesystem view. The exception is a `Home` you pass
+  to several calls, which they share (see `Invocation.Home`).
 - **Nothing is reachable unless granted.** The guest sees an empty read-only `/`,
   one writable `$HOME`, only the environment variables it's given, and no sockets.
 - **The host controls the network.** gcx hands every HTTP request to the host,
@@ -56,7 +57,7 @@ unmodified CLI, a fresh instance per command) with in-process isolation:
   local project.
 - **Build** (`build.sh`). Vendors this repository's source, overlays `patches/`
   (wasip1 stubs for third-party modules that don't support it: clipboard,
-  moby/term, bubbletea, Prometheus tsdb/fileutil), and builds `gcx.wasm`
+  moby/term, bubbletea, Prometheus tsdb/fileutil, and a process-local file lock for gofrs/flock), and builds `gcx.wasm`
   (~160 MB) with standard Go.
 - **Host** (this package). Runs `gcx.wasm` with WASI preview 1 plus the
   `gcx_http` module.
@@ -103,7 +104,7 @@ res, err := rt.Run(ctx, sandbox.Invocation{
 		"GCX_AGENT_MODE": "true",     // machine-readable output
 	},
 	Stdout: &out, Stderr: &errOut,
-	Home:   "", // fresh temp $HOME, removed afterwards; or a per-tenant dir
+	Home:   "", // fresh temp $HOME, removed afterwards; or a per-tenant dir, shared by that tenant's runs
 	Egress: []sandbox.Destination{{
 		Host:   tenant.Host,
 		Header: http.Header{"Authorization": {"Bearer " + tenant.Token}},

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -43,10 +44,19 @@ func loadGCX(t *testing.T) []byte {
 	return wasm
 }
 
+// compiledCache is where the tests keep wazero's compiled code between runs.
+func compiledCache(t *testing.T) string {
+	t.Helper()
+	cache, err := os.UserCacheDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return filepath.Join(cache, "gcx-sandbox", "compiled")
+}
+
 func newRuntime(t *testing.T, cfg sandbox.Config) *sandbox.Runtime {
 	t.Helper()
-	cache, _ := os.UserCacheDir()
-	cfg.CacheDir = filepath.Join(cache, "gcx-sandbox", "compiled")
+	cfg.CacheDir = compiledCache(t)
 	rt, err := sandbox.New(context.Background(), loadGCX(t), cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -82,6 +92,9 @@ func newFakeGrafana(t *testing.T, name string) *fakeGrafana {
 		switch r.URL.Path {
 		case "/slow":
 			<-r.Context().Done()
+			return
+		case "/echo":
+			_, _ = io.Copy(w, r.Body)
 			return
 		case "/big":
 			w.Header().Set("Content-Type", "application/json")
@@ -280,18 +293,53 @@ func TestRun(t *testing.T) {
 	})
 }
 
+// TestRunIO covers what an invocation passes in besides args and env.
+func TestRunIO(t *testing.T) {
+	a := newFakeGrafana(t, "a")
+	rt := newRuntime(t, sandbox.Config{Transport: multiTransport(a)})
+
+	t.Run("feeds stdin to the guest", func(t *testing.T) {
+		inv, out := invocation(a, "secret-a", "api", "/echo", "-d", "@-")
+		inv.Stdin = strings.NewReader(`{"from":"stdin"}`)
+		res, err := rt.Run(context.Background(), inv)
+		if err != nil || res.ExitCode != 0 {
+			t.Fatalf("exit %d, err %v, output:\n%s", res.ExitCode, err, out)
+		}
+		if !strings.Contains(out.String(), `"from"`) || !a.saw("POST /echo") {
+			t.Errorf("server didn't echo stdin back; output:\n%s", out)
+		}
+	})
+
+	t.Run("a reused Home persists between runs", func(t *testing.T) {
+		home := t.TempDir()
+		inv, out := invocation(a, "x", "config", "set", "stacks.saved.grafana.server", "https://saved.example")
+		inv.Home = home
+		if res, err := rt.Run(context.Background(), inv); err != nil || res.ExitCode != 0 {
+			t.Fatalf("set: exit %d, err %v, output:\n%s", res.ExitCode, err, out)
+		}
+		inv, out = invocation(a, "x", "config", "view")
+		inv.Home = home
+		if res, err := rt.Run(context.Background(), inv); err != nil || res.ExitCode != 0 {
+			t.Fatalf("view: exit %d, err %v, output:\n%s", res.ExitCode, err, out)
+		}
+		if !strings.Contains(out.String(), "saved.example") {
+			t.Errorf("second run didn't see the first run's config:\n%s", out)
+		}
+	})
+}
+
 func TestMemoryLimit(t *testing.T) {
 	// gcx declares a ~94 MiB minimum memory; a lower cap is rejected up front.
-	cache, _ := os.UserCacheDir()
-	_, err := sandbox.New(context.Background(), loadGCX(t), sandbox.Config{
+	rt, err := sandbox.New(context.Background(), loadGCX(t), sandbox.Config{
 		MemoryLimitBytes: 16 << 20,
-		CacheDir:         filepath.Join(cache, "gcx-sandbox", "compiled"),
+		CacheDir:         compiledCache(t),
 	})
 	if err == nil {
-		t.Fatalf("err %v, want memory limit rejection", err)
+		_ = rt.Close(context.Background())
+		t.Fatal("New succeeded, want memory limit rejection")
 	}
 	// A sufficient cap still runs gcx.
-	rt := newRuntime(t, sandbox.Config{MemoryLimitBytes: 512 << 20})
+	rt = newRuntime(t, sandbox.Config{MemoryLimitBytes: 512 << 20})
 	var out bytes.Buffer
 	res, err := rt.Run(context.Background(), sandbox.Invocation{Args: []string{"version"}, Stdout: &out, Stderr: &out})
 	if err != nil || res.ExitCode != 0 {

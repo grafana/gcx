@@ -17,8 +17,10 @@ cd "$src"
 go mod vendor
 cp -r "$here/patches/." vendor/
 
-# Unix implementations whose build constraints wrongly admit wasip1.
+# Files whose build constraints admit wasip1: Unix implementations that
+# don't work there, and flock's unsupported fallback, which patches/ replaces.
 for f in \
+	github.com/gofrs/flock/flock_others.go \
 	github.com/moby/term/term_unix.go \
 	github.com/moby/term/termios_unix.go \
 	github.com/moby/term/termios_nonbsd.go \

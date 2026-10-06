@@ -131,7 +131,10 @@ type Invocation struct {
 	Stdin          io.Reader
 	Stdout, Stderr io.Writer
 	// Home is the host directory mounted read-write at /home. Empty means a
-	// fresh temporary directory, removed when Run returns.
+	// fresh temporary directory, removed when Run returns. Runs given the
+	// same Home share it: each sees, and can race with, the config and token
+	// cache the others write. Give each tenant its own, and don't run one
+	// tenant's commands concurrently if those writes must not interleave.
 	Home string
 	// Egress lists the only destinations the guest may reach.
 	Egress []Destination
