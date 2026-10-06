@@ -217,7 +217,9 @@ func hostPoll(ctx context.Context, id uint32) int32 {
 
 func hostGetStatusCode(ctx context.Context, id uint32) uint32 {
 	code := sessionFrom(ctx).ready(id).resp.StatusCode
-	if code < 0 || code > math.MaxUint16 { // net/http only returns 3-digit codes
+	// Unreachable, as net/http only sets 3-digit codes; the bounds check is
+	// what lets gosec (G115) accept the conversion.
+	if code < 0 || code > math.MaxUint16 {
 		panic("gcx_http.get_status_code: invalid status code")
 	}
 	return uint32(code)
@@ -228,6 +230,9 @@ func hostGetHeaders(ctx context.Context, m api.Module, id, ptr, capacity uint32)
 }
 
 func hostBodyRead(ctx context.Context, m api.Module, id, ptr, capacity uint32) int32 {
+	if capacity == 0 { // 0 means pending, so a 0-byte read would spin forever
+		panic("gcx_http.body_read: zero capacity")
+	}
 	b, n := sessionFrom(ctx).ready(id).readBody(int(capacity))
 	if !m.Memory().Write(ptr, b) {
 		panic("gcx_http.body_read: buffer out of bounds")
@@ -270,7 +275,10 @@ func (x *exchange) readBody(capacity int) ([]byte, int32) {
 		}
 	}
 	n := min(capacity, len(x.unread))
-	if n < 0 || n > math.MaxInt32 { // n is at most one chunk
+	// n < 0 where int is 32 bits and the guest passed a capacity over
+	// MaxInt32. n is at most one chunk, so the upper bound is there for
+	// gosec (G115).
+	if n < 0 || n > math.MaxInt32 {
 		panic("gcx_http.body_read: chunk too large")
 	}
 	b := x.unread[:n]
@@ -432,7 +440,10 @@ func read(m api.Module, ptr, n uint32) []byte {
 // writeSized writes b to the guest's buffer if it fits, and returns its length.
 func writeSized(m api.Module, ptr, capacity uint32, b []byte) uint32 {
 	n := len(b)
-	if uint64(n) > math.MaxUint32 { // uint64, so this compiles where int is 32 bits
+	// Unreachable for the headers and error text the host builds; the
+	// bounds check is for gosec (G115). uint64 keeps it compiling where int
+	// is 32 bits.
+	if uint64(n) > math.MaxUint32 {
 		panic("gcx_http: value too large for guest memory")
 	}
 	if n <= int(capacity) && !m.Memory().Write(ptr, b) {
