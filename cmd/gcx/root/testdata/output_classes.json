@@ -471,6 +471,7 @@
  "gcx kg relationships delete": "finite",
  "gcx kg relationships upsert": "finite",
  "gcx kg stats": "finite",
+ "gcx kg schemas list": "finite",
  "gcx kg status": "finite",
  "gcx kg suppressions delete": "finite",
  "gcx kg suppressions list": "finite",

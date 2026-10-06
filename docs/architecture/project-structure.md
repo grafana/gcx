@@ -84,7 +84,7 @@ gcx/
 │   │   │   ├── output/       # View types and table/JSON codecs (clusters, apps, services; wait/mutation envelopes)
 │   │   │   └── rmw/          # Read-modify-write helper with optimistic-lock guard
 │   │   ├── k6/              # k6 Cloud provider (projects, tests, runs, envvars)
-│   │   ├── kg/               # Knowledge Graph (Asserts) provider (rules, entities, insights, diagnose, quality reports)
+│   │   ├── kg/               # Knowledge Graph (Asserts) provider (rules, entities, installed schemas, insights, diagnose, quality reports)
 │   │   ├── slo/              # SLO provider implementation
 │   │   │   ├── api/          # Shared resource group/version; kinds stay in declarations
 │   │   │   ├── definitions/  # SLO definitions and status queries

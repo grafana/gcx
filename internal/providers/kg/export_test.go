@@ -178,6 +178,11 @@ func ParseAlertmanagerLabels(data []byte) ([]map[string]string, error) {
 	return parseAlertmanagerLabels(data)
 }
 
+// NewSchemasCommand exposes the schema discovery command group for tests.
+func NewSchemasCommand(loader RESTConfigLoader) *cobra.Command {
+	return newSchemasCommand(loader)
+}
+
 // NewModelRulesCommand exposes the model-rules command group for tests.
 func NewModelRulesCommand(loader RESTConfigLoader) *cobra.Command {
 	return newModelRulesCommand(loader)
