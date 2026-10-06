@@ -43,7 +43,8 @@ import (
 //   - After poll reports a response, body_read streams its body. Once poll
 //     or body_read reports failure, error_code and error_detail describe it.
 //   - Guest misuse (an unknown or dropped id, handle twice, reading a
-//     response before poll reports it, an out-of-bounds pointer) traps.
+//     response before poll reports it, body_read with cap 0, an
+//     out-of-bounds pointer) traps.
 //
 // The host never calls back into the guest: entering a //go:wasmexport while
 // an import is in flight lets the Go scheduler run other goroutines on the
@@ -134,78 +135,19 @@ func (hostTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		ProtoMajor: 1,
 		ProtoMinor: 1,
 		Header:     decodeHeaders(readSized(func(buf *byte, n uint32) uint32 { return hostGetHeaders(id, buf, n) })),
-		Body:       &hostBody{id: id, ctx: req.Context()},
-		Request:    req,
+		Body: &hostBody{
+			read: func(p []byte) int32 { return hostBodyRead(id, &p[0], uint32(len(p))) },
+			fail: func() error { return takeError(id) },
+			drop: func() { hostDrop(id) },
+			wait: func(ready func() bool) error { return waitFor(req.Context(), ready) },
+		},
+		Request: req,
 	}
 	resp.ContentLength = -1
 	if n, err := strconv.ParseInt(resp.Header.Get("Content-Length"), 10, 64); err == nil {
 		resp.ContentLength = n
 	}
 	return resp, nil
-}
-
-// hostBody streams a response body from the host.
-type hostBody struct {
-	id      uint32
-	ctx     context.Context
-	closed  bool
-	reading bool // a Read is using id, so Close leaves dropping it to that Read
-	dropped bool
-}
-
-func (b *hostBody) Read(p []byte) (int, error) {
-	if len(p) == 0 {
-		return 0, nil
-	}
-	// Another goroutine may Close the body while this Read waits (as
-	// client-go's StreamWatcher.Stop does), and the host traps on a dropped
-	// id. So Close only marks the body closed while a Read is in progress,
-	// and the Read drops id once it is done with it. The fields need no
-	// locking because wasip1 runs one goroutine at a time, and neither Read
-	// nor Close yields between testing one field and setting the other.
-	b.reading = true
-	defer func() {
-		b.reading = false
-		if b.closed {
-			b.drop()
-		}
-	}()
-	var n int32
-	ready := func() bool {
-		if b.closed {
-			return true
-		}
-		n = hostBodyRead(b.id, &p[0], uint32(len(p)))
-		return n != 0
-	}
-	if err := waitFor(b.ctx, ready); err != nil {
-		return 0, err
-	}
-	if b.closed {
-		return 0, http.ErrBodyReadAfterClose
-	}
-	switch n {
-	case -1:
-		return 0, io.EOF
-	case -2:
-		return 0, takeError(b.id)
-	}
-	return int(n), nil
-}
-
-func (b *hostBody) Close() error {
-	b.closed = true
-	if !b.reading {
-		b.drop()
-	}
-	return nil
-}
-
-func (b *hostBody) drop() {
-	if !b.dropped {
-		b.dropped = true
-		hostDrop(b.id)
-	}
 }
 
 // waitFor calls ready until it returns true, sleeping with backoff between

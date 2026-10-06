@@ -1,9 +1,14 @@
 package httputils
 
 import (
+	"errors"
+	"io"
+	"math"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 	"unsafe"
 
 	"github.com/stretchr/testify/assert"
@@ -19,6 +24,7 @@ func TestHeaderFraming(t *testing.T) {
 		{"multiple values", http.Header{"Accept": {"a", "b"}, "X-Y": {"z"}}, http.Header{"Accept": {"a", "b"}, "X-Y": {"z"}}},
 		{"empty value", http.Header{"X-Empty": {""}}, http.Header{"X-Empty": {""}}},
 		{"host is the authority's job", http.Header{"Host": {"evil.example"}, "A": {"b"}}, http.Header{"A": {"b"}}},
+		{"framing is the host's job", http.Header{"Content-Length": {"9"}, "Transfer-Encoding": {"chunked"}, "Trailer": {"X"}, "A": {"b"}}, http.Header{"A": {"b"}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			assert.Equal(t, tc.want, decodeHeaders([]byte(encodeHeaders(tc.in))))
@@ -78,4 +84,103 @@ func TestHostError(t *testing.T) {
 	}
 	// The last case index matches wasi:http@0.3.1's last error-code.
 	assert.Equal(t, "internal-error", errorCodeName(38))
+}
+
+// fakeBody is a hostBody over a fake host that fails the test on any call
+// after drop, as the real host traps.
+type fakeBody struct {
+	*hostBody
+
+	reads   [][]byte // what successive body_read calls return; nil means pending
+	readsN  atomic.Int32
+	dropped atomic.Int32
+}
+
+func newFakeBody(t *testing.T, reads ...[]byte) *fakeBody {
+	t.Helper()
+	f := &fakeBody{reads: reads}
+	f.hostBody = &hostBody{
+		read: func(p []byte) int32 {
+			if f.dropped.Load() > 0 {
+				t.Error("body_read after drop")
+			}
+			i := int(f.readsN.Add(1)) - 1
+			if i >= len(f.reads) || f.reads[i] == nil {
+				return 0
+			}
+			switch r := f.reads[i]; string(r) {
+			case "EOF":
+				return -1
+			case "FAIL":
+				return -2
+			default:
+				n := copy(p, r)
+				if n < 0 || n > math.MaxInt32 {
+					panic("impossible copy length")
+				}
+				return int32(n)
+			}
+		},
+		fail: func() error { return errors.New("host failure") },
+		drop: func() { f.dropped.Add(1) },
+		wait: func(ready func() bool) error {
+			for !ready() {
+				time.Sleep(time.Millisecond)
+			}
+			return nil
+		},
+	}
+	return f
+}
+
+func TestHostBody(t *testing.T) {
+	t.Run("streams then ends", func(t *testing.T) {
+		f := newFakeBody(t, nil, []byte("abc"), []byte("de"), []byte("EOF"))
+		got, err := io.ReadAll(f)
+		if err != nil || string(got) != "abcde" {
+			t.Fatalf("got %q, %v", got, err)
+		}
+		_ = f.Close()
+		_ = f.Close()
+		if n := f.dropped.Load(); n != 1 {
+			t.Errorf("dropped %d times, want 1", n)
+		}
+	})
+
+	t.Run("reports host failure", func(t *testing.T) {
+		f := newFakeBody(t, []byte("FAIL"))
+		if _, err := f.Read(make([]byte, 8)); err == nil || err.Error() != "host failure" {
+			t.Errorf("err %v, want the host failure", err)
+		}
+	})
+
+	t.Run("close while a read waits", func(t *testing.T) {
+		f := newFakeBody(t) // body_read stays pending
+		done := make(chan error)
+		go func() {
+			_, err := f.Read(make([]byte, 8))
+			done <- err
+		}()
+		for f.readsN.Load() == 0 {
+			time.Sleep(time.Millisecond)
+		}
+		_ = f.Close()
+		if err := <-done; !errors.Is(err, http.ErrBodyReadAfterClose) {
+			t.Errorf("err %v, want ErrBodyReadAfterClose", err)
+		}
+		if n := f.dropped.Load(); n != 1 {
+			t.Errorf("dropped %d times, want 1", n)
+		}
+	})
+
+	t.Run("read after close", func(t *testing.T) {
+		f := newFakeBody(t, []byte("abc"))
+		_ = f.Close()
+		if _, err := f.Read(make([]byte, 8)); !errors.Is(err, http.ErrBodyReadAfterClose) {
+			t.Errorf("err %v, want ErrBodyReadAfterClose", err)
+		}
+		if f.readsN.Load() != 0 || f.dropped.Load() != 1 {
+			t.Errorf("reads %d, drops %d; want 0 and 1", f.readsN.Load(), f.dropped.Load())
+		}
+	})
 }
