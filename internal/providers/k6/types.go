@@ -1,6 +1,9 @@
 package k6
 
-import "strconv"
+import (
+	"encoding/json"
+	"strconv"
+)
 
 // ---------- ResourceIdentity implementations ----------
 
@@ -65,6 +68,24 @@ type TestRunStatus struct {
 	Created      string `json:"created,omitempty"`
 	Ended        string `json:"ended,omitempty"`
 	ReferenceID  string `json:"reference_id,omitempty"`
+}
+
+// UnmarshalJSON adds current identity and result fields to legacy responses.
+// Legacy fields remain present for callers that use the existing output keys.
+func (r *TestRunStatus) UnmarshalJSON(data []byte) error {
+	type wire TestRunStatus
+	var decoded wire
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	if decoded.TestID == 0 {
+		decoded.TestID = decoded.LoadTestID
+	}
+	if decoded.Result == "" && decoded.ResultStatus != nil {
+		decoded.Result = resultStatusString(*decoded.ResultStatus)
+	}
+	*r = TestRunStatus(decoded)
+	return nil
 }
 
 // projectsResponse is the response from listing projects.
@@ -193,7 +214,7 @@ type allowedLoadZonesResponse struct {
 }
 
 // resultString prefers the v6 result and preserves legacy response support.
-func (r TestRunStatus) resultString() string {
+func (r *TestRunStatus) resultString() string {
 	if r.Result != "" {
 		return r.Result
 	}

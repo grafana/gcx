@@ -1057,11 +1057,7 @@ func (c *TestRunTableCodec) Encode(w io.Writer, v any) error {
 			ended = "-"
 		}
 		result := r.resultString()
-		testID := r.TestID
-		if testID == 0 {
-			testID = r.LoadTestID
-		}
-		t.Row(strconv.Itoa(r.ID), strconv.Itoa(testID), r.Status, result, created, ended)
+		t.Row(strconv.Itoa(r.ID), strconv.Itoa(r.TestID), r.Status, result, created, ended)
 	}
 	return t.Render(w)
 }
@@ -2175,6 +2171,7 @@ func newTestrunStatusCommand(loader CloudConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "status [test-name]",
 		Short: "Show the most recent test run status for a k6 load test.",
+		Long:  "Show the most recent test run status for a k6 load test. The current k6 Cloud result takes precedence. Legacy numeric results remain supported. An absent result is shown as -.",
 		Args:  cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -2239,6 +2236,7 @@ func newTestrunRunsListCommand(loader CloudConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list [test-name]",
 		Short: "List all test runs for a k6 load test.",
+		Long:  "List all test runs for a k6 load test. The current k6 Cloud result takes precedence. Legacy numeric results remain supported. An absent result is shown as -.",
 		Args:  cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
