@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -172,7 +173,7 @@ func hostRequestNew(ctx context.Context, m api.Module,
 		authority:     string(read(m, authorityPtr, authorityLen)),
 		pathWithQuery: string(read(m, pathPtr, pathLen)),
 		header:        decodeHeaders(read(m, headersPtr, headersLen)),
-		body:          bytes.Clone(read(m, bodyPtr, bodyLen)),
+		body:          read(m, bodyPtr, bodyLen),
 	}}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -377,7 +378,7 @@ func (s *session) roundTrip(ctx context.Context, w wireRequest) (*http.Response,
 		req.Body, _ = req.GetBody() // in case authorize read it; NewRequest's GetBody never fails
 	}
 	for k, vs := range dest.Header {
-		req.Header[http.CanonicalHeaderKey(k)] = vs
+		req.Header[http.CanonicalHeaderKey(k)] = slices.Clone(vs) // a Transport may modify its request's headers
 	}
 	resp, err := s.transport.RoundTrip(req)
 	if err != nil {

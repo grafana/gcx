@@ -14,6 +14,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 )
 
 func TestMatch(t *testing.T) {
@@ -225,6 +226,49 @@ func TestBodyStream(t *testing.T) {
 	}
 	if err := x.err.Load(); err == nil || err.code != codeConnectionTerminated {
 		t.Errorf("err %+v, want connection-terminated", err)
+	}
+}
+
+// endless is a body that never ends, closing closed when closed. With block
+// set, Read waits for cancel and fails like a real body whose request was
+// cancelled; otherwise it always has data.
+type endless struct {
+	cancel <-chan struct{}
+	block  bool
+	closed chan struct{}
+}
+
+func (e endless) Read(p []byte) (int, error) {
+	if e.block {
+		<-e.cancel
+		return 0, context.Canceled
+	}
+	return len(p), nil
+}
+
+func (e endless) Close() error { close(e.closed); return nil }
+
+// Dropping an exchange cancels its context; the pump must then stop and
+// close the body, whether it is waiting on the body or on the guest.
+func TestPumpStopsOnCancel(t *testing.T) {
+	for _, block := range []bool{true, false} {
+		ctx, cancel := context.WithCancel(t.Context())
+		body := endless{cancel: ctx.Done(), block: block, closed: make(chan struct{})}
+		x := &exchange{chunks: make(chan []byte, 1)}
+		done := make(chan struct{})
+		go func() { x.pump(ctx, &http.Response{Body: body}); close(done) }()
+		x.readBody(10) // with data, the pump now blocks sending to a full channel
+		cancel()
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Fatalf("block=%v: pump still running after cancel", block)
+		}
+		select {
+		case <-body.closed:
+		default:
+			t.Errorf("block=%v: body not closed", block)
+		}
 	}
 }
 
