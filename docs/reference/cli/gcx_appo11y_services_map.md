@@ -21,13 +21,14 @@ p95 (how long this service waited on the peer).
 
 JSON and YAML output include instrumentation status from target_info for each
 returned service name. This status uses the target_info inventory without edge
-filters, as the service list does. Namespace-less metadata and graph identities
-use the existing service-name fallback.
+filters, as the service list does. Status is name-level: metadata with the same
+service name marks a peer as instrumented across namespaces and connection types.
 A metadata query failure stops the map command.
 
 Connection type is empty for HTTP/gRPC peers; "database",
 "messaging", or "virtual_node" for typed edges. Virtual-node peers
-are uninstrumented callers Tempo synthesises from orphan spans.
+are callers Tempo synthesises from orphan spans. Connection type does not change
+the name-level inventory status.
 
 Beyond --output table/wide/json/yaml, --output mermaid and
 --output dot render the map as a Mermaid or Graphviz graph,

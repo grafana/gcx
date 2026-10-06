@@ -371,7 +371,7 @@ func TestFetchServiceMapInstrumentation(t *testing.T) {
 		case strings.Contains(expr, `server="checkout"`):
 			labels = []map[string]string{{"client": "frontend", "client_service_namespace": "billing"}}
 		default:
-			labels = []map[string]string{{"server": "payment", "server_service_namespace": "billing"}, {"server": "inventory"}, {"server": "postgres", "connection_type": "database"}, {"server": "user", "connection_type": "virtual_node"}}
+			labels = []map[string]string{{"server": "payment", "server_service_namespace": "billing"}, {"server": "inventory"}, {"server": "postgres", "connection_type": "database"}, {"server": "user", "connection_type": "virtual_node"}, {"server": "queue", "connection_type": "messaging_system"}}
 		}
 		frames := make([]any, 0, len(labels))
 		for _, l := range labels {
@@ -393,7 +393,7 @@ func TestFetchServiceMapInstrumentation(t *testing.T) {
 		t.Error("checkout metadata proves instrumentation")
 	}
 	for _, e := range append(result.Callers, result.Callees...) {
-		want := e.Peer.Name == "frontend" || e.Peer.Name == "payment" || e.Peer.Name == "inventory"
+		want := e.Peer.Name != "queue"
 		if e.Peer.Instrumented != want {
 			t.Errorf("%s instrumented=%v want=%v", e.Peer.Name, e.Peer.Instrumented, want)
 		}
