@@ -75,8 +75,8 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 		Short: "Inspect a single Database Observability instance: health, connections, wait events, and top queries.",
 		Long: `Show exporter health and a query-performance snapshot for one database instance.
 
-The argument is the instance's service or legacy service_name (the identifier "gcx dbo11y
-instances list" reports as NAME). What's available depends on the instance's
+The argument is the instance's service or legacy service_name. The command
+"gcx dbo11y instances list" reports it as NAME. Available data depends on the
 engine (from "gcx dbo11y instances list"):
 
   - Health (up/down) is engine-agnostic, from the standard Prometheus scrape
@@ -324,15 +324,21 @@ func selectInstanceMetadata(metadata []Instance, name string) (Instance, error) 
 		native                                                  bool
 	}
 	key := func(inst Instance) identityKey {
-		return identityKey{inst.Namespace, inst.Host, inst.Labels["server_id"], inst.Environment, inst.Labels["cluster"], inst.Engine, len(inst.identity) > 0}
+		if len(inst.identity) == 0 {
+			return identityKey{engine: inst.Engine}
+		}
+		return identityKey{inst.Namespace, inst.Host, inst.Labels["server_id"], inst.Environment, inst.Labels["cluster"], inst.Engine, true}
 	}
 	if len(metadata) == 0 {
 		return Instance{Name: name}, nil
 	}
 	first := metadata[0]
+	if len(first.identity) == 1 && first.identity[0].Label == "service" {
+		return Instance{}, fmt.Errorf("instance %q has no exporter identity; configure an instance or server_id label", name)
+	}
 	for _, inst := range metadata[1:] {
 		if key(inst) != key(first) {
-			return Instance{}, fmt.Errorf("instance %q matches multiple database identities; use a datasource with one matching instance or assign distinct service names", name)
+			return Instance{}, fmt.Errorf("instance %q matches multiple database identities; use gcx dbo11y instances list to inspect the matching rows and assign distinct service names", name)
 		}
 	}
 	return first, nil

@@ -245,7 +245,6 @@ func connectionInfoPromotedLabels() map[string]struct{} {
 	return map[string]struct{}{
 		"__name__":               {},
 		serviceNameLabel:         {},
-		"service":                {},
 		"service_namespace":      {},
 		"engine":                 {},
 		"engine_version":         {},
@@ -279,22 +278,13 @@ func parseInstancesResponse(resp *prometheus.QueryResponse) ([]Instance, error) 
 			if len(identity) == 0 {
 				identity = []Matcher{{Label: "service", Op: "=", Value: name}}
 			}
-
-			// These external scope labels are shared by the native inventory and
-			// exporter metric families. Do not use inventory-only engine or provider
-			// metadata. Missing scope labels must not fall back to another database.
-			for _, label := range []string{"service_namespace", "deployment_environment", "cluster"} {
-				if value := sample.Metric[label]; value != "" {
-					identity = append(identity, Matcher{Label: label, Op: "=", Value: value})
-				}
-			}
 		}
 		if name == "" {
 			continue
 		}
 		labels := map[string]string{}
 		for k, v := range sample.Metric {
-			if _, skip := promoted[k]; skip || v == "" {
+			if _, skip := promoted[k]; skip || v == "" || (k == "service" && sample.Metric[serviceNameLabel] == "") {
 				continue
 			}
 			labels[k] = v
@@ -323,10 +313,10 @@ func parseInstancesResponse(resp *prometheus.QueryResponse) ([]Instance, error) 
 	return out, nil
 }
 
-// scopedByServiceName returns a vector selector for `metric` filtered to a
+// scopedToInstance returns a vector selector for `metric` filtered to a
 // single instance via native identity labels or legacy service_name. It also
 // applies caller filters.
-func scopedByServiceName(metric, name string, matchers []Matcher, identity ...Matcher) *promql.VectorExprBuilder {
+func scopedToInstance(metric, name string, matchers []Matcher, identity ...Matcher) *promql.VectorExprBuilder {
 	v := promql.Vector(metric)
 	if len(identity) == 0 {
 		v = v.Label(serviceNameLabel, escapePromqlValue(name))
@@ -343,14 +333,21 @@ func scopedByServiceName(metric, name string, matchers []Matcher, identity ...Ma
 // buildScrapeUpQuery returns the PromQL for the universal Prometheus scrape-health
 // gauge (`up`), scoped to one instance's dbo11y scrape target specifically —
 // engine-agnostic, unlike pg_up/mysql_up. The job matcher is required: `up`
-// is emitted by every scrape target, so an unscoped service_name match can
+// is emitted by every scrape target, so an instance match can
 // collide with an unrelated target that happens to share the name (e.g. the
 // database's own application pod).
 func buildScrapeUpQuery(name string, identity ...Matcher) (string, error) {
 	if name == "" {
 		return "", errors.New("instance name is required")
 	}
-	v := scopedByServiceName("up", name, nil, identity...).Label("job", dbo11yJobValue)
+	// Scrape target labels include instance. Exporter metrics can add server_id.
+	scrapeIdentity := make([]Matcher, 0, len(identity))
+	for _, matcher := range identity {
+		if matcher.Label != "server_id" || len(identity) == 1 {
+			scrapeIdentity = append(scrapeIdentity, matcher)
+		}
+	}
+	v := scopedToInstance("up", name, nil, scrapeIdentity...).Label("job", dbo11yJobValue)
 	expr, err := v.Build()
 	if err != nil {
 		return "", err
@@ -368,7 +365,7 @@ func buildUpQuery(metric, name string, matchers []Matcher, identity ...Matcher) 
 	if metric == "" {
 		return "", errors.New("metric name is required")
 	}
-	expr, err := scopedByServiceName(metric, name, matchers, identity...).Build()
+	expr, err := scopedToInstance(metric, name, matchers, identity...).Build()
 	if err != nil {
 		return "", err
 	}
@@ -381,7 +378,7 @@ func buildConnectionsByStateQuery(name string, matchers []Matcher, identity ...M
 	if name == "" {
 		return "", errors.New("instance name is required")
 	}
-	v := scopedByServiceName(pgActivityCountMetric, name, matchers, identity...)
+	v := scopedToInstance(pgActivityCountMetric, name, matchers, identity...)
 	expr, err := promql.Sum(v).By([]string{"state"}).Build()
 	if err != nil {
 		return "", err
@@ -397,7 +394,7 @@ func buildWaitEventsQuery(name string, matchers []Matcher, identity ...Matcher) 
 	if name == "" {
 		return "", errors.New("instance name is required")
 	}
-	v := scopedByServiceName(pgActivityCountMetric, name, matchers, identity...).LabelNeq("wait_event", "")
+	v := scopedToInstance(pgActivityCountMetric, name, matchers, identity...).LabelNeq("wait_event", "")
 	expr, err := promql.Sum(v).By([]string{"wait_event_type", "wait_event"}).Build()
 	if err != nil {
 		return "", err
@@ -411,7 +408,7 @@ func buildLongestTxQuery(name string, matchers []Matcher, identity ...Matcher) (
 	if name == "" {
 		return "", errors.New("instance name is required")
 	}
-	v := scopedByServiceName(pgActivityMaxTxMetric, name, matchers, identity...)
+	v := scopedToInstance(pgActivityMaxTxMetric, name, matchers, identity...)
 	expr, err := promql.Max(v).Build()
 	if err != nil {
 		return "", err
@@ -430,7 +427,7 @@ func buildTopQueriesRateQuery(metric, name, window string, matchers []Matcher, q
 	if metric == "" {
 		return "", errors.New("metric name is required")
 	}
-	v := scopedByServiceName(metric, name, matchers, identity...).Range(window)
+	v := scopedToInstance(metric, name, matchers, identity...).Range(window)
 	expr, err := promql.Sum(promql.Rate(v)).By([]string{queryIDLabel, datnameLabel}).Build()
 	if err != nil {
 		return "", err

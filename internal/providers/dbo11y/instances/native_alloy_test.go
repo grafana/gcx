@@ -61,7 +61,7 @@ func nativeAlloyQueryHandler(t *testing.T) http.HandlerFunc {
 				t.Errorf("metadata must accept both labels: %s", expr)
 			}
 		default:
-			if !strings.Contains(expr, `instance="example-db"`) || !strings.Contains(expr, `server_id="server-123"`) || strings.Contains(expr, "service_name=") {
+			if !strings.Contains(expr, `instance="example-db"`) || (!strings.HasPrefix(expr, "up{") && !strings.Contains(expr, `server_id="server-123"`)) || strings.Contains(expr, "service_name=") {
 				t.Errorf("exporter query does not use native identity: %s", expr)
 			}
 			switch {
@@ -163,15 +163,15 @@ func writeNativeFrames(t *testing.T, w http.ResponseWriter, labels []map[string]
 	}
 }
 
-func TestNativeScopeDoesNotSelectForeignOrMissingLabels(t *testing.T) {
+func TestNativeExporterDoesNotRequireInventoryScopeLabels(t *testing.T) {
 	for _, test := range []struct {
 		name                          string
 		inventoryScope, exporterScope map[string]string
 		wantData                      bool
 	}{
 		{"matching", map[string]string{"service_namespace": "example", "deployment_environment": "demo", "cluster": "local"}, map[string]string{"service_namespace": "example", "deployment_environment": "demo", "cluster": "local"}, true},
-		{"foreign namespace", map[string]string{"service_namespace": "example"}, map[string]string{"service_namespace": "other"}, false},
-		{"missing exporter scope", map[string]string{"service_namespace": "example", "cluster": "local"}, nil, false},
+		{"foreign namespace", map[string]string{"service_namespace": "example"}, map[string]string{"service_namespace": "other"}, true},
+		{"missing exporter scope", map[string]string{"service_namespace": "example", "cluster": "local"}, nil, true},
 		{"scope absent on both", nil, nil, true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -231,7 +231,7 @@ func TestSelectInstanceMetadataDuplicatesAndLegacy(t *testing.T) {
 		}
 		other := first
 		other.Namespace = "other"
-		if _, err := selectInstanceMetadata([]Instance{first, other}, "example-db"); err == nil {
+		if _, err := selectInstanceMetadata([]Instance{first, other}, "example-db"); (err != nil) != native {
 			t.Fatalf("namespace collision accepted, native=%v", native)
 		}
 	}
@@ -273,4 +273,32 @@ func nativeSelectorMatches(expr string, labels map[string]string) (bool, error) 
 		return nil
 	})
 	return matches, nil
+}
+
+func TestLegacyServiceLabelPreserved(t *testing.T) {
+	got, err := parseInstancesResponse(sampleResponse(map[string]any{"metric": map[string]string{"service_name": "legacy", "service": "native"}, "value": []any{float64(1), "1"}}))
+	if err != nil || len(got) != 1 || got[0].Labels["service"] != "native" {
+		t.Fatalf("legacy service lost: %+v %v", got, err)
+	}
+}
+
+func TestNativeMissingExporterIdentity(t *testing.T) {
+	instances, err := parseInstancesResponse(sampleResponse(map[string]any{"metric": map[string]string{"service": "example-db"}, "value": []any{float64(1), "1"}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := selectInstanceMetadata(instances, "example-db"); err == nil || !strings.Contains(err.Error(), "no exporter identity") {
+		t.Fatalf("missing identity error: %v", err)
+	}
+}
+
+func TestNativeScrapeTargetNeedsNoServerID(t *testing.T) {
+	expr, err := buildScrapeUpQuery("example-db", Matcher{Label: "instance", Op: "=", Value: "host"}, Matcher{Label: "server_id", Op: "=", Value: "server"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	matches, err := nativeSelectorMatches(expr, map[string]string{"instance": "host", "job": dbo11yJobValue})
+	if err != nil || !matches {
+		t.Fatalf("scrape target not matched: %s %v", expr, err)
+	}
 }

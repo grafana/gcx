@@ -6,8 +6,8 @@ Inspect a single Database Observability instance: health, connections, wait even
 
 Show exporter health and a query-performance snapshot for one database instance.
 
-The argument is the instance's service or legacy service_name (the identifier "gcx dbo11y
-instances list" reports as NAME). What's available depends on the instance's
+The argument is the instance's service or legacy service_name. The command
+"gcx dbo11y instances list" reports it as NAME. Available data depends on the
 engine (from "gcx dbo11y instances list"):
 
   - Health (up/down) is engine-agnostic, from the standard Prometheus scrape
