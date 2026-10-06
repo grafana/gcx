@@ -1812,7 +1812,8 @@ Pick the read verb by what you start with:
   inspect    Root-cause analysis only — heavy: insight timeline + related
              entities. Don't use it just to read an entity's properties (use
              'list'); reach for it only when you need the RCA view.
-  query      Arbitrary Cypher over the graph.`,
+  query      Deprecated legacy entity/edge search. For Cypher projections,
+             aggregates, and paths, use 'gcx kg graph query'.`,
 	}
 
 	// list subcommand
@@ -2679,8 +2680,14 @@ func newCypherCommand(loader RESTConfigLoader) *cobra.Command {
 	ioOpts := &cypherOpts{}
 	cmd := &cobra.Command{
 		Use:   "query <cypher-query>",
-		Short: "Query entities by running a read-only Cypher query against the Knowledge Graph.",
+		Short: "Query entities with the legacy Cypher API (Deprecated: use gcx kg graph query).",
 		Long: `Query entities by running a read-only Cypher query against the Knowledge Graph.
+
+Deprecated: use 'gcx kg graph query' for new workflows. That command returns
+columns/rows/stats, requires a literal LIMIT, and does not support --page or
+--insights-only. Update queries and output parsing when migrating.
+This command retains its search endpoint, entities/edges response, and flags
+through v1.x; it will not be removed before the next major release.
 
 Run 'gcx kg meta schema' to discover valid entity types, property names, and relationship names.
 
@@ -2711,6 +2718,8 @@ Tips:
 			if err := ioOpts.IO.Validate(); err != nil {
 				return err
 			}
+			// Cobra's Deprecated field writes to stdout and would corrupt JSON output.
+			cmd.PrintErrln("Warning: gcx kg entities query is deprecated; migrate to gcx kg graph query (columns/rows/stats; requires LIMIT; no --page or --insights-only). The legacy command remains supported through v1.x.")
 			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
 				return err
