@@ -27,8 +27,12 @@ you time, and they mean we can say yes faster.
 
 **Before writing a new command, provider, datasource kind or resource type,
 please [open a new command proposal](https://github.com/grafana/gcx/issues/new?template=2-new-command-proposal.yml)
-and wait for a maintainer to agree with the placement.** Grafana teams can
-raise it in the #gcx channel instead.
+and wait for a maintainer to agree with the placement.**
+
+Grafana product teams don't need a proposal for commands inside their own
+product area — see [Product teams](#product-teams). For anything outside it,
+such as a new top-level area or a change to shared commands, raise it in the
+#gcx channel or open a proposal.
 
 We would much rather say "not like this" to a short issue than to a finished
 pull request. Command paths, flags and positional syntax are stable within a
@@ -48,8 +52,6 @@ It does **not** apply to (please just send a PR):
 - documentation
 - tests
 - performance and reliability work
-- changes inside a product area your team owns, where the command surface
-  doesn't change
 
 If you have already written the code, that's fine — open the issue anyway and
 link it. We'll review the idea before the diff.
@@ -80,10 +82,10 @@ to be solved by the owning team first. In the meantime,
 
 Before adding a command, check whether an existing one can answer the same
 question with one more flag, or whether the operation is already covered by
-the standard verbs — `list`, `get`, `create`, `update`, `push`, `pull`,
-`delete`. [Prefer existing command operations](docs/design/command-naming.md)
-over inventing new ones; `cmd/gcx/root/commandoperations_test.go` enforces
-this.
+the standard verbs — `list`, `get`, `create`, `update`, `upsert`, `push`,
+`pull`, `delete`, `query`, `search`. [Prefer existing command
+operations](docs/design/command-naming.md) over inventing new ones;
+`cmd/gcx/root/commandoperations_test.go` enforces this.
 
 If two open PRs would add overlapping commands, we'd rather consolidate them
 before merging than ship both and deprecate one in the next major release.
@@ -107,7 +109,7 @@ most changes here are written with an agent's help. Two requests:
 A PR that is easy to generate can still be expensive to review. The issue step
 is how we keep that cost from landing on you as a rejection.
 
-## Conventions that CI enforces
+## Conventions we enforce
 
 Run `mise run gate` (lint + tests + build) before pushing, and
 `GCX_AGENT_MODE=false mise run reference` if you touched commands, flags,
@@ -129,7 +131,7 @@ config or env vars. The specifics:
 The checks that must pass to merge are `Tests`, `Linters` and `Documentation`,
 plus the organisation's signed-commit and secret-scanning checks.
 
-Not enforced by CI, but please follow it: **conventional commit PR titles** —
+Not enforced automatically, but please follow it: **conventional commit PR titles** —
 `feat(slo):`, `fix(traces):`, `docs:` and so on. PRs are squash-merged, so the
 title becomes the commit message and feeds the changelog. Mark breaking
 changes with `!`.

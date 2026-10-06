@@ -10,7 +10,9 @@ body:
 
         If you've already written it, that's fine — link the PR at the bottom and we'll review the idea first.
 
-        Bug fixes, docs, tests and changes that don't alter the command surface don't need a proposal.
+        Bug fixes, docs, tests and changes that don't alter the command surface don't need a proposal. Grafana product teams adding commands in their own product area don't need one either.
+
+        Asking for something rather than planning to build it? Use the **✨ Feature Request** template instead.
 
   - type: textarea
     id: question
@@ -26,7 +28,7 @@ body:
     attributes:
       label: Why can't an existing command do this?
       description: |
-        Check `gcx help-tree` and `gcx commands --flat` first. Could an existing command take one more flag, or is this covered by a standard verb (`list`, `get`, `create`, `update`, `push`, `pull`, `delete`)? Name the nearest existing command and how someone would choose between the two.
+        Check `gcx help-tree` and `gcx commands --flat` first. Could an existing command take one more flag, or is this covered by a standard verb (`list`, `get`, `create`, `update`, `upsert`, `push`, `pull`, `delete`, `query`, `search`)? Name the nearest existing command and how someone would choose between the two.
       placeholder: "`gcx slo definitions list` returns definitions but has no burn-rate data ..."
     validations:
       required: true
