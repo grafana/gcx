@@ -165,12 +165,11 @@ func TestNativeExporterDoesNotRequireInventoryScopeLabels(t *testing.T) {
 	for _, test := range []struct {
 		name                          string
 		inventoryScope, exporterScope map[string]string
-		wantData                      bool
 	}{
-		{"matching", map[string]string{"service_namespace": "example", "deployment_environment": "demo", "cluster": "local"}, map[string]string{"service_namespace": "example", "deployment_environment": "demo", "cluster": "local"}, true},
-		{"foreign namespace", map[string]string{"service_namespace": "example"}, map[string]string{"service_namespace": "other"}, true},
-		{"missing exporter scope", map[string]string{"service_namespace": "example", "cluster": "local"}, nil, true},
-		{"scope absent on both", nil, nil, true},
+		{"matching", map[string]string{"service_namespace": "example", "deployment_environment": "demo", "cluster": "local"}, map[string]string{"service_namespace": "example", "deployment_environment": "demo", "cluster": "local"}},
+		{"foreign namespace", map[string]string{"service_namespace": "example"}, map[string]string{"service_namespace": "other"}},
+		{"missing exporter scope", map[string]string{"service_namespace": "example", "cluster": "local"}, nil},
+		{"scope absent on both", nil, nil},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			cfg := testRESTConfig(t, func(w http.ResponseWriter, r *http.Request) {
@@ -210,7 +209,7 @@ func TestNativeExporterDoesNotRequireInventoryScopeLabels(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if result.Health.HasUp != test.wantData || result.Health.HasScrapeError != test.wantData {
+			if !result.Health.HasUp || !result.Health.HasScrapeError {
 				t.Fatalf("scope selected unexpected telemetry: %+v", result.Health)
 			}
 		})
@@ -231,7 +230,7 @@ func TestSelectInstanceMetadataDuplicatesAndLegacy(t *testing.T) {
 		other := first
 		other.Host = "other"
 		if _, err := selectInstanceMetadata([]Instance{first, other}, "example-db"); (err != nil) != native {
-			t.Fatalf("namespace collision accepted, native=%v", native)
+			t.Fatalf("host collision accepted, native=%v", native)
 		}
 	}
 }
@@ -329,5 +328,23 @@ func TestNativeMetadataDifferencesDoNotChangeSelectors(t *testing.T) {
 	other.Labels = map[string]string{"server_id": "different", "cluster": "different"}
 	if _, err := selectInstanceMetadata([]Instance{first, other}, "db"); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestNativeMetadataSkipsMissingHost(t *testing.T) {
+	missing := Instance{Name: "db", native: true}
+	named := Instance{Name: "db", Host: "host:5432", native: true, identity: []Matcher{{Label: "instance", Op: "=", Value: "host:5432"}}}
+	for _, rows := range [][]Instance{{missing, named}, {named, missing}} {
+		got, err := selectInstanceMetadata(rows, "db")
+		if err != nil || got.Host != named.Host {
+			t.Fatalf("valid host not selected: %+v %v", got, err)
+		}
+	}
+}
+func TestLegacyMetadataKeepsFirstEngine(t *testing.T) {
+	first := Instance{Name: "db", Engine: "postgres"}
+	got, err := selectInstanceMetadata([]Instance{first, {Name: "db", Engine: "mysql"}}, "db")
+	if err != nil || got.Engine != first.Engine {
+		t.Fatalf("legacy selection changed: %+v %v", got, err)
 	}
 }

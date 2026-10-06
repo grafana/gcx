@@ -116,7 +116,7 @@ non-zero with a hint to activate it in Grafana Cloud instead of a generic
 		RunE: runGet(loader, opts),
 		Annotations: map[string]string{
 			agent.AnnotationTokenCost: "small",
-			agent.AnnotationLLMHint:   `Per-instance Database Observability snapshot. Health (up/down) is engine-agnostic. Postgres also reports connection counts by state, active wait events (wait_event_type/wait_event), and longest running transaction, from pg_stat_activity. MySQL reports a single current-connections count only (mysql_global_status_threads_connected); wait events aren't available as a live metric for MySQL. Top queries (both engines) are ranked by time share from pg_stat_statements (Postgres) or mysql_perf_schema_events_statements_* (MySQL) over --since (default 5m). Pairs with 'gcx dbo11y instances list' to find instance names and engines. Use --filter <label><op><value> (repeatable) to scope the connections/query-performance queries to one database on a multi-database instance, e.g. --filter datname=payments (Postgres) or --filter schema=payments (MySQL) — health/inventory metrics don't carry that label. On no telemetry this command also checks the stack's Database Observability activation status and, if not activated, exits 1 with a specific "not activated" hint instead of the generic no-telemetry message. Examples: gcx dbo11y instances get <name> -o json; gcx dbo11y instances get <name> --since 1h --top 20 -o json`,
+			agent.AnnotationLLMHint:   `Per-instance Database Observability snapshot. Health (up/down) is engine-agnostic. Postgres also reports connection counts by state, active wait events (wait_event_type/wait_event), and longest running transaction, from pg_stat_activity. MySQL reports a single current-connections count only (mysql_global_status_threads_connected); wait events aren't available as a live metric for MySQL. Top queries (both engines) are ranked by time share from pg_stat_statements (Postgres) or mysql_perf_schema_events_statements_* (MySQL) over --since (default 5m). Accepts legacy service_name and native Alloy service names. Pairs with 'gcx dbo11y instances list -o wide' to inspect hosts and engines. A native name with multiple hosts requires a datasource with one matching host. Native rows need an exporter instance label. Use --filter <label><op><value> (repeatable) to scope the connections/query-performance queries to one database on a multi-database instance, e.g. --filter datname=payments (Postgres) or --filter schema=payments (MySQL) — health/inventory metrics don't carry that label. On no telemetry this command also checks the stack's Database Observability activation status and, if not activated, exits 1 with a specific "not activated" hint instead of the generic no-telemetry message. Examples: gcx dbo11y instances get <name> -o json; gcx dbo11y instances get <name> --since 1h --top 20 -o json`,
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -327,18 +327,22 @@ func selectInstanceMetadata(metadata []Instance, name string) (Instance, error) 
 		if first.native {
 			continue
 		}
-		for _, inst := range metadata {
-			if !inst.native && inst.Engine != first.Engine {
-				return Instance{}, fmt.Errorf("instance %q matches multiple engines; use gcx dbo11y instances list -o wide to inspect the matching rows", name)
-			}
-		}
 		return first, nil
 	}
-	first := metadata[0]
+	var first Instance
+	for _, inst := range metadata {
+		if inst.Host != "" {
+			first = inst
+			break
+		}
+	}
 	if first.Host == "" {
 		return Instance{}, fmt.Errorf("instance %q has no exporter instance label", name)
 	}
-	for _, inst := range metadata[1:] {
+	for _, inst := range metadata {
+		if inst.Host == "" {
+			continue
+		}
 		if inst.Host != first.Host || inst.Engine != first.Engine {
 			return Instance{}, fmt.Errorf("instance %q matches multiple database hosts; use gcx dbo11y instances list -o wide to inspect hosts and select a datasource with one matching host", name)
 		}
