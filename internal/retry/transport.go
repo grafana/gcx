@@ -259,17 +259,17 @@ func isTransientConnectionError(err error) bool {
 		return true
 	}
 
+	// Check for net.DNSError with IsTemporary.
+	var dnsErr *net.DNSError
+	if errors.As(err, &dnsErr) {
+		return dnsErr.IsTemporary
+	}
+
 	// Errors that classify themselves, such as those the wasip1 host
 	// transport reports in place of a net.OpError.
 	var transient interface{ Transient() bool }
 	if errors.As(err, &transient) {
 		return transient.Transient()
-	}
-
-	// Check for net.DNSError with IsTemporary.
-	var dnsErr *net.DNSError
-	if errors.As(err, &dnsErr) {
-		return dnsErr.IsTemporary
 	}
 
 	// Fallback: check for net.Error interface (timeout, temporary).

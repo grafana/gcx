@@ -2,9 +2,11 @@ package httputils
 
 import (
 	"bytes"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
+	"sync/atomic"
 )
 
 // Parts of the wasip1 host transport (wire_wasip1.go) that don't call the
@@ -20,14 +22,15 @@ func readSized(get func(buf *byte, capacity uint32) uint32) []byte {
 		buf = make([]byte, n)
 		n = get(&buf[0], n)
 	}
-	return buf[:n]
+	return buf[:min(int(n), len(buf))] // a host whose length changed gives a short read, not a panic
 }
 
 // encodeHeaders and decodeHeaders use the ABI's "name\0value\0..." form.
 func encodeHeaders(h http.Header) string {
 	var b strings.Builder
 	for k, vs := range h {
-		if http.CanonicalHeaderKey(k) == "Host" { // sent as the authority
+		switch http.CanonicalHeaderKey(k) {
+		case "Host", "Content-Length", "Transfer-Encoding", "Trailer": // the authority, and framing the host owns
 			continue
 		}
 		for _, v := range vs {
@@ -47,6 +50,70 @@ func decodeHeaders(b []byte) http.Header {
 		h.Add(string(parts[i]), string(parts[i+1]))
 	}
 	return h
+}
+
+// hostBody streams a response body from the host. The host calls are
+// fields so that the native suite can test it.
+type hostBody struct {
+	read func(p []byte) int32          // body_read; p is never empty
+	fail func() error                  // error_code and error_detail, once read returns -2
+	drop func()                        // drop
+	wait func(ready func() bool) error // waitFor with the request's context
+
+	// Another goroutine may Close the body while a Read waits (as
+	// client-go's StreamWatcher.Stop does), and the host traps on a dropped
+	// id. So Close only marks the body closed while a Read is in progress,
+	// and that Read drops the id once it is done with it. The flags are
+	// atomic so this holds without relying on wasip1 running one goroutine
+	// at a time.
+	closed, reading, dropped atomic.Bool
+}
+
+func (b *hostBody) Read(p []byte) (int, error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+	b.reading.Store(true)
+	defer func() {
+		b.reading.Store(false)
+		if b.closed.Load() {
+			b.release()
+		}
+	}()
+	var n int32
+	err := b.wait(func() bool {
+		if b.closed.Load() {
+			return true
+		}
+		n = b.read(p)
+		return n != 0
+	})
+	switch {
+	case err != nil:
+		return 0, err
+	case b.closed.Load():
+		return 0, http.ErrBodyReadAfterClose
+	case n == -1:
+		return 0, io.EOF
+	case n == -2:
+		return 0, b.fail()
+	}
+	return int(n), nil
+}
+
+func (b *hostBody) Close() error {
+	b.closed.Store(true)
+	if !b.reading.Load() {
+		b.release()
+	}
+	return nil
+}
+
+// release drops the id, once.
+func (b *hostBody) release() {
+	if b.dropped.CompareAndSwap(false, true) {
+		b.drop()
+	}
 }
 
 // wasi:http@0.3.1 error-code case indices that hostError classifies.
