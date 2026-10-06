@@ -284,7 +284,7 @@ func reportError(err error, boolFlags map[string]struct{}, subCmds map[string]bo
 }
 
 // emittedNoticeSummary is the stderr notice for an EmittedError.
-const emittedNoticeSummary = "command did not fully succeed; the result document on stdout lists the failures"
+const emittedNoticeSummary = "command failed; see the result document on stdout for details"
 
 // stdoutIsTerminal is replaced in tests.
 var stdoutIsTerminal = terminal.StdoutIsTerminal //nolint:gochecknoglobals

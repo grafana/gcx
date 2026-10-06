@@ -113,7 +113,7 @@ the filter's exit status, so without the notice the caller sees only `null`
 and can mistake a rejected request for an empty result. The notice is
 advisory, like the hint, warning and note classes: stdout remains the
 authoritative outcome, and consumers never need to parse both streams.
-Details and the first suggestion are clipped to 500 characters. On a
+The summary, details and first suggestion are each clipped to 500 runes. On a
 terminal stdout the document is already visible, so no notice is written.
 
 The envelope carries collision-resistant discriminators:
