@@ -34,6 +34,9 @@ func encodeHeaders(h http.Header) string {
 			continue
 		}
 		for _, v := range vs {
+			if strings.ContainsRune(k+v, 0) { // would break the framing; HTTP forbids it anyway
+				continue
+			}
 			b.WriteString(k)
 			b.WriteByte(0)
 			b.WriteString(v)

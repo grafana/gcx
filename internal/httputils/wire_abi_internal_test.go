@@ -24,6 +24,7 @@ func TestHeaderFraming(t *testing.T) {
 		{"multiple values", http.Header{"Accept": {"a", "b"}, "X-Y": {"z"}}, http.Header{"Accept": {"a", "b"}, "X-Y": {"z"}}},
 		{"empty value", http.Header{"X-Empty": {""}}, http.Header{"X-Empty": {""}}},
 		{"host is the authority's job", http.Header{"Host": {"evil.example"}, "A": {"b"}}, http.Header{"A": {"b"}}},
+		{"NUL can't be framed", http.Header{"A": {"b\x00c", "d"}}, http.Header{"A": {"d"}}},
 		{"framing is the host's job", http.Header{"Content-Length": {"9"}, "Transfer-Encoding": {"chunked"}, "Trailer": {"X"}, "A": {"b"}}, http.Header{"A": {"b"}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

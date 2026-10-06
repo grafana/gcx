@@ -197,6 +197,7 @@ func hostHandle(ctx context.Context, id uint32) {
 	x.cancel, x.done = cancel, make(chan struct{})
 	go func() {
 		resp, err := s.roundTrip(reqCtx, x.req)
+		x.req = wireRequest{} // sent, so don't hold the body until drop
 		if err != nil {
 			x.err.Store(err)
 			close(x.done)
