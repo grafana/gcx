@@ -55,15 +55,3 @@ func WriteGetOutputForTest(stdout, stderr io.Writer, opts *getOpts, res *FetchRe
 func BatchMutationForTest(action string, summary *remote.OperationSummary, dryRun bool) cmdio.BatchMutation {
 	return batchMutationFromSummary(action, summary, dryRun)
 }
-
-// NewPushOptsForTest binds the real push options for presentation tests.
-func NewPushOptsForTest(flags *pflag.FlagSet) *pushOpts {
-	opts := &pushOpts{}
-	opts.setup(flags)
-	return opts
-}
-
-// PushMutationForTest exposes the actual push presentation path.
-func PushMutationForTest(opts *pushOpts, summary *remote.OperationSummary) cmdio.BatchMutation {
-	return opts.mutationResult(summary)
-}

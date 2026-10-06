@@ -261,10 +261,13 @@ status messages as the primary output.
   `successes` with real-write identity references. All default formats keep
   success counts only. The option does not change data acquisition.
   Each entry has `action` (`created` or `updated`), `requested`
-  (the input kind and name/ID), and `target`
-  (`kind`, `name`, `id`, `uid`, and `namespace` when available).
+  (the input kind and name), and `target`
+  (`kind`, `name`, `uid`, and `namespace` when available).
   These references use the API response. They contain no resource body.
   Dry-run and skipped operations do not produce applied identity references.
+  API responses without a resource name also produce no reference.
+  Entries follow completion order, not input order.
+  Large results use the agents codec spill receipt and file.
 - Failures are always enumerated individually — they require action.
 - Skipped resources are enumerated if count < 20, otherwise grouped.
 - `cmdio.Success/Warning/Error` remain for progress feedback *during*

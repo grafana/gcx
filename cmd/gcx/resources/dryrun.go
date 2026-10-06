@@ -121,7 +121,7 @@ func summaryCounts(summary *remote.OperationSummary) cmdio.MutationSummary {
 }
 
 // batchMutationFromSummary converts an OperationSummary into the shared
-// BatchMutation result: counts, failures, and safe real-write identity receipts.
+// BatchMutation result: counts, failures, and real-write identity receipts.
 // This value is what push/delete write to stdout
 // through the codec system — the agents codec and explicit -o json/yaml get
 // the structured document; the text codec below reproduces the human line.
@@ -129,10 +129,8 @@ func batchMutationFromSummary(action string, summary *remote.OperationSummary, d
 	result := cmdio.NewBatchMutation(action)
 	result.Summary = summaryCounts(summary)
 	result.DryRun = dryRun
-	if !dryRun {
-		for _, success := range summary.Successes() {
-			result.Successes = append(result.Successes, cmdio.MutationSuccess{Requested: cmdio.MutationTarget{Kind: success.Kind, Name: success.RequestedName, ID: success.RequestedName}, Action: success.Action, Target: cmdio.MutationTarget{Kind: success.Kind, Name: success.Name, ID: success.Name, UID: success.UID, Namespace: success.Namespace}})
-		}
+	for _, success := range summary.Successes() {
+		result.Successes = append(result.Successes, cmdio.MutationSuccess{Requested: cmdio.MutationTarget{Kind: success.Kind, Name: success.RequestedName}, Action: success.Action, Target: cmdio.MutationTarget{Kind: success.Kind, Name: success.Name, UID: success.UID, Namespace: success.Namespace}})
 	}
 	for _, failure := range summary.Failures() {
 		target := cmdio.MutationTarget{}

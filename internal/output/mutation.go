@@ -76,7 +76,7 @@ func NewSingleMutation(action string, target MutationTarget) SingleMutation {
 	}
 }
 
-// MutationSuccess is the safe identity receipt for one real write.
+// MutationSuccess is the identity receipt for one real write.
 // It contains no resource body or credentials.
 type MutationSuccess struct {
 	Requested MutationTarget `json:"requested" yaml:"requested"`
@@ -90,7 +90,7 @@ type BatchMutation struct {
 	SchemaVersion string          `json:"schema_version" yaml:"schema_version"`
 	Action        string          `json:"action" yaml:"action"`
 	Summary       MutationSummary `json:"summary" yaml:"summary"`
-	// Successes contains only safe identities from real API writes.
+	// Successes contains only identities from real API writes.
 	Successes []MutationSuccess `json:"successes,omitempty" yaml:"successes,omitempty"`
 	// Failures is always present, including an empty slice.
 	Failures []MutationFailure `json:"failures" yaml:"failures"`

@@ -83,6 +83,9 @@ func NewPusher(client PushClient, registry PushRegistry) *Pusher {
 
 // PushRequest is a request for pushing resources to Grafana.
 type PushRequest struct {
+	// Include returned identities from successful writes.
+	IncludeSuccesses bool
+
 	// A list of resources to push.
 	Resources *resources.Resources
 
@@ -277,7 +280,7 @@ func (p *Pusher) pushSingleResource(
 
 	logger.Info("Resource pushed")
 	summary.RecordSuccess()
-	if !request.DryRun && applied != nil && applied.GetName() != "" {
+	if request.IncludeSuccesses && !request.DryRun && applied != nil && applied.GetName() != "" {
 		summary.RecordApplied(OperationSuccess{RequestedName: name, Action: action, Kind: desc.Kind, Name: applied.GetName(), UID: string(applied.GetUID()), Namespace: applied.GetNamespace()})
 	}
 	return nil

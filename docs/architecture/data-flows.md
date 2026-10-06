@@ -798,9 +798,9 @@ Browser's livereload client receives → navigates to /gcx/.../{name}
 
 `internal/resources/remote/summary.go` provides thread-safe counters for batch operations.
 
-Push also records the requested identity and the identity returned by each real
-API write. Dry-run and skipped operations do not produce these records. The
-CLI includes them in structured output only with `--include-successes`.
+With `--include-successes`, push records the requested identity and the identity
+returned by each real API write. Dry-run and skipped operations do not produce
+these records. The CLI includes the records in structured output.
 Resource bodies are not stored in these records.
 
 ```go

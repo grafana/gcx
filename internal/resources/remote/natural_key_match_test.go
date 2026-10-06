@@ -97,7 +97,7 @@ func TestPusher_CrossStackUpdate_NaturalKey(t *testing.T) {
 	localRes := makeTestResource(group, "local-uuid", "My Resource")
 	testResources := resources.NewResources(localRes)
 
-	summary, err := pusher.Push(t.Context(), remote.PushRequest{
+	summary, err := pusher.Push(t.Context(), remote.PushRequest{IncludeSuccesses: true,
 		Resources:      testResources,
 		MaxConcurrency: 1,
 		IncludeManaged: true,

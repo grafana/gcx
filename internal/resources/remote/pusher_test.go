@@ -791,8 +791,9 @@ func TestPusher_UnnamedResourceDoesNotReadCollectionAsItem(t *testing.T) {
 
 func TestPusher_ReturnedIdentities(t *testing.T) {
 	desc := resources.Descriptor{GroupVersion: schema.GroupVersion{Group: "receipt.test.grafana.app", Version: "v1"}, Kind: "Item", Plural: "items"}
-	for _, dryRun := range []bool{false, true} {
-		t.Run(fmt.Sprintf("dryRun=%v", dryRun), func(t *testing.T) {
+	for _, mode := range []struct{ dryRun, include bool }{{false, false}, {false, true}, {true, true}} {
+		dryRun := mode.dryRun
+		t.Run(fmt.Sprintf("dryRun=%v include=%v", dryRun, mode.include), func(t *testing.T) {
 			inputs := resources.NewResources()
 			client := &mockPushClient{createResults: map[string]*unstructured.Unstructured{}}
 			for _, name := range []string{"one", "two"} {
@@ -804,10 +805,10 @@ func TestPusher_ReturnedIdentities(t *testing.T) {
 				returned.SetNamespace("stack")
 				client.createResults[name] = returned
 			}
-			summary, err := remote.NewPusher(client, &mockPushRegistry{supportedResources: resources.Descriptors{desc}}).Push(t.Context(), remote.PushRequest{Resources: inputs, IncludeManaged: true, DryRun: dryRun, MaxConcurrency: 2})
+			summary, err := remote.NewPusher(client, &mockPushRegistry{supportedResources: resources.Descriptors{desc}}).Push(t.Context(), remote.PushRequest{IncludeSuccesses: mode.include, Resources: inputs, IncludeManaged: true, DryRun: dryRun, MaxConcurrency: 2})
 			require.NoError(t, err)
 			require.Equal(t, 2, summary.SuccessCount())
-			if dryRun {
+			if dryRun || !mode.include {
 				require.Empty(t, summary.Successes())
 				return
 			}
@@ -820,7 +821,7 @@ func TestPusher_MissingReturnedIdentityHasNoReceipt(t *testing.T) {
 	desc := resources.Descriptor{GroupVersion: schema.GroupVersion{Group: "receipt.test.grafana.app", Version: "v1"}, Kind: "Item", Plural: "items"}
 	obj := &unstructured.Unstructured{Object: map[string]any{"apiVersion": "receipt.test.grafana.app/v1", "kind": "Item", "metadata": map[string]any{"name": "requested"}}}
 	client := &mockPushClient{createResults: map[string]*unstructured.Unstructured{"requested": {Object: map[string]any{}}}}
-	summary, err := remote.NewPusher(client, &mockPushRegistry{supportedResources: resources.Descriptors{desc}}).Push(t.Context(), remote.PushRequest{Resources: resources.NewResources(resources.MustFromUnstructured(obj)), IncludeManaged: true})
+	summary, err := remote.NewPusher(client, &mockPushRegistry{supportedResources: resources.Descriptors{desc}}).Push(t.Context(), remote.PushRequest{IncludeSuccesses: true, Resources: resources.NewResources(resources.MustFromUnstructured(obj)), IncludeManaged: true})
 	require.NoError(t, err)
 	require.Equal(t, 1, summary.SuccessCount())
 	require.Empty(t, summary.Successes())
