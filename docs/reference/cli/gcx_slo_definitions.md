@@ -2,6 +2,13 @@
 
 Manage SLO definitions.
 
+### Synopsis
+
+Manage SLO definitions.
+
+Freeform queries must contain a server evaluation interval macro.
+The registered example uses $__rate_interval in each rate range.
+
 ### Options
 
 ```

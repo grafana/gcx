@@ -5,12 +5,15 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/slo/definitions"
 	"github.com/grafana/gcx/internal/resources/adapter"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -620,6 +623,33 @@ func TestSloResource_Conversion(t *testing.T) {
 			require.NoError(t, err)
 			tt.value.ReadOnly = nil
 			assert.Equal(t, tt.value, *restored)
+		})
+	}
+}
+
+// The SLO backend requires an evaluation interval macro in freeform queries.
+// Check the registered example, then parse it after server interval expansion.
+func TestSloResource_ExampleUsesServerEvaluationInterval(t *testing.T) {
+	loadDeps := func(context.Context) (adapter.ClientDeps, error) { return adapter.ClientDeps{}, nil }
+	provider := adapter.NewProvider("slo", "test", loadDeps, definitions.SloResource())
+	registrations := provider.TypedRegistrations()
+	require.Len(t, registrations, 1)
+	var example unstructured.Unstructured
+	require.NoError(t, json.Unmarshal(registrations[0].Example, &example))
+	query, found, err := unstructured.NestedString(example.Object, "spec", "query", "freeform", "query")
+	require.NoError(t, err)
+	require.True(t, found)
+	ranges := regexp.MustCompile(`\[[^\]]+\]`).FindAllString(query, -1)
+	require.NotEmpty(t, ranges, "availability must evaluate rates over a server-selected interval")
+	for _, interval := range ranges {
+		assert.Contains(t, []string{"[$__rate_interval]", "[$__range]", "[$__interval]"}, interval,
+			"the SLO backend rejects a freeform example with only literal intervals")
+	}
+	for _, interval := range []string{"5m", "1h"} {
+		t.Run(interval, func(t *testing.T) {
+			expanded := strings.NewReplacer("$__rate_interval", interval, "$__range", interval, "$__interval", interval).Replace(query)
+			_, err := parser.NewParser(parser.Options{}).ParseExpr(expanded)
+			require.NoError(t, err, "the example must remain valid PromQL after server expansion")
 		})
 	}
 }
