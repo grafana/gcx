@@ -55,13 +55,14 @@ type EnvVar struct {
 
 // TestRunStatus represents the status of a k6 test run.
 type TestRunStatus struct {
-	ID           int    `json:"id,omitempty"`
-	LoadTestID   int    `json:"load_test_id"`
-	Status       string `json:"status"`
-	ResultStatus int    `json:"result_status"`
-	Created      string `json:"created,omitempty"`
-	Ended        string `json:"ended,omitempty"`
-	ReferenceID  string `json:"reference_id,omitempty"`
+	ID           int             `json:"id,omitempty"`
+	LoadTestID   int             `json:"load_test_id"`
+	Status       string          `json:"status"`
+	ResultStatus int             `json:"result_status"`
+	Created      string          `json:"created,omitempty"`
+	Ended        string          `json:"ended,omitempty"`
+	ReferenceID  string          `json:"reference_id,omitempty"`
+	Options      *TestRunOptions `json:"options,omitempty"`
 }
 
 // projectsResponse is the response from listing projects.
@@ -187,4 +188,10 @@ type AllowedLoadZone struct {
 // allowedLoadZonesResponse is the response from listing allowed load zones.
 type allowedLoadZonesResponse struct {
 	Value []AllowedLoadZone `json:"value"`
+}
+
+// TestRunOptions contains the returned configuration for a k6 test run.
+type TestRunOptions struct {
+	// Thresholds contains configured expressions, not evaluated results.
+	Thresholds map[string][]TestRunThreshold `json:"thresholds,omitempty"`
 }
