@@ -151,9 +151,6 @@ func (f *Flow) runManual(ctx context.Context) (*Result, error) {
 func (f *Flow) runWithCallbackServer(ctx context.Context) (*Result, error) {
 	listener, port, err := listenOnCallbackPort(ctx, f.opts.BindAddress, f.opts.Port)
 	if err != nil {
-		if f.opts.Port == 0 {
-			return nil, fmt.Errorf("no available port: %w", err)
-		}
 		return nil, err
 	}
 
@@ -444,23 +441,21 @@ func exchangeCodeForToken(ctx context.Context, endpoint, code, codeVerifier stri
 	return &result, nil
 }
 
+// listenOnCallbackPort opens the local TCP listener for the OAuth callback.
+// fixedPort of 0 asks the kernel for any free port: the kernel only ever hands
+// out a port nothing else is bound to, so this can't collide the way scanning
+// a fixed range ourselves can when another process (or, under WSL2 mirrored
+// networking, the Windows host itself) holds ports inside that range.
 func listenOnCallbackPort(ctx context.Context, bindAddress string, fixedPort int) (net.Listener, int, error) {
 	var lc net.ListenConfig
-	if fixedPort != 0 {
-		listener, err := lc.Listen(ctx, "tcp", fmt.Sprintf("%s:%d", bindAddress, fixedPort))
-		if err != nil {
+	listener, err := lc.Listen(ctx, "tcp", fmt.Sprintf("%s:%d", bindAddress, fixedPort))
+	if err != nil {
+		if fixedPort != 0 {
 			return nil, 0, fmt.Errorf("callback port %d unavailable: %w", fixedPort, err)
 		}
-		return listener, fixedPort, nil
+		return nil, 0, fmt.Errorf("no available port: %w", err)
 	}
-
-	for port := 54321; port < 54400; port++ {
-		listener, err := lc.Listen(ctx, "tcp", fmt.Sprintf("%s:%d", bindAddress, port))
-		if err == nil {
-			return listener, port, nil
-		}
-	}
-	return nil, 0, errors.New("no available port in range 54321-54399")
+	return listener, listener.Addr().(*net.TCPAddr).Port, nil
 }
 
 func generateState() (string, error) {
