@@ -22,6 +22,7 @@ To build the Grafana.com-style docs locally:
 - **[ARCHITECTURE.md](../ARCHITECTURE.md)** — Architecture overview, pipeline diagrams, ADR index
 - **[DESIGN.md](../DESIGN.md)** — CLI UX design: command grammar, output model, taste rules
 - **[CONTRIBUTING.md](../CONTRIBUTING.md)** — Dev setup, testing, contribution workflow
+- **[Engineering RFCs](rfcs/README.md)** — Proposals, tradeoffs, and validation criteria
 - **[Architecture](architecture/README.md)** — Deep-dive architecture docs per domain
 
 ## Directory Layout
@@ -29,6 +30,7 @@ To build the Grafana.com-style docs locally:
 ```
 docs/
 ├── architecture/     # Per-domain codebase analysis
+├── rfcs/             # Numbered engineering proposals and review workflows
 ├── adrs/             # Architecture Decision Records
 ├── sources/          # Grafana.com-mounted user-facing docs
 ├── reference/        # Evergreen tool/API docs, auto-generated CLI reference
@@ -58,6 +60,7 @@ Available in [`_templates/`](_templates/):
 | Scope | Convention | Example |
 |-------|-----------|---------|
 | Point-in-time docs | `YYYY-MM-DD-short-name.md` | `2026-03-27-gap-analysis.md` |
+| RFCs | `NNN-title.md`, indexed in `rfcs/README.md` | `001-alerting-provider-refactor.md` |
 | Evergreen docs | Descriptive name, no date | `provider-guide.md` |
 | Feature subdirs | Lowercase hyphenated | `cloud-rest-config/` |
 

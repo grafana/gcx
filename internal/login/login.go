@@ -100,6 +100,12 @@ type Inputs struct {
 	// a user explicitly left the server empty to be directed to the cloud
 	// instance selector
 	UseCloudInstanceSelector bool
+	// ProbePathfinder asks Run to probe the Grafana instance for the
+	// Pathfinder plugin after validation succeeds, reporting the answer in
+	// Result.PathfinderInstalled. The CLI sets it only for an interactive human
+	// (never an agent) whose target context has no cached detection yet, so
+	// agent logins and repeat logins skip the extra request.
+	ProbePathfinder bool
 
 	// TLS carries client-side TLS settings (mTLS cert/key, custom CA).
 	// When non-nil, these settings are used for target detection, connectivity
@@ -173,6 +179,10 @@ type Hooks struct {
 	// DetectTarget is called with a TLS-aware HTTP client (built from
 	// opts.TLS) or a default client when no TLS is configured.
 	DetectFn func(ctx context.Context, server string) (Target, error)
+
+	// PathfinderFn overrides the Pathfinder plugin probe for testing. When
+	// nil, DetectPathfinder is used.
+	PathfinderFn func(ctx context.Context, restCfg config.NamespacedRESTConfig) bool
 }
 
 // RetryState carries plumbing used by the CLI layer when Run returns a
@@ -237,6 +247,9 @@ type Result struct {
 	GrafanaVersion string
 	StackSlug      string   // non-empty for known Grafana Cloud domains
 	Capabilities   []string // reserved for future use
+	// PathfinderInstalled reports that the Pathfinder plugin is enabled on
+	// the Grafana instance. Only probed when Options.ProbePathfinder is set.
+	PathfinderInstalled bool
 }
 
 // ErrNeedInput is returned when Run requires a value that the caller must
@@ -446,6 +459,7 @@ func Run(ctx context.Context, opts *Options) (Result, error) {
 	}
 
 	var grafanaVersion string
+	var pathfinderInstalled bool
 	if !opts.ForceSave {
 		validateFn := opts.ValidateFn
 		if validateFn == nil {
@@ -456,6 +470,8 @@ func Run(ctx context.Context, opts *Options) (Result, error) {
 		switch {
 		case err == nil:
 			grafanaVersion = v
+			pathfinderInstalled = probePathfinder(ctx, opts, restCfg)
+			cachePathfinderDetection(tempCtx.Grafana, pathfinderInstalled)
 
 		case errors.As(err, &capErr):
 			// The Cloud Access Policy (CAP) token is optional: its absence does
@@ -506,7 +522,31 @@ func Run(ctx context.Context, opts *Options) (Result, error) {
 		HasCloudToken:  cloudEntry != nil && (cloudEntry.Token != "" || cloudEntry.OAuthToken != ""),
 		GrafanaVersion: grafanaVersion,
 		StackSlug:      resolveStackSlug(opts.Server),
+
+		PathfinderInstalled: pathfinderInstalled,
 	}, nil
+}
+
+// cachePathfinderDetection records a positive Pathfinder probe on the staged
+// context so persistContext stores it and later logins can skip both the probe
+// and the one-time hint. A negative result or a nil config is a no-op.
+func cachePathfinderDetection(g *config.GrafanaConfig, installed bool) {
+	if installed && g != nil {
+		g.PathfinderInstalled = true
+	}
+}
+
+// probePathfinder runs the Pathfinder probe when the caller asked for it,
+// honouring the PathfinderFn test seam. Cloud and on-prem instances are
+// probed alike: the plugin's installed-and-enabled state decides the answer.
+func probePathfinder(ctx context.Context, opts *Options, restCfg config.NamespacedRESTConfig) bool {
+	if !opts.ProbePathfinder {
+		return false
+	}
+	if opts.PathfinderFn != nil {
+		return opts.PathfinderFn(ctx, restCfg)
+	}
+	return DetectPathfinder(ctx, restCfg)
 }
 
 // validateRuntimeOnlyBearerDestination prevents a successful login from
@@ -1050,6 +1090,12 @@ func mergeGrafanaAuthIntoStack(cfg *config.Config, existing *config.Context, src
 	// keep it current. Left untouched when discovery yielded nothing (0).
 	if src.StackID != 0 {
 		g.StackID = src.StackID
+	}
+
+	// Pathfinder detection is sticky: cache a freshly discovered plugin and
+	// never clear an existing cached flag on re-auth.
+	if src.PathfinderInstalled {
+		g.PathfinderInstalled = true
 	}
 
 	if explicitOrgID != 0 {

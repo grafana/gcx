@@ -145,6 +145,7 @@
  "gcx assistant mcp-servers update": "finite",
  "gcx assistant prompt": "stream",
  "gcx cloud login": "interactive",
+ "gcx cloud orgs list": "finite",
  "gcx cloud stacks create": "finite",
  "gcx cloud stacks delete": "finite",
  "gcx cloud stacks get": "finite",
