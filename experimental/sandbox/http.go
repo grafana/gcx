@@ -133,7 +133,15 @@ func hostStart(ctx context.Context, m api.Module, ptr, n uint32) uint32 {
 	s.mu.Unlock()
 
 	go func() {
-		defer close(p.done)
+		// Authorize and Transport are the embedder's code, and a panic in
+		// this goroutine would take down the host process, so fail the
+		// request instead.
+		defer func() {
+			if r := recover(); r != nil {
+				p.resp, p.err = nil, fmt.Sprintf("gcx_http: host panic: %v", r)
+			}
+			close(p.done)
+		}()
 		p.resp, p.err = s.roundTrip(reqCtx, raw)
 	}()
 	return id

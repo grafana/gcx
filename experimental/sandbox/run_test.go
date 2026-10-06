@@ -310,6 +310,15 @@ func TestRunIO(t *testing.T) {
 		}
 	})
 
+	t.Run("a panicking Authorize fails the request, not the host", func(t *testing.T) {
+		inv, out := invocation(a, "x", "-vvv", "api", "/api/health")
+		inv.Authorize = func(*http.Request) error { panic("policy bug") }
+		res, err := rt.Run(context.Background(), inv)
+		if err != nil || res.ExitCode == 0 || !strings.Contains(out.String(), "host panic: policy bug") {
+			t.Errorf("exit %d, err %v; want a failed command reporting the panic; output:\n%s", res.ExitCode, err, out)
+		}
+	})
+
 	t.Run("a reused Home persists between runs", func(t *testing.T) {
 		home := t.TempDir()
 		inv, out := invocation(a, "x", "config", "set", "stacks.saved.grafana.server", "https://saved.example")
