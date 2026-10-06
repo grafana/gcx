@@ -587,16 +587,16 @@ func TestTestRunStatus_LegacyPendingZero(t *testing.T) {
 
 func TestTestRunStatus_NormalizesLegacyFields(t *testing.T) {
 	for _, tc := range []struct {
-		name, body, result string
-		testID             int
+		name, body, result, display string
+		testID, loadTestID          int
 	}{
-		{"legacy passed", `{"load_test_id":6,"result_status":1}`, "passed", 6},
-		{"legacy failed", `{"load_test_id":6,"result_status":2}`, "failed", 6},
-		{"current wins", `{"test_id":7,"load_test_id":6,"result":"passed","result_status":2}`, "passed", 7},
-		{"legacy pending", `{"load_test_id":6,"result_status":0}`, "", 6},
-		{"unknown legacy", `{"load_test_id":6,"result_status":7}`, "", 6},
-		{"current identity", `{"test_id":7,"result":"passed"}`, "passed", 7},
-		{"absent", `{}`, "", 0},
+		{"legacy passed", `{"load_test_id":6,"result_status":1}`, "passed", "passed", 6, 6},
+		{"legacy failed", `{"load_test_id":6,"result_status":2}`, "failed", "failed", 6, 6},
+		{"current wins", `{"test_id":7,"load_test_id":6,"result":"passed","result_status":2}`, "passed", "passed", 7, 6},
+		{"legacy pending", `{"load_test_id":6,"result_status":0}`, "", "pending", 6, 6},
+		{"unknown legacy", `{"load_test_id":6,"result_status":7}`, "", "7", 6, 6},
+		{"current identity", `{"test_id":7,"result":"passed"}`, "passed", "passed", 7, 7},
+		{"absent", `{}`, "", "-", 0, 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var run TestRunStatus
@@ -608,13 +608,14 @@ func TestTestRunStatus_NormalizesLegacyFields(t *testing.T) {
 			decoder.UseNumber()
 			require.NoError(t, decoder.Decode(&output))
 			assert.Equal(t, tc.testID, run.TestID)
-			if tc.name == "current identity" {
-				assert.Equal(t, 7, run.LoadTestID)
-				assert.Equal(t, json.Number("7"), output["load_test_id"])
-			}
+			assert.Equal(t, tc.loadTestID, run.LoadTestID)
 			assert.Equal(t, tc.result, run.Result)
+			assert.Equal(t, tc.display, run.resultString())
 			if tc.testID != 0 {
 				assert.Equal(t, json.Number(strconv.Itoa(tc.testID)), output["test_id"])
+			}
+			if tc.loadTestID != 0 {
+				assert.Equal(t, json.Number(strconv.Itoa(tc.loadTestID)), output["load_test_id"])
 			}
 			if tc.result != "" {
 				assert.Equal(t, tc.result, output["result"])

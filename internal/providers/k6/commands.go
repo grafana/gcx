@@ -891,7 +891,7 @@ func newRunsListCommand(loader CloudConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list [id-or-name]",
 		Short: "List test runs for a load test.",
-		Long:  "List test runs for a load test. The RESULT column uses the current k6 Cloud result when present. An absent result is shown as - in table or text output. JSON omits an absent result key.",
+		Long:  "List test runs for a load test. Table output uses the current result, then legacy result_status, or - when neither is present. JSON omits absent result and result_status keys.\n\nJSON and YAML retain run configuration, including options.thresholds; threshold expressions are configuration, not evaluated results.",
 		Example: `  # Inspect configured run thresholds
   gcx k6 runs list --id 6 --json id,options.thresholds`,
 		Args: cobra.RangeArgs(0, 1),
@@ -1959,7 +1959,7 @@ func newTestrunStatusCommand(loader CloudConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "status [test-name]",
 		Short: "Show the most recent test run status for a k6 load test.",
-		Long:  "Show the most recent test run status for a k6 load test. The current k6 Cloud result takes precedence. An absent result is shown as - in table or text output. JSON omits an absent result key.",
+		Long:  "Show the most recent test run status for a k6 load test. Text output uses the current result, then legacy result_status, or - when neither is present. JSON omits absent result and result_status keys.\n\nJSON and YAML retain run configuration, including options.thresholds; threshold expressions are configuration, not evaluated results.",
 		Example: `  # Inspect configured run thresholds
   gcx k6 test-run status --id 6 --json id,options.thresholds`,
 		Args: cobra.RangeArgs(0, 1),
@@ -2026,7 +2026,7 @@ func newTestrunRunsListCommand(loader CloudConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list [test-name]",
 		Short: "List all test runs for a k6 load test.",
-		Long:  "List all test runs for a k6 load test. The current k6 Cloud result takes precedence. An absent result is shown as - in table or text output. JSON omits an absent result key.",
+		Long:  "List all test runs for a k6 load test. Table output uses the current result, then legacy result_status, or - when neither is present. JSON omits absent result and result_status keys.\n\nJSON and YAML retain run configuration, including options.thresholds; threshold expressions are configuration, not evaluated results.",
 		Example: `  # Inspect configured run thresholds
   gcx k6 test-run runs list --id 6 --json id,options.thresholds`,
 		Args: cobra.RangeArgs(0, 1),
