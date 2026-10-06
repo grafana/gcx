@@ -6,7 +6,7 @@ Inspect a single Database Observability instance: health, connections, wait even
 
 Show exporter health and a query-performance snapshot for one database instance.
 
-The argument is the instance's service_name (the identifier "gcx dbo11y
+The argument is the instance's service or legacy service_name (the identifier "gcx dbo11y
 instances list" reports as NAME). What's available depends on the instance's
 engine (from "gcx dbo11y instances list"):
 

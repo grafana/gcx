@@ -75,7 +75,7 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 		Short: "Inspect a single Database Observability instance: health, connections, wait events, and top queries.",
 		Long: `Show exporter health and a query-performance snapshot for one database instance.
 
-The argument is the instance's service_name (the identifier "gcx dbo11y
+The argument is the instance's service or legacy service_name (the identifier "gcx dbo11y
 instances list" reports as NAME). What's available depends on the instance's
 engine (from "gcx dbo11y instances list"):
 
@@ -205,7 +205,7 @@ func runGet(loader *providers.ConfigLoader, opts *getOpts) func(*cobra.Command, 
 // metadata and health metrics don't carry labels like datname/schema, so
 // applying arbitrary matchers there would silently zero them out.
 func fetchInstanceDetail(ctx context.Context, client *prometheus.Client, datasourceUID, name, window string, top int, matchers []Matcher) (*InstanceDetail, bool, error) {
-	metadataExpr, err := buildConnectionInfoQuery([]Matcher{{Label: serviceNameLabel, Op: "=", Value: name}})
+	metadataExpr, err := buildNamedConnectionInfoQuery(name)
 	if err != nil {
 		return nil, false, fmt.Errorf("failed to build metadata query: %w", err)
 	}
@@ -217,9 +217,9 @@ func fetchInstanceDetail(ctx context.Context, client *prometheus.Client, datasou
 	if err != nil {
 		return nil, false, fmt.Errorf("failed to parse instance metadata: %w", err)
 	}
-	inst := Instance{Name: name}
-	if len(metadata) > 0 {
-		inst = metadata[0]
+	inst, err := selectInstanceMetadata(metadata, name)
+	if err != nil {
+		return nil, false, err
 	}
 	metrics := metricsForEngine(inst.Engine)
 
@@ -232,45 +232,45 @@ func fetchInstanceDetail(ctx context.Context, client *prometheus.Client, datasou
 
 	eg, egCtx := errgroup.WithContext(ctx)
 	eg.Go(queryInto(egCtx, client, datasourceUID, func() (string, error) {
-		return buildScrapeUpQuery(name)
+		return buildScrapeUpQuery(name, inst.identity...)
 	}, &upResp))
 	if metrics.scrapeErrorMetric != "" {
 		eg.Go(queryInto(egCtx, client, datasourceUID, func() (string, error) {
-			return buildUpQuery(metrics.scrapeErrorMetric, name, nil)
+			return buildUpQuery(metrics.scrapeErrorMetric, name, nil, inst.identity...)
 		}, &scrapeErrResp))
 	}
 	if metrics.scrapeDurationMetric != "" {
 		eg.Go(queryInto(egCtx, client, datasourceUID, func() (string, error) {
-			return buildUpQuery(metrics.scrapeDurationMetric, name, nil)
+			return buildUpQuery(metrics.scrapeDurationMetric, name, nil, inst.identity...)
 		}, &scrapeDurResp))
 	}
 	if metrics.activityMetric != "" {
 		eg.Go(queryInto(egCtx, client, datasourceUID, func() (string, error) {
-			return buildConnectionsByStateQuery(name, matchers)
+			return buildConnectionsByStateQuery(name, matchers, inst.identity...)
 		}, &connectionsResp))
 		eg.Go(queryInto(egCtx, client, datasourceUID, func() (string, error) {
-			return buildWaitEventsQuery(name, matchers)
+			return buildWaitEventsQuery(name, matchers, inst.identity...)
 		}, &waitEventsResp))
 	}
 	if metrics.connectedMetric != "" {
 		eg.Go(queryInto(egCtx, client, datasourceUID, func() (string, error) {
-			return buildUpQuery(metrics.connectedMetric, name, matchers)
+			return buildUpQuery(metrics.connectedMetric, name, matchers, inst.identity...)
 		}, &connectedResp))
 	}
 	if metrics.maxTxMetric != "" {
 		eg.Go(queryInto(egCtx, client, datasourceUID, func() (string, error) {
-			return buildLongestTxQuery(name, matchers)
+			return buildLongestTxQuery(name, matchers, inst.identity...)
 		}, &longestTxResp))
 	}
 	eg.Go(queryInto(egCtx, client, datasourceUID, func() (string, error) {
-		return buildTopQueriesRateQuery(metrics.statementsCalls, name, window, matchers, metrics.queryIDLabel, metrics.datnameLabel)
+		return buildTopQueriesRateQuery(metrics.statementsCalls, name, window, matchers, metrics.queryIDLabel, metrics.datnameLabel, inst.identity...)
 	}, &callsResp))
 	eg.Go(queryInto(egCtx, client, datasourceUID, func() (string, error) {
-		return buildTopQueriesRateQuery(metrics.statementsSeconds, name, window, matchers, metrics.queryIDLabel, metrics.datnameLabel)
+		return buildTopQueriesRateQuery(metrics.statementsSeconds, name, window, matchers, metrics.queryIDLabel, metrics.datnameLabel, inst.identity...)
 	}, &secondsResp))
 	if metrics.statementsRows != "" {
 		eg.Go(queryInto(egCtx, client, datasourceUID, func() (string, error) {
-			return buildTopQueriesRateQuery(metrics.statementsRows, name, window, matchers, metrics.queryIDLabel, metrics.datnameLabel)
+			return buildTopQueriesRateQuery(metrics.statementsRows, name, window, matchers, metrics.queryIDLabel, metrics.datnameLabel, inst.identity...)
 		}, &rowsResp))
 	}
 	if err := eg.Wait(); err != nil {
@@ -314,6 +314,28 @@ func fetchInstanceDetail(ctx context.Context, client *prometheus.Client, datasou
 		WaitEvents:       parseWaitEvents(waitEventsResp),
 		TopQueries:       topQueries,
 	}, truncated, nil
+}
+
+// selectInstanceMetadata accepts duplicate inventory samples only when they
+// identify the same database. A name alone cannot choose between scopes.
+func selectInstanceMetadata(metadata []Instance, name string) (Instance, error) {
+	type identityKey struct {
+		namespace, host, serverID, environment, cluster, engine string
+		native                                                  bool
+	}
+	key := func(inst Instance) identityKey {
+		return identityKey{inst.Namespace, inst.Host, inst.Labels["server_id"], inst.Environment, inst.Labels["cluster"], inst.Engine, len(inst.identity) > 0}
+	}
+	if len(metadata) == 0 {
+		return Instance{Name: name}, nil
+	}
+	first := metadata[0]
+	for _, inst := range metadata[1:] {
+		if key(inst) != key(first) {
+			return Instance{}, fmt.Errorf("instance %q matches multiple database identities; use a datasource with one matching instance or assign distinct service names", name)
+		}
+	}
+	return first, nil
 }
 
 // queryInto returns an errgroup task that builds a PromQL expression via
