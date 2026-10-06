@@ -51,7 +51,7 @@ Each `gcx` event contains the following properties:
 | `is_ci` | Whether a CI environment was detected. | `true` |
 | `ci_provider` | Which CI system was detected, from a fixed list of known names. `gcx` reads well-known CI environment variables to detect the provider but never sends their values. | `github_actions` |
 | `is_agent` | Whether an AI coding agent drove the invocation. | `true` |
-| `agent` | The name of the agent harness, if one was detected. | `claude-code` |
+| `agent` | A fixed harness label from native detection or a supported explicit identity. | `claude-code` |
 | `target_kind` | Whether the target Grafana is `cloud` or `self-hosted`. Empty when no effective Grafana target could be resolved. Deliberately coarse — never the URL, hostname, or stack slug. | `cloud` |
 | `output_format` | The output format the command used. | `table`, `json` |
 
@@ -220,3 +220,15 @@ Two limits are worth stating plainly:
 
 - **The notice is only printed to an interactive terminal.** It is skipped when stderr is not a terminal, when `gcx` detects a CI environment, and when `gcx` runs in agent mode. Those invocations still report. So a CI job or a coding agent can report usage statistics without the notice ever appearing. If you run `gcx` in either environment, opt out in the configuration file or in the environment of the job.
 - **The first report is sent by the same invocation that prints the notice.** The notice comes first and the report follows, in one process. So reading the notice tells you that one invocation has already reported. Every invocation after it obeys the opt-out you choose.
+
+### Agent identity
+
+Agent identity uses the fixed labels in the
+[agent environment reference](https://github.com/grafana/gcx/blob/main/docs/design/environment-variables.md#supported-harness-names).
+The `GCX_AGENT_NAME` override supports harnesses without a native marker.
+The shared `AI_AGENT` and `AGENT` variables also accept supported names.
+Unknown names and version suffixes are not sent. Session markers are used only
+for detection; their values are not sent.
+
+An explicit mode opt-out can produce `is_agent=false` with a non-empty `agent`.
+The label identifies the calling harness. The boolean records the active gcx mode.

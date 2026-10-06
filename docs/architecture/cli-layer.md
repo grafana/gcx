@@ -158,6 +158,15 @@ Key: SELECTOR = `kind[/name[,name...]]` or long form `kind.group/name`
 
 ---
 
+## Agent Identity
+
+`internal/agent` resolves native signals and supported explicit names.
+Command defaults and usage telemetry use the same detector.
+`GCX_AGENT_NAME` supports harnesses without a native marker.
+Only fixed labels reach telemetry. Test helpers clear the detector's full
+input list through `agent.EnvironmentVariables()`.
+See [agent mode](../design/agent-mode.md#61-detection) for precedence.
+
 ## Portable Skill Lifecycle
 
 `claude-plugin/assets.go` embeds `skills/` and `skills-catalog.yaml` separately.

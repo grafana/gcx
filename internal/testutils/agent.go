@@ -12,16 +12,7 @@ func init() { //nolint:gochecknoinits
 	// host environment (e.g. CLAUDECODE=1 inside Claude Code sessions).
 	// Without this, agent.init() caches the host state and BindFlags
 	// defaults to JSON output, breaking tests that expect YAML/text.
-	for _, env := range []string{
-		"GCX_AGENT_MODE",
-		"CLAUDECODE",
-		"CLAUDE_CODE",
-		"CURSOR_AGENT",
-		"GITHUB_COPILOT",
-		"AMAZON_Q",
-		"OPENCODE",
-		"PI_CODING_AGENT",
-	} {
+	for _, env := range agent.EnvironmentVariables() {
 		os.Unsetenv(env)
 	}
 

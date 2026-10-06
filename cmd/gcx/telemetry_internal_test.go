@@ -40,11 +40,8 @@ import (
 // config and would otherwise bleed into unrelated cases, which is the exact
 // cross-case leak this helper exists to stop.
 //
-// The gap that remains is real but currently unasserted: buildUsageEvent also
-// derives IsAgent and Agent from agent.IsAgentMode(), IsCI and CIProvider from
-// telemetry.DetectCI(), and IsTTY from the real stdout. No case here asserts on
-// any of those. A case that does must pin them locally — it cannot reach for
-// the shared sandbox.
+// Agent identity is pinned by agenttelemetry_process_test.go against the real
+// receiver path. CI and TTY assertions still need local environment controls.
 func isolate(t *testing.T) {
 	t.Helper()
 	t.Setenv("XDG_STATE_HOME", t.TempDir())

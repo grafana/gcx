@@ -1,5 +1,5 @@
 // Package agent detects whether gcx is running inside an AI agent
-// environment (e.g. Claude Code, Cursor, GitHub Copilot, Amazon Q, opencode, pi).
+// environment. It uses known identity signals and explicit agent names.
 //
 // Detection happens automatically at init() time by reading well-known
 // environment variables. The result can also be influenced by the --agent
@@ -11,17 +11,57 @@ import (
 	"strings"
 )
 
-// Environment variables that signal agent mode, with the harness name each
-// one identifies. GCX_AGENT_MODE is handled separately (it is an explicit
-// override, not a harness signal).
+// Env documents the explicit agent controls for the environment reference.
+// Detection reads these variables directly, before command construction.
+type Env struct {
+	// Mode enables agent mode with 1, true, or yes. The values 0, false, and
+	// no disable it. The --agent flag takes precedence.
+	Mode string `env:"GCX_AGENT_MODE"`
+	// Name identifies the calling agent and enables agent mode unless disabled
+	// explicitly. Use a supported name from the agent detection reference.
+	// Unknown names are ignored and are never sent in usage telemetry.
+	Name string `env:"GCX_AGENT_NAME"`
+}
+
+// Boolean signals accept only 1, true, or yes. Keep fork-specific signals
+// before their parent signals: Kilo also sets OPENCODE, and Qwen forks Gemini.
 var harnessEnvVars = []struct{ envVar, name string }{ //nolint:gochecknoglobals
 	{"CLAUDECODE", "claude-code"},
 	{"CLAUDE_CODE", "claude-code"},
 	{"CURSOR_AGENT", "cursor"},
 	{"GITHUB_COPILOT", "github-copilot"},
+	{"COPILOT_CLI", "github-copilot"},
 	{"AMAZON_Q", "amazon-q"},
+	{"KILO", "kilo-code"},
+	{"QWEN_CODE", "qwen-code"},
+	{"GEMINI_CLI", "gemini-cli"},
+	{"CODEX_SHELL", "codex"},
+	{"CLINE_ACTIVE", "cline"},
+	{"GOOSE_TERMINAL", "goose"},
 	{"OPENCODE", "opencode"},
 	{"PI_CODING_AGENT", "pi"},
+}
+
+// Session markers contain an identifier, not a boolean. Read only presence;
+// never return or export their values. Do not use config paths or API keys.
+var harnessSessionVars = []struct{ envVar, name string }{ //nolint:gochecknoglobals
+	{"CODEX_THREAD_ID", "codex"},
+	{"CODEX_SESSION_ID", "codex"},
+	{"COPILOT_AGENT_SESSION_ID", "github-copilot"},
+}
+
+// EnvironmentVariables returns the detection inputs. Test helpers use this
+// list to clear inherited signals before they test human and agent behavior.
+func EnvironmentVariables() []string {
+	vars := make([]string, 0, 4+len(harnessEnvVars)+len(harnessSessionVars))
+	vars = append(vars, "GCX_AGENT_MODE", "GCX_AGENT_NAME", "AI_AGENT", "AGENT")
+	for _, h := range harnessEnvVars {
+		vars = append(vars, h.envVar)
+	}
+	for _, h := range harnessSessionVars {
+		vars = append(vars, h.envVar)
+	}
+	return vars
 }
 
 var (
@@ -80,28 +120,57 @@ func detectFromEnv() {
 		}
 	}
 
-	// Check harness env vars for a truthy value.
-	for _, h := range harnessEnvVars {
-		if isTruthy(os.Getenv(h.envVar)) {
-			detectedFromEnv = true
-			agentMode = true
-
-			return
-		}
+	if Name() != "" {
+		detectedFromEnv = true
+		agentMode = true
 	}
 }
 
-// Name returns the name of the detected agent (e.g. "claude-code"), or ""
-// when no known agent env var is set. It reports the name even when agent
-// mode was explicitly disabled via GCX_AGENT_MODE or --agent=false; callers
-// should combine it with [IsAgentMode].
+// Name returns a fixed agent name, or "" when no supported identity is set.
+// It still reports the name when GCX_AGENT_MODE or --agent disables agent mode.
+// Explicit identity comes first, followed by shared identity variables, then
+// native signals in table order. An override can identify a nested agent.
 func Name() string {
+	for _, env := range []string{"GCX_AGENT_NAME", "AI_AGENT", "AGENT"} {
+		if name := supportedName(os.Getenv(env)); name != "" {
+			return name
+		}
+	}
 	for _, h := range harnessEnvVars {
 		if isTruthy(os.Getenv(h.envVar)) {
 			return h.name
 		}
 	}
+	for _, h := range harnessSessionVars {
+		v := os.Getenv(h.envVar)
+		if v != "" && !isFalsy(v) {
+			return h.name
+		}
+	}
 	return ""
+}
+
+// supportedName restricts telemetry to known labels. Shared identity variables
+// can carry name@version; the version is discarded. No raw value is returned.
+func supportedName(value string) string {
+	name, _, _ := strings.Cut(strings.ToLower(strings.TrimSpace(value)), "@")
+	switch name {
+	case "claude-code", "codex", "cursor", "github-copilot", "gemini-cli",
+		"opencode", "cline", "kilo-code", "kiro", "factory-droid", "amp",
+		"augment", "junie", "devin", "openhands", "goose", "aider",
+		"qwen-code", "pi", "crush", "amazon-q":
+		return name
+	case "github-copilot-cli":
+		return "github-copilot"
+	case "kilo", "kilocode":
+		return "kilo-code"
+	case "droid":
+		return "factory-droid"
+	case "auggie":
+		return "augment"
+	default:
+		return ""
+	}
 }
 
 // isTruthy returns true for the values "1", "true", and "yes" (case-insensitive).

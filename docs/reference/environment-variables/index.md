@@ -6,6 +6,17 @@ DoNotTrack disables anonymous usage telemetry when set to "1" or
 "true" (cross-tool DO_NOT_TRACK convention). Overridden by
 GCX_TELEMETRY.
 
+## `GCX_AGENT_MODE`
+
+Mode enables agent mode with 1, true, or yes. The values 0, false, and
+no disable it. The --agent flag takes precedence.
+
+## `GCX_AGENT_NAME`
+
+Name identifies the calling agent and enables agent mode unless disabled
+explicitly. Use a supported name from the agent detection reference.
+Unknown names are ignored and are never sent in usage telemetry.
+
 ## `GCX_AUTO_APPROVE`
 
 AutoApprove automatically enables the --force flag on delete operations,
