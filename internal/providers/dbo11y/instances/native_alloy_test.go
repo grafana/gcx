@@ -348,3 +348,18 @@ func TestLegacyMetadataKeepsFirstEngine(t *testing.T) {
 		t.Fatalf("legacy selection changed: %+v %v", got, err)
 	}
 }
+
+func TestNativeMetadataAmbiguityMessages(t *testing.T) {
+	first := Instance{Name: "db", Host: "host:5432", Engine: "postgres", native: true}
+	for _, tc := range []struct{ host, engine, message string }{
+		{"other:5432", "postgres", "multiple database hosts"},
+		{"host:5432", "mysql", "multiple database engines"},
+	} {
+		other := first
+		other.Host, other.Engine = tc.host, tc.engine
+		_, err := selectInstanceMetadata([]Instance{first, other}, "db")
+		if err == nil || !strings.Contains(err.Error(), tc.message) {
+			t.Fatalf("unexpected ambiguity error: %v", err)
+		}
+	}
+}

@@ -343,7 +343,10 @@ func selectInstanceMetadata(metadata []Instance, name string) (Instance, error) 
 		if inst.Host == "" {
 			continue
 		}
-		if inst.Host != first.Host || inst.Engine != first.Engine {
+		if inst.Engine != first.Engine {
+			return Instance{}, fmt.Errorf("instance %q matches multiple database engines; use gcx dbo11y instances list -o wide to inspect engines and select a datasource with one matching engine", name)
+		}
+		if inst.Host != first.Host {
 			return Instance{}, fmt.Errorf("instance %q matches multiple database hosts; use gcx dbo11y instances list -o wide to inspect hosts and select a datasource with one matching host", name)
 		}
 	}

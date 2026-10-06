@@ -56,6 +56,8 @@ func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
 		Use:   "list",
 		Short: "List Database Observability instances discovered from telemetry.",
 		Long: `List the database instances Grafana Cloud Database Observability has discovered.
+Accepts legacy service_name and native Alloy service names.
+Use -o wide to distinguish database hosts that share a name.
 
 Discovery uses the database_observability_connection_info inventory metric
 emitted by the database_observability.postgres Alloy component (job
@@ -82,7 +84,7 @@ result.`,
 		RunE: runList(loader, opts),
 		Annotations: map[string]string{
 			agent.AnnotationTokenCost: "small",
-			agent.AnnotationLLMHint:   `Database Observability instance inventory from database_observability_connection_info: one row per monitored database (engine, version, cloud provider metadata). Pairs with 'gcx dbo11y instances get <name>' for health/connections/wait-events/top-queries. On an empty result this command also checks the stack's Database Observability activation status and, if not activated, exits 1 with a specific "not activated" hint instead of the generic empty-result message. Examples: gcx dbo11y instances list -o json; gcx dbo11y instances list --filter engine=postgres -o json`,
+			agent.AnnotationLLMHint:   `Database Observability instance inventory accepts legacy service_name and native Alloy service labels. Use -o wide to distinguish hosts that share a name. Inventory from database_observability_connection_info: one row per monitored database (engine, version, cloud provider metadata). Pairs with 'gcx dbo11y instances get <name>' for health/connections/wait-events/top-queries. On an empty result this command also checks the stack's Database Observability activation status and, if not activated, exits 1 with a specific "not activated" hint instead of the generic empty-result message. Examples: gcx dbo11y instances list -o json; gcx dbo11y instances list --filter engine=postgres -o json`,
 		},
 	}
 	opts.setup(cmd.Flags())
