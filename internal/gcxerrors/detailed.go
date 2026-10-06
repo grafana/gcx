@@ -45,6 +45,11 @@ type DetailedError struct {
 	// Optional.
 	Suggestions []string
 
+	// Corrections holds ranked, ready-to-run corrected invocations for
+	// mistyped commands or flags. Only rendered in JSON output.
+	// Optional.
+	Corrections []Correction
+
 	// DocsLink holds a link to a documentation page related to the error.
 	// Optional.
 	DocsLink string
@@ -53,6 +58,19 @@ type DetailedError struct {
 	// If nil, 1 should be used.
 	// Optional.
 	ExitCode *int
+}
+
+// Correction is a machine-actionable fix for a mistyped invocation: a full
+// ready-to-run command string, optionally with a scoping hint for agents.
+// Corrections are surfaced only in the agent/JSON error envelope; human
+// output carries the equivalent "Did you mean ...?" text in Suggestions.
+type Correction struct {
+	// Command is the full corrected invocation, ready to run verbatim.
+	Command string `json:"command"`
+
+	// Hint is the llm_hint (or flag usage) of the corrected target.
+	// Optional.
+	Hint string `json:"hint,omitempty"`
 }
 
 // Unwrap lets errors.Is/As traverse through DetailedError to detect wrapped
