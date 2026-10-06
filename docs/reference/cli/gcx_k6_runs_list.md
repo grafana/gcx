@@ -2,6 +2,10 @@
 
 List test runs for a load test.
 
+### Synopsis
+
+List test runs for a load test. JSON and YAML retain configured threshold options under options.thresholds. These expressions are configuration, not evaluated threshold results. Entries can be strings, objects with abort settings, or null.
+
 ```
 gcx k6 runs list [id-or-name] [flags]
 ```

@@ -527,6 +527,8 @@ gcx provides dedicated commands for each Grafana Cloud product:
 | **Profiles (Pyroscope)** | `gcx profiles` | `profiles query`, `profiles labels` |
 | **Traces (Tempo)** | `gcx traces` | `traces query`, `traces get`, `traces labels` |
 
+Use `gcx k6 runs list --id 12345 --json id,options.thresholds` to read configured threshold options. These expressions are configuration, not evaluated threshold results. See [run listing](docs/reference/cli/gcx_k6_runs_list.md).
+
 > **Note — Grafana Cloud costs:** gcx itself is free, but some of these products are billed based on usage: Grafana Assistant per token consumed (including requests made through gcx), Synthetic Monitoring per test execution, k6 per Virtual User Hour, and IRM per monthly active user. Queries and resource push/pull are not billed. See [Costs and billing](docs/reference/costs.md) and the [Grafana Cloud Cost Management and Billing documentation](https://grafana.com/docs/grafana-cloud/cost-management-and-billing/).
 
 ## Resource Management
