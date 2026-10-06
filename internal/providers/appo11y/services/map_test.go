@@ -355,16 +355,19 @@ func TestFetchServiceMapInstrumentation(t *testing.T) {
 		var labels []map[string]string
 		switch {
 		case strings.Contains(expr, "target_info"):
-			if !strings.Contains(expr, `k8s_cluster_name="test-cluster"`) {
-				t.Errorf("cluster filter missing from metadata: %s", expr)
+			if strings.Contains(expr, `k8s_cluster_name="test-cluster"`) {
+				t.Errorf("edge filter restricts metadata baseline: %s", expr)
 			}
 			if !strings.Contains(expr, "(.+/)?inventory") {
 				t.Errorf("namespace-less peer missing from metadata matcher: %s", expr)
 			}
+			if !strings.Contains(expr, "(.+/)?payment") {
+				t.Errorf("namespaced peer missing from metadata matcher: %s", expr)
+			}
 			if !strings.Contains(expr, `job=~`) {
 				t.Errorf("metadata is not scoped: %s", expr)
 			}
-			labels = []map[string]string{{"job": "billing/checkout"}, {"job": "billing/frontend"}, {"job": "billing/payment"}, {"job": "other/inventory"}, {"job": "postgres"}, {"job": "user"}}
+			labels = []map[string]string{{"job": "billing/checkout"}, {"job": "billing/frontend"}, {"job": "payment"}, {"job": "other/inventory"}, {"job": "postgres"}, {"job": "user"}}
 		case strings.Contains(expr, `server="checkout"`):
 			labels = []map[string]string{{"client": "frontend", "client_service_namespace": "billing"}}
 		default:

@@ -36,7 +36,7 @@ func TestCloudOrgsAuthErrorProtocol(t *testing.T) {
 			}))
 			defer server.Close()
 			config := filepath.Join(t.TempDir(), "config.yaml")
-			require.NoError(t, os.WriteFile(config, []byte("version: 1\ncontexts:\n  test:\n    cloud: test\ncloud:\n  test:\n    token: fake-test-token\n    api-url: "+server.URL+"\ncurrent-context: test\n"), 0600))
+			require.NoError(t, os.WriteFile(config, []byte("version: 1\ncredentials:\n  keychain: off\ncontexts:\n  test:\n    cloud: test\ncloud:\n  test:\n    token: fake-test-token\n    api-url: "+server.URL+"\ncurrent-context: test\n"), 0600))
 			stdout, code := runGcx(t, "cloud", "orgs", "list", "--config", config)
 			require.Equal(t, 3, code)
 			document, ok := assertOneJSONValue(t, stdout).(map[string]any)
