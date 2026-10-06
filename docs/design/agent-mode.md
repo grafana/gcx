@@ -22,10 +22,11 @@ The full list is in the
 `GCX_AGENT_MODE=0` disables automatic mode detection.
 `GCX_AGENT_MODE=1` enables mode even when the harness name is unknown.
 
-**Identity priority:** supported `GCX_AGENT_NAME` > supported `AI_AGENT` >
-`AGENT=goose` > native boolean signals in source order > native session
-markers in source order. Kilo precedes OpenCode. Qwen precedes Gemini CLI.
-An explicit identity can select a nested agent when inherited markers conflict.
+**Identity priority:** supported `GCX_AGENT_NAME` > native boolean signals
+in source order > native session markers in source order > supported
+`AI_AGENT` > `AGENT=goose`. Kilo precedes OpenCode. Qwen precedes Gemini CLI.
+A native marker takes precedence over a shared variable inherited from an outer
+harness. `GCX_AGENT_NAME` is the deliberate gcx override for a nested agent.
 Environment signals alone cannot establish which parent process set a marker.
 
 `agent.Name()` returns a fixed label, even when mode is disabled explicitly.

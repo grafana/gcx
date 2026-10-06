@@ -175,5 +175,9 @@ configuration directories, or the terminal application.
   These signals do not establish coverage of every shell path.
   Goose moved from Block to AAIF. Its [governance document](https://github.com/aaif-goose/goose/blob/main/GOVERNANCE.md) confirms the project owner.
 
+Native markers take precedence over the shared `AI_AGENT` fallback and the
+legacy `AGENT=goose` fallback. Shared variables can be inherited from an outer
+harness. Use `GCX_AGENT_NAME` to override native identity deliberately for gcx.
+
 Detection runs at `init()` time in `internal/agent/agent.go`.
 See [agent-mode.md](agent-mode.md#61-detection) for mode and identity precedence.

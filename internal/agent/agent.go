@@ -141,17 +141,11 @@ func detectFromEnv() {
 
 // Name returns a fixed agent name, or "" when no supported identity is set.
 // It still reports the name when GCX_AGENT_MODE or --agent disables agent mode.
-// Explicit identity comes first, followed by shared identity variables, then
-// native signals in table order. An override can identify a nested agent.
+// The gcx-specific override comes first. Native signals precede shared identity
+// fallbacks because a shared variable can be inherited from an outer harness.
 func Name() string {
-	for _, env := range []string{envName, envAIIdentity} {
-		if name := supportedName(os.Getenv(env)); name != "" {
-			return name
-		}
-	}
-	// Only Goose's use of the bare AGENT variable has upstream evidence.
-	if strings.EqualFold(strings.TrimSpace(os.Getenv(envGooseIdentity)), "goose") {
-		return "goose"
+	if name := supportedName(os.Getenv(envName)); name != "" {
+		return name
 	}
 	for _, h := range harnessEnvVars {
 		if isTruthy(os.Getenv(h.envVar)) {
@@ -159,10 +153,16 @@ func Name() string {
 		}
 	}
 	for _, h := range harnessSessionVars {
-		v := os.Getenv(h.envVar)
-		if v != "" {
+		if os.Getenv(h.envVar) != "" {
 			return h.name
 		}
+	}
+	if name := supportedName(os.Getenv(envAIIdentity)); name != "" {
+		return name
+	}
+	// Only Goose's use of the bare AGENT variable has upstream evidence.
+	if strings.EqualFold(strings.TrimSpace(os.Getenv(envGooseIdentity)), "goose") {
+		return "goose"
 	}
 	return ""
 }

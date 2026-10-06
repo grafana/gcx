@@ -37,7 +37,9 @@ Every command works identically for humans and agents. Agent mode changes defaul
 | Truncation | On (TTY) | Off |
 | Prompts | Interactive | Auto-approved |
 
-Agent mode is active when `GCX_AGENT_MODE=true`, or auto-detected from env vars (`CLAUDECODE`, `CLAUDE_CODE`).
+Agent mode is active when `GCX_AGENT_MODE=true`, or when gcx detects a native
+agent marker or a supported explicit identity. See the
+[agent environment reference](docs/design/environment-variables.md#agent-mode-variables).
 Explicit flags always override: `--output json` works in human mode; `--output text` works in agent mode.
 
 See [docs/design/agent-mode.md](docs/design/agent-mode.md) for detection logic and opt-out.

@@ -11,8 +11,10 @@ import (
 func TestEnvTagsMatchResolvedNames(t *testing.T) {
 	typ := reflect.TypeFor[Env]()
 	tags := make(map[string]string, typ.NumField())
+	inputs := EnvironmentVariables()
 	for f := range typ.Fields() {
 		tags[f.Name] = f.Tag.Get("env")
+		assert.Contains(t, inputs, tags[f.Name], "test helpers must clear every documented control")
 	}
 	assert.Equal(t, map[string]string{
 		"Mode":          envMode,

@@ -375,8 +375,8 @@ Detection runs at `init()` time. The `--agent` flag overrides the detected mode.
 | 3 | Supported identity | Native signals, `GCX_AGENT_NAME`, `AI_AGENT`, or `AGENT=goose` enable mode |
 | 4 | Default | Agent mode is disabled |
 
-Identity resolution starts with `GCX_AGENT_NAME`, then `AI_AGENT`, then
-`AGENT=goose`, then native markers. Mode opt-out does not clear the identity
+Identity resolution starts with `GCX_AGENT_NAME`, then native markers, then
+`AI_AGENT`, then `AGENT=goose`. Mode opt-out does not clear the identity
 label. Usage telemetry uses the same fixed label as the detector.
 See the [environment reference](../design/environment-variables.md#agent-mode-variables)
 for the complete signal list and supported names. See

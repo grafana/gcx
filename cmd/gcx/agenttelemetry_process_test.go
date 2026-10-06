@@ -15,15 +15,14 @@ import (
 
 // Exercise the real main and HTTP exporter. An identity is useful only if
 // both fields reach the receiver without the session or override value.
+// The unit suite covers the full name vocabulary; this suite covers wire paths.
 func TestAgentIdentityReachesUsageReceiver(t *testing.T) {
-	type identityCase struct {
+	tests := []struct {
 		name string
 		env  []string
 		want string
 		mode bool
-	}
-	tests := make([]identityCase, 0, 30)
-	tests = append(tests, []identityCase{
+	}{
 		{"codex shell", []string{"CODEX_SHELL=1"}, "codex", true},
 		{"codex thread", []string{"CODEX_THREAD_ID=synthetic-private-session"}, "codex", true},
 		{"gemini shell", []string{"GEMINI_CLI=1"}, "gemini-cli", true},
@@ -34,10 +33,10 @@ func TestAgentIdentityReachesUsageReceiver(t *testing.T) {
 		{"Goose legacy marker", []string{"AGENT=goose"}, "goose", true},
 		{"unsupported legacy identity", []string{"AGENT=codex"}, "", false},
 		{"unknown name", []string{"GCX_AGENT_NAME=synthetic-private-session"}, "", false},
-	}...)
-	for _, name := range []string{"claude-code", "codex", "cursor", "github-copilot", "gemini-cli", "opencode", "cline", "kilo-code", "kiro", "factory-droid", "amp", "augment", "junie", "devin", "openhands", "goose", "aider", "qwen-code", "pi", "crush"} {
-		tests = append(tests, identityCase{name, []string{"GCX_AGENT_NAME=" + name}, name, true})
+		{"explicit identity", []string{"GCX_AGENT_NAME=crush"}, "crush", true},
+		{"native before inherited shared identity", []string{"AI_AGENT=junie", "CODEX_THREAD_ID=synthetic-private-session"}, "codex", true},
 	}
+
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			events := make(chan []byte, 1)
