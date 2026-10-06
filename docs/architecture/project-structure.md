@@ -73,7 +73,7 @@ gcx/
 │   │   ├── assistant/        # Assistant provider — lift-and-shift of the `gcx assistant` command tree; TypedRegistrations() registers the MCPServer adapter (internal/assistant/mcpserver/); exports ResolveClientOptions and RequireGrafanaCloud for other command trees embedding Assistant calls (used by `instrumentation check --fix-plan=assistant`)
 │   │   ├── dashboards/       # Dashboards provider (CRUD, search, version history, snapshot) — CLI: `gcx dashboards`
 │   │   │   ├── descriptor/   # Descriptor helpers (GVK, preferred version resolution)
-│   │   │   ├── search/       # Full-text search via dashboard.grafana.app search endpoint
+│   │   │   ├── search/       # Lexical and hybrid search via dashboard.grafana.app endpoints
 │   │   │   ├── snapshot/     # Snapshot rendering via Dashboard Image Renderer API
 │   │   │   └── versions/     # Version history list + restore via dashboard.grafana.app
 │   │   ├── faro/             # Frontend Observability provider (apps CRUD, sourcemaps sub-resource) — CLI: `gcx frontend`

@@ -32,9 +32,17 @@ type SearchParams struct {
 
 // DashboardHitSpec holds the spec fields of a search result item.
 type DashboardHitSpec struct {
-	Title  string   `json:"title"`
-	Folder string   `json:"folder"`
-	Tags   []string `json:"tags"`
+	Title  string                 `json:"title"`
+	Folder string                 `json:"folder"`
+	Tags   []string               `json:"tags"`
+	Score  *float64               `json:"score,omitempty"`
+	Chunks []DashboardSearchChunk `json:"chunks,omitempty"`
+}
+
+// DashboardSearchChunk contains matching text from a dashboard or panel.
+type DashboardSearchChunk struct {
+	Subresource string `json:"subresource"`
+	Content     string `json:"content"`
 }
 
 // DashboardHitMeta holds the metadata of a K8s-style DashboardHit item.
@@ -58,4 +66,6 @@ type DashboardSearchResultList struct {
 	Kind       string         `json:"kind"`
 	APIVersion string         `json:"apiVersion"`
 	Items      []DashboardHit `json:"items"`
+	// Hybrid search returns a bounded set of top matches without pagination.
+	Limit int `json:"limit,omitempty"`
 }

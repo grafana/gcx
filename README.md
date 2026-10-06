@@ -44,6 +44,9 @@ gcx metrics query -d grafanacloud-usage 'grafanacloud_org_metrics_billable_serie
 gcx dashboards list
 gcx dashboards search "node exporter"
 
+# discover dashboards by meaning and content (requires hybrid search on the server)
+gcx dashboards search "dashboards for investigating Kubernetes memory issues" --hybrid --limit 10 -o json
+
 # render a dashboard, allowing up to three minutes for the render
 gcx dashboards snapshot my-dashboard --timeout 3m
 ```

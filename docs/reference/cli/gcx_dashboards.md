@@ -32,7 +32,7 @@ Create, read, update, delete, and search Grafana dashboards via the Kubernetes-c
 * [gcx dashboards get](gcx_dashboards_get.md)	 - Get a dashboard by name
 * [gcx dashboards list](gcx_dashboards_list.md)	 - List dashboards
 * [gcx dashboards list-versions](gcx_dashboards_list-versions.md)	 - List dashboard version history
-* [gcx dashboards search](gcx_dashboards_search.md)	 - Search dashboards by title, tag, or folder
+* [gcx dashboards search](gcx_dashboards_search.md)	 - Search dashboards by text or meaning.
 * [gcx dashboards snapshot](gcx_dashboards_snapshot.md)	 - Render dashboard snapshots as PNG images
 * [gcx dashboards update](gcx_dashboards_update.md)	 - Update a dashboard from a manifest
 * [gcx dashboards versions](gcx_dashboards_versions.md)	 - Manage dashboard version history

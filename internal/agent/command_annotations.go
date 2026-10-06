@@ -167,7 +167,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx dashboards create":           {Cost: "small", Hint: "-f <manifest.yaml>"},
 	"gcx dashboards update":           {Cost: "small", Hint: "<name> -f <manifest.yaml>"},
 	"gcx dashboards delete":           {Cost: "small"},
-	"gcx dashboards search":           {Cost: "medium", Hint: "<query> -o json"},
+	"gcx dashboards search":           {Cost: "large", Hint: "Natural-language/content discovery: <query> --hybrid --limit 10 -o json; scope with --folder <uid>. Hybrid returns scores and matching chunks. Omit --hybrid for lexical title/keyword lookup, --tag, --sort, --deleted, or filter-only searches."},
 	"gcx dashboards list-versions":    {Cost: "small", Hint: "<name> -o json"},
 	"gcx dashboards versions restore": {Cost: "small"},
 

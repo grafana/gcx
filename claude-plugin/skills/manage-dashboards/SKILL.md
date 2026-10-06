@@ -9,7 +9,8 @@ description: >
   pull/push/validate/promote dashboard resource files, manage dashboard
   folders, or render PNG snapshots. Trigger on "what's on dashboard X",
   "what is each panel querying", "audit this dashboard", "which datasource
-  does each panel use", "does the dashboard have a service dropdown".
+  does each panel use", "does the dashboard have a service dropdown", or
+  "find dashboards for investigating Kubernetes memory issues".
   Do NOT use when the task involves adding new panels, variables, or
   annotations - those require discovering real metrics or log schema, so use
   create-dashboard instead. For designing or creating a new dashboard, or for
@@ -81,6 +82,7 @@ Use JSON/YAML for programmatic work and table/wide output for human summaries.
 | Other datasource types | Check `gcx datasources <type> --help` for dedicated subcommands before using `gcx api` |
 | List dashboards | `gcx dashboards list -o wide` |
 | Search by text/tag/folder | `gcx dashboards search "<query>" --tag <tag> --folder <folder-name> -o json` |
+| Search by meaning or dashboard content | `gcx dashboards search "dashboards for investigating Kubernetes memory issues" --hybrid --limit 10 -o json` |
 | Get one dashboard | `gcx dashboards get <dashboard-name> -o json` |
 | Create from finished file | `gcx dashboards create -f <dashboard.yaml>` |
 | Update from finished file | `gcx dashboards update <dashboard-name> -f <dashboard.yaml>` |
@@ -99,6 +101,21 @@ Use JSON/YAML for programmatic work and table/wide output for human summaries.
 
 `<dashboard-name>` is the dashboard resource name (`metadata.name`), which is
 also the value accepted by `gcx dashboards snapshot`.
+
+## Finding Dashboards
+
+Use `--hybrid` for natural-language requests or discovery by dashboard content.
+It combines lexical and semantic search; start with `--limit 10` and add
+`--folder <folder-uid>` when the scope is known. Read results in their returned
+score order: `spec.score` indicates relevance, and `spec.chunks` contains matching
+content when available. Fetch a selected result with
+`gcx dashboards get <dashboard-name> -o json`, using its `metadata.name`.
+
+Keep lexical search (omit `--hybrid`) for title/keyword lookup, `--tag`, `--sort`,
+`--deleted`, or filter-only searches. Hybrid requires a non-empty query and does
+not accept those three flags. If the hybrid endpoint is unavailable, report that
+limitation and explicitly rerun lexical search with suitable keywords; lexical
+results do not provide equivalent content discovery.
 
 ## Pull/Push Notes
 

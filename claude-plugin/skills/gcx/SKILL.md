@@ -47,6 +47,7 @@ right group:
 
 | Intent | Group | Example |
 |--------|-------|---------|
+| Find dashboards by meaning or content | `dashboards` | `gcx dashboards search "Kubernetes memory issues" --hybrid --limit 10 -o json` |
 | Dashboards, folders, K8s resources | `resources` | `gcx resources get dashboards` |
 | SLO definitions and reports | `slo` | `gcx slo definitions list` |
 | Alert rule status, notification settings | `alert` | `gcx alert rules list` |

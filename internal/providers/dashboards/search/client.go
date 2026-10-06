@@ -96,27 +96,38 @@ func (c *searchClient) Search(ctx context.Context, params SearchParams) (*wireSe
 		return nil, fmt.Errorf("failed to create search request: %w", err)
 	}
 
+	var result wireSearchResponse
+	if err := c.do(req, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+func (c *searchClient) do(req *http.Request, result any) error {
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("search request failed: %w", err)
+		return fmt.Errorf("search request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		err := fmt.Errorf("search request failed: %s: %s", resp.Status, strings.TrimSpace(string(bodyBytes)))
 		var status metav1.Status
 		if json.Unmarshal(bodyBytes, &status) == nil && status.Message != "" {
-			return nil, dynamic.ParseStatusError(&apierrors.StatusError{ErrStatus: status})
+			err = dynamic.ParseStatusError(&apierrors.StatusError{ErrStatus: status})
 		}
-		return nil, fmt.Errorf("search request failed: %s: %s", resp.Status, strings.TrimSpace(string(bodyBytes)))
+		if req.Method == http.MethodPost && (resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusNotImplemented) {
+			return fmt.Errorf("hybrid search is unavailable; retry without --hybrid for lexical search: %w", err)
+		}
+		return err
 	}
 
-	var result wireSearchResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.NewDecoder(resp.Body).Decode(result); err != nil {
 		_, _ = io.Copy(io.Discard, resp.Body)
-		return nil, fmt.Errorf("failed to decode search response: %w", err)
+		return fmt.Errorf("failed to decode search response: %w", err)
 	}
 	_, _ = io.Copy(io.Discard, resp.Body)
 
-	return &result, nil
+	return nil
 }
