@@ -211,8 +211,13 @@ Constants defined in `loader.go`:
 StandardConfigFolder   = "gcx"
 StandardConfigFileName = "config.yaml"
 ConfigFileEnvVar       = "GCX_CONFIG"
+ContextEnvVar          = "GCX_CONTEXT"
 configFilePermissions  = 0o600   // file is always written with these perms
 ```
+
+`GCX_CONTEXT` selects an existing context after configuration sources are
+merged. Explicit command-level `--context` overrides it. The selection affects
+the invocation only and is not written back to a config file.
 
 If no config file exists at the standard location, an empty one is created
 automatically with a single `default` context:

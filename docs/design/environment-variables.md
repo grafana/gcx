@@ -43,6 +43,7 @@ stack because its TLS and proxy settings affect the transport.
 | `GRAFANA_CLOUD_OAUTH_URL` | context | Grafana Cloud OAuth issuer on the ephemeral entry |
 | `GRAFANA_CLOUD_STACK` | context | Selected stack's Grafana Cloud slug |
 | `GCX_CONFIG` | global | Config file path override |
+| `GCX_CONTEXT` | global | Select an existing context for this invocation; `--context` takes precedence |
 | `GCX_TELEMETRY` | global | `enabled`, `disabled`, or `log`; takes precedence over `DO_NOT_TRACK` and config |
 | `DO_NOT_TRACK` | global | Disable anonymous telemetry when `1` or `true` unless `GCX_TELEMETRY` overrides it |
 | `GCX_NO_UPDATE_NOTIFIER` | global | Disable the periodic gcx/skill update notifier when non-empty |
