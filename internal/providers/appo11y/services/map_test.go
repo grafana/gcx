@@ -355,8 +355,8 @@ func TestFetchServiceMapInstrumentation(t *testing.T) {
 		var labels []map[string]string
 		switch {
 		case strings.Contains(expr, "target_info"):
-			if strings.Contains(expr, "client_region") {
-				t.Errorf("graph-only filter applied to metadata: %s", expr)
+			if !strings.Contains(expr, `k8s_cluster_name="test-cluster"`) {
+				t.Errorf("cluster filter missing from metadata: %s", expr)
 			}
 			if !strings.Contains(expr, `job=~`) {
 				t.Errorf("metadata is not scoped: %s", expr)
@@ -379,7 +379,7 @@ func TestFetchServiceMapInstrumentation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := fetchServiceMap(context.Background(), client, "prom", "billing", "checkout", "5m", []Matcher{{Label: "client_region", Op: "=", Value: "test-region"}}, nil)
+	result, err := fetchServiceMap(context.Background(), client, "prom", "billing", "checkout", "5m", []Matcher{{Label: "k8s_cluster_name", Op: "=", Value: "test-cluster"}}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

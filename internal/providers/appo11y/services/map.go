@@ -87,7 +87,8 @@ Latency is direction-aware: callers see the server-side p95
 (how long this service took to respond), callees see the client-side
 p95 (how long this service waited on the peer).
 
-Instrumentation status comes from target_info for each returned service identity.
+JSON and YAML output include instrumentation status from target_info for each
+returned service identity. The --filter matchers also scope this metadata query.
 A metadata query failure stops the map command.
 
 Connection type is empty for HTTP/gRPC peers; "database",
@@ -122,7 +123,7 @@ suitable for inlining in markdown / piping to "dot -Tpng".`,
 		RunE: runMap(loader, opts),
 		Annotations: map[string]string{
 			agent.AnnotationTokenCost: "small",
-			agent.AnnotationLLMHint:   `Service-graph slice for one App Observability service: callers (peers calling into the service) and callees (peers the service calls), with per-edge rate (req/s), error %, and direction-aware p95 latency (server-side for callers, client-side for callees). Connection-type label distinguishes HTTP/gRPC (empty), database, messaging, and virtual_node (uninstrumented upstreams synthesised by Tempo). Output formats: table/wide (default two-section view), json/yaml (structured), mermaid (markdown-renderable graph), dot (Graphviz). Pairs with 'gcx appo11y services get' (single-service RED) and 'gcx appo11y services list-operations' (per-endpoint breakdown). Use --filter <label><op><value> (repeatable) to scope the edges to a subset of series — most usefully a cluster/region label (e.g. --filter k8s_cluster_name=prod-us) to break a multi-cluster service down one cluster at a time. Use --group-by <label> to instead split each edge per distinct value of that label (note: the Tempo service-graph family often omits cluster labels, so this may return no edges — --filter/--group-by on span-metric-backed 'get'/'list-operations' is more reliable for cluster breakdowns). Examples: gcx appo11y services map <name> -o json; gcx appo11y services map <ns>/<name> --since 1h -o mermaid; gcx appo11y services map <name> --filter k8s_cluster_name=<cluster> -o json`,
+			agent.AnnotationLLMHint:   `Service-graph slice for one App Observability service: callers (peers calling into the service) and callees (peers the service calls), with per-edge rate (req/s), error %, and direction-aware p95 latency (server-side for callers, client-side for callees). Connection-type label distinguishes HTTP/gRPC (empty), database, messaging, and virtual_node (uninstrumented upstreams synthesised by Tempo). Output formats: table/wide (default two-section view), json/yaml (structured, with instrumented status scoped by --filter), mermaid (markdown-renderable graph), dot (Graphviz). Pairs with 'gcx appo11y services get' (single-service RED) and 'gcx appo11y services list-operations' (per-endpoint breakdown). Use --filter <label><op><value> (repeatable) to scope the edges to a subset of series — most usefully a cluster/region label (e.g. --filter k8s_cluster_name=prod-us) to break a multi-cluster service down one cluster at a time. Use --group-by <label> to instead split each edge per distinct value of that label (note: the Tempo service-graph family often omits cluster labels, so this may return no edges — --filter/--group-by on span-metric-backed 'get'/'list-operations' is more reliable for cluster breakdowns). Examples: gcx appo11y services map <name> -o json; gcx appo11y services map <ns>/<name> --since 1h -o mermaid; gcx appo11y services map <name> --filter k8s_cluster_name=<cluster> -o json`,
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -276,7 +277,7 @@ func fetchServiceMap(ctx context.Context, client *prometheus.Client, datasourceU
 		Callers: parseEdges(callerSet, callersDirection),
 		Callees: parseEdges(calleeSet, calleesDirection),
 	}
-	if err := populateMapInstrumentation(ctx, client, datasourceUID, result); err != nil {
+	if err := populateMapInstrumentation(ctx, client, datasourceUID, matchers, result); err != nil {
 		return nil, err
 	}
 	return result, nil
@@ -284,7 +285,7 @@ func fetchServiceMap(ctx context.Context, client *prometheus.Client, datasourceU
 
 // populateMapInstrumentation reads the existing inventory for map identities.
 // Service-graph edges alone do not prove that a peer emits telemetry.
-func populateMapInstrumentation(ctx context.Context, client *prometheus.Client, datasourceUID string, result *ServiceMap) error {
+func populateMapInstrumentation(ctx context.Context, client *prometheus.Client, datasourceUID string, matchers []Matcher, result *ServiceMap) error {
 	jobs := map[string]struct{}{jobLabel(result.Service.Namespace, result.Service.Name): {}}
 	for _, edges := range [][]Edge{result.Callers, result.Callees} {
 		for _, edge := range edges {
@@ -296,9 +297,8 @@ func populateMapInstrumentation(ctx context.Context, client *prometheus.Client, 
 		patterns = append(patterns, regexp.QuoteMeta(job))
 	}
 	slices.Sort(patterns)
-	// Graph-specific client/server dimensions do not exist on target_info.
-	// Exact canonical jobs scope this inventory lookup to the returned map.
-	filters := []Matcher{{Label: "job", Op: "=~", Value: strings.Join(patterns, "|")}}
+	// Preserve the requested scope and restrict metadata to returned identities.
+	filters := append(slices.Clone(matchers), Matcher{Label: "job", Op: "=~", Value: strings.Join(patterns, "|")})
 	metrics := targetInfoMetrics()
 	responses := make([]*prometheus.QueryResponse, len(metrics))
 	eg, egCtx := errgroup.WithContext(ctx)

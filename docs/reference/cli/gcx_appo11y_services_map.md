@@ -19,7 +19,8 @@ Latency is direction-aware: callers see the server-side p95
 (how long this service took to respond), callees see the client-side
 p95 (how long this service waited on the peer).
 
-Instrumentation status comes from target_info for each returned service identity.
+JSON and YAML output include instrumentation status from target_info for each
+returned service identity. The --filter matchers also scope this metadata query.
 A metadata query failure stops the map command.
 
 Connection type is empty for HTTP/gRPC peers; "database",
