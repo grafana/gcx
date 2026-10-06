@@ -120,7 +120,9 @@ type session struct {
 
 	mu     sync.Mutex
 	nextID uint32
-	byID   map[uint32]*exchange
+	// byID holds each exchange from request_new until the guest drops it or
+	// Run returns, so a body the guest never closes lives until then.
+	byID map[uint32]*exchange
 }
 
 // wireRequest is a request as the guest describes it.
