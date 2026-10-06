@@ -466,7 +466,8 @@ func TestProxyClient_GetProjectByName(t *testing.T) {
 func TestProxyClient_ListLoadTestsByProject(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Verify server-side filtering is requested
-		assert.Equal(t, "1", r.URL.Query().Get("project_id"))
+		assert.Equal(t, "/cloud/v6/projects/1/load_tests", r.URL.Path)
+		assert.Empty(t, r.URL.Query().Get("project_id"))
 		w.Header().Set("Content-Type", "application/json")
 		// Mock returns only project 1's tests (server-side filtered)
 		writeJSON(t, w, map[string]any{
