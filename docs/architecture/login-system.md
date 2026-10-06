@@ -174,10 +174,14 @@ and `printSignupResult` replaces `printResult`: stdout gets the same
 `LoginResult` (the text codec renders it as the success summary: the gcx logo
 from `style.RenderLogo` when stdout is a terminal and styling is on, then the
 heading, with no check mark in agent mode, so signup's own text stays plain
-ASCII), and stderr gets the next step, a plain list in text mode and an
-`EmitHint` hint otherwise. That step is "Open Grafana" with the saved stack URL
+ASCII), and stderr gets the next steps, a plain list in text mode and
+`EmitHint` hints otherwise. The first is "Open Grafana" with the saved stack URL
 (`stackBrowserURL`, https only), the way back to the stack whose consent page
-took the browser tab. Signup suggests no further credential. With
+took the browser tab. The second, "Explore interactive guides", follows only
+when `Result.PathfinderInstalled` is set. Signup runs the same Pathfinder probe
+as `gcx login` and caches a positive answer in the new context, so later logins
+skip the hint; signup is the one place it can appear for a new stack. Signup
+suggests no further credential. With
 `CloudSignup`, `announceOAuthLogin` reports the browser approval as "Approved
 in the browser ... Checking the connection to <stack>..." with no success
 mark, so the summary, printed only after the save, is the one success line.

@@ -38,12 +38,16 @@ This page walks through the common login paths, the mental model behind them, an
   Next steps
     Open Grafana
       https://mystack.grafana.net
+    Explore interactive guides
+      https://mystack.grafana.net/a/grafana-pathfinder-app
   ```
 
-  The browser page after "Connect gcx" has the same "Open Grafana" button, which
-  takes that tab back to the stack. With `-o json`, `-o yaml` or in agent mode,
-  stdout carries the same result as `gcx login`, and the next steps come as
-  hints on stderr.
+  The guides step appears when the stack has the Interactive Learning plugin
+  (Pathfinder) enabled, which Grafana Cloud stacks have by default. The browser
+  page after "Connect gcx" has the same "Open Grafana" button, which takes that
+  tab back to the stack. With `-o json`, `-o yaml` or in agent mode, stdout
+  carries the same result as `gcx login`, and the next steps come as hints on
+  stderr.
 
   If the browser asks you to choose a stack instead of showing the sign-up
   form, it is already signed in to Grafana Cloud. Choose one and approve

@@ -200,29 +200,34 @@ func TestSignupAgentModeTextIsPlainASCII(t *testing.T) {
 	}
 }
 
-// TestPrintSignupResultRendersTheStep covers the rendering of the way back to
-// the stack: a plain list on stderr in text mode, a hint on stderr otherwise,
-// never on stdout, and nothing at all, not even the heading, when a server has
-// no page to open. Agent mode text stays plain ASCII.
+// TestPrintSignupResultRendersTheStep covers the rendering of the next steps:
+// a plain list on stderr in text mode, hints on stderr otherwise, never on
+// stdout, and nothing at all, not even the heading, when a server has no page
+// to open. The interactive guides follow the way back to the stack only when
+// the Pathfinder probe found them. Agent mode text stays plain ASCII.
 func TestPrintSignupResultRendersTheStep(t *testing.T) {
 	plainColor(t)
-	result := internallogin.Result{ContextName: "default", AuthMethod: "oauth", IsCloud: true}
 	const stack = "https://mystack.grafana.net"
+	const guides = stack + "/a/grafana-pathfinder-app"
 
 	for _, tc := range []struct {
-		name      string
-		agentMode string
-		format    string
-		server    string
-		want      string
-		notWant   string
+		name       string
+		agentMode  string
+		format     string
+		server     string
+		pathfinder bool
+		want       string
+		notWant    string
 	}{
-		{name: "text", agentMode: "false", format: "text", server: stack, want: "\nNext steps\n  Open Grafana\n    " + stack + "\n"},
-		{name: "json", agentMode: "false", format: "json", server: stack, want: "hint: Open Grafana: " + stack + "\n"},
+		{name: "text", agentMode: "false", format: "text", server: stack, want: "\nNext steps\n  Open Grafana\n    " + stack + "\n", notWant: "interactive guides"},
+		{name: "json", agentMode: "false", format: "json", server: stack, want: "hint: Open Grafana: " + stack + "\n", notWant: "interactive guides"},
 		{name: "agent", agentMode: "true", format: "agents", server: stack, want: `{"class":"hint","summary":"Open Grafana: ` + stack + `"}`},
 		{name: "agent text", agentMode: "true", format: "text", server: stack, want: "\nNext steps\n  Open Grafana\n    " + stack + "\n"},
+		{name: "text with guides", agentMode: "false", format: "text", server: stack, pathfinder: true, want: "\nNext steps\n  Open Grafana\n    " + stack + "\n  Explore interactive guides\n    " + guides + "\n"},
+		{name: "json with guides", agentMode: "false", format: "json", server: stack, pathfinder: true, want: "hint: Open Grafana: " + stack + "\nhint: Explore interactive guides: " + guides + "\n"},
 		{name: "text without a page", agentMode: "false", format: "text", server: "http://localhost:3000", notWant: "Next steps"},
 		{name: "json without a page", agentMode: "false", format: "json", server: "http://localhost:3000", notWant: "hint:"},
+		{name: "guides without a page", agentMode: "false", format: "text", server: "http://localhost:3000", pathfinder: true, notWant: "Next steps"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			agentModeForTest(t, tc.agentMode)
@@ -236,11 +241,13 @@ func TestPrintSignupResultRendersTheStep(t *testing.T) {
 			cmd := &cobra.Command{}
 			cmd.SetOut(&stdout)
 			cmd.SetErr(&stderr)
+			result := internallogin.Result{ContextName: "default", AuthMethod: "oauth", IsCloud: true, PathfinderInstalled: tc.pathfinder}
 			require.NoError(t, printSignupResult(cmd, flags, tc.server, result))
 			if tc.want != "" {
 				assert.Contains(t, stderr.String(), tc.want)
 			}
 			assert.NotContains(t, stdout.String(), "Open Grafana", "stdout carries the result only")
+			assert.NotContains(t, stdout.String(), "interactive guides", "stdout carries the result only")
 			if tc.notWant != "" {
 				assert.NotContains(t, stderr.String(), tc.notWant)
 			}

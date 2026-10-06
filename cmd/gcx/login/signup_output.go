@@ -22,9 +22,12 @@ const signupSuccessHeading = "You're connected to Grafana Cloud"
 
 // printSignupResult is printResult for gcx signup. Stdout carries the same
 // LoginResult as gcx login, so structured output is unchanged; the human text
-// codec renders it as the success summary. The next step is advice and goes to
-// stderr: a plain list in text mode, a hint otherwise. The consent page moved
-// its browser tab away from the stack, so that step is the way back to it.
+// codec renders it as the success summary. The next steps are advice and go to
+// stderr: a plain list in text mode, hints otherwise. The consent page moved
+// its browser tab away from the stack, so the first step is the way back to
+// it. The second is the stack's interactive guides, when the login's
+// Pathfinder probe found them. That probe caches its answer in the new
+// context, so later logins never show the guides, and signup has to.
 func printSignupResult(cmd *cobra.Command, flags *loginOpts, server string, result login.Result) error {
 	lr := newLoginResult(server, result)
 	ew := cmd.ErrOrStderr()
@@ -38,17 +41,28 @@ func printSignupResult(cmd *cobra.Command, flags *loginOpts, server string, resu
 	}
 
 	link := stackBrowserURL(lr.Server)
-	switch {
-	case link == "":
+	if link == "" {
 		return nil
-	case !text:
+	}
+	var guides string
+	if result.PathfinderInstalled {
+		guides = login.PathfinderURL(link)
+	}
+	if !text {
 		cmdio.EmitHint(ew, "Open Grafana: "+link, "")
+		if guides != "" {
+			cmdio.EmitHint(ew, "Explore interactive guides: "+guides, "")
+		}
 		return nil
 	}
 	fmt.Fprintln(ew)
 	fmt.Fprintln(ew, "Next steps")
 	fmt.Fprintln(ew, "  Open Grafana")
 	fmt.Fprintf(ew, "    %s\n", link)
+	if guides != "" {
+		fmt.Fprintln(ew, "  Explore interactive guides")
+		fmt.Fprintf(ew, "    %s\n", guides)
+	}
 	return nil
 }
 
