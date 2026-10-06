@@ -175,6 +175,7 @@ func pullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 
 			res, err := FetchResources(ctx, FetchRequest{
 				Config: cfg,
+				Warn:   cmd.ErrOrStderr(),
 				// Strip server fields from the resources.
 				// This includes fields like `resourceVersion`, `uid`, etc.
 				Processors: []remote.Processor{

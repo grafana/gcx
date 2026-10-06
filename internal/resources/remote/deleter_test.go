@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/grafana/gcx/internal/providers/agento11y"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/remote"
 	"github.com/stretchr/testify/require"
@@ -213,6 +214,43 @@ func TestDeleter_Delete_FailureDetails(t *testing.T) {
 	require.Len(t, failures, 1)
 	require.Equal(t, "dashboard-bad", failures[0].Resource.Name())
 	require.Equal(t, deleteErr, failures[0].Error)
+}
+
+func TestAgento11yLegacyManifests(t *testing.T) {
+	for _, reg := range (&agento11y.Agento11yProvider{}).TypedRegistrations() {
+		t.Run(reg.Descriptor.Kind, func(t *testing.T) {
+			for _, operation := range []string{"push", "delete"} {
+				t.Run(operation, func(t *testing.T) {
+					res := resources.MustFromObject(map[string]any{
+						"apiVersion": "sigil.ext.grafana.app/v1alpha1",
+						"kind":       reg.Descriptor.Kind,
+						"metadata":   map[string]any{"name": "legacy", "namespace": "default"},
+						"spec":       map[string]any{},
+					}, resources.SourceInfo{})
+					registry := &mockPushRegistry{supportedResources: []resources.Descriptor{reg.Descriptor}}
+					if operation == "push" {
+						client := &mockPushClient{}
+						summary, err := remote.NewPusher(client, registry).Push(t.Context(), remote.PushRequest{
+							Resources: resources.NewResources(res), MaxConcurrency: 1, IncludeManaged: true,
+						})
+						require.NoError(t, err)
+						require.Equal(t, 1, summary.SuccessCount())
+						require.Zero(t, summary.FailedCount())
+						require.Equal(t, []string{"create-legacy"}, client.operations)
+					} else {
+						client := &mockDeleteClient{}
+						summary, err := remote.NewDeleterWithClient(client, registry).Delete(t.Context(), remote.DeleteRequest{
+							Resources: resources.NewResources(res), MaxConcurrency: 1,
+						})
+						require.NoError(t, err)
+						require.Equal(t, 1, summary.SuccessCount())
+						require.Zero(t, summary.FailedCount())
+						require.Equal(t, []string{"legacy"}, client.deletedNames)
+					}
+				})
+			}
+		})
+	}
 }
 
 // TestDeleter_Delete_NormalizesGVK is a regression test: a fetched object can

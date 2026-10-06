@@ -1,6 +1,7 @@
 package resources
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -56,7 +57,7 @@ func schemaToFieldPaths(specSchema map[string]any) []string {
 // OpenAPI v3 schema endpoint. Returns an error if the schema is unavailable
 // (e.g. provider-backed resources), in which case the caller should fall back
 // to sample-fetch introspection.
-func discoverFieldsViaOpenAPI(ctx context.Context, cfg config.NamespacedRESTConfig, args []string) ([]string, error) {
+func discoverFieldsViaOpenAPI(ctx context.Context, cfg config.NamespacedRESTConfig, args []string, warn io.Writer) ([]string, error) {
 	sels, err := resources.ParseSelectors(args)
 	if err != nil {
 		return nil, err
@@ -69,6 +70,7 @@ func discoverFieldsViaOpenAPI(ctx context.Context, cfg config.NamespacedRESTConf
 
 	filters, err := reg.MakeFilters(discovery.MakeFiltersOptions{
 		Selectors:            sels,
+		Warn:                 warn,
 		PreferredVersionOnly: true,
 	})
 	if err != nil {
@@ -224,8 +226,10 @@ func getCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			// --json ? discovery: try OpenAPI schema first (no instances needed),
 			// fall back to fetching a sample resource if OpenAPI is unavailable.
 			if opts.IO.JSONDiscovery {
-				fields, schemaErr := discoverFieldsViaOpenAPI(ctx, cfg, args)
+				var warnings bytes.Buffer
+				fields, schemaErr := discoverFieldsViaOpenAPI(ctx, cfg, args, &warnings)
 				if schemaErr == nil {
+					_, _ = cmd.ErrOrStderr().Write(warnings.Bytes())
 					for _, f := range fields {
 						fmt.Fprintln(cmd.OutOrStdout(), f)
 					}
@@ -236,6 +240,7 @@ func getCmd(configOpts *cmdconfig.Options) *cobra.Command {
 
 			fetchReq := FetchRequest{
 				Config:      cfg,
+				Warn:        cmd.ErrOrStderr(),
 				StopOnError: opts.OnError.StopOnError(),
 				Limit:       opts.Limit,
 			}
