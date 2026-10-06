@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"regexp"
+	"slices"
 	"strings"
 	"text/tabwriter"
 
@@ -84,6 +86,9 @@ target_info the same way "gcx appo11y services get" does.
 Latency is direction-aware: callers see the server-side p95
 (how long this service took to respond), callees see the client-side
 p95 (how long this service waited on the peer).
+
+Instrumentation status comes from target_info for each returned service identity.
+A metadata query failure stops the map command.
 
 Connection type is empty for HTTP/gRPC peers; "database",
 "messaging", or "virtual_node" for typed edges. Virtual-node peers
@@ -264,13 +269,73 @@ func fetchServiceMap(ctx context.Context, client *prometheus.Client, datasourceU
 		)
 	}
 
-	return &ServiceMap{
+	result := &ServiceMap{
 		Service: Service{Name: name, Namespace: namespace},
 		Window:  window,
 		GroupBy: groupBy,
 		Callers: parseEdges(callerSet, callersDirection),
 		Callees: parseEdges(calleeSet, calleesDirection),
-	}, nil
+	}
+	if err := populateMapInstrumentation(ctx, client, datasourceUID, result); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// populateMapInstrumentation reads the existing inventory for map identities.
+// Service-graph edges alone do not prove that a peer emits telemetry.
+func populateMapInstrumentation(ctx context.Context, client *prometheus.Client, datasourceUID string, result *ServiceMap) error {
+	jobs := map[string]struct{}{jobLabel(result.Service.Namespace, result.Service.Name): {}}
+	for _, edges := range [][]Edge{result.Callers, result.Callees} {
+		for _, edge := range edges {
+			jobs[jobLabel(edge.Peer.Namespace, edge.Peer.Name)] = struct{}{}
+		}
+	}
+	patterns := make([]string, 0, len(jobs))
+	for job := range jobs {
+		patterns = append(patterns, regexp.QuoteMeta(job))
+	}
+	slices.Sort(patterns)
+	// Graph-specific client/server dimensions do not exist on target_info.
+	// Exact canonical jobs scope this inventory lookup to the returned map.
+	filters := []Matcher{{Label: "job", Op: "=~", Value: strings.Join(patterns, "|")}}
+	metrics := targetInfoMetrics()
+	responses := make([]*prometheus.QueryResponse, len(metrics))
+	eg, egCtx := errgroup.WithContext(ctx)
+	eg.SetLimit(10)
+	for i, metric := range metrics {
+		eg.Go(func() error {
+			expr, err := buildServicesQuery(metric, filters, nil)
+			if err != nil {
+				return fmt.Errorf("failed to build %s map metadata query: %w", metric, err)
+			}
+			responses[i], err = client.Query(egCtx, datasourceUID, prometheus.QueryRequest{Query: expr})
+			if err != nil {
+				return fmt.Errorf("%s map metadata query failed: %w", metric, err)
+			}
+			return nil
+		})
+	}
+	if err := eg.Wait(); err != nil {
+		return err
+	}
+	metadata, err := parseServicesResponses(responses)
+	if err != nil {
+		return fmt.Errorf("failed to parse map metadata: %w", err)
+	}
+	known := make(map[string]bool, len(metadata))
+	for _, svc := range metadata {
+		known[jobLabel(svc.Namespace, svc.Name)] = svc.Instrumented
+	}
+	apply := func(svc *Service) { svc.Instrumented = known[jobLabel(svc.Namespace, svc.Name)] }
+	apply(&result.Service)
+	for i := range result.Callers {
+		apply(&result.Callers[i].Peer)
+	}
+	for i := range result.Callees {
+		apply(&result.Callees[i].Peer)
+	}
+	return nil
 }
 
 func directionLabel(d mapDirection) string {

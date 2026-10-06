@@ -19,6 +19,9 @@ Latency is direction-aware: callers see the server-side p95
 (how long this service took to respond), callees see the client-side
 p95 (how long this service waited on the peer).
 
+Instrumentation status comes from target_info for each returned service identity.
+A metadata query failure stops the map command.
+
 Connection type is empty for HTTP/gRPC peers; "database",
 "messaging", or "virtual_node" for typed edges. Virtual-node peers
 are uninstrumented callers Tempo synthesises from orphan spans.
