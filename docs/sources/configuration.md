@@ -14,7 +14,8 @@ weight: 3
 
 You can configure `gcx` with a configuration file or using environment variables.
 
-- A configuration file stores named stacks, named Grafana Cloud credentials, and contexts that bind them. `gcx` can layer system, user, and repository files. Check the [configuration file reference documentation](https://github.com/grafana/gcx/tree/main/docs/reference/configuration/index.md) for all options. If you have a file from an older `gcx` version, refer to [Migrate your gcx configuration](../migrate-configuration/).
+- A configuration file stores named stacks, named Grafana Cloud credentials, and contexts that bind them. `gcx` can layer system, user, and repository files. Check the [configuration file reference documentation](https://github.com/grafana/gcx/tree/main/docs/reference/configuration/index.md) for all options. 
+  - If you have a file from an older `gcx` version, refer to [Migrate your gcx configuration](../migrate-configuration/).
 - Environment variables override the selected context in memory, so they work best in CI environments and are never persisted implicitly. Refer to [Configure `gcx` with environment variables](#configure-gcx-with-environment-variables) for more information.
 
 ## Choose an authentication method

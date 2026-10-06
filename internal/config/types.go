@@ -807,6 +807,13 @@ type GrafanaConfig struct {
 
 	// TLS contains TLS-related configuration settings.
 	TLS *TLS `json:"tls,omitempty" yaml:"tls,omitempty"`
+
+	// PathfinderInstalled caches that the Pathfinder plugin was detected as
+	// installed and enabled on this server during `gcx login`. Once true, later
+	// logins skip the detection probe and the one-time guide hint. In practice
+	// the plugin is not uninstalled, so the flag is sticky and never cleared
+	// automatically. Set automatically by `gcx login`.
+	PathfinderInstalled bool `json:"pathfinder-installed,omitempty" yaml:"pathfinder-installed,omitempty"`
 }
 
 func (grafana GrafanaConfig) validateNamespace(ctx context.Context, contextName string) error {
