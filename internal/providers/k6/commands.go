@@ -985,7 +985,7 @@ func newRunsListCommand(loader CloudConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list [id-or-name]",
 		Short: "List test runs for a load test.",
-		Long:  "List test runs for a load test. JSON and YAML retain configured threshold options under options.thresholds. These expressions are configuration, not evaluated threshold results. Entries can be strings, objects with abort settings, or null.",
+		Long:  "List test runs for a load test. JSON and YAML retain configured threshold options under options.thresholds. These expressions are configuration, not evaluated threshold results.",
 		Args:  cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -2171,6 +2171,7 @@ func newTestrunStatusCommand(loader CloudConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "status [test-name]",
 		Short: "Show the most recent test run status for a k6 load test.",
+		Long:  "Show the most recent test run status for a k6 load test. JSON and YAML retain configured threshold options under options.thresholds. These expressions are configuration, not evaluated threshold results.",
 		Args:  cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -2235,6 +2236,7 @@ func newTestrunRunsListCommand(loader CloudConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list [test-name]",
 		Short: "List all test runs for a k6 load test.",
+		Long:  "List all test runs for a k6 load test. JSON and YAML retain configured threshold options under options.thresholds. These expressions are configuration, not evaluated threshold results.",
 		Args:  cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {

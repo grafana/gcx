@@ -2,6 +2,10 @@
 
 Show the most recent test run status for a k6 load test.
 
+### Synopsis
+
+Show the most recent test run status for a k6 load test. JSON and YAML retain configured threshold options under options.thresholds. These expressions are configuration, not evaluated threshold results.
+
 ```
 gcx k6 test-run status [test-name] [flags]
 ```
