@@ -65,7 +65,7 @@ gcx appo11y services map <service> [--namespace ns] [flags]
 
 ```
   -d, --datasource string    Prometheus datasource UID (defaults to datasources.prometheus in config or auto-discovery)
-      --filter stringArray   Scope the map to service-graph edges matching a label matcher, e.g. --filter k8s_cluster_name=prod-us (repeatable). Use to break a multi-cluster/multi-region service down one cluster at a time; the label must exist on the service-graph metrics
+      --filter stringArray   Scope the map to service-graph edges matching a label matcher, e.g. --filter k8s_cluster_name=prod-us (repeatable). Use to break a multi-cluster/multi-region service down one cluster at a time; the label must exist on the service-graph metrics. JSON/YAML instrumentation status uses the same filters; a label absent from target_info yields false status
       --group-by strings     Split each edge per distinct value of a label, e.g. --group-by k8s_cluster_name (comma-separated or repeatable). The label must exist on the service-graph metrics — note the Tempo service-graph family often omits cluster labels, in which case no edges match
   -h, --help                 help for map
       --jq string            jq expression to apply to JSON output. Mutually exclusive with --json.

@@ -46,7 +46,7 @@ func (o *mapOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&o.Datasource, "datasource", "d", "", "Prometheus datasource UID (defaults to datasources.prometheus in config or auto-discovery)")
 	flags.StringVarP(&o.Namespace, "namespace", "n", "", "Service namespace (only needed when the argument is the bare service name and multiple namespaces are in play)")
 	flags.StringVar(&o.Since, "since", defaultRedWindow, "Rate/quantile window applied to service-graph metrics (e.g. 1m, 5m, 1h, 1d) — PromQL duration syntax")
-	flags.StringArrayVar(&o.Filters, "filter", nil, "Scope the map to service-graph edges matching a label matcher, e.g. --filter k8s_cluster_name=prod-us (repeatable). Use to break a multi-cluster/multi-region service down one cluster at a time; the label must exist on the service-graph metrics")
+	flags.StringArrayVar(&o.Filters, "filter", nil, "Scope the map to service-graph edges matching a label matcher, e.g. --filter k8s_cluster_name=prod-us (repeatable). Use to break a multi-cluster/multi-region service down one cluster at a time; the label must exist on the service-graph metrics. JSON/YAML instrumentation status uses the same filters; a label absent from target_info yields false status")
 	flags.StringSliceVar(&o.GroupBy, "group-by", nil, "Split each edge per distinct value of a label, e.g. --group-by k8s_cluster_name (comma-separated or repeatable). The label must exist on the service-graph metrics — note the Tempo service-graph family often omits cluster labels, in which case no edges match")
 	o.KG.register(flags)
 }
@@ -200,9 +200,8 @@ func runMap(loader *providers.ConfigLoader, opts *mapOpts) func(*cobra.Command, 
 	}
 }
 
-// fetchServiceMap runs both direction × {rate, errors, p95} = 6 queries
-// in parallel and folds them into a ServiceMap. Each direction's edges
-// are independently parsed and merged, then sorted by rate desc.
+// fetchServiceMap reads six edge queries in parallel, then reads service metadata.
+// Either phase can fail the map. Edges are merged and sorted by descending rate.
 func fetchServiceMap(ctx context.Context, client *prometheus.Client, datasourceUID, namespace, name, window string, matchers []Matcher, groupBy []string) (*ServiceMap, error) {
 	type edgeQuerySet struct {
 		rate, errors, p95 *prometheus.QueryResponse
@@ -289,12 +288,19 @@ func populateMapInstrumentation(ctx context.Context, client *prometheus.Client, 
 	jobs := map[string]struct{}{jobLabel(result.Service.Namespace, result.Service.Name): {}}
 	for _, edges := range [][]Edge{result.Callers, result.Callees} {
 		for _, edge := range edges {
+			if serviceKindFromConnectionType(edge.ConnectionType) != "service" {
+				continue
+			}
 			jobs[jobLabel(edge.Peer.Namespace, edge.Peer.Name)] = struct{}{}
 		}
 	}
 	patterns := make([]string, 0, len(jobs))
 	for job := range jobs {
-		patterns = append(patterns, regexp.QuoteMeta(job))
+		pattern := regexp.QuoteMeta(job)
+		if namespace, _ := parseJob(job); namespace == "" {
+			pattern = "(.+/)?" + pattern
+		}
+		patterns = append(patterns, pattern)
 	}
 	slices.Sort(patterns)
 	// Preserve the requested scope and restrict metadata to returned identities.
@@ -323,17 +329,17 @@ func populateMapInstrumentation(ctx context.Context, client *prometheus.Client, 
 	if err != nil {
 		return fmt.Errorf("failed to parse map metadata: %w", err)
 	}
-	known := make(map[string]bool, len(metadata))
-	for _, svc := range metadata {
-		known[jobLabel(svc.Namespace, svc.Name)] = svc.Instrumented
+	known := instrumentedIndex(metadata)
+	apply := func(svc *Service) {
+		_, svc.Instrumented = known[instrumentedKey{namespace: svc.Namespace, name: svc.Name}]
 	}
-	apply := func(svc *Service) { svc.Instrumented = known[jobLabel(svc.Namespace, svc.Name)] }
 	apply(&result.Service)
-	for i := range result.Callers {
-		apply(&result.Callers[i].Peer)
-	}
-	for i := range result.Callees {
-		apply(&result.Callees[i].Peer)
+	for _, edges := range [][]Edge{result.Callers, result.Callees} {
+		for i := range edges {
+			if serviceKindFromConnectionType(edges[i].ConnectionType) == "service" {
+				apply(&edges[i].Peer)
+			}
+		}
 	}
 	return nil
 }

@@ -358,14 +358,17 @@ func TestFetchServiceMapInstrumentation(t *testing.T) {
 			if !strings.Contains(expr, `k8s_cluster_name="test-cluster"`) {
 				t.Errorf("cluster filter missing from metadata: %s", expr)
 			}
+			if !strings.Contains(expr, "(.+/)?inventory") {
+				t.Errorf("namespace-less peer missing from metadata matcher: %s", expr)
+			}
 			if !strings.Contains(expr, `job=~`) {
 				t.Errorf("metadata is not scoped: %s", expr)
 			}
-			labels = []map[string]string{{"job": "billing/checkout"}, {"job": "billing/frontend"}, {"job": "billing/payment"}, {"job": "other/postgres"}}
+			labels = []map[string]string{{"job": "billing/checkout"}, {"job": "billing/frontend"}, {"job": "billing/payment"}, {"job": "other/inventory"}, {"job": "postgres"}, {"job": "user"}}
 		case strings.Contains(expr, `server="checkout"`):
 			labels = []map[string]string{{"client": "frontend", "client_service_namespace": "billing"}}
 		default:
-			labels = []map[string]string{{"server": "payment", "server_service_namespace": "billing"}, {"server": "postgres", "connection_type": "database"}, {"server": "user", "connection_type": "virtual_node"}}
+			labels = []map[string]string{{"server": "payment", "server_service_namespace": "billing"}, {"server": "inventory"}, {"server": "postgres", "connection_type": "database"}, {"server": "user", "connection_type": "virtual_node"}}
 		}
 		frames := make([]any, 0, len(labels))
 		for _, l := range labels {
@@ -387,7 +390,7 @@ func TestFetchServiceMapInstrumentation(t *testing.T) {
 		t.Error("checkout metadata proves instrumentation")
 	}
 	for _, e := range append(result.Callers, result.Callees...) {
-		want := e.Peer.Name == "frontend" || e.Peer.Name == "payment"
+		want := e.Peer.Name == "frontend" || e.Peer.Name == "payment" || e.Peer.Name == "inventory"
 		if e.Peer.Instrumented != want {
 			t.Errorf("%s instrumented=%v want=%v", e.Peer.Name, e.Peer.Instrumented, want)
 		}
