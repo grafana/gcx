@@ -12,7 +12,10 @@ import (
 
 	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/logs"
+	"github.com/grafana/gcx/internal/secrets"
 	"github.com/grafana/grafana-app-sdk/logging"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
@@ -325,4 +328,32 @@ func TestLoggingRoundTripper_TransportError(t *testing.T) {
 			t.Errorf("log is missing %q\ngot:\n%s", want, out.String())
 		}
 	}
+}
+
+func TestRequestResponseLoggingRoundTripper_RedactsQueryAndPreservesBody(t *testing.T) {
+	const secret = "credential-that-must-not-leak"
+	var sentBody string
+	base := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		assert.Equal(t, secret, req.URL.Query().Get("X-Amz-Credential"))
+		body, err := io.ReadAll(req.Body)
+		require.NoError(t, err)
+		sentBody = string(body)
+		return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}, nil
+	})
+	var logs bytes.Buffer
+	logger := logging.NewSLogLogger(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	ctx := logging.Context(t.Context(), logger)
+	ctx = secrets.WithRedactedURLQuery(ctx)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		"https://artifacts.example.test/a.png?X-Amz-Credential="+secret, strings.NewReader("request-body"))
+	require.NoError(t, err)
+
+	resp, err := (httputils.RequestResponseLoggingRoundTripper{DecoratedTransport: base}).RoundTrip(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, "request-body", sentBody)
+	assert.Contains(t, logs.String(), "http request dump")
+	assert.Contains(t, logs.String(), "Content-Length: 12")
+	assert.Contains(t, logs.String(), "?REDACTED")
+	assert.NotContains(t, logs.String(), secret)
 }

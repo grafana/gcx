@@ -800,9 +800,12 @@ Provider command tree backed by fleet-management `Set/Get` + observed-state RPCs
 | File | Purpose |
 |------|---------|
 | `internal/providers/k6/provider.go` | `K6Provider` implementing the `providers.Provider` interface |
-| `internal/providers/k6/client.go` | k6 Cloud REST client (token exchange auth, projects, tests, runs, envvars) |
-| `internal/providers/k6/commands.go` | k6 CLI commands (projects, tests, runs, envvars, token) |
-| `internal/providers/k6/resource_adapter.go` | Resource adapter for k6 projects |
+| `internal/providers/k6/direct_client.go`, `proxy_client.go` | Direct k6 Cloud and Grafana plugin-proxy clients |
+| `internal/providers/k6/cloud_transport.go` | Shared bounded HTTP transport and retry behavior for both clients |
+| `internal/providers/k6/commands.go`, `v6_commands.go` | k6 Cloud resource commands and published v6 operations |
+| `internal/providers/k6/metrics_commands.go`, `run_observability_commands.go` | Metrics queries, run logs, and Cloud Insights |
+| `internal/providers/k6/run_diagnostics_commands.go` | Experimental run traces and artifacts, and run completion polling |
+| `internal/providers/k6/resource_adapter.go` | Typed adapters for projects, load tests, and schedules |
 
 ### IRM Provider (OnCall + Incidents)
 
