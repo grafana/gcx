@@ -985,6 +985,7 @@ func newRunsListCommand(loader CloudConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list [id-or-name]",
 		Short: "List test runs for a load test.",
+		Long:  "List test runs for a load test. The RESULT column uses the current k6 Cloud result when present. Legacy numeric results remain supported. An absent result is shown as -.",
 		Args:  cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -1055,8 +1056,12 @@ func (c *TestRunTableCodec) Encode(w io.Writer, v any) error {
 		if ended == "" {
 			ended = "-"
 		}
-		result := resultStatusString(r.ResultStatus)
-		t.Row(strconv.Itoa(r.ID), strconv.Itoa(r.LoadTestID), r.Status, result, created, ended)
+		result := r.resultString()
+		testID := r.TestID
+		if testID == 0 {
+			testID = r.LoadTestID
+		}
+		t.Row(strconv.Itoa(r.ID), strconv.Itoa(testID), r.Status, result, created, ended)
 	}
 	return t.Render(w)
 }

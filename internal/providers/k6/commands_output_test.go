@@ -535,3 +535,47 @@ func TestK6TestRunStatusCommand_OutputContract(t *testing.T) {
 		},
 	})
 }
+
+func TestK6V6RunCommands(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v3/account/grafana-app/start":
+			_, _ = w.Write([]byte(`{"organization_id":"42","v3_grafana_token":"cached-v3"}`))
+		case "/cloud/v6/load_tests/6/test_runs":
+			_, _ = w.Write([]byte(`{"value":[{"id":101,"test_id":6,"project_id":42,"status":"completed","result":"passed"}]}`))
+		default:
+			t.Errorf("Unexpected API route: %s", r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	loader := &mockLoader{
+		cloudCfg:    providers.CloudRESTConfig{Stack: cloud.StackInfo{ID: 999}, Namespace: "stack-999"},
+		grafanaCfg:  config.NamespacedRESTConfig{Config: rest.Config{BearerToken: "glsa_test"}},
+		providerCfg: map[string]string{"api-domain": srv.URL},
+	}
+	stdout, _, err := runK6Command(t, false, loader, newRunsListCommand, []string{"--id", "6", "-o", "json"}, "")
+	require.NoError(t, err)
+	var runs []TestRunStatus
+	require.NoError(t, json.Unmarshal([]byte(stdout), &runs))
+	require.Len(t, runs, 1)
+	assert.Equal(t, 6, runs[0].TestID)
+	assert.Equal(t, 42, runs[0].ProjectID)
+	assert.Equal(t, "passed", runs[0].Result)
+	assert.Nil(t, runs[0].ResultStatus)
+	assert.NotContains(t, stdout, "result_status")
+	stdout, _, err = runK6Command(t, false, loader, newRunsListCommand, []string{"--id", "6", "-o", "table"}, "")
+	require.NoError(t, err)
+	assert.Contains(t, stdout, "completed")
+	assert.Contains(t, stdout, "passed")
+}
+
+func TestTestRunStatus_LegacyPendingZero(t *testing.T) {
+	var run TestRunStatus
+	require.NoError(t, json.Unmarshal([]byte(`{"id":101,"load_test_id":6,"result_status":0}`), &run))
+	assert.Equal(t, "pending", run.resultString())
+	data, err := json.Marshal(run)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), `"result_status":0`)
+}

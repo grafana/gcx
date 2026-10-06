@@ -56,9 +56,12 @@ type EnvVar struct {
 // TestRunStatus represents the status of a k6 test run.
 type TestRunStatus struct {
 	ID           int    `json:"id,omitempty"`
-	LoadTestID   int    `json:"load_test_id"`
+	LoadTestID   int    `json:"load_test_id,omitempty"`
+	TestID       int    `json:"test_id,omitempty"`
+	ProjectID    int    `json:"project_id,omitempty"`
+	Result       string `json:"result,omitempty"`
 	Status       string `json:"status"`
-	ResultStatus int    `json:"result_status"`
+	ResultStatus *int   `json:"result_status,omitempty"`
 	Created      string `json:"created,omitempty"`
 	Ended        string `json:"ended,omitempty"`
 	ReferenceID  string `json:"reference_id,omitempty"`
@@ -187,4 +190,15 @@ type AllowedLoadZone struct {
 // allowedLoadZonesResponse is the response from listing allowed load zones.
 type allowedLoadZonesResponse struct {
 	Value []AllowedLoadZone `json:"value"`
+}
+
+// resultString prefers the v6 result and preserves legacy response support.
+func (r TestRunStatus) resultString() string {
+	if r.Result != "" {
+		return r.Result
+	}
+	if r.ResultStatus != nil {
+		return resultStatusString(*r.ResultStatus)
+	}
+	return "-"
 }

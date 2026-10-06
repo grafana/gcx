@@ -67,6 +67,6 @@ func (c *testRunStatusTextCodec) Encode(w io.Writer, v any) error {
 		return fmt.Errorf("invalid data type for text codec: expected TestRunStatus, got %T", v)
 	}
 	_, err := fmt.Fprintf(w, "Run ID:  %d\nStatus:  %s\nResult:  %s\nCreated: %s\nEnded:   %s\n",
-		run.ID, run.Status, resultStatusString(run.ResultStatus), run.Created, run.Ended)
+		run.ID, run.Status, run.resultString(), run.Created, run.Ended)
 	return err
 }
