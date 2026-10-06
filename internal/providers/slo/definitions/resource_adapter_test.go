@@ -642,12 +642,12 @@ func TestSloResource_ExampleUsesServerEvaluationInterval(t *testing.T) {
 	ranges := regexp.MustCompile(`\[[^\]]+\]`).FindAllString(query, -1)
 	require.NotEmpty(t, ranges, "availability must evaluate rates over a server-selected interval")
 	for _, interval := range ranges {
-		assert.Contains(t, []string{"[$__rate_interval]", "[$__range]", "[$__interval]"}, interval,
+		assert.Equal(t, "[$__rate_interval]", interval,
 			"the SLO backend rejects a freeform example with only literal intervals")
 	}
-	for _, interval := range []string{"5m", "1h"} {
+	for _, interval := range []string{"5m"} {
 		t.Run(interval, func(t *testing.T) {
-			expanded := strings.NewReplacer("$__rate_interval", interval, "$__range", interval, "$__interval", interval).Replace(query)
+			expanded := strings.ReplaceAll(query, "$__rate_interval", interval)
 			_, err := parser.NewParser(parser.Options{}).ParseExpr(expanded)
 			require.NoError(t, err, "the example must remain valid PromQL after server expansion")
 		})

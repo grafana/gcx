@@ -24,8 +24,8 @@ func Commands(loader providers.GrafanaConfigLoader) *cobra.Command {
 		Short: "Manage SLO definitions.",
 		Long: `Manage SLO definitions.
 
-Freeform queries must contain a server evaluation interval macro.
-The registered example uses $__rate_interval in each rate range.`,
+Freeform queries must use $__rate_interval in every rate() and increase() range.
+Literal ranges such as [5m] are rejected by the SLO API.`,
 		Aliases: []string{"def", "defs"},
 	}
 	cmd.AddCommand(
