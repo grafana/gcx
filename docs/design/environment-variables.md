@@ -79,7 +79,7 @@ Accepts: `1`, `true`, `0`, `false` (parsed by `caarlos0/env/v11`)
 | Variable | Source | Effect |
 |----------|--------|--------|
 | `GCX_AGENT_MODE` | Explicit opt-in/out | `1`/`true`/`yes` enables agent mode; `0`/`false`/`no` disables it. The `--agent` flag takes precedence. |
-| `GCX_AGENT_NAME` | Explicit identity | A supported name enables agent mode and sets the telemetry `agent` label. Unknown names are ignored. |
+| `GCX_AGENT_NAME` | Explicit identity | A supported name enables agent mode and sets the telemetry `agent` label. A `name@version` value uses only the name. Unknown names are ignored. |
 | `AI_AGENT` | Shared identity | A supported name enables agent mode. A `name@version` value uses only the name. Unknown names are ignored. |
 | `AGENT` | Goose | The value `goose` enables agent mode. Other values are ignored. |
 | `GCX_AGENT_SPILL_BYTES` | Output tuning | Spill threshold in bytes for the `agents` codec (default `102400` = 100 KiB). `0` disables spilling. Invalid values use the default. See [output.md](output.md#111-agents-codec). |

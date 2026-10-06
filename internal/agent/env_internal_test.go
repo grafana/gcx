@@ -23,3 +23,12 @@ func TestEnvTagsMatchResolvedNames(t *testing.T) {
 		"GooseIdentity": envGooseIdentity,
 	}, tags)
 }
+
+// Native markers and explicit inputs must use the same labels.
+func TestNativeHarnessLabelsAreSupported(t *testing.T) {
+	for _, marker := range append(harnessEnvVars, harnessSessionVars...) {
+		t.Run(marker.envVar, func(t *testing.T) {
+			assert.Equal(t, marker.name, supportedName(marker.name))
+		})
+	}
+}
