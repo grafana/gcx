@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -19,6 +20,8 @@ import (
 // error-code), flattened to core wasm. Strings are (ptr, len) pairs.
 //
 //	request_new(method, scheme, authority, path_with_query, headers, body string) -> id u32
+//	                                          headers as for get_headers, without Host
+//	                                          (the authority carries it); body is complete
 //	handle(id)                                send the request
 //	poll(id) -> s32                           0 pending; 1 response ready; 2 failed
 //	get_status_code(id) -> u32
@@ -35,8 +38,14 @@ import (
 //     unparseable or refused request, is reported by poll as failed.
 //   - Calls taking (buf, cap) return the full length and write only if it
 //     fits, so the guest can retry with a bigger buffer.
+//   - One id serves the whole exchange: request_new's request, then after
+//     handle its response, then the body body_read streams.
+//   - The host owns framing: it sets Content-Length from body, and may
+//     decompress the response as long as its headers then match the body.
 //   - After poll reports a response, body_read streams its body. Once poll
 //     or body_read reports failure, error_code and error_detail describe it.
+//   - Guest misuse (an unknown or dropped id, handle twice, reading a
+//     response before poll reports it, an out-of-bounds pointer) traps.
 //
 // The host never calls back into the guest: entering a //go:wasmexport while
 // an import is in flight lets the Go scheduler run other goroutines on the
@@ -45,6 +54,8 @@ import (
 //
 // TLS, proxies and DNS are the host's business; ClientOpts.TLSConfig and
 // client-go TLS settings have no effect in this build.
+// --insecure-log-http-payload dumps whole response bodies, so it gives up
+// streaming: each body is read to its end before the caller sees it.
 
 //go:wasmimport gcx_http request_new
 func hostRequestNew(method, scheme, authority, pathWithQuery, headers, body string) uint32
@@ -119,7 +130,7 @@ func (hostTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 	code := int(hostGetStatusCode(id))
 	resp := &http.Response{
-		Status:     strconv.Itoa(code) + " " + http.StatusText(code),
+		Status:     strings.TrimSpace(strconv.Itoa(code) + " " + http.StatusText(code)),
 		StatusCode: code,
 		Proto:      "HTTP/1.1",
 		ProtoMajor: 1,
@@ -137,20 +148,29 @@ func (hostTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 // hostBody streams a response body from the host.
 type hostBody struct {
-	id     uint32
-	ctx    context.Context
-	closed bool
+	id      uint32
+	ctx     context.Context
+	closed  bool
+	reading bool // a Read is using id, so Close leaves dropping it to that Read
+	dropped bool
 }
 
 func (b *hostBody) Read(p []byte) (int, error) {
 	if len(p) == 0 {
 		return 0, nil
 	}
+	// Another goroutine may Close the body while this Read waits (as
+	// client-go's StreamWatcher.Stop does), and the host traps on a dropped
+	// id. So Close only marks the body closed while a Read is in progress,
+	// and the Read drops id once it is done with it.
+	b.reading = true
+	defer func() {
+		b.reading = false
+		if b.closed {
+			b.drop()
+		}
+	}()
 	var n int32
-	// Check closed before every host call: another goroutine may Close the
-	// body (as client-go's StreamWatcher.Stop does) while this one sleeps,
-	// and the host traps on a dropped id. wasm runs one goroutine at a time,
-	// so nothing can close it between the check and the call.
 	ready := func() bool {
 		if b.closed {
 			return true
@@ -174,11 +194,18 @@ func (b *hostBody) Read(p []byte) (int, error) {
 }
 
 func (b *hostBody) Close() error {
-	if !b.closed {
-		b.closed = true
-		hostDrop(b.id)
+	b.closed = true
+	if !b.reading {
+		b.drop()
 	}
 	return nil
+}
+
+func (b *hostBody) drop() {
+	if !b.dropped {
+		b.dropped = true
+		hostDrop(b.id)
+	}
 }
 
 // waitFor calls ready until it returns true, sleeping with backoff between
@@ -240,7 +267,9 @@ func takeError(id uint32) error {
 	}
 }
 
-// hostError is a wasi:http error-code reported by the host.
+// hostError is a wasi:http error-code reported by the host. It is a
+// net.Error, and unwraps to the matching errno for connection failures, so
+// the retry transport treats it as it would the native error.
 type hostError struct {
 	code   uint32
 	detail string
@@ -255,6 +284,27 @@ func (e *hostError) Error() string {
 		return "gcx_http: " + name
 	}
 	return "gcx_http: " + name + ": " + e.detail
+}
+
+func (e *hostError) Timeout() bool {
+	switch e.code {
+	case 0, 8, 9, 10, 33: // DNS-timeout, connection-{,read-,write-}timeout, HTTP-response-timeout
+		return true
+	}
+	return false
+}
+
+// Temporary is deprecated in net.Error but required to implement it.
+func (e *hostError) Temporary() bool { return e.Timeout() }
+
+func (e *hostError) Unwrap() error {
+	switch e.code {
+	case 6: // connection-refused
+		return syscall.ECONNREFUSED
+	case 7: // connection-terminated
+		return syscall.ECONNRESET
+	}
+	return nil
 }
 
 // errorCodeNames lists wasi:http@0.3.1's error-code cases in order.

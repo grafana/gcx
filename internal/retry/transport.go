@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/grafana/grafana-app-sdk/logging"
@@ -256,6 +257,12 @@ func isTransientConnectionError(err error) bool {
 	// (ECONNREFUSED, ECONNRESET, etc.).
 	var opErr *net.OpError
 	if errors.As(err, &opErr) {
+		return true
+	}
+
+	// Connection errors without a net.OpError, such as those the wasip1
+	// host transport reports.
+	if errors.Is(err, syscall.ECONNREFUSED) || errors.Is(err, syscall.ECONNRESET) {
 		return true
 	}
 
