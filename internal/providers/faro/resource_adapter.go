@@ -68,8 +68,13 @@ func FaroAppSchema() json.RawMessage {
 					"settings": map[string]any{
 						"type": "object",
 						"properties": map[string]any{
-							"geolocationEnabled": map[string]any{"type": "boolean"},
-							"geolocationLevel":   map[string]any{"type": "string", "enum": geolocationLevels()},
+							"geolocationEnabled": map[string]any{"type": "boolean", "description": "Enrich sessions with location data. Omit to keep the stored value; false disables it."},
+							"geolocationLevel":   map[string]any{"type": "string", "enum": geolocationLevels(), "description": "Finest location detail to keep, from coarsest (continent) to finest (network). Omit to keep the stored value."},
+							"geolocationCountryDenylist": map[string]any{
+								"type":        "array",
+								"items":       map[string]any{"type": "string", "pattern": "^[A-Za-z]{2}$"},
+								"description": "ISO 3166-1 alpha-2 country codes whose sessions are not enriched. Omit to keep the stored list; an empty list clears it.",
+							},
 						},
 					},
 				},

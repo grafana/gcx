@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/grafana/gcx/internal/resources/adapter"
 )
@@ -79,11 +80,16 @@ type FaroAppSettings struct {
 	// A pointer keeps an explicit false, which disables geolocation.
 	GeolocationEnabled *bool  `json:"geolocationEnabled,omitempty"`
 	GeolocationLevel   string `json:"geolocationLevel,omitempty"`
+	// ISO 3166-1 alpha-2 codes whose sessions are not enriched. Nil keeps the
+	// stored list on update; an empty list clears it.
+	GeolocationCountryDenylist []string `json:"geolocationCountryDenylist,omitempty"`
 }
 
 const (
 	settingGeolocationEnabled = "geolocation.enabled"
 	settingGeolocationLevel   = "geolocation.level"
+	// The receiver binary-searches this comma-separated list, so it must be sorted.
+	settingGeolocationCountryDenylist = "geolocation.country_denylist"
 )
 
 // geolocationLevels lists the manifest names in the API's index order:
@@ -111,11 +117,33 @@ func (s *FaroAppSettings) toAPI() (map[string]string, error) {
 		}
 		out[settingGeolocationLevel] = strconv.Itoa(i)
 	}
+	if s.GeolocationCountryDenylist != nil {
+		countries, err := countryDenylistToAPI(s.GeolocationCountryDenylist)
+		if err != nil {
+			return nil, err
+		}
+		out[settingGeolocationCountryDenylist] = countries
+	}
 	return out, nil
 }
 
+// countryDenylistToAPI uppercases, deduplicates and sorts the codes.
+func countryDenylistToAPI(codes []string) (string, error) {
+	out := make([]string, 0, len(codes))
+	for _, c := range codes {
+		c = strings.ToUpper(strings.TrimSpace(c))
+		if len(c) != 2 || c[0] < 'A' || c[0] > 'Z' || c[1] < 'A' || c[1] > 'Z' {
+			return "", fmt.Errorf("faro: settings.geolocationCountryDenylist entry %q is invalid; use ISO 3166-1 alpha-2 codes such as DE", c)
+		}
+		out = append(out, c)
+	}
+	slices.Sort(out)
+	return strings.Join(slices.Compact(out), ","), nil
+}
+
 // settingsFromAPI keeps the geolocation settings only. The others stay on the
-// server because updates do not delete settings they omit.
+// server because updates do not delete settings they omit, but a new app
+// created from an export does not get them.
 func settingsFromAPI(m map[string]string) *FaroAppSettings {
 	var s FaroAppSettings
 	if v, ok := m[settingGeolocationEnabled]; ok {
@@ -126,7 +154,15 @@ func settingsFromAPI(m map[string]string) *FaroAppSettings {
 	if i, err := strconv.Atoi(m[settingGeolocationLevel]); err == nil && i >= 0 && i < len(levels) {
 		s.GeolocationLevel = levels[i]
 	}
-	if s == (FaroAppSettings{}) {
+	if v, ok := m[settingGeolocationCountryDenylist]; ok {
+		s.GeolocationCountryDenylist = []string{}
+		for c := range strings.SplitSeq(v, ",") {
+			if c = strings.TrimSpace(c); c != "" {
+				s.GeolocationCountryDenylist = append(s.GeolocationCountryDenylist, c)
+			}
+		}
+	}
+	if s.GeolocationEnabled == nil && s.GeolocationLevel == "" && len(s.GeolocationCountryDenylist) == 0 {
 		return nil
 	}
 	return &s

@@ -9,8 +9,7 @@ package faro //nolint:testpackage // Drives the unexported command constructors 
 //     (gcx.mutation for the CRUD verbs, the bespoke gcx.faro.sourcemap_*
 //     shapes for the sourcemap verbs);
 //   - explicit -o json / -o yaml overrides are honored;
-//   - the create command's advisory warning is a typed stderr diagnostic
-//     (JSONL in agent mode), never stdout.
+//   - create with labels and settings writes nothing to stderr.
 //
 // The commands are driven end-to-end (cobra Execute) against a fake Faro API
 // server, with the config loader stubbed through the command loader seams.
