@@ -1746,6 +1746,14 @@ func signupIncompleteDetailedError(e *login.SignupIncompleteError) *gcxerrors.De
 		note = fmt.Sprintf("Your Grafana Cloud account and the stack %s exist, but gcx did not save a connection to it.", e.Server)
 		recovery = "Once the cause above is fixed, connect gcx to the new stack: " + e.Recovery
 	}
+	// JSON output falls back to Parent only while Details is empty, so the
+	// note would hide a cause that only Parent carries, such as a busy
+	// callback port. Moving it into Details keeps it in every format and
+	// prints it once in text.
+	if detailed.Details == "" && detailed.Parent != nil {
+		detailed.Details = detailed.Parent.Error()
+		detailed.Parent = nil
+	}
 	if detailed.Details == "" {
 		detailed.Details = note
 	} else {

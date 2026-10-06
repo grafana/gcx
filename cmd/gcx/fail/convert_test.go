@@ -1,7 +1,9 @@
 package fail_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -1668,4 +1670,38 @@ func TestSignupIncompleteErrorKeepsTheFailure(t *testing.T) {
 	}
 	// The inner error's own suggestions are not changed in place.
 	assert.Equal(t, []string{"Unlock the keychain"}, keychain.Suggestions)
+}
+
+// TestSignupIncompleteErrorKeepsAWrappedCause pins that signup's note does not
+// hide a cause that the fallback converter keeps only as Parent, such as a
+// busy callback port. JSON output reads Details and falls back to Parent only
+// when Details is empty, so an agent would otherwise get the note and the
+// recovery but not why the signup stopped. Text shows the cause once.
+func TestSignupIncompleteErrorKeepsAWrappedCause(t *testing.T) {
+	const cause = "callback port 54322 unavailable: listen tcp 127.0.0.1:54322: bind: address already in use"
+	const signIn = "gcx login default --cloud --oauth --oauth-callback-port 54322"
+	err := &login.SignupIncompleteError{
+		Err:      fmt.Errorf("OAuth flow failed: %w", errors.New(cause)),
+		Recovery: signIn,
+	}
+
+	det := fail.ErrorToDetailedError(err)
+	require.NotNil(t, det)
+	assert.Equal(t, "OAuth flow failed", det.Summary)
+
+	var buf bytes.Buffer
+	require.NoError(t, det.WriteJSON(&buf, 1))
+	var envelope struct {
+		Error struct {
+			Details     string   `json:"details"`
+			Suggestions []string `json:"suggestions"`
+		} `json:"error"`
+	}
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &envelope), buf.String())
+	assert.Contains(t, envelope.Error.Details, "If you already created your Grafana Cloud account in the browser")
+	assert.Contains(t, envelope.Error.Details, cause)
+	require.NotEmpty(t, envelope.Error.Suggestions)
+	assert.Equal(t, "Sign in instead of signing up again, and choose the new stack: "+signIn, envelope.Error.Suggestions[0])
+
+	assert.Equal(t, 1, strings.Count(det.Error(), "address already in use"), det.Error())
 }
