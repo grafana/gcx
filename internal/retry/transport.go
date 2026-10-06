@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/grafana/grafana-app-sdk/logging"
@@ -260,10 +259,11 @@ func isTransientConnectionError(err error) bool {
 		return true
 	}
 
-	// Connection errors without a net.OpError, such as those the wasip1
-	// host transport reports.
-	if errors.Is(err, syscall.ECONNREFUSED) || errors.Is(err, syscall.ECONNRESET) {
-		return true
+	// Errors that classify themselves, such as those the wasip1 host
+	// transport reports in place of a net.OpError.
+	var transient interface{ Transient() bool }
+	if errors.As(err, &transient) {
+		return transient.Transient()
 	}
 
 	// Check for net.DNSError with IsTemporary.

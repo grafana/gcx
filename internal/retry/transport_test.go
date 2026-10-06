@@ -11,7 +11,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync/atomic"
-	"syscall"
 	"testing"
 	"time"
 
@@ -463,6 +462,19 @@ func TestTransport_BytesBufferBodyGetBody(t *testing.T) {
 	assert.Equal(t, int32(2), attempts.Load())
 }
 
+// transientError classifies itself, as the wasip1 host transport's errors do.
+type transientError bool
+
+func (e transientError) Error() string   { return "host error" }
+func (e transientError) Transient() bool { return bool(e) }
+
+// timeoutError is a net.Error that is not a *net.OpError.
+type timeoutError bool
+
+func (e timeoutError) Error() string   { return "timeout" }
+func (e timeoutError) Timeout() bool   { return bool(e) }
+func (e timeoutError) Temporary() bool { return bool(e) }
+
 func TestIsTransientConnectionError(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -472,9 +484,10 @@ func TestIsTransientConnectionError(t *testing.T) {
 		{"op error", &net.OpError{Op: "dial", Err: errors.New("x")}, true},
 		{"temporary DNS", &net.DNSError{IsTemporary: true}, true},
 		{"permanent DNS", &net.DNSError{IsNotFound: true}, false},
-		// Errnos outside a net.OpError, as the wasip1 host transport reports them.
-		{"wrapped ECONNREFUSED", fmt.Errorf("host: %w", syscall.ECONNREFUSED), true},
-		{"wrapped ECONNRESET", fmt.Errorf("host: %w", syscall.ECONNRESET), true},
+		{"wrapped transient", fmt.Errorf("host: %w", transientError(true)), true},
+		{"wrapped permanent", fmt.Errorf("host: %w", transientError(false)), false},
+		{"net.Error timeout", timeoutError(true), true},
+		{"net.Error without timeout", timeoutError(false), false},
 		{"other", errors.New("x"), false},
 		{"nil", nil, false},
 	} {
