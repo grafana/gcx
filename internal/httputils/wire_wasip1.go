@@ -3,14 +3,12 @@
 package httputils
 
 import (
-	"bytes"
 	"cmp"
 	"context"
 	"io"
 	"net/http"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -162,7 +160,9 @@ func (b *hostBody) Read(p []byte) (int, error) {
 	// Another goroutine may Close the body while this Read waits (as
 	// client-go's StreamWatcher.Stop does), and the host traps on a dropped
 	// id. So Close only marks the body closed while a Read is in progress,
-	// and the Read drops id once it is done with it.
+	// and the Read drops id once it is done with it. The fields need no
+	// locking because wasip1 runs one goroutine at a time, and neither Read
+	// nor Close yields between testing one field and setting the other.
 	b.reading = true
 	defer func() {
 		b.reading = false
@@ -223,103 +223,9 @@ func waitFor(ctx context.Context, ready func() bool) error {
 	return nil
 }
 
-// readSized calls get with a buffer, retrying once with the length it
-// reports if that did not fit.
-func readSized(get func(buf *byte, capacity uint32) uint32) []byte {
-	buf := make([]byte, 1024)
-	n := get(&buf[0], uint32(len(buf)))
-	if int(n) > len(buf) {
-		buf = make([]byte, n)
-		n = get(&buf[0], n)
-	}
-	return buf[:n]
-}
-
-func encodeHeaders(h http.Header) string {
-	var b strings.Builder
-	for k, vs := range h {
-		if http.CanonicalHeaderKey(k) == "Host" { // sent as the authority
-			continue
-		}
-		for _, v := range vs {
-			b.WriteString(k)
-			b.WriteByte(0)
-			b.WriteString(v)
-			b.WriteByte(0)
-		}
-	}
-	return b.String()
-}
-
-func decodeHeaders(b []byte) http.Header {
-	h := http.Header{}
-	parts := bytes.Split(b, []byte{0})
-	for i := 0; i+1 < len(parts); i += 2 {
-		h.Add(string(parts[i]), string(parts[i+1]))
-	}
-	return h
-}
-
 func takeError(id uint32) error {
 	return &hostError{
 		code:   hostErrorCode(id),
 		detail: string(readSized(func(buf *byte, n uint32) uint32 { return hostErrorDetail(id, buf, n) })),
 	}
-}
-
-// hostError is a wasi:http error-code reported by the host. It is a
-// net.Error, and unwraps to the matching errno for connection failures, so
-// the retry transport treats it as it would the native error.
-type hostError struct {
-	code   uint32
-	detail string
-}
-
-func (e *hostError) Error() string {
-	name := "error-code " + strconv.Itoa(int(e.code))
-	if int(e.code) < len(errorCodeNames) {
-		name = errorCodeNames[e.code]
-	}
-	if e.detail == "" {
-		return "gcx_http: " + name
-	}
-	return "gcx_http: " + name + ": " + e.detail
-}
-
-func (e *hostError) Timeout() bool {
-	switch e.code {
-	case 0, 8, 9, 10, 33: // DNS-timeout, connection-{,read-,write-}timeout, HTTP-response-timeout
-		return true
-	}
-	return false
-}
-
-// Temporary is deprecated in net.Error but required to implement it.
-func (e *hostError) Temporary() bool { return e.Timeout() }
-
-func (e *hostError) Unwrap() error {
-	switch e.code {
-	case 6: // connection-refused
-		return syscall.ECONNREFUSED
-	case 7: // connection-terminated
-		return syscall.ECONNRESET
-	}
-	return nil
-}
-
-// errorCodeNames lists wasi:http@0.3.1's error-code cases in order.
-var errorCodeNames = []string{
-	"DNS-timeout", "DNS-error", "destination-not-found", "destination-unavailable",
-	"destination-IP-prohibited", "destination-IP-unroutable", "connection-refused",
-	"connection-terminated", "connection-timeout", "connection-read-timeout",
-	"connection-write-timeout", "connection-limit-reached", "TLS-protocol-error",
-	"TLS-certificate-error", "TLS-alert-received", "HTTP-request-denied",
-	"HTTP-request-length-required", "HTTP-request-body-size", "HTTP-request-method-invalid",
-	"HTTP-request-URI-invalid", "HTTP-request-URI-too-long", "HTTP-request-header-section-size",
-	"HTTP-request-header-size", "HTTP-request-trailer-section-size", "HTTP-request-trailer-size",
-	"HTTP-response-incomplete", "HTTP-response-header-section-size", "HTTP-response-header-size",
-	"HTTP-response-body-size", "HTTP-response-trailer-section-size", "HTTP-response-trailer-size",
-	"HTTP-response-transfer-coding", "HTTP-response-content-coding", "HTTP-response-timeout",
-	"HTTP-upgrade-failed", "HTTP-protocol-error", "loop-detected", "configuration-error",
-	"internal-error",
 }
