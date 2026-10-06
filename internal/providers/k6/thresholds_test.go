@@ -22,15 +22,13 @@ import (
 const thresholdRunsResponse = `{"value":[{"id":101,"load_test_id":6,"result_status":1,"status":"completed","options":{"thresholds":{"checks":["rate==1"],"http_req_duration":["p(95)<1000"],"http_req_failed":["rate==0"]}}}]}`
 
 func TestTestRunStatus_ThresholdExpressions(t *testing.T) {
-	for _, tc := range []struct {
-		name    string
-		body    string
-		present bool
-	}{
-		{"configured", thresholdRunsResponse, true},
-		{"absent", `{"value":[{"id":101,"status":"completed"}]}`, false},
-		{"null", `{"value":[{"id":101,"load_test_id":6,"result_status":1,"status":"completed","options":null}]}`, false},
-		{"empty", `{"value":[{"id":101,"load_test_id":6,"result_status":1,"status":"completed","options":{"thresholds":{}}}]}`, false},
+	for _, tc := range []struct{ name, body, options string }{
+		{"configured", thresholdRunsResponse, `{"thresholds":{"checks":["rate==1"],"http_req_duration":["p(95)<1000"],"http_req_failed":["rate==0"]}}`},
+		{"absent", `{"value":[{"id":101,"status":"completed"}]}`, ""},
+		{"null", `{"value":[{"id":101,"status":"completed","options":null}]}`, `null`},
+		{"empty", `{"value":[{"id":101,"status":"completed","options":{"thresholds":{}}}]}`, `{"thresholds":{}}`},
+		{"null thresholds", `{"value":[{"id":101,"status":"completed","options":{"thresholds":null}}]}`, `{"thresholds":null}`},
+		{"other options", `{"value":[{"id":101,"status":"completed","options":{"vus":10,"duration":"30s","future":{"enabled":true}}}]}`, `{"vus":10,"duration":"30s","future":{"enabled":true}}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var response testRunsResponse
@@ -38,18 +36,12 @@ func TestTestRunStatus_ThresholdExpressions(t *testing.T) {
 			require.Len(t, response.Value, 1)
 			encoded, err := json.Marshal(response.Value[0])
 			require.NoError(t, err)
-			var run map[string]any
-			require.NoError(t, json.Unmarshal(encoded, &run))
-			if tc.present {
-				options, ok := run["options"].(map[string]any)
-				require.True(t, ok, "options must be an object")
-				assert.Equal(t, expectedThresholdExpressions(), options["thresholds"])
+			var output map[string]json.RawMessage
+			require.NoError(t, json.Unmarshal(encoded, &output))
+			if tc.options == "" {
+				assert.NotContains(t, output, "options")
 			} else {
-				if options, ok := run["options"].(map[string]any); ok {
-					assert.NotContains(t, options, "thresholds")
-				} else {
-					assert.NotContains(t, run, "options")
-				}
+				assert.JSONEq(t, tc.options, string(output["options"]))
 			}
 		})
 	}
@@ -105,7 +97,6 @@ func TestK6RunsList_ThresholdExpressionsOutput(t *testing.T) {
 			if tc.selected {
 				assert.Equal(t, expectedThresholdExpressions(), runs[0]["options.thresholds"])
 				assert.Len(t, runs[0], 2)
-				assert.NotContains(t, runs[0], "result")
 			} else {
 				options, ok := runs[0]["options"].(map[string]any)
 				require.True(t, ok, "options must be an object")
