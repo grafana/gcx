@@ -80,6 +80,7 @@ func canonicalHost(h, scheme string) string {
 const (
 	codeDNSTimeout               = 0
 	codeDNSError                 = 1
+	codeDestinationUnavailable   = 3
 	codeConnectionRefused        = 6
 	codeConnectionTerminated     = 7
 	codeConnectionTimeout        = 8
@@ -405,6 +406,7 @@ func classify(err error, fallback uint32) *callError {
 		alert tls.AlertError
 		rec   tls.RecordHeaderError
 		ne    net.Error
+		op    *net.OpError
 	)
 	code := fallback
 	switch {
@@ -424,6 +426,12 @@ func classify(err error, fallback uint32) *callError {
 		code = codeTLSProtocolError
 	case errors.As(err, &ne) && ne.Timeout():
 		code = codeConnectionTimeout
+	// Any other socket error (EHOSTUNREACH, ENETUNREACH, EPIPE, ...), which
+	// gcx retries natively.
+	case errors.As(err, &op) && op.Op == "dial":
+		code = codeDestinationUnavailable
+	case errors.As(err, &op):
+		code = codeConnectionTerminated
 	}
 	return &callError{code, err.Error()}
 }

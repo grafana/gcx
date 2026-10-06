@@ -291,6 +291,8 @@ func TestClassify(t *testing.T) {
 		{tls.AlertError(40), codeTLSAlertReceived},
 		{tls.RecordHeaderError{Msg: "bad"}, codeTLSProtocolError},
 		{timeoutError{}, codeConnectionTimeout},
+		{&net.OpError{Op: "dial", Err: syscall.EHOSTUNREACH}, codeDestinationUnavailable},
+		{&net.OpError{Op: "write", Err: syscall.EPIPE}, codeConnectionTerminated},
 		{errors.New("something else"), codeInternalError},
 	} {
 		if got := classify(tc.err, codeInternalError); got.code != tc.want || got.detail != tc.err.Error() {

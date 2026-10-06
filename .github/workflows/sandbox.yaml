@@ -72,10 +72,11 @@ jobs:
         working-directory: experimental/sandbox
         env:
           GCX_SANDBOX_WASM: ${{ github.workspace }}/experimental/sandbox/gcx.wasm
-        # The unit tests run under -race. The e2e tests don't, because the
-        # race detector slows wazero's cold compile of the module (a cache
-        # miss on every change) from ~40s to several minutes.
+        # The unit tests run under -race; -short skips the e2e tests there
+        # (loadGCX), because the race detector slows wazero's cold compile of
+        # the module (a cache miss on every change) from ~40s to several
+        # minutes. The second run covers the e2e tests without it.
         run: |
           go vet ./...
-          go test -race -skip '^(TestRun|TestMemoryLimit)$' ./...
-          go test -run '^(TestRun|TestMemoryLimit)$' ./...
+          go test -race -short ./...
+          go test ./...

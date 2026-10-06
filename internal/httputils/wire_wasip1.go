@@ -20,7 +20,9 @@ import (
 //	request_new(method, scheme, authority, path_with_query, headers, body string) -> id u32
 //	                                          headers as for get_headers, without Host
 //	                                          (the authority carries it); body is complete
-//	handle(id)                                send the request
+//	handle(id)                                send the request (separate from request_new
+//	                                          so a body_write can stream request bodies
+//	                                          between them later)
 //	poll(id) -> s32                           0 pending; 1 response ready; 2 failed
 //	get_status_code(id) -> u32
 //	get_headers(id, buf, cap u32) -> len u32  "name\0value\0..." for each value
