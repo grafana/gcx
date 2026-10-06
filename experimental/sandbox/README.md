@@ -148,9 +148,9 @@ Each `Run`:
   request to that host, replacing whatever the guest sent. They never follow a
   redirect to another host.
 - **Memory:** the guest's is capped by `Config.MemoryLimitBytes`. gcx needs
-  about 94 MiB, and `New` rejects anything lower. The host also buffers each
-  response in full, outside that cap; to bound it, wrap `Config.Transport` in a
-  round tripper that limits response size.
+  about 94 MiB, and `New` rejects anything lower. Outside that cap, the host
+  holds at most a couple of 32 KiB chunks of each response body, which it
+  streams to the guest as the guest reads it.
 - **Time:** the guest stops when `ctx` is cancelled or its deadline passes.
   gcx's retry backoff sleeps can't be interrupted, so stopping can lag by up to
   one backoff interval.
