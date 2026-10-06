@@ -148,16 +148,18 @@ type ContentJSON []ContentBlock
 
 // ContentBlock represents a single content block in a message.
 type ContentBlock struct {
-	Type       string          `json:"type"`
-	Text       string          `json:"text,omitempty"`
-	ToolID     *string         `json:"toolId,omitempty"`
-	ToolName   *string         `json:"toolName,omitempty"`
-	ToolInput  json.RawMessage `json:"toolInput,omitempty"`
-	ToolUseID  *string         `json:"toolUseId,omitempty"`
-	ToolResult json.RawMessage `json:"toolResult,omitempty"`
-	IsError    *bool           `json:"isError,omitempty"`
-	DurationMs *json.Number    `json:"durationMs,omitempty"`
-	Structured json.RawMessage `json:"structured,omitempty"`
+	Type         string          `json:"type"`
+	Text         string          `json:"text,omitempty"`
+	ToolID       *string         `json:"toolId,omitempty"`
+	ToolName     *string         `json:"toolName,omitempty"`
+	ToolInput    json.RawMessage `json:"toolInput,omitempty"`
+	ToolUseID    *string         `json:"toolUseId,omitempty"`
+	ToolResult   json.RawMessage `json:"toolResult,omitempty"`
+	IsError      *bool           `json:"isError,omitempty"`
+	DurationMs   json.RawMessage `json:"durationMs,omitempty"`
+	Thinking     string          `json:"thinking,omitempty"`
+	ArtifactType string          `json:"artifactType,omitempty"`
+	Panel        json.RawMessage `json:"panel,omitempty"`
 }
 
 // ExtractText extracts all text content from a ChatMessage.

@@ -84,6 +84,11 @@ func (t ConversationTranscript) hasNonTextParts() bool {
 		if message.Hidden {
 			continue
 		}
+		for _, block := range message.Content {
+			if block.Type != "" && block.Type != "text" {
+				return true
+			}
+		}
 		var parts []struct {
 			Type string `json:"type"`
 		}
