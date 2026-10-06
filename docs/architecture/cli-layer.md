@@ -88,7 +88,7 @@ gcx (root)
 │   ├── list-profile-types   [--datasource/-d UID]
 │   ├── metrics              [SELECTOR] --profile-type TYPE [--top] [--group-by] [--limit]
 │   ├── series               [SELECTOR] [--datasource/-d UID] [--match SELECTOR]... [--label-name LABEL]... [--from] [--to] [--since]
-│   └── adaptive             (stub — "not yet available")
+│   └── adaptive             (reports unsupported management and directs users to Grafana Cloud)
 │
 ├── providers                [cmd/gcx/providers/command.go]
 │   └── (list; no subcommands — prints NAME/DESCRIPTION table of registered providers)

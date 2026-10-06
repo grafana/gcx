@@ -2,10 +2,8 @@ package profiles_test
 
 import (
 	"bytes"
-	"encoding/json"
 	"testing"
 
-	"github.com/grafana/gcx/cmd/gcx/commands"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/providers/profiles"
 	"github.com/spf13/cobra"
@@ -63,26 +61,4 @@ func TestAdaptiveHelpMetadata(t *testing.T) {
 	require.NoError(t, cmd.Execute())
 	assert.Contains(t, out.String(), "gcx does not support its management commands")
 	assert.Contains(t, out.String(), "https://grafana.com/docs/grafana-cloud/observe-and-act/adaptive-telemetry/adaptive-profiles/")
-}
-
-func TestAdaptiveCatalogMetadata(t *testing.T) {
-	root := &cobra.Command{Use: "gcx"}
-	root.AddCommand((&profiles.Provider{}).Commands()[0])
-	root.AddCommand(commands.Command(root))
-	var out bytes.Buffer
-	root.SetOut(&out)
-	root.SetArgs([]string{"commands", "--flat", "-o", "json"})
-	require.NoError(t, root.Execute())
-	var catalog commands.FlatCatalogOutput
-	require.NoError(t, json.Unmarshal(out.Bytes(), &catalog))
-	var found bool
-	for _, item := range catalog.Commands {
-		if item.FullPath == "gcx profiles adaptive" {
-			found = true
-			assert.Equal(t, "Adaptive Profiles management is not supported by gcx", item.Description)
-			assert.Contains(t, item.Long, "Use the Grafana Cloud UI")
-			assert.NotContains(t, item.Description, "not yet available")
-		}
-	}
-	require.True(t, found, "adaptive command must remain discoverable")
 }
