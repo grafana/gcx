@@ -579,7 +579,7 @@ func TestTestRunStatus_LegacyPendingZero(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(`{"id":101,"load_test_id":6,"result_status":0}`), &run))
 	assert.Equal(t, "pending", run.resultString())
 	assert.Equal(t, 6, run.TestID)
-	assert.Equal(t, "pending", run.Result)
+	assert.Empty(t, run.Result)
 	data, err := json.Marshal(run)
 	require.NoError(t, err)
 	assert.Contains(t, string(data), `"result_status":0`)
@@ -593,6 +593,9 @@ func TestTestRunStatus_NormalizesLegacyFields(t *testing.T) {
 		{"legacy passed", `{"load_test_id":6,"result_status":1}`, "passed", 6},
 		{"legacy failed", `{"load_test_id":6,"result_status":2}`, "failed", 6},
 		{"current wins", `{"test_id":7,"load_test_id":6,"result":"passed","result_status":2}`, "passed", 7},
+		{"legacy pending", `{"load_test_id":6,"result_status":0}`, "", 6},
+		{"unknown legacy", `{"load_test_id":6,"result_status":7}`, "", 6},
+		{"current identity", `{"test_id":7,"result":"passed"}`, "passed", 7},
 		{"absent", `{}`, "", 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -605,6 +608,10 @@ func TestTestRunStatus_NormalizesLegacyFields(t *testing.T) {
 			decoder.UseNumber()
 			require.NoError(t, decoder.Decode(&output))
 			assert.Equal(t, tc.testID, run.TestID)
+			if tc.name == "current identity" {
+				assert.Equal(t, 7, run.LoadTestID)
+				assert.Equal(t, json.Number("7"), output["load_test_id"])
+			}
 			assert.Equal(t, tc.result, run.Result)
 			if tc.testID != 0 {
 				assert.Equal(t, json.Number(strconv.Itoa(tc.testID)), output["test_id"])

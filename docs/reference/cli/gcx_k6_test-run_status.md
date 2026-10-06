@@ -4,7 +4,7 @@ Show the most recent test run status for a k6 load test.
 
 ### Synopsis
 
-Show the most recent test run status for a k6 load test. The current k6 Cloud result takes precedence. Legacy numeric results remain supported. An absent result is shown as -.
+Show the most recent test run status for a k6 load test. The current k6 Cloud result takes precedence. An absent result is shown as - in table or text output. JSON omits an absent result key.
 
 ```
 gcx k6 test-run status [test-name] [flags]

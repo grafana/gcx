@@ -81,7 +81,10 @@ func (r *TestRunStatus) UnmarshalJSON(data []byte) error {
 	if decoded.TestID == 0 {
 		decoded.TestID = decoded.LoadTestID
 	}
-	if decoded.Result == "" && decoded.ResultStatus != nil {
+	if decoded.LoadTestID == 0 {
+		decoded.LoadTestID = decoded.TestID
+	}
+	if decoded.Result == "" && decoded.ResultStatus != nil && (*decoded.ResultStatus == 1 || *decoded.ResultStatus == 2) {
 		decoded.Result = resultStatusString(*decoded.ResultStatus)
 	}
 	*r = TestRunStatus(decoded)

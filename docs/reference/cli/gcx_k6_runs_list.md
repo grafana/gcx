@@ -4,7 +4,7 @@ List test runs for a load test.
 
 ### Synopsis
 
-List test runs for a load test. The RESULT column uses the current k6 Cloud result when present. Legacy numeric results remain supported. An absent result is shown as -.
+List test runs for a load test. The RESULT column uses the current k6 Cloud result when present. An absent result is shown as - in table or text output. JSON omits an absent result key.
 
 ```
 gcx k6 runs list [id-or-name] [flags]
