@@ -2,6 +2,7 @@ package assistant_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -455,4 +456,54 @@ func TestClientGetConversationErrorDiagnostics(t *testing.T) {
 			assert.Equal(t, 1, strings.Count(err.Error(), "HTTP 403"))
 		})
 	}
+}
+
+func TestClientGetConversationPreservesLegacyToolFields(t *testing.T) {
+	const content = `[{"type":"text","text":"answer"},{"type":"tool_use","toolId":"call-1","toolName":"query","toolInput":{"queries":["anonymous"]}},{"type":"tool_result","toolUseId":"call-1","toolName":"query","toolResult":[{"type":"text","text":"result"},{"type":"data","value":{"count":1}}],"isError":false,"durationMs":0,"structured":{"count":1}}]`
+	client, requests := newConversationTestClient(t, map[string]testHTTPResponse{
+		"/chats/chat-1":              {body: `{"data":{"id":"chat-1","engine":"legacy"}}`},
+		"/chats/chat-1/all-messages": {body: `{"data":{"messages":[{"id":"m1","role":"assistant","content":` + content + `}]}}`},
+	}, nil)
+	got, err := client.GetConversation(context.Background(), assistant.ConversationReference{ID: "chat-1"})
+	require.NoError(t, err)
+	require.Len(t, got.Messages, 1)
+	encoded, err := json.Marshal(got.Messages[0].Content)
+	require.NoError(t, err)
+	assert.JSONEq(t, content, string(encoded))
+	assert.Equal(t, "answer", got.Messages[0].ExtractText())
+	assert.Equal(t, []string{"/chats/chat-1", "/chats/chat-1/all-messages"}, *requests)
+}
+
+func TestLegacyToolJSONValuesRoundTrip(t *testing.T) {
+	for _, value := range []string{`""`, `[]`, `{}`, `null`, `false`, `0`, `{"large":9007199254740993,"nested":[null,false,0]}`} {
+		t.Run(value, func(t *testing.T) {
+			wire := `{"type":"tool_result","toolId":"id","toolName":"name","toolUseId":"use","toolInput":` + value + `,"toolResult":` + value + `,"structured":` + value + `,"isError":false,"durationMs":0}`
+			var block assistant.ContentBlock
+			require.NoError(t, json.Unmarshal([]byte(wire), &block))
+			assert.Equal(t, value, string(block.ToolInput))
+			assert.Equal(t, value, string(block.ToolResult))
+			assert.Equal(t, value, string(block.Structured))
+			encoded, err := json.Marshal(block)
+			require.NoError(t, err)
+			assert.JSONEq(t, wire, string(encoded))
+		})
+	}
+	var absent assistant.ContentBlock
+	require.NoError(t, json.Unmarshal([]byte(`{"type":"text","text":"unchanged"}`), &absent))
+	encoded, err := json.Marshal(absent)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"type":"text","text":"unchanged"}`, string(encoded))
+	var empty assistant.ContentBlock
+	require.NoError(t, json.Unmarshal([]byte(`{"type":"tool_use","toolId":"","toolName":"","toolUseId":""}`), &empty))
+	encoded, err = json.Marshal(empty)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"type":"tool_use","toolId":"","toolName":"","toolUseId":""}`, string(encoded))
+}
+
+func TestLegacyToolDurationAcceptsFraction(t *testing.T) {
+	var block assistant.ContentBlock
+	require.NoError(t, json.Unmarshal([]byte(`{"type":"tool_result","durationMs":1.5}`), &block))
+	encoded, err := json.Marshal(block)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"type":"tool_result","durationMs":1.5}`, string(encoded))
 }
