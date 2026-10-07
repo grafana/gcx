@@ -503,16 +503,17 @@ appropriate datasource plugin internally.
 Provider subcommands (`slo definitions status`, `slo reports status`, `synth checks status`, `synth checks timeline`) implement a "fetch + enrich + render" pattern distinct from the interactive `query` command:
 
 1. **Fetch domain objects** — from the provider REST API (SLO definitions via k8s `/apis`, SM checks/probes via SM HTTP API)
-2. **Resolve Prometheus datasource UID** — from CLI flag → context default → provider config cache → auto-discovery via provider plugin settings API (SM: `grafana-synthetic-monitoring-app` plugin settings; SLO: each definition carries its `DestinationDatasource`)
-3. **Execute aggregate PromQL queries** — two queries cover all objects at once, grouped by label (`job/instance` for SM, `grafana_slo_uuid` for SLO), avoiding per-object query loops
+2. **Resolve the datasource** — SLO and `synth checks timeline` resolve a Prometheus datasource UID (CLI flag → context default → provider config cache → auto-discovery; SLO: each definition carries its `DestinationDatasource`). `synth checks status` resolves the Synthetic Monitoring datasource UID instead (`StatusLoader.LoadSMProxyConfig`).
+3. **Execute aggregate queries** — a few queries cover all objects at once, grouped by label (`job/instance` for SM, `grafana_slo_uuid` for SLO), avoiding per-object query loops. SLO and `synth checks timeline` send PromQL. `synth checks status` sends SM named queries (`checks_reachability`, `checks_probe_count`, and `checks_latency` once per check type); the SM backend owns the expressions.
 4. **Merge** — domain objects joined to metric results by stable key; missing metrics yield NODATA status
 5. **Render** — standard codec pipeline (`-o table`, `-o wide`, `--o json`, `-o graph`)
 
-**Concurrency:** Init-phase operations (domain list, probe list, datasource resolution, REST config) run concurrently via `errgroup`. The two aggregate Prometheus queries also execute in parallel.
+**Concurrency:** Init-phase operations (domain list, probe list, datasource resolution, REST config) run concurrently via `errgroup`. The aggregate queries also execute in parallel; for `synth checks status` a failed query empties only its own column (warned on stderr), and the command errors only if every query fails.
 
 Key files:
 - `internal/providers/slo/definitions/status.go` — `FetchMetrics` (4 parallel queries per datasource group)
-- `internal/providers/synth/checks/status.go` — `BuildAllSuccessRateQuery`, `BuildAllProbeCountQuery`, `queryInstantByJobInstance`
+- `internal/providers/synth/checks/status_namedqueries.go` — `fetchStatusMetrics`, `fetchCheckSuccess` (SM named queries)
+- `internal/providers/synth/checks/status.go` — `BuildTimelineQuery` (the one remaining PromQL builder for SM)
 - `internal/providers/synth/smcfg/loader.go` — `StatusLoader` interface (datasource UID resolution + caching)
 
 ---

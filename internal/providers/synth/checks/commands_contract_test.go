@@ -46,6 +46,10 @@ type contractStatusLoader struct {
 	baseURL           string
 	namespace         string
 	promDatasourceUID string
+	// smDatasourceUID, when set, switches the loader to proxy mode: SM API calls
+	// go through /api/datasources/proxy/uid/<uid>/sm/ and named queries can run
+	// against the SM datasource. Empty keeps SM API calls direct.
+	smDatasourceUID string
 }
 
 func (l *contractStatusLoader) LoadSMConfig(_ context.Context) (string, string, string, error) {
@@ -53,7 +57,10 @@ func (l *contractStatusLoader) LoadSMConfig(_ context.Context) (string, string, 
 }
 
 func (l *contractStatusLoader) LoadSMProxyConfig(_ context.Context) (config.NamespacedRESTConfig, string, string, error) {
-	return config.NamespacedRESTConfig{}, "", l.namespace, nil
+	if l.smDatasourceUID == "" {
+		return config.NamespacedRESTConfig{}, "", l.namespace, nil
+	}
+	return config.NamespacedRESTConfig{Config: rest.Config{Host: l.baseURL}, Namespace: l.namespace}, l.smDatasourceUID, l.namespace, nil
 }
 
 func (l *contractStatusLoader) LoadGrafanaConfig(_ context.Context) (config.NamespacedRESTConfig, error) {
@@ -104,6 +111,16 @@ type checkAPIState struct {
 	// adhocLines, when non-empty, are served as raw Loki log lines from the
 	// query endpoints (as `checks test` polls) instead of an empty result.
 	adhocLines []string
+	// namedFrames serves SM named queries (checks_reachability, ...) by queryType.
+	// namedLatency serves checks_latency per checkType. Both are empty by default.
+	namedFrames  map[string][]dataframe.Frame
+	namedLatency map[string][]dataframe.Frame
+	// namedCalls records "queryType" (or "checks_latency:<checkType>") per request.
+	namedCalls []string
+	// namedErrors answers the named query with that name with a per-refId error
+	// (HTTP 200), as the plugin does for an unknown or rejected query. The key
+	// "*" applies to every named query.
+	namedErrors map[string]string
 }
 
 // writeCount, validateCount and lastValidateBody read the fixture counters under
@@ -232,7 +249,10 @@ func newCheckServer(t *testing.T, st *checkAPIState) *httptest.Server {
 	// Grafana unified datasource query API (Prometheus/Loki) — empty results
 	// by default so timeline/test exercise the no-data path deterministically,
 	// unless adhocLines is set (checks test's Loki polling contract test).
-	query := func(w http.ResponseWriter, _ *http.Request) {
+	query := func(w http.ResponseWriter, r *http.Request) {
+		if serveNamedQuery(st, w, r) {
+			return
+		}
 		st.mu.Lock()
 		lines := st.adhocLines
 		st.mu.Unlock()
@@ -245,9 +265,80 @@ func newCheckServer(t *testing.T, st *checkAPIState) *httptest.Server {
 	mux.HandleFunc("/apis/query.grafana.app/v0alpha1/namespaces/default/query", query)
 	mux.HandleFunc("/api/ds/query", query)
 
-	srv := httptest.NewServer(mux)
+	// Proxy mode: /api/datasources/proxy/uid/<uid>/sm/<p> is the SM API's /api/v1/<p>.
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if rest, ok := strings.CutPrefix(r.URL.Path, "/api/datasources/proxy/uid/"); ok {
+			if _, after, found := strings.Cut(rest, "/sm/"); found {
+				r2 := r.Clone(r.Context())
+				r2.URL.Path = "/api/v1/" + after
+				mux.ServeHTTP(w, r2)
+				return
+			}
+		}
+		mux.ServeHTTP(w, r)
+	})
+
+	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
 	return srv
+}
+
+// smSeriesFrame is one instant-vector series labelled with (job, instance), the
+// shape the SM backend returns for tenant-wide queries.
+func smSeriesFrame(job, instance string, value float64) dataframe.Frame {
+	return dataframe.Frame{
+		Schema: dataframe.Schema{Fields: []dataframe.Field{
+			{Name: "Time", Type: "time"},
+			{Name: "Value", Type: "number", Labels: map[string]string{"job": job, "instance": instance}},
+		}},
+		Data: dataframe.Data{Values: [][]any{{float64(1000)}, {value}}},
+	}
+}
+
+// serveNamedQuery answers an SM named-query request from st, reporting whether
+// the request was one. Anything else falls through to the generic query handler.
+func serveNamedQuery(st *checkAPIState, w http.ResponseWriter, r *http.Request) bool {
+	var body struct {
+		Queries []map[string]any `json:"queries"`
+	}
+	raw, _ := io.ReadAll(r.Body)
+	if err := json.Unmarshal(raw, &body); err != nil || len(body.Queries) != 1 {
+		r.Body = io.NopCloser(bytes.NewReader(raw))
+		return false
+	}
+	qt, _ := body.Queries[0]["queryType"].(string)
+	if !strings.HasPrefix(qt, "checks_") {
+		r.Body = io.NopCloser(bytes.NewReader(raw))
+		return false
+	}
+
+	st.mu.Lock()
+	defer st.mu.Unlock()
+
+	frames := st.namedFrames[qt]
+	call := qt
+	if qt == "checks_latency" {
+		ct, _ := body.Queries[0]["checkType"].(string)
+		frames = st.namedLatency[ct]
+		call = qt + ":" + ct
+	}
+	st.namedCalls = append(st.namedCalls, call)
+
+	msg, failing := st.namedErrors[qt]
+	if !failing {
+		msg, failing = st.namedErrors["*"]
+	}
+	if failing {
+		writeJSON(w, dataframe.Response{Results: map[string]dataframe.Result{
+			"A": {Status: 400, Error: msg},
+		}})
+		return true
+	}
+
+	writeJSON(w, dataframe.Response{Results: map[string]dataframe.Result{
+		"A": {Status: 200, Frames: frames},
+	}})
+	return true
 }
 
 // runChecks executes a `checks` subcommand against the fake server, capturing
@@ -624,7 +715,7 @@ func TestChecksGetDiagnosticsOnStderr(t *testing.T) {
 		// Pattern 13: --show-status fetches regardless of output format. The
 		// fake query endpoint returns no series, so the computed status is
 		// NODATA — merged into the document as the top-level status member.
-		loader := &contractStatusLoader{baseURL: srv.URL, namespace: "default", promDatasourceUID: "test-uid"}
+		loader := &contractStatusLoader{baseURL: srv.URL, namespace: "default", smDatasourceUID: "sm-uid"}
 		stdout, stderr, err := runChecksLoader(t, loader, false, "", "get", "web-check-1234", "-o", "json", "--show-status")
 		require.NoError(t, err)
 
@@ -638,8 +729,41 @@ func TestChecksGetDiagnosticsOnStderr(t *testing.T) {
 		assert.NotContains(t, stderr, "--show-status")
 	})
 
+	t.Run("status reads this check's reachability row", func(t *testing.T) {
+		withData := &checkAPIState{
+			probesOnline: true,
+			checks: map[int64]checks.Check{
+				1234: {ID: 1234, Job: "web-check", Target: "https://example.com",
+					Settings: checks.CheckSettings{"http": map[string]any{"method": "GET"}}},
+			},
+			namedFrames: map[string][]dataframe.Frame{
+				"checks_reachability": {
+					smSeriesFrame("other", "https://other.example", 0.1),
+					smSeriesFrame("web-check", "https://example.com", 0.98),
+				},
+			},
+		}
+		dataSrv := newCheckServer(t, withData)
+		loader := &contractStatusLoader{baseURL: dataSrv.URL, namespace: "default", smDatasourceUID: "sm-uid"}
+
+		stdout, _, err := runChecksLoader(t, loader, false, "", "get", "web-check-1234", "-o", "json", "--show-status")
+		require.NoError(t, err)
+
+		doc, ok := decodeSingleJSONValue(t, stdout).(map[string]any)
+		require.True(t, ok)
+		status, ok := doc["status"].(map[string]any)
+		require.True(t, ok, "status member missing: %s", stdout)
+		assert.Equal(t, "OK", status["status"])
+		assert.InDelta(t, 0.98, status["success"], 1e-9)
+
+		// One tenant-wide call, shared with `checks status`, not one per check.
+		withData.mu.Lock()
+		defer withData.mu.Unlock()
+		assert.Equal(t, []string{"checks_reachability"}, withData.namedCalls)
+	})
+
 	t.Run("structured format without --show-status has no status member", func(t *testing.T) {
-		loader := &contractStatusLoader{baseURL: srv.URL, namespace: "default", promDatasourceUID: "test-uid"}
+		loader := &contractStatusLoader{baseURL: srv.URL, namespace: "default", smDatasourceUID: "sm-uid"}
 		stdout, _, err := runChecksLoader(t, loader, false, "", "get", "web-check-1234", "-o", "json")
 		require.NoError(t, err)
 
@@ -785,7 +909,7 @@ func TestChecksStatusEmptyContract(t *testing.T) {
 			st := &checkAPIState{probesOnline: true}
 			srv := newCheckServer(t, st)
 
-			stdout, _, err := runChecks(t, srv.URL, tc.agentMode, "", "status", "--datasource-uid", "test-uid")
+			stdout, _, err := runChecks(t, srv.URL, tc.agentMode, "", "status")
 			require.NoError(t, err)
 
 			if tc.checkEmpty {
@@ -797,6 +921,177 @@ func TestChecksStatusEmptyContract(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestChecksStatusAcceptsDeprecatedDatasourceUID pins that scripts which still
+// pass the old Prometheus-datasource flag keep working: status no longer reads
+// it, but removing it outright would turn a no-op into a usage error.
+func TestChecksStatusAcceptsDeprecatedDatasourceUID(t *testing.T) {
+	srv := newCheckServer(t, &checkAPIState{probesOnline: true})
+
+	_, _, err := runChecks(t, srv.URL, false, "", "status", "--datasource-uid", "test-uid")
+	require.NoError(t, err)
+}
+
+// TestChecksStatusReadsNamedQueries pins the whole status path against the SM
+// datasource: no Prometheus datasource is configured, the three named queries are
+// the only source of metrics, and latency is requested once per check type.
+func TestChecksStatusReadsNamedQueries(t *testing.T) {
+	st := &checkAPIState{
+		probesOnline: true,
+		checks: map[int64]checks.Check{
+			1: {ID: 1, Job: "web", Target: "https://a", Probes: []int64{1},
+				Settings: checks.CheckSettings{"http": map[string]any{}}},
+			2: {ID: 2, Job: "script", Target: "https://b", Probes: []int64{1},
+				Settings: checks.CheckSettings{"scripted": map[string]any{}}},
+		},
+		namedFrames: map[string][]dataframe.Frame{
+			"checks_reachability": {smSeriesFrame("web", "https://a", 0.99), smSeriesFrame("script", "https://b", 0.5)},
+			"checks_probe_count":  {smSeriesFrame("web", "https://a", 1.0), smSeriesFrame("script", "https://b", 1.0)},
+		},
+		namedLatency: map[string][]dataframe.Frame{
+			"http":     {smSeriesFrame("web", "https://a", 0.25), smSeriesFrame("script", "https://b", 99.0)},
+			"scripted": {smSeriesFrame("web", "https://a", 77.0), smSeriesFrame("script", "https://b", 2.0)},
+		},
+	}
+	srv := newCheckServer(t, st)
+	loader := &contractStatusLoader{baseURL: srv.URL, namespace: "default", smDatasourceUID: "sm-uid"}
+
+	stdout, stderr, err := runChecksLoader(t, loader, false, "", "status", "-o", "json")
+	require.NoError(t, err)
+	assert.NotContains(t, stderr, "unavailable")
+
+	docs, ok := decodeSingleJSONValue(t, stdout).([]any)
+	require.True(t, ok)
+	require.Len(t, docs, 2)
+
+	byJob := map[string]map[string]any{}
+	for _, d := range docs {
+		row, ok := d.(map[string]any)
+		require.True(t, ok)
+		job, _ := row["job"].(string)
+		byJob[job] = row
+	}
+
+	// Each check reads the latency row from the call made with its own type.
+	assert.InDelta(t, 0.99, byJob["web"]["success"], 1e-9)
+	assert.InDelta(t, 250.0, byJob["web"]["latencyMs"], 1e-9)
+	assert.Equal(t, "OK", byJob["web"]["status"])
+	assert.InDelta(t, 2000.0, byJob["script"]["latencyMs"], 1e-9)
+	assert.Equal(t, "FAILING", byJob["script"]["status"])
+
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	assert.ElementsMatch(t,
+		[]string{"checks_reachability", "checks_probe_count", "checks_latency:http", "checks_latency:scripted"},
+		st.namedCalls)
+}
+
+// TestChecksStatusFailsWhenNoQueryIsAnswered pins that a backend which answers
+// none of the queries (for example an SM app that predates them) is an error, not
+// a table of NODATA that reads as "these checks have no data".
+func TestChecksStatusFailsWhenNoQueryIsAnswered(t *testing.T) {
+	st := &checkAPIState{
+		probesOnline: true,
+		checks: map[int64]checks.Check{
+			1: {ID: 1, Job: "web", Target: "https://a", Settings: checks.CheckSettings{"http": map[string]any{}}},
+		},
+		namedErrors: map[string]string{"*": "unknown query"},
+	}
+	srv := newCheckServer(t, st)
+	loader := &contractStatusLoader{baseURL: srv.URL, namespace: "default", smDatasourceUID: "sm-uid"}
+
+	stdout, _, err := runChecksLoader(t, loader, false, "", "status", "-o", "json")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "checks_reachability")
+	assert.Contains(t, err.Error(), "unknown query")
+	assert.Empty(t, stdout, "no document should be emitted when nothing could be read")
+}
+
+// TestChecksStatusFailsWhenReachabilityFails pins that losing reachability is an
+// error even when the other queries answer: it is the only input to OK/FAILING,
+// so without it every row would read NODATA with exit code 0.
+func TestChecksStatusFailsWhenReachabilityFails(t *testing.T) {
+	st := &checkAPIState{
+		probesOnline: true,
+		checks: map[int64]checks.Check{
+			1: {ID: 1, Job: "web", Target: "https://a", Settings: checks.CheckSettings{"http": map[string]any{}}},
+		},
+		namedFrames: map[string][]dataframe.Frame{
+			"checks_probe_count": {smSeriesFrame("web", "https://a", 1.0)},
+		},
+		namedLatency: map[string][]dataframe.Frame{
+			"http": {smSeriesFrame("web", "https://a", 0.25)},
+		},
+		namedErrors: map[string]string{"checks_reachability": "unknown query"},
+	}
+	srv := newCheckServer(t, st)
+	loader := &contractStatusLoader{baseURL: srv.URL, namespace: "default", smDatasourceUID: "sm-uid"}
+
+	stdout, _, err := runChecksLoader(t, loader, false, "", "status", "-o", "json")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "checks_reachability")
+	assert.Contains(t, err.Error(), "unknown query")
+	assert.Empty(t, stdout, "no document should be emitted when status cannot be computed")
+}
+
+// TestChecksStatusWarnsOnPartialFailure pins that when only some queries fail the
+// command still lists the checks, names each failed query on stderr, and keeps
+// the warning off stdout.
+func TestChecksStatusWarnsOnPartialFailure(t *testing.T) {
+	st := &checkAPIState{
+		probesOnline: true,
+		checks: map[int64]checks.Check{
+			1: {ID: 1, Job: "web", Target: "https://a", Settings: checks.CheckSettings{"http": map[string]any{}}},
+		},
+		namedFrames: map[string][]dataframe.Frame{
+			"checks_reachability": {smSeriesFrame("web", "https://a", 0.99)},
+			"checks_probe_count":  {smSeriesFrame("web", "https://a", 1.0)},
+		},
+		namedErrors: map[string]string{"checks_latency": "unknown query"},
+	}
+	srv := newCheckServer(t, st)
+	loader := &contractStatusLoader{baseURL: srv.URL, namespace: "default", smDatasourceUID: "sm-uid"}
+
+	stdout, stderr, err := runChecksLoader(t, loader, false, "", "status", "-o", "json")
+	require.NoError(t, err)
+
+	docs, ok := decodeSingleJSONValue(t, stdout).([]any)
+	require.True(t, ok)
+	require.Len(t, docs, 1)
+	row, ok := docs[0].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "OK", row["status"])
+	assert.NotContains(t, row, "latencyMs")
+
+	assert.Contains(t, stderr, "checks_latency")
+	assert.Contains(t, stderr, "unknown query")
+	assert.NotContains(t, stderr, "checks_reachability")
+}
+
+// TestChecksStatusWarnsOncePerDistinctFailure pins that latency, queried once per
+// check type, does not repeat the same warning for every type.
+func TestChecksStatusWarnsOncePerDistinctFailure(t *testing.T) {
+	st := &checkAPIState{
+		probesOnline: true,
+		checks: map[int64]checks.Check{
+			1: {ID: 1, Job: "web", Target: "https://a", Settings: checks.CheckSettings{"http": map[string]any{}}},
+			2: {ID: 2, Job: "dns", Target: "example.com", Settings: checks.CheckSettings{"dns": map[string]any{}}},
+			3: {ID: 3, Job: "script", Target: "https://c", Settings: checks.CheckSettings{"scripted": map[string]any{}}},
+		},
+		namedFrames: map[string][]dataframe.Frame{
+			"checks_reachability": {smSeriesFrame("web", "https://a", 1.0)},
+		},
+		namedErrors: map[string]string{"checks_latency": "unknown query"},
+	}
+	srv := newCheckServer(t, st)
+	loader := &contractStatusLoader{baseURL: srv.URL, namespace: "default", smDatasourceUID: "sm-uid"}
+
+	_, stderr, err := runChecksLoader(t, loader, false, "", "status", "-o", "json")
+	require.NoError(t, err)
+
+	assert.Equal(t, 1, strings.Count(stderr, "status column unavailable"), "stderr: %s", stderr)
+	assert.Contains(t, stderr, "checks_latency")
 }
 
 func TestChecksTimelineContract(t *testing.T) {

@@ -49,12 +49,12 @@ Only failing checks:
 gcx synthetic-monitoring checks status --status FAILING
 ```
 
-Output columns: NAME, JOB, TARGET, SUCCESS, LATENCY, STATUS. Use `-o wide` for PROBES_UP/PROBES_TOTAL, or `-o json` for all fields.
+Output columns: NAME, JOB, TARGET, SUCCESS (reachability, as shown on the app's check list card, over the last 3 hours), LATENCY, STATUS. Use `-o wide` for PROBES_UP/PROBES_TOTAL, or `-o json` for all fields.
 
 **Status interpretation** (threshold depends on the check's `alertSensitivity`: high = 95%, medium/default = 90%, low = 75%):
-- `OK` - success rate at or above the threshold; check is healthy
-- `FAILING` - success rate below the threshold; route to synth-investigate-check for deeper analysis
-- `NODATA` - no Prometheus data; check may be disabled or datasource misconfigured
+- `OK` - reachability at or above the threshold; check is healthy
+- `FAILING` - reachability below the threshold; route to synth-investigate-check for deeper analysis
+- `NODATA` - no reachability data for the check; it may be disabled or newly created. If every check is NODATA and a warning says columns are unavailable, the stack's Synthetic Monitoring app is too old to serve the status queries
 
 ### Step 3: Conditional Timeline
 
@@ -91,7 +91,7 @@ Note: `--since` and `--from`/`--to` are mutually exclusive. Use one or the other
 After presenting status:
 
 - If any check is `FAILING`: suggest `synth-investigate-check` for per-probe breakdown, failure mode classification, and PromQL deep-dive
-- If any check is `NODATA`: note that no Prometheus data is available; suggest checking if the check is enabled and verifying datasource configuration. A diagnosis alone leaves the user without a path forward — always close with the remediation step: rule out intentional disablement, then recommend re-enabling (route to `synth-manage-checks`) and confirming data resumes
+- If any check is `NODATA`: note that no metrics are available; suggest checking if the check is enabled and verifying datasource configuration. A diagnosis alone leaves the user without a path forward — always close with the remediation step: rule out intentional disablement, then recommend re-enabling (route to `synth-manage-checks`) and confirming data resumes
 - If user wants to create, update, or delete checks: route to `synth-manage-checks`
 
 ## Output Format
@@ -134,7 +134,7 @@ Timeline pattern: <flat/drops/intermittent/declining>
 For NODATA checks:
 ```
 Check: <ID> <JOB> (<TARGET>)
-Status: NODATA — no Prometheus metrics available.
+Status: NODATA — no metrics available.
 
 Possible causes:
 - Check is disabled (spec.enabled: false)
