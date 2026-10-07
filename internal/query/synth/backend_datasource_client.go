@@ -12,19 +12,25 @@ package synth
 // definition lives in exactly one place, the plugin's query registry.
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"net/http"
+	neturl "net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/query/dataframe"
 	"github.com/grafana/gcx/internal/query/grafanaquery"
 	"github.com/grafana/gcx/internal/queryerror"
+	"k8s.io/client-go/rest"
 )
 
 // DatasourceType is the plugin id of the SM datasource, as it appears in a query
@@ -60,18 +66,76 @@ type NamedResult struct {
 // BackendDatasourceClient queries the SM backend datasource by query name.
 type BackendDatasourceClient struct {
 	queryClient *grafanaquery.Client
+	httpClient  *http.Client
+	host        string
 }
 
-// NewBackendDatasourceClient creates a named-query client using the caller's Grafana
-// credential from the REST config.
+// NewBackendDatasourceClient creates a client for the SM backend datasource using
+// the caller's Grafana credential from the REST config.
 // This client communicates directly with the backend datasource for the synthetic monitoring app.
+// Both of its handlers -- QueryData (Query) and CallResource (CallResource) -- share
+// one HTTP client, so they carry the same credential.
 func NewBackendDatasourceClient(cfg config.NamespacedRESTConfig) (*BackendDatasourceClient, error) {
-	qc, err := grafanaquery.NewClient(cfg)
+	httpClient, err := rest.HTTPClientFor(&cfg.Config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create HTTP client: %w", err)
+	}
+
+	return &BackendDatasourceClient{
+		queryClient: grafanaquery.NewClientWithHTTPClient(cfg, httpClient),
+		httpClient:  httpClient,
+		host:        cfg.Host,
+	}, nil
+}
+
+// CallResource calls one of the datasource backend's resource endpoints
+// (/api/datasources/uid/<uid>/resources/<path>) with the caller's credential.
+//
+// Resource endpoints are the plugin's CallResource handler, a separate door
+// from the QueryData handler Query uses. The status and body are returned
+// as-is, including non-2xx: what a 404 or 503 means is up to the endpoint, so
+// the caller decides. It never retries, unlike Query -- a resource call may be a
+// paid generation request, so it is sent exactly once.
+func (c *BackendDatasourceClient) CallResource(
+	ctx context.Context,
+	datasourceUID, method, path string,
+	body []byte,
+) (*Response, error) {
+	if datasourceUID == "" {
+		return nil, errors.New("a synthetic monitoring datasource uid is required")
+	}
+	if path == "" {
+		return nil, errors.New("a resource path is required")
+	}
+
+	url := fmt.Sprintf("%s/api/datasources/uid/%s/resources/%s",
+		c.host, neturl.PathEscape(datasourceUID), strings.TrimPrefix(path, "/"))
+
+	var reqBody io.Reader
+	if body != nil {
+		reqBody = bytes.NewReader(body)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, url, reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to call resource %q: %w", path, err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
 	if err != nil {
 		return nil, err
 	}
 
-	return &BackendDatasourceClient{queryClient: qc}, nil
+	return &Response{StatusCode: resp.StatusCode, Body: respBody}, nil
 }
 
 // Query asks the SM datasource identified by datasourceUID for q over [from, to].
