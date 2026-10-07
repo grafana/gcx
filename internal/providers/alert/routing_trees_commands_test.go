@@ -611,6 +611,16 @@ func TestRoutingTreesDelete(t *testing.T) {
 			args:     []string{"delete", "team-a", "--force", "--api-version", "dashboard.grafana.app/v1"},
 			wantCode: gcxerrors.ExitUsageError,
 		},
+		{
+			name:     "api-version is a bare wrong group",
+			args:     []string{"delete", "team-a", "--force", "--api-version", "rules.alerting.grafana.app"},
+			wantCode: gcxerrors.ExitUsageError,
+		},
+		{
+			name:     "api-version is the group without a version",
+			args:     []string{"delete", "team-a", "--force", "--api-version", rtGroup},
+			wantCode: gcxerrors.ExitUsageError,
+		},
 	}
 
 	for _, tc := range tests {

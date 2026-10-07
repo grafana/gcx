@@ -13,6 +13,7 @@ import (
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers/native"
+	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/discovery"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -131,6 +132,10 @@ func TestBindingLoad(t *testing.T) {
 			}
 			if tc.wantErr != "" {
 				require.ErrorContains(t, err, tc.wantErr)
+				// The CLI would render a selector error as a selector-parsing
+				// failure, but the caller passed no selector.
+				var selErr resources.InvalidSelectorError
+				assert.NotErrorAs(t, err, &selErr)
 				return
 			}
 
@@ -194,6 +199,10 @@ func TestParseAPIVersion(t *testing.T) {
 		{in: "dashboard.grafana.app/v1", wantErr: true},
 		{in: testGroup + "/", wantErr: true},
 		{in: "a/b/c", wantErr: true},
+		// No slash: ParseGroupVersion reads the whole value as a version.
+		{in: "rules.alerting.grafana.app", wantErr: true},
+		{in: testGroup, wantErr: true},
+		{in: "V1", wantErr: true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.in, func(t *testing.T) {

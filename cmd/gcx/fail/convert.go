@@ -30,6 +30,7 @@ import (
 	"github.com/grafana/gcx/internal/providers/instrumentation/rmw"
 	"github.com/grafana/gcx/internal/queryerror"
 	"github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/resources/dynamic"
 	k8sapi "k8s.io/apimachinery/pkg/api/errors"
 )
 
@@ -333,6 +334,12 @@ func convertAPIErrors(err error) (*gcxerrors.DetailedError, bool) {
 	// wraps server errors in dynamic.APIError, which implements APIStatus.
 	var statusErr k8sapi.APIStatus
 	if !errors.As(err, &statusErr) {
+		return nil, false
+	}
+	// A status the dynamic client synthesized for a non-API error (network,
+	// TLS, timeout) is not a server response; leave it to the fallback.
+	var dynErr dynamic.APIError
+	if errors.As(err, &dynErr) && dynErr.Synthesized() {
 		return nil, false
 	}
 

@@ -6,8 +6,9 @@
 // snapshot, the resource descriptor, and a dynamic client every time; nothing
 // is cached between calls.
 //
-// The package has no CLI dependencies (no cobra, output, terminal, or prompt
-// imports), so other agent-facing surfaces can reuse it.
+// The package has no direct CLI imports (no cobra, output, terminal, or prompt
+// packages; TestNoCLIImports enforces this), so other agent-facing surfaces
+// can reuse it.
 package native
 
 import (
@@ -21,6 +22,7 @@ import (
 	"github.com/grafana/gcx/internal/resources/discovery"
 	"github.com/grafana/gcx/internal/resources/dynamic"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/validation"
 )
 
 // Client is the dynamic-client subset the router already uses for native
@@ -115,7 +117,8 @@ func Bind(loader ConfigLoader, cfg Config, opts ...BindOption) Binding {
 	}}
 }
 
-// Fixed returns a binding whose Load returns a without I/O. It is a test seam.
+// Fixed returns a binding whose Load returns the given Access without I/O. It is
+// a test seam.
 func Fixed(a Access) Binding {
 	return Func(func(context.Context, LoadOptions) (Access, error) { return a, nil })
 }
@@ -146,11 +149,16 @@ func ParseAPIVersion(group, apiVersion string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("invalid API version %q: %w", apiVersion, err)
 	}
+	if gv.Group != "" && gv.Group != group {
+		return "", fmt.Errorf("API version %q is not in group %q", apiVersion, group)
+	}
+	// ParseGroupVersion puts slash-less input wholly into Version, so a bare
+	// group ("rules.alerting.grafana.app") would otherwise pass as a version.
 	if gv.Version == "" {
 		return "", fmt.Errorf("invalid API version %q: version is empty", apiVersion)
 	}
-	if gv.Group != "" && gv.Group != group {
-		return "", fmt.Errorf("API version %q is not in group %q", apiVersion, group)
+	if errs := validation.IsDNS1035Label(gv.Version); len(errs) > 0 {
+		return "", fmt.Errorf("invalid API version %q: %q is not a version (expected e.g. v1beta1 or %s/v1beta1)", apiVersion, gv.Version, group)
 	}
 
 	return gv.Version, nil
@@ -173,13 +181,13 @@ func resolveDescriptor(reg *discovery.Registry, cfg Config, version string) (res
 		Selectors:            resources.Selectors{sel},
 		PreferredVersionOnly: true,
 	})
+	// The registry's error is a selector error, which the CLI would render as
+	// a selector-parsing failure; the caller passed no selector, so report the
+	// real cause instead of wrapping it.
 	if err != nil || len(filters) == 0 {
 		target := cfg.Resource + "." + cfg.Group
 		if version != "" {
 			target = fmt.Sprintf("%s (version %s)", target, version)
-		}
-		if err != nil {
-			return resources.Descriptor{}, fmt.Errorf("server does not serve %s: %w", target, err)
 		}
 		return resources.Descriptor{}, fmt.Errorf("server does not serve %s", target)
 	}

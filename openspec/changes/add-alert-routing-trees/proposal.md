@@ -8,7 +8,7 @@ gcx cannot manage named notification routing trees. `gcx alert notification-poli
 
 - New command group `gcx alert routing-trees` with `list`, `get`, `create`, `update`, and `delete`, operating on native `RoutingTree` manifests through the Kubernetes-compatible API. The API version comes from server discovery (`v1beta1` on 13.0+, `v0alpha1` on 12.x).
 - `gcx resources` can see `routingtrees`. The discovery exclusion of `notifications.alerting.grafana.app` becomes a per-resource allowlist; receivers, template groups, time intervals, and inhibition rules stay hidden.
-- New shared native-resource binding (`internal/providers/native`) that dedicated commands use to resolve a descriptor and a dynamic client after validation. It takes an injectable config loader and discovery source and has no CLI dependencies, so other agent-facing surfaces can reuse it.
+- New shared native-resource binding (`internal/providers/native`) that dedicated commands use to resolve a descriptor and a dynamic client after validation. It takes an injectable config loader and discovery source and has no direct CLI imports, so other agent-facing surfaces can reuse it.
 - `CONSTITUTION.md`: the dashboards-only exception for direct dynamic-client use is replaced by a rule that providers using native resources go through the shared binding.
 - New developer glossary under `docs/glossary/` (map plus `alerting.md`), linked from `openspec/config.yaml` `context:`. RFC and doc-maintenance terminology rules change from "keep terms in the RFC" to "proposed terms stay in the RFC; shipped terms move to the glossary".
 - No legacy fallback. On targets where named trees are unavailable, the server's response is surfaced unchanged.

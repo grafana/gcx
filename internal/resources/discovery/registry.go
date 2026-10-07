@@ -37,6 +37,12 @@ var ignoredResourceGroups = []string{
 // Resources Grafana adds to these groups stay hidden until explicitly opted in,
 // so nothing reaches pull/push before its secret handling has been checked.
 //
+// Exposed resources get the generic `gcx resources` semantics, including
+// delete without confirmation for named selectors: `gcx resources delete
+// routingtrees/user-defined` resets the default tree without a prompt, while
+// `gcx alert routing-trees delete` confirms first. This is deliberate and
+// matches every other resource in `gcx resources`.
+//
 //nolint:gochecknoglobals
 var partiallyExposedGroups = map[string][]string{
 	"notifications.alerting.grafana.app": {"routingtrees"},
