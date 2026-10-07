@@ -199,9 +199,14 @@ Each `Run`:
   streams to the guest as the guest reads it.
   On Linux, each instance's memory is its own mapping, reserving address
   space for the whole cap (4 GiB when unset) but touched only as the guest
-  uses it, and returned to the OS when `Run` returns. If the kernel refuses
-  the reservation, as under strict overcommit, that instance uses the Go heap
-  and its memory is left for the GC, as on other platforms.
+  uses it, and returned to the OS when `Run` returns. It lives outside the Go
+  heap, so the GC and `GOMEMLIMIT` don't count it: set `GOMEMLIMIT` low
+  enough to leave room for the runs you allow at once, and watch RSS. Under
+  strict overcommit (`vm.overcommit_memory=2`) each run commits its whole
+  cap while it runs, and if the kernel refuses the reservation, that
+  instance uses the Go heap and its memory is left for the GC, as on other
+  platforms. `Run` copies stdin and stdout/stderr through its own buffers,
+  so your readers and writers never hold a slice of guest memory.
 - **Time:** the guest stops when `ctx` is cancelled or its deadline passes.
   gcx's retry backoff sleeps can't be interrupted, so stopping can lag by up to
   one backoff interval.

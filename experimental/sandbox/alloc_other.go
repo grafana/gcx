@@ -4,5 +4,8 @@ package sandbox
 
 import "github.com/tetratelabs/wazero/experimental"
 
-// memoryAllocator returns nil, wazero's default, off Linux (see alloc_linux.go).
-func memoryAllocator() experimental.MemoryAllocator { return nil }
+// newRunMemory returns no allocator, wazero's default, off Linux (see
+// alloc_linux.go).
+func newRunMemory() (experimental.MemoryAllocator, func()) {
+	return nil, func() {}
+}
