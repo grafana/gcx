@@ -1173,7 +1173,39 @@ func loadLayeredTracked(ctx context.Context, explicitFile string, opts loadOptio
 	return cfg, err
 }
 
+const layeredLoadAttempts = 5
+
+type layeredConfigChangedError struct {
+	path string
+}
+
+func (e *layeredConfigChangedError) Error() string {
+	return fmt.Sprintf("config %s changed while loading layered configuration; retry", e.path)
+}
+
+// Retry the full load so each attempt discovers and checks fresh source bytes.
+// Revision conflicts occur before overrides run.
 func loadLayered(ctx context.Context, explicitFile string, opts loadOptions, overrides ...Override) (Config, error) {
+	for attempt := 0; ; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return Config{}, err
+		}
+		cfg, err := loadLayeredAttempt(ctx, explicitFile, opts, overrides...)
+		var changed *layeredConfigChangedError
+		if !errors.As(err, &changed) || attempt+1 == layeredLoadAttempts {
+			return cfg, err
+		}
+		timer := time.NewTimer(10 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return Config{}, ctx.Err()
+		case <-timer.C:
+		}
+	}
+}
+
+func loadLayeredAttempt(ctx context.Context, explicitFile string, opts loadOptions, overrides ...Override) (Config, error) {
 	// --config flag bypasses layering.
 	if explicitFile != "" {
 		return loadExplicit(ctx, explicitFile, opts, overrides...)
@@ -1256,7 +1288,7 @@ func loadLayered(ctx context.Context, explicitFile string, opts loadOptions, ove
 			return Config{}, err
 		}
 		if loaded.hasSourceRevision && sha256.Sum256(current) != loaded.sourceRevision {
-			return Config{}, fmt.Errorf("config %s changed while loading layered configuration; retry", src.Path)
+			return Config{}, &layeredConfigChangedError{path: src.Path}
 		}
 		sources[i].snapshot = bytes.Clone(current)
 		if info, statErr := os.Lstat(src.Path); statErr == nil {

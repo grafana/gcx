@@ -203,6 +203,13 @@ the configuration. A layered load first preflights declared versions for every
 captured source, resolves the policy from those snapshots, then loads and merges
 the layers. Neither path opens a credential store before policy resolution.
 
+If a source changes during a layered load, gcx retries the full load with fresh
+source bytes. This handles a concurrent token refresh or config write. Each
+attempt discovers the sources again and resolves the credential policy again.
+The retry has a fixed limit and stops when the context is cancelled. Other load
+errors return without retry. The file revision check stays active on every
+attempt, and command overrides run only after that check succeeds.
+
 Source: `internal/config/loader.go` (`LoadLayered`, `DiscoverSources`, and
 `StandardLocation`) and `cmd/gcx/config/command.go`.
 
