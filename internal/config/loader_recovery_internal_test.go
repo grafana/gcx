@@ -40,7 +40,7 @@ func (l *layeredLoadTestLogger) Debug(message string, args ...any) {
 	}
 }
 
-func TestLoadLayeredRetriesRevisionConflicts(t *testing.T) {
+func TestLoadLayeredRecoversRevisionConflicts(t *testing.T) {
 	tests := []struct {
 		name           string
 		changes        int
@@ -55,8 +55,8 @@ func TestLoadLayeredRetriesRevisionConflicts(t *testing.T) {
 		{name: "stable source", wantAttempts: 1, wantOverrides: 1, wantContext: "a"},
 		{name: "one update loads fresh bytes and policy", changes: 1, wantAttempts: 2, wantOverrides: 1, wantContext: "b"},
 		{name: "retry discovers a new layer", changes: 1, addLocal: true, wantAttempts: 2, wantOverrides: 1, wantContext: "local"},
-		{name: "several updates recover", changes: 3, wantAttempts: 4, wantOverrides: 1, wantContext: "b"},
-		{name: "continued updates stop at limit", changes: layeredLoadAttempts, wantAttempts: layeredLoadAttempts},
+
+		{name: "external updates still fail under lock", changes: 2, wantAttempts: 2},
 		{name: "cancellation stops retry", changes: 1, cancel: true, wantAttempts: 1},
 		{name: "retry rejects an unsupported version", changes: 1, invalidVersion: true, wantAttempts: 1},
 		{name: "ordinary override error does not retry", overrideError: true, wantAttempts: 1, wantOverrides: 1},
@@ -92,7 +92,12 @@ func TestLoadLayeredRetriesRevisionConflicts(t *testing.T) {
 					cfg.CurrentContext = "a"
 				}
 				cfg.Credentials = &CredentialsConfig{Keychain: "on"}
-				require.NoError(t, Write(t.Context(), source, cfg))
+				if attempts == 1 {
+					require.NoError(t, Write(t.Context(), source, cfg))
+				} else {
+					// An external editor does not take the gcx writer lock.
+					writeLayeredMigrationFixture(t, fixture.user, "version: 1\ncontexts:\n  external: {}\ncurrent-context: external\n")
+				}
 				if test.addLocal {
 					writeLayeredMigrationFixture(t, fixture.local, "version: 1\ncontexts:\n  local: {}\ncurrent-context: local\n")
 				}
@@ -122,7 +127,7 @@ func TestLoadLayeredRetriesRevisionConflicts(t *testing.T) {
 				require.ErrorAs(t, err, &unsupported)
 			case test.overrideError:
 				require.ErrorIs(t, err, ordinaryError)
-			case test.changes == layeredLoadAttempts:
+			case test.changes == 2:
 				var changed *layeredConfigChangedError
 				require.ErrorAs(t, err, &changed)
 				require.Equal(t, fixture.user, changed.path)

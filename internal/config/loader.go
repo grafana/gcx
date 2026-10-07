@@ -1173,8 +1173,6 @@ func loadLayeredTracked(ctx context.Context, explicitFile string, opts loadOptio
 	return cfg, err
 }
 
-const layeredLoadAttempts = 5
-
 type layeredConfigChangedError struct {
 	path string
 }
@@ -1183,29 +1181,12 @@ func (e *layeredConfigChangedError) Error() string {
 	return fmt.Sprintf("config %s changed while loading layered configuration; retry", e.path)
 }
 
-// Retry the full load so each attempt discovers and checks fresh source bytes.
-// Revision conflicts occur before overrides run.
+// Load optimistically. A concurrent write triggers a fresh load under the
+// source write locks, rather than a fixed number of timed retries.
 func loadLayered(ctx context.Context, explicitFile string, opts loadOptions, overrides ...Override) (Config, error) {
-	for attempt := 0; ; attempt++ {
-		if err := ctx.Err(); err != nil {
-			return Config{}, err
-		}
-		cfg, err := loadLayeredAttempt(ctx, explicitFile, opts, overrides...)
-		var changed *layeredConfigChangedError
-		if !errors.As(err, &changed) || attempt+1 == layeredLoadAttempts {
-			return cfg, err
-		}
-		timer := time.NewTimer(10 * time.Millisecond)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			return Config{}, ctx.Err()
-		case <-timer.C:
-		}
+	if err := ctx.Err(); err != nil {
+		return Config{}, err
 	}
-}
-
-func loadLayeredAttempt(ctx context.Context, explicitFile string, opts loadOptions, overrides ...Override) (Config, error) {
 	// --config flag bypasses layering.
 	if explicitFile != "" {
 		return loadExplicit(ctx, explicitFile, opts, overrides...)
@@ -1237,6 +1218,37 @@ func loadLayeredAttempt(ctx context.Context, explicitFile string, opts loadOptio
 		cfg.Sources = newSources
 		return cfg, nil
 	}
+	merged, err := loadLayeredSources(ctx, sources, opts, nil)
+	var changed *layeredConfigChangedError
+	if errors.As(err, &changed) {
+		merged, err = loadLayeredSourcesLocked(ctx, opts)
+	}
+	if err != nil {
+		return Config{}, err
+	}
+
+	// Apply overrides on the merged config.
+	for _, override := range overrides {
+		if err := override(&merged); err != nil {
+			return merged, err
+		}
+	}
+
+	// Each layer's Load only resolved its own current-context, so the effective
+	// context after merge and overrides (e.g. a --context selecting a context
+	// that was current in no layer) may still hold raw keychain sentinels.
+	// Idempotent for already-resolved fields.
+	merged.ResolveContext(merged.CurrentContext)
+	if err := enforceRuntimeCredentialBindings(&merged); err != nil {
+		return merged, err
+	}
+
+	return merged, nil
+}
+
+// loadLayeredSources reads and merges the selected sources. Callers run
+// overrides after this phase so callbacks never run under newly acquired locks.
+func loadLayeredSources(ctx context.Context, sources []ConfigSource, opts loadOptions, identities map[string]string) (Config, error) {
 	var hasLegacyLayer bool
 	if err := preflightLayeredSources(sources, &hasLegacyLayer); err != nil {
 		return Config{}, err
@@ -1265,6 +1277,9 @@ func loadLayeredAttempt(ctx context.Context, explicitFile string, opts loadOptio
 		// another layer's rules, or from another layer's content.
 		layerOpts := opts
 		layerOpts.layer = src.Type
+		if identities != nil {
+			layerOpts.writeLockHeldFor = identities[src.Path]
+		}
 		if hasLegacyLayer && len(sources) > 1 && isLegacyConfig(src.snapshot) {
 			layerOpts.suppressMigrationPersistence = true
 			layerOpts.migrationWarnings = migrationWarnings
@@ -1283,6 +1298,15 @@ func loadLayeredAttempt(ctx context.Context, explicitFile string, opts loadOptio
 		if src.Type == "local" && i > 0 {
 			loaded.Credentials = nil
 		}
+		if identities != nil {
+			identity, err := canonicalConfigSourceForLayer(src.Path, src.Type)
+			if err != nil {
+				return Config{}, err
+			}
+			if identity != identities[src.Path] || loaded.sourceIdentity != identity {
+				return Config{}, fmt.Errorf("config source identity changed while loading %s; retry", src.Path)
+			}
+		}
 		current, err := readConfigSource(src)
 		if err != nil {
 			return Config{}, err
@@ -1291,6 +1315,16 @@ func loadLayeredAttempt(ctx context.Context, explicitFile string, opts loadOptio
 			return Config{}, &layeredConfigChangedError{path: src.Path}
 		}
 		sources[i].snapshot = bytes.Clone(current)
+		if identities != nil {
+			// A migration can replace a file shared by two source paths.
+			// Later aliases must consume the committed bytes, not the older
+			// preflight snapshot of the same file whose lock we still hold.
+			for j := i + 1; j < len(sources); j++ {
+				if identities[sources[j].Path] == identities[src.Path] {
+					sources[j].snapshot = bytes.Clone(current)
+				}
+			}
+		}
 		if info, statErr := os.Lstat(src.Path); statErr == nil {
 			sources[i].ModTime = info.ModTime()
 		}
@@ -1309,22 +1343,6 @@ func loadLayeredAttempt(ctx context.Context, explicitFile string, opts loadOptio
 	}
 
 	merged.Sources = sources
-
-	// Apply overrides on the merged config.
-	for _, override := range overrides {
-		if err := override(&merged); err != nil {
-			return merged, err
-		}
-	}
-
-	// Each layer's Load only resolved its own current-context, so the effective
-	// context after merge and overrides (e.g. a --context selecting a context
-	// that was current in no layer) may still hold raw keychain sentinels.
-	// Idempotent for already-resolved fields.
-	merged.ResolveContext(merged.CurrentContext)
-	if err := enforceRuntimeCredentialBindings(&merged); err != nil {
-		return merged, err
-	}
 
 	return merged, nil
 }
