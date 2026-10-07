@@ -171,6 +171,14 @@ var commandAnnotations = map[string]annotation{
 	"gcx dashboards list-versions":    {Cost: "small", Hint: "<name> -o json"},
 	"gcx dashboards versions restore": {Cost: "small"},
 
+	// Dynamic Observability
+	"gcx dynamic-observability rulesets list":   {Cost: "large", Hint: "-o json; use rulesets status <name> for one probe"},
+	"gcx dynamic-observability rulesets status": {Cost: "medium", Hint: "<name> -o json"},
+	"gcx dynamic-observability rulesets pause":  {Cost: "small"},
+	"gcx dynamic-observability rulesets resume": {Cost: "small"},
+	"gcx dynamic-observability agents list":     {Cost: "large", Hint: "-o json; use agents status <name> for one agent"},
+	"gcx dynamic-observability agents status":   {Cost: "small"},
+
 	// -----------------------------------------------------------------------
 	// Alert provider
 	// -----------------------------------------------------------------------
