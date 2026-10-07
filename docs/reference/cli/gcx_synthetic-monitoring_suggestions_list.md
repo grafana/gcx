@@ -1,8 +1,10 @@
 ## gcx synthetic-monitoring suggestions list
 
-List suggested checks generated from this stack's telemetry.
+[experimental] List suggested checks generated from this stack's telemetry.
 
 ### Synopsis
+
+This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
 
 List the checks the Synthetic Monitoring Reliability Inbox suggests for this stack.
 
@@ -15,8 +17,9 @@ The service is deployed per region and is not available everywhere.
 
 The service has no pagination and returns everything it generated (up to about
 30 suggestions) in one response, so --limit only trims what is printed: it does
-not reduce cost. Suggestions are kept in the service's order, highest confidence
-first, which is not sorted by score. Use --json to print only some fields.
+not reduce cost. A truncated page carries list_meta and a stderr hint. Suggestions
+are kept in the service's order, highest confidence first, which is not sorted by
+score. Use --json to print only some fields.
 
 ```
 gcx synthetic-monitoring suggestions list [flags]
@@ -36,7 +39,7 @@ gcx synthetic-monitoring suggestions list [flags]
   -h, --help            help for list
       --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --limit int       Maximum number of suggestions to print, in the service's order (highest confidence first); 0 for all (default 10)
+      --limit int       Maximum number of suggestions to return. 0 means all results are returned (default 10)
   -o, --output string   Output format. One of: agents, json, table, yaml (default "table")
 ```
 
@@ -54,5 +57,5 @@ gcx synthetic-monitoring suggestions list [flags]
 
 ### SEE ALSO
 
-* [gcx synthetic-monitoring suggestions](gcx_synthetic-monitoring_suggestions.md)	 - Discover Synthetic Monitoring check suggestions.
+* [gcx synthetic-monitoring suggestions](gcx_synthetic-monitoring_suggestions.md)	 - [experimental] Discover Synthetic Monitoring check suggestions.
 

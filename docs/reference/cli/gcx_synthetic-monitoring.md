@@ -27,5 +27,5 @@ Manage Grafana Synthetic Monitoring checks and probes
 * [gcx synthetic-monitoring probes](gcx_synthetic-monitoring_probes.md)	 - Manage Synthetic Monitoring probes.
 * [gcx synthetic-monitoring queries](gcx_synthetic-monitoring_queries.md)	 - Discover Synthetic Monitoring named queries.
 * [gcx synthetic-monitoring query](gcx_synthetic-monitoring_query.md)	 - Run a Synthetic Monitoring query by name.
-* [gcx synthetic-monitoring suggestions](gcx_synthetic-monitoring_suggestions.md)	 - Discover Synthetic Monitoring check suggestions.
+* [gcx synthetic-monitoring suggestions](gcx_synthetic-monitoring_suggestions.md)	 - [experimental] Discover Synthetic Monitoring check suggestions.
 

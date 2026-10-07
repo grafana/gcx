@@ -1,6 +1,13 @@
 ## gcx synthetic-monitoring suggestions
 
-Discover Synthetic Monitoring check suggestions.
+[experimental] Discover Synthetic Monitoring check suggestions.
+
+### Synopsis
+
+This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
+
+Check suggestions come from the Synthetic Monitoring Reliability Inbox, an
+experimental service that analyses a stack's telemetry.
 
 ### Options
 
@@ -23,5 +30,5 @@ Discover Synthetic Monitoring check suggestions.
 ### SEE ALSO
 
 * [gcx synthetic-monitoring](gcx_synthetic-monitoring.md)	 - Manage Grafana Synthetic Monitoring checks and probes
-* [gcx synthetic-monitoring suggestions list](gcx_synthetic-monitoring_suggestions_list.md)	 - List suggested checks generated from this stack's telemetry.
+* [gcx synthetic-monitoring suggestions list](gcx_synthetic-monitoring_suggestions_list.md)	 - [experimental] List suggested checks generated from this stack's telemetry.
 
