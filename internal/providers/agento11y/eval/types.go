@@ -60,6 +60,10 @@ type RuleDefinition struct {
 	// it is the idle period after which a conversation is considered complete and
 	// eligible for evaluation. A pointer so it is omitted for non-conversation rules.
 	MinIdleSeconds *int `json:"min_idle_seconds,omitempty"`
+	// Actions are managed through the nested rule-actions API. They are
+	// included in gcx rule documents for inspection and reconciliation, but
+	// stripped before the rule endpoint receives a create/update request.
+	Actions *[]RuleAction `json:"actions,omitempty"`
 
 	// Server-generated fields (stripped on push)
 	TenantID  string     `json:"tenant_id,omitempty"`
@@ -68,6 +72,39 @@ type RuleDefinition struct {
 	DeletedAt *time.Time `json:"deleted_at,omitempty"`
 	CreatedAt time.Time  `json:"created_at,omitzero"`
 	UpdatedAt time.Time  `json:"updated_at,omitzero"`
+}
+
+// RuleAction is an action attached to an evaluator rule.
+type RuleAction struct {
+	ActionID     string              `json:"action_id,omitempty"`
+	RuleID       string              `json:"rule_id,omitempty"`
+	Condition    RuleActionCondition `json:"condition"`
+	ActionConfig RuleActionConfig    `json:"action_config"`
+	Enabled      bool                `json:"enabled"`
+	TenantID     string              `json:"tenant_id,omitempty"`
+	CreatedBy    string              `json:"created_by,omitempty"`
+	UpdatedBy    string              `json:"updated_by,omitempty"`
+	CreatedAt    time.Time           `json:"created_at,omitzero"`
+	UpdatedAt    time.Time           `json:"updated_at,omitzero"`
+}
+
+type RuleActionCondition struct {
+	Kind  string                 `json:"kind"`
+	Score *RuleActionScoreTarget `json:"score,omitempty"`
+}
+
+type RuleActionScoreTarget struct {
+	EvaluatorID string   `json:"evaluator_id"`
+	ScoreKey    string   `json:"score_key"`
+	Operator    string   `json:"operator"`
+	Number      *float64 `json:"number,omitempty"`
+	String      *string  `json:"string,omitempty"`
+	Bool        *bool    `json:"bool,omitempty"`
+}
+
+type RuleActionConfig struct {
+	Kind          string   `json:"kind"`
+	CollectionIDs []string `json:"collection_ids,omitempty"`
 }
 
 // GetResourceName implements adapter.ResourceNamer.

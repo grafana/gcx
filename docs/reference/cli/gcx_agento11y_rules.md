@@ -23,6 +23,7 @@ Manage rules that route generations to evaluators.
 ### SEE ALSO
 
 * [gcx agento11y](gcx_agento11y.md)	 - Manage Grafana Agent Observability resources
+* [gcx agento11y rules actions](gcx_agento11y_rules_actions.md)	 - Manage actions attached to an evaluation rule.
 * [gcx agento11y rules create](gcx_agento11y_rules_create.md)	 - Create an evaluation rule from a file.
 * [gcx agento11y rules delete](gcx_agento11y_rules_delete.md)	 - Delete evaluation rules.
 * [gcx agento11y rules get](gcx_agento11y_rules_get.md)	 - Get a single evaluation rule.
