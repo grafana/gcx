@@ -465,16 +465,17 @@ on PATH and `mise run` invokes them with the correct versions.
 | `mise run build` | Compile to `bin/gcx` with version injection |
 | `mise run tests` | Run all unit tests |
 | `mise run lint` | golangci-lint with project config |
-| `mise run docs` | Generate reference docs + build mkdocs site |
-| `mise run reference-drift` | Fail if generated docs are stale |
+| `mise run docs` | Build Grafana website documentation with Docker |
+| `mise run reference:release` | Generate the single-page reference from a release checkout |
 | `mise run test-env-up` | Start Grafana 12 + MySQL 9 via docker-compose |
 
 ### CI/CD
 
-Three GitHub Actions workflows:
-- **ci.yaml**: PR/push gate -- lint, tests, doc drift check (parallel jobs)
+Relevant GitHub Actions workflows:
+- **ci.yaml**: PR/push gate -- lint, tests, Grafana documentation build (parallel jobs)
 - **release.yaml**: Tag-triggered -- goreleaser cross-platform builds + GitHub Release
-- **publish-docs.yaml**: Manual GitHub Pages deployment
+- **update-cli-reference.yaml**: Separate rolling docs PR after a successful stable release
+- **deploy-pr-preview.yml**: Grafana website preview for same-repository docs PRs
 
 ### Code Generation
 
@@ -860,7 +861,6 @@ The shared transport in `internal/query/kg` serves both the KG provider and App 
 | `internal/linter/bundle/` | Embedded Rego bundle with built-in linting rules |
 | `internal/linter/builtins/` | Built-in rule validators (PromQL, LogQL) |
 | `cmd/gcx/linter/command.go` | `dev lint` subgroup (run, new, rules, test subcommands; formerly top-level `linter`) |
-| `scripts/linter-rules-reference/` | Code generator for linter rule reference documentation |
 
 ### Dev Command
 

@@ -23,7 +23,7 @@ column literally — some rows are CI-enforced and some only look like it:
 | Command→skill mapping | `internal/agent/command_skills.go` | **review only**, same direction: `TestConsistency_SkillMappingResolvesToCommands` validates declared keys, never requires one |
 | Resource-type agent metadata, **native K8s types** | `internal/agent/known_resources.go` | `internal/agent/known_resources_test.go` |
 | Resource-type agent metadata, **adapter-backed** | adapter `Registration.Operations` | **nothing.** `known_resources_test.go` only walks `agent.KnownResources`; no test asserts `Operations` is populated on an adapter registration. Review-enforced only |
-| Generated reference docs | `GCX_AGENT_MODE=false mise run reference` | `mise run reference-drift` in CI |
+| Released reference | Separate release bot PR; leave unchanged in command PRs | Generator tests in CI |
 | Package map | `docs/architecture/project-structure.md` | AGENTS.md PR checklist step 4 (human-enforced) |
 
 ### The gap CI does not cover, and it is a judgement call
@@ -133,7 +133,7 @@ Notes:
   defaults and silently produces wrong generated docs from agent environments.
 - A resolved base is for scoping a *review* diff (self-review.md T10), not for
   deciding what to format.
-- If a tool is unavailable locally (mkdocs for the docs build, for instance),
+- If a tool is unavailable locally (Docker for the docs build, for instance),
   report that gate as SKIPPED with the reason — never as green. CI covers it.
 - The authoritative checklists live in AGENTS.md (Mandatory Pre-Commit /
   Pull Request). This is the command form, not a replacement.
@@ -148,7 +148,7 @@ Notes:
 | `TestAgentConformance_EveryFiniteLeafEmitsOneJSONValue` fails or times out | Usage text on stdout instead of one JSON document, or a prompt/editor survives agent mode | Return the in-band error document; never block in agent mode |
 | `TestSkillsGcxInvocationsMatchCommandTree` | A skill edit in either tree references an unknown command or flag | Fix the invocation, or use a non-shell fence / a `<placeholder>` for hypotheticals |
 | `mise run validate-skills` | Skill front matter unparseable, or missing `name` / `description`. A `description:` value containing a colon must be quoted or a `>-` block — an unquoted plain scalar with `Foo: bar` in it is invalid YAML | Fix the front matter |
-| `mise run reference-drift` (CI) | Generated docs not regenerated | `GCX_AGENT_MODE=false mise run reference`, commit the diff |
+| `Documentation` (CI) | Grafana website docs fail to build | Run `mise run docs` and fix the reported errors |
 | `mise run lint` reports findings in other worktrees | Stale golangci-lint cache | `mise exec -- golangci-lint cache clean`, re-run |
 
 ## Read the built contract the way agents will

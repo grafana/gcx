@@ -4,15 +4,13 @@ min_version = "2024.1.0"
 go = "1.26"
 golangci-lint = "2.12.2"
 goreleaser = "2.13.3"
-python = "3.12"
-uv = "latest"
 
 # =============================================================================
 # GENERAL
 # =============================================================================
 
 [tasks.all]
-description = "Validate skills, lint, test, build, and generate docs"
+description = "Validate skills, lint, test, build, and validate docs"
 depends = ["validate-skills", "lint", "tests", "build", "docs"]
 
 [tasks.gate]
@@ -91,12 +89,11 @@ fi
 """
 
 [tasks.deps]
-description = "Install Go and Python dependencies"
+description = "Install Go dependencies"
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
 go mod download
-uv pip install --system -q -r requirements.txt
 """
 
 [tasks.clean]
@@ -119,109 +116,20 @@ run = "./scripts/tag.sh"
 # =============================================================================
 
 [tasks.docs]
-description = "Generate reference docs and build mkdocs site"
-depends = ["reference"]
-run = "mkdocs build -f mkdocs.yml -d ./build/documentation"
-
-[tasks.reference]
-description = "Regenerate all reference documentation"
-depends = ["reference:cli", "reference:env-var", "reference:config", "reference:linter-rules"]
-
-[tasks."reference-drift"]
-description = "Check for drift in all generated reference docs"
-depends = ["reference-drift:cli", "reference-drift:env-var", "reference-drift:config", "reference-drift:linter-rules"]
-
-[tasks."reference:cli"]
-description = "Generate CLI reference docs"
+description = "Build the Grafana website documentation (requires Docker)"
 run = """
-#!/usr/bin/env bash
-set -euo pipefail
-rm -rf ./docs/reference/cli
-GCX_AGENT_MODE=false CGO_ENABLED=0 go run scripts/cmd-reference/*.go "./docs/reference/cli"
+docker run --rm -v "$PWD/docs/sources:/hugo/content/docs/grafana/next/as-code/observability-as-code/grafana-cli/gcx:ro" grafana/docs-base:latest /bin/bash -c 'make hugo'
 """
 
-[tasks."reference:env-var"]
-description = "Generate environment variables reference"
-run = """
-#!/usr/bin/env bash
-set -euo pipefail
-rm -rf ./docs/reference/environment-variables
-CGO_ENABLED=0 go run scripts/env-vars-reference/*.go "./docs/reference/environment-variables"
-"""
-
-[tasks."reference:config"]
-description = "Generate configuration reference"
-run = """
-#!/usr/bin/env bash
-set -euo pipefail
-rm -f ./docs/reference/configuration/index.md
-CGO_ENABLED=0 go run scripts/config-reference/*.go "./docs/reference/configuration"
-"""
-
-[tasks."reference:linter-rules"]
-description = "Generate linter rules reference"
-run = """
-#!/usr/bin/env bash
-set -euo pipefail
-rm ./docs/reference/linter-rules/index.md
-CGO_ENABLED=0 go run scripts/linter-rules-reference/*.go "./docs/reference/linter-rules"
-"""
-
-[tasks."reference-drift:cli"]
-description = "Check for drift in generated CLI reference"
-depends = ["reference:cli"]
-run = """
-#!/usr/bin/env bash
-set -euo pipefail
-if ! git diff --exit-code --quiet HEAD ./docs/reference/cli/ ; then
-    echo "Drift detected in the generated CLI reference."
-    echo "Run 'mise run reference:cli' and commit the modified files."
-    exit 1
-fi
-"""
-
-[tasks."reference-drift:env-var"]
-description = "Check for drift in generated environment variables reference"
-depends = ["reference:env-var"]
-run = """
-#!/usr/bin/env bash
-set -euo pipefail
-if ! git diff --exit-code --quiet HEAD ./docs/reference/environment-variables/ ; then
-    echo "Drift detected in the generated environment variables reference."
-    echo "Run 'mise run reference:env-var' and commit the modified files."
-    exit 1
-fi
-"""
-
-[tasks."reference-drift:config"]
-description = "Check for drift in generated config reference"
-depends = ["reference:config"]
-run = """
-#!/usr/bin/env bash
-set -euo pipefail
-if ! git diff --exit-code --quiet HEAD ./docs/reference/configuration/ ; then
-    echo "Drift detected in the generated config reference."
-    echo "Run 'mise run reference:config' and commit the modified files."
-    exit 1
-fi
-"""
-
-[tasks."reference-drift:linter-rules"]
-description = "Check for drift in generated linter rules reference"
-depends = ["reference:linter-rules"]
-run = """
-#!/usr/bin/env bash
-set -euo pipefail
-if ! git diff --exit-code --quiet HEAD ./docs/reference/linter-rules/ ; then
-    echo "Drift detected in the linter rules reference."
-    echo "Run 'mise run reference:linter-rules' and commit the modified files."
-    exit 1
-fi
-"""
+[tasks."docs:refresh"]
+description = "Regenerate the latest stable CLI and configuration references locally"
+run = "bash scripts/generate-cli-reference.sh"
 
 [tasks."serve-docs"]
-description = "Serve docs with live reload for development"
-run = "mkdocs serve -f mkdocs.yml"
+description = "Preview Grafana website docs at http://localhost:3002/docs/grafana/next/as-code/observability-as-code/grafana-cli/gcx/"
+run = """
+docker run --rm -p 3002:3002 -v "$PWD/docs/sources:/hugo/content/docs/grafana/next/as-code/observability-as-code/grafana-cli/gcx:ro" grafana/docs-base:latest hugo server --bind 0.0.0.0 --port 3002 --environment docs
+"""
 
 # =============================================================================
 # INTEGRATION TESTING

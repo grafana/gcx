@@ -4,8 +4,8 @@ title: Home
 
 # gcx - The Grafana CLI
 
-!!! note
-    **gcx only supports *Grafana 12 and above*, older Grafana versions are not supported!**
+> [!NOTE]
+> **gcx only supports *Grafana 12 and above*, older Grafana versions are not supported!**
 
 gcx is a command-line tool designed to simplify interaction with Grafana instances.
 

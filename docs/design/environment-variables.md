@@ -68,7 +68,7 @@ See [../architecture/config-system.md](../architecture/config-system.md) for the
 
 | Variable | Effect | Documentation |
 |----------|--------|---------------|
-| `GCX_AUTO_APPROVE` | Auto-enable `--force` on delete operations | See `docs/reference/environment-variables/` |
+| `GCX_AUTO_APPROVE` | Auto-enable `--force` on delete operations | See [CLI reference](../sources/cli-reference.md#gcx_auto_approve) |
 
 Accepts: `1`, `true`, `0`, `false` (parsed by `caarlos0/env/v11`)
 

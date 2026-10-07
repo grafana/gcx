@@ -57,5 +57,5 @@ This command will open the default editor as configured by the `EDITOR` environm
 
 Once the editor process terminates, the resource will be updated in the Grafana instance targeted by the current context.
 
-!!! note
-    The edition will be cancelled if no changes are written to the file or if the file after edition is empty.
+> [!NOTE]
+> The edition will be cancelled if no changes are written to the file or if the file after edition is empty.

@@ -838,13 +838,9 @@ TLS handling. The K8s dynamic client path chains
 `NewNamespacedRESTConfig`. The OpenAPI health client manages its own transport
 but consumes the same effective auth method and selected TLS view.
 
-### 5. CI Drift Check Coverage
+### 5. Released CLI Reference
 
-**Observed in:** Project Structure domain notes that the CI `docs` job only
-checks `cli-reference-drift`, not all three reference generators. `mise.toml`
-has `reference-drift` targeting all four.
-
-**Resolution:** `mise.toml` has all four drift check tasks
-(`reference-drift:cli`, `reference-drift:env-var`, `reference-drift:config`,
-`reference-drift:linter-rules`) plus a combined `reference-drift` task. CI now
-invokes `mise run reference-drift` which runs all four.
+The CLI reference describes the latest stable release, while `main` may contain
+unreleased commands. CI therefore tests the generator and builds the committed
+Grafana website pages without asserting reference equality against `main`.
+A separate release-triggered workflow updates the reference through a rolling PR.

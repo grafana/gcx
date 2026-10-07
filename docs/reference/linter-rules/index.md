@@ -1,21 +1,11 @@
-# Linter rules reference
+# Linter rules
 
-## `alertrule`
+Run `gcx dev lint rules` to list the rules bundled with your installed version.
 
-| Category | Severity | Name | Summary |
-| -------- | -------- | ---- | ------- |
-| `idiomatic` | `warning` | `alert-runbook-link` | Alerts should have a runbook. |
-| `idiomatic` | `error` | `alert-summary` | Alerts must have a summary. |
-
-## `dashboard`
-
-| Category | Severity | Name | Summary |
-| -------- | -------- | ---- | ------- |
-| `bug` | `error` | [`target-valid-promql`](./dashboard/target-valid-promql.md) | Checks that Prometheus targets defined in dashboard panels use valid PromQL queries. |
-| `idiomatic` | `warning` | [`panel-title-description`](./dashboard/panel-title-description.md) | Panels should have a title and description. |
-| `idiomatic` | `warning` | [`panel-units`](./dashboard/panel-units.md) | Panels should use valid units. |
-| `idiomatic` | `warning` | [`uneditable-dashboard`](./dashboard/uneditable-dashboard.md) | Dashboards should not be editable. |
-
+- [Panel title and description](dashboard/panel-title-description.md)
+- [Panel units](dashboard/panel-units.md)
+- [Valid PromQL targets](dashboard/target-valid-promql.md)
+- [Uneditable dashboards](dashboard/uneditable-dashboard.md)
 
 ## Custom rules
 

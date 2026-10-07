@@ -18,10 +18,10 @@ import (
 )
 
 func main() {
-	outputDir := "./docs/reference/environment-variables"
-	if len(os.Args) > 1 {
-		outputDir = os.Args[1]
+	if len(os.Args) != 2 {
+		log.Fatal("provide an output directory for the reference fragment")
 	}
+	outputDir := os.Args[1]
 
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		log.Fatal(err)

@@ -156,18 +156,16 @@ gcx/
 │   ├── shared/               # Shared utilities (date handling, duration, etc.) to be shared across integrations.
 │
 ├── scripts/                  # Standalone Go programs for code generation
-│   ├── cmd-reference/        # Generates CLI docs from Cobra tree
+│   ├── cli-reference/        # Renders released CLI and configuration references
 │   ├── config-reference/     # Generates config YAML reference from Go structs
-│   ├── env-vars-reference/   # Generates env-var docs from struct tags
-│   └── linter-rules-reference/  # Generates linter rule reference documentation
+│   └── env-vars-reference/   # Generates env-var docs from struct tags
 │
 ├── docs/                     # Documentation source (checked in)
-│   ├── assets/               # Logo, custom CSS
+│   ├── sources/              # Grafana website pages, including released CLI reference
 │   ├── guides/               # Hand-written user guides
-│   └── reference/            # Auto-generated reference pages (committed)
-│       ├── cli/              # Per-command Markdown (from scripts/cmd-reference)
-│       ├── configuration/    # Config YAML reference (from scripts/config-reference)
-│       └── environment-variables/ # Env-var table (from scripts/env-vars-reference)
+│   └── reference/            # Handwritten reference and contributor documentation
+│       ├── configuration/    # Handwritten credential storage documentation
+│       └── linter-rules/     # Handwritten linter rule documentation
 │
 ├── testdata/                 # Integration test fixtures (top-level)
 │   ├── grafana.ini           # Grafana config for docker-compose Grafana service
@@ -179,15 +177,13 @@ gcx/
 │   └── sandbox/              # Runs gcx as wasip1 in wazero for embedding (module: github.com/grafana/gcx/experimental/sandbox, v0)
 │
 ├── bin/                      # Build output (gitignored)
-├── build/                    # mkdocs output (gitignored)
+├── build/                    # Local build artifacts (gitignored)
 │
 ├── go.mod / go.sum           # Main Go module definition (module: github.com/grafana/gcx)
 ├── .golangci.yaml            # Linter configuration (golangci-lint v2)
 ├── .goreleaser.yaml          # Release pipeline (cross-platform builds + GitHub Release)
-├── mise.toml                 # Reproducible toolchain (Go, golangci-lint, goreleaser, Python)
-├── docker-compose.yml        # Integration test environment (Grafana 12 + MySQL 9)
-├── mkdocs.yml                # Documentation site config (Material theme)
-└── requirements.txt          # Python packages for mkdocs
+├── mise.toml                 # Reproducible toolchain (Go, golangci-lint, goreleaser)
+└── docker-compose.yml        # Integration test environment (Grafana 12 + MySQL 9)
 ```
 
 ### Rationale for cmd/ vs internal/ split
@@ -209,7 +205,7 @@ server) rather than technical concerns, making it easy to locate code by feature
 ### Toolchain
 
 Tools are managed by [mise](https://mise.jdx.dev/) via `mise.toml`. Once
-`mise install` has been run, all tools (Go, golangci-lint, goreleaser, Python)
+`mise install` has been run, all tools (Go, golangci-lint, goreleaser)
 are available. All development commands use `mise run`, which ensures the correct
 tool versions are used regardless of shell configuration.
 
@@ -222,11 +218,10 @@ tool versions are used regardless of shell configuration.
 | `mise run install` | Copies binary to `$GOPATH/bin` |
 | `mise run tests` | `go test -v ./...` (all packages, with race detection implied) |
 | `mise run lint` | Runs `golangci-lint run -c .golangci.yaml` |
-| `mise run deps` | `go mod download` + `uv pip install -r requirements.txt` |
-| `mise run docs` | Runs `reference` then `mkdocs build` → `build/documentation/` |
-| `mise run reference` | Runs all four doc-generation scripts |
-| `mise run reference-drift` | Re-generates docs, fails if `git diff` finds changes |
-| `mise run serve-docs` | `mkdocs serve` with live reload for doc development |
+| `mise run deps` | `go mod download` |
+| `mise run docs` | Builds Grafana website docs with Docker; no reference generation |
+| `mise run docs:refresh` | Generates CLI and configuration references from the latest stable release |
+| `mise run serve-docs` | Grafana website preview on localhost:3002 |
 | `mise run test-env-up` | `docker-compose up -d` + health-wait loop |
 | `mise run test-env-down` | `docker-compose down` |
 | `mise run test-env-clean` | `docker-compose down -v` (removes volumes) |
@@ -279,7 +274,7 @@ this.
 
 ## 4. CI/CD Pipeline (GitHub Actions)
 
-Three workflow files under `.github/workflows/`:
+Documentation and release workflows under `.github/workflows/`:
 
 ### ci.yaml — Pull Request and Main Branch Gate
 
@@ -291,10 +286,10 @@ Three parallel jobs:
 PR / push to main
 ├── linters  → mise run lint
 ├── tests    → mise run tests
-└── docs     → mise run reference-drift + mise run docs
+└── docs     → Grafana website build for docs/sources
 ```
 
-All jobs:
+The lint and test jobs:
 1. Checkout with `persist-credentials: false` (minimal permissions)
 2. Restore Go module cache keyed on `go.sum` hash
 3. Install tools via mise (cached)
@@ -321,13 +316,10 @@ The changelog is auto-generated from `git log` via GitHub, filtering out
 Release concurrency is set to `cancel-in-progress: false` so in-flight releases
 always complete.
 
-### publish-docs.yaml — Manual Doc Deployment
+### deploy-pr-preview.yml — Grafana Docs Preview
 
-Triggered on: `workflow_dispatch` only (manual trigger).
-
-Used to republish documentation outside the normal release cadence without
-cutting a new release. Follows the same build + upload + deploy pattern as
-the release workflow.
+Changes to `docs/sources` on same-repository PRs get a Grafana website preview
+through Writers’ Toolkit. Fork PRs are still checked by the `Documentation` build.
 
 ---
 
@@ -365,22 +357,19 @@ tree (e.g. fully offline work); it is never required.
 
 ## 6. Code Generation (scripts/)
 
-All three generators are standalone `main` packages run via `go run`:
+The release reference is generated explicitly with `mise run docs:refresh`.
+Normal `mise run docs` builds the Grafana website documentation using Docker;
+it neither regenerates nor checks the release snapshot against `main`.
 
-```
-mise run reference
-    ├── mise run reference:cli           → go run scripts/cmd-reference/*.go <outputDir>
-    ├── mise run reference:env-var       → go run scripts/env-vars-reference/*.go <outputDir>
-    ├── mise run reference:config        → go run scripts/config-reference/*.go <outputDir>
-    └── mise run reference:linter-rules  → go run scripts/linter-rules-reference/*.go <outputDir>
-```
+### Released CLI Reference
 
-### CLI Reference (`scripts/cmd-reference/main.go`)
-
-Uses `github.com/spf13/cobra/doc.GenMarkdownTree` to walk the entire Cobra
-command tree and emit one `.md` file per command into `docs/reference/cli/`.
-The root command is instantiated with a fixed version string `"version"` since
-the actual version is not relevant for documentation.
+`mise run docs:refresh` downloads the latest stable release source and runs
+the renderer in `scripts/cli-reference/` against it. Commands and environment variables go in
+`docs/sources/cli-reference.md`; the config schema replaces the generated section
+at the bottom of `docs/sources/configuration.md`, preserving the guide above it.
+After generation, review the diff, commit any changes, and open a separate
+documentation PR. The generated content is a release snapshot, not a drift target
+for command changes on `main`.
 
 ### Config Reference (`scripts/config-reference/main.go`)
 
@@ -391,29 +380,23 @@ Uses two techniques simultaneously:
    files to extract GoDoc comments on struct types and fields
 
 The output is a fully commented YAML skeleton showing every configuration key
-with its type and documentation comment, written to
-`docs/reference/configuration/index.md`.
+with its type and documentation comment, written to a temporary fragment
+that the single-page renderer includes.
 
 ### Env-Var Reference (`scripts/env-vars-reference/main.go`)
 
 Same AST + reflect approach, but reads `env:` struct tags instead of `yaml:`
 tags to discover all environment variable names. Emits a sorted Markdown
-document to `docs/reference/environment-variables/index.md`.
+fragment for the single-page renderer. Variables handled outside tagged structs
+are supplemented from the release’s `docs/design/environment-variables.md`.
 
-### Drift Detection Pattern
+### Release Snapshot Validation
 
-```bash
-# mise run reference-drift:cli runs reference:cli first, then:
-if ! git diff --exit-code --quiet HEAD ./docs/reference/cli/ ; then
-    echo "Drift detected..."
-    exit 1
-    fi
-```
-
-Generated docs are committed to the repo. CI re-generates them and uses
-`git diff --exit-code` to fail if the output changed. This enforces that
-generated docs always reflect the current code — developers must regenerate
-and commit them when commands or config structs change.
+Generator tests check command coverage, anchors, flag inheritance, and stable
+output. CI builds the checked-in `docs/sources` pages, including the released
+reference, without comparing that snapshot against unreleased commands on `main`.
+The release bot PR gets the same required checks and Grafana website preview as
+other documentation PRs.
 
 ---
 
@@ -483,25 +466,16 @@ is provided for manual developer testing only. This is identified as a gap
 
 ---
 
-## 9. Documentation Tooling (mkdocs)
+## 9. Documentation Tooling (Grafana Website)
 
-`mkdocs.yml` configures a Material-theme static site:
+`docs/sources` is published through the Grafana website documentation pipeline.
+`mise run docs` builds it with `grafana/docs-base`; `mise run serve-docs` runs the
+same website locally on port 3002. Both require Docker. The required
+`Documentation` CI job runs the website build on PRs and pushes to `main`.
 
-- **Theme**: `material` with light/dark palette toggle
-- **Plugins**: `search` + `mkdocs-nav-weight` (controls page ordering in nav)
-- **Extensions**: `admonition`, `pymdownx.superfences` (code blocks),
-  `pymdownx.tabbed` (tabbed content), `pymdownx.highlight` (syntax highlighting)
-- **Output**: `build/documentation/` (via `mise run docs`)
-
-Python dependencies pinned in `requirements.txt`:
-```
-mkdocs==1.6.1
-mkdocs-material==9.7.1
-mkdocs-material-extensions==1.3.1
-mkdocs-nav-weight==0.3.0
-```
-
-These are installed via `uv pip install -r requirements.txt` during `mise run deps`.
+The release reference is a committed snapshot updated by its own bot PR.
+Handwritten architecture, design, and contributor guides remain in the repository.
+There is no separate MkDocs/GitHub Pages site or Python documentation toolchain.
 
 ---
 
@@ -522,10 +496,10 @@ mise run all                  # lint + tests + build + docs (full gate)
 
 ### Generate and Check Documentation
 ```bash
-mise run reference            # regenerate all reference docs
-mise run reference-drift      # fail if generated docs are stale
-mise run docs                 # build full mkdocs site
-mise run serve-docs           # live-reload doc server at localhost:8000
+mise run docs                 # build Grafana website docs (Docker)
+mise run serve-docs           # preview at localhost:3002
+# Release snapshot generation is separate from normal command PRs:
+mise run docs:refresh     # regenerate from the latest stable release, then open a PR
 ```
 
 ### Integration Testing (manual)

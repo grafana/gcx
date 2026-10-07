@@ -191,10 +191,12 @@ Install mise and set up the project. For macOS:
 $ brew install mise        # or: curl https://mise.run | sh
 $ mise trust               # trust the mise.toml configuration
 $ mise install             # install tools (Go, golangci-lint, etc.)
-$ mise run deps            # install Go modules and Python requirements, including MkDocs
+$ mise run deps            # install Go modules
 ```
 
-Run `mise run deps` before `mise run docs` or `mise run all`.
+Run `mise run deps` before `mise run all`. Documentation builds require Docker.
+`mise run docs` builds `docs/sources` using Grafana’s website image without
+regenerating reference files; `mise run serve-docs` starts a local preview.
 
 Some mise commands for local development:
 
