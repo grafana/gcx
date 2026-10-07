@@ -206,7 +206,7 @@ Prometheus datasource, the values here come only from the app.`,
 				return err
 			}
 
-			// Apply pre-Prometheus filters (job glob + labels) to reduce query scope.
+			// Apply the job glob and label filters first, to reduce query scope.
 			var filtered []Check
 			for _, c := range checkList {
 				if filter.MatchCheck(c) {
@@ -225,6 +225,10 @@ Prometheus datasource, the values here come only from the app.`,
 				return opts.IO.Encode(cmd.OutOrStdout(), []CheckStatusResult{})
 			}
 
+			if smDSUID == "" {
+				return errNoSMDatasource
+			}
+
 			// The SM backend owns the expressions: reachability and probe count are
 			// one tenant-wide call each, latency one per distinct check type.
 			smQueryClient, err := synth.NewBackendDatasourceClient(smRestCfg)
@@ -237,7 +241,7 @@ Prometheus datasource, the values here come only from the app.`,
 				// Status is computed from reachability alone, so every check would
 				// read NODATA: "the check has no data" when the truth is "the
 				// backend could not be asked".
-				return fmt.Errorf("could not read check status from the Synthetic Monitoring datasource: %w", errors.Join(metrics.failures...))
+				return fmt.Errorf("could not read check status from the Synthetic Monitoring datasource: %w", errors.Join(metrics.distinctFailures()...))
 			}
 			// Partial failure: the columns that did resolve are still shown, and
 			// each warning names the query so an empty column is not read as "no
@@ -248,7 +252,7 @@ Prometheus datasource, the values here come only from the app.`,
 
 			results := BuildCheckStatusResults(filtered, metrics.success, metrics.probeCount, metrics.latency, probeNameMap)
 
-			// Apply post-Prometheus status filter.
+			// Apply the status filter, which needs the computed status.
 			if filter.StatusStr != "" {
 				var statusFiltered []CheckStatusResult
 				for _, r := range results {
@@ -582,7 +586,7 @@ func buildProbeNameMap(ps []probes.Probe) map[int64]string {
 }
 
 // computeCheckStatus determines the display status for a check based on the
-// success rate and the check's alertSensitivity setting. Thresholds match the
+// reachability and the check's alertSensitivity setting. Thresholds match the
 // Grafana Synthetic Monitoring alerting defaults: high=95%, medium=90%, low=75%.
 func computeCheckStatus(success *float64, sensitivity string) string {
 	if success == nil {
@@ -899,10 +903,10 @@ func ParseWindow(s string) (time.Duration, error) {
 }
 
 // queryCheckStatus retrieves the current execution status string for a single check
-// by querying the Prometheus datasource. Returns "NODATA" if no data is available.
+// from the Synthetic Monitoring datasource. Returns "NODATA" if no data is available.
 // Errors are returned for connectivity or configuration failures — callers should
 // degrade gracefully (warn, not fail).
-// checkStatusInfo holds the result of a single-check Prometheus status query.
+// checkStatusInfo holds the result of a single-check status query.
 type checkStatusInfo struct {
 	Status  string
 	Success *float64 // nil when no data
@@ -912,6 +916,9 @@ func queryCheckStatus(ctx context.Context, loader smcfg.StatusLoader, job, targe
 	restCfg, smDSUID, _, err := loader.LoadSMProxyConfig(ctx)
 	if err != nil {
 		return checkStatusInfo{}, fmt.Errorf("loading Synthetic Monitoring config: %w", err)
+	}
+	if smDSUID == "" {
+		return checkStatusInfo{}, errNoSMDatasource
 	}
 
 	client, err := synth.NewBackendDatasourceClient(restCfg)

@@ -2,6 +2,7 @@ package checks
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -31,6 +32,15 @@ const statusAnchorRange = 5 * time.Minute
 // batch I/O. One reachability, one probe count and at most one latency query per
 // check type, so it is rarely reached.
 const statusConcurrency = 10
+
+// errNoSMDatasource is returned when status is requested but no Synthetic
+// Monitoring datasource resolved for the context. The typed clients degrade to the
+// direct SM API in that case, but the status values come only from the datasource's
+// named queries, so there is nothing to fall back to.
+var errNoSMDatasource = errors.New("no Synthetic Monitoring datasource found in this context; " +
+	"check status is read from the datasource's named queries, so one must resolve: " +
+	"set contexts.<name>.datasources.synthetic-monitoring in config, " +
+	"or give the credentials permission to list datasources so it can be discovered")
 
 // namedQuerier runs an SM named query. *synth.BackendDatasourceClient satisfies it.
 type namedQuerier interface {

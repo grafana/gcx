@@ -1008,6 +1008,70 @@ func TestChecksStatusFailsWhenNoQueryIsAnswered(t *testing.T) {
 	assert.Empty(t, stdout, "no document should be emitted when nothing could be read")
 }
 
+// TestChecksStatusWithoutSMDatasource pins the direct-API case: the SM API is
+// reachable but no SM datasource resolves (no UID), so status cannot be read.
+// It must fail fast with the way out, not with the client's bare "uid is
+// required", and without listing checks it cannot give a status for.
+func TestChecksStatusWithoutSMDatasource(t *testing.T) {
+	st := &checkAPIState{
+		probesOnline: true,
+		checks: map[int64]checks.Check{
+			1: {ID: 1, Job: "web", Target: "https://a", Settings: checks.CheckSettings{"http": map[string]any{}}},
+		},
+	}
+	srv := newCheckServer(t, st)
+
+	stdout, _, err := runChecks(t, srv.URL, false, "", "status", "-o", "json")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no Synthetic Monitoring datasource")
+	assert.Contains(t, err.Error(), "datasources.synthetic-monitoring", "the error must say how to pin the datasource")
+	assert.Empty(t, stdout)
+
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	assert.Empty(t, st.namedCalls, "no query should be attempted without a datasource")
+}
+
+// TestChecksGetShowStatusWithoutSMDatasource pins that --show-status in the same
+// situation still returns the check and puts the same hint on stderr.
+func TestChecksGetShowStatusWithoutSMDatasource(t *testing.T) {
+	st := &checkAPIState{
+		probesOnline: true,
+		checks: map[int64]checks.Check{
+			1234: {ID: 1234, Job: "web-check", Target: "https://example.com",
+				Settings: checks.CheckSettings{"http": map[string]any{"method": "GET"}}},
+		},
+	}
+	srv := newCheckServer(t, st)
+
+	_, stderr, err := runChecks(t, srv.URL, false, "", "get", "web-check-1234", "-o", "json", "--show-status")
+	require.NoError(t, err)
+	assert.Contains(t, stderr, "no Synthetic Monitoring datasource")
+	assert.Contains(t, stderr, "datasources.synthetic-monitoring")
+}
+
+// TestChecksStatusErrorNamesEachFailureOnce pins that latency, queried once per
+// check type, does not repeat the same failure in the error for every type.
+func TestChecksStatusErrorNamesEachFailureOnce(t *testing.T) {
+	st := &checkAPIState{
+		probesOnline: true,
+		checks: map[int64]checks.Check{
+			1: {ID: 1, Job: "web", Target: "https://a", Settings: checks.CheckSettings{"http": map[string]any{}}},
+			2: {ID: 2, Job: "dns", Target: "example.com", Settings: checks.CheckSettings{"dns": map[string]any{}}},
+			3: {ID: 3, Job: "script", Target: "https://c", Settings: checks.CheckSettings{"scripted": map[string]any{}}},
+		},
+		namedErrors: map[string]string{"*": "unknown query"},
+	}
+	srv := newCheckServer(t, st)
+	loader := &contractStatusLoader{baseURL: srv.URL, namespace: "default", smDatasourceUID: "sm-uid"}
+
+	_, _, err := runChecksLoader(t, loader, false, "", "status", "-o", "json")
+	require.Error(t, err)
+	// Each failure line starts "<query>: ", so this counts lines, not mentions.
+	assert.Equal(t, 1, strings.Count(err.Error(), "checks_latency: "), "error: %s", err)
+	assert.Contains(t, err.Error(), "checks_reachability")
+}
+
 // TestChecksStatusFailsWhenReachabilityFails pins that losing reachability is an
 // error even when the other queries answer: it is the only input to OK/FAILING,
 // so without it every row would read NODATA with exit code 0.

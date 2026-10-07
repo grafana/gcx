@@ -54,7 +54,9 @@ Output columns: NAME, JOB, TARGET, SUCCESS (reachability, as shown on the app's 
 **Status interpretation** (threshold depends on the check's `alertSensitivity`: high = 95%, medium/default = 90%, low = 75%):
 - `OK` - reachability at or above the threshold; check is healthy
 - `FAILING` - reachability below the threshold; route to synth-investigate-check for deeper analysis
-- `NODATA` - no reachability data for the check; it may be disabled or newly created. If every check is NODATA and a warning says columns are unavailable, the stack's Synthetic Monitoring app is too old to serve the status queries
+- `NODATA` - the backend answered but has no reachability data for the check; it may be disabled or newly created
+
+If the command exits non-zero with an error naming `checks_reachability`, the stack's Synthetic Monitoring app cannot serve the status queries (it is too old, or the query failed); no rows are printed, so this is not a NODATA result. A warning on stderr naming `checks_probe_count` or `checks_latency` means only that column is empty; statuses are still valid.
 
 ### Step 3: Conditional Timeline
 
@@ -91,7 +93,7 @@ Note: `--since` and `--from`/`--to` are mutually exclusive. Use one or the other
 After presenting status:
 
 - If any check is `FAILING`: suggest `synth-investigate-check` for per-probe breakdown, failure mode classification, and PromQL deep-dive
-- If any check is `NODATA`: note that no metrics are available; suggest checking if the check is enabled and verifying datasource configuration. A diagnosis alone leaves the user without a path forward — always close with the remediation step: rule out intentional disablement, then recommend re-enabling (route to `synth-manage-checks`) and confirming data resumes
+- If any check is `NODATA`: note that no metrics are available; suggest checking if the check is enabled and has had time to run. A diagnosis alone leaves the user without a path forward — always close with the remediation step: rule out intentional disablement, then recommend re-enabling (route to `synth-manage-checks`) and confirming data resumes
 - If user wants to create, update, or delete checks: route to `synth-manage-checks`
 
 ## Output Format
