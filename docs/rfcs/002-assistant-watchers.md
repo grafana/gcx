@@ -24,7 +24,7 @@ Version history, comparison and explicit restore are proposed in this RFC. Cross
 
 Local-agent calibration and local coding handoff are deferred to separate RFC(s).
 
-Watchers and their API are in public preview. The `gcx assistant watchers` command tree is therefore marked experimental under the [experimental command rules](../design/experimental-commands.md) until the product contract stabilizes.
+Watchers and their API are in public preview. The `gcx assistant watchers` command tree is therefore marked experimental under the [experimental command rules](../design/experimental-commands.md) until the product contract stabilizes. The API is expected to change as the feature evolves before general availability, so commands may change between releases while they are experimental.
 
 ## User experience
 
@@ -42,7 +42,7 @@ kind: Watcher
 metadata:
   name: checkout-health # Derived from spec.title; see Resource model.
   annotations:
-    assistant.ext.grafana.app/id: example-id # Server-assigned ID; same-stack addressing only.
+    assistant.ext.grafana.app/watcher-id: example-id # Server-assigned ID; same-stack addressing only.
 spec:
   title: Checkout health # Required nonempty display title.
   description: Watch the checkout service during a rollout. # Empty clears it.
@@ -135,7 +135,7 @@ audit:
   createdAt: "2030-01-01T10:00:00Z"
   updatedAt: "2030-01-01T12:00:00Z"
 version:
-  id: "2" # Current definition version; history uses list/get-version.
+  id: "2" # Current definition version; history uses list-versions and versions get.
 ```
 
 Status names and values are illustrative and require external API mapping. Unavailable observations must be omitted or explicitly unknown, never fabricated. Learned notes/issues and full run/version histories remain separate read-only results.
@@ -164,7 +164,7 @@ gcx assistant watchers update WATCHER -f watcher.yaml -o json
 gcx assistant watchers status WATCHER -o json
 ```
 
-Dry-run validates the manifest against the API without writing anything. Apply writes only when the effective configuration differs from the current one, so an unchanged apply is a no-op apart from supplied secret values. Writes are last-writer-wins: the manifest is authoritative, so a push overwrites changes made elsewhere, for example in the Grafana UI. Reviewing a change means reviewing the manifest diff, for example in a pull request, together with dry-run validation; a diff preview for the resources pipeline is separate work.
+Dry-run reads the manifests and validates them against the Watcher schema, reporting unknown fields, missing required fields, invalid values and malformed secret inputs; it writes nothing. Validation is client-side only, so errors that only the server detects, such as an inaccessible data source or a missing integration, surface on apply. Apply writes only when the effective configuration differs from the current one, so an unchanged apply is a no-op apart from supplied secret values. Writes are last-writer-wins: the manifest is authoritative, so a push overwrites changes made elsewhere, for example in the Grafana UI. Reviewing a change means reviewing the manifest diff, for example in a pull request, together with dry-run validation; a diff preview for the resources pipeline is separate work.
 
 ### Request a scan and inspect its outcome
 
@@ -182,12 +182,12 @@ Versions belong in the management surface: a user needs to see what calibration 
 
 ```bash
 gcx assistant watchers list-versions WATCHER -o json
-gcx assistant watchers get-version WATCHER 2 -o yaml
-gcx assistant watchers diff-versions WATCHER 1 2 -o json
+gcx assistant watchers versions get WATCHER 2 -o yaml
+gcx assistant watchers versions diff WATCHER 1 2 -o json
 
 # Restore replaces the definition: pause and review first.
 gcx assistant watchers pause WATCHER -o json
-gcx assistant watchers restore-version WATCHER 1 -o json
+gcx assistant watchers versions restore WATCHER 1 -o json
 gcx assistant watchers get WATCHER -o yaml
 gcx assistant watchers status WATCHER -o json
 # Start separately only when the restored definition is ready.
@@ -206,7 +206,7 @@ gcx assistant watchers start WATCHER -o json
 | `gcx assistant watchers update WATCHER -f watcher.yaml`     | Apply configuration through shared CRUD rules, including to a running Watcher.                                 |
 | `gcx assistant watchers delete WATCHER --force`             | Delete the selected Watcher using the standard destructive-operation contract.                                 |
 | `gcx resources pull watchers/WATCHER -p ./watchers -o yaml` | Write the configuration manifest to disk.                                                                      |
-| `gcx resources push -p ./watchers --dry-run`                | Validate configuration against the API without writing or starting work.                                       |
+| `gcx resources push -p ./watchers --dry-run`                | Validate manifests against the Watcher schema without writing or starting work.                                |
 
 #### Run state and history
 
@@ -225,9 +225,9 @@ gcx assistant watchers start WATCHER -o json
 | Proposed invocation                                                    | Behavior                                                                                              |
 | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
 | `gcx assistant watchers list-versions WATCHER`                         | Enumerate retained definition versions and disclose retention/paging limits.                          |
-| `gcx assistant watchers get-version WATCHER VERSION`                   | Read a selected version and its change metadata.                                                      |
-| `gcx assistant watchers diff-versions WATCHER FROM_VERSION TO_VERSION` | Compare two retained definitions without changing the Watcher.                                        |
-| `gcx assistant watchers restore-version WATCHER VERSION`               | Restore the selected definition after explicit pause, subject to concurrency checks; remain inactive. |
+| `gcx assistant watchers versions get WATCHER VERSION`                  | Read a selected version and its change metadata.                                                      |
+| `gcx assistant watchers versions diff WATCHER FROM_VERSION TO_VERSION` | Compare two retained definitions without changing the Watcher.                                        |
+| `gcx assistant watchers versions restore WATCHER VERSION`              | Restore the selected definition after explicit pause, subject to concurrency checks; remain inactive. |
 
 `status` is the view of runtime state; the resource itself carries configuration only.
 
@@ -282,7 +282,7 @@ Both access paths must enforce the same lifecycle and update rules. JSON/YAML re
 
 The proposed manifest uses `assistant.ext.grafana.app/v1alpha1`, following the [existing MCP server resource metadata](../../internal/assistant/mcpserver/mcpserver.go). The annotated example under [Create and activate a Watcher](#create-and-activate-a-watcher) covers every configuration field proposed in this RFC. The adapter defines explicit field mapping between GCX schema and the underlying API and rejects unknown fields, i.e. if the remote Watcher has settings outside this model, gcx refuses the writes, to prevent accidental loss of configuration.
 
-Identity follows the [MCP server resource](../adrs/assistant-provider/001-assistant-provider-and-mcp-servers-as-resources.md). Titles are not guaranteed to be unique, and each Watcher has a server-assigned ID. `metadata.name` is derived from `spec.title`. The server-assigned ID is carried in the `assistant.ext.grafana.app/id` annotation and addresses the Watcher within its stack only. A push whose manifest has no matching ID matches on the natural key `spec.title`, so repeating a push to another stack updates the Watcher it created rather than creating a duplicate. When several Watchers share the title, gcx lists the candidates and writes nothing. Renaming a Watcher changes its natural key, so pushing a renamed manifest to another stack creates a new Watcher there.
+Identity follows the [MCP server resource](../adrs/assistant-provider/001-assistant-provider-and-mcp-servers-as-resources.md). Titles are not guaranteed to be unique, and each Watcher has a server-assigned ID. `metadata.name` is derived from `spec.title`. The server-assigned ID is carried in the `assistant.ext.grafana.app/watcher-id` annotation and addresses the Watcher within its stack only. A push whose manifest has no matching ID matches on the natural key `spec.title`, so repeating a push to another stack updates the Watcher it created rather than creating a duplicate. When several Watchers share a title, gcx never picks one: `get`, `update` and `delete` by name, `resources pull`, and a natural-key match on push report the candidates with their server-assigned IDs and act on none of them. Pull still writes the other Watchers. Addressing a Watcher by its server-assigned ID, or renaming one of them, resolves the conflict. Renaming a Watcher changes its natural key, so pushing a renamed manifest to another stack creates a new Watcher there.
 
 Writes replace the configuration that the manifest models. An omitted optional field or block takes its documented default on both create and update, so a manifest produces the same configuration whether or not the Watcher already exists. For example, removing the `notifications.slack` block disables Slack delivery. Collection fields (`labels`, `datasourceUids` and `investigation.teamAccess`) are replaced as a whole; empty values clear them where allowed. Write-only secrets are the exception: an omitted secret keeps its stored value. A full pull materializes every supported setting, so a subsequent push is stable. The adapter translates these semantics where the product API's omission rules differ.
 
@@ -382,8 +382,9 @@ Read commands must expose pagination and coverage honestly. Bounded history must
 - **Push overwrites edits made elsewhere.** Writes are last-writer-wins, so an edit made in Grafana disappears at the next push of an older manifest. Teams that manage a Watcher from git should treat git as its only editor.
 - **Push always writes supplied secrets.** gcx cannot compare write-only secrets, so a manifest that supplies them is never a complete no-op.
 - **Some Watchers need Grafana before they can run.** Push never calibrates and gcx has no calibration commands, so a Watcher created by push, or one whose calibration fails or needs more input, has to be finished in Grafana.
-- **Identity depends on titles.** Renaming a Watcher creates a new one on other stacks, and a title shared by several Watchers blocks the write until the user disambiguates.
+- **Identity depends on titles.** Renaming a Watcher creates a new one on other stacks, and a title shared by several Watchers blocks pulling and writing those Watchers until the user renames one or addresses it by ID.
 - **gcx cannot write every Watcher.** A Watcher with settings outside the gcx model stays read-only to gcx until the model covers them.
+- **Dry-run checks only the schema.** Errors that only the server detects surface on apply.
 - **Restore interrupts monitoring.** The Watcher must be paused before a restore and started again afterwards.
 - **The creating identity carries over to runs.** A Watcher created with a service-account token runs as that account and cannot use creator-linked integrations such as Slack.
 - **The API is a public preview.** Calibration, version and archive contracts are still open, and the experimental command tree may change without the usual compatibility promise.
@@ -404,7 +405,7 @@ Read commands must expose pagination and coverage honestly. Bounded history must
 
 **Keep calibrated checks read-only.** Assistant stays their only writer, so automatic recalibration cannot conflict with git. Writable checks would make manifests portable across stacks, but accepting checks that Assistant did not discover needs a validate-and-accept step, which belongs with local-agent calibration.
 
-**Match identity on the title.** Server-assigned IDs are not portable, so a push to another stack needs a natural key, and the title is the only user-controlled candidate. An ambiguous title stops the write instead of guessing.
+**Match identity on the title.** Server-assigned IDs are not portable, so a push to another stack needs a natural key, and the title is the only user-controlled candidate. An ambiguous title stops the pull or write instead of guessing, as it does for MCP servers.
 
 **Re-send supplied secrets on every push.** Comparing secrets by reference would need a record of the reference behind each stored value, and the API keeps only the value. Re-sending makes rotation a matter of changing the source and pushing again.
 
@@ -412,7 +413,7 @@ Read commands must expose pagination and coverage honestly. Bounded history must
 
 ## Prior art
 
-**MCP server resource.** [ADR-021](../adrs/assistant-provider/001-assistant-provider-and-mcp-servers-as-resources.md) settled identity for Assistant resources whose names are not unique: a computed `metadata.name`, the server ID in an annotation, a natural key for pushes to other stacks, and an error that lists candidates on collision. It also introduced `fromEnv`/`fromFile` secret inputs that are resolved on every push. Watchers reuse both. One rule differs: an omitted MCP header is removed, while an omitted Watcher secret keeps its stored value, as the Watcher API does for omitted secure fields.
+**MCP server resource.** [ADR-021](../adrs/assistant-provider/001-assistant-provider-and-mcp-servers-as-resources.md) settled identity for Assistant resources whose names are not unique: a computed `metadata.name`, the server ID in an annotation, a natural key for pushes to other stacks, and an error that lists candidates on collision. It also introduced `fromEnv`/`fromFile` secret inputs that are resolved on every push. Watchers reuse both. Two rules differ. An omitted MCP header is removed, while an omitted Watcher secret keeps its stored value, as the Watcher API does for omitted secure fields. And MCP `update` merges partial input into the current server, while a Watcher write replaces omitted fields with their defaults on both paths.
 
 **Alerting and dashboards.** [RFC 001](001-alerting-provider-refactor.md) and the dashboards provider give dedicated commands and `gcx resources` one shared resource-access path. Watchers follow the same split: configuration goes through the shared adapter, and domain operations such as the calibration request, lifecycle, runs and versions sit beside it.
 
@@ -435,9 +436,10 @@ Each technical question requires API contract evidence and corresponding tests. 
 
 ## Future possibilities
 
-- Local-agent calibration, in a separate RFC: a local agent discovers and validates checks and hands them back. The same validate-and-accept step would let manifests carry checks across stacks.
+- Local-agent calibration, in a separate RFC: a local agent discovers and validates checks and hands them back. With code access, memory and user guidance, it may calibrate better than Assistant-managed calibration; comparing both on the same Watcher would show whether it should become the default. The same validate-and-accept step would let manifests carry checks across stacks.
 - Calibration commands (request, cancel, retry and recalibrate) once the API supports them without the interactive flow in Grafana.
 - Handing Watcher findings to a local coding agent, in a separate RFC.
+- Server-side dry-run validation for Watchers, once the API offers a validation operation.
 - A diff preview for `gcx resources push`, useful for every resource type.
 
 ## Terminology
