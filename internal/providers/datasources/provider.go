@@ -41,7 +41,7 @@ func (p *Provider) TypedRegistrations() []adapter.Registration {
 			Factory:     NewLazyFactory(),
 			Descriptor:  desc,
 			GVK:         desc.GroupVersionKind(),
-			Schema:      DatasourceSchema(),
+			Schema:      DatasourceSchema,
 			Example:     DatasourceExample(),
 			URLTemplate: "/connections/datasources/edit/{name}",
 		},

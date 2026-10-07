@@ -48,7 +48,7 @@ func NewClient(opts ClientOpts) *http.Client {
 		middlewares = []Middleware{LoggingMiddleware}
 	}
 
-	var rt http.RoundTripper = NewTransport(opts.TLSConfig)
+	rt := WireTransport(NewTransport(opts.TLSConfig))
 	for _, mw := range middlewares {
 		rt = mw(rt)
 	}

@@ -98,7 +98,7 @@ func MCPServerDescriptor() resources.Descriptor {
 
 // MCPServerSchema returns a JSON Schema for the MCPServer resource type.
 func MCPServerSchema() json.RawMessage {
-	return adapter.SchemaFromType[MCPServer](MCPServerDescriptor())
+	return adapter.SchemaFromType[MCPServer](MCPServerDescriptor())()
 }
 
 // MCPServerExample returns an example MCPServer manifest as JSON.
