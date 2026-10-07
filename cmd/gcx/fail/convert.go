@@ -317,10 +317,23 @@ func convertNetworkErrors(err error) (*gcxerrors.DetailedError, bool) {
 	return nil, false
 }
 
+// apiStatusDetailsError changes only the display text; the original error
+// remains available to errors.Is/As through Unwrap.
+type apiStatusDetailsError struct {
+	cause   error
+	message string
+}
+
+func (e apiStatusDetailsError) Error() string { return e.message }
+func (e apiStatusDetailsError) Unwrap() error { return e.cause }
+
 func convertAPIErrors(err error) (*gcxerrors.DetailedError, bool) {
 	// Match the APIStatus interface, not just *StatusError: the dynamic client
 	// wraps server errors in dynamic.APIError, which implements APIStatus.
-	var statusErr k8sapi.APIStatus
+	var statusErr interface {
+		error
+		k8sapi.APIStatus
+	}
 	if !errors.As(err, &statusErr) {
 		return nil, false
 	}
@@ -331,8 +344,23 @@ func convertAPIErrors(err error) (*gcxerrors.DetailedError, bool) {
 		reason = http.StatusText(int(status.Code))
 	}
 
+	// Replace the status error's display text instead of prepending another
+	// copy of its code and reason. Keep any caller context around that text.
+	message := fmt.Sprintf("%d %s", status.Code, reason)
+	if status.Message != "" && status.Message != reason {
+		message += ": " + status.Message
+	}
+	formatted := err.Error()
+	if index := strings.LastIndex(formatted, statusErr.Error()); index >= 0 {
+		formatted = formatted[:index] + message + formatted[index+len(statusErr.Error()):]
+	} else {
+		formatted += "\n" + message
+	}
 	detailedErr := &gcxerrors.DetailedError{
-		Parent:  fmt.Errorf("%s - code %d: %w", reason, status.Code, err),
+		Parent: apiStatusDetailsError{
+			cause:   err,
+			message: formatted,
+		},
 		Summary: "API error",
 	}
 	switch status.Code {

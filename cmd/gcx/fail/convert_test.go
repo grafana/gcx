@@ -1628,12 +1628,72 @@ func TestErrorToDetailedError_APIStatusVocabulary(t *testing.T) {
 				if reason == "" {
 					reason = http.StatusText(int(tc.code))
 				}
-				assert.Contains(t, got.Parent.Error(), fmt.Sprintf("%s - code %d", reason, tc.code))
+				assert.Equal(t, fmt.Sprintf("get dashboard: %d %s: server message", tc.code, reason), got.Parent.Error())
+				require.ErrorIs(t, got, err)
 				assert.Contains(t, got.Parent.Error(), "server message")
 				var rendered bytes.Buffer
 				require.NoError(t, got.WriteJSON(&rendered, exit))
 				assert.Contains(t, rendered.String(), "server message")
 				assert.Contains(t, rendered.String(), "get dashboard")
+			})
+		}
+	}
+}
+
+func TestErrorToDetailedError_APIStatusMessage(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		message string
+		want    string
+	}{
+		{"server explanation", "the server has asked for the client to provide credentials", "401 Unauthorized: the server has asked for the client to provide credentials"},
+		{"reason only", "Unauthorized", "401 Unauthorized"},
+		{"empty message", "", "401 Unauthorized"},
+	} {
+		for _, wrapped := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/dynamic=%t", tc.name, wrapped), func(t *testing.T) {
+				var err error = &k8sapi.StatusError{ErrStatus: metav1.Status{Code: 401, Reason: metav1.StatusReasonUnauthorized, Message: tc.message}}
+				if wrapped {
+					err = dynamic.ParseStatusError(err)
+				}
+				got := fail.ErrorToDetailedError(err)
+				assert.Equal(t, tc.want, got.Parent.Error())
+				require.ErrorIs(t, got, err)
+				var status k8sapi.APIStatus
+				require.ErrorAs(t, got, &status)
+				assert.Equal(t, int32(401), status.Status().Code)
+				assert.Equal(t, 1, strings.Count(got.Error(), "401 Unauthorized"))
+				assert.NotContains(t, got.Error(), "code 401")
+				var rendered bytes.Buffer
+				require.NoError(t, got.WriteJSON(&rendered, gcxerrors.ExitAuthFailure))
+				assert.Contains(t, rendered.String(), tc.want)
+				assert.Equal(t, 1, strings.Count(rendered.String(), "401 Unauthorized"))
+			})
+		}
+	}
+}
+
+func TestErrorToDetailedError_APIStatusCallerContext(t *testing.T) {
+	for _, tc := range []struct {
+		message string
+		prefix  string
+		suffix  string
+		want    string
+	}{
+		{"Unauthorized", "get dashboard Unauthorized: ", "", "get dashboard Unauthorized: 401 Unauthorized"},
+		{"", "get dashboard: ", "", "get dashboard: 401 Unauthorized"},
+		{"server message", "get dashboard: ", " (retry failed)", "get dashboard: 401 Unauthorized: server message (retry failed)"},
+	} {
+		for _, wrapped := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/dynamic=%t", tc.prefix+tc.message, wrapped), func(t *testing.T) {
+				var err error = &k8sapi.StatusError{ErrStatus: metav1.Status{Code: 401, Reason: metav1.StatusReasonUnauthorized, Message: tc.message}}
+				if wrapped {
+					err = dynamic.ParseStatusError(err)
+				}
+				err = fmt.Errorf("%s%w%s", tc.prefix, err, tc.suffix)
+				got := fail.ErrorToDetailedError(err)
+				assert.Equal(t, tc.want, got.Parent.Error())
+				require.ErrorIs(t, got, err)
 			})
 		}
 	}
