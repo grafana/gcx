@@ -50,13 +50,13 @@ func (m *memories) add(mem experimental.LinearMemory) {
 	m.mems = append(m.mems, mem)
 }
 
-// check fails unless want memories were allocated and all are unmapped.
-func (m *memories) check(t *testing.T, want int) {
+// check fails unless the one run's memory was allocated and is unmapped.
+func (m *memories) check(t *testing.T) {
 	t.Helper()
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if len(m.mems) != want {
-		t.Fatalf("%d memories allocated, want %d: is Run using its allocator?", len(m.mems), want)
+	if len(m.mems) != 1 {
+		t.Fatalf("%d memories allocated, want 1: is Run using its allocator?", len(m.mems))
 	}
 	for i, mem := range m.mems {
 		mapped, ok := mem.(*mappedMemory)
@@ -113,7 +113,7 @@ func TestRunFreesMemory(t *testing.T) {
 			case tc.wantErr != nil && (err == nil || !errors.Is(err, tc.wantErr) && !strings.HasPrefix(err.Error(), tc.wantErr.Error())):
 				t.Fatalf("Run: got %v, want %v", err, tc.wantErr)
 			}
-			mems.check(t, 1)
+			mems.check(t)
 		})
 	}
 }
@@ -143,34 +143,115 @@ func TestCloseWaitsForRuns(t *testing.T) {
 		t.Fatalf("Close returned (%v) while a run was in flight", err)
 	case <-time.After(100 * time.Millisecond):
 	}
-	// The guest now reads the byte it was given from its memory.
+	// The guest now reads the byte it was given from its memory, and exits
+	// with status 0: a run that finishes anyway returns its result.
 	close(release)
-	if err := <-runErr; err != nil && !errors.Is(err, ErrClosed) {
-		t.Fatalf("Run: %v, want nil or ErrClosed", err)
+	if err := <-runErr; err != nil {
+		t.Fatalf("Run: %v, want nil", err)
 	}
 	if err := <-closed; err != nil {
 		t.Fatalf("Close: %v", err)
 	}
-	mems.check(t, 1)
+	mems.check(t)
 	if _, err := r.Run(context.Background(), Invocation{}); !errors.Is(err, ErrClosed) {
 		t.Fatalf("Run after Close: %v, want ErrClosed", err)
 	}
+}
+
+// Close cancels runs in flight, which return ErrClosed.
+func TestCloseCancelsRuns(t *testing.T) {
+	r, mems := countingRuntime(t)
+	reading := make(chan struct{})
+	stdin := readerFunc(func(p []byte) (int, error) {
+		close(reading)
+		return copy(p, "s"), nil // spin until stopped
+	})
+	runErr := make(chan error, 1)
+	go func() {
+		_, err := r.Run(context.Background(), Invocation{Stdin: stdin})
+		runErr <- err
+	}()
+	<-reading
+
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	if err := r.Close(ctx); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if err := <-runErr; !errors.Is(err, ErrClosed) {
+		t.Fatalf("Run: %v, want ErrClosed", err)
+	}
+	mems.check(t)
+}
+
+// When its ctx is done before the runs stop, Close gives up and leaves their
+// memory alone, and a later Close finishes the job.
+func TestCloseGivesUpWhenCtxDone(t *testing.T) {
+	r, mems := countingRuntime(t)
+	reading, release := make(chan struct{}), make(chan struct{})
+	stdin := readerFunc(func(p []byte) (int, error) {
+		close(reading)
+		<-release // ignores cancellation, like a stuck pipe
+		return 0, io.EOF
+	})
+	runErr := make(chan error, 1)
+	go func() {
+		_, err := r.Run(context.Background(), Invocation{Stdin: stdin})
+		runErr <- err
+	}()
+	<-reading
+
+	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+	defer cancel()
+	if err := r.Close(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Close: %v, want context.DeadlineExceeded", err)
+	}
+	mems.mu.Lock()
+	if mapped, ok := mems.mems[0].(*mappedMemory); !ok || mapped.buf == nil {
+		t.Fatal("Close freed the memory of a run still in flight")
+	}
+	mems.mu.Unlock()
+	if _, err := r.Run(t.Context(), Invocation{}); !errors.Is(err, ErrClosed) {
+		t.Fatalf("Run after Close: %v, want ErrClosed", err)
+	}
+
+	close(release)
+	<-runErr
+	if err := r.Close(t.Context()); err != nil {
+		t.Fatalf("second Close: %v", err)
+	}
+	mems.check(t)
 }
 
 // Stdin and stdout only ever see their own buffers, never guest memory,
 // which is unmapped when the instance closes.
 func TestRunCopiesStdio(t *testing.T) {
 	r, _ := countingRuntime(t)
-	var kept []byte
+	var keptIn, keptOut []byte
+	// Both break the io.Reader and io.Writer contracts on purpose.
 	stdin := readerFunc(func(p []byte) (int, error) {
-		kept = p // breaks the io.Reader contract on purpose
-		return 0, io.EOF
+		keptIn = p
+		return copy(p, "x"), nil
 	})
-	if _, err := r.Run(t.Context(), Invocation{Stdin: stdin}); err != nil {
+	stdout := writerFunc(func(p []byte) (int, error) {
+		keptOut = p
+		return len(p), nil
+	})
+	if _, err := r.Run(t.Context(), Invocation{Stdin: stdin, Stdout: stdout}); err != nil {
 		t.Fatal(err)
 	}
-	// Touching the kept buffer after the instance is gone must be safe.
-	for i := range kept {
-		kept[i] = 1
+	if string(keptOut) != "x" {
+		t.Fatalf("stdout got %q, want %q", keptOut, "x")
+	}
+	// Touching the kept buffers after the instance is gone must be safe.
+	for _, kept := range [][]byte{keptIn, keptOut} {
+		for i := range kept {
+			kept[i] = 1
+		}
 	}
 }
+
+// writerFunc is an io.Writer for the guest's stdout.
+type writerFunc func([]byte) (int, error)
+
+func (f writerFunc) Write(p []byte) (int, error) { return f(p) }

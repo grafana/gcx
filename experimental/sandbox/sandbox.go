@@ -14,7 +14,6 @@
 package sandbox
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -47,8 +46,8 @@ type Config struct {
 	Transport http.RoundTripper
 }
 
-// ErrClosed is returned by Run once Close has been called, including by runs
-// that Close stopped.
+// ErrClosed is returned by Run once Close has been called, and by runs that
+// Close stopped. A run that finishes anyway returns its result.
 var ErrClosed = errors.New("sandbox: runtime closed")
 
 // Runtime holds compiled gcx and runs commands with it. It is safe for
@@ -70,7 +69,7 @@ type Runtime struct {
 	mu      sync.Mutex
 	closed  bool
 	runs    sync.WaitGroup
-	cancels map[*context.CancelFunc]struct{} // of the runs in flight
+	cancels map[*context.CancelCauseFunc]struct{} // of the runs in flight
 }
 
 // New compiles the gcx wasip1 module (see build.sh).
@@ -97,7 +96,7 @@ func New(ctx context.Context, wasm []byte, cfg Config) (*Runtime, error) {
 		transport:    cfg.Transport,
 		cache:        cache,
 		newRunMemory: newRunMemory,
-		cancels:      map[*context.CancelFunc]struct{}{},
+		cancels:      map[*context.CancelCauseFunc]struct{}{},
 	}
 	if r.transport == nil {
 		r.transport = http.DefaultTransport
@@ -143,16 +142,30 @@ func memoryLimitPages(limit uint64) uint32 {
 
 // Close releases the runtime and compiled code. It stops any runs in flight,
 // which then return ErrClosed, and waits for them first. A guest stops at its
-// next safe point, or when the host call it is in returns, so a Close that
-// interrupts gcx's retry backoff can wait out the sleep.
+// next safe point, or when the host call it is in returns: a run in gcx's
+// retry backoff waits out the sleep, and one blocked reading Stdin or writing
+// Stdout or Stderr waits for that to return.
+//
+// If ctx is done first, Close returns its error and leaves the runtime open,
+// because closing it would free memory that a running guest still uses.
+// Later runs are still refused.
 func (r *Runtime) Close(ctx context.Context) error {
 	r.mu.Lock()
 	r.closed = true
 	for cancel := range r.cancels {
-		(*cancel)()
+		(*cancel)(ErrClosed)
 	}
 	r.mu.Unlock()
-	r.runs.Wait()
+	stopped := make(chan struct{})
+	go func() {
+		r.runs.Wait()
+		close(stopped)
+	}()
+	select {
+	case <-stopped:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 
 	if r.root != "" {
 		_ = os.RemoveAll(r.root)
@@ -201,8 +214,8 @@ type Result struct {
 // Run executes one gcx command in a fresh instance. Cancelling ctx, or
 // reaching its deadline, stops the guest and returns ctx's error.
 func (r *Runtime) Run(ctx context.Context, inv Invocation) (Result, error) {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel() // abandons any requests still in flight on the host
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil) // abandons any requests still in flight on the host
 	if !r.start(&cancel) {
 		return Result{}, ErrClosed
 	}
@@ -261,7 +274,7 @@ func (r *Runtime) Run(ctx context.Context, inv Invocation) (Result, error) {
 	}
 	// The guest has stopped, so nothing uses its memory any more.
 	freeMemory()
-	if err != nil && r.isClosed() { // stopped by Close
+	if err != nil && errors.Is(context.Cause(ctx), ErrClosed) { // stopped by Close
 		return Result{}, ErrClosed
 	}
 	if err != nil && ctx.Err() != nil { // stopped by the caller's deadline or cancellation
@@ -279,7 +292,7 @@ func (r *Runtime) Run(ctx context.Context, inv Invocation) (Result, error) {
 
 // start registers a run, so Close can stop it and wait for it. It reports
 // false once Close has been called.
-func (r *Runtime) start(cancel *context.CancelFunc) bool {
+func (r *Runtime) start(cancel *context.CancelCauseFunc) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.closed {
@@ -290,17 +303,11 @@ func (r *Runtime) start(cancel *context.CancelFunc) bool {
 	return true
 }
 
-func (r *Runtime) finish(cancel *context.CancelFunc) {
+func (r *Runtime) finish(cancel *context.CancelCauseFunc) {
 	r.mu.Lock()
 	delete(r.cancels, cancel)
 	r.mu.Unlock()
 	r.runs.Done()
-}
-
-func (r *Runtime) isClosed() bool {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.closed
 }
 
 // copyReader reads into its own buffer, so the reader never sees guest memory.
@@ -313,9 +320,24 @@ func (c copyReader) Read(p []byte) (int, error) {
 	return n, err
 }
 
-// copyWriter writes a copy, so the writer never sees guest memory.
+// copyWriter writes through its own buffer, so the writer never sees guest
+// memory. It copies at most 32 KiB at a time, so large writes don't make
+// equally large copies.
 type copyWriter struct{ w io.Writer }
 
 func (c copyWriter) Write(p []byte) (int, error) {
-	return c.w.Write(bytes.Clone(p))
+	buf := make([]byte, min(len(p), 32<<10))
+	written := 0
+	for written < len(p) {
+		n := copy(buf, p[written:])
+		m, err := c.w.Write(buf[:n])
+		written += m
+		if err != nil {
+			return written, err
+		}
+		if m < n {
+			return written, io.ErrShortWrite
+		}
+	}
+	return written, nil
 }

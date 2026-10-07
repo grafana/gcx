@@ -81,13 +81,8 @@ type heapMemory struct{ buf []byte }
 func (m *heapMemory) Reallocate(size uint64) []byte {
 	if size > uint64(len(m.buf)) {
 		m.buf = append(m.buf, make([]byte, size-uint64(len(m.buf)))...)
-	} else {
-		// wazero never shrinks memory, but if it did, growing again must
-		// expose zeroes rather than the old contents.
-		clear(m.buf[size:])
-		m.buf = m.buf[:size]
 	}
-	return m.buf
+	return m.buf[:size]
 }
 
 func (m *heapMemory) Free() { m.buf = nil }
