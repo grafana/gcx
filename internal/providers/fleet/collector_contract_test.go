@@ -7,8 +7,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestFleetExamplesMatchLiveCreateRequirements(t *testing.T) {
@@ -155,6 +158,45 @@ func TestResolveCollectorFallbacks(t *testing.T) {
 			collector, err := resolveCollector(context.Background(), client, tt.ref)
 			require.NoError(t, err)
 			assert.Equal(t, tt.wantID, collector.ID)
+		})
+	}
+}
+
+// TestAdapterGetMissingReturnsNotFound pins the contract that the push
+// pipeline relies on: a missing resource must surface as a Kubernetes NotFound,
+// so that push creates it rather than failing.
+func TestAdapterGetMissingReturnsNotFound(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case fleetProxyPrefix + pathListPipelines:
+			writeContractJSON(t, w, map[string]any{"pipelines": []any{}})
+		case fleetProxyPrefix + pathListCollectors:
+			writeContractJSON(t, w, map[string]any{"collectors": []any{}})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(server.Close)
+	loader := &fakeRESTLoader{url: server.URL}
+
+	tests := []struct {
+		name    string
+		factory adapter.Factory
+		ref     string
+	}{
+		{name: "pipeline without ID", factory: NewPipelineAdapterFactory(loader), ref: "my-pipeline"},
+		{name: "pipeline from another stack", factory: NewPipelineAdapterFactory(loader), ref: "my-pipeline-99999"},
+		{name: "collector", factory: NewCollectorAdapterFactory(loader), ref: "my-collector"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a, err := tt.factory(context.Background())
+			require.NoError(t, err)
+
+			_, err = a.Get(context.Background(), tt.ref, metav1.GetOptions{})
+			require.Error(t, err)
+			assert.True(t, apierrors.IsNotFound(err), "want NotFound, got %v", err)
 		})
 	}
 }
