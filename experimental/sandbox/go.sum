@@ -1,4 +1,4 @@
-github.com/sd2k/wazero v0.0.0-20261007163245-120e6b8e4515 h1:sMd0MSido9giuq0dgNqFV1a13EfyrInD1wY6PJ2hfa8=
-github.com/sd2k/wazero v0.0.0-20261007163245-120e6b8e4515/go.mod h1:LvKtzl2RqO4gyF27BiXU+nKAjcV8f38U+kP/q2vgxh0=
+github.com/sd2k/wazero v0.0.0-20261007202231-bd5c0d149588 h1:Oo8zxU86hn9x3cQeEpGiEjp55WtnkiSFCcfxGzHHB0Q=
+github.com/sd2k/wazero v0.0.0-20261007202231-bd5c0d149588/go.mod h1:LvKtzl2RqO4gyF27BiXU+nKAjcV8f38U+kP/q2vgxh0=
 golang.org/x/sys v0.44.0 h1:ildZl3J4uzeKP07r2F++Op7E9B29JRUy+a27EibtBTQ=
 golang.org/x/sys v0.44.0/go.mod h1:4GL1E5IUh+htKOUEOaiffhrAeqysfVGipDYzABqnCmw=
