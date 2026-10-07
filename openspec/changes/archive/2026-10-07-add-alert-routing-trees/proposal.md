@@ -2,7 +2,7 @@
 
 ## Why
 
-gcx cannot manage named notification routing trees. `gcx alert notification-policies` only reads and replaces the default tree through the provisioning API, and `gcx resources` hides the whole `notifications.alerting.grafana.app` group from discovery. Grafana has served named trees natively since 13.1 (always on from 13.2), so users who rely on them have no CLI path. This change is the first slice of [RFC 001](../../../docs/rfcs/001-alerting-provider-refactor.md): native routing-tree CRUD plus a reusable native-resource binding that later slices build on.
+gcx cannot manage named notification routing trees. `gcx alert notification-policies` only reads and replaces the default tree through the provisioning API, and `gcx resources` hides the whole `notifications.alerting.grafana.app` group from discovery. Grafana has served named trees natively since 13.1 (always on from 13.2), so users who rely on them have no CLI path. This change is the first slice of [RFC 001](../../../../docs/rfcs/001-alerting-provider-refactor.md): native routing-tree CRUD plus a reusable native-resource binding that later slices build on.
 
 ## What Changes
 
