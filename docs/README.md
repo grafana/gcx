@@ -51,8 +51,8 @@ Available in [`_templates/`](_templates/):
 | `research.md` | Research reports |
 
 Feature, bugfix and refactor plans are OpenSpec changes under
-[`openspec/changes/`](../openspec/), one per PR. Work that spans several PRs
-starts with an [RFC](rfcs/README.md).
+[`openspec/changes/`](../openspec/), one per PR. Work with enough scope to need its own
+design starts with an [RFC](rfcs/README.md); most PRs don't need one.
 
 ### Conventions
 

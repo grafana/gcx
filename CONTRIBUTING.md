@@ -41,6 +41,41 @@ Issues are tracked in [GitHub Issues](https://github.com/grafana/gcx/issues).
 Use the issue templates when creating new issues - they set the correct issue
 type and labels automatically.
 
+## Proposing features
+
+New features go through a proposal and an RFC before implementation:
+
+```mermaid
+flowchart LR
+    P["Contributor files<br/>a proposal"] --> D{"Maintainers<br/>review"}
+    D -->|reject| X(["Closed"])
+    D -->|accept| R["Contributor opens<br/>an RFC PR"]
+    R --> RR{"Maintainers<br/>review the RFC"}
+    RR -->|changes requested| R
+    RR -->|merged| I["Contributor opens<br/>implementation PRs"]
+    I --> IR{"Maintainers<br/>review"}
+    IR -->|changes requested or more slices| I
+    IR -->|last slice merged| C(["Proposal implemented<br/>and closed"])
+```
+
+1. **Proposal.** File a Feature issue that describes the problem, who has it,
+   the proposed direction and acceptance criteria. It does not need a full
+   design. With a coding agent, use the
+   [`propose-feature`](.claude/skills/propose-feature/SKILL.md) skill.
+2. **Decision.** Maintainers accept or reject the proposal on the issue. Do not
+   start the RFC until it is accepted.
+3. **RFC.** Write the design in [`docs/rfcs/`](docs/rfcs/README.md) and open a
+   PR that references the proposal (`Related: #<issue>`). Use the
+   [`create-rfc`](.claude/skills/create-rfc/SKILL.md) skill. Maintainers review
+   it; merging the PR accepts the design. Large proposals can have more than one
+   RFC.
+4. **Implementation.** Implement the RFC in reviewable PRs that reference the
+   proposal. Each PR carries its own [OpenSpec](openspec/) change (proposal,
+   spec delta, design and tasks); use the `openspec-propose` skill to start one.
+   Maintainers review each PR, and contributors revise until it merges.
+5. **Close.** The PR that completes the acceptance criteria closes the proposal
+   (`Closes #<issue>`).
+
 ## Making changes
 
 ### Agentic coding
@@ -50,6 +85,7 @@ If you are using a coding agent to make changes to this repository, there are sk
 - [add-provider](.claude/skills/add-provider) will help add a new top-level command area to gcx. 
 - [add-datasource](.claude/skills/add-datasource) will help add a new datasource provider to gcx (under `gcx datasources`).
 - [integrate-with-gcx](.claude/skills/integrate-with-gcx) is a more general skill that will help add capabilities with gcx.
+- [propose-feature](.claude/skills/propose-feature) and [create-rfc](.claude/skills/create-rfc) cover the proposal and RFC steps of [proposing features](#proposing-features), and the `openspec-*` skills cover the per-PR OpenSpec change.
 
 ### Development environment
 
