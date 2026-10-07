@@ -1,6 +1,4 @@
-# RFC: Unify alerting configuration and resource workflows
-
-**Status:** Proposed · **Scope:** GCX alerting
+# RFC 001: Unify alerting configuration and resource workflows
 
 ## Summary
 
@@ -156,27 +154,46 @@ The native client would reuse `dynamic.NamespacedClient`, preserving manifests, 
 
 Suitable REST-only resources would use the [existing provider framework](../reference/provider-guide.md), including `adapter.Resource[T]`, `TypedCRUD`, and `providers.BindGrafanaResource`. They would retain their existing adapter registration path. Native bindings would not create duplicate adapter registrations or generated schemas around native objects. Provider composition could use `adapter.NewProvider` where useful.
 
-### API coverage and rollout
+### API coverage
 
-We propose starting with the shared binding and routing trees, then migrating other notification resources and rule definitions in reviewable slices. Notifications would prefer `notifications.alerting.grafana.app/v1beta1` where its contracts are supported; native rule definitions would use `rules.alerting.grafana.app/v0alpha1` where supported. Older native versions would require their own contract checks. A Grafana × GCX capability matrix would distinguish native, equivalent legacy, and unavailable operations, including domain feature gates. Supporting Grafana 12+ does not imply feature parity with newer builds.
+We propose starting with the shared binding and routing trees, then migrating other notification resources and rule definitions in reviewable slices.
 
-## Rationale and tradeoffs
+Notifications would prefer `notifications.alerting.grafana.app/v1beta1` where its contracts are supported; native rule definitions would use `rules.alerting.grafana.app/v0alpha1` where supported. API coverage varies across Grafana 12+: older releases expose notification `v0alpha1` rather than `v1beta1`, and some lack native rule resources. Older native versions would require their own contract checks. Named routing-tree operations can be disabled even when their endpoints are registered, so endpoint registration alone establishes neither feature availability nor a GA stability guarantee. These differences require capability-aware behavior in both Cloud and self-hosted installations. A Grafana × GCX capability matrix would distinguish native, equivalent legacy, and unavailable operations, including domain feature gates. Supporting Grafana 12+ does not imply feature parity with newer builds.
 
-A shared binding follows the [dashboards precedent](../adrs/dashboards-provider/001-dashboards-provider-design.md) and centralizes backend selection without adding a unified native/REST declaration model. Explicit integration leaves some wiring in place, but avoids duplicate native registrations and broader framework changes.
+## Drawbacks
 
-Graceful degradation preserves useful Grafana 12+ workflows without inventing missing features. Equivalent legacy paths increase implementation and testing costs; features with no equivalent remain unavailable on older or differently configured targets. Ordinary push semantics keep cross-stack transfer consistent with other resources, while leaving destination references, missing secrets, and retries to users. A one-release deprecation window provides a migration path while limiting the lifetime of compatibility wrappers.
+- **Some wiring stays explicit.** Each resource is integrated with the shared binding explicitly, so some per-resource wiring remains.
+- **Legacy equivalents add cost.** Every equivalent legacy path adds implementation and testing work across the supported versions.
+- **Features without an equivalent stay unavailable** on older or differently configured targets.
+- **Cross-stack transfer leaves work to users.** Destination references, missing secrets and retries after partial failures stay with the user; there is no dependency ordering or migration transaction.
+- **Uncertain features fail at the server.** Without capability probes, an operation on a feature whose availability is uncertain reaches the server, and the user sees its response rather than an early explanation.
+- **Two command shapes for one release.** Incompatible commands keep compatibility wrappers and deprecation notices in release N before removal in N+1.
 
-## Validation
+## Rationale and alternatives
 
-The shared binding and degradation behavior remain proposed. API coverage varies across Grafana 12+: older releases expose notification `v0alpha1` rather than `v1beta1`, and some lack native rule resources. Named routing-tree operations can be disabled even when their endpoints are registered. These differences require capability-aware behavior in both Cloud and self-hosted installations. Endpoint registration alone establishes neither feature availability nor a GA stability guarantee. Runtime compatibility across the supported versions remains to be validated.
+**A shared binding instead of a unified declaration model.** The binding centralizes backend selection for both command surfaces without adding a unified native/REST declaration model. That model would remove the remaining per-resource wiring, but needs broader framework changes and duplicate registrations for native resources.
 
-Acceptance would compare dedicated commands and resource operations for identity, permissions, provenance, stale-version conflicts, and nonmutating preview. A disposable-resource test would update one named tree without changing another or the default, then verify rule assignment separately. Cross-stack tests would cover explicit credentials, same-integration secret retention, destination updates, and retries after partial failures. Backend selection tests would cover legacy-only targets, registered APIs with named trees disabled, and enabled native capabilities in OSS, Enterprise, and Cloud configurations. They would distinguish API absence from forbidden requests, missing objects, and transient errors, and verify that unsupported named-tree operations never change the default tree. Tests with inconclusive feature evidence would verify that the requested operation reaches the selected backend and its response is preserved, without mandatory probes or cross-backend retry. Bulk push would retain its existing partial-success and user-retry behavior.
+**Graceful degradation instead of native-only support or full emulation.** Native operations where supported, and equivalent legacy operations elsewhere, preserve useful Grafana 12+ workflows. Requiring native APIs would drop older targets; emulating every newer native feature through legacy APIs would invent behavior the server does not have.
+
+**Send once instead of probing or retrying.** When availability is uncertain, GCX sends the operation once to the selected backend and surfaces the response. Mandatory probes would add requests and could turn an ambiguous 404 into a wrong feature diagnosis; retrying through another backend could bypass a disabled feature.
+
+**Ordinary push semantics for cross-stack transfer.** Transfer stays consistent with other resources. Dependency ordering, automatic reference resolution or a migration transaction would automate more of a transfer, at the cost of alerting-specific push behavior.
+
+**A one-release deprecation window.** It gives users a migration path while limiting how long compatibility wrappers live. A longer window keeps two command shapes around; removing commands immediately would break scripts without warning.
+
+## Prior art
+
+**Dashboards provider.** The [dashboards provider](../adrs/dashboards-provider/001-dashboards-provider-design.md) uses the same native resource model and dynamic client machinery for dedicated commands and `gcx resources`, so users can mix imperative and declarative workflows without meeting different identities or manifest formats. This RFC applies that model to alerting and proposes a shared binding for both command surfaces.
+
+**Declarative provider framework.** REST-only resources already use `adapter.Resource[T]`, `TypedCRUD` and `providers.BindGrafanaResource`, as described in the [provider guide](../reference/provider-guide.md) and the [declarative provider architecture](../adrs/declarative-provider-registration/001-declarative-resource-front-door.md). Suitable alerting resources keep that path instead of gaining a new one.
 
 ## Unresolved questions
 
 - **Fallback registration:** demonstrate that a legacy-only server can expose the supported resource descriptors and schemas to generic discovery without duplicate native registration.
-- **Capability evidence:** identify reliable existing discovery/configuration signals for early unsupported results, and test that inconclusive domain feature evidence does not block a request or turn an ambiguous 404 into a feature diagnosis.
-- **Version coverage:** exercise the source-derived matrix on representative 12.x and newer OSS/Enterprise builds and Cloud configurations; verify payload equivalence, pagination, and collection operations. Registration alone is insufficient proof.
+- **Capability evidence:** identify reliable existing discovery/configuration signals for early unsupported results, and test that inconclusive domain feature evidence does not block a request or turn an ambiguous 404 into a feature diagnosis. Tests should distinguish API absence from forbidden requests, missing objects and transient errors, and verify that unsupported named-tree operations never change the default tree and that the requested operation reaches the selected backend without probes or cross-backend retry and its response is preserved.
+- **Version coverage:** exercise the source-derived matrix on representative 12.x and newer OSS/Enterprise builds and Cloud configurations, including legacy-only targets, registered APIs with named trees disabled, and enabled native capabilities; verify payload equivalence, pagination, and collection operations. Registration alone is insufficient proof.
+- **Path parity:** compare dedicated commands and resource operations for identity, permissions, provenance, stale-version conflicts, and nonmutating preview. A disposable-resource test should update one named tree without changing another or the default, then verify rule assignment separately.
+- **Cross-stack transfer:** verify explicit credentials, same-integration secret retention, destination updates, and retries after partial failures, with bulk push keeping its existing partial-success and user-retry behavior.
 - **Command migration:** complete the old-to-new command table and named provisioning export syntax, checking that wrappers preserve behavior throughout release N.
 
 ## Terminology
@@ -184,7 +201,3 @@ Acceptance would compare dedicated commands and resource operations for identity
 - **Routing tree:** a named hierarchy of notification policies referencing receivers and timing configuration. The default tree is distinct from additional named trees.
 - **Receiver:** a notification destination containing one or more integrations.
 - **Integration:** an individual delivery configuration within a receiver, with its own identity, settings, and potentially credentials.
-
-## References
-
-- [Declarative provider architecture](../adrs/declarative-provider-registration/001-declarative-resource-front-door.md)
