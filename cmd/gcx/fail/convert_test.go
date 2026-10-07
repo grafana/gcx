@@ -272,10 +272,16 @@ func TestErrorToDetailedError_QueryAuthFailure(t *testing.T) {
 			assert.Equal(t, fmt.Sprintf("Prometheus query failed (HTTP %d)\n\n%s", tc.status, tc.message), got.Details)
 			require.NotNil(t, got.ExitCode)
 			assert.Equal(t, gcxerrors.ExitAuthFailure, *got.ExitCode)
-			assert.Equal(t, []string{
-				"Review your Grafana credentials: gcx config view",
-				"Re-authenticate if needed: gcx login",
-			}, got.Suggestions)
+			if tc.status == http.StatusForbidden {
+				assert.Contains(t, got.Suggestions, "Check your Grafana service-account roles and access-policy scopes")
+				assert.Contains(t, got.Suggestions, "Check access: gcx setup status")
+				assert.NotContains(t, strings.Join(got.Suggestions, " "), "gcx login")
+			} else {
+				assert.Equal(t, []string{
+					"Review your Grafana credentials: gcx config view",
+					"Re-authenticate if needed: gcx login",
+				}, got.Suggestions)
+			}
 			assert.Equal(t, docs.ServiceAccounts, got.DocsLink, "auth failures should point at the service-account docs")
 		})
 	}
@@ -705,7 +711,9 @@ func TestErrorToDetailedError_SMTokenNotConfigured(t *testing.T) {
 	got := toDetailedError(t, err)
 
 	require.NotNil(t, got)
-	assert.Equal(t, "Invalid configuration", got.Summary)
+	assert.Equal(t, "Authentication failed", got.Summary)
+	require.NotNil(t, got.ExitCode)
+	assert.Equal(t, gcxerrors.ExitAuthFailure, *got.ExitCode)
 	assert.Contains(t, got.Details, "SM token not configured")
 	require.Len(t, got.Suggestions, 4)
 	assert.Contains(t, got.Suggestions[0], "gcx config set stacks.<name>.providers.synth.sm-token")
@@ -783,6 +791,8 @@ func TestErrorToDetailedError_CloudTokenNotConfigured(t *testing.T) {
 
 	require.NotNil(t, got)
 	assert.Equal(t, "Authentication failed", got.Summary)
+	require.NotNil(t, got.ExitCode)
+	assert.Equal(t, gcxerrors.ExitAuthFailure, *got.ExitCode)
 	assert.Contains(t, got.Details, "context has no cloud auth")
 	require.Len(t, got.Suggestions, 2)
 	assert.Contains(t, got.Suggestions[0], "gcx cloud login")
@@ -796,6 +806,8 @@ func TestErrorToDetailedError_CloudEntryTokenMissing(t *testing.T) {
 
 	require.NotNil(t, got)
 	assert.Equal(t, "Authentication failed", got.Summary)
+	require.NotNil(t, got.ExitCode)
+	assert.Equal(t, gcxerrors.ExitAuthFailure, *got.ExitCode)
 	assert.Contains(t, got.Details, `cloud entry "grafana-com" has no token`)
 }
 
@@ -1026,8 +1038,14 @@ func TestErrorToDetailedError_LoginHealthCheckAuth(t *testing.T) {
 			got := toDetailedError(t, err)
 
 			require.NotNil(t, got)
-			assert.Equal(t, "Authentication failed", got.Summary)
-			assert.Equal(t, fmt.Sprintf("Grafana token rejected: /api/health returned %d for https://example.grafana.net", status), got.Details)
+			if status == http.StatusForbidden {
+				assert.Equal(t, "Authorization failed", got.Summary)
+				assert.Equal(t, fmt.Sprintf("Grafana access denied: /api/health returned %d for https://example.grafana.net", status), got.Details)
+				assert.NotContains(t, strings.Join(got.Suggestions, " "), "gcx login")
+			} else {
+				assert.Equal(t, "Authentication failed", got.Summary)
+				assert.Equal(t, fmt.Sprintf("Grafana token rejected: /api/health returned %d for https://example.grafana.net", status), got.Details)
+			}
 			require.NotNil(t, got.ExitCode)
 			assert.Equal(t, gcxerrors.ExitAuthFailure, *got.ExitCode)
 		})
@@ -1187,6 +1205,8 @@ func TestErrorToDetailedError_MutuallyExclusiveFlagsSentinel(t *testing.T) {
 	require.NotNil(t, got)
 	assert.Equal(t, "Invalid command usage", got.Summary)
 	assert.Contains(t, got.Details, "--costmetrics and --no-costmetrics")
+	require.NotNil(t, got.ExitCode)
+	assert.Equal(t, gcxerrors.ExitUsageError, *got.ExitCode)
 
 	// Bare string must fall through to the generic fallback (no Suggestions,
 	// no typed-error semantics).

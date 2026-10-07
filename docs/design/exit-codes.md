@@ -23,8 +23,20 @@ Constants defined in `internal/gcxerrors/exitcodes.go`.
 **Implementation state:**
 - Exit code 2 (usage error) is set by `convertUsageErrors`,
   `convertCobraUnknownCommandErrors`, and `convertRequiredFlagErrors` for bad
-  flags, unknown commands, and missing required flags.
-- Exit code 3 (auth failure) is set by `convertAPIErrors` for HTTP 401/403.
+  flags, unknown commands, and missing required flags. Instrumentation setup's
+  mutually exclusive flag pairs also exit 2 through
+  `convertInstrumentationMutualExclusiveErrors`.
+- Exit code 3 (auth failure) covers HTTP 401/403 in the K8s, query, datasource,
+  service, Fleet, GCOM, and login converters. A 401 reports `Authentication failed`
+  and suggests credential recovery; a 403 reports `Authorization failed` and
+  suggests checking roles or scopes. Adaptive Logs `invalid scope` reports
+  authorization failure for both statuses.
+- Missing Cloud credentials, and a missing Synthetic Monitoring token whose
+  auto-discovery cannot start without Cloud credentials or stack configuration,
+  exit 3. Synthetic Monitoring register/install permission failures also exit 3,
+  including HTTP 400 responses that explicitly report insufficient permissions.
+  Missing non-credential settings such as SM URL or a Cloud stack slug remain
+  configuration failures with exit 1 when they do not prevent token discovery.
 - Exit code 4 (partial failure) is set by `convertPartialFailureErrors` when
   push, pull, delete, or validate operations have mixed success/failure results.
   Commands return a `PartialFailureError` when `--on-error=fail` (default) and

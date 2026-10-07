@@ -533,10 +533,7 @@ func queryErrorDetails(apiErr *queryerror.APIError) string {
 
 func queryErrorSuggestions(apiErr *queryerror.APIError) []string {
 	if apiErr.StatusCode == http.StatusUnauthorized || apiErr.StatusCode == http.StatusForbidden {
-		return []string{
-			"Review your Grafana credentials: gcx config view",
-			reauthSuggestion,
-		}
+		return grafanaAuthSuggestions(apiErr.StatusCode)
 	}
 
 	suggestions := []string{}
@@ -723,10 +720,7 @@ func datasourceErrorContext(apiErr *datasources.APIError) string {
 func datasourceErrorSuggestions(apiErr *datasources.APIError) []string {
 	switch apiErr.StatusCode {
 	case http.StatusUnauthorized, http.StatusForbidden:
-		return []string{
-			"Review your Grafana credentials: gcx config view",
-			reauthSuggestion,
-		}
+		return grafanaAuthSuggestions(apiErr.StatusCode)
 	case http.StatusNotFound:
 		return []string{
 			"List available datasources: gcx datasources list",
@@ -797,13 +791,25 @@ func serviceAPIErrorContext(apiErr serviceAPIError) string {
 	return fmt.Sprintf("API request failed (HTTP %d)", apiErr.HTTPStatusCode())
 }
 
+// grafanaAuthSuggestions distinguishes rejected credentials from insufficient
+// permissions so a 403 does not suggest signing in again.
+func grafanaAuthSuggestions(status int) []string {
+	if status == http.StatusForbidden {
+		return []string{
+			"Check your Grafana service-account roles and access-policy scopes",
+			"Check access: gcx setup status",
+		}
+	}
+	return []string{
+		"Review your Grafana credentials: gcx config view",
+		reauthSuggestion,
+	}
+}
+
 func serviceAPIErrorSuggestions(apiErr serviceAPIError) []string {
 	switch apiErr.HTTPStatusCode() {
 	case http.StatusUnauthorized, http.StatusForbidden:
-		return []string{
-			"Review your Grafana credentials: gcx config view",
-			reauthSuggestion,
-		}
+		return grafanaAuthSuggestions(apiErr.HTTPStatusCode())
 	default:
 		return nil
 	}
@@ -1098,7 +1104,7 @@ func convertGCOMStackError(err *login.GCOMStackError) *gcxerrors.DetailedError {
 
 func convertHealthCheckError(err *login.HealthCheckError) *gcxerrors.DetailedError {
 	if err.Status == http.StatusUnauthorized || err.Status == http.StatusForbidden {
-		return &gcxerrors.DetailedError{
+		detail := &gcxerrors.DetailedError{
 			Parent:  err,
 			Summary: gcxerrors.SummaryAuthenticationFailed,
 			Details: fmt.Sprintf("Grafana token rejected: /api/health returned %d for %s", err.Status, err.Server),
@@ -1110,6 +1116,12 @@ func convertHealthCheckError(err *login.HealthCheckError) *gcxerrors.DetailedErr
 			DocsLink: docs.ServiceAccounts,
 			ExitCode: new(gcxerrors.ExitAuthFailure),
 		}
+		if err.Status == http.StatusForbidden {
+			detail.Summary = gcxerrors.SummaryAuthorizationFailed
+			detail.Details = fmt.Sprintf("Grafana access denied: /api/health returned %d for %s", err.Status, err.Server)
+			detail.Suggestions = grafanaAuthSuggestions(err.Status)
+		}
+		return detail
 	}
 	return &gcxerrors.DetailedError{
 		Parent:  err,
@@ -1193,6 +1205,24 @@ func convertSMConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 		}, true
 	}
 
+	if strings.Contains(msg, "SM token not configured") &&
+		(strings.Contains(msg, "context has no cloud auth") || strings.Contains(msg, "has no token") ||
+			strings.Contains(msg, "cloud token is required") || strings.Contains(msg, "cloud stack is not configured")) {
+		return &gcxerrors.DetailedError{
+			Summary: gcxerrors.SummaryAuthenticationFailed,
+			Details: msg,
+			Parent:  err,
+			Suggestions: []string{
+				"Set it: gcx config set stacks.<name>.providers.synth.sm-token <TOKEN>",
+				"Or use env var: export GRAFANA_PROVIDER_SYNTH_SM_TOKEN=<TOKEN>",
+				"Auto-discovery requires cloud auth (gcx cloud login) and a stack slug on the current context",
+				"Check config: gcx config view",
+			},
+			DocsLink: docs.SyntheticMonitoring,
+			ExitCode: new(gcxerrors.ExitAuthFailure),
+		}, true
+	}
+
 	if strings.Contains(msg, "SM token not configured") {
 		return &gcxerrors.DetailedError{
 			Summary: gcxerrors.SummaryInvalidConfiguration,
@@ -1225,6 +1255,7 @@ func convertCloudConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 				"Or set GRAFANA_CLOUD_TOKEN environment variable",
 			},
 			DocsLink: docs.AccessPolicies,
+			ExitCode: new(gcxerrors.ExitAuthFailure),
 		}, true
 	}
 
@@ -1357,8 +1388,9 @@ func convertInstrumentationMutualExclusiveErrors(err error) (*gcxerrors.Detailed
 		return nil, false
 	}
 	return &gcxerrors.DetailedError{
-		Summary: gcxerrors.SummaryInvalidCommandUsage,
-		Details: err.Error(),
+		Summary:  gcxerrors.SummaryInvalidCommandUsage,
+		Details:  err.Error(),
+		ExitCode: new(gcxerrors.ExitUsageError),
 	}, true
 }
 
