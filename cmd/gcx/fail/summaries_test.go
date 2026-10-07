@@ -109,7 +109,7 @@ func TestConverterBranches(t *testing.T) {
 		{"SM credentials missing", errors.New("SM token not configured: no cloud config: context has no cloud auth"), gcxerrors.SummaryAuthenticationFailed, gcxerrors.ExitAuthFailure},
 		{"SM URL not configured", errors.New("SM URL not configured: no server"), gcxerrors.SummaryInvalidConfiguration, gcxerrors.ExitGeneralError},
 		{"SM register/install denied", errors.New("SM token not configured: SM register/install: request failed with status 403: forbidden"), gcxerrors.SummaryAuthorizationFailed, gcxerrors.ExitAuthFailure},
-		{"SM token catch-all", errors.New("SM token not configured: SM register/install: request failed with status 503: unavailable"), gcxerrors.SummaryInvalidConfiguration, gcxerrors.ExitGeneralError},
+		{"SM token catch-all", errors.New("SM token not configured: SM register/install: request failed with status 503: unavailable"), gcxerrors.SummaryAPIError, gcxerrors.ExitGeneralError},
 		{"cloud credentials missing", errors.New("context has no cloud auth: run gcx cloud login"), gcxerrors.SummaryAuthenticationFailed, gcxerrors.ExitAuthFailure},
 		{"cloud stack missing", errors.New("cloud stack is not configured: set the slug"), gcxerrors.SummaryInvalidConfiguration, gcxerrors.ExitGeneralError},
 		{"adaptive traces scope", errors.New("adaptive-traces: list policies: unexpected status 401: invalid scope requested"), gcxerrors.SummaryAuthorizationFailed, gcxerrors.ExitAuthFailure},

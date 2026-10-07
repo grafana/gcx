@@ -77,6 +77,21 @@ func convertMyErrors(err error) (*gcxerrors.DetailedError, bool) {
 Converters are tried in order — first match wins. Place more specific
 converters before more general ones.
 
+#### Shared transport status errors
+
+The last typed converter matches concrete `gcxerrors.HTTPStatusError` values
+with `errors.As`, after domain-specific converters. HTTP 401 means
+`Authentication failed` (exit 3); 403 means `Authorization failed` (exit 3);
+404 means `Resource not found`; 409 means `Resource conflict`; other statuses
+mean `API error` (exit 1). Parsed server messages and trace IDs appear once in
+details, with caller context. Transport `Message` text and the method set stay
+unchanged. `gcx api` retains its complete raw body.
+
+Synthetic Monitoring token discovery is classified by cause: missing Cloud
+credentials or stack configuration is authentication failure, register/install
+permission denial is authorization failure, and service/network outages remain
+API/network errors. Details identify the token discovery failure.
+
 #### Fleet Management HTTP errors
 
 HTTP 401 and 403 responses from the fleet management API are handled by the
@@ -87,7 +102,7 @@ is ordered before the generic fallback.
 - HTTP 403 → summary: `"Authorization failed"`
 
 Both produce `DetailedError` with `ExitAuthFailure` exit code and actionable suggestions
-pointing at `gcx cloud login` and `gcx login`.
+for credential recovery on 401 and role/action checks on 403.
 
 The converter is enabled by `fleet.HTTPError` — a typed error returned by all non-2xx
 responses in `internal/providers/instrumentation/client.go`.

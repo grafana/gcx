@@ -1,21 +1,25 @@
 package gcxerrors
 
 // HTTPStatusError carries the HTTP transport status of a failing request
-// out-of-band, so the usage-event reporter can record it without parsing the
-// rendered message. Message is the whole user-facing contract: a constructor
+// out-of-band, so converters and the usage-event reporter can read it without
+// parsing the rendered message. Message is the transport error text: a constructor
 // migrating an existing fmt.Errorf must preserve the text byte for byte,
 // because converters in cmd/gcx/fail and provider tests match on it.
 //
 // The method set — Error, Unwrap, HTTPStatusCode — is deliberately minimal and
-// must stay that way. cmd/gcx/fail gives the auth exit code to errors
-// implementing its three-method serviceAPIError interface (adding
-// APIServiceName and APIUserMessage), so growing this type would silently flip
-// dozens of provider 401/403 call sites from exit 1 to exit 3.
+// must stay that way. Adding APIServiceName and APIUserMessage would satisfy
+// cmd/gcx/fail's serviceAPIError interface and bypass the specialized provider
+// converters and the final HTTPStatusError converter.
 type HTTPStatusError struct {
 	// Status is the HTTP transport status of the failing request.
 	Status int
 	// Message is the complete rendered error text.
 	Message string
+	// ServerMessage is the parsed server message, or the raw response body when
+	// no message could be parsed. It excludes the rendered HTTP status prefix.
+	ServerMessage string
+	// TraceID is the server trace identifier, when supplied in the response.
+	TraceID string
 	// Cause is the optional underlying error, preserved for errors.Is/As.
 	Cause error
 }

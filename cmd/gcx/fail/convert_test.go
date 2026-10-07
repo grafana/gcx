@@ -779,7 +779,7 @@ func TestErrorToDetailedError_SMTokenRegisterInstallGeneric400FallsThrough(t *te
 	got := toDetailedError(t, err)
 
 	require.NotNil(t, got)
-	assert.Equal(t, "Invalid configuration", got.Summary)
+	assert.Equal(t, "API error", got.Summary)
 	assert.Contains(t, got.Details, "SM token not configured")
 	assert.Nil(t, got.ExitCode)
 }

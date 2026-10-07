@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"k8s.io/client-go/rest"
 )
 
@@ -99,14 +100,25 @@ func DoEnvelopeRequest[T any](c *Client, ctx context.Context, method, path strin
 func HandleErrorResponse(resp *http.Response) error {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("request failed with status %d (could not read body: %w)", resp.StatusCode, err)
+		return &gcxerrors.HTTPStatusError{
+			Status:  resp.StatusCode,
+			Message: fmt.Sprintf("request failed with status %d (could not read body: %v)", resp.StatusCode, err),
+			Cause:   err,
+		}
 	}
 
 	if len(body) > 0 {
-		return fmt.Errorf("request failed with status %d: %s", resp.StatusCode, string(body))
+		return &gcxerrors.HTTPStatusError{
+			Status:        resp.StatusCode,
+			Message:       fmt.Sprintf("request failed with status %d: %s", resp.StatusCode, string(body)),
+			ServerMessage: string(body),
+		}
 	}
 
-	return fmt.Errorf("request failed with status %d", resp.StatusCode)
+	return &gcxerrors.HTTPStatusError{
+		Status:  resp.StatusCode,
+		Message: fmt.Sprintf("request failed with status %d", resp.StatusCode),
+	}
 }
 
 // FormatTime formats a time for table display, returning "-" for zero values.

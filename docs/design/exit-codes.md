@@ -27,7 +27,8 @@ Constants defined in `internal/gcxerrors/exitcodes.go`.
   mutually exclusive flag pairs also exit 2 through
   `convertInstrumentationMutualExclusiveErrors`.
 - Exit code 3 (auth failure) covers HTTP 401/403 in the K8s, query, datasource,
-  service, Fleet, GCOM, and login converters. A 401 reports `Authentication failed`
+  service, Fleet, GCOM, login, and the final concrete `HTTPStatusError` converters.
+  This includes provider errors, Assistant helper errors, and raw `gcx api` failures. A 401 reports `Authentication failed`
   and suggests credential recovery; a 403 reports `Authorization failed` and
   suggests checking roles or scopes. Adaptive Logs `invalid scope` reports
   authorization failure for both statuses.
@@ -35,7 +36,8 @@ Constants defined in `internal/gcxerrors/exitcodes.go`.
   auto-discovery cannot start without Cloud credentials or stack configuration,
   exit 3. Synthetic Monitoring register/install permission failures also exit 3,
   including HTTP 400 responses that explicitly report insufficient permissions.
-  Missing non-credential settings such as SM URL or a Cloud stack slug remain
+  Service failures during SM token discovery remain API errors (exit 1);
+  unreachable services remain network errors (exit 1). Missing non-credential settings such as SM URL or a Cloud stack slug remain
   configuration failures with exit 1 when they do not prevent token discovery.
 - Exit code 4 (partial failure) is set by `convertPartialFailureErrors` when
   push, pull, delete, or validate operations have mixed success/failure results.

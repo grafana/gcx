@@ -52,7 +52,7 @@ func (e ErrorResponse) message() string {
 func HandleErrorResponse(resp *http.Response) error {
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
 	if err != nil {
-		return statusError(resp.StatusCode, err,
+		return statusError(resp.StatusCode, err, "", "",
 			"request failed with status %d (could not read body: %v)", resp.StatusCode, err)
 	}
 	return FormatError(resp.StatusCode, body)
@@ -70,30 +70,34 @@ func HandleErrorResponse(resp *http.Response) error {
 // them exactly — and must never change, byte for byte.
 func FormatError(statusCode int, body []byte) error {
 	var errResp ErrorResponse
+	var traceID string
 	if err := json.Unmarshal(body, &errResp); err == nil {
+		traceID = errResp.TraceID
 		if msg := errResp.message(); msg != "" {
 			if errResp.TraceID != "" {
-				return statusError(statusCode, nil,
+				return statusError(statusCode, nil, msg, errResp.TraceID,
 					"request failed with status %d: %s (traceID %s)", statusCode, msg, errResp.TraceID)
 			}
-			return statusError(statusCode, nil, "request failed with status %d: %s", statusCode, msg)
+			return statusError(statusCode, nil, msg, "", "request failed with status %d: %s", statusCode, msg)
 		}
 	}
 
 	if len(body) > 0 {
-		return statusError(statusCode, nil, "request failed with status %d: %s", statusCode, string(body))
+		return statusError(statusCode, nil, string(body), traceID, "request failed with status %d: %s", statusCode, string(body))
 	}
 
-	return statusError(statusCode, nil, "request failed with status %d", statusCode)
+	return statusError(statusCode, nil, "", "", "request failed with status %d", statusCode)
 }
 
 // statusError renders one of the message forms above into the typed carrier.
 // cause is nil for the forms that never wrapped anything, preserving each
 // call site's pre-migration unwrap shape.
-func statusError(status int, cause error, format string, args ...any) error {
+func statusError(status int, cause error, serverMessage, traceID, format string, args ...any) error {
 	return &gcxerrors.HTTPStatusError{
-		Status:  status,
-		Message: fmt.Sprintf(format, args...),
-		Cause:   cause,
+		Status:        status,
+		Message:       fmt.Sprintf(format, args...),
+		ServerMessage: serverMessage,
+		TraceID:       traceID,
+		Cause:         cause,
 	}
 }

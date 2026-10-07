@@ -84,6 +84,7 @@ func ErrorToDetailedError(err error) *gcxerrors.DetailedError {
 		convertFSErrors,                             // FS-related
 		convertResourcesErrors,                      // Resources-related
 		convertStackCreationTimeout,                 // Uncertain stack creation outcome before generic network errors
+		convertSMDiscoveryErrors,                    // Classify discovery by its underlying failure
 		convertNetworkErrors,                        // Network-related errors
 		convertAPIErrors,                            // API-related errors
 		convertLoginValidationErrors,                // Login connectivity validation (must precede generic version check)
@@ -95,6 +96,7 @@ func ErrorToDetailedError(err error) *gcxerrors.DetailedError {
 		convertFleetHTTPErrors,                      // Fleet Management HTTP 401/403 typed errors
 		convertInstrumentationErrors,                // Instrumentation RMW conflict errors
 		convertInstrumentationMutualExclusiveErrors, // setup: mutually exclusive flag pairs
+		convertHTTPStatusErrors,                     // Concrete transport status, after domain converters
 	}
 
 	for _, converter := range errorConverters {
@@ -1225,16 +1227,10 @@ func convertSMConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 
 	if strings.Contains(msg, "SM token not configured") {
 		return &gcxerrors.DetailedError{
-			Summary: gcxerrors.SummaryInvalidConfiguration,
-			Details: msg,
-			Parent:  err,
-			Suggestions: []string{
-				"Set it: gcx config set stacks.<name>.providers.synth.sm-token <TOKEN>",
-				"Or use env var: export GRAFANA_PROVIDER_SYNTH_SM_TOKEN=<TOKEN>",
-				"Auto-discovery requires cloud auth (gcx cloud login) and a stack slug on the current context",
-				"Check config: gcx config view",
-			},
-			DocsLink: docs.SyntheticMonitoring,
+			Summary:     gcxerrors.SummaryAPIError,
+			Details:     "SM token auto-discovery failed: " + msg,
+			Suggestions: []string{"Retry token auto-discovery when the service is available", "Or set GRAFANA_PROVIDER_SYNTH_SM_TOKEN directly"},
+			DocsLink:    docs.SyntheticMonitoring,
 		}, true
 	}
 
