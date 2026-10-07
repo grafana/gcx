@@ -33,7 +33,12 @@ func convertCloudOrgsErrors(err error) (*gcxerrors.DetailedError, bool) {
 	}
 	if httpErr.Status == http.StatusForbidden {
 		detailed.Summary = gcxerrors.SummaryAuthorizationFailed
+		detailed.Suggestions = []string{
+			"Check your Grafana Cloud OAuth scopes (including profile) and organization permissions",
+			"Check your permissions: gcx setup status",
+		}
 	}
 	detailed.Details = gcomErrorDetails(httpErr, err.Error())
+	detailed.Parent = nil
 	return detailed, true
 }

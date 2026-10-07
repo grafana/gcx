@@ -1,6 +1,7 @@
 package fleet
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -37,6 +38,16 @@ func IsPluginMissingBody(body string) bool {
 		}
 	}
 	return false
+}
+
+// IsResourceNotFoundBody reports whether a response is a Connect error whose
+// code identifies an absent resource. Other 404 bodies indicate an unavailable
+// plugin, route, or RPC endpoint, even when their message says "not found".
+func IsResourceNotFoundBody(body string) bool {
+	var connectError struct {
+		Code string `json:"code"`
+	}
+	return json.Unmarshal([]byte(body), &connectError) == nil && connectError.Code == "not_found"
 }
 
 // ReadErrorBody reads up to 1 MiB of a response body for error messages.

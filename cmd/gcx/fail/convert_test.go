@@ -566,7 +566,7 @@ func TestErrorToDetailedError_FleetPluginMissing(t *testing.T) {
 
 	require.NotNil(t, got)
 	assert.Equal(t, "Endpoint not available", got.Summary)
-	assert.Contains(t, got.Details, "grafana-collector-app")
+	assert.Contains(t, got.Details, "plugin route match not found")
 	require.NotEmpty(t, got.Suggestions)
 	assert.Contains(t, got.Suggestions[0], "gcx setup status")
 }
@@ -974,8 +974,9 @@ func TestErrorToDetailedError_StacksConflict409(t *testing.T) {
 				assert.Nil(t, got.ExitCode, "non-usage 409s keep the default exit code")
 			}
 			if tt.httpErr.Message != "" {
-				assert.True(t, strings.HasPrefix(got.Details, tt.httpErr.Message),
-					"details must lead with GCOM's message, got %q", got.Details)
+				assert.Contains(t, got.Details, tt.httpErr.Message)
+				assert.Equal(t, 1, strings.Count(got.Details, tt.httpErr.Message))
+				require.NoError(t, got.Parent)
 			}
 			if tt.wantDetail != "" {
 				assert.Contains(t, got.Details, tt.wantDetail)
@@ -1009,8 +1010,9 @@ func TestErrorToDetailedError_StacksAuthErrors(t *testing.T) {
 			assert.Equal(t, tt.wantSummary, got.Summary)
 			require.NotNil(t, got.ExitCode)
 			assert.Equal(t, gcxerrors.ExitAuthFailure, *got.ExitCode)
-			assert.True(t, strings.HasPrefix(got.Details, "token lacks stacks scopes"),
-				"auth details must lead with GCOM's message, got %q", got.Details)
+			assert.Contains(t, got.Details, "token lacks stacks scopes")
+			assert.Equal(t, 1, strings.Count(got.Details, "token lacks stacks scopes"))
+			require.NoError(t, got.Parent)
 		})
 	}
 }
@@ -1112,8 +1114,9 @@ func TestConvertFleetHTTPErrors(t *testing.T) {
 			wantAuthExit: true,
 		},
 		{
-			name: "404 for a missing resource is not handled by this converter",
-			err:  &fleet.HTTPError{Status: 404, Path: "/foo", Body: `{"code":"not_found","message":"pipeline not found"}`},
+			name:        "404 for a missing Connect resource",
+			err:         &fleet.HTTPError{Status: 404, Path: "/foo", Body: `{"code":"not_found","message":"pipeline not found"}`},
+			wantSummary: "Resource not found",
 		},
 		{
 			name:        "404 for a missing plugin route reports the plugin",

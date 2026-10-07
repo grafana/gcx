@@ -94,18 +94,33 @@ API/network errors. Details identify the token discovery failure.
 
 #### Fleet Management HTTP errors
 
-HTTP 401 and 403 responses from the fleet management API are handled by the
-`convertFleetHTTPErrors` converter in `cmd/gcx/fail/convert.go`. This converter
-is ordered before the generic fallback.
+The `convertFleetHTTPErrors` converter handles typed `fleet.HTTPError` values
+from instrumentation and Fleet provider clients before the shared transport
+converter and generic fallback.
 
-- HTTP 401 → summary: `"Authentication failed"`
-- HTTP 403 → summary: `"Authorization failed"`
+- HTTP 401 → `Authentication failed`, exit 3, with credential recovery suggestions.
+- HTTP 403 → `Authorization failed`, exit 3, with role/action checks.
+- HTTP 404 → `Resource not found` only when the response is Connect JSON with
+  `"code":"not_found"`; every other 404 means `Endpoint not available`, including
+  missing plugins, proxy routes, and unknown RPC paths.
+- HTTP 409 → `Resource conflict`; other statuses → `API error`, exit 1.
 
-Both produce `DetailedError` with `ExitAuthFailure` exit code and actionable suggestions
-for credential recovery on 401 and role/action checks on 403.
+Pipeline and collector getters retain the typed HTTP error for both kinds of
+404, including the requested resource ID in caller context. Name lookup follows
+only Connect resource-not-found errors; other get failures are returned directly.
+If name lookup has no match, the original typed resource failure is retained.
 
-The converter is enabled by `fleet.HTTPError` — a typed error returned by all non-2xx
-responses in `internal/providers/instrumentation/client.go`.
+#### Error details and duplicate causes
+
+Fleet and GCOM errors render caller operation, parsed server message, error code
+when available, and HTTP status/trace ID once in details. Raw response text is
+the fallback when no server message parses. They omit `Parent` because it would
+repeat those details. Filesystem errors likewise render the full wrapped syscall
+error once in details, preserving operation, path, and cause.
+
+GCOM create/update 409 with code `InvalidArgument` remains `Invalid stack request`
+(exit 2); other 409s remain `Resource conflict`, including delete protection with
+its specific remediation.
 
 ### 4.4 In-Band Error Reporting
 

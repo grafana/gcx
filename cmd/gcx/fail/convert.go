@@ -931,8 +931,7 @@ func convertFSErrors(err error) (*gcxerrors.DetailedError, bool) {
 	if errors.Is(err, os.ErrNotExist) && errors.As(err, &pathErr) {
 		return &gcxerrors.DetailedError{
 			Summary: gcxerrors.SummaryFileNotFound,
-			Details: fmt.Sprintf("could not read '%s'", pathErr.Path),
-			Parent:  err,
+			Details: err.Error(),
 			Suggestions: []string{
 				"Check for typos in the command's arguments",
 			},
@@ -942,8 +941,7 @@ func convertFSErrors(err error) (*gcxerrors.DetailedError, bool) {
 	if errors.Is(err, os.ErrInvalid) && errors.As(err, &pathErr) {
 		return &gcxerrors.DetailedError{
 			Summary: gcxerrors.SummaryInvalidPath,
-			Details: fmt.Sprintf("path '%s' is not valid", pathErr.Path),
-			Parent:  err,
+			Details: err.Error(),
 			Suggestions: []string{
 				"Make sure that you are passing in a valid path",
 				"If you are pulling resources make sure that the path is a directory",
@@ -954,7 +952,7 @@ func convertFSErrors(err error) (*gcxerrors.DetailedError, bool) {
 	if errors.Is(err, os.ErrPermission) && errors.As(err, &pathErr) {
 		return &gcxerrors.DetailedError{
 			Summary: gcxerrors.SummaryFileAccessDenied,
-			Parent:  err,
+			Details: err.Error(),
 			Suggestions: []string{
 				"Review the permissions on the file",
 			},
@@ -1317,63 +1315,49 @@ func convertCloudConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 	return nil, false
 }
 
-// convertFleetHTTPErrors converts fleet.HTTPError values (non-2xx HTTP
-// responses from the Fleet Management plugin proxy) into structured
-// DetailedErrors. Fleet Management runs behind the grafana-collector-app plugin
-// proxy on the stack, so an absent plugin and an absent permission are the two
-// common causes.
+// convertFleetHTTPErrors classifies Fleet Connect and plugin-proxy failures.
+// Only a Connect not_found response identifies an absent resource on HTTP 404.
 func convertFleetHTTPErrors(err error) (*gcxerrors.DetailedError, bool) {
 	var httpErr *fleet.HTTPError
 	if !errors.As(err, &httpErr) {
 		return nil, false
 	}
-
-	// Grafana returns this when the collector app plugin is absent or disabled.
-	// It arrives as a 404, the same status Fleet Management uses for an absent
-	// resource, so the body decides.
-	if httpErr.Status == http.StatusNotFound && fleet.IsPluginMissingBody(httpErr.Body) {
-		return &gcxerrors.DetailedError{
-			Parent:  err,
-			Summary: gcxerrors.SummaryEndpointNotAvailable,
-			Details: "The " + fleet.CollectorAppID + " plugin is not installed or not enabled on this stack",
-			Suggestions: []string{
-				"Check the plugin and your permissions: gcx setup status",
-				"Install or enable the Collector app in Grafana: Administration > Plugins",
-				"Fleet Management is a Grafana Cloud product and is not available on self-hosted Grafana",
-			},
-			DocsLink: docs.FleetManagement,
-		}, true
+	operation := wrappedTypedErrorContext(err, httpErr)
+	if operation == "" {
+		operation = httpErr.Path
+	} else if httpErr.Path != "" {
+		operation += " [" + httpErr.Path + "]"
 	}
-
+	message, code, traceID := responseErrorFields(httpErr.Body)
+	detailed := &gcxerrors.DetailedError{
+		Summary: httpStatusSummary(httpErr.Status),
+		Details: httpFailureDetails(operation, errorMessageWithCode(message, code), httpErr.Status, traceID),
+	}
 	switch httpErr.Status {
 	case http.StatusUnauthorized:
-		return &gcxerrors.DetailedError{
-			Parent:  err,
-			Summary: gcxerrors.SummaryAuthenticationFailed,
-			Details: "HTTP 401 from " + httpErr.Path,
-			Suggestions: []string{
-				"Verify the token has not expired: gcx config view",
-				reauthSuggestion,
-			},
-			DocsLink: docs.ServiceAccounts,
-			ExitCode: new(gcxerrors.ExitAuthFailure),
-		}, true
+		detailed.Suggestions = []string{"Verify the token has not expired: gcx config view", reauthSuggestion}
+		detailed.DocsLink = docs.ServiceAccounts
+		detailed.ExitCode = new(gcxerrors.ExitAuthFailure)
 	case http.StatusForbidden:
-		return &gcxerrors.DetailedError{
-			Parent:  err,
-			Summary: gcxerrors.SummaryAuthorizationFailed,
-			Details: "HTTP 403 from " + httpErr.Path,
-			Suggestions: []string{
-				"Named read routes need the " + fleet.CollectorAppReadAction + " action on this stack",
-				"Wildcard routes need the Admin role, or the " + fleet.CollectorAppAdminAction + " action; some read-only commands use these routes",
-				"Check what your login holds: gcx setup status",
-			},
-			DocsLink: docs.RolesAndPermissions,
-			ExitCode: new(gcxerrors.ExitAuthFailure),
-		}, true
+		detailed.Suggestions = []string{
+			"Named read routes need the " + fleet.CollectorAppReadAction + " action on this stack",
+			"Wildcard routes need the Admin role, or the " + fleet.CollectorAppAdminAction + " action; some read-only commands use these routes",
+			"Check what your login holds: gcx setup status",
+		}
+		detailed.DocsLink = docs.RolesAndPermissions
+		detailed.ExitCode = new(gcxerrors.ExitAuthFailure)
+	case http.StatusNotFound:
+		if !fleet.IsResourceNotFoundBody(httpErr.Body) {
+			detailed.Summary = gcxerrors.SummaryEndpointNotAvailable
+			detailed.Suggestions = []string{
+				"Check the plugin and your permissions: gcx setup status",
+				"Verify the Collector app is enabled and serves the requested Fleet API route",
+				"Fleet Management is a Grafana Cloud product and is not available on self-hosted Grafana",
+			}
+			detailed.DocsLink = docs.FleetManagement
+		}
 	}
-
-	return nil, false
+	return detailed, true
 }
 
 // convertInstrumentationMutualExclusiveErrors detects errors from setup's flag
@@ -1573,7 +1557,6 @@ func convertStacksErrors(err error) (*gcxerrors.DetailedError, bool) {
 			return &gcxerrors.DetailedError{
 				Summary: gcxerrors.SummaryResourceConflict,
 				Details: joinErrorDetails(gcomErrorDetails(httpErr, msg), "The stack has delete protection enabled."),
-				Parent:  err,
 				Suggestions: []string{
 					"Disable delete protection first: gcx cloud stacks update <slug> --no-delete-protection",
 					"Then retry: gcx cloud stacks delete <slug>",
@@ -1596,7 +1579,6 @@ func convertStacksErrors(err error) (*gcxerrors.DetailedError, bool) {
 			return &gcxerrors.DetailedError{
 				Summary:     gcxerrors.SummaryInvalidStackRequest,
 				Details:     gcomErrorDetails(httpErr, msg),
-				Parent:      err,
 				ExitCode:    new(gcxerrors.ExitUsageError),
 				Suggestions: suggestions,
 				DocsLink:    docs.CloudAPI,
@@ -1621,7 +1603,6 @@ func convertStacksErrors(err error) (*gcxerrors.DetailedError, bool) {
 		return &gcxerrors.DetailedError{
 			Summary:     gcxerrors.SummaryResourceConflict,
 			Details:     gcomErrorDetails(httpErr, msg),
-			Parent:      err,
 			Suggestions: suggestions,
 			DocsLink:    docs.CloudAPI,
 		}, true
@@ -1629,7 +1610,6 @@ func convertStacksErrors(err error) (*gcxerrors.DetailedError, bool) {
 		return &gcxerrors.DetailedError{
 			Summary:  gcxerrors.SummaryAuthorizationFailed,
 			Details:  gcomErrorDetails(httpErr, msg),
-			Parent:   err,
 			ExitCode: new(gcxerrors.ExitAuthFailure),
 			Suggestions: []string{
 				"Ensure your Cloud Access Policy includes the required stacks scopes:",
@@ -1642,25 +1622,31 @@ func convertStacksErrors(err error) (*gcxerrors.DetailedError, bool) {
 		return &gcxerrors.DetailedError{
 			Summary:  gcxerrors.SummaryAuthenticationFailed,
 			Details:  gcomErrorDetails(httpErr, msg),
-			Parent:   err,
 			ExitCode: new(gcxerrors.ExitAuthFailure),
 			Suggestions: []string{
 				"Check your cloud token is valid and not expired",
 				reauthSuggestion,
 			},
 		}, true
+	default:
+		return &gcxerrors.DetailedError{
+			Summary: httpStatusSummary(httpErr.Status),
+			Details: gcomErrorDetails(httpErr, msg),
+		}, true
 	}
-
-	return nil, false
 }
 
-// gcomErrorDetails leads with GCOM's parsed error message (when the response
-// body carried one) so the real cause reads before the raw wrapped error text.
+// gcomErrorDetails renders parsed server information and caller context once.
 func gcomErrorDetails(httpErr *cloud.GCOMHTTPError, msg string) string {
-	if httpErr.Message == "" {
-		return msg
+	message, code, traceID := responseErrorFields(httpErr.Body)
+	if httpErr.Message != "" {
+		message = httpErr.Message
 	}
-	return httpErr.Message + "\n\n" + msg
+	if httpErr.Code != "" && (httpErr.Message != "" || httpErr.Body == "") {
+		code = httpErr.Code
+	}
+	operation := wrappedTypedErrorContext(errors.New(msg), httpErr)
+	return httpFailureDetails(operation, errorMessageWithCode(message, code), httpErr.Status, traceID)
 }
 
 func convertPartialFailureErrors(err error) (*gcxerrors.DetailedError, bool) {

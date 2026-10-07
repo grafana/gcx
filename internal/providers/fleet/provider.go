@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"sort"
 	"strconv"
@@ -319,14 +320,19 @@ func (h *fleetHelper) newPipelineGetCommand() *cobra.Command {
 
 // resolvePipeline looks up a pipeline by slug-id, plain ID, or name.
 func resolvePipeline(ctx context.Context, client *Client, ref string) (*Pipeline, error) {
+	var missingErr error
 	// Try extracting a numeric ID from the reference (handles "name-123" and "123").
 	if id, ok := extractIDFromSlug(ref); ok {
 		p, err := client.GetPipeline(ctx, id)
 		if err == nil {
 			return p, nil
 		}
+		if !isFleetResourceNotFound(err) {
+			return nil, err
+		}
+		missingErr = err
 	}
-	// Fall back to name-based lookup.
+	// Fall back to name-based lookup only when the requested ID is absent.
 	pipelines, err := client.ListPipelines(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("fleet: resolve pipeline %q: %w", ref, err)
@@ -336,6 +342,9 @@ func resolvePipeline(ctx context.Context, client *Client, ref string) (*Pipeline
 			return &pipelines[i], nil
 		}
 	}
+	if missingErr != nil {
+		return nil, fmt.Errorf("fleet: resolve pipeline %q: %w", ref, missingErr)
+	}
 	return nil, fmt.Errorf("pipeline %q not found", ref)
 }
 
@@ -343,8 +352,12 @@ func resolvePipeline(ctx context.Context, client *Client, ref string) (*Pipeline
 func resolveCollector(ctx context.Context, client *Client, ref string) (*Collector, error) {
 	// Collector IDs are arbitrary strings. Try the input as the canonical ID
 	// before interpreting it as a rendered resource name or collector name.
-	if collector, err := client.GetCollector(ctx, ref); err == nil {
+	collector, missingErr := client.GetCollector(ctx, ref)
+	if missingErr == nil {
 		return collector, nil
+	}
+	if !isFleetResourceNotFound(missingErr) {
+		return nil, missingErr
 	}
 
 	// Older rendered resources encode a numeric ID as a slug suffix.
@@ -353,8 +366,12 @@ func resolveCollector(ctx context.Context, client *Client, ref string) (*Collect
 		if err == nil {
 			return c, nil
 		}
+		if !isFleetResourceNotFound(err) {
+			return nil, err
+		}
+		missingErr = err
 	}
-	// Fall back to name-based lookup.
+	// Fall back to name-based lookup only when the requested IDs are absent.
 	collectors, err := client.ListCollectors(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("fleet: resolve collector %q: %w", ref, err)
@@ -364,7 +381,14 @@ func resolveCollector(ctx context.Context, client *Client, ref string) (*Collect
 			return &collectors[i], nil
 		}
 	}
-	return nil, fmt.Errorf("collector %q not found", ref)
+	return nil, fmt.Errorf("fleet: resolve collector %q: %w", ref, missingErr)
+}
+
+// isFleetResourceNotFound permits alternative lookups only for a resource
+// absence reported by Connect, rather than an unavailable endpoint or request.
+func isFleetResourceNotFound(err error) bool {
+	var httpErr *fleetbase.HTTPError
+	return errors.As(err, &httpErr) && httpErr.Status == http.StatusNotFound && fleetbase.IsResourceNotFoundBody(httpErr.Body)
 }
 
 type pipelineGetOpts struct {
