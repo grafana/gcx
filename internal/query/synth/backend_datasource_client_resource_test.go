@@ -41,6 +41,24 @@ func TestCallResource_RequestShape(t *testing.T) {
 	assert.JSONEq(t, `{"suggestions":[]}`, string(res.Body))
 }
 
+// Every outbound SM request gcx sends carries the same client identity, whichever
+// route it takes; the resources route must not be the one unattributed exception.
+func TestCallResource_SendsClientIdentityHeaders(t *testing.T) {
+	var gotClientID, gotClientVersion string
+
+	client := newNamedClient(t, func(w http.ResponseWriter, r *http.Request) {
+		gotClientID = r.Header.Get("X-Client-Id")
+		gotClientVersion = r.Header.Get("X-Client-Version")
+		w.WriteHeader(http.StatusOK)
+	})
+
+	_, err := client.CallResource(context.Background(), "sm-uid", http.MethodGet, "reliability-inbox/health", nil)
+	require.NoError(t, err)
+
+	assert.Equal(t, "gcx", gotClientID)
+	assert.NotEmpty(t, gotClientVersion)
+}
+
 func TestCallResource_NoBodyOmitsContentType(t *testing.T) {
 	var gotContentType string
 

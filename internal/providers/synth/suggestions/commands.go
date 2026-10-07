@@ -13,10 +13,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 
+	"github.com/grafana/gcx/internal/agent"
+	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers/synth/smcfg"
 	"github.com/grafana/gcx/internal/query/synth"
@@ -34,16 +38,19 @@ const (
 	defaultLimit = 10
 )
 
+const experimentalPreamble = "This command is experimental. It may be removed, or its subcommands, " +
+	"flags and responses may change without following the normal semantic versioning conventions."
+
 var (
-	// ErrUnavailable means the health probe answered 404. Usually that is "not
+	// errUnavailable means the health probe answered 404. Usually that is "not
 	// deployed for this region", but a plugin too old to proxy the inbox answers
 	// the same, so the server's message is always kept alongside.
-	ErrUnavailable = errors.New("the reliability inbox is unavailable")
+	errUnavailable = errors.New("the reliability inbox is unavailable")
 
-	// ErrNotReady means the plugin answered 503, which it does when the
+	// errNotReady means the plugin answered 503, which it does when the
 	// datasource has no access token. A gateway outage answers the same, so the
 	// server's message is always kept alongside.
-	ErrNotReady = errors.New("the reliability inbox is not ready")
+	errNotReady = errors.New("the reliability inbox is not ready")
 )
 
 // resourceCaller is the part of synth.BackendDatasourceClient this package needs.
@@ -114,7 +121,7 @@ func fetch(ctx context.Context, c resourceCaller, datasourceUID string) (*result
 	switch health.StatusCode {
 	case http.StatusOK:
 	case http.StatusNotFound:
-		return nil, sentinelError(ErrUnavailable, health)
+		return nil, sentinelError(errUnavailable, health)
 	default:
 		// Not a confirmed negative: a timeout or 5xx says nothing about whether
 		// the service exists, so it is not reported as "not available".
@@ -129,9 +136,9 @@ func fetch(ctx context.Context, c resourceCaller, datasourceUID string) (*result
 	switch resp.StatusCode {
 	case http.StatusOK:
 	case http.StatusServiceUnavailable:
-		return nil, sentinelError(ErrNotReady, resp)
+		return nil, sentinelError(errNotReady, resp)
 	default:
-		// A 404 here is deliberately not ErrUnavailable: health just confirmed
+		// A 404 here is deliberately not errUnavailable: health just confirmed
 		// the service exists, so it is not the confirmed negative that error means.
 		return nil, statusError("reliability inbox", resp)
 	}
@@ -205,7 +212,12 @@ func sentinelError(sentinel error, resp *synth.Response) error {
 func Commands(loader smcfg.Loader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "suggestions",
-		Short: "Discover Synthetic Monitoring check suggestions.",
+		Short: "[experimental] Discover Synthetic Monitoring check suggestions.",
+		Long: experimentalPreamble + `
+
+Check suggestions come from the Synthetic Monitoring Reliability Inbox, an
+experimental service that analyses a stack's telemetry.`,
+		Annotations: map[string]string{agent.AnnotationStability: agent.StabilityExperimental},
 	}
 	cmd.AddCommand(newListCommand(loader))
 
@@ -218,24 +230,49 @@ type listOpts struct {
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
-	cmdio.RegisterTable(&o.IO, suggestionTable())
+	o.IO.RegisterCustomCodec("table", &tableCodec{rows: suggestionTable().Codec("table")})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 
-	flags.IntVar(&o.Limit, "limit", defaultLimit,
-		"Maximum number of suggestions to print, in the service's order (highest confidence first); 0 for all")
+	// The service has no pagination, so the whole generated set is always in
+	// hand and the limit is a display trim with an exact observed total.
+	o.IO.BindListLimit(flags, &o.Limit, "suggestions", defaultLimit)
 }
 
+// Validate also rejects a negative --limit (via Options.Validate), which must
+// happen before any call: a bad flag must not cost a paid generation.
 func (o *listOpts) Validate() error {
-	if err := o.IO.Validate(); err != nil {
-		return err
+	return o.IO.Validate()
+}
+
+// listResult is the single shape every format encodes (JSON, YAML and the
+// table codec, which extracts Suggestions to render rows).
+type listResult struct {
+	Suggestions []Suggestion `json:"suggestions" yaml:"suggestions"`
+	// ListMeta is attached only when the output is a truncated page, so a
+	// reader cannot mistake a page for the complete set. Reserved key; see
+	// docs/design/output.md, List Truncation Contract.
+	ListMeta *cmdio.ListMeta `json:"list_meta,omitempty" yaml:"list_meta,omitempty"`
+}
+
+// tableCodec renders the envelope's suggestions as rows.
+type tableCodec struct {
+	rows format.Codec
+}
+
+func (c *tableCodec) Format() format.Format { return "table" }
+
+func (c *tableCodec) Encode(w io.Writer, v any) error {
+	res, ok := v.(*listResult)
+	if !ok {
+		return fmt.Errorf("invalid data type for table codec: expected *listResult, got %T", v)
 	}
 
-	if o.Limit < 0 {
-		return fmt.Errorf("--limit must be 0 or greater, got %d", o.Limit)
-	}
+	return c.rows.Encode(w, res.Suggestions)
+}
 
-	return nil
+func (c *tableCodec) Decode(io.Reader, any) error {
+	return errors.New("table codec does not support decoding")
 }
 
 func newListCommand(loader smcfg.Loader) *cobra.Command {
@@ -243,8 +280,10 @@ func newListCommand(loader smcfg.Loader) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "List suggested checks generated from this stack's telemetry.",
-		Long: `List the checks the Synthetic Monitoring Reliability Inbox suggests for this stack.
+		Short: "[experimental] List suggested checks generated from this stack's telemetry.",
+		Long: experimentalPreamble + `
+
+List the checks the Synthetic Monitoring Reliability Inbox suggests for this stack.
 
 Generating suggestions sends a summary of the stack's telemetry to an LLM and
 is a paid, experimental service. Unlike the Synthetic Monitoring app, gcx cannot
@@ -255,14 +294,15 @@ The service is deployed per region and is not available everywhere.
 
 The service has no pagination and returns everything it generated (up to about
 30 suggestions) in one response, so --limit only trims what is printed: it does
-not reduce cost. Suggestions are kept in the service's order, highest confidence
-first, which is not sorted by score. Use --json to print only some fields.`,
+not reduce cost. A truncated page carries list_meta and a stderr hint. Suggestions
+are kept in the service's order, highest confidence first, which is not sorted by
+score. Use --json to print only some fields.`,
 		Example: `  gcx synthetic-monitoring suggestions list
   gcx synthetic-monitoring suggestions list --limit 0 -o json
   gcx synthetic-monitoring suggestions list --json id,target,confidence,score`,
-		Args: cobra.NoArgs,
+		Annotations: map[string]string{agent.AnnotationStability: agent.StabilityExperimental},
+		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			// Before any call: a bad flag must not cost a paid generation.
 			if err := opts.Validate(); err != nil {
 				return err
 			}
@@ -291,7 +331,7 @@ first, which is not sorted by score. Use --json to print only some fields.`,
 			// Warnings accompany real suggestions here (none-with-warnings already
 			// failed). They go to stderr so stdout stays parseable.
 			for _, w := range res.Warnings {
-				fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s\n", w)
+				cmdio.EmitWarn(cmd.ErrOrStderr(), w)
 			}
 
 			suggestions := res.Suggestions
@@ -299,15 +339,19 @@ first, which is not sorted by score. Use --json to print only some fields.`,
 				suggestions = []Suggestion{}
 			}
 
-			// Never silent: the paid generation already ran, so tell the user
-			// what the limit hid.
-			if opts.Limit > 0 && len(suggestions) > opts.Limit {
-				fmt.Fprintf(cmd.ErrOrStderr(), "showing %d of %d suggestions; use --limit 0 for all\n",
-					opts.Limit, len(suggestions))
-				suggestions = suggestions[:opts.Limit]
-			}
+			// The whole generated set is in hand, so the limit is a display trim
+			// and the observed total is exact. Truncation is never silent: the
+			// paid generation already ran, so list_meta (machine) and a stderr
+			// hint (human) say what the limit hid.
+			suggestions, meta := cmdio.TruncateCompleteList(suggestions, opts.Limit)
+			meta = cmdio.AttachListMeta(meta, os.Args)
 
-			return opts.IO.Encode(cmd.OutOrStdout(), suggestions)
+			if err := opts.IO.Encode(cmd.OutOrStdout(), &listResult{Suggestions: suggestions, ListMeta: meta}); err != nil {
+				return err
+			}
+			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
+
+			return nil
 		},
 	}
 	opts.setup(cmd.Flags())

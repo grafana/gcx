@@ -12,21 +12,18 @@ package synth
 // definition lives in exactly one place, the plugin's query registry.
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"maps"
 	"net/http"
-	neturl "net/url"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/grafana/gcx/internal/config"
-	"github.com/grafana/gcx/internal/httputils"
 	"github.com/grafana/gcx/internal/query/dataframe"
 	"github.com/grafana/gcx/internal/query/grafanaquery"
 	"github.com/grafana/gcx/internal/queryerror"
@@ -108,34 +105,10 @@ func (c *BackendDatasourceClient) CallResource(
 		return nil, errors.New("a resource path is required")
 	}
 
-	url := fmt.Sprintf("%s/api/datasources/uid/%s/resources/%s",
-		c.host, neturl.PathEscape(datasourceUID), strings.TrimPrefix(path, "/"))
+	target := fmt.Sprintf("%s/api/datasources/uid/%s/resources/%s",
+		c.host, url.PathEscape(datasourceUID), strings.TrimPrefix(path, "/"))
 
-	var reqBody io.Reader
-	if body != nil {
-		reqBody = bytes.NewReader(body)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, method, url, reqBody)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to call resource %q: %w", path, err)
-	}
-	defer resp.Body.Close()
-
-	respBody, err := httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
-	if err != nil {
-		return nil, err
-	}
-
-	return &Response{StatusCode: resp.StatusCode, Body: respBody}, nil
+	return send(ctx, c.httpClient, method, target, body)
 }
 
 // Query asks the SM datasource identified by datasourceUID for q over [from, to].

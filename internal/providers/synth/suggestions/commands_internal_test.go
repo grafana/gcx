@@ -12,8 +12,10 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/query/synth"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/client-go/rest"
@@ -82,7 +84,7 @@ func TestFetch_HealthNotFoundMeansUnavailableAndSkipsGeneration(t *testing.T) {
 	f := &fakeCaller{responses: r}
 
 	_, err := fetch(context.Background(), f, "sm-uid")
-	require.ErrorIs(t, err, ErrUnavailable)
+	require.ErrorIs(t, err, errUnavailable)
 	assert.Len(t, f.calls, 1, "generation must not be called")
 }
 
@@ -94,7 +96,7 @@ func TestFetch_HealthNotFoundKeepsServerMessage(t *testing.T) {
 	r[healthPath] = &synth.Response{StatusCode: http.StatusNotFound, Body: []byte(`{"message":"resource not found"}`)}
 
 	_, err := fetch(context.Background(), &fakeCaller{responses: r}, "sm-uid")
-	require.ErrorIs(t, err, ErrUnavailable)
+	require.ErrorIs(t, err, errUnavailable)
 	assert.Contains(t, err.Error(), "resource not found")
 }
 
@@ -107,7 +109,7 @@ func TestFetch_HealthInconclusiveIsAnErrorNotUnavailable(t *testing.T) {
 
 	_, err := fetch(context.Background(), f, "sm-uid")
 	require.Error(t, err)
-	require.NotErrorIs(t, err, ErrUnavailable)
+	require.NotErrorIs(t, err, errUnavailable)
 	assert.Contains(t, err.Error(), "502")
 	assert.Len(t, f.calls, 1)
 }
@@ -131,8 +133,8 @@ func TestFetch_GenerationStatusMapping(t *testing.T) {
 		// Health already confirmed the service exists, so a 404 here is not a
 		// confirmed negative: it is reported as the failure it is.
 		{"not found after a healthy probe is a plain failure", http.StatusNotFound, `{"message":"resource not found"}`, nil, "404"},
-		{"service unavailable is not configured", http.StatusServiceUnavailable, `{"message":"synthetic monitoring is not configured"}`, ErrNotReady, "synthetic monitoring is not configured"},
-		{"a 503 keeps its body so a gateway outage is distinguishable", http.StatusServiceUnavailable, `upstream connect error`, ErrNotReady, "upstream connect error"},
+		{"service unavailable is not configured", http.StatusServiceUnavailable, `{"message":"synthetic monitoring is not configured"}`, errNotReady, "synthetic monitoring is not configured"},
+		{"a 503 keeps its body so a gateway outage is distinguishable", http.StatusServiceUnavailable, `upstream connect error`, errNotReady, "upstream connect error"},
 		{"other statuses carry status and message", http.StatusInternalServerError, `{"message":"kaboom"}`, nil, "500"},
 		{"message is surfaced", http.StatusBadGateway, `{"message":"reliability inbox response is too large"}`, nil, "too large"},
 		// The service itself (not the plugin) answers errors as {"error": "..."}.
@@ -151,8 +153,8 @@ func TestFetch_GenerationStatusMapping(t *testing.T) {
 			if tt.wantIs != nil {
 				require.ErrorIs(t, err, tt.wantIs)
 			} else {
-				require.NotErrorIs(t, err, ErrUnavailable)
-				require.NotErrorIs(t, err, ErrNotReady)
+				require.NotErrorIs(t, err, errUnavailable)
+				require.NotErrorIs(t, err, errNotReady)
 			}
 			if tt.wantSubstr != "" {
 				assert.Contains(t, err.Error(), tt.wantSubstr)
@@ -319,14 +321,24 @@ func nSuggestions(n int) string {
 	return `{"suggestions":[` + strings.Join(items, ",") + `],"warnings":[]}`
 }
 
+// decodeList parses the list envelope, which carries list_meta only when the
+// output is a truncated page.
+func decodeList(t *testing.T, stdout string) listResult {
+	t.Helper()
+
+	var got listResult
+	require.NoError(t, json.Unmarshal([]byte(stdout), &got))
+
+	return got
+}
+
 func idsOf(t *testing.T, stdout string) []string {
 	t.Helper()
 
-	var got []Suggestion
-	require.NoError(t, json.Unmarshal([]byte(stdout), &got))
+	got := decodeList(t, stdout)
 
-	ids := make([]string, 0, len(got))
-	for _, s := range got {
+	ids := make([]string, 0, len(got.Suggestions))
+	for _, s := range got.Suggestions {
 		ids = append(ids, s.ID)
 	}
 
@@ -346,9 +358,18 @@ func TestCommand_LimitDefaultsToTenAndKeepsServerOrder(t *testing.T) {
 	assert.Equal(t, "s1", ids[0])
 	assert.Equal(t, "s10", ids[9])
 
-	// Truncation is never silent, and the note stays off stdout.
-	assert.Contains(t, stderr, "showing 10 of 22")
-	assert.NotContains(t, stdout, "showing")
+	// Truncation is never silent: machine-legible in the payload (a bare array
+	// would claim to be the complete set) and human-legible on stderr.
+	meta := decodeList(t, stdout).ListMeta
+	require.NotNil(t, meta, "a truncated page must carry list_meta")
+	assert.True(t, meta.Truncated)
+	assert.Equal(t, 10, meta.Returned)
+	require.NotNil(t, meta.Total)
+	assert.Equal(t, 22, *meta.Total)
+	assert.Contains(t, meta.Continue, "--limit 0")
+
+	assert.Contains(t, stderr, "showing first 10 of 22")
+	assert.NotContains(t, stdout, "showing first")
 }
 
 func TestCommand_LimitFlag(t *testing.T) {
@@ -358,7 +379,7 @@ func TestCommand_LimitFlag(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, []string{"s1", "s2", "s3"}, idsOf(t, stdout))
-	assert.Contains(t, stderr, "showing 3 of 5")
+	assert.Contains(t, stderr, "showing first 3 of 5")
 }
 
 func TestCommand_LimitZeroMeansAll(t *testing.T) {
@@ -368,6 +389,7 @@ func TestCommand_LimitZeroMeansAll(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Len(t, idsOf(t, stdout), 22)
+	assert.NotContains(t, stdout, "list_meta", "the complete set carries no list_meta")
 	assert.NotContains(t, stderr, "showing")
 }
 
@@ -378,7 +400,76 @@ func TestCommand_NoTruncationNoteWhenUnderLimit(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Len(t, idsOf(t, stdout), 4)
+	assert.NotContains(t, stdout, "list_meta")
 	assert.NotContains(t, stderr, "showing")
+}
+
+// The table renders from the same envelope the JSON does (one shape for every
+// format), and list_meta never leaks into it.
+func TestCommand_ListTable_RendersRowsFromEnvelope(t *testing.T) {
+	s := newGrafana(t, twoSuggestions)
+
+	stdout, _, err := runList(t, fakeLoader{host: s.URL, uid: "sm-uid"}, "-o", "table")
+	require.NoError(t, err)
+
+	assert.Contains(t, stdout, "TARGET")
+	assert.Contains(t, stdout, "https://a.example.com")
+	assert.Contains(t, stdout, "https://b.example.com")
+	assert.NotContains(t, stdout, "list_meta")
+}
+
+// The Reliability Inbox is an experimental service, so every command in the
+// subtree carries the repo's experimental marking
+// (docs/design/experimental-commands.md). cmd/gcx/root only checks commands
+// that already carry the marker, so an unmarked one would pass CI there.
+func TestCommands_AreMarkedExperimental(t *testing.T) {
+	const preamble = "This command is experimental. It may be removed, or its subcommands, " +
+		"flags and responses may change without following the normal semantic versioning conventions."
+
+	group := Commands(fakeLoader{})
+	children := group.Commands()
+	require.Len(t, children, 1, "the group has one subcommand")
+	cmds := []*cobra.Command{group, children[0]}
+
+	for _, cmd := range cmds {
+		t.Run(cmd.CommandPath(), func(t *testing.T) {
+			assert.True(t, strings.HasPrefix(cmd.Short, "[experimental] "), cmd.Short)
+			assert.Equal(t, agent.StabilityExperimental, cmd.Annotations[agent.AnnotationStability])
+			assert.True(t, strings.HasPrefix(strings.Join(strings.Fields(cmd.Long), " "), preamble),
+				"long description must begin with the experimental preamble")
+		})
+	}
+}
+
+// --json field selection is how a caller keeps this output small (the full
+// records are ~3 KB each), so it must work through the envelope and must keep
+// the truncation signal.
+func TestCommand_JSONFieldSelectionKeepsListMeta(t *testing.T) {
+	s := newGrafana(t, nSuggestions(12))
+
+	stdout, _, err := runList(t, fakeLoader{host: s.URL, uid: "sm-uid"}, "--json", "id,target")
+	require.NoError(t, err)
+
+	var got struct {
+		Suggestions []map[string]any `json:"suggestions"`
+		ListMeta    map[string]any   `json:"list_meta"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &got))
+
+	require.Len(t, got.Suggestions, defaultLimit)
+	assert.Equal(t, map[string]any{"id": "s1", "target": "https://t1.example.com"}, got.Suggestions[0])
+	assert.NotNil(t, got.ListMeta, "field selection must not drop the truncation signal")
+}
+
+// Warnings come from the shared emitter so agent mode gets the typed JSONL
+// record, and they stay off stdout.
+func TestCommand_WarningsUseSharedEmitter(t *testing.T) {
+	s := newGrafana(t, `{"suggestions":[{"id":"s1","target":"t","checkType":"http"}],"warnings":["partial result"]}`)
+
+	_, stderr, err := runList(t, fakeLoader{host: s.URL, uid: "sm-uid"}, "-o", "json")
+	require.NoError(t, err)
+
+	assert.Regexp(t, `(?m)(^warn: partial result$|"class":"warning".*"summary":"partial result")`, stderr)
 }
 
 func TestCommand_NegativeLimitIsRejectedBeforeAnyCall(t *testing.T) {
