@@ -178,8 +178,11 @@ func TestAgentConformance_CredentialWritesStayInTemporaryConfig(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !bytes.Contains(raw, []byte(token)) || bytes.Contains(raw, []byte("keychain:gcx:")) {
+			if !bytes.Contains(raw, []byte(token)) {
 				t.Fatal("test credential must stay in the temporary config as plaintext")
+			}
+			if bytes.Contains(raw, []byte("keychain:gcx:")) {
+				t.Fatal("test credential must not reach the credential store")
 			}
 		})
 	}
