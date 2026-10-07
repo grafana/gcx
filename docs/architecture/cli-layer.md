@@ -17,6 +17,11 @@ gcx (root)
 │   ├── --header / -H        Custom headers (repeatable)
 │   └── --output / -o        json|yaml  [default: json]
 │
+├── agent                    [cmd/gcx/agent/command.go]
+│   ├── ping --text TEXT     Experimental phone notification via internal/agentping; uses Grafana user login
+│   ├── prune                Remove old response spill files
+│   └── skills               Install, update, list, read, and uninstall bundled Agent Skills
+│
 ├── config                   [cmd/gcx/config/command.go]
 │   ├── --config             [persistent: path to config file]
 │   ├── --context            [persistent: context override]

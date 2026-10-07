@@ -1,4 +1,5 @@
 [
+  "gcx agent ping",
   "gcx agent prune",
   "gcx agent skills install",
   "gcx agent skills uninstall",

@@ -34,5 +34,5 @@ gcx agent prune [flags]
 
 ### SEE ALSO
 
-* [gcx agent](gcx_agent.md)	 - Agent mode utilities
+* [gcx agent](gcx_agent.md)	 - Utilities for AI agents
 

@@ -1,4 +1,5 @@
 {
+ "gcx agent ping": "finite",
  "gcx agent prune": "finite",
  "gcx agent skills get": "finite",
  "gcx agent skills install": "finite",

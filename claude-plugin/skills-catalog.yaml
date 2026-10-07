@@ -1,6 +1,8 @@
 # Release lifecycle metadata, not a record of ownership or installation.
 # Keep retired entries indefinitely so users can skip releases and still uninstall.
 skills:
+  agent-ping:
+    status: active
   agento11y:
     status: active
   agento11y-instrument:

@@ -21,6 +21,7 @@ import "strings"
 //
 //nolint:gochecknoglobals // central availability registry, accessed via IsCloudOnlyPath
 var cloudOnlyPaths = []string{
+	"gcx agent ping",           // Mobile notifications via Grafana IRM.
 	"gcx slo",                  // Service Level Objectives — Grafana Cloud
 	"gcx synthetic-monitoring", // Synthetic Monitoring — requires Grafana Cloud
 	"gcx irm",                  // IRM: OnCall + Incident — Grafana Cloud

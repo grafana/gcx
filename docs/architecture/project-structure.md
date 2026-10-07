@@ -8,6 +8,7 @@ gcx/
 │   └── gcx/           # Binary entry point (public surface)
 │       ├── main.go           # Version vars, main(), error handler
 │       ├── root/             # Root Cobra command, global flags, logging setup
+│       ├── agent/            # Agent utilities: phone notifications, spill cleanup, skills
 │       ├── auth/             # OAuth login command (browser-based PKCE flow)
 │       ├── cloud/            # Cloud login, stack management, and OAuth user organisation memberships
 │       ├── config/           # 'config' subcommand implementations
@@ -33,6 +34,7 @@ gcx/
 ├── internal/                 # All non-public packages (Go enforced)
 │   ├── agent/                # Agent-mode detection, command annotations, known-resource registry with operation hints
 │   ├── agentlog/             # Agent invocation failure logger (opt-in JSONL disk log, XDG state dir — wired into handleError in cmd/gcx/main.go)
+│   ├── agentping/            # User-identity mobile notifications through the Grafana IRM plugin
 │   ├── assistant/            # Assistant client packages (prompt state, investigations, MCP server integrations)
 │   │   ├── mcpservers/       # MCP-servers HTTP client (offset pagination, full-exhaustion List)
 │   │   └── mcpserver/        # MCPServer manifest domain type + TypedCRUD adapter wiring + header write-intent mapping
