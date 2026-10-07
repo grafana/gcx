@@ -22,11 +22,15 @@ gcx synthetic-monitoring checks update <name> [flags]
 
   # Update and show previous status.
   gcx synthetic-monitoring checks update web-check-1234 -f check.yaml --show-status
+
+  # Validate the update with the Synthetic Monitoring API without applying it.
+  gcx synthetic-monitoring checks update web-check-1234 -f check.yaml --dry-run
 ```
 
 ### Options
 
 ```
+      --dry-run            Validate the check with the Synthetic Monitoring API without updating it
   -f, --filename string    File containing the check manifest (YAML)
   -h, --help               help for update
       --jq string          jq expression to apply to JSON output. Mutually exclusive with --json.

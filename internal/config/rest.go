@@ -496,6 +496,7 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) (NamespacedRESTCo
 	prevWrap := rcfg.WrapTransport
 	payloadLogging := httputils.PayloadLogging(ctx)
 	rcfg.WrapTransport = func(rt http.RoundTripper) http.RoundTripper {
+		rt = httputils.WireTransport(rt)
 		// Innermost layer: dump the bytes that reach the wire, after every
 		// outer layer added its headers. The OAuth bearer token comes from
 		// prevWrap below, so a dump placed further out would not show it.

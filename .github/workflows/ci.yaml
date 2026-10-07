@@ -42,6 +42,9 @@ jobs:
       - name: Run golangci-lint
         run: mise run lint
 
+      - name: Vet wasip1-only files
+        run: mise run vet:wasip1
+
   tests:
     name: Tests
     runs-on: ubuntu-latest

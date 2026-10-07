@@ -44,6 +44,19 @@ linters:
           deny:
             - pkg: "github.com/davecgh/go-spew"
               desc: debug statements should be removed
+    forbidigo:
+      analyze-types: true
+      forbid:
+        # forbidigo's default, kept because setting forbid replaces it.
+        - pattern: ^(fmt\.Print(|f|ln)|print|println)$
+        - pattern: ^http\.(DefaultClient|Get|Head|Post|PostForm)$
+          pkg: ^net/http$
+          msg: use httputils.NewClient so requests get logging, User-Agent and retries
+        # A transport built outside httputils skips WireTransport, so on wasip1
+        # it dials sockets that don't exist.
+        - pattern: ^http\.Transport$
+          pkg: ^net/http$
+          msg: build transports in httputils so they pass through WireTransport
     gomoddirectives:
       replace-allow-list:
         - github.com/hashicorp/memberlist
@@ -69,6 +82,13 @@ linters:
       - linters: [gosec]
         text: "G115"
         path: "(terminal|graph)/.*\\.go$"
+      # Tests talk to httptest servers; the shared client stack adds nothing there.
+      - linters: [forbidigo]
+        text: "httputils.NewClient"
+        path: "_test\\.go$"
+      - linters: [forbidigo]
+        text: "WireTransport"
+        path: "^internal/httputils/|_test\\.go$"
       # Build scripts: parser.ParseDir works fine; go/packages is overkill here.
       - linters: [staticcheck]
         text: "SA1019.*ParseDir"

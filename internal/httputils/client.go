@@ -31,6 +31,9 @@ type ClientOpts struct {
 	// CheckRedirect, if non-nil, is set on the returned client to gate redirects
 	// (see http.Client.CheckRedirect).
 	CheckRedirect func(req *http.Request, via []*http.Request) error
+	// DisableRetry omits the retry layer, for best-effort calls that must
+	// fail fast rather than spend their time budget on backoff.
+	DisableRetry bool
 }
 
 // NewClient returns a configured *http.Client.
@@ -45,12 +48,15 @@ func NewClient(opts ClientOpts) *http.Client {
 		middlewares = []Middleware{LoggingMiddleware}
 	}
 
-	var rt http.RoundTripper = NewTransport(opts.TLSConfig)
+	rt := WireTransport(NewTransport(opts.TLSConfig))
 	for _, mw := range middlewares {
 		rt = mw(rt)
 	}
-	// Outermost layers: User-Agent injection, then retry for rate limiting (429) and transient errors.
-	rt = &retry.Transport{Base: rt}
+	// Outermost layers: User-Agent injection, then (unless DisableRetry) retry
+	// for rate limiting (429) and transient errors.
+	if !opts.DisableRetry {
+		rt = &retry.Transport{Base: rt}
+	}
 	rt = &UserAgentTransport{Base: rt}
 	return &http.Client{Timeout: timeout, Transport: rt, CheckRedirect: opts.CheckRedirect}
 }

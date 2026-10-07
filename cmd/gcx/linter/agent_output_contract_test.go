@@ -14,7 +14,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/gcxerrors"
-	"github.com/grafana/gcx/internal/linter"
+	"github.com/grafana/gcx/internal/linter/linterr"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -203,7 +203,7 @@ func TestLintTest_AgentModeSingleJSONDocument(t *testing.T) {
 
 			if tc.wantErr {
 				emitted := requireEmitted(t, err, gcxerrors.ExitGeneralError)
-				require.ErrorIs(t, emitted, linter.ErrTestsFailed)
+				require.ErrorIs(t, emitted, linterr.ErrTestsFailed)
 			} else {
 				require.NoError(t, err)
 			}
@@ -279,7 +279,7 @@ func TestLintTest_FailingTestsDirectFormats(t *testing.T) {
 			stdout, err := runCommand(t, testCmd(), append(tc.args, dir)...)
 
 			emitted := requireEmitted(t, err, gcxerrors.ExitGeneralError)
-			require.ErrorIs(t, emitted, linter.ErrTestsFailed)
+			require.ErrorIs(t, emitted, linterr.ErrTestsFailed)
 			assert.Contains(t, stdout, "test_fails")
 
 			if len(tc.args) > 0 {

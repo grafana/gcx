@@ -121,18 +121,20 @@ func (r *RegistryIndex) RegisterStatic(desc resources.Descriptor, aliases []stri
 // It tries to find the most precise match based on the information in the partial GVK.
 // (i.e. it will try to scope down to the exact group & version if provided and fall back to the preferred version if not).
 // If no group is provided, it will return the first group that supports the resource.
+// If the versioned reading is unsupported, it tries the resource.group reading.
 func (r *RegistryIndex) LookupPartialGVK(gvk resources.PartialGVK) (resources.Descriptor, bool) {
 	groupKindCandidates, ok := r.getKindCandidates(gvk.Resource)
 	if !ok {
 		return resources.Descriptor{}, false
 	}
 
-	desc, ok := r.filterCandidates(groupKindCandidates, gvk.Group, gvk.Version)
-	if !ok {
-		return resources.Descriptor{}, false
+	if desc, ok := r.filterCandidates(groupKindCandidates, gvk.Group, gvk.Version); ok {
+		return desc, true
 	}
-
-	return desc, true
+	if groupOnly, ok := gvk.GroupOnlyCandidate(); ok {
+		return r.filterCandidates(groupKindCandidates, groupOnly, "")
+	}
+	return resources.Descriptor{}, false
 }
 
 // LookupPreferredPerGroup returns the preferred-version descriptor for every group
@@ -190,18 +192,20 @@ func (r *RegistryIndex) LookupPreferredPerGroup(gvk resources.PartialGVK) (resou
 // If group is provided, it will only return versions for that group.
 // If version is provided, it will only return that specific version (same as LookupPartialGVK).
 // If neither group nor version are provided, it will return all versions of all groups that support the resource.
+// If the versioned reading is unsupported, it returns all versions for the resource.group reading.
 func (r *RegistryIndex) LookupAllVersionsForPartialGVK(gvk resources.PartialGVK) (resources.Descriptors, bool) {
 	groupKindCandidates, ok := r.getKindCandidates(gvk.Resource)
 	if !ok {
 		return nil, false
 	}
 
-	descs, ok := r.filterAllCandidates(groupKindCandidates, gvk.Group, gvk.Version)
-	if !ok {
-		return nil, false
+	if descs, ok := r.filterAllCandidates(groupKindCandidates, gvk.Group, gvk.Version); ok {
+		return descs, true
 	}
-
-	return descs, true
+	if groupOnly, ok := gvk.GroupOnlyCandidate(); ok {
+		return r.filterAllCandidates(groupKindCandidates, groupOnly, "")
+	}
+	return nil, false
 }
 
 // Update updates the registry index from the provided API groups and resources.

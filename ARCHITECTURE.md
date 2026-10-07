@@ -38,6 +38,10 @@ Grafana K8s API                      /apis/{group}/{version}/namespaces/{ns}/{pl
 
 **Key abstractions** ([resource-model.md](docs/architecture/resource-model.md)): `Resource` wraps `unstructured.Unstructured` — no pre-generated Go types. `Selector` → `Filter` two-stage resolution keeps CLI ignorant of API details. `Processor` pipeline composes transformations at defined pipeline points. `Discovery` registry resolves plural names and short names to full GVKs at runtime.
 
+Selectors accept both `resource.version.group` and `resource.group`, including
+dotted API groups. Discovery tries the versioned reading first, then the full
+group name, for both native resources and provider adapters.
+
 **Data flows** ([data-flows.md](docs/architecture/data-flows.md)): Push reads local files, resolves selectors, applies processors, pushes via dynamic client with folder-before-dashboard ordering and bounded concurrency (errgroup, default 10). Pull fetches from API, strips server-managed fields, writes to disk grouped by kind.
 
 ### 2. Provider System

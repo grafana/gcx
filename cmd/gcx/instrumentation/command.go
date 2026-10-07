@@ -19,9 +19,7 @@
 package instrumentation
 
 import (
-	"github.com/grafana/gcx/cmd/gcx/instrumentation/check"
 	"github.com/grafana/gcx/cmd/gcx/instrumentation/clusters"
-	"github.com/grafana/gcx/cmd/gcx/instrumentation/explain"
 	"github.com/grafana/gcx/cmd/gcx/instrumentation/services"
 	"github.com/grafana/gcx/cmd/gcx/instrumentation/setup"
 	"github.com/grafana/gcx/cmd/gcx/instrumentation/status"
@@ -72,12 +70,10 @@ The instrumentation command tree provides:
 	cmd.AddCommand(
 		setup.Command(loader),
 		status.Command(loader),
-		check.Command(loader),
-		explain.Command(),
-		explain.ListCommand(),
 		clusters.Command(loader),
 		services.Command(loader),
 	)
+	cmd.AddCommand(localCommands(loader)...)
 
 	return cmd
 }
