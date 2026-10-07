@@ -19,7 +19,8 @@
 | [docs/design/](docs/design/) | Prescriptive UX implementation rules (output, errors, agent mode, naming, …) |
 | [docs/rfcs/](docs/rfcs/README.md) | Engineering proposals, design tradeoffs, and validation criteria |
 | [docs/reference/](docs/reference/) | Provider guides, CLI reference, migration analysis |
-| [docs/_templates/](docs/_templates/) | Spec and planning templates (feature, bugfix, refactor, ADR, research) |
+| [openspec/](openspec/) | Per-PR changes: proposal, spec delta, design and tasks ([OpenSpec](https://github.com/Fission-AI/OpenSpec)) |
+| [docs/_templates/](docs/_templates/) | ADR and research report templates |
 
 ## Architecture at a Glance
 
@@ -99,6 +100,7 @@ internal/        Non-public packages — full annotated map: docs/architecture/p
 | **Changing config or auth** | [ARCHITECTURE.md](ARCHITECTURE.md) § Configuration + § Auth | [docs/architecture/config-system.md](docs/architecture/config-system.md), [docs/architecture/client-api-layer.md](docs/architecture/client-api-layer.md) |
 | **Fixing a bug** | [ARCHITECTURE.md](ARCHITECTURE.md) for the relevant subsystem | Jump directly to the deep-dive doc for that domain |
 | **Creating or revising an RFC** | [RFC index and conventions](docs/rfcs/README.md), repo-local [create-rfc](.claude/skills/create-rfc/SKILL.md) | Use [update-rfc](.claude/skills/update-rfc/SKILL.md) when explicitly asked to reconcile verified implementation evidence |
+| **Planning work before implementation** | The order is: research if needed (keep it outside the repo when its outcomes don't belong here) → a GitHub issue with a proposal → an [RFC](docs/rfcs/README.md) for work that spans several PRs → one [OpenSpec](openspec/) change per PR (`openspec-propose` skill) | Capability placement and contract still come from `integrate-with-gcx`; record the outcome in the OpenSpec change. OpenSpec replaces the old feature, bugfix and refactor spec templates; `docs/_templates/` keeps only ADR and research templates |
 | **Planning a new feature** | [VISION.md](VISION.md) (does it belong?), [CONSTITUTION.md](CONSTITUTION.md) (can we build it within the rules?) | [DESIGN.md](DESIGN.md) for UX, [ARCHITECTURE.md](ARCHITECTURE.md) for structure |
 | **Adding, extending, or reviewing a gcx capability (domain teams)** | Read the repo-local [`integrate-with-gcx`](.claude/skills/integrate-with-gcx/SKILL.md) contributor skill first — it covers necessity, placement, readiness, contract, and self-review | [docs/design/command-naming.md](docs/design/command-naming.md), [docs/reference/provider-guide.md](docs/reference/provider-guide.md) |
 | **Reviewing someone else's PR** | The repo-local [`review-pr`](.claude/skills/review-pr/SKILL.md) skill — report shape, over-engineering rubric, lock-in ranking | [Compliance Hierarchy](#compliance-hierarchy) below — check all 4 levels in order |

@@ -10,6 +10,8 @@ RFCs propose engineering changes for review: the problem, user experience, techn
 
 ## Authoring and maintenance
 
+An RFC sits between a GitHub issue that proposes the work and the per-PR OpenSpec changes under [`openspec/changes/`](../../openspec/) that implement it. Write one when the work spans several PRs.
+
 Use `NNN-title.md`, choosing the next unused number starting at `001`, and add the document to this index. Keep later revisions in the same file. Include terminology in the RFC when needed rather than creating a separate glossary.
 
 The repository provides two contributor skills:

@@ -231,7 +231,8 @@ When staging is real:
 - Top-level plan with all stages, file tree, and decisions summary
 - Per-stage docs with scope, files to create, and acceptance criteria
 
-Use the templates in `docs/_templates/` for structure; `docs/plans/` holds
+Write the cross-stage plan as an RFC (`docs/rfcs/README.md`) and each stage as
+an OpenSpec change under `openspec/changes/`; `docs/plans/` holds older
 precedent planning documents.
 
 ### 2d. Write Smoke Test Plan
