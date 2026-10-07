@@ -149,9 +149,14 @@ of about 40 s, and the cache can stay read-only.
   `experimental/sandbox` version, or `sha-<commit>` for a pseudo-version. Don't
   use `main`.
 - **Compiled code is per platform.** Images exist for `linux/amd64` and
-  `linux/arm64`; Docker picks the one matching your build. The code only matches
-  the wazero version this module pins. If your build resolves a different
-  wazero, the cache misses and `New` compiles from scratch: slower, but correct.
+  `linux/arm64`; Docker picks the one matching your build. wazero keys its cache
+  on its own version, `GOARCH`/`GOOS`, the module bytes, the sandbox's fixed
+  settings (termination on context cancellation, no listeners), and a few CPU
+  features: SSE4.1, BMI1 and ABM on amd64, LSE atomics on arm64. Any modern
+  server CPU has these. Embedder settings such as `MemoryLimitBytes` don't
+  affect it. If anything differs (for example, your build resolves a different
+  wazero version than this module pins), the cache misses and `New` compiles
+  from scratch: slower, but correct.
 
 ## Security model
 
