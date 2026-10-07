@@ -738,19 +738,40 @@ default API version. It does not imply incorrect command syntax.
 ErrorToDetailedError(err)
     │
     ├─ errors.As(err, &DetailedError{}) → return as-is if already detailed
-    ├─ convertWaitTimeoutEmitted → ErrWaitTimeoutEmitted sentinel (suppress secondary output)
-    ├─ convertUnknownFieldSelectionErrors → UnknownFieldSelectionError (--json unknown field)
-    ├─ convertPartialFailureErrors → PartialFailureError (exit 4)
-    ├─ convertUsageErrors    → UsageError (exit 2)
-    ├─ convertConfigErrors   → ValidationError, UnmarshalError, ErrContextNotFound
-    ├─ convertFSErrors       → fs.PathError (not exist, invalid, permission)
-    ├─ convertResourcesErrors → InvalidSelectorError (exit 2), UnsupportedResourceError (exit 1)
-    ├─ convertNetworkErrors  → url.Error
-    ├─ convertAPIErrors      → k8s StatusError (401, 403, 404, ...)
-    └─ fallback: DetailedError{Summary: "Unexpected error", Parent: err}
+    ├─ ... domain and transport converters (specific errors first)
+    ├─ convertHTTPStatusErrors → concrete gcxerrors.HTTPStatusError
+    └─ fallbackDetailedError  → Unexpected error
 ```
 
-**Adding new error conversions:** add a `convertXxxErrors` function following the `func(error) (*DetailedError, bool)` signature and append it to the `errorConverters` slice in `ErrorToDetailedError`.
+`convertHTTPStatusErrors` is the final typed converter, immediately before the
+fallback. This preserves specialized handling for errors that carry domain
+context while still classifying otherwise-unhandled HTTP failures. It matches
+the concrete `gcxerrors.HTTPStatusError` type through `errors.As`; the shared
+`HTTPStatusCode()` interface is used by telemetry and is not the converter's
+match condition.
+
+The HTTP status determines the broad classification: 401 is `Authentication
+failed`, 403 is `Authorization failed`, 404 is `Resource not found`, 409 is
+`Resource conflict`, and other statuses are `API error`. Authentication and
+authorization both use exit 3. An HTML response does not change this
+status-based summary or exit code; converters replace HTML response details
+with a generic explanation so an SSO page is not rendered as an API message.
+The raw `gcx api` command is exempt from that rendering rule and keeps its full
+response body as passthrough output.
+
+Every converter summary uses an exported constant from `internal/gcxerrors`.
+The converter tests enforce that rule with an AST check (including helper
+returns), check that the constants match the summary table in
+`docs/design/errors.md`, and verify produced summaries at runtime. Whole-struct
+copies of an already-converted `DetailedError` are allowed. The fallback uses
+`Unexpected error` and puts the complete original message in `Details`; it
+leaves `Parent` unset so the message is not repeated.
+
+**Adding new error conversions:** add a `convertXxxErrors` function following
+the `func(error) (*DetailedError, bool)` signature and append it to the
+`errorConverters` slice in `ErrorToDetailedError`. Keep the HTTP status
+converter last among typed converters, and use a summary constant from
+`internal/gcxerrors`.
 
 ---
 

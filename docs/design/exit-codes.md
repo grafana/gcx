@@ -23,12 +23,13 @@ Constants defined in `internal/gcxerrors/exitcodes.go`.
 **Implementation state:**
 - Exit code 2 (usage error) is set by `convertUsageErrors`,
   `convertCobraUnknownCommandErrors`, and `convertRequiredFlagErrors` for bad
-  flags, unknown commands, and missing required flags. Instrumentation setup's
-  mutually exclusive flag pairs also exit 2 through
-  `convertInstrumentationMutualExclusiveErrors`.
+  flags, unknown commands, and missing required flags. The instrumentation
+  `ErrMutuallyExclusiveFlags` converter also assigns exit 2; the current setup
+  validation does not emit this sentinel, so that branch is unit-tested only.
 - Exit code 3 (auth failure) covers HTTP 401/403 in the K8s, query, datasource,
   service, Fleet, GCOM, login, and the final concrete `HTTPStatusError` converters.
-  This includes provider errors, Assistant helper errors, and raw `gcx api` failures. A 401 reports `Authentication failed`
+  This includes provider errors, Assistant helper errors, and raw `gcx api`
+  failures. A 401 reports `Authentication failed`
   and suggests credential recovery; a 403 reports `Authorization failed` and
   suggests checking roles or scopes. Adaptive Logs `invalid scope` reports
   authorization failure for both statuses.
