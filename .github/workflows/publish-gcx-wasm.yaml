@@ -19,7 +19,15 @@ on:
   push:
     branches: [main]
     tags: ["experimental/sandbox/v*"]
-  workflow_dispatch: {}
+  # Manual runs use the workflow from the ref they're dispatched on, so to
+  # publish a sandbox tag that predates this workflow, dispatch from main with
+  # sandbox_version set.
+  workflow_dispatch:
+    inputs:
+      sandbox_version:
+        description: "Publish an existing experimental/sandbox tag instead of the dispatched ref, e.g. v0.2.0"
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -36,11 +44,38 @@ jobs:
     name: Build gcx.wasm
     if: github.repository == 'grafana/gcx'
     runs-on: ubuntu-latest
+    outputs:
+      commit: ${{ steps.source.outputs.commit }}
+      ref: ${{ steps.source.outputs.ref }}
 
     steps:
+      - name: Resolve the ref to publish
+        id: ref
+        env:
+          SANDBOX_VERSION: ${{ inputs.sandbox_version }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SANDBOX_VERSION:-}" ]; then
+            echo "ref=$GITHUB_REF" >>"$GITHUB_OUTPUT"
+          elif [[ "$SANDBOX_VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "ref=refs/tags/experimental/sandbox/$SANDBOX_VERSION" >>"$GITHUB_OUTPUT"
+          else
+            echo "::error::sandbox_version must look like v1.2.3, got: $SANDBOX_VERSION"
+            exit 1
+          fi
+
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
+          ref: ${{ steps.ref.outputs.ref }}
           persist-credentials: false
+
+      - name: Record the commit
+        id: source
+        env:
+          REF: ${{ steps.ref.outputs.ref }}
+        run: |
+          echo "commit=$(git rev-parse HEAD)" >>"$GITHUB_OUTPUT"
+          echo "ref=$REF" >>"$GITHUB_OUTPUT"
 
       # No build caches in this workflow: it publishes what it builds.
       - name: Setup mise
@@ -79,8 +114,11 @@ jobs:
             runner: ubuntu-24.04-arm
 
     steps:
+      # The precompile command must come from the same commit as the module,
+      # so it uses the same wazero version.
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
+          ref: ${{ needs.build.outputs.commit }}
           persist-credentials: false
 
       - name: Setup mise
@@ -108,6 +146,7 @@ jobs:
           IMAGE_DIR: ${{ runner.temp }}/image
           PLATFORM: ${{ matrix.platform }}
           DIGEST_DIR: ${{ runner.temp }}/digests
+          COMMIT: ${{ needs.build.outputs.commit }}
         run: |
           set -euo pipefail
           printf 'FROM scratch\nCOPY gcx.wasm gcx.commit /\nCOPY cache /cache\n' >"$IMAGE_DIR/Dockerfile"
@@ -117,7 +156,7 @@ jobs:
             --platform "$PLATFORM" \
             --provenance=false \
             --label "org.opencontainers.image.source=https://github.com/grafana/gcx" \
-            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            --label "org.opencontainers.image.revision=$COMMIT" \
             --metadata-file "$RUNNER_TEMP/metadata.json" \
             --output "type=image,name=$IMAGE,push-by-digest=true,name-canonical=true,push=true" \
             "$IMAGE_DIR"
@@ -133,7 +172,7 @@ jobs:
 
   publish:
     name: Tag the multi-platform image
-    needs: precompile
+    needs: [build, precompile]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -150,12 +189,14 @@ jobs:
         env:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DIGEST_DIR: ${{ runner.temp }}/digests
+          COMMIT: ${{ needs.build.outputs.commit }}
+          REF: ${{ needs.build.outputs.ref }}
         run: |
           set -euo pipefail
-          tags=(--tag "$IMAGE:sha-$GITHUB_SHA" --tag "$IMAGE:sha-${GITHUB_SHA:0:12}")
-          case "$GITHUB_REF" in
+          tags=(--tag "$IMAGE:sha-$COMMIT" --tag "$IMAGE:sha-${COMMIT:0:12}")
+          case "$REF" in
           refs/heads/main) tags+=(--tag "$IMAGE:main") ;;
-          refs/tags/experimental/sandbox/v*) tags+=(--tag "$IMAGE:sandbox-${GITHUB_REF#refs/tags/experimental/sandbox/}") ;;
+          refs/tags/experimental/sandbox/v*) tags+=(--tag "$IMAGE:sandbox-${REF#refs/tags/experimental/sandbox/}") ;;
           esac
           sources=()
           for f in "$DIGEST_DIR"/*; do sources+=("$IMAGE@$(cat "$f")"); done
@@ -163,7 +204,7 @@ jobs:
           echo "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
           docker buildx imagetools create \
             --annotation "index:org.opencontainers.image.source=https://github.com/grafana/gcx" \
-            --annotation "index:org.opencontainers.image.revision=$GITHUB_SHA" \
+            --annotation "index:org.opencontainers.image.revision=$COMMIT" \
             "${tags[@]}" \
             "${sources[@]}"
-          docker buildx imagetools inspect "$IMAGE:sha-$GITHUB_SHA"
+          docker buildx imagetools inspect "$IMAGE:sha-$COMMIT"
