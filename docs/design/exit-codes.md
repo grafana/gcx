@@ -82,6 +82,10 @@ Constants defined in `internal/gcxerrors/exitcodes.go`.
 - Exit code 6 (version incompatible) is set by `convertVersionErrors` when
   Grafana version < 12 is detected.
 
+Malformed resource selector syntax exits 2. A well-formed selector whose resource
+type or API version is not served by the current server exits 1 with
+`Endpoint not available`; it does not imply incorrect command syntax.
+
 ### 2.2 Setting Exit Codes in Converters
 
 When writing or modifying error converters in `cmd/gcx/fail/convert.go`,

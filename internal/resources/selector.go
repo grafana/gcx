@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// InvalidSelectorError is an error that occurs when a command is invalid.
+// InvalidSelectorError reports malformed resource selector syntax.
 type InvalidSelectorError struct {
 	Command string
 	Err     string

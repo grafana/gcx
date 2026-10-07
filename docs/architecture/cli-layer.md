@@ -711,6 +711,19 @@ Error: Resource not found
 
 Commands can return a `DetailedError` directly from `RunE`. Business logic layers can also return them (e.g. `fetch.go` returns one when `ExpectSingleTarget` is violated).
 
+### Command Usage and Server Capabilities
+
+`internal/gcxerrors.UsageError` and `NewCommandUsageError` provide the same
+expected usage line and help suggestion to command implementations in both
+`cmd/` and `internal/`. The `cmd/gcx/fail` exports remain compatibility wrappers;
+the converter renders these errors as `Invalid command usage` with exit 2.
+
+Malformed resource selectors also exit 2, with suggestions that apply to any
+resource command. Discovery returns `resources.UnsupportedResourceError` when
+a well-formed resource type or API version is absent from the server. This is
+`Endpoint not available` with exit 1, including dashboard commands using their
+default API version. It does not imply incorrect command syntax.
+
 ### `ErrorToDetailedError` — Error Conversion Pipeline
 
 `main.go:handleError` calls this on any error before printing. It runs a chain of type-specific converters:
@@ -725,7 +738,7 @@ ErrorToDetailedError(err)
     ├─ convertUsageErrors    → UsageError (exit 2)
     ├─ convertConfigErrors   → ValidationError, UnmarshalError, ErrContextNotFound
     ├─ convertFSErrors       → fs.PathError (not exist, invalid, permission)
-    ├─ convertResourcesErrors → InvalidSelectorError
+    ├─ convertResourcesErrors → InvalidSelectorError (exit 2), UnsupportedResourceError (exit 1)
     ├─ convertNetworkErrors  → url.Error
     ├─ convertAPIErrors      → k8s StatusError (401, 403, 404, ...)
     └─ fallback: DetailedError{Summary: "Unexpected error", Parent: err}

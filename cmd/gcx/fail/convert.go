@@ -880,14 +880,21 @@ func joinErrorDetails(parts ...string) string {
 }
 
 func convertResourcesErrors(err error) (*gcxerrors.DetailedError, bool) {
+	var unsupported *resources.UnsupportedResourceError
+	if errors.As(err, &unsupported) {
+		return &gcxerrors.DetailedError{
+			Parent:  err,
+			Summary: "Endpoint not available",
+		}, true
+	}
 	invalidSelectorErr := &resources.InvalidSelectorError{}
 	if errors.As(err, invalidSelectorErr) {
 		return &gcxerrors.DetailedError{
 			Parent:  err,
 			Summary: "Invalid command usage",
 			Suggestions: []string{
-				"List dashboards with a resource selector: gcx resources get dashboards",
-				"Run 'gcx resources get --help' for selector syntax and examples",
+				"Use a resource selector of the form TYPE or TYPE/UID",
+				"Run the command with --help for selector syntax and examples",
 			},
 			ExitCode: new(gcxerrors.ExitUsageError),
 		}, true

@@ -1727,9 +1727,51 @@ func TestErrorToDetailedError_InvalidResourceSelector(t *testing.T) {
 			require.NotNil(t, got.ExitCode)
 			assert.Equal(t, gcxerrors.ExitUsageError, *got.ExitCode)
 			assert.Equal(t, 1, strings.Count(got.Error(), "dashboards////"))
+			assert.NotContains(t, got.Error(), "gcx resources get")
 			var rendered bytes.Buffer
 			require.NoError(t, got.WriteJSON(&rendered, gcxerrors.ExitUsageError))
 			assert.Contains(t, rendered.String(), "too many selector segments")
 		})
 	}
+}
+
+func TestErrorToDetailedError_UnsupportedResource(t *testing.T) {
+	for _, prefix := range []string{"", "server does not support dashboards resource (api-version: v99)", "no api-version specified, server does not expose the dashboards resource", "resources get", "resources delete", "resources push", "resources validate", "resources schemas", "resources examples"} {
+		t.Run(prefix, func(t *testing.T) {
+			cause := &resources.UnsupportedResourceError{Selector: "dashboards", Reason: "the server does not support this resource"}
+			var err error = cause
+			if prefix != "" {
+				err = fmt.Errorf("%s: %w", prefix, err)
+			}
+			got := fail.ErrorToDetailedError(err)
+			require.Equal(t, "Endpoint not available", got.Summary)
+			exit := gcxerrors.ExitGeneralError
+			if got.ExitCode != nil {
+				exit = *got.ExitCode
+			}
+			require.Equal(t, gcxerrors.ExitGeneralError, exit)
+			require.ErrorIs(t, got, cause)
+			require.Empty(t, got.Suggestions)
+			var rendered bytes.Buffer
+			require.NoError(t, got.WriteJSON(&rendered, exit))
+			require.Contains(t, rendered.String(), "the server does not support this resource")
+			require.NotContains(t, rendered.String(), "Invalid command usage")
+		})
+	}
+}
+
+func TestErrorToDetailedError_SharedCommandUsage(t *testing.T) {
+	cmd := &cobra.Command{Use: "list [flags]"}
+	parent := &cobra.Command{Use: "dashboards"}
+	root := &cobra.Command{Use: "gcx"}
+	root.AddCommand(parent)
+	parent.AddCommand(cmd)
+	cause := errors.New("--limit must be >= 0")
+	got := fail.ErrorToDetailedError(gcxerrors.NewCommandUsageError(cmd, "", cause))
+	require.Equal(t, "Invalid command usage", got.Summary)
+	require.NotNil(t, got.ExitCode)
+	require.Equal(t, gcxerrors.ExitUsageError, *got.ExitCode)
+	require.Contains(t, got.Details, "--limit must be >= 0")
+	require.Contains(t, got.Details, "Expected:\n  gcx dashboards list [flags]")
+	require.Equal(t, []string{"Run 'gcx dashboards list --help' for full usage and examples"}, got.Suggestions)
 }

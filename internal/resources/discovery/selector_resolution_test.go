@@ -126,10 +126,12 @@ func TestRegistry_UnsupportedSelectorCandidates(t *testing.T) {
 			require.NoError(t, err)
 			_, err = discovery.NewStaticRegistry().MakeFilters(discovery.MakeFiltersOptions{Selectors: sels})
 			require.Error(t, err)
+			var unsupported *resources.UnsupportedResourceError
+			require.ErrorAs(t, err, &unsupported)
+			assert.Equal(t, tt.selector, unsupported.Selector)
+			assert.Equal(t, tt.wantErr, unsupported.Reason)
 			var invalid resources.InvalidSelectorError
-			require.ErrorAs(t, err, &invalid)
-			assert.Equal(t, tt.selector, invalid.Command)
-			assert.Equal(t, tt.wantErr, invalid.Err)
+			require.NotErrorAs(t, err, &invalid)
 		})
 	}
 }

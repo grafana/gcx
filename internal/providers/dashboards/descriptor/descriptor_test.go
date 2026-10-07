@@ -122,3 +122,35 @@ func TestResolve(t *testing.T) {
 		})
 	}
 }
+
+func TestResolve_ServerWithoutDashboards(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		var response any
+		switch r.URL.Path {
+		case "/api":
+			response = metav1.APIVersions{TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "APIVersions"}, Versions: []string{}}
+		case "/apis":
+			response = metav1.APIGroupList{TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "APIGroupList"}, Groups: []metav1.APIGroup{}}
+		default:
+			http.NotFound(w, r)
+			return
+		}
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			t.Errorf("encode discovery: %v", err)
+		}
+	}))
+	t.Cleanup(server.Close)
+	for _, version := range []string{"", "v99"} {
+		t.Run("api-version="+version, func(t *testing.T) {
+			t.Setenv("GCX_DISCOVERY_CACHE_DIR", t.TempDir())
+			cfg := config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}, Namespace: "default"}
+			_, err := descriptor.Resolve(t.Context(), cfg, version)
+			var unsupported *resources.UnsupportedResourceError
+			require.ErrorAs(t, err, &unsupported)
+			require.Contains(t, unsupported.Selector, "dashboards")
+			var invalid resources.InvalidSelectorError
+			require.NotErrorAs(t, err, &invalid)
+		})
+	}
+}
