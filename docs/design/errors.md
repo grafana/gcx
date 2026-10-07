@@ -77,6 +77,18 @@ func convertMyErrors(err error) (*gcxerrors.DetailedError, bool) {
 Converters are tried in order — first match wins. Place more specific
 converters before more general ones.
 
+#### HTML response details
+
+The converter chain applies one shared rendering helper to each converted error.
+It detects HTML with `http.DetectContentType` and the response Content-Type when
+available, then replaces body details with a generic explanation that includes
+the HTTP status and caller context. The domain converter still decides the
+summary, exit code, and remediation: an HTML 403 is authorization failure, and
+an HTML 502 is an API error. Raw HTML is not rendered, and non-HTML messages
+are not truncated by this helper. Typed transport errors keep their original
+`Error()` text. Raw `gcx api` is exempt and retains the complete body. Query
+errors embedded in HTTP 200 also keep their existing handling.
+
 #### Shared transport status errors
 
 The last typed converter matches concrete `gcxerrors.HTTPStatusError` values

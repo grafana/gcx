@@ -20,6 +20,8 @@ type HTTPStatusError struct {
 	ServerMessage string
 	// TraceID is the server trace identifier, when supplied in the response.
 	TraceID string
+	// ContentType is the response Content-Type header, when a response is available.
+	ContentType string
 	// Cause is the optional underlying error, preserved for errors.Is/As.
 	Cause error
 }

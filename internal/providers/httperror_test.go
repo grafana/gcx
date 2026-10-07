@@ -106,6 +106,7 @@ func TestFormatError(t *testing.T) {
 			require.ErrorAs(t, err, &statusErr)
 			assert.Equal(t, tt.serverMessage, statusErr.ServerMessage)
 			assert.Equal(t, tt.traceID, statusErr.TraceID)
+			assert.Empty(t, statusErr.ContentType, "FormatError has no response headers")
 			// The status and server metadata travel out-of-band; transport text
 			// stays byte-for-byte compatible.
 			var carrier interface{ HTTPStatusCode() int }
@@ -135,6 +136,7 @@ func TestHandleErrorResponseReadFailureCarriesStatusAndCause(t *testing.T) {
 	readErr := errors.New("boom")
 	resp := &http.Response{
 		StatusCode: http.StatusBadGateway,
+		Header:     http.Header{"Content-Type": {"text/html; charset=utf-8"}},
 		Body:       io.NopCloser(&failingReader{err: readErr}),
 	}
 
@@ -142,6 +144,10 @@ func TestHandleErrorResponseReadFailureCarriesStatusAndCause(t *testing.T) {
 	require.Error(t, err)
 	assert.Equal(t, "request failed with status 502 (could not read body: boom)", err.Error())
 	require.ErrorIs(t, err, readErr, "the reader error must stay in the unwrap chain")
+
+	var statusErr *gcxerrors.HTTPStatusError
+	require.ErrorAs(t, err, &statusErr)
+	assert.Equal(t, "text/html; charset=utf-8", statusErr.ContentType)
 
 	var carrier interface{ HTTPStatusCode() int }
 	require.ErrorAs(t, err, &carrier)
@@ -169,4 +175,21 @@ func TestConfirmDestructive_NonInteractiveEOF(t *testing.T) {
 	require.Error(t, err)
 	assert.False(t, ok)
 	assert.Contains(t, err.Error(), "use --force")
+}
+
+func TestHandleErrorResponsePreservesContentType(t *testing.T) {
+	for _, body := range []string{"", "<html>login</html>", `{"message":"denied"}`} {
+		t.Run(body, func(t *testing.T) {
+			resp := &http.Response{
+				StatusCode: http.StatusForbidden,
+				Header:     http.Header{"Content-Type": {"text/html; charset=utf-8"}},
+				Body:       io.NopCloser(strings.NewReader(body)),
+			}
+			err := providers.HandleErrorResponse(resp)
+			require.EqualError(t, err, providers.FormatError(http.StatusForbidden, []byte(body)).Error())
+			var statusErr *gcxerrors.HTTPStatusError
+			require.ErrorAs(t, err, &statusErr)
+			assert.Equal(t, "text/html; charset=utf-8", statusErr.ContentType)
+		})
+	}
 }

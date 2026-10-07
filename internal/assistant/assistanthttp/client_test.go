@@ -91,6 +91,7 @@ func TestHandleErrorResponse(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			resp := &http.Response{
 				StatusCode: tt.status,
+				Header:     http.Header{"Content-Type": {"text/html; charset=utf-8"}},
 				Body:       io.NopCloser(strings.NewReader(tt.body)),
 			}
 			err := assistanthttp.HandleErrorResponse(resp)
@@ -99,6 +100,7 @@ func TestHandleErrorResponse(t *testing.T) {
 			require.ErrorAs(t, err, &statusErr)
 			assert.Equal(t, tt.status, statusErr.HTTPStatusCode())
 			assert.Equal(t, tt.body, statusErr.ServerMessage)
+			assert.Equal(t, "text/html; charset=utf-8", statusErr.ContentType)
 			assert.Empty(t, statusErr.TraceID, "Assistant preserves the raw body without parsing JSON")
 			require.NoError(t, errors.Unwrap(err))
 		})
@@ -109,6 +111,7 @@ func TestHandleErrorResponse_ReadFailure(t *testing.T) {
 	readErr := errors.New("body read failed")
 	resp := &http.Response{
 		StatusCode: http.StatusBadGateway,
+		Header:     http.Header{"Content-Type": {"text/html; charset=utf-8"}},
 		Body:       io.NopCloser(failingReader{err: readErr}),
 	}
 	err := assistanthttp.HandleErrorResponse(resp)
@@ -118,6 +121,7 @@ func TestHandleErrorResponse_ReadFailure(t *testing.T) {
 	require.ErrorAs(t, err, &statusErr)
 	assert.Equal(t, http.StatusBadGateway, statusErr.HTTPStatusCode())
 	assert.Empty(t, statusErr.ServerMessage)
+	assert.Equal(t, "text/html; charset=utf-8", statusErr.ContentType)
 	assert.Empty(t, statusErr.TraceID)
 }
 

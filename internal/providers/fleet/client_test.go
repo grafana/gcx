@@ -571,6 +571,7 @@ func TestClient_NotFoundReturnsTypedError(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/problem+json")
 				w.WriteHeader(http.StatusNotFound)
 				_, _ = w.Write([]byte(tt.body))
 			}))
@@ -593,6 +594,7 @@ func TestClient_NotFoundReturnsTypedError(t *testing.T) {
 					require.ErrorAs(t, err, &httpErr)
 					assert.Equal(t, http.StatusNotFound, httpErr.Status)
 					assert.Equal(t, tt.body, httpErr.Body)
+					assert.Equal(t, "application/problem+json", httpErr.ContentType)
 					assert.Contains(t, httpErr.Path, "/Get")
 					assert.Equal(t, tt.resourceMissing, fleetbase.IsResourceNotFoundBody(httpErr.Body))
 				})

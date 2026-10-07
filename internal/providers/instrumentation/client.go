@@ -320,9 +320,10 @@ func (c *Client) GetAppInstrumentation(ctx context.Context, clusterName string) 
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("GetAppInstrumentation: %w", &fleet.HTTPError{
-			Status: resp.StatusCode,
-			Path:   pathGetAppInstrumentation,
-			Body:   fleet.ReadErrorBody(resp),
+			Status:      resp.StatusCode,
+			ContentType: resp.Header.Get("Content-Type"),
+			Path:        pathGetAppInstrumentation,
+			Body:        fleet.ReadErrorBody(resp),
 		})
 	}
 
@@ -387,9 +388,10 @@ func (c *Client) SetAppInstrumentation(ctx context.Context, clusterName string, 
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("SetAppInstrumentation: %w", &fleet.HTTPError{
-			Status: resp.StatusCode,
-			Path:   pathSetAppInstrumentation,
-			Body:   fleet.ReadErrorBody(resp),
+			Status:      resp.StatusCode,
+			ContentType: resp.Header.Get("Content-Type"),
+			Path:        pathSetAppInstrumentation,
+			Body:        fleet.ReadErrorBody(resp),
 		})
 	}
 	return nil
@@ -410,9 +412,10 @@ func (c *Client) GetK8SInstrumentation(ctx context.Context, clusterName string) 
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("GetK8SInstrumentation: %w", &fleet.HTTPError{
-			Status: resp.StatusCode,
-			Path:   pathGetK8SInstrumentation,
-			Body:   fleet.ReadErrorBody(resp),
+			Status:      resp.StatusCode,
+			ContentType: resp.Header.Get("Content-Type"),
+			Path:        pathGetK8SInstrumentation,
+			Body:        fleet.ReadErrorBody(resp),
 		})
 	}
 
@@ -459,9 +462,10 @@ func (c *Client) SetK8SInstrumentation(ctx context.Context, clusterName string, 
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("SetK8SInstrumentation: %w", &fleet.HTTPError{
-			Status: resp.StatusCode,
-			Path:   pathSetK8SInstrumentation,
-			Body:   fleet.ReadErrorBody(resp),
+			Status:      resp.StatusCode,
+			ContentType: resp.Header.Get("Content-Type"),
+			Path:        pathSetK8SInstrumentation,
+			Body:        fleet.ReadErrorBody(resp),
 		})
 	}
 	return nil
@@ -479,9 +483,10 @@ func (c *Client) SetupK8sDiscovery(ctx context.Context, urls BackendURLs, promHe
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("SetupK8sDiscovery: %w", &fleet.HTTPError{
-			Status: resp.StatusCode,
-			Path:   pathSetupK8sDiscovery,
-			Body:   fleet.ReadErrorBody(resp),
+			Status:      resp.StatusCode,
+			ContentType: resp.Header.Get("Content-Type"),
+			Path:        pathSetupK8sDiscovery,
+			Body:        fleet.ReadErrorBody(resp),
 		})
 	}
 	return nil
@@ -499,9 +504,10 @@ func (c *Client) RunK8sDiscovery(ctx context.Context, promHeaders PromHeaders) (
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("RunK8sDiscovery: %w", &fleet.HTTPError{
-			Status: resp.StatusCode,
-			Path:   pathRunK8sDiscovery,
-			Body:   fleet.ReadErrorBody(resp),
+			Status:      resp.StatusCode,
+			ContentType: resp.Header.Get("Content-Type"),
+			Path:        pathRunK8sDiscovery,
+			Body:        fleet.ReadErrorBody(resp),
 		})
 	}
 
@@ -539,9 +545,10 @@ func (c *Client) RunK8sMonitoring(ctx context.Context, promHeaders PromHeaders) 
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("RunK8sMonitoring: %w", &fleet.HTTPError{
-			Status: resp.StatusCode,
-			Path:   pathRunK8sMonitoring,
-			Body:   fleet.ReadErrorBody(resp),
+			Status:      resp.StatusCode,
+			ContentType: resp.Header.Get("Content-Type"),
+			Path:        pathRunK8sMonitoring,
+			Body:        fleet.ReadErrorBody(resp),
 		})
 	}
 
@@ -588,9 +595,10 @@ func (c *Client) ListPipelines(ctx context.Context) ([]Pipeline, error) {
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("ListPipelines: %w", &fleet.HTTPError{
-			Status: resp.StatusCode,
-			Path:   pathListPipelines,
-			Body:   fleet.ReadErrorBody(resp),
+			Status:      resp.StatusCode,
+			ContentType: resp.Header.Get("Content-Type"),
+			Path:        pathListPipelines,
+			Body:        fleet.ReadErrorBody(resp),
 		})
 	}
 

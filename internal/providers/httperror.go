@@ -2,6 +2,7 @@ package providers
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -52,10 +53,17 @@ func (e ErrorResponse) message() string {
 func HandleErrorResponse(resp *http.Response) error {
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
 	if err != nil {
-		return statusError(resp.StatusCode, err, "", "",
+		statusErr := statusError(resp.StatusCode, err, "", "",
 			"request failed with status %d (could not read body: %v)", resp.StatusCode, err)
+		statusErr.ContentType = resp.Header.Get("Content-Type")
+		return statusErr
 	}
-	return FormatError(resp.StatusCode, body)
+	formatted := FormatError(resp.StatusCode, body)
+	var statusErr *gcxerrors.HTTPStatusError
+	if errors.As(formatted, &statusErr) {
+		statusErr.ContentType = resp.Header.Get("Content-Type")
+	}
+	return formatted
 }
 
 // FormatError builds a descriptive error from an already-read non-2xx status
@@ -92,7 +100,7 @@ func FormatError(statusCode int, body []byte) error {
 // statusError renders one of the message forms above into the typed carrier.
 // cause is nil for the forms that never wrapped anything, preserving each
 // call site's pre-migration unwrap shape.
-func statusError(status int, cause error, serverMessage, traceID, format string, args ...any) error {
+func statusError(status int, cause error, serverMessage, traceID, format string, args ...any) *gcxerrors.HTTPStatusError {
 	return &gcxerrors.HTTPStatusError{
 		Status:        status,
 		Message:       fmt.Sprintf(format, args...),

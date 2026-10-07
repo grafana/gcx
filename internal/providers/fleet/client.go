@@ -56,9 +56,10 @@ func readErrorBody(resp *http.Response) string {
 // response body once, so callers must not read the body again.
 func httpError(resp *http.Response, path string) *fleetbase.HTTPError {
 	return &fleetbase.HTTPError{
-		Status: resp.StatusCode,
-		Path:   path,
-		Body:   readErrorBody(resp),
+		Status:      resp.StatusCode,
+		ContentType: resp.Header.Get("Content-Type"),
+		Path:        path,
+		Body:        readErrorBody(resp),
 	}
 }
 

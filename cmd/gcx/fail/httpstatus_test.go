@@ -44,8 +44,18 @@ func TestSharedHTTPStatusClassification(t *testing.T) {
 
 func TestRawHTTPStatusRetainsBody(t *testing.T) {
 	body := "<html><body>login</body></html>"
-	got := toDetailedError(t, &gcxerrors.HTTPStatusError{Status: 403, Message: "HTTP 403: " + body})
-	assert.Equal(t, gcxerrors.SummaryAuthorizationFailed, got.Summary)
-	assert.Contains(t, got.Details, body)
-	assert.Equal(t, gcxerrors.ExitAuthFailure, *got.ExitCode)
+	for _, status := range []int{401, 403} {
+		t.Run(strconv.Itoa(status), func(t *testing.T) {
+			text := fmt.Sprintf("HTTP %d: %s", status, body)
+			got := toDetailedError(t, &gcxerrors.HTTPStatusError{Status: status, Message: text})
+			summary := gcxerrors.SummaryAuthenticationFailed
+			if status == 403 {
+				summary = gcxerrors.SummaryAuthorizationFailed
+			}
+			assert.Equal(t, summary, got.Summary)
+			assert.Equal(t, text, got.Details)
+			assert.NotContains(t, got.Details, "expected an API response")
+			assert.Equal(t, gcxerrors.ExitAuthFailure, *got.ExitCode)
+		})
+	}
 }

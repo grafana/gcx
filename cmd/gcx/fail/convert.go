@@ -101,7 +101,7 @@ func ErrorToDetailedError(err error) *gcxerrors.DetailedError {
 
 	for _, converter := range errorConverters {
 		if detailedErr, converted := converter(err); converted {
-			return detailedErr
+			return renderConvertedError(err, detailedErr)
 		}
 	}
 
@@ -743,7 +743,8 @@ func convertServiceAPIErrors(err error) (*gcxerrors.DetailedError, bool) {
 	// Adaptive Logs scope errors — handled here (not in convertCloudConfigErrors with
 	// traces/metrics) because the logs client returns a typed APIError that this converter
 	// catches before convertCloudConfigErrors runs.
-	if apiErr.APIServiceName() == "Adaptive Logs" &&
+	_, htmlScopeResponse := htmlResponseDetails(apiErr.APIUserMessage(), "", apiErr.HTTPStatusCode())
+	if !htmlScopeResponse && apiErr.APIServiceName() == "Adaptive Logs" &&
 		strings.Contains(apiErr.APIUserMessage(), "invalid scope") &&
 		(apiErr.HTTPStatusCode() == http.StatusUnauthorized || apiErr.HTTPStatusCode() == http.StatusForbidden) {
 		return &gcxerrors.DetailedError{

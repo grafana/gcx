@@ -69,6 +69,8 @@ type HTTPError struct {
 	Path string
 	// Body is the trimmed response body (for diagnostics).
 	Body string
+	// ContentType is the response Content-Type header, when available.
+	ContentType string
 }
 
 func (e *HTTPError) Error() string {

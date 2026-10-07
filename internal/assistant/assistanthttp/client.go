@@ -101,23 +101,26 @@ func HandleErrorResponse(resp *http.Response) error {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return &gcxerrors.HTTPStatusError{
-			Status:  resp.StatusCode,
-			Message: fmt.Sprintf("request failed with status %d (could not read body: %v)", resp.StatusCode, err),
-			Cause:   err,
+			Status:      resp.StatusCode,
+			ContentType: resp.Header.Get("Content-Type"),
+			Message:     fmt.Sprintf("request failed with status %d (could not read body: %v)", resp.StatusCode, err),
+			Cause:       err,
 		}
 	}
 
 	if len(body) > 0 {
 		return &gcxerrors.HTTPStatusError{
 			Status:        resp.StatusCode,
+			ContentType:   resp.Header.Get("Content-Type"),
 			Message:       fmt.Sprintf("request failed with status %d: %s", resp.StatusCode, string(body)),
 			ServerMessage: string(body),
 		}
 	}
 
 	return &gcxerrors.HTTPStatusError{
-		Status:  resp.StatusCode,
-		Message: fmt.Sprintf("request failed with status %d", resp.StatusCode),
+		Status:      resp.StatusCode,
+		ContentType: resp.Header.Get("Content-Type"),
+		Message:     fmt.Sprintf("request failed with status %d", resp.StatusCode),
 	}
 }
 
