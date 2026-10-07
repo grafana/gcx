@@ -200,7 +200,7 @@ the K8s dynamic client extends the single documented exception in
 `CONSTITUTION.md` § Architecture Invariants (`internal/providers/dashboards/`,
 ADR 016), which requires explicit human approval.
 
-See `.claude/skills/add-provider/references/decision-tree.md` for the full
+See [provider placement](../../.claude/skills/contribute/references/provider-placement.md) for the full
 decision tree.
 
 ### Provider command structure
@@ -279,8 +279,9 @@ func (l *ConfigLoader) LoadGrafanaConfig(ctx context.Context) (config.Namespaced
 
 ### Adding a new provider
 
-Follow the `/add-provider` skill or `docs/reference/provider-guide.md` for the
-step-by-step implementation guide.
+Start with the [`contribute`](../../.claude/skills/contribute/SKILL.md) skill and
+its provider implementation reference; [provider-guide.md](../reference/provider-guide.md)
+contains the canonical implementation recipe.
 
 ---
 

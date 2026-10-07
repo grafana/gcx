@@ -1,6 +1,6 @@
 ---
 name: review-pr
-description: Review someone else's gcx pull request, produce a ranked report with a verdict, and optionally post it to GitHub as line-anchored inline comments. Covers what to report, in what order, when to stop, how to rank over-engineering findings, how to judge whether a large diff is justified, and how to turn the report into review comments with an APPROVE/COMMENT/REQUEST_CHANGES recommendation. Trigger on "review this PR", "review #NNNN", "code review this branch", "is this diff over-engineered", "post the review", "add review comments to this PR". NOT for self-review before pushing your own work — use integrate-with-gcx for that.
+description: Review someone else's gcx pull request, produce a ranked report with a verdict, and optionally post it to GitHub as line-anchored inline comments. Covers what to report, in what order, when to stop, how to rank over-engineering findings, how to judge whether a large diff is justified, and how to turn the report into review comments with an APPROVE/COMMENT/REQUEST_CHANGES recommendation. Trigger on "review this PR", "review #NNNN", "code review this branch", "is this diff over-engineered", "post the review", "add review comments to this PR". NOT for self-review before pushing your own work — use contribute for that.
 ---
 
 # Reviewing a gcx pull request
@@ -10,12 +10,12 @@ goes in it, in what order, and when to stop.
 
 It defines no checks of its own. Run the checks where they already live:
 
-- `.claude/skills/integrate-with-gcx/references/self-review.md`. Read
+- `.claude/skills/contribute/references/self-review.md`. Read
   **Evidence discipline** first. It sets what a finding may conclude. Then run
   the triggers that fire for the diff.
-  [T12](../integrate-with-gcx/references/self-review.md#t12-over-engineering) is
+  [T12](../contribute/references/self-review.md#t12-over-engineering) is
   the over-engineering rubric.
-  [T5](../integrate-with-gcx/references/self-review.md#t5-shared-infrastructure)
+  [T5](../contribute/references/self-review.md#t5-shared-infrastructure)
   covers code that repeats something the repo already has.
 - AGENTS.md, for the compliance hierarchy. Check all four levels in order.
 

@@ -12,7 +12,7 @@ This recipe covers porting a legacy `grafana-cloud-cli` resource client
 focuses on the mechanical translation after present-day placement is confirmed.
 
 **When to use this recipe:** Porting a legacy CLI resource to gcx.
-**When to use `/add-provider` instead:** Building a provider from scratch for a
+**When to use [`contribute`](../contribute/SKILL.md) instead:** Building a provider from scratch for a
 product that doesn't have a legacy CLI client.
 
 ## Skill Structure
@@ -698,17 +698,19 @@ that only surfaced during smoke testing:
 
 ---
 
-## Relationship to /add-provider Skill
+## Relationship to the contribution workflow
 
-This recipe is for **porting existing legacy CLI clients**. The `/add-provider`
-skill is for **building providers from scratch**. Key differences:
+This recipe is for **porting existing legacy CLI clients**. For **building
+providers from scratch**, use `contribute` and its
+[provider implementation reference](../contribute/references/provider-implementation.md).
+Key differences:
 
-| Aspect | This Recipe | /add-provider Skill |
+| Aspect | This Recipe | New provider contribution |
 |--------|-------------|---------------------|
 | API discovery | Skip — the legacy CLI has a working client | Full discovery phase |
 | Types | Copy from the legacy CLI | Derive from OpenAPI/source |
 | Client | Adapt from the legacy CLI | Hand-write from scratch |
-| Design doc | Optional (pattern is known) | Required per stage |
+| Design doc | Follow the migration skill's phase gates | RFC only when design/scope warrants it; OpenSpec scoped to one PR when used |
 | Auth | Preserve the legacy protocol behavior (headers, token exchange, basic vs bearer), but resolve credentials and endpoints through current `ConfigLoader` rules | Investigate from scratch |
 
 After porting, the provider must pass Phase 4 verification (SKILL.md steps

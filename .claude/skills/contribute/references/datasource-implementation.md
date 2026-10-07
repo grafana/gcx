@@ -1,146 +1,14 @@
----
-name: add-datasource
-description: Use for the implementation workflow that adds gcx CLI support for a datasource type not registered in internal/datasources/providers — query client, command constructors, DatasourceProvider registration. Trigger on "add support for an unsupported datasource type" or "new datasource type". NOT for creating or configuring a datasource instance in a Grafana stack (that is the shipped `gcx datasources create`), NOT for extending an already-registered kind, and NOT for deciding the integration tier or contract or running pre-review self-checks — use the existing kind's implementation or the repo-local integrate-with-gcx contributor skill instead.
----
+# Datasource implementation
 
-# Add Datasource Type
+Use for an already-placed new datasource kind. Reuse accepted scope and command
+contract decisions. For an existing kind, follow its implementation and load
+the sections relevant to the change. Before coding, inspect plugin query models,
+query languages, auth, discovery endpoints and output shapes; record facts and
+unverified probes in the existing planning record. Read
+[contract and tests](contract-and-tests.md) and [self-review](self-review.md).
 
-Orchestrates adding a new datasource type plugin — from API discovery through
-verified implementation. Three stages, worked autonomously: the stage boundaries
-are checkpoints you satisfy, not approvals you wait for.
+## Implement
 
-## When to Use
-
-- User wants gcx CLI support for a datasource type gcx does not yet support
-- User says "add support for an unsupported datasource type", "new datasource type"
-- A task references datasource type implementation
-
-**When NOT to use**:
-
-- **The user wants a datasource instance, not a type.** "Add a datasource" most
-  often means creating or configuring one in a Grafana stack — that is
-  `gcx datasources create` / `update`, already shipped. This skill writes Go
-  code to teach gcx a new *kind*. Confirm which one is meant before starting.
-- The kind is already registered under `internal/datasources/providers/` —
-  extend that implementation instead of adding a duplicate.
-- The product is a Grafana Cloud product, not a datasource — use
-  `/add-provider`.
-
-## Entry paths
-
-**Invoked from `integrate-with-gcx`** (the placement section already exists —
-necessity, command path, backend evidence, wiring, readiness):
-
-- Skip the Stage 1 questions it already answers: the datasource kind and plugin
-  type string, the query/metadata endpoints, and the readiness verdict. Record
-  them and move on rather than re-asking.
-- The Stage 1 approval gate **does not apply on this path**. Build autonomously.
-  If a query-language or endpoint detail is genuinely missing, discover it from
-  the vendor docs, or ask one targeted question carrying the evidence and a
-  recommendation — never fall back to a blanket approval gate.
-- Start at Stage 2, and use Stage 3 verification as written.
-
-**Invoked directly** (no placement section): work through all three stages.
-Autonomy is the same as above — the Stage 1 gate is a checkpoint you satisfy, not
-an approval you wait for. Discover the plugin type, endpoints and response shapes
-from `bin/gcx datasources list -o json`, the vendor's API docs and `bin/gcx api`
-probes; present findings and keep going. Ask only where an unresolved answer would
-materially change the implementation — an unknown query-expression format, an
-endpoint you cannot verify. If no instance is reachable, report the live checks as
-**UNVERIFIED** with the reason rather than blocking or claiming them green.
-
-
-## The flow, however you got here
-
-```text
-contract (proportional)  →  implementation  →  Review
-```
-
-Both entry paths run all three, and none of them is a document or a gate:
-
-- **Contract, before code** — `.claude/skills/integrate-with-gcx/references/contract-and-tests.md`,
-  sized to the change. If you arrived from `integrate-with-gcx` the contract
-  already exists; use it, don't redo it.
-- **Review, before calling it review-ready** —
-  `.claude/skills/integrate-with-gcx/references/self-review.md`, re-run after
-  every fix push.
-
-That is where the naming, typed-input, output-class, completeness, error,
-token-cost and test-quality guidance lives. Read those two rather than restating
-them here.
-
-## Workflow
-
-```
-Discover ───────> Implement ──gate──> Verify
-   │                    │                  │
-   v                    v                  v
-research findings   code per step      smoke tests
-```
-
-| Stage | Deliverable | Gate |
-|-------|-------------|------|
-| 1. Discover | research findings | findings presented; no approval wait |
-| 2. Implement | Code (one step at a time) | `mise run gate` passes per step; `GCX_AGENT_MODE=false mise run all` once before push |
-| 3. Verify | Smoke tests + annotation check | smoke tests run or reported UNVERIFIED; wiring checks pass |
-
-### Prerequisites — discover these, don't ask for them
-
-Settle each from the repo and the environment first. Ask only if what remains is
-materially insufficient, and then in one grouped question carrying the evidence
-and a recommendation:
-
-- **Datasource type** — usually stated in the request. Confirm the plugin type
-  string yourself with `bin/gcx datasources list -o json`.
-- **Access** — check for a configured context the same way. If none is reachable,
-  proceed against the vendor's API docs and report every live check as UNVERIFIED
-  with the reason; do not stop.
-- **Scope** — infer from the request (a "query client" means `query` first) and
-  state what you inferred. Extra verbs are additive later; a wrong frozen name is
-  not.
-
----
-
-## Stage 1: Discover
-
-### 1a. Gather User Context
-
-1. Run `bin/gcx datasources list -o json` to find the datasource UID and plugin type
-   string. If the user has a configured context, do this yourself rather than asking
-   them to do it.
-2. Find the query language and endpoint shapes from the vendor's API docs or the
-   plugin's source before writing anything — do not guess them. If they cannot be
-   settled that way, ask once, naming exactly what is missing and what you will
-   assume otherwise.
-3. Known quirks — special auth, pagination, response formats?
-
-### 1b. Research
-
-- Use `bin/gcx api` raw calls to probe the datasource proxy API surface
-  (`/api/datasources/proxy/uid/{uid}/...` or `/api/datasources/uid/{uid}/resources/...`)
-- Identify query endpoints and response shapes from the vendor's API docs or the
-  plugin's source
-- Identify metadata endpoints (labels, series, etc.) the same way; if a non-query
-  endpoint cannot be established, record it as UNVERIFIED rather than guessing
-
-### 1c. Record findings
-
-Keep them in your working notes and the PR description; write a standalone
-`docs/research/` report only if the investigation has lasting repository value or
-staged work must resume from it. Either way, what you record must cover:
-- API endpoints and response shapes
-- Query request/response format
-- Available metadata operations
-- At least one successful probe result — or, if no instance is reachable, the
-  probe you would run, marked UNVERIFIED with the reason
-
-### Checkpoint: Research Complete
-
-Direct-invocation path only — see [Entry paths](#entry-paths).
-
----
-
-## Stage 2: Implement
 
 ### Step 1: Query Client
 
@@ -155,12 +23,12 @@ reuse `internal/query/grafanaquery` for the HTTP transport (POST + fallback +
 response-size limiting) and `internal/query/dataframe` for the data-frame wire
 types. Do not duplicate that logic or re-declare
 `GrafanaQueryResponse`/`DataFrame`. Check the current set with
-`grep -rl query/grafanaquery internal/query/` and copy the closest one.
+`rg -l query/grafanaquery internal/query/` and copy the closest one.
 
 **If the datasource takes raw SQL, the request body and `--limit` enforcement are
 shared too** — `querysql.BuildRawQueryBody` and `querysql.EnforceLimit` with a
 dialect-local `bail` predicate, never a hand-rolled clamp. Read
-`references/raw-sql.md` before writing either: it carries the plugin-`format`
+[raw SQL guidance](raw-sql.md) before writing either: it carries the plugin-`format`
 exception, the stderr disclosure `capped` owes the caller, the four statement
 shapes `bail` has to catch, and which of the existing dialects is safe to copy.
 
@@ -588,9 +456,9 @@ If the datasource also needs entries in `internal/agent/command_annotations.go`
 
 ---
 
-## Stage 3: Verify
+## Verify
 
-### 3a. Smoke Tests
+### Smoke Tests
 
 Only test the subcommands that were actually added:
 
@@ -607,7 +475,7 @@ bin/gcx datasources {kind} query '<expr>' --since 1h
 # etc.
 ```
 
-### 3b. Explore Link Check (required)
+### Explore Link Check (required)
 
 Run this for every query-class subcommand you added. A unit test cannot prove
 the URL opens the right query, so check it in a browser:
@@ -625,7 +493,7 @@ Confirm three things in Grafana:
 
 Repeat for each query type when the datasource has more than one.
 
-### 3c. Run Checks
+### Run Checks
 
 ```bash
 # Full quality gates

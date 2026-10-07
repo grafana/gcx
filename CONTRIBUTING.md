@@ -11,32 +11,51 @@ Before implementing features or commands, read:
 
 Naming a command? Start with the [command naming and placement guide](docs/design/command-naming.md).
 
-Adding, extending, or reviewing a gcx capability — a provider, datasource kind, resource adapter, cloud command, or bundled skill? Ask your coding agent to use the [`integrate-with-gcx`](.claude/skills/integrate-with-gcx/SKILL.md) skill. It settles whether a new command is warranted at all and where it belongs, then designs the command's agent-facing contract before any code gets written. It hands implementation off to `add-provider` or `add-datasource` where those apply, and runs a pre-review self-check over the finished diff.
+For agent-assisted contributions, start with the repository-local [`contribute`](.claude/skills/contribute/SKILL.md) skill. It routes the work through the workflow below and loads placement, command-contract, and implementation guidance when needed.
 
-Please read the next few sections before adding a new command. They will save you time, and they mean we can say yes faster.
+## Contribution workflow
 
-## New commands need an issue first
+Choose the route by the purpose of the change:
 
-**Before writing a new command, provider, datasource kind or resource type, please [open a new command proposal](https://github.com/grafana/gcx/issues/new?template=2-new-command-proposal.yml) and wait for a maintainer to agree with the placement.**
+- **Maintenance:** documentation, test-only changes, and internal maintenance that preserve public behavior can go directly to a PR. An issue is optional.
+- **Bug fix:** open or use a bug issue with a clear problem and reproduction or supporting evidence. A maintainer verifies and acknowledges that it is a real issue before the fix PR. The usual deliverable is the issue plus a PR, appropriate regression coverage, and the normal checks; an RFC or OpenSpec change is not required by default.
+- **Feature:** new capabilities, improvements to existing capabilities, and proposed commands use a [Feature proposal](.github/ISSUE_TEMPLATE/2-feature-proposal.yml), whether the contributor plans to implement them or is requesting them. A maintainer accepts the proposal and identifies any planning needed before implementation.
 
-Grafana product teams don't need a proposal for commands inside their own product area — see [Product teams](#product-teams). For anything outside it, such as a new top-level area or a change to shared commands, raise it in the #gcx channel or open a proposal.
+```mermaid
+flowchart TD
+    W{"What kind of change?"}
+    W -->|maintenance| M["Direct PR"]
+    W -->|bug fix| B["Bug issue with problem<br/>and reproduction or evidence"]
+    B --> V["Maintainer verifies and<br/>acknowledges a real issue"]
+    V --> F["Fix PR with regression coverage"]
+    W -->|feature or improvement| P["Feature proposal"]
+    P --> A{"Maintainer accepts<br/>and selects needed planning?"}
+    A -->|no| X["Revise or close proposal"]
+    A -->|yes| D{"RFC needed for<br/>design or scope?"}
+    D -->|yes| R["RFC design PR"]
+    R --> RM["Maintainer review;<br/>merge accepts the design"]
+    RM --> I["Implementation PRs;<br/>OpenSpec plan when needed"]
+    D -->|no| I
+    M --> Q["Normal review and quality checks"]
+    F --> Q
+    I --> Q
+```
 
-We would much rather say "not like this" to a short issue than to a finished pull request. Command paths, flags and positional syntax are stable within a major version ([CONSTITUTION.md](CONSTITUTION.md#cli-grammar)), so placement and naming are the parts of a change that are hardest to fix after review, and impossible to fix after release.
+For a **bug**, acknowledgement depends on the report's quality and the evidence available. It does not promise a deadline or approve a detailed fix design. If resolving the bug needs agreement on design or changed public behavior, continue that discussion on the same issue and use the planning it warrants. Implementation size alone does not trigger extra artifacts.
 
-This applies to:
+For a **feature**:
 
-- new commands, subcommand groups, providers and datasource kinds
-- changes to an existing command's path, flags, positional arguments or output
-  shape
+1. **Proposal.** State the **Problem**, illustrate the **Proposed UX**, and give checkable **Acceptance criteria**. Examples should scale to the proposal; add scope, open questions, and implementation notes where useful. State unresolved feasibility explicitly. The [`propose-feature`](.claude/skills/propose-feature/SKILL.md) skill helps prepare the proposal.
+2. **Decision and planning.** Wait for maintainer acceptance on the issue. The accepting maintainer identifies whether the work needs a separate design or tracked implementation plan. Reuse decisions already settled in the proposal rather than duplicating them.
+3. **RFC, when warranted.** Write the design in [`docs/rfcs/`](docs/rfcs/README.md) using [`create-rfc`](.claude/skills/create-rfc/SKILL.md), and open a design PR referencing the proposal (`Related: #<issue>`). Merging that PR accepts the design. An RFC is useful when design tradeoffs or scope need agreement, including an overarching design for several PRs; splitting straightforward work across PRs does not itself require one. Most PRs do not need an RFC.
+4. **Implementation.** Open reviewable PRs that reference the accepted proposal and any RFC. Use [OpenSpec](openspec/) when a tracked implementation plan is needed; each OpenSpec change belongs to one PR. Straightforward slices can be tracked on the issue. Maintainers review each PR, and contributors revise until it merges.
+5. **Close.** Intermediate PRs reference the proposal without closing it. The final PR that completes its acceptance criteria closes it (`Closes #<issue>`).
 
-It does **not** apply to (please just send a PR):
+Grafana product teams are encouraged to follow this process inside their existing owned product area, but it is not mandatory there. Normal review and quality requirements still apply. Changes to shared commands, work outside an owned area, and new top-level areas follow the proposal route; see [Product teams](#product-teams) for ownership.
 
-- bug fixes
-- documentation
-- tests
-- performance and reliability work
+Command paths, flags, and positional syntax are stable within a major version ([CONSTITUTION.md](CONSTITUTION.md#cli-grammar)). Placement and naming are therefore hardest to change after review and release. Discussing a proposal first lets maintainers resolve those choices before reviewing a finished implementation. This includes changes to existing command paths, flags, positional arguments, or output shape that introduce new behavior.
 
-If you have already written the code, that's fine — open the issue anyway and link it. We'll review the idea before the diff.
+If you have already written a proposed feature, open or link the proposal so maintainers can review the idea before the diff. Existing issues and PRs need not be re-filed or gain retrospective planning artifacts because of this workflow update.
 
 ## Stable, experimental, or not gcx
 
@@ -68,7 +87,7 @@ These are welcome — this repository ships contributor skills precisely because
 2. **Placement is the part an agent is least likely to get right.** An agent
    asked to add a command will add a command. Whether it should exist, and
    what it should be called forever, is a judgement about gcx's users — which
-   is why we ask for the issue first. The `integrate-with-gcx` skill helps, but
+   is why we ask for the issue first. The `contribute` skill helps, but
    doesn't replace that conversation.
 
 A PR that is easy to generate can still be expensive to review. The issue step is how we keep that cost from landing on you as a rejection.
@@ -110,43 +129,15 @@ We have tools in place to help maintain a consistent command surface and output 
 
 ## Issue Tracking
 
-Issues are tracked in [GitHub Issues](https://github.com/grafana/gcx/issues). Use the issue templates when creating new issues - they set the correct issue type and labels automatically.
-
-## Proposing features
-
-The [issue-first policy](#new-commands-need-an-issue-first) above determines when a proposal is required and which changes are exempt. For work that needs a proposal, follow this flow. Add an RFC when the work has enough scope to need its own design; most PRs do not need one:
-
-```mermaid
-flowchart LR
-    P["Contributor files<br/>a proposal"] --> D{"Maintainers<br/>review"}
-    D -->|reject| X(["Closed"])
-    D -->|accept| S{"Separate design<br/>needed?"}
-    S -->|yes| R["Contributor opens<br/>an RFC PR"]
-    S -->|no| I["Contributor opens<br/>implementation PRs"]
-    R --> RR{"Maintainers<br/>review the RFC"}
-    RR -->|changes requested| R
-    RR -->|merged| I
-    I --> IR{"Maintainers<br/>review"}
-    IR -->|changes requested or more slices| I
-    IR -->|last slice merged| C(["Proposal implemented<br/>and closed"])
-```
-
-1. **Proposal.** Use the [New Command Proposal](.github/ISSUE_TEMPLATE/2-new-command-proposal.yml) template when planning command or interface changes, or [Feature Request](.github/ISSUE_TEMPLATE/4-feature-request.yml) when asking for a capability. Describe the problem, who has it, the proposed direction and acceptance criteria. It does not need a full design. With a coding agent, use the [`propose-feature`](.claude/skills/propose-feature/SKILL.md) skill.
-2. **Decision.** Maintainers accept or reject the proposal on the issue. Do not start the RFC until it is accepted.
-3. **RFC, when needed.** Write the design in [`docs/rfcs/`](docs/rfcs/README.md) and open a PR that references the proposal (`Related: #<issue>`). Use the [`create-rfc`](.claude/skills/create-rfc/SKILL.md) skill. Maintainers review it; merging the PR accepts the design. Large proposals can have more than one RFC. If no separate design is needed, proceed directly to an implementation PR.
-4. **Implementation.** Implement the accepted proposal and any RFC in reviewable PRs that reference the proposal. Each PR carries its own [OpenSpec](openspec/) change (proposal, spec delta, design and tasks); use the `openspec-propose` skill to start one. Maintainers review each PR, and contributors revise until it merges.
-5. **Close.** The PR that completes the acceptance criteria closes the proposal (`Closes #<issue>`).
+Issues are tracked in [GitHub Issues](https://github.com/grafana/gcx/issues). Use the Bug report or Feature proposal form when creating a new issue. The forms select the Bug or Feature issue type and the triage label; other organization-wide issue types remain available. The issue chooser also links to documentation and private security reporting.
 
 ## Making changes
 
 ### Agentic coding
 
-If you are using a coding agent to make changes to this repository, there are skills in [.claude/skills](.claude/skills) for contributing:
+Use [`contribute`](.claude/skills/contribute/SKILL.md) as the contributor entrypoint. It applies the [contribution workflow](#contribution-workflow), checks capability placement and contracts, and loads provider or datasource implementation references as needed.
 
-- [add-provider](.claude/skills/add-provider) will help add a new top-level command area to gcx.
-- [add-datasource](.claude/skills/add-datasource) will help add a new datasource provider to gcx (under `gcx datasources`).
-- [integrate-with-gcx](.claude/skills/integrate-with-gcx) is a more general skill that will help add capabilities with gcx.
-- [propose-feature](.claude/skills/propose-feature) and [create-rfc](.claude/skills/create-rfc) cover the proposal and RFC steps of [proposing features](#proposing-features), and the `openspec-*` skills cover the per-PR OpenSpec change.
+The [`propose-feature`](.claude/skills/propose-feature/SKILL.md), [RFC](docs/rfcs/README.md), and `openspec-*` skills remain available directly for their specialist tasks. Use them when the selected route needs their artifact; they reuse the existing issue and design decisions.
 
 ### Development environment
 

@@ -1,85 +1,55 @@
-name: 🐛 Bug Report
-description: Something isn't working as expected
-title: 🐛 Bug Report
+name: Bug report
+description: Report behavior that is not working as expected
+type: Bug
 labels: ["action/needs-triage"]
 body:
   - type: markdown
     attributes:
       value: |
-        **Title tip:** Describe the symptom, e.g. "Excessive warnings for unconfigured resources in resources get"
+        **Title tip:** Name the symptom so others can find the report.
 
-        Thanks for taking the time to report this issue! The more detail you provide, the faster we can help.
+        Check [existing issues](https://github.com/grafana/gcx/issues) for a matching report. See the [contribution workflow](https://github.com/grafana/gcx/blob/main/CONTRIBUTING.md#contribution-workflow) for what happens next.
 
-        ## Tips for Reporting CLI Issues
-
-        - Run your command with `-v`, `-vv`, or `-vvv` flags to get detailed output (more v's = more verbose)
-        - Include the full command you ran, with all flags
-        - Check your configuration: `gcx config view`
-        - Try the command with `--dry-run` if applicable
-        - Look for similar issues: [Search existing issues](https://github.com/grafana/gcx/issues)
+        This issue is public. Remove credentials and replace stack names, URLs, IDs and other identifying details with placeholders. Report security vulnerabilities through the [private security channel](https://github.com/grafana/gcx/security/policy).
 
   - type: textarea
-    id: description
+    id: problem
     attributes:
-      label: Description
-      description: What command did you run? Include all flags and arguments. What was the output?
-      placeholder: "gcx resources push --context=prod --dry-run ./dashboards/"
-      render: shell
+      label: Problem
+      description: What happened, and how does it affect your work? Include the command and relevant output when applicable.
+    validations:
+      required: true
 
   - type: textarea
     id: expected_behavior
     attributes:
-      label: What did you expect to happen?
-      description: Help us understand the correct behavior
-      placeholder: The dashboards should have been successfully pushed to Grafana
+      label: Expected behavior
+      description: What should have happened instead?
+    validations:
+      required: true
 
   - type: textarea
-    id: steps_to_reproduce
+    id: reproduction_or_evidence
     attributes:
-      label: How can we reproduce this?
-      description: Step-by-step instructions help us find the issue faster. Include commands exactly as you ran them.
-      placeholder: |
-        1. Set context: gcx config use-context prod
-        2. Verify context: gcx config current-context
-        3. Try to push: gcx resources push ./dashboards/
-        4. Observe error: 403 Forbidden
-      value: |
-        1.
-        2.
-        3.
+      label: Reproduction or evidence
+      description: Share steps to reproduce, a minimal example, or evidence such as sanitized logs or screenshots. If reproduction is uncertain, describe what you observed and when.
+    validations:
+      required: true
 
   - type: input
     id: gcx_version
     attributes:
-      label: gcx Version
-      description: "Run `gcx --version` to get this information"
-      placeholder: "gcx version v0.1.0 (commit: abc123, built: 2025-01-15)"
+      label: gcx version
+      description: "Run `gcx --version` to get this information."
 
   - type: input
     id: environment
     attributes:
-      label: Environment Details
-      description: "Operating system, shell, Grafana server version, Go version (if relevant)"
-      placeholder: "macOS 14.1, zsh 5.9, Grafana Cloud (v12.0), Go 1.21"
-
-  - type: checkboxes
-    id: troubleshooting
-    attributes:
-      label: Troubleshooting Steps Taken
-      description: Have you tried these common debugging steps?
-      options:
-        - label: I ran the command with -v, -vv, or -vvv flag for verbose output
-        - label: I checked my configuration with `gcx config view`
-        - label: I verified I'm using the correct context with `config current-context`
-        - label: I verified my authentication token/credentials are valid
-        - label: I checked the documentation for this command
+      label: Environment
+      description: Operating system, shell and Grafana version, where relevant. Include Go version if building from source.
 
   - type: textarea
     id: context
     attributes:
-      label: Anything else we should know?
-      description: Additional context, workarounds you've found, when this started happening, relevant configuration details, etc.
-      placeholder: |
-        This started after upgrading to gcx v0.2.0.
-        I found that using --max-concurrent=1 makes it work, but it's very slow.
-        My config uses token authentication with a service account token...
+      label: Additional context
+      description: When did this start? Include relevant changes, workarounds or troubleshooting already tried.

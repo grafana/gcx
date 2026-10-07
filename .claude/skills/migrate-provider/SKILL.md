@@ -4,11 +4,11 @@ description: >-
   Reference for porting a Grafana Cloud product from the legacy
   grafana-cloud-cli into a gcx provider — adapter, schema/example registration,
   CRUD redirect commands. HUMAN-DRIVEN — this skill is outside the
-  integrate-with-gcx v1 autonomous workflow and must not be run end to end
+  contribute workflow and must not be run end to end
   unattended because its non-registration steps have not been fully audited.
   Use when a human is deliberately driving a port and says "migrate provider",
   "port from gcx", "port oncall", "port k6". Not for building providers from
-  scratch — use /add-provider. Recheck present-day placement before porting.
+  scratch — use contribute. Recheck present-day placement before porting.
 ---
 
 # Migrate a Provider from the Legacy CLI
@@ -18,7 +18,7 @@ provider system — core adapter, schema/example registration, CRUD redirect
 commands, and ancillary subcommands.
 
 > **Read this before the recipe. A human drives this skill; it is not covered by
-> the integrate-with-gcx v1 workflow.** In these instructions, "legacy CLI"
+> the contribute workflow.** In these instructions, "legacy CLI"
 > means `grafana-cloud-cli`, whose binary was also named `gcx`; "gcx" means this
 > repository's `bin/gcx`. Use `bin/gcx` for the build under review, and name the
 > legacy binary's own path explicitly.
@@ -43,9 +43,9 @@ discipline and orchestration.
 - User says "migrate provider", "port from gcx", "port oncall", "port k6"
 
 **When NOT to use**: Building a provider from scratch for a product without
-a legacy CLI client — use `/add-provider` instead.
+a legacy CLI client — use [`contribute`](../contribute/SKILL.md) instead.
 
-## Relationship to integrate-with-gcx
+## Relationship to contribute
 
 One-directional, so the two skills cannot bounce a port back and forth:
 
@@ -53,7 +53,7 @@ One-directional, so the two skills cannot bounce a port back and forth:
   existed; it does not prove that the provider tier is still the right home.
   Check current `/apis` CRUD coverage and inventory the non-CRUD operations. A
   human confirms provider-tier placement before Phases 0-4 continue.
-- **`integrate-with-gcx` does not route work here**, because of the status note
+- **`contribute` does not run this port unattended**, because of the status note
   above: it tells the user a port needs a human to drive and stops. Reach this
   skill by invoking it deliberately.
 - **Call back into two sections only**, not the whole skill: the naming pass on
@@ -63,7 +63,7 @@ One-directional, so the two skills cannot bounce a port back and forth:
   Contract worksheets and the general readiness workflow do not apply to a
   port; the placement recheck above is still required.
 - Read from the checkout at
-  `.claude/skills/integrate-with-gcx/references/self-review.md`, which carries
+  `.claude/skills/contribute/references/self-review.md`, which carries
   T7 and the trigger table.
 
 ## Prerequisites

@@ -1,10 +1,7 @@
-# Decision Tree: Provider vs Resources Command
+# Provider versus resource placement
 
-> **Scope: direct invocation of `add-provider`.** If you arrived from
-> `integrate-with-gcx`, its placement section already settled the tier with
-> probe evidence — record that verdict and skip this file. Re-deriving it here
-> duplicates work and risks contradicting a decision that was made against the
-> live API.
+Consult only when placement remains unresolved; reuse an accepted placement
+decision rather than deriving it again.
 
 When should you create a new provider vs using the existing `gcx resources` command?
 

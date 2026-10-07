@@ -5,6 +5,7 @@ allowed-tools: Bash(openspec:*)
 license: MIT
 compatibility: Requires openspec CLI.
 metadata:
+  # gcx adaptation: authorization follows the requested contribution scope.
   author: openspec
   version: "1.0"
   generatedBy: "1.14.0"
@@ -27,7 +28,7 @@ In both branches, never create the root as a side effect: do not run `openspec i
 
 **Input**: Optionally specify a change name. If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
 
-This workflow revises artifacts that already exist; it never creates missing ones. When an artifact is missing, `openspec status --change "<name>" --json` names the next one and `openspec instructions "<artifact-id>" --change "<name>" --json` explains how to write it.
+This workflow revises existing artifact outputs. Missing artifacts remain a separate authoring step; completing an already-partially-populated glob follows the scoped new-file safeguards below. When an artifact is missing, `openspec status --change "<name>" --json` names the next one and `openspec instructions "<artifact-id>" --change "<name>" --json` explains how to write it.
 
 **Steps**
 
@@ -67,27 +68,28 @@ This workflow revises artifacts that already exist; it never creates missing one
 
 4. **Read and reconcile**
    - Read the artifact(s) the request touches and the change's other existing artifacts.
-   - Draft the requested edit in the conversation, not in files. Work out exactly what it changes; step 5 owns every write. Then check every other existing artifact against the drafted edit - in ANY direction: an edit to a later artifact may require revising an earlier one, not only the other way around. Build order is a useful reading order, not a constraint on which artifacts may be revised.
+   - Determine the requested edit and its effect before writing; step 5 owns every write. A review-only request produces proposed revisions without edits. Then check every other existing artifact against the drafted edit - in ANY direction: an edit to a later artifact may require revising an earlier one, not only the other way around. Build order is a useful reading order, not a constraint on which artifacts may be revised.
    - Note everything that is now inconsistent, missing, or contradictory.
    - Propose revisions to files that already exist (`existingOutputPaths`). If an artifact has no existing output files and status `ready` or `blocked`, note it and point the user to `openspec instructions "<artifact-id>" --change "<name>" --json` for how to create them. Leave `skipped` artifacts untouched; do not treat them as missing or defer them to the continue workflow.
    - A glob artifact (e.g. `specs/**/*.md`) is marked `done` after at least one file matches, and the continue workflow only handles `ready` artifacts. When reconciliation identifies a missing file for a glob artifact whose `existingOutputPaths` is non-empty:
      1. Run `openspec instructions "<artifact-id>" --change "<name>" --json` and use its `instruction` and `template`. Treat `context` and `rules` as constraints; do not copy them into the file. If instructions report `skipped: true`, do not create the file. Read current dependency files from disk; if a required non-skipped dependency is missing, stop and ask the user to restore it first.
      2. Choose a concrete path inside `changeRoot` that matches `artifactPaths.<id>.outputPath` and does not already exist. Verify it remains inside `changeRoot` after resolving any symlinked parent directories. The glob `resolvedOutputPath` is not a valid target.
-     3. Include the new file in step 5's proposed revisions and create it only after the user confirms.
-     4. After confirmation, immediately before creation, refresh status and instructions. Verify the artifact is still in scope, not skipped, and partially populated; repeat the concrete-path checks above.
-     5. Use a create operation that fails if the target already exists. If `instruction` delegates creation to another skill or command, invoke it only if it can honor the confirmed path and these guardrails; otherwise stop. If any check fails or the confirmed draft is no longer valid, stop and reconcile with the user rather than replacing existing content or choosing a different path.
+     3. Include the new file in step 5's revisions and create it only within the requested planning scope. Ask if it introduces an unresolved scope or behavior decision.
+     4. Immediately before an authorized creation, refresh status and instructions. Verify the artifact is still in scope, not skipped, and partially populated; repeat the concrete-path checks above.
+     5. Use a create operation that fails if the target already exists. If `instruction` delegates creation to another skill or command, invoke it only if it can honor the authorized path and these guardrails; otherwise stop. If any check fails or the requested revision is no longer valid, stop and reconcile with the user rather than replacing existing content or choosing a different path.
    - If the change is already coherent, say so and propose no revisions.
 
-5. **Confirm and apply, one artifact at a time**
+5. **Apply the requested revisions coherently**
    - This step performs every artifact write in this workflow; no earlier step edits an artifact.
-   - Show each proposed revision and why - including the requested edit drafted in step 4. Write only after the user confirms.
-   - If the user rejects a revision, do not write it - leave that artifact unchanged.
+   - Apply revisions within the user's requested planning scope, including dependent consistency edits. Reuse existing authorization rather than asking for confirmation of each artifact. Ask before resolving consequential scope or behavior choices the request leaves open.
+   - For a review-only request, show proposed revisions and their reasons without writing. Respect any revisions the user has rejected.
    - When a substantial rewrite is needed, get that artifact's rules and template first:
      ```bash
      openspec instructions "<artifact-id>" --change "<name>" --json
      ```
 
-6. **Point to the next step (guidance only - NEVER act on it)**
+6. **Continue only the phases included in the request**
+   - A planning-only request ends with the revised artifacts and next-step guidance. If implementation was already requested and applicable maintainer decisions are settled, continue through the apply workflow; keep code edits out of this planning workflow itself.
    - Artifacts with empty `existingOutputPaths` and status `ready` or `blocked` -> run `openspec status --change "<name>" --json` for the next artifact and point the user to `openspec instructions "<artifact-id>" --change "<name>" --json` for how to create it.
    - Change already implemented (tasks checked off / already applied) -> the code may no longer match the revised plan; suggest `/openspec-apply-change` to carry the delta into code.
    - Everything done and implemented -> suggest `/openspec-archive-change`.
@@ -101,9 +103,9 @@ After each invocation, show:
 - Where the change stands and the recommended next command
 
 **Guardrails**
-- Planning artifacts only - NEVER edit implementation code. If the revised plan implies code changes, stop and point to `/openspec-apply-change`.
+- Edit planning artifacts in this workflow. For a planning-only request, point to `/openspec-apply-change` when the plan implies code changes; when implementation was already requested and applicable maintainer decisions are settled, transition to apply instead.
 - Use the artifact ids and paths reported by `openspec status`; never branch on hardcoded artifact names.
 - Edit only the concrete files in `existingOutputPaths`; never write to a glob `resolvedOutputPath`.
-- Do not advance the build frontier: if an artifact has empty `existingOutputPaths` and status `ready` or `blocked`, creating them is a separate step, outside this workflow. Leave `skipped` artifacts untouched. The only new-file scope is a confirmed concrete path under a glob artifact whose `existingOutputPaths` is non-empty.
-- Confirm every edit with the user before writing.
+- Do not advance the build frontier: if an artifact has empty `existingOutputPaths` and status `ready` or `blocked`, creating them is a separate step, outside this workflow. Leave `skipped` artifacts untouched. The only new-file scope is an authorized concrete path under a glob artifact whose `existingOutputPaths` is non-empty.
+- Write within the requested planning scope; ask when an unresolved consequential choice would materially change it.
 - If the request changes the change's *intent* rather than refining it, ask for a distinct unused change name and recommend `openspec new change "<new-change-name>"` instead (the "Update vs. Start Fresh" heuristic).

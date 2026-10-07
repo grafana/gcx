@@ -75,7 +75,7 @@ When `--limit` is omitted (default 100):
 `--limit 0` is silent and sends the SQL unchanged.
 
 Handing back fewer rows than asked for without saying so is a completeness
-defect — T3 in `.claude/skills/integrate-with-gcx/references/self-review.md`.
+defect — T3 in `.claude/skills/contribute/references/self-review.md`.
 A stderr warning discharges it here because `docs/design/output.md` §15 is
 PROPOSED and opt-in, not because this shape earns lighter treatment:
 `QueryResponse{columns, rows}` is envelope-shaped, and T3's table would ask an

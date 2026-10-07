@@ -1,0 +1,54 @@
+name: Feature proposal
+description: Propose a new capability, command or improvement
+type: Feature
+labels: ["action/needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Title tip:** Name the user outcome you want to enable.
+
+        Use this form whether you are requesting a capability or planning to build it. Check [existing issues](https://github.com/grafana/gcx/issues) for related work. The [contribution workflow](https://github.com/grafana/gcx/blob/main/CONTRIBUTING.md#contribution-workflow) explains when a proposal is needed and how maintainers review it.
+
+        A useful proposal makes the problem, proposed experience and completion criteria concrete. Scale examples to the idea: a short before/after may be enough; command and output sketches help for larger changes. [Issue #1469](https://github.com/grafana/gcx/issues/1469) illustrates a detailed proposal.
+
+        This issue is public. Use public evidence and anonymized examples. Keep credentials and internal information out of the proposal.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Who encounters this problem, what happens today, and why is the current behavior or workaround insufficient?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed_ux
+    attributes:
+      label: Proposed UX
+      description: Describe what a user should be able to do. Use a before/after example, command and output sketch, or illustration where helpful. Mark new commands and behavior as proposals.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: Acceptance criteria
+      description: List observable outcomes a reviewer can check to decide whether the proposal is complete.
+      placeholder: |
+        - [ ] A user can ...
+        - [ ] When ..., the result ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope_and_questions
+    attributes:
+      label: Scope and open questions
+      description: Where does the scope stop? Include useful alternatives, unresolved questions or feasibility gaps. A full design is not required.
+
+  - type: textarea
+    id: implementation_notes
+    attributes:
+      label: Implementation notes
+      description: Include relevant constraints, API readiness or dependencies if known. Distinguish verified facts from assumptions. Let us know if you want to implement it, and link any existing prototype or PR.
