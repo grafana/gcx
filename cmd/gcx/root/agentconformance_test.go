@@ -103,6 +103,8 @@ func runGcx(t *testing.T, args ...string) (string, int) {
 		"GCX_AGENT_MODE=1",
 		"GCX_TELEMETRY=off",
 		"DO_NOT_TRACK=1",
+		// Fixtures use fake inline credentials; never prompt or write to the host Keychain.
+		"GCX_KEYCHAIN=off",
 	}
 	cmd.Stdin = nil // exec: /dev/null — a surviving prompt reads EOF, never blocks on us
 

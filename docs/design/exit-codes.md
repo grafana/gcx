@@ -102,10 +102,12 @@ For partial failures, the command itself should set exit code 4 when
 
 ### 2.3 Cobra Usage Errors
 
-Cobra itself handles usage errors (bad flags, missing required args). With
-`SilenceUsage: true` set on the root command, these errors flow through
-`handleError` and get exit code 1. Future work: detect Cobra usage errors
-and override to code 2.
+Cobra flag parsing and positional argument validation errors are wrapped in
+`UsageError` by the root command and exit with code 2. They use the summary
+`Invalid command usage`, include the command's expected usage, and suggest
+running that command with `--help`. Unknown commands and missing required
+flags also exit with code 2. `SilenceUsage: true` keeps Cobra from printing a
+second usage message alongside the structured error.
 
 Reference: `cmd/gcx/main.go`, `internal/gcxerrors/detailed.go`,
 `cmd/gcx/fail/convert.go`

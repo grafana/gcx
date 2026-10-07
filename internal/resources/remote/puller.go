@@ -2,6 +2,8 @@ package remote
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 
 	"github.com/grafana/gcx/internal/config"
@@ -137,6 +139,7 @@ func (p *Puller) Pull(ctx context.Context, req PullRequest) (*OperationSummary, 
 	logger := logging.FromContext(ctx)
 	logger.Debug("Pulling resources")
 
+	invocationCtx := ctx
 	errg, ctx := errgroup.WithContext(ctx)
 	errg.SetLimit(p.maxConcurrentListRequests)
 	partialRes := make([][]unstructured.Unstructured, len(filters))
@@ -148,6 +151,8 @@ func (p *Puller) Pull(ctx context.Context, req PullRequest) (*OperationSummary, 
 				res, err := p.client.List(ctx, filt.Descriptor, metav1.ListOptions{Limit: req.Limit})
 				if err != nil {
 					switch {
+					case isPullCancellation(invocationCtx, err):
+						return err
 					case isUnsupportedResourceType(err):
 						// 404/405 = sub-resource that can't be listed; skip silently
 						// regardless of StopOnError — these are never actionable.
@@ -157,7 +162,7 @@ func (p *Puller) Pull(ctx context.Context, req PullRequest) (*OperationSummary, 
 						return err
 					default:
 						logger.Warn("Could not pull resources", logs.Err(err), slog.String("cmd", filt.String()))
-						summary.RecordFailure(nil, err)
+						summary.RecordFailure(nil, fmt.Errorf("%s: %w", filt.String(), err))
 					}
 				} else {
 					if res.GetContinue() != "" {
@@ -169,6 +174,8 @@ func (p *Puller) Pull(ctx context.Context, req PullRequest) (*OperationSummary, 
 				res, err := p.client.GetMultiple(ctx, filt.Descriptor, filt.ResourceUIDs, metav1.GetOptions{})
 				if err != nil {
 					switch {
+					case isPullCancellation(invocationCtx, err):
+						return err
 					case isUnsupportedResourceType(err):
 						// 404/405 = sub-resource that can't be listed; skip silently
 						// regardless of StopOnError — these are never actionable.
@@ -178,7 +185,7 @@ func (p *Puller) Pull(ctx context.Context, req PullRequest) (*OperationSummary, 
 						return err
 					default:
 						logger.Warn("Could not pull resources", logs.Err(err), slog.String("cmd", filt.String()))
-						summary.RecordFailure(nil, err)
+						summary.RecordFailure(nil, fmt.Errorf("%s: %w", filt.String(), err))
 					}
 				} else {
 					partialRes[idx] = res
@@ -186,11 +193,11 @@ func (p *Puller) Pull(ctx context.Context, req PullRequest) (*OperationSummary, 
 			case resources.FilterTypeSingle:
 				res, err := p.client.Get(ctx, filt.Descriptor, filt.ResourceUIDs[0], metav1.GetOptions{})
 				if err != nil {
-					if req.StopOnError {
+					if req.StopOnError || isPullCancellation(invocationCtx, err) {
 						return err
 					}
 					logger.Warn("Could not pull resource", logs.Err(err), slog.String("cmd", filt.String()))
-					summary.RecordFailure(nil, err)
+					summary.RecordFailure(nil, fmt.Errorf("%s: %w", filt.String(), err))
 				} else {
 					partialRes[idx] = []unstructured.Unstructured{*res}
 				}
@@ -218,7 +225,7 @@ func (p *Puller) Pull(ctx context.Context, req PullRequest) (*OperationSummary, 
 			}
 
 			if err := p.process(res, req.Processors); err != nil {
-				if req.StopOnError {
+				if req.StopOnError || isPullCancellation(invocationCtx, err) {
 					return summary, err
 				}
 
@@ -232,6 +239,14 @@ func (p *Puller) Pull(ctx context.Context, req PullRequest) (*OperationSummary, 
 	}
 
 	return summary, nil
+}
+
+// A cancelled invocation must not become a batch failure. Match its own cause,
+// rather than the errgroup cause, which may be an unrelated sibling failure.
+// Signal contexts can carry a cause that does not wrap context.Canceled.
+func isPullCancellation(ctx context.Context, err error) bool {
+	return errors.Is(err, context.Canceled) ||
+		(ctx.Err() != nil && errors.Is(err, context.Cause(ctx)))
 }
 
 // isUnsupportedResourceType reports whether a LIST/GET error indicates that the

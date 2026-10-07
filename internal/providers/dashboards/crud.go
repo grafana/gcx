@@ -10,6 +10,7 @@ import (
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/dashboards/descriptor"
@@ -121,6 +122,16 @@ func newDashboardMutation(action string, desc resources.Descriptor, name string,
 	return result
 }
 
+// dashboardUsageError classifies rejected command options before any I/O.
+func dashboardUsageError(cmd *cobra.Command, err error) error {
+	return &gcxerrors.DetailedError{
+		Summary:     "Invalid command usage",
+		Parent:      err,
+		ExitCode:    new(gcxerrors.ExitUsageError),
+		Suggestions: []string{fmt.Sprintf("Run '%s --help' for usage and examples", cmd.CommandPath())},
+	}
+}
+
 // ---------------------------------------------------------------------------
 // list command
 // ---------------------------------------------------------------------------
@@ -165,7 +176,7 @@ func newListCommand(loader GrafanaConfigLoader) *cobra.Command {
 		Aliases: []string{"ls"},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
-				return err
+				return dashboardUsageError(cmd, err)
 			}
 
 			ctx := cmd.Context()
@@ -263,7 +274,7 @@ func newGetCommand(loader GrafanaConfigLoader) *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
-				return err
+				return dashboardUsageError(cmd, err)
 			}
 
 			ctx := cmd.Context()
@@ -345,7 +356,7 @@ func newCreateCommandWithDeps(deps *mutationDeps) *cobra.Command {
 		Short: "Create a dashboard from a manifest",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
-				return err
+				return dashboardUsageError(cmd, err)
 			}
 
 			ctx := cmd.Context()
@@ -430,7 +441,7 @@ Recommended workflow:
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
-				return err
+				return dashboardUsageError(cmd, err)
 			}
 
 			ctx := cmd.Context()
@@ -505,7 +516,7 @@ func newDeleteCommandWithDeps(deps *mutationDeps) *cobra.Command {
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
-				return err
+				return dashboardUsageError(cmd, err)
 			}
 
 			name := args[0]

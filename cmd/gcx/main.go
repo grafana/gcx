@@ -73,7 +73,9 @@ func main() {
 
 	// prefer sticking to err != nil format, than optimizing for calling exitWith
 	// once
-	if err := root.ValidateArgs(cmd, os.Args[1:]); err != nil {
+	// Validation parses flags, so use a separate tree to avoid appending
+	// repeatable flag values again when the execution tree parses them.
+	if err := root.ValidateArgs(root.Command(formattedVersion), os.Args[1:]); err != nil {
 		exitWith(cmd, gate, start, reportError(err, boolFlags, subCmds))
 	}
 

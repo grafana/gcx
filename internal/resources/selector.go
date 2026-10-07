@@ -14,7 +14,7 @@ type InvalidSelectorError struct {
 }
 
 func (e InvalidSelectorError) Error() string {
-	return fmt.Sprintf("invalid command '%s': %s", e.Command, e.Err)
+	return fmt.Sprintf("invalid resource selector %q: %s", e.Command, e.Err)
 }
 
 // Selectors is a list of resource selectors.
@@ -129,7 +129,7 @@ func (sel *Selector) ParseString(src string) error {
 
 	return InvalidSelectorError{
 		Command: src,
-		Err:     fmt.Sprintf("invalid command '%s'", parts),
+		Err:     "expected a resource type optionally followed by /UID or /UID,UID; too many slash-separated segments",
 	}
 }
 

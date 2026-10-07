@@ -4,7 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"net"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -13,8 +16,94 @@ import (
 	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/resources/remote"
 	"github.com/spf13/pflag"
+	"github.com/stretchr/testify/require"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
+
+func TestGetPartialFailure_IncludesClassifiedCauses(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		agentMode bool
+		format    string
+		jsonField string
+	}{
+		{name: "human JSON", format: "json"},
+		{name: "agent JSON", agentMode: true, format: "json"},
+		{name: "agent field selection", agentMode: true, jsonField: "metadata.name"},
+		{name: "agent YAML", agentMode: true, format: "yaml"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			agent.SetFlag(tc.agentMode)
+			t.Cleanup(func() { agent.SetFlag(false) })
+			flags := pflag.NewFlagSet("get", pflag.ContinueOnError)
+			opts := resources.NewGetOptsForTest(flags)
+			if tc.jsonField != "" {
+				require.NoError(t, flags.Set("json", tc.jsonField))
+			} else {
+				require.NoError(t, flags.Set("output", tc.format))
+			}
+			require.NoError(t, opts.Validate())
+			forbidden := fmt.Errorf("dashboards: %w", &apierrors.StatusError{ErrStatus: metav1.Status{
+				Code: 403, Reason: metav1.StatusReasonForbidden, Message: "access denied by policy",
+			}})
+			transport := fmt.Errorf("folders: %w", &url.Error{
+				Op: "Get", URL: "https://example.grafana.net/apis/folders",
+				Err: &net.OpError{Op: "dial", Net: "tcp", Err: errors.New("connection refused")},
+			})
+			var firstStdout, firstStderr string
+			for _, reverse := range []bool{false, true} {
+				summary := &remote.OperationSummary{}
+				causes := []error{forbidden, transport}
+				if reverse {
+					causes[0], causes[1] = causes[1], causes[0]
+				}
+				for _, cause := range causes {
+					summary.RecordFailure(nil, cause)
+				}
+				var stdout, stderr bytes.Buffer
+				opts.IO.ErrWriter = &stderr
+				err := resources.WriteGetOutputForTest(&stdout, &stderr, opts,
+					&resources.FetchResponse{PullSummary: summary}, unstructured.UnstructuredList{})
+				var emitted *gcxerrors.EmittedError
+				require.ErrorAs(t, err, &emitted)
+				require.Equal(t, gcxerrors.ExitPartialFailure, emitted.Code)
+				require.ErrorIs(t, err, forbidden)
+				require.ErrorIs(t, err, transport)
+				var details string
+				if tc.agentMode && tc.format != "yaml" {
+					var doc struct {
+						Type  string `json:"type"`
+						Error struct {
+							Details  string `json:"details"`
+							ExitCode int    `json:"exitCode"`
+						} `json:"error"`
+					}
+					dec := json.NewDecoder(bytes.NewReader(stdout.Bytes()))
+					require.NoError(t, dec.Decode(&doc))
+					require.Equal(t, "gcx.partial_result", doc.Type)
+					require.Equal(t, 4, doc.Error.ExitCode)
+					var second any
+					require.ErrorIs(t, dec.Decode(&second), io.EOF)
+					details = doc.Error.Details
+				} else {
+					details = stderr.String()
+				}
+				for _, want := range []string{"Authorization failed", "403 Forbidden", "access denied by policy", "dashboards", "Network error", "connection refused", "folders"} {
+					require.Contains(t, details, want)
+				}
+				require.Equal(t, 1, strings.Count(details, "access denied by policy"))
+				if reverse {
+					require.Equal(t, firstStdout, stdout.String())
+					require.Equal(t, firstStderr, stderr.String())
+				} else {
+					firstStdout, firstStderr = stdout.String(), stderr.String()
+				}
+			}
+		})
+	}
+}
 
 // These tests pin the atomic-stdout contract for `resources get` partial
 // failures. Before the fix the three paths disagreed:

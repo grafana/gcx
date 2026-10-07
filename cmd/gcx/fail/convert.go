@@ -221,14 +221,15 @@ func convertConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 }
 
 func convertAuthErrors(err error) (*gcxerrors.DetailedError, bool) {
-	if errors.Is(err, auth.ErrRefreshTokenExpired) {
+	if errors.Is(err, auth.ErrRefreshTokenExpired) || errors.Is(err, auth.ErrRefreshTokenMissing) {
 		return &gcxerrors.DetailedError{
 			Parent:  err,
-			Summary: "Session expired",
+			Summary: "Authentication failed",
 			Suggestions: []string{
 				"Run `gcx login` to re-authenticate",
 			},
 			DocsLink: docs.ServiceAccounts,
+			ExitCode: new(gcxerrors.ExitAuthFailure),
 		}, true
 	}
 	return nil, false
@@ -879,18 +880,18 @@ func joinErrorDetails(parts ...string) string {
 }
 
 func convertResourcesErrors(err error) (*gcxerrors.DetailedError, bool) {
-	invalidCommandErr := &resources.InvalidSelectorError{}
-	if err != nil && errors.As(err, invalidCommandErr) {
+	invalidSelectorErr := &resources.InvalidSelectorError{}
+	if errors.As(err, invalidSelectorErr) {
 		return &gcxerrors.DetailedError{
 			Parent:  err,
-			Summary: "Could not parse resource(s) selector",
-			Details: fmt.Sprintf("Failed to parse command '%s'", invalidCommandErr.Command),
+			Summary: "Invalid command usage",
 			Suggestions: []string{
-				"Make sure that your are passing in valid resource selectors",
+				"List dashboards with a resource selector: gcx resources get dashboards",
+				"Run 'gcx resources get --help' for selector syntax and examples",
 			},
+			ExitCode: new(gcxerrors.ExitUsageError),
 		}, true
 	}
-
 	return nil, false
 }
 

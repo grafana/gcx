@@ -28,6 +28,7 @@ import (
 	cmdoutput "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers/instrumentation"
 	"github.com/grafana/gcx/internal/queryerror"
+	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/dynamic"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -249,7 +250,7 @@ func TestErrorToDetailedError_SessionExpiredDocsLink(t *testing.T) {
 	got := fail.ErrorToDetailedError(fmt.Errorf("token refresh failed: %w", auth.ErrRefreshTokenExpired))
 
 	require.NotNil(t, got)
-	assert.Equal(t, "Session expired", got.Summary)
+	assert.Equal(t, "Authentication failed", got.Summary)
 	assert.Equal(t, docs.ServiceAccounts, got.DocsLink)
 }
 
@@ -1696,5 +1697,39 @@ func TestErrorToDetailedError_APIStatusCallerContext(t *testing.T) {
 				require.ErrorIs(t, got, err)
 			})
 		}
+	}
+}
+
+func TestErrorToDetailedError_DynamicAuthenticationRenewal(t *testing.T) {
+	for _, cause := range []error{auth.ErrRefreshTokenExpired, auth.ErrRefreshTokenMissing} {
+		t.Run(cause.Error(), func(t *testing.T) {
+			err := &url.Error{Op: "Get", URL: "https://example.invalid/apis", Err: fmt.Errorf("token refresh failed: %w", cause)}
+			got := fail.ErrorToDetailedError(dynamic.ParseStatusError(err))
+			assert.Equal(t, "Authentication failed", got.Summary)
+			require.NotNil(t, got.ExitCode)
+			assert.Equal(t, gcxerrors.ExitAuthFailure, *got.ExitCode)
+			require.ErrorIs(t, got, cause)
+			assert.Contains(t, got.Error(), cause.Error())
+			assert.Equal(t, []string{"Run `gcx login` to re-authenticate"}, got.Suggestions)
+		})
+	}
+}
+
+func TestErrorToDetailedError_InvalidResourceSelector(t *testing.T) {
+	for _, wrapped := range []bool{false, true} {
+		t.Run(fmt.Sprintf("wrapped=%t", wrapped), func(t *testing.T) {
+			var err error = resources.InvalidSelectorError{Command: "dashboards////", Err: "too many selector segments"}
+			if wrapped {
+				err = fmt.Errorf("read resources: %w", err)
+			}
+			got := fail.ErrorToDetailedError(err)
+			assert.Equal(t, "Invalid command usage", got.Summary)
+			require.NotNil(t, got.ExitCode)
+			assert.Equal(t, gcxerrors.ExitUsageError, *got.ExitCode)
+			assert.Equal(t, 1, strings.Count(got.Error(), "dashboards////"))
+			var rendered bytes.Buffer
+			require.NoError(t, got.WriteJSON(&rendered, gcxerrors.ExitUsageError))
+			assert.Contains(t, rendered.String(), "too many selector segments")
+		})
 	}
 }

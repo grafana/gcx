@@ -1,6 +1,7 @@
 package root
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -75,12 +76,43 @@ func trimLeadingRootFlags(rootCmd *cobra.Command, args []string) ([]string, bool
 	fs.SetInterspersed(false)
 	fs.AddFlagSet(rootCmd.PersistentFlags())
 	fs.AddFlagSet(rootCmd.Flags())
+	// Cobra resolves the command before parsing flags, so a child-local flag
+	// such as --config is also valid before that child's command name.
+	if cmd, _, _ := rootCmd.Find(args); cmd != nil {
+		fs.AddFlagSet(cmd.InheritedFlags())
+		fs.AddFlagSet(cmd.Flags())
+		fs.AddFlagSet(cmd.PersistentFlags())
+	}
 
 	if err := fs.Parse(args); err != nil {
 		return nil, false
 	}
 
 	return fs.Args(), true
+}
+
+func commandUsageError(cmd *cobra.Command, err error) error {
+	var usageErr *fail.UsageError
+	if errors.As(err, &usageErr) {
+		return err
+	}
+	return fail.NewCommandUsageError(cmd, "", err)
+}
+
+// Cobra positional validators report invocation errors before RunE. Wrap them
+// centrally so argument and flag parsing failures share the usage exit code.
+func wrapArgumentErrors(cmd *cobra.Command) {
+	if validate := cmd.Args; validate != nil {
+		cmd.Args = func(cmd *cobra.Command, args []string) error {
+			if err := validate(cmd, args); err != nil {
+				return commandUsageError(cmd, err)
+			}
+			return nil
+		}
+	}
+	for _, child := range cmd.Commands() {
+		wrapArgumentErrors(child)
+	}
 }
 
 func traverseArgs(rootCmd *cobra.Command, args []string) (*cobra.Command, []string, bool) {
