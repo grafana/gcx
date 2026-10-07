@@ -66,7 +66,7 @@ func TestLoadLayeredRecoversRevisionConflicts(t *testing.T) {
 			withFakeKeychain(t)
 			fixture := newLayeredMigrationFixture(t)
 			t.Setenv("XDG_STATE_HOME", t.TempDir())
-			t.Setenv("GCX_KEYCHAIN", "")
+			t.Setenv(envKeychain, "")
 			cfg := Config{
 				Version:        ConfigVersion,
 				CurrentContext: "a",
