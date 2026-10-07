@@ -9,36 +9,19 @@ Before implementing features or commands, read:
 - [CONSTITUTION.md](CONSTITUTION.md) — invariants you must not violate
 - [docs/design/](docs/design/) — prescriptive UX implementation rules (output, errors, agent mode, naming, …)
 
-Naming a command? Start with the
-[command naming and placement guide](docs/design/command-naming.md).
+Naming a command? Start with the [command naming and placement guide](docs/design/command-naming.md).
 
-Adding, extending, or reviewing a gcx capability — a provider, datasource kind,
-resource adapter, cloud command, or bundled skill? Ask your coding agent to use
-the [`integrate-with-gcx`](.claude/skills/integrate-with-gcx/SKILL.md) skill. It
-settles whether a new command is warranted at all and where it belongs, then
-designs the command's agent-facing contract before any code gets written. It
-hands implementation off to `add-provider` or `add-datasource` where those
-apply, and runs a pre-review self-check over the finished diff.
+Adding, extending, or reviewing a gcx capability — a provider, datasource kind, resource adapter, cloud command, or bundled skill? Ask your coding agent to use the [`integrate-with-gcx`](.claude/skills/integrate-with-gcx/SKILL.md) skill. It settles whether a new command is warranted at all and where it belongs, then designs the command's agent-facing contract before any code gets written. It hands implementation off to `add-provider` or `add-datasource` where those apply, and runs a pre-review self-check over the finished diff.
 
-Please read the next few sections before adding a new command. They will save
-you time, and they mean we can say yes faster.
+Please read the next few sections before adding a new command. They will save you time, and they mean we can say yes faster.
 
 ## New commands need an issue first
 
-**Before writing a new command, provider, datasource kind or resource type,
-please [open a new command proposal](https://github.com/grafana/gcx/issues/new?template=2-new-command-proposal.yml)
-and wait for a maintainer to agree with the placement.**
+**Before writing a new command, provider, datasource kind or resource type, please [open a new command proposal](https://github.com/grafana/gcx/issues/new?template=2-new-command-proposal.yml) and wait for a maintainer to agree with the placement.**
 
-Grafana product teams don't need a proposal for commands inside their own
-product area — see [Product teams](#product-teams). For anything outside it,
-such as a new top-level area or a change to shared commands, raise it in the
-#gcx channel or open a proposal.
+Grafana product teams don't need a proposal for commands inside their own product area — see [Product teams](#product-teams). For anything outside it, such as a new top-level area or a change to shared commands, raise it in the #gcx channel or open a proposal.
 
-We would much rather say "not like this" to a short issue than to a finished
-pull request. Command paths, flags and positional syntax are stable within a
-major version ([CONSTITUTION.md](CONSTITUTION.md#cli-grammar)), so placement
-and naming are the parts of a change that are hardest to fix after review, and
-impossible to fix after release.
+We would much rather say "not like this" to a short issue than to a finished pull request. Command paths, flags and positional syntax are stable within a major version ([CONSTITUTION.md](CONSTITUTION.md#cli-grammar)), so placement and naming are the parts of a change that are hardest to fix after review, and impossible to fix after release.
 
 This applies to:
 
@@ -53,49 +36,31 @@ It does **not** apply to (please just send a PR):
 - tests
 - performance and reliability work
 
-If you have already written the code, that's fine — open the issue anyway and
-link it. We'll review the idea before the diff.
+If you have already written the code, that's fine — open the issue anyway and link it. We'll review the idea before the diff.
 
 ## Stable, experimental, or not gcx
 
 Not every good idea has to ship as a stable command on day one.
 
-| Outcome | How it ships | The bar |
-| --- | --- | --- |
-| **Stable** | A normal command | Backed by a GA API whose shape, auth and limits are settled; name you're happy to support for the whole major version |
-| **Experimental** | `[experimental]` in the short description, `agent.StabilityExperimental` annotation | Real use case, but the API or the command shape may still change |
-| **Not gcx** | — | The backend isn't ready, or the capability belongs to the product's own API or UI |
+| Outcome          | How it ships                                                                        | The bar                                                                                                               |
+| ---------------- | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| **Stable**       | A normal command                                                                    | Backed by a GA API whose shape, auth and limits are settled; name you're happy to support for the whole major version |
+| **Experimental** | `[experimental]` in the short description, `agent.StabilityExperimental` annotation | Real use case, but the API or the command shape may still change                                                      |
+| **Not gcx**      | —                                                                                   | The backend isn't ready, or the capability belongs to the product's own API or UI                                     |
 
-Experimental is not a consolation prize: it is exempt from the compatibility
-promise, so it is the right place for anything backed by a non-GA product
-feature or whose shape you aren't yet sure of. See
-[experimental-commands.md](docs/design/experimental-commands.md) for how to
-mark one. If you're unsure, **propose it as experimental yourself** — it is
-much easier to say yes to.
+Experimental is not a consolation prize: it is exempt from the compatibility promise, so it is the right place for anything backed by a non-GA product feature or whose shape you aren't yet sure of. See [experimental-commands.md](docs/design/experimental-commands.md) for how to mark one. If you're unsure, **propose it as experimental yourself** — it is much easier to say yes to.
 
-"Not gcx" usually means a backend prerequisite: gcx wraps product APIs, it
-does not fix them. Missing pagination, unstable payloads or unclear RBAC need
-to be solved by the owning team first. In the meantime,
-[`gcx api`](docs/reference/cli/gcx_api.md) gives raw access to any Grafana API.
+"Not gcx" usually means a backend prerequisite: gcx wraps product APIs, it does not fix them. Missing pagination, unstable payloads or unclear RBAC need to be solved by the owning team first. In the meantime, [`gcx api`](docs/reference/cli/gcx_api.md) gives raw access to any Grafana API.
 
 ## Prefer extending a command over adding one
 
-Before adding a command, check whether an existing one can answer the same
-question with one more flag, or whether the operation is already covered by
-the standard verbs — `list`, `get`, `create`, `update`, `upsert`, `push`,
-`pull`, `delete`, `query`, `search`. [Prefer existing command
-operations](docs/design/command-naming.md) over inventing new ones;
-`cmd/gcx/root/commandoperations_test.go` enforces this.
+Before adding a command, check whether an existing one can answer the same question with one more flag, or whether the operation is already covered by the standard verbs — `list`, `get`, `create`, `update`, `upsert`, `push`, `pull`, `delete`, `query`, `search`. [Prefer existing command operations](docs/design/command-naming.md) over inventing new ones; `cmd/gcx/root/commandoperations_test.go` enforces this.
 
-If two open PRs would add overlapping commands, we'd rather consolidate them
-before merging than ship both and deprecate one in the next major release.
-Searching [open pull requests](https://github.com/grafana/gcx/pulls) for your
-area before you start is worth the two minutes.
+If two open PRs would add overlapping commands, we'd rather consolidate them before merging than ship both and deprecate one in the next major release. Searching [open pull requests](https://github.com/grafana/gcx/pulls) for your area before you start is worth the two minutes.
 
 ## A note on AI-assisted contributions
 
-These are welcome — this repository ships contributor skills precisely because
-most changes here are written with an agent's help. Two requests:
+These are welcome — this repository ships contributor skills precisely because most changes here are written with an agent's help. Two requests:
 
 1. **Read and understand the diff before you send it.** We will ask about
    design decisions, and "the agent chose that" is a difficult place to review
@@ -106,49 +71,28 @@ most changes here are written with an agent's help. Two requests:
    is why we ask for the issue first. The `integrate-with-gcx` skill helps, but
    doesn't replace that conversation.
 
-A PR that is easy to generate can still be expensive to review. The issue step
-is how we keep that cost from landing on you as a rejection.
+A PR that is easy to generate can still be expensive to review. The issue step is how we keep that cost from landing on you as a rejection.
 
 ## Conventions we enforce
 
-Run `mise run gate` (lint + tests + build) before pushing, and
-`GCX_AGENT_MODE=false mise run reference` if you touched commands, flags,
-config or env vars. The specifics:
+Run `mise run gate` (lint + tests + build) before pushing, and `GCX_AGENT_MODE=false mise run reference` if you touched commands, flags, config or env vars. The specifics:
 
-- **Signed commits are required.** Every commit must have a verified
-  signature — this is
-  [a Grafana organisation-wide policy](https://community.grafana.com/t/action-required-signed-commits-mandatory-for-all-grafana-repositories/163404).
-  Set it up once; it is the most common reason a finished PR sits unmerged.
-- **Generated reference docs must not drift.** The `Documentation` check runs
-  `mise run reference-drift`; regenerate with the command above.
-- **Every `gcx` invocation in a skill must exist.**
-  `TestSkillsGcxInvocationsMatchCommandTree` checks `claude-plugin/skills/`
-  and `.claude/skills/` against the real command tree.
-- **Experimental commands must be marked consistently** —
-  `cmd/gcx/root/experimental_test.go`.
+- **Signed commits are required.** Every commit must have a verified signature — this is [a Grafana organisation-wide policy](https://community.grafana.com/t/action-required-signed-commits-mandatory-for-all-grafana-repositories/163404). Set it up once; it is the most common reason a finished PR sits unmerged.
+- **Generated reference docs must not drift.** The `Documentation` check runs `mise run reference-drift`; regenerate with the command above.
+- **Every `gcx` invocation in a skill must exist.** `TestSkillsGcxInvocationsMatchCommandTree` checks `claude-plugin/skills/` and `.claude/skills/` against the real command tree.
+- **Experimental commands must be marked consistently** — `cmd/gcx/root/experimental_test.go`.
 - **A code owner must approve.** See [Code ownership](#code-ownership) below.
 
-The checks that must pass to merge are `Tests`, `Linters` and `Documentation`,
-plus the organisation's signed-commit and secret-scanning checks.
+The checks that must pass to merge are `Tests`, `Linters` and `Documentation`, plus the organisation's signed-commit and secret-scanning checks.
 
-Not enforced automatically, but please follow it: **conventional commit PR titles** —
-`feat(slo):`, `fix(traces):`, `docs:` and so on. PRs are squash-merged, so the
-title becomes the commit message and feeds the changelog. Mark breaking
-changes with `!`.
+Not enforced automatically, but please follow it: **conventional commit PR titles** — `feat(slo):`, `fix(traces):`, `docs:` and so on. PRs are squash-merged, so the title becomes the commit message and feeds the changelog. Mark breaking changes with `!`.
 
 ## What you can expect from us
 
-- **An automated review.** A Claude code review runs when a non-draft PR is
-  opened or marked ready for review, checking against the docs linked above.
-  Treat it as a first pass; a human still reviews.
-- **CI on forks may need approval.** Workflow runs on pull requests from forks
-  can require a maintainer to approve them. If your checks show as pending,
-  they're waiting on us, not you — feel free to comment if it's been a while.
-- **We'll tell you the outcome.** If we ask for a command to be experimental,
-  renamed, or folded into an existing one, that's a yes with a placement, not
-  a rejection.
-- **If we're going to say no, we'll try to say it on the issue, not on your
-  PR.** That's the whole point of proposing first.
+- **An automated review.** A Claude code review runs when a non-draft PR is opened or marked ready for review, checking against the docs linked above. Treat it as a first pass; a human still reviews.
+- **CI on forks may need approval.** Workflow runs on pull requests from forks can require a maintainer to approve them. If your checks show as pending, they're waiting on us, not you — feel free to comment if it's been a while.
+- **We'll tell you the outcome.** If we ask for a command to be experimental, renamed, or folded into an existing one, that's a yes with a placement, not a rejection.
+- **If we're going to say no, we'll try to say it on the issue, not on your PR.** That's the whole point of proposing first.
 
 ## Code ownership
 
@@ -161,15 +105,37 @@ Grafana engineering teams are welcome to contribute to and maintain their areas 
 We have tools in place to help maintain a consistent command surface and output conventions across the codebase, as well as LLM-assisted code review to try and ensure that the architecture and design conventions are followed. For more details on these tools, see:
 
 - [The claude code review GH action, with prompt & references](.github/workflows/claude-code-review.yml). This should encourage authors to adhere to the guidelines linked above.
-- [Prefer existing command operations over creating new ones](docs/design/command-naming.md)  (test files are [here](cmd/gcx/root/commandoperations_test.go))
+- [Prefer existing command operations over creating new ones](docs/design/command-naming.md) (test files are [here](cmd/gcx/root/commandoperations_test.go))
 - [Syntax for experimental commands](docs/design/experimental-commands.md) (test files are referenced from the docs)
-
 
 ## Issue Tracking
 
-Issues are tracked in [GitHub Issues](https://github.com/grafana/gcx/issues).
-Use the issue templates when creating new issues - they set the correct issue
-type and labels automatically.
+Issues are tracked in [GitHub Issues](https://github.com/grafana/gcx/issues). Use the issue templates when creating new issues - they set the correct issue type and labels automatically.
+
+## Proposing features
+
+The [issue-first policy](#new-commands-need-an-issue-first) above determines when a proposal is required and which changes are exempt. For work that needs a proposal, follow this flow. Add an RFC when the work has enough scope to need its own design; most PRs do not need one:
+
+```mermaid
+flowchart LR
+    P["Contributor files<br/>a proposal"] --> D{"Maintainers<br/>review"}
+    D -->|reject| X(["Closed"])
+    D -->|accept| S{"Separate design<br/>needed?"}
+    S -->|yes| R["Contributor opens<br/>an RFC PR"]
+    S -->|no| I["Contributor opens<br/>implementation PRs"]
+    R --> RR{"Maintainers<br/>review the RFC"}
+    RR -->|changes requested| R
+    RR -->|merged| I
+    I --> IR{"Maintainers<br/>review"}
+    IR -->|changes requested or more slices| I
+    IR -->|last slice merged| C(["Proposal implemented<br/>and closed"])
+```
+
+1. **Proposal.** Use the [New Command Proposal](.github/ISSUE_TEMPLATE/2-new-command-proposal.yml) template when planning command or interface changes, or [Feature Request](.github/ISSUE_TEMPLATE/4-feature-request.yml) when asking for a capability. Describe the problem, who has it, the proposed direction and acceptance criteria. It does not need a full design. With a coding agent, use the [`propose-feature`](.claude/skills/propose-feature/SKILL.md) skill.
+2. **Decision.** Maintainers accept or reject the proposal on the issue. Do not start the RFC until it is accepted.
+3. **RFC, when needed.** Write the design in [`docs/rfcs/`](docs/rfcs/README.md) and open a PR that references the proposal (`Related: #<issue>`). Use the [`create-rfc`](.claude/skills/create-rfc/SKILL.md) skill. Maintainers review it; merging the PR accepts the design. Large proposals can have more than one RFC. If no separate design is needed, proceed directly to an implementation PR.
+4. **Implementation.** Implement the accepted proposal and any RFC in reviewable PRs that reference the proposal. Each PR carries its own [OpenSpec](openspec/) change (proposal, spec delta, design and tasks); use the `openspec-propose` skill to start one. Maintainers review each PR, and contributors revise until it merges.
+5. **Close.** The PR that completes the acceptance criteria closes the proposal (`Closes #<issue>`).
 
 ## Making changes
 
@@ -177,9 +143,10 @@ type and labels automatically.
 
 If you are using a coding agent to make changes to this repository, there are skills in [.claude/skills](.claude/skills) for contributing:
 
-- [add-provider](.claude/skills/add-provider) will help add a new top-level command area to gcx. 
+- [add-provider](.claude/skills/add-provider) will help add a new top-level command area to gcx.
 - [add-datasource](.claude/skills/add-datasource) will help add a new datasource provider to gcx (under `gcx datasources`).
 - [integrate-with-gcx](.claude/skills/integrate-with-gcx) is a more general skill that will help add capabilities with gcx.
+- [propose-feature](.claude/skills/propose-feature) and [create-rfc](.claude/skills/create-rfc) cover the proposal and RFC steps of [proposing features](#proposing-features), and the `openspec-*` skills cover the per-PR OpenSpec change.
 
 ### Development environment
 
@@ -237,7 +204,6 @@ You can use the provided config file to get gcx to use the local Grafana instanc
 $ go run ./cmd/gcx --config testdata/integration-test-config.yaml resources list-types
 ```
 
-
 ### Stopping the test environment
 
 When you're done testing, stop the services:
@@ -269,7 +235,7 @@ To test against a different Grafana version, modify the `image` field in `docker
 ```yaml
 services:
   grafana:
-    image: grafana/grafana:12.1  # or any other version
+    image: grafana/grafana:12.1 # or any other version
 ```
 
 Then restart the service:
@@ -292,7 +258,6 @@ To view logs from a specific service:
 $ docker-compose logs -f grafana
 ```
 
-
 ## Releasing gcx
 
 ### Generating a changelog and tagging
@@ -306,6 +271,7 @@ $ mise run tag -- patch   # or minor, major
 This generates a changelog entry (via Claude), updates `CHANGELOG.md` and `.release-notes.md`, commits, tags, and pushes. The tag push triggers GoReleaser.
 
 **With branch protection** (can't push directly to main): the script will fail at the push step. Instead:
+
 1. Create a branch, commit the changelog, open a PR
 2. Merge the PR
 3. Tag the merge commit on main and push the tag:
