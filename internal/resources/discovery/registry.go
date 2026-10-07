@@ -29,9 +29,17 @@ var ignoredResourceGroups = []string{
 	"featuretoggle.grafana.app",
 	"service.grafana.app",
 	"userstorage.grafana.app",
-	// TODO: check with alerting folks if this should be ignored or not
-	"notifications.alerting.grafana.app",
 	"iam.grafana.app",
+}
+
+// partiallyExposedGroups lists groups whose resources are hidden unless named here.
+// The group's APIGroup entry is kept, so preferred versions still resolve.
+// Resources Grafana adds to these groups stay hidden until explicitly opted in,
+// so nothing reaches pull/push before its secret handling has been checked.
+//
+//nolint:gochecknoglobals
+var partiallyExposedGroups = map[string][]string{
+	"notifications.alerting.grafana.app": {"routingtrees"},
 }
 
 // Client is a client that can be used to discover resources.
@@ -200,7 +208,7 @@ func (r *Registry) Discover(ctx context.Context) error {
 	}
 
 	// Filter out ignored resource groups.
-	apiGroups, apiResources, err = FilterDiscoveryResults(ignoredResourceGroups, apiGroups, apiResources)
+	apiGroups, apiResources, err = FilterDiscoveryResults(ignoredResourceGroups, partiallyExposedGroups, apiGroups, apiResources)
 	if err != nil {
 		return err
 	}
@@ -250,8 +258,9 @@ func (r *Registry) makeFiltersForSelector(selector resources.Selector, preferred
 }
 
 // FilterDiscoveryResults filters the discovery results to exclude ignored resource groups.
+// For groups in partial, only the listed resources are kept.
 func FilterDiscoveryResults(
-	ignored []string, apiGroups []*metav1.APIGroup, apiResources []*metav1.APIResourceList,
+	ignored []string, partial map[string][]string, apiGroups []*metav1.APIGroup, apiResources []*metav1.APIResourceList,
 ) ([]*metav1.APIGroup, []*metav1.APIResourceList, error) {
 	filteredGroups := make([]*metav1.APIGroup, 0, len(apiGroups))
 	filteredResources := make([]*metav1.APIResourceList, 0, len(apiResources))
@@ -274,9 +283,15 @@ func FilterDiscoveryResults(
 			continue
 		}
 
+		allowed, isPartial := partial[gv.Group]
+
 		filteredAPIResources := make([]metav1.APIResource, 0, len(resource.APIResources))
 		for _, r := range resource.APIResources {
 			if !r.Namespaced {
+				continue
+			}
+
+			if isPartial && !slices.Contains(allowed, r.Name) {
 				continue
 			}
 

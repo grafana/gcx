@@ -10,7 +10,7 @@ RFCs propose engineering changes for review: the problem, user experience, techn
 
 ## Authoring and maintenance
 
-Use `NNN-title.md`, choosing the next unused number starting at `001`, and add the document to this index. Keep later revisions in the same file. Include terminology in the RFC when needed rather than creating a separate glossary.
+Use `NNN-title.md`, choosing the next unused number starting at `001`, and add the document to this index. Keep later revisions in the same file. Define proposed terms in the RFC. When a feature ships, move its terms to the [glossary](../glossary/README.md) and link to them from the RFC instead of repeating them.
 
 The repository provides two contributor skills:
 

@@ -195,10 +195,10 @@ Do you need only standard CRUD on an externally accessible, discoverable
 Being on `/apis` settles CRUD, not the command surface: `gcx dashboards` and
 `gcx alert` are dedicated command trees over `/apis`-backed products, because
 their real operations are not CRUD verbs. Product-specific operations need their
-own placement analysis regardless of tier. And a commands-only provider that calls
-the K8s dynamic client extends the single documented exception in
-`CONSTITUTION.md` § Architecture Invariants (`internal/providers/dashboards/`,
-ADR 016), which requires explicit human approval.
+own placement analysis regardless of tier. Provider commands over a native
+`/apis` resource go through the shared native binding (`internal/providers/native`,
+see `CONSTITUTION.md` § Architecture Invariants); dashboards still hand-rolls this
+access until its pending migration lands.
 
 See `.claude/skills/add-provider/references/decision-tree.md` for the full
 decision tree.

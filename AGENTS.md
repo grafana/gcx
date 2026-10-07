@@ -18,6 +18,7 @@
 | [docs/architecture/](docs/architecture/) | Deep-dive architecture docs (patterns, resource model, CLI layer, data flows, …) |
 | [docs/design/](docs/design/) | Prescriptive UX implementation rules (output, errors, agent mode, naming, …) |
 | [docs/rfcs/](docs/rfcs/README.md) | Engineering proposals, design tradeoffs, and validation criteria |
+| [docs/glossary/](docs/glossary/README.md) | Shipped domain terms, one file per context (proposed terms stay in RFCs) |
 | [docs/reference/](docs/reference/) | Provider guides, CLI reference, migration analysis |
 | [docs/_templates/](docs/_templates/) | Spec and planning templates (feature, bugfix, refactor, ADR, research) |
 

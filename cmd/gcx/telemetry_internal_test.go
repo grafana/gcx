@@ -456,9 +456,11 @@ func TestReportErrorCapturesSignalsAndPreservesExitCodes(t *testing.T) {
 			wantReason: "Unauthorized",
 		},
 		{
-			name:       "dynamic k8s unauthorized keeps exit 1 and no http_status",
+			// dynamic.APIError implements APIStatus, so the API converter maps
+			// 401/403 from the dynamic client to the auth-failure exit code.
+			name:       "dynamic k8s unauthorized exits 3 and no http_status",
 			err:        dynamic.ParseStatusError(k8sapi.NewUnauthorized("bad token")),
-			wantExit:   gcxerrors.ExitGeneralError,
+			wantExit:   gcxerrors.ExitAuthFailure,
 			wantReason: "Unauthorized",
 		},
 		{

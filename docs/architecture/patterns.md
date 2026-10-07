@@ -781,6 +781,47 @@ c.doRequest(ctx, http.MethodPost, fmt.Sprintf("%s/%s/apply", recsPath, id), nil)
 - `internal/providers/kg/client.go`: `ruleByNameFmt`, `suppressionByNameFmt`
 - `internal/providers/agento11y/*/client.go`: `conversationByIDFmt`, `generationByIDFmt`, `ruleByIDFmt`, `templateByIDFmt`, `evaluatorByIDFmt`
 
+### 22. Native Resource Binding (Adopt)
+
+**Observation:** Some provider commands manage a Kubernetes-compatible resource
+that Grafana serves natively and gcx discovers from the server (for example
+`gcx alert routing-trees` over `routingtrees.notifications.alerting.grafana.app`).
+These commands must not register an adapter for the GVK (that would take the
+GVK away from the dynamic client in `gcx resources` and pin one version), and
+must not build discovery registries or dynamic clients by hand.
+
+**Rule:** Bind the resource once in the command factory with
+`native.Bind(loader, native.Config{Group, Resource})` from
+`internal/providers/native`. Leaves call `Binding.Load` only after validation
+and any confirmation; `Load` resolves a fresh config snapshot, the descriptor
+(server-preferred version unless `LoadOptions.APIVersion` is set), and a
+dynamic client. Nothing is cached between calls.
+
+```go
+binding := native.Bind(loader, native.Config{
+    Group:    "notifications.alerting.grafana.app",
+    Resource: "routingtrees",
+})
+// in RunE, after validation:
+access, err := binding.Load(ctx, native.LoadOptions{APIVersion: opts.APIVersion})
+list, err := access.Client.List(ctx, access.Descriptor, metav1.ListOptions{})
+```
+
+**Reuse constraints:**
+- `native` imports no cobra, `cmdio`, terminal, or prompt packages
+  (`TestNoCLIImports` enforces direct imports).
+- `native.WithRegistry` replaces the on-disk discovery cache, e.g. for a
+  long-running multi-tenant process.
+- `native.ReadManifest(filename, stdin)` reads `-f` input from an injected
+  reader (`cmd.InOrStdin()`), never `os.Stdin`.
+- Tests inject `native.Fixed(access)` or `native.Func(f)` instead of a server.
+
+**Key files:**
+- `internal/providers/native/native.go`: `Bind`, `Binding.Load`, `Fixed`, `Func`, `WithRegistry`, `ParseAPIVersion`
+- `internal/providers/native/manifest.go`: `ReadManifest`
+- `internal/providers/alert/routing_trees_commands.go`: first adopter
+- Constitution: "Native resources go through the shared native binding". Dashboards still hand-rolls access until its migration lands.
+
 ---
 
 ## Contradiction Resolutions

@@ -25,6 +25,7 @@ import (
 	cmdoutput "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers/instrumentation"
 	"github.com/grafana/gcx/internal/queryerror"
+	"github.com/grafana/gcx/internal/resources/dynamic"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -151,6 +152,18 @@ func TestErrorToDetailedError_AuthExitCode(t *testing.T) {
 					Message: "Forbidden",
 				},
 			},
+			wantExitCode: gcxerrors.ExitAuthFailure,
+		},
+		{
+			name: "403 from the dynamic client (dynamic.APIError) returns ExitAuthFailure",
+			err: fmt.Errorf("list routing trees: %w", dynamic.ParseStatusError(&k8sapi.StatusError{
+				ErrStatus: metav1.Status{
+					Status:  metav1.StatusFailure,
+					Code:    403,
+					Reason:  metav1.StatusReasonForbidden,
+					Message: "Forbidden",
+				},
+			})),
 			wantExitCode: gcxerrors.ExitAuthFailure,
 		},
 	}
