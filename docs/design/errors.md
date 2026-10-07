@@ -61,14 +61,14 @@ Add new error types by implementing a converter function and appending to
 `errorConverters` in `cmd/gcx/fail/convert.go`:
 
 ```go
-func convertMyErrors(err error) (*DetailedError, bool) {
+func convertMyErrors(err error) (*gcxerrors.DetailedError, bool) {
     var myErr *mypackage.SpecificError
     if !errors.As(err, &myErr) {
         return nil, false
     }
-    return &DetailedError{
-        Summary:     "Descriptive summary",
-        Parent:      err,
+    return &gcxerrors.DetailedError{
+        Summary:     gcxerrors.SummaryAPIError, // a constant from the summary vocabulary below
+        Details:     "My service request failed: " + myErr.Message,
         Suggestions: []string{"gcx ..."},
     }, true
 }
@@ -156,25 +156,49 @@ See [exit-codes.md](exit-codes.md) for exit code values referenced in `exitCode`
 ## Summary vocabulary
 
 Error summaries in `cmd/gcx/fail/` MUST be drawn from the following vocabulary.
-Adding a new summary requires a PR amending this list.
+Adding a new summary requires a PR amending this list. Service, datasource,
+query language, operation, version, counts, and identifiers go in `Details`,
+not in the summary.
 
 | Summary | When to use |
 |---|---|
-| `Invalid command usage` | Wrong flags, conflicting flags, missing required args |
-| `Invalid configuration` | Bad config file, unresolvable context |
-| `Authentication failed` | Token expired or missing |
+| `Invalid command usage` | Wrong flags, conflicting flags, missing required args or flags |
+| `Invalid configuration` | Bad or unparseable config file, unresolvable context, missing non-credential settings (e.g. SM URL, Cloud stack slug) |
+| `Authentication failed` | gcx has no credential, or the server rejected it: HTTP 401, expired or missing token, missing Cloud credentials. Suggestions point at `gcx login` or setting a token |
 | `Keychain locked` | The OS keychain answers, but it is locked or the current session cannot unlock it, so gcx cannot store or use the credential |
 | `Keychain unavailable` | The OS keychain cannot be reached, so gcx cannot store or use the credential without an explicit plaintext-storage opt-out |
 | `OS credential store access is restricted` | The credential store is available, but the current execution session cannot write to it |
-| `Authorization failed` | Permission denied (403) |
+| `Authorization failed` | The credential was accepted but lacks permission: HTTP 403, access-policy scope errors (Adaptive Logs `invalid scope` regardless of 401/403). Suggestions point at roles, access-policy scopes, or `gcx setup status`, not `gcx login` |
 | `Resource not found` | 404 or client-side not-found detection |
-| `Resource conflict` | Optimistic lock / RMW conflict, or an API-reported conflict whose exact cause is not machine-discriminable (e.g. GCOM stack 409s) |
+| `Resource conflict` | Optimistic lock / RMW conflict, or an API-reported conflict whose exact cause is not machine-discriminable (e.g. GCOM stack 409s, including delete protection) |
 | `Invalid stack request` | GCOM rejected stack create/update arguments (409 with code `InvalidArgument`) |
-| `Network error` | Connection refused, DNS failure |
+| `Invalid query` | The datasource rejected a query or query request (HTTP 400), including query-language parse errors |
+| `Unsupported Grafana version` | The Grafana server is older than gcx supports (exit code 6) |
+| `Partial failure` | A batch operation completed, but some resources failed (exit code 4); the counts go in details |
+| `Network error` | Connection refused, DNS failure, server unreachable, timeouts |
 | `API error` | Non-404/403 HTTP error from backend |
-| `Endpoint not available` | The requested API route, resource type, or API version is absent on this deployment (e.g. an experimental or Cloud-only endpoint), as opposed to a missing resource instance |
+| `Endpoint not available` | The requested API route, resource type, or API version is absent on this deployment (e.g. an experimental or Cloud-only endpoint, or no Kubernetes-style `/apis`), as opposed to a missing resource instance |
 | `Operation cancelled` | The user cancelled (exit code 5): Ctrl-C or another context cancellation, or Cancel on a browser login's consent page |
+| `File not found` | A local file or directory does not exist |
+| `Invalid path` | A local path is not valid for the operation |
+| `File access denied` | The OS denied access to a local file or directory |
 | `Unexpected error` | Catch-all — no typed converter matched |
 
-Converters in `cmd/gcx/fail/convert.go` MUST set `Summary` to a value from this table.
-The `fallbackDetailedError` path sets `Unexpected error` only when no typed converter matches.
+Converters in `cmd/gcx/fail/` MUST set `Summary` to one of the
+`gcxerrors.Summary*` constants (`internal/gcxerrors/summaries.go`), one per row
+of this table. When no typed converter matches, `fallbackDetailedError` always
+sets `Unexpected error` and puts the full error message in `Details`; it never
+derives a summary from the message text.
+
+Tests in `cmd/gcx/fail/` enforce this:
+
+- A static check parses the package's non-test sources. Every `Summary:` field
+  and `.Summary =` assignment must be a `gcxerrors.Summary*` constant, or a call
+  to a package-level helper whose every `return` is one. String literals,
+  `fmt.Sprintf`, and concatenation fail with the file and line.
+- A drift check keeps the constants, `gcxerrors.Summaries()`, and this table
+  identical, in both directions.
+- Converter tests check that every summary they produce is in the vocabulary.
+  A chain that already carries a `DetailedError` passes through unchanged and
+  is not checked; summaries built outside `cmd/gcx/fail/` are not covered by
+  this policy.

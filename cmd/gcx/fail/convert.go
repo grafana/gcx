@@ -11,8 +11,6 @@ import (
 	"runtime"
 	"slices"
 	"strings"
-	"unicode"
-	"unicode/utf8"
 
 	"github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/cloud"
@@ -131,7 +129,7 @@ func convertUsageErrors(err error) (*gcxerrors.DetailedError, bool) {
 	}
 
 	return &gcxerrors.DetailedError{
-		Summary:     "Invalid command usage",
+		Summary:     gcxerrors.SummaryInvalidCommandUsage,
 		Details:     details,
 		Suggestions: usageErr.Suggestions,
 		ExitCode:    new(gcxerrors.ExitUsageError),
@@ -145,7 +143,7 @@ func convertCobraUnknownCommandErrors(err error) (*gcxerrors.DetailedError, bool
 	}
 
 	detailed := &gcxerrors.DetailedError{
-		Summary:  "Invalid command usage",
+		Summary:  gcxerrors.SummaryInvalidCommandUsage,
 		Details:  msg,
 		ExitCode: new(gcxerrors.ExitUsageError),
 	}
@@ -176,7 +174,7 @@ func convertConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 		}
 
 		return &gcxerrors.DetailedError{
-			Summary: "Invalid configuration",
+			Summary: gcxerrors.SummaryInvalidConfiguration,
 			Details: message,
 			Suggestions: append([]string{
 				"Review your configuration: gcx config view",
@@ -187,8 +185,8 @@ func convertConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 	unmarshalErr := config.UnmarshalError{}
 	if errors.As(err, &unmarshalErr) {
 		return &gcxerrors.DetailedError{
-			Summary: "Could not parse configuration",
-			Details: fmt.Sprintf("Invalid configuration found in '%s'.", unmarshalErr.File),
+			Summary: gcxerrors.SummaryInvalidConfiguration,
+			Details: fmt.Sprintf("Could not parse configuration in '%s'.", unmarshalErr.File),
 			Parent:  unmarshalErr.Err,
 			Suggestions: []string{
 				"Fix the file with: gcx config edit",
@@ -222,7 +220,7 @@ func convertConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 		}
 
 		return &gcxerrors.DetailedError{
-			Summary:     "Invalid configuration",
+			Summary:     gcxerrors.SummaryInvalidConfiguration,
 			Parent:      err,
 			Suggestions: suggestions,
 		}, true
@@ -235,7 +233,7 @@ func convertAuthErrors(err error) (*gcxerrors.DetailedError, bool) {
 	if errors.Is(err, auth.ErrRefreshTokenExpired) || errors.Is(err, auth.ErrRefreshTokenMissing) {
 		return &gcxerrors.DetailedError{
 			Parent:  err,
-			Summary: "Authentication failed",
+			Summary: gcxerrors.SummaryAuthenticationFailed,
 			Suggestions: []string{
 				"Run `gcx login` to re-authenticate",
 			},
@@ -252,7 +250,7 @@ func convertAuthErrors(err error) (*gcxerrors.DetailedError, bool) {
 func convertCredentialsErrors(err error) (*gcxerrors.DetailedError, bool) {
 	if errors.Is(err, credentials.ErrRestrictedSession) {
 		return &gcxerrors.DetailedError{
-			Summary: "OS credential store access is restricted",
+			Summary: gcxerrors.SummaryCredentialStoreRestricted,
 			Details: "The credential store is available, but this execution session cannot write to it. gcx does not fall back to a plaintext credential.",
 			Parent:  err,
 			Suggestions: []string{
@@ -265,7 +263,7 @@ func convertCredentialsErrors(err error) (*gcxerrors.DetailedError, bool) {
 
 	if errors.Is(err, credentials.ErrUnavailable) && !errors.Is(err, credentials.ErrDisabled) {
 		return &gcxerrors.DetailedError{
-			Summary: "Keychain unavailable",
+			Summary: gcxerrors.SummaryKeychainUnavailable,
 			Details: "The OS keychain is unavailable. gcx did not fall back to plaintext credential storage.",
 			Parent:  err,
 			Suggestions: []string{
@@ -279,7 +277,7 @@ func convertCredentialsErrors(err error) (*gcxerrors.DetailedError, bool) {
 
 	if errors.Is(err, credentials.ErrLocked) {
 		return &gcxerrors.DetailedError{
-			Summary:     "Keychain locked",
+			Summary:     gcxerrors.SummaryKeychainLocked,
 			Details:     "The OS keychain is reachable, but it is locked or cannot be unlocked in this session. gcx does not fall back to a plaintext credential.",
 			Parent:      err,
 			Suggestions: keychainLockedSuggestions(runtime.GOOS),
@@ -318,7 +316,7 @@ func convertNetworkErrors(err error) (*gcxerrors.DetailedError, bool) {
 	if errors.As(err, &urlErr) {
 		return &gcxerrors.DetailedError{
 			Parent:  err,
-			Summary: "Network error",
+			Summary: gcxerrors.SummaryNetworkError,
 			Suggestions: []string{
 				"Make sure that the API is reachable",
 				"Make sure that the configured target server is correct",
@@ -373,13 +371,13 @@ func convertAPIErrors(err error) (*gcxerrors.DetailedError, bool) {
 			cause:   err,
 			message: formatted,
 		},
-		Summary: "API error",
+		Summary: gcxerrors.SummaryAPIError,
 	}
 	switch status.Code {
 	case http.StatusUnauthorized, http.StatusForbidden:
-		detailedErr.Summary = "Authentication failed"
+		detailedErr.Summary = gcxerrors.SummaryAuthenticationFailed
 		if status.Code == http.StatusForbidden {
-			detailedErr.Summary = "Authorization failed"
+			detailedErr.Summary = gcxerrors.SummaryAuthorizationFailed
 		}
 		detailedErr.Suggestions = []string{
 			"Make sure that the configured credentials are correct",
@@ -388,12 +386,12 @@ func convertAPIErrors(err error) (*gcxerrors.DetailedError, bool) {
 		detailedErr.DocsLink = docs.ServiceAccounts
 		detailedErr.ExitCode = new(gcxerrors.ExitAuthFailure)
 	case http.StatusNotFound:
-		detailedErr.Summary = "Resource not found"
+		detailedErr.Summary = gcxerrors.SummaryResourceNotFound
 		detailedErr.Suggestions = []string{
 			"Make sure that you are passing in valid resource selectors",
 		}
 	case http.StatusConflict:
-		detailedErr.Summary = "Resource conflict"
+		detailedErr.Summary = gcxerrors.SummaryResourceConflict
 	}
 	return detailedErr, true
 }
@@ -446,7 +444,7 @@ func convertUnavailableEndpoint(err error) (*gcxerrors.DetailedError, bool) {
 
 	return &gcxerrors.DetailedError{
 		Parent:  err,
-		Summary: "Endpoint not available",
+		Summary: gcxerrors.SummaryEndpointNotAvailable,
 		Details: fmt.Sprintf("HTTP %d from the %s endpoint", apiErr.StatusCode, endpoint),
 		Suggestions: []string{
 			note + "; it may be unavailable on this deployment or version",
@@ -463,11 +461,8 @@ func convertQueryErrors(err error) (*gcxerrors.DetailedError, bool) {
 
 	detailedErr := &gcxerrors.DetailedError{
 		Summary:     queryErrorSummary(apiErr),
-		Details:     joinErrorDetails(wrappedTypedErrorContext(err, apiErr), queryErrorDetails(apiErr)),
+		Details:     joinErrorDetails(queryErrorContext(apiErr), wrappedTypedErrorContext(err, apiErr), queryErrorDetails(apiErr)),
 		Suggestions: queryErrorSuggestions(apiErr),
-	}
-	if gcxerrors.SameRenderedMessage(detailedErr.Details, detailedErr.Summary) {
-		detailedErr.Details = ""
 	}
 
 	if apiErr.StatusCode == http.StatusUnauthorized || apiErr.StatusCode == http.StatusForbidden {
@@ -498,45 +493,39 @@ func queryErrorDocsLink(apiErr *queryerror.APIError) string {
 }
 
 func queryErrorSummary(apiErr *queryerror.APIError) string {
-	datasource := queryErrorDatasourceName(apiErr.Datasource)
-
 	switch apiErr.StatusCode {
-	case http.StatusUnauthorized, http.StatusForbidden:
-		return "Authentication failed querying " + datasource
+	case http.StatusUnauthorized:
+		return gcxerrors.SummaryAuthenticationFailed
+	case http.StatusForbidden:
+		return gcxerrors.SummaryAuthorizationFailed
 	case http.StatusBadRequest:
-		if language := queryErrorLanguage(apiErr); apiErr.IsParseError() && language != "" {
-			return fmt.Sprintf("Invalid %s query", language)
-		}
-		if apiErr.Operation != "" {
-			return fmt.Sprintf("Invalid %s %s", datasource, apiErr.Operation)
-		}
-		return fmt.Sprintf("Invalid %s request", datasource)
+		return gcxerrors.SummaryInvalidQuery
 	case http.StatusNotFound:
-		return queryErrorNotFoundSummary(apiErr)
+		return gcxerrors.SummaryResourceNotFound
 	default:
-		if apiErr.Operation != "" {
-			return fmt.Sprintf("%s %s failed (HTTP %d)", datasource, apiErr.Operation, apiErr.StatusCode)
-		}
-		return fmt.Sprintf("%s request failed (HTTP %d)", datasource, apiErr.StatusCode)
+		return gcxerrors.SummaryAPIError
 	}
 }
 
-func queryErrorNotFoundSummary(apiErr *queryerror.APIError) string {
-	if apiErr.Datasource == "tempo" && apiErr.Operation == "get trace" {
-		return "Trace not found"
+// queryErrorContext names the datasource, operation and HTTP status of a
+// failed query. It leads the details because the summary is the generic
+// vocabulary entry.
+func queryErrorContext(apiErr *queryerror.APIError) string {
+	if language := queryErrorLanguage(apiErr); apiErr.StatusCode == http.StatusBadRequest && apiErr.IsParseError() && language != "" {
+		return fmt.Sprintf("Invalid %s query (HTTP %d)", language, apiErr.StatusCode)
 	}
 
-	return queryErrorDatasourceName(apiErr.Datasource) + " resource not found"
+	subject := queryErrorDatasourceName(apiErr.Datasource) + " request"
+	if apiErr.Operation != "" {
+		subject = queryErrorDatasourceName(apiErr.Datasource) + " " + apiErr.Operation
+	}
+	return fmt.Sprintf("%s failed (HTTP %d)", subject, apiErr.StatusCode)
 }
 
 func queryErrorDetails(apiErr *queryerror.APIError) string {
 	details := apiErr.Message
-	if details == "" {
-		details = fmt.Sprintf("%s returned HTTP %d", queryErrorDatasourceName(apiErr.Datasource), apiErr.StatusCode)
-	}
-
 	if apiErr.ErrorSource != "" && apiErr.ErrorSource != "downstream" {
-		details = fmt.Sprintf("%s\n\nSource: %s", details, apiErr.ErrorSource)
+		details = joinErrorDetails(details, "Source: "+apiErr.ErrorSource)
 	}
 
 	return details
@@ -693,11 +682,8 @@ func convertDatasourceErrors(err error) (*gcxerrors.DetailedError, bool) {
 
 	detailedErr := &gcxerrors.DetailedError{
 		Summary:     datasourceErrorSummary(apiErr),
-		Details:     joinErrorDetails(wrappedTypedErrorContext(err, apiErr), strings.TrimSpace(apiErr.APIUserMessage())),
+		Details:     joinErrorDetails(datasourceErrorContext(apiErr), wrappedTypedErrorContext(err, apiErr), strings.TrimSpace(apiErr.APIUserMessage())),
 		Suggestions: datasourceErrorSuggestions(apiErr),
-	}
-	if gcxerrors.SameRenderedMessage(detailedErr.Details, detailedErr.Summary) {
-		detailedErr.Details = ""
 	}
 	if apiErr.StatusCode == http.StatusUnauthorized || apiErr.StatusCode == http.StatusForbidden {
 		detailedErr.ExitCode = new(gcxerrors.ExitAuthFailure)
@@ -708,17 +694,28 @@ func convertDatasourceErrors(err error) (*gcxerrors.DetailedError, bool) {
 
 func datasourceErrorSummary(apiErr *datasources.APIError) string {
 	switch apiErr.StatusCode {
-	case http.StatusUnauthorized, http.StatusForbidden:
-		return "Authentication failed querying datasources"
+	case http.StatusUnauthorized:
+		return gcxerrors.SummaryAuthenticationFailed
+	case http.StatusForbidden:
+		return gcxerrors.SummaryAuthorizationFailed
 	case http.StatusNotFound:
-		if apiErr.Identifier != "" {
-			return fmt.Sprintf("Datasource %q not found", apiErr.Identifier)
-		}
-		return "Datasource not found"
+		return gcxerrors.SummaryResourceNotFound
 	default:
-		if apiErr.Operation != "" {
-			return fmt.Sprintf("Could not %s (HTTP %d)", apiErr.Operation, apiErr.StatusCode)
-		}
+		return gcxerrors.SummaryAPIError
+	}
+}
+
+// datasourceErrorContext names the datasource or operation that failed. It
+// leads the details because the summary is the generic vocabulary entry.
+func datasourceErrorContext(apiErr *datasources.APIError) string {
+	switch {
+	case apiErr.StatusCode == http.StatusNotFound && apiErr.Identifier != "":
+		return fmt.Sprintf("Datasource %q not found", apiErr.Identifier)
+	case apiErr.StatusCode == http.StatusNotFound:
+		return "Datasource not found"
+	case apiErr.Operation != "":
+		return fmt.Sprintf("Could not %s (HTTP %d)", apiErr.Operation, apiErr.StatusCode)
+	default:
 		return fmt.Sprintf("Datasource API request failed (HTTP %d)", apiErr.StatusCode)
 	}
 }
@@ -745,6 +742,8 @@ func convertServiceAPIErrors(err error) (*gcxerrors.DetailedError, bool) {
 		return nil, false
 	}
 
+	details := joinErrorDetails(serviceAPIErrorContext(apiErr), wrappedTypedErrorContext(err, apiErr), strings.TrimSpace(apiErr.APIUserMessage()))
+
 	// Adaptive Logs scope errors — handled here (not in convertCloudConfigErrors with
 	// traces/metrics) because the logs client returns a typed APIError that this converter
 	// catches before convertCloudConfigErrors runs.
@@ -752,8 +751,8 @@ func convertServiceAPIErrors(err error) (*gcxerrors.DetailedError, bool) {
 		strings.Contains(apiErr.APIUserMessage(), "invalid scope") &&
 		(apiErr.HTTPStatusCode() == http.StatusUnauthorized || apiErr.HTTPStatusCode() == http.StatusForbidden) {
 		return &gcxerrors.DetailedError{
-			Parent:  err,
-			Summary: "Adaptive Logs: permission denied",
+			Summary: gcxerrors.SummaryAuthorizationFailed,
+			Details: details,
 			Suggestions: []string{
 				"Ensure your Grafana Cloud access policy includes the adaptive-logs:admin scope",
 			},
@@ -764,11 +763,8 @@ func convertServiceAPIErrors(err error) (*gcxerrors.DetailedError, bool) {
 
 	detailedErr := &gcxerrors.DetailedError{
 		Summary:     serviceAPIErrorSummary(apiErr),
-		Details:     joinErrorDetails(wrappedTypedErrorContext(err, apiErr), strings.TrimSpace(apiErr.APIUserMessage())),
+		Details:     details,
 		Suggestions: serviceAPIErrorSuggestions(apiErr),
-	}
-	if gcxerrors.SameRenderedMessage(detailedErr.Details, detailedErr.Summary) {
-		detailedErr.Details = ""
 	}
 	if code := apiErr.HTTPStatusCode(); code == http.StatusUnauthorized || code == http.StatusForbidden {
 		detailedErr.ExitCode = new(gcxerrors.ExitAuthFailure)
@@ -778,19 +774,27 @@ func convertServiceAPIErrors(err error) (*gcxerrors.DetailedError, bool) {
 }
 
 func serviceAPIErrorSummary(apiErr serviceAPIError) string {
-	service := strings.TrimSpace(apiErr.APIServiceName())
-	if service == "" {
-		service = "API"
-	}
-
 	switch apiErr.HTTPStatusCode() {
-	case http.StatusUnauthorized, http.StatusForbidden:
-		return "Authentication failed querying " + service
+	case http.StatusUnauthorized:
+		return gcxerrors.SummaryAuthenticationFailed
+	case http.StatusForbidden:
+		return gcxerrors.SummaryAuthorizationFailed
 	case http.StatusNotFound:
-		return service + " API resource not found"
+		return gcxerrors.SummaryResourceNotFound
 	default:
+		return gcxerrors.SummaryAPIError
+	}
+}
+
+// serviceAPIErrorContext names the service and HTTP status of a failed
+// request. It leads the details because the summary is the generic vocabulary
+// entry.
+func serviceAPIErrorContext(apiErr serviceAPIError) string {
+	if service := strings.TrimSpace(apiErr.APIServiceName()); service != "" {
 		return fmt.Sprintf("%s API request failed (HTTP %d)", service, apiErr.HTTPStatusCode())
 	}
+
+	return fmt.Sprintf("API request failed (HTTP %d)", apiErr.HTTPStatusCode())
 }
 
 func serviceAPIErrorSuggestions(apiErr serviceAPIError) []string {
@@ -895,14 +899,14 @@ func convertResourcesErrors(err error) (*gcxerrors.DetailedError, bool) {
 	if errors.As(err, &unsupported) {
 		return &gcxerrors.DetailedError{
 			Parent:  err,
-			Summary: "Endpoint not available",
+			Summary: gcxerrors.SummaryEndpointNotAvailable,
 		}, true
 	}
 	invalidSelectorErr := &resources.InvalidSelectorError{}
 	if errors.As(err, invalidSelectorErr) {
 		return &gcxerrors.DetailedError{
 			Parent:  err,
-			Summary: "Invalid command usage",
+			Summary: gcxerrors.SummaryInvalidCommandUsage,
 			Suggestions: []string{
 				"Use a resource selector of the form TYPE or TYPE/UID",
 				"Run the command with --help for selector syntax and examples",
@@ -918,7 +922,7 @@ func convertFSErrors(err error) (*gcxerrors.DetailedError, bool) {
 
 	if errors.Is(err, os.ErrNotExist) && errors.As(err, &pathErr) {
 		return &gcxerrors.DetailedError{
-			Summary: "File not found",
+			Summary: gcxerrors.SummaryFileNotFound,
 			Details: fmt.Sprintf("could not read '%s'", pathErr.Path),
 			Parent:  err,
 			Suggestions: []string{
@@ -929,7 +933,7 @@ func convertFSErrors(err error) (*gcxerrors.DetailedError, bool) {
 
 	if errors.Is(err, os.ErrInvalid) && errors.As(err, &pathErr) {
 		return &gcxerrors.DetailedError{
-			Summary: "Invalid path",
+			Summary: gcxerrors.SummaryInvalidPath,
 			Details: fmt.Sprintf("path '%s' is not valid", pathErr.Path),
 			Parent:  err,
 			Suggestions: []string{
@@ -941,7 +945,7 @@ func convertFSErrors(err error) (*gcxerrors.DetailedError, bool) {
 
 	if errors.Is(err, os.ErrPermission) && errors.As(err, &pathErr) {
 		return &gcxerrors.DetailedError{
-			Summary: "Permission denied",
+			Summary: gcxerrors.SummaryFileAccessDenied,
 			Parent:  err,
 			Suggestions: []string{
 				"Review the permissions on the file",
@@ -979,27 +983,27 @@ func convertLoginValidationErrors(err error) (*gcxerrors.DetailedError, bool) {
 	if errors.As(err, &basicErr) {
 		detail := &gcxerrors.DetailedError{
 			Parent:      err,
-			Summary:     "API error",
+			Summary:     gcxerrors.SummaryAPIError,
 			Details:     basicErr.Error(),
 			Suggestions: []string{"Check the Grafana server URL and the response from /api/user"},
 		}
 		switch basicErr.Status {
 		case http.StatusUnauthorized:
-			detail.Summary = "Authentication failed"
+			detail.Summary = gcxerrors.SummaryAuthenticationFailed
 			detail.ExitCode = new(gcxerrors.ExitAuthFailure)
 			detail.Suggestions = []string{"Check the Grafana username and password, and confirm Basic authentication is enabled"}
 		case http.StatusForbidden:
-			detail.Summary = "Authorization failed"
+			detail.Summary = gcxerrors.SummaryAuthorizationFailed
 			detail.ExitCode = new(gcxerrors.ExitAuthFailure)
 			detail.Suggestions = []string{"Check that the user and any proxy allow access to the Grafana /api/user endpoint"}
 		case 0:
 			if basicErr.Cause == nil {
-				detail.Summary = "Authentication failed"
+				detail.Summary = gcxerrors.SummaryAuthenticationFailed
 				detail.ExitCode = new(gcxerrors.ExitAuthFailure)
 				detail.Suggestions = []string{"Check the Grafana username and password, and confirm Basic authentication is enabled and anonymous access is not answering for the user"}
 				break
 			}
-			detail.Summary = "Network error"
+			detail.Summary = gcxerrors.SummaryNetworkError
 			detail.Suggestions = []string{"Check network/proxy access and TLS settings for the Grafana server"}
 		}
 		return detail, true
@@ -1019,8 +1023,8 @@ func convertLoginValidationErrors(err error) (*gcxerrors.DetailedError, bool) {
 	if errors.As(err, &k8sErr) {
 		return &gcxerrors.DetailedError{
 			Parent:  err,
-			Summary: "Kubernetes-style API unavailable",
-			Details: k8sErr.Cause.Error(),
+			Summary: gcxerrors.SummaryEndpointNotAvailable,
+			Details: "Kubernetes-style API unavailable: " + k8sErr.Cause.Error(),
 			Suggestions: []string{
 				"Confirm the Grafana stack is on version 12 or later",
 				"Check network/proxy access to " + k8sErr.Server,
@@ -1047,8 +1051,8 @@ func convertGCOMStackError(err *login.GCOMStackError) *gcxerrors.DetailedError {
 	case http.StatusForbidden:
 		return &gcxerrors.DetailedError{
 			Parent:  err,
-			Summary: "Grafana Cloud stack lookup denied",
-			Details: fmt.Sprintf("GCOM returned 403 for stack %q", err.Slug),
+			Summary: gcxerrors.SummaryAuthorizationFailed,
+			Details: fmt.Sprintf("Grafana Cloud stack lookup denied: GCOM returned 403 for stack %q", err.Slug),
 			Suggestions: []string{
 				"Verify the Cloud Access Policy token has the stacks:read scope",
 				"Confirm the access policy is in the same org as the stack",
@@ -1060,8 +1064,8 @@ func convertGCOMStackError(err *login.GCOMStackError) *gcxerrors.DetailedError {
 	case http.StatusUnauthorized:
 		return &gcxerrors.DetailedError{
 			Parent:  err,
-			Summary: "Grafana Cloud token rejected",
-			Details: fmt.Sprintf("GCOM returned 401 for stack %q", err.Slug),
+			Summary: gcxerrors.SummaryAuthenticationFailed,
+			Details: fmt.Sprintf("Grafana Cloud token rejected: GCOM returned 401 for stack %q", err.Slug),
 			Suggestions: []string{
 				"Generate a new Cloud Access Policy token at https://grafana.com",
 				"Confirm the token was copied without truncation",
@@ -1072,7 +1076,7 @@ func convertGCOMStackError(err *login.GCOMStackError) *gcxerrors.DetailedError {
 	case http.StatusNotFound:
 		return &gcxerrors.DetailedError{
 			Parent:  err,
-			Summary: "Grafana Cloud stack not found",
+			Summary: gcxerrors.SummaryResourceNotFound,
 			Details: fmt.Sprintf("GCOM has no stack with slug %q", err.Slug),
 			Suggestions: []string{
 				fmt.Sprintf("Confirm the --server URL points at an existing stack (slug derived: %q)", err.Slug),
@@ -1082,8 +1086,8 @@ func convertGCOMStackError(err *login.GCOMStackError) *gcxerrors.DetailedError {
 	default:
 		return &gcxerrors.DetailedError{
 			Parent:  err,
-			Summary: "Grafana Cloud stack lookup failed",
-			Details: err.Cause.Error(),
+			Summary: gcxerrors.SummaryAPIError,
+			Details: "Grafana Cloud stack lookup failed: " + err.Cause.Error(),
 			Suggestions: []string{
 				"Retry — GCOM may be temporarily unavailable",
 				"Check https://status.grafana.com for ongoing incidents",
@@ -1096,8 +1100,8 @@ func convertHealthCheckError(err *login.HealthCheckError) *gcxerrors.DetailedErr
 	if err.Status == http.StatusUnauthorized || err.Status == http.StatusForbidden {
 		return &gcxerrors.DetailedError{
 			Parent:  err,
-			Summary: "Grafana token rejected",
-			Details: fmt.Sprintf("/api/health returned %d for %s", err.Status, err.Server),
+			Summary: gcxerrors.SummaryAuthenticationFailed,
+			Details: fmt.Sprintf("Grafana token rejected: /api/health returned %d for %s", err.Status, err.Server),
 			Suggestions: []string{
 				"Confirm the Grafana service-account token belongs to the target stack",
 				"Confirm the token has not expired or been revoked",
@@ -1109,8 +1113,8 @@ func convertHealthCheckError(err *login.HealthCheckError) *gcxerrors.DetailedErr
 	}
 	return &gcxerrors.DetailedError{
 		Parent:  err,
-		Summary: "Grafana server unreachable",
-		Details: err.Cause.Error(),
+		Summary: gcxerrors.SummaryNetworkError,
+		Details: fmt.Sprintf("Grafana server %s unreachable: %s", err.Server, err.Cause.Error()),
 		Suggestions: []string{
 			"Confirm --server points at the correct Grafana URL",
 			"Check network/proxy access from this machine",
@@ -1124,8 +1128,8 @@ func convertVersionErrors(err error) (*gcxerrors.DetailedError, bool) {
 	if errors.As(err, &vErr) {
 		return &gcxerrors.DetailedError{
 			Parent:  err,
-			Summary: fmt.Sprintf("Grafana version %s is not supported", vErr.Version),
-			Details: "gcx requires Grafana 12.0.0 or later",
+			Summary: gcxerrors.SummaryUnsupportedGrafanaVersion,
+			Details: fmt.Sprintf("Grafana version %s is not supported: gcx requires Grafana 12.0.0 or later", vErr.Version),
 			Suggestions: []string{
 				"Upgrade your Grafana instance to version 12.0.0 or later",
 			},
@@ -1143,7 +1147,7 @@ func convertRequiredFlagErrors(err error) (*gcxerrors.DetailedError, bool) {
 	msg := err.Error()
 	if strings.HasPrefix(msg, "required flag(s)") && strings.HasSuffix(msg, "not set") {
 		return &gcxerrors.DetailedError{
-			Summary: "Missing required flags",
+			Summary: gcxerrors.SummaryInvalidCommandUsage,
 			Parent:  err,
 			Suggestions: []string{
 				"Run the command with --help to see available flags and usage examples",
@@ -1159,7 +1163,7 @@ func convertSMConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 
 	if strings.Contains(msg, "SM URL not configured") {
 		return &gcxerrors.DetailedError{
-			Summary: "SM URL not configured",
+			Summary: gcxerrors.SummaryInvalidConfiguration,
 			Details: msg,
 			Parent:  err,
 			Suggestions: []string{
@@ -1177,7 +1181,7 @@ func convertSMConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 			(strings.Contains(msg, "status 400") && strings.Contains(msg, "permission"))) {
 		return &gcxerrors.DetailedError{
 			Parent:  err,
-			Summary: "SM token auto-discovery: permission denied",
+			Summary: gcxerrors.SummaryAuthorizationFailed,
 			Details: msg,
 			Suggestions: []string{
 				"Ensure your cloud token's access policy includes these scopes: stacks:read, metrics:write, logs:write, traces:write",
@@ -1191,7 +1195,7 @@ func convertSMConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 
 	if strings.Contains(msg, "SM token not configured") {
 		return &gcxerrors.DetailedError{
-			Summary: "SM token not configured",
+			Summary: gcxerrors.SummaryInvalidConfiguration,
 			Details: msg,
 			Parent:  err,
 			Suggestions: []string{
@@ -1213,7 +1217,7 @@ func convertCloudConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 	// Cloud auth missing (no cloud entry bound, or the entry has no token).
 	if strings.Contains(msg, "context has no cloud auth") || strings.Contains(msg, "has no token") {
 		return &gcxerrors.DetailedError{
-			Summary: "Cloud credentials not configured",
+			Summary: gcxerrors.SummaryAuthenticationFailed,
 			Details: msg,
 			Parent:  err,
 			Suggestions: []string{
@@ -1227,7 +1231,7 @@ func convertCloudConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 	// Cloud stack not configured.
 	if strings.Contains(msg, "cloud stack is not configured") {
 		return &gcxerrors.DetailedError{
-			Summary: "Cloud stack not configured",
+			Summary: gcxerrors.SummaryInvalidConfiguration,
 			Details: msg,
 			Parent:  err,
 			Suggestions: []string{
@@ -1241,7 +1245,7 @@ func convertCloudConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 	if strings.Contains(msg, "adaptive-traces:") && strings.Contains(msg, "invalid scope") {
 		return &gcxerrors.DetailedError{
 			Parent:  err,
-			Summary: "Adaptive Traces: permission denied",
+			Summary: gcxerrors.SummaryAuthorizationFailed,
 			Suggestions: []string{
 				"Ensure your Grafana Cloud access policy includes the adaptive-traces:admin scope",
 			},
@@ -1259,7 +1263,7 @@ func convertCloudConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 		}
 		return &gcxerrors.DetailedError{
 			Parent:      err,
-			Summary:     "Adaptive Metrics: permission denied",
+			Summary:     gcxerrors.SummaryAuthorizationFailed,
 			Suggestions: []string{suggestion},
 			DocsLink:    docs.AccessPolicies,
 			ExitCode:    new(gcxerrors.ExitAuthFailure),
@@ -1276,7 +1280,7 @@ func convertCloudConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 		}
 		return &gcxerrors.DetailedError{
 			Parent:      err,
-			Summary:     "Cloud stack lookup: permission denied",
+			Summary:     gcxerrors.SummaryAuthorizationFailed,
 			Suggestions: suggestions,
 			DocsLink:    docs.AccessPolicies,
 			ExitCode:    new(gcxerrors.ExitAuthFailure),
@@ -1303,7 +1307,7 @@ func convertFleetHTTPErrors(err error) (*gcxerrors.DetailedError, bool) {
 	if httpErr.Status == http.StatusNotFound && fleet.IsPluginMissingBody(httpErr.Body) {
 		return &gcxerrors.DetailedError{
 			Parent:  err,
-			Summary: "Endpoint not available",
+			Summary: gcxerrors.SummaryEndpointNotAvailable,
 			Details: "The " + fleet.CollectorAppID + " plugin is not installed or not enabled on this stack",
 			Suggestions: []string{
 				"Check the plugin and your permissions: gcx setup status",
@@ -1318,7 +1322,7 @@ func convertFleetHTTPErrors(err error) (*gcxerrors.DetailedError, bool) {
 	case http.StatusUnauthorized:
 		return &gcxerrors.DetailedError{
 			Parent:  err,
-			Summary: "Authentication failed",
+			Summary: gcxerrors.SummaryAuthenticationFailed,
 			Details: "HTTP 401 from " + httpErr.Path,
 			Suggestions: []string{
 				"Verify the token has not expired: gcx config view",
@@ -1330,7 +1334,7 @@ func convertFleetHTTPErrors(err error) (*gcxerrors.DetailedError, bool) {
 	case http.StatusForbidden:
 		return &gcxerrors.DetailedError{
 			Parent:  err,
-			Summary: "Authorization failed",
+			Summary: gcxerrors.SummaryAuthorizationFailed,
 			Details: "HTTP 403 from " + httpErr.Path,
 			Suggestions: []string{
 				"Named read routes need the " + fleet.CollectorAppReadAction + " action on this stack",
@@ -1353,7 +1357,7 @@ func convertInstrumentationMutualExclusiveErrors(err error) (*gcxerrors.Detailed
 		return nil, false
 	}
 	return &gcxerrors.DetailedError{
-		Summary: "Invalid command usage",
+		Summary: gcxerrors.SummaryInvalidCommandUsage,
 		Details: err.Error(),
 	}, true
 }
@@ -1369,7 +1373,7 @@ func convertInstrumentationErrors(err error) (*gcxerrors.DetailedError, bool) {
 	}
 
 	return &gcxerrors.DetailedError{
-		Summary: "Resource conflict",
+		Summary: gcxerrors.SummaryResourceConflict,
 		Details: ce.Error(),
 		Parent:  err,
 	}, true
@@ -1445,7 +1449,7 @@ func convertUnknownFieldSelectionErrors(err error) (*gcxerrors.DetailedError, bo
 
 	exitCode := gcxerrors.ExitUsageError
 	return &gcxerrors.DetailedError{
-		Summary:  "Invalid command usage",
+		Summary:  gcxerrors.SummaryInvalidCommandUsage,
 		Details:  fieldErr.Error(),
 		ExitCode: &exitCode,
 		Suggestions: []string{
@@ -1489,94 +1493,23 @@ func convertJQRuntimeErrors(err error) (*gcxerrors.DetailedError, bool) {
 
 	exitCode := gcxerrors.ExitUsageError
 	return &gcxerrors.DetailedError{
-		Summary:     "Invalid command usage",
+		Summary:     gcxerrors.SummaryInvalidCommandUsage,
 		Details:     details,
 		ExitCode:    &exitCode,
 		Suggestions: suggestions,
 	}, true
 }
 
+// fallbackDetailedError renders an error that no typed converter claimed. The
+// summary is always Unexpected error, because the error's own wording is not
+// in the summary vocabulary; the full message goes to the details instead.
+// Parent stays unset: it would repeat the details.
 func fallbackDetailedError(err error) *gcxerrors.DetailedError {
-	summary, details, parent := summarizeFallbackError(err)
-	return &gcxerrors.DetailedError{
-		Summary: summary,
-		Details: details,
-		Parent:  parent,
+	detailed := &gcxerrors.DetailedError{Summary: gcxerrors.SummaryUnexpectedError}
+	if err != nil {
+		detailed.Details = strings.TrimSpace(err.Error())
 	}
-}
-
-func summarizeFallbackError(err error) (string, string, error) {
-	if err == nil {
-		return "Unexpected error", "", nil
-	}
-
-	if wrappedSummary, wrappedParent, ok := fallbackWrappedSummary(err); ok {
-		return humanizeSummary(wrappedSummary), "", wrappedParent
-	}
-
-	summary, details := splitErrorMessage(err.Error())
-	return humanizeSummary(summary), details, nil
-}
-
-func fallbackWrappedSummary(err error) (string, error, bool) {
-	parent := errors.Unwrap(err)
-	if parent == nil {
-		return "", nil, false
-	}
-
-	message := strings.TrimSpace(err.Error())
-	parentMsg := strings.TrimSpace(parent.Error())
-	if parentMsg != "" && strings.HasSuffix(message, ": "+parentMsg) {
-		message = strings.TrimSpace(strings.TrimSuffix(message, ": "+parentMsg))
-	}
-
-	if message == "" {
-		message = strings.TrimSpace(err.Error())
-	}
-
-	return message, parent, true
-}
-
-func splitErrorMessage(message string) (string, string) {
-	message = strings.TrimSpace(message)
-	if message == "" {
-		return "Unexpected error", ""
-	}
-
-	if i := strings.Index(message, ": "); i > 0 {
-		prefix := strings.TrimSpace(message[:i])
-		// Only treat sentence-like prefixes as summaries. Single-token
-		// provider tags (e.g. "k6:", "fleet:") make poor summaries —
-		// fall back to "Unexpected error" and surface the raw message
-		// as details. A typed converter should handle the provider's
-		// error type for a richer summary.
-		if strings.Contains(prefix, " ") {
-			return prefix, strings.TrimSpace(message[i+2:])
-		}
-		return "Unexpected error", message
-	}
-	if i := strings.Index(message, "\n"); i > 0 {
-		return strings.TrimSpace(message[:i]), strings.TrimSpace(message[i+1:])
-	}
-
-	return message, ""
-}
-
-func humanizeSummary(summary string) string {
-	summary = strings.TrimSpace(summary)
-	if summary == "" {
-		return "Unexpected error"
-	}
-
-	r, size := utf8.DecodeRuneInString(summary)
-	if r == utf8.RuneError && size == 0 {
-		return "Unexpected error"
-	}
-	if unicode.IsLower(r) {
-		return string(unicode.ToUpper(r)) + summary[size:]
-	}
-
-	return summary
+	return detailed
 }
 
 func convertStacksErrors(err error) (*gcxerrors.DetailedError, bool) {
@@ -1610,8 +1543,8 @@ func convertStacksErrors(err error) (*gcxerrors.DetailedError, bool) {
 			// exclusively: it means the stack has delete protection
 			// enabled.
 			return &gcxerrors.DetailedError{
-				Summary: "Stack has delete protection enabled",
-				Details: gcomErrorDetails(httpErr, msg),
+				Summary: gcxerrors.SummaryResourceConflict,
+				Details: joinErrorDetails(gcomErrorDetails(httpErr, msg), "The stack has delete protection enabled."),
 				Parent:  err,
 				Suggestions: []string{
 					"Disable delete protection first: gcx cloud stacks update <slug> --no-delete-protection",
@@ -1633,7 +1566,7 @@ func convertStacksErrors(err error) (*gcxerrors.DetailedError, bool) {
 				}
 			}
 			return &gcxerrors.DetailedError{
-				Summary:     "Invalid stack request",
+				Summary:     gcxerrors.SummaryInvalidStackRequest,
 				Details:     gcomErrorDetails(httpErr, msg),
 				Parent:      err,
 				ExitCode:    new(gcxerrors.ExitUsageError),
@@ -1658,7 +1591,7 @@ func convertStacksErrors(err error) (*gcxerrors.DetailedError, bool) {
 			}
 		}
 		return &gcxerrors.DetailedError{
-			Summary:     "Resource conflict",
+			Summary:     gcxerrors.SummaryResourceConflict,
 			Details:     gcomErrorDetails(httpErr, msg),
 			Parent:      err,
 			Suggestions: suggestions,
@@ -1666,7 +1599,7 @@ func convertStacksErrors(err error) (*gcxerrors.DetailedError, bool) {
 		}, true
 	case http.StatusForbidden:
 		return &gcxerrors.DetailedError{
-			Summary:  "Stacks: permission denied",
+			Summary:  gcxerrors.SummaryAuthorizationFailed,
 			Details:  gcomErrorDetails(httpErr, msg),
 			Parent:   err,
 			ExitCode: new(gcxerrors.ExitAuthFailure),
@@ -1679,7 +1612,7 @@ func convertStacksErrors(err error) (*gcxerrors.DetailedError, bool) {
 		}, true
 	case http.StatusUnauthorized:
 		return &gcxerrors.DetailedError{
-			Summary:  "Stacks: authentication failed",
+			Summary:  gcxerrors.SummaryAuthenticationFailed,
 			Details:  gcomErrorDetails(httpErr, msg),
 			Parent:   err,
 			ExitCode: new(gcxerrors.ExitAuthFailure),
@@ -1709,8 +1642,8 @@ func convertPartialFailureErrors(err error) (*gcxerrors.DetailedError, bool) {
 	}
 
 	return &gcxerrors.DetailedError{
-		Summary:  fmt.Sprintf("%d of %d resource(s) failed to %s", partialErr.Failed, partialErr.Total, partialErr.Op),
-		Parent:   err,
+		Summary:  gcxerrors.SummaryPartialFailure,
+		Details:  joinErrorDetails(fmt.Sprintf("%d of %d resource(s) failed to %s", partialErr.Failed, partialErr.Total, partialErr.Op), wrappedTypedErrorContext(err, partialErr)),
 		ExitCode: new(gcxerrors.ExitPartialFailure),
 	}, true
 }
@@ -1727,14 +1660,14 @@ func convertOAuthExchangeErrors(err error) (*gcxerrors.DetailedError, bool) {
 	switch {
 	case exchangeErr.StatusCode == http.StatusTooManyRequests:
 		return &gcxerrors.DetailedError{
-			Summary:     "API error",
+			Summary:     gcxerrors.SummaryAPIError,
 			Details:     "Grafana Cloud is rate limiting logins: the browser approval succeeded, but finishing the login was refused with HTTP 429. That approval cannot be reused. No credentials were saved.",
 			Parent:      err,
 			Suggestions: []string{"Wait a minute, then run gcx login again"},
 		}, true
 	case exchangeErr.StatusCode >= http.StatusInternalServerError:
 		return &gcxerrors.DetailedError{
-			Summary:     "API error",
+			Summary:     gcxerrors.SummaryAPIError,
 			Details:     fmt.Sprintf("Grafana Cloud could not finish the login: the browser approval succeeded, but finishing it failed with a temporary service error (HTTP %d). That approval cannot be reused. No credentials were saved.", exchangeErr.StatusCode),
 			Parent:      err,
 			Suggestions: []string{"Run gcx login again in a few minutes"},
@@ -1754,7 +1687,7 @@ func convertBrowserCancelled(err error) (*gcxerrors.DetailedError, bool) {
 		return nil, false
 	}
 	return &gcxerrors.DetailedError{
-		Summary:     "Operation cancelled",
+		Summary:     gcxerrors.SummaryOperationCancelled,
 		Details:     "The login was cancelled in the browser. No credentials were saved.",
 		Suggestions: []string{"Run the login command again when you are ready"},
 		ExitCode:    new(gcxerrors.ExitCancelled),
@@ -1813,7 +1746,7 @@ func newStackMayBeStarting(err error) bool {
 func convertContextCanceled(err error) (*gcxerrors.DetailedError, bool) {
 	if errors.Is(err, context.Canceled) {
 		return &gcxerrors.DetailedError{
-			Summary:  "Operation cancelled",
+			Summary:  gcxerrors.SummaryOperationCancelled,
 			Parent:   err,
 			ExitCode: new(gcxerrors.ExitCancelled),
 		}, true
