@@ -110,7 +110,7 @@ alongside `error`.
 **Error-only response** (command fails completely):
 
 ```json
-{"type": "gcx.error", "schema_version": "1", "error": {"summary": "Resource not found - code 404", "exitCode": 1}}
+{"type": "gcx.error", "schema_version": "1", "error": {"summary": "Resource not found", "exitCode": 1}}
 ```
 
 **Partial failure** (batch operation, some resources succeeded):

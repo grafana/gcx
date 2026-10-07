@@ -318,41 +318,44 @@ func convertNetworkErrors(err error) (*gcxerrors.DetailedError, bool) {
 }
 
 func convertAPIErrors(err error) (*gcxerrors.DetailedError, bool) {
-	statusErr := &k8sapi.StatusError{}
+	// Match the APIStatus interface, not just *StatusError: the dynamic client
+	// wraps server errors in dynamic.APIError, which implements APIStatus.
+	var statusErr k8sapi.APIStatus
 	if !errors.As(err, &statusErr) {
 		return nil, false
 	}
 
-	reason := k8sapi.ReasonForError(statusErr)
-	code := statusErr.Status().Code
-
-	switch {
-	case k8sapi.IsUnauthorized(statusErr),
-		k8sapi.IsForbidden(statusErr):
-		return &gcxerrors.DetailedError{
-			Parent:  err,
-			Summary: fmt.Sprintf("%s - code %d", reason, code),
-			Suggestions: []string{
-				"Make sure that the configured credentials are correct",
-				"Make sure that the configured credentials have enough permissions",
-			},
-			DocsLink: docs.ServiceAccounts,
-			ExitCode: new(gcxerrors.ExitAuthFailure),
-		}, true
-	case k8sapi.IsNotFound(statusErr):
-		return &gcxerrors.DetailedError{
-			Parent:  err,
-			Summary: fmt.Sprintf("Resource not found - code %d", code),
-			Suggestions: []string{
-				"Make sure that your are passing in valid resource selectors",
-			},
-		}, true
+	status := statusErr.Status()
+	reason := string(status.Reason)
+	if reason == "" {
+		reason = http.StatusText(int(status.Code))
 	}
 
-	return &gcxerrors.DetailedError{
-		Parent:  err,
-		Summary: fmt.Sprintf("API error: %s - code %d", reason, code),
-	}, true
+	detailedErr := &gcxerrors.DetailedError{
+		Parent:  fmt.Errorf("%s - code %d: %w", reason, status.Code, err),
+		Summary: "API error",
+	}
+	switch status.Code {
+	case http.StatusUnauthorized, http.StatusForbidden:
+		detailedErr.Summary = "Authentication failed"
+		if status.Code == http.StatusForbidden {
+			detailedErr.Summary = "Authorization failed"
+		}
+		detailedErr.Suggestions = []string{
+			"Make sure that the configured credentials are correct",
+			"Make sure that the configured credentials have enough permissions",
+		}
+		detailedErr.DocsLink = docs.ServiceAccounts
+		detailedErr.ExitCode = new(gcxerrors.ExitAuthFailure)
+	case http.StatusNotFound:
+		detailedErr.Summary = "Resource not found"
+		detailedErr.Suggestions = []string{
+			"Make sure that you are passing in valid resource selectors",
+		}
+	case http.StatusConflict:
+		detailedErr.Summary = "Resource conflict"
+	}
+	return detailedErr, true
 }
 
 // convertUnavailableEndpoint renders a route-absent response from an endpoint

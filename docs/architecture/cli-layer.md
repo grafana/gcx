@@ -696,7 +696,7 @@ type DetailedError struct {
 
 Renders as:
 ```
-Error: Resource not found - code 404
+Error: Resource not found
 │
 ├─ Details:
 │

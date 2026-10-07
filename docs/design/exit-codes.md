@@ -91,7 +91,7 @@ set the `ExitCode` field on `DetailedError`:
 // In convertAPIErrors, for auth failures:
 exitCode := 3
 return &DetailedError{
-    Summary:  fmt.Sprintf("%s - code %d", reason, code),
+    Summary:  "Authorization failed", // HTTP 403 (401: "Authentication failed")
     ExitCode: &exitCode,
     Suggestions: []string{...},
 }, true

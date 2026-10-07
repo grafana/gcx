@@ -95,8 +95,7 @@ func TestCaptureErrorSignalsQueryErrors(t *testing.T) {
 }
 
 // Both Kubernetes error shapes yield their reason: the raw *StatusError, and
-// the dynamic client's value-typed APIError, which has no Unwrap and never
-// reaches convertAPIErrors — ReasonForError matches the APIStatus interface,
+// the dynamic client's value-typed APIError — ReasonForError matches the APIStatus interface,
 // so it sees both. Neither shape may feed http_status: a Kubernetes Status
 // code is not a transport fact this field reports.
 func TestCaptureErrorSignalsKubernetesReasons(t *testing.T) {
@@ -124,8 +123,8 @@ func TestCaptureErrorSignalsKubernetesReasons(t *testing.T) {
 	t.Run("non-kubernetes error parsed by the dynamic client reports nothing", func(t *testing.T) {
 		resetCapture(t)
 
-		// ParseStatusError's fallback synthesizes reason "" and code 500;
-		// neither is a finding.
+		// ParseStatusError preserves non-status errors; neither a Kubernetes
+		// reason nor an HTTP status is a finding.
 		fail.CaptureErrorSignals(dynamic.ParseStatusError(errors.New("dial tcp: connection refused")))
 
 		assert.Empty(t, capture.CurrentK8sReason())

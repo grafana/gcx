@@ -1,11 +1,16 @@
 package fail_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"net"
+	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/Masterminds/semver/v3"
@@ -23,6 +28,7 @@ import (
 	cmdoutput "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers/instrumentation"
 	"github.com/grafana/gcx/internal/queryerror"
+	"github.com/grafana/gcx/internal/resources/dynamic"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -149,6 +155,18 @@ func TestErrorToDetailedError_AuthExitCode(t *testing.T) {
 					Message: "Forbidden",
 				},
 			},
+			wantExitCode: gcxerrors.ExitAuthFailure,
+		},
+		{
+			name: "403 from the dynamic client (dynamic.APIError) returns ExitAuthFailure",
+			err: fmt.Errorf("list routing trees: %w", dynamic.ParseStatusError(&k8sapi.StatusError{
+				ErrStatus: metav1.Status{
+					Status:  metav1.StatusFailure,
+					Code:    403,
+					Reason:  metav1.StatusReasonForbidden,
+					Message: "Forbidden",
+				},
+			})),
 			wantExitCode: gcxerrors.ExitAuthFailure,
 		},
 	}
@@ -1543,5 +1561,80 @@ func TestBasicAuthCheckError(t *testing.T) {
 				assert.ErrorIs(t, err, err.Cause)
 			}
 		})
+	}
+}
+
+// Exercise the same normalization and wrapping that dynamic-client callers use.
+func TestErrorToDetailedError_DynamicClient(t *testing.T) {
+	tests := []struct {
+		name        string
+		err         error
+		wantSummary string
+		wantExit    int
+	}{
+		{"refused", &url.Error{Op: "Get", URL: "http://127.0.0.1:1", Err: &net.OpError{Op: "dial", Net: "tcp", Err: syscall.ECONNREFUSED}}, "Network error", gcxerrors.ExitGeneralError},
+		{"cancelled", &url.Error{Op: "Get", URL: "http://example.invalid", Err: context.Canceled}, "Operation cancelled", gcxerrors.ExitCancelled},
+		{"deadline exceeded", &url.Error{Op: "Get", URL: "http://example.invalid", Err: context.DeadlineExceeded}, "Network error", gcxerrors.ExitGeneralError},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := fmt.Errorf("get dashboard: %w", dynamic.ParseStatusError(tc.err))
+			got := fail.ErrorToDetailedError(err)
+			assert.Equal(t, tc.wantSummary, got.Summary)
+			exit := gcxerrors.ExitGeneralError
+			if got.ExitCode != nil {
+				exit = *got.ExitCode
+			}
+			assert.Equal(t, tc.wantExit, exit)
+			assert.ErrorIs(t, got, tc.err)
+		})
+	}
+}
+
+func TestErrorToDetailedError_APIStatusVocabulary(t *testing.T) {
+	tests := []struct {
+		code        int32
+		reason      metav1.StatusReason
+		wantSummary string
+		wantExit    int
+	}{
+		{401, metav1.StatusReasonUnauthorized, "Authentication failed", gcxerrors.ExitAuthFailure},
+		{403, metav1.StatusReasonForbidden, "Authorization failed", gcxerrors.ExitAuthFailure},
+		{404, metav1.StatusReasonNotFound, "Resource not found", gcxerrors.ExitGeneralError},
+		{409, metav1.StatusReasonConflict, "Resource conflict", gcxerrors.ExitGeneralError},
+		{502, metav1.StatusReasonInternalError, "API error", gcxerrors.ExitGeneralError},
+		{500, "", "API error", gcxerrors.ExitGeneralError},
+		{401, "", "Authentication failed", gcxerrors.ExitAuthFailure},
+		{403, "", "Authorization failed", gcxerrors.ExitAuthFailure},
+		{404, "", "Resource not found", gcxerrors.ExitGeneralError},
+		{409, "", "Resource conflict", gcxerrors.ExitGeneralError},
+	}
+	for _, tc := range tests {
+		for _, wrapped := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%d/%s/dynamic=%t", tc.code, tc.reason, wrapped), func(t *testing.T) {
+				var err error = &k8sapi.StatusError{ErrStatus: metav1.Status{Status: metav1.StatusFailure, Code: tc.code, Reason: tc.reason, Message: "server message"}}
+				if wrapped {
+					err = dynamic.ParseStatusError(err)
+				}
+				err = fmt.Errorf("get dashboard: %w", err)
+				got := fail.ErrorToDetailedError(err)
+				assert.Equal(t, tc.wantSummary, got.Summary)
+				exit := gcxerrors.ExitGeneralError
+				if got.ExitCode != nil {
+					exit = *got.ExitCode
+				}
+				assert.Equal(t, tc.wantExit, exit)
+				reason := string(tc.reason)
+				if reason == "" {
+					reason = http.StatusText(int(tc.code))
+				}
+				assert.Contains(t, got.Parent.Error(), fmt.Sprintf("%s - code %d", reason, tc.code))
+				assert.Contains(t, got.Parent.Error(), "server message")
+				var rendered bytes.Buffer
+				require.NoError(t, got.WriteJSON(&rendered, exit))
+				assert.Contains(t, rendered.String(), "server message")
+				assert.Contains(t, rendered.String(), "get dashboard")
+			})
+		}
 	}
 }
