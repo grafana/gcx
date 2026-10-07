@@ -100,6 +100,8 @@ func runGcx(t *testing.T, args ...string) (string, int) {
 		// so the host temp dir must not leak in
 		"TMPDIR=" + home,
 		"PATH=" + os.Getenv("PATH"),
+		// This is a production binary. The Go test Keychain guard does not apply.
+		"GCX_KEYCHAIN=off",
 		"GCX_AGENT_MODE=1",
 		"GCX_TELEMETRY=off",
 		"DO_NOT_TRACK=1",
@@ -134,6 +136,53 @@ func assertOneJSONValue(t *testing.T, stdout string) any {
 		t.Fatalf("stdout must contain exactly one JSON value; second decode = %v\nstdout:\n%s", err, stdout)
 	}
 	return first
+}
+
+// Both subprocess helpers must keep test credentials out of the host Keychain.
+func TestAgentConformance_CredentialWritesStayInTemporaryConfig(t *testing.T) {
+	if testing.Short() {
+		t.Skip("builds the gcx binary; skipped with -short")
+	}
+
+	for _, tc := range []struct {
+		name     string
+		isolated bool
+	}{
+		{name: "runGcx"},
+		{name: "runGcxIsolated", isolated: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			contents := []byte("version: 1\nstacks:\n  test:\n    grafana:\n      server: https://example.invalid\n")
+			if err := os.WriteFile(path, contents, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			const token = "synthetic-conformance-token"
+			args := []string{"config", "set", "--config", path, "stacks.test.grafana.token", token}
+			var stdout string
+			var code int
+			if tc.isolated {
+				var timedOut bool
+				stdout, code, timedOut = runGcxIsolated(t, buildGcx(t), args)
+				if timedOut {
+					t.Fatal("credential write timed out")
+				}
+			} else {
+				stdout, code = runGcx(t, args...)
+			}
+			if code != 0 {
+				t.Fatalf("credential write failed: exit %d; stdout: %s", code, stdout)
+			}
+			assertOneJSONValue(t, stdout)
+			raw, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Contains(raw, []byte(token)) || bytes.Contains(raw, []byte("keychain:gcx:")) {
+				t.Fatal("test credential must stay in the temporary config as plaintext")
+			}
+		})
+	}
 }
 
 func TestAgentConformance_FiniteCommandsEmitOneJSONValue(t *testing.T) {
@@ -393,6 +442,8 @@ func runGcxIsolated(t *testing.T, bin string, args []string) (string, int, bool)
 		// so the host temp dir must not leak in
 		"TMPDIR=" + home,
 		"PATH=" + os.Getenv("PATH"),
+		// This is a production binary. The Go test Keychain guard does not apply.
+		"GCX_KEYCHAIN=off",
 		"GCX_AGENT_MODE=1",
 		"GCX_TELEMETRY=off",
 		"DO_NOT_TRACK=1",
