@@ -152,13 +152,15 @@ jobs:
           printf 'FROM scratch\nCOPY gcx.wasm gcx.commit /\nCOPY cache /cache\n' >"$IMAGE_DIR/Dockerfile"
           echo "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
           docker buildx create --use --driver docker-container >/dev/null
+          # zstd -19 roughly halves the gzip size (about 100 MB to 47 MB per
+          # platform), and it is paid once here rather than on every pull.
           docker buildx build \
             --platform "$PLATFORM" \
             --provenance=false \
             --label "org.opencontainers.image.source=https://github.com/grafana/gcx" \
             --label "org.opencontainers.image.revision=$COMMIT" \
             --metadata-file "$RUNNER_TEMP/metadata.json" \
-            --output "type=image,name=$IMAGE,push-by-digest=true,name-canonical=true,push=true" \
+            --output "type=image,name=$IMAGE,push-by-digest=true,name-canonical=true,push=true,compression=zstd,compression-level=19,oci-mediatypes=true" \
             "$IMAGE_DIR"
           mkdir -p "$DIGEST_DIR"
           jq -r '."containerimage.digest"' "$RUNNER_TEMP/metadata.json" >"$DIGEST_DIR/${PLATFORM//\//-}"
