@@ -1,0 +1,76 @@
+name: Publish gcx.wasm
+# Publishes gcx built for wasip1, for embedding with experimental/sandbox, as
+# ghcr.io/grafana/gcx-wasm: a FROM scratch image holding /gcx.wasm and
+# /gcx.commit, so Dockerfiles can `COPY --from` it. The module is
+# architecture-independent; the image is published for amd64 and arm64 so
+# builds for either platform can copy from it.
+#
+# Tags: sha-<commit> and sha-<12-char commit> always; main on main; and
+# sandbox-vX.Y.Z for experimental/sandbox/vX.Y.Z tags. A sandbox host must run
+# a module from the same gcx version, so consumers pin by sandbox version or
+# commit, not main.
+on:
+  push:
+    branches: [main]
+    tags: ["experimental/sandbox/v*"]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-gcx-wasm-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Build and push gcx.wasm
+    if: github.repository == 'grafana/gcx'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # push ghcr.io/grafana/gcx-wasm
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      # No build caches: this workflow publishes what it builds.
+      - name: Setup mise
+        uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4
+        with:
+          install: true
+          cache: false
+
+      - name: Build gcx.wasm
+        run: experimental/sandbox/build.sh
+
+      - name: Push image
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMAGE: ghcr.io/grafana/gcx-wasm
+        run: |
+          set -euo pipefail
+          context=$(mktemp -d)
+          cp experimental/sandbox/gcx.wasm "$context/"
+          git rev-parse HEAD >"$context/gcx.commit"
+          printf 'FROM scratch\nCOPY gcx.wasm gcx.commit /\n' >"$context/Dockerfile"
+
+          tags=(--tag "$IMAGE:sha-$GITHUB_SHA" --tag "$IMAGE:sha-${GITHUB_SHA:0:12}")
+          case "$GITHUB_REF" in
+          refs/heads/main) tags+=(--tag "$IMAGE:main") ;;
+          refs/tags/experimental/sandbox/v*) tags+=(--tag "$IMAGE:sandbox-${GITHUB_REF#refs/tags/experimental/sandbox/}") ;;
+          esac
+
+          echo "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          docker buildx create --use --driver docker-container >/dev/null
+          source=https://github.com/grafana/gcx
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            --label "org.opencontainers.image.source=$source" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            --annotation "index:org.opencontainers.image.source=$source" \
+            --annotation "index:org.opencontainers.image.revision=$GITHUB_SHA" \
+            "${tags[@]}" \
+            --push "$context"
