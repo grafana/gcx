@@ -161,9 +161,9 @@ of about 40 s, and the cache can stay read-only.
   upstream, this module pins a wazero fork with a `replace` in its `go.mod`
   (see the comment there). Go ignores a dependency's `replace` directives, so
   put the same `require` and `replace` lines for `github.com/tetratelabs/wazero`
-  in your own `go.mod`. Without them your build uses upstream wazero, misses
-  the published cache, and keeps all of gcx's compiled code (about 500 MiB) in
-  private memory instead of mapping it from the cache file.
+  in your own `go.mod`. Without them your build fails: the required version
+  is the fork commit's pseudo-version, which upstream wazero doesn't have
+  (`go get` reports `unknown revision`).
 
 ## Security model
 
