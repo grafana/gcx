@@ -83,16 +83,8 @@ func buildGcx(t *testing.T) string {
 	return buildPath
 }
 
-// runGcx runs the built binary with agent mode enabled, an isolated HOME and
-// XDG environment, telemetry off, and stdin closed. It returns stdout and the
-// exit code; stderr is captured only to keep it out of stdout.
-func runGcx(t *testing.T, args ...string) (string, int) {
-	t.Helper()
-	bin := buildGcx(t)
-
-	home := t.TempDir()
-	cmd := exec.CommandContext(context.Background(), bin, args...)
-	cmd.Env = []string{
+func conformanceEnv(home string) []string {
+	return []string{
 		"HOME=" + home,
 		"XDG_CONFIG_HOME=" + filepath.Join(home, ".config"),
 		"XDG_STATE_HOME=" + filepath.Join(home, ".state"),
@@ -106,6 +98,18 @@ func runGcx(t *testing.T, args ...string) (string, int) {
 		"GCX_TELEMETRY=off",
 		"DO_NOT_TRACK=1",
 	}
+}
+
+// runGcx runs the built binary with agent mode enabled, an isolated HOME and
+// XDG environment, telemetry off, and stdin closed. It returns stdout and the
+// exit code; stderr is captured only to keep it out of stdout.
+func runGcx(t *testing.T, args ...string) (string, int) {
+	t.Helper()
+	bin := buildGcx(t)
+
+	home := t.TempDir()
+	cmd := exec.CommandContext(context.Background(), bin, args...)
+	cmd.Env = conformanceEnv(home)
 	cmd.Stdin = nil // exec: /dev/null — a surviving prompt reads EOF, never blocks on us
 
 	var outBuf, errBuf bytes.Buffer
@@ -437,20 +441,7 @@ func runGcxIsolated(t *testing.T, bin string, args []string) (string, int, bool)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Dir = t.TempDir() // no ./resources or other cwd pickups
-	cmd.Env = []string{
-		"HOME=" + home,
-		"XDG_CONFIG_HOME=" + filepath.Join(home, ".config"),
-		"XDG_STATE_HOME=" + filepath.Join(home, ".state"),
-		// swept commands run for real: agent prune deletes from os.TempDir(),
-		// so the host temp dir must not leak in
-		"TMPDIR=" + home,
-		"PATH=" + os.Getenv("PATH"),
-		// This is a production binary. The Go test Keychain guard does not apply.
-		"GCX_KEYCHAIN=off",
-		"GCX_AGENT_MODE=1",
-		"GCX_TELEMETRY=off",
-		"DO_NOT_TRACK=1",
-	}
+	cmd.Env = conformanceEnv(home)
 	cmd.Stdin = nil
 	var outBuf, errBuf bytes.Buffer
 	cmd.Stdout = &outBuf

@@ -559,10 +559,9 @@ func TestClient_Search_OtherHTTPErrorIsRaw(t *testing.T) {
 // it, the auth-suggestion and availability handling that status code
 // drives — instead of being lost in a generic wrapped error.
 func TestClient_Search_NonOKBodyReadFailurePreservesStatusCode(t *testing.T) {
+	// net/http reads the request before the handler sends the truncated response.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		// Handle the request before sending the truncated response.
 		w.Header().Set("Content-Length", "1000")
-		w.Header().Set("Connection", "close")
 		w.WriteHeader(http.StatusUnauthorized)
 		_, _ = w.Write([]byte(`{"error":"short"`))
 	}))
