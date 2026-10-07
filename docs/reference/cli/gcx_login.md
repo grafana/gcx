@@ -14,6 +14,11 @@ Pass CONTEXT_NAME to target a specific context:
 Without CONTEXT_NAME, re-authenticates the current context, or starts a
 first-time setup if no current context is configured.
 
+First-time setup asks for the Grafana server URL. Leave it empty to sign in
+to Grafana Cloud in the browser and choose a stack. When no server is known,
+--cloud --oauth starts that browser sign-in without prompting. To create a
+Grafana Cloud account, run gcx signup.
+
 Auth sources (for non-interactive use):
   --oauth        Browser-based OAuth (recommended for Grafana Cloud). Opens a browser for the user to approve; works in agent mode.
   --basic-auth   Grafana username/password. Use --user or GRAFANA_USER, and GRAFANA_PASSWORD.
@@ -30,6 +35,7 @@ gcx login [CONTEXT_NAME] [flags]
 
 ```
   gcx login
+  gcx login --cloud --oauth
   gcx login prod
   gcx login prod --server https://prod.grafana.net
   gcx login prod --server https://prod.grafana.net --oauth
@@ -43,7 +49,7 @@ gcx login [CONTEXT_NAME] [flags]
 ```
       --allow-server-override     Allow re-pointing an existing context at a different server URL
       --basic-auth                Authenticate with a Grafana username and password (GRAFANA_USER / GRAFANA_PASSWORD, or interactive prompts)
-      --cloud                     Force Grafana Cloud target (skip auto-detection)
+      --cloud                     Force Grafana Cloud target (skip auto-detection). With --oauth and no known server (no --server, GRAFANA_SERVER, or server in the target context), sign in to Grafana Cloud in the browser and choose a stack. To create an account, run gcx signup
       --cloud-api-url string      Override Grafana Cloud API URL
       --cloud-token string        Grafana Cloud API token (enables Cloud management features)
       --config string             Path to the configuration file to use

@@ -50,7 +50,8 @@ classDiagram
         CloudOAuthTokenExpiresAt, CloudOAuthScopes
         UseOAuth, Yes, Writer
         OAuthCallbackPort, OAuthManual, Reader
-        UseCloudInstanceSelector
+        UseCloudInstanceSelector, CloudSignup
+        Interactive
         TLS, StoredTLS
         PreserveStoredTLS
         RuntimeProxyEndpoint, StoredProxyEndpoint
@@ -144,6 +145,46 @@ flowchart TD
     Mismatch -->|yes, no override| OverSentinel[Return ErrNeedClarification&#123;allow-override&#125;]
     Mismatch -->|no| Result([Return Result])
 ```
+
+`Server set?` is also satisfied by `UseCloudInstanceSelector`, which the CLI
+sets when the user leaves the first-run server prompt empty and for
+`--cloud --oauth` without a server. `CloudSignup`, set only by `gcx signup`,
+implies it. Those logins run OAuth against the Grafana Cloud stack launcher on
+the portal named by the Cloud OAuth URL, and the server comes back from the
+consent page. `CloudSignup` starts on the account creation page, skips the
+optional Cloud step, and never returns the `save-unvalidated` clarification:
+a failed validation comes back as the error itself. `gcx signup` shares
+`runLogin` with `gcx login`. Before the browser opens it fixes the context name
+and refuses anything but a new connection: a context with a stack or Cloud
+binding, an existing stack entry named after the context (where
+`mergeGrafanaAuthIntoStack` would save), a context bound to that name, and
+destination environment overrides; it checks both the effective config and the
+file the save writes. It asks no questions, ignores Cloud credentials, passes
+a sign in command as `ManualRetryCommand` for the SSH hint, and wraps any error
+from `login.Run` once the browser flow has been constructed in
+`SignupIncompleteError`. The error converter renders that with the gcx login
+recovery: `--server <stack> --oauth` when the browser step finished, and
+`--cloud --oauth` when it did not, with the signup's own `--oauth-manual` or
+`--oauth-callback-port` carried over (`signupOAuthArgs`). Errors from printing the result, after the
+save, are returned as they are.
+
+Signup's output is its own, and its structured output is not. `gcx signup`
+registers `signupTextCodec` as its "text" codec in place of `loginTextCodec`,
+and `printSignupResult` replaces `printResult`: stdout gets the same
+`LoginResult` (the text codec renders it as the success summary: the gcx logo
+from `style.RenderLogo` when stdout is a terminal and styling is on, then the
+heading, with no check mark in agent mode, so signup's own text stays plain
+ASCII), and stderr gets the next steps, a plain list in text mode and
+`EmitHint` hints otherwise. The first is "Open Grafana" with the saved stack URL
+(`stackBrowserURL`, https only), the way back to the stack whose consent page
+took the browser tab. The second, "Explore interactive guides", follows only
+when `Result.PathfinderInstalled` is set. Signup runs the same Pathfinder probe
+as `gcx login` and caches a positive answer in the new context, so later logins
+skip the hint; signup is the one place it can appear for a new stack. Signup
+suggests no further credential. With
+`CloudSignup`, `announceOAuthLogin` reports the browser approval as "Approved
+in the browser ... Checking the connection to <stack>..." with no success
+mark, so the summary, printed only after the save, is the one success line.
 
 The pipeline reads top-to-bottom in `Run()` (login.go:180). Each step returns
 early on failure; sentinel branches unwind to the CLI for interactive

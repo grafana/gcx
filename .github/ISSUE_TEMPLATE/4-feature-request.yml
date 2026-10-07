@@ -8,6 +8,8 @@ body:
       value: |
         Have an idea for something new? Tell us about it.
 
+        **Planning to build a new command yourself?** Please use the **🧭 New Command Proposal** template instead — it asks the placement and naming questions we need answered before the code is written.
+
   - type: textarea
     id: idea
     attributes:
