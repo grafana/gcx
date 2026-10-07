@@ -197,6 +197,9 @@ Each `Run`:
   about 94 MiB, and `New` rejects anything lower. Outside that cap, the host
   holds at most a couple of 32 KiB chunks of each response body, which it
   streams to the guest as the guest reads it.
+  On Linux, each instance's memory is its own mapping, reserved at the cap
+  and touched only as the guest uses it. It is returned to the OS when `Run`
+  returns, rather than left for the Go GC.
 - **Time:** the guest stops when `ctx` is cancelled or its deadline passes.
   gcx's retry backoff sleeps can't be interrupted, so stopping can lag by up to
   one backoff interval.

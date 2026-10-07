@@ -22,6 +22,7 @@ import (
 	"os"
 
 	"github.com/tetratelabs/wazero"
+	"github.com/tetratelabs/wazero/experimental"
 	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
 	"github.com/tetratelabs/wazero/sys"
 )
@@ -201,6 +202,7 @@ func (r *Runtime) Run(ctx context.Context, inv Invocation) (Result, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel() // abandons any requests still in flight on the host
 	ctx = withSession(ctx, newSession(inv.Egress, inv.Authorize, r.transport))
+	ctx = experimental.WithMemoryAllocator(ctx, memoryAllocator())
 
 	mod, err := r.rt.InstantiateModule(ctx, r.compiled, cfg)
 	if mod != nil {
