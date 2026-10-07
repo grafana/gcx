@@ -247,6 +247,7 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	rootCmd.AddCommand(api.Command())
 	rootCmd.AddCommand(cloudcmd.Command())
 	rootCmd.AddCommand(logincmd.Command())
+	rootCmd.AddCommand(logincmd.SignupCommand())
 	rootCmd.AddCommand(config.Command())
 	addDevCommand(rootCmd)
 	rootCmd.AddCommand(setup.Command())
