@@ -327,6 +327,7 @@ $ gcx metrics query  'sum by (handler)(rate(grafana_http_request_duration_second
 gcx resources list-types                        # discover available resource types
 gcx dashboards list                             # list all dashboards
 gcx dashboards search "node exporter"           # full-text search by title/tag/folder
+gcx annotations list --lookback 24h              # recent Grafana annotations
 gcx resources get folders                       # list all folders
 gcx resources get dashboards.dashboard.grafana.app/my-dash  # get by resource.group/name
 gcx alert rules list                            # list alert rules
