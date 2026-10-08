@@ -24,6 +24,7 @@ import (
 
 	"github.com/tetratelabs/wazero"
 	"github.com/tetratelabs/wazero/experimental"
+	experimentalsys "github.com/tetratelabs/wazero/experimental/sys"
 	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
 	"github.com/tetratelabs/wazero/sys"
 )
@@ -255,13 +256,13 @@ func (r *Runtime) Run(ctx context.Context, inv Invocation) (Result, error) {
 	// memory at the same address. Copy, so they only ever see their own
 	// buffers.
 	if inv.Stdin != nil {
-		cfg = cfg.WithStdin(copyReader{inv.Stdin})
+		cfg = cfg.WithStdin(copyStdin(inv.Stdin))
 	}
 	if inv.Stdout != nil {
-		cfg = cfg.WithStdout(copyWriter{inv.Stdout})
+		cfg = cfg.WithStdout(copyOutput(inv.Stdout))
 	}
 	if inv.Stderr != nil {
-		cfg = cfg.WithStderr(copyWriter{inv.Stderr})
+		cfg = cfg.WithStderr(copyOutput(inv.Stderr))
 	}
 
 	ctx = withSession(ctx, newSession(inv.Egress, inv.Authorize, r.transport))
@@ -308,6 +309,35 @@ func (r *Runtime) finish(cancel *context.CancelCauseFunc) {
 	delete(r.cancels, cancel)
 	r.mu.Unlock()
 	r.runs.Done()
+}
+
+// copyStdin wraps r in a copyReader. An *os.File is passed through: its Read
+// is a syscall that keeps nothing, and wazero only polls and stats the real
+// file when it sees an *os.File. A wrapped reader keeps its Poll, which
+// wazero calls for the guest's poll_oneoff on stdin, and which would
+// otherwise always report ready.
+func copyStdin(r io.Reader) io.Reader {
+	switch p := r.(type) {
+	case *os.File:
+		return p
+	case experimentalsys.Pollable:
+		return pollableCopyReader{copyReader{r}, p}
+	}
+	return copyReader{r}
+}
+
+// copyOutput wraps w in a copyWriter, unless it is an *os.File, for the same
+// reasons as copyStdin.
+func copyOutput(w io.Writer) io.Writer {
+	if f, ok := w.(*os.File); ok {
+		return f
+	}
+	return copyWriter{w}
+}
+
+type pollableCopyReader struct {
+	copyReader
+	experimentalsys.Pollable
 }
 
 // copyReader reads into its own buffer, so the reader never sees guest memory.

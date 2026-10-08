@@ -207,7 +207,8 @@ Each `Run`:
   exhaust the commit limit and kill the process. If the kernel refuses the
   reservation, that instance uses the Go heap and its memory is left for the
   GC, as on other platforms. `Run` copies stdin and stdout/stderr through its own buffers,
-  so your readers and writers never hold a slice of guest memory.
+  so your readers and writers never hold a slice of guest memory. An
+  `*os.File` is passed through as is, so the guest can poll and stat it.
 - **Time:** the guest stops when `ctx` is cancelled or its deadline passes.
   gcx's retry backoff sleeps can't be interrupted, so stopping can lag by up to
   one backoff interval.

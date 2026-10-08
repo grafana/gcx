@@ -7,12 +7,14 @@ import (
 	_ "embed"
 	"errors"
 	"io"
+	"os"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/tetratelabs/wazero/experimental"
+	experimentalsys "github.com/tetratelabs/wazero/experimental/sys"
 )
 
 //go:embed testdata/stdin.wasm
@@ -69,6 +71,22 @@ func (m *memories) check(t *testing.T) {
 	}
 }
 
+// release unblocks a stdin reader that waits on c. Its cleanup releases the
+// reader if the test fails first, and runs before countingRuntime's, whose
+// Close would otherwise wait for that run forever.
+type release struct {
+	c     chan struct{}
+	close func()
+}
+
+func releaser(t *testing.T) release {
+	t.Helper()
+	c := make(chan struct{})
+	r := release{c: c, close: sync.OnceFunc(func() { close(c) })}
+	t.Cleanup(r.close)
+	return r
+}
+
 // readerFunc is an io.Reader for the guest's stdin.
 type readerFunc func([]byte) (int, error)
 
@@ -123,10 +141,10 @@ func TestRunFreesMemory(t *testing.T) {
 // process.
 func TestCloseWaitsForRuns(t *testing.T) {
 	r, mems := countingRuntime(t)
-	reading, release := make(chan struct{}), make(chan struct{})
+	reading, release := make(chan struct{}), releaser(t)
 	stdin := readerFunc(func(p []byte) (int, error) {
 		close(reading)
-		<-release
+		<-release.c
 		return copy(p, "x"), nil
 	})
 	runErr := make(chan error, 1)
@@ -145,7 +163,7 @@ func TestCloseWaitsForRuns(t *testing.T) {
 	}
 	// The guest now reads the byte it was given from its memory, and exits
 	// with status 0: a run that finishes anyway returns its result.
-	close(release)
+	release.close()
 	if err := <-runErr; err != nil {
 		t.Fatalf("Run: %v, want nil", err)
 	}
@@ -188,10 +206,10 @@ func TestCloseCancelsRuns(t *testing.T) {
 // memory alone, and a later Close finishes the job.
 func TestCloseGivesUpWhenCtxDone(t *testing.T) {
 	r, mems := countingRuntime(t)
-	reading, release := make(chan struct{}), make(chan struct{})
+	reading, release := make(chan struct{}), releaser(t)
 	stdin := readerFunc(func(p []byte) (int, error) {
 		close(reading)
-		<-release // ignores cancellation, like a stuck pipe
+		<-release.c // ignores cancellation, like a stuck pipe
 		return 0, io.EOF
 	})
 	runErr := make(chan error, 1)
@@ -207,15 +225,17 @@ func TestCloseGivesUpWhenCtxDone(t *testing.T) {
 		t.Fatalf("Close: %v, want context.DeadlineExceeded", err)
 	}
 	mems.mu.Lock()
-	if mapped, ok := mems.mems[0].(*mappedMemory); !ok || mapped.buf == nil {
+	mapped, ok := mems.mems[0].(*mappedMemory)
+	freed := !ok || mapped.buf == nil
+	mems.mu.Unlock()
+	if freed {
 		t.Fatal("Close freed the memory of a run still in flight")
 	}
-	mems.mu.Unlock()
 	if _, err := r.Run(t.Context(), Invocation{}); !errors.Is(err, ErrClosed) {
 		t.Fatalf("Run after Close: %v, want ErrClosed", err)
 	}
 
-	close(release)
+	release.close()
 	<-runErr
 	if err := r.Close(t.Context()); err != nil {
 		t.Fatalf("second Close: %v", err)
@@ -255,3 +275,31 @@ func TestRunCopiesStdio(t *testing.T) {
 type writerFunc func([]byte) (int, error)
 
 func (f writerFunc) Write(p []byte) (int, error) { return f(p) }
+
+// Files reach wazero unwrapped, so it can poll and stat them, and a wrapped
+// reader keeps its Poll.
+func TestStdioWrapping(t *testing.T) {
+	f, err := os.Open(os.DevNull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if copyStdin(f) != io.Reader(f) || copyOutput(f) != io.Writer(f) {
+		t.Fatal("an *os.File was wrapped")
+	}
+	p, ok := copyStdin(pollReader{}).(experimentalsys.Pollable)
+	if !ok {
+		t.Fatal("a Pollable reader lost its Poll")
+	}
+	if ready, _ := p.Poll(experimentalsys.POLLIN, 0); ready {
+		t.Fatal("Poll wasn't forwarded")
+	}
+	if _, ok := copyStdin(strings.NewReader("")).(copyReader); !ok {
+		t.Fatal("a plain reader wasn't copied")
+	}
+}
+
+// pollReader is never ready.
+type pollReader struct{ io.Reader }
+
+func (pollReader) Poll(experimentalsys.Pflag, int32) (bool, experimentalsys.Errno) { return false, 0 }
