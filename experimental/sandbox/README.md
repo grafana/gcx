@@ -123,6 +123,41 @@ A `Runtime` is safe for concurrent `Run`s; each run's policy and in-flight
 requests are kept separate. With a precompiled module and a fresh instance per
 call, `gcx version` takes about 80 ms (26 ms natively).
 
+## Prebuilt images
+
+Rather than building gcx and compiling it at startup, copy both from
+`ghcr.io/grafana/gcx-wasm`. It's published by `.github/workflows/publish-gcx-wasm.yaml`
+on every push to `main` and every `experimental/sandbox/v*` tag:
+
+```dockerfile
+FROM ghcr.io/grafana/gcx-wasm:sandbox-v0.2.0 AS gcx
+# …
+COPY --from=gcx / /usr/share/gcx/
+```
+
+```go
+wasm, _ := os.ReadFile("/usr/share/gcx/gcx.wasm")
+rt, err := sandbox.New(ctx, wasm, sandbox.Config{CacheDir: "/usr/share/gcx/cache"})
+```
+
+Each image holds `/gcx.wasm`, `/gcx.commit`, and `/cache/`, which is wazero's
+compiled code for the module. With that cache, startup takes about 1 s instead
+of about 40 s, and the cache can stay read-only.
+
+- **Use the tag matching your version of this module.** A sandbox host runs only
+  modules from the same gcx version, so pin `sandbox-vX.Y.Z` to match your
+  `experimental/sandbox` version, or `sha-<commit>` for a pseudo-version. Don't
+  use `main`.
+- **Compiled code is per platform.** Images exist for `linux/amd64` and
+  `linux/arm64`; Docker picks the one matching your build. wazero keys its cache
+  on its own version, `GOARCH`/`GOOS`, the module bytes, the sandbox's fixed
+  settings (termination on context cancellation, no listeners), and a few CPU
+  features: SSE4.1, BMI1 and ABM on amd64, LSE atomics on arm64. Any modern
+  server CPU has these. Embedder settings such as `MemoryLimitBytes` don't
+  affect it. If anything differs (for example, your build resolves a different
+  wazero version than this module pins), the cache misses and `New` compiles
+  from scratch: slower, but correct.
+
 ## Security model
 
 Each `Run`:

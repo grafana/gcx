@@ -279,7 +279,10 @@ this.
 
 ## 4. CI/CD Pipeline (GitHub Actions)
 
-Three workflow files under `.github/workflows/`:
+The main workflows under `.github/workflows/` are described below. The others are
+`publish-homebrew-formula.yml` (updates the Homebrew tap after a release),
+`deploy-pr-preview.yml` (docs previews for PRs), and `claude.yml` /
+`claude-code-review.yml` (automated assistance and review).
 
 ### ci.yaml — Pull Request and Main Branch Gate
 
@@ -330,6 +333,22 @@ cutting a new release. Follows the same build + upload + deploy pattern as
 the release workflow.
 
 ---
+
+### sandbox.yaml — wasip1 Build and Sandbox Tests
+
+Triggered on: PRs and pushes to `main` that touch Go code, `go.mod`/`go.sum`,
+`experimental/sandbox/` or `mise.toml`. Builds gcx for `GOOS=wasip1` with
+`experimental/sandbox/build.sh`, then lints, vets and tests the
+`experimental/sandbox` module, including end-to-end tests against the built
+module.
+
+### publish-gcx-wasm.yaml — gcx.wasm Images
+
+Triggered on: pushes to `main`, `experimental/sandbox/v*` tags, and manual runs
+(with an optional `sandbox_version` to publish an existing sandbox tag). Builds
+`gcx.wasm`, precompiles it natively on amd64 and arm64 runners, and publishes
+`ghcr.io/grafana/gcx-wasm` images holding `/gcx.wasm`, `/gcx.commit` and the
+compiled code in `/cache/`. See the sandbox README's "Prebuilt images" section.
 
 ## 5. Dependency Management
 

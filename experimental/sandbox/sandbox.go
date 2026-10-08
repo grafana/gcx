@@ -51,7 +51,12 @@ type Runtime struct {
 
 // New compiles the gcx wasip1 module (see build.sh).
 func New(ctx context.Context, wasm []byte, cfg Config) (*Runtime, error) {
-	rcfg := wazero.NewRuntimeConfig().WithCloseOnContextDone(true)
+	rcfg := wazero.NewRuntimeConfig().WithCloseOnContextDone(true).
+		// gcx has no DWARF, and nothing here uses function listeners, so
+		// wazero's source map would only cost memory: since wazero#2527
+		// (unreleased as of v1.12.0) it is recorded for every module, about
+		// 150 MiB of heap for gcx.
+		WithDebugInfoEnabled(false)
 	if cfg.MemoryLimitBytes > 0 {
 		rcfg = rcfg.WithMemoryLimitPages(memoryLimitPages(cfg.MemoryLimitBytes))
 	}
