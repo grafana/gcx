@@ -81,7 +81,9 @@ func (img *memoryImage) allocate(capacity, maxBytes uint64) experimental.LinearM
 		buf, err := syscall.Mmap(-1, 0, int(maxBytes), syscall.PROT_READ|syscall.PROT_WRITE,
 			syscall.MAP_PRIVATE|syscall.MAP_ANON|syscall.MAP_NORESERVE)
 		if err == nil {
-			// Unmapping buf in Free unmaps this too.
+			// Unmapping buf in Free unmaps this too. unsafe is how MmapPtr
+			// takes the address to map at, the start of buf.
+			// #nosec G103 nosemgrep: go.lang.security.audit.unsafe.use-of-unsafe-block
 			_, err = unix.MmapPtr(int(img.f.Fd()), 0, unsafe.Pointer(&buf[0]), uintptr(img.size),
 				unix.PROT_READ|unix.PROT_WRITE, unix.MAP_PRIVATE|unix.MAP_FIXED)
 			if err == nil || img.read(buf[:img.size]) == nil {
@@ -108,6 +110,11 @@ func (img *memoryImage) read(buf []byte) error {
 // size of its initial memory. It calls put with each segment's offset and
 // contents, in order, so that put can build the memory wazero would have.
 //
+// When nothing can refer to the segments by index (no passive segments and
+// no data count section, which memory.init and data.drop need), it drops
+// them instead: Go's linker emits up to 100,000, and wazero keeps a record of
+// each in the compiled module and in every instance.
+//
 // It handles what Go's wasm linker emits: one memory, and segments at
 // constant offsets. Anything else is an error.
 func stripModule(wasm []byte, put func(offset uint32, data []byte) error) ([]byte, uint64, error) {
@@ -120,6 +127,7 @@ func stripModule(wasm []byte, put func(offset uint32, data []byte) error) ([]byt
 	}
 	var sections []section
 	var minBytes uint64
+	var dataCount bool
 	r := wasmReader{b: wasm, i: 8}
 	for r.err == nil && r.i < len(r.b) {
 		id := r.byte()
@@ -144,11 +152,13 @@ func stripModule(wasm []byte, put func(offset uint32, data []byte) error) ([]byt
 				return nil, 0, errors.New("memory larger than 4 GiB")
 			}
 			minBytes = pages * 65536
+		case 12: // data count
+			dataCount = true
 		case 11: // data
 			if minBytes == 0 {
 				return nil, 0, errors.New("no memory for the data segments")
 			}
-			stripped, err := stripData(body, minBytes, put)
+			stripped, err := stripData(body, minBytes, dataCount, put)
 			if err != nil {
 				return nil, 0, err
 			}
@@ -177,9 +187,10 @@ func stripModule(wasm []byte, put func(offset uint32, data []byte) error) ([]byt
 	return out, minBytes, nil
 }
 
-// stripData rewrites a data section's body with its active segments emptied.
-// The memory section comes before it, so minBytes is known.
-func stripData(body []byte, minBytes uint64, put func(uint32, []byte) error) ([]byte, error) {
+// stripData rewrites a data section's body with its active segments emptied,
+// or with no segments when keepIndices is false and none is passive. The
+// memory and data count sections come before it.
+func stripData(body []byte, minBytes uint64, keepIndices bool, put func(uint32, []byte) error) ([]byte, error) {
 	r := wasmReader{b: body}
 	n := r.uleb()
 	out := appendULEB(nil, n)
@@ -189,6 +200,7 @@ func stripData(body []byte, minBytes uint64, put func(uint32, []byte) error) ([]
 		if flags == 1 { // passive: memory.init copies it later, so keep it
 			r.bytes(r.uleb())
 			out = append(out, body[start:r.i]...)
+			keepIndices = true
 			continue
 		}
 		if flags == 2 && r.uleb() != 0 {
@@ -224,6 +236,9 @@ func stripData(body []byte, minBytes uint64, put func(uint32, []byte) error) ([]
 	}
 	if r.err == nil && r.i != len(body) {
 		return nil, errors.New("trailing bytes in the data section")
+	}
+	if !keepIndices {
+		out = appendULEB(nil, 0)
 	}
 	return out, r.err
 }

@@ -55,21 +55,52 @@ type put struct {
 	data   string
 }
 
+// segments counts the data segments left in a module.
+func segments(t *testing.T, wasm []byte) uint64 {
+	t.Helper()
+	r := wasmReader{b: wasm, i: 8}
+	for r.err == nil && r.i < len(r.b) {
+		id := r.byte()
+		body := r.bytes(r.uleb())
+		if id == 11 {
+			return (&wasmReader{b: body}).uleb()
+		}
+	}
+	if r.err != nil {
+		t.Fatal(r.err)
+	}
+	return 0
+}
+
 func TestStripModule(t *testing.T) {
 	passive := append(appendULEB([]byte{1}, 2), "pp"...)
+	// A data count section (12) of 1 goes between memory (5) and data (11).
+	withDataCount := testModule(1, nil)
+	withDataCount = append(withDataCount, 12, 1, 1)
+	withDataCount = appendULEB(append(withDataCount, 11), uint64(len(dataSection(active(0, 16, "abc")))))
+	withDataCount = append(withDataCount, dataSection(active(0, 16, "abc"))...)
 	for _, tc := range []struct {
-		name     string
-		wasm     []byte
-		wantPuts []put
-		wantErr  string
+		name         string
+		wasm         []byte
+		wantPuts     []put
+		wantSegments uint64 // left in the stripped module
+		wantErr      string
 	}{
 		{
-			name: "segments",
+			name:     "active segments are dropped",
+			wasm:     testModule(2, dataSection(active(0, 16, "abc"), active(0, 70000, "xyz"), active(2, 100, "q"))),
+			wantPuts: []put{{16, "abc"}, {70000, "xyz"}, {100, "q"}},
+		},
+		{
+			// memory.init names the passive segment by its index.
+			name: "a passive segment keeps every index",
 			wasm: testModule(2, dataSection(
 				active(0, 16, "abc"), passive, active(0, 70000, "xyz"), active(2, 100, "q"), active(0, 5, ""),
 			)),
-			wantPuts: []put{{16, "abc"}, {70000, "xyz"}, {100, "q"}},
+			wantPuts:     []put{{16, "abc"}, {70000, "xyz"}, {100, "q"}},
+			wantSegments: 5,
 		},
+		{name: "a data count keeps every index", wasm: withDataCount, wantPuts: []put{{16, "abc"}}, wantSegments: 1},
 		{name: "no data", wasm: testModule(1, nil)},
 		{name: "no memory", wasm: testModule(0, dataSection(active(0, 0, "a"))), wantErr: "no memory"},
 		{name: "outside the initial memory", wasm: testModule(1, dataSection(active(0, 65535, "ab"))), wantErr: "outside"},
@@ -99,6 +130,9 @@ func TestStripModule(t *testing.T) {
 			}
 			if !slices.Equal(puts, tc.wantPuts) {
 				t.Fatalf("puts %v, want %v", puts, tc.wantPuts)
+			}
+			if n := segments(t, out); n != tc.wantSegments {
+				t.Fatalf("%d segments left, want %d", n, tc.wantSegments)
 			}
 			// Stripping the stripped module finds nothing left to move, and
 			// changes nothing.
