@@ -1,14 +1,11 @@
 package loki
 
 // DetectedLevel returns the best available level string for a log entry,
-// checking (in priority order) Loki's automatic structured-metadata
-// detection, a query-time parsed field, and a level/lvl/severity key
-// embedded in a JSON/logfmt-structured line body (the same body-parsing
-// FormatQueryTable's LEVEL column uses, so callers stay consistent with
-// table output even for a bare selector query with no `| json`/`| logfmt`
-// stage, where Loki never populates Parsed itself). Returns "" when none of
-// these carry a level; callers wanting a free-text regex fallback (e.g. a
-// plain "ERROR: ..." line with no structure at all) layer that on top.
+// checking (in priority order) Loki's structured-metadata detection, a
+// query-time parsed field, and a level/lvl/severity key in a JSON/logfmt
+// body. It deliberately trusts Loki's detection over the body, so it can
+// differ from the table's LEVEL column, which prefers the body. Returns ""
+// when none carry a level; callers layer a free-text fallback on top.
 func DetectedLevel(stream map[string]string, e LogEntry) string {
 	if lvl := e.StructuredMetadata["detected_level"]; lvl != "" {
 		return lvl

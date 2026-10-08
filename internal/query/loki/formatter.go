@@ -42,7 +42,7 @@ func (c *rawQueryCodec) Decode(io.Reader, any) error {
 	return errors.New("raw log query codec does not support decoding")
 }
 
-type DisplayLogEntry struct {
+type displayLogEntry struct {
 	Timestamp string
 	Level     string
 	Source    string
@@ -58,9 +58,9 @@ func FormatQueryTable(w io.Writer, resp *QueryResponse) error {
 		return nil
 	}
 
-	hasLevel := anyEntry(entries, func(e DisplayLogEntry) string { return e.Level })
-	hasSource := anyEntry(entries, func(e DisplayLogEntry) string { return e.Source })
-	hasDetails := anyEntry(entries, func(e DisplayLogEntry) string { return e.Details })
+	hasLevel := anyEntry(entries, func(e displayLogEntry) string { return e.Level })
+	hasSource := anyEntry(entries, func(e displayLogEntry) string { return e.Source })
+	hasDetails := anyEntry(entries, func(e displayLogEntry) string { return e.Details })
 	hasStream := hasMultipleVisibleStreams(resp.Data.Result)
 
 	header := []string{"TIME"}
@@ -108,9 +108,9 @@ func FormatQueryTableWide(w io.Writer, resp *QueryResponse) error {
 	}
 
 	labelNames := collectStreamLabelNames(resp.Data.Result)
-	hasLevel := anyEntry(entries, func(e DisplayLogEntry) string { return e.Level })
-	hasSource := anyEntry(entries, func(e DisplayLogEntry) string { return e.Source })
-	hasDetails := anyEntry(entries, func(e DisplayLogEntry) string { return e.Details })
+	hasLevel := anyEntry(entries, func(e displayLogEntry) string { return e.Level })
+	hasSource := anyEntry(entries, func(e displayLogEntry) string { return e.Source })
+	hasDetails := anyEntry(entries, func(e displayLogEntry) string { return e.Details })
 
 	header := []string{"TIME"}
 	if hasLevel {
@@ -243,22 +243,22 @@ func FormatMetricQueryTable(w io.Writer, resp *MetricQueryResponse) error {
 	return t.Render(w)
 }
 
-func buildDisplayEntries(resp *QueryResponse) []DisplayLogEntry {
+func buildDisplayEntries(resp *QueryResponse) []displayLogEntry {
 	if resp == nil {
 		return nil
 	}
 
-	entries := make([]DisplayLogEntry, 0)
+	entries := make([]displayLogEntry, 0)
 	for _, stream := range resp.Data.Result {
 		for _, value := range stream.Values {
-			entries = append(entries, NewDisplayLogEntry(stream.Stream, value))
+			entries = append(entries, newDisplayLogEntry(stream.Stream, value))
 		}
 	}
 	return entries
 }
 
-func NewDisplayLogEntry(stream map[string]string, e LogEntry) DisplayLogEntry {
-	entry := DisplayLogEntry{
+func newDisplayLogEntry(stream map[string]string, e LogEntry) displayLogEntry {
+	entry := displayLogEntry{
 		Timestamp: formatHumanTimestamp(e.Timestamp),
 		Message:   e.Line,
 		Stream:    stream,
@@ -284,7 +284,7 @@ func NewDisplayLogEntry(stream map[string]string, e LogEntry) DisplayLogEntry {
 // promoteBodyFields parses structured key/values out of the log body, promoting
 // level/source/message onto entry, and returns the remaining fields for DETAILS.
 // It returns an empty map when the body is not structured.
-func promoteBodyFields(entry *DisplayLogEntry, rawLine string) map[string]string {
+func promoteBodyFields(entry *displayLogEntry, rawLine string) map[string]string {
 	fields, ok := parseStructuredLogBody(rawLine)
 	if !ok {
 		return map[string]string{}
@@ -324,7 +324,7 @@ func mergeDetailFields(dst, src map[string]string) {
 	}
 }
 
-func anyEntry(entries []DisplayLogEntry, field func(DisplayLogEntry) string) bool {
+func anyEntry(entries []displayLogEntry, field func(displayLogEntry) string) bool {
 	for _, entry := range entries {
 		if field(entry) != "" {
 			return true
