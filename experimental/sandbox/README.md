@@ -163,7 +163,11 @@ of about 40 s, and the cache can stay read-only.
   put the same `require` and `replace` lines for `github.com/tetratelabs/wazero`
   in your own `go.mod`. Without them your build fails: the required version
   is the fork commit's pseudo-version, which upstream wazero doesn't have
-  (`go get` reports `unknown revision`).
+  (`go get` reports `unknown revision`). Re-copy both lines whenever you
+  update this module. A stale `replace` silently wins over the newer
+  `require`, so your build runs the old fork commit while reporting the new
+  version, and wazero keys its cache on that version: it would load compiled
+  code from the published cache that a different fork commit produced.
 
 ## Security model
 
