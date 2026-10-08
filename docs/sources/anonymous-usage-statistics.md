@@ -51,7 +51,7 @@ Each `gcx` event contains the following properties:
 | `is_ci` | Whether a CI environment was detected. | `true` |
 | `ci_provider` | Which CI system was detected, from a fixed list of known names. `gcx` reads well-known CI environment variables to detect the provider but never sends their values. | `github_actions` |
 | `is_agent` | Whether an AI coding agent drove the invocation. | `true` |
-| `agent` | A fixed harness label from native detection or a supported explicit identity. | `claude-code` |
+| `agent` | A fixed harness label, or `generic` when agent mode is enabled without a known identity. | `claude-code` |
 | `target_kind` | Whether the target Grafana is `cloud` or `self-hosted`. Empty when no effective Grafana target could be resolved. Deliberately coarse — never the URL, hostname, or stack slug. | `cloud` |
 | `output_format` | The output format the command used. | `table`, `json` |
 
@@ -230,6 +230,10 @@ The shared `AI_AGENT` variable also accepts supported names.
 The bare `AGENT` variable is accepted only when its value is `goose`.
 Unknown names and version suffixes are not sent. Session markers are used only
 for detection; their values are not sent.
+
+When agent mode is enabled without a known identity, `agent` is `generic`.
+When neither a known identity nor agent mode is present, `agent` is empty.
+This fallback applies only to usage events. It does not enable agent mode.
 
 An explicit mode opt-out can produce `is_agent=false` with a non-empty `agent`.
 The label identifies the calling harness. The boolean records the active gcx mode.

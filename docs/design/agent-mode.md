@@ -31,6 +31,9 @@ Environment signals alone cannot establish which parent process set a marker.
 
 `agent.Name()` returns a fixed label, even when mode is disabled explicitly.
 Usage events report this identity in `agent` and the mode in `is_agent`.
+When agent mode is enabled without a known identity, usage events report
+`agent: "generic"`. This telemetry fallback does not change identity detection
+or enable agent mode.
 No session identifier or unknown identity value is sent.
 
 **API:** `agent.IsAgentMode() bool`, `agent.SetFlag(bool)`,

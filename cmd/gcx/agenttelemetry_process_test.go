@@ -22,19 +22,24 @@ func TestAgentIdentityReachesUsageReceiver(t *testing.T) {
 		env  []string
 		want string
 		mode bool
+		args []string
 	}{
-		{"codex shell", []string{"CODEX_SHELL=1"}, "codex", true},
-		{"codex thread", []string{"CODEX_THREAD_ID=synthetic-private-session"}, "codex", true},
-		{"gemini shell", []string{"GEMINI_CLI=1"}, "gemini-cli", true},
-		{"copilot CLI", []string{"COPILOT_CLI=1"}, "github-copilot", true},
-		{"kilo fork", []string{"KILO=1", "OPENCODE=1"}, "kilo-code", true},
-		{"shared name", []string{"AI_AGENT=goose@synthetic-private-session"}, "goose", true},
-		{"mode opt out", []string{"CODEX_SHELL=1", "GCX_AGENT_MODE=false"}, "codex", false},
-		{"Goose legacy marker", []string{"AGENT=goose"}, "goose", true},
-		{"unsupported legacy identity", []string{"AGENT=codex"}, "", false},
-		{"unknown name", []string{"GCX_AGENT_NAME=synthetic-private-session"}, "", false},
-		{"explicit identity", []string{"GCX_AGENT_NAME=crush"}, "crush", true},
-		{"native before inherited shared identity", []string{"AI_AGENT=junie", "CODEX_THREAD_ID=synthetic-private-session"}, "codex", true},
+		{"codex shell", []string{"CODEX_SHELL=1"}, "codex", true, nil},
+		{"codex thread", []string{"CODEX_THREAD_ID=synthetic-private-session"}, "codex", true, nil},
+		{"gemini shell", []string{"GEMINI_CLI=1"}, "gemini-cli", true, nil},
+		{"copilot CLI", []string{"COPILOT_CLI=1"}, "github-copilot", true, nil},
+		{"kilo fork", []string{"KILO=1", "OPENCODE=1"}, "kilo-code", true, nil},
+		{"shared name", []string{"AI_AGENT=goose@synthetic-private-session"}, "goose", true, nil},
+		{"mode opt out", []string{"CODEX_SHELL=1", "GCX_AGENT_MODE=false"}, "codex", false, nil},
+		{"Goose legacy marker", []string{"AGENT=goose"}, "goose", true, nil},
+		{"unsupported legacy identity", []string{"AGENT=codex"}, "", false, nil},
+		{"unknown name", []string{"GCX_AGENT_NAME=synthetic-private-session"}, "", false, nil},
+		{"explicit identity", []string{"GCX_AGENT_NAME=crush"}, "crush", true, nil},
+		{"native before inherited shared identity", []string{"AI_AGENT=junie", "CODEX_THREAD_ID=synthetic-private-session"}, "codex", true, nil},
+		{"human shell", nil, "", false, nil},
+		{"unnamed agent via environment", []string{"GCX_AGENT_MODE=true"}, "generic", true, nil},
+		{"unnamed agent via flag", nil, "generic", true, []string{"--agent"}},
+		{"unnamed agent flag opt out", []string{"GCX_AGENT_MODE=true"}, "", false, []string{"--agent=false"}},
 	}
 
 	for _, tc := range tests {
@@ -57,7 +62,8 @@ func TestAgentIdentityReachesUsageReceiver(t *testing.T) {
 			}
 			env = append(env, tc.env...)
 			// Help needs no Grafana request, but still exports one usage event.
-			helper := startUsageEventHelperEnv(t, "http://127.0.0.1", receiver.URL, env, "commands", "--help")
+			args := append([]string{"commands", "--help"}, tc.args...)
+			helper := startUsageEventHelperEnv(t, "http://127.0.0.1", receiver.URL, env, args...)
 			require.NoError(t, helper.cmd.Wait(), "stderr=%s", helper.stderr.String())
 			body := recvWithin(t, events, "the agent usage event")
 			fields := decodeEvent(t, body)
