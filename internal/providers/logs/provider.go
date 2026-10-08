@@ -86,7 +86,7 @@ func (p *Provider) descriptor() signals.Descriptor {
 			{
 				Build:     dsloki.PatternsCmd,
 				TokenCost: "medium",
-				LLMHint:   `gcx logs patterns -d abc123 '{job="varlogs"}' -o json`,
+				LLMHint:   `gcx logs patterns -d abc123 '{job="varlogs"}' --since 1h -o json`,
 				Example: `
   # Detect patterns using configured default datasource
   gcx logs patterns '{job="varlogs"}'
