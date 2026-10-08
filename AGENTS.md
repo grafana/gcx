@@ -77,7 +77,7 @@ cmd/gcx/
   cloud/        Cloud platform commands (login, stack management, user org memberships)
   api/          Raw API passthrough
   linter/       Linting (mounted under dev lint)
-  commands/     Commands catalog (agent metadata)
+  commands/     Commands catalog and offline intent search (agent metadata)
   helptree/     Help tree for agent context
   setup/        Onboarding (gcx setup status)
   instrumentation/  Instrumentation Hub commands (clusters, services, setup wizard, status, check, explain, list-explanations)

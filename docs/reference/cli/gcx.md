@@ -6,6 +6,7 @@ Control plane for Grafana Cloud operations
 
 gcx is a unified CLI for managing Grafana resources, dashboards, datasources, alerting, and Cloud product APIs (SLO, IRM, Synthetic Monitoring, Fleet, k6, and more).
 
+Run 'gcx commands search "describe your task"' to find commands, then use the selected command's --help.
 Run 'gcx agent skills list' to see bundled Agent Skills with task-specific guidance.
 
 ### Options

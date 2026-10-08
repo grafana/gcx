@@ -153,6 +153,7 @@
  "gcx cloud stacks list-regions": "finite",
  "gcx cloud stacks update": "finite",
  "gcx commands": "finite",
+ "gcx commands search": "finite",
  "gcx completion bash": "shell",
  "gcx completion fish": "shell",
  "gcx completion powershell": "shell",

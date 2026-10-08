@@ -4,7 +4,7 @@ Pull resources from Grafana
 
 ### Synopsis
 
-Pull resources from Grafana using a specific format. See examples below for more details.
+Export resources such as dashboards, folders, and alert rules from Grafana to local manifest files for backup, version control, or migration. Choose the file format with --output. See examples below for more details.
 
 ```
 gcx resources pull [RESOURCE_SELECTOR]... [flags]

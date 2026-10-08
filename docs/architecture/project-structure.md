@@ -14,7 +14,7 @@ gcx/
 │       ├── resources/        # 'resources' subcommand implementations
 │       ├── datasources/      # 'datasources' subcommand (list, get, query)
 │       │                     #   query.go + query_routes.go: auto-detecting query and its per-kind routing tables
-│       ├── commands/         # 'commands' catalog (agent metadata, resource types, live validation)
+│       ├── commands/         # Command catalog, offline intent search, resource types, live validation
 │       ├── helptree/        # 'help-tree' compact text tree for agent context injection
 │       ├── setup/            # 'setup' command area (cross-product onboarding helpers)
 │       ├── instrumentation/  # 'instrumentation' provider command tree (setup wizard, status, check, explain, list-explanations, clusters, services)
@@ -31,7 +31,7 @@ gcx/
 │       └── fail/             # Error → DetailedError conversion, exit codes
 │
 ├── internal/                 # All non-public packages (Go enforced)
-│   ├── agent/                # Agent-mode detection, command annotations, known-resource registry with operation hints
+│   ├── agent/                # Agent-mode detection, command annotations, local command ranking, known-resource registry
 │   ├── agentlog/             # Agent invocation failure logger (opt-in JSONL disk log, XDG state dir — wired into handleError in cmd/gcx/main.go)
 │   ├── assistant/            # Assistant client packages (prompt state, investigations, MCP server integrations)
 │   │   ├── mcpservers/       # MCP-servers HTTP client (offset pagination, full-exhaustion List)
