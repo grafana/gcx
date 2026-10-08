@@ -2,6 +2,17 @@
 
 Query Pyroscope datasources and manage continuous profiling
 
+### Synopsis
+
+Query Pyroscope datasources and manage continuous profiling.
+
+Use 'list-profile-types' and 'labels' (or 'series') to find profile type IDs
+and label values, 'metrics' to see how cost changes over time, and 'query' to
+see which code paths account for it (-o dot for call graphs, -o pprof for local
+analysis). An empty result means no matching samples, not zero cost. To
+investigate a regression, compare against a baseline window of equal length
+with the same selector and profile type.
+
 ### Options
 
 ```
