@@ -38,6 +38,11 @@ func TestDetectLevel(t *testing.T) {
 			want:  graph.LogLevelError,
 		},
 		{
+			name:  "unrecognized explicit level is not overridden by the body regex",
+			entry: loki.LogEntry{Line: "retrying after transient error", StructuredMetadata: map[string]string{"detected_level": "notice"}},
+			want:  graph.LogLevelUnknown,
+		},
+		{
 			name:  "no signal at all is unknown",
 			entry: loki.LogEntry{Line: "just some text"},
 			want:  graph.LogLevelUnknown,

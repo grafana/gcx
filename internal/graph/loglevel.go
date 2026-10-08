@@ -66,14 +66,13 @@ func LevelColor(level LogLevel) color.Color {
 var levelBodyPattern = regexp.MustCompile(`(?i)\b(critical|fatal|error|warn(?:ing)?|info|debug|trace)\b`)
 
 // DetectLevel determines a LogEntry's level, layering a free-text regex
-// fallback on top of loki.DetectedLevel (structured metadata, parsed
-// fields, and body-JSON/logfmt parsing) for lines that carry no structure
+// fallback on top of loki.DetectedLevel for lines that carry no structure
 // at all — e.g. a plain "ERROR: something broke" line.
 func DetectLevel(stream map[string]string, entry loki.LogEntry) LogLevel {
+	// An explicit but unrecognized level (e.g. "notice") stays unknown rather
+	// than letting an unrelated word in the body override it.
 	if lvl := loki.DetectedLevel(stream, entry); lvl != "" {
-		if level := NormalizeLevel(lvl); level != LogLevelUnknown {
-			return level
-		}
+		return NormalizeLevel(lvl)
 	}
 	if match := levelBodyPattern.FindString(entry.Line); match != "" {
 		return NormalizeLevel(match)

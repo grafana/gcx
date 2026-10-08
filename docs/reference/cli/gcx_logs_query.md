@@ -36,6 +36,9 @@ gcx logs query [EXPR] [flags]
   # Print a Grafana Explore share link for the query
   gcx logs query '{job="varlogs"}' --share-link
 
+  # Log volume over time, colored by level
+  gcx logs query -d abc123 '{job="varlogs"}' -o graph
+
   # Raw line bodies only
   gcx logs query -d abc123 '{job="varlogs"}' -o raw
 
