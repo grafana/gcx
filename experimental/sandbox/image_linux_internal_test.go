@@ -5,8 +5,11 @@ package sandbox
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -296,5 +299,145 @@ func appendSLEB(b []byte, v int64) []byte {
 			return append(b, c)
 		}
 		b = append(b, c|0x80)
+	}
+}
+
+// loadGCX reads the real gcx module, as run_test.go does.
+func loadGCX(t *testing.T) []byte {
+	t.Helper()
+	if testing.Short() {
+		t.Skip("end-to-end test; skipped with -short")
+	}
+	path := os.Getenv("GCX_SANDBOX_WASM")
+	if path == "" {
+		path = "gcx.wasm"
+	}
+	wasm, err := os.ReadFile(path)
+	if err != nil {
+		if os.Getenv("GCX_SANDBOX_WASM") != "" {
+			t.Fatal(err)
+		}
+		t.Skipf("gcx module not built (%v); run ./build.sh", err)
+	}
+	return wasm
+}
+
+// vmaUsage is what /proc/self/smaps reports for the mappings inside a range.
+type vmaUsage struct {
+	privateKiB, rssKiB uint64
+	image              bool // one of them is the memory image
+}
+
+func usage(t *testing.T, start, end uint64) vmaUsage {
+	t.Helper()
+	smaps, err := os.ReadFile("/proc/self/smaps")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var u vmaUsage
+	inside := false
+	for line := range strings.Lines(string(smaps)) {
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			continue
+		}
+		if lo, hi, ok := strings.Cut(fields[0], "-"); ok && len(fields) >= 5 {
+			from, err1 := strconv.ParseUint(lo, 16, 64)
+			to, err2 := strconv.ParseUint(hi, 16, 64)
+			inside = err1 == nil && err2 == nil && from >= start && to <= end
+			if inside && strings.Contains(line, "memfd:gcx-memory-image") {
+				u.image = true
+			}
+			continue
+		}
+		if !inside || len(fields) != 3 || fields[2] != "kB" {
+			continue
+		}
+		n, _ := strconv.ParseUint(fields[1], 10, 64)
+		switch fields[0] {
+		case "Private_Clean:", "Private_Dirty:":
+			u.privateKiB += n
+		case "Rss:":
+			u.rssKiB += n
+		}
+	}
+	return u
+}
+
+// measuredMemory calls onFree just before freeing mem, while it's mapped.
+type measuredMemory struct {
+	experimental.LinearMemory
+
+	onFree func()
+}
+
+func (m *measuredMemory) Free() {
+	m.onFree()
+	m.LinearMemory.Free()
+}
+
+// gcx runs on the memory image, so a run's private memory stays well below
+// the ~62 MiB a copy of gcx's data segments costs. This fails if New quietly
+// falls back to copying them, e.g. because a newer Go linker emits a data
+// section stripModule doesn't handle.
+func TestGCXRunsOnMemoryImage(t *testing.T) {
+	const budgetMiB = 40
+	wasm := loadGCX(t)
+	stripped, _, err := stripModule(wasm, func(uint32, []byte) error { return nil })
+	if err != nil {
+		t.Fatalf("stripModule can't handle gcx: %v", err)
+	}
+	if n := segments(t, stripped); n != 0 {
+		t.Errorf("%d data segments left in gcx, want none", n)
+	}
+
+	cache, err := os.UserCacheDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := New(t.Context(), wasm, Config{CacheDir: filepath.Join(cache, "gcx-sandbox", "compiled")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = r.Close(context.Background()) })
+
+	var measured bool
+	var u vmaUsage
+	inner := r.newRunMemory
+	r.newRunMemory = func() (experimental.MemoryAllocator, func()) {
+		alloc, free := inner()
+		return experimental.MemoryAllocatorFunc(func(capacity, maxBytes uint64) experimental.LinearMemory {
+			mem := alloc.Allocate(capacity, maxBytes)
+			mapped, ok := mem.(*mappedMemory)
+			if !ok {
+				t.Errorf("memory is a %T, want *mappedMemory", mem)
+				return mem
+			}
+			start, err := strconv.ParseUint(strings.TrimPrefix(fmt.Sprintf("%p", &mapped.buf[0]), "0x"), 16, 64)
+			if err != nil {
+				t.Fatal(err)
+			}
+			end := start + uint64(len(mapped.buf))
+			return &measuredMemory{LinearMemory: mem, onFree: func() {
+				measured = true
+				u = usage(t, start, end)
+			}}
+		}), free
+	}
+
+	var out bytes.Buffer
+	res, err := r.Run(t.Context(), Invocation{Args: []string{"version"}, Stdout: &out, Stderr: &out})
+	if err != nil || res.ExitCode != 0 {
+		t.Fatalf("gcx version: exit %d, err %v, output:\n%s", res.ExitCode, err, out.String())
+	}
+	if !measured {
+		t.Fatal("the run's memory was never freed through the measuring allocator")
+	}
+	t.Logf("gcx version: %d MiB private, %d MiB resident", u.privateKiB>>10, u.rssKiB>>10)
+	if !u.image {
+		t.Error("the run's memory doesn't map the memory image")
+	}
+	if u.privateKiB>>10 >= budgetMiB {
+		t.Errorf("the run used %d MiB of private memory, want under %d", u.privateKiB>>10, budgetMiB)
 	}
 }
