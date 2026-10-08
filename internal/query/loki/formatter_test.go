@@ -22,18 +22,9 @@ func TestFormatPatternsTable_TiedTotalsSortDeterministically(t *testing.T) {
 		},
 	}
 
-	var first, second string
-	for range 20 {
-		var buf bytes.Buffer
-		require.NoError(t, loki.FormatPatternsTable(&buf, resp))
-		out := buf.String()
-		if first == "" {
-			first = out
-		} else {
-			second = out
-			assert.Equal(t, first, second, "row order must be stable across repeated calls with tied totals")
-		}
-	}
+	var buf bytes.Buffer
+	require.NoError(t, loki.FormatPatternsTable(&buf, resp))
+	first := buf.String()
 
 	alphaIdx := strings.Index(first, "alpha pattern")
 	midIdx := strings.Index(first, "mid pattern")

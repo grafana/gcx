@@ -144,3 +144,12 @@ func TestPatternsCmd_AcceptsBareSecondsStep(t *testing.T) {
 	require.True(t, ok, "expected a request to %s, got %v", patternsPath, captured)
 	assert.Equal(t, "30", query.Get("step"))
 }
+
+func TestPatternsCmd_WideOutputMatchesTable(t *testing.T) {
+	_, table, err := execPatternsCmd(t, []string{`{job="varlogs"}`, "--since", "1h", "-o", "table"})
+	require.NoError(t, err)
+
+	_, wide, err := execPatternsCmd(t, []string{`{job="varlogs"}`, "--since", "1h", "-o", "wide"})
+	require.NoError(t, err)
+	assert.Equal(t, table, wide)
+}
