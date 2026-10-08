@@ -37,7 +37,7 @@ docs/
 ├── guides/           # User-facing how-to guides
 ├── research/         # Point-in-time research reports
 ├── specs/            # Ephemeral spec packages (cleaned after merge)
-├── _templates/       # Templates for ADRs, specs, research reports
+├── _templates/       # Templates for ADRs and research reports
 └── assets/           # Images and static assets
 ```
 
@@ -49,11 +49,10 @@ Available in [`_templates/`](_templates/):
 |----------|---------|
 | `adr.md` | Architecture Decision Records |
 | `research.md` | Research reports |
-| `feature-spec.md` | New feature specs |
-| `feature-plan.md` | Architecture/design plans |
-| `feature-tasks.md` | Task breakdown with dependency waves |
-| `bugfix-spec.md` | Bug fix specs |
-| `refactor-spec.md` | Refactoring specs |
+
+Feature, bugfix and refactor plans are OpenSpec changes under
+[`openspec/changes/`](../openspec/), one per PR. Work with enough scope to need its own
+design starts with an [RFC](rfcs/README.md); most PRs don't need one.
 
 ### Conventions
 
