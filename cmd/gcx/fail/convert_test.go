@@ -202,6 +202,61 @@ func TestErrorToDetailedError_AuthExitCode(t *testing.T) {
 	}
 }
 
+// TestErrorToDetailedError_DynamicClientErrors covers what the dynamic client
+// returns: Kubernetes statuses become APIError values and other causes remain intact.
+func TestErrorToDetailedError_DynamicClientErrors(t *testing.T) {
+	urlErr := &url.Error{Op: "Get", URL: "http://localhost:3000/apis", Err: errors.New("dial tcp: connection refused")}
+
+	tests := []struct {
+		name        string
+		err         error
+		wantSummary string
+		wantExit    *int
+	}{
+		{
+			name:        "network error is reported as a network error",
+			err:         dynamic.ParseStatusError(urlErr),
+			wantSummary: "Network error",
+		},
+		{
+			name:        "timeout is not reported as a server 500",
+			err:         dynamic.ParseStatusError(context.DeadlineExceeded),
+			wantSummary: gcxerrors.SummaryUnexpectedError,
+		},
+		{
+			name:     "cancellation keeps the cancelled exit code",
+			err:      dynamic.ParseStatusError(context.Canceled),
+			wantExit: new(gcxerrors.ExitCancelled),
+		},
+		{
+			name: "server 500 is still an API error",
+			err: dynamic.ParseStatusError(&k8sapi.StatusError{ErrStatus: metav1.Status{
+				Status:  metav1.StatusFailure,
+				Code:    500,
+				Reason:  metav1.StatusReasonInternalError,
+				Message: "boom",
+			}}),
+			wantSummary: gcxerrors.SummaryAPIError,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := fail.ErrorToDetailedError(tc.err)
+
+			require.NotNil(t, got)
+			assert.NotContains(t, got.Summary, "API error:  - code 500", "synthesized status must not reach the API converter")
+			if tc.wantSummary != "" {
+				assert.Equal(t, tc.wantSummary, got.Summary)
+			}
+			if tc.wantExit != nil {
+				require.NotNil(t, got.ExitCode)
+				assert.Equal(t, *tc.wantExit, *got.ExitCode)
+			}
+		})
+	}
+}
+
 func TestErrorToDetailedError_VersionIncompatible(t *testing.T) {
 	v, err := semver.NewVersion("11.5.0")
 	require.NoError(t, err)
