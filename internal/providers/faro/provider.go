@@ -72,6 +72,24 @@ func (p *FaroProvider) Commands() []*cobra.Command {
 	sessionsCmd.AddCommand(newSessionsGetCommand(loader))
 	faroCmd.AddCommand(sessionsCmd)
 
+	errorsCmd := &cobra.Command{
+		Use:     "errors",
+		Short:   "Triage Frontend Observability error groups.",
+		Aliases: []string{"error"},
+	}
+	errorsCmd.AddCommand(newErrorsListCommand(loader), newErrorsGetCommand(loader))
+	faroCmd.AddCommand(errorsCmd)
+
+	pagesCmd := &cobra.Command{
+		Use:     "pages",
+		Short:   "Inspect Frontend Observability page performance.",
+		Aliases: []string{"page"},
+	}
+	pagesCmd.AddCommand(newPagesListCommand(loader))
+	faroCmd.AddCommand(pagesCmd)
+
+	faroCmd.AddCommand(newFrontendQueryCommand(loader))
+
 	return []*cobra.Command{faroCmd}
 }
 

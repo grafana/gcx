@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/grafana-app-sdk/logging"
@@ -21,6 +22,12 @@ const (
 	appByIDPathFmt         = basePath + "/%s"
 	sourcemapsPathFmt      = basePath + "/%s/sourcemaps"
 	sourcemapsBatchPathFmt = basePath + "/%s/sourcemaps/batch/%s"
+	errorsPathFmt          = basePath + "/%s/errors"
+	errorByHashPathFmt     = basePath + "/%s/errors/%s"
+
+	// errorFirstSeenPageSize is the Faro API's maximum page size for the
+	// first-seen list route.
+	errorFirstSeenPageSize = 2000
 )
 
 // SourcemapBundle represents a sourcemap bundle from the Faro API.
@@ -297,6 +304,90 @@ func (c *Client) DeleteSourcemaps(ctx context.Context, appID string, bundleIDs [
 	}
 
 	return nil
+}
+
+// ErrorFirstSeen is the durable record of when an error group first appeared
+// for an app, and which release was live at the time. ErrorHash is the decimal
+// exceptionHash string from Pinot.
+type ErrorFirstSeen struct {
+	AppID       json.Number `json:"appId"`
+	ErrorHash   string      `json:"errorHash"`
+	FirstSeenAt time.Time   `json:"firstSeenAt"`
+	GitHash     *string     `json:"gitHash"`
+	BundleID    *string     `json:"bundleId"`
+}
+
+type errorFirstSeenPage struct {
+	Errors []ErrorFirstSeen `json:"errors"`
+	Page   struct {
+		HasNext bool   `json:"hasNext"`
+		Next    string `json:"next"`
+	} `json:"page"`
+}
+
+// ListErrorFirstSeen pages through an app's first-seen records, newest first.
+// Paging stops when the API reports no next page, when the last record on a
+// page is older than stopBefore (non-zero), or after maxPages pages (> 0). The
+// boolean result reports whether the page cap stopped paging while more
+// records remained.
+func (c *Client) ListErrorFirstSeen(ctx context.Context, appID string, stopBefore time.Time, maxPages int) ([]ErrorFirstSeen, bool, error) {
+	log := logging.FromContext(ctx)
+	var all []ErrorFirstSeen
+	offset := "0"
+	for pages := 0; ; pages++ {
+		if maxPages > 0 && pages >= maxPages {
+			return all, true, nil
+		}
+		q := url.Values{}
+		q.Set("limit", strconv.Itoa(errorFirstSeenPageSize))
+		q.Set("offset", offset)
+		path := fmt.Sprintf(errorsPathFmt, url.PathEscape(appID)) + "?" + q.Encode()
+
+		log.Debug("Fetching error first-seen page", "app_id", appID, "offset", offset)
+		body, statusCode, err := c.doRequest(ctx, http.MethodGet, path, nil)
+		if err != nil {
+			return nil, false, fmt.Errorf("faro: list error first-seen for app %s: %w", appID, err)
+		}
+		// The route answers 206 Partial Content on every page when limit is set.
+		if statusCode != http.StatusOK && statusCode != http.StatusPartialContent {
+			return nil, false, fmt.Errorf("faro: list error first-seen for app %s: status %d, body: %s", appID, statusCode, string(body))
+		}
+
+		var page errorFirstSeenPage
+		if err := json.Unmarshal(body, &page); err != nil {
+			return nil, false, fmt.Errorf("faro: decode error first-seen page: %w", err)
+		}
+		all = append(all, page.Errors...)
+
+		if !page.Page.HasNext || page.Page.Next == "" {
+			return all, false, nil
+		}
+		if !stopBefore.IsZero() && len(page.Errors) > 0 && page.Errors[len(page.Errors)-1].FirstSeenAt.Before(stopBefore) {
+			return all, false, nil
+		}
+		offset = page.Page.Next
+	}
+}
+
+// GetErrorFirstSeen returns the first-seen record for one error hash, or nil
+// when the app has none (404 is a normal outcome).
+func (c *Client) GetErrorFirstSeen(ctx context.Context, appID, hash string) (*ErrorFirstSeen, error) {
+	path := fmt.Sprintf(errorByHashPathFmt, url.PathEscape(appID), url.PathEscape(hash))
+	body, statusCode, err := c.doRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, fmt.Errorf("faro: get error first-seen %s for app %s: %w", hash, appID, err)
+	}
+	if statusCode == http.StatusNotFound {
+		return nil, nil //nolint:nilnil // A missing record is not an error.
+	}
+	if statusCode >= 400 {
+		return nil, fmt.Errorf("faro: get error first-seen %s for app %s: status %d, body: %s", hash, appID, statusCode, string(body))
+	}
+	var rec ErrorFirstSeen
+	if err := json.Unmarshal(body, &rec); err != nil {
+		return nil, fmt.Errorf("faro: decode error first-seen: %w", err)
+	}
+	return &rec, nil
 }
 
 // doRequest builds and executes an HTTP request, returning the response body, status code, and error.

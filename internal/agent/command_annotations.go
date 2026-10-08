@@ -230,6 +230,10 @@ var commandAnnotations = map[string]annotation{
 	"gcx frontend apps delete-sourcemap": {Cost: "small"},
 	"gcx frontend apps list-sourcemaps":  {Cost: "small"},
 	"gcx frontend apps update":           {Cost: "small"},
+	"gcx frontend errors get":            {Cost: "large", Hint: "<hash> --app <app> --since 24h"},
+	"gcx frontend errors list":           {Cost: "medium", Hint: "--app <app> --since 24h [--new-since <time>] [--page <pageId>]"},
+	"gcx frontend pages list":            {Cost: "medium", Hint: "--app <app> --since 24h --sort lcp"},
+	"gcx frontend query":                 {Cost: "medium", Hint: "--app <app> '<sql>' --since 24h [--multistage]"},
 	"gcx frontend sessions get":          {Cost: "large", Hint: "<session-id> --app <app-id> -d <datasource-uid> --since 7d --save /tmp/session-<id>.txt"},
 
 	// -----------------------------------------------------------------------
