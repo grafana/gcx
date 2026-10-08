@@ -81,10 +81,8 @@ func (img *memoryImage) allocate(capacity, maxBytes uint64) experimental.LinearM
 		buf, err := syscall.Mmap(-1, 0, int(maxBytes), syscall.PROT_READ|syscall.PROT_WRITE,
 			syscall.MAP_PRIVATE|syscall.MAP_ANON|syscall.MAP_NORESERVE)
 		if err == nil {
-			// Unmapping buf in Free unmaps this too. unsafe is how MmapPtr
-			// takes the address to map at, the start of buf.
-			// #nosec G103 nosemgrep: go.lang.security.audit.unsafe.use-of-unsafe-block
-			_, err = unix.MmapPtr(int(img.f.Fd()), 0, unsafe.Pointer(&buf[0]), uintptr(img.size),
+			// Unmapping buf in Free unmaps this too.
+			_, err = unix.MmapPtr(int(img.f.Fd()), 0, unsafe.Pointer(&buf[0]), uintptr(img.size), // nosemgrep: go.lang.security.audit.unsafe.use-of-unsafe-block -- MmapPtr takes the address to map at, the start of buf, as an unsafe.Pointer
 				unix.PROT_READ|unix.PROT_WRITE, unix.MAP_PRIVATE|unix.MAP_FIXED)
 			if err == nil || img.read(buf[:img.size]) == nil {
 				return &mappedMemory{buf: buf}
