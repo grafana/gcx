@@ -25,10 +25,15 @@ import (
 // just after its context is cancelled, which with a mapping would leak it
 // for the life of the process. Freeing twice is harmless.
 func newRunMemory() (experimental.MemoryAllocator, func()) {
+	return newRunMemoryWith(allocateMapped)
+}
+
+// newRunMemoryWith is newRunMemory with allocate in place of allocateMapped.
+func newRunMemoryWith(allocate func(capacity, maxBytes uint64) experimental.LinearMemory) (experimental.MemoryAllocator, func()) {
 	var mu sync.Mutex
 	var mems []experimental.LinearMemory
 	alloc := func(capacity, maxBytes uint64) experimental.LinearMemory {
-		mem := allocateMapped(capacity, maxBytes)
+		mem := allocate(capacity, maxBytes)
 		mu.Lock()
 		mems = append(mems, mem)
 		mu.Unlock()

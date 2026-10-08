@@ -201,7 +201,12 @@ Each `Run`:
   space for the whole cap (4 GiB when unset) but touched only as the guest
   uses it, and returned to the OS when `Run` returns. It lives outside the Go
   heap, so the GC and `GOMEMLIMIT` don't count it: set `GOMEMLIMIT` low
-  enough to leave room for the runs you allow at once, and watch RSS. Under
+  enough to leave room for the runs you allow at once, and watch the
+  container's memory or PSS. The module's data segments, about 62 MiB of
+  gcx's read-only data, become one memory image that every instance maps
+  copy-on-write: a run writes only about 0.1 MiB of it, and the rest is
+  shared and counted once, however many runs there are. RSS counts it once
+  per run, so it overstates what runs use. Under
   strict overcommit (`vm.overcommit_memory=2`) each run commits its whole
   cap while it runs, so set `MemoryLimitBytes` there: the 4 GiB default can
   exhaust the commit limit and kill the process. If the kernel refuses the

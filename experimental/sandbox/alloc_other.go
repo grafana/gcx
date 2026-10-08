@@ -9,3 +9,9 @@ import "github.com/tetratelabs/wazero/experimental"
 func newRunMemory() (experimental.MemoryAllocator, func()) {
 	return nil, func() {}
 }
+
+// newMemoryImage returns wasm unchanged and wazero's default allocator off
+// Linux (see image_linux.go).
+func newMemoryImage(wasm []byte) ([]byte, func() (experimental.MemoryAllocator, func()), func()) {
+	return wasm, newRunMemory, func() {}
+}

@@ -39,8 +39,10 @@ type Config struct {
 	//
 	// On Linux, guest memory is mapped outside the Go heap (see the README),
 	// so the Go GC and GOMEMLIMIT don't see it: leave room for it below the
-	// container's limit, and watch RSS rather than Go heap metrics. With
-	// vm.overcommit_memory=2, each run commits its full cap while it runs.
+	// container's limit, and watch the container's memory or PSS rather than
+	// Go heap metrics. RSS counts the memory image the runs share once per
+	// run. With vm.overcommit_memory=2, each run commits its full cap while
+	// it runs.
 	MemoryLimitBytes uint64
 	// Transport performs the guest's HTTP requests after the egress policy
 	// has allowed them. Nil means http.DefaultTransport.
@@ -63,6 +65,9 @@ type Runtime struct {
 	// newRunMemory is the allocator for each Run's instance, and how to free
 	// what it allocated (see alloc_linux.go). Tests wrap it.
 	newRunMemory func() (experimental.MemoryAllocator, func())
+	// releaseImage releases the memory image newRunMemory maps into each
+	// instance (see image_linux.go). Close calls it after closing rt.
+	releaseImage func()
 
 	// Close stops the runs in flight and waits for them before closing rt,
 	// because closing rt frees every instance's memory, and a guest still
@@ -97,6 +102,7 @@ func New(ctx context.Context, wasm []byte, cfg Config) (*Runtime, error) {
 		transport:    cfg.Transport,
 		cache:        cache,
 		newRunMemory: newRunMemory,
+		releaseImage: func() {},
 		cancels:      map[*context.CancelCauseFunc]struct{}{},
 	}
 	if r.transport == nil {
@@ -122,7 +128,11 @@ func (r *Runtime) init(ctx context.Context, wasm []byte) error {
 	if err := instantiateHTTP(ctx, r.rt); err != nil {
 		return err
 	}
-	compiled, err := r.rt.CompileModule(ctx, wasm)
+	// On Linux, the module's data segments become one memory image that
+	// every instance shares (see image_linux.go).
+	module, runMemory, release := newMemoryImage(wasm)
+	r.newRunMemory, r.releaseImage = runMemory, release
+	compiled, err := r.rt.CompileModule(ctx, module)
 	if err != nil {
 		return err
 	}
@@ -172,6 +182,7 @@ func (r *Runtime) Close(ctx context.Context) error {
 		_ = os.RemoveAll(r.root)
 	}
 	err := r.rt.Close(ctx)
+	r.releaseImage()
 	if r.cache != nil {
 		err = errors.Join(err, r.cache.Close(ctx))
 	}
