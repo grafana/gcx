@@ -706,7 +706,7 @@ func TestErrorToDetailedError_SMURLNotConfigured(t *testing.T) {
 
 func TestErrorToDetailedError_SMTokenNotConfigured(t *testing.T) {
 	err := fmt.Errorf("failed to load SM config for checks: %w",
-		fmt.Errorf("SM token not configured: %w", errors.New("no cloud config: cloud token is required")))
+		fmt.Errorf("SM token not configured: %w", errors.New("context has no cloud auth: run `gcx cloud login`, or set GRAFANA_CLOUD_TOKEN")))
 
 	got := toDetailedError(t, err)
 
@@ -1855,7 +1855,7 @@ func TestErrorToDetailedError_UnsupportedResource(t *testing.T) {
 			}
 			require.Equal(t, gcxerrors.ExitGeneralError, exit)
 			require.ErrorIs(t, got, cause)
-			require.Empty(t, got.Suggestions)
+			require.Contains(t, got.Suggestions, "List the resource types this server serves: gcx resources list-types")
 			var rendered bytes.Buffer
 			require.NoError(t, got.WriteJSON(&rendered, exit))
 			require.Contains(t, rendered.String(), "the server does not support this resource")

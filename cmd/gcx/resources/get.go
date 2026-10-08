@@ -325,7 +325,7 @@ func writeGetOutput(stdout, stderr io.Writer, opts *getOpts, res *FetchResponse,
 		for i, item := range output.Items {
 			itemMaps[i] = item.Object
 		}
-		detErr, cause := getFailureDetails(res)
+		detErr, _, cause := getFailureDetails(res)
 		if err := detErr.WriteJSONWithItems(stdout, gcxerrors.ExitPartialFailure, itemMaps); err != nil {
 			return err
 		}
@@ -374,13 +374,11 @@ func writeGetOutput(stdout, stderr io.Writer, opts *getOpts, res *FetchResponse,
 // error — exit 1 instead of the taxonomy's 4, and a duplicate error JSON
 // appended to stdout in agent mode.
 func partialGetFailure(stderr io.Writer, res *FetchResponse) error {
-	detailed, cause := getFailureDetails(res)
+	detailed, renderedDetails, cause := getFailureDetails(res)
 	if agent.IsAgentMode() {
 		cmdio.EmitWarn(stderr, detailed.Summary)
-		for detail := range strings.SplitSeq(detailed.Details, "\n\n") {
-			if detail != "" {
-				cmdio.EmitWarn(stderr, detail)
-			}
+		for _, detail := range renderedDetails {
+			cmdio.EmitWarn(stderr, detail)
 		}
 	} else {
 		fmt.Fprint(stderr, detailed.Error())
@@ -391,7 +389,7 @@ func partialGetFailure(stderr io.Writer, res *FetchResponse) error {
 // getFailureDetails uses the same classifications as single-resource errors.
 // Failures arrive concurrently, so sort their rendered details for stable output.
 // Keep the original causes for telemetry without printing them a second time.
-func getFailureDetails(res *FetchResponse) (gcxerrors.DetailedError, error) {
+func getFailureDetails(res *FetchResponse) (gcxerrors.DetailedError, []string, error) {
 	var details []string
 	var causes []error
 	for _, failure := range res.PullSummary.Failures() {
@@ -418,7 +416,7 @@ func getFailureDetails(res *FetchResponse) (gcxerrors.DetailedError, error) {
 	return gcxerrors.DetailedError{
 		Summary: fmt.Sprintf("%d resource(s) failed to get", res.PullSummary.FailedCount()),
 		Details: strings.Join(details, "\n\n"),
-	}, errors.Join(causes...)
+	}, details, errors.Join(causes...)
 }
 
 // emitGetTruncationHint surfaces the per-resource-type truncation hint on
@@ -453,7 +451,7 @@ func writeFieldSelect(out, stderr io.Writer, opts *getOpts, res *FetchResponse, 
 		for i, item := range output.Items {
 			itemMaps[i] = cmdio.ExtractFields(item.Object, codec.Fields())
 		}
-		detErr, cause := getFailureDetails(res)
+		detErr, _, cause := getFailureDetails(res)
 		if err := detErr.WriteJSONWithItems(out, gcxerrors.ExitPartialFailure, itemMaps); err != nil {
 			return err
 		}

@@ -28,6 +28,7 @@ import (
 	"github.com/grafana/gcx/internal/providers/instrumentation/rmw"
 	"github.com/grafana/gcx/internal/queryerror"
 	"github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	k8sapi "k8s.io/apimachinery/pkg/api/errors"
 )
 
@@ -96,6 +97,7 @@ func ErrorToDetailedError(err error) *gcxerrors.DetailedError {
 		convertFleetHTTPErrors,                      // Fleet Management HTTP 401/403 typed errors
 		convertInstrumentationErrors,                // Instrumentation RMW conflict errors
 		convertInstrumentationMutualExclusiveErrors, // setup: mutually exclusive flag pairs
+		convertAdapterNotFoundErrors,                // Client-side resource misses, after domain converters
 		convertHTTPStatusErrors,                     // Concrete transport status, after domain converters
 	}
 
@@ -909,6 +911,9 @@ func convertResourcesErrors(err error) (*gcxerrors.DetailedError, bool) {
 		return &gcxerrors.DetailedError{
 			Parent:  err,
 			Summary: gcxerrors.SummaryEndpointNotAvailable,
+			Suggestions: []string{
+				"List the resource types this server serves: gcx resources list-types",
+			},
 		}, true
 	}
 	invalidSelectorErr := &resources.InvalidSelectorError{}
@@ -924,6 +929,16 @@ func convertResourcesErrors(err error) (*gcxerrors.DetailedError, bool) {
 		}, true
 	}
 	return nil, false
+}
+
+func convertAdapterNotFoundErrors(err error) (*gcxerrors.DetailedError, bool) {
+	if !errors.Is(err, adapter.ErrNotFound) {
+		return nil, false
+	}
+	return &gcxerrors.DetailedError{
+		Summary: gcxerrors.SummaryResourceNotFound,
+		Details: err.Error(),
+	}, true
 }
 
 func convertFSErrors(err error) (*gcxerrors.DetailedError, bool) {
@@ -1208,7 +1223,7 @@ func convertSMConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 
 	if strings.Contains(msg, "SM token not configured") &&
 		(strings.Contains(msg, "context has no cloud auth") || strings.Contains(msg, "has no token") ||
-			strings.Contains(msg, "cloud token is required") || strings.Contains(msg, "cloud stack is not configured")) {
+			strings.Contains(msg, "cloud stack is not configured")) {
 		return &gcxerrors.DetailedError{
 			Summary: gcxerrors.SummaryAuthenticationFailed,
 			Details: msg,

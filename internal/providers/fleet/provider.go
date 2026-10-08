@@ -345,7 +345,7 @@ func resolvePipeline(ctx context.Context, client *Client, ref string) (*Pipeline
 	if missingErr != nil {
 		return nil, fmt.Errorf("fleet: resolve pipeline %q: %w", ref, missingErr)
 	}
-	return nil, fmt.Errorf("pipeline %q not found", ref)
+	return nil, fmt.Errorf("pipeline %q: %w", ref, adapter.ErrNotFound)
 }
 
 // resolveCollector looks up a collector by slug-id, plain ID, or name.

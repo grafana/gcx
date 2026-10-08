@@ -171,5 +171,5 @@ func TestLoadClientWithStack_PluginMissing(t *testing.T) {
 	var httpErr *fleet.HTTPError
 	require.ErrorAs(t, err, &httpErr)
 	assert.Equal(t, http.StatusNotFound, httpErr.Status)
-	assert.True(t, fleet.IsPluginMissingBody(httpErr.Body))
+	assert.JSONEq(t, `{"message":"plugin route match not found"}`, httpErr.Body)
 }

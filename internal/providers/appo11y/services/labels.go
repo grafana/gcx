@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/agent"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/appo11y/activation"
@@ -62,13 +62,13 @@ func (o *labelsOpts) Validate(cmd *cobra.Command) error {
 		return err
 	}
 	if strings.TrimSpace(o.Since) == "" {
-		return fail.NewCommandUsageError(cmd, "--since must not be empty", nil)
+		return gcxerrors.NewCommandUsageError(cmd, "--since must not be empty", nil)
 	}
 	if _, err := model.ParseDuration(o.Since); err != nil {
-		return fail.NewCommandUsageError(cmd, fmt.Sprintf("--since %q is not a valid PromQL duration", o.Since), err)
+		return gcxerrors.NewCommandUsageError(cmd, fmt.Sprintf("--since %q is not a valid PromQL duration", o.Since), err)
 	}
 	if _, _, err := resolveMetricsMode(o.MetricsMode); err != nil {
-		return fail.NewCommandUsageError(cmd, "", err)
+		return gcxerrors.NewCommandUsageError(cmd, "", err)
 	}
 	return nil
 }
@@ -120,19 +120,19 @@ func runLabels(loader *providers.ConfigLoader, opts *labelsOpts) func(*cobra.Com
 		}
 		namespace, name, err := parseServiceArg(args[0], opts.Namespace)
 		if err != nil {
-			return fail.NewCommandUsageError(cmd, "", err)
+			return gcxerrors.NewCommandUsageError(cmd, "", err)
 		}
 		mode, auto, err := resolveMetricsMode(opts.MetricsMode)
 		if err != nil {
-			return fail.NewCommandUsageError(cmd, "", err)
+			return gcxerrors.NewCommandUsageError(cmd, "", err)
 		}
 		matchers, err := parseFilters(opts.Filters)
 		if err != nil {
-			return fail.NewCommandUsageError(cmd, "", err)
+			return gcxerrors.NewCommandUsageError(cmd, "", err)
 		}
 		window, err := model.ParseDuration(opts.Since)
 		if err != nil {
-			return fail.NewCommandUsageError(cmd, fmt.Sprintf("--since %q is not a valid PromQL duration", opts.Since), err)
+			return gcxerrors.NewCommandUsageError(cmd, fmt.Sprintf("--since %q is not a valid PromQL duration", opts.Since), err)
 		}
 
 		ctx := cmd.Context()

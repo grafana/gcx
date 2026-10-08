@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/gcx/cmd/gcx/resources"
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/gcxerrors"
+	"github.com/grafana/gcx/internal/queryerror"
 	"github.com/grafana/gcx/internal/resources/remote"
 	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/require"
@@ -103,6 +104,49 @@ func TestGetPartialFailure_IncludesClassifiedCauses(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGetPartialFailure_AgentWarningKeepsMultipartFailureTogether(t *testing.T) {
+	agent.SetFlag(true)
+	t.Cleanup(func() { agent.SetFlag(false) })
+
+	flags := pflag.NewFlagSet("get", pflag.ContinueOnError)
+	opts := resources.NewGetOptsForTest(flags)
+	require.NoError(t, flags.Set("output", "yaml"))
+	require.NoError(t, opts.Validate())
+
+	summary := &remote.OperationSummary{}
+	summary.RecordFailure(nil, queryerror.New("prometheus", "query", 400, "parse error near offset 10", "backend"))
+	var stdout, stderr bytes.Buffer
+	opts.IO.ErrWriter = &stderr
+	err := resources.WriteGetOutputForTest(&stdout, &stderr, opts,
+		&resources.FetchResponse{PullSummary: summary}, unstructured.UnstructuredList{})
+	var emitted *gcxerrors.EmittedError
+	require.ErrorAs(t, err, &emitted)
+	require.Equal(t, gcxerrors.ExitPartialFailure, emitted.Code)
+
+	var warnings []struct {
+		Class   string `json:"class"`
+		Summary string `json:"summary"`
+	}
+	for line := range strings.SplitSeq(strings.TrimSpace(stderr.String()), "\n") {
+		var event struct {
+			Class   string `json:"class"`
+			Summary string `json:"summary"`
+		}
+		require.NoError(t, json.Unmarshal([]byte(line), &event))
+		if event.Class == "warning" {
+			warnings = append(warnings, event)
+		}
+	}
+
+	require.Len(t, warnings, 2, "one summary warning plus one warning for the original failure")
+	require.Equal(t, "warning", warnings[0].Class)
+	require.Equal(t, "warning", warnings[1].Class)
+	require.Contains(t, warnings[1].Summary, "Invalid PromQL query")
+	require.Contains(t, warnings[1].Summary, "parse error near offset 10")
+	require.Contains(t, warnings[1].Summary, "Source: backend")
+	require.Equal(t, 2, strings.Count(warnings[1].Summary, "\n\n"), "all three converter detail parts stay in one warning")
 }
 
 // These tests pin the atomic-stdout contract for `resources get` partial

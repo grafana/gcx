@@ -73,8 +73,9 @@ func main() {
 
 	// prefer sticking to err != nil format, than optimizing for calling exitWith
 	// once
-	// Validation parses flags, so use a separate tree to avoid appending
-	// repeatable flag values again when the execution tree parses them.
+	// Validation parses flags in root trimming, Cobra traversal, and group
+	// validation. Use a separate tree so none of those paths can append
+	// repeatable values or change custom flag state on the execution tree.
 	if err := root.ValidateArgs(root.Command(formattedVersion), os.Args[1:]); err != nil {
 		exitWith(cmd, gate, start, reportError(err, boolFlags, subCmds))
 	}

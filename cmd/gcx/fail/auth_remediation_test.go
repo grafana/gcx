@@ -54,7 +54,6 @@ func TestSMMissingDiscoveryPrerequisites(t *testing.T) {
 	for _, cause := range []string{
 		"context has no cloud auth: run gcx cloud login",
 		`cloud entry "example" has no token`,
-		"cloud token is required",
 		"cloud stack is not configured: set the slug",
 	} {
 		t.Run(cause, func(t *testing.T) {
