@@ -15,6 +15,9 @@ bodies or -o json for the full structured response.
 Default --limit is 50; use --limit 0 for no cap.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
 open it in your browser after the query succeeds.
+Use -o graph for a log-volume-over-time chart — it only charts the lines
+--limit actually returned, so pass --limit 0 for the chart to reflect the
+full queried range.
 
 ```
 gcx datasources loki query [EXPR] [flags]
@@ -32,6 +35,9 @@ gcx datasources loki query [EXPR] [flags]
 
   # Print a Grafana Explore share link for the query
   gcx datasources loki query '{job="varlogs"}' --share-link
+
+  # Log volume over time, colored by level
+  gcx datasources loki query -d UID '{job="varlogs"}' -o graph
 
   # Raw line bodies only
   gcx datasources loki query -d UID '{job="varlogs"}' -o raw
@@ -52,7 +58,7 @@ gcx datasources loki query [EXPR] [flags]
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int           Maximum number of log lines to return (0 means no limit) (default 50)
       --open                Open the executed query in Grafana Explore
-  -o, --output string       Output format. One of: agents, json, raw, table, wide, yaml (default "table")
+  -o, --output string       Output format. One of: agents, graph, json, raw, table, wide, yaml (default "table")
       --share-link          Print the Grafana Explore URL for the executed query to stderr
       --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --step string         Query step (e.g., '15s', '1m')

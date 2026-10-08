@@ -6,6 +6,7 @@ import (
 
 	"github.com/grafana/gcx/internal/agent"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/loki"
 	"github.com/spf13/cobra"
@@ -31,7 +32,10 @@ bodies or -o json for the full structured response.
 
 Default --limit is 50; use --limit 0 for no cap.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
-open it in your browser after the query succeeds.`,
+open it in your browser after the query succeeds.
+Use -o graph for a log-volume-over-time chart — it only charts the lines
+--limit actually returned, so pass --limit 0 for the chart to reflect the
+full queried range.`,
 		Example: `
   # Query logs using configured default datasource
   gcx datasources loki query '{job="varlogs"}'
@@ -41,6 +45,9 @@ open it in your browser after the query succeeds.`,
 
   # Print a Grafana Explore share link for the query
   gcx datasources loki query '{job="varlogs"}' --share-link
+
+  # Log volume over time, colored by level
+  gcx datasources loki query -d UID '{job="varlogs"}' -o graph
 
   # Raw line bodies only
   gcx datasources loki query -d UID '{job="varlogs"}' -o raw
@@ -94,6 +101,15 @@ open it in your browser after the query succeeds.`,
 			if err != nil {
 				return fmt.Errorf("query failed: %w", err)
 			}
+
+			if shared.IO.OutputFormat == "graph" && limit != 0 {
+				// The chart only reflects fetched lines, so a capped --limit
+				// (50 by default) silently caps the apparent volume too.
+				cmdio.EmitHint(cmd.ErrOrStderr(),
+					fmt.Sprintf("-o graph only charts the %d line(s) returned by --limit; pass --limit 0 to chart the full queried range", limit),
+					"--limit 0")
+			}
+
 			exploreURL := LogsExploreURL(cfg.GrafanaURL, dsquery.ExploreQuery{
 				DatasourceUID:  datasourceUID,
 				DatasourceType: dsType,
@@ -128,7 +144,7 @@ open it in your browser after the query succeeds.`,
 		agent.AnnotationLLMHint:   `gcx datasources loki query -d UID '{job="grafana"}' -o json`,
 	}
 
-	dsquery.RegisterCodecs(&shared.IO, false)
+	dsquery.RegisterCodecs(&shared.IO, true)
 	shared.IO.RegisterCustomCodec("raw", loki.NewRawQueryCodec())
 	shared.IO.BindFlags(cmd.Flags())
 	shared.SetupTimeFlags(cmd.Flags())
