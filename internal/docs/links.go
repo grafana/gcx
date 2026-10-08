@@ -75,6 +75,9 @@ const (
 	// AdaptiveTraces documents reducing traces costs (Adaptive Traces).
 	AdaptiveTraces = "https://grafana.com/docs/grafana-cloud/cost-management-and-billing/reduce-costs/traces-costs.md"
 
+	// AdaptiveProfiles documents Adaptive Profiles sampling controls.
+	AdaptiveProfiles = "https://grafana.com/docs/grafana-cloud/observe-and-act/adaptive-telemetry/adaptive-profiles.md"
+
 	// AssistantPricing documents Grafana Assistant token-based pricing,
 	// which explicitly counts usage made through the gcx CLI.
 	AssistantPricing = "https://grafana.com/docs/grafana-cloud/machine-learning/assistant/pricing.md"
@@ -129,6 +132,7 @@ func All() []string {
 		AdaptiveMetrics,
 		AdaptiveLogs,
 		AdaptiveTraces,
+		AdaptiveProfiles,
 		AssistantPricing,
 		SyntheticMonitoringInvoice,
 		PerformanceTestingInvoice,

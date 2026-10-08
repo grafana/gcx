@@ -1,9 +1,9 @@
 package profiles
 
 import (
-	"fmt"
-
 	dspyroscope "github.com/grafana/gcx/internal/datasources/pyroscope"
+	"github.com/grafana/gcx/internal/docs"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/signals"
@@ -152,7 +152,7 @@ func (p *Provider) descriptor() signals.Descriptor {
 			},
 		},
 		ExtraCommands: []signals.CommandBuilder{func(*providers.ConfigLoader) *cobra.Command {
-			return adaptiveStubCmd()
+			return adaptiveUnsupportedCmd()
 		}},
 		ConfigKeys: []providers.ConfigKey{
 			{Name: "profiles-tenant-id", Secret: false},
@@ -171,13 +171,19 @@ func (p *Provider) Commands() []*cobra.Command {
 	return []*cobra.Command{signals.Command(p.descriptor())}
 }
 
-func adaptiveStubCmd() *cobra.Command {
+func adaptiveUnsupportedCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "adaptive",
-		Short: "Manage Adaptive Profiles (not yet available)",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			fmt.Fprintln(cmd.ErrOrStderr(), "Adaptive Profiles is not yet available.")
-			return nil
+		Short: "Adaptive Profiles management is not supported by gcx.",
+		Long: "Adaptive Profiles is available in Grafana Cloud. gcx does not support its management commands. " +
+			"In Grafana Cloud, open Adaptive Telemetry > Adaptive Profiles. See " + docs.AdaptiveProfiles,
+		Args: cobra.NoArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return &gcxerrors.DetailedError{
+				Summary:     "Adaptive Profiles management is not supported by gcx",
+				Suggestions: []string{"In Grafana Cloud, open Adaptive Telemetry > Adaptive Profiles."},
+				DocsLink:    docs.AdaptiveProfiles,
+			}
 		},
 	}
 }
