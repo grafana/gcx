@@ -12,6 +12,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
+func countEntries(resp *loki.QueryResponse) int {
+	n := 0
+	for _, stream := range resp.Data.Result {
+		n += len(stream.Values)
+	}
+	return n
+}
+
 // QueryCmd returns the `query` subcommand for a Loki datasource parent.
 func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
 	shared := &dsquery.SharedOpts{}
@@ -103,11 +111,13 @@ full queried range.`,
 			}
 
 			if shared.IO.OutputFormat == "graph" && limit != 0 {
-				// The chart only reflects fetched lines, so a capped --limit
-				// (50 by default) silently caps the apparent volume too.
-				cmdio.EmitHint(cmd.ErrOrStderr(),
-					fmt.Sprintf("-o graph only charts the %d line(s) returned by --limit; pass --limit 0 to chart the full queried range", limit),
-					"--limit 0")
+				// The chart only reflects fetched lines; warn only when --limit
+				// actually capped the result.
+				if n := countEntries(resp); n >= limit {
+					cmdio.EmitHint(cmd.ErrOrStderr(),
+						fmt.Sprintf("-o graph only charts the %d line(s) returned (capped by --limit); pass --limit 0 to chart the full queried range", n),
+						"--limit 0")
+				}
 			}
 
 			exploreURL := LogsExploreURL(cfg.GrafanaURL, dsquery.ExploreQuery{

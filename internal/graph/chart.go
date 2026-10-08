@@ -2,6 +2,7 @@ package graph
 
 import (
 	"fmt"
+	"image/color"
 	"io"
 	"os"
 	"strings"
@@ -142,7 +143,7 @@ func RenderBarChart(w io.Writer, data *ChartData, opts ChartOptions) error {
 		if len(series.Points) == 0 {
 			continue
 		}
-		color := ColorForIndex(i)
+		color := seriesColor(series, i)
 		label := series.Name
 		if len(label) > 30 {
 			label = label[:27] + "..."
@@ -405,7 +406,7 @@ func renderBarLegend(series []Series) string {
 		if len(s.Points) == 0 {
 			continue
 		}
-		color := ColorForIndex(i)
+		color := seriesColor(s, i)
 		colorBox := lipgloss.NewStyle().Foreground(color).Render("●")
 		name := s.Name
 		if len(name) > 30 {
@@ -442,4 +443,12 @@ func getTerminalSize() (int, int) {
 	}
 
 	return width, height
+}
+
+// seriesColor returns the series' explicit Color, falling back to ColorForIndex.
+func seriesColor(s Series, i int) color.Color {
+	if s.Color != nil {
+		return s.Color
+	}
+	return ColorForIndex(i)
 }
