@@ -91,7 +91,9 @@ func (o *statusOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 
 	flags.StringVar(&o.DatasourceUID, "datasource-uid", "", "Ignored: status is read from the Synthetic Monitoring datasource")
-	_ = flags.MarkDeprecated("datasource-uid", "status is read from the Synthetic Monitoring datasource; the flag has no effect")
+	// Hidden rather than deprecated: pflag prints the deprecation notice on
+	// stdout, ahead of the JSON value. RunE warns on stderr instead.
+	_ = flags.MarkHidden("datasource-uid")
 	flags.StringArrayVar(&o.Labels, "label", nil, "Filter by label key=value (repeatable, e.g. --label env=prod)")
 	flags.StringVar(&o.JobPattern, "job", "", "Filter by job name glob pattern (e.g. --job 'shopk8s-*')")
 	flags.StringVar(&o.StatusFilter, "status", "", "Filter results by status: OK, FAILING, or NODATA")
@@ -132,6 +134,10 @@ Prometheus datasource, the values here come only from the app.`,
 			}
 
 			ctx := cmd.Context()
+
+			if opts.DatasourceUID != "" {
+				cmdio.Warning(cmd.ErrOrStderr(), "--datasource-uid is ignored: status is read from the Synthetic Monitoring datasource")
+			}
 
 			// Build check filter from flag values.
 			labelMap, err := ParseLabelFlags(opts.Labels)
@@ -527,7 +533,8 @@ func parseMatrixValue(raw any) (float64, error) {
 // ---------------------------------------------------------------------------
 
 // BuildCheckStatusResults merges check definitions with metric data.
-// latencyMap maps "job/instance" to probe_duration_seconds (will be converted to ms).
+// latencyMap maps "job/instance" to the latency the SM backend reports, in seconds
+// (converted to ms).
 // probeNames maps probe ID to display name (e.g. "Oregon" or "Paris (offline)").
 // Pass nil or an empty map if probe names are unavailable.
 func BuildCheckStatusResults(checks []Check, successMap, probeCountMap, latencyMap map[string]float64, probeNames map[int64]string) []CheckStatusResult {

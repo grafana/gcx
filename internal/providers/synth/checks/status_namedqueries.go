@@ -118,9 +118,6 @@ type statusJob struct {
 	// backend returns a row for every check in the tenant, so a type-specific
 	// answer is read only for the checks of that type.
 	forChecks []Check
-	// typed distinguishes "only these checks" (even if the list were empty) from
-	// "every row".
-	typed bool
 }
 
 type statusJobResult struct {
@@ -153,7 +150,6 @@ func fetchStatusMetrics(ctx context.Context, querier namedQuerier, datasourceUID
 			query:     synth.NamedQuery{Name: queryLatency, Params: map[string]any{"checkType": t}},
 			column:    columnLatency,
 			forChecks: byType[t],
-			typed:     true,
 		})
 	}
 	from := now.Add(-statusAnchorRange)
@@ -183,7 +179,7 @@ func fetchStatusMetrics(ctx context.Context, querier namedQuerier, datasourceUID
 		}
 
 		into := metrics.column(job.column)
-		if !job.typed {
+		if len(job.forChecks) == 0 {
 			maps.Copy(into, res.vals)
 			continue
 		}

@@ -132,9 +132,12 @@ validated by the backend, which reports the expression it ran.`,
 			}
 
 			// Mean(frame) assumes the mean over the frame's time samples is the
-			// correct reduction. That holds for the two queries registered today:
+			// correct reduction. That holds for the queries registered today:
 			// - checks_uptime is a single, unlabeled range series that the app reduces
-			// -  probe_execution_rate is an instant query so Mean is a no-op on its single sample per probe.
+			// - probe_execution_rate is an instant query so Mean is a no-op on its single sample per probe.
+			// - checks_reachability, checks_probe_count and checks_latency are instant
+			//   queries grouped by (job, instance), so Mean is likewise a no-op (see
+			//   statusAnchorRange in checks/status_namedqueries.go).
 			//
 			// It would NOT hold for a query that is both grouped by a label and
 			// a range query (multiple time samples per label). No such query is

@@ -508,7 +508,7 @@ Provider subcommands (`slo definitions status`, `slo reports status`, `synth che
 4. **Merge** — domain objects joined to metric results by stable key; missing metrics yield NODATA status
 5. **Render** — standard codec pipeline (`-o table`, `-o wide`, `--o json`, `-o graph`)
 
-**Concurrency:** Init-phase operations (domain list, probe list, datasource resolution, REST config) run concurrently via `errgroup`. The aggregate queries also execute in parallel; for `synth checks status` a failed query empties only its own column (warned on stderr), and the command errors only if every query fails.
+**Concurrency:** Init-phase operations (domain list, probe list, datasource resolution, REST config) run concurrently via `errgroup`. The aggregate queries also execute in parallel; for `synth checks status` a reachability failure is the error case, because reachability is the only input to OK/FAILING; a probe count or latency failure empties only its own column and warns on stderr.
 
 Key files:
 - `internal/providers/slo/definitions/status.go` — `FetchMetrics` (4 parallel queries per datasource group)

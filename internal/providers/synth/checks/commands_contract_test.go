@@ -925,12 +925,18 @@ func TestChecksStatusEmptyContract(t *testing.T) {
 
 // TestChecksStatusAcceptsDeprecatedDatasourceUID pins that scripts which still
 // pass the old Prometheus-datasource flag keep working: status no longer reads
-// it, but removing it outright would turn a no-op into a usage error.
+// it, but removing it outright would turn a no-op into a usage error. The
+// notice goes to stderr so structured output on stdout stays a single value.
 func TestChecksStatusAcceptsDeprecatedDatasourceUID(t *testing.T) {
 	srv := newCheckServer(t, &checkAPIState{probesOnline: true})
 
-	_, _, err := runChecks(t, srv.URL, false, "", "status", "--datasource-uid", "test-uid")
+	stdout, stderr, err := runChecks(t, srv.URL, false, "", "status", "--datasource-uid", "test-uid", "-o", "json")
 	require.NoError(t, err)
+	assert.Contains(t, stderr, "datasource-uid")
+
+	docs, ok := decodeSingleJSONValue(t, stdout).([]any)
+	require.True(t, ok)
+	assert.Empty(t, docs)
 }
 
 // TestChecksStatusReadsNamedQueries pins the whole status path against the SM
