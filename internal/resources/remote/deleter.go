@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/grafana/gcx/internal/assistant/watcher"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/logs"
 	"github.com/grafana/gcx/internal/resources"
@@ -139,6 +140,9 @@ func (deleter *Deleter) Delete(ctx context.Context, request DeleteRequest) (*Ope
 }
 
 func (deleter *Deleter) deleteResource(ctx context.Context, descriptor resources.Descriptor, res *resources.Resource, dryRun bool) error {
+	if descriptor.GroupVersionKind() == watcher.WatcherDescriptor().GroupVersionKind() {
+		return watcher.UnsupportedMutation("delete")
+	}
 	var dryRunOpts []string
 	if dryRun {
 		dryRunOpts = []string{"All"}

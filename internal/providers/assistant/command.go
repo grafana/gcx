@@ -20,6 +20,7 @@ import (
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	mcpserverscmd "github.com/grafana/gcx/internal/providers/assistant/mcpservers"
+	watcherscmd "github.com/grafana/gcx/internal/providers/assistant/watchers"
 	"github.com/spf13/cobra"
 	"k8s.io/client-go/rest"
 )
@@ -52,8 +53,9 @@ func Command() *cobra.Command {
 		Short: "Interact with Grafana Assistant",
 		Long: `Send prompts to Grafana Assistant and receive streaming responses via the A2A protocol.
 
-Requires Grafana Cloud with OAuth authentication (gcx login with browser flow).
-Service account tokens are not supported.
+Requires Grafana Cloud. Conversational commands use OAuth authentication
+(gcx login with browser flow). Management reads use the selected context
+identity and its permissions.
 
 Note: Grafana Assistant is billed based on tokens consumed, including requests
 made through gcx. See ` + docs.AssistantPricing + `.`,
@@ -89,6 +91,7 @@ made through gcx. See ` + docs.AssistantPricing + `.`,
 	cmd.AddCommand(conversationCommand(loader))
 	cmd.AddCommand(investigations.Commands(loader))
 	cmd.AddCommand(mcpserverscmd.Commands(loader))
+	cmd.AddCommand(watcherscmd.Commands(loader))
 	return cmd
 }
 

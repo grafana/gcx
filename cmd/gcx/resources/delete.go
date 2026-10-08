@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
+	"github.com/grafana/gcx/internal/assistant/watcher"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/gcxerrors"
@@ -143,6 +144,13 @@ func deleteCmd(configOpts *cmdconfig.Options) *cobra.Command {
 
 			// Load resources by selectors only
 			if len(opts.Path) == 0 {
+				// Watcher mutations are unavailable regardless of whether the
+				// selected definitions can be exported. Check the resolved type
+				// before reads so an empty fleet or export failure cannot turn a
+				// refused deletion into a successful zero-resource batch.
+				if err := rejectWatcherDelete(ctx, cfg, sels); err != nil {
+					return err
+				}
 				fetchRes, err := FetchResources(ctx, FetchRequest{
 					Config:      cfg,
 					StopOnError: opts.OnError.StopOnError(),
@@ -213,6 +221,23 @@ func deleteCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	opts.setup(cmd.Flags())
 
 	return cmd
+}
+
+func rejectWatcherDelete(ctx context.Context, cfg config.NamespacedRESTConfig, selectors resources.Selectors) error {
+	reg, err := discovery.NewDefaultRegistry(ctx, cfg)
+	if err != nil {
+		return err
+	}
+	filters, err := reg.MakeFilters(discovery.MakeFiltersOptions{Selectors: selectors, PreferredVersionOnly: true})
+	if err != nil {
+		return err
+	}
+	for _, filter := range filters {
+		if filter.Descriptor.GroupVersionKind() == watcher.WatcherDescriptor().GroupVersionKind() {
+			return watcher.UnsupportedMutation("delete")
+		}
+	}
+	return nil
 }
 
 func loadResourcesFromDirectories(ctx context.Context, cfg config.NamespacedRESTConfig, res *resources.Resources, opts *deleteOpts, selectors resources.Selectors) error {

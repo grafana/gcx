@@ -5,6 +5,7 @@ package assistant
 
 import (
 	"github.com/grafana/gcx/internal/assistant/mcpserver"
+	"github.com/grafana/gcx/internal/assistant/watcher"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
@@ -44,10 +45,11 @@ func (p *AssistantProvider) ConfigKeys() []providers.ConfigKey {
 }
 
 // TypedRegistrations returns adapter registrations for assistant resource
-// types. MCPServer is the only registered type — investigations,
+// types. MCPServer and Watcher are the registered types — investigations,
 // conversation, and the A2A prompt path stay command-only.
 func (p *AssistantProvider) TypedRegistrations() []adapter.Registration {
 	desc := mcpserver.MCPServerDescriptor()
+	watchDesc := watcher.WatcherDescriptor()
 	return []adapter.Registration{
 		{
 			Factory:    mcpserver.NewLazyFactory(),
@@ -56,5 +58,6 @@ func (p *AssistantProvider) TypedRegistrations() []adapter.Registration {
 			Schema:     mcpserver.MCPServerSchema,
 			Example:    mcpserver.MCPServerExample(),
 		},
+		{Factory: watcher.NewLazyFactory(), Descriptor: watchDesc, GVK: watchDesc.GroupVersionKind(), Schema: watcher.WatcherSchema, Example: watcher.WatcherExample()},
 	}
 }

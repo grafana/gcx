@@ -113,3 +113,9 @@
 /docs/reference/cli/gcx_datasources_prometheus* @grafana/grafana-gcx @grafana/cortex-team
 /docs/reference/cli/gcx_datasources_pyroscope* @grafana/grafana-gcx @grafana/pyroscope-team
 /docs/reference/cli/gcx_datasources_tempo* @grafana/grafana-gcx @grafana/tempo
+
+/docs/reference/assistant-watchers* @grafana/grafana-gcx @grafana/grafana-assistant-loop
+/docs/reference/assistant-mcp-servers.md @grafana/grafana-gcx @grafana/grafana-assistant-loop
+/openspec/specs/assistant-watchers/ @grafana/grafana-gcx @grafana/grafana-assistant-loop
+/openspec/changes/*assistant-watchers*/ @grafana/grafana-gcx @grafana/grafana-assistant-loop
+/openspec/changes/archive/*assistant-watchers*/ @grafana/grafana-gcx @grafana/grafana-assistant-loop

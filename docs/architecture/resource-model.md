@@ -491,6 +491,8 @@ Provider descriptors are injected into the `RegistryIndex` via `RegisterStatic(d
 so that provider types appear in `resources list-types` output and resolve correctly from
 selector strings like `"slos"` or `"rules"`.
 
+Native discovery retains the group's preferred version. If that version lacks a requested kind, unversioned lookup and preferred-resource enumeration use the first registered provider descriptor for that group/kind. A native kind present in the preferred version takes precedence. Explicit version requests remain exact and never use this fallback.
+
 ---
 
 ## 6. Why the Kubernetes Resource Model

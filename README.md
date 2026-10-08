@@ -606,6 +606,10 @@ gcx dev lint new dashboard my-rule              # create custom rule
 go run . && gcx resources push -p ./resources
 ```
 
+## Inspect Assistant Watchers (experimental)
+
+Read Watcher configuration with `gcx assistant watchers list` and `get WATCHER`, inspect runtime observations with `status WATCHER`, or export manifests with `gcx resources pull watchers`. Requires Grafana Cloud; writes are not supported yet. See [Assistant Watchers](docs/reference/assistant-watchers.md).
+
 ## Raw API Access
 
 For anything not covered by built-in commands, use the API passthrough:

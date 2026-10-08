@@ -46,6 +46,7 @@ type Puller struct {
 	client                    PullClient
 	registry                  PullRegistry
 	maxConcurrentListRequests int
+	watcherConfig             *config.NamespacedRESTConfig
 }
 
 // PullerOption configures a Puller.
@@ -74,7 +75,9 @@ func NewDefaultPullerWithRegistry(
 
 	router := buildRouter(dynamicClient, registry)
 
-	return NewPuller(router, registry, opts...), nil
+	puller := NewPuller(router, registry, opts...)
+	puller.watcherConfig = &restConfig
+	return puller, nil
 }
 
 // NewPuller creates a new Puller.
@@ -117,6 +120,7 @@ type PullRequest struct {
 
 // Pull pulls resources from Grafana.
 func (p *Puller) Pull(ctx context.Context, req PullRequest) (*OperationSummary, error) {
+	pullCtx := ctx
 	summary := &OperationSummary{}
 	filters := req.Filters
 
@@ -166,6 +170,11 @@ func (p *Puller) Pull(ctx context.Context, req PullRequest) (*OperationSummary, 
 					partialRes[idx] = res.Items
 				}
 			case resources.FilterTypeMultiple:
+				if isWatcherFilter(filt) {
+					var err error
+					partialRes[idx], err = p.pullWatcherReferences(ctx, filt, req.StopOnError, summary)
+					return err
+				}
 				res, err := p.client.GetMultiple(ctx, filt.Descriptor, filt.ResourceUIDs, metav1.GetOptions{})
 				if err != nil {
 					switch {
@@ -203,8 +212,12 @@ func (p *Puller) Pull(ctx context.Context, req PullRequest) (*OperationSummary, 
 		return summary, err
 	}
 
+	// Resources.Add replaces objects with the same resource identity. Reject
+	// ambiguous Watcher names while the fetched batches still retain every
+	// selected object, including collisions with the other archive partition.
+	preflight := newWatcherPullPreflight(p.watcherConfig, partialRes)
 	req.Resources.Clear()
-	for _, r := range partialRes {
+	for idx, r := range partialRes {
 		for _, item := range r {
 			res, err := resources.FromUnstructured(&item)
 			if err != nil {
@@ -214,6 +227,15 @@ func (p *Puller) Pull(ctx context.Context, req PullRequest) (*OperationSummary, 
 			// TODO: this should be replaced by a more generic mechanism,
 			// e.g. label & annotation filters.
 			if !res.IsManaged() && req.ExcludeManaged {
+				continue
+			}
+
+			if err := preflight.check(pullCtx, filters[idx], item); err != nil {
+				logger.Warn("Failed resource identity preflight", logs.Err(err))
+				summary.RecordFailure(res, err)
+				if req.StopOnError {
+					return summary, err
+				}
 				continue
 			}
 

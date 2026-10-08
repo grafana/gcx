@@ -86,7 +86,7 @@ cmd/gcx/
   dev/          Developer tools (import, scaffold, generate, lint, serve)
   fail/         Structured error conversion
 
-internal/        Non-public packages — full annotated map: docs/architecture/project-structure.md
+internal/        Non-public packages — Assistant client/watchers, Watcher schema/adapter, and provider commands; full annotated map: docs/architecture/project-structure.md
 experimental/    Separate Go modules outside the CLI's build: sandbox/ runs gcx as wasip1 in wazero for embedding
 ```
 
