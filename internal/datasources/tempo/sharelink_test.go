@@ -152,6 +152,53 @@ current-context: default
 	assert.NotContains(t, stderr, "Explore link:")
 }
 
+func TestSearchCmd_DrilldownLink(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/bootdata":
+			http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
+		case "/api/datasources/proxy/uid/tempo-uid/api/search":
+			w.Header().Set("Content-Type", "application/json")
+			_, err := w.Write([]byte(`{"traces":[{"traceID":"trace-123","rootServiceName":"svc","rootTraceName":"op","startTimeUnixNano":"1","durationMs":10}]}`))
+			assert.NoError(t, err)
+		default:
+			t.Fatalf("unexpected request path: %s", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	loader := &providers.ConfigLoader{}
+	loader.SetConfigFile(writeTempoTestConfig(t, `
+contexts:
+  default:
+    grafana:
+      server: "`+srv.URL+`"
+      token: "test-token"
+      org-id: 1
+      tls:
+        insecure-skip-verify: true
+    datasources:
+      tempo: tempo-uid
+current-context: default
+`))
+
+	t.Run("prints drilldown link for a supported expression", func(t *testing.T) {
+		_, stderr, err := execTempoCmd(tempo.QueryCmd(loader),
+			[]string{"query", "--drilldown-link", "--since", "1h", "-o", "json", `{ span.http.status_code = 500 }`})
+		require.NoError(t, err)
+		assert.Contains(t, stderr, "Traces Drilldown link: ")
+		assert.Contains(t, stderr, "/a/grafana-exploretraces-app/explore")
+	})
+
+	t.Run("falls back to the explore link for an unsupported expression", func(t *testing.T) {
+		_, stderr, err := execTempoCmd(tempo.QueryCmd(loader),
+			[]string{"query", "--drilldown-link", "--since", "1h", "-o", "json", `{ span.http.status_code >= 500 }`})
+		require.NoError(t, err)
+		assert.NotContains(t, stderr, "Traces Drilldown link:")
+		assert.Contains(t, stderr, "Explore link: ")
+	})
+}
+
 func execTempoCmd(cmd *cobra.Command, args []string) (string, string, error) {
 	root := &cobra.Command{Use: "test"}
 	root.AddCommand(cmd)

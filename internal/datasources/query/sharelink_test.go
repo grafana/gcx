@@ -60,3 +60,60 @@ func TestEncodeAndHandleExplore(t *testing.T) {
 		assert.Contains(t, stderr.String(), "no url")
 	})
 }
+
+func TestHandleDrilldownLinkWithExploreFallback(t *testing.T) {
+	t.Run("prints drilldown link when available, no fallback needed", func(t *testing.T) {
+		cmd := &cobra.Command{Use: "test"}
+		var stderr bytes.Buffer
+		cmd.SetErr(&stderr)
+
+		err := dsquery.HandleDrilldownLinkWithExploreFallback(cmd,
+			dsquery.DrilldownLinkOpts{ShareLink: true, AppName: "Logs Drilldown"}, "https://example.grafana.net/a/grafana-lokiexplore-app/explore/app/foo/logs", "unavailable", "failed",
+			false, "https://example.grafana.net/explore?x=1", "explore unavailable", "explore failed",
+		)
+		require.NoError(t, err)
+		assert.Contains(t, stderr.String(), "Logs Drilldown link: https://example.grafana.net/a/grafana-lokiexplore-app/explore/app/foo/logs")
+		assert.NotContains(t, stderr.String(), "Explore link:")
+	})
+
+	t.Run("falls back to actually printing the explore link when drilldown link is unavailable", func(t *testing.T) {
+		cmd := &cobra.Command{Use: "test"}
+		var stderr bytes.Buffer
+		cmd.SetErr(&stderr)
+
+		err := dsquery.HandleDrilldownLinkWithExploreFallback(cmd,
+			dsquery.DrilldownLinkOpts{ShareLink: true}, "", "no drilldown url", "failed",
+			false, "https://example.grafana.net/explore?x=1", "explore unavailable", "explore failed",
+		)
+		require.NoError(t, err)
+		assert.Contains(t, stderr.String(), "no drilldown url")
+		assert.Contains(t, stderr.String(), "Explore link: https://example.grafana.net/explore?x=1")
+	})
+
+	t.Run("does not duplicate the explore link when the caller already requested it", func(t *testing.T) {
+		cmd := &cobra.Command{Use: "test"}
+		var stderr bytes.Buffer
+		cmd.SetErr(&stderr)
+
+		err := dsquery.HandleDrilldownLinkWithExploreFallback(cmd,
+			dsquery.DrilldownLinkOpts{ShareLink: true}, "", "no drilldown url", "failed",
+			true, "https://example.grafana.net/explore?x=1", "explore unavailable", "explore failed",
+		)
+		require.NoError(t, err)
+		assert.Contains(t, stderr.String(), "no drilldown url")
+		assert.NotContains(t, stderr.String(), "Explore link:")
+	})
+
+	t.Run("no-op when drilldown link was not requested at all", func(t *testing.T) {
+		cmd := &cobra.Command{Use: "test"}
+		var stderr bytes.Buffer
+		cmd.SetErr(&stderr)
+
+		err := dsquery.HandleDrilldownLinkWithExploreFallback(cmd,
+			dsquery.DrilldownLinkOpts{}, "", "no drilldown url", "failed",
+			false, "https://example.grafana.net/explore?x=1", "explore unavailable", "explore failed",
+		)
+		require.NoError(t, err)
+		assert.Empty(t, stderr.String())
+	})
+}

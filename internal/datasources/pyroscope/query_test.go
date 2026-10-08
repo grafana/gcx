@@ -3,20 +3,19 @@ package pyroscope
 
 import (
 	"bytes"
-	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strings"
 	"testing"
 
-	"github.com/grafana/gcx/internal/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/providers"
-	querypyroscope "github.com/grafana/gcx/internal/query/pyroscope"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"k8s.io/client-go/rest"
 )
 
 func TestPyroscopeQueryOptsValidateSelectors(t *testing.T) {
@@ -134,15 +133,55 @@ func TestQueryCmd_ErrorOnEmptyPprofValidationRunsBeforeConfigIO(t *testing.T) {
 	assert.Contains(t, err.Error(), "--error-on-empty is not supported with -o pprof")
 }
 
-func TestQueryDotV1Fallback_ErrorOnEmpty(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+// TestQueryCmd_DotV1FallbackErrorOnEmpty covers --error-on-empty through the
+// dot-format v1-fallback path specifically: queryDotV1Fallback itself no
+// longer renders or applies --error-on-empty (that moved to the shared
+// queryLinkFinisher tail every render branch routes through), so this needs
+// a full command run rather than calling queryDotV1Fallback directly.
+func TestQueryCmd_DotV1FallbackErrorOnEmpty(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/bootdata":
+			http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
+			return
+		case "/api/datasources/uid/pyro-uid":
+			w.Header().Set("Content-Type", "application/json")
+			_, err := w.Write([]byte(`{"uid":"pyro-uid","type":"grafana-pyroscope-datasource"}`))
+			assert.NoError(t, err)
+			return
+		}
+		body, err := io.ReadAll(r.Body)
+		assert.NoError(t, err)
+		if strings.Contains(string(body), `"format":"dot"`) {
+			w.WriteHeader(http.StatusBadRequest)
+			_, err := w.Write([]byte(`{"message":"dot format is only supported with the v2 query backend"}`))
+			assert.NoError(t, err)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"flamegraph":{"names":[],"levels":[],"total":"0","maxSelf":"0"}}`))
+		_, err = w.Write([]byte(`{"flamegraph":{"names":[],"levels":[],"total":"0","maxSelf":"0"}}`))
+		assert.NoError(t, err)
 	}))
-	defer server.Close()
+	defer srv.Close()
 
-	client, err := querypyroscope.NewClient(config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}})
+	f, err := os.CreateTemp(t.TempDir(), "gcx-pyro-config-*.yaml")
 	require.NoError(t, err)
+	_, err = f.WriteString(`
+contexts:
+  default:
+    grafana:
+      server: "` + srv.URL + `"
+      token: "test-token"
+      org-id: 1
+      tls:
+        insecure-skip-verify: true
+current-context: default
+`)
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+
+	loader := &providers.ConfigLoader{}
+	loader.SetConfigFile(f.Name())
 
 	for _, tt := range []struct {
 		name         string
@@ -153,18 +192,29 @@ func TestQueryDotV1Fallback_ErrorOnEmpty(t *testing.T) {
 		{name: "disabled", errorOnEmpty: false},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
+			cmd := QueryCmd(loader)
+			root := &cobra.Command{Use: "test"}
+			root.AddCommand(cmd)
 			var stdout, stderr bytes.Buffer
-			cmd := &cobra.Command{}
-			cmd.SetOut(&stdout)
-			cmd.SetErr(&stderr)
+			root.SetOut(&stdout)
+			root.SetErr(&stderr)
+			args := []string{
+				"query", "-d", "pyro-uid", "-o", "dot",
+				"--profile-type", "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
+				`{service_name="frontend"}`,
+			}
+			if tt.errorOnEmpty {
+				args = append(args, "--error-on-empty")
+			}
+			root.SetArgs(args)
 
-			err := queryDotV1Fallback(context.Background(), cmd, client, "test-uid", querypyroscope.QueryRequest{}, tt.errorOnEmpty)
+			err := root.Execute()
 			if tt.wantErr {
 				require.ErrorIs(t, err, dsquery.ErrNoResult)
-				assert.Contains(t, stdout.String(), "(no profile data)")
 				return
 			}
 			require.NoError(t, err)
+			assert.Contains(t, stdout.String(), "(no profile data)")
 		})
 	}
 }
