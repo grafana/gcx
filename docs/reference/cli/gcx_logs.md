@@ -28,4 +28,5 @@ Query Loki datasources and manage Adaptive Logs
 * [gcx logs metrics](gcx_logs_metrics.md)	 - Execute a metric LogQL query against a Loki datasource
 * [gcx logs query](gcx_logs_query.md)	 - Execute a LogQL query against a Loki datasource
 * [gcx logs series](gcx_logs_series.md)	 - List log streams
+* [gcx logs stats](gcx_logs_stats.md)	 - Show the estimated size in bytes for a LogQL query without executing it
 

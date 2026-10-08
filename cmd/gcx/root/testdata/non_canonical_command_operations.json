@@ -89,6 +89,7 @@
   "gcx kg stats",
   "gcx kg status",
   "gcx logs adaptive patterns stats",
+  "gcx logs stats",
   "gcx metrics adaptive recommendations apply",
   "gcx metrics adaptive recommendations diff",
   "gcx metrics cardinality label-names",
