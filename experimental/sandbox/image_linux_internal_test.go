@@ -323,9 +323,13 @@ func loadGCX(t *testing.T) []byte {
 }
 
 // vmaUsage is what /proc/self/smaps reports for the mappings inside a range.
+// Anonymous pages are the ones the run wrote, its own memory. Image pages it
+// only read are resident but shared page cache, and smaps calls them private
+// while only one instance maps them, so Private_* would overstate what a run
+// costs.
 type vmaUsage struct {
-	privateKiB, rssKiB uint64
-	image              bool // one of them is the memory image
+	anonKiB, rssKiB uint64
+	image           bool // one of them is the memory image
 }
 
 func usage(t *testing.T, start, end uint64) vmaUsage {
@@ -355,8 +359,8 @@ func usage(t *testing.T, start, end uint64) vmaUsage {
 		}
 		n, _ := strconv.ParseUint(fields[1], 10, 64)
 		switch fields[0] {
-		case "Private_Clean:", "Private_Dirty:":
-			u.privateKiB += n
+		case "Anonymous:":
+			u.anonKiB += n
 		case "Rss:":
 			u.rssKiB += n
 		}
@@ -376,7 +380,7 @@ func (m *measuredMemory) Free() {
 	m.LinearMemory.Free()
 }
 
-// gcx runs on the memory image, so a run's private memory stays well below
+// gcx runs on the memory image, so the memory a run writes stays well below
 // the ~62 MiB a copy of gcx's data segments costs. This fails if New quietly
 // falls back to copying them, e.g. because a newer Go linker emits a data
 // section stripModule doesn't handle.
@@ -433,11 +437,11 @@ func TestGCXRunsOnMemoryImage(t *testing.T) {
 	if !measured {
 		t.Fatal("the run's memory was never freed through the measuring allocator")
 	}
-	t.Logf("gcx version: %d MiB private, %d MiB resident", u.privateKiB>>10, u.rssKiB>>10)
+	t.Logf("gcx version: %d MiB anonymous, %d MiB resident", u.anonKiB>>10, u.rssKiB>>10)
 	if !u.image {
 		t.Error("the run's memory doesn't map the memory image")
 	}
-	if u.privateKiB>>10 >= budgetMiB {
-		t.Errorf("the run used %d MiB of private memory, want under %d", u.privateKiB>>10, budgetMiB)
+	if u.anonKiB>>10 >= budgetMiB {
+		t.Errorf("the run wrote %d MiB of anonymous memory, want under %d", u.anonKiB>>10, budgetMiB)
 	}
 }
