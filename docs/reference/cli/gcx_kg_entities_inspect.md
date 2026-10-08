@@ -31,7 +31,7 @@ gcx kg entities inspect [Type--Name] [flags]
       --insight-hide-noise                 Apply RCA Workbench noise filter: hide insights older than 48h or present >90% of the window
       --insight-hide-older-than duration   Hide insights older than a whole number of hours (e.g. 24h); overrides --insight-hide-noise on this axis
       --jq string                          jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string                        Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --json string                        Comma-separated list of dotted field paths to include in JSON output (e.g. spec.name), or 'list' (or '?') to discover the available paths
       --name string                        Entity name
       --namespace string                   Namespace scope (run 'gcx kg meta scopes' to see valid values)
       --open                               Open the entity in the RCA Workbench in your browser

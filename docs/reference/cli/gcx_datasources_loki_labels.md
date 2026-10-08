@@ -30,7 +30,7 @@ gcx datasources loki labels [flags]
   -d, --datasource string   Datasource UID (required unless datasources.loki is configured)
   -h, --help                help for labels
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --json string         Comma-separated list of dotted field paths to include in JSON output (e.g. spec.name), or 'list' (or '?') to discover the available paths
   -l, --label string        Get values for this label (omit to list all labels)
   -o, --output string       Output format. One of: agents, json, table, yaml (default "table")
 ```

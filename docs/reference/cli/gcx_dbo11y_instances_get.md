@@ -60,7 +60,7 @@ gcx dbo11y instances get <name> [flags]
       --filter stringArray   Scope the connections/query-performance queries to series matching a label matcher, e.g. --filter datname=payments for Postgres or --filter schema=payments for MySQL (repeatable). Does not affect health/inventory metrics, which don't carry that label
   -h, --help                 help for get
       --jq string            jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --json string          Comma-separated list of dotted field paths to include in JSON output (e.g. spec.name), or 'list' (or '?') to discover the available paths
   -o, --output string        Output format. One of: agents, json, table, wide, yaml (default "table")
       --since string         Rate window applied to pg_stat_statements (e.g. 1m, 5m, 1h) — PromQL duration syntax (default "5m")
       --top int              Limit the number of top queries returned, ranked by time share (0 = unlimited) (default 10)

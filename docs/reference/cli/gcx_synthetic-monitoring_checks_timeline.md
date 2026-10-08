@@ -40,7 +40,7 @@ gcx synthetic-monitoring checks timeline ID [flags]
       --from string             Start of the time range (e.g. now-6h, now-24h, RFC3339, Unix timestamp)
   -h, --help                    help for timeline
       --jq string               jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string             Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --json string             Comma-separated list of dotted field paths to include in JSON output (e.g. spec.name), or 'list' (or '?') to discover the available paths
   -o, --output string           Output format. One of: agents, graph, json, table, yaml (default "graph")
       --since string            Duration before now to display (e.g. 1h, 6h, 24h, 7d) (default "6h")
       --to string               End of the time range (e.g. now, RFC3339, Unix timestamp)

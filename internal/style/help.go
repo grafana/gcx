@@ -12,7 +12,7 @@ import (
 )
 
 // jsonDiscoveryTip is the help text shown for commands that support --json field selection.
-const jsonDiscoveryTip = "Use --json list to discover available fields, --json field1,field2 to select specific fields."
+const jsonDiscoveryTip = "Use --json list to discover the available dotted paths, --json <path>,<path> to select specific fields."
 
 // renderLong renders a command's Long description with word wrap disabled so
 // long tokens such as documentation URLs stay on a single logical line and

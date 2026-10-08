@@ -4,6 +4,7 @@ package apps
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"strings"
 	"testing"
 
@@ -47,7 +48,7 @@ func TestListCmd(t *testing.T) {
 			cmd := newListCmd(client)
 			var out bytes.Buffer
 			cmd.SetOut(&out)
-			cmd.SetErr(&out)
+			cmd.SetErr(io.Discard)
 			cmd.SetArgs([]string{"c1"})
 
 			err := cmd.Execute()
@@ -75,7 +76,7 @@ func TestListCmd_JSONEnvelope_Empty(t *testing.T) {
 	cmd := newListCmd(client)
 	var out bytes.Buffer
 	cmd.SetOut(&out)
-	cmd.SetErr(&out)
+	cmd.SetErr(io.Discard)
 	cmd.SetArgs([]string{"--output", "json", "c1"})
 
 	require.NoError(t, cmd.Execute())
@@ -92,7 +93,7 @@ func TestListCmd_JSONEnvelope_NonEmpty(t *testing.T) {
 	cmd := newListCmd(client)
 	var out bytes.Buffer
 	cmd.SetOut(&out)
-	cmd.SetErr(&out)
+	cmd.SetErr(io.Discard)
 	cmd.SetArgs([]string{"--output", "json", "c1"})
 
 	require.NoError(t, cmd.Execute())
@@ -122,7 +123,7 @@ func TestListCmd_Discovered(t *testing.T) {
 	cmd := newListCmd(client)
 	var out bytes.Buffer
 	cmd.SetOut(&out)
-	cmd.SetErr(&out)
+	cmd.SetErr(io.Discard)
 	cmd.SetArgs([]string{"--output", "json", "c1"})
 
 	require.NoError(t, cmd.Execute())
@@ -140,8 +141,8 @@ func TestListCmd_Discovered(t *testing.T) {
 	assert.False(t, byName["payments"].Discovered, "payments is absent from c1 discoverItems — should be discovered:false")
 }
 
-// TestListCmd_JSONFieldSelection_Unknown verifies --json bogus,name
-// on apps list returns UnknownFieldSelectionError.
+// TestListCmd_JSONFieldSelection_Unknown verifies --json bogus,name on apps
+// list emits an advisory warning and a null-filled field.
 func TestListCmd_JSONFieldSelection_Unknown(t *testing.T) {
 	client := &fakeAppsClient{
 		getResponses: []getResponse{{namespaces: buildNamespaces(true, "checkout")}},
@@ -154,10 +155,9 @@ func TestListCmd_JSONFieldSelection_Unknown(t *testing.T) {
 	cmd.SetArgs([]string{"--json", "bogus,name", "c1"})
 
 	err := cmd.Execute()
-	require.Error(t, err)
-	var fieldErr cmdio.UnknownFieldSelectionError
-	require.ErrorAs(t, err, &fieldErr)
-	assert.Contains(t, fieldErr.Fields, "bogus")
+	require.NoError(t, err)
+	assert.Contains(t, errOut.String(), "unknown field(s) in --json: bogus")
+	assert.Contains(t, out.String(), `"bogus": null`)
 }
 
 // TestListCmd_JSONFieldSelection_Valid verifies that --json with valid fields
@@ -170,7 +170,7 @@ func TestListCmd_JSONFieldSelection_Valid(t *testing.T) {
 	cmd := newListCmd(client)
 	var out bytes.Buffer
 	cmd.SetOut(&out)
-	cmd.SetErr(&out)
+	cmd.SetErr(io.Discard)
 	cmd.SetArgs([]string{"--json", "name", "c1"})
 
 	require.NoError(t, cmd.Execute())
@@ -198,7 +198,7 @@ func TestListCmd_JSONList(t *testing.T) {
 	cmd := newListCmd(client)
 	var out bytes.Buffer
 	cmd.SetOut(&out)
-	cmd.SetErr(&out)
+	cmd.SetErr(io.Discard)
 	cmd.SetArgs([]string{"--json", "list", "c1"})
 
 	require.NoError(t, cmd.Execute())
@@ -230,7 +230,7 @@ func TestListCmd_JSONDiscovery_NoClusterArg(t *testing.T) {
 	cmd := newListCmd(client)
 	var out bytes.Buffer
 	cmd.SetOut(&out)
-	cmd.SetErr(&out)
+	cmd.SetErr(io.Discard)
 	cmd.SetArgs([]string{"--json", "list"})
 
 	require.NoError(t, cmd.Execute(), "expected exit 0 for --json list with no cluster arg")
@@ -259,7 +259,7 @@ func TestListCmd_NoArgs_NormalOutput(t *testing.T) {
 	cmd := newListCmd(client)
 	var out bytes.Buffer
 	cmd.SetOut(&out)
-	cmd.SetErr(&out)
+	cmd.SetErr(io.Discard)
 	cmd.SetArgs([]string{})
 
 	err := cmd.Execute()
@@ -278,7 +278,7 @@ func TestListCmd_TooManyArgs(t *testing.T) {
 	cmd := newListCmd(client)
 	var out bytes.Buffer
 	cmd.SetOut(&out)
-	cmd.SetErr(&out)
+	cmd.SetErr(io.Discard)
 	cmd.SetArgs([]string{"a", "b"})
 
 	err := cmd.Execute()
