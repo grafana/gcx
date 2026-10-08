@@ -70,81 +70,54 @@ current-context: default
 	return f.Name()
 }
 
-// assertStatsMaxBytesBlocks builds the command via newCmd, executes it with
-// use/args plus --stats-max-bytes 1GB against a fake server whose
-// index-stats endpoint always reports over that threshold, and asserts the
-// real query never ran. Shared by QueryCmd and MetricsCmd, since the switch
-// wiring the blocking check into RunE is independently duplicated per
-// command — a mistake made only in one of them would otherwise go
-// uncaught.
-func assertStatsMaxBytesBlocks(t *testing.T, newCmd func(*providers.ConfigLoader) *cobra.Command, use string, args ...string) {
+// execPreflightCmd runs newCmd against the fake server and returns stderr plus
+// how many index-stats and other (real query) requests it made. Shared by
+// QueryCmd and MetricsCmd, since each wires the pre-flight independently.
+func execPreflightCmd(t *testing.T, newCmd func(*providers.ConfigLoader) *cobra.Command, use string, args ...string) (string, int, int) {
 	t.Helper()
 
-	indexStatsRequests := 0
-	otherRequests := 0
-
+	var indexStatsRequests, otherRequests int
 	srv := newQueryPreflightTestServer(t, &indexStatsRequests, &otherRequests)
 	defer srv.Close()
 
-	cfgFile := writeQueryTestConfig(t, srv.URL)
 	loader := &providers.ConfigLoader{}
-	loader.SetConfigFile(cfgFile)
+	loader.SetConfigFile(writeQueryTestConfig(t, srv.URL))
 
-	cmd := newCmd(loader)
 	root := &cobra.Command{Use: "test"}
-	root.AddCommand(cmd)
+	root.AddCommand(newCmd(loader))
 
-	var stdout, stderr bytes.Buffer
+	var stdout, errBuf bytes.Buffer
 	root.SetOut(&stdout)
-	root.SetErr(&stderr)
-	root.SetArgs(append([]string{use}, append(args, "--stats-max-bytes", "1GB")...))
+	root.SetErr(&errBuf)
+	root.SetArgs(append([]string{use}, args...))
 
-	err := root.Execute()
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "exceeding --stats-max-bytes")
-	assert.Positive(t, indexStatsRequests, "expected the index-stats pre-flight check to have run")
-	assert.Zero(t, otherRequests, "the real query must never execute when --stats-max-bytes blocks it")
+	require.NoError(t, root.Execute())
+	return errBuf.String(), indexStatsRequests, otherRequests
 }
 
-// TestQueryCmd_StatsMaxBytesBlocksTheRealQuery pins the core promise of
-// --stats-max-bytes: when the index-stats estimate exceeds it, the real
-// Loki query must never execute at all, not just print a warning after the
-// fact.
-func TestQueryCmd_StatsMaxBytesBlocksTheRealQuery(t *testing.T) {
-	assertStatsMaxBytesBlocks(t, dsloki.QueryCmd, "query", "-d", "loki-uid", `{app="foo"}`)
+func TestQueryCmd_ReportsStatsEstimateByDefaultAndStillRunsTheQuery(t *testing.T) {
+	stderr, stats, other := execPreflightCmd(t, dsloki.QueryCmd, "query", "-d", "loki-uid", `{app="foo"}`)
+	assert.Contains(t, stderr, "5.6 GiB")
+	assert.Positive(t, stats)
+	assert.Positive(t, other, "the real query must still run")
 }
 
-// TestMetricsCmd_StatsMaxBytesBlocksTheRealQuery is MetricsCmd's counterpart.
-func TestMetricsCmd_StatsMaxBytesBlocksTheRealQuery(t *testing.T) {
-	assertStatsMaxBytesBlocks(t, dsloki.MetricsCmd, "metrics", "-d", "loki-uid", `rate({app="foo"}[5m])`)
+func TestMetricsCmd_ReportsStatsEstimateByDefaultAndStillRunsTheQuery(t *testing.T) {
+	stderr, stats, other := execPreflightCmd(t, dsloki.MetricsCmd, "metrics", "-d", "loki-uid", `rate({app="foo"}[5m])`)
+	assert.Contains(t, stderr, "5.6 GiB")
+	assert.Positive(t, stats)
+	assert.Positive(t, other, "the real query must still run")
 }
 
-// TestQueryCmd_SkipStatsBypassesStatsMaxBytes confirms --skip-stats is a
-// full escape hatch: it disables the blocking check too, not just the
-// warn-only one, so it stays a working override if --stats-max-bytes is
-// ever too aggressive.
-func TestQueryCmd_SkipStatsBypassesStatsMaxBytes(t *testing.T) {
-	indexStatsRequests := 0
-	otherRequests := 0
+func TestQueryCmd_WarnsAndStillRunsWhenOverThreshold(t *testing.T) {
+	stderr, _, other := execPreflightCmd(t, dsloki.QueryCmd, "query", "-d", "loki-uid", `{app="foo"}`, "--stats-warn-bytes", "1GB")
+	assert.Contains(t, stderr, "consider adding more filters or reducing the time range")
+	assert.Positive(t, other, "an over-threshold estimate must not block the query")
+}
 
-	srv := newQueryPreflightTestServer(t, &indexStatsRequests, &otherRequests)
-	defer srv.Close()
-
-	cfgFile := writeQueryTestConfig(t, srv.URL)
-	loader := &providers.ConfigLoader{}
-	loader.SetConfigFile(cfgFile)
-
-	cmd := dsloki.QueryCmd(loader)
-	root := &cobra.Command{Use: "test"}
-	root.AddCommand(cmd)
-
-	var stdout, stderr bytes.Buffer
-	root.SetOut(&stdout)
-	root.SetErr(&stderr)
-	root.SetArgs([]string{"query", "-d", "loki-uid", `{app="foo"}`, "--stats-max-bytes", "1GB", "--skip-stats"})
-
-	err := root.Execute()
-	require.NoError(t, err)
-	assert.Zero(t, indexStatsRequests, "expected the pre-flight check to be skipped entirely")
-	assert.Positive(t, otherRequests, "expected the real query to run when --skip-stats bypasses the block")
+func TestQueryCmd_SkipStatsMakesNoStatsRequest(t *testing.T) {
+	stderr, stats, other := execPreflightCmd(t, dsloki.QueryCmd, "query", "-d", "loki-uid", `{app="foo"}`, "--skip-stats")
+	assert.Zero(t, stats)
+	assert.NotContains(t, stderr, "GiB")
+	assert.Positive(t, other)
 }

@@ -35,11 +35,9 @@ Use --share-link to print the equivalent Grafana Explore URL, or --open to
 open it in your browser after the query succeeds.
 
 Before executing, a pre-flight index-stats check estimates the bytes this
-query would scan and prints a non-blocking warning if it exceeds
---stats-warn-bytes (default 10GiB). Set --stats-max-bytes to refuse to run the
-query at all above that many bytes — this is blocking, so unlike the default
-warn-only check it does add the pre-flight call's latency to the command.
-Use --skip-stats to disable both checks entirely.
+query would scan and reports it on stderr. Above --stats-warn-bytes (default
+100GiB) the message becomes a warning suggesting more filters or a shorter
+time range; the query still runs. Use --skip-stats to skip the check.
 Only the query's stream selector is used for the estimate, since Loki's index
 tracks streams, not line filters or parsing stages. The checked window is
 widened by any range-vector duration or offset in EXPR (e.g. '[24h]',
@@ -54,9 +52,6 @@ range alone would suggest.`,
 
   # Print a Grafana Explore share link for the query
   gcx datasources loki query '{job="varlogs"}' --share-link
-
-  # Refuse to run if the query would scan more than 5GiB
-  gcx datasources loki query '{job="varlogs"}' --stats-max-bytes 5GiB
 
   # Raw line bodies only
   gcx datasources loki query -d UID '{job="varlogs"}' -o raw
@@ -109,10 +104,7 @@ range alone would suggest.`,
 				Limit: limit,
 			}
 
-			wait, cancelPreflight, err := startStatsPreflight(ctx, client, cmd.ErrOrStderr(), datasourceUID, expr, req.IsRange(), start, end, now, preflight)
-			if err != nil {
-				return err
-			}
+			wait, cancelPreflight := startStatsPreflight(ctx, client, cmd.ErrOrStderr(), datasourceUID, expr, req.IsRange(), start, end, now, preflight)
 
 			resp, err := client.Query(ctx, datasourceUID, req)
 			// Grace window avoids losing the check to a fast query (see statsPreflightGraceAfterQuery).
