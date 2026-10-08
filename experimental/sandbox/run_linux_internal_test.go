@@ -21,7 +21,8 @@ import (
 var stdinGuest []byte
 
 // countingRuntime returns a Runtime for the stdin guest that records every
-// linear memory its runs allocate.
+// linear memory its runs allocate. Its runs use the allocator New installed,
+// so they map the memory image (see image_linux.go).
 func countingRuntime(t *testing.T) (*Runtime, *memories) {
 	t.Helper()
 	r, err := New(t.Context(), stdinGuest, Config{MemoryLimitBytes: 1 << 20})
@@ -30,8 +31,9 @@ func countingRuntime(t *testing.T) (*Runtime, *memories) {
 	}
 	t.Cleanup(func() { _ = r.Close(context.Background()) })
 	mems := &memories{}
+	runMemory := r.newRunMemory
 	r.newRunMemory = func() (experimental.MemoryAllocator, func()) {
-		inner, free := newRunMemory()
+		inner, free := runMemory()
 		return experimental.MemoryAllocatorFunc(func(capacity, maxBytes uint64) experimental.LinearMemory {
 			mem := inner.Allocate(capacity, maxBytes)
 			mems.add(mem)

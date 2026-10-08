@@ -206,7 +206,10 @@ Each `Run`:
   gcx's read-only data, become one memory image that every instance maps
   copy-on-write: a run writes only about 0.1 MiB of it, and the rest is
   shared and counted once, however many runs there are. RSS counts it once
-  per run, so it overstates what runs use. Under
+  per run, so it overstates what runs use. The image is best effort: if `New`
+  can't split the module that way, or the kernel refuses the memfd or the
+  mapping, each run copies the segments again, ~62 MiB for gcx, and nothing
+  reports it. Under
   strict overcommit (`vm.overcommit_memory=2`) each run commits its whole
   cap while it runs, so set `MemoryLimitBytes` there: the 4 GiB default can
   exhaust the commit limit and kill the process. If the kernel refuses the
