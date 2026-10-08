@@ -93,17 +93,13 @@ Default time range is the last hour when no time flags are given.`,
 				return fmt.Errorf("failed to get patterns: %w", err)
 			}
 
-			if shared.IO.OutputFormat == "table" {
-				return loki.FormatPatternsTable(cmd.OutOrStdout(), resp)
-			}
-
 			return shared.IO.Encode(cmd.OutOrStdout(), resp)
 		},
 	}
 
 	cmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "medium",
-		agent.AnnotationLLMHint:   `gcx datasources loki patterns -d UID '{job="varlogs"}' -o json`,
+		agent.AnnotationLLMHint:   `gcx datasources loki patterns -d UID '{job="varlogs"}' --since 1h -o json`,
 	}
 
 	shared.Setup(cmd.Flags(), false)
