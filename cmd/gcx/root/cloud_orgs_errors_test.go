@@ -40,6 +40,11 @@ func TestCloudOrgsAuthErrorProtocol(t *testing.T) {
 			require.NoError(t, os.WriteFile(config, []byte("version: 1\ncontexts:\n  test:\n    cloud: test\ncloud:\n  test:\n    token: fake-test-token\n    api-url: "+server.URL+"\ncurrent-context: test\n"), 0600))
 			stdout, code := runGcx(t, "cloud", "orgs", "list", "--config", config)
 			require.Equal(t, 3, code)
+			// Loading the config must not migrate the fake token to the host Keychain.
+			raw, err := os.ReadFile(config)
+			require.NoError(t, err)
+			assert.Contains(t, string(raw), "fake-test-token")
+			assert.NotContains(t, string(raw), "keychain:gcx:")
 			document, ok := assertOneJSONValue(t, stdout).(map[string]any)
 			require.True(t, ok)
 			assert.Equal(t, "gcx.error", document["type"])

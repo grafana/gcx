@@ -380,23 +380,28 @@ Cross-reference: Pattern 12 (Direct HTTP Client for Datasource APIs).
 
 ### 15. Agent Mode Detection and Pipe-Aware Output
 
-gcx detects at startup whether it is running inside an AI agent
-environment (Claude Code, Cursor, GitHub Copilot, Amazon Q, opencode, pi) and adjusts
-its behavior accordingly. Detection happens at `init()` time by reading
-well-known environment variables; the `--agent` CLI flag overrides env
-detection when explicitly set.
+gcx detects agent identity at startup from native signals or supported names.
+Detection runs at `init()` time. The `--agent` flag overrides the detected mode.
 
-**Detection priority:**
+**Mode priority:**
 
 | Priority | Mechanism | Notes |
 |----------|-----------|-------|
-| 1 | `GCX_AGENT_MODE` env var | Explicit override — falsy value disables agent mode even if other vars are set |
-| 2 | `CLAUDECODE`, `CLAUDE_CODE`, `CURSOR_AGENT`, `GITHUB_COPILOT`, `AMAZON_Q`, `OPENCODE`, `PI_CODING_AGENT` env vars | Any truthy value enables agent mode |
-| 3 | `--agent` CLI flag | Applied after env detection; always takes precedence when explicitly passed |
+| 1 | Explicit `--agent` flag | Enables or disables mode after environment detection |
+| 2 | Valid `GCX_AGENT_MODE` value | Explicit mode override |
+| 3 | Supported identity | Native signals, `GCX_AGENT_NAME`, `AI_AGENT`, or `AGENT=goose` enable mode |
+| 4 | Default | Agent mode is disabled |
+
+Identity resolution starts with `GCX_AGENT_NAME`, then native markers, then
+`AI_AGENT`, then `AGENT=goose`. Mode opt-out does not clear the identity
+label. Usage telemetry uses the same fixed label as the detector.
+See the [environment reference](../design/environment-variables.md#agent-mode-variables)
+for the complete signal list and supported names. See
+[agent mode](../design/agent-mode.md#61-detection) for the full precedence rules.
 
 **Behavioral effects when agent mode is active:**
 - Color output disabled globally (`color.NoColor = true`)
-- Default output format overridden to `json` (machine-parseable by default)
+- Default output format overridden to `agents` (compact JSON with file spill)
 - Pipe-aware behaviors forced: `IsPiped=true`, `NoTruncate=true` regardless of TTY state
 - In-band error JSON written to stdout on failure (see `cmd/gcx/fail/json.go`)
 
@@ -410,7 +415,7 @@ The `--no-truncate` persistent flag provides explicit control for non-TTY use ca
 behaviors regardless of actual TTY state.
 
 **Key files:**
-- `internal/agent/agent.go` — `IsAgentMode()`, `SetFlag()`, `DetectedFromEnv()`
+- `internal/agent/agent.go` — `IsAgentMode()`, `SetFlag()`, `DetectedFromEnv()`, `Name()`
 - `internal/terminal/terminal.go` — `Detect()`, `IsPiped()`, `NoTruncate()`, setters
 - `cmd/gcx/root/command.go` — orchestrates detection order in `PersistentPreRun`
 - `internal/output/format.go` — `io.Options` fields `IsPiped`, `NoTruncate`, `JSONFields`
