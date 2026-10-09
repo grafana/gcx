@@ -23,7 +23,8 @@ Pick the read verb by what you start with:
   inspect    Root-cause analysis only — heavy: insight timeline + related
              entities. Don't use it just to read an entity's properties (use
              'list'); reach for it only when you need the RCA view.
-  query      Arbitrary Cypher over the graph.
+  query      Deprecated legacy entity/edge search. For Cypher projections,
+             aggregates, and paths, use 'gcx kg graph query'.
 
 ### Options
 
@@ -50,6 +51,6 @@ Pick the read verb by what you start with:
 * [gcx kg entities delete](gcx_kg_entities_delete.md)	 - [experimental] Delete a custom entity.
 * [gcx kg entities inspect](gcx_kg_entities_inspect.md)	 - Show the insight timeline and related entities for a single entity (root-cause analysis).
 * [gcx kg entities list](gcx_kg_entities_list.md)	 - List entities by type/scope, or look up an entity's identity and properties.
-* [gcx kg entities query](gcx_kg_entities_query.md)	 - Query entities by running a read-only Cypher query against the Knowledge Graph.
+* [gcx kg entities query](gcx_kg_entities_query.md)	 - Query entities with the legacy Cypher API (Deprecated: use gcx kg graph query).
 * [gcx kg entities upsert](gcx_kg_entities_upsert.md)	 - [experimental] Create or update a custom entity (upsert).
 

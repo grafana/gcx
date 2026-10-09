@@ -85,7 +85,7 @@ gcx/
 │   │   │   └── rmw/          # Read-modify-write helper with optimistic-lock guard
 │   │   ├── native/           # Shared native-resource binding (native.Bind → descriptor + dynamic client after validation; ReadManifest); no CLI imports
 │   │   ├── k6/              # k6 Cloud provider (projects, tests, runs, envvars)
-│   │   ├── kg/               # Knowledge Graph (Asserts) provider (rules, entities, insights, diagnose, quality reports)
+│   │   ├── kg/               # Knowledge Graph (Asserts) provider (rules, entities, graph queries, insights, diagnose, quality reports)
 │   │   ├── slo/              # SLO provider implementation
 │   │   │   ├── api/          # Shared resource group/version; kinds stay in declarations
 │   │   │   ├── definitions/  # SLO definitions and status queries
