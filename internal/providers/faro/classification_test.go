@@ -10,12 +10,12 @@ import (
 )
 
 func TestAppClassificationManifestRoundTrip(t *testing.T) {
-	for _, runtime := range []string{"web-js", "flutter", "react-native", "android-native", "swift-native"} {
+	for _, runtime := range []string{runtimeWebJS, runtimeFlutter, runtimeReactNative, runtimeAndroidNative, runtimeSwiftNative} {
 		t.Run(runtime, func(t *testing.T) {
-			appType := "mobile"
+			appType := appTypeMobile
 			mobileLabel := "true"
-			if runtime == "web-js" {
-				appType = "web"
+			if runtime == runtimeWebJS {
+				appType = appTypeWeb
 				mobileLabel = "false"
 			}
 			manifest := `{"apiVersion":"faro.ext.grafana.app/v1alpha1","kind":"FaroApp","spec":{"name":"example-app","appType":"` + appType + `","runtime":"` + runtime + `","extraLogLabels":{"is_mobile":"` + mobileLabel + `","team":"frontend"}}}`
