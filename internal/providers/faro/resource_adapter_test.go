@@ -269,6 +269,53 @@ func TestResourceAdapter_PushRefusesAnotherAppsName(t *testing.T) {
 	assert.False(t, put, "push must not overwrite app 42")
 }
 
+// TestResourceAdapter_PushKeepsOmittedLists checks the resources push path: a
+// manifest without corsOrigins keeps the stored origins, and an explicit empty
+// list clears them.
+func TestResourceAdapter_PushKeepsOmittedLists(t *testing.T) {
+	tests := []struct {
+		name     string
+		spec     map[string]any
+		wantCORS any
+	}{
+		{
+			name:     "omitted",
+			spec:     map[string]any{"name": "web"},
+			wantCORS: []any{map[string]any{"url": "https://a.example.com"}},
+		},
+		{
+			name: "explicit empty",
+			spec: map[string]any{"name": "web", "corsOrigins": []any{}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var putBody map[string]any
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodPut {
+					body, _ := io.ReadAll(r.Body)
+					_ = json.Unmarshal(body, &putBody)
+					_, _ = w.Write(body)
+					return
+				}
+				writeJSON(w, map[string]any{"id": 42, "name": "web", "corsOrigins": []any{map[string]any{"url": "https://a.example.com"}}})
+			}))
+			defer server.Close()
+
+			a := newTestAdapter(t, server, "stack-123")
+			obj := &unstructured.Unstructured{Object: map[string]any{
+				"apiVersion": faro.APIVersion,
+				"kind":       faro.Kind,
+				"metadata":   map[string]any{"name": "web-42"},
+				"spec":       tt.spec,
+			}}
+			_, err := a.Update(t.Context(), obj, metav1.UpdateOptions{})
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantCORS, putBody["corsOrigins"])
+		})
+	}
+}
+
 func TestResourceAdapter_Delete(t *testing.T) {
 	tests := []struct {
 		name         string

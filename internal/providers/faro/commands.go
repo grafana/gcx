@@ -335,9 +335,10 @@ func newUpdateCommand(loader RESTConfigLoader) *cobra.Command {
 numeric ID or display name, resolved as in "gcx frontend apps get".
 
 The API cannot rename an app, so spec.name must match the stored name. Omit
-spec.runtime to keep the stored runtime; an empty runtime is invalid. The API
-ignores changes to spec.appType. Omitted settings keep their stored values;
-an empty geolocationCountryDenylist clears it.`,
+spec.corsOrigins or spec.extraLogLabels to keep the stored list; an empty list
+or map clears it. Omit spec.runtime to keep the stored runtime; an empty
+runtime is invalid. The API ignores changes to spec.appType. Omitted settings
+keep their stored values; an empty geolocationCountryDenylist clears it.`,
 		Example: `  # Update an app using its slug-id.
   gcx frontend apps update my-web-app-42 -f app.yaml`,
 		Args: cobra.ExactArgs(1),

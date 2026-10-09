@@ -227,3 +227,41 @@ func TestFaroUpdate_RefusesAnotherAppsName(t *testing.T) {
 		})
 	}
 }
+
+func TestFaroUpdate_KeepsOmittedLists(t *testing.T) {
+	storedCORS := []any{map[string]any{"url": "https://a.example.com"}}
+	storedLabels := []any{map[string]any{"label": "team", "value": "rum"}}
+	tests := []struct {
+		name       string
+		spec       string
+		wantCORS   any
+		wantLabels any
+	}{
+		{name: "omitted lists keep the stored ones", spec: "{name: web}", wantCORS: storedCORS, wantLabels: storedLabels},
+		// The API clears a list that the body leaves out.
+		{name: "explicit empty lists clear them", spec: "{name: web, corsOrigins: [], extraLogLabels: {}}"},
+		{
+			name:       "a new list replaces only that list",
+			spec:       `{name: web, corsOrigins: [{url: "https://b.example.com"}]}`,
+			wantCORS:   []any{map[string]any{"url": "https://b.example.com"}},
+			wantLabels: storedLabels,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			server, api := newFakeAppAPI(t, map[string]any{
+				"id": 42, "name": "web",
+				"corsOrigins":    []any{map[string]any{"id": 7, "url": "https://a.example.com"}},
+				"extraLogLabels": []any{map[string]any{"id": 9, "label": "team", "value": "rum"}},
+			})
+			manifest := writeTestFile(t, "app.yaml", "kind: FaroApp\nspec: "+tc.spec+"\n")
+			_, _, err := runFaroCommand(t, server, func(l *fakeConfigLoader) *cobra.Command {
+				return newUpdateCommand(l)
+			}, []string{"web-42", "-f", manifest, "-o", "json"})
+			require.NoError(t, err)
+			require.Len(t, api.puts, 1)
+			assert.Equal(t, tc.wantCORS, api.puts[0]["corsOrigins"])
+			assert.Equal(t, tc.wantLabels, api.puts[0]["extraLogLabels"])
+		})
+	}
+}
