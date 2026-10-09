@@ -53,7 +53,7 @@ gcx frontend sessions get <session-id> [flags]
 ### Options
 
 ```
-      --app string          Frontend Observability app slug-id or numeric id (required)
+      --app string          Frontend Observability app slug-id, numeric ID or display name (required)
       --app-type string     web or mobile (case-insensitive). Optional: inferred from sdkName/osName when omitted
   -d, --datasource string   Grafana datasource UID (required). Type is inferred (loki or pinot)
       --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')

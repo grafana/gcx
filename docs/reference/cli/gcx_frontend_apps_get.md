@@ -5,7 +5,9 @@ Get a Frontend Observability app by slug-id or name.
 ### Synopsis
 
 Get a Frontend Observability app by slug-id (my-web-app-42), numeric ID or
-display name. An argument that matches no app by ID is looked up by name.
+display name. A slug-id must match the app's own name, so a display name that
+ends in digits, such as "checkout-2", never returns app 2. An argument that is
+one app's name and another app's slug-id or ID is an error.
 
 ```
 gcx frontend apps get <slug-id|name> [flags]

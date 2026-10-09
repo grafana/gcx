@@ -11,7 +11,6 @@ import (
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
-	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -60,10 +59,10 @@ func (o *listSourcemapsOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func newListSourcemapsCommand(loader *providers.ConfigLoader) *cobra.Command {
+func newListSourcemapsCommand(loader RESTConfigLoader) *cobra.Command {
 	opts := &listSourcemapsOpts{}
 	cmd := &cobra.Command{
-		Use:   "list-sourcemaps <app-name>",
+		Use:   "list-sourcemaps <slug-id|name>",
 		Short: "List sourcemaps for a Frontend Observability app.",
 		Example: `  # List all sourcemaps for an app.
   gcx frontend apps list-sourcemaps my-web-app-42
@@ -91,9 +90,12 @@ func newListSourcemapsCommand(loader *providers.ConfigLoader) *cobra.Command {
 				return err
 			}
 
-			appID := resolveAppID(args[0])
+			target, err := resolveApp(ctx, newAppCRUD(client, cfg.Namespace), args[0])
+			if err != nil {
+				return err
+			}
 
-			bundles, err := client.ListSourcemaps(ctx, appID, opts.Limit)
+			bundles, err := client.ListSourcemaps(ctx, target.Spec.ID, opts.Limit)
 			if err != nil {
 				return err
 			}
@@ -168,7 +170,7 @@ func (o *applySourcemapOpts) Validate() error {
 func newApplySourcemapCommand(loader sourcemapUploadConfigLoader) *cobra.Command {
 	opts := &applySourcemapOpts{}
 	cmd := &cobra.Command{
-		Use:   "apply-sourcemap <app-name>",
+		Use:   "apply-sourcemap <slug-id|name>",
 		Short: "Upload a sourcemap for a Frontend Observability app.",
 		Example: `  # Upload a sourcemap bundle.
   gcx frontend apps apply-sourcemap my-web-app-42 -f bundle.js.map`,
@@ -179,6 +181,19 @@ func newApplySourcemapCommand(loader sourcemapUploadConfigLoader) *cobra.Command
 			}
 
 			ctx := cmd.Context()
+
+			// Resolve the app before anything else, so a wrong argument fails
+			// before the Faro API URL is discovered and cached.
+			crud, _, err := NewTypedCRUD(ctx, loader)
+			if err != nil {
+				return err
+			}
+			target, err := resolveApp(ctx, crud, args[0])
+			if err != nil {
+				return err
+			}
+			appID := target.Spec.ID
+
 			snapshot, err := loader.LoadDirectProviderSnapshot(ctx, providers.DirectProviderPolicy{
 				ProviderName:    "faro",
 				EndpointKeys:    []string{"faro-api-url"},
@@ -221,7 +236,6 @@ func newApplySourcemapCommand(loader sourcemapUploadConfigLoader) *cobra.Command
 			}
 
 			// Upload the sourcemap.
-			appID := resolveAppID(args[0])
 			if err := UploadSourcemap(ctx, faroAPIURL, cloudCfg.Stack.ID, cloudCfg.Token, appID, bundleID, f, contentType); err != nil {
 				return err
 			}
@@ -277,7 +291,7 @@ func (o *deleteSourcemapOpts) Validate() error { return o.IO.Validate() }
 func newDeleteSourcemapCommand(loader RESTConfigLoader) *cobra.Command {
 	opts := &deleteSourcemapOpts{}
 	cmd := &cobra.Command{
-		Use:   "delete-sourcemap <app-name> <bundle-id> [bundle-id...]",
+		Use:   "delete-sourcemap <slug-id|name> <bundle-id> [bundle-id...]",
 		Short: "Delete sourcemap bundles from a Frontend Observability app.",
 		Example: `  # Delete a single sourcemap bundle.
   gcx frontend apps delete-sourcemap my-web-app-42 1234567890-abc12
@@ -302,7 +316,11 @@ func newDeleteSourcemapCommand(loader RESTConfigLoader) *cobra.Command {
 				return err
 			}
 
-			appID := resolveAppID(args[0])
+			target, err := resolveApp(ctx, newAppCRUD(client, cfg.Namespace), args[0])
+			if err != nil {
+				return err
+			}
+			appID := target.Spec.ID
 			bundleIDs := args[1:]
 
 			if err := client.DeleteSourcemaps(ctx, appID, bundleIDs); err != nil {
@@ -346,13 +364,4 @@ func resolveFaroAPIURL(ctx context.Context, loader sourcemapUploadConfigLoader, 
 	_ = loader.SaveProviderConfig(ctx, "faro", "faro-api-url", apiURL)
 
 	return apiURL, nil
-}
-
-// resolveAppID extracts the numeric ID from a slug-id composite name,
-// falling back to using the argument as-is.
-func resolveAppID(name string) string {
-	if id, ok := adapter.ExtractIDFromSlug(name); ok {
-		return id
-	}
-	return name
 }

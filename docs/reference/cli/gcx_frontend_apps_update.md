@@ -4,14 +4,17 @@ Update a Frontend Observability app from a file.
 
 ### Synopsis
 
-Update a Frontend Observability app from a file.
+Update a Frontend Observability app from a file. The argument is a slug-id,
+numeric ID or display name, resolved as in "gcx frontend apps get".
 
-Omit spec.runtime to keep the stored runtime; an empty runtime is invalid. The
-API ignores changes to spec.appType. Omitted settings keep their stored values;
-an empty geolocationCountryDenylist clears it.
+The API cannot rename an app, so spec.name must match the stored name. Omit
+spec.corsOrigins or spec.extraLogLabels to keep the stored list; an empty list
+or map clears it. Omit spec.runtime to keep the stored runtime; an empty
+runtime is invalid. The API ignores changes to spec.appType. Omitted settings
+keep their stored values; an empty geolocationCountryDenylist clears it.
 
 ```
-gcx frontend apps update <name> [flags]
+gcx frontend apps update <slug-id|name> [flags]
 ```
 
 ### Examples
