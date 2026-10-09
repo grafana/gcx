@@ -10,12 +10,13 @@ Deleting requires the grafana-kowalski-app.apps:delete permission (granted to
 Admin and Frontend Observability Admin by default). A user with only apps:write
 can create and update apps but cannot delete them.
 
-The argument is a slug-id or numeric ID, not a name. Any trailing "-<digits>"
-is read as the app ID, so "Checkout-2024" deletes app 2024. Find the slug-id with
-"gcx frontend apps list" first. There is no confirmation prompt.
+The argument is a slug-id (my-web-app-42), numeric ID or display name. A
+slug-id must match the app's own name, so deleting "checkout-2" never deletes
+app 2 when app 2 has another name. An argument that is one app's name and
+another app's slug-id or ID is an error. There is no confirmation prompt.
 
 ```
-gcx frontend apps delete <name> [flags]
+gcx frontend apps delete <slug-id|name> [flags]
 ```
 
 ### Options

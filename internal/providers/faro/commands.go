@@ -32,43 +32,7 @@ func NewTypedCRUD(ctx context.Context, loader RESTConfigLoader) (*adapter.TypedC
 		return nil, config.NamespacedRESTConfig{}, fmt.Errorf("failed to create faro client: %w", err)
 	}
 
-	crud := &adapter.TypedCRUD[FaroApp]{
-		ListFn: adapter.LimitedListFn(client.List),
-
-		GetFn: func(ctx context.Context, name string) (*FaroApp, error) {
-			id, ok := adapter.ExtractIDFromSlug(name)
-			if !ok {
-				id = name
-			}
-			return client.Get(ctx, id)
-		},
-
-		CreateFn: func(ctx context.Context, app *FaroApp) (*FaroApp, error) {
-			return client.Create(ctx, app)
-		},
-
-		UpdateFn: func(ctx context.Context, name string, app *FaroApp) (*FaroApp, error) {
-			id, ok := adapter.ExtractIDFromSlug(name)
-			if !ok {
-				id = name
-			}
-			return client.Update(ctx, id, app)
-		},
-
-		DeleteFn: func(ctx context.Context, name string) error {
-			id, ok := adapter.ExtractIDFromSlug(name)
-			if !ok {
-				id = name
-			}
-			return client.Delete(ctx, id)
-		},
-
-		StripFields: []string{"id"},
-		Namespace:   cfg.Namespace,
-		Descriptor:  staticDescriptor,
-	}
-
-	return crud, cfg, nil
+	return newAppCRUD(client, cfg.Namespace), cfg, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -153,30 +117,6 @@ func AppTable() cmdio.Table[adapter.TypedObject[FaroApp]] {
 	}
 }
 
-// getApp resolves a slug-id, numeric ID or display name to an app.
-// An argument shaped like an ID is fetched directly; only a not-found result
-// falls through to a name lookup over the full list, so any other failure
-// (e.g. a 403) is reported as-is instead of as a missing app.
-func getApp(ctx context.Context, crud *adapter.TypedCRUD[FaroApp], arg string) (*adapter.TypedObject[FaroApp], error) {
-	if _, ok := adapter.ExtractIDFromSlug(arg); ok {
-		obj, err := crud.Get(ctx, arg)
-		if err == nil || !errors.Is(err, adapter.ErrNotFound) {
-			return obj, err
-		}
-	}
-
-	apps, err := crud.List(ctx, 0)
-	if err != nil {
-		return nil, err
-	}
-	for _, app := range apps {
-		if app.Spec.Name == arg {
-			return &app, nil
-		}
-	}
-	return nil, fmt.Errorf("faro app %q: no app has that slug-id or name: %w", arg, adapter.ErrNotFound)
-}
-
 func corsOriginsString(origins []CORSOrigin) string {
 	if len(origins) == 0 {
 		return "-"
@@ -235,7 +175,9 @@ func newGetCommand(loader RESTConfigLoader) *cobra.Command {
 		Use:   "get <slug-id|name>",
 		Short: "Get a Frontend Observability app by slug-id or name.",
 		Long: `Get a Frontend Observability app by slug-id (my-web-app-42), numeric ID or
-display name. An argument that matches no app by ID is looked up by name.`,
+display name. A slug-id must match the app's own name, so a display name that
+ends in digits, such as "checkout-2", never returns app 2. An argument that is
+one app's name and another app's slug-id or ID is an error.`,
 		Example: `  # Get by slug-id.
   gcx frontend apps get my-web-app-42
 
@@ -254,7 +196,7 @@ display name. An argument that matches no app by ID is looked up by name.`,
 				return err
 			}
 
-			typedObj, err := getApp(ctx, crud, args[0])
+			typedObj, err := resolveApp(ctx, crud, args[0])
 			if err != nil {
 				return err
 			}
@@ -446,7 +388,7 @@ type deleteOpts struct {
 
 func (o *deleteOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("text", &successLineCodec{render: singleMutationLine(func(m cmdio.SingleMutation) string {
-		return fmt.Sprintf("Deleted Frontend Observability app %q", m.Target.Name)
+		return fmt.Sprintf("Deleted Frontend Observability app %q (id=%s)", m.Target.Name, m.Target.ID)
 	})})
 	o.IO.DefaultFormat("text")
 	o.IO.BindFlags(flags)
@@ -457,7 +399,7 @@ func (o *deleteOpts) Validate() error { return o.IO.Validate() }
 func newDeleteCommand(loader RESTConfigLoader) *cobra.Command {
 	opts := &deleteOpts{}
 	cmd := &cobra.Command{
-		Use:   "delete <name>",
+		Use:   "delete <slug-id|name>",
 		Short: "Delete a Frontend Observability app.",
 		Long: `Delete a Frontend Observability app.
 
@@ -465,9 +407,10 @@ Deleting requires the grafana-kowalski-app.apps:delete permission (granted to
 Admin and Frontend Observability Admin by default). A user with only apps:write
 can create and update apps but cannot delete them.
 
-The argument is a slug-id or numeric ID, not a name. Any trailing "-<digits>"
-is read as the app ID, so "Checkout-2024" deletes app 2024. Find the slug-id with
-"gcx frontend apps list" first. There is no confirmation prompt.`,
+The argument is a slug-id (my-web-app-42), numeric ID or display name. A
+slug-id must match the app's own name, so deleting "checkout-2" never deletes
+app 2 when app 2 has another name. An argument that is one app's name and
+another app's slug-id or ID is an error. There is no confirmation prompt.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
@@ -482,13 +425,18 @@ is read as the app ID, so "Checkout-2024" deletes app 2024. Find the slug-id wit
 				return err
 			}
 
-			if err := crud.Delete(ctx, name); err != nil {
+			target, err := resolveApp(ctx, crud, name)
+			if err != nil {
+				return fmt.Errorf("deleting faro app %q: %w", name, err)
+			}
+			if err := crud.Delete(ctx, target.GetName()); err != nil {
 				return fmt.Errorf("deleting faro app %q: %w", name, err)
 			}
 
 			result := cmdio.NewSingleMutation("deleted", cmdio.MutationTarget{
 				Kind: Kind,
-				Name: name,
+				Name: target.Spec.Name,
+				ID:   target.Spec.ID,
 			})
 			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},

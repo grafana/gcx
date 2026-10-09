@@ -145,6 +145,16 @@ func TestResourceAdapter_Get(t *testing.T) {
 			wantName: "my-web-app-42",
 		},
 		{
+			// A slug-id refers to an app only when the slug is the app's own.
+			name: "slug of another app is not found",
+			id:   "checkout-42",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				writeJSON(w, map[string]any{"id": 42, "name": "my-web-app"})
+			},
+			wantErr:      true,
+			wantNotFound: true,
+		},
+		{
 			name: "propagates not found error",
 			id:   "missing-999",
 			handler: func(w http.ResponseWriter, _ *http.Request) {
@@ -229,16 +239,40 @@ func TestResourceAdapter_PushCreatesMissingApp(t *testing.T) {
 }
 
 func TestResourceAdapter_Delete(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, http.MethodDelete, r.Method)
-		assert.Contains(t, r.URL.Path, "/42")
-		w.WriteHeader(http.StatusNoContent)
-	}))
-	defer server.Close()
+	tests := []struct {
+		name         string
+		resource     string
+		wantDeleted  bool
+		wantNotFound bool
+	}{
+		{name: "deletes the app the slug-id names", resource: "my-web-app-42", wantDeleted: true},
+		{name: "deletes by bare ID", resource: "42", wantDeleted: true},
+		{name: "refuses a slug-id with another app's slug", resource: "checkout-42", wantNotFound: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			deleted := false
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Contains(t, r.URL.Path, "/42")
+				if r.Method == http.MethodDelete {
+					deleted = true
+					w.WriteHeader(http.StatusNoContent)
+					return
+				}
+				writeJSON(w, map[string]any{"id": 42, "name": "my-web-app"})
+			}))
+			defer server.Close()
 
-	a := newTestAdapter(t, server, "stack-123")
-	err := a.Delete(t.Context(), "my-web-app-42", metav1.DeleteOptions{})
-	require.NoError(t, err)
+			a := newTestAdapter(t, server, "stack-123")
+			err := a.Delete(t.Context(), tt.resource, metav1.DeleteOptions{})
+			assert.Equal(t, tt.wantDeleted, deleted)
+			if tt.wantNotFound {
+				require.ErrorIs(t, err, adapter.ErrNotFound)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
 }
 
 func TestResourceAdapter_ListPopulatesMetadata(t *testing.T) {

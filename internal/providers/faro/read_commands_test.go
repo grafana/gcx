@@ -113,8 +113,9 @@ func TestFaroGet_ErrorsAreNotReportedAsMissingApp(t *testing.T) {
 
 func TestFaroGet_Resolution(t *testing.T) {
 	// "Shop-7" and "2024" look like IDs; ID 7 and 2024 do not exist, so they
-	// must fall through to the name lookup.
-	server := newNamedAppServer(t, []string{"App 1", "Shop-7", "2024"})
+	// must fall through to the name lookup. "probe-1" ends in the ID of an app
+	// that does exist (App 1), and must still resolve to itself.
+	server := newNamedAppServer(t, []string{"App 1", "Shop-7", "2024", "probe-1"})
 
 	tests := []struct {
 		name    string
@@ -127,6 +128,8 @@ func TestFaroGet_Resolution(t *testing.T) {
 		{name: "display name", arg: "App 1", wantID: "1"},
 		{name: "slug-shaped name", arg: "Shop-7", wantID: "2"},
 		{name: "numeric-looking name", arg: "2024", wantID: "3"},
+		{name: "name ending in another app's ID", arg: "probe-1", wantID: "4"},
+		{name: "slug-id with another app's slug", arg: "shop-7-1", wantErr: "no app has that slug-id or name"},
 		{name: "unknown", arg: "Nope", wantErr: "no app has that slug-id or name"},
 		{name: "unknown slug-shaped", arg: "nope-99", wantErr: "no app has that slug-id or name"},
 	}
@@ -148,5 +151,5 @@ func TestFaroGet_Resolution(t *testing.T) {
 func TestFaroDelete_HelpDocumentsPermission(t *testing.T) {
 	cmd := newDeleteCommand(&fakeConfigLoader{})
 	assert.Contains(t, cmd.Long, "grafana-kowalski-app.apps:delete")
-	assert.Contains(t, cmd.Long, "Checkout-2024")
+	assert.Contains(t, cmd.Long, "checkout-2")
 }
