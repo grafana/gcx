@@ -13,7 +13,7 @@ keywords:
 weight: 1
 ---
 
-# Dashboards as code `gcx` user guide
+# Manage dashboards as code with `gcx` 
 
 With this workflow, you can define and manage dashboards as code, saving them to a version control system like Git. This is useful for teams that want to maintain a history of changes, collaborate on dashboard design, and ensure consistency across environments.
 

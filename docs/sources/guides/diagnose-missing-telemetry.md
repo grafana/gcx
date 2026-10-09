@@ -11,7 +11,7 @@ keywords:
   - Grafana CLI
   - observability as code
   - telemetry
-weight: 1
+weight: 5
 ---
 
 # Diagnose missing telemetry with `gcx`
@@ -46,6 +46,8 @@ export GCX_CONFIG="$GCX_DIAGNOSTICS_DIR/config.yaml"
 
 Keep the path until cleanup. In another terminal, set the variable to the same path; do not create a second empty configuration by repeating the block.
 
+### Log in to an existing destination
+
 For an existing Grafana destination, use interactive login with a new context in that file, replacing the example URL:
 
 ```bash
@@ -55,6 +57,8 @@ gcx login diagnostics --config "$GCX_CONFIG" \
 
 For local LGTM, use that repository's local connection instructions instead of this login step. See [Configure gcx](../configuration.md) for supported authentication methods. Supply credentials locally through the supported auth flow, not in chat, copied transcripts, or committed files. Prefer read-only access when available; approval instructions do not restrict API permissions.
 
+### Check the overrides
+
 Environment overrides can still affect the selected configuration. Review which overrides you intentionally set before running queries and don't dump your whole environment or configuration into a transcript. Don't disable TLS verification to make a connection error disappear.
 
 Use your selected context name below, where `diagnostics` is the login example:
@@ -63,6 +67,7 @@ Use your selected context name below, where `diagnostics` is the login example:
 gcx config check --config "$GCX_CONFIG" --context diagnostics
 gcx datasources list --config "$GCX_CONFIG" --context diagnostics
 ```
+### Verify the connection and authentication
 
 Stop and resolve any connection or authentication errors before interpreting query results. A successful configuration check does not prove application ingestion. Choose the datasource UID returned by discovery, rather than assuming a default. For example, against a Prometheus datasource:
 
@@ -74,9 +79,9 @@ gcx metrics query 'vector(1)' --datasource 'PROMETHEUS_DATASOURCE_UID' \
 
 Replace `PROMETHEUS_DATASOURCE_UID` before running. A returned value proves that query path works, not that the application emitted metrics. With `--error-on-empty`, an empty response exits unsuccessfully; without it, a successful empty query, an invalid query, and a failed connection are different observations. The flag is supported on the Prometheus query, Loki logs/metrics, Tempo search/metrics, and Pyroscope query commands; it is not a generic flag for unrelated datasource query commands.
 
-## Give the agent the symptom and boundaries
+## Use an agent for diagnostics
 
-Start the agent in the relevant application/test checkout. Provide:
+Start the agent in the relevant application or test checkout, and provide it with the symptoms and boundaries for diagnostics:
 
 - The original dashboard URL, failed test assertion, or checker finding.
 - The explicit gcx config path, context, and intended destination (no secrets).
@@ -85,7 +90,7 @@ Start the agent in the relevant application/test checkout. Provide:
 - The relevant Compose project, deployment, or Collector configuration you own.
 - Which resources may be inspected and which actions require approval.
 
-Make sure the agent doesn't invent answers, ask it to identify what information or access is missing. Use this prompt, filling in what you know:
+Make sure the agent doesn't invent answers. Ask it to identify what information or access is missing. For example, uee this prompt, filling in what you know:
 
 > Use the existing gcx skills to investigate `<symptom>`. Query only
 > `<config path and context>` and inspect only `<application/fixture scope>`.
@@ -110,6 +115,6 @@ After approving a specific change:
 4. Restore temporary diagnostic configuration and logging. Remove temporary backups and stop only resources created for this investigation, after confirming they are no longer needed. Never clean up pre-existing resources by assumption.
 5. Record the confirmed cause, remaining unknowns, approved changes, and result.
 
-Debug-exporter payloads and logs may contain sensitive data. Enable them only with permission, for a bounded investigation, and do not publish raw output. Avoid full environment dumps or HTTP payload logging that can expose credentials.
+Debug-exporter payloads and logs may contain sensitive data. Enable them only with permission, for a bounded investigation, and never publish raw output. Avoid full environment dumps or HTTP payload logging that can expose credentials.
 
-If you created the private directory above, inspect it locally and remove only that directory when finished. Remove any diagnostic credentials stored by login using your normal credential-management process; deleting a config file don't revoke a server-side token. Explicit configuration or context arguments leave your usual current context unchanged. Do not delete an existing configuration used for the investigation, or revoke a credential shared with another workflow.
+If you created the private directory above, inspect it locally and remove only that directory when finished. Remove any diagnostic credentials stored by login using your normal credential-management process; deleting a config file doesn't revoke a server-side token. Explicit configuration or context arguments leave your usual current context unchanged. Do not delete an existing configuration used for the investigation, or revoke a credential shared with another workflow.

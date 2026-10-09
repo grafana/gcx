@@ -11,7 +11,7 @@ keywords:
   - Grafana CLI
   - observability as code
   - telemetry
-weight: 1
+weight: 2
 ---
 
 # Explore and modify resources with `gcx`
