@@ -282,7 +282,7 @@ func TestResolveExpr(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			opts := &dsquery.SharedOpts{Expr: tt.flagExpr}
+			opts := &dsquery.SharedOpts{ExprOpts: dsquery.ExprOpts{Expr: tt.flagExpr}}
 			got, err := opts.ResolveExpr(tt.args, tt.exprArgIndex)
 			if tt.wantErr != "" {
 				require.Error(t, err)

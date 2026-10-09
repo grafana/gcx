@@ -83,6 +83,17 @@ func (p *Provider) descriptor() signals.Descriptor {
   # Output as JSON
   gcx logs series -d UID --match '{job="varlogs"}' -o json`,
 			},
+			{
+				Build:     dsloki.StatsCmd,
+				TokenCost: "small",
+				LLMHint:   `gcx logs stats -d abc123 '{job="varlogs"}' --since 1h -o json`,
+				Example: `
+  # Estimate bytes scanned by a selector over the last hour
+  gcx logs stats -d UID '{job="varlogs"}' --since 1h
+
+  # Output as JSON
+  gcx logs stats -d UID '{job="varlogs"}' --since 1h -o json`,
+			},
 		},
 		Adaptive: &signals.AdaptiveSpec{
 			Build: adaptivelogs.Commands,
