@@ -17,13 +17,13 @@ import (
 // tempo/metrics.go's defaultTraceMetricsWindow.
 const defaultPatternsWindow = time.Hour
 
-// PatternsCmd returns the `patterns` subcommand for a Loki datasource parent.
-func PatternsCmd(loader *providers.ConfigLoader) *cobra.Command {
+// QueryPatternsCmd returns the `query-patterns` subcommand for a Loki datasource parent.
+func QueryPatternsCmd(loader *providers.ConfigLoader) *cobra.Command {
 	shared := &dsquery.SharedOpts{}
 	var datasource string
 
 	cmd := &cobra.Command{
-		Use:   "patterns [EXPR]",
+		Use:   "query-patterns [EXPR]",
 		Short: "Detect recurring log patterns",
 		Long: `Detect recurring log line patterns for a LogQL stream selector.
 
@@ -36,13 +36,13 @@ patterns (not an error) otherwise.
 Default time range is the last hour when no time flags are given.`,
 		Example: `
   # Detect patterns using configured default datasource
-  gcx datasources loki patterns '{job="varlogs"}'
+  gcx datasources loki query-patterns '{job="varlogs"}'
 
   # Detect patterns over a specific window
-  gcx datasources loki patterns -d UID '{job="varlogs"}' --since 6h
+  gcx datasources loki query-patterns -d UID '{job="varlogs"}' --since 6h
 
   # Output as JSON
-  gcx datasources loki patterns -d UID '{job="varlogs"}' -o json`,
+  gcx datasources loki query-patterns -d UID '{job="varlogs"}' -o json`,
 		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := shared.Validate(); err != nil {
@@ -99,7 +99,7 @@ Default time range is the last hour when no time flags are given.`,
 
 	cmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "medium",
-		agent.AnnotationLLMHint:   `gcx datasources loki patterns -d UID '{job="varlogs"}' --since 1h -o json`,
+		agent.AnnotationLLMHint:   `gcx datasources loki query-patterns -d UID '{job="varlogs"}' --since 1h -o json`,
 	}
 
 	shared.Setup(cmd.Flags(), false)
