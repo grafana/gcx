@@ -109,6 +109,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx providers list": {Cost: "small"},
 
 	// resources
+	"gcx resources browse":        {Cost: "small"},
 	"gcx resources delete":        {Cost: "small"},
 	"gcx resources edit":          {Cost: "small"},
 	"gcx resources list-examples": {Cost: "small", Hint: "Docs: " + docs.DashboardJSONModel},

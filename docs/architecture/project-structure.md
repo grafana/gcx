@@ -141,6 +141,7 @@ gcx/
 │   ├── terminal/             # TTY detection: IsPiped(), NoTruncate(), Detect()
 │   ├── testutils/            # Shared test helpers (not exposed externally)
 │   ├── resources/            # Core resource abstraction layer
+│   │   ├── browse/           # `resources browse` TUI model: fuzzy type/object picker + YAML/schema preview (bubbletea; behind a Source interface)
 │   │   ├── discovery/        # API discovery: registry, index, preferred versions
 │   │   ├── dynamic/          # k8s dynamic client wrapper (namespaced ops)
 │   │   ├── local/            # FSReader / FSWriter (disk I/O)
@@ -377,6 +378,7 @@ tree (e.g. fully offline work); it is never required.
 | YAML / JSON | `goccy/go-yaml`, `go-openapi/strfmt` | YAML codec, OpenAPI format types |
 | File watching | `fsnotify/fsnotify` | Live reload file watcher |
 | Terminal UI | `NimbleMarkets/ntcharts/v2`, `charm.land/lipgloss/v2` | Terminal chart rendering (bar charts, line graphs) |
+| Interactive TUI | `charm.land/bubbletea/v2`, `charm.land/bubbles/v2` (`textinput`, `viewport` only), `charm.land/huh/v2` | `resources browse` full-screen explorer; huh forms for login/config prompts. `bubbles/list` is deliberately not used: it pulls in `sahilm/fuzzy`, so `browse` ships its own subsequence matcher |
 | Terminal detection | `golang.org/x/term` | Terminal size detection for graph output |
 | Testing | `stretchr/testify` | Assertions in unit tests |
 | Semver | `Masterminds/semver/v3` | Version parsing/comparison |

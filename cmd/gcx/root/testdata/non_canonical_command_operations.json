@@ -99,6 +99,7 @@
   "gcx profiles data-range",
   "gcx profiles exemplars profile",
   "gcx profiles exemplars span",
+  "gcx resources browse",
   "gcx resources edit",
   "gcx resources validate",
   "gcx setup status",

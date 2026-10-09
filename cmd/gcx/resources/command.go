@@ -31,6 +31,7 @@ func Command() *cobra.Command {
 
 	configOpts.BindFlags(cmd.PersistentFlags())
 
+	addBrowseCommand(cmd, configOpts)
 	cmd.AddCommand(deleteCmd(configOpts))
 	cmd.AddCommand(editCmd(configOpts))
 	cmd.AddCommand(listExamplesCmd(configOpts))

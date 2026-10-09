@@ -71,30 +71,9 @@ func listTypesCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			// That way we can use the same code for rendering as for `resources get`.
 			res := reg.SupportedResources().Sorted()
 
-			// If a resource selector argument was provided, filter to matching descriptors.
-			if len(args) > 0 {
-				sels, parseErr := resources.ParseSelectors(args)
-				if parseErr != nil {
-					return fmt.Errorf("invalid resource selector: %w", parseErr)
-				}
-				filters, filterErr := reg.MakeFilters(discovery.MakeFiltersOptions{
-					Selectors:            sels,
-					PreferredVersionOnly: true,
-				})
-				if filterErr != nil {
-					return fmt.Errorf("unknown resource %q: %w", args[0], filterErr)
-				}
-				matched := make(map[string]bool, len(filters))
-				for _, f := range filters {
-					matched[f.Descriptor.GroupVersionKind().String()] = true
-				}
-				var filtered resources.Descriptors
-				for _, d := range res {
-					if matched[d.GroupVersionKind().String()] {
-						filtered = append(filtered, d)
-					}
-				}
-				res = filtered
+			res, err = filterDescriptors(reg, res, args)
+			if err != nil {
+				return err
 			}
 
 			// --json ? discovery: enumerate fields of a Descriptor element and exit.
@@ -150,6 +129,36 @@ func listTypesCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	opts.setup(cmd.Flags())
 
 	return cmd
+}
+
+// filterDescriptors narrows res to the types matched by the selector args
+// (preferred version only). With no args, res is returned unchanged.
+func filterDescriptors(reg *discovery.Registry, res resources.Descriptors, args []string) (resources.Descriptors, error) {
+	if len(args) == 0 {
+		return res, nil
+	}
+	sels, err := resources.ParseSelectors(args)
+	if err != nil {
+		return nil, fmt.Errorf("invalid resource selector: %w", err)
+	}
+	filters, err := reg.MakeFilters(discovery.MakeFiltersOptions{
+		Selectors:            sels,
+		PreferredVersionOnly: true,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("unknown resource %q: %w", args[0], err)
+	}
+	matched := make(map[string]bool, len(filters))
+	for _, f := range filters {
+		matched[f.Descriptor.GroupVersionKind().String()] = true
+	}
+	var filtered resources.Descriptors
+	for _, d := range res {
+		if matched[d.GroupVersionKind().String()] {
+			filtered = append(filtered, d)
+		}
+	}
+	return filtered, nil
 }
 
 // descriptorToMap converts a Descriptor to a map[string]any for field

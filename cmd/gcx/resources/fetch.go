@@ -46,6 +46,12 @@ func FetchResources(ctx context.Context, opts FetchRequest, args []string) (*Fet
 		return nil, err
 	}
 
+	return fetchWithRegistry(ctx, opts, reg, sels)
+}
+
+// fetchWithRegistry is FetchResources for callers that already hold a
+// discovery registry, so repeated fetches skip rediscovery.
+func fetchWithRegistry(ctx context.Context, opts FetchRequest, reg *discovery.Registry, sels resources.Selectors) (*FetchResponse, error) {
 	filters, err := reg.MakeFilters(discovery.MakeFiltersOptions{
 		Selectors:            sels,
 		PreferredVersionOnly: true,

@@ -543,6 +543,7 @@
  "gcx profiles query": "finite",
  "gcx profiles series": "finite",
  "gcx providers list": "finite",
+ "gcx resources browse": "interactive",
  "gcx resources delete": "finite",
  "gcx resources edit": "interactive",
  "gcx resources get": "finite",
