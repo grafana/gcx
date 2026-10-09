@@ -27,5 +27,6 @@ Query Loki datasources and manage Adaptive Logs
 * [gcx logs labels](gcx_logs_labels.md)	 - List labels or label values
 * [gcx logs metrics](gcx_logs_metrics.md)	 - Execute a metric LogQL query against a Loki datasource
 * [gcx logs query](gcx_logs_query.md)	 - Execute a LogQL query against a Loki datasource
+* [gcx logs query-patterns](gcx_logs_query-patterns.md)	 - Detect recurring log patterns
 * [gcx logs series](gcx_logs_series.md)	 - List log streams
 

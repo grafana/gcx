@@ -26,5 +26,6 @@ Query Loki datasources
 * [gcx datasources loki labels](gcx_datasources_loki_labels.md)	 - List labels or label values
 * [gcx datasources loki metrics](gcx_datasources_loki_metrics.md)	 - Execute a metric LogQL query against a Loki datasource
 * [gcx datasources loki query](gcx_datasources_loki_query.md)	 - Execute a LogQL query against a Loki datasource
+* [gcx datasources loki query-patterns](gcx_datasources_loki_query-patterns.md)	 - Detect recurring log patterns
 * [gcx datasources loki series](gcx_datasources_loki_series.md)	 - List log streams
 

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"time"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/httputils"
@@ -237,6 +238,65 @@ func (c *Client) Series(ctx context.Context, datasourceUID string, matchers []st
 	return &result, nil
 }
 
+// Patterns queries Loki's patterns endpoint for a bare stream selector over the
+// given time range; Loki rejects pipeline stages and metric expressions. step
+// (a duration like "15s" or a float number of seconds) is optional; pass "" to
+// let Loki choose a bucket size.
+//
+// The result is what the backend retained, not a complete inventory: Loki
+// prunes low-volume patterns and caps results, and retention varies by
+// deployment. The endpoint needs a Loki version with the patterns API and the
+// pattern ingester/querier enabled; when it is unavailable the error is
+// returned as-is, never converted to an empty result.
+func (c *Client) Patterns(ctx context.Context, datasourceUID, query string, start, end time.Time, step string) (*PatternsResponse, error) {
+	if !start.Before(end) {
+		return nil, fmt.Errorf("invalid time range: start (%s) must be before end (%s)", start, end)
+	}
+
+	apiPath := c.buildPatternsPath(datasourceUID)
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, c.restConfig.Host+apiPath, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	q := httpReq.URL.Query()
+	q.Set("query", query)
+	q.Set("start", strconv.FormatInt(start.UnixNano(), 10))
+	q.Set("end", strconv.FormatInt(end.UnixNano(), 10))
+	if step != "" {
+		q.Set("step", step)
+	}
+	httpReq.URL.RawQuery = q.Encode()
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get patterns: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := httputils.ReadResponseBody(resp.Body, httputils.DefaultResponseLimit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		// Experimental: lets the CLI explain an unambiguous route-absent response.
+		apiErr := queryerror.FromBody("loki", "patterns query", resp.StatusCode, respBody).WithAvailability(false, true)
+		if resp.StatusCode == http.StatusNotFound {
+			return nil, fmt.Errorf("%w (HTTP 404 can mean the patterns endpoint is unavailable here: it needs a Loki version with the patterns API and the pattern ingester/querier enabled)", apiErr)
+		}
+		return nil, apiErr
+	}
+
+	var result PatternsResponse
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return &result, nil
+}
+
 func (c *Client) buildLabelsPath(datasourceUID string) string {
 	return fmt.Sprintf("/api/datasources/uid/%s/resources/labels", url.PathEscape(datasourceUID))
 }
@@ -248,6 +308,10 @@ func (c *Client) buildLabelValuesPath(datasourceUID, labelName string) string {
 
 func (c *Client) buildSeriesPath(datasourceUID string) string {
 	return fmt.Sprintf("/api/datasources/uid/%s/resources/series", url.PathEscape(datasourceUID))
+}
+
+func (c *Client) buildPatternsPath(datasourceUID string) string {
+	return fmt.Sprintf("/api/datasources/uid/%s/resources/patterns", url.PathEscape(datasourceUID))
 }
 
 func convertGrafanaResponse(grafanaResp *GrafanaQueryResponse) *QueryResponse {
