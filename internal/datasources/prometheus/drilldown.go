@@ -2,7 +2,6 @@ package prometheus
 
 import (
 	"strconv"
-	"strings"
 	"time"
 
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
@@ -13,18 +12,14 @@ import (
 // Drilldown.
 const MetricsDrilldownPluginID = "grafana-metricsdrilldown-app"
 
-// escapeURLPipe mirrors Metrics Drilldown's own escapeUrlPipeDelimiters: it
-// replaces the pipe character used as the var-filters field separator so a
-// label value containing one doesn't corrupt the encoding. Unlike Logs
-// Drilldown, Metrics Drilldown doesn't escape commas here.
-func escapeURLPipe(value string) string {
-	return strings.ReplaceAll(value, "|", "__gfp__")
-}
-
-// encodeMetricsFilter renders one var-filters entry, mirroring Metrics
-// Drilldown's own filterToUrlParameter encoding.
-func encodeMetricsFilter(f promquery.PromQLFilter) string {
-	return f.Label + "|" + f.Operator + "|" + escapeURLPipe(f.Value)
+// encodeMetricsFilter renders one var-filters entry. ok is false when the
+// value can't round-trip through the Scenes filter decoder.
+func encodeMetricsFilter(f promquery.PromQLFilter) (string, bool) {
+	value, ok := dsquery.EscapeScenesFilterField(f.Value)
+	if !ok {
+		return "", false
+	}
+	return f.Label + "|" + f.Operator + "|" + value, true
 }
 
 // MetricsDrilldownURL builds a Grafana Metrics Drilldown deep link for a
@@ -60,7 +55,11 @@ func MetricsDrilldownURL(host, datasourceUID, expr string, start, end time.Time)
 		"to":     {strconv.FormatInt(end.UnixMilli(), 10)},
 	}
 	for _, f := range filters {
-		params["var-filters"] = append(params["var-filters"], encodeMetricsFilter(f))
+		encoded, ok := encodeMetricsFilter(f)
+		if !ok {
+			return "", false
+		}
+		params["var-filters"] = append(params["var-filters"], encoded)
 	}
 
 	return dsquery.BuildDrilldownURL(host, MetricsDrilldownPluginID, "/drilldown", params), true

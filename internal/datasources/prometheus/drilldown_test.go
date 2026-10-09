@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/grafana/gcx/internal/datasources/prometheus"
+	"github.com/grafana/gcx/internal/datasources/query/scenesfiltertest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -59,4 +60,26 @@ func TestMetricsDrilldownURL_FallbackCases(t *testing.T) {
 			assert.False(t, ok)
 		})
 	}
+}
+
+func TestMetricsDrilldownURL_FilterValuesRoundTripThroughScenesDecoder(t *testing.T) {
+	for _, value := range []string{"a,b", "a#b", "a|b", "a,b#c|d"} {
+		got, ok := prometheus.MetricsDrilldownURL("https://stack.grafana.net", "prom-uid",
+			`up{job="`+value+`"}`, time.Time{}, time.Time{})
+		require.True(t, ok, value)
+
+		u, err := url.Parse(got)
+		require.NoError(t, err)
+		filters := u.Query()["var-filters"]
+		require.Len(t, filters, 1, value)
+
+		decoded := scenesfiltertest.Decode(filters[0])
+		assert.Equal(t, scenesfiltertest.Filter{Key: "job", Operator: "=", Value: value}, decoded, value)
+	}
+}
+
+func TestMetricsDrilldownURL_FallsBackForValuesContainingEscapeTokens(t *testing.T) {
+	_, ok := prometheus.MetricsDrilldownURL("https://stack.grafana.net", "prom-uid",
+		`up{job="x__gfc__y"}`, time.Time{}, time.Time{})
+	assert.False(t, ok)
 }
