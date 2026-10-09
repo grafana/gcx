@@ -4,7 +4,7 @@
 
 See [proposal.md](proposal.md) for scope and [RFC 002](https://github.com/grafana/gcx/blob/main/docs/rfcs/002-assistant-watchers.md) for settled cross-step decisions. The existing Assistant MCP resource supplies the transport, lazy configuration, typed envelope and identity precedent. The shared puller records per-resource failures, but its resource collection replaces entries with identical identities. Collision detection must therefore happen before collection insertion, not only before file writing.
 
-Backend source has been inspected for collection paging, archive filtering, access checks, configuration, secret-presence reporting, checks and calibration reads. Deployed behavior remains unverified until throwaway-stack e2e. API mapping and the exact inventory of excluded response fields are kept in a private working note outside this checkout; no private API names belong in these artifacts.
+Backend source has been inspected for collection paging, archive filtering, access checks, configuration, secret-presence reporting, checks and calibration reads. Live read-only verification exercised nonempty exports, get parity, status and partial failures; nonempty archived reads and collection churn are covered by local HTTP fixtures. API mapping and the exact inventory of excluded response fields are kept in a private working note outside this checkout; no private API names belong in these artifacts.
 
 ## Goals / Non-Goals
 
@@ -108,8 +108,8 @@ Nearest sibling: `assistant mcp-servers` reads integration configuration; `assis
 
 ## Migration Plan
 
-This adds an experimental surface and one resource registration. Existing commands and manifests retain their behavior. Rollback removes the new command wiring and registration. Approval of these artifacts precedes implementation. Later write support must consume the exact schema above without changing pulled file format.
+This adds an experimental surface and one resource registration. The discovery fallback also changes selector-free generic get/pull: registered kinds absent from the native preferred version now participate, so pull-all can create additional resource directories, including MCP servers and Watchers. Native kind preferences, explicit-version selection and existing manifest formats remain intact. Rollback removes the new command wiring, registration and missing-kind discovery fallback. Approval of these artifacts precedes implementation. Later write support must consume the exact schema above without changing pulled file format.
 
 ## Open Questions
 
-No unsettled product decision is being reopened. Deployed read availability and permissions remain a verification item, with failure behavior specified above. The RFC is read from `origin/main` because the requested planning base predates it; the public link remains canonical.
+No unsettled product decision is being reopened. Read availability and permissions vary by target; live verification exercised successful reads and explicit per-item failures, with failure behavior specified above. The RFC is read from `origin/main` because the requested planning base predates it; the public link remains canonical.

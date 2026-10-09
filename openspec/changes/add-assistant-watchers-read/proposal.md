@@ -27,6 +27,6 @@ None.
 
 ## Impact
 
-Extend the existing Assistant provider and reuse its authentication and transport. Add a domain client under `internal/assistant/watchers/`, manifest and typed adapter under `internal/assistant/watcher/`, and commands under `internal/providers/assistant/watchers/`. Update provider registration, experimental and agent metadata, shared command registries, reference and architecture documentation, and ownership entries for Watcher artifacts and Assistant reference docs. No new dependencies or new provider are planned.
+Extend the existing Assistant provider and reuse its authentication and transport. Add a domain client under `internal/assistant/watchers/`, manifest and typed adapter under `internal/assistant/watcher/`, and commands under `internal/providers/assistant/watchers/`. Update provider registration, experimental and agent metadata, shared command registries, reference and architecture documentation, and ownership entries for Watcher artifacts and Assistant reference docs. No new dependencies or new provider are planned. Selector-free generic get/pull also include registered kinds missing from the native preferred version, so pull-all can create additional resource directories, including MCP servers and Watchers.
 
 Creation, configuration writes, calibration requests, lifecycle operations, run history and version history are outside this change. No Watcher or shared system is mutated by these reads.
