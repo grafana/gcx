@@ -11,12 +11,19 @@ import (
 // TracesDrilldownPluginID is the Grafana app plugin ID for Traces Drilldown.
 const TracesDrilldownPluginID = "grafana-exploretraces-app"
 
-// encodeTraceQLFilter renders one var-filters entry, mirroring Traces
-// Drilldown's own filter encoding: scope and tag joined by ".", then the
-// operator and value, pipe-delimited. Unlike Logs Drilldown, Traces
-// Drilldown does not escape delimiter characters in the value.
-func encodeTraceQLFilter(f tempo.TraceQLFilter) string {
-	return f.Scope + "." + f.Tag + "|" + f.Operator + "|" + f.Value
+// encodeTraceQLFilter renders one var-filters entry: scope and tag joined by
+// ".", then the operator and value, pipe-delimited. ok is false when a field
+// can't round-trip through the Scenes filter decoder.
+func encodeTraceQLFilter(f tempo.TraceQLFilter) (string, bool) {
+	key, ok := dsquery.EscapeScenesFilterField(f.Scope + "." + f.Tag)
+	if !ok {
+		return "", false
+	}
+	value, ok := dsquery.EscapeScenesFilterField(f.Value)
+	if !ok {
+		return "", false
+	}
+	return key + "|" + f.Operator + "|" + value, true
 }
 
 // TracesDrilldownURL builds a Grafana Traces Drilldown deep link for a
@@ -54,7 +61,11 @@ func TracesDrilldownURL(host, datasourceUID, expr string, start, end time.Time) 
 		"actionView":        {"traceList"},
 	}
 	for _, f := range filters {
-		params["var-filters"] = append(params["var-filters"], encodeTraceQLFilter(f))
+		encoded, ok := encodeTraceQLFilter(f)
+		if !ok {
+			return "", false
+		}
+		params["var-filters"] = append(params["var-filters"], encoded)
 	}
 
 	return dsquery.BuildDrilldownURL(host, TracesDrilldownPluginID, "/explore", params), true
