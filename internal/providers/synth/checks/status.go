@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/gcx/internal/providers/synth/probes"
 	"github.com/grafana/gcx/internal/providers/synth/smcfg"
 	"github.com/grafana/gcx/internal/query/prometheus"
+	"github.com/grafana/gcx/internal/query/synth"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/grafana/promql-builder/go/promql"
@@ -36,10 +37,12 @@ import (
 
 // CheckStatusResult holds merged check + metric data for a single check.
 type CheckStatusResult struct {
-	ID          int64    `json:"id"`
-	Job         string   `json:"job"`
-	Target      string   `json:"target"`
-	Type        string   `json:"type"`
+	ID     int64  `json:"id"`
+	Job    string `json:"job"`
+	Target string `json:"target"`
+	Type   string `json:"type"`
+	// Success is reachability (the app's check list card value). The JSON key
+	// predates that definition and is kept for compatibility.
 	Success     *float64 `json:"success,omitempty"`
 	ProbesUp    int      `json:"probesUp"`
 	ProbesTotal int      `json:"probesTotal"`
@@ -87,7 +90,10 @@ func (o *statusOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 
-	flags.StringVar(&o.DatasourceUID, "datasource-uid", "", "UID of the Prometheus datasource to query")
+	flags.StringVar(&o.DatasourceUID, "datasource-uid", "", "Ignored: status is read from the Synthetic Monitoring datasource")
+	// Hidden rather than deprecated: pflag prints the deprecation notice on
+	// stdout, ahead of the JSON value. RunE warns on stderr instead.
+	_ = flags.MarkHidden("datasource-uid")
 	flags.StringArrayVar(&o.Labels, "label", nil, "Filter by label key=value (repeatable, e.g. --label env=prod)")
 	flags.StringVar(&o.JobPattern, "job", "", "Filter by job name glob pattern (e.g. --job 'shopk8s-*')")
 	flags.StringVar(&o.StatusFilter, "status", "", "Filter results by status: OK, FAILING, or NODATA")
@@ -98,11 +104,15 @@ func newStatusCommand(loader smcfg.StatusLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "status [ID]",
 		Short: "Show pass/fail status of Synthetic Monitoring checks.",
-		Long: `Show pass/fail status by combining the SM API with Prometheus metrics.
+		Long: `Show pass/fail status by combining the SM API with the Synthetic Monitoring app's named queries.
 
-Displays current success rate, latency (from probe_duration_seconds),
-number of probes reporting, and health status for each check.
-Requires a Prometheus datasource containing SM metrics.`,
+Displays reachability (the value on the app's check list card, over the last
+3 hours), average latency, number of probes reporting, and health status for
+each check. The values come from the Synthetic Monitoring datasource, so no
+Prometheus datasource is needed; the stack must run a Synthetic Monitoring app
+version that serves the checks_reachability, checks_probe_count and
+checks_latency queries. Unlike 'checks timeline', which still queries a
+Prometheus datasource, the values here come only from the app.`,
 		Example: `  # Show status of all checks.
   gcx synthetic-monitoring checks status
 
@@ -115,9 +125,6 @@ Requires a Prometheus datasource containing SM metrics.`,
   # Filter by label and status.
   gcx synthetic-monitoring checks status --label env=prod --status FAILING
 
-  # Specify the Prometheus datasource to query.
-  gcx synthetic-monitoring checks status --datasource-uid my-prometheus
-
   # Output as JSON for scripting.
   gcx synthetic-monitoring checks status -o json`,
 		Args: cobra.MaximumNArgs(1),
@@ -127,6 +134,10 @@ Requires a Prometheus datasource containing SM metrics.`,
 			}
 
 			ctx := cmd.Context()
+
+			if opts.DatasourceUID != "" {
+				cmdio.Warning(cmd.ErrOrStderr(), "--datasource-uid is ignored: status is read from the Synthetic Monitoring datasource")
+			}
 
 			// Build check filter from flag values.
 			labelMap, err := ParseLabelFlags(opts.Labels)
@@ -166,12 +177,10 @@ Requires a Prometheus datasource containing SM metrics.`,
 				}
 			}
 
-			// Fan-out: fetch checks, probes, datasource UID, and REST config in parallel.
+			// Fan-out: fetch checks and probes in parallel.
 			var (
 				checkList    []Check
 				probeNameMap = map[int64]string{}
-				dsUID        string
-				restCfg      config.NamespacedRESTConfig
 			)
 
 			initG, initCtx := errgroup.WithContext(ctx)
@@ -199,23 +208,11 @@ Requires a Prometheus datasource containing SM metrics.`,
 				return nil // best-effort
 			})
 
-			initG.Go(func() error {
-				var err error
-				dsUID, err = resolveDataSourceUID(initCtx, opts.DatasourceUID, loader)
-				return err
-			})
-
-			initG.Go(func() error {
-				var err error
-				restCfg, err = loader.LoadGrafanaConfig(initCtx)
-				return err
-			})
-
 			if err := initG.Wait(); err != nil {
 				return err
 			}
 
-			// Apply pre-Prometheus filters (job glob + labels) to reduce query scope.
+			// Apply the job glob and label filters first, to reduce query scope.
 			var filtered []Check
 			for _, c := range checkList {
 				if filter.MatchCheck(c) {
@@ -234,51 +231,34 @@ Requires a Prometheus datasource containing SM metrics.`,
 				return opts.IO.Encode(cmd.OutOrStdout(), []CheckStatusResult{})
 			}
 
-			promClient, err := prometheus.NewClient(restCfg)
+			if smDSUID == "" {
+				return errNoSMDatasource
+			}
+
+			// The SM backend owns the expressions: reachability and probe count are
+			// one tenant-wide call each, latency one per distinct check type.
+			smQueryClient, err := synth.NewBackendDatasourceClient(smRestCfg)
 			if err != nil {
 				return err
 			}
 
-			// Three aggregate queries — one HTTP call each, covering all checks at once.
-			successQ, err := BuildAllSuccessRateQuery()
-			if err != nil {
-				return err
+			metrics := fetchStatusMetrics(ctx, smQueryClient, smDSUID, filtered, time.Now())
+			if metrics.reachabilityFailed {
+				// Status is computed from reachability alone, so every check would
+				// read NODATA: "the check has no data" when the truth is "the
+				// backend could not be asked".
+				return fmt.Errorf("could not read check status from the Synthetic Monitoring datasource: %w", errors.Join(metrics.distinctFailures()...))
 			}
-			probeCountQ, err := BuildAllProbeCountQuery()
-			if err != nil {
-				return err
-			}
-			latencyQ, err := BuildAllLatencyQuery()
-			if err != nil {
-				return err
-			}
-
-			var (
-				successMap    map[string]float64
-				probeCountMap map[string]float64
-				latencyMap    map[string]float64
-			)
-
-			promG, promCtx := errgroup.WithContext(ctx)
-			promG.Go(func() error {
-				successMap = queryInstantByJobInstance(promCtx, promClient, dsUID, successQ)
-				return nil
-			})
-			promG.Go(func() error {
-				probeCountMap = queryInstantByJobInstance(promCtx, promClient, dsUID, probeCountQ)
-				return nil
-			})
-			promG.Go(func() error {
-				latencyMap = queryInstantByJobInstance(promCtx, promClient, dsUID, latencyQ)
-				return nil
-			})
-			if err := promG.Wait(); err != nil {
-				return err
+			// Partial failure: the columns that did resolve are still shown, and
+			// each warning names the query so an empty column is not read as "no
+			// data".
+			for _, failure := range metrics.distinctFailures() {
+				cmdio.Warning(cmd.ErrOrStderr(), "status column unavailable: %v", failure)
 			}
 
-			results := BuildCheckStatusResults(filtered, successMap, probeCountMap, latencyMap, probeNameMap)
+			results := BuildCheckStatusResults(filtered, metrics.success, metrics.probeCount, metrics.latency, probeNameMap)
 
-			// Apply post-Prometheus status filter.
+			// Apply the status filter, which needs the computed status.
 			if filter.StatusStr != "" {
 				var statusFiltered []CheckStatusResult
 				for _, r := range results {
@@ -461,94 +441,6 @@ Requires a Prometheus datasource containing SM metrics.`,
 // PromQL query builders
 // ---------------------------------------------------------------------------
 
-// BuildSuccessRateQuery builds a PromQL query for the average probe_success
-// rate over 5 minutes, grouped by job and instance.
-func BuildSuccessRateQuery(job, instance string) (string, error) {
-	expr, err := promql.Avg(
-		promql.AvgOverTime(
-			promql.Vector("probe_success").
-				Label("job", job).
-				Label("instance", instance).
-				Range("5m"),
-		),
-	).By([]string{"job", "instance"}).Build()
-	if err != nil {
-		return "", err
-	}
-	return expr.String(), nil
-}
-
-// BuildProbeCountQuery builds a PromQL query that counts the number of probes
-// currently reporting for a check.
-func BuildProbeCountQuery(job, instance string) (string, error) {
-	expr, err := promql.Count(
-		promql.Vector("probe_success").
-			Label("job", job).
-			Label("instance", instance),
-	).By([]string{"job", "instance"}).Build()
-	if err != nil {
-		return "", err
-	}
-	return expr.String(), nil
-}
-
-// BuildAllSuccessRateQuery builds a PromQL query for the success rate of all checks.
-// The result is keyed by (job, instance) labels and covers all checks in one HTTP call.
-func BuildAllSuccessRateQuery() (string, error) {
-	expr, err := promql.Avg(
-		promql.AvgOverTime(
-			promql.Vector("probe_success").Range("5m"),
-		),
-	).By([]string{"job", "instance"}).Build()
-	if err != nil {
-		return "", err
-	}
-	return expr.String(), nil
-}
-
-// BuildAllLatencyQuery builds a PromQL query for the average probe_duration_seconds
-// of all checks. The result is keyed by (job, instance) labels and covers all checks
-// in one HTTP call.
-func BuildAllLatencyQuery() (string, error) {
-	expr, err := promql.Avg(
-		promql.AvgOverTime(
-			promql.Vector("probe_duration_seconds").Range("5m"),
-		),
-	).By([]string{"job", "instance"}).Build()
-	if err != nil {
-		return "", err
-	}
-	return expr.String(), nil
-}
-
-// BuildLatencyQuery builds a PromQL query for the average probe_duration_seconds
-// over 5 minutes for a single check, grouped by job and instance.
-func BuildLatencyQuery(job, instance string) (string, error) {
-	expr, err := promql.Avg(
-		promql.AvgOverTime(
-			promql.Vector("probe_duration_seconds").
-				Label("job", job).
-				Label("instance", instance).
-				Range("5m"),
-		),
-	).By([]string{"job", "instance"}).Build()
-	if err != nil {
-		return "", err
-	}
-	return expr.String(), nil
-}
-
-// BuildAllProbeCountQuery builds a PromQL query counting probes per check across all checks.
-func BuildAllProbeCountQuery() (string, error) {
-	expr, err := promql.Count(
-		promql.Vector("probe_success"),
-	).By([]string{"job", "instance"}).Build()
-	if err != nil {
-		return "", err
-	}
-	return expr.String(), nil
-}
-
 // BuildTimelineQuery builds a PromQL query for raw probe_success values.
 func BuildTimelineQuery(job, instance string) (string, error) {
 	expr, err := promql.Vector("probe_success").
@@ -564,54 +456,6 @@ func BuildTimelineQuery(job, instance string) (string, error) {
 // ---------------------------------------------------------------------------
 // Metric fetching helpers
 // ---------------------------------------------------------------------------
-
-// queryInstantByJobInstance executes a multi-series instant query and returns a map
-// keyed by "job/instance" containing the scalar value for each series.
-func queryInstantByJobInstance(ctx context.Context, client *prometheus.Client, dsUID, query string) map[string]float64 {
-	resp, err := client.Query(ctx, dsUID, prometheus.QueryRequest{Query: query})
-	if err != nil || resp.Status != "success" {
-		return nil
-	}
-	result := make(map[string]float64, len(resp.Data.Result))
-	for _, sample := range resp.Data.Result {
-		job := sample.Metric["job"]
-		instance := sample.Metric["instance"]
-		if job == "" || instance == "" {
-			continue
-		}
-		if val := parseSampleValue(sample); val != nil {
-			result[job+"/"+instance] = *val
-		}
-	}
-	return result
-}
-
-// parseSampleValue extracts the float64 value from an instant query sample.
-func parseSampleValue(sample prometheus.Sample) *float64 {
-	if len(sample.Value) < 2 {
-		return nil
-	}
-
-	var val float64
-	switch v := sample.Value[1].(type) {
-	case string:
-		f, err := strconv.ParseFloat(v, 64)
-		if err != nil {
-			return nil
-		}
-		val = f
-	case float64:
-		val = v
-	default:
-		return nil
-	}
-
-	if math.IsNaN(val) || math.IsInf(val, 0) {
-		return nil
-	}
-
-	return &val
-}
 
 // buildTimelineSeries converts a Prometheus query response into timeline series,
 // one per distinct "probe" label value.
@@ -689,14 +533,15 @@ func parseMatrixValue(raw any) (float64, error) {
 // ---------------------------------------------------------------------------
 
 // BuildCheckStatusResults merges check definitions with metric data.
-// latencyMap maps "job/instance" to probe_duration_seconds (will be converted to ms).
+// latencyMap maps "job/instance" to the latency the SM backend reports, in seconds
+// (converted to ms).
 // probeNames maps probe ID to display name (e.g. "Oregon" or "Paris (offline)").
 // Pass nil or an empty map if probe names are unavailable.
 func BuildCheckStatusResults(checks []Check, successMap, probeCountMap, latencyMap map[string]float64, probeNames map[int64]string) []CheckStatusResult {
 	results := make([]CheckStatusResult, 0, len(checks))
 
 	for _, c := range checks {
-		key := c.Job + "/" + c.Target
+		key := checkKey(c.Job, c.Target)
 
 		r := CheckStatusResult{
 			ID:          c.ID,
@@ -748,7 +593,7 @@ func buildProbeNameMap(ps []probes.Probe) map[int64]string {
 }
 
 // computeCheckStatus determines the display status for a check based on the
-// success rate and the check's alertSensitivity setting. Thresholds match the
+// reachability and the check's alertSensitivity setting. Thresholds match the
 // Grafana Synthetic Monitoring alerting defaults: high=95%, medium=90%, low=75%.
 func computeCheckStatus(success *float64, sensitivity string) string {
 	if success == nil {
@@ -1065,42 +910,38 @@ func ParseWindow(s string) (time.Duration, error) {
 }
 
 // queryCheckStatus retrieves the current execution status string for a single check
-// by querying the Prometheus datasource. Returns "NODATA" if no data is available.
+// from the Synthetic Monitoring datasource. Returns "NODATA" if no data is available.
 // Errors are returned for connectivity or configuration failures — callers should
 // degrade gracefully (warn, not fail).
-// checkStatusInfo holds the result of a single-check Prometheus status query.
+// checkStatusInfo holds the result of a single-check status query.
 type checkStatusInfo struct {
 	Status  string
 	Success *float64 // nil when no data
 }
 
 func queryCheckStatus(ctx context.Context, loader smcfg.StatusLoader, job, target, sensitivity string) (checkStatusInfo, error) {
-	dsUID, err := resolveDataSourceUID(ctx, "", loader)
+	restCfg, smDSUID, _, err := loader.LoadSMProxyConfig(ctx)
 	if err != nil {
-		return checkStatusInfo{}, fmt.Errorf("resolving datasource: %w", err)
+		return checkStatusInfo{}, fmt.Errorf("loading Synthetic Monitoring config: %w", err)
+	}
+	if smDSUID == "" {
+		return checkStatusInfo{}, errNoSMDatasource
 	}
 
-	restCfg, err := loader.LoadGrafanaConfig(ctx)
+	client, err := synth.NewBackendDatasourceClient(restCfg)
 	if err != nil {
-		return checkStatusInfo{}, fmt.Errorf("loading Grafana config: %w", err)
+		return checkStatusInfo{}, fmt.Errorf("creating query client: %w", err)
 	}
 
-	promClient, err := prometheus.NewClient(restCfg)
+	success, ok, err := fetchCheckSuccess(ctx, client, smDSUID, job, target, time.Now())
 	if err != nil {
-		return checkStatusInfo{}, fmt.Errorf("creating Prometheus client: %w", err)
+		return checkStatusInfo{}, err
+	}
+	if !ok {
+		return checkStatusInfo{Status: computeCheckStatus(nil, sensitivity)}, nil
 	}
 
-	q, err := BuildSuccessRateQuery(job, target)
-	if err != nil {
-		return checkStatusInfo{}, fmt.Errorf("building status query: %w", err)
-	}
-
-	successMap := queryInstantByJobInstance(ctx, promClient, dsUID, q)
-	key := job + "/" + target
-	if val, ok := successMap[key]; ok {
-		return checkStatusInfo{Status: computeCheckStatus(&val, sensitivity), Success: &val}, nil
-	}
-	return checkStatusInfo{Status: computeCheckStatus(nil, sensitivity)}, nil
+	return checkStatusInfo{Status: computeCheckStatus(&success, sensitivity), Success: &success}, nil
 }
 
 // autoStep calculates a reasonable query step for the given time range,
