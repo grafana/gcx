@@ -164,6 +164,12 @@ func queryDotV1Fallback(ctx context.Context, cmd *cobra.Command, client *pyrosco
 	return resp, nil
 }
 
+// Explore range matching pyroscope.DefaultTimeRange's one-hour default.
+const (
+	defaultExploreFrom = "now-1h"
+	defaultExploreTo   = "now"
+)
+
 // queryLinkFinisher builds the Explore and Profiles Drilldown URLs for a
 // query command invocation and returns a function every query-view render
 // branch (table, JSON, dot, and dot's v1/no-data fallbacks) should route its
@@ -179,32 +185,51 @@ func queryLinkFinisher(
 	opts *pyroscopeQueryOpts,
 	start, end time.Time, maxNodes int64,
 ) func(*pyroscope.QueryResponse, error) error {
+	// Links must cover the range the RPC actually queried: DefaultTimeRange is
+	// the same defaulting the client applies, so the two can't drift.
+	linkStart, linkEnd := pyroscope.DefaultTimeRange(start, end)
+	exploreFrom, exploreTo := opts.shared.From, opts.shared.To
+	if start.IsZero() || end.IsZero() {
+		exploreFrom, exploreTo = defaultExploreFrom, defaultExploreTo
+	}
+
 	exploreURL := QueryExploreURL(cfg.GrafanaURL, dsquery.ExploreQuery{
 		DatasourceUID:  datasourceUID,
 		DatasourceType: dsType,
 		Expr:           expr,
-		From:           opts.shared.From,
-		To:             opts.shared.To,
+		From:           exploreFrom,
+		To:             exploreTo,
 		OrgID:          dsquery.OrgID(cfgCtx),
 	}, opts.ProfileType, opts.SpanIDs, opts.ProfileIDs, opts.StacktraceSelector, maxNodes)
 	exploreUnavailableMsg, exploreFailedOpenMsg := dsquery.ExploreMessages("query")
 
 	var drilldownURL string
 	if drilldown.Enabled() {
-		drilldownURL, _ = ProfilesDrilldownURL(cfg.GrafanaURL, datasourceUID, expr, opts.ProfileType, opts.SpanIDs, opts.TraceIDs, opts.ProfileIDs, opts.StacktraceSelector, start, end)
+		drilldownURL, _ = ProfilesDrilldownURL(cfg.GrafanaURL, datasourceUID, expr, opts.ProfileType, opts.SpanIDs, opts.TraceIDs, opts.ProfileIDs, opts.StacktraceSelector, linkStart, linkEnd)
 	}
 	drilldownUnavailableMsg, drilldownFailedOpenMsg := dsquery.DrilldownMessages("query", "Profiles Drilldown")
+
+	// --trace-id reaches the RPC but has no Explore or Drilldown representation,
+	// so any link would show a broader query than the one that ran.
+	traceScoped := len(opts.TraceIDs) > 0
 
 	return func(resp *pyroscope.QueryResponse, renderErr error) error {
 		if renderErr != nil {
 			return renderErr
 		}
-		if err := dsquery.HandleExploreLink(cmd, *share, exploreURL, exploreUnavailableMsg, exploreFailedOpenMsg); err != nil {
-			return err
-		}
-		if err := dsquery.HandleDrilldownLinkWithExploreFallback(cmd, *drilldown, drilldownURL, drilldownUnavailableMsg, drilldownFailedOpenMsg,
-			share.Enabled(), exploreURL, exploreUnavailableMsg, exploreFailedOpenMsg); err != nil {
-			return err
+		switch {
+		case traceScoped:
+			if share.Enabled() || drilldown.Enabled() {
+				cmdio.Warning(cmd.ErrOrStderr(), "query succeeded, but no Explore or Profiles Drilldown link was built: --trace-id has no representation in either")
+			}
+		default:
+			if err := dsquery.HandleExploreLink(cmd, *share, exploreURL, exploreUnavailableMsg, exploreFailedOpenMsg); err != nil {
+				return err
+			}
+			if err := dsquery.HandleDrilldownLinkWithExploreFallback(cmd, *drilldown, drilldownURL, drilldownUnavailableMsg, drilldownFailedOpenMsg,
+				share.Enabled(), exploreURL, exploreUnavailableMsg, exploreFailedOpenMsg); err != nil {
+				return err
+			}
 		}
 		if opts.shared.ErrorOnEmpty {
 			return dsquery.ErrorOnEmptyWithContext(resp, dsquery.EmptyResultContext{
@@ -256,11 +281,11 @@ func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
 EXPR is the label selector (e.g., '{service_name="frontend"}').
 Datasource is resolved from -d flag or datasources.pyroscope in your context.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
-open it in your browser after the query succeeds (unavailable for --trace-id,
-which has no Explore-UI representation). Use --drilldown-link or
+open it in your browser after the query succeeds. Use --drilldown-link or
 --open-drilldown for the equivalent Grafana Profiles Drilldown URL (falls
-back to the Explore URL for --trace-id/--profile-id, neither of which has a
-Drilldown URL equivalent).`,
+back to the Explore URL for --profile-id/--stacktrace-selector, which have no
+Drilldown equivalent). --trace-id has no representation in either, so no
+link is built for it.`,
 		Example: `
   # Profile query with explicit datasource UID
   gcx datasources pyroscope query -d UID '{service_name="frontend"}' \
