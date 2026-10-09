@@ -86,6 +86,14 @@ Add a small pure policy in `internal/resources/`, selected by group/kind indepen
 
 Reuse `remote.findByNaturalKey` and `naturalKeyCache`: consult the native policy when no adapter extractor exists, match full logical identity, and reject ambiguity for the opted-in native kinds. Preserve existing adapter matching behavior. Do not store per-operation mutable state in the policy.
 
+Before push, collection keys for unnamed opted-in resources use GVK, namespace,
+and the same full logical identity, with a separate tag from API-name keys.
+Named resources and non-opted-in kinds retain existing collection behavior.
+Equivalent valid unnamed identities still deduplicate; different titles or
+template kinds remain distinct. Invalid unnamed identities use an in-memory
+per-resource key so each reaches push validation and failure aggregation rather
+than silently replacing another input. This fallback is not a portable identity.
+
 The push sequence for an opted-in kind is:
 
 1. Validate title/kind and read-only status before mutation.

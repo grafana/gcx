@@ -91,6 +91,16 @@ func (r *Resource) ToUnstructured() unstructured.Unstructured {
 
 // Ref returns a unique identifier for the resource.
 func (r *Resource) Ref() ResourceRef {
+	if r.Name() == "" && HasServerDerivedName(r.GroupVersionKind()) {
+		identity, _, err := NativeIdentity(&r.Object)
+		if err != nil {
+			// Retain every invalid input so the pusher can report its own failure.
+			return ResourceRef(fmt.Sprintf("\x00invalid-native/%p", r))
+		}
+		// Keep logical keys separate from API addresses, and quote arbitrary
+		// identity strings to avoid delimiter collisions.
+		return ResourceRef(fmt.Sprintf("\x00native/%s/%q/%q", r.GroupVersionKind(), r.Namespace(), identity))
+	}
 	return ResourceRef(
 		fmt.Sprintf("%s/%s-%s", r.GroupVersionKind().String(), r.Namespace(), r.Name()),
 	)

@@ -1,15 +1,14 @@
 # Tasks
 
-Implementation was authorized through the apply workflow. Completed work is
-checked below. Task 1.2 remains open while the user decides whether to extend the
-scope to collection identity: multiple unnamed manifests currently collapse
-before reaching the pusher. The implemented pusher tests pass; the collection
-regression needs an additional opted-in fix or an explicitly accepted limitation.
+Implementation and the narrowly opted-in collection-identity extension were
+authorized through the apply workflow. Unnamed TimeInterval and TemplateGroup
+manifests must retain distinct logical identities before reaching the pusher;
+malformed inputs must remain available for individual failure reporting.
 
 ## 1. Native identity policy and portable push
 
 - [x] 1.1 Add the opted-in pure TimeInterval/TemplateGroup name policy under `internal/resources/` per design D3–D4, including logical identity, historical kind normalization, read-only classification, and deep-copy create preparation without encoded-name computation; verify table-driven tests cover both API versions, empty/malformed fields, preserved spec/provenance, removed source identity fields, unchanged original input, and non-opted-in resources.
-- [ ] 1.2 Integrate native logical matching with `findByNaturalKey`/`naturalKeyCache` without adapter registrations, rejecting native ambiguity while preserving existing adapter semantics; verify pusher-level tests cover unnamed manifests, GET-not-found followed by a logical match, equal titles with different kinds, and historical-to-new encoding on repeated pushes.
+- [x] 1.2 Integrate native logical matching with `findByNaturalKey`/`naturalKeyCache` without adapter registrations, rejecting native ambiguity while preserving existing adapter semantics; verify pusher-level tests cover unnamed manifests, GET-not-found followed by a logical match, equal titles with different kinds, and historical-to-new encoding on repeated pushes. Preserve distinct unnamed logical identities in the resource collection and actual directory reader, including equal-title different-kind templates and malformed inputs; verify directory-to-pusher aggregation and unchanged named/non-opted-in collection keys.
 - [x] 1.3 Apply create preparation only on the actual create path, retain destination name/version on update, treat mismatched name hints as logical-identity lookup, and reject read-only imported push before mutation; verify a recording transport checks unnamed create, current destination version, edited-title new identity on populated/empty targets and repeated pushes, historical/current name collisions without wrong-object updates, no create after forbidden/transport errors, and ordinary caller-selected names unchanged.
 - [x] 1.4 Document the opted-in name policy and matching sequence in `docs/architecture/resource-model.md`, `data-flows.md`, and `patterns.md` where applicable; verify doc-maintenance structural checks and Markdown links match the final implementation, with package-map updates only if structure changes.
 

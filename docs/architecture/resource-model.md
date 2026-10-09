@@ -80,7 +80,13 @@ type ResourceRef string
 // Format: "group/version/kind/namespace-name"
 ```
 
-`Ref()` (line 89) generates a unique stable key used as the map key in `Resources`.
+`Ref()` generates the map key used in `Resources`. Named resources keep the
+existing API-address key. Unnamed TimeInterval and TemplateGroup resources use a
+separately tagged GVK/namespace/logical-identity key, including template kind;
+equivalent identities deduplicate while different titles and kinds remain
+separate. Invalid unnamed native inputs use a per-resource in-memory key so
+validation reports every failure. This invalid-input key is not portable;
+non-opted-in resources retain their existing keys.
 
 ### The Resources Collection
 

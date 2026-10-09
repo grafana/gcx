@@ -358,6 +358,11 @@ gcx logs query '{app="nginx"} |= "error"' --since 1h
 gcx traces query '{.cluster="dev-us-central-0"}' --since 1h
 ```
 
+Unnamed native time interval and template group manifests can share a push
+directory: distinct titles remain separate, and template kind is part of the
+identity. See [server-derived resource names](docs/architecture/resource-model.md)
+for portable push behavior.
+
 For an empty dashboard or missing application telemetry, follow
 [Diagnose missing telemetry with gcx](docs/guides/diagnose-missing-telemetry.md).
 

@@ -76,3 +76,18 @@ Push SHALL reject imported `spec.kind: mimir` template groups as read-only witho
 #### Scenario: Preview delete
 - **WHEN** an existing time interval or template group is deleted with dry-run and no assertion
 - **THEN** existence may be read but the delete is not sent and the resource remains unchanged
+
+### Requirement: Preserve distinct unnamed inputs before push
+Resource collection and directory loading SHALL preserve separate unnamed TimeInterval and TemplateGroup manifests by GVK, namespace, and full logical identity. Equivalent valid identities MAY retain existing deduplication behavior. Named and non-opted-in resource collection keys SHALL remain unchanged. Invalid unnamed identities SHALL remain available for per-resource validation failures.
+
+#### Scenario: Multiple unnamed manifests in a directory
+- **WHEN** a directory contains multiple unnamed time intervals or template groups with distinct titles
+- **THEN** every distinct identity reaches the pusher, including on repeated push
+
+#### Scenario: Equal title with different template kinds
+- **WHEN** unnamed grafana and mimir template groups share a title in a push directory
+- **THEN** the editable group reaches normal push and the imported group independently fails as read-only without mutation
+
+#### Scenario: Multiple malformed unnamed manifests
+- **WHEN** separate unnamed opted-in inputs contain missing or invalid identity fields
+- **THEN** each remains in the collection and produces its own validation failure
