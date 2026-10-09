@@ -334,8 +334,9 @@ func newUpdateCommand(loader RESTConfigLoader) *cobra.Command {
 		Long: `Update a Frontend Observability app from a file. The argument is a slug-id,
 numeric ID or display name, resolved as in "gcx frontend apps get".
 
-Omit spec.runtime to keep the stored runtime; an empty runtime is invalid. The
-API ignores changes to spec.appType. Omitted settings keep their stored values;
+The API cannot rename an app, so spec.name must match the stored name. Omit
+spec.runtime to keep the stored runtime; an empty runtime is invalid. The API
+ignores changes to spec.appType. Omitted settings keep their stored values;
 an empty geolocationCountryDenylist clears it.`,
 		Example: `  # Update an app using its slug-id.
   gcx frontend apps update my-web-app-42 -f app.yaml`,

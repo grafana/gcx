@@ -27,6 +27,9 @@ func newAppCRUD(client *Client, namespace string) *adapter.TypedCRUD[FaroApp] {
 			if err != nil {
 				return nil, err
 			}
+			if err := prepareUpdate(current, app); err != nil {
+				return nil, err
+			}
 			return client.Update(ctx, current.ID, app)
 		},
 
@@ -61,6 +64,19 @@ func lookupByResourceName(ctx context.Context, client *Client, name string) (*Fa
 		return nil, fmt.Errorf("faro app %q: app %s is %q: %w", name, id, app.GetResourceName(), adapter.ErrNotFound)
 	}
 	return app, nil
+}
+
+// prepareUpdate checks app against the stored app. The API never renames an
+// app, so a different spec.name means the manifest names another app.
+func prepareUpdate(current, app *FaroApp) error {
+	// Compare slugs, as the natural key does, so a cross-stack push of
+	// "My App" still updates an app stored as "my-app".
+	if adapter.SlugifyName(app.Name) != adapter.SlugifyName(current.Name) {
+		return fmt.Errorf("faro app %s is named %q, not %q, and the API cannot rename an app: set spec.name to %q, or remove the ID from metadata.name to create a new app",
+			current.GetResourceName(), current.Name, app.Name, current.Name)
+	}
+	app.Name = current.Name
+	return nil
 }
 
 // resolveApp finds the app that a command argument names: a display name, a

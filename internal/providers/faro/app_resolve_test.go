@@ -195,3 +195,35 @@ func TestFaroCommands_AcceptDisplayName(t *testing.T) {
 		})
 	}
 }
+
+func TestFaroUpdate_RefusesAnotherAppsName(t *testing.T) {
+	tests := []struct {
+		name      string
+		specName  string
+		wantErr   string
+		wantPutAs string
+	}{
+		{name: "same name", specName: "checkout", wantPutAs: "checkout"},
+		// Slugs match, so this is the same app; the stored name is kept.
+		{name: "same slug in another form", specName: "Checkout", wantPutAs: "checkout"},
+		{name: "another name", specName: "checkout-staging", wantErr: `is named "checkout", not "checkout-staging"`},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			server, api := newFakeAppAPI(t, map[string]any{"id": 42, "name": "checkout"})
+			manifest := writeTestFile(t, "app.yaml", "kind: FaroApp\nmetadata: {name: checkout-42}\nspec: {name: "+tc.specName+"}\n")
+			stdout, _, err := runFaroCommand(t, server, func(l *fakeConfigLoader) *cobra.Command {
+				return newUpdateCommand(l)
+			}, []string{"checkout-42", "-f", manifest, "-o", "json"})
+			if tc.wantErr != "" {
+				require.ErrorContains(t, err, tc.wantErr)
+				assert.Empty(t, api.calls, "nothing may be written")
+				return
+			}
+			require.NoError(t, err)
+			require.Len(t, api.puts, 1)
+			assert.Equal(t, tc.wantPutAs, api.puts[0]["name"])
+			assert.Contains(t, stdout, `"name": "`+tc.wantPutAs+`"`)
+		})
+	}
+}
