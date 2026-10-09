@@ -51,12 +51,12 @@ func TestFindApp(t *testing.T) {
 	}
 }
 
-// fakeAppAPI serves app CRUD for the named apps (IDs 1..n) and records every
-// mutating request.
+// fakeAppAPI serves app CRUD, sourcemap list and delete, and sourcemap upload
+// for the given apps. It records every call except app reads.
 type fakeAppAPI struct {
-	apps      []map[string]any
-	mutations []string
-	puts      []map[string]any
+	apps  []map[string]any
+	calls []string
+	puts  []map[string]any
 }
 
 func newFakeAppAPI(t *testing.T, apps ...map[string]any) (*httptest.Server, *fakeAppAPI) {
@@ -75,26 +75,36 @@ func newFakeAppAPI(t *testing.T, apps ...map[string]any) (*httptest.Server, *fak
 		_ = json.NewEncoder(w).Encode(f.apps)
 	})
 	mux.HandleFunc(basePath+"/", func(w http.ResponseWriter, r *http.Request) {
-		id := strings.TrimPrefix(r.URL.Path, basePath+"/")
+		id, sub, _ := strings.Cut(strings.TrimPrefix(r.URL.Path, basePath+"/"), "/")
 		app := byID(id)
 		if app == nil {
 			http.NotFound(w, r)
+			return
+		}
+		if sub != "" {
+			f.calls = append(f.calls, r.Method+" "+id+"/"+sub)
+			_ = json.NewEncoder(w).Encode(map[string]any{"bundles": []any{}})
 			return
 		}
 		switch r.Method {
 		case http.MethodGet:
 			_ = json.NewEncoder(w).Encode(app)
 		case http.MethodDelete:
-			f.mutations = append(f.mutations, "DELETE "+id)
+			f.calls = append(f.calls, "DELETE "+id)
 			w.WriteHeader(http.StatusNoContent)
 		case http.MethodPut:
-			f.mutations = append(f.mutations, "PUT "+id)
+			f.calls = append(f.calls, "PUT "+id)
 			body, _ := io.ReadAll(r.Body)
 			var put map[string]any
 			_ = json.Unmarshal(body, &put)
 			f.puts = append(f.puts, put)
 			_, _ = w.Write(body)
 		}
+	})
+	// Direct Faro API sourcemap upload.
+	mux.HandleFunc("/api/v1/app/", func(w http.ResponseWriter, r *http.Request) {
+		f.calls = append(f.calls, "UPLOAD "+strings.TrimPrefix(r.URL.Path, "/api/v1/app/"))
+		w.WriteHeader(http.StatusOK)
 	})
 	server := httptest.NewServer(mux)
 	t.Cleanup(server.Close)
@@ -103,15 +113,15 @@ func newFakeAppAPI(t *testing.T, apps ...map[string]any) (*httptest.Server, *fak
 
 func TestFaroDelete_Resolution(t *testing.T) {
 	tests := []struct {
-		name          string
-		arg           string
-		wantMutations []string
-		wantErr       string
+		name      string
+		arg       string
+		wantCalls []string
+		wantErr   string
 	}{
 		// probe-1 ends in the ID of QuickPizza (app 1). It must delete itself.
-		{name: "name ending in another app's ID", arg: "probe-1", wantMutations: []string{"DELETE 8"}},
-		{name: "display name", arg: "QuickPizza", wantMutations: []string{"DELETE 1"}},
-		{name: "slug-id", arg: "probe-1-8", wantMutations: []string{"DELETE 8"}},
+		{name: "name ending in another app's ID", arg: "probe-1", wantCalls: []string{"DELETE 8"}},
+		{name: "display name", arg: "QuickPizza", wantCalls: []string{"DELETE 1"}},
+		{name: "slug-id", arg: "probe-1-8", wantCalls: []string{"DELETE 8"}},
 		{name: "ambiguous", arg: "quickpizza-1", wantErr: "ambiguous"},
 		{name: "unknown", arg: "nope-1", wantErr: "no app has that slug-id or name"},
 	}
@@ -127,13 +137,61 @@ func TestFaroDelete_Resolution(t *testing.T) {
 			}, []string{tc.arg, "-o", "json"})
 			if tc.wantErr != "" {
 				require.ErrorContains(t, err, tc.wantErr)
-				assert.Empty(t, api.mutations, "nothing may be deleted")
+				assert.Empty(t, api.calls, "nothing may be deleted")
 				return
 			}
 			require.NoError(t, err)
-			assert.Equal(t, tc.wantMutations, api.mutations)
-			id := strings.TrimPrefix(tc.wantMutations[0], "DELETE ")
+			assert.Equal(t, tc.wantCalls, api.calls)
+			id := strings.TrimPrefix(tc.wantCalls[0], "DELETE ")
 			assert.Contains(t, stdout, `"id": "`+id+`"`)
+		})
+	}
+}
+
+func TestFaroCommands_AcceptDisplayName(t *testing.T) {
+	manifest := writeTestFile(t, "app.yaml", "kind: FaroApp\nspec: {name: My Web App}\n")
+	sourcemap := writeTestFile(t, "bundle.js.map", `{"version":3}`)
+	tests := []struct {
+		name      string
+		build     func(l *fakeConfigLoader) *cobra.Command
+		args      []string
+		wantCalls []string
+	}{
+		{
+			name:      "apps update",
+			build:     func(l *fakeConfigLoader) *cobra.Command { return newUpdateCommand(l) },
+			args:      []string{"My Web App", "-f", manifest},
+			wantCalls: []string{"PUT 8"},
+		},
+		{
+			name:      "apps list-sourcemaps",
+			build:     func(l *fakeConfigLoader) *cobra.Command { return newListSourcemapsCommand(l) },
+			args:      []string{"My Web App", "--limit", "5"},
+			wantCalls: []string{"GET 8/sourcemaps"},
+		},
+		{
+			name:      "apps delete-sourcemap",
+			build:     func(l *fakeConfigLoader) *cobra.Command { return newDeleteSourcemapCommand(l) },
+			args:      []string{"My Web App", "b1"},
+			wantCalls: []string{"DELETE 8/sourcemaps/batch/b1"},
+		},
+		{
+			name:      "apps apply-sourcemap",
+			build:     func(l *fakeConfigLoader) *cobra.Command { return newApplySourcemapCommand(l) },
+			args:      []string{"My Web App", "-f", sourcemap, "--bundle-id", "b1"},
+			wantCalls: []string{"UPLOAD 8/sourcemaps/b1"},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// "My Web App" is app 8; app 1 exists so a stray ID lookup would show.
+			server, api := newFakeAppAPI(t,
+				map[string]any{"id": 1, "name": "QuickPizza"},
+				map[string]any{"id": 8, "name": "My Web App"},
+			)
+			_, _, err := runFaroCommand(t, server, tc.build, append(tc.args, "-o", "json"))
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantCalls, api.calls)
 		})
 	}
 }

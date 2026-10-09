@@ -3,7 +3,7 @@
 List sourcemaps for a Frontend Observability app.
 
 ```
-gcx frontend apps list-sourcemaps <app-name> [flags]
+gcx frontend apps list-sourcemaps <slug-id|name> [flags]
 ```
 
 ### Examples

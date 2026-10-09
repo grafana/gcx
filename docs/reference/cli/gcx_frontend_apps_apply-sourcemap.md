@@ -3,7 +3,7 @@
 Upload a sourcemap for a Frontend Observability app.
 
 ```
-gcx frontend apps apply-sourcemap <app-name> [flags]
+gcx frontend apps apply-sourcemap <slug-id|name> [flags]
 ```
 
 ### Examples

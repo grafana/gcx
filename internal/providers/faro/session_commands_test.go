@@ -132,7 +132,6 @@ func TestSessionsGetOptsValidateTrimsInputs(t *testing.T) {
 	assert.Equal(t, appTypeMobile, opts.AppType)
 	assert.Equal(t, "c-R8UWvVk", opts.Datasource)
 	assert.Equal(t, "/tmp/session.txt", opts.Save)
-	assert.Equal(t, "66", resolveAppID(opts.App))
 }
 
 func TestSessionsGetOptsValidateDoesNotLowercaseUID(t *testing.T) {

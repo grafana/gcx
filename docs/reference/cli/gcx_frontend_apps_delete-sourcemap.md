@@ -3,7 +3,7 @@
 Delete sourcemap bundles from a Frontend Observability app.
 
 ```
-gcx frontend apps delete-sourcemap <app-name> <bundle-id> [bundle-id...] [flags]
+gcx frontend apps delete-sourcemap <slug-id|name> <bundle-id> [bundle-id...] [flags]
 ```
 
 ### Examples

@@ -329,9 +329,10 @@ func (o *updateOpts) Validate() error {
 func newUpdateCommand(loader RESTConfigLoader) *cobra.Command {
 	opts := &updateOpts{}
 	cmd := &cobra.Command{
-		Use:   "update <name>",
+		Use:   "update <slug-id|name>",
 		Short: "Update a Frontend Observability app from a file.",
-		Long: `Update a Frontend Observability app from a file.
+		Long: `Update a Frontend Observability app from a file. The argument is a slug-id,
+numeric ID or display name, resolved as in "gcx frontend apps get".
 
 Omit spec.runtime to keep the stored runtime; an empty runtime is invalid. The
 API ignores changes to spec.appType. Omitted settings keep their stored values;
@@ -357,11 +358,16 @@ an empty geolocationCountryDenylist clears it.`,
 				return err
 			}
 
+			target, err := resolveApp(ctx, crud, name)
+			if err != nil {
+				return fmt.Errorf("updating faro app %q: %w", name, err)
+			}
+
 			typedObj := &adapter.TypedObject[FaroApp]{Spec: *app}
-			typedObj.SetName(name)
+			typedObj.SetName(target.GetName())
 			typedObj.SetNamespace(restCfg.Namespace)
 
-			updated, err := crud.Update(ctx, name, typedObj)
+			updated, err := crud.Update(ctx, target.GetName(), typedObj)
 			if err != nil {
 				return fmt.Errorf("updating faro app %q: %w", name, err)
 			}
