@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/grafana/gcx/internal/datasources/pyroscope"
+	"github.com/grafana/gcx/internal/datasources/query/scenesfiltertest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -79,4 +80,39 @@ func TestProfilesDrilldownURL_FallbackCases(t *testing.T) {
 			assert.False(t, ok)
 		})
 	}
+}
+
+func TestProfilesDrilldownURL_EmitsOneVarFiltersParamPerFilter(t *testing.T) {
+	got, ok := pyroscope.ProfilesDrilldownURL("https://stack.grafana.net", "pyro-uid",
+		`{service_name="frontend",env="prod",region="west"}`, "process_cpu:cpu:nanoseconds:cpu:nanoseconds", nil, nil, nil, nil, time.Time{}, time.Time{})
+	require.True(t, ok)
+
+	u, err := url.Parse(got)
+	require.NoError(t, err)
+	filters := u.Query()["var-filters"]
+	require.Len(t, filters, 2)
+
+	assert.Equal(t, scenesfiltertest.Filter{Key: "env", Operator: "=", Value: "prod"}, scenesfiltertest.Decode(filters[0]))
+	assert.Equal(t, scenesfiltertest.Filter{Key: "region", Operator: "=", Value: "west"}, scenesfiltertest.Decode(filters[1]))
+}
+
+func TestProfilesDrilldownURL_FilterValuesRoundTripThroughScenesDecoder(t *testing.T) {
+	for _, value := range []string{"a,b", "a#b", "a|b", "a,b#c|d"} {
+		got, ok := pyroscope.ProfilesDrilldownURL("https://stack.grafana.net", "pyro-uid",
+			`{service_name="frontend",env="`+value+`"}`, "process_cpu:cpu:nanoseconds:cpu:nanoseconds", nil, nil, nil, nil, time.Time{}, time.Time{})
+		require.True(t, ok, value)
+
+		u, err := url.Parse(got)
+		require.NoError(t, err)
+		filters := u.Query()["var-filters"]
+		require.Len(t, filters, 1, value)
+
+		assert.Equal(t, scenesfiltertest.Filter{Key: "env", Operator: "=", Value: value}, scenesfiltertest.Decode(filters[0]), value)
+	}
+}
+
+func TestProfilesDrilldownURL_FallsBackForValuesContainingEscapeTokens(t *testing.T) {
+	_, ok := pyroscope.ProfilesDrilldownURL("https://stack.grafana.net", "pyro-uid",
+		`{service_name="frontend",env="x__gfh__y"}`, "process_cpu:cpu:nanoseconds:cpu:nanoseconds", nil, nil, nil, nil, time.Time{}, time.Time{})
+	assert.False(t, ok)
 }

@@ -13,12 +13,18 @@ import (
 // Drilldown.
 const ProfilesDrilldownPluginID = "grafana-pyroscope-app"
 
-// encodeProfilesFilter renders one entry of a comma-joined var-filters
-// value, mirroring Profiles Drilldown's own extractAdditionalLabels/
-// parseRawFilters encoding: key, operator, and value pipe-delimited, with no
-// escaping of embedded delimiter characters (unlike Logs Drilldown).
-func encodeProfilesFilter(m pyroquery.LabelMatcher) string {
-	return m.Key + "|" + m.Operator + "|" + m.Value
+// encodeProfilesFilter renders one var-filters entry. ok is false when a field
+// can't round-trip through the Scenes filter decoder.
+func encodeProfilesFilter(m pyroquery.LabelMatcher) (string, bool) {
+	key, ok := dsquery.EscapeScenesFilterField(m.Key)
+	if !ok {
+		return "", false
+	}
+	value, ok := dsquery.EscapeScenesFilterField(m.Value)
+	if !ok {
+		return "", false
+	}
+	return key + "|" + m.Operator + "|" + value, true
 }
 
 // ProfilesDrilldownURL builds a Grafana Profiles Drilldown deep link for a
@@ -87,11 +93,14 @@ func ProfilesDrilldownURL(host, datasourceUID, selector, profileType string, spa
 	}
 
 	if explorationType == "labels" && len(extra) > 0 {
-		filters := make([]string, len(extra))
-		for i, m := range extra {
-			filters[i] = encodeProfilesFilter(m)
+		// One var-filters parameter per filter, as the Scenes decoder expects.
+		for _, m := range extra {
+			encoded, ok := encodeProfilesFilter(m)
+			if !ok {
+				return "", false
+			}
+			params["var-filters"] = append(params["var-filters"], encoded)
 		}
-		params["var-filters"] = []string{strings.Join(filters, ",")}
 	}
 
 	return dsquery.BuildDrilldownURL(host, ProfilesDrilldownPluginID, "/explore", params), true
