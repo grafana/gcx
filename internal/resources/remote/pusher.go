@@ -8,6 +8,7 @@ import (
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/logs"
 	"github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/resources/discovery"
 	"github.com/grafana/gcx/internal/resources/dynamic"
 	"github.com/grafana/grafana-app-sdk/logging"
@@ -249,6 +250,17 @@ func (p *Pusher) pushSingleResource(
 
 	if !res.IsManaged() && !request.IncludeManaged {
 		logger.Info(fmt.Sprintf("Skipping resource managed by %s", res.GetManagerKind()))
+		return nil
+	}
+
+	if err := adapter.CheckMutation(desc, "push"); err != nil {
+		summary.RecordFailure(res, err)
+		if request.StopOnError {
+			return err
+		}
+		if !request.NoPushFailureLog {
+			logger.Warn("Failed to push resource", logs.Err(err))
+		}
 		return nil
 	}
 

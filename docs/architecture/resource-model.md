@@ -383,6 +383,20 @@ ResourceAdapter interface
 constructor that is only called on first use and its result cached for the router's
 lifetime.
 
+### Adapter-owned read and mutation policies
+
+Adapters may provide an optional per-pull preflight that runs before identity-keyed
+insertion, and a multi-reference reader that retains successful items with a
+partial-read report. Provider packages own resource identities, collision rules
+and diagnostic metadata; the router and generic pipeline dispatch these contracts
+without importing concrete provider types. Ordinary collection errors remain
+fatal under the selected error policy. Assistant Watcher and MCP server adapters opt in to `adapter.ErrUnavailable` for unavailable collection APIs: selector-free get/pull counts those types as skipped, while explicit selections and per-item failures retain their error behavior.
+
+Registration may also supply a configuration-free mutation guard. Push and delete
+invoke it before resource reads so a read-only resource is refused even when its
+collection is empty or its configuration cannot be exported. Unregistered native
+resources retain their existing mutation paths.
+
 ### TypedCRUD and ResourceIdentity
 
 Most providers use `TypedCRUD[T]` to implement `ResourceAdapter` without hand-writing
@@ -394,6 +408,11 @@ the marshal/unmarshal boilerplate. `TypedCRUD` wraps typed Go functions (`ListFn
 - Converting between typed domain objects and `unstructured.Unstructured`
 - Stripping server-managed fields (`StripFields`)
 - Client-side get-by-name fallback when `GetFn` is nil (lists + filters)
+
+List methods retain partial items alongside an error for callers that explicitly
+handle incomplete coverage. The error must still be handled; partial items do
+not establish a complete collection. The get-by-name fallback requires a
+successful full list and returns any list error without selecting a partial item.
 
 The type constraint `ResourceNamer` (value-type subset of `ResourceIdentity`)
 requires domain types to implement `GetResourceName() string`. The full
@@ -490,6 +509,8 @@ client is a REST adapter or the k8s dynamic client.
 Provider descriptors are injected into the `RegistryIndex` via `RegisterStatic(desc, aliases)`
 so that provider types appear in `resources list-types` output and resolve correctly from
 selector strings like `"slos"` or `"rules"`.
+
+Native discovery retains the group's preferred version. If that version lacks a requested kind, unversioned lookup and preferred-resource enumeration use the first registered provider descriptor for that group/kind. A native kind present in the preferred version takes precedence. Explicit version requests remain exact and never use this fallback.
 
 ---
 

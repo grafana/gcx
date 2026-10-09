@@ -267,6 +267,8 @@ gcx synthetic-monitoring [internal/providers/synth/provider.go]
     └── list
 ```
 
+The Assistant provider includes the experimental `assistant watchers list/get/status` subtree. List and get use the registered read-only Watcher adapter; status is a domain-specific runtime view. See [Assistant Watchers](../reference/assistant-watchers.md).
+
 ### Config loading pattern
 
 Provider commands cannot import `cmd/gcx/config` (import cycle). Instead,

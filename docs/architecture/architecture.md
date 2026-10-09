@@ -839,7 +839,10 @@ The shared transport in `internal/query/kg` serves both the KG provider and App 
 
 ### Assistant Provider
 
-`Commands()` is a verbatim lift-and-shift of the previously hand-mounted `gcx assistant` tree (`prompt`, `dashboard`, `conversation`, `investigations`, `mcp-servers`); `TypedRegistrations()` registers exactly one adapter, `TypedCRUD[MCPServer]`, so MCP-server configuration flows through `gcx resources get/pull/push/delete` for both `user` and `tenant` scope. See ADR-021.
+`Commands()` preserves the previously hand-mounted `gcx assistant` tree (`prompt`, `dashboard`, `conversation`, `investigations`, `mcp-servers`) and adds experimental `watchers` reads; `TypedRegistrations()` registers `TypedCRUD[MCPServer]` and the read-only `TypedCRUD[Watcher]`, so MCP-server configuration flows through `gcx resources get/pull/push/delete` for both `user` and `tenant` scope. See ADR-021.
+
+
+Watcher configuration uses the existing typed resource pipeline for get/pull, while status reports runtime observations separately. Its client lives in `internal/assistant/watchers/`, schema and identity mapping in `internal/assistant/watcher/`, and commands in `internal/providers/assistant/watchers/`. The Watcher adapter owns bulk collision checks and partial-read diagnostics; generic resource packages invoke provider-neutral contracts before identity-keyed insertion. A registration guard refuses Watcher mutations before reads, while mutation callbacks remain unset.
 
 | File | Purpose |
 |------|---------|
