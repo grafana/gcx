@@ -556,27 +556,10 @@ gcx resources delete dashboards/my-dashboard
 
 ### Mobile Frontend Observability apps
 
-For mobile apps, set `spec.appType: mobile` and select the matching runtime:
-`flutter`, `react-native`, `android-native`, or `swift-native`.
-The caller selects the app type at creation; the API ignores later changes to it.
-Omit `runtime` on update to preserve its stored value. An empty runtime is invalid.
-Creation preserves `spec.extraLogLabels`, including the legacy `is_mobile` label.
-Settings are ignored on both create and update.
-
-For example, save this native Android manifest as `app.yaml`:
-
-```yaml
-apiVersion: faro.ext.grafana.app/v1alpha1
-kind: FaroApp
-metadata:
-  name: my-mobile-app
-spec:
-  name: my-mobile-app
-  appType: mobile
-  runtime: android-native
-```
-
-Create the app with `gcx frontend apps create -f app.yaml`.
+Mobile Frontend Observability app manifests set `spec.appType: mobile` and a mobile
+`spec.runtime`. See [`gcx frontend apps create`](docs/reference/cli/gcx_frontend_apps_create.md)
+for the runtimes and an example manifest, and
+[`gcx frontend apps update`](docs/reference/cli/gcx_frontend_apps_update.md) for what an update keeps.
 
 ## Alerting & Datasource Queries
 

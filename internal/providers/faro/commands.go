@@ -290,11 +290,27 @@ func newCreateCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a Frontend Observability app from a file.",
+		Long: `Create a Frontend Observability app from a file.
+
+Set spec.appType and spec.runtime at creation; the API ignores later changes
+to appType. Web apps use appType web with runtime web-js. Mobile apps use
+appType mobile with runtime flutter, react-native, android-native, or
+swift-native. Create sends spec.extraLogLabels, including the legacy is_mobile
+label. Settings are ignored.`,
 		Example: `  # Create an app from a YAML file.
   gcx frontend apps create -f app.yaml
 
-  # Create from stdin.
-  cat app.yaml | gcx frontend apps create -f -`,
+  # Create a native Android app from stdin.
+  cat <<EOF | gcx frontend apps create -f -
+  apiVersion: faro.ext.grafana.app/v1alpha1
+  kind: FaroApp
+  metadata:
+    name: my-mobile-app
+  spec:
+    name: my-mobile-app
+    appType: mobile
+    runtime: android-native
+  EOF`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
@@ -368,6 +384,10 @@ func newUpdateCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "update <name>",
 		Short: "Update a Frontend Observability app from a file.",
+		Long: `Update a Frontend Observability app from a file.
+
+Omit spec.runtime to keep the stored runtime; an empty runtime is invalid. The
+API ignores changes to spec.appType. Settings are ignored.`,
 		Example: `  # Update an app using its slug-id.
   gcx frontend apps update my-web-app-42 -f app.yaml`,
 		Args: cobra.ExactArgs(1),

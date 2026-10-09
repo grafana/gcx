@@ -2,6 +2,16 @@
 
 Create a Frontend Observability app from a file.
 
+### Synopsis
+
+Create a Frontend Observability app from a file.
+
+Set spec.appType and spec.runtime at creation; the API ignores later changes
+to appType. Web apps use appType web with runtime web-js. Mobile apps use
+appType mobile with runtime flutter, react-native, android-native, or
+swift-native. Create sends spec.extraLogLabels, including the legacy is_mobile
+label. Settings are ignored.
+
 ```
 gcx frontend apps create [flags]
 ```
@@ -12,8 +22,17 @@ gcx frontend apps create [flags]
   # Create an app from a YAML file.
   gcx frontend apps create -f app.yaml
 
-  # Create from stdin.
-  cat app.yaml | gcx frontend apps create -f -
+  # Create a native Android app from stdin.
+  cat <<EOF | gcx frontend apps create -f -
+  apiVersion: faro.ext.grafana.app/v1alpha1
+  kind: FaroApp
+  metadata:
+    name: my-mobile-app
+  spec:
+    name: my-mobile-app
+    appType: mobile
+    runtime: android-native
+  EOF
 ```
 
 ### Options
