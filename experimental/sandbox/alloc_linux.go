@@ -52,14 +52,22 @@ func newRunMemoryWith(allocate func(capacity, maxBytes uint64) experimental.Line
 func allocateMapped(capacity, maxBytes uint64) experimental.LinearMemory {
 	// wazero can't handle a nil LinearMemory, so when the reservation is
 	// refused (e.g. by strict overcommit), fall back to the heap.
-	if maxBytes <= math.MaxInt {
-		buf, err := syscall.Mmap(-1, 0, int(maxBytes), syscall.PROT_READ|syscall.PROT_WRITE,
-			syscall.MAP_PRIVATE|syscall.MAP_ANON|syscall.MAP_NORESERVE)
-		if err == nil {
-			return &mappedMemory{buf: buf}
-		}
+	if buf, ok := reserve(maxBytes); ok {
+		return &mappedMemory{buf: buf}
 	}
 	return &heapMemory{buf: make([]byte, 0, capacity)}
+}
+
+// reserve maps maxBytes of address space for one instance's memory, touched
+// only as the guest grows into it. It reports false if the kernel refuses
+// the mapping or maxBytes doesn't fit in an int.
+func reserve(maxBytes uint64) ([]byte, bool) {
+	if maxBytes > math.MaxInt {
+		return nil, false
+	}
+	buf, err := syscall.Mmap(-1, 0, int(maxBytes), syscall.PROT_READ|syscall.PROT_WRITE,
+		syscall.MAP_PRIVATE|syscall.MAP_ANON|syscall.MAP_NORESERVE)
+	return buf, err == nil
 }
 
 type mappedMemory struct{ buf []byte }

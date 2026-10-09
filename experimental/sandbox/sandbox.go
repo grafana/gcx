@@ -76,6 +76,10 @@ type Runtime struct {
 	closed  bool
 	runs    sync.WaitGroup
 	cancels map[*context.CancelCauseFunc]struct{} // of the runs in flight
+
+	// teardown runs release once, however many times Close gets that far.
+	teardown    sync.Once
+	teardownErr error
 }
 
 // New compiles the gcx wasip1 module (see build.sh).
@@ -131,12 +135,21 @@ func (r *Runtime) init(ctx context.Context, wasm []byte) error {
 	// On Linux, the module's data segments become one memory image that
 	// every instance shares (see image_linux.go).
 	module, runMemory, release := newMemoryImage(wasm)
-	r.newRunMemory, r.releaseImage = runMemory, release
 	compiled, err := r.rt.CompileModule(ctx, module)
+	if err != nil && release != nil {
+		// The image is best effort: if wazero rejects the module without its
+		// segments, run the original, which copies them into each instance.
+		release()
+		module, runMemory, release = wasm, newRunMemory, nil
+		compiled, err = r.rt.CompileModule(ctx, module)
+	}
 	if err != nil {
 		return err
 	}
-	r.compiled = compiled
+	r.compiled, r.newRunMemory = compiled, runMemory
+	if release != nil {
+		r.releaseImage = release
+	}
 	return nil
 }
 
@@ -177,7 +190,13 @@ func (r *Runtime) Close(ctx context.Context) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+	// Only after the wait, so a Close that gave up can be retried.
+	r.teardown.Do(func() { r.teardownErr = r.release(ctx) })
+	return r.teardownErr
+}
 
+// release frees what New set up, once no run can be using it.
+func (r *Runtime) release(ctx context.Context) error {
 	if r.root != "" {
 		_ = os.RemoveAll(r.root)
 	}

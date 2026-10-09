@@ -5,7 +5,6 @@ package sandbox
 import (
 	"errors"
 	"fmt"
-	"math"
 	"os"
 	"syscall"
 	"unsafe"
@@ -26,32 +25,49 @@ import (
 // pages the guest only reads stay shared page cache, counted once for all
 // instances, and nothing is copied when an instance starts.
 //
-// If the module isn't one this understands, or the kernel refuses the memfd,
-// it returns the module unchanged with newRunMemory.
+// If the module has no data, isn't one this understands, or the kernel
+// refuses the memfd, it returns the module unchanged with newRunMemory, and a
+// nil release.
 func newMemoryImage(wasm []byte) ([]byte, func() (experimental.MemoryAllocator, func()), func()) {
 	img, module, err := buildImage(wasm)
 	if err != nil {
-		return wasm, newRunMemory, func() {}
+		return wasm, newRunMemory, nil
 	}
 	return module, img.newRunMemory, func() { _ = img.f.Close() }
 }
 
+var errNoData = errors.New("no data segments")
+
 // buildImage writes wasm's data segments into a sealed memfd, and returns it
 // with the module to compile instead of wasm.
+//
+// The image ends at the page after the last segment's data. The rest of the
+// initial memory (Go's bss and the first heap pages) starts as zeros, and
+// guests write to it in every run: as part of a MAP_PRIVATE memfd mapping,
+// each of those writes would first allocate the memfd page and then copy it,
+// leaving a page of zeros in the image until Close. The anonymous reservation
+// beyond the image covers it instead.
 func buildImage(wasm []byte) (*memoryImage, []byte, error) {
 	fd, err := unix.MemfdCreate("gcx-memory-image", unix.MFD_CLOEXEC|unix.MFD_ALLOW_SEALING)
 	if err != nil {
 		return nil, nil, err
 	}
 	f := os.NewFile(uintptr(fd), "gcx-memory-image")
-	module, size, err := stripModule(wasm, func(offset uint32, data []byte) error {
+	var end int64
+	module, _, err := stripModule(wasm, func(offset uint32, data []byte) error {
+		end = max(end, int64(offset)+int64(len(data)))
 		_, err := f.WriteAt(data, int64(offset))
 		return err
 	})
+	page := int64(os.Getpagesize())
+	size := (end + page - 1) / page * page
+	if err == nil && size == 0 {
+		err = errNoData
+	}
 	if err == nil {
-		// Sizing it after writing the segments is fine: the writes extend
-		// it as needed, and stripModule checked they fit.
-		err = f.Truncate(int64(size)) //nolint:gosec // stripModule caps size at 4 GiB.
+		// Sizing it after writing the segments only rounds it up to a page:
+		// mapping past the end of the file would fault.
+		err = f.Truncate(size)
 	}
 	if err == nil {
 		// Nothing may change the image under the instances mapping it.
@@ -62,32 +78,28 @@ func buildImage(wasm []byte) (*memoryImage, []byte, error) {
 		_ = f.Close()
 		return nil, nil, err
 	}
-	return &memoryImage{f: f, size: size}, module, nil
+	return &memoryImage{f: f, size: uint64(size)}, module, nil //nolint:gosec // size is a positive number of pages.
 }
 
-// memoryImage is a module's initial memory, as its data segments describe it.
+// memoryImage is the start of a module's initial memory, as its data
+// segments describe it.
 type memoryImage struct {
 	f    *os.File
-	size uint64 // the module's minimum memory, in bytes
+	size uint64 // a whole number of pages, up to the end of the last segment
 }
 
 func (img *memoryImage) newRunMemory() (experimental.MemoryAllocator, func()) {
 	return newRunMemoryWith(img.allocate)
 }
 
-// allocate is allocateMapped with the image at the start of the memory.
+// allocate is allocateMapped with the image mapped over the start of the
+// memory.
 func (img *memoryImage) allocate(capacity, maxBytes uint64) experimental.LinearMemory {
-	if img.size <= maxBytes && maxBytes <= math.MaxInt {
-		buf, err := syscall.Mmap(-1, 0, int(maxBytes), syscall.PROT_READ|syscall.PROT_WRITE,
-			syscall.MAP_PRIVATE|syscall.MAP_ANON|syscall.MAP_NORESERVE)
-		if err == nil {
-			// Unmapping buf in Free unmaps this too.
-			_, err = unix.MmapPtr(int(img.f.Fd()), 0, unsafe.Pointer(&buf[0]), uintptr(img.size), // nosemgrep: go.lang.security.audit.unsafe.use-of-unsafe-block -- MmapPtr takes the address to map at, the start of buf, as an unsafe.Pointer
-				unix.PROT_READ|unix.PROT_WRITE, unix.MAP_PRIVATE|unix.MAP_FIXED)
-			if err == nil || img.read(buf[:img.size]) == nil {
-				return &mappedMemory{buf: buf}
-			}
+	if buf, ok := reserve(maxBytes); ok {
+		if img.size > uint64(len(buf)) { // can't happen: New rejects a cap below the minimum
 			_ = syscall.Munmap(buf)
+		} else if img.mapOver(buf) {
+			return &mappedMemory{buf: buf} // unmapping buf in Free unmaps the image too
 		}
 	}
 	buf := make([]byte, img.size, max(capacity, img.size))
@@ -97,6 +109,25 @@ func (img *memoryImage) allocate(capacity, maxBytes uint64) experimental.LinearM
 		panic(fmt.Sprintf("sandbox: reading the memory image: %v", err))
 	}
 	return &heapMemory{buf: buf}
+}
+
+// mapOver maps the image over the start of buf, a reservation from reserve.
+// When it can't, it gives back what's left of buf, and buf must not be used.
+func (img *memoryImage) mapOver(buf []byte) bool {
+	_, err := unix.MmapPtr(int(img.f.Fd()), 0, unsafe.Pointer(&buf[0]), uintptr(img.size), // nosemgrep: go.lang.security.audit.unsafe.use-of-unsafe-block -- MmapPtr takes the address to map at, the start of buf, as an unsafe.Pointer
+		unix.PROT_READ|unix.PROT_WRITE, unix.MAP_PRIVATE|unix.MAP_FIXED)
+	if err == nil {
+		return true
+	}
+	// A failed MAP_FIXED may already have unmapped the start of buf, and
+	// another mapping may since have taken that range, so neither write to
+	// it nor unmap it: that could clobber someone else's memory. Unmap only
+	// the rest, which the call never touched. At worst the start stays
+	// reserved but untouched until the process exits.
+	if rest := buf[img.size:]; len(rest) > 0 {
+		_ = unix.MunmapPtr(unsafe.Pointer(&rest[0]), uintptr(len(rest))) // nosemgrep: go.lang.security.audit.unsafe.use-of-unsafe-block -- MunmapPtr takes the address to unmap from as an unsafe.Pointer
+	}
+	return false
 }
 
 func (img *memoryImage) read(buf []byte) error {

@@ -6,12 +6,14 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/tetratelabs/wazero/experimental"
@@ -150,13 +152,37 @@ func TestStripModule(t *testing.T) {
 	}
 }
 
+// The image ends at the page after the last segment, and a module with no
+// data gets none.
+func TestBuildImage(t *testing.T) {
+	img, _, err := buildImage(testModule(2, dataSection(active(0, 16, "abc"), active(0, 70000, "xyz"), active(0, 90000, ""))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = img.f.Close() })
+	// The last data byte is at 70002; pages are at most 64 KiB.
+	if img.size <= 70002 || img.size > 70002+64<<10 || img.size%4096 != 0 {
+		t.Errorf("image is %d bytes, want the first page boundary after 70002", img.size)
+	}
+	if data, err := io.ReadAll(img.f); err != nil || uint64(len(data)) != img.size {
+		t.Errorf("memfd holds %d bytes (err %v), want %d", len(data), err, img.size)
+	}
+
+	wasm := testModule(1, dataSection(active(0, 16, "")))
+	module, _, release := newMemoryImage(wasm)
+	if release != nil || !bytes.Equal(module, wasm) {
+		t.Errorf("no data: got an image (%v) or a changed module (%v)", release != nil, !bytes.Equal(module, wasm))
+	}
+}
+
 func TestImageAllocate(t *testing.T) {
 	img, _, err := buildImage(testModule(2, dataSection(active(0, 16, "abc"), active(0, 70000, "xyz"))))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = img.f.Close() })
-	want := make([]byte, 2*65536)
+	const minBytes = 2 * 65536
+	want := make([]byte, minBytes)
 	copy(want[16:], "abc")
 	copy(want[70000:], "xyz")
 	for _, tc := range []struct {
@@ -173,18 +199,19 @@ func TestImageAllocate(t *testing.T) {
 			if _, ok := mem.(*mappedMemory); ok != tc.mapped {
 				t.Fatalf("got %T, want mapped %v", mem, tc.mapped)
 			}
-			buf := mem.Reallocate(img.size)
+			// The image, then zeros up to the minimum.
+			buf := mem.Reallocate(minBytes)
 			if !bytes.Equal(buf, want) {
 				t.Fatal("memory doesn't hold the image")
 			}
 			// Writes stay private to this memory, and growing keeps them.
 			buf[16] = 'A'
-			grown := mem.Reallocate(4 * 65536)
-			if grown[16] != 'A' || !bytes.Equal(grown[17:2*65536], want[17:]) || !bytes.Equal(grown[2*65536:], make([]byte, 2*65536)) {
+			grown := mem.Reallocate(2 * minBytes)
+			if grown[16] != 'A' || !bytes.Equal(grown[17:minBytes], want[17:]) || !bytes.Equal(grown[minBytes:], make([]byte, minBytes)) {
 				t.Fatal("growing lost or dirtied the contents")
 			}
 			other := img.allocate(64<<10, tc.maxBytes)
-			if other.Reallocate(img.size)[16] != 'a' {
+			if other.Reallocate(minBytes)[16] != 'a' {
 				t.Fatal("a write to one memory reached the image")
 			}
 			other.Free()
@@ -443,5 +470,35 @@ func TestGCXRunsOnMemoryImage(t *testing.T) {
 	}
 	if u.anonKiB>>10 >= budgetMiB {
 		t.Errorf("the run wrote %d MiB of anonymous memory, want under %d", u.anonKiB>>10, budgetMiB)
+	}
+}
+
+// Close releases the image once, however many times it's called.
+func TestCloseReleasesOnce(t *testing.T) {
+	wasm, _ := imageGuest(t)
+	r, err := New(t.Context(), wasm, Config{MemoryLimitBytes: 4 << 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	release := r.releaseImage
+	var calls atomic.Int32
+	r.releaseImage = func() {
+		calls.Add(1)
+		release()
+	}
+	var wg sync.WaitGroup
+	for range 3 {
+		wg.Go(func() {
+			if err := r.Close(context.Background()); err != nil {
+				t.Errorf("Close: %v", err)
+			}
+		})
+	}
+	wg.Wait()
+	if err := r.Close(context.Background()); err != nil {
+		t.Errorf("Close after Close: %v", err)
+	}
+	if n := calls.Load(); n != 1 {
+		t.Errorf("image released %d times, want 1", n)
 	}
 }
