@@ -1,18 +1,28 @@
 ---
 title: Explore and modify resources
+labels:
+  products:
+    - cloud
+    - enterprise
+    - oss
+description: Use gcx to explore and modify resources.
+keywords:
+  - gcx
+  - Grafana CLI
+  - observability as code
+  - telemetry
+weight: 1
 ---
 
-This section describes how to use the Grafana CLI to interact with Grafana resources directly from your terminal.
+# Explore and modify resources with `gcx`
 
-These commands allow you to browse, inspect, update, and delete resources without using the Grafana UI.
+The Grafana CLI allows you to interact with Grafana resources directly from your terminal. You can browse, inspect, update, and delete resources without using the Grafana UI.
 
-This approach is useful for advanced users who want to manage resources more efficiently or integrate Grafana operations into automated workflows.
+Use this approach if you're an advanced user and want to manage resources more efficiently, or to integrate Grafana operations into automated workflows.
 
 ## Find and delete dashboards using incorrect data sources
 
-In this example, we want to identify and remove production dashboards relying on non-production data sources.
-
-The command below lists dashboard UIDs along with the data source UIDs used in their panels:
+To identify and remove production dashboards relying on non-production data sources, use the command below to list dashboard UIDs along with the data source UIDs used in their panels:
 
 ```shell
 gcx resources get dashboards --context prod | jq '.items | map({ uid: .metadata.name, datasources: .spec.panels | map(.datasource.uid)  })'
@@ -38,7 +48,7 @@ gcx resources get dashboards --context prod | jq '.items | map({ uid: .metadata.
 ]
 ```
 
-We can then identify the dashboards that are using unexpected data sources, and delete them:
+Next, identify the dashboards that are using unexpected data sources, and delete them:
 
 ```shell
 gcx resources delete dashboards/test-dashboard-from-stg,test-dashboard-from-dev
@@ -47,15 +57,12 @@ gcx resources delete dashboards/test-dashboard-from-stg,test-dashboard-from-dev
 
 ## Edit remote resources
 
-Resources can be edited directly from the default editor, without having to pull them first:
+You can edit resources directly from the default editor, without having to pull them first:
 
 ```shell
 gcx resources edit dashboard/edit-me-please
 ```
 
-This command will open the default editor as configured by the `EDITOR` environment variable (or fall back to 'vi' for Linux or 'notepad' for Windows).
+This command opens the default editor as configured by the `EDITOR` environment variable, or fall back to 'vi' for Linux or 'notepad' for Windows.
 
-Once the editor process terminates, the resource will be updated in the Grafana instance targeted by the current context.
-
-!!! note
-    The edition will be cancelled if no changes are written to the file or if the file after edition is empty.
+After the editor process terminates, the resource is updated in the Grafana instance targeted by the current context. Note that edition will be cancelled if no changes are written to the file or if the file after edition is empty.

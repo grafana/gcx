@@ -30,13 +30,13 @@ Before you begin, make sure to:
 - If you have no backend, [start docker-otel-lgtm](https://github.com/grafana/docker-otel-lgtm#run-the-docker-image)   for a local development sink. Setting up a sink does not authorize changing an existing application's exporter. A local proof does not establish that your production destination works.
 - Know which application or fixture you may inspect. Do not enumerate unrelated containers, environments, or services to compensate for missing context.
 
-The command examples use the current `gcx` command surface. Check `gcx version` and the relevant command's `--help` when following them with another release.
+The command examples use the `gcx` v1.5.0 command surface. Check `gcx version` and the relevant command's `--help` when following them with another release.
 
 ## Connect without changing your usual context
 
 If you have already configured the destination, use explicit `--config` and `--context` arguments. Do not switch the current context just for this investigation. Otherwise, create a separate private configuration outside your checkout. 
 
-The examples use `GCX_CONFIG`, gcx's actual environment override; unset it first if it points at another configuration so it cannot silently defeat this isolation:
+The examples use `GCX_CONFIG`, the actual `gcx` environment override. If it's pointing at another configuration, unset it first:
 
 ```bash
 GCX_DIAGNOSTICS_DIR=$(mktemp -d)
@@ -44,9 +44,7 @@ export GCX_CONFIG="$GCX_DIAGNOSTICS_DIR/config.yaml"
 (umask 077; printf '{}\n' > "$GCX_CONFIG")
 ```
 
-Keep the path until cleanup. 
-
-In another terminal, set the variable to the same path; do not create a second empty configuration by repeating the block.
+Keep the path until cleanup. In another terminal, set the variable to the same path; do not create a second empty configuration by repeating the block.
 
 For an existing Grafana destination, use interactive login with a new context in that file, replacing the example URL:
 
@@ -55,28 +53,18 @@ gcx login diagnostics --config "$GCX_CONFIG" \
   --server https://your-grafana.example
 ```
 
-For local LGTM, use that repository's local connection instructions instead of
-this login step. See [Configure gcx](../sources/configuration.md) for supported
-authentication methods. Supply credentials locally through the supported auth
-flow, not in chat, copied transcripts, or committed files. Prefer read-only
-access when available; approval instructions do not restrict API permissions.
+For local LGTM, use that repository's local connection instructions instead of this login step. See [Configure gcx](../configuration.md) for supported authentication methods. Supply credentials locally through the supported auth flow, not in chat, copied transcripts, or committed files. Prefer read-only access when available; approval instructions do not restrict API permissions.
 
-Environment overrides can still affect the selected configuration. Review
-which overrides you intentionally set before running queries; do not dump your
-whole environment or configuration into a transcript. Do not disable TLS
-verification to make a connection error disappear.
+Environment overrides can still affect the selected configuration. Review which overrides you intentionally set before running queries and don't dump your whole environment or configuration into a transcript. Don't disable TLS verification to make a connection error disappear.
 
-Use your selected context name below (`diagnostics` is the login example):
+Use your selected context name below, where `diagnostics` is the login example:
 
 ```bash
 gcx config check --config "$GCX_CONFIG" --context diagnostics
 gcx datasources list --config "$GCX_CONFIG" --context diagnostics
 ```
 
-Stop and resolve connection/authentication errors before interpreting query
-results. A successful configuration check does not prove application ingestion.
-Choose the datasource UID returned by discovery, rather than assuming a default.
-For example, against a Prometheus datasource:
+Stop and resolve any connection or authentication errors before interpreting query results. A successful configuration check does not prove application ingestion. Choose the datasource UID returned by discovery, rather than assuming a default. For example, against a Prometheus datasource:
 
 ```bash
 gcx metrics query 'vector(1)' --datasource 'PROMETHEUS_DATASOURCE_UID' \
@@ -84,13 +72,7 @@ gcx metrics query 'vector(1)' --datasource 'PROMETHEUS_DATASOURCE_UID' \
   --config "$GCX_CONFIG" --context diagnostics
 ```
 
-Replace `PROMETHEUS_DATASOURCE_UID` before running. A returned value proves that query
-path works, not that the application emitted metrics. With `--error-on-empty`,
-an empty response exits unsuccessfully; without it, a successful empty query,
-an invalid query, and a failed connection are different observations.
-The flag is supported on the Prometheus query, Loki logs/metrics, Tempo
-search/metrics, and Pyroscope query commands; it is not a generic flag for
-unrelated datasource query commands.
+Replace `PROMETHEUS_DATASOURCE_UID` before running. A returned value proves that query path works, not that the application emitted metrics. With `--error-on-empty`, an empty response exits unsuccessfully; without it, a successful empty query, an invalid query, and a failed connection are different observations. The flag is supported on the Prometheus query, Loki logs/metrics, Tempo search/metrics, and Pyroscope query commands; it is not a generic flag for unrelated datasource query commands.
 
 ## Give the agent the symptom and boundaries
 
@@ -103,8 +85,7 @@ Start the agent in the relevant application/test checkout. Provide:
 - The relevant Compose project, deployment, or Collector configuration you own.
 - Which resources may be inspected and which actions require approval.
 
-Unknown fields are not a reason to invent answers. Ask the agent to identify
-what information or access is missing. Use this prompt, filling in what you know:
+Make sure the agent doesn't invent answers, ask it to identify what information or access is missing. Use this prompt, filling in what you know:
 
 > Use the existing gcx skills to investigate `<symptom>`. Query only
 > `<config path and context>` and inspect only `<application/fixture scope>`.
@@ -115,34 +96,20 @@ what information or access is missing. Use this prompt, filling in what you know
 > restarting resources, or enabling payload logging. Do not weaken an assertion
 > to make a test pass. Propose the smallest justified repair, and stop for approval.
 
-An empty dashboard can result from no data being created, export failure,
-filtering, an incorrect query, or a time/identity mismatch. Static configuration
-and absence of results are leads, not proof of a particular failure boundary.
-Ask for the evidence supporting each conclusion and the next discriminating check.
+An empty dashboard can result from no data being created, export failure, filtering, an incorrect query, or a time/identity mismatch. Static configuration and absence of results are leads, not proof of a particular failure boundary.
+
+**Always ask for the evidence supporting each conclusion and the next discriminating check**.
 
 ## Verify a repair and restore the environment
 
 After approving a specific change:
 
-1. Exercise a fresh representative operation and record its time and available
-   identifiers. Old telemetry must not satisfy the recovery check.
-2. Query the relevant datasource, then recheck the original dashboard or rerun
-   the original test uncached. A successful backend query alone does not prove
-   the panel or assertion is correct.
-3. Review the actual diff and runtime changes. Functional recovery does not
-   prove unrelated dashboard/configuration fields were preserved.
-4. Restore temporary diagnostic configuration and logging. Remove temporary
-   backups and stop only resources created for this investigation, after confirming
-   they are no longer needed. Never clean up pre-existing resources by assumption.
+1. Exercise a fresh representative operation and record its time and available identifiers. Old telemetry must not satisfy the recovery check.
+2. Query the relevant datasource, then recheck the original dashboard or rerun the original test uncached. A successful backend query alone does not prove the panel or assertion is correct.
+3. Review the actual diff and runtime changes. Functional recovery does not prove unrelated dashboard/configuration fields were preserved.
+4. Restore temporary diagnostic configuration and logging. Remove temporary backups and stop only resources created for this investigation, after confirming they are no longer needed. Never clean up pre-existing resources by assumption.
 5. Record the confirmed cause, remaining unknowns, approved changes, and result.
 
-Debug-exporter payloads and logs may contain sensitive data. Enable them only
-with permission, for a bounded investigation, and do not publish raw output.
-Avoid full environment dumps or HTTP payload logging that can expose credentials.
+Debug-exporter payloads and logs may contain sensitive data. Enable them only with permission, for a bounded investigation, and do not publish raw output. Avoid full environment dumps or HTTP payload logging that can expose credentials.
 
-If you created the private directory above, inspect it locally and remove only
-that directory when finished. Remove any diagnostic credentials stored by login
-using your normal credential-management process; deleting a config file does
-not revoke a server-side token. Explicit config/context arguments leave your
-usual current context unchanged. Do not delete an existing config used for the
-investigation, or revoke a credential shared with another workflow.
+If you created the private directory above, inspect it locally and remove only that directory when finished. Remove any diagnostic credentials stored by login using your normal credential-management process; deleting a config file don't revoke a server-side token. Explicit configuration or context arguments leave your usual current context unchanged. Do not delete an existing configuration used for the investigation, or revoke a credential shared with another workflow.

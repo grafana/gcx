@@ -12,6 +12,8 @@ keywords:
   - observability as code
   - as-code
   - dashboards
+  - resources
+  - diagnostics
 weight: 10
 ---
 

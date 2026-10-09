@@ -1,22 +1,39 @@
 ---
 title: Lint resources
+labels:
+  products:
+    - cloud
+    - enterprise
+    - oss
+description: Use gcx to lint resources.
+keywords:
+  - gcx
+  - Grafana CLI
+  - observability as code
+  - telemetry
+weight: 1
 ---
 
-Grafana CLI offers a linter that can be used to verify that resources – dashboards, alerts, … —
-comply with good practices and environment-specific policies.
+# Lint resources with `gcx`
 
-## Using the linter
+Use the Grafana CLI linter to verify that resources such as dashboards or comply with good practices and environment-specific policies.
 
-Resources can be linted using:
+## Use the linter
+
+Lint resources with:
 
 ```shell
 gcx dev lint run ./resources
 ```
 
-Directories are recursively explored and all [built-in rules](../reference/linter-rules/index.md)
-are enabled by default.
+The following applies:
 
-For a finer control, the rules used to lint resources can be configured:
+- Directories are recursively explored and 
+- All [built-in rules](https://github.com/grafana/gcx/tree/main/internal/linter/bundle/gcx/rules) are enabled by default.
+
+### Configure linter rules
+
+For a finer control, you can configure the linter rules:
 
 ```shell
 # Disable all rules for a resource type:
@@ -38,22 +55,20 @@ gcx dev lint run --disable-all --enable-category idiomatic ./resources
 gcx dev lint run --disable-all --enable uneditable-dashboard ./resources
 ```
 
+You can modify the severity level of a rule by updating the `custom.severity` annotation. Valid values are `warning` and `error`.
+
 ## Define custom linting rules
 
-Custom and built-in rules are defined in [Rego](https://www.openpolicyagent.org/docs/policy-language),
-the policy language used by [Open Policy Agent (OPA)](https://www.openpolicyagent.org/).
+Custom and built-in rules are defined in [Rego](https://www.openpolicyagent.org/docs/policy-language), the policy language used by [Open Policy Agent (OPA)](https://www.openpolicyagent.org/). This ensures that resources comply with policies specific to your environment.
 
-They can be extremely useful to make sure that resources comply with policies
-specific to your environment.
-
-New custom rules can be scaffolded with `gcx`:
+You can scaffold new custom rules with `gcx`:
 
 ```shell
 # Creates a new "dashboard" linter rule in the current directory:
 gcx dev lint new dashboard custom-rule
 ```
 
-As a result, a file with the bootstrapped rule is generated:
+This generates a file with the bootstrapped rule:
 
 ```rego
 # METADATA
@@ -84,14 +99,11 @@ report contains violation if {
 }
 ```
 
-[Built-in rules](https://github.com/grafana/gcx/tree/main/internal/linter/bundle/gcx/rules)
-can be a good source of inspiration when writing custom ones.
+See the existing [Built-in rules](https://github.com/grafana/gcx/tree/main/internal/linter/bundle/gcx/rules) for inspiration when writing custom ones.
 
-The severity level of a rule can be changed by updating the `custom.severity` annotation.
-Valid values are `warning` and `error`.
+### Rules for other resources
 
-Rules can also be created for other resource types than dashboards, or in other
-categories than the `idiomatic` one:
+You can create rules for other resource types than dashboards, or in categories other than `idiomatic`:
 
 ```shell
 # Creates a new "alertrule" linter rule, categorized under "bug":
