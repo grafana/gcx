@@ -31,7 +31,12 @@ time-series data with proper table, graph, and JSON formatters.
 Instant vs range is deduced from time flags: no time flags = instant query,
 --since or --from/--to = range query.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
-open it in your browser after the query succeeds.`,
+open it in your browser after the query succeeds.
+--from/--to accept a bare Unix timestamp at second, millisecond, microsecond,
+or nanosecond precision (digit count decides the unit). A query using
+microsecond or finer precision is sent directly to Loki's own API instead of
+through Grafana's query engine, whose own request format is capped at
+millisecond precision.`,
 		Example: `
   # Rate of log lines over 5 minutes
   gcx datasources loki metrics 'rate({job="varlogs"}[5m])' --since 1h -o table
@@ -89,7 +94,15 @@ open it in your browser after the query succeeds.`,
 				Step:  step,
 			}
 
-			resp, err := client.MetricQuery(ctx, datasourceUID, req)
+			// See query.go's identical branch: Grafana's query engine caps
+			// from/to at millisecond precision, so a sub-ms --from/--to
+			// goes straight to Loki's own API instead.
+			metricQuery := client.MetricQuery
+			if dsquery.HasSubMillisecondPrecision(shared.From) || dsquery.HasSubMillisecondPrecision(shared.To) {
+				metricQuery = client.MetricQueryNative
+			}
+
+			resp, err := metricQuery(ctx, datasourceUID, req)
 			if err != nil {
 				return fmt.Errorf("metric query failed: %w", err)
 			}

@@ -31,7 +31,13 @@ bodies or -o json for the full structured response.
 
 Default --limit is 50; use --limit 0 for no cap.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
-open it in your browser after the query succeeds.`,
+open it in your browser after the query succeeds.
+--from/--to accept a bare Unix timestamp at second, millisecond, microsecond,
+or nanosecond precision (digit count decides the unit) — e.g. a value copied
+from a Drilldown/Explore permalink's startNs/endNs param. A query using
+microsecond or finer precision is sent directly to Loki's own API instead of
+through Grafana's query engine, whose own request format is capped at
+millisecond precision.`,
 		Example: `
   # Query logs using configured default datasource
   gcx datasources loki query '{job="varlogs"}'
@@ -41,6 +47,9 @@ open it in your browser after the query succeeds.`,
 
   # Print a Grafana Explore share link for the query
   gcx datasources loki query '{job="varlogs"}' --share-link
+
+  # Exact nanosecond-precision range (e.g. copied from a permalink)
+  gcx datasources loki query -d UID '{job="varlogs"}' --from 1705315800123456789 --to 1705315801123456789
 
   # Raw line bodies only
   gcx datasources loki query -d UID '{job="varlogs"}' -o raw
@@ -90,7 +99,16 @@ open it in your browser after the query succeeds.`,
 				Limit: limit,
 			}
 
-			resp, err := client.Query(ctx, datasourceUID, req)
+			// Grafana's query engine caps from/to at millisecond precision
+			// (its own request schema, not a Loki limit) -- a sub-ms
+			// --from/--to goes straight to Loki's own API instead, which
+			// has always accepted nanosecond start/end.
+			query := client.Query
+			if dsquery.HasSubMillisecondPrecision(shared.From) || dsquery.HasSubMillisecondPrecision(shared.To) {
+				query = client.QueryNative
+			}
+
+			resp, err := query(ctx, datasourceUID, req)
 			if err != nil {
 				return fmt.Errorf("query failed: %w", err)
 			}

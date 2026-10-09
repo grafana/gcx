@@ -16,6 +16,11 @@ Instant vs range is deduced from time flags: no time flags = instant query,
 --since or --from/--to = range query.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
 open it in your browser after the query succeeds.
+--from/--to accept a bare Unix timestamp at second, millisecond, microsecond,
+or nanosecond precision (digit count decides the unit). A query using
+microsecond or finer precision is sent directly to Loki's own API instead of
+through Grafana's query engine, whose own request format is capped at
+millisecond precision.
 
 ```
 gcx datasources loki metrics [EXPR] [flags]

@@ -15,6 +15,12 @@ bodies or -o json for the full structured response.
 Default --limit is 50; use --limit 0 for no cap.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
 open it in your browser after the query succeeds.
+--from/--to accept a bare Unix timestamp at second, millisecond, microsecond,
+or nanosecond precision (digit count decides the unit) — e.g. a value copied
+from a Drilldown/Explore permalink's startNs/endNs param. A query using
+microsecond or finer precision is sent directly to Loki's own API instead of
+through Grafana's query engine, whose own request format is capped at
+millisecond precision.
 
 ```
 gcx logs query [EXPR] [flags]
