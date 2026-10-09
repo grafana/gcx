@@ -345,6 +345,8 @@ gcx dashboards search "node exporter"           # full-text search by title/tag/
 gcx resources get folders                       # list all folders
 gcx resources get dashboards.dashboard.grafana.app/my-dash  # get by resource.group/name
 gcx alert rules list                            # list alert rules
+gcx alert time-intervals list                   # native notification time intervals
+gcx alert template-groups list                  # native notification template groups
 
 # Grafana Cloud products
 gcx synthetic-monitoring checks list            # list synthetic monitoring checks

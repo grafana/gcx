@@ -104,8 +104,9 @@ User invocation:
   │       (unless IncludeManaged=true)                                   │
   │    d. upsertResource:                                                 │
   │         client.Get(ctx, desc, name) — check if exists                │
-  │         if exists: copy resourceVersion, client.Update(...)          │
-  │         if 404:    client.Create(...)                                 │
+  │         if matching: copy destination name/version, Update(...)     │
+  │         if absent/mismatched: match cached logical identity          │
+  │         if no match: prepare copied create body, Create(...)        │
   │         DryRun: pass DryRun: []string{"All"} to K8s options          │
   │       DRY-RUN GUARD (dryRunGuard) intercepts Create/Update:          │
   │         legacy-storage APIs (all alerting) ignore server-side        │
@@ -126,7 +127,13 @@ User invocation:
   └──────────────────────────────────────────────────────────────────────┘
 ```
 
+For server-derived TimeInterval/TemplateGroup names, GET matches require the
+manifest's logical identity. List matching resolves different historical names;
+ambiguity and imported template groups fail without mutation. Create preparation
+strips source identity on a copy. See [resource model](resource-model.md#server-derived-native-names).
+
 Key files:
+- `internal/resources/native_identity.go` — opted-in logical identity and create preparation
 - `cmd/gcx/resources/push.go` — CLI wiring
 - `internal/resources/local/reader.go` — FSReader
 - `internal/resources/remote/pusher.go` — Pusher, upsertResource

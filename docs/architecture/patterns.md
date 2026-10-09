@@ -825,9 +825,21 @@ list, err := access.Client.List(ctx, access.Descriptor, metav1.ListOptions{})
 - `internal/providers/native/native.go`: `Bind`, `Binding.Load`, `Fixed`, `Func`, `WithRegistry`, `ParseAPIVersion`
 - `internal/providers/native/manifest.go`: `ReadManifest`
 - `internal/providers/alert/routing_trees_commands.go`: first adopter
+- `internal/providers/alert/time_intervals_commands.go` and `template_groups_commands.go`: exact title lookup, caller-version updates, and server-derived creates
 - Constitution: "Native resources go through the shared native binding". Dashboards still hand-rolls access until its migration lands.
 
 ---
+
+### Server-derived identity policy
+
+Native command creates and generic push share the pure policy in
+`internal/resources/native_identity.go`. The policy validates logical identity
+and read-only status and prepares a deep-copy create body; it neither registers
+adapters nor synthesizes opaque API names. Push reuses the natural-key cache
+when a name hint is absent or mismatched and rejects ambiguous native matches.
+Dedicated update uses an explicit current-title subject, while push matches the
+desired identity. See [resource model](resource-model.md#server-derived-native-names)
+and [push flow](data-flows.md#2-push-pipeline).
 
 ## Contradiction Resolutions
 

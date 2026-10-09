@@ -269,7 +269,7 @@ iam.grafana.app                 — identity/access management
 version) but hides every resource not on the group's allowlist:
 
 ```
-notifications.alerting.grafana.app — only routingtrees
+notifications.alerting.grafana.app — routingtrees, timeintervals, templategroups
 ```
 
 Additionally, `FilterDiscoveryResults()` excludes:
@@ -504,6 +504,30 @@ Given that reality, using `k8s.io/client-go` and `k8s.io/apimachinery` directly 
 3. **Dry-run semantics** — the K8s `dryRun: All` option maps directly to Grafana's API
 4. **Unstructured representation** — `map[string]any` accommodates any resource shape without pre-generated Go types for each Grafana resource kind
 5. **Familiar UX** — the kubectl-style CLI patterns (`resources get dashboards/foo`, context switching) are immediately recognizable to Grafana users who work with Kubernetes
+
+---
+
+## Server-derived native names
+
+`internal/resources/native_identity.go` opts TimeInterval and TemplateGroup into
+logical identity matching independently of API version. Time intervals match
+`spec.name`; template groups match kind and `spec.title`, with absent historical
+kind treated as `grafana` for matching only. Imported `mimir` groups remain
+readable and reject push before mutation.
+
+During push, a supplied API name is a lookup hint. A GET result is used only when
+its logical identity agrees with the manifest; otherwise the cached destination
+list is matched, rejecting ambiguity. Updates use the destination name and current
+resource version. Creates remove server identity and concurrency metadata on a
+deep copy while preserving spec, annotations, labels, and destination namespace.
+GCX computes no encoded names, because template encoding changed within
+`v0alpha1`. Ordinary kinds retain their caller-selected names.
+
+Dedicated `update <current-title>` explicitly selects the existing object and
+may rename it using the caller's fetched resource version. Generic push ensures
+the manifest's desired identity exists and leaves any old identity untouched.
+Neither path rewrites local files. Both kinds remain outside the server-dry-run
+allowlist; previews report skipped/unverified and send no mutation by default.
 
 ---
 

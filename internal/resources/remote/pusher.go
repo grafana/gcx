@@ -287,6 +287,22 @@ func (p *Pusher) upsertResource(
 		dryRunOpts = []string{"All"}
 	}
 
+	sourceObj := src.ToUnstructured()
+	obj := *sourceObj.DeepCopy()
+	nativePolicy := resources.HasServerDerivedName(desc.GroupVersionKind())
+	var desiredIdentity string
+	if nativePolicy {
+		var readOnly bool
+		var identityErr error
+		desiredIdentity, readOnly, identityErr = resources.NativeIdentity(&obj)
+		if identityErr != nil {
+			return identityErr
+		}
+		if readOnly {
+			return errors.New("imported template groups are read-only; manage the external Alertmanager configuration")
+		}
+	}
+
 	// An unnamed manifest requests creation (or natural-key matching). Never
 	// issue GET with an empty ID: REST APIs may treat it as a collection read.
 	var existing *unstructured.Unstructured
@@ -294,10 +310,18 @@ func (p *Pusher) upsertResource(
 	if name != "" {
 		existing, err = p.client.Get(ctx, desc, name, metav1.GetOptions{})
 	}
+	if err == nil && nativePolicy {
+		existingIdentity, _, identityErr := resources.NativeIdentity(existing)
+		if identityErr != nil {
+			return identityErr
+		}
+		if existingIdentity != desiredIdentity {
+			err = apierrors.NewNotFound(desc.GroupVersionResource().GroupResource(), name)
+		}
+	}
 	if err == nil {
-		obj := src.ToUnstructured()
-
-		// Copy the resourceVersion from the existing resource so the API accepts the update.
+		// Use the destination address and version on updates.
+		obj.SetName(existing.GetName())
 		obj.SetResourceVersion(existing.GetResourceVersion())
 
 		if _, err := p.client.Update(ctx, desc, &obj, metav1.UpdateOptions{
@@ -316,8 +340,6 @@ func (p *Pusher) upsertResource(
 	}
 
 	// Resource does not exist — try natural key matching for cross-stack push.
-	obj := src.ToUnstructured()
-
 	// The metadata.name may be a server-generated ID from a different stack.
 	// Look for a resource with the same content identity.
 	remoteName, rv, found, nkErr := findByNaturalKey(ctx, nkCache, desc, &obj)
@@ -337,6 +359,13 @@ func (p *Pusher) upsertResource(
 	}
 
 	// No natural key match — create as new resource.
+	if nativePolicy {
+		prepared, prepareErr := resources.PrepareNativeCreate(&obj)
+		if prepareErr != nil {
+			return prepareErr
+		}
+		obj = *prepared
+	}
 	if _, err := p.client.Create(ctx, desc, &obj, metav1.CreateOptions{
 		DryRun: dryRunOpts,
 	}); err != nil {

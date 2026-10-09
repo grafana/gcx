@@ -2,6 +2,7 @@ package remote
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/adapter"
@@ -23,14 +24,26 @@ func findByNaturalKey( //nolint:nonamedreturns // Named returns document the fou
 ) (remoteName string, resourceVersion string, found bool, err error) {
 	// 1. Get the extractor for this GVK.
 	extractor := adapter.GetNaturalKeyExtractor(desc.GroupVersionKind())
-	if extractor == nil {
+	nativePolicy := extractor == nil && resources.HasServerDerivedName(desc.GroupVersionKind())
+	if extractor == nil && !nativePolicy {
 		return "", "", false, nil
+	}
+	var identityErr error
+	if nativePolicy {
+		extractor = func(obj *unstructured.Unstructured) (string, bool) {
+			key, _, err := resources.NativeIdentity(obj)
+			if err != nil {
+				identityErr = err
+				return "", false
+			}
+			return key, true
+		}
 	}
 
 	// 2. Extract the local resource's natural key.
 	localKey, ok := extractor(localObj)
 	if !ok {
-		return "", "", false, nil
+		return "", "", false, identityErr
 	}
 
 	// 3. Get the cached list of remote resources.
@@ -42,13 +55,25 @@ func findByNaturalKey( //nolint:nonamedreturns // Named returns document the fou
 		return "", "", false, nil
 	}
 
-	// 4. Find a remote resource with the same natural key.
+	// 4. Native identities must be unique; existing adapter first-match semantics stay unchanged.
+	matches := 0
 	for i := range remoteList.Items {
 		remoteKey, ok := extractor(&remoteList.Items[i])
 		if ok && remoteKey == localKey {
-			return remoteList.Items[i].GetName(), remoteList.Items[i].GetResourceVersion(), true, nil
+			if !nativePolicy {
+				return remoteList.Items[i].GetName(), remoteList.Items[i].GetResourceVersion(), true, nil
+			}
+			matches++
+			remoteName = remoteList.Items[i].GetName()
+			resourceVersion = remoteList.Items[i].GetResourceVersion()
 		}
 	}
 
-	return "", "", false, nil
+	if nativePolicy && identityErr != nil {
+		return "", "", false, identityErr
+	}
+	if matches > 1 {
+		return "", "", false, fmt.Errorf("ambiguous native identity %q: %d matching resources", localKey, matches)
+	}
+	return remoteName, resourceVersion, matches == 1, nil
 }

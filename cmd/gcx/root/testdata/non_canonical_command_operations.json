@@ -16,6 +16,7 @@
   "gcx alert notification-policies export",
   "gcx alert notification-policies reset",
   "gcx alert notification-policies set",
+  "gcx alert time-intervals export",
   "gcx appo11y services map",
   "gcx assistant investigations cancel",
   "gcx assistant investigations mode",
