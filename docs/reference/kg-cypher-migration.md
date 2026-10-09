@@ -6,7 +6,8 @@ and paths.
 
 `gcx kg entities query` is deprecated but remains supported through v1.x. Its
 endpoint, flags, defaults, and `entities`/`edges` response stay unchanged.
-Deprecation warnings go to stderr, so stdout remains usable by existing JSON
+Deprecation warnings appear on stderr at `-v` or higher verbosity; default output
+stays quiet. Stdout remains usable by existing JSON
 parsers. Removal will not happen before the next major release; this change
 does not set a removal date or retire the backend search API.
 

@@ -533,7 +533,7 @@ It supports scalar projections and bounded paths. Queries require a literal `LIM
 use Cypher `ORDER BY`/`SKIP`/`LIMIT` to select a result window.
 Without time flags, the query covers the last hour.
 The deprecated `gcx kg entities query` retains its `entities`/`edges` envelope,
-`--page`, and `--insights-only` through v1.x, with a warning on stderr only.
+`--page`, and `--insights-only` through v1.x, with a warning on stderr at `-v`.
 See the [Cypher migration guide](docs/reference/kg-cypher-migration.md) before
 changing existing queries and output parsers.
 

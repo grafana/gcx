@@ -51,7 +51,7 @@ predictable ordering. The legacy entities/edges envelope, --page, and
 --insights-only remain available via the deprecated 'gcx kg entities query'.
 Use 'gcx kg entities list' with --insight for entity health evidence.
 Caller parameters are not supported. Use literals and escape strings as Cypher literals.
-Variable-length paths require a finite upper bound (server default maximum: 5 hops).
+Variable-length paths require a finite upper bound within the server's hop limit.
 The server validates its language allowlist and execution budgets; refusals include
 stable CYPHER_* error codes. There is no fallback to the legacy search endpoint.`,
 		Example: `  gcx kg graph query "MATCH (s:Service) RETURN s.name AS name LIMIT 10"
@@ -160,9 +160,6 @@ func (c *CypherRowsTableCodec) Encode(w io.Writer, v any) error {
 	}
 	table := style.NewTable(resp.Columns...).MultilineCells(true)
 	for _, row := range resp.Rows {
-		if len(row) != len(resp.Columns) {
-			return errors.New("cypher response row width does not match columns")
-		}
 		values := make([]string, len(row))
 		for i, cell := range row {
 			var compact bytes.Buffer

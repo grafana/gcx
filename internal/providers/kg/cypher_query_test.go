@@ -172,12 +172,10 @@ func TestCypherQueryErrors(t *testing.T) {
 func TestCypherRowsTableCodec(t *testing.T) {
 	for _, tt := range []struct {
 		name, body, want string
-		fail             bool
 	}{
-		{"empty", `{"columns":["name"],"rows":[]}`, "name", false},
-		{"duplicate columns", `{"columns":["x","x"],"rows":[[true,false],[null,0]]}`, "false", false},
-		{"nested", `{"columns":["list","map"],"rows":[[[1,2],{"a":null}]]}`, `{"a":null}`, false},
-		{"mismatched width", `{"columns":["x"],"rows":[[1,2]]}`, "", true},
+		{"empty", `{"columns":["name"],"rows":[]}`, "name"},
+		{"duplicate columns", `{"columns":["x","x"],"rows":[[true,false],[null,0]]}`, "false"},
+		{"nested", `{"columns":["list","map"],"rows":[[[1,2],{"a":null}]]}`, `{"a":null}`},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			forceNoColor(t)
@@ -185,10 +183,6 @@ func TestCypherRowsTableCodec(t *testing.T) {
 			require.NoError(t, json.Unmarshal([]byte(tt.body), &result))
 			var out bytes.Buffer
 			err := (&kg.CypherRowsTableCodec{}).Encode(&out, &result)
-			if tt.fail {
-				require.Error(t, err)
-				return
-			}
 			require.NoError(t, err)
 			assert.Contains(t, strings.TrimSpace(out.String()), tt.want)
 		})

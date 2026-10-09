@@ -24,7 +24,7 @@ predictable ordering. The legacy entities/edges envelope, --page, and
 --insights-only remain available via the deprecated 'gcx kg entities query'.
 Use 'gcx kg entities list' with --insight for entity health evidence.
 Caller parameters are not supported. Use literals and escape strings as Cypher literals.
-Variable-length paths require a finite upper bound (server default maximum: 5 hops).
+Variable-length paths require a finite upper bound within the server's hop limit.
 The server validates its language allowlist and execution budgets; refusals include
 stable CYPHER_* error codes. There is no fallback to the legacy search endpoint.
 
@@ -55,7 +55,7 @@ gcx kg graph query <cypher-query> [flags]
 ### Options inherited from parent commands
 
 ```
-      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
+      --agent                       Enable agent mode (JSON output, no color). Auto-detected from known agent identity variables. Set GCX_AGENT_NAME to identify a supported harness, or GCX_AGENT_MODE to control the mode.
       --config string               Path to the configuration file to use
       --context string              Name of the context to use (overrides current-context in config)
       --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Requires -vvv. Do not ship these logs.
