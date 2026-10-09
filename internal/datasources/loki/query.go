@@ -125,7 +125,7 @@ represent, e.g. parser stages or aggregations).`,
 			drilldownURL, _ := LogsDrilldownURL(cfg.GrafanaURL, datasourceUID, expr, start, end)
 			drilldownUnavailableMsg, drilldownFailedOpenMsg := dsquery.DrilldownMessages("query", "Logs Drilldown")
 			if err := dsquery.HandleDrilldownLinkWithExploreFallback(cmd, *drilldown, drilldownURL, drilldownUnavailableMsg, drilldownFailedOpenMsg,
-				share.Enabled(), exploreURL, unavailableMsg, failedOpenMsg); err != nil {
+				*share, exploreURL, unavailableMsg, failedOpenMsg); err != nil {
 				return err
 			}
 

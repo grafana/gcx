@@ -132,7 +132,7 @@ else falls back to the Explore URL).`,
 			}
 			drilldownUnavailableMsg, drilldownFailedOpenMsg := dsquery.DrilldownMessages("search", "Traces Drilldown")
 			if err := dsquery.HandleDrilldownLinkWithExploreFallback(cmd, *drilldown, drilldownURL, drilldownUnavailableMsg, drilldownFailedOpenMsg,
-				share.Enabled(), exploreURL, unavailableMsg, failedOpenMsg); err != nil {
+				*share, exploreURL, unavailableMsg, failedOpenMsg); err != nil {
 				return err
 			}
 
