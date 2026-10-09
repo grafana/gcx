@@ -5,7 +5,8 @@ List Database Observability instances discovered from telemetry.
 ### Synopsis
 
 List the database instances Grafana Cloud Database Observability has discovered.
-Accepts legacy service_name and native Alloy service names.
+Accepts legacy service_name, native Alloy service names, and native instance
+names when service is absent.
 Use -o wide to distinguish database hosts that share a name.
 
 Discovery uses the database_observability_connection_info inventory metric

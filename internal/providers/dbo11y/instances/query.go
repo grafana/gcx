@@ -59,7 +59,7 @@ const (
 )
 
 // serviceNameLabel is the legacy database identity label. Native Alloy uses
-// service on inventory and instance/server_id on exporter metrics.
+// service when present, then instance, on inventory. Exporter metrics use instance.
 const serviceNameLabel = "service_name"
 
 // engineMySQL and engineDefault are the "engine" label values
@@ -136,7 +136,7 @@ func escapePromqlValue(v string) string {
 // database_observability_connection_info.
 type Instance struct {
 	identity []Matcher // Native Alloy labels shared with exporter metrics.
-	native   bool      // Inventory uses the native service label.
+	native   bool      // Inventory uses a native service or instance identity.
 
 	Name               string            `json:"name" yaml:"name"`
 	Namespace          string            `json:"namespace,omitempty" yaml:"namespace,omitempty"`
@@ -272,6 +272,9 @@ func parseInstancesResponse(resp *prometheus.QueryResponse) ([]Instance, error) 
 		native := name == ""
 		if native {
 			name = sample.Metric["service"]
+			if name == "" {
+				name = sample.Metric["instance"]
+			}
 			if value := sample.Metric["instance"]; value != "" {
 				identity = []Matcher{{Label: "instance", Op: "=", Value: value}}
 			}
@@ -638,14 +641,16 @@ func mergeTopQueries(calls, seconds, rows map[queryKey]float64, limit int) ([]To
 	return out, truncated
 }
 
-// buildNamedConnectionInfoQuery accepts both legacy and native Alloy identities.
+// buildNamedConnectionInfoQuery accepts legacy names, native service names,
+// and native instance names when the inventory has no service label.
 func buildNamedConnectionInfoQuery(name string) (string, error) {
 	if name == "" {
 		return "", errors.New("instance name is required")
 	}
 	legacy := promql.Vector(connectionInfoMetric).Label(serviceNameLabel, escapePromqlValue(name))
 	native := promql.Vector(connectionInfoMetric).Label("service", escapePromqlValue(name)).Label(serviceNameLabel, "")
-	expr, err := promql.Or(legacy, native).Build()
+	nativeInstance := promql.Vector(connectionInfoMetric).Label("instance", escapePromqlValue(name)).Label("service", "").Label(serviceNameLabel, "")
+	expr, err := promql.Or(legacy, promql.Or(native, nativeInstance)).Build()
 	if err != nil {
 		return "", err
 	}

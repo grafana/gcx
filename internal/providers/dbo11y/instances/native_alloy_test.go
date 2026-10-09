@@ -101,6 +101,7 @@ func TestNativeAlloyIdentityFallback(t *testing.T) {
 	}{
 		{"legacy priority", map[string]string{"service_name": "legacy-db", "service": "native-db", "instance": "host"}, "legacy-db", false},
 		{"native without server ID", map[string]string{"service": "native-db", "instance": "host"}, "native-db", true},
+		{"native without service", map[string]string{"instance": "host:3306", "engine": "mysql"}, "host:3306", true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			got, err := parseInstancesResponse(sampleResponse(map[string]any{"metric": test.labels, "value": []any{float64(1), "1"}}))
@@ -112,6 +113,95 @@ func TestNativeAlloyIdentityFallback(t *testing.T) {
 				t.Fatalf("selector: %s, %v", expr, err)
 			}
 		})
+	}
+}
+
+func TestNativeMySQLWithoutServiceLabels(t *testing.T) {
+	const name = "tcp(localhost:3306)/app"
+	inventory := map[string]string{"instance": name, "engine": "mysql", "engine_version": "8.0"}
+	cfg := testRESTConfig(t, func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Queries []struct {
+				Expr string `json:"expr"`
+			} `json:"queries"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || len(body.Queries) != 1 {
+			t.Errorf("invalid query request: %v", err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		expr := body.Queries[0].Expr
+		if strings.Contains(expr, connectionInfoMetric) {
+			if expr != connectionInfoMetric && !strings.Contains(expr, `instance="`+name+`"`) {
+				t.Errorf("named inventory lookup lost instance fallback: %s", expr)
+			}
+			writeNativeFrames(t, w, []map[string]string{inventory})
+			return
+		}
+		if !strings.Contains(expr, `instance="`+name+`"`) || strings.Contains(expr, `service_name=`) {
+			t.Errorf("native MySQL query has wrong scope: %s", expr)
+		}
+		labels := map[string]string{"instance": name, "job": dbo11yJobValue}
+		writeNativeFrames(t, w, []map[string]string{labels})
+	})
+	client, err := prometheus.NewClient(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := client.Query(context.Background(), "prom", prometheus.QueryRequest{Query: connectionInfoMetric})
+	if err != nil {
+		t.Fatal(err)
+	}
+	items, err := parseInstancesResponse(resp)
+	if err != nil || len(items) != 1 || items[0].Name != name || items[0].Engine != "mysql" {
+		t.Fatalf("native MySQL inventory: %+v %v", items, err)
+	}
+	detail, _, err := fetchInstanceDetail(context.Background(), client, "prom", name, "5m", 10, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detail.Instance.Engine != "mysql" || !detail.Health.HasUp || !detail.Health.Up || len(detail.Connections) != 1 {
+		t.Fatalf("native MySQL detail: %+v", detail)
+	}
+}
+
+func TestNativeHealthWithoutConnectionInfo(t *testing.T) {
+	const name = "host:5432"
+	cfg := testRESTConfig(t, func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Queries []struct {
+				Expr string `json:"expr"`
+			} `json:"queries"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || len(body.Queries) != 1 {
+			t.Errorf("invalid query request: %v", err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		expr := body.Queries[0].Expr
+		if strings.Contains(expr, connectionInfoMetric) {
+			writeNativeFrames(t, w, nil)
+			return
+		}
+		if !strings.Contains(expr, `instance="`+name+`"`) || strings.Contains(expr, `service_name=`) {
+			t.Errorf("outage query lost native identity: %s", expr)
+		}
+		if strings.HasPrefix(expr, "up{") {
+			writeNativeFramesValue(t, w, []map[string]string{{"instance": name, "job": dbo11yJobValue}}, 0)
+			return
+		}
+		writeNativeFrames(t, w, nil)
+	})
+	client, err := prometheus.NewClient(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	detail, _, err := fetchInstanceDetail(context.Background(), client, "prom", name, "5m", 10, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !detail.Health.HasUp || detail.Health.Up || detail.Instance.Host != name {
+		t.Fatalf("outage health missing: %+v", detail)
 	}
 }
 
@@ -151,9 +241,14 @@ func TestGetRejectsAmbiguousInventory(t *testing.T) {
 
 func writeNativeFrames(t *testing.T, w http.ResponseWriter, labels []map[string]string) {
 	t.Helper()
+	writeNativeFramesValue(t, w, labels, 1)
+}
+
+func writeNativeFramesValue(t *testing.T, w http.ResponseWriter, labels []map[string]string, value float64) {
+	t.Helper()
 	frames := make([]any, 0, len(labels))
 	for _, l := range labels {
-		frames = append(frames, map[string]any{"schema": map[string]any{"fields": []any{map[string]any{"name": "Time", "type": "time"}, map[string]any{"name": "Value", "type": "number", "labels": l}}}, "data": map[string]any{"values": []any{[]int{1000}, []int{1}}}})
+		frames = append(frames, map[string]any{"schema": map[string]any{"fields": []any{map[string]any{"name": "Time", "type": "time"}, map[string]any{"name": "Value", "type": "number", "labels": l}}}, "data": map[string]any{"values": []any{[]int{1000}, []float64{value}}}})
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(map[string]any{"results": map[string]any{"A": map[string]any{"frames": frames}}}); err != nil {
