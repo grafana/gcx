@@ -6,6 +6,8 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"errors"
+	"slices"
 	"testing"
 
 	"github.com/tetratelabs/wazero"
@@ -14,8 +16,9 @@ import (
 
 // FuzzMemoryImage checks the memory image against wazero itself: for any
 // module of the shape Go's linker emits, an instance of the stripped module
-// on the image starts with exactly the memory wazero gives the original, and
-// buildImage refuses exactly the modules wazero can't instantiate.
+// on the image starts with exactly the memory wazero gives the original,
+// buildImage finds no data only in modules whose memory starts as zeros, and
+// it refuses exactly the other modules wazero can't instantiate.
 //
 // go test runs the seeds below. Run go test -fuzz=FuzzMemoryImage to search
 // further.
@@ -32,8 +35,8 @@ func FuzzMemoryImage(f *testing.F) {
 		{0, 0, 0, 3, 0},                          // empty, one byte past it
 		{0, 1, 0, 0, 10},                         // with a data count section
 		{0, 0, 2, 0, 10, 0, 0, 10},               // a passive segment keeps the indices
-		{1, 0, 1, 1, 250, 0, 0, 3, 2, 4, 5, 1},   // flags 2, a large segment, passive
-		{2, 1, 0, 1, 250, 1, 2, 250, 0, 5, 7, 9}, // everything at once
+		{1, 0, 3, 1, 250, 0, 0, 3, 2, 4, 5, 1},   // flags 2, a large segment, passive
+		{2, 1, 0, 1, 250, 2, 2, 250, 3, 5, 7, 9}, // everything at once
 	} {
 		f.Add(seed)
 	}
@@ -53,6 +56,17 @@ func FuzzMemoryImage(f *testing.F) {
 		want, wantErr := initialMemory(ctx, rt, wasm, nil)
 
 		img, stripped, err := buildImage(wasm)
+		if errors.Is(err, errNoData) {
+			// No image: newMemoryImage keeps the module as it is, so wazero's
+			// own memory is what runs. It must really start as zeros, or the
+			// module had data that buildImage missed.
+			if wantErr == nil {
+				if i := slices.IndexFunc(want, func(b byte) bool { return b != 0 }); i >= 0 {
+					t.Fatalf("buildImage found no data, but wazero's initial memory has a non-zero byte at %d", i)
+				}
+			}
+			return
+		}
 		if err != nil {
 			if wantErr == nil {
 				t.Fatalf("buildImage: %v, but wazero instantiates the module", err)
