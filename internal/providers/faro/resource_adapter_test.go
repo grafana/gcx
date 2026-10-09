@@ -281,7 +281,7 @@ func TestResourceAdapter_RoundTrip(t *testing.T) {
 				"geolocation.enabled":          "1",
 				"geolocation.level":            "1",
 				"geolocation.country_denylist": "DE,FR",
-				"combine_lab_data":             "1",
+				"combineLabData":               "1",
 			},
 		})
 	}))

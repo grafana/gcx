@@ -43,7 +43,7 @@ func TestSettingsRejectsUnknownLevel(t *testing.T) {
 }
 
 func TestSettingsFromAPIIgnoresOtherKeys(t *testing.T) {
-	assert.Nil(t, settingsFromAPI(map[string]string{"combine_lab_data": "1"}))
+	assert.Nil(t, settingsFromAPI(map[string]string{"combineLabData": "1"}))
 	assert.Nil(t, settingsFromAPI(map[string]string{"geolocation.level": "9"}))
 }
 
@@ -74,7 +74,7 @@ func TestSettingsExportThenCreateKeepsCountryDenylist(t *testing.T) {
 		Settings: map[string]string{
 			"geolocation.enabled":          "1",
 			"geolocation.country_denylist": "DE",
-			"combine_lab_data":             "1",
+			"combineLabData":               "1",
 		},
 	})
 
