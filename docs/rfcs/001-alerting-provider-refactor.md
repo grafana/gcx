@@ -194,8 +194,14 @@ kind. The receipt reports old/new titles and the server's returned API name;
 files remain unchanged. Push matches the desired logical identity instead,
 using metadata.name only as a hint. It clears source server fields for create,
 uses destination name/version for update, and never infers rename or prune.
-Imported `mimir` groups remain visible/readable but reject native mutations and
-push. Default preview for both kinds is skipped/unverified without mutation.
+Read-only native objects remain visible/readable. The shared policy covers
+`mimir` kind and `system`, `converted_prometheus`, or `file` provenance: dedicated
+mutations reject them, generic pull/push/delete skip them, and generic edit refuses
+them before opening the editor. A writable local identity matching a read-only
+destination fails before update. Unknown server template kinds remain readable
+while local manifests stay strict. Default preview for both kinds is
+skipped/unverified without mutation. Provisioning export covers Grafana-managed
+intervals only; imported intervals visible in native reads are excluded.
 
 Runtime verification on a local Grafana 13.2.1 fixture and a throwaway modern
 13.x target exercised CRUD, explicit `v0alpha1` reads, preferred `v1beta1`,
@@ -205,10 +211,14 @@ versions. Omitted `spec.kind` writes defaulted to `grafana` on both targets.
 This does not establish runtime coverage for 12.x patches or historical encoding;
 those identity transitions have recording-transport regression coverage.
 Live imported-group creation was unavailable; equal-title and read-only behavior
-has recording-server coverage. Mixed alerting writes with default concurrency
-can return an Alertmanager configuration 409 and partial success; serial transfer
-with `--max-concurrent 1` passed. GCX preserves that conflict without retrying a
-mutation through another backend. All task-owned live objects were removed.
+has recording-server coverage. The original runtime pass observed partial success
+from Conflict responses during concurrent alerting writes; serial transfer with
+`--max-concurrent 1` passed, and all task-owned live objects were removed. Review
+fixes add bounded Kubernetes Conflict retry on the native dynamic client inside
+the dry-run guard, preserving existing concurrency and adapter behavior.
+Contention and read-only policy changes have regression tests; renewed runtime
+validation is tracked separately in the review-fix tasks. This historical pass
+does not establish the retry wrapper or the revised skip/edit-refusal behavior.
 
 ## Rationale and tradeoffs
 

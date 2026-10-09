@@ -74,8 +74,8 @@ User invocation:
   │    remote.NewDefaultPusher(ctx, cfg, guard) → Pusher                 │
   │    (internally builds ResourceClientRouter: adapter path for          │
   │     provider-backed GVKs, k8s dynamic client for all others)         │
-  │    The dynamic client is wrapped by the DRY-RUN GUARD                 │
-  │    (newGuardedDynamicClient) before buildRouter — see step 5d.        │
+  │    The dynamic client has Conflict retry inside the DRY-RUN GUARD.   │
+  │    Both wrappers are installed before buildRouter — see step 5d.    │
   │    pusher.Push(ctx, PushRequest{...})                                 │
   │                                                                       │
   │    Processors applied (in order) per resource:                        │
@@ -100,7 +100,8 @@ User invocation:
   │                                                                       │
   │    a. Validate GVK is in supported descriptors (from registry)       │
   │    b. Run each Processor.Process(res)                                │
-  │    c. Check res.IsManaged() — skip if managed by another tool        │
+  │    c. Skip read-only local native objects with a read-only reason    │
+  │       Then check res.IsManaged() — skip if managed by another tool  │
   │       (unless IncludeManaged=true)                                   │
   │    d. upsertResource:                                                 │
   │         client.Get(ctx, desc, name) — check if exists                │
@@ -116,8 +117,8 @@ User invocation:
   │         asserted via --assume-server-dry-run. Blocked calls return   │
   │         errDryRunUnverified — nothing is sent to the server.         │
   │    e. summary.RecordSuccess(), RecordFailure(res, err), or           │
-  │       RecordSkipped(res) — dry-run blocked by the guard is           │
-  │       recorded as SKIPPED (not sent, not failed; keeps exit 0)       │
+  │       RecordSkipped(reason) — read-only or guard-blocked dry-run     │
+  │       is SKIPPED (not sent, not failed; keeps exit 0)                │
   └───────────────────────┬──────────────────────────────────────────────┘
                           │
   ┌───────────────────────▼──────────────────────────────────────────────┐
@@ -128,15 +129,31 @@ User invocation:
 ```
 
 For server-derived TimeInterval/TemplateGroup names, GET matches require the
-manifest's logical identity. List matching resolves different historical names;
-ambiguity and imported template groups fail without mutation. Create preparation
+manifest's logical identity. List matching resolves different historical names,
+skips remote items with unparseable identities, and rejects ambiguity. Local
+manifests stay strict. Read-only local manifests are skipped; a writable local
+identity matching a read-only destination fails before update. Create preparation
 strips source identity on a copy. See [resource model](resource-model.md#server-derived-native-names).
+
+Native dynamic-client Create, Update, and Delete retry only Kubernetes `Conflict`
+errors with bounded backoff. Reads pass through; `AlreadyExists` and other errors
+are returned immediately, and exhaustion preserves the last conflict. The retry
+wrapper sits inside the dry-run guard, so blocked previews never reach it.
+Provider adapters are unaffected. Non-folder resources keep their existing
+bounded concurrency; there is no alerting-specific serial phase. Retrying a stale
+resource version does not refresh it and may still exhaust the backoff.
+
+Push/delete `gcx.mutation_batch` failure entries include optional `source` from
+the local resource's source path, omitted when unavailable. This additive field
+keeps `schema_version: 1`; `summary.skipped` remains a total, while text summaries
+show separate reason counts such as read-only and not server-verified.
 
 Key files:
 - `internal/resources/native_identity.go` — opted-in logical identity and create preparation
 - `cmd/gcx/resources/push.go` — CLI wiring
 - `internal/resources/local/reader.go` — FSReader
 - `internal/resources/remote/pusher.go` — Pusher, upsertResource
+- `internal/resources/remote/conflict_retry.go` — bounded native mutation Conflict retry
 - `internal/resources/remote/dryrun_guard.go` — dryRunGuard (fail-safe client-side dry-run)
 - `internal/resources/remote/dryrun_allowlist.go` — default-deny allowlist of resources known to honor server-side dryRun
 - `internal/resources/process/managerfields.go` — ManagerFieldsAppender
@@ -171,7 +188,7 @@ Entry point: `cmd/gcx/resources/pull.go` (mirrors push structure).
   │      FilterTypeMultiple → client.GetMultiple(ctx, desc, names, ...)  │
   │      FilterTypeSingle   → client.Get(ctx, desc, name, ...)           │
   │                                                                       │
-  │    404 / 405 responses: silently skipped (not counted as errors).    │
+  │    404 / 405 responses: counted as not-listable skips, not errors.   │
   │    Some resource types discovered via the API may not support List   │
   │    or Get; the pull pipeline ignores them rather than failing.       │
   │                                                                       │
@@ -184,6 +201,7 @@ Entry point: `cmd/gcx/resources/pull.go` (mirrors push structure).
   │    For each fetched unstructured item:                                │
   │      resources.FromUnstructured(&item) → *Resource                   │
   │      if ExcludeManaged && !res.IsManaged(): skip                     │
+  │      if ExcludeReadOnly && IsReadOnlyNative: read-only skip          │
   │      Apply Processors in order:                                       │
   │        ServerFieldsStripper — remove server-only annotations:        │
   │          AnnoKeyCreatedBy, AnnoKeyUpdatedBy, AnnoKeyUpdatedTimestamp  │
@@ -210,6 +228,12 @@ Entry point: `cmd/gcx/resources/pull.go` (mirrors push structure).
   └──────────────────────────────────────────────────────────────────────┘
 ```
 
+`resources pull` enables `ExcludeReadOnly`, including explicit single-object
+selectors, so read-only objects are counted but not written to disk. Remote
+delete selectors use the same filtering. `resources get` leaves it disabled to
+keep inventory complete; `resources edit` fetches the object and rejects a
+read-only result before opening the editor.
+
 Key files:
 - `internal/resources/remote/puller.go` — Puller, concurrent fetch
 - `internal/resources/process/serverfields.go` — ServerFieldsStripper
@@ -235,7 +259,9 @@ CLI args or read from disk by the caller before passing to `Deleter`).
   │                                                                       │
   │    Per resource:                                                      │
   │      a. Look up GVK in supported map; skip/error if not found        │
-  │      b. deleter.deleteResource(ctx, desc, res, dryRun)               │
+  │      b. Skip read-only native files with a read-only reason          │
+  │         Reject unnamed writable server-derived files before I/O    │
+  │         deleter.deleteResource(ctx, desc, res, dryRun)              │
   │           client.Delete(ctx, desc, res.Name(), DeleteOptions{        │
   │             DryRun: ["All"] if dryRun,                               │
   │           })                                                          │
@@ -244,7 +270,7 @@ CLI args or read from disk by the caller before passing to `Deleter`).
   │           errDryRunUnverified) rather than hitting a legacy API     │
   │           that ignores dryRun.                                       │
   │      c. summary.RecordSuccess(), RecordFailure(res, err), or         │
-  │         RecordSkipped(res) — guard-blocked dry-run is SKIPPED        │
+  │         RecordSkipped(reason) — read-only or guard-blocked dry-run   │
   │                                                                       │
   │    NOTE: No manager check — deleter does NOT verify IsManaged().     │
   │    Callers are expected to filter the resource list before deleting.  │
@@ -255,6 +281,12 @@ Key files:
 - `internal/resources/remote/deleter.go` — Deleter, delete operations
 - `internal/resources/remote/dryrun_guard.go` — dryRunGuard (fail-safe client-side dry-run, shared with push)
 - `internal/resources/adapter/router.go` — ResourceClientRouter (routes CRUD to adapter or dynamic client)
+
+For TimeInterval/TemplateGroup file inputs, an unnamed writable object fails
+before any client request for that file and points to the dedicated title-based
+delete command or a pulled manifest with the actual API name. Other batch files
+continue under the existing error policy. Read-only files are skipped first.
+Native Delete uses the same Conflict retry inside the dry-run guard as push.
 
 Difference from push: Deleter does NOT check `res.IsManaged()`. It trusts the caller
 to have already resolved which resources should be deleted. The `NewDeleter` constructor

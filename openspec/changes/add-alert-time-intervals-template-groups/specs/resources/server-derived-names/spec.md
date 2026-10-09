@@ -11,7 +11,7 @@ For native kinds whose names are server-derived, `gcx resources push` SHALL omit
 
 #### Scenario: New resource on another context
 - **WHEN** a pulled TimeInterval or TemplateGroup is pushed to a context without that logical identity
-- **THEN** one unnamed create succeeds and the server returns its derived identity
+- **THEN** an unnamed create operation succeeds and the server returns its derived identity
 
 #### Scenario: Manifest from get
 - **WHEN** a manifest containing source name, UID, resource version, and timestamps is pushed to an empty target
@@ -55,16 +55,79 @@ For server-derived kinds, push SHALL create or update the identity described by 
 - **WHEN** the title is changed and metadata.name is explicitly removed
 - **THEN** push creates or updates the new logical identity and leaves the original resource in place
 
-### Requirement: Surface read-only and transport failures
-Push SHALL reject imported `spec.kind: mimir` template groups as read-only without sending a mutation. Lookup failures other than not found SHALL be surfaced without falling through to create or retrying through another API. Per-resource failures SHALL follow existing push aggregation and `--on-error` behavior.
+### Requirement: Apply shared read-only handling without hiding reads
+For TimeInterval and TemplateGroup, `spec.kind: mimir` or `grafana.com/provenance` equal to `system`, `converted_prometheus`, or `file` SHALL mean read-only. Absent provenance and `api` SHALL remain writable. Generic pull, push, and delete SHALL skip read-only objects, count the skips, and show a read-only reason. Reads SHALL retain them. Generic edit SHALL reject them before opening the editor. JSON `summary.skipped` SHALL retain its total-count shape; text summaries SHALL distinguish skip reasons.
 
-#### Scenario: Imported manifest push
-- **WHEN** push receives a Mimir-imported template group
-- **THEN** that resource fails as read-only and no POST/PUT is sent
+#### Scenario: Read-only local input
+- **WHEN** push or file-based delete receives a read-only native manifest
+- **THEN** the resource is skipped without a client request, counted as skipped rather than failed, and other batch items retain existing processing semantics
+
+#### Scenario: Read-only pull selector
+- **WHEN** pull explicitly selects a read-only native object or includes it in a collection
+- **THEN** it counts a read-only skip and writes no artifact, while generic get still returns the object
+
+#### Scenario: Edit refusal
+- **WHEN** generic edit fetches a read-only native object
+- **THEN** it returns a read-only error before the editor opens
+
+### Requirement: Preserve read-only destinations and transport failures
+Push SHALL fail before update when writable local input matches a read-only destination through either GET or cached-list resolution. The failure SHALL explain the read-only source and advise source management or a different local identity. Lookup failures other than not found SHALL be surfaced without create or another API fallback. Per-resource failures SHALL follow existing aggregation and error policy.
+
+#### Scenario: Imported interval destination
+- **WHEN** a writable local TimeInterval matches a destination interval with converted-prometheus provenance
+- **THEN** push fails with read-only guidance and sends no mutation, without replacing or skipping the destination match
 
 #### Scenario: Forbidden lookup
 - **WHEN** the destination lookup returns forbidden or a transport failure
 - **THEN** its error is preserved and no create fallback occurs
+
+### Requirement: Tolerate remote unknown kinds while validating local identity
+Unknown or otherwise unparseable remote native identities SHALL be ignored by list-based logical matching with a debug diagnostic. Local identity validation SHALL remain strict. Unknown server template kinds alone SHALL NOT be assumed read-only and SHALL remain readable and pullable.
+
+#### Scenario: Unknown remote template kind
+- **WHEN** the destination list contains a future template kind beside a valid matching group
+- **THEN** the valid match is resolved without failing the whole operation
+
+#### Scenario: Invalid local kind
+- **WHEN** a local template manifest uses an unknown kind
+- **THEN** push reports its validation failure without a mutation
+
+### Requirement: Delete requires the real API name
+Generic file-based delete SHALL first skip read-only native objects, then reject unnamed writable TimeInterval and TemplateGroup manifests before any client request for that file. The failure SHALL point to dedicated title-based delete or a pulled manifest with the actual metadata name. Generic delete SHALL NOT resolve unnamed targets by title.
+
+#### Scenario: Unnamed writable file
+- **WHEN** generic delete receives an unnamed writable native manifest
+- **THEN** that file fails locally with dedicated-command guidance and other batch files retain existing processing semantics
+
+#### Scenario: Named writable file
+- **WHEN** generic delete receives a writable pulled native manifest with its API name
+- **THEN** deletion uses that API address
+
+### Requirement: Failure entries retain optional local source
+Push/delete mutation batch failures SHALL expose optional `source` from the resource source path, omitting it when unavailable. This additive field SHALL retain `gcx.mutation_batch` schema version 1, and SHALL NOT replace the API target name.
+
+#### Scenario: File failure attribution
+- **WHEN** a local manifest fails push or delete
+- **THEN** its failure entry includes the source path when attached to the resource
+
+#### Scenario: No source path
+- **WHEN** a failed resource has no source path
+- **THEN** its failure entry omits source
+
+### Requirement: Retry native mutation Conflict responses inside the guard
+The native dynamic-client mutation wrapper SHALL retry Create, Update, and Delete only for Kubernetes Conflict responses with bounded, context-aware backoff. It SHALL pass reads through, return non-Conflict errors immediately, and preserve the last conflict on exhaustion. It SHALL run inside the dry-run guard before routing, leaving blocked previews and provider adapters unaffected. Existing bounded concurrency SHALL remain without an alerting-specific serial phase, error-text matching, version refresh, or another verb/backend fallback.
+
+#### Scenario: Transient conflict
+- **WHEN** a native mutation returns Conflict and a subsequent attempt succeeds
+- **THEN** the operation succeeds with the same mutation semantics
+
+#### Scenario: Already exists or another error
+- **WHEN** a native mutation returns AlreadyExists or another non-Conflict error
+- **THEN** the wrapper returns that error without retrying
+
+#### Scenario: Exhaustion or cancellation
+- **WHEN** conflicts exhaust the backoff or the context is cancelled
+- **THEN** the last conflict is preserved on exhaustion or retries stop promptly on cancellation
 
 ### Requirement: Default preview never mutates alerting resources
 `resources push --dry-run` and `resources delete --dry-run` for time intervals and template groups SHALL use client-side preview by default, with no POST, PUT, PATCH, or DELETE sent. Output SHALL explain unverified validation and report skipped/unverified rather than confirmed application. The existing explicit server-dry-run assertion remains an opt-in override.
@@ -86,7 +149,7 @@ Resource collection and directory loading SHALL preserve separate unnamed TimeIn
 
 #### Scenario: Equal title with different template kinds
 - **WHEN** unnamed grafana and mimir template groups share a title in a push directory
-- **THEN** the editable group reaches normal push and the imported group independently fails as read-only without mutation
+- **THEN** the editable group reaches normal push and the imported group independently skips as read-only without mutation
 
 #### Scenario: Multiple malformed unnamed manifests
 - **WHEN** separate unnamed opted-in inputs contain missing or invalid identity fields

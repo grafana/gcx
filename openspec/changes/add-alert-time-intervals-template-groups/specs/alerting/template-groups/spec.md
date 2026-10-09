@@ -7,7 +7,7 @@ Lets users manage Grafana notification template groups as native resources and i
 ## ADDED Requirements
 
 ### Requirement: List all template groups with their identities
-`gcx alert template-groups list` SHALL enumerate all returned groups, including `spec.kind: mimir` imports. Human tables SHALL show title, encoded `metadata.name`, kind, and read-only status. JSON/YAML SHALL preserve native manifests without adding presentation fields. Absent historical `spec.kind` SHALL mean Grafana-managed for matching and presentation.
+`gcx alert template-groups list` SHALL enumerate all returned groups, including `spec.kind: mimir` imports. Human tables SHALL show title, encoded `metadata.name`, kind, and shared read-only status based on `spec.kind: mimir` or provenance `system`, `converted_prometheus`, or `file`. Unknown server kinds SHALL render their raw kind with unknown read-only status without failing list. JSON/YAML SHALL preserve native manifests without adding presentation fields. Absent historical `spec.kind` SHALL mean Grafana-managed for matching and presentation.
 
 #### Scenario: Editable and imported groups
 - **WHEN** the server returns a Grafana group and a Mimir-imported group
@@ -21,8 +21,12 @@ Lets users manage Grafana notification template groups as native resources and i
 - **WHEN** no groups exist and `list -o json` runs
 - **THEN** the native list contains `items: []`
 
+#### Scenario: Built-in or provisioned group
+- **WHEN** native list returns a group with system, converted-prometheus, or file provenance
+- **THEN** it remains readable and is marked read-only, and dedicated mutations reject it before a write
+
 ### Requirement: Resolve template groups by exact title
-`gcx alert template-groups get <title>` SHALL match `spec.title` exactly and return the native object unchanged. An optional `--kind grafana|mimir` SHALL disambiguate equal titles for get and delete. Zero matches SHALL fail as not found; multiple matches SHALL fail with actionable ambiguity guidance and candidate kinds/names.
+`gcx alert template-groups get <title>` SHALL match `spec.title` exactly and return the native object unchanged. An optional `--kind grafana|mimir` SHALL disambiguate equal titles for get and delete. Zero matches SHALL fail as not found; multiple matches SHALL fail with actionable ambiguity guidance and candidate kinds/names. A known-kind filter SHALL ignore unknown server kinds; unfiltered title lookup SHALL include them as candidates with their raw kind.
 
 #### Scenario: Equal titles
 - **WHEN** Grafana and imported groups share `spec.title: shared` and get supplies no kind
@@ -32,8 +36,12 @@ Lets users manage Grafana notification template groups as native resources and i
 - **WHEN** `get shared --kind mimir -o yaml` selects an imported group
 - **THEN** it returns its native read-only manifest, including concurrency metadata
 
+#### Scenario: Unknown kind lookup
+- **WHEN** a future-kind server group shares a title with a Grafana-managed group
+- **THEN** filtered get resolves the known kind while unfiltered lookup preserves the ambiguity and reports the raw candidate kind
+
 ### Requirement: Create an editable template group
-`gcx alert template-groups create -f <file>` SHALL create a Grafana-managed group from a native manifest and SHALL NOT update an existing group. Create SHALL omit source server identity and concurrency metadata and report both title and the server's derived name. `spec.kind: mimir` SHALL fail without a mutation.
+`gcx alert template-groups create -f <file>` SHALL create a Grafana-managed group from a native manifest and SHALL NOT update an existing group. Create SHALL omit source server identity and concurrency metadata and report both title and the server's derived name. Any shared read-only classification SHALL fail without a mutation, and local unknown kinds SHALL fail validation.
 
 #### Scenario: New group
 - **WHEN** create receives a valid title/content manifest for a Grafana group absent on the target
@@ -79,7 +87,7 @@ Lets users manage Grafana notification template groups as native resources and i
 - **THEN** it fails as read-only without sending PUT
 
 ### Requirement: Delete only an editable template group after confirmation
-`gcx alert template-groups delete <title>` SHALL remove the uniquely selected editable group after confirmation or force. Imported groups SHALL fail as read-only, including when force is supplied. A successful receipt SHALL include title and encoded name.
+`gcx alert template-groups delete <title>` SHALL remove the uniquely selected editable group after confirmation or force. Groups classified as read-only by kind or provenance SHALL fail as read-only, including when force is supplied. A successful receipt SHALL include title and encoded name.
 
 #### Scenario: Writable deletion
 - **WHEN** `delete shared --kind grafana --force` selects an existing Grafana group

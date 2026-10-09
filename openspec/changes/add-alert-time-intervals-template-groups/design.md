@@ -24,7 +24,7 @@ The public tagged-source check found a material compatibility detail: Grafana 12
 
 - Backend fallback, typed native structs, descriptor/schema registrations, a command generator, reference migration, dependency ordering, or multi-resource transactions.
 - Exposing receivers/inhibition rules, altering released provisioning commands, or applying their deprecation before #1512.
-- Inferring rename intent from generic push, local-file rewriting after a mutation, or automatically excluding imported groups from a requested inventory.
+- Inferring rename intent from generic push, local-file rewriting after a mutation, or filtering imported objects out of read inventories.
 
 ## Decisions
 
@@ -45,15 +45,15 @@ Bind `timeintervals` and `templategroups` once in the alert provider's command f
 
 Explicitly empty filename, API-version, kind, and export-format flags fail with usage status instead of silently selecting defaults. Wrong group/kind, conflicting manifest/flag versions, malformed identity fields, and missing update version fail before network I/O. Empty `spec.kind` is invalid when present; absent historical kind is normalized to `grafana` for matching only. Do not add undocumented defaulting to structured reads.
 
-CRUD leaves are `finite`; export is `raw`, matching existing exports. Register eleven output-class and agent-metadata entries. List/get worst-case cost is medium/large because interval inventories and template content are unbounded; hints show title-scoped get and field selection. Mutation receipts are small and contain the resource identity and resulting version. Use `gcx commands --flat -o json` and `help-tree` to review the rendered routing metadata.
+CRUD leaves are `finite`; export is `raw`, matching existing exports. Register eleven output-class and agent-metadata entries. List/get worst-case cost is medium because interval inventories and template content are unbounded; hints show title-scoped get and field selection. Mutation receipts are small and contain the resource identity and resulting version. Use `gcx commands --flat -o json` and `help-tree` to review the rendered routing metadata.
 
 ### D2. Dedicated lookup lists and matches titles, with no encoded-name shortcut
 
 Read all pages through the existing dynamic client, then match `spec.name` for time intervals or `spec.title` for template groups, case-sensitively. No decoding or synthesized GET path replaces the user's chosen title contract. After resolution, get issues GET with the returned `metadata.name`; update/delete use that identity. List/get remain format-agnostic and return native objects.
 
-Zero matches produce a typed not-found error for the title. Multiple matches fail clearly and identify candidates; neither list order nor a preference for editable groups chooses an object. Template `get` and `delete` accept optional `--kind grafana|mimir`; update uses the manifest's kind, treating absent historical kind as `grafana`. That makes equal-title imports usable without changing positional arguments to encoded names.
+Zero matches produce a typed not-found error for the title. Multiple matches fail clearly and identify candidates; neither list order nor a preference for editable groups chooses an object. Template `get` and `delete` accept optional `--kind grafana|mimir`; update accepts only Grafana-managed input and resolves that kind, treating absent historical kind as `grafana`. That makes equal-title imports usable without changing positional arguments to encoded names. Unknown server template kinds remain raw in list output with `READ-ONLY: unknown`; a known-kind filter ignores them, while unfiltered title lookup includes them as candidates. Local manifests still reject unknown kinds.
 
-Time interval tables show `TITLE`, `API_NAME`, and interval count (`spec.time_intervals`); wide adds provenance. Template tables show `TITLE`, `API_NAME`, `KIND`, and `READ-ONLY`; wide adds provenance. The column label distinguishes the opaque server address from the title users supply. Mutation receipts use the returned name as the API identity and include a separate title detail, with old and new titles when update renames an object. The imported marker is presentation only; no invented field is inserted into JSON/YAML.
+Time interval tables show `TITLE`, `API_NAME`, interval count (`spec.time_intervals`), and `READ-ONLY`; wide adds provenance. Template tables show `TITLE`, `API_NAME`, `KIND`, and `READ-ONLY`; wide adds provenance. The column label distinguishes the opaque server address from the title users supply. Mutation receipts use the returned name as the API identity and include a separate title detail, with old and new titles when update renames an object. The imported marker is presentation only; no invented field is inserted into JSON/YAML.
 
 ### D3. Update the explicit subject; push the desired identity
 
@@ -84,7 +84,7 @@ Help states: "The argument selects the current title; the manifest supplies the 
 
 Add a small pure policy in `internal/resources/`, selected by group/kind independent of API version. It describes logical identity extraction, read-only classification where relevant, and create preparation. It does not compute or validate an encoded name. Initially opt in only TimeInterval and TemplateGroup. A later receiver policy can use the same create preparation and matching path; receivers remain hidden now. Avoid a new plugin registry, callback-rich descriptor type, or native adapter registration.
 
-Reuse `remote.findByNaturalKey` and `naturalKeyCache`: consult the native policy when no adapter extractor exists, match full logical identity, and reject ambiguity for the opted-in native kinds. Preserve existing adapter matching behavior. Do not store per-operation mutable state in the policy.
+Reuse `remote.findByNaturalKey` and `naturalKeyCache`: consult the native policy when no adapter extractor exists, match full logical identity, and reject ambiguity for the opted-in native kinds. Ignore remote items whose identities cannot be parsed, logging at debug, while retaining strict local validation. Preserve existing adapter matching behavior. Do not store per-operation mutable state in the policy.
 
 Before push, collection keys for unnamed opted-in resources use GVK, namespace,
 and the same full logical identity, with a separate tag from API-name keys.
@@ -96,19 +96,40 @@ than silently replacing another input. This fallback is not a portable identity.
 
 The push sequence for an opted-in kind is:
 
-1. Validate title/kind and read-only status before mutation.
+1. Validate title/kind; count read-only local input as a read-only skip before lookup or mutation.
 2. GET a nonempty supplied metadata name. Any error except not found stops the operation.
-3. If found with the desired logical identity, update a copy with the destination name/version. Never send changed title/kind to that object's update endpoint.
-4. If unnamed/not found, or the name resolves to a different logical identity, use the cached destination list to match the desired full identity. A unique match is updated with its destination name/version; multiple matches fail. The unrelated name match is not mutated.
-5. If no match exists, deep-copy and clear `metadata.name`, `generateName`, `resourceVersion`, `uid`, `generation`, timestamps/deletion fields, and `managedFields` before one CREATE. Preserve spec, labels, annotations/provenance, and the namespace supplied by the existing destination processor. Do not mutate the original local manifest.
+3. If found with the desired logical identity, fail before a write if the destination is read-only; otherwise update a copy with its destination name/version. Never send changed title/kind to that object's update endpoint.
+4. If unnamed/not found, or the name resolves to a different logical identity, use the cached destination list to match the desired full identity. A unique read-only destination match fails before a write with source-management/rename guidance; a writable match is updated with its destination name/version; multiple matches fail. The unrelated name match is not mutated.
+5. If no match exists, deep-copy and clear `metadata.name`, `generateName`, `resourceVersion`, `uid`, `generation`, timestamps/deletion fields, and `managedFields` before a CREATE operation. Preserve spec, labels, annotations/provenance, and the namespace supplied by the existing destination processor. Do not mutate the original local manifest.
 
 Matching before create is necessary even after the immediate 400 fix: a 12.0–12.3 source name differs from a newer target's name, so merely clearing the name on each miss would conflict on the next push. Name-less authored manifests also need a logical match to remain upserts. Do not infer API absence from an object 404, retry a failed mutation as another verb, or retry through provisioning.
 
-### D5. Imported groups appear in list and remain read-only
+### D5. Complete reads and shared read-only handling
 
-List everything returned by Grafana, including Mimir imports. Filtering them out would make inventory incomplete and conceal equal-title collisions. Mark their read-only status in the human table; permit get. Reject dedicated create/update/delete and generic push of imported manifests before mutation, with guidance to manage the external Alertmanager configuration. Force bypasses confirmation, not read-only classification. Generic delete retains the server's existing read-only enforcement; no new writable route is introduced. A mixed push containing imported groups follows existing per-resource failure aggregation and `--on-error` behavior; it does not silently skip imported input or promise atomicity.
+`IsReadOnlyNative` applies to TimeInterval and TemplateGroup: `spec.kind: mimir`,
+or provenance `system`, `converted_prometheus`, or `file`. Absent provenance and
+`api` remain writable. List/get, including generic get, preserve all returned
+objects. Generic pull/push/delete skip read-only objects, count them as skipped,
+and show a read-only reason; pull writes no artifact for them. The shared fetch
+path makes this opt-in through `ExcludeReadOnly`, preserving read inventories.
+Unknown server kinds alone are not classified as read-only and remain pullable.
 
-**Alternative considered:** hiding imported groups by default or using a writable-only list default reduces clutter but makes enumeration an implicit filter and requires a separate completeness/discovery contract. Complete inventory with an explicit read-only marker is the chosen behavior.
+Dedicated mutations reject read-only input or targets. Generic edit fetches the
+object but refuses it before opening the editor. Force bypasses confirmation,
+not read-only classification. A writable local interval matching a read-only
+destination fails before update through either the GET or cached-list match;
+it is not skipped, replaced, or retried as create.
+
+Generic file deletion first skips read-only objects, then rejects unnamed writable
+TimeInterval/TemplateGroup files before any request for that file. The error
+points to dedicated title-based delete or a pulled manifest with its actual API
+name. Other files continue under the existing batch error policy.
+
+Push/delete failures add optional `source` from `Resource.SourcePath()`, omitted
+when unavailable, to `gcx.mutation_batch` schema version 1. Target name continues
+to mean the actual API address. JSON `summary.skipped` remains a total; human
+summaries render counts for each reason, including read-only, not server-verified,
+and not listable.
 
 ### D6. Expose only reviewed kinds and preserve the dry-run guard
 
@@ -118,9 +139,22 @@ Neither kind enters the trusted server-dry-run allowlist. Add create/update/dele
 
 ### D7. Provisioning export is a separate output contract
 
-Only time intervals get export. Reuse `ExportMuteTimings`/`ExportMuteTiming` and the config loader; validate format first and pass the title as a URL path segment through the existing client escaping. No title exports the collection; one title exports that item. Use a positional title for the new command rather than copying the old command's `--name` selector. Raw provisioning bytes are not advertised as pushable native objects. Do not add a synthetic template export.
+Only time intervals get export. Reuse `ExportMuteTimings`/`ExportMuteTiming` and the config loader; validate format first and pass the title as a URL path segment through the existing client escaping. No title exports the Grafana-managed collection; one title exports that Grafana-managed item. Imported intervals may appear in native list/get but are not exported; requesting an imported title returns not found. Use a positional title for the new command rather than copying the old command's `--name` selector. Raw provisioning bytes are not advertised as pushable native objects. Do not add a synthetic template export.
 
-### D8. Verification and documentation
+### D8. Native Conflict retry remains inside the dry-run guard
+
+Wrap native dynamic-client Create/Update/Delete in bounded backoff matching only
+`apierrors.IsConflict`. Reads pass through unchanged. `AlreadyExists` and other
+errors are returned immediately; exhausted attempts return the last conflict
+unchanged. Use context-aware waits and debug attempt logging. The retry wrapper
+sits inside `newGuardedDynamicClient`, before router construction, so blocked
+previews make no attempt and provider adapters are unaffected. Existing bounded
+concurrency remains; no alerting-specific serial phase or error-text matching is
+introduced. Retries keep the same operation/body, without a version refresh or
+fallback to another verb/backend. A stale resource version can still exhaust
+backoff. Recording contention tests cover concurrent pushes and deletes.
+
+### D9. Verification and documentation
 
 Table-driven command tests use `native.Fixed`/`native.Func` and request-recording HTTP servers. Cover title matching, duplicate titles, historical absent kind/encoded name, create conflicts, version selection, stdin, stale/missing-version update, explicit old-title rename with the old API name and supplied version, rename destination conflicts, retained-name mismatches, unchanged template kind, read-only imports, confirmation, empty results, and preserved 401/403/404/409/5xx/cancellation errors. Verify one selected mutation request and no fallback.
 
@@ -132,7 +166,7 @@ After authorization, run the required gate then full gate serially, maintain doc
 
 - **Identity changed within `v0alpha1`, and encoded names overlap.** → Match logical identity, use metadata name only as a hint in push, and let the server derive names. Test the collision between historical `grafana|foo` and newer `foo` rather than accepting two formulas as a rename detector.
 - **Title lookup requires list permission and collection I/O.** → This follows the settled UX. Keep full pagination; disclose permission errors and use the existing spill/field-selection codecs for large inventories.
-- **List-to-write races remain possible.** → Keep fetched versions for imperative updates and server conflict/not-found responses. Do not silently retry or convert update into create.
+- **List-to-write races remain possible.** → Keep caller versions for imperative updates and server conflict/not-found responses. Generic native mutations retry only Conflict with bounded backoff; stale versions can still fail. Never convert update into create.
 - **Imported groups can collide with editable titles.** → Kind-qualified matching and explicit ambiguity errors prevent selecting the wrong object.
 - **Cross-version omitted-kind writes are not live-verified.** → Reads/matching tolerate historical absence; test native defaulting and cross-version payloads before claiming runtime compatibility. Preserve server validation if a target rejects a manifest; no second-backend retry.
 - **Push cannot infer rename from a desired manifest; local files remain unchanged after dedicated rename.** → Document update's explicit current-title subject, show old/new titles in its receipt, and fetch/pull again after rename. Push ensures desired identities exist and never prunes omitted identities. Surface backend reference/provenance restrictions rather than promising a client-managed migration.

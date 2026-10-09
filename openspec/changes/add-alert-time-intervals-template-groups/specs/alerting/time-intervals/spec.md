@@ -7,7 +7,7 @@ Lets users manage named Grafana notification time intervals using native manifes
 ## ADDED Requirements
 
 ### Requirement: List and fetch time intervals by title
-`gcx alert time-intervals list` SHALL enumerate all time intervals. `get <title>` SHALL resolve an exact, case-sensitive `spec.name` match and return its native manifest unchanged. Human tables SHALL show the title and `metadata.name`. Title arguments SHALL NOT be interpreted as encoded resource names.
+`gcx alert time-intervals list` SHALL enumerate all time intervals. `get <title>` SHALL resolve an exact, case-sensitive `spec.name` match and return its native manifest unchanged. Human tables SHALL show the title, `metadata.name`, and read-only status. The shared rule SHALL classify `spec.kind: mimir` or provenance `system`, `converted_prometheus`, or `file` as read-only, leaving absent provenance and `api` writable. Title arguments SHALL NOT be interpreted as encoded resource names.
 
 #### Scenario: Complete structured enumeration
 - **WHEN** `list -o json` runs with zero or more time intervals
@@ -21,8 +21,12 @@ Lets users manage named Grafana notification time intervals using native manifes
 - **WHEN** `get weekends` runs and only `Weekends` exists
 - **THEN** it exits non-zero with a not-found error for the requested title
 
+#### Scenario: Native imported interval remains readable
+- **WHEN** native list/get returns an interval with converted-prometheus provenance
+- **THEN** reads retain it, its table status is read-only, and dedicated mutations refuse it before a write
+
 ### Requirement: Create a time interval without upsert
-`gcx alert time-intervals create -f <file>` SHALL create the native `TimeInterval` manifest as a new resource. A title already present SHALL fail without updating it. The request SHALL omit source server identity and concurrency metadata; the result SHALL report the title and the name returned by the server.
+`gcx alert time-intervals create -f <file>` SHALL create the native `TimeInterval` manifest as a new resource. A title already present SHALL fail without updating it. Read-only manifests SHALL fail before a write. The request SHALL omit source server identity and concurrency metadata; the result SHALL report the title and the name returned by the server.
 
 #### Scenario: Fresh manifest
 - **WHEN** create receives a valid manifest with `spec.name: maintenance` and empty `metadata.name`
@@ -37,7 +41,7 @@ Lets users manage named Grafana notification time intervals using native manifes
 - **THEN** it exits non-zero with a conflict and does not update that resource
 
 ### Requirement: Update a time interval with optimistic concurrency
-`gcx alert time-intervals update <current-title> -f <file>` SHALL update only the existing interval identified by the argument. The manifest SHALL retain its fetched `metadata.resourceVersion`; `spec.name` SHALL supply the desired title and MAY differ from the argument for an explicit rename. A supplied metadata name SHALL equal the resolved current interval's API name; if absent, the resolved name SHALL be used. The command SHALL send one update using the current API name and the supplied version, and SHALL report the returned title/name and both old and new titles on rename. GCX SHALL NOT rewrite local files or implement server reference migration.
+`gcx alert time-intervals update <current-title> -f <file>` SHALL update only the existing interval identified by the argument. The manifest SHALL retain its fetched `metadata.resourceVersion`; `spec.name` SHALL supply the desired title and MAY differ from the argument for an explicit rename. A supplied metadata name SHALL equal the resolved current interval's API name; if absent, the resolved name SHALL be used. The command SHALL send one update using the current API name and the supplied version, and SHALL report the returned title/name and both old and new titles on rename. Read-only input or destination intervals SHALL fail before a write. GCX SHALL NOT rewrite local files or implement server reference migration.
 
 #### Scenario: Current manifest update
 - **WHEN** a fetched interval is edited without changing its title and updated with its current version
@@ -68,7 +72,7 @@ Lets users manage named Grafana notification time intervals using native manifes
 - **THEN** it fails as not found without creating a replacement
 
 ### Requirement: Delete a time interval after confirmation
-`gcx alert time-intervals delete <title>` SHALL resolve the title and delete its native resource after confirmation or explicit force. Its receipt SHALL include the title and encoded resource name.
+`gcx alert time-intervals delete <title>` SHALL resolve the title and delete its native resource after confirmation or explicit force. Read-only intervals SHALL fail before a write even with force. Its receipt SHALL include the title and encoded resource name.
 
 #### Scenario: Forced deletion
 - **WHEN** `delete maintenance --force` targets an existing interval
@@ -94,7 +98,7 @@ Create and update SHALL accept JSON/YAML files and injected stdin via `-f -`. Ma
 - **THEN** default reads use that version without a provisioning fallback
 
 ### Requirement: Export provisioning definitions
-`gcx alert time-intervals export [<title>]` SHALL return provisioning export bytes using `--format yaml|json|hcl`, defaulting to YAML. With no title it SHALL export all intervals; with a title it SHALL export that single interval. Export SHALL NOT be presented as a native manifest.
+`gcx alert time-intervals export [<title>]` SHALL return provisioning export bytes using `--format yaml|json|hcl`, defaulting to YAML. With no title it SHALL export all Grafana-managed intervals; with a title it SHALL export that single Grafana-managed interval. Imported intervals visible through native list/get SHALL be excluded, and exporting an imported title SHALL return not found. Export SHALL NOT be presented as a native manifest.
 
 #### Scenario: HCL export
 - **WHEN** `export weekends --format hcl` runs
@@ -102,7 +106,11 @@ Create and update SHALL accept JSON/YAML files and injected stdin via `-f -`. Ma
 
 #### Scenario: Complete export and invalid format
 - **WHEN** export has no title, or has an invalid/empty format flag
-- **THEN** respectively it exports all intervals, or fails with usage status before a request
+- **THEN** respectively it exports all Grafana-managed intervals, or fails with usage status before a request
+
+#### Scenario: Imported interval export
+- **WHEN** provisioning export is requested for an imported interval visible in native list
+- **THEN** export reports not found, and collection export excludes it
 
 ### Requirement: Same resource on both command surfaces
 Dedicated JSON/YAML reads and `gcx resources` SHALL exchange the same native `TimeInterval` manifests. The existing `mute-timings` commands SHALL retain their behavior.
