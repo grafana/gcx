@@ -68,15 +68,18 @@ func TestMutationErrors(t *testing.T) {
 				detailed := fail.ErrorToDetailedError(fmt.Errorf("%s faro app %q: %w", op.name, "my-app", err))
 				require.NotNil(t, detailed)
 				if !resp.denied {
-					assert.Nil(t, detailed.ExitCode, "only a route denial changes the exit code")
+					assert.Nil(t, detailed.ExitCode, "other errors keep their previous exit code")
 					assert.Contains(t, detailed.Error(), resp.body)
 					return
 				}
 
-				wantSummary := "Permission denied: missing " + op.action
-				wantSuggestions := []string{fmt.Sprintf("Ask a stack admin to grant you the %s role, which includes %s", op.role, op.action)}
-				assert.Equal(t, wantSummary, detailed.Summary)
+				wantSuggestions := []string{
+					fmt.Sprintf("Ask a stack admin to grant you the %s role, which includes %s", op.role, op.action),
+					"Check what your login holds: gcx setup status",
+				}
+				assert.Equal(t, "Authorization failed", detailed.Summary)
 				assert.Equal(t, wantSuggestions, detailed.Suggestions)
+				assert.NotEmpty(t, detailed.DocsLink)
 				require.NotNil(t, detailed.ExitCode)
 				assert.Equal(t, gcxerrors.ExitAuthFailure, *detailed.ExitCode)
 				assert.Contains(t, detailed.Error(), `"my-app"`, "details keep the command's context")
@@ -86,14 +89,18 @@ func TestMutationErrors(t *testing.T) {
 				var got struct {
 					Error struct {
 						Summary     string   `json:"summary"`
+						Details     string   `json:"details"`
 						ExitCode    int      `json:"exitCode"`
 						Suggestions []string `json:"suggestions"`
 					} `json:"error"`
 				}
 				require.NoError(t, json.Unmarshal(buf.Bytes(), &got))
-				assert.Equal(t, wantSummary, got.Error.Summary)
+				assert.Equal(t, "Authorization failed", got.Error.Summary)
+				assert.Contains(t, got.Error.Details, `"my-app"`, "agent JSON keeps the command's context")
+				assert.Contains(t, got.Error.Details, "missing "+op.action)
 				assert.Equal(t, gcxerrors.ExitAuthFailure, got.Error.ExitCode)
-				assert.Equal(t, wantSuggestions, got.Error.Suggestions)
+				// Agent JSON appends a docs-fetch suggestion for DocsLink.
+				assert.Subset(t, got.Error.Suggestions, wantSuggestions)
 			})
 		}
 	}

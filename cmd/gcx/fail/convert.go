@@ -256,11 +256,18 @@ func convertPluginRouteDenied(err error) (*gcxerrors.DetailedError, bool) {
 		return nil, false
 	}
 	return &gcxerrors.DetailedError{
-		Summary: "Permission denied: missing " + denied.Action,
-		Parent:  err,
+		Summary: "Authorization failed",
+		// Agent JSON prints Details instead of Parent, so keep the command's context here.
+		Details: joinErrorDetails(
+			wrappedTypedErrorContext(err, denied),
+			"Grafana's plugin proxy refused the route: missing "+denied.Action,
+		),
+		Parent: err,
 		Suggestions: []string{
 			fmt.Sprintf("Ask a stack admin to grant you the %s role, which includes %s", denied.Role, denied.Action),
+			"Check what your login holds: gcx setup status",
 		},
+		DocsLink: docs.RolesAndPermissions,
 		ExitCode: new(gcxerrors.ExitAuthFailure),
 	}, true
 }
