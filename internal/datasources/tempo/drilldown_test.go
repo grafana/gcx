@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/gcx/internal/datasources/query/scenesfiltertest"
 	"github.com/grafana/gcx/internal/datasources/tempo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -52,4 +53,26 @@ func TestTracesDrilldownURL_FallbackCases(t *testing.T) {
 			assert.False(t, ok)
 		})
 	}
+}
+
+func TestTracesDrilldownURL_FilterValuesRoundTripThroughScenesDecoder(t *testing.T) {
+	for _, value := range []string{"a,b", "a#b", "foo|bar", "a,b#c|d"} {
+		got, ok := tempo.TracesDrilldownURL("https://stack.grafana.net", "tempo-uid",
+			`{ resource.service.name =~ "`+value+`" }`, time.Time{}, time.Time{})
+		require.True(t, ok, value)
+
+		u, err := url.Parse(got)
+		require.NoError(t, err)
+		filters := u.Query()["var-filters"]
+		require.Len(t, filters, 1, value)
+
+		decoded := scenesfiltertest.Decode(filters[0])
+		assert.Equal(t, scenesfiltertest.Filter{Key: "resource.service.name", Operator: "=~", Value: value}, decoded, value)
+	}
+}
+
+func TestTracesDrilldownURL_FallsBackForValuesContainingEscapeTokens(t *testing.T) {
+	_, ok := tempo.TracesDrilldownURL("https://stack.grafana.net", "tempo-uid",
+		`{ span.foo = "x__gfp__y" }`, time.Time{}, time.Time{})
+	assert.False(t, ok)
 }
