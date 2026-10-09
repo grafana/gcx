@@ -56,6 +56,16 @@ Secret input SHALL accept exactly one nonempty fromEnv, nonempty fromFile, prese
 ### Requirement: Read completeness of modeled configuration
 Successful full manifest exports MUST reflect observed modeled configuration. An inaccessible or unavailable supplementary configuration read MUST NOT be substituted with a disabled/default value or represented as a valid complete export.
 
+#### Scenario: One discovered candidate cannot be exported
+- **WHEN** collection discovery succeeds but a candidate detail or modeled configuration read fails
+- **THEN** successful candidates remain available, each failed candidate is identified, dedicated list declares incomplete coverage and returns exit 4, and pull records per-candidate failures according to its error policy
+- **AND** abort policy writes no files
+
+#### Scenario: A discovered candidate disappears
+- **WHEN** the candidate detail read reports not-found
+- **THEN** the candidate is reported as skipped and successful candidates remain available with incomplete list coverage
+- **AND** not-found from a supplementary configuration read remains an explicit failure
+
 #### Scenario: Read automatic recalibration configuration
 - **WHEN** enrollment is reported as enabled or disabled
 - **THEN** the manifest reports that observed boolean

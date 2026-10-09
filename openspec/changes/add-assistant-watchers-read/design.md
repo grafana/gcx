@@ -73,6 +73,8 @@ Lists retain all colliding entries with IDs. Pull must reject every member of a 
 
 ### 4. Complete collection reads and honest coverage
 
+Collection paging errors and cancellation fail the collection. After discovery succeeds, detail reads are independent: a detail not-found skips that candidate as collection churn; other detail or required configuration failures retain successful manifests and identify each failed candidate. Dedicated list emits incomplete coverage with failed/skipped identities and one result document, returning exit 4 for actionable per-item failures. Generic reads preserve successful items and pull records each failed/skipped candidate under its existing error policy; abort returns before writing files. A supplementary-read not-found is a configuration failure, not discovery churn.
+
 Exhaust cursors until absent, including empty intermediate pages. Detect repeated cursors, propagate cancellation and reject failed pages without returning a seemingly complete list. No new CLI paging or search flags: `list` consumes the entire selected archive partition. Use an `items` envelope, initialized to `[]`, with coverage metadata describing the archive partition and caller-visible scope; do not claim a tenant-wide count or snapshot consistency. Human output shows name, ID and title; wide output adds useful configuration columns through codecs.
 
 `get` JSON/YAML/agents emits the standard manifest envelope and matches generic get. Output format never changes which configuration is fetched. List metadata is for coverage, not fabricated total counts. Agent codecs handle large payloads without client-side truncation; mark list's worst-case token cost large and provide narrowing guidance toward get.

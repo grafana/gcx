@@ -6,7 +6,7 @@
 
 This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
 
-Fetch every page of Watcher definitions visible to your configured identity. By default, lists non-archived Watchers; --archived selects archived Watchers only. Coverage is permission-scoped and is not an atomic snapshot. Use get WATCHER for one definition and status WATCHER for runtime observations.
+Fetch every page of Watcher definitions visible to your configured identity. By default, lists non-archived Watchers; --archived selects archived Watchers only. Coverage is permission-scoped and is not an atomic snapshot. Partial reads retain readable items, mark coverage incomplete, and report failed or skipped identities; failed item reads return a nonzero exit status. Use get WATCHER for one definition and status WATCHER for runtime observations.
 
 ```
 gcx assistant watchers list [flags]

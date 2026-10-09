@@ -17,6 +17,7 @@ import (
 
 	"github.com/grafana/gcx/internal/assistant/assistanthttp"
 	"github.com/grafana/gcx/internal/assistant/watchers"
+	"github.com/grafana/gcx/internal/assistant/watchers/watcherstest"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/stretchr/testify/assert"
@@ -191,8 +192,11 @@ func TestListPartitionAndEnrollmentFailure(t *testing.T) {
 			})
 			items, err := NewTypedCRUDForClientArchived(client, "", true).ListFn(t.Context(), 0)
 			if denied {
-				assert.Nil(t, items)
+				assert.Empty(t, items)
 				require.ErrorIs(t, err, watchers.ErrPermissionDenied)
+				var partial *ListReadError
+				require.ErrorAs(t, err, &partial)
+				require.Len(t, partial.Failures, 1)
 			} else {
 				require.NoError(t, err)
 				require.Len(t, items, 1)
@@ -237,6 +241,37 @@ func TestListRetainsCollisionsAndEmptyResults(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestListRetainsGoodManifestsAcrossIndividualReadFailures(t *testing.T) {
+	invalid := fixtureWatcher("invalid", "Invalid")
+	invalid.TriggerIntervalSeconds = 1
+	fixture := &watcherstest.Server{
+		Current:          [][]watchers.Watcher{{fixtureWatcher("good", "Good"), fixtureWatcher("gone", "Gone"), fixtureWatcher("denied", "Denied"), fixtureWatcher("unavailable", "Unavailable"), invalid, fixtureWatcher("server-error", "Server error")}},
+		DetailStatus:     map[string]int{"gone": http.StatusNotFound, "server-error": http.StatusInternalServerError},
+		EnrollmentStatus: map[string]int{"denied": http.StatusForbidden, "unavailable": http.StatusNotFound},
+		Enrollment:       map[string]bool{"good": true},
+	}
+	client := clientForServer(t, fixture.ServeHTTP)
+	crud := NewTypedCRUDForClient(client, "default")
+	items, err := crud.List(t.Context(), 0)
+	var partial *ListReadError
+	require.ErrorAs(t, err, &partial)
+	require.Len(t, items, 1)
+	assert.Equal(t, "good", items[0].Spec.ServerID())
+	assert.True(t, items[0].Spec.AutomaticRecalibration.Enabled)
+	require.Len(t, partial.Failures, 4)
+	assert.Equal(t, []string{"denied", "unavailable", "invalid", "server-error"}, []string{partial.Failures[0].Candidate.ID, partial.Failures[1].Candidate.ID, partial.Failures[2].Candidate.ID, partial.Failures[3].Candidate.ID})
+	require.ErrorIs(t, partial.Failures[0].Err, watchers.ErrPermissionDenied)
+	require.ErrorIs(t, partial.Failures[1].Err, watchers.ErrNotFound)
+	assert.Contains(t, partial.Failures[2].Err.Error(), "cannot be exported")
+	var apiErr *watchers.APIError
+	require.ErrorAs(t, partial.Failures[3].Err, &apiErr)
+	assert.Equal(t, http.StatusInternalServerError, apiErr.StatusCode)
+	require.Len(t, partial.Skipped, 1)
+	assert.Equal(t, "gone", partial.Skipped[0].ID)
+	assert.Zero(t, fixture.EnrollmentReads("gone"))
+	assert.Zero(t, fixture.EnrollmentReads("server-error"))
 }
 
 func TestIdentityIndexHasNoSupplementaryReads(t *testing.T) {

@@ -13,6 +13,8 @@ gcx resources pull watchers -p ./watchers -o yaml
 
 `list` reads every page of the non-archived Watchers visible to the caller. `--archived` lists archived Watchers only. Machine output carries an `items` array and coverage describing the selected archive partition and caller-visible scope. This is not an atomic snapshot or an inventory of resources the caller cannot access.
 
+After discovery, one failed configuration read does not discard other Watchers. List reports failed and skipped candidates with incomplete coverage; actionable per-item failures return exit 4. A Watcher that disappears before its detail read is skipped. Pull retains successful manifests and records failures individually; `--on-error abort` writes no files. Collection paging failures still fail the collection.
+
 `get` returns the same configuration-only manifest as `resources get`. The resource name is derived from its title; the server-assigned ID appears in the `assistant.ext.grafana.app/watcher-id` annotation. Names that match several visible Watchers report their candidate IDs. Use an ID to select one explicitly. Bulk pull writes unaffected Watchers and reports conflicting candidates, including conflicts with archived Watchers, without overwriting a conflicting file.
 
 `status` separates lifecycle from the last reported health assessment. It includes available calibration progress and checks, run timestamps, estimated usage, audit metadata and the current definition version. Missing observations remain absent or unknown: a paused Watcher with an older warning is still paused, and a latest-run timestamp is not proof of completion. Unsupported check types and parameters remain inspectable. If calibration needs input or fails, continue in Grafana.

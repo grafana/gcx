@@ -331,6 +331,94 @@ func TestWatcherGenericGetCollisionIsAnExplicitPartialFailure(t *testing.T) {
 	require.ErrorIs(t, dec.Decode(&extra), io.EOF)
 }
 
+func TestWatcherGenericBulkPullRetainsUnaffectedReads(t *testing.T) {
+	for _, policy := range []string{"fail", "ignore", "abort"} {
+		t.Run(policy, func(t *testing.T) {
+			fixture := &watcherstest.Server{
+				Current:          [][]watchers.Watcher{{watcherFixture("good", "Good"), watcherFixture("gone", "Gone"), watcherFixture("denied", "Denied"), watcherFixture("unavailable", "Unavailable")}},
+				DetailStatus:     map[string]int{"gone": http.StatusNotFound},
+				EnrollmentStatus: map[string]int{"denied": http.StatusForbidden, "unavailable": http.StatusNotFound},
+			}
+			execute := watcherResourceCLI(t, fixture)
+			dest := t.TempDir()
+			for _, name := range []string{"denied", "unavailable", "gone"} {
+				path := watcherOutputPath(dest, name)
+				require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+				require.NoError(t, os.WriteFile(path, []byte("existing file"), 0o600))
+			}
+			output, err := execute("pull", "watchers", "--path", dest, "--on-error", policy)
+			if policy == "abort" {
+				require.Error(t, err)
+				assert.Empty(t, output)
+				_, statErr := os.Stat(watcherOutputPath(dest, "good"))
+				require.ErrorIs(t, statErr, os.ErrNotExist)
+			} else {
+				if policy == "ignore" {
+					require.NoError(t, err)
+				} else {
+					requireWatcherPartialFailure(t, err)
+				}
+				receipt := decodeWatcherReceipt(t, output)
+				assert.Equal(t, 1, receipt.Summary.Succeeded)
+				assert.Equal(t, 2, receipt.Summary.Failed)
+				assert.Equal(t, 1, receipt.Summary.Skipped)
+				require.Len(t, receipt.Failures, 2)
+				assert.Equal(t, "Watcher", receipt.Failures[0].Target.Kind)
+				assert.Equal(t, "denied", receipt.Failures[0].Target.Name)
+				assert.Contains(t, receipt.Failures[0].Error, "denied")
+				assert.Equal(t, "unavailable", receipt.Failures[1].Target.Name)
+				_, statErr := os.Stat(watcherOutputPath(dest, "good"))
+				require.NoError(t, statErr)
+			}
+			for _, name := range []string{"denied", "unavailable", "gone"} {
+				data, readErr := os.ReadFile(watcherOutputPath(dest, name))
+				require.NoError(t, readErr)
+				assert.Equal(t, "existing file", string(data))
+			}
+			assert.Zero(t, fixture.MutationCalls())
+		})
+	}
+}
+
+func TestWatcherGenericGetRetainsUnaffectedReads(t *testing.T) {
+	for _, policy := range []string{"fail", "ignore"} {
+		t.Run(policy, func(t *testing.T) {
+			fixture := &watcherstest.Server{
+				Current:          [][]watchers.Watcher{{watcherFixture("good", "Good"), watcherFixture("denied", "Denied")}},
+				EnrollmentStatus: map[string]int{"denied": http.StatusForbidden},
+			}
+			execute := watcherResourceCLI(t, fixture)
+			output, err := execute("get", "watchers", "--output", "json", "--on-error", policy)
+			if policy == "ignore" {
+				require.NoError(t, err)
+			} else {
+				requireWatcherPartialFailure(t, err)
+			}
+			var result struct {
+				Type  string                      `json:"type"`
+				Items []unstructured.Unstructured `json:"items"`
+				Error struct {
+					Summary  string `json:"summary"`
+					ExitCode int    `json:"exitCode"`
+				} `json:"error"`
+			}
+			dec := json.NewDecoder(bytes.NewReader(output))
+			require.NoError(t, dec.Decode(&result), string(output))
+			require.Len(t, result.Items, 1)
+			assert.Equal(t, "good", result.Items[0].GetName())
+			if policy == "fail" {
+				assert.Equal(t, "gcx.partial_result", result.Type)
+				assert.Contains(t, result.Error.Summary, "1 resource(s) failed")
+				assert.Equal(t, gcxerrors.ExitPartialFailure, result.Error.ExitCode)
+			} else {
+				assert.Empty(t, result.Type)
+			}
+			var extra any
+			require.ErrorIs(t, dec.Decode(&extra), io.EOF)
+		})
+	}
+}
+
 func TestWatcherGenericGetByNameAndIDMatchesPulledManifest(t *testing.T) {
 	fixture := &watcherstest.Server{Current: [][]watchers.Watcher{{watcherFixture("server-id", "Unique title")}}, Enrollment: map[string]bool{"server-id": true}}
 	execute := watcherResourceCLI(t, fixture)

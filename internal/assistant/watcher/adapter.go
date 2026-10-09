@@ -53,9 +53,11 @@ func NewTypedCRUDForClientArchived(client *watchers.Client, namespace string, ar
 		ListFn: adapter.LimitedListFn(func(ctx context.Context) ([]Watcher, error) {
 			raw, err := client.ListAll(ctx, archived)
 			if err != nil {
-				return nil, fmt.Errorf("list Watchers: %w", err)
+				return nil, err
 			}
-			result := make([]Watcher, len(raw))
+			result := make([]*Watcher, len(raw))
+			failures := make([]error, len(raw))
+			skipped := make([]bool, len(raw))
 			group, readCtx := errgroup.WithContext(ctx)
 			group.SetLimit(10)
 			for i := range raw {
@@ -64,20 +66,51 @@ func NewTypedCRUDForClientArchived(client *watchers.Client, namespace string, ar
 					// full modeled configuration before a successful manifest is emitted.
 					detail, err := client.Get(readCtx, raw[i].ID)
 					if err != nil {
-						return fmt.Errorf("read Watcher %q: %w", raw[i].ID, err)
+						if readCtx.Err() != nil {
+							return readCtx.Err()
+						}
+						if errors.Is(err, watchers.ErrNotFound) {
+							skipped[i] = true
+						} else {
+							failures[i] = fmt.Errorf("read Watcher %q: %w", raw[i].ID, err)
+						}
+						return nil
 					}
 					manifest, err := ReadManifest(readCtx, client, *detail)
 					if err != nil {
-						return err
+						if readCtx.Err() != nil {
+							return readCtx.Err()
+						}
+						failures[i] = err
+						return nil
 					}
-					result[i] = manifest
+					result[i] = &manifest
 					return nil
 				})
 			}
 			if err := group.Wait(); err != nil {
 				return nil, err
 			}
-			return result, nil
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			items := make([]Watcher, 0, len(raw))
+			partial := &ListReadError{}
+			for i, item := range raw {
+				candidate := Candidate{ID: item.ID, Title: item.Name, Name: adapter.SlugifyName(item.Name)}
+				switch {
+				case result[i] != nil:
+					items = append(items, *result[i])
+				case failures[i] != nil:
+					partial.Failures = append(partial.Failures, ListFailure{Candidate: candidate, Err: failures[i]})
+				case skipped[i]:
+					partial.Skipped = append(partial.Skipped, candidate)
+				}
+			}
+			if len(partial.Failures)+len(partial.Skipped) > 0 {
+				return items, partial
+			}
+			return items, nil
 		}),
 		GetFn: func(ctx context.Context, ref string) (*Watcher, error) {
 			raw, err := Resolve(ctx, client, ref)
@@ -98,6 +131,37 @@ func NewTypedCRUDForClientArchived(client *watchers.Client, namespace string, ar
 		},
 		Namespace: namespace, Descriptor: WatcherDescriptor(), Example: WatcherExample(),
 	}
+}
+
+// ListFailure identifies a Watcher whose complete configuration could not be read.
+type ListFailure struct {
+	Candidate Candidate
+	Err       error
+}
+
+// ListReadError accompanies usable list items when individual reads failed or
+// Watchers disappeared after enumeration. Collection failures and cancellation
+// remain fatal and never return partial items.
+type ListReadError struct {
+	Failures []ListFailure
+	Skipped  []Candidate
+}
+
+func (e *ListReadError) Error() string {
+	parts := make([]string, 0, 1+len(e.Failures))
+	parts = append(parts, fmt.Sprintf("%d Watcher(s) failed to read; %d disappeared during collection read", len(e.Failures), len(e.Skipped)))
+	for _, failure := range e.Failures {
+		parts = append(parts, failure.Err.Error())
+	}
+	return strings.Join(parts, "; ")
+}
+
+func (e *ListReadError) Unwrap() []error {
+	errs := make([]error, 0, len(e.Failures))
+	for _, failure := range e.Failures {
+		errs = append(errs, failure.Err)
+	}
+	return errs
 }
 
 func NewLazyFactory() adapter.Factory {

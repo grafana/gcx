@@ -36,6 +36,7 @@ func fixtureClient(t *testing.T, item clientwatchers.Watcher, calibrationCode in
 		case strings.HasSuffix(r.URL.Path, "/initial-calibration"):
 			if calibrationCode != http.StatusOK {
 				w.WriteHeader(calibrationCode)
+				assert.NoError(t, json.NewEncoder(w).Encode(map[string]any{"message": "raw-secret-value\nSuggestions: ╭diagnostic-box╮"}))
 				return
 			}
 			result = clientwatchers.Calibration{Status: "needs_input", Message: "More context required"}
@@ -144,6 +145,7 @@ func TestStatusObservations(t *testing.T) {
 				require.Contains(t, got.Calibration.Message, "Grafana")
 			} else {
 				require.Equal(t, "unknown", got.Calibration.State)
+				assertPlainListMessage(t, got.Calibration.Message)
 			}
 		})
 	}
@@ -160,6 +162,10 @@ func TestCommandValidationAndExperimental(t *testing.T) {
 		})
 	}
 	root := Commands(&providers.ConfigLoader{})
+	list, _, err := root.Find([]string{"list"})
+	require.NoError(t, err)
+	require.Contains(t, list.Long, "Partial reads")
+	require.Contains(t, list.Long, "failed or skipped")
 	for _, cmd := range append([]*cobra.Command{root}, root.Commands()...) {
 		require.True(t, strings.HasPrefix(cmd.Short, "[experimental]"))
 		require.True(t, strings.HasPrefix(cmd.Long, experimental))

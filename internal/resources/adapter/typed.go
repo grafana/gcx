@@ -28,10 +28,10 @@ func TruncateSlice[T any](items []T, limit int64) []T {
 func LimitedListFn[T any](fn func(ctx context.Context) ([]T, error)) func(ctx context.Context, limit int64) ([]T, error) {
 	return func(ctx context.Context, limit int64) ([]T, error) {
 		items, err := fn(ctx)
-		if err != nil {
+		if err != nil && items == nil {
 			return nil, err
 		}
-		return TruncateSlice(items, limit), nil
+		return TruncateSlice(items, limit), err
 	}
 }
 
@@ -128,6 +128,7 @@ func (c *TypedCRUD[T]) restoreName(name string, item *T) {
 
 // List returns items as TypedObject[T] with correct TypeMeta and ObjectMeta.
 // The limit parameter caps the number of items returned (0 means no limit).
+// Non-nil items returned alongside an error are retained for partial-list callers.
 // Returns errors.ErrUnsupported when ListFn is nil.
 func (c *TypedCRUD[T]) List(ctx context.Context, limit int64) ([]TypedObject[T], error) {
 	if c.ListFn == nil {
@@ -135,7 +136,7 @@ func (c *TypedCRUD[T]) List(ctx context.Context, limit int64) ([]TypedObject[T],
 	}
 
 	items, err := c.ListFn(ctx, limit)
-	if err != nil {
+	if err != nil && items == nil {
 		return nil, err
 	}
 
@@ -143,7 +144,7 @@ func (c *TypedCRUD[T]) List(ctx context.Context, limit int64) ([]TypedObject[T],
 	for _, item := range items {
 		result = append(result, c.wrapTypedObject(item))
 	}
-	return result, nil
+	return result, err
 }
 
 // Get returns a single item by name as a TypedObject[T].
@@ -350,7 +351,7 @@ func (a *typedAdapter[T]) List(ctx context.Context, opts metav1.ListOptions) (*u
 	}
 
 	items, err := a.crud.ListFn(ctx, opts.Limit)
-	if err != nil {
+	if err != nil && items == nil {
 		return nil, err
 	}
 
@@ -363,7 +364,7 @@ func (a *typedAdapter[T]) List(ctx context.Context, opts metav1.ListOptions) (*u
 		result.Items = append(result.Items, u)
 	}
 
-	return result, nil
+	return result, err
 }
 
 func (a *typedAdapter[T]) Get(ctx context.Context, name string, _ metav1.GetOptions) (*unstructured.Unstructured, error) {

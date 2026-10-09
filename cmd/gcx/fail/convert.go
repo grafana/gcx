@@ -14,6 +14,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/grafana/gcx/internal/assistant/watchers"
 	"github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/cloud"
 	"github.com/grafana/gcx/internal/config"
@@ -83,6 +84,7 @@ func ErrorToDetailedError(err error) *gcxerrors.DetailedError {
 		convertUnavailableEndpoint,                  // Experimental/Cloud-only endpoint route absent
 		convertQueryErrors,                          // Datasource query errors
 		convertDatasourceErrors,                     // Grafana datasource REST API errors
+		convertWatcherUnavailableErrors,             // Missing Watcher read capability
 		convertServiceAPIErrors,                     // Other structured HTTP API errors
 		convertFSErrors,                             // FS-related
 		convertResourcesErrors,                      // Resources-related
@@ -653,6 +655,19 @@ func queryErrorHelpCommand(apiErr *queryerror.APIError) string {
 	}
 
 	return ""
+}
+
+func convertWatcherUnavailableErrors(err error) (*gcxerrors.DetailedError, bool) {
+	var apiErr *watchers.APIError
+	if !errors.As(err, &apiErr) || !errors.Is(apiErr, watchers.ErrCapabilityUnavailable) {
+		return nil, false
+	}
+	return &gcxerrors.DetailedError{
+		Parent:      err,
+		Summary:     "Endpoint not available",
+		Details:     joinErrorDetails(wrappedTypedErrorContext(err, apiErr), apiErr.APIUserMessage()),
+		Suggestions: []string{"Verify that " + apiErr.Operation + " is available on the selected Grafana Cloud target"},
+	}, true
 }
 
 type serviceAPIError interface {

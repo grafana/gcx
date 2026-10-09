@@ -2,8 +2,10 @@ package remote
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 
+	"github.com/grafana/gcx/internal/assistant/watcher"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/logs"
 	"github.com/grafana/gcx/internal/resources"
@@ -150,6 +152,14 @@ func (p *Puller) Pull(ctx context.Context, req PullRequest) (*OperationSummary, 
 			switch filt.Type {
 			case resources.FilterTypeAll:
 				res, err := p.client.List(ctx, filt.Descriptor, metav1.ListOptions{Limit: req.Limit})
+				var partial *watcher.ListReadError
+				if isWatcherFilter(filt) && errors.As(err, &partial) {
+					if recordErr := recordWatcherListRead(ctx, summary, filt.Descriptor, partial, req.StopOnError); recordErr != nil {
+						return recordErr
+					}
+					partialRes[idx] = res.Items
+					return nil
+				}
 				if err != nil {
 					switch {
 					case isUnsupportedResourceType(err):
@@ -254,6 +264,31 @@ func (p *Puller) Pull(ctx context.Context, req PullRequest) (*OperationSummary, 
 	}
 
 	return summary, nil
+}
+
+// recordWatcherListRead preserves each observed failure's identity in receipts
+// and counts disappeared Watchers independently from actionable read failures.
+// With stopOnError, actionable failures stop the pull before item processing.
+func recordWatcherListRead(ctx context.Context, summary *OperationSummary, descriptor resources.Descriptor, partial *watcher.ListReadError, stopOnError bool) error {
+	for _, failure := range partial.Failures {
+		obj := &unstructured.Unstructured{}
+		obj.SetGroupVersionKind(descriptor.GroupVersionKind())
+		obj.SetName(failure.Candidate.Name)
+		obj.SetAnnotations(map[string]string{watcher.WatcherIDAnnotation: failure.Candidate.ID})
+		failed, err := resources.FromUnstructured(obj)
+		if err != nil {
+			return err
+		}
+		summary.RecordFailure(failed, failure.Err)
+		logging.FromContext(ctx).Warn("Could not pull Watcher", logs.Err(failure.Err))
+	}
+	for range partial.Skipped {
+		summary.RecordSkipped()
+	}
+	if stopOnError && len(partial.Failures) > 0 {
+		return partial
+	}
+	return nil
 }
 
 // isUnsupportedResourceType reports whether a LIST/GET error indicates that the

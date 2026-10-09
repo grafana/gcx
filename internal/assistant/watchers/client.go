@@ -12,7 +12,6 @@ import (
 	"strings"
 
 	"github.com/grafana/gcx/internal/assistant/assistanthttp"
-	"github.com/grafana/gcx/internal/gcxerrors"
 )
 
 var (
@@ -24,8 +23,6 @@ var (
 type APIError struct {
 	StatusCode int
 	Operation  string
-	Code       string
-	Message    string
 	kind       error
 	cause      error
 }
@@ -176,12 +173,11 @@ func (c *Client) read(ctx context.Context, path, operation string, collection bo
 
 func readAPIError(resp *http.Response, operation string, collection bool) error {
 	var wire struct {
-		Name    string `json:"name"`
-		Message string `json:"message"`
+		Name string `json:"name"`
 	}
 	body, readErr := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	_ = json.Unmarshal(body, &wire)
-	apiErr := &APIError{StatusCode: resp.StatusCode, Operation: operation, Code: wire.Name, Message: wire.Message, cause: readErr}
+	apiErr := &APIError{StatusCode: resp.StatusCode, Operation: operation, cause: readErr}
 	switch {
 	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
 		apiErr.kind = ErrPermissionDenied
@@ -191,12 +187,6 @@ func readAPIError(resp *http.Response, operation string, collection bool) error 
 		apiErr.kind = ErrCapabilityUnavailable
 	case resp.StatusCode == http.StatusNotFound:
 		apiErr.kind = ErrNotFound
-	}
-	if errors.Is(apiErr, ErrCapabilityUnavailable) {
-		return &gcxerrors.DetailedError{
-			Parent: apiErr, Summary: "Endpoint not available", Details: apiErr.APIUserMessage(),
-			Suggestions: []string{"Verify Assistant Watchers is available on the selected Grafana Cloud target"},
-		}
 	}
 	return apiErr
 }

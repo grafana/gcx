@@ -38,6 +38,8 @@
 - [x] 5.4 If no Watchers exist, prepare the concrete test fixture and obtain approval before creating it. Clean up only an approved fixture; read-only implementation never creates one implicitly.
 - [x] 5.5 Review the complete outgoing diff and all prose/artifacts/metadata for private API names, endpoints, headers, gating names, exact limits and source-derived details. Keep wire identifiers confined to Go client code. Inspect reachable commits and confirm no private evidence note enters git.
 
+- [x] 5.6 Address attached review findings: preserve per-item read results and accurate receipts, keep plain typed client errors with boundary rendering, drop unused server fields, disclose selector-free discovery impact, and revert unrelated AGENTS wording. Run regressions and required gates before committing the corrections.
+
 ## 6. Publication after implementation review
 
 - [x] 6.1 Commit the reviewed implementation after required checks, fetch current origin/main, and rebase only this change's commits using the recorded .context/base-sha. Keep the existing branch name and drop planning-base commits; verify origin/main ancestry and that no docs-base commits enter the outgoing range.

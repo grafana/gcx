@@ -19,6 +19,7 @@ type Server struct {
 	Archived         [][]watchers.Watcher
 	CurrentStatus    int
 	ArchivedStatus   int
+	DetailStatus     map[string]int
 	EnrollmentStatus map[string]int
 	Enrollment       map[string]bool
 
@@ -58,6 +59,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		write(w, watchers.Enrollment{Enabled: s.Enrollment[id]})
+		return
+	}
+	if status := s.DetailStatus[path]; status != 0 && status != http.StatusOK {
+		http.Error(w, "fixture detail unavailable", status)
 		return
 	}
 	for _, partition := range [][][]watchers.Watcher{s.Current, s.Archived} {

@@ -297,6 +297,8 @@ backing client is a REST adapter or the k8s dynamic client.
 
 Watcher configuration follows the provider REST pull pipeline through its shared typed adapter. Before collection insertion, pull checks the visible identity index and reports conflicting names as failures, preserving unrelated resources. Runtime status uses separate read-only observations and never enters a manifest. See [Assistant Watchers](../reference/assistant-watchers.md).
 
+Typed list adapters retain items returned alongside an error. Watcher bulk reads use this to keep successful configurations while the puller records failed candidates individually and skips candidates that disappear during discovery. Collection failures remain fatal; abort mode stops before file processing. Dedicated list discloses incomplete coverage and the affected candidates.
+
 ## 5. QUERY Pipeline
 
 Entry point: per-signal provider packages (`internal/providers/{metrics,logs,traces,profiles}/query.go`) and the auto-detecting `cmd/gcx/datasources/query.go`. Shared query CLI utils live in `internal/datasources/query/`.

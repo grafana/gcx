@@ -285,6 +285,8 @@ func TestErrorsRetainClassification(t *testing.T) {
 				_, err = client.Get(t.Context(), "example")
 			}
 			require.Error(t, err)
+			_, plain := err.(*watchers.APIError) //nolint:errorlint // This contract requires a direct APIError, without wrappers.
+			require.True(t, plain, "client must return the API error directly")
 			var apiErr *watchers.APIError
 			require.ErrorAs(t, fmt.Errorf("wrapped: %w", err), &apiErr)
 			assert.Equal(t, tt.status, apiErr.HTTPStatusCode())

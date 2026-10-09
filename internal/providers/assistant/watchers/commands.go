@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/gcx/internal/assistant/watcher"
 	clientwatchers "github.com/grafana/gcx/internal/assistant/watchers"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/style"
@@ -84,7 +85,7 @@ func newClient(cmd *cobra.Command, loader *providers.ConfigLoader) (*clientwatch
 
 func newListCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &listOpts{}
-	cmd := &cobra.Command{Use: "list", Short: "List Assistant Watcher definitions.", Long: "Fetch every page of Watcher definitions visible to your configured identity. By default, lists non-archived Watchers; --archived selects archived Watchers only. Coverage is permission-scoped and is not an atomic snapshot. Use get WATCHER for one definition and status WATCHER for runtime observations.", Args: cobra.NoArgs, Example: "  gcx assistant watchers list\n  gcx assistant watchers list --archived\n  gcx assistant watchers list -o json\n  gcx assistant watchers list -o wide", RunE: func(cmd *cobra.Command, _ []string) error {
+	cmd := &cobra.Command{Use: "list", Short: "List Assistant Watcher definitions.", Long: "Fetch every page of Watcher definitions visible to your configured identity. By default, lists non-archived Watchers; --archived selects archived Watchers only. Coverage is permission-scoped and is not an atomic snapshot. Partial reads retain readable items, mark coverage incomplete, and report failed or skipped identities; failed item reads return a nonzero exit status. Use get WATCHER for one definition and status WATCHER for runtime observations.", Args: cobra.NoArgs, Example: "  gcx assistant watchers list\n  gcx assistant watchers list --archived\n  gcx assistant watchers list -o json\n  gcx assistant watchers list -o wide", RunE: func(cmd *cobra.Command, _ []string) error {
 		if err := opts.Validate(); err != nil {
 			return err
 		}
@@ -130,18 +131,40 @@ type coverage struct {
 	Complete bool   `json:"complete"`
 	Snapshot bool   `json:"snapshot"`
 }
-type listResult struct {
-	Items    []map[string]any `json:"items"`
-	Coverage coverage         `json:"coverage"`
+type listIssue struct {
+	Name    string `json:"name"`
+	ID      string `json:"id"`
+	Title   string `json:"title"`
+	Message string `json:"message"`
 }
+
+type listError struct {
+	Summary     string   `json:"summary"`
+	ExitCode    int      `json:"exitCode"`
+	Suggestions []string `json:"suggestions,omitempty"`
+}
+
+type listResult struct {
+	Type          string           `json:"type,omitempty"`
+	SchemaVersion string           `json:"schema_version,omitempty"`
+	Items         []map[string]any `json:"items"`
+	Coverage      coverage         `json:"coverage"`
+	Failed        []listIssue      `json:"failed,omitempty"`
+	Skipped       []listIssue      `json:"skipped,omitempty"`
+	Error         *listError       `json:"error,omitempty"`
+}
+
+// ListItemsKey preserves coverage and diagnostics when --json selects item fields.
+func (listResult) ListItemsKey() string { return "items" }
 
 func runList(cmd *cobra.Command, client *clientwatchers.Client, namespace string, opts *listOpts) error {
 	crud := watcher.NewTypedCRUDForClientArchived(client, namespace, opts.Archived)
-	items, err := crud.List(cmd.Context(), 0)
-	if err != nil {
-		return err
+	items, readErr := crud.List(cmd.Context(), 0)
+	var partial *watcher.ListReadError
+	if readErr != nil && !errors.As(readErr, &partial) {
+		return readErr
 	}
-	result := listResult{Items: make([]map[string]any, 0, len(items)), Coverage: coverage{Scope: "caller-visible", Archived: opts.Archived, Complete: true, Snapshot: false}}
+	result := listResult{Items: make([]map[string]any, 0, len(items)), Coverage: coverage{Scope: "caller-visible", Archived: opts.Archived, Complete: readErr == nil, Snapshot: false}}
 	for _, item := range items {
 		u, err := crud.ToUnstructured(item.Spec)
 		if err != nil {
@@ -149,7 +172,27 @@ func runList(cmd *cobra.Command, client *clientwatchers.Client, namespace string
 		}
 		result.Items = append(result.Items, u.Object)
 	}
-	return opts.IO.Encode(cmd.OutOrStdout(), result)
+	if partial != nil {
+		for _, failure := range partial.Failures {
+			candidate := failure.Candidate
+			result.Failed = append(result.Failed, listIssue{Name: candidate.Name, ID: candidate.ID, Title: candidate.Title, Message: failure.Err.Error()})
+		}
+		for _, candidate := range partial.Skipped {
+			result.Skipped = append(result.Skipped, listIssue{Name: candidate.Name, ID: candidate.ID, Title: candidate.Title, Message: "Watcher disappeared after collection enumeration; retry list to refresh caller-visible coverage."})
+		}
+		if len(partial.Failures) > 0 {
+			result.Type = "gcx.partial_result"
+			result.SchemaVersion = "1"
+			result.Error = &listError{Summary: fmt.Sprintf("%d Watcher configuration read(s) failed", len(partial.Failures)), ExitCode: gcxerrors.ExitPartialFailure, Suggestions: []string{"Inspect failed Watcher IDs and their read errors, then retry list or use get WATCHER for one definition."}}
+		}
+	}
+	if err := opts.IO.Encode(cmd.OutOrStdout(), result); err != nil {
+		return err
+	}
+	if result.Error != nil {
+		return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, readErr)
+	}
+	return nil
 }
 
 func runGet(cmd *cobra.Command, client *clientwatchers.Client, namespace string, opts *readOpts) error {
@@ -302,5 +345,23 @@ func (c *tableCodec) Encode(dst io.Writer, value any) error {
 		}
 		table.Row(row...)
 	}
-	return table.Render(dst)
+	if err := table.Render(dst); err != nil {
+		return err
+	}
+	if result, ok := value.(listResult); ok && !result.Coverage.Complete {
+		if _, err := fmt.Fprintf(dst, "\nCoverage incomplete: %d failed, %d skipped.\n", len(result.Failed), len(result.Skipped)); err != nil {
+			return err
+		}
+		for _, issue := range result.Failed {
+			if _, err := fmt.Fprintf(dst, "Failed %s (ID %s): %s\n", issue.Name, issue.ID, issue.Message); err != nil {
+				return err
+			}
+		}
+		for _, issue := range result.Skipped {
+			if _, err := fmt.Fprintf(dst, "Skipped %s (ID %s): %s\n", issue.Name, issue.ID, issue.Message); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

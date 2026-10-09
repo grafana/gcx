@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/grafana/gcx/internal/assistant/watcher"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/remote"
 	"github.com/stretchr/testify/require"
@@ -20,6 +21,8 @@ type mockPullClient struct {
 	listResults map[string][]unstructured.Unstructured
 	// listErrors maps descriptor plural to the error returned by List.
 	listErrors map[string]error
+	// partialLists returns usable list results together with listErrors.
+	partialLists map[string]*unstructured.UnstructuredList
 	// continueToken, when non-empty, is set on the returned list to simulate truncated results.
 	continueToken string
 }
@@ -39,6 +42,9 @@ func (m *mockPullClient) GetMultiple(
 func (m *mockPullClient) List(
 	_ context.Context, desc resources.Descriptor, _ metav1.ListOptions,
 ) (*unstructured.UnstructuredList, error) {
+	if res, ok := m.partialLists[desc.Plural]; ok {
+		return res, m.listErrors[desc.Plural]
+	}
 	if m.listErrors != nil {
 		if err, ok := m.listErrors[desc.Plural]; ok {
 			return nil, err
@@ -51,6 +57,42 @@ func (m *mockPullClient) List(
 		res.SetContinue(m.continueToken)
 	}
 	return res, nil
+}
+
+func TestWatcherPartialListCountsEachSelectedOutcome(t *testing.T) {
+	for _, abort := range []bool{false, true} {
+		t.Run(map[bool]string{false: "continue", true: "abort"}[abort], func(t *testing.T) {
+			desc := watcher.WatcherDescriptor()
+			good := makeUnstructuredDashboard("good")
+			good.SetGroupVersionKind(desc.GroupVersionKind())
+			good.SetAnnotations(map[string]string{watcher.WatcherIDAnnotation: "good-id"})
+			cause := errors.New("read denied for bad-id")
+			partial := &watcher.ListReadError{Failures: []watcher.ListFailure{{Candidate: watcher.Candidate{ID: "bad-id", Name: "bad", Title: "Bad"}, Err: cause}}, Skipped: []watcher.Candidate{{ID: "gone-id", Name: "gone"}}}
+			client := &mockPullClient{
+				partialLists: map[string]*unstructured.UnstructuredList{desc.Plural: {Items: []unstructured.Unstructured{good}}},
+				listErrors:   map[string]error{desc.Plural: partial},
+			}
+			puller := remote.NewPuller(client, &mockPullRegistry{descriptors: resources.Descriptors{desc}})
+			var dest resources.Resources
+			summary, err := puller.Pull(t.Context(), remote.PullRequest{Resources: &dest, StopOnError: abort})
+			if abort {
+				require.ErrorIs(t, err, cause)
+				require.Equal(t, 0, summary.SuccessCount())
+				require.Equal(t, 0, dest.Len())
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, 1, summary.SuccessCount())
+				require.Equal(t, 1, dest.Len())
+			}
+			require.Equal(t, 1, summary.FailedCount())
+			require.Equal(t, 1, summary.SkippedCount())
+			require.Len(t, summary.Failures(), 1)
+			failure := summary.Failures()[0]
+			require.Equal(t, "Watcher", failure.Resource.Kind())
+			require.Equal(t, "bad", failure.Resource.Name())
+			require.ErrorIs(t, failure.Error, cause)
+		})
+	}
 }
 
 // mockPullRegistry implements PullRegistry for testing.
