@@ -39,7 +39,7 @@ func TestFormatPatternsTable_TiedTotalsSortDeterministically(t *testing.T) {
 func TestFormatPatternsTable_EmptyResponse(t *testing.T) {
 	var buf bytes.Buffer
 	require.NoError(t, loki.FormatPatternsTable(&buf, &loki.PatternsResponse{}))
-	assert.Contains(t, buf.String(), "No patterns found")
+	assert.Contains(t, buf.String(), "No patterns returned for this selector and range")
 }
 
 func TestFormatPatternsTable_SortsByTotalSamplesDescending(t *testing.T) {

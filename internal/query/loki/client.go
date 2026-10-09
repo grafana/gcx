@@ -238,14 +238,16 @@ func (c *Client) Series(ctx context.Context, datasourceUID string, matchers []st
 	return &result, nil
 }
 
-// Patterns detects recurring log line patterns for a LogQL stream selector
-// over the given time range. Loki extracts the stream selector from a full
-// LogQL expression server-side, so the same expr passed to Query/MetricQuery
-// can be reused as-is. step (a duration string like "15s" or a float number
-// of seconds, per Loki's own patterns endpoint) is optional; pass "" to omit
-// it and let Loki choose a default bucket size. Requires the Loki server to
-// have pattern_ingester enabled — otherwise this returns an empty Data slice,
-// not an error.
+// Patterns queries Loki's patterns endpoint for a bare stream selector over the
+// given time range; Loki rejects pipeline stages and metric expressions. step
+// (a duration like "15s" or a float number of seconds) is optional; pass "" to
+// let Loki choose a bucket size.
+//
+// The result is what the backend retained, not a complete inventory: Loki
+// prunes low-volume patterns and caps results, and retention varies by
+// deployment. The endpoint needs a Loki version with the patterns API and the
+// pattern ingester/querier enabled; when it is unavailable the error is
+// returned as-is, never converted to an empty result.
 func (c *Client) Patterns(ctx context.Context, datasourceUID, query string, start, end time.Time, step string) (*PatternsResponse, error) {
 	if !start.Before(end) {
 		return nil, fmt.Errorf("invalid time range: start (%s) must be before end (%s)", start, end)
@@ -279,7 +281,12 @@ func (c *Client) Patterns(ctx context.Context, datasourceUID, query string, star
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, queryerror.FromBody("loki", "patterns query", resp.StatusCode, respBody)
+		// Experimental: lets the CLI explain an unambiguous route-absent response.
+		apiErr := queryerror.FromBody("loki", "patterns query", resp.StatusCode, respBody).WithAvailability(false, true)
+		if resp.StatusCode == http.StatusNotFound {
+			return nil, fmt.Errorf("%w (HTTP 404 can mean the patterns endpoint is unavailable here: it needs a Loki version with the patterns API and the pattern ingester/querier enabled)", apiErr)
+		}
+		return nil, apiErr
 	}
 
 	var result PatternsResponse

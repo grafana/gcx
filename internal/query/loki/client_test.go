@@ -220,3 +220,38 @@ func TestQuery_SendsMaxLines(t *testing.T) {
 	require.Len(t, payload.Queries, 1)
 	assert.InDelta(t, float64(1000), payload.Queries[0]["maxLines"], 0)
 }
+
+func TestClient_Patterns_UnavailableEndpointIsAnErrorNotEmptySuccess(t *testing.T) {
+	for _, body := range []string{"404 page not found", `{"message":"pattern querier is disabled"}`} {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, body, http.StatusNotFound)
+		}))
+		client, err := loki.NewClient(config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}, Namespace: "default"})
+		require.NoError(t, err)
+
+		resp, err := client.Patterns(context.Background(), "loki-uid", `{job="varlogs"}`, time.Unix(1, 0), time.Unix(2, 0), "")
+		server.Close()
+
+		require.Error(t, err, body)
+		assert.Nil(t, resp, body)
+		assert.Contains(t, err.Error(), "HTTP 404 can mean the patterns endpoint is unavailable", body)
+
+		var apiErr *queryerror.APIError
+		require.ErrorAs(t, err, &apiErr, body)
+		assert.Equal(t, http.StatusNotFound, apiErr.StatusCode, body)
+		assert.True(t, apiErr.Experimental, "must be flagged so the CLI can explain a route-absent response")
+	}
+}
+
+func TestClient_Patterns_NonNotFoundErrorsAreNotLabelledUnavailable(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, `{"message":"parse error"}`, http.StatusBadRequest)
+	}))
+	defer server.Close()
+	client, err := loki.NewClient(config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}, Namespace: "default"})
+	require.NoError(t, err)
+
+	_, err = client.Patterns(context.Background(), "loki-uid", `{job="varlogs"}`, time.Unix(1, 0), time.Unix(2, 0), "")
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "HTTP 404")
+}

@@ -207,7 +207,7 @@ func FormatSeriesTable(w io.Writer, resp *SeriesResponse) error {
 // client-side from each pattern's samples.
 func FormatPatternsTable(w io.Writer, resp *PatternsResponse) error {
 	if len(resp.Data) == 0 {
-		fmt.Fprintln(w, "No patterns found")
+		fmt.Fprintln(w, "No patterns returned for this selector and range (the backend may prune low-volume patterns or hold no pattern data for it)")
 		return nil
 	}
 
