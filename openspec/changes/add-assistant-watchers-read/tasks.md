@@ -44,4 +44,4 @@
 
 - [x] 6.1 Commit the reviewed implementation after required checks, fetch current origin/main, and rebase only this change's commits using the recorded .context/base-sha. Keep the existing branch name and drop planning-base commits; verify origin/main ancestry and that no docs-base commits enter the outgoing range.
 - [x] 6.2 Re-run required gates after rebase and inspect complete outgoing commits/diff/metadata. Prepare the concrete draft PR title/body with Closes #1493 and William Dumont review request; follow repository conventions and omit internal tracker references; verify the reviewed PR metadata matches the prepared draft.
-- [ ] 6.3 Obtain the user's concrete publication approval as required by the workspace working agreement, then push/open the draft PR within that approved scope and verify published branch/PR state. Do not merge or archive before merge.
+- [x] 6.3 Obtain the user's concrete publication approval as required by the workspace working agreement, then push/open the draft PR within that approved scope and verify published branch/PR state. Do not merge or archive before merge.
