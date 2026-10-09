@@ -19,6 +19,7 @@ type lokiLabelsOpts struct {
 	IO         cmdio.Options
 	Datasource string
 	Label      string
+	Query      string
 }
 
 func (opts *lokiLabelsOpts) setup(flags *pflag.FlagSet) {
@@ -28,6 +29,7 @@ func (opts *lokiLabelsOpts) setup(flags *pflag.FlagSet) {
 
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.loki is configured)")
 	flags.StringVarP(&opts.Label, "label", "l", "", "Get values for this label (omit to list all labels)")
+	flags.StringVarP(&opts.Query, "query", "q", "", "LogQL stream selector to scope labels, e.g. '{app=\"foo\"}' (pipeline stages are not supported)")
 }
 
 func (opts *lokiLabelsOpts) Validate() error {
@@ -40,6 +42,7 @@ func LabelsCmd(loader *providers.ConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "labels",
 		Short: "List labels or label values",
+		Args:  cobra.NoArgs,
 		Long:  "List all labels or get values for a specific label from a Loki datasource.",
 		Example: `
 	# List all labels (use datasource UID, not name)
@@ -48,11 +51,25 @@ func LabelsCmd(loader *providers.ConfigLoader) *cobra.Command {
 	# Get values for a specific label
 	gcx datasources loki labels -d UID --label job
 
+	# Filter labels with a query
+	gcx datasources loki labels -d UID --query '{app="foo"}'
+
+	# Filter label values with a query
+	gcx datasources loki labels -d UID --label job --query '{app="foo"}'
+
 	# Output as JSON
 	gcx datasources loki labels -d UID -o json`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
+			}
+
+			// Reject an explicitly empty --query/--label (unset shell var)
+			// instead of silently dropping scoping.
+			for _, name := range []string{"query", "label"} {
+				if cmd.Flags().Changed(name) && cmd.Flags().Lookup(name).Value.String() == "" {
+					return fmt.Errorf("invalid --%s: value is empty (unset shell variable?)", name)
+				}
 			}
 
 			ctx := cmd.Context()
@@ -73,25 +90,17 @@ func LabelsCmd(loader *providers.ConfigLoader) *cobra.Command {
 			}
 
 			if opts.Label != "" {
-				resp, err := client.LabelValues(ctx, datasourceUID, opts.Label)
+				resp, err := client.LabelValues(ctx, datasourceUID, opts.Label, opts.Query)
 				if err != nil {
 					return fmt.Errorf("failed to get label values: %w", err)
-				}
-
-				if opts.IO.OutputFormat == "table" {
-					return loki.FormatLabelsTable(cmd.OutOrStdout(), resp)
 				}
 
 				return opts.IO.Encode(cmd.OutOrStdout(), resp)
 			}
 
-			resp, err := client.Labels(ctx, datasourceUID)
+			resp, err := client.Labels(ctx, datasourceUID, opts.Query)
 			if err != nil {
 				return fmt.Errorf("failed to get labels: %w", err)
-			}
-
-			if opts.IO.OutputFormat == "table" {
-				return loki.FormatLabelsTable(cmd.OutOrStdout(), resp)
 			}
 
 			return opts.IO.Encode(cmd.OutOrStdout(), resp)

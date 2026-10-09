@@ -66,6 +66,12 @@ func (p *Provider) descriptor() signals.Descriptor {
   # Get values for a specific label
   gcx logs labels -d UID --label job
 
+  # Filter labels with a query
+  gcx logs labels -d UID --query '{app="foo"}'
+
+  # Filter label values with a query
+  gcx logs labels -d UID --label job --query '{app="foo"}'
+
   # Output as JSON
   gcx logs labels -d UID -o json`,
 			},
