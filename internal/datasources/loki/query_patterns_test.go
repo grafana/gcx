@@ -27,7 +27,7 @@ func writePatternsTestConfig(t *testing.T, content string) string {
 	return f.Name()
 }
 
-func execPatternsCmd(t *testing.T, args []string) (map[string]url.Values, string, error) {
+func execQueryPatternsCmd(t *testing.T, args []string) (map[string]url.Values, string, error) {
 	t.Helper()
 
 	captured := map[string]url.Values{}
@@ -58,14 +58,14 @@ current-context: default
 	loader := &providers.ConfigLoader{}
 	loader.SetConfigFile(cfgFile)
 
-	cmd := dsloki.PatternsCmd(loader)
+	cmd := dsloki.QueryPatternsCmd(loader)
 	root := &cobra.Command{Use: "test"}
 	root.AddCommand(cmd)
 
 	var stdout, stderr bytes.Buffer
 	root.SetOut(&stdout)
 	root.SetErr(&stderr)
-	root.SetArgs(append([]string{"patterns", "-d", "loki-uid"}, args...))
+	root.SetArgs(append([]string{"query-patterns", "-d", "loki-uid"}, args...))
 
 	err := root.Execute()
 	return captured, stdout.String(), err
@@ -73,8 +73,8 @@ current-context: default
 
 const patternsPath = "/api/datasources/uid/loki-uid/resources/patterns"
 
-func TestPatternsCmd_TableOutput(t *testing.T) {
-	captured, stdout, err := execPatternsCmd(t, []string{`{job="varlogs"}`, "--since", "1h"})
+func TestQueryPatternsCmd_TableOutput(t *testing.T) {
+	captured, stdout, err := execQueryPatternsCmd(t, []string{`{job="varlogs"}`, "--since", "1h"})
 	require.NoError(t, err)
 
 	query, ok := captured[patternsPath]
@@ -89,16 +89,16 @@ func TestPatternsCmd_TableOutput(t *testing.T) {
 	assert.Contains(t, stdout, "3") // 1 + 2
 }
 
-func TestPatternsCmd_JSONOutput(t *testing.T) {
-	_, stdout, err := execPatternsCmd(t, []string{`{job="varlogs"}`, "--since", "1h", "-o", "json"})
+func TestQueryPatternsCmd_JSONOutput(t *testing.T) {
+	_, stdout, err := execQueryPatternsCmd(t, []string{`{job="varlogs"}`, "--since", "1h", "-o", "json"})
 	require.NoError(t, err)
 	assert.Contains(t, stdout, `"pattern"`)
 	assert.Contains(t, stdout, `"samples"`)
 }
 
-func TestPatternsCmd_DefaultsToOneHourWindowWhenNoTimeFlagsGiven(t *testing.T) {
+func TestQueryPatternsCmd_DefaultsToOneHourWindowWhenNoTimeFlagsGiven(t *testing.T) {
 	before := time.Now()
-	captured, _, err := execPatternsCmd(t, []string{`{job="varlogs"}`})
+	captured, _, err := execQueryPatternsCmd(t, []string{`{job="varlogs"}`})
 	after := time.Now()
 	require.NoError(t, err)
 
@@ -118,8 +118,8 @@ func TestPatternsCmd_DefaultsToOneHourWindowWhenNoTimeFlagsGiven(t *testing.T) {
 	assert.False(t, end.After(after.Add(time.Second)), "end should not be in the future relative to test execution")
 }
 
-func TestPatternsCmd_PassesStepThrough(t *testing.T) {
-	captured, _, err := execPatternsCmd(t, []string{`{job="varlogs"}`, "--since", "1h", "--step", "30s"})
+func TestQueryPatternsCmd_PassesStepThrough(t *testing.T) {
+	captured, _, err := execQueryPatternsCmd(t, []string{`{job="varlogs"}`, "--since", "1h", "--step", "30s"})
 	require.NoError(t, err)
 
 	query, ok := captured[patternsPath]
@@ -127,8 +127,8 @@ func TestPatternsCmd_PassesStepThrough(t *testing.T) {
 	assert.Equal(t, "30s", query.Get("step"))
 }
 
-func TestPatternsCmd_RequiresExpr(t *testing.T) {
-	_, _, err := execPatternsCmd(t, nil)
+func TestQueryPatternsCmd_RequiresExpr(t *testing.T) {
+	_, _, err := execQueryPatternsCmd(t, nil)
 	require.Error(t, err)
 }
 
@@ -136,8 +136,8 @@ func TestPatternsCmd_RequiresExpr(t *testing.T) {
 // or a bare float number of seconds ("30", "1.5") — using shared.ParseTimes
 // (which validates --step through Go-duration-only syntax) instead of
 // shared.ParseTimeRange would reject the latter before any request is sent.
-func TestPatternsCmd_AcceptsBareSecondsStep(t *testing.T) {
-	captured, _, err := execPatternsCmd(t, []string{`{job="varlogs"}`, "--since", "1h", "--step", "30"})
+func TestQueryPatternsCmd_AcceptsBareSecondsStep(t *testing.T) {
+	captured, _, err := execQueryPatternsCmd(t, []string{`{job="varlogs"}`, "--since", "1h", "--step", "30"})
 	require.NoError(t, err)
 
 	query, ok := captured[patternsPath]
@@ -145,11 +145,11 @@ func TestPatternsCmd_AcceptsBareSecondsStep(t *testing.T) {
 	assert.Equal(t, "30", query.Get("step"))
 }
 
-func TestPatternsCmd_WideOutputMatchesTable(t *testing.T) {
-	_, table, err := execPatternsCmd(t, []string{`{job="varlogs"}`, "--since", "1h", "-o", "table"})
+func TestQueryPatternsCmd_WideOutputMatchesTable(t *testing.T) {
+	_, table, err := execQueryPatternsCmd(t, []string{`{job="varlogs"}`, "--since", "1h", "-o", "table"})
 	require.NoError(t, err)
 
-	_, wide, err := execPatternsCmd(t, []string{`{job="varlogs"}`, "--since", "1h", "-o", "wide"})
+	_, wide, err := execQueryPatternsCmd(t, []string{`{job="varlogs"}`, "--since", "1h", "-o", "wide"})
 	require.NoError(t, err)
 	assert.Equal(t, table, wide)
 }

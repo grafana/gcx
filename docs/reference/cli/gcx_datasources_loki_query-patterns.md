@@ -1,4 +1,4 @@
-## gcx datasources loki patterns
+## gcx datasources loki query-patterns
 
 Detect recurring log patterns
 
@@ -15,7 +15,7 @@ patterns (not an error) otherwise.
 Default time range is the last hour when no time flags are given.
 
 ```
-gcx datasources loki patterns [EXPR] [flags]
+gcx datasources loki query-patterns [EXPR] [flags]
 ```
 
 ### Examples
@@ -23,13 +23,13 @@ gcx datasources loki patterns [EXPR] [flags]
 ```
 
   # Detect patterns using configured default datasource
-  gcx datasources loki patterns '{job="varlogs"}'
+  gcx datasources loki query-patterns '{job="varlogs"}'
 
   # Detect patterns over a specific window
-  gcx datasources loki patterns -d UID '{job="varlogs"}' --since 6h
+  gcx datasources loki query-patterns -d UID '{job="varlogs"}' --since 6h
 
   # Output as JSON
-  gcx datasources loki patterns -d UID '{job="varlogs"}' -o json
+  gcx datasources loki query-patterns -d UID '{job="varlogs"}' -o json
 ```
 
 ### Options
@@ -38,7 +38,7 @@ gcx datasources loki patterns [EXPR] [flags]
   -d, --datasource string   Datasource UID (required unless datasources.loki is configured)
       --expr string         Query expression (alternative to positional argument)
       --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
-  -h, --help                help for patterns
+  -h, --help                help for query-patterns
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
