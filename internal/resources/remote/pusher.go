@@ -61,7 +61,7 @@ func NewDefaultPusher(ctx context.Context, cfg config.NamespacedRESTConfig, guar
 		return nil, err
 	}
 
-	guarded := newGuardedDynamicClient(dynamicClient, guard)
+	guarded := newGuardedDynamicClient(newConflictRetryClient(dynamicClient), guard)
 
 	registry, err := discovery.NewDefaultRegistry(ctx, cfg)
 	if err != nil {
