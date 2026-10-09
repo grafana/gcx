@@ -127,10 +127,10 @@ func pullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	gcx resources pull dashboards/foo
 	gcx resources pull dashboards/foo,bar
 
-	# Single resource kind, long kind format:
+	# Single resource kind, full API group:
 
-	gcx resources pull dashboard.dashboards/foo
-	gcx resources pull dashboard.dashboards/foo,bar
+	gcx resources pull dashboards.dashboard.grafana.app/foo
+	gcx resources pull dashboards.dashboard.grafana.app/foo,bar
 
 	# Single resource kind, long kind format with version:
 
@@ -142,20 +142,23 @@ func pullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	gcx resources pull dashboards/foo folders/qux
 	gcx resources pull dashboards/foo,bar folders/qux,quux
 
-	# Multiple resource kinds, long kind format:
+	# Multiple resource kinds, full API groups:
 
-	gcx resources pull dashboard.dashboards/foo folder.folders/qux
-	gcx resources pull dashboard.dashboards/foo,bar folder.folders/qux,quux
+	gcx resources pull dashboards.dashboard.grafana.app/foo folders.folder.grafana.app/qux
+	gcx resources pull dashboards.dashboard.grafana.app/foo,bar folders.folder.grafana.app/qux,quux
 
 	# Multiple resource kinds, long kind format with version:
 
 	gcx resources pull dashboards.v1alpha1.dashboard.grafana.app/foo folders.v1alpha1.folder.grafana.app/qux
 
-	# Provider-backed resource types (SLO, Synthetic Monitoring, Alerting):
+	# Provider-backed resources (SLO and Synthetic Monitoring):
 
 	gcx resources pull slo -p ./slo-defs/
-	gcx resources pull checks -p ./checks/
-	gcx resources pull rules -p ./rules/`,
+	gcx resources pull checks.syntheticmonitoring -p ./checks/
+
+	# Native Grafana alert rules:
+
+	gcx resources pull alertrules -p ./alertrules/`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 

@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
+	"github.com/grafana/gcx/internal/query/pinot"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -79,11 +80,19 @@ func TestStructuredQueryRedirectMatchesShippedCloudWatchText(t *testing.T) {
 }
 
 // The supported list is derived, so it cannot drift from the tables again.
+func TestPinotLimitFromGeneric(t *testing.T) {
+	assert.Equal(t, pinot.DefaultLimit, pinotLimitFromGeneric(dsquery.DefaultLokiLimit, false),
+		"omitted --limit uses pinot.DefaultLimit even though the flag value is Loki's default")
+	assert.Equal(t, dsquery.DefaultLokiLimit, pinotLimitFromGeneric(dsquery.DefaultLokiLimit, true),
+		"explicit --limit 50 must be honored")
+	assert.Equal(t, 7, pinotLimitFromGeneric(7, true))
+}
+
 func TestQueryRoutesSupportedKindsIsTheSortedUnion(t *testing.T) {
 	routes := newQueryRoutes()
 
 	assert.Equal(t,
-		[]string{"azuremonitor", "bigquery", "clickhouse", "cloudmonitoring", "cloudwatch", "elasticsearch", "influxdb", "loki", "mssql", "mysql", "opensearch", "postgres", "prometheus", "pyroscope"},
+		[]string{"azuremonitor", "bigquery", "clickhouse", "cloudmonitoring", "cloudwatch", "elasticsearch", "influxdb", "loki", "mssql", "mysql", "opensearch", "pinot", "postgres", "prometheus", "pyroscope"},
 		routes.supportedKinds())
 
 	assert.Len(t, routes.supportedKinds(), len(routes.dispatch)+len(routes.redirects),

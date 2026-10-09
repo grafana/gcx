@@ -81,20 +81,20 @@ func (p *KGProvider) TypedRegistrations() []adapter.Registration {
 			Factory:    NewAdapterFactory(loader),
 			Descriptor: staticDescriptor,
 			GVK:        staticDescriptor.GroupVersionKind(),
-			Schema:     RuleSchema(),
+			Schema:     RuleSchema,
 			Example:    RuleExample(),
 		},
 		{
 			Factory:    NewScopeAdapterFactory(loader),
 			Descriptor: scopeDescriptor,
 			GVK:        scopeDescriptor.GroupVersionKind(),
-			Schema:     ScopeSchema(),
+			Schema:     ScopeSchema,
 		},
 		{
 			Factory:    NewModelRulesAdapterFactory(loader),
 			Descriptor: modelRulesDescriptor,
 			GVK:        modelRulesDescriptor.GroupVersionKind(),
-			Schema:     ModelRulesSchema(),
+			Schema:     ModelRulesSchema,
 		},
 	}
 }

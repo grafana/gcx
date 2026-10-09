@@ -50,8 +50,7 @@ type rulesListOpts struct {
 }
 
 func (o *rulesListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &RulesTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &RulesTableCodec{Wide: true})
+	cmdio.RegisterTable(&o.IO, RulesTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.StringVar(&o.GroupName, "group", "", "Filter by group name")
@@ -123,54 +122,27 @@ func newRulesListCommand(loader GrafanaConfigLoader) *cobra.Command {
 	return cmd
 }
 
-// RulesTableCodec renders alert rules as a tabular table.
-type RulesTableCodec struct {
-	Wide bool
-}
-
-func (c *RulesTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
-	}
-	return "table"
-}
-
-func (c *RulesTableCodec) Encode(w io.Writer, v any) error {
-	rules, ok := v.([]RuleStatus)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []RuleStatus")
-	}
-
-	var t *style.TableBuilder
-	if c.Wide {
-		t = style.NewTable("UID", "NAME", "STATE", "HEALTH", "LAST_EVAL", "EVAL_TIME", "PAUSED", "FOLDER")
-	} else {
-		t = style.NewTable("UID", "NAME", "STATE", "HEALTH", "PAUSED")
-	}
-
-	for _, r := range rules {
-		paused := "no"
-		if r.IsPaused {
-			paused = "yes"
-		}
-
-		if c.Wide {
-			lastEval := r.LastEvaluation
-			if lastEval == "0001-01-01T00:00:00Z" {
-				lastEval = "never"
+func RulesTable() cmdio.Table[RuleStatus] {
+	return cmdio.Table[RuleStatus]{Columns: []cmdio.Column[RuleStatus]{
+		{Header: "UID", Content: func(r RuleStatus) string { return r.UID }},
+		{Header: "NAME", Content: func(r RuleStatus) string { return r.Name }},
+		{Header: "STATE", Content: func(r RuleStatus) string { return r.State }},
+		{Header: "HEALTH", Content: func(r RuleStatus) string { return r.Health }},
+		{Header: "LAST_EVAL", Visible: cmdio.WideOnly, Content: func(r RuleStatus) string {
+			if r.LastEvaluation == "0001-01-01T00:00:00Z" {
+				return "never"
 			}
-			evalTime := fmt.Sprintf("%.3fs", r.EvaluationTime)
-			t.Row(r.UID, r.Name, r.State, r.Health, lastEval, evalTime, paused, r.FolderUID)
-		} else {
-			t.Row(r.UID, r.Name, r.State, r.Health, paused)
-		}
-	}
-
-	return t.Render(w)
-}
-
-func (c *RulesTableCodec) Decode(r io.Reader, v any) error {
-	return errors.New("table format does not support decoding")
+			return r.LastEvaluation
+		}},
+		{Header: "EVAL_TIME", Visible: cmdio.WideOnly, Content: func(r RuleStatus) string { return fmt.Sprintf("%.3fs", r.EvaluationTime) }},
+		{Header: "PAUSED", Content: func(r RuleStatus) string {
+			if r.IsPaused {
+				return "yes"
+			}
+			return "no"
+		}},
+		{Header: "FOLDER", Visible: cmdio.WideOnly, Content: func(r RuleStatus) string { return r.FolderUID }},
+	}}
 }
 
 type rulesGetOpts struct {

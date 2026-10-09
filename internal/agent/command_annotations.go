@@ -44,7 +44,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx assistant investigations resume":          {Cost: "small"},
 	"gcx assistant investigations share":           {Cost: "small", Hint: "<id> --team=<name> (repeatable)"},
 	"gcx assistant conversation list":              {Cost: "small", Hint: "Discover conversation IDs. --source assistant,slack,cli (default), --limit, --offset, -o json"},
-	"gcx assistant conversation get":               {Cost: "large", Hint: "Pull a conversation transcript by ID before continuing it with 'gcx assistant prompt --context-id'. Example: <conversation-id> -o json"},
+	"gcx assistant conversation get":               {Cost: "large", Hint: "Pull a conversation transcript by ID or shared URL. AI SDK results cover the main thread; shared snapshots are read-only here. Example: <id-or-url> -o json"},
 	"gcx assistant mcp-servers create":             {Cost: "small"},
 	"gcx assistant mcp-servers delete":             {Cost: "small"},
 	"gcx assistant mcp-servers get":                {Cost: "small"},
@@ -53,6 +53,7 @@ var commandAnnotations = map[string]annotation{
 
 	// login
 	"gcx login":       {Cost: "small", Hint: "Browser OAuth (recommended for Grafana Cloud): gcx login <ctx> --server <url> --oauth — opens a browser for the user to approve; works in agent mode. Non-interactive token: gcx login <ctx> --yes --server <url> --token <grafana-sa-token> [--cloud-token <cap-token>]. Service-account tokens (--token) are created inside the Grafana instance — see " + docs.ServiceAccounts + ". Cloud access-policy tokens (--cloud-token) are created at grafana.com — see " + docs.AccessPolicies + ". Append .md to any grafana.com/docs URL to fetch markdown. Do not guess token URLs."},
+	"gcx signup":      {Cost: "small", Hint: "Creates a Grafana Cloud account and connects gcx to its first stack. A person completes the browser steps (sign-up, email verification, first-stack creation) and approves Connect gcx. A browser already signed in to Grafana Cloud skips sign-up and asks for one of that account's stacks, or goes straight to Connect gcx with one organization and one stack. In agent mode gcx prints the URL for the person and asks no questions. Pass an unused CONTEXT_NAME. If it fails after the browser step started, run the gcx login command the error shows, never signup again. It saves no Cloud credential; for Cloud product APIs add a Cloud Access Policy token afterwards: gcx cloud login --context <ctx> --cloud-token <token>. For an existing account use gcx login instead."},
 	"gcx cloud login": {Cost: "small", Hint: "Authenticate to the Grafana Cloud platform API (grafana.com) for managing stacks and access policies, distinct from 'gcx login' which targets a single stack. Browser OAuth by default; non-interactive: gcx cloud login --cloud-token <cap-token>. Cloud access-policy tokens are created at grafana.com, see " + docs.AccessPolicies + "."},
 
 	// commands
@@ -203,6 +204,11 @@ var commandAnnotations = map[string]annotation{
 	"gcx alert notification-policies set":        {Cost: "small"},
 	"gcx alert notification-policies reset":      {Cost: "small"},
 	"gcx alert notification-policies export":     {Cost: "medium", Hint: "--format yaml"},
+	"gcx alert routing-trees list":               {Cost: "small"},
+	"gcx alert routing-trees get":                {Cost: "small", Hint: "<name> -o yaml"},
+	"gcx alert routing-trees create":             {Cost: "small", Hint: "-f tree.yaml"},
+	"gcx alert routing-trees update":             {Cost: "small", Hint: "<name> -f tree.yaml"},
+	"gcx alert routing-trees delete":             {Cost: "small", Hint: "<name> --force"},
 	"gcx alert templates list":                   {Cost: "small"},
 	"gcx alert templates get":                    {Cost: "small"},
 	"gcx alert templates upsert":                 {Cost: "small"},
@@ -229,14 +235,15 @@ var commandAnnotations = map[string]annotation{
 	"gcx frontend apps delete-sourcemap": {Cost: "small"},
 	"gcx frontend apps list-sourcemaps":  {Cost: "small"},
 	"gcx frontend apps update":           {Cost: "small"},
+	"gcx frontend sessions get":          {Cost: "large", Hint: "<session-id> --app <app-id> -d <datasource-uid> --since 7d --save /tmp/session-<id>.txt"},
 
 	// -----------------------------------------------------------------------
 	// Fleet provider
 	// -----------------------------------------------------------------------
 	"gcx fleet collectors create": {Cost: "small", Hint: "-f <manifest.yaml>"},
 	"gcx fleet collectors delete": {Cost: "small"},
-	"gcx fleet collectors get":    {Cost: "small"},
-	"gcx fleet collectors list":   {Cost: "small"},
+	"gcx fleet collectors get":    {Cost: "medium", Hint: "<id|name> --json spec.local_attributes,spec.remote_attributes,spec.updated_at"},
+	"gcx fleet collectors list":   {Cost: "large", Hint: "--limit 50 --json spec.id,spec.local_attributes,spec.updated_at; use --limit 0 only for a complete fleet audit"},
 	"gcx fleet collectors update": {Cost: "small"},
 	"gcx fleet pipelines create":  {Cost: "small", Hint: "-f <manifest.yaml>"},
 	"gcx fleet pipelines delete":  {Cost: "small"},
@@ -461,6 +468,10 @@ var commandAnnotations = map[string]annotation{
 	"gcx irm oncall integrations get":                    {Cost: "small"},
 	"gcx irm oncall integrations list":                   {Cost: "small"},
 	"gcx irm oncall integrations update":                 {Cost: "small", Hint: "<id> -f integration.yaml"},
+	"gcx irm oncall integrations get-templates":          {Cost: "medium", Hint: "<id> --json <field,...> or --jq <expression> to select only the required template fields"},
+	"gcx irm oncall integrations update-templates":       {Cost: "medium", Hint: "<id> --json <field,...> or --jq <expression> to select only the required template fields"},
+	"gcx irm oncall integrations start-maintenance":      {Cost: "small", Hint: "<id> [--mode maintenance|debug] [--duration 3600|10800|21600|43200|86400]"},
+	"gcx irm oncall integrations stop-maintenance":       {Cost: "small"},
 	"gcx irm oncall organizations get":                   {Cost: "small"},
 	"gcx irm oncall resolution-notes create":             {Cost: "small", Hint: "-f note.yaml"},
 	"gcx irm oncall resolution-notes delete":             {Cost: "small"},
@@ -559,6 +570,10 @@ var commandAnnotations = map[string]annotation{
 	"gcx agento11y templates list":          {Cost: "small"},
 	"gcx agento11y templates list-versions": {Cost: "small"},
 
+	"gcx agento11y model-rates list":   {Cost: "small"},
+	"gcx agento11y model-rates create": {Cost: "small", Hint: "--provider openai --model gpt-5.5 --price-input 2.00 --price-output 8.00"},
+	"gcx agento11y model-rates delete": {Cost: "small", Hint: "--provider openai --model gpt-5.5 --effective-from <ts>"},
+
 	"gcx agento11y saved-conversations list":        {Cost: "small"},
 	"gcx agento11y saved-conversations get":         {Cost: "medium", Hint: "<saved-id> -o json"},
 	"gcx agento11y saved-conversations save":        {Cost: "small"},
@@ -633,8 +648,12 @@ var commandAnnotations = map[string]annotation{
 	"gcx synthetic-monitoring checks get":         {Cost: "small"},
 	"gcx synthetic-monitoring checks list":        {Cost: "small"},
 	"gcx synthetic-monitoring checks status":      {Cost: "medium", Hint: "--job <name> -o json"},
+	"gcx synthetic-monitoring checks test":        {Cost: "medium", Hint: "-f <check.yaml>. Runs the check once without saving it, then polls Loki for per-probe results. Billed the same as a scheduled execution (" + docs.SyntheticMonitoringInvoice + ")."},
 	"gcx synthetic-monitoring checks timeline":    {Cost: "medium", Hint: "<id> --since 1h -o json"},
 	"gcx synthetic-monitoring checks update":      {Cost: "small", Hint: "<name> -f <check.yaml>. Frequency and probe changes affect billable execution volume (" + docs.SyntheticMonitoringInvoice + ")."},
+	"gcx synthetic-monitoring query":              {Cost: "small", Hint: "<name> -p job=<job> -p instance=<target> -p frequency=<ms>"},
+	"gcx synthetic-monitoring queries get":        {Cost: "small", Hint: "<name>. Full parameter schema plus a ready-to-run 'query' invocation. Requires SM app v1.62.0+."},
+	"gcx synthetic-monitoring queries list":       {Cost: "small", Hint: "Requires SM app v1.62.0+."},
 	"gcx synthetic-monitoring probes create":      {Cost: "small"},
 	"gcx synthetic-monitoring probes delete":      {Cost: "small"},
 	"gcx synthetic-monitoring probes deploy":      {Cost: "small"},

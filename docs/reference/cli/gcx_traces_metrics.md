@@ -8,6 +8,8 @@ Execute a TraceQL metrics query against a Tempo datasource.
 
 TRACEQL is the TraceQL metrics expression to evaluate.
 Datasource is resolved from -d flag or datasources.tempo in your context.
+Metrics queries support arithmetic (+, -, *, /) with other queries or numeric
+scalars on supported Tempo backends. Wrap each metrics subquery in parentheses.
 
 Instant vs range is deduced from time flags: no time flags = instant query,
 --since or --from/--to = range query. Use --instant to force an instant query
@@ -30,14 +32,18 @@ gcx traces metrics [TRACEQL] [flags]
   # Print a Grafana Explore share link for the query
   gcx traces metrics '{ } | rate()' --share-link
 
-  # Output as JSON
-  gcx traces metrics -d UID '{ } | rate()' --since 1h -o json
+  # Error percentage among observed server spans (not unsampled traffic)
+  gcx traces metrics '100 * ({ kind = server && status = error } | rate()) / ({ kind = server } | rate())' --since 1h -o json
+
+  # Each service's share of observed server-span throughput
+  gcx traces metrics '({ kind = server } | rate() by (resource.service.name)) / ({ kind = server } | rate())' --since 1h
 ```
 
 ### Options
 
 ```
   -d, --datasource string   Datasource UID (required unless datasources.tempo is configured)
+      --error-on-empty      Fail if the query returns no results
       --expr string         Query expression (alternative to positional argument)
       --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
   -h, --help                help for metrics
@@ -55,10 +61,10 @@ gcx traces metrics [TRACEQL] [flags]
 ### Options inherited from parent commands
 
 ```
-      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
+      --agent                       Enable agent mode (JSON output, no color). Auto-detected from known agent identity variables. Set GCX_AGENT_NAME to identify a supported harness, or GCX_AGENT_MODE to control the mode.
       --config string               Path to the configuration file to use
       --context string              Name of the context to use (overrides current-context in config)
-      --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.
+      --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Requires -vvv. Do not ship these logs.
       --no-color                    Disable color output
       --no-truncate                 Disable table column truncation (auto-enabled when stdout is piped)
   -v, --verbose count               Verbose mode. Multiple -v options increase the verbosity (maximum: 3).

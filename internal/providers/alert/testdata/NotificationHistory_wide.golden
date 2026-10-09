@@ -1,0 +1,3 @@
+TIMESTAMP             RECEIVER  INTEGRATION  STATUS  OUTCOME  ALERTS  DURATION  RULE_UIDS  GROUP_LABELS           UUID            ERROR
+2026-09-01T12:00:00Z  ops       email        firing  error    2       1.235s    r1,r2      env=prod, service=api  notification-1  delivery failed
+-                                                             0       -         -          -                      -               -

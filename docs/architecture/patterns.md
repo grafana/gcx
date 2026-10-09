@@ -227,6 +227,7 @@ based editor picks them up via the `yaml:"providers"` tag.
 **Evidence:**
 - `internal/providers/provider.go`: `Provider` interface and `ConfigKey` type
 - `internal/providers/registry.go`: `All()` function
+- `internal/providers/resource.go`: `BoundResource.Load` and `LoadGrafanaDeps` share Grafana transport construction; commands bind the same resource declaration as registration.
 - `internal/providers/redact.go`: `RedactSecrets` implementation
 - `internal/providers/configloader.go`: Shared `ConfigLoader` struct — all providers use this instead of duplicating config loading logic. Provides `LoadGrafanaConfig`, `LoadCloudConfig`, `LoadProviderConfig` (provider-specific `map[string]string`), `SaveProviderConfig` (write-back), and `LoadFullConfig` (full `*config.Config`)
 - `internal/providers/alert/provider.go`: Second provider implementation (alert rules and groups)
@@ -279,7 +280,8 @@ in `NewNamespacedRESTConfig`; the provider tier gets it via
 `httputils.NewDefaultClient(ctx)`. The `--insecure-log-http-payload` flag adds full body
 dumps via `RequestResponseLoggingRoundTripper` across both tiers — `NewDefaultClient`
 checks `PayloadLogging(ctx)` directly; `NewNamespacedRESTConfig` checks it when
-building the `WrapTransport` chain.
+building the `WrapTransport` chain. In both tiers the dump is the innermost
+layer, so it shows every header that an outer layer adds.
 
 **Output rendering:** Query results can be rendered as tables, JSON/YAML, or
 terminal charts (`internal/graph`). The `query` command registers custom codecs
@@ -361,23 +363,29 @@ Cross-reference: Pattern 12 (Direct HTTP Client for Datasource APIs).
 
 ### 15. Agent Mode Detection and Pipe-Aware Output
 
-gcx detects at startup whether it is running inside an AI agent
-environment (Claude Code, Cursor, GitHub Copilot, Amazon Q, opencode, pi) and adjusts
-its behavior accordingly. Detection happens at `init()` time by reading
-well-known environment variables; the `--agent` CLI flag overrides env
-detection when explicitly set.
+gcx detects agent identity at startup from native signals or supported names.
+Detection runs at `init()` time. The `--agent` flag overrides the detected mode.
 
-**Detection priority:**
+**Mode priority:**
 
 | Priority | Mechanism | Notes |
 |----------|-----------|-------|
-| 1 | `--agent` CLI flag | Applied after env detection and overwrites it, so an explicitly passed `--agent`/`--agent=false` wins in both directions |
-| 2 | `GCX_AGENT_MODE` env var | Explicit override — falsy value disables agent mode even if other vars are set |
-| 3 | `CLAUDECODE`, `CLAUDE_CODE`, `CURSOR_AGENT`, `GITHUB_COPILOT`, `AMAZON_Q`, `OPENCODE`, `PI_CODING_AGENT` env vars | Any truthy value enables agent mode |
+| 1 | Explicit `--agent` flag | Enables or disables mode after environment detection |
+| 2 | Valid `GCX_AGENT_MODE` value | Explicit mode override |
+| 3 | Supported identity | Native signals, `GCX_AGENT_NAME`, `AI_AGENT`, or `AGENT=goose` enable mode |
+| 4 | Default | Agent mode is disabled |
+
+Identity resolution starts with `GCX_AGENT_NAME`, then native markers, then
+`AI_AGENT`, then `AGENT=goose`. Mode opt-out does not clear the identity
+label. Usage telemetry uses the same fixed label as the detector.
+See the [environment reference](../design/environment-variables.md#agent-mode-variables)
+for the complete signal list and supported names. See
+[agent mode](../design/agent-mode.md#61-detection) for the full precedence rules.
 
 **Behavioral effects when agent mode is active:**
 - Color output disabled globally (`color.NoColor = true`)
-- Default output format overridden to `agents` (compact JSON below 100 KiB, temp-file spill above); `artifact`-class commands pin their own format and reject `-o agents`
+- Default display format overridden to `agents` (compact JSON below 100 KiB, temp-file spill above)
+- `resources pull` and `resources edit` pin their file format and reject `-o agents`; deprecated SLO pulls retain fixed YAML without an `-o` flag
 - Pipe-aware behaviors forced: `IsPiped=true`, `NoTruncate=true` regardless of TTY state
 - In-band error JSON written to stdout on failure (see `internal/gcxerrors/json.go`)
 
@@ -391,7 +399,7 @@ The `--no-truncate` persistent flag provides explicit control for non-TTY use ca
 behaviors regardless of actual TTY state.
 
 **Key files:**
-- `internal/agent/agent.go` — `IsAgentMode()`, `SetFlag()`, `DetectedFromEnv()`
+- `internal/agent/agent.go` — `IsAgentMode()`, `SetFlag()`, `DetectedFromEnv()`, `Name()`
 - `internal/terminal/terminal.go` — `Detect()`, `IsPiped()`, `NoTruncate()`, setters
 - `cmd/gcx/root/command.go` — orchestrates detection order in `PersistentPreRun`
 - `internal/output/format.go` — `io.Options` fields `IsPiped`, `NoTruncate`, `JSONFields`
@@ -420,7 +428,7 @@ This applies to provider commands (`slo`, `synth`, `alert`) which each define a 
 
 ### 16. ResourceAdapter and Provider CRUD Routing
 
-Provider-backed resource types (SLO, Synthetic Monitoring, Alert) implement the
+Provider-backed resource types (SLO, Synthetic Monitoring) implement the
 `adapter.ResourceAdapter` interface to bridge their REST clients to the unified
 `resources` pipeline. Providers return their `adapter.Registration` values from
 `Provider.TypedRegistrations()`; the single `providers.Register()` call in the
@@ -626,7 +634,7 @@ return opts.IO.Encode(cmd.OutOrStdout(), objs)
 | Singleton config | `env get` | Single config objects, not collections of resources |
 
 **Evidence:**
-- `internal/providers/slo/definitions/commands.go`: `newListCommand` — SLO list wraps via `ToResource`
+- `internal/providers/slo/definitions/commands.go`: `newListCommand` — SLO list wraps via the declared resource's `TypedCRUD.ToUnstructured`
 - `internal/providers/fleet/provider.go`: `newPipelineListCommand`, `newCollectorListCommand`
 - `internal/providers/kg/commands.go`: `newRulesCommand` — rules list/get wrap via `RuleToResource`
 
@@ -778,6 +786,47 @@ c.doRequest(ctx, http.MethodPost, fmt.Sprintf("%s/%s/apply", recsPath, id), nil)
 - `internal/providers/slo/definitions/client.go`: `sloByUUIDFmt`
 - `internal/providers/kg/client.go`: `ruleByNameFmt`, `suppressionByNameFmt`
 - `internal/providers/agento11y/*/client.go`: `conversationByIDFmt`, `generationByIDFmt`, `ruleByIDFmt`, `templateByIDFmt`, `evaluatorByIDFmt`
+
+### 22. Native Resource Binding (Adopt)
+
+**Observation:** Some provider commands manage a Kubernetes-compatible resource
+that Grafana serves natively and gcx discovers from the server (for example
+`gcx alert routing-trees` over `routingtrees.notifications.alerting.grafana.app`).
+These commands must not register an adapter for the GVK (that would take the
+GVK away from the dynamic client in `gcx resources` and pin one version), and
+must not build discovery registries or dynamic clients by hand.
+
+**Rule:** Bind the resource once in the command factory with
+`native.Bind(loader, native.Config{Group, Resource})` from
+`internal/providers/native`. Leaves call `Binding.Load` only after validation
+and any confirmation; `Load` resolves a fresh config snapshot, the descriptor
+(server-preferred version unless `LoadOptions.APIVersion` is set), and a
+dynamic client. Nothing is cached between calls.
+
+```go
+binding := native.Bind(loader, native.Config{
+    Group:    "notifications.alerting.grafana.app",
+    Resource: "routingtrees",
+})
+// in RunE, after validation:
+access, err := binding.Load(ctx, native.LoadOptions{APIVersion: opts.APIVersion})
+list, err := access.Client.List(ctx, access.Descriptor, metav1.ListOptions{})
+```
+
+**Reuse constraints:**
+- `native` imports no cobra, `cmdio`, terminal, or prompt packages
+  (`TestNoCLIImports` enforces direct imports).
+- `native.WithRegistry` replaces the on-disk discovery cache, e.g. for a
+  long-running multi-tenant process.
+- `native.ReadManifest(filename, stdin)` reads `-f` input from an injected
+  reader (`cmd.InOrStdin()`), never `os.Stdin`.
+- Tests inject `native.Fixed(access)` or `native.Func(f)` instead of a server.
+
+**Key files:**
+- `internal/providers/native/native.go`: `Bind`, `Binding.Load`, `Fixed`, `Func`, `WithRegistry`, `ParseAPIVersion`
+- `internal/providers/native/manifest.go`: `ReadManifest`
+- `internal/providers/alert/routing_trees_commands.go`: first adopter
+- Constitution: "Native resources go through the shared native binding". Dashboards still hand-rolls access until its migration lands.
 
 ---
 

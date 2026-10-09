@@ -29,6 +29,9 @@ gcx (root)
 │   └── view
 │       └── --output / -o   [yaml|json, default: yaml]
 │
+├── login  [CONTEXT_NAME]    [cmd/gcx/login/command.go]  Log in to a Grafana instance (token, browser OAuth, Basic auth)
+├── signup [CONTEXT_NAME]    [cmd/gcx/login/signup.go]   Create a Grafana Cloud account and save a connection to its first stack
+│
 ├── resources                [cmd/gcx/resources/command.go]
 │   ├── --config             [persistent: inherited from config.Options]
 │   ├── --context            [persistent: inherited from config.Options]
@@ -125,18 +128,19 @@ gcx (root)
 │       ├── exclude          Exclude a workload
 │       └── clear            Clear workload inclusion override
 │
-├── skills                   [cmd/gcx/skills/command.go]
+├── agent skills             [cmd/gcx/skills/command.go]
 │   ├── install             Install the canonical portable gcx Agent Skills bundle into a .agents root
 │   │   ├── --dir           .agents root directory (default: ~/.agents)
 │   │   ├── --force         Overwrite existing differing files
 │   │   ├── --dry-run       Preview installation without writing files
 │   │   └── --output / -o   text|json|yaml
-│   ├── update              Update installed bundled gcx skills in a .agents root
+│   ├── update              Update installed bundled skills; report retired copies without deleting
 │   │   ├── --dir           .agents root directory (default: ~/.agents)
 │   │   ├── --dry-run       Preview updates without writing files
 │   │   └── --output / -o   text|json|yaml
-│   ├── list                List bundled gcx skills and install status
-│   └── uninstall           Remove gcx-managed skills from a .agents root
+│   ├── list                List bundled and locally present retired skills with lifecycle/install status
+│   ├── get                 Read bundled skill or reference content without installing
+│   └── uninstall           Remove current or retired cataloged skills from a .agents root
 │
 └── dev                      [cmd/gcx/dev/command.go]
     ├── generate [FILE_PATH]... Generate typed Go stubs for new resources
@@ -153,6 +157,34 @@ gcx (root)
 Key: SELECTOR = `kind[/name[,name...]]` or long form `kind.group/name`
 
 ---
+
+## Agent Identity
+
+`internal/agent` resolves native signals and supported explicit names.
+Command defaults and usage telemetry use the same detector.
+`GCX_AGENT_NAME` supports harnesses without a native marker.
+Only fixed labels reach telemetry. Test helpers clear the detector's full
+input list through `agent.EnvironmentVariables()`.
+See [agent mode](../design/agent-mode.md#61-detection) for precedence.
+
+## Portable Skill Lifecycle
+
+`claude-plugin/assets.go` embeds `skills/` and `skills-catalog.yaml` separately.
+`internal/skills` decodes active/deprecated/retired metadata and reconciles it with
+the selected local `.agents` root. `TestBundledCatalog` checks content consistency
+and replacement existence at build time, not on the uninstall recovery path.
+It also requires the catalog to retain every name in the committed, append-only
+`internal/skills/testdata/shipped_skills.txt` snapshot, independently of current
+bundle contents. New bundled names must be appended to that snapshot. Install, update, list,
+and uninstall share this read-only reconciliation; get reads bundled content only.
+CLI wiring and codecs remain in `cmd/gcx/skills`; the background update notifier
+uses the same update preview, including retirement notices.
+
+Retired catalog entries remain after content removal so old installations stay
+manageable across skipped releases. Uncataloged local directories are unmanaged.
+Catalog membership does not prove ownership; no installation manifest or file
+pruning is implemented. See [skill lifecycle](https://github.com/grafana/gcx/blob/main/claude-plugin/README.md#skill-lifecycle)
+for maintenance rules and command behavior.
 
 ## Provider Command Groups
 
@@ -172,10 +204,10 @@ Do you need only standard CRUD on an externally accessible, discoverable
 Being on `/apis` settles CRUD, not the command surface: `gcx dashboards` and
 `gcx alert` are dedicated command trees over `/apis`-backed products, because
 their real operations are not CRUD verbs. Product-specific operations need their
-own placement analysis regardless of tier. And a commands-only provider that calls
-the K8s dynamic client extends the single documented exception in
-`CONSTITUTION.md` § Architecture Invariants (`internal/providers/dashboards/`,
-ADR 016), which requires explicit human approval.
+own placement analysis regardless of tier. Provider commands over a native
+`/apis` resource go through the shared native binding (`internal/providers/native`,
+see `CONSTITUTION.md` § Architecture Invariants); dashboards still hand-rolls this
+access until its pending migration lands.
 
 See `.claude/skills/add-provider/references/decision-tree.md` for the full
 decision tree.
@@ -270,6 +302,9 @@ cmd/gcx/
 │   └── command.go           Root cobra command: logging setup, PersistentPreRun
 ├── config/
 │   └── command.go           config group + all config subcommands + Options type
+├── login/
+│   ├── command.go           login command; runLogin is the pipeline signup shares
+│   └── signup.go            signup command: preflight, recovery commands
 ├── resources/
 │   ├── command.go           resources group (wires configOpts to all subcommands)
 │   ├── get.go               resources get

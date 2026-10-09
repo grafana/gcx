@@ -8,7 +8,8 @@ gcx/
 │   └── gcx/           # Binary entry point (public surface)
 │       ├── main.go           # Version vars, main(), error handler
 │       ├── root/             # Root Cobra command, global flags, logging setup
-│       ├── auth/             # OAuth login command (browser-based PKCE flow)
+│       ├── login/            # 'login' and 'signup' commands (token, browser OAuth PKCE, Basic auth; account creation)
+│       ├── cloud/            # Cloud login, stack management, and OAuth user organisation memberships
 │       ├── config/           # 'config' subcommand implementations
 │       ├── resources/        # 'resources' subcommand implementations
 │       ├── datasources/      # 'datasources' subcommand (list, get, query)
@@ -30,14 +31,14 @@ gcx/
 │       └── fail/             # Error → DetailedError conversion, exit codes
 │
 ├── internal/                 # All non-public packages (Go enforced)
-│   ├── agent/                # Agent-mode detection, command annotations, known-resource registry with operation hints
+│   ├── agent/                # Agent mode and identity detection, command annotations, known-resource registry with operation hints
 │   ├── agentlog/             # Agent invocation failure logger (opt-in JSONL disk log, XDG state dir — wired into handleError in cmd/gcx/main.go)
 │   ├── assistant/            # Assistant client packages (prompt state, investigations, MCP server integrations)
 │   │   ├── mcpservers/       # MCP-servers HTTP client (offset pagination, full-exhaustion List)
 │   │   └── mcpserver/        # MCPServer manifest domain type + TypedCRUD adapter wiring + header write-intent mapping
 │   ├── auth/                 # OAuth PKCE flow, token refresh transport
 │   │   └── adaptive/         # Shared adaptive telemetry auth (GCOM caching, Basic auth)
-│   ├── cloud/                # Grafana Cloud stack discovery via GCOM API
+│   ├── cloud/                # Grafana Cloud stack discovery and user organisation memberships via GCOM API
 │   ├── fleet/                # Shared fleet base client (HTTP + stack config, over the grafana-collector-app plugin proxy — shared by fleet provider and instrumentation provider)
 │   ├── config/               # Config loading, context management, auth types (auto-migrates plaintext token-shaped secrets into the OS keychain via internal/credentials)
 │   │   └── testdata/         # YAML fixtures for config unit tests
@@ -55,6 +56,7 @@ gcx/
 │   │   └── builtins/         # Built-in PromQL/LogQL validators
 │   ├── providers/            # Provider plugin system
 │   │   ├── configloader.go   # Shared ConfigLoader for all providers
+│   │   ├── resource.go       # Lazy Grafana resource bindings and transport loading
 │   │   ├── metrics/          # Metrics signal provider (Prometheus queries + Adaptive Metrics)
 │   │   │   └── adaptive/     # Adaptive Metrics commands (rules, recommendations)
 │   │   ├── logs/             # Logs signal provider (Loki queries + Adaptive Logs)
@@ -67,7 +69,7 @@ gcx/
 │   │   │   └── settings/     # PluginSettings
 │   │   ├── dbo11y/           # Database Observability provider (query/discovery views, no CRUD resources)
 │   │   │   └── instances/    # Instance inventory + health/query-performance snapshot from postgres_exporter + pg_stat_statements
-│   │   ├── alert/            # Alert provider (rules and groups)
+│   │   ├── alert/            # Alert provider (rules, groups, provisioning, native routing trees)
 │   │   ├── assistant/        # Assistant provider — lift-and-shift of the `gcx assistant` command tree; TypedRegistrations() registers the MCPServer adapter (internal/assistant/mcpserver/); exports ResolveClientOptions and RequireGrafanaCloud for other command trees embedding Assistant calls (used by `instrumentation check --fix-plan=assistant`)
 │   │   ├── dashboards/       # Dashboards provider (CRUD, search, version history, snapshot) — CLI: `gcx dashboards`
 │   │   │   ├── descriptor/   # Descriptor helpers (GVK, preferred version resolution)
@@ -81,11 +83,14 @@ gcx/
 │   │   │   ├── helm/         # Helm command formatter for the setup wizard
 │   │   │   ├── output/       # View types and table/JSON codecs (clusters, apps, services; wait/mutation envelopes)
 │   │   │   └── rmw/          # Read-modify-write helper with optimistic-lock guard
+│   │   ├── native/           # Shared native-resource binding (native.Bind → descriptor + dynamic client after validation; ReadManifest); no CLI imports
 │   │   ├── k6/              # k6 Cloud provider (projects, tests, runs, envvars)
 │   │   ├── kg/               # Knowledge Graph (Asserts) provider (rules, entities, insights, diagnose, quality reports)
 │   │   ├── slo/              # SLO provider implementation
+│   │   │   ├── api/          # Shared resource group/version; kinds stay in declarations
 │   │   │   ├── definitions/  # SLO definitions and status queries
-│   │   │   └── reports/      # SLO reports
+│   │   │   ├── reports/      # SLO reports
+│   │   │   └── transfer/     # Deprecated CLI wrappers around the resource pipeline
 │   │   └── synth/            # Synthetic Monitoring provider
 │   │       ├── checks/       # Checks status, timeline, CRUD
 │   │       ├── probes/       # Probe listing
@@ -104,6 +109,7 @@ gcx/
 │   │   ├── mssql/            # Microsoft SQL Server commands (query with TOP injection, list-tables, describe-table, explore)
 │   │   ├── mysql/            # MySQL datasource commands (query, list-tables, describe-table)
 │   │   ├── opensearch/       # OpenSearch datasource commands (query [--mode documents|logs], metrics, list-indices, list-fields)
+│   │   ├── pinot/            # StarTree Pinot datasource commands (query)
 │   │   ├── postgres/         # PostgreSQL datasource commands (query, list-tables, describe-table)
 │   │   └── query/            # Shared query CLI utils (time parsing, codecs, opts, resolve helpers)
 │   ├── query/                # Datasource query clients
@@ -123,11 +129,12 @@ gcx/
 │   │   ├── clickhouse/       # ClickHouse HTTP client
 │   │   ├── mssql/            # Microsoft SQL Server HTTP client
 │   │   ├── mysql/            # MySQL HTTP query client (raw SQL via unified query API)
+│   │   ├── pinot/            # StarTree Pinot query client (PinotQL via unified query API)
 │   │   └── postgres/         # PostgreSQL HTTP query client (raw SQL via unified query API)
 │   ├── signals/              # Shared signal command and datasource-provider mounting (metrics/logs/traces/profiles)
 │   ├── notifier/             # Skills update notifier (XDG state, throttle, message rendering)
 │   ├── secrets/              # Redaction of sensitive config fields
-│   ├── skills/               # Portable Agent Skills installer primitives (Install, Update, Bundled/InstalledBundledSkillNames)
+│   ├── skills/               # Agent Skills catalog validation, local reconciliation, content reads, install/update/uninstall
 │   ├── strcase/              # String case conversion (snake_case, kebab-case, PascalCase)
 │   ├── telemetry/            # Anonymous usage stats library (event model, mode resolution, device ID, CI detection, wire vocabularies: volume buckets, k8s reasons, auth methods, api routes and datasource types; flat-JSON HTTP export)
 │   │   └── capture/          # Process-wide invocation facts written mid-run, read once at exit by the usage-event builder (holds no wire vocabulary, so writing a signal does not pull in the event model or HTTP exporter)
@@ -169,10 +176,13 @@ gcx/
 │   ├── default-config.yaml   # Default config fixture
 │   └── folder.yaml           # Sample resource manifest
 │
+├── experimental/             # Separate Go modules, outside the CLI's build and dependencies
+│   └── sandbox/              # Runs gcx as wasip1 in wazero for embedding (module: github.com/grafana/gcx/experimental/sandbox, v0)
+│
 ├── bin/                      # Build output (gitignored)
 ├── build/                    # mkdocs output (gitignored)
 │
-├── go.mod / go.sum           # Go module definition (module: github.com/grafana/gcx)
+├── go.mod / go.sum           # Main Go module definition (module: github.com/grafana/gcx)
 ├── .golangci.yaml            # Linter configuration (golangci-lint v2)
 ├── .goreleaser.yaml          # Release pipeline (cross-platform builds + GitHub Release)
 ├── mise.toml                 # Reproducible toolchain (Go, golangci-lint, goreleaser, Python)
@@ -187,7 +197,9 @@ gcx/
 output formatting, and error translation. It holds no business logic.
 
 `internal/` enforces Go's package visibility rule — external consumers cannot
-import these packages. This is intentional: gcx has no public Go API.
+import these packages. This is intentional: the main module has no public Go
+API. The one exception is `experimental/sandbox`, a separate v0 module for
+embedding gcx (see its README).
 The split within `internal/` mirrors functional layers (config, resources,
 server) rather than technical concerns, making it easy to locate code by feature.
 
@@ -268,7 +280,10 @@ this.
 
 ## 4. CI/CD Pipeline (GitHub Actions)
 
-Three workflow files under `.github/workflows/`:
+The main workflows under `.github/workflows/` are described below. The others are
+`publish-homebrew-formula.yml` (updates the Homebrew tap after a release),
+`deploy-pr-preview.yml` (docs previews for PRs), and `claude.yml` /
+`claude-code-review.yml` (automated assistance and review).
 
 ### ci.yaml — Pull Request and Main Branch Gate
 
@@ -319,6 +334,22 @@ cutting a new release. Follows the same build + upload + deploy pattern as
 the release workflow.
 
 ---
+
+### sandbox.yaml — wasip1 Build and Sandbox Tests
+
+Triggered on: PRs and pushes to `main` that touch Go code, `go.mod`/`go.sum`,
+`experimental/sandbox/` or `mise.toml`. Builds gcx for `GOOS=wasip1` with
+`experimental/sandbox/build.sh`, then lints, vets and tests the
+`experimental/sandbox` module, including end-to-end tests against the built
+module.
+
+### publish-gcx-wasm.yaml — gcx.wasm Images
+
+Triggered on: pushes to `main`, `experimental/sandbox/v*` tags, and manual runs
+(with an optional `sandbox_version` to publish an existing sandbox tag). Builds
+`gcx.wasm`, precompiles it natively on amd64 and arm64 runners, and publishes
+`ghcr.io/grafana/gcx-wasm` images holding `/gcx.wasm`, `/gcx.commit` and the
+compiled code in `/cache/`. See the sandbox README's "Prebuilt images" section.
 
 ## 5. Dependency Management
 

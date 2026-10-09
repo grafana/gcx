@@ -41,7 +41,11 @@ OnCall, Fleet Management, etc.) using product-specific REST APIs.
   provider commands and the `resources` pipeline automatically. Provider-only
   commands with no adapter registration use their product clients directly — they
   are not required to construct an adapter merely to spell an honest `list` or `get`.
-  > **Exception:** The dashboards commands-only provider (`internal/providers/dashboards/`) calls the K8s dynamic client directly. This is the one documented exception — see ADR 016 (`docs/adrs/dashboards-provider/001-dashboards-provider-design.md`) for rationale and scope.
+- **Native resources go through the shared native binding.** Provider commands that
+  manage a Kubernetes-compatible resource discovered from the server use
+  `internal/providers/native`. They never register an adapter for a discovered GVK,
+  and never construct discovery registries or dynamic clients directly.
+  > **Pending migration:** the dashboards provider (`internal/providers/dashboards/`) still builds its descriptor and dynamic client by hand (see ADR 016, `docs/adrs/dashboards-provider/001-dashboards-provider-design.md`). Its migration to the native binding is the next slice of RFC 001 (`docs/rfcs/001-alerting-provider-refactor.md`); until it lands, this is a known gap, not a second exception.
 - **Schema/Example on Registration structs:** Every `adapter.Registration` struct (populated
   via `TypedRegistrations()`) must include a non-nil `Schema` field. These power the
   `resources list-types` command via the global `SchemaForGVK`/`ExampleForGVK` functions — `AsAdapter()`
@@ -59,7 +63,7 @@ OnCall, Fleet Management, etc.) using product-specific REST APIs.
   the project or CLI itself, not on Grafana resources. Bare top-level
   verbs (single-token commands) are permitted only for two narrow
   categories: (1) foundational bootstrapping that precedes any area or
-  resource context — `gcx login`, `gcx setup`; and (2) CLI-meta commands
+  resource context — `gcx signup`, `gcx login`, `gcx setup`; and (2) CLI-meta commands
   that report on the binary itself rather than on Grafana — `gcx version`
   and Cobra-provided `help`/`completion`. This is an explicit, closed
   enumeration — any new top-level command must follow `$AREA $NOUN $VERB`
@@ -115,8 +119,8 @@ agent mode detection, behavior changes, and opt-out mechanisms.
 - **Primary output uses the shared output system and declared protocol.**
   Finite commands encode structured resources, mutation results, or domain
   data through codecs. Streams use shared event writers. Artifact commands
-  use codecs for file contents and `EmitArtifactResult` for terminal receipts,
-  because their output flag selects the file format. The declared `prose`,
+  use codecs for file contents and `EmitArtifactResult` for terminal receipts.
+  Where supported, file-format flags select the contents, not the receipt. The declared `prose`,
   `shell`, `raw`, `server`, and `interactive` classes follow their own protocols;
   they do not establish an exception for ad-hoc prose from finite commands.
 - **Default output is proportional to what is actionable.** Batch mutation
@@ -152,8 +156,10 @@ agent mode detection, behavior changes, and opt-out mechanisms.
   Provider commands (`slo definitions list`) are ergonomic shorthands with
   domain-rich table output. Generic commands
   (`resources get slos.v1alpha1.slo.ext.grafana.app`) serve the push/pull
-  pipeline and cross-resource operations. Neither path is deprecated; both
-  are first-class.
+  pipeline and cross-resource operations. Both paths remain first-class for
+  CRUD access. SLO-specific push/pull commands are deprecated compatibility
+  wrappers around the shared resource pipeline; use `resources push/pull`
+  for new workflows. Their released invocations remain supported.
 - **For dual-path resources, JSON/YAML output is identical between both
   paths.** This is enforced structurally: provider CRUD commands must use
   their registered `ResourceAdapter` (via TypedCRUD) for data access, not raw

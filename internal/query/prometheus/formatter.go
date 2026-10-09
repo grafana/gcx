@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/query/dataframe"
 	"github.com/grafana/gcx/internal/style"
 )
 
@@ -248,27 +249,7 @@ func FormatSeriesTable(w io.Writer, resp *SeriesResponse) error {
 }
 
 func formatSeriesSelector(labels map[string]string) string {
-	if len(labels) == 0 {
-		return "{}"
-	}
-	keys := make([]string, 0, len(labels))
-	for k := range labels {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	var b strings.Builder
-	b.WriteByte('{')
-	for i, k := range keys {
-		if i > 0 {
-			b.WriteByte(',')
-		}
-		b.WriteString(k)
-		b.WriteByte('=')
-		b.WriteString(strconv.Quote(labels[k]))
-	}
-	b.WriteByte('}')
-	return b.String()
+	return dataframe.FormatLabels(labels)
 }
 
 // FormatCardinalityLabelNamesTable formats a label names cardinality response as

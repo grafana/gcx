@@ -83,6 +83,23 @@ func buildGcx(t *testing.T) string {
 	return buildPath
 }
 
+func conformanceEnv(home string) []string {
+	return []string{
+		"HOME=" + home,
+		"XDG_CONFIG_HOME=" + filepath.Join(home, ".config"),
+		"XDG_STATE_HOME=" + filepath.Join(home, ".state"),
+		// swept commands run for real: agent prune deletes from os.TempDir(),
+		// so the host temp dir must not leak in
+		"TMPDIR=" + home,
+		"PATH=" + os.Getenv("PATH"),
+		// This is a production binary. The Go test Keychain guard does not apply.
+		"GCX_KEYCHAIN=off",
+		"GCX_AGENT_MODE=1",
+		"GCX_TELEMETRY=off",
+		"DO_NOT_TRACK=1",
+	}
+}
+
 // runGcx runs the built binary with agent mode enabled, an isolated HOME and
 // XDG environment, telemetry off, and stdin closed. It returns stdout and the
 // exit code; stderr is captured only to keep it out of stdout.
@@ -92,18 +109,7 @@ func runGcx(t *testing.T, args ...string) (string, int) {
 
 	home := t.TempDir()
 	cmd := exec.CommandContext(context.Background(), bin, args...)
-	cmd.Env = []string{
-		"HOME=" + home,
-		"XDG_CONFIG_HOME=" + filepath.Join(home, ".config"),
-		"XDG_STATE_HOME=" + filepath.Join(home, ".state"),
-		// swept commands run for real: agent prune deletes from os.TempDir(),
-		// so the host temp dir must not leak in
-		"TMPDIR=" + home,
-		"PATH=" + os.Getenv("PATH"),
-		"GCX_AGENT_MODE=1",
-		"GCX_TELEMETRY=off",
-		"DO_NOT_TRACK=1",
-	}
+	cmd.Env = conformanceEnv(home)
 	cmd.Stdin = nil // exec: /dev/null — a surviving prompt reads EOF, never blocks on us
 
 	var outBuf, errBuf bytes.Buffer
@@ -134,6 +140,56 @@ func assertOneJSONValue(t *testing.T, stdout string) any {
 		t.Fatalf("stdout must contain exactly one JSON value; second decode = %v\nstdout:\n%s", err, stdout)
 	}
 	return first
+}
+
+// Both subprocess helpers must keep test credentials out of the host Keychain.
+func TestAgentConformance_CredentialWritesStayInTemporaryConfig(t *testing.T) {
+	if testing.Short() {
+		t.Skip("builds the gcx binary; skipped with -short")
+	}
+
+	for _, tc := range []struct {
+		name     string
+		isolated bool
+	}{
+		{name: "runGcx"},
+		{name: "runGcxIsolated", isolated: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			contents := []byte("version: 1\nstacks:\n  test:\n    grafana:\n      server: https://example.invalid\n")
+			if err := os.WriteFile(path, contents, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			const token = "synthetic-conformance-token"
+			args := []string{"config", "set", "--config", path, "stacks.test.grafana.token", token}
+			var stdout string
+			var code int
+			if tc.isolated {
+				var timedOut bool
+				stdout, code, timedOut = runGcxIsolated(t, buildGcx(t), args)
+				if timedOut {
+					t.Fatal("credential write timed out")
+				}
+			} else {
+				stdout, code = runGcx(t, args...)
+			}
+			if code != 0 {
+				t.Fatalf("credential write failed: exit %d; stdout: %s", code, stdout)
+			}
+			assertOneJSONValue(t, stdout)
+			raw, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Contains(raw, []byte(token)) {
+				t.Fatal("test credential must stay in the temporary config as plaintext")
+			}
+			if bytes.Contains(raw, []byte("keychain:gcx:")) {
+				t.Fatal("test credential must not reach the credential store")
+			}
+		})
+	}
 }
 
 func TestAgentConformance_FiniteCommandsEmitOneJSONValue(t *testing.T) {
@@ -236,7 +292,7 @@ func TestAgentConformance_InvalidStackSlugIsUsageError(t *testing.T) {
 		t.Skip("builds the gcx binary; skipped with -short")
 	}
 
-	stdout, code := runGcx(t, "cloud", "stacks", "create",
+	stdout, code := runGcx(t, "cloud", "stacks", "create", "--org", "example-org",
 		"--name", "t", "--slug", "my-gcx-eval", "--dry-run")
 	if code != 2 {
 		t.Fatalf("exit code = %d, want 2 (usage error)\nstdout:\n%s", code, stdout)
@@ -385,18 +441,7 @@ func runGcxIsolated(t *testing.T, bin string, args []string) (string, int, bool)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Dir = t.TempDir() // no ./resources or other cwd pickups
-	cmd.Env = []string{
-		"HOME=" + home,
-		"XDG_CONFIG_HOME=" + filepath.Join(home, ".config"),
-		"XDG_STATE_HOME=" + filepath.Join(home, ".state"),
-		// swept commands run for real: agent prune deletes from os.TempDir(),
-		// so the host temp dir must not leak in
-		"TMPDIR=" + home,
-		"PATH=" + os.Getenv("PATH"),
-		"GCX_AGENT_MODE=1",
-		"GCX_TELEMETRY=off",
-		"DO_NOT_TRACK=1",
-	}
+	cmd.Env = conformanceEnv(home)
 	cmd.Stdin = nil
 	var outBuf, errBuf bytes.Buffer
 	cmd.Stdout = &outBuf

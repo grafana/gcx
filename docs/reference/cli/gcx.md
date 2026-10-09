@@ -11,10 +11,10 @@ Run 'gcx agent skills list' to see bundled Agent Skills with task-specific guida
 ### Options
 
 ```
-      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
+      --agent                       Enable agent mode (JSON output, no color). Auto-detected from known agent identity variables. Set GCX_AGENT_NAME to identify a supported harness, or GCX_AGENT_MODE to control the mode.
       --context string              Name of the context to use (overrides current-context in config)
   -h, --help                        help for gcx
-      --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.
+      --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Requires -vvv. Do not ship these logs.
       --no-color                    Disable color output
       --no-truncate                 Disable table column truncation (auto-enabled when stdout is piped)
   -v, --verbose count               Verbose mode. Multiple -v options increase the verbosity (maximum: 3).
@@ -50,6 +50,7 @@ Run 'gcx agent skills list' to see bundled Agent Skills with task-specific guida
 * [gcx providers](gcx_providers.md)	 - Manage registered providers
 * [gcx resources](gcx_resources.md)	 - Manipulate Grafana resources
 * [gcx setup](gcx_setup.md)	 - Onboard and configure Grafana Cloud products.
+* [gcx signup](gcx_signup.md)	 - Create a Grafana Cloud account and connect gcx to it
 * [gcx slo](gcx_slo.md)	 - Manage Grafana SLO definitions and reports
 * [gcx synthetic-monitoring](gcx_synthetic-monitoring.md)	 - Manage Grafana Synthetic Monitoring checks and probes
 * [gcx traces](gcx_traces.md)	 - Query Tempo datasources and manage Adaptive Traces

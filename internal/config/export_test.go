@@ -72,6 +72,15 @@ func (n *NamespacedRESTConfig) OnRefreshForTest() auth.TokenRefresher {
 	return n.oauthTransport.OnRefresh
 }
 
+// CheckPersistenceForTest returns the persistence preflight callback wired by
+// WireTokenPersistence. Exposed solely for tests in config_test.
+func (n *NamespacedRESTConfig) CheckPersistenceForTest() auth.TokenPersistenceChecker {
+	if n.oauthTransport == nil {
+		return nil
+	}
+	return n.oauthTransport.CheckPersistence
+}
+
 // SeedStackIDCacheForTest primes the process-lifetime stack-ID discovery cache
 // for a server, then returns a function that clears the whole cache. Exposed
 // solely for tests in config_test that exercise the cache-peek mismatch path.

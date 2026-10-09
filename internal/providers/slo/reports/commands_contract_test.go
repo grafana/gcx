@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/providers/slo/reports"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/client-go/rest"
@@ -413,6 +414,135 @@ func TestReportsPullReceiptContract(t *testing.T) {
 				assert.Equal(t, "yaml", doc["format"])
 			} else {
 				assert.Equal(t, "✔ Pulled 1 SLO reports to "+outputDir+"/\n", stdout)
+			}
+		})
+	}
+}
+
+func TestTimeline_EmptyReportsRemainArray(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"reports":[],"slos":[]}`))
+	}))
+	defer srv.Close()
+	stdout, _, err := runReports(t, srv.URL, false, "", "timeline", "-o", "json",
+		"--from", "2026-09-16T09:00:00Z", "--to", "2026-09-16T10:00:00Z")
+	require.NoError(t, err)
+	var result map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal([]byte(stdout), &result))
+	assert.JSONEq(t, "[]", string(result["Reports"]))
+}
+
+func TestReportsPushRejectsAnotherResourceKind(t *testing.T) {
+	st := &reportAPIState{}
+	srv := newReportServer(t, st)
+	defer srv.Close()
+	path := writeReportManifest(t, t.TempDir(), "wrong.yaml", "Wrong kind", "")
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(path, bytes.Replace(data, []byte("kind: Report"), []byte("kind: SLO"), 1), 0o600))
+	_, _, err = runReports(t, srv.URL, false, "", "push", path)
+	require.Error(t, err)
+	assert.Zero(t, st.createCalls)
+}
+
+func TestReportsTransferHelpDeprecation(t *testing.T) {
+	for _, verb := range []string{"push", "pull"} {
+		t.Run(verb, func(t *testing.T) {
+			stdout, _, err := runReports(t, "", false, "", verb, "--help")
+			require.NoError(t, err)
+			assert.Contains(t, stdout, "Deprecated")
+			assert.Contains(t, stdout, "gcx resources "+verb)
+		})
+	}
+}
+
+func TestReportsPushAcceptsLegacyManifestFilename(t *testing.T) {
+	srv := newReportServer(t, &reportAPIState{})
+	defer srv.Close()
+	file := writeReportManifest(t, t.TempDir(), "report.manifest", "Weekly", "")
+	_, _, err := runReports(t, srv.URL, false, "", "push", file, "--dry-run")
+	require.NoError(t, err)
+}
+
+func TestReportsPushPreservesLegacyIdentity(t *testing.T) {
+	adapter.NewProvider("slo", "", nil, reports.ReportResource())
+	for _, uuid := range []string{"target-uuid", "source-uuid", ""} {
+		for _, envelope := range []string{"full", "no-apiVersion", "no-kind", "neither"} {
+			for _, dryRun := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/%s/dry-run=%t", uuid, envelope, dryRun), func(t *testing.T) {
+					st := &reportAPIState{reports: map[string]reports.Report{
+						"target-uuid": {UUID: "target-uuid", Name: "Existing"},
+					}}
+					srv := newReportServer(t, st)
+					defer srv.Close()
+					file := writeReportManifest(t, t.TempDir(), "resource.yaml", "Existing", uuid)
+					data, err := os.ReadFile(file)
+					require.NoError(t, err)
+					if envelope == "no-apiVersion" || envelope == "neither" {
+						data = bytes.ReplaceAll(data, []byte("apiVersion: slo.ext.grafana.app/v1alpha1\n"), nil)
+					}
+					if envelope == "no-kind" || envelope == "neither" {
+						data = bytes.ReplaceAll(data, []byte("kind: Report\n"), nil)
+					}
+					require.NoError(t, os.WriteFile(file, data, 0o600))
+					args := []string{"push", file, "-o", "json"}
+					if dryRun {
+						srv.Close() // Local previews must succeed without contacting the API.
+						args = append(args, "--dry-run")
+					}
+					stdout, _, err := runReports(t, srv.URL, false, "", args...)
+					require.NoError(t, err)
+					doc, ok := decodeSingleJSONValue(t, stdout).(map[string]any)
+					require.True(t, ok)
+					items, ok := doc["items"].([]any)
+					require.True(t, ok)
+					require.Len(t, items, 1)
+					item, ok := items[0].(map[string]any)
+					require.True(t, ok)
+					switch {
+					case dryRun:
+						assert.Zero(t, st.createCalls)
+						assert.Equal(t, "dry-run", item["action"])
+						if uuid != "" {
+							assert.Equal(t, uuid, item["uuid"])
+						} else {
+							assert.NotContains(t, item, "uuid")
+						}
+					case uuid == "target-uuid":
+						assert.Zero(t, st.createCalls)
+						assert.Equal(t, "updated", item["action"])
+						assert.Equal(t, uuid, item["uuid"])
+					default:
+						assert.Equal(t, 1, st.createCalls)
+						assert.Equal(t, "created", item["action"])
+						assert.Equal(t, "uuid-1", item["uuid"])
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestReportsPushLookupErrorIdentifiesResource(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer srv.Close()
+	file := writeReportManifest(t, t.TempDir(), "resource.yaml", "Existing", "denied-uuid")
+	_, _, err := runReports(t, srv.URL, false, "", "push", file)
+	require.ErrorContains(t, err, "failed to check report denied-uuid")
+}
+func TestReportsTransferHelpNamesResource(t *testing.T) {
+	for _, verb := range []string{"push", "pull"} {
+		t.Run(verb, func(t *testing.T) {
+			stdout, _, err := runReports(t, "", false, "", verb, "--help")
+			require.NoError(t, err)
+			if verb == "push" {
+				assert.Contains(t, stdout, "Push report from files")
+			} else {
+				assert.Contains(t, stdout, "Pull SLO reports to disk")
+				assert.Contains(t, stdout, "Directory to write SLO reports to")
 			}
 		})
 	}

@@ -49,41 +49,95 @@ type loginOpts struct {
 	CloudToken          string
 	CloudAPIURL         string
 	OAuth               bool
+	BasicAuth           bool
+	User                string
+	UserSet             bool
 	Cloud               bool
 	Yes                 bool
 	AllowServerOverride bool
 	OAuthCallbackPort   int
 	OAuthManual         bool
 	OrgID               int
+
+	// signup marks the `gcx signup` command, which shares this pipeline. It
+	// is set by SignupCommand, never by a flag.
+	signup bool
+}
+
+// commandPath is the command a suggestion should repeat.
+func (opts *loginOpts) commandPath() string {
+	if opts.signup {
+		return "gcx signup"
+	}
+	return "gcx login"
+}
+
+// Test seams for the browser flow, connectivity validation and the terminal
+// check, so command tests can take a login past the browser step without a
+// browser or a network, as if run from a terminal. A nil validateConnection
+// runs the real validation.
+//
+//nolint:gochecknoglobals // narrow test seams, like newGCOMOAuthFlow in cmd/gcx/cloud.
+var (
+	newAuthFlow = func(server string, ao internalauth.Options) login.AuthFlow {
+		return internalauth.NewFlow(server, ao)
+	}
+	validateConnection func(ctx context.Context, opts login.Options, restCfg config.NamespacedRESTConfig) (string, error)
+	stdinIsTerminal    = func() bool { return term.IsTerminal(int(os.Stdin.Fd())) }
+)
+
+// bindConfigAndOutputFlags binds the config selection and output flags that
+// `gcx login` and `gcx signup` share. Each command passes its own human-text
+// codec.
+func (opts *loginOpts) bindConfigAndOutputFlags(flags *pflag.FlagSet, text format.Codec) {
+	opts.Config.BindFlags(flags)
+	// Register the human-text codec and use it as the default for interactive
+	// terminals. cmdio.BindFlags overrides the default with the agents codec
+	// when agent.IsAgentMode() is true, so we don't branch on agent mode here.
+	opts.IO.RegisterCustomCodec("text", text)
+	opts.IO.DefaultFormat("text")
+	opts.IO.BindFlags(flags)
 }
 
 func (opts *loginOpts) setup(flags *pflag.FlagSet) {
-	opts.Config.BindFlags(flags)
-	// Register a human-text codec and use it as the default for interactive
-	// terminals. cmdio.BindFlags overrides the default with "json" when
-	// agent.IsAgentMode() is true, so we don't branch on agent mode here.
-	opts.IO.RegisterCustomCodec("text", &loginTextCodec{})
-	opts.IO.DefaultFormat("text")
-	opts.IO.BindFlags(flags)
+	opts.bindConfigAndOutputFlags(flags, &loginTextCodec{})
 
 	flags.StringVar(&opts.Server, "server", "", "Grafana server URL (e.g. https://my-stack.grafana.net)")
 	flags.StringVar(&opts.Token, "token", "", "Grafana service account token")
 	flags.StringVar(&opts.CloudToken, "cloud-token", "", "Grafana Cloud API token (enables Cloud management features)")
 	flags.StringVar(&opts.CloudAPIURL, "cloud-api-url", "", "Override Grafana Cloud API URL")
 	flags.BoolVar(&opts.OAuth, "oauth", false, "Authenticate via browser-based OAuth (recommended for Grafana Cloud). Works non-interactively and in agent mode: opens a browser for the user to approve.")
-	flags.BoolVar(&opts.Cloud, "cloud", false, "Force Grafana Cloud target (skip auto-detection)")
+	flags.BoolVar(&opts.BasicAuth, "basic-auth", false, "Authenticate with a Grafana username and password (GRAFANA_USER / GRAFANA_PASSWORD, or interactive prompts)")
+	flags.StringVar(&opts.User, "user", "", "Grafana username for --basic-auth (defaults to GRAFANA_USER)")
+	flags.BoolVar(&opts.Cloud, "cloud", false, "Force Grafana Cloud target (skip auto-detection). With --oauth and no known server (no --server, GRAFANA_SERVER, or server in the target context), sign in to Grafana Cloud in the browser and choose a stack. To create an account, run gcx signup")
 	flags.BoolVar(&opts.Yes, "yes", false, "Non-interactive: skip optional prompts and use defaults")
 	flags.BoolVar(&opts.AllowServerOverride, "allow-server-override", false, "Allow re-pointing an existing context at a different server URL")
-	flags.IntVar(&opts.OAuthCallbackPort, "oauth-callback-port", 0, "Fixed local port for the OAuth callback server (default: auto-pick from 54321-54399). Useful when only specific ports are forwarded between a remote host and your browser")
-	flags.BoolVar(&opts.OAuthManual, "oauth-manual", false, "Complete browser OAuth without a local callback server: gcx prints the URL, then reads the redirect URL that you copy from the browser address bar. Use this when gcx runs on a remote host and the browser runs on your own computer. Implies --oauth")
+	flags.IntVar(&opts.OAuthCallbackPort, "oauth-callback-port", 0, oauthCallbackPortUsage)
+	flags.BoolVar(&opts.OAuthManual, "oauth-manual", false, oauthManualUsage+". Implies --oauth")
 	flags.IntVar(&opts.OrgID, "org-id", 0, "Grafana organization ID (defaults to 1 for on-prem)")
 }
+
+// Usage text for the browser OAuth flags that `gcx login` and `gcx signup`
+// share.
+const (
+	oauthCallbackPortUsage = "Fixed local port for the OAuth callback server (default: auto-pick from 54321-54399). Useful when only specific ports are forwarded between a remote host and your browser"
+	oauthManualUsage       = "Complete browser OAuth without a local callback server: gcx prints the URL, then reads the redirect URL that you copy from the browser address bar. Use this when gcx runs on a remote host and the browser runs on your own computer"
+)
 
 // Validate checks opts and args for internal consistency before runLogin executes.
 // Returns an error if a positional CONTEXT_NAME argument is combined with the
 // --context flag (they're mutually exclusive to prevent silent confusion).
 // Also validates the output codec options (format name, --json flag shape).
 func (opts *loginOpts) Validate(args []string) error {
+	userProvided := opts.UserSet || opts.User != ""
+	opts.User = strings.TrimSpace(opts.User)
+	if userProvided && opts.User == "" {
+		return gcxerrors.DetailedError{
+			Summary:     "invalid username",
+			Details:     "--user must not be empty",
+			Suggestions: []string{"Provide a Grafana username: gcx login --basic-auth --user <username>"},
+		}
+	}
 	if len(args) == 1 && opts.Config.Context != "" {
 		return gcxerrors.DetailedError{
 			Summary: "conflicting context specification",
@@ -92,7 +146,7 @@ func (opts *loginOpts) Validate(args []string) error {
 				args[0], opts.Config.Context,
 			),
 			Suggestions: []string{
-				"Drop --context and use the positional form: gcx login " + args[0],
+				"Drop --context and use the positional form: " + opts.commandPath() + " " + args[0],
 			},
 		}
 	}
@@ -107,6 +161,20 @@ func (opts *loginOpts) Validate(args []string) error {
 	}
 	if err := opts.IO.Validate(); err != nil {
 		return err
+	}
+	if opts.BasicAuth && (opts.OAuth || opts.OAuthManual || opts.Token != "") {
+		return gcxerrors.DetailedError{
+			Summary:     "conflicting authentication methods",
+			Details:     "--basic-auth is mutually exclusive with --oauth, --oauth-manual and --token",
+			Suggestions: []string{"Use --basic-auth --user <username> for password login, or remove --basic-auth to use OAuth or a service account token"},
+		}
+	}
+	if opts.User != "" && !opts.BasicAuth {
+		return gcxerrors.DetailedError{
+			Summary:     "missing authentication method",
+			Details:     "--user requires --basic-auth",
+			Suggestions: []string{"Add --basic-auth: gcx login --basic-auth --user <username>"},
+		}
 	}
 	if opts.OAuthCallbackPort < 0 || opts.OAuthCallbackPort > 65535 {
 		return gcxerrors.DetailedError{
@@ -151,19 +219,28 @@ Pass CONTEXT_NAME to target a specific context:
 Without CONTEXT_NAME, re-authenticates the current context, or starts a
 first-time setup if no current context is configured.
 
+First-time setup asks for the Grafana server URL. Leave it empty to sign in
+to Grafana Cloud in the browser and choose a stack. When no server is known,
+--cloud --oauth starts that browser sign-in without prompting. To create a
+Grafana Cloud account, run gcx signup.
+
 Auth sources (for non-interactive use):
   --oauth        Browser-based OAuth (recommended for Grafana Cloud). Opens a browser for the user to approve; works in agent mode.
+  --basic-auth   Grafana username/password. Use --user or GRAFANA_USER, and GRAFANA_PASSWORD.
   --token        Grafana service-account token (created inside the Grafana instance).
                  See: ` + docs.ServiceAccounts + `
   --cloud-token  Grafana Cloud access-policy token (created at grafana.com).
                  See: ` + docs.AccessPolicies,
 		Example: `  gcx login
+  gcx login --cloud --oauth
   gcx login prod
   gcx login prod --server https://prod.grafana.net
   gcx login prod --server https://prod.grafana.net --oauth
+  gcx login local --server https://grafana.example.com --basic-auth --user admin
   gcx login --yes prod --token glsa_xxx
   gcx login --yes --server https://localhost:3000 --token glsa_xxx`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.UserSet = cmd.Flags().Changed("user")
 			opts.Token = strings.TrimSpace(opts.Token)
 			opts.CloudToken = strings.TrimSpace(opts.CloudToken)
 			if err := opts.Validate(args); err != nil {
@@ -192,9 +269,14 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 		return err
 	}
 	if targetIsDeterministic && preflightTarget.Type == "local" &&
-		(flags.OAuth || credentialProvided(flags.Token, "GRAFANA_TOKEN") ||
+		(flags.OAuth || flags.BasicAuth || credentialProvided(flags.Token, "GRAFANA_TOKEN") ||
 			credentialProvided(flags.CloudToken, "GRAFANA_CLOUD_TOKEN")) {
 		return autoLocalFreshCredentialError(preflightTarget)
+	}
+	if flags.signup {
+		if err := refuseSignupDestinationEnvironment(); err != nil {
+			return err
+		}
 	}
 
 	// Positional arg takes precedence; --context flag is compat.
@@ -215,6 +297,20 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 	if err != nil {
 		return err
 	}
+	if flags.signup {
+		if contextName == "" {
+			// No name and no current context. A first login leaves the name to
+			// the stack URL, which signup learns only after the browser step,
+			// too late to check what the save would touch. Fix the name now.
+			// The preflight below admits only a new or empty context, so there
+			// is nothing to reload for it.
+			contextName = config.DefaultContextName
+			sourceCtx = cfg.Contexts[contextName]
+		}
+		if err := signupTargetConflict(cfg, contextName); err != nil {
+			return err
+		}
+	}
 	// Every gate between here and login.Run — mutation planning, auto-local
 	// credential policy, binding verification, the server-override preflight —
 	// can reject the login before detection ever runs. Record what the
@@ -229,7 +325,7 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 	if mutationTarget.Type == "local" {
 		target := mutationTarget
 		autoLocalTarget = &target
-		if flags.OAuth || credentialProvided(flags.Token, "GRAFANA_TOKEN") ||
+		if flags.OAuth || flags.BasicAuth || credentialProvided(flags.Token, "GRAFANA_TOKEN") ||
 			credentialProvided(flags.CloudToken, "GRAFANA_CLOUD_TOKEN") {
 			return autoLocalFreshCredentialError(target)
 		}
@@ -241,6 +337,13 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 	persistedSourceConfig, persistedSourceCtx, err := loadPersistedLoginSource(ctx, mutationSource, contextName, cfg)
 	if err != nil {
 		return err
+	}
+	if flags.signup {
+		// The save reloads and writes this file alone, so it must pass too: an
+		// entry here can be shadowed in the effective view checked above.
+		if err := signupTargetConflict(persistedSourceConfig, contextName); err != nil {
+			return err
+		}
 	}
 	if len(cfg.Sources) > 1 {
 		if err := config.VerifyLoginMutationBindings(
@@ -269,9 +372,13 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 		}
 	}
 
-	printModeHeader(cmd, cfg, contextName, sourceCtx)
+	if flags.signup {
+		printSignupHeader(cmd, contextName)
+	} else {
+		printModeHeader(cmd, cfg, contextName, sourceCtx)
+	}
 
-	isInteractive := term.IsTerminal(int(os.Stdin.Fd())) &&
+	isInteractive := stdinIsTerminal() &&
 		!flags.Yes &&
 		!agent.IsAgentMode()
 	grafanaTokenExplicit := credentialProvided(flags.Token, "GRAFANA_TOKEN")
@@ -290,8 +397,15 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 		flags.CloudToken,
 		credentialSourceCtx,
 		isInteractive,
-		flags.OAuth,
+		flags.OAuth || flags.BasicAuth,
 	)
+	if flags.signup {
+		// Signup saves the new stack connection only. A Cloud Access Policy
+		// token in the environment or a stored context belongs to some other
+		// organization, never to the account the browser is about to create.
+		// Cloud management login stays with gcx cloud login.
+		flags.CloudToken = ""
+	}
 	storedGrafanaTokenBlocked := storedGrafanaTokenDestinationChanged(
 		flags.Server,
 		persistedSourceCtx,
@@ -299,6 +413,9 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 		isInteractive,
 		grafanaTokenExplicit,
 	)
+	if flags.BasicAuth {
+		storedGrafanaTokenBlocked = false
+	}
 	if storedGrafanaTokenBlocked {
 		// Never present a credential loaded for one server to another server. A
 		// later write-time binding check is too late: validation sends the token.
@@ -309,7 +426,9 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 	// previously authenticated via OAuth defaults to OAuth instead of failing
 	// for missing grafana-auth. Runs after token resolution so a stored token
 	// still takes precedence.
-	flags.OAuth = defaultOAuthFromContext(flags.OAuth, flags.Token, persistedSourceCtx, isInteractive)
+	if !flags.BasicAuth {
+		flags.OAuth = defaultOAuthFromContext(flags.OAuth, flags.Token, persistedSourceCtx, isInteractive)
+	}
 	if autoLocalTarget != nil && flags.OAuth {
 		return autoLocalFreshCredentialError(*autoLocalTarget)
 	}
@@ -380,10 +499,14 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 			CloudAPIURL:                 cloudAPIURL,
 			CloudOAuthURL:               cloudOAuthURL,
 			UseOAuth:                    flags.OAuth,
+			UseBasicAuth:                flags.BasicAuth,
+			GrafanaUser:                 flags.User,
 			OAuthCallbackPort:           flags.OAuthCallbackPort,
 			OAuthManual:                 flags.OAuthManual,
 			Reader:                      cmd.InOrStdin(),
 			Yes:                         flags.Yes,
+			Interactive:                 isInteractive,
+			CloudSignup:                 flags.signup,
 			OrgID:                       flags.OrgID,
 			Writer:                      cmd.ErrOrStderr(),
 			TLS:                         runtimeTLS,
@@ -394,24 +517,41 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 			StoredProxyEndpoint:         storedProxyEndpoint,
 		},
 		Hooks: login.Hooks{
-			ConfigSource:        mutationSource,
-			CloudMutationSafety: cloudMutationSafety,
-			LoginMutationGuard:  loginMutationGuard,
-			NewAuthFlow: func(server string, ao internalauth.Options) login.AuthFlow {
-				return internalauth.NewFlow(server, ao)
-			},
+			ConfigSource:               mutationSource,
+			CloudMutationSafety:        cloudMutationSafety,
+			LoginMutationGuard:         loginMutationGuard,
+			CheckCredentialPersistence: cfg.CheckOAuthCredentialPersistence,
+			NewAuthFlow:                newAuthFlow,
+			ValidateFn:                 validateConnection,
 		},
 		RetryState: login.RetryState{
 			StagedContext: &config.Context{}, // enables Run() to cache across sentinel retries
 		},
 	}
-	if err := reuseNonInteractiveCloudCredential(&opts, cloudTokenExplicit, credentialSourceCtx, isInteractive); err != nil {
-		return err
+	if opts.UseBasicAuth {
+		readBasicAuthEnvironment(&opts, isInteractive)
+	}
+	if !flags.signup {
+		if err := reuseNonInteractiveCloudCredential(&opts, cloudTokenExplicit, credentialSourceCtx, isInteractive); err != nil {
+			return err
+		}
 	}
 
 	if flags.Cloud {
 		opts.Target = login.TargetCloud
+		// --cloud --oauth with no known server is the non-interactive way into
+		// the Grafana Cloud browser handoff: the browser signs the user in,
+		// picks a stack, and returns to gcx. Agents rely on it; an empty answer
+		// to the server prompt offers the same handoff to people.
+		if flags.OAuth && opts.Server == "" {
+			opts.UseCloudInstanceSelector = true
+		}
 	}
+	// Probe for Pathfinder only for an interactive human (never an agent) whose
+	// target context has not already cached a positive detection. This replaces
+	// the earlier output-format proxy with the dedicated agent detector and
+	// avoids an unnecessary request on consecutive logins.
+	opts.ProbePathfinder = pathfinderProbeWanted(persistedSourceCtx)
 	if flags.AllowServerOverride {
 		opts.AllowOverride = true
 	}
@@ -423,22 +563,62 @@ func runLogin(cmd *cobra.Command, flags *loginOpts, args []string) error {
 		return err
 	}
 
-	err = runLoginLoop(
+	// Signup asks nothing: its questions would come after the browser step,
+	// from a person who just created an account. login.Run already returns no
+	// question for CloudSignup (the target is Cloud, and the save anyway and
+	// Cloud token steps are skipped); this keeps a future one from prompting
+	// too, and turns it into an error that says how to finish with gcx login.
+	// opts.Interactive keeps the terminal state, which the Enter-to-reopen
+	// shortcut needs.
+	promptable := isInteractive && !flags.signup
+	// Once the browser step has started, a signup may already have created the
+	// account, so every later failure needs the gcx login recovery. Record the
+	// start where login.Run constructs the flow.
+	browserStarted := false
+	startFlow := opts.NewAuthFlow
+	opts.NewAuthFlow = func(server string, ao internalauth.Options) login.AuthFlow {
+		browserStarted = true
+		return startFlow(server, ao)
+	}
+	if flags.signup {
+		opts.ManualRetryCommand = signupManualRetryCommand(flags, contextName)
+	}
+	result, err := runLoginLoop(
 		cmd,
-		flags,
 		&opts,
 		credentialSourceCtx,
 		sourceCtx,
-		isInteractive,
+		promptable,
 		autoLocalTarget,
 		runtimeDestinationFromEnvironment,
 	)
+	if errors.Is(err, errLoginAborted) {
+		return nil
+	}
 	var runtimeOnlyDestination *login.RuntimeOnlyBearerDestinationError
 	if errors.As(err, &runtimeOnlyDestination) {
-		return runtimeOnlyBearerDestinationError(mutationTarget, persistedSourceCtx, &opts, runtimeOnlyDestination)
+		err = runtimeOnlyBearerDestinationError(mutationTarget, persistedSourceCtx, &opts, runtimeOnlyDestination)
 	}
-	return err
+	if err != nil {
+		if flags.signup && browserStarted {
+			return signupIncompleteError(err, flags, contextName, opts.Server)
+		}
+		return err
+	}
+	// The connection is saved. An error from here on is about printing the
+	// result, so it is returned as is, never as an unfinished signup. Use
+	// opts.Server (the canonical runtime value mutated by interactive prompts
+	// and retries) rather than flags.Server, which can be empty on first-time
+	// setup when the user typed the URL into the huh form.
+	if flags.signup {
+		return printSignupResult(cmd, flags, opts.Server, result)
+	}
+	return printResult(cmd, &flags.IO, opts.Server, result)
 }
+
+// errLoginAborted reports that the user left an interactive prompt. The
+// command then exits cleanly after saying so.
+var errLoginAborted = errors.New("login aborted at a prompt")
 
 func autoLocalFreshCredentialError(target config.ConfigSource) error {
 	return gcxerrors.DetailedError{
@@ -455,7 +635,7 @@ func autoLocalFreshCredentialError(target config.ConfigSource) error {
 }
 
 func enforceAutoLocalCredentialPolicy(opts *login.Options, sourceCtx *config.Context, target config.ConfigSource) error {
-	if opts.UseOAuth || opts.UseCloudInstanceSelector {
+	if opts.UseOAuth || opts.UseBasicAuth || opts.UseCloudInstanceSelector || opts.CloudSignup {
 		return autoLocalFreshCredentialError(target)
 	}
 	if opts.GrafanaToken != "" {
@@ -531,18 +711,17 @@ func captureLoginGrafanaAuthMethod(result login.Result, opts *login.Options) {
 
 func runLoginLoop(
 	cmd *cobra.Command,
-	flags *loginOpts,
 	opts *login.Options,
 	credentialSourceCtx *config.Context,
 	runtimeSourceCtx *config.Context,
 	isInteractive bool,
 	autoLocalTarget *config.ConfigSource,
 	runtimeDestinationFromEnvironment bool,
-) error {
+) (login.Result, error) {
 	for {
 		if autoLocalTarget != nil {
 			if err := enforceAutoLocalCredentialPolicy(opts, credentialSourceCtx, *autoLocalTarget); err != nil {
-				return err
+				return login.Result{}, err
 			}
 		}
 		result, err := login.Run(cmd.Context(), opts)
@@ -556,11 +735,7 @@ func runLoginLoop(
 			if shouldWarnRuntimeOnlyDestination(runtimeDestinationFromEnvironment, result) {
 				warnRuntimeOnlyDestination(cmd.ErrOrStderr())
 			}
-			// Use opts.Server (the canonical runtime value mutated by
-			// interactive prompts / retries) rather than flags.Server, which
-			// can be empty on first-time setup when the user typed the URL
-			// into the huh form.
-			return printResult(cmd, &flags.IO, opts.Server, result)
+			return result, nil
 		}
 
 		var needInput *login.ErrNeedInput
@@ -569,34 +744,34 @@ func runLoginLoop(
 		switch {
 		case errors.As(err, &needInput):
 			if !isInteractive {
-				return structuredMissingFieldsError(needInput)
+				return login.Result{}, structuredMissingFieldsError(needInput, opts.GrafanaToken != "" || opts.UseBasicAuth)
 			}
 			if formErr := askForInput(cmd.Context(), needInput, opts, credentialSourceCtx, runtimeSourceCtx, autoLocalTarget); formErr != nil {
 				if errors.Is(formErr, huh.ErrUserAborted) {
 					// Route advisory to stderr so stdout remains parseable
 					// for -o json / -o yaml consumers.
 					fmt.Fprintln(cmd.ErrOrStderr(), "Aborted.")
-					return nil
+					return login.Result{}, errLoginAborted
 				}
-				return formErr
+				return login.Result{}, formErr
 			}
 
 		case errors.As(err, &needClarification):
 			if !isInteractive {
-				return structuredClarificationError(needClarification)
+				return login.Result{}, structuredClarificationError(needClarification)
 			}
 			if formErr := askForClarification(needClarification, opts); formErr != nil {
 				if errors.Is(formErr, huh.ErrUserAborted) {
 					// Route advisory to stderr so stdout remains parseable
 					// for -o json / -o yaml consumers.
 					fmt.Fprintln(cmd.ErrOrStderr(), "Aborted.")
-					return nil
+					return login.Result{}, errLoginAborted
 				}
-				return formErr
+				return login.Result{}, formErr
 			}
 
 		default:
-			return err
+			return login.Result{}, err
 		}
 	}
 }
@@ -1075,16 +1250,12 @@ func askForInput(
 	for _, field := range e.Fields {
 		switch field {
 		case "server":
-			description := "e.g. https://my-stack.grafana.net"
-			if opts.GrafanaToken == "" {
-				description += "\nLeave empty to select your Grafana Cloud instance interactively"
-			}
 			form := huh.NewForm(huh.NewGroup(
 				huh.NewInput().
 					Title("Grafana server URL").
-					Description(description).
+					Description(serverPromptDescription(opts)).
 					Validate(func(s string) error {
-						if opts.GrafanaToken != "" && s == "" {
+						if (opts.GrafanaToken != "" || opts.UseBasicAuth) && strings.TrimSpace(s) == "" {
 							return errors.New("server URL is required")
 						}
 						return nil
@@ -1094,6 +1265,8 @@ func askForInput(
 			if err := form.Run(); err != nil {
 				return err
 			}
+			// An answer of only spaces means empty too, as the hint promises.
+			opts.Server = strings.TrimSpace(opts.Server)
 			if opts.Server == "" {
 				opts.UseCloudInstanceSelector = true
 				return nil
@@ -1112,6 +1285,14 @@ func askForInput(
 				return err
 			}
 
+		case "basic-credentials":
+			if autoLocalTarget != nil {
+				return autoLocalFreshCredentialError(*autoLocalTarget)
+			}
+			if err := askBasicAuth(opts); err != nil {
+				return err
+			}
+
 		case "cloud-token":
 			if autoLocalTarget != nil {
 				if existingCloudEntry == nil || !useExistingCloudEntry(opts, existingCloudEntry, true, existingServer) {
@@ -1125,6 +1306,18 @@ func askForInput(
 		}
 	}
 	return nil
+}
+
+// serverPromptDescription explains the server prompt. Without a credential
+// that belongs to one server, an empty answer signs in to Grafana Cloud in the
+// browser, and a person with no account yet is pointed at gcx signup.
+func serverPromptDescription(opts *login.Options) string {
+	description := "e.g. https://my-stack.grafana.net"
+	if opts.GrafanaToken == "" && !opts.UseBasicAuth {
+		description += "\nLeave empty to select your Grafana Cloud instance interactively" +
+			"\nNo Grafana Cloud account yet? Cancel and run: gcx signup"
+	}
+	return description
 }
 
 func existingGrafanaTokenForDestination(server string, stored, effective *config.Context) string {
@@ -1343,16 +1536,15 @@ func cloudEndpointRequestDiffers(opts *login.Options, entry *config.CloudEntry, 
 	return requestedOAuth != existingOAuth || requestedAPI != existingAPI
 }
 
-// askGrafanaAuth prompts for an authentication method and, when "token" is
-// chosen, for the token itself. When existingToken is non-empty (re-auth),
+// askGrafanaAuth prompts for an authentication method and its credentials. When existingToken is non-empty (re-auth),
 // the token prompt allows empty input to reuse the stored token.
 //
 // The auth-method menu is tailored to the resolved target:
 //   - On-prem: OAuth is not offered (the Grafana instance cannot issue the
-//     tokens our OAuth flow relies on). The token prompt is shown directly.
+//     tokens our OAuth flow relies on). Basic auth is offered alongside tokens.
 //   - Cloud: OAuth is offered first as the recommended path, with token as
 //     the fallback.
-//   - Unknown (target still ambiguous): both options are offered, token
+//   - Unknown (target still ambiguous): all methods are offered, token
 //     first to match the historical default.
 //
 // grafanaAuthOptions builds the auth-method menu. The caller highlights the
@@ -1363,14 +1555,15 @@ func grafanaAuthOptions(target login.Target, hasMTLS, remote bool) []huh.Option[
 	tokenOption := huh.NewOption("Service account token (requires permissions for managing service accounts)", "token")
 	oauthOption := huh.NewOption("OAuth (browser) — recommended for cloud stacks; experimental on some configurations, fall back to a service account token if you hit issues", "oauth")
 	oauthManualOption := huh.NewOption("OAuth (browser on another computer) — gcx prints a URL; you paste the redirect URL back. Use this over SSH", "oauth-manual")
+	basicOption := huh.NewOption("Basic auth (username/password)", "basic")
 	mtlsOption := huh.NewOption("Client certificate (mTLS) — authenticate via TLS client cert (e.g. Teleport)", "mtls")
 
 	switch target {
 	case login.TargetOnPrem:
 		if hasMTLS {
-			return []huh.Option[string]{mtlsOption, tokenOption}
+			return []huh.Option[string]{mtlsOption, tokenOption, basicOption}
 		}
-		return []huh.Option[string]{tokenOption}
+		return []huh.Option[string]{tokenOption, basicOption}
 	case login.TargetCloud:
 		if remote {
 			return []huh.Option[string]{oauthManualOption, oauthOption, tokenOption}
@@ -1378,9 +1571,9 @@ func grafanaAuthOptions(target login.Target, hasMTLS, remote bool) []huh.Option[
 		return []huh.Option[string]{oauthOption, oauthManualOption, tokenOption}
 	default: // TargetUnknown
 		if hasMTLS {
-			return []huh.Option[string]{mtlsOption, tokenOption, oauthOption, oauthManualOption}
+			return []huh.Option[string]{mtlsOption, tokenOption, basicOption, oauthOption, oauthManualOption}
 		}
-		return []huh.Option[string]{tokenOption, oauthOption, oauthManualOption}
+		return []huh.Option[string]{tokenOption, basicOption, oauthOption, oauthManualOption}
 	}
 }
 
@@ -1411,6 +1604,11 @@ func askGrafanaAuth(opts *login.Options, existingToken string) error {
 		if err := methodForm.Run(); err != nil {
 			return err
 		}
+	}
+	if authMethod == "basic" {
+		opts.UseBasicAuth = true
+		readBasicAuthEnvironment(opts, true)
+		return askBasicAuth(opts)
 	}
 	if authMethod == "oauth-manual" {
 		opts.UseOAuth = true
@@ -1451,6 +1649,45 @@ func askGrafanaAuth(opts *login.Options, existingToken string) error {
 	if opts.GrafanaToken == "" && existingToken != "" {
 		opts.GrafanaToken = existingToken
 	}
+	return nil
+}
+
+func readBasicAuthEnvironment(opts *login.Options, interactive bool) {
+	if opts.GrafanaUser == "" {
+		opts.GrafanaUser = strings.TrimSpace(os.Getenv("GRAFANA_USER"))
+	}
+	if !interactive {
+		opts.GrafanaPassword = os.Getenv("GRAFANA_PASSWORD")
+	}
+}
+
+func askBasicAuth(opts *login.Options) error {
+	var fields []huh.Field
+	if strings.TrimSpace(opts.GrafanaUser) == "" {
+		fields = append(fields, huh.NewInput().Title("Grafana username").Value(&opts.GrafanaUser).
+			Validate(func(value string) error {
+				if strings.TrimSpace(value) == "" {
+					return errors.New("username is required")
+				}
+				return nil
+			}))
+	}
+	if strings.TrimSpace(opts.GrafanaPassword) == "" {
+		fields = append(fields, huh.NewInput().Title("Grafana password").EchoMode(huh.EchoModePassword).
+			Value(&opts.GrafanaPassword).Validate(func(value string) error {
+			if strings.TrimSpace(value) == "" {
+				return errors.New("password is required")
+			}
+			return nil
+		}))
+	}
+	if len(fields) == 0 {
+		return nil
+	}
+	if err := huh.NewForm(huh.NewGroup(fields...)).Run(); err != nil {
+		return err
+	}
+	opts.GrafanaUser = strings.TrimSpace(opts.GrafanaUser)
 	return nil
 }
 
@@ -1533,16 +1770,26 @@ func askForClarification(e *login.ErrNeedClarification, opts *login.Options) err
 }
 
 // structuredMissingFieldsError converts ErrNeedInput to a gcxerrors.DetailedError for non-interactive callers.
-func structuredMissingFieldsError(e *login.ErrNeedInput) error {
+// serverBoundCredential (--token, or --basic-auth) drops the --cloud --oauth
+// route, which conflicts with both.
+func structuredMissingFieldsError(e *login.ErrNeedInput, serverBoundCredential bool) error {
 	suggestions := make([]string, 0, len(e.Fields))
 	for _, f := range e.Fields {
 		switch f {
 		case "server":
 			suggestions = append(suggestions, "Pass --server <url> or set GRAFANA_SERVER")
+			if !serverBoundCredential {
+				suggestions = append(suggestions,
+					"Or pass --cloud --oauth to sign in to Grafana Cloud in the browser and choose a stack; no stack URL is needed",
+					"No Grafana Cloud account yet? Run gcx signup")
+			}
 		case "grafana-auth":
 			suggestions = append(suggestions,
+				"Pass --basic-auth --user <username> and set GRAFANA_PASSWORD for Basic authentication",
 				"Pass --oauth to authenticate via browser (recommended for Grafana Cloud; opens a browser for the user to approve, works in agent mode)",
 				"Pass --token <token> (or set the GRAFANA_TOKEN env var) for a service account token, or configure TLS client certs for mTLS auth (GRAFANA_TLS_CERT_FILE / GRAFANA_TLS_KEY_FILE env vars, or gcx config set stacks.<name>.grafana.tls.cert-file ...)")
+		case "basic-credentials":
+			suggestions = append(suggestions, "Pass --basic-auth --user <username> (or set GRAFANA_USER) and set GRAFANA_PASSWORD, or run interactively")
 		case "cloud-token":
 			suggestions = append(suggestions, "Pass --cloud-token <token> (or set the GRAFANA_CLOUD_TOKEN env var) to enable Cloud features, or --yes to skip")
 		default:
@@ -1627,17 +1874,17 @@ func resolveSourceContext(cfg config.Config, contextName, server string) (*confi
 func resolveNonInteractiveTokens(
 	grafanaToken, cloudToken string,
 	sourceCtx *config.Context,
-	interactive, explicitOAuth bool,
+	interactive, explicitMethod bool,
 ) (string, string) {
 	grafanaToken = strings.TrimSpace(grafanaToken)
 	cloudToken = strings.TrimSpace(cloudToken)
 	if interactive {
 		return grafanaToken, cloudToken
 	}
-	// An explicit --oauth selection is authoritative. In particular, do not
+	// Explicit OAuth or Basic authentication is authoritative. Do not
 	// silently replace it with GRAFANA_TOKEN or a stored service-account token
 	// merely because this invocation cannot prompt.
-	if explicitOAuth {
+	if explicitMethod {
 		grafanaToken = ""
 	} else if grafanaToken == "" {
 		if envToken, ok := os.LookupEnv("GRAFANA_TOKEN"); ok && !config.IsBlankCredentialEnvironmentOverride("GRAFANA_TOKEN", envToken) {
@@ -1714,24 +1961,23 @@ func existingContextNames(cfg config.Config) []string {
 	return names
 }
 
+// pathfinderProbeWanted reports whether `gcx login` should probe the target
+// Grafana instance for the Pathfinder plugin. It probes only for an interactive
+// human (never an agent) and only when the target context has no cached
+// positive detection, since the plugin is not uninstalled in practice.
+func pathfinderProbeWanted(existing *config.Context) bool {
+	if agent.IsAgentMode() {
+		return false
+	}
+	return existing == nil || existing.Grafana == nil || !existing.Grafana.PathfinderInstalled
+}
+
 // printResult converts the login.Result into a LoginResult and writes it to
 // stdout using the configured output codec. Advisory prose (next-step and
 // CAP-token guidance) is routed to stderr so that JSON/YAML consumers receive
 // clean, parseable output on stdout.
 func printResult(cmd *cobra.Command, ioOpts *cmdio.Options, server string, result login.Result) error {
-	if server == "" {
-		server = result.ContextName
-	}
-	lr := LoginResult{
-		ContextName:    result.ContextName,
-		Server:         server,
-		AuthMethod:     result.AuthMethod,
-		Cloud:          result.IsCloud,
-		GrafanaVersion: result.GrafanaVersion,
-		StackSlug:      result.StackSlug,
-		HasCloudToken:  result.HasCloudToken,
-	}
-	if err := ioOpts.Encode(cmd.OutOrStdout(), lr); err != nil {
+	if err := ioOpts.Encode(cmd.OutOrStdout(), newLoginResult(server, result)); err != nil {
 		return err
 	}
 
@@ -1751,7 +1997,34 @@ func printResult(cmd *cobra.Command, ioOpts *cmdio.Options, server string, resul
 		fmt.Fprintln(ew, "See: https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/")
 		fmt.Fprintf(ew, "Add one with: gcx login --context %s --cloud-token <token>\n", result.ContextName)
 	}
+	// The probe only runs for an interactive human and only once per context, so
+	// a positive result here means the one-time guide hint is wanted. Routed to
+	// stderr, keeping any structured stdout clean. Works the same on Cloud and
+	// on-prem.
+	if result.PathfinderInstalled && server != "" {
+		fmt.Fprintln(ew)
+		fmt.Fprintln(ew, "Interactive guides can help you get started:")
+		fmt.Fprintln(ew, "  "+login.PathfinderURL(server))
+	}
 	return nil
+}
+
+// newLoginResult converts the login.Result into the LoginResult that the
+// output codecs render. server is the canonical runtime value (opts.Server);
+// when it is empty the context name stands in for it.
+func newLoginResult(server string, result login.Result) LoginResult {
+	if server == "" {
+		server = result.ContextName
+	}
+	return LoginResult{
+		ContextName:    result.ContextName,
+		Server:         server,
+		AuthMethod:     result.AuthMethod,
+		Cloud:          result.IsCloud,
+		GrafanaVersion: result.GrafanaVersion,
+		StackSlug:      result.StackSlug,
+		HasCloudToken:  result.HasCloudToken,
+	}
 }
 
 // loginTextCodec renders LoginResult as the human-friendly multi-line summary

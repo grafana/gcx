@@ -205,6 +205,10 @@ func (t *k8sTransport) listAll(ctx context.Context) ([]*Datasource, bool, error)
 				if err != nil {
 					return err
 				}
+				// List items may omit both spec.type and apiVersion; the endpoint still identifies the plugin.
+				if ds.Type == "" {
+					ds.Type = pluginID
+				}
 				dss = append(dss, ds)
 			}
 			results[i].datasources = dss

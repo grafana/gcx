@@ -61,7 +61,7 @@ func TestStructuredMissingFieldsError(t *testing.T) {
 			err:            &internallogin.ErrNeedInput{Fields: []string{"server"}},
 			wantSummary:    "Login requires additional input",
 			wantDetailSubs: []string{"server"},
-			wantSuggestSub: []string{"--server", "GRAFANA_SERVER"},
+			wantSuggestSub: []string{"--server", "GRAFANA_SERVER", "--cloud --oauth"},
 		},
 		{
 			name:           "missing_grafana_auth",
@@ -100,7 +100,7 @@ func TestStructuredMissingFieldsError(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			err := structuredMissingFieldsError(tt.err)
+			err := structuredMissingFieldsError(tt.err, false)
 			require.Error(t, err)
 
 			var det gcxerrors.DetailedError
@@ -1047,7 +1047,7 @@ func TestRunLoginLoopReportsDetectedCloudTargetOnCustomDomain(t *testing.T) {
 
 	// Non-interactive, and a Cloud target with no cloud credential, so Run
 	// returns a missing-input error before attempting any network call.
-	err := runLoginLoop(cmd, &loginOpts{}, opts, nil, nil, false, nil, false)
+	_, err := runLoginLoop(cmd, opts, nil, nil, false, nil, false)
 	require.Error(t, err)
 	require.True(t, detected, "detection did not run; the test no longer covers the recapture")
 	assert.Equal(t, "cloud", config.CapturedTargetKind())
@@ -1663,6 +1663,7 @@ func TestLoginRejectsFreshCredentialsForAutoLocalBeforeNetwork(t *testing.T) {
 	}{
 		{name: "Grafana token flag", args: []string{"--token", "fresh-grafana-token"}, wantKind: "self-hosted"},
 		{name: "Grafana token environment", env: "GRAFANA_TOKEN", wantKind: "self-hosted"},
+		{name: "Grafana Basic", args: []string{"--basic-auth", "--user", "admin"}, wantKind: "self-hosted"},
 		{name: "Grafana OAuth", args: []string{"--oauth"}, wantKind: "self-hosted"},
 		{name: "Cloud token flag", args: []string{"--cloud-token", "fresh-cloud-token"}, wantKind: "self-hosted"},
 		{name: "Cloud token environment", env: "GRAFANA_CLOUD_TOKEN", wantKind: "self-hosted"},
@@ -2104,6 +2105,7 @@ func TestPrintResult_TextCodec(t *testing.T) {
 		result         internallogin.Result
 		wantStdout     string
 		wantStderrSubs []string
+		notStderrSubs  []string
 		noStderr       bool
 	}{
 		{
@@ -2172,6 +2174,88 @@ func TestPrintResult_TextCodec(t *testing.T) {
 			},
 		},
 		{
+			name:   "cloud_with_pathfinder_shows_guide_hint",
+			server: "https://mystack.grafana.net",
+			result: internallogin.Result{
+				ContextName:         "mystack",
+				AuthMethod:          "oauth",
+				IsCloud:             true,
+				HasCloudToken:       true,
+				StackSlug:           "mystack",
+				PathfinderInstalled: true,
+			},
+			wantStdout: `Logged in to https://mystack.grafana.net
+  Context:     mystack
+  Auth method: oauth
+  Grafana Cloud: yes
+  Stack:       mystack
+`,
+			wantStderrSubs: []string{
+				"Interactive guides can help you get started:",
+				"  https://mystack.grafana.net/a/grafana-pathfinder-app\n",
+			},
+		},
+		{
+			name:   "guide_hint_follows_cap_advisory",
+			server: "https://stack.grafana.net",
+			result: internallogin.Result{
+				ContextName:         "stack",
+				AuthMethod:          "token",
+				IsCloud:             true,
+				StackSlug:           "stack",
+				PathfinderInstalled: true,
+			},
+			wantStdout: `Logged in to https://stack.grafana.net
+  Context:     stack
+  Auth method: token
+  Grafana Cloud: yes
+  Stack:       stack
+`,
+			wantStderrSubs: []string{
+				"gcx login --context stack --cloud-token <token>\n\nInteractive guides can help you get started:",
+			},
+		},
+		{
+			name:   "cloud_without_pathfinder_no_guide_hint",
+			server: "https://mystack.grafana.net",
+			result: internallogin.Result{
+				ContextName:   "mystack",
+				AuthMethod:    "oauth",
+				IsCloud:       true,
+				HasCloudToken: true,
+				StackSlug:     "mystack",
+			},
+			wantStdout: `Logged in to https://mystack.grafana.net
+  Context:     mystack
+  Auth method: oauth
+  Grafana Cloud: yes
+  Stack:       mystack
+`,
+			wantStderrSubs: []string{
+				"Verify access anytime with: gcx config check",
+			},
+			notStderrSubs: []string{"grafana-pathfinder-app"},
+		},
+		{
+			name:   "onprem_with_pathfinder_shows_guide_hint",
+			server: "https://grafana.local",
+			result: internallogin.Result{
+				ContextName:         "local",
+				AuthMethod:          "token",
+				PathfinderInstalled: true,
+			},
+			wantStdout: `Logged in to https://grafana.local
+  Context:     local
+  Auth method: token
+  Grafana Cloud: no
+`,
+			wantStderrSubs: []string{
+				"Interactive guides can help you get started:",
+				"  https://grafana.local/a/grafana-pathfinder-app\n",
+			},
+			notStderrSubs: []string{"Cloud Access Policy"},
+		},
+		{
 			name:   "empty_server_falls_back_to_context_name",
 			server: "",
 			result: internallogin.Result{
@@ -2221,8 +2305,73 @@ func TestPrintResult_TextCodec(t *testing.T) {
 					assert.Contains(t, stderr.String(), sub, "stderr should contain %q", sub)
 				}
 			}
+			for _, sub := range tt.notStderrSubs {
+				assert.NotContains(t, stderr.String(), sub, "stderr should not contain %q", sub)
+			}
 		})
 	}
+}
+
+// TestPrintResult_GuideHintStdoutClean pins that the Pathfinder hint is
+// advisory prose routed only to stderr: with json output the hint never mixes
+// into stdout, so structured consumers stay parseable, while a human reading
+// stderr still sees it. The human-vs-agent decision lives upstream at probe
+// time, so printResult no longer gates the hint on output format.
+func TestPrintResult_GuideHintStdoutClean(t *testing.T) {
+	disableAgentMode(t)
+
+	cmd := &cobra.Command{}
+	var stdout, stderr bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+
+	ioOpts := &cmdio.Options{}
+	ioOpts.RegisterCustomCodec("text", &loginTextCodec{})
+	ioOpts.DefaultFormat("text")
+	fs := pflag.NewFlagSet("test", pflag.ContinueOnError)
+	ioOpts.BindFlags(fs)
+	require.NoError(t, fs.Set("output", "json"))
+	require.NoError(t, ioOpts.Validate())
+
+	err := printResult(cmd, ioOpts, "https://mystack.grafana.net", internallogin.Result{
+		ContextName:         "mystack",
+		IsCloud:             true,
+		HasCloudToken:       true,
+		PathfinderInstalled: true,
+	})
+	require.NoError(t, err)
+	// Structured stdout stays clean.
+	assert.NotContains(t, stdout.String(), "grafana-pathfinder-app")
+	// The advisory hint is still delivered, on stderr.
+	assert.Contains(t, stderr.String(), "Interactive guides can help you get started:")
+	assert.Contains(t, stderr.String(), "grafana-pathfinder-app")
+}
+
+// TestPathfinderProbeWanted pins the gate that replaced the output-format proxy:
+// probe only for an interactive human whose target context has no cached
+// positive detection.
+func TestPathfinderProbeWanted(t *testing.T) {
+	cached := &config.Context{Grafana: &config.GrafanaConfig{PathfinderInstalled: true}}
+	uncached := &config.Context{Grafana: &config.GrafanaConfig{}}
+
+	t.Run("human_new_context_probes", func(t *testing.T) {
+		disableAgentMode(t)
+		assert.True(t, pathfinderProbeWanted(nil))
+		assert.True(t, pathfinderProbeWanted(uncached))
+	})
+
+	t.Run("human_cached_context_skips", func(t *testing.T) {
+		disableAgentMode(t)
+		assert.False(t, pathfinderProbeWanted(cached))
+	})
+
+	t.Run("agent_always_skips", func(t *testing.T) {
+		t.Setenv("GCX_AGENT_MODE", "true")
+		agent.ResetForTesting()
+		t.Cleanup(agent.ResetForTesting)
+		assert.False(t, pathfinderProbeWanted(nil))
+		assert.False(t, pathfinderProbeWanted(uncached))
+	})
 }
 
 // TestResolveSourceContext covers every branch of the context-selection
@@ -2338,16 +2487,7 @@ func disableAgentMode(t *testing.T) {
 	t.Helper()
 	// t.Setenv handles both set-and-restore for us. Clearing every known
 	// agent env var covers CLAUDECODE, CURSOR_AGENT, etc. in one pass.
-	for _, v := range []string{
-		"GCX_AGENT_MODE",
-		"CLAUDECODE",
-		"CLAUDE_CODE",
-		"CURSOR_AGENT",
-		"GITHUB_COPILOT",
-		"AMAZON_Q",
-		"OPENCODE",
-		"PI_CODING_AGENT",
-	} {
+	for _, v := range agent.EnvironmentVariables() {
 		t.Setenv(v, "")
 	}
 	// GCX_AGENT_MODE=false is the authoritative override.
@@ -2444,24 +2584,24 @@ func TestGrafanaAuthOptions(t *testing.T) {
 		{
 			name:   "unknown_without_mtls",
 			target: internallogin.TargetUnknown,
-			want:   []string{"token", "oauth", "oauth-manual"},
+			want:   []string{"token", "basic", "oauth", "oauth-manual"},
 		},
 		{
 			name:    "unknown_with_mtls",
 			target:  internallogin.TargetUnknown,
 			hasMTLS: true,
-			want:    []string{"mtls", "token", "oauth", "oauth-manual"},
+			want:    []string{"mtls", "token", "basic", "oauth", "oauth-manual"},
 		},
 		{
 			name:   "onprem_offers_no_oauth",
 			target: internallogin.TargetOnPrem,
-			want:   []string{"token"},
+			want:   []string{"token", "basic"},
 		},
 		{
 			name:    "onprem_with_mtls",
 			target:  internallogin.TargetOnPrem,
 			hasMTLS: true,
-			want:    []string{"mtls", "token"},
+			want:    []string{"mtls", "token", "basic"},
 		},
 	}
 

@@ -4,13 +4,14 @@ Get a conversation transcript
 
 ### Synopsis
 
-Fetch conversation metadata and message history for a conversation ID.
+Fetch conversation metadata and message history by conversation ID or shared URL.
 
-Use this to pull a web Assistant chat into a coding agent before continuing it
-with 'gcx assistant prompt --context-id'.
+AI SDK conversations include the server-visible main thread. Shared conversations
+are read-only snapshots in this workflow; transcript retrieval does not establish
+that a conversation can be continued with 'gcx assistant prompt --context-id'.
 
 ```
-gcx assistant conversation get <conversation-id> [flags]
+gcx assistant conversation get <id-or-url> [flags]
 ```
 
 ### Examples
@@ -18,6 +19,7 @@ gcx assistant conversation get <conversation-id> [flags]
 ```
   gcx assistant conversation get 295a674f-3a3d-44e8-9166-3f8054409f65
   gcx assistant conversation get 295a674f-3a3d-44e8-9166-3f8054409f65 -o json
+  gcx assistant conversation get 'https://example.grafana.net/a/grafana-assistant-app/chats/shared/295a674f-3a3d-44e8-9166-3f8054409f65'
 ```
 
 ### Options
@@ -33,10 +35,10 @@ gcx assistant conversation get <conversation-id> [flags]
 ### Options inherited from parent commands
 
 ```
-      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
+      --agent                       Enable agent mode (JSON output, no color). Auto-detected from known agent identity variables. Set GCX_AGENT_NAME to identify a supported harness, or GCX_AGENT_MODE to control the mode.
       --config string               Path to the configuration file to use
       --context string              Name of the context to use (overrides current-context in config)
-      --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.
+      --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Requires -vvv. Do not ship these logs.
       --no-color                    Disable color output
       --no-truncate                 Disable table column truncation (auto-enabled when stdout is piped)
   -v, --verbose count               Verbose mode. Multiple -v options increase the verbosity (maximum: 3).

@@ -485,7 +485,7 @@ func TestInstancesListOutputContract(t *testing.T) {
 		require.NoError(t, err)
 
 		var want bytes.Buffer
-		require.NoError(t, (&alert.InstancesTableCodec{}).Encode(&want, []alert.AlertInstanceRecord{{
+		require.NoError(t, (alert.InstancesTable().Codec("table")).Encode(&want, []alert.AlertInstanceRecord{{
 			RuleUID:   "uid-1",
 			RuleName:  "Rule 1",
 			GroupName: "group-1",

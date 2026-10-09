@@ -12,31 +12,17 @@ Agent mode is detected via environment variables at `init()` time in
 `internal/agent/agent.go` and via the `--agent` CLI flag pre-parsed in
 `main.go` before Cobra command construction.
 
-| Variable | Set by | Effect |
-|----------|--------|--------|
-| `GCX_AGENT_MODE` | Explicit opt-in/out | `1`/`true`/`yes` enables; `0`/`false`/`no` **disables** (overrides the other environment variables, but not an explicitly passed `--agent`). Any other value is ignored and detection continues — see § 6.1 |
-| `CLAUDECODE` | Claude Code | Truthy value activates agent mode |
-| `CLAUDE_CODE` | Claude Code | Truthy value activates agent mode |
-| `CURSOR_AGENT` | Cursor | Truthy value activates agent mode |
-| `GITHUB_COPILOT` | GitHub Copilot | Truthy value activates agent mode |
-| `AMAZON_Q` | Amazon Q | Truthy value activates agent mode |
-| `OPENCODE` | opencode | Truthy value activates agent mode |
-| `PI_CODING_AGENT` | pi | Truthy value activates agent mode |
+Native identity signals and explicit names can enable agent mode.
+The full list is in the
+[environment variable reference](environment-variables.md#agent-mode-variables).
+`GCX_AGENT_NAME` supports tools that do not supply a native signal.
 
-The `--agent` persistent flag can also enable agent mode. `--agent=false`
-explicitly disables agent mode even when env vars are set.
+**Mode priority:** explicit `--agent`/`--agent=false` > a valid
+`GCX_AGENT_MODE` value > a supported identity signal > disabled.
+`GCX_AGENT_MODE=0` disables automatic mode detection.
+`GCX_AGENT_MODE=1` enables mode even when the harness name is unknown.
 
-**Priority order**, highest first:
-
-1. `--agent` / `--agent=false`, when explicitly passed — wins over every
-   environment variable, in both directions (`agent.SetFlag` overwrites the
-   detected state)
-2. `GCX_AGENT_MODE`, when set to a **recognised** value — `1`/`true`/`yes`
-   enables, `0`/`false`/`no` disables (case-insensitive)
-3. Any truthy harness variable from the table above
-4. Default: disabled
-
-Unrecognized `GCX_AGENT_MODE` values fall through to harness detection rather
+Unrecognized `GCX_AGENT_MODE` values fall through to identity detection rather
 than failing. For example, `GCX_AGENT_MODE=off` does not disable a truthy
 `CLAUDECODE`; use `0`, `false`, or `no`. This vocabulary differs from
 `GCX_AUTO_APPROVE` (see [safety.md § 3.3](safety.md#33-agent-mode-rejects-unbypassed-destructive-operations-implemented)).
@@ -46,7 +32,22 @@ The current pre-parser in `main.go` and Cobra's bool parser differ on other
 spellings: `--agent=t` is accepted but selects false, while `--agent=yes` is
 rejected by Cobra. These are existing parser quirks, not recommended syntax.
 
-**API:** `agent.IsAgentMode() bool`, `agent.SetFlag(bool)`, `agent.DetectedFromEnv() bool`
+**Identity priority:** supported `GCX_AGENT_NAME` > native boolean signals
+in source order > native session markers in source order > supported
+`AI_AGENT` > `AGENT=goose`. Kilo precedes OpenCode. Qwen precedes Gemini CLI.
+A native marker takes precedence over a shared variable inherited from an outer
+harness. `GCX_AGENT_NAME` is the deliberate gcx override for a nested agent.
+Environment signals alone cannot establish which parent process set a marker.
+
+`agent.Name()` returns a fixed label, even when mode is disabled explicitly.
+Usage events report this identity in `agent` and the mode in `is_agent`.
+When agent mode is enabled without a known identity, usage events report
+`agent: "generic"`. This telemetry fallback does not change identity detection
+or enable agent mode.
+No session identifier or unknown identity value is sent.
+
+**API:** `agent.IsAgentMode() bool`, `agent.SetFlag(bool)`,
+`agent.DetectedFromEnv() bool`, `agent.Name() string`.
 
 Reference: `internal/agent/agent.go`
 
@@ -105,7 +106,7 @@ Explicit flags override agent mode defaults:
   operator has explicitly requested wide table format, so the JSON default is not applied)
 - `--agent=false` disables agent mode entirely (even when env vars are set)
 - `GCX_AGENT_MODE=0` disables agent mode regardless of other env vars
-- `GCX_AGENT_SPILL_BYTES=<n>` adjusts the spill threshold (bytes; default 102400)
+- `GCX_AGENT_SPILL_BYTES=<n>` adjusts the spill threshold (bytes; default 102400); `0` disables spilling
 
 ### 6.4 Output Protocol Classes
 
@@ -118,7 +119,7 @@ land unclassified. When agent mode supplies the default (no explicit
 | Class | Agent-mode stdout contract |
 |-------|---------------------------|
 | `finite` | Exactly one JSON value — the result, or a fused/in-band error document — with the process exit code agreeing with the outcome. A command that has already written its complete document returns `gcxerrors.EmittedError` so the reporter never appends a second one. |
-| `artifact` | Files on disk are the real output; stdout carries exactly one JSON receipt (`gcx.artifact_receipt`: paths, format, counts, failures). Applies to the pull family (`resources pull`, `slo definitions/reports pull`). The `-o` flag selects the FILE format and is pinned via `Options.PinDefaultFormat` — agent mode must never produce `.agents` resource files or spill envelopes as manifests (`resources edit` shares the pin). Commands that write files as a side effect but answer with an ordinary result document (skills install, dev generate, config set) are class `finite`. |
+| `artifact` | Files on disk are the real output; stdout carries exactly one JSON receipt (`gcx.artifact_receipt`: paths, format, counts, failures). Applies to the pull family (`resources pull`, `slo definitions/reports pull`). For `resources pull`, `-o` selects the FILE format and its default is pinned via `Options.PinDefaultFormat` (`resources edit` shares the pin); deprecated SLO pulls retain fixed YAML and expose no `-o` flag. Agent mode must never produce `.agents` resource files or spill envelopes as manifests. Commands that write files as a side effect but answer with an ordinary result document (skills install, dev generate, config set) are class `finite`. |
 | `stream` | Typed, versioned JSONL: every line independently parseable with a `type` discriminator, ending in a terminal success/error event. |
 | `interactive` | Drives a prompt, editor, or wizard — exempt from the JSON contract, but must never block in agent mode: confirmation gates follow the [bypass and rejection rules in safety.md § 3.3](safety.md#33-agent-mode-rejects-unbypassed-destructive-operations-implemented) (`CheckDestructiveBypass`), approval prompts are explicitly declined, and `resources edit` fails with an instructive error when no `EDITOR`/`VISUAL` is configured (an explicitly configured editor is honored — non-interactive editors are legitimate automation). Known gap: browser-OAuth login still blocks on its localhost callback in agent mode; use token auth in harnesses (follow-up). |
 | `server` / `shell` / `prose` / `raw` | Long-running listeners, completion scripts, help prose, and byte passthrough (`gcx api`, alert exports, kubectl-pipeable YAML emitters) — exempt, declared. |

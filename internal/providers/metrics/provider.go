@@ -92,7 +92,7 @@ func (p *Provider) descriptor() signals.Descriptor {
 				LLMHint:   `gcx metrics list-names -d abc123 --contains request -o json`,
 			},
 		},
-		ExtraCommands: []signals.CommandBuilder{BillingCommands, CardinalityCommands},
+		ExtraCommands: []signals.CommandBuilder{BillingCommands, CardinalityCommands, SearchCommands},
 		Adaptive: &signals.AdaptiveSpec{
 			Build: adaptivemetrics.Commands,
 			Use:   "adaptive",
@@ -108,21 +108,21 @@ func (p *Provider) descriptor() signals.Descriptor {
 					Factory:    adaptivemetrics.NewRuleAdapterFactory(loader),
 					Descriptor: adaptivemetrics.RuleDescriptor(),
 					GVK:        adaptivemetrics.RuleDescriptor().GroupVersionKind(),
-					Schema:     adaptivemetrics.RuleSchema(),
+					Schema:     adaptivemetrics.RuleSchema,
 					Example:    adaptivemetrics.RuleExample(),
 				},
 				{
 					Factory:    adaptivemetrics.NewSegmentAdapterFactory(loader),
 					Descriptor: adaptivemetrics.SegmentDescriptor(),
 					GVK:        adaptivemetrics.SegmentDescriptor().GroupVersionKind(),
-					Schema:     adaptivemetrics.SegmentSchema(),
+					Schema:     adaptivemetrics.SegmentSchema,
 					Example:    adaptivemetrics.SegmentExample(),
 				},
 				{
 					Factory:    adaptivemetrics.NewExemptionAdapterFactory(loader),
 					Descriptor: adaptivemetrics.ExemptionDescriptor(),
 					GVK:        adaptivemetrics.ExemptionDescriptor().GroupVersionKind(),
-					Schema:     adaptivemetrics.ExemptionSchema(),
+					Schema:     adaptivemetrics.ExemptionSchema,
 					Example:    adaptivemetrics.ExemptionExample(),
 				},
 			}

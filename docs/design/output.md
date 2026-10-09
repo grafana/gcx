@@ -65,7 +65,9 @@ of size (standard indented JSON — see the byte-identity note above).
 `-o text` renders the human table.
 
 **Threshold configuration:** `GCX_AGENT_SPILL_BYTES` (int, bytes; default
-`102400`). Invalid or missing values fall back to the default.
+`102400`). `0` disables spilling: output is always written in full, for
+callers that cannot read gcx's temp files (e.g. gcx embedded in a sandbox).
+Invalid or missing values fall back to the default.
 
 **Guidance for provider authors:** Do **not** pre-truncate output for agent
 mode. The codec handles oversized payloads. Pre-truncation defeats the spill
@@ -98,13 +100,13 @@ JSON/YAML to silently omit fields. See Pattern 13 in `patterns.md`.
 | `list`, `get` | a narrow table codec — `text` or `table` | Human-scannable |
 | `config view` | `yaml` | Config is YAML-native |
 | `push`, `delete` | a structured summary (see [§ 12](#12-mutation-command-output)) | Operations, not data |
-| the `pull` family | `json` (pinned; selects the *file* format, see [§ 14](#14-pull-format-consistency)) | Files are the output |
+| `resources pull` | `json` (pinned; selects the *file* format, see [§ 14](#14-pull-format-consistency)) | Files are the output; deprecated SLO pulls retain fixed YAML |
 | Agent mode ([agent-mode.md](agent-mode.md)) | `agents` | Token-efficient: compact JSON below 100 KiB, temp-file spill above (see [§ 1.1.1](#111-agents-codec)) |
 
 **There is no repo-wide format set.** `text` and `table` are both sanctioned
 names for the narrow table codec and both ship today; `agents` is the agent-mode
-default for display commands but is *rejected* by the artifact family, which
-writes files the pipeline reads back. Some `get` commands legitimately default
+default for display commands but is *rejected* by `resources pull` and
+`resources edit`, which write files the pipeline reads back. Some `get` commands legitimately default
 to `yaml` with no table codec at all.
 
 When building a new command: register a narrow table codec and make it the
@@ -229,6 +231,8 @@ remain separate, never implicitly wrapped in an array. A yielded `null` emits
 - At or below the threshold, stdout gets the complete stream. Above it, the
   same bytes go to one `$TMPDIR/gcx-results-<random>.jsonl` file; stdout gets
   only a spill receipt, and stderr gets a hint.
+- `GCX_AGENT_SPILL_BYTES=0` disables spilling: stdout always gets the complete
+  stream, and no file, receipt or hint is produced.
 - The receipt uses `content_format: "jsonl"`, `total_values`, no `total_items`,
   and `preview_sample: null` to avoid unbounded previews. Its fixed metadata
   may exceed a very small threshold. `gcx agent prune` includes JSONL spills.
@@ -248,7 +252,7 @@ remain separate, never implicitly wrapped in an array. A yielded `null` emits
 | CRUD data — `list` | Required, default | If it adds columns | Built-in | Built-in | — |
 | CRUD data — `get` | Expected, default; `yaml` where a single object reads better | If it adds columns | Built-in | Built-in | — |
 | CRUD mutation (push, delete) | Required, default (summary) | If it adds columns | Built-in (summary) | Built-in (summary) | — |
-| `artifact` class (the pull family) | — files are the output | — | Required, pinned default | Required | — |
+| Artifact files — new commands and `resources pull` | — files are the output | — | Required, pinned default | Required | — |
 | Extension (status, timeline...) | Required, default | Optional | Built-in | Built-in | Optional (e.g. graph) |
 
 A `list` command always gets a narrow table. A `get` command usually should, but
@@ -261,11 +265,14 @@ The narrow codec is the human default; `agents` becomes the default in agent
 mode (compact JSON with spill — see [§ 1.1.1](#111-agents-codec)).
 
 **The `artifact` class is the exception, and it has no table at all.** Its real
-output is files the push pipeline reads back, so `-o` selects the *file* format:
-`resources pull` offers `json, yaml` only, pins the default with
+output is files the push pipeline reads back. For `resources pull`, `-o`
+selects the *file* format: it offers `json, yaml` only, pins the default with
 `PinDefaultFormat`, and rejects `-o agents` (`cmd/gcx/resources/pull.go`). A
 narrow table codec there would produce a file nothing can read back. See
-[§ 14](#14-pull-format-consistency).
+[§ 14](#14-pull-format-consistency). Deprecated `slo definitions pull` and
+`slo reports pull` preserve their fixed `Kind/name.yaml` files and
+`--output-dir` option; they expose no `-o` flag. Their terminal receipts still
+use the shared artifact protocol.
 
 `wide` is **not** a separate obligation. Most commands register it by hand with
 `RegisterCustomCodec("wide", ...)`, and that is fine. For a command built on
@@ -377,7 +384,7 @@ Files are written as `plural.version.group/name.{ext}` where `{ext}` is the
 chosen format name (`.json` or `.yaml`).
 
 Because the output format doubles as the on-disk file extension and the
-encoder, file-writing commands pin their default with
+encoder, `resources pull` and `resources edit` pin their default with
 `Options.PinDefaultFormat`: agent mode must not flip their default to the
 `agents` display codec (which would write `<name>.agents` files containing
 spill-summary envelopes for large resources). `resources pull` and

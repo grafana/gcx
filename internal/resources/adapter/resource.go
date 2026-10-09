@@ -125,17 +125,7 @@ func (r Resource[T]) registration(loadDeps DepsLoader) Registration {
 				return nil, fmt.Errorf("failed to construct %s client: %w", desc.Kind, err)
 			}
 
-			namespace := r.Namespace
-			if namespace == "" {
-				namespace = deps.Namespace
-			}
-
-			crud := newCapabilityCRUD[T](client, capabilityMeta{
-				Descriptor:  desc,
-				Namespace:   namespace,
-				StripFields: r.StripFields,
-				Example:     example,
-			})
+			crud := r.TypedCRUD(client, deps.Namespace)
 			return crud.AsAdapter(), nil
 		},
 		Descriptor:  desc,
@@ -214,4 +204,18 @@ func exampleJSON[T ResourceNamer](item *T, desc resources.Descriptor, stripField
 		panic(fmt.Sprintf("adapter: failed to marshal example for %s: %v", desc.Kind, err))
 	}
 	return b
+}
+
+// TypedCRUD binds a client to this declaration for provider commands. It uses
+// the same capability dispatch, identity, stripping, and example as registration.
+// A nil client supports offline conversion only; all CRUD verbs are unsupported.
+func (r Resource[T]) TypedCRUD(client any, namespace string) *TypedCRUD[T] {
+	if r.Namespace != "" {
+		namespace = r.Namespace
+	}
+	desc := r.descriptor()
+	return newCapabilityCRUD[T](client, capabilityMeta{
+		Descriptor: desc, Namespace: namespace, StripFields: r.StripFields,
+		Example: exampleJSON(r.Example, desc, r.StripFields),
+	})
 }

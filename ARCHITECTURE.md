@@ -38,6 +38,10 @@ Grafana K8s API                      /apis/{group}/{version}/namespaces/{ns}/{pl
 
 **Key abstractions** ([resource-model.md](docs/architecture/resource-model.md)): `Resource` wraps `unstructured.Unstructured` — no pre-generated Go types. `Selector` → `Filter` two-stage resolution keeps CLI ignorant of API details. `Processor` pipeline composes transformations at defined pipeline points. `Discovery` registry resolves plural names and short names to full GVKs at runtime.
 
+Selectors accept both `resource.version.group` and `resource.group`, including
+dotted API groups. Discovery tries the versioned reading first, then the full
+group name, for both native resources and provider adapters.
+
 **Data flows** ([data-flows.md](docs/architecture/data-flows.md)): Push reads local files, resolves selectors, applies processors, pushes via dynamic client with folder-before-dashboard ordering and bounded concurrency (errgroup, default 10). Pull fetches from API, strips server-managed fields, writes to disk grouped by kind.
 
 ### 2. Provider System
@@ -65,7 +69,7 @@ Provider (internal/providers/slo/)
 
 **Dual access paths** are permanent: provider commands (`gcx slo definitions list`) give ergonomic domain-specific tables; generic commands (`gcx resources get slos.v1alpha1.slo.ext.grafana.app`) serve the push/pull pipeline. JSON/YAML output is identical across both paths by construction (both use the same `ResourceAdapter`).
 
-**Declarative registration front door**: `adapter.Resource[T]` + `adapter.NewProvider` (command factories attach via `WithCommands`) let a provider declare a resource type once, by implementing plain capability interfaces (`Lister[T]`, `Getter[T]`, `Creator[T]`, `Updater[T]`, `Deleter[T]`, `Validator[T]`) on its client, instead of hand-building a `Registration`. Capability detection is confined to a single audited `any`-assertion seam in `internal/resources/adapter/capability.go` — see ADR-025 and patterns.md's "Sanctioned Exception — Single-Seam Capability Assertion".
+**Declarative registration front door**: `adapter.Resource[T]` + `adapter.NewProvider` (command factories attach via `WithCommands`) let a provider declare a resource type once, by implementing plain capability interfaces (`Lister[T]`, `Getter[T]`, `Creator[T]`, `Updater[T]`, `Deleter[T]`, `Validator[T]`) on its client, instead of hand-building a `Registration`. Capability detection is confined to a single audited `any`-assertion seam in `internal/resources/adapter/capability.go` — see ADR-025 and patterns.md's "Sanctioned Exception — Single-Seam Capability Assertion". Provider commands and registration share `Resource.TypedCRUD`; Grafana-backed command groups use `providers.BindGrafanaResource` for lazy binding; each leaf calls `Load` to resolve a fresh config snapshot and construct the declared client.
 
 **Deep-dive:** [patterns.md](docs/architecture/patterns.md) [§11 (Provider Plugin System)](docs/architecture/patterns.md#11-provider-plugin-system), [§16 (ResourceAdapter and Provider CRUD Routing)](docs/architecture/patterns.md#16-resourceadapter-and-provider-crud-routing), [§17 (K8s Envelope Wrapping)](docs/architecture/patterns.md#17-k8s-envelope-wrapping-for-provider-listget), [§18 (Table-Driven TypedCRUD)](docs/architecture/patterns.md#18-table-driven-typedcrud-registration-for-providers), [§19 (Singleton Adapter)](docs/architecture/patterns.md#19-singleton-adapter-pattern), [§20 (ETag-as-Annotation)](docs/architecture/patterns.md#20-etag-as-annotation-pattern). Implementation guide: [provider-guide.md](docs/reference/provider-guide.md).
 
@@ -187,7 +191,7 @@ Multiple auth mechanisms for different tiers.
 | **Service account token** | Grafana K8s API (`/apis`), plugin APIs | Bearer token in `rest.Config` |
 | **Cloud Access Policy token** | GCOM stack discovery, Cloud product APIs | `internal/cloud/` GCOM client |
 | **OAuth PKCE** | Browser-based login (`gcx login`) | `internal/auth/` — token refresh transport persists to config |
-| **Basic auth** | Legacy Grafana instances | Username/password in `rest.Config` |
+| **Basic auth** | Self-hosted Grafana, including server administration | `gcx login --basic-auth`; username/password in `rest.Config`, verified via `/api/user` before saving |
 | **Adaptive auth** | Signal provider adaptive telemetry APIs | `internal/auth/adaptive/` — GCOM-resolved Basic auth shared across signal providers; stale provider cache fields are not credential destinations |
 
 **Runtime selection:** an explicit `grafana.auth-method` (`oauth`, `token`,
@@ -202,6 +206,14 @@ the Grafana server unless the provider uses the trust-checked
 can otherwise inject Grafana auth into the wrong request.
 
 **Deep-dive:** [client-api-layer.md](docs/architecture/client-api-layer.md), [config-system.md](docs/architecture/config-system.md).
+
+### Portable Agent Skills (`gcx agent skills`)
+
+`claude-plugin/skills-catalog.yaml` records active, deprecated, and retired skills
+independently of bundled content. `internal/skills` reconciles that release catalog
+with the selected local installation for list/install/update/uninstall; retired
+entries remain addressable without automatic deletion or replacement installation.
+See [CLI layer: Portable Skill Lifecycle](docs/architecture/cli-layer.md#portable-skill-lifecycle).
 
 ## Architecture Decision Records
 

@@ -64,7 +64,7 @@ func (o *qualityListOpts) setup(flags *pflag.FlagSet) {
 	flags.IntVar(&o.Page, "page", 0, "Page number (0-based)")
 	flags.IntVar(&o.PageSize, "page-size", 25, "Page size (1-100)")
 
-	o.IO.RegisterCustomCodec("table", &QualityReportListTableCodec{})
+	cmdio.RegisterTable(&o.IO, QualityReportListTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 }
@@ -218,31 +218,14 @@ func qualityScopeStr(env, namespace, site string) string {
 	return strings.Join(parts, ", ")
 }
 
-// QualityReportListTableCodec renders a list of quality reports as a table.
-type QualityReportListTableCodec struct{}
-
-func (c *QualityReportListTableCodec) Format() format.Format { return "table" }
-
-func (c *QualityReportListTableCodec) Encode(w io.Writer, v any) error {
-	items, ok := v.([]QualityReportListItem)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []QualityReportListItem")
-	}
-	t := style.NewTable("ENTITY", "TYPE", "SCOPE", "QUALITY", "FAILED CHECKS")
-	for _, item := range items {
-		t.Row(
-			item.EntityName,
-			item.EntityType,
-			qualityScopeStr(item.Env, item.Namespace, item.Site),
-			strconv.Itoa(item.QualityPercent)+"%",
-			strings.Join(item.FailedCheckIDs, ", "),
-		)
-	}
-	return t.Render(w)
-}
-
-func (c *QualityReportListTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
+func QualityReportListTable() cmdio.Table[QualityReportListItem] {
+	return cmdio.Table[QualityReportListItem]{Columns: []cmdio.Column[QualityReportListItem]{
+		{Header: "ENTITY", Content: func(item QualityReportListItem) string { return item.EntityName }},
+		{Header: "TYPE", Content: func(item QualityReportListItem) string { return item.EntityType }},
+		{Header: "SCOPE", Content: func(item QualityReportListItem) string { return qualityScopeStr(item.Env, item.Namespace, item.Site) }},
+		{Header: "QUALITY", Content: func(item QualityReportListItem) string { return strconv.Itoa(item.QualityPercent) + "%" }},
+		{Header: "FAILED CHECKS", Content: func(item QualityReportListItem) string { return strings.Join(item.FailedCheckIDs, ", ") }},
+	}}
 }
 
 // QualityReportTableCodec renders a single entity quality report as a summary

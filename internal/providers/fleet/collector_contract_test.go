@@ -24,6 +24,7 @@ func TestFleetExamplesMatchLiveCreateRequirements(t *testing.T) {
 	collectorSpec, ok := collector["spec"].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, "my-collector-id", collectorSpec["id"])
+	assert.Equal(t, "COLLECTOR_TYPE_ALLOY", collectorSpec["collector_type"])
 }
 
 func TestCollectorSchemaExposesID(t *testing.T) {
@@ -39,6 +40,45 @@ func TestCollectorSchemaExposesID(t *testing.T) {
 	id, ok := specProperties["id"].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, "string", id["type"])
+}
+
+func TestCollectorSchemaExposesHealthFields(t *testing.T) {
+	var schema map[string]any
+	require.NoError(t, json.Unmarshal(collectorSchema(), &schema))
+
+	properties, ok := schema["properties"].(map[string]any)
+	require.True(t, ok)
+	spec, ok := properties["spec"].(map[string]any)
+	require.True(t, ok)
+	specProperties, ok := spec["properties"].(map[string]any)
+	require.True(t, ok)
+
+	collectorType, ok := specProperties["collector_type"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, []any{"COLLECTOR_TYPE_UNSPECIFIED", "COLLECTOR_TYPE_ALLOY", "COLLECTOR_TYPE_OTEL"}, collectorType["enum"])
+	var example map[string]any
+	require.NoError(t, json.Unmarshal(collectorExample(), &example))
+	exampleSpec, ok := example["spec"].(map[string]any)
+	require.True(t, ok)
+	assert.Contains(t, collectorType["enum"], exampleSpec["collector_type"])
+	if required, ok := spec["required"].([]any); ok {
+		assert.NotContains(t, required, "collector_type")
+	}
+
+	localAttributes, ok := specProperties["local_attributes"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, true, localAttributes["readOnly"])
+	additionalProperties, ok := localAttributes["additionalProperties"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "string", additionalProperties["type"])
+
+	for _, name := range []string{"created_at", "updated_at", "marked_inactive_at"} {
+		field, ok := specProperties[name].(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, "string", field["type"])
+		assert.Equal(t, "date-time", field["format"])
+		assert.Equal(t, true, field["readOnly"])
+	}
 }
 
 func TestResolveCollectorUsesArbitraryStringIDFirst(t *testing.T) {

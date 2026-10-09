@@ -63,6 +63,15 @@ func (p *FaroProvider) Commands() []*cobra.Command {
 	)
 
 	faroCmd.AddCommand(appsCmd)
+
+	sessionsCmd := &cobra.Command{
+		Use:     "sessions",
+		Short:   "Inspect Frontend Observability sessions.",
+		Aliases: []string{"session"},
+	}
+	sessionsCmd.AddCommand(newSessionsGetCommand(loader))
+	faroCmd.AddCommand(sessionsCmd)
+
 	return []*cobra.Command{faroCmd}
 }
 
@@ -74,7 +83,7 @@ func (p *FaroProvider) TypedRegistrations() []adapter.Registration {
 			Factory:     NewAdapterFactory(loader),
 			Descriptor:  staticDescriptor,
 			GVK:         staticDescriptor.GroupVersionKind(),
-			Schema:      FaroAppSchema(),
+			Schema:      FaroAppSchema,
 			Example:     FaroAppExample(),
 			URLTemplate: "/a/grafana-faro-app/apps/{name}",
 		},

@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/providers/appo11y/activation"
 	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/prometheus/common/model"
@@ -37,6 +38,7 @@ type getOpts struct {
 	MetricsMode string
 	Filters     []string
 	GroupBy     []string
+	KG          kgFlags
 }
 
 func (o *getOpts) setup(flags *pflag.FlagSet) {
@@ -52,6 +54,7 @@ func (o *getOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&o.MetricsMode, "metrics-mode", metricsModeAuto, "Span-metrics family. One of: auto (probes the stack), v3 (traces_span_metrics_*), tempo (traces_spanmetrics_*), or otel (bare calls_total + duration_seconds_bucket)")
 	flags.StringArrayVar(&o.Filters, "filter", nil, "Scope the RED snapshot to series matching a label matcher, e.g. --filter k8s_cluster_name=prod-us (repeatable). Use to break a multi-cluster/multi-region service down one cluster at a time; the label must exist on the span metrics")
 	flags.StringSliceVar(&o.GroupBy, "group-by", nil, "Pivot the RED snapshot into one row per distinct value of a label, e.g. --group-by k8s_cluster_name (comma-separated or repeatable). Surfaces outliers across clusters/regions without naming each one; the label must exist on the span metrics")
+	o.KG.register(flags)
 }
 
 func (o *getOpts) Validate(cmd *cobra.Command) error {
@@ -68,6 +71,9 @@ func (o *getOpts) Validate(cmd *cobra.Command) error {
 		return fail.NewCommandUsageError(cmd, "", err)
 	}
 	if _, _, err := resolveMetricsMode(o.MetricsMode); err != nil {
+		return fail.NewCommandUsageError(cmd, "", err)
+	}
+	if _, err := o.KG.resolve(); err != nil {
 		return fail.NewCommandUsageError(cmd, "", err)
 	}
 	return nil
@@ -224,6 +230,8 @@ func runGet(loader *providers.ConfigLoader, opts *getOpts) func(*cobra.Command, 
 		if err != nil {
 			return err
 		}
+		activation.Gate(ctx, cfg, cmd.ErrOrStderr())
+		cat := opts.KG.catalog(cfg)
 
 		datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "prometheus")
 		if err != nil {
@@ -256,27 +264,16 @@ func runGet(loader *providers.ConfigLoader, opts *getOpts) func(*cobra.Command, 
 		}
 
 		if len(groupBy) > 0 {
-			grouped, err := fetchGroupedServiceDetail(ctx, client, datasourceUID, namespace, name, opts.Since, kinds, mode, matchers, groupBy)
-			if err != nil {
-				return err
-			}
-			notFound := !anyGroupHasTraffic(grouped.Items)
-			if notFound {
-				emitNoDataHint(cmd.ErrOrStderr(), namespace, name)
-			}
-			if err := opts.IO.Encode(cmd.OutOrStdout(), grouped); err != nil {
-				return err
-			}
-			if notFound {
-				return notFoundEmitted(cmd.ErrOrStderr(),
-					fmt.Sprintf("service %q has no telemetry in the requested window (for group-by %s)", jobLabel(namespace, name), strings.Join(groupBy, ", ")))
-			}
-			return nil
+			return emitGroupedServiceDetail(ctx, cmd, opts, client, cat, cfg.GrafanaURL, datasourceUID, dsquery.OrgID(cfgCtx), namespace, name, kinds, mode, matchers, groupBy)
 		}
 
-		detail, err := fetchServiceDetail(ctx, client, datasourceUID, namespace, name, opts.Since, kinds, mode, matchers)
+		detail, err := fetchServiceDetail(ctx, client, cfg.GrafanaURL, datasourceUID, dsquery.OrgID(cfgCtx), namespace, name, opts.Since, kinds, mode, matchers)
 		if err != nil {
 			return err
+		}
+		if cat != nil {
+			startMs, endMs := windowMs(opts.Since)
+			detail.Service.KG = warnKGLookup(cmd.ErrOrStderr(), cat.lookupVerbose(ctx, name, startMs, endMs))
 		}
 		notFound := !detail.Service.Instrumented && !detail.RED.HasTraffic
 		if notFound {
@@ -294,6 +291,32 @@ func runGet(loader *providers.ConfigLoader, opts *getOpts) func(*cobra.Command, 
 		}
 		return nil
 	}
+}
+
+// emitGroupedServiceDetail is runGet's --group-by path, split out of the
+// main RunE closure so its own error/not-found handling doesn't nest inside
+// runGet's `if len(groupBy) > 0` — kept as one branch there instead of five.
+func emitGroupedServiceDetail(ctx context.Context, cmd *cobra.Command, opts *getOpts, client *prometheus.Client, cat *kgCatalog, grafanaURL, datasourceUID string, orgID int64, namespace, name string, kinds []string, mode MetricsMode, matchers []Matcher, groupBy []string) error {
+	grouped, err := fetchGroupedServiceDetail(ctx, client, grafanaURL, datasourceUID, orgID, namespace, name, opts.Since, kinds, mode, matchers, groupBy)
+	if err != nil {
+		return err
+	}
+	if cat != nil {
+		startMs, endMs := windowMs(opts.Since)
+		grouped.Service.KG = warnKGLookup(cmd.ErrOrStderr(), cat.lookupVerbose(ctx, name, startMs, endMs))
+	}
+	notFound := !anyGroupHasTraffic(grouped.Items)
+	if notFound {
+		emitNoDataHint(cmd.ErrOrStderr(), namespace, name)
+	}
+	if err := opts.IO.Encode(cmd.OutOrStdout(), grouped); err != nil {
+		return err
+	}
+	if notFound {
+		return notFoundEmitted(cmd.ErrOrStderr(),
+			fmt.Sprintf("service %q has no telemetry in the requested window (for group-by %s)", jobLabel(namespace, name), strings.Join(groupBy, ", ")))
+	}
+	return nil
 }
 
 // resolveNamespaceForBareName queries the target_info union for any series
@@ -414,12 +437,28 @@ func detectMetricsMode(ctx context.Context, client *prometheus.Client, datasourc
 // fetchServiceDetail runs the metadata + RED queries in parallel and folds
 // the responses into one ServiceDetail. Latency and error queries return
 // zero with HasX=false when there's no series in the window; the table
-// codec renders those as `-`.
-func fetchServiceDetail(ctx context.Context, client *prometheus.Client, datasourceUID, namespace, name, window string, kinds []string, mode MetricsMode, matchers []Matcher) (*ServiceDetail, error) {
+// codec renders those as `-`. The rate/error/p95 PromQL expressions are
+// built once and reused for both the query and the returned Explore links,
+// so the two can never drift apart.
+func fetchServiceDetail(ctx context.Context, client *prometheus.Client, grafanaURL, datasourceUID string, orgID int64, namespace, name, window string, kinds []string, mode MetricsMode, matchers []Matcher) (*ServiceDetail, error) {
 	names, ok := metricNamesByMode(mode)
 	if !ok {
 		return nil, fmt.Errorf("unknown metrics mode %q", mode)
 	}
+
+	rateExpr, err := buildRateQuery(names, namespace, name, window, kinds, matchers, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build rate query: %w", err)
+	}
+	errorExpr, err := buildErrorRateQuery(names, namespace, name, window, kinds, matchers, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build error-rate query: %w", err)
+	}
+	p95Expr, err := buildLatencyQuantileQuery(names, namespace, name, window, kinds, 0.95, matchers, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build p95 latency query: %w", err)
+	}
+	phiExprs := map[float64]string{0.95: p95Expr}
 
 	metrics := targetInfoMetrics()
 	metadataResponses := make([]*prometheus.QueryResponse, len(metrics))
@@ -441,11 +480,7 @@ func fetchServiceDetail(ctx context.Context, client *prometheus.Client, datasour
 		})
 	}
 	eg.Go(func() error {
-		expr, err := buildRateQuery(names, namespace, name, window, kinds, matchers, nil)
-		if err != nil {
-			return fmt.Errorf("failed to build rate query: %w", err)
-		}
-		resp, err := client.Query(egCtx, datasourceUID, prometheus.QueryRequest{Query: expr})
+		resp, err := client.Query(egCtx, datasourceUID, prometheus.QueryRequest{Query: rateExpr})
 		if err != nil {
 			return fmt.Errorf("rate query failed: %w", err)
 		}
@@ -453,11 +488,7 @@ func fetchServiceDetail(ctx context.Context, client *prometheus.Client, datasour
 		return nil
 	})
 	eg.Go(func() error {
-		expr, err := buildErrorRateQuery(names, namespace, name, window, kinds, matchers, nil)
-		if err != nil {
-			return fmt.Errorf("failed to build error-rate query: %w", err)
-		}
-		resp, err := client.Query(egCtx, datasourceUID, prometheus.QueryRequest{Query: expr})
+		resp, err := client.Query(egCtx, datasourceUID, prometheus.QueryRequest{Query: errorExpr})
 		if err != nil {
 			return fmt.Errorf("error-rate query failed: %w", err)
 		}
@@ -470,9 +501,13 @@ func fetchServiceDetail(ctx context.Context, client *prometheus.Client, datasour
 		0.99: &p99Resp,
 	} {
 		eg.Go(func() error {
-			expr, err := buildLatencyQuantileQuery(names, namespace, name, window, kinds, phi, matchers, nil)
-			if err != nil {
-				return fmt.Errorf("failed to build p%.0f latency query: %w", phi*100, err)
+			expr, ok := phiExprs[phi]
+			if !ok {
+				var err error
+				expr, err = buildLatencyQuantileQuery(names, namespace, name, window, kinds, phi, matchers, nil)
+				if err != nil {
+					return fmt.Errorf("failed to build p%.0f latency query: %w", phi*100, err)
+				}
 			}
 			resp, err := client.Query(egCtx, datasourceUID, prometheus.QueryRequest{Query: expr})
 			if err != nil {
@@ -520,6 +555,7 @@ func fetchServiceDetail(ctx context.Context, client *prometheus.Client, datasour
 			HasLatencyP95: hasP95,
 			HasLatencyP99: hasP99,
 		},
+		Links: buildServiceLinks(grafanaURL, datasourceUID, orgID, window, rateExpr, errorExpr, p95Expr),
 	}, nil
 }
 
@@ -527,8 +563,11 @@ func fetchServiceDetail(ctx context.Context, client *prometheus.Client, datasour
 // rate/error/latency queries in parallel and folds them into one
 // GroupedServiceDetail — a RED row per distinct --group-by combination.
 // Metadata stays service-level (language/labels identify the service, not
-// the group); only the RED numbers are pivoted per group.
-func fetchGroupedServiceDetail(ctx context.Context, client *prometheus.Client, datasourceUID, namespace, name, window string, kinds []string, mode MetricsMode, matchers []Matcher, groupBy []string) (*GroupedServiceDetail, error) {
+// the group); only the RED numbers are pivoted per group. Each item also
+// gets its own Explore links, scoped down to that one group's label values
+// — the same treatment the ungrouped `get` result gets, so --group-by
+// output isn't missing a field the plain result has.
+func fetchGroupedServiceDetail(ctx context.Context, client *prometheus.Client, grafanaURL, datasourceUID string, orgID int64, namespace, name, window string, kinds []string, mode MetricsMode, matchers []Matcher, groupBy []string) (*GroupedServiceDetail, error) {
 	names, ok := metricNamesByMode(mode)
 	if !ok {
 		return nil, fmt.Errorf("unknown metrics mode %q", mode)
@@ -613,6 +652,11 @@ func fetchGroupedServiceDetail(ctx context.Context, client *prometheus.Client, d
 		extractGrouped(p95Resp, groupBy),
 		extractGrouped(p99Resp, groupBy),
 	)
+	if grafanaURL != "" && datasourceUID != "" {
+		for i := range items {
+			items[i].Links = buildGroupedItemLinks(grafanaURL, datasourceUID, orgID, names, namespace, name, window, kinds, matchers, groupBy, items[i].Labels)
+		}
+	}
 
 	return &GroupedServiceDetail{
 		Service: svc,
@@ -620,6 +664,32 @@ func fetchGroupedServiceDetail(ctx context.Context, client *prometheus.Client, d
 		Window:  window,
 		Items:   items,
 	}, nil
+}
+
+// buildGroupedItemLinks builds Explore links for one --group-by row by
+// pinning the group's own label values as extra equality matchers and
+// re-running the same rate/error/p95 builders with groupBy=nil — the
+// resulting single-series expressions are what that row's numbers actually
+// came from, scoped down from the aggregate query to just this group.
+func buildGroupedItemLinks(grafanaURL, datasourceUID string, orgID int64, names metricNames, namespace, name, window string, kinds []string, matchers []Matcher, groupBy []string, labels map[string]string) *ServiceLinks {
+	groupMatchers := make([]Matcher, len(matchers), len(matchers)+len(groupBy))
+	copy(groupMatchers, matchers)
+	for _, l := range groupBy {
+		groupMatchers = append(groupMatchers, Matcher{Label: l, Op: "=", Value: labels[l]})
+	}
+	rateExpr, err := buildRateQuery(names, namespace, name, window, kinds, groupMatchers, nil)
+	if err != nil {
+		return nil
+	}
+	errorExpr, err := buildErrorRateQuery(names, namespace, name, window, kinds, groupMatchers, nil)
+	if err != nil {
+		return nil
+	}
+	p95Expr, err := buildLatencyQuantileQuery(names, namespace, name, window, kinds, 0.95, groupMatchers, nil)
+	if err != nil {
+		return nil
+	}
+	return buildServiceLinks(grafanaURL, datasourceUID, orgID, window, rateExpr, errorExpr, p95Expr)
 }
 
 // anyGroupHasTraffic reports whether at least one grouped RED row saw
@@ -718,7 +788,10 @@ func (c *serviceDetailCodec) Encode(w io.Writer, v any) error {
 	writeRow("Namespace", orDash(d.Namespace))
 	writeRow("Language", orDash(d.Language))
 	writeRow("Status", instrumentationStatus(d.Instrumented))
-	writeRow("Environment", orDash(environmentValue(d.Labels)))
+	writeRow("Environment", orDash(d.Environment))
+	writeRow("Cluster", orDash(d.Cluster))
+	writeRow("Version", orDash(d.Version))
+	writeRow("Kind", orDash(d.Kind))
 
 	labels := defaultLabels()
 	if c.Wide {
@@ -728,6 +801,9 @@ func (c *serviceDetailCodec) Encode(w io.Writer, v any) error {
 	for _, lbl := range labels {
 		if lbl == "deployment_environment" || lbl == "deployment_environment_name" {
 			continue // already surfaced as `Environment`
+		}
+		if lbl == "cluster" {
+			continue // already surfaced as `Cluster` (k8s_cluster_name still walks separately)
 		}
 		value := d.Labels[lbl]
 		if value == "" {

@@ -249,7 +249,7 @@ func TestResource_SchemaAndExampleAreDerived(t *testing.T) {
 	p := adapter.NewProvider("fakeprovider", "Fake provider for tests", fakeDeps, res)
 	reg := p.TypedRegistrations()[0]
 
-	assert.NotNil(t, reg.Schema, "schema must be auto-derived from T, not hand-threaded")
+	assert.True(t, reg.Schema != nil && reg.Schema() != nil, "schema must be auto-derived from T, not hand-threaded")
 	require.NotNil(t, reg.Example, "example must be derived from Resource.Example")
 	assert.Contains(t, string(reg.Example), `"my-gadget"`)
 
@@ -342,6 +342,38 @@ func TestResource_Examples(t *testing.T) {
 			require.Equal(t, "test.grafana.app/v1", obj.GetAPIVersion())
 			require.Equal(t, "Gadget", obj.GetKind())
 			require.Equal(t, map[string]any{"name": "my-gadget"}, obj.Object["spec"])
+		})
+	}
+}
+
+// Both front doors must derive envelopes and capabilities from the declaration.
+func TestResource_TypedCRUD(t *testing.T) {
+	for _, ns := range []string{"", "stack-1"} {
+		t.Run(ns, func(t *testing.T) {
+			res := adapter.Resource[fakeGadget]{Group: "test.grafana.app", Version: "v1alpha1", Kind: "Gadget", Namespace: ns, StripFields: []string{"value"}, Example: &fakeGadget{Name: "example", Value: "server-only"}}
+			client := &readOnlyGadgetClient{items: []fakeGadget{{Name: "g-1", Value: "server-only"}, {Name: "g-2"}}}
+			crud := res.TypedCRUD(client, "loaded-ns")
+			items, err := crud.List(t.Context(), 1)
+			require.NoError(t, err)
+			require.Len(t, items, 1)
+			obj, err := crud.ToUnstructured(items[0].Spec)
+			require.NoError(t, err)
+			wantNS := ns
+			if wantNS == "" {
+				wantNS = "loaded-ns"
+			}
+			assert.Equal(t, wantNS, obj.GetNamespace())
+			assert.Equal(t, "g-1", obj.GetName())
+			spec, _, err := unstructured.NestedMap(obj.Object, "spec")
+			require.NoError(t, err)
+			assert.NotContains(t, spec, "value")
+			assert.JSONEq(t, `{"apiVersion":"test.grafana.app/v1alpha1","kind":"Gadget","metadata":{"name":"example","namespace":""},"spec":{"name":"example"}}`, string(crud.Example))
+			require.NoError(t, unstructured.SetNestedField(obj.Object, "wrong-spec-name", "spec", "name"))
+			restored, err := crud.FromUnstructured(&obj)
+			require.NoError(t, err)
+			assert.Equal(t, "g-1", restored.Name)
+			_, err = crud.Create(t.Context(), &adapter.TypedObject[fakeGadget]{Spec: fakeGadget{Name: "g-3"}})
+			assert.ErrorIs(t, err, errors.ErrUnsupported)
 		})
 	}
 }

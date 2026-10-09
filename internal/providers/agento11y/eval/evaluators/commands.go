@@ -9,14 +9,12 @@ import (
 	"strconv"
 
 	"github.com/goccy/go-yaml"
-	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/agento11y/agento11yhttp"
 	"github.com/grafana/gcx/internal/providers/agento11y/commandutil"
 	"github.com/grafana/gcx/internal/providers/agento11y/eval"
 	"github.com/grafana/gcx/internal/resources/adapter"
-	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -47,8 +45,7 @@ type listOpts struct {
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &TableCodec{})
-	o.IO.RegisterCustomCodec("wide", &TableCodec{Wide: true})
+	cmdio.RegisterTable(&o.IO, Table())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of evaluators to return (0 for no limit)")
@@ -291,46 +288,14 @@ func ReadEvaluatorFile(path string, stdin io.Reader) (*eval.EvaluatorDefinition,
 
 // --- table codec ---
 
-type TableCodec struct {
-	Wide bool
-}
-
-func (c *TableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
-	}
-	return "table"
-}
-
-func (c *TableCodec) Encode(w io.Writer, v any) error {
-	evaluators, ok := v.([]eval.EvaluatorDefinition)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []EvaluatorDefinition")
-	}
-
-	var t *style.TableBuilder
-	if c.Wide {
-		t = style.NewTable("ID", "VERSION", "KIND", "DESCRIPTION", "OUTPUTS", "CREATED BY", "CREATED AT")
-	} else {
-		t = style.NewTable("ID", "VERSION", "KIND", "DESCRIPTION")
-	}
-
-	for _, e := range evaluators {
-		desc := agento11yhttp.Truncate(e.Description, 40)
-
-		if c.Wide {
-			createdBy := e.CreatedBy
-			if createdBy == "" {
-				createdBy = "-"
-			}
-			t.Row(e.EvaluatorID, e.Version, e.Kind, desc, strconv.Itoa(len(e.OutputKeys)), createdBy, agento11yhttp.FormatTime(e.CreatedAt))
-		} else {
-			t.Row(e.EvaluatorID, e.Version, e.Kind, desc)
-		}
-	}
-	return t.Render(w)
-}
-
-func (c *TableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
+func Table() cmdio.Table[eval.EvaluatorDefinition] {
+	return cmdio.Table[eval.EvaluatorDefinition]{Columns: []cmdio.Column[eval.EvaluatorDefinition]{
+		{Header: "ID", Content: func(r eval.EvaluatorDefinition) string { return r.EvaluatorID }},
+		{Header: "VERSION", Content: func(r eval.EvaluatorDefinition) string { return r.Version }},
+		{Header: "KIND", Content: func(r eval.EvaluatorDefinition) string { return r.Kind }},
+		{Header: "DESCRIPTION", Content: func(r eval.EvaluatorDefinition) string { return agento11yhttp.Truncate(r.Description, 40) }},
+		{Header: "OUTPUTS", Visible: cmdio.WideOnly, Content: func(r eval.EvaluatorDefinition) string { return strconv.Itoa(len(r.OutputKeys)) }},
+		{Header: "CREATED BY", Visible: cmdio.WideOnly, Content: func(r eval.EvaluatorDefinition) string { return cmdio.OrDash(r.CreatedBy) }},
+		{Header: "CREATED AT", Visible: cmdio.WideOnly, Content: func(r eval.EvaluatorDefinition) string { return agento11yhttp.FormatTime(r.CreatedAt) }},
+	}}
 }

@@ -1723,6 +1723,7 @@ func TestRun_MTLSOnlyAuth(t *testing.T) {
 // token, the ErrNeedInput hint guides the user to where a token is created and
 // which scopes are recommended (issue #820).
 func TestRun_CloudTokenHintGuidance(t *testing.T) {
+	usePlaintextCredentialStorage(t)
 	t.Setenv("GCX_AGENT_MODE", "0")
 	agent.ResetForTesting()
 	t.Cleanup(func() { agent.ResetForTesting() })
@@ -1815,6 +1816,7 @@ func TestRun_PersistsDiscoveredStackID(t *testing.T) {
 // progress Writer (wrapping up the OAuth step) and frames the upcoming optional
 // Cloud API token prompt — rather than jumping straight into the prompt.
 func TestRun_OAuthSuccess_AnnouncesSignInBeforeCloudTokenPrompt(t *testing.T) {
+	usePlaintextCredentialStorage(t)
 	t.Setenv("GCX_AGENT_MODE", "0")
 	agent.ResetForTesting()
 

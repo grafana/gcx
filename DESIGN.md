@@ -35,9 +35,13 @@ Every command works identically for humans and agents. Agent mode changes defaul
 | Default output | the command's narrow table codec | `agents` (compact JSON with spill) |
 | Colors | On (TTY) | Off |
 | Truncation | On (TTY) | Off |
-| Prompts | Interactive | Rejected unless `--force` or enabled `GCX_AUTO_APPROVE` bypasses confirmation (see [safety.md](docs/design/safety.md) § 3.3) |
+| Prompts | Interactive | Non-destructive prompts use defaults; destructive actions need `--force` or enabled `GCX_AUTO_APPROVE` (see [safety.md](docs/design/safety.md) § 3.3) |
 
-Agent mode is active when `GCX_AGENT_MODE=true`, or auto-detected from harness env vars (`CLAUDECODE`, `CLAUDE_CODE`, and others). An explicitly passed `--agent`/`--agent=false` overrides every environment variable in both directions — see [agent-mode.md § 6.1](docs/design/agent-mode.md) for the full order.
+Agent mode is active when `GCX_AGENT_MODE=true`, or when gcx detects a native
+agent marker or a supported explicit identity. See the
+[agent environment reference](docs/design/environment-variables.md#agent-mode-variables).
+An explicitly passed `--agent`/`--agent=false` overrides environment detection
+in both directions; see [agent-mode.md § 6.1](docs/design/agent-mode.md#61-detection).
 Explicit flags always override: `--output json` works in human mode; `--output text` works in agent mode.
 
 See [docs/design/agent-mode.md](docs/design/agent-mode.md) for detection logic and opt-out.
@@ -48,7 +52,7 @@ See [docs/design/agent-mode.md](docs/design/agent-mode.md) for detection logic a
 
 - Resource data and operation summaries → stdout
 - Progress feedback, warnings, detailed error messages → stderr
-- All output goes through the codec system — no unstructured prose as primary output
+- Primary output follows the declared protocol through the shared output system; finite commands do not emit ad-hoc prose (see [CONSTITUTION.md § Dual-Purpose Design](CONSTITUTION.md#dual-purpose-design))
 - Data fetching is **format-agnostic**: commands fetch all available data; codecs control presentation
 
 Default formats by command type:
@@ -57,7 +61,8 @@ Default formats by command type:
 |-------------|---------|-----------|
 | `list`, `get` | a narrow table codec (`text` or `table`) | Human-scannable |
 | `config view` | `yaml` | Config is YAML-native |
-| `push`, `pull`, `delete` | structured operation summary | Operations, not data |
+| `push`, `delete` | structured operation summary | Operations, not data |
+| `resources pull` | `json` (pinned file format) | Files are the output; deprecated SLO pulls retain fixed YAML |
 | Agent mode | `agents` | Compact JSON with temp-file spill |
 
 There is no repo-wide format set — read a command's own `-o` line, and see
@@ -105,12 +110,24 @@ WARN http error   method=GET url=https://... error="connection refused"
 
 ### `--insecure-log-http-payload`
 
-Dumps the full request and response bodies (via `httputil.DumpRequest` /
+Dumps the full request and response bodies (via `httputil.DumpRequestOut` /
 `httputil.DumpResponse`) at Debug level. Requires `-vvv` to be visible.
 
 ```
 gcx --insecure-log-http-payload -vvv slo list
 ```
+
+Each dump carries a label, so you can find it in the log: `http request dump`
+and `http response dump`. A wire dump holds no word that identifies it, so
+searching for "body" finds nothing.
+
+The dump is the innermost transport layer, so it shows every header that an
+outer layer adds, including the bearer token that the OAuth transport adds. The
+dump renders an HTTP/1.1 request line, so the framing is not exact on an HTTP/2
+connection. The dump also covers the OAuth token refresh exchange, because
+`auth.RefreshTransport` sends the refresh request through the same inner layer.
+When a refresh fails, gcx never sends your original request, so only the refresh
+exchange appears. The `WARN http error` line carries the reason.
 
 **Warning:** The dump includes all headers, including `Authorization`. Treat
 the output as sensitive — do not paste it into public issues or logs.
@@ -136,8 +153,8 @@ See [docs/design/exit-codes.md](docs/design/exit-codes.md) for implementation wi
 ## Safety Patterns
 
 - **Idempotent by default**: `push` is create-or-update. Safe to run repeatedly.
-- **Dry-run available**: `push` and `delete` accept `--dry-run`.
-- **Prompt before destructive operations**: cloud provider delete commands prompt for confirmation unless `--force` or `GCX_AUTO_APPROVE`; agent mode requires `--force`. `resources delete` has no prompt yet (coming in [#241](https://github.com/grafana/gcx/issues/241)) — type-only selectors require `--force` (`--yes` also enables it).
+- **Dry-run available**: `resources push` and `resources delete` accept `--dry-run`; provider commands document their own support.
+- **Prompt before destructive operations**: cloud provider delete commands prompt for confirmation unless `--force` or enabled `GCX_AUTO_APPROVE` bypasses it; agent mode rejects a destructive operation without either bypass. `resources delete` uses its existing selector guard instead of a prompt: type-only selectors require `--force` (`--yes` also enables it).
 - **No prompt for reversible ops**: push, pull, config changes do not prompt.
 
 See [docs/design/safety.md](docs/design/safety.md) for implementation patterns and flag precedence.

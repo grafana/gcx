@@ -92,6 +92,46 @@ canonical portable skill bundle.
 | `gcx-observability` | Roll out end-to-end observability: instrumentation, SLOs, alerts, synth, k6, IRM, dashboards, and cost optimization |
 | `gcx-demo` | Run a narrated, read-only demo tour of gcx across every Grafana Cloud product area — for customer or colleague presentations |
 
+## Skill Lifecycle
+
+`skills-catalog.yaml` records release metadata independently of the skill files:
+
+- **active:** bundled and available for installation and updates.
+- **deprecated:** still bundled; install, get, and update report a warning.
+- **retired:** no bundled content; existing local copies remain visible and
+  removable with `gcx agent skills uninstall`, including `--all --yes`.
+
+Entries may include an optional `replacement` skill name and `message` explaining
+what changed. Replacements are informational labels, not redirects; gcx does not
+follow replacement chains. Every bundled skill needs an active or deprecated
+entry. When removing content, change its entry to retired and **keep it
+indefinitely** so users can skip releases. Append every new bundled name to
+`internal/skills/testdata/shipped_skills.txt`. This committed snapshot is append-only:
+never remove names or regenerate it from the current bundle during retirement.
+`TestBundledCatalog` requires the catalog to retain every snapshot name, even after
+its directory disappears, and requires new bundled names to enter the snapshot.
+It also checks catalog/content consistency and replacement existence against the
+embedded release. These checks run only in tests so a packaging mismatch cannot
+block uninstall.
+
+For the `.agents` installer, commands reconcile the catalog with the selected
+`--dir` (default `~/.agents`). `list` includes bundled skills and locally present
+retired entries, including incomplete installations without `SKILL.md`. `update`
+refreshes installed bundled skills and reports retired copies without changing
+them. It never installs replacements automatically or prunes obsolete local files.
+Install/update receipts include lifecycle notices in JSON as well as warnings on
+stderr. `get` reads only bundled content, not a local copy.
+
+Directories absent from the catalog are unmanaged and never targeted. Reconciliation
+tracks catalog membership internally in `SkillState.Known`, separate from the
+release `status`.
+Per-skill stat failures report `installed: false` without blocking inventory or
+operations on other skills. Catalog names do **not** establish ownership of local files:
+there is no installation receipt or local-modification tracking yet. Explicit
+uninstall removes the selected directory and its local edits. These lifecycle
+rules apply to `gcx agent skills`; the Claude plugin manager consumes the skill
+content directly and does not interpret the catalog.
+
 ## Agents
 
 Agents are specialist personas invoked automatically for multi-step tasks.
@@ -108,6 +148,7 @@ claude-plugin/
 │   └── plugin.json           # Plugin manifest
 ├── agents/
 │   └── grafana-debugger.md   # Claude-specific specialist agent
+├── skills-catalog.yaml      # Release lifecycle metadata, including retired names
 └── skills/
     ├── <skill-name>/
     │   ├── SKILL.md

@@ -5,7 +5,6 @@ import (
 	"io"
 	"os"
 
-	"charm.land/glamour/v2"
 	"charm.land/lipgloss/v2"
 	"golang.org/x/term"
 )
@@ -24,12 +23,9 @@ import (
 // output.
 func RenderMarkdown(w io.Writer, source string) error {
 	if IsTerminalWriter(w) && IsStylingEnabled() {
-		r, err := glamour.NewTermRenderer(glamour.WithStandardStyle("dark"), glamour.WithWordWrap(0))
-		if err == nil {
-			if out, err := r.Render(source); err == nil {
-				_, err := lipgloss.Fprint(w, out)
-				return err
-			}
+		if out, err := renderMarkdown(source, false); err == nil {
+			_, err := lipgloss.Fprint(w, out)
+			return err
 		}
 	}
 	_, err := fmt.Fprint(w, source)

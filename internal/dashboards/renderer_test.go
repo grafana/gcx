@@ -2,6 +2,8 @@ package dashboards_test
 
 import (
 	"context"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -14,6 +16,12 @@ import (
 	"github.com/grafana/gcx/internal/dashboards"
 	"k8s.io/client-go/rest"
 )
+
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
 
 // newTestClient creates a renderer Client pointing at the given test server.
 func newTestClient(t *testing.T, server *httptest.Server) *dashboards.Client {
@@ -289,6 +297,133 @@ func TestRender_InvalidTimeRange(t *testing.T) {
 	}
 	if called {
 		t.Error("server was called despite invalid time range")
+	}
+}
+
+func TestRender_TimeoutOverridesHTTPClientPerRequest(t *testing.T) {
+	const configuredTimeout = 2 * time.Second
+
+	var remaining []time.Duration
+	cfg := config.NamespacedRESTConfig{
+		Config: rest.Config{
+			Host:    "http://example.test",
+			Timeout: configuredTimeout,
+			WrapTransport: func(http.RoundTripper) http.RoundTripper {
+				return roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+					deadline, ok := req.Context().Deadline()
+					if !ok {
+						t.Fatal("request context has no HTTP client deadline")
+					}
+					remaining = append(remaining, time.Until(deadline))
+					return &http.Response{
+						StatusCode: http.StatusOK,
+						Body:       io.NopCloser(strings.NewReader("\x89PNG\r\n\x1a\n")),
+						Header:     make(http.Header),
+						Request:    req,
+					}, nil
+				})
+			},
+		},
+		Namespace: "default",
+	}
+	client, err := dashboards.NewClient(cfg)
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+
+	if _, err := client.Render(context.Background(), dashboards.RenderRequest{UID: "with-timeout", Timeout: 3 * time.Minute}); err != nil {
+		t.Fatalf("Render() with timeout = %v", err)
+	}
+	if _, err := client.Render(context.Background(), dashboards.RenderRequest{UID: "without-timeout"}); err != nil {
+		t.Fatalf("Render() without timeout = %v", err)
+	}
+	deadlineCtx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	if _, err := client.Render(deadlineCtx, dashboards.RenderRequest{UID: "earlier-deadline", Timeout: 3 * time.Minute}); err != nil {
+		t.Fatalf("Render() with earlier parent deadline = %v", err)
+	}
+
+	if len(remaining) != 3 {
+		t.Fatalf("captured deadlines = %d, want 3", len(remaining))
+	}
+	assertDurationNear(t, remaining[0], 3*time.Minute+30*time.Second)
+	assertDurationNear(t, remaining[1], configuredTimeout)
+	assertDurationNear(t, remaining[2], 500*time.Millisecond)
+}
+
+func TestRender_TimeoutPreservesParentCancellation(t *testing.T) {
+	requestStarted := make(chan struct{})
+	cfg := config.NamespacedRESTConfig{
+		Config: rest.Config{
+			Host: "http://example.test",
+			WrapTransport: func(http.RoundTripper) http.RoundTripper {
+				return roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+					close(requestStarted)
+					<-req.Context().Done()
+					return nil, req.Context().Err()
+				})
+			},
+		},
+		Namespace: "default",
+	}
+	client, err := dashboards.NewClient(cfg)
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	result := make(chan error, 1)
+	go func() {
+		_, err := client.Render(ctx, dashboards.RenderRequest{UID: "abc", Timeout: 3 * time.Minute})
+		result <- err
+	}()
+
+	select {
+	case <-requestStarted:
+		cancel()
+	case <-time.After(time.Second):
+		t.Fatal("render request did not start")
+	}
+
+	select {
+	case err := <-result:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("Render() error = %v, want context.Canceled", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Render() did not stop after parent cancellation")
+	}
+}
+
+func TestRender_TimeoutPreservesAuthenticatedTransport(t *testing.T) {
+	const token = "renderer-token"
+	var gotAuthorization string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuthorization = r.Header.Get("Authorization")
+		_, _ = w.Write([]byte("\x89PNG\r\n\x1a\n"))
+	}))
+	defer server.Close()
+
+	client, err := dashboards.NewClient(config.NamespacedRESTConfig{
+		Config: rest.Config{Host: server.URL, BearerToken: token},
+	})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	if _, err := client.Render(context.Background(), dashboards.RenderRequest{UID: "abc", Timeout: time.Minute}); err != nil {
+		t.Fatalf("Render() = %v", err)
+	}
+
+	if want := "Bearer " + token; gotAuthorization != want {
+		t.Errorf("Authorization = %q, want %q", gotAuthorization, want)
+	}
+}
+
+func assertDurationNear(t *testing.T, got, want time.Duration) {
+	t.Helper()
+	const tolerance = time.Second
+	if got < want-tolerance || got > want+tolerance {
+		t.Errorf("duration = %v, want %v (+/- %v)", got, want, tolerance)
 	}
 }
 

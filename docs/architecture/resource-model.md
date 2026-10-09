@@ -141,7 +141,9 @@ type Selector struct {
 `PartialGVK` (line 140) accepts any level of specificity:
 
 ```
-Input string format:  <resource>[.<version>.<group>][/<uid1>[,<uid2>...]]
+Input string formats:
+  <resource>[.<group>][/<uid1>[,<uid2>...]]
+  <resource>.<version>.<group>[/<uid1>[,<uid2>...]]
 
 Parsing rules (SplitN on "."):
   1 part:  "dashboards"               → Resource="dashboards"
@@ -150,6 +152,17 @@ Parsing rules (SplitN on "."):
                                       → Resource="dashboards", Version="v1alpha1",
                                         Group="dashboard.grafana.app"
 ```
+
+For three or more dot-separated segments, discovery first tries the parsed
+`resource.version.group` reading. If that resource is not served at the given
+group and version, `PartialGVK.GroupOnlyCandidate()` supplies the alternate group
+name retained in the parsed selector's `FallbackGroup`, with no version. For example,
+`dashboards.dashboard.grafana.app` resolves to group `dashboard.grafana.app`
+without a version. This also works when a group's first label looks like a
+version, and applies to both discovered resources and static provider adapters.
+If neither reading resolves, the selector error describes both candidates.
+Structured `PartialGVK` values leave `FallbackGroup` empty, so explicitly supplied
+group/version pairs (such as dashboards `--api-version`) require an exact match.
 
 FilterType is assigned during parsing (line 102-125):
 - No UID → `FilterTypeAll`
@@ -192,14 +205,15 @@ Selector (PartialGVK)
       |
       v  registry.MakeFilters(opts)
       |
-      ├── version specified? ──── LookupPartialGVK ─────────→ single Descriptor → Filter
-      |
-      ├── preferredVersionOnly? ─ LookupPartialGVK ─────────→ single Descriptor → Filter
+      ├── preferredVersionOnly? ─ LookupPreferredPerGroup ─→ []Descriptor → []Filters
       |
       └── all versions? ───────── LookupAllVersionsForPartialGVK → []Descriptor → []Filters
 ```
 
-`MakeFiltersOptions.PreferredVersionOnly` controls whether to resolve to one filter per type (pull uses all versions; push uses preferred).
+`MakeFiltersOptions.PreferredVersionOnly` controls whether to resolve to the
+preferred version per group or all served versions. A supported explicit version
+returns a single descriptor in either mode. If only the group-only candidate
+resolves, the same preferred/all-version policy applies to that group.
 
 ---
 
@@ -248,11 +262,17 @@ apiregistration.k8s.io          — internal K8s
 featuretoggle.grafana.app       — read-only feature flags
 service.grafana.app             — internal service registry
 userstorage.grafana.app         — internal user storage
-notifications.alerting.grafana.app — pending decision
 iam.grafana.app                 — identity/access management
 ```
 
-Additionally, `FilterDiscoveryResults()` (line 181) excludes:
+`partiallyExposedGroups` keeps a group's `APIGroup` entry (and its preferred
+version) but hides every resource not on the group's allowlist:
+
+```
+notifications.alerting.grafana.app — only routingtrees
+```
+
+Additionally, `FilterDiscoveryResults()` excludes:
 - Non-namespaced resources (line 207) — all Grafana resources are namespaced
 - Subresources (containing `/` in name, line 212) — e.g. `dashboards/status`
 
@@ -432,6 +452,14 @@ Registration
   +-- Factory func(ctx) (ResourceAdapter, error)
 ```
 
+Provider commands bind the same declaration through `Resource.TypedCRUD(client,
+namespace)`, sharing capability dispatch, descriptor, stripping, and examples
+with generic resource factories. Grafana-backed providers can use
+`providers.BindGrafanaResource(loader, declaration).Load(ctx)` to construct the client
+and return the resolved config snapshot for auxiliary queries. Convert manifests
+with `TypedCRUD.ToUnstructured` / `FromUnstructured`; a nil-client binding supports
+offline conversion without loading credentials.
+
 Providers can derive a registration from an `adapter.Resource[T]` declaration
 through `adapter.NewProvider`. Providers whose client methods need explicit
 adapters use `adapter.BuildRegistration[T, C]` instead.
@@ -487,6 +515,7 @@ PartialGVK                         Descriptor
 │ Group   string       │  ──via──→  │ GroupVersion  schema.GV      │
 │ Version string       │  registry  │ Kind          string          │
 │ Resource string      │            │ Singular      string          │
+│ FallbackGroup string │            │                               │
 └─────────────────────┘            │ Plural        string          │
                                    └──────────────────────────────┘
          │                                       │

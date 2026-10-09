@@ -136,17 +136,29 @@ func conversationGetCommand(configOpts *providers.ConfigLoader) *cobra.Command {
 	opts := &conversationGetOpts{}
 
 	cmd := &cobra.Command{
-		Use:   "get <conversation-id>",
+		Use:   "get <id-or-url>",
 		Short: "Get a conversation transcript",
-		Long: `Fetch conversation metadata and message history for a conversation ID.
+		Long: `Fetch conversation metadata and message history by conversation ID or shared URL.
 
-Use this to pull a web Assistant chat into a coding agent before continuing it
-with 'gcx assistant prompt --context-id'.`,
-		Args: cobra.ExactArgs(1),
+AI SDK conversations include the server-visible main thread. Shared conversations
+are read-only snapshots in this workflow; transcript retrieval does not establish
+that a conversation can be continued with 'gcx assistant prompt --context-id'.`,
+		Args: func(cmd *cobra.Command, args []string) error {
+			if err := cobra.ExactArgs(1)(cmd, args); err != nil {
+				return err
+			}
+			_, err := assistant.ParseConversationReference(args[0])
+			return err
+		},
 		Example: `  gcx assistant conversation get 295a674f-3a3d-44e8-9166-3f8054409f65
-  gcx assistant conversation get 295a674f-3a3d-44e8-9166-3f8054409f65 -o json`,
+  gcx assistant conversation get 295a674f-3a3d-44e8-9166-3f8054409f65 -o json
+  gcx assistant conversation get 'https://example.grafana.net/a/grafana-assistant-app/chats/shared/295a674f-3a3d-44e8-9166-3f8054409f65'`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
+				return err
+			}
+			ref, err := assistant.ParseConversationReference(args[0])
+			if err != nil {
 				return err
 			}
 
@@ -154,23 +166,16 @@ with 'gcx assistant prompt --context-id'.`,
 			if err != nil {
 				return err
 			}
+			if err := ref.ValidateGrafanaURL(clientOpts.GrafanaURL); err != nil {
+				return err
+			}
 			client := assistant.New(clientOpts)
 
-			chatID := args[0]
-			chat, err := client.GetChat(cmd.Context(), chatID)
+			transcript, err := client.GetConversation(cmd.Context(), ref)
 			if err != nil {
 				return fmt.Errorf("failed to fetch conversation: %w", err)
 			}
-
-			messages, err := client.GetChatMessages(cmd.Context(), chatID)
-			if err != nil {
-				return fmt.Errorf("failed to fetch conversation messages: %w", err)
-			}
-
-			return opts.IO.Encode(cmd.OutOrStdout(), assistant.ConversationTranscript{
-				Chat:     *chat,
-				Messages: messages,
-			})
+			return opts.IO.Encode(cmd.OutOrStdout(), *transcript)
 		},
 	}
 

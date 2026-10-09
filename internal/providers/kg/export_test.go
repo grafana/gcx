@@ -237,3 +237,8 @@ func EncodeDiagnoseResult(w io.Writer, ioOpts *cmdio.Options, result any, failed
 // NewKGOpenLinkForTest wraps newKGOpenLink for encoding-level tests (the full
 // command is not executed in tests because it would launch a host browser).
 func NewKGOpenLinkForTest(url string) any { return newKGOpenLink(url) }
+
+// RcaWorkbenchURLForTest wraps rcaWorkbenchURL for tests.
+func RcaWorkbenchURLForTest(host, entityType, name string, scope map[string]string, startMs, endMs int64, since string) string {
+	return rcaWorkbenchURL(host, entityType, name, scope, startMs, endMs, since)
+}

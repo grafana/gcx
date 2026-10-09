@@ -13,6 +13,7 @@ import (
 // collector app plugin proxy on the stack, so it needs no grafana.com scope.
 func TestDefaultGCOMScopes(t *testing.T) {
 	want := []string{
+		"profile",
 		"stacks:read", "stacks:write", "stacks:delete",
 		"metrics:write",
 		"logs:write",

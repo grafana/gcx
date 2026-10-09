@@ -1,0 +1,3 @@
+ARTIFACT-ID  NAME        KIND        MIME              PARENT-KIND  PARENT-ID  SIZE  CREATED
+artifact-1   Transcript  transcript  application/json  trial        trial-1    1024  2026-09-01 12:30
+										-                                         -     -

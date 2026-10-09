@@ -163,6 +163,7 @@ func TestClient_Get(t *testing.T) {
 				require.Error(t, err)
 				if tt.name == "not found" {
 					require.ErrorIs(t, err, definitions.ErrNotFound)
+					require.EqualError(t, err, "SLO not found")
 				}
 				return
 			}

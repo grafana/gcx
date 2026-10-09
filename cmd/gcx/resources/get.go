@@ -166,10 +166,10 @@ func getCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	gcx resources get dashboards/foo
 	gcx resources get dashboards/foo,bar
 
-	# Single resource kind, long kind format:
+	# Single resource kind, full API group:
 
-	gcx resources get dashboard.dashboards/foo
-	gcx resources get dashboard.dashboards/foo,bar
+	gcx resources get dashboards.dashboard.grafana.app/foo
+	gcx resources get dashboards.dashboard.grafana.app/foo,bar
 
 	# Single resource kind, long kind format with version:
 
@@ -181,21 +181,24 @@ func getCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	gcx resources get dashboards/foo folders/qux
 	gcx resources get dashboards/foo,bar folders/qux,quux
 
-	# Multiple resource kinds, long kind format:
+	# Multiple resource kinds, full API groups:
 
-	gcx resources get dashboard.dashboards/foo folder.folders/qux
-	gcx resources get dashboard.dashboards/foo,bar folder.folders/qux,quux
+	gcx resources get dashboards.dashboard.grafana.app/foo folders.folder.grafana.app/qux
+	gcx resources get dashboards.dashboard.grafana.app/foo,bar folders.folder.grafana.app/qux,quux
 
 	# Multiple resource kinds, long kind format with version:
 
 	gcx resources get dashboards.v1alpha1.dashboard.grafana.app/foo folders.v1alpha1.folder.grafana.app/qux
 
-	# Provider-backed resource types (SLO, Synthetic Monitoring, Alerting):
+	# Provider-backed resources (SLO and Synthetic Monitoring):
 
 	gcx resources get slo
 	gcx resources get slo/my-slo-uuid
-	gcx resources get checks
-	gcx resources get rules
+	gcx resources get checks.syntheticmonitoring
+
+	# Native Grafana alert rules:
+
+	gcx resources get alertrules
 
 	# Discover available JSON fields for a resource type:
 

@@ -37,11 +37,32 @@ func TestNormalizeKeyringErrorClassifiesDarwinLock(t *testing.T) {
 	}
 }
 
+func TestNormalizeKeyringErrorClassifiesDarwinRestrictedSession(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the synthetic exit-status fixture requires a POSIX shell")
+	}
+	for name, command := range map[string]string{
+		"exit 152": "exit 152",
+		"exit 161": "exit 161",
+	} {
+		t.Run(name, func(t *testing.T) {
+			cmd := exec.CommandContext(t.Context(), "/bin/sh", "-c", command)
+			err := cmd.Run()
+			require.Error(t, err)
+
+			got := normalizeKeyringErrorForOS(fmt.Errorf("native set: %w", err), "darwin")
+			require.ErrorIs(t, got, ErrRestrictedSession)
+			require.NotErrorIs(t, got, ErrLocked)
+			require.NotErrorIs(t, got, ErrUnavailable)
+		})
+	}
+}
+
 func TestDarwinKeychainUnavailableExitCodes(t *testing.T) {
 	for _, code := range []int{37, 50, 53} {
 		assert.True(t, darwinKeychainUnavailableExitCode(code), "exit code %d", code)
 	}
-	for _, code := range []int{1, 24, 36, 44, 51, 128, 154, 255} {
+	for _, code := range []int{1, 24, 36, 44, 51, 128, 152, 154, 161, 255} {
 		assert.False(t, darwinKeychainUnavailableExitCode(code), "exit code %d", code)
 	}
 }
@@ -50,8 +71,17 @@ func TestDarwinKeychainLockedExitCodes(t *testing.T) {
 	for _, code := range []int{24, 36, 154} {
 		assert.True(t, darwinKeychainLockedExitCode(code), "exit code %d", code)
 	}
-	for _, code := range []int{1, 37, 44, 50, 51, 53, 128, 255} {
+	for _, code := range []int{1, 37, 44, 50, 51, 53, 128, 152, 161, 255} {
 		assert.False(t, darwinKeychainLockedExitCode(code), "exit code %d", code)
+	}
+}
+
+func TestDarwinKeychainRestrictedExitCodes(t *testing.T) {
+	for _, code := range []int{152, 161} {
+		assert.True(t, darwinKeychainRestrictedExitCode(code), "exit code %d", code)
+	}
+	for _, code := range []int{1, 24, 36, 37, 44, 50, 51, 53, 128, 154, 255} {
+		assert.False(t, darwinKeychainRestrictedExitCode(code), "exit code %d", code)
 	}
 }
 

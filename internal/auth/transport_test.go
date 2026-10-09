@@ -139,6 +139,74 @@ func TestRefreshTransport_LockAndReloadFailuresMakeNoHTTPCalls(t *testing.T) {
 	}
 }
 
+func TestRefreshTransport_PersistencePreflightMakesNoHTTPCalls(t *testing.T) {
+	want := errors.New("credential store write denied")
+	var baseCalls atomic.Int32
+	var checkCalls atomic.Int32
+	transport := &auth.RefreshTransport{
+		Base: testRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+			baseCalls.Add(1)
+			return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: http.NoBody, Request: req}, nil
+		}),
+		ProxyEndpoint: "https://proxy.invalid",
+		Token:         "gat_expired",
+		RefreshToken:  "refresh-token",
+		ExpiresAt:     time.Now().Add(-time.Minute),
+		CheckPersistence: func() error {
+			checkCalls.Add(1)
+			return want
+		},
+	}
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "https://proxy.invalid/protected", nil)
+	require.NoError(t, err)
+
+	resp, err := transport.RoundTrip(req)
+	if resp != nil {
+		require.NoError(t, resp.Body.Close())
+	}
+	assert.Nil(t, resp)
+	require.ErrorIs(t, err, auth.ErrCredentialPersistencePreflight)
+	require.ErrorIs(t, err, want)
+	assert.Equal(t, int32(1), checkCalls.Load())
+	assert.Zero(t, baseCalls.Load())
+	assert.Equal(t, "refresh-token", transport.RefreshToken)
+}
+
+func TestRefreshTransport_AdoptedTokenSkipsPersistencePreflight(t *testing.T) {
+	var checkCalls atomic.Int32
+	var protectedCalls atomic.Int32
+	transport := &auth.RefreshTransport{
+		Base: testRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+			protectedCalls.Add(1)
+			return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: http.NoBody, Request: req}, nil
+		}),
+		ProxyEndpoint: "https://proxy.invalid",
+		Token:         "gat_expired",
+		RefreshToken:  "old-refresh-token",
+		ExpiresAt:     time.Now().Add(-time.Minute),
+		Reload: func() (auth.StoredTokens, bool, error) {
+			return auth.StoredTokens{
+				Token:        "gat_fresh",
+				RefreshToken: "new-refresh-token",
+				ExpiresAt:    time.Now().Add(time.Hour),
+			}, true, nil
+		},
+		CheckPersistence: func() error {
+			checkCalls.Add(1)
+			return errors.New("must not run")
+		},
+	}
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "https://proxy.invalid/protected", nil)
+	require.NoError(t, err)
+
+	resp, err := transport.RoundTrip(req)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.NoError(t, resp.Body.Close())
+	assert.Zero(t, checkCalls.Load())
+	assert.Equal(t, int32(1), protectedCalls.Load())
+}
+
 func TestRefreshTransport_CancellationBeforeRotationMakesNoCalls(t *testing.T) {
 	var lockCalls, reloadCalls, refreshCalls, protectedCalls atomic.Int32
 	transport := &auth.RefreshTransport{
@@ -374,6 +442,7 @@ func TestRefreshTransport_ConcurrentWaitersReceiveLeaderFailure(t *testing.T) {
 
 func TestRefreshTransport_RetriesPendingPersistenceWithoutSecondRefresh(t *testing.T) {
 	var refreshCalls atomic.Int32
+	var checkCalls atomic.Int32
 	base := testRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 		require.Equal(t, "/api/cli/v1/auth/refresh", req.URL.Path)
 		refreshCalls.Add(1)
@@ -395,6 +464,12 @@ func TestRefreshTransport_RetriesPendingPersistenceWithoutSecondRefresh(t *testi
 		Lock: func(context.Context) (func(), error) {
 			return func() {}, nil
 		},
+		CheckPersistence: func() error {
+			if checkCalls.Add(1) > 1 {
+				return errors.New("preflight must not run for a pending generation")
+			}
+			return nil
+		},
 		OnRefresh: func(previousRefreshToken, token, refreshToken, _, _ string) error {
 			require.Equal(t, "gar_old", previousRefreshToken)
 			require.Equal(t, "gat_new", token)
@@ -415,6 +490,7 @@ func TestRefreshTransport_RetriesPendingPersistenceWithoutSecondRefresh(t *testi
 	assert.Equal(t, "gat_new", token)
 	assert.Equal(t, int32(1), refreshCalls.Load())
 	assert.Equal(t, int32(2), persistCalls.Load())
+	assert.Equal(t, int32(1), checkCalls.Load())
 }
 
 func TestRefreshTransport_ConcurrentPersistenceFailureBlocksProtectedAPI(t *testing.T) {

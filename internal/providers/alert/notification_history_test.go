@@ -122,7 +122,7 @@ func TestNotificationHistoryListHumanTable(t *testing.T) {
 	require.NoError(t, err)
 
 	var want bytes.Buffer
-	require.NoError(t, (&alert.NotificationHistoryTableCodec{}).Encode(&want, entries))
+	require.NoError(t, (alert.NotificationHistoryTable().Codec("table")).Encode(&want, entries))
 	assert.Equal(t, want.String(), stdout)
 }
 

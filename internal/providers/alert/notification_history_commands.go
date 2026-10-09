@@ -3,14 +3,11 @@ package alert
 import (
 	"errors"
 	"fmt"
-	"io"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
-	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -68,8 +65,7 @@ func (o *notificationHistoryListOpts) Validate() error {
 }
 
 func (o *notificationHistoryListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &NotificationHistoryTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &NotificationHistoryTableCodec{Wide: true})
+	cmdio.RegisterTable(&o.IO, NotificationHistoryTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.StringVar(&o.From, "from", "", "Start of time range (RFC3339). Overrides --since.")
@@ -156,7 +152,7 @@ func (o *notificationHistoryAlertsOpts) Validate() error {
 }
 
 func (o *notificationHistoryAlertsOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &NotificationAlertsTableCodec{})
+	cmdio.RegisterTable(&o.IO, NotificationAlertsTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.StringVar(&o.UUID, "uuid", "", "UUID of the notification (from 'notification-history list').")
@@ -219,72 +215,29 @@ widen --since (or set --from/--to) if the notification is older.`,
 // codecs
 // ---------------------------------------------------------------------------
 
-// NotificationHistoryTableCodec renders notification history entries as a table.
-type NotificationHistoryTableCodec struct {
-	Wide bool
+func NotificationHistoryTable() cmdio.Table[NotificationEntry] {
+	return cmdio.Table[NotificationEntry]{Columns: []cmdio.Column[NotificationEntry]{
+		{Header: "TIMESTAMP", Content: func(r NotificationEntry) string { return formatTimestamp(r.Timestamp) }},
+		{Header: "RECEIVER", Content: func(r NotificationEntry) string { return r.Receiver }},
+		{Header: "INTEGRATION", Content: func(r NotificationEntry) string { return r.Integration }},
+		{Header: "STATUS", Content: func(r NotificationEntry) string { return r.Status }},
+		{Header: "OUTCOME", Content: func(r NotificationEntry) string { return r.Outcome }},
+		{Header: "ALERTS", Content: func(r NotificationEntry) string { return strconv.FormatInt(r.AlertCount, 10) }},
+		{Header: "DURATION", Content: func(r NotificationEntry) string { return formatDurationNanos(r.Duration) }},
+		{Header: "RULE_UIDS", Visible: cmdio.WideOnly, Content: func(r NotificationEntry) string { return cmdio.OrDash(strings.Join(r.RuleUIDs, ",")) }},
+		{Header: "GROUP_LABELS", Visible: cmdio.WideOnly, Content: func(r NotificationEntry) string { return formatLabels(r.GroupLabels) }},
+		{Header: "UUID", Visible: cmdio.WideOnly, Content: func(r NotificationEntry) string { return cmdio.OrDash(r.UUID) }},
+		{Header: "ERROR", Content: func(r NotificationEntry) string { return cmdio.OrDash(r.Error) }},
+	}}
 }
 
-func (c *NotificationHistoryTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
-	}
-	return "table"
-}
-
-func (c *NotificationHistoryTableCodec) Encode(w io.Writer, v any) error {
-	entries, ok := v.([]NotificationEntry)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []NotificationEntry")
-	}
-
-	var t *style.TableBuilder
-	if c.Wide {
-		t = style.NewTable("TIMESTAMP", "RECEIVER", "INTEGRATION", "STATUS", "OUTCOME", "ALERTS", "DURATION", "RULE_UIDS", "GROUP_LABELS", "UUID", "ERROR")
-	} else {
-		t = style.NewTable("TIMESTAMP", "RECEIVER", "INTEGRATION", "STATUS", "OUTCOME", "ALERTS", "DURATION", "ERROR")
-	}
-
-	for _, e := range entries {
-		ts := formatTimestamp(e.Timestamp)
-		alerts := strconv.FormatInt(e.AlertCount, 10)
-		dur := formatDurationNanos(e.Duration)
-		errStr := orDash(e.Error)
-
-		if c.Wide {
-			ruleUIDs := orDash(strings.Join(e.RuleUIDs, ","))
-			t.Row(ts, e.Receiver, e.Integration, e.Status, e.Outcome, alerts, dur, ruleUIDs, formatLabels(e.GroupLabels), orDash(e.UUID), errStr)
-			continue
-		}
-
-		t.Row(ts, e.Receiver, e.Integration, e.Status, e.Outcome, alerts, dur, errStr)
-	}
-	return t.Render(w)
-}
-
-func (c *NotificationHistoryTableCodec) Decode(r io.Reader, v any) error {
-	return errors.New("table format does not support decoding")
-}
-
-// NotificationAlertsTableCodec renders the alerts of a single notification.
-type NotificationAlertsTableCodec struct{}
-
-func (c *NotificationAlertsTableCodec) Format() format.Format { return "table" }
-
-func (c *NotificationAlertsTableCodec) Encode(w io.Writer, v any) error {
-	alerts, ok := v.([]NotificationAlert)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []NotificationAlert")
-	}
-
-	t := style.NewTable("STATUS", "STARTS_AT", "ENDS_AT", "LABELS")
-	for _, a := range alerts {
-		t.Row(a.Status, formatTimestamp(a.StartsAt), formatTimestamp(a.EndsAt), formatLabels(a.Labels))
-	}
-	return t.Render(w)
-}
-
-func (c *NotificationAlertsTableCodec) Decode(r io.Reader, v any) error {
-	return errors.New("table format does not support decoding")
+func NotificationAlertsTable() cmdio.Table[NotificationAlert] {
+	return cmdio.Table[NotificationAlert]{Columns: []cmdio.Column[NotificationAlert]{
+		{Header: "STATUS", Content: func(r NotificationAlert) string { return r.Status }},
+		{Header: "STARTS_AT", Content: func(r NotificationAlert) string { return formatTimestamp(r.StartsAt) }},
+		{Header: "ENDS_AT", Content: func(r NotificationAlert) string { return formatTimestamp(r.EndsAt) }},
+		{Header: "LABELS", Content: func(r NotificationAlert) string { return formatLabels(r.Labels) }},
+	}}
 }
 
 // ---------------------------------------------------------------------------

@@ -158,6 +158,18 @@ func (config *Config) HasContext(name string) bool {
 	return config.Contexts[name] != nil
 }
 
+// ContextNames returns the names of all configured contexts, sorted
+// alphabetically. Entries with a nil value (e.g. a bare `foo:` key with no
+// body) are omitted so the result agrees with HasContext, which treats such
+// entries as absent. It returns nil when no contexts are configured.
+func (config *Config) ContextNames() []string {
+	if len(config.Contexts) == 0 {
+		return nil
+	}
+	names := slices.Sorted(maps.Keys(config.Contexts))
+	return slices.DeleteFunc(names, func(name string) bool { return config.Contexts[name] == nil })
+}
+
 // GetCurrentContext returns the current context.
 // If the current context is not set, it returns an error.
 func (config *Config) GetCurrentContext() *Context {
@@ -795,6 +807,13 @@ type GrafanaConfig struct {
 
 	// TLS contains TLS-related configuration settings.
 	TLS *TLS `json:"tls,omitempty" yaml:"tls,omitempty"`
+
+	// PathfinderInstalled caches that the Pathfinder plugin was detected as
+	// installed and enabled on this server during `gcx login`. Once true, later
+	// logins skip the detection probe and the one-time guide hint. In practice
+	// the plugin is not uninstalled, so the flag is sticky and never cleared
+	// automatically. Set automatically by `gcx login`.
+	PathfinderInstalled bool `json:"pathfinder-installed,omitempty" yaml:"pathfinder-installed,omitempty"`
 }
 
 func (grafana GrafanaConfig) validateNamespace(ctx context.Context, contextName string) error {
