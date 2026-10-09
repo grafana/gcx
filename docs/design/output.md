@@ -256,7 +256,21 @@ status messages as the primary output.
 | dashboards/checkout-funnel | 413 payload too large |
 
 **Rules:**
-- Successes are counted, never enumerated individually.
+- Default text summarizes successes by count.
+- With `resources push --include-successes`, structured results include
+  `successes` with real-write identity references in JSON, YAML, and agents output.
+  Without the option, output keeps success counts only. The option changes receipt retention, but does not change API requests.
+  Each entry has `action` (`created` or `updated`), `requested`
+  (the input kind, name, and source path), and `target`
+  (`kind`, `name`, `uid`, and `namespace` when available).
+  These references use the API response. They contain no resource body.
+  Dry-run and skipped operations do not produce applied identity references.
+  API responses without a resource name also produce no reference.
+  If the option is set and no reference is returned, successes is an empty array.
+  If an abort follows a successful write, the result keeps the completed identity
+  references and reports a partial failure.
+  Entries follow completion order, not input order.
+  Large results use the agents codec spill receipt and file.
 - Failures are always enumerated individually — they require action.
 - Skipped resources are enumerated if count < 20, otherwise grouped.
 - `cmdio.Success/Warning/Error` remain for progress feedback *during*
@@ -278,7 +292,7 @@ status messages as the primary output.
 }
 ```
 
-Verbose opt-in (`-v` or `-o wide`) adds a `"succeeded"` array for audit.
+`resources push --include-successes` adds a `"successes"` array for audit.
 
 ---
 

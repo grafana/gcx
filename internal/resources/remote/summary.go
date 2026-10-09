@@ -8,7 +8,7 @@ import (
 )
 
 // OperationSummary tracks the results of a batch resource operation in a thread-safe manner.
-// It uses atomic counters for success/failure counts and a mutex-protected slice for failure details.
+// It uses atomic counters and mutex-protected slices for failures and applied identities.
 type OperationSummary struct {
 	successCount atomic.Int64
 	failedCount  atomic.Int64
@@ -16,6 +16,7 @@ type OperationSummary struct {
 	truncated    atomic.Bool
 	mu           sync.Mutex
 	failures     []OperationFailure
+	successes    []OperationSuccess
 }
 
 // OperationFailure describes a single resource operation failure.
@@ -85,4 +86,29 @@ func (s *OperationSummary) Failures() []OperationFailure {
 	defer s.mu.Unlock()
 
 	return s.failures
+}
+
+// OperationSuccess contains only the effective identity returned by a write.
+type OperationSuccess struct {
+	RequestedName string
+	SourcePath    string
+	Action        string
+	Kind          string
+	Name          string
+	UID           string
+	Namespace     string
+}
+
+// RecordApplied records a successful real write. Dry-run results are excluded.
+func (s *OperationSummary) RecordApplied(result OperationSuccess) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.successes = append(s.successes, result)
+}
+
+// Successes returns a copy of the effective write identities.
+func (s *OperationSummary) Successes() []OperationSuccess {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]OperationSuccess(nil), s.successes...)
 }

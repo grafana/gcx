@@ -83,6 +83,10 @@ func NewPusher(client PushClient, registry PushRegistry) *Pusher {
 
 // PushRequest is a request for pushing resources to Grafana.
 type PushRequest struct {
+	// Include returned identities from successful writes.
+	// IncludeSuccesses bounds receipt storage to explicit requests.
+	IncludeSuccesses bool
+
 	// A list of resources to push.
 	Resources *resources.Resources
 
@@ -252,7 +256,8 @@ func (p *Pusher) pushSingleResource(
 		return nil
 	}
 
-	if err := p.upsertResource(ctx, desc, name, res, request.DryRun, logger, nkCache); err != nil {
+	applied, action, err := p.upsertResource(ctx, desc, name, res, request.DryRun, logger, nkCache)
+	if err != nil {
 		// The guard blocked a dry-run against an API that ignores server-side dryRun.
 		// Record it as skipped (not a failure) and keep going, like the puller does for
 		// unlistable types.
@@ -276,12 +281,15 @@ func (p *Pusher) pushSingleResource(
 
 	logger.Info("Resource pushed")
 	summary.RecordSuccess()
+	if request.IncludeSuccesses && !request.DryRun && applied != nil && applied.GetName() != "" {
+		summary.RecordApplied(OperationSuccess{RequestedName: name, SourcePath: res.SourcePath(), Action: action, Kind: desc.Kind, Name: applied.GetName(), UID: string(applied.GetUID()), Namespace: applied.GetNamespace()})
+	}
 	return nil
 }
 
 func (p *Pusher) upsertResource(
 	ctx context.Context, desc resources.Descriptor, name string, src *resources.Resource, dryRun bool, log logging.Logger, nkCache *naturalKeyCache,
-) error {
+) (*unstructured.Unstructured, string, error) {
 	var dryRunOpts []string
 	if dryRun {
 		dryRunOpts = []string{"All"}
@@ -300,19 +308,20 @@ func (p *Pusher) upsertResource(
 		// Copy the resourceVersion from the existing resource so the API accepts the update.
 		obj.SetResourceVersion(existing.GetResourceVersion())
 
-		if _, err := p.client.Update(ctx, desc, &obj, metav1.UpdateOptions{
+		applied, err := p.client.Update(ctx, desc, &obj, metav1.UpdateOptions{
 			DryRun: dryRunOpts,
-		}); err != nil {
-			return err
+		})
+		if err != nil {
+			return nil, "", err
 		}
 
 		log.Info("Resource updated")
-		return nil
+		return applied, "updated", nil
 	}
 
 	// If the error is not a NotFound, it's an unexpected API error — surface it.
 	if !apierrors.IsNotFound(err) {
-		return err
+		return nil, "", err
 	}
 
 	// Resource does not exist — try natural key matching for cross-stack push.
@@ -322,29 +331,31 @@ func (p *Pusher) upsertResource(
 	// Look for a resource with the same content identity.
 	remoteName, rv, found, nkErr := findByNaturalKey(ctx, nkCache, desc, &obj)
 	if nkErr != nil {
-		return nkErr
+		return nil, "", nkErr
 	}
 	if found {
 		obj.SetName(remoteName)
 		obj.SetResourceVersion(rv)
-		if _, err := p.client.Update(ctx, desc, &obj, metav1.UpdateOptions{
+		applied, err := p.client.Update(ctx, desc, &obj, metav1.UpdateOptions{
 			DryRun: dryRunOpts,
-		}); err != nil {
-			return err
+		})
+		if err != nil {
+			return nil, "", err
 		}
 		log.Info("Resource updated via natural key match", "remoteName", remoteName)
-		return nil
+		return applied, "updated", nil
 	}
 
 	// No natural key match — create as new resource.
-	if _, err := p.client.Create(ctx, desc, &obj, metav1.CreateOptions{
+	applied, err := p.client.Create(ctx, desc, &obj, metav1.CreateOptions{
 		DryRun: dryRunOpts,
-	}); err != nil {
-		return err
+	})
+	if err != nil {
+		return nil, "", err
 	}
 
 	log.Info("Resource created")
-	return nil
+	return applied, "created", nil
 }
 
 func (p *Pusher) supportedDescriptors() map[schema.GroupVersionKind]resources.Descriptor {

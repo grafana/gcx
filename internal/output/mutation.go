@@ -31,11 +31,12 @@ const (
 // MutationTarget identifies the object a mutation acted on. All fields are
 // optional — providers populate what their domain actually has.
 type MutationTarget struct {
-	Kind      string `json:"kind,omitempty" yaml:"kind,omitempty"`
-	Name      string `json:"name,omitempty" yaml:"name,omitempty"`
-	UID       string `json:"uid,omitempty" yaml:"uid,omitempty"`
-	ID        string `json:"id,omitempty" yaml:"id,omitempty"`
-	Namespace string `json:"namespace,omitempty" yaml:"namespace,omitempty"`
+	Kind       string `json:"kind,omitempty" yaml:"kind,omitempty"`
+	Name       string `json:"name,omitempty" yaml:"name,omitempty"`
+	UID        string `json:"uid,omitempty" yaml:"uid,omitempty"`
+	ID         string `json:"id,omitempty" yaml:"id,omitempty"`
+	Namespace  string `json:"namespace,omitempty" yaml:"namespace,omitempty"`
+	SourcePath string `json:"source_path,omitempty" yaml:"source_path,omitempty"`
 }
 
 // MutationSummary aggregates per-target outcomes for batch shapes.
@@ -47,8 +48,7 @@ type MutationSummary struct {
 	Skipped   int `json:"skipped,omitempty" yaml:"skipped,omitempty"`
 }
 
-// MutationFailure is one failed target with the reason. Successes and skips
-// are counted, not enumerated — failures are what a consumer must act on.
+// MutationFailure is one failed target with the reason.
 type MutationFailure struct {
 	Target MutationTarget `json:"target" yaml:"target"`
 	Error  string         `json:"error" yaml:"error"`
@@ -77,14 +77,23 @@ func NewSingleMutation(action string, target MutationTarget) SingleMutation {
 	}
 }
 
+// MutationSuccess is the identity receipt for one real write.
+// It contains no resource body or credentials.
+type MutationSuccess struct {
+	Requested MutationTarget `json:"requested" yaml:"requested"`
+	Action    string         `json:"action" yaml:"action"`
+	Target    MutationTarget `json:"target" yaml:"target"`
+}
+
 // BatchMutation is the finite result of one verb applied across many targets.
 type BatchMutation struct {
 	Type          string          `json:"type" yaml:"type"`
 	SchemaVersion string          `json:"schema_version" yaml:"schema_version"`
 	Action        string          `json:"action" yaml:"action"`
 	Summary       MutationSummary `json:"summary" yaml:"summary"`
-	// Failures is always present — [] when nothing failed — so consumers
-	// never need a nil check before ranging.
+	// Successes contains only identities from real API writes.
+	Successes *[]MutationSuccess `json:"successes,omitempty" yaml:"successes,omitempty"`
+	// Failures is always present, including an empty slice.
 	Failures []MutationFailure `json:"failures" yaml:"failures"`
 	DryRun   bool              `json:"dry_run,omitempty" yaml:"dry_run,omitempty"`
 }
