@@ -39,6 +39,10 @@ cards:
       description: Learn how `gcx` stores credentials. 
       href: keychain/
       height: 24            
+    - title: User guides
+      description: User guides for dashboards as code, diagnostics, manage resources, and more. 
+      href: guides/
+      height: 24      
   title_class: pt-0 lh-1
 hero:
   title: gcx CLI
