@@ -157,6 +157,17 @@ of about 40 s, and the cache can stay read-only.
   affect it. If anything differs (for example, your build resolves a different
   wazero version than this module pins), the cache misses and `New` compiles
   from scratch: slower, but correct.
+- **Copy this module's wazero `replace`.** Until its memory fixes are released
+  upstream, this module pins a wazero fork with a `replace` in its `go.mod`
+  (see the comment there). Go ignores a dependency's `replace` directives, so
+  put the same `require` and `replace` lines for `github.com/tetratelabs/wazero`
+  in your own `go.mod`. Without them your build fails: the required version
+  is the fork commit's pseudo-version, which upstream wazero doesn't have
+  (`go get` reports `unknown revision`). Re-copy both lines whenever you
+  update this module. A stale `replace` silently wins over the newer
+  `require`, so your build runs the old fork commit while reporting the new
+  version, and wazero keys its cache on that version: it would load compiled
+  code from the published cache that a different fork commit produced.
 
 ## Security model
 

@@ -121,9 +121,10 @@ datasource and infers Loki vs Pinot from its type. Each Loki query times out
 after 60s so a slow scan cannot hang; try a Pinot datasource UID or a narrower
 window.
 
-Faro apps do not store web vs mobile on the app resource. Omit --app-type and
-gcx infers it from sdkName / osName on the session (so mobile journeys exclude
-app_memory / app_cpu_usage). Pass --app-type to override.`,
+Omit --app-type and gcx infers web vs mobile from sdkName / osName on the
+session (so mobile journeys exclude app_memory / app_cpu_usage). It does not
+use the app's stored appType, which older apps may lack or have wrong. Pass
+--app-type to override.`,
 		Example: `  # Pinot on stdout (metadata fields, journey TSV)
   gcx frontend sessions get 7TiMbCCvby --app 66 -d grafanacloud-pinot --since 7d
 

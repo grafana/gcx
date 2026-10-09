@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/grafana-app-sdk/logging"
 	"k8s.io/client-go/rest"
 )
@@ -90,6 +91,10 @@ func (c *Client) Get(ctx context.Context, id string) (*FaroApp, error) {
 	if err != nil {
 		return nil, fmt.Errorf("faro: get app %s: %w", id, err)
 	}
+	// resources push creates the app only when Get reports adapter.ErrNotFound.
+	if statusCode == http.StatusNotFound {
+		return nil, fmt.Errorf("faro: get app %s: %w", id, adapter.ErrNotFound)
+	}
 	if statusCode >= 400 {
 		return nil, fmt.Errorf("faro: get app %s: status %d, body: %s", id, statusCode, string(body))
 	}
@@ -104,39 +109,16 @@ func (c *Client) Get(ctx context.Context, id string) (*FaroApp, error) {
 	return &app, nil
 }
 
-// GetByName retrieves a Faro app by name using client-side filtering.
-func (c *Client) GetByName(ctx context.Context, name string) (*FaroApp, error) {
-	log := logging.FromContext(ctx)
-	log.Debug("Looking up Faro app by name", "name", name)
-	apps, err := c.List(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, app := range apps {
-		if app.Name == name {
-			log.Debug("Found Faro app by name", "name", name, "id", app.ID)
-			return &app, nil
-		}
-	}
-
-	log.Debug("Faro app not found by name", "name", name, "total_apps", len(apps))
-	return nil, fmt.Errorf("faro: app with name %q not found", name)
-}
-
 // Create creates a new Faro app.
-// ExtraLogLabels and Settings are stripped from the create payload due to Faro API constraints.
+// Settings are stripped from the create payload due to Faro API constraints.
 // After creation, the app is re-fetched via List to get complete fields (collectEndpointURL, appKey).
 func (c *Client) Create(ctx context.Context, app *FaroApp) (*FaroApp, error) {
 	log := logging.FromContext(ctx)
 	log.Info("Creating Faro app", "name", app.Name)
 	apiApp := app.toAPI()
-	// Don't send extraLogLabels on create -- the Faro API has a constraint bug
-	// that causes 409 errors.
-	apiApp.ExtraLogLabels = nil
 	// Don't send settings on create -- the Faro API returns 500 if settings are included.
 	apiApp.Settings = nil
-	log.Debug("Create payload: stripped ExtraLogLabels and Settings (Faro API constraints)")
+	log.Debug("Create payload: stripped Settings (Faro API constraint)")
 
 	body, statusCode, err := c.doRequest(ctx, http.MethodPost, basePath, apiApp)
 	if err != nil {

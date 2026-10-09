@@ -2487,16 +2487,7 @@ func disableAgentMode(t *testing.T) {
 	t.Helper()
 	// t.Setenv handles both set-and-restore for us. Clearing every known
 	// agent env var covers CLAUDECODE, CURSOR_AGENT, etc. in one pass.
-	for _, v := range []string{
-		"GCX_AGENT_MODE",
-		"CLAUDECODE",
-		"CLAUDE_CODE",
-		"CURSOR_AGENT",
-		"GITHUB_COPILOT",
-		"AMAZON_Q",
-		"OPENCODE",
-		"PI_CODING_AGENT",
-	} {
+	for _, v := range agent.EnvironmentVariables() {
 		t.Setenv(v, "")
 	}
 	// GCX_AGENT_MODE=false is the authoritative override.

@@ -21,6 +21,10 @@ gcx is a CLI for Grafana — Cloud, Enterprise, and OSS alike. It gives you and 
 
 gcx works with any agentic coding tool. It ships with a suite of agent skills for common workflows like alert investigation, dashboard creation and GitOps, SLO management, and observability setup - ready to use out of the box.
 
+Agent mode uses known identity signals, including Codex and Gemini CLI.
+For tools without a native signal, set `GCX_AGENT_NAME` to a supported label.
+See [agent detection and harness names](docs/design/environment-variables.md#agent-mode-variables).
+
 Contributing a new Grafana domain capability to gcx? Ask your coding agent to
 use [`integrate-with-gcx`](.claude/skills/integrate-with-gcx/SKILL.md)
 before choosing a command, provider, or datasource path.
@@ -549,6 +553,13 @@ gcx resources edit dashboards/my-dashboard
 # Delete a resource
 gcx resources delete dashboards/my-dashboard
 ```
+
+### Mobile Frontend Observability apps
+
+Mobile Frontend Observability app manifests set `spec.appType: mobile` and a mobile
+`spec.runtime`. See [`gcx frontend apps create`](docs/reference/cli/gcx_frontend_apps_create.md)
+for the runtimes and an example manifest, and
+[`gcx frontend apps update`](docs/reference/cli/gcx_frontend_apps_update.md) for what an update keeps.
 
 ## Alerting & Datasource Queries
 

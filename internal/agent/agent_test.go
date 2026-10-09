@@ -131,17 +131,9 @@ func TestIsAgentMode(t *testing.T) {
 // clearAgentEnv unsets all agent-mode env vars for the duration of a test.
 func clearAgentEnv(t *testing.T) {
 	t.Helper()
+	t.Cleanup(agent.ResetForTesting)
 
-	for _, env := range []string{
-		"GCX_AGENT_MODE",
-		"CLAUDECODE",
-		"CLAUDE_CODE",
-		"CURSOR_AGENT",
-		"GITHUB_COPILOT",
-		"AMAZON_Q",
-		"OPENCODE",
-		"PI_CODING_AGENT",
-	} {
+	for _, env := range agent.EnvironmentVariables() {
 		t.Setenv(env, "")
 	}
 }

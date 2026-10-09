@@ -12,9 +12,12 @@ import (
 // goldenApps covers both a fully populated app and one that leaves every
 // optional field empty, so the golden pins the dash placeholders too.
 func goldenApps() []faro.FaroApp {
+	runtime := "android-native"
 	return []faro.FaroApp{
 		{
 			ID:                    "42",
+			AppType:               "mobile",
+			Runtime:               &runtime,
 			Name:                  "my-app",
 			AppKey:                "abc123",
 			CollectEndpointURL:    "https://faro.example.com/collect/abc123",

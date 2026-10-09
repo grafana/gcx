@@ -2,6 +2,18 @@
 
 Delete a Frontend Observability app.
 
+### Synopsis
+
+Delete a Frontend Observability app.
+
+Deleting requires the grafana-kowalski-app.apps:delete permission (granted to
+Admin and Frontend Observability Admin by default). A user with only apps:write
+can create and update apps but cannot delete them.
+
+The argument is a slug-id or numeric ID, not a name. Any trailing "-<digits>"
+is read as the app ID, so "Checkout-2024" deletes app 2024. Find the slug-id with
+"gcx frontend apps list" first. There is no confirmation prompt.
+
 ```
 gcx frontend apps delete <name> [flags]
 ```
@@ -18,7 +30,7 @@ gcx frontend apps delete <name> [flags]
 ### Options inherited from parent commands
 
 ```
-      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
+      --agent                       Enable agent mode (JSON output, no color). Auto-detected from known agent identity variables. Set GCX_AGENT_NAME to identify a supported harness, or GCX_AGENT_MODE to control the mode.
       --config string               Path to the configuration file to use
       --context string              Name of the context to use (overrides current-context in config)
       --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Requires -vvv. Do not ship these logs.

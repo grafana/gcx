@@ -576,6 +576,7 @@ func newTestsListCommand(loader CloudConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List k6 Cloud load tests.",
+		Long:  "List load tests from k6 Cloud. With --project-id, the server returns tests from that project only. Without it, the command lists tests across projects.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err

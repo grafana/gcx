@@ -30,6 +30,7 @@ import (
 	"github.com/grafana/gcx/internal/providers/instrumentation/rmw"
 	"github.com/grafana/gcx/internal/queryerror"
 	"github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/resources/dynamic"
 	k8sapi "k8s.io/apimachinery/pkg/api/errors"
 )
 
@@ -329,17 +330,25 @@ func convertNetworkErrors(err error) (*gcxerrors.DetailedError, bool) {
 }
 
 func convertAPIErrors(err error) (*gcxerrors.DetailedError, bool) {
-	statusErr := &k8sapi.StatusError{}
+	// Match the APIStatus interface, not just *StatusError: the dynamic client
+	// wraps server errors in dynamic.APIError, which implements APIStatus.
+	var statusErr k8sapi.APIStatus
 	if !errors.As(err, &statusErr) {
 		return nil, false
 	}
+	// A status the dynamic client synthesized for a non-API error (network,
+	// TLS, timeout) is not a server response; leave it to the fallback.
+	var dynErr dynamic.APIError
+	if errors.As(err, &dynErr) && dynErr.Synthesized() {
+		return nil, false
+	}
 
-	reason := k8sapi.ReasonForError(statusErr)
+	reason := k8sapi.ReasonForError(err)
 	code := statusErr.Status().Code
 
 	switch {
-	case k8sapi.IsUnauthorized(statusErr),
-		k8sapi.IsForbidden(statusErr):
+	case k8sapi.IsUnauthorized(err),
+		k8sapi.IsForbidden(err):
 		return &gcxerrors.DetailedError{
 			Parent:  err,
 			Summary: fmt.Sprintf("%s - code %d", reason, code),
@@ -350,7 +359,7 @@ func convertAPIErrors(err error) (*gcxerrors.DetailedError, bool) {
 			DocsLink: docs.ServiceAccounts,
 			ExitCode: new(gcxerrors.ExitAuthFailure),
 		}, true
-	case k8sapi.IsNotFound(statusErr):
+	case k8sapi.IsNotFound(err):
 		return &gcxerrors.DetailedError{
 			Parent:  err,
 			Summary: fmt.Sprintf("Resource not found - code %d", code),

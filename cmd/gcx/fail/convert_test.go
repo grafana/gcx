@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 	"testing"
@@ -25,6 +26,7 @@ import (
 	cmdoutput "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers/instrumentation"
 	"github.com/grafana/gcx/internal/queryerror"
+	"github.com/grafana/gcx/internal/resources/dynamic"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -153,6 +155,18 @@ func TestErrorToDetailedError_AuthExitCode(t *testing.T) {
 			},
 			wantExitCode: gcxerrors.ExitAuthFailure,
 		},
+		{
+			name: "403 from the dynamic client (dynamic.APIError) returns ExitAuthFailure",
+			err: fmt.Errorf("list routing trees: %w", dynamic.ParseStatusError(&k8sapi.StatusError{
+				ErrStatus: metav1.Status{
+					Status:  metav1.StatusFailure,
+					Code:    403,
+					Reason:  metav1.StatusReasonForbidden,
+					Message: "Forbidden",
+				},
+			})),
+			wantExitCode: gcxerrors.ExitAuthFailure,
+		},
 	}
 
 	for _, tc := range tests {
@@ -162,6 +176,62 @@ func TestErrorToDetailedError_AuthExitCode(t *testing.T) {
 			require.NotNil(t, got)
 			require.NotNil(t, got.ExitCode, "ExitCode should be set for auth errors")
 			assert.Equal(t, tc.wantExitCode, *got.ExitCode)
+		})
+	}
+}
+
+// TestErrorToDetailedError_DynamicClientErrors covers what the dynamic client
+// returns: dynamic.ParseStatusError wraps every failure in an APIError, and
+// synthesizes a 500 status for errors that carry none.
+func TestErrorToDetailedError_DynamicClientErrors(t *testing.T) {
+	urlErr := &url.Error{Op: "Get", URL: "http://localhost:3000/apis", Err: errors.New("dial tcp: connection refused")}
+
+	tests := []struct {
+		name        string
+		err         error
+		wantSummary string
+		wantExit    *int
+	}{
+		{
+			name:        "network error is reported as a network error",
+			err:         dynamic.ParseStatusError(urlErr),
+			wantSummary: "Network error",
+		},
+		{
+			name:        "timeout is not reported as a server 500",
+			err:         dynamic.ParseStatusError(context.DeadlineExceeded),
+			wantSummary: "Context deadline exceeded",
+		},
+		{
+			name:     "cancellation keeps the cancelled exit code",
+			err:      dynamic.ParseStatusError(context.Canceled),
+			wantExit: new(gcxerrors.ExitCancelled),
+		},
+		{
+			name: "server 500 is still an API error",
+			err: dynamic.ParseStatusError(&k8sapi.StatusError{ErrStatus: metav1.Status{
+				Status:  metav1.StatusFailure,
+				Code:    500,
+				Reason:  metav1.StatusReasonInternalError,
+				Message: "boom",
+			}}),
+			wantSummary: "API error: InternalError - code 500",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := fail.ErrorToDetailedError(tc.err)
+
+			require.NotNil(t, got)
+			assert.NotContains(t, got.Summary, "API error:  - code 500", "synthesized status must not reach the API converter")
+			if tc.wantSummary != "" {
+				assert.Equal(t, tc.wantSummary, got.Summary)
+			}
+			if tc.wantExit != nil {
+				require.NotNil(t, got.ExitCode)
+				assert.Equal(t, *tc.wantExit, *got.ExitCode)
+			}
 		})
 	}
 }
