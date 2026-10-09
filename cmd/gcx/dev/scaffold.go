@@ -10,7 +10,7 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/charmbracelet/huh"
+	"charm.land/huh/v2"
 	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/gcxerrors"

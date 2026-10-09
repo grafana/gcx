@@ -2,6 +2,7 @@ package faro_test
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers/faro"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/client-go/rest"
@@ -42,7 +44,7 @@ func TestClient_List(t *testing.T) {
 						"id":   42,
 						"name": "my-web-app",
 						"extraLogLabels": []map[string]string{
-							{"key": "team", "value": "frontend"},
+							{"label": "team", "value": "frontend"},
 						},
 					},
 					{
@@ -97,11 +99,12 @@ func TestClient_List(t *testing.T) {
 
 func TestClient_Get(t *testing.T) {
 	tests := []struct {
-		name    string
-		id      string
-		handler http.HandlerFunc
-		wantID  string
-		wantErr bool
+		name         string
+		id           string
+		handler      http.HandlerFunc
+		wantID       string
+		wantErr      bool
+		wantNotFound bool
 	}{
 		{
 			name: "returns single converted FaroApp",
@@ -117,11 +120,21 @@ func TestClient_Get(t *testing.T) {
 			wantID: "42",
 		},
 		{
-			name: "returns error on 404",
+			name: "maps 404 to adapter.ErrNotFound",
 			id:   "999",
 			handler: func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusNotFound)
 				_, _ = w.Write([]byte("not found"))
+			},
+			wantErr:      true,
+			wantNotFound: true,
+		},
+		{
+			// push would create a duplicate if a server error read as not found.
+			name: "keeps other errors distinct from not found",
+			id:   "42",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusInternalServerError)
 			},
 			wantErr: true,
 		},
@@ -137,6 +150,7 @@ func TestClient_Get(t *testing.T) {
 
 			if tt.wantErr {
 				require.Error(t, err)
+				assert.Equal(t, tt.wantNotFound, errors.Is(err, adapter.ErrNotFound))
 				return
 			}
 
@@ -146,8 +160,48 @@ func TestClient_Get(t *testing.T) {
 	}
 }
 
+func TestClient_CreateClassificationError(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		appType string
+	}{
+		{name: "missing app type"},
+		{name: "conflicting app type", appType: "web"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			const message = `runtime "android-native" belongs to a mobile app, but the app is web`
+			calls := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				assert.Equal(t, http.MethodPost, r.Method)
+				var payload map[string]any
+				if err := json.NewDecoder(r.Body).Decode(&payload); !assert.NoError(t, err) {
+					w.WriteHeader(http.StatusInternalServerError)
+					return
+				}
+				assert.Equal(t, "android-native", payload["runtime"])
+				if tc.appType == "" {
+					assert.NotContains(t, payload, "appType")
+				} else {
+					assert.Equal(t, tc.appType, payload["appType"])
+				}
+				http.Error(w, message, http.StatusBadRequest)
+			}))
+			defer server.Close()
+
+			runtime := "android-native"
+			result, err := newTestClient(t, server).Create(t.Context(), &faro.FaroApp{
+				Name: "mobile-app", AppType: tc.appType, Runtime: &runtime,
+			})
+			require.ErrorContains(t, err, message)
+			assert.Nil(t, result)
+			assert.Equal(t, 1, calls, "a rejected create must not retry or re-fetch")
+		})
+	}
+}
+
 func TestClient_Create(t *testing.T) {
-	t.Run("strips ExtraLogLabels and Settings from request body", func(t *testing.T) {
+	t.Run("sends ExtraLogLabels and Settings in the API wire format", func(t *testing.T) {
 		var capturedBody map[string]any
 		calls := 0
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -181,10 +235,11 @@ func TestClient_Create(t *testing.T) {
 				{URL: "https://example.com"},
 			},
 			ExtraLogLabels: map[string]string{
-				"team": "frontend",
+				"team":      "frontend",
+				"is_mobile": "true",
 			},
 			Settings: &faro.FaroAppSettings{
-				GeolocationEnabled: true,
+				GeolocationEnabled: new(true),
 				GeolocationLevel:   "country",
 			},
 		}
@@ -192,10 +247,13 @@ func TestClient_Create(t *testing.T) {
 		result, err := c.Create(t.Context(), app)
 		require.NoError(t, err)
 
-		// Verify ExtraLogLabels was stripped from request.
-		assert.Nil(t, capturedBody["extraLogLabels"], "extraLogLabels should be stripped from create request")
-		// Verify Settings was stripped from request.
-		assert.Nil(t, capturedBody["settings"], "settings should be stripped from create request")
+		assert.ElementsMatch(t, []any{
+			map[string]any{"label": "team", "value": "frontend"},
+			map[string]any{"label": "is_mobile", "value": "true"},
+		}, capturedBody["extraLogLabels"])
+		assert.Equal(t,
+			map[string]any{"geolocation.enabled": "1", "geolocation.level": "1"},
+			capturedBody["settings"])
 
 		// Re-fetched via list returns full details.
 		assert.Equal(t, "100", result.ID)
@@ -206,7 +264,7 @@ func TestClient_Create(t *testing.T) {
 }
 
 func TestClient_Update(t *testing.T) {
-	t.Run("strips Settings and includes ID in body", func(t *testing.T) {
+	t.Run("sends Settings, includes ID, and names labels correctly in body", func(t *testing.T) {
 		var capturedBody map[string]any
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			assert.Equal(t, http.MethodPut, r.Method)
@@ -230,17 +288,25 @@ func TestClient_Update(t *testing.T) {
 				"team": "frontend",
 			},
 			Settings: &faro.FaroAppSettings{
-				GeolocationEnabled: true,
+				GeolocationEnabled: new(false),
 			},
 		}
 
 		result, err := c.Update(t.Context(), "42", app)
 		require.NoError(t, err)
 
-		// Settings should be stripped.
-		assert.Nil(t, capturedBody["settings"], "settings should be stripped from update request")
+		// An explicit false must reach the API so update can disable geolocation.
+		assert.Equal(t, map[string]any{"geolocation.enabled": "0"}, capturedBody["settings"])
+		// The API keeps the stored runtime only when the body leaves it out.
+		assert.NotContains(t, capturedBody, "runtime")
 		// ID should be present in body.
 		assert.InDelta(t, float64(42), capturedBody["id"], 0.01, "id should be in update request body")
+		// The map key must reach the wire as "label"; "key" makes the server
+		// store an empty label name and Loki then drops the app's writes.
+		assert.Equal(t,
+			[]any{map[string]any{"label": "team", "value": "frontend"}},
+			capturedBody["extraLogLabels"],
+			"extraLogLabels must serialize the map key into the label field")
 		assert.Equal(t, "42", result.ID)
 	})
 }

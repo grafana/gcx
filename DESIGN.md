@@ -35,9 +35,11 @@ Every command works identically for humans and agents. Agent mode changes defaul
 | Default output | `text` (table) | `agents` (compact JSON with spill) |
 | Colors | On (TTY) | Off |
 | Truncation | On (TTY) | Off |
-| Prompts | Interactive | Auto-approved |
+| Prompts | Interactive | Non-destructive prompts use defaults; destructive actions need `--force` or `GCX_AUTO_APPROVE` |
 
-Agent mode is active when `GCX_AGENT_MODE=true`, or auto-detected from env vars (`CLAUDECODE`, `CLAUDE_CODE`).
+Agent mode is active when `GCX_AGENT_MODE=true`, or when gcx detects a native
+agent marker or a supported explicit identity. See the
+[agent environment reference](docs/design/environment-variables.md#agent-mode-variables).
 Explicit flags always override: `--output json` works in human mode; `--output text` works in agent mode.
 
 See [docs/design/agent-mode.md](docs/design/agent-mode.md) for detection logic and opt-out.
@@ -102,12 +104,24 @@ WARN http error   method=GET url=https://... error="connection refused"
 
 ### `--insecure-log-http-payload`
 
-Dumps the full request and response bodies (via `httputil.DumpRequest` /
+Dumps the full request and response bodies (via `httputil.DumpRequestOut` /
 `httputil.DumpResponse`) at Debug level. Requires `-vvv` to be visible.
 
 ```
 gcx --insecure-log-http-payload -vvv slo list
 ```
+
+Each dump carries a label, so you can find it in the log: `http request dump`
+and `http response dump`. A wire dump holds no word that identifies it, so
+searching for "body" finds nothing.
+
+The dump is the innermost transport layer, so it shows every header that an
+outer layer adds, including the bearer token that the OAuth transport adds. The
+dump renders an HTTP/1.1 request line, so the framing is not exact on an HTTP/2
+connection. The dump also covers the OAuth token refresh exchange, because
+`auth.RefreshTransport` sends the refresh request through the same inner layer.
+When a refresh fails, gcx never sends your original request, so only the refresh
+exchange appears. The `WARN http error` line carries the reason.
 
 **Warning:** The dump includes all headers, including `Authorization`. Treat
 the output as sensitive — do not paste it into public issues or logs.
@@ -125,7 +139,7 @@ by `NewNamespacedRESTConfig` via `WrapTransport`).
 | 2 | Usage error | Bad flags, invalid selectors, missing args |
 | 3 | Auth failure | 401/403, missing or invalid credentials |
 | 4 | Partial failure | Some resources succeeded, others failed |
-| 5 | Cancelled | Ctrl+C, `context.Canceled` |
+| 5 | Cancelled | The invocation stopped early: Ctrl+C, `context.Canceled`, a declined confirmation prompt, a server-reported cancellation |
 | 6 | Version incompatible | Grafana < 12 detected |
 
 See [docs/design/exit-codes.md](docs/design/exit-codes.md) for implementation with `DetailedError` and converters.
@@ -159,4 +173,5 @@ Prescriptive implementation rules live in [docs/design/](docs/design/), split by
 | [help-text.md](docs/design/help-text.md) | Command descriptions, examples format |
 | [naming.md](docs/design/naming.md) | Resource kinds, file naming, config keys, flags |
 | [command-naming.md](docs/design/command-naming.md) | Canonical command verbs and placement |
+| [experimental-commands.md](docs/design/experimental-commands.md) | Marking experimental commands in help text and agent metadata |
 | [environment-variables.md](docs/design/environment-variables.md) | Canonical environment variable reference |

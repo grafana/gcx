@@ -227,6 +227,7 @@ based editor picks them up via the `yaml:"providers"` tag.
 **Evidence:**
 - `internal/providers/provider.go`: `Provider` interface and `ConfigKey` type
 - `internal/providers/registry.go`: `All()` function
+- `internal/providers/resource.go`: `BoundResource.Load` and `LoadGrafanaDeps` share Grafana transport construction; commands bind the same resource declaration as registration.
 - `internal/providers/redact.go`: `RedactSecrets` implementation
 - `internal/providers/configloader.go`: Shared `ConfigLoader` struct — all providers use this instead of duplicating config loading logic. Provides `LoadGrafanaConfig`, `LoadCloudConfig`, `LoadProviderConfig` (provider-specific `map[string]string`), `SaveProviderConfig` (write-back), and `LoadFullConfig` (full `*config.Config`)
 - `internal/providers/alert/provider.go`: Second provider implementation (alert rules and groups)
@@ -279,7 +280,8 @@ in `NewNamespacedRESTConfig`; the provider tier gets it via
 `httputils.NewDefaultClient(ctx)`. The `--insecure-log-http-payload` flag adds full body
 dumps via `RequestResponseLoggingRoundTripper` across both tiers — `NewDefaultClient`
 checks `PayloadLogging(ctx)` directly; `NewNamespacedRESTConfig` checks it when
-building the `WrapTransport` chain.
+building the `WrapTransport` chain. In both tiers the dump is the innermost
+layer, so it shows every header that an outer layer adds.
 
 **Output rendering:** Query results can be rendered as tables, JSON/YAML, or
 terminal charts (`internal/graph`). The `query` command registers custom codecs
@@ -361,23 +363,28 @@ Cross-reference: Pattern 12 (Direct HTTP Client for Datasource APIs).
 
 ### 15. Agent Mode Detection and Pipe-Aware Output
 
-gcx detects at startup whether it is running inside an AI agent
-environment (Claude Code, Cursor, GitHub Copilot, Amazon Q, opencode, pi) and adjusts
-its behavior accordingly. Detection happens at `init()` time by reading
-well-known environment variables; the `--agent` CLI flag overrides env
-detection when explicitly set.
+gcx detects agent identity at startup from native signals or supported names.
+Detection runs at `init()` time. The `--agent` flag overrides the detected mode.
 
-**Detection priority:**
+**Mode priority:**
 
 | Priority | Mechanism | Notes |
 |----------|-----------|-------|
-| 1 | `GCX_AGENT_MODE` env var | Explicit override — falsy value disables agent mode even if other vars are set |
-| 2 | `CLAUDECODE`, `CLAUDE_CODE`, `CURSOR_AGENT`, `GITHUB_COPILOT`, `AMAZON_Q`, `OPENCODE`, `PI_CODING_AGENT` env vars | Any truthy value enables agent mode |
-| 3 | `--agent` CLI flag | Applied after env detection; always takes precedence when explicitly passed |
+| 1 | Explicit `--agent` flag | Enables or disables mode after environment detection |
+| 2 | Valid `GCX_AGENT_MODE` value | Explicit mode override |
+| 3 | Supported identity | Native signals, `GCX_AGENT_NAME`, `AI_AGENT`, or `AGENT=goose` enable mode |
+| 4 | Default | Agent mode is disabled |
+
+Identity resolution starts with `GCX_AGENT_NAME`, then native markers, then
+`AI_AGENT`, then `AGENT=goose`. Mode opt-out does not clear the identity
+label. Usage telemetry uses the same fixed label as the detector.
+See the [environment reference](../design/environment-variables.md#agent-mode-variables)
+for the complete signal list and supported names. See
+[agent mode](../design/agent-mode.md#61-detection) for the full precedence rules.
 
 **Behavioral effects when agent mode is active:**
 - Color output disabled globally (`color.NoColor = true`)
-- Default output format overridden to `json` (machine-parseable by default)
+- Default output format overridden to `agents` (compact JSON with file spill)
 - Pipe-aware behaviors forced: `IsPiped=true`, `NoTruncate=true` regardless of TTY state
 - In-band error JSON written to stdout on failure (see `cmd/gcx/fail/json.go`)
 
@@ -391,7 +398,7 @@ The `--no-truncate` persistent flag provides explicit control for non-TTY use ca
 behaviors regardless of actual TTY state.
 
 **Key files:**
-- `internal/agent/agent.go` — `IsAgentMode()`, `SetFlag()`, `DetectedFromEnv()`
+- `internal/agent/agent.go` — `IsAgentMode()`, `SetFlag()`, `DetectedFromEnv()`, `Name()`
 - `internal/terminal/terminal.go` — `Detect()`, `IsPiped()`, `NoTruncate()`, setters
 - `cmd/gcx/root/command.go` — orchestrates detection order in `PersistentPreRun`
 - `internal/output/format.go` — `io.Options` fields `IsPiped`, `NoTruncate`, `JSONFields`
@@ -420,7 +427,7 @@ This applies to provider commands (`slo`, `synth`, `alert`) which each define a 
 
 ### 16. ResourceAdapter and Provider CRUD Routing
 
-Provider-backed resource types (SLO, Synthetic Monitoring, Alert) implement the
+Provider-backed resource types (SLO, Synthetic Monitoring) implement the
 `adapter.ResourceAdapter` interface to bridge their REST clients to the unified
 `resources` pipeline. Providers return their `adapter.Registration` values from
 `Provider.TypedRegistrations()`; the single `providers.Register()` call in the
@@ -488,6 +495,40 @@ interfaces directly, eliminating the TypedCRUD bridge.
 Do not introduce new serialization bridges, dispatch patterns, or
 type-erasure mechanisms. If TypedCRUD does not fit your use case, raise
 the issue for architectural discussion.
+
+### Sanctioned Exception — Single-Seam Capability Assertion (`adapter.Resource[T]`)
+
+The declarative `adapter.Resource[T]` + `adapter.NewProvider` registration
+model (see [ADR-025](../adrs/declarative-provider-registration/001-declarative-resource-front-door.md)) needs
+to determine, at registration time, which CRUD verbs a provider's `NewClient`
+result actually supports. Detecting capability-interface satisfaction
+intrinsically requires a type assertion on the `any` value `NewClient`
+returns — there is no generics-only way to do this within the TypedCRUD
+model. The ADR records this narrow exception.
+
+This is a **documented, audited exception** to the "no `any` type erasure"
+rule above, narrowly scoped:
+
+- The assertion is confined to exactly ONE file:
+  `internal/resources/adapter/capability.go`. Grep for `.(Lister[`,
+  `.(Getter[`, `.(Creator[`, `.(Updater[`, `.(Deleter[`, `.(Validator[` — all
+  six must appear only there.
+- No provider package performs this assertion. Providers only implement the
+  capability interfaces (`Lister[T]`, `Getter[T]`, `Creator[T]`, `Updater[T]`,
+  `Deleter[T]`, `Validator[T]`) on their REST client; the seam converts
+  interface satisfaction into `TypedCRUD[T]`'s existing "nil Fn ⇒
+  `errors.ErrUnsupported`" semantics. No new dispatch or serialization
+  mechanism is introduced, and no second seam may be added anywhere else.
+- An unimplemented verb resolves to `errors.ErrUnsupported` (TypedCRUD's
+  existing behavior, unchanged); an unimplemented `Validator[T]` makes
+  dry-run mutations skip the server call and return `ErrDryRunUnverified`,
+  so the resource is reported as skipped rather than falsely valid.
+
+This qualifies Pattern 18's "No `any` type erasure — all 16 types use
+concrete generics" claim below: that claim describes the **hand-written,
+per-provider registration path** (OnCall's `adapter.BuildRegistration`). The
+separate declarative `Resource[T]` path uses exactly one sanctioned
+`any`-assertion seam, documented here.
 
 ### Provider ConfigLoader
 
@@ -592,7 +633,7 @@ return opts.IO.Encode(cmd.OutOrStdout(), objs)
 | Singleton config | `env get` | Single config objects, not collections of resources |
 
 **Evidence:**
-- `internal/providers/slo/definitions/commands.go`: `newListCommand` — SLO list wraps via `ToResource`
+- `internal/providers/slo/definitions/commands.go`: `newListCommand` — SLO list wraps via the declared resource's `TypedCRUD.ToUnstructured`
 - `internal/providers/fleet/provider.go`: `newPipelineListCommand`, `newCollectorListCommand`
 - `internal/providers/kg/commands.go`: `newRulesCommand` — rules list/get wrap via `RuleToResource`
 
@@ -600,39 +641,47 @@ return opts.IO.Encode(cmd.OutOrStdout(), objs)
 
 ### 18. Table-Driven TypedCRUD Registration for Providers
 
-Providers with many resource types (e.g., OnCall with 17 types) use a generic
-`registerXResource[T]` function with functional options to register each type
-in a single, self-contained call. This replaces the earlier switch-dispatch
-pattern where a single adapter struct dispatched all types through runtime
-kind-string matching.
+Providers with many resource types (e.g., OnCall with 16 types) use the
+`adapter` package's generic `BuildRegistration[T, C]` builder with functional
+options to register each type in a single, self-contained call. This lives in
+`internal/resources/adapter` (not per-provider) and replaces the earlier
+switch-dispatch pattern where a single adapter struct dispatched all types
+through runtime kind-string matching.
 
 **Pattern structure:**
 
 ```go
-// 1. resourceMeta holds static registration metadata.
-type resourceMeta struct {
-    Descriptor resources.Descriptor
-    Aliases    []string
-    Schema, Example json.RawMessage
+// 1. RegistrationMeta holds static registration metadata. Schema and GVK are
+// NOT carried here — BuildRegistration derives them from the type parameter
+// and Descriptor, so callers must not hand-thread them.
+type RegistrationMeta struct {
+    Descriptor  resources.Descriptor
+    StripFields []string
+    Example     json.RawMessage
+    URLTemplate string
 }
 
-// 2. crudOption[T] configures optional CRUD operations.
-type crudOption[T any] func(client *Client, crud *adapter.TypedCRUD[T])
+// NewRegistrationMeta builds a RegistrationMeta from a GroupVersion + kind/
+// singular/plural. Providers with their own GroupVersion constants typically
+// wrap this in a package-local helper (see irm.oncallMeta).
+func NewRegistrationMeta(gv schema.GroupVersion, kind, singular, plural string) RegistrationMeta
 
-// 3. withCreate/withUpdate/withDelete set the corresponding Fn fields.
-func withCreate[T any](fn func(ctx context.Context, c *Client, item *T) (*T, error)) crudOption[T]
+// 2. CRUDOption[T, C] configures optional CRUD operations, generic over both
+// the resource type T and the resolved client type C.
+type CRUDOption[T ResourceNamer, C any] func(client C, crud *TypedCRUD[T])
 
-// 4. buildRegistration[T] wires everything and returns an adapter.Registration.
-//    The per-type registrations are collected by buildOnCallRegistrations and
-//    returned from the provider's TypedRegistrations() — providers.Register()
-//    in init() performs the actual registration.
-func buildRegistration[T adapter.ResourceNamer](
-    loader OnCallConfigLoader,
-    meta   resourceMeta,
-    listFn func(ctx context.Context, client OnCallAPI) ([]T, error),
-    getFn  func(ctx context.Context, client OnCallAPI, name string) (*T, error), // nil for list-only
-    opts   ...crudOption[T],
-) adapter.Registration
+// 3. WithCreate/WithUpdate/WithDelete set the corresponding Fn fields.
+func WithCreate[T ResourceNamer, C any](fn func(ctx context.Context, client C, item *T) (*T, error)) CRUDOption[T, C]
+
+// 4. BuildRegistration[T, C] wires everything and returns a Registration
+// (Schema/GVK auto-derived from T and meta.Descriptor).
+func BuildRegistration[T ResourceNamer, C any](
+    loadClient func(ctx context.Context) (C, string, error),
+    meta       RegistrationMeta,
+    listFn     func(ctx context.Context, client C) ([]T, error),
+    getFn      func(ctx context.Context, client C, name string) (*T, error), // nil for list-only
+    opts       ...CRUDOption[T, C],
+) Registration
 ```
 
 **When to use:** When a provider has 4+ resource types sharing the same
@@ -640,13 +689,18 @@ API group/version and client initialization pattern. The generic helper
 eliminates per-type boilerplate while keeping each registration self-documenting.
 
 **Key properties:**
-- No `any` type erasure — all 17 types use concrete generics
+- No `any` type erasure in this hand-written registration pattern — all 16
+  types use concrete generics over both the resource type T and the client
+  type C. (The separate declarative `adapter.Resource[T]` registration path
+  uses exactly one sanctioned `any`-assertion seam; see "Sanctioned Exception
+  — Single-Seam Capability Assertion" above.)
 - No switch/case dispatch — CRUD behavior determined at registration time
-- Functional options express the CRUD matrix declaratively (only 10/17 types support create, etc.)
+- Functional options express the CRUD matrix declaratively (only 9/16 types support create, etc.)
 - Special-case type conversions (e.g., Shift→ShiftRequest) are closures in the option, not if/else branches
 
 **Evidence:**
-- `internal/providers/irm/oncall_adapter.go`: `registerOnCallResource[T]`, 17 registrations
+- `internal/resources/adapter/builder.go`: `RegistrationMeta`, `NewRegistrationMeta`, `CRUDOption[T, C]`, `WithCreate`/`WithUpdate`/`WithDelete`, `BuildRegistration[T, C]`
+- `internal/providers/irm/oncall_adapter.go`: `oncallMeta` helper + 16 `adapter.BuildRegistration` calls
 - ADR: `docs/adrs/oncall-typed-crud/001-table-driven-typedcrud.md`
 
 ### 19. Singleton Adapter Pattern (Adopt)
@@ -731,6 +785,47 @@ c.doRequest(ctx, http.MethodPost, fmt.Sprintf("%s/%s/apply", recsPath, id), nil)
 - `internal/providers/slo/definitions/client.go`: `sloByUUIDFmt`
 - `internal/providers/kg/client.go`: `ruleByNameFmt`, `suppressionByNameFmt`
 - `internal/providers/agento11y/*/client.go`: `conversationByIDFmt`, `generationByIDFmt`, `ruleByIDFmt`, `templateByIDFmt`, `evaluatorByIDFmt`
+
+### 22. Native Resource Binding (Adopt)
+
+**Observation:** Some provider commands manage a Kubernetes-compatible resource
+that Grafana serves natively and gcx discovers from the server (for example
+`gcx alert routing-trees` over `routingtrees.notifications.alerting.grafana.app`).
+These commands must not register an adapter for the GVK (that would take the
+GVK away from the dynamic client in `gcx resources` and pin one version), and
+must not build discovery registries or dynamic clients by hand.
+
+**Rule:** Bind the resource once in the command factory with
+`native.Bind(loader, native.Config{Group, Resource})` from
+`internal/providers/native`. Leaves call `Binding.Load` only after validation
+and any confirmation; `Load` resolves a fresh config snapshot, the descriptor
+(server-preferred version unless `LoadOptions.APIVersion` is set), and a
+dynamic client. Nothing is cached between calls.
+
+```go
+binding := native.Bind(loader, native.Config{
+    Group:    "notifications.alerting.grafana.app",
+    Resource: "routingtrees",
+})
+// in RunE, after validation:
+access, err := binding.Load(ctx, native.LoadOptions{APIVersion: opts.APIVersion})
+list, err := access.Client.List(ctx, access.Descriptor, metav1.ListOptions{})
+```
+
+**Reuse constraints:**
+- `native` imports no cobra, `cmdio`, terminal, or prompt packages
+  (`TestNoCLIImports` enforces direct imports).
+- `native.WithRegistry` replaces the on-disk discovery cache, e.g. for a
+  long-running multi-tenant process.
+- `native.ReadManifest(filename, stdin)` reads `-f` input from an injected
+  reader (`cmd.InOrStdin()`), never `os.Stdin`.
+- Tests inject `native.Fixed(access)` or `native.Func(f)` instead of a server.
+
+**Key files:**
+- `internal/providers/native/native.go`: `Bind`, `Binding.Load`, `Fixed`, `Func`, `WithRegistry`, `ParseAPIVersion`
+- `internal/providers/native/manifest.go`: `ReadManifest`
+- `internal/providers/alert/routing_trees_commands.go`: first adopter
+- Constitution: "Native resources go through the shared native binding". Dashboards still hand-rolls access until its migration lands.
 
 ---
 

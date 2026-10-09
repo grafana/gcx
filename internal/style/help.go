@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/glamour"
+	"charm.land/lipgloss/v2"
 	claudeplugin "github.com/grafana/gcx/claude-plugin"
 	"github.com/grafana/gcx/internal/agent"
 	skillops "github.com/grafana/gcx/internal/skills"
@@ -18,11 +18,7 @@ const jsonDiscoveryTip = "Use --json list to discover available fields, --json f
 // long tokens such as documentation URLs stay on a single logical line and
 // remain clickable in terminals that auto-detect links.
 func renderLong(long string) (string, error) {
-	r, err := glamour.NewTermRenderer(glamour.WithStandardStyle("dark"), glamour.WithWordWrap(0))
-	if err != nil {
-		return "", err
-	}
-	return r.Render(long)
+	return renderMarkdown(long, false)
 }
 
 // relatedSkillFooter returns the "Related skill" footer lines for a command, or
@@ -54,7 +50,8 @@ func relatedSkillFooter(cmd *cobra.Command) []string {
 // Falls back to Cobra's default help when styling is disabled.
 func HelpFunc(defaultHelp func(*cobra.Command, []string)) func(*cobra.Command, []string) {
 	return func(cmd *cobra.Command, args []string) {
-		if !IsStylingEnabled() {
+		noColor, _ := cmd.Flags().GetBool("no-color")
+		if noColor || !IsStylingEnabled() {
 			defaultHelp(cmd, args)
 			w := cmd.OutOrStdout()
 			// Append JSON discovery tip for commands that support --json.
@@ -77,7 +74,7 @@ func HelpFunc(defaultHelp func(*cobra.Command, []string)) func(*cobra.Command, [
 		// Show ASCII logo for the root command only.
 		if !cmd.HasParent() {
 			if logo := RenderLogo(); logo != "" {
-				fmt.Fprintln(w, logo)
+				_, _ = lipgloss.Fprintln(w, logo)
 			}
 		}
 
@@ -89,7 +86,7 @@ func HelpFunc(defaultHelp func(*cobra.Command, []string)) func(*cobra.Command, [
 			// fallback, which prints Long verbatim.
 			rendered, err := renderLong(cmd.Long)
 			if err == nil {
-				fmt.Fprint(w, rendered)
+				_, _ = lipgloss.Fprint(w, rendered)
 			} else {
 				fmt.Fprintln(w, cmd.Long)
 			}
@@ -122,10 +119,10 @@ func HelpFunc(defaultHelp func(*cobra.Command, []string)) func(*cobra.Command, [
 		// --- Examples ---
 		if cmd.HasExample() {
 			md := "```\n" + strings.TrimSpace(cmd.Example) + "\n```"
-			rendered, err := glamour.Render(md, "dark")
+			rendered, err := renderMarkdown(md, true)
 			if err == nil {
 				fmt.Fprintln(w, "Examples:")
-				fmt.Fprint(w, rendered)
+				_, _ = lipgloss.Fprint(w, rendered)
 			} else {
 				fmt.Fprintln(w, "Examples:")
 				fmt.Fprintf(w, "%s\n", cmd.Example)

@@ -16,8 +16,8 @@ By default, opens a browser for interactive OAuth2 authentication.
 EXPERIMENTAL: interactive OAuth login is an experimental flow that stores an
 OAuth-issued token in the cloud entry's oauth-token field. Some commands that
 talk to grafana.com do not yet work with an OAuth token, and the token cannot
-be refreshed - when it expires, run this command again. For full
-functionality, pass a Cloud Access Policy token via --cloud-token instead.
+be refreshed - when it expires, run this command again. Use a Cloud Access
+Policy token via --cloud-token for operations that do not support OAuth.
 
 For non-interactive use (CI/CD, scripts), pass a Cloud Access Policy token
 directly via --cloud-token.
@@ -47,14 +47,14 @@ gcx cloud login [flags]
   -h, --help                 help for login
       --oauth-manual         Complete browser OAuth without a local callback server: gcx prints the URL, then reads the redirect URL that you copy from the browser address bar. Use this when gcx runs on a remote host and the browser runs on your own computer
       --oauth-url string     Base URL for the OAuth login flow (used only by this command) (default "https://grafana.com")
-      --scope strings        OAuth2 scopes to request (default [stacks:read,stacks:write,stacks:delete,metrics:write,logs:write,traces:write,fleet-management:read,fleet-management:write])
+      --scope strings        OAuth2 scopes to request (default [profile,stacks:read,stacks:write,stacks:delete,metrics:write,logs:write,traces:write])
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
-      --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.
+      --agent                       Enable agent mode (JSON output, no color). Auto-detected from known agent identity variables. Set GCX_AGENT_NAME to identify a supported harness, or GCX_AGENT_MODE to control the mode.
+      --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Requires -vvv. Do not ship these logs.
       --no-color                    Disable color output
       --no-truncate                 Disable table column truncation (auto-enabled when stdout is piped)
   -v, --verbose count               Verbose mode. Multiple -v options increase the verbosity (maximum: 3).

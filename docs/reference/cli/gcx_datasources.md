@@ -15,9 +15,9 @@ List, inspect, and query Grafana datasources. Use top-level signal commands (met
 ### Options inherited from parent commands
 
 ```
-      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
+      --agent                       Enable agent mode (JSON output, no color). Auto-detected from known agent identity variables. Set GCX_AGENT_NAME to identify a supported harness, or GCX_AGENT_MODE to control the mode.
       --context string              Name of the context to use (overrides current-context in config)
-      --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.
+      --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Requires -vvv. Do not ship these logs.
       --no-color                    Disable color output
       --no-truncate                 Disable table column truncation (auto-enabled when stdout is piped)
   -v, --verbose count               Verbose mode. Multiple -v options increase the verbosity (maximum: 3).
@@ -28,6 +28,7 @@ List, inspect, and query Grafana datasources. Use top-level signal commands (met
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
 * [gcx datasources athena](gcx_datasources_athena.md)	 - Query Amazon Athena datasources
 * [gcx datasources azuremonitor](gcx_datasources_azuremonitor.md)	 - Query Azure Monitor datasources
+* [gcx datasources bigquery](gcx_datasources_bigquery.md)	 - Query BigQuery datasources
 * [gcx datasources clickhouse](gcx_datasources_clickhouse.md)	 - Query ClickHouse datasources
 * [gcx datasources cloudmonitoring](gcx_datasources_cloudmonitoring.md)	 - Query Google Cloud Monitoring datasources
 * [gcx datasources cloudwatch](gcx_datasources_cloudwatch.md)	 - Query AWS CloudWatch datasources
@@ -40,7 +41,10 @@ List, inspect, and query Grafana datasources. Use top-level signal commands (met
 * [gcx datasources influxdb](gcx_datasources_influxdb.md)	 - Query InfluxDB datasources
 * [gcx datasources list](gcx_datasources_list.md)	 - List all datasources
 * [gcx datasources loki](gcx_datasources_loki.md)	 - Query Loki datasources
+* [gcx datasources mssql](gcx_datasources_mssql.md)	 - Query Microsoft SQL Server datasources
 * [gcx datasources mysql](gcx_datasources_mysql.md)	 - Query MySQL datasources
+* [gcx datasources opensearch](gcx_datasources_opensearch.md)	 - Query OpenSearch datasources
+* [gcx datasources pinot](gcx_datasources_pinot.md)	 - Query StarTree Pinot datasources
 * [gcx datasources postgres](gcx_datasources_postgres.md)	 - Query PostgreSQL datasources
 * [gcx datasources prometheus](gcx_datasources_prometheus.md)	 - Query Prometheus datasources
 * [gcx datasources pyroscope](gcx_datasources_pyroscope.md)	 - Query Pyroscope datasources

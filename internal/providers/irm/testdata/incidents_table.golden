@@ -1,0 +1,3 @@
+INCIDENTID  TITLE                                               STATUS    SEVERITY  CREATED
+inc-1       Checkout latency regression affecting EU custom...  active    Critical  2026-03-14 09:26
+inc-2       bare                                                resolved  -         -

@@ -1,14 +1,9 @@
 package alert
 
 import (
-	"errors"
-	"io"
-
-	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
-	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -37,7 +32,7 @@ type contactPointsListOpts struct {
 }
 
 func (o *contactPointsListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &ContactPointsTableCodec{})
+	cmdio.RegisterTable(&o.IO, ContactPointsTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for unlimited)")
@@ -73,25 +68,13 @@ func newContactPointsListCommand(loader GrafanaConfigLoader) *cobra.Command {
 	return cmd
 }
 
-// ContactPointsTableCodec renders contact points as a tabular table.
-type ContactPointsTableCodec struct{}
-
-func (c *ContactPointsTableCodec) Format() format.Format { return "table" }
-
-func (c *ContactPointsTableCodec) Encode(w io.Writer, v any) error {
-	points, ok := v.([]ContactPoint)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []ContactPoint")
-	}
-	t := style.NewTable("UID", "NAME", "TYPE", "PROVENANCE")
-	for _, p := range points {
-		t.Row(p.UID, p.Name, p.Type, p.Provenance)
-	}
-	return t.Render(w)
-}
-
-func (c *ContactPointsTableCodec) Decode(io.Reader, any) error {
-	return errors.New("table format does not support decoding")
+func ContactPointsTable() cmdio.Table[ContactPoint] {
+	return cmdio.Table[ContactPoint]{Columns: []cmdio.Column[ContactPoint]{
+		{Header: "UID", Content: func(r ContactPoint) string { return r.UID }},
+		{Header: "NAME", Content: func(r ContactPoint) string { return r.Name }},
+		{Header: "TYPE", Content: func(r ContactPoint) string { return r.Type }},
+		{Header: "PROVENANCE", Content: func(r ContactPoint) string { return r.Provenance }},
+	}}
 }
 
 type contactPointsGetOpts struct {

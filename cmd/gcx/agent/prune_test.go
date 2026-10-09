@@ -60,6 +60,38 @@ func TestPrune_IgnoresNonSpillFiles(t *testing.T) {
 	require.NoError(t, statErr, "non-spill file must still exist")
 }
 
+func TestPrune_JSONLSpillFiles(t *testing.T) {
+	tests := []struct {
+		name    string
+		file    string
+		age     time.Duration
+		deleted int
+	}{
+		{"old stream", "gcx-results-old.jsonl", 31 * time.Minute, 1},
+		{"recent stream", "gcx-results-recent.jsonl", time.Minute, 0},
+		{"unrelated JSONL", "other.jsonl", time.Hour, 0},
+		{"not a spill extension", "gcx-results-old.jsonl.backup", time.Hour, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, tt.file)
+			require.NoError(t, os.WriteFile(path, []byte("1\n2\n"), 0o600))
+			modified := time.Now().Add(-tt.age)
+			require.NoError(t, os.Chtimes(path, modified, modified))
+			deleted, err := agent.PruneSpillFiles(dir, 30*time.Minute)
+			require.NoError(t, err)
+			assert.Equal(t, tt.deleted, deleted)
+			_, err = os.Stat(path)
+			if tt.deleted == 1 {
+				require.ErrorIs(t, err, os.ErrNotExist)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
 func TestPrune_NoFiles_ReturnsZero(t *testing.T) {
 	dir := t.TempDir()
 	deleted, err := agent.PruneSpillFiles(dir, 30*time.Minute)

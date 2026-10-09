@@ -46,8 +46,12 @@ type snapshotOpts struct {
 	OrgID       int
 	OutputDir   string
 	Concurrency int
+	Timeout     time.Duration
+	timeoutSet  bool
 	Vars        map[string]string
 }
+
+const maxRenderTimeout = time.Duration(1<<63-1) - 30*time.Second
 
 func (opts *snapshotOpts) setup(flags *pflag.FlagSet) {
 	// The snapshot result is a snapshotReceipt document (files-on-disk
@@ -69,6 +73,7 @@ func (opts *snapshotOpts) setup(flags *pflag.FlagSet) {
 	flags.IntVar(&opts.OrgID, "org-id", 1, "Grafana organization number")
 	flags.StringVar(&opts.OutputDir, "output-dir", ".", "Directory to write PNG files to (created if it does not exist)")
 	flags.IntVar(&opts.Concurrency, "concurrency", 10, "Maximum number of concurrent render requests")
+	flags.DurationVar(&opts.Timeout, "timeout", 0, "Maximum time for each render as a positive whole-second duration (e.g. 30s, 3m)")
 	flags.StringToStringVar(&opts.Vars, "var", nil, "Dashboard template variable overrides (e.g. --var cluster=prod --var datasource=prometheus)")
 }
 
@@ -84,6 +89,17 @@ func (opts *snapshotOpts) Validate() error {
 
 	if opts.Theme != "light" && opts.Theme != "dark" {
 		return fmt.Errorf("--theme must be \"light\" or \"dark\", got %q", opts.Theme)
+	}
+	if opts.timeoutSet {
+		if opts.Timeout <= 0 {
+			return errors.New("--timeout must be positive")
+		}
+		if opts.Timeout%time.Second != 0 {
+			return errors.New("--timeout must be a whole number of seconds")
+		}
+		if opts.Timeout > maxRenderTimeout {
+			return errors.New("--timeout is too large")
+		}
 	}
 
 	// Apply default dimensions based on whether a specific panel is requested.
@@ -191,6 +207,9 @@ func Commands(loader GrafanaConfigLoader) *cobra.Command {
   # Snapshot using a duration shorthand
   gcx dashboards snapshot my-dashboard-name --since 6h
 
+  # Allow up to three minutes for each render
+  gcx dashboards snapshot my-dashboard-name --timeout 3m
+
   # Snapshot multiple dashboards to a specific directory
   gcx dashboards snapshot name1 name2 name3 --output-dir ./snapshots
 
@@ -198,6 +217,7 @@ func Commands(loader GrafanaConfigLoader) *cobra.Command {
   gcx dashboards snapshot my-dashboard-name --var cluster=prod --var datasource=prometheus`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.timeoutSet = cmd.Flags().Changed("timeout")
 			if err := opts.Validate(); err != nil {
 				return err
 			}
@@ -247,6 +267,7 @@ func Commands(loader GrafanaConfigLoader) *cobra.Command {
 						From:    opts.From,
 						To:      opts.To,
 						Tz:      opts.Tz,
+						Timeout: opts.Timeout,
 						Vars:    opts.Vars,
 					}
 

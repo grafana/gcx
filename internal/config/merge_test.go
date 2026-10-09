@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
@@ -9,6 +10,49 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// A repository-local setting must not alter the user's choice, but its
+// ordinary configuration still participates in the merge. This catches a
+// production change that discards an entire local layer while filtering its
+// untrusted credentials.keychain field, or that lets the field poison either
+// user opt-in or user opt-out.
+func TestLoadLayered_KeychainPolicyPreservesTrustedModeAndLocalMerge(t *testing.T) {
+	tests := []struct {
+		name       string
+		userMode   string
+		localMode  string
+		wantStored bool
+	}{
+		{name: "local off cannot poison user opt in", userMode: "on", localMode: "off", wantStored: true},
+		{name: "local on cannot poison user opt out", userMode: "off", localMode: "on", wantStored: false},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			fixture := newKeychainPolicyFixture(t)
+			store := withFakeStore(t)
+
+			// Keep all three discovered snapshots present: system establishes the
+			// low-priority layer, user supplies the trusted policy and secret, and
+			// local contributes only repository configuration plus its ignored key.
+			writeKeychainPolicyConfig(t, fixture.system, "", "", false)
+			writeKeychainPolicyConfig(t, fixture.user, test.userMode, "plaintext-user-token", false)
+			writeKeychainPolicyConfig(t, fixture.local, test.localMode, "", true)
+
+			var warnings bytes.Buffer
+			cfg, err := config.LoadLayered(config.ContextWithWarningWriter(t.Context(), &warnings), "")
+			require.NoError(t, err)
+			require.Contains(t, cfg.Contexts, "repo-context", "local context must remain after filtering its credential policy")
+			assert.Contains(t, warnings.String(), "credentials.keychain")
+			assert.NotContains(t, warnings.String(), "repo-context", "warning must identify only the ignored field, not unrelated local configuration")
+			if test.wantStored {
+				assert.Positive(t, store.sets(), "user opt-in must keep OS keychain storage enabled")
+			} else {
+				assert.Zero(t, store.sets(), "user opt-out must keep credentials out of the OS keychain")
+			}
+		})
+	}
+}
 
 func TestMergeConfigs(t *testing.T) {
 	tests := []struct {

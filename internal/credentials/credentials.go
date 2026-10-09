@@ -6,9 +6,9 @@
 //
 // Migration is automatic and idempotent: on every config load, plaintext
 // secrets are pushed into the keychain and replaced with sentinels in the
-// YAML. If the keychain is unavailable (headless boxes, locked sessions,
-// missing DBus), gcx falls back to leaving plaintext in place and emits a
-// one-time warning.
+// YAML. If no keychain is available, gcx falls back to leaving plaintext in
+// place and emits a one-time warning. A reachable but locked keychain fails
+// closed instead.
 package credentials
 
 import (
@@ -71,15 +71,77 @@ var AllFields = []Field{
 // ErrNotFound is returned by Store.Get when no entry exists for the given key.
 var ErrNotFound = errors.New("credentials: entry not found")
 
-// ErrUnavailable is returned when the OS keychain cannot be reached. Callers
-// should fall back to plaintext.
+// ErrUnavailable is returned when the OS keychain cannot be reached. This is
+// fatal: callers must not fall back to plaintext for it. credentials.ErrDisabled
+// (the deliberate GCX_KEYCHAIN=off opt-out) is the one exception, and it must be
+// tested for explicitly, since it wraps ErrUnavailable.
 var ErrUnavailable = errors.New("credentials: keychain unavailable")
+
+// ErrLocked is returned when the OS keychain is reachable but locked, or when
+// the current session cannot present the interaction needed to unlock it. It is
+// deliberately distinct from ErrUnavailable: this condition proves that a real
+// secret backend exists, so callers must not fall back to plaintext. Callers
+// must fail and ask the user to unlock the keychain.
+var ErrLocked = errors.New("credentials: keychain locked")
+
+// ErrRestrictedSession is returned when the credential store exists, but the
+// current execution session cannot write to it. A sandbox or another process
+// policy can cause this condition. Callers must not fall back to plaintext.
+var ErrRestrictedSession = errors.New("credentials: access restricted in this execution session")
+
+// ErrDisabled is reported by a store that stands in for a keychain the user has
+// deliberately turned off. Unlike ErrLocked it wraps ErrUnavailable, because no
+// keychain is in play at all, but callers must not rely on that wrapping: since
+// plain ErrUnavailable is now fatal, every fallback-to-plaintext path must test
+// for ErrDisabled specifically, ahead of any ErrUnavailable check, or it will
+// wrongly treat a deliberate opt-out as a fatal unreachable backend.
+var ErrDisabled = fmt.Errorf("%w: disabled by configuration", ErrUnavailable)
 
 // Store is the minimal interface for a secret backend.
 type Store interface {
 	Get(key string) (string, error)
 	Set(key, value string) error
 	Delete(key string) error
+}
+
+// CheckWritable verifies that store can persist and retrieve a new value. The
+// probe uses a random account and a non-secret value. It removes the account
+// before it returns.
+func CheckWritable(store Store) error {
+	if store == nil {
+		return errors.New("credentials: credential store is nil")
+	}
+
+	random := make([]byte, 18)
+	if _, err := rand.Read(random); err != nil {
+		return fmt.Errorf("credentials: generate write probe: %w", err)
+	}
+	account := "__gcx_write_probe__:" + base64.RawURLEncoding.EncodeToString(random)
+	const value = "gcx-write-probe"
+
+	if err := store.Set(account, value); err != nil {
+		return fmt.Errorf("credentials: write probe: %w", err)
+	}
+
+	stored, getErr := store.Get(account)
+	deleteErr := store.Delete(account)
+	if getErr != nil {
+		return errors.Join(fmt.Errorf("credentials: read write probe: %w", getErr), wrapProbeDeleteError(deleteErr))
+	}
+	if stored != value {
+		return errors.Join(errors.New("credentials: write probe returned a different value"), wrapProbeDeleteError(deleteErr))
+	}
+	if deleteErr != nil {
+		return wrapProbeDeleteError(deleteErr)
+	}
+	return nil
+}
+
+func wrapProbeDeleteError(err error) error {
+	if err == nil {
+		return nil
+	}
+	return fmt.Errorf("credentials: remove write probe: %w", err)
 }
 
 // Binding is the complete authority boundary for one keychain credential.

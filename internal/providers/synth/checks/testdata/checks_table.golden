@@ -1,0 +1,3 @@
+NAME              JOB            TARGET                     TYPE
+shop-frontend-42  shop-frontend  https://shop.example.com   http
+bare-job          bare job       tcp://db.example.com:5432  unknown

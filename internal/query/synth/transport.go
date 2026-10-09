@@ -30,7 +30,7 @@ type FallbackLoader interface {
 // status codes and raw bodies, so the typed clients in internal/providers/synth
 // own decoding and error mapping.
 type Transport struct {
-	proxy         *Client
+	proxy         *ProxyClient
 	datasourceUID string
 	fallback      FallbackLoader
 
@@ -49,9 +49,9 @@ type Transport struct {
 // SM API, with credentials resolved lazily via fallback.LoadSMConfig. A nil
 // fallback disables the direct path.
 func NewTransport(restCfg config.NamespacedRESTConfig, datasourceUID string, fallback FallbackLoader) (*Transport, error) {
-	var proxy *Client
+	var proxy *ProxyClient
 	if datasourceUID != "" {
-		p, err := NewClient(restCfg)
+		p, err := NewProxyClient(restCfg)
 		if err != nil {
 			return nil, fmt.Errorf("creating SM datasource-proxy client: %w", err)
 		}

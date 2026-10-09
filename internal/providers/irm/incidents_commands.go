@@ -16,6 +16,7 @@ func newIncidentsCmd(loader GrafanaConfigLoader) *cobra.Command {
 		NewGetCommand(loader),
 		NewGetPIRCommand(loader),
 		NewCreateCommand(loader),
+		NewUpdateCommand(loader),
 		NewCloseCommand(loader),
 		NewActivityCommand(loader),
 		NewListActivityCommand(loader),

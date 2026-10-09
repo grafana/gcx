@@ -17,6 +17,7 @@ import (
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/synth/smcfg"
+	"github.com/grafana/gcx/internal/query/loki"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/style"
@@ -26,7 +27,7 @@ import (
 )
 
 // Commands returns the checks command group with CRUD subcommands.
-func Commands(loader smcfg.StatusLoader) *cobra.Command {
+func Commands(loader smcfg.AdHocLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "checks",
 		Short:   "Manage Synthetic Monitoring checks.",
@@ -40,6 +41,7 @@ func Commands(loader smcfg.StatusLoader) *cobra.Command {
 		newDeleteCommand(loader),
 		newStatusCommand(loader),
 		newTimelineCommand(loader),
+		newTestCommand(loader),
 	)
 	return cmd
 }
@@ -56,8 +58,7 @@ type listOpts struct {
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &checkTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &checkWideTableCodec{})
+	cmdio.RegisterTable(&o.IO, CheckTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 
@@ -167,54 +168,21 @@ func newListCommand(loader smcfg.Loader) *cobra.Command {
 	return cmd
 }
 
-type checkTableCodec struct{}
-
-func (c *checkTableCodec) Format() format.Format { return "table" }
-
-func (c *checkTableCodec) Encode(w io.Writer, v any) error {
-	checkList, ok := v.([]Check)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []Check")
+// CheckTable declares the synthetic check table. The wide columns are the
+// narrow ones plus four, so one declaration serves both formats.
+func CheckTable() cmdio.Table[Check] {
+	return cmdio.Table[Check]{
+		Columns: []cmdio.Column[Check]{
+			{Header: "NAME", Content: checkDisplayName},
+			{Header: "JOB", Content: func(c Check) string { return c.Job }},
+			{Header: "TARGET", Content: func(c Check) string { return c.Target }},
+			{Header: "TYPE", Content: func(c Check) string { return c.Settings.CheckType() }},
+			{Header: "ENABLED", Visible: cmdio.WideOnly, Content: func(c Check) string { return strconv.FormatBool(c.Enabled) }},
+			{Header: "FREQ", Visible: cmdio.WideOnly, Content: func(c Check) string { return fmt.Sprintf("%ds", c.Frequency/1000) }},
+			{Header: "TIMEOUT", Visible: cmdio.WideOnly, Content: func(c Check) string { return fmt.Sprintf("%ds", c.Timeout/1000) }},
+			{Header: "PROBES", Visible: cmdio.WideOnly, Content: func(c Check) string { return strconv.Itoa(len(c.Probes)) }},
+		},
 	}
-
-	t := style.NewTable("NAME", "JOB", "TARGET", "TYPE")
-
-	for _, c := range checkList {
-		t.Row(checkDisplayName(c), c.Job, c.Target, c.Settings.CheckType())
-	}
-
-	return t.Render(w)
-}
-
-func (c *checkTableCodec) Decode(r io.Reader, v any) error {
-	return errors.New("table format does not support decoding")
-}
-
-type checkWideTableCodec struct{}
-
-func (c *checkWideTableCodec) Format() format.Format { return "wide" }
-
-func (c *checkWideTableCodec) Encode(w io.Writer, v any) error {
-	checkList, ok := v.([]Check)
-	if !ok {
-		return errors.New("invalid data type for wide codec: expected []Check")
-	}
-
-	t := style.NewTable("NAME", "JOB", "TARGET", "TYPE", "ENABLED", "FREQ", "TIMEOUT", "PROBES")
-
-	for _, c := range checkList {
-		t.Row(checkDisplayName(c), c.Job, c.Target, c.Settings.CheckType(),
-			strconv.FormatBool(c.Enabled),
-			fmt.Sprintf("%ds", c.Frequency/1000),
-			fmt.Sprintf("%ds", c.Timeout/1000),
-			strconv.Itoa(len(c.Probes)))
-	}
-
-	return t.Render(w)
-}
-
-func (c *checkWideTableCodec) Decode(r io.Reader, v any) error {
-	return errors.New("wide format does not support decoding")
 }
 
 // ---------------------------------------------------------------------------
@@ -222,17 +190,18 @@ func (c *checkWideTableCodec) Decode(r io.Reader, v any) error {
 // ---------------------------------------------------------------------------
 
 type getOpts struct {
-	IO         cmdio.Options
-	ShowStatus bool
+	IO           cmdio.Options
+	ShowStatus   bool
+	DecodeScript bool
 }
 
 func (o *getOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &checkTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &checkWideTableCodec{})
+	cmdio.RegisterTable(&o.IO, CheckTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 
 	flags.BoolVar(&o.ShowStatus, "show-status", false, "Query and display the check's current execution status from Prometheus")
+	flags.BoolVar(&o.DecodeScript, "decode-script", false, "Decode a scripted/browser check's base64 script to plaintext (yaml/json output only, for editing and 'checks update')")
 }
 
 func newGetCommand(loader smcfg.StatusLoader) *cobra.Command {
@@ -247,7 +216,10 @@ func newGetCommand(loader smcfg.StatusLoader) *cobra.Command {
   gcx synthetic-monitoring checks get 5594
 
   # Get check with current execution status.
-  gcx synthetic-monitoring checks get grafana-instance-health-5594 --show-status`,
+  gcx synthetic-monitoring checks get grafana-instance-health-5594 --show-status
+
+  # Get a scripted/browser check with a readable script, ready to edit and 'checks update'.
+  gcx synthetic-monitoring checks get grafana-instance-health-5594 --decode-script -o yaml > check.yaml`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -306,6 +278,9 @@ func newGetCommand(loader smcfg.StatusLoader) *cobra.Command {
 			}
 
 			if codec.Format() == "table" || codec.Format() == "wide" {
+				if opts.DecodeScript {
+					cmdio.Warning(cmd.ErrOrStderr(), "--decode-script has no effect on table output; use -o yaml or -o json")
+				}
 				return encodeGetTable(cmd.OutOrStdout(), c, info, codec.Format() == "wide")
 			}
 
@@ -317,6 +292,10 @@ func newGetCommand(loader smcfg.StatusLoader) *cobra.Command {
 			var obj unstructured.Unstructured
 			if err := json.Unmarshal(objData, &obj); err != nil {
 				return fmt.Errorf("unmarshaling to unstructured: %w", err)
+			}
+
+			if opts.DecodeScript {
+				decodeScriptInSpec(&obj)
 			}
 			// Merge the fetched status into the structured output as an
 			// optional top-level status member carrying the same data the
@@ -340,17 +319,23 @@ func newGetCommand(loader smcfg.StatusLoader) *cobra.Command {
 // create
 // ---------------------------------------------------------------------------
 
+// actionValidated is the result action reported by `create`/`update --dry-run`:
+// the check was validated by the SM API and nothing was persisted.
+const actionValidated = "validated"
+
 type createOpts struct {
 	IO              cmdio.Options
 	File            string
 	ShowStatus      bool
 	ValidateTargets bool
+	DryRun          bool
 }
 
 func (o *createOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&o.File, "filename", "f", "", "File containing the check manifest (YAML)")
 	flags.BoolVar(&o.ShowStatus, "show-status", false, "Query and display check status after creation")
 	flags.BoolVar(&o.ValidateTargets, "validate-targets", false, "Pre-flight HTTP HEAD request for HTTP check targets (warning only)")
+	flags.BoolVar(&o.DryRun, "dry-run", false, "Validate the check with the Synthetic Monitoring API without creating it")
 	// The create result flows through the codec system: the default text
 	// codec reproduces the historical lines byte-for-byte; agent mode and
 	// explicit -o json/yaml get the structured document.
@@ -362,6 +347,9 @@ func (o *createOpts) setup(flags *pflag.FlagSet) {
 func (o *createOpts) Validate() error {
 	if o.File == "" {
 		return errors.New("--filename/-f is required")
+	}
+	if o.DryRun && o.ShowStatus {
+		return errors.New("--dry-run cannot be combined with --show-status: no check is created")
 	}
 	return o.IO.Validate()
 }
@@ -376,8 +364,9 @@ type checkCreateResult struct {
 	Action        string `json:"action" yaml:"action"`
 	Job           string `json:"job" yaml:"job"`
 	ID            int64  `json:"id" yaml:"id"`
-	// Name is the slug-id resource name used by get/update/delete.
-	Name string `json:"name" yaml:"name"`
+	// Name is the slug-id resource name used by get/update/delete. Empty (and
+	// omitted) for a dry-run, where nothing was created.
+	Name string `json:"name,omitempty" yaml:"name,omitempty"`
 	// Status is the post-create execution status (--show-status only).
 	Status string `json:"status,omitempty" yaml:"status,omitempty"`
 }
@@ -396,6 +385,10 @@ func (c *checkCreateCodec) Encode(w io.Writer, v any) error {
 	r, ok := v.(checkCreateResult)
 	if !ok {
 		return errors.New("invalid data type for check create codec: expected checkCreateResult")
+	}
+	if r.Action == actionValidated {
+		cmdio.Success(w, "Check %q is valid (dry-run: nothing was created)", r.Job)
+		return nil
 	}
 	cmdio.Success(w, "Created check %q (id=%d)", r.Job, r.ID)
 	if r.Status != "" {
@@ -421,7 +414,10 @@ and logs usage. See ` + docs.SyntheticMonitoringInvoice + `.`,
   gcx synthetic-monitoring checks create -f check.yaml --show-status
 
   # Validate HTTP target before creating.
-  gcx synthetic-monitoring checks create -f check.yaml --validate-targets`,
+  gcx synthetic-monitoring checks create -f check.yaml --validate-targets
+
+  # Validate with the Synthetic Monitoring API without creating anything.
+  gcx synthetic-monitoring checks create -f check.yaml --dry-run`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
@@ -456,6 +452,25 @@ and logs usage. See ` + docs.SyntheticMonitoringInvoice + `.`,
 				if err := ValidateHTTPTarget(spec.Settings.CheckType(), spec.Target, 5*time.Second); err != nil {
 					cmdio.Warning(cmd.ErrOrStderr(), "target validation: %v", err)
 				}
+			}
+
+			if opts.DryRun {
+				client, err := newSMClient(ctx, loader)
+				if err != nil {
+					return err
+				}
+				if err := validateRemote(ctx, client, cmd.ErrOrStderr(), spec, 0); err != nil {
+					return err
+				}
+				// Nothing is created, so there is no ID and no resource name:
+				// both stay zero rather than carry a value get/update/delete
+				// would reject.
+				return opts.IO.Encode(cmd.OutOrStdout(), checkCreateResult{
+					Type:          "gcx.synth.check_create",
+					SchemaVersion: "1",
+					Action:        actionValidated,
+					Job:           spec.Job,
+				})
 			}
 
 			crud, namespace, err := NewTypedCRUD(ctx, loader)
@@ -516,12 +531,14 @@ type updateOpts struct {
 	File            string
 	ShowStatus      bool
 	ValidateTargets bool
+	DryRun          bool
 }
 
 func (o *updateOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&o.File, "filename", "f", "", "File containing the check manifest (YAML)")
 	flags.BoolVar(&o.ShowStatus, "show-status", false, "Query and display the previous check status after update")
 	flags.BoolVar(&o.ValidateTargets, "validate-targets", false, "Pre-flight HTTP HEAD request for HTTP check targets (warning only)")
+	flags.BoolVar(&o.DryRun, "dry-run", false, "Validate the check with the Synthetic Monitoring API without updating it")
 	// The update result flows through the codec system: the default text
 	// codec reproduces the historical line byte-for-byte; agent mode and
 	// explicit -o json/yaml get the structured document.
@@ -533,6 +550,9 @@ func (o *updateOpts) setup(flags *pflag.FlagSet) {
 func (o *updateOpts) Validate() error {
 	if o.File == "" {
 		return errors.New("--filename/-f is required")
+	}
+	if o.DryRun && o.ShowStatus {
+		return errors.New("--dry-run cannot be combined with --show-status: no check is updated")
 	}
 	return o.IO.Validate()
 }
@@ -565,6 +585,10 @@ func (c *checkUpdateCodec) Encode(w io.Writer, v any) error {
 	if !ok {
 		return errors.New("invalid data type for check update codec: expected checkUpdateResult")
 	}
+	if r.Action == actionValidated {
+		cmdio.Success(w, "Check %q (id=%d) is valid (dry-run: nothing was updated)", r.Job, r.ID)
+		return nil
+	}
 	if r.PreviousStatus != "" {
 		cmdio.Success(w, "Updated check %q (id=%d) — previous status: %s", r.Job, r.ID, r.PreviousStatus)
 	} else {
@@ -587,7 +611,10 @@ toward your metrics and logs usage. See ` + docs.SyntheticMonitoringInvoice + `.
   gcx synthetic-monitoring checks update web-check-1234 -f check.yaml
 
   # Update and show previous status.
-  gcx synthetic-monitoring checks update web-check-1234 -f check.yaml --show-status`,
+  gcx synthetic-monitoring checks update web-check-1234 -f check.yaml --show-status
+
+  # Validate the update with the Synthetic Monitoring API without applying it.
+  gcx synthetic-monitoring checks update web-check-1234 -f check.yaml --dry-run`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
@@ -601,6 +628,23 @@ toward your metrics and logs usage. See ` + docs.SyntheticMonitoringInvoice + `.
 			checkID, ok := extractIDFromSlug(name)
 			if !ok || checkID == 0 {
 				return fmt.Errorf("could not extract numeric check ID from name %q — use the resource name from 'gcx synthetic-monitoring checks list'", name)
+			}
+
+			// A dry-run must not report success for a check that cannot be
+			// updated, so existence is checked before any validation.
+			var dryRunClient *Client
+			if opts.DryRun {
+				var err error
+				dryRunClient, err = newSMClient(ctx, loader)
+				if err != nil {
+					return err
+				}
+				if _, err := dryRunClient.Get(ctx, checkID); err != nil {
+					if errors.Is(err, ErrNotFound) {
+						return fmt.Errorf("check %q (id=%d) not found: nothing to update", name, checkID)
+					}
+					return fmt.Errorf("looking up check %q (id=%d): %w", name, checkID, err)
+				}
 			}
 
 			// Fetch probe info for validation and offline probe warning.
@@ -630,6 +674,20 @@ toward your metrics and logs usage. See ` + docs.SyntheticMonitoringInvoice + `.
 				if err := ValidateHTTPTarget(spec.Settings.CheckType(), spec.Target, 5*time.Second); err != nil {
 					cmdio.Warning(cmd.ErrOrStderr(), "target validation: %v", err)
 				}
+			}
+
+			if opts.DryRun {
+				if err := validateRemote(ctx, dryRunClient, cmd.ErrOrStderr(), spec, checkID); err != nil {
+					return err
+				}
+				return opts.IO.Encode(cmd.OutOrStdout(), checkUpdateResult{
+					Type:          "gcx.synth.check_update",
+					SchemaVersion: "1",
+					Action:        actionValidated,
+					Job:           spec.Job,
+					ID:            checkID,
+					Name:          name,
+				})
 			}
 
 			crud, namespace, err := NewTypedCRUD(ctx, loader)
@@ -678,15 +736,46 @@ toward your metrics and logs usage. See ` + docs.SyntheticMonitoringInvoice + `.
 	return cmd
 }
 
+// newSMClient builds an SM checks client from the loader's proxy config.
+func newSMClient(ctx context.Context, loader smcfg.Loader) (*Client, error) {
+	restCfg, uid, _, err := loader.LoadSMProxyConfig(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load SM config: %w", err)
+	}
+	client, err := NewClient(restCfg, uid, loader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create SM checks client: %w", err)
+	}
+	return client, nil
+}
+
+// validateRemote asks the SM API to validate spec — as a new check when id is
+// 0, otherwise as an update of check id — without persisting anything. Findings
+// of any severity other than error are advisory and go to stderr; error
+// findings are returned.
+func validateRemote(ctx context.Context, client *Client, stderr io.Writer, spec *CheckSpec, id int64) error {
+	result, err := client.Validate(ctx, *spec, id)
+	if err != nil {
+		return fmt.Errorf("validating check %q: %w", spec.Job, err)
+	}
+
+	for _, f := range result.Findings {
+		if f.Severity != SeverityError {
+			cmdio.Warning(stderr, "%s", f)
+		}
+	}
+
+	if err := result.Error(); err != nil {
+		return fmt.Errorf("check %q failed validation:\n%w", spec.Job, err)
+	}
+	return nil
+}
+
 // existingSensitivity fetches the current alertSensitivity for a check so that
 // "previous status" is evaluated against the old threshold, not the new spec's.
 // Falls back to fallback if the fetch fails for any reason.
 func existingSensitivity(ctx context.Context, loader smcfg.Loader, checkID int64, fallback string) string {
-	restCfg, uid, _, err := loader.LoadSMProxyConfig(ctx)
-	if err != nil {
-		return fallback
-	}
-	client, err := NewClient(restCfg, uid, loader)
+	client, err := newSMClient(ctx, loader)
 	if err != nil {
 		return fallback
 	}
@@ -695,6 +784,187 @@ func existingSensitivity(ctx context.Context, loader smcfg.Loader, checkID int64
 		return fallback
 	}
 	return existing.AlertSensitivity
+}
+
+// ---------------------------------------------------------------------------
+// test
+// ---------------------------------------------------------------------------
+
+// adHocPollBuffer is added on top of the check's own timeout to account for
+// probe scheduling and Loki ingestion delay, matching the Synthetic
+// Monitoring app's DEFAULT_TIMEOUT_IN_SECONDS.
+const adHocPollBuffer = 30 * time.Second
+
+type testOpts struct {
+	IO                cmdio.Options
+	File              string
+	LogsDatasourceUID string
+}
+
+func (o *testOpts) setup(flags *pflag.FlagSet) {
+	flags.StringVarP(&o.File, "filename", "f", "", "File containing the check manifest (YAML)")
+	flags.StringVar(&o.LogsDatasourceUID, "logs-datasource-uid", "", "UID of the Loki datasource to poll for ad-hoc results")
+	o.IO.RegisterCustomCodec("text", &checkTestCodec{})
+	o.IO.DefaultFormat("text")
+	o.IO.BindFlags(flags)
+}
+
+func (o *testOpts) Validate() error {
+	if o.File == "" {
+		return errors.New("--filename/-f is required")
+	}
+	return o.IO.Validate()
+}
+
+// checkTestResult is the finite result document for `checks test`.
+type checkTestResult struct {
+	Type          string             `json:"type" yaml:"type"`
+	SchemaVersion string             `json:"schema_version" yaml:"schema_version"`
+	Job           string             `json:"job" yaml:"job"`
+	Target        string             `json:"target" yaml:"target"`
+	AdHocID       string             `json:"adhoc_id" yaml:"adhoc_id"`
+	Probes        []AdHocProbeResult `json:"probes" yaml:"probes"`
+}
+
+// checkTestCodec is the human "text" codec for checkTestResult values: one
+// row per probe plus a summary line.
+type checkTestCodec struct{}
+
+func (c *checkTestCodec) Format() format.Format { return "text" }
+
+func (c *checkTestCodec) Decode(io.Reader, any) error {
+	return errors.New("text codec does not support decoding")
+}
+
+func (c *checkTestCodec) Encode(w io.Writer, v any) error {
+	r, ok := v.(checkTestResult)
+	if !ok {
+		return errors.New("invalid data type for check test codec: expected checkTestResult")
+	}
+
+	t := style.NewTable("PROBE", "STATUS", "LOGS")
+	var succeeded, failed, timedOut int
+	for _, p := range r.Probes {
+		t.Row(p.ProbeName, string(p.Status), strconv.Itoa(p.LogCount))
+		switch p.Status {
+		case AdHocSuccess:
+			succeeded++
+		case AdHocFailure:
+			failed++
+		case AdHocTimeout:
+			timedOut++
+		}
+	}
+	if err := t.Render(w); err != nil {
+		return err
+	}
+
+	cmdio.Info(w, "Ran ad-hoc check %q against %d probe(s): %d succeeded, %d failed, %d timed out",
+		r.Job, len(r.Probes), succeeded, failed, timedOut)
+	return nil
+}
+
+func newTestCommand(loader smcfg.AdHocLoader) *cobra.Command {
+	opts := &testOpts{}
+	cmd := &cobra.Command{
+		Use:   "test",
+		Short: "Run a Synthetic Monitoring check once, without saving it.",
+		Long: `Run a Synthetic Monitoring check once against its probes without persisting
+it — the check is never saved, and no schedule is created.
+
+Results are recovered by polling Loki for the log lines the probes emit for
+this execution (tagged type="adhoc"), the same mechanism the Synthetic
+Monitoring app's "Test" button uses. Requires a Loki datasource containing SM
+ad-hoc logs, and read access to it.
+
+Note: ad-hoc test executions are billed the same as scheduled check
+executions. See ` + docs.SyntheticMonitoringInvoice + `.`,
+		Example: `  # Run a check once from a YAML file.
+  gcx synthetic-monitoring checks test -f check.yaml
+
+  # Specify the Loki datasource to poll for results.
+  gcx synthetic-monitoring checks test -f check.yaml --logs-datasource-uid my-loki`,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
+			ctx := cmd.Context()
+
+			probeIDMap, _, err := FetchProbeInfo(ctx, loader)
+			if err != nil {
+				return err
+			}
+
+			spec, err := readCheckSpec(opts.File)
+			if err != nil {
+				return err
+			}
+
+			if errs := ValidateCheckSpec(spec, probeIDMap); len(errs) > 0 {
+				return fmt.Errorf("check validation failed:\n  - %s", strings.Join(errs, "\n  - "))
+			}
+
+			probeIDs, err := resolveProbeIDs(spec.Probes, probeIDMap)
+			if err != nil {
+				return fmt.Errorf("resolving probes for %q: %w", spec.Job, err)
+			}
+			probeNames := make(map[int64]string, len(probeIDs))
+			for i, id := range probeIDs {
+				probeNames[id] = spec.Probes[i]
+			}
+
+			smRestCfg, smDSUID, _, err := loader.LoadSMProxyConfig(ctx)
+			if err != nil {
+				return err
+			}
+			client, err := NewClient(smRestCfg, smDSUID, loader)
+			if err != nil {
+				return err
+			}
+
+			resp, err := client.RunAdhoc(ctx, AdHocCheckRequest{
+				Timeout:  spec.Timeout,
+				Settings: spec.Settings,
+				Probes:   probeIDs,
+				Target:   spec.Target,
+			})
+			if err != nil {
+				return fmt.Errorf("running ad-hoc check %q: %w", spec.Job, err)
+			}
+
+			dsUID, err := resolveLogsDataSourceUID(ctx, opts.LogsDatasourceUID, loader)
+			if err != nil {
+				return err
+			}
+			grafanaRestCfg, err := loader.LoadGrafanaConfig(ctx)
+			if err != nil {
+				return err
+			}
+			lokiClient, err := loki.NewClient(grafanaRestCfg)
+			if err != nil {
+				return err
+			}
+
+			pollTimeout := adHocPollBuffer + time.Duration(spec.Timeout)*time.Millisecond
+			probeResults, err := PollAdHocResults(ctx, lokiClient, dsUID, resp.ID, probeNames, pollTimeout)
+			if err != nil {
+				return fmt.Errorf("polling ad-hoc results for %q: %w", spec.Job, err)
+			}
+
+			result := checkTestResult{
+				Type:          "gcx.synth.check_test",
+				SchemaVersion: "1",
+				Job:           spec.Job,
+				Target:        spec.Target,
+				AdHocID:       resp.ID,
+				Probes:        probeResults,
+			}
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
+		},
+	}
+	opts.setup(cmd.Flags())
+	return cmd
 }
 
 // ---------------------------------------------------------------------------
@@ -884,7 +1154,7 @@ func readCheckSpec(filePath string) (*CheckSpec, error) {
 
 	// Reject multi-document YAML — create/update operate on a single check.
 	if hasMultipleDocuments(data) {
-		return nil, fmt.Errorf("%s contains multiple YAML documents — create/update operate on a single check; use 'gcx resources push checks' for batch operations", filePath)
+		return nil, fmt.Errorf("%s contains multiple YAML documents — create/update operate on a single check; use 'gcx resources push checks.syntheticmonitoring' for batch operations", filePath)
 	}
 
 	var obj unstructured.Unstructured
@@ -902,7 +1172,30 @@ func readCheckSpec(filePath string) (*CheckSpec, error) {
 		return nil, fmt.Errorf("converting resource from %s: %w", filePath, err)
 	}
 
+	// A scripted/browser check's script may have been left as plaintext by
+	// 'checks get --decode-script' (or written by hand); re-encode it to the
+	// base64 the API expects. A no-op if it's already base64.
+	spec.Settings = encodeScriptSettings(spec.Settings)
+
 	return spec, nil
+}
+
+// decodeScriptInSpec decodes a scripted/browser check's base64 script to
+// plaintext in place, on the unstructured spec.settings produced by
+// marshaling a checkResource/CheckSpec. No-op if spec.settings is missing,
+// malformed, or not a scripted/browser check.
+func decodeScriptInSpec(obj *unstructured.Unstructured) {
+	spec, ok := obj.Object["spec"].(map[string]any)
+	if !ok {
+		return
+	}
+	settingsRaw, ok := spec["settings"].(map[string]any)
+	if !ok {
+		return
+	}
+	if decoded, changed := decodeScriptSettings(CheckSettings(settingsRaw)); changed {
+		spec["settings"] = map[string]any(decoded)
+	}
 }
 
 // hasMultipleDocuments checks if YAML data contains more than one document

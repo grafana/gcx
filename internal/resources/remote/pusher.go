@@ -287,8 +287,13 @@ func (p *Pusher) upsertResource(
 		dryRunOpts = []string{"All"}
 	}
 
-	// Check if the resource already exists.
-	existing, err := p.client.Get(ctx, desc, name, metav1.GetOptions{})
+	// An unnamed manifest requests creation (or natural-key matching). Never
+	// issue GET with an empty ID: REST APIs may treat it as a collection read.
+	var existing *unstructured.Unstructured
+	var err error = apierrors.NewNotFound(desc.GroupVersionResource().GroupResource(), name)
+	if name != "" {
+		existing, err = p.client.Get(ctx, desc, name, metav1.GetOptions{})
+	}
 	if err == nil {
 		obj := src.ToUnstructured()
 

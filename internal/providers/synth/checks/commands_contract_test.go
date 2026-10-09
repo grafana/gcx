@@ -3,6 +3,7 @@ package checks_test
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -21,6 +22,7 @@ import (
 	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/providers/synth/checks"
 	"github.com/grafana/gcx/internal/providers/synth/smcfg"
+	"github.com/grafana/gcx/internal/query/dataframe"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/client-go/rest"
@@ -74,7 +76,11 @@ func (l *contractStatusLoader) SaveMetricsDatasourceUID(_ context.Context, _ str
 	return nil
 }
 
-var _ smcfg.StatusLoader = &contractStatusLoader{}
+func (l *contractStatusLoader) SaveLogsDatasourceUID(_ context.Context, _ string) error {
+	return nil
+}
+
+var _ smcfg.AdHocLoader = &contractStatusLoader{}
 
 // checkAPIState drives the fake SM API.
 type checkAPIState struct {
@@ -82,7 +88,42 @@ type checkAPIState struct {
 	checks       map[int64]checks.Check
 	probesOnline bool
 	failCreate   bool
+	failGet      bool // GET check/<id> answers 500
 	failDelete   map[int64]bool
+	lastUpdated  checks.Check // last body posted to /api/v1/check/update
+	// writes counts POSTs to check/add and check/update, so dry-run tests can
+	// prove nothing was persisted.
+	writes int
+	// validateStatus, when non-zero, enables /api/v1/check/validate and makes it
+	// answer with this status and validateBody. When zero the endpoint is absent
+	// (404), as on a server that predates it.
+	validateStatus int
+	validateBody   any
+	validateCalls  int
+	lastValidate   map[string]any // last body posted to /api/v1/check/validate
+	// adhocLines, when non-empty, are served as raw Loki log lines from the
+	// query endpoints (as `checks test` polls) instead of an empty result.
+	adhocLines []string
+}
+
+// writeCount, validateCount and lastValidateBody read the fixture counters under
+// st.mu; handlers write them from the server goroutine.
+func (st *checkAPIState) writeCount() int {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	return st.writes
+}
+
+func (st *checkAPIState) validateCount() int {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	return st.validateCalls
+}
+
+func (st *checkAPIState) lastValidateBody() map[string]any {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	return st.lastValidate
 }
 
 func newCheckServer(t *testing.T, st *checkAPIState) *httptest.Server {
@@ -119,6 +160,7 @@ func newCheckServer(t *testing.T, st *checkAPIState) *httptest.Server {
 		_ = json.NewDecoder(r.Body).Decode(&c)
 		c.ID = 1234
 		st.mu.Lock()
+		st.writes++
 		st.checks[c.ID] = c
 		st.mu.Unlock()
 		writeJSON(w, c)
@@ -126,8 +168,25 @@ func newCheckServer(t *testing.T, st *checkAPIState) *httptest.Server {
 	mux.HandleFunc("/api/v1/check/update", func(w http.ResponseWriter, r *http.Request) {
 		var c checks.Check
 		_ = json.NewDecoder(r.Body).Decode(&c)
+		st.mu.Lock()
+		st.writes++
+		st.lastUpdated = c
+		st.mu.Unlock()
 		writeJSON(w, c)
 	})
+	if st.validateStatus != 0 {
+		mux.HandleFunc("/api/v1/check/validate", func(w http.ResponseWriter, r *http.Request) {
+			var body map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			st.mu.Lock()
+			st.validateCalls++
+			st.lastValidate = body
+			st.mu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(st.validateStatus)
+			_ = json.NewEncoder(w).Encode(st.validateBody)
+		})
+	}
 	mux.HandleFunc("/api/v1/check/delete/", func(w http.ResponseWriter, r *http.Request) {
 		idStr := strings.TrimPrefix(r.URL.Path, "/api/v1/check/delete/")
 		var id int64
@@ -139,7 +198,24 @@ func newCheckServer(t *testing.T, st *checkAPIState) *httptest.Server {
 		}
 		writeJSON(w, map[string]string{"msg": "deleted"})
 	})
+	mux.HandleFunc("/api/v1/check/adhoc", func(w http.ResponseWriter, r *http.Request) {
+		var req checks.AdHocCheckRequest
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		writeJSON(w, checks.AdHocCheckResponse{
+			ID:       "abc-123",
+			TenantID: 214,
+			Timeout:  req.Timeout,
+			Settings: req.Settings,
+			Probes:   req.Probes,
+			Target:   req.Target,
+		})
+	})
 	mux.HandleFunc("/api/v1/check/", func(w http.ResponseWriter, r *http.Request) {
+		if st.failGet {
+			w.WriteHeader(http.StatusInternalServerError)
+			writeJSON(w, map[string]string{"error": "boom"})
+			return
+		}
 		idStr := strings.TrimPrefix(r.URL.Path, "/api/v1/check/")
 		var id int64
 		_, _ = fmt.Sscanf(idStr, "%d", &id)
@@ -153,13 +229,21 @@ func newCheckServer(t *testing.T, st *checkAPIState) *httptest.Server {
 		writeJSON(w, c)
 	})
 
-	// Grafana unified datasource query API (Prometheus) — always empty
-	// results so timeline exercises the no-data path deterministically.
-	emptyQuery := func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, map[string]any{"results": map[string]any{}})
+	// Grafana unified datasource query API (Prometheus/Loki) — empty results
+	// by default so timeline/test exercise the no-data path deterministically,
+	// unless adhocLines is set (checks test's Loki polling contract test).
+	query := func(w http.ResponseWriter, _ *http.Request) {
+		st.mu.Lock()
+		lines := st.adhocLines
+		st.mu.Unlock()
+		if len(lines) == 0 {
+			writeJSON(w, map[string]any{"results": map[string]any{}})
+			return
+		}
+		writeJSON(w, adhocQueryResponse(lines))
 	}
-	mux.HandleFunc("/apis/query.grafana.app/v0alpha1/namespaces/default/query", emptyQuery)
-	mux.HandleFunc("/api/ds/query", emptyQuery)
+	mux.HandleFunc("/apis/query.grafana.app/v0alpha1/namespaces/default/query", query)
+	mux.HandleFunc("/api/ds/query", query)
 
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
@@ -176,7 +260,7 @@ func runChecks(t *testing.T, srvURL string, agentMode bool, stdin string, args .
 
 // runChecksLoader is runChecks with an explicit loader, for tests that need
 // non-default loader behavior (e.g. a resolvable Prometheus datasource).
-func runChecksLoader(t *testing.T, loader smcfg.StatusLoader, agentMode bool, stdin string, args ...string) (string, string, error) {
+func runChecksLoader(t *testing.T, loader smcfg.AdHocLoader, agentMode bool, stdin string, args ...string) (string, string, error) {
 	t.Helper()
 	prevNoColor := color.NoColor
 	color.NoColor = true
@@ -217,7 +301,38 @@ func jsonInt(t *testing.T, v any) int {
 	return int(f)
 }
 
-func writeCheckManifest(t *testing.T, dir, file string) string {
+// adhocQueryResponse builds a Grafana datasource-query response carrying the
+// given raw Loki log line bodies, in the shape checks.PollAdHocResults expects.
+func adhocQueryResponse(lines []string) dataframe.Response {
+	values := make([]any, len(lines))
+	labels := make([]any, len(lines))
+	times := make([]any, len(lines))
+	for i, l := range lines {
+		values[i] = l
+		labels[i] = map[string]any{"type": "adhoc"}
+		times[i] = float64(1711893600000)
+	}
+	return dataframe.Response{
+		Results: map[string]dataframe.Result{
+			"A": {
+				Frames: []dataframe.Frame{
+					{
+						Schema: dataframe.Schema{
+							Fields: []dataframe.Field{
+								{Name: "labels", Type: "other"},
+								{Name: "Time", Type: "time"},
+								{Name: "Line", Type: "string"},
+							},
+						},
+						Data: dataframe.Data{Values: [][]any{labels, times, values}},
+					},
+				},
+			},
+		},
+	}
+}
+
+func writeCheckManifest(t *testing.T, dir string) string {
 	t.Helper()
 	content := `apiVersion: syntheticmonitoring.ext.grafana.app/v1alpha1
 kind: Check
@@ -235,7 +350,7 @@ spec:
     http:
       method: GET
 `
-	path := filepath.Join(dir, file)
+	path := filepath.Join(dir, "check.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
 	return path
 }
@@ -274,7 +389,7 @@ func TestChecksCreateOutputContract(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			st := &checkAPIState{probesOnline: true}
 			srv := newCheckServer(t, st)
-			manifest := writeCheckManifest(t, t.TempDir(), "check.yaml")
+			manifest := writeCheckManifest(t, t.TempDir())
 
 			args := append([]string{"create", "-f", manifest}, tc.extraArgs...)
 			stdout, stderr, err := runChecks(t, srv.URL, tc.agentMode, "", args...)
@@ -303,7 +418,7 @@ func TestChecksCreateOutputContract(t *testing.T) {
 func TestChecksCreateOfflineProbesWarningOnStderr(t *testing.T) {
 	st := &checkAPIState{probesOnline: false}
 	srv := newCheckServer(t, st)
-	manifest := writeCheckManifest(t, t.TempDir(), "check.yaml")
+	manifest := writeCheckManifest(t, t.TempDir())
 
 	stdout, stderr, err := runChecks(t, srv.URL, false, "", "create", "-f", manifest)
 	require.NoError(t, err)
@@ -312,6 +427,44 @@ func TestChecksCreateOfflineProbesWarningOnStderr(t *testing.T) {
 	// byte-identical result line.
 	assert.Contains(t, stderr, "all probes for check \"web-check\" are offline")
 	assert.Equal(t, "✔ Created check \"web-check\" (id=1234)\n", stdout)
+}
+
+func TestChecksTestOutputContract(t *testing.T) {
+	adhocLine := func(probeName string, success float64) string {
+		data, err := json.Marshal(map[string]any{
+			"id":    "abc-123",
+			"probe": probeName,
+			"logs":  []any{map[string]any{"level": "info", "msg": "starting probe"}},
+			"timeseries": []any{
+				map[string]any{
+					"name":   "probe_success",
+					"metric": []any{map[string]any{"gauge": map[string]any{"value": success}}},
+				},
+			},
+		})
+		require.NoError(t, err)
+		return string(data)
+	}
+
+	st := &checkAPIState{probesOnline: true, adhocLines: []string{adhocLine("Oregon", 1)}}
+	srv := newCheckServer(t, st)
+	manifest := writeCheckManifest(t, t.TempDir())
+
+	stdout, _, err := runChecks(t, srv.URL, false, "", "test", "-f", manifest, "--logs-datasource-uid", "loki-uid")
+	require.NoError(t, err)
+	assert.Contains(t, stdout, "Oregon")
+	assert.Contains(t, stdout, "success")
+	assert.Contains(t, stdout, "Ran ad-hoc check \"web-check\" against 1 probe(s): 1 succeeded, 0 failed, 0 timed out")
+
+	stdout, _, err = runChecks(t, srv.URL, true, "", "test", "-f", manifest, "--logs-datasource-uid", "loki-uid")
+	require.NoError(t, err)
+	doc, ok := decodeSingleJSONValue(t, stdout).(map[string]any)
+	require.True(t, ok, "test result must be a JSON object")
+	assert.Equal(t, "gcx.synth.check_test", doc["type"])
+	assert.Equal(t, "abc-123", doc["adhoc_id"])
+	probesOut, ok := doc["probes"].([]any)
+	require.True(t, ok)
+	require.Len(t, probesOut, 1)
 }
 
 func TestChecksUpdateOutputContract(t *testing.T) {
@@ -342,7 +495,7 @@ func TestChecksUpdateOutputContract(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			st := &checkAPIState{probesOnline: true}
 			srv := newCheckServer(t, st)
-			manifest := writeCheckManifest(t, t.TempDir(), "check.yaml")
+			manifest := writeCheckManifest(t, t.TempDir())
 
 			args := append([]string{"update", "web-check-1234", "-f", manifest}, tc.extraArgs...)
 			stdout, _, err := runChecks(t, srv.URL, tc.agentMode, "", args...)
@@ -520,6 +673,100 @@ func TestChecksGetDiagnosticsOnStderr(t *testing.T) {
 		assert.NotContains(t, stdout, "could not retrieve execution status")
 		assert.Contains(t, stdout, "web-check-1234")
 	})
+}
+
+func TestChecksGetDecodeScript(t *testing.T) {
+	plaintext := "export default function() { console.log('hi'); }"
+	encoded := base64.StdEncoding.EncodeToString([]byte(plaintext))
+	st := &checkAPIState{
+		probesOnline: true,
+		checks: map[int64]checks.Check{
+			1234: {ID: 1234, Job: "web-check", Target: "https://example.com",
+				Settings: checks.CheckSettings{"scripted": map[string]any{"script": encoded}}},
+		},
+	}
+	srv := newCheckServer(t, st)
+
+	t.Run("yaml/json output decodes the script", func(t *testing.T) {
+		stdout, _, err := runChecks(t, srv.URL, false, "", "get", "web-check-1234", "-o", "json", "--decode-script")
+		require.NoError(t, err)
+
+		doc, ok := decodeSingleJSONValue(t, stdout).(map[string]any)
+		require.True(t, ok)
+		spec, ok := doc["spec"].(map[string]any)
+		require.True(t, ok)
+		settings, ok := spec["settings"].(map[string]any)
+		require.True(t, ok)
+		scripted, ok := settings["scripted"].(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, plaintext, scripted["script"])
+	})
+
+	t.Run("without the flag the script stays base64", func(t *testing.T) {
+		stdout, _, err := runChecks(t, srv.URL, false, "", "get", "web-check-1234", "-o", "json")
+		require.NoError(t, err)
+
+		doc, ok := decodeSingleJSONValue(t, stdout).(map[string]any)
+		require.True(t, ok)
+		spec, ok := doc["spec"].(map[string]any)
+		require.True(t, ok)
+		settings, ok := spec["settings"].(map[string]any)
+		require.True(t, ok)
+		scripted, ok := settings["scripted"].(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, encoded, scripted["script"])
+	})
+
+	t.Run("table output warns and ignores the flag", func(t *testing.T) {
+		stdout, stderr, err := runChecks(t, srv.URL, false, "", "get", "web-check-1234", "--decode-script")
+		require.NoError(t, err)
+
+		assert.Contains(t, stderr, "--decode-script has no effect on table output")
+		assert.Contains(t, stdout, "web-check-1234")
+		assert.NotContains(t, stdout, plaintext)
+	})
+}
+
+func TestChecksUpdateEncodesPlaintextScript(t *testing.T) {
+	plaintext := "export default function() { console.log('hi'); }"
+	st := &checkAPIState{probesOnline: true}
+	srv := newCheckServer(t, st)
+
+	dir := t.TempDir()
+	manifest := filepath.Join(dir, "check.yaml")
+	content := "apiVersion: syntheticmonitoring.ext.grafana.app/v1alpha1\n" +
+		"kind: Check\n" +
+		"metadata:\n" +
+		"  name: web-check\n" +
+		"spec:\n" +
+		"  job: web-check\n" +
+		"  target: https://example.com\n" +
+		"  frequency: 60000\n" +
+		"  timeout: 10000\n" +
+		"  enabled: true\n" +
+		"  probes:\n" +
+		"    - Oregon\n" +
+		"  settings:\n" +
+		"    scripted:\n" +
+		"      script: |-\n" +
+		"        " + plaintext + "\n"
+	require.NoError(t, os.WriteFile(manifest, []byte(content), 0o600))
+
+	_, _, err := runChecks(t, srv.URL, false, "", "update", "web-check-1234", "-f", manifest)
+	require.NoError(t, err)
+
+	st.mu.Lock()
+	sent := st.lastUpdated
+	st.mu.Unlock()
+
+	scripted, ok := sent.Settings["scripted"].(map[string]any)
+	require.True(t, ok, "settings sent to the API must still be scripted: %+v", sent.Settings)
+	sentScript, ok := scripted["script"].(string)
+	require.True(t, ok)
+
+	decoded, err := base64.StdEncoding.DecodeString(sentScript)
+	require.NoError(t, err, "script sent to the API must be base64-encoded")
+	assert.Equal(t, plaintext, string(decoded))
 }
 
 func TestChecksStatusEmptyContract(t *testing.T) {

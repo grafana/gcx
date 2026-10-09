@@ -150,6 +150,11 @@ type PartialGVK struct {
 	// Resource is any identifier of API resource.
 	// It may be one of (kind, singular, plural).
 	Resource string
+
+	// FallbackGroup retains the resource.group reading of an ambiguous parsed
+	// selector. Structured group/version identifiers leave it empty to require
+	// an exact match rather than reinterpreting their version as part of a group.
+	FallbackGroup string
 }
 
 func (gvk *PartialGVK) String() string {
@@ -172,7 +177,16 @@ func (gvk *PartialGVK) String() string {
 	return build.String()
 }
 
-// ParseString parses a PartialGVK from a string.
+// GroupOnlyCandidate returns the group name from the alternative resource.group
+// reading of a resource.version.group identifier. Discovery must try the versioned reading
+// first, since a group's first label can also look like a version.
+func (gvk *PartialGVK) GroupOnlyCandidate() (string, bool) {
+	return gvk.FallbackGroup, gvk.FallbackGroup != ""
+}
+
+// ParseString parses a PartialGVK from a string. For identifiers with at least
+// two dots, it retains the resource.version.group reading; discovery also tries
+// GroupOnlyCandidate when that reading is not supported.
 func (gvk *PartialGVK) ParseString(src string) error {
 	parts := strings.SplitN(src, ".", 3)
 
@@ -185,6 +199,7 @@ func (gvk *PartialGVK) ParseString(src string) error {
 		gvk.Group = ""
 		gvk.Version = ""
 		gvk.Resource = parts[0]
+		gvk.FallbackGroup = ""
 	case 2:
 		if len(parts[0]) == 0 {
 			return errors.New("must specify API resource identifier")
@@ -197,6 +212,7 @@ func (gvk *PartialGVK) ParseString(src string) error {
 		gvk.Group = parts[1]
 		gvk.Version = "" // Default version
 		gvk.Resource = parts[0]
+		gvk.FallbackGroup = ""
 	case 3:
 		if len(parts[0]) == 0 {
 			return errors.New("must specify API resource identifier")
@@ -213,6 +229,7 @@ func (gvk *PartialGVK) ParseString(src string) error {
 		gvk.Group = parts[2]
 		gvk.Version = parts[1]
 		gvk.Resource = parts[0]
+		gvk.FallbackGroup = parts[1] + "." + parts[2]
 	default:
 		return errors.New("invalid API resource identifier")
 	}

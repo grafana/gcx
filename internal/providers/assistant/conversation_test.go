@@ -4,17 +4,232 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/grafana/gcx/cmd/gcx/fail"
+	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/assistant"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	assistantcmd "github.com/grafana/gcx/internal/providers/assistant"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestConversationGetCommand_BareSharedAISDK(t *testing.T) {
+	var requests []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.URL.RequestURI())
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.RequestURI() {
+		case "/api/plugins/grafana-assistant-app/resources/api/v1/chats/shared-1":
+			http.NotFound(w, r)
+		case "/api/plugins/grafana-assistant-app/resources/api/v1/shared/shared-1":
+			_, _ = fmt.Fprint(w, `{"data":{"id":"shared-1","name":"Synthetic","engine":"aisdk","source":"assistant","isPublic":true}}`)
+		case "/api/plugins/grafana-assistant-app/resources/api/v1/shared/shared-1/ui-messages?thread=main":
+			_, _ = fmt.Fprint(w, `{"data":{"thread":"main","messages":[{"id":"m1","role":"assistant","created":"2026-01-01T00:00:00Z","parts":[{"type":"text","text":"hello"},{"type":"data-synthetic","data":{"value":1}}]}],"fastMode":false}}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	cfgPath := writeAssistantTestConfig(t, server.URL)
+	root := assistantcmd.Command()
+	root.SetContext(context.Background())
+	root.SilenceUsage = true
+	root.SilenceErrors = true
+	var stdout bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetErr(&bytes.Buffer{})
+	root.SetArgs([]string{"conversation", "get", "shared-1", "--config", cfgPath, "--output", "json"})
+
+	require.NoError(t, root.Execute())
+	assert.Equal(t, []string{
+		"/api/plugins/grafana-assistant-app/resources/api/v1/chats/shared-1",
+		"/api/plugins/grafana-assistant-app/resources/api/v1/shared/shared-1",
+		"/api/plugins/grafana-assistant-app/resources/api/v1/shared/shared-1/ui-messages?thread=main",
+	}, requests)
+
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &got))
+	chat, ok := got["chat"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "shared-1", chat["id"])
+	assert.Equal(t, "aisdk", chat["engine"])
+	assert.Equal(t, true, chat["shared"])
+	assert.Equal(t, "main", got["scope"])
+	messages, ok := got["messages"].([]any)
+	require.True(t, ok)
+	require.Len(t, messages, 1)
+	message, ok := messages[0].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, []any{map[string]any{"type": "text", "text": "hello"}}, message["content"])
+	assert.Equal(t, []any{
+		map[string]any{"type": "text", "text": "hello"},
+		map[string]any{"type": "data-synthetic", "data": map[string]any{"value": float64(1)}},
+	}, message["parts"])
+}
+
+func TestConversationGetCommand_SharedURLRoutesDirectly(t *testing.T) {
+	var requests []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.URL.RequestURI())
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path != "/api/plugins/grafana-assistant-app/resources/api/v1/shared/shared-1" {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = fmt.Fprint(w, `{"data":{"id":"shared-1","name":"Shared legacy","engine":"legacy","source":"assistant","messages":[{"id":"m1","role":"user","created":"2026-01-01T00:00:00Z","content":[{"type":"text","text":"snapshot"}]}]}}`)
+	}))
+	t.Cleanup(server.Close)
+
+	cfgPath := writeAssistantTestConfig(t, server.URL)
+	root := assistantcmd.Command()
+	root.SetContext(context.Background())
+	root.SilenceUsage = true
+	root.SilenceErrors = true
+	var stdout bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetErr(&bytes.Buffer{})
+	root.SetArgs([]string{
+		"conversation", "get",
+		server.URL + "/a/grafana-assistant-app/chats/shared/shared-1?from=nav#message",
+		"--config", cfgPath,
+	})
+
+	require.NoError(t, root.Execute())
+	assert.Equal(t, []string{"/api/plugins/grafana-assistant-app/resources/api/v1/shared/shared-1"}, requests)
+	assert.Contains(t, stdout.String(), "Shared snapshot: yes")
+	assert.Contains(t, stdout.String(), "snapshot")
+}
+
+func TestConversationGetCommand_RejectsInvalidReferenceBeforeConfigResolution(t *testing.T) {
+	root := assistantcmd.Command()
+	root.SetContext(context.Background())
+	root.SilenceUsage = true
+	root.SilenceErrors = true
+	root.SetOut(&bytes.Buffer{})
+	root.SetErr(&bytes.Buffer{})
+	root.SetArgs([]string{"conversation", "get", "chat/1", "--config", filepath.Join(t.TempDir(), "missing.yaml")})
+
+	err := root.Execute()
+	require.ErrorContains(t, err, "single path segment")
+	assert.NotContains(t, err.Error(), "missing.yaml")
+}
+
+func TestConversationGetCommand_RejectsMismatchedSharedURLBeforeTranscriptIO(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		http.NotFound(w, r)
+	}))
+	t.Cleanup(server.Close)
+
+	cfgPath := writeAssistantTestConfig(t, server.URL)
+	root := assistantcmd.Command()
+	root.SetContext(context.Background())
+	root.SilenceUsage = true
+	root.SilenceErrors = true
+	root.SetOut(&bytes.Buffer{})
+	root.SetErr(&bytes.Buffer{})
+	root.SetArgs([]string{"conversation", "get", "https://other.example.net/a/grafana-assistant-app/chats/shared/shared-1", "--config", cfgPath})
+
+	err := root.Execute()
+	require.ErrorContains(t, err, "does not match the selected Grafana context")
+	assert.Zero(t, requests)
+}
+
+func TestConversationGetCommand_OutputFormatParityAndFieldSelection(t *testing.T) {
+	requestCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		requestCount++
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.RequestURI() {
+		case "/api/plugins/grafana-assistant-app/resources/api/v1/chats/chat-1":
+			_, _ = fmt.Fprint(w, `{"data":{"id":"chat-1","name":"AI SDK","engine":"aisdk","source":"assistant"}}`)
+		case "/api/plugins/grafana-assistant-app/resources/api/v1/chats/chat-1/ui-messages?thread=main":
+			_, _ = fmt.Fprint(w, `{"data":{"thread":"main","messages":[{"id":"m1","role":"assistant","created":"2026-01-01T00:00:00Z","parts":[{"type":"text","text":"hello"},{"type":"tool-example","toolCallId":"call-1"},{"type":"file","mediaType":"text/plain","url":"https://example.invalid/synthetic.txt"},{"type":"future-part","data":{"value":1}}]}],"fastMode":false}}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+	cfgPath := writeAssistantTestConfig(t, server.URL)
+
+	tests := []struct {
+		name        string
+		args        []string
+		wantOutputs []string
+	}{
+		{name: "JSON", args: []string{"--output", "json"}, wantOutputs: []string{`"parts"`, `"type": "tool-example"`, `"type": "file"`, `"type": "future-part"`}},
+		{name: "YAML", args: []string{"--output", "yaml"}, wantOutputs: []string{"scope: main", "type: tool-example", "type: file", "type: future-part", "mediaType: text/plain"}},
+		{name: "text", args: []string{"--output", "text"}, wantOutputs: []string{"Scope: main thread", "hello"}},
+		{name: "field selection", args: []string{"--json", "scope"}, wantOutputs: []string{`"scope": "main"`}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root := assistantcmd.Command()
+			root.SetContext(context.Background())
+			root.SilenceUsage = true
+			root.SilenceErrors = true
+			var stdout bytes.Buffer
+			root.SetOut(&stdout)
+			root.SetErr(&bytes.Buffer{})
+			args := []string{"conversation", "get", "chat-1", "--config", cfgPath}
+			root.SetArgs(append(args, tt.args...))
+			require.NoError(t, root.Execute())
+			for _, want := range tt.wantOutputs {
+				assert.Contains(t, stdout.String(), want)
+			}
+		})
+	}
+	assert.Equal(t, len(tests)*2, requestCount)
+
+	agent.SetFlag(true)
+	t.Cleanup(agent.ResetForTesting)
+	root := assistantcmd.Command()
+	root.SetContext(context.Background())
+	root.SilenceUsage = true
+	root.SilenceErrors = true
+	var stdout bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetErr(&bytes.Buffer{})
+	root.SetArgs([]string{"conversation", "get", "chat-1", "--config", cfgPath})
+	require.NoError(t, root.Execute())
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &got))
+	assert.Equal(t, "main", got["scope"])
+	assert.Equal(t, (len(tests)+1)*2, requestCount)
+}
+
+func TestConversationGetCommand_ForbiddenConvertsToAuthExit(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "Access denied: path not allowed for CLI tokens", http.StatusForbidden)
+	}))
+	t.Cleanup(server.Close)
+	cfgPath := writeAssistantTestConfig(t, server.URL)
+
+	root := assistantcmd.Command()
+	root.SetContext(context.Background())
+	root.SilenceUsage = true
+	root.SilenceErrors = true
+	root.SetOut(&bytes.Buffer{})
+	root.SetErr(&bytes.Buffer{})
+	root.SetArgs([]string{"conversation", "get", "chat-1", "--config", cfgPath})
+
+	err := root.Execute()
+	require.Error(t, err)
+	detailed := fail.ErrorToDetailedError(err)
+	require.NotNil(t, detailed.ExitCode)
+	assert.Equal(t, gcxerrors.ExitAuthFailure, *detailed.ExitCode)
+	assert.Contains(t, err.Error(), "path not allowed")
+}
 
 func TestConversationGetCommand_TextOutput(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

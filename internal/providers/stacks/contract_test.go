@@ -3,9 +3,9 @@ package stacks_test
 // Agent output contract tests for the cloud-stacks family (#387).
 //
 // The contract for finite commands: in agent mode with no explicit -o, stdout
-// carries EXACTLY ONE JSON value; the human default stdout stays
-// byte-identical to the pre-migration implementation; explicit -o json/yaml
-// always wins. Stack commands are single-target (no partial-failure
+// carries EXACTLY ONE JSON value; explicit -o json/yaml always wins.
+// Create defaults to a concise YAML result; the other human defaults retain
+// their pre-migration output. Stack commands are single-target (no partial-failure
 // semantics), so no EmittedError paths exist in this family.
 
 import (
@@ -19,6 +19,7 @@ import (
 
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/cloud"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/stacks"
 	"github.com/grafana/gcx/internal/testutils"
@@ -193,19 +194,20 @@ func TestAgentMode_SingleJSONDocument(t *testing.T) {
 				t.Helper()
 				return serveJSON(t, testStack())
 			},
-			args: []string{"create", "--name", "My Stack", "--slug", "mystack"},
+			args: []string{"create", "--org", "example-org", "--name", "My Stack", "--slug", "mystack"},
 			check: func(t *testing.T, doc any) {
 				t.Helper()
 				obj, ok := doc.(map[string]any)
 				require.True(t, ok, "create result should be a JSON object, got %T", doc)
 				assert.Equal(t, "mystack", obj["slug"])
+				assert.Len(t, obj, 5)
 			},
 		},
 		{
 			name:    "create --dry-run emits structured preview",
 			newCmd:  stacks.NewTestCreateCommandWithLoader,
 			handler: rejectCalls,
-			args:    []string{"create", "--name", "My Stack", "--slug", "mystack", "--region", "us", "--dry-run"},
+			args:    []string{"create", "--org", "example-org", "--name", "My Stack", "--slug", "mystack", "--region", "us", "--dry-run"},
 			check: func(t *testing.T, doc any) {
 				t.Helper()
 				obj, ok := doc.(map[string]any)
@@ -304,8 +306,8 @@ func TestAgentMode_SingleJSONDocument(t *testing.T) {
 	}
 }
 
-// TestHumanDefault_ByteIdentical pins the exact human stdout of the migrated
-// paths to the bytes the pre-codec implementation produced.
+// TestHumanDefault_ByteIdentical pins the legacy human output of unchanged
+// defaults and explicitly selected create table previews.
 func TestHumanDefault_ByteIdentical(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -334,13 +336,14 @@ func TestHumanDefault_ByteIdentical(t *testing.T) {
 			want: "✔ Stack \"mystack\" deleted successfully.\n",
 		},
 		{
-			name:    "create --dry-run",
+			name:    "create --dry-run table",
 			newCmd:  stacks.NewTestCreateCommandWithLoader,
 			handler: rejectCalls,
-			args:    []string{"create", "--name", "My Stack", "--slug", "mystack", "--region", "us", "--dry-run"},
+			args:    []string{"create", "--org", "example-org", "--name", "My Stack", "--slug", "mystack", "--region", "us", "--dry-run", "-o", "table"},
 			want: "Dry run: POST /api/instances\n" +
 				"\n" +
 				"{\n" +
+				"  \"org\": \"example-org\",\n" +
 				"  \"name\": \"My Stack\",\n" +
 				"  \"slug\": \"mystack\",\n" +
 				"  \"region\": \"us\"\n" +
@@ -408,7 +411,7 @@ func TestExplicitOutputOverride(t *testing.T) {
 
 		loader := newCloudFixture(t, rejectCalls(t))
 		stdout, _, err := runCmdSplit(t, stacks.NewTestCreateCommandWithLoader(loader),
-			[]string{"create", "--name", "My Stack", "--slug", "mystack", "--dry-run", "-o", "json"}, "")
+			[]string{"create", "--org", "example-org", "--name", "My Stack", "--slug", "mystack", "--dry-run", "-o", "json"}, "")
 		require.NoError(t, err)
 
 		doc, ok := decodeSingleJSONDocument(t, stdout).(map[string]any)
@@ -473,4 +476,142 @@ func TestMutationDiagnosticsStayOffStdout(t *testing.T) {
 	assert.Contains(t, stderr, "Type the stack slug to confirm")
 	assert.Equal(t, "✔ Stack \"mystack\" deleted successfully.\n", stdout,
 		"stdout must carry only the result line")
+}
+
+func TestCreateCommand_Organisation(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		orgArgs   []string
+		dryRun    bool
+		wantCalls int
+		wantErr   string
+	}{
+		{name: "empty", orgArgs: []string{"--org", ""}, wantErr: "Flags must have nonblank values: --org"},
+		{name: "whitespace", orgArgs: []string{"--org", " \t"}, wantErr: "Flags must have nonblank values: --org"},
+		{name: "padded request", orgArgs: []string{"--org", " \texample-org "}, wantCalls: 1},
+		{name: "padded preview", orgArgs: []string{"--org", " example-org "}, dryRun: true},
+		{name: "request", orgArgs: []string{"--org", "example-org"}, wantCalls: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			testutils.SandboxConfigEnv(t)
+			calls := 0
+			loader := newCloudFixture(t, func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				assert.Equal(t, http.MethodPost, r.Method)
+				assert.Equal(t, "/api/instances", r.URL.Path)
+				assert.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
+				var body map[string]any
+				assert.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+				assert.Equal(t, "example-org", body["org"])
+				assert.Equal(t, "My Stack", body["name"])
+				_ = json.NewEncoder(w).Encode(testStack())
+			})
+			args := append([]string{"create", "--name", " My Stack ", "--slug", "mystack", "-o", "json"}, tc.orgArgs...)
+			if tc.dryRun {
+				args = append(args, "--dry-run")
+			}
+			out, err := runCmd(t, stacks.NewTestCreateCommandWithLoader(loader), args, "")
+			assert.Equal(t, tc.wantCalls, calls)
+			if tc.wantErr != "" {
+				require.Error(t, err)
+				var detailed *gcxerrors.DetailedError
+				require.ErrorAs(t, err, &detailed)
+				require.NotNil(t, detailed.ExitCode)
+				assert.Equal(t, gcxerrors.ExitUsageError, *detailed.ExitCode)
+				assert.Equal(t, tc.wantErr, detailed.Details)
+				return
+			}
+			require.NoError(t, err)
+			if !tc.dryRun {
+				return
+			}
+			assert.Contains(t, out, `"org": "example-org"`)
+			assert.Contains(t, out, `"name": "My Stack"`)
+		})
+	}
+}
+
+func TestListCommand_Organisation(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		org       string
+		wantCalls int
+	}{
+		{name: "empty"},
+		{name: "whitespace", org: " \t"},
+		{name: "padded", org: " \texample-org ", wantCalls: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			testutils.SandboxConfigEnv(t)
+			calls := 0
+			loader := newCloudFixture(t, func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				assert.Equal(t, http.MethodGet, r.Method)
+				assert.Equal(t, "/api/orgs/example-org/instances", r.URL.Path)
+				_, _ = w.Write([]byte(`{"items":[]}`))
+			})
+			_, err := runCmd(t, stacks.NewTestListCommandWithLoader(loader), []string{"list", "--org", tc.org, "-o", "json"}, "")
+			assert.Equal(t, tc.wantCalls, calls)
+			if tc.wantCalls > 0 {
+				require.NoError(t, err)
+				return
+			}
+			var detailed *gcxerrors.DetailedError
+			require.ErrorAs(t, err, &detailed)
+			require.NotNil(t, detailed.ExitCode)
+			assert.Equal(t, gcxerrors.ExitUsageError, *detailed.ExitCode)
+			assert.Equal(t, "Invalid command usage", detailed.Summary)
+			assert.Equal(t, "Flags must have nonblank values: --org", detailed.Details)
+			require.NotEmpty(t, detailed.Suggestions)
+			assert.Contains(t, detailed.Suggestions[0], "gcx cloud stacks list --org")
+		})
+	}
+}
+
+func TestCreateOutputSummary(t *testing.T) {
+	for _, output := range []string{"", "yaml", "json", "table"} {
+		t.Run("format="+output, func(t *testing.T) {
+			testutils.SandboxConfigEnv(t)
+			setAgentMode(t, false)
+			stack := testStack()
+			stack.OrgSlug = "example-org"
+			stack.RegionSlug = "region-must-not-appear"
+			loader := newCloudFixture(t, serveJSON(t, stack))
+			args := []string{"create", "--org", "example-org", "--name", "My Stack", "--slug", "mystack"}
+			if output != "" {
+				args = append(args, "-o", output)
+			}
+			out, err := runCmd(t, stacks.NewTestCreateCommandWithLoader(loader), args, "")
+			require.NoError(t, err)
+			assert.NotContains(t, out, "region-must-not-appear")
+			if output == "table" {
+				lines := strings.Split(strings.TrimSpace(out), "\n")
+				require.GreaterOrEqual(t, len(lines), 2)
+				assert.Equal(t, []string{"NAME", "ORGSLUG", "SLUG", "STATUS", "URL"}, strings.Fields(lines[0]))
+				assert.Contains(t, out, "example-org")
+				return
+			}
+			var got map[string]any
+			if output == "json" {
+				require.NoError(t, json.Unmarshal([]byte(out), &got))
+			} else {
+				assert.False(t, json.Valid([]byte(out)), "default and yaml should emit YAML")
+				require.NoError(t, yaml.Unmarshal([]byte(out), &got))
+			}
+			assert.Equal(t, map[string]any{"name": stack.Name, "orgSlug": stack.OrgSlug, "slug": stack.Slug, "status": stack.Status, "url": stack.URL}, got)
+		})
+	}
+}
+
+func TestCreateDefaultYAMLDryRun(t *testing.T) {
+	testutils.SandboxConfigEnv(t)
+	setAgentMode(t, false)
+	loader := newCloudFixture(t, rejectCalls(t))
+	out, err := runCmd(t, stacks.NewTestCreateCommandWithLoader(loader), []string{"create", "--org", "example-org", "--name", "Demo", "--slug", "demo", "--region", "us", "--dry-run"}, "")
+	require.NoError(t, err)
+	assert.False(t, json.Valid([]byte(out)))
+	var got map[string]any
+	require.NoError(t, yaml.Unmarshal([]byte(out), &got))
+	assert.Equal(t, "/api/instances", got["endpoint"])
+	assert.Equal(t, map[string]any{"org": "example-org", "name": "Demo", "slug": "demo", "region": "us"}, got["request"])
 }

@@ -82,3 +82,24 @@ func TestBuildExploreURL_AcceptsHTTPAndHTTPS(t *testing.T) {
 		assert.NotEmpty(t, got, host)
 	}
 }
+
+// TestDatemathFrom guards the fix for a compound PromQL duration (e.g.
+// "1h30m") reaching an Explore link's `from` verbatim — Grafana's datemath
+// grammar only accepts a single amount+unit pair, so "now-1h30m" would
+// silently break the link's time range.
+func TestDatemathFrom(t *testing.T) {
+	tests := []struct {
+		window string
+		want   string
+	}{
+		{window: "5m", want: "now-300s"},
+		{window: "1h", want: "now-3600s"},
+		{window: "1h30m", want: "now-5400s"},
+		{window: "1d", want: "now-86400s"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.window, func(t *testing.T) {
+			assert.Equal(t, tt.want, dsquery.DatemathFrom(tt.window))
+		})
+	}
+}

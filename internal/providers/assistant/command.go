@@ -204,7 +204,7 @@ func runPrompt(cmd *cobra.Command, message string, opts *promptOpts, configOpts 
 		contextID = lastContextID
 	}
 
-	clientOpts, err := resolveAssistantClientOptions(ctx, configOpts, opts.timeout, opts.agentID)
+	clientOpts, err := ResolveClientOptions(ctx, configOpts, opts.timeout, opts.agentID)
 	if err != nil {
 		return err
 	}
@@ -238,10 +238,10 @@ func runPrompt(cmd *cobra.Command, message string, opts *promptOpts, configOpts 
 	return em.finish(result, opts.timeout)
 }
 
-// resolveAssistantClientOptions loads the gcx config and returns assistant
+// ResolveClientOptions loads the gcx config and returns assistant
 // ClientOptions for assistant prompt, including an HTTP client whose Timeout
 // matches streamTimeoutSeconds (see --timeout and SSE body reads).
-func resolveAssistantClientOptions(ctx context.Context, configOpts *providers.ConfigLoader, streamTimeoutSeconds int, agentID string) (assistant.ClientOptions, error) {
+func ResolveClientOptions(ctx context.Context, configOpts *providers.ConfigLoader, streamTimeoutSeconds int, agentID string) (assistant.ClientOptions, error) {
 	// Select the effective auth method before full context validation so an
 	// explicitly selected Basic or mTLS mode fails as unsupported without a
 	// namespace-discovery request. Supported bearer modes are validated below.
@@ -332,9 +332,12 @@ func newAssistantStreamingHTTPClient(ctx context.Context, streamTimeoutSeconds i
 	if httputils.PayloadLogging(ctx) {
 		return httputils.NewClient(httputils.ClientOpts{
 			Timeout: d,
+			// NewClient applies the first middleware closest to the base
+			// transport, so the dump runs last and shows every header that
+			// reaches the wire.
 			Middlewares: []httputils.Middleware{
-				httputils.LoggingMiddleware,
 				httputils.RequestResponseLoggingMiddleware,
+				httputils.LoggingMiddleware,
 			},
 		})
 	}

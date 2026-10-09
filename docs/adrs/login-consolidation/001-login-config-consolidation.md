@@ -378,7 +378,7 @@ a half-configured context.
 
 ### 10. Interactive UI
 
-Interactive prompts in `cmd/gcx/login/` use `github.com/charmbracelet/huh`, which is
+Interactive prompts in `cmd/gcx/login/` use `charm.land/huh/v2`, which is
 already a direct dependency and the house pattern -- `cmd/gcx/dev/scaffold.go` uses it
 for the same "fill in missing fields" idiom.
 

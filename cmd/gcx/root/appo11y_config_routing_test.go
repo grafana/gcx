@@ -363,6 +363,7 @@ func TestAppO11y_OverridesGetEnvelopeNamespace(t *testing.T) {
 // datasource wins and its UID is persisted — into the explicitly selected
 // config file, never the default one.
 func TestAppO11y_DatasourceDiscoverySaveBack(t *testing.T) {
+	t.Setenv("GCX_KEYCHAIN", "off")
 	home := testutils.SandboxConfigEnv(t)
 	// Two prometheus datasources force the canonical stack-slug match (a
 	// single match would resolve without arming persistence).

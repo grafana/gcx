@@ -62,6 +62,27 @@ and can reach the server.
 Use this path when connecting to a Grafana Cloud instance
 (URLs ending in `.grafana.net`).
 
+**No Grafana Cloud account yet?** Skip Steps 1 to 4 and run:
+
+```bash
+gcx signup cloud
+```
+
+It opens the Grafana Cloud sign-up page (in agent mode it prints the URL for
+the user to open). The user creates the account, verifies their email, creates
+a first stack, and approves "Connect gcx"; gcx then saves the connection to the
+`cloud` context and makes it current. A browser already signed in to Grafana
+Cloud skips sign-up and asks for one of that account's stacks, or goes straight
+to "Connect gcx" with one organization and one stack; the user then approves as
+usual. To create a separate account instead, the user signs out of Grafana
+Cloud in that browser first. Signup asks no questions, and it only saves a new
+connection, so it refuses a context or stack entry that already exists:
+do not run Step 1 first. If it fails once the browser step has started, run
+the `gcx login` command the error shows, not `gcx signup` again, which could
+start a second account. It saves no Grafana Cloud management credentials; for
+Cloud product APIs (SLOs, Synthetic Monitoring, k6), add a Cloud Access Policy
+token afterwards with `gcx cloud login --context cloud --cloud-token <token>`.
+
 ### Step 1: Create a stack and context
 
 ```bash
@@ -164,12 +185,17 @@ gcx config set stacks.onprem.grafana.token glsa_XXXXXXXXXXXXXXXX
 **Option B-2: Username and password**
 
 ```bash
-gcx config set stacks.onprem.grafana.user admin
-gcx config set stacks.onprem.grafana.password mysecretpassword
+# Supply the password through GRAFANA_PASSWORD
+gcx login onprem --basic-auth --user admin --yes
 ```
 
+Agents must supply `GRAFANA_PASSWORD`; agent mode disables prompting. Humans
+running in a terminal can omit `--yes` to enter the password without echoing.
+Login verifies the credentials with a fresh `GET /api/user` before saving them
+through the configured credential store.
+
 Use Option B-1 when service accounts are available. Use Option B-2 for
-development or when service accounts are not configured.
+server administration or when service accounts are not configured.
 
 ### Step 3: Set the org ID
 

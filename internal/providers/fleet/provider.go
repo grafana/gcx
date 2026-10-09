@@ -7,9 +7,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/grafana/gcx/internal/config"
 	fleetbase "github.com/grafana/gcx/internal/fleet"
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/gcxerrors"
@@ -146,7 +149,7 @@ func (p *FleetProvider) TypedRegistrations() []adapter.Registration {
 			Factory:     NewPipelineAdapterFactory(loader),
 			Descriptor:  PipelineDescriptor(),
 			GVK:         PipelineDescriptor().GroupVersionKind(),
-			Schema:      pipelineSchema(),
+			Schema:      pipelineSchema,
 			Example:     pipelineExample(),
 			URLTemplate: "/a/grafana-fleet-app/pipelines/{name}",
 		},
@@ -154,7 +157,7 @@ func (p *FleetProvider) TypedRegistrations() []adapter.Registration {
 			Factory:     NewCollectorAdapterFactory(loader),
 			Descriptor:  CollectorDescriptor(),
 			GVK:         CollectorDescriptor().GroupVersionKind(),
-			Schema:      collectorSchema(),
+			Schema:      collectorSchema,
 			Example:     collectorExample(),
 			URLTemplate: "/a/grafana-fleet-app/collectors/{name}",
 		},
@@ -166,9 +169,9 @@ func (p *FleetProvider) TypedRegistrations() []adapter.Registration {
 // ---------------------------------------------------------------------------
 
 type fleetHelper struct {
-	// loader is the narrow cloud-config interface (satisfied by
+	// loader is the narrow stack-config interface (satisfied by
 	// *providers.ConfigLoader) so tests can inject a fake loader.
-	loader CloudConfigLoader
+	loader RESTConfigLoader
 }
 
 func (h *fleetHelper) loadClient(ctx context.Context) (*Client, string, error) {
@@ -279,7 +282,7 @@ func (o *pipelineListOpts) setup(flags *pflag.FlagSet) {
 	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
 }
 
-func (h *fleetHelper) newPipelineGetCommand() *cobra.Command { //nolint:dupl // Intentionally similar to collector get — distinct resource types.
+func (h *fleetHelper) newPipelineGetCommand() *cobra.Command {
 	opts := &pipelineGetOpts{}
 	cmd := &cobra.Command{
 		Use:   "get <id|name>",
@@ -338,8 +341,14 @@ func resolvePipeline(ctx context.Context, client *Client, ref string) (*Pipeline
 
 // resolveCollector looks up a collector by slug-id, plain ID, or name.
 func resolveCollector(ctx context.Context, client *Client, ref string) (*Collector, error) {
-	// Try extracting a numeric ID from the reference (handles "name-123" and "123").
-	if id, ok := extractIDFromSlug(ref); ok {
+	// Collector IDs are arbitrary strings. Try the input as the canonical ID
+	// before interpreting it as a rendered resource name or collector name.
+	if collector, err := client.GetCollector(ctx, ref); err == nil {
+		return collector, nil
+	}
+
+	// Older rendered resources encode a numeric ID as a slug suffix.
+	if id, ok := extractIDFromSlug(ref); ok && id != ref {
 		c, err := client.GetCollector(ctx, id)
 		if err == nil {
 			return c, nil
@@ -351,7 +360,7 @@ func resolveCollector(ctx context.Context, client *Client, ref string) (*Collect
 		return nil, fmt.Errorf("fleet: resolve collector %q: %w", ref, err)
 	}
 	for i := range collectors {
-		if collectors[i].Name == ref {
+		if collectors[i].ID == ref || collectors[i].Name == ref || collectors[i].GetResourceName() == ref {
 			return &collectors[i], nil
 		}
 	}
@@ -574,41 +583,56 @@ func (h *fleetHelper) newCollectorListCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List collectors.",
+		Long: `List Fleet Management collectors and their reported health attributes.
+
+Use --limit 0 for a complete fleet audit. Structured output includes local and
+remote attributes plus the timestamps that the Fleet API reports.`,
+		Example: `  # List a bounded collector summary
+  gcx fleet collectors list
+
+  # Audit versions and operating systems across the complete fleet
+  gcx fleet collectors list --limit 0 --json spec.id,spec.local_attributes,spec.updated_at
+
+  # Build a compact version inventory
+  gcx fleet collectors list --limit 0 --jq '[.[] | {id: .spec.id, version: .spec.local_attributes["collector.version"], os: (.spec.local_attributes["collector.os"] // .spec.local_attributes["os.type"]), updated_at: .spec.updated_at}]'`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
+			if opts.IO.JSONDiscovery {
+				return writeCollectorFieldPaths(cmd.OutOrStdout())
+			}
 
 			ctx := cmd.Context()
-			client, namespace, err := h.loadClient(ctx)
+			crud, _, err := NewCollectorTypedCRUD(ctx, h.loader)
 			if err != nil {
 				return err
 			}
 
-			collectors, err := client.ListCollectors(ctx)
+			collectors, err := crud.List(ctx, 0)
 			if err != nil {
 				return err
 			}
 
-			collectors = adapter.TruncateSlice(collectors, opts.Limit)
+			collectors, meta := cmdio.TruncateCompleteList(collectors, opts.Limit)
+			meta = cmdio.AttachListMeta(meta, os.Args)
 
-			// Table codec operates on raw []Collector for direct field access.
-			// Other formats (yaml/json) convert to K8s envelope Resources
-			// for consistency with get/pull and round-trip support.
+			var encodeErr error
 			if opts.IO.OutputFormat == "table" || opts.IO.OutputFormat == "wide" {
-				return opts.IO.Encode(cmd.OutOrStdout(), collectors)
-			}
-
-			var objs []unstructured.Unstructured
-			for _, col := range collectors {
-				res, err := CollectorToResource(col, namespace)
-				if err != nil {
-					return fmt.Errorf("failed to convert collector %s to resource: %w", col.ID, err)
+				rows := make([]Collector, len(collectors))
+				for i := range collectors {
+					rows[i] = collectors[i].Spec
 				}
-				objs = append(objs, res.ToUnstructured())
+				encodeErr = opts.IO.Encode(cmd.OutOrStdout(), rows)
+			} else {
+				encodeErr = opts.IO.Encode(cmd.OutOrStdout(), collectors)
 			}
-
-			return opts.IO.Encode(cmd.OutOrStdout(), objs)
+			if encodeErr != nil {
+				return encodeErr
+			}
+			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
+			return nil
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -617,7 +641,7 @@ func (h *fleetHelper) newCollectorListCommand() *cobra.Command {
 
 type collectorListOpts struct {
 	IO    cmdio.Options
-	Limit int64
+	Limit int
 }
 
 func (o *collectorListOpts) setup(flags *pflag.FlagSet) {
@@ -625,39 +649,50 @@ func (o *collectorListOpts) setup(flags *pflag.FlagSet) {
 	o.IO.RegisterCustomCodec("wide", &CollectorTableCodec{Wide: true})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
-
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
+	o.IO.BindListLimit(flags, &o.Limit, "collectors", 50)
 }
 
-func (h *fleetHelper) newCollectorGetCommand() *cobra.Command { //nolint:dupl // Intentionally similar to pipeline get — distinct resource types.
+func (h *fleetHelper) newCollectorGetCommand() *cobra.Command {
 	opts := &collectorGetOpts{}
 	cmd := &cobra.Command{
 		Use:   "get <id|name>",
 		Short: "Get a collector by ID or name.",
-		Args:  cobra.ExactArgs(1),
+		Long: `Get one Fleet Management collector by ID or name.
+
+Structured output includes local and remote attributes plus the timestamps that
+the Fleet API reports. Use table or wide output for a human-readable health view.`,
+		Example: `  # Get the full collector resource
+  gcx fleet collectors get <id>
+
+  # Show the collector health fields as a table
+  gcx fleet collectors get <id> -o wide
+
+  # Select attributes and update time
+  gcx fleet collectors get <id> --json spec.local_attributes,spec.remote_attributes,spec.updated_at`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
+			if opts.IO.JSONDiscovery {
+				return writeCollectorFieldPaths(cmd.OutOrStdout())
+			}
 
 			ctx := cmd.Context()
-			client, namespace, err := h.loadClient(ctx)
+			crud, _, err := NewCollectorTypedCRUD(ctx, h.loader)
 			if err != nil {
 				return err
 			}
 
-			collector, err := resolveCollector(ctx, client, args[0])
+			collector, err := crud.Get(ctx, args[0])
 			if err != nil {
 				return err
 			}
 
-			res, err := CollectorToResource(*collector, namespace)
-			if err != nil {
-				return fmt.Errorf("failed to convert collector to resource: %w", err)
+			if opts.IO.OutputFormat == "table" || opts.IO.OutputFormat == "wide" {
+				return opts.IO.Encode(cmd.OutOrStdout(), []Collector{collector.Spec})
 			}
-
-			obj := res.ToUnstructured()
-			return opts.IO.Encode(cmd.OutOrStdout(), &obj)
+			return opts.IO.Encode(cmd.OutOrStdout(), collector)
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -669,6 +704,8 @@ type collectorGetOpts struct {
 }
 
 func (o *collectorGetOpts) setup(flags *pflag.FlagSet) {
+	o.IO.RegisterCustomCodec("table", &CollectorTableCodec{})
+	o.IO.RegisterCustomCodec("wide", &CollectorTableCodec{Wide: true})
 	o.IO.DefaultFormat("yaml")
 	o.IO.BindFlags(flags)
 }
@@ -691,6 +728,9 @@ func (h *fleetHelper) newCollectorCreateCommand() *cobra.Command {
 
 			collector, err := readCollectorFromFile(opts.File, cmd.InOrStdin())
 			if err != nil {
+				return err
+			}
+			if err := validateCollectorForCreate(collector); err != nil {
 				return err
 			}
 
@@ -952,9 +992,12 @@ func (c *CollectorTableCodec) Encode(w io.Writer, v any) error {
 
 	var t *style.TableBuilder
 	if c.Wide {
-		t = style.NewTable("ID", "NAME", "TYPE", "ENABLED", "CREATED_AT")
+		t = style.NewTable(
+			"ID", "NAME", "TYPE", "VERSION", "OS", "ENABLED", "UPDATED_AT",
+			"CREATED_AT", "MARKED_INACTIVE_AT", "LOCAL_ATTRIBUTES", "REMOTE_ATTRIBUTES",
+		).MultilineCells(true)
 	} else {
-		t = style.NewTable("ID", "NAME", "TYPE", "ENABLED")
+		t = style.NewTable("ID", "NAME", "TYPE", "VERSION", "OS", "ENABLED", "UPDATED_AT")
 	}
 
 	for _, col := range collectors {
@@ -963,19 +1006,19 @@ func (c *CollectorTableCodec) Encode(w io.Writer, v any) error {
 			enabled = strconv.FormatBool(*col.Enabled)
 		}
 
-		colType := col.CollectorType
-		if colType == "" {
-			colType = "-"
-		}
+		colType := formatCollectorType(col.CollectorType)
+		version := collectorAttribute(col.LocalAttributes, "collector.version")
+		operatingSystem := collectorAttribute(col.LocalAttributes, "collector.os", "os.type")
+		updatedAt := formatCollectorTime(col.UpdatedAt)
 
 		if c.Wide {
-			createdAt := "-"
-			if col.CreatedAt != nil {
-				createdAt = col.CreatedAt.Format("2006-01-02 15:04")
-			}
-			t.Row(col.ID, col.Name, colType, enabled, createdAt)
+			t.Row(
+				col.ID, col.Name, colType, version, operatingSystem, enabled, updatedAt,
+				formatCollectorTime(col.CreatedAt), formatCollectorTime(col.MarkedInactiveAt),
+				formatCollectorAttributes(col.LocalAttributes), formatCollectorAttributes(col.RemoteAttributes),
+			)
 		} else {
-			t.Row(col.ID, col.Name, colType, enabled)
+			t.Row(col.ID, col.Name, colType, version, operatingSystem, enabled, updatedAt)
 		}
 	}
 
@@ -985,6 +1028,49 @@ func (c *CollectorTableCodec) Encode(w io.Writer, v any) error {
 // Decode is not supported for table format.
 func (c *CollectorTableCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("table format does not support decoding")
+}
+
+func collectorAttribute(attributes map[string]string, keys ...string) string {
+	for _, key := range keys {
+		if value := attributes[key]; value != "" {
+			return value
+		}
+	}
+	return "-"
+}
+
+func formatCollectorType(value string) string {
+	value = strings.TrimPrefix(value, "COLLECTOR_TYPE_")
+	if value == "" || value == "UNSPECIFIED" {
+		return "-"
+	}
+	return value
+}
+
+func formatCollectorTime(value *time.Time) string {
+	if value == nil {
+		return "-"
+	}
+	return value.UTC().Format("2006-01-02 15:04")
+}
+
+func formatCollectorAttributes(attributes map[string]string) string {
+	if len(attributes) == 0 {
+		return "-"
+	}
+	keys := make([]string, 0, len(attributes))
+	for key := range attributes {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	pairs := make([]string, 0, len(keys))
+	for _, key := range keys {
+		// Quote escapes control characters before the table adds line separators.
+		quotedKey := strconv.Quote(key)
+		quotedValue := strconv.Quote(attributes[key])
+		pairs = append(pairs, quotedKey[1:len(quotedKey)-1]+"="+quotedValue[1:len(quotedValue)-1])
+	}
+	return strings.Join(pairs, "\n")
 }
 
 // Slug helpers — thin wrappers around adapter.SlugifyName / adapter.ExtractIDFromSlug.
@@ -1077,9 +1163,6 @@ func CollectorToResource(col Collector, namespace string) (*resources.Resource, 
 		return nil, fmt.Errorf("failed to unmarshal collector to map: %w", err)
 	}
 
-	// Strip the ID from spec — it lives in metadata.name.
-	delete(specMap, "id")
-
 	// Build slug-id name for unique identification.
 	name := slugifyName(col.Name)
 	if col.ID != "" {
@@ -1123,9 +1206,12 @@ func CollectorFromResource(res *resources.Resource) (*Collector, error) {
 		return nil, fmt.Errorf("failed to unmarshal spec to collector: %w", err)
 	}
 
-	// Restore ID from metadata.name slug.
-	if id, ok := extractIDFromSlug(res.Raw.GetName()); ok {
-		col.ID = id
+	// New manifests retain the canonical string ID in spec.id. Older manifests
+	// can still restore a numeric ID from metadata.name.
+	if col.ID == "" {
+		if id, ok := extractIDFromSlug(res.Raw.GetName()); ok {
+			col.ID = id
+		}
 	}
 
 	return &col, nil
@@ -1191,17 +1277,26 @@ func readCollectorFromFile(filename string, stdin io.Reader) (*Collector, error)
 	return CollectorFromResource(res)
 }
 
+func validateCollectorForCreate(collector *Collector) error {
+	if strings.TrimSpace(collector.ID) == "" {
+		return errors.New("collector spec.id is required for create")
+	}
+	return nil
+}
+
 // ---------------------------------------------------------------------------
 // Resource adapter factories
 // ---------------------------------------------------------------------------
 
-// CloudConfigLoader can load Grafana Cloud configuration from the active context.
-type CloudConfigLoader interface {
-	LoadCloudConfig(ctx context.Context) (providers.CloudRESTConfig, error)
+// RESTConfigLoader can load the Grafana stack configuration from the active
+// context. Fleet Management reaches its API through the collector app plugin
+// proxy on the stack, so it needs no grafana.com token.
+type RESTConfigLoader interface {
+	LoadGrafanaConfig(ctx context.Context) (config.NamespacedRESTConfig, error)
 }
 
 // NewPipelineTypedCRUD creates a TypedCRUD for Fleet pipelines.
-func NewPipelineTypedCRUD(ctx context.Context, loader CloudConfigLoader) (*adapter.TypedCRUD[Pipeline], string, error) {
+func NewPipelineTypedCRUD(ctx context.Context, loader RESTConfigLoader) (*adapter.TypedCRUD[Pipeline], string, error) {
 	base, namespace, err := fleetbase.LoadClient(ctx, loader)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to load Fleet config for pipelines: %w", err)
@@ -1248,7 +1343,7 @@ func NewPipelineTypedCRUD(ctx context.Context, loader CloudConfigLoader) (*adapt
 }
 
 // NewPipelineAdapterFactory returns a lazy adapter.Factory for fleet pipelines.
-func NewPipelineAdapterFactory(loader CloudConfigLoader) adapter.Factory {
+func NewPipelineAdapterFactory(loader RESTConfigLoader) adapter.Factory {
 	return func(ctx context.Context) (adapter.ResourceAdapter, error) {
 		crud, _, err := NewPipelineTypedCRUD(ctx, loader)
 		if err != nil {
@@ -1259,7 +1354,7 @@ func NewPipelineAdapterFactory(loader CloudConfigLoader) adapter.Factory {
 }
 
 // NewCollectorTypedCRUD creates a TypedCRUD for Fleet collectors.
-func NewCollectorTypedCRUD(ctx context.Context, loader CloudConfigLoader) (*adapter.TypedCRUD[Collector], string, error) {
+func NewCollectorTypedCRUD(ctx context.Context, loader RESTConfigLoader) (*adapter.TypedCRUD[Collector], string, error) {
 	base, namespace, err := fleetbase.LoadClient(ctx, loader)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to load Fleet config for collectors: %w", err)
@@ -1272,12 +1367,19 @@ func NewCollectorTypedCRUD(ctx context.Context, loader CloudConfigLoader) (*adap
 			return resolveCollector(ctx, client, name)
 		},
 		CreateFn: func(ctx context.Context, col *Collector) (*Collector, error) {
+			if err := validateCollectorForCreate(col); err != nil {
+				return nil, err
+			}
 			return client.CreateCollector(ctx, *col)
 		},
 		UpdateFn: func(ctx context.Context, name string, col *Collector) (*Collector, error) {
-			id, ok := extractIDFromSlug(name)
-			if !ok {
-				return nil, fmt.Errorf("cannot determine collector ID from name %q: expected format \"<slug>-<id>\" or numeric ID", name)
+			id := col.ID
+			if id == "" {
+				existing, err := resolveCollector(ctx, client, name)
+				if err != nil {
+					return nil, fmt.Errorf("cannot resolve collector %q for update: %w", name, err)
+				}
+				id = existing.ID
 			}
 			col.ID = id
 			if err := client.UpdateCollector(ctx, *col); err != nil {
@@ -1293,21 +1395,20 @@ func NewCollectorTypedCRUD(ctx context.Context, loader CloudConfigLoader) (*adap
 			return updated, nil
 		},
 		DeleteFn: func(ctx context.Context, name string) error {
-			id, ok := extractIDFromSlug(name)
-			if !ok {
-				return fmt.Errorf("cannot determine collector ID from name %q: expected format \"<slug>-<id>\" or numeric ID", name)
+			collector, err := resolveCollector(ctx, client, name)
+			if err != nil {
+				return fmt.Errorf("cannot resolve collector %q for delete: %w", name, err)
 			}
-			return client.DeleteCollector(ctx, id)
+			return client.DeleteCollector(ctx, collector.ID)
 		},
-		Namespace:   namespace,
-		StripFields: []string{"id"},
-		Descriptor:  collectorDescriptorVar,
+		Namespace:  namespace,
+		Descriptor: collectorDescriptorVar,
 	}
 	return crud, namespace, nil
 }
 
 // NewCollectorAdapterFactory returns a lazy adapter.Factory for fleet collectors.
-func NewCollectorAdapterFactory(loader CloudConfigLoader) adapter.Factory {
+func NewCollectorAdapterFactory(loader RESTConfigLoader) adapter.Factory {
 	return func(ctx context.Context) (adapter.ResourceAdapter, error) {
 		crud, _, err := NewCollectorTypedCRUD(ctx, loader)
 		if err != nil {
@@ -1365,7 +1466,7 @@ func pipelineExample() json.RawMessage {
 			"name": "my-pipeline",
 		},
 		"spec": map[string]any{
-			"name":       "my-pipeline",
+			"name":       "my_pipeline",
 			"enabled":    true,
 			"configType": "CONFIG_TYPE_ALLOY",
 			"contents":   "logging { level = \"info\" }",
@@ -1380,6 +1481,20 @@ func pipelineExample() json.RawMessage {
 }
 
 func collectorSchema() json.RawMessage {
+	stringMap := map[string]any{
+		"type":                 "object",
+		"additionalProperties": map[string]any{"type": "string"},
+	}
+	readOnlyStringMap := map[string]any{
+		"type":                 "object",
+		"additionalProperties": map[string]any{"type": "string"},
+		"readOnly":             true,
+	}
+	readOnlyTimestamp := map[string]any{
+		"type":     "string",
+		"format":   "date-time",
+		"readOnly": true,
+	}
 	s := map[string]any{
 		"$schema": "https://json-schema.org/draft/2020-12/schema",
 		"$id":     "https://grafana.com/schemas/fleet/Collector",
@@ -1397,11 +1512,18 @@ func collectorSchema() json.RawMessage {
 			"spec": map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"name":              map[string]any{"type": "string"},
-					"collector_type":    map[string]any{"type": "string"},
-					"enabled":           map[string]any{"type": "boolean"},
-					"remote_attributes": map[string]any{"type": "object"},
-					"local_attributes":  map[string]any{"type": "object"},
+					"id":   map[string]any{"type": "string"},
+					"name": map[string]any{"type": "string"},
+					"collector_type": map[string]any{
+						"type": "string",
+						"enum": []string{"COLLECTOR_TYPE_UNSPECIFIED", "COLLECTOR_TYPE_ALLOY", "COLLECTOR_TYPE_OTEL"},
+					},
+					"enabled":            map[string]any{"type": "boolean"},
+					"remote_attributes":  stringMap,
+					"local_attributes":   readOnlyStringMap,
+					"created_at":         readOnlyTimestamp,
+					"updated_at":         readOnlyTimestamp,
+					"marked_inactive_at": readOnlyTimestamp,
 				},
 			},
 		},
@@ -1414,6 +1536,52 @@ func collectorSchema() json.RawMessage {
 	return b
 }
 
+func writeCollectorFieldPaths(w io.Writer) error {
+	fields, err := collectorFieldPaths()
+	if err != nil {
+		return err
+	}
+	for _, field := range fields {
+		fmt.Fprintln(w, field)
+	}
+	return nil
+}
+
+func collectorFieldPaths() ([]string, error) {
+	var schemaDoc map[string]any
+	if err := json.Unmarshal(collectorSchema(), &schemaDoc); err != nil {
+		return nil, fmt.Errorf("fleet: decode collector schema for field discovery: %w", err)
+	}
+	properties, ok := schemaDoc["properties"].(map[string]any)
+	if !ok {
+		return nil, errors.New("fleet: collector schema has no properties")
+	}
+
+	var fields []string
+	collectSchemaPropertyPaths(properties, "", &fields)
+	sort.Strings(fields)
+	return fields, nil
+}
+
+func collectSchemaPropertyPaths(properties map[string]any, prefix string, fields *[]string) {
+	for name, raw := range properties {
+		path := name
+		if prefix != "" {
+			path = prefix + "." + name
+		}
+		*fields = append(*fields, path)
+
+		property, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		children, ok := property["properties"].(map[string]any)
+		if ok {
+			collectSchemaPropertyPaths(children, path, fields)
+		}
+	}
+}
+
 func collectorExample() json.RawMessage {
 	example := map[string]any{
 		"apiVersion": CollectorAPIVersion,
@@ -1422,8 +1590,9 @@ func collectorExample() json.RawMessage {
 			"name": "my-collector",
 		},
 		"spec": map[string]any{
+			"id":             "my-collector-id",
 			"name":           "my-collector",
-			"collector_type": "alloy",
+			"collector_type": "COLLECTOR_TYPE_ALLOY",
 			"enabled":        true,
 			"remote_attributes": map[string]string{
 				"env": "production",

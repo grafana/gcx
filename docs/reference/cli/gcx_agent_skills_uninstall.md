@@ -4,7 +4,7 @@ Uninstall gcx-managed skills from ~/.agents/skills
 
 ### Synopsis
 
-Remove one or more gcx-managed skills from a user-level .agents skills directory. Only skills bundled with gcx can be uninstalled; non-gcx skills are never touched.
+Remove one or more current or retired gcx skills from a user-level .agents skills directory. Only names recorded in the gcx catalog can be uninstalled; unmanaged skills are never touched. Catalog names identify skills but do not prove ownership of local files.
 
 ```
 gcx agent skills uninstall [SKILL]... [flags]
@@ -35,9 +35,9 @@ gcx agent skills uninstall [SKILL]... [flags]
 ### Options inherited from parent commands
 
 ```
-      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
+      --agent                       Enable agent mode (JSON output, no color). Auto-detected from known agent identity variables. Set GCX_AGENT_NAME to identify a supported harness, or GCX_AGENT_MODE to control the mode.
       --context string              Name of the context to use (overrides current-context in config)
-      --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.
+      --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Requires -vvv. Do not ship these logs.
       --no-color                    Disable color output
       --no-truncate                 Disable table column truncation (auto-enabled when stdout is piped)
   -v, --verbose count               Verbose mode. Multiple -v options increase the verbosity (maximum: 3).

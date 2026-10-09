@@ -38,7 +38,7 @@ func (p *Provider) descriptor() signals.Descriptor {
 			{
 				Build:     dstempo.GetCmd,
 				TokenCost: "medium",
-				LLMHint:   "gcx traces get -d abc123 <trace-id> --llm -o json",
+				LLMHint:   "gcx traces get -d abc123 <trace-id> --llm -o json; for a large trace, narrow with --filter '{ status = error }' --keep-hierarchy or shrink fan-outs with --prune",
 				Example: `
   # Fetch a trace by ID for agent analysis
   gcx traces get -d UID <trace-id> --llm -o json
@@ -47,7 +47,13 @@ func (p *Provider) descriptor() signals.Descriptor {
   gcx traces get -d UID <trace-id> --share-link
 
   # Output raw OTLP-shaped JSON when explicitly needed
-  gcx traces get -d UID <trace-id> -o json`,
+  gcx traces get -d UID <trace-id> -o json
+
+  # Narrow a large trace to error spans and their ancestor path
+  gcx traces get -d UID <trace-id> --filter '{ status = error }' --keep-hierarchy
+
+  # Collapse repeated sibling spans to shrink a huge trace before analysis
+  gcx traces get -d UID <trace-id> --prune --llm -o json`,
 			},
 			{
 				Build:     dstempo.LabelsCmd,
@@ -74,19 +80,21 @@ func (p *Provider) descriptor() signals.Descriptor {
   # Print a Grafana Explore share link for the query
   gcx traces metrics '{ } | rate()' --share-link
 
-  # Output as JSON
-  gcx traces metrics -d UID '{ } | rate()' --since 1h -o json`,
+  # Error percentage among observed server spans (not unsampled traffic)
+  gcx traces metrics '100 * ({ kind = server && status = error } | rate()) / ({ kind = server } | rate())' --since 1h -o json
+
+  # Each service's share of observed server-span throughput
+  gcx traces metrics '({ kind = server } | rate() by (resource.service.name)) / ({ kind = server } | rate())' --since 1h`,
 			},
 			{
 				Build:     dstempo.DiffCmd,
 				TokenCost: "medium",
-				LLMHint:   "gcx traces diff -d abc123 <trace-a> <trace-b> -o json",
-				Example: `
-  # Compare two traces (B - A semantics); experimental, Grafana Cloud-only
-  gcx traces diff <trace-a> <trace-b>
-
-  # With an explicit datasource UID, JSON output
-  gcx traces diff -d UID <trace-a> <trace-b> -o json`,
+				LLMHint:   `gcx traces diff --context <context> -d UID <candidate-id> <seed-id> --from "$PAIR_FROM" --to "$PAIR_TO" -o agents`,
+			},
+			{
+				Build:     dstempo.BaselineCmd,
+				TokenCost: "medium",
+				LLMHint:   "gcx traces baseline --context <context> -d UID <seed-id> --limit 5 -o agents",
 			},
 		},
 		Adaptive: &signals.AdaptiveSpec{
@@ -104,7 +112,7 @@ func (p *Provider) descriptor() signals.Descriptor {
 					Factory:    adaptivetraces.NewPolicyAdapterFactory(loader),
 					Descriptor: adaptivetraces.PolicyDescriptor(),
 					GVK:        adaptivetraces.PolicyDescriptor().GroupVersionKind(),
-					Schema:     adaptivetraces.PolicySchema(),
+					Schema:     adaptivetraces.PolicySchema,
 					Example:    adaptivetraces.PolicyExample(),
 				},
 			}

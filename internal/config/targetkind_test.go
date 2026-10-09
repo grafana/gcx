@@ -373,7 +373,7 @@ current-context: dev
 	// previously current self-hosted context. That context is not what the
 	// invocation targeted and must not be reported as though it were.
 	selectMissing := func(*config.Config) error {
-		return config.ContextNotFound("does-not-exist")
+		return config.ContextNotFound("does-not-exist", nil)
 	}
 
 	_, err := config.LoadLayered(t.Context(), "", selectMissing, testEnvOverride)

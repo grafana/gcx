@@ -4,6 +4,12 @@ title: Usage
 
 <div class="grid cards" markdown>
 
+-   :material-magnify:{ .lg .middle } __[Diagnose missing telemetry](./diagnose-missing-telemetry.md)__
+
+    ---
+
+    Investigate an empty dashboard or missing telemetry with existing gcx skills.
+
 -   :material-compass-outline:{ .lg .middle } __[Explore and modify resources](./explore-modify-resources.md)__
 
     ---

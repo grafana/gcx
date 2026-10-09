@@ -1,18 +1,21 @@
 package setup
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
 
 	fleetbase "github.com/grafana/gcx/internal/fleet"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	instrum "github.com/grafana/gcx/internal/providers/instrumentation"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"k8s.io/client-go/rest"
 )
 
 // Command returns the setup command area for onboarding and configuring
@@ -98,31 +101,90 @@ func newStatusCommand(loader *providers.ConfigLoader) *cobra.Command {
 
 			ctx := cmd.Context()
 
-			r, err := fleetbase.LoadClientWithStack(ctx, loader)
+			// Fleet Management reaches its API through the collector app plugin
+			// proxy. Report the plugin and the permissions first, so a user
+			// learns the cause without a failed RPC.
+			cfg, err := loader.LoadGrafanaConfig(ctx)
 			if err != nil {
 				return fmt.Errorf("setup: %w", err)
 			}
-			client := instrum.NewClient(r.Client)
-			promHdrs := instrum.PromHeadersFromStack(r.Stack)
-
-			monResp, err := client.RunK8sMonitoring(ctx, promHdrs)
+			httpClient, err := rest.HTTPClientFor(&cfg.Config)
+			if err != nil {
+				return fmt.Errorf("setup: %w", err)
+			}
+			state, err := fleetbase.CheckCollectorApp(ctx, cfg.Host, httpClient)
 			if err != nil {
 				return fmt.Errorf("setup: %w", err)
 			}
 
-			status := newSetupStatus([]setupProductStatus{
-				{
+			products := []setupProductStatus{collectorAppRow(state)}
+
+			if !state.MayServe() {
+				products = append(products, setupProductStatus{
 					Product: "instrumentation",
-					Enabled: len(monResp.Clusters) > 0,
-					Health:  "healthy",
-					Details: fmt.Sprintf("%d clusters", len(monResp.Clusters)),
-				},
-			})
-			return opts.IO.Encode(cmd.OutOrStdout(), status)
+					Enabled: false,
+					Health:  "unknown",
+					Details: "needs the " + fleetbase.CollectorAppID + " plugin",
+				})
+				if err := opts.IO.Encode(cmd.OutOrStdout(), newSetupStatus(products)); err != nil {
+					return err
+				}
+				return gcxerrors.NewEmittedError(
+					gcxerrors.ExitGeneralError,
+					fmt.Errorf("setup: %s plugin is not available", fleetbase.CollectorAppID),
+				)
+			}
+
+			// A failed instrumentation call must not discard the Fleet
+			// Management row: that row names the cause. The command reports
+			// the failure in the instrumentation row, then carries the exit
+			// code with EmittedError, so stdout holds exactly one document.
+			row, statusErr := instrumentationRow(ctx, loader)
+			products = append(products, row)
+			if err := opts.IO.Encode(cmd.OutOrStdout(), newSetupStatus(products)); err != nil {
+				return err
+			}
+			if statusErr != nil {
+				return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, statusErr)
+			}
+			return nil
 		},
 	}
 	opts.setup(cmd.Flags())
 	return cmd
+}
+
+// instrumentationRow reads the Instrumentation Hub state through the collector
+// app plugin proxy. It returns a product row in every case: the row carries the
+// reason when the call fails, together with the error for the exit code.
+func instrumentationRow(ctx context.Context, loader *providers.ConfigLoader) (setupProductStatus, error) {
+	r, err := fleetbase.LoadClientWithStack(ctx, loader)
+	if err != nil {
+		return unknownInstrumentationRow(err), fmt.Errorf("setup: %w", err)
+	}
+
+	monResp, err := instrum.NewClient(r.Client).RunK8sMonitoring(ctx, instrum.PromHeadersFromStack(r.Stack))
+	if err != nil {
+		return unknownInstrumentationRow(err), fmt.Errorf("setup: %w", err)
+	}
+
+	return setupProductStatus{
+		Product: "instrumentation",
+		Enabled: len(monResp.Clusters) > 0,
+		Health:  "healthy",
+		Details: fmt.Sprintf("%d clusters", len(monResp.Clusters)),
+	}, nil
+}
+
+// unknownInstrumentationRow renders a failed instrumentation check as a product
+// row, so the user sees the cause next to the Fleet Management row.
+func unknownInstrumentationRow(err error) setupProductStatus {
+	return setupProductStatus{
+		Product: "instrumentation",
+		Enabled: false,
+		Health:  "unknown",
+		Details: "the check failed: " + err.Error(),
+	}
 }
 
 // setupStatusTextCodec is the human "text" codec for setupStatus values: it

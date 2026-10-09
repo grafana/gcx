@@ -3,11 +3,14 @@ package irm
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/internal/agent"
+	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
 
@@ -112,46 +115,57 @@ func TestStringifyAlertGroupListFilters(t *testing.T) {
 	}
 }
 
-// TestAlertGroupListOptsValidate covers the negative --limit rejection: it
-// must fire at validation time — before any config or network work — with the
-// capped-source wording (never "0 means all results are returned": --limit 0
-// on this command is bounded by alertGroupListHardCap).
-func TestAlertGroupListOptsValidate(t *testing.T) {
-	t.Parallel()
+// TestAlertGroupListLimitValidation covers the negative --limit rejection. It
+// must fire before any config or network work, and it now carries the uniform
+// binder wording — the fetch is no longer bounded by a client-side safety cap,
+// so "0 means all results are returned" is an honest promise on this command
+// (grafana/gcx#1157). The check lives in the shared Options.Validate, which
+// RunE calls right after the command's own Validate, so this drives the real
+// command rather than the opts method.
+func TestAlertGroupListLimitValidation(t *testing.T) {
 	cases := []struct {
 		name    string
-		limit   int
-		wantErr string // exact error message; empty means Validate must pass
+		limit   string
+		wantErr string // exact error message; empty means the flag is accepted
 	}{
 		{
 			name:    "negative limit rejected",
-			limit:   -1,
-			wantErr: "invalid --limit -1: must be >= 0 (0 means as many results as the safety cap allows)",
+			limit:   "-1",
+			wantErr: "invalid --limit -1: must be >= 0 (0 means all results are returned)",
 		},
 		{
 			name:    "large negative limit rejected",
-			limit:   -50,
-			wantErr: "invalid --limit -50: must be >= 0 (0 means as many results as the safety cap allows)",
+			limit:   "-50",
+			wantErr: "invalid --limit -50: must be >= 0 (0 means all results are returned)",
 		},
-		{name: "zero limit accepted", limit: 0},
-		{name: "default limit accepted", limit: alertGroupListDefaultLimit},
+		{name: "zero limit accepted", limit: "0"},
+		{name: "limit above the retired 1000 hard cap accepted", limit: "5000"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			opts := &alertGroupListOpts{Limit: tc.limit}
-			err := opts.Validate()
+			srv, state := newPagedAlertGroupsServer(t, []alertGroupPage{{items: rawAlertGroups(1)}})
+			resetAgentMode(t)
+
+			cmd := newAlertGroupListCommand(&fakeLoader{client: onCallClientFor(srv)})
+			cmd.SetOut(&strings.Builder{})
+			cmd.SetErr(&strings.Builder{})
+			cmd.SetArgs([]string{"-o", "json", "--limit", tc.limit})
+
+			err := cmd.Execute()
 			if tc.wantErr == "" {
 				if err != nil {
-					t.Fatalf("Validate() = %v, want nil", err)
+					t.Fatalf("Execute() = %v, want nil", err)
 				}
 				return
 			}
 			if err == nil {
-				t.Fatalf("Validate() = nil, want error %q", tc.wantErr)
+				t.Fatalf("Execute() = nil, want error %q", tc.wantErr)
 			}
 			if err.Error() != tc.wantErr {
-				t.Fatalf("Validate() error = %q, want %q", err.Error(), tc.wantErr)
+				t.Fatalf("error = %q, want %q", err.Error(), tc.wantErr)
+			}
+			if state.requests != 0 {
+				t.Errorf("requests = %d, want 0 (validation must fire before any network work)", state.requests)
 			}
 		})
 	}
@@ -705,4 +719,134 @@ func TestEmitWarnEmitNote_Format(t *testing.T) {
 			t.Errorf("emitNote agent mode: summary want %q, got %v", "rate limited", got)
 		}
 	})
+}
+
+// fakeTimezoneAPI records the timezone that list-final-shifts sends and serves
+// the schedule that the command falls back to.
+type fakeTimezoneAPI struct {
+	OnCallAPI
+
+	scheduleTZ  string
+	scheduleErr error
+	gotTZ       string
+	getCalls    int
+}
+
+func (f *fakeTimezoneAPI) GetSchedule(_ context.Context, id string) (*Schedule, error) {
+	f.getCalls++
+	if f.scheduleErr != nil {
+		return nil, f.scheduleErr
+	}
+	return &Schedule{ID: id, Name: "probe", TimeZone: f.scheduleTZ}, nil
+}
+
+func (f *fakeTimezoneAPI) ListFilterEvents(_ context.Context, _, userTZ, _ string, _ int) (*FilterEventsResponse, error) {
+	f.gotTZ = userTZ
+	return &FilterEventsResponse{}, nil
+}
+
+// TestScheduleListFinalShiftsTimezone pins issue #1185 problem 2: the command
+// must send a timezone that the API accepts, never the local zone name "Local"
+// that time.Now().Location() reports when TZ is unset. The API renders every
+// shift boundary in this zone, so each fallback to UTC must warn.
+func TestScheduleListFinalShiftsTimezone(t *testing.T) {
+	tests := []struct {
+		name         string
+		scheduleTZ   string
+		scheduleErr  error
+		args         []string
+		wantTZ       string
+		wantGetCalls int
+		wantWarn     string
+		wantErr      string
+	}{
+		{
+			name:         "flag wins over the schedule",
+			scheduleTZ:   "Europe/Amsterdam",
+			args:         []string{"--timezone", "America/New_York"},
+			wantTZ:       "America/New_York",
+			wantGetCalls: 0,
+		},
+		{
+			// Validate does not check the name against the tz database, so an
+			// unknown name reaches the API, which adjudicates it.
+			name:         "an unknown name reaches the API unchanged",
+			args:         []string{"--timezone", "Mars/Olympus"},
+			wantTZ:       "Mars/Olympus",
+			wantGetCalls: 0,
+		},
+		{
+			name:         "falls back to the timezone of the schedule",
+			scheduleTZ:   "Europe/Amsterdam",
+			wantTZ:       "Europe/Amsterdam",
+			wantGetCalls: 1,
+		},
+		{
+			name:         "warns and uses UTC when the schedule has no timezone",
+			scheduleTZ:   "",
+			wantTZ:       "UTC",
+			wantGetCalls: 1,
+			wantWarn:     "schedule SCHED1 declares no timezone",
+		},
+		{
+			name:         "warns and uses UTC when the schedule lookup fails",
+			scheduleErr:  errors.New("boom"),
+			wantTZ:       "UTC",
+			wantGetCalls: 1,
+			wantWarn:     "cannot read the timezone of schedule SCHED1",
+		},
+		{
+			// Go names the zone of the host "Local" when TZ is unset. The API
+			// rejects that name, so the command rejects it first.
+			name:    "rejects the local zone name",
+			args:    []string{"--timezone", "Local"},
+			wantErr: `invalid --timezone "Local"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			setAgentMode(t, false)
+
+			fake := &fakeTimezoneAPI{scheduleTZ: tt.scheduleTZ, scheduleErr: tt.scheduleErr}
+			args := append([]string{"list-final-shifts", "SCHED1", "-o", "json"}, tt.args...)
+			_, stderr, err := runNounCmd(t, func() *cobra.Command {
+				return newSchedulesCmd(&fakeLoader{client: fake})
+			}, "", args...)
+
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("error = %v, want it to contain %q", err, tt.wantErr)
+				}
+				if fake.gotTZ != "" {
+					t.Errorf("request sent with timezone %q, want no request", fake.gotTZ)
+				}
+				// Validate runs before any client call, so a rejected value
+				// must not reach the schedule lookup either.
+				if fake.getCalls != 0 {
+					t.Errorf("GetSchedule calls = %d, want 0", fake.getCalls)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("error = %v, want nil", err)
+			}
+			if fake.gotTZ != tt.wantTZ {
+				t.Errorf("user_tz = %q, want %q", fake.gotTZ, tt.wantTZ)
+			}
+			if fake.getCalls != tt.wantGetCalls {
+				t.Errorf("GetSchedule calls = %d, want %d", fake.getCalls, tt.wantGetCalls)
+			}
+			if tt.wantWarn == "" {
+				if stderr != "" {
+					t.Errorf("stderr = %q, want no diagnostic", stderr)
+				}
+				return
+			}
+			if !strings.Contains(stderr, tt.wantWarn) {
+				t.Errorf("stderr = %q, want it to contain %q", stderr, tt.wantWarn)
+			}
+		})
+	}
 }

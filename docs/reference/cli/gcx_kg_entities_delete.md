@@ -1,15 +1,17 @@
 ## gcx kg entities delete
 
-Delete a custom entity [experimental].
+[experimental] Delete a custom entity.
 
 ### Synopsis
+
+This command is experimental. It may be removed, or its subcommands, flags and
+responses may change without following the normal semantic versioning conventions.
 
 Delete an API-origin entity. Scope is part of the entity's identity, so it must
 match the value used at upsert — omitting it targets the scope-less entity, and a
 mismatch returns 404 (not found).
 
-Experimental: this command uses the Knowledge Graph write API, which is gated
-server-side and may change.
+This command uses the Knowledge Graph write API, which is gated server-side.
 
 ```
 gcx kg entities delete [Type--Name] [flags]
@@ -32,10 +34,10 @@ gcx kg entities delete [Type--Name] [flags]
 ### Options inherited from parent commands
 
 ```
-      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
+      --agent                       Enable agent mode (JSON output, no color). Auto-detected from known agent identity variables. Set GCX_AGENT_NAME to identify a supported harness, or GCX_AGENT_MODE to control the mode.
       --config string               Path to the configuration file to use
       --context string              Name of the context to use (overrides current-context in config)
-      --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.
+      --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Requires -vvv. Do not ship these logs.
       --no-color                    Disable color output
       --no-truncate                 Disable table column truncation (auto-enabled when stdout is piped)
   -v, --verbose count               Verbose mode. Multiple -v options increase the verbosity (maximum: 3).

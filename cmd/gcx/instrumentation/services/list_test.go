@@ -10,10 +10,10 @@ import (
 	"testing"
 
 	"github.com/grafana/gcx/cmd/gcx/instrumentation/services"
+	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/fleet"
 	gcxerrors "github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
-	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/instrumentation"
 	instrumout "github.com/grafana/gcx/internal/providers/instrumentation/output"
 	"github.com/spf13/pflag"
@@ -42,15 +42,14 @@ func (s *discoveryTestServer) start(t *testing.T) *httptest.Server {
 
 func makeDiscoveryClient(t *testing.T, serverURL string) *instrumentation.Client {
 	t.Helper()
-	f := fleet.NewClient(context.Background(), serverURL, "inst-id", "api-token", true, nil)
+	f := fleet.NewClient(context.Background(), serverURL, nil)
 	return instrumentation.NewClient(f)
 }
 
 func makeListOutOpts() *cmdio.Options {
 	opts := &cmdio.Options{}
 	opts.DefaultFormat("text")
-	opts.RegisterCustomCodec("text", &instrumout.ServiceTableCodec{Wide: false})
-	opts.RegisterCustomCodec("wide", &instrumout.ServiceTableCodec{Wide: true})
+	cmdio.RegisterTableAs(opts, instrumout.ServiceTable(), cmdio.FormatText)
 	// BindFlags initialises OutputFormat to the default ("text") via pflag default.
 	fs := pflag.NewFlagSet("test", pflag.ContinueOnError)
 	opts.BindFlags(fs)
@@ -354,8 +353,8 @@ func TestRunList_JSONFieldSelection_Unknown(t *testing.T) {
 // Used for tests that only exercise cobra.Args validation without RunE.
 type noopConfigLoader struct{}
 
-func (noopConfigLoader) LoadCloudConfig(_ context.Context) (providers.CloudRESTConfig, error) {
-	return providers.CloudRESTConfig{}, errors.New("noop loader: not connected")
+func (noopConfigLoader) LoadGrafanaConfig(_ context.Context) (config.NamespacedRESTConfig, error) {
+	return config.NamespacedRESTConfig{}, errors.New("noop loader: not connected")
 }
 
 // TestListCmd_RejectsPositionalArgs verifies that cobra.NoArgs enforcement

@@ -1,4 +1,26 @@
 {
+  "permissions": {
+    "allow": [
+      "Read",
+      "Grep",
+      "Glob",
+      "Skill",
+      "Task",
+      "Bash(git diff:*)",
+      "Bash(git fetch:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(gh api repos/grafana/gcx/pulls/*/reviews -X POST *)",
+      "Bash(gh issue list:*)",
+      "Bash(gh issue view:*)",
+      "Bash(gh pr comment:*)",
+      "Bash(gh pr diff:*)",
+      "Bash(gh pr list:*)",
+      "Bash(gh pr view:*)",
+      "Bash(gh search:*)",
+      "mcp__github_inline_comment__create_inline_comment"
+    ]
+  },
   "hooks": {
     "PostToolUse": [
       {

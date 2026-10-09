@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/grafana/gcx/cmd/gcx/instrumentation/check/fixplan"
+	cmdio "github.com/grafana/gcx/internal/output"
 	otelutils "github.com/grafana/otel-checker/checks/utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -208,14 +210,14 @@ func TestRunWith_EmptyReporterReturnsNonNilSlices(t *testing.T) {
 
 func TestCheckTableCodec_Encode(t *testing.T) {
 	codec := &CheckTableCodec{}
-	results := otelutils.Results{
+	envelope := ResultsWithFixPlan{
 		Checks:   []otelutils.ComponentResult{{Component: "SDK", Message: "service.name set"}},
 		Warnings: []otelutils.ComponentResult{{Component: "Collector", Message: "missing receiver"}},
 		Errors:   []otelutils.ComponentResult{{Component: "Grafana Cloud", Message: "no instance id"}},
 	}
 
 	var buf bytes.Buffer
-	require.NoError(t, codec.Encode(&buf, results))
+	require.NoError(t, codec.Encode(&buf, envelope))
 
 	out := buf.String()
 	// All three rows present, in failure-first order.
@@ -227,11 +229,23 @@ func TestCheckTableCodec_Encode(t *testing.T) {
 	assert.Contains(t, out, "no instance id")
 }
 
+// TestResultsWithFixPlan_JSONFieldValidatorSeesAllFields guards against a
+// regression where ResultsWithFixPlan re-embeds otelutils.Results and the
+// promoted `checks`/`warnings`/`errors` fields become invisible to
+// MakeFieldValidator (reflect.Type.Fields doesn't yield promoted fields).
+// The bug's user-visible symptom is `--json checks` failing as "unknown field"
+// even though the field is present in the JSON output.
+func TestResultsWithFixPlan_JSONFieldValidatorSeesAllFields(t *testing.T) {
+	validator := cmdio.MakeFieldValidator(ResultsWithFixPlan{})
+	require.NotNil(t, validator, "validator must be non-nil for a struct type")
+	require.NoError(t, validator([]string{"checks", "warnings", "errors", "fix_plan"}))
+}
+
 func TestCheckTableCodec_WrongType(t *testing.T) {
 	codec := &CheckTableCodec{}
 	err := codec.Encode(&bytes.Buffer{}, "nope")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "otelutils.Results")
+	assert.Contains(t, err.Error(), "ResultsWithFixPlan")
 }
 
 // ─── Command smoke test ──────────────────────────────────────────────────────
@@ -240,7 +254,7 @@ func TestCheckTableCodec_WrongType(t *testing.T) {
 // Avoids actually running otel-checker (which would touch real env vars).
 
 func TestCommand_RejectsUnsupportedLanguage(t *testing.T) {
-	cmd := Command()
+	cmd := Command(nil)
 	cmd.SetArgs([]string{"sdk", "--language=rust"})
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
@@ -251,7 +265,7 @@ func TestCommand_RejectsUnsupportedLanguage(t *testing.T) {
 }
 
 func TestCommand_RejectsMissingLanguage(t *testing.T) {
-	cmd := Command()
+	cmd := Command(nil)
 	cmd.SetArgs([]string{"sdk"})
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
@@ -259,4 +273,61 @@ func TestCommand_RejectsMissingLanguage(t *testing.T) {
 	err := cmd.Execute()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "--language is required")
+}
+
+// ─── ResultsWithFixPlan / codec envelope ─────────────────────────────────────
+
+func TestCheckTableCodec_RendersFixPlanBelowTable(t *testing.T) {
+	envelope := ResultsWithFixPlan{
+		Errors: []otelutils.ComponentResult{{Component: "Grafana Cloud", Message: "no headers", ExplainID: "grafana-cloud.headers.missing-auth"}},
+		FixPlan: &fixplan.Plan{
+			Source:  fixplan.SourceAssistant,
+			Content: "# Fix plan\n\n1. Set the header.\n",
+		},
+	}
+	var buf bytes.Buffer
+	require.NoError(t, (&CheckTableCodec{}).Encode(&buf, envelope))
+
+	out := buf.String()
+	assert.Contains(t, out, "FAIL")
+	assert.Contains(t, out, "grafana-cloud.headers.missing-auth")
+	assert.Contains(t, out, "Fix plan")
+	// Plan follows the table (raw markdown since buf isn't a TTY).
+	assert.Less(t, strings.Index(out, "FAIL"), strings.Index(out, "Fix plan"),
+		"table must come before plan, got:\n%s", out)
+}
+
+// TestCommand_RejectsInvalidFixPlanValue guards the string-valued
+// --fix-plan flag: any value other than the two known modes must error
+// out with a message listing both modes, so users can't accidentally
+// invoke a silent no-op via a typo like --fix-plan=auto.
+func TestCommand_RejectsInvalidFixPlanValue(t *testing.T) {
+	cmd := Command(nil)
+	cmd.SetArgs([]string{"collector", "--fix-plan=auto"})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--fix-plan must be")
+	assert.Contains(t, err.Error(), "local")
+	assert.Contains(t, err.Error(), "assistant")
+}
+
+// TestCommand_RejectsExplicitEmptyFixPlan guards the distinction between
+// `--fix-plan` omitted and `--fix-plan=` (explicit empty). StringVar
+// gives both cases the same empty string; without the cmd.Flags().Changed
+// guard the command would silently run without a plan even though the
+// user typed the flag.
+func TestCommand_RejectsExplicitEmptyFixPlan(t *testing.T) {
+	cmd := Command(nil)
+	cmd.SetArgs([]string{"collector", "--fix-plan=", "--language=go"})
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--fix-plan requires a value")
+	assert.Contains(t, err.Error(), "local")
+	assert.Contains(t, err.Error(), "assistant")
 }

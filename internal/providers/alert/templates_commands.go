@@ -2,14 +2,11 @@ package alert
 
 import (
 	"errors"
-	"io"
 	"strconv"
 
-	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
-	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -36,7 +33,7 @@ type templatesListOpts struct {
 }
 
 func (o *templatesListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &TemplatesTableCodec{})
+	cmdio.RegisterTable(&o.IO, TemplatesTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for unlimited)")
@@ -72,25 +69,12 @@ func newTemplatesListCommand(loader GrafanaConfigLoader) *cobra.Command {
 	return cmd
 }
 
-// TemplatesTableCodec renders notification templates as a tabular table.
-type TemplatesTableCodec struct{}
-
-func (c *TemplatesTableCodec) Format() format.Format { return "table" }
-
-func (c *TemplatesTableCodec) Encode(w io.Writer, v any) error {
-	templates, ok := v.([]NotificationTemplate)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []NotificationTemplate")
-	}
-	t := style.NewTable("NAME", "PROVENANCE", "LENGTH")
-	for _, tmpl := range templates {
-		t.Row(tmpl.Name, tmpl.Provenance, strconv.Itoa(len(tmpl.Template)))
-	}
-	return t.Render(w)
-}
-
-func (c *TemplatesTableCodec) Decode(io.Reader, any) error {
-	return errors.New("table format does not support decoding")
+func TemplatesTable() cmdio.Table[NotificationTemplate] {
+	return cmdio.Table[NotificationTemplate]{Columns: []cmdio.Column[NotificationTemplate]{
+		{Header: "NAME", Content: func(r NotificationTemplate) string { return r.Name }},
+		{Header: "PROVENANCE", Content: func(r NotificationTemplate) string { return r.Provenance }},
+		{Header: "LENGTH", Content: func(r NotificationTemplate) string { return strconv.Itoa(len(r.Template)) }},
+	}}
 }
 
 type templatesGetOpts struct {

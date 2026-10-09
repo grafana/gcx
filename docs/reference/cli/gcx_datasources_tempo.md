@@ -12,9 +12,9 @@ Query Tempo datasources
 ### Options inherited from parent commands
 
 ```
-      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
+      --agent                       Enable agent mode (JSON output, no color). Auto-detected from known agent identity variables. Set GCX_AGENT_NAME to identify a supported harness, or GCX_AGENT_MODE to control the mode.
       --context string              Name of the context to use (overrides current-context in config)
-      --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.
+      --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Requires -vvv. Do not ship these logs.
       --no-color                    Disable color output
       --no-truncate                 Disable table column truncation (auto-enabled when stdout is piped)
   -v, --verbose count               Verbose mode. Multiple -v options increase the verbosity (maximum: 3).
@@ -23,7 +23,8 @@ Query Tempo datasources
 ### SEE ALSO
 
 * [gcx datasources](gcx_datasources.md)	 - Manage and query Grafana datasources
-* [gcx datasources tempo diff](gcx_datasources_tempo_diff.md)	 - [experimental] Compare two traces (baseline vs comparison)
+* [gcx datasources tempo baseline](gcx_datasources_tempo_baseline.md)	 - [experimental] Find same-operation trace candidates.
+* [gcx datasources tempo diff](gcx_datasources_tempo_diff.md)	 - [experimental] Compare execution of two traces.
 * [gcx datasources tempo get](gcx_datasources_tempo_get.md)	 - Retrieve a trace by ID
 * [gcx datasources tempo labels](gcx_datasources_tempo_labels.md)	 - List trace labels or label values
 * [gcx datasources tempo metrics](gcx_datasources_tempo_metrics.md)	 - Execute a TraceQL metrics query

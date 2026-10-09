@@ -45,7 +45,7 @@ func failingChecker() checker {
 // stderr, and the Execute error.
 func executeCheck(t *testing.T, c checker, args ...string) (string, string, error) {
 	t.Helper()
-	cmd := commandWith(c)
+	cmd := commandWith(nil, c)
 	// Mirror production: the gcx root command silences cobra's own error and
 	// usage rendering (reportError owns it).
 	cmd.SilenceUsage = true
@@ -122,7 +122,11 @@ func TestCheck_HumanDefault_ByteIdenticalTable(t *testing.T) {
 
 	var want bytes.Buffer
 	results := runWith(context.Background(), otelutils.Commands{}, failingChecker(), io.Discard)
-	require.NoError(t, (&CheckTableCodec{}).Encode(&want, results))
+	require.NoError(t, (&CheckTableCodec{}).Encode(&want, ResultsWithFixPlan{
+		Checks:   results.Checks,
+		Warnings: results.Warnings,
+		Errors:   results.Errors,
+	}))
 
 	assert.Equal(t, want.String(), stdout, "default human stdout must stay byte-identical to the table codec output")
 }

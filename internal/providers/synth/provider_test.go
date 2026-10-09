@@ -1,6 +1,7 @@
 package synth_test
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/grafana/gcx/internal/providers"
@@ -19,7 +20,7 @@ func TestSynthProvider_Interface(t *testing.T) {
 func TestSynthProvider_ConfigKeys(t *testing.T) {
 	p := &synth.SynthProvider{}
 	keys := p.ConfigKeys()
-	require.Len(t, keys, 3)
+	require.Len(t, keys, 4)
 
 	keyMap := make(map[string]providers.ConfigKey)
 	for _, k := range keys {
@@ -37,6 +38,10 @@ func TestSynthProvider_ConfigKeys(t *testing.T) {
 	smDS, ok := keyMap["sm-metrics-datasource-uid"]
 	require.True(t, ok)
 	assert.False(t, smDS.Secret)
+
+	smLogsDS, ok := keyMap["sm-logs-datasource-uid"]
+	require.True(t, ok)
+	assert.False(t, smLogsDS.Secret)
 }
 
 func TestSynthProvider_Validate(t *testing.T) {
@@ -59,4 +64,29 @@ func TestSynthProvider_Validate(t *testing.T) {
 			require.NoError(t, p.Validate(tc.cfg))
 		})
 	}
+}
+
+func TestCheckSchemaFolderUID(t *testing.T) {
+	p := &synth.SynthProvider{}
+	for _, registration := range p.TypedRegistrations() {
+		if registration.Descriptor.Kind != "Check" {
+			continue
+		}
+		var schema map[string]any
+		require.NotNil(t, registration.Schema, "registration has no Schema")
+		require.NoError(t, json.Unmarshal(registration.Schema(), &schema))
+		properties, ok := schema["properties"].(map[string]any)
+		require.True(t, ok)
+		spec, ok := properties["spec"].(map[string]any)
+		require.True(t, ok)
+		fields, ok := spec["properties"].(map[string]any)
+		require.True(t, ok)
+		folder, ok := fields["folderUid"].(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, "string", folder["type"])
+		assert.NotContains(t, spec["required"], "folderUid")
+		assert.NotContains(t, folder, "minLength", "empty string clears the assignment")
+		return
+	}
+	t.Fatal("Check registration not found")
 }

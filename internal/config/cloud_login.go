@@ -304,7 +304,7 @@ func SaveCloudConfigGuarded(
 		return "", "", err
 	}
 
-	if err := Write(ctx, source, cfg); err != nil {
+	if err := write(ctx, source, cfg, writeOptions{layer: configLayerFromCtx(ctx)}); err != nil {
 		return "", "", &gcxerrors.DetailedError{
 			Summary: "Failed to save config",
 			Parent:  err,

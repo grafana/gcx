@@ -18,6 +18,11 @@ const (
 // ToResource converts an Incident to a gcx Resource, wrapping the incident
 // fields in a Kubernetes-style object envelope with apiVersion, kind, and metadata.
 // The incidentID field is mapped to metadata.name and stripped from the spec.
+//
+// The strip list matches TypedCRUD.StripFields in
+// incidents_resource_adapter.go. The provider commands convert here, and the
+// resources commands convert through the adapter, so a key that one path
+// removes and the other keeps makes the two outputs disagree.
 func ToResource(inc Incident, namespace string) (*resources.Resource, error) {
 	data, err := json.Marshal(inc)
 	if err != nil {
@@ -29,8 +34,12 @@ func ToResource(inc Incident, namespace string) (*resources.Resource, error) {
 		return nil, fmt.Errorf("failed to unmarshal incident to map: %w", err)
 	}
 
-	// Strip the ID from spec — it lives in metadata.name.
-	delete(specMap, "incidentID")
+	// The identifier lives in metadata.name. severityID goes with it: the
+	// identifier has precedence over the severity label in the client, so a
+	// manifest that carries both makes an edit of the label unreachable.
+	for _, field := range incidentStripFields {
+		delete(specMap, field)
+	}
 
 	obj := map[string]any{
 		"apiVersion": IncidentAPIVersion,

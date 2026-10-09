@@ -12,9 +12,9 @@ Manage Grafana Knowledge Graph rules, entities, and insights
 ### Options inherited from parent commands
 
 ```
-      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
+      --agent                       Enable agent mode (JSON output, no color). Auto-detected from known agent identity variables. Set GCX_AGENT_NAME to identify a supported harness, or GCX_AGENT_MODE to control the mode.
       --context string              Name of the context to use (overrides current-context in config)
-      --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.
+      --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Requires -vvv. Do not ship these logs.
       --no-color                    Disable color output
       --no-truncate                 Disable table column truncation (auto-enabled when stdout is piped)
   -v, --verbose count               Verbose mode. Multiple -v options increase the verbosity (maximum: 3).
@@ -33,7 +33,7 @@ Manage Grafana Knowledge Graph rules, entities, and insights
 * [gcx kg prom-rules](gcx_kg_prom-rules.md)	 - Manage Knowledge Graph Custom Prometheus rules.
 * [gcx kg quality](gcx_kg_quality.md)	 - Inspect Knowledge Graph entity quality reports.
 * [gcx kg relabel-rules](gcx_kg_relabel-rules.md)	 - Inspect Mimir relabel rules used by the Knowledge Graph.
-* [gcx kg relationships](gcx_kg_relationships.md)	 - Manage custom Knowledge Graph relationships [experimental].
+* [gcx kg relationships](gcx_kg_relationships.md)	 - [experimental] Manage custom Knowledge Graph relationships.
 * [gcx kg stats](gcx_kg_stats.md)	 - Show entity and active-insight counts, broken down by type, severity, and insight name.
 * [gcx kg status](gcx_kg_status.md)	 - Show Knowledge Graph stack status.
 * [gcx kg suppressions](gcx_kg_suppressions.md)	 - Manage alert suppressions in the Knowledge Graph.

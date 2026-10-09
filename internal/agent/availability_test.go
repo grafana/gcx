@@ -25,6 +25,16 @@ func TestIsCloudOnlyPath(t *testing.T) {
 		{"profiles adaptive", "gcx profiles adaptive", true},
 		{"setup group", "gcx setup", true},
 		{"setup status", "gcx setup status", true},
+		// Instrumentation subtrees: the Hub-facing subtrees are cloud-only,
+		// but `check`, `explain`, and `list-explanations` run entirely
+		// locally and must be available on self-hosted too.
+		{"instrumentation setup is cloud-only", "gcx instrumentation setup", true},
+		{"instrumentation status is cloud-only", "gcx instrumentation status", true},
+		{"instrumentation clusters is cloud-only", "gcx instrumentation clusters list", true},
+		{"instrumentation services is cloud-only", "gcx instrumentation services list", true},
+		{"instrumentation check is local (not cloud-only)", "gcx instrumentation check", false},
+		{"instrumentation explain is local (not cloud-only)", "gcx instrumentation explain", false},
+		{"instrumentation list-explanations is local (not cloud-only)", "gcx instrumentation list-explanations", false},
 		{"signal query not cloud-only", "gcx metrics query", false},
 		{"profiles query not cloud-only", "gcx profiles query", false},
 		{"metrics group root not cloud-only", "gcx metrics", false},

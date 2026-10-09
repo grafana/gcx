@@ -101,6 +101,12 @@ stacks:
         next-protos:
           - string
           - ...
+      # PathfinderInstalled caches that the Pathfinder plugin was detected as
+      # installed and enabled on this server during `gcx login`. Once true, later
+      # logins skip the detection probe and the one-time guide hint. In practice
+      # the plugin is not uninstalled, so the flag is sticky and never cleared
+      # automatically. Set automatically by `gcx login`.
+      pathfinder-installed: bool
     # Providers holds per-provider configuration, indexed by provider name.
     # Each provider has a map of string key-value pairs.
     # Secret fields are selectively redacted by providers.RedactSecrets using
@@ -195,5 +201,12 @@ diagnostics:
   # or "log" (prints to stderr). Enabled by default. Overridden by the
   # GCX_TELEMETRY environment variable.
   telemetry: string
+# Credentials controls how gcx persists credentials. It contains policy
+# only; credential values remain on their owning stack and cloud entries.
+credentials:
+  # CredentialsConfig controls credential persistence without owning secrets.
+  # Keychain selects whether credentials use the OS credential store. Valid
+  # values are "on" and "off". The default is "on".
+  keychain: string
 
 ```

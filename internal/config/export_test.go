@@ -2,6 +2,7 @@ package config
 
 import (
 	"strings"
+	"sync"
 
 	"github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/credentials"
@@ -14,6 +15,18 @@ func SetKeychainStoreFnForTest(fn func() credentials.Store) func() {
 	original := keychainStoreFn
 	keychainStoreFn = fn
 	return func() { keychainStoreFn = original }
+}
+
+// ResetUnrecognisedKeychainWarningForTest gives external-package policy tests
+// a fresh process-warning latch without exposing it to production code.
+func ResetUnrecognisedKeychainWarningForTest() {
+	warnUnrecognisedKeychainValueOnce = sync.Once{}
+}
+
+// ResetIgnoredLocalKeychainWarningForTest gives policy tests a fresh
+// process-warning latch for the ignored auto-local policy notice.
+func ResetIgnoredLocalKeychainWarningForTest() {
+	warnIgnoredLocalKeychainPolicyOnce = sync.Once{}
 }
 
 // StackBindingForTest builds the production credential binding for external
@@ -57,6 +70,15 @@ func (n *NamespacedRESTConfig) OnRefreshForTest() auth.TokenRefresher {
 		return nil
 	}
 	return n.oauthTransport.OnRefresh
+}
+
+// CheckPersistenceForTest returns the persistence preflight callback wired by
+// WireTokenPersistence. Exposed solely for tests in config_test.
+func (n *NamespacedRESTConfig) CheckPersistenceForTest() auth.TokenPersistenceChecker {
+	if n.oauthTransport == nil {
+		return nil
+	}
+	return n.oauthTransport.CheckPersistence
 }
 
 // SeedStackIDCacheForTest primes the process-lifetime stack-ID discovery cache

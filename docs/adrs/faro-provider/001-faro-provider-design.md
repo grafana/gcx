@@ -115,12 +115,22 @@ explicit `http.Client` + `host` fields with named endpoint methods. Internal
 `toAPI()` / `fromAPI()` handles ExtraLogLabels (map ↔ array of `{key, value}`)
 and ID (string ↔ int64).
 
+> **Correction (2026-08-25):** the wire field is `label`, not `key`. The `key`
+> tag shipped, so the server stored an empty label name and Loki rejected every
+> write for the app. The array is `{label, value}`.
+
+> **Correction (2026-09-28):** creation now preserves `extraLogLabels`. The API accepts
+> `{label, value}` entries; stripping these labels is no longer required.
+
+> **Correction (2026-10-05):** create and update now send `settings`. The 500 came from
+> the wire shape, not from settings: the API stores them as string pairs such as
+> `"geolocation.enabled": "1"` and `"geolocation.level": "1"`, and the old typed
+> boolean failed to decode. `toAPI()`/`fromAPI()` now convert between the shapes.
+
 **API quirks preserved from gcx source:**
 
 | Quirk | Behavior | Source reference |
 |---|---|---|
-| ExtraLogLabels stripped on create | API returns 409 if included | `faro.go:171` |
-| Settings stripped on create AND update | API returns 500 if included | `faro.go:173, 219` |
 | Create re-fetches via List | Response missing collectEndpointURL/appKey | `faro.go:189` |
 | Update requires ID in URL and body | API rejects otherwise | `faro.go:215-216` |
 | GetByName is client-side filter | No server-side name lookup endpoint | `faro.go:148-164` |

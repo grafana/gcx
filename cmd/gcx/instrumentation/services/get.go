@@ -20,8 +20,7 @@ type getOpts struct {
 
 func (o *getOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("text")
-	o.IO.RegisterCustomCodec("text", &instrumout.ServiceTableCodec{Wide: false})
-	o.IO.RegisterCustomCodec("wide", &instrumout.ServiceTableCodec{Wide: true})
+	cmdio.RegisterTableAs(&o.IO, instrumout.ServiceTable(), cmdio.FormatText)
 	o.IO.SetJSONFieldValidator(cmdio.MakeFieldValidator(instrumout.ServiceView{}))
 	o.IO.BindFlags(flags)
 }

@@ -65,8 +65,11 @@ Every `Resource` carries a `SourceInfo` (line 374) recording where it came from.
 
 Resources carry manager metadata in annotations (via `GrafanaMetaAccessor`):
 - `grafana.app/manager-kind` — which tool manages the resource (gcx uses `utils.ManagerKindKubectl` as placeholder, line 19)
-- `grafana.app/manager-identity` — identity string ("gcx")
+- `grafana.app/manager-identity` — identity string, built by `process.ManagerIdentity()` as `gcx/<version>` (for example `gcx/3.0.0`, or `gcx/SNAPSHOT` for a build without version information)
+- `grafana.app/manager-allows-edits` — always `true`, so the Grafana user interface keeps a pushed resource editable
 - `grafana.app/source-path` — original file path
+
+gcx leaves `grafana.app/source-checksum` and `grafana.app/source-timestamp` empty. Grafana uses both fields to reconcile a resource from a source over time. gcx pushes one time per command, and no gcx code reads the two fields back.
 
 `IsManaged()` (line 161) returns true when the manager kind matches `ResourceManagerKind`. Resources managed by the UI (with `grafana.app/saved-from-ui` annotation) or other tools are protected from accidental overwrites unless `--include-managed` is passed.
 
@@ -138,7 +141,9 @@ type Selector struct {
 `PartialGVK` (line 140) accepts any level of specificity:
 
 ```
-Input string format:  <resource>[.<version>.<group>][/<uid1>[,<uid2>...]]
+Input string formats:
+  <resource>[.<group>][/<uid1>[,<uid2>...]]
+  <resource>.<version>.<group>[/<uid1>[,<uid2>...]]
 
 Parsing rules (SplitN on "."):
   1 part:  "dashboards"               → Resource="dashboards"
@@ -147,6 +152,17 @@ Parsing rules (SplitN on "."):
                                       → Resource="dashboards", Version="v1alpha1",
                                         Group="dashboard.grafana.app"
 ```
+
+For three or more dot-separated segments, discovery first tries the parsed
+`resource.version.group` reading. If that resource is not served at the given
+group and version, `PartialGVK.GroupOnlyCandidate()` supplies the alternate group
+name retained in the parsed selector's `FallbackGroup`, with no version. For example,
+`dashboards.dashboard.grafana.app` resolves to group `dashboard.grafana.app`
+without a version. This also works when a group's first label looks like a
+version, and applies to both discovered resources and static provider adapters.
+If neither reading resolves, the selector error describes both candidates.
+Structured `PartialGVK` values leave `FallbackGroup` empty, so explicitly supplied
+group/version pairs (such as dashboards `--api-version`) require an exact match.
 
 FilterType is assigned during parsing (line 102-125):
 - No UID → `FilterTypeAll`
@@ -189,14 +205,15 @@ Selector (PartialGVK)
       |
       v  registry.MakeFilters(opts)
       |
-      ├── version specified? ──── LookupPartialGVK ─────────→ single Descriptor → Filter
-      |
-      ├── preferredVersionOnly? ─ LookupPartialGVK ─────────→ single Descriptor → Filter
+      ├── preferredVersionOnly? ─ LookupPreferredPerGroup ─→ []Descriptor → []Filters
       |
       └── all versions? ───────── LookupAllVersionsForPartialGVK → []Descriptor → []Filters
 ```
 
-`MakeFiltersOptions.PreferredVersionOnly` controls whether to resolve to one filter per type (pull uses all versions; push uses preferred).
+`MakeFiltersOptions.PreferredVersionOnly` controls whether to resolve to the
+preferred version per group or all served versions. A supported explicit version
+returns a single descriptor in either mode. If only the group-only candidate
+resolves, the same preferred/all-version policy applies to that group.
 
 ---
 
@@ -245,11 +262,17 @@ apiregistration.k8s.io          — internal K8s
 featuretoggle.grafana.app       — read-only feature flags
 service.grafana.app             — internal service registry
 userstorage.grafana.app         — internal user storage
-notifications.alerting.grafana.app — pending decision
 iam.grafana.app                 — identity/access management
 ```
 
-Additionally, `FilterDiscoveryResults()` (line 181) excludes:
+`partiallyExposedGroups` keeps a group's `APIGroup` entry (and its preferred
+version) but hides every resource not on the group's allowlist:
+
+```
+notifications.alerting.grafana.app — only routingtrees
+```
+
+Additionally, `FilterDiscoveryResults()` excludes:
 - Non-namespaced resources (line 207) — all Grafana resources are namespaced
 - Subresources (containing `/` in name, line 212) — e.g. `dashboards/status`
 
@@ -421,14 +444,31 @@ func Register(p Provider) {
 }
 ```
 
-`TypedRegistration[T]` bridges `TypedCRUD` to the `Registration` system:
+`Registration` carries the static metadata and lazy factory for one adapter:
 
 ```go
-TypedRegistration[T ResourceNamer]
+Registration
   +-- Descriptor, Aliases, GVK, Schema, Example
-  +-- Factory func(ctx) (*TypedCRUD[T], error)
-  +-- ToRegistration() → Registration   // wraps Factory to return ResourceAdapter
+  +-- Factory func(ctx) (ResourceAdapter, error)
 ```
+
+Provider commands bind the same declaration through `Resource.TypedCRUD(client,
+namespace)`, sharing capability dispatch, descriptor, stripping, and examples
+with generic resource factories. Grafana-backed providers can use
+`providers.BindGrafanaResource(loader, declaration).Load(ctx)` to construct the client
+and return the resolved config snapshot for auxiliary queries. Convert manifests
+with `TypedCRUD.ToUnstructured` / `FromUnstructured`; a nil-client binding supports
+offline conversion without loading credentials.
+
+Providers can derive a registration from an `adapter.Resource[T]` declaration
+through `adapter.NewProvider`. Providers whose client methods need explicit
+adapters use `adapter.BuildRegistration[T, C]` instead.
+
+| Registration path | Use when |
+|---|---|
+| `Resource[T]` through `NewProvider` | Client methods implement the capability interfaces directly. |
+| `BuildRegistration` | Client methods need explicit per-verb adaptation. |
+| Handwritten `Registration` | Required metadata or factory behavior is not supported by either builder. |
 
 This replaces the old pattern where providers called `adapter.Register()` directly
 in their `init()` functions alongside `providers.Register()`.
@@ -475,6 +515,7 @@ PartialGVK                         Descriptor
 │ Group   string       │  ──via──→  │ GroupVersion  schema.GV      │
 │ Version string       │  registry  │ Kind          string          │
 │ Resource string      │            │ Singular      string          │
+│ FallbackGroup string │            │                               │
 └─────────────────────┘            │ Plural        string          │
                                    └──────────────────────────────┘
          │                                       │
@@ -526,7 +567,9 @@ PartialGVK                         Descriptor
 | `cmd/gcx/resources/pull.go` | Pull pipeline wiring (processors, registry, filters) |
 | `internal/resources/adapter/adapter.go` | `ResourceAdapter` interface and `Factory` type |
 | `internal/resources/adapter/identity.go` | `ResourceIdentity` and `ResourceNamer` interfaces |
-| `internal/resources/adapter/typed.go` | `TypedCRUD[T]`, `TypedObject[T]`, `TypedRegistration[T]` — generic adapter framework |
+| `internal/resources/adapter/typed.go` | `TypedCRUD[T]`, `TypedObject[T]` — generic adapter framework |
+| `internal/resources/adapter/resource.go` | Declarative `Resource[T]`, `ClientDeps`, and capability-based registration |
+| `internal/resources/adapter/builder.go` | `BuildRegistration[T, C]` for explicit client-method adapters |
 | `internal/resources/adapter/register.go` | Global `Register()`, `AllRegistrations()` for self-registration |
 | `internal/resources/adapter/router.go` | `ResourceClientRouter` — routes CRUD to adapter or dynamic client |
 | `internal/resources/discovery/openapi.go` | `SchemaFetcher` — fetches OpenAPI v3 schemas with disk caching; used by `resources list-types` |

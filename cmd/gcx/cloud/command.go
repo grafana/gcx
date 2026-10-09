@@ -68,6 +68,7 @@ func Command() *cobra.Command {
 	}
 
 	cmd.AddCommand(stacks.NewCommand())
+	cmd.AddCommand(orgsCommand())
 	cmd.AddCommand(loginCmd())
 
 	return cmd
@@ -94,8 +95,8 @@ By default, opens a browser for interactive OAuth2 authentication.
 EXPERIMENTAL: interactive OAuth login is an experimental flow that stores an
 OAuth-issued token in the cloud entry's oauth-token field. Some commands that
 talk to grafana.com do not yet work with an OAuth token, and the token cannot
-be refreshed - when it expires, run this command again. For full
-functionality, pass a Cloud Access Policy token via --cloud-token instead.
+be refreshed - when it expires, run this command again. Use a Cloud Access
+Policy token via --cloud-token for operations that do not support OAuth.
 
 For non-interactive use (CI/CD, scripts), pass a Cloud Access Policy token
 directly via --cloud-token.
@@ -126,7 +127,7 @@ both preserves the explicit OAuth-origin/API-destination pair.`,
 			}
 			mutationSource := config.ExplicitConfigFile(mutationTarget.Path)
 			mutationCtx := configOpts.LoginMutationContext(cmd.Context(), mutationTarget)
-			persistedConfig, cur, err := loadPersistedCloudConfig(mutationCtx, mutationSource, contextName)
+			persistedConfig, cur, err := loadPersistedCloudConfig(mutationCtx, mutationSource, contextName, cfg)
 			if err != nil {
 				return err
 			}
@@ -220,8 +221,11 @@ func currentCloudConfig(ctx context.Context, configOpts *cmdconfig.Options) (con
 // loadPersistedCloudContext reloads only the selected owner. Endpoint and
 // credential decisions must not use a resolved view assembled from another
 // layer after mutation planning has chosen a raw destination.
-func loadPersistedCloudConfig(ctx context.Context, source config.Source, contextName string) (config.Config, *config.Context, error) {
-	cfg, err := config.Load(ctx, source)
+// effective is the layered config the command already resolved. Reloading the
+// single mutation target must not re-derive the credential-storage policy from
+// that one file: the policy may be declared in another trusted layer.
+func loadPersistedCloudConfig(ctx context.Context, source config.Source, contextName string, effective config.Config) (config.Config, *config.Context, error) {
+	cfg, err := config.LoadUnderResolvedPolicy(ctx, source, effective)
 	if errors.Is(err, os.ErrNotExist) {
 		return cfg, nil, nil // A missing explicit file is a valid first login target.
 	}

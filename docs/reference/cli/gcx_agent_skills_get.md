@@ -6,7 +6,7 @@ Print a bundled skill's content without installing it
 
 Print the content of a bundled gcx Agent Skill straight from the embedded bundle, without writing anything to ~/.agents.
 
-By default the skill's SKILL.md body is printed. Pass a reference path (e.g. references/query-patterns.md) to print a single bundled reference file instead.
+By default the skill's SKILL.md body is printed. Pass a reference path (e.g. references/query-patterns.md) to print a single bundled reference file instead. Deprecated skills emit a warning; retired skills report their replacement, when one is recorded, instead of content.
 
 ```
 gcx agent skills get SKILL [REFERENCE] [flags]
@@ -32,9 +32,9 @@ gcx agent skills get SKILL [REFERENCE] [flags]
 ### Options inherited from parent commands
 
 ```
-      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
+      --agent                       Enable agent mode (JSON output, no color). Auto-detected from known agent identity variables. Set GCX_AGENT_NAME to identify a supported harness, or GCX_AGENT_MODE to control the mode.
       --context string              Name of the context to use (overrides current-context in config)
-      --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.
+      --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Requires -vvv. Do not ship these logs.
       --no-color                    Disable color output
       --no-truncate                 Disable table column truncation (auto-enabled when stdout is piped)
   -v, --verbose count               Verbose mode. Multiple -v options increase the verbosity (maximum: 3).

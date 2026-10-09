@@ -38,6 +38,10 @@ Grafana K8s API                      /apis/{group}/{version}/namespaces/{ns}/{pl
 
 **Key abstractions** ([resource-model.md](docs/architecture/resource-model.md)): `Resource` wraps `unstructured.Unstructured` — no pre-generated Go types. `Selector` → `Filter` two-stage resolution keeps CLI ignorant of API details. `Processor` pipeline composes transformations at defined pipeline points. `Discovery` registry resolves plural names and short names to full GVKs at runtime.
 
+Selectors accept both `resource.version.group` and `resource.group`, including
+dotted API groups. Discovery tries the versioned reading first, then the full
+group name, for both native resources and provider adapters.
+
 **Data flows** ([data-flows.md](docs/architecture/data-flows.md)): Push reads local files, resolves selectors, applies processors, pushes via dynamic client with folder-before-dashboard ordering and bounded concurrency (errgroup, default 10). Pull fetches from API, strips server-managed fields, writes to disk grouped by kind.
 
 ### 2. Provider System
@@ -65,7 +69,9 @@ Provider (internal/providers/slo/)
 
 **Dual access paths** are permanent: provider commands (`gcx slo definitions list`) give ergonomic domain-specific tables; generic commands (`gcx resources get slos.v1alpha1.slo.ext.grafana.app`) serve the push/pull pipeline. JSON/YAML output is identical across both paths by construction (both use the same `ResourceAdapter`).
 
-**Deep-dive:** [patterns.md](docs/architecture/patterns.md) [§11 (Provider Plugin System)](docs/architecture/patterns.md#11-provider-plugin-system), [§17 (K8s Envelope Wrapping)](docs/architecture/patterns.md#17-k8s-envelope-wrapping-for-provider-listget), [§18 (Table-Driven TypedCRUD)](docs/architecture/patterns.md#18-table-driven-typedcrud-registration-for-providers), [§19 (Singleton Adapter)](docs/architecture/patterns.md#19-singleton-adapter-pattern), [§20 (ETag-as-Annotation)](docs/architecture/patterns.md#20-etag-as-annotation-pattern). Implementation guide: [provider-guide.md](docs/reference/provider-guide.md).
+**Declarative registration front door**: `adapter.Resource[T]` + `adapter.NewProvider` (command factories attach via `WithCommands`) let a provider declare a resource type once, by implementing plain capability interfaces (`Lister[T]`, `Getter[T]`, `Creator[T]`, `Updater[T]`, `Deleter[T]`, `Validator[T]`) on its client, instead of hand-building a `Registration`. Capability detection is confined to a single audited `any`-assertion seam in `internal/resources/adapter/capability.go` — see ADR-025 and patterns.md's "Sanctioned Exception — Single-Seam Capability Assertion". Provider commands and registration share `Resource.TypedCRUD`; Grafana-backed command groups use `providers.BindGrafanaResource` for lazy binding; each leaf calls `Load` to resolve a fresh config snapshot and construct the declared client.
+
+**Deep-dive:** [patterns.md](docs/architecture/patterns.md) [§11 (Provider Plugin System)](docs/architecture/patterns.md#11-provider-plugin-system), [§16 (ResourceAdapter and Provider CRUD Routing)](docs/architecture/patterns.md#16-resourceadapter-and-provider-crud-routing), [§17 (K8s Envelope Wrapping)](docs/architecture/patterns.md#17-k8s-envelope-wrapping-for-provider-listget), [§18 (Table-Driven TypedCRUD)](docs/architecture/patterns.md#18-table-driven-typedcrud-registration-for-providers), [§19 (Singleton Adapter)](docs/architecture/patterns.md#19-singleton-adapter-pattern), [§20 (ETag-as-Annotation)](docs/architecture/patterns.md#20-etag-as-annotation-pattern). Implementation guide: [provider-guide.md](docs/reference/provider-guide.md).
 
 ### 3. Signal Providers
 
@@ -123,12 +129,12 @@ Action-verb command tree for Grafana Cloud's Instrumentation Hub. Backed by flee
 
 - **`instrumentation setup <cluster>`** — End-to-end onboarding wizard; calls `SetupK8sDiscovery`, applies declared K8s monitoring config, prints a parameterized helm command
 - **`instrumentation status`** — Cross-cutting observed view across cluster → namespace → service hierarchy
-- **`instrumentation check [components]`** — Local OTel-instrumentation validation via the [otel-checker](https://github.com/grafana/otel-checker) library; runs entirely against the workstation's env vars, package manifests, and collector/Beyla/Alloy config. No Grafana stack calls
+- **`instrumentation check [components]`** — Local OTel-instrumentation validation via the [otel-checker](https://github.com/grafana/otel-checker) library; runs entirely against the workstation's env vars, package manifests, and collector/Beyla/Alloy config. No Grafana stack calls unless `--fix-plan=assistant` is set. Two disjoint fix-plan modes: `--fix-plan=local` deterministically aggregates each finding's explanation doc (offline, no billing, OSS/Enterprise-friendly); `--fix-plan=assistant` hands the findings and docs to Grafana Assistant to synthesize one prioritized plan (billable, requires a Grafana Cloud context — errors out otherwise, with no silent fallback)
 - **`instrumentation explain <id>`** and **`instrumentation list-explanations`** — Lookup surface for the explanation docs bundled by otel-checker; IDs come from the `explain_id` field emitted by `check`
 - **`instrumentation clusters [list|get|configure|remove|wait]`** + nested **`apps`** — Declared-state read/write with tri-state flag semantics on `configure` and a per-namespace optimistic-lock guard
 - **`instrumentation services [list|get|include|exclude|clear]`** — Observed-state fleet sweep via `RunK8sDiscovery` with DWIM single-workload mutation
 
-Uses `internal/providers/instrumentation/` (provider, types, output codecs, RMW helper, helm formatter, enumeration helper) and `internal/fleet/` (shared base HTTP client, also used by the fleet provider). `check` and `explain` are thin cmd/-only wrappers around the upstream `github.com/grafana/otel-checker/checks` and `.../checks/explain` packages — no provider glue. See ADR-018 for the design.
+Uses `internal/providers/instrumentation/` (provider, types, output codecs, RMW helper, helm formatter, enumeration helper) and `internal/fleet/` (shared base HTTP client, also used by the fleet provider; it reaches Fleet Management through the `grafana-collector-app` plugin proxy on the stack — see ADR-023). `check` and `explain` are thin cmd/-only wrappers around the upstream `github.com/grafana/otel-checker/checks` and `.../checks/explain` packages — no provider glue. `check --fix-plan=assistant` embeds Grafana Assistant via `internal/providers/assistant.ResolveClientOptions` + `RequireGrafanaCloud` (reused from the same auth resolution used by `gcx assistant prompt`), then calls `ChatWithApproval` directly; the two-mode dispatch (local vs. assistant, no cross-mode fallback) lives in `cmd/gcx/instrumentation/check/fixplan/`. See ADR-018 for the design.
 
 ### 7. Configuration
 
@@ -153,8 +159,10 @@ contexts:
   prod: { stack: prod, cloud: grafana-com }
 ```
 
-**Loading chain:** Discover system → user → local files (or one explicit
-`--config` file), reject unsupported versions, preflight legacy migration, merge
+**Loading chain:** Discover system → user → local source snapshots (or one
+explicit `--config` file), reject unsupported declared versions (preflight every
+layered source), resolve the trusted keychain policy from those bytes before
+legacy migration, full decode, or opening a credential store, then merge
 credential-bearing stack/Cloud entries atomically, select `--context` or
 `current-context`, then apply environment overrides (`GRAFANA_SERVER`,
 `GRAFANA_TOKEN`, `GRAFANA_PROVIDER_{NAME}_{KEY}`). Overrides take runtime
@@ -166,7 +174,11 @@ precedence but remain ephemeral.
 are redacted in `gcx config view`. Undeclared keys and unknown providers are
 redacted by default. Keychain references are bound to their canonical source
 file, exact owner/field, and destination so another layer cannot redirect or
-overwrite a stored credential.
+overwrite a stored credential. `credentials.keychain` defaults to `on`; an
+explicit trusted `off` (or `GCX_KEYCHAIN=off`) is the only deliberate plaintext
+mode, and an auto-discovered local file cannot set that policy. An unavailable
+native keychain fails closed, same as a reachable but locked or
+interaction-disabled keychain (`Keychain locked`).
 
 **Deep-dive:** [config-system.md](docs/architecture/config-system.md).
 
@@ -179,7 +191,7 @@ Multiple auth mechanisms for different tiers.
 | **Service account token** | Grafana K8s API (`/apis`), plugin APIs | Bearer token in `rest.Config` |
 | **Cloud Access Policy token** | GCOM stack discovery, Cloud product APIs | `internal/cloud/` GCOM client |
 | **OAuth PKCE** | Browser-based login (`gcx login`) | `internal/auth/` — token refresh transport persists to config |
-| **Basic auth** | Legacy Grafana instances | Username/password in `rest.Config` |
+| **Basic auth** | Self-hosted Grafana, including server administration | `gcx login --basic-auth`; username/password in `rest.Config`, verified via `/api/user` before saving |
 | **Adaptive auth** | Signal provider adaptive telemetry APIs | `internal/auth/adaptive/` — GCOM-resolved Basic auth shared across signal providers; stale provider cache fields are not credential destinations |
 
 **Runtime selection:** an explicit `grafana.auth-method` (`oauth`, `token`,
@@ -195,6 +207,14 @@ can otherwise inject Grafana auth into the wrong request.
 
 **Deep-dive:** [client-api-layer.md](docs/architecture/client-api-layer.md), [config-system.md](docs/architecture/config-system.md).
 
+### Portable Agent Skills (`gcx agent skills`)
+
+`claude-plugin/skills-catalog.yaml` records active, deprecated, and retired skills
+independently of bundled content. `internal/skills` reconciles that release catalog
+with the selected local installation for list/install/update/uninstall; retired
+entries remain addressable without automatic deletion or replacement installation.
+See [CLI layer: Portable Skill Lifecycle](docs/architecture/cli-layer.md#portable-skill-lifecycle).
+
 ## Architecture Decision Records
 
 | ADR | Title | Status |
@@ -206,7 +226,7 @@ can otherwise inject Grafana auth into the wrong request.
 | [005](docs/adrs/constitution-design-principles/001-codify-cli-design-principles.md) | Codify CLI Design Principles in CONSTITUTION.md and Design Guide | accepted |
 | [006](docs/adrs/conventional-commits/001-pr-title-enforcement.md) | Conventional Commits via PR Title Enforcement | accepted |
 | [007](docs/adrs/provider-consolidation/001-consolidation-strategy.md) | Provider Consolidation Strategy | accepted |
-| [008](docs/adrs/typed-resource-adapter-compliance/001-typed-resource-adapter-foundation.md) | TypedResourceAdapter[T] with ResourceIdentity and Provider Command Migration | proposed |
+| [008](docs/adrs/typed-resource-adapter-compliance/001-typed-resource-adapter-foundation.md) | TypedResourceAdapter[T] with ResourceIdentity and Provider Command Migration | accepted |
 | [009](docs/adrs/migrate-provider-rewrite/001-three-stage-blackbox-verification.md) | Three-Stage Skill Structure with Dual Blackbox Isolation | superseded by [012] |
 | [010](docs/adrs/oncall-typed-crud/001-table-driven-typedcrud.md) | Table-driven TypedCRUD[T] for OnCall Adapter | proposed |
 | [011](docs/adrs/adaptive-provider/001-cli-ux-and-resource-adapter-design.md) | Adaptive telemetry provider: CLI UX, adapter scope, verb naming | proposed |
@@ -221,6 +241,9 @@ can otherwise inject Grafana auth into the wrong request.
 | [020](docs/adrs/sm-datasource-proxy/001-dual-mode-transport.md) | Synthetic Monitoring dual-mode transport: datasource proxy primary, direct SM API fallback | accepted |
 | [021](docs/adrs/assistant-provider/001-assistant-provider-and-mcp-servers-as-resources.md) | Assistant provider + MCP servers as resources | proposed |
 | [022](docs/adrs/config-v1/001-versioned-split-config-and-secret-trust.md) | Versioned Split Config and Source-Bound Secret Trust | proposed |
+| [023](docs/adrs/fleet-plugin-proxy/001-fleet-via-collector-app-proxy.md) | Fleet Management through the collector app plugin proxy | accepted |
+| [024](docs/adrs/provider-consolidation/002-shared-table-declaration.md) | Providers declare table columns instead of writing codecs | accepted |
+| [025](docs/adrs/declarative-provider-registration/001-declarative-resource-front-door.md) | Declarative `adapter.Resource[T]` + `adapter.NewProvider` registration front door | accepted |
 
 See [docs/adrs/](docs/adrs/) for all ADRs.
 

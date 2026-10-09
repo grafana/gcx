@@ -1,0 +1,3 @@
+TRIAL-ID  EXPERIMENT-ID  TEST-CASE-ID  ATTEMPT  STATUS  CONVERSATION    TRACE    TOTAL-TOKENS  DURATION-MS  CREATED           COMPLETED         ERROR
+trial-1   experiment-1   case-1        2        failed  conversation-1  trace-1  123           456          2026-09-01 12:30  2026-09-02 13:45  failure 界界界界界界界界界界界界界界界界界界界界界界界界界界界界界...
+											0        -       -               -        -             -            -                 -                 -

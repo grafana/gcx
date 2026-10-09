@@ -51,6 +51,15 @@ func MergeConfigs(base, over Config) Config {
 		}
 	}
 
+	// Credentials policy is scalar: the higher trusted layer replaces the
+	// lower one. Auto-discovered local policy is removed before this merge.
+	if over.Credentials != nil {
+		result.Credentials = over.Credentials
+	}
+	if result.keychainPolicy.source == "" {
+		result.keychainPolicy = over.keychainPolicy
+	}
+
 	// Map: contexts — merge by key.
 	if over.Contexts != nil {
 		if result.Contexts == nil {

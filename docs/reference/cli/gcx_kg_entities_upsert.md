@@ -1,14 +1,17 @@
 ## gcx kg entities upsert
 
-Create or update a custom entity (upsert) [experimental].
+[experimental] Create or update a custom entity (upsert).
 
 ### Synopsis
 
+This command is experimental. It may be removed, or its subcommands, flags and
+responses may change without following the normal semantic versioning conventions.
+
 Create or update an API-origin entity in a writable domain.
 
-Experimental: this command uses the Knowledge Graph write API, which is gated
-server-side and may change. If the write API is not enabled on your stack, the
-server returns an error explaining how to request access.
+This command uses the Knowledge Graph write API, which is gated server-side. If
+the write API is not enabled on your stack, the server returns an error
+explaining how to request access.
 
 Identity is (type, name, scope) + domain; re-running with the same identity
 updates the entity. Scope is optional but identity-significant.
@@ -47,10 +50,10 @@ gcx kg entities upsert [flags]
 ### Options inherited from parent commands
 
 ```
-      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
+      --agent                       Enable agent mode (JSON output, no color). Auto-detected from known agent identity variables. Set GCX_AGENT_NAME to identify a supported harness, or GCX_AGENT_MODE to control the mode.
       --config string               Path to the configuration file to use
       --context string              Name of the context to use (overrides current-context in config)
-      --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.
+      --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Requires -vvv. Do not ship these logs.
       --no-color                    Disable color output
       --no-truncate                 Disable table column truncation (auto-enabled when stdout is piped)
   -v, --verbose count               Verbose mode. Multiple -v options increase the verbosity (maximum: 3).

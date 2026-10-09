@@ -12,7 +12,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/charmbracelet/huh"
+	"charm.land/huh/v2"
 	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/config"
@@ -59,7 +59,7 @@ func (opts *Options) LoadConfigTolerant(ctx context.Context, extraOverrides ...c
 	if opts.Context != "" {
 		overrides = append(overrides, func(cfg *config.Config) error {
 			if !cfg.HasContext(opts.Context) {
-				return config.ContextNotFound(opts.Context)
+				return config.ContextNotFound(opts.Context, cfg.ContextNames())
 			}
 
 			cfg.CurrentContext = opts.Context
@@ -135,7 +135,7 @@ func (opts *Options) LoadConfig(ctx context.Context) (config.Config, error) {
 	validator := func(cfg *config.Config) error {
 		// Ensure that the current context actually exists.
 		if !cfg.HasContext(cfg.CurrentContext) {
-			return config.ContextNotFound(cfg.CurrentContext)
+			return config.ContextNotFound(cfg.CurrentContext, cfg.ContextNames())
 		}
 
 		return cfg.GetCurrentContext().Validate(ctx)
@@ -197,17 +197,6 @@ func (opts *Options) MutationConfigSource() config.Source {
 		target, err := opts.resolveMutationConfigTarget()
 		return target.Path, err
 	}
-}
-
-// MutationConfigContext carries the sole discovered source's trust provenance
-// into raw login/provider mutations. Explicit --config and GCX_CONFIG paths
-// remain explicit user intent (including symlink support).
-func (opts *Options) MutationConfigContext(ctx context.Context) context.Context {
-	target, err := opts.resolveMutationConfigTarget()
-	if err != nil || target.Type == "explicit" || target.Type == "" {
-		return ctx
-	}
-	return config.ContextWithConfigSource(ctx, target)
 }
 
 // MutationConfigTarget returns the exact raw config document selected for a
@@ -586,7 +575,7 @@ Without --context, checks every configured context. With --context, checks only 
 				cmdio.Error(reportWriter, "Current context: %s", cmdio.Red("<undefined>"))
 				recordFailure(nil)
 			case !cfg.HasContext(cfg.CurrentContext):
-				cmdio.Error(reportWriter, "Current context: %s", cmdio.Red(config.ContextNotFound(cfg.CurrentContext).Error()))
+				cmdio.Error(reportWriter, "Current context: %s", cmdio.Red(config.ContextNotFound(cfg.CurrentContext, nil).Error()))
 				recordFailure(nil)
 			default:
 				cmdio.Success(reportWriter, "Current context: %s", cmdio.Green(cfg.CurrentContext))
@@ -869,7 +858,7 @@ user config), use --file to choose which layer to update.`,
 			}
 
 			if !layered.HasContext(target) {
-				return config.ContextNotFound(target)
+				return config.ContextNotFound(target, layered.ContextNames())
 			}
 
 			// Load only the target layer so we don't write cross-layer entries.
@@ -1076,6 +1065,18 @@ PROPERTY_VALUE is the new value to set.`,
 			if err := opts.Validate(); err != nil {
 				return err
 			}
+			// credentials.keychain decides which credential store the write
+			// itself uses, so it cannot be applied by the generic
+			// load-mutate-write path: that path resolves the store from the
+			// pre-mutation config. MutateKeychainPolicy runs the whole
+			// transaction under the intended policy and one held lock.
+			if args[0] == "credentials.keychain" {
+				target, err := config.MutateKeychainPolicy(cmd.Context(), configOpts.ConfigFile, fileType, &args[1])
+				if err != nil {
+					return err
+				}
+				return opts.IO.Encode(cmd.OutOrStdout(), newConfigMutation("set", args[0], target))
+			}
 
 			cfg, target, err := config.LoadForWrite(cmd.Context(), configOpts.ConfigFile, fileType)
 			if err != nil && (configOpts.ConfigFile == "" || !config.CanInitializeMissingSource(cfg, err)) {
@@ -1179,6 +1180,17 @@ Paths are literal: they name the exact location in the configuration file, start
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
+			}
+
+			// Same reason as `config set`: clearing the field changes the
+			// policy the write must run under, so it takes the locked
+			// keychain-policy transaction rather than the generic path.
+			if args[0] == "credentials.keychain" || args[0] == "credentials" {
+				target, err := config.MutateKeychainPolicy(cmd.Context(), configOpts.ConfigFile, fileType, nil)
+				if err != nil {
+					return err
+				}
+				return opts.IO.Encode(cmd.OutOrStdout(), newConfigMutation("unset", args[0], target))
 			}
 
 			cfg, target, err := config.LoadForWrite(cmd.Context(), configOpts.ConfigFile, fileType)

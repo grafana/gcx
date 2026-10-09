@@ -9,6 +9,23 @@ import (
 	fleetbase "github.com/grafana/gcx/internal/fleet"
 )
 
+// Fleet Management RPC paths, relative to the plugin proxy prefix.
+const (
+	pathListPipelines  = "/pipeline.v1.PipelineService/ListPipelines"
+	pathGetPipeline    = "/pipeline.v1.PipelineService/GetPipeline"
+	pathCreatePipeline = "/pipeline.v1.PipelineService/CreatePipeline"
+	pathUpdatePipeline = "/pipeline.v1.PipelineService/UpdatePipeline"
+	pathDeletePipeline = "/pipeline.v1.PipelineService/DeletePipeline"
+
+	pathListCollectors  = "/collector.v1.CollectorService/ListCollectors"
+	pathGetCollector    = "/collector.v1.CollectorService/GetCollector"
+	pathCreateCollector = "/collector.v1.CollectorService/CreateCollector"
+	pathUpdateCollector = "/collector.v1.CollectorService/UpdateCollector"
+	pathDeleteCollector = "/collector.v1.CollectorService/DeleteCollector"
+
+	pathGetLimits = "/tenant.v1.TenantService/GetLimits"
+)
+
 // Client is an HTTP client for the Grafana Fleet Management API.
 // It wraps the shared base client from internal/fleet/ and adds
 // pipeline-, collector-, and tenant-specific methods.
@@ -17,12 +34,11 @@ type Client struct {
 }
 
 // NewClient creates a new Fleet Management client.
-// When useBasicAuth is true, requests use Basic auth with instanceID:apiToken.
-// Otherwise, requests use Bearer token auth.
+// baseURL must already include the collector app plugin proxy prefix.
 // If httpClient is nil, a default client with a 30-second timeout is used.
-func NewClient(ctx context.Context, baseURL, instanceID, apiToken string, useBasicAuth bool, httpClient *http.Client) *Client {
+func NewClient(ctx context.Context, baseURL string, httpClient *http.Client) *Client {
 	return &Client{
-		Client: fleetbase.NewClient(ctx, baseURL, instanceID, apiToken, useBasicAuth, httpClient),
+		Client: fleetbase.NewClient(ctx, baseURL, httpClient),
 	}
 }
 
@@ -36,16 +52,34 @@ func readErrorBody(resp *http.Response) string {
 	return fleetbase.ReadErrorBody(resp)
 }
 
+// httpError builds the typed error that cmd/gcx/fail recognises. It reads the
+// response body once, so callers must not read the body again.
+func httpError(resp *http.Response, path string) *fleetbase.HTTPError {
+	return &fleetbase.HTTPError{
+		Status: resp.StatusCode,
+		Path:   path,
+		Body:   readErrorBody(resp),
+	}
+}
+
+// pluginRouteMissing reports whether a 404 came from Grafana because the
+// collector app plugin is absent or disabled, rather than from Fleet Management
+// because the resource is absent.
+func pluginRouteMissing(err *fleetbase.HTTPError) bool {
+	return err.Status == http.StatusNotFound &&
+		fleetbase.IsPluginMissingBody(err.Body)
+}
+
 // ListPipelines returns all pipelines.
 func (c *Client) ListPipelines(ctx context.Context) ([]Pipeline, error) {
-	resp, err := c.doRequest(ctx, "/pipeline.v1.PipelineService/ListPipelines", map[string]any{})
+	resp, err := c.doRequest(ctx, pathListPipelines, map[string]any{})
 	if err != nil {
 		return nil, fmt.Errorf("fleet: list pipelines: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("fleet: list pipelines: status %d: %s", resp.StatusCode, readErrorBody(resp))
+		return nil, fmt.Errorf("fleet: list pipelines: %w", httpError(resp, pathListPipelines))
 	}
 
 	var result struct {
@@ -60,17 +94,18 @@ func (c *Client) ListPipelines(ctx context.Context) ([]Pipeline, error) {
 
 // GetPipeline returns a single pipeline by ID. Returns nil if not found.
 func (c *Client) GetPipeline(ctx context.Context, id string) (*Pipeline, error) {
-	resp, err := c.doRequest(ctx, "/pipeline.v1.PipelineService/GetPipeline", map[string]string{"id": id})
+	resp, err := c.doRequest(ctx, pathGetPipeline, map[string]string{"id": id})
 	if err != nil {
 		return nil, fmt.Errorf("fleet: get pipeline %s: %w", id, err)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode == http.StatusNotFound {
-		return nil, fmt.Errorf("fleet: get pipeline %s: not found", id)
-	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("fleet: get pipeline %s: status %d: %s", id, resp.StatusCode, readErrorBody(resp))
+		apiErr := httpError(resp, pathGetPipeline)
+		if apiErr.Status == http.StatusNotFound && !pluginRouteMissing(apiErr) {
+			return nil, fmt.Errorf("fleet: get pipeline %s: not found", id)
+		}
+		return nil, fmt.Errorf("fleet: get pipeline %s: %w", id, apiErr)
 	}
 
 	var result Pipeline
@@ -83,14 +118,14 @@ func (c *Client) GetPipeline(ctx context.Context, id string) (*Pipeline, error) 
 
 // CreatePipeline creates a new pipeline and returns it.
 func (c *Client) CreatePipeline(ctx context.Context, p Pipeline) (*Pipeline, error) {
-	resp, err := c.doRequest(ctx, "/pipeline.v1.PipelineService/CreatePipeline", map[string]any{"pipeline": p})
+	resp, err := c.doRequest(ctx, pathCreatePipeline, map[string]any{"pipeline": p})
 	if err != nil {
 		return nil, fmt.Errorf("fleet: create pipeline: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("fleet: create pipeline: status %d: %s", resp.StatusCode, readErrorBody(resp))
+		return nil, fmt.Errorf("fleet: create pipeline: %w", httpError(resp, pathCreatePipeline))
 	}
 
 	var result Pipeline
@@ -104,14 +139,14 @@ func (c *Client) CreatePipeline(ctx context.Context, p Pipeline) (*Pipeline, err
 // UpdatePipeline updates an existing pipeline.
 func (c *Client) UpdatePipeline(ctx context.Context, id string, p Pipeline) error {
 	p.ID = id
-	resp, err := c.doRequest(ctx, "/pipeline.v1.PipelineService/UpdatePipeline", map[string]any{"pipeline": p})
+	resp, err := c.doRequest(ctx, pathUpdatePipeline, map[string]any{"pipeline": p})
 	if err != nil {
 		return fmt.Errorf("fleet: update pipeline %s: %w", id, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("fleet: update pipeline %s: status %d: %s", id, resp.StatusCode, readErrorBody(resp))
+		return fmt.Errorf("fleet: update pipeline %s: %w", id, httpError(resp, pathUpdatePipeline))
 	}
 
 	return nil
@@ -119,14 +154,14 @@ func (c *Client) UpdatePipeline(ctx context.Context, id string, p Pipeline) erro
 
 // DeletePipeline deletes a pipeline by ID.
 func (c *Client) DeletePipeline(ctx context.Context, id string) error {
-	resp, err := c.doRequest(ctx, "/pipeline.v1.PipelineService/DeletePipeline", map[string]string{"id": id})
+	resp, err := c.doRequest(ctx, pathDeletePipeline, map[string]string{"id": id})
 	if err != nil {
 		return fmt.Errorf("fleet: delete pipeline %s: %w", id, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("fleet: delete pipeline %s: status %d: %s", id, resp.StatusCode, readErrorBody(resp))
+		return fmt.Errorf("fleet: delete pipeline %s: %w", id, httpError(resp, pathDeletePipeline))
 	}
 
 	return nil
@@ -134,14 +169,14 @@ func (c *Client) DeletePipeline(ctx context.Context, id string) error {
 
 // ListCollectors returns all collectors.
 func (c *Client) ListCollectors(ctx context.Context) ([]Collector, error) {
-	resp, err := c.doRequest(ctx, "/collector.v1.CollectorService/ListCollectors", map[string]any{})
+	resp, err := c.doRequest(ctx, pathListCollectors, map[string]any{})
 	if err != nil {
 		return nil, fmt.Errorf("fleet: list collectors: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("fleet: list collectors: status %d: %s", resp.StatusCode, readErrorBody(resp))
+		return nil, fmt.Errorf("fleet: list collectors: %w", httpError(resp, pathListCollectors))
 	}
 
 	var result struct {
@@ -156,17 +191,18 @@ func (c *Client) ListCollectors(ctx context.Context) ([]Collector, error) {
 
 // GetCollector returns a single collector by ID. Returns nil if not found.
 func (c *Client) GetCollector(ctx context.Context, id string) (*Collector, error) {
-	resp, err := c.doRequest(ctx, "/collector.v1.CollectorService/GetCollector", map[string]string{"id": id})
+	resp, err := c.doRequest(ctx, pathGetCollector, map[string]string{"id": id})
 	if err != nil {
 		return nil, fmt.Errorf("fleet: get collector %s: %w", id, err)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode == http.StatusNotFound {
-		return nil, fmt.Errorf("fleet: get collector %s: not found", id)
-	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("fleet: get collector %s: status %d: %s", id, resp.StatusCode, readErrorBody(resp))
+		apiErr := httpError(resp, pathGetCollector)
+		if apiErr.Status == http.StatusNotFound && !pluginRouteMissing(apiErr) {
+			return nil, fmt.Errorf("fleet: get collector %s: not found", id)
+		}
+		return nil, fmt.Errorf("fleet: get collector %s: %w", id, apiErr)
 	}
 
 	var result Collector
@@ -179,17 +215,20 @@ func (c *Client) GetCollector(ctx context.Context, id string) (*Collector, error
 
 // CreateCollector creates a new collector and returns it.
 func (c *Client) CreateCollector(ctx context.Context, col Collector) (*Collector, error) {
-	resp, err := c.doRequest(ctx, "/collector.v1.CollectorService/CreateCollector", map[string]any{"collector": col})
+	resp, err := c.doRequest(ctx, pathCreateCollector, map[string]any{"collector": col})
 	if err != nil {
 		return nil, fmt.Errorf("fleet: create collector: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("fleet: create collector: status %d: %s", resp.StatusCode, readErrorBody(resp))
+		return nil, fmt.Errorf("fleet: create collector: %w", httpError(resp, pathCreateCollector))
 	}
 
-	var result Collector
+	// The production API can return an empty or partial object after a
+	// successful create. Start with the submitted collector so callers retain
+	// the canonical ID and name when the response omits them.
+	result := col
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("fleet: create collector: decode: %w", err)
 	}
@@ -199,14 +238,14 @@ func (c *Client) CreateCollector(ctx context.Context, col Collector) (*Collector
 
 // UpdateCollector updates an existing collector.
 func (c *Client) UpdateCollector(ctx context.Context, col Collector) error {
-	resp, err := c.doRequest(ctx, "/collector.v1.CollectorService/UpdateCollector", map[string]any{"collector": col})
+	resp, err := c.doRequest(ctx, pathUpdateCollector, map[string]any{"collector": col})
 	if err != nil {
 		return fmt.Errorf("fleet: update collector %s: %w", col.ID, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("fleet: update collector %s: status %d: %s", col.ID, resp.StatusCode, readErrorBody(resp))
+		return fmt.Errorf("fleet: update collector %s: %w", col.ID, httpError(resp, pathUpdateCollector))
 	}
 
 	return nil
@@ -214,14 +253,14 @@ func (c *Client) UpdateCollector(ctx context.Context, col Collector) error {
 
 // DeleteCollector deletes a collector by ID.
 func (c *Client) DeleteCollector(ctx context.Context, id string) error {
-	resp, err := c.doRequest(ctx, "/collector.v1.CollectorService/DeleteCollector", map[string]string{"id": id})
+	resp, err := c.doRequest(ctx, pathDeleteCollector, map[string]string{"id": id})
 	if err != nil {
 		return fmt.Errorf("fleet: delete collector %s: %w", id, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("fleet: delete collector %s: status %d: %s", id, resp.StatusCode, readErrorBody(resp))
+		return fmt.Errorf("fleet: delete collector %s: %w", id, httpError(resp, pathDeleteCollector))
 	}
 
 	return nil
@@ -229,14 +268,14 @@ func (c *Client) DeleteCollector(ctx context.Context, id string) error {
 
 // GetLimits returns the tenant limits for the Fleet Management stack.
 func (c *Client) GetLimits(ctx context.Context) (*Limits, error) {
-	resp, err := c.doRequest(ctx, "/tenant.v1.TenantService/GetLimits", map[string]any{})
+	resp, err := c.doRequest(ctx, pathGetLimits, map[string]any{})
 	if err != nil {
 		return nil, fmt.Errorf("fleet: get limits: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("fleet: get limits: status %d: %s", resp.StatusCode, readErrorBody(resp))
+		return nil, fmt.Errorf("fleet: get limits: %w", httpError(resp, pathGetLimits))
 	}
 
 	var result Limits

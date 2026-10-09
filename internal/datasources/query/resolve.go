@@ -191,6 +191,12 @@ func NormalizeKind(pluginID string) string {
 		return "azuremonitor"
 	case "grafana-athena-datasource":
 		return "athena"
+	case "grafana-bigquery-datasource":
+		return "bigquery"
+	case "grafana-opensearch-datasource":
+		return "opensearch"
+	case "startree-pinot-datasource":
+		return "pinot"
 	case "yesoreyeram-infinity-datasource":
 		return "infinity"
 	case "synthetic-monitoring-datasource":

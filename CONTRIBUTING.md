@@ -20,69 +20,183 @@ designs the command's agent-facing contract before any code gets written. It
 hands implementation off to `add-provider` or `add-datasource` where those
 apply, and runs a pre-review self-check over the finished diff.
 
+Please read the next few sections before adding a new command. They will save
+you time, and they mean we can say yes faster.
+
+## New commands need an issue first
+
+**Before writing a new command, provider, datasource kind or resource type,
+please [open a new command proposal](https://github.com/grafana/gcx/issues/new?template=2-new-command-proposal.yml)
+and wait for a maintainer to agree with the placement.**
+
+Grafana product teams don't need a proposal for commands inside their own
+product area — see [Product teams](#product-teams). For anything outside it,
+such as a new top-level area or a change to shared commands, raise it in the
+#gcx channel or open a proposal.
+
+We would much rather say "not like this" to a short issue than to a finished
+pull request. Command paths, flags and positional syntax are stable within a
+major version ([CONSTITUTION.md](CONSTITUTION.md#cli-grammar)), so placement
+and naming are the parts of a change that are hardest to fix after review, and
+impossible to fix after release.
+
+This applies to:
+
+- new commands, subcommand groups, providers and datasource kinds
+- changes to an existing command's path, flags, positional arguments or output
+  shape
+
+It does **not** apply to (please just send a PR):
+
+- bug fixes
+- documentation
+- tests
+- performance and reliability work
+
+If you have already written the code, that's fine — open the issue anyway and
+link it. We'll review the idea before the diff.
+
+## Stable, experimental, or not gcx
+
+Not every good idea has to ship as a stable command on day one.
+
+| Outcome | How it ships | The bar |
+| --- | --- | --- |
+| **Stable** | A normal command | Backed by a GA API whose shape, auth and limits are settled; name you're happy to support for the whole major version |
+| **Experimental** | `[experimental]` in the short description, `agent.StabilityExperimental` annotation | Real use case, but the API or the command shape may still change |
+| **Not gcx** | — | The backend isn't ready, or the capability belongs to the product's own API or UI |
+
+Experimental is not a consolation prize: it is exempt from the compatibility
+promise, so it is the right place for anything backed by a non-GA product
+feature or whose shape you aren't yet sure of. See
+[experimental-commands.md](docs/design/experimental-commands.md) for how to
+mark one. If you're unsure, **propose it as experimental yourself** — it is
+much easier to say yes to.
+
+"Not gcx" usually means a backend prerequisite: gcx wraps product APIs, it
+does not fix them. Missing pagination, unstable payloads or unclear RBAC need
+to be solved by the owning team first. In the meantime,
+[`gcx api`](docs/reference/cli/gcx_api.md) gives raw access to any Grafana API.
+
+## Prefer extending a command over adding one
+
+Before adding a command, check whether an existing one can answer the same
+question with one more flag, or whether the operation is already covered by
+the standard verbs — `list`, `get`, `create`, `update`, `upsert`, `push`,
+`pull`, `delete`, `query`, `search`. [Prefer existing command
+operations](docs/design/command-naming.md) over inventing new ones;
+`cmd/gcx/root/commandoperations_test.go` enforces this.
+
+If two open PRs would add overlapping commands, we'd rather consolidate them
+before merging than ship both and deprecate one in the next major release.
+Searching [open pull requests](https://github.com/grafana/gcx/pulls) for your
+area before you start is worth the two minutes.
+
+## A note on AI-assisted contributions
+
+These are welcome — this repository ships contributor skills precisely because
+most changes here are written with an agent's help. Two requests:
+
+1. **Read and understand the diff before you send it.** We will ask about
+   design decisions, and "the agent chose that" is a difficult place to review
+   from.
+2. **Placement is the part an agent is least likely to get right.** An agent
+   asked to add a command will add a command. Whether it should exist, and
+   what it should be called forever, is a judgement about gcx's users — which
+   is why we ask for the issue first. The `integrate-with-gcx` skill helps, but
+   doesn't replace that conversation.
+
+A PR that is easy to generate can still be expensive to review. The issue step
+is how we keep that cost from landing on you as a rejection.
+
+## Conventions we enforce
+
+Run `mise run gate` (lint + tests + build) before pushing, and
+`GCX_AGENT_MODE=false mise run reference` if you touched commands, flags,
+config or env vars. The specifics:
+
+- **Signed commits are required.** Every commit must have a verified
+  signature — this is
+  [a Grafana organisation-wide policy](https://community.grafana.com/t/action-required-signed-commits-mandatory-for-all-grafana-repositories/163404).
+  Set it up once; it is the most common reason a finished PR sits unmerged.
+- **Generated reference docs must not drift.** The `Documentation` check runs
+  `mise run reference-drift`; regenerate with the command above.
+- **Every `gcx` invocation in a skill must exist.**
+  `TestSkillsGcxInvocationsMatchCommandTree` checks `claude-plugin/skills/`
+  and `.claude/skills/` against the real command tree.
+- **Experimental commands must be marked consistently** —
+  `cmd/gcx/root/experimental_test.go`.
+- **A code owner must approve.** See [Code ownership](#code-ownership) below.
+
+The checks that must pass to merge are `Tests`, `Linters` and `Documentation`,
+plus the organisation's signed-commit and secret-scanning checks.
+
+Not enforced automatically, but please follow it: **conventional commit PR titles** —
+`feat(slo):`, `fix(traces):`, `docs:` and so on. PRs are squash-merged, so the
+title becomes the commit message and feeds the changelog. Mark breaking
+changes with `!`.
+
+## What you can expect from us
+
+- **An automated review.** A Claude code review runs when a non-draft PR is
+  opened or marked ready for review, checking against the docs linked above.
+  Treat it as a first pass; a human still reviews.
+- **CI on forks may need approval.** Workflow runs on pull requests from forks
+  can require a maintainer to approve them. If your checks show as pending,
+  they're waiting on us, not you — feel free to comment if it's been a while.
+- **We'll tell you the outcome.** If we ask for a command to be experimental,
+  renamed, or folded into an existing one, that's a yes with a placement, not
+  a rejection.
+- **If we're going to say no, we'll try to say it on the issue, not on your
+  PR.** That's the whole point of proposing first.
+
+## Code ownership
+
+The code in this repository is owned by multiple teams. The ownership is codified in the [CODEOWNERS](./.github/CODEOWNERS) file. The @grafana/grafana-gcx team is responsible for the overall architecture of the repository, along with any features or functionality that are not specific to any particular provider.
+
+### Product teams
+
+Grafana engineering teams are welcome to contribute to and maintain their areas of the codebase without any interaction from the @grafana/grafana-gcx team. The [CODEOWNERS](./.github/CODEOWNERS) file should be such that these teams only need approvals from their own team to merge pull requests in their product area. If you find this is not the case, please do reach out to the @grafana/grafana-gcx team, or raise a pull request with a [CODEOWNERS](./.github/CODEOWNERS) change. If you are unsure, please reach out in the #gcx channel and we'd be happy to discuss.
+
+We have tools in place to help maintain a consistent command surface and output conventions across the codebase, as well as LLM-assisted code review to try and ensure that the architecture and design conventions are followed. For more details on these tools, see:
+
+- [The claude code review GH action, with prompt & references](.github/workflows/claude-code-review.yml). This should encourage authors to adhere to the guidelines linked above.
+- [Prefer existing command operations over creating new ones](docs/design/command-naming.md)  (test files are [here](cmd/gcx/root/commandoperations_test.go))
+- [Syntax for experimental commands](docs/design/experimental-commands.md) (test files are referenced from the docs)
+
+
 ## Issue Tracking
 
 Issues are tracked in [GitHub Issues](https://github.com/grafana/gcx/issues).
-Use the issue templates when creating new issues — they set the correct issue
+Use the issue templates when creating new issues - they set the correct issue
 type and labels automatically.
 
-### Issue types
+## Making changes
 
-GitHub's native issue types classify issues. Don't add type prefixes to titles.
+### Agentic coding
 
-| Type | When to use |
-|------|-------------|
-| **Bug** | Something is broken or behaving unexpectedly |
-| **Task** | A specific piece of implementation work |
-| **Feature** | New functionality or capability |
-| **Enhancement** | Improvement to existing functionality |
-| **Epic** | Large effort spanning multiple issues |
+If you are using a coding agent to make changes to this repository, there are skills in [.claude/skills](.claude/skills) for contributing:
 
-### Issue title convention
+- [add-provider](.claude/skills/add-provider) will help add a new top-level command area to gcx. 
+- [add-datasource](.claude/skills/add-datasource) will help add a new datasource provider to gcx (under `gcx datasources`).
+- [integrate-with-gcx](.claude/skills/integrate-with-gcx) is a more general skill that will help add capabilities with gcx.
 
-Write clear, concise titles. The style depends on the issue type:
+### Development environment
 
-| Type | Style | Good | Bad |
-|------|-------|------|-----|
-| Task / Feature | **Imperative verb** | "Add OnCall provider" | "OnCall provider" |
-| Enhancement | **Imperative verb** | "Improve cold-start latency" | "[Enhancement]: cold start is slow" |
-| Bug | **Descriptive symptom** | "Excessive warnings for unconfigured resources" | "[Bug]: warnings" |
-| Epic | **Noun phrase (scope)** | "OAuth authentication via Grafana Assistant" | "Epic: do OAuth stuff" |
+`gcx` relies on [`mise`](https://mise.jdx.dev/) for tooling, and [Docker](https://docs.docker.com/get-started/get-docker/) for local development dependencies.
 
-Rules:
-- No type prefixes (`[Bug]:`, `Epic:`, `[Feature]:`) — the issue type field handles this
-- Start with a capital letter
-- Be specific — someone should understand the scope from the title alone
-- Tasks and features start with a verb: Add, Implement, Port, Create, Fix, Improve, etc.
-
-### Labels
-
-| Prefix | Purpose |
-|--------|---------|
-| `area/` | Codebase area (providers, cli-ux, core, skills, docs) |
-| `priority/` | Severity (critical, high, medium, low, none) |
-| `action/` | Workflow state (needs-triage) |
-
-### Milestones
-
-Issues are grouped into milestones representing release targets. Check the
-[milestones page](https://github.com/grafana/gcx/milestones) for current targets.
-
-## Development environment
-
-`gcx` relies on [`mise`](https://mise.jdx.dev/) to manage all
-the tools required to work on it.
-
-Install mise and set up the project:
+Install mise and set up the project. For macOS:
 
 ```console
 $ brew install mise        # or: curl https://mise.run | sh
 $ mise trust               # trust the mise.toml configuration
 $ mise install             # install tools (Go, golangci-lint, etc.)
-$ mise run deps            # install Go and Python dependencies
+$ mise run deps            # install Go modules and Python requirements, including MkDocs
 ```
 
-All development commands use `mise run`:
+Run `mise run deps` before `mise run docs` or `mise run all`.
+
+Some mise commands for local development:
 
 ```console
 $ mise run build           # build to bin/gcx
@@ -92,9 +206,7 @@ $ mise run all             # lint + tests + build + docs
 $ mise tasks               # list all available tasks
 ```
 
-See the [mise documentation](https://mise.jdx.dev/) for shell integration and further options.
-
-## Testing against a real Grafana API
+### Testing against a real Grafana API
 
 While unit tests are valuable for testing individual components, integration testing against a real Grafana instance is important to ensure `gcx` works correctly with the actual Grafana API.
 
@@ -102,103 +214,29 @@ While unit tests are valuable for testing individual components, integration tes
 
 The repository includes a `docker-compose.yml` file that sets up a complete test environment with:
 
-- **Grafana 12.2** (latest stable release)
-- **MySQL 8.0** (as the backend database)
+- Grafana
+- MySQL for storage
 - Pre-configured with `admin:admin` credentials
 - The `kubernetesDashboards` feature toggle enabled (required for `gcx`)
 
-### Starting the test environment
-
-Start the services:
+Run this with:
 
 ```console
 $ mise run test-env-up
 ```
 
-This will start both Grafana and MySQL, wait for them to be healthy, and display the connection information.
-
-You can also start the services manually:
-
-```console
-$ docker-compose up -d
-```
-
-Check the status of the services:
+Check the status of the services with:
 
 ```console
 $ mise run test-env-status
 ```
 
-Or manually:
-
-```console
-$ docker-compose ps
-```
-
-You should see both `gcx-grafana` and `gcx-mysql` in a `healthy` state.
-
-Verify Grafana is accessible:
-
-```console
-$ curl -u admin:admin http://localhost:3000/api/health
-```
-
-You should receive a JSON response indicating Grafana is running.
-
-### Testing with gcx
-
-The repository includes a pre-configured test config file at `testdata/integration-test-config.yaml` that you can use to test `gcx` against the local Grafana instance.
-
-#### View the test configuration
-
-```console
-$ go run ./cmd/gcx --config testdata/integration-test-config.yaml config view
-```
-
-#### List available resources
+You can use the provided config file to get gcx to use the local Grafana instance. For example:
 
 ```console
 $ go run ./cmd/gcx --config testdata/integration-test-config.yaml resources list-types
 ```
 
-#### Create a test dashboard
-
-1. Create a dashboard YAML file (e.g., `test-dashboard.yaml`):
-
-```yaml
-apiVersion: dashboard.grafana.app/v1beta1
-kind: Dashboard
-metadata:
-  name: test-dashboard
-  namespace: default
-spec:
-  title: Test Dashboard
-  tags: [test]
-  timezone: browser
-  schemaVersion: 36
-```
-
-2. Push it to Grafana:
-
-```console
-$ go run ./cmd/gcx --config testdata/integration-test-config.yaml resources push -p test-dashboard.yaml
-```
-
-3. Pull it back to verify:
-
-```console
-$ go run ./cmd/gcx --config testdata/integration-test-config.yaml resources get dashboards/test-dashboard
-```
-
-#### Testing the serve command
-
-The `serve` command allows you to develop dashboards locally with live reload:
-
-```console
-$ go run ./cmd/gcx --config testdata/integration-test-config.yaml dev serve test-dashboard.yaml
-```
-
-Then open your browser to the URL shown in the output (typically `http://localhost:8080`).
 
 ### Stopping the test environment
 
@@ -208,29 +246,17 @@ When you're done testing, stop the services:
 $ mise run test-env-down
 ```
 
-Or manually:
-
-```console
-$ docker-compose down
-```
-
 To remove all data (including database volumes):
 
 ```console
 $ mise run test-env-clean
 ```
 
-Or manually:
-
-```console
-$ docker-compose down -v
-```
-
 ### Customizing the test environment
 
 #### Modifying Grafana configuration
 
-The Grafana instance uses a custom configuration file at `testdata/grafana.ini`. You can modify this file to change Grafana's behavior. After making changes, restart the services:
+The Grafana instance uses a custom configuration file at `testdata/grafana.ini`. You can modify this file (you will need to restart the service)
 
 ```console
 $ docker-compose restart grafana
@@ -246,15 +272,15 @@ services:
     image: grafana/grafana:12.1  # or any other version
 ```
 
-Then restart the services:
+Then restart the service:
 
 ```console
 $ docker-compose up -d --force-recreate grafana
 ```
 
-#### Viewing logs
+### View local grafana logs
 
-To view logs from both services:
+To view logs from all services:
 
 ```console
 $ mise run test-env-logs
@@ -266,59 +292,6 @@ To view logs from a specific service:
 $ docker-compose logs -f grafana
 ```
 
-Or for MySQL:
-
-```console
-$ docker-compose logs -f mysql
-```
-
-### Troubleshooting
-
-#### Grafana won't start or is unhealthy
-
-Check the logs for errors:
-
-```console
-$ docker-compose logs grafana
-```
-
-Common issues:
-- MySQL not fully initialized yet - wait a few more seconds and check again
-- Port 3000 already in use - stop any other Grafana instances or change the port in `docker-compose.yml`
-
-#### Cannot connect to Grafana from gcx
-
-Verify Grafana is accessible:
-
-```console
-$ curl -u admin:admin http://localhost:3000/api/health
-```
-
-If this fails, check:
-- Services are running: `docker-compose ps`
-- Firewall settings are not blocking port 3000
-- Check Grafana logs: `docker-compose logs grafana`
-
-#### Database connection errors
-
-Check MySQL is healthy:
-
-```console
-$ docker-compose ps mysql
-```
-
-If MySQL is not healthy, check the logs:
-
-```console
-$ docker-compose logs mysql
-```
-
-You may need to remove the volume and recreate it:
-
-```console
-$ docker-compose down -v
-$ docker-compose up -d
-```
 
 ## Releasing gcx
 

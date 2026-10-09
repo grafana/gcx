@@ -63,6 +63,10 @@ type Config struct {
 	// Diagnostics holds optional local diagnostic settings. All features are off by default.
 	Diagnostics *DiagnosticsConfig `json:"diagnostics,omitempty" yaml:"diagnostics,omitempty"`
 
+	// Credentials controls how gcx persists credentials. It contains policy
+	// only; credential values remain on their owning stack and cloud entries.
+	Credentials *CredentialsConfig `json:"credentials,omitempty" yaml:"credentials,omitempty"`
+
 	// keychainFields tracks which (context, field) pairs were successfully
 	// resolved from the OS keychain (or migrated into it) at load time.
 	// Populated by the loader; used by Write to round-trip sentinels back to
@@ -71,8 +75,8 @@ type Config struct {
 	keychainFields keychainBacked `json:"-" yaml:"-"`
 
 	// keychainPreserve tracks (owner, field) pairs whose sentinel could not
-	// be resolved at load time because the keychain was unavailable (locked
-	// session, missing DBus), mapped to the original sentinel string. Their
+	// be resolved at load time because the keychain was unavailable or locked,
+	// mapped to the original sentinel string. Their
 	// in-memory value is cleared, but Write must round-trip the original
 	// sentinel back to disk so a transient outage never destroys the
 	// reference. Not part of the on-disk schema.
@@ -82,6 +86,11 @@ type Config struct {
 	// be deferred for non-current contexts. Populated once by Load; nil when
 	// the keychain is not in use.
 	keychainStore credentials.Store `json:"-" yaml:"-"`
+
+	// keychainPolicy is resolved from the immutable config snapshots and the
+	// environment before keychainStore is constructed. Write reuses it instead
+	// of rediscovering configuration.
+	keychainPolicy keychainPolicy `json:"-" yaml:"-"`
 
 	// sourceIdentity is the canonical identity of a single config document.
 	// Layered configs leave it empty; each stack/cloud entry retains its own
@@ -121,6 +130,13 @@ type Config struct {
 	migrationDeferred bool `json:"-" yaml:"-"`
 }
 
+// CredentialsConfig controls credential persistence without owning secrets.
+type CredentialsConfig struct {
+	// Keychain selects whether credentials use the OS credential store. Valid
+	// values are "on" and "off". The default is "on".
+	Keychain string `json:"keychain,omitempty" yaml:"keychain,omitempty"`
+}
+
 // DiagnosticsConfig controls optional local diagnostic features.
 type DiagnosticsConfig struct {
 	// AgentInvocationLog enables logging of failed agent-mode invocations to disk.
@@ -140,6 +156,18 @@ type DiagnosticsConfig struct {
 
 func (config *Config) HasContext(name string) bool {
 	return config.Contexts[name] != nil
+}
+
+// ContextNames returns the names of all configured contexts, sorted
+// alphabetically. Entries with a nil value (e.g. a bare `foo:` key with no
+// body) are omitted so the result agrees with HasContext, which treats such
+// entries as absent. It returns nil when no contexts are configured.
+func (config *Config) ContextNames() []string {
+	if len(config.Contexts) == 0 {
+		return nil
+	}
+	names := slices.Sorted(maps.Keys(config.Contexts))
+	return slices.DeleteFunc(names, func(name string) bool { return config.Contexts[name] == nil })
 }
 
 // GetCurrentContext returns the current context.
@@ -247,6 +275,7 @@ func (config *Config) Resolve() {
 			continue
 		}
 		ctx.Name = name
+		ctx.keychainPolicy = config.keychainPolicy
 		ctx.StackEntry = nil
 		ctx.Grafana = nil
 		ctx.Providers = nil
@@ -437,6 +466,11 @@ type Context struct {
 	// process environment. Post-override binding enforcement may retain those
 	// values when an endpoint changes; every keychain-resolved value is cleared.
 	runtimeSecretOverrides map[credentials.Field]bool
+
+	// keychainPolicy is the process-effective storage decision captured when
+	// this context's resolved view was built. It follows the context into REST
+	// config construction so asynchronous OAuth refresh persists consistently.
+	keychainPolicy keychainPolicy
 }
 
 // StackFromAutoLocal reports whether the resolved stack entry came from an
@@ -773,6 +807,13 @@ type GrafanaConfig struct {
 
 	// TLS contains TLS-related configuration settings.
 	TLS *TLS `json:"tls,omitempty" yaml:"tls,omitempty"`
+
+	// PathfinderInstalled caches that the Pathfinder plugin was detected as
+	// installed and enabled on this server during `gcx login`. Once true, later
+	// logins skip the detection probe and the one-time guide hint. In practice
+	// the plugin is not uninstalled, so the flag is sticky and never cleared
+	// automatically. Set automatically by `gcx login`.
+	PathfinderInstalled bool `json:"pathfinder-installed,omitempty" yaml:"pathfinder-installed,omitempty"`
 }
 
 func (grafana GrafanaConfig) validateNamespace(ctx context.Context, contextName string) error {

@@ -1,9 +1,13 @@
 package fail_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -12,6 +16,7 @@ import (
 	"github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/cloud"
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/credentials"
 	"github.com/grafana/gcx/internal/datasources"
 	"github.com/grafana/gcx/internal/docs"
 	"github.com/grafana/gcx/internal/fleet"
@@ -21,6 +26,7 @@ import (
 	cmdoutput "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers/instrumentation"
 	"github.com/grafana/gcx/internal/queryerror"
+	"github.com/grafana/gcx/internal/resources/dynamic"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -84,6 +90,41 @@ func TestErrorToDetailedError_ColonSeparatedMessageSplitsSummaryAndDetails(t *te
 	assert.Equal(t, "use -d flag or set datasources.loki in config", got.Details)
 }
 
+func TestErrorToDetailedError_ContextNotFoundListsAvailable(t *testing.T) {
+	got := fail.ErrorToDetailedError(config.ContextNotFound("ops", []string{"auth", "default", "dev"}))
+
+	require.NotNil(t, got)
+	assert.Equal(t, "Invalid configuration", got.Summary)
+	require.NotEmpty(t, got.Suggestions)
+	// The first suggestion is a runnable command (docs/design/errors.md 4.2).
+	assert.Equal(t,
+		"Use one of the configured contexts (auth, default, dev), for example: gcx config use-context auth",
+		got.Suggestions[0])
+	assert.Contains(t, got.Suggestions, "Check for typos in the context name")
+	assert.Contains(t, got.Suggestions, "Review your configuration: gcx config view")
+}
+
+func TestErrorToDetailedError_ContextNotFoundCapsList(t *testing.T) {
+	got := fail.ErrorToDetailedError(config.ContextNotFound(
+		"ops", []string{"a", "b", "c", "d", "e", "f", "g"}))
+
+	require.NotNil(t, got)
+	require.NotEmpty(t, got.Suggestions)
+	assert.Equal(t,
+		"Use one of the configured contexts (a, b, c, d, e, +2 more), for example: gcx config use-context a",
+		got.Suggestions[0], "the inline list is capped so a large config does not emit a huge line")
+}
+
+func TestErrorToDetailedError_ContextNotFoundWithoutAvailable(t *testing.T) {
+	got := fail.ErrorToDetailedError(config.ContextNotFound("ops", nil))
+
+	require.NotNil(t, got)
+	require.Len(t, got.Suggestions, 2)
+	for _, s := range got.Suggestions {
+		assert.NotContains(t, s, "configured contexts")
+	}
+}
+
 func TestErrorToDetailedError_AuthExitCode(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -114,6 +155,18 @@ func TestErrorToDetailedError_AuthExitCode(t *testing.T) {
 			},
 			wantExitCode: gcxerrors.ExitAuthFailure,
 		},
+		{
+			name: "403 from the dynamic client (dynamic.APIError) returns ExitAuthFailure",
+			err: fmt.Errorf("list routing trees: %w", dynamic.ParseStatusError(&k8sapi.StatusError{
+				ErrStatus: metav1.Status{
+					Status:  metav1.StatusFailure,
+					Code:    403,
+					Reason:  metav1.StatusReasonForbidden,
+					Message: "Forbidden",
+				},
+			})),
+			wantExitCode: gcxerrors.ExitAuthFailure,
+		},
 	}
 
 	for _, tc := range tests {
@@ -123,6 +176,62 @@ func TestErrorToDetailedError_AuthExitCode(t *testing.T) {
 			require.NotNil(t, got)
 			require.NotNil(t, got.ExitCode, "ExitCode should be set for auth errors")
 			assert.Equal(t, tc.wantExitCode, *got.ExitCode)
+		})
+	}
+}
+
+// TestErrorToDetailedError_DynamicClientErrors covers what the dynamic client
+// returns: dynamic.ParseStatusError wraps every failure in an APIError, and
+// synthesizes a 500 status for errors that carry none.
+func TestErrorToDetailedError_DynamicClientErrors(t *testing.T) {
+	urlErr := &url.Error{Op: "Get", URL: "http://localhost:3000/apis", Err: errors.New("dial tcp: connection refused")}
+
+	tests := []struct {
+		name        string
+		err         error
+		wantSummary string
+		wantExit    *int
+	}{
+		{
+			name:        "network error is reported as a network error",
+			err:         dynamic.ParseStatusError(urlErr),
+			wantSummary: "Network error",
+		},
+		{
+			name:        "timeout is not reported as a server 500",
+			err:         dynamic.ParseStatusError(context.DeadlineExceeded),
+			wantSummary: "Context deadline exceeded",
+		},
+		{
+			name:     "cancellation keeps the cancelled exit code",
+			err:      dynamic.ParseStatusError(context.Canceled),
+			wantExit: new(gcxerrors.ExitCancelled),
+		},
+		{
+			name: "server 500 is still an API error",
+			err: dynamic.ParseStatusError(&k8sapi.StatusError{ErrStatus: metav1.Status{
+				Status:  metav1.StatusFailure,
+				Code:    500,
+				Reason:  metav1.StatusReasonInternalError,
+				Message: "boom",
+			}}),
+			wantSummary: "API error: InternalError - code 500",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := fail.ErrorToDetailedError(tc.err)
+
+			require.NotNil(t, got)
+			assert.NotContains(t, got.Summary, "API error:  - code 500", "synthesized status must not reach the API converter")
+			if tc.wantSummary != "" {
+				assert.Equal(t, tc.wantSummary, got.Summary)
+			}
+			if tc.wantExit != nil {
+				require.NotNil(t, got.ExitCode)
+				assert.Equal(t, *tc.wantExit, *got.ExitCode)
+			}
 		})
 	}
 }
@@ -158,6 +267,22 @@ func TestErrorToDetailedError_QueryParseError(t *testing.T) {
 	assert.Equal(t, "Run 'gcx logs query --help' for usage and examples", got.Suggestions[1])
 	assert.Equal(t, docs.LogQL, got.DocsLink, "parse errors should point at the query-language docs")
 	assert.Nil(t, got.ExitCode)
+}
+
+func TestErrorToDetailedError_ProfileSeriesQuery(t *testing.T) {
+	got := fail.ErrorToDetailedError(queryerror.New(
+		"pyroscope",
+		"profile series query",
+		400,
+		"parse error: expecting string",
+		"downstream",
+	))
+
+	require.NotNil(t, got)
+	assert.Equal(t, "Invalid Pyroscope selector query", got.Summary)
+	assert.Contains(t, got.Suggestions, `Try a quoted selector value, e.g. gcx profiles series '{service_name="frontend"}'`)
+	assert.Contains(t, got.Suggestions, "Run 'gcx profiles series --help' for usage and examples")
+	assert.Equal(t, docs.PyroscopeQueries, got.DocsLink)
 }
 
 func TestErrorToDetailedError_QueryAuthFailure(t *testing.T) {
@@ -422,70 +547,42 @@ func TestErrorToDetailedError_CloudStackLookupForbidden(t *testing.T) {
 	}
 }
 
-func TestErrorToDetailedError_FleetScopeError(t *testing.T) {
-	tests := []struct {
-		name      string
-		err       error
-		wantScope string
-	}{
-		{
-			name:      "list pipelines invalid scope suggests fleet-management:read",
-			err:       errors.New(`fleet: list pipelines: status 401: {"status":"error","error":"authentication error: invalid scope requested"}`),
-			wantScope: "fleet-management:read",
-		},
-		{
-			name:      "list collectors invalid scope suggests fleet-management:read",
-			err:       errors.New(`fleet: list collectors: status 401: {"status":"error","error":"authentication error: invalid scope requested"}`),
-			wantScope: "fleet-management:read",
-		},
-		{
-			name:      "get pipeline invalid scope suggests fleet-management:read",
-			err:       errors.New(`fleet: get pipeline abc123: status 401: {"status":"error","error":"authentication error: invalid scope requested"}`),
-			wantScope: "fleet-management:read",
-		},
-		{
-			name:      "create pipeline invalid scope suggests fleet-management:write",
-			err:       errors.New(`fleet: create pipeline: status 401: {"status":"error","error":"authentication error: invalid scope requested"}`),
-			wantScope: "fleet-management:write",
-		},
-		{
-			name:      "update pipeline invalid scope suggests fleet-management:write",
-			err:       errors.New(`fleet: update pipeline abc123: status 401: {"status":"error","error":"authentication error: invalid scope requested"}`),
-			wantScope: "fleet-management:write",
-		},
-		{
-			name:      "create collector invalid scope suggests fleet-management:write",
-			err:       errors.New(`fleet: create collector: status 401: {"status":"error","error":"authentication error: invalid scope requested"}`),
-			wantScope: "fleet-management:write",
-		},
-		{
-			name:      "update collector invalid scope suggests fleet-management:write",
-			err:       errors.New(`fleet: update collector abc123: status 401: {"status":"error","error":"authentication error: invalid scope requested"}`),
-			wantScope: "fleet-management:write",
-		},
-		{
-			name:      "delete pipeline invalid scope suggests fleet-management:write",
-			err:       errors.New(`fleet: delete pipeline abc123: status 401: {"status":"error","error":"authentication error: invalid scope requested"}`),
-			wantScope: "fleet-management:write",
-		},
-	}
+func TestErrorToDetailedError_FleetPluginMissing(t *testing.T) {
+	// Grafana answers with this body when the collector app plugin is absent or
+	// disabled. It arrives as a 404, the same status Fleet Management returns for
+	// an absent resource, so the message must not mention a missing resource.
+	err := fmt.Errorf("fleet: list pipelines: %w", &fleet.HTTPError{
+		Status: 404,
+		Path:   "/pipeline.v1.PipelineService/ListPipelines",
+		Body:   `{"message":"plugin route match not found"}`,
+	})
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			got := fail.ErrorToDetailedError(tc.err)
+	got := fail.ErrorToDetailedError(err)
 
-			if tc.wantScope == "" {
-				assert.Equal(t, "Unexpected error", got.Summary)
-				return
-			}
+	require.NotNil(t, got)
+	assert.Equal(t, "Endpoint not available", got.Summary)
+	assert.Contains(t, got.Details, "grafana-collector-app")
+	require.NotEmpty(t, got.Suggestions)
+	assert.Contains(t, got.Suggestions[0], "gcx setup status")
+}
 
-			assert.Equal(t, "Fleet Management: permission denied", got.Summary)
-			require.NotNil(t, got.ExitCode)
-			assert.Equal(t, gcxerrors.ExitAuthFailure, *got.ExitCode)
-			require.Len(t, got.Suggestions, 1)
-			assert.Contains(t, got.Suggestions[0], tc.wantScope)
-		})
-	}
+func TestErrorToDetailedError_FleetForbiddenNamesTheAction(t *testing.T) {
+	err := fmt.Errorf("fleet: create pipeline: %w", &fleet.HTTPError{
+		Status: 403,
+		Path:   "/pipeline.v1.PipelineService/CreatePipeline",
+		Body:   `{"message":"forbidden"}`,
+	})
+
+	got := fail.ErrorToDetailedError(err)
+
+	require.NotNil(t, got)
+	assert.Equal(t, "Authorization failed", got.Summary)
+	require.NotNil(t, got.ExitCode)
+	assert.Equal(t, gcxerrors.ExitAuthFailure, *got.ExitCode)
+	suggestions := strings.Join(got.Suggestions, "\n")
+	assert.Contains(t, suggestions, fleet.CollectorAppReadAction)
+	assert.Contains(t, suggestions, fleet.CollectorAppAdminAction)
+	assert.Contains(t, suggestions, "read-only commands")
 }
 
 func TestErrorToDetailedError_StacksReadAdaptiveContext(t *testing.T) {
@@ -969,19 +1066,24 @@ func TestConvertFleetHTTPErrors(t *testing.T) {
 	}{
 		{
 			name:         "401 from fleet management",
-			err:          fmt.Errorf("clusters list: %w", &fleet.HTTPError{Status: 401, Path: "/instrumentation.v1.InstrumentationService/GetK8SInstrumentation"}),
+			err:          fmt.Errorf("clusters list: %w", &fleet.HTTPError{Status: 401, Path: "/instrumentation.v1.InstrumentationService/GetK8SInstrumentation", Body: `{"message":"Plugin not found"}`}),
 			wantSummary:  "Authentication failed",
 			wantAuthExit: true,
 		},
 		{
 			name:         "403 from fleet management",
-			err:          fmt.Errorf("clusters list: %w", &fleet.HTTPError{Status: 403, Path: "/instrumentation.v1.InstrumentationService/GetK8SInstrumentation"}),
+			err:          fmt.Errorf("clusters list: %w", &fleet.HTTPError{Status: 403, Path: "/instrumentation.v1.InstrumentationService/GetK8SInstrumentation", Body: `{"message":"Plugin is not enabled"}`}),
 			wantSummary:  "Authorization failed",
 			wantAuthExit: true,
 		},
 		{
-			name: "404 not handled by this converter",
-			err:  &fleet.HTTPError{Status: 404, Path: "/foo"},
+			name: "404 for a missing resource is not handled by this converter",
+			err:  &fleet.HTTPError{Status: 404, Path: "/foo", Body: `{"code":"not_found","message":"pipeline not found"}`},
+		},
+		{
+			name:        "404 for a missing plugin route reports the plugin",
+			err:         &fleet.HTTPError{Status: 404, Path: "/foo", Body: `{"message":"plugin route match not found"}`},
+			wantSummary: "Endpoint not available",
 		},
 	}
 	for _, tc := range tests {
@@ -1344,4 +1446,332 @@ func TestErrorToDetailedError_EmittedErrorSuppressesEnvelope(t *testing.T) {
 				"an EmittedError anywhere in the chain must suppress the secondary envelope")
 		})
 	}
+}
+
+// TestErrorToDetailedError_KeychainLocked asserts that a locked OS keychain
+// produces an actionable envelope, and that the other credentials sentinels do
+// not claim it. The locked error stays fatal, because gcx must not write the
+// secret in plaintext when a real keychain exists.
+func TestErrorToDetailedError_KeychainLocked(t *testing.T) {
+	lockedErr := fmt.Errorf("%w: %s", credentials.ErrLocked,
+		"failed to unlock correct collection '/org/freedesktop/secrets/collection/login'")
+
+	tests := []struct {
+		name        string
+		err         error
+		wantLocked  bool
+		wantSummary string
+	}{
+		{
+			name:       "bare ErrLocked",
+			err:        credentials.ErrLocked,
+			wantLocked: true,
+		},
+		{
+			name: "deeply wrapped ErrLocked",
+			err: fmt.Errorf("writing config: %w",
+				fmt.Errorf("inspect keychain entry for %q field %q: %w",
+					"stack:opstest", "oauth-token", lockedErr)),
+			wantLocked: true,
+		},
+		{
+			name:        "ErrUnavailable is an actionable unavailable keychain",
+			err:         fmt.Errorf("writing config: %w", credentials.ErrUnavailable),
+			wantSummary: "Keychain unavailable",
+		},
+		{
+			// ErrDisabled wraps ErrUnavailable, so it must be checked ahead of
+			// ErrUnavailable or it silently gets the "Keychain unavailable"
+			// envelope that convert.go deliberately refuses it. A deliberate
+			// GCX_KEYCHAIN=off opt-out still falls back to plaintext, so it
+			// must fall through to the generic error envelope instead.
+			name:        "ErrDisabled must not shadow into the unavailable-keychain envelope",
+			err:         fmt.Errorf("writing config: %w", credentials.ErrDisabled),
+			wantSummary: "Writing config",
+		},
+		{
+			name:       "ErrNotFound is not a locked keychain",
+			err:        fmt.Errorf("writing config: %w", credentials.ErrNotFound),
+			wantLocked: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := fail.ErrorToDetailedError(tt.err)
+			require.NotNil(t, got)
+
+			// ErrDisabled must be tested for explicitly, and ahead of
+			// ErrUnavailable: ErrDisabled wraps ErrUnavailable, so a check
+			// that only tests errors.Is(err, ErrUnavailable) would also match
+			// ErrDisabled and assert the wrong envelope.
+			if errors.Is(tt.err, credentials.ErrDisabled) {
+				require.NotEmpty(t, tt.wantSummary, "test row must pin an exact summary")
+				assert.Equal(t, tt.wantSummary, got.Summary)
+				assert.NotEqual(t, "Keychain unavailable", got.Summary,
+					"a deliberate GCX_KEYCHAIN=off opt-out must get the generic error envelope, not the unavailable-keychain one")
+				require.ErrorIs(t, got.Parent, credentials.ErrDisabled)
+				return
+			}
+
+			if errors.Is(tt.err, credentials.ErrUnavailable) {
+				require.NotEmpty(t, tt.wantSummary, "test row must pin an exact summary")
+				assert.Equal(t, tt.wantSummary, got.Summary)
+				assert.Equal(t,
+					"The OS keychain is unavailable. gcx did not fall back to plaintext credential storage.",
+					got.Details)
+				require.ErrorIs(t, got.Parent, credentials.ErrUnavailable)
+				assert.NotErrorIs(t, got.Parent, credentials.ErrLocked)
+				assert.Contains(t, strings.Join(got.Suggestions, "\n"), "GCX_KEYCHAIN=off")
+				assert.Contains(t, strings.Join(got.Suggestions, "\n"), "Plaintext credentials are stored on disk")
+				return
+			}
+
+			if !tt.wantLocked {
+				assert.NotEqual(t, "Keychain locked", got.Summary)
+				return
+			}
+
+			assert.Equal(t, "Keychain locked", got.Summary)
+			assert.Equal(t,
+				"The OS keychain is reachable, but it is locked or cannot be unlocked in this session. gcx does not fall back to a plaintext credential.",
+				got.Details)
+			require.Error(t, got.Parent)
+			require.ErrorIs(t, got.Parent, credentials.ErrLocked)
+			assert.Equal(t, docs.Keychain, got.DocsLink)
+			// convert_internal_test.go pins the per-platform suggestions.
+			assert.NotEmpty(t, got.Suggestions)
+			assert.NotContains(t, strings.Join(got.Suggestions, "\n"), "GCX_KEYCHAIN=off")
+		})
+	}
+}
+
+func TestErrorToDetailedError_RestrictedCredentialSession(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{
+			name: "direct credential-store failure",
+			err:  fmt.Errorf("write config: %w", credentials.ErrRestrictedSession),
+		},
+		{
+			name: "OAuth refresh preflight failure",
+			err:  fmt.Errorf("request failed: %w: %w", auth.ErrCredentialPersistencePreflight, credentials.ErrRestrictedSession),
+		},
+		{
+			name: "OAuth login preflight failure",
+			err:  fmt.Errorf("login failed: %w: %w", login.ErrCredentialPersistencePreflight, credentials.ErrRestrictedSession),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := fail.ErrorToDetailedError(tt.err)
+			require.NotNil(t, got)
+			assert.Equal(t, "OS credential store access is restricted", got.Summary)
+			assert.NotEqual(t, "Keychain locked", got.Summary)
+			assert.Equal(t, docs.Keychain, got.DocsLink)
+		})
+	}
+}
+
+func TestBasicAuthCheckError(t *testing.T) {
+	t.Run("empty identity", func(t *testing.T) {
+		result := fail.ErrorToDetailedError(&login.BasicAuthCheckError{})
+		assert.Equal(t, "Authentication failed", result.Summary)
+		require.NotNil(t, result.ExitCode)
+		assert.Equal(t, gcxerrors.ExitAuthFailure, *result.ExitCode)
+		assert.Contains(t, strings.Join(result.Suggestions, " "), "anonymous access")
+	})
+	for _, tt := range []struct {
+		status  int
+		summary string
+	}{
+		{401, "Authentication failed"},
+		{403, "Authorization failed"},
+		{404, "API error"},
+		{500, "API error"},
+		{0, "Network error"},
+	} {
+		t.Run(strconv.Itoa(tt.status), func(t *testing.T) {
+			err := &login.BasicAuthCheckError{Status: tt.status}
+			if tt.status == 0 {
+				err.Cause = errors.New("TLS handshake failed")
+			}
+			result := fail.ErrorToDetailedError(err)
+			assert.Equal(t, tt.summary, result.Summary)
+			if tt.status == 401 || tt.status == 403 {
+				require.NotNil(t, result.ExitCode)
+				assert.Equal(t, gcxerrors.ExitAuthFailure, *result.ExitCode)
+			} else {
+				assert.Nil(t, result.ExitCode)
+			}
+			if tt.status != 401 {
+				assert.NotContains(t, strings.Join(result.Suggestions, " "), "password")
+			}
+			if tt.status == 0 {
+				assert.Contains(t, result.Details, "TLS handshake failed")
+				assert.ErrorIs(t, err, err.Cause)
+			}
+		})
+	}
+}
+
+// TestConvertBrowserCancelled keeps a consent-page Cancel visible: exit code 5
+// with a message, even though the root command exits silently for a plain
+// context cancellation.
+func TestConvertBrowserCancelled(t *testing.T) {
+	t.Parallel()
+
+	err := fmt.Errorf("OAuth flow failed: %w", auth.ErrBrowserCancelled)
+	require.NotErrorIs(t, err, context.Canceled)
+
+	det := fail.ErrorToDetailedError(err)
+	require.NotNil(t, det)
+	assert.Equal(t, "Operation cancelled", det.Summary)
+	assert.Contains(t, det.Details, "cancelled in the browser")
+	require.NotNil(t, det.ExitCode)
+	assert.Equal(t, gcxerrors.ExitCancelled, *det.ExitCode)
+}
+
+// TestConvertOAuthExchangeErrors gives a first-time user a next step when the
+// token exchange hits a rate limit or a service error. Other statuses keep the
+// generic rendering.
+func TestConvertOAuthExchangeErrors(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		status        int
+		wantDetail    string
+		wantSuggested string
+	}{
+		{status: 429, wantDetail: "Grafana Cloud is rate limiting logins", wantSuggested: "Wait a minute, then run gcx login again"},
+		{status: 503, wantDetail: "Grafana Cloud could not finish the login", wantSuggested: "Run gcx login again in a few minutes"},
+		{status: 401},
+	}
+	for _, tc := range tests {
+		t.Run(strconv.Itoa(tc.status), func(t *testing.T) {
+			t.Parallel()
+
+			exchangeErr := &auth.ExchangeStatusError{StatusCode: tc.status, Path: "/api/cli/v1/auth/exchange"}
+			err := fmt.Errorf("OAuth flow failed: token exchange failed: %w", exchangeErr)
+			det := fail.ErrorToDetailedError(err)
+			require.NotNil(t, det)
+			if tc.wantDetail == "" {
+				assert.NotContains(t, det.Details, "cannot be reused")
+				assert.Empty(t, det.Suggestions)
+				return
+			}
+			// The summary stays in the approved vocabulary (docs/design/errors.md);
+			// the specific cause goes in the details.
+			assert.Equal(t, "API error", det.Summary)
+			assert.Contains(t, det.Details, tc.wantDetail)
+			assert.Contains(t, det.Details, "cannot be reused")
+			assert.Equal(t, []string{tc.wantSuggested}, det.Suggestions)
+		})
+	}
+}
+
+// TestSignupIncompleteErrorKeepsTheFailure pins the rendering of a signup that
+// failed once its browser step had started: the failure keeps its own summary,
+// details, suggestions and exit code, and the recovery comes first without
+// suggesting signup again.
+func TestSignupIncompleteErrorKeepsTheFailure(t *testing.T) {
+	t.Parallel()
+
+	keychain := gcxerrors.DetailedError{
+		Summary:     "Keychain locked",
+		Details:     "the login keychain is locked",
+		Suggestions: []string{"Unlock the keychain"},
+		ExitCode:    new(gcxerrors.ExitAuthFailure),
+	}
+	const connect = "gcx login default --server https://mystack.grafana.net --oauth"
+	const signIn = "gcx login default --cloud --oauth"
+	tests := []struct {
+		name         string
+		err          *login.SignupIncompleteError
+		wantSummary  string
+		wantExitCode *int
+		wantNote     string
+		wantFirst    string
+		wantKept     string
+	}{
+		{
+			name:        "a save failure",
+			err:         &login.SignupIncompleteError{Err: fmt.Errorf("saving: %w", keychain), Server: "https://mystack.grafana.net", Recovery: connect},
+			wantSummary: "Keychain locked", wantExitCode: keychain.ExitCode,
+			wantNote:  "Grafana Cloud account and the stack https://mystack.grafana.net exist",
+			wantFirst: "Once the cause above is fixed, connect gcx to the new stack: " + connect,
+			wantKept:  "Unlock the keychain",
+		},
+		{
+			name:        "a stack that is still starting",
+			err:         &login.SignupIncompleteError{Err: &login.HealthCheckError{Server: "https://mystack.grafana.net", Status: 503, Cause: errors.New("unavailable")}, Server: "https://mystack.grafana.net", Recovery: connect},
+			wantSummary: "Grafana server unreachable",
+			wantNote:    "A new stack can take a few minutes to finish starting",
+			wantFirst:   "Wait a few minutes, then connect gcx to the new stack: " + connect,
+		},
+		{
+			name:        "a cancel on the Connect gcx page",
+			err:         &login.SignupIncompleteError{Err: fmt.Errorf("OAuth flow failed: %w", auth.ErrBrowserCancelled), Recovery: signIn},
+			wantSummary: "Operation cancelled", wantExitCode: new(gcxerrors.ExitCancelled),
+			wantNote:  "If you already created your Grafana Cloud account in the browser, it exists",
+			wantFirst: "Sign in instead of signing up again, and choose the new stack: " + signIn,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			det := fail.ErrorToDetailedError(tc.err)
+			require.NotNil(t, det)
+			assert.Equal(t, tc.wantSummary, det.Summary)
+			assert.Equal(t, tc.wantExitCode, det.ExitCode)
+			assert.Contains(t, det.Details, tc.wantNote)
+			require.NotEmpty(t, det.Suggestions)
+			assert.Equal(t, tc.wantFirst, det.Suggestions[0])
+			if tc.wantKept != "" {
+				assert.Contains(t, det.Suggestions, tc.wantKept)
+				assert.Contains(t, det.Details, keychain.Details)
+			}
+			assert.NotContains(t, strings.Join(det.Suggestions, "\n"), "gcx signup")
+		})
+	}
+	// The inner error's own suggestions are not changed in place.
+	assert.Equal(t, []string{"Unlock the keychain"}, keychain.Suggestions)
+}
+
+// TestSignupIncompleteErrorKeepsAWrappedCause pins that signup's note does not
+// hide a cause that the fallback converter keeps only as Parent, such as a
+// busy callback port. JSON output reads Details and falls back to Parent only
+// when Details is empty, so an agent would otherwise get the note and the
+// recovery but not why the signup stopped. Text shows the cause once.
+func TestSignupIncompleteErrorKeepsAWrappedCause(t *testing.T) {
+	const cause = "callback port 54322 unavailable: listen tcp 127.0.0.1:54322: bind: address already in use"
+	const signIn = "gcx login default --cloud --oauth --oauth-callback-port 54322"
+	err := &login.SignupIncompleteError{
+		Err:      fmt.Errorf("OAuth flow failed: %w", errors.New(cause)),
+		Recovery: signIn,
+	}
+
+	det := fail.ErrorToDetailedError(err)
+	require.NotNil(t, det)
+	assert.Equal(t, "OAuth flow failed", det.Summary)
+
+	var buf bytes.Buffer
+	require.NoError(t, det.WriteJSON(&buf, 1))
+	var envelope struct {
+		Error struct {
+			Details     string   `json:"details"`
+			Suggestions []string `json:"suggestions"`
+		} `json:"error"`
+	}
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &envelope), buf.String())
+	assert.Contains(t, envelope.Error.Details, "If you already created your Grafana Cloud account in the browser")
+	assert.Contains(t, envelope.Error.Details, cause)
+	require.NotEmpty(t, envelope.Error.Suggestions)
+	assert.Equal(t, "Sign in instead of signing up again, and choose the new stack: "+signIn, envelope.Error.Suggestions[0])
+
+	assert.Equal(t, 1, strings.Count(det.Error(), "address already in use"), det.Error())
 }

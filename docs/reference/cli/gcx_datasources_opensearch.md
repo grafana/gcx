@@ -1,0 +1,30 @@
+## gcx datasources opensearch
+
+Query OpenSearch datasources
+
+### Options
+
+```
+      --config string   Path to the configuration file to use
+  -h, --help            help for opensearch
+```
+
+### Options inherited from parent commands
+
+```
+      --agent                       Enable agent mode (JSON output, no color). Auto-detected from known agent identity variables. Set GCX_AGENT_NAME to identify a supported harness, or GCX_AGENT_MODE to control the mode.
+      --context string              Name of the context to use (overrides current-context in config)
+      --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Requires -vvv. Do not ship these logs.
+      --no-color                    Disable color output
+      --no-truncate                 Disable table column truncation (auto-enabled when stdout is piped)
+  -v, --verbose count               Verbose mode. Multiple -v options increase the verbosity (maximum: 3).
+```
+
+### SEE ALSO
+
+* [gcx datasources](gcx_datasources.md)	 - Manage and query Grafana datasources
+* [gcx datasources opensearch list-fields](gcx_datasources_opensearch_list-fields.md)	 - List mapped fields from an OpenSearch datasource
+* [gcx datasources opensearch list-indices](gcx_datasources_opensearch_list-indices.md)	 - List indices from an OpenSearch datasource
+* [gcx datasources opensearch metrics](gcx_datasources_opensearch_metrics.md)	 - Aggregate documents over time from an OpenSearch datasource
+* [gcx datasources opensearch query](gcx_datasources_opensearch_query.md)	 - Search documents in an OpenSearch datasource
+

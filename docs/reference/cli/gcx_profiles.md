@@ -12,9 +12,9 @@ Query Pyroscope datasources and manage continuous profiling
 ### Options inherited from parent commands
 
 ```
-      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
+      --agent                       Enable agent mode (JSON output, no color). Auto-detected from known agent identity variables. Set GCX_AGENT_NAME to identify a supported harness, or GCX_AGENT_MODE to control the mode.
       --context string              Name of the context to use (overrides current-context in config)
-      --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.
+      --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Requires -vvv. Do not ship these logs.
       --no-color                    Disable color output
       --no-truncate                 Disable table column truncation (auto-enabled when stdout is piped)
   -v, --verbose count               Verbose mode. Multiple -v options increase the verbosity (maximum: 3).
@@ -30,4 +30,6 @@ Query Pyroscope datasources and manage continuous profiling
 * [gcx profiles list-profile-types](gcx_profiles_list-profile-types.md)	 - List available profile types
 * [gcx profiles metrics](gcx_profiles_metrics.md)	 - Query profile time-series data from a Pyroscope datasource
 * [gcx profiles query](gcx_profiles_query.md)	 - Execute a profiling query against a Pyroscope datasource
+* [gcx profiles query-anomalies](gcx_profiles_query-anomalies.md)	 - [experimental] Query profile anomalies from a Pyroscope datasource
+* [gcx profiles series](gcx_profiles_series.md)	 - List unique profile label sets
 

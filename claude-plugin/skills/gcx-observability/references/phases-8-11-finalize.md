@@ -117,7 +117,7 @@ Ask the user where in their repo to place the export (default: `./grafana/`).
   Pass each kind as its own selector argument — space-separated, never
   comma-joined (`slos checks` below is an illustrative managed set):
   ```bash
-  gcx resources pull slos checks -p ./grafana/ -o yaml
+  gcx resources pull slos checks.syntheticmonitoring -p ./grafana/ -o yaml
   gcx resources push -p ./grafana/ --dry-run
   ```
   If a kind errors on pull or fails the dry-run, move it out of the managed
@@ -138,7 +138,7 @@ Ask the user where in their repo to place the export (default: `./grafana/`).
   # directory and diff; a reused directory with stale files would show
   # false drift.
   tmp="$(mktemp -d)"
-  gcx resources pull slos checks -p "$tmp" -o yaml
+  gcx resources pull slos checks.syntheticmonitoring -p "$tmp" -o yaml
   diff -r ./grafana/ "$tmp"
   ```
   Any pull error, skipped kind, or preflight failure makes the check

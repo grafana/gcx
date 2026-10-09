@@ -22,22 +22,18 @@ It defines no checks of its own. Run the checks where they already live:
 Authors run the same triggers before they push. Assume they did. Treat what you
 find as missed, not as dismissed.
 
-## Two passes, one set of findings
+## The correctness pass
 
-Run both passes, then combine them:
+**You owe every PR a correctness pass, and you run it yourself.** Read the diff
+for the defects a reviewer is here to catch: a nil or error path that returns
+the wrong value, a boundary the change moved, a resource that leaks on the
+failure branch, concurrent access the diff introduced, and a call whose
+behaviour the diff changed without changing its callers.
 
-1. **`/code-review`**, for correctness bugs. Do not pass `--comment`. The
-   findings must return to you instead of going straight to the PR, or you have
-   nothing left to combine.
-2. **The triggers above** that fire for this diff, plus the compliance
-   hierarchy.
-
-Reconcile the two sets before you report anything. Remove duplicates. Keep
-whichever version of a finding states the failure more precisely.
-
-The two passes can disagree. One calls a line a bug and the other calls the same
-line correct. Settle it against the code and report one conclusion. Never report
-both and leave the author to decide.
+Then run **the triggers above** that fire for this diff, plus the compliance
+hierarchy. Together they are the whole review. There is no second reviewer to
+defer to and no plugin to invoke, on a developer's machine or in the review
+workflow.
 
 The same skill runs on a developer's machine and in the review workflow. A PR
 gets the same treatment either way.
@@ -79,20 +75,19 @@ Do that even when the argument for them is strong.
 
 ## Report shape
 
+Use bold text for headings in the report, not markdown headings. Each section should be at most two sentences.
+
 1. **Intent.** The problem, and how the change solves it. Say whether the
-   approach is sound before you list what is wrong with it.
+   approach is sound before you list what is wrong with it. Do not give an opinion non whether the approach is sound or not here - that will become obvious from the rest. Keep this as short as possible.
 2. **Blocking.** Fix before merge: correctness bugs, regressions to shipped
-   behaviour, safety defects, and violations of CONSTITUTION.md or DESIGN.md.
-   Put two more things here. Behaviour that changes inside a described refactor.
-   A call to a function, field, or option that does not exist.
+   behaviour, safety defects, and violations of CONSTITUTION.md or DESIGN.md. Also: Behaviour that changes inside a described refactor. A call to a function, field, or option that does not exist. Overengineering issues from T12 and T5. If nothing blocks the merge, omit this section.
 3. **Other findings.** Everything that does not block, worst first. Include
    documentation that contradicts the code it describes. Give each finding the
    space its argument needs and no more. Some take a paragraph. Most take a
    line. The label shows the difference, so a one-line nit and a
    worth-fixing defect can share the list.
-4. **Over-engineering.** Findings from T12 and T5. Rank and cap them as below.
-5. **The smaller version.** One combined remedy. Omit this section when section
-   4 is empty.
+5. **Fix summary** One combined remedy. Omit this section when section
+   2 and 3 are empty.
 6. **Verdict.** Approve or request changes. Name the findings that decide it. If
    you would merge a reduced version, say so, and say how much smaller.
 
@@ -137,10 +132,11 @@ which. Otherwise five blocking findings look heavier than the change deserves.
 
 ## When a workflow invoked this
 
-Five things change when no human is present. The rest of the review is the same.
+Six things change when no human is present. The rest of the review is the same.
 
-- **Post without asking.** The offer below applies when a human can answer. In
-  CI nobody can, and the trigger is the consent.
+- **Deliver without asking.** The offer below applies when a human can answer.
+  In CI nobody can, and the trigger is the consent. Deliver through *Workflow
+  delivery* below. You do not publish anything yourself.
 - **Never approve or request changes.** Post whatever you found as a comment.
   Whether a finding is cheap enough to merge over is a judgement about the
   author's time. An unattended run cannot make it.
@@ -148,15 +144,46 @@ Five things change when no human is present. The rest of the review is the same.
   can answer a speculative finding here, and a wrong one makes them disprove it
   in public.
 - **Use tighter caps**: at most three blocking findings, and eight comments in
-  total. Drop the lowest-ranked findings rather than relabelling them. Say in
-  the summary that you dropped some.
-- **Close the summary with this exact line**, so an author who pushes a fix
-  knows how to ask again:
+  total. Drop the lowest-ranked findings.
+- **Close the summary with this exact line**:
 
   > Comment `@claude review` for a fresh review.
 
-Silence is a valid result. When nothing meets the bar, say in one line that the
-diff looked clean, and stop. Never invent a finding.
+- **Upgrade `recommended` findings to blocking.** A human reviewer can weigh a
+  should-fix in conversation. Nobody is here to do that, so a finding is either
+  worth the author's attention or it is a nit.
+
+Silence is a valid result. If there are no findings, say so in one line and
+deliver that line. Never invent a finding.
+
+Silence is not the same as a pass you did not run. If your correctness pass
+could not complete, say that instead. Never deliver "no findings" for a review
+that did not happen.
+
+### Workflow delivery
+
+Return the review as this run's structured output:
+
+```json
+{"review": {"body": "<the summary>", "comments": []}}
+```
+
+`body` is the summary. `comments` carries the inline findings, mapped exactly as
+in *Mechanics* below: `path`, `line`, `side` and `body` on each one, plus
+`start_line` and `start_side` for a range. A complete review that found nothing
+keeps its one-line summary and an empty `comments` array. If your correctness
+pass could not complete, return `{"review": null}`; that is not a clean review,
+and the workflow fails the run instead of publishing one.
+
+Anchor every line against the **PR head**, not the tree you are standing in.
+A workflow run checks out the merge ref, and its line numbers can differ from
+the head's. *Mechanics* below has the commands for checking.
+
+**Publish nothing in this mode** — not through `gh`, not through an
+inline-comment tool, not as a PR comment. The workflow submits the payload as
+one `COMMENT` review against the commit it gave you, appends its own run marker,
+and checks GitHub's response before the job goes green. There is no label to
+set and no marker for you to carry.
 
 ## Offering to post the review
 
@@ -179,11 +206,27 @@ judges the code. The event judges a colleague's work, and that choice is theirs.
 ### Mechanics
 
 One `POST` creates the whole review, both the summary body and every inline
-comment. The author then gets one notification instead of ten:
+comment. The author then gets one notification instead of ten. Pass the JSON
+directly on stdin; the tracked allowlist grants no file-write permission. A
+quoted heredoc keeps backticks, dollar signs, and suggestions literal:
 
 ```bash
-gh api repos/{owner}/{repo}/pulls/{n}/reviews -X POST --input review.json
+gh api repos/grafana/gcx/pulls/{n}/reviews -X POST --input - <<'REVIEW_JSON'
+{
+  "event": "COMMENT",
+  "commit_id": "<reviewed head SHA>",
+  "body": "<the summary>",
+  "comments": []
+}
+REVIEW_JSON
 ```
+
+Replace the placeholders, use the chosen event for a human-invoked review,
+and put the inline findings in `comments`. Leave it empty for a clean review.
+Keep the endpoint first, unquoted, and followed by `-X POST`, matching the review
+permission in `.claude/settings.json`. Record the returned review ID. If
+publication is denied, stop and report the failed command. Do not retry through
+scripts, post test comments, or switch to a regular PR comment.
 
 Each comment needs `path`, `line`, and `side`. Use `RIGHT` for the file after
 the change. A range also needs `start_line` and `start_side`.
@@ -264,6 +307,7 @@ Write the report and the comments in plain English:
 - Active voice.
 - Plain words instead of figurative ones.
 - No idiom.
+- Avoid phrases or terms that hyphenate words together. Find simpler alternatives.
 
 This applies to prose. It does not apply to identifiers, code comments,
 suggested diffs, or quoted output.

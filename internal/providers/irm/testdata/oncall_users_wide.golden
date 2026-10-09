@@ -1,0 +1,3 @@
+ID     USERNAME  NAME      EMAIL                    ROLE   TIMEZONE
+row-1  someone   Some One  someone@example.invalid  admin  Europe/London
+row-2            -         -                        -      -

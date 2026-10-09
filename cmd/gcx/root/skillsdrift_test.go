@@ -64,6 +64,18 @@ func TestSkillsGcxInvocationsMatchCommandTree(t *testing.T) {
 	})
 }
 
+// The debugger agent delegates to the skill but still contains a few gcx
+// invocations for loading it. Keep those commands covered without imposing
+// skill-root requirements on the Claude-specific agents directory.
+func TestDebuggerAgentGcxInvocationsMatchCommandTree(t *testing.T) {
+	const rel = "claude-plugin/agents/grafana-debugger.md"
+	content, err := os.ReadFile(filepath.Join("..", "..", "..", rel))
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkSkillInvocations(t, buildRootCmd(), "claude-plugin/agents", map[string]string{rel: string(content)}, nil)
+}
+
 // bundledSkillDocs returns the markdown of the embedded portable skill bundle,
 // keyed by repo-relative path.
 func bundledSkillDocs(t *testing.T) map[string]string {

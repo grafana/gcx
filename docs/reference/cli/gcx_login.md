@@ -14,8 +14,14 @@ Pass CONTEXT_NAME to target a specific context:
 Without CONTEXT_NAME, re-authenticates the current context, or starts a
 first-time setup if no current context is configured.
 
+First-time setup asks for the Grafana server URL. Leave it empty to sign in
+to Grafana Cloud in the browser and choose a stack. When no server is known,
+--cloud --oauth starts that browser sign-in without prompting. To create a
+Grafana Cloud account, run gcx signup.
+
 Auth sources (for non-interactive use):
   --oauth        Browser-based OAuth (recommended for Grafana Cloud). Opens a browser for the user to approve; works in agent mode.
+  --basic-auth   Grafana username/password. Use --user or GRAFANA_USER, and GRAFANA_PASSWORD.
   --token        Grafana service-account token (created inside the Grafana instance).
                  See: https://grafana.com/docs/grafana/latest/administration/service-accounts.md
   --cloud-token  Grafana Cloud access-policy token (created at grafana.com).
@@ -29,9 +35,11 @@ gcx login [CONTEXT_NAME] [flags]
 
 ```
   gcx login
+  gcx login --cloud --oauth
   gcx login prod
   gcx login prod --server https://prod.grafana.net
   gcx login prod --server https://prod.grafana.net --oauth
+  gcx login local --server https://grafana.example.com --basic-auth --user admin
   gcx login --yes prod --token glsa_xxx
   gcx login --yes --server https://localhost:3000 --token glsa_xxx
 ```
@@ -40,7 +48,8 @@ gcx login [CONTEXT_NAME] [flags]
 
 ```
       --allow-server-override     Allow re-pointing an existing context at a different server URL
-      --cloud                     Force Grafana Cloud target (skip auto-detection)
+      --basic-auth                Authenticate with a Grafana username and password (GRAFANA_USER / GRAFANA_PASSWORD, or interactive prompts)
+      --cloud                     Force Grafana Cloud target (skip auto-detection). With --oauth and no known server (no --server, GRAFANA_SERVER, or server in the target context), sign in to Grafana Cloud in the browser and choose a stack. To create an account, run gcx signup
       --cloud-api-url string      Override Grafana Cloud API URL
       --cloud-token string        Grafana Cloud API token (enables Cloud management features)
       --config string             Path to the configuration file to use
@@ -55,14 +64,15 @@ gcx login [CONTEXT_NAME] [flags]
   -o, --output string             Output format. One of: agents, json, text, yaml (default "text")
       --server string             Grafana server URL (e.g. https://my-stack.grafana.net)
       --token string              Grafana service account token
+      --user string               Grafana username for --basic-auth (defaults to GRAFANA_USER)
       --yes                       Non-interactive: skip optional prompts and use defaults
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
-      --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.
+      --agent                       Enable agent mode (JSON output, no color). Auto-detected from known agent identity variables. Set GCX_AGENT_NAME to identify a supported harness, or GCX_AGENT_MODE to control the mode.
+      --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Requires -vvv. Do not ship these logs.
       --no-color                    Disable color output
       --no-truncate                 Disable table column truncation (auto-enabled when stdout is piped)
   -v, --verbose count               Verbose mode. Multiple -v options increase the verbosity (maximum: 3).

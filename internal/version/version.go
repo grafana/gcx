@@ -3,6 +3,8 @@ package version
 import (
 	"fmt"
 	"runtime"
+
+	"github.com/grafana/gcx/internal/agent"
 )
 
 //nolint:gochecknoglobals // Set once from main at startup.
@@ -45,9 +47,21 @@ func GetDate() string {
 	return date
 }
 
-// UserAgent returns the formatted User-Agent: gcx/{version} ({os}/{arch}).
+// UserAgent returns the formatted User-Agent:
+// gcx/{version} ({os}/{arch}; user={human|agent}).
 func UserAgent() string {
-	return fmt.Sprintf("gcx/%s (%s/%s)", Get(), runtime.GOOS, runtime.GOARCH)
+	return fmt.Sprintf("gcx/%s (%s/%s; user=%s)", Get(), runtime.GOOS, runtime.GOARCH, userType())
+}
+
+// userType reports whether a person or an AI agent is driving gcx. It reads
+// the same detection that usage stats report, so the header and the telemetry
+// event can never disagree about a given invocation.
+func userType() string {
+	if agent.IsAgentMode() {
+		return "agent"
+	}
+
+	return "human"
 }
 
 // Info returns a structured snapshot of all version metadata.

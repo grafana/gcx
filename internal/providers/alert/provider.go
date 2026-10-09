@@ -43,10 +43,13 @@ func (p *AlertProvider) Commands() []*cobra.Command {
 	alertCmd.AddCommand(groupsCommands(loader))
 	alertCmd.AddCommand(rulerCommands(loader))
 	alertCmd.AddCommand(instancesCommands(loader))
+	alertCmd.AddCommand(stateHistoryCommands(loader))
 	alertCmd.AddCommand(contactPointsCommands(loader))
 	alertCmd.AddCommand(muteTimingsCommands(loader))
 	alertCmd.AddCommand(notificationPoliciesCommands(loader))
+	alertCmd.AddCommand(routingTreesCommands(loader))
 	alertCmd.AddCommand(templatesCommands(loader))
+	alertCmd.AddCommand(notificationHistoryCommands(loader))
 
 	return []*cobra.Command{alertCmd}
 }
@@ -61,7 +64,8 @@ func (p *AlertProvider) ConfigKeys() []providers.ConfigKey {
 	return nil
 }
 
-// TypedRegistrations returns nil: alert rules are served via the K8s dynamic tier
-// (rules.alerting.grafana.app); the `gcx alert` commands are status readers on the
-// Prometheus-compatible API and must not mimic adapter CRUD.
+// TypedRegistrations returns nil: alert commands register no adapters. Native
+// resources (rules.alerting.grafana.app, notifications.alerting.grafana.app) stay
+// on the K8s dynamic tier; `gcx alert` commands may manage them only through the
+// shared native binding (internal/providers/native), never an adapter.
 func (p *AlertProvider) TypedRegistrations() []adapter.Registration { return nil }

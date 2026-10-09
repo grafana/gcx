@@ -42,6 +42,9 @@ jobs:
       - name: Run golangci-lint
         run: mise run lint
 
+      - name: Vet wasip1-only files
+        run: mise run vet:wasip1
+
   tests:
     name: Tests
     runs-on: ubuntu-latest
@@ -52,7 +55,7 @@ jobs:
           persist-credentials: false
 
       - name: Restore go module cache
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # 5.0.5
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: |
             ~/go/pkg/mod

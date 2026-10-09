@@ -41,3 +41,44 @@ func TestSMMetricsDatasourceNameUsesSelectedRESTConfig(t *testing.T) {
 		t.Errorf("Authorization = %q, want selected REST-config bearer token", gotAuthorization)
 	}
 }
+
+// TestSMPluginDatasourceNameHandlesNonObjectJSONDataFields reproduces the
+// decode failure The-9880 hit against a real stack: the SM plugin settings
+// jsonData has sibling scalar fields (apiHost, stackId) alongside the
+// metrics/logs objects. Decoding jsonData into map[string]struct{...} fails
+// with "json: cannot unmarshal string into Go struct field" the moment it
+// hits apiHost.
+func TestSMPluginDatasourceNameHandlesNonObjectJSONDataFields(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"jsonData": {
+				"apiHost": "https://synthetic-monitoring-api.grafana.net",
+				"stackId": 9880,
+				"metrics": {"grafanaName": "metrics-ds"},
+				"logs": {"grafanaName": "logs-ds"}
+			}
+		}`))
+	}))
+	t.Cleanup(server.Close)
+
+	restCfg := config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}}
+
+	metricsName, err := smMetricsDatasourceName(context.Background(), restCfg)
+	if err != nil {
+		t.Fatalf("smMetricsDatasourceName() error = %v", err)
+	}
+	if metricsName != "metrics-ds" {
+		t.Errorf("smMetricsDatasourceName() = %q, want %q", metricsName, "metrics-ds")
+	}
+
+	logsName, err := smLogsDatasourceName(context.Background(), restCfg)
+	if err != nil {
+		t.Fatalf("smLogsDatasourceName() error = %v", err)
+	}
+	if logsName != "logs-ds" {
+		t.Errorf("smLogsDatasourceName() = %q, want %q", logsName, "logs-ds")
+	}
+}

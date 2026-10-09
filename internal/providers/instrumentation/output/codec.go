@@ -6,14 +6,11 @@
 package output
 
 import (
-	"errors"
-	"fmt"
 	"io"
 	"strconv"
 
-	"github.com/grafana/gcx/internal/format"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers/instrumentation"
-	"github.com/grafana/gcx/internal/style"
 )
 
 // ─── View types ──────────────────────────────────────────────────────────────
@@ -178,19 +175,10 @@ func AccessPoliciesURL(orgSlug string) string {
 // The Items slice is initialized via make([]T, 0) in the command layer to
 // guarantee [] (not null) for empty results.
 
-// ClusterListEnvelope is the JSON envelope for the clusters list command.
-type ClusterListEnvelope struct {
-	Items []ClusterView `json:"items"`
-}
-
-// ServiceListEnvelope is the JSON envelope for the services list command.
-type ServiceListEnvelope struct {
-	Items []ServiceView `json:"items"`
-}
-
-// AppListEnvelope is the JSON envelope for the clusters apps list command.
-type AppListEnvelope struct {
-	Items []AppView `json:"items"`
+// ListEnvelope is the JSON envelope every instrumentation list command emits.
+// EncodeList builds it from the row type, so commands rarely name it directly.
+type ListEnvelope[T any] struct {
+	Items []T `json:"items"`
 }
 
 // ─── STATUS normalization ─────────────────────────────────────────────────────
@@ -279,67 +267,28 @@ func displayNamespace(displayNS, ns string) string {
 // Selection is NOT rendered as a column in either table or wide output.
 // Default table STATUS is normalized to OK/FAILING/NODATA.
 // Wide table STATUS is the raw proto enum value.
-type ClusterTableCodec struct {
-	Wide bool
-}
+func ClusterTable() cmdio.Table[ClusterView] {
+	return cmdio.Table[ClusterView]{
+		Columns: []cmdio.Column[ClusterView]{
+			{Header: "NAME", Content: func(c ClusterView) string { return c.Name }},
+			{Header: "NAMESPACES", Content: func(c ClusterView) string { return itoa(c.Namespaces) }},
+			{Header: "WORKLOADS", Content: func(c ClusterView) string { return itoa(c.Workloads) }},
+			{Header: "PODS", Content: func(c ClusterView) string { return itoa(c.Pods) }},
+			{Header: "COST", Visible: cmdio.WideOnly, Content: func(c ClusterView) string { return boolDisplay(c.CostMetrics) }},
+			{Header: "EVENTS", Visible: cmdio.WideOnly, Content: func(c ClusterView) string { return boolDisplay(c.ClusterEvents) }},
+			{Header: "ENERGY", Visible: cmdio.WideOnly, Content: func(c ClusterView) string { return boolDisplay(c.EnergyMetrics) }},
+			{Header: "LOGS", Visible: cmdio.WideOnly, Content: func(c ClusterView) string { return boolDisplay(c.NodeLogs) }},
+			{Header: "NODES", Visible: cmdio.WideOnly, Content: func(c ClusterView) string { return itoa(c.Nodes) }},
 
-var _ format.Codec = (*ClusterTableCodec)(nil)
-
-func (c *ClusterTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
+			// STATUS is normalized in table and the raw proto enum in wide.
+			{Header: "STATUS", Visible: cmdio.NarrowOnly, Content: func(c ClusterView) string {
+				return NormalizeStatus(c.InstrumentationStatus)
+			}},
+			{Header: "STATUS", Visible: cmdio.WideOnly, Content: func(c ClusterView) string {
+				return string(c.InstrumentationStatus)
+			}},
+		},
 	}
-	return "table"
-}
-
-func (c *ClusterTableCodec) Encode(w io.Writer, v any) error {
-	var clusters []ClusterView
-	switch val := v.(type) {
-	case []ClusterView:
-		clusters = val
-	case ClusterListEnvelope:
-		clusters = val.Items
-	default:
-		return fmt.Errorf("ClusterTableCodec: expected []ClusterView or ClusterListEnvelope, got %T", v)
-	}
-
-	var t *style.TableBuilder
-	if c.Wide {
-		t = style.NewTable("NAME", "NAMESPACES", "WORKLOADS", "PODS", "COST", "EVENTS", "ENERGY", "LOGS", "NODES", "STATUS")
-	} else {
-		t = style.NewTable("NAME", "NAMESPACES", "WORKLOADS", "PODS", "STATUS")
-	}
-
-	for _, cl := range clusters {
-		if c.Wide {
-			t.Row(
-				cl.Name,
-				itoa(cl.Namespaces),
-				itoa(cl.Workloads),
-				itoa(cl.Pods),
-				boolDisplay(cl.CostMetrics),
-				boolDisplay(cl.ClusterEvents),
-				boolDisplay(cl.EnergyMetrics),
-				boolDisplay(cl.NodeLogs),
-				itoa(cl.Nodes),
-				string(cl.InstrumentationStatus),
-			)
-		} else {
-			t.Row(
-				cl.Name,
-				itoa(cl.Namespaces),
-				itoa(cl.Workloads),
-				itoa(cl.Pods),
-				NormalizeStatus(cl.InstrumentationStatus),
-			)
-		}
-	}
-
-	return t.Render(w)
-}
-
-func (c *ClusterTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
 }
 
 // ─── AppTableCodec ────────────────────────────────────────────────────────────
@@ -351,70 +300,30 @@ func (c *ClusterTableCodec) Decode(_ io.Reader, _ any) error {
 //
 // Default table STATUS is normalized to OK/FAILING/NODATA.
 // Wide table STATUS is the raw proto enum value.
-type AppTableCodec struct {
-	Wide bool
-}
+func AppTable() cmdio.Table[AppView] {
+	return cmdio.Table[AppView]{
+		Columns: []cmdio.Column[AppView]{
+			{Header: "NAME", Content: func(a AppView) string { return a.Name }},
+			{Header: "CLUSTER", Content: func(a AppView) string { return a.ClusterName }},
+			{Header: "WORKLOADS", Content: func(a AppView) string { return itoa(a.Workloads) }},
+			{Header: "PODS", Content: func(a AppView) string { return itoa(a.Pods) }},
+			{Header: "AUTOINSTRUMENT", Content: func(a AppView) string { return boolDisplay(a.Autoinstrument) }},
+			{Header: "TRACING", Visible: cmdio.WideOnly, Content: func(a AppView) string { return boolDisplay(a.Tracing) }},
+			{Header: "LOGGING", Visible: cmdio.WideOnly, Content: func(a AppView) string { return boolDisplay(a.Logging) }},
+			{Header: "PROCESS_METRICS", Visible: cmdio.WideOnly, Content: func(a AppView) string { return boolDisplay(a.ProcessMetrics) }},
+			{Header: "EXTENDED_METRICS", Visible: cmdio.WideOnly, Content: func(a AppView) string { return boolDisplay(a.ExtendedMetrics) }},
+			{Header: "PROFILING", Visible: cmdio.WideOnly, Content: func(a AppView) string { return boolDisplay(a.Profiling) }},
+			{Header: "OVERRIDES", Visible: cmdio.WideOnly, Content: func(a AppView) string { return itoa(a.Overrides) }},
 
-var _ format.Codec = (*AppTableCodec)(nil)
-
-func (c *AppTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
+			// STATUS is normalized in table and the raw proto enum in wide.
+			{Header: "STATUS", Visible: cmdio.NarrowOnly, Content: func(a AppView) string {
+				return NormalizeStatus(a.InstrumentationStatus)
+			}},
+			{Header: "STATUS", Visible: cmdio.WideOnly, Content: func(a AppView) string {
+				return string(a.InstrumentationStatus)
+			}},
+		},
 	}
-	return "table"
-}
-
-func (c *AppTableCodec) Encode(w io.Writer, v any) error {
-	var apps []AppView
-	switch val := v.(type) {
-	case []AppView:
-		apps = val
-	case AppListEnvelope:
-		apps = val.Items
-	default:
-		return fmt.Errorf("AppTableCodec: expected []AppView or AppListEnvelope, got %T", v)
-	}
-
-	var t *style.TableBuilder
-	if c.Wide {
-		t = style.NewTable("NAME", "CLUSTER", "WORKLOADS", "PODS", "AUTOINSTRUMENT", "TRACING", "LOGGING", "PROCESS_METRICS", "EXTENDED_METRICS", "PROFILING", "OVERRIDES", "STATUS")
-	} else {
-		t = style.NewTable("NAME", "CLUSTER", "WORKLOADS", "PODS", "AUTOINSTRUMENT", "STATUS")
-	}
-
-	for _, a := range apps {
-		if c.Wide {
-			t.Row(
-				a.Name,
-				a.ClusterName,
-				itoa(a.Workloads),
-				itoa(a.Pods),
-				boolDisplay(a.Autoinstrument),
-				boolDisplay(a.Tracing),
-				boolDisplay(a.Logging),
-				boolDisplay(a.ProcessMetrics),
-				boolDisplay(a.ExtendedMetrics),
-				boolDisplay(a.Profiling),
-				itoa(a.Overrides),
-				string(a.InstrumentationStatus),
-			)
-		} else {
-			t.Row(
-				a.Name,
-				a.ClusterName,
-				itoa(a.Workloads),
-				itoa(a.Pods),
-				boolDisplay(a.Autoinstrument),
-				NormalizeStatus(a.InstrumentationStatus),
-			)
-		}
-	}
-
-	return t.Render(w)
-}
-
-func (c *AppTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
 }
 
 // ─── ServiceTableCodec ────────────────────────────────────────────────────────
@@ -431,67 +340,46 @@ func (c *AppTableCodec) Decode(_ io.Reader, _ any) error {
 //
 // Table NAME renders DisplayName when set, falling back to Name.
 // Table NAMESPACE renders DisplayNamespace when set, falling back to Namespace.
-type ServiceTableCodec struct {
-	Wide bool
-}
+func ServiceTable() cmdio.Table[ServiceView] {
+	return cmdio.Table[ServiceView]{
+		Columns: []cmdio.Column[ServiceView]{
+			{Header: "NAME", Content: func(s ServiceView) string { return displayName(s.DisplayName, s.Name) }},
+			{Header: "CLUSTER", Content: func(s ServiceView) string { return s.ClusterName }},
+			{Header: "NAMESPACE", Content: func(s ServiceView) string {
+				return displayNamespace(s.DisplayNamespace, s.Namespace)
+			}},
+			{Header: "TYPE", Content: func(s ServiceView) string { return s.WorkloadType }},
+			{Header: "LANG", Content: func(s ServiceView) string { return s.Lang }},
+			{Header: "OS", Visible: cmdio.WideOnly, Content: func(s ServiceView) string { return s.OS }},
+			{Header: "INSTRUMENTATION_ERROR", Visible: cmdio.WideOnly, Content: func(s ServiceView) string {
+				return s.InstrumentationErrorMessage
+			}},
 
-var _ format.Codec = (*ServiceTableCodec)(nil)
-
-func (c *ServiceTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
+			// STATUS is normalized in table and the raw proto enum in wide.
+			{Header: "STATUS", Visible: cmdio.NarrowOnly, Content: func(s ServiceView) string {
+				return NormalizeStatus(s.InstrumentationStatus)
+			}},
+			{Header: "STATUS", Visible: cmdio.WideOnly, Content: func(s ServiceView) string {
+				return string(s.InstrumentationStatus)
+			}},
+		},
 	}
-	return "table"
 }
 
-func (c *ServiceTableCodec) Encode(w io.Writer, v any) error {
-	var services []ServiceView
-	switch val := v.(type) {
-	case []ServiceView:
-		services = val
-	case ServiceListEnvelope:
-		services = val.Items
+// EncodeList writes rows through the resolved codec when a table format is
+// selected, and wraps them in the list envelope otherwise. The table codecs
+// render a row slice while JSON and YAML render the envelope, so the payload
+// depends on the resolved format rather than on what the command fetched.
+func EncodeList[T any](opts *cmdio.Options, w io.Writer, rows []T) error {
+	codec, err := opts.Codec()
+	if err != nil {
+		return err
+	}
+
+	switch string(codec.Format()) {
+	case cmdio.FormatTable, cmdio.FormatWide, cmdio.FormatText:
+		return codec.Encode(w, rows)
 	default:
-		return fmt.Errorf("ServiceTableCodec: expected []ServiceView or ServiceListEnvelope, got %T", v)
+		return opts.Encode(w, ListEnvelope[T]{Items: rows})
 	}
-
-	var t *style.TableBuilder
-	if c.Wide {
-		t = style.NewTable("NAME", "CLUSTER", "NAMESPACE", "TYPE", "LANG", "OS", "INSTRUMENTATION_ERROR", "STATUS")
-	} else {
-		t = style.NewTable("NAME", "CLUSTER", "NAMESPACE", "TYPE", "LANG", "STATUS")
-	}
-
-	for _, svc := range services {
-		name := displayName(svc.DisplayName, svc.Name)
-		ns := displayNamespace(svc.DisplayNamespace, svc.Namespace)
-
-		if c.Wide {
-			t.Row(
-				name,
-				svc.ClusterName,
-				ns,
-				svc.WorkloadType,
-				svc.Lang,
-				svc.OS,
-				svc.InstrumentationErrorMessage,
-				string(svc.InstrumentationStatus),
-			)
-		} else {
-			t.Row(
-				name,
-				svc.ClusterName,
-				ns,
-				svc.WorkloadType,
-				svc.Lang,
-				NormalizeStatus(svc.InstrumentationStatus),
-			)
-		}
-	}
-
-	return t.Render(w)
-}
-
-func (c *ServiceTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
 }

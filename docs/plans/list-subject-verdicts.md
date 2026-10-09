@@ -105,6 +105,15 @@ recorded verbatim.
 
 - **`gcx appo11y services labels`** — ADR §8 case (b): the positional is the parent service's ID and labels are a parent-scoped, non-independently-addressable collection (--label is a narrowing filter returning a one-element Items list), while §4/§10 confine the `labels` shorthand to signal/per-datasource families excluding appo11y — so the compound list-labels, matching sibling `services list-operations <service>` which §8 cites verbatim.
 
+### Cloud organisation discovery
+
+Keep `gcx cloud orgs list`. Under [command naming: place each operation by the
+identity it requires](../design/command-naming.md#place-each-operation-by-the-identity-it-requires),
+a noun group applies when an operation enumerates a resource group without a
+parent identity. This command lists the user's organisation memberships without
+requiring a parent identity.
+This command only lists memberships and does not change stack creation.
+
 ### cloud — tail sweep (wave 2)
 
 | Current | Verdict | Target |
@@ -148,7 +157,12 @@ recorded verbatim.
 ## Non-members, for the record
 
 `gcx irm incidents severities list` keeps its noun group under the ADR §8 catalog-children
-carve-out (no parent identity in the addressing path). Wave-1 keeps adjacent to this family:
+carve-out (no parent identity in the addressing path). **Superseded (PR #1193):** the maintainer
+supersedes the ADR §8 catalog-children carve-out for the Incident Response and Management (IRM)
+area, so every catalog in that area uses the compound `list-<subject>` spelling; the four OnCall
+catalogs (`escalation-policies list-step-types`, `routes list-filter-types`,
+`webhooks list-triggers`, `webhooks list-presets`) take the compound spelling now, and
+`severities` follows in a separate change. Wave-1 keeps adjacent to this family:
 `agento11y saved-conversations collections` (collections are independently addressable;
 panel split) and the pyroscope `exemplars profile`/`span` pair (shared builder mounted under
 two trees; convergence deferred to the profiles batch). See the wave-1 PR bodies (#1013,

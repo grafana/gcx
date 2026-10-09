@@ -40,7 +40,8 @@ func tableCells(output string) [][]string {
 	return rows
 }
 
-func TestAppTableCodec_Encode(t *testing.T) {
+func TestAppTable_Encode(t *testing.T) {
+	runtime := "android-native"
 	tests := []struct {
 		name     string
 		wide     bool
@@ -74,14 +75,16 @@ func TestAppTableCodec_Encode(t *testing.T) {
 					AppKey:                "abc123",
 					CollectEndpointURL:    "https://faro.example.com/collect/abc123",
 					OTLPIngestEndpointURL: "https://faro.example.com/otlp",
+					AppType:               "mobile",
+					Runtime:               &runtime,
 					CORSOrigins:           []faro.CORSOrigin{{URL: "https://app.example.com"}},
 					ExtraLogLabels:        map[string]string{"team": "frontend"},
-					Settings:              &faro.FaroAppSettings{GeolocationEnabled: true, GeolocationLevel: "country"},
+					Settings:              &faro.FaroAppSettings{GeolocationEnabled: new(true), GeolocationLevel: "country"},
 				},
 			},
-			wantCols: []string{"NAME", "APP KEY", "COLLECT ENDPOINT URL", "OTLP INGEST ENDPOINT URL", "CORS ORIGINS", "EXTRA LOG LABELS", "GEOLOCATION"},
+			wantCols: []string{"NAME", "APP KEY", "COLLECT ENDPOINT URL", "APP TYPE", "RUNTIME", "OTLP INGEST ENDPOINT URL", "CORS ORIGINS", "EXTRA LOG LABELS", "GEOLOCATION"},
 			wantRows: [][]string{
-				{"my-app-42", "abc123", "https://faro.example.com/collect/abc123", "https://faro.example.com/otlp", "https://app.example.com", "team=frontend", "country"},
+				{"my-app-42", "abc123", "https://faro.example.com/collect/abc123", "mobile", "android-native", "https://faro.example.com/otlp", "https://app.example.com", "team=frontend", "country"},
 			},
 		},
 		{
@@ -92,10 +95,10 @@ func TestAppTableCodec_Encode(t *testing.T) {
 					Name: "minimal-app",
 				},
 			},
-			wantCols: []string{"NAME", "APP KEY", "COLLECT ENDPOINT URL", "OTLP INGEST ENDPOINT URL", "CORS ORIGINS", "EXTRA LOG LABELS", "GEOLOCATION"},
+			wantCols: []string{"NAME", "APP KEY", "COLLECT ENDPOINT URL", "APP TYPE", "RUNTIME", "OTLP INGEST ENDPOINT URL", "CORS ORIGINS", "EXTRA LOG LABELS", "GEOLOCATION"},
 			// One dash per empty column, so deleting a dash branch fails here.
 			wantRows: [][]string{
-				{"minimal-app-", "-", "-", "-", "-", "-", "-"},
+				{"minimal-app-", "-", "-", "-", "-", "-", "-", "-", "-"},
 			},
 		},
 		{
@@ -108,7 +111,7 @@ func TestAppTableCodec_Encode(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			codec := &faro.AppTableCodec{Wide: tt.wide}
+			codec := faro.AppTable().Codec(formatName(tt.wide))
 			var buf bytes.Buffer
 
 			err := codec.Encode(&buf, toTypedObjs(tt.apps))
@@ -124,23 +127,23 @@ func TestAppTableCodec_Encode(t *testing.T) {
 	}
 }
 
-func TestAppTableCodec_Encode_InvalidType(t *testing.T) {
-	codec := &faro.AppTableCodec{}
+func TestAppTable_Encode_InvalidType(t *testing.T) {
+	codec := faro.AppTable().Codec("table")
 	var buf bytes.Buffer
 
 	err := codec.Encode(&buf, "not a slice")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "expected []TypedObject[FaroApp]")
+	assert.Contains(t, err.Error(), "invalid data type for table codec")
 }
 
-func TestAppTableCodec_Decode_Unsupported(t *testing.T) {
-	codec := &faro.AppTableCodec{}
+func TestAppTable_Decode_Unsupported(t *testing.T) {
+	codec := faro.AppTable().Codec("table")
 	err := codec.Decode(nil, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "does not support decoding")
 }
 
-func TestAppTableCodec_Format(t *testing.T) {
+func TestAppTable_Format(t *testing.T) {
 	tests := []struct {
 		name string
 		wide bool
@@ -152,7 +155,7 @@ func TestAppTableCodec_Format(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			codec := &faro.AppTableCodec{Wide: tt.wide}
+			codec := faro.AppTable().Codec(formatName(tt.wide))
 			assert.Equal(t, tt.want, string(codec.Format()))
 		})
 	}
@@ -204,4 +207,13 @@ func TestProviderInterface(t *testing.T) {
 	assert.NotNil(t, regs[0].Schema)
 	assert.NotNil(t, regs[0].Example)
 	assert.NotNil(t, regs[0].Factory)
+}
+
+// formatName maps the wide flag used by these tables to the registered format
+// name the codec is built for.
+func formatName(wide bool) string {
+	if wide {
+		return "wide"
+	}
+	return "table"
 }

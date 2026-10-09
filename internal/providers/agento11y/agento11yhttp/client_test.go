@@ -144,6 +144,60 @@ func TestListAll_LimitStopsPagination(t *testing.T) {
 	assert.Equal(t, 1, callCount, "should not fetch second page when limit already reached")
 }
 
+func TestListAllWithHasMore_CompleteAtLimit(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		writeJSON(w, map[string]any{
+			"items": []testItem{
+				{ID: "1", Name: "first"},
+				{ID: "2", Name: "second"},
+			},
+		})
+	}))
+
+	items, hasMore, err := agento11yhttp.ListAllWithHasMore[testItem](context.Background(), client, "/query/items", nil, 2)
+	require.NoError(t, err)
+	assert.Len(t, items, 2)
+	assert.False(t, hasMore)
+}
+
+func TestListAllWithHasMore_TruncatedMidPage(t *testing.T) {
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		writeJSON(w, map[string]any{
+			"items": []testItem{
+				{ID: "1", Name: "first"},
+				{ID: "2", Name: "second"},
+				{ID: "3", Name: "third"},
+			},
+			"next_cursor": "page2",
+		})
+	}))
+
+	items, hasMore, err := agento11yhttp.ListAllWithHasMore[testItem](context.Background(), client, "/query/items", nil, 2)
+	require.NoError(t, err)
+	assert.Len(t, items, 2)
+	assert.True(t, hasMore)
+}
+
+func TestListAllWithHasMore_TruncatedWithNextPage(t *testing.T) {
+	callCount := 0
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		callCount++
+		w.Header().Set("Content-Type", "application/json")
+		writeJSON(w, map[string]any{
+			"items":       []testItem{{ID: "1"}},
+			"next_cursor": "more",
+		})
+	}))
+
+	items, hasMore, err := agento11yhttp.ListAllWithHasMore[testItem](context.Background(), client, "/query/items", nil, 1)
+	require.NoError(t, err)
+	assert.Len(t, items, 1)
+	assert.True(t, hasMore)
+	assert.Equal(t, 1, callCount)
+}
+
 func TestListAll_ErrorResponse(t *testing.T) {
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "forbidden", http.StatusForbidden)

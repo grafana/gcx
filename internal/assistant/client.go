@@ -88,15 +88,6 @@ func (c *Client) GetChat(ctx context.Context, chatID string) (*Chat, error) {
 	return FetchChat(ctx, c.baseURL, token, chatID, c.httpClient)
 }
 
-// GetChatMessages fetches all messages for a chat.
-func (c *Client) GetChatMessages(ctx context.Context, chatID string) ([]ChatMessage, error) {
-	token, err := c.freshToken(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("refresh authentication token: %w", err)
-	}
-	return FetchChatMessages(ctx, c.baseURL, token, chatID, c.httpClient)
-}
-
 // ListChats lists the caller's chats, with optional filtering and pagination.
 func (c *Client) ListChats(ctx context.Context, opts ListChatsOptions) ([]Chat, error) {
 	token, err := c.freshToken(ctx)

@@ -1,14 +1,16 @@
 ## gcx kg relationships upsert
 
-Create or update a custom relationship (upsert) [experimental].
+[experimental] Create or update a custom relationship (upsert).
 
 ### Synopsis
+
+This command is experimental. It may be removed, or its subcommands, flags and
+responses may change without following the normal semantic versioning conventions.
 
 Create or update an API-origin edge between two existing entities.
 Both endpoints must already exist.
 
-Experimental: this command uses the Knowledge Graph write API, which is gated
-server-side and may change.
+This command uses the Knowledge Graph write API, which is gated server-side.
 
 With -f, the input may be a single object or a YAML/JSON array. Array entries
 are processed in order as independent upserts: the operation is not atomic,
@@ -47,10 +49,10 @@ gcx kg relationships upsert [flags]
 ### Options inherited from parent commands
 
 ```
-      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
+      --agent                       Enable agent mode (JSON output, no color). Auto-detected from known agent identity variables. Set GCX_AGENT_NAME to identify a supported harness, or GCX_AGENT_MODE to control the mode.
       --config string               Path to the configuration file to use
       --context string              Name of the context to use (overrides current-context in config)
-      --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.
+      --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Requires -vvv. Do not ship these logs.
       --no-color                    Disable color output
       --no-truncate                 Disable table column truncation (auto-enabled when stdout is piped)
   -v, --verbose count               Verbose mode. Multiple -v options increase the verbosity (maximum: 3).
@@ -58,5 +60,5 @@ gcx kg relationships upsert [flags]
 
 ### SEE ALSO
 
-* [gcx kg relationships](gcx_kg_relationships.md)	 - Manage custom Knowledge Graph relationships [experimental].
+* [gcx kg relationships](gcx_kg_relationships.md)	 - [experimental] Manage custom Knowledge Graph relationships.
 

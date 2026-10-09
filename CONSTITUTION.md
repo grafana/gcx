@@ -41,7 +41,11 @@ OnCall, Fleet Management, etc.) using product-specific REST APIs.
   provider commands and the `resources` pipeline automatically. Provider-only
   commands with no adapter registration use their product clients directly — they
   are not required to construct an adapter merely to spell an honest `list` or `get`.
-  > **Exception:** The dashboards commands-only provider (`internal/providers/dashboards/`) calls the K8s dynamic client directly. This is the one documented exception — see ADR 016 (`docs/adrs/dashboards-provider/001-dashboards-provider-design.md`) for rationale and scope.
+- **Native resources go through the shared native binding.** Provider commands that
+  manage a Kubernetes-compatible resource discovered from the server use
+  `internal/providers/native`. They never register an adapter for a discovered GVK,
+  and never construct discovery registries or dynamic clients directly.
+  > **Pending migration:** the dashboards provider (`internal/providers/dashboards/`) still builds its descriptor and dynamic client by hand (see ADR 016, `docs/adrs/dashboards-provider/001-dashboards-provider-design.md`). Its migration to the native binding is the next slice of RFC 001 (`docs/rfcs/001-alerting-provider-refactor.md`); until it lands, this is a known gap, not a second exception.
 - **Schema/Example on Registration structs:** Every `adapter.Registration` struct (populated
   via `TypedRegistrations()`) must include a non-nil `Schema` field. These power the
   `resources list-types` command via the global `SchemaForGVK`/`ExampleForGVK` functions — `AsAdapter()`
@@ -59,7 +63,7 @@ OnCall, Fleet Management, etc.) using product-specific REST APIs.
   the project or CLI itself, not on Grafana resources. Bare top-level
   verbs (single-token commands) are permitted only for two narrow
   categories: (1) foundational bootstrapping that precedes any area or
-  resource context — `gcx login`, `gcx setup`; and (2) CLI-meta commands
+  resource context — `gcx signup`, `gcx login`, `gcx setup`; and (2) CLI-meta commands
   that report on the binary itself rather than on Grafana — `gcx version`
   and Cobra-provided `help`/`completion`. This is an explicit, closed
   enumeration — any new top-level command must follow `$AREA $NOUN $VERB`
@@ -81,7 +85,10 @@ OnCall, Fleet Management, etc.) using product-specific REST APIs.
   release, unless the surface was explicitly marked experimental before
   release. The complete v1.0.0 command surface is therefore a supported
   compatibility exception for all v1.x releases, including invocations that
-  predate or deviate from the rules above.
+  predate or deviate from the rules above. One caveat to this rule is that commands marked as experimental may be removed or
+  changed without following the normal semver conventions - see
+  [experimental-commands.md](docs/design/experimental-commands.md) for how a command
+  is marked.
 
 ## Dual-Purpose Design
 
@@ -143,8 +150,10 @@ agent mode detection, behavior changes, and opt-out mechanisms.
   Provider commands (`slo definitions list`) are ergonomic shorthands with
   domain-rich table output. Generic commands
   (`resources get slos.v1alpha1.slo.ext.grafana.app`) serve the push/pull
-  pipeline and cross-resource operations. Neither path is deprecated; both
-  are first-class.
+  pipeline and cross-resource operations. Both paths remain first-class for
+  CRUD access. SLO-specific push/pull commands are deprecated compatibility
+  wrappers around the shared resource pipeline; use `resources push/pull`
+  for new workflows. Their released invocations remain supported.
 - **For dual-path resources, JSON/YAML output is identical between both
   paths.** This is enforced structurally: provider CRUD commands must use
   their registered `ResourceAdapter` (via TypedCRUD) for data access, not raw
@@ -193,13 +202,21 @@ agent mode detection, behavior changes, and opt-out mechanisms.
   credentials independently — this ensures consistent env var precedence,
   secret handling, and auth behavior across all providers.
 - **`httputils.NewDefaultClient(ctx)` for external APIs.** Provider clients
-  calling APIs outside the Grafana server (k6 Cloud, OnCall, Fleet —
+  calling APIs outside the Grafana server (k6 Cloud, OnCall —
   any domain other than `cfg.Host`) must use `httputils.NewDefaultClient(ctx)`,
   never `rest.HTTPClientFor()`. The k8s transport round-tripper injects the
   Grafana bearer token on every outgoing request, which conflicts with the
   product's own auth mechanism. `NewDefaultClient(ctx)` returns an `*http.Client`
   with `LoggingRoundTripper` and no auth injection — providers set their own
   auth headers per request.
+- **Fleet Management runs through the plugin proxy.** Fleet Management and the
+  Instrumentation Hub reach their API at `cfg.Host`, through the
+  `grafana-collector-app` plugin proxy
+  (`/api/plugin-proxy/grafana-collector-app/fleet-management-api/…`). The plugin
+  adds the Fleet Management credentials and the tenant headers server-side, so
+  the client carries the caller's Grafana credential only and uses
+  `rest.HTTPClientFor()`, the same as Faro. Fleet Management needs no
+  grafana.com token and no `fleet-management` access policy scope. See ADR-023.
 - **Synth is dual-mode (carve-out).** Synthetic Monitoring reaches its API two
   ways: (1) primary — Grafana's datasource proxy at `cfg.Host`
   (`/api/datasources/proxy/uid/<sm-uid>/sm/…`) via `rest.HTTPClientFor()` in

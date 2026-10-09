@@ -1,5 +1,10 @@
 package checks
 
+import (
+	"errors"
+	"strings"
+)
+
 const (
 	// APIVersion is the K8s envelope API version for SM Check resources.
 	APIVersion = "syntheticmonitoring.ext.grafana.app/v1alpha1"
@@ -23,6 +28,7 @@ type Check struct {
 	Probes           []int64        `json:"probes"` // probe IDs — only used in API requests
 	BasicMetricsOnly bool           `json:"basicMetricsOnly,omitempty"`
 	AlertSensitivity string         `json:"alertSensitivity,omitempty"`
+	FolderUID        *string        `json:"folderUid,omitempty"` // nil preserves the assignment on update; empty clears it.
 	Channels         map[string]any `json:"channels,omitempty"`
 	Created          float64        `json:"created,omitempty"`
 	Modified         float64        `json:"modified,omitempty"`
@@ -31,17 +37,80 @@ type Check struct {
 // CheckSpec is the user-facing representation stored in YAML files.
 // Probes are stored as human-readable names, not IDs.
 type CheckSpec struct {
-	Job              string        `json:"job"`
-	Target           string        `json:"target"`
-	Frequency        int64         `json:"frequency"`
-	Offset           int64         `json:"offset,omitempty"`
-	Timeout          int64         `json:"timeout"`
-	Enabled          bool          `json:"enabled"`
-	Labels           []Label       `json:"labels,omitempty"`
-	Settings         CheckSettings `json:"settings"`
-	Probes           []string      `json:"probes"` // probe NAMES in YAML files
-	BasicMetricsOnly bool          `json:"basicMetricsOnly,omitempty"`
-	AlertSensitivity string        `json:"alertSensitivity,omitempty"`
+	Job              string         `json:"job"`
+	Target           string         `json:"target"`
+	Frequency        int64          `json:"frequency"`
+	Offset           int64          `json:"offset,omitempty"`
+	Timeout          int64          `json:"timeout"`
+	Enabled          bool           `json:"enabled"`
+	Labels           []Label        `json:"labels,omitempty"`
+	Settings         CheckSettings  `json:"settings"`
+	Probes           []string       `json:"probes"` // probe NAMES in YAML files
+	BasicMetricsOnly bool           `json:"basicMetricsOnly,omitempty"`
+	AlertSensitivity string         `json:"alertSensitivity,omitempty"`
+	FolderUID        *string        `json:"folderUid,omitempty" jsonschema:"description=Grafana folder UID; does not create a folder. On create omit or use an empty string for no explicit assignment. On update omit to preserve the assignment or use an empty string to clear it."`
+	Channels         map[string]any `json:"channels,omitempty"`
+}
+
+// ValidateRequest is the payload for POST check/validate. It is a CheckSpec
+// (probes as names — the server resolves names or IDs) plus the optional ID of
+// the check being updated, which lets the server treat a target/job match with
+// that check as non-conflicting.
+type ValidateRequest struct {
+	CheckSpec
+
+	ID int64 `json:"id,omitempty"`
+}
+
+// Finding severities returned by POST check/validate.
+const (
+	SeverityError   = "error"
+	SeverityWarning = "warning"
+)
+
+// Finding is one problem reported by POST check/validate. Field is a dot-path
+// into the check and is empty for findings about the check as a whole
+// (structural validation, quota limits).
+type Finding struct {
+	Severity string `json:"severity"`
+	Field    string `json:"field"`
+	Msg      string `json:"msg"`
+}
+
+// String renders the finding as "field: msg", or just "msg" for findings about
+// the check as a whole.
+func (f Finding) String() string {
+	if f.Field == "" {
+		return f.Msg
+	}
+	return f.Field + ": " + f.Msg
+}
+
+// ValidateResult is the response of POST check/validate.
+type ValidateResult struct {
+	Valid    bool      `json:"valid"`
+	Findings []Finding `json:"findings"`
+}
+
+// Error returns nil when the check is valid, otherwise an error listing every
+// error-severity finding, one per line. Findings of any other severity never fail validation.
+func (r ValidateResult) Error() error {
+	var lines []string
+	for _, f := range r.Findings {
+		if f.Severity != SeverityError {
+			continue
+		}
+		lines = append(lines, f.String())
+	}
+
+	switch {
+	case len(lines) > 0:
+		return errors.New(strings.Join(lines, "\n"))
+	case !r.Valid:
+		return errors.New("server reported the check as invalid")
+	default:
+		return nil
+	}
 }
 
 // Label is a key-value pair applied to all metrics and events for a check.

@@ -9,8 +9,10 @@ import (
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/graph"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/slo/definitions"
 	"github.com/grafana/gcx/internal/query/prometheus"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -45,7 +47,7 @@ func (o *reportStatusOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func newStatusCommand(loader GrafanaConfigLoader) *cobra.Command {
+func newStatusCommand(resource providers.BoundResource[Report]) *cobra.Command {
 	opts := &reportStatusOpts{}
 	cmd := &cobra.Command{
 		Use:   "status [UUID]",
@@ -76,13 +78,7 @@ metrics, and computes combined SLI and error budget per report.`,
 
 			ctx := cmd.Context()
 
-			restCfg, err := loader.LoadGrafanaConfig(ctx)
-			if err != nil {
-				return err
-			}
-
-			// Create report and SLO definition clients.
-			reportClient, err := NewClient(restCfg)
+			reportClient, restCfg, err := resource.Load(ctx)
 			if err != nil {
 				return err
 			}
@@ -105,16 +101,21 @@ metrics, and computes combined SLI and error budget per report.`,
 					if err != nil {
 						return err
 					}
-					reports = []Report{*r}
+					reports = []Report{r.Spec}
 					return nil
 				}
-				var err error
-				reports, err = reportClient.List(initCtx)
-				return err
+				items, err := reportClient.List(initCtx, 0)
+				if err != nil {
+					return err
+				}
+				for _, item := range items {
+					reports = append(reports, item.Spec)
+				}
+				return nil
 			})
 			initG.Go(func() error {
 				var err error
-				allSLOs, err = sloClient.List(initCtx)
+				allSLOs, err = sloClient.List(initCtx, adapter.ListOptions{})
 				return err
 			})
 			if err := initG.Wait(); err != nil {

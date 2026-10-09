@@ -13,16 +13,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 
-	"github.com/charmbracelet/glamour"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/style"
 	otelexplain "github.com/grafana/otel-checker/checks/explain"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
-	"golang.org/x/term"
 )
 
 // DocView is the JSON/YAML-friendly projection of an explain doc.
@@ -126,31 +123,9 @@ func (*docTextCodec) Encode(w io.Writer, v any) error {
 		return fmt.Errorf("docTextCodec: expected DocView, got %T", v)
 	}
 	source := fmt.Sprintf("# %s\n\n%s", doc.Title, doc.Body)
-	if isTerminalWriter(w) && style.IsStylingEnabled() {
-		r, err := glamour.NewTermRenderer(glamour.WithStandardStyle("dark"), glamour.WithWordWrap(0))
-		if err == nil {
-			if out, err := r.Render(source); err == nil {
-				_, err := fmt.Fprint(w, out)
-				return err
-			}
-		}
-		// Fall through to raw markdown if glamour construction or render fails.
-	}
-	_, err := fmt.Fprint(w, source)
-	return err
+	return style.RenderMarkdown(w, source)
 }
 
 func (*docTextCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("text format does not support decoding")
-}
-
-// isTerminalWriter reports whether w is an *os.File attached to a terminal.
-// Buffers, pipes, and non-file writers are treated as non-terminal so raw
-// markdown flows through cleanly.
-func isTerminalWriter(w io.Writer) bool {
-	f, ok := w.(*os.File)
-	if !ok {
-		return false
-	}
-	return term.IsTerminal(int(f.Fd()))
 }

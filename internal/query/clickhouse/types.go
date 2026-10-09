@@ -39,6 +39,13 @@ func EnforceLimit(sql string, limit, maxLimit int) string {
 	return out
 }
 
+// EnforceLimitSentinel is EnforceLimit's truncation-detecting variant: it
+// injects "LIMIT eff+1" so the caller can tell whether more rows matched than
+// the cap allows. See querysql.EnforceLimitSentinel for the contract.
+func EnforceLimitSentinel(sql string, limit, maxLimit int) (string, int, bool) {
+	return querysql.EnforceLimitSentinel(sql, limit, maxLimit, limitBailRe.MatchString)
+}
+
 // QueryRequest represents a ClickHouse query request.
 type QueryRequest struct {
 	RawSQL     string

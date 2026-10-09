@@ -67,7 +67,7 @@ func (s *includeTestServer) start(t *testing.T) *httptest.Server {
 
 func makeIncludeClient(t *testing.T, serverURL string) *instrumentation.Client {
 	t.Helper()
-	f := fleet.NewClient(context.Background(), serverURL, "inst-id", "api-token", true, nil)
+	f := fleet.NewClient(context.Background(), serverURL, nil)
 	return instrumentation.NewClient(f)
 }
 

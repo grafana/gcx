@@ -155,7 +155,7 @@ func contextSelectionOverride(ctxName string) config.Override {
 			return nil
 		}
 		if !cfg.HasContext(ctxName) {
-			return config.ContextNotFound(ctxName)
+			return config.ContextNotFound(ctxName, cfg.ContextNames())
 		}
 		cfg.CurrentContext = ctxName
 		return nil
@@ -179,7 +179,7 @@ func cloudEnvOverride(cfg *config.Config) error {
 // contextMustExist is a config.Override that validates the current context exists.
 func contextMustExist(cfg *config.Config) error {
 	if !cfg.HasContext(cfg.CurrentContext) {
-		return config.ContextNotFound(cfg.CurrentContext)
+		return config.ContextNotFound(cfg.CurrentContext, cfg.ContextNames())
 	}
 	return nil
 }
@@ -486,7 +486,7 @@ func (l *ConfigLoader) LoadDirectProviderSnapshot(ctx context.Context, policy Di
 	}
 	curCtx := loaded.GetCurrentContext()
 	if curCtx == nil {
-		return DirectProviderSnapshot{}, config.ContextNotFound(loaded.CurrentContext)
+		return DirectProviderSnapshot{}, config.ContextNotFound(loaded.CurrentContext, loaded.ContextNames())
 	}
 
 	providerCfg := cloneProviderValues(curCtx.Providers[policy.ProviderName])
@@ -657,7 +657,7 @@ func (l *ConfigLoader) SaveDatasourceUID(ctx context.Context, kind, uid string) 
 		ctxName = config.DefaultContextName
 	}
 	if !loaded.HasContext(ctxName) {
-		return config.ContextNotFound(ctxName)
+		return config.ContextNotFound(ctxName, loaded.ContextNames())
 	}
 
 	curCtx := loaded.Contexts[ctxName]
@@ -737,7 +737,7 @@ func (l *ConfigLoader) SaveProviderConfig(ctx context.Context, providerName, key
 		ctxName = config.DefaultContextName
 	}
 	if !loaded.HasContext(ctxName) {
-		return config.ContextNotFound(ctxName)
+		return config.ContextNotFound(ctxName, loaded.ContextNames())
 	}
 
 	// Load resolves keychain values eagerly only for current-context. Resolve an
@@ -795,7 +795,7 @@ func (l *ConfigLoader) LoadConfigTolerant(ctx context.Context, extraOverrides ..
 func (l *ConfigLoader) LoadConfig(ctx context.Context) (config.Config, error) {
 	validator := func(cfg *config.Config) error {
 		if !cfg.HasContext(cfg.CurrentContext) {
-			return config.ContextNotFound(cfg.CurrentContext)
+			return config.ContextNotFound(cfg.CurrentContext, cfg.ContextNames())
 		}
 		return cfg.GetCurrentContext().Validate(ctx)
 	}

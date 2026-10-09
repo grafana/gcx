@@ -1,6 +1,8 @@
 package faro_test
 
 import (
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -10,6 +12,7 @@ import (
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/rest"
@@ -125,11 +128,12 @@ func TestResourceAdapter_List(t *testing.T) {
 
 func TestResourceAdapter_Get(t *testing.T) {
 	tests := []struct {
-		name     string
-		id       string
-		handler  http.HandlerFunc
-		wantName string
-		wantErr  bool
+		name         string
+		id           string
+		handler      http.HandlerFunc
+		wantName     string
+		wantErr      bool
+		wantNotFound bool
 	}{
 		{
 			name: "returns resource with correct name",
@@ -147,7 +151,8 @@ func TestResourceAdapter_Get(t *testing.T) {
 				w.WriteHeader(http.StatusNotFound)
 				_, _ = w.Write([]byte("not found"))
 			},
-			wantErr: true,
+			wantErr:      true,
+			wantNotFound: true,
 		},
 	}
 
@@ -161,6 +166,7 @@ func TestResourceAdapter_Get(t *testing.T) {
 
 			if tt.wantErr {
 				require.Error(t, err)
+				assert.Equal(t, tt.wantNotFound, apierrors.IsNotFound(err))
 				return
 			}
 
@@ -170,6 +176,56 @@ func TestResourceAdapter_Get(t *testing.T) {
 			assert.Equal(t, faro.Kind, result.GetKind())
 		})
 	}
+}
+
+// TestResourceAdapter_PushCreatesMissingApp follows the resources push path
+// for a manifest with no ID: Get must report NotFound, then Create must send
+// the classification and labels.
+func TestResourceAdapter_PushCreatesMissingApp(t *testing.T) {
+	const appPath = "/api/plugin-proxy/grafana-kowalski-app/api-proxy/api/v1/app"
+	var createBody map[string]any
+	mux := http.NewServeMux()
+	mux.HandleFunc(appPath, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			body, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(body, &createBody)
+		}
+		created := map[string]any{"id": 7, "name": "my-mobile-app", "appType": "mobile", "runtime": "android-native"}
+		if r.Method == http.MethodPost {
+			writeJSON(w, created)
+			return
+		}
+		writeJSON(w, []map[string]any{created})
+	})
+	// The Faro API has no route for a non-numeric ID.
+	mux.HandleFunc(appPath+"/", http.NotFound)
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	a := newTestAdapter(t, server, "stack-123")
+
+	_, err := a.Get(t.Context(), "my-mobile-app", metav1.GetOptions{})
+	require.True(t, apierrors.IsNotFound(err), "push creates only on NotFound, got %v", err)
+
+	obj := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": faro.APIVersion,
+		"kind":       faro.Kind,
+		"metadata":   map[string]any{"name": "my-mobile-app"},
+		"spec": map[string]any{
+			"name":           "my-mobile-app",
+			"appType":        "mobile",
+			"runtime":        "android-native",
+			"extraLogLabels": map[string]any{"is_mobile": "true"},
+		},
+	}}
+	_, err = a.Create(t.Context(), obj, metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	assert.Equal(t, "mobile", createBody["appType"])
+	assert.Equal(t, "android-native", createBody["runtime"])
+	assert.Equal(t,
+		[]any{map[string]any{"label": "is_mobile", "value": "true"}},
+		createBody["extraLogLabels"])
 }
 
 func TestResourceAdapter_Delete(t *testing.T) {
@@ -220,10 +276,12 @@ func TestResourceAdapter_RoundTrip(t *testing.T) {
 			"collectEndpointURL":    "https://collect.example.com",
 			"otlpIngestEndpointURL": "https://collect.example.com/otlp",
 			"corsOrigins":           []map[string]any{{"url": "https://example.com"}},
-			"extraLogLabels":        []map[string]string{{"key": "team", "value": "frontend"}},
-			"settings": map[string]any{
-				"geolocationEnabled": true,
-				"geolocationLevel":   "country",
+			"extraLogLabels":        []map[string]string{{"label": "team", "value": "frontend"}},
+			"settings": map[string]string{
+				"geolocation.enabled":          "1",
+				"geolocation.level":            "1",
+				"geolocation.country_denylist": "DE,FR",
+				"combineLabData":               "1",
 			},
 		})
 	}))
@@ -243,6 +301,13 @@ func TestResourceAdapter_RoundTrip(t *testing.T) {
 	assert.Equal(t, "abc-key", spec["appKey"])
 	assert.Equal(t, "https://collect.example.com", spec["collectEndpointURL"])
 	assert.Equal(t, "https://collect.example.com/otlp", spec["otlpIngestEndpointURL"])
+	// A "key" tag would decode the label name as "" and leave this map empty-keyed.
+	assert.Equal(t, map[string]any{"team": "frontend"}, spec["extraLogLabels"])
+	assert.Equal(t, map[string]any{
+		"geolocationEnabled":         true,
+		"geolocationLevel":           "country",
+		"geolocationCountryDenylist": []any{"DE", "FR"},
+	}, spec["settings"])
 
 	// Verify metadata.
 	assert.Equal(t, "my-web-app-42", obj.GetName())

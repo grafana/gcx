@@ -8,6 +8,40 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// This catches an incomplete config-set path whitelist: credentials is a
+// writable section and credentials.keychain is its only supported leaf, so a
+// typo must never create arbitrary configuration under that security setting.
+func TestKeychainConfigPath(t *testing.T) {
+	tests := []struct {
+		path       string
+		wantErr    bool
+		wantErrMsg string
+	}{
+		// Bare "credentials" has no directly settable field: it must be
+		// rejected here rather than passing validation and dying deeper in
+		// SetValue with a raw "Can not set struct" error.
+		{path: "credentials", wantErr: true, wantErrMsg: `invalid path "credentials": credentials has no directly settable field; use credentials.keychain`},
+		{path: "credentials.keychain"},
+		{path: "credentials.unknown", wantErr: true},
+		{path: "credentials.keychain.extra", wantErr: true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.path, func(t *testing.T) {
+			got, err := config.ValidateConfigPath(config.Config{}, test.path)
+			if test.wantErr {
+				require.Error(t, err)
+				if test.wantErrMsg != "" {
+					assert.Equal(t, test.wantErrMsg, err.Error())
+				}
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, test.path, got)
+		})
+	}
+}
+
 func TestValidateConfigPath(t *testing.T) {
 	cfg := config.Config{
 		Stacks: map[string]*config.StackConfig{
@@ -35,6 +69,7 @@ func TestValidateConfigPath(t *testing.T) {
 		"current-context",
 		"resources.assume-server-dry-run",
 		"diagnostics.telemetry",
+		"credentials.keychain",
 		"version",
 	}
 	for _, path := range valid {
@@ -66,6 +101,11 @@ func TestValidateConfigPath(t *testing.T) {
 		// Bare `cloud` (the old context-ref path) is ambiguous with the
 		// top-level map.
 		{"cloud", "cloud.<entry>."},
+		{"credentials", "credentials.keychain"},
+		// A mistyped leaf names the supported path rather than misdirecting
+		// the user to the top-level grammar: credentials IS a valid section.
+		{"credentials.unknown", "credentials.keychain is the only supported credentials path"},
+		{"credentials.keychain.extra", "credentials.keychain is the only supported credentials path"},
 		// Unknown paths get the general grammar.
 		{"nonsense.path", "top-level section"},
 	}

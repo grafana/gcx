@@ -71,7 +71,7 @@ func TestIncidentTableCodec_Encode(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			codec := &irm.IncidentTableCodec{Wide: tt.wide}
+			codec := irm.IncidentTable().Codec(incidentFormat(tt.wide))
 			var buf bytes.Buffer
 			err := codec.Encode(&buf, incs)
 			require.NoError(t, err)
@@ -88,11 +88,11 @@ func TestIncidentTableCodec_Encode(t *testing.T) {
 }
 
 func TestIncidentTableCodec_EncodeWrongType(t *testing.T) {
-	codec := &irm.IncidentTableCodec{}
+	codec := irm.IncidentTable().Codec("table")
 	var buf bytes.Buffer
 	err := codec.Encode(&buf, "not-a-slice-of-incidents")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "expected []Incident")
+	assert.Contains(t, err.Error(), "invalid data type for table codec")
 }
 
 func TestIncidentTableCodec_TitleTruncation(t *testing.T) {
@@ -105,7 +105,7 @@ func TestIncidentTableCodec_TitleTruncation(t *testing.T) {
 		},
 	}
 
-	codec := &irm.IncidentTableCodec{Wide: false}
+	codec := irm.IncidentTable().Codec("table")
 	var buf bytes.Buffer
 	err := codec.Encode(&buf, incs)
 	require.NoError(t, err)
@@ -125,7 +125,7 @@ func TestIncidentTableCodec_WideTitleNotTruncated(t *testing.T) {
 		},
 	}
 
-	codec := &irm.IncidentTableCodec{Wide: true}
+	codec := irm.IncidentTable().Codec("wide")
 	var buf bytes.Buffer
 	err := codec.Encode(&buf, incs)
 	require.NoError(t, err)
@@ -135,12 +135,12 @@ func TestIncidentTableCodec_WideTitleNotTruncated(t *testing.T) {
 }
 
 func TestIncidentTableCodec_Format(t *testing.T) {
-	assert.Equal(t, "table", string((&irm.IncidentTableCodec{}).Format()))
-	assert.Equal(t, "wide", string((&irm.IncidentTableCodec{Wide: true}).Format()))
+	assert.Equal(t, "table", string(irm.IncidentTable().Codec("table").Format()))
+	assert.Equal(t, "wide", string((irm.IncidentTable().Codec("wide")).Format()))
 }
 
 func TestIncidentTableCodec_DecodeUnsupported(t *testing.T) {
-	codec := &irm.IncidentTableCodec{}
+	codec := irm.IncidentTable().Codec("table")
 	err := codec.Decode(nil, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "does not support decoding")
@@ -170,7 +170,7 @@ func TestActivityTableCodec_Encode(t *testing.T) {
 		},
 	}
 
-	codec := &irm.ActivityTableCodec{}
+	codec := irm.ActivityTable().Codec("table")
 	var buf bytes.Buffer
 	err := codec.Encode(&buf, items)
 	require.NoError(t, err)
@@ -195,7 +195,7 @@ func TestActivityTableCodec_LongBodyTruncated(t *testing.T) {
 		},
 	}
 
-	codec := &irm.ActivityTableCodec{}
+	codec := irm.ActivityTable().Codec("table")
 	var buf bytes.Buffer
 	err := codec.Encode(&buf, items)
 	require.NoError(t, err)
@@ -257,7 +257,7 @@ func TestIncidentContextTableCodec_Encode(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			codec := &irm.IncidentContextTableCodec{Wide: tt.wide}
+			codec := irm.IncidentContextTable().Codec(incidentFormat(tt.wide))
 			var buf bytes.Buffer
 			err := codec.Encode(&buf, contexts)
 			require.NoError(t, err)
@@ -558,7 +558,7 @@ func TestSeverityTableCodec_Encode(t *testing.T) {
 		{SeverityID: "sev-3", DisplayLabel: "Low", Level: 3},
 	}
 
-	codec := &irm.SeverityTableCodec{}
+	codec := irm.SeverityTable().Codec("table")
 	var buf bytes.Buffer
 	err := codec.Encode(&buf, sevs)
 	require.NoError(t, err)
@@ -572,4 +572,13 @@ func TestSeverityTableCodec_Encode(t *testing.T) {
 	assert.Contains(t, output, "Critical")
 	assert.Contains(t, output, "#FF0000")
 	assert.Contains(t, output, "-")
+}
+
+// incidentFormat maps the wide flag these tables use to the registered format
+// name the codec is built for.
+func incidentFormat(wide bool) string {
+	if wide {
+		return "wide"
+	}
+	return "table"
 }

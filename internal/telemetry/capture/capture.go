@@ -15,25 +15,25 @@
 // depends on writes a capture, so Batch could sit next to Event and still
 // compile.
 //
-// The reason is the writers, and it is forward-looking rather than a
-// description of today. A captured fact is set wherever it is observed, which
-// for signals past this one means inside internal packages rather than the
-// command tree — and a leaf that imports nothing from gcx can absorb a writer
-// from anywhere without anyone first having to check the import graph. Keeping
-// it separate also means writing one signal does not pull the wire vocabulary
-// and the HTTP exporter in behind it.
+// The reason is the writers. A captured fact is set wherever it is observed,
+// which past the first signal means inside internal packages rather than the
+// command tree — internal/config decides the Grafana auth method, cmd/gcx/fail
+// sees the error that ended the invocation — and a leaf that imports nothing
+// from gcx can absorb a writer from anywhere without anyone first having to
+// check the import graph. Keeping it separate also means writing one signal does
+// not pull the wire vocabulary and the HTTP exporter in behind it.
 //
-// Both claims above are direction, not finished state. Today the only writer is
-// cmd/gcx/resources, and config.CapturedTargetKind and root.TelemetryInfo are
-// still read by the same buildUsageEvent without living here. Moving
-// target_kind in is tracked as #1179.
+// Still not finished state: config.CapturedTargetKind and root.TelemetryInfo are
+// read by the same buildUsageEvent without living here. Moving target_kind in is
+// tracked as #1179.
 //
-// This package holds no vocabulary: values are raw counts and booleans. Mapping
-// them to the wire contract (bucket labels, allowlists) belongs to the telemetry
-// package next to Event, so the privacy filtering all lives in one place.
-//
-// Every value here is read by cmd/gcx's usage-event builder and must obey the
-// same privacy invariant as telemetry.Event: shape only, never content.
+// This package holds no vocabulary and makes no privacy promise of its own: a
+// slot stores whatever raw value its probe found, and for the Kubernetes reason
+// that is server-supplied text. Mapping captured values to the wire contract
+// (bucket labels, allowlists, the HTTP status range) belongs to the telemetry
+// package next to Event — that filtering is the privacy guarantee, so nothing
+// read from this package may reach the wire, a log, or any other output surface
+// without passing it.
 package capture
 
 import "sync/atomic"
@@ -99,6 +99,132 @@ func CurrentBatch() *Batch {
 	return batch.Load()
 }
 
+// httpStatus is the HTTP transport status extracted from the invocation's
+// surfaced error, written once at error-report time and read once at exit.
+// Zero means no status was found. The 400–599 wire filter lives in the
+// usage-event builder, not here.
+//
+//nolint:gochecknoglobals // process-wide invocation fact; see package doc.
+var httpStatus atomic.Int64
+
+// SetHTTPStatus records the HTTP transport status carried by the invocation's
+// surfaced error. A zero status is a probe that found nothing and is ignored:
+// a probe that found nothing must not erase a fact already recorded.
+func SetHTTPStatus(status int) {
+	if status == 0 {
+		return
+	}
+	httpStatus.Store(int64(status))
+}
+
+// CurrentHTTPStatus returns the recorded HTTP status, or 0 when this
+// invocation had none.
+func CurrentHTTPStatus() int {
+	return int(httpStatus.Load())
+}
+
+// k8sReason is the Kubernetes status reason extracted from the invocation's
+// surfaced error, written once at error-report time and read once at exit.
+// The value is the raw metav1.StatusReason string; the allowlist that keeps a
+// server-supplied reason off the wire lives in the usage-event builder.
+//
+//nolint:gochecknoglobals // process-wide invocation fact; see package doc.
+var k8sReason atomic.Pointer[string]
+
+// SetK8sReason records the Kubernetes status reason carried by the
+// invocation's surfaced error. An empty reason is a probe that found nothing
+// (metav1.StatusReasonUnknown is the empty string) and is ignored.
+func SetK8sReason(reason string) {
+	if reason == "" {
+		return
+	}
+	k8sReason.Store(&reason)
+}
+
+// CurrentK8sReason returns the recorded Kubernetes reason, or "" when this
+// invocation had none.
+func CurrentK8sReason() string {
+	if reason := k8sReason.Load(); reason != nil {
+		return *reason
+	}
+	return ""
+}
+
+// authMethodState is the recorded Grafana auth method plus the two facts a
+// plain last-write value cannot carry: that two writers disagreed, and that
+// the value came from the one caller whose answer outranks disagreement.
+type authMethodState struct {
+	value      string
+	conflicted bool
+	forced     bool
+}
+
+// grafanaAuthMethod is the authentication method the invocation selected for
+// its Grafana connection, written by the config auth selector (and login) and
+// read once at exit. Unlike the other slots it is legitimately written
+// concurrently — `gcx config check` resolves auth for every context at once —
+// so it must stay coherent under parallel writers rather than assume the
+// one-synchronous-write discipline the batch slot documents.
+//
+//nolint:gochecknoglobals // process-wide invocation fact; see package doc.
+var grafanaAuthMethod atomic.Pointer[authMethodState]
+
+// SetGrafanaAuthMethod records a decided Grafana auth method. An empty method
+// is undecided and ignored — a load that resolved no Grafana connection must
+// not erase a decision already made — while "unknown" is a decided value and
+// is recorded like any other.
+//
+// Two different decided values mean the invocation used more than one method
+// (config check across contexts), so the slot collapses to a conflict and
+// CurrentGrafanaAuthMethod reports nothing. The conflict is sticky: a later
+// agreeing write cannot un-ask the question. A forced value is immune on the
+// other side, so a config load racing login cannot demote it in either
+// interleaving.
+func SetGrafanaAuthMethod(method string) {
+	if method == "" {
+		return
+	}
+	for {
+		current := grafanaAuthMethod.Load()
+		switch {
+		case current == nil:
+			if grafanaAuthMethod.CompareAndSwap(nil, &authMethodState{value: method}) {
+				return
+			}
+		case current.forced || current.conflicted || current.value == method:
+			return
+		default:
+			if grafanaAuthMethod.CompareAndSwap(current, &authMethodState{conflicted: true}) {
+				return
+			}
+		}
+	}
+}
+
+// ForceGrafanaAuthMethod records a decided Grafana auth method that outranks
+// everything SetGrafanaAuthMethod records before or after it, including a
+// conflict. It exists for login, which resolves its method by probing: what
+// login actually authenticated with beats anything a config load captured on
+// the way, even when a mid-login retry switched methods. A Set retrying its
+// CompareAndSwap against this write sees the forced value and yields rather
+// than recording a conflict. A later Force replaces an earlier one; an empty
+// method is ignored.
+func ForceGrafanaAuthMethod(method string) {
+	if method == "" {
+		return
+	}
+	grafanaAuthMethod.Store(&authMethodState{value: method, forced: true})
+}
+
+// CurrentGrafanaAuthMethod returns the decided Grafana auth method, or ""
+// when none was decided or the deciders disagreed.
+func CurrentGrafanaAuthMethod() string {
+	if state := grafanaAuthMethod.Load(); state != nil && !state.conflicted {
+		return state.value
+	}
+	return ""
+}
+
 // Reset clears every captured value.
 //
 // Production code never needs this — the process exits after one invocation.
@@ -107,4 +233,7 @@ func CurrentBatch() *Batch {
 // order.
 func Reset() {
 	batch.Store(nil)
+	httpStatus.Store(0)
+	k8sReason.Store(nil)
+	grafanaAuthMethod.Store(nil)
 }

@@ -103,6 +103,12 @@ type TypedCRUD[T ResourceNamer] struct {
 
 	// Aliases are the short names for selector resolution.
 	Aliases []string
+
+	// Example is an optional static example manifest, exposed via
+	// AsAdapter()'s ResourceAdapter.Example(). Nil means no example is
+	// carried on this TypedCRUD instance — use ExampleForGVK for the
+	// authoritative global-registration lookup instead.
+	Example json.RawMessage
 }
 
 // resourceName extracts the name from a domain object using ResourceIdentity.
@@ -228,13 +234,16 @@ func (c *TypedCRUD[T]) wrapTypedObject(item T) TypedObject[T] {
 	}
 }
 
-// AsAdapter returns a ResourceAdapter backed by this TypedCRUD.
-// Note: the returned adapter's Schema() and Example() return nil.
-// Schema/example are static registration metadata injected only via
-// TypedRegistration.ToRegistration(). Use SchemaForGVK/ExampleForGVK
-// for authoritative lookup.
+// AsAdapter returns a ResourceAdapter backed by this TypedCRUD. Schema is
+// always derived from T (SchemaFromType) — it is never nil. Example is
+// whatever c.Example carries (nil unless set). Use SchemaForGVK/ExampleForGVK
+// for the authoritative global-registration lookup instead, when available.
 func (c *TypedCRUD[T]) AsAdapter() ResourceAdapter {
-	return &typedAdapter[T]{crud: c}
+	return &typedAdapter[T]{
+		crud:    c,
+		schema:  SchemaFromType[T](c.Descriptor),
+		example: c.Example,
+	}
 }
 
 // ToUnstructured converts a domain object T into an unstructured Kubernetes envelope,
@@ -315,7 +324,7 @@ func (c *TypedCRUD[T]) fromUnstructured(obj *unstructured.Unstructured) (string,
 // typedAdapter wraps TypedCRUD[T] to implement the ResourceAdapter interface.
 type typedAdapter[T ResourceNamer] struct {
 	crud    *TypedCRUD[T]
-	schema  json.RawMessage
+	schema  func() json.RawMessage
 	example json.RawMessage
 }
 
@@ -328,7 +337,7 @@ func (a *typedAdapter[T]) Aliases() []string {
 }
 
 func (a *typedAdapter[T]) Schema() json.RawMessage {
-	return a.schema
+	return a.schema()
 }
 
 func (a *typedAdapter[T]) Example() json.RawMessage {
@@ -449,6 +458,8 @@ func (a *typedAdapter[T]) Delete(ctx context.Context, name string, opts metav1.D
 // unstructured object without performing any mutation. Without a ValidateFn
 // nothing beyond the already-done unstructured→typed conversion was checked,
 // so it returns ErrDryRunUnverified instead of a false success.
+// This applies to Create/Update. Delete dry-runs skip the mutation and return
+// nil without server validation.
 func (a *typedAdapter[T]) dryRunValidate(ctx context.Context, item *T) (*unstructured.Unstructured, error) {
 	if a.crud.ValidateFn == nil {
 		return nil, ErrDryRunUnverified
@@ -467,37 +478,9 @@ func isDryRun(dryRun []string) bool {
 	return slices.Contains(dryRun, metav1.DryRunAll)
 }
 
-// TypedRegistration bridges TypedCRUD to the existing Registration system.
-type TypedRegistration[T ResourceNamer] struct {
-	Descriptor  resources.Descriptor
-	Aliases     []string
-	GVK         schema.GroupVersionKind
-	Schema      json.RawMessage
-	Example     json.RawMessage
-	URLTemplate string // URL path template for deep links (e.g., "/a/grafana-oncall-app/schedules/{name}").
-	Factory     func(ctx context.Context) (*TypedCRUD[T], error)
-}
-
-// ToRegistration converts to a standard Registration.
-func (r TypedRegistration[T]) ToRegistration() Registration {
-	return Registration{
-		Factory: func(ctx context.Context) (ResourceAdapter, error) {
-			crud, err := r.Factory(ctx)
-			if err != nil {
-				return nil, err
-			}
-			a := &typedAdapter[T]{
-				crud:    crud,
-				schema:  r.Schema,
-				example: r.Example,
-			}
-			return a, nil
-		},
-		Descriptor:  r.Descriptor,
-		Aliases:     r.Aliases,
-		GVK:         r.GVK,
-		Schema:      r.Schema,
-		Example:     r.Example,
-		URLTemplate: r.URLTemplate,
-	}
+// FromUnstructured decodes a manifest and restores the domain identity from
+// metadata.name using the same conversion as generic resource mutations.
+func (c *TypedCRUD[T]) FromUnstructured(obj *unstructured.Unstructured) (*T, error) {
+	_, item, err := c.fromUnstructured(obj)
+	return item, err
 }

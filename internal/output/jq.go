@@ -1,9 +1,11 @@
 package output
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
+	"iter"
 	"strings"
 
 	"github.com/grafana/gcx/internal/format"
@@ -106,22 +108,14 @@ func shallowFieldPaths(sample map[string]any) ([]string, int) {
 	return shallow, 0
 }
 
-// JQCodec applies a jq expression to a value and writes each yielded result
-// as pretty-printed JSON, one result per encoder call (matching real jq's
-// default output: sequential values, each pretty-printed — nested results
-// span multiple physical lines, so the stream is NOT line-delimited NDJSON).
-//
-// JQCodec intentionally bypasses the agents codec's spill-to-tempfile behavior:
-// a caller using --jq wants the transformed results in-stream, not a "spilled
-// to /tmp" summary.
+// JQCodec emits sequential pretty-printed JSON values for bare --jq and -o json.
+// Options.Encode routes the same results through agents when explicitly selected.
 type JQCodec struct {
 	query   *gojq.Query
 	decoder *format.JSONCodec
 }
 
-// NewJQCodec returns a JQCodec that runs the given compiled query.
-// Callers should obtain the query via gojq.Parse so syntax errors surface
-// during flag validation, not encoding.
+// NewJQCodec accepts a query parsed with gojq.Parse during flag validation.
 func NewJQCodec(query *gojq.Query) *JQCodec {
 	return &JQCodec{query: query, decoder: format.NewJSONCodec()}
 }
@@ -131,25 +125,41 @@ func (c *JQCodec) Format() format.Format {
 }
 
 func (c *JQCodec) Encode(dst io.Writer, value any) error {
-	input, err := toJQInput(value)
-	if err != nil {
-		return err
-	}
-
 	encoder := json.NewEncoder(dst)
 	encoder.SetIndent("", "  ")
 
-	iter := c.query.Run(input)
-	for {
-		v, ok := iter.Next()
-		if !ok {
-			return nil
-		}
-		if e, ok := v.(error); ok {
-			return newJQRuntimeError(e, input)
+	for v, err := range c.results(value) {
+		if err != nil {
+			return err
 		}
 		if err := encoder.Encode(v); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+// results shares input normalization and runtime errors between JSON and agents.
+func (c *JQCodec) results(value any) iter.Seq2[any, error] {
+	return func(yield func(any, error) bool) {
+		input, err := toJQInput(value)
+		if err != nil {
+			yield(nil, err)
+			return
+		}
+		results := c.query.Run(input)
+		for {
+			v, ok := results.Next()
+			if !ok {
+				return
+			}
+			if err, ok := v.(error); ok {
+				yield(nil, newJQRuntimeError(err, input))
+				return
+			}
+			if !yield(v, nil) {
+				return
+			}
 		}
 	}
 }
@@ -158,25 +168,21 @@ func (c *JQCodec) Decode(src io.Reader, value any) error {
 	return c.decoder.Decode(src, value)
 }
 
-// toJQInput converts an arbitrary Go value into the generic JSON primitives
-// gojq expects (map[string]any, []any, string, float64, bool, nil).
-//
-// Unstructured types are handled directly to avoid pointer-receiver
-// MarshalJSON quirks (mirrors marshalToSampleMap in format.go). For all other
-// types we round-trip through encoding/json.
+// toJQInput normalizes Go values for gojq without losing integer precision.
+// Unwrapping unstructured types avoids pointer-receiver MarshalJSON quirks.
 func toJQInput(value any) (any, error) {
 	switch v := value.(type) {
 	case unstructured.Unstructured:
-		return v.Object, nil
+		value = v.Object
 	case *unstructured.Unstructured:
 		if v != nil {
-			return v.Object, nil
+			value = v.Object
 		}
 	case unstructured.UnstructuredList:
-		return unstructuredItemsAsMap(v.Items), nil
+		value = unstructuredItemsAsMap(v.Items)
 	case *unstructured.UnstructuredList:
 		if v != nil {
-			return unstructuredItemsAsMap(v.Items), nil
+			value = unstructuredItemsAsMap(v.Items)
 		}
 	}
 
@@ -185,7 +191,9 @@ func toJQInput(value any) (any, error) {
 		return nil, fmt.Errorf("jq: marshal input: %w", err)
 	}
 	var parsed any
-	if err := json.Unmarshal(data, &parsed); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	if err := decoder.Decode(&parsed); err != nil {
 		return nil, fmt.Errorf("jq: parse input: %w", err)
 	}
 	return parsed, nil

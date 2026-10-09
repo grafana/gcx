@@ -1,9 +1,26 @@
 ## gcx irm oncall routes filter-types list
 
-List allowed values for a route's filtering_term_type field.
+List allowed values for a route's filtering_term_type field (older spelling; use `routes list-filter-types`).
+
+### Synopsis
+
+List the filter types that a route accepts. The command reads the catalog from the Incident Response and Management backend, so the values match your stack. Put the numeric value in the filtering_term_type field of a route manifest.
 
 ```
 gcx irm oncall routes filter-types list [flags]
+```
+
+### Examples
+
+```
+  # List the filter types that a route accepts
+  gcx irm oncall routes list-filter-types
+
+  # Read the numeric value of one filter type
+  gcx irm oncall routes list-filter-types -o json | jq -r '.[] | select(.display_name == "<display-name>") | .value'
+
+  # Put that value in the filtering_term_type field of route.yaml, then create the route
+  gcx irm oncall routes create -f route.yaml
 ```
 
 ### Options
@@ -18,10 +35,10 @@ gcx irm oncall routes filter-types list [flags]
 ### Options inherited from parent commands
 
 ```
-      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
+      --agent                       Enable agent mode (JSON output, no color). Auto-detected from known agent identity variables. Set GCX_AGENT_NAME to identify a supported harness, or GCX_AGENT_MODE to control the mode.
       --config string               Path to the configuration file to use
       --context string              Name of the context to use (overrides current-context in config)
-      --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.
+      --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Requires -vvv. Do not ship these logs.
       --no-color                    Disable color output
       --no-truncate                 Disable table column truncation (auto-enabled when stdout is piped)
   -v, --verbose count               Verbose mode. Multiple -v options increase the verbosity (maximum: 3).

@@ -19,9 +19,16 @@ Latency is direction-aware: callers see the server-side p95
 (how long this service took to respond), callees see the client-side
 p95 (how long this service waited on the peer).
 
+JSON and YAML output include instrumentation status from target_info for each
+returned service name. This status uses the target_info inventory without edge
+filters, as the service list does. Status is name-level: metadata with the same
+service name marks a peer as instrumented across namespaces and connection types.
+A metadata query failure stops the map command.
+
 Connection type is empty for HTTP/gRPC peers; "database",
 "messaging", or "virtual_node" for typed edges. Virtual-node peers
-are uninstrumented callers Tempo synthesises from orphan spans.
+are callers Tempo synthesises from orphan spans. Connection type does not change
+the name-level inventory status.
 
 Beyond --output table/wide/json/yaml, --output mermaid and
 --output dot render the map as a Mermaid or Graphviz graph,
@@ -61,11 +68,12 @@ gcx appo11y services map <service> [--namespace ns] [flags]
 
 ```
   -d, --datasource string    Prometheus datasource UID (defaults to datasources.prometheus in config or auto-discovery)
-      --filter stringArray   Scope the map to service-graph edges matching a label matcher, e.g. --filter k8s_cluster_name=prod-us (repeatable). Use to break a multi-cluster/multi-region service down one cluster at a time; the label must exist on the service-graph metrics
+      --filter stringArray   Scope the map to service-graph edges matching a label matcher, e.g. --filter k8s_cluster_name=prod-us (repeatable). Use to break a multi-cluster/multi-region service down one cluster at a time; the label must exist on the service-graph metrics. JSON/YAML instrumentation status uses the target_info inventory without the edge filters
       --group-by strings     Split each edge per distinct value of a label, e.g. --group-by k8s_cluster_name (comma-separated or repeatable). The label must exist on the service-graph metrics — note the Tempo service-graph family often omits cluster labels, in which case no edges match
   -h, --help                 help for map
       --jq string            jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+      --kg string            Knowledge Graph catalog consumption: auto (annotate rows with what the graph knows, when it's active) or off (never contact the Knowledge Graph). The annotation appears in JSON/YAML/agents output only — table and wide render nothing extra (default "auto")
   -n, --namespace string     Service namespace (only needed when the argument is the bare service name and multiple namespaces are in play)
   -o, --output string        Output format. One of: agents, dot, json, mermaid, table, wide, yaml (default "table")
       --since string         Rate/quantile window applied to service-graph metrics (e.g. 1m, 5m, 1h, 1d) — PromQL duration syntax (default "5m")
@@ -74,10 +82,10 @@ gcx appo11y services map <service> [--namespace ns] [flags]
 ### Options inherited from parent commands
 
 ```
-      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
+      --agent                       Enable agent mode (JSON output, no color). Auto-detected from known agent identity variables. Set GCX_AGENT_NAME to identify a supported harness, or GCX_AGENT_MODE to control the mode.
       --config string               Path to the configuration file to use
       --context string              Name of the context to use (overrides current-context in config)
-      --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.
+      --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Requires -vvv. Do not ship these logs.
       --no-color                    Disable color output
       --no-truncate                 Disable table column truncation (auto-enabled when stdout is piped)
   -v, --verbose count               Verbose mode. Multiple -v options increase the verbosity (maximum: 3).

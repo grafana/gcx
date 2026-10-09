@@ -12,24 +12,32 @@ Agent mode is detected via environment variables at `init()` time in
 `internal/agent/agent.go` and via the `--agent` CLI flag pre-parsed in
 `main.go` before Cobra command construction.
 
-| Variable | Set by | Effect |
-|----------|--------|--------|
-| `GCX_AGENT_MODE` | Explicit opt-in/out | `1`/`true`/`yes` enables; `0`/`false`/`no` **disables** (overrides all others) |
-| `CLAUDECODE` | Claude Code | Truthy value activates agent mode |
-| `CLAUDE_CODE` | Claude Code | Truthy value activates agent mode |
-| `CURSOR_AGENT` | Cursor | Truthy value activates agent mode |
-| `GITHUB_COPILOT` | GitHub Copilot | Truthy value activates agent mode |
-| `AMAZON_Q` | Amazon Q | Truthy value activates agent mode |
-| `OPENCODE` | opencode | Truthy value activates agent mode |
-| `PI_CODING_AGENT` | pi | Truthy value activates agent mode |
+Native identity signals and explicit names can enable agent mode.
+The full list is in the
+[environment variable reference](environment-variables.md#agent-mode-variables).
+`GCX_AGENT_NAME` supports tools that do not supply a native signal.
 
-The `--agent` persistent flag can also enable agent mode. `--agent=false`
-explicitly disables agent mode even when env vars are set.
+**Mode priority:** explicit `--agent`/`--agent=false` > a valid
+`GCX_AGENT_MODE` value > a supported identity signal > disabled.
+`GCX_AGENT_MODE=0` disables automatic mode detection.
+`GCX_AGENT_MODE=1` enables mode even when the harness name is unknown.
 
-**Priority order:** `GCX_AGENT_MODE=0` (disable) > any truthy env var
-(enable) > `--agent` flag > default (disabled).
+**Identity priority:** supported `GCX_AGENT_NAME` > native boolean signals
+in source order > native session markers in source order > supported
+`AI_AGENT` > `AGENT=goose`. Kilo precedes OpenCode. Qwen precedes Gemini CLI.
+A native marker takes precedence over a shared variable inherited from an outer
+harness. `GCX_AGENT_NAME` is the deliberate gcx override for a nested agent.
+Environment signals alone cannot establish which parent process set a marker.
 
-**API:** `agent.IsAgentMode() bool`, `agent.SetFlag(bool)`, `agent.DetectedFromEnv() bool`
+`agent.Name()` returns a fixed label, even when mode is disabled explicitly.
+Usage events report this identity in `agent` and the mode in `is_agent`.
+When agent mode is enabled without a known identity, usage events report
+`agent: "generic"`. This telemetry fallback does not change identity detection
+or enable agent mode.
+No session identifier or unknown identity value is sent.
+
+**API:** `agent.IsAgentMode() bool`, `agent.SetFlag(bool)`,
+`agent.DetectedFromEnv() bool`, `agent.Name() string`.
 
 Reference: `internal/agent/agent.go`
 
@@ -78,13 +86,15 @@ from `| python -c "..."` aggregation pipelines toward built-in transformation.
 ### 6.3 Opt-Out
 
 Explicit flags override agent mode defaults:
-- `-o json` forces full compact JSON to stdout (no spill)
+- `-o json` forces full indented JSON to stdout (no spill)
+- Bare `--jq` disables spill; add `-o agents` for
+  [compact/spill handling](output.md#16-jq-transformation)
 - `-o text` or `-o yaml` overrides the agents default
 - `-o wide` retains human table output even in agent mode (explicit-override semantics — the
   operator has explicitly requested wide table format, so the JSON default is not applied)
 - `--agent=false` disables agent mode entirely (even when env vars are set)
 - `GCX_AGENT_MODE=0` disables agent mode regardless of other env vars
-- `GCX_AGENT_SPILL_BYTES=<n>` adjusts the spill threshold (bytes; default 102400)
+- `GCX_AGENT_SPILL_BYTES=<n>` adjusts the spill threshold (bytes; default 102400); `0` disables spilling
 
 ### 6.4 Output Protocol Classes
 

@@ -28,10 +28,10 @@ gcx resources get [RESOURCE_SELECTOR]... [flags]
 	gcx resources get dashboards/foo
 	gcx resources get dashboards/foo,bar
 
-	# Single resource kind, long kind format:
+	# Single resource kind, full API group:
 
-	gcx resources get dashboard.dashboards/foo
-	gcx resources get dashboard.dashboards/foo,bar
+	gcx resources get dashboards.dashboard.grafana.app/foo
+	gcx resources get dashboards.dashboard.grafana.app/foo,bar
 
 	# Single resource kind, long kind format with version:
 
@@ -43,21 +43,24 @@ gcx resources get [RESOURCE_SELECTOR]... [flags]
 	gcx resources get dashboards/foo folders/qux
 	gcx resources get dashboards/foo,bar folders/qux,quux
 
-	# Multiple resource kinds, long kind format:
+	# Multiple resource kinds, full API groups:
 
-	gcx resources get dashboard.dashboards/foo folder.folders/qux
-	gcx resources get dashboard.dashboards/foo,bar folder.folders/qux,quux
+	gcx resources get dashboards.dashboard.grafana.app/foo folders.folder.grafana.app/qux
+	gcx resources get dashboards.dashboard.grafana.app/foo,bar folders.folder.grafana.app/qux,quux
 
 	# Multiple resource kinds, long kind format with version:
 
 	gcx resources get dashboards.v1alpha1.dashboard.grafana.app/foo folders.v1alpha1.folder.grafana.app/qux
 
-	# Provider-backed resource types (SLO, Synthetic Monitoring, Alerting):
+	# Provider-backed resources (SLO and Synthetic Monitoring):
 
 	gcx resources get slo
 	gcx resources get slo/my-slo-uuid
-	gcx resources get checks
-	gcx resources get rules
+	gcx resources get checks.syntheticmonitoring
+
+	# Native Grafana alert rules:
+
+	gcx resources get alertrules
 
 	# Discover available JSON fields for a resource type:
 
@@ -86,10 +89,10 @@ gcx resources get [RESOURCE_SELECTOR]... [flags]
 ### Options inherited from parent commands
 
 ```
-      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
+      --agent                       Enable agent mode (JSON output, no color). Auto-detected from known agent identity variables. Set GCX_AGENT_NAME to identify a supported harness, or GCX_AGENT_MODE to control the mode.
       --config string               Path to the configuration file to use
       --context string              Name of the context to use
-      --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Do not ship these logs.
+      --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Requires -vvv. Do not ship these logs.
       --no-color                    Disable color output
       --no-truncate                 Disable table column truncation (auto-enabled when stdout is piped)
   -v, --verbose count               Verbose mode. Multiple -v options increase the verbosity (maximum: 3).

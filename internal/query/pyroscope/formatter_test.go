@@ -88,6 +88,54 @@ func TestFormatSeriesTable(t *testing.T) {
 	}
 }
 
+func TestFormatProfileSeries(t *testing.T) {
+	resp := &pyroscope.SeriesResponse{
+		LabelsSet: []pyroscope.Labels{
+			{Labels: []pyroscope.LabelPair{
+				{Name: "namespace", Value: "prod"},
+				{Name: "service_name", Value: "api"},
+			}},
+		},
+	}
+
+	var table bytes.Buffer
+	require.NoError(t, pyroscope.FormatProfileSeriesTable(&table, resp))
+	assert.Contains(t, table.String(), "{namespace=\"prod\",service_name=\"api\"}")
+
+	var wide bytes.Buffer
+	require.NoError(t, pyroscope.FormatProfileSeriesWide(&wide, resp))
+	assert.Contains(t, wide.String(), "namespace")
+	assert.Contains(t, wide.String(), "service_name")
+	assert.Contains(t, wide.String(), "prod")
+}
+
+func TestFormatProfileSeriesTableEscapesLabelValues(t *testing.T) {
+	resp := &pyroscope.SeriesResponse{
+		LabelsSet: []pyroscope.Labels{{Labels: []pyroscope.LabelPair{
+			{Name: "path", Value: `C:\\profiles\"quoted\"`},
+		}}},
+	}
+
+	var table bytes.Buffer
+	require.NoError(t, pyroscope.FormatProfileSeriesTable(&table, resp))
+	assert.Contains(t, table.String(), `{path="C:\\\\profiles\\\"quoted\\\""}`)
+}
+
+func TestFormatProfileSeriesTableQuotesExtendedLabelNames(t *testing.T) {
+	const utf8LabelName = "\u90e8\u95e8"
+	resp := &pyroscope.SeriesResponse{
+		LabelsSet: []pyroscope.Labels{{Labels: []pyroscope.LabelPair{
+			{Name: "http.method", Value: "GET"},
+			{Name: utf8LabelName, Value: "frontend"},
+			{Name: "service_name", Value: "api"},
+		}}},
+	}
+
+	var table bytes.Buffer
+	require.NoError(t, pyroscope.FormatProfileSeriesTable(&table, resp))
+	assert.Contains(t, table.String(), `{"http.method"="GET",service_name="api","`+utf8LabelName+`"="frontend"}`)
+}
+
 func TestFormatTopSeriesTable(t *testing.T) {
 	tests := []struct {
 		name     string

@@ -68,11 +68,20 @@ func (c *Client) DoRequest(ctx context.Context, method, path string, body io.Rea
 // using the common { "items": [...], "next_cursor": "..." } envelope.
 // Pass maxItems <= 0 for no limit (fetch all pages).
 func ListAll[T any](ctx context.Context, c *Client, basePath string, query url.Values, maxItems ...int) ([]T, error) {
+	items, _, err := ListAllWithHasMore[T](ctx, c, basePath, query, maxItems...)
+	return items, err
+}
+
+// ListAllWithHasMore is like [ListAll] but reports whether the result was
+// truncated by maxItems. hasMore is true when a next page exists or the final
+// page overshot the bound — not when the source is genuinely complete.
+func ListAllWithHasMore[T any](ctx context.Context, c *Client, basePath string, query url.Values, maxItems ...int) ([]T, bool, error) {
 	limit := 0
 	if len(maxItems) > 0 {
 		limit = maxItems[0]
 	}
 	var all []T
+	var hasMore bool
 
 	// Copy to avoid mutating the caller's map during pagination.
 	q := make(url.Values, len(query))
@@ -86,25 +95,26 @@ func ListAll[T any](ctx context.Context, c *Client, basePath string, query url.V
 
 		resp, err := c.DoRequest(ctx, http.MethodGet, path, nil)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 
 		if resp.StatusCode != http.StatusOK {
 			err := HandleErrorResponse(resp)
 			resp.Body.Close()
-			return nil, err
+			return nil, false, err
 		}
 
 		var page listResponse[T]
 		if err := json.NewDecoder(resp.Body).Decode(&page); err != nil {
 			resp.Body.Close()
-			return nil, fmt.Errorf("failed to decode response: %w", err)
+			return nil, false, fmt.Errorf("failed to decode response: %w", err)
 		}
 		resp.Body.Close()
 
 		all = append(all, page.Items...)
 
 		if limit > 0 && len(all) >= limit {
+			hasMore = page.NextCursor != "" || len(all) > limit
 			all = all[:limit]
 			break
 		}
@@ -116,9 +126,9 @@ func ListAll[T any](ctx context.Context, c *Client, basePath string, query url.V
 	}
 
 	if all == nil {
-		return []T{}, nil
+		return []T{}, hasMore, nil
 	}
-	return all, nil
+	return all, hasMore, nil
 }
 
 // DoJSON executes an HTTP request against the plugin API, optionally

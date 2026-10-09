@@ -11,10 +11,13 @@ import (
 	"github.com/grafana/gcx/internal/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/query/bigquery"
 	"github.com/grafana/gcx/internal/query/clickhouse"
 	"github.com/grafana/gcx/internal/query/influxdb"
 	"github.com/grafana/gcx/internal/query/loki"
+	"github.com/grafana/gcx/internal/query/mssql"
 	"github.com/grafana/gcx/internal/query/mysql"
+	"github.com/grafana/gcx/internal/query/pinot"
 	"github.com/grafana/gcx/internal/query/postgres"
 	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/grafana/gcx/internal/query/pyroscope"
@@ -53,9 +56,11 @@ type genericQueryRequest struct {
 	profileType string
 	maxNodes    int64
 	limit       int
+	limitSet    bool
+	table       string
 
-	// warn is the command's stderr. dispatchPostgres is its reader: it caps an
-	// oversized LIMIT and must say so without polluting the stdout document.
+	// warn is the command's stderr. dispatchPostgres and dispatchPinot write
+	// LIMIT-cap (and, for Pinot, skip) notices here so they stay off stdout.
 	warn io.Writer
 }
 
@@ -79,10 +84,13 @@ type queryRoutes struct {
 func newQueryRoutes() queryRoutes {
 	return queryRoutes{
 		dispatch: map[string]queryDispatch{
+			"bigquery":   dispatchBigQuery,
 			"clickhouse": dispatchClickHouse,
 			"influxdb":   dispatchInfluxDB,
 			"loki":       dispatchLoki,
+			"mssql":      dispatchMSSQL,
 			"mysql":      dispatchMySQL,
+			"pinot":      dispatchPinot,
 			"postgres":   dispatchPostgres,
 			"prometheus": dispatchPrometheus,
 			"pyroscope":  dispatchPyroscope,
@@ -102,6 +110,16 @@ func newQueryRoutes() queryRoutes {
 				"CloudWatch",
 				"namespace, metric, dimensions, region, statistic, period",
 				"gcx datasources cloudwatch query --namespace ... --metric ... --region ...",
+			),
+			"elasticsearch": structuredQueryRedirect(
+				"Elasticsearch",
+				"Lucene query, mode (documents/logs), or metric aggregation",
+				"gcx datasources elasticsearch query --mode documents|logs ...",
+			),
+			"opensearch": structuredQueryRedirect(
+				"OpenSearch",
+				"Lucene query, mode (documents/logs), or metric aggregation",
+				"gcx datasources opensearch query --mode documents|logs ...",
 			),
 		},
 	}
@@ -261,6 +279,89 @@ func dispatchClickHouse(ctx context.Context, req genericQueryRequest) (any, erro
 	return resp, nil
 }
 
+func dispatchPinot(ctx context.Context, req genericQueryRequest) (any, error) {
+	limit := pinotLimitFromGeneric(req.limit, req.limitSet)
+	sql, capped := pinot.EnforceLimit(req.expr, limit, pinot.MaxLimit)
+	if msg := pinot.LimitEnforcementNotice(req.expr, sql, capped, limit, pinot.MaxLimit, req.limitSet); msg != "" {
+		cmdio.Warning(req.warn, "%s", msg)
+	}
+
+	client, err := pinot.NewClient(req.cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create client: %w", err)
+	}
+
+	pinotReq := pinot.QueryRequest{
+		RawSQL:    sql,
+		TableName: req.table,
+		Start:     req.start,
+		End:       req.end,
+	}
+	if req.step > 0 {
+		pinotReq.IntervalMs = req.step.Milliseconds()
+	}
+
+	resp, err := client.Query(ctx, req.uid, pinotReq)
+	if err != nil {
+		return nil, fmt.Errorf("query failed: %w", err)
+	}
+
+	return resp, nil
+}
+
+func dispatchBigQuery(ctx context.Context, req genericQueryRequest) (any, error) {
+	client, err := bigquery.NewClient(req.cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create client: %w", err)
+	}
+
+	sql, capped := bigquery.EnforceLimit(req.expr, 100, 1000)
+	if capped {
+		cmdio.Warning(req.warn, "LIMIT in query exceeds the maximum of 1000 and was capped")
+	}
+
+	bqReq := bigquery.QueryRequest{
+		RawSQL: sql,
+		Start:  req.start,
+		End:    req.end,
+	}
+
+	resp, err := client.Query(ctx, req.uid, bqReq)
+	if err != nil {
+		return nil, fmt.Errorf("query failed: %w", err)
+	}
+
+	return resp, nil
+}
+
+func dispatchMSSQL(ctx context.Context, req genericQueryRequest) (any, error) {
+	client, err := mssql.NewClient(req.cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create client: %w", err)
+	}
+
+	const maxLimit = 1000
+	sql, eff, capped := mssql.EnforceTopSentinel(req.expr, 100, maxLimit)
+
+	mssqlReq := mssql.QueryRequest{
+		RawSQL: sql,
+		Start:  req.start,
+		End:    req.end,
+	}
+	if req.step > 0 {
+		mssqlReq.IntervalMs = req.step.Milliseconds()
+	}
+
+	resp, err := client.Query(ctx, req.uid, mssqlReq)
+	if err != nil {
+		return nil, fmt.Errorf("query failed: %w", err)
+	}
+
+	dsquery.SurfaceRowLimits(req.warn, resp, capped, eff, maxLimit)
+
+	return resp, nil
+}
+
 func dispatchMySQL(ctx context.Context, req genericQueryRequest) (any, error) {
 	client, err := mysql.NewClient(req.cfg)
 	if err != nil {
@@ -315,4 +416,16 @@ func dispatchPostgres(ctx context.Context, req genericQueryRequest) (any, error)
 	}
 
 	return resp, nil
+}
+
+// pinotLimitFromGeneric maps the auto-detecting query command's --limit to an
+// effective row cap for Pinot. The generic flag defaults to Loki's limit; when
+// --limit was omitted, use pinot.DefaultLimit so generic and typed pinot query
+// behave the same. limitSet comes from cmd.Flags().Changed("limit") so an
+// explicit --limit 50 is not confused with the untyped default.
+func pinotLimitFromGeneric(limit int, limitSet bool) int {
+	if !limitSet {
+		return pinot.DefaultLimit
+	}
+	return limit
 }

@@ -79,14 +79,16 @@ Similarly, prefer `gcx metrics query` over `gcx datasources query <prometheus-ui
 for PromQL queries — the signal-specific command handles datasource resolution
 automatically.
 
-## Verify Context First
+## Target Context
 
-Before any operation, confirm which environment is targeted:
-- `gcx config check` — validates the active context and tests connectivity
-- `gcx config view` — shows full config (secrets redacted; use `--raw` to reveal)
-- `gcx config current-context` — shows just the active context name
-- `gcx config use-context <name>` — switch contexts
-- `--context <name>` flag on any command — target a specific context without switching
+When the target context is known, pass `--context <name>` directly;
+no separate configuration or connectivity check is needed.
+Inspect configuration only when the target is ambiguous or a request fails
+with a configuration, authentication, or connectivity error:
+- `gcx config list-contexts` — list configured contexts and their servers
+- `gcx config current-context` — show the active context name
+- `gcx config check` — validate the active context and test connectivity
+- `gcx config view` — inspect configuration with secrets redacted
 
 ## Output Control
 
@@ -175,14 +177,43 @@ gcx traces tags -d <tempo-uid> -l resource.service.name --llm -o json
 
 # Full trace body in Tempo's LLM-friendly trace encoding.
 gcx traces get -d <tempo-uid> <trace-id> --llm -o json
+# When the search's time range is known:
+gcx traces get -d <tempo-uid> <trace-id> --from <search-from> --to <search-to> --llm -o json
 # equivalent legacy path:
 gcx datasources tempo get -d <tempo-uid> <trace-id> --llm -o json
 ```
 
 Use `gcx traces labels -d <tempo-uid>` to discover attribute names first. Use
 `gcx traces query` to find trace IDs, then `gcx traces get --llm -o json` to inspect
-a selected trace. Omit `--llm` only when the user explicitly needs raw Tempo/OTLP
-JSON or the standard `tagValues: [{type, value}]` shape for schema/debugging work.
+a selected trace. Pass `--since` or `--from`/`--to` (e.g. the search's time range)
+to make the lookup much faster. Omit them when the time range is unknown; a
+range that misses the trace returns not found.
+Omit `--llm` only when the user explicitly needs raw Tempo/OTLP JSON or the
+standard `tagValues: [{type, value}]` shape for schema/debugging work.
+
+### Shrinking large traces before analysis
+
+`gcx traces get` supports V2 filtering and span pruning (both experimental) —
+reach for these before manually truncating a huge `--llm` payload yourself:
+
+```bash
+# Only error spans, plus each match's ancestor path to the root.
+gcx traces get -d <tempo-uid> <trace-id> --filter '{ status = error }' --keep-hierarchy --llm -o json
+
+# Collapse repeated sibling spans (e.g. a fan-out of identical DB calls)
+# into one aggregated span. Safe to combine with --filter.
+gcx traces get -d <tempo-uid> <trace-id> --prune --llm -o json
+```
+
+`--filter` takes a TraceQL spanset filter; `--match-depth`/`--ancestor-depth`
+tune how many descendant/ancestor levels around each match are kept and are
+ignored without `--filter`. `--prune` is a bool, off unless set. 
+`--prune-group-by`/`--prune-min-spans`/`--prune-max-parent-depth`
+tune the pruning behavior and apply only when `--prune` enables pruning. Run
+`gcx traces get --help` for full flag details.
+
+If a response is too large for `-o agents`, it spills to a file with a hint
+to read it directly or re-run narrower (e.g. with `--filter` or `--prune`).
 
 ## Grafana Assistant
 

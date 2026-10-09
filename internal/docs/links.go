@@ -31,6 +31,11 @@ const (
 	// reference for the "invalid scope" / "permission denied" cloud errors.
 	AccessPolicies = "https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/create-access-policies.md"
 
+	// RolesAndPermissions documents Grafana roles and plugin permissions. It is
+	// the reference for a plugin action a user does not hold, such as
+	// grafana-collector-app:admin.
+	RolesAndPermissions = "https://grafana.com/docs/grafana/latest/administration/roles-and-permissions.md"
+
 	// GrafanaInstallation documents Grafana setup, referenced when a stack is
 	// older than the minimum supported version.
 	GrafanaInstallation = "https://grafana.com/docs/grafana/latest/setup-grafana/installation.md"
@@ -85,6 +90,9 @@ const (
 	// IRMInvoice documents how Grafana IRM is billed per monthly active user.
 	IRMInvoice = "https://grafana.com/docs/grafana-cloud/cost-management-and-billing/manage-invoices/understand-your-invoice/irm-invoice.md"
 
+	// Keychain documents credential storage and keychain error procedures for gcx.
+	Keychain = "https://grafana.com/docs/grafana/latest/as-code/observability-as-code/grafana-cli/gcx/keychain.md"
+
 	// ConfigMigration documents migrating a legacy (unversioned) gcx config
 	// to the version 1 stacks/cloud/contexts format, including the manual
 	// field mapping. Referenced by the loader's automatic migration on both
@@ -125,6 +133,7 @@ func All() []string {
 		SyntheticMonitoringInvoice,
 		PerformanceTestingInvoice,
 		IRMInvoice,
+		Keychain,
 		AnonymousUsageStats,
 		CloudAPI,
 	}

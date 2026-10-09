@@ -14,7 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/grafana/gcx/internal/deeplink"
 	"github.com/grafana/gcx/internal/httputils"
 )
 
@@ -22,18 +21,23 @@ import (
 const DefaultGCOMClientID = "gcx"
 
 // DefaultGCOMScopes returns the grafana.com API scopes gcx needs across all
-// commands: stacks (discovery + management), the signal write scopes for
-// minting the Synthetic Monitoring token (metrics/logs/traces:write), and
-// Fleet Management. Both `gcx cloud login` and the `gcx login` cloud followup
-// request this set. A fresh slice is returned on each call so callers (e.g. a
-// Cobra flag default) can mutate their copy without affecting others.
+// commands: profile (organisation memberships), stacks (discovery + management),
+// and the signal write scopes for
+// minting the Synthetic Monitoring token (metrics/logs/traces:write). Both
+// `gcx cloud login` and the `gcx login` cloud followup request this set. A
+// fresh slice is returned on each call so callers (e.g. a Cobra flag default)
+// can mutate their copy without affecting others.
+//
+// Fleet Management is absent on purpose. It reaches its API through the
+// collector app plugin proxy on the stack, so it needs the stack credential
+// only.
 func DefaultGCOMScopes() []string {
 	return []string{
+		"profile",
 		"stacks:read", "stacks:write", "stacks:delete",
 		"metrics:write",
 		"logs:write",
 		"traces:write",
-		"fleet-management:read", "fleet-management:write",
 	}
 }
 
@@ -127,7 +131,7 @@ func (f *GCOMFlow) runManual(ctx context.Context) (*GCOMResult, error) {
 	authURL := f.buildAuthURL(redirectURI, state, codeChallenge)
 	// No callback server runs here, so no route can race the paste. A nil guard
 	// always grants the claim.
-	return runManualPaste(ctx, f.writer, f.reader, authURL, "",
+	return runManualPaste(ctx, f.writer, f.reader, authURL, "", "",
 		func(q url.Values) (*GCOMResult, *callbackError) {
 			return f.handleGCOMCallbackParams(ctx, q, state, codeVerifier, redirectURI, nil)
 		})
@@ -169,10 +173,10 @@ func (f *GCOMFlow) runWithCallbackServer(ctx context.Context) (*GCOMResult, erro
 	fmt.Fprintln(f.writer, "Opening browser to authenticate with Grafana Cloud...")
 	fmt.Fprintf(f.writer, "If browser doesn't open, visit:\n  %s\n\n", authURL)
 
-	if opened, err := deeplink.OpenWithStatus(authURL); err != nil {
+	if opened, err := openBrowser(authURL); err != nil {
 		fmt.Fprintln(f.writer, "(Could not open browser automatically)")
 	} else if !opened {
-		fmt.Fprintln(f.writer, "(Browser launch skipped in agent mode — open the URL above manually)")
+		fmt.Fprintln(f.writer, "(Browser launch skipped in agent mode; open the URL above manually)")
 	}
 
 	// Over SSH the browser cannot reach the callback address. Accept a pasted
@@ -184,7 +188,7 @@ func (f *GCOMFlow) runWithCallbackServer(ctx context.Context) (*GCOMResult, erro
 		fmt.Fprintln(f.writer, "Waiting for authentication...")
 	}
 
-	return awaitCallbackOrPaste(ctx, f.writer, paste, resultCh, errCh,
+	return awaitCallbackOrPaste(ctx, f.writer, paste, nil, resultCh, errCh,
 		func(q url.Values) (*GCOMResult, *callbackError) {
 			return f.handleGCOMCallbackParams(ctx, q, state, codeVerifier, redirectURI, guard)
 		})
@@ -207,22 +211,15 @@ func (f *GCOMFlow) buildAuthURL(redirectURI, state, codeChallenge string) string
 }
 
 func (f *GCOMFlow) startGCOMCallbackServer(ctx context.Context, listener net.Listener, expectedState, codeVerifier, redirectURI string, guard *exchangeGuard, resultCh chan<- *GCOMResult, errCh chan<- error) *http.Server {
-	return newCallbackServer(listener, errCh, func(w http.ResponseWriter, r *http.Request) {
+	return newCallbackServer(listener, expectedState, errCh, func(w http.ResponseWriter, r *http.Request) bool {
 		result, cerr := f.handleGCOMCallbackParams(ctx, r.URL.Query(), expectedState, codeVerifier, redirectURI, guard)
 		if cerr != nil {
-			if errors.Is(cerr.err, errExchangeClaimed) {
-				// The paste route won the race, and the login is complete. Do
-				// not send to errCh: that would end a flow that succeeded.
-				renderSuccessPage(w)
-				return
-			}
-			errCh <- cerr.err
-			renderErrorPage(w, cerr.page)
-			return
+			return answerCallbackError(w, f.writer, cerr, errCh)
 		}
 
 		resultCh <- result
-		renderSuccessPage(w)
+		renderSuccessPage(w, nil)
+		return true
 	})
 }
 
