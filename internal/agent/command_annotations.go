@@ -654,6 +654,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx synthetic-monitoring query":              {Cost: "small", Hint: "<name> -p job=<job> -p instance=<target> -p frequency=<ms>"},
 	"gcx synthetic-monitoring queries get":        {Cost: "small", Hint: "<name>. Full parameter schema plus a ready-to-run 'query' invocation. Requires SM app v1.62.0+."},
 	"gcx synthetic-monitoring queries list":       {Cost: "small", Hint: "Requires SM app v1.62.0+."},
+	"gcx synthetic-monitoring suggestions list":   {Cost: "medium", Hint: "--json id,target,confidence,score keeps output small (full records are ~3 KB each; --limit defaults to 10). Each run generates suggestions anew: a paid, experimental LLM call over the stack's telemetry; unavailable in some regions."},
 	"gcx synthetic-monitoring probes create":      {Cost: "small"},
 	"gcx synthetic-monitoring probes delete":      {Cost: "small"},
 	"gcx synthetic-monitoring probes deploy":      {Cost: "small"},

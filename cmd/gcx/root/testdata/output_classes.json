@@ -581,6 +581,7 @@
  "gcx synthetic-monitoring queries get": "finite",
  "gcx synthetic-monitoring queries list": "finite",
  "gcx synthetic-monitoring query": "finite",
+ "gcx synthetic-monitoring suggestions list": "finite",
  "gcx traces adaptive policies create": "finite",
  "gcx traces adaptive policies delete": "finite",
  "gcx traces adaptive policies get": "finite",

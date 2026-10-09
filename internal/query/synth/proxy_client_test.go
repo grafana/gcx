@@ -48,6 +48,23 @@ func TestGet_BuildsProxyPathAndReturnsBody(t *testing.T) {
 	assert.JSONEq(t, `[{"id":1}]`, string(resp.Body))
 }
 
+// The proxy route follows the same UID rule as the resources route: a UID is
+// one path segment, so '/' or '?' in it must not re-route the request.
+func TestGet_EscapesDatasourceUID(t *testing.T) {
+	var gotEscapedPath, gotQuery string
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		gotEscapedPath = r.URL.EscapedPath()
+		gotQuery = r.URL.RawQuery
+		w.WriteHeader(http.StatusOK)
+	})
+
+	_, err := client.Get(context.Background(), "a/b?x=1", "check/list")
+	require.NoError(t, err)
+
+	assert.Equal(t, "/api/datasources/proxy/uid/a%2Fb%3Fx=1/sm/check/list", gotEscapedPath)
+	assert.Empty(t, gotQuery)
+}
+
 // TestGet_SendsClientIdentityHeaders locks the SM-attribution contract: gcx must
 // send X-Client-ID / X-Client-Version on the proxy path, because sm-api classifies
 // callers by those headers (not User-Agent). Without X-Client-ID="gcx" the request

@@ -1,18 +1,25 @@
-## gcx synthetic-monitoring
+## gcx synthetic-monitoring suggestions
 
-Manage Grafana Synthetic Monitoring checks and probes
+[experimental] Discover Synthetic Monitoring check suggestions.
+
+### Synopsis
+
+This command is experimental. It may be removed, or its subcommands, flags and responses may change without following the normal semantic versioning conventions.
+
+Check suggestions come from the Synthetic Monitoring Reliability Inbox, an
+experimental service that analyses a stack's telemetry.
 
 ### Options
 
 ```
-      --config string   Path to the configuration file to use
-  -h, --help            help for synthetic-monitoring
+  -h, --help   help for suggestions
 ```
 
 ### Options inherited from parent commands
 
 ```
       --agent                       Enable agent mode (JSON output, no color). Auto-detected from known agent identity variables. Set GCX_AGENT_NAME to identify a supported harness, or GCX_AGENT_MODE to control the mode.
+      --config string               Path to the configuration file to use
       --context string              Name of the context to use (overrides current-context in config)
       --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Requires -vvv. Do not ship these logs.
       --no-color                    Disable color output
@@ -22,10 +29,6 @@ Manage Grafana Synthetic Monitoring checks and probes
 
 ### SEE ALSO
 
-* [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
-* [gcx synthetic-monitoring checks](gcx_synthetic-monitoring_checks.md)	 - Manage Synthetic Monitoring checks.
-* [gcx synthetic-monitoring probes](gcx_synthetic-monitoring_probes.md)	 - Manage Synthetic Monitoring probes.
-* [gcx synthetic-monitoring queries](gcx_synthetic-monitoring_queries.md)	 - Discover Synthetic Monitoring named queries.
-* [gcx synthetic-monitoring query](gcx_synthetic-monitoring_query.md)	 - Run a Synthetic Monitoring query by name.
-* [gcx synthetic-monitoring suggestions](gcx_synthetic-monitoring_suggestions.md)	 - [experimental] Discover Synthetic Monitoring check suggestions.
+* [gcx synthetic-monitoring](gcx_synthetic-monitoring.md)	 - Manage Grafana Synthetic Monitoring checks and probes
+* [gcx synthetic-monitoring suggestions list](gcx_synthetic-monitoring_suggestions_list.md)	 - [experimental] List suggested checks generated from this stack's telemetry.
 
