@@ -14,13 +14,23 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// newMultiAppServer serves n apps named "app-<i>" with IDs 1..n.
+// newMultiAppServer serves n apps named "App <i>" with IDs 1..n.
 func newMultiAppServer(t *testing.T, n int) *httptest.Server {
 	t.Helper()
-	apps := make([]map[string]any, n)
-	byID := map[string]map[string]any{}
+	names := make([]string, n)
 	for i := range n {
-		apps[i] = map[string]any{"id": i + 1, "name": fmt.Sprintf("App %d", i+1)}
+		names[i] = fmt.Sprintf("App %d", i+1)
+	}
+	return newNamedAppServer(t, names)
+}
+
+// newNamedAppServer serves one app per name, with IDs 1..len(names).
+func newNamedAppServer(t *testing.T, names []string) *httptest.Server {
+	t.Helper()
+	apps := make([]map[string]any, len(names))
+	byID := map[string]map[string]any{}
+	for i, name := range names {
+		apps[i] = map[string]any{"id": i + 1, "name": name}
 		byID[strconv.Itoa(i+1)] = apps[i]
 	}
 
@@ -83,43 +93,48 @@ func TestFaroList_RejectsNegativeLimit(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestFaroGet_NameLookupDoesNotMaskListErrors(t *testing.T) {
+func TestFaroGet_ErrorsAreNotReportedAsMissingApp(t *testing.T) {
 	forbidden := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 	}))
 	t.Cleanup(forbidden.Close)
 
-	for _, args := range [][]string{{"App 1"}, {"--name", "App 1"}} {
+	// "App 1" goes straight to the list; "app-1" is slug-shaped and hits the
+	// per-ID GET first. Neither may turn a 403 into "no app has that name".
+	for _, arg := range []string{"App 1", "app-1"} {
 		_, _, err := runFaroCommand(t, forbidden, func(l *fakeConfigLoader) *cobra.Command {
 			return newGetCommand(l)
-		}, args)
+		}, []string{arg})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "403")
-		assert.NotContains(t, err.Error(), "no app has that name")
-		assert.NotContains(t, err.Error(), "not found")
+		assert.NotContains(t, err.Error(), "no app has that")
 	}
 }
 
-func TestFaroGet_PositionalNameFallback(t *testing.T) {
-	server := newMultiAppServer(t, 3)
+func TestFaroGet_Resolution(t *testing.T) {
+	// "Shop-7" and "2024" look like IDs; ID 7 and 2024 do not exist, so they
+	// must fall through to the name lookup.
+	server := newNamedAppServer(t, []string{"App 1", "Shop-7", "2024"})
 
 	tests := []struct {
 		name    string
-		args    []string
+		arg     string
 		wantID  string
 		wantErr string
 	}{
-		{name: "slug-id", args: []string{"app-2-2"}, wantID: "2"},
-		{name: "numeric id", args: []string{"3"}, wantID: "3"},
-		{name: "display name positional", args: []string{"App 1"}, wantID: "1"},
-		{name: "display name via flag", args: []string{"--name", "App 3"}, wantID: "3"},
-		{name: "unknown display name", args: []string{"Nope"}, wantErr: "not a slug-id"},
+		{name: "slug-id", arg: "app-1-1", wantID: "1"},
+		{name: "numeric id", arg: "3", wantID: "3"},
+		{name: "display name", arg: "App 1", wantID: "1"},
+		{name: "slug-shaped name", arg: "Shop-7", wantID: "2"},
+		{name: "numeric-looking name", arg: "2024", wantID: "3"},
+		{name: "unknown", arg: "Nope", wantErr: "no app has that slug-id or name"},
+		{name: "unknown slug-shaped", arg: "nope-99", wantErr: "no app has that slug-id or name"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			stdout, _, err := runFaroCommand(t, server, func(l *fakeConfigLoader) *cobra.Command {
 				return newGetCommand(l)
-			}, append(tc.args, "-o", "json"))
+			}, []string{tc.arg, "-o", "json"})
 			if tc.wantErr != "" {
 				require.ErrorContains(t, err, tc.wantErr)
 				return

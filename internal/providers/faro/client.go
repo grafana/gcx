@@ -91,6 +91,9 @@ func (c *Client) Get(ctx context.Context, id string) (*FaroApp, error) {
 	if err != nil {
 		return nil, fmt.Errorf("faro: get app %s: %w", id, err)
 	}
+	if statusCode == http.StatusNotFound {
+		return nil, fmt.Errorf("faro: get app %s: %w", id, adapter.ErrNotFound)
+	}
 	if statusCode >= 400 {
 		return nil, fmt.Errorf("faro: get app %s: status %d, body: %s", id, statusCode, string(body))
 	}
@@ -103,26 +106,6 @@ func (c *Client) Get(ctx context.Context, id string) (*FaroApp, error) {
 	app := fromAPI(apiApp)
 	log.Debug("Got Faro app", "id", app.ID, "name", app.Name)
 	return &app, nil
-}
-
-// GetByName retrieves a Faro app by name using client-side filtering.
-func (c *Client) GetByName(ctx context.Context, name string) (*FaroApp, error) {
-	log := logging.FromContext(ctx)
-	log.Debug("Looking up Faro app by name", "name", name)
-	apps, err := c.List(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, app := range apps {
-		if app.Name == name {
-			log.Debug("Found Faro app by name", "name", name, "id", app.ID)
-			return &app, nil
-		}
-	}
-
-	log.Debug("Faro app not found by name", "name", name, "total_apps", len(apps))
-	return nil, fmt.Errorf("faro: app with name %q: %w", name, adapter.ErrNotFound)
 }
 
 // Create creates a new Faro app.

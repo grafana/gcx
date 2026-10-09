@@ -146,40 +146,28 @@ func AppTable() cmdio.Table[adapter.TypedObject[FaroApp]] {
 	}
 }
 
-// resolveGetTarget resolves the lookup ID for the get command.
-// If --name is provided, it does a client-side name lookup and returns the numeric ID.
-// Otherwise a positional argument shaped like a slug-id or numeric ID is returned
-// as-is, and anything else is treated as a display name and looked up by name.
-func resolveGetTarget(ctx context.Context, cfg config.NamespacedRESTConfig, name string, args []string) (string, error) {
-	if name != "" {
-		client, err := NewClient(cfg)
-		if err != nil {
-			return "", err
+// getApp resolves a slug-id, numeric ID or display name to an app.
+// An argument shaped like an ID is fetched directly; only a not-found result
+// falls through to a name lookup over the full list, so any other failure
+// (e.g. a 403) is reported as-is instead of as a missing app.
+func getApp(ctx context.Context, crud *adapter.TypedCRUD[FaroApp], arg string) (*adapter.TypedObject[FaroApp], error) {
+	if _, ok := adapter.ExtractIDFromSlug(arg); ok {
+		obj, err := crud.Get(ctx, arg)
+		if err == nil || !errors.Is(err, adapter.ErrNotFound) {
+			return obj, err
 		}
-		app, err := client.GetByName(ctx, name)
-		if err != nil {
-			if errors.Is(err, adapter.ErrNotFound) {
-				return "", fmt.Errorf("faro app with name %q not found: %w", name, err)
-			}
-			return "", err
-		}
-		return app.ID, nil
 	}
-	if _, ok := adapter.ExtractIDFromSlug(args[0]); ok {
-		return args[0], nil
-	}
-	client, err := NewClient(cfg)
+
+	apps, err := crud.List(ctx, 0)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	app, err := client.GetByName(ctx, args[0])
-	if err != nil {
-		if errors.Is(err, adapter.ErrNotFound) {
-			return "", fmt.Errorf("%q is not a slug-id (e.g. my-app-42) and no app has that name: %w", args[0], err)
+	for _, app := range apps {
+		if app.Spec.Name == arg {
+			return &app, nil
 		}
-		return "", err
 	}
-	return app.ID, nil
+	return nil, fmt.Errorf("faro app %q: no app has that slug-id or name: %w", arg, adapter.ErrNotFound)
 }
 
 func corsOriginsString(origins []CORSOrigin) string {
@@ -225,56 +213,41 @@ func geolocationString(settings *FaroAppSettings) string {
 // ---------------------------------------------------------------------------
 
 type getOpts struct {
-	IO   cmdio.Options
-	Name string
+	IO cmdio.Options
 }
 
 func (o *getOpts) setup(flags *pflag.FlagSet) {
 	cmdio.RegisterTable(&o.IO, AppTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
-	flags.StringVar(&o.Name, "name", "", "Get Frontend Observability app by exact name, even if it looks like a slug-id")
 }
 
 func newGetCommand(loader RESTConfigLoader) *cobra.Command {
 	opts := &getOpts{}
 	cmd := &cobra.Command{
-		Use:   "get [slug-id|name]",
+		Use:   "get <slug-id|name>",
 		Short: "Get a Frontend Observability app by slug-id or name.",
-		Long: `Get a Frontend Observability app.
-
-The positional argument is a slug-id (my-web-app-42) or numeric ID. An argument
-that is not slug-id shaped is looked up as an app name. Use --name to force a
-name lookup, e.g. for a name that is all digits or ends in "-<digits>".`,
+		Long: `Get a Frontend Observability app by slug-id (my-web-app-42), numeric ID or
+display name. An argument that matches no app by ID is looked up by name.`,
 		Example: `  # Get by slug-id.
   gcx frontend apps get my-web-app-42
 
   # Get by name.
-  gcx frontend apps get "My Web App"
-  gcx frontend apps get --name "My Web App"`,
-		Args: cobra.MaximumNArgs(1),
+  gcx frontend apps get "My Web App"`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
 
-			if opts.Name == "" && len(args) == 0 {
-				return errors.New("provide a slug-id argument or --name flag")
-			}
-
 			ctx := cmd.Context()
 
-			crud, cfg, err := NewTypedCRUD(ctx, loader)
+			crud, _, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
 				return err
 			}
 
-			lookupID, lookupErr := resolveGetTarget(ctx, cfg, opts.Name, args)
-			if lookupErr != nil {
-				return lookupErr
-			}
-
-			typedObj, err := crud.Get(ctx, lookupID)
+			typedObj, err := getApp(ctx, crud, args[0])
 			if err != nil {
 				return err
 			}
