@@ -221,6 +221,31 @@ Each `Run`:
   gcx's retry backoff sleeps can't be interrupted, so stopping can lag by up to
   one backoff interval.
 
+## Measuring memory
+
+`measure.sh` measures what a process embedding the sandbox uses with each of
+one or more gcx checkouts, and prints markdown tables comparing them, with a
+change row between each pair:
+
+```sh
+experimental/sandbox/measure.sh gcx.wasm main=../gcx-main this=.
+```
+
+For each checkout, it builds `internal/cmd/measure` against that checkout's
+sandbox and wazero pin, and precompiles its own cache. Then it runs each build
+twice with `FORCE_GC=1` (collect and free before each report, for fixed costs)
+and twice without (what a server holds between bursts). Each run gets its own
+cgroup, starts with the module and cache evicted from page cache, loads gcx,
+runs `gcx version`, then runs two rounds of 10 concurrent `gcx commands`. The
+tables report the cgroup's peak, the cost per concurrent run, and the fixed
+cost after `gcx version`. The raw reports stay in `$OUT`.
+
+It needs Linux with cgroup v2 and a systemd user manager, for
+`systemd-run --user --scope`, plus Go. Use the same `gcx.wasm` for every build,
+for example the published one (`/gcx.wasm` in `ghcr.io/grafana/gcx-wasm`), so
+that only the host side varies. The method is sd2k's, from
+[#1498](https://github.com/grafana/gcx/pull/1498#issuecomment-6062809173).
+
 ## Limitations
 
 - **Interactive features:** terminal UIs (prompts), the clipboard and mmap are
