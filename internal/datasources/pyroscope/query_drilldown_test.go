@@ -4,8 +4,12 @@ import (
 	"bytes"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
+	"strconv"
+	"strings"
 	"testing"
+	"time"
 
 	dspyroscope "github.com/grafana/gcx/internal/datasources/pyroscope"
 	"github.com/grafana/gcx/internal/providers"
@@ -83,11 +87,30 @@ current-context: default
 		assert.Contains(t, stderr, "/a/grafana-pyroscope-app/explore")
 	})
 
-	t.Run("falls back to explore link when --trace-id forces it", func(t *testing.T) {
-		_, stderr, err := exec(`{service_name="frontend"}`, "--drilldown-link", "--trace-id", "4bf92f3577b34da6a3ce929d0e0e4736")
+	t.Run("builds no link when --trace-id is set, with one explanation", func(t *testing.T) {
+		for _, flag := range []string{"--drilldown-link", "--share-link"} {
+			_, stderr, err := exec(`{service_name="frontend"}`, flag, "--trace-id", "4bf92f3577b34da6a3ce929d0e0e4736")
+			require.NoError(t, err)
+			assert.NotContains(t, stderr, "Profiles Drilldown link:", flag)
+			assert.NotContains(t, stderr, "Explore link:", flag)
+			assert.Equal(t, 1, strings.Count(stderr, "--trace-id has no representation"), flag)
+		}
+	})
+
+	t.Run("default range matches the one-hour RPC window in both links", func(t *testing.T) {
+		_, stderr, err := exec(`{service_name="frontend"}`, "--share-link", "--drilldown-link")
 		require.NoError(t, err)
-		assert.NotContains(t, stderr, "Profiles Drilldown link:")
-		assert.Contains(t, stderr, "Explore link: ")
+
+		explore := linkAfter(t, stderr, "Explore link: ")
+		assert.Contains(t, explore, "now-1h")
+
+		drilldown, err := url.Parse(linkAfter(t, stderr, "Profiles Drilldown link: "))
+		require.NoError(t, err)
+		from, err := strconv.ParseInt(drilldown.Query().Get("from"), 10, 64)
+		require.NoError(t, err)
+		to, err := strconv.ParseInt(drilldown.Query().Get("to"), 10, 64)
+		require.NoError(t, err)
+		assert.Equal(t, time.Hour, time.Duration(to-from)*time.Millisecond)
 	})
 
 	t.Run("falls back to explore link when --stacktrace-selector forces it", func(t *testing.T) {
@@ -103,4 +126,13 @@ current-context: default
 		assert.NotContains(t, stderr, "Profiles Drilldown link:")
 		assert.Contains(t, stderr, "Explore link: ")
 	})
+}
+
+// linkAfter returns the URL printed after prefix on its stderr line.
+func linkAfter(t *testing.T, stderr, prefix string) string {
+	t.Helper()
+	_, rest, found := strings.Cut(stderr, prefix)
+	require.True(t, found, "missing %q in %q", prefix, stderr)
+	line, _, _ := strings.Cut(rest, "\n")
+	return strings.TrimSpace(line)
 }
