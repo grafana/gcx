@@ -35,7 +35,6 @@ var shorthandOperations = map[string]bool{
 	"series":   true,
 	"metrics":  true,
 	"metadata": true,
-	"patterns": true,
 }
 
 //nolint:gochecknoglobals // constant-like lookup table for test validation

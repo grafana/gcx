@@ -84,18 +84,18 @@ func (p *Provider) descriptor() signals.Descriptor {
   gcx logs series -d UID --match '{job="varlogs"}' -o json`,
 			},
 			{
-				Build:     dsloki.PatternsCmd,
+				Build:     dsloki.QueryPatternsCmd,
 				TokenCost: "medium",
-				LLMHint:   `gcx logs patterns -d abc123 '{job="varlogs"}' --since 1h -o json`,
+				LLMHint:   `gcx logs query-patterns -d abc123 '{job="varlogs"}' --since 1h -o json`,
 				Example: `
   # Detect patterns using configured default datasource
-  gcx logs patterns '{job="varlogs"}'
+  gcx logs query-patterns '{job="varlogs"}'
 
   # Detect patterns over a specific window
-  gcx logs patterns -d UID '{job="varlogs"}' --since 6h
+  gcx logs query-patterns -d UID '{job="varlogs"}' --since 6h
 
   # Output as JSON
-  gcx logs patterns -d UID '{job="varlogs"}' -o json`,
+  gcx logs query-patterns -d UID '{job="varlogs"}' -o json`,
 			},
 		},
 		Adaptive: &signals.AdaptiveSpec{
