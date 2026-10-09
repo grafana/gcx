@@ -247,6 +247,12 @@ func (p *Pusher) pushSingleResource(
 		}
 	}
 
+	if resources.IsReadOnlyNative(&res.Object) {
+		summary.RecordSkipped("read-only")
+		logger.Info(resources.ReadOnlyNativeError(&res.Object).Error())
+		return nil
+	}
+
 	if !res.IsManaged() && !request.IncludeManaged {
 		logger.Info(fmt.Sprintf("Skipping resource managed by %s", res.GetManagerKind()))
 		return nil
@@ -256,8 +262,13 @@ func (p *Pusher) pushSingleResource(
 		// The guard blocked a dry-run against an API that ignores server-side dryRun.
 		// Record it as skipped (not a failure) and keep going, like the puller does for
 		// unlistable types.
+		if errors.Is(err, errReadOnlyNative) {
+			summary.RecordSkipped("read-only")
+			logger.Info(err.Error())
+			return nil
+		}
 		if errors.Is(err, errDryRunUnverified) {
-			summary.RecordSkipped()
+			summary.RecordSkipped("not server-verified")
 			logger.Info("Dry-run: change not verified (server-side dry-run unsupported); no changes sent")
 			return nil
 		}
@@ -299,7 +310,7 @@ func (p *Pusher) upsertResource(
 			return identityErr
 		}
 		if readOnly {
-			return errors.New("imported template groups are read-only; manage the external Alertmanager configuration")
+			return fmt.Errorf("%w: %w", errReadOnlyNative, resources.ReadOnlyNativeError(&obj))
 		}
 	}
 
@@ -320,6 +331,9 @@ func (p *Pusher) upsertResource(
 		}
 	}
 	if err == nil {
+		if nativePolicy && resources.IsReadOnlyNative(existing) {
+			return fmt.Errorf("destination identity is read-only: %w; rename the local resource to use a different identity", resources.ReadOnlyNativeError(existing))
+		}
 		// Use the destination address and version on updates.
 		obj.SetName(existing.GetName())
 		obj.SetResourceVersion(existing.GetResourceVersion())
@@ -342,13 +356,17 @@ func (p *Pusher) upsertResource(
 	// Resource does not exist — try natural key matching for cross-stack push.
 	// The metadata.name may be a server-generated ID from a different stack.
 	// Look for a resource with the same content identity.
-	remoteName, rv, found, nkErr := findByNaturalKey(ctx, nkCache, desc, &obj)
+	matched, found, nkErr := findByNaturalKey(ctx, nkCache, desc, &obj)
 	if nkErr != nil {
 		return nkErr
 	}
 	if found {
+		if nativePolicy && resources.IsReadOnlyNative(matched) {
+			return fmt.Errorf("destination identity is read-only: %w; rename the local resource to use a different identity", resources.ReadOnlyNativeError(matched))
+		}
+		remoteName := matched.GetName()
 		obj.SetName(remoteName)
-		obj.SetResourceVersion(rv)
+		obj.SetResourceVersion(matched.GetResourceVersion())
 		if _, err := p.client.Update(ctx, desc, &obj, metav1.UpdateOptions{
 			DryRun: dryRunOpts,
 		}); err != nil {
@@ -386,3 +404,5 @@ func (p *Pusher) supportedDescriptors() map[schema.GroupVersionKind]resources.De
 
 	return supportedDescriptors
 }
+
+var errReadOnlyNative = errors.New("read-only native resource")

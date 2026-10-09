@@ -111,8 +111,13 @@ func (deleter *Deleter) Delete(ctx context.Context, request DeleteRequest) (*Ope
 			if err := deleter.deleteResource(ctx, desc, res, request.DryRun); err != nil {
 				// The guard blocked a dry-run delete against an API that ignores server-side
 				// dryRun. Record it as skipped (not a failure) and keep going, like the puller.
+				if errors.Is(err, errReadOnlyNative) {
+					summary.RecordSkipped("read-only")
+					logger.Info(err.Error())
+					return nil
+				}
 				if errors.Is(err, errDryRunUnverified) {
-					summary.RecordSkipped()
+					summary.RecordSkipped("not server-verified")
 					logger.Info("Dry-run: deletion not verified (server-side dry-run unsupported); no delete sent")
 					return nil
 				}
@@ -139,6 +144,9 @@ func (deleter *Deleter) Delete(ctx context.Context, request DeleteRequest) (*Ope
 }
 
 func (deleter *Deleter) deleteResource(ctx context.Context, descriptor resources.Descriptor, res *resources.Resource, dryRun bool) error {
+	if resources.IsReadOnlyNative(&res.Object) {
+		return fmt.Errorf("%w: %w", errReadOnlyNative, resources.ReadOnlyNativeError(&res.Object))
+	}
 	var dryRunOpts []string
 	if dryRun {
 		dryRunOpts = []string{"All"}

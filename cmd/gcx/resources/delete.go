@@ -143,18 +143,21 @@ func deleteCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			}
 
 			var res resources.Resources
+			var fetchSummary *remote.OperationSummary
 
 			// Load resources by selectors only
 			if len(opts.Path) == 0 {
 				fetchRes, err := FetchResources(ctx, FetchRequest{
-					Config:      cfg,
-					StopOnError: opts.OnError.StopOnError(),
+					ExcludeReadOnly: true,
+					Config:          cfg,
+					StopOnError:     opts.OnError.StopOnError(),
 				}, args)
 				if err != nil {
 					return err
 				}
 
 				res = fetchRes.Resources
+				fetchSummary = fetchRes.PullSummary
 			} else {
 				// Load resources from the filesystem
 				res = *resources.NewResources()
@@ -192,6 +195,14 @@ func deleteCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				return err
 			}
 
+			if fetchSummary != nil {
+				for reason, count := range fetchSummary.SkippedReasons() {
+					for range count {
+						summary.RecordSkipped(reason)
+					}
+				}
+			}
+			opts.IO.RegisterCustomCodec("text", &mutationSummaryCodec{skipReasons: summary.SkippedReasons()})
 			result := batchMutationFromSummary("deleted", summary, opts.DryRun)
 			// The deletion is done and its counts are final; a later rendering
 			// or stdout failure does not restore anything.

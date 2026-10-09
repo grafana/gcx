@@ -30,7 +30,7 @@ func NativeIdentity(obj *unstructured.Unstructured) (string, bool, error) {
 		return "", false, fmt.Errorf("spec.%s must be a nonempty string", field)
 	}
 	if obj.GetKind() == "TimeInterval" {
-		return title, false, nil
+		return title, IsReadOnlyNative(obj), nil
 	}
 	kind, found, err := unstructured.NestedString(obj.Object, "spec", "kind")
 	if err != nil {
@@ -43,7 +43,7 @@ func NativeIdentity(obj *unstructured.Unstructured) (string, bool, error) {
 		return "", false, errors.New("spec.kind must be grafana or mimir")
 	}
 	// A NUL separator avoids collisions between arbitrary titles and kind names.
-	return kind + "\x00" + title, kind == "mimir", nil
+	return kind + "\x00" + title, IsReadOnlyNative(obj), nil
 }
 
 // PrepareNativeCreate copies a manifest and removes source server identity and
@@ -58,10 +58,42 @@ func PrepareNativeCreate(obj *unstructured.Unstructured) (*unstructured.Unstruct
 		return nil, err
 	}
 	if readOnly {
-		return nil, errors.New("imported template groups are read-only; manage the external Alertmanager configuration")
+		return nil, ReadOnlyNativeError(obj)
 	}
 	for _, field := range []string{"name", "generateName", "resourceVersion", "uid", "generation", "creationTimestamp", "deletionTimestamp", "deletionGracePeriodSeconds", "managedFields"} {
 		unstructured.RemoveNestedField(copyObj.Object, "metadata", field)
 	}
 	return copyObj, nil
+}
+
+// IsReadOnlyNative reports native alerting objects controlled by another source.
+// Unknown server kinds remain readable and are not assumed to be read-only.
+func IsReadOnlyNative(obj *unstructured.Unstructured) bool {
+	if !HasServerDerivedName(obj.GroupVersionKind()) {
+		return false
+	}
+	kind, _, _ := unstructured.NestedString(obj.Object, "spec", "kind")
+	if kind == "mimir" {
+		return true
+	}
+	switch obj.GetAnnotations()["grafana.com/provenance"] {
+	case "system", "converted_prometheus", "file":
+		return true
+	default:
+		return false
+	}
+}
+
+// ReadOnlyNativeError describes why an opted-in resource cannot be changed.
+func ReadOnlyNativeError(obj *unstructured.Unstructured) error {
+	field := "name"
+	if obj.GetKind() == "TemplateGroup" {
+		field = "title"
+	}
+	title, _, _ := unstructured.NestedString(obj.Object, "spec", field)
+	reason := obj.GetAnnotations()["grafana.com/provenance"]
+	if reason == "" {
+		reason, _, _ = unstructured.NestedString(obj.Object, "spec", "kind")
+	}
+	return fmt.Errorf("%s %q is read-only (%s); manage its configuration at the source", obj.GetKind(), title, reason)
 }

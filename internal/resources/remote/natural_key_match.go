@@ -11,22 +11,22 @@ import (
 
 // findByNaturalKey attempts to find an existing remote resource that matches
 // the local resource by content-based natural key. Returns the remote resource's
-// name and resourceVersion if found.
+// object if found, retaining destination provenance for write checks.
 //
 // This enables cross-stack push: when Get-by-metadata.name returns NotFound
 // (because the server-generated ID from Stack A doesn't exist on Stack B),
 // we fall back to matching by natural key (e.g., SLO name, check job+target).
-func findByNaturalKey( //nolint:nonamedreturns // Named returns document the four-value return contract.
+func findByNaturalKey( //nolint:nonamedreturns // Named returns document the match contract.
 	ctx context.Context,
 	cache *naturalKeyCache,
 	desc resources.Descriptor,
 	localObj *unstructured.Unstructured,
-) (remoteName string, resourceVersion string, found bool, err error) {
+) (matched *unstructured.Unstructured, found bool, err error) {
 	// 1. Get the extractor for this GVK.
 	extractor := adapter.GetNaturalKeyExtractor(desc.GroupVersionKind())
 	nativePolicy := extractor == nil && resources.HasServerDerivedName(desc.GroupVersionKind())
 	if extractor == nil && !nativePolicy {
-		return "", "", false, nil
+		return nil, false, nil
 	}
 	var identityErr error
 	if nativePolicy {
@@ -43,16 +43,16 @@ func findByNaturalKey( //nolint:nonamedreturns // Named returns document the fou
 	// 2. Extract the local resource's natural key.
 	localKey, ok := extractor(localObj)
 	if !ok {
-		return "", "", false, identityErr
+		return nil, false, identityErr
 	}
 
 	// 3. Get the cached list of remote resources.
 	remoteList, err := cache.list(ctx, desc)
 	if err != nil {
-		return "", "", false, err
+		return nil, false, err
 	}
 	if remoteList == nil {
-		return "", "", false, nil
+		return nil, false, nil
 	}
 
 	// 4. Native identities must be unique; existing adapter first-match semantics stay unchanged.
@@ -61,19 +61,18 @@ func findByNaturalKey( //nolint:nonamedreturns // Named returns document the fou
 		remoteKey, ok := extractor(&remoteList.Items[i])
 		if ok && remoteKey == localKey {
 			if !nativePolicy {
-				return remoteList.Items[i].GetName(), remoteList.Items[i].GetResourceVersion(), true, nil
+				return remoteList.Items[i].DeepCopy(), true, nil
 			}
 			matches++
-			remoteName = remoteList.Items[i].GetName()
-			resourceVersion = remoteList.Items[i].GetResourceVersion()
+			matched = remoteList.Items[i].DeepCopy()
 		}
 	}
 
 	if nativePolicy && identityErr != nil {
-		return "", "", false, identityErr
+		return nil, false, identityErr
 	}
 	if matches > 1 {
-		return "", "", false, fmt.Errorf("ambiguous native identity %q: %d matching resources", localKey, matches)
+		return nil, false, fmt.Errorf("ambiguous native identity %q: %d matching resources", localKey, matches)
 	}
-	return remoteName, resourceVersion, matches == 1, nil
+	return matched, matches == 1, nil
 }

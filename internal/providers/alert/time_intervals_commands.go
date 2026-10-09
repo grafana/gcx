@@ -209,6 +209,9 @@ Fetch the new title after rename to refresh local metadata; files are unchanged.
 		if err != nil {
 			return err
 		}
+		if resources.IsReadOnlyNative(current) {
+			return resources.ReadOnlyNativeError(current)
+		}
 		if obj.GetName() != "" && obj.GetName() != current.GetName() {
 			return fail.NewCommandUsageError(cmd, fmt.Sprintf("manifest metadata.name %q does not match current title %q (API name %q)", obj.GetName(), args[0], current.GetName()), nil)
 		}
@@ -273,6 +276,9 @@ func newTimeIntervalsDeleteCommand(binding native.Binding) *cobra.Command {
 		current, err := resolveNativeAlertTitle(cmd.Context(), access, args[0], "")
 		if err != nil {
 			return err
+		}
+		if resources.IsReadOnlyNative(current) {
+			return resources.ReadOnlyNativeError(current)
 		}
 		if err := access.Client.Delete(cmd.Context(), access.Descriptor, current.GetName(), metav1.DeleteOptions{}); err != nil {
 			return err
@@ -368,6 +374,9 @@ func nativeAlertManifestVersion(cmd *cobra.Command, obj *unstructured.Unstructur
 		if v != gv.Version {
 			return "", fail.NewCommandUsageError(cmd, fmt.Sprintf("--api-version %q conflicts with manifest apiVersion %q; the manifest decides the version", flagVersion, obj.GetAPIVersion()), nil)
 		}
+	}
+	if resources.IsReadOnlyNative(obj) {
+		return "", fail.NewCommandUsageError(cmd, resources.ReadOnlyNativeError(obj).Error(), nil)
 	}
 	if _, _, err := resources.NativeIdentity(obj); err != nil {
 		return "", fail.NewCommandUsageError(cmd, err.Error(), nil)
@@ -487,7 +496,7 @@ func (c *timeIntervalTableCodec) Encode(w io.Writer, v any) error {
 	default:
 		return fmt.Errorf("time interval table: unsupported type %T", v)
 	}
-	headers := []string{"TITLE", "API_NAME", "INTERVALS"}
+	headers := []string{"TITLE", "API_NAME", "INTERVALS", "READ-ONLY"}
 	if c.wide {
 		headers = append(headers, "PROVENANCE")
 	}
@@ -495,7 +504,7 @@ func (c *timeIntervalTableCodec) Encode(w io.Writer, v any) error {
 	for _, item := range items {
 		title, _, _ := unstructured.NestedString(item.Object, "spec", "name")
 		intervals, _, _ := unstructured.NestedSlice(item.Object, "spec", "time_intervals")
-		row := []string{title, item.GetName(), strconv.Itoa(len(intervals))}
+		row := []string{title, item.GetName(), strconv.Itoa(len(intervals)), strconv.FormatBool(resources.IsReadOnlyNative(&item))}
 		if c.wide {
 			row = append(row, item.GetAnnotations()[provenanceAnnotation])
 		}

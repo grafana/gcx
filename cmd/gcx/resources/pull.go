@@ -177,7 +177,8 @@ func pullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			}
 
 			res, err := FetchResources(ctx, FetchRequest{
-				Config: cfg,
+				ExcludeReadOnly: true,
+				Config:          cfg,
 				// Strip server fields from the resources.
 				// This includes fields like `resourceVersion`, `uid`, etc.
 				Processors: []remote.Processor{
@@ -286,7 +287,7 @@ func pullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				}
 
 				if skipped := pullSummary.SkippedCount(); skipped > 0 {
-					printer(w, "%d resources pulled, %d errors (%d resource types skipped — not listable)", succeeded, failed, skipped)
+					printer(w, "%d resources pulled, %d errors (%s)", succeeded, failed, formatSkipReasons(pullSummary.SkippedReasons()))
 				} else {
 					printer(w, "%d resources pulled, %d errors", succeeded, failed)
 				}

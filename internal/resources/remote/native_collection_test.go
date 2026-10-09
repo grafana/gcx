@@ -76,7 +76,7 @@ func TestPusher_UnnamedNativeDirectoryAggregation(t *testing.T) {
 						{"title": "bad-kind", "kind": true},
 					}
 					wantIdentities = []string{"grafana\x00same", "grafana\x00other"}
-					wantFailures = 3
+					wantFailures = 2
 				}
 				dir := t.TempDir()
 				for i, spec := range specs {
@@ -100,7 +100,12 @@ func TestPusher_UnnamedNativeDirectoryAggregation(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, 2, summary.SuccessCount())
 				require.Equal(t, wantFailures, summary.FailedCount())
-				require.Zero(t, summary.SkippedCount())
+				if kind == "TemplateGroup" {
+					require.Equal(t, 1, summary.SkippedCount())
+					require.Equal(t, 1, summary.SkippedReasons()["read-only"])
+				} else {
+					require.Zero(t, summary.SkippedCount())
+				}
 				require.Zero(t, client.gets, "unnamed manifests must not GET the collection as an object")
 				require.Zero(t, client.updates)
 				require.Len(t, client.creates, 2, "imported and malformed manifests must produce no write")
@@ -116,17 +121,6 @@ func TestPusher_UnnamedNativeDirectoryAggregation(t *testing.T) {
 					require.Equal(t, "target", obj.GetNamespace())
 				}
 				require.ElementsMatch(t, wantIdentities, identities)
-				if kind == "TemplateGroup" {
-					var importedFailures int
-					for _, failure := range summary.Failures() {
-						_, readOnly, identityErr := resources.NativeIdentity(&failure.Resource.Object)
-						if identityErr == nil && readOnly {
-							importedFailures++
-							require.ErrorContains(t, failure.Error, "read-only")
-						}
-					}
-					require.Equal(t, 1, importedFailures, "the imported equal-title group must remain a reported aggregate failure")
-				}
 				for _, obj := range objects.AsList() {
 					require.Empty(t, obj.Name())
 					require.Equal(t, "source-version", obj.Object.GetResourceVersion())

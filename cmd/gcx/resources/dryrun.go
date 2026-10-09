@@ -2,7 +2,10 @@ package resources
 
 import (
 	"errors"
+	"fmt"
 	"io"
+	"sort"
+	"strings"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/format"
@@ -149,7 +152,7 @@ func batchMutationFromSummary(action string, summary *remote.OperationSummary, d
 // push and delete have always printed (style picked from the counts, skipped
 // note added when the guard skipped any), so default human stdout stays
 // byte-identical to the pre-codec output.
-type mutationSummaryCodec struct{}
+type mutationSummaryCodec struct{ skipReasons map[string]int }
 
 func (c *mutationSummaryCodec) Format() format.Format { return "text" }
 
@@ -177,10 +180,31 @@ func (c *mutationSummaryCodec) Encode(w io.Writer, value any) error {
 	}
 
 	if skipped > 0 {
-		printer(w, "%d resources %s, %d errors (%d skipped: not server-verified)",
-			result.Summary.Succeeded, result.Action, result.Summary.Failed, skipped)
+		reasons := c.skipReasons
+		if len(reasons) == 0 {
+			reasons = map[string]int{"not server-verified": skipped}
+		}
+		printer(w, "%d resources %s, %d errors (%s)",
+			result.Summary.Succeeded, result.Action, result.Summary.Failed, formatSkipReasons(reasons))
 		return nil
 	}
 	printer(w, "%d resources %s, %d errors", result.Summary.Succeeded, result.Action, result.Summary.Failed)
 	return nil
+}
+
+func formatSkipReasons(reasons map[string]int) string {
+	keys := make([]string, 0, len(reasons))
+	for reason := range reasons {
+		keys = append(keys, reason)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, reason := range keys {
+		unit := "skipped"
+		if reason == "not listable" {
+			unit = "resource types skipped"
+		}
+		parts = append(parts, fmt.Sprintf("%d %s: %s", reasons[reason], unit, reason))
+	}
+	return strings.Join(parts, "; ")
 }

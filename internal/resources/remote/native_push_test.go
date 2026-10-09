@@ -152,10 +152,15 @@ func TestNativePushHTTP(t *testing.T) {
 					push := func() {
 						summary, err := pusher.Push(t.Context(), remote.PushRequest{Resources: resources.NewResources(res), MaxConcurrency: 1, IncludeManaged: true})
 						require.NoError(t, err)
-						if tc.forbidden || tc.listForbidden || tc.ambiguous || tc.imported || tc.getTransport || tc.listTransport {
+						switch {
+						case tc.imported:
+							require.Equal(t, 1, summary.SkippedCount())
+							require.Zero(t, summary.FailedCount())
+							require.Empty(t, mutations)
+						case tc.forbidden || tc.listForbidden || tc.ambiguous || tc.getTransport || tc.listTransport:
 							require.Equal(t, 1, summary.FailedCount())
 							require.Empty(t, mutations)
-						} else {
+						default:
 							require.Equal(t, 1, summary.SuccessCount())
 						}
 						require.Equal(t, unchanged.Object, res.Object.Object)

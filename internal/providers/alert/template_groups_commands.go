@@ -237,6 +237,9 @@ local files.`, Args: cobra.ExactArgs(1),
 			if err != nil {
 				return err
 			}
+			if resources.IsReadOnlyNative(selected) {
+				return resources.ReadOnlyNativeError(selected)
+			}
 			if obj.GetName() != "" && obj.GetName() != selected.GetName() {
 				return fail.NewCommandUsageError(cmd, fmt.Sprintf("manifest metadata.name %q must match the selected current group's API name %q; template kind cannot change", obj.GetName(), selected.GetName()), nil)
 			}
@@ -307,12 +310,8 @@ func newTemplateGroupsDeleteCommand(binding native.Binding) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			kind, err := normalizedTemplateKind(obj)
-			if err != nil {
-				return err
-			}
-			if kind == "mimir" {
-				return templateGroupReadOnlyError()
+			if resources.IsReadOnlyNative(obj) {
+				return resources.ReadOnlyNativeError(obj)
 			}
 			if err := access.Client.Delete(cmd.Context(), access.Descriptor, obj.GetName(), metav1.DeleteOptions{}); err != nil {
 				return err
@@ -378,7 +377,7 @@ func (c *templateGroupTableCodec) Encode(w io.Writer, v any) error {
 			return err
 		}
 		readOnly := "false"
-		if kind == "mimir" {
+		if resources.IsReadOnlyNative(&item) {
 			readOnly = "true"
 		}
 		row := []string{title, item.GetName(), kind, readOnly}
