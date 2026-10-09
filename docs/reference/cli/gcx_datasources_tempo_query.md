@@ -10,7 +10,10 @@ TRACEQL is the TraceQL expression to evaluate.
 Datasource is resolved from -d flag or datasources.tempo in your context.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
 open it in your browser after the query succeeds. Share links require an
-explicit time range via --since or --from/--to.
+explicit time range via --since or --from/--to. Use --drilldown-link or
+--open-drilldown for the equivalent Grafana Traces Drilldown URL (only
+available for a flat, &&-joined spanset of scope.tag comparisons; anything
+else falls back to the Explore URL).
 
 ```
 gcx datasources tempo query [TRACEQL] [flags]
@@ -29,6 +32,9 @@ gcx datasources tempo query [TRACEQL] [flags]
   # Print a Grafana Explore share link for the query
   gcx datasources tempo query '{ span.http.status_code >= 500 }' --share-link
 
+  # Print a Grafana Traces Drilldown link for the query
+  gcx datasources tempo query '{ span.http.status_code = 500 }' --drilldown-link
+
   # With custom limit
   gcx datasources tempo query -d UID '{ span.http.status_code >= 500 }' --since 1h --limit 50
 
@@ -40,6 +46,7 @@ gcx datasources tempo query [TRACEQL] [flags]
 
 ```
   -d, --datasource string   Datasource UID (required unless datasources.tempo is configured)
+      --drilldown-link      Print the Grafana Traces Drilldown URL for the executed query to stderr
       --error-on-empty      Fail if the query returns no results
       --expr string         Query expression (alternative to positional argument)
       --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
@@ -48,6 +55,7 @@ gcx datasources tempo query [TRACEQL] [flags]
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int           Maximum number of traces to return (0 means no limit) (default 20)
       --open                Open the executed query in Grafana Explore
+      --open-drilldown      Open the executed query in Grafana Traces Drilldown
   -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
       --share-link          Print the Grafana Explore URL for the executed query to stderr
       --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
