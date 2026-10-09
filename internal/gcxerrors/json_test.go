@@ -160,7 +160,7 @@ func TestDetailedError_WriteJSON(t *testing.T) {
 func TestDetailedError_WriteJSON_DocsFetchSuggestion(t *testing.T) {
 	t.Run("appended when DocsLink set and no prior suggestions", func(t *testing.T) {
 		err := gcxerrors.DetailedError{
-			Summary:  "Invalid PromQL query",
+			Summary:  gcxerrors.SummaryInvalidQuery,
 			DocsLink: "https://grafana.com/docs/grafana/latest/datasources/prometheus/query-editor.md",
 		}
 

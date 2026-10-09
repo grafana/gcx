@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/grafana/gcx/internal/agent"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -15,52 +16,83 @@ import (
 
 func TestFormatError(t *testing.T) {
 	tests := []struct {
-		name string
-		code int
-		body string
-		want string
+		name          string
+		code          int
+		body          string
+		want          string
+		serverMessage string
+		traceID       string
 	}{
 		{
-			name: "json message",
-			code: 400,
-			body: `{"message":"bad request data"}`,
-			want: "request failed with status 400: bad request data",
+			name:          "json message",
+			code:          400,
+			body:          `{"message":"bad request data"}`,
+			want:          "request failed with status 400: bad request data",
+			serverMessage: "bad request data",
 		},
 		{
-			name: "json message with traceID",
-			code: 400,
-			body: `{"message":"bad request data","traceID":"abc123"}`,
-			want: "request failed with status 400: bad request data (traceID abc123)",
+			name:          "json message with traceID",
+			code:          400,
+			body:          `{"message":"bad request data","traceID":"abc123"}`,
+			want:          "request failed with status 400: bad request data (traceID abc123)",
+			serverMessage: "bad request data",
+			traceID:       "abc123",
 		},
 		{
-			name: "error field preferred over message",
-			code: 500,
-			body: `{"error":"boom","message":"ignored"}`,
-			want: "request failed with status 500: boom",
+			name:          "error field preferred over message",
+			code:          500,
+			body:          `{"error":"boom","message":"ignored"}`,
+			want:          "request failed with status 500: boom",
+			serverMessage: "boom",
 		},
 		{
-			name: "err detail preferred over generic msg",
-			code: 400,
-			body: `{"msg":"Invalid incoming check","err":"browser checks require channels.k6.id"}`,
-			want: "request failed with status 400: browser checks require channels.k6.id",
+			name:          "err detail preferred over generic msg",
+			code:          400,
+			body:          `{"msg":"Invalid incoming check","err":"browser checks require channels.k6.id"}`,
+			want:          "request failed with status 400: browser checks require channels.k6.id",
+			serverMessage: "browser checks require channels.k6.id",
 		},
 		{
-			name: "non-string err preserves msg fallback",
-			code: 400,
-			body: `{"msg":"bad request data","err":{"field":"job"}}`,
-			want: "request failed with status 400: bad request data",
+			name:          "non-string err preserves msg fallback",
+			code:          400,
+			body:          `{"msg":"bad request data","err":{"field":"job"}}`,
+			want:          "request failed with status 400: bad request data",
+			serverMessage: "bad request data",
 		},
 		{
-			name: "raw body fallback",
-			code: 502,
-			body: "upstream unavailable",
-			want: "request failed with status 502: upstream unavailable",
+			name:          "raw body fallback",
+			code:          502,
+			body:          "upstream unavailable",
+			want:          "request failed with status 502: upstream unavailable",
+			serverMessage: "upstream unavailable",
 		},
 		{
 			name: "empty body",
 			code: 503,
 			body: "",
 			want: "request failed with status 503",
+		},
+		{
+			name:          "json without message retains raw body and trace",
+			code:          500,
+			body:          `{"reason":"InternalError","traceID":"abc123"}`,
+			want:          `request failed with status 500: {"reason":"InternalError","traceID":"abc123"}`,
+			serverMessage: `{"reason":"InternalError","traceID":"abc123"}`,
+			traceID:       "abc123",
+		},
+		{
+			name:          "malformed JSON retains raw body",
+			code:          500,
+			body:          `{"message":"broken"`,
+			want:          `request failed with status 500: {"message":"broken"`,
+			serverMessage: `{"message":"broken"`,
+		},
+		{
+			name:          "HTML retains raw body",
+			code:          502,
+			body:          "<html><body>bad gateway</body></html>",
+			want:          "request failed with status 502: <html><body>bad gateway</body></html>",
+			serverMessage: "<html><body>bad gateway</body></html>",
 		},
 	}
 
@@ -70,17 +102,21 @@ func TestFormatError(t *testing.T) {
 			require.Error(t, err)
 			assert.Equal(t, tt.want, err.Error())
 
-			// The typed status travels out-of-band; the message stays the whole
-			// user-facing contract.
+			var statusErr *gcxerrors.HTTPStatusError
+			require.ErrorAs(t, err, &statusErr)
+			assert.Equal(t, tt.serverMessage, statusErr.ServerMessage)
+			assert.Equal(t, tt.traceID, statusErr.TraceID)
+			assert.Empty(t, statusErr.ContentType, "FormatError has no response headers")
+			// The status and server metadata travel out-of-band; transport text
+			// stays byte-for-byte compatible.
 			var carrier interface{ HTTPStatusCode() int }
 			require.ErrorAs(t, err, &carrier, "every FormatError form must carry its status")
 			assert.Equal(t, tt.code, carrier.HTTPStatusCode())
 			require.NoError(t, errors.Unwrap(err),
 				"FormatError never wrapped anything and must not start: converters walk these chains")
 
-			// Exit-code tripwire: implementing APIServiceName and APIUserMessage
-			// as well would satisfy cmd/gcx/fail's serviceAPIError and flip
-			// provider 401/403 call sites from exit 1 to exit 3.
+			// Implementing APIServiceName and APIUserMessage would satisfy
+			// cmd/gcx/fail's serviceAPIError and shadow specialized converters.
 			var serviceShaped interface {
 				error
 				HTTPStatusCode() int
@@ -100,6 +136,7 @@ func TestHandleErrorResponseReadFailureCarriesStatusAndCause(t *testing.T) {
 	readErr := errors.New("boom")
 	resp := &http.Response{
 		StatusCode: http.StatusBadGateway,
+		Header:     http.Header{"Content-Type": {"text/html; charset=utf-8"}},
 		Body:       io.NopCloser(&failingReader{err: readErr}),
 	}
 
@@ -107,6 +144,10 @@ func TestHandleErrorResponseReadFailureCarriesStatusAndCause(t *testing.T) {
 	require.Error(t, err)
 	assert.Equal(t, "request failed with status 502 (could not read body: boom)", err.Error())
 	require.ErrorIs(t, err, readErr, "the reader error must stay in the unwrap chain")
+
+	var statusErr *gcxerrors.HTTPStatusError
+	require.ErrorAs(t, err, &statusErr)
+	assert.Equal(t, "text/html; charset=utf-8", statusErr.ContentType)
 
 	var carrier interface{ HTTPStatusCode() int }
 	require.ErrorAs(t, err, &carrier)
@@ -134,4 +175,21 @@ func TestConfirmDestructive_NonInteractiveEOF(t *testing.T) {
 	require.Error(t, err)
 	assert.False(t, ok)
 	assert.Contains(t, err.Error(), "use --force")
+}
+
+func TestHandleErrorResponsePreservesContentType(t *testing.T) {
+	for _, body := range []string{"", "<html>login</html>", `{"message":"denied"}`} {
+		t.Run(body, func(t *testing.T) {
+			resp := &http.Response{
+				StatusCode: http.StatusForbidden,
+				Header:     http.Header{"Content-Type": {"text/html; charset=utf-8"}},
+				Body:       io.NopCloser(strings.NewReader(body)),
+			}
+			err := providers.HandleErrorResponse(resp)
+			require.EqualError(t, err, providers.FormatError(http.StatusForbidden, []byte(body)).Error())
+			var statusErr *gcxerrors.HTTPStatusError
+			require.ErrorAs(t, err, &statusErr)
+			assert.Equal(t, "text/html; charset=utf-8", statusErr.ContentType)
+		})
+	}
 }

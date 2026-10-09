@@ -170,14 +170,31 @@ Errors flow through a multi-layer translation chain:
 k8s StatusError  -->  APIError (formatted)  -->  DetailedError (rich rendering)
 ```
 
-- `ParseStatusError` in the dynamic client layer normalizes k8s errors into `APIError`
+- The dynamic client layer normalizes Kubernetes status errors and providers
+  preserve HTTP status and parsed server context in typed errors
 - `ErrorToDetailedError` in the CLI layer converts any error into `DetailedError`
   with a summary, details, suggestions, and optional docs link
 - Commands never call `os.Exit` -- they return errors from `RunE`, and `main.go`
   handles the exit code
 
-The conversion pipeline is extensible: new error types are handled by adding a
-converter function to the `errorConverters` slice.
+Converters run from specific domain handling to general handling. The concrete
+`gcxerrors.HTTPStatusError` converter is last, immediately before the fallback,
+so it classifies HTTP failures that no domain converter claimed. Status 401
+maps to `Authentication failed`, 403 to `Authorization failed`, 404 to
+`Resource not found`, 409 to `Resource conflict`, and other statuses to `API
+error`. Authentication and authorization failures use exit code 3. HTML
+responses keep the status-based summary and exit code, while their details use
+a generic message instead of rendering the HTML body. `gcx api` keeps its raw
+response body as passthrough output.
+
+Converter summaries come from exported constants in `internal/gcxerrors`.
+Tests use the Go AST to reject literal summaries and non-constant helper
+returns, compare the constants against the `docs/design/errors.md` vocabulary
+table, and check converted errors at runtime. The fallback always uses
+`Unexpected error`, copies the full message into `Details`, and leaves `Parent`
+unset to avoid repeating the message. Add new converters to the
+`errorConverters` slice, preserving the HTTP status converter as its final
+typed entry.
 
 ---
 

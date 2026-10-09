@@ -18,15 +18,16 @@ func TestCloudOrgsAuthErrorProtocol(t *testing.T) {
 		t.Skip("builds the gcx binary")
 	}
 	for _, tc := range []struct {
-		name    string
-		status  int
-		body    string
-		details string
-		summary string
+		name          string
+		status        int
+		body          string
+		details       string
+		summary       string
+		serverMessage string
 	}{
-		{"unauthorized", 401, `{"message":"token expired"}`, "token expired", "Authentication failed"},
-		{"forbidden", 403, `{"message":"profile scope missing"}`, "profile scope missing", "Authorization failed"},
-		{"no user", 200, `null`, "Organisation listing requires a browser Cloud OAuth login.", "Authentication failed"},
+		{"unauthorized", 401, `{"message":"token expired"}`, "failed to list cloud organisations: token expired (HTTP 401)", "Authentication failed", "token expired"},
+		{"forbidden", 403, `{"message":"profile scope missing"}`, "failed to list cloud organisations: profile scope missing (HTTP 403)", "Authorization failed", "profile scope missing"},
+		{"no user", 200, `null`, "Organisation listing requires a browser Cloud OAuth login.", "Authentication failed", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -53,14 +54,27 @@ func TestCloudOrgsAuthErrorProtocol(t *testing.T) {
 			assert.Equal(t, tc.summary, failure["summary"])
 			details, ok := failure["details"].(string)
 			require.True(t, ok)
-			assert.True(t, strings.HasPrefix(details, tc.details), "details should start with %q, got %q", tc.details, details)
+			assert.Equal(t, tc.details, details)
+			if tc.serverMessage != "" {
+				assert.Equal(t, 1, strings.Count(details, tc.serverMessage))
+			}
 			suggestions, ok := failure["suggestions"].([]any)
 			require.True(t, ok)
 			require.Len(t, suggestions, 2)
-			assert.Contains(t, suggestions[0], "gcx cloud login")
-			assert.NotContains(t, suggestions[0], "--scope profile")
-			assert.Contains(t, suggestions[1], "GRAFANA_CLOUD_TOKEN")
-			assert.Contains(t, suggestions[1], "cloud.<entry>.token")
+			if tc.status == http.StatusForbidden {
+				assert.Contains(t, suggestions[0], "scopes")
+				assert.Contains(t, suggestions[0], "profile")
+				assert.Contains(t, suggestions[0], "permissions")
+				assert.Contains(t, suggestions[1], "gcx setup status")
+				for _, suggestion := range suggestions {
+					assert.NotContains(t, suggestion, "gcx cloud login")
+				}
+			} else {
+				assert.Contains(t, suggestions[0], "gcx cloud login")
+				assert.NotContains(t, suggestions[0], "--scope profile")
+				assert.Contains(t, suggestions[1], "GRAFANA_CLOUD_TOKEN")
+				assert.Contains(t, suggestions[1], "cloud.<entry>.token")
+			}
 		})
 	}
 }

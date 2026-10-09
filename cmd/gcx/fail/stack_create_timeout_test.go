@@ -6,7 +6,6 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/cloud"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/stretchr/testify/assert"
@@ -25,7 +24,7 @@ func TestStackCreationTimeoutRecovery(t *testing.T) {
 			if tc.creation {
 				err = &cloud.StackCreationTimeoutError{Slug: "demo", Err: err}
 			}
-			got := fail.ErrorToDetailedError(fmt.Errorf("failed to create stack: %w", err))
+			got := toDetailedError(t, fmt.Errorf("failed to create stack: %w", err))
 			require.NotNil(t, got)
 			if tc.creation {
 				assert.Contains(t, got.Details, "may already exist or still be provisioning")

@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/gcx/cmd/gcx/root"
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/gcxerrors"
+	"github.com/grafana/gcx/internal/resources/dynamic"
 	"github.com/grafana/gcx/internal/telemetry"
 )
 
@@ -73,6 +74,13 @@ func TestIsSilentCancellation(t *testing.T) {
 		{name: "nil error", err: nil, want: false},
 		{name: "bare context.Canceled", err: context.Canceled, want: true},
 		{name: "wrapped context.Canceled", err: fmt.Errorf("query: %w", context.Canceled), want: true},
+		{
+			name: "canceled dynamic-client request",
+			err: dynamic.ParseStatusError(&url.Error{
+				Op: "Get", URL: "http://example.invalid", Err: context.Canceled,
+			}),
+			want: true,
+		},
 		{name: "deadline exceeded is not a cancellation", err: context.DeadlineExceeded, want: false},
 		{name: "unrelated error", err: errors.New("boom"), want: false},
 		{

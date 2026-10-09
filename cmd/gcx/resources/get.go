@@ -10,6 +10,7 @@ import (
 	"time"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
+	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/deeplink"
@@ -324,13 +325,12 @@ func writeGetOutput(stdout, stderr io.Writer, opts *getOpts, res *FetchResponse,
 		for i, item := range output.Items {
 			itemMaps[i] = item.Object
 		}
-		errSummary := fmt.Sprintf("%d resource(s) failed to get", res.PullSummary.FailedCount())
-		detErr := gcxerrors.DetailedError{Summary: errSummary}
+		detErr, _, cause := getFailureDetails(res)
 		if err := detErr.WriteJSONWithItems(stdout, gcxerrors.ExitPartialFailure, itemMaps); err != nil {
 			return err
 		}
 		emitGetTruncationHint(stderr, opts, res)
-		return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, errors.New(errSummary))
+		return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, cause)
 	}
 
 	var encodeErr error
@@ -374,9 +374,49 @@ func writeGetOutput(stdout, stderr io.Writer, opts *getOpts, res *FetchResponse,
 // error — exit 1 instead of the taxonomy's 4, and a duplicate error JSON
 // appended to stdout in agent mode.
 func partialGetFailure(stderr io.Writer, res *FetchResponse) error {
-	summary := fmt.Sprintf("%d resource(s) failed to get", res.PullSummary.FailedCount())
-	cmdio.EmitWarn(stderr, summary)
-	return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, errors.New(summary))
+	detailed, renderedDetails, cause := getFailureDetails(res)
+	if agent.IsAgentMode() {
+		cmdio.EmitWarn(stderr, detailed.Summary)
+		for _, detail := range renderedDetails {
+			cmdio.EmitWarn(stderr, detail)
+		}
+	} else {
+		fmt.Fprint(stderr, detailed.Error())
+	}
+	return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, cause)
+}
+
+// getFailureDetails uses the same classifications as single-resource errors.
+// Failures arrive concurrently, so sort their rendered details for stable output.
+// Keep the original causes for telemetry without printing them a second time.
+func getFailureDetails(res *FetchResponse) (gcxerrors.DetailedError, []string, error) {
+	var details []string
+	var causes []error
+	for _, failure := range res.PullSummary.Failures() {
+		err := failure.Error
+		if failure.Resource != nil {
+			err = fmt.Errorf("%s: %w", failure.Resource.Ref(), err)
+		}
+		causes = append(causes, err)
+		converted := fail.ErrorToDetailedError(err)
+		if converted == nil {
+			details = append(details, err.Error())
+			continue
+		}
+		parts := []string{converted.Summary}
+		if converted.Details != "" {
+			parts = append(parts, converted.Details)
+		}
+		if converted.Parent != nil && !gcxerrors.SameRenderedMessage(converted.Details, converted.Parent.Error()) {
+			parts = append(parts, converted.Parent.Error())
+		}
+		details = append(details, strings.Join(parts, ": "))
+	}
+	sort.Strings(details)
+	return gcxerrors.DetailedError{
+		Summary: fmt.Sprintf("%d resource(s) failed to get", res.PullSummary.FailedCount()),
+		Details: strings.Join(details, "\n\n"),
+	}, details, errors.Join(causes...)
 }
 
 // emitGetTruncationHint surfaces the per-resource-type truncation hint on
@@ -411,12 +451,11 @@ func writeFieldSelect(out, stderr io.Writer, opts *getOpts, res *FetchResponse, 
 		for i, item := range output.Items {
 			itemMaps[i] = cmdio.ExtractFields(item.Object, codec.Fields())
 		}
-		errSummary := fmt.Sprintf("%d resource(s) failed to get", res.PullSummary.FailedCount())
-		detErr := gcxerrors.DetailedError{Summary: errSummary}
+		detErr, _, cause := getFailureDetails(res)
 		if err := detErr.WriteJSONWithItems(out, gcxerrors.ExitPartialFailure, itemMaps); err != nil {
 			return err
 		}
-		return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, errors.New(errSummary))
+		return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, cause)
 	}
 
 	var encodeErr error

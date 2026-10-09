@@ -23,8 +23,23 @@ Constants defined in `internal/gcxerrors/exitcodes.go`.
 **Implementation state:**
 - Exit code 2 (usage error) is set by `convertUsageErrors`,
   `convertCobraUnknownCommandErrors`, and `convertRequiredFlagErrors` for bad
-  flags, unknown commands, and missing required flags.
-- Exit code 3 (auth failure) is set by `convertAPIErrors` for HTTP 401/403.
+  flags, unknown commands, and missing required flags. The instrumentation
+  `ErrMutuallyExclusiveFlags` converter also assigns exit 2; the current setup
+  validation does not emit this sentinel, so that branch is unit-tested only.
+- Exit code 3 (auth failure) covers HTTP 401/403 in the K8s, query, datasource,
+  service, Fleet, GCOM, login, and the final concrete `HTTPStatusError` converters.
+  This includes provider errors, Assistant helper errors, and raw `gcx api`
+  failures. A 401 reports `Authentication failed`
+  and suggests credential recovery; a 403 reports `Authorization failed` and
+  suggests checking roles or scopes. Adaptive Logs `invalid scope` reports
+  authorization failure for both statuses.
+- Missing Cloud credentials, and a missing Synthetic Monitoring token whose
+  auto-discovery cannot start without Cloud credentials or stack configuration,
+  exit 3. Synthetic Monitoring register/install permission failures also exit 3,
+  including HTTP 400 responses that explicitly report insufficient permissions.
+  Service failures during SM token discovery remain API errors (exit 1);
+  unreachable services remain network errors (exit 1). Missing non-credential settings such as SM URL or a Cloud stack slug remain
+  configuration failures with exit 1 when they do not prevent token discovery.
 - Exit code 4 (partial failure) is set by `convertPartialFailureErrors` when
   push, pull, delete, or validate operations have mixed success/failure results.
   Commands return a `PartialFailureError` when `--on-error=fail` (default) and
@@ -82,6 +97,10 @@ Constants defined in `internal/gcxerrors/exitcodes.go`.
 - Exit code 6 (version incompatible) is set by `convertVersionErrors` when
   Grafana version < 12 is detected.
 
+Malformed resource selector syntax exits 2. A well-formed selector whose resource
+type or API version is not served by the current server exits 1 with
+`Endpoint not available`; it does not imply incorrect command syntax.
+
 ### 2.2 Setting Exit Codes in Converters
 
 When writing or modifying error converters in `cmd/gcx/fail/convert.go`,
@@ -91,7 +110,7 @@ set the `ExitCode` field on `DetailedError`:
 // In convertAPIErrors, for auth failures:
 exitCode := 3
 return &DetailedError{
-    Summary:  fmt.Sprintf("%s - code %d", reason, code),
+    Summary:  "Authorization failed", // HTTP 403 (401: "Authentication failed")
     ExitCode: &exitCode,
     Suggestions: []string{...},
 }, true
@@ -102,10 +121,12 @@ For partial failures, the command itself should set exit code 4 when
 
 ### 2.3 Cobra Usage Errors
 
-Cobra itself handles usage errors (bad flags, missing required args). With
-`SilenceUsage: true` set on the root command, these errors flow through
-`handleError` and get exit code 1. Future work: detect Cobra usage errors
-and override to code 2.
+Cobra flag parsing and positional argument validation errors are wrapped in
+`UsageError` by the root command and exit with code 2. They use the summary
+`Invalid command usage`, include the command's expected usage, and suggest
+running that command with `--help`. Unknown commands and missing required
+flags also exit with code 2. `SilenceUsage: true` keeps Cobra from printing a
+second usage message alongside the structured error.
 
 Reference: `cmd/gcx/main.go`, `internal/gcxerrors/detailed.go`,
 `cmd/gcx/fail/convert.go`

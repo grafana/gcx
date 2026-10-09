@@ -1,42 +1,23 @@
 package fleet
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 )
 
 // maxResponseBodyBytes caps Fleet response bodies at 1 MiB.
 const maxResponseBodyBytes int64 = 1 << 20
 
-// pluginMissingMarkers are the response bodies that Grafana returns when the
-// collector app plugin cannot serve a proxy route. Grafana returns "Plugin not
-// found" when no plugin with that identifier is installed or enabled. Grafana
-// returns "plugin route match not found" when the plugin is installed but has
-// no route for the path. The markers are lower case, because the comparison
-// ignores case.
-//
-//nolint:gochecknoglobals // an immutable lookup table, not mutable state.
-var pluginMissingMarkers = []string{
-	"plugin not found",
-	"plugin route match not found",
-	"plugin is not enabled",
-}
-
-// IsPluginMissingBody reports whether the response body says that the collector
-// app plugin cannot serve the proxy route. Callers use it to tell a missing
-// plugin apart from a missing resource, because both arrive as HTTP 404. The
-// comparison ignores case, because Grafana does not capitalize these messages
-// in the same way.
-func IsPluginMissingBody(body string) bool {
-	lower := strings.ToLower(body)
-	for _, marker := range pluginMissingMarkers {
-		if strings.Contains(lower, marker) {
-			return true
-		}
+// IsResourceNotFoundBody reports whether a response is a Connect error whose
+// code identifies an absent resource. Other 404 bodies indicate an unavailable
+// plugin, route, or RPC endpoint, even when their message says "not found".
+func IsResourceNotFoundBody(body string) bool {
+	var connectError struct {
+		Code string `json:"code"`
 	}
-	return false
+	return json.Unmarshal([]byte(body), &connectError) == nil && connectError.Code == "not_found"
 }
 
 // ReadErrorBody reads up to 1 MiB of a response body for error messages.
@@ -58,6 +39,8 @@ type HTTPError struct {
 	Path string
 	// Body is the trimmed response body (for diagnostics).
 	Body string
+	// ContentType is the response Content-Type header, when available.
+	ContentType string
 }
 
 func (e *HTTPError) Error() string {

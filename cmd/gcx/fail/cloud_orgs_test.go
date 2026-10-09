@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/cloud"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/stretchr/testify/assert"
@@ -23,7 +22,7 @@ func TestCloudOrgsErrorConversionScope(t *testing.T) {
 		{"unrelated operation", fmt.Errorf("other operation: %w", &cloud.GCOMHTTPError{Status: 403}), false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			result := fail.ErrorToDetailedError(tc.err)
+			result := toDetailedError(t, tc.err)
 			require.NotNil(t, result)
 			if tc.auth {
 				require.NotNil(t, result.ExitCode)

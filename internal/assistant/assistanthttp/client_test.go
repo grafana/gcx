@@ -2,6 +2,7 @@ package assistanthttp_test
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/grafana/gcx/internal/assistant/assistanthttp"
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/client-go/rest"
@@ -73,23 +75,59 @@ func TestDoRequest_NoContentTypeForGET(t *testing.T) {
 	assert.Empty(t, gotContentType)
 }
 
-func TestHandleErrorResponse_WithBody(t *testing.T) {
-	resp := &http.Response{
-		StatusCode: http.StatusNotFound,
-		Body:       io.NopCloser(strings.NewReader("investigation not found")),
+func TestHandleErrorResponse(t *testing.T) {
+	tests := []struct {
+		name   string
+		status int
+		body   string
+		want   string
+	}{
+		{"plain text", http.StatusNotFound, "investigation not found", "request failed with status 404: investigation not found"},
+		{"empty body", http.StatusInternalServerError, "", "request failed with status 500"},
+		{"json remains raw", http.StatusForbidden, `{"message":"forbidden","traceID":"abc123"}`, `request failed with status 403: {"message":"forbidden","traceID":"abc123"}`},
+		{"HTML remains raw", http.StatusUnauthorized, "<html>login</html>", "request failed with status 401: <html>login</html>"},
 	}
-	err := assistanthttp.HandleErrorResponse(resp)
-	assert.EqualError(t, err, "request failed with status 404: investigation not found")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp := &http.Response{
+				StatusCode: tt.status,
+				Header:     http.Header{"Content-Type": {"text/html; charset=utf-8"}},
+				Body:       io.NopCloser(strings.NewReader(tt.body)),
+			}
+			err := assistanthttp.HandleErrorResponse(resp)
+			require.EqualError(t, err, tt.want)
+			var statusErr *gcxerrors.HTTPStatusError
+			require.ErrorAs(t, err, &statusErr)
+			assert.Equal(t, tt.status, statusErr.HTTPStatusCode())
+			assert.Equal(t, tt.body, statusErr.ServerMessage)
+			assert.Equal(t, "text/html; charset=utf-8", statusErr.ContentType)
+			assert.Empty(t, statusErr.TraceID, "Assistant preserves the raw body without parsing JSON")
+			require.NoError(t, errors.Unwrap(err))
+		})
+	}
 }
 
-func TestHandleErrorResponse_EmptyBody(t *testing.T) {
+func TestHandleErrorResponse_ReadFailure(t *testing.T) {
+	readErr := errors.New("body read failed")
 	resp := &http.Response{
-		StatusCode: http.StatusInternalServerError,
-		Body:       io.NopCloser(strings.NewReader("")),
+		StatusCode: http.StatusBadGateway,
+		Header:     http.Header{"Content-Type": {"text/html; charset=utf-8"}},
+		Body:       io.NopCloser(failingReader{err: readErr}),
 	}
 	err := assistanthttp.HandleErrorResponse(resp)
-	assert.EqualError(t, err, "request failed with status 500")
+	require.EqualError(t, err, "request failed with status 502 (could not read body: body read failed)")
+	require.ErrorIs(t, err, readErr)
+	var statusErr *gcxerrors.HTTPStatusError
+	require.ErrorAs(t, err, &statusErr)
+	assert.Equal(t, http.StatusBadGateway, statusErr.HTTPStatusCode())
+	assert.Empty(t, statusErr.ServerMessage)
+	assert.Equal(t, "text/html; charset=utf-8", statusErr.ContentType)
+	assert.Empty(t, statusErr.TraceID)
 }
+
+type failingReader struct{ err error }
+
+func (r failingReader) Read([]byte) (int, error) { return 0, r.err }
 
 func TestFormatTime(t *testing.T) {
 	tests := []struct {

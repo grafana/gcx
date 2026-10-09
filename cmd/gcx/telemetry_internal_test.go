@@ -429,9 +429,9 @@ func TestReportErrorCapturesSignalsAndPreservesExitCodes(t *testing.T) {
 		wantReason string
 	}{
 		{
-			name:       "bare provider 401 keeps exit 1",
+			name:       "bare provider 401 uses exit 3",
 			err:        providers.FormatError(401, []byte(`{"message":"denied"}`)),
-			wantExit:   gcxerrors.ExitGeneralError,
+			wantExit:   gcxerrors.ExitAuthFailure,
 			wantStatus: 401,
 		},
 		{

@@ -3,6 +3,7 @@ package remote_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/grafana/gcx/internal/resources"
@@ -13,6 +14,79 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
+
+type failingPullClient struct{ err error }
+
+func (c failingPullClient) Get(context.Context, resources.Descriptor, string, metav1.GetOptions) (*unstructured.Unstructured, error) {
+	return nil, c.err
+}
+
+func (c failingPullClient) GetMultiple(context.Context, resources.Descriptor, []string, metav1.GetOptions) ([]unstructured.Unstructured, error) {
+	return nil, c.err
+}
+
+func (c failingPullClient) List(context.Context, resources.Descriptor, metav1.ListOptions) (*unstructured.UnstructuredList, error) {
+	return nil, c.err
+}
+
+func TestPuller_CancellationIsNotBatchFailure(t *testing.T) {
+	signalCause := errors.New("interrupt signal received")
+	for _, tc := range []struct {
+		name  string
+		cause error
+		err   error
+	}{
+		{name: "context cancelled", cause: context.Canceled, err: fmt.Errorf("request failed: %w", context.Canceled)},
+		{name: "invocation signal", cause: signalCause, err: fmt.Errorf("request failed: %w", signalCause)},
+	} {
+		for _, filterType := range []resources.FilterType{resources.FilterTypeAll, resources.FilterTypeMultiple, resources.FilterTypeSingle} {
+			for _, stopOnError := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/%s/stop=%t", tc.name, filterType, stopOnError), func(t *testing.T) {
+					ctx, cancel := context.WithCancelCause(context.Background())
+					cancel(tc.cause)
+					puller := remote.NewPuller(failingPullClient{err: tc.err}, &mockPullRegistry{})
+					var result resources.Resources
+					summary, err := puller.Pull(ctx, remote.PullRequest{
+						Filters:   resources.Filters{{Type: filterType, Descriptor: dashboardDescriptor(), ResourceUIDs: []string{"a", "b"}}},
+						Resources: &result, StopOnError: stopOnError,
+					})
+					require.ErrorIs(t, err, tc.cause)
+					require.Zero(t, summary.FailedCount())
+					require.Empty(t, summary.Failures())
+				})
+			}
+		}
+	}
+}
+
+func TestPuller_BatchFailurePreservesSelectorAndCause(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  error
+	}{
+		{name: "forbidden", err: apierrors.NewForbidden(schema.GroupResource{Resource: "dashboards"}, "", errors.New("access denied"))},
+		{name: "transport", err: errors.New("connection refused")},
+	} {
+		for _, filterType := range []resources.FilterType{resources.FilterTypeAll, resources.FilterTypeMultiple, resources.FilterTypeSingle} {
+			t.Run(fmt.Sprintf("%s/%s", tc.name, filterType), func(t *testing.T) {
+				ctx, cancel := context.WithCancelCause(context.Background())
+				defer cancel(nil)
+				// An unrelated API/transport failure remains a batch failure even
+				// when the invocation context has a cancellation cause.
+				cancel(errors.New("unrelated cancellation"))
+				filter := resources.Filter{Type: filterType, Descriptor: dashboardDescriptor(), ResourceUIDs: []string{"a", "b"}}
+				puller := remote.NewPuller(failingPullClient{err: tc.err}, &mockPullRegistry{})
+				var result resources.Resources
+				summary, err := puller.Pull(ctx, remote.PullRequest{Filters: resources.Filters{filter}, Resources: &result})
+				require.NoError(t, err)
+				require.Equal(t, 1, summary.FailedCount())
+				require.Len(t, summary.Failures(), 1)
+				require.ErrorIs(t, summary.Failures()[0].Error, tc.err)
+				require.Contains(t, summary.Failures()[0].Error.Error(), filter.String())
+			})
+		}
+	}
+}
 
 // mockPullClient implements PullClient for testing.
 type mockPullClient struct {

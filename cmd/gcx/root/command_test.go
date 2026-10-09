@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/gcx/cmd/gcx/root"
 	"github.com/grafana/gcx/internal/agent"
 	internalconfig "github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
@@ -140,6 +141,118 @@ func TestValidateArgs_GroupCommandRejectsUnexpectedArgsWithLeadingRootFlags(t *t
 	require.ErrorContains(t, err, "Usage:")
 	require.ErrorContains(t, err, "Available Commands:")
 	require.ErrorContains(t, err, "agents")
+}
+
+func TestValidateArgs_GroupCommandWithLeadingChildFlags(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{"no flags", []string{"dashboards", "nonesuch"}},
+		{"leading config", []string{"--config", "scratch.yaml", "dashboards", "nonesuch"}},
+		{"leading config equals", []string{"--config=scratch.yaml", "dashboards", "nonesuch"}},
+		{"config value matches command", []string{"--config", "dashboards", "dashboards", "nonesuch"}},
+		{"root and child flags", []string{"--context", "dev", "--config", "scratch.yaml", "dashboards", "nonesuch"}},
+		{"trailing config", []string{"dashboards", "nonesuch", "--config", "scratch.yaml"}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			group := &cobra.Command{Use: "dashboards", Short: "Manage dashboards."}
+			group.PersistentFlags().String("config", "", "Config file")
+			group.AddCommand(&cobra.Command{Use: "list", RunE: func(_ *cobra.Command, _ []string) error { return nil }})
+			cmd := root.NewCommandForTest("v0.0.0-test", []providers.Provider{&mockProvider{name: "dashboards", commands: []*cobra.Command{group}}})
+
+			err := root.ValidateArgs(cmd, tc.args)
+			require.ErrorContains(t, err, `unknown command "nonesuch" for "gcx dashboards"`)
+			detail := fail.ErrorToDetailedError(err)
+			require.NotNil(t, detail)
+			assert.Equal(t, "Invalid command usage", detail.Summary)
+			require.NotNil(t, detail.ExitCode)
+			assert.Equal(t, gcxerrors.ExitUsageError, *detail.ExitCode)
+		})
+	}
+}
+
+func TestNewCommand_ParsingFailuresAreUsageErrors(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"unknown flag", []string{"dashboards", "get", "uid", "--nonesuch"}, "unknown flag: --nonesuch"},
+		{"invalid typed flag", []string{"dashboards", "get", "uid", "--limit", "abc"}, `invalid argument "abc" for "--limit" flag`},
+		{"missing flag value", []string{"dashboards", "get", "uid", "--limit"}, "flag needs an argument: --limit"},
+		{"missing argument", []string{"dashboards", "get"}, "accepts 1 arg(s), received 0"},
+		{"extra argument", []string{"dashboards", "get", "uid", "extra"}, "accepts 1 arg(s), received 2"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ran := false
+			leaf := &cobra.Command{Use: "get <uid>", Args: cobra.ExactArgs(1), RunE: func(_ *cobra.Command, _ []string) error { ran = true; return nil }}
+			leaf.Flags().Int("limit", 0, "Limit")
+			group := &cobra.Command{Use: "dashboards"}
+			group.AddCommand(leaf)
+			cmd := root.NewCommandForTest("v0.0.0-test", []providers.Provider{&mockProvider{name: "dashboards", commands: []*cobra.Command{group}}})
+			cmd.SetOut(&bytes.Buffer{})
+			cmd.SetErr(&bytes.Buffer{})
+			cmd.SetArgs(tc.args)
+
+			err := cmd.Execute()
+			require.ErrorContains(t, err, tc.want)
+			assert.False(t, ran, "usage errors must stop before running the command")
+			detail := fail.ErrorToDetailedError(err)
+			require.NotNil(t, detail)
+			assert.Equal(t, "Invalid command usage", detail.Summary)
+			require.NotNil(t, detail.ExitCode)
+			assert.Equal(t, gcxerrors.ExitUsageError, *detail.ExitCode)
+			assert.Contains(t, detail.Details, "Expected:")
+			assert.Contains(t, detail.Details, "gcx dashboards get <uid>")
+			assert.Contains(t, detail.Suggestions, "Run 'gcx dashboards get --help' for full usage and examples")
+		})
+	}
+}
+
+func TestNewCommand_PreservesTypedArgumentUsageError(t *testing.T) {
+	want := &fail.UsageError{Message: "invalid selector", Expected: "specific selector syntax", Suggestions: []string{"custom help"}}
+	leaf := &cobra.Command{Use: "validate", Args: func(_ *cobra.Command, _ []string) error { return want }, RunE: func(_ *cobra.Command, _ []string) error { return nil }}
+	cmd := root.NewCommandForTest("v0.0.0-test", []providers.Provider{&mockProvider{name: "test", commands: []*cobra.Command{leaf}}})
+	cmd.SetArgs([]string{"validate"})
+	assert.Same(t, want, cmd.Execute())
+}
+
+func TestValidateArgs_SeparateTreePreservesRepeatableFlags(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{"before provider", []string{"--tag", "first", "--tag", "second", "--path", "a,b", "--path", "c", "dashboards", "get"}},
+		{"after provider", []string{"dashboards", "--tag", "first", "--tag", "second", "--path", "a,b", "--path", "c", "get"}},
+		{"after leaf", []string{"dashboards", "get", "--tag", "first", "--tag", "second", "--path", "a,b", "--path", "c"}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			build := func() (*cobra.Command, *[]string, *[]string) {
+				var tags, paths []string
+				group := &cobra.Command{Use: "dashboards"}
+				group.PersistentFlags().StringArrayVar(&tags, "tag", nil, "Tags")
+				group.PersistentFlags().StringSliceVar(&paths, "path", nil, "Paths")
+				group.AddCommand(&cobra.Command{Use: "get", RunE: func(_ *cobra.Command, _ []string) error { return nil }})
+				cmd := root.NewCommandForTest("v0.0.0-test", []providers.Provider{&mockProvider{name: "dashboards", commands: []*cobra.Command{group}}})
+				cmd.SetOut(&bytes.Buffer{})
+				cmd.SetErr(&bytes.Buffer{})
+				return cmd, &tags, &paths
+			}
+			cmd, tags, paths := build()
+			validationCmd, _, _ := build()
+			require.NoError(t, root.ValidateArgs(validationCmd, tc.args))
+			assert.Empty(t, *tags, "validation must not mutate the execution tree")
+			assert.Empty(t, *paths, "validation must not mutate the execution tree")
+			cmd.SetArgs(tc.args)
+			require.NoError(t, cmd.Execute())
+			assert.Equal(t, []string{"first", "second"}, *tags)
+			assert.Equal(t, []string{"a", "b", "c"}, *paths)
+		})
+	}
 }
 
 func TestValidateArgs_NestedGroupRejectsUnexpectedArgs(t *testing.T) {

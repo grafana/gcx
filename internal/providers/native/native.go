@@ -181,15 +181,20 @@ func resolveDescriptor(reg *discovery.Registry, cfg Config, version string) (res
 		Selectors:            resources.Selectors{sel},
 		PreferredVersionOnly: true,
 	})
-	// The registry's error is a selector error, which the CLI would render as
-	// a selector-parsing failure; the caller passed no selector, so report the
-	// real cause instead of wrapping it.
+	// Preserve the registry's typed server-capability error so callers can
+	// distinguish an unserved API from malformed input.
 	if err != nil || len(filters) == 0 {
 		target := cfg.Resource + "." + cfg.Group
 		if version != "" {
 			target = fmt.Sprintf("%s (version %s)", target, version)
 		}
-		return resources.Descriptor{}, fmt.Errorf("server does not serve %s", target)
+		if err != nil {
+			return resources.Descriptor{}, fmt.Errorf("server does not serve %s: %w", target, err)
+		}
+		return resources.Descriptor{}, &resources.UnsupportedResourceError{
+			Selector: sel.String(),
+			Reason:   "server does not serve " + target,
+		}
 	}
 
 	return filters[0].Descriptor, nil

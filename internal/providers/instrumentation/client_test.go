@@ -445,6 +445,10 @@ func TestClient_SetupK8sDiscovery(t *testing.T) {
 
 			if tt.wantErr {
 				require.Error(t, err)
+				var httpErr *fleet.HTTPError
+				require.ErrorAs(t, err, &httpErr)
+				assert.Equal(t, "application/json", httpErr.ContentType)
+				assert.Equal(t, tt.respBody, httpErr.Body)
 				return
 			}
 			require.NoError(t, err)

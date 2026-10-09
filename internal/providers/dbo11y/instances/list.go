@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/agent"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/format"
@@ -45,7 +44,7 @@ func (o *listOpts) Validate(cmd *cobra.Command) error {
 		return err
 	}
 	if o.Limit < 0 {
-		return fail.NewCommandUsageError(cmd, "--limit must be zero or positive", nil)
+		return gcxerrors.NewCommandUsageError(cmd, "--limit must be zero or positive", nil)
 	}
 	return nil
 }
@@ -96,7 +95,7 @@ func runList(loader *providers.ConfigLoader, opts *listOpts) func(*cobra.Command
 		}
 		matchers, err := parseFilters(opts.Filters)
 		if err != nil {
-			return fail.NewCommandUsageError(cmd, "", err)
+			return gcxerrors.NewCommandUsageError(cmd, "", err)
 		}
 
 		ctx := cmd.Context()
