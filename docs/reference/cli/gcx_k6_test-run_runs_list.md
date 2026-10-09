@@ -2,6 +2,10 @@
 
 List all test runs for a k6 load test.
 
+### Synopsis
+
+List all test runs for a k6 load test. Table output uses the current result, then legacy result_status, or - when neither is present. JSON omits absent result and result_status keys.
+
 ```
 gcx k6 test-run runs list [test-name] [flags]
 ```

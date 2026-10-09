@@ -1,6 +1,9 @@
 package k6
 
-import "strconv"
+import (
+	"encoding/json"
+	"strconv"
+)
 
 // ---------- ResourceIdentity implementations ----------
 
@@ -56,12 +59,36 @@ type EnvVar struct {
 // TestRunStatus represents the status of a k6 test run.
 type TestRunStatus struct {
 	ID           int    `json:"id,omitempty"`
-	LoadTestID   int    `json:"load_test_id"`
+	LoadTestID   int    `json:"load_test_id,omitempty"`
+	TestID       int    `json:"test_id,omitempty"`
+	ProjectID    int    `json:"project_id,omitempty"`
+	Result       string `json:"result,omitempty"`
 	Status       string `json:"status"`
-	ResultStatus int    `json:"result_status"`
+	ResultStatus *int   `json:"result_status,omitempty"`
 	Created      string `json:"created,omitempty"`
 	Ended        string `json:"ended,omitempty"`
 	ReferenceID  string `json:"reference_id,omitempty"`
+}
+
+// UnmarshalJSON adds current identity and result fields to legacy responses.
+// Legacy fields remain present for callers that use the existing output keys.
+func (r *TestRunStatus) UnmarshalJSON(data []byte) error {
+	type wire TestRunStatus
+	var decoded wire
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	if decoded.TestID == 0 {
+		decoded.TestID = decoded.LoadTestID
+	}
+	if decoded.LoadTestID == 0 {
+		decoded.LoadTestID = decoded.TestID
+	}
+	if decoded.Result == "" && decoded.ResultStatus != nil && (*decoded.ResultStatus == 1 || *decoded.ResultStatus == 2) {
+		decoded.Result = resultStatusString(*decoded.ResultStatus)
+	}
+	*r = TestRunStatus(decoded)
+	return nil
 }
 
 // projectsResponse is the response from listing projects.
@@ -187,4 +214,15 @@ type AllowedLoadZone struct {
 // allowedLoadZonesResponse is the response from listing allowed load zones.
 type allowedLoadZonesResponse struct {
 	Value []AllowedLoadZone `json:"value"`
+}
+
+// resultString prefers the v6 result and preserves legacy response support.
+func (r *TestRunStatus) resultString() string {
+	if r.Result != "" {
+		return r.Result
+	}
+	if r.ResultStatus != nil {
+		return resultStatusString(*r.ResultStatus)
+	}
+	return "-"
 }

@@ -23,6 +23,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -534,4 +535,93 @@ func TestK6TestRunStatusCommand_OutputContract(t *testing.T) {
 			wantYAMLSubstrs: []string{"id: 11", "status: finished"},
 		},
 	})
+}
+
+func TestK6V6RunCommands(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v3/account/grafana-app/start":
+			_, _ = w.Write([]byte(`{"organization_id":"42","v3_grafana_token":"cached-v3"}`))
+		case "/cloud/v6/load_tests/6/test_runs":
+			_, _ = w.Write([]byte(`{"value":[{"id":101,"test_id":6,"project_id":42,"status":"completed","result":"passed","created":"2026-10-06T07:00:00Z","ended":"2026-10-06T07:01:00Z"}]}`))
+		default:
+			t.Errorf("Unexpected API route: %s", r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	loader := &mockLoader{
+		cloudCfg:    providers.CloudRESTConfig{Stack: cloud.StackInfo{ID: 999}, Namespace: "stack-999"},
+		grafanaCfg:  config.NamespacedRESTConfig{Config: rest.Config{BearerToken: "glsa_test"}},
+		providerCfg: map[string]string{"api-domain": srv.URL},
+	}
+	stdout, _, err := runK6Command(t, false, loader, newRunsListCommand, []string{"--id", "6", "-o", "json"}, "")
+	require.NoError(t, err)
+	var runs []TestRunStatus
+	require.NoError(t, json.Unmarshal([]byte(stdout), &runs))
+	require.Len(t, runs, 1)
+	assert.Equal(t, 6, runs[0].TestID)
+	assert.Equal(t, 42, runs[0].ProjectID)
+	assert.Equal(t, "passed", runs[0].Result)
+	assert.Nil(t, runs[0].ResultStatus)
+	assert.NotContains(t, stdout, "result_status")
+	stdout, _, err = runK6Command(t, false, loader, newRunsListCommand, []string{"--id", "6", "-o", "table"}, "")
+	require.NoError(t, err)
+	assert.Contains(t, stdout, "completed")
+	assert.Contains(t, stdout, "passed")
+	assert.Contains(t, stdout, "2026-10-06T07:00")
+	assert.Contains(t, stdout, "2026-10-06T07:01")
+}
+
+func TestTestRunStatus_LegacyPendingZero(t *testing.T) {
+	var run TestRunStatus
+	require.NoError(t, json.Unmarshal([]byte(`{"id":101,"load_test_id":6,"result_status":0}`), &run))
+	assert.Equal(t, "pending", run.resultString())
+	assert.Equal(t, 6, run.TestID)
+	assert.Empty(t, run.Result)
+	data, err := json.Marshal(run)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), `"result_status":0`)
+}
+
+func TestTestRunStatus_NormalizesLegacyFields(t *testing.T) {
+	for _, tc := range []struct {
+		name, body, result, display string
+		testID, loadTestID          int
+	}{
+		{"legacy passed", `{"load_test_id":6,"result_status":1}`, "passed", "passed", 6, 6},
+		{"legacy failed", `{"load_test_id":6,"result_status":2}`, "failed", "failed", 6, 6},
+		{"current wins", `{"test_id":7,"load_test_id":6,"result":"passed","result_status":2}`, "passed", "passed", 7, 6},
+		{"legacy pending", `{"load_test_id":6,"result_status":0}`, "", "pending", 6, 6},
+		{"unknown legacy", `{"load_test_id":6,"result_status":7}`, "", "7", 6, 6},
+		{"current identity", `{"test_id":7,"result":"passed"}`, "passed", "passed", 7, 7},
+		{"absent", `{}`, "", "-", 0, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var run TestRunStatus
+			require.NoError(t, json.Unmarshal([]byte(tc.body), &run))
+			encoded, err := json.Marshal(run)
+			require.NoError(t, err)
+			var output map[string]any
+			decoder := json.NewDecoder(bytes.NewReader(encoded))
+			decoder.UseNumber()
+			require.NoError(t, decoder.Decode(&output))
+			assert.Equal(t, tc.testID, run.TestID)
+			assert.Equal(t, tc.loadTestID, run.LoadTestID)
+			assert.Equal(t, tc.result, run.Result)
+			assert.Equal(t, tc.display, run.resultString())
+			if tc.testID != 0 {
+				assert.Equal(t, json.Number(strconv.Itoa(tc.testID)), output["test_id"])
+			}
+			if tc.loadTestID != 0 {
+				assert.Equal(t, json.Number(strconv.Itoa(tc.loadTestID)), output["load_test_id"])
+			}
+			if tc.result != "" {
+				assert.Equal(t, tc.result, output["result"])
+			} else {
+				assert.NotContains(t, output, "result")
+			}
+		})
+	}
 }
