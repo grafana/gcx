@@ -7,7 +7,7 @@ func EscapePrimaryLabel(value string) string {
 	return escapePrimaryLabel(value)
 }
 
-func EncodeLabelFilter(key, operator, value string) string {
+func EncodeLabelFilter(key, operator, value string) (string, bool) {
 	return encodeLabelFilter(key, operator, value)
 }
 
