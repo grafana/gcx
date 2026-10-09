@@ -109,26 +109,6 @@ func (c *Client) Get(ctx context.Context, id string) (*FaroApp, error) {
 	return &app, nil
 }
 
-// GetByName retrieves a Faro app by name using client-side filtering.
-func (c *Client) GetByName(ctx context.Context, name string) (*FaroApp, error) {
-	log := logging.FromContext(ctx)
-	log.Debug("Looking up Faro app by name", "name", name)
-	apps, err := c.List(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, app := range apps {
-		if app.Name == name {
-			log.Debug("Found Faro app by name", "name", name, "id", app.ID)
-			return &app, nil
-		}
-	}
-
-	log.Debug("Faro app not found by name", "name", name, "total_apps", len(apps))
-	return nil, fmt.Errorf("faro: app with name %q not found", name)
-}
-
 // Create creates a new Faro app.
 // After creation, the app is re-fetched via List to get complete fields (collectEndpointURL, appKey).
 func (c *Client) Create(ctx context.Context, app *FaroApp) (*FaroApp, error) {

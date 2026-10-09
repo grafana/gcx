@@ -2,8 +2,13 @@
 
 Get a Frontend Observability app by slug-id or name.
 
+### Synopsis
+
+Get a Frontend Observability app by slug-id (my-web-app-42), numeric ID or
+display name. An argument that matches no app by ID is looked up by name.
+
 ```
-gcx frontend apps get [slug-id] [flags]
+gcx frontend apps get <slug-id|name> [flags]
 ```
 
 ### Examples
@@ -13,7 +18,7 @@ gcx frontend apps get [slug-id] [flags]
   gcx frontend apps get my-web-app-42
 
   # Get by name.
-  gcx frontend apps get --name "My Web App"
+  gcx frontend apps get "My Web App"
 ```
 
 ### Options
@@ -22,7 +27,6 @@ gcx frontend apps get [slug-id] [flags]
   -h, --help            help for get
       --jq string       jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string     Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --name string     Get Frontend Observability app by name instead of slug-id
   -o, --output string   Output format. One of: agents, json, table, wide, yaml (default "table")
 ```
 

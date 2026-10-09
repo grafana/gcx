@@ -209,9 +209,8 @@ func faroMutationCases(t *testing.T) []struct {
 
 // runFaroCommand builds the command against a fresh fake API server and
 // executes it, capturing stdout and stderr.
-func runFaroCommand(t *testing.T, build func(l *fakeConfigLoader) *cobra.Command, args []string) (string, string, error) {
+func runFaroCommand(t *testing.T, server *httptest.Server, build func(l *fakeConfigLoader) *cobra.Command, args []string) (string, string, error) {
 	t.Helper()
-	server := newFaroAPIServer(t)
 	loader := &fakeConfigLoader{grafanaURL: server.URL, faroAPIURL: server.URL}
 	cmd := build(loader)
 	var stdout, stderr bytes.Buffer
@@ -249,7 +248,7 @@ func TestFaroMutations_HumanDefault_ByteIdentical(t *testing.T) {
 
 	for _, tc := range faroMutationCases(t) {
 		t.Run(tc.name, func(t *testing.T) {
-			stdout, _, err := runFaroCommand(t, tc.build, tc.args)
+			stdout, _, err := runFaroCommand(t, newFaroAPIServer(t), tc.build, tc.args)
 			require.NoError(t, err)
 			assert.Equal(t, tc.wantHuman, stdout, "default human stdout must stay byte-identical")
 		})
@@ -266,7 +265,7 @@ func TestFaroMutations_AgentMode_SingleJSONDocument(t *testing.T) {
 			agent.SetFlag(true)
 			t.Cleanup(func() { agent.SetFlag(false) })
 
-			stdout, _, err := runFaroCommand(t, tc.build, tc.args)
+			stdout, _, err := runFaroCommand(t, newFaroAPIServer(t), tc.build, tc.args)
 			require.NoError(t, err)
 
 			doc := decodeSingleJSONValue(t, stdout)
@@ -292,14 +291,14 @@ func TestFaroMutations_ExplicitOutputOverride(t *testing.T) {
 
 	for _, tc := range faroMutationCases(t) {
 		t.Run(tc.name+" -o json", func(t *testing.T) {
-			stdout, _, err := runFaroCommand(t, tc.build, append(tc.args, "-o", "json"))
+			stdout, _, err := runFaroCommand(t, newFaroAPIServer(t), tc.build, append(tc.args, "-o", "json"))
 			require.NoError(t, err)
 			doc := decodeSingleJSONValue(t, stdout)
 			assert.Equal(t, tc.wantType, doc["type"])
 		})
 
 		t.Run(tc.name+" -o yaml", func(t *testing.T) {
-			stdout, _, err := runFaroCommand(t, tc.build, append(tc.args, "-o", "yaml"))
+			stdout, _, err := runFaroCommand(t, newFaroAPIServer(t), tc.build, append(tc.args, "-o", "yaml"))
 			require.NoError(t, err)
 			assert.Contains(t, stdout, "type: "+tc.wantType)
 			assert.NotContains(t, stdout, "✔", "explicit -o yaml must not carry the styled human line")
@@ -321,7 +320,7 @@ spec:
     geolocationEnabled: true
 `
 	path := writeTestFile(t, "app.yaml", manifest)
-	_, stderr, err := runFaroCommand(t, func(l *fakeConfigLoader) *cobra.Command {
+	_, stderr, err := runFaroCommand(t, newFaroAPIServer(t), func(l *fakeConfigLoader) *cobra.Command {
 		return newCreateCommand(l)
 	}, []string{"-f", path})
 	require.NoError(t, err)
