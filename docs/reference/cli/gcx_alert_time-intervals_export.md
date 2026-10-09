@@ -4,8 +4,10 @@ Export time intervals as provisioning YAML, JSON, or HCL.
 
 ### Synopsis
 
-Export all intervals, or one exact title, through the provisioning endpoint.
-The raw provisioning bytes are preserved and are not native TimeInterval manifests.
+Export Grafana-managed intervals, or one exact title, through the provisioning endpoint.
+Imported intervals shown by list/get are not exported: collection exports may be empty
+or partial, and exporting an imported title returns not found. The raw provisioning
+bytes are preserved and are not native TimeInterval manifests.
 
 ```
 gcx alert time-intervals export [<title>] [flags]

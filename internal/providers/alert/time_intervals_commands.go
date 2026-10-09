@@ -296,8 +296,10 @@ func (o *timeIntervalsExportOpts) Validate(cmd *cobra.Command) error {
 }
 func newTimeIntervalsExportCommand(loader GrafanaConfigLoader) *cobra.Command {
 	opts := &timeIntervalsExportOpts{}
-	cmd := &cobra.Command{Use: "export [<title>]", Short: "Export time intervals as provisioning YAML, JSON, or HCL.", Long: `Export all intervals, or one exact title, through the provisioning endpoint.
-The raw provisioning bytes are preserved and are not native TimeInterval manifests.`, Args: cobra.MaximumNArgs(1), Example: `  gcx alert time-intervals export
+	cmd := &cobra.Command{Use: "export [<title>]", Short: "Export time intervals as provisioning YAML, JSON, or HCL.", Long: `Export Grafana-managed intervals, or one exact title, through the provisioning endpoint.
+Imported intervals shown by list/get are not exported: collection exports may be empty
+or partial, and exporting an imported title returns not found. The raw provisioning
+bytes are preserved and are not native TimeInterval manifests.`, Args: cobra.MaximumNArgs(1), Example: `  gcx alert time-intervals export
   gcx alert time-intervals export weekends --format hcl
   gcx alert time-intervals export --format json`, RunE: func(cmd *cobra.Command, args []string) error {
 		if err := opts.Validate(cmd); err != nil {
