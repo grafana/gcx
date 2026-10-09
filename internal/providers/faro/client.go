@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/grafana-app-sdk/logging"
 	"k8s.io/client-go/rest"
@@ -23,6 +24,24 @@ const (
 	sourcemapsPathFmt      = basePath + "/%s/sourcemaps"
 	sourcemapsBatchPathFmt = basePath + "/%s/sourcemaps/batch/%s"
 )
+
+// The Frontend Observability plugin's proxy routes require these actions.
+// The roles are the plugin's built-in roles that grant them.
+const (
+	appsWriteAction  = "grafana-kowalski-app.apps:write"
+	appsWriteRole    = "Frontend Observability Editor"
+	appsDeleteAction = "grafana-kowalski-app.apps:delete"
+	appsDeleteRole   = "Frontend Observability Admin"
+)
+
+// routeDenied returns err as a PluginRouteDeniedError when the plugin proxy
+// refused the route, so the error names the action the route requires.
+func routeDenied(err error, statusCode int, body []byte, action, role string) error {
+	if providers.IsPluginRouteDenied(statusCode, body) {
+		return &providers.PluginRouteDeniedError{Action: action, Role: role, Cause: err}
+	}
+	return err
+}
 
 // SourcemapBundle represents a sourcemap bundle from the Faro API.
 type SourcemapBundle struct {
@@ -132,7 +151,8 @@ func (c *Client) Create(ctx context.Context, app *FaroApp) (*FaroApp, error) {
 	}
 
 	if statusCode >= 400 {
-		return nil, fmt.Errorf("faro: create app: status %d, body: %s", statusCode, string(body))
+		err := fmt.Errorf("faro: create app: status %d, body: %s", statusCode, string(body))
+		return nil, routeDenied(err, statusCode, body, appsWriteAction, appsWriteRole)
 	}
 
 	// After successful creation, fetch via list to get full details (collectEndpointURL, appKey).
@@ -182,7 +202,8 @@ func (c *Client) Update(ctx context.Context, id string, app *FaroApp) (*FaroApp,
 	}
 
 	if statusCode >= 400 {
-		return nil, fmt.Errorf("faro: update app %s: status %d, body: %s", id, statusCode, string(body))
+		err := fmt.Errorf("faro: update app %s: status %d, body: %s", id, statusCode, string(body))
+		return nil, routeDenied(err, statusCode, body, appsWriteAction, appsWriteRole)
 	}
 
 	var updatedAPI faroAppAPI
@@ -200,13 +221,14 @@ func (c *Client) Delete(ctx context.Context, id string) error {
 	log.Info("Deleting Faro app", "id", id)
 	path := fmt.Sprintf(appByIDPathFmt, url.PathEscape(id))
 
-	_, statusCode, err := c.doRequest(ctx, http.MethodDelete, path, nil)
+	body, statusCode, err := c.doRequest(ctx, http.MethodDelete, path, nil)
 	if err != nil {
 		return fmt.Errorf("faro: delete app %s: %w", id, err)
 	}
 
 	if statusCode >= 400 {
-		return fmt.Errorf("faro: delete app %s: status %d", id, statusCode)
+		err := fmt.Errorf("faro: delete app %s: status %d, body: %s", id, statusCode, string(body))
+		return routeDenied(err, statusCode, body, appsDeleteAction, appsDeleteRole)
 	}
 
 	return nil
@@ -277,7 +299,8 @@ func (c *Client) DeleteSourcemaps(ctx context.Context, appID string, bundleIDs [
 	}
 
 	if statusCode >= 400 {
-		return fmt.Errorf("faro: delete sourcemaps for app %s: status %d, body: %s", appID, statusCode, string(body))
+		err := fmt.Errorf("faro: delete sourcemaps for app %s: status %d, body: %s", appID, statusCode, string(body))
+		return routeDenied(err, statusCode, body, appsDeleteAction, appsDeleteRole)
 	}
 
 	return nil
