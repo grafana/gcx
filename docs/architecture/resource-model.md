@@ -395,6 +395,11 @@ the marshal/unmarshal boilerplate. `TypedCRUD` wraps typed Go functions (`ListFn
 - Stripping server-managed fields (`StripFields`)
 - Client-side get-by-name fallback when `GetFn` is nil (lists + filters)
 
+List methods retain partial items alongside an error for callers that explicitly
+handle incomplete coverage. The error must still be handled; partial items do
+not establish a complete collection. The get-by-name fallback requires a
+successful full list and returns any list error without selecting a partial item.
+
 The type constraint `ResourceNamer` (value-type subset of `ResourceIdentity`)
 requires domain types to implement `GetResourceName() string`. The full
 `ResourceIdentity` interface adds `SetResourceName(string)` for round-trip

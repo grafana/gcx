@@ -29,6 +29,12 @@ type FetchResponse struct {
 }
 
 func FetchResources(ctx context.Context, opts FetchRequest, args []string) (*FetchResponse, error) {
+	return fetchResources(ctx, opts, args, nil)
+}
+
+// fetchResources validates resolved filters before pulling when the caller needs
+// to reject an operation independently of whether any resources match.
+func fetchResources(ctx context.Context, opts FetchRequest, args []string, validateFilters func(resources.Filters) error) (*FetchResponse, error) {
 	sels, err := resources.ParseSelectors(args)
 	if err != nil {
 		return nil, err
@@ -52,6 +58,12 @@ func FetchResources(ctx context.Context, opts FetchRequest, args []string) (*Fet
 	})
 	if err != nil {
 		return nil, err
+	}
+
+	if validateFilters != nil {
+		if err := validateFilters(filters); err != nil {
+			return nil, err
+		}
 	}
 
 	pull, err := remote.NewDefaultPullerWithRegistry(opts.Config, reg)

@@ -148,13 +148,10 @@ func deleteCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				// selected definitions can be exported. Check the resolved type
 				// before reads so an empty fleet or export failure cannot turn a
 				// refused deletion into a successful zero-resource batch.
-				if err := rejectWatcherDelete(ctx, cfg, sels); err != nil {
-					return err
-				}
-				fetchRes, err := FetchResources(ctx, FetchRequest{
+				fetchRes, err := fetchResources(ctx, FetchRequest{
 					Config:      cfg,
 					StopOnError: opts.OnError.StopOnError(),
-				}, args)
+				}, args, rejectWatcherDelete)
 				if err != nil {
 					return err
 				}
@@ -223,15 +220,7 @@ func deleteCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	return cmd
 }
 
-func rejectWatcherDelete(ctx context.Context, cfg config.NamespacedRESTConfig, selectors resources.Selectors) error {
-	reg, err := discovery.NewDefaultRegistry(ctx, cfg)
-	if err != nil {
-		return err
-	}
-	filters, err := reg.MakeFilters(discovery.MakeFiltersOptions{Selectors: selectors, PreferredVersionOnly: true})
-	if err != nil {
-		return err
-	}
+func rejectWatcherDelete(filters resources.Filters) error {
 	for _, filter := range filters {
 		if filter.Descriptor.GroupVersionKind() == watcher.WatcherDescriptor().GroupVersionKind() {
 			return watcher.UnsupportedMutation("delete")

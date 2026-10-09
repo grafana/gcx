@@ -451,7 +451,7 @@ def2  Memory leak in payment-svc                resolved   1h ago
 
 The agentic workflow above is one example. gcx supports a wide range of workflows:
 
-- **Resource GitOps** — Pull resources to local files, let your agent edit them, push back to Grafana (`gcx resources pull` / `gcx resources push`)
+- **Resource GitOps** — Pull writable resource types to local files, let your agent edit them, push back to Grafana (`gcx resources pull` / `gcx resources push`)
 - **Explore your data** — Discover datasources, metrics, labels, and log streams before writing queries (`gcx datasources list`, `gcx metrics labels`)
 - **Bring Assistant context into your agent** — Read a conversation by ID or a shared Grafana Assistant URL, including AI SDK main-thread transcripts (`gcx assistant conversation get <id-or-url> -o json`)
 - **SLO management** — Create, monitor, and investigate SLOs from your terminal (`gcx slo definitions list`, `gcx slo reports list`)
@@ -609,6 +609,8 @@ go run . && gcx resources push -p ./resources
 ## Inspect Assistant Watchers (experimental)
 
 Read Watcher configuration with `gcx assistant watchers list` and `get WATCHER`, inspect runtime observations with `status WATCHER`, or export manifests with `gcx resources pull watchers`. Requires Grafana Cloud; writes are not supported yet. See [Assistant Watchers](docs/reference/assistant-watchers.md).
+
+Pulling all resource types can include read-only Watchers. Select writable types for a pull/push workflow; pushing Watcher manifests reports an unsupported operation.
 
 ## Raw API Access
 

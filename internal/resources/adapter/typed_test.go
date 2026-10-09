@@ -76,6 +76,16 @@ func TestTypedListsPreservePartialItemsAndErrors(t *testing.T) {
 	require.Len(t, untyped.Items, 1)
 	assert.Equal(t, "one", untyped.Items[0].GetName())
 
+	// Name resolution must not claim success from an incomplete collection:
+	// another unread item could affect identity resolution.
+	crud.GetFn = nil
+	item, err := crud.Get(t.Context(), "one")
+	require.ErrorIs(t, err, cause)
+	assert.Nil(t, item)
+	untypedItem, err := crud.AsAdapter().Get(t.Context(), "one", metav1.GetOptions{})
+	require.ErrorIs(t, err, cause)
+	assert.Nil(t, untypedItem)
+
 	crud.ListFn = adapter.LimitedListFn(func(context.Context) ([]TestWidget, error) {
 		return nil, cause
 	})

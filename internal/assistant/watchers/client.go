@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/grafana/gcx/internal/assistant/assistanthttp"
 )
 
@@ -48,6 +49,13 @@ func NewClient(base *assistanthttp.Client) *Client {
 }
 
 const collectionPath = "/api/v1/watcher-agents"
+
+// IsServerID recognizes the canonical UUID representation emitted for Watcher
+// IDs. Other references must be matched against observed collection identities.
+func IsServerID(ref string) bool {
+	id, err := uuid.Parse(ref)
+	return err == nil && id.String() == ref
+}
 
 func (c *Client) ListAll(ctx context.Context, archived bool) ([]Watcher, error) {
 	items := make([]Watcher, 0)

@@ -90,6 +90,56 @@ func TestResolveAllPartitionsIDPrecedenceAndCollisions(t *testing.T) {
 	assert.Len(t, index["checkout-health"], 2)
 }
 
+func TestResolveServerIDReadsDetailWithoutCollections(t *testing.T) {
+	const id = "00000000-0000-4000-8000-000000000001"
+	for _, tt := range []struct {
+		name   string
+		status int
+		kind   error
+	}{
+		{name: "success despite denied collections", status: http.StatusOK},
+		{name: "not found", status: http.StatusNotFound, kind: watchers.ErrNotFound},
+		{name: "unauthorized", status: http.StatusUnauthorized, kind: watchers.ErrPermissionDenied},
+		{name: "forbidden", status: http.StatusForbidden, kind: watchers.ErrPermissionDenied},
+		{name: "unavailable", status: http.StatusNotImplemented, kind: watchers.ErrCapabilityUnavailable},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var requests []string
+			client := clientForServer(t, func(w http.ResponseWriter, r *http.Request) {
+				requests = append(requests, r.URL.Path)
+				assert.Equal(t, http.MethodGet, r.Method)
+				if r.URL.Path == testCollectionPath {
+					w.WriteHeader(http.StatusForbidden)
+					return
+				}
+				if !assert.Equal(t, testCollectionPath+"/"+id, r.URL.Path) {
+					http.NotFound(w, r)
+					return
+				}
+				if tt.status != http.StatusOK {
+					w.WriteHeader(tt.status)
+					return
+				}
+				writeData(t, w, fixtureWatcher(id, "Checkout Health"))
+			})
+			raw, err := Resolve(t.Context(), client, id)
+			if tt.kind == nil {
+				require.NoError(t, err)
+				require.NotNil(t, raw)
+				assert.Equal(t, id, raw.ID)
+			} else {
+				require.ErrorIs(t, err, tt.kind)
+				assert.Nil(t, raw)
+				var apiErr *watchers.APIError
+				require.ErrorAs(t, err, &apiErr)
+				assert.Equal(t, tt.status, apiErr.StatusCode)
+				assert.Equal(t, "get Watcher", apiErr.Operation)
+			}
+			assert.Equal(t, []string{testCollectionPath + "/" + id}, requests)
+		})
+	}
+}
+
 func TestManifestProjectionAndEnvelopeParity(t *testing.T) {
 	stop := time.Date(2030, 1, 1, 18, 0, 0, 0, time.UTC)
 	raw := fixtureWatcher("id-1", "Checkout health")

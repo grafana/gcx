@@ -222,11 +222,14 @@ func CollisionError(name string, candidates []Candidate) error {
 	return fmt.Errorf("Watcher resource name %q is ambiguous (%s); use a server ID to select one Watcher", name, strings.Join(details, "; "))
 }
 
-// Resolve gives observed server IDs precedence, then matches resource names
+// Resolve gives recognized and observed server IDs precedence, then matches resource names
 // across both visible archive partitions and fetches the selected full detail.
 func Resolve(ctx context.Context, client *watchers.Client, ref string) (*watchers.Watcher, error) {
 	if strings.TrimSpace(ref) == "" {
 		return nil, errors.New("Watcher reference requires a nonblank resource name or server ID")
+	}
+	if watchers.IsServerID(ref) {
+		return client.Get(ctx, ref)
 	}
 	index, err := IdentityIndex(ctx, client)
 	if err != nil {

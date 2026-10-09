@@ -39,6 +39,28 @@ func writeData(t *testing.T, w http.ResponseWriter, data any) {
 	require.NoError(t, json.NewEncoder(w).Encode(map[string]any{"data": data}))
 }
 
+func TestIsServerIDRequiresCanonicalRepresentation(t *testing.T) {
+	for _, tt := range []struct {
+		ref string
+		id  bool
+	}{
+		{ref: "00000000-0000-4000-8000-00000000000a", id: true},
+		{ref: "00000000-0000-4000-8000-00000000000A"},
+		{ref: "0000000000004000800000000000000a"},
+		{ref: "{00000000-0000-4000-8000-00000000000a}"},
+		{ref: "urn:uuid:00000000-0000-4000-8000-00000000000a"},
+		{ref: " 00000000-0000-4000-8000-00000000000a "},
+		{ref: "00000000-0000-4000-8000-00000000000x"},
+		{ref: "id-1"},
+		{ref: "checkout-health"},
+		{ref: ""},
+	} {
+		t.Run(tt.ref, func(t *testing.T) {
+			assert.Equal(t, tt.id, watchers.IsServerID(tt.ref))
+		})
+	}
+}
+
 func TestListAllExhaustsCursorThroughEmptyPage(t *testing.T) {
 	for _, archived := range []bool{false, true} {
 		t.Run(strconv.FormatBool(archived), func(t *testing.T) {

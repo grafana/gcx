@@ -40,6 +40,8 @@
 
 - [x] 5.6 Address attached review findings: preserve per-item read results and accurate receipts, keep plain typed client errors with boundary rendering, drop unused server fields, disclose selector-free discovery impact, and revert unrelated AGENTS wording. Run regressions and required gates before committing the corrections.
 
+- [x] 5.7 Address publication review: avoid collection enumeration for recognized IDs, reuse resolved delete filters before fetch, pin incomplete-list name-lookup behavior, and clarify the approved strict export and read-only batch contracts. Re-run required gates and relevant live reads before updating the PR.
+
 ## 6. Publication after implementation review
 
 - [x] 6.1 Commit the reviewed implementation after required checks, fetch current origin/main, and rebase only this change's commits using the recorded .context/base-sha. Keep the existing branch name and drop planning-base commits; verify origin/main ancestry and that no docs-base commits enter the outgoing range.

@@ -494,14 +494,20 @@ func TestWatcherGenericDeleteSelectorsRefuseBeforeConfigurationReads(t *testing.
 		{Current: [][]watchers.Watcher{{watcherFixture("one", "Unique")}}, EnrollmentStatus: map[string]int{"one": http.StatusForbidden}},
 	} {
 		execute := watcherResourceCLI(t, fixture)
-		for _, selector := range []string{"watchers", "watcher/one"} {
-			_, err := execute("delete", selector, "--yes", "--output", "json")
-			require.ErrorIs(t, err, errors.ErrUnsupported)
-			assert.Contains(t, err.Error(), "Watcher delete is not supported yet")
-			assert.Zero(t, fixture.CollectionReads(false))
-			assert.Zero(t, fixture.CollectionReads(true))
-			assert.Zero(t, fixture.EnrollmentReads("one"))
-			assert.Zero(t, fixture.MutationCalls())
+		for _, selector := range []string{"watchers", "watcher/one", "watchers." + watcher.WatcherVersion + "." + watcher.WatcherAPIGroup + "/one"} {
+			for _, dryRun := range []bool{false, true} {
+				args := []string{"delete", selector, "--yes", "--output", "json"}
+				if dryRun {
+					args = append(args, "--dry-run")
+				}
+				_, err := execute(args...)
+				require.ErrorIs(t, err, errors.ErrUnsupported)
+				assert.Contains(t, err.Error(), "Watcher delete is not supported yet")
+				assert.Zero(t, fixture.CollectionReads(false))
+				assert.Zero(t, fixture.CollectionReads(true))
+				assert.Zero(t, fixture.EnrollmentReads("one"))
+				assert.Zero(t, fixture.MutationCalls())
+			}
 		}
 	}
 }
