@@ -238,6 +238,37 @@ func TestResourceAdapter_PushCreatesMissingApp(t *testing.T) {
 		createBody["extraLogLabels"])
 }
 
+// TestResourceAdapter_PushRefusesAnotherAppsName follows the resources push path
+// for a copied manifest: metadata.name still names app 42, but spec.name names
+// a new app. Push must not write the copy over app 42.
+func TestResourceAdapter_PushRefusesAnotherAppsName(t *testing.T) {
+	put := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPut {
+			put = true
+		}
+		writeJSON(w, map[string]any{"id": 42, "name": "checkout"})
+	}))
+	defer server.Close()
+
+	a := newTestAdapter(t, server, "stack-123")
+	_, err := a.Get(t.Context(), "checkout-42", metav1.GetOptions{})
+	require.NoError(t, err)
+
+	obj := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": faro.APIVersion,
+		"kind":       faro.Kind,
+		"metadata":   map[string]any{"name": "checkout-42"},
+		"spec": map[string]any{
+			"name":        "checkout-staging",
+			"corsOrigins": []any{map[string]any{"url": "https://staging.example.com"}},
+		},
+	}}
+	_, err = a.Update(t.Context(), obj, metav1.UpdateOptions{})
+	require.ErrorContains(t, err, `is named "checkout", not "checkout-staging"`)
+	assert.False(t, put, "push must not overwrite app 42")
+}
+
 func TestResourceAdapter_Delete(t *testing.T) {
 	tests := []struct {
 		name         string
