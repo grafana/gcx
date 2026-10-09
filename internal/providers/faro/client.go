@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/grafana-app-sdk/logging"
 	"k8s.io/client-go/rest"
 )
@@ -89,6 +90,10 @@ func (c *Client) Get(ctx context.Context, id string) (*FaroApp, error) {
 	body, statusCode, err := c.doRequest(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, fmt.Errorf("faro: get app %s: %w", id, err)
+	}
+	// resources push creates the app only when Get reports adapter.ErrNotFound.
+	if statusCode == http.StatusNotFound {
+		return nil, fmt.Errorf("faro: get app %s: %w", id, adapter.ErrNotFound)
 	}
 	if statusCode >= 400 {
 		return nil, fmt.Errorf("faro: get app %s: status %d, body: %s", id, statusCode, string(body))
