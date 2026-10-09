@@ -390,7 +390,7 @@ insertion, and a multi-reference reader that retains successful items with a
 partial-read report. Provider packages own resource identities, collision rules
 and diagnostic metadata; the router and generic pipeline dispatch these contracts
 without importing concrete provider types. Ordinary collection errors remain
-fatal under the selected error policy.
+fatal under the selected error policy. Assistant Watcher and MCP server adapters opt in to `adapter.ErrUnavailable` for unavailable collection APIs: selector-free get/pull counts those types as skipped, while explicit selections and per-item failures retain their error behavior.
 
 Registration may also supply a configuration-free mutation guard. Push and delete
 invoke it before resource reads so a read-only resource is refused even when its

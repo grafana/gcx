@@ -511,3 +511,84 @@ func TestWatcherGenericDeleteSelectorsRefuseBeforeConfigurationReads(t *testing.
 		}
 	}
 }
+
+func TestAssistantGenericSelectorFreePullSkipsUnavailableAPIs(t *testing.T) {
+	for _, policy := range []string{"fail", "ignore", "abort"} {
+		t.Run(policy, func(t *testing.T) {
+			fixture := &watcherstest.Server{CurrentStatus: http.StatusNotFound}
+			execute := watcherResourceCLI(t, fixture)
+			output, err := execute("pull", "--path", t.TempDir(), "--on-error", policy)
+			require.NoError(t, err)
+			receipt := decodeWatcherReceipt(t, output)
+			assert.Zero(t, receipt.Summary.Succeeded)
+			assert.Zero(t, receipt.Summary.Failed)
+			// Native Page also returns 404; MCPServer and Watcher add two skips.
+			assert.Equal(t, 3, receipt.Summary.Skipped)
+			assert.Empty(t, receipt.Failures)
+			assert.Equal(t, 1, fixture.CollectionReads(false))
+			assert.Zero(t, fixture.MutationCalls())
+		})
+	}
+}
+
+func TestAssistantGenericSelectorFreeGetSkipsUnavailableAPIs(t *testing.T) {
+	fixture := &watcherstest.Server{CurrentStatus: http.StatusNotFound}
+	execute := watcherResourceCLI(t, fixture)
+	output, err := execute("get", "--output", "json")
+	require.NoError(t, err)
+	var result struct {
+		Items []unstructured.Unstructured `json:"items"`
+	}
+	decoder := json.NewDecoder(bytes.NewReader(output))
+	require.NoError(t, decoder.Decode(&result), string(output))
+	assert.Empty(t, result.Items)
+	var extra any
+	require.ErrorIs(t, decoder.Decode(&extra), io.EOF)
+	assert.Equal(t, 1, fixture.CollectionReads(false))
+	assert.Zero(t, fixture.MutationCalls())
+}
+
+func TestMCPServerGenericExplicitPullUnavailableIsFailure(t *testing.T) {
+	fixture := &watcherstest.Server{}
+	execute := watcherResourceCLI(t, fixture)
+	output, err := execute("pull", "mcpservers", "--path", t.TempDir())
+	requireWatcherPartialFailure(t, err)
+	receipt := decodeWatcherReceipt(t, output)
+	assert.Equal(t, 1, receipt.Summary.Failed)
+	assert.Zero(t, receipt.Summary.Skipped)
+	require.Len(t, receipt.Failures, 1)
+	assert.Contains(t, receipt.Failures[0].Error, "failed to list MCP servers: request failed with status 404: 404 page not found")
+	assert.Zero(t, fixture.CollectionReads(false))
+	assert.Zero(t, fixture.MutationCalls())
+}
+
+func TestWatcherGenericSelectorFreePullIndividualUnavailableIsFailure(t *testing.T) {
+	for _, read := range []string{"detail", "enrollment"} {
+		t.Run(read, func(t *testing.T) {
+			fixture := &watcherstest.Server{Current: [][]watchers.Watcher{{watcherFixture("good", "Good"), watcherFixture("bad", "Bad")}}}
+			if read == "detail" {
+				fixture.DetailStatus = map[string]int{"bad": http.StatusNotImplemented}
+			} else {
+				fixture.EnrollmentStatus = map[string]int{"bad": http.StatusNotImplemented}
+			}
+			execute := watcherResourceCLI(t, fixture)
+			destination := t.TempDir()
+			output, err := execute("pull", "--path", destination)
+			requireWatcherPartialFailure(t, err)
+			receipt := decodeWatcherReceipt(t, output)
+			assert.Equal(t, 1, receipt.Summary.Succeeded)
+			assert.Equal(t, 1, receipt.Summary.Failed)
+			// Only Native Page and MCPServer are skipped; Watcher has a per-item failure.
+			assert.Equal(t, 2, receipt.Summary.Skipped)
+			require.Len(t, receipt.Failures, 1)
+			assert.Equal(t, watcher.WatcherKind, receipt.Failures[0].Target.Kind)
+			assert.Equal(t, "bad", receipt.Failures[0].Target.Name)
+			assert.Contains(t, receipt.Failures[0].Error, "HTTP 501")
+			_, err = os.Stat(watcherOutputPath(destination, "good"))
+			require.NoError(t, err)
+			_, err = os.Stat(watcherOutputPath(destination, "bad"))
+			require.ErrorIs(t, err, os.ErrNotExist)
+			assert.Zero(t, fixture.MutationCalls())
+		})
+	}
+}

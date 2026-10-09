@@ -140,6 +140,8 @@ Key files:
 
 ## 3. PULL Pipeline
 
+Selector-free pull (and get through the same puller) counts an unavailable Assistant Watcher or MCP server collection API as skipped via `adapter.ErrUnavailable`; explicit selections and per-item read failures still fail.
+
 Entry point: `cmd/gcx/resources/pull.go` (mirrors push structure).
 
 ```

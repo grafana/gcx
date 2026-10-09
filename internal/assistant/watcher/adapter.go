@@ -53,6 +53,9 @@ func NewTypedCRUDForClientArchived(client *watchers.Client, namespace string, ar
 	return &adapter.TypedCRUD[Watcher]{
 		ListFn: adapter.LimitedListFn(func(ctx context.Context) ([]Watcher, error) {
 			raw, err := client.ListAll(ctx, archived)
+			if errors.Is(err, watchers.ErrCapabilityUnavailable) {
+				return nil, adapter.Unavailable(err)
+			}
 			if err != nil {
 				return nil, err
 			}

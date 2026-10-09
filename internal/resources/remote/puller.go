@@ -235,6 +235,9 @@ func (p *Puller) pullFilter(ctx context.Context, req PullRequest, filt resources
 		}
 		if err != nil {
 			switch {
+			case req.Filters.IsEmpty() && errors.Is(err, adapter.ErrUnavailable):
+				logger.Debug("Skipping unavailable resource type", logs.Err(err), slog.String("cmd", filt.String()))
+				summary.RecordSkipped()
 			case isUnsupportedResourceType(err):
 				// 404/405 = sub-resource that can't be listed; skip silently
 				// regardless of StopOnError — these are never actionable.

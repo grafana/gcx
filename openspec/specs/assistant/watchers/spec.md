@@ -164,8 +164,13 @@ Status MUST retain observable check identity, enablement, source, query type, ex
 Read commands MUST distinguish missing capability, denied access, absent Watchers and a successful empty collection. Errors MUST retain meaningful classification and recovery guidance across dedicated and generic paths.
 
 #### Scenario: Capability is missing
-- **WHEN** collection capability is unavailable on the selected target
+- **WHEN** an explicit generic selection or a dedicated read command runs and collection capability is unavailable on the selected target
 - **THEN** the command reports unavailable capability rather than an empty collection, an absent individual Watcher or a silent successful pull
+
+#### Scenario: Selector-free generic read encounters missing capability
+- **WHEN** a selector-free generic get or pull runs and the Watcher or MCP server collection capability is unavailable
+- **THEN** the resource type is counted as skipped and the command does not fail because of it
+- **AND** a failed per-Watcher detail or supplementary configuration read remains a failure
 
 #### Scenario: Access is denied
 - **WHEN** permission checks deny a read

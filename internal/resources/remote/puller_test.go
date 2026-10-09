@@ -410,3 +410,48 @@ func TestPullPreflightReceivesCollidingItemsBeforeInsertion(t *testing.T) {
 		})
 	}
 }
+
+func TestPullUnavailableCollectionRequiresSelectorFreeRequest(t *testing.T) {
+	for _, tt := range []struct {
+		name           string
+		explicit, stop bool
+	}{
+		{name: "selector-free continue"},
+		{name: "selector-free abort", stop: true},
+		{name: "explicit continue", explicit: true},
+		{name: "explicit abort", explicit: true, stop: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			desc := dashboardDescriptor()
+			unavailable := adapter.Unavailable(errors.New("resource API unavailable"))
+			client := &mockPullClient{listErrors: map[string]error{desc.Plural: unavailable}}
+			puller := remote.NewPuller(client, &mockPullRegistry{descriptors: resources.Descriptors{desc}})
+			req := remote.PullRequest{Resources: resources.NewResources(), StopOnError: tt.stop}
+			if tt.explicit {
+				req.Filters = resources.Filters{{Type: resources.FilterTypeAll, Descriptor: desc}}
+			}
+			summary, err := puller.Pull(t.Context(), req)
+			if tt.explicit && tt.stop {
+				require.ErrorIs(t, err, unavailable)
+			} else {
+				require.NoError(t, err)
+			}
+			require.Zero(t, summary.SuccessCount())
+			require.Zero(t, req.Resources.Len())
+			switch {
+			case tt.explicit && tt.stop:
+				require.Zero(t, summary.FailedCount())
+				require.Zero(t, summary.SkippedCount())
+			case tt.explicit:
+				require.Equal(t, 1, summary.FailedCount())
+				require.Zero(t, summary.SkippedCount())
+				require.Len(t, summary.Failures(), 1)
+				require.ErrorIs(t, summary.Failures()[0].Error, unavailable)
+			default:
+				require.Zero(t, summary.FailedCount())
+				require.Equal(t, 1, summary.SkippedCount())
+				require.Empty(t, summary.Failures())
+			}
+		})
+	}
+}

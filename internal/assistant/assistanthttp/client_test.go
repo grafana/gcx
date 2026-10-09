@@ -2,6 +2,7 @@ package assistanthttp_test
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/grafana/gcx/internal/assistant/assistanthttp"
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/client-go/rest"
@@ -79,7 +81,10 @@ func TestHandleErrorResponse_WithBody(t *testing.T) {
 		Body:       io.NopCloser(strings.NewReader("investigation not found")),
 	}
 	err := assistanthttp.HandleErrorResponse(resp)
-	assert.EqualError(t, err, "request failed with status 404: investigation not found")
+	require.EqualError(t, err, "request failed with status 404: investigation not found")
+	var statusErr *gcxerrors.HTTPStatusError
+	require.ErrorAs(t, err, &statusErr)
+	assert.Equal(t, http.StatusNotFound, statusErr.Status)
 }
 
 func TestHandleErrorResponse_EmptyBody(t *testing.T) {
@@ -88,7 +93,10 @@ func TestHandleErrorResponse_EmptyBody(t *testing.T) {
 		Body:       io.NopCloser(strings.NewReader("")),
 	}
 	err := assistanthttp.HandleErrorResponse(resp)
-	assert.EqualError(t, err, "request failed with status 500")
+	require.EqualError(t, err, "request failed with status 500")
+	var statusErr *gcxerrors.HTTPStatusError
+	require.ErrorAs(t, err, &statusErr)
+	assert.Equal(t, http.StatusInternalServerError, statusErr.Status)
 }
 
 func TestFormatTime(t *testing.T) {
@@ -105,4 +113,20 @@ func TestFormatTime(t *testing.T) {
 			assert.Equal(t, tt.want, assistanthttp.FormatTime(tt.time))
 		})
 	}
+}
+
+type failingResponseBody struct{ err error }
+
+func (b failingResponseBody) Read([]byte) (int, error) { return 0, b.err }
+func (b failingResponseBody) Close() error             { return nil }
+
+func TestHandleErrorResponse_BodyReadFailure(t *testing.T) {
+	cause := errors.New("body read failed")
+	resp := &http.Response{StatusCode: http.StatusBadGateway, Body: failingResponseBody{err: cause}}
+	err := assistanthttp.HandleErrorResponse(resp)
+	require.EqualError(t, err, "request failed with status 502 (could not read body: body read failed)")
+	var statusErr *gcxerrors.HTTPStatusError
+	require.ErrorAs(t, err, &statusErr)
+	assert.Equal(t, http.StatusBadGateway, statusErr.Status)
+	require.ErrorIs(t, err, cause)
 }

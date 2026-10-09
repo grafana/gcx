@@ -454,3 +454,55 @@ func TestDeadlinePrecision(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, deadline.Equal(parsed), "projection must preserve the full observed deadline")
 }
+
+func TestListMarksOnlyUnavailableCollections(t *testing.T) {
+	for _, tt := range []struct {
+		status      int
+		unavailable bool
+	}{
+		{http.StatusNotFound, true},
+		{http.StatusNotImplemented, true},
+		{http.StatusForbidden, false},
+		{http.StatusInternalServerError, false},
+	} {
+		t.Run(http.StatusText(tt.status), func(t *testing.T) {
+			client := clientForServer(t, func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, testCollectionPath, r.URL.Path)
+				http.Error(w, "collection unavailable", tt.status)
+			})
+			_, original := client.ListAll(t.Context(), false)
+			items, err := NewTypedCRUDForClient(client, "default").ListFn(t.Context(), 0)
+			require.Error(t, err)
+			assert.Empty(t, items)
+			require.EqualError(t, err, original.Error())
+			assert.Equal(t, tt.unavailable, errors.Is(err, adapter.ErrUnavailable))
+			var apiErr *watchers.APIError
+			require.ErrorAs(t, err, &apiErr)
+			assert.Equal(t, tt.status, apiErr.StatusCode)
+		})
+	}
+}
+
+func TestListIndividualUnavailableReadsRemainFailures(t *testing.T) {
+	for _, read := range []string{"detail", "enrollment"} {
+		t.Run(read, func(t *testing.T) {
+			fixture := &watcherstest.Server{Current: [][]watchers.Watcher{{fixtureWatcher("one", "One")}}}
+			if read == "detail" {
+				fixture.DetailStatus = map[string]int{"one": http.StatusNotImplemented}
+			} else {
+				fixture.EnrollmentStatus = map[string]int{"one": http.StatusNotImplemented}
+			}
+			client := clientForServer(t, fixture.ServeHTTP)
+			items, err := NewTypedCRUDForClient(client, "default").ListFn(t.Context(), 0)
+			require.Error(t, err)
+			assert.Empty(t, items)
+			var partial *ListReadError
+			require.ErrorAs(t, err, &partial)
+			require.Len(t, partial.Failures, 1)
+			assert.Empty(t, partial.Skipped)
+			assert.Equal(t, "one", partial.Failures[0].Candidate.ID)
+			require.ErrorIs(t, err, watchers.ErrCapabilityUnavailable)
+			assert.NotErrorIs(t, err, adapter.ErrUnavailable)
+		})
+	}
+}
