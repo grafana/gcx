@@ -151,11 +151,14 @@ func pullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 
 	gcx resources pull dashboards.v1alpha1.dashboard.grafana.app/foo folders.v1alpha1.folder.grafana.app/qux
 
-	# Provider-backed resource types (SLO, Synthetic Monitoring, Alerting):
+	# Provider-backed resources (SLO and Synthetic Monitoring):
 
 	gcx resources pull slo -p ./slo-defs/
-	gcx resources pull checks -p ./checks/
-	gcx resources pull rules -p ./rules/`,
+	gcx resources pull checks.syntheticmonitoring -p ./checks/
+
+	# Native Grafana alert rules:
+
+	gcx resources pull alertrules -p ./alertrules/`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
