@@ -280,7 +280,7 @@ func (p *Pusher) pushSingleResource(
 		}
 
 		if !request.NoPushFailureLog {
-			logger.Warn("Failed to push resource", logs.Err(err))
+			logger.Warn("Failed to push resource", "source", res.SourcePath(), logs.Err(err))
 		}
 		return nil
 	}

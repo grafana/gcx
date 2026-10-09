@@ -52,6 +52,8 @@ type MutationSummary struct {
 type MutationFailure struct {
 	Target MutationTarget `json:"target" yaml:"target"`
 	Error  string         `json:"error" yaml:"error"`
+	// Source identifies the input file when available; it is not the API name.
+	Source string `json:"source,omitempty" yaml:"source,omitempty"`
 }
 
 // SingleMutation is the finite result of one verb applied to one target.

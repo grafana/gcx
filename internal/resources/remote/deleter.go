@@ -128,7 +128,7 @@ func (deleter *Deleter) Delete(ctx context.Context, request DeleteRequest) (*Ope
 					return err
 				}
 
-				logger.Warn("Failed to delete resource", logs.Err(err))
+				logger.Warn("Failed to delete resource", "source", res.SourcePath(), logs.Err(err))
 				return nil
 			}
 

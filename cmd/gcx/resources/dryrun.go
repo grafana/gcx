@@ -134,15 +134,17 @@ func batchMutationFromSummary(action string, summary *remote.OperationSummary, d
 	result.DryRun = dryRun
 	for _, failure := range summary.Failures() {
 		target := cmdio.MutationTarget{}
+		source := ""
 		if failure.Resource != nil {
 			target.Kind = failure.Resource.Kind()
 			target.Name = failure.Resource.Name()
+			source = failure.Resource.SourcePath()
 		}
 		msg := ""
 		if failure.Error != nil {
 			msg = failure.Error.Error()
 		}
-		result.Failures = append(result.Failures, cmdio.MutationFailure{Target: target, Error: msg})
+		result.Failures = append(result.Failures, cmdio.MutationFailure{Target: target, Error: msg, Source: source})
 	}
 	return result
 }

@@ -124,3 +124,43 @@ EOF, in-band `gcx.error` document on failure with agreeing exit code,
 explicit `-o` overrides honored, stdin closed.
 
 See [environment-variables.md § Agent Mode Variables](environment-variables.md#agent-mode-variables) for the full variable reference.
+
+### 6.5 Mutation Result Family
+
+The shared mutation result types in `internal/output/mutation.go` carry
+`schema_version: "1"` and one of three discriminators:
+
+| Type | Result |
+|------|--------|
+| `gcx.mutation` | One action on one target, with optional `changed`, `dry_run`, and `error`. |
+| `gcx.mutation_batch` | One action across targets, with `summary` counts and a `failures` array. |
+| `gcx.artifact_receipt` | Files written to disk, with their paths, format, summary counts, and failures. |
+
+Batch results and artifact receipts always include `failures` (`[]` when
+empty). Each failure contains `target` and `error`. The optional `source`
+field identifies the input file when available; it is omitted when the
+source path is empty. `source` is independent of `target.name`, which remains
+the API address. `resources push` and file-based `resources delete` populate
+`source` from the failed resource's local source path. Artifact receipts
+leave it absent when the failed resource has no input path.
+
+For example, a failed unnamed manifest can be located without inventing
+an API name:
+
+```json
+{
+  "type": "gcx.mutation_batch",
+  "schema_version": "1",
+  "action": "pushed",
+  "summary": {"succeeded": 0, "failed": 1},
+  "failures": [{
+    "target": {"kind": "TemplateGroup"},
+    "error": "invalid template group kind",
+    "source": "./manifests/group.yaml"
+  }]
+}
+```
+
+The `source` field is an additive, optional field in version `1`; consumers
+should tolerate optional fields. These shared types do not replace
+provider-specific output contracts that predate this family.
