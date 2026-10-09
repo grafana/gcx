@@ -1,4 +1,4 @@
-## gcx datasources pyroscope anomalies
+## gcx profiles query-anomalies
 
 [experimental] Query profile anomalies from a Pyroscope datasource
 
@@ -18,7 +18,7 @@ to more than one service_name; anomalies from every matching service are
 queried and confirmed in one call.
 
 ```
-gcx datasources pyroscope anomalies [EXPR] [flags]
+gcx profiles query-anomalies [EXPR] [flags]
 ```
 
 ### Examples
@@ -26,14 +26,13 @@ gcx datasources pyroscope anomalies [EXPR] [flags]
 ```
 
   # Anomalies for a service in the last hour
-  gcx datasources pyroscope anomalies -d UID '{service_name="frontend"}' \
-    --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h
+  gcx profiles query-anomalies -d abc123 '{service_name="frontend"}' --since 1h
 
-  # Every service in a namespace
-  gcx datasources pyroscope anomalies -d UID '{namespace="prod"}' --since 1h
+  # Every service in a namespace (selector may resolve to multiple services)
+  gcx profiles query-anomalies -d abc123 '{namespace="prod"}' --since 1h
 
-  # JSON output
-  gcx datasources pyroscope anomalies -d UID '{service_name="frontend"}' --since 1h -o json
+  # Output as JSON
+  gcx profiles query-anomalies -d abc123 '{service_name="frontend"}' --since 1h -o json
 ```
 
 ### Options
@@ -43,7 +42,7 @@ gcx datasources pyroscope anomalies [EXPR] [flags]
   -d, --datasource string       Datasource UID (required unless datasources.pyroscope is configured)
       --expr string             Label selector (alternative to positional argument)
       --from string             Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
-  -h, --help                    help for anomalies
+  -h, --help                    help for query-anomalies
       --jq string               jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string             Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --max-label-columns int   Max label columns in table output (0 hides label columns) (default 3)
@@ -68,5 +67,5 @@ gcx datasources pyroscope anomalies [EXPR] [flags]
 
 ### SEE ALSO
 
-* [gcx datasources pyroscope](gcx_datasources_pyroscope.md)	 - Query Pyroscope datasources
+* [gcx profiles](gcx_profiles.md)	 - Query Pyroscope datasources and manage continuous profiling
 

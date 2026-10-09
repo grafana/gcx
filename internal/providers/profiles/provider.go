@@ -153,16 +153,16 @@ func (p *Provider) descriptor() signals.Descriptor {
 			{
 				Build:     dspyroscope.AnomaliesCmd,
 				TokenCost: "small",
-				LLMHint:   `gcx profiles anomalies -d abc123 '{service_name="frontend"}' --since 1h -o json`,
+				LLMHint:   `gcx profiles query-anomalies -d abc123 '{service_name="frontend"}' --since 1h -o json`,
 				Example: `
   # Anomalies for a service in the last hour
-  gcx profiles anomalies -d abc123 '{service_name="frontend"}' --since 1h
+  gcx profiles query-anomalies -d abc123 '{service_name="frontend"}' --since 1h
 
   # Every service in a namespace (selector may resolve to multiple services)
-  gcx profiles anomalies -d abc123 '{namespace="prod"}' --since 1h
+  gcx profiles query-anomalies -d abc123 '{namespace="prod"}' --since 1h
 
   # Output as JSON
-  gcx profiles anomalies -d abc123 '{service_name="frontend"}' --since 1h -o json`,
+  gcx profiles query-anomalies -d abc123 '{service_name="frontend"}' --since 1h -o json`,
 			},
 		},
 		ExtraCommands: []signals.CommandBuilder{func(*providers.ConfigLoader) *cobra.Command {

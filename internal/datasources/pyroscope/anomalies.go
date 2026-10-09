@@ -94,7 +94,7 @@ func anomalyTypeEnum(name string) (string, error) {
 func AnomaliesCmd(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &pyroscopeAnomaliesOpts{}
 	cmd := &cobra.Command{
-		Use:   "anomalies [EXPR]",
+		Use:   "query-anomalies [EXPR]",
 		Short: "[experimental] Query profile anomalies from a Pyroscope datasource",
 		Long: `This command is experimental. It may be removed, or its subcommands, flags and
 responses may change without following the normal semantic versioning conventions.
@@ -110,14 +110,14 @@ to more than one service_name; anomalies from every matching service are
 queried and confirmed in one call.`,
 		Example: `
   # Anomalies for a service in the last hour
-  gcx datasources pyroscope anomalies -d UID '{service_name="frontend"}' \
+  gcx datasources pyroscope query-anomalies -d UID '{service_name="frontend"}' \
     --profile-type process_cpu:cpu:nanoseconds:cpu:nanoseconds --since 1h
 
   # Every service in a namespace
-  gcx datasources pyroscope anomalies -d UID '{namespace="prod"}' --since 1h
+  gcx datasources pyroscope query-anomalies -d UID '{namespace="prod"}' --since 1h
 
   # JSON output
-  gcx datasources pyroscope anomalies -d UID '{service_name="frontend"}' --since 1h -o json`,
+  gcx datasources pyroscope query-anomalies -d UID '{service_name="frontend"}' --since 1h -o json`,
 		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
@@ -177,7 +177,7 @@ queried and confirmed in one call.`,
 
 	cmd.Annotations = map[string]string{
 		agent.AnnotationTokenCost: "small",
-		agent.AnnotationLLMHint:   "gcx datasources pyroscope anomalies -d UID '{service_name=\"frontend\"}' --since 1h -o json",
+		agent.AnnotationLLMHint:   "gcx datasources pyroscope query-anomalies -d UID '{service_name=\"frontend\"}' --since 1h -o json",
 		agent.AnnotationStability: agent.StabilityExperimental,
 	}
 
