@@ -439,7 +439,7 @@ Old CLI annotates every command with structured metadata:
 |---------|-------------|
 | **`--json ?` field discovery** | Agents discover queryable fields without docs: `gcx resources get --json ?` |
 | **`--json field1,field2` selection** | Select specific fields from JSON output |
-| **Agent mode auto-detection** | Detects CLAUDECODE, CURSOR_AGENT, GITHUB_COPILOT env vars; switches to JSON by default |
+| **Agent mode auto-detection** | Uses native signals and supported explicit identities; defaults to compact JSON. See [agent mode](../design/agent-mode.md#61-detection). |
 | **Structured error JSON** | `DetailedError` with `summary`, `details`, `suggestions[]`, `docsLink`, `exitCode` -- machine-parseable |
 | **Partial failure envelope** | `{"items": [...], "error": {...}}` when some operations succeed and others fail |
 | **Provider self-registration** | Schemas and examples registered at init time via `adapter.Register()` |

@@ -358,6 +358,7 @@ func TestGCOMClient_CreateStack_Success(t *testing.T) {
 		t.Fatalf("unexpected error creating client: %v", err)
 	}
 	got, err := client.CreateStack(context.Background(), cloud.CreateStackRequest{
+		Org:    "example-org",
 		Name:   "newstack",
 		Slug:   "newstack",
 		Region: "us",
@@ -370,6 +371,9 @@ func TestGCOMClient_CreateStack_Success(t *testing.T) {
 	}
 	if got.Slug != "newstack" {
 		t.Errorf("Slug: got %q, want %q", got.Slug, "newstack")
+	}
+	if capturedBody["org"] != "example-org" {
+		t.Errorf("request body org: got %v, want example-org", capturedBody["org"])
 	}
 	if capturedBody["slug"] != "newstack" {
 		t.Errorf("request body slug: got %v", capturedBody["slug"])

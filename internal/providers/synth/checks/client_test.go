@@ -211,6 +211,229 @@ func TestClient_Create(t *testing.T) {
 	}
 }
 
+func TestClient_Validate(t *testing.T) {
+	spec := checks.CheckSpec{
+		Job:       "validate-job",
+		Target:    "https://example.com",
+		Frequency: 60000,
+		Timeout:   3000,
+		Enabled:   true,
+		Settings:  checks.CheckSettings{"http": map[string]any{"method": "GET"}},
+		Probes:    []string{"Paris", "Oregon"},
+	}
+
+	tests := []struct {
+		name         string
+		id           int64
+		handler      http.HandlerFunc
+		wantValid    bool
+		wantFindings []checks.Finding
+		wantErr      bool
+		errIs        error
+		errContains  string
+	}{
+		{
+			name: "valid check",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, http.MethodPost, r.Method)
+				assert.Equal(t, proxyPath("check/validate"), r.URL.Path)
+				assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+
+				// Probe names are sent as-is: the server resolves names or IDs.
+				var body map[string]any
+				assert.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+				assert.Equal(t, "validate-job", body["job"])
+				assert.Equal(t, []any{"Paris", "Oregon"}, body["probes"])
+				assert.NotContains(t, body, "id", "id must be omitted for a create-style validation")
+				assert.NotContains(t, body, "tenantId")
+
+				writeJSON(w, map[string]any{"valid": true, "findings": []any{}})
+			},
+			wantValid:    true,
+			wantFindings: []checks.Finding{},
+		},
+		{
+			name: "update sends id",
+			id:   42,
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				var body map[string]any
+				assert.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+				assert.InDelta(t, 42, body["id"], 0)
+				writeJSON(w, map[string]any{"valid": true, "findings": []any{}})
+			},
+			wantValid:    true,
+			wantFindings: []checks.Finding{},
+		},
+		{
+			name: "422 is a result, not an error",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusUnprocessableEntity)
+				writeJSON(w, map[string]any{
+					"valid": false,
+					"findings": []map[string]string{
+						{"severity": "error", "field": "probes", "msg": "invalid probe identifier"},
+						{"severity": "error", "field": "", "msg": "invalid check timeout"},
+					},
+				})
+			},
+			wantValid: false,
+			wantFindings: []checks.Finding{
+				{Severity: "error", Field: "probes", Msg: "invalid probe identifier"},
+				{Severity: "error", Field: "", Msg: "invalid check timeout"},
+			},
+		},
+		{
+			name: "400 undecodable body is an error",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusBadRequest)
+				writeJSON(w, map[string]string{"msg": "failed to decode incoming check", "err": "bad json"})
+			},
+			wantErr: true,
+		},
+		{
+			name: "500 is an error",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusInternalServerError)
+				writeJSON(w, map[string]string{"msg": "internal error"})
+			},
+			wantErr: true,
+		},
+		{
+			name: "404 means the server predates the endpoint",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusNotFound)
+			},
+			wantErr: true,
+			errIs:   checks.ErrValidateUnsupported,
+		},
+		{
+			name: "405 means the server predates the endpoint",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusMethodNotAllowed)
+			},
+			wantErr: true,
+			errIs:   checks.ErrValidateUnsupported,
+		},
+		{
+			name: "422 with an undecodable body is an error",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusUnprocessableEntity)
+				_, _ = w.Write([]byte("<html>gateway</html>"))
+			},
+			wantErr: true,
+		},
+		{
+			name: "200 with an undecodable body is an error",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				_, _ = w.Write([]byte("<html>gateway</html>"))
+			},
+			wantErr:     true,
+			errContains: "decoding validation response",
+		},
+		{
+			name: "422 without findings keeps the server message",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusUnprocessableEntity)
+				writeJSON(w, map[string]string{"msg": "upstream rejected the request"})
+			},
+			wantErr:     true,
+			errContains: "upstream rejected the request",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(tc.handler)
+			defer srv.Close()
+
+			got, err := proxyClient(t, srv).Validate(context.Background(), spec, tc.id)
+			if tc.wantErr {
+				require.Error(t, err)
+				if tc.errIs != nil {
+					require.ErrorIs(t, err, tc.errIs)
+				}
+				if tc.errContains != "" {
+					assert.Contains(t, err.Error(), tc.errContains)
+				}
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantValid, got.Valid)
+			assert.Equal(t, tc.wantFindings, got.Findings)
+		})
+	}
+}
+
+func TestValidateResult_Error(t *testing.T) {
+	tests := []struct {
+		name    string
+		result  checks.ValidateResult
+		wantErr string // empty means nil error
+	}{
+		{name: "valid", result: checks.ValidateResult{Valid: true}},
+		{
+			name: "warnings only do not fail",
+			result: checks.ValidateResult{Valid: true, Findings: []checks.Finding{
+				{Severity: "warning", Field: "frequency", Msg: "below the app minimum"},
+			}},
+		},
+		{
+			name: "unknown severity with valid true does not fail",
+			result: checks.ValidateResult{Valid: true, Findings: []checks.Finding{
+				{Severity: "info", Field: "frequency", Msg: "FYI"},
+			}},
+		},
+		{
+			name: "unknown severity with valid false falls back to the generic error",
+			result: checks.ValidateResult{Valid: false, Findings: []checks.Finding{
+				{Severity: "info", Field: "frequency", Msg: "FYI"},
+			}},
+			wantErr: "server reported the check as invalid",
+		},
+		{
+			name: "field and message",
+			result: checks.ValidateResult{Findings: []checks.Finding{
+				{Severity: "error", Field: "probes", Msg: "invalid probe identifier"},
+			}},
+			wantErr: "probes: invalid probe identifier",
+		},
+		{
+			name: "empty field renders message only",
+			result: checks.ValidateResult{Findings: []checks.Finding{
+				{Severity: "error", Msg: "invalid check timeout"},
+			}},
+			wantErr: "invalid check timeout",
+		},
+		{
+			name: "multiple errors, warnings excluded",
+			result: checks.ValidateResult{Findings: []checks.Finding{
+				{Severity: "error", Field: "probes", Msg: "invalid probe identifier"},
+				{Severity: "warning", Field: "frequency", Msg: "below the app minimum"},
+				{Severity: "error", Msg: "invalid check timeout"},
+			}},
+			wantErr: "probes: invalid probe identifier\ninvalid check timeout",
+		},
+		{
+			name:    "valid false with no findings still fails",
+			result:  checks.ValidateResult{Valid: false},
+			wantErr: "server reported the check as invalid",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.result.Error()
+			if tc.wantErr == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.wantErr)
+		})
+	}
+}
+
 func TestClient_RunAdhoc(t *testing.T) {
 	tests := []struct {
 		name    string

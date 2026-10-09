@@ -62,7 +62,9 @@ of size (standard indented JSON — see the byte-identity note above).
 `-o text` renders the human table.
 
 **Threshold configuration:** `GCX_AGENT_SPILL_BYTES` (int, bytes; default
-`102400`). Invalid or missing values fall back to the default.
+`102400`). `0` disables spilling: output is always written in full, for
+callers that cannot read gcx's temp files (e.g. gcx embedded in a sandbox).
+Invalid or missing values fall back to the default.
 
 **Guidance for provider authors:** Do **not** pre-truncate output for agent
 mode. The codec handles oversized payloads. Pre-truncation defeats the spill
@@ -200,6 +202,8 @@ remain separate, never implicitly wrapped in an array. A yielded `null` emits
 - At or below the threshold, stdout gets the complete stream. Above it, the
   same bytes go to one `$TMPDIR/gcx-results-<random>.jsonl` file; stdout gets
   only a spill receipt, and stderr gets a hint.
+- `GCX_AGENT_SPILL_BYTES=0` disables spilling: stdout always gets the complete
+  stream, and no file, receipt or hint is produced.
 - The receipt uses `content_format: "jsonl"`, `total_values`, no `total_items`,
   and `preview_sample: null` to avoid unbounded previews. Its fixed metadata
   may exceed a very small threshold. `gcx agent prune` includes JSONL spills.

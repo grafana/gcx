@@ -59,7 +59,7 @@ func FaroAppSchema() json.RawMessage {
 				"properties": map[string]any{
 					"name":                  map[string]any{"type": "string"},
 					"appType":               map[string]any{"type": "string", "enum": []string{appTypeWeb, appTypeMobile}, "description": "Application type, set at creation. Use mobile for flutter, react-native, android-native, and swift-native; use web for web-js."},
-					"runtime":               map[string]any{"type": "string", "enum": []string{"web-js", "flutter", "react-native", "android-native", "swift-native"}, "description": "SDK runtime. Omit to preserve the runtime on update."},
+					"runtime":               map[string]any{"type": "string", "enum": []string{runtimeWebJS, runtimeFlutter, runtimeReactNative, runtimeAndroidNative, runtimeSwiftNative}, "description": "SDK runtime. Omit to preserve the runtime on update."},
 					"corsOrigins":           map[string]any{"type": "array", "items": map[string]any{"type": "object", "properties": map[string]any{"url": map[string]any{"type": "string"}}}},
 					"extraLogLabels":        map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}},
 					"collectEndpointURL":    map[string]any{"type": "string"},
@@ -101,7 +101,7 @@ func FaroAppExample() json.RawMessage {
 		"spec": map[string]any{
 			"name":    "my-web-app",
 			"appType": appTypeWeb,
-			"runtime": "web-js",
+			"runtime": runtimeWebJS,
 			"corsOrigins": []map[string]any{
 				{"url": "https://app.example.com"},
 				{"url": "https://staging.example.com"},

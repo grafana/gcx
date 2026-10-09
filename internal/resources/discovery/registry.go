@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -28,9 +29,23 @@ var ignoredResourceGroups = []string{
 	"featuretoggle.grafana.app",
 	"service.grafana.app",
 	"userstorage.grafana.app",
-	// TODO: check with alerting folks if this should be ignored or not
-	"notifications.alerting.grafana.app",
 	"iam.grafana.app",
+}
+
+// partiallyExposedGroups lists groups whose resources are hidden unless named here.
+// The group's APIGroup entry is kept, so preferred versions still resolve.
+// Resources Grafana adds to these groups stay hidden until explicitly opted in,
+// so nothing reaches pull/push before its secret handling has been checked.
+//
+// Exposed resources get the generic `gcx resources` semantics, including
+// delete without confirmation for named selectors: `gcx resources delete
+// routingtrees/user-defined` resets the default tree without a prompt, while
+// `gcx alert routing-trees delete` confirms first. This is deliberate and
+// matches every other resource in `gcx resources`.
+//
+//nolint:gochecknoglobals
+var partiallyExposedGroups = map[string][]string{
+	"notifications.alerting.grafana.app": {"routingtrees"},
 }
 
 // Client is a client that can be used to discover resources.
@@ -199,7 +214,7 @@ func (r *Registry) Discover(ctx context.Context) error {
 	}
 
 	// Filter out ignored resource groups.
-	apiGroups, apiResources, err = FilterDiscoveryResults(ignoredResourceGroups, apiGroups, apiResources)
+	apiGroups, apiResources, err = FilterDiscoveryResults(ignoredResourceGroups, partiallyExposedGroups, apiGroups, apiResources)
 	if err != nil {
 		return err
 	}
@@ -208,25 +223,9 @@ func (r *Registry) Discover(ctx context.Context) error {
 }
 
 func (r *Registry) makeFiltersForSelector(selector resources.Selector, preferredVersionOnly bool) (resources.Filters, error) {
-	// Check if a specific version is provided
-	if selector.GroupVersionKind.Version != "" {
-		// Version is specified, use single descriptor lookup
-		desc, ok := r.index.LookupPartialGVK(selector.GroupVersionKind)
-		if !ok {
-			return nil, resources.InvalidSelectorError{
-				Command: selector.String(),
-				Err:     "the server does not support this resource",
-			}
-		}
-
-		return resources.Filters{{
-			Type:         selector.Type,
-			ResourceUIDs: selector.ResourceUIDs,
-			Descriptor:   desc,
-		}}, nil
-	}
-
-	// No version specified — resolve descriptors across groups.
+	// Resolve descriptors across groups and versions. Both lookup paths try the
+	// versioned reading first, then the group-only reading. A supported explicit
+	// version always returns a single descriptor, regardless of this option.
 	// LookupPreferredPerGroup returns the preferred version per group so that
 	// resource names spanning multiple API groups (e.g. datasources across
 	// *.datasource.grafana.app) produce one filter per group instead of
@@ -239,9 +238,17 @@ func (r *Registry) makeFiltersForSelector(selector resources.Selector, preferred
 		descs, ok = r.index.LookupAllVersionsForPartialGVK(selector.GroupVersionKind)
 	}
 	if !ok {
+		message := "the server does not support this resource"
+		gvk := selector.GroupVersionKind
+		if groupOnly, ambiguous := gvk.GroupOnlyCandidate(); ambiguous {
+			message += fmt.Sprintf(
+				" (resource %q is not served by group %q at version %q, nor by group %q)",
+				gvk.Resource, gvk.Group, gvk.Version, groupOnly,
+			)
+		}
 		return nil, resources.InvalidSelectorError{
 			Command: selector.String(),
-			Err:     "the server does not support this resource",
+			Err:     message,
 		}
 	}
 
@@ -257,8 +264,9 @@ func (r *Registry) makeFiltersForSelector(selector resources.Selector, preferred
 }
 
 // FilterDiscoveryResults filters the discovery results to exclude ignored resource groups.
+// For groups in partial, only the listed resources are kept.
 func FilterDiscoveryResults(
-	ignored []string, apiGroups []*metav1.APIGroup, apiResources []*metav1.APIResourceList,
+	ignored []string, partial map[string][]string, apiGroups []*metav1.APIGroup, apiResources []*metav1.APIResourceList,
 ) ([]*metav1.APIGroup, []*metav1.APIResourceList, error) {
 	filteredGroups := make([]*metav1.APIGroup, 0, len(apiGroups))
 	filteredResources := make([]*metav1.APIResourceList, 0, len(apiResources))
@@ -281,9 +289,15 @@ func FilterDiscoveryResults(
 			continue
 		}
 
+		allowed, isPartial := partial[gv.Group]
+
 		filteredAPIResources := make([]metav1.APIResource, 0, len(resource.APIResources))
 		for _, r := range resource.APIResources {
 			if !r.Namespaced {
+				continue
+			}
+
+			if isPartial && !slices.Contains(allowed, r.Name) {
 				continue
 			}
 

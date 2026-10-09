@@ -2,6 +2,7 @@ package faro_test
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers/faro"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/client-go/rest"
@@ -97,11 +99,12 @@ func TestClient_List(t *testing.T) {
 
 func TestClient_Get(t *testing.T) {
 	tests := []struct {
-		name    string
-		id      string
-		handler http.HandlerFunc
-		wantID  string
-		wantErr bool
+		name         string
+		id           string
+		handler      http.HandlerFunc
+		wantID       string
+		wantErr      bool
+		wantNotFound bool
 	}{
 		{
 			name: "returns single converted FaroApp",
@@ -117,11 +120,21 @@ func TestClient_Get(t *testing.T) {
 			wantID: "42",
 		},
 		{
-			name: "returns error on 404",
+			name: "maps 404 to adapter.ErrNotFound",
 			id:   "999",
 			handler: func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusNotFound)
 				_, _ = w.Write([]byte("not found"))
+			},
+			wantErr:      true,
+			wantNotFound: true,
+		},
+		{
+			// push would create a duplicate if a server error read as not found.
+			name: "keeps other errors distinct from not found",
+			id:   "42",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusInternalServerError)
 			},
 			wantErr: true,
 		},
@@ -137,6 +150,7 @@ func TestClient_Get(t *testing.T) {
 
 			if tt.wantErr {
 				require.Error(t, err)
+				assert.Equal(t, tt.wantNotFound, errors.Is(err, adapter.ErrNotFound))
 				return
 			}
 
@@ -283,6 +297,8 @@ func TestClient_Update(t *testing.T) {
 
 		// An explicit false must reach the API so update can disable geolocation.
 		assert.Equal(t, map[string]any{"geolocation.enabled": "0"}, capturedBody["settings"])
+		// The API keeps the stored runtime only when the body leaves it out.
+		assert.NotContains(t, capturedBody, "runtime")
 		// ID should be present in body.
 		assert.InDelta(t, float64(42), capturedBody["id"], 0.01, "id should be in update request body")
 		// The map key must reach the wire as "label"; "key" makes the server

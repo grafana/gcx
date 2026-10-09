@@ -14,13 +14,13 @@ import (
 //
 //nolint:recvcheck // Mixed receivers are intentional for Go generics TypedCRUD compatibility.
 type FaroApp struct {
+	ID   string `json:"id,omitempty"`
+	Name string `json:"name"`
 	// AppType is set at creation; the API ignores changes on update.
 	AppType string `json:"appType,omitempty"`
 	// A nil Runtime preserves the stored runtime on update.
 	// A pointer preserves explicit empty input so the API can reject it.
 	Runtime            *string `json:"runtime,omitempty"`
-	ID                 string  `json:"id,omitempty"`
-	Name               string  `json:"name"`
 	AppKey             string  `json:"appKey,omitempty"`
 	CollectEndpointURL string  `json:"collectEndpointURL,omitempty"`
 	// OTLPIngestEndpointURL is the base endpoint the native mobile SDKs (Android
@@ -47,10 +47,10 @@ func (app *FaroApp) SetResourceName(name string) {
 
 // faroAppAPI is the API wire representation with array-based extraLogLabels.
 type faroAppAPI struct {
-	AppType               string       `json:"appType,omitempty"`
-	Runtime               *string      `json:"runtime,omitempty"`
 	ID                    int64        `json:"id,omitempty"`
 	Name                  string       `json:"name"`
+	AppType               string       `json:"appType,omitempty"`
+	Runtime               *string      `json:"runtime,omitempty"`
 	AppKey                string       `json:"appKey,omitempty"`
 	CollectEndpointURL    string       `json:"collectEndpointURL,omitempty"`
 	OTLPIngestEndpointURL string       `json:"otlpIngestEndpointURL,omitempty"`

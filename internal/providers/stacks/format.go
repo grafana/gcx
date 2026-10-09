@@ -47,9 +47,18 @@ func newDryRunPreview(action, method, endpoint string, request any) dryRunPrevie
 	}
 }
 
+// createdStackSummary is the concise result of successful stack creation.
+type createdStackSummary struct {
+	Name    string `json:"name" yaml:"name"`
+	OrgSlug string `json:"orgSlug" yaml:"orgSlug"`
+	Slug    string `json:"slug" yaml:"slug"`
+	Status  string `json:"status" yaml:"status"`
+	URL     string `json:"url" yaml:"url"`
+}
+
 // stackTableCodec renders []cloud.StackInfo as a table. It also renders
 // dryRunPreview values (the --dry-run result of create/update) as the
-// classic human preview, because "table" is those commands' default format.
+// classic human preview when table output is selected.
 type stackTableCodec struct {
 	Wide bool
 }
@@ -65,6 +74,12 @@ func (c *stackTableCodec) Encode(w io.Writer, v any) error {
 	if p, ok := v.(dryRunPreview); ok {
 		dryRunSummary(w, p.Method, p.Endpoint, p.Request)
 		return nil
+	}
+
+	if s, ok := v.(createdStackSummary); ok {
+		tbl := style.NewTable("NAME", "ORGSLUG", "SLUG", "STATUS", "URL")
+		tbl.Row(s.Name, s.OrgSlug, s.Slug, s.Status, s.URL)
+		return tbl.Render(w)
 	}
 
 	stacks, ok := v.([]cloud.StackInfo)

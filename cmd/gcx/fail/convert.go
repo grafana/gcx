@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"runtime"
+	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -22,13 +23,14 @@ import (
 	"github.com/grafana/gcx/internal/fleet"
 	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/grafana"
-	"github.com/grafana/gcx/internal/linter"
+	"github.com/grafana/gcx/internal/linter/linterr"
 	"github.com/grafana/gcx/internal/login"
 	cmdoutput "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers/instrumentation"
 	"github.com/grafana/gcx/internal/providers/instrumentation/rmw"
 	"github.com/grafana/gcx/internal/queryerror"
 	"github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/resources/dynamic"
 	k8sapi "k8s.io/apimachinery/pkg/api/errors"
 )
 
@@ -41,6 +43,14 @@ func ErrorToDetailedError(err error) *gcxerrors.DetailedError {
 	// envelope.
 	if isEmittedError(err) {
 		return nil
+	}
+
+	// A signup that failed after the browser step renders its own failure and
+	// then the recovery. Checked before DetailedError extraction, which would
+	// otherwise return the inner error without the recovery.
+	var signupErr *login.SignupIncompleteError
+	if errors.As(err, &signupErr) {
+		return signupIncompleteDetailedError(signupErr)
 	}
 
 	// Match value-typed DetailedError returns (e.g. `return gcxerrors.DetailedError{...}`).
@@ -62,7 +72,9 @@ func ErrorToDetailedError(err error) *gcxerrors.DetailedError {
 		convertPartialFailureErrors,
 		convertUsageErrors,
 		convertCobraUnknownCommandErrors,
-		convertContextCanceled,                      // Context cancellation (must be first — cancellation can wrap other errors)
+		convertBrowserCancelled,                     // Cancel on a browser login's consent page — a cancellation with a message
+		convertOAuthExchangeErrors,                  // Rate limit or service error from the browser login's token exchange
+		convertContextCanceled,                      // Context cancellation (before the generic converters below — cancellation can wrap other errors)
 		convertRequiredFlagErrors,                   // Cobra required-flag errors — must appear before generic checks
 		convertCredentialsErrors,                    // OS credential-store failures — must precede config errors that wrap them
 		convertConfigErrors,                         // Config-related
@@ -74,6 +86,7 @@ func ErrorToDetailedError(err error) *gcxerrors.DetailedError {
 		convertServiceAPIErrors,                     // Other structured HTTP API errors
 		convertFSErrors,                             // FS-related
 		convertResourcesErrors,                      // Resources-related
+		convertStackCreationTimeout,                 // Uncertain stack creation outcome before generic network errors
 		convertNetworkErrors,                        // Network-related errors
 		convertAPIErrors,                            // API-related errors
 		convertLoginValidationErrors,                // Login connectivity validation (must precede generic version check)
@@ -317,17 +330,25 @@ func convertNetworkErrors(err error) (*gcxerrors.DetailedError, bool) {
 }
 
 func convertAPIErrors(err error) (*gcxerrors.DetailedError, bool) {
-	statusErr := &k8sapi.StatusError{}
+	// Match the APIStatus interface, not just *StatusError: the dynamic client
+	// wraps server errors in dynamic.APIError, which implements APIStatus.
+	var statusErr k8sapi.APIStatus
 	if !errors.As(err, &statusErr) {
 		return nil, false
 	}
+	// A status the dynamic client synthesized for a non-API error (network,
+	// TLS, timeout) is not a server response; leave it to the fallback.
+	var dynErr dynamic.APIError
+	if errors.As(err, &dynErr) && dynErr.Synthesized() {
+		return nil, false
+	}
 
-	reason := k8sapi.ReasonForError(statusErr)
+	reason := k8sapi.ReasonForError(err)
 	code := statusErr.Status().Code
 
 	switch {
-	case k8sapi.IsUnauthorized(statusErr),
-		k8sapi.IsForbidden(statusErr):
+	case k8sapi.IsUnauthorized(err),
+		k8sapi.IsForbidden(err):
 		return &gcxerrors.DetailedError{
 			Parent:  err,
 			Summary: fmt.Sprintf("%s - code %d", reason, code),
@@ -338,7 +359,7 @@ func convertAPIErrors(err error) (*gcxerrors.DetailedError, bool) {
 			DocsLink: docs.ServiceAccounts,
 			ExitCode: new(gcxerrors.ExitAuthFailure),
 		}, true
-	case k8sapi.IsNotFound(statusErr):
+	case k8sapi.IsNotFound(err):
 		return &gcxerrors.DetailedError{
 			Parent:  err,
 			Summary: fmt.Sprintf("Resource not found - code %d", code),
@@ -902,7 +923,7 @@ func convertFSErrors(err error) (*gcxerrors.DetailedError, bool) {
 }
 
 func convertLinterErrors(err error) (*gcxerrors.DetailedError, bool) {
-	if errors.Is(err, linter.ErrTestsFailed) {
+	if errors.Is(err, linterr.ErrTestsFailed) {
 		return nil, true
 	}
 
@@ -1662,6 +1683,101 @@ func convertPartialFailureErrors(err error) (*gcxerrors.DetailedError, bool) {
 		Parent:   err,
 		ExitCode: new(gcxerrors.ExitPartialFailure),
 	}, true
+}
+
+// convertOAuthExchangeErrors adds recovery steps for a browser login whose token
+// exchange hit a rate limit or a temporary service error. The approval in the
+// browser cannot be replayed, because its one-time code is spent, so the next
+// step is always a new login. Other statuses keep the generic rendering.
+func convertOAuthExchangeErrors(err error) (*gcxerrors.DetailedError, bool) {
+	var exchangeErr *auth.ExchangeStatusError
+	if !errors.As(err, &exchangeErr) {
+		return nil, false
+	}
+	switch {
+	case exchangeErr.StatusCode == http.StatusTooManyRequests:
+		return &gcxerrors.DetailedError{
+			Summary:     "API error",
+			Details:     "Grafana Cloud is rate limiting logins: the browser approval succeeded, but finishing the login was refused with HTTP 429. That approval cannot be reused. No credentials were saved.",
+			Parent:      err,
+			Suggestions: []string{"Wait a minute, then run gcx login again"},
+		}, true
+	case exchangeErr.StatusCode >= http.StatusInternalServerError:
+		return &gcxerrors.DetailedError{
+			Summary:     "API error",
+			Details:     fmt.Sprintf("Grafana Cloud could not finish the login: the browser approval succeeded, but finishing it failed with a temporary service error (HTTP %d). That approval cannot be reused. No credentials were saved.", exchangeErr.StatusCode),
+			Parent:      err,
+			Suggestions: []string{"Run gcx login again in a few minutes"},
+		}, true
+	default:
+		return nil, false
+	}
+}
+
+// convertBrowserCancelled reports a Cancel on a browser login's consent page as
+// a cancellation (exit ExitCancelled) with a message. auth.ErrBrowserCancelled
+// deliberately does not wrap context.Canceled: the root command exits silently
+// for that error, and a user who cancelled in the browser should still see in
+// the terminal that gcx stopped.
+func convertBrowserCancelled(err error) (*gcxerrors.DetailedError, bool) {
+	if !errors.Is(err, auth.ErrBrowserCancelled) {
+		return nil, false
+	}
+	return &gcxerrors.DetailedError{
+		Summary:     "Operation cancelled",
+		Details:     "The login was cancelled in the browser. No credentials were saved.",
+		Suggestions: []string{"Run the login command again when you are ready"},
+		ExitCode:    new(gcxerrors.ExitCancelled),
+	}, true
+}
+
+// signupIncompleteDetailedError renders the failure that stopped a signup once
+// its browser step had started, keeping the failure's summary, details,
+// suggestions and exit code, and puts the gcx login recovery first. It never
+// suggests signup again: that could start a second account.
+func signupIncompleteDetailedError(e *login.SignupIncompleteError) *gcxerrors.DetailedError {
+	inner := ErrorToDetailedError(e.Err)
+	if inner == nil {
+		return nil
+	}
+	detailed := *inner
+	detailed.Suggestions = slices.Clone(inner.Suggestions)
+
+	var note, recovery string
+	switch {
+	case e.Server == "":
+		note = "If you already created your Grafana Cloud account in the browser, it exists even though gcx did not connect to it."
+		recovery = "Sign in instead of signing up again, and choose the new stack: " + e.Recovery
+	case newStackMayBeStarting(e.Err):
+		note = fmt.Sprintf("Your Grafana Cloud account and the stack %s exist, but gcx did not save a connection to it. A new stack can take a few minutes to finish starting.", e.Server)
+		recovery = "Wait a few minutes, then connect gcx to the new stack: " + e.Recovery
+	default:
+		note = fmt.Sprintf("Your Grafana Cloud account and the stack %s exist, but gcx did not save a connection to it.", e.Server)
+		recovery = "Once the cause above is fixed, connect gcx to the new stack: " + e.Recovery
+	}
+	// JSON output falls back to Parent only while Details is empty, so the
+	// note would hide a cause that only Parent carries, such as a busy
+	// callback port. Moving it into Details keeps it in every format and
+	// prints it once in text.
+	if detailed.Details == "" && detailed.Parent != nil {
+		detailed.Details = detailed.Parent.Error()
+		detailed.Parent = nil
+	}
+	if detailed.Details == "" {
+		detailed.Details = note
+	} else {
+		detailed.Details = note + "\n\n" + detailed.Details
+	}
+	detailed.Suggestions = append([]string{recovery}, detailed.Suggestions...)
+	return &detailed
+}
+
+// newStackMayBeStarting reports a connectivity failure that a stack still
+// starting up also produces.
+func newStackMayBeStarting(err error) bool {
+	var health *login.HealthCheckError
+	var discovery *login.K8sDiscoveryError
+	return errors.As(err, &health) || errors.As(err, &discovery)
 }
 
 func convertContextCanceled(err error) (*gcxerrors.DetailedError, bool) {

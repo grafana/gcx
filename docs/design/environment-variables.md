@@ -78,15 +78,106 @@ Accepts: `1`, `true`, `0`, `false` (parsed by `caarlos0/env/v11`)
 
 | Variable | Source | Effect |
 |----------|--------|--------|
-| `GCX_AGENT_MODE` | Explicit opt-in/out | `1`/`true`/`yes` enables agent mode; `0`/`false`/`no` disables (overrides all others) |
-| `GCX_AGENT_SPILL_BYTES` | Output tuning | Spill threshold in bytes for the `agents` codec (default `102400` = 100 KiB). Payloads above this are written to a temp file; a summary is printed instead. Invalid values fall back to the default. See [output.md § Agents Codec](output.md#111-agents-codec) |
-| `CLAUDECODE` | Claude Code | Truthy value activates agent mode |
-| `CLAUDE_CODE` | Claude Code | Truthy value activates agent mode |
-| `CURSOR_AGENT` | Cursor | Truthy value activates agent mode |
-| `GITHUB_COPILOT` | GitHub Copilot | Truthy value activates agent mode |
-| `AMAZON_Q` | Amazon Q | Truthy value activates agent mode |
-| `OPENCODE` | opencode | Truthy value activates agent mode |
-| `PI_CODING_AGENT` | pi | Truthy value activates agent mode |
+| `GCX_AGENT_MODE` | Explicit opt-in/out | `1`/`true`/`yes` enables agent mode; `0`/`false`/`no` disables it. The `--agent` flag takes precedence. |
+| `GCX_AGENT_NAME` | Explicit identity | A supported name enables agent mode and sets the telemetry `agent` label. A `name@version` value uses only the name. Unknown names are ignored. |
+| `AI_AGENT` | Shared identity | A supported name enables agent mode. A `name@version` value uses only the name. Unknown names are ignored. |
+| `AGENT` | Goose | The value `goose` enables agent mode. Other values are ignored. |
+| `GCX_AGENT_SPILL_BYTES` | Output tuning | Spill threshold in bytes for the `agents` codec (default `102400` = 100 KiB). `0` disables spilling. Invalid values use the default. See [output.md](output.md#111-agents-codec). |
+| `CLAUDECODE`, `CLAUDE_CODE` | Claude Code | Boolean identity signal |
+| `CURSOR_AGENT` | Cursor | Boolean identity signal |
+| `GITHUB_COPILOT`, `COPILOT_CLI` | GitHub Copilot | Boolean identity signal |
+| `COPILOT_AGENT_SESSION_ID` | GitHub Copilot CLI | Non-empty session marker |
+| `AMAZON_Q` | Amazon Q | Boolean identity signal |
+| `KILO` | Kilo Code | Boolean identity signal; takes precedence over `OPENCODE` |
+| `QWEN_CODE` | Qwen Code | Boolean identity signal; takes precedence over `GEMINI_CLI` |
+| `GEMINI_CLI` | Gemini CLI | Boolean identity signal |
+| `CODEX_SHELL` | Codex | Boolean identity signal |
+| `CODEX_THREAD_ID`, `CODEX_SESSION_ID` | Codex | Non-empty session marker |
+| `CLINE_ACTIVE` | Cline | Boolean identity signal in VS Code agent terminals |
+| `GOOSE_TERMINAL` | Goose | Boolean identity signal on supported shell paths |
+| `OPENCODE` | OpenCode | Boolean identity signal |
+| `PI_CODING_AGENT` | Pi | Boolean identity signal |
 
-Detection runs at `init()` time in `internal/agent/agent.go`. See [agent-mode.md § Detection](agent-mode.md#61-detection) for
-full detection priority and the `--agent` flag.
+Boolean signals accept `1`, `true`, or `yes`, without case sensitivity.
+Session markers require a non-empty value.
+Session values are never sent in telemetry.
+
+#### Supported harness names
+
+Use the labels below with `GCX_AGENT_NAME` or `AI_AGENT`.
+Names are case-insensitive. Surrounding whitespace is removed.
+Only fixed labels reach telemetry. Unknown values fall through to other signals.
+
+| Harness | Label | Native detection |
+|---------|-------|------------------|
+| Claude Code | `claude-code` | `CLAUDECODE` or `CLAUDE_CODE` |
+| Codex | `codex` | `CODEX_SHELL`, `CODEX_THREAD_ID`, or `CODEX_SESSION_ID` |
+| Cursor | `cursor` | `CURSOR_AGENT` |
+| GitHub Copilot | `github-copilot` | `GITHUB_COPILOT`, `COPILOT_CLI`, or `COPILOT_AGENT_SESSION_ID` |
+| Gemini CLI | `gemini-cli` | `GEMINI_CLI` |
+| OpenCode | `opencode` | `OPENCODE` |
+| Cline | `cline` | `CLINE_ACTIVE` in VS Code agent terminals |
+| Kilo Code | `kilo-code` | `KILO` |
+| Kiro | `kiro` | Use an explicit or shared identity |
+| Factory Droid | `factory-droid` | Use an explicit or shared identity |
+| Amp | `amp` | Use an explicit or shared identity |
+| Augment Code | `augment` | Use an explicit or shared identity |
+| JetBrains Junie | `junie` | Use an explicit or shared identity |
+| Devin | `devin` | Use an explicit or shared identity |
+| OpenHands | `openhands` | Use an explicit or shared identity |
+| Goose | `goose` | `GOOSE_TERMINAL` on supported shell paths, or `AGENT=goose` |
+| Aider | `aider` | Use an explicit or shared identity |
+| Qwen Code | `qwen-code` | `QWEN_CODE` |
+| Pi | `pi` | `PI_CODING_AGENT` |
+| Crush | `crush` | Use an explicit or shared identity |
+| Amazon Q | `amazon-q` | `AMAZON_Q` (existing support) |
+
+Aliases map to fixed labels: `github-copilot-cli` → `github-copilot`,
+`kilo` and `kilocode` → `kilo-code`, `droid` → `factory-droid`,
+and `auggie` → `augment`.
+
+Native signals can vary by tool version and execution path. Use an explicit
+identity when the calling tool does not supply a marker. For example:
+
+```bash
+GCX_AGENT_NAME=crush gcx resources get dashboards
+```
+
+Set the identity in the agent's command environment. Do not export it in a
+shared human shell. gcx does not infer identity from installed tools, API keys,
+configuration directories, or the terminal application.
+
+#### Signal evidence
+
+- `GCX_AGENT_NAME` is gcx's explicit identity override. It accepts only the
+  labels listed above.
+- `AI_AGENT` follows Vercel's documented
+  [AI_AGENT convention](https://github.com/vercel/detect-agent#the-ai_agent-standard).
+  The convention accepts a tool name with an optional `@version` suffix.
+  gcx restricts the name to its fixed labels and discards the version.
+- The bare `AGENT` variable is accepted only for `AGENT=goose`, as shown
+  in the Goose source below. It is not a general identity override.
+
+- Codex: `CODEX_SHELL=1` and session markers were present in the Codex desktop
+  command environment used to reproduce the missing telemetry identity.
+- Gemini CLI documents `GEMINI_CLI=1` in its
+  [shell tool reference](https://github.com/google-gemini/gemini-cli/blob/main/docs/tools/shell.md).
+- Copilot CLI documents `COPILOT_CLI=1` and `COPILOT_AGENT_SESSION_ID` in its
+  [changelog](https://github.com/github/copilot-cli/blob/main/changelog.md).
+- Cline sets `CLINE_ACTIVE=true` in its
+  [VS Code terminal registry](https://github.com/cline/cline/blob/main/apps/vscode/src/hosts/vscode/terminal/VscodeTerminalRegistry.ts).
+- Kilo sets `KILO=1` in its
+  [CLI setup](https://github.com/Kilo-Org/kilocode/blob/main/packages/opencode/src/kilocode/cli/setup.ts).
+- Qwen Code sets `QWEN_CODE=1` in its
+  [shell service](https://github.com/QwenLM/qwen-code/blob/main/packages/core/src/services/shellExecutionService.ts).
+- Goose sets `GOOSE_TERMINAL=1` and `AGENT=goose` in its
+  [retry command path](https://github.com/aaif-goose/goose/blob/main/crates/goose/src/agents/retry.rs).
+  These signals do not establish coverage of every shell path.
+  Goose moved from Block to AAIF. Its [governance document](https://github.com/aaif-goose/goose/blob/main/GOVERNANCE.md) confirms the project owner.
+
+Native markers take precedence over the shared `AI_AGENT` fallback and the
+legacy `AGENT=goose` fallback. Shared variables can be inherited from an outer
+harness. Use `GCX_AGENT_NAME` to override native identity deliberately for gcx.
+
+Detection runs at `init()` time in `internal/agent/agent.go`.
+See [agent-mode.md](agent-mode.md#61-detection) for mode and identity precedence.

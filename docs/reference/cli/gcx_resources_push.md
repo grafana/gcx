@@ -28,10 +28,10 @@ gcx resources push [RESOURCE_SELECTOR]... [flags]
 	gcx resources push dashboards/foo
 	gcx resources push dashboards/foo,bar
 
-	# Single resource kind, long kind format:
+	# Single resource kind, full API group:
 
-	gcx resources push dashboard.dashboards/foo
-	gcx resources push dashboard.dashboards/foo,bar
+	gcx resources push dashboards.dashboard.grafana.app/foo
+	gcx resources push dashboards.dashboard.grafana.app/foo,bar
 
 	# Single resource kind, long kind format with version:
 
@@ -43,10 +43,10 @@ gcx resources push [RESOURCE_SELECTOR]... [flags]
 	gcx resources push dashboards/foo folders/qux
 	gcx resources push dashboards/foo,bar folders/qux,quux
 
-	# Multiple resource kinds, long kind format:
+	# Multiple resource kinds, full API groups:
 
-	gcx resources push dashboard.dashboards/foo folder.folders/qux
-	gcx resources push dashboard.dashboards/foo,bar folder.folders/qux,quux
+	gcx resources push dashboards.dashboard.grafana.app/foo folders.folder.grafana.app/qux
+	gcx resources push dashboards.dashboard.grafana.app/foo,bar folders.folder.grafana.app/qux,quux
 
 	# Multiple resource kinds, long kind format with version:
 
@@ -86,7 +86,7 @@ gcx resources push [RESOURCE_SELECTOR]... [flags]
 ### Options inherited from parent commands
 
 ```
-      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
+      --agent                       Enable agent mode (JSON output, no color). Auto-detected from known agent identity variables. Set GCX_AGENT_NAME to identify a supported harness, or GCX_AGENT_MODE to control the mode.
       --config string               Path to the configuration file to use
       --context string              Name of the context to use
       --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Requires -vvv. Do not ship these logs.

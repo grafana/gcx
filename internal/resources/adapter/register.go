@@ -22,7 +22,7 @@ type Registration struct {
 	Descriptor  resources.Descriptor
 	Aliases     []string
 	GVK         schema.GroupVersionKind
-	Schema      json.RawMessage                // Required, non-nil JSON Schema for this resource type (per CONSTITUTION.md).
+	Schema      func() json.RawMessage         // Required, non-nil: returns the JSON Schema for this resource type (per CONSTITUTION.md). Called on demand, so schemas cost nothing at start-up.
 	Example     json.RawMessage                // Example manifest (YAML-compatible JSON, per CONSTITUTION.md). MAY be nil for read-only resources.
 	Operations  map[string]agent.OperationHint // Agent metadata: per-operation token cost and hint, keyed by "get", "push", "pull", "delete".
 	URLTemplate string                         // URL path template for deep links (e.g., "/a/grafana-slo-app/slo/{name}"). Empty means no deep link.
@@ -64,7 +64,7 @@ func RegisterAll(ctx context.Context, reg RegistryAccess) {
 func SchemaForGVK(gvk schema.GroupVersionKind) json.RawMessage {
 	for _, r := range registrations {
 		if r.GVK == gvk && r.Schema != nil {
-			return r.Schema
+			return r.Schema()
 		}
 	}
 	return nil
