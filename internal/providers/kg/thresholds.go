@@ -1,0 +1,363 @@
+package kg
+
+import (
+	"errors"
+	"fmt"
+	"io"
+	"sort"
+	"strconv"
+	"strings"
+	"unicode"
+
+	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+)
+
+// ThresholdsKind is the resource kind emitted by `thresholds get`. It is kept
+// separate from Kind ("Rule") because thresholds live on /v1/config/threshold-rules,
+// not /v1/config/prom-rules; sharing the kind would let a round-tripped document
+// resolve to the prom-rules adapter.
+const ThresholdsKind = "Thresholds"
+
+// thresholdsToResource wraps the threshold config in a resource envelope with
+// its own kind. The kind is intentionally not registered with the resources
+// adapter registry, so pushing the document fails instead of reaching prom-rules.
+func thresholdsToResource(rf Rule, namespace string) (unstructured.Unstructured, error) {
+	res, err := RuleToResource(rf, namespace)
+	if err != nil {
+		return unstructured.Unstructured{}, err
+	}
+	obj := res.ToUnstructured()
+	obj.SetKind(ThresholdsKind)
+	return obj, nil
+}
+
+func newThresholdsCommand(loader RESTConfigLoader) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "thresholds",
+		Short: "Manage Knowledge Graph threshold rules.",
+		Long: `Read Asserts threshold rules over the v1 threshold config API.
+
+This targets v1 (/v1/config/threshold-rules) — the version the Asserts app UI and all
+user-configured thresholds run on.`,
+	}
+
+	getOpts := &thresholdsGetOpts{}
+	getCmd := &cobra.Command{
+		Use:   "get",
+		Short: "Summarize the whole threshold config.",
+		Long: `Fetches the entire threshold configuration. The default table summarizes the
+config name and its group and rule counts. Use -o json or -o yaml for the full
+resource envelope (kind Thresholds, deliberately distinct from the prom-rules
+Rule kind so it cannot be mistaken for, or pushed as, a prom-rules document).`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := getOpts.IO.Validate(); err != nil {
+				return err
+			}
+			ctx := cmd.Context()
+			cfg, err := loader.LoadGrafanaConfig(ctx)
+			if err != nil {
+				return err
+			}
+			client, err := NewClient(cfg)
+			if err != nil {
+				return err
+			}
+			rule, err := client.GetThresholds(ctx)
+			if err != nil {
+				return err
+			}
+			obj, err := thresholdsToResource(*rule, cfg.Namespace)
+			if err != nil {
+				return fmt.Errorf("failed to convert threshold config to resource: %w", err)
+			}
+			// Encode a *pointer*: unstructured.Unstructured implements
+			// MarshalJSON on the pointer receiver, so a bare value passed as
+			// any falls back to struct-field encoding and leaks the wrapper as
+			// a top-level "Object" key.
+			return encodeThresholdRowsOrValue(
+				&getOpts.IO,
+				cmd.OutOrStdout(),
+				[]unstructured.Unstructured{obj},
+				&obj,
+			)
+		},
+	}
+	getOpts.setup(getCmd.Flags())
+
+	listOpts := &thresholdsListOpts{}
+	listCmd := &cobra.Command{
+		Use:   "list",
+		Short: "List threshold rules for a category (request or resource).",
+		Long: `Lists threshold rules for one category. Machine formats return an items
+envelope, with each item tagged as custom or global in its scope field. Only the
+request and resource categories exist in v1.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := listOpts.Validate(); err != nil {
+				return err
+			}
+			ctx := cmd.Context()
+			cfg, err := loader.LoadGrafanaConfig(ctx)
+			if err != nil {
+				return err
+			}
+			client, err := NewClient(cfg)
+			if err != nil {
+				return err
+			}
+			dto, err := client.GetThresholdsByCategory(ctx, listOpts.Category)
+			if err != nil {
+				return err
+			}
+			rows := flattenThresholds(dto)
+			return encodeThresholdRowsOrValue(
+				&listOpts.IO,
+				cmd.OutOrStdout(),
+				rows,
+				thresholdListOutput{Items: rows},
+			)
+		},
+	}
+	listOpts.setup(listCmd.Flags())
+
+	cmd.AddCommand(getCmd, listCmd)
+	return cmd
+}
+
+type thresholdsGetOpts struct {
+	IO cmdio.Options
+}
+
+func (o *thresholdsGetOpts) setup(flags *pflag.FlagSet) {
+	cmdio.RegisterTable(&o.IO, RuleTable())
+	o.IO.DefaultFormat(cmdio.FormatTable)
+	o.IO.BindFlags(flags)
+}
+
+type thresholdsListOpts struct {
+	IO       cmdio.Options
+	Category string
+}
+
+func (o *thresholdsListOpts) setup(flags *pflag.FlagSet) {
+	cmdio.RegisterTable(&o.IO, thresholdTable())
+	o.IO.DefaultFormat("table")
+	o.IO.BindFlags(flags)
+	flags.StringVar(&o.Category, "category", "", "Threshold category to list: request or resource (required)")
+}
+
+func (o *thresholdsListOpts) Validate() error {
+	if err := o.IO.Validate(); err != nil {
+		return err
+	}
+	switch o.Category {
+	case "request", "resource":
+		return nil
+	case "":
+		return errors.New("--category is required (one of: request, resource)")
+	default:
+		return fmt.Errorf("invalid --category %q: must be one of: request, resource", o.Category)
+	}
+}
+
+// thresholdRow is a flattened view of a single threshold for table rendering.
+type thresholdRow struct {
+	Scope  string            `json:"scope" yaml:"scope"` // custom | global
+	Record string            `json:"record" yaml:"record"`
+	Expr   string            `json:"expr" yaml:"expr"`
+	Active bool              `json:"active" yaml:"active"`
+	Labels map[string]string `json:"labels,omitempty" yaml:"labels,omitempty"`
+}
+
+// thresholdListOutput gives machine formats one collection shape while keeping
+// the backend's custom/global distinction on each item. ListItemsKey integrates
+// the local envelope with field selection and agent spill summaries.
+type thresholdListOutput struct {
+	Items []thresholdRow `json:"items" yaml:"items"`
+}
+
+func (thresholdListOutput) ListItemsKey() string { return "items" }
+
+var _ cmdio.ListEnvelope = thresholdListOutput{}
+
+// flattenThresholds flattens the custom and global threshold lists into rows,
+// tagging each with its scope. Rows are ordered custom-first, then global, each
+// group ordered by record name for stable output.
+func flattenThresholds(dto *ThresholdRulesDto) []thresholdRow {
+	rows := make([]thresholdRow, 0, len(dto.CustomThresholds)+len(dto.GlobalThresholds))
+	add := func(scope string, ts []Threshold) {
+		sorted := make([]Threshold, len(ts))
+		copy(sorted, ts)
+		sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].Record < sorted[j].Record })
+		for _, t := range sorted {
+			rows = append(rows, thresholdRow{Scope: scope, Record: t.Record, Expr: t.Expr, Active: t.Active, Labels: t.Labels})
+		}
+	}
+	add("custom", dto.CustomThresholds)
+	add("global", dto.GlobalThresholds)
+	return rows
+}
+
+// encodeThresholdRowsOrValue keeps the threshold command's two output shapes
+// local to KG: table formats consume flattened rows, while machine formats
+// preserve the backend DTO or resource envelope.
+func encodeThresholdRowsOrValue[T any](opts *cmdio.Options, w io.Writer, rows []T, value any) error {
+	codec, err := opts.Codec()
+	if err != nil {
+		return err
+	}
+
+	switch string(codec.Format()) {
+	case cmdio.FormatTable, cmdio.FormatWide:
+		return codec.Encode(w, rows)
+	default:
+		return opts.Encode(w, value)
+	}
+}
+
+// thresholdTable declares the threshold columns for both the narrow and wide
+// renderings — LABELS is the only wide-only column (ADR-002).
+func thresholdTable() cmdio.Table[thresholdRow] {
+	return cmdio.Table[thresholdRow]{
+		Columns: []cmdio.Column[thresholdRow]{
+			{Header: "SCOPE", Content: func(r thresholdRow) string { return r.Scope }},
+			{Header: "RECORD", Content: func(r thresholdRow) string { return r.Record }},
+			{Header: "ACTIVE", Content: func(r thresholdRow) string { return strconv.FormatBool(r.Active) }},
+			{Header: "EXPR", Content: func(r thresholdRow) string { return compactExpr(r.Expr) }},
+			{Header: "LABELS", Visible: cmdio.WideOnly, Content: func(r thresholdRow) string {
+				return renderLabels(r.Labels)
+			}},
+		},
+	}
+}
+
+// compactExpr folds whitespace without changing the expression's meaning.
+// PromQL comments are discarded before their terminating newline is folded,
+// and raw strings are rewritten as equivalent escaped quoted strings so their
+// embedded whitespace can remain visible on one table row.
+func compactExpr(expr string) string {
+	c := promQLCompactor{}
+	c.output.Grow(len(expr))
+	for _, r := range expr {
+		c.writeRune(r)
+	}
+	c.finish()
+	return c.output.String()
+}
+
+type promQLCompactor struct {
+	output       strings.Builder
+	raw          strings.Builder
+	quote        rune
+	escaped      bool
+	inComment    bool
+	pendingSpace bool
+}
+
+func (c *promQLCompactor) writeRune(r rune) {
+	switch {
+	case c.inComment:
+		c.writeCommentRune(r)
+	case c.quote == '`':
+		c.writeRawRune(r)
+	case c.quote != 0:
+		c.writeQuotedRune(r)
+	default:
+		c.writeUnquotedRune(r)
+	}
+}
+
+func (c *promQLCompactor) writeCommentRune(r rune) {
+	if r == '\n' || r == '\r' {
+		c.inComment = false
+		c.pendingSpace = c.output.Len() > 0
+	}
+}
+
+func (c *promQLCompactor) writeRawRune(r rune) {
+	if r != '`' {
+		c.raw.WriteRune(r)
+		return
+	}
+	c.output.WriteString(strconv.Quote(c.raw.String()))
+	c.raw.Reset()
+	c.quote = 0
+}
+
+func (c *promQLCompactor) writeQuotedRune(r rune) {
+	switch r {
+	case '\n':
+		c.output.WriteString(`\n`)
+		return
+	case '\r':
+		c.output.WriteString(`\r`)
+		return
+	case '\t':
+		c.output.WriteString(`\t`)
+		return
+	}
+	c.output.WriteRune(r)
+	switch {
+	case c.escaped:
+		c.escaped = false
+	case r == '\\':
+		c.escaped = true
+	case r == c.quote:
+		c.quote = 0
+	}
+}
+
+func (c *promQLCompactor) writeUnquotedRune(r rune) {
+	if unicode.IsSpace(r) {
+		c.pendingSpace = c.output.Len() > 0
+		return
+	}
+	if r == '#' {
+		c.inComment = true
+		return
+	}
+	if c.pendingSpace {
+		c.output.WriteByte(' ')
+		c.pendingSpace = false
+	}
+	if r == '`' {
+		c.quote = r
+		return
+	}
+	if r == '"' || r == '\'' {
+		c.quote = r
+	}
+	c.output.WriteRune(r)
+}
+
+func (c *promQLCompactor) finish() {
+	if c.quote == '`' {
+		c.output.WriteRune('`')
+		c.output.WriteString(c.raw.String())
+	}
+}
+
+// renderLabels renders a label map as a stable, comma-separated key=value string.
+func renderLabels(labels map[string]string) string {
+	if len(labels) == 0 {
+		return "-"
+	}
+	keys := make([]string, 0, len(labels))
+	for k := range labels {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	pairs := make([]string, 0, len(keys))
+	for _, k := range keys {
+		value := labels[k]
+		if strings.ContainsAny(value, ",=\r\n\t") {
+			value = strconv.Quote(value)
+		}
+		pairs = append(pairs, k+"="+value)
+	}
+	return strings.Join(pairs, ",")
+}

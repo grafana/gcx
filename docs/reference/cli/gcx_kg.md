@@ -37,4 +37,5 @@ Manage Grafana Knowledge Graph rules, entities, and insights
 * [gcx kg stats](gcx_kg_stats.md)	 - Show entity and active-insight counts, broken down by type, severity, and insight name.
 * [gcx kg status](gcx_kg_status.md)	 - Show Knowledge Graph stack status.
 * [gcx kg suppressions](gcx_kg_suppressions.md)	 - Manage alert suppressions in the Knowledge Graph.
+* [gcx kg thresholds](gcx_kg_thresholds.md)	 - Manage Knowledge Graph threshold rules.
 
