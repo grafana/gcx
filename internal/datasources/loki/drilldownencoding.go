@@ -4,20 +4,12 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	dsquery "github.com/grafana/gcx/internal/datasources/query"
 )
 
 // logsDrilldownPluginID is the Grafana app plugin ID for Logs Drilldown.
 const logsDrilldownPluginID = "grafana-lokiexplore-app"
-
-// escapeURLDelimiters mirrors Logs Drilldown's own escapeURLDelimiters: it
-// replaces the comma and pipe characters used as value/filter separators in
-// its flat var-* query params, so a label or line-filter value containing
-// either doesn't corrupt the encoding.
-func escapeURLDelimiters(value string) string {
-	value = strings.ReplaceAll(value, ",", "__gfc__")
-	value = strings.ReplaceAll(value, "|", "__gfp__")
-	return value
-}
 
 // userInputAdHocValuePrefix mirrors Logs Drilldown's USER_INPUT_ADHOC_VALUE_PREFIX,
 // the marker it uses to denote a value that came from raw user/query input
@@ -78,21 +70,37 @@ const emptyAdHocValueSentinel = `""`
 // delimiter-escaped copy of the value followed by a plain delimiter-escaped
 // copy, comma-separated. An empty value uses Drilldown's own empty-value
 // sentinel for the ad-hoc half instead of the ad-hoc prefix applied to "".
-func encodeLabelFilter(key, operator, value string) string {
+// ok is false when the value can't round-trip through the Scenes decoder.
+func encodeLabelFilter(key, operator, value string) (string, bool) {
 	adhoc := emptyAdHocValueSentinel
 	if value != "" {
-		adhoc = escapeURLDelimiters(userInputAdHocValuePrefix + value)
+		escaped, ok := dsquery.EscapeScenesFilterField(value)
+		if !ok {
+			return "", false
+		}
+		adhoc = userInputAdHocValuePrefix + escaped
 	}
-	plain := escapeURLDelimiters(value)
-	return key + "|" + operator + "|" + adhoc + "," + plain
+	plain, ok := dsquery.EscapeScenesFilterField(value)
+	if !ok {
+		return "", false
+	}
+	return key + "|" + operator + "|" + adhoc + "," + plain, true
 }
 
 // encodeLineFilter renders one var-lineFilters entry, mirroring Logs
 // Drilldown's setLineFilterUrlParams encoding: key, then the operator and
 // value, each delimiter-escaped (the operator needs escaping too, since |=
 // and |~ contain the pipe delimiter character itself).
-func encodeLineFilter(key, operator, value string) string {
-	return key + "|" + escapeURLDelimiters(operator) + "|" + escapeURLDelimiters(value)
+func encodeLineFilter(key, operator, value string) (string, bool) {
+	op, ok := dsquery.EscapeScenesFilterField(operator)
+	if !ok {
+		return "", false
+	}
+	val, ok := dsquery.EscapeScenesFilterField(value)
+	if !ok {
+		return "", false
+	}
+	return key + "|" + op + "|" + val, true
 }
 
 // isRegexLineFilterOperator reports whether op is one of LogQL's regex line

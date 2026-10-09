@@ -32,17 +32,17 @@ func TestEncodeLabelFilter_EmptyValueUsesDrilldownSentinel(t *testing.T) {
 	// for an empty value instead of the ad-hoc user-input prefix applied to
 	// an empty string — otherwise {app=""} would decode on the Drilldown
 	// side as a non-empty ad-hoc-marker value, changing the query.
-	got := loki.EncodeLabelFilter("app", "=", "")
+	got, ok := loki.EncodeLabelFilter("app", "=", "")
 	want := `app|=|"",`
-	if got != want {
+	if !ok || got != want {
 		t.Errorf("EncodeLabelFilter(...) = %q, want %q", got, want)
 	}
 }
 
 func TestEncodeLabelFilter_NonEmptyValueUnaffected(t *testing.T) {
-	got := loki.EncodeLabelFilter("app", "=", "foo")
+	got, ok := loki.EncodeLabelFilter("app", "=", "foo")
 	want := "app|=|__CVΩ__foo,foo"
-	if got != want {
+	if !ok || got != want {
 		t.Errorf("EncodeLabelFilter(...) = %q, want %q", got, want)
 	}
 }

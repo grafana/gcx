@@ -67,11 +67,19 @@ func LogsDrilldownURL(host, datasourceUID, expr string, start, end time.Time) (s
 		"to":     {strconv.FormatInt(end.UnixMilli(), 10)},
 	}
 	for _, m := range matchers {
-		params["var-filters"] = append(params["var-filters"], encodeLabelFilter(m.Key, m.Operator, m.Value))
+		encoded, ok := encodeLabelFilter(m.Key, m.Operator, m.Value)
+		if !ok {
+			return "", false
+		}
+		params["var-filters"] = append(params["var-filters"], encoded)
 	}
 	for i, lf := range lineFilters {
 		key, value := lineFilterKeyAndValue(i, lf.Operator, lf.Value)
-		params["var-lineFilters"] = append(params["var-lineFilters"], encodeLineFilter(key, lf.Operator, value))
+		encoded, ok := encodeLineFilter(key, lf.Operator, value)
+		if !ok {
+			return "", false
+		}
+		params["var-lineFilters"] = append(params["var-lineFilters"], encoded)
 	}
 
 	return dsquery.BuildDrilldownURL(host, logsDrilldownPluginID, path, params), true

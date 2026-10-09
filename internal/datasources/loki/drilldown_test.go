@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/grafana/gcx/internal/datasources/loki"
+	"github.com/grafana/gcx/internal/datasources/query/scenesfiltertest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -120,4 +121,41 @@ func TestLogsDrilldownURL_FallbackCases(t *testing.T) {
 			assert.False(t, ok)
 		})
 	}
+}
+
+func TestLogsDrilldownURL_FilterValuesRoundTripThroughScenesDecoder(t *testing.T) {
+	for _, value := range []string{"a,b", "a#b", "a|b", "a,b#c|d"} {
+		got, ok := loki.LogsDrilldownURL("https://stack.grafana.net", "loki-uid", `{app="`+value+`"}`, time.Time{}, time.Time{})
+		require.True(t, ok, value)
+
+		u, err := url.Parse(got)
+		require.NoError(t, err)
+		filters := u.Query()["var-filters"]
+		require.Len(t, filters, 1, value)
+
+		decoded := scenesfiltertest.Decode(filters[0])
+		assert.Equal(t, "app", decoded.Key, value)
+		assert.Equal(t, "__CVΩ__"+value, decoded.Value, value)
+		assert.Empty(t, decoded.Origin, value)
+	}
+}
+
+func TestLogsDrilldownURL_LineFilterValuesRoundTripThroughScenesDecoder(t *testing.T) {
+	got, ok := loki.LogsDrilldownURL("https://stack.grafana.net", "loki-uid", `{app="foo"} |= "a#b,c"`, time.Time{}, time.Time{})
+	require.True(t, ok)
+
+	u, err := url.Parse(got)
+	require.NoError(t, err)
+	filters := u.Query()["var-lineFilters"]
+	require.Len(t, filters, 1)
+
+	decoded := scenesfiltertest.Decode(filters[0])
+	assert.Equal(t, "caseSensitive", decoded.Key)
+	assert.Equal(t, "|=", decoded.Operator)
+	assert.Equal(t, "a#b,c", decoded.Value)
+}
+
+func TestLogsDrilldownURL_FallsBackForValuesContainingEscapeTokens(t *testing.T) {
+	_, ok := loki.LogsDrilldownURL("https://stack.grafana.net", "loki-uid", `{app="x__gfh__y"}`, time.Time{}, time.Time{})
+	assert.False(t, ok)
 }
