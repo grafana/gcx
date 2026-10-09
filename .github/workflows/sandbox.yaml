@@ -1,0 +1,82 @@
+name: Sandbox
+on:
+  pull_request:
+    # Any Go or dependency change can break the wasip1 build, not just changes
+    # under experimental/sandbox.
+    paths:
+      - "**.go"
+      - "**/go.mod"
+      - "**/go.sum"
+      - "experimental/sandbox/**"
+      - "mise.toml"
+      - ".github/workflows/sandbox.yaml"
+  push:
+    branches: [main]
+    paths:
+      - "**.go"
+      - "**/go.mod"
+      - "**/go.sum"
+      - "experimental/sandbox/**"
+      - "mise.toml"
+      - ".github/workflows/sandbox.yaml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sandbox-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  sandbox:
+    name: Build gcx.wasm and test the sandbox
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Restore go module cache
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-deps-sandbox-${{ runner.os }}-${{ hashFiles('go.sum', 'experimental/sandbox/go.sum') }}
+          restore-keys: |
+            go-deps-sandbox-${{ runner.os }}
+
+      - name: Setup mise
+        uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4
+        with:
+          install: true
+          cache: true
+
+      - name: Build gcx.wasm
+        run: experimental/sandbox/build.sh
+
+      # Compiling the module takes ~40s; the cache is only valid for the exact
+      # module bytes.
+      - name: Restore compiled module cache
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/.cache/gcx-sandbox/compiled
+          key: gcx-sandbox-compiled-${{ runner.os }}-${{ hashFiles('experimental/sandbox/gcx.wasm', 'experimental/sandbox/go.sum') }}
+
+      - name: Lint
+        working-directory: experimental/sandbox
+        run: golangci-lint run -c ../../.golangci.yaml ./...
+
+      - name: Vet and test
+        working-directory: experimental/sandbox
+        env:
+          GCX_SANDBOX_WASM: ${{ github.workspace }}/experimental/sandbox/gcx.wasm
+        # The unit tests run under -race; -short skips the e2e tests there
+        # (loadGCX), because the race detector slows wazero's cold compile of
+        # the module (a cache miss on every change) from ~40s to several
+        # minutes. The second run covers the e2e tests without it.
+        run: |
+          go vet ./...
+          go test -race -short ./...
+          go test ./...

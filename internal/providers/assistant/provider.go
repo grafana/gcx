@@ -53,7 +53,7 @@ func (p *AssistantProvider) TypedRegistrations() []adapter.Registration {
 			Factory:    mcpserver.NewLazyFactory(),
 			Descriptor: desc,
 			GVK:        desc.GroupVersionKind(),
-			Schema:     mcpserver.MCPServerSchema(),
+			Schema:     mcpserver.MCPServerSchema,
 			Example:    mcpserver.MCPServerExample(),
 		},
 	}

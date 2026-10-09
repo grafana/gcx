@@ -402,7 +402,7 @@ func TestSloResource_RegistrationDerivesSchemaAndExample(t *testing.T) {
 	require.Len(t, regs, 1)
 
 	reg := regs[0]
-	assert.NotNil(t, reg.Schema, "schema must be auto-derived from Slo, not hand-threaded")
+	assert.NotNil(t, reg.Schema(), "schema must be auto-derived from Slo, not hand-threaded")
 	require.NotNil(t, reg.Example, "example must be derived from SloResource.Example")
 	assert.Contains(t, string(reg.Example), "HTTP Availability")
 	var example unstructured.Unstructured

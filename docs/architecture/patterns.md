@@ -363,23 +363,28 @@ Cross-reference: Pattern 12 (Direct HTTP Client for Datasource APIs).
 
 ### 15. Agent Mode Detection and Pipe-Aware Output
 
-gcx detects at startup whether it is running inside an AI agent
-environment (Claude Code, Cursor, GitHub Copilot, Amazon Q, opencode, pi) and adjusts
-its behavior accordingly. Detection happens at `init()` time by reading
-well-known environment variables; the `--agent` CLI flag overrides env
-detection when explicitly set.
+gcx detects agent identity at startup from native signals or supported names.
+Detection runs at `init()` time. The `--agent` flag overrides the detected mode.
 
-**Detection priority:**
+**Mode priority:**
 
 | Priority | Mechanism | Notes |
 |----------|-----------|-------|
-| 1 | `GCX_AGENT_MODE` env var | Explicit override — falsy value disables agent mode even if other vars are set |
-| 2 | `CLAUDECODE`, `CLAUDE_CODE`, `CURSOR_AGENT`, `GITHUB_COPILOT`, `AMAZON_Q`, `OPENCODE`, `PI_CODING_AGENT` env vars | Any truthy value enables agent mode |
-| 3 | `--agent` CLI flag | Applied after env detection; always takes precedence when explicitly passed |
+| 1 | Explicit `--agent` flag | Enables or disables mode after environment detection |
+| 2 | Valid `GCX_AGENT_MODE` value | Explicit mode override |
+| 3 | Supported identity | Native signals, `GCX_AGENT_NAME`, `AI_AGENT`, or `AGENT=goose` enable mode |
+| 4 | Default | Agent mode is disabled |
+
+Identity resolution starts with `GCX_AGENT_NAME`, then native markers, then
+`AI_AGENT`, then `AGENT=goose`. Mode opt-out does not clear the identity
+label. Usage telemetry uses the same fixed label as the detector.
+See the [environment reference](../design/environment-variables.md#agent-mode-variables)
+for the complete signal list and supported names. See
+[agent mode](../design/agent-mode.md#61-detection) for the full precedence rules.
 
 **Behavioral effects when agent mode is active:**
 - Color output disabled globally (`color.NoColor = true`)
-- Default output format overridden to `json` (machine-parseable by default)
+- Default output format overridden to `agents` (compact JSON with file spill)
 - Pipe-aware behaviors forced: `IsPiped=true`, `NoTruncate=true` regardless of TTY state
 - In-band error JSON written to stdout on failure (see `cmd/gcx/fail/json.go`)
 
@@ -393,7 +398,7 @@ The `--no-truncate` persistent flag provides explicit control for non-TTY use ca
 behaviors regardless of actual TTY state.
 
 **Key files:**
-- `internal/agent/agent.go` — `IsAgentMode()`, `SetFlag()`, `DetectedFromEnv()`
+- `internal/agent/agent.go` — `IsAgentMode()`, `SetFlag()`, `DetectedFromEnv()`, `Name()`
 - `internal/terminal/terminal.go` — `Detect()`, `IsPiped()`, `NoTruncate()`, setters
 - `cmd/gcx/root/command.go` — orchestrates detection order in `PersistentPreRun`
 - `internal/output/format.go` — `io.Options` fields `IsPiped`, `NoTruncate`, `JSONFields`
@@ -780,6 +785,47 @@ c.doRequest(ctx, http.MethodPost, fmt.Sprintf("%s/%s/apply", recsPath, id), nil)
 - `internal/providers/slo/definitions/client.go`: `sloByUUIDFmt`
 - `internal/providers/kg/client.go`: `ruleByNameFmt`, `suppressionByNameFmt`
 - `internal/providers/agento11y/*/client.go`: `conversationByIDFmt`, `generationByIDFmt`, `ruleByIDFmt`, `templateByIDFmt`, `evaluatorByIDFmt`
+
+### 22. Native Resource Binding (Adopt)
+
+**Observation:** Some provider commands manage a Kubernetes-compatible resource
+that Grafana serves natively and gcx discovers from the server (for example
+`gcx alert routing-trees` over `routingtrees.notifications.alerting.grafana.app`).
+These commands must not register an adapter for the GVK (that would take the
+GVK away from the dynamic client in `gcx resources` and pin one version), and
+must not build discovery registries or dynamic clients by hand.
+
+**Rule:** Bind the resource once in the command factory with
+`native.Bind(loader, native.Config{Group, Resource})` from
+`internal/providers/native`. Leaves call `Binding.Load` only after validation
+and any confirmation; `Load` resolves a fresh config snapshot, the descriptor
+(server-preferred version unless `LoadOptions.APIVersion` is set), and a
+dynamic client. Nothing is cached between calls.
+
+```go
+binding := native.Bind(loader, native.Config{
+    Group:    "notifications.alerting.grafana.app",
+    Resource: "routingtrees",
+})
+// in RunE, after validation:
+access, err := binding.Load(ctx, native.LoadOptions{APIVersion: opts.APIVersion})
+list, err := access.Client.List(ctx, access.Descriptor, metav1.ListOptions{})
+```
+
+**Reuse constraints:**
+- `native` imports no cobra, `cmdio`, terminal, or prompt packages
+  (`TestNoCLIImports` enforces direct imports).
+- `native.WithRegistry` replaces the on-disk discovery cache, e.g. for a
+  long-running multi-tenant process.
+- `native.ReadManifest(filename, stdin)` reads `-f` input from an injected
+  reader (`cmd.InOrStdin()`), never `os.Stdin`.
+- Tests inject `native.Fixed(access)` or `native.Func(f)` instead of a server.
+
+**Key files:**
+- `internal/providers/native/native.go`: `Bind`, `Binding.Load`, `Fixed`, `Func`, `WithRegistry`, `ParseAPIVersion`
+- `internal/providers/native/manifest.go`: `ReadManifest`
+- `internal/providers/alert/routing_trees_commands.go`: first adopter
+- Constitution: "Native resources go through the shared native binding". Dashboards still hand-rolls access until its migration lands.
 
 ---
 

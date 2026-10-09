@@ -21,6 +21,10 @@ gcx is a CLI for Grafana — Cloud, Enterprise, and OSS alike. It gives you and 
 
 gcx works with any agentic coding tool. It ships with a suite of agent skills for common workflows like alert investigation, dashboard creation and GitOps, SLO management, and observability setup - ready to use out of the box.
 
+Agent mode uses known identity signals, including Codex and Gemini CLI.
+For tools without a native signal, set `GCX_AGENT_NAME` to a supported label.
+See [agent detection and harness names](docs/design/environment-variables.md#agent-mode-variables).
+
 Contributing a new Grafana domain capability to gcx? Ask your coding agent to
 use [`integrate-with-gcx`](.claude/skills/integrate-with-gcx/SKILL.md)
 before choosing a command, provider, or datasource path.
@@ -28,6 +32,9 @@ before choosing a command, provider, or datasource path.
 ## Quick Start
 
 ```sh
+# New to Grafana Cloud? Create a free account; gcx connects to its first stack when you approve
+gcx signup
+
 # For Grafana Cloud instances
 gcx login prod --server https://<your-cloud-instance>.grafana.net  # select oauth, then press Enter to skip cloud token selection
 
@@ -132,6 +139,14 @@ gcx completion fish > ~/.config/fish/completions/gcx.fish  # fish
 
 `gcx login` creates or re-authenticates a context. It auto-detects whether the server is Grafana Cloud (`*.grafana.net`) or on-premises and adjusts the prompt accordingly. Pick the path below that matches your setup.
 
+**No Grafana Cloud account yet:**
+
+```bash
+gcx signup
+```
+
+gcx opens the Grafana Cloud sign-up page. After you create the account, verify your email, create your first stack, and approve "Connect gcx", the browser returns to gcx, which saves the connection. For an account you already have but no stack URL at hand, run `gcx login` and leave the server empty, or `gcx login --cloud --oauth` from a script or agent. See [First-time Grafana Cloud login](docs/reference/login.md#first-time-grafana-cloud-login).
+
 **Grafana Cloud, browser-based OAuth (interactive, recommended):**
 
 ```bash
@@ -210,6 +225,17 @@ The command uses the selected context's Cloud API
 endpoint, including dev and ops environments. Membership is not a guarantee of
 stack-creation permission. This differs from `gcx api /api/orgs`, which targets
 organisations inside a Grafana instance.
+
+Specify the organisation slug when creating a stack:
+
+```bash
+gcx cloud stacks create --org example-org --name my-stack --slug mystack --region us --dry-run
+```
+
+Review the preview, then omit `--dry-run` to create the stack. Both
+`stacks create` and `stacks list` require `--org <slug>`.
+Creation defaults to YAML with `name`, `orgSlug`, `slug`, `status` and `url`.
+Use `stacks get <slug>` for full details. Dry runs show the creation request.
 
 `gcx` derives the Cloud stack slug from `--server` when possible. Set it explicitly only for custom domains where gcx cannot derive it:
 
@@ -317,6 +343,7 @@ gcx resources list-types                        # discover available resource ty
 gcx dashboards list                             # list all dashboards
 gcx dashboards search "node exporter"           # full-text search by title/tag/folder
 gcx resources get folders                       # list all folders
+gcx resources get dashboards.dashboard.grafana.app/my-dash  # get by resource.group/name
 gcx alert rules list                            # list alert rules
 
 # Grafana Cloud products

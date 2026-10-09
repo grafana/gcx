@@ -452,7 +452,7 @@ func TestBuildRegistration(t *testing.T) {
 	// Descriptor/GVK/Schema are auto-derived; Example is carried as given.
 	assert.Equal(t, widgetDesc, reg.Descriptor)
 	assert.Equal(t, widgetDesc.GroupVersionKind(), reg.GVK)
-	assert.NotNil(t, reg.Schema, "schema must be auto-derived from T, not hand-threaded")
+	assert.True(t, reg.Schema != nil && reg.Schema() != nil, "schema must be auto-derived from T, not hand-threaded")
 	assert.Equal(t, example, reg.Example)
 
 	a, err := reg.Factory(t.Context())

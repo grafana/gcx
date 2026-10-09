@@ -41,7 +41,11 @@ OnCall, Fleet Management, etc.) using product-specific REST APIs.
   provider commands and the `resources` pipeline automatically. Provider-only
   commands with no adapter registration use their product clients directly — they
   are not required to construct an adapter merely to spell an honest `list` or `get`.
-  > **Exception:** The dashboards commands-only provider (`internal/providers/dashboards/`) calls the K8s dynamic client directly. This is the one documented exception — see ADR 016 (`docs/adrs/dashboards-provider/001-dashboards-provider-design.md`) for rationale and scope.
+- **Native resources go through the shared native binding.** Provider commands that
+  manage a Kubernetes-compatible resource discovered from the server use
+  `internal/providers/native`. They never register an adapter for a discovered GVK,
+  and never construct discovery registries or dynamic clients directly.
+  > **Pending migration:** the dashboards provider (`internal/providers/dashboards/`) still builds its descriptor and dynamic client by hand (see ADR 016, `docs/adrs/dashboards-provider/001-dashboards-provider-design.md`). Its migration to the native binding is the next slice of RFC 001 (`docs/rfcs/001-alerting-provider-refactor.md`); until it lands, this is a known gap, not a second exception.
 - **Schema/Example on Registration structs:** Every `adapter.Registration` struct (populated
   via `TypedRegistrations()`) must include a non-nil `Schema` field. These power the
   `resources list-types` command via the global `SchemaForGVK`/`ExampleForGVK` functions — `AsAdapter()`
@@ -59,7 +63,7 @@ OnCall, Fleet Management, etc.) using product-specific REST APIs.
   the project or CLI itself, not on Grafana resources. Bare top-level
   verbs (single-token commands) are permitted only for two narrow
   categories: (1) foundational bootstrapping that precedes any area or
-  resource context — `gcx login`, `gcx setup`; and (2) CLI-meta commands
+  resource context — `gcx signup`, `gcx login`, `gcx setup`; and (2) CLI-meta commands
   that report on the binary itself rather than on Grafana — `gcx version`
   and Cobra-provided `help`/`completion`. This is an explicit, closed
   enumeration — any new top-level command must follow `$AREA $NOUN $VERB`

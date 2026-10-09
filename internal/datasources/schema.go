@@ -23,5 +23,5 @@ func Descriptor(pluginType string) resources.Descriptor {
 // common config fields) but is not yet a per-plugin config schema — plugin
 // jsonData/secureJsonData are opaque until the per-plugin schema source lands.
 func ConfigSchema(pluginType string) json.RawMessage {
-	return adapter.SchemaFromType[DataSourceSpec](Descriptor(pluginType))
+	return adapter.SchemaFromType[DataSourceSpec](Descriptor(pluginType))()
 }

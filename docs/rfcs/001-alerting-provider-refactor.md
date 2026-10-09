@@ -181,9 +181,7 @@ Acceptance would compare dedicated commands and resource operations for identity
 
 ## Terminology
 
-- **Routing tree:** a named hierarchy of notification policies referencing receivers and timing configuration. The default tree is distinct from additional named trees.
-- **Receiver:** a notification destination containing one or more integrations.
-- **Integration:** an individual delivery configuration within a receiver, with its own identity, settings, and potentially credentials.
+Routing tree, default tree, named tree, notification policy, receiver, and integration shipped with the routing-trees slice. Their definitions live in [the alerting glossary](../glossary/alerting.md). Define any new terms a later slice proposes here until that slice ships.
 
 ## References
 

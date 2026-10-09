@@ -29,6 +29,9 @@ gcx (root)
 │   └── view
 │       └── --output / -o   [yaml|json, default: yaml]
 │
+├── login  [CONTEXT_NAME]    [cmd/gcx/login/command.go]  Log in to a Grafana instance (token, browser OAuth, Basic auth)
+├── signup [CONTEXT_NAME]    [cmd/gcx/login/signup.go]   Create a Grafana Cloud account and save a connection to its first stack
+│
 ├── resources                [cmd/gcx/resources/command.go]
 │   ├── --config             [persistent: inherited from config.Options]
 │   ├── --context            [persistent: inherited from config.Options]
@@ -155,6 +158,15 @@ Key: SELECTOR = `kind[/name[,name...]]` or long form `kind.group/name`
 
 ---
 
+## Agent Identity
+
+`internal/agent` resolves native signals and supported explicit names.
+Command defaults and usage telemetry use the same detector.
+`GCX_AGENT_NAME` supports harnesses without a native marker.
+Only fixed labels reach telemetry. Test helpers clear the detector's full
+input list through `agent.EnvironmentVariables()`.
+See [agent mode](../design/agent-mode.md#61-detection) for precedence.
+
 ## Portable Skill Lifecycle
 
 `claude-plugin/assets.go` embeds `skills/` and `skills-catalog.yaml` separately.
@@ -192,10 +204,10 @@ Do you need only standard CRUD on an externally accessible, discoverable
 Being on `/apis` settles CRUD, not the command surface: `gcx dashboards` and
 `gcx alert` are dedicated command trees over `/apis`-backed products, because
 their real operations are not CRUD verbs. Product-specific operations need their
-own placement analysis regardless of tier. And a commands-only provider that calls
-the K8s dynamic client extends the single documented exception in
-`CONSTITUTION.md` § Architecture Invariants (`internal/providers/dashboards/`,
-ADR 016), which requires explicit human approval.
+own placement analysis regardless of tier. Provider commands over a native
+`/apis` resource go through the shared native binding (`internal/providers/native`,
+see `CONSTITUTION.md` § Architecture Invariants); dashboards still hand-rolls this
+access until its pending migration lands.
 
 See `.claude/skills/add-provider/references/decision-tree.md` for the full
 decision tree.
@@ -290,6 +302,9 @@ cmd/gcx/
 │   └── command.go           Root cobra command: logging setup, PersistentPreRun
 ├── config/
 │   └── command.go           config group + all config subcommands + Options type
+├── login/
+│   ├── command.go           login command; runLogin is the pipeline signup shares
+│   └── signup.go            signup command: preflight, recovery commands
 ├── resources/
 │   ├── command.go           resources group (wires configOpts to all subcommands)
 │   ├── get.go               resources get

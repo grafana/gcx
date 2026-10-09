@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"charm.land/glamour/v2"
 	"charm.land/lipgloss/v2"
 	claudeplugin "github.com/grafana/gcx/claude-plugin"
 	"github.com/grafana/gcx/internal/agent"
@@ -19,11 +18,7 @@ const jsonDiscoveryTip = "Use --json list to discover available fields, --json f
 // long tokens such as documentation URLs stay on a single logical line and
 // remain clickable in terminals that auto-detect links.
 func renderLong(long string) (string, error) {
-	r, err := glamour.NewTermRenderer(glamour.WithStandardStyle("dark"), glamour.WithWordWrap(0))
-	if err != nil {
-		return "", err
-	}
-	return r.Render(long)
+	return renderMarkdown(long, false)
 }
 
 // relatedSkillFooter returns the "Related skill" footer lines for a command, or
@@ -124,7 +119,7 @@ func HelpFunc(defaultHelp func(*cobra.Command, []string)) func(*cobra.Command, [
 		// --- Examples ---
 		if cmd.HasExample() {
 			md := "```\n" + strings.TrimSpace(cmd.Example) + "\n```"
-			rendered, err := glamour.Render(md, "dark")
+			rendered, err := renderMarkdown(md, true)
 			if err == nil {
 				fmt.Fprintln(w, "Examples:")
 				_, _ = lipgloss.Fprint(w, rendered)

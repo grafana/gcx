@@ -65,14 +65,14 @@ func (p *AppO11yProvider) TypedRegistrations() []adapter.Registration {
 			Factory:    overrides.NewLazyFactory(),
 			Descriptor: overridesDesc,
 			GVK:        overridesDesc.GroupVersionKind(),
-			Schema:     overrides.OverridesSchema(),
+			Schema:     overrides.OverridesSchema,
 			Example:    overrides.OverridesExample(),
 		},
 		{
 			Factory:    settings.NewLazyFactory(),
 			Descriptor: settingsDesc,
 			GVK:        settingsDesc.GroupVersionKind(),
-			Schema:     settings.SettingsSchema(),
+			Schema:     settings.SettingsSchema,
 			Example:    settings.SettingsExample(),
 		},
 	}
