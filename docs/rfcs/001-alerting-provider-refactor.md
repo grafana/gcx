@@ -216,9 +216,13 @@ from Conflict responses during concurrent alerting writes; serial transfer with
 `--max-concurrent 1` passed, and all task-owned live objects were removed. Review
 fixes add bounded Kubernetes Conflict retry on the native dynamic client inside
 the dry-run guard, preserving existing concurrency and adapter behavior.
-Contention and read-only policy changes have regression tests; renewed runtime
-validation is tracked separately in the review-fix tasks. This historical pass
-does not establish the retry wrapper or the revised skip/edit-refusal behavior.
+Contention and read-only policy changes have regression tests. A subsequent
+throwaway-target pass verified default-concurrency create, repeat update, and
+delete for seven mixed native objects and twenty intervals, plus read-only
+skips, edit refusal, and failure-source attribution. Read-only inventory checks
+verified that pull excludes imported and built-in objects while reads retain
+them. All task-owned objects were removed. Imported-destination writes, file
+provenance, and Grafana 12.x runtime remain unit/recording-test coverage.
 
 ## Rationale and tradeoffs
 
