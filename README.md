@@ -558,7 +558,7 @@ gcx resources delete dashboards/my-dashboard
 
 Mobile Frontend Observability app manifests set `spec.appType: mobile` and a mobile
 `spec.runtime`. See [`gcx frontend apps create`](docs/reference/cli/gcx_frontend_apps_create.md)
-for the runtimes, settings, and an example manifest, and
+for the runtimes and an example manifest, and
 [`gcx frontend apps update`](docs/reference/cli/gcx_frontend_apps_update.md) for what an update keeps.
 
 ## Alerting & Datasource Queries
