@@ -116,6 +116,7 @@
 
 /docs/reference/assistant-watchers* @grafana/grafana-gcx @grafana/grafana-assistant-loop
 /docs/reference/assistant-mcp-servers.md @grafana/grafana-gcx @grafana/grafana-assistant-loop
-/openspec/specs/assistant-watchers/ @grafana/grafana-gcx @grafana/grafana-assistant-loop
+/openspec/specs/assistant/ @grafana/grafana-gcx @grafana/grafana-assistant-loop
+/openspec/changes/**/specs/assistant/ @grafana/grafana-gcx @grafana/grafana-assistant-loop
 /openspec/changes/*assistant-watchers*/ @grafana/grafana-gcx @grafana/grafana-assistant-loop
 /openspec/changes/archive/*assistant-watchers*/ @grafana/grafana-gcx @grafana/grafana-assistant-loop

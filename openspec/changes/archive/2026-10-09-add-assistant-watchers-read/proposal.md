@@ -19,7 +19,7 @@ Assistant Watchers cannot currently be inspected or pulled through gcx. This imp
 
 ### New Capabilities
 
-- `assistant-watchers`: configuration reads, safe manifest export, identity resolution and observed runtime status for Assistant Watchers. Later slices extend this same capability.
+- `assistant/watchers`: configuration reads, safe manifest export, identity resolution and observed runtime status for Assistant Watchers. Later slices extend this same capability.
 
 ### Modified Capabilities
 

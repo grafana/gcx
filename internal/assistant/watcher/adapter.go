@@ -16,6 +16,7 @@ import (
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"golang.org/x/sync/errgroup"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 func init() { //nolint:gochecknoinits // Natural-key registration follows the typed-resource convention.
@@ -167,11 +168,15 @@ func (e *ListReadError) Unwrap() []error {
 func NewLazyFactory() adapter.Factory {
 	return func(ctx context.Context) (adapter.ResourceAdapter, error) {
 		var loader providers.ConfigLoader
-		crud, _, err := NewTypedCRUD(ctx, &loader)
+		crud, cfg, err := NewTypedCRUD(ctx, &loader)
 		if err != nil {
 			return nil, err
 		}
-		return &manifestAdapter{ResourceAdapter: crud.AsAdapter()}, nil
+		client, err := clientForConfig(cfg)
+		if err != nil {
+			return nil, err
+		}
+		return &manifestAdapter{ResourceAdapter: crud.AsAdapter(), client: client}, nil
 	}
 }
 
@@ -333,7 +338,11 @@ func UnsupportedMutation(operation string) error {
 	return fmt.Errorf("Watcher %s is not supported yet; continue in Grafana: %w", operation, errors.ErrUnsupported)
 }
 
-type manifestAdapter struct{ adapter.ResourceAdapter }
+type manifestAdapter struct {
+	adapter.ResourceAdapter
+
+	client *watchers.Client
+}
 
 func (a *manifestAdapter) Schema() json.RawMessage { return WatcherSchema() }
 
@@ -353,3 +362,17 @@ func preserveMarker(configured bool) *SecretInput {
 	}
 	return nil
 }
+
+// ReadFailures supplies generic receipts while retaining Watcher identity policy.
+func (e *ListReadError) ReadFailures() []adapter.ReadFailure {
+	failures := make([]adapter.ReadFailure, len(e.Failures))
+	for idx, failure := range e.Failures {
+		obj := &unstructured.Unstructured{}
+		obj.SetGroupVersionKind(WatcherDescriptor().GroupVersionKind())
+		obj.SetName(failure.Candidate.Name)
+		obj.SetAnnotations(map[string]string{WatcherIDAnnotation: failure.Candidate.ID})
+		failures[idx] = adapter.ReadFailure{Resource: obj, Err: failure.Err}
+	}
+	return failures
+}
+func (e *ListReadError) SkippedReads() int { return len(e.Skipped) }

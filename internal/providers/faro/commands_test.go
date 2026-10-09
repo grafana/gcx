@@ -79,7 +79,7 @@ func TestAppTable_Encode(t *testing.T) {
 					Runtime:               &runtime,
 					CORSOrigins:           []faro.CORSOrigin{{URL: "https://app.example.com"}},
 					ExtraLogLabels:        map[string]string{"team": "frontend"},
-					Settings:              &faro.FaroAppSettings{GeolocationEnabled: true, GeolocationLevel: "country"},
+					Settings:              &faro.FaroAppSettings{GeolocationEnabled: new(true), GeolocationLevel: "country"},
 				},
 			},
 			wantCols: []string{"NAME", "APP KEY", "COLLECT ENDPOINT URL", "APP TYPE", "RUNTIME", "OTLP INGEST ENDPOINT URL", "CORS ORIGINS", "EXTRA LOG LABELS", "GEOLOCATION"},

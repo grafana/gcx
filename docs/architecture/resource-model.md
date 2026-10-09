@@ -383,6 +383,20 @@ ResourceAdapter interface
 constructor that is only called on first use and its result cached for the router's
 lifetime.
 
+### Adapter-owned read and mutation policies
+
+Adapters may provide an optional per-pull preflight that runs before identity-keyed
+insertion, and a multi-reference reader that retains successful items with a
+partial-read report. Provider packages own resource identities, collision rules
+and diagnostic metadata; the router and generic pipeline dispatch these contracts
+without importing concrete provider types. Ordinary collection errors remain
+fatal under the selected error policy.
+
+Registration may also supply a configuration-free mutation guard. Push and delete
+invoke it before resource reads so a read-only resource is refused even when its
+collection is empty or its configuration cannot be exported. Unregistered native
+resources retain their existing mutation paths.
+
 ### TypedCRUD and ResourceIdentity
 
 Most providers use `TypedCRUD[T]` to implement `ResourceAdapter` without hand-writing

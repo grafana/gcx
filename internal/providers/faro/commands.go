@@ -205,7 +205,7 @@ func labelsString(labels map[string]string) string {
 }
 
 func geolocationString(settings *FaroAppSettings) string {
-	if settings == nil || !settings.GeolocationEnabled {
+	if settings == nil || settings.GeolocationEnabled == nil || !*settings.GeolocationEnabled {
 		return "-"
 	}
 	level := settings.GeolocationLevel
@@ -302,7 +302,11 @@ Set spec.appType and spec.runtime at creation; the API ignores later changes
 to appType. Web apps use appType web with runtime web-js. Mobile apps use
 appType mobile with runtime flutter, react-native, android-native, or
 swift-native. Create sends spec.extraLogLabels, including the legacy is_mobile
-label. Settings are ignored.`,
+label.
+
+Create and update send spec.settings. Set geolocationLevel to continent,
+country, subdivision, city, or network. Set geolocationCountryDenylist to ISO
+country codes, such as [DE], to skip enrichment for those sessions.`,
 		Example: `  # Create an app from a YAML file.
   gcx frontend apps create -f app.yaml
 
@@ -332,11 +336,6 @@ label. Settings are ignored.`,
 			app, err := readAppFromFile(opts.File, cmd.InOrStdin())
 			if err != nil {
 				return err
-			}
-
-			if app.Settings != nil {
-				cmdio.EmitWarn(cmd.ErrOrStderr(),
-					"settings are ignored on create and update (API limitation)")
 			}
 
 			typedObj := &adapter.TypedObject[FaroApp]{Spec: *app}
@@ -393,7 +392,8 @@ func newUpdateCommand(loader RESTConfigLoader) *cobra.Command {
 		Long: `Update a Frontend Observability app from a file.
 
 Omit spec.runtime to keep the stored runtime; an empty runtime is invalid. The
-API ignores changes to spec.appType. Settings are ignored.`,
+API ignores changes to spec.appType. Omitted settings keep their stored values;
+an empty geolocationCountryDenylist clears it.`,
 		Example: `  # Update an app using its slug-id.
   gcx frontend apps update my-web-app-42 -f app.yaml`,
 		Args: cobra.ExactArgs(1),

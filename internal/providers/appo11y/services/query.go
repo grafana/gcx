@@ -792,6 +792,11 @@ func buildServiceMetadataQuery(metric, namespace, name string, matchers []Matche
 	return expr.String(), nil
 }
 
+// serviceNameJobPattern matches a bare name or a namespaced job label.
+func serviceNameJobPattern(name string) string {
+	return "(.+/)?" + regexp.QuoteMeta(name)
+}
+
 // buildBareNameLookupQuery searches the target_info union for any series
 // whose `job` is either the bare `<name>` or some `<namespace>/<name>`.
 // Used to auto-resolve the namespace when the user passes only a bare
@@ -804,7 +809,7 @@ func buildBareNameLookupQuery(metric, name string, matchers []Matcher) (string, 
 	// `(.+/)?<escaped name>` matches both bare `<name>` and any
 	// `<ns>/<name>` shape. PromQL regexes are RE2 — anchoring is implicit
 	// for full-match, so we don't need ^/$ markers.
-	pattern := "(.+/)?" + regexp.QuoteMeta(name)
+	pattern := serviceNameJobPattern(name)
 	v := promql.Vector(metric).LabelMatchRegexp("job", escapePromqlValue(pattern))
 	for _, m := range matchers {
 		v = m.apply(v)

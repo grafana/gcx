@@ -143,6 +143,10 @@ func (r *ResourceClientRouter) GetMultiple(
 		return r.dynamic.GetMultiple(ctx, desc, names, opts)
 	}
 
+	if getter, ok := a.(MultipleGetter); ok {
+		return getter.GetMultiple(ctx, names, opts)
+	}
+
 	res := make([]unstructured.Unstructured, len(names))
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(10)
@@ -188,4 +192,33 @@ func (r *ResourceClientRouter) Delete(
 		return a.Delete(ctx, name, opts)
 	}
 	return r.dynamic.Delete(ctx, desc, name, opts)
+}
+
+// NewPullPreflight propagates optional adapter-owned checks to the puller.
+func (r *ResourceClientRouter) NewPullPreflight(ctx context.Context, selections []PullSelection) (PullPreflight, error) {
+	checks := make(map[schema.GroupVersionKind]PullPreflight)
+	seen := make(map[schema.GroupVersionKind]bool)
+	for _, selection := range selections {
+		if len(selection.Items) == 0 {
+			continue
+		}
+		gvk := selection.Filter.Descriptor.GroupVersionKind()
+		if seen[gvk] {
+			continue
+		}
+		seen[gvk] = true
+		a, err := r.getAdapter(ctx, gvk)
+		if err != nil {
+			return nil, err
+		}
+		if preflighter, ok := a.(PullPreflighter); ok {
+			checks[gvk] = preflighter.NewPullPreflight(selections)
+		}
+	}
+	return func(ctx context.Context, filter resources.Filter, item unstructured.Unstructured) error {
+		if check := checks[filter.Descriptor.GroupVersionKind()]; check != nil {
+			return check(ctx, filter, item)
+		}
+		return nil
+	}, nil
 }

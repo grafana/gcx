@@ -5,10 +5,10 @@ import (
 	"errors"
 	"log/slog"
 
-	"github.com/grafana/gcx/internal/assistant/watcher"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/logs"
 	"github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/resources/discovery"
 	"github.com/grafana/gcx/internal/resources/dynamic"
 	"github.com/grafana/grafana-app-sdk/logging"
@@ -48,7 +48,6 @@ type Puller struct {
 	client                    PullClient
 	registry                  PullRegistry
 	maxConcurrentListRequests int
-	watcherConfig             *config.NamespacedRESTConfig
 }
 
 // PullerOption configures a Puller.
@@ -77,9 +76,7 @@ func NewDefaultPullerWithRegistry(
 
 	router := buildRouter(dynamicClient, registry)
 
-	puller := NewPuller(router, registry, opts...)
-	puller.watcherConfig = &restConfig
-	return puller, nil
+	return NewPuller(router, registry, opts...), nil
 }
 
 // NewPuller creates a new Puller.
@@ -149,72 +146,9 @@ func (p *Puller) Pull(ctx context.Context, req PullRequest) (*OperationSummary, 
 
 	for idx, filt := range filters {
 		errg.Go(func() error {
-			switch filt.Type {
-			case resources.FilterTypeAll:
-				res, err := p.client.List(ctx, filt.Descriptor, metav1.ListOptions{Limit: req.Limit})
-				var partial *watcher.ListReadError
-				if isWatcherFilter(filt) && errors.As(err, &partial) {
-					if recordErr := recordWatcherListRead(ctx, summary, filt.Descriptor, partial, req.StopOnError); recordErr != nil {
-						return recordErr
-					}
-					partialRes[idx] = res.Items
-					return nil
-				}
-				if err != nil {
-					switch {
-					case isUnsupportedResourceType(err):
-						// 404/405 = sub-resource that can't be listed; skip silently
-						// regardless of StopOnError — these are never actionable.
-						logger.Debug("Skipping unsupported resource type", logs.Err(err), slog.String("cmd", filt.String()))
-						summary.RecordSkipped()
-					case req.StopOnError:
-						return err
-					default:
-						logger.Warn("Could not pull resources", logs.Err(err), slog.String("cmd", filt.String()))
-						summary.RecordFailure(nil, err)
-					}
-				} else {
-					if res.GetContinue() != "" {
-						summary.RecordTruncated()
-					}
-					partialRes[idx] = res.Items
-				}
-			case resources.FilterTypeMultiple:
-				if isWatcherFilter(filt) {
-					var err error
-					partialRes[idx], err = p.pullWatcherReferences(ctx, filt, req.StopOnError, summary)
-					return err
-				}
-				res, err := p.client.GetMultiple(ctx, filt.Descriptor, filt.ResourceUIDs, metav1.GetOptions{})
-				if err != nil {
-					switch {
-					case isUnsupportedResourceType(err):
-						// 404/405 = sub-resource that can't be listed; skip silently
-						// regardless of StopOnError — these are never actionable.
-						logger.Debug("Skipping unsupported resource type", logs.Err(err), slog.String("cmd", filt.String()))
-						summary.RecordSkipped()
-					case req.StopOnError:
-						return err
-					default:
-						logger.Warn("Could not pull resources", logs.Err(err), slog.String("cmd", filt.String()))
-						summary.RecordFailure(nil, err)
-					}
-				} else {
-					partialRes[idx] = res
-				}
-			case resources.FilterTypeSingle:
-				res, err := p.client.Get(ctx, filt.Descriptor, filt.ResourceUIDs[0], metav1.GetOptions{})
-				if err != nil {
-					if req.StopOnError {
-						return err
-					}
-					logger.Warn("Could not pull resource", logs.Err(err), slog.String("cmd", filt.String()))
-					summary.RecordFailure(nil, err)
-				} else {
-					partialRes[idx] = []unstructured.Unstructured{*res}
-				}
-			}
-			return nil
+			var err error
+			partialRes[idx], err = p.pullFilter(ctx, req, filt, summary)
+			return err
 		})
 	}
 
@@ -222,10 +156,22 @@ func (p *Puller) Pull(ctx context.Context, req PullRequest) (*OperationSummary, 
 		return summary, err
 	}
 
-	// Resources.Add replaces objects with the same resource identity. Reject
-	// ambiguous Watcher names while the fetched batches still retain every
-	// selected object, including collisions with the other archive partition.
-	preflight := newWatcherPullPreflight(p.watcherConfig, partialRes)
+	// Adapter checks run while fetched batches still retain every identity.
+	var preflight adapter.PullPreflight
+	if client, ok := p.client.(interface {
+		NewPullPreflight(ctx context.Context, selections []adapter.PullSelection) (adapter.PullPreflight, error)
+	}); ok {
+		selections := make([]adapter.PullSelection, len(filters))
+		for idx, filter := range filters {
+			selections[idx] = adapter.PullSelection{Filter: filter, Items: partialRes[idx]}
+		}
+		var err error
+		preflight, err = client.NewPullPreflight(pullCtx, selections)
+		if err != nil {
+			return summary, err
+		}
+	}
+
 	req.Resources.Clear()
 	for idx, r := range partialRes {
 		for _, item := range r {
@@ -240,13 +186,15 @@ func (p *Puller) Pull(ctx context.Context, req PullRequest) (*OperationSummary, 
 				continue
 			}
 
-			if err := preflight.check(pullCtx, filters[idx], item); err != nil {
-				logger.Warn("Failed resource identity preflight", logs.Err(err))
-				summary.RecordFailure(res, err)
-				if req.StopOnError {
-					return summary, err
+			if preflight != nil {
+				if err := preflight(pullCtx, filters[idx], item); err != nil {
+					logger.Warn("Failed resource identity preflight", logs.Err(err))
+					summary.RecordFailure(res, err)
+					if req.StopOnError {
+						return summary, err
+					}
+					continue
 				}
-				continue
 			}
 
 			if err := p.process(res, req.Processors); err != nil {
@@ -266,26 +214,104 @@ func (p *Puller) Pull(ctx context.Context, req PullRequest) (*OperationSummary, 
 	return summary, nil
 }
 
-// recordWatcherListRead preserves each observed failure's identity in receipts
-// and counts disappeared Watchers independently from actionable read failures.
-// With stopOnError, actionable failures stop the pull before item processing.
-func recordWatcherListRead(ctx context.Context, summary *OperationSummary, descriptor resources.Descriptor, partial *watcher.ListReadError, stopOnError bool) error {
-	for _, failure := range partial.Failures {
-		obj := &unstructured.Unstructured{}
-		obj.SetGroupVersionKind(descriptor.GroupVersionKind())
-		obj.SetName(failure.Candidate.Name)
-		obj.SetAnnotations(map[string]string{watcher.WatcherIDAnnotation: failure.Candidate.ID})
-		failed, err := resources.FromUnstructured(obj)
+// pullFilter fetches one selection and records partial coverage before the
+// caller processes or inserts any of its items.
+func (p *Puller) pullFilter(ctx context.Context, req PullRequest, filt resources.Filter, summary *OperationSummary) ([]unstructured.Unstructured, error) {
+	logger := logging.FromContext(ctx)
+	var result []unstructured.Unstructured
+
+	switch filt.Type {
+	case resources.FilterTypeAll:
+		res, err := p.client.List(ctx, filt.Descriptor, metav1.ListOptions{Limit: req.Limit})
+		var partial adapter.PartialReadError
+		if errors.As(err, &partial) {
+			if recordErr := recordPartialRead(ctx, summary, partial, req.StopOnError); recordErr != nil {
+				return nil, recordErr
+			}
+			if res != nil {
+				result = res.Items
+			}
+			return result, nil
+		}
 		if err != nil {
-			return err
+			switch {
+			case isUnsupportedResourceType(err):
+				// 404/405 = sub-resource that can't be listed; skip silently
+				// regardless of StopOnError — these are never actionable.
+				logger.Debug("Skipping unsupported resource type", logs.Err(err), slog.String("cmd", filt.String()))
+				summary.RecordSkipped()
+			case req.StopOnError:
+				return nil, err
+			default:
+				logger.Warn("Could not pull resources", logs.Err(err), slog.String("cmd", filt.String()))
+				summary.RecordFailure(nil, err)
+			}
+		} else {
+			if res.GetContinue() != "" {
+				summary.RecordTruncated()
+			}
+			result = res.Items
+		}
+	case resources.FilterTypeMultiple:
+		res, err := p.client.GetMultiple(ctx, filt.Descriptor, filt.ResourceUIDs, metav1.GetOptions{})
+		var partial adapter.PartialReadError
+		if errors.As(err, &partial) {
+			if recordErr := recordPartialRead(ctx, summary, partial, req.StopOnError); recordErr != nil {
+				return nil, recordErr
+			}
+			result = res
+			return result, nil
+		}
+		if err != nil {
+			switch {
+			case isUnsupportedResourceType(err):
+				// 404/405 = sub-resource that can't be listed; skip silently
+				// regardless of StopOnError — these are never actionable.
+				logger.Debug("Skipping unsupported resource type", logs.Err(err), slog.String("cmd", filt.String()))
+				summary.RecordSkipped()
+			case req.StopOnError:
+				return nil, err
+			default:
+				logger.Warn("Could not pull resources", logs.Err(err), slog.String("cmd", filt.String()))
+				summary.RecordFailure(nil, err)
+			}
+		} else {
+			result = res
+		}
+	case resources.FilterTypeSingle:
+		res, err := p.client.Get(ctx, filt.Descriptor, filt.ResourceUIDs[0], metav1.GetOptions{})
+		if err != nil {
+			if req.StopOnError {
+				return nil, err
+			}
+			logger.Warn("Could not pull resource", logs.Err(err), slog.String("cmd", filt.String()))
+			summary.RecordFailure(nil, err)
+		} else {
+			result = []unstructured.Unstructured{*res}
+		}
+	}
+	return result, nil
+}
+
+// recordPartialRead preserves adapter-provided per-item failures and skips.
+func recordPartialRead(ctx context.Context, summary *OperationSummary, partial adapter.PartialReadError, stopOnError bool) error {
+	failures := partial.ReadFailures()
+	for _, failure := range failures {
+		var failed *resources.Resource
+		if failure.Resource != nil {
+			var err error
+			failed, err = resources.FromUnstructured(failure.Resource)
+			if err != nil {
+				return err
+			}
 		}
 		summary.RecordFailure(failed, failure.Err)
-		logging.FromContext(ctx).Warn("Could not pull Watcher", logs.Err(failure.Err))
+		logging.FromContext(ctx).Warn("Could not pull resource", logs.Err(failure.Err))
 	}
-	for range partial.Skipped {
+	for range partial.SkippedReads() {
 		summary.RecordSkipped()
 	}
-	if stopOnError && len(partial.Failures) > 0 {
+	if stopOnError && len(failures) > 0 {
 		return partial
 	}
 	return nil

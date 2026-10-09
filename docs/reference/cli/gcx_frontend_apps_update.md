@@ -7,7 +7,8 @@ Update a Frontend Observability app from a file.
 Update a Frontend Observability app from a file.
 
 Omit spec.runtime to keep the stored runtime; an empty runtime is invalid. The
-API ignores changes to spec.appType. Settings are ignored.
+API ignores changes to spec.appType. Omitted settings keep their stored values;
+an empty geolocationCountryDenylist clears it.
 
 ```
 gcx frontend apps update <name> [flags]

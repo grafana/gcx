@@ -197,6 +197,18 @@ Each `Run`:
   about 94 MiB, and `New` rejects anything lower. Outside that cap, the host
   holds at most a couple of 32 KiB chunks of each response body, which it
   streams to the guest as the guest reads it.
+  On Linux, each instance's memory is its own mapping, reserving address
+  space for the whole cap (4 GiB when unset) but touched only as the guest
+  uses it, and returned to the OS when `Run` returns. It lives outside the Go
+  heap, so the GC and `GOMEMLIMIT` don't count it: set `GOMEMLIMIT` low
+  enough to leave room for the runs you allow at once, and watch RSS. Under
+  strict overcommit (`vm.overcommit_memory=2`) each run commits its whole
+  cap while it runs, so set `MemoryLimitBytes` there: the 4 GiB default can
+  exhaust the commit limit and kill the process. If the kernel refuses the
+  reservation, that instance uses the Go heap and its memory is left for the
+  GC, as on other platforms. `Run` copies stdin and stdout/stderr through its own buffers,
+  so your readers and writers never hold a slice of guest memory. An
+  `*os.File` is passed through as is, so the guest can poll and stat it.
 - **Time:** the guest stops when `ctx` is cancelled or its deadline passes.
   gcx's retry backoff sleeps can't be interrupted, so stopping can lag by up to
   one backoff interval.

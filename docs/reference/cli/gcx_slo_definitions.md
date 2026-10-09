@@ -2,6 +2,13 @@
 
 Manage SLO definitions.
 
+### Synopsis
+
+Manage SLO definitions.
+
+Freeform queries must use $__rate_interval in every rate() and increase() range.
+Literal ranges such as [5m] are rejected by the SLO API.
+
 ### Options
 
 ```

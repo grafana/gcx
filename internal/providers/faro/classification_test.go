@@ -21,7 +21,9 @@ func TestAppClassificationManifestRoundTrip(t *testing.T) {
 			manifest := `{"apiVersion":"faro.ext.grafana.app/v1alpha1","kind":"FaroApp","spec":{"name":"example-app","appType":"` + appType + `","runtime":"` + runtime + `","extraLogLabels":{"is_mobile":"` + mobileLabel + `","team":"frontend"}}}`
 			app, err := readAppFromFile("-", strings.NewReader(manifest))
 			require.NoError(t, err)
-			wire, err := json.Marshal(app.toAPI())
+			apiApp, err := app.toAPI()
+			require.NoError(t, err)
+			wire, err := json.Marshal(apiApp)
 			require.NoError(t, err)
 			var payload map[string]any
 			require.NoError(t, json.Unmarshal(wire, &payload))
@@ -49,7 +51,9 @@ func TestAppRuntimeOmission(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			var app FaroApp
 			require.NoError(t, json.Unmarshal([]byte(tc.spec), &app))
-			wire, err := json.Marshal(app.toAPI())
+			apiApp, err := app.toAPI()
+			require.NoError(t, err)
+			wire, err := json.Marshal(apiApp)
 			require.NoError(t, err)
 			var payload map[string]any
 			require.NoError(t, json.Unmarshal(wire, &payload))

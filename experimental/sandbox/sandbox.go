@@ -20,8 +20,11 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"sync"
 
 	"github.com/tetratelabs/wazero"
+	"github.com/tetratelabs/wazero/experimental"
+	experimentalsys "github.com/tetratelabs/wazero/experimental/sys"
 	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
 	"github.com/tetratelabs/wazero/sys"
 )
@@ -33,11 +36,20 @@ type Config struct {
 	CacheDir string
 	// MemoryLimitBytes caps each instance's linear memory, rounded down to
 	// 64 KiB pages. Zero means wazero's default (4 GiB).
+	//
+	// On Linux, guest memory is mapped outside the Go heap (see the README),
+	// so the Go GC and GOMEMLIMIT don't see it: leave room for it below the
+	// container's limit, and watch RSS rather than Go heap metrics. With
+	// vm.overcommit_memory=2, each run commits its full cap while it runs.
 	MemoryLimitBytes uint64
 	// Transport performs the guest's HTTP requests after the egress policy
 	// has allowed them. Nil means http.DefaultTransport.
 	Transport http.RoundTripper
 }
+
+// ErrClosed is returned by Run once Close has been called, and by runs that
+// Close stopped. A run that finishes anyway returns its result.
+var ErrClosed = errors.New("sandbox: runtime closed")
 
 // Runtime holds compiled gcx and runs commands with it. It is safe for
 // concurrent use.
@@ -47,6 +59,18 @@ type Runtime struct {
 	transport http.RoundTripper
 	cache     wazero.CompilationCache // nil without Config.CacheDir
 	root      string                  // empty directory mounted read-only at /
+
+	// newRunMemory is the allocator for each Run's instance, and how to free
+	// what it allocated (see alloc_linux.go). Tests wrap it.
+	newRunMemory func() (experimental.MemoryAllocator, func())
+
+	// Close stops the runs in flight and waits for them before closing rt,
+	// because closing rt frees every instance's memory, and a guest still
+	// running in an unmapped instance crashes the process.
+	mu      sync.Mutex
+	closed  bool
+	runs    sync.WaitGroup
+	cancels map[*context.CancelCauseFunc]struct{} // of the runs in flight
 }
 
 // New compiles the gcx wasip1 module (see build.sh).
@@ -68,7 +92,13 @@ func New(ctx context.Context, wasm []byte, cfg Config) (*Runtime, error) {
 		}
 		rcfg = rcfg.WithCompilationCache(cache)
 	}
-	r := &Runtime{rt: wazero.NewRuntimeWithConfig(ctx, rcfg), transport: cfg.Transport, cache: cache}
+	r := &Runtime{
+		rt:           wazero.NewRuntimeWithConfig(ctx, rcfg),
+		transport:    cfg.Transport,
+		cache:        cache,
+		newRunMemory: newRunMemory,
+		cancels:      map[*context.CancelCauseFunc]struct{}{},
+	}
 	if r.transport == nil {
 		r.transport = http.DefaultTransport
 	}
@@ -111,8 +141,33 @@ func memoryLimitPages(limit uint64) uint32 {
 	return uint32(pages)
 }
 
-// Close releases the runtime and compiled code.
+// Close releases the runtime and compiled code. It stops any runs in flight,
+// which then return ErrClosed, and waits for them first. A guest stops at its
+// next safe point, or when the host call it is in returns: a run in gcx's
+// retry backoff waits out the sleep, and one blocked reading Stdin or writing
+// Stdout or Stderr waits for that to return.
+//
+// If ctx is done first, Close returns its error and leaves the runtime open,
+// because closing it would free memory that a running guest still uses.
+// Later runs are still refused.
 func (r *Runtime) Close(ctx context.Context) error {
+	r.mu.Lock()
+	r.closed = true
+	for cancel := range r.cancels {
+		(*cancel)(ErrClosed)
+	}
+	r.mu.Unlock()
+	stopped := make(chan struct{})
+	go func() {
+		r.runs.Wait()
+		close(stopped)
+	}()
+	select {
+	case <-stopped:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+
 	if r.root != "" {
 		_ = os.RemoveAll(r.root)
 	}
@@ -160,6 +215,13 @@ type Result struct {
 // Run executes one gcx command in a fresh instance. Cancelling ctx, or
 // reaching its deadline, stops the guest and returns ctx's error.
 func (r *Runtime) Run(ctx context.Context, inv Invocation) (Result, error) {
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil) // abandons any requests still in flight on the host
+	if !r.start(&cancel) {
+		return Result{}, ErrClosed
+	}
+	defer r.finish(&cancel)
+
 	home := inv.Home
 	if home == "" {
 		dir, err := os.MkdirTemp("", "gcx-sandbox-home")
@@ -188,23 +250,33 @@ func (r *Runtime) Run(ctx context.Context, inv Invocation) (Result, error) {
 			cfg = cfg.WithEnv(k, v)
 		}
 	}
+	// wazero hands these slices of guest memory, which is unmapped when the
+	// instance closes (see alloc_linux.go), so a reader or writer that kept
+	// one after returning could crash the process or see a later run's
+	// memory at the same address. Copy, so they only ever see their own
+	// buffers.
 	if inv.Stdin != nil {
-		cfg = cfg.WithStdin(inv.Stdin)
+		cfg = cfg.WithStdin(copyStdin(inv.Stdin))
 	}
 	if inv.Stdout != nil {
-		cfg = cfg.WithStdout(inv.Stdout)
+		cfg = cfg.WithStdout(copyOutput(inv.Stdout))
 	}
 	if inv.Stderr != nil {
-		cfg = cfg.WithStderr(inv.Stderr)
+		cfg = cfg.WithStderr(copyOutput(inv.Stderr))
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel() // abandons any requests still in flight on the host
 	ctx = withSession(ctx, newSession(inv.Egress, inv.Authorize, r.transport))
+	alloc, freeMemory := r.newRunMemory()
+	ctx = experimental.WithMemoryAllocator(ctx, alloc)
 
 	mod, err := r.rt.InstantiateModule(ctx, r.compiled, cfg)
 	if mod != nil {
 		_ = mod.Close(ctx)
+	}
+	// The guest has stopped, so nothing uses its memory any more.
+	freeMemory()
+	if err != nil && errors.Is(context.Cause(ctx), ErrClosed) { // stopped by Close
+		return Result{}, ErrClosed
 	}
 	if err != nil && ctx.Err() != nil { // stopped by the caller's deadline or cancellation
 		return Result{}, ctx.Err()
@@ -217,4 +289,85 @@ func (r *Runtime) Run(ctx context.Context, inv Invocation) (Result, error) {
 		return Result{}, fmt.Errorf("gcx: %w", err)
 	}
 	return Result{}, nil
+}
+
+// start registers a run, so Close can stop it and wait for it. It reports
+// false once Close has been called.
+func (r *Runtime) start(cancel *context.CancelCauseFunc) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.closed {
+		return false
+	}
+	r.runs.Add(1)
+	r.cancels[cancel] = struct{}{}
+	return true
+}
+
+func (r *Runtime) finish(cancel *context.CancelCauseFunc) {
+	r.mu.Lock()
+	delete(r.cancels, cancel)
+	r.mu.Unlock()
+	r.runs.Done()
+}
+
+// copyStdin wraps r in a copyReader. An *os.File is passed through: its Read
+// is a syscall that keeps nothing, and wazero only polls and stats the real
+// file when it sees an *os.File. A wrapped reader keeps its Poll, which
+// wazero calls for the guest's poll_oneoff on stdin, and which would
+// otherwise always report ready.
+func copyStdin(r io.Reader) io.Reader {
+	switch p := r.(type) {
+	case *os.File:
+		return p
+	case experimentalsys.Pollable:
+		return pollableCopyReader{copyReader{r}, p}
+	}
+	return copyReader{r}
+}
+
+// copyOutput wraps w in a copyWriter, unless it is an *os.File, for the same
+// reasons as copyStdin.
+func copyOutput(w io.Writer) io.Writer {
+	if f, ok := w.(*os.File); ok {
+		return f
+	}
+	return copyWriter{w}
+}
+
+type pollableCopyReader struct {
+	copyReader
+	experimentalsys.Pollable
+}
+
+// copyReader reads into its own buffer, so the reader never sees guest memory.
+type copyReader struct{ r io.Reader }
+
+func (c copyReader) Read(p []byte) (int, error) {
+	buf := make([]byte, min(len(p), 32<<10))
+	n, err := c.r.Read(buf)
+	copy(p, buf[:n])
+	return n, err
+}
+
+// copyWriter writes through its own buffer, so the writer never sees guest
+// memory. It copies at most 32 KiB at a time, so large writes don't make
+// equally large copies.
+type copyWriter struct{ w io.Writer }
+
+func (c copyWriter) Write(p []byte) (int, error) {
+	buf := make([]byte, min(len(p), 32<<10))
+	written := 0
+	for written < len(p) {
+		n := copy(buf, p[written:])
+		m, err := c.w.Write(buf[:n])
+		written += m
+		if err != nil {
+			return written, err
+		}
+		if m < n {
+			return written, io.ErrShortWrite
+		}
+	}
+	return written, nil
 }

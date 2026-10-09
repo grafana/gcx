@@ -10,7 +10,11 @@ Set spec.appType and spec.runtime at creation; the API ignores later changes
 to appType. Web apps use appType web with runtime web-js. Mobile apps use
 appType mobile with runtime flutter, react-native, android-native, or
 swift-native. Create sends spec.extraLogLabels, including the legacy is_mobile
-label. Settings are ignored.
+label.
+
+Create and update send spec.settings. Set geolocationLevel to continent,
+country, subdivision, city, or network. Set geolocationCountryDenylist to ISO
+country codes, such as [DE], to skip enrichment for those sessions.
 
 ```
 gcx frontend apps create [flags]

@@ -58,6 +58,10 @@ func (p *AssistantProvider) TypedRegistrations() []adapter.Registration {
 			Schema:     mcpserver.MCPServerSchema,
 			Example:    mcpserver.MCPServerExample(),
 		},
-		{Factory: watcher.NewLazyFactory(), Descriptor: watchDesc, GVK: watchDesc.GroupVersionKind(), Schema: watcher.WatcherSchema, Example: watcher.WatcherExample()},
+		{
+			Factory: watcher.NewLazyFactory(), Descriptor: watchDesc, GVK: watchDesc.GroupVersionKind(),
+			Schema: watcher.WatcherSchema, Example: watcher.WatcherExample(),
+			CheckMutation: watcher.UnsupportedMutation,
+		},
 	}
 }

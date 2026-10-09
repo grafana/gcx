@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/grafana/gcx/internal/assistant/watcher"
 	"github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/resources/remote"
 	"github.com/stretchr/testify/require"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -59,15 +59,16 @@ func (m *mockPullClient) List(
 	return res, nil
 }
 
-func TestWatcherPartialListCountsEachSelectedOutcome(t *testing.T) {
+func TestPartialListCountsEachSelectedOutcome(t *testing.T) {
 	for _, abort := range []bool{false, true} {
 		t.Run(map[bool]string{false: "continue", true: "abort"}[abort], func(t *testing.T) {
-			desc := watcher.WatcherDescriptor()
+			desc := dashboardDescriptor()
 			good := makeUnstructuredDashboard("good")
 			good.SetGroupVersionKind(desc.GroupVersionKind())
-			good.SetAnnotations(map[string]string{watcher.WatcherIDAnnotation: "good-id"})
+
 			cause := errors.New("read denied for bad-id")
-			partial := &watcher.ListReadError{Failures: []watcher.ListFailure{{Candidate: watcher.Candidate{ID: "bad-id", Name: "bad", Title: "Bad"}, Err: cause}}, Skipped: []watcher.Candidate{{ID: "gone-id", Name: "gone"}}}
+			bad := makeUnstructuredDashboard("bad")
+			partial := &partialReadError{failures: []adapter.ReadFailure{{Resource: &bad, Err: cause}}, skipped: 1}
 			client := &mockPullClient{
 				partialLists: map[string]*unstructured.UnstructuredList{desc.Plural: {Items: []unstructured.Unstructured{good}}},
 				listErrors:   map[string]error{desc.Plural: partial},
@@ -88,7 +89,7 @@ func TestWatcherPartialListCountsEachSelectedOutcome(t *testing.T) {
 			require.Equal(t, 1, summary.SkippedCount())
 			require.Len(t, summary.Failures(), 1)
 			failure := summary.Failures()[0]
-			require.Equal(t, "Watcher", failure.Resource.Kind())
+			require.Equal(t, "Dashboard", failure.Resource.Kind())
 			require.Equal(t, "bad", failure.Resource.Name())
 			require.ErrorIs(t, failure.Error, cause)
 		})
@@ -347,6 +348,65 @@ func TestPuller_Pull(t *testing.T) {
 			if tc.wantSuccessCount > 0 {
 				req.Equal(tc.wantSuccessCount, dest.Len())
 			}
+		})
+	}
+}
+
+type partialReadError struct {
+	failures []adapter.ReadFailure
+	skipped  int
+}
+
+func (e *partialReadError) Error() string                       { return "partial read" }
+func (e *partialReadError) ReadFailures() []adapter.ReadFailure { return e.failures }
+func (e *partialReadError) SkippedReads() int                   { return e.skipped }
+func (e *partialReadError) Unwrap() []error {
+	errs := make([]error, len(e.failures))
+	for idx, failure := range e.failures {
+		errs[idx] = failure.Err
+	}
+	return errs
+}
+
+type preflightPullClient struct {
+	mockPullClient
+
+	selections []adapter.PullSelection
+	rejected   error
+	checks     int
+}
+
+func (m *preflightPullClient) NewPullPreflight(_ context.Context, selections []adapter.PullSelection) (adapter.PullPreflight, error) {
+	m.selections = selections
+	return func(_ context.Context, _ resources.Filter, _ unstructured.Unstructured) error {
+		m.checks++
+		return m.rejected
+	}, nil
+}
+
+func TestPullPreflightReceivesCollidingItemsBeforeInsertion(t *testing.T) {
+	for _, abort := range []bool{false, true} {
+		t.Run(map[bool]string{false: "continue", true: "abort"}[abort], func(t *testing.T) {
+			desc := dashboardDescriptor()
+			first := makeUnstructuredDashboard("same")
+			second := makeUnstructuredDashboard("same")
+			second.Object["spec"] = map[string]any{"title": "different title"}
+			rejected := errors.New("identity rejected")
+			client := &preflightPullClient{mockPullClient: mockPullClient{listResults: map[string][]unstructured.Unstructured{desc.Plural: {first, second}}}, rejected: rejected}
+			puller := remote.NewPuller(client, &mockPullRegistry{descriptors: resources.Descriptors{desc}})
+			dest := resources.NewResources()
+			summary, err := puller.Pull(t.Context(), remote.PullRequest{Resources: dest, StopOnError: abort})
+			if abort {
+				require.ErrorIs(t, err, rejected)
+				require.Equal(t, 1, summary.FailedCount())
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, 2, summary.FailedCount())
+			}
+			require.Len(t, client.selections, 1)
+			require.Len(t, client.selections[0].Items, 2)
+			require.Zero(t, summary.SuccessCount())
+			require.Zero(t, dest.Len())
 		})
 	}
 }

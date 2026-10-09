@@ -25,7 +25,7 @@
 
 ## 4. Safe pull and documentation
 
-- [x] 4.1 Add the narrow shared pull preflight before identity-keyed collection insertion, keeping candidate formatting and the cross-archive identity-only collision index in the Watcher package. Do not read supplementary configuration for candidates outside the export partition. Report every colliding candidate, retain unique resources and honor existing error policies without adding a new framework; verify the end-to-end collision tests in 4.2.
+- [x] 4.1 Add adapter-owned pull preflight before identity-keyed collection insertion, keeping candidate formatting and the cross-archive identity-only collision index in the Watcher package. Generic resource packages invoke optional contracts without provider imports. Do not read supplementary configuration for candidates outside the export partition. Report every colliding candidate, retain unique resources and honor existing error policies through the adapter boundary; verify the end-to-end collision tests in 4.2.
 - [x] 4.2 Drive real generic pull against httptest.Server to test collisions across pages and archive partitions, unchanged existing collision files, unique-file success, zero results, explicit-ID pulls, secret-free artifacts and accurate partial-failure receipts/status; verify all cases pass without real backend mutations.
 - [x] 4.3 Add Watcher reference docs and package-map/architecture updates. Check relevant skill routing and generated help/reference output. Verify links and the doc-maintenance structural checks.
 - [x] 4.4 Add CODEOWNERS coverage with both gcx and Assistant teams for Watcher reference docs, the existing Assistant MCP reference doc, and Watcher OpenSpec spec/change/archive paths. Keep shared registries and pull glue gcx-owned; verify each new path matches the intended CODEOWNERS entry.
@@ -47,3 +47,9 @@
 - [x] 6.1 Commit the reviewed implementation after required checks, fetch current origin/main, and rebase only this change's commits using the recorded .context/base-sha. Keep the existing branch name and drop planning-base commits; verify origin/main ancestry and that no docs-base commits enter the outgoing range.
 - [x] 6.2 Re-run required gates after rebase and inspect complete outgoing commits/diff/metadata. Prepare the concrete draft PR title/body with Closes #1493 and William Dumont review request; follow repository conventions and omit internal tracker references; verify the reviewed PR metadata matches the prepared draft.
 - [x] 6.3 Obtain the user's concrete publication approval as required by the workspace working agreement, then push/open the draft PR within that approved scope and verify published branch/PR state. Do not merge or archive before merge.
+
+## 7. Architecture correction and archive
+
+- [x] 7.1 Remove concrete Watcher imports and logic from generic resource packages; move collision and partial-reference reads into the Watcher adapter, expose provider-neutral read/preflight hooks and registration mutation guards, and verify existing failure, collision, native routing and refusal tests.
+- [x] 7.2 Sync the canonical Assistant spec into the requested domain path, register Assistant CODEOWNERS coverage, and validate the synced contract and ownership.
+- [x] 7.3 Run required gates and live read-only smoke checks; verify all archive inputs, metadata and delta specs before moving the completed change.

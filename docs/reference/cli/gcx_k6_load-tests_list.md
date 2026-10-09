@@ -2,6 +2,10 @@
 
 List k6 Cloud load tests.
 
+### Synopsis
+
+List load tests from k6 Cloud. With --project-id, the server returns tests from that project only. Without it, the command lists tests across projects.
+
 ```
 gcx k6 load-tests list [flags]
 ```

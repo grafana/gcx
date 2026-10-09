@@ -295,9 +295,9 @@ backing client is a REST adapter or the k8s dynamic client.
 
 ### Assistant Watcher reads
 
-Watcher configuration follows the provider REST pull pipeline through its shared typed adapter. Before collection insertion, pull checks the visible identity index and reports conflicting names as failures, preserving unrelated resources. Runtime status uses separate read-only observations and never enters a manifest. See [Assistant Watchers](../reference/assistant-watchers.md).
+Watcher configuration follows the provider REST pull pipeline through its shared typed adapter. Before collection insertion, the Watcher adapter supplies a preflight that checks its visible identity index; the generic puller invokes that check and reports rejected items without knowing their resource kind. Runtime status uses separate read-only observations and never enters a manifest. See [Assistant Watchers](../reference/assistant-watchers.md).
 
-Typed list adapters retain items returned alongside an error. Watcher bulk reads use this to keep successful configurations while the puller records failed candidates individually and skips candidates that disappear during discovery. Collection failures remain fatal; abort mode stops before file processing. Dedicated list discloses incomplete coverage and the affected candidates.
+Typed list adapters retain items returned alongside an error. Watcher bulk reads expose per-item failures and skips through the adapter partial-read contract, so the generic puller can retain successful configurations and record accurate coverage without importing Watcher types. Collection failures remain fatal; abort mode stops before file processing. Dedicated list discloses incomplete coverage and the affected candidates.
 
 ## 5. QUERY Pipeline
 

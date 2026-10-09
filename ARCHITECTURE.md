@@ -75,7 +75,7 @@ Provider (internal/providers/slo/)
 
 ### Assistant Watcher reads
 
-The Assistant provider registers a read-only Watcher resource beside MCPServer. Dedicated configuration commands and generic get/pull use the same typed adapter; runtime status is a separate read view. Watcher identity checks reject ambiguous names before the pull pipeline inserts resources into its identity-keyed collection. See [Assistant Watchers](docs/reference/assistant-watchers.md) and the [package map](docs/architecture/project-structure.md).
+The Assistant provider registers a read-only Watcher resource beside MCPServer. Dedicated configuration commands and generic get/pull use the same typed adapter; runtime status is a separate read view. The Watcher adapter owns identity checks and partial-read diagnostics; generic pull invokes provider-neutral preflight/report contracts before identity-keyed insertion. Registration supplies the read-only mutation guard. See [Assistant Watchers](docs/reference/assistant-watchers.md) and the [package map](docs/architecture/project-structure.md).
 
 ### 3. Signal Providers
 

@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/grafana/gcx/internal/assistant/watcher"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/logs"
 	"github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/resources/discovery"
 	"github.com/grafana/gcx/internal/resources/dynamic"
 	"github.com/grafana/grafana-app-sdk/logging"
@@ -253,8 +253,7 @@ func (p *Pusher) pushSingleResource(
 		return nil
 	}
 
-	if gvk == watcher.WatcherDescriptor().GroupVersionKind() {
-		err := watcher.UnsupportedMutation("push")
+	if err := adapter.CheckMutation(desc, "push"); err != nil {
 		summary.RecordFailure(res, err)
 		if request.StopOnError {
 			return err

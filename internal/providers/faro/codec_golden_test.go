@@ -24,7 +24,7 @@ func goldenApps() []faro.FaroApp {
 			OTLPIngestEndpointURL: "https://faro.example.com/otlp",
 			CORSOrigins:           []faro.CORSOrigin{{URL: "https://app.example.com"}},
 			ExtraLogLabels:        map[string]string{"team": "frontend"},
-			Settings:              &faro.FaroAppSettings{GeolocationEnabled: true, GeolocationLevel: "country"},
+			Settings:              &faro.FaroAppSettings{GeolocationEnabled: new(true), GeolocationLevel: "country"},
 		},
 		{
 			ID:   "7",
