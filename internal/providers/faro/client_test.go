@@ -296,6 +296,8 @@ func TestClient_Update(t *testing.T) {
 
 		// Settings should be stripped.
 		assert.Nil(t, capturedBody["settings"], "settings should be stripped from update request")
+		// The API keeps the stored runtime only when the body leaves it out.
+		assert.NotContains(t, capturedBody, "runtime")
 		// ID should be present in body.
 		assert.InDelta(t, float64(42), capturedBody["id"], 0.01, "id should be in update request body")
 		// The map key must reach the wire as "label"; "key" makes the server
