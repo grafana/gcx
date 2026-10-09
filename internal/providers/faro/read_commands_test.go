@@ -1,7 +1,6 @@
 package faro //nolint:testpackage // Drives the unexported command constructors through the loader seams.
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -42,17 +41,6 @@ func newMultiAppServer(t *testing.T, n int) *httptest.Server {
 	return server
 }
 
-func runAgainst(t *testing.T, server *httptest.Server, build func(l *fakeConfigLoader) *cobra.Command, args []string) (string, string, error) {
-	t.Helper()
-	cmd := build(&fakeConfigLoader{grafanaURL: server.URL, faroAPIURL: server.URL})
-	var stdout, stderr bytes.Buffer
-	cmd.SetOut(&stdout)
-	cmd.SetErr(&stderr)
-	cmd.SetArgs(args)
-	err := cmd.Execute()
-	return stdout.String(), stderr.String(), err
-}
-
 func TestFaroList_TruncationHint(t *testing.T) {
 	withPlainColors(t)
 	server := newMultiAppServer(t, 5)
@@ -69,7 +57,7 @@ func TestFaroList_TruncationHint(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			stdout, stderr, err := runAgainst(t, server, func(l *fakeConfigLoader) *cobra.Command {
+			stdout, stderr, err := runFaroCommand(t, server, func(l *fakeConfigLoader) *cobra.Command {
 				return newListCommand(l)
 			}, append(tc.args, "-o", "json"))
 			require.NoError(t, err)
@@ -85,6 +73,30 @@ func TestFaroList_TruncationHint(t *testing.T) {
 			assert.Contains(t, stderr, tc.wantHint)
 			assert.Contains(t, stderr, "--limit 0")
 		})
+	}
+}
+
+func TestFaroList_RejectsNegativeLimit(t *testing.T) {
+	_, _, err := runFaroCommand(t, newMultiAppServer(t, 2), func(l *fakeConfigLoader) *cobra.Command {
+		return newListCommand(l)
+	}, []string{"--limit", "-1"})
+	require.Error(t, err)
+}
+
+func TestFaroGet_NameLookupDoesNotMaskListErrors(t *testing.T) {
+	forbidden := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+	}))
+	t.Cleanup(forbidden.Close)
+
+	for _, args := range [][]string{{"App 1"}, {"--name", "App 1"}} {
+		_, _, err := runFaroCommand(t, forbidden, func(l *fakeConfigLoader) *cobra.Command {
+			return newGetCommand(l)
+		}, args)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "403")
+		assert.NotContains(t, err.Error(), "no app has that name")
+		assert.NotContains(t, err.Error(), "not found")
 	}
 }
 
@@ -105,7 +117,7 @@ func TestFaroGet_PositionalNameFallback(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			stdout, _, err := runAgainst(t, server, func(l *fakeConfigLoader) *cobra.Command {
+			stdout, _, err := runFaroCommand(t, server, func(l *fakeConfigLoader) *cobra.Command {
 				return newGetCommand(l)
 			}, append(tc.args, "-o", "json"))
 			if tc.wantErr != "" {
@@ -121,4 +133,5 @@ func TestFaroGet_PositionalNameFallback(t *testing.T) {
 func TestFaroDelete_HelpDocumentsPermission(t *testing.T) {
 	cmd := newDeleteCommand(&fakeConfigLoader{})
 	assert.Contains(t, cmd.Long, "grafana-kowalski-app.apps:delete")
+	assert.Contains(t, cmd.Long, "Checkout-2024")
 }

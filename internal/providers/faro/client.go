@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/grafana-app-sdk/logging"
 	"k8s.io/client-go/rest"
 )
@@ -121,7 +122,7 @@ func (c *Client) GetByName(ctx context.Context, name string) (*FaroApp, error) {
 	}
 
 	log.Debug("Faro app not found by name", "name", name, "total_apps", len(apps))
-	return nil, fmt.Errorf("faro: app with name %q not found", name)
+	return nil, fmt.Errorf("faro: app with name %q: %w", name, adapter.ErrNotFound)
 }
 
 // Create creates a new Faro app.

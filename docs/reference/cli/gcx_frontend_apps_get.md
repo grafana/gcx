@@ -8,10 +8,10 @@ Get a Frontend Observability app.
 
 The positional argument is a slug-id (my-web-app-42) or numeric ID. An argument
 that is not slug-id shaped is looked up as an app name. Use --name to force a
-name lookup, e.g. for a name that ends in "-<digits>".
+name lookup, e.g. for a name that is all digits or ends in "-<digits>".
 
 ```
-gcx frontend apps get [slug-id] [flags]
+gcx frontend apps get [slug-id|name] [flags]
 ```
 
 ### Examples

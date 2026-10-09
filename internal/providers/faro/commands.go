@@ -77,14 +77,14 @@ func NewTypedCRUD(ctx context.Context, loader RESTConfigLoader) (*adapter.TypedC
 
 type listOpts struct {
 	IO    cmdio.Options
-	Limit int64
+	Limit int
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
 	cmdio.RegisterTable(&o.IO, AppTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for unlimited)")
+	o.IO.BindListLimit(flags, &o.Limit, "apps", 50)
 }
 
 func newListCommand(loader RESTConfigLoader) *cobra.Command {
@@ -111,7 +111,7 @@ func newListCommand(loader RESTConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			typedObjs, meta := cmdio.TruncateCompleteList(typedObjs, int(opts.Limit))
+			typedObjs, meta := cmdio.TruncateCompleteList(typedObjs, opts.Limit)
 			meta = cmdio.AttachListMeta(meta, os.Args)
 
 			if err := opts.IO.Encode(cmd.OutOrStdout(), typedObjs); err != nil {
@@ -158,7 +158,10 @@ func resolveGetTarget(ctx context.Context, cfg config.NamespacedRESTConfig, name
 		}
 		app, err := client.GetByName(ctx, name)
 		if err != nil {
-			return "", fmt.Errorf("faro app with name %q not found: %w", name, err)
+			if errors.Is(err, adapter.ErrNotFound) {
+				return "", fmt.Errorf("faro app with name %q not found: %w", name, err)
+			}
+			return "", err
 		}
 		return app.ID, nil
 	}
@@ -171,7 +174,10 @@ func resolveGetTarget(ctx context.Context, cfg config.NamespacedRESTConfig, name
 	}
 	app, err := client.GetByName(ctx, args[0])
 	if err != nil {
-		return "", fmt.Errorf("%q is not a slug-id (e.g. my-app-42) and no app has that name: %w", args[0], err)
+		if errors.Is(err, adapter.ErrNotFound) {
+			return "", fmt.Errorf("%q is not a slug-id (e.g. my-app-42) and no app has that name: %w", args[0], err)
+		}
+		return "", err
 	}
 	return app.ID, nil
 }
@@ -233,13 +239,13 @@ func (o *getOpts) setup(flags *pflag.FlagSet) {
 func newGetCommand(loader RESTConfigLoader) *cobra.Command {
 	opts := &getOpts{}
 	cmd := &cobra.Command{
-		Use:   "get [slug-id]",
+		Use:   "get [slug-id|name]",
 		Short: "Get a Frontend Observability app by slug-id or name.",
 		Long: `Get a Frontend Observability app.
 
 The positional argument is a slug-id (my-web-app-42) or numeric ID. An argument
 that is not slug-id shaped is looked up as an app name. Use --name to force a
-name lookup, e.g. for a name that ends in "-<digits>".`,
+name lookup, e.g. for a name that is all digits or ends in "-<digits>".`,
 		Example: `  # Get by slug-id.
   gcx frontend apps get my-web-app-42
 
@@ -457,7 +463,11 @@ func newDeleteCommand(loader RESTConfigLoader) *cobra.Command {
 
 Deleting requires the grafana-kowalski-app.apps:delete permission (granted to
 Admin and Frontend Observability Admin by default). A user with only apps:write
-can create and update apps but cannot delete them.`,
+can create and update apps but cannot delete them.
+
+The argument is a slug-id or numeric ID, not a name. Any trailing "-<digits>"
+is read as the app ID, so "Checkout-2024" deletes app 2024. Find the slug-id with
+"gcx frontend apps list" first. There is no confirmation prompt.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
