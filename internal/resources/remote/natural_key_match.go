@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/grafana/gcx/internal/logs"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/adapter"
+	"github.com/grafana/grafana-app-sdk/logging"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
@@ -28,12 +30,15 @@ func findByNaturalKey( //nolint:nonamedreturns // Named returns document the mat
 	if extractor == nil && !nativePolicy {
 		return nil, false, nil
 	}
-	var identityErr error
 	if nativePolicy {
+		// Local manifests are strict; unreadable server items are skipped below.
+		if _, _, err := resources.NativeIdentity(localObj); err != nil {
+			return nil, false, err
+		}
 		extractor = func(obj *unstructured.Unstructured) (string, bool) {
 			key, _, err := resources.NativeIdentity(obj)
 			if err != nil {
-				identityErr = err
+				logging.FromContext(ctx).Debug("Skipping remote resource with invalid native identity", "name", obj.GetName(), logs.Err(err))
 				return "", false
 			}
 			return key, true
@@ -43,7 +48,7 @@ func findByNaturalKey( //nolint:nonamedreturns // Named returns document the mat
 	// 2. Extract the local resource's natural key.
 	localKey, ok := extractor(localObj)
 	if !ok {
-		return nil, false, identityErr
+		return nil, false, nil
 	}
 
 	// 3. Get the cached list of remote resources.
@@ -68,9 +73,6 @@ func findByNaturalKey( //nolint:nonamedreturns // Named returns document the mat
 		}
 	}
 
-	if nativePolicy && identityErr != nil {
-		return nil, false, identityErr
-	}
 	if matches > 1 {
 		return nil, false, fmt.Errorf("ambiguous native identity %q: %d matching resources", localKey, matches)
 	}

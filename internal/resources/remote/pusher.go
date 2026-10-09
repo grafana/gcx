@@ -323,10 +323,7 @@ func (p *Pusher) upsertResource(
 	}
 	if err == nil && nativePolicy {
 		existingIdentity, _, identityErr := resources.NativeIdentity(existing)
-		if identityErr != nil {
-			return identityErr
-		}
-		if existingIdentity != desiredIdentity {
+		if identityErr != nil || existingIdentity != desiredIdentity {
 			err = apierrors.NewNotFound(desc.GroupVersionResource().GroupResource(), name)
 		}
 	}

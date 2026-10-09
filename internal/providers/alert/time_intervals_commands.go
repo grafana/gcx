@@ -403,7 +403,10 @@ func resolveNativeAlertTitle(ctx context.Context, access native.Access, title, k
 		if access.Descriptor.Kind == "TemplateGroup" {
 			k, err := normalizedTemplateKind(&item)
 			if err != nil {
-				return nil, err
+				if kindFilter != "" {
+					continue
+				}
+				k, _, _ = unstructured.NestedString(item.Object, "spec", "kind")
 			}
 			if kindFilter != "" && k != kindFilter {
 				continue

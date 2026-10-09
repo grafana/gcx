@@ -27,8 +27,8 @@ func TestNativePushHTTP(t *testing.T) {
 	for _, version := range []string{"v0alpha1", "v1beta1"} {
 		for _, kind := range []string{"TimeInterval", "TemplateGroup"} {
 			for _, tc := range []struct {
-				name, sourceName, desired, remoteTitle                                     string
-				forbidden, listForbidden, ambiguous, imported, getTransport, listTransport bool
+				name, sourceName, desired, remoteTitle                                                    string
+				forbidden, listForbidden, ambiguous, imported, getTransport, listTransport, unknownRemote bool
 			}{
 				{name: "empty create", sourceName: "source", desired: "new"},
 				{name: "unnamed create", desired: "new"},
@@ -37,6 +37,7 @@ func TestNativePushHTTP(t *testing.T) {
 				{name: "unnamed match", desired: "same", remoteTitle: "same"},
 				{name: "missing hint match", sourceName: "source", desired: "same", remoteTitle: "same"},
 				{name: "matching hint", sourceName: "destination", desired: "same", remoteTitle: "same"},
+				{name: "unknown server kind name hint", sourceName: "destination", desired: "new", remoteTitle: "old", unknownRemote: true},
 				{name: "edited title", sourceName: "destination", desired: "new", remoteTitle: "old"},
 				{name: "encoding collision", sourceName: "destination", desired: "grafana|foo", remoteTitle: "foo"},
 				{name: "forbidden get", sourceName: "source", desired: "new", forbidden: true},
@@ -44,7 +45,7 @@ func TestNativePushHTTP(t *testing.T) {
 				{name: "ambiguity", desired: "same", remoteTitle: "same", ambiguous: true},
 				{name: "imported", sourceName: "source", desired: "same", imported: true},
 			} {
-				if tc.imported && kind != "TemplateGroup" {
+				if (tc.imported || tc.unknownRemote) && kind != "TemplateGroup" {
 					continue
 				}
 				t.Run(version+"/"+kind+"/"+tc.name, func(t *testing.T) {
@@ -63,6 +64,9 @@ func TestNativePushHTTP(t *testing.T) {
 					objects := map[string]*unstructured.Unstructured{}
 					if tc.remoteTitle != "" {
 						objects["destination"] = makeObj("destination", tc.remoteTitle, "destination-version")
+						if tc.unknownRemote {
+							require.NoError(t, unstructured.SetNestedField(objects["destination"].Object, "future", "spec", "kind"))
+						}
 						if kind == "TemplateGroup" {
 							require.NoError(t, unstructured.SetNestedField(objects["destination"].Object, "grafana", "spec", "kind"))
 						}

@@ -373,11 +373,11 @@ func (c *templateGroupTableCodec) Encode(w io.Writer, v any) error {
 	for _, item := range items {
 		title, _, _ := unstructured.NestedString(item.Object, "spec", "title")
 		kind, err := normalizedTemplateKind(&item)
-		if err != nil {
-			return err
-		}
 		readOnly := "false"
-		if resources.IsReadOnlyNative(&item) {
+		if err != nil {
+			kind, _, _ = unstructured.NestedString(item.Object, "spec", "kind")
+			readOnly = "unknown"
+		} else if resources.IsReadOnlyNative(&item) {
 			readOnly = "true"
 		}
 		row := []string{title, item.GetName(), kind, readOnly}
