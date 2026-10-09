@@ -5,6 +5,7 @@ import (
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/discovery"
@@ -187,9 +188,9 @@ func pushCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				IncludeSuccesses: opts.IncludeSuccesses,
 			}
 
-			summary, err := pusher.Push(ctx, req)
-			if err != nil {
-				return err
+			summary, pushErr := pusher.Push(ctx, req)
+			if pushErr != nil && (!opts.IncludeSuccesses || summary == nil || len(summary.Successes()) == 0) {
+				return pushErr
 			}
 
 			if opts.IncludeSuccesses && opts.IO.OutputFormat == "text" {
@@ -202,10 +203,16 @@ func pushCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			}
 			// The push is done and its counts are final; a later rendering or
 			// stdout failure does not un-push anything.
-			captureBatchVolume(result.Summary, result.DryRun, err)
+			captureBatchVolume(result.Summary, result.DryRun, pushErr)
 
 			if err := opts.IO.Encode(cmd.OutOrStdout(), result); err != nil {
 				return err
+			}
+			if pushErr != nil {
+				// The result includes writes completed before the abort. Keep the
+				// original cause and do not write a second result document.
+				cmdio.EmitWarn(cmd.ErrOrStderr(), "push aborted after partial success: "+pushErr.Error())
+				return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, pushErr)
 			}
 
 			if opts.OnError.FailOnErrors() && summary.FailedCount() > 0 {

@@ -544,6 +544,9 @@ gcx resources push -p ./resources
 # Include the resource identities returned by successful writes
 gcx resources push -p ./resources --include-successes -o json
 
+# An aborted push returns completed identities and a nonzero exit
+gcx resources push -p ./resources --include-successes -o json --on-error abort
+
 # Preview changes without applying
 gcx resources push -p ./resources --dry-run
 

@@ -267,6 +267,8 @@ status messages as the primary output.
   Dry-run and skipped operations do not produce applied identity references.
   API responses without a resource name also produce no reference.
   If the option is set and no reference is returned, successes is an empty array.
+  If an abort follows a successful write, the result keeps the completed identity
+  references and reports a partial failure.
   Entries follow completion order, not input order.
   Large results use the agents codec spill receipt and file.
 - Failures are always enumerated individually — they require action.
