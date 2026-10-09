@@ -67,9 +67,7 @@ func TestLegacyCypherCommandCompatibility(t *testing.T) {
 				assert.Contains(t, out, tt.want)
 			}
 			assert.NotContains(t, out, "deprecated")
-			assert.Contains(t, stderr, "gcx kg entities query is deprecated")
-			assert.Contains(t, stderr, "gcx kg graph query")
-			assert.Contains(t, stderr, "supported through v1.x")
+			assert.Empty(t, stderr)
 			if tt.agent || tt.name == "json" || tt.name == "selected fields" {
 				decodeSingleJSON(t, []byte(out))
 				assert.JSONEq(t, legacyCypherResult, out)

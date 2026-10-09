@@ -24,6 +24,7 @@ import (
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/shared"
 	"github.com/grafana/gcx/internal/style"
+	"github.com/grafana/grafana-app-sdk/logging"
 	"github.com/pmezard/go-difflib/difflib"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -2719,7 +2720,7 @@ Tips:
 				return err
 			}
 			// Cobra's Deprecated field writes to stdout and would corrupt JSON output.
-			cmd.PrintErrln("Warning: gcx kg entities query is deprecated; migrate to gcx kg graph query (columns/rows/stats; requires LIMIT; no --page or --insights-only). The legacy command remains supported through v1.x.")
+			logging.FromContext(cmd.Context()).Warn("gcx kg entities query is deprecated; migrate to gcx kg graph query (columns/rows/stats; requires LIMIT; no --page or --insights-only). The legacy command remains supported through v1.x.")
 			cfg, err := loader.LoadGrafanaConfig(cmd.Context())
 			if err != nil {
 				return err
