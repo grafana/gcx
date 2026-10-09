@@ -141,20 +141,23 @@ func handleDrilldownLink(cmd *cobra.Command, opts DrilldownLinkOpts, url string,
 // URL, and — when drilldownURL couldn't be built — makes DrilldownMessages'
 // "showing the Explore link instead" promise literal by actually
 // printing/opening the Explore URL, using the same share/open intent the
-// caller gave to the Drilldown flags. exploreEnabled should be the caller's
-// own ExploreLinkOpts.Enabled(): when the Explore link was already
-// requested (and thus already shown) via its own flags, the fallback is
-// skipped to avoid printing it twice.
+// caller gave to the Drilldown flags. exploreOpts should be the caller's own
+// ExploreLinkOpts: each action (print, open) the Explore flags already
+// fulfilled is skipped in the fallback, so it is never done twice, while an
+// action only the Drilldown flags requested still happens.
 func HandleDrilldownLinkWithExploreFallback(
 	cmd *cobra.Command,
 	drilldownOpts DrilldownLinkOpts, drilldownURL, drilldownUnavailableMsg, drilldownFailedOpenMsg string,
-	exploreEnabled bool,
+	exploreOpts ExploreLinkOpts,
 	exploreURL, exploreUnavailableMsg, exploreFailedOpenMsg string,
 ) error {
 	handleDrilldownLink(cmd, drilldownOpts, drilldownURL, drilldownUnavailableMsg, drilldownFailedOpenMsg)
-	if drilldownURL != "" || !drilldownOpts.Enabled() || exploreEnabled {
+	if drilldownURL != "" || !drilldownOpts.Enabled() {
 		return nil
 	}
-	fallback := ExploreLinkOpts{ShareLink: drilldownOpts.ShareLink, Open: drilldownOpts.Open}
+	fallback := ExploreLinkOpts{
+		ShareLink: drilldownOpts.ShareLink && !exploreOpts.ShareLink,
+		Open:      drilldownOpts.Open && !exploreOpts.Open,
+	}
 	return HandleExploreLink(cmd, fallback, exploreURL, exploreUnavailableMsg, exploreFailedOpenMsg)
 }

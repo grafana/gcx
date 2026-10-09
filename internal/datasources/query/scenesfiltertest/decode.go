@@ -21,7 +21,7 @@ func Decode(urlValue string) Filter {
 	}
 
 	var flat []string
-	for _, part := range strings.Split(segments[0], "|") {
+	for part := range strings.SplitSeq(segments[0], "|") {
 		value, label, hasLabel := strings.Cut(part, ",")
 		if !hasLabel {
 			label = value

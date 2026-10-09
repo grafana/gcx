@@ -2,8 +2,12 @@ package query_test
 
 import (
 	"bytes"
+	"io"
+	"os"
+	"strings"
 	"testing"
 
+	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/config"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/spf13/cobra"
@@ -69,7 +73,7 @@ func TestHandleDrilldownLinkWithExploreFallback(t *testing.T) {
 
 		err := dsquery.HandleDrilldownLinkWithExploreFallback(cmd,
 			dsquery.DrilldownLinkOpts{ShareLink: true, AppName: "Logs Drilldown"}, "https://example.grafana.net/a/grafana-lokiexplore-app/explore/app/foo/logs", "unavailable", "failed",
-			false, "https://example.grafana.net/explore?x=1", "explore unavailable", "explore failed",
+			dsquery.ExploreLinkOpts{}, "https://example.grafana.net/explore?x=1", "explore unavailable", "explore failed",
 		)
 		require.NoError(t, err)
 		assert.Contains(t, stderr.String(), "Logs Drilldown link: https://example.grafana.net/a/grafana-lokiexplore-app/explore/app/foo/logs")
@@ -83,7 +87,7 @@ func TestHandleDrilldownLinkWithExploreFallback(t *testing.T) {
 
 		err := dsquery.HandleDrilldownLinkWithExploreFallback(cmd,
 			dsquery.DrilldownLinkOpts{ShareLink: true}, "", "no drilldown url", "failed",
-			false, "https://example.grafana.net/explore?x=1", "explore unavailable", "explore failed",
+			dsquery.ExploreLinkOpts{}, "https://example.grafana.net/explore?x=1", "explore unavailable", "explore failed",
 		)
 		require.NoError(t, err)
 		assert.Contains(t, stderr.String(), "no drilldown url")
@@ -97,7 +101,7 @@ func TestHandleDrilldownLinkWithExploreFallback(t *testing.T) {
 
 		err := dsquery.HandleDrilldownLinkWithExploreFallback(cmd,
 			dsquery.DrilldownLinkOpts{ShareLink: true}, "", "no drilldown url", "failed",
-			true, "https://example.grafana.net/explore?x=1", "explore unavailable", "explore failed",
+			dsquery.ExploreLinkOpts{ShareLink: true}, "https://example.grafana.net/explore?x=1", "explore unavailable", "explore failed",
 		)
 		require.NoError(t, err)
 		assert.Contains(t, stderr.String(), "no drilldown url")
@@ -111,9 +115,72 @@ func TestHandleDrilldownLinkWithExploreFallback(t *testing.T) {
 
 		err := dsquery.HandleDrilldownLinkWithExploreFallback(cmd,
 			dsquery.DrilldownLinkOpts{}, "", "no drilldown url", "failed",
-			false, "https://example.grafana.net/explore?x=1", "explore unavailable", "explore failed",
+			dsquery.ExploreLinkOpts{}, "https://example.grafana.net/explore?x=1", "explore unavailable", "explore failed",
 		)
 		require.NoError(t, err)
 		assert.Empty(t, stderr.String())
+	})
+}
+
+// withAgentModeCapturingBrowserHints turns on agent mode so deeplink.Open never
+// launches a browser, and returns a func yielding what Open wrote to os.Stderr.
+func withAgentModeCapturingBrowserHints(t *testing.T) func() string {
+	t.Helper()
+
+	prev := agent.IsAgentMode()
+	agent.SetFlag(true)
+	t.Cleanup(func() { agent.SetFlag(prev) })
+
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	origStderr := os.Stderr
+	os.Stderr = w
+	t.Cleanup(func() { os.Stderr = origStderr })
+
+	return func() string {
+		os.Stderr = origStderr
+		require.NoError(t, w.Close())
+		out, err := io.ReadAll(r)
+		require.NoError(t, err)
+		return string(out)
+	}
+}
+
+func TestHandleDrilldownLinkWithExploreFallback_MixedFlagsFulfillBothRequestedActions(t *testing.T) {
+	const exploreURL = "https://example.grafana.net/explore?x=1"
+
+	t.Run("--open with --drilldown-link opens Explore and prints the fallback link", func(t *testing.T) {
+		browserHints := withAgentModeCapturingBrowserHints(t)
+		cmd := &cobra.Command{Use: "test"}
+		var stderr bytes.Buffer
+		cmd.SetErr(&stderr)
+
+		// Mirrors the caller: the Explore flags are handled first.
+		explore := dsquery.ExploreLinkOpts{Open: true}
+		require.NoError(t, dsquery.HandleExploreLink(cmd, explore, exploreURL, "unavailable", "failed"))
+		require.NoError(t, dsquery.HandleDrilldownLinkWithExploreFallback(cmd,
+			dsquery.DrilldownLinkOpts{ShareLink: true}, "", "no drilldown url", "failed",
+			explore, exploreURL, "unavailable", "failed",
+		))
+
+		assert.Contains(t, stderr.String(), "Explore link: "+exploreURL, "the requested fallback print must happen")
+		assert.Equal(t, 1, strings.Count(browserHints(), exploreURL), "Explore must be opened exactly once")
+	})
+
+	t.Run("--share-link with --open-drilldown prints once and still opens the fallback", func(t *testing.T) {
+		browserHints := withAgentModeCapturingBrowserHints(t)
+		cmd := &cobra.Command{Use: "test"}
+		var stderr bytes.Buffer
+		cmd.SetErr(&stderr)
+
+		explore := dsquery.ExploreLinkOpts{ShareLink: true}
+		require.NoError(t, dsquery.HandleExploreLink(cmd, explore, exploreURL, "unavailable", "failed"))
+		require.NoError(t, dsquery.HandleDrilldownLinkWithExploreFallback(cmd,
+			dsquery.DrilldownLinkOpts{Open: true}, "", "no drilldown url", "failed",
+			explore, exploreURL, "unavailable", "failed",
+		))
+
+		assert.Equal(t, 1, bytes.Count(stderr.Bytes(), []byte("Explore link: ")), "must not print twice")
+		assert.Contains(t, browserHints(), exploreURL, "the requested fallback open must happen")
 	})
 }

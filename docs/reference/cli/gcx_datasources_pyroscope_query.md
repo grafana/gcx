@@ -9,11 +9,11 @@ Execute a profiling query against a Pyroscope datasource.
 EXPR is the label selector (e.g., '{service_name="frontend"}').
 Datasource is resolved from -d flag or datasources.pyroscope in your context.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
-open it in your browser after the query succeeds (unavailable for --trace-id,
-which has no Explore-UI representation). Use --drilldown-link or
+open it in your browser after the query succeeds. Use --drilldown-link or
 --open-drilldown for the equivalent Grafana Profiles Drilldown URL (falls
-back to the Explore URL for --trace-id/--profile-id, neither of which has a
-Drilldown URL equivalent).
+back to the Explore URL for --profile-id/--stacktrace-selector, which have no
+Drilldown equivalent). --trace-id has no representation in either, so no
+link is built for it.
 
 ```
 gcx datasources pyroscope query [EXPR] [flags]

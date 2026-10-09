@@ -227,7 +227,7 @@ func queryLinkFinisher(
 				return err
 			}
 			if err := dsquery.HandleDrilldownLinkWithExploreFallback(cmd, *drilldown, drilldownURL, drilldownUnavailableMsg, drilldownFailedOpenMsg,
-				share.Enabled(), exploreURL, exploreUnavailableMsg, exploreFailedOpenMsg); err != nil {
+				*share, exploreURL, exploreUnavailableMsg, exploreFailedOpenMsg); err != nil {
 				return err
 			}
 		}
