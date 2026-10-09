@@ -12,7 +12,7 @@ keywords:
   - observability as code
   - as-code
   - dashboards
-weight: 1
+weight: 10
 ---
 
 # `gcx` user guides 

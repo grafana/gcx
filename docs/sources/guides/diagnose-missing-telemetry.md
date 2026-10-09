@@ -1,42 +1,42 @@
 ---
 title: Diagnose missing telemetry
+labels:
+  products:
+    - cloud
+    - enterprise
+    - oss
+description: Use gcx to diagnose missing telemetry.
+keywords:
+  - gcx
+  - Grafana CLI
+  - observability as code
+  - telemetry
+weight: 1
 ---
 
-# Diagnose missing telemetry with gcx
+# Diagnose missing telemetry with `gcx`
 
-This guide is for people investigating an empty dashboard or missing application
-telemetry. It shows how to use gcx to gather evidence before proposing a repair;
-you can investigate directly or use an agent with gcx's existing skills. Start
-with evidence, ask before repairs, and verify the original symptom afterward.
-You do not need a new diagnostic skill or Grafana Cloud. If you use an agent, its
-harness and model access are separate from gcx.
+If you're investigating an empty dashboard or missing application telemetry, use this guide to learn how to use `gcx` to gather evidence before proposing a repair. You don't need a new diagnostic skill or Grafana Cloud.
 
-## Before you start
+You can investigate directly or use an agent with `gcx` existing skills. Start with evidence, ask before repairs, and verify the original symptom afterward. If you use an agent, its harness and model access are separate from `gcx`.
 
-- Follow [Install gcx](../sources/installation.md) if `gcx version` is unavailable.
-- Follow [Install Agent Skills](https://github.com/grafana/gcx#install-agent-skills) for your
-  harness. Start a session that can discover the installed skills. The existing
-  `debug-with-grafana` skill handles investigation; `setup-gcx` helps with setup.
-- Use a reachable Grafana instance supported by your gcx version, with access
-  to the relevant datasources. A static instrumentation check alone does not
-  provide a telemetry destination.
-- If you have no backend, [start docker-otel-lgtm](https://github.com/grafana/docker-otel-lgtm#run-the-docker-image)
-  for a local development sink. Setting up a sink does not authorize changing
-  an existing application's exporter. A local proof does not establish that
-  your production destination works.
-- Know which application or fixture you may inspect. Do not enumerate unrelated
-  containers, environments, or services to compensate for missing context.
+## Before you begin
 
-The command examples use the current gcx command surface. Check `gcx version`
-and the relevant command's `--help` when following them with another release.
+Before you begin, make sure to:
+
+- Follow [Install gcx](../installation.md) if `gcx version` is unavailable.
+- Follow [Install Agent Skills](https://github.com/grafana/gcx#install-agent-skills) for your harness. Start a session that can discover the installed skills. The existing `debug-with-grafana` skill handles investigation; `setup-gcx` helps with setup.
+- Use a reachable Grafana instance supported by your `gcx` version, with access to the relevant datasources. A static instrumentation check alone does not provide a telemetry destination.
+- If you have no backend, [start docker-otel-lgtm](https://github.com/grafana/docker-otel-lgtm#run-the-docker-image)   for a local development sink. Setting up a sink does not authorize changing an existing application's exporter. A local proof does not establish that your production destination works.
+- Know which application or fixture you may inspect. Do not enumerate unrelated containers, environments, or services to compensate for missing context.
+
+The command examples use the current `gcx` command surface. Check `gcx version` and the relevant command's `--help` when following them with another release.
 
 ## Connect without changing your usual context
 
-For an already configured destination, use explicit `--config` and `--context`
-arguments. Do not switch the current context just for this investigation.
-Otherwise, create a separate private configuration outside your checkout. The
-examples use `GCX_CONFIG`, gcx's actual environment override; unset it first if
-it points at another configuration so it cannot silently defeat this isolation:
+If you have already configured the destination, use explicit `--config` and `--context` arguments. Do not switch the current context just for this investigation. Otherwise, create a separate private configuration outside your checkout. 
+
+The examples use `GCX_CONFIG`, gcx's actual environment override; unset it first if it points at another configuration so it cannot silently defeat this isolation:
 
 ```bash
 GCX_DIAGNOSTICS_DIR=$(mktemp -d)
@@ -44,11 +44,11 @@ export GCX_CONFIG="$GCX_DIAGNOSTICS_DIR/config.yaml"
 (umask 077; printf '{}\n' > "$GCX_CONFIG")
 ```
 
-Keep the path until cleanup. In another terminal, set the variable to the same
-path; do not create a second empty configuration by repeating the block.
+Keep the path until cleanup. 
 
-For an existing Grafana destination, use interactive login with a new context
-in that file (replace the example URL):
+In another terminal, set the variable to the same path; do not create a second empty configuration by repeating the block.
+
+For an existing Grafana destination, use interactive login with a new context in that file, replacing the example URL:
 
 ```bash
 gcx login diagnostics --config "$GCX_CONFIG" \

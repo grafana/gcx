@@ -40,7 +40,7 @@ cards:
       href: keychain/
       height: 24            
     - title: User guides
-      description: Learn how `gcx` stores credentials. 
+      description: User guides. 
       href: guides/
       height: 24      
   title_class: pt-0 lh-1
