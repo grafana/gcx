@@ -172,10 +172,10 @@ func faroMutationCases(t *testing.T) []struct {
 			name:       "apps delete",
 			build:      func(l *fakeConfigLoader) *cobra.Command { return newDeleteCommand(l) },
 			args:       []string{"my-app-42"},
-			wantHuman:  "✔ Deleted Frontend Observability app \"my-app-42\"\n",
+			wantHuman:  "✔ Deleted Frontend Observability app \"my-app\" (id=42)\n",
 			wantType:   "gcx.mutation",
 			wantDoc:    map[string]any{"action": "deleted"},
-			wantTarget: map[string]any{"kind": Kind, "name": "my-app-42"},
+			wantTarget: map[string]any{"kind": Kind, "name": "my-app", "id": "42"},
 		},
 		{
 			name:      "apps apply-sourcemap",
