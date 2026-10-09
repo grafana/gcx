@@ -80,8 +80,11 @@ func (p *Provider) descriptor() signals.Descriptor {
   # Print a Grafana Explore share link for the query
   gcx traces metrics '{ } | rate()' --share-link
 
-  # Output as JSON
-  gcx traces metrics -d UID '{ } | rate()' --since 1h -o json`,
+  # Error percentage among observed server spans (not unsampled traffic)
+  gcx traces metrics '100 * ({ kind = server && status = error } | rate()) / ({ kind = server } | rate())' --since 1h -o json
+
+  # Each service's share of observed server-span throughput
+  gcx traces metrics '({ kind = server } | rate() by (resource.service.name)) / ({ kind = server } | rate())' --since 1h`,
 			},
 			{
 				Build:     dstempo.DiffCmd,

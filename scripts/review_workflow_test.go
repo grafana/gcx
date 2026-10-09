@@ -30,11 +30,12 @@ type reviewWorkflow struct {
 		If    string            `yaml:"if"`
 		Env   map[string]string `yaml:"env"`
 		Steps []struct {
-			Name  string         `yaml:"name"`
-			If    string         `yaml:"if"`
-			Run   string         `yaml:"run"`
-			Shell string         `yaml:"shell"`
-			With  map[string]any `yaml:"with"`
+			Name  string            `yaml:"name"`
+			If    string            `yaml:"if"`
+			Run   string            `yaml:"run"`
+			Shell string            `yaml:"shell"`
+			Env   map[string]string `yaml:"env"`
+			With  map[string]any    `yaml:"with"`
 		} `yaml:"steps"`
 	} `yaml:"jobs"`
 }
@@ -62,6 +63,10 @@ func publishScript(t *testing.T) string {
 		if step.Name == publishStep {
 			if step.Shell != "bash" {
 				t.Fatalf("%q needs explicit bash for pipefail", publishStep)
+			}
+			// The composite action revokes its App token before this step runs.
+			if step.Env["GH_TOKEN"] != "${{ github.token }}" {
+				t.Fatal("publication must use the job token, not the revoked action output token")
 			}
 			return step.Run
 		}
@@ -154,10 +159,10 @@ type publishCase struct {
 	post1, post2         string
 	post1Exit, post2Exit string
 	// Head SHA for the first and second read; empty means reviewHead.
-	head1, head2 string
-	head1Exit    string
-	head1Blank   bool   // the API answers without a head SHA at all
-	post1Stderr  string // what gh prints on the first rejection
+	head1, head2         string
+	head1Exit, head2Exit string
+	head1Blank           bool   // the API answers without a head SHA at all
+	post1Stderr          string // what gh prints on the first rejection
 
 	wantPublished bool
 	wantPosts     int
@@ -272,6 +277,11 @@ func publicationCases() []publishCase {
 		wantPublished: true, wantPosts: 1, wantComments: 2,
 		wantOutput: "those commits are unreviewed",
 	}, {
+		name:   "a failed head recheck preserves confirmed publication",
+		output: findings, post1: submitted(reviewHead), head2Exit: "1",
+		wantPublished: true, wantPosts: 1, wantComments: 2,
+		wantOutput: "Published review 5176163313 on " + reviewHead,
+	}, {
 		name:   "a review on another commit is not confirmed",
 		output: cleanOutput, post1: submitted(movedHead),
 		wantPosts: 1, wantOutput: "did not confirm a submitted review",
@@ -333,6 +343,7 @@ func TestReviewWorkflowPublication(t *testing.T) {
 			}
 			write("post_1_stderr", tt.post1Stderr)
 			write("head_1_exit", tt.head1Exit)
+			write("head_2_exit", tt.head2Exit)
 			write("post_1_response", tt.post1)
 			write("post_2_response", tt.post2)
 			write("post_1_exit", tt.post1Exit)
@@ -605,7 +616,7 @@ func TestReviewSkillPostsJSONOnStdin(t *testing.T) {
 		t.Fatal(err)
 	}
 	script := "gh api " + strings.NewReplacer(
-		"{owner}", "grafana", "{repo}", "gcx", "{n}", "1292",
+		"{n}", "1292",
 		`"<the summary>"`, string(encodedBody),
 	).Replace(block)
 	mock := "#!/bin/sh\n[ \"$*\" = 'api repos/grafana/gcx/pulls/1292/reviews -X POST --input -' ] || exit 2\ncat\n"
