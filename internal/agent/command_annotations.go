@@ -294,14 +294,14 @@ var commandAnnotations = map[string]annotation{
 	"gcx k6 projects list-allowed-load-zones":   {Cost: "small"},
 	"gcx k6 projects update":                    {Cost: "small"},
 	"gcx k6 projects update-allowed-load-zones": {Cost: "small"},
-	"gcx k6 runs list":                          {Cost: "small"},
+	"gcx k6 runs list":                          {Cost: "medium", Hint: "--id <load-test-id> --json id,options.thresholds to inspect configured thresholds without the complete run configuration"},
 	"gcx k6 schedules create":                   {Cost: "small", Hint: "-f <manifest.yaml>"},
 	"gcx k6 schedules get":                      {Cost: "small"},
 	"gcx k6 schedules list":                     {Cost: "small"},
 	"gcx k6 schedules update":                   {Cost: "small"},
 	"gcx k6 test-run emit":                      {Cost: "small", Hint: "[test-name] --project-id <id> [--apply]. --apply starts a run that consumes billable VU hours (" + docs.PerformanceTestingInvoice + ")."},
-	"gcx k6 test-run runs list":                 {Cost: "small"},
-	"gcx k6 test-run status":                    {Cost: "small"},
+	"gcx k6 test-run runs list":                 {Cost: "medium", Hint: "--id <load-test-id> --json id,options.thresholds to inspect configured thresholds without the complete run configuration"},
+	"gcx k6 test-run status":                    {Cost: "medium", Hint: "--id <load-test-id> --json id,options.thresholds to inspect configured thresholds without the complete run configuration"},
 
 	// -----------------------------------------------------------------------
 	// Knowledge Graph provider

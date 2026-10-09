@@ -1,6 +1,9 @@
 package k6
 
-import "strconv"
+import (
+	"encoding/json"
+	"strconv"
+)
 
 // ---------- ResourceIdentity implementations ----------
 
@@ -55,13 +58,14 @@ type EnvVar struct {
 
 // TestRunStatus represents the status of a k6 test run.
 type TestRunStatus struct {
-	ID           int    `json:"id,omitempty"`
-	LoadTestID   int    `json:"load_test_id"`
-	Status       string `json:"status"`
-	ResultStatus int    `json:"result_status"`
-	Created      string `json:"created,omitempty"`
-	Ended        string `json:"ended,omitempty"`
-	ReferenceID  string `json:"reference_id,omitempty"`
+	ID           int             `json:"id,omitempty"`
+	LoadTestID   int             `json:"load_test_id"`
+	Status       string          `json:"status"`
+	ResultStatus int             `json:"result_status"`
+	Created      string          `json:"created,omitempty"`
+	Ended        string          `json:"ended,omitempty"`
+	ReferenceID  string          `json:"reference_id,omitempty"`
+	Options      json.RawMessage `json:"options,omitempty"`
 }
 
 // projectsResponse is the response from listing projects.
