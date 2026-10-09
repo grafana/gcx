@@ -6,13 +6,22 @@ Detect recurring log patterns
 
 Detect recurring log line patterns for a LogQL stream selector.
 
-EXPR is the LogQL stream selector (e.g., '{job="varlogs"}'); Loki extracts the
-stream selector from a full LogQL expression server-side, so a query/metrics
-expression works here too.
+EXPR must be a bare stream selector (e.g., '{job="varlogs"}'). Loki's patterns
+endpoint rejects pipeline stages, line filters, and metric expressions.
 Datasource is resolved from -d flag or datasources.loki in your context.
-Requires the Loki server to have pattern_ingester enabled — returns no
-patterns (not an error) otherwise.
-Default time range is the last hour when no time flags are given.
+
+Requires a Loki version that supports the patterns API (3.x) with the pattern
+ingester and querier enabled. Otherwise the endpoint may be unavailable and the
+command fails with an error rather than returning empty data.
+
+The result is the patterns and sample counts the backend retained for the
+range, not a complete inventory: Loki prunes low-volume patterns and caps the
+number returned, and retention depends on the deployment, so a long --since
+does not guarantee complete coverage of that window.
+
+Default time range is the last hour when no time flags are given. --step is
+optional: a positive duration (e.g., 30s) or a positive number of seconds
+(e.g., 1.5); when omitted, Loki chooses the bucket size.
 
 ```
 gcx logs query-patterns [EXPR] [flags]

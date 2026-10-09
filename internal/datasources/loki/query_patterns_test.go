@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -152,4 +153,83 @@ func TestQueryPatternsCmd_WideOutputMatchesTable(t *testing.T) {
 	_, wide, err := execQueryPatternsCmd(t, []string{`{job="varlogs"}`, "--since", "1h", "-o", "wide"})
 	require.NoError(t, err)
 	assert.Equal(t, table, wide)
+}
+
+// requestsMadeBy runs query-patterns against a server that counts every request
+// (including the cloud-stack probe), to prove invalid input fails before any I/O.
+func requestsMadeBy(t *testing.T, args []string) (int, error) {
+	t.Helper()
+
+	var requests atomic.Int32
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		http.Error(w, `{"message":"unexpected request"}`, http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	loader := &providers.ConfigLoader{}
+	loader.SetConfigFile(writePatternsTestConfig(t, `
+contexts:
+  default:
+    grafana:
+      server: "`+srv.URL+`"
+      token: "test-token"
+      org-id: 1
+      tls:
+        insecure-skip-verify: true
+current-context: default
+`))
+
+	root := &cobra.Command{Use: "test"}
+	root.AddCommand(dsloki.QueryPatternsCmd(loader))
+	var stdout, stderr bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs(append([]string{"query-patterns", "-d", "loki-uid"}, args...))
+
+	err := root.Execute()
+	return int(requests.Load()), err
+}
+
+func TestQueryPatternsCmd_RejectsStaticallyInvalidInputBeforeAnyIO(t *testing.T) {
+	tests := map[string]struct {
+		args    []string
+		wantErr string
+	}{
+		"empty selector":            {[]string{""}, "stream selector is required"},
+		"whitespace selector":       {[]string{"   "}, "stream selector is required"},
+		"selector with line filter": {[]string{`{job="x"} |= "err"`}, "bare stream selector"},
+		"metric expression":         {[]string{`rate({job="x"}[5m])`}, "bare stream selector"},
+		"step zero":                 {[]string{`{job="x"}`, "--step", "0"}, "invalid --step"},
+		"step negative":             {[]string{`{job="x"}`, "--step", "-1"}, "invalid --step"},
+		"step negative duration":    {[]string{`{job="x"}`, "--step", "-5s"}, "invalid --step"},
+		"step zero duration":        {[]string{`{job="x"}`, "--step", "0s"}, "invalid --step"},
+		"step garbage":              {[]string{`{job="x"}`, "--step", "bogus"}, "invalid --step"},
+		"step infinite":             {[]string{`{job="x"}`, "--step", "Inf"}, "invalid --step"},
+		"reversed range":            {[]string{`{job="x"}`, "--from", "now", "--to", "now-1h"}, "must be before"},
+		"malformed time":            {[]string{`{job="x"}`, "--from", "not-a-time", "--to", "now"}, "invalid --from"},
+		"from without to":           {[]string{`{job="x"}`, "--from", "now-1h"}, "--to is required"},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			requests, err := requestsMadeBy(t, tt.args)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.wantErr)
+			assert.Zero(t, requests, "no request, including config/datasource discovery, may precede validation")
+		})
+	}
+}
+
+func TestQueryPatternsCmd_AcceptsDocumentedStepForms(t *testing.T) {
+	for _, step := range []string{"30s", "1m", "30", "1.5"} {
+		captured, _, err := execQueryPatternsCmd(t, []string{`{job="varlogs"}`, "--since", "1h", "--step", step})
+		require.NoError(t, err, step)
+		assert.Equal(t, step, captured[patternsPath].Get("step"), step)
+	}
+}
+
+func TestQueryPatternsCmd_AcceptsSelectorWithWhitespaceAndMultipleMatchers(t *testing.T) {
+	_, _, err := execQueryPatternsCmd(t, []string{`  { job="varlogs", namespace=~"a|b" }  `, "--since", "1h"})
+	require.NoError(t, err)
 }
