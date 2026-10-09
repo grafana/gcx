@@ -228,30 +228,17 @@ local files.`, Args: cobra.ExactArgs(1),
 			if strings.TrimSpace(obj.GetResourceVersion()) == "" {
 				return fail.NewCommandUsageError(cmd, "the manifest has no metadata.resourceVersion; fetch the current group with gcx alert template-groups get first", nil)
 			}
-			kind, err := normalizedTemplateKind(obj)
-			if err != nil {
-				return fail.NewCommandUsageError(cmd, err.Error(), nil)
-			}
 			access, err := binding.Load(cmd.Context(), native.LoadOptions{APIVersion: version})
 			if err != nil {
 				return err
 			}
-			selected, err := resolveNativeAlertTitle(cmd.Context(), access, args[0], kind)
+			// read rejects mimir manifests, so the subject is always Grafana-managed.
+			selected, err := resolveNativeAlertTitle(cmd.Context(), access, args[0], "grafana")
 			if err != nil {
 				return err
 			}
 			if obj.GetName() != "" && obj.GetName() != selected.GetName() {
 				return fail.NewCommandUsageError(cmd, fmt.Sprintf("manifest metadata.name %q must match the selected current group's API name %q; template kind cannot change", obj.GetName(), selected.GetName()), nil)
-			}
-			selectedKind, err := normalizedTemplateKind(selected)
-			if err != nil {
-				return err
-			}
-			if selectedKind != kind {
-				return fail.NewCommandUsageError(cmd, "template kind cannot change", nil)
-			}
-			if selectedKind == "mimir" {
-				return templateGroupReadOnlyError()
 			}
 			obj.SetName(selected.GetName())
 			updated, err := access.Client.Update(cmd.Context(), access.Descriptor, obj, metav1.UpdateOptions{})
