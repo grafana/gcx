@@ -622,7 +622,7 @@ that only surfaced during smoke testing:
   `[]{"label": k, "value": v}` on the wire. `ID` is `string` in Go but `int64` on wire.
   `Settings` is typed in Go but a string map on the wire (`"geolocation.enabled": "1"`,
   `"geolocation.level": "0"`–`"4"`); a non-string value makes the API return 500.
-  Internal `toAPI()`/`fromAPI()` handles both conversions.
+  Internal `toAPI()`/`fromAPI()` handles all three conversions.
 - **Sourcemaps are sub-resources** (require parent app-id for all operations).
   Per CONSTITUTION § Sub-resources, they use `<operation>-<subject>` compounds
   addressed by the parent's ID (`list-sourcemaps`, `apply-sourcemap`,
