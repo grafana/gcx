@@ -51,3 +51,55 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_NOTES: ${{ env.RELEASE_NOTES }}
 
+      - name: Upload release artifacts for Packslip
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-artifacts
+          path: |
+            dist/gcx_*.tar.gz
+            dist/gcx_*.zip
+          if-no-files-found: error
+
+  packslip:
+    needs: release
+    permissions:
+      contents: read
+      id-token: write # to sign the Packslip manifest
+      attestations: write # to attest release artifacts
+    name: Publish Packslip manifest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Download release artifacts
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: release-artifacts
+          path: dist
+
+      - name: Build active skill resources
+        id: skills
+        run: |
+          resources="$(ruby -ryaml -e '
+            catalog = YAML.load_file("claude-plugin/skills-catalog.yaml")["skills"]
+            catalog.each do |name, metadata|
+              next unless metadata["status"] == "active"
+              path = "claude-plugin/skills/#{name}"
+              abort "missing skill directory: #{path}" unless File.directory?(path)
+              puts "skill/#{name}=repo:#{path}"
+            end
+          ' | sort)"
+          {
+            echo 'resources<<EOF'
+            echo "$resources"
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Publish signed Packslip manifest
+        uses: jdx/packslip@4920350c39c234c7a969f9775040bd02829f1923 # v1.3.0
+        with:
+          artifacts: dist/gcx_*.tar.gz dist/gcx_*.zip
+          bin: gcx
+          attest: true
+          resources: ${{ steps.skills.outputs.resources }}
