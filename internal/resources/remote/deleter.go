@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/gcx/internal/resources/dynamic"
 	"github.com/grafana/grafana-app-sdk/logging"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
@@ -146,6 +147,17 @@ func (deleter *Deleter) Delete(ctx context.Context, request DeleteRequest) (*Ope
 func (deleter *Deleter) deleteResource(ctx context.Context, descriptor resources.Descriptor, res *resources.Resource, dryRun bool) error {
 	if resources.IsReadOnlyNative(&res.Object) {
 		return fmt.Errorf("%w: %w", errReadOnlyNative, resources.ReadOnlyNativeError(&res.Object))
+	}
+	if res.Name() == "" && resources.HasServerDerivedName(res.GroupVersionKind()) {
+		field, command := "name", "time-intervals"
+		if res.Kind() == "TemplateGroup" {
+			field, command = "title", "template-groups"
+		}
+		title, _, _ := unstructured.NestedString(res.Object.Object, "spec", field)
+		if title == "" {
+			title = "<title>"
+		}
+		return fmt.Errorf("%s %q has no metadata.name; delete it with 'gcx alert %s delete %q' or use a pulled manifest with its real API name", res.Kind(), title, command, title)
 	}
 	var dryRunOpts []string
 	if dryRun {

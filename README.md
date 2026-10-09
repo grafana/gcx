@@ -360,7 +360,9 @@ gcx traces query '{.cluster="dev-us-central-0"}' --since 1h
 
 Unnamed native time interval and template group manifests can share a push
 directory: distinct titles remain separate, and template kind is part of the
-identity. See [server-derived resource names](docs/architecture/resource-model.md)
+identity. To delete these resources, use the dedicated `alert time-intervals delete`
+or `alert template-groups delete` commands, or pass pulled files with real API
+names to `resources delete -p`; unnamed files are rejected. See [server-derived resource names](docs/architecture/resource-model.md)
 for portable push behavior.
 
 For an empty dashboard or missing application telemetry, follow
