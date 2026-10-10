@@ -1509,12 +1509,14 @@ func newUsersCurrentCommand(loader OnCallConfigLoader) *cobra.Command {
 // ---------------------------------------------------------------------------
 
 type escalateOpts struct {
-	IO        cmdio.Options
-	Title     string
-	Message   string
-	Team      string
-	UserIDs   []string
-	Important bool
+	IO            cmdio.Options
+	Title         string
+	Message       string
+	Team          string
+	UserIDs       []string
+	Important     bool
+	IncidentID    string
+	incidentIDSet bool
 }
 
 func (o *escalateOpts) setup(flags *pflag.FlagSet) {
@@ -1531,11 +1533,16 @@ func (o *escalateOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVar(&o.Team, "team", "", "Team ID")
 	flags.StringSliceVar(&o.UserIDs, "user-ids", nil, "User IDs (comma-separated)")
 	flags.BoolVar(&o.Important, "important", false, "Mark as important")
+	flags.StringVar(&o.IncidentID, "incident-id", "", "Incident ID to associate with the page")
 }
 
 func (o *escalateOpts) Validate() error {
 	if o.Title == "" {
 		return errors.New("--title is required")
+	}
+	o.IncidentID = strings.TrimSpace(o.IncidentID)
+	if o.incidentIDSet && o.IncidentID == "" {
+		return errors.New("--incident-id must not be blank: provide an incident ID or omit the flag")
 	}
 	return nil
 }
@@ -1545,7 +1552,20 @@ func newEscalateCommand(loader OnCallConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "escalate",
 		Short: "Create a direct escalation.",
+		Long: `Page users or a team. Use --incident-id to associate the page with an existing incident.
+Incident participants, timeline activity, and context update asynchronously;
+do not repeat a successful page while waiting for those updates.`,
+		Example: `  # Page a user
+  gcx irm oncall escalate --title "Database outage" --user-ids U123
+
+  # Page a team for an incident (IDs: gcx irm incidents list)
+  gcx irm oncall escalate --title "Database outage" --team T123 --incident-id 4
+
+  # Send an important page to multiple users for an incident
+  gcx irm oncall escalate --title "Database outage" --user-ids U123,U456 --important --incident-id 4`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			opts.incidentIDSet = cmd.Flags().Changed("incident-id")
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
@@ -1573,6 +1593,7 @@ func newEscalateCommand(loader OnCallConfigLoader) *cobra.Command {
 				Team:                    opts.Team,
 				Users:                   users,
 				ImportantTeamEscalation: opts.Important,
+				IncidentID:              opts.IncidentID,
 			}
 
 			result, err := client.CreateDirectPaging(cmd.Context(), input)

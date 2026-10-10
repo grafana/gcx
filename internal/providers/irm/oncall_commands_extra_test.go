@@ -6,6 +6,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -626,6 +629,134 @@ func TestEscalateOpts_DefaultFormatIsValid(t *testing.T) {
 	}
 	if err := opts.IO.Validate(); err != nil {
 		t.Fatalf("IO.Validate() on default format returned error: %v", err)
+	}
+}
+
+func TestEscalateCommand_IncidentRequest(t *testing.T) {
+	resetAgentMode(t)
+	for _, tc := range []struct {
+		name string
+		args []string
+		want map[string]any
+	}{
+		{
+			name: "ordinary user page",
+			args: []string{"--user-ids", "U123"},
+			want: map[string]any{"title": "Database outage", "users": []any{map[string]any{"id": "U123", "important": false}}},
+		},
+		{
+			name: "incident user page",
+			args: []string{"--user-ids", "U123", "--incident-id", "INC-123"},
+			want: map[string]any{"title": "Database outage", "users": []any{map[string]any{"id": "U123", "important": false}}, "incident_id": "INC-123"},
+		},
+		{
+			name: "trimmed opaque ID and important users",
+			args: []string{"--user-ids", "U123,U456", "--important", "--message", "Please investigate", "--incident-id", "  abcd1234  "},
+			want: map[string]any{"title": "Database outage", "message": "Please investigate", "users": []any{map[string]any{"id": "U123", "important": true}, map[string]any{"id": "U456", "important": true}}, "important_team_escalation": true, "incident_id": "abcd1234"},
+		},
+		{
+			name: "incident team page",
+			args: []string{"--team", "T123", "--incident-id", "INC-123"},
+			want: map[string]any{"title": "Database outage", "team": "T123", "incident_id": "INC-123"},
+		},
+		{
+			name: "important incident team page",
+			args: []string{"--team", "T123", "--important", "--incident-id", "INC-123"},
+			want: map[string]any{"title": "Database outage", "team": "T123", "important_team_escalation": true, "incident_id": "INC-123"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var got map[string]any
+			calls := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				if r.Method != http.MethodPost || r.URL.Path != BasePath+"/direct_paging" {
+					t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+				}
+				if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+					t.Errorf("decode request: %v", err)
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"alert_group_id":"I123"}`))
+			}))
+			t.Cleanup(server.Close)
+			cmd := newEscalateCommand(&fakeLoader{client: onCallClientFor(server)})
+			var stdout, stderr bytes.Buffer
+			cmd.SetOut(&stdout)
+			cmd.SetErr(&stderr)
+			cmd.SetArgs(append([]string{"--title", "Database outage", "-o", "json"}, tc.args...))
+			if err := cmd.Execute(); err != nil {
+				t.Fatal(err)
+			}
+			if calls != 1 || !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("got %d requests with body %#v; want one with %#v", calls, got, tc.want)
+			}
+			if stderr.Len() != 0 {
+				t.Errorf("unexpected stderr: %s", &stderr)
+			}
+			var result map[string]any
+			if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+				t.Fatal(err)
+			}
+			want := map[string]any{"alertGroupId": "I123", "title": "Database outage"}
+			if !reflect.DeepEqual(result, want) {
+				t.Errorf("got output %#v, want %#v", result, want)
+			}
+		})
+	}
+}
+
+func TestEscalateCommand_InvalidInputBeforeClientLoading(t *testing.T) {
+	resetAgentMode(t)
+	for _, tc := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"empty incident ID", []string{"--title", "Page", "--incident-id="}, "--incident-id must not be blank"},
+		{"whitespace incident ID", []string{"--title", "Page", "--incident-id", " \t\n "}, "--incident-id must not be blank"},
+		{"missing incident value", []string{"--title", "Page", "--incident-id"}, "flag needs an argument"},
+		{"missing title", []string{"--incident-id", "INC-123"}, "--title is required"},
+		{"stray positional", []string{"--title", "Page", "--incident-id", "INC-123", "unexpected"}, "unknown command"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// A nil loader makes any attempted client loading fail the test.
+			cmd := newEscalateCommand(nil)
+			var stdout, stderr bytes.Buffer
+			cmd.SetOut(&stdout)
+			cmd.SetErr(&stderr)
+			cmd.SilenceUsage = true
+			cmd.SetArgs(tc.args)
+			err := cmd.Execute()
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("got error %v, want %q", err, tc.want)
+			}
+			if stdout.Len() != 0 {
+				t.Errorf("invalid request emitted stdout: %s", &stdout)
+			}
+		})
+	}
+}
+
+func TestEscalateCommand_IncidentBackendFailure(t *testing.T) {
+	resetAgentMode(t)
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		http.Error(w, `{"detail":"paging rejected"}`, http.StatusInternalServerError)
+	}))
+	t.Cleanup(server.Close)
+	cmd := newEscalateCommand(&fakeLoader{client: onCallClientFor(server)})
+	var stdout, stderr bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	cmd.SilenceUsage = true
+	cmd.SetArgs([]string{"--title", "Page", "--user-ids", "U123", "--incident-id", "INC-123", "-o", "json"})
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("expected backend error")
+	}
+	if calls != 1 || stdout.Len() != 0 {
+		t.Fatalf("got %d requests and stdout %q; want one request and no success output", calls, stdout.String())
 	}
 }
 

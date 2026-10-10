@@ -538,6 +538,7 @@ type DirectPagingInput struct {
 	Users                   []UserReference `json:"users,omitempty"`
 	ImportantTeamEscalation bool            `json:"important_team_escalation,omitempty"`
 	AlertGroupID            string          `json:"alert_group_id,omitempty"`
+	IncidentID              string          `json:"incident_id,omitempty"`
 }
 
 type DirectPagingResult struct {
