@@ -157,6 +157,7 @@ gcx/
 │   ├── shared/               # Shared utilities (date handling, duration, etc.) to be shared across integrations.
 │
 ├── scripts/                  # Standalone Go programs for code generation
+│   ├── cli-reference/        # Renders released CLI and configuration references
 │   ├── cmd-reference/        # Generates CLI docs from Cobra tree
 │   ├── config-reference/     # Generates config YAML reference from Go structs
 │   ├── env-vars-reference/   # Generates env-var docs from struct tags
@@ -394,6 +395,16 @@ mise run reference
     ├── mise run reference:config        → go run scripts/config-reference/*.go <outputDir>
     └── mise run reference:linter-rules  → go run scripts/linter-rules-reference/*.go <outputDir>
 ```
+
+### Released CLI Reference
+
+`mise run docs:refresh` downloads the latest stable release source and runs
+the renderer in `scripts/cli-reference/` against it. Commands and environment variables go in
+`docs/sources/cli-reference.md`; the config schema replaces the generated section
+at the bottom of `docs/sources/configuration.md`, preserving the guide above it.
+After generation, review the diff, commit any changes, and open a separate
+documentation PR. The generated content is a release snapshot, not a drift target
+for command changes on `main`.
 
 ### CLI Reference (`scripts/cmd-reference/main.go`)
 

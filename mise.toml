@@ -123,6 +123,10 @@ description = "Generate reference docs and build mkdocs site"
 depends = ["reference"]
 run = "mkdocs build -f mkdocs.yml -d ./build/documentation"
 
+[tasks."docs:refresh"]
+description = "Regenerate the latest stable CLI and configuration references locally"
+run = "bash scripts/generate-cli-reference.sh"
+
 [tasks.reference]
 description = "Regenerate all reference documentation"
 depends = ["reference:cli", "reference:env-var", "reference:config", "reference:linter-rules"]

@@ -39,6 +39,11 @@ This generates a changelog entry (via Claude), updates `CHANGELOG.md` and `.rele
 
 The tag push triggers the GoReleaser workflow.
 
+After GoReleaser successfully publishes a stable release, remind the user to run
+`mise run docs:refresh`, review the changes to `docs/sources/cli-reference.md`
+and `docs/sources/configuration.md`, and open a separate documentation PR if there
+are changes. The task generates references for the latest stable release.
+
 ## Contribution handoff
 
 Before declaring the release complete, report the required contributions' draft paths and CMS submission/publication status. If submission is outstanding, name the comms owner and remaining action; a local draft alone is not a submitted contribution. If no contribution is required, state why.

@@ -6,6 +6,8 @@
 # Default / fallback rule
 * @grafana/grafana-gcx
 
+/docs/sources/ @grafana/grafana-gcx @grafana/docs-ai
+
 /cmd/gcx/instrumentation/ @grafana/grafana-gcx @grafana/fleet-management-backend
 /cmd/gcx/cloud/ @grafana/grafana-gcx @grafana/grafana-com-maintainers
 
