@@ -427,6 +427,45 @@ func TestGenericQueryCharacterization_PostgresLimitAndInterval(t *testing.T) {
 	assert.Empty(t, stderr, "a query within the limit warns about nothing")
 }
 
+func TestGenericQueryCharacterization_SQLLimit(t *testing.T) {
+	kinds := []struct {
+		dsType      string
+		wantDefault string
+		wantLimit5  string
+	}{
+		{"grafana-clickhouse-datasource", "SELECT 1 LIMIT 100", "SELECT 1 LIMIT 5"},
+		{"grafana-postgresql-datasource", "SELECT 1 LIMIT 100", "SELECT 1 LIMIT 5"},
+		{"mysql", "SELECT 1 LIMIT 100", "SELECT 1 LIMIT 5"},
+		{"grafana-bigquery-datasource", "SELECT 1 LIMIT 100", "SELECT 1 LIMIT 5"},
+		{"mssql", "SELECT TOP (101) 1", "SELECT TOP (6) 1"},
+	}
+
+	for _, k := range kinds {
+		t.Run(k.dsType, func(t *testing.T) {
+			for _, tc := range []struct {
+				name string
+				args []string
+				want string
+			}{
+				{"omitted", nil, k.wantDefault},
+				{"explicit", []string{"--limit", "5"}, k.wantLimit5},
+				{"zero", []string{"--limit", "0"}, "SELECT 1"},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					f := &fakeGrafana{t: t, dsType: k.dsType}
+
+					args := append([]string{"query", "uid", "SELECT 1", "-o", "json"}, tc.args...)
+					_, err := runGeneric(t, f, args...)
+					require.NoError(t, err)
+
+					q := firstQuery(t, f.mustBody(t))
+					assert.Equal(t, tc.want, q["rawSql"])
+				})
+			}
+		})
+	}
+}
+
 // The capped-LIMIT notice is the only thing postgres writes outside the stdout
 // document, so it pins both the capping and the stream it lands on.
 // dispatchPostgres and dispatchPinot both write LIMIT notices to warn.
