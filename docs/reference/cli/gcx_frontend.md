@@ -24,5 +24,8 @@ Manage Grafana Frontend Observability resources
 
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
 * [gcx frontend apps](gcx_frontend_apps.md)	 - Manage Frontend Observability apps.
+* [gcx frontend errors](gcx_frontend_errors.md)	 - Triage Frontend Observability error groups.
+* [gcx frontend pages](gcx_frontend_pages.md)	 - Inspect Frontend Observability page performance.
+* [gcx frontend query](gcx_frontend_query.md)	 - Run one PinotQL statement against the Frontend Observability tables.
 * [gcx frontend sessions](gcx_frontend_sessions.md)	 - Inspect Frontend Observability sessions.
 
