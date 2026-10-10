@@ -1,6 +1,9 @@
 ---
 name: slo-manage
-description: Creates, updates, syncs, and deletes Grafana SLO definitions via gcx with dry-run validation and GitOps pull/push workflows. Use when the user wants to create, update, pull, push, or delete SLO definitions. Trigger on phrases like "create an SLO", "update SLO objective", "push SLO", "pull SLOs", "delete SLO", or "GitOps sync SLOs". For checking SLO health or status, use slo-check-status instead. For investigating a breaching SLO, use slo-investigate instead.
+description: >-
+  Creates, updates, pulls, pushes, and deletes Grafana SLO definitions via gcx,
+  with dry-run validation and GitOps sync. For SLO health use slo-check-status.
+  For a breaching SLO use slo-investigate.
 allowed-tools: Bash, Read, Write, Edit
 ---
 

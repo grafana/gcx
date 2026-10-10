@@ -1,14 +1,9 @@
 ---
 name: generate-resource-stubs
-description: >
-  Generates typed Go stub files and grafana-foundation-sdk builder
-  boilerplate for dashboards and alert rules. Use only when the user
-  explicitly asks for stubs, generated resource skeletons, or builder
-  boilerplate. This is scaffolding only; for designing or creating a usable
-  dashboard with datasource discovery and snapshot iteration, use the
-  create-dashboard skill instead. Triggers on "generate stub", "dashboard
-  stub", "create alert rule stub", "foundation-sdk builder", or "builder
-  boilerplate".
+description: >-
+  Generates typed Go stubs and grafana-foundation-sdk builder boilerplate for
+  dashboards and alert rules. Use only when the user asks for stubs or builder
+  boilerplate. To design a usable dashboard, use create-dashboard.
 ---
 
 # Generate Typed Resource Stubs
