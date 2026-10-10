@@ -118,6 +118,8 @@ func (c *Client) GetPipeline(ctx context.Context, id string) (*Pipeline, error) 
 
 // CreatePipeline creates a new pipeline and returns it.
 func (c *Client) CreatePipeline(ctx context.Context, p Pipeline) (*Pipeline, error) {
+	// IDs are assigned server-side, and requests carrying one are rejected.
+	p.ID = ""
 	resp, err := c.doRequest(ctx, pathCreatePipeline, map[string]any{"pipeline": p})
 	if err != nil {
 		return nil, fmt.Errorf("fleet: create pipeline: %w", err)
