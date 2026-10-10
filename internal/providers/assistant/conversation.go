@@ -37,8 +37,8 @@ func (o *conversationListOpts) Validate() error {
 	if err := o.IO.Validate(); err != nil {
 		return err
 	}
-	if o.timeout <= 0 {
-		return errors.New("--timeout must be positive")
+	if err := validateTimeoutSeconds(o.timeout); err != nil {
+		return err
 	}
 	if o.limit < 0 {
 		return errors.New("--limit must not be negative")
@@ -119,10 +119,7 @@ func (o *conversationGetOpts) Validate() error {
 	if err := o.IO.Validate(); err != nil {
 		return err
 	}
-	if o.timeout <= 0 {
-		return errors.New("--timeout must be positive")
-	}
-	return nil
+	return validateTimeoutSeconds(o.timeout)
 }
 
 func (o *conversationGetOpts) setup(flags *pflag.FlagSet) {

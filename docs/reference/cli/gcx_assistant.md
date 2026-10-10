@@ -4,10 +4,12 @@ Interact with Grafana Assistant
 
 ### Synopsis
 
-Send prompts to Grafana Assistant and receive streaming responses via the A2A protocol.
+Send prompts to Grafana Assistant, read conversations and investigations,
+manage MCP integrations, or search indexed evidence.
 
-Requires Grafana Cloud with OAuth authentication (gcx login with browser flow).
-Service account tokens are not supported.
+Requires Grafana Cloud. Browser OAuth (gcx login with browser flow) is
+recommended. Plugin HTTP commands such as Assistant search also accept Grafana
+service account tokens with the required Assistant and resource permissions.
 
 Note: Grafana Assistant is billed based on tokens consumed, including requests
 made through gcx. See https://grafana.com/docs/grafana-cloud/machine-learning/assistant/pricing.md.
@@ -37,4 +39,5 @@ made through gcx. See https://grafana.com/docs/grafana-cloud/machine-learning/as
 * [gcx assistant investigations](gcx_assistant_investigations.md)	 - Manage Grafana Assistant investigations.
 * [gcx assistant mcp-servers](gcx_assistant_mcp-servers.md)	 - Manage Assistant MCP server integrations.
 * [gcx assistant prompt](gcx_assistant_prompt.md)	 - Send a single message to Grafana Assistant
+* [gcx assistant search](gcx_assistant_search.md)	 - Search historical and indexed Grafana evidence.
 
