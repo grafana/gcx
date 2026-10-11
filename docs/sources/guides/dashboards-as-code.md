@@ -49,7 +49,3 @@ To manage dashboards as code with `gcx` follow these steps:
    gcx config use-context YOUR_CONTEXT  # for example "dev"
    gcx resources push -p ./resources/
    ```
-
-## Learn more
-
-GIT SYNC TBA
