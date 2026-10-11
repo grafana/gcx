@@ -90,7 +90,7 @@ Start the agent in the relevant application or test checkout, and provide it wit
 - The relevant Compose project, deployment, or Collector configuration you own.
 - Which resources may be inspected and which actions require approval.
 
-Make sure the agent doesn't invent answers. Ask it to identify what information or access is missing. For example, uee this prompt, filling in what you know:
+Make sure the agent doesn't invent answers. Ask it to identify what information or access is missing. For example, use this prompt, filling in what you know:
 
 > Use the existing gcx skills to investigate `<symptom>`. Query only
 > `<config path and context>` and inspect only `<application/fixture scope>`.
