@@ -24,7 +24,7 @@ You can investigate directly or use an agent with `gcx` existing skills. Start w
 
 Before you begin, make sure to:
 
-- Follow [Install gcx](../installation) if `gcx version` is unavailable.
+- Follow [Install gcx](../../installation) if `gcx version` is unavailable.
 - Follow [Install Agent Skills](https://github.com/grafana/gcx#install-agent-skills) for your harness. Start a session that can discover the installed skills. The existing `debug-with-grafana` skill handles investigation; `setup-gcx` helps with setup.
 - Use a reachable Grafana instance supported by your `gcx` version, with access to the relevant datasources. A static instrumentation check alone does not provide a telemetry destination.
 - If you have no backend, [start docker-otel-lgtm](https://github.com/grafana/docker-otel-lgtm#run-the-docker-image)   for a local development sink. Setting up a sink does not authorize changing an existing application's exporter. A local proof does not establish that your production destination works.
@@ -55,7 +55,7 @@ gcx login diagnostics --config "$GCX_CONFIG" \
   --server https://your-grafana.example
 ```
 
-For local LGTM, use that repository's local connection instructions instead of this login step. See [Configure gcx](../configuration.md) for supported authentication methods. Supply credentials locally through the supported auth flow, not in chat, copied transcripts, or committed files. Prefer read-only access when available; approval instructions do not restrict API permissions.
+For local LGTM, use that repository's local connection instructions instead of this login step. See [Configure gcx](../../configuration.md) for supported authentication methods. Supply credentials locally through the supported auth flow, not in chat, copied transcripts, or committed files. Prefer read-only access when available; approval instructions do not restrict API permissions.
 
 ### Check the overrides
 
