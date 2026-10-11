@@ -16,7 +16,7 @@ weight: 4
 
 # Lint resources with `gcx`
 
-Use the Grafana CLI linter to verify that resources such as dashboards or comply with good practices and environment-specific policies.
+Use the Grafana CLI linter to verify that resources, such as dashboards and alert rules, comply with good practices and environment-specific policies.
 
 ## Use the linter
 
