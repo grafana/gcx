@@ -1,10 +1,10 @@
 package grafana
 
 import (
-	"errors"
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/grafana/gcx/internal/config"
@@ -12,19 +12,33 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-func AuthenticateAndProxyHandler(cfg *config.Context) http.HandlerFunc {
+func AuthenticateAndProxyHandler(restCfg config.NamespacedRESTConfig) http.HandlerFunc {
+	// Build the client once. rest.HTTPClientFor re-runs the REST config's
+	// WrapTransport, and in OAuth mode that closure assigns Base on the single
+	// shared RefreshTransport, so constructing per request races concurrent
+	// proxy requests on a field RefreshTransport reads without its mutex.
+	httpClient := sync.OnceValues(func() (*http.Client, error) {
+		client, err := rest.HTTPClientFor(&restCfg.Config)
+		if err != nil {
+			return nil, err
+		}
+		client.Timeout = 10 * time.Second
+		client.CheckRedirect = func(req *http.Request, _ []*http.Request) error {
+			// Being redirected to the login page means authentication is misconfigured.
+			// We interrupt the redirect and let the rest of AuthenticateAndProxyHandler
+			// handle that case.
+			if strings.HasSuffix(req.URL.Path, "/login") {
+				return http.ErrUseLastResponse
+			}
+
+			return nil
+		}
+
+		return client, nil
+	})
+
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Add("Content-Type", "text/html")
-
-		if err := ValidateDevProxyAuth(cfg); err != nil {
-			httputils.Error(r, w, err.Error(), err, http.StatusBadRequest)
-			return
-		}
-		restCfg, err := cfg.ToRESTConfig(r.Context())
-		if err != nil {
-			httputils.Error(r, w, "Grafana authentication configuration error", err, http.StatusBadRequest)
-			return
-		}
 
 		target := strings.TrimSuffix(restCfg.Host, "/") + r.URL.EscapedPath()
 		if r.URL.RawQuery != "" {
@@ -36,22 +50,10 @@ func AuthenticateAndProxyHandler(cfg *config.Context) http.HandlerFunc {
 			return
 		}
 
-		client, err := rest.HTTPClientFor(&restCfg.Config)
+		client, err := httpClient()
 		if err != nil {
 			httputils.Error(r, w, "Grafana transport configuration error", err, http.StatusInternalServerError)
 			return
-		}
-		client.Timeout = 10 * time.Second
-
-		client.CheckRedirect = func(req *http.Request, _ []*http.Request) error {
-			// Being redirected to the login page means authentication is misconfigured.
-			// We interrupt the redirect and let the rest of AuthenticateAndProxyHandler
-			// handle that case.
-			if strings.HasSuffix(req.URL.Path, "/login") {
-				return http.ErrUseLastResponse
-			}
-
-			return nil
 		}
 
 		resp, err := client.Do(req)
@@ -76,22 +78,4 @@ func AuthenticateAndProxyHandler(cfg *config.Context) http.HandlerFunc {
 		w.WriteHeader(resp.StatusCode)
 		httputils.Write(r, w, body)
 	}
-}
-
-// ValidateDevProxyAuth rejects configurations that the local development
-// proxy cannot use without risking credential loss. OAuth refresh-token
-// rotation must be wired to the owning config source; this proxy has only a
-// resolved Context, so it must fail before constructing or sending a request.
-func ValidateDevProxyAuth(cfg *config.Context) error {
-	if cfg == nil || cfg.Grafana == nil || cfg.Grafana.Server == "" {
-		return errors.New("no Grafana URL configured")
-	}
-	authMethod, err := cfg.EffectiveGrafanaAuthMethod()
-	if err != nil {
-		return err
-	}
-	if authMethod == "oauth" {
-		return errors.New("OAuth authentication is not supported by `gcx dev serve` because refreshed credentials cannot be persisted safely; run `gcx login --token <token>` for this context or select a token, Basic, or mTLS context")
-	}
-	return nil
 }

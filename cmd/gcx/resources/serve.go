@@ -77,10 +77,7 @@ While resources are loaded from disk, the server will use the Grafana instance
 described in the current context to access some data (example: to run queries
 when previewing dashboards).
 
-The local proxy supports token, Basic, and mTLS contexts. OAuth contexts fail
-before the server starts because this long-running process cannot yet persist
-rotated refresh-token generations safely; use a service-account token for local
-preview.
+The local proxy supports token, Basic, mTLS, and OAuth contexts.
 
 Note on NFS/SMB and watch mode: fsnotify requires support from underlying
 OS to work. The current NFS and SMB protocols does not provide network level
@@ -102,7 +99,12 @@ support for file notifications.
 				return err
 			}
 
-			cfg, err := configOpts.LoadConfig(cmd.Context())
+			// Build the REST config here rather than inside the server: only
+			// this layer owns the config source, so only it can wire OAuth
+			// refresh-token persistence. Without that, a long-running serve
+			// would rotate the refresh token into process memory and leave the
+			// consumed generation on disk, locking every other invocation out.
+			restCfg, currentContext, err := configOpts.LoadGrafanaConfigWithContext(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -188,7 +190,7 @@ support for file notifications.
 				Port:       opts.Port,
 				NoColor:    cmd.Flags().Lookup("no-color").Value.String() == "true",
 			}
-			resourceServer := server.New(serverCfg, cfg.GetCurrentContext(), parsedResources)
+			resourceServer := server.New(serverCfg, restCfg, currentContext, parsedResources)
 
 			logger.Debug(fmt.Sprintf("Listening on %s:%d", opts.Address, opts.Port))
 			cmdio.Info(cmd.OutOrStdout(), "Server will be available on http://localhost:%d/", opts.Port)

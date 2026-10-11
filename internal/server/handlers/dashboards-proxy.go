@@ -25,13 +25,13 @@ var _ ResourceHandler = &DashboardProxy{}
 
 // DashboardProxy describes how to proxy Dashboard resources.
 type DashboardProxy struct {
-	context   *config.Context
+	restCfg   config.NamespacedRESTConfig
 	resources *resources.Resources
 }
 
-func NewDashboardProxy(context *config.Context, resources *resources.Resources) *DashboardProxy {
+func NewDashboardProxy(restCfg config.NamespacedRESTConfig, resources *resources.Resources) *DashboardProxy {
 	return &DashboardProxy{
-		context:   context,
+		restCfg:   restCfg,
 		resources: resources,
 	}
 }
@@ -57,7 +57,7 @@ func (c *DashboardProxy) Endpoints(_ *httputil.ReverseProxy) []HTTPEndpoint {
 		{
 			Method:  http.MethodGet,
 			URL:     "/d/{uid}/{slug}",
-			Handler: grafana.AuthenticateAndProxyHandler(c.context),
+			Handler: grafana.AuthenticateAndProxyHandler(c.restCfg),
 		},
 		{
 			Method:  http.MethodGet,
