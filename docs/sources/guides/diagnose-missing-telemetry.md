@@ -30,7 +30,7 @@ Before you begin, make sure to:
 - If you have no backend, [start docker-otel-lgtm](https://github.com/grafana/docker-otel-lgtm#run-the-docker-image)   for a local development sink. Setting up a sink does not authorize changing an existing application's exporter. A local proof does not establish that your production destination works.
 - Know which application or fixture you may inspect. Do not enumerate unrelated containers, environments, or services to compensate for missing context.
 
-The command examples use the `gcx` v1.5.0 command surface. Check `gcx version` and the relevant command's `--help` when following them with another release.
+The command examples use the current `gcx` command surface. Check `gcx version` and the relevant command's `--help` when following them with another release.
 
 ## Connect without changing your usual context
 
