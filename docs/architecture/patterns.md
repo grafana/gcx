@@ -497,6 +497,18 @@ Do not introduce new serialization bridges, dispatch patterns, or
 type-erasure mechanisms. If TypedCRUD does not fit your use case, raise
 the issue for architectural discussion.
 
+### Sanctioned Exception — Provider-Owned Resource Hooks
+
+[ADR-026](../adrs/provider-owned-resource-hooks/026-provider-owned-resource-hooks.md)
+authorizes optional provider-neutral adapter hooks for pull preflight and partial
+multi-get/read reporting, complete batch push preflight, per-item envelope
+mutation dispatch, and identity-only delete selection. These preserve annotations
+and every selected identity before generic probes or name-keyed insertion.
+Domain identity and reconciliation remain in the owning adapter; generic pipelines
+use shared types and never branch on product names. Kinds without hooks retain
+the existing TypedCRUD pipeline. This exception permits only the recorded hook
+seams, not new serialization bridges or a generic reconciliation framework.
+
 ### Sanctioned Exception — Single-Seam Capability Assertion (`adapter.Resource[T]`)
 
 The declarative `adapter.Resource[T]` + `adapter.NewProvider` registration

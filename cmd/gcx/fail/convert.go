@@ -32,6 +32,7 @@ import (
 	"github.com/grafana/gcx/internal/providers/instrumentation/rmw"
 	"github.com/grafana/gcx/internal/queryerror"
 	"github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/resources/dynamic"
 	k8sapi "k8s.io/apimachinery/pkg/api/errors"
 )
@@ -71,6 +72,7 @@ func ErrorToDetailedError(err error) *gcxerrors.DetailedError {
 		convertAlreadyReported,             // Command already rendered a complete diagnostic report
 		convertUnknownFieldSelectionErrors, // --json unknown-field validation
 		convertJQRuntimeErrors,             // --jq runtime failures — includes output shape summary
+		convertSavedMutationErrors,
 		convertPartialFailureErrors,
 		convertUsageErrors,
 		convertCobraUnknownCommandErrors,
@@ -1831,4 +1833,12 @@ func convertContextCanceled(err error) (*gcxerrors.DetailedError, bool) {
 	}
 
 	return nil, false
+}
+
+func convertSavedMutationErrors(err error) (*gcxerrors.DetailedError, bool) {
+	var saved adapter.SavedMutationError
+	if !errors.As(err, &saved) || !saved.MutationWasSaved() {
+		return nil, false
+	}
+	return &gcxerrors.DetailedError{Summary: "Partial failure", Details: saved.Error(), ExitCode: new(gcxerrors.ExitPartialFailure), Suggestions: []string{"Inspect the saved resource, resolve the failed stage, then reapply the desired manifest."}}, true
 }

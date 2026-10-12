@@ -41,6 +41,7 @@ type Watcher struct {
 	AutomaticRecalibration EnabledSetting    `json:"automaticRecalibration"`
 	Notifications          Notifications     `json:"notifications"`
 	Investigation          Investigation     `json:"investigation"`
+	mutation               MutationOutcome
 	serverID               string
 }
 
@@ -200,8 +201,8 @@ func (w Watcher) Validate() error {
 	if err := watchers.ValidateIntervalSeconds(int64(duration / time.Second)); err != nil {
 		return fmt.Errorf("spec.interval: %w", err)
 	}
-	if w.Sensitivity != "sensitive" && w.Sensitivity != "balanced" && w.Sensitivity != "relaxed" {
-		return errors.New("spec.sensitivity must be sensitive, balanced, or relaxed")
+	if strings.TrimSpace(w.Sensitivity) == "" {
+		return errors.New("spec.sensitivity requires a nonblank string")
 	}
 	if w.AutoStop.At != "" {
 		if _, err := time.Parse(time.RFC3339, w.AutoStop.At); err != nil {
@@ -246,8 +247,8 @@ func (w Watcher) Validate() error {
 }
 
 func validateSeverity(path, value string) error {
-	if value != "warning-and-critical" && value != "critical" {
-		return fmt.Errorf("%s must be warning-and-critical or critical", path)
+	if strings.TrimSpace(value) == "" {
+		return fmt.Errorf("%s requires a nonblank string", path)
 	}
 	return nil
 }

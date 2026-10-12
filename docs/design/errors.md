@@ -171,6 +171,7 @@ Adding a new summary requires a PR amending this list.
 | `Resource conflict` | Optimistic lock / RMW conflict, or an API-reported conflict whose exact cause is not machine-discriminable (e.g. GCOM stack 409s) |
 | `Invalid stack request` | GCOM rejected stack create/update arguments (409 with code `InvalidArgument`) |
 | `Network error` | Connection refused, DNS failure |
+| `Partial failure` | A mutation saved a write before a later stage failed; preserve the saved identity and exit status 4 |
 | `API error` | Non-404/403 HTTP error from backend |
 | `Endpoint not available` | The requested API route is absent on this deployment or version (e.g. an experimental or Cloud-only endpoint), as opposed to a missing resource |
 | `Operation cancelled` | The user cancelled (exit code 5): Ctrl-C or another context cancellation, or Cancel on a browser login's consent page |

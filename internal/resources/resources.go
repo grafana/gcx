@@ -261,6 +261,23 @@ func (r *Resources) Add(resources ...*Resource) {
 	}
 }
 
+// AddDistinct retains an envelope even when another has the same resource ref.
+// It is used only by opt-in batch identity planning; authored metadata is intact.
+func (r *Resources) AddDistinct(resource *Resource) {
+	ref := resource.Ref()
+	key := ref
+	for n := 1; r.collection[key] != nil; n++ {
+		key = ResourceRef(fmt.Sprintf("%s\x00%d", ref, n))
+	}
+	if r.collection == nil {
+		r.collection = make(map[ResourceRef]*Resource)
+	}
+	r.collection[key] = resource
+	for _, cb := range r.onChangeFuncs {
+		cb(resource)
+	}
+}
+
 // OnChange adds a callback that will be called when a resource is added to the collection.
 func (r *Resources) OnChange(callback func(resource *Resource)) {
 	r.onChangeFuncs = append(r.onChangeFuncs, callback)

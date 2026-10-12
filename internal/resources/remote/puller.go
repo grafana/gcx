@@ -118,6 +118,9 @@ type PullRequest struct {
 	// Use Limit=1 for introspection operations (e.g. --json ? field discovery) to
 	// avoid triggering a full list operation.
 	Limit int64
+
+	// IdentityOnlyDelete uses optional identity selection before configuration reads.
+	IdentityOnlyDelete bool
 }
 
 // Pull pulls resources from Grafana.
@@ -146,10 +149,16 @@ func (p *Puller) Pull(ctx context.Context, req PullRequest) (*OperationSummary, 
 	errg, ctx := errgroup.WithContext(ctx)
 	errg.SetLimit(p.maxConcurrentListRequests)
 	partialRes := make([][]unstructured.Unstructured, len(filters))
+	identitySelected := make([]bool, len(filters))
 
 	for idx, filt := range filters {
 		errg.Go(func() error {
-			var err error
+			items, handled, err := p.selectDeleteFilter(ctx, req, filt, summary)
+			if handled {
+				identitySelected[idx] = true
+				partialRes[idx] = items
+				return err
+			}
 			partialRes[idx], err = p.pullFilter(ctx, req, filt, summary)
 			return err
 		})
@@ -166,7 +175,10 @@ func (p *Puller) Pull(ctx context.Context, req PullRequest) (*OperationSummary, 
 	}); ok {
 		selections := make([]adapter.PullSelection, len(filters))
 		for idx, filter := range filters {
-			selections[idx] = adapter.PullSelection{Filter: filter, Items: partialRes[idx]}
+			selections[idx] = adapter.PullSelection{Filter: filter}
+			if !identitySelected[idx] {
+				selections[idx].Items = partialRes[idx]
+			}
 		}
 		var err error
 		preflight, err = client.NewPullPreflight(pullCtx, selections)
@@ -195,7 +207,7 @@ func (p *Puller) Pull(ctx context.Context, req PullRequest) (*OperationSummary, 
 				continue
 			}
 
-			if preflight != nil {
+			if preflight != nil && !identitySelected[idx] {
 				if err := preflight(pullCtx, filters[idx], item); err != nil {
 					logger.Warn("Failed resource identity preflight", logs.Err(err))
 					summary.RecordFailure(res, err)
@@ -349,4 +361,29 @@ func (p *Puller) process(res *resources.Resource, processors []Processor) error 
 	}
 
 	return nil
+}
+
+// selectDeleteFilter handles identity selection without exporting configuration.
+func (p *Puller) selectDeleteFilter(ctx context.Context, req PullRequest, filt resources.Filter, summary *OperationSummary) ([]unstructured.Unstructured, bool, error) {
+	if !req.IdentityOnlyDelete {
+		return nil, false, nil
+	}
+	client, ok := p.client.(deleteSelectionClient)
+	if !ok {
+		return nil, false, nil
+	}
+	items, handled, err := client.SelectDelete(ctx, filt, nil)
+	if !handled || err == nil {
+		return items, handled, err
+	}
+	if req.Filters.IsEmpty() && errors.Is(err, adapter.ErrUnavailable) {
+		summary.RecordSkipped("unavailable")
+		return nil, true, nil
+	}
+	if req.StopOnError {
+		return nil, true, err
+	}
+	summary.RecordFailure(nil, err)
+	// Collection failure belongs to the summary; other selected kinds remain usable.
+	return nil, true, nil
 }

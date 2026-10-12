@@ -1,4 +1,4 @@
-// Package watchers exposes read-only Assistant Watcher commands.
+// Package watchers exposes Assistant Watcher configuration and status commands.
 package watchers
 
 import (
@@ -31,11 +31,11 @@ func markExperimental(cmd *cobra.Command) {
 	cmd.Annotations = map[string]string{agent.AnnotationStability: agent.StabilityExperimental}
 }
 
-// Commands returns the experimental read subtree.
+// Commands returns the experimental Watcher subtree.
 func Commands(loader *providers.ConfigLoader) *cobra.Command {
-	cmd := &cobra.Command{Use: "watchers", Short: "Inspect Assistant Watchers.", Long: "Read recurring telemetry-monitoring definitions and their current runtime observations. Use get for configuration and status for calibration, checks and assessments. These commands do not start monitoring or change Watchers.", Example: "  gcx assistant watchers list\n  gcx assistant watchers get checkout-health -o yaml\n  gcx assistant watchers status checkout-health -o json"}
+	cmd := &cobra.Command{Use: "watchers", Short: "Manage Assistant Watcher configuration.", Long: "Read and manage recurring telemetry-monitoring definitions. Use get for configuration, status for calibration and assessments, and create/update for authoritative configuration manifests. Configuration writes do not activate Watchers or request calibration.", Example: "  gcx assistant watchers list\n  gcx assistant watchers get checkout-health -o yaml\n  gcx assistant watchers update checkout-health -f watcher.yaml"}
 	markExperimental(cmd)
-	cmd.AddCommand(newListCommand(loader), newReadCommand(loader, false), newReadCommand(loader, true))
+	cmd.AddCommand(newListCommand(loader), newReadCommand(loader, false), newReadCommand(loader, true), newWriteCommand(loader, false), newWriteCommand(loader, true), newDeleteCommand(loader))
 	return cmd
 }
 
@@ -304,6 +304,18 @@ func (c *tableCodec) Decode(io.Reader, any) error {
 	return errors.New("table format does not support decoding")
 }
 func (c *tableCodec) Encode(dst io.Writer, value any) error {
+	if result, ok := value.(mutationResult); ok {
+		table := style.NewTable("OPERATION", "NAME", "ID", "CONFIGURATION", "ENROLLMENT", "READBACK")
+		table.Row(result.Action, result.Target.Name, result.Target.ID, result.Outcome.Configuration, result.Outcome.Enrollment, result.Outcome.Readback)
+		if err := table.Render(dst); err != nil {
+			return err
+		}
+		if result.Error != "" {
+			_, err := fmt.Fprintln(dst, result.Error)
+			return err
+		}
+		return nil
+	}
 	if result, ok := value.(statusResult); ok {
 		table := style.NewTable("FIELD", "VALUE")
 		data, err := json.Marshal(result)

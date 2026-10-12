@@ -89,3 +89,46 @@ type PullPreflight func(context.Context, resources.Filter, unstructured.Unstruct
 type PullPreflighter interface {
 	NewPullPreflight(selections []PullSelection) PullPreflight
 }
+
+// PushSelection retains every local envelope before any mutation or identity probe.
+type PushSelection struct {
+	Descriptor resources.Descriptor
+	Items      []*resources.Resource
+}
+
+// PushPreflight checks a resource against an invocation-scoped identity plan.
+// It may retain resolved addressing metadata on the resource for envelope dispatch.
+type PushPreflight func(context.Context, *resources.Resource) error
+
+// PushPreflighter optionally resolves a complete batch before concurrent writes.
+// Dry-runs bypass this remote identity planning and use PushEnvelope directly.
+type PushPreflighter interface {
+	NewPushPreflight(ctx context.Context, selections []PushSelection) (PushPreflight, error)
+}
+
+// EnvelopePusher owns upsert and local dry-run validation for a complete envelope.
+// It runs before the shared name/existence/natural-key probes.
+type EnvelopePusher interface {
+	PushEnvelope(ctx context.Context, obj *unstructured.Unstructured, opts metav1.CreateOptions) error
+}
+
+// DeleteSelector selects minimal identity envelopes without configuration reads.
+// Nil manifests request selector-based resolution; nonnil manifests request
+// strict resolution of the addressing metadata in local files.
+// Returned metadata.name values are the IDs passed to the shared Delete method.
+type DeleteSelector interface {
+	SelectDelete(ctx context.Context, filter resources.Filter, manifests []unstructured.Unstructured) ([]unstructured.Unstructured, error)
+}
+
+// OperationWarnings carries safe, nonfatal diagnostics alongside an outcome.
+// An unverified dry-run may implement this without changing the output envelope.
+type OperationWarnings interface {
+	OperationWarnings() []string
+}
+
+// SavedMutationError identifies a failed operation whose earlier write succeeded.
+// Callers must preserve the receipt and partial-failure status even when aborting.
+type SavedMutationError interface {
+	error
+	MutationWasSaved() bool
+}

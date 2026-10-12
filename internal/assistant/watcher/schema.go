@@ -18,7 +18,7 @@ func buildWatcherSchema() json.RawMessage {
 	nonblank := map[string]any{"type": "string", "pattern": `\S`}
 	boolean := map[string]any{"type": "boolean", "default": false}
 	enabled := func() map[string]any { return schemaObject(map[string]any{"enabled": boolean}) }
-	severity := map[string]any{"type": "string", "enum": []string{"warning-and-critical", "critical"}, "default": "warning-and-critical"}
+	severity := map[string]any{"type": "string", "pattern": `\S`, "description": "Known values: warning-and-critical, critical. Other strings are validated by the API.", "default": "warning-and-critical"}
 	secret := schemaObject(map[string]any{"fromEnv": nonblank, "fromFile": nonblank, "preserve": map[string]any{"const": true}, "clear": map[string]any{"const": true}})
 	secret["minProperties"] = 1
 	secret["maxProperties"] = 1
@@ -39,7 +39,7 @@ func buildWatcherSchema() json.RawMessage {
 		"title": nonblank, "description": map[string]any{"type": "string", "default": ""}, "prompt": nonblank,
 		"datasourceUids":        stringsArray,
 		"interval":              map[string]any{"type": "string", "pattern": `^(?:[0-9]+y)?(?:[0-9]+w)?(?:[0-9]+d)?(?:[0-9]+h)?(?:[0-9]+m)?(?:[0-9]+s)?$`, "minLength": 2, "not": map[string]any{"pattern": `^(?:0+[ywdhms])+$`}, "description": "Positive whole-second duration within the target's supported range."},
-		"sensitivity":           map[string]any{"type": "string", "enum": []string{"sensitive", "balanced", "relaxed"}, "default": "balanced"},
+		"sensitivity":           map[string]any{"type": "string", "pattern": `\S`, "description": "Known values: sensitive, balanced, relaxed. Other strings are validated by the API.", "default": "balanced"},
 		"skipReviewOnCleanRuns": map[string]any{"type": "boolean", "default": true}, "autoStop": autoStop,
 		"labels":                 map[string]any{"type": "object", "additionalProperties": str, "default": map[string]string{}},
 		"automaticRecalibration": enabled(),

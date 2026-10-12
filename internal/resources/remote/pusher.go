@@ -106,6 +106,9 @@ type PushRequest struct {
 	// returned by the Push() function to explore and report failures.
 	NoPushFailureLog bool
 
+	// Populated by Push before any mutation.
+	preflight adapter.PushPreflight
+
 	// Whether to include resources managed by other tools.
 	IncludeManaged bool
 }
@@ -120,6 +123,11 @@ func (p *Pusher) Push(ctx context.Context, request PushRequest) (*OperationSumma
 
 	if request.MaxConcurrency < 1 {
 		request.MaxConcurrency = 1
+	}
+	var err error
+	request.preflight, err = p.newPushPreflight(ctx, request, supported)
+	if err != nil {
+		return summary, err
 	}
 
 	// Create natural key cache for cross-stack matching.
@@ -271,7 +279,22 @@ func (p *Pusher) pushSingleResource(
 		return nil
 	}
 
+	if err := checkPushPreflight(ctx, request.preflight, res); err != nil {
+		summary.RecordFailure(res, err)
+		if request.StopOnError {
+			return err
+		}
+		if !request.NoPushFailureLog {
+			logger.Warn("Failed push identity preflight", logs.Err(err))
+		}
+		return nil
+	}
+
 	if err := p.upsertResource(ctx, desc, name, res, request.DryRun, logger, nkCache); err != nil {
+		var warnings adapter.OperationWarnings
+		if errors.As(err, &warnings) {
+			summary.RecordWarnings(warnings.OperationWarnings())
+		}
 		// The guard blocked a dry-run against an API that ignores server-side dryRun.
 		// Record it as skipped (not a failure) and keep going, like the puller does for
 		// unlistable types.
@@ -304,6 +327,14 @@ func (p *Pusher) upsertResource(
 	var dryRunOpts []string
 	if dryRun {
 		dryRunOpts = []string{"All"}
+	}
+	if client, ok := p.client.(interface {
+		PushEnvelope(ctx context.Context, desc resources.Descriptor, obj *unstructured.Unstructured, opts metav1.CreateOptions) (bool, error)
+	}); ok {
+		obj := src.ToUnstructured()
+		if handled, err := client.PushEnvelope(ctx, desc, &obj, metav1.CreateOptions{DryRun: dryRunOpts}); handled {
+			return err
+		}
 	}
 
 	sourceObj := src.ToUnstructured()
@@ -422,3 +453,43 @@ func (p *Pusher) supportedDescriptors() map[schema.GroupVersionKind]resources.De
 }
 
 var errReadOnlyNative = errors.New("read-only native resource")
+
+// newPushPreflight prepares every selected envelope before the first mutation.
+func (p *Pusher) newPushPreflight(ctx context.Context, request PushRequest, supported map[schema.GroupVersionKind]resources.Descriptor) (adapter.PushPreflight, error) {
+	if request.DryRun {
+		return func(context.Context, *resources.Resource) error { return nil }, nil
+	}
+	client, ok := p.client.(interface {
+		NewPushPreflight(ctx context.Context, selections []adapter.PushSelection) (adapter.PushPreflight, error)
+	})
+	if !ok {
+		return func(context.Context, *resources.Resource) error { return nil }, nil
+	}
+	grouped := make(map[schema.GroupVersionKind]*adapter.PushSelection)
+	for _, res := range request.Resources.AsList() {
+		gvk := resources.NormalizeGVK(res.GroupVersionKind())
+		desc, supportedKind := supported[gvk]
+		if !supportedKind || (!res.IsManaged() && !request.IncludeManaged) {
+			continue
+		}
+		if adapter.CheckMutation(desc, "push") != nil {
+			continue
+		}
+		if grouped[gvk] == nil {
+			grouped[gvk] = &adapter.PushSelection{Descriptor: desc}
+		}
+		grouped[gvk].Items = append(grouped[gvk].Items, res)
+	}
+	selections := make([]adapter.PushSelection, 0, len(grouped))
+	for _, selection := range grouped {
+		selections = append(selections, *selection)
+	}
+	return client.NewPushPreflight(ctx, selections)
+}
+
+func checkPushPreflight(ctx context.Context, check adapter.PushPreflight, res *resources.Resource) error {
+	if check == nil {
+		return nil
+	}
+	return check(ctx, res)
+}
