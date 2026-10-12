@@ -384,9 +384,10 @@ for the complete signal list and supported names. See
 
 **Behavioral effects when agent mode is active:**
 - Color output disabled globally (`color.NoColor = true`)
-- Default output format overridden to `agents` (compact JSON with file spill)
+- Default display format overridden to `agents` (compact JSON below 100 KiB, temp-file spill above)
+- `resources pull` and `resources edit` pin their file format and reject `-o agents`; deprecated SLO pulls retain fixed YAML without an `-o` flag
 - Pipe-aware behaviors forced: `IsPiped=true`, `NoTruncate=true` regardless of TTY state
-- In-band error JSON written to stdout on failure (see `cmd/gcx/fail/json.go`)
+- In-band error JSON written to stdout on failure (see `internal/gcxerrors/json.go`)
 
 **Pipe detection** is also independent of agent mode. Root `PersistentPreRun` calls
 `terminal.Detect()` which checks `term.IsTerminal(os.Stdout.Fd())`. When piped:
@@ -402,7 +403,7 @@ behaviors regardless of actual TTY state.
 - `internal/terminal/terminal.go` — `Detect()`, `IsPiped()`, `NoTruncate()`, setters
 - `cmd/gcx/root/command.go` — orchestrates detection order in `PersistentPreRun`
 - `internal/output/format.go` — `io.Options` fields `IsPiped`, `NoTruncate`, `JSONFields`
-- `cmd/gcx/fail/json.go` — `DetailedError.WriteJSON` for in-band error reporting
+- `internal/gcxerrors/json.go` — `DetailedError.WriteJSON` for in-band error reporting
 
 **Evidence:**
 - `internal/agent/` package with `init()`-time env-var detection

@@ -70,7 +70,7 @@ See [../architecture/config-system.md](../architecture/config-system.md) for the
 |----------|--------|---------------|
 | `GCX_AUTO_APPROVE` | Auto-enable `--force` on delete operations | See `docs/reference/environment-variables/` |
 
-Accepts: `1`, `true`, `0`, `false` (parsed by `caarlos0/env/v11`)
+Accepts the `strconv.ParseBool` vocabulary and nothing else. Setting it is not the same as enabling it, and an unparseable value fails the command outright — [safety.md](safety.md) § 3.3 owns the truth table.
 
 **Implementation:** `internal/config/cli_options.go` - `CLIOptions` struct loaded via `LoadCLIOptions()`
 
@@ -78,7 +78,7 @@ Accepts: `1`, `true`, `0`, `false` (parsed by `caarlos0/env/v11`)
 
 | Variable | Source | Effect |
 |----------|--------|--------|
-| `GCX_AGENT_MODE` | Explicit opt-in/out | `1`/`true`/`yes` enables agent mode; `0`/`false`/`no` disables it. The `--agent` flag takes precedence. |
+| `GCX_AGENT_MODE` | Explicit opt-in/out | `1`/`true`/`yes` enables agent mode; `0`/`false`/`no` disables it. The `--agent` flag takes precedence. Unrecognized values are ignored and identity detection continues; see [agent-mode.md § 6.1](agent-mode.md#61-detection). |
 | `GCX_AGENT_NAME` | Explicit identity | A supported name enables agent mode and sets the telemetry `agent` label. A `name@version` value uses only the name. Unknown names are ignored. |
 | `AI_AGENT` | Shared identity | A supported name enables agent mode. A `name@version` value uses only the name. Unknown names are ignored. |
 | `AGENT` | Goose | The value `goose` enables agent mode. Other values are ignored. |

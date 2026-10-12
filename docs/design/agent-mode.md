@@ -22,6 +22,16 @@ The full list is in the
 `GCX_AGENT_MODE=0` disables automatic mode detection.
 `GCX_AGENT_MODE=1` enables mode even when the harness name is unknown.
 
+Unrecognized `GCX_AGENT_MODE` values fall through to identity detection rather
+than failing. For example, `GCX_AGENT_MODE=off` does not disable a truthy
+`CLAUDECODE`; use `0`, `false`, or `no`. This vocabulary differs from
+`GCX_AUTO_APPROVE` (see [safety.md § 3.3](safety.md#33-agent-mode-rejects-unbypassed-destructive-operations-implemented)).
+
+Use `--agent`, `--agent=true`, or `--agent=false` in instructions and scripts.
+The current pre-parser in `main.go` and Cobra's bool parser differ on other
+spellings: `--agent=t` is accepted but selects false, while `--agent=yes` is
+rejected by Cobra. These are existing parser quirks, not recommended syntax.
+
 **Identity priority:** supported `GCX_AGENT_NAME` > native boolean signals
 in source order > native session markers in source order > supported
 `AI_AGENT` > `AGENT=goose`. Kilo precedes OpenCode. Qwen precedes Gemini CLI.
@@ -44,8 +54,9 @@ Reference: `internal/agent/agent.go`
 ### 6.2 Behavior Changes
 
 When agent mode is active:
-1. **Default output format** becomes `agents` for all commands (overrides
-   per-command `DefaultFormat()` in `io.Options.BindFlags()`). The `agents`
+1. **Default display format** becomes `agents` for commands using
+   `io.Options.BindFlags()`, overriding `DefaultFormat()` unless the command
+   pins its format with `PinDefaultFormat` (see § 6.4). The `agents`
    codec emits compact JSON when the payload is ≤ 100 KiB and spills to a
    temp file otherwise — see [output.md § Agents Codec](output.md#111-agents-codec)
 2. **Color** is disabled (`color.NoColor = true` in `PersistentPreRun`)
@@ -56,7 +67,8 @@ When agent mode is active:
 The following are **not yet implemented**:
 5. Spinners/progress indicators suppressed (none exist yet; the suppression
    contract via `IsPiped` is in place for when they are added)
-6. Confirmation prompts auto-approved ([safety.md § Agent Mode Auto-Approve](safety.md#33-agent-mode-auto-approve))
+
+Confirmation behavior follows [safety.md § 3.3](safety.md#33-agent-mode-rejects-unbypassed-destructive-operations-implemented): agent detection alone never grants approval.
 
 **Agent-mode hint banner.** When agent mode emits JSON-like output without
 `--json` field selection or `--jq` transformation in use, gcx writes a single
@@ -77,7 +89,7 @@ from `| python -c "..."` aggregation pipelines toward built-in transformation.
 
 ### 6.2a Format choice vs non-format presentation properties
 
-**Format choice** (`-o text/wide/json/yaml`) is controlled by explicit flags. An explicit `-o wide` overrides the agent-mode JSON default — this is documented behavior.
+**Format choice** (`-o text/wide/json/yaml`) is controlled by explicit flags. An explicit `-o wide` overrides the agent-mode `agents` default — this is documented behavior.
 
 **Non-format presentation properties** (color, truncation, box-drawing characters) are ALWAYS suppressed in agent mode, regardless of which format is active:
 - `-o wide` under agent mode: renders a wide table with no ANSI colors, no box chars.
@@ -107,9 +119,9 @@ land unclassified. When agent mode supplies the default (no explicit
 | Class | Agent-mode stdout contract |
 |-------|---------------------------|
 | `finite` | Exactly one JSON value — the result, or a fused/in-band error document — with the process exit code agreeing with the outcome. A command that has already written its complete document returns `gcxerrors.EmittedError` so the reporter never appends a second one. |
-| `artifact` | Files on disk are the real output; stdout carries exactly one JSON receipt (`gcx.artifact_receipt`: paths, format, counts, failures). Applies to the pull family (`resources pull`, `slo definitions/reports pull`). The `-o` flag selects the FILE format and is pinned via `Options.PinDefaultFormat` — agent mode must never produce `.agents` resource files or spill envelopes as manifests (`resources edit` shares the pin). Commands that write files as a side effect but answer with an ordinary result document (skills install, dev generate, config set) are class `finite`. |
+| `artifact` | Files on disk are the real output; stdout carries exactly one JSON receipt (`gcx.artifact_receipt`: paths, format, counts, failures). Applies to the pull family (`resources pull`, `slo definitions/reports pull`). For `resources pull`, `-o` selects the FILE format and its default is pinned via `Options.PinDefaultFormat` (`resources edit` shares the pin); deprecated SLO pulls retain fixed YAML and expose no `-o` flag. Agent mode must never produce `.agents` resource files or spill envelopes as manifests. Commands that write files as a side effect but answer with an ordinary result document (skills install, dev generate, config set) are class `finite`. |
 | `stream` | Typed, versioned JSONL: every line independently parseable with a `type` discriminator, ending in a terminal success/error event. |
-| `interactive` | Drives a prompt, editor, or wizard — exempt from the JSON contract, but must never block in agent mode: confirmation gates fail fast without `--force` (`CheckDestructiveBypass`), approval prompts are explicitly declined, and `resources edit` fails with an instructive error when no `EDITOR`/`VISUAL` is configured (an explicitly configured editor is honored — non-interactive editors are legitimate automation). Known gap: browser-OAuth login still blocks on its localhost callback in agent mode; use token auth in harnesses (follow-up). |
+| `interactive` | Drives a prompt, editor, or wizard — exempt from the JSON contract, but must never block in agent mode: confirmation gates follow the [bypass and rejection rules in safety.md § 3.3](safety.md#33-agent-mode-rejects-unbypassed-destructive-operations-implemented) (`CheckDestructiveBypass`), approval prompts are explicitly declined, and `resources edit` fails with an instructive error when no `EDITOR`/`VISUAL` is configured (an explicitly configured editor is honored — non-interactive editors are legitimate automation). Known gap: browser-OAuth login still blocks on its localhost callback in agent mode; use token auth in harnesses (follow-up). |
 | `server` / `shell` / `prose` / `raw` | Long-running listeners, completion scripts, help prose, and byte passthrough (`gcx api`, alert exports, kubectl-pipeable YAML emitters) — exempt, declared. |
 
 Explicit protocol-changing flags follow the flag, not the class: `--open`
