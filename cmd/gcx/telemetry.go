@@ -80,6 +80,10 @@ func buildUsageEvent(info *root.TelemetryInfo, start time.Time, exitCode int) te
 		TargetKind: internalconfig.CapturedTargetKind(),
 	}
 
+	if event.Agent == "" && event.IsAgent {
+		event.Agent = "generic"
+	}
+
 	// The provider is the top-level command, the first segment of the path.
 	if fields := strings.Fields(info.Command); len(fields) > 0 {
 		event.Provider = fields[0]

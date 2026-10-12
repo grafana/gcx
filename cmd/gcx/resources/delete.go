@@ -93,11 +93,14 @@ func deleteCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	# Delete all dashboards using environment variable
 	GCX_AUTO_APPROVE=1 gcx resources delete dashboards
 
-	# Provider-backed resource types (SLO, Synthetic Monitoring, Alerting):
+	# Provider-backed resources (SLO and Synthetic Monitoring):
 
 	gcx resources delete slo/my-slo-uuid
-	gcx resources delete checks/my-check-uuid
-	gcx resources delete rules/my-rule-uuid
+	gcx resources delete checks.syntheticmonitoring/my-check-uuid
+
+	# Native Grafana alert rules:
+
+	gcx resources delete alertrules/my-rule-uid
 `,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()

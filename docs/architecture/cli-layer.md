@@ -165,6 +165,15 @@ Key: SELECTOR = `kind[/name[,name...]]` or long form `kind.group/name`
 
 ---
 
+## Agent Identity
+
+`internal/agent` resolves native signals and supported explicit names.
+Command defaults and usage telemetry use the same detector.
+`GCX_AGENT_NAME` supports harnesses without a native marker.
+Only fixed labels reach telemetry. Test helpers clear the detector's full
+input list through `agent.EnvironmentVariables()`.
+See [agent mode](../design/agent-mode.md#61-detection) for precedence.
+
 ## Portable Skill Lifecycle
 
 `claude-plugin/assets.go` embeds `skills/` and `skills-catalog.yaml` separately.
@@ -202,10 +211,10 @@ Do you need only standard CRUD on an externally accessible, discoverable
 Being on `/apis` settles CRUD, not the command surface: `gcx dashboards` and
 `gcx alert` are dedicated command trees over `/apis`-backed products, because
 their real operations are not CRUD verbs. Product-specific operations need their
-own placement analysis regardless of tier. And a commands-only provider that calls
-the K8s dynamic client extends the single documented exception in
-`CONSTITUTION.md` § Architecture Invariants (`internal/providers/dashboards/`,
-ADR 016), which requires explicit human approval.
+own placement analysis regardless of tier. Provider commands over a native
+`/apis` resource go through the shared native binding (`internal/providers/native`,
+see `CONSTITUTION.md` § Architecture Invariants); dashboards still hand-rolls this
+access until its pending migration lands.
 
 See `.claude/skills/add-provider/references/decision-tree.md` for the full
 decision tree.
@@ -687,11 +696,14 @@ func (c *tableCodec) Decode(io.Reader, any) error { return errors.New("not suppo
 Four colored message functions output to a given `io.Writer`:
 
 ```go
-cmdio.Success(cmd.OutOrStdout(), "%d resources pushed, %d errors", ok, fail)
-cmdio.Warning(cmd.OutOrStdout(), "...")
-cmdio.Error(cmd.OutOrStdout(), "...")
-cmdio.Info(cmd.OutOrStdout(), "...")
+cmdio.Success(cmd.ErrOrStderr(), "%d resources pushed, %d errors", ok, fail)
+cmdio.Warning(cmd.ErrOrStderr(), "...")
+cmdio.Error(cmd.ErrOrStderr(), "...")
+cmdio.Info(cmd.ErrOrStderr(), "...")
 ```
+
+Pass the **stderr** writer: stdout carries the result, stderr the diagnostics
+(see [output.md § 1.4](../design/output.md) and CONSTITUTION.md § Output).
 
 They prefix with colored Unicode symbols (✔ ⚠ ✘ 🛈). `--no-color` disables all color globally via `color.NoColor = true` in root's `PersistentPreRun`.
 
@@ -870,7 +882,7 @@ cmd.AddCommand(myCmd(configOpts))
 | `configOpts.LoadGrafanaConfig` is called in `RunE`, not at construction | All resource commands |
 | `--config` and `--context` are persistent on the group, not per-subcommand | `resources/command.go`, `config/command.go` |
 | All errors bubble up through `RunE` return value; never `os.Exit` in commands | All commands |
-| Status messages go to `cmd.OutOrStdout()`, not `os.Stdout` directly | All commands |
+| Status messages go to `cmd.ErrOrStderr()`, never `os.Stdout`/`os.Stderr` directly | All commands |
 | Custom table codecs implement `format.Codec` and are registered before `BindFlags` | `get.go`, `list.go`, `validate.go` |
 | Data fetching is format-agnostic — fetch all fields, let codecs filter display | All commands with custom codecs |
 | `OnErrorMode` is always validated in `opts.Validate()`, not inline | All multi-resource commands |

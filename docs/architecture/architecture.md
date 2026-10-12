@@ -655,7 +655,7 @@ Files most important for understanding the codebase. Organized by architectural 
 
 | File | Purpose |
 |------|---------|
-| `internal/agent/agent.go` | `IsAgentMode()`, `SetFlag()` — env-var detection at init time |
+| `internal/agent/agent.go` | `IsAgentMode()`, `SetFlag()`, `Name()` — native signals and supported explicit identities |
 | `internal/terminal/terminal.go` | `Detect()`, `IsPiped()`, `NoTruncate()` — TTY/pipe state for output suppression |
 
 ### Client Layer

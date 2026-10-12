@@ -262,11 +262,17 @@ apiregistration.k8s.io          — internal K8s
 featuretoggle.grafana.app       — read-only feature flags
 service.grafana.app             — internal service registry
 userstorage.grafana.app         — internal user storage
-notifications.alerting.grafana.app — pending decision
 iam.grafana.app                 — identity/access management
 ```
 
-Additionally, `FilterDiscoveryResults()` (line 181) excludes:
+`partiallyExposedGroups` keeps a group's `APIGroup` entry (and its preferred
+version) but hides every resource not on the group's allowlist:
+
+```
+notifications.alerting.grafana.app — only routingtrees
+```
+
+Additionally, `FilterDiscoveryResults()` excludes:
 - Non-namespaced resources (line 207) — all Grafana resources are namespaced
 - Subresources (containing `/` in name, line 212) — e.g. `dashboards/status`
 

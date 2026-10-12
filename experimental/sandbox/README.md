@@ -157,6 +157,17 @@ of about 40 s, and the cache can stay read-only.
   affect it. If anything differs (for example, your build resolves a different
   wazero version than this module pins), the cache misses and `New` compiles
   from scratch: slower, but correct.
+- **Copy this module's wazero `replace`.** Until its memory fixes are released
+  upstream, this module pins a wazero fork with a `replace` in its `go.mod`
+  (see the comment there). Go ignores a dependency's `replace` directives, so
+  put the same `require` and `replace` lines for `github.com/tetratelabs/wazero`
+  in your own `go.mod`. Without them your build fails: the required version
+  is the fork commit's pseudo-version, which upstream wazero doesn't have
+  (`go get` reports `unknown revision`). Re-copy both lines whenever you
+  update this module. A stale `replace` silently wins over the newer
+  `require`, so your build runs the old fork commit while reporting the new
+  version, and wazero keys its cache on that version: it would load compiled
+  code from the published cache that a different fork commit produced.
 
 ## Security model
 
@@ -186,9 +197,54 @@ Each `Run`:
   about 94 MiB, and `New` rejects anything lower. Outside that cap, the host
   holds at most a couple of 32 KiB chunks of each response body, which it
   streams to the guest as the guest reads it.
+  On Linux, each instance's memory is its own mapping, reserving address
+  space for the whole cap (4 GiB when unset) but touched only as the guest
+  uses it, and returned to the OS when `Run` returns. It lives outside the Go
+  heap, so the GC and `GOMEMLIMIT` don't count it: set `GOMEMLIMIT` low
+  enough to leave room for the runs you allow at once, and watch the
+  container's memory or PSS. The module's data segments, about 62 MiB of
+  gcx's read-only data, become one memory image that every instance maps
+  copy-on-write: a run writes only about 0.1 MiB of it, and the rest is
+  shared and counted once, however many runs there are. RSS counts it once
+  per run, so it overstates what runs use. The image is best effort: if `New`
+  can't split the module that way, or the kernel refuses the memfd or the
+  mapping, each run copies the segments again, ~62 MiB for gcx, and nothing
+  reports it. Under
+  strict overcommit (`vm.overcommit_memory=2`) each run commits its whole
+  cap while it runs, so set `MemoryLimitBytes` there: the 4 GiB default can
+  exhaust the commit limit and kill the process. If the kernel refuses the
+  reservation, that instance uses the Go heap and its memory is left for the
+  GC, as on other platforms. `Run` copies stdin and stdout/stderr through its own buffers,
+  so your readers and writers never hold a slice of guest memory. An
+  `*os.File` is passed through as is, so the guest can poll and stat it.
 - **Time:** the guest stops when `ctx` is cancelled or its deadline passes.
   gcx's retry backoff sleeps can't be interrupted, so stopping can lag by up to
   one backoff interval.
+
+## Measuring memory
+
+`measure.sh` measures what a process embedding the sandbox uses with each of
+one or more gcx checkouts, and prints markdown tables comparing them, with a
+change row between each pair:
+
+```sh
+experimental/sandbox/measure.sh gcx.wasm main=../gcx-main this=.
+```
+
+For each checkout, it builds `internal/cmd/measure` against that checkout's
+sandbox and wazero pin, and precompiles its own cache. Then it runs each build
+twice with `FORCE_GC=1` (collect and free before each report, for fixed costs)
+and twice without (what a server holds between bursts). Each run gets its own
+cgroup, starts with the module and cache evicted from page cache, loads gcx,
+runs `gcx version`, then runs two rounds of 10 concurrent `gcx commands`. The
+tables report the cgroup's peak, the cost per concurrent run, and the fixed
+cost after `gcx version`. The raw reports stay in `$OUT`.
+
+It needs Linux with cgroup v2 and a systemd user manager, for
+`systemd-run --user --scope`, plus Go. Use the same `gcx.wasm` for every build,
+for example the published one (`/gcx.wasm` in `ghcr.io/grafana/gcx-wasm`), so
+that only the host side varies. The method is sd2k's, from
+[#1498](https://github.com/grafana/gcx/pull/1498#issuecomment-6062809173).
 
 ## Limitations
 

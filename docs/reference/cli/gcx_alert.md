@@ -12,7 +12,7 @@ Manage Grafana alert rules and alert groups
 ### Options inherited from parent commands
 
 ```
-      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
+      --agent                       Enable agent mode (JSON output, no color). Auto-detected from known agent identity variables. Set GCX_AGENT_NAME to identify a supported harness, or GCX_AGENT_MODE to control the mode.
       --context string              Name of the context to use (overrides current-context in config)
       --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Requires -vvv. Do not ship these logs.
       --no-color                    Disable color output
@@ -29,6 +29,7 @@ Manage Grafana alert rules and alert groups
 * [gcx alert mute-timings](gcx_alert_mute-timings.md)	 - Manage Grafana alerting mute timings.
 * [gcx alert notification-history](gcx_alert_notification-history.md)	 - Inspect alert notification delivery history.
 * [gcx alert notification-policies](gcx_alert_notification-policies.md)	 - Manage the Grafana alerting notification policy tree.
+* [gcx alert routing-trees](gcx_alert_routing-trees.md)	 - Manage notification routing trees (default and named).
 * [gcx alert ruler](gcx_alert_ruler.md)	 - Manage datasource-managed (Mimir/Loki ruler) rules.
 * [gcx alert rules](gcx_alert_rules.md)	 - Inspect alert rule state and health.
 * [gcx alert state-history](gcx_alert_state-history.md)	 - Inspect alert state history.

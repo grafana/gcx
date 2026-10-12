@@ -6,8 +6,9 @@ Delete one or more datasources
 
 Delete one or more datasources by UID.
 
-Deletion prompts for confirmation unless --force/--yes, GCX_AUTO_APPROVE, or
-agent mode is in effect.
+Deletion prompts for confirmation unless --dry-run, --force/--yes, or enabled
+GCX_AUTO_APPROVE. Agent mode does not auto-approve destructive deletion:
+without an explicit bypass it fails with an actionable error.
 
 Exit codes: 0 (all deleted), 4 (some deletions failed).
 
@@ -46,7 +47,7 @@ gcx datasources delete UID... [flags]
 ### Options inherited from parent commands
 
 ```
-      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
+      --agent                       Enable agent mode (JSON output, no color). Auto-detected from known agent identity variables. Set GCX_AGENT_NAME to identify a supported harness, or GCX_AGENT_MODE to control the mode.
       --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Requires -vvv. Do not ship these logs.
       --no-color                    Disable color output
       --no-truncate                 Disable table column truncation (auto-enabled when stdout is piped)

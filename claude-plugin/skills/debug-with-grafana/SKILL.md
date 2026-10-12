@@ -124,5 +124,5 @@ inconclusive result. Running diff alone does not increase confidence.
 
 - [Alert-to-trace](references/alert-to-trace.md): alert normalization and cohort/seed selection.
 - [Query patterns](references/query-patterns.md): metrics/logs, dashboard schemas, counting and output examples.
-- [TraceQL patterns](references/traceql-patterns.md): scoped discovery, search and trace metrics.
+- [TraceQL patterns](references/traceql-patterns.md): scoped discovery, search, trace metrics arithmetic, percentages and per-service shares.
 - [Error recovery](references/error-recovery.md): access, query and capability failures.

@@ -25,10 +25,10 @@ because their real operations (restore a version, export a policy tree) are not
 CRUD verbs. So a K8s-backed product can still warrant commands; run the placement
 analysis rather than stopping at "it's on `/apis`".
 
-If the answer is a commands-only provider calling the K8s dynamic client, note
-that `CONSTITUTION.md` § Architecture Invariants makes
-`internal/providers/dashboards/` the one documented exception (ADR 016) — a second
-requires explicit human approval and a CONSTITUTION change.
+If the answer is provider commands over a native `/apis` resource, note that
+`CONSTITUTION.md` § Architecture Invariants requires the shared native binding
+(`internal/providers/native`); never call the K8s dynamic client or build a
+discovery registry directly.
 
 ## Entry paths
 

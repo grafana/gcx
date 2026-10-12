@@ -26,10 +26,12 @@ import (
 	"github.com/grafana/gcx/internal/linter/linterr"
 	"github.com/grafana/gcx/internal/login"
 	cmdoutput "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/instrumentation"
 	"github.com/grafana/gcx/internal/providers/instrumentation/rmw"
 	"github.com/grafana/gcx/internal/queryerror"
 	"github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/resources/dynamic"
 	k8sapi "k8s.io/apimachinery/pkg/api/errors"
 )
 
@@ -79,6 +81,7 @@ func ErrorToDetailedError(err error) *gcxerrors.DetailedError {
 		convertConfigErrors,                         // Config-related
 		convertCloudOrgsErrors,                      // Organisation discovery auth failures
 		convertAuthErrors,                           // Auth-related (expired tokens)
+		convertPluginRouteDenied,                    // Plugin proxy refused a route: name the missing action
 		convertUnavailableEndpoint,                  // Experimental/Cloud-only endpoint route absent
 		convertQueryErrors,                          // Datasource query errors
 		convertDatasourceErrors,                     // Grafana datasource REST API errors
@@ -245,6 +248,30 @@ func convertAuthErrors(err error) (*gcxerrors.DetailedError, bool) {
 	return nil, false
 }
 
+// convertPluginRouteDenied names the RBAC action a refused plugin-proxy route
+// requires. The raw 403 body only says the route was denied.
+func convertPluginRouteDenied(err error) (*gcxerrors.DetailedError, bool) {
+	var denied *providers.PluginRouteDeniedError
+	if !errors.As(err, &denied) {
+		return nil, false
+	}
+	return &gcxerrors.DetailedError{
+		Summary: "Authorization failed",
+		// Agent JSON prints Details instead of Parent, so keep the command's context here.
+		Details: joinErrorDetails(
+			wrappedTypedErrorContext(err, denied),
+			"Grafana's plugin proxy refused the route: missing "+denied.Action,
+		),
+		Parent: err,
+		Suggestions: []string{
+			fmt.Sprintf("Ask a stack admin to grant you the %s role, which includes %s", denied.Role, denied.Action),
+			"Check what your login holds: gcx setup status",
+		},
+		DocsLink: docs.RolesAndPermissions,
+		ExitCode: new(gcxerrors.ExitAuthFailure),
+	}, true
+}
+
 // convertCredentialsErrors converts restricted, unavailable, and locked
 // credential-store errors into actionable messages. These conditions remain
 // fatal unless the user explicitly selects plaintext storage.
@@ -329,17 +356,25 @@ func convertNetworkErrors(err error) (*gcxerrors.DetailedError, bool) {
 }
 
 func convertAPIErrors(err error) (*gcxerrors.DetailedError, bool) {
-	statusErr := &k8sapi.StatusError{}
+	// Match the APIStatus interface, not just *StatusError: the dynamic client
+	// wraps server errors in dynamic.APIError, which implements APIStatus.
+	var statusErr k8sapi.APIStatus
 	if !errors.As(err, &statusErr) {
 		return nil, false
 	}
+	// A status the dynamic client synthesized for a non-API error (network,
+	// TLS, timeout) is not a server response; leave it to the fallback.
+	var dynErr dynamic.APIError
+	if errors.As(err, &dynErr) && dynErr.Synthesized() {
+		return nil, false
+	}
 
-	reason := k8sapi.ReasonForError(statusErr)
+	reason := k8sapi.ReasonForError(err)
 	code := statusErr.Status().Code
 
 	switch {
-	case k8sapi.IsUnauthorized(statusErr),
-		k8sapi.IsForbidden(statusErr):
+	case k8sapi.IsUnauthorized(err),
+		k8sapi.IsForbidden(err):
 		return &gcxerrors.DetailedError{
 			Parent:  err,
 			Summary: fmt.Sprintf("%s - code %d", reason, code),
@@ -350,7 +385,7 @@ func convertAPIErrors(err error) (*gcxerrors.DetailedError, bool) {
 			DocsLink: docs.ServiceAccounts,
 			ExitCode: new(gcxerrors.ExitAuthFailure),
 		}, true
-	case k8sapi.IsNotFound(statusErr):
+	case k8sapi.IsNotFound(err):
 		return &gcxerrors.DetailedError{
 			Parent:  err,
 			Summary: fmt.Sprintf("Resource not found - code %d", code),

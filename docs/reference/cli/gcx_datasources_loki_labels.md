@@ -20,6 +20,12 @@ gcx datasources loki labels [flags]
 	# Get values for a specific label
 	gcx datasources loki labels -d UID --label job
 
+	# Filter labels with a query
+	gcx datasources loki labels -d UID --query '{app="foo"}'
+
+	# Filter label values with a query
+	gcx datasources loki labels -d UID --label job --query '{app="foo"}'
+
 	# Output as JSON
 	gcx datasources loki labels -d UID -o json
 ```
@@ -33,12 +39,13 @@ gcx datasources loki labels [flags]
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
   -l, --label string        Get values for this label (omit to list all labels)
   -o, --output string       Output format. One of: agents, json, table, yaml (default "table")
+  -q, --query string        LogQL stream selector to scope labels, e.g. '{app="foo"}' (pipeline stages are not supported)
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --agent                       Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.
+      --agent                       Enable agent mode (JSON output, no color). Auto-detected from known agent identity variables. Set GCX_AGENT_NAME to identify a supported harness, or GCX_AGENT_MODE to control the mode.
       --config string               Path to the configuration file to use
       --context string              Name of the context to use (overrides current-context in config)
       --insecure-log-http-payload   Log full HTTP request/response bodies including raw credentials, authorization tokens, cookies, and OAuth refresh tokens. Requires -vvv. Do not ship these logs.
