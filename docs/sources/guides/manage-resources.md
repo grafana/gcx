@@ -20,7 +20,7 @@ weight: 3
 
 Grafana resources can be migrated from one environment to another, for example from a development to production environment. 
 
-You need to [configure one context per environment](../../configuration.md#define-contexts). In this example scenario, use `dev` for the development environment and `prod` for production.
+You need to [configure one context per environment](../configuration.md#define-contexts). In this example scenario, use `dev` for the development environment and `prod` for production.
 
 1. Make changes to dashboards and other resources using the Grafana UI in your **development instance**.
 1. Pull those resources from the development environment to your local machine:

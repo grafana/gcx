@@ -55,7 +55,7 @@ gcx login diagnostics --config "$GCX_CONFIG" \
   --server https://your-grafana.example
 ```
 
-For local LGTM, use that repository's local connection instructions instead of this login step. See [Configure gcx](../../configuration.md) for supported authentication methods. Supply credentials locally through the supported auth flow, not in chat, copied transcripts, or committed files. Prefer read-only access when available; approval instructions do not restrict API permissions.
+For local LGTM, use that repository's local connection instructions instead of this login step. See [Configure gcx](../configuration) for supported authentication methods. Supply credentials locally through the supported auth flow, not in chat, copied transcripts, or committed files. Prefer read-only access when available; approval instructions do not restrict API permissions.
 
 ### Check the overrides
 
@@ -92,14 +92,9 @@ Start the agent in the relevant application or test checkout, and provide it wit
 
 Make sure the agent doesn't invent answers. Ask it to identify what information or access is missing. For example, use this prompt, filling in what you know:
 
-> Use the existing gcx skills to investigate `<symptom>`. Query only
-> `<config path and context>` and inspect only `<application/fixture scope>`.
-> The expected operation is `<operation>` in `<time window>`.
-> Diagnose first and distinguish observed evidence from hypotheses. State what
-> you could not observe; do not infer data loss from missing access.
-> Ask before changing application, Collector, dashboard, or test configuration,
-> restarting resources, or enabling payload logging. Do not weaken an assertion
-> to make a test pass. Propose the smallest justified repair, and stop for approval.
+```md
+Use the existing gcx skills to investigate `<symptom>`. Query only `<config path and context>` and inspect only `<application/fixture scope>`. The expected operation is `<operation>` in `<time window>`. Diagnose first and distinguish observed evidence from hypotheses. State what you could not observe; do not infer data loss from missing access. Ask before changing application, Collector, dashboard, or test configuration, restarting resources, or enabling payload logging. Do not weaken an assertion to make a test pass. Propose the smallest justified repair, and stop for approval.
+```
 
 An empty dashboard can result from no data being created, export failure, filtering, an incorrect query, or a time/identity mismatch. Static configuration and absence of results are leads, not proof of a particular failure boundary.
 
@@ -111,7 +106,7 @@ After approving a specific change:
 
 1. Exercise a fresh representative operation and record its time and available identifiers. Old telemetry must not satisfy the recovery check.
 2. Query the relevant datasource, then recheck the original dashboard or rerun the original test uncached. A successful backend query alone does not prove the panel or assertion is correct.
-3. Review the actual diff and runtime changes. Functional recovery does not prove unrelated dashboard/configuration fields were preserved.
+3. Review the actual diff and runtime changes. Functional recovery doesn't prove that unrelated dashboard or configuration fields were preserved.
 4. Restore temporary diagnostic configuration and logging. Remove temporary backups and stop only resources created for this investigation, after confirming they are no longer needed. Never clean up pre-existing resources by assumption.
 5. Record the confirmed cause, remaining unknowns, approved changes, and result.
 
