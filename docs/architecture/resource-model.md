@@ -527,7 +527,7 @@ unfiltered title lookup keeps them as candidates.
 
 The shared `IsReadOnlyNative` rule applies to both kinds: `spec.kind: mimir` or
 `grafana.com/provenance` equal to `system`, `converted_prometheus`, or `file`.
-Absent provenance and `api` remain writable. Generic pull includes read-only objects by default; `--skip-readonly` excludes
+Absent provenance and `api` remain writable. Generic pull includes read-only objects by default; `--skip-read-only` excludes
 them and counts the read-only reason. Push and delete always skip them, while
 reads still return them. Generic
 edit rejects them before opening an editor, and dedicated mutations reject them

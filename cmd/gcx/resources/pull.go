@@ -57,7 +57,7 @@ func (opts *pullOpts) setup(flags *pflag.FlagSet) {
 
 	bindOnErrorFlag(flags, &opts.OnError)
 	flags.StringVarP(&opts.Path, "path", "p", defaultResourcesPath, "Path on disk in which the resources will be written")
-	flags.BoolVar(&opts.SkipReadOnly, "skip-readonly", false, "Skip read-only native alerting resources; include them by default for backup, audit, and diffing")
+	flags.BoolVar(&opts.SkipReadOnly, "skip-read-only", false, "Skip read-only native alerting resources; include them by default for backup, audit, and diffing")
 	flags.BoolVar(
 		&opts.IncludeManaged,
 		"include-managed",

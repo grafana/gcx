@@ -108,10 +108,10 @@ Matching before create is necessary even after the immediate 400 fix: a 12.0–1
 `IsReadOnlyNative` applies to TimeInterval and TemplateGroup: `spec.kind: mimir`,
 or provenance `system`, `converted_prometheus`, or `file`. Absent provenance and
 `api` remain writable. List/get, including generic get, preserve all returned
-objects. Generic pull retains read-only objects by default; `--skip-readonly` excludes
+objects. Generic pull retains read-only objects by default; `--skip-read-only` excludes
 them and counts them as skipped. Push/delete always skip them,
 and show a read-only reason. Pull writes no artifact for excluded objects. The shared fetch
-path sets `ExcludeReadOnly` from `--skip-readonly`; delete selectors always
+path sets `ExcludeReadOnly` from `--skip-read-only`; delete selectors always
 exclude them, while get/edit fetch them for display or refusal.
 Unknown server kinds alone are not classified as read-only and remain pullable.
 

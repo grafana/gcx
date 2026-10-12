@@ -139,56 +139,6 @@ See [environment-variables.md § Agent Mode Variables](environment-variables.md#
 
 ### 6.5 Mutation Result Family
 
-The shared mutation result types in `internal/output/mutation.go` carry
-`schema_version: "1"` and one of three discriminators:
-
-| Type | Result |
-|------|--------|
-| `gcx.mutation` | One action on one target, with optional `changed`, `dry_run`, and `error`. |
-| `gcx.mutation_batch` | One action across targets, with `summary` counts and a `failures` array. |
-| `gcx.artifact_receipt` | Files written to disk, with their paths, format, summary counts, and failures. |
-
-Batch results and artifact receipts always include `failures` (`[]` when
-empty). Each failure contains `target` and `error`. The optional `source`
-field identifies the input file when available; it is omitted when the
-source path is empty. `source` is independent of `target.name`, which remains
-the API address. `resources push` and file-based `resources delete` populate
-`source` from the failed resource's local source path. Artifact receipts
-leave it absent when the failed resource has no input path.
-
-`gcx.mutation_batch` and `gcx.artifact_receipt` may include a top-level
-`skipped_reasons` object mapping each skip reason to its count. It is omitted
-when no skips were recorded and is additive within schema version `1`.
-`summary.skipped` remains the total count. Human summaries show the counts by
-reason; JSON output, including the agent-mode default, exposes the same map so
-agents can distinguish read-only skips from other skips. Current reasons
-include `read-only`, `not server-verified`, and `not listable`.
-
-For native TimeInterval and TemplateGroup manifests, `spec.kind: mimir` and
-provenance `system`, `converted_prometheus`, or `file` identify read-only
-objects. Errors explain the source in plain language: built-in Grafana objects
-cannot be changed, external Alertmanager imports must be changed there or
-finished in Grafana, and file-provisioned objects must be changed in their
-provisioning file. Read-only manifest create/update errors are ordinary command
-errors (exit code 1), not usage errors (exit code 2).
-
-For example, a failed unnamed manifest can be located without inventing
-an API name:
-
-```json
-{
-  "type": "gcx.mutation_batch",
-  "schema_version": "1",
-  "action": "pushed",
-  "summary": {"succeeded": 0, "failed": 1},
-  "failures": [{
-    "target": {"kind": "TemplateGroup"},
-    "error": "spec.kind must be grafana or mimir",
-    "source": "./manifests/group.yaml"
-  }]
-}
-```
-
-The `source` field is an additive, optional field in version `1`; consumers
-should tolerate optional fields. These shared types do not replace
-provider-specific output contracts that predate this family.
+See [output.md § 12](output.md#12-mutation-command-output) for the shared
+mutation result family, optional failure source paths, skip-reason counts,
+and JSON examples. Agent-mode JSON uses the same result types and fields.

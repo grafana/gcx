@@ -196,7 +196,7 @@ using metadata.name only as a hint. It clears source server fields for create,
 uses destination name/version for update, and never infers rename or prune.
 Read-only native objects remain visible/readable. The shared policy covers
 `mimir` kind and `system`, `converted_prometheus`, or `file` provenance: dedicated
-mutations reject them, generic pull retains them unless `--skip-readonly` is set, push/delete skip them, and generic edit refuses
+mutations reject them, generic pull retains them unless `--skip-read-only` is set, push/delete skip them, and generic edit refuses
 them before opening the editor. A writable local identity matching a read-only
 destination fails before update. Unknown server template kinds remain readable
 while local manifests stay strict. Default preview for both kinds is

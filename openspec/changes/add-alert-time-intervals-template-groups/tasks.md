@@ -89,7 +89,7 @@ These corrections supersede the earlier always-skipped pull and broad dynamic-re
 
 - [x] 9.1 Scope Conflict retries to TimeInterval/TemplateGroup in both API versions, pass all other kinds through once, preserve resourceVersion and the guard, and verify the scope matrix and contention regressions.
 - [x] 9.2 Remove the duplicate native time-interval export command and its metadata/reference; direct help to the existing mute-timings export without changing that command.
-- [x] 9.3 Include read-only manifests in pull by default with optional --skip-readonly filtering; preserve write-side skips, verify both modes in real commands and live audit/round-trip checks.
+- [x] 9.3 Include read-only manifests in pull by default with optional --skip-read-only filtering; preserve write-side skips, verify both modes in real commands and live audit/round-trip checks.
 - [x] 9.4 Align both families' ls/rm aliases and get table/wide codecs with real command regressions.
 - [x] 9.5 Make create preparation a pure copy/strip operation, keep validation at the write boundary, and remove redundant matching validation while preserving local failure reporting and remote tolerance.
 - [x] 9.6 Use source paths for deterministic malformed-file collection keys and retain source-less inputs independently; verify repeated-file deduplication and distinct files, update docs, and complete required gates.

@@ -126,7 +126,7 @@ func TestPull_ReadOnlyExclusionWiring(t *testing.T) {
 					cmd.SetErr(io.Discard)
 					args := []string{f.plural, "--path", destination}
 					if skip {
-						args = append(args, "--skip-readonly")
+						args = append(args, "--skip-read-only")
 					}
 					cmd.SetArgs(args)
 					require.NoError(t, cmd.ExecuteContext(t.Context()))

@@ -232,7 +232,7 @@ Entry point: `cmd/gcx/resources/pull.go` (mirrors push structure).
   └──────────────────────────────────────────────────────────────────────┘
 ```
 
-`resources pull` enables `ExcludeReadOnly` only with `--skip-readonly`, including
+`resources pull` enables `ExcludeReadOnly` only with `--skip-read-only`, including
 explicit single-object selectors. The default retains read-only objects for
 backup, audit, and diffing; when excluded they are counted and not written. Remote
 delete selectors always enable read-only filtering. `resources get` leaves it disabled to
