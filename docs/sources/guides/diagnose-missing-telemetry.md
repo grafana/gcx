@@ -34,7 +34,7 @@ The command examples use the current `gcx` command surface. Check `gcx version` 
 
 ## Connect without changing your usual context
 
-If you have already configured the destination, use explicit `--config` and `--context` arguments. Do not switch the current context just for this investigation. Otherwise, create a separate private configuration outside your checkout. 
+If you have already configured the destination, use explicit `--config` and `--context` arguments. Don't switch the current context just for this investigation. Otherwise, create a separate private configuration outside your checkout. 
 
 The examples use `GCX_CONFIG`, the actual `gcx` environment override. If it's pointing at another configuration, unset it first:
 
@@ -44,9 +44,9 @@ export GCX_CONFIG="$GCX_DIAGNOSTICS_DIR/config.yaml"
 (umask 077; printf '{}\n' > "$GCX_CONFIG")
 ```
 
-Keep the path until cleanup. In another terminal, set the variable to the same path; do not create a second empty configuration by repeating the block.
+Keep the path until cleanup. In another terminal, set the variable to the same path; don't create a second empty configuration by repeating the block.
 
-### Log in to an existing destination
+### Log in 
 
 For an existing Grafana destination, use interactive login with a new context in that file, replacing the example URL:
 
@@ -55,7 +55,7 @@ gcx login diagnostics --config "$GCX_CONFIG" \
   --server https://your-grafana.example
 ```
 
-For local LGTM, use that repository's local connection instructions instead of this login step. Refer to [Configure gcx](../../configuration) for supported authentication methods. Supply credentials locally through the supported auth flow, not in chat, copied transcripts, or committed files. Prefer read-only access when available as approval instructions don't restrict API permissions.
+For local LGTM, use that repository's local connection instructions instead of this login step. Refer to [Configure gcx](../../configuration) for supported authentication methods. **Supply credentials locally through the supported authentication flow**, not in chat, copied transcripts, or committed files. Prefer read-only access when available as approval instructions don't restrict API permissions.
 
 ### Check the overrides
 
@@ -67,9 +67,12 @@ Use your selected context name below, where `diagnostics` is the login example:
 gcx config check --config "$GCX_CONFIG" --context diagnostics
 gcx datasources list --config "$GCX_CONFIG" --context diagnostics
 ```
+
 ### Verify the connection and authentication
 
-Stop and resolve any connection or authentication errors before interpreting query results. A successful configuration check does not prove application ingestion. Choose the datasource UID returned by discovery, rather than assuming a default. For example, against a Prometheus datasource:
+Stop and resolve any connection or authentication errors before interpreting query results. 
+
+For example, against a Prometheus datasource:
 
 ```bash
 gcx metrics query 'vector(1)' --datasource 'PROMETHEUS_DATASOURCE_UID' \
@@ -77,7 +80,13 @@ gcx metrics query 'vector(1)' --datasource 'PROMETHEUS_DATASOURCE_UID' \
   --config "$GCX_CONFIG" --context diagnostics
 ```
 
-Replace `PROMETHEUS_DATASOURCE_UID` before running. A returned value proves that query path works, not that the application emitted metrics. With `--error-on-empty`, an empty response exits unsuccessfully; without it, a successful empty query, an invalid query, and a failed connection are different observations. The flag is supported on the Prometheus query, Loki logs/metrics, Tempo search/metrics, and Pyroscope query commands; it is not a generic flag for unrelated datasource query commands.
+Keep in mind the following:
+
+- Choose the datasource UID returned by discovery, rather than assuming a default.
+- A successful configuration check doesn't prove application ingestion.  
+- A returned value proves that query path works, not that the application emitted metrics. 
+
+With `--error-on-empty`, an empty response exits unsuccessfully; without it, a successful empty query, an invalid query, and a failed connection are different observations. The flag is supported on the Prometheus query, Loki logs/metrics, Tempo search/metrics, and Pyroscope query commands, but it's not a generic flag for unrelated datasource query commands.
 
 ## Use an agent for diagnostics
 
@@ -90,9 +99,9 @@ Start the agent in the relevant application or test checkout, and provide it wit
 - The relevant Compose project, deployment, or Collector configuration you own.
 - Which resources may be inspected and which actions require approval.
 
-Make sure the agent doesn't invent answers. Ask it to identify what information or access is missing. For example, use this prompt, filling in what you know:
+Make sure the agent doesn't invent answers and to identify what information or access is missing. For example, use this prompt, filling in what you know:
 
-```md
+```
 Use the existing gcx skills to investigate `<symptom>`. Query only `<config path and context>` and inspect only `<application/fixture scope>`. The expected operation is `<operation>` in `<time window>`. Diagnose first and distinguish observed evidence from hypotheses. State what you could not observe; do not infer data loss from missing access. Ask before changing application, Collector, dashboard, or test configuration, restarting resources, or enabling payload logging. Do not weaken an assertion to make a test pass. Propose the smallest justified repair, and stop for approval.
 ```
 
@@ -112,4 +121,4 @@ After approving a specific change:
 
 Debug-exporter payloads and logs may contain sensitive data. Enable them only with permission, for a bounded investigation, and never publish raw output. Avoid full environment dumps or HTTP payload logging that can expose credentials.
 
-If you created the private directory above, inspect it locally and remove only that directory when finished. Remove any diagnostic credentials stored by login using your normal credential-management process; deleting a config file doesn't revoke a server-side token. Explicit configuration or context arguments leave your usual current context unchanged. Do not delete an existing configuration used for the investigation, or revoke a credential shared with another workflow.
+If you created the private directory above, inspect it locally and remove only that directory when finished. Remove any diagnostic credentials stored by login using your normal credential-management process; deleting a config file doesn't revoke a server-side token. Explicit configuration or context arguments leave your usual current context unchanged. Don't delete an existing configuration used for the investigation, or revoke a credential shared with another workflow.

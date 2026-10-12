@@ -20,7 +20,7 @@ Use the Grafana CLI linter to verify that resources, such as dashboards and aler
 
 ## Use the linter
 
-Lint resources with:
+To lint resources run:
 
 ```shell
 gcx dev lint run ./resources
@@ -28,7 +28,7 @@ gcx dev lint run ./resources
 
 The following applies:
 
-- Directories are recursively explored and 
+- Directories are recursively explored.  
 - All [built-in rules](https://github.com/grafana/gcx/blob/main/docs/reference/linter-rules/index.md) are enabled by default.
 
 ### Configure linter rules
@@ -99,7 +99,7 @@ report contains violation if {
 }
 ```
 
-See the existing [Built-in rules](https://github.com/grafana/gcx/tree/main/internal/linter/bundle/gcx/rules) for inspiration when writing custom ones.
+Refer to the existing [Built-in rules](https://github.com/grafana/gcx/tree/main/internal/linter/bundle/gcx/rules) for inspiration to write custom ones.
 
 ### Rules for other resources
 
