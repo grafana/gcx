@@ -85,6 +85,8 @@ type BatchMutation struct {
 	SchemaVersion string          `json:"schema_version" yaml:"schema_version"`
 	Action        string          `json:"action" yaml:"action"`
 	Summary       MutationSummary `json:"summary" yaml:"summary"`
+	// SkippedReasons explains skip counts; omitted when no skips were recorded.
+	SkippedReasons map[string]int `json:"skipped_reasons,omitempty" yaml:"skipped_reasons,omitempty"`
 	// Failures is always present — [] when nothing failed — so consumers
 	// never need a nil check before ranging.
 	Failures []MutationFailure `json:"failures" yaml:"failures"`
@@ -120,10 +122,12 @@ type ArtifactReceipt struct {
 	Action        string `json:"action" yaml:"action"`
 	Dir           string `json:"dir,omitempty" yaml:"dir,omitempty"`
 	// Format is the on-disk content format of the written files.
-	Format   string            `json:"format" yaml:"format"`
-	Files    []ArtifactFile    `json:"files" yaml:"files"`
-	Summary  MutationSummary   `json:"summary" yaml:"summary"`
-	Failures []MutationFailure `json:"failures" yaml:"failures"`
+	Format  string          `json:"format" yaml:"format"`
+	Files   []ArtifactFile  `json:"files" yaml:"files"`
+	Summary MutationSummary `json:"summary" yaml:"summary"`
+	// SkippedReasons explains skip counts; omitted when no skips were recorded.
+	SkippedReasons map[string]int    `json:"skipped_reasons,omitempty" yaml:"skipped_reasons,omitempty"`
+	Failures       []MutationFailure `json:"failures" yaml:"failures"`
 }
 
 // NewArtifactReceipt returns an ArtifactReceipt with the discriminators set

@@ -160,13 +160,6 @@ func (o *templateGroupsWriteOpts) read(cmd *cobra.Command) (*unstructured.Unstru
 	if err != nil {
 		return nil, "", err
 	}
-	_, readOnly, err := resources.NativeIdentity(obj)
-	if err != nil {
-		return nil, "", fail.NewCommandUsageError(cmd, err.Error(), nil)
-	}
-	if readOnly {
-		return nil, "", templateGroupReadOnlyError()
-	}
 	return obj, version, nil
 }
 func newTemplateGroupsCreateCommand(binding native.Binding) *cobra.Command {
@@ -339,9 +332,6 @@ func normalizedTemplateKind(obj *unstructured.Unstructured) (string, error) {
 		return "", fmt.Errorf("spec.kind %q must be grafana or mimir", kind)
 	}
 	return kind, nil
-}
-func templateGroupReadOnlyError() error {
-	return errors.New("imported Mimir template groups are read-only; manage them in the external Alertmanager configuration")
 }
 
 type templateGroupTableCodec struct{ wide bool }

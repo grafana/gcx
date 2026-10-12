@@ -38,7 +38,7 @@ func NewDeleter(ctx context.Context, cfg config.NamespacedRESTConfig, guard Guar
 		return nil, err
 	}
 
-	guarded := newGuardedDynamicClient(newConflictRetryClient(dynamicClient), guard)
+	guarded := newGuardedRetryDynamicClient(dynamicClient, guard)
 
 	registry, err := discovery.NewDefaultRegistry(ctx, cfg)
 	if err != nil {

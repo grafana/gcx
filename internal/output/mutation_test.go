@@ -105,3 +105,40 @@ func TestMutationFailure_SourceWireShape(t *testing.T) {
 		})
 	}
 }
+
+func TestMutationSkippedReasonsWireShape(t *testing.T) {
+	for _, withReasons := range []bool{false, true} {
+		batch := cmdio.NewBatchMutation("pushed")
+		receipt := cmdio.NewArtifactReceipt("pulled", "json")
+		if withReasons {
+			batch.Summary.Skipped = 2
+			batch.SkippedReasons = map[string]int{"read-only": 2}
+			receipt.Summary = batch.Summary
+			receipt.SkippedReasons = batch.SkippedReasons
+		}
+		for _, result := range []any{batch, receipt} {
+			for _, codec := range []struct {
+				name      string
+				marshal   func(any) ([]byte, error)
+				unmarshal func([]byte, any) error
+			}{
+				{"json", json.Marshal, json.Unmarshal}, {"yaml", yaml.Marshal, yaml.Unmarshal},
+			} {
+				t.Run(codec.name, func(t *testing.T) {
+					data, err := codec.marshal(result)
+					require.NoError(t, err)
+					var got map[string]any
+					require.NoError(t, codec.unmarshal(data, &got))
+					require.Equal(t, "1", got["schema_version"])
+					if withReasons {
+						reasons, ok := got["skipped_reasons"].(map[string]any)
+						require.True(t, ok)
+						require.InDelta(t, 2, reasons["read-only"], 0)
+					} else {
+						require.NotContains(t, got, "skipped_reasons")
+					}
+				})
+			}
+		}
+	}
+}

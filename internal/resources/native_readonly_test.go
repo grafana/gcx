@@ -47,11 +47,12 @@ func TestNativeReadOnlyPolicy(t *testing.T) {
 						require.ErrorContains(t, err, "read-only")
 						require.ErrorContains(t, err, kind)
 						require.ErrorContains(t, err, "weekend")
+						guidance := map[string]string{"system": "built into Grafana", "converted_prometheus": "external Alertmanager configuration", "file": "provisioning file", "mimir": "external Alertmanager configuration"}
 						reason := tc.provenance
 						if reason == "" {
 							reason = tc.sourceKind
 						}
-						require.ErrorContains(t, err, reason)
+						require.ErrorContains(t, err, guidance[reason])
 					} else {
 						require.NoError(t, err)
 					}

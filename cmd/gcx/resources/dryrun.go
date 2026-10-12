@@ -131,6 +131,7 @@ func summaryCounts(summary *remote.OperationSummary) cmdio.MutationSummary {
 func batchMutationFromSummary(action string, summary *remote.OperationSummary, dryRun bool) cmdio.BatchMutation {
 	result := cmdio.NewBatchMutation(action)
 	result.Summary = summaryCounts(summary)
+	result.SkippedReasons = summary.SkippedReasons()
 	result.DryRun = dryRun
 	for _, failure := range summary.Failures() {
 		target := cmdio.MutationTarget{}
@@ -154,7 +155,7 @@ func batchMutationFromSummary(action string, summary *remote.OperationSummary, d
 // push and delete have always printed (style picked from the counts, skipped
 // note added when the guard skipped any), so default human stdout stays
 // byte-identical to the pre-codec output.
-type mutationSummaryCodec struct{ skipReasons map[string]int }
+type mutationSummaryCodec struct{}
 
 func (c *mutationSummaryCodec) Format() format.Format { return "text" }
 
@@ -182,7 +183,7 @@ func (c *mutationSummaryCodec) Encode(w io.Writer, value any) error {
 	}
 
 	if skipped > 0 {
-		reasons := c.skipReasons
+		reasons := result.SkippedReasons
 		if len(reasons) == 0 {
 			reasons = map[string]int{"not server-verified": skipped}
 		}

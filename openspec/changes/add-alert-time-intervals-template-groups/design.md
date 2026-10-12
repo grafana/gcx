@@ -51,7 +51,7 @@ CRUD leaves are `finite`; export is `raw`, matching existing exports. Register e
 
 Read all pages through the existing dynamic client, then match `spec.name` for time intervals or `spec.title` for template groups, case-sensitively. No decoding or synthesized GET path replaces the user's chosen title contract. After resolution, get issues GET with the returned `metadata.name`; update/delete use that identity. List/get remain format-agnostic and return native objects.
 
-Zero matches produce a typed not-found error for the title. Multiple matches fail clearly and identify candidates; neither list order nor a preference for editable groups chooses an object. Template `get` and `delete` accept optional `--kind grafana|mimir`; update accepts only Grafana-managed input and resolves that kind, treating absent historical kind as `grafana`. That makes equal-title imports usable without changing positional arguments to encoded names. Unknown server template kinds remain raw in list output with `READ-ONLY: unknown`; a known-kind filter ignores them, while unfiltered title lookup includes them as candidates. Local manifests still reject unknown kinds.
+Zero matches produce a typed not-found error for the title. Multiple matches fail clearly and identify candidates; neither list order nor a preference for editable groups chooses an object. Template `get` and `delete` accept optional `--kind grafana|mimir`; update accepts only Grafana-managed manifests and resolves the Grafana-managed group with the argument title, treating absent historical kind as `grafana`. An imported manifest is rejected as read-only; if the argument title exists only on an imported group, a Grafana-managed manifest gets not found. This makes equal-title imports usable without changing positional arguments to encoded names. Unknown server template kinds remain raw in list output with `READ-ONLY: unknown`; a known-kind filter ignores them, while unfiltered title lookup includes them as candidates. Local manifests still reject unknown kinds.
 
 Time interval tables show `TITLE`, `API_NAME`, interval count (`spec.time_intervals`), and `READ-ONLY`; wide adds provenance. Template tables show `TITLE`, `API_NAME`, `KIND`, and `READ-ONLY`; wide adds provenance. The column label distinguishes the opaque server address from the title users supply. Mutation receipts use the returned name as the API identity and include a separate title detail, with old and new titles when update renames an object. The imported marker is presentation only; no invented field is inserted into JSON/YAML.
 
@@ -59,7 +59,7 @@ Time interval tables show `TITLE`, `API_NAME`, interval count (`spec.time_interv
 
 The command argument and the manifest have different jobs: `update <current-title>` identifies an existing object; its spec describes the desired result. Generic push has only the desired result and no explicit old subject. Keeping this distinction removes the need to infer rename intent from encoded names or to introduce a GCX-specific manifest schema.
 
-**Dedicated update allows an explicit rename.** Resolve the argument against the current title and selected template kind, independently of the desired spec title. Require any supplied `metadata.name` to equal the resolved object's API name; if omitted, fill it from the resolved object. Keep the caller's resource version; never substitute the just-read current version. Send one update to the resolved current API name, retaining that name in the request while allowing the spec title to change. Template kind remains unchanged, and imported groups remain read-only. Preserve stale-version, provenance, and destination-title conflict errors; do not turn a missing update subject into create or overwrite another object.
+**Dedicated update allows an explicit rename.** Accept only Grafana-managed manifests and resolve the argument against the current Grafana-managed title, independently of the desired spec title. An imported manifest is rejected as read-only; a Grafana manifest whose argument title exists only as an import gets not found. Require any supplied `metadata.name` to equal the resolved object's API name; if omitted, fill it from the resolved object. Keep the caller's resource version; never substitute the just-read current version. Send one update to the resolved current API name, retaining that name in the request while allowing the spec title to change. Template kind remains unchanged, and imported groups remain read-only. Preserve stale-version, provenance, and destination-title conflict errors; do not turn a missing update subject into create or overwrite another object.
 
 Both native backends support rename and return the new derived API name. The tagged Grafana 13.2 [time interval service](https://github.com/grafana/grafana/blob/v13.2.0/pkg/services/ngalert/provisioning/mute_timings.go) also updates its dependent notification-policy and rule notification references, subject to provenance checks; the [template service](https://github.com/grafana/grafana/blob/v13.2.0/pkg/services/ngalert/provisioning/templates.go) rejects kind changes and removes the old entry on title change. These are source-confirmed backend behaviors, not a client guarantee for every server version. GCX forwards the operation and reports its outcome; it neither recreates server reference logic nor rewrites local files. Runtime compatibility is verified during implementation.
 
@@ -127,9 +127,17 @@ name. Other files continue under the existing batch error policy.
 
 Push/delete failures add optional `source` from `Resource.SourcePath()`, omitted
 when unavailable, to `gcx.mutation_batch` schema version 1. Target name continues
-to mean the actual API address. JSON `summary.skipped` remains a total; human
-summaries render counts for each reason, including read-only, not server-verified,
-and not listable.
+to mean the actual API address. Batch mutations and artifact receipts may include
+an optional top-level `skipped_reasons` map of reason to count, omitted when
+empty. `summary.skipped` remains a total; human summaries render counts for each
+reason, including read-only, not server-verified, and not listable. JSON and
+agent-mode output expose the same reason counts.
+
+Read-only create/update errors are ordinary errors with exit code 1, not usage
+errors with exit code 2. Their guidance uses plain descriptions: system-provided
+objects are built into Grafana, imported objects are managed in their external
+Alertmanager configuration or completed in Grafana, and file-provisioned
+objects are changed in the provisioning file.
 
 ### D6. Expose only reviewed kinds and preserve the dry-run guard
 

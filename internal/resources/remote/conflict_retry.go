@@ -35,6 +35,12 @@ func newConflictRetryClient(inner adapter.DynamicClient) *conflictRetryClient {
 	}
 }
 
+// newGuardedRetryDynamicClient keeps the dry-run guard outside conflict retries:
+// blocked requests never reach the retrying client or the API.
+func newGuardedRetryDynamicClient(inner adapter.DynamicClient, guard GuardConfig) adapter.DynamicClient {
+	return newGuardedDynamicClient(newConflictRetryClient(inner), guard)
+}
+
 func (c *conflictRetryClient) onConflict(ctx context.Context, fn func() error) error {
 	backoff := c.backoff // Each mutation has its own schedule, including concurrent calls.
 	attempt := 0

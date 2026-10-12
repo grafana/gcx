@@ -61,7 +61,7 @@ func NewDefaultPusher(ctx context.Context, cfg config.NamespacedRESTConfig, guar
 		return nil, err
 	}
 
-	guarded := newGuardedDynamicClient(newConflictRetryClient(dynamicClient), guard)
+	guarded := newGuardedRetryDynamicClient(dynamicClient, guard)
 
 	registry, err := discovery.NewDefaultRegistry(ctx, cfg)
 	if err != nil {
@@ -262,11 +262,6 @@ func (p *Pusher) pushSingleResource(
 		// The guard blocked a dry-run against an API that ignores server-side dryRun.
 		// Record it as skipped (not a failure) and keep going, like the puller does for
 		// unlistable types.
-		if errors.Is(err, errReadOnlyNative) {
-			summary.RecordSkipped("read-only")
-			logger.Info(err.Error())
-			return nil
-		}
 		if errors.Is(err, errDryRunUnverified) {
 			summary.RecordSkipped("not server-verified")
 			logger.Info("Dry-run: change not verified (server-side dry-run unsupported); no changes sent")
@@ -303,14 +298,10 @@ func (p *Pusher) upsertResource(
 	nativePolicy := resources.HasServerDerivedName(desc.GroupVersionKind())
 	var desiredIdentity string
 	if nativePolicy {
-		var readOnly bool
 		var identityErr error
-		desiredIdentity, readOnly, identityErr = resources.NativeIdentity(&obj)
+		desiredIdentity, _, identityErr = resources.NativeIdentity(&obj)
 		if identityErr != nil {
 			return identityErr
-		}
-		if readOnly {
-			return fmt.Errorf("%w: %w", errReadOnlyNative, resources.ReadOnlyNativeError(&obj))
 		}
 	}
 
@@ -329,7 +320,7 @@ func (p *Pusher) upsertResource(
 	}
 	if err == nil {
 		if nativePolicy && resources.IsReadOnlyNative(existing) {
-			return fmt.Errorf("destination identity is read-only: %w; rename the local resource to use a different identity", resources.ReadOnlyNativeError(existing))
+			return fmt.Errorf("cannot update the destination resource: %w; choose a different title for the local resource", resources.ReadOnlyNativeError(existing))
 		}
 		// Use the destination address and version on updates.
 		obj.SetName(existing.GetName())
@@ -359,7 +350,7 @@ func (p *Pusher) upsertResource(
 	}
 	if found {
 		if nativePolicy && resources.IsReadOnlyNative(matched) {
-			return fmt.Errorf("destination identity is read-only: %w; rename the local resource to use a different identity", resources.ReadOnlyNativeError(matched))
+			return fmt.Errorf("cannot update the destination resource: %w; choose a different title for the local resource", resources.ReadOnlyNativeError(matched))
 		}
 		remoteName := matched.GetName()
 		obj.SetName(remoteName)

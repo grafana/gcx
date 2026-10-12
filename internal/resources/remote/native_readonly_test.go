@@ -78,9 +78,9 @@ func TestNativeReadOnly_PushDestinationMatchRejectsBeforeWrite(t *testing.T) {
 				require.Zero(t, summary.SuccessCount()+summary.SkippedCount())
 				require.Len(t, summary.Failures(), 1)
 				require.ErrorContains(t, summary.Failures()[0].Error, "read-only")
-				require.ErrorContains(t, summary.Failures()[0].Error, "converted_prometheus")
+				require.ErrorContains(t, summary.Failures()[0].Error, "external Alertmanager configuration")
 				require.ErrorContains(t, summary.Failures()[0].Error, "weekend")
-				require.ErrorContains(t, summary.Failures()[0].Error, "rename")
+				require.ErrorContains(t, summary.Failures()[0].Error, "different title")
 				require.Zero(t, client.writes)
 				if lookup == "get" {
 					require.Equal(t, 1, client.gets)

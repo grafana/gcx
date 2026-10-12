@@ -376,7 +376,7 @@ func nativeAlertManifestVersion(cmd *cobra.Command, obj *unstructured.Unstructur
 		}
 	}
 	if resources.IsReadOnlyNative(obj) {
-		return "", fail.NewCommandUsageError(cmd, resources.ReadOnlyNativeError(obj).Error(), nil)
+		return "", resources.ReadOnlyNativeError(obj)
 	}
 	if _, _, err := resources.NativeIdentity(obj); err != nil {
 		return "", fail.NewCommandUsageError(cmd, err.Error(), nil)

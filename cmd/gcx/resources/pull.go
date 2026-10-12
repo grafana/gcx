@@ -234,6 +234,7 @@ func pullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 
 			receipt := cmdio.NewArtifactReceipt("pulled", opts.IO.OutputFormat)
 			receipt.Dir = opts.Path
+			receipt.SkippedReasons = pullSummary.SkippedReasons()
 			receipt.Summary = cmdio.MutationSummary{
 				// Succeeded means "on disk": fetched resources whose write
 				// failed move from succeeded to failed.
@@ -287,7 +288,7 @@ func pullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				}
 
 				if skipped := pullSummary.SkippedCount(); skipped > 0 {
-					printer(w, "%d resources pulled, %d errors (%s)", succeeded, failed, formatSkipReasons(pullSummary.SkippedReasons()))
+					printer(w, "%d resources pulled, %d errors (%s)", succeeded, failed, formatSkipReasons(receipt.SkippedReasons))
 				} else {
 					printer(w, "%d resources pulled, %d errors", succeeded, failed)
 				}

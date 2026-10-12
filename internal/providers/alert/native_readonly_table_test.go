@@ -52,7 +52,7 @@ func TestTimeIntervalsReadOnlySubjectCannotMutate(t *testing.T) {
 				}
 				_, err := intervalRun(t, binding, loader, intervalManifest(t, local), args...)
 				require.ErrorContains(t, err, "read-only")
-				require.ErrorContains(t, err, provenance)
+				require.ErrorContains(t, err, map[string]string{"system": "built into Grafana", "converted_prometheus": "external Alertmanager configuration", "file": "provisioning file"}[provenance])
 				for _, request := range api.requests {
 					require.Contains(t, request, "GET ")
 				}

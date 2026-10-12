@@ -144,6 +144,22 @@ the API address. `resources push` and file-based `resources delete` populate
 `source` from the failed resource's local source path. Artifact receipts
 leave it absent when the failed resource has no input path.
 
+`gcx.mutation_batch` and `gcx.artifact_receipt` may include a top-level
+`skipped_reasons` object mapping each skip reason to its count. It is omitted
+when no skips were recorded and is additive within schema version `1`.
+`summary.skipped` remains the total count. Human summaries show the counts by
+reason; JSON output, including the agent-mode default, exposes the same map so
+agents can distinguish read-only skips from other skips. Current reasons
+include `read-only`, `not server-verified`, and `not listable`.
+
+For native TimeInterval and TemplateGroup manifests, `spec.kind: mimir` and
+provenance `system`, `converted_prometheus`, or `file` identify read-only
+objects. Errors explain the source in plain language: built-in Grafana objects
+cannot be changed, external Alertmanager imports must be changed there or
+finished in Grafana, and file-provisioned objects must be changed in their
+provisioning file. Read-only manifest create/update errors are ordinary command
+errors (exit code 1), not usage errors (exit code 2).
+
 For example, a failed unnamed manifest can be located without inventing
 an API name:
 
@@ -155,7 +171,7 @@ an API name:
   "summary": {"succeeded": 0, "failed": 1},
   "failures": [{
     "target": {"kind": "TemplateGroup"},
-    "error": "invalid template group kind",
+    "error": "spec.kind must be grafana or mimir",
     "source": "./manifests/group.yaml"
   }]
 }

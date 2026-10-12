@@ -20,7 +20,7 @@ func TestBatchSkipReasons(t *testing.T) {
 			require.Equal(t, 1, summary.SkippedReasons()["read-only"])
 			result := batchMutationFromSummary(action, summary, true)
 			var text bytes.Buffer
-			require.NoError(t, (&mutationSummaryCodec{skipReasons: summary.SkippedReasons()}).Encode(&text, result))
+			require.NoError(t, (&mutationSummaryCodec{}).Encode(&text, result))
 			require.Contains(t, text.String(), "1 skipped: read-only")
 			require.Contains(t, text.String(), "1 skipped: not server-verified")
 			data, err := json.Marshal(result)
@@ -30,6 +30,7 @@ func TestBatchSkipReasons(t *testing.T) {
 			counts, ok := decoded["summary"].(map[string]any)
 			require.True(t, ok)
 			require.InDelta(t, 2, counts["skipped"], 0)
+			require.Equal(t, map[string]any{"read-only": float64(1), "not server-verified": float64(1)}, decoded["skipped_reasons"])
 		})
 	}
 	require.Equal(t, "2 resource types skipped: not listable; 1 skipped: read-only", formatSkipReasons(map[string]int{"read-only": 1, "not listable": 2}))

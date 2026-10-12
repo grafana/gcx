@@ -189,7 +189,6 @@ func pushCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				return err
 			}
 
-			opts.IO.RegisterCustomCodec("text", &mutationSummaryCodec{skipReasons: summary.SkippedReasons()})
 			result := batchMutationFromSummary("pushed", summary, opts.DryRun)
 			// The push is done and its counts are final; a later rendering or
 			// stdout failure does not un-push anything.

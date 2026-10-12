@@ -144,9 +144,13 @@ bounded concurrency; there is no alerting-specific serial phase. Retrying a stal
 resource version does not refresh it and may still exhaust the backoff.
 
 Push/delete `gcx.mutation_batch` failure entries include optional `source` from
-the local resource's source path, omitted when unavailable. This additive field
-keeps `schema_version: 1`; `summary.skipped` remains a total, while text summaries
-show separate reason counts such as read-only and not server-verified.
+the local resource's source path, omitted when unavailable. Batch mutation and
+artifact receipt results may also include a top-level `skipped_reasons` map of
+reason to count. It is additive in schema version 1 and omitted when empty;
+`summary.skipped` remains the total. Human summaries show counts for each reason,
+and JSON output (including agent-mode JSON) exposes the same map. Reasons include
+read-only resources, resources that were not server-verified, and unlistable
+resource types.
 
 Key files:
 - `internal/resources/native_identity.go` — opted-in logical identity and create preparation
@@ -200,8 +204,8 @@ Entry point: `cmd/gcx/resources/pull.go` (mirrors push structure).
   │                                                                       │
   │    For each fetched unstructured item:                                │
   │      resources.FromUnstructured(&item) → *Resource                   │
-  │      if ExcludeManaged && !res.IsManaged(): skip                     │
   │      if ExcludeReadOnly && IsReadOnlyNative: read-only skip          │
+  │      if ExcludeManaged && !res.IsManaged(): skip                     │
   │      Apply Processors in order:                                       │
   │        ServerFieldsStripper — remove server-only annotations:        │
   │          AnnoKeyCreatedBy, AnnoKeyUpdatedBy, AnnoKeyUpdatedTimestamp  │

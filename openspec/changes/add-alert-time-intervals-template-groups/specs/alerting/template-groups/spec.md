@@ -41,7 +41,7 @@ Lets users manage Grafana notification template groups as native resources and i
 - **THEN** filtered get resolves the known kind while unfiltered lookup preserves the ambiguity and reports the raw candidate kind
 
 ### Requirement: Create an editable template group
-`gcx alert template-groups create -f <file>` SHALL create a Grafana-managed group from a native manifest and SHALL NOT update an existing group. Create SHALL omit source server identity and concurrency metadata and report both title and the server's derived name. Any shared read-only classification SHALL fail without a mutation, and local unknown kinds SHALL fail validation.
+`gcx alert template-groups create -f <file>` SHALL create a Grafana-managed group from a native manifest and SHALL NOT update an existing group. Create SHALL omit source server identity and concurrency metadata and report both title and the server's derived name. A read-only manifest SHALL fail as a command error with exit code 1, not a usage error with exit code 2, and without a mutation. Local unknown kinds SHALL fail validation.
 
 #### Scenario: New group
 - **WHEN** create receives a valid title/content manifest for a Grafana group absent on the target
@@ -56,7 +56,7 @@ Lets users manage Grafana notification template groups as native resources and i
 - **THEN** it fails clearly as read-only before a mutation request
 
 ### Requirement: Update only the selected editable template group
-`gcx alert template-groups update <current-title> -f <file>` SHALL require a fetched resource version. The argument SHALL select the current title and the manifest's kind SHALL select the matching group, with absent historical kind treated as Grafana-managed. `spec.title` SHALL supply the desired title and MAY differ from the argument for an explicit rename. A supplied metadata name SHALL equal the resolved current group's API name; if absent, the resolved name SHALL be used. Update SHALL send one mutation with the resolved current API name and caller version, preserve server conflicts, and fail if missing, stale, ambiguous, or read-only. Template kind SHALL remain unchanged. A rename receipt SHALL show old and new titles and the returned API name; GCX SHALL NOT rewrite local files.
+`gcx alert template-groups update <current-title> -f <file>` SHALL accept only a Grafana-managed manifest and require a fetched resource version. The argument SHALL select the current Grafana-managed group by title; it SHALL NOT select an imported group based on the manifest. An absent historical `spec.kind` SHALL mean Grafana-managed. `spec.title` SHALL supply the desired title and MAY differ from the argument for an explicit rename. A supplied metadata name SHALL equal the resolved current group's API name; if absent, the resolved name SHALL be used. Update SHALL send one mutation with the resolved current API name and caller version, preserve server conflicts, and fail if missing, stale, ambiguous, or read-only. Template kind SHALL remain unchanged. A rename receipt SHALL show old and new titles and the returned API name; GCX SHALL NOT rewrite local files.
 
 #### Scenario: Edit content
 - **WHEN** a Grafana group's content is edited and updated with its current version
@@ -83,8 +83,12 @@ Lets users manage Grafana notification template groups as native resources and i
 - **THEN** the server's conflict is retained and guidance explains how to fetch and retry
 
 #### Scenario: Imported update
-- **WHEN** update targets an imported group
-- **THEN** it fails as read-only without sending PUT
+- **WHEN** the update manifest itself is read-only, including an imported Mimir manifest
+- **THEN** it fails as read-only with exit code 1 and sends no PUT
+
+#### Scenario: Imported title without a Grafana group
+- **WHEN** a Grafana-managed manifest is passed to update and the argument title exists only on an imported group
+- **THEN** title resolution returns not found instead of treating the imported group as a read-only update target
 
 ### Requirement: Delete only an editable template group after confirmation
 `gcx alert template-groups delete <title>` SHALL remove the uniquely selected editable group after confirmation or force. Groups classified as read-only by kind or provenance SHALL fail as read-only, including when force is supplied. A successful receipt SHALL include title and encoded name.

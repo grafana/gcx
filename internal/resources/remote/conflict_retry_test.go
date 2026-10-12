@@ -208,13 +208,45 @@ func TestConflictRetryCancellation(t *testing.T) {
 }
 
 func TestConflictRetryInsideDryRunGuard(t *testing.T) {
-	calls := 0
-	fake := &retryTestClient{mutate: func(_ *unstructured.Unstructured, _ []string) (*unstructured.Unstructured, error) {
-		calls++
-		return nil, retryTestConflict("must not be called")
-	}}
-	guarded := newGuardedDynamicClient(newConflictRetryClient(fake), GuardConfig{})
-	_, err := guarded.Create(t.Context(), guardAlertRuleDesc(), namedObject("one"), metav1.CreateOptions{DryRun: dryRun()})
-	require.ErrorIs(t, err, errDryRunUnverified)
-	require.Zero(t, calls)
+	for _, verb := range []string{"create", "update", "delete"} {
+		t.Run(verb, func(t *testing.T) {
+			calls := 0
+			invoke := func() error {
+				calls++
+				if calls == 1 {
+					return retryTestConflict("retry")
+				}
+				return nil
+			}
+			fake := &retryTestClient{
+				mutate: func(obj *unstructured.Unstructured, _ []string) (*unstructured.Unstructured, error) {
+					return obj, invoke()
+				},
+				deleteFn: func(metav1.DeleteOptions) error { return invoke() },
+			}
+			// Call the same wrapper factory as the production pusher and deleter.
+			client := newGuardedRetryDynamicClient(fake, GuardConfig{})
+			guard, ok := client.(*dryRunGuard)
+			require.True(t, ok, "dry-run guard must be the outermost wrapper")
+			retrying, ok := guard.inner.(*conflictRetryClient)
+			require.True(t, ok, "mutations allowed by the guard must retry conflicts")
+			retrying.backoff = wait.Backoff{Steps: 2}
+			mutate := func(dryRun []string) error {
+				var err error
+				switch verb {
+				case "create":
+					_, err = client.Create(t.Context(), guardAlertRuleDesc(), namedObject("one"), metav1.CreateOptions{DryRun: dryRun})
+				case "update":
+					_, err = client.Update(t.Context(), guardAlertRuleDesc(), namedObject("one"), metav1.UpdateOptions{DryRun: dryRun})
+				case "delete":
+					err = client.Delete(t.Context(), guardAlertRuleDesc(), "one", metav1.DeleteOptions{DryRun: dryRun})
+				}
+				return err
+			}
+			require.ErrorIs(t, mutate(dryRun()), errDryRunUnverified)
+			require.Zero(t, calls, "blocked dry-runs must not reach the mutation client")
+			require.NoError(t, mutate(nil))
+			require.Equal(t, 2, calls, "a permitted mutation retries the conflict")
+		})
+	}
 }

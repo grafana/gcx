@@ -100,7 +100,7 @@ func TestEdit_ReadOnlyRefusedBeforeEditor(t *testing.T) {
 				err := cmd.ExecuteContext(t.Context())
 				if readOnly {
 					require.ErrorContains(t, err, "read-only")
-					require.ErrorContains(t, err, provenance)
+					require.ErrorContains(t, err, map[string]string{"system": "built into Grafana", "converted_prometheus": "external Alertmanager configuration"}[provenance])
 					require.NoFileExists(t, marker)
 				} else {
 					require.NoError(t, err)

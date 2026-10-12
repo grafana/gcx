@@ -84,16 +84,21 @@ func IsReadOnlyNative(obj *unstructured.Unstructured) bool {
 	}
 }
 
-// ReadOnlyNativeError describes why an opted-in resource cannot be changed.
+// ReadOnlyNativeError explains an object already classified by IsReadOnlyNative.
 func ReadOnlyNativeError(obj *unstructured.Unstructured) error {
 	field := "name"
 	if obj.GetKind() == "TemplateGroup" {
 		field = "title"
 	}
 	title, _, _ := unstructured.NestedString(obj.Object, "spec", field)
-	reason := obj.GetAnnotations()["grafana.com/provenance"]
-	if reason == "" {
-		reason, _, _ = unstructured.NestedString(obj.Object, "spec", "kind")
+	provenance := obj.GetAnnotations()["grafana.com/provenance"]
+	// The remaining read-only sources are converted imports or spec.kind mimir.
+	guidance := "it was imported from an external Alertmanager configuration; change it there or finish the import in Grafana"
+	switch provenance {
+	case "system":
+		guidance = "it is built into Grafana and cannot be changed"
+	case "file":
+		guidance = "it is provisioned from a file; change the provisioning file"
 	}
-	return fmt.Errorf("%s %q is read-only (%s); manage its configuration at the source", obj.GetKind(), title, reason)
+	return fmt.Errorf("%s %q is read-only: %s", obj.GetKind(), title, guidance)
 }

@@ -202,7 +202,6 @@ func deleteCmd(configOpts *cmdconfig.Options) *cobra.Command {
 					}
 				}
 			}
-			opts.IO.RegisterCustomCodec("text", &mutationSummaryCodec{skipReasons: summary.SkippedReasons()})
 			result := batchMutationFromSummary("deleted", summary, opts.DryRun)
 			// The deletion is done and its counts are final; a later rendering
 			// or stdout failure does not restore anything.
