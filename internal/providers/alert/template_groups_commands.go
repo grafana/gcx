@@ -85,6 +85,8 @@ type templateGroupsGetOpts struct {
 }
 
 func (o *templateGroupsGetOpts) setup(flags *pflag.FlagSet) {
+	o.IO.RegisterCustomCodec("table", &templateGroupTableCodec{})
+	o.IO.RegisterCustomCodec("wide", &templateGroupTableCodec{wide: true})
 	o.IO.DefaultFormat("yaml")
 	o.IO.BindFlags(flags)
 	flags.StringVar(&o.APIVersion, "api-version", "", apiVersionFlagUsage)
@@ -178,10 +180,7 @@ Imported Mimir groups must be managed in the external Alertmanager configuration
 			if err != nil {
 				return err
 			}
-			prepared, err := resources.PrepareNativeCreate(obj)
-			if err != nil {
-				return err
-			}
+			prepared := resources.PrepareNativeCreate(obj)
 			access, err := binding.Load(cmd.Context(), native.LoadOptions{APIVersion: version})
 			if err != nil {
 				return err

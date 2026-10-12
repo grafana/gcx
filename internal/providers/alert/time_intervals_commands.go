@@ -27,15 +27,20 @@ import (
 const timeIntervalKind = "TimeInterval"
 
 func timeIntervalsCommands(loader GrafanaConfigLoader) *cobra.Command {
-	return newTimeIntervalsCommand(native.Bind(loader, native.Config{Group: routingTreesGroup, Resource: "timeintervals"}), loader)
+	return newTimeIntervalsCommand(native.Bind(loader, native.Config{Group: routingTreesGroup, Resource: "timeintervals"}))
 }
 
-func newTimeIntervalsCommand(binding native.Binding, loader GrafanaConfigLoader) *cobra.Command {
+func newTimeIntervalsCommand(binding native.Binding) *cobra.Command {
 	cmd := &cobra.Command{Use: "time-intervals", Short: "Manage notification time intervals by title.", Long: `Manage time intervals through Grafana's native notifications API. Native
 JSON/YAML manifests also work with generic resources commands. Titles are matched
 exactly and case-sensitively across the complete inventory; API names are opaque.
-Use export for provisioning YAML/JSON/HCL, rather than a native manifest.`}
-	cmd.AddCommand(newTimeIntervalsListCommand(binding), newTimeIntervalsGetCommand(binding), newTimeIntervalsCreateCommand(binding), newTimeIntervalsUpdateCommand(binding), newTimeIntervalsDeleteCommand(binding), newTimeIntervalsExportCommand(loader))
+For provisioning YAML/JSON/HCL, use gcx alert mute-timings export. Select one
+exact title with --name <title> and choose yaml, json, or hcl with --format.
+Provisioning exports include only Grafana-managed intervals; imported intervals
+shown by list/get are not exported. Collection exports may be empty or partial,
+and exporting an imported title returns not found. Exported bytes are not native
+TimeInterval manifests.`}
+	cmd.AddCommand(newTimeIntervalsListCommand(binding), newTimeIntervalsGetCommand(binding), newTimeIntervalsCreateCommand(binding), newTimeIntervalsUpdateCommand(binding), newTimeIntervalsDeleteCommand(binding))
 	return cmd
 }
 
@@ -63,7 +68,7 @@ func (o *timeIntervalsReadOpts) Validate(cmd *cobra.Command) error {
 }
 func newTimeIntervalsListCommand(binding native.Binding) *cobra.Command {
 	opts := &timeIntervalsReadOpts{}
-	cmd := &cobra.Command{Use: "list", Short: "List all time intervals with their titles and API names.", Args: cobra.NoArgs, Example: `  gcx alert time-intervals list
+	cmd := &cobra.Command{Use: "list", Short: "List all time intervals with their titles and API names.", Aliases: []string{"ls"}, Args: cobra.NoArgs, Example: `  gcx alert time-intervals list
   gcx alert time-intervals list -o json
   gcx alert time-intervals list --api-version v0alpha1`, RunE: func(cmd *cobra.Command, _ []string) error {
 		if err := opts.Validate(cmd); err != nil {
@@ -156,10 +161,7 @@ The input file is unchanged.`, Args: cobra.NoArgs, Example: `  gcx alert time-in
 		if err != nil {
 			return err
 		}
-		prepared, err := resources.PrepareNativeCreate(obj)
-		if err != nil {
-			return fail.NewCommandUsageError(cmd, err.Error(), nil)
-		}
+		prepared := resources.PrepareNativeCreate(obj)
 		access, err := binding.Load(cmd.Context(), native.LoadOptions{APIVersion: version})
 		if err != nil {
 			return err
@@ -253,7 +255,7 @@ func (o *timeIntervalsDeleteOpts) Validate(cmd *cobra.Command) error {
 }
 func newTimeIntervalsDeleteCommand(binding native.Binding) *cobra.Command {
 	opts := &timeIntervalsDeleteOpts{}
-	cmd := &cobra.Command{Use: "delete <title>", Short: "Delete a time interval by exact title after confirmation.", Args: cobra.ExactArgs(1), Example: `  gcx alert time-intervals delete weekends
+	cmd := &cobra.Command{Use: "delete <title>", Short: "Delete a time interval by exact title after confirmation.", Aliases: []string{"rm"}, Args: cobra.ExactArgs(1), Example: `  gcx alert time-intervals delete weekends
   gcx alert time-intervals delete weekends --force
   gcx alert time-intervals delete weekends --force -o json`, RunE: func(cmd *cobra.Command, args []string) error {
 		if err := opts.Validate(cmd); err != nil {
@@ -284,57 +286,6 @@ func newTimeIntervalsDeleteCommand(binding native.Binding) *cobra.Command {
 			return err
 		}
 		return opts.IO.Encode(cmd.OutOrStdout(), nativeAlertMutation("deleted", timeIntervalKind, args[0], "", current))
-	}}
-	opts.setup(cmd.Flags())
-	return cmd
-}
-
-type timeIntervalsExportOpts struct{ Format string }
-
-func (o *timeIntervalsExportOpts) setup(flags *pflag.FlagSet) {
-	flags.StringVar(&o.Format, "format", "yaml", "Provisioning export format: yaml, json, or hcl")
-}
-func (o *timeIntervalsExportOpts) Validate(cmd *cobra.Command) error {
-	if err := validateExportFormat(o.Format); err != nil {
-		return fail.NewCommandUsageError(cmd, err.Error(), nil)
-	}
-	return nil
-}
-func newTimeIntervalsExportCommand(loader GrafanaConfigLoader) *cobra.Command {
-	opts := &timeIntervalsExportOpts{}
-	cmd := &cobra.Command{Use: "export [<title>]", Short: "Export time intervals as provisioning YAML, JSON, or HCL.", Long: `Export Grafana-managed intervals, or one exact title, through the provisioning endpoint.
-Imported intervals shown by list/get are not exported: collection exports may be empty
-or partial, and exporting an imported title returns not found. The raw provisioning
-bytes are preserved and are not native TimeInterval manifests.`, Args: cobra.MaximumNArgs(1), Example: `  gcx alert time-intervals export
-  gcx alert time-intervals export weekends --format hcl
-  gcx alert time-intervals export --format json`, RunE: func(cmd *cobra.Command, args []string) error {
-		if err := opts.Validate(cmd); err != nil {
-			return err
-		}
-		if len(args) > 0 {
-			if err := validateNativeAlertTitle(cmd, args[0]); err != nil {
-				return err
-			}
-		}
-		cfg, err := loader.LoadGrafanaConfig(cmd.Context())
-		if err != nil {
-			return err
-		}
-		client, err := NewClient(cfg)
-		if err != nil {
-			return err
-		}
-		var data []byte
-		if len(args) == 0 {
-			data, err = client.ExportMuteTimings(cmd.Context(), opts.Format)
-		} else {
-			data, err = client.ExportMuteTiming(cmd.Context(), args[0], opts.Format)
-		}
-		if err != nil {
-			return err
-		}
-		_, err = cmd.OutOrStdout().Write(data)
-		return err
 	}}
 	opts.setup(cmd.Flags())
 	return cmd

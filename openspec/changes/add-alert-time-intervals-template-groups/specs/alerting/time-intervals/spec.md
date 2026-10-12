@@ -97,20 +97,16 @@ Create and update SHALL accept JSON/YAML files and injected stdin via `-f -`. Ma
 - **WHEN** the server advertises only the supported `v0alpha1` resource
 - **THEN** default reads use that version without a provisioning fallback
 
-### Requirement: Export provisioning definitions
-`gcx alert time-intervals export [<title>]` SHALL return provisioning export bytes using `--format yaml|json|hcl`, defaulting to YAML. With no title it SHALL export all Grafana-managed intervals; with a title it SHALL export that single Grafana-managed interval. Imported intervals visible through native list/get SHALL be excluded, and exporting an imported title SHALL return not found. Export SHALL NOT be presented as a native manifest.
+### Requirement: Keep provisioning export on its existing command
+The native time-interval family SHALL NOT add an export leaf. Its help SHALL direct users to `gcx alert mute-timings export --name <title> --format yaml|json|hcl` for provisioning bytes, preserving that command's behavior. Provisioning export covers Grafana-managed intervals; imported intervals visible in native reads are excluded.
 
-#### Scenario: HCL export
-- **WHEN** `export weekends --format hcl` runs
-- **THEN** it returns the single-interval provisioning HCL export unchanged
+#### Scenario: Provisioning export guidance
+- **WHEN** time-intervals help is displayed
+- **THEN** it identifies the existing mute-timings export command and distinguishes provisioning output from native manifests
 
-#### Scenario: Complete export and invalid format
-- **WHEN** export has no title, or has an invalid/empty format flag
-- **THEN** respectively it exports all Grafana-managed intervals, or fails with usage status before a request
-
-#### Scenario: Imported interval export
-- **WHEN** provisioning export is requested for an imported interval visible in native list
-- **THEN** export reports not found, and collection export excludes it
+#### Scenario: Native export absent
+- **WHEN** a caller attempts time-intervals export
+- **THEN** no such native command is registered, while mute-timings export remains available
 
 ### Requirement: Same resource on both command surfaces
 Dedicated JSON/YAML reads and `gcx resources` SHALL exchange the same native `TimeInterval` manifests. The existing `mute-timings` commands SHALL retain their behavior.

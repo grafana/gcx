@@ -56,15 +56,19 @@ For server-derived kinds, push SHALL create or update the identity described by 
 - **THEN** push creates or updates the new logical identity and leaves the original resource in place
 
 ### Requirement: Apply shared read-only handling without hiding reads
-For TimeInterval and TemplateGroup, `spec.kind: mimir` or `grafana.com/provenance` equal to `system`, `converted_prometheus`, or `file` SHALL mean read-only. Absent provenance and `api` SHALL remain writable. Generic pull, push, and delete SHALL skip read-only objects, count the skips, and show a read-only reason. Reads SHALL retain them. Generic edit SHALL reject them before opening the editor. Dedicated create/update SHALL reject read-only manifests with exit code 1, not usage exit code 2. JSON `summary.skipped` SHALL retain its total-count shape; human summaries SHALL distinguish skip reasons. Batch mutation and artifact receipt JSON SHALL expose recorded skip reasons in an optional top-level `skipped_reasons` map of reason to count, omitted when empty and additive within `schema_version: "1"`; agent-mode JSON SHALL expose the same map.
+For TimeInterval and TemplateGroup, `spec.kind: mimir` or `grafana.com/provenance` equal to `system`, `converted_prometheus`, or `file` SHALL mean read-only. Absent provenance and `api` SHALL remain writable. Generic pull SHALL retain read-only objects by default and SHALL offer `--skip-readonly` to exclude them with counted read-only skips. Push and delete SHALL always skip them with a read-only reason. Reads SHALL retain them. Generic edit SHALL reject them before opening the editor. Dedicated create/update SHALL reject read-only manifests with exit code 1, not usage exit code 2. JSON `summary.skipped` SHALL retain its total-count shape; human summaries SHALL distinguish skip reasons. Batch mutation and artifact receipt JSON SHALL expose recorded skip reasons in an optional top-level `skipped_reasons` map of reason to count, omitted when empty and additive within `schema_version: "1"`; agent-mode JSON SHALL expose the same map.
 
 #### Scenario: Read-only local input
 - **WHEN** push or file-based delete receives a read-only native manifest
 - **THEN** the resource is skipped without a client request, counted as skipped rather than failed, and other batch items retain existing processing semantics
 
 #### Scenario: Read-only pull selector
-- **WHEN** pull explicitly selects a read-only native object or includes it in a collection
-- **THEN** it counts a read-only skip and writes no artifact, while generic get still returns the object
+- **WHEN** pull selects read-only native objects without `--skip-readonly`
+- **THEN** it writes their manifests for backup, audit, and diffing
+
+#### Scenario: Optional read-only exclusion
+- **WHEN** pull selects read-only native objects with `--skip-readonly`
+- **THEN** it counts read-only skips and writes no artifact for them
 
 #### Scenario: Edit refusal
 - **WHEN** generic edit fetches a read-only native object
@@ -115,7 +119,7 @@ Push/delete mutation batch failures SHALL expose optional `source` from the reso
 - **THEN** its failure entry omits source
 
 ### Requirement: Retry native mutation Conflict responses inside the guard
-The native dynamic-client mutation wrapper SHALL retry Create, Update, and Delete only for Kubernetes Conflict responses with bounded, context-aware backoff. It SHALL pass reads through, return non-Conflict errors immediately, and preserve the last conflict on exhaustion. It SHALL run inside the dry-run guard before routing, leaving blocked previews and provider adapters unaffected. Existing bounded concurrency SHALL remain without an alerting-specific serial phase, error-text matching, version refresh, or another verb/backend fallback.
+The dynamic-client mutation wrapper SHALL retry Create, Update, and Delete only for TimeInterval and TemplateGroup Kubernetes Conflict responses with bounded, context-aware backoff. It SHALL pass reads and all other resource kinds through without retry, return non-Conflict errors immediately, and preserve the last conflict on exhaustion. It SHALL run inside the dry-run guard before routing, leaving blocked previews and provider adapters unaffected. Existing bounded concurrency SHALL remain without an alerting-specific serial phase, error-text matching, version refresh, or another verb/backend fallback.
 
 #### Scenario: Transient conflict
 - **WHEN** a native mutation returns Conflict and a subsequent attempt succeeds

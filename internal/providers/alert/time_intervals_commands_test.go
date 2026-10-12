@@ -204,9 +204,9 @@ func intervalBinding(t *testing.T, api *intervalTestAPI, preferred string) (nati
 	}))
 	return binding, loader
 }
-func intervalRun(t *testing.T, binding native.Binding, loader GrafanaConfigLoader, stdin string, args ...string) (string, error) {
+func intervalRun(t *testing.T, binding native.Binding, stdin string, args ...string) (string, error) {
 	t.Helper()
-	cmd := newTimeIntervalsCommand(binding, loader)
+	cmd := newTimeIntervalsCommand(binding)
 	cmd.SilenceUsage = true
 	cmd.SilenceErrors = true
 	var out, diag bytes.Buffer
@@ -243,6 +243,8 @@ func TestTimeIntervalsReads(t *testing.T) {
 		{name: "complete paginated list", args: []string{"list", "-o", "json"}, items: []unstructured.Unstructured{*intervalObject("weekends", "opaque-first", "7"), *intervalObject("holidays", "opaque-second", "4")}, want: "opaque-second", methods: []string{"GET", "GET"}},
 		{name: "empty items", args: []string{"list", "-o", "json"}, want: `"items": []`, methods: []string{"GET"}},
 		{name: "table", args: []string{"list", "-o", "wide"}, items: []unstructured.Unstructured{*intervalObject("weekends", "opaque-first", "7")}, want: "opaque-first", methods: []string{"GET"}},
+		{name: "get table", args: []string{"get", "weekends", "-o", "table"}, items: []unstructured.Unstructured{*intervalObject("weekends", "opaque-first", "7")}, want: "opaque-first", methods: []string{"GET", "GET"}},
+		{name: "get wide", args: []string{"get", "weekends", "-o", "wide"}, items: []unstructured.Unstructured{*intervalObject("weekends", "opaque-first", "7")}, want: "PROVENANCE", methods: []string{"GET", "GET"}},
 		{name: "title lookup preserves native", args: []string{"get", "weekends", "-o", "json"}, items: []unstructured.Unstructured{*intervalObject("weekends", "opaque-first", "7")}, want: "preserve", methods: []string{"GET", "GET"}},
 		{name: "case sensitive", args: []string{"get", "Weekends"}, items: []unstructured.Unstructured{*intervalObject("weekends", "opaque-first", "7")}, wantErr: "not found", methods: []string{"GET"}},
 		{name: "encoded name not title", args: []string{"get", "opaque-first"}, items: []unstructured.Unstructured{*intervalObject("weekends", "opaque-first", "7")}, wantErr: "not found", methods: []string{"GET"}},
@@ -258,8 +260,8 @@ func TestTimeIntervalsReads(t *testing.T) {
 			if preferred == "" {
 				preferred = "v1beta1"
 			}
-			binding, loader := intervalBinding(t, api, preferred)
-			out, err := intervalRun(t, binding, loader, "", tc.args...)
+			binding, _ := intervalBinding(t, api, preferred)
+			out, err := intervalRun(t, binding, "", tc.args...)
 			if tc.wantErr != "" {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tc.wantErr)
@@ -275,6 +277,11 @@ func TestTimeIntervalsReads(t *testing.T) {
 				var obj unstructured.Unstructured
 				require.NoError(t, json.Unmarshal([]byte(out), &obj.Object))
 				assert.Equal(t, tc.items[0].Object, obj.Object)
+			}
+			if tc.name == "get table" || tc.name == "get wide" {
+				assert.Contains(t, out, "TITLE")
+				assert.Contains(t, out, "API_NAME")
+				assert.Contains(t, api.requests[1], "/timeintervals/opaque-first")
 			}
 			if tc.name == "table" {
 				assert.Contains(t, out, "TITLE")
@@ -314,7 +321,7 @@ func TestTimeIntervalsWrites(t *testing.T) {
 				items = []unstructured.Unstructured{*intervalObject("weekends", "old-address", "7")}
 			}
 			api := &intervalTestAPI{items: items, mutationStatus: tc.status}
-			binding, loader := intervalBinding(t, api, "v1beta1")
+			binding, _ := intervalBinding(t, api, "v1beta1")
 			obj := intervalObject(tc.title, tc.apiName, tc.rv)
 			obj.SetGeneration(8)
 			obj.SetGenerateName("source-")
@@ -325,7 +332,7 @@ func TestTimeIntervalsWrites(t *testing.T) {
 				args = append(args, tc.subject)
 			}
 			args = append(args, "-f", "-", "-o", "json")
-			out, err := intervalRun(t, binding, loader, input, args...)
+			out, err := intervalRun(t, binding, input, args...)
 			if tc.wantErr != "" {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tc.wantErr)
@@ -387,9 +394,6 @@ func TestTimeIntervalsValidateBeforeLoad(t *testing.T) {
 		}},
 		{name: "missing update RV", args: []string{"update", "weekends", "-f", "-"}, modify: func(o *unstructured.Unstructured) { o.SetResourceVersion("") }},
 		{name: "conflicting API versions", args: []string{"create", "-f", "-", "--api-version", "v0alpha1"}},
-		{name: "invalid export", args: []string{"export", "--format", "xml"}},
-		{name: "empty export", args: []string{"export", "--format="}},
-		{name: "extra export subjects", args: []string{"export", "a", "b"}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -399,18 +403,14 @@ func TestTimeIntervalsValidateBeforeLoad(t *testing.T) {
 				loads++
 				return native.Access{}, errors.New("unexpected load")
 			})
-			loader := &intervalTestLoader{}
 			obj := intervalObject("weekends", "old-address", "7")
 			if tc.modify != nil {
 				tc.modify(obj)
 			}
-			_, err := intervalRun(t, binding, loader, intervalManifest(t, obj), tc.args...)
+			_, err := intervalRun(t, binding, intervalManifest(t, obj), tc.args...)
 			require.Error(t, err)
 			assert.Zero(t, loads)
-			assert.Zero(t, loader.calls)
-			if tc.name != "extra export subjects" {
-				assert.Equal(t, gcxerrors.ExitUsageError, *fail.ErrorToDetailedError(err).ExitCode)
-			}
+			assert.Equal(t, gcxerrors.ExitUsageError, *fail.ErrorToDetailedError(err).ExitCode)
 		})
 	}
 }
@@ -440,7 +440,7 @@ func TestTimeIntervalsDeleteConfirmation(t *testing.T) {
 			if tc.force {
 				args = append(args, "--force")
 			}
-			out, err := intervalRun(t, binding, loader, tc.stdin, args...)
+			out, err := intervalRun(t, binding, tc.stdin, args...)
 			if tc.wantErr != "" {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tc.wantErr)
@@ -469,45 +469,16 @@ func TestTimeIntervalsDeleteConfirmation(t *testing.T) {
 func TestTimeIntervalsFileInputUnchanged(t *testing.T) {
 	intervalEnv(t)
 	api := &intervalTestAPI{items: []unstructured.Unstructured{*intervalObject("weekends", "old-address", "7")}}
-	binding, loader := intervalBinding(t, api, "v1beta1")
+	binding, _ := intervalBinding(t, api, "v1beta1")
 	input := []byte(intervalManifest(t, intervalObject("holidays", "old-address", "7")))
 	path := filepath.Join(t.TempDir(), "interval.json")
 	require.NoError(t, os.WriteFile(path, input, 0600))
-	out, err := intervalRun(t, binding, loader, "", "update", "weekends", "-f", path)
+	out, err := intervalRun(t, binding, "", "update", "weekends", "-f", path)
 	require.NoError(t, err)
 	assert.Contains(t, out, `"weekends" renamed to "holidays"`)
 	after, err := os.ReadFile(path)
 	require.NoError(t, err)
 	assert.Equal(t, input, after)
-}
-
-func TestTimeIntervalsExportRaw(t *testing.T) {
-	for _, format := range []string{"yaml", "json", "hcl"} {
-		for _, single := range []bool{false, true} {
-			t.Run(fmt.Sprintf("%s/%t", format, single), func(t *testing.T) {
-				intervalEnv(t)
-				var uri string
-				raw := "raw provisioning " + format + "\n"
-				srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { uri = r.URL.RequestURI(); _, _ = w.Write([]byte(raw)) }))
-				defer srv.Close()
-				loader := &intervalTestLoader{cfg: config.NamespacedRESTConfig{Config: rest.Config{Host: srv.URL}}}
-				args := []string{"export"}
-				if single {
-					args = append(args, "weekends/with space")
-				}
-				args = append(args, "--format", format)
-				out, err := intervalRun(t, native.Fixed(native.Access{}), loader, "", args...)
-				require.NoError(t, err)
-				assert.Equal(t, raw, out)
-				assert.Contains(t, uri, "format="+format)
-				if single {
-					assert.Contains(t, uri, "weekends%2Fwith%20space/export")
-				} else {
-					assert.Contains(t, uri, "/mute-timings/export")
-				}
-			})
-		}
-	}
 }
 
 func TestTimeIntervalsPreserveServerErrors(t *testing.T) {
@@ -521,7 +492,7 @@ func TestTimeIntervalsPreserveServerErrors(t *testing.T) {
 				} else {
 					api.status = status
 				}
-				binding, loader := intervalBinding(t, api, "v1beta1")
+				binding, _ := intervalBinding(t, api, "v1beta1")
 				args := []string{verb}
 				if verb == "get" || verb == "update" || verb == "delete" {
 					args = append(args, "weekends")
@@ -532,7 +503,7 @@ func TestTimeIntervalsPreserveServerErrors(t *testing.T) {
 				if verb == "delete" {
 					args = append(args, "--force")
 				}
-				_, err := intervalRun(t, binding, loader, intervalManifest(t, intervalObject("holidays", "old-address", "7")), args...)
+				_, err := intervalRun(t, binding, intervalManifest(t, intervalObject("holidays", "old-address", "7")), args...)
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), fmt.Sprintf("native status %d", status))
 				if verb == "create" {
@@ -551,7 +522,7 @@ func TestTimeIntervalsBindingCancellation(t *testing.T) {
 	for _, err := range []error{context.Canceled, context.DeadlineExceeded, errors.New("discovery unavailable")} {
 		t.Run(err.Error(), func(t *testing.T) {
 			binding := native.Func(func(context.Context, native.LoadOptions) (native.Access, error) { return native.Access{}, err })
-			_, got := intervalRun(t, binding, nil, "", "list")
+			_, got := intervalRun(t, binding, "", "list")
 			assert.ErrorIs(t, got, err)
 		})
 	}
@@ -562,10 +533,10 @@ func TestTimeIntervalsManifestSelectsVersion(t *testing.T) {
 		t.Run(version, func(t *testing.T) {
 			intervalEnv(t)
 			api := &intervalTestAPI{}
-			binding, loader := intervalBinding(t, api, "v1beta1")
+			binding, _ := intervalBinding(t, api, "v1beta1")
 			obj := intervalObject("new", "source-name", "source-version")
 			obj.SetAPIVersion(routingTreesGroup + "/" + version)
-			_, err := intervalRun(t, binding, loader, intervalManifest(t, obj), "create", "-f", "-", "--api-version", version)
+			_, err := intervalRun(t, binding, intervalManifest(t, obj), "create", "-f", "-", "--api-version", version)
 			require.NoError(t, err)
 			require.Len(t, api.requests, 1)
 			assert.Contains(t, api.requests[0], "/"+version+"/")
@@ -578,7 +549,7 @@ func TestTimeIntervalsManifestSelectsVersion(t *testing.T) {
 func TestTimeIntervalsYAMLFileAndPipeRoundTrip(t *testing.T) {
 	intervalEnv(t)
 	api := &intervalTestAPI{}
-	binding, loader := intervalBinding(t, api, "v1beta1")
+	binding, _ := intervalBinding(t, api, "v1beta1")
 	input := []byte(`apiVersion: notifications.alerting.grafana.app/v1beta1
 kind: TimeInterval
 metadata:
@@ -598,14 +569,14 @@ spec:
 `)
 	path := filepath.Join(t.TempDir(), "interval.yaml")
 	require.NoError(t, os.WriteFile(path, input, 0600))
-	_, err := intervalRun(t, binding, loader, "", "create", "-f", path)
+	_, err := intervalRun(t, binding, "", "create", "-f", path)
 	require.NoError(t, err)
 	require.Len(t, api.bodies, 1)
 	assert.Empty(t, api.bodies[0].GetName())
 	assert.Zero(t, api.bodies[0].GetGeneration())
-	fetched, err := intervalRun(t, binding, loader, "", "get", "weekends", "-o", "yaml")
+	fetched, err := intervalRun(t, binding, "", "get", "weekends", "-o", "yaml")
 	require.NoError(t, err)
-	_, err = intervalRun(t, binding, loader, fetched, "update", "weekends", "-f", "-")
+	_, err = intervalRun(t, binding, fetched, "update", "weekends", "-f", "-")
 	require.NoError(t, err)
 	require.Len(t, api.bodies, 2)
 	assert.Equal(t, "derived-weekends", api.bodies[1].GetName())

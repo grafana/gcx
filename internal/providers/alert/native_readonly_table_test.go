@@ -43,14 +43,14 @@ func TestTimeIntervalsReadOnlySubjectCannotMutate(t *testing.T) {
 				current := intervalObject("protected", "opaque", "7")
 				current.SetAnnotations(map[string]string{provenanceAnnotation: provenance})
 				api := &intervalTestAPI{items: []unstructured.Unstructured{*current}}
-				binding, loader := intervalBinding(t, api, "v1beta1")
+				binding, _ := intervalBinding(t, api, "v1beta1")
 				local := current.DeepCopy()
 				local.SetAnnotations(map[string]string{provenanceAnnotation: "api"})
 				args := []string{"delete", "protected", "--force"}
 				if operation == "update" {
 					args = []string{"update", "protected", "-f", "-"}
 				}
-				_, err := intervalRun(t, binding, loader, intervalManifest(t, local), args...)
+				_, err := intervalRun(t, binding, intervalManifest(t, local), args...)
 				require.ErrorContains(t, err, "read-only")
 				require.ErrorContains(t, err, map[string]string{"system": "built into Grafana", "converted_prometheus": "external Alertmanager configuration", "file": "provisioning file"}[provenance])
 				for _, request := range api.requests {

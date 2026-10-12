@@ -363,10 +363,11 @@ directory: distinct titles remain separate, and template kind is part of the
 identity. To delete these resources, use the dedicated `alert time-intervals delete`
 or `alert template-groups delete` commands, or pass pulled files with real API
 names to `resources delete -p`; unnamed files are rejected before any request for
-that file. Pull, push, and delete skip read-only native intervals and template
-groups, with a read-only reason in the summary. Read commands still show them;
-`resources edit` refuses them before opening an editor. Time-interval provisioning
-export covers Grafana-managed intervals only. See [server-derived resource names](docs/architecture/resource-model.md#server-derived-native-names)
+that file. Pull includes read-only native intervals and template groups by default for
+backup, audit, and diffing; `--skip-readonly` excludes them with a reason in the
+summary. Push and delete always skip them. Read commands still show them;
+`resources edit` refuses them before opening an editor. Provisioning export remains under
+`gcx alert mute-timings export` and covers Grafana-managed intervals only. See [server-derived resource names](docs/architecture/resource-model.md#server-derived-native-names)
 for portable push behavior.
 
 For an empty dashboard or missing application telemetry, follow

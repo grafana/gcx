@@ -135,11 +135,11 @@ manifests stay strict. Read-only local manifests are skipped; a writable local
 identity matching a read-only destination fails before update. Create preparation
 strips source identity on a copy. See [resource model](resource-model.md#server-derived-native-names).
 
-Native dynamic-client Create, Update, and Delete retry only Kubernetes `Conflict`
-errors with bounded backoff. Reads pass through; `AlreadyExists` and other errors
+Dynamic-client Create, Update, and Delete retry Kubernetes `Conflict` errors
+only for TimeInterval and TemplateGroup, with bounded backoff. Reads pass through; `AlreadyExists` and other errors
 are returned immediately, and exhaustion preserves the last conflict. The retry
 wrapper sits inside the dry-run guard, so blocked previews never reach it.
-Provider adapters are unaffected. Non-folder resources keep their existing
+Other dynamic kinds return conflicts immediately; provider adapters are unaffected. Non-folder resources keep their existing
 bounded concurrency; there is no alerting-specific serial phase. Retrying a stale
 resource version does not refresh it and may still exhaust the backoff.
 
@@ -232,9 +232,10 @@ Entry point: `cmd/gcx/resources/pull.go` (mirrors push structure).
   └──────────────────────────────────────────────────────────────────────┘
 ```
 
-`resources pull` enables `ExcludeReadOnly`, including explicit single-object
-selectors, so read-only objects are counted but not written to disk. Remote
-delete selectors use the same filtering. `resources get` leaves it disabled to
+`resources pull` enables `ExcludeReadOnly` only with `--skip-readonly`, including
+explicit single-object selectors. The default retains read-only objects for
+backup, audit, and diffing; when excluded they are counted and not written. Remote
+delete selectors always enable read-only filtering. `resources get` leaves it disabled to
 keep inventory complete; `resources edit` fetches the object and rejects a
 read-only result before opening the editor.
 

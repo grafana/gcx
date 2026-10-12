@@ -23,8 +23,6 @@ func TestNativeNaturalKeyUnknownServerKinds(t *testing.T) {
 			{name: "unknown remote before valid match", localKind: "grafana", localTitle: "shared", wantMatch: true},
 			{name: "unknown remote without valid match", localKind: "grafana", localTitle: "other"},
 			{name: "valid matches remain ambiguous", localKind: "grafana", localTitle: "shared", duplicate: true, errorText: "ambiguous native identity"},
-			{name: "unknown local kind fails before list", localKind: "future", localTitle: "shared", errorText: "spec.kind must be grafana or mimir"},
-			{name: "invalid local title fails before list", localKind: "grafana", errorText: "spec.title must be a nonempty string"},
 		} {
 			t.Run(version+"/"+tc.name, func(t *testing.T) {
 				lister := newMockLister()
@@ -35,13 +33,12 @@ func TestNativeNaturalKeyUnknownServerKinds(t *testing.T) {
 				lister.results[desc.GroupVersionKind()] = &unstructured.UnstructuredList{Items: items}
 				local := object("", tc.localTitle, tc.localKind)
 				original := local.DeepCopy()
-				matched, found, err := findByNaturalKey(t.Context(), newNaturalKeyCache(lister), desc, &local)
+				identity, _, err := resources.NativeIdentity(&local)
+				require.NoError(t, err)
+				matched, found, err := findByNaturalKey(t.Context(), newNaturalKeyCache(lister), desc, &local, identity)
 				if tc.errorText != "" {
 					require.ErrorContains(t, err, tc.errorText)
 					assert.False(t, found)
-					if tc.localKind == "future" || tc.localTitle == "" {
-						assert.Zero(t, lister.calls(desc.GroupVersionKind()))
-					}
 				} else {
 					require.NoError(t, err)
 					assert.Equal(t, tc.wantMatch, found)

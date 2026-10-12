@@ -215,3 +215,25 @@ func TestTemplateGroupsVersionSelection(t *testing.T) {
 		})
 	}
 }
+
+func TestTemplateGroupsGetTableFormats(t *testing.T) {
+	templateTestMode(t)
+	for _, output := range []string{"table", "wide"} {
+		for _, kind := range []string{"grafana", "mimir"} {
+			t.Run(output+"/"+kind, func(t *testing.T) {
+				api := newTemplateNativeAPI(t, "v1beta1")
+				res := runTemplateGroups(t, templateAPIBinding(t, api), "", "get", "shared", "--kind", kind, "-o", output)
+				require.NoError(t, res.err)
+				for _, cell := range []string{"TITLE", "API_NAME", "KIND", "READ-ONLY", "shared", "opaque-" + kind} {
+					assert.Contains(t, res.stdout, cell)
+				}
+				if output == "wide" {
+					assert.Contains(t, res.stdout, "PROVENANCE")
+				}
+				require.Len(t, api.requests, 2)
+				assert.Equal(t, "GET "+api.path, api.requests[0])
+				assert.Equal(t, "GET "+api.path+"/opaque-"+kind, api.requests[1])
+			})
+		}
+	}
+}

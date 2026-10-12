@@ -112,32 +112,50 @@ func newReadOnlyCommandFixture(t *testing.T, kind string) *readOnlyCommandFixtur
 func TestPull_ReadOnlyExclusionWiring(t *testing.T) {
 	for _, kind := range []string{"TimeInterval", "TemplateGroup"} {
 		for _, mode := range []string{"human", "agent"} {
-			t.Run(kind+"/"+mode, func(t *testing.T) {
-				f := newReadOnlyCommandFixture(t, kind)
-				if mode == "agent" {
-					t.Setenv("GCX_AGENT_MODE", "true")
-				}
-				agent.ResetForTesting()
-				destination := filepath.Join(t.TempDir(), "resources")
-				var stdout bytes.Buffer
-				cmd := pullCmd(f.config)
-				cmd.SetOut(&stdout)
-				cmd.SetErr(io.Discard)
-				cmd.SetArgs([]string{f.plural, "--path", destination})
-				require.NoError(t, cmd.ExecuteContext(t.Context()))
-				require.FileExists(t, filepath.Join(destination, f.groupDir, "writable.json"), "writable control proves resource fetching and writing occurred")
-				require.NoFileExists(t, filepath.Join(destination, f.groupDir, "read-only.json"))
-				if mode == "agent" {
-					var receipt cmdio.ArtifactReceipt
-					require.NoError(t, json.Unmarshal(stdout.Bytes(), &receipt))
-					require.Equal(t, map[string]int{"read-only": 1}, receipt.SkippedReasons)
-					require.Equal(t, cmdio.MutationSummary{Succeeded: 1, Skipped: 1}, receipt.Summary)
-				} else {
-					require.Contains(t, stdout.String(), "1 resources pulled, 0 errors (1 skipped: read-only)")
-				}
-				require.EqualValues(t, 1, f.reads.Load())
-				require.Zero(t, f.writes.Load())
-			})
+			for _, skip := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/%s/skip=%t", kind, mode, skip), func(t *testing.T) {
+					f := newReadOnlyCommandFixture(t, kind)
+					if mode == "agent" {
+						t.Setenv("GCX_AGENT_MODE", "true")
+					}
+					agent.ResetForTesting()
+					destination := filepath.Join(t.TempDir(), "resources")
+					var stdout bytes.Buffer
+					cmd := pullCmd(f.config)
+					cmd.SetOut(&stdout)
+					cmd.SetErr(io.Discard)
+					args := []string{f.plural, "--path", destination}
+					if skip {
+						args = append(args, "--skip-readonly")
+					}
+					cmd.SetArgs(args)
+					require.NoError(t, cmd.ExecuteContext(t.Context()))
+					require.FileExists(t, filepath.Join(destination, f.groupDir, "writable.json"))
+					expected := cmdio.MutationSummary{Succeeded: 2}
+					var reasons map[string]int
+					if skip {
+						require.NoFileExists(t, filepath.Join(destination, f.groupDir, "read-only.json"))
+						expected = cmdio.MutationSummary{Succeeded: 1, Skipped: 1}
+						reasons = map[string]int{"read-only": 1}
+					} else {
+						require.FileExists(t, filepath.Join(destination, f.groupDir, "read-only.json"))
+					}
+					switch {
+					case mode == "agent":
+						var receipt cmdio.ArtifactReceipt
+						require.NoError(t, json.Unmarshal(stdout.Bytes(), &receipt))
+						require.Equal(t, reasons, receipt.SkippedReasons)
+						require.Equal(t, expected, receipt.Summary)
+					case skip:
+						require.Contains(t, stdout.String(), "1 resources pulled, 0 errors (1 skipped: read-only)")
+					default:
+						require.Contains(t, stdout.String(), "2 resources pulled, 0 errors")
+						require.NotContains(t, stdout.String(), "skipped")
+					}
+					require.EqualValues(t, 1, f.reads.Load())
+					require.Zero(t, f.writes.Load())
+				})
+			}
 		}
 	}
 }

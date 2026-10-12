@@ -18,12 +18,12 @@ malformed inputs must remain available for individual failure reporting.
 - [x] 2.2 Keep both kinds outside the static server-dry-run allowlist; add guard/pusher/deleter regression tests that would fail if a POST/PUT/PATCH/DELETE escaped for either version, and verify skipped/unverified output and the existing explicit assertion override without modifying its behavior.
 - [x] 2.3 Update affected discovery descriptions and the existing routing-tree generic-access requirement consistently with the delta; verify no document still claims that only routingtrees is exposed by the completed change.
 
-## 3. Time interval commands and provisioning export
+## 3. Time interval commands and existing provisioning export
 
 - [x] 3.1 Mount the time-intervals group through native.Bind and implement list/get exact title resolution and tables; verify native.Fixed/Func and HTTP tests cover complete pagination, empty items, case-sensitive matching, missing/ambiguous titles, both title/name output, preserved manifests, version selection, and error propagation.
 - [x] 3.2 Implement create/update with native.ReadManifest, shared create preparation, strict create conflict semantics, caller update version, and current-title subject resolution independent of the desired title; verify real-command tests cover file/stdin, existing/missing resources, stale versions, missing RV, explicit rename with the old API name and supplied version, rename conflict without another mutation, changed argument plus retained old name rejection, wrong group/kind, explicitly empty flags, and version disagreement before I/O. Verify a rename receipt shows old/new titles and the returned API name without rewriting the input.
 - [x] 3.3 Implement delete using standard confirmation and structured receipts; verify forced deletion, declined prompt, closed stdin, agent mode without force, title lookup failure, and preserved server errors, with no request when confirmation is unavailable.
-- [x] 3.4 Add `export [<title>] --format yaml|json|hcl` using the existing provisioning client; verify raw bytes for all/one exports, path escaping, invalid/empty format and extra arguments before I/O, raw output classification, and the original mute-timings commands unchanged.
+- [x] 3.4 Keep provisioning export on the existing mute-timings command and direct native time-interval help there; the initially implemented duplicate leaf was removed during PR review. Preserve legacy raw bytes, selectors, format validation and classification.
 - [x] 3.5 Add all six output-class and agent annotations, routing metadata/examples, and generated CLI reference; verify command consistency/conformance tests, relevant skill-command drift, reference drift, and rendered help/commands accurately describe native manifests versus provisioning exports.
 
 ## 4. Template group commands
@@ -81,3 +81,15 @@ not establish the retry wrapper or the new skip/refusal behavior.
 - [x] 8.1 Use plain read-only guidance for built-in, external-import, and file-provisioned resources; give dedicated read-only manifests exit code 1 and remove unreachable checks. Verify source-specific errors and validation before client loading. Clarify that template update accepts Grafana-managed manifests and selects the Grafana-managed group by argument title; an imported-only title returns not found.
 - [x] 8.2 Share the guarded retry factory between pusher and deleter and exercise that factory in tests. Add real-command regressions for read-only pull exclusion and push/delete reason propagation in text, JSON, and agent mode; verify removing the wrappers, pull filter, or result reason assignments fails the relevant tests. Correct the pull diagram order and exact validation-error example.
 - [x] 8.3 Add optional top-level `skipped_reasons` to mutation batches and artifact receipts, keeping schema version 1 and total skipped count; render human reasons from the result and remove duplicate codec registration. Document the contract, run targeted/race/full checks, and verify JSON/agent reason distinctions, read-only messages/exits, unchanged built-ins, and cleanup live on the authorized throwaway target, with read-only inventory/pull checks on the development target.
+
+
+## 9. PR review corrections
+
+These corrections supersede the earlier always-skipped pull and broad dynamic-retry policies. The original runtime/export checks above remain historical evidence; native provisioning export was removed before this feature shipped.
+
+- [x] 9.1 Scope Conflict retries to TimeInterval/TemplateGroup in both API versions, pass all other kinds through once, preserve resourceVersion and the guard, and verify the scope matrix and contention regressions.
+- [x] 9.2 Remove the duplicate native time-interval export command and its metadata/reference; direct help to the existing mute-timings export without changing that command.
+- [x] 9.3 Include read-only manifests in pull by default with optional --skip-readonly filtering; preserve write-side skips, verify both modes in real commands and live audit/round-trip checks.
+- [x] 9.4 Align both families' ls/rm aliases and get table/wide codecs with real command regressions.
+- [x] 9.5 Make create preparation a pure copy/strip operation, keep validation at the write boundary, and remove redundant matching validation while preserving local failure reporting and remote tolerance.
+- [x] 9.6 Use source paths for deterministic malformed-file collection keys and retain source-less inputs independently; verify repeated-file deduplication and distinct files, update docs, and complete required gates.

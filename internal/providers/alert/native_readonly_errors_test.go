@@ -46,7 +46,7 @@ func TestNativeReadOnlyManifestExitCode(t *testing.T) {
 					if kind == templateGroupKind {
 						err = runTemplateGroups(t, binding, string(data), args...).err
 					} else {
-						_, err = intervalRun(t, binding, &intervalTestLoader{}, string(data), args...)
+						_, err = intervalRun(t, binding, string(data), args...)
 					}
 					require.ErrorContains(t, err, "read-only")
 					require.Equal(t, gcxerrors.ExitGeneralError, templateUsageCode(err))

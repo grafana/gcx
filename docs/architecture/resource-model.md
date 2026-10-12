@@ -84,8 +84,9 @@ type ResourceRef string
 existing API-address key. Unnamed TimeInterval and TemplateGroup resources use a
 separately tagged GVK/namespace/logical-identity key, including template kind;
 equivalent identities deduplicate while different titles and kinds remain
-separate. Invalid unnamed native inputs use a per-resource in-memory key so
-validation reports every failure. This invalid-input key is not portable;
+separate. Invalid unnamed native inputs use a source-path key when available, so reading
+the same file twice deduplicates while distinct malformed files remain separate.
+Source-less inputs use a per-resource in-memory key to retain each failure;
 non-opted-in resources retain their existing keys.
 
 ### The Resources Collection
@@ -526,8 +527,9 @@ unfiltered title lookup keeps them as candidates.
 
 The shared `IsReadOnlyNative` rule applies to both kinds: `spec.kind: mimir` or
 `grafana.com/provenance` equal to `system`, `converted_prometheus`, or `file`.
-Absent provenance and `api` remain writable. Generic pull, push, and delete skip
-read-only objects and count the read-only reason; reads still return them. Generic
+Absent provenance and `api` remain writable. Generic pull includes read-only objects by default; `--skip-readonly` excludes
+them and counts the read-only reason. Push and delete always skip them, while
+reads still return them. Generic
 edit rejects them before opening an editor, and dedicated mutations reject them
 before a write. Unknown kinds alone are not assumed to be read-only.
 

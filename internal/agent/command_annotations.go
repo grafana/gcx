@@ -214,7 +214,6 @@ var commandAnnotations = map[string]annotation{
 	"gcx alert template-groups create":           {Cost: "small", Hint: "-f manifest.yaml creates only; the server derives the API name."},
 	"gcx alert template-groups update":           {Cost: "small", Hint: "<current-title> -f manifest.yaml selects the current title; retain the fetched resourceVersion."},
 	"gcx alert template-groups delete":           {Cost: "small", Hint: "<title> --force"},
-	"gcx alert time-intervals export":            {Cost: "large", Hint: "Supply <title> to export one interval; --format yaml|json|hcl returns provisioning bytes, not a native manifest."},
 	"gcx alert routing-trees list":               {Cost: "small"},
 	"gcx alert routing-trees get":                {Cost: "small", Hint: "<name> -o yaml"},
 	"gcx alert routing-trees create":             {Cost: "small", Hint: "-f tree.yaml"},

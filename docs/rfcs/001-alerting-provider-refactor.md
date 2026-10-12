@@ -185,7 +185,7 @@ The #1509 implementation adds native `time-intervals` and `template-groups`
 CRUD through the shared native binding and exposes both kinds to generic
 resources. Dedicated commands resolve exact titles over all pages; template
 get/delete accept `--kind` for equal-title ambiguity. JSON/YAML reads preserve
-native objects. Time-interval export remains raw provisioning YAML/JSON/HCL;
+native objects. Provisioning export remains raw YAML/JSON/HCL through `mute-timings export`;
 there is no template-group export and the older commands remain available.
 
 Dedicated update explicitly selects the current title, uses the caller's fetched
@@ -196,7 +196,7 @@ using metadata.name only as a hint. It clears source server fields for create,
 uses destination name/version for update, and never infers rename or prune.
 Read-only native objects remain visible/readable. The shared policy covers
 `mimir` kind and `system`, `converted_prometheus`, or `file` provenance: dedicated
-mutations reject them, generic pull/push/delete skip them, and generic edit refuses
+mutations reject them, generic pull retains them unless `--skip-readonly` is set, push/delete skip them, and generic edit refuses
 them before opening the editor. A writable local identity matching a read-only
 destination fails before update. Unknown server template kinds remain readable
 while local manifests stay strict. Default preview for both kinds is
@@ -214,7 +214,7 @@ Live imported-group creation was unavailable; equal-title and read-only behavior
 has recording-server coverage. The original runtime pass observed partial success
 from Conflict responses during concurrent alerting writes; serial transfer with
 `--max-concurrent 1` passed, and all task-owned live objects were removed. Review
-fixes add bounded Kubernetes Conflict retry on the native dynamic client inside
+fixes add bounded Kubernetes Conflict retry for TimeInterval/TemplateGroup on the dynamic client inside
 the dry-run guard, preserving existing concurrency and adapter behavior.
 Contention and read-only policy changes have regression tests. A subsequent
 throwaway-target pass verified default-concurrency create, repeat update, and

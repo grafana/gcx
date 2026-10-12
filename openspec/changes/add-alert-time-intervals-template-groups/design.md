@@ -41,11 +41,10 @@ Bind `timeintervals` and `templategroups` once in the alert provider's command f
 | `create -f <file>` | One native JSON/YAML object; `-` means injected stdin | Mutation summary | Manifest `apiVersion` |
 | `update <current-title> -f <file>` | Current manifest, retaining its version; spec supplies the desired title | Mutation summary | Manifest `apiVersion` |
 | `delete <title>` | Exact title, confirmation/`--force` | Mutation summary | Discovery preferred, or flag |
-| `time-intervals export [<title>]` | Zero/one title, `--format yaml|json|hcl` | Raw YAML provisioning export | Existing provisioning endpoint |
 
 Explicitly empty filename, API-version, kind, and export-format flags fail with usage status instead of silently selecting defaults. Wrong group/kind, conflicting manifest/flag versions, malformed identity fields, and missing update version fail before network I/O. Empty `spec.kind` is invalid when present; absent historical kind is normalized to `grafana` for matching only. Do not add undocumented defaulting to structured reads.
 
-CRUD leaves are `finite`; export is `raw`, matching existing exports. Register eleven output-class and agent-metadata entries. List/get worst-case cost is medium because interval inventories and template content are unbounded; hints show title-scoped get and field selection. Mutation receipts are small and contain the resource identity and resulting version. Use `gcx commands --flat -o json` and `help-tree` to review the rendered routing metadata.
+CRUD leaves are `finite`; provisioning export stays on the existing raw `mute-timings export` leaf. Register eleven output-class and agent-metadata entries. List/get worst-case cost is medium because interval inventories and template content are unbounded; hints show title-scoped get and field selection. Mutation receipts are small and contain the resource identity and resulting version. Use `gcx commands --flat -o json` and `help-tree` to review the rendered routing metadata.
 
 ### D2. Dedicated lookup lists and matches titles, with no encoded-name shortcut
 
@@ -109,9 +108,11 @@ Matching before create is necessary even after the immediate 400 fix: a 12.0–1
 `IsReadOnlyNative` applies to TimeInterval and TemplateGroup: `spec.kind: mimir`,
 or provenance `system`, `converted_prometheus`, or `file`. Absent provenance and
 `api` remain writable. List/get, including generic get, preserve all returned
-objects. Generic pull/push/delete skip read-only objects, count them as skipped,
-and show a read-only reason; pull writes no artifact for them. The shared fetch
-path makes this opt-in through `ExcludeReadOnly`, preserving read inventories.
+objects. Generic pull retains read-only objects by default; `--skip-readonly` excludes
+them and counts them as skipped. Push/delete always skip them,
+and show a read-only reason. Pull writes no artifact for excluded objects. The shared fetch
+path sets `ExcludeReadOnly` from `--skip-readonly`; delete selectors always
+exclude them, while get/edit fetch them for display or refusal.
 Unknown server kinds alone are not classified as read-only and remain pullable.
 
 Dedicated mutations reject read-only input or targets. Generic edit fetches the
@@ -147,12 +148,12 @@ Neither kind enters the trusted server-dry-run allowlist. Add create/update/dele
 
 ### D7. Provisioning export is a separate output contract
 
-Only time intervals get export. Reuse `ExportMuteTimings`/`ExportMuteTiming` and the config loader; validate format first and pass the title as a URL path segment through the existing client escaping. No title exports the Grafana-managed collection; one title exports that Grafana-managed item. Imported intervals may appear in native list/get but are not exported; requesting an imported title returns not found. Use a positional title for the new command rather than copying the old command's `--name` selector. Raw provisioning bytes are not advertised as pushable native objects. Do not add a synthetic template export.
+Provisioning export remains on `gcx alert mute-timings export --name <title> --format yaml|json|hcl`. The native time-interval family directs users there rather than registering a second command for the same endpoint. Native template groups also have no export leaf. Provisioning export covers Grafana-managed intervals and is not a native manifest format; imported intervals visible in native reads may be excluded.
 
 ### D8. Native Conflict retry remains inside the dry-run guard
 
-Wrap native dynamic-client Create/Update/Delete in bounded backoff matching only
-`apierrors.IsConflict`. Reads pass through unchanged. `AlreadyExists` and other
+Wrap TimeInterval/TemplateGroup dynamic-client Create/Update/Delete in bounded backoff matching only
+`apierrors.IsConflict`. Other resource kinds and reads pass through unchanged. `AlreadyExists` and other
 errors are returned immediately; exhausted attempts return the last conflict
 unchanged. Use context-aware waits and debug attempt logging. The retry wrapper
 sits inside `newGuardedDynamicClient`, before router construction, so blocked

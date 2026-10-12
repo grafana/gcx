@@ -124,7 +124,6 @@
  "gcx alert templates upsert": "finite",
  "gcx alert time-intervals create": "finite",
  "gcx alert time-intervals delete": "finite",
- "gcx alert time-intervals export": "raw",
  "gcx alert time-intervals get": "finite",
  "gcx alert time-intervals list": "finite",
  "gcx alert time-intervals update": "finite",

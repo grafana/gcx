@@ -14,10 +14,11 @@ import (
 	"k8s.io/client-go/util/retry"
 )
 
-// conflictRetryClient retries conflicts from the dynamic fallback. The dry-run
-// guard belongs outside this wrapper so blocked mutations never reach it.
-// Requests are replayed unchanged: this handles transient server-side config
-// conflicts without overwriting a genuinely stale resourceVersion.
+// conflictRetryClient retries conflicts for TimeInterval and TemplateGroup
+// mutations from the dynamic fallback. These kinds can encounter transient
+// Alertmanager configuration conflicts. The dry-run guard belongs outside this
+// wrapper so blocked mutations never reach it. Requests are replayed unchanged;
+// other kinds pass through once, preserving stale resourceVersion conflicts.
 type conflictRetryClient struct {
 	inner   adapter.DynamicClient
 	backoff wait.Backoff
@@ -78,6 +79,9 @@ func (c *conflictRetryClient) onConflict(ctx context.Context, fn func() error) e
 func (c *conflictRetryClient) Create(
 	ctx context.Context, desc resources.Descriptor, obj *unstructured.Unstructured, opts metav1.CreateOptions,
 ) (*unstructured.Unstructured, error) {
+	if !resources.HasServerDerivedName(desc.GroupVersionKind()) {
+		return c.inner.Create(ctx, desc, obj, opts)
+	}
 	var result *unstructured.Unstructured
 	err := c.onConflict(ctx, func() error {
 		var err error
@@ -90,6 +94,9 @@ func (c *conflictRetryClient) Create(
 func (c *conflictRetryClient) Update(
 	ctx context.Context, desc resources.Descriptor, obj *unstructured.Unstructured, opts metav1.UpdateOptions,
 ) (*unstructured.Unstructured, error) {
+	if !resources.HasServerDerivedName(desc.GroupVersionKind()) {
+		return c.inner.Update(ctx, desc, obj, opts)
+	}
 	var result *unstructured.Unstructured
 	err := c.onConflict(ctx, func() error {
 		var err error
@@ -100,6 +107,9 @@ func (c *conflictRetryClient) Update(
 }
 
 func (c *conflictRetryClient) Delete(ctx context.Context, desc resources.Descriptor, name string, opts metav1.DeleteOptions) error {
+	if !resources.HasServerDerivedName(desc.GroupVersionKind()) {
+		return c.inner.Delete(ctx, desc, name, opts)
+	}
 	return c.onConflict(ctx, func() error {
 		return c.inner.Delete(ctx, desc, name, *opts.DeepCopy())
 	})

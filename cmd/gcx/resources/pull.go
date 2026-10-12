@@ -25,6 +25,7 @@ type pullOpts struct {
 	IO             cmdio.Options
 	OnError        OnErrorMode
 	IncludeManaged bool
+	SkipReadOnly   bool
 	Path           string
 
 	// flags is the bound flag set, kept so Validate can reject flags that
@@ -56,6 +57,7 @@ func (opts *pullOpts) setup(flags *pflag.FlagSet) {
 
 	bindOnErrorFlag(flags, &opts.OnError)
 	flags.StringVarP(&opts.Path, "path", "p", defaultResourcesPath, "Path on disk in which the resources will be written")
+	flags.BoolVar(&opts.SkipReadOnly, "skip-readonly", false, "Skip read-only native alerting resources; include them by default for backup, audit, and diffing")
 	flags.BoolVar(
 		&opts.IncludeManaged,
 		"include-managed",
@@ -177,7 +179,7 @@ func pullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			}
 
 			res, err := FetchResources(ctx, FetchRequest{
-				ExcludeReadOnly: true,
+				ExcludeReadOnly: opts.SkipReadOnly,
 				Config:          cfg,
 				// Strip server fields from the resources.
 				// This includes fields like `resourceVersion`, `uid`, etc.

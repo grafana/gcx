@@ -48,6 +48,78 @@ func retryTestConflict(message string) error {
 	return apierrors.NewConflict(schema.GroupResource{Group: "example.test", Resource: "things"}, "one", errors.New(message))
 }
 
+func retryTestNativeDescriptor(kind, version string) resources.Descriptor {
+	return resources.Descriptor{
+		GroupVersion: schema.GroupVersion{Group: "notifications.alerting.grafana.app", Version: version},
+		Kind:         kind,
+		Plural:       map[string]string{"TimeInterval": "timeintervals", "TemplateGroup": "templategroups"}[kind],
+	}
+}
+
+func TestConflictRetryMutationScope(t *testing.T) {
+	type scopeCase struct {
+		name      string
+		desc      resources.Descriptor
+		wantCalls int
+	}
+	tests := make([]scopeCase, 0, 11)
+	tests = append(tests, []scopeCase{
+		{name: "dashboard", desc: guardDashboardDesc(), wantCalls: 1},
+		{name: "folder", desc: resources.Descriptor{GroupVersion: schema.GroupVersion{Group: "folder.grafana.app", Version: "v1beta1"}, Kind: "Folder"}, wantCalls: 1},
+		{name: "routing tree", desc: resources.Descriptor{GroupVersion: schema.GroupVersion{Group: "notifications.alerting.grafana.app", Version: "v0alpha1"}, Kind: "RoutingTree"}, wantCalls: 1},
+	}...)
+	for _, kind := range []string{"TimeInterval", "TemplateGroup"} {
+		for _, version := range []string{"v0alpha1", "v1beta1"} {
+			desc := retryTestNativeDescriptor(kind, version)
+			tests = append(tests, scopeCase{name: kind + "/" + version, desc: desc, wantCalls: 2})
+			desc.GroupVersion.Group = "other.grafana.app"
+			tests = append(tests, scopeCase{name: "other group/" + kind + "/" + version, desc: desc, wantCalls: 1})
+		}
+	}
+	for _, tc := range tests {
+		for _, verb := range []string{"create", "update", "delete"} {
+			t.Run(tc.name+"/"+verb, func(t *testing.T) {
+				calls := 0
+				conflict := retryTestConflict("stale resource version")
+				obj := namedObject("one")
+				obj.SetResourceVersion("unchanged-version")
+				invoke := func() error {
+					calls++
+					if calls == 1 {
+						return conflict
+					}
+					return nil
+				}
+				fake := &retryTestClient{
+					mutate: func(got *unstructured.Unstructured, _ []string) (*unstructured.Unstructured, error) {
+						require.Equal(t, "unchanged-version", got.GetResourceVersion())
+						return got, invoke()
+					},
+					deleteFn: func(metav1.DeleteOptions) error { return invoke() },
+				}
+				client := newConflictRetryClient(fake)
+				client.backoff = wait.Backoff{Steps: 2}
+				var err error
+				switch verb {
+				case "create":
+					_, err = client.Create(t.Context(), tc.desc, obj, metav1.CreateOptions{})
+				case "update":
+					_, err = client.Update(t.Context(), tc.desc, obj, metav1.UpdateOptions{})
+				case "delete":
+					err = client.Delete(t.Context(), tc.desc, "one", metav1.DeleteOptions{})
+				}
+				require.Equal(t, tc.wantCalls, calls)
+				if tc.wantCalls == 1 {
+					require.Same(t, conflict, err, "non-opted kinds preserve the original conflict")
+				} else {
+					require.NoError(t, err)
+				}
+				require.Zero(t, fake.reads, "conflict retries must not refetch the resource")
+			})
+		}
+	}
+}
+
 func TestConflictRetryMutations(t *testing.T) {
 	for _, verb := range []string{"create", "update", "delete"} {
 		for _, tc := range []struct {
@@ -84,11 +156,11 @@ func TestConflictRetryMutations(t *testing.T) {
 				var err error
 				switch verb {
 				case "create":
-					got, err = client.Create(t.Context(), resources.Descriptor{}, namedObject("local"), metav1.CreateOptions{})
+					got, err = client.Create(t.Context(), retryTestNativeDescriptor("TimeInterval", "v1beta1"), namedObject("local"), metav1.CreateOptions{})
 				case "update":
-					got, err = client.Update(t.Context(), resources.Descriptor{}, namedObject("local"), metav1.UpdateOptions{})
+					got, err = client.Update(t.Context(), retryTestNativeDescriptor("TimeInterval", "v1beta1"), namedObject("local"), metav1.UpdateOptions{})
 				case "delete":
-					err = client.Delete(t.Context(), resources.Descriptor{}, "local", metav1.DeleteOptions{})
+					err = client.Delete(t.Context(), retryTestNativeDescriptor("TimeInterval", "v1beta1"), "local", metav1.DeleteOptions{})
 				}
 				require.Equal(t, tc.wantCalls, calls)
 				if tc.name == "conflicts then success" || tc.name == "success" {
@@ -107,11 +179,11 @@ func TestConflictRetryMutations(t *testing.T) {
 func TestConflictRetryReadsPassThrough(t *testing.T) {
 	fake := &retryTestClient{readErr: retryTestConflict("read")}
 	client := newConflictRetryClient(fake)
-	_, err := client.Get(t.Context(), resources.Descriptor{}, "one", metav1.GetOptions{})
+	_, err := client.Get(t.Context(), retryTestNativeDescriptor("TimeInterval", "v1beta1"), "one", metav1.GetOptions{})
 	require.Same(t, fake.readErr, err)
-	_, err = client.GetMultiple(t.Context(), resources.Descriptor{}, []string{"one"}, metav1.GetOptions{})
+	_, err = client.GetMultiple(t.Context(), retryTestNativeDescriptor("TimeInterval", "v1beta1"), []string{"one"}, metav1.GetOptions{})
 	require.Same(t, fake.readErr, err)
-	_, err = client.List(t.Context(), resources.Descriptor{}, metav1.ListOptions{})
+	_, err = client.List(t.Context(), retryTestNativeDescriptor("TimeInterval", "v1beta1"), metav1.ListOptions{})
 	require.Same(t, fake.readErr, err)
 	require.Equal(t, 3, fake.reads)
 }
@@ -155,11 +227,11 @@ func TestConflictRetryCopiesMutationInputs(t *testing.T) {
 			var err error
 			switch verb {
 			case "create":
-				_, err = client.Create(t.Context(), resources.Descriptor{}, obj, metav1.CreateOptions{DryRun: dryRun})
+				_, err = client.Create(t.Context(), retryTestNativeDescriptor("TimeInterval", "v1beta1"), obj, metav1.CreateOptions{DryRun: dryRun})
 			case "update":
-				_, err = client.Update(t.Context(), resources.Descriptor{}, obj, metav1.UpdateOptions{DryRun: dryRun})
+				_, err = client.Update(t.Context(), retryTestNativeDescriptor("TimeInterval", "v1beta1"), obj, metav1.UpdateOptions{DryRun: dryRun})
 			case "delete":
-				err = client.Delete(t.Context(), resources.Descriptor{}, "original", metav1.DeleteOptions{DryRun: dryRun, Preconditions: &metav1.Preconditions{ResourceVersion: &version}})
+				err = client.Delete(t.Context(), retryTestNativeDescriptor("TimeInterval", "v1beta1"), "original", metav1.DeleteOptions{DryRun: dryRun, Preconditions: &metav1.Preconditions{ResourceVersion: &version}})
 			}
 			require.NoError(t, err)
 			require.Equal(t, 2, calls)
@@ -195,7 +267,7 @@ func TestConflictRetryCancellation(t *testing.T) {
 				}()
 			}
 			start := time.Now()
-			err := client.Delete(ctx, resources.Descriptor{}, "one", metav1.DeleteOptions{})
+			err := client.Delete(ctx, retryTestNativeDescriptor("TimeInterval", "v1beta1"), "one", metav1.DeleteOptions{})
 			require.ErrorIs(t, err, context.Canceled)
 			require.Less(t, time.Since(start), time.Second)
 			if beforeCall {
@@ -235,11 +307,11 @@ func TestConflictRetryInsideDryRunGuard(t *testing.T) {
 				var err error
 				switch verb {
 				case "create":
-					_, err = client.Create(t.Context(), guardAlertRuleDesc(), namedObject("one"), metav1.CreateOptions{DryRun: dryRun})
+					_, err = client.Create(t.Context(), retryTestNativeDescriptor("TimeInterval", "v1beta1"), namedObject("one"), metav1.CreateOptions{DryRun: dryRun})
 				case "update":
-					_, err = client.Update(t.Context(), guardAlertRuleDesc(), namedObject("one"), metav1.UpdateOptions{DryRun: dryRun})
+					_, err = client.Update(t.Context(), retryTestNativeDescriptor("TimeInterval", "v1beta1"), namedObject("one"), metav1.UpdateOptions{DryRun: dryRun})
 				case "delete":
-					err = client.Delete(t.Context(), guardAlertRuleDesc(), "one", metav1.DeleteOptions{DryRun: dryRun})
+					err = client.Delete(t.Context(), retryTestNativeDescriptor("TimeInterval", "v1beta1"), "one", metav1.DeleteOptions{DryRun: dryRun})
 				}
 				return err
 			}

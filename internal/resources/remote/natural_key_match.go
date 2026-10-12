@@ -23,6 +23,7 @@ func findByNaturalKey( //nolint:nonamedreturns // Named returns document the mat
 	cache *naturalKeyCache,
 	desc resources.Descriptor,
 	localObj *unstructured.Unstructured,
+	desiredNativeIdentity string,
 ) (matched *unstructured.Unstructured, found bool, err error) {
 	// 1. Get the extractor for this GVK.
 	extractor := adapter.GetNaturalKeyExtractor(desc.GroupVersionKind())
@@ -31,10 +32,7 @@ func findByNaturalKey( //nolint:nonamedreturns // Named returns document the mat
 		return nil, false, nil
 	}
 	if nativePolicy {
-		// Local manifests are strict; unreadable server items are skipped below.
-		if _, _, err := resources.NativeIdentity(localObj); err != nil {
-			return nil, false, err
-		}
+		// The pusher validates local manifests; unreadable server items are skipped.
 		extractor = func(obj *unstructured.Unstructured) (string, bool) {
 			key, _, err := resources.NativeIdentity(obj)
 			if err != nil {
@@ -45,10 +43,15 @@ func findByNaturalKey( //nolint:nonamedreturns // Named returns document the mat
 		}
 	}
 
-	// 2. Extract the local resource's natural key.
-	localKey, ok := extractor(localObj)
-	if !ok {
-		return nil, false, nil
+	// 2. Native identity was validated and extracted by the pusher; adapter
+	// identities still use their own extractor.
+	localKey := desiredNativeIdentity
+	if !nativePolicy {
+		var ok bool
+		localKey, ok = extractor(localObj)
+		if !ok {
+			return nil, false, nil
+		}
 	}
 
 	// 3. Get the cached list of remote resources.

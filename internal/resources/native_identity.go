@@ -47,23 +47,17 @@ func NativeIdentity(obj *unstructured.Unstructured) (string, bool, error) {
 }
 
 // PrepareNativeCreate copies a manifest and removes source server identity and
-// concurrency fields only for the opted-in kinds. No encoded name is computed.
-func PrepareNativeCreate(obj *unstructured.Unstructured) (*unstructured.Unstructured, error) {
+// concurrency fields only for the opted-in kinds. Callers own validation and
+// write checks. No encoded name is computed.
+func PrepareNativeCreate(obj *unstructured.Unstructured) *unstructured.Unstructured {
 	copyObj := obj.DeepCopy()
 	if !HasServerDerivedName(obj.GroupVersionKind()) {
-		return copyObj, nil
-	}
-	_, readOnly, err := NativeIdentity(obj)
-	if err != nil {
-		return nil, err
-	}
-	if readOnly {
-		return nil, ReadOnlyNativeError(obj)
+		return copyObj
 	}
 	for _, field := range []string{"name", "generateName", "resourceVersion", "uid", "generation", "creationTimestamp", "deletionTimestamp", "deletionGracePeriodSeconds", "managedFields"} {
 		unstructured.RemoveNestedField(copyObj.Object, "metadata", field)
 	}
-	return copyObj, nil
+	return copyObj
 }
 
 // IsReadOnlyNative reports native alerting objects controlled by another source.

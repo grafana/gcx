@@ -38,7 +38,7 @@ func TestNativeCollectionReferenceScoping(t *testing.T) {
 		require.Equal(t, 1, resources.NewResources(base, explicit).Len())
 	})
 
-	t.Run("invalid instance key is stable and distinct", func(t *testing.T) {
+	t.Run("source-less invalid instance key is stable and distinct", func(t *testing.T) {
 		first := makeResource("v0alpha1", "TimeInterval", "target", "", map[string]any{"name": ""})
 		second := makeResource("v0alpha1", "TimeInterval", "target", "", map[string]any{"name": ""})
 		firstRef := first.Ref()
@@ -49,6 +49,23 @@ func TestNativeCollectionReferenceScoping(t *testing.T) {
 		require.Equal(t, 1, collection.Len(), "adding the same malformed instance must remain idempotent")
 		collection.Add(second)
 		require.Equal(t, 2, collection.Len(), "distinct malformed inputs must remain individually reportable")
+	})
+
+	t.Run("invalid file keys deduplicate repeated reads", func(t *testing.T) {
+		first := makeResource("v0alpha1", "TimeInterval", "target", "", map[string]any{"name": ""})
+		repeated := makeResource("v0alpha1", "TimeInterval", "target", "", map[string]any{"name": ""})
+		other := makeResource("v0alpha1", "TimeInterval", "target", "", map[string]any{"name": ""})
+		first.SetSource(resources.SourceInfo{Path: "/resources/first.yaml"})
+		repeated.SetSource(resources.SourceInfo{Path: "/resources/first.yaml"})
+		other.SetSource(resources.SourceInfo{Path: "/resources/other.yaml"})
+
+		require.Equal(t, first.Ref(), repeated.Ref(), "rereading an invalid file must produce the same reference")
+		require.Contains(t, string(first.Ref()), first.SourcePath(), "the reference must identify the invalid source")
+		require.NotEqual(t, first.Ref(), other.Ref())
+		collection := resources.NewResources(first, repeated)
+		require.Equal(t, 1, collection.Len())
+		collection.Add(other)
+		require.Equal(t, 2, collection.Len(), "different invalid files must remain individually reportable")
 	})
 
 	t.Run("named key exact representation unchanged", func(t *testing.T) {

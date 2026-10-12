@@ -42,8 +42,8 @@ func TestNativeReadOnlyPolicy(t *testing.T) {
 					_, readOnly, err := resources.NativeIdentity(obj)
 					require.NoError(t, err)
 					require.Equal(t, tc.readOnly, readOnly)
-					_, err = resources.PrepareNativeCreate(obj)
 					if tc.readOnly {
+						err = resources.ReadOnlyNativeError(obj)
 						require.ErrorContains(t, err, "read-only")
 						require.ErrorContains(t, err, kind)
 						require.ErrorContains(t, err, "weekend")
@@ -53,8 +53,6 @@ func TestNativeReadOnlyPolicy(t *testing.T) {
 							reason = tc.sourceKind
 						}
 						require.ErrorContains(t, err, guidance[reason])
-					} else {
-						require.NoError(t, err)
 					}
 					require.Equal(t, before, obj)
 				})
@@ -75,8 +73,7 @@ func TestNativeReadOnlyPolicy_NonOptedKindsUnaffected(t *testing.T) {
 				"metadata": map[string]any{"name": "name", "annotations": map[string]any{"grafana.com/provenance": "system"}},
 			}}
 			require.False(t, resources.IsReadOnlyNative(obj))
-			prepared, err := resources.PrepareNativeCreate(obj)
-			require.NoError(t, err)
+			prepared := resources.PrepareNativeCreate(obj)
 			require.Equal(t, obj, prepared)
 		})
 	}

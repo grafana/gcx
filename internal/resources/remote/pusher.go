@@ -344,7 +344,7 @@ func (p *Pusher) upsertResource(
 	// Resource does not exist — try natural key matching for cross-stack push.
 	// The metadata.name may be a server-generated ID from a different stack.
 	// Look for a resource with the same content identity.
-	matched, found, nkErr := findByNaturalKey(ctx, nkCache, desc, &obj)
+	matched, found, nkErr := findByNaturalKey(ctx, nkCache, desc, &obj, desiredIdentity)
 	if nkErr != nil {
 		return nkErr
 	}
@@ -366,11 +366,7 @@ func (p *Pusher) upsertResource(
 
 	// No natural key match — create as new resource.
 	if nativePolicy {
-		prepared, prepareErr := resources.PrepareNativeCreate(&obj)
-		if prepareErr != nil {
-			return prepareErr
-		}
-		obj = *prepared
+		obj = *resources.PrepareNativeCreate(&obj)
 	}
 	if _, err := p.client.Create(ctx, desc, &obj, metav1.CreateOptions{
 		DryRun: dryRunOpts,
