@@ -55,7 +55,7 @@ gcx login diagnostics --config "$GCX_CONFIG" \
   --server https://your-grafana.example
 ```
 
-For local LGTM, use that repository's local connection instructions instead of this login step. See [Configure gcx](../../configuration) for supported authentication methods. Supply credentials locally through the supported auth flow, not in chat, copied transcripts, or committed files. Prefer read-only access when available; approval instructions do not restrict API permissions.
+For local LGTM, use that repository's local connection instructions instead of this login step. Refer to [Configure gcx](../../configuration) for supported authentication methods. Supply credentials locally through the supported auth flow, not in chat, copied transcripts, or committed files. Prefer read-only access when available as approval instructions don't restrict API permissions.
 
 ### Check the overrides
 

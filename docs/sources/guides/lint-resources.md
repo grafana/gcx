@@ -29,7 +29,7 @@ gcx dev lint run ./resources
 The following applies:
 
 - Directories are recursively explored and 
-- All [built-in rules](../../reference/linter-rules/index) are enabled by default.
+- All [built-in rules](https://github.com/grafana/gcx/blob/main/docs/reference/linter-rules/index.md) are enabled by default.
 
 ### Configure linter rules
 
