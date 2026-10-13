@@ -68,8 +68,9 @@
 /internal/query/pyroscope/ @grafana/grafana-gcx @grafana/pyroscope-team
 /internal/query/tempo/ @grafana/grafana-gcx @grafana/tempo
 
-# Grafana Drilldown deep-link code. Placed after the directory rules above
-# because the last matching pattern wins; each line keeps the existing owners.
+/internal/graph/pyroscope* @grafana/grafana-gcx @grafana/pyroscope-team
+
+# Drilldown
 /internal/datasources/loki/*drilldown* @grafana/grafana-gcx @grafana/loki-team @grafana/drilldown-squad
 /internal/datasources/prometheus/*drilldown* @grafana/grafana-gcx @grafana/cortex-team @grafana/drilldown-squad
 /internal/datasources/pyroscope/*drilldown* @grafana/grafana-gcx @grafana/pyroscope-team @grafana/drilldown-squad
@@ -80,10 +81,6 @@
 /internal/query/prometheus/promqlfilters* @grafana/grafana-gcx @grafana/cortex-team @grafana/drilldown-squad
 /internal/query/pyroscope/labelselector* @grafana/grafana-gcx @grafana/pyroscope-team @grafana/drilldown-squad
 /internal/query/tempo/traceqlfilters* @grafana/grafana-gcx @grafana/tempo @grafana/drilldown-squad
-
-/internal/graph/pyroscope* @grafana/grafana-gcx @grafana/pyroscope-team
-
-# Log-volume graph for Loki log queries: level detection and its test. The shared chart and convert code stays with gcx.
 /internal/graph/loglevel* @grafana/grafana-gcx @grafana/drilldown-squad
 /internal/graph/convert_logvolume_test.go @grafana/grafana-gcx @grafana/drilldown-squad
 
