@@ -65,6 +65,7 @@
   "gcx irm oncall integrations start-maintenance",
   "gcx irm oncall integrations stop-maintenance",
   "gcx irm oncall users current",
+  "gcx irm plugin sync",
   "gcx k6 auth token",
   "gcx k6 test-run emit",
   "gcx k6 test-run status",
