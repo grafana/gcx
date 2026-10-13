@@ -1,0 +1,18 @@
+# Grafana documentation
+
+> Grafana Labs builds open and composable observability software.
+
+## Documentation home
+
+- [Technical documentation](https://grafana.com/docs.md): Grafana Labs technical documentation landing page.
+
+## Copyright notice
+- [Copyright notice](https://grafana.com/docs/copyright-notice.md): Technical documentation for Grafana Labs products and services.
+
+## Grafana Agent Documentation
+- [Grafana Agent Documentation](https://grafana.com/docs/agent/latest.md): Grafana Agent is a telemetry collector for sending metrics, logs, and trace data.
+- [Clustering](https://grafana.com/docs/agent/latest/flow/concepts/clustering.md): Learn about Grafana Agent clustering concepts
+
+## Grafana Tempo Documentation
+- [Grafana Tempo Documentation](https://grafana.com/docs/tempo/latest.md): Grafana Tempo is a distributed tracing backend.
+- [Configuration](https://grafana.com/docs/tempo/latest/configuration.md): Configure Tempo with these settings.

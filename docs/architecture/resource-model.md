@@ -64,14 +64,26 @@ Every `Resource` carries a `SourceInfo` (line 374) recording where it came from.
 ### Manager Metadata
 
 Resources carry manager metadata in annotations (via `GrafanaMetaAccessor`):
-- `grafana.app/manager-kind` — which tool manages the resource (gcx uses `utils.ManagerKindKubectl` as placeholder, line 19)
-- `grafana.app/manager-identity` — identity string, built by `process.ManagerIdentity()` as `gcx/<version>` (for example `gcx/3.0.0`, or `gcx/SNAPSHOT` for a build without version information)
-- `grafana.app/manager-allows-edits` — always `true`, so the Grafana user interface keeps a pushed resource editable
-- `grafana.app/source-path` — original file path
+- `grafana.app/managedBy` — manager kind (`kubectl` for gcx).
+- `grafana.app/managerId` — stable identity `gcx` for new resources.
+- `grafana.app/managerAllowsEdits` — set to `true` by the manager processor.
+- `grafana.app/sourcePath` — original file path.
 
-gcx leaves `grafana.app/source-checksum` and `grafana.app/source-timestamp` empty. Grafana uses both fields to reconcile a resource from a source over time. gcx pushes one time per command, and no gcx code reads the two fields back.
+On update, the pusher preserves the live manager identity when both the local and
+live resources have the `kubectl` manager kind. This includes resources created
+by `grafanactl`, older gcx releases, and gcx releases that stored a version in the
+identity. Grafana rejects identity changes for this manager kind. The rule also
+applies when the pusher finds the target by its natural key.
 
-`IsManaged()` (line 161) returns true when the manager kind matches `ResourceManagerKind`. Resources managed by the UI (with `grafana.app/saved-from-ui` annotation) or other tools are protected from accidental overwrites unless `--include-managed` is passed.
+The gcx version is not part of the manager identity. Changing the client version
+must not change resource ownership.
+
+gcx leaves the source checksum and timestamp empty. Grafana uses these fields
+to reconcile a resource from a source over time. gcx pushes once per command.
+
+`IsManaged()` returns true when the manifest has the `kubectl` manager kind or
+has no manager. The push pipeline skips manifests with another manager kind
+unless `--include-managed` is set. Grafana still enforces its ownership rules.
 
 ### ResourceRef — the Collection Key
 

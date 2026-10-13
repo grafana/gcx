@@ -12,8 +12,8 @@ import (
 )
 
 // findByNaturalKey attempts to find an existing remote resource that matches
-// the local resource by content-based natural key. Returns the remote resource's
-// object if found, retaining destination provenance for write checks.
+// the local resource by content-based natural key. Returns the matching remote
+// resource, including its manager fields and destination provenance, if found.
 //
 // This enables cross-stack push: when Get-by-metadata.name returns NotFound
 // (because the server-generated ID from Stack A doesn't exist on Stack B),
