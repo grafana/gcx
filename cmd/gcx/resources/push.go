@@ -31,7 +31,7 @@ func (opts *pushOpts) setup(flags *pflag.FlagSet) {
 	flags.IntVar(&opts.MaxConcurrent, "max-concurrent", 10, "Maximum number of concurrent operations")
 	bindOnErrorFlag(flags, &opts.OnError)
 	flags.BoolVar(&opts.DryRun, "dry-run", opts.DryRun, "If set, the push operation will be simulated, without actually creating or updating any resources")
-	flags.BoolVar(&opts.OmitManagerFields, "omit-manager-fields", opts.OmitManagerFields, "If set, the manager fields will not be appended to the resources")
+	flags.BoolVar(&opts.OmitManagerFields, "omit-manager-fields", opts.OmitManagerFields, "If set, pushed resources are not marked as owned by gcx. If unset (default), gcx marks them as owned and sets AllowsEdits on all of them; dashboards are confirmed to stay editable in the Grafana UI as a result, effect on other resource types is not verified")
 	flags.BoolVar(&opts.IncludeManaged, "include-managed", opts.IncludeManaged, "If set, resources managed by other tools will be included in the push operation")
 	bindAssumeServerDryRunFlag(flags, &opts.AssumeServerDryRun)
 	// The push result is a BatchMutation document through the codec system:
@@ -65,7 +65,11 @@ func pushCmd(configOpts *cmdconfig.Options) *cobra.Command {
 		Use:   "push [RESOURCE_SELECTOR]...",
 		Args:  cobra.ArbitraryArgs,
 		Short: "Push resources to Grafana",
-		Long:  "Push resources to Grafana using a specific format. See examples below for more details.",
+		Long: "Push resources to Grafana using a specific format. See examples below for more details.\n\n" +
+			"By default, gcx marks pushed resources as owned by gcx and sets AllowsEdits on all of them. " +
+			"For dashboards, that combination is confirmed to keep them editable in the Grafana UI afterward. " +
+			"Effect on other resource types has not been verified. Pass --omit-manager-fields to push without " +
+			"marking gcx as the owner.",
 		Example: `
 	# Everything:
 
