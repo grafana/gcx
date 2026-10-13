@@ -495,6 +495,55 @@ func TestClient_RunAdhoc(t *testing.T) {
 	}
 }
 
+func TestClient_RunAdhoc_JobAndLabels(t *testing.T) {
+	tests := []struct {
+		name       string
+		req        checks.AdHocCheckRequest
+		wantJob    any
+		wantLabels any
+	}{
+		{
+			name: "job and labels set",
+			req: checks.AdHocCheckRequest{
+				Target: "https://example.com",
+				Job:    "web-check",
+				Labels: []checks.Label{{Name: "env", Value: "prod"}},
+			},
+			wantJob:    "web-check",
+			wantLabels: []any{map[string]any{"name": "env", "value": "prod"}},
+		},
+		{
+			name: "job and labels omitted when empty",
+			req:  checks.AdHocCheckRequest{Target: "https://example.com"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var body map[string]any
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+				writeJSON(w, checks.AdHocCheckResponse{ID: "abc-123"})
+			}))
+			defer srv.Close()
+
+			_, err := proxyClient(t, srv).RunAdhoc(context.Background(), tc.req)
+			require.NoError(t, err)
+
+			if tc.wantJob == nil {
+				assert.NotContains(t, body, "job")
+			} else {
+				assert.Equal(t, tc.wantJob, body["job"])
+			}
+			if tc.wantLabels == nil {
+				assert.NotContains(t, body, "labels")
+			} else {
+				assert.Equal(t, tc.wantLabels, body["labels"])
+			}
+		})
+	}
+}
+
 func TestClient_Update(t *testing.T) {
 	tests := []struct {
 		name    string

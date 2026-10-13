@@ -187,12 +187,16 @@ func (c *Client) Validate(ctx context.Context, spec CheckSpec, id int64) (*Valid
 
 // AdHocCheckRequest is the payload for POST check/adhoc. It carries the same
 // settings/target/probes shape as Check, minus the fields that only make
-// sense for a persisted, scheduled check (job, frequency, enabled, labels).
+// sense for a persisted, scheduled check (frequency, enabled). Job and Labels
+// do not affect execution; they are recorded with the ad-hoc results so the
+// run can be identified afterwards.
 type AdHocCheckRequest struct {
 	Timeout  int64         `json:"timeout"`
 	Settings CheckSettings `json:"settings"`
 	Probes   []int64       `json:"probes"`
 	Target   string        `json:"target"`
+	Job      string        `json:"job,omitempty"`
+	Labels   []Label       `json:"labels,omitempty"`
 }
 
 // AdHocCheckResponse is returned by POST check/adhoc. ID is a server-assigned

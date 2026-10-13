@@ -928,6 +928,8 @@ executions. See ` + docs.SyntheticMonitoringInvoice + `.`,
 				Settings: spec.Settings,
 				Probes:   probeIDs,
 				Target:   spec.Target,
+				Job:      spec.Job,
+				Labels:   spec.Labels,
 			})
 			if err != nil {
 				return fmt.Errorf("running ad-hoc check %q: %w", spec.Job, err)

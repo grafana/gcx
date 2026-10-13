@@ -104,6 +104,7 @@ type checkAPIState struct {
 	// adhocLines, when non-empty, are served as raw Loki log lines from the
 	// query endpoints (as `checks test` polls) instead of an empty result.
 	adhocLines []string
+	lastAdhoc  map[string]any // last body posted to /api/v1/check/adhoc
 }
 
 // writeCount, validateCount and lastValidateBody read the fixture counters under
@@ -199,8 +200,14 @@ func newCheckServer(t *testing.T, st *checkAPIState) *httptest.Server {
 		writeJSON(w, map[string]string{"msg": "deleted"})
 	})
 	mux.HandleFunc("/api/v1/check/adhoc", func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
 		var req checks.AdHocCheckRequest
-		_ = json.NewDecoder(r.Body).Decode(&req)
+		_ = json.Unmarshal(raw, &req)
+		var body map[string]any
+		_ = json.Unmarshal(raw, &body)
+		st.mu.Lock()
+		st.lastAdhoc = body
+		st.mu.Unlock()
 		writeJSON(w, checks.AdHocCheckResponse{
 			ID:       "abc-123",
 			TenantID: 214,
@@ -465,6 +472,43 @@ func TestChecksTestOutputContract(t *testing.T) {
 	probesOut, ok := doc["probes"].([]any)
 	require.True(t, ok)
 	require.Len(t, probesOut, 1)
+}
+
+func TestChecksTestSendsJobAndLabels(t *testing.T) {
+	// One result line for the only probe, so polling ends straight away.
+	st := &checkAPIState{probesOnline: true, adhocLines: []string{`{"id":"abc-123","probe":"Oregon","logs":[],"timeseries":[]}`}}
+	srv := newCheckServer(t, st)
+
+	manifest := filepath.Join(t.TempDir(), "check.yaml")
+	require.NoError(t, os.WriteFile(manifest, []byte(`apiVersion: syntheticmonitoring.ext.grafana.app/v1alpha1
+kind: Check
+metadata:
+  name: web-check
+spec:
+  job: web-check
+  target: https://example.com
+  frequency: 60000
+  timeout: 2000
+  enabled: true
+  labels:
+    - name: env
+      value: prod
+  probes:
+    - Oregon
+  settings:
+    http:
+      method: GET
+`), 0o600))
+
+	_, _, err := runChecks(t, srv.URL, true, "", "test", "-f", manifest, "--logs-datasource-uid", "loki-uid")
+	require.NoError(t, err)
+
+	st.mu.Lock()
+	body := st.lastAdhoc
+	st.mu.Unlock()
+	require.NotNil(t, body, "checks test must POST check/adhoc")
+	assert.Equal(t, "web-check", body["job"])
+	assert.Equal(t, []any{map[string]any{"name": "env", "value": "prod"}}, body["labels"])
 }
 
 func TestChecksUpdateOutputContract(t *testing.T) {
