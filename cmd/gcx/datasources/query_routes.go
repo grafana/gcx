@@ -263,7 +263,7 @@ func dispatchClickHouse(ctx context.Context, req genericQueryRequest) (any, erro
 	}
 
 	clickhouseReq := clickhouse.QueryRequest{
-		RawSQL: clickhouse.EnforceLimit(req.expr, 100, 1000),
+		RawSQL: clickhouse.EnforceLimit(req.expr, req.sqlLimit(), 1000),
 		Start:  req.start,
 		End:    req.end,
 	}
@@ -315,7 +315,7 @@ func dispatchBigQuery(ctx context.Context, req genericQueryRequest) (any, error)
 		return nil, fmt.Errorf("failed to create client: %w", err)
 	}
 
-	sql, capped := bigquery.EnforceLimit(req.expr, 100, 1000)
+	sql, capped := bigquery.EnforceLimit(req.expr, req.sqlLimit(), 1000)
 	if capped {
 		cmdio.Warning(req.warn, "LIMIT in query exceeds the maximum of 1000 and was capped")
 	}
@@ -341,7 +341,7 @@ func dispatchMSSQL(ctx context.Context, req genericQueryRequest) (any, error) {
 	}
 
 	const maxLimit = 1000
-	sql, eff, capped := mssql.EnforceTopSentinel(req.expr, 100, maxLimit)
+	sql, eff, capped := mssql.EnforceTopSentinel(req.expr, req.sqlLimit(), maxLimit)
 
 	mssqlReq := mssql.QueryRequest{
 		RawSQL: sql,
@@ -368,7 +368,7 @@ func dispatchMySQL(ctx context.Context, req genericQueryRequest) (any, error) {
 		return nil, fmt.Errorf("failed to create client: %w", err)
 	}
 
-	sql, capped := mysql.EnforceLimit(req.expr, 100, 1000)
+	sql, capped := mysql.EnforceLimit(req.expr, req.sqlLimit(), 1000)
 	if capped {
 		cmdio.Warning(req.warn, "LIMIT in query exceeds the maximum of 1000 and was capped")
 	}
@@ -396,7 +396,7 @@ func dispatchPostgres(ctx context.Context, req genericQueryRequest) (any, error)
 		return nil, fmt.Errorf("failed to create client: %w", err)
 	}
 
-	sql, capped := postgres.EnforceLimit(req.expr, 100, 1000)
+	sql, capped := postgres.EnforceLimit(req.expr, req.sqlLimit(), 1000)
 	if capped {
 		cmdio.Warning(req.warn, "LIMIT in query exceeds the maximum of 1000 and was capped")
 	}
@@ -416,6 +416,15 @@ func dispatchPostgres(ctx context.Context, req genericQueryRequest) (any, error)
 	}
 
 	return resp, nil
+}
+
+// sqlLimit is the row cap for the SQL datasources. The generic flag defaults to
+// Loki's limit, so an omitted --limit keeps the SQL default of 100.
+func (r genericQueryRequest) sqlLimit() int {
+	if !r.limitSet {
+		return 100
+	}
+	return r.limit
 }
 
 // pinotLimitFromGeneric maps the auto-detecting query command's --limit to an
