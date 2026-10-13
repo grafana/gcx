@@ -132,7 +132,12 @@ docker run --rm ghcr.io/grafana/gcx:latest --version
 ```
 
 Pass credentials through `GRAFANA_*` environment variables or a mounted config
-file. Use a version tag, such as `v1.5.0`, to pin a release in CI.
+file. To pin a release in CI, use an exact tag such as `v1.5.0`. The `v1.5` and
+`v1` tags follow the latest patch and minor release of that line. Prereleases
+only get their exact tag.
+
+The image is based on distroless and has no shell, so run `gcx` directly, not
+through `sh -c`.
 
 ## Install `gcx` from source
 
