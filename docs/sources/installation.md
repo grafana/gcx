@@ -122,6 +122,18 @@ To install a prebuilt binary:
 If you use macOS, a manually downloaded binary might be blocked by Gatekeeper.
 For more information, refer to [macOS Gatekeeper and killed: 9](#macos-gatekeeper-and-killed-9).
 
+## Run `gcx` in a container
+
+Each release publishes a multi-arch (`linux/amd64`, `linux/arm64`) image to
+`ghcr.io/grafana/gcx`. The entrypoint is `gcx`:
+
+```sh
+docker run --rm ghcr.io/grafana/gcx:latest --version
+```
+
+Pass credentials through `GRAFANA_*` environment variables or a mounted config
+file. Use a version tag, such as `v1.5.0`, to pin a release in CI.
+
 ## Install `gcx` from source
 
 To install `gcx` with Go, you need:
