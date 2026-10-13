@@ -2,8 +2,21 @@
 
 Show the most recent test run status for a k6 load test.
 
+### Synopsis
+
+Show the most recent test run status for a k6 load test.
+
+Use JSON or YAML to inspect the returned run configuration, including options.thresholds. Threshold expressions are configuration, not evaluated results.
+
 ```
 gcx k6 test-run status [test-name] [flags]
+```
+
+### Examples
+
+```
+  # Inspect configured run thresholds
+  gcx k6 test-run status --id 6 --json id,options.thresholds
 ```
 
 ### Options
