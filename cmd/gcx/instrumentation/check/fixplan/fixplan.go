@@ -143,7 +143,8 @@ func runAssistant(ctx context.Context, loader *providers.ConfigLoader, message s
 	if err != nil {
 		return "", err
 	}
-	c := assistant.New(clientOpts) //nolint:contextcheck // assistant.New does not accept context; ctx is threaded into ChatWithApproval below.
+	//nolint:contextcheck // New has no context parameter.
+	c := assistant.New(clientOpts)
 	result := c.ChatWithApproval(ctx, message, assistant.StreamOptions{}, alwaysApprove{})
 	switch {
 	case result.Completed:

@@ -2,6 +2,7 @@ package shared
 
 import (
 	"fmt"
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -32,6 +33,10 @@ func ParseTime(s string, now time.Time) (time.Time, error) {
 	}
 
 	if ts, err := strconv.ParseFloat(s, 64); err == nil {
+		const int64Limit = float64(1 << 63)
+		if math.IsNaN(ts) || math.IsInf(ts, 0) || ts < -int64Limit || ts >= int64Limit {
+			return time.Time{}, fmt.Errorf("unix timestamp %q is out of range", s)
+		}
 		sec := int64(ts)
 		nsec := int64((ts - float64(sec)) * 1e9)
 		return time.Unix(sec, nsec), nil
@@ -55,31 +60,38 @@ func parseRelativeTime(s string, now time.Time) (time.Time, error) {
 	}
 
 	sign := matches[1]
-	value, _ := strconv.Atoi(matches[2])
+	value, err := strconv.ParseInt(matches[2], 10, 64)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("relative time value %q is out of range: %w", matches[2], err)
+	}
 	unit := matches[3]
 
-	if sign == "-" {
-		value = -value
-	}
-
 	var duration time.Duration
+	var unitDuration time.Duration
 	switch unit {
 	case "s":
-		duration = time.Duration(value) * time.Second
+		unitDuration = time.Second
 	case "m":
-		duration = time.Duration(value) * time.Minute
+		unitDuration = time.Minute
 	case "h":
-		duration = time.Duration(value) * time.Hour
+		unitDuration = time.Hour
 	case "d":
-		duration = time.Duration(value) * 24 * time.Hour
+		unitDuration = 24 * time.Hour
 	case "w":
-		duration = time.Duration(value) * 7 * 24 * time.Hour
+		unitDuration = 7 * 24 * time.Hour
 	case "M":
-		duration = time.Duration(value) * 30 * 24 * time.Hour
+		unitDuration = 30 * 24 * time.Hour
 	case "y":
-		duration = time.Duration(value) * 365 * 24 * time.Hour
+		unitDuration = 365 * 24 * time.Hour
 	default:
 		return time.Time{}, fmt.Errorf("unknown time unit: %s", unit)
+	}
+	if value > int64((time.Duration(1<<63-1))/unitDuration) {
+		return time.Time{}, fmt.Errorf("relative time %q is out of range", s)
+	}
+	duration = time.Duration(value) * unitDuration
+	if sign == "-" {
+		duration = -duration
 	}
 
 	return now.Add(duration), nil
