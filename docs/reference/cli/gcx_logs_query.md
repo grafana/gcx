@@ -12,7 +12,9 @@ Datasource is resolved from -d flag or datasources.loki in your context.
 Default table output is optimized for humans. Use -o raw for original line
 bodies or -o json for the full structured response.
 
-Default --limit is 50; use --limit 0 for no cap.
+Default --limit is 50. Use --limit 0 for the backend default limit, not unlimited
+results. For counts, use 'gcx datasources loki metrics' with no time flags: an
+instant query returns one value per series.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
 open it in your browser after the query succeeds.
 
@@ -50,7 +52,7 @@ gcx logs query [EXPR] [flags]
   -h, --help                help for query
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --limit int           Maximum number of log lines to return (0 means no limit) (default 50)
+      --limit int           Maximum number of log lines to return (0 uses the backend default limit) (default 50)
       --open                Open the executed query in Grafana Explore
   -o, --output string       Output format. One of: agents, json, raw, table, wide, yaml (default "table")
       --share-link          Print the Grafana Explore URL for the executed query to stderr
