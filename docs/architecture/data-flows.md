@@ -140,6 +140,8 @@ Key files:
 
 ## 3. PULL Pipeline
 
+Selector-free pull (and get through the same puller) counts an unavailable Assistant Watcher or MCP server collection API as skipped via `adapter.ErrUnavailable`; explicit selections and per-item read failures still fail.
+
 Entry point: `cmd/gcx/resources/pull.go` (mirrors push structure).
 
 ```
@@ -292,6 +294,12 @@ interact with the same Pusher/Puller/Deleter interface regardless of whether the
 backing client is a REST adapter or the k8s dynamic client.
 
 ---
+
+### Assistant Watcher reads
+
+Watcher configuration follows the provider REST pull pipeline through its shared typed adapter. Before collection insertion, the Watcher adapter supplies a preflight that checks its visible identity index; the generic puller invokes that check and reports rejected items without knowing their resource kind. Runtime status uses separate read-only observations and never enters a manifest. See [Assistant Watchers](../reference/assistant-watchers.md).
+
+Typed list adapters retain items returned alongside an error. Watcher bulk reads expose per-item failures and skips through the adapter partial-read contract, so the generic puller can retain successful configurations and record accurate coverage without importing Watcher types. Collection failures remain fatal; abort mode stops before file processing. Dedicated list discloses incomplete coverage and the affected candidates.
 
 ## 5. QUERY Pipeline
 
@@ -876,6 +884,8 @@ Default `MaxConcurrent` = 10 (set in `push.go:30`, `pull.go`, etc.).
 6. **Format detection is extension-based, not content-based.** Files without
    `.json`, `.yaml`, or `.yml` extensions will return `UnrecognisedFormatError`.
 
-7. **upsertResource reads resourceVersion before update.** `pusher.go:259` copies
-   `resourceVersion` from the existing object. Any code doing updates outside of
-   the Pusher must do the same or Grafana's API will reject the update with a conflict.
+7. **upsertResource preserves update metadata.** The pusher copies the live
+   `resourceVersion` before an update. It also keeps the live manager identity
+   when both resources have the `kubectl` manager kind. This applies to direct
+   lookups and natural-key matches. See [Manager Metadata](resource-model.md#manager-metadata).
+   Other update paths must also satisfy Grafana's version and ownership checks.

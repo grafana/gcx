@@ -10,4 +10,6 @@ var (
 	DefaultMaxRetryAfter = defaultMaxRetryAfter
 	ParseRetryAfter      = parseRetryAfter
 	IsIdempotent         = isIdempotent
+
+	IsTransientConnectionError = isTransientConnectionError
 )

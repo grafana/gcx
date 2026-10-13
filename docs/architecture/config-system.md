@@ -203,6 +203,23 @@ the configuration. A layered load first preflights declared versions for every
 captured source, resolves the policy from those snapshots, then loads and merges
 the layers. Neither path opens a credential store before policy resolution.
 
+Layered loading first reads without taking writer locks. If its revision check
+detects a concurrent config write, gcx acquires the existing source writer locks
+and loads fresh bytes. Recovery discovers the sources again and resolves the
+credential policy again. It acquires each canonical source lock once, in sorted
+order, and reuses those locks for permitted migration writes. A caller-owned
+lock is retained; recovery cannot add a different source lock to that transaction.
+
+Recovery uses one cancellable lock wait with the existing writer timeout. It
+releases its locks before command overrides run. There is no timed retry loop.
+Other load errors return directly. Revision and identity checks remain active
+because external editors do not obey gcx locks. If sources change during lock
+acquisition, or an external edit conflicts with recovery, gcx returns an error.
+Reads without migration or a revision conflict do not need a writable lock
+directory or wait for a token refresh.
+This protects recovery from writes to the discovered sources. It does not make
+source discovery or later, lazy credential resolution an atomic transaction.
+
 Source: `internal/config/loader.go` (`LoadLayered`, `DiscoverSources`, and
 `StandardLocation`) and `cmd/gcx/config/command.go`.
 
@@ -963,6 +980,7 @@ variable reference.
 |------|---------|
 | `internal/config/types.go` | All config struct definitions, `Resolve`, `Minify`, `Validate` |
 | `internal/config/loader.go` | `Load`, `Write`, `StandardLocation`, `ExplicitConfigFile` |
+| `internal/config/layered_lock.go` | Source lock coordination after a layered read conflict |
 | `internal/config/migrate.go` | Legacy-format detection and auto-migration |
 | `internal/config/migrate_preflight.go` | Exact-snapshot layered migration safety checks |
 | `internal/config/version.go` | Declared-version validation for reads and writes |

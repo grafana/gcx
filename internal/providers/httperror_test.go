@@ -114,6 +114,35 @@ func TestHandleErrorResponseReadFailureCarriesStatusAndCause(t *testing.T) {
 		"a body-read failure must not lose the status the response already carried")
 }
 
+func TestIsPluginRouteDenied(t *testing.T) {
+	tests := []struct {
+		name string
+		code int
+		body string
+		want bool
+	}{
+		{"route denied", http.StatusForbidden, `{"message":"plugin proxy route access denied"}`, true},
+		{"backend 403", http.StatusForbidden, `{"message":"forbidden"}`, false},
+		{"route message on another status", http.StatusUnauthorized, `{"message":"plugin proxy route access denied"}`, false},
+		{"plain text body", http.StatusForbidden, "plugin proxy route access denied", false},
+		{"empty body", http.StatusForbidden, "", false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, providers.IsPluginRouteDenied(tc.code, []byte(tc.body)))
+		})
+	}
+}
+
+func TestPluginRouteDeniedErrorKeepsCause(t *testing.T) {
+	cause := errors.New("faro: delete app 42: status 403")
+	err := &providers.PluginRouteDeniedError{Action: "x.apps:delete", Role: "X Admin", Cause: cause}
+
+	assert.Equal(t, cause.Error(), err.Error(), "the client's message must stay unchanged")
+	require.ErrorIs(t, err, cause)
+	assert.Equal(t, http.StatusForbidden, err.HTTPStatusCode())
+}
+
 type failingReader struct{ err error }
 
 func (r *failingReader) Read([]byte) (int, error) { return 0, r.err }

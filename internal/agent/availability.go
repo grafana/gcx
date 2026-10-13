@@ -43,6 +43,7 @@ var cloudOnlyPaths = []string{
 	"gcx instrumentation services", // K8s workload survey
 	"gcx cloud",                    // Grafana Cloud stacks management
 	"gcx setup",                    // Grafana Cloud product onboarding
+	"gcx signup",                   // Grafana Cloud account creation
 	"gcx metrics adaptive",         // Adaptive Metrics — Grafana Cloud
 	"gcx metrics billing",          // Grafana Cloud billing/usage metrics (grafanacloud-usage datasource)
 	"gcx logs adaptive",            // Adaptive Logs — Grafana Cloud

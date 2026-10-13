@@ -62,6 +62,22 @@ gcx alert notification-policies set -f notification-policy.yaml --force
 gcx alert notification-policies get
 ```
 
+To route these alerts through a separate named routing tree instead of editing
+the default tree (Grafana 13.1+, or 12.4-13.0 with `alertingMultiplePolicies`),
+manage native `RoutingTree` manifests. Other trees are left unchanged:
+
+```bash
+gcx alert routing-trees list
+gcx alert routing-trees create -f slo-routing-tree.yaml
+
+# Update: fetch first so the manifest carries metadata.resourceVersion.
+gcx alert routing-trees get slo-routing -o yaml > slo-routing-tree.yaml
+gcx alert routing-trees update slo-routing -f slo-routing-tree.yaml
+
+# Deleting the default tree (user-defined) resets it instead of removing it.
+gcx alert routing-trees delete slo-routing --force
+```
+
 **Step 3 - parallel with Step 2 (independent):**
 
 Create a mute timing with the native command:

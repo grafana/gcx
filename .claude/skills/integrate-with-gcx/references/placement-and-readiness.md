@@ -64,11 +64,11 @@ everything below is a wiring option within or beside them, not a new tier:
   "validate this rule" are not CRUD verbs. Presence on `/apis` never by itself
   decides that no commands are warranted.
 
-  One hard constraint if your answer is a commands-only provider calling the K8s
-  dynamic client: `CONSTITUTION.md` § Architecture Invariants records
-  `internal/providers/dashboards/` as **the one documented exception** (ADR 016).
-  A second one extends that exception, so it needs explicit human approval and a
-  CONSTITUTION change — say so in the placement section rather than assuming it.
+  One hard constraint if your answer is provider commands over a native `/apis`
+  resource: `CONSTITUTION.md` § Architecture Invariants requires them to go
+  through the shared native binding (`internal/providers/native`, see
+  `gcx alert routing-trees`). Never register an adapter for a discovered GVK or
+  build discovery registries and dynamic clients by hand.
 - **Cloud-tier command** — GCOM control-plane operations mount under `gcx cloud`.
 - **Provider commands** — a product with its own REST API gets a provider
   (`internal/providers/<name>/`, 6-method interface). Within a provider, three

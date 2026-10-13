@@ -1,3 +1,53 @@
+## v1.6.0 (2026-10-13)
+
+### Breaking changes
+
+- Faro app writes now reject `spec.settings.geolocationLevel: region`.
+  Change it to `subdivision` in saved manifests before you upgrade.
+  This affects `gcx frontend apps` writes and resource pushes. Before this
+  release, gcx ignored Faro app settings on writes, so `region` never took
+  effect. Faro settings now reach the API. (#1444)
+- `gcx datasources loki labels` and `gcx logs labels` now reject stray
+  positional arguments. They also reject an explicit empty `--query` or
+  `--label`. Omit these flags for an unscoped label list. Give each flag
+  a nonempty value when you use it. (#1325)
+
+### New commands and improvements
+
+- Add `gcx signup` to create a Grafana Cloud account and save its first
+  connection. Complete account setup in the browser. If the connection
+  fails after signup, finish it with `gcx login`. (#1383)
+- Let `gcx login --cloud --oauth` open the stack chooser when no server
+  is set. Browser cancellation now exits with code 5. On macOS, the
+  terminal watcher uses its own device, so SSH paste works. (#1383)
+- Add `gcx docs` commands to search and read Grafana product docs.
+  (#1234)
+- Add `gcx alert routing-trees` commands to manage native alert routing
+  trees. (#1472)
+- Add experimental `gcx profiles query-anomalies` and
+  `gcx datasources pyroscope query-anomalies` commands. Their flags and
+  output may change. (#1435)
+- Add `--query` to scope Loki label and value lists. (#1325)
+- Add `--dry-run` to Synthetic Monitoring check create and update.
+  (#1429)
+- Add an experimental Go sandbox module that runs gcx as WebAssembly.
+  Reduce its build size and startup time. (#1440)
+- Keep resource manager identity stable across gcx upgrades. Resolve
+  resource selectors with dotted API groups. (#1537, #1441)
+- Correct Faro app settings writes. Preserve labels and mobile
+  classification on create. Report truncated lists and accept app names
+  in get. (#1444, #1390, #1445)
+- Read service map metadata correctly. Fix the SLO server interval
+  example. Scope k6 load tests to the selected project. (#1457, #1452,
+  #1450)
+- Name missing permissions in Faro proxy errors. Show native alert rule
+  selectors in help. Recover after concurrent config writes. (#1518,
+  #1458, #1485)
+- Detect Codex, Gemini, and other agent hosts. Let
+  `GCX_AGENT_SPILL_BYTES=0` disable output spilling. (#1461, #1439)
+- Update docs, security reporting guidance, and on-call command
+  discovery. (#1520, #1206, #1305)
+
 ## v1.5.0 (2026-10-05)
 
 ## Breaking changes: Cloud stack creation
@@ -44,8 +94,6 @@ gcx cloud stacks get demo -o json
   Pathfinder plugin is installed and enabled. JSON/YAML output is unchanged.
 - Add a contributor RFC for unified alerting resource workflows; it does
   not introduce a new runtime alerting API.
-
-## Unreleased
 
 ## v1.4.0 (2026-10-02)
 

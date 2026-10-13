@@ -37,7 +37,7 @@ func CaptureErrorSignals(err error) {
 
 	// Independent of the HTTP probe: ReasonForError matches the APIStatus
 	// interface, so it covers both a raw *k8sapi.StatusError and the dynamic
-	// client's value-typed APIError, which never reaches convertAPIErrors.
+	// client's value-typed APIError.
 	// An empty reason (StatusReasonUnknown, including ParseStatusError's
 	// non-Kubernetes fallback) is not a finding; the setter ignores it.
 	capture.SetK8sReason(string(k8sapi.ReasonForError(err)))

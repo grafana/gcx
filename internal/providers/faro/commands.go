@@ -77,14 +77,14 @@ func NewTypedCRUD(ctx context.Context, loader RESTConfigLoader) (*adapter.TypedC
 
 type listOpts struct {
 	IO    cmdio.Options
-	Limit int64
+	Limit int
 }
 
 func (o *listOpts) setup(flags *pflag.FlagSet) {
 	cmdio.RegisterTable(&o.IO, AppTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
-	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for unlimited)")
+	o.IO.BindListLimit(flags, &o.Limit, "apps", 50)
 }
 
 func newListCommand(loader RESTConfigLoader) *cobra.Command {
@@ -104,12 +104,21 @@ func newListCommand(loader RESTConfigLoader) *cobra.Command {
 				return err
 			}
 
-			typedObjs, err := crud.List(ctx, opts.Limit)
+			// The Faro API returns every app unpaginated, so the limit is a
+			// display trim and the observed total is exact. Fetch everything and
+			// truncate here so the truncation is reported on stderr.
+			typedObjs, err := crud.List(ctx, 0)
 			if err != nil {
 				return err
 			}
+			typedObjs, meta := cmdio.TruncateCompleteList(typedObjs, opts.Limit)
+			meta = cmdio.AttachListMeta(meta, os.Args)
 
-			return opts.IO.Encode(cmd.OutOrStdout(), typedObjs)
+			if err := opts.IO.Encode(cmd.OutOrStdout(), typedObjs); err != nil {
+				return err
+			}
+			cmdio.EmitListTruncationHint(cmd.ErrOrStderr(), meta)
+			return nil
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -129,6 +138,13 @@ func AppTable() cmdio.Table[adapter.TypedObject[FaroApp]] {
 			{Header: "NAME", Content: spec(func(a FaroApp) string { return a.GetResourceName() })},
 			{Header: "APP KEY", Content: spec(func(a FaroApp) string { return cmdio.OrDash(a.AppKey) })},
 			{Header: "COLLECT ENDPOINT URL", Content: spec(func(a FaroApp) string { return cmdio.OrDash(a.CollectEndpointURL) })},
+			{Header: "APP TYPE", Visible: cmdio.WideOnly, Content: spec(func(a FaroApp) string { return cmdio.OrDash(a.AppType) })},
+			{Header: "RUNTIME", Visible: cmdio.WideOnly, Content: spec(func(a FaroApp) string {
+				if a.Runtime == nil {
+					return "-"
+				}
+				return cmdio.OrDash(*a.Runtime)
+			})},
 			{Header: "OTLP INGEST ENDPOINT URL", Visible: cmdio.WideOnly, Content: spec(func(a FaroApp) string { return cmdio.OrDash(a.OTLPIngestEndpointURL) })},
 			{Header: "CORS ORIGINS", Visible: cmdio.WideOnly, Content: spec(func(a FaroApp) string { return corsOriginsString(a.CORSOrigins) })},
 			{Header: "EXTRA LOG LABELS", Visible: cmdio.WideOnly, Content: spec(func(a FaroApp) string { return labelsString(a.ExtraLogLabels) })},
@@ -137,22 +153,28 @@ func AppTable() cmdio.Table[adapter.TypedObject[FaroApp]] {
 	}
 }
 
-// resolveGetTarget resolves the lookup ID for the get command.
-// If --name is provided, it does a client-side name lookup and returns the numeric ID.
-// Otherwise it returns the positional argument as-is.
-func resolveGetTarget(ctx context.Context, cfg config.NamespacedRESTConfig, name string, args []string) (string, error) {
-	if name != "" {
-		client, err := NewClient(cfg)
-		if err != nil {
-			return "", err
+// getApp resolves a slug-id, numeric ID or display name to an app.
+// An argument shaped like an ID is fetched directly; only a not-found result
+// falls through to a name lookup over the full list, so any other failure
+// (e.g. a 403) is reported as-is instead of as a missing app.
+func getApp(ctx context.Context, crud *adapter.TypedCRUD[FaroApp], arg string) (*adapter.TypedObject[FaroApp], error) {
+	if _, ok := adapter.ExtractIDFromSlug(arg); ok {
+		obj, err := crud.Get(ctx, arg)
+		if err == nil || !errors.Is(err, adapter.ErrNotFound) {
+			return obj, err
 		}
-		app, err := client.GetByName(ctx, name)
-		if err != nil {
-			return "", fmt.Errorf("faro app with name %q not found: %w", name, err)
-		}
-		return app.ID, nil
 	}
-	return args[0], nil
+
+	apps, err := crud.List(ctx, 0)
+	if err != nil {
+		return nil, err
+	}
+	for _, app := range apps {
+		if app.Spec.Name == arg {
+			return &app, nil
+		}
+	}
+	return nil, fmt.Errorf("faro app %q: no app has that slug-id or name: %w", arg, adapter.ErrNotFound)
 }
 
 func corsOriginsString(origins []CORSOrigin) string {
@@ -183,7 +205,7 @@ func labelsString(labels map[string]string) string {
 }
 
 func geolocationString(settings *FaroAppSettings) string {
-	if settings == nil || !settings.GeolocationEnabled {
+	if settings == nil || settings.GeolocationEnabled == nil || !*settings.GeolocationEnabled {
 		return "-"
 	}
 	level := settings.GeolocationLevel
@@ -198,50 +220,41 @@ func geolocationString(settings *FaroAppSettings) string {
 // ---------------------------------------------------------------------------
 
 type getOpts struct {
-	IO   cmdio.Options
-	Name string
+	IO cmdio.Options
 }
 
 func (o *getOpts) setup(flags *pflag.FlagSet) {
 	cmdio.RegisterTable(&o.IO, AppTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
-	flags.StringVar(&o.Name, "name", "", "Get Frontend Observability app by name instead of slug-id")
 }
 
 func newGetCommand(loader RESTConfigLoader) *cobra.Command {
 	opts := &getOpts{}
 	cmd := &cobra.Command{
-		Use:   "get [slug-id]",
+		Use:   "get <slug-id|name>",
 		Short: "Get a Frontend Observability app by slug-id or name.",
+		Long: `Get a Frontend Observability app by slug-id (my-web-app-42), numeric ID or
+display name. An argument that matches no app by ID is looked up by name.`,
 		Example: `  # Get by slug-id.
   gcx frontend apps get my-web-app-42
 
   # Get by name.
-  gcx frontend apps get --name "My Web App"`,
-		Args: cobra.MaximumNArgs(1),
+  gcx frontend apps get "My Web App"`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
 			}
 
-			if opts.Name == "" && len(args) == 0 {
-				return errors.New("provide a slug-id argument or --name flag")
-			}
-
 			ctx := cmd.Context()
 
-			crud, cfg, err := NewTypedCRUD(ctx, loader)
+			crud, _, err := NewTypedCRUD(ctx, loader)
 			if err != nil {
 				return err
 			}
 
-			lookupID, lookupErr := resolveGetTarget(ctx, cfg, opts.Name, args)
-			if lookupErr != nil {
-				return lookupErr
-			}
-
-			typedObj, err := crud.Get(ctx, lookupID)
+			typedObj, err := getApp(ctx, crud, args[0])
 			if err != nil {
 				return err
 			}
@@ -283,11 +296,31 @@ func newCreateCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a Frontend Observability app from a file.",
+		Long: `Create a Frontend Observability app from a file.
+
+Set spec.appType and spec.runtime at creation; the API ignores later changes
+to appType. Web apps use appType web with runtime web-js. Mobile apps use
+appType mobile with runtime flutter, react-native, android-native, or
+swift-native. Create sends spec.extraLogLabels, including the legacy is_mobile
+label.
+
+Create and update send spec.settings. Set geolocationLevel to continent,
+country, subdivision, city, or network. Set geolocationCountryDenylist to ISO
+country codes, such as [DE], to skip enrichment for those sessions.`,
 		Example: `  # Create an app from a YAML file.
   gcx frontend apps create -f app.yaml
 
-  # Create from stdin.
-  cat app.yaml | gcx frontend apps create -f -`,
+  # Create a native Android app from stdin.
+  cat <<EOF | gcx frontend apps create -f -
+  apiVersion: faro.ext.grafana.app/v1alpha1
+  kind: FaroApp
+  metadata:
+    name: my-mobile-app
+  spec:
+    name: my-mobile-app
+    appType: mobile
+    runtime: android-native
+  EOF`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.Validate(); err != nil {
 				return err
@@ -303,11 +336,6 @@ func newCreateCommand(loader RESTConfigLoader) *cobra.Command {
 			app, err := readAppFromFile(opts.File, cmd.InOrStdin())
 			if err != nil {
 				return err
-			}
-
-			if len(app.ExtraLogLabels) > 0 || app.Settings != nil {
-				cmdio.EmitWarn(cmd.ErrOrStderr(),
-					"extraLogLabels and settings are ignored during creation (API limitation); use update to apply them")
 			}
 
 			typedObj := &adapter.TypedObject[FaroApp]{Spec: *app}
@@ -361,6 +389,11 @@ func newUpdateCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "update <name>",
 		Short: "Update a Frontend Observability app from a file.",
+		Long: `Update a Frontend Observability app from a file.
+
+Omit spec.runtime to keep the stored runtime; an empty runtime is invalid. The
+API ignores changes to spec.appType. Omitted settings keep their stored values;
+an empty geolocationCountryDenylist clears it.`,
 		Example: `  # Update an app using its slug-id.
   gcx frontend apps update my-web-app-42 -f app.yaml`,
 		Args: cobra.ExactArgs(1),
@@ -426,7 +459,16 @@ func newDeleteCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "delete <name>",
 		Short: "Delete a Frontend Observability app.",
-		Args:  cobra.ExactArgs(1),
+		Long: `Delete a Frontend Observability app.
+
+Deleting requires the grafana-kowalski-app.apps:delete permission (granted to
+Admin and Frontend Observability Admin by default). A user with only apps:write
+can create and update apps but cannot delete them.
+
+The argument is a slug-id or numeric ID, not a name. Any trailing "-<digits>"
+is read as the app ID, so "Checkout-2024" deletes app 2024. Find the slug-id with
+"gcx frontend apps list" first. There is no confirmation prompt.`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
 				return err

@@ -3,7 +3,6 @@ package prometheus_test
 import (
 	"context"
 	"fmt"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -560,25 +559,17 @@ func TestClient_Search_OtherHTTPErrorIsRaw(t *testing.T) {
 // it, the auth-suggestion and availability handling that status code
 // drives — instead of being lost in a generic wrapped error.
 func TestClient_Search_NonOKBodyReadFailurePreservesStatusCode(t *testing.T) {
-	ln, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-	defer ln.Close()
+	// net/http reads the request before the handler sends the truncated response.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Length", "1000")
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":"short"`))
+	}))
+	defer srv.Close()
 
-	go func() {
-		conn, acceptErr := ln.Accept()
-		if acceptErr != nil {
-			return
-		}
-		defer conn.Close()
-		_ = conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-		// Content-Length promises 1000 bytes of body; the connection closes
-		// after far fewer, so the client's body read fails.
-		_, _ = conn.Write([]byte("HTTP/1.1 401 Unauthorized\r\nContent-Length: 1000\r\nConnection: close\r\n\r\n{\"error\":\"short\""))
-	}()
+	client := newTestClient(t, srv.URL)
 
-	client := newTestClient(t, "http://"+ln.Addr().String())
-
-	_, err = client.SearchMetricNames(context.Background(), "prom", prometheus.SearchOptions{})
+	_, err := client.SearchMetricNames(context.Background(), "prom", prometheus.SearchOptions{})
 	require.Error(t, err)
 
 	var apiErr *queryerror.APIError

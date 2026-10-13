@@ -60,6 +60,9 @@ linters:
     gomoddirectives:
       replace-allow-list:
         - github.com/hashicorp/memberlist
+        # experimental/sandbox pins a wazero fork until its memory fixes
+        # are released upstream (see experimental/sandbox/go.mod).
+        - github.com/tetratelabs/wazero
 
   exclusions:
     generated: lax

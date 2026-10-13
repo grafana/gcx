@@ -4,7 +4,7 @@
 
 - **[Installation](sources/installation.md)** — Install gcx via Homebrew or binary download
 - **[Configuration](sources/configuration.md)** — Set up contexts, authentication, and environments
-- **[Guides](guides/index.md)** — How-to guides for common workflows
+- **[Guides](sources/guides/)** — How-to guides for common workflows
 - **[CLI Reference](reference/cli/)** — Auto-generated command reference
 
 ## Local preview
@@ -32,9 +32,8 @@ docs/
 ├── architecture/     # Per-domain codebase analysis
 ├── rfcs/             # Numbered engineering proposals and review workflows
 ├── adrs/             # Architecture Decision Records
-├── sources/          # Grafana.com-mounted user-facing docs
+├── sources/          # Grafana.com-mounted user-facing docs, including user-facing how-to guides
 ├── reference/        # Evergreen tool/API docs, auto-generated CLI reference
-├── guides/           # User-facing how-to guides
 ├── research/         # Point-in-time research reports
 ├── specs/            # Ephemeral spec packages (cleaned after merge)
 ├── _templates/       # Templates for ADRs, specs, research reports

@@ -221,3 +221,21 @@ func TestDirectClient_doRaw_401WithReauthRetries(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int32(2), scriptCalls.Load())
 }
+
+func TestDirectClient_ListLoadTestsByProject_UsesProjectCollection(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/cloud/v6/projects/42/load_tests", r.URL.Path)
+		assert.Empty(t, r.URL.Query().Get("project_id"))
+		assert.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
+		assert.Equal(t, "999", r.Header.Get("X-Stack-Id"))
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"value": []map[string]any{{"id": 6, "project_id": 42, "name": "owned"}}})
+	}))
+	t.Cleanup(srv.Close)
+	client := k6.NewDirectClient(t.Context(), srv.URL, nil)
+	client.SetCachedAuth("test-token", 1, 999)
+	tests, err := client.ListLoadTestsByProject(t.Context(), 42)
+	require.NoError(t, err)
+	require.Len(t, tests, 1)
+	assert.Equal(t, 42, tests[0].ProjectID)
+}

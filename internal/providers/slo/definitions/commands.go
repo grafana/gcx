@@ -20,8 +20,12 @@ import (
 func Commands(loader providers.GrafanaConfigLoader) *cobra.Command {
 	resource := providers.BindGrafanaResource(loader, SloResource())
 	cmd := &cobra.Command{
-		Use:     "definitions",
-		Short:   "Manage SLO definitions.",
+		Use:   "definitions",
+		Short: "Manage SLO definitions.",
+		Long: `Manage SLO definitions.
+
+Freeform queries must use $__rate_interval in every rate() and increase() range.
+Literal ranges such as [5m] are rejected by the SLO API.`,
 		Aliases: []string{"def", "defs"},
 	}
 	cmd.AddCommand(

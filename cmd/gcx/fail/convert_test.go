@@ -1,9 +1,12 @@
 package fail_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 	"testing"
@@ -23,6 +26,7 @@ import (
 	cmdoutput "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers/instrumentation"
 	"github.com/grafana/gcx/internal/queryerror"
+	"github.com/grafana/gcx/internal/resources/dynamic"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -151,6 +155,18 @@ func TestErrorToDetailedError_AuthExitCode(t *testing.T) {
 			},
 			wantExitCode: gcxerrors.ExitAuthFailure,
 		},
+		{
+			name: "403 from the dynamic client (dynamic.APIError) returns ExitAuthFailure",
+			err: fmt.Errorf("list routing trees: %w", dynamic.ParseStatusError(&k8sapi.StatusError{
+				ErrStatus: metav1.Status{
+					Status:  metav1.StatusFailure,
+					Code:    403,
+					Reason:  metav1.StatusReasonForbidden,
+					Message: "Forbidden",
+				},
+			})),
+			wantExitCode: gcxerrors.ExitAuthFailure,
+		},
 	}
 
 	for _, tc := range tests {
@@ -160,6 +176,62 @@ func TestErrorToDetailedError_AuthExitCode(t *testing.T) {
 			require.NotNil(t, got)
 			require.NotNil(t, got.ExitCode, "ExitCode should be set for auth errors")
 			assert.Equal(t, tc.wantExitCode, *got.ExitCode)
+		})
+	}
+}
+
+// TestErrorToDetailedError_DynamicClientErrors covers what the dynamic client
+// returns: dynamic.ParseStatusError wraps every failure in an APIError, and
+// synthesizes a 500 status for errors that carry none.
+func TestErrorToDetailedError_DynamicClientErrors(t *testing.T) {
+	urlErr := &url.Error{Op: "Get", URL: "http://localhost:3000/apis", Err: errors.New("dial tcp: connection refused")}
+
+	tests := []struct {
+		name        string
+		err         error
+		wantSummary string
+		wantExit    *int
+	}{
+		{
+			name:        "network error is reported as a network error",
+			err:         dynamic.ParseStatusError(urlErr),
+			wantSummary: "Network error",
+		},
+		{
+			name:        "timeout is not reported as a server 500",
+			err:         dynamic.ParseStatusError(context.DeadlineExceeded),
+			wantSummary: "Context deadline exceeded",
+		},
+		{
+			name:     "cancellation keeps the cancelled exit code",
+			err:      dynamic.ParseStatusError(context.Canceled),
+			wantExit: new(gcxerrors.ExitCancelled),
+		},
+		{
+			name: "server 500 is still an API error",
+			err: dynamic.ParseStatusError(&k8sapi.StatusError{ErrStatus: metav1.Status{
+				Status:  metav1.StatusFailure,
+				Code:    500,
+				Reason:  metav1.StatusReasonInternalError,
+				Message: "boom",
+			}}),
+			wantSummary: "API error: InternalError - code 500",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := fail.ErrorToDetailedError(tc.err)
+
+			require.NotNil(t, got)
+			assert.NotContains(t, got.Summary, "API error:  - code 500", "synthesized status must not reach the API converter")
+			if tc.wantSummary != "" {
+				assert.Equal(t, tc.wantSummary, got.Summary)
+			}
+			if tc.wantExit != nil {
+				require.NotNil(t, got.ExitCode)
+				assert.Equal(t, *tc.wantExit, *got.ExitCode)
+			}
 		})
 	}
 }
@@ -1544,4 +1616,162 @@ func TestBasicAuthCheckError(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestConvertBrowserCancelled keeps a consent-page Cancel visible: exit code 5
+// with a message, even though the root command exits silently for a plain
+// context cancellation.
+func TestConvertBrowserCancelled(t *testing.T) {
+	t.Parallel()
+
+	err := fmt.Errorf("OAuth flow failed: %w", auth.ErrBrowserCancelled)
+	require.NotErrorIs(t, err, context.Canceled)
+
+	det := fail.ErrorToDetailedError(err)
+	require.NotNil(t, det)
+	assert.Equal(t, "Operation cancelled", det.Summary)
+	assert.Contains(t, det.Details, "cancelled in the browser")
+	require.NotNil(t, det.ExitCode)
+	assert.Equal(t, gcxerrors.ExitCancelled, *det.ExitCode)
+}
+
+// TestConvertOAuthExchangeErrors gives a first-time user a next step when the
+// token exchange hits a rate limit or a service error. Other statuses keep the
+// generic rendering.
+func TestConvertOAuthExchangeErrors(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		status        int
+		wantDetail    string
+		wantSuggested string
+	}{
+		{status: 429, wantDetail: "Grafana Cloud is rate limiting logins", wantSuggested: "Wait a minute, then run gcx login again"},
+		{status: 503, wantDetail: "Grafana Cloud could not finish the login", wantSuggested: "Run gcx login again in a few minutes"},
+		{status: 401},
+	}
+	for _, tc := range tests {
+		t.Run(strconv.Itoa(tc.status), func(t *testing.T) {
+			t.Parallel()
+
+			exchangeErr := &auth.ExchangeStatusError{StatusCode: tc.status, Path: "/api/cli/v1/auth/exchange"}
+			err := fmt.Errorf("OAuth flow failed: token exchange failed: %w", exchangeErr)
+			det := fail.ErrorToDetailedError(err)
+			require.NotNil(t, det)
+			if tc.wantDetail == "" {
+				assert.NotContains(t, det.Details, "cannot be reused")
+				assert.Empty(t, det.Suggestions)
+				return
+			}
+			// The summary stays in the approved vocabulary (docs/design/errors.md);
+			// the specific cause goes in the details.
+			assert.Equal(t, "API error", det.Summary)
+			assert.Contains(t, det.Details, tc.wantDetail)
+			assert.Contains(t, det.Details, "cannot be reused")
+			assert.Equal(t, []string{tc.wantSuggested}, det.Suggestions)
+		})
+	}
+}
+
+// TestSignupIncompleteErrorKeepsTheFailure pins the rendering of a signup that
+// failed once its browser step had started: the failure keeps its own summary,
+// details, suggestions and exit code, and the recovery comes first without
+// suggesting signup again.
+func TestSignupIncompleteErrorKeepsTheFailure(t *testing.T) {
+	t.Parallel()
+
+	keychain := gcxerrors.DetailedError{
+		Summary:     "Keychain locked",
+		Details:     "the login keychain is locked",
+		Suggestions: []string{"Unlock the keychain"},
+		ExitCode:    new(gcxerrors.ExitAuthFailure),
+	}
+	const connect = "gcx login default --server https://mystack.grafana.net --oauth"
+	const signIn = "gcx login default --cloud --oauth"
+	tests := []struct {
+		name         string
+		err          *login.SignupIncompleteError
+		wantSummary  string
+		wantExitCode *int
+		wantNote     string
+		wantFirst    string
+		wantKept     string
+	}{
+		{
+			name:        "a save failure",
+			err:         &login.SignupIncompleteError{Err: fmt.Errorf("saving: %w", keychain), Server: "https://mystack.grafana.net", Recovery: connect},
+			wantSummary: "Keychain locked", wantExitCode: keychain.ExitCode,
+			wantNote:  "Grafana Cloud account and the stack https://mystack.grafana.net exist",
+			wantFirst: "Once the cause above is fixed, connect gcx to the new stack: " + connect,
+			wantKept:  "Unlock the keychain",
+		},
+		{
+			name:        "a stack that is still starting",
+			err:         &login.SignupIncompleteError{Err: &login.HealthCheckError{Server: "https://mystack.grafana.net", Status: 503, Cause: errors.New("unavailable")}, Server: "https://mystack.grafana.net", Recovery: connect},
+			wantSummary: "Grafana server unreachable",
+			wantNote:    "A new stack can take a few minutes to finish starting",
+			wantFirst:   "Wait a few minutes, then connect gcx to the new stack: " + connect,
+		},
+		{
+			name:        "a cancel on the Connect gcx page",
+			err:         &login.SignupIncompleteError{Err: fmt.Errorf("OAuth flow failed: %w", auth.ErrBrowserCancelled), Recovery: signIn},
+			wantSummary: "Operation cancelled", wantExitCode: new(gcxerrors.ExitCancelled),
+			wantNote:  "If you already created your Grafana Cloud account in the browser, it exists",
+			wantFirst: "Sign in instead of signing up again, and choose the new stack: " + signIn,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			det := fail.ErrorToDetailedError(tc.err)
+			require.NotNil(t, det)
+			assert.Equal(t, tc.wantSummary, det.Summary)
+			assert.Equal(t, tc.wantExitCode, det.ExitCode)
+			assert.Contains(t, det.Details, tc.wantNote)
+			require.NotEmpty(t, det.Suggestions)
+			assert.Equal(t, tc.wantFirst, det.Suggestions[0])
+			if tc.wantKept != "" {
+				assert.Contains(t, det.Suggestions, tc.wantKept)
+				assert.Contains(t, det.Details, keychain.Details)
+			}
+			assert.NotContains(t, strings.Join(det.Suggestions, "\n"), "gcx signup")
+		})
+	}
+	// The inner error's own suggestions are not changed in place.
+	assert.Equal(t, []string{"Unlock the keychain"}, keychain.Suggestions)
+}
+
+// TestSignupIncompleteErrorKeepsAWrappedCause pins that signup's note does not
+// hide a cause that the fallback converter keeps only as Parent, such as a
+// busy callback port. JSON output reads Details and falls back to Parent only
+// when Details is empty, so an agent would otherwise get the note and the
+// recovery but not why the signup stopped. Text shows the cause once.
+func TestSignupIncompleteErrorKeepsAWrappedCause(t *testing.T) {
+	const cause = "callback port 54322 unavailable: listen tcp 127.0.0.1:54322: bind: address already in use"
+	const signIn = "gcx login default --cloud --oauth --oauth-callback-port 54322"
+	err := &login.SignupIncompleteError{
+		Err:      fmt.Errorf("OAuth flow failed: %w", errors.New(cause)),
+		Recovery: signIn,
+	}
+
+	det := fail.ErrorToDetailedError(err)
+	require.NotNil(t, det)
+	assert.Equal(t, "OAuth flow failed", det.Summary)
+
+	var buf bytes.Buffer
+	require.NoError(t, det.WriteJSON(&buf, 1))
+	var envelope struct {
+		Error struct {
+			Details     string   `json:"details"`
+			Suggestions []string `json:"suggestions"`
+		} `json:"error"`
+	}
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &envelope), buf.String())
+	assert.Contains(t, envelope.Error.Details, "If you already created your Grafana Cloud account in the browser")
+	assert.Contains(t, envelope.Error.Details, cause)
+	require.NotEmpty(t, envelope.Error.Suggestions)
+	assert.Equal(t, "Sign in instead of signing up again, and choose the new stack: "+signIn, envelope.Error.Suggestions[0])
+
+	assert.Equal(t, 1, strings.Count(det.Error(), "address already in use"), det.Error())
 }

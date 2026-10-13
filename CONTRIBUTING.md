@@ -20,6 +20,136 @@ designs the command's agent-facing contract before any code gets written. It
 hands implementation off to `add-provider` or `add-datasource` where those
 apply, and runs a pre-review self-check over the finished diff.
 
+Please read the next few sections before adding a new command. They will save
+you time, and they mean we can say yes faster.
+
+## New commands need an issue first
+
+**Before writing a new command, provider, datasource kind or resource type,
+please [open a new command proposal](https://github.com/grafana/gcx/issues/new?template=2-new-command-proposal.yml)
+and wait for a maintainer to agree with the placement.**
+
+Grafana product teams don't need a proposal for commands inside their own
+product area — see [Product teams](#product-teams). For anything outside it,
+such as a new top-level area or a change to shared commands, raise it in the
+#gcx channel or open a proposal.
+
+We would much rather say "not like this" to a short issue than to a finished
+pull request. Command paths, flags and positional syntax are stable within a
+major version ([CONSTITUTION.md](CONSTITUTION.md#cli-grammar)), so placement
+and naming are the parts of a change that are hardest to fix after review, and
+impossible to fix after release.
+
+This applies to:
+
+- new commands, subcommand groups, providers and datasource kinds
+- changes to an existing command's path, flags, positional arguments or output
+  shape
+
+It does **not** apply to (please just send a PR):
+
+- bug fixes
+- documentation
+- tests
+- performance and reliability work
+
+If you have already written the code, that's fine — open the issue anyway and
+link it. We'll review the idea before the diff.
+
+## Stable, experimental, or not gcx
+
+Not every good idea has to ship as a stable command on day one.
+
+| Outcome | How it ships | The bar |
+| --- | --- | --- |
+| **Stable** | A normal command | Backed by a GA API whose shape, auth and limits are settled; name you're happy to support for the whole major version |
+| **Experimental** | `[experimental]` in the short description, `agent.StabilityExperimental` annotation | Real use case, but the API or the command shape may still change |
+| **Not gcx** | — | The backend isn't ready, or the capability belongs to the product's own API or UI |
+
+Experimental is not a consolation prize: it is exempt from the compatibility
+promise, so it is the right place for anything backed by a non-GA product
+feature or whose shape you aren't yet sure of. See
+[experimental-commands.md](docs/design/experimental-commands.md) for how to
+mark one. If you're unsure, **propose it as experimental yourself** — it is
+much easier to say yes to.
+
+"Not gcx" usually means a backend prerequisite: gcx wraps product APIs, it
+does not fix them. Missing pagination, unstable payloads or unclear RBAC need
+to be solved by the owning team first. In the meantime,
+[`gcx api`](docs/reference/cli/gcx_api.md) gives raw access to any Grafana API.
+
+## Prefer extending a command over adding one
+
+Before adding a command, check whether an existing one can answer the same
+question with one more flag, or whether the operation is already covered by
+the standard verbs — `list`, `get`, `create`, `update`, `upsert`, `push`,
+`pull`, `delete`, `query`, `search`. [Prefer existing command
+operations](docs/design/command-naming.md) over inventing new ones;
+`cmd/gcx/root/commandoperations_test.go` enforces this.
+
+If two open PRs would add overlapping commands, we'd rather consolidate them
+before merging than ship both and deprecate one in the next major release.
+Searching [open pull requests](https://github.com/grafana/gcx/pulls) for your
+area before you start is worth the two minutes.
+
+## A note on AI-assisted contributions
+
+These are welcome — this repository ships contributor skills precisely because
+most changes here are written with an agent's help. Two requests:
+
+1. **Read and understand the diff before you send it.** We will ask about
+   design decisions, and "the agent chose that" is a difficult place to review
+   from.
+2. **Placement is the part an agent is least likely to get right.** An agent
+   asked to add a command will add a command. Whether it should exist, and
+   what it should be called forever, is a judgement about gcx's users — which
+   is why we ask for the issue first. The `integrate-with-gcx` skill helps, but
+   doesn't replace that conversation.
+
+A PR that is easy to generate can still be expensive to review. The issue step
+is how we keep that cost from landing on you as a rejection.
+
+## Conventions we enforce
+
+Run `mise run gate` (lint + tests + build) before pushing, and
+`GCX_AGENT_MODE=false mise run reference` if you touched commands, flags,
+config or env vars. The specifics:
+
+- **Signed commits are required.** Every commit must have a verified
+  signature — this is
+  [a Grafana organisation-wide policy](https://community.grafana.com/t/action-required-signed-commits-mandatory-for-all-grafana-repositories/163404).
+  Set it up once; it is the most common reason a finished PR sits unmerged.
+- **Generated reference docs must not drift.** The `Documentation` check runs
+  `mise run reference-drift`; regenerate with the command above.
+- **Every `gcx` invocation in a skill must exist.**
+  `TestSkillsGcxInvocationsMatchCommandTree` checks `claude-plugin/skills/`
+  and `.claude/skills/` against the real command tree.
+- **Experimental commands must be marked consistently** —
+  `cmd/gcx/root/experimental_test.go`.
+- **A code owner must approve.** See [Code ownership](#code-ownership) below.
+
+The checks that must pass to merge are `Tests`, `Linters` and `Documentation`,
+plus the organisation's signed-commit and secret-scanning checks.
+
+Not enforced automatically, but please follow it: **conventional commit PR titles** —
+`feat(slo):`, `fix(traces):`, `docs:` and so on. PRs are squash-merged, so the
+title becomes the commit message and feeds the changelog. Mark breaking
+changes with `!`.
+
+## What you can expect from us
+
+- **An automated review.** A Claude code review runs when a non-draft PR is
+  opened or marked ready for review, checking against the docs linked above.
+  Treat it as a first pass; a human still reviews.
+- **CI on forks may need approval.** Workflow runs on pull requests from forks
+  can require a maintainer to approve them. If your checks show as pending,
+  they're waiting on us, not you — feel free to comment if it's been a while.
+- **We'll tell you the outcome.** If we ask for a command to be experimental,
+  renamed, or folded into an existing one, that's a yes with a placement, not
+  a rejection.
+- **If we're going to say no, we'll try to say it on the issue, not on your
+  PR.** That's the whole point of proposing first.
+
 ## Code ownership
 
 The code in this repository is owned by multiple teams. The ownership is codified in the [CODEOWNERS](./.github/CODEOWNERS) file. The @grafana/grafana-gcx team is responsible for the overall architecture of the repository, along with any features or functionality that are not specific to any particular provider.

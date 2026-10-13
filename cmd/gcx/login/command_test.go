@@ -61,7 +61,7 @@ func TestStructuredMissingFieldsError(t *testing.T) {
 			err:            &internallogin.ErrNeedInput{Fields: []string{"server"}},
 			wantSummary:    "Login requires additional input",
 			wantDetailSubs: []string{"server"},
-			wantSuggestSub: []string{"--server", "GRAFANA_SERVER"},
+			wantSuggestSub: []string{"--server", "GRAFANA_SERVER", "--cloud --oauth"},
 		},
 		{
 			name:           "missing_grafana_auth",
@@ -100,7 +100,7 @@ func TestStructuredMissingFieldsError(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			err := structuredMissingFieldsError(tt.err)
+			err := structuredMissingFieldsError(tt.err, false)
 			require.Error(t, err)
 
 			var det gcxerrors.DetailedError
@@ -1047,7 +1047,7 @@ func TestRunLoginLoopReportsDetectedCloudTargetOnCustomDomain(t *testing.T) {
 
 	// Non-interactive, and a Cloud target with no cloud credential, so Run
 	// returns a missing-input error before attempting any network call.
-	err := runLoginLoop(cmd, &loginOpts{}, opts, nil, nil, false, nil, false)
+	_, err := runLoginLoop(cmd, opts, nil, nil, false, nil, false)
 	require.Error(t, err)
 	require.True(t, detected, "detection did not run; the test no longer covers the recapture")
 	assert.Equal(t, "cloud", config.CapturedTargetKind())
@@ -2487,16 +2487,7 @@ func disableAgentMode(t *testing.T) {
 	t.Helper()
 	// t.Setenv handles both set-and-restore for us. Clearing every known
 	// agent env var covers CLAUDECODE, CURSOR_AGENT, etc. in one pass.
-	for _, v := range []string{
-		"GCX_AGENT_MODE",
-		"CLAUDECODE",
-		"CLAUDE_CODE",
-		"CURSOR_AGENT",
-		"GITHUB_COPILOT",
-		"AMAZON_Q",
-		"OPENCODE",
-		"PI_CODING_AGENT",
-	} {
+	for _, v := range agent.EnvironmentVariables() {
 		t.Setenv(v, "")
 	}
 	// GCX_AGENT_MODE=false is the authoritative override.

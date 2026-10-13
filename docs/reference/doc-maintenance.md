@@ -26,8 +26,9 @@ Keep engineering proposals in `docs/rfcs/NNN-title.md` and maintain their entrie
 `update-rfc` skills for proposal development and evidence-based reconciliation.
 A proposal alone does not change the implemented architecture or require an ADR
 index entry; update architecture documentation when the corresponding design is
-implemented. Keep terminology in the RFC and restricted research outside this
-public checkout.
+implemented. Keep proposed terms in the RFC; when a feature ships, move its
+terms to `docs/glossary/` (see [the glossary map](../glossary/README.md)) and link
+to them from the RFC. Keep restricted research outside this public checkout.
 
 ### Adding a New ADR
 

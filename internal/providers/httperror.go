@@ -13,6 +13,41 @@ import (
 // reads, guarding against an unbounded read from a misbehaving proxy or server.
 const maxErrorBodyBytes = 1 << 20 // 1 MiB
 
+// pluginRouteDeniedMessage is the message Grafana's plugin proxy returns when
+// the caller lacks the RBAC action a plugin route requires (its reqAction).
+const pluginRouteDeniedMessage = "plugin proxy route access denied"
+
+// PluginRouteDeniedError reports that Grafana's plugin proxy refused a route
+// because the caller lacks the RBAC action the route requires. The raw 403
+// body does not name the action, so the client that knows the route supplies
+// it. cmd/gcx/fail renders the action, the role and the auth exit code.
+type PluginRouteDeniedError struct {
+	// Action is the RBAC action the route requires.
+	Action string
+	// Role is a role that grants Action.
+	Role string
+	// Cause is the error the client built from the response.
+	Cause error
+}
+
+// Error keeps the client's message unchanged.
+func (e *PluginRouteDeniedError) Error() string { return e.Cause.Error() }
+
+func (e *PluginRouteDeniedError) Unwrap() error { return e.Cause }
+
+// HTTPStatusCode lets the usage-event reporter record the status.
+func (e *PluginRouteDeniedError) HTTPStatusCode() int { return http.StatusForbidden }
+
+// IsPluginRouteDenied reports whether a response is the plugin proxy refusing
+// a route. A 403 from the plugin backend itself returns false.
+func IsPluginRouteDenied(statusCode int, body []byte) bool {
+	if statusCode != http.StatusForbidden {
+		return false
+	}
+	var errResp ErrorResponse
+	return json.Unmarshal(body, &errResp) == nil && errResp.message() == pluginRouteDeniedMessage
+}
+
 // ErrorResponse is the common JSON error-body shape returned by Grafana Cloud
 // product plugin APIs. They disagree on the field name for the human-readable
 // message, so all variants are captured and read in preference order.

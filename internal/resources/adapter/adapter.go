@@ -53,3 +53,39 @@ type ResourceAdapter interface {
 // It is only invoked when a provider resource type is actually selected by a command,
 // ensuring provider config is not loaded eagerly at startup.
 type Factory func(ctx context.Context) (ResourceAdapter, error)
+
+// ReadFailure identifies one unsuccessful read in a partially usable result.
+// Resource may be nil when only the requested reference is known.
+type ReadFailure struct {
+	Resource *unstructured.Unstructured
+	Err      error
+}
+
+// PartialReadError accompanies successful items with per-item coverage metadata.
+// Ordinary collection failures must not implement this contract.
+type PartialReadError interface {
+	error
+	ReadFailures() []ReadFailure
+	SkippedReads() int
+}
+
+// MultipleGetter optionally preserves usable selections when another reference
+// fails. Failures are returned through PartialReadError.
+type MultipleGetter interface {
+	GetMultiple(ctx context.Context, names []string, opts metav1.GetOptions) ([]unstructured.Unstructured, error)
+}
+
+// PullSelection retains every fetched object before identity-keyed insertion.
+type PullSelection struct {
+	Filter resources.Filter
+	Items  []unstructured.Unstructured
+}
+
+// PullPreflight checks an object before processors or collection insertion.
+type PullPreflight func(context.Context, resources.Filter, unstructured.Unstructured) error
+
+// PullPreflighter optionally supplies a fresh identity check for one pull.
+// The complete selection is supplied so duplicate identities remain observable.
+type PullPreflighter interface {
+	NewPullPreflight(selections []PullSelection) PullPreflight
+}

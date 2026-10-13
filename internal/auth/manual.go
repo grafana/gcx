@@ -176,15 +176,21 @@ func printRemoteSessionHint(w io.Writer, port int, command string) {
 }
 
 // printManualInstructions prints the numbered steps of the manual paste flow.
-// verification is the code that the consent page shows. Pass an empty string
-// for a flow that does not show one.
-func printManualInstructions(w io.Writer, authURL, verification string) {
+// browserStep is what the user does in the browser before the consent page,
+// and verification is the code that the consent page shows. Pass an empty
+// string for a flow that has no such step or shows no code.
+func printManualInstructions(w io.Writer, authURL, browserStep, verification string) {
 	fmt.Fprintln(w, "Manual OAuth mode. gcx does not start a callback server.")
 	fmt.Fprintln(w)
 
 	step := 1
 	fmt.Fprintf(w, "%d. Open this URL in a browser on your computer:\n", step)
 	fmt.Fprintf(w, "     %s\n\n", authURL)
+
+	if browserStep != "" {
+		step++
+		fmt.Fprintf(w, "%d. %s\n\n", step, browserStep)
+	}
 
 	if verification != "" {
 		step++

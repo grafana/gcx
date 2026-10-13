@@ -2,6 +2,7 @@ package auth_test
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -27,5 +28,23 @@ func TestExchangeCodeForToken_ErrorFormat(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "oauth token exchange failed") {
 		t.Fatalf("error should match oauth format, got: %v", err)
+	}
+}
+
+// TestExchangeCodeForToken_StatusIsTyped lets the CLI give recovery steps for
+// rate limits and service errors without parsing the message.
+func TestExchangeCodeForToken_StatusIsTyped(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+
+	_, err := auth.ExchangeCodeForToken(context.Background(), server.URL, "code", "verifier")
+	var statusErr *auth.ExchangeStatusError
+	if !errors.As(err, &statusErr) {
+		t.Fatalf("expected *auth.ExchangeStatusError, got %T: %v", err, err)
+	}
+	if statusErr.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want 429", statusErr.StatusCode)
 	}
 }

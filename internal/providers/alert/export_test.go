@@ -1,6 +1,9 @@
 package alert
 
-import "github.com/spf13/cobra"
+import (
+	"github.com/grafana/gcx/internal/providers/native"
+	"github.com/spf13/cobra"
+)
 
 // Exported command constructors for external test packages only. Commands
 // bind their output flags (and resolve the agent-mode default format) at
@@ -64,4 +67,10 @@ func RulerSubtypeForDatasourceType(dsType string) (string, error) {
 // RulerCommands exposes the ruler command tree to tests.
 func RulerCommands(loader GrafanaConfigLoader) *cobra.Command {
 	return rulerCommands(loader)
+}
+
+// NewRoutingTreesCommandForTest wraps newRoutingTreesCommand so tests can
+// inject a native binding (native.Fixed / native.Func).
+func NewRoutingTreesCommandForTest(binding native.Binding) *cobra.Command {
+	return newRoutingTreesCommand(binding)
 }
