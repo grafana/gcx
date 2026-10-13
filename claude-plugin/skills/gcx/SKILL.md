@@ -62,8 +62,13 @@ right group:
 | Datasource info and queries | `datasources` | `gcx datasources list` |
 | Fleet pipelines, collectors | `fleet` | `gcx fleet pipelines list` |
 | Knowledge Graph (Asserts) | `kg` | `gcx kg entities list` |
+| Installed Knowledge Graph schemas | `kg` | `gcx kg schemas list --expand -o json` |
 | Frontend Observability | `frontend` | `gcx frontend apps list` |
 | App Observability | `appo11y` | `gcx appo11y overrides get` |
+
+For installed schemas, use `gcx kg schemas list`. It is experimental and requires
+the stack's Knowledge Graph write API to be enabled. Omit `--expand` for domain
+metadata. Use `gcx kg meta schema` for types observed in the graph.
 
 If no command exists for the requested operation, say so and propose the nearest
 supported flow.

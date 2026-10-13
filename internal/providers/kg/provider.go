@@ -40,6 +40,7 @@ func (p *KGProvider) Commands() []*cobra.Command {
 
 	kgCmd.AddCommand(
 		newStatusCommand(loader),
+		newSchemasCommand(loader),
 		// Configuration upload
 		newRulesCommand(loader),
 		newModelRulesCommand(loader),
