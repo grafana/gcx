@@ -43,14 +43,14 @@
 /internal/datasources/elasticsearch/ @grafana/grafana-gcx @grafana/data-sources-plugins
 /internal/datasources/infinity/ @grafana/grafana-gcx @grafana/data-sources-plugins
 /internal/datasources/influxdb/ @grafana/grafana-gcx @grafana/data-sources-plugins
-/internal/datasources/loki/ @grafana/grafana-gcx @grafana/loki-team
+/internal/datasources/loki/ @grafana/grafana-gcx @grafana/loki-team @grafana/drilldown-squad
 /internal/datasources/mysql/ @grafana/grafana-gcx @grafana/data-sources-plugins
 /internal/datasources/postgres/ @grafana/grafana-gcx @grafana/data-sources-plugins
-/internal/datasources/prometheus/ @grafana/grafana-gcx @grafana/cortex-team
-/internal/datasources/pyroscope/ @grafana/grafana-gcx @grafana/pyroscope-team
+/internal/datasources/prometheus/ @grafana/grafana-gcx @grafana/cortex-team @grafana/drilldown-squad
+/internal/datasources/pyroscope/ @grafana/grafana-gcx @grafana/pyroscope-team @grafana/drilldown-squad
 /internal/datasources/providers/pyroscope* @grafana/grafana-gcx @grafana/pyroscope-team
 /internal/datasources/query/pyroscope_config* @grafana/grafana-gcx @grafana/pyroscope-team
-/internal/datasources/tempo/ @grafana/grafana-gcx @grafana/tempo
+/internal/datasources/tempo/ @grafana/grafana-gcx @grafana/tempo @grafana/drilldown-squad
 
 /internal/query/athena/ @grafana/grafana-gcx @grafana/data-sources-plugins
 /internal/query/azuremonitor/ @grafana/grafana-gcx @grafana/data-sources-plugins
@@ -61,26 +61,18 @@
 /internal/query/elasticsearch/ @grafana/grafana-gcx @grafana/data-sources-plugins
 /internal/query/infinity/ @grafana/grafana-gcx @grafana/data-sources-plugins
 /internal/query/influxdb/ @grafana/grafana-gcx @grafana/data-sources-plugins
-/internal/query/loki/ @grafana/grafana-gcx @grafana/loki-team
+/internal/query/loki/ @grafana/grafana-gcx @grafana/loki-team @grafana/drilldown-squad
 /internal/query/mysql/ @grafana/grafana-gcx @grafana/data-sources-plugins
 /internal/query/postgres/ @grafana/grafana-gcx @grafana/data-sources-plugins
-/internal/query/prometheus/ @grafana/grafana-gcx @grafana/cortex-team
-/internal/query/pyroscope/ @grafana/grafana-gcx @grafana/pyroscope-team
-/internal/query/tempo/ @grafana/grafana-gcx @grafana/tempo
+/internal/query/prometheus/ @grafana/grafana-gcx @grafana/cortex-team @grafana/drilldown-squad
+/internal/query/pyroscope/ @grafana/grafana-gcx @grafana/pyroscope-team @grafana/drilldown-squad
+/internal/query/tempo/ @grafana/grafana-gcx @grafana/tempo @grafana/drilldown-squad
 
 /internal/graph/pyroscope* @grafana/grafana-gcx @grafana/pyroscope-team
 
 # Drilldown
-/internal/datasources/loki/*drilldown* @grafana/grafana-gcx @grafana/loki-team @grafana/drilldown-squad
-/internal/datasources/prometheus/*drilldown* @grafana/grafana-gcx @grafana/cortex-team @grafana/drilldown-squad
-/internal/datasources/pyroscope/*drilldown* @grafana/grafana-gcx @grafana/pyroscope-team @grafana/drilldown-squad
-/internal/datasources/tempo/*drilldown* @grafana/grafana-gcx @grafana/tempo @grafana/drilldown-squad
 /internal/datasources/query/drilldownlink.go @grafana/grafana-gcx @grafana/drilldown-squad
 /internal/datasources/query/scenesfilter* @grafana/grafana-gcx @grafana/drilldown-squad
-/internal/query/loki/streamselector* @grafana/grafana-gcx @grafana/loki-team @grafana/drilldown-squad
-/internal/query/prometheus/promqlfilters* @grafana/grafana-gcx @grafana/cortex-team @grafana/drilldown-squad
-/internal/query/pyroscope/labelselector* @grafana/grafana-gcx @grafana/pyroscope-team @grafana/drilldown-squad
-/internal/query/tempo/traceqlfilters* @grafana/grafana-gcx @grafana/tempo @grafana/drilldown-squad
 /internal/graph/loglevel* @grafana/grafana-gcx @grafana/drilldown-squad
 /internal/graph/convert_logvolume_test.go @grafana/grafana-gcx @grafana/drilldown-squad
 
