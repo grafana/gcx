@@ -1,9 +1,18 @@
-## Unreleased
+## v1.5.1 (2026-10-13)
 
-- New `gcx signup` creates a free Grafana Cloud account in the browser and connects gcx to its first stack: gcx opens the sign-up page, waits while you create the account, verify your email, and create the stack, and saves the connection when you approve "Connect gcx". On the way it signs the browser in to the new stack, so the stack's login page does not ask for a click before "Connect gcx". Once the connection is saved it prints a summary of the stack and context, with the gcx logo in a color terminal, a link to open the stack in Grafana, and, when the stack has the Interactive Learning plugin, a link to its guides. It asks no questions, so agents can run it too; a person completes the browser steps, and structured output is the same result `gcx login` returns. It only ever saves a new connection, refusing an existing context, stack entry, or destination environment variable before the browser opens, and if it fails once the browser step has started, the error says how to finish with `gcx login` instead of signing up again, keeping `--oauth-manual` or `--oauth-callback-port` if the signup used one.
-- `gcx login --cloud --oauth` with no known server now starts the Grafana Cloud stack launcher (sign in and choose a stack) instead of failing on the missing server. The launcher follows `GRAFANA_CLOUD_OAUTH_URL` / `--cloud-api-url`. The first-run server prompt now also points to `gcx signup`.
-- OAuth login callbacks that do not carry the waiting login's state (for example from a tab of an earlier attempt), or that carry it without what the token exchange needs, are ignored instead of ending the login, and Cancel on the stack's "Connect gcx" page now stops gcx with exit code 5 and a message saying the login was cancelled in the browser. On macOS, where `/dev/tty` cannot be polled, the terminal watchers now use the terminal's own device, so the SSH paste route also works when gcx runs on a macOS host.
-- The browser page shown after approving a gcx login now says "You've authorized gcx" and points back to the terminal instead of claiming the connection is saved: gcx still validates and saves the connection afterwards, and reports the result there. Its "Open Grafana" button takes the tab back to the stack, because approving "Connect gcx" moves that tab away from it. The page also has better contrast, a visible keyboard focus and a layout that fits narrow windows. A rate limit or service error while finishing the login now says to wait or retry `gcx login`.
+- Add `gcx signup` to create a Grafana Cloud account and save its first connection. The browser completes account setup. If the connection fails after signup, finish it with `gcx login`.
+- Let `gcx login --cloud --oauth` open the stack chooser when no server is set. Improve OAuth callback handling, cancellation messages, and the approval page.
+- Add `gcx docs` commands to search and read Grafana product documentation.
+- Add `gcx alert routing-trees` commands to list, read, create, update, and delete native routing trees.
+- Add profile anomaly commands and a `--query` filter for Loki labels.
+- Add `--dry-run` to Synthetic Monitoring check create and update commands.
+- Add an experimental Go sandbox module that can run gcx as WebAssembly. Reduce its build size and startup time.
+- Keep resource manager identity stable across gcx upgrades. Resolve selectors that contain dotted API groups.
+- Correct Faro app settings writes, preserve labels and mobile classification on create, report truncated lists, and support app names in get.
+- Read service map metadata correctly. Use the server interval macro in the SLO example. Scope k6 load tests to the selected project.
+- Name missing permissions in Faro proxy errors. Show native alert rule selectors in help. Recover after concurrent configuration writes.
+- Detect Codex, Gemini, and other agent hosts. Let `GCX_AGENT_SPILL_BYTES=0` disable output spilling.
+- Update documentation, security reporting guidance, and on-call command discovery.
 
 ## v1.5.0 (2026-10-05)
 
