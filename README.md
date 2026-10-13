@@ -634,6 +634,10 @@ gcx resources push -p ./resources
 
 gcx push is idempotent — running it multiple times produces the same result. Folders are automatically pushed before dashboards to satisfy dependencies.
 
+Updates preserve the existing `kubectl` manager identity, including identities from
+`grafanactl` and older gcx releases. New resources use the stable identity `gcx`.
+See [manager metadata](docs/architecture/resource-model.md#manager-metadata).
+
 > **gcx resources push/pull vs GitSync:** Grafana's [Git Sync](https://grafana.com/docs/grafana/latest/as-code/observability-as-code/git-sync/) provides bi-directional sync between a git repo and Grafana for dashboards. `gcx resources push/pull` enables users to create their own as-code resource synchronisation workflows. `gcx resources push/pull` also works with all resources available in `gcx resources get`, not just dashboards.
 
 ## CI/CD

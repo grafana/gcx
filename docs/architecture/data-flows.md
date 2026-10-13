@@ -876,6 +876,8 @@ Default `MaxConcurrent` = 10 (set in `push.go:30`, `pull.go`, etc.).
 6. **Format detection is extension-based, not content-based.** Files without
    `.json`, `.yaml`, or `.yml` extensions will return `UnrecognisedFormatError`.
 
-7. **upsertResource reads resourceVersion before update.** `pusher.go:259` copies
-   `resourceVersion` from the existing object. Any code doing updates outside of
-   the Pusher must do the same or Grafana's API will reject the update with a conflict.
+7. **upsertResource preserves update metadata.** The pusher copies the live
+   `resourceVersion` before an update. It also keeps the live manager identity
+   when both resources have the `kubectl` manager kind. This applies to direct
+   lookups and natural-key matches. See [Manager Metadata](resource-model.md#manager-metadata).
+   Other update paths must also satisfy Grafana's version and ownership checks.

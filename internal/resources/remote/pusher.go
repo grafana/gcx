@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/gcx/internal/resources/discovery"
 	"github.com/grafana/gcx/internal/resources/dynamic"
 	"github.com/grafana/grafana-app-sdk/logging"
+	"github.com/grafana/grafana/pkg/apimachinery/utils"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -299,6 +300,7 @@ func (p *Pusher) upsertResource(
 
 		// Copy the resourceVersion from the existing resource so the API accepts the update.
 		obj.SetResourceVersion(existing.GetResourceVersion())
+		preserveManagerIdentity(&obj, existing)
 
 		if _, err := p.client.Update(ctx, desc, &obj, metav1.UpdateOptions{
 			DryRun: dryRunOpts,
@@ -320,19 +322,20 @@ func (p *Pusher) upsertResource(
 
 	// The metadata.name may be a server-generated ID from a different stack.
 	// Look for a resource with the same content identity.
-	remoteName, rv, found, nkErr := findByNaturalKey(ctx, nkCache, desc, &obj)
+	matched, nkErr := findByNaturalKey(ctx, nkCache, desc, &obj)
 	if nkErr != nil {
 		return nkErr
 	}
-	if found {
-		obj.SetName(remoteName)
-		obj.SetResourceVersion(rv)
+	if matched != nil {
+		obj.SetName(matched.GetName())
+		obj.SetResourceVersion(matched.GetResourceVersion())
+		preserveManagerIdentity(&obj, matched)
 		if _, err := p.client.Update(ctx, desc, &obj, metav1.UpdateOptions{
 			DryRun: dryRunOpts,
 		}); err != nil {
 			return err
 		}
-		log.Info("Resource updated via natural key match", "remoteName", remoteName)
+		log.Info("Resource updated via natural key match", "remoteName", matched.GetName())
 		return nil
 	}
 
@@ -345,6 +348,23 @@ func (p *Pusher) upsertResource(
 
 	log.Info("Resource created")
 	return nil
+}
+
+// preserveManagerIdentity keeps the live kubectl identity on updates. Grafana
+// rejects an update that changes it. Missing manager fields and other manager
+// kinds keep the outgoing annotations unchanged.
+func preserveManagerIdentity(outgoing, existing *unstructured.Unstructured) {
+	outgoingAnnotations := outgoing.GetAnnotations()
+	liveAnnotations := existing.GetAnnotations()
+	if outgoingAnnotations[utils.AnnoKeyManagerKind] != string(resources.ResourceManagerKind) ||
+		outgoingAnnotations[utils.AnnoKeyManagerIdentity] == "" ||
+		liveAnnotations[utils.AnnoKeyManagerKind] != string(resources.ResourceManagerKind) ||
+		liveAnnotations[utils.AnnoKeyManagerIdentity] == "" {
+		return
+	}
+
+	outgoingAnnotations[utils.AnnoKeyManagerIdentity] = liveAnnotations[utils.AnnoKeyManagerIdentity]
+	outgoing.SetAnnotations(outgoingAnnotations)
 }
 
 func (p *Pusher) supportedDescriptors() map[schema.GroupVersionKind]resources.Descriptor {
