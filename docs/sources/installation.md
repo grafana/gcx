@@ -131,8 +131,10 @@ Each release publishes a multi-arch (`linux/amd64`, `linux/arm64`) image to
 docker run --rm ghcr.io/grafana/gcx:latest --version
 ```
 
-Pass credentials through `GRAFANA_*` environment variables or a mounted config
-file. To pin a release in CI, use an exact tag such as `v1.5.0`. The `v1.5` and
+Pass credentials through `GRAFANA_*` environment variables, or mount a config
+file and point `GCX_CONFIG` at it, for example
+`-v "$HOME/.config/gcx:/gcx:ro" -e GCX_CONFIG=/gcx/config.yaml`.
+To pin a release in CI, use an exact tag such as `v1.5.0`. The `v1.5` and
 `v1` tags follow the latest patch and minor release of that line. Prereleases
 only get their exact tag.
 

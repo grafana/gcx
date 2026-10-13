@@ -184,7 +184,8 @@ gcx/
 │
 ├── go.mod / go.sum           # Main Go module definition (module: github.com/grafana/gcx)
 ├── .golangci.yaml            # Linter configuration (golangci-lint v2)
-├── .goreleaser.yaml          # Release pipeline (cross-platform builds + GitHub Release)
+├── .goreleaser.yaml          # Release pipeline (cross-platform builds + GitHub Release + container image)
+├── Dockerfile                # Release image: prebuilt binary on distroless (used by GoReleaser dockers_v2)
 ├── mise.toml                 # Reproducible toolchain (Go, golangci-lint, goreleaser, Python)
 ├── docker-compose.yml        # Integration test environment (Grafana 12 + MySQL 9)
 ├── mkdocs.yml                # Documentation site config (Material theme)
@@ -310,7 +311,7 @@ Triggered on: `v*` tag push.
 
 ```
 v* tag push
-└── release           → goreleaser release --clean  (builds + GitHub Release)
+└── release           → goreleaser release --clean  (builds + GitHub Release + ghcr.io image)
 ```
 
 GoReleaser builds with `CGO_ENABLED=0` for all three platforms (linux, darwin,
@@ -318,6 +319,8 @@ windows) and creates:
 - `tar.gz` archives for Linux/macOS (uname-compatible naming)
 - `zip` archive for Windows
 - `gcx_checksums.txt`
+- a multi-arch (`linux/amd64`, `linux/arm64`) container image, `ghcr.io/grafana/gcx`,
+  tagged `vX.Y.Z`, plus `vX.Y`, `vX` and `latest` for non-prereleases
 
 The changelog is auto-generated from `git log` via GitHub, filtering out
 `docs:`, `test:`, `tests:`, `chore:`, and merge commits.
