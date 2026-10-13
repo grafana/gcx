@@ -1,0 +1,294 @@
+package faro
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/grafana/gcx/internal/config"
+	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/query/loki"
+	"github.com/grafana/gcx/internal/query/pinot"
+	querysql "github.com/grafana/gcx/internal/query/sql"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"k8s.io/client-go/rest"
+)
+
+func TestLokiReplayDiscoveryQueryUsesIndexedEventFilter(t *testing.T) {
+	t.Parallel()
+	appID := `42"\`
+	query := lokiReplayDiscoveryQuery(appID)
+	assert.Contains(t, query, `kind="event"`)
+	assert.Contains(t, query, `|= "faro.session_recording.started"`)
+	assert.Contains(t, query, `app_id="`+escapeLogQLString(appID)+`"`)
+}
+
+func TestLokiReplayScanUsesBoundedPages(t *testing.T) {
+	var maxLines []float64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Decode only maxLines; the other query fields are intentionally ignored.
+		var body struct {
+			Queries []struct {
+				MaxLines float64 `json:"maxLines"`
+			} `json:"queries"`
+		}
+		if assert.NoError(t, json.NewDecoder(r.Body).Decode(&body)) && assert.Len(t, body.Queries, 1) {
+			maxLines = append(maxLines, body.Queries[0].MaxLines)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"results":{"A":{"frames":[]}}}`))
+	}))
+	t.Cleanup(server.Close)
+	cfg := config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}, Namespace: "default"}
+	for _, limit := range []int{5000, 30, 0} {
+		_, _, err := queryLokiReplaySessions(t.Context(), cfg, "loki-uid", "42", time.Unix(1, 0), time.Unix(2, 0), limit)
+		require.NoError(t, err)
+	}
+	assert.Equal(t, []float64{1000, 1000, 1000}, maxLines)
+}
+
+func TestLokiReplayPagesStopAfterSessionLimit(t *testing.T) {
+	dataset := make([]loki.LogEntry, 0, lokiEventsPageSize+2)
+	for i := 1; i <= lokiEventsPageSize+2; i++ {
+		dataset = append(dataset, loki.LogEntry{
+			Timestamp: lokiUnixNanoMS(int64(i) * 1000),
+			Line:      fmt.Sprintf("session_id=sess-%d", i),
+		})
+	}
+	query := `{kind="event"}`
+	stop := func(page *loki.QueryResponse) bool {
+		return len(extractReplaySessionRows(page)) > 50
+	}
+	page, stopped, err := fetchLokiEventPagesUntil(t.Context(), &rangeLoki{dataset: dataset}, "uid", query, time.UnixMilli(0), time.UnixMilli(2000000), sessionLokiQueryTimeout, stop)
+	require.NoError(t, err)
+	assert.True(t, stopped)
+	assert.Greater(t, len(extractReplaySessionRows(page)), 50)
+	items, meta := cmdio.TruncatePagedList(extractReplaySessionRows(page), 50)
+	assert.Len(t, items, 50)
+	assert.Equal(t, 50, meta.Returned)
+	assert.Zero(t, meta.Cap)
+	assert.Equal(t, "sess-1002", items[0].SessionID)
+}
+
+type cappedReplayLoki struct{ queries int }
+
+func (c *cappedReplayLoki) Query(_ context.Context, _ string, req loki.QueryRequest) (*loki.QueryResponse, error) {
+	c.queries++
+	// The pager re-queries the earliest timestamp to preserve ties. Return just
+	// that boundary row; regular page requests get a full page with unique IDs.
+	if req.End.Sub(req.Start) <= time.Millisecond {
+		return &loki.QueryResponse{Data: loki.QueryResultData{Result: []loki.StreamEntry{{Values: []loki.LogEntry{{
+			Timestamp: lokiUnixNanoMS(req.Start.UnixMilli()), Line: fmt.Sprintf("session_id=session-%d", req.Start.UnixMilli()),
+		}}}}}}, nil
+	}
+	entries := make([]loki.LogEntry, lokiEventsPageSize)
+	for i := range entries {
+		millis := req.End.Add(-time.Duration(i+1) * time.Second).UnixMilli()
+		entries[i] = loki.LogEntry{Timestamp: lokiUnixNanoMS(millis), Line: fmt.Sprintf("session_id=session-%d", millis)}
+	}
+	return &loki.QueryResponse{Data: loki.QueryResultData{Result: []loki.StreamEntry{{Values: entries}}}}, nil
+}
+
+func TestLokiReplayDiscoveryStopsAtSafetyCap(t *testing.T) {
+	client := &cappedReplayLoki{}
+	resp, stopped, capped, err := fetchLokiReplayDiscoveryPages(t.Context(), client, "uid", `{kind="event"}`, time.Unix(0, 0), time.Unix(1_000_000, 0), sessionLokiQueryTimeout, replaySessionLimitStop(0))
+	require.NoError(t, err)
+	assert.False(t, stopped)
+	assert.True(t, capped)
+	assert.Equal(t, replayLokiDiscoveryMaxPages*2, client.queries) // data page plus boundary check
+	assert.Equal(t, replayLokiSessionsSafetyCap, lokiEntryCount(resp))
+	rows := extractReplaySessionRows(resp)
+	meta := cmdio.PagedListMeta(len(rows), 0, true, replayLokiSessionsSafetyCap)
+	require.NotNil(t, meta)
+	assert.True(t, meta.Truncated)
+	assert.Equal(t, replayLokiSessionsSafetyCap, meta.Cap)
+}
+
+func TestLokiReplayPagerPassesOnlyNewPageToStopPredicate(t *testing.T) {
+	dataset := make([]loki.LogEntry, 0, 2*lokiEventsPageSize+1)
+	for i := 1; i <= 2*lokiEventsPageSize+1; i++ {
+		dataset = append(dataset, loki.LogEntry{
+			Timestamp: lokiUnixNanoMS(int64(i) * 1000),
+			Line:      fmt.Sprintf("session_id=sess-%d", i),
+		})
+	}
+	var pageSizes []int
+	_, stopped, err := fetchLokiEventPagesUntil(t.Context(), &rangeLoki{dataset: dataset}, "uid", `{kind="event"}`, time.UnixMilli(0), time.UnixMilli(3_000_000), sessionLokiQueryTimeout, func(page *loki.QueryResponse) bool {
+		pageSizes = append(pageSizes, lokiEntryCount(page))
+		return len(pageSizes) == 2
+	})
+	require.NoError(t, err)
+	assert.True(t, stopped)
+	assert.Equal(t, []int{lokiEventsPageSize, lokiEventsPageSize}, pageSizes)
+}
+
+func TestReplaySessionLimitStopCountsDistinctSessionsAcrossPages(t *testing.T) {
+	stop := replaySessionLimitStop(2)
+	page := func(ids ...string) *loki.QueryResponse {
+		entries := make([]loki.LogEntry, 0, len(ids))
+		for i, id := range ids {
+			entries = append(entries, loki.LogEntry{Timestamp: lokiUnixNanoMS(int64(i + 1)), Line: "session_id=" + id})
+		}
+		return &loki.QueryResponse{Data: loki.QueryResultData{Result: []loki.StreamEntry{{Values: entries}}}}
+	}
+	assert.False(t, stop(page("sess-a", "sess-b")))
+	assert.True(t, stop(page("sess-b", "sess-c")))
+}
+
+func TestLokiReplayDiscoveryQueryTimesOut(t *testing.T) {
+	_, _, err := fetchLokiEventPagesUntil(t.Context(), hangLoki{}, "uid", `{kind="event"}`, time.Unix(1, 0), time.Unix(2, 0), 20*time.Millisecond, nil)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	wrapped := wrapLokiReplayDiscoveryErr(err)
+	assert.Contains(t, wrapped.Error(), "scan did not finish; this is not an empty result")
+	assert.Contains(t, wrapped.Error(), "narrower --from/--to")
+}
+
+type invalidTimestampLoki struct{}
+
+func (invalidTimestampLoki) Query(_ context.Context, _ string, _ loki.QueryRequest) (*loki.QueryResponse, error) {
+	entries := make([]loki.LogEntry, lokiEventsPageSize)
+	for i := range entries {
+		entries[i] = loki.LogEntry{Timestamp: "invalid", Line: fmt.Sprintf("session_id=sess-%d", i)}
+	}
+	return &loki.QueryResponse{Data: loki.QueryResultData{Result: []loki.StreamEntry{{Values: entries}}}}, nil
+}
+
+func TestLokiReplayPagerPreservesExistingSessionDumpBehavior(t *testing.T) {
+	start, end := time.Unix(1, 0), time.Unix(2, 0)
+	resp, err := fetchLokiEventPages(t.Context(), invalidTimestampLoki{}, "uid", `{kind="event"}`, start, end, time.Second)
+	require.NoError(t, err)
+	assert.Equal(t, lokiEventsPageSize, lokiEntryCount(resp))
+	_, _, err = fetchLokiEventPagesUntil(t.Context(), invalidTimestampLoki{}, "uid", `{kind="event"}`, start, end, time.Second, func(*loki.QueryResponse) bool { return false })
+	require.ErrorContains(t, err, "no valid timestamp")
+}
+
+func TestPinotReplayStartsQueryUsesSessionFetcherTable(t *testing.T) {
+	t.Parallel()
+	query, err := pinotReplayStartsQuery("66", "https://ops.grafana-ops.net", 26, 0)
+	require.NoError(t, err)
+	assert.Contains(t, query, "FROM faro_pinot_events_v2")
+	assert.Contains(t, query, "appId = 66")
+	assert.Contains(t, query, "eventName = 'faro.session_recording.started'")
+	assert.Contains(t, query, "GROUP BY sessionId")
+	assert.Contains(t, query, "LIMIT 26 OFFSET 0")
+
+	query, err = pinotReplayStartsQuery("66", "https://example.grafana.net", 25, 100)
+	require.NoError(t, err)
+	assert.Contains(t, query, "FROM faro_pinot_events_v1")
+	assert.Contains(t, query, "LIMIT 25 OFFSET 100")
+}
+
+func TestPinotReplayStartsQueryRejectsNonNumericAppID(t *testing.T) {
+	t.Parallel()
+	_, err := pinotReplayStartsQuery("66; DROP TABLE events", "https://ops.grafana-ops.net", 10, 0)
+	require.ErrorContains(t, err, "invalid app id")
+}
+
+func TestExtractPinotReplaySessionRows(t *testing.T) {
+	t.Parallel()
+	response := &querysql.QueryResponse{
+		Columns: []querysql.Column{
+			{Name: "session_id"}, {Name: "last_seen"}, {Name: "browser_name"},
+			{Name: "browser_version"}, {Name: "app_name"},
+		},
+		Rows: [][]any{
+			{"sess-1", float64(1790340861602), "Chrome", "153", "web"},
+			{"sess-1", float64(1790340850000), "Chrome", "153", "web"},
+			{"sess-2", float64(1790340840000), "Firefox", "", "web"},
+		},
+	}
+	rows, err := extractPinotReplaySessionRows(response, make(map[string]struct{}))
+	require.NoError(t, err)
+	require.Len(t, rows, 2)
+	assert.Equal(t, "sess-1", rows[0].SessionID)
+	assert.Equal(t, "Chrome 153", rows[0].Browser)
+	assert.Equal(t, "2026-09-25T12:54:21Z", rows[0].LastSeen)
+	assert.Equal(t, "Firefox", rows[1].Browser)
+}
+
+type replayPinotPages struct {
+	first  *querysql.QueryResponse
+	second *querysql.QueryResponse
+}
+
+type replayPinotChangingPages struct {
+	offsets []int
+}
+
+func (p *replayPinotChangingPages) Query(_ context.Context, _ string, req pinot.QueryRequest) (*querysql.QueryResponse, error) {
+	expectedOffset := len(p.offsets) * pinotJourneyPageSize
+	if !strings.Contains(req.RawSQL, fmt.Sprintf("OFFSET %d", expectedOffset)) {
+		return nil, fmt.Errorf("unexpected Pinot page offset: want %d in %q", expectedOffset, req.RawSQL)
+	}
+	p.offsets = append(p.offsets, expectedOffset)
+	return replayPinotRowsFrom(expectedOffset, pinotJourneyPageSize), nil
+}
+
+func (p replayPinotPages) Query(_ context.Context, _ string, req pinot.QueryRequest) (*querysql.QueryResponse, error) {
+	if strings.Contains(req.RawSQL, "OFFSET 0") {
+		return p.first, nil
+	}
+	return p.second, nil
+}
+
+func replayPinotRows(count int) *querysql.QueryResponse {
+	return replayPinotRowsFrom(0, count)
+}
+
+func replayPinotRowsFrom(first, count int) *querysql.QueryResponse {
+	resp := &querysql.QueryResponse{Columns: []querysql.Column{
+		{Name: "session_id"}, {Name: "last_seen"}, {Name: "browser_name"}, {Name: "browser_version"}, {Name: "app_name"},
+	}}
+	for i := range count {
+		resp.Rows = append(resp.Rows, []any{fmt.Sprintf("sess-%d", first+i), float64(1790340861602), "Chrome", "153", "web"})
+	}
+	return resp
+}
+
+func TestPinotReplaySessionPagerDeduplicatesAcrossPages(t *testing.T) {
+	first := replayPinotRows(pinotJourneyPageSize)
+	second := replayPinotRows(2)
+	second.Rows[1][0] = "new-session"
+	rows, meta, err := fetchPinotReplaySessions(t.Context(), replayPinotPages{first: first, second: second}, "uid", "66", "https://example.grafana.net", time.Unix(1, 0), time.Unix(2, 0), 0)
+	require.NoError(t, err)
+	assert.Nil(t, meta)
+	assert.Len(t, rows, pinotJourneyPageSize+1)
+	assert.Equal(t, "new-session", rows[len(rows)-1].SessionID)
+}
+
+func TestPinotReplaySessionPagerRejectsRepeatedPage(t *testing.T) {
+	page := replayPinotRows(pinotJourneyPageSize)
+	_, _, err := fetchPinotReplaySessions(t.Context(), replayPinotPages{first: page, second: page}, "uid", "66", "https://example.grafana.net", time.Unix(1, 0), time.Unix(2, 0), 0)
+	require.ErrorContains(t, err, "repeated without new sessions")
+}
+
+func TestPinotReplaySessionPagerStopsAtPageLimit(t *testing.T) {
+	client := &replayPinotChangingPages{}
+	rows, meta, err := fetchPinotReplaySessions(t.Context(), client, "uid", "66", "https://example.grafana.net", time.Unix(1, 0), time.Unix(2, 0), 0)
+	require.NoError(t, err)
+	assert.Len(t, rows, pinotReplaySessionsSafetyCap)
+	require.NotNil(t, meta)
+	assert.Equal(t, pinotReplaySessionsSafetyCap, meta.Cap)
+	assert.Equal(t, pinotReplaySessionsSafetyCap, meta.Returned)
+	assert.True(t, meta.Truncated)
+	assert.Empty(t, meta.Continue)
+	require.Len(t, client.offsets, pinotJourneyMaxPages)
+	for page, offset := range client.offsets {
+		assert.Equal(t, page*pinotJourneyPageSize, offset)
+	}
+}
+
+func TestExtractPinotReplaySessionRowsRejectsMalformedResult(t *testing.T) {
+	t.Parallel()
+	_, err := extractPinotReplaySessionRows(&querysql.QueryResponse{
+		Columns: []querysql.Column{{Name: "session_id"}},
+		Rows:    [][]any{{"sess-1"}},
+	}, make(map[string]struct{}))
+	require.ErrorContains(t, err, "missing last_seen column")
+}
