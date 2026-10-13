@@ -83,6 +83,10 @@
 
 /internal/graph/pyroscope* @grafana/grafana-gcx @grafana/pyroscope-team
 
+# Log-volume graph for Loki log queries: level detection and its test. The shared chart and convert code stays with gcx.
+/internal/graph/loglevel* @grafana/grafana-gcx @grafana/drilldown-squad
+/internal/graph/convert_logvolume_test.go @grafana/grafana-gcx @grafana/drilldown-squad
+
 /internal/assistant/ @grafana/grafana-gcx @grafana/grafana-assistant-loop
 
 /internal/auth/adaptive/ @grafana/grafana-gcx @grafana/adaptive-telemetry
