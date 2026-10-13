@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/resources/remote"
 	"github.com/stretchr/testify/require"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -20,6 +21,8 @@ type mockPullClient struct {
 	listResults map[string][]unstructured.Unstructured
 	// listErrors maps descriptor plural to the error returned by List.
 	listErrors map[string]error
+	// partialLists returns usable list results together with listErrors.
+	partialLists map[string]*unstructured.UnstructuredList
 	// continueToken, when non-empty, is set on the returned list to simulate truncated results.
 	continueToken string
 }
@@ -39,6 +42,9 @@ func (m *mockPullClient) GetMultiple(
 func (m *mockPullClient) List(
 	_ context.Context, desc resources.Descriptor, _ metav1.ListOptions,
 ) (*unstructured.UnstructuredList, error) {
+	if res, ok := m.partialLists[desc.Plural]; ok {
+		return res, m.listErrors[desc.Plural]
+	}
 	if m.listErrors != nil {
 		if err, ok := m.listErrors[desc.Plural]; ok {
 			return nil, err
@@ -51,6 +57,43 @@ func (m *mockPullClient) List(
 		res.SetContinue(m.continueToken)
 	}
 	return res, nil
+}
+
+func TestPartialListCountsEachSelectedOutcome(t *testing.T) {
+	for _, abort := range []bool{false, true} {
+		t.Run(map[bool]string{false: "continue", true: "abort"}[abort], func(t *testing.T) {
+			desc := dashboardDescriptor()
+			good := makeUnstructuredDashboard("good")
+			good.SetGroupVersionKind(desc.GroupVersionKind())
+
+			cause := errors.New("read denied for bad-id")
+			bad := makeUnstructuredDashboard("bad")
+			partial := &partialReadError{failures: []adapter.ReadFailure{{Resource: &bad, Err: cause}}, skipped: 1}
+			client := &mockPullClient{
+				partialLists: map[string]*unstructured.UnstructuredList{desc.Plural: {Items: []unstructured.Unstructured{good}}},
+				listErrors:   map[string]error{desc.Plural: partial},
+			}
+			puller := remote.NewPuller(client, &mockPullRegistry{descriptors: resources.Descriptors{desc}})
+			var dest resources.Resources
+			summary, err := puller.Pull(t.Context(), remote.PullRequest{Resources: &dest, StopOnError: abort})
+			if abort {
+				require.ErrorIs(t, err, cause)
+				require.Equal(t, 0, summary.SuccessCount())
+				require.Equal(t, 0, dest.Len())
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, 1, summary.SuccessCount())
+				require.Equal(t, 1, dest.Len())
+			}
+			require.Equal(t, 1, summary.FailedCount())
+			require.Equal(t, 1, summary.SkippedCount())
+			require.Len(t, summary.Failures(), 1)
+			failure := summary.Failures()[0]
+			require.Equal(t, "Dashboard", failure.Resource.Kind())
+			require.Equal(t, "bad", failure.Resource.Name())
+			require.ErrorIs(t, failure.Error, cause)
+		})
+	}
 }
 
 // mockPullRegistry implements PullRegistry for testing.
@@ -304,6 +347,110 @@ func TestPuller_Pull(t *testing.T) {
 			// For success cases, verify the destination received the resources.
 			if tc.wantSuccessCount > 0 {
 				req.Equal(tc.wantSuccessCount, dest.Len())
+			}
+		})
+	}
+}
+
+type partialReadError struct {
+	failures []adapter.ReadFailure
+	skipped  int
+}
+
+func (e *partialReadError) Error() string                       { return "partial read" }
+func (e *partialReadError) ReadFailures() []adapter.ReadFailure { return e.failures }
+func (e *partialReadError) SkippedReads() int                   { return e.skipped }
+func (e *partialReadError) Unwrap() []error {
+	errs := make([]error, len(e.failures))
+	for idx, failure := range e.failures {
+		errs[idx] = failure.Err
+	}
+	return errs
+}
+
+type preflightPullClient struct {
+	mockPullClient
+
+	selections []adapter.PullSelection
+	rejected   error
+	checks     int
+}
+
+func (m *preflightPullClient) NewPullPreflight(_ context.Context, selections []adapter.PullSelection) (adapter.PullPreflight, error) {
+	m.selections = selections
+	return func(_ context.Context, _ resources.Filter, _ unstructured.Unstructured) error {
+		m.checks++
+		return m.rejected
+	}, nil
+}
+
+func TestPullPreflightReceivesCollidingItemsBeforeInsertion(t *testing.T) {
+	for _, abort := range []bool{false, true} {
+		t.Run(map[bool]string{false: "continue", true: "abort"}[abort], func(t *testing.T) {
+			desc := dashboardDescriptor()
+			first := makeUnstructuredDashboard("same")
+			second := makeUnstructuredDashboard("same")
+			second.Object["spec"] = map[string]any{"title": "different title"}
+			rejected := errors.New("identity rejected")
+			client := &preflightPullClient{mockPullClient: mockPullClient{listResults: map[string][]unstructured.Unstructured{desc.Plural: {first, second}}}, rejected: rejected}
+			puller := remote.NewPuller(client, &mockPullRegistry{descriptors: resources.Descriptors{desc}})
+			dest := resources.NewResources()
+			summary, err := puller.Pull(t.Context(), remote.PullRequest{Resources: dest, StopOnError: abort})
+			if abort {
+				require.ErrorIs(t, err, rejected)
+				require.Equal(t, 1, summary.FailedCount())
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, 2, summary.FailedCount())
+			}
+			require.Len(t, client.selections, 1)
+			require.Len(t, client.selections[0].Items, 2)
+			require.Zero(t, summary.SuccessCount())
+			require.Zero(t, dest.Len())
+		})
+	}
+}
+
+func TestPullUnavailableCollectionRequiresSelectorFreeRequest(t *testing.T) {
+	for _, tt := range []struct {
+		name           string
+		explicit, stop bool
+	}{
+		{name: "selector-free continue"},
+		{name: "selector-free abort", stop: true},
+		{name: "explicit continue", explicit: true},
+		{name: "explicit abort", explicit: true, stop: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			desc := dashboardDescriptor()
+			unavailable := adapter.Unavailable(errors.New("resource API unavailable"))
+			client := &mockPullClient{listErrors: map[string]error{desc.Plural: unavailable}}
+			puller := remote.NewPuller(client, &mockPullRegistry{descriptors: resources.Descriptors{desc}})
+			req := remote.PullRequest{Resources: resources.NewResources(), StopOnError: tt.stop}
+			if tt.explicit {
+				req.Filters = resources.Filters{{Type: resources.FilterTypeAll, Descriptor: desc}}
+			}
+			summary, err := puller.Pull(t.Context(), req)
+			if tt.explicit && tt.stop {
+				require.ErrorIs(t, err, unavailable)
+			} else {
+				require.NoError(t, err)
+			}
+			require.Zero(t, summary.SuccessCount())
+			require.Zero(t, req.Resources.Len())
+			switch {
+			case tt.explicit && tt.stop:
+				require.Zero(t, summary.FailedCount())
+				require.Zero(t, summary.SkippedCount())
+			case tt.explicit:
+				require.Equal(t, 1, summary.FailedCount())
+				require.Zero(t, summary.SkippedCount())
+				require.Len(t, summary.Failures(), 1)
+				require.ErrorIs(t, summary.Failures()[0].Error, unavailable)
+			default:
+				require.Zero(t, summary.FailedCount())
+				require.Equal(t, 1, summary.SkippedCount())
+				require.Empty(t, summary.Failures())
 			}
 		})
 	}

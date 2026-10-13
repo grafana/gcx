@@ -10,6 +10,7 @@ import (
 	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/resources/discovery"
 	"github.com/grafana/gcx/internal/resources/local"
 	"github.com/grafana/gcx/internal/resources/remote"
@@ -147,11 +148,15 @@ func deleteCmd(configOpts *cmdconfig.Options) *cobra.Command {
 
 			// Load resources by selectors only
 			if len(opts.Path) == 0 {
-				fetchRes, err := FetchResources(ctx, FetchRequest{
+				// Provider mutation guards apply regardless of whether the
+				// selected definitions can be exported. Check the resolved types
+				// before reads so an empty fleet or export failure cannot turn a
+				// refused deletion into a successful zero-resource batch.
+				fetchRes, err := fetchResources(ctx, FetchRequest{
 					ExcludeReadOnly: true,
 					Config:          cfg,
 					StopOnError:     opts.OnError.StopOnError(),
-				}, args)
+				}, args, rejectUnsupportedDelete)
 				if err != nil {
 					return err
 				}
@@ -226,6 +231,15 @@ func deleteCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	opts.setup(cmd.Flags())
 
 	return cmd
+}
+
+func rejectUnsupportedDelete(filters resources.Filters) error {
+	for _, filter := range filters {
+		if err := adapter.CheckMutation(filter.Descriptor, "delete"); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func loadResourcesFromDirectories(ctx context.Context, cfg config.NamespacedRESTConfig, res *resources.Resources, opts *deleteOpts, selectors resources.Selectors) error {

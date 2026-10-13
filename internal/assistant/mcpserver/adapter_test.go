@@ -2,6 +2,7 @@ package mcpserver_test
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,7 @@ import (
 	"github.com/grafana/gcx/internal/assistant/mcpserver"
 	assistantmcp "github.com/grafana/gcx/internal/assistant/mcpservers"
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -608,4 +610,28 @@ func TestMCPServerSchema_DoesNotLeakInternalServerIDField(t *testing.T) {
 	require.True(t, ok)
 	assert.NotContains(t, props, "serverID")
 	assert.NotContains(t, props, "serverId")
+}
+
+func TestListMarksOnlyNotFoundAsUnavailable(t *testing.T) {
+	for _, status := range []int{http.StatusNotFound, http.StatusForbidden, http.StatusInternalServerError, http.StatusNotImplemented} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(status)
+				_, err := w.Write([]byte("collection unavailable"))
+				assert.NoError(t, err)
+			}))
+			crud := mcpserver.NewTypedCRUDForClient(client, "default")
+			items, err := crud.ListFn(t.Context(), 0)
+			require.Error(t, err)
+			assert.Empty(t, items)
+			require.EqualError(t, err, fmt.Sprintf("failed to list MCP servers: request failed with status %d: collection unavailable", status))
+			assert.Equal(t, status == http.StatusNotFound, errors.Is(err, adapter.ErrUnavailable))
+			var statusErr *gcxerrors.HTTPStatusError
+			require.ErrorAs(t, err, &statusErr)
+			assert.Equal(t, status, statusErr.Status)
+			_, err = crud.GetFn(t.Context(), "user-missing")
+			require.Error(t, err)
+			assert.NotErrorIs(t, err, adapter.ErrUnavailable)
+		})
+	}
 }

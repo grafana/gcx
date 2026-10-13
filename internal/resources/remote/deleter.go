@@ -8,6 +8,7 @@ import (
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/logs"
 	"github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/resources/discovery"
 	"github.com/grafana/gcx/internal/resources/dynamic"
 	"github.com/grafana/grafana-app-sdk/logging"
@@ -145,6 +146,9 @@ func (deleter *Deleter) Delete(ctx context.Context, request DeleteRequest) (*Ope
 }
 
 func (deleter *Deleter) deleteResource(ctx context.Context, descriptor resources.Descriptor, res *resources.Resource, dryRun bool) error {
+	if err := adapter.CheckMutation(descriptor, "delete"); err != nil {
+		return err
+	}
 	if resources.IsReadOnlyNative(&res.Object) {
 		return fmt.Errorf("%w: %w", errReadOnlyNative, resources.ReadOnlyNativeError(&res.Object))
 	}
