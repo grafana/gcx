@@ -75,9 +75,12 @@ func newGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 		Short: "Inspect a single Database Observability instance: health, connections, wait events, and top queries.",
 		Long: `Show exporter health and a query-performance snapshot for one database instance.
 
-The argument is the instance's service_name (the identifier "gcx dbo11y
-instances list" reports as NAME). What's available depends on the instance's
+The argument is the instance's service, instance, or legacy service_name. The command
+"gcx dbo11y instances list" reports it as NAME. Available data depends on the
 engine (from "gcx dbo11y instances list"):
+
+Native Alloy can remove connection_info during an outage. When no inventory
+row exists, this command checks a matching scrape target for health status.
 
   - Health (up/down) is engine-agnostic, from the standard Prometheus scrape
     target gauge.
@@ -116,7 +119,7 @@ non-zero with a hint to activate it in Grafana Cloud instead of a generic
 		RunE: runGet(loader, opts),
 		Annotations: map[string]string{
 			agent.AnnotationTokenCost: "small",
-			agent.AnnotationLLMHint:   `Per-instance Database Observability snapshot. Health (up/down) is engine-agnostic. Postgres also reports connection counts by state, active wait events (wait_event_type/wait_event), and longest running transaction, from pg_stat_activity. MySQL reports a single current-connections count only (mysql_global_status_threads_connected); wait events aren't available as a live metric for MySQL. Top queries (both engines) are ranked by time share from pg_stat_statements (Postgres) or mysql_perf_schema_events_statements_* (MySQL) over --since (default 5m). Pairs with 'gcx dbo11y instances list' to find instance names and engines. Use --filter <label><op><value> (repeatable) to scope the connections/query-performance queries to one database on a multi-database instance, e.g. --filter datname=payments (Postgres) or --filter schema=payments (MySQL) — health/inventory metrics don't carry that label. On no telemetry this command also checks the stack's Database Observability activation status and, if not activated, exits 1 with a specific "not activated" hint instead of the generic no-telemetry message. Examples: gcx dbo11y instances get <name> -o json; gcx dbo11y instances get <name> --since 1h --top 20 -o json`,
+			agent.AnnotationLLMHint:   `Per-instance Database Observability snapshot. Health (up/down) is engine-agnostic. Postgres also reports connection counts by state, active wait events (wait_event_type/wait_event), and longest running transaction, from pg_stat_activity. MySQL reports a single current-connections count only (mysql_global_status_threads_connected); wait events aren't available as a live metric for MySQL. Top queries (both engines) are ranked by time share from pg_stat_statements (Postgres) or mysql_perf_schema_events_statements_* (MySQL) over --since (default 5m). Accepts legacy service_name, native Alloy service names, and native instance names when service is absent. If inventory is absent during an outage, a matching native scrape target can still provide health status. Pairs with 'gcx dbo11y instances list -o wide' to inspect hosts and engines. A native name with multiple hosts requires a datasource with one matching host. Native rows need an exporter instance label. Use --filter <label><op><value> (repeatable) to scope the connections/query-performance queries to one database on a multi-database instance, e.g. --filter datname=payments (Postgres) or --filter schema=payments (MySQL) — health/inventory metrics don't carry that label. On no telemetry this command also checks the stack's Database Observability activation status and, if not activated, exits 1 with a specific "not activated" hint instead of the generic no-telemetry message. Examples: gcx dbo11y instances get <name> -o json; gcx dbo11y instances get <name> --since 1h --top 20 -o json`,
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -205,7 +208,7 @@ func runGet(loader *providers.ConfigLoader, opts *getOpts) func(*cobra.Command, 
 // metadata and health metrics don't carry labels like datname/schema, so
 // applying arbitrary matchers there would silently zero them out.
 func fetchInstanceDetail(ctx context.Context, client *prometheus.Client, datasourceUID, name, window string, top int, matchers []Matcher) (*InstanceDetail, bool, error) {
-	metadataExpr, err := buildConnectionInfoQuery([]Matcher{{Label: serviceNameLabel, Op: "=", Value: name}})
+	metadataExpr, err := buildNamedConnectionInfoQuery(name)
 	if err != nil {
 		return nil, false, fmt.Errorf("failed to build metadata query: %w", err)
 	}
@@ -217,9 +220,28 @@ func fetchInstanceDetail(ctx context.Context, client *prometheus.Client, datasou
 	if err != nil {
 		return nil, false, fmt.Errorf("failed to parse instance metadata: %w", err)
 	}
-	inst := Instance{Name: name}
-	if len(metadata) > 0 {
-		inst = metadata[0]
+	inst, err := selectInstanceMetadata(metadata, name)
+	if err != nil {
+		return nil, false, err
+	}
+	if len(metadata) == 0 {
+		// Alloy can remove connection_info during a database outage while the
+		// scrape target still reports up=0. Use that target to recover the
+		// native instance identity for the health query.
+		identity := Matcher{Label: "instance", Op: "=", Value: name}
+		upExpr, err := buildScrapeUpQuery(name, identity)
+		if err != nil {
+			return nil, false, fmt.Errorf("failed to build native health query: %w", err)
+		}
+		upResp, err := client.Query(ctx, datasourceUID, prometheus.QueryRequest{Query: upExpr})
+		if err != nil {
+			return nil, false, fmt.Errorf("native health query failed: %w", err)
+		}
+		if _, found := instantScalar(upResp); found {
+			inst.native = true
+			inst.Host = name
+			inst.identity = []Matcher{identity}
+		}
 	}
 	metrics := metricsForEngine(inst.Engine)
 
@@ -232,45 +254,45 @@ func fetchInstanceDetail(ctx context.Context, client *prometheus.Client, datasou
 
 	eg, egCtx := errgroup.WithContext(ctx)
 	eg.Go(queryInto(egCtx, client, datasourceUID, func() (string, error) {
-		return buildScrapeUpQuery(name)
+		return buildScrapeUpQuery(name, inst.identity...)
 	}, &upResp))
 	if metrics.scrapeErrorMetric != "" {
 		eg.Go(queryInto(egCtx, client, datasourceUID, func() (string, error) {
-			return buildUpQuery(metrics.scrapeErrorMetric, name, nil)
+			return buildUpQuery(metrics.scrapeErrorMetric, name, nil, inst.identity...)
 		}, &scrapeErrResp))
 	}
 	if metrics.scrapeDurationMetric != "" {
 		eg.Go(queryInto(egCtx, client, datasourceUID, func() (string, error) {
-			return buildUpQuery(metrics.scrapeDurationMetric, name, nil)
+			return buildUpQuery(metrics.scrapeDurationMetric, name, nil, inst.identity...)
 		}, &scrapeDurResp))
 	}
 	if metrics.activityMetric != "" {
 		eg.Go(queryInto(egCtx, client, datasourceUID, func() (string, error) {
-			return buildConnectionsByStateQuery(name, matchers)
+			return buildConnectionsByStateQuery(name, matchers, inst.identity...)
 		}, &connectionsResp))
 		eg.Go(queryInto(egCtx, client, datasourceUID, func() (string, error) {
-			return buildWaitEventsQuery(name, matchers)
+			return buildWaitEventsQuery(name, matchers, inst.identity...)
 		}, &waitEventsResp))
 	}
 	if metrics.connectedMetric != "" {
 		eg.Go(queryInto(egCtx, client, datasourceUID, func() (string, error) {
-			return buildUpQuery(metrics.connectedMetric, name, matchers)
+			return buildUpQuery(metrics.connectedMetric, name, matchers, inst.identity...)
 		}, &connectedResp))
 	}
 	if metrics.maxTxMetric != "" {
 		eg.Go(queryInto(egCtx, client, datasourceUID, func() (string, error) {
-			return buildLongestTxQuery(name, matchers)
+			return buildLongestTxQuery(name, matchers, inst.identity...)
 		}, &longestTxResp))
 	}
 	eg.Go(queryInto(egCtx, client, datasourceUID, func() (string, error) {
-		return buildTopQueriesRateQuery(metrics.statementsCalls, name, window, matchers, metrics.queryIDLabel, metrics.datnameLabel)
+		return buildTopQueriesRateQuery(metrics.statementsCalls, name, window, matchers, metrics.queryIDLabel, metrics.datnameLabel, inst.identity...)
 	}, &callsResp))
 	eg.Go(queryInto(egCtx, client, datasourceUID, func() (string, error) {
-		return buildTopQueriesRateQuery(metrics.statementsSeconds, name, window, matchers, metrics.queryIDLabel, metrics.datnameLabel)
+		return buildTopQueriesRateQuery(metrics.statementsSeconds, name, window, matchers, metrics.queryIDLabel, metrics.datnameLabel, inst.identity...)
 	}, &secondsResp))
 	if metrics.statementsRows != "" {
 		eg.Go(queryInto(egCtx, client, datasourceUID, func() (string, error) {
-			return buildTopQueriesRateQuery(metrics.statementsRows, name, window, matchers, metrics.queryIDLabel, metrics.datnameLabel)
+			return buildTopQueriesRateQuery(metrics.statementsRows, name, window, matchers, metrics.queryIDLabel, metrics.datnameLabel, inst.identity...)
 		}, &rowsResp))
 	}
 	if err := eg.Wait(); err != nil {
@@ -314,6 +336,43 @@ func fetchInstanceDetail(ctx context.Context, client *prometheus.Client, datasou
 		WaitEvents:       parseWaitEvents(waitEventsResp),
 		TopQueries:       topQueries,
 	}, truncated, nil
+}
+
+// selectInstanceMetadata accepts duplicate inventory samples only when they
+// identify the same database. A name alone cannot choose between scopes.
+func selectInstanceMetadata(metadata []Instance, name string) (Instance, error) {
+	if len(metadata) == 0 {
+		return Instance{Name: name}, nil
+	}
+	// Preserve legacy reads while native and legacy collectors overlap.
+	for _, first := range metadata {
+		if first.native {
+			continue
+		}
+		return first, nil
+	}
+	var first Instance
+	for _, inst := range metadata {
+		if inst.Host != "" {
+			first = inst
+			break
+		}
+	}
+	if first.Host == "" {
+		return Instance{}, fmt.Errorf("instance %q has no exporter instance label", name)
+	}
+	for _, inst := range metadata {
+		if inst.Host == "" {
+			continue
+		}
+		if inst.Engine != first.Engine {
+			return Instance{}, fmt.Errorf("instance %q matches multiple database engines; use gcx dbo11y instances list -o wide to inspect engines and select a datasource with one matching engine", name)
+		}
+		if inst.Host != first.Host {
+			return Instance{}, fmt.Errorf("instance %q matches multiple database hosts; use gcx dbo11y instances list -o wide to inspect hosts and select a datasource with one matching host", name)
+		}
+	}
+	return first, nil
 }
 
 // queryInto returns an errgroup task that builds a PromQL expression via
