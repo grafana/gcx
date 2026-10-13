@@ -985,6 +985,7 @@ func newRunsListCommand(loader CloudConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list [id-or-name]",
 		Short: "List test runs for a load test.",
+		Long:  "List test runs for a load test. Table output uses the current result, then legacy result_status, or - when neither is present. JSON omits absent result and result_status keys.",
 		Args:  cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -1055,8 +1056,8 @@ func (c *TestRunTableCodec) Encode(w io.Writer, v any) error {
 		if ended == "" {
 			ended = "-"
 		}
-		result := resultStatusString(r.ResultStatus)
-		t.Row(strconv.Itoa(r.ID), strconv.Itoa(r.LoadTestID), r.Status, result, created, ended)
+		result := r.resultString()
+		t.Row(strconv.Itoa(r.ID), strconv.Itoa(r.TestID), r.Status, result, created, ended)
 	}
 	return t.Render(w)
 }
@@ -2170,6 +2171,7 @@ func newTestrunStatusCommand(loader CloudConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "status [test-name]",
 		Short: "Show the most recent test run status for a k6 load test.",
+		Long:  "Show the most recent test run status for a k6 load test. Text output uses the current result, then legacy result_status, or - when neither is present. JSON omits absent result and result_status keys.",
 		Args:  cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
@@ -2234,6 +2236,7 @@ func newTestrunRunsListCommand(loader CloudConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list [test-name]",
 		Short: "List all test runs for a k6 load test.",
+		Long:  "List all test runs for a k6 load test. Table output uses the current result, then legacy result_status, or - when neither is present. JSON omits absent result and result_status keys.",
 		Args:  cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.IO.Validate(); err != nil {
