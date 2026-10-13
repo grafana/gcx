@@ -17,7 +17,6 @@ import (
 	"github.com/grafana/gcx/cmd/gcx/commands"
 	"github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/cmd/gcx/datasources"
-	"github.com/grafana/gcx/cmd/gcx/dev"
 	docscmd "github.com/grafana/gcx/cmd/gcx/docs"
 	"github.com/grafana/gcx/cmd/gcx/helptree"
 	instrumentationcmd "github.com/grafana/gcx/cmd/gcx/instrumentation"
