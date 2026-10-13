@@ -113,7 +113,7 @@ func ValidateResumableChatSource(contextID string, chat *Chat) (string, error) {
 	if chat == nil {
 		return "", fmt.Errorf("context %s not found or not accessible", contextID)
 	}
-	if chat.Source != "" && chat.Source != "cli" {
+	if chat.Source != "" && chat.Source != httputils.AppSourceCLI {
 		return fmt.Sprintf(
 			"Continuing a %s conversation (id: %s). Message history is shared; agent behavior may differ from the CLI assistant.",
 			chat.Source,

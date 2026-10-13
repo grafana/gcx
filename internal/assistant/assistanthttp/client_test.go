@@ -106,3 +106,29 @@ func TestFormatTime(t *testing.T) {
 		})
 	}
 }
+
+func TestDoRequestWithHeaders_AppSource(t *testing.T) {
+	tests := []struct {
+		name    string
+		headers map[string]string
+		want    string
+	}{
+		{name: "defaults to cli", headers: nil, want: "cli"},
+		{name: "caller override wins", headers: map[string]string{"X-App-Source": "custom"}, want: "custom"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var got string
+			client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				got = r.Header.Get("X-App-Source")
+				w.WriteHeader(http.StatusOK)
+			}))
+
+			resp, err := client.DoRequestWithHeaders(context.Background(), http.MethodPost, "/api/v2/investigations", strings.NewReader(`{}`), tt.headers)
+			require.NoError(t, err)
+			resp.Body.Close()
+
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
