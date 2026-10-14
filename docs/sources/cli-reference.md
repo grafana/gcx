@@ -4109,7 +4109,7 @@ Latency is direction-aware: callers see the server-side p95
 (how long this service took to respond), callees see the client-side
 p95 (how long this service waited on the peer).
 
-JSON and YAML output include instrumentation status from target_info for each
+JSON and YAML outputs include instrumentation status from `target_info` for each
 returned service name. This status uses the target_info inventory without edge
 filters, as the service list does. Status is name-level: metadata with the same
 service name marks a peer as instrumented across namespaces and connection types.
