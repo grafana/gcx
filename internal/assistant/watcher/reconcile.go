@@ -200,6 +200,9 @@ func updateConfiguration(ctx context.Context, client *watchers.Client, ref strin
 	return reconcile(ctx, client, desired, target.ID)
 }
 func deleteConfiguration(ctx context.Context, client *watchers.Client, ref string) error {
+	if watchers.IsServerID(ref) {
+		return client.Delete(ctx, ref)
+	}
 	index, err := mutationIndex(ctx, client)
 	if err != nil {
 		return err
@@ -310,7 +313,10 @@ func sortedUnique(values []string) []string {
 	return slices.Compact(next)
 }
 
-// effectiveCadence compares the regular scheduling cadence rather than spelling.
+// effectiveCadence mirrors the API's stored scheduling cadence: minute intervals
+// round to supported divisors of an hour, and longer intervals to whole hours
+// (for example, 7m becomes 6m and 90m becomes 2h). Use it for both comparison and
+// write payloads so readback of a rounded interval does not cause repeated writes.
 func effectiveCadence(seconds int) int {
 	minutes := max(1, seconds/60)
 	if minutes >= 60 {
@@ -351,7 +357,7 @@ func configurationRequest(w Watcher) *watchers.ConfigurationRequest {
 		}
 		return &watchers.ChatAction{Enabled: n.Enabled, Target: target, MinSeverity: severityToRequest(n.Severity)}
 	}
-	return &watchers.ConfigurationRequest{Name: new(w.Title), Description: new(w.Description), Prompt: new(w.Prompt), TriggerIntervalSeconds: new(int(duration / time.Second)), Sensitivity: new(w.Sensitivity), DisableDecisionSkip: new(!w.SkipReviewOnCleanRuns), DatasourceUIDs: new(append([]string{}, w.DatasourceUIDs...)), Labels: new(maps.Clone(w.Labels)), AutoStop: stop, Actions: &watchers.WriteActions{Slack: channel(w.Notifications.Slack), MSTeams: channel(w.Notifications.Teams), Alerting: &watchers.AlertingAction{Enabled: w.Notifications.Alerting.Enabled, MinSeverity: "warning", RoutingTree: new("")}, Investigation: &watchers.InvestigationAction{Enabled: w.Investigation.Enabled, TeamNames: append([]string{}, w.Investigation.TeamAccess...)}, Webhook: &watchers.WebhookWriteAction{Enabled: new(w.Notifications.Webhook.Enabled), MinSeverity: new(severityToRequest(w.Notifications.Webhook.Severity))}}}
+	return &watchers.ConfigurationRequest{Name: new(w.Title), Description: new(w.Description), Prompt: new(w.Prompt), TriggerIntervalSeconds: new(effectiveCadence(int(duration / time.Second))), Sensitivity: new(w.Sensitivity), DisableDecisionSkip: new(!w.SkipReviewOnCleanRuns), DatasourceUIDs: new(append([]string{}, w.DatasourceUIDs...)), Labels: new(maps.Clone(w.Labels)), AutoStop: stop, Actions: &watchers.WriteActions{Slack: channel(w.Notifications.Slack), MSTeams: channel(w.Notifications.Teams), Alerting: &watchers.AlertingAction{Enabled: w.Notifications.Alerting.Enabled, MinSeverity: "warning", RoutingTree: new("")}, Investigation: &watchers.InvestigationAction{Enabled: w.Investigation.Enabled, TeamNames: append([]string{}, w.Investigation.TeamAccess...)}, Webhook: &watchers.WebhookWriteAction{Enabled: new(w.Notifications.Webhook.Enabled), MinSeverity: new(severityToRequest(w.Notifications.Webhook.Severity))}}}
 }
 func secretPairs(desired, current Watcher) [][2]*SecretInput {
 	return [][2]*SecretInput{{desired.Notifications.Webhook.URL, current.Notifications.Webhook.URL}, {desired.Notifications.Webhook.BearerToken, current.Notifications.Webhook.BearerToken}, {desired.Notifications.Webhook.SigningSecret, current.Notifications.Webhook.SigningSecret}}

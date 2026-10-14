@@ -105,6 +105,39 @@ func acceptancePush(t *testing.T, a *manifestAdapter, input *resources.Resources
 	return summary
 }
 
+func TestAdapterPushPreflightScopesMixedSelectionsToWatchers(t *testing.T) {
+	fixture := &watcherstest.Server{AllowWrites: true, Current: [][]watchers.Watcher{{fixtureWatcher("id-1", "Original Title")}}}
+	a, _ := acceptanceAdapter(t, fixture)
+	watcher := acceptanceManifest(t, "Health Check", "id-1")
+	dashboardDescriptor := resources.Descriptor{
+		GroupVersion: schema.GroupVersion{Group: "dashboard.grafana.app", Version: "v1beta1"},
+		Kind:         "Dashboard", Singular: "dashboard", Plural: "dashboards",
+	}
+	dashboard := resources.MustFromUnstructured(&unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": dashboardDescriptor.GroupVersion.String(), "kind": dashboardDescriptor.Kind,
+		"metadata": map[string]any{"name": "health-check"},
+		"spec":     map[string]any{"title": "Health Check", "panels": []any{}},
+	}})
+	originalDashboard := dashboard.Object.DeepCopy()
+	check, err := a.NewPushPreflight(t.Context(), []adapter.PushSelection{
+		{Descriptor: WatcherDescriptor(), Items: []*resources.Resource{watcher}},
+		{Descriptor: dashboardDescriptor, Items: []*resources.Resource{dashboard}},
+	})
+	require.NoError(t, err)
+	require.NoError(t, check(t.Context(), dashboard))
+	require.Equal(t, originalDashboard.Object, dashboard.Object.Object)
+	require.NoError(t, check(t.Context(), watcher))
+	require.NotEmpty(t, watcher.Annotations()[pushPlanAnnotation])
+	obj := watcher.ToUnstructured()
+	require.NoError(t, a.PushEnvelope(t.Context(), &obj, metav1.CreateOptions{}))
+	require.Equal(t, 1, fixture.CollectionReads(false))
+	require.Equal(t, 1, fixture.CollectionReads(true))
+	requests := fixture.MutationRequests()
+	require.Len(t, requests, 1)
+	require.Equal(t, http.MethodPut, requests[0].Method)
+	require.Equal(t, testCollectionPath+"/id-1", requests[0].Path)
+}
+
 func TestAdapterOwnedBatchRetainsSameNamesAndEnumeratesOnce(t *testing.T) {
 	fixture := &watcherstest.Server{AllowWrites: true,
 		Current:          [][]watchers.Watcher{{fixtureWatcher("id-current", "Health Check")}, {fixtureWatcher("id-unrelated", "Unrelated")}},

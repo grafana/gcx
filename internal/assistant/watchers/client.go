@@ -309,7 +309,7 @@ func (c *Client) write(ctx context.Context, method, path, operation string, requ
 		if ctx.Err() != nil {
 			return fmt.Errorf("%s: %w", operation, ctx.Err())
 		}
-		return fmt.Errorf("%s: request failed", operation)
+		return fmt.Errorf("%s: %w", operation, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {

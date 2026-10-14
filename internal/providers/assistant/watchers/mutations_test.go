@@ -254,6 +254,8 @@ func TestPublicDeleteConfirmationAndIdentity(t *testing.T) {
 			require.Equal(t, 1, fixture.MutationCalls())
 			require.Equal(t, http.MethodDelete, fixture.MutationRequests()[0].Method)
 			require.Zero(t, fixture.EnrollmentReads(item.ID))
+			require.Equal(t, 1, fixture.CollectionReads(false))
+			require.Equal(t, 1, fixture.CollectionReads(true))
 		})
 	}
 }

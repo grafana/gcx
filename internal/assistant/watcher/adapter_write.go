@@ -35,6 +35,9 @@ func (a *manifestAdapter) NewPushPreflight(ctx context.Context, selections []ada
 	targets := make(map[*resources.Resource]Candidate)
 	for _, selection := range selections {
 		for _, res := range selection.Items {
+			if res.GroupVersionKind() != WatcherDescriptor().GroupVersionKind() {
+				continue
+			}
 			obj := res.ToUnstructured()
 			w, err := DecodeManifest(&obj)
 			if err != nil {
@@ -63,6 +66,9 @@ func (a *manifestAdapter) NewPushPreflight(ctx context.Context, selections []ada
 		}
 	}
 	return func(_ context.Context, res *resources.Resource) error {
+		if res.GroupVersionKind() != WatcherDescriptor().GroupVersionKind() {
+			return nil
+		}
 		if err := failures[res]; err != nil {
 			return err
 		}

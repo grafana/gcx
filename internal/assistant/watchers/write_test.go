@@ -2,8 +2,11 @@ package watchers_test
 
 import (
 	"context"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -148,6 +151,45 @@ func TestWriteResponseFailuresNeverEchoPayload(t *testing.T) {
 			_, err := client.Update(t.Context(), "id", completeRequest())
 			require.Error(t, err)
 			assert.NotContains(t, err.Error(), "SENTINEL")
+		})
+	}
+}
+
+type failingWriteTransport struct{ cause error }
+
+func (t failingWriteTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	return nil, t.cause
+}
+
+func TestWriteTransportFailuresRetainCause(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		cause error
+	}{
+		{"DNS", &net.DNSError{Err: "no such host", Name: "example.invalid", IsNotFound: true}},
+		{"TLS", x509.UnknownAuthorityError{}},
+		{"closed connection", io.ErrUnexpectedEOF},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			base, err := assistanthttp.NewClient(config.NamespacedRESTConfig{Config: rest.Config{
+				Host: "https://example.invalid",
+				WrapTransport: func(http.RoundTripper) http.RoundTripper {
+					return failingWriteTransport{cause: tc.cause}
+				},
+			}})
+			require.NoError(t, err)
+			client := watchers.NewClient(base)
+			for _, call := range []func() error{
+				func() error { _, err := client.Create(t.Context(), completeRequest()); return err },
+				func() error { _, err := client.Update(t.Context(), "id", completeRequest()); return err },
+				func() error { return client.Delete(t.Context(), "id") },
+				func() error { _, err := client.SetEnrollment(t.Context(), "id", false); return err },
+			} {
+				err := call()
+				require.ErrorIs(t, err, tc.cause)
+				assert.Contains(t, err.Error(), tc.cause.Error())
+				assert.NotContains(t, err.Error(), "SENTINEL")
+			}
 		})
 	}
 }

@@ -343,10 +343,6 @@ func severityFromResponse(raw string) string {
 	}
 }
 
-func UnsupportedMutation(operation string) error {
-	return fmt.Errorf("Watcher %s is not supported yet; continue in Grafana: %w", operation, errors.ErrUnsupported)
-}
-
 type manifestAdapter struct {
 	adapter.ResourceAdapter
 

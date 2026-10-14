@@ -168,6 +168,43 @@ func TestContractEquivalentConfigurationWritesNothing(t *testing.T) {
 	}
 }
 
+func TestContractIntervalPayloadMatchesEffectiveComparison(t *testing.T) {
+	for _, tc := range []struct {
+		interval string
+		seconds  int
+	}{
+		{"6m", 360},
+		{"7m", 360},
+		{"8m", 360},
+		{"600s", 600},
+		{"90m", 7200},
+	} {
+		t.Run(tc.interval, func(t *testing.T) {
+			fixture := &watcherstest.Server{AllowWrites: true}
+			client := clientForServer(t, fixture.ServeHTTP)
+			desired := minimalWatcher(t)
+			desired.Interval = tc.interval
+			created, err := createConfiguration(t.Context(), client, &desired)
+			require.NoError(t, err)
+			require.Equal(t, 1, fixture.MutationCalls())
+			assert.InDelta(t, tc.seconds, contractRequest(t, fixture, 0)["triggerIntervalSeconds"], 0)
+			assert.Equal(t, normalized(desired).Interval, normalized(*created).Interval)
+
+			unchanged, err := updateConfiguration(t.Context(), client, created.ServerID(), &desired)
+			require.NoError(t, err)
+			assert.False(t, unchanged.MutationOutcome().Changed)
+			assert.Equal(t, 1, fixture.MutationCalls())
+
+			desired.Interval = "15m"
+			updated, err := updateConfiguration(t.Context(), client, created.ServerID(), &desired)
+			require.NoError(t, err)
+			assert.True(t, updated.MutationOutcome().Changed)
+			require.Equal(t, 2, fixture.MutationCalls())
+			assert.InDelta(t, 900, contractRequest(t, fixture, 1)["triggerIntervalSeconds"], 0)
+		})
+	}
+}
+
 func TestContractAPIControlsEditEligibility(t *testing.T) {
 	for _, tt := range []struct {
 		name         string
