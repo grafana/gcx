@@ -168,7 +168,7 @@ Switch to a different context:
 gcx config use-context staging
 ```
 
-Delete a context together with the stack and cloud entries no other context
+Delete a context together with the stack and Cloud entries no other context
 uses:
 
 ```shell
