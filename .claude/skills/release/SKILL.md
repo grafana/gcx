@@ -39,10 +39,25 @@ This generates a changelog entry (via Claude), updates `CHANGELOG.md` and `.rele
 
 The tag push triggers the GoReleaser workflow.
 
-After GoReleaser successfully publishes a stable release, remind the user to run
-`mise run docs:refresh`, review the changes to `docs/sources/cli-reference.md`
-and `docs/sources/configuration.md`, and open a separate documentation PR if there
-are changes. The task generates references for the latest stable release.
+## Refresh release documentation
+
+For stable releases, regenerate the reference as part of this release workflow.
+Wait until GoReleaser succeeds and `gh api repos/grafana/gcx/releases/latest --jq .tag_name`
+returns the version just released. Running this before publication would generate
+the previous release's reference.
+
+On a new documentation branch from updated `main`, run:
+
+```bash
+mise run docs:refresh
+git diff -- docs/sources/cli-reference.md docs/sources/configuration.md
+mise run docs
+```
+
+Review the generated changes, then commit them and open a separate documentation
+PR following the repository's required checks. If neither file changed, skip the
+PR. Include the documentation PR link, or the no-change result, in the release
+handoff alongside the changelog PR.
 
 ## Contribution handoff
 
