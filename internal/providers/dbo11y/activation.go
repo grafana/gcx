@@ -1,4 +1,4 @@
-package instances
+package dbo11y
 
 import (
 	"context"
