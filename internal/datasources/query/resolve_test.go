@@ -120,6 +120,30 @@ func TestResolveDatasource(t *testing.T) {
 		assert.False(t, resolved.Persist)
 	})
 
+	t.Run("auto-discovers New Relic plugin without choosing enterprise", func(t *testing.T) {
+		restCfg := testDatasourceRESTConfig(t, []map[string]any{
+			{"uid": "enterprise-1", "name": "enterprise", "type": "grafana-newrelic-datasource"},
+			{"uid": "nr-1", "name": "plugin", "type": "nrgrafanaplugin-newrelic-datasource"},
+		})
+
+		resolved, err := dsquery.ResolveDatasource(context.Background(), "", nil, restCfg, "newrelic")
+		require.NoError(t, err)
+		assert.Equal(t, "nr-1", resolved.UID)
+		assert.Equal(t, "nrgrafanaplugin-newrelic-datasource", resolved.Type)
+	})
+
+	t.Run("rejects ambiguous New Relic plugins", func(t *testing.T) {
+		restCfg := testDatasourceRESTConfig(t, []map[string]any{
+			{"uid": "nr-1", "name": "plugin-a", "type": "nrgrafanaplugin-newrelic-datasource"},
+			{"uid": "nr-2", "name": "plugin-b", "type": "nrgrafanaplugin-newrelic-datasource"},
+			{"uid": "enterprise-1", "name": "enterprise", "type": "grafana-newrelic-datasource"},
+		})
+
+		_, err := dsquery.ResolveDatasource(context.Background(), "", nil, restCfg, "newrelic")
+		require.ErrorContains(t, err, "multiple newrelic datasources found")
+		assert.NotContains(t, err.Error(), "enterprise")
+	})
+
 	t.Run("errors when no matching datasource exists", func(t *testing.T) {
 		restCfg := testDatasourceRESTConfig(t, []map[string]any{
 			{"uid": "prom-1", "name": "metrics", "type": "prometheus"},
@@ -286,6 +310,8 @@ func TestNormalizeKind(t *testing.T) {
 		{"grafana-clickhouse-datasource", "clickhouse"},
 		{"grafana-bigquery-datasource", "bigquery"},
 		{"startree-pinot-datasource", "pinot"},
+		{"nrgrafanaplugin-newrelic-datasource", "newrelic"},
+		{"grafana-newrelic-datasource", "grafana-newrelic-datasource"},
 		{"synthetic-monitoring-datasource", "synthetic-monitoring"},
 		{"grafana-amazonprometheus-datasource", "prometheus"},
 		{"grafana-azureprometheus-datasource", "prometheus"},

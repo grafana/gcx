@@ -199,6 +199,8 @@ func NormalizeKind(pluginID string) string {
 		return "pinot"
 	case "yesoreyeram-infinity-datasource":
 		return "infinity"
+	case "nrgrafanaplugin-newrelic-datasource":
+		return "newrelic"
 	case "synthetic-monitoring-datasource":
 		return "synthetic-monitoring"
 	case "stackdriver":

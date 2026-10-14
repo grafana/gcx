@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/gcx/internal/query/loki"
 	"github.com/grafana/gcx/internal/query/mssql"
 	"github.com/grafana/gcx/internal/query/mysql"
+	"github.com/grafana/gcx/internal/query/newrelic"
 	"github.com/grafana/gcx/internal/query/pinot"
 	"github.com/grafana/gcx/internal/query/postgres"
 	"github.com/grafana/gcx/internal/query/prometheus"
@@ -90,6 +91,7 @@ func newQueryRoutes() queryRoutes {
 			"loki":       dispatchLoki,
 			"mssql":      dispatchMSSQL,
 			"mysql":      dispatchMySQL,
+			"newrelic":   dispatchNewRelic,
 			"pinot":      dispatchPinot,
 			"postgres":   dispatchPostgres,
 			"prometheus": dispatchPrometheus,
@@ -202,6 +204,19 @@ func dispatchLoki(ctx context.Context, req genericQueryRequest) (any, error) {
 		return nil, fmt.Errorf("query failed: %w", err)
 	}
 
+	return resp, nil
+}
+
+func dispatchNewRelic(ctx context.Context, req genericQueryRequest) (any, error) {
+	query := newrelic.QueryRequest{QueryText: req.expr, Start: req.start, End: req.end}
+	client, err := newrelic.NewClient(req.cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create client: %w", err)
+	}
+	resp, err := client.Query(ctx, req.uid, query)
+	if err != nil {
+		return nil, fmt.Errorf("query failed: %w", err)
+	}
 	return resp, nil
 }
 

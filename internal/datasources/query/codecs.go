@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/gcx/internal/query/infinity"
 	"github.com/grafana/gcx/internal/query/influxdb"
 	"github.com/grafana/gcx/internal/query/loki"
+	"github.com/grafana/gcx/internal/query/newrelic"
 	"github.com/grafana/gcx/internal/query/opensearch"
 	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/grafana/gcx/internal/query/pyroscope"
@@ -48,6 +49,8 @@ func (c *queryTableCodec) Encode(w io.Writer, data any) error {
 		return tempo.FormatMetricsTable(w, resp)
 	case *infinity.QueryResponse:
 		return infinity.FormatTable(w, resp)
+	case *newrelic.QueryResponse:
+		return newrelic.FormatTable(w, resp)
 	case *influxdb.QueryResponse:
 		return influxdb.FormatQueryTable(w, resp)
 	case *tempo.GetTraceResponse:
@@ -105,6 +108,8 @@ func (c *queryWideCodec) Encode(w io.Writer, data any) error {
 		return tempo.FormatBaselineTable(w, resp)
 	case *infinity.QueryResponse:
 		return infinity.FormatTable(w, resp)
+	case *newrelic.QueryResponse:
+		return newrelic.FormatWide(w, resp)
 	case *tempo.GetTraceResponse:
 		return tempo.FormatTraceWide(w, resp)
 	case *querysql.QueryResponse:
@@ -175,6 +180,8 @@ func (c *queryGraphCodec) Encode(w io.Writer, data any) error {
 		return errors.New("graph output is not supported for trace search results; use -o table/json/yaml")
 	case *infinity.QueryResponse:
 		return errors.New("graph output is not supported for Infinity queries; use -o table/json/yaml")
+	case *newrelic.QueryResponse:
+		return errors.New("graph output is not supported for New Relic queries; use -o table/wide/json/yaml")
 	case *tempo.MetricsResponse:
 		chartData, err = graph.FromTempoMetricsResponse(resp)
 	case *influxdb.QueryResponse:

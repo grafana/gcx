@@ -43,6 +43,7 @@ List, inspect, and query Grafana datasources. Use top-level signal commands (met
 * [gcx datasources loki](gcx_datasources_loki.md)	 - Query Loki datasources
 * [gcx datasources mssql](gcx_datasources_mssql.md)	 - Query Microsoft SQL Server datasources
 * [gcx datasources mysql](gcx_datasources_mysql.md)	 - Query MySQL datasources
+* [gcx datasources newrelic](gcx_datasources_newrelic.md)	 - Query New Relic plugin datasources
 * [gcx datasources opensearch](gcx_datasources_opensearch.md)	 - Query OpenSearch datasources
 * [gcx datasources pinot](gcx_datasources_pinot.md)	 - Query StarTree Pinot datasources
 * [gcx datasources postgres](gcx_datasources_postgres.md)	 - Query PostgreSQL datasources

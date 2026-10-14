@@ -203,7 +203,8 @@ jobs:
             | select((.body | type) == "string")
             | select(.body | test("\\S"))
             | select((.comments | type) == "array")
-          ' <<< "${REVIEW_OUTPUT:-}") ||
+          ' <<< "${REVIEW_OUTPUT:-}") || review=""
+          [ -n "$review" ] ||
             fail "the review did not complete: no review payload. Check the claude-review-transcript-${PR_NUMBER} artifact."
 
           # The workflow appends the run marker, so tracing a review back to

@@ -594,7 +594,13 @@ gcx metrics metadata
 gcx logs query '{app="nginx"} |= "error"' --since 1h
 gcx logs labels
 gcx logs series --match '{app="nginx"}'
+
+# NRQL through an installed open-source New Relic plugin datasource
+gcx datasources newrelic query -d UID 'SELECT count(*) FROM Transaction' --since 1h
 ```
+
+This uses Grafana's configured open-source plugin,
+not the Enterprise New Relic plugin.
 
 gcx also supports Pyroscope (profiling) and Tempo (traces) datasources.
 
