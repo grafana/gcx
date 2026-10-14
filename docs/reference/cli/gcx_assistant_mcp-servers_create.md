@@ -24,6 +24,10 @@ gcx assistant mcp-servers create [flags]
   gcx assistant mcp-servers create --name SharedTools --url https://mcp.example.com/mcp \
     --scope tenant --header "Authorization=Bearer <token>"
 
+  # Add an MCP server connected over Private data source connect
+  gcx assistant mcp-servers create --name InternalDocs --url https://docs-mcp.internal.example.com/mcp \
+    --pdc-network <network-id>
+
   gcx assistant mcp-servers create --file server.yaml --if-not-exists
 ```
 
@@ -42,6 +46,7 @@ gcx assistant mcp-servers create [flags]
       --json string               Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --name string               MCP server display name
   -o, --output string             Output format. One of: agents, json, yaml (default "yaml")
+      --pdc-network string        Private data source connect (PDC) network ID to proxy connections through. Setting it to an empty string clears it.
       --scope string              MCP server scope: user or tenant
       --url string                Remote MCP server URL
 ```

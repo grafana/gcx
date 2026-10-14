@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"strconv"
 	"strings"
@@ -127,7 +128,7 @@ func manifestFromInput(input assistantmcp.ServerInput) mcpserver.MCPServer {
 		Scope:        input.Scope,
 		Enabled:      enabled,
 		Applications: input.Applications,
-		Config:       input.Config,
+		Config:       withPDCNetwork(input.Config, input.PDCNetwork),
 	}
 	if input.Headers != nil {
 		m.Headers = manifestHeaders(input.Headers)
@@ -174,12 +175,35 @@ func applyUpdate(current mcpserver.MCPServer, input assistantmcp.ServerInput) (m
 	if len(input.Config) > 0 {
 		desired.Config = input.Config
 	}
+	desired.Config = withPDCNetwork(desired.Config, input.PDCNetwork)
 	if input.Headers == nil {
 		desired.Headers = current.Headers
 	} else {
 		desired.Headers = manifestHeaders(input.Headers)
 	}
 	return desired, nil
+}
+
+// withPDCNetwork returns cfg with the PDC network applied. A nil network
+// leaves cfg untouched; an empty one removes the key, which the backend treats
+// as a direct connection.
+func withPDCNetwork(cfg map[string]any, network *string) map[string]any {
+	if network == nil {
+		return cfg
+	}
+	out := maps.Clone(cfg)
+	if out == nil {
+		out = map[string]any{}
+	}
+	if *network == "" {
+		delete(out, assistantmcp.ConfigKeyPDCNetwork)
+	} else {
+		out[assistantmcp.ConfigKeyPDCNetwork] = *network
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func identityChangeError(field, name string) error {
@@ -469,6 +493,10 @@ reports that OAuth is required.`,
   gcx assistant mcp-servers create --name SharedTools --url https://mcp.example.com/mcp \
     --scope tenant --header "Authorization=Bearer <token>"
 
+  # Add an MCP server connected over Private data source connect
+  gcx assistant mcp-servers create --name InternalDocs --url https://docs-mcp.internal.example.com/mcp \
+    --pdc-network <network-id>
+
   gcx assistant mcp-servers create --file server.yaml --if-not-exists`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -595,7 +623,11 @@ unchanged; but once you pass any --header flags, they become the full desired
 header list, so any existing header you don't list is removed.`,
 		Example: `  gcx assistant mcp-servers update GitHub --disabled
   gcx assistant mcp-servers update SharedTools --description "Shared internal MCP tools"
-  gcx assistant mcp-servers update SharedTools --header "X-API-Key=<token>"`,
+  gcx assistant mcp-servers update SharedTools --header "X-API-Key=<token>"
+  gcx assistant mcp-servers update InternalDocs --pdc-network <network-id>
+
+  # Stop using PDC and connect to the MCP server directly
+  gcx assistant mcp-servers update InternalDocs --pdc-network ""`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
@@ -740,6 +772,9 @@ type inputFlags struct {
 	Scope        string
 	Headers      []string
 	Applications []string
+	PDCNetwork   string
+
+	flags *pflag.FlagSet
 }
 
 func (in *inputFlags) bind(flags *pflag.FlagSet) {
@@ -752,6 +787,8 @@ func (in *inputFlags) bind(flags *pflag.FlagSet) {
 	flags.StringVar(&in.Scope, "scope", "", "MCP server scope: user or tenant")
 	flags.StringArrayVar(&in.Headers, "header", nil, "Custom header as NAME=VALUE (repeatable; tenant scope requires an auth header)")
 	flags.StringArrayVar(&in.Applications, "application", nil, "Assistant application allowed to use this server (repeatable)")
+	flags.StringVar(&in.PDCNetwork, "pdc-network", "", "Private data source connect (PDC) network ID to proxy connections through. Setting it to an empty string clears it.")
+	in.flags = flags
 }
 
 func (in *inputFlags) buildInput() (assistantmcp.ServerInput, error) {
@@ -787,6 +824,10 @@ func (in *inputFlags) buildInput() (assistantmcp.ServerInput, error) {
 	} else if in.Enabled {
 		enabled := true
 		input.Enabled = &enabled
+	}
+	if in.flags != nil && in.flags.Changed("pdc-network") {
+		network := strings.TrimSpace(in.PDCNetwork)
+		input.PDCNetwork = &network
 	}
 	if len(in.Headers) > 0 {
 		headers := make([]assistantmcp.Header, 0, len(in.Headers))

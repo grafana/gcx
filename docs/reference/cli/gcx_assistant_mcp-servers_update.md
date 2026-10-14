@@ -24,6 +24,10 @@ gcx assistant mcp-servers update <id-or-name> [flags]
   gcx assistant mcp-servers update GitHub --disabled
   gcx assistant mcp-servers update SharedTools --description "Shared internal MCP tools"
   gcx assistant mcp-servers update SharedTools --header "X-API-Key=<token>"
+  gcx assistant mcp-servers update InternalDocs --pdc-network <network-id>
+
+  # Stop using PDC and connect to the MCP server directly
+  gcx assistant mcp-servers update InternalDocs --pdc-network ""
 ```
 
 ### Options
@@ -40,6 +44,7 @@ gcx assistant mcp-servers update <id-or-name> [flags]
       --json string               Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --name string               MCP server display name
   -o, --output string             Output format. One of: agents, json, yaml (default "yaml")
+      --pdc-network string        Private data source connect (PDC) network ID to proxy connections through. Setting it to an empty string clears it.
       --scope string              MCP server scope: user or tenant
       --url string                Remote MCP server URL
 ```
