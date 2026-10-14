@@ -177,6 +177,7 @@
  "gcx completion zsh": "shell",
  "gcx config check": "prose",
  "gcx config current-context": "finite",
+ "gcx config delete-context": "finite",
  "gcx config edit": "interactive",
  "gcx config list-contexts": "finite",
  "gcx config path": "finite",

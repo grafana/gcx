@@ -286,6 +286,7 @@ merge only their references and datasource defaults.
 	configOpts.BindFlags(cmd.PersistentFlags())
 
 	cmd.AddCommand(checkCmd(configOpts))
+	cmd.AddCommand(deleteContextCmd(configOpts))
 	cmd.AddCommand(currentContextCmd(configOpts))
 	cmd.AddCommand(editCmd(configOpts))
 	cmd.AddCommand(pathCmd(configOpts))
@@ -1231,6 +1232,118 @@ Paths are literal: they name the exact location in the configuration file, start
 
 	cmd.Flags().StringVar(&fileType, "file", "", "Config layer to write to (system, user, local)")
 	opts.setup(cmd.Flags(), "text", &silentTextCodec{})
+
+	return cmd
+}
+
+// deleteContextResult extends configMutation with the entries the delete
+// removed alongside the context.
+type deleteContextResult struct {
+	configMutation `yaml:",inline"`
+
+	Context      string `json:"context" yaml:"context"`
+	StackRemoved string `json:"stack_removed,omitempty" yaml:"stack_removed,omitempty"`
+	CloudRemoved string `json:"cloud_removed,omitempty" yaml:"cloud_removed,omitempty"`
+}
+
+type deleteContextTextCodec struct{}
+
+func (c *deleteContextTextCodec) Format() format.Format { return "text" }
+
+func (c *deleteContextTextCodec) Decode(io.Reader, any) error {
+	return errors.New("text codec does not support decoding")
+}
+
+func (c *deleteContextTextCodec) Encode(w io.Writer, value any) error {
+	result, ok := value.(deleteContextResult)
+	if !ok {
+		return errors.New("invalid data type for delete-context text codec: expected deleteContextResult")
+	}
+	removed := []string{fmt.Sprintf("context \"%s\"", result.Context)}
+	if result.StackRemoved != "" {
+		removed = append(removed, fmt.Sprintf("stack \"%s\"", result.StackRemoved))
+	}
+	if result.CloudRemoved != "" {
+		removed = append(removed, fmt.Sprintf("cloud \"%s\"", result.CloudRemoved))
+	}
+	cmdio.Success(w, "Deleted %s", strings.Join(removed, ", "))
+	return nil
+}
+
+func deleteContextCmd(configOpts *Options) *cobra.Command {
+	var fileType string
+	opts := &ioOpts{}
+
+	cmd := &cobra.Command{
+		Use:   "delete-context CONTEXT_NAME",
+		Args:  cobra.ExactArgs(1),
+		Short: "Delete a context and its unused stack and cloud entries",
+		Long: `Delete a context from a configuration file.
+
+The stack and cloud entries the context references are deleted as well, unless
+another context in the same file still references them. If the deleted context
+is the current context, current-context is cleared.
+
+When multiple config files are loaded (e.g. a local .gcx.yaml alongside the
+user config), use --file to choose which layer to update.`,
+		Example: `
+	gcx config delete-context dev-instance
+
+	# Delete from the local .gcx.yaml
+	gcx config delete-context --file local dev-instance`,
+		Annotations: map[string]string{
+			agent.AnnotationTokenCost: "small",
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.Validate(); err != nil {
+				return err
+			}
+
+			cfg, target, err := config.LoadForWrite(cmd.Context(), configOpts.ConfigFile, fileType)
+			if err != nil {
+				return err
+			}
+
+			name := args[0]
+			gCtx := cfg.Contexts[name]
+			if gCtx == nil {
+				return config.ContextNotFound(name, cfg.ContextNames())
+			}
+
+			delete(cfg.Contexts, name)
+			if cfg.CurrentContext == name {
+				cfg.CurrentContext = ""
+			}
+
+			stackInUse, cloudInUse := false, false
+			for _, other := range cfg.Contexts {
+				if other == nil {
+					continue
+				}
+				stackInUse = stackInUse || (gCtx.Stack != "" && other.Stack == gCtx.Stack)
+				cloudInUse = cloudInUse || (gCtx.Cloud != "" && other.Cloud == gCtx.Cloud)
+			}
+			result := deleteContextResult{Context: name}
+			if _, ok := cfg.Stacks[gCtx.Stack]; ok && !stackInUse {
+				delete(cfg.Stacks, gCtx.Stack)
+				result.StackRemoved = gCtx.Stack
+			}
+			if _, ok := cfg.Cloud[gCtx.Cloud]; ok && !cloudInUse {
+				delete(cfg.Cloud, gCtx.Cloud)
+				result.CloudRemoved = gCtx.Cloud
+			}
+
+			if err := config.Write(cmd.Context(), target, cfg); err != nil {
+				return err
+			}
+
+			result.configMutation = newConfigMutation("delete-context", "contexts."+name, target)
+			return opts.IO.Encode(cmd.OutOrStdout(), result)
+		},
+	}
+
+	cmd.Flags().StringVar(&fileType, "file", "", "Config layer to write to (system, user, local)")
+	opts.setup(cmd.Flags(), "text", &deleteContextTextCodec{})
 
 	return cmd
 }
