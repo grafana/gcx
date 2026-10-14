@@ -1,4 +1,4 @@
-package alert
+package alert_test
 
 import (
 	"bytes"
@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/providers/alert"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -17,6 +18,13 @@ import (
 
 type provisioningFlagLoader struct{ host string }
 
+const (
+	contactPointsPath = "/api/v1/provisioning/contact-points"
+	muteTimingsPath   = "/api/v1/provisioning/mute-timings"
+	templatesPath     = "/api/v1/provisioning/templates"
+	policiesPath      = "/api/v1/provisioning/policies"
+)
+
 func (l provisioningFlagLoader) LoadGrafanaConfig(context.Context) (config.NamespacedRESTConfig, error) {
 	return config.NamespacedRESTConfig{Config: rest.Config{Host: l.host}}, nil
 }
@@ -24,18 +32,18 @@ func (l provisioningFlagLoader) LoadGrafanaConfig(context.Context) (config.Names
 func TestProvisioningCommandsAllowUIUpdates(t *testing.T) {
 	commands := []struct {
 		name   string
-		newCmd func(GrafanaConfigLoader) *cobra.Command
+		newCmd func(alert.GrafanaConfigLoader) *cobra.Command
 		args   []string
 		body   string
 		method string
 		path   string
 	}{
-		{"contact points create", newContactPointsCreateCommand, nil, `{"name":"test","type":"email","settings":{}}`, http.MethodPost, contactPointsPath},
-		{"contact points update", newContactPointsUpdateCommand, []string{"cp"}, `{"name":"test","type":"email","settings":{}}`, http.MethodPut, contactPointsPath + "/cp"},
-		{"mute timings create", newMuteTimingsCreateCommand, nil, `{"name":"test","time_intervals":[]}`, http.MethodPost, muteTimingsPath},
-		{"mute timings update", newMuteTimingsUpdateCommand, []string{"test"}, `{"name":"test","time_intervals":[]}`, http.MethodPut, muteTimingsPath + "/test"},
-		{"templates upsert", newTemplatesUpsertCommand, nil, `{"name":"test","template":"hello"}`, http.MethodPut, templatesPath + "/test"},
-		{"notification policies set", newNotificationPoliciesSetCommand, nil, `{"receiver":"test"}`, http.MethodPut, policiesPath},
+		{"contact points create", alert.NewContactPointsCreateCommandForTest, nil, `{"name":"test","type":"email","settings":{}}`, http.MethodPost, contactPointsPath},
+		{"contact points update", alert.NewContactPointsUpdateCommandForTest, []string{"cp"}, `{"name":"test","type":"email","settings":{}}`, http.MethodPut, contactPointsPath + "/cp"},
+		{"mute timings create", alert.NewMuteTimingsCreateCommandForTest, nil, `{"name":"test","time_intervals":[]}`, http.MethodPost, muteTimingsPath},
+		{"mute timings update", alert.NewMuteTimingsUpdateCommandForTest, []string{"test"}, `{"name":"test","time_intervals":[]}`, http.MethodPut, muteTimingsPath + "/test"},
+		{"templates upsert", alert.NewTemplatesUpsertCommandForTest, nil, `{"name":"test","template":"hello"}`, http.MethodPut, templatesPath + "/test"},
+		{"notification policies set", alert.NewNotificationPoliciesSetCommandForTest, nil, `{"receiver":"test"}`, http.MethodPut, policiesPath},
 	}
 	flags := []struct {
 		name       string
@@ -103,17 +111,17 @@ func TestProvisioningEchoUsesRequestedProvenance(t *testing.T) {
 				w.WriteHeader(http.StatusAccepted)
 			}))
 			defer server.Close()
-			client, err := NewClient(config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}})
+			client, err := alert.NewClient(config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}})
 			require.NoError(t, err)
 			want := ""
 			if !allowUIUpdates {
 				want = "api"
 			}
 			for _, input := range []string{"", "api", "file"} {
-				point, err := client.UpdateContactPoint(context.Background(), "cp", ContactPoint{Name: "test", Provenance: input}, allowUIUpdates)
+				point, err := client.UpdateContactPoint(context.Background(), "cp", alert.ContactPoint{Name: "test", Provenance: input}, allowUIUpdates)
 				require.NoError(t, err)
 				assert.Equal(t, want, point.Provenance)
-				template, err := client.UpsertTemplate(context.Background(), NotificationTemplate{Name: "test", Provenance: input}, allowUIUpdates)
+				template, err := client.UpsertTemplate(context.Background(), alert.NotificationTemplate{Name: "test", Provenance: input}, allowUIUpdates)
 				require.NoError(t, err)
 				assert.Equal(t, want, template.Provenance)
 			}
@@ -147,9 +155,9 @@ func TestCreateContactPointReportsRequestedProvenance(t *testing.T) {
 				_, _ = w.Write([]byte(tt.response))
 			}))
 			defer server.Close()
-			client, err := NewClient(config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}})
+			client, err := alert.NewClient(config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}})
 			require.NoError(t, err)
-			point, err := client.CreateContactPoint(context.Background(), ContactPoint{Name: "test", Provenance: tt.input}, tt.allowUIUpdates...)
+			point, err := client.CreateContactPoint(context.Background(), alert.ContactPoint{Name: "test", Provenance: tt.input}, tt.allowUIUpdates...)
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, point.Provenance)
 			assert.Equal(t, "cp", point.UID)
@@ -176,10 +184,11 @@ func TestUpdateProvisionedContactPointRejectsUnlock(t *testing.T) {
 				_, _ = w.Write([]byte(`{"message":"Resource with provenance status 'api' cannot be changed to 'none'"}`))
 			}))
 			defer server.Close()
-			client, err := NewClient(config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}})
+			client, err := alert.NewClient(config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}})
 			require.NoError(t, err)
-			point, err := client.UpdateContactPoint(context.Background(), "cp", ContactPoint{Name: "test", Provenance: "api"}, tt.allowUIUpdates...)
+			point, err := client.UpdateContactPoint(context.Background(), "cp", alert.ContactPoint{Name: "test", Provenance: "api"}, tt.allowUIUpdates...)
 			require.Error(t, err)
+			assert.ErrorContains(t, err, "cannot be changed to 'none'")
 			assert.Nil(t, point)
 			assert.Equal(t, 1, requests)
 		})
