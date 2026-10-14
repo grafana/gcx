@@ -465,16 +465,16 @@ on PATH and `mise run` invokes them with the correct versions.
 | `mise run build` | Compile to `bin/gcx` with version injection |
 | `mise run tests` | Run all unit tests |
 | `mise run lint` | golangci-lint with project config |
-| `mise run docs` | Generate reference docs + build mkdocs site |
-| `mise run reference-drift` | Fail if generated docs are stale |
+| `mise run docs` | Build Grafana website documentation with Docker |
+| `mise run docs:refresh` | Generate CLI and configuration references from the latest stable release |
 | `mise run test-env-up` | Start Grafana 12 + MySQL 9 via docker-compose |
 
 ### CI/CD
 
-Three GitHub Actions workflows:
-- **ci.yaml**: PR/push gate -- lint, tests, doc drift check (parallel jobs)
+Relevant GitHub Actions workflows:
+- **ci.yaml**: PR/push gate -- lint, tests, Grafana documentation build (parallel jobs)
 - **release.yaml**: Tag-triggered -- goreleaser cross-platform builds + GitHub Release
-- **publish-docs.yaml**: Manual GitHub Pages deployment
+- **deploy-pr-preview.yml**: Grafana website preview for same-repository docs PRs
 
 ### Code Generation
 
@@ -529,8 +529,11 @@ and checked for drift in CI.
    concurrency edge cases are undertested.
 
 3. **Resource versioning in updates.** `pusher.go` copies `resourceVersion` from
-   the existing object before Update, but there is no conflict detection or retry
-   logic. Concurrent updates to the same resource could produce unexpected results.
+   the existing object before Update. The dynamic-client mutation wrapper retries
+   Kubernetes Conflict responses only for TimeInterval/TemplateGroup, inside the
+   dry-run guard; other kinds return the original conflict immediately. It does not refresh a stale resource version, so concurrent updates to
+   the same object can still exhaust retries and report the final conflict.
+   Provider adapters retain their own concurrency behavior.
 
 ### Medium Priority
 
@@ -863,7 +866,6 @@ Watcher configuration uses the existing typed resource pipeline for get/pull, wh
 | `internal/linter/bundle/` | Embedded Rego bundle with built-in linting rules |
 | `internal/linter/builtins/` | Built-in rule validators (PromQL, LogQL) |
 | `cmd/gcx/linter/command.go` | `dev lint` subgroup (run, new, rules, test subcommands; formerly top-level `linter`) |
-| `scripts/linter-rules-reference/` | Code generator for linter rule reference documentation |
 
 ### Dev Command
 

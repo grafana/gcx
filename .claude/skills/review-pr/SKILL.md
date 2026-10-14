@@ -68,9 +68,9 @@ Do that even when the argument for them is strong.
 ## Do not report
 
 - Anything CI already enforces: `mise run lint`, the test suite,
-  `reference-drift`, `validate-skills`, and the conformance suites in
+  the `Documentation` build, `validate-skills`, and the conformance suites in
   `cmd/gcx/root/`.
-- Generated files under `docs/reference/cli/`, and anything in `vendor/`.
+- The generated release snapshot `docs/sources/cli-reference.md`, and anything in `vendor/`.
 - Missing test coverage in files the diff did not touch.
 
 ## Report shape

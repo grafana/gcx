@@ -10,7 +10,7 @@ The refactor would retain Grafana 12+ support through graceful degradation: use 
 
 ## Motivation
 
-Dedicated notification commands currently use provisioning APIs, while generic resource commands use native API discovery. The notification API group is [excluded from discovery](../../internal/resources/discovery/registry.go). Meanwhile, [`notification-policies export`](../../internal/providers/alert/notification_policies_commands.go) addresses only the default tree, even when named trees exist. These separate paths make coverage and behavior difficult to keep consistent.
+Dedicated notification commands currently use provisioning APIs, while generic resource commands use native API discovery. The notification API group now [exposes reviewed native kinds](../../internal/resources/discovery/registry.go): routing trees, time intervals, and template groups; receivers and inhibition rules remain hidden. Meanwhile, [`notification-policies export`](../../internal/providers/alert/notification_policies_commands.go) addresses only the default tree, even when named trees exist. These separate paths make coverage and behavior difficult to keep consistent.
 
 ## Scope
 
@@ -159,6 +159,70 @@ Suitable REST-only resources would use the [existing provider framework](../refe
 ### API coverage and rollout
 
 We propose starting with the shared binding and routing trees, then migrating other notification resources and rule definitions in reviewable slices. Notifications would prefer `notifications.alerting.grafana.app/v1beta1` where its contracts are supported; native rule definitions would use `rules.alerting.grafana.app/v0alpha1` where supported. Older native versions would require their own contract checks. A Grafana × GCX capability matrix would distinguish native, equivalent legacy, and unavailable operations, including domain feature gates. Supporting Grafana 12+ does not imply feature parity with newer builds.
+
+### Notification resource version matrix
+
+The following exact public release tags were checked for `timeintervals` (`TimeInterval`) and `templategroups` (`TemplateGroup`). These are source registration and schema observations, not live CRUD results. Edition, alerting configuration, feature flags, and permissions still affect runtime availability. Patch releases and cross-version writes have not been exercised by this check.
+
+| Grafana tag | Versions registered for both kinds | Template group identity/schema | Evidence |
+|-------------|-----------------------------------|--------------------------------|----------|
+| 12.0.0 | `v0alpha1` only | `spec.title` / `spec.content`; encoded title | [Storage registration](https://github.com/grafana/grafana/blob/v12.0.0/pkg/registry/apis/alerting/notifications/register.go#L91-L106), [schema](https://github.com/grafana/grafana/blob/v12.0.0/apps/alerting/notifications/pkg/apis/resource/templategroup/v0alpha1/templategroup_spec_gen.go#L5-L8) |
+| 12.1.0 | `v0alpha1` only | Title/content; encoded title | [Manifest](https://github.com/grafana/grafana/blob/v12.1.0/apps/alerting/notifications/pkg/apis/alerting_manifest.go#L46-L72) |
+| 12.2.0 | `v0alpha1` only | Title/content; encoded title | [Manifest](https://github.com/grafana/grafana/blob/v12.2.0/apps/alerting/notifications/pkg/apis/alerting_manifest.go#L17-L65) |
+| 12.3.0 | `v0alpha1` only, preferred | Title/content; encoded title | [Manifest](https://github.com/grafana/grafana/blob/v12.3.0/apps/alerting/notifications/pkg/apis/alertingnotifications_manifest.go#L37-L76) |
+| 12.4.0 | `v0alpha1` only, preferred | Adds `spec.kind: grafana\|mimir`; encoded `kind\|title` | [Manifest](https://github.com/grafana/grafana/blob/v12.4.0/apps/alerting/notifications/pkg/apis/alertingnotifications_manifest.go#L164-L178), [schema](https://github.com/grafana/grafana/blob/v12.4.0/apps/alerting/notifications/pkg/apis/alertingnotifications/v0alpha1/templategroup_spec_gen.go#L5-L25) |
+| 13.2.0 | `v0alpha1` and preferred `v1beta1` | Kind/title/content; same schema in both versions | [Manifest and preferred version](https://github.com/grafana/grafana/blob/v13.2.0/apps/alerting/notifications/pkg/apis/alertingnotifications_manifest.go#L36-L70), [shared storage](https://github.com/grafana/grafana/blob/v13.2.0/pkg/registry/apps/alerting/notifications/register.go#L172-L202) |
+
+Time intervals use `spec.name` and `spec.time_intervals` throughout the sampled releases, with `metadata.name` derived from the title using unpadded URL-safe base64. Native create rejects a nonempty name, so a portable push must retain the logical identity for matching and clear the name before create. [Time interval schema](https://github.com/grafana/grafana/blob/v12.4.0/apps/alerting/notifications/pkg/apis/alertingnotifications/v0alpha1/timeinterval_spec_gen.go#L5-L37), [create validation](https://github.com/grafana/grafana/blob/v12.4.0/pkg/registry/apps/alerting/notifications/timeinterval/legacy_storage.go#L106-L121).
+
+Template groups change identity encoding **within `v0alpha1`**: 12.0–12.3 encode the title; 12.4 and the checked 13.2 source encode `kind + "|" + title`. API version alone therefore does not identify the encoding. Historical missing kind represents a Grafana-managed group for client matching; the newer schema declares `grafana` as the default, but omitted-kind writes still require runtime verification. [Earlier identity](https://github.com/grafana/grafana/blob/v12.0.0/pkg/services/ngalert/provisioning/templates.go#L249-L256), [kind-qualified identity](https://github.com/grafana/grafana/blob/v12.4.0/pkg/services/ngalert/provisioning/templates.go#L382-L384).
+
+The 12.4 source lists imported Mimir groups alongside Grafana groups when import support is enabled, permits equal titles across the two kinds, and treats imported groups as read-only. Dedicated title lookup must account for that ambiguity. Native rename returns a new encoded identity for both resources; the #1509 design must make repeated-push and reference behavior explicit rather than assuming identity is immutable on the server. [Group enumeration](https://github.com/grafana/grafana/blob/v12.4.0/pkg/services/ngalert/provisioning/templates.go#L53-L90), [import mutation restriction](https://github.com/grafana/grafana/blob/v12.4.0/pkg/services/ngalert/provisioning/templates.go#L143-L161), [time interval rename](https://github.com/grafana/grafana/blob/v12.4.0/pkg/services/ngalert/provisioning/mute_timings.go#L199-L272), [template group rename](https://github.com/grafana/grafana/blob/v12.4.0/pkg/services/ngalert/provisioning/templates.go#L204-L265).
+
+### Implemented time-interval and template-group slice
+
+The #1509 implementation adds native `time-intervals` and `template-groups`
+CRUD through the shared native binding and exposes both kinds to generic
+resources. Dedicated commands resolve exact titles over all pages; template
+get/delete accept `--kind` for equal-title ambiguity. JSON/YAML reads preserve
+native objects. Provisioning export remains raw YAML/JSON/HCL through `mute-timings export`;
+there is no template-group export and the older commands remain available.
+
+Dedicated update explicitly selects the current title, uses the caller's fetched
+resource version, and permits a desired title rename without changing template
+kind. The receipt reports old/new titles and the server's returned API name;
+files remain unchanged. Push matches the desired logical identity instead,
+using metadata.name only as a hint. It clears source server fields for create,
+uses destination name/version for update, and never infers rename or prune.
+Read-only native objects remain visible/readable. The shared policy covers
+`mimir` kind and `system`, `converted_prometheus`, or `file` provenance: dedicated
+mutations reject them, generic pull retains them unless `--skip-read-only` is set, push/delete skip them, and generic edit refuses
+them before opening the editor. A writable local identity matching a read-only
+destination fails before update. Unknown server template kinds remain readable
+while local manifests stay strict. Default preview for both kinds is
+skipped/unverified without mutation. Provisioning export covers Grafana-managed
+intervals only; imported intervals visible in native reads are excluded.
+
+Runtime verification on a local Grafana 13.2.1 fixture and a throwaway modern
+13.x target exercised CRUD, explicit `v0alpha1` reads, preferred `v1beta1`,
+rename/conflicts, stdin round trips, generic-read agreement, provisioning export,
+preview nonmutation, repeat pushes, and cross-context transfer with destination
+versions. Omitted `spec.kind` writes defaulted to `grafana` on both targets.
+This does not establish runtime coverage for 12.x patches or historical encoding;
+those identity transitions have recording-transport regression coverage.
+Live imported-group creation was unavailable; equal-title and read-only behavior
+has recording-server coverage. The original runtime pass observed partial success
+from Conflict responses during concurrent alerting writes; serial transfer with
+`--max-concurrent 1` passed, and all task-owned live objects were removed. Review
+fixes add bounded Kubernetes Conflict retry for TimeInterval/TemplateGroup on the dynamic client inside
+the dry-run guard, preserving existing concurrency and adapter behavior.
+Contention and read-only policy changes have regression tests. A subsequent
+throwaway-target pass verified default-concurrency create, repeat update, and
+delete for seven mixed native objects and twenty intervals, plus read-only
+skips, edit refusal, and failure-source attribution. Read-only inventory checks
+verified that pull excludes imported and built-in objects while reads retain
+them. All task-owned objects were removed. Imported-destination writes, file
+provenance, and Grafana 12.x runtime remain unit/recording-test coverage.
 
 ## Rationale and tradeoffs
 

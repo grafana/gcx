@@ -17,6 +17,7 @@ import (
 	internalconfig "github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
+	"github.com/grafana/gcx/internal/testutils"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -378,6 +379,97 @@ func TestContextFlag_PropagatesAtAllPositions(t *testing.T) {
 				"expected --context to propagate to leaf command's context.Context")
 		})
 	}
+}
+
+// TestContextEnvVar_PropagatesLikeContextFlag covers GCX_CONTEXT, the
+// environment equivalent of --context: root's PersistentPreRun threads it
+// into the Go context when the flag is unset, and the flag wins when both
+// are given.
+func TestContextEnvVar_PropagatesLikeContextFlag(t *testing.T) {
+	tests := []struct {
+		name     string
+		env      string
+		args     []string
+		captured string
+	}{
+		{
+			name:     "env selects the context",
+			env:      "from-env",
+			args:     []string{"agento11y", "rules", "list"},
+			captured: "from-env",
+		},
+		{
+			name:     "flag takes precedence over env",
+			env:      "from-env",
+			args:     []string{"agento11y", "rules", "list", "--context", "from-flag"},
+			captured: "from-flag",
+		},
+		{
+			name:     "unset env leaves no selection",
+			env:      "",
+			args:     []string{"agento11y", "rules", "list"},
+			captured: "",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(internalconfig.ContextEnvVar, tc.env)
+
+			var captured string
+			rootCmd := buildContextFlagFixture(t, &captured)
+			rootCmd.SetArgs(tc.args)
+			require.NoError(t, rootCmd.Execute())
+			assert.Equal(t, tc.captured, captured)
+		})
+	}
+}
+
+// TestContextEnvVar_UnknownContextFailsWithContextNotFound verified that
+// GCX_CONTEXT naming an unknown context must fail with
+// the same "invalid context" error as using --context to choose the name of context.
+func TestContextEnvVar_UnknownContextFailsWithContextNotFound(t *testing.T) {
+	testutils.SandboxConfigEnv(t)
+	configFile := testutils.CreateTempFile(t, `version: 1
+stacks:
+  prod:
+    grafana:
+      server: https://prod.example.grafana.net
+      token: prod-token
+      org-id: 1
+contexts:
+  prod:
+    stack: prod
+current-context: prod
+`)
+	t.Setenv("GCX_CONFIG", configFile)
+	t.Setenv(internalconfig.ContextEnvVar, "dummy")
+
+	loader := &providers.ConfigLoader{}
+	listCmd := &cobra.Command{
+		Use:   "list",
+		Short: "dashboards list",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			_, err := loader.LoadGrafanaConfig(cmd.Context())
+			return err
+		},
+	}
+	dashboardsCmd := &cobra.Command{Use: "dashboards", Short: "dashboards group"}
+	dashboardsCmd.AddCommand(listCmd)
+
+	rootCmd := root.NewCommandForTest("v0.0.0-test", []providers.Provider{
+		&mockProvider{name: "dashboards", commands: []*cobra.Command{dashboardsCmd}},
+	})
+	rootCmd.SilenceErrors = true
+	rootCmd.SilenceUsage = true
+	rootCmd.SetOut(&bytes.Buffer{})
+	rootCmd.SetErr(&bytes.Buffer{})
+	rootCmd.SetArgs([]string{"dashboards", "list"})
+
+	err := rootCmd.Execute()
+	require.ErrorIs(t, err, internalconfig.ErrContextNotFound)
+	require.ErrorContains(t, err, `invalid context "dummy"`)
+	require.NotContains(t, err.Error(), "no stack with grafana config")
 }
 
 // TestContextFlag_ProviderDoesNotBindContextFlag verifies that when a provider

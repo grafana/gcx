@@ -45,7 +45,7 @@ var ignoredResourceGroups = []string{
 //
 //nolint:gochecknoglobals
 var partiallyExposedGroups = map[string][]string{
-	"notifications.alerting.grafana.app": {"routingtrees"},
+	"notifications.alerting.grafana.app": {"routingtrees", "timeintervals", "templategroups"},
 }
 
 // Client is a client that can be used to discover resources.

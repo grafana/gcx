@@ -108,6 +108,9 @@ type PullRequest struct {
 	// Whether to include resources managed by other tools.
 	ExcludeManaged bool
 
+	// Whether read-only native objects should be excluded from artifact operations.
+	ExcludeReadOnly bool
+
 	// Whether the operation should stop upon encountering an error.
 	StopOnError bool
 
@@ -182,6 +185,12 @@ func (p *Puller) Pull(ctx context.Context, req PullRequest) (*OperationSummary, 
 
 			// TODO: this should be replaced by a more generic mechanism,
 			// e.g. label & annotation filters.
+			if req.ExcludeReadOnly && resources.IsReadOnlyNative(&res.Object) {
+				summary.RecordSkipped("read-only")
+				logger.Info("Skipping read-only resource", "kind", res.Kind(), "name", res.Name())
+				continue
+			}
+
 			if !res.IsManaged() && req.ExcludeManaged {
 				continue
 			}
@@ -237,12 +246,12 @@ func (p *Puller) pullFilter(ctx context.Context, req PullRequest, filt resources
 			switch {
 			case req.Filters.IsEmpty() && errors.Is(err, adapter.ErrUnavailable):
 				logger.Debug("Skipping unavailable resource type", logs.Err(err), slog.String("cmd", filt.String()))
-				summary.RecordSkipped()
+				summary.RecordSkipped("unavailable")
 			case isUnsupportedResourceType(err):
 				// 404/405 = sub-resource that can't be listed; skip silently
 				// regardless of StopOnError — these are never actionable.
 				logger.Debug("Skipping unsupported resource type", logs.Err(err), slog.String("cmd", filt.String()))
-				summary.RecordSkipped()
+				summary.RecordSkipped("not listable")
 			case req.StopOnError:
 				return nil, err
 			default:
@@ -271,7 +280,7 @@ func (p *Puller) pullFilter(ctx context.Context, req PullRequest, filt resources
 				// 404/405 = sub-resource that can't be listed; skip silently
 				// regardless of StopOnError — these are never actionable.
 				logger.Debug("Skipping unsupported resource type", logs.Err(err), slog.String("cmd", filt.String()))
-				summary.RecordSkipped()
+				summary.RecordSkipped("not listable")
 			case req.StopOnError:
 				return nil, err
 			default:
@@ -312,7 +321,7 @@ func recordPartialRead(ctx context.Context, summary *OperationSummary, partial a
 		logging.FromContext(ctx).Warn("Could not pull resource", logs.Err(failure.Err))
 	}
 	for range partial.SkippedReads() {
-		summary.RecordSkipped()
+		summary.RecordSkipped("not readable")
 	}
 	if stopOnError && len(failures) > 0 {
 		return partial

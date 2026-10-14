@@ -14,6 +14,7 @@ type FetchRequest struct {
 	Config             config.NamespacedRESTConfig
 	StopOnError        bool
 	ExcludeManaged     bool
+	ExcludeReadOnly    bool
 	ExpectSingleTarget bool
 	Processors         []remote.Processor
 	// Limit caps the number of items per resource type. Zero means no limit.
@@ -77,12 +78,13 @@ func fetchResources(ctx context.Context, opts FetchRequest, args []string, valid
 	}
 
 	req := remote.PullRequest{
-		Filters:        filters,
-		Resources:      &res.Resources,
-		Processors:     opts.Processors,
-		ExcludeManaged: opts.ExcludeManaged,
-		StopOnError:    opts.StopOnError || sels.IsSingleTarget(),
-		Limit:          opts.Limit,
+		Filters:         filters,
+		Resources:       &res.Resources,
+		Processors:      opts.Processors,
+		ExcludeManaged:  opts.ExcludeManaged,
+		ExcludeReadOnly: opts.ExcludeReadOnly,
+		StopOnError:     opts.StopOnError || sels.IsSingleTarget(),
+		Limit:           opts.Limit,
 	}
 
 	summary, err := pull.Pull(ctx, req)

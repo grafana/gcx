@@ -345,6 +345,8 @@ gcx dashboards search "node exporter"           # full-text search by title/tag/
 gcx resources get folders                       # list all folders
 gcx resources get dashboards.dashboard.grafana.app/my-dash  # get by resource.group/name
 gcx alert rules list                            # list alert rules
+gcx alert time-intervals list                   # native notification time intervals
+gcx alert template-groups list                  # native notification template groups
 
 # Grafana Cloud products
 gcx synthetic-monitoring checks list            # list synthetic monitoring checks
@@ -355,6 +357,18 @@ gcx k6 load-tests list                          # list k6 load tests
 gcx logs query '{app="nginx"} |= "error"' --since 1h
 gcx traces query '{.cluster="dev-us-central-0"}' --since 1h
 ```
+
+Unnamed native time interval and template group manifests can share a push
+directory: distinct titles remain separate, and template kind is part of the
+identity. To delete these resources, use the dedicated `alert time-intervals delete`
+or `alert template-groups delete` commands, or pass pulled files with real API
+names to `resources delete -p`; unnamed files are rejected before any request for
+that file. Pull includes read-only native intervals and template groups by default for
+backup, audit, and diffing; `--skip-read-only` excludes them with a reason in the
+summary. Push and delete always skip them. Read commands still show them;
+`resources edit` refuses them before opening an editor. Provisioning export remains under
+`gcx alert mute-timings export` and covers Grafana-managed intervals only. See [server-derived resource names](docs/architecture/resource-model.md#server-derived-native-names)
+for portable push behavior.
 
 For an empty dashboard or missing application telemetry, follow
 [Diagnose missing telemetry with gcx](docs/guides/diagnose-missing-telemetry.md).
@@ -558,9 +572,9 @@ gcx resources delete dashboards/my-dashboard
 ### Mobile Frontend Observability apps
 
 Mobile Frontend Observability app manifests set `spec.appType: mobile` and a mobile
-`spec.runtime`. See [`gcx frontend apps create`](docs/reference/cli/gcx_frontend_apps_create.md)
+`spec.runtime`. See [`gcx frontend apps create`](docs/sources/cli-reference.md#gcx-frontend-apps-create-gcx-frontend-apps-create)
 for the runtimes and an example manifest, and
-[`gcx frontend apps update`](docs/reference/cli/gcx_frontend_apps_update.md) for what an update keeps.
+[`gcx frontend apps update`](docs/sources/cli-reference.md#gcx-frontend-apps-update-gcx-frontend-apps-update) for what an update keeps.
 
 ## Alerting & Datasource Queries
 
@@ -694,7 +708,7 @@ jobs:
 | [Managing Resources](docs/guides/manage-resources.md) | Get, push, pull, delete, edit, validate |
 | [Dashboards as Code](docs/guides/dashboards-as-code.md) | Dashboard-as-code workflow with live dev server |
 | [Linting Resources](docs/guides/lint-resources.md) | Lint dashboards and alert rules with Rego policies |
-| [CLI Reference](docs/reference/cli/) | Full command reference (auto-generated) |
+| [CLI Reference](docs/sources/cli-reference.md) | Full command reference (auto-generated) |
 | [Engineering RFCs](docs/rfcs/README.md) | Proposals, technical designs, and review workflows |
 
 ## Usage statistics

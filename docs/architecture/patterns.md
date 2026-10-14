@@ -826,9 +826,21 @@ list, err := access.Client.List(ctx, access.Descriptor, metav1.ListOptions{})
 - `internal/providers/native/native.go`: `Bind`, `Binding.Load`, `Fixed`, `Func`, `WithRegistry`, `ParseAPIVersion`
 - `internal/providers/native/manifest.go`: `ReadManifest`
 - `internal/providers/alert/routing_trees_commands.go`: first adopter
+- `internal/providers/alert/time_intervals_commands.go` and `template_groups_commands.go`: exact title lookup, caller-version updates, and server-derived creates
 - Constitution: "Native resources go through the shared native binding". Dashboards still hand-rolls access until its migration lands.
 
 ---
+
+### Server-derived identity policy
+
+Native command creates and generic push share the pure policy in
+`internal/resources/native_identity.go`. Write callers validate logical identity and read-only status;
+create preparation only copies and strips server fields. The policy neither registers
+adapters nor synthesizes opaque API names. Push reuses the natural-key cache
+when a name hint is absent or mismatched and rejects ambiguous native matches.
+Dedicated update uses an explicit current-title subject, while push matches the
+desired identity. See [resource model](resource-model.md#server-derived-native-names)
+and [push flow](data-flows.md#2-push-pipeline).
 
 ## Contradiction Resolutions
 
@@ -885,13 +897,10 @@ TLS handling. The K8s dynamic client path chains
 `NewNamespacedRESTConfig`. The OpenAPI health client manages its own transport
 but consumes the same effective auth method and selected TLS view.
 
-### 5. CI Drift Check Coverage
+### 5. Released CLI Reference
 
-**Observed in:** Project Structure domain notes that the CI `docs` job only
-checks `cli-reference-drift`, not all three reference generators. `mise.toml`
-has `reference-drift` targeting all four.
-
-**Resolution:** `mise.toml` has all four drift check tasks
-(`reference-drift:cli`, `reference-drift:env-var`, `reference-drift:config`,
-`reference-drift:linter-rules`) plus a combined `reference-drift` task. CI now
-invokes `mise run reference-drift` which runs all four.
+The CLI reference is a release snapshot, while `main` may contain
+unreleased commands. CI therefore tests the generator and builds the committed
+Grafana website pages without asserting reference equality against `main`.
+`mise run tag` refreshes the reference from the release checkout with the upcoming
+version and includes it in the changelog PR.

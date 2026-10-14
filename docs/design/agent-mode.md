@@ -136,3 +136,9 @@ EOF, in-band `gcx.error` document on failure with agreeing exit code,
 explicit `-o` overrides honored, stdin closed.
 
 See [environment-variables.md § Agent Mode Variables](environment-variables.md#agent-mode-variables) for the full variable reference.
+
+### 6.5 Mutation Result Family
+
+See [output.md § 12](output.md#12-mutation-command-output) for the shared
+mutation result family, optional failure source paths, skip-reason counts,
+and JSON examples. Agent-mode JSON uses the same result types and fields.

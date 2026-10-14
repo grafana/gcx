@@ -27,9 +27,14 @@ Automated via `mise run tag`. Requires `claude` CLI and [`svu`](https://github.c
 mise run tag -- patch   # or minor, major
 ```
 
-This generates a changelog entry (via Claude), updates `CHANGELOG.md` and `.release-notes.md`, commits on a `release/vX.Y.Z` branch, and pushes the branch. Then:
+This generates a changelog entry (via Claude), updates `CHANGELOG.md` and `.release-notes.md`,
+and runs `mise run docs:refresh -- vX.Y.Z` to generate the CLI and configuration
+references from the current checkout with the upcoming version. It commits these
+changes together on a `release/vX.Y.Z` branch and pushes the branch. Then:
 
-1. Open a PR and merge it (the script prints the exact command)
+1. Open a PR (the script prints the exact command). Review the changelog and the
+   generated changes to `docs/sources/cli-reference.md` and
+   `docs/sources/configuration.md`, run the repository's required checks, and merge it.
 2. After merge, tag the commit on main and push the tag:
    ```bash
    git checkout main && git pull
@@ -38,6 +43,11 @@ This generates a changelog entry (via Claude), updates `CHANGELOG.md` and `.rele
    ```
 
 The tag push triggers the GoReleaser workflow.
+
+If release code changes during review, rerun `mise run docs:refresh -- vX.Y.Z`
+with the upcoming version and commit the updated references to the same PR.
+Without a version argument, `mise run docs:refresh` uses the latest published
+stable release; use that only for standalone documentation updates.
 
 ## Contribution handoff
 
