@@ -2,6 +2,7 @@ package native
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -66,5 +67,16 @@ func decodeManifest(r io.Reader) (*unstructured.Unstructured, error) {
 		return nil, errors.New("manifest is empty")
 	}
 
-	return &unstructured.Unstructured{Object: raw}, nil
+	// The YAML codec may produce uint64 values, which Kubernetes deep-copy
+	// cannot handle. Decode through the same JSON path as JSON manifests to
+	// preserve integers using the unstructured wire representation.
+	data, err = json.Marshal(raw)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode YAML manifest: %w", err)
+	}
+	obj := &unstructured.Unstructured{}
+	if err := obj.UnmarshalJSON(data); err != nil {
+		return nil, fmt.Errorf("failed to parse YAML manifest: %w", err)
+	}
+	return obj, nil
 }

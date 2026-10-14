@@ -202,7 +202,11 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 			ctx = internalconfig.ContextWithWarningWriter(ctx, cmd.ErrOrStderr())
 
 			// Thread --context into Go context so provider config loaders
-			// can discover it via config.ContextNameFromCtx().
+			// can discover it via config.ContextNameFromCtx(). GCX_CONTEXT is
+			// the flag's environment equivalent and applies when it is unset.
+			if contextName == "" {
+				contextName = os.Getenv(internalconfig.ContextEnvVar)
+			}
 			if contextName != "" {
 				ctx = internalconfig.ContextWithName(ctx, contextName)
 			}

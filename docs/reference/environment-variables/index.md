@@ -31,6 +31,10 @@ Unknown names are ignored and are never sent in usage telemetry.
 AutoApprove automatically enables the --force flag on delete operations,
 enabling non-interactive operation in CI/CD pipelines.
 
+## `GCX_CONTEXT`
+
+Context selects the named config context for this invocation.
+
 ## `GCX_KEYCHAIN`
 
 Keychain overrides trusted credentials.keychain configuration. "off" is

@@ -92,7 +92,14 @@ type ResourceRef string
 // Format: "group/version/kind/namespace-name"
 ```
 
-`Ref()` (line 89) generates a unique stable key used as the map key in `Resources`.
+`Ref()` generates the map key used in `Resources`. Named resources keep the
+existing API-address key. Unnamed TimeInterval and TemplateGroup resources use a
+separately tagged GVK/namespace/logical-identity key, including template kind;
+equivalent identities deduplicate while different titles and kinds remain
+separate. Invalid unnamed native inputs use a source-path key when available, so reading
+the same file twice deduplicates while distinct malformed files remain separate.
+Source-less inputs use a per-resource in-memory key to retain each failure;
+non-opted-in resources retain their existing keys.
 
 ### The Resources Collection
 
@@ -281,7 +288,7 @@ iam.grafana.app                 — identity/access management
 version) but hides every resource not on the group's allowlist:
 
 ```
-notifications.alerting.grafana.app — only routingtrees
+notifications.alerting.grafana.app — routingtrees, timeintervals, templategroups
 ```
 
 Additionally, `FilterDiscoveryResults()` excludes:
@@ -537,6 +544,46 @@ Given that reality, using `k8s.io/client-go` and `k8s.io/apimachinery` directly 
 3. **Dry-run semantics** — the K8s `dryRun: All` option maps directly to Grafana's API
 4. **Unstructured representation** — `map[string]any` accommodates any resource shape without pre-generated Go types for each Grafana resource kind
 5. **Familiar UX** — the kubectl-style CLI patterns (`resources get dashboards/foo`, context switching) are immediately recognizable to Grafana users who work with Kubernetes
+
+---
+
+## Server-derived native names
+
+`internal/resources/native_identity.go` opts TimeInterval and TemplateGroup into
+logical identity matching independently of API version. Time intervals match
+`spec.name`; template groups match kind and `spec.title`, with absent historical
+kind treated as `grafana` for matching only. Local manifests validate known kinds
+strictly. Unknown template kinds returned by the server remain readable: tables
+show their raw kind and an unknown read-only status, and logical matching ignores
+items whose identity cannot be parsed. A known-kind title filter excludes them;
+unfiltered title lookup keeps them as candidates.
+
+The shared `IsReadOnlyNative` rule applies to both kinds: `spec.kind: mimir` or
+`grafana.com/provenance` equal to `system`, `converted_prometheus`, or `file`.
+Absent provenance and `api` remain writable. Generic pull includes read-only objects by default; `--skip-read-only` excludes
+them and counts the read-only reason. Push and delete always skip them, while
+reads still return them. Generic
+edit rejects them before opening an editor, and dedicated mutations reject them
+before a write. Unknown kinds alone are not assumed to be read-only.
+
+During push, a supplied API name is a lookup hint. A GET result is used only when
+its logical identity agrees with the manifest; otherwise the cached destination
+list is matched, rejecting ambiguity. Updates use the destination name and current
+resource version. A writable local identity that matches a read-only destination
+fails before update, preserving the destination and explaining how to manage its
+source or choose another local identity. Creates remove server identity and
+concurrency metadata on a deep copy while preserving spec, annotations, labels, and destination namespace.
+GCX computes no encoded names, because template encoding changed within
+`v0alpha1`. Ordinary kinds retain their caller-selected names.
+
+Dedicated `update <current-title>` explicitly selects the existing object and
+may rename it using the caller's fetched resource version. Generic push ensures
+the manifest's desired identity exists and leaves any old identity untouched.
+Neither path rewrites local files. Generic delete requires the actual
+`metadata.name`: an unnamed writable manifest fails before any request for that
+file, with a hint to use the dedicated title-based delete command or a pulled
+manifest. Read-only files are skipped first. Both kinds remain outside the
+server-dry-run allowlist; previews report skipped/unverified and send no mutation by default.
 
 ---
 

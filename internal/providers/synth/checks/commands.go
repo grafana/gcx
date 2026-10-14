@@ -200,7 +200,7 @@ func (o *getOpts) setup(flags *pflag.FlagSet) {
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 
-	flags.BoolVar(&o.ShowStatus, "show-status", false, "Query and display the check's current execution status from Prometheus")
+	flags.BoolVar(&o.ShowStatus, "show-status", false, "Query and display the check's current execution status (reachability) from the Synthetic Monitoring datasource")
 	flags.BoolVar(&o.DecodeScript, "decode-script", false, "Decode a scripted/browser check's base64 script to plaintext (yaml/json output only, for editing and 'checks update')")
 }
 

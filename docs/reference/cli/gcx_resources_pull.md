@@ -73,6 +73,7 @@ gcx resources pull [RESOURCE_SELECTOR]... [flags]
                             abort  — stop on the first error and exit non-zero (default "fail")
   -o, --output string     Output format. One of: json, yaml (default "json")
   -p, --path string       Path on disk in which the resources will be written (default "./resources")
+      --skip-read-only    Skip read-only native alerting resources; include them by default for backup, audit, and diffing
 ```
 
 ### Options inherited from parent commands

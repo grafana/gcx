@@ -63,7 +63,7 @@ func NewDefaultPusher(ctx context.Context, cfg config.NamespacedRESTConfig, guar
 		return nil, err
 	}
 
-	guarded := newGuardedDynamicClient(dynamicClient, guard)
+	guarded := newGuardedRetryDynamicClient(dynamicClient, guard)
 
 	registry, err := discovery.NewDefaultRegistry(ctx, cfg)
 	if err != nil {
@@ -249,6 +249,12 @@ func (p *Pusher) pushSingleResource(
 		}
 	}
 
+	if resources.IsReadOnlyNative(&res.Object) {
+		summary.RecordSkipped("read-only")
+		logger.Info(resources.ReadOnlyNativeError(&res.Object).Error())
+		return nil
+	}
+
 	if !res.IsManaged() && !request.IncludeManaged {
 		logger.Info(fmt.Sprintf("Skipping resource managed by %s", res.GetManagerKind()))
 		return nil
@@ -270,7 +276,7 @@ func (p *Pusher) pushSingleResource(
 		// Record it as skipped (not a failure) and keep going, like the puller does for
 		// unlistable types.
 		if errors.Is(err, errDryRunUnverified) {
-			summary.RecordSkipped()
+			summary.RecordSkipped("not server-verified")
 			logger.Info("Dry-run: change not verified (server-side dry-run unsupported); no changes sent")
 			return nil
 		}
@@ -282,7 +288,7 @@ func (p *Pusher) pushSingleResource(
 		}
 
 		if !request.NoPushFailureLog {
-			logger.Warn("Failed to push resource", logs.Err(err))
+			logger.Warn("Failed to push resource", "source", res.SourcePath(), logs.Err(err))
 		}
 		return nil
 	}
@@ -300,6 +306,18 @@ func (p *Pusher) upsertResource(
 		dryRunOpts = []string{"All"}
 	}
 
+	sourceObj := src.ToUnstructured()
+	obj := *sourceObj.DeepCopy()
+	nativePolicy := resources.HasServerDerivedName(desc.GroupVersionKind())
+	var desiredIdentity string
+	if nativePolicy {
+		var identityErr error
+		desiredIdentity, _, identityErr = resources.NativeIdentity(&obj)
+		if identityErr != nil {
+			return identityErr
+		}
+	}
+
 	// An unnamed manifest requests creation (or natural-key matching). Never
 	// issue GET with an empty ID: REST APIs may treat it as a collection read.
 	var existing *unstructured.Unstructured
@@ -307,10 +325,18 @@ func (p *Pusher) upsertResource(
 	if name != "" {
 		existing, err = p.client.Get(ctx, desc, name, metav1.GetOptions{})
 	}
+	if err == nil && nativePolicy {
+		existingIdentity, _, identityErr := resources.NativeIdentity(existing)
+		if identityErr != nil || existingIdentity != desiredIdentity {
+			err = apierrors.NewNotFound(desc.GroupVersionResource().GroupResource(), name)
+		}
+	}
 	if err == nil {
-		obj := src.ToUnstructured()
-
-		// Copy the resourceVersion from the existing resource so the API accepts the update.
+		if nativePolicy && resources.IsReadOnlyNative(existing) {
+			return fmt.Errorf("cannot update the destination resource: %w; choose a different title for the local resource", resources.ReadOnlyNativeError(existing))
+		}
+		// Use the destination address and version on updates.
+		obj.SetName(existing.GetName())
 		obj.SetResourceVersion(existing.GetResourceVersion())
 		preserveManagerIdentity(&obj, existing)
 
@@ -330,16 +356,18 @@ func (p *Pusher) upsertResource(
 	}
 
 	// Resource does not exist — try natural key matching for cross-stack push.
-	obj := src.ToUnstructured()
-
 	// The metadata.name may be a server-generated ID from a different stack.
 	// Look for a resource with the same content identity.
-	matched, nkErr := findByNaturalKey(ctx, nkCache, desc, &obj)
+	matched, found, nkErr := findByNaturalKey(ctx, nkCache, desc, &obj, desiredIdentity)
 	if nkErr != nil {
 		return nkErr
 	}
-	if matched != nil {
-		obj.SetName(matched.GetName())
+	if found {
+		if nativePolicy && resources.IsReadOnlyNative(matched) {
+			return fmt.Errorf("cannot update the destination resource: %w; choose a different title for the local resource", resources.ReadOnlyNativeError(matched))
+		}
+		remoteName := matched.GetName()
+		obj.SetName(remoteName)
 		obj.SetResourceVersion(matched.GetResourceVersion())
 		preserveManagerIdentity(&obj, matched)
 		if _, err := p.client.Update(ctx, desc, &obj, metav1.UpdateOptions{
@@ -352,6 +380,9 @@ func (p *Pusher) upsertResource(
 	}
 
 	// No natural key match — create as new resource.
+	if nativePolicy {
+		obj = *resources.PrepareNativeCreate(&obj)
+	}
 	if _, err := p.client.Create(ctx, desc, &obj, metav1.CreateOptions{
 		DryRun: dryRunOpts,
 	}); err != nil {
@@ -389,3 +420,5 @@ func (p *Pusher) supportedDescriptors() map[schema.GroupVersionKind]resources.De
 
 	return supportedDescriptors
 }
+
+var errReadOnlyNative = errors.New("read-only native resource")

@@ -1,6 +1,7 @@
 package remote
 
 import (
+	"maps"
 	"sync"
 	"sync/atomic"
 
@@ -16,6 +17,7 @@ type OperationSummary struct {
 	truncated    atomic.Bool
 	mu           sync.Mutex
 	failures     []OperationFailure
+	skipReasons  map[string]int
 }
 
 // OperationFailure describes a single resource operation failure.
@@ -33,11 +35,22 @@ func (s *OperationSummary) RecordSuccess() {
 	s.successCount.Add(1)
 }
 
-// RecordSkipped records something the API could not do through no fault of the user: a
-// resource type it cannot list (puller), or a dry-run against a resource that ignores
-// server-side dryRun (pusher/deleter). Skips are not failures and do not affect the exit code.
-func (s *OperationSummary) RecordSkipped() {
+// RecordSkipped records a non-failure outcome and its human-readable reason.
+func (s *OperationSummary) RecordSkipped(reason string) {
 	s.skippedCount.Add(1)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.skipReasons == nil {
+		s.skipReasons = make(map[string]int)
+	}
+	s.skipReasons[reason]++
+}
+
+// SkippedReasons returns an independent snapshot of skip counts by reason.
+func (s *OperationSummary) SkippedReasons() map[string]int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return maps.Clone(s.skipReasons)
 }
 
 // RecordFailure records a failed operation. res may be nil when the failure is not

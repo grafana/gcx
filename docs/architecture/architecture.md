@@ -529,8 +529,11 @@ and checked for drift in CI.
    concurrency edge cases are undertested.
 
 3. **Resource versioning in updates.** `pusher.go` copies `resourceVersion` from
-   the existing object before Update, but there is no conflict detection or retry
-   logic. Concurrent updates to the same resource could produce unexpected results.
+   the existing object before Update. The dynamic-client mutation wrapper retries
+   Kubernetes Conflict responses only for TimeInterval/TemplateGroup, inside the
+   dry-run guard; other kinds return the original conflict immediately. It does not refresh a stale resource version, so concurrent updates to
+   the same object can still exhaust retries and report the final conflict.
+   Provider adapters retain their own concurrency behavior.
 
 ### Medium Priority
 

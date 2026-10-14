@@ -25,6 +25,7 @@ type pullOpts struct {
 	IO             cmdio.Options
 	OnError        OnErrorMode
 	IncludeManaged bool
+	SkipReadOnly   bool
 	Path           string
 
 	// flags is the bound flag set, kept so Validate can reject flags that
@@ -56,6 +57,7 @@ func (opts *pullOpts) setup(flags *pflag.FlagSet) {
 
 	bindOnErrorFlag(flags, &opts.OnError)
 	flags.StringVarP(&opts.Path, "path", "p", defaultResourcesPath, "Path on disk in which the resources will be written")
+	flags.BoolVar(&opts.SkipReadOnly, "skip-read-only", false, "Skip read-only native alerting resources; include them by default for backup, audit, and diffing")
 	flags.BoolVar(
 		&opts.IncludeManaged,
 		"include-managed",
@@ -177,7 +179,8 @@ func pullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			}
 
 			res, err := FetchResources(ctx, FetchRequest{
-				Config: cfg,
+				ExcludeReadOnly: opts.SkipReadOnly,
+				Config:          cfg,
 				// Strip server fields from the resources.
 				// This includes fields like `resourceVersion`, `uid`, etc.
 				Processors: []remote.Processor{
@@ -233,6 +236,7 @@ func pullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 
 			receipt := cmdio.NewArtifactReceipt("pulled", opts.IO.OutputFormat)
 			receipt.Dir = opts.Path
+			receipt.SkippedReasons = pullSummary.SkippedReasons()
 			receipt.Summary = cmdio.MutationSummary{
 				// Succeeded means "on disk": fetched resources whose write
 				// failed move from succeeded to failed.
@@ -286,7 +290,7 @@ func pullCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				}
 
 				if skipped := pullSummary.SkippedCount(); skipped > 0 {
-					printer(w, "%d resources pulled, %d errors (%d resource types skipped — not listable)", succeeded, failed, skipped)
+					printer(w, "%d resources pulled, %d errors (%s)", succeeded, failed, formatSkipReasons(receipt.SkippedReasons))
 				} else {
 					printer(w, "%d resources pulled, %d errors", succeeded, failed)
 				}

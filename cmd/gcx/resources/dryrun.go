@@ -2,7 +2,10 @@ package resources
 
 import (
 	"errors"
+	"fmt"
 	"io"
+	"sort"
+	"strings"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/format"
@@ -128,18 +131,21 @@ func summaryCounts(summary *remote.OperationSummary) cmdio.MutationSummary {
 func batchMutationFromSummary(action string, summary *remote.OperationSummary, dryRun bool) cmdio.BatchMutation {
 	result := cmdio.NewBatchMutation(action)
 	result.Summary = summaryCounts(summary)
+	result.SkippedReasons = summary.SkippedReasons()
 	result.DryRun = dryRun
 	for _, failure := range summary.Failures() {
 		target := cmdio.MutationTarget{}
+		source := ""
 		if failure.Resource != nil {
 			target.Kind = failure.Resource.Kind()
 			target.Name = failure.Resource.Name()
+			source = failure.Resource.SourcePath()
 		}
 		msg := ""
 		if failure.Error != nil {
 			msg = failure.Error.Error()
 		}
-		result.Failures = append(result.Failures, cmdio.MutationFailure{Target: target, Error: msg})
+		result.Failures = append(result.Failures, cmdio.MutationFailure{Target: target, Error: msg, Source: source})
 	}
 	return result
 }
@@ -177,10 +183,31 @@ func (c *mutationSummaryCodec) Encode(w io.Writer, value any) error {
 	}
 
 	if skipped > 0 {
-		printer(w, "%d resources %s, %d errors (%d skipped: not server-verified)",
-			result.Summary.Succeeded, result.Action, result.Summary.Failed, skipped)
+		reasons := result.SkippedReasons
+		if len(reasons) == 0 {
+			reasons = map[string]int{"not server-verified": skipped}
+		}
+		printer(w, "%d resources %s, %d errors (%s)",
+			result.Summary.Succeeded, result.Action, result.Summary.Failed, formatSkipReasons(reasons))
 		return nil
 	}
 	printer(w, "%d resources %s, %d errors", result.Summary.Succeeded, result.Action, result.Summary.Failed)
 	return nil
+}
+
+func formatSkipReasons(reasons map[string]int) string {
+	keys := make([]string, 0, len(reasons))
+	for reason := range reasons {
+		keys = append(keys, reason)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, reason := range keys {
+		unit := "skipped"
+		if reason == "not listable" {
+			unit = "resource types skipped"
+		}
+		parts = append(parts, fmt.Sprintf("%d %s: %s", reasons[reason], unit, reason))
+	}
+	return strings.Join(parts, "; ")
 }

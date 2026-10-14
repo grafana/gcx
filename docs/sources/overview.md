@@ -59,7 +59,7 @@ The following applies:
 
 ## CLI command reference
 
-You can find the up-to-date command reference guide in the [CLI command reference](https://github.com/grafana/gcx/tree/main/docs/reference/cli) in GitHub.
+You can find the up-to-date command reference guide in the [CLI command reference](../cli-reference/) for the latest stable release.
 
 ### Configure `gcx`
 
@@ -77,7 +77,7 @@ You can manage your resources using the `gcx resources` set of commands. Refer t
 
 ### Work with resources from other tools 
 
-If you want to work with resources managed by other tools, such as Terraform or Git Sync, use the flag `--include-managed` with commands such as [`gcx resources pull`](https://github.com/grafana/gcx/blob/main/docs/reference/cli/gcx_resources_pull.md) or [`gcx resources push`](https://github.com/grafana/gcx/blob/main/docs/reference/cli/gcx_resources_push.md).
+If you want to work with resources managed by other tools, such as Terraform or Git Sync, use the flag `--include-managed` with commands such as [`gcx resources pull`](../cli-reference/#gcx-resources-pull) or [`gcx resources push`](../cli-reference/#gcx-resources-push).
 
 ### Extract dashboards
 

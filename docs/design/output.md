@@ -300,7 +300,27 @@ are always populated. Select the shape that fits the operation:
 | `NewArtifactReceipt(action, format)` | Files produced, their format, counts, and failures |
 
 Batch counts cover every matched target exactly once. Successes and skips are
-counted; failures include a `target` and an `error`. Zero `skipped` is omitted.
+counted; zero `skipped` is omitted.
+
+Batch results and artifact receipts always include `failures` (`[]` when
+empty). Each failure contains `target` and `error`. The optional `source`
+field identifies the input file when available; it is omitted when the
+source path is empty. `source` is independent of `target.name`, which remains
+the API address. `resources push` and file-based `resources delete` populate
+`source` from the failed resource's local source path. Artifact receipts
+leave it absent when the failed resource has no input path.
+
+`gcx.mutation_batch` and `gcx.artifact_receipt` may include a top-level
+`skipped_reasons` object mapping each skip reason to its count. It is omitted
+when no skips were recorded and is additive within schema version `1`.
+`summary.skipped` remains the total count. Human summaries show the counts by
+reason; JSON output, including the agent-mode default, exposes the same map so
+agents can distinguish read-only skips from other skips. Current reasons
+include `read-only`, `not server-verified`, and `not listable`.
+
+The optional fields are additive within schema version `1`; consumers should
+tolerate optional fields.
+
 The shared family does not add a success array for `-v` or `-o wide`.
 Human codecs render the command's summary on stdout, with progress and advisory
 diagnostics on stderr. Agent output includes the failure detail in its result;
@@ -339,12 +359,30 @@ A populated `NewBatchMutation("pushed")` result:
   "schema_version": "1",
   "action": "pushed",
   "summary": {"succeeded": 2, "failed": 1, "skipped": 1},
+  "skipped_reasons": {"read-only": 1},
   "failures": [
     {
       "target": {"kind": "dashboard", "name": "revenue-overview"},
       "error": "409 conflict: resource modified server-side"
     }
   ]
+}
+```
+
+For example, a failed unnamed manifest can be located without inventing
+an API name:
+
+```json
+{
+  "type": "gcx.mutation_batch",
+  "schema_version": "1",
+  "action": "pushed",
+  "summary": {"succeeded": 0, "failed": 1},
+  "failures": [{
+    "target": {"kind": "TemplateGroup"},
+    "error": "spec.kind must be grafana or mimir",
+    "source": "./manifests/group.yaml"
+  }]
 }
 ```
 

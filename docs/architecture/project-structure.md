@@ -72,7 +72,7 @@ gcx/
 │   │   │   └── settings/     # PluginSettings
 │   │   ├── dbo11y/           # Database Observability provider (query/discovery views, no CRUD resources)
 │   │   │   └── instances/    # Instance inventory + health/query-performance snapshot from postgres_exporter + pg_stat_statements
-│   │   ├── alert/            # Alert provider (rules, groups, provisioning, native routing trees)
+│   │   ├── alert/            # Alert provider (rules, groups, provisioning, native routing trees/time intervals/template groups)
 │   │   ├── assistant/        # Assistant provider — lift-and-shift of the `gcx assistant` command tree; TypedRegistrations() registers MCPServer and read-only Watcher adapters; watcher commands live in internal/providers/assistant/watchers/; exports ResolveClientOptions and RequireGrafanaCloud for other command trees embedding Assistant calls (used by `instrumentation check --fix-plan=assistant`)
 │   │   ├── dashboards/       # Dashboards provider (CRUD, search, version history, snapshot) — CLI: `gcx dashboards`
 │   │   │   ├── descriptor/   # Descriptor helpers (GVK, preferred version resolution)
@@ -160,6 +160,7 @@ gcx/
 │   ├── shared/               # Shared utilities (date handling, duration, etc.) to be shared across integrations.
 │
 ├── scripts/                  # Standalone Go programs for code generation
+│   ├── cli-reference/        # Renders released CLI and configuration references
 │   ├── cmd-reference/        # Generates CLI docs from Cobra tree
 │   ├── config-reference/     # Generates config YAML reference from Go structs
 │   ├── env-vars-reference/   # Generates env-var docs from struct tags
@@ -400,6 +401,15 @@ mise run reference
     ├── mise run reference:config        → go run scripts/config-reference/*.go <outputDir>
     └── mise run reference:linter-rules  → go run scripts/linter-rules-reference/*.go <outputDir>
 ```
+
+### Released CLI Reference
+
+`mise run docs:refresh` downloads the latest stable release source and runs
+the renderer in `scripts/cli-reference/` against it. Commands and environment variables go in
+`docs/sources/cli-reference.md`; the config schema replaces the generated section
+at the bottom of `docs/sources/configuration.md`, preserving the guide above it.
+After generation, review the diff, commit any changes, and open a separate
+documentation PR. 
 
 ### CLI Reference (`scripts/cmd-reference/main.go`)
 
