@@ -168,7 +168,8 @@ Run this checklist **before every commit** (not only before PR/push):
    go test ./...
    ```
 5. **Released reference stays separate** — do not regenerate `docs/sources/cli-reference.md`
-   in command PRs. Run `mise run docs:refresh` and open a separate documentation PR to update it.
+   in command PRs. `mise run tag` refreshes references in the release changelog PR;
+   use `mise run docs:refresh` for standalone updates to the latest stable release.
    Test generator changes with `go test ./scripts/...`.
 6. **Docs build succeeds** (Docker required; CI preserves the `Documentation` check)
    ```bash

@@ -899,7 +899,8 @@ but consumes the same effective auth method and selected TLS view.
 
 ### 5. Released CLI Reference
 
-The CLI reference describes the latest stable release, while `main` may contain
+The CLI reference is a release snapshot, while `main` may contain
 unreleased commands. CI therefore tests the generator and builds the committed
 Grafana website pages without asserting reference equality against `main`.
-Run `mise run docs:refresh` after a stable release and open a separate documentation PR.
+`mise run tag` refreshes the reference from the release checkout with the upcoming
+version and includes it in the changelog PR.

@@ -30,8 +30,8 @@ description = "Validate skill front matter (claude-plugin/skills + .claude/skill
 run = "go run ./scripts/validate-skills"
 
 [tasks.tests]
-description = "Run all tests (CLI + linter rules + install script)"
-depends = ["tests:cli", "tests:linter", "tests:install"]
+description = "Run all tests (CLI + linter rules + install and release scripts)"
+depends = ["tests:cli", "tests:linter", "tests:install", "tests:tag"]
 
 # GCX_AGENT_MODE is pinned on the leaf tasks (mise env does not propagate
 # through `depends`). Without it, agent-mode auto-detection picks up CLAUDECODE
@@ -51,6 +51,10 @@ run = "go run ./cmd/gcx/ dev lint test ./internal/linter/bundle/gcx/"
 [tasks."tests:install"]
 description = "Run the install script tests"
 run = "bash scripts/install_test.sh"
+
+[tasks."tests:tag"]
+description = "Run the release script tests"
+run = "bash scripts/tag_test.sh"
 
 [tasks."vet:wasip1"]
 description = "Vet packages with wasip1-only files (*_wasip1.go), which host builds never compile"
@@ -122,7 +126,7 @@ docker run --rm -v "$PWD/docs/sources:/hugo/content/docs/grafana/next/as-code/ob
 """
 
 [tasks."docs:refresh"]
-description = "Regenerate the latest stable CLI and configuration references locally"
+description = "Refresh references from the latest stable release, or the current checkout with an upcoming version argument"
 run = "bash scripts/generate-cli-reference.sh"
 
 [tasks."serve-docs"]

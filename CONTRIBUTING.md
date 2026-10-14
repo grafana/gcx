@@ -118,8 +118,8 @@ Run `mise run gate` (lint + tests + build) before pushing. The specifics:
   [a Grafana organisation-wide policy](https://community.grafana.com/t/action-required-signed-commits-mandatory-for-all-grafana-repositories/163404).
   Set it up once; it is the most common reason a finished PR sits unmerged.
 - **Documentation must build.** The `Documentation` check builds `docs/sources`;
-  run `mise run docs` locally. Reference updates belong in separate release
-  documentation PRs, generated with `mise run docs:refresh`.
+  run `mise run docs` locally. `mise run tag` includes reference updates in the
+  release changelog PR; leave them unchanged in command PRs.
 - **Every `gcx` invocation in a skill must exist.**
   `TestSkillsGcxInvocationsMatchCommandTree` checks `claude-plugin/skills/`
   and `.claude/skills/` against the real command tree.

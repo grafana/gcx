@@ -386,9 +386,9 @@ they are closed rather than forgotten.
 
 ## T11: Skills and generated docs
 
-Keep the released reference unchanged in command PRs. After a stable release,
-run `mise run docs:refresh`, inspect the changes in `docs/sources`, and open a
-separate documentation PR. Run `mise run docs` to validate the checked-in pages.
+Keep the released reference unchanged in command PRs. `mise run tag` generates
+references with the upcoming version and includes them in the release changelog
+PR. Run `mise run docs` to validate the checked-in pages.
 
 Underscore-prefixed identifiers (a metrics `__name__`) render as bold markdown
 unless backticked. Help text carrying a removed config key or a stale default is

@@ -392,8 +392,10 @@ it neither regenerates nor checks the release snapshot against `main`.
 the renderer in `scripts/cli-reference/` against it. Commands and environment variables go in
 `docs/sources/cli-reference.md`; the config schema replaces the generated section
 at the bottom of `docs/sources/configuration.md`, preserving the guide above it.
-After generation, review the diff, commit any changes, and open a separate
-documentation PR. 
+With an upcoming version argument, `mise run docs:refresh -- vX.Y.Z` uses the
+current checkout instead. `mise run tag` calls this mode and commits the references
+with the changelog in the release PR. Standalone updates to a published release
+can use a separate documentation PR.
 
 ### Config Reference (`scripts/config-reference/main.go`)
 
@@ -497,7 +499,7 @@ is provided for manual developer testing only. This is identified as a gap
 same website locally on port 3002. Both require Docker. The required
 `Documentation` CI job runs the website build on PRs and pushes to `main`.
 
-The release reference is a committed snapshot updated locally with `mise run docs:refresh` and a separate documentation PR.
+The release reference is a committed snapshot updated by `mise run tag` in the changelog PR.
 Handwritten architecture, design, and contributor guides remain in the repository.
 There is no separate MkDocs/GitHub Pages site or Python documentation toolchain.
 

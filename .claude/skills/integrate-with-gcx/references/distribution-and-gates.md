@@ -23,7 +23,7 @@ column literally — some rows are CI-enforced and some only look like it:
 | Command→skill mapping | `internal/agent/command_skills.go` | **review only**, same direction: `TestConsistency_SkillMappingResolvesToCommands` validates declared keys, never requires one |
 | Resource-type agent metadata, **native K8s types** | `internal/agent/known_resources.go` | `internal/agent/known_resources_test.go` |
 | Resource-type agent metadata, **adapter-backed** | adapter `Registration.Operations` | **nothing.** `known_resources_test.go` only walks `agent.KnownResources`; no test asserts `Operations` is populated on an adapter registration. Review-enforced only |
-| Released reference | Separate documentation PR via `mise run docs:refresh`; leave unchanged in command PRs | Generator tests in CI |
+| Released reference | `mise run tag` includes references in the release changelog PR; leave unchanged in command PRs | Generator tests in CI |
 | Package map | `docs/architecture/project-structure.md` | AGENTS.md PR checklist step 4 (human-enforced) |
 
 ### The gap CI does not cover, and it is a judgement call
