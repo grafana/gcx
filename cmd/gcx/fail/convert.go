@@ -101,7 +101,7 @@ func ErrorToDetailedError(err error) *gcxerrors.DetailedError {
 		convertFleetHTTPErrors,                      // Fleet Management HTTP 401/403 typed errors
 		convertInstrumentationErrors,                // Instrumentation RMW conflict errors
 		convertInstrumentationMutualExclusiveErrors, // setup: mutually exclusive flag pairs
-		convertAdapterNotFoundErrors,                // Client-side resource misses, after domain converters
+		convertResourceNotFoundErrors,               // Client-side resource misses, after domain converters
 		convertHTTPStatusErrors,                     // Concrete transport status, after domain converters
 	}
 
@@ -972,8 +972,9 @@ func convertResourcesErrors(err error) (*gcxerrors.DetailedError, bool) {
 	return nil, false
 }
 
-func convertAdapterNotFoundErrors(err error) (*gcxerrors.DetailedError, bool) {
-	if !errors.Is(err, adapter.ErrNotFound) {
+func convertResourceNotFoundErrors(err error) (*gcxerrors.DetailedError, bool) {
+	var pipelineMiss *fleet.PipelineNotFoundError
+	if !errors.Is(err, adapter.ErrNotFound) && !errors.As(err, &pipelineMiss) {
 		return nil, false
 	}
 	return &gcxerrors.DetailedError{

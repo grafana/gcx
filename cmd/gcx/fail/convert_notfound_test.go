@@ -68,3 +68,17 @@ func TestErrorToDetailedError_UnsupportedResourceRecovery(t *testing.T) {
 	assert.Contains(t, got.Suggestions, "List the resource types this server serves: gcx resources list-types")
 	assert.ErrorIs(t, got.Parent, cause)
 }
+
+func TestErrorToDetailedError_PipelineNameNotFound(t *testing.T) {
+	cause := &fleet.PipelineNotFoundError{Name: "absent-name"}
+	for _, err := range []error{cause, fmt.Errorf("fleet: get pipeline: %w", cause)} {
+		t.Run(err.Error(), func(t *testing.T) {
+			got := fail.ErrorToDetailedError(err)
+			require.NotNil(t, got)
+			assert.Equal(t, gcxerrors.SummaryResourceNotFound, got.Summary)
+			assert.Equal(t, err.Error(), got.Details)
+			assert.Nil(t, got.ExitCode, "name misses use the default exit code 1")
+			assert.NotErrorIs(t, err, adapter.ErrNotFound, "name lookup must not trigger create or skip")
+		})
+	}
+}

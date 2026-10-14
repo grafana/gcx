@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	fleetbase "github.com/grafana/gcx/internal/fleet"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -34,6 +35,9 @@ func TestResolvePipelinePlainNameMissingIsNotAdapterNotFound(t *testing.T) {
 			pipeline, err := resolvePipeline(context.Background(), NewClient(context.Background(), server.URL, server.Client()), "absent-name")
 			require.Error(t, err)
 			require.NotErrorIs(t, err, adapter.ErrNotFound)
+			var missing *fleetbase.PipelineNotFoundError
+			require.ErrorAs(t, err, &missing)
+			assert.Equal(t, "absent-name", missing.Name)
 			assert.Nil(t, pipeline)
 			assert.Equal(t, `pipeline "absent-name" not found`, err.Error())
 			assert.Equal(t, 1, calls)

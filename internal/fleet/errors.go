@@ -29,6 +29,17 @@ func ReadErrorBody(resp *http.Response) string {
 	return string(body)
 }
 
+// PipelineNotFoundError reports a failed pipeline name lookup. It intentionally
+// does not wrap adapter.ErrNotFound: a name miss is not a strict identity miss
+// and must not make resource adapters create or skip the requested resource.
+type PipelineNotFoundError struct {
+	Name string
+}
+
+func (e *PipelineNotFoundError) Error() string {
+	return fmt.Sprintf("pipeline %q not found", e.Name)
+}
+
 // HTTPError represents a non-2xx HTTP response from the Fleet Management API.
 // It is returned by the instrumentation client when the server returns an
 // unexpected HTTP status code, enabling typed error detection in converters.
