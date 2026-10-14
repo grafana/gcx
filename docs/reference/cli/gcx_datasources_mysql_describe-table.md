@@ -12,6 +12,10 @@ disambiguate when the same table name exists in multiple databases. TABLE and
 how information_schema itself compares names depending on the server's
 platform and lower_case_table_names setting.
 
+Use --include-constraints with a database-qualified table (or --database) to
+also return a structured table identity, columns, and ordered constraint
+metadata. Constraint metadata requires -o json, -o yaml, or agent mode.
+
 ```
 gcx datasources mysql describe-table TABLE [flags]
 ```
@@ -29,17 +33,21 @@ gcx datasources mysql describe-table TABLE [flags]
 
   # Output as JSON
   gcx datasources mysql describe-table orders -o json
+
+  # Include ordered keys and foreign-key relationships
+  gcx datasources mysql describe-table mydb.orders --include-constraints -o json
 ```
 
 ### Options
 
 ```
-      --database string     Database of the table (exact match, case-sensitive; defaults to all databases)
-  -d, --datasource string   Datasource UID (required unless datasources.mysql is configured)
-  -h, --help                help for describe-table
-      --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
-      --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
+      --database string       Database of the table (exact match, case-sensitive; defaults to all databases)
+  -d, --datasource string     Datasource UID (required unless datasources.mysql is configured)
+  -h, --help                  help for describe-table
+      --include-constraints   Include ordered constraint and foreign-key metadata (requires an explicit database and JSON/YAML/agent output)
+      --jq string             jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string           Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string         Output format. One of: agents, json, table, wide, yaml (default "table")
 ```
 
 ### Options inherited from parent commands

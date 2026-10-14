@@ -6,7 +6,8 @@ Execute a SQL query against a ClickHouse datasource
 
 Execute a SQL query against a ClickHouse datasource.
 
-EXPR is the SQL query to execute, passed as a positional argument or via --expr.
+EXPR is the SQL query to execute, passed as a positional argument, via --expr,
+or via --query-file. Use --query-file - to read SQL from stdin.
 Datasource is resolved from -d flag or datasources.clickhouse in your context.
 Server-side macros ($__timeFilter, $__timeInterval, etc.) are supported.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
@@ -29,6 +30,9 @@ gcx datasources clickhouse query [EXPR] [flags]
   # Output as JSON
   gcx datasources clickhouse query -d UID 'SELECT 1' -o json
 
+  # Read a long query from a file
+  gcx datasources clickhouse query -d UID --query-file ./query.sql -o json
+
   # Print a Grafana Explore share link for the executed query
   gcx datasources clickhouse query 'SELECT 1' --share-link
 
@@ -48,6 +52,7 @@ gcx datasources clickhouse query [EXPR] [flags]
       --limit int           Max rows to return (0 disables enforcement) (default 100)
       --open                Open the executed query in Grafana Explore
   -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
+      --query-file string   Read the SQL query from FILE (use - for stdin)
       --share-link          Print the Grafana Explore URL for the executed query to stderr
       --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --step string         Query step (e.g., '15s', '1m')

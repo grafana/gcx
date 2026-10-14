@@ -6,7 +6,8 @@ Execute a SQL query against an Athena datasource
 
 Execute a SQL query against an Amazon Athena datasource.
 
-EXPR is the SQL query to execute, passed as a positional argument or via --expr.
+EXPR is the SQL query to execute, passed as a positional argument, via --expr,
+or via --query-file. Use --query-file - to read SQL from stdin.
 Datasource is resolved from -d flag or datasources.athena in your context.
 Server-side macros ($__timeFilter, $__dateFilter, etc.) are supported.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
@@ -29,6 +30,9 @@ gcx datasources athena query [EXPR] [flags]
   # With connection overrides
   gcx datasources athena query -d UID 'SELECT 1' --region us-west-2 --database analytics
 
+  # Read a long query from a file
+  gcx datasources athena query -d UID --query-file ./query.sql -o json
+
   # Enable result reuse (Athena engine v3)
   gcx datasources athena query -d UID 'SELECT count(*) FROM events' --result-reuse --ttl-minutes 60
 
@@ -50,6 +54,7 @@ gcx datasources athena query [EXPR] [flags]
       --limit int           Max rows to return (0 disables enforcement) (default 100)
       --open                Open the executed query in Grafana Explore
   -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
+      --query-file string   Read the SQL query from FILE (use - for stdin)
       --region string       AWS region override
       --result-reuse        Enable Athena query result reuse (engine v3)
       --share-link          Print the Grafana Explore URL for the executed query to stderr
