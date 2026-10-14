@@ -336,7 +336,7 @@ func resolvePipeline(ctx context.Context, client *Client, ref string) (*Pipeline
 			return &pipelines[i], nil
 		}
 	}
-	return nil, fmt.Errorf("pipeline %q not found", ref)
+	return nil, fmt.Errorf("pipeline %q: %w", ref, adapter.ErrNotFound)
 }
 
 // resolveCollector looks up a collector by slug-id, plain ID, or name.
@@ -364,7 +364,7 @@ func resolveCollector(ctx context.Context, client *Client, ref string) (*Collect
 			return &collectors[i], nil
 		}
 	}
-	return nil, fmt.Errorf("collector %q not found", ref)
+	return nil, fmt.Errorf("collector %q: %w", ref, adapter.ErrNotFound)
 }
 
 type pipelineGetOpts struct {

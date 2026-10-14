@@ -169,6 +169,27 @@ func TestClient_CreatePipeline(t *testing.T) {
 	assert.Equal(t, "new-pipeline", created.Name)
 }
 
+func TestClient_CreatePipeline_OmitsID(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]map[string]any
+		assert.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+		assert.NotContains(t, body["pipeline"], "id", "Fleet rejects a create request that carries an ID")
+
+		writeJSON(w, map[string]any{"id": "6500", "name": "pulled"})
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	created, err := client.CreatePipeline(context.Background(), fleet.Pipeline{
+		ID:       "99999",
+		Name:     "pulled",
+		Contents: "contents here",
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, "6500", created.ID)
+}
+
 func TestClient_UpdatePipeline(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
