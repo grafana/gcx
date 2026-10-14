@@ -100,6 +100,42 @@ func TestFetch_HealthNotFoundKeepsServerMessage(t *testing.T) {
 	assert.Contains(t, err.Error(), "resource not found")
 }
 
+// Unavailable is the one answer a user cannot fix from the CLI, so it points
+// them at a support ticket.
+func TestFetch_HealthNotFoundPointsAtSupport(t *testing.T) {
+	r := healthy()
+	r[healthPath] = &synth.Response{StatusCode: http.StatusNotFound, Body: []byte(`{"message":"x"}`)}
+
+	_, err := fetch(context.Background(), &fakeCaller{responses: r}, "sm-uid")
+	require.ErrorIs(t, err, errUnavailable)
+	assert.Contains(t, err.Error(), "https://grafana.com/profile/org#support")
+}
+
+// Other failures are not a confirmed "unavailable", so they must not send the
+// user to support for something that may be transient or local.
+func TestFetch_OtherFailuresDoNotPointAtSupport(t *testing.T) {
+	tests := []struct {
+		name     string
+		path     string
+		response *synth.Response
+	}{
+		{"inconclusive health", healthPath, &synth.Response{StatusCode: http.StatusBadGateway, Body: []byte(`{"message":"unreachable"}`)}},
+		{"not ready", suggestionsPath, &synth.Response{StatusCode: http.StatusServiceUnavailable, Body: []byte(`{"message":"not configured"}`)}},
+		{"not found after a healthy probe", suggestionsPath, &synth.Response{StatusCode: http.StatusNotFound, Body: []byte(`{"message":"resource not found"}`)}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := healthy()
+			r[tt.path] = tt.response
+
+			_, err := fetch(context.Background(), &fakeCaller{responses: r}, "sm-uid")
+			require.Error(t, err)
+			assert.NotContains(t, err.Error(), "profile/org#support")
+		})
+	}
+}
+
 // Anything but 200/404 on health is inconclusive: report it as a failure rather
 // than as "not available", and still do not generate.
 func TestFetch_HealthInconclusiveIsAnErrorNotUnavailable(t *testing.T) {

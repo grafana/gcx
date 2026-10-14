@@ -53,6 +53,11 @@ var (
 	errNotReady = errors.New("the reliability inbox is not ready")
 )
 
+// supportHint follows errUnavailable only: it is the one answer the user cannot
+// fix from the CLI.
+const supportHint = "if you expected the Reliability Inbox to be available on this stack, " +
+	"open a support ticket: https://grafana.com/profile/org#support"
+
 // resourceCaller is the part of synth.BackendDatasourceClient this package needs.
 type resourceCaller interface {
 	CallResource(ctx context.Context, datasourceUID, method, path string, body []byte) (*synth.Response, error)
@@ -121,7 +126,7 @@ func fetch(ctx context.Context, c resourceCaller, datasourceUID string) (*result
 	switch health.StatusCode {
 	case http.StatusOK:
 	case http.StatusNotFound:
-		return nil, sentinelError(errUnavailable, health)
+		return nil, fmt.Errorf("%w; %s", sentinelError(errUnavailable, health), supportHint)
 	default:
 		// Not a confirmed negative: a timeout or 5xx says nothing about whether
 		// the service exists, so it is not reported as "not available".
@@ -285,16 +290,17 @@ func newListCommand(loader smcfg.Loader) *cobra.Command {
 
 List the checks the Synthetic Monitoring Reliability Inbox suggests for this stack.
 
-Generating suggestions sends a summary of the stack's telemetry to an LLM and
-is a paid, experimental service. Unlike the Synthetic Monitoring app, gcx cannot
-check that Grafana Assistant is available or that its AI terms were accepted;
-that is your responsibility before running this. Each run generates anew.
+Generating suggestions sends a summary of the stack's telemetry to an LLM. The
+service is free while it is experimental and will become a paid feature in the
+future. Unlike the Synthetic Monitoring app, gcx cannot check that Grafana
+Assistant is available or that its AI terms were accepted; that is your
+responsibility before running this. Each run generates anew.
 
 The service is deployed per region and is not available everywhere.
 
 The service has no pagination and returns everything it generated (up to about
 30 suggestions) in one response, so --limit only trims what is printed: it does
-not reduce cost. A truncated page carries list_meta and a stderr hint. Suggestions
+not reduce what is generated. A truncated page carries list_meta and a stderr hint. Suggestions
 are kept in the service's order, highest confidence first, which is not sorted by
 score. Use --json to print only some fields.`,
 		Example: `  gcx synthetic-monitoring suggestions list
