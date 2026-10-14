@@ -542,16 +542,6 @@ gcx provides dedicated commands for each Grafana Cloud product:
 | **Profiles (Pyroscope)** | `gcx profiles` | `profiles query`, `profiles labels` |
 | **Traces (Tempo)** | `gcx traces` | `traces query`, `traces get`, `traces labels` |
 
-`gcx kg graph query "MATCH (s:Service) RETURN s.name AS name LIMIT 10" --since 1h`
-uses the read-only Cypher query API and returns `columns`, `rows`, and `stats`.
-It supports scalar projections and bounded paths. Queries require a literal `LIMIT`;
-use Cypher `ORDER BY`/`SKIP`/`LIMIT` to select a result window.
-Without time flags, the query covers the last hour.
-The deprecated `gcx kg entities query` retains its `entities`/`edges` envelope,
-`--page`, and `--insights-only` through v1.x, with a warning on stderr at `-v`.
-See the [Cypher migration guide](docs/reference/kg-cypher-migration.md) before
-changing existing queries and output parsers.
-
 > **Note — Grafana Cloud costs:** gcx itself is free, but some of these products are billed based on usage: Grafana Assistant per token consumed (including requests made through gcx), Synthetic Monitoring per test execution, k6 per Virtual User Hour, and IRM per monthly active user. Queries and resource push/pull are not billed. See [Costs and billing](docs/reference/costs.md) and the [Grafana Cloud Cost Management and Billing documentation](https://grafana.com/docs/grafana-cloud/cost-management-and-billing/).
 
 ## Resource Management
