@@ -36,7 +36,7 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 
 	flags.StringVarP(&o.Datasource, "datasource", "d", "", "Prometheus datasource UID (defaults to datasources.prometheus in config or auto-discovery)")
-	flags.StringArrayVar(&o.Filters, "filter", nil, "Restrict to instances matching label=value, e.g. --filter engine=postgres (repeatable, ANDed). Applied by the API against any label the monitored instances carry, including ones it does not report such as cluster or deployment_environment. Exact match only — the API has no regex or negation")
+	flags.StringArrayVar(&o.Filters, "filter", nil, "Restrict to instances matching label=value, e.g. --filter engine=postgres (repeatable, ANDed). Applied by the API against any label the monitored instances carry, including ones it does not report such as cluster or deployment_environment. Values are matched exactly and are case sensitive; the API has no regex or negation")
 	flags.IntVar(&o.Limit, "limit", instancesListDefaultLimit, "Limit the number of instances returned (0 = unlimited)")
 }
 
@@ -126,11 +126,11 @@ func runList(loader *providers.ConfigLoader, opts *listOpts) func(*cobra.Command
 		items, err := fetchInstances(ctx, client, datasourceUID, filters)
 		if err != nil {
 			var apiErr *apiError
-			if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
-				if activated, actErr := checkActivation(ctx, cfg); actErr == nil && !activated {
-					cmdio.EmitWarn(cmd.ErrOrStderr(), notActivatedError().Error())
-					return gcxerrors.NewEmittedError(gcxerrors.ExitGeneralError, notActivatedError())
-				}
+			if !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusNotFound {
+				return err
+			}
+			if activated, actErr := checkActivation(ctx, cfg); actErr == nil && !activated {
+				return reportNotActivated(cmd, &opts.IO, nil)
 			}
 			return err
 		}
@@ -145,11 +145,7 @@ func runList(loader *providers.ConfigLoader, opts *listOpts) func(*cobra.Command
 			// check falls through to the generic table message below rather
 			// than blocking.
 			if activated, actErr := checkActivation(ctx, cfg); actErr == nil && !activated {
-				cmdio.EmitWarn(cmd.ErrOrStderr(), notActivatedError().Error())
-				if err := opts.IO.Encode(cmd.OutOrStdout(), &InstancesResponse{Items: items}); err != nil {
-					return err
-				}
-				return gcxerrors.NewEmittedError(gcxerrors.ExitGeneralError, notActivatedError())
+				return reportNotActivated(cmd, &opts.IO, items)
 			}
 		}
 
@@ -226,6 +222,22 @@ func InstancesTable() cmdio.Table[Instance] {
 			{Header: "SERVER ID", Visible: cmdio.WideOnly, Content: func(i Instance) string { return orDash(i.ServerID) }},
 		},
 	}
+}
+
+// reportNotActivated warns that the product is switched off for the stack,
+// writes the result document and returns the error to exit on. This leaf is
+// `finite`, so stdout carries exactly one JSON value however it exits — and a
+// reporter handed an EmittedError writes nothing further, so the document has
+// to come from here.
+func reportNotActivated(cmd *cobra.Command, io *cmdio.Options, items []Instance) error {
+	cmdio.EmitWarn(cmd.ErrOrStderr(), notActivatedError().Error())
+	if items == nil {
+		items = []Instance{}
+	}
+	if encErr := io.Encode(cmd.OutOrStdout(), &InstancesResponse{Items: items}); encErr != nil {
+		return encErr
+	}
+	return gcxerrors.NewEmittedError(gcxerrors.ExitGeneralError, notActivatedError())
 }
 
 func orDash(v string) string {

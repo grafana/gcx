@@ -11,7 +11,12 @@
   running transaction.
 - `--filter` on `gcx dbo11y instances list` and `gcx dbo11y instances get`
   matches exact key values only. `!=`, `=~` and `!~` now exit 2, as does
-  giving one label two values.
+  giving one label two values. On `gcx dbo11y instances get` it accepts only
+  `database`, `datname`, `schema`, `query_id` and `digest`; any other field
+  exits 2.
+- `gcx dbo11y instances get` ignores `--since`: figures cover the backend's
+  own fixed window, so a script passing `--since 1h` now reports 5m values.
+  `--top 0` returns the API maximum of 100 rather than every statement.
 - `gcx dbo11y instances list` reports the monitored endpoint as `name`.
   It previously reported a separate service name, so the value changes on
   stacks that set both.

@@ -53,6 +53,13 @@ func parseFilters(raw []string) (url.Values, map[string]string, error) {
 		if len(value) >= 2 && value[0] == '"' && value[len(value)-1] == '"' {
 			value = value[1 : len(value)-1]
 		}
+		// `datasource` selects which datasource to ask, so it is stripped
+		// from the filters before they go on the wire. Accepting it here
+		// would drop it silently and answer with the whole inventory, which
+		// is wider than what was asked for.
+		if label == datasourceParam {
+			return nil, nil, fmt.Errorf("invalid --filter %q: %s selects the datasource to query, not a label to match; use -d/--datasource", f, datasourceParam)
+		}
 		// The API ignores an empty value rather than matching on it.
 		if value == "" {
 			return nil, nil, fmt.Errorf("invalid --filter %q: a value is required, since the API ignores an empty one rather than matching on it", f)
