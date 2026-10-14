@@ -1,3 +1,27 @@
+## Unreleased
+
+### Breaking changes
+
+- `gcx dbo11y instances list` no longer reports `namespace`, `environment`
+  or `labels`, and `gcx dbo11y instances get` no longer reports exporter
+  health, connection counts by state, active wait events or the longest
+  running transaction.
+- `--filter` on `gcx dbo11y instances list` and `gcx dbo11y instances get`
+  matches exact key values only. `!=`, `=~` and `!~` now exit 2, as does
+  giving one label two values.
+- `gcx dbo11y instances list` reports the monitored endpoint as `name`.
+  It previously reported a separate service name, so the value changes on
+  stacks that set both.
+
+### New commands and improvements
+
+- `gcx dbo11y instances list` and `get` read the Database Observability
+  API instead of building PromQL themselves, so they report instances on
+  stacks the previous approach could not see at all, and cover MySQL and
+  SQL Server alongside Postgres. `instances get` adds a RED rollup, the
+  statement's own SQL text, rows examined and a per-query error rate, and
+  accepts the product's `server_id` as well as the instance name.
+
 ## v1.6.0 (2026-10-13)
 
 ### Breaking changes
