@@ -129,6 +129,7 @@ const (
 	StandardConfigFolder   = "gcx"
 	StandardConfigFileName = "config.yaml"
 	ConfigFileEnvVar       = "GCX_CONFIG"
+	ContextEnvVar          = "GCX_CONTEXT"
 	LocalConfigFileName    = ".gcx.yaml"
 
 	defaultEmptyConfigFile = `
@@ -1148,6 +1149,8 @@ func configWriteTarget(filename, canonicalSource string, allowSymlink bool) (str
 // If explicitFile is set (--config flag) or GCX_CONFIG env var is set,
 // bypasses layering entirely and loads that single file.
 // Every load also records the effective context's telemetry target kind.
+// GCX_CONTEXT is resolved by the CLI layer alongside the --context flag
+// (the flag wins); LoadLayered itself never reads it.
 func LoadLayered(ctx context.Context, explicitFile string, overrides ...Override) (Config, error) {
 	return loadLayeredTracked(ctx, explicitFile, loadOptions{layer: configLayerFromCtx(ctx)}, overrides...)
 }
