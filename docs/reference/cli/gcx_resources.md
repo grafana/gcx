@@ -27,6 +27,7 @@ Manipulate Grafana resources.
 ### SEE ALSO
 
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
+* [gcx resources browse](gcx_resources_browse.md)	 - Interactively explore resources (read-only)
 * [gcx resources delete](gcx_resources_delete.md)	 - Delete resources from Grafana
 * [gcx resources edit](gcx_resources_edit.md)	 - Edit resources from Grafana
 * [gcx resources get](gcx_resources_get.md)	 - Get resources from Grafana
