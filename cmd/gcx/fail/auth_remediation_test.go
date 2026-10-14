@@ -12,6 +12,8 @@ import (
 	"github.com/grafana/gcx/internal/queryerror"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestAuthFailureRemediation(t *testing.T) {
@@ -19,6 +21,13 @@ func TestAuthFailureRemediation(t *testing.T) {
 		name string
 		err  func(int) error
 	}{
+		{"Kubernetes API", func(status int) error {
+			code := int32(http.StatusUnauthorized)
+			if status == http.StatusForbidden {
+				code = http.StatusForbidden
+			}
+			return &apierrors.StatusError{ErrStatus: metav1.Status{Code: code, Message: "denied"}}
+		}},
 		{"query", func(status int) error { return queryerror.New("loki", "query", status, "denied", "") }},
 		{"datasource", func(status int) error {
 			return &datasources.APIError{StatusCode: status, Operation: "list datasources"}
@@ -33,7 +42,7 @@ func TestAuthFailureRemediation(t *testing.T) {
 				got := toDetailedError(t, fmt.Errorf("caller operation: %w", converter.err(status)))
 				require.NotNil(t, got.ExitCode)
 				assert.Equal(t, gcxerrors.ExitAuthFailure, *got.ExitCode)
-				assert.Contains(t, got.Details, "caller operation")
+				assert.Contains(t, got.Error(), "caller operation")
 				suggestions := strings.Join(got.Suggestions, " ")
 				if status == http.StatusForbidden {
 					assert.Equal(t, gcxerrors.SummaryAuthorizationFailed, got.Summary)

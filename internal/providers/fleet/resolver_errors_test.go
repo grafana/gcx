@@ -41,9 +41,6 @@ func TestResolversPreserveGetFailures(t *testing.T) {
 			{"unauthorized", 401, `{"message":"expired"}`},
 			{"forbidden", 403, `{"message":"denied"}`},
 			{"unavailable", 500, `{"message":"unavailable"}`},
-			{"unknown RPC", 404, "404 page not found"},
-			{"plugin missing", 404, `{"message":"Plugin not found"}`},
-			{"empty 404", 404, ""},
 		} {
 			t.Run(resolver.name+"/"+tc.name, func(t *testing.T) {
 				var requests []string
@@ -141,5 +138,28 @@ func TestResolvePipelineNameFallback(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, tc.id, pipeline.ID)
 		})
+	}
+}
+
+func TestResolversAllowNameFallbackForAny404Body(t *testing.T) {
+	for _, resolver := range errorResolvers() {
+		for _, body := range []string{"", "404 page not found", `{"message":"Plugin not found"}`, `{"code":"not_found"}`, `{"code":"not_found","message":"absent"}`} {
+			t.Run(resolver.name+"/"+body, func(t *testing.T) {
+				var listed bool
+				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if strings.Contains(r.URL.Path, "/List") {
+						listed = true
+						writeContractJSON(t, w, map[string]any{resolver.name + "s": []map[string]string{{"id": "202", "name": "missing-123"}}})
+						return
+					}
+					w.WriteHeader(http.StatusNotFound)
+					_, _ = w.Write([]byte(body))
+				}))
+				t.Cleanup(server.Close)
+				err := resolver.resolve(context.Background(), NewClient(context.Background(), server.URL, server.Client()), "missing-123")
+				require.NoError(t, err)
+				assert.True(t, listed, "every identifier 404 permits name lookup")
+			})
+		}
 	}
 }

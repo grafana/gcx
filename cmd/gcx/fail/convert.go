@@ -98,7 +98,7 @@ func ErrorToDetailedError(err error) *gcxerrors.DetailedError {
 		convertSMConfigErrors,                       // Synthetic Monitoring config errors
 		convertCloudConfigErrors,                    // Cloud config / fleet / setup errors
 		convertStacksErrors,                         // Stacks management GCOM errors
-		convertFleetHTTPErrors,                      // Fleet Management HTTP 401/403 typed errors
+		convertFleetHTTPErrors,                      // Fleet Management HTTP errors; 404 splits resource from endpoint
 		convertInstrumentationErrors,                // Instrumentation RMW conflict errors
 		convertInstrumentationMutualExclusiveErrors, // setup: mutually exclusive flag pairs
 		convertResourceNotFoundErrors,               // Client-side resource misses, after domain converters
@@ -411,10 +411,7 @@ func convertAPIErrors(err error) (*gcxerrors.DetailedError, bool) {
 		if status.Code == http.StatusForbidden {
 			detailedErr.Summary = gcxerrors.SummaryAuthorizationFailed
 		}
-		detailedErr.Suggestions = []string{
-			"Make sure that the configured credentials are correct",
-			"Make sure that the configured credentials have enough permissions",
-		}
+		detailedErr.Suggestions = grafanaAuthSuggestions(int(status.Code))
 		detailedErr.DocsLink = docs.ServiceAccounts
 		detailedErr.ExitCode = new(gcxerrors.ExitAuthFailure)
 	case http.StatusNotFound:

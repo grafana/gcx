@@ -10,8 +10,13 @@ func responseErrorFields(body string) (string, string, string) {
 		Code    string `json:"code"`
 		TraceID string `json:"traceID"`
 	}
-	_ = json.Unmarshal([]byte(body), &parsed)
+	if err := json.Unmarshal([]byte(body), &parsed); err != nil {
+		return body, "", ""
+	}
 	message := parsed.Message
+	if message == "" {
+		message = parsed.Code
+	}
 	if message == "" {
 		return body, "", ""
 	}
@@ -19,7 +24,7 @@ func responseErrorFields(body string) (string, string, string) {
 }
 
 func errorMessageWithCode(message, code string) string {
-	if code != "" {
+	if code != "" && code != message {
 		return message + " (code " + code + ")"
 	}
 	return message

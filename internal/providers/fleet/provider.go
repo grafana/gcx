@@ -327,7 +327,7 @@ func resolvePipeline(ctx context.Context, client *Client, ref string) (*Pipeline
 		if err == nil {
 			return p, nil
 		}
-		if !isFleetResourceNotFound(err) {
+		if !isFleetNotFoundResponse(err) {
 			return nil, err
 		}
 		missingErr = err
@@ -356,7 +356,7 @@ func resolveCollector(ctx context.Context, client *Client, ref string) (*Collect
 	if missingErr == nil {
 		return collector, nil
 	}
-	if !isFleetResourceNotFound(missingErr) {
+	if !isFleetNotFoundResponse(missingErr) {
 		return nil, missingErr
 	}
 
@@ -366,7 +366,7 @@ func resolveCollector(ctx context.Context, client *Client, ref string) (*Collect
 		if err == nil {
 			return c, nil
 		}
-		if !isFleetResourceNotFound(err) {
+		if !isFleetNotFoundResponse(err) {
 			return nil, err
 		}
 		missingErr = err
@@ -384,11 +384,12 @@ func resolveCollector(ctx context.Context, client *Client, ref string) (*Collect
 	return nil, fmt.Errorf("fleet: resolve collector %q: %w", ref, missingErr)
 }
 
-// isFleetResourceNotFound permits alternative lookups only for a resource
-// absence reported by Connect, rather than an unavailable endpoint or request.
-func isFleetResourceNotFound(err error) bool {
+// isFleetNotFoundResponse permits alternative lookups after an HTTP 404.
+// Identifier misses can have different bodies across deployments; transport,
+// cancellation, authentication and other HTTP failures must remain failures.
+func isFleetNotFoundResponse(err error) bool {
 	var httpErr *fleetbase.HTTPError
-	return errors.As(err, &httpErr) && httpErr.Status == http.StatusNotFound && fleetbase.IsResourceNotFoundBody(httpErr.Body)
+	return errors.As(err, &httpErr) && httpErr.Status == http.StatusNotFound
 }
 
 type pipelineGetOpts struct {

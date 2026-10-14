@@ -59,9 +59,14 @@ func TestFleetEndpointNotFoundBodies(t *testing.T) {
 			message := body
 			var parsed struct {
 				Message string `json:"message"`
+				Code    string `json:"code"`
 			}
-			if json.Unmarshal([]byte(body), &parsed) == nil && parsed.Message != "" {
-				message = parsed.Message
+			if json.Unmarshal([]byte(body), &parsed) == nil {
+				if parsed.Message != "" {
+					message = parsed.Message
+				} else if parsed.Code != "" {
+					message = parsed.Code
+				}
 			}
 			assert.Contains(t, got.Details, message)
 			assert.Contains(t, got.Details, "HTTP 404")
@@ -101,7 +106,7 @@ func TestGCOMDetailsOnce(t *testing.T) {
 }
 
 func TestGCOMRawBodyFallback(t *testing.T) {
-	for _, body := range []string{"", "server unavailable", `{"reason":"down"}`, `{"code":"Unavailable","traceID":"trace-raw"}`, `{"message":`, strings.Repeat("long response ", 200)} {
+	for _, body := range []string{"", "server unavailable", `{"reason":"down"}`, `{"message":`, strings.Repeat("long response ", 200)} {
 		t.Run(body, func(t *testing.T) {
 			got := toDetailedError(t, fmt.Errorf("failed to list stacks: %w", &cloud.GCOMHTTPError{Status: 503, Body: body}))
 			assert.Equal(t, gcxerrors.SummaryAPIError, got.Summary)
@@ -127,6 +132,23 @@ func TestFilesystemDetailsOnce(t *testing.T) {
 			assert.Equal(t, tc.summary, got.Summary)
 			assert.Equal(t, err.Error(), got.Details)
 			assert.Equal(t, 1, strings.Count(got.Details, "/input/config.json"))
+			require.NoError(t, got.Parent)
+		})
+	}
+}
+
+func TestCodeOnlyResponseDetails(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  error
+		want string
+	}{
+		{"Fleet", &fleet.HTTPError{Status: 404, Path: "/GetPipeline", Body: `{"code":"not_found","traceID":"trace-raw"}`}, "/GetPipeline: not_found (HTTP 404, trace ID trace-raw)"},
+		{"GCOM", fmt.Errorf("failed to list stacks: %w", &cloud.GCOMHTTPError{Status: 503, Body: `{"code":"Unavailable","traceID":"trace-raw"}`}), "failed to list stacks: Unavailable (HTTP 503, trace ID trace-raw)"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := toDetailedError(t, tc.err)
+			assert.Equal(t, tc.want, got.Details)
 			require.NoError(t, got.Parent)
 		})
 	}

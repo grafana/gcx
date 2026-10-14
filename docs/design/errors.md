@@ -119,7 +119,9 @@ converter and generic fallback.
 
 Pipeline and collector getters retain the typed HTTP error for both kinds of
 404, including the requested resource ID in caller context. Name lookup follows
-only Connect resource-not-found errors; other get failures are returned directly.
+any identifier lookup HTTP 404, regardless of its body; other get failures are
+returned directly. This permits name resolution across differing server response
+shapes without masking transport, cancellation or authorization failures.
 A missing plain pipeline name returns `fleet.PipelineNotFoundError` and renders
 `Resource not found` with exit 1. It does not wrap `adapter.ErrNotFound`, so a
 name lookup failure cannot trigger adapter create-or-skip behavior.
