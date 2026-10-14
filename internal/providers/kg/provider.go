@@ -42,6 +42,7 @@ func (p *KGProvider) Commands() []*cobra.Command {
 		newStatusCommand(loader),
 		// Configuration upload
 		newRulesCommand(loader),
+		newThresholdsCommand(loader),
 		newModelRulesCommand(loader),
 		newSuppressionsCommand(loader),
 		newNotificationsCommand(loader),

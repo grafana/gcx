@@ -221,6 +221,17 @@ func TestClient_SetAppInstrumentation_EmptyOTLPURLFailsFast(t *testing.T) {
 	assert.Contains(t, err.Error(), "OTLP gateway URL")
 }
 
+func TestBackendURLsFromStack_Pyroscope(t *testing.T) {
+	got := instrumentation.BackendURLsFromStack(cloud.StackInfo{
+		HPInstanceID:  123456,
+		HPInstanceURL: "https://profiles-prod-008.grafana.net/",
+	})
+	assert.Equal(t, "https://profiles-prod-008.grafana.net", got.PyroscopeURL)
+	assert.Equal(t, "123456", got.PyroscopeUsername)
+
+	assert.Empty(t, instrumentation.BackendURLsFromStack(cloud.StackInfo{}).PyroscopeURL)
+}
+
 func TestBackendURLsFromStack_OTLP(t *testing.T) {
 	got := instrumentation.BackendURLsFromStack(cloud.StackInfo{
 		ID:                1075384,
