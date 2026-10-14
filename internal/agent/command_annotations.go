@@ -76,6 +76,7 @@ var commandAnnotations = map[string]annotation{
 	// config
 	"gcx config check":           {Cost: "small"},
 	"gcx config current-context": {Cost: "small"},
+	"gcx config delete-context":  {Cost: "small"},
 	"gcx config edit":            {Cost: "small"},
 	"gcx config list-contexts":   {Cost: "small"},
 	"gcx config path":            {Cost: "small"},

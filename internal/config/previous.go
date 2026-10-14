@@ -95,3 +95,31 @@ func WritePreviousContext(ctx context.Context, name string) error {
 	}
 	return nil
 }
+
+// ClearPreviousContext removes the persisted previous context when it names
+// the given context, so `use-context -` does not target a deleted context.
+func ClearPreviousContext(ctx context.Context, name string) error {
+	path := PreviousContextPath()
+	if prev, err := ReadPreviousContext(); err != nil || prev != name {
+		return err
+	}
+
+	lock := flock.New(path + ".lock")
+	lockCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	if ok, err := lock.TryLockContext(lockCtx, 50*time.Millisecond); err != nil || !ok {
+		if err != nil {
+			return fmt.Errorf("lock previous-context: %w", err)
+		}
+		return errors.New("lock previous-context: timed out")
+	}
+	defer func() { _ = lock.Unlock() }()
+
+	if prev, err := ReadPreviousContext(); err != nil || prev != name {
+		return err
+	}
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("clear previous-context: %w", err)
+	}
+	return nil
+}
