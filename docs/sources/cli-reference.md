@@ -2991,7 +2991,7 @@ Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `-
 ### `gcx alert routing-trees` {#gcx-alert-routing-trees}
 
 Manage notification routing trees through Grafana's native
-notifications.alerting.grafana.app API.
+`notifications.alerting.grafana.app` API.
 
 The default tree is named "user-defined". Named trees require Grafana 13.1+,
 or 12.4-13.0 with the alertingMultiplePolicies feature toggle. Server errors
