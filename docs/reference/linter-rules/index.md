@@ -1,6 +1,6 @@
 # Linter rules
 
-Run `gcx dev lint rules` to list the rules bundled with your installed version.
+Run `gcx dev lint list-rules` to list the rules bundled with your installed version.
 
 - [Panel title and description](dashboard/panel-title-description.md)
 - [Panel units](dashboard/panel-units.md)

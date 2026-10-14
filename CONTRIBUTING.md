@@ -76,7 +76,7 @@ much easier to say yes to.
 "Not gcx" usually means a backend prerequisite: gcx wraps product APIs, it
 does not fix them. Missing pagination, unstable payloads or unclear RBAC need
 to be solved by the owning team first. In the meantime,
-[`gcx api`](docs/sources/cli-reference.md#gcx-api) gives raw access to any Grafana API.
+[`gcx api`](docs/sources/cli-reference.md#gcx-api-gcx-api) gives raw access to any Grafana API.
 
 ## Prefer extending a command over adding one
 

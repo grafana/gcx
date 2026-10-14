@@ -102,14 +102,14 @@ which a base-diff would miss — then gate:
 ```bash
 mise exec -- gofmt -w <the .go files you edited>
 mise run gate
-GCX_AGENT_MODE=false mise run all
+mise run all
 ```
 
 `go` and `gofmt` come from mise and may not be on `PATH`; prefix them with
 `mise exec --` (or use a `mise run` task) so you get the pinned version.
 
 `mise run gate` is the fast inner loop (lint + tests + build).
-`GCX_AGENT_MODE=false mise run all` is the pre-push gate and already subsumes
+`mise run all` is the pre-push gate and already subsumes
 validate-skills, lint, tests, build and docs — you do not need to run those
 separately as well.
 
@@ -129,8 +129,6 @@ validation behaviour so you can tell an extractor bug from genuine drift.
 
 Notes:
 
-- `GCX_AGENT_MODE=false` matters: agent-mode auto-detection flips output
-  defaults and silently produces wrong generated docs from agent environments.
 - A resolved base is for scoping a *review* diff (self-review.md T10), not for
   deciding what to format.
 - If a tool is unavailable locally (Docker for the docs build, for instance),

@@ -568,7 +568,7 @@ Each entry pairs the error you see with what it means and how to fix it.
 
 ## See also
 
-- [`gcx login` flag reference](../sources/cli-reference.md#gcx-login) — exhaustive list of flags and options.
+- [`gcx login` flag reference](../sources/cli-reference.md#gcx-login-gcx-login) — exhaustive list of flags and options.
 - [Keychain credential storage](configuration/keychain.md) — credential storage rules and keychain error procedures.
 - [Login system architecture](../architecture/login-system.md) — how the login orchestrator works internally.
 - [Authentication subsystem](../architecture/auth-system.md) — OAuth PKCE, token lifecycle, `RefreshTransport`.
