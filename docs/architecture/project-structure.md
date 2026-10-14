@@ -14,6 +14,7 @@ gcx/
 │       ├── resources/        # 'resources' subcommand implementations
 │       ├── datasources/      # 'datasources' subcommand (list, get, query)
 │       │                     #   query.go + query_routes.go: auto-detecting query and its per-kind routing tables
+│       ├── docs/             # 'docs' subcommand (search, get, outline, list-products, list-links)
 │       ├── commands/         # 'commands' catalog (agent metadata, resource types, live validation)
 │       ├── helptree/        # 'help-tree' compact text tree for agent context injection
 │       ├── setup/            # 'setup' command area (cross-product onboarding helpers)
@@ -33,8 +34,10 @@ gcx/
 ├── internal/                 # All non-public packages (Go enforced)
 │   ├── agent/                # Agent mode and identity detection, command annotations, known-resource registry with operation hints
 │   ├── agentlog/             # Agent invocation failure logger (opt-in JSONL disk log, XDG state dir — wired into handleError in cmd/gcx/main.go)
-│   ├── assistant/            # Assistant client packages (prompt state, investigations, MCP server integrations)
+│   ├── assistant/            # Assistant client packages (prompt state, investigations, MCP integrations, Watcher reads)
 │   │   ├── mcpservers/       # MCP-servers HTTP client (offset pagination, full-exhaustion List)
+│   │   ├── watchers/         # Watcher read client, exhaustive paging and runtime observations (watcherstest/ contains shared HTTP test fixtures)
+│   │   ├── watcher/          # Watcher manifest schema, read-only typed adapter and identity resolution
 │   │   └── mcpserver/        # MCPServer manifest domain type + TypedCRUD adapter wiring + header write-intent mapping
 │   ├── auth/                 # OAuth PKCE flow, token refresh transport
 │   │   └── adaptive/         # Shared adaptive telemetry auth (GCOM caching, Basic auth)
@@ -70,7 +73,7 @@ gcx/
 │   │   ├── dbo11y/           # Database Observability provider (query/discovery views, no CRUD resources)
 │   │   │   └── instances/    # Instance inventory + health/query-performance snapshot from postgres_exporter + pg_stat_statements
 │   │   ├── alert/            # Alert provider (rules, groups, provisioning, native routing trees)
-│   │   ├── assistant/        # Assistant provider — lift-and-shift of the `gcx assistant` command tree; TypedRegistrations() registers the MCPServer adapter (internal/assistant/mcpserver/); exports ResolveClientOptions and RequireGrafanaCloud for other command trees embedding Assistant calls (used by `instrumentation check --fix-plan=assistant`)
+│   │   ├── assistant/        # Assistant provider — lift-and-shift of the `gcx assistant` command tree; TypedRegistrations() registers MCPServer and read-only Watcher adapters; watcher commands live in internal/providers/assistant/watchers/; exports ResolveClientOptions and RequireGrafanaCloud for other command trees embedding Assistant calls (used by `instrumentation check --fix-plan=assistant`)
 │   │   ├── dashboards/       # Dashboards provider (CRUD, search, version history, snapshot) — CLI: `gcx dashboards`
 │   │   │   ├── descriptor/   # Descriptor helpers (GVK, preferred version resolution)
 │   │   │   ├── search/       # Full-text search via dashboard.grafana.app search endpoint
@@ -184,7 +187,8 @@ gcx/
 │
 ├── go.mod / go.sum           # Main Go module definition (module: github.com/grafana/gcx)
 ├── .golangci.yaml            # Linter configuration (golangci-lint v2)
-├── .goreleaser.yaml          # Release pipeline (cross-platform builds + GitHub Release)
+├── .goreleaser.yaml          # Release pipeline (cross-platform builds + GitHub Release + container image)
+├── Dockerfile                # Release image: prebuilt binary on distroless (used by GoReleaser dockers_v2)
 ├── mise.toml                 # Reproducible toolchain (Go, golangci-lint, goreleaser, Python)
 ├── docker-compose.yml        # Integration test environment (Grafana 12 + MySQL 9)
 ├── mkdocs.yml                # Documentation site config (Material theme)
@@ -310,7 +314,7 @@ Triggered on: `v*` tag push.
 
 ```
 v* tag push
-└── release           → goreleaser release --clean  (builds + GitHub Release)
+└── release           → goreleaser release --clean  (builds + GitHub Release + ghcr.io image)
 ```
 
 GoReleaser builds with `CGO_ENABLED=0` for all three platforms (linux, darwin,
@@ -318,6 +322,8 @@ windows) and creates:
 - `tar.gz` archives for Linux/macOS (uname-compatible naming)
 - `zip` archive for Windows
 - `gcx_checksums.txt`
+- a multi-arch (`linux/amd64`, `linux/arm64`) container image, `ghcr.io/grafana/gcx`,
+  tagged `vX.Y.Z`, plus `vX.Y`, `vX` and `latest` for non-prereleases
 
 The changelog is auto-generated from `git log` via GitHub, filtering out
 `docs:`, `test:`, `tests:`, `chore:`, and merge commits.

@@ -32,14 +32,16 @@ Every command works identically for humans and agents. Agent mode changes defaul
 
 | Aspect | Human mode | Agent mode |
 |--------|-----------|------------|
-| Default output | `text` (table) | `agents` (compact JSON with spill) |
+| Default output | the command's narrow table codec | `agents` (compact JSON with spill) |
 | Colors | On (TTY) | Off |
 | Truncation | On (TTY) | Off |
-| Prompts | Interactive | Non-destructive prompts use defaults; destructive actions need `--force` or `GCX_AUTO_APPROVE` |
+| Prompts | Interactive | Non-destructive prompts use defaults; destructive actions need `--force` or enabled `GCX_AUTO_APPROVE` (see [safety.md](docs/design/safety.md) § 3.3) |
 
 Agent mode is active when `GCX_AGENT_MODE=true`, or when gcx detects a native
 agent marker or a supported explicit identity. See the
 [agent environment reference](docs/design/environment-variables.md#agent-mode-variables).
+An explicitly passed `--agent`/`--agent=false` overrides environment detection
+in both directions; see [agent-mode.md § 6.1](docs/design/agent-mode.md#61-detection).
 Explicit flags always override: `--output json` works in human mode; `--output text` works in agent mode.
 
 See [docs/design/agent-mode.md](docs/design/agent-mode.md) for detection logic and opt-out.
@@ -50,17 +52,21 @@ See [docs/design/agent-mode.md](docs/design/agent-mode.md) for detection logic a
 
 - Resource data and operation summaries → stdout
 - Progress feedback, warnings, detailed error messages → stderr
-- All output goes through the codec system — no unstructured prose as primary output
+- Primary output follows the declared protocol through the shared output system; finite commands do not emit ad-hoc prose (see [CONSTITUTION.md § Dual-Purpose Design](CONSTITUTION.md#dual-purpose-design))
 - Data fetching is **format-agnostic**: commands fetch all available data; codecs control presentation
 
 Default formats by command type:
 
 | Command type | Default | Rationale |
 |-------------|---------|-----------|
-| `list`, `get` | `text` (table) | Human-scannable |
+| `list`, `get` | a narrow table codec (`text` or `table`) | Human-scannable |
 | `config view` | `yaml` | Config is YAML-native |
-| `push`, `pull`, `delete` | Status messages | Operations, not data |
+| `push`, `delete` | structured operation summary | Operations, not data |
+| `resources pull` | `json` (pinned file format) | Files are the output; deprecated SLO pulls retain fixed YAML |
 | Agent mode | `agents` | Compact JSON with temp-file spill |
+
+There is no repo-wide format set — read a command's own `-o` line, and see
+[output.md § 1.3](docs/design/output.md) for the rule new commands follow.
 
 The `--json field1,field2` flag selects specific fields. `--json ?` discovers available field paths.
 
@@ -136,10 +142,10 @@ by `NewNamespacedRESTConfig` via `WrapTransport`).
 |------|---------|------|
 | 0 | Success | Command completed without errors |
 | 1 | General error | Unexpected error, business logic failure |
-| 2 | Usage error | Bad flags, invalid selectors, missing args |
+| 2 | Usage error | Invalid selectors, unknown commands, missing required flags — see [exit-codes.md § 2.3](docs/design/exit-codes.md) for what Cobra still surfaces as 1 |
 | 3 | Auth failure | 401/403, missing or invalid credentials |
 | 4 | Partial failure | Some resources succeeded, others failed |
-| 5 | Cancelled | The invocation stopped early: Ctrl+C, `context.Canceled`, a declined confirmation prompt, a server-reported cancellation |
+| 5 | Cancelled | The invocation stopped early: Ctrl+C, `context.Canceled`, explicit confirmation cancellation, or server-reported cancellation; see [legacy confirmation exceptions](docs/design/exit-codes.md#24-declined-confirmations) |
 | 6 | Version incompatible | Grafana < 12 detected |
 
 See [docs/design/exit-codes.md](docs/design/exit-codes.md) for implementation with `DetailedError` and converters.
@@ -147,8 +153,8 @@ See [docs/design/exit-codes.md](docs/design/exit-codes.md) for implementation wi
 ## Safety Patterns
 
 - **Idempotent by default**: `push` is create-or-update. Safe to run repeatedly.
-- **Dry-run available**: `push` and `delete` accept `--dry-run`.
-- **Prompt before destructive operations**: cloud provider delete commands prompt for confirmation unless `--force` or `GCX_AUTO_APPROVE`; agent mode requires `--force`. `resources delete` has no prompt yet (coming in [#241](https://github.com/grafana/gcx/issues/241)) — type-only selectors require `--force` (`--yes` also enables it).
+- **Dry-run available**: `resources push` and `resources delete` accept `--dry-run`; provider commands document their own support.
+- **Prompt before destructive operations**: cloud provider delete commands prompt for confirmation unless `--force` or enabled `GCX_AUTO_APPROVE` bypasses it; agent mode rejects a destructive operation without either bypass. `resources delete` uses its existing selector guard instead of a prompt: type-only selectors require `--force` (`--yes` also enables it).
 - **No prompt for reversible ops**: push, pull, config changes do not prompt.
 
 See [docs/design/safety.md](docs/design/safety.md) for implementation patterns and flag precedence.

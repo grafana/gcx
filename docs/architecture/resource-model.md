@@ -64,14 +64,26 @@ Every `Resource` carries a `SourceInfo` (line 374) recording where it came from.
 ### Manager Metadata
 
 Resources carry manager metadata in annotations (via `GrafanaMetaAccessor`):
-- `grafana.app/manager-kind` — which tool manages the resource (gcx uses `utils.ManagerKindKubectl` as placeholder, line 19)
-- `grafana.app/manager-identity` — identity string, built by `process.ManagerIdentity()` as `gcx/<version>` (for example `gcx/3.0.0`, or `gcx/SNAPSHOT` for a build without version information)
-- `grafana.app/manager-allows-edits` — always `true`, so the Grafana user interface keeps a pushed resource editable
-- `grafana.app/source-path` — original file path
+- `grafana.app/managedBy` — manager kind (`kubectl` for gcx).
+- `grafana.app/managerId` — stable identity `gcx` for new resources.
+- `grafana.app/managerAllowsEdits` — set to `true` by the manager processor.
+- `grafana.app/sourcePath` — original file path.
 
-gcx leaves `grafana.app/source-checksum` and `grafana.app/source-timestamp` empty. Grafana uses both fields to reconcile a resource from a source over time. gcx pushes one time per command, and no gcx code reads the two fields back.
+On update, the pusher preserves the live manager identity when both the local and
+live resources have the `kubectl` manager kind. This includes resources created
+by `grafanactl`, older gcx releases, and gcx releases that stored a version in the
+identity. Grafana rejects identity changes for this manager kind. The rule also
+applies when the pusher finds the target by its natural key.
 
-`IsManaged()` (line 161) returns true when the manager kind matches `ResourceManagerKind`. Resources managed by the UI (with `grafana.app/saved-from-ui` annotation) or other tools are protected from accidental overwrites unless `--include-managed` is passed.
+The gcx version is not part of the manager identity. Changing the client version
+must not change resource ownership.
+
+gcx leaves the source checksum and timestamp empty. Grafana uses these fields
+to reconcile a resource from a source over time. gcx pushes once per command.
+
+`IsManaged()` returns true when the manifest has the `kubectl` manager kind or
+has no manager. The push pipeline skips manifests with another manager kind
+unless `--include-managed` is set. Grafana still enforces its ownership rules.
 
 ### ResourceRef — the Collection Key
 
@@ -383,6 +395,20 @@ ResourceAdapter interface
 constructor that is only called on first use and its result cached for the router's
 lifetime.
 
+### Adapter-owned read and mutation policies
+
+Adapters may provide an optional per-pull preflight that runs before identity-keyed
+insertion, and a multi-reference reader that retains successful items with a
+partial-read report. Provider packages own resource identities, collision rules
+and diagnostic metadata; the router and generic pipeline dispatch these contracts
+without importing concrete provider types. Ordinary collection errors remain
+fatal under the selected error policy. Assistant Watcher and MCP server adapters opt in to `adapter.ErrUnavailable` for unavailable collection APIs: selector-free get/pull counts those types as skipped, while explicit selections and per-item failures retain their error behavior.
+
+Registration may also supply a configuration-free mutation guard. Push and delete
+invoke it before resource reads so a read-only resource is refused even when its
+collection is empty or its configuration cannot be exported. Unregistered native
+resources retain their existing mutation paths.
+
 ### TypedCRUD and ResourceIdentity
 
 Most providers use `TypedCRUD[T]` to implement `ResourceAdapter` without hand-writing
@@ -394,6 +420,11 @@ the marshal/unmarshal boilerplate. `TypedCRUD` wraps typed Go functions (`ListFn
 - Converting between typed domain objects and `unstructured.Unstructured`
 - Stripping server-managed fields (`StripFields`)
 - Client-side get-by-name fallback when `GetFn` is nil (lists + filters)
+
+List methods retain partial items alongside an error for callers that explicitly
+handle incomplete coverage. The error must still be handled; partial items do
+not establish a complete collection. The get-by-name fallback requires a
+successful full list and returns any list error without selecting a partial item.
 
 The type constraint `ResourceNamer` (value-type subset of `ResourceIdentity`)
 requires domain types to implement `GetResourceName() string`. The full
@@ -490,6 +521,8 @@ client is a REST adapter or the k8s dynamic client.
 Provider descriptors are injected into the `RegistryIndex` via `RegisterStatic(desc, aliases)`
 so that provider types appear in `resources list-types` output and resolve correctly from
 selector strings like `"slos"` or `"rules"`.
+
+Native discovery retains the group's preferred version. If that version lacks a requested kind, unversioned lookup and preferred-resource enumeration use the first registered provider descriptor for that group/kind. A native kind present in the preferred version takes precedence. Explicit version requests remain exact and never use this fallback.
 
 ---
 

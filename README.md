@@ -451,9 +451,10 @@ def2  Memory leak in payment-svc                resolved   1h ago
 
 The agentic workflow above is one example. gcx supports a wide range of workflows:
 
-- **Resource GitOps** — Pull resources to local files, let your agent edit them, push back to Grafana (`gcx resources pull` / `gcx resources push`)
+- **Resource GitOps** — Pull writable resource types to local files, let your agent edit them, push back to Grafana (`gcx resources pull` / `gcx resources push`)
 - **Explore your data** — Discover datasources, metrics, labels, and log streams before writing queries (`gcx datasources list`, `gcx metrics labels`)
 - **Bring Assistant context into your agent** — Read a conversation by ID or a shared Grafana Assistant URL, including AI SDK main-thread transcripts (`gcx assistant conversation get <id-or-url> -o json`)
+- **Look up product docs** — Search and read Grafana documentation from the terminal (`gcx docs search`, `gcx docs get`)
 - **SLO management** — Create, monitor, and investigate SLOs from your terminal (`gcx slo definitions list`, `gcx slo reports list`)
 - **Onboarding & setup** — Instrument a Kubernetes cluster and configure Grafana Cloud products (`gcx instrumentation setup`)
 - **Observability as Code** — Scaffold a project, import existing dashboards as Go code, lint, and deploy (`gcx dev scaffold`, `gcx dev import`)
@@ -554,6 +555,13 @@ gcx resources edit dashboards/my-dashboard
 gcx resources delete dashboards/my-dashboard
 ```
 
+### Mobile Frontend Observability apps
+
+Mobile Frontend Observability app manifests set `spec.appType: mobile` and a mobile
+`spec.runtime`. See [`gcx frontend apps create`](docs/reference/cli/gcx_frontend_apps_create.md)
+for the runtimes and an example manifest, and
+[`gcx frontend apps update`](docs/reference/cli/gcx_frontend_apps_update.md) for what an update keeps.
+
 ## Alerting & Datasource Queries
 
 Inspect alerting rules and query datasources directly:
@@ -599,6 +607,12 @@ gcx dev lint new dashboard my-rule              # create custom rule
 go run . && gcx resources push -p ./resources
 ```
 
+## Inspect Assistant Watchers (experimental)
+
+Read Watcher configuration with `gcx assistant watchers list` and `get WATCHER`, inspect runtime observations with `status WATCHER`, or export manifests with `gcx resources pull watchers`. Requires Grafana Cloud; writes are not supported yet. See [Assistant Watchers](docs/reference/assistant-watchers.md).
+
+Pulling all resource types can include read-only Watchers. Select writable types for a pull/push workflow; pushing Watcher manifests reports an unsupported operation.
+
 ## Raw API Access
 
 For anything not covered by built-in commands, use the API passthrough:
@@ -626,6 +640,10 @@ gcx resources push -p ./resources
 ```
 
 gcx push is idempotent — running it multiple times produces the same result. Folders are automatically pushed before dashboards to satisfy dependencies.
+
+Updates preserve the existing `kubectl` manager identity, including identities from
+`grafanactl` and older gcx releases. New resources use the stable identity `gcx`.
+See [manager metadata](docs/architecture/resource-model.md#manager-metadata).
 
 > **gcx resources push/pull vs GitSync:** Grafana's [Git Sync](https://grafana.com/docs/grafana/latest/as-code/observability-as-code/git-sync/) provides bi-directional sync between a git repo and Grafana for dashboards. `gcx resources push/pull` enables users to create their own as-code resource synchronisation workflows. `gcx resources push/pull` also works with all resources available in `gcx resources get`, not just dashboards.
 

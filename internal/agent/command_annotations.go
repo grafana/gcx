@@ -28,6 +28,17 @@ var commandAnnotations = map[string]annotation{
 	// Core CLI commands (cmd/gcx/)
 	// -----------------------------------------------------------------------
 
+	// docs — Grafana documentation lookup (read-only, no auth required).
+	// search/list-products pay a one-time index download (up to ~10 MiB) on
+	// the first call; get/outline fetch a single page (capped at 2 MiB).
+	// list-links is served from a built-in registry with no network, so it
+	// alone is "small".
+	"gcx docs search":        {Cost: "medium", Hint: "search Grafana docs by keyword; first call downloads the docs index. --product <name> --limit 10 -o json. For curated canonical URLs run 'gcx docs list-links'"},
+	"gcx docs get":           {Cost: "medium", Hint: "fetch a doc page as bounded markdown; --section <heading> --offset 0 --limit 80 -o json"},
+	"gcx docs outline":       {Cost: "medium", Hint: "fetch a doc page and list its headings to target sections with 'gcx docs get --section'"},
+	"gcx docs list-products": {Cost: "medium", Hint: "list indexed doc products with entry counts; first call downloads the docs index"},
+	"gcx docs list-links":    {Cost: "small", Hint: "list curated canonical doc URLs (no network); pass a URL to 'gcx docs get' to read content"},
+
 	"gcx api": {Cost: "large", Hint: "Run gcx help-tree --depth 1 to discover dedicated commands. Prefer gcx slo, gcx metrics query, gcx logs query, gcx alert, etc. Reserve gcx api for endpoints without a dedicated command. Example: GET /api/health -o json"},
 
 	// assistant
@@ -45,6 +56,9 @@ var commandAnnotations = map[string]annotation{
 	"gcx assistant investigations share":           {Cost: "small", Hint: "<id> --team=<name> (repeatable)"},
 	"gcx assistant conversation list":              {Cost: "small", Hint: "Discover conversation IDs. --source assistant,slack,cli (default), --limit, --offset, -o json"},
 	"gcx assistant conversation get":               {Cost: "large", Hint: "Pull a conversation transcript by ID or shared URL. AI SDK results cover the main thread; shared snapshots are read-only here. Example: <id-or-url> -o json"},
+	"gcx assistant watchers list":                  {Cost: "large", Hint: "Enumerates all visible Watchers. Prefer gcx assistant watchers get WATCHER for one configuration or status WATCHER for runtime observations; use --json spec.title or --jq to select fields."},
+	"gcx assistant watchers get":                   {Cost: "medium", Hint: "Read one configuration-only manifest by resource name or server ID. Use status for runtime observations."},
+	"gcx assistant watchers status":                {Cost: "large", Hint: "Read one Watcher runtime view including calibrated checks. Use get for reusable configuration and --json lifecycle,calibration or --jq to select observations."},
 	"gcx assistant mcp-servers create":             {Cost: "small"},
 	"gcx assistant mcp-servers delete":             {Cost: "small"},
 	"gcx assistant mcp-servers get":                {Cost: "small"},

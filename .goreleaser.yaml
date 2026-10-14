@@ -46,6 +46,28 @@ archives:
       - goos: windows
         formats: [zip]
 
+# Multi-arch image, built from the linux binaries above. Prereleases (-rc, ...)
+# only get their exact version tag; the floating tags (vX.Y, vX, latest) are
+# skipped, as GoReleaser drops tags that render empty.
+dockers_v2:
+  - id: gcx
+    ids: [gcx]
+    images:
+      - ghcr.io/grafana/gcx
+    tags:
+      - "v{{ .Version }}"
+      - "{{ if not .Prerelease }}v{{ .Major }}.{{ .Minor }}{{ end }}"
+      - "{{ if not .Prerelease }}v{{ .Major }}{{ end }}"
+      - "{{ if not .Prerelease }}latest{{ end }}"
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    labels:
+      "org.opencontainers.image.source": "https://github.com/grafana/gcx"
+      "org.opencontainers.image.version": "{{ .Version }}"
+      "org.opencontainers.image.revision": "{{ .FullCommit }}"
+      "org.opencontainers.image.licenses": "Apache-2.0"
+
 checksum:
   name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
   algorithm: sha256

@@ -29,5 +29,6 @@ Query Pyroscope datasources
 * [gcx datasources pyroscope list-profile-types](gcx_datasources_pyroscope_list-profile-types.md)	 - List available profile types
 * [gcx datasources pyroscope metrics](gcx_datasources_pyroscope_metrics.md)	 - Query profile time-series data from a Pyroscope datasource
 * [gcx datasources pyroscope query](gcx_datasources_pyroscope_query.md)	 - Execute a profiling query against a Pyroscope datasource
+* [gcx datasources pyroscope query-anomalies](gcx_datasources_pyroscope_query-anomalies.md)	 - [experimental] Query profile anomalies from a Pyroscope datasource
 * [gcx datasources pyroscope series](gcx_datasources_pyroscope_series.md)	 - List unique profile label sets
 

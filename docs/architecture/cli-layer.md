@@ -64,6 +64,13 @@ gcx (root)
 │   ├── get    NAME
 │   └── query                DATASOURCE_UID EXPR (auto-detect type) [--from] [--to] [--step] [--since] [--limit] [--profile-type] [--max-nodes] [-o]
 │
+├── docs                     [cmd/gcx/docs/command.go]
+│   ├── search  QUERY        Search the grafana.com docs index [--product] [--limit]
+│   ├── get     URL          Fetch a page as bounded markdown [--section] [--offset] [--limit]
+│   ├── outline URL          List headings of a page
+│   ├── list-products        List indexed doc products with entry counts
+│   └── list-links           List curated canonical doc URLs (no network)
+│
 ├── metrics                  [internal/providers/metrics/provider.go] (registered via providers.Register)
 │   ├── query                [DATASOURCE_UID] EXPR   [--from] [--to] [--step] [--since] [-o]
 │   ├── labels               [--datasource/-d UID] [--label/-l NAME]
@@ -267,6 +274,8 @@ gcx synthetic-monitoring [internal/providers/synth/provider.go]
     └── list
 ```
 
+The Assistant provider includes the experimental `assistant watchers list/get/status` subtree. List and get use the registered read-only Watcher adapter; status is a domain-specific runtime view. See [Assistant Watchers](../reference/assistant-watchers.md).
+
 ### Config loading pattern
 
 Provider commands cannot import `cmd/gcx/config` (import cycle). Instead,
@@ -324,6 +333,14 @@ cmd/gcx/
 │   ├── get.go               datasources get
 │   ├── query.go             QueryCmd() — auto-detecting query (shared infra from internal/datasources/query/)
 │   └── query_routes.go      per-kind dispatch handlers and typed-command redirects
+├── docs/
+│   ├── command.go           docs group + index loader + fetch seam
+│   ├── search.go            docs search
+│   ├── get.go               docs get
+│   ├── outline.go           docs outline
+│   ├── products.go          docs list-products
+│   ├── links.go             docs list-links
+│   └── testdata/            sample index fixture
 ├── providers/
 │   └── command.go           providers command — lists registered providers
 ├── setup/
@@ -681,11 +698,14 @@ func (c *tableCodec) Decode(io.Reader, any) error { return errors.New("not suppo
 Four colored message functions output to a given `io.Writer`:
 
 ```go
-cmdio.Success(cmd.OutOrStdout(), "%d resources pushed, %d errors", ok, fail)
-cmdio.Warning(cmd.OutOrStdout(), "...")
-cmdio.Error(cmd.OutOrStdout(), "...")
-cmdio.Info(cmd.OutOrStdout(), "...")
+cmdio.Success(cmd.ErrOrStderr(), "%d resources pushed, %d errors", ok, fail)
+cmdio.Warning(cmd.ErrOrStderr(), "...")
+cmdio.Error(cmd.ErrOrStderr(), "...")
+cmdio.Info(cmd.ErrOrStderr(), "...")
 ```
+
+Pass the **stderr** writer: stdout carries the result, stderr the diagnostics
+(see [output.md § 1.4](../design/output.md) and CONSTITUTION.md § Output).
 
 They prefix with colored Unicode symbols (✔ ⚠ ✘ 🛈). `--no-color` disables all color globally via `color.NoColor = true` in root's `PersistentPreRun`.
 
@@ -898,7 +918,7 @@ cmd.AddCommand(myCmd(configOpts))
 | `configOpts.LoadGrafanaConfig` is called in `RunE`, not at construction | All resource commands |
 | `--config` and `--context` are persistent on the group, not per-subcommand | `resources/command.go`, `config/command.go` |
 | All errors bubble up through `RunE` return value; never `os.Exit` in commands | All commands |
-| Status messages go to `cmd.OutOrStdout()`, not `os.Stdout` directly | All commands |
+| Status messages go to `cmd.ErrOrStderr()`, never `os.Stdout`/`os.Stderr` directly | All commands |
 | Custom table codecs implement `format.Codec` and are registered before `BindFlags` | `get.go`, `list.go`, `validate.go` |
 | Data fetching is format-agnostic — fetch all fields, let codecs filter display | All commands with custom codecs |
 | `OnErrorMode` is always validated in `opts.Validate()`, not inline | All multi-resource commands |

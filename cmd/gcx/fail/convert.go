@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/grafana/gcx/internal/assistant/watchers"
 	"github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/cloud"
 	"github.com/grafana/gcx/internal/config"
@@ -24,6 +25,7 @@ import (
 	"github.com/grafana/gcx/internal/linter/linterr"
 	"github.com/grafana/gcx/internal/login"
 	cmdoutput "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/instrumentation"
 	"github.com/grafana/gcx/internal/providers/instrumentation/rmw"
 	"github.com/grafana/gcx/internal/queryerror"
@@ -78,9 +80,11 @@ func ErrorToDetailedError(err error) *gcxerrors.DetailedError {
 		convertConfigErrors,                         // Config-related
 		convertCloudOrgsErrors,                      // Organisation discovery auth failures
 		convertAuthErrors,                           // Auth-related (expired tokens)
+		convertPluginRouteDenied,                    // Plugin proxy refused a route: name the missing action
 		convertUnavailableEndpoint,                  // Experimental/Cloud-only endpoint route absent
 		convertQueryErrors,                          // Datasource query errors
 		convertDatasourceErrors,                     // Grafana datasource REST API errors
+		convertWatcherUnavailableErrors,             // Missing Watcher read capability
 		convertServiceAPIErrors,                     // Other structured HTTP API errors
 		convertFSErrors,                             // FS-related
 		convertResourcesErrors,                      // Resources-related
@@ -246,6 +250,30 @@ func convertAuthErrors(err error) (*gcxerrors.DetailedError, bool) {
 		}, true
 	}
 	return nil, false
+}
+
+// convertPluginRouteDenied names the RBAC action a refused plugin-proxy route
+// requires. The raw 403 body only says the route was denied.
+func convertPluginRouteDenied(err error) (*gcxerrors.DetailedError, bool) {
+	var denied *providers.PluginRouteDeniedError
+	if !errors.As(err, &denied) {
+		return nil, false
+	}
+	return &gcxerrors.DetailedError{
+		Summary: gcxerrors.SummaryAuthorizationFailed,
+		// Agent JSON prints Details instead of Parent, so keep the command's context here.
+		Details: joinErrorDetails(
+			wrappedTypedErrorContext(err, denied),
+			"Grafana's plugin proxy refused the route: missing "+denied.Action,
+		),
+		Parent: err,
+		Suggestions: []string{
+			fmt.Sprintf("Ask a stack admin to grant you the %s role, which includes %s", denied.Role, denied.Action),
+			"Check what your login holds: gcx setup status",
+		},
+		DocsLink: docs.RolesAndPermissions,
+		ExitCode: new(gcxerrors.ExitAuthFailure),
+	}, true
 }
 
 // convertCredentialsErrors converts restricted, unavailable, and locked
@@ -666,6 +694,19 @@ func queryErrorHelpCommand(apiErr *queryerror.APIError) string {
 	}
 
 	return ""
+}
+
+func convertWatcherUnavailableErrors(err error) (*gcxerrors.DetailedError, bool) {
+	var apiErr *watchers.APIError
+	if !errors.As(err, &apiErr) || !errors.Is(apiErr, watchers.ErrCapabilityUnavailable) {
+		return nil, false
+	}
+	return &gcxerrors.DetailedError{
+		Parent:      err,
+		Summary:     gcxerrors.SummaryEndpointNotAvailable,
+		Details:     joinErrorDetails(wrappedTypedErrorContext(err, apiErr), apiErr.APIUserMessage()),
+		Suggestions: []string{"Verify that " + apiErr.Operation + " is available on the selected Grafana Cloud target"},
+	}, true
 }
 
 type serviceAPIError interface {

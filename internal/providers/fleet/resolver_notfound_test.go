@@ -11,7 +11,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestResolvePipelinePlainNameMissingWrapsNotFound(t *testing.T) {
+// The typed adapter turns adapter.ErrNotFound into a Kubernetes NotFound,
+// which makes push create and multi-get skip the selector. resolvePipeline
+// is not a strict identity lookup, so its name miss must not carry it.
+func TestResolvePipelinePlainNameMissingIsNotAdapterNotFound(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
 		pipelines []Pipeline
@@ -29,9 +32,10 @@ func TestResolvePipelinePlainNameMissingWrapsNotFound(t *testing.T) {
 			t.Cleanup(server.Close)
 
 			pipeline, err := resolvePipeline(context.Background(), NewClient(context.Background(), server.URL, server.Client()), "absent-name")
-			require.ErrorIs(t, err, adapter.ErrNotFound)
+			require.Error(t, err)
+			require.NotErrorIs(t, err, adapter.ErrNotFound)
 			assert.Nil(t, pipeline)
-			assert.Contains(t, err.Error(), `pipeline "absent-name"`)
+			assert.Equal(t, `pipeline "absent-name" not found`, err.Error())
 			assert.Equal(t, 1, calls)
 		})
 	}

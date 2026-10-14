@@ -9,46 +9,46 @@ import (
 )
 
 // findByNaturalKey attempts to find an existing remote resource that matches
-// the local resource by content-based natural key. Returns the remote resource's
-// name and resourceVersion if found.
+// the local resource by content-based natural key. Returns the matching remote
+// resource, including its manager fields, if found.
 //
 // This enables cross-stack push: when Get-by-metadata.name returns NotFound
 // (because the server-generated ID from Stack A doesn't exist on Stack B),
 // we fall back to matching by natural key (e.g., SLO name, check job+target).
-func findByNaturalKey( //nolint:nonamedreturns // Named returns document the four-value return contract.
+func findByNaturalKey(
 	ctx context.Context,
 	cache *naturalKeyCache,
 	desc resources.Descriptor,
 	localObj *unstructured.Unstructured,
-) (remoteName string, resourceVersion string, found bool, err error) {
+) (*unstructured.Unstructured, error) {
 	// 1. Get the extractor for this GVK.
 	extractor := adapter.GetNaturalKeyExtractor(desc.GroupVersionKind())
 	if extractor == nil {
-		return "", "", false, nil
+		return nil, nil //nolint:nilnil // A nil resource means no match.
 	}
 
 	// 2. Extract the local resource's natural key.
 	localKey, ok := extractor(localObj)
 	if !ok {
-		return "", "", false, nil
+		return nil, nil //nolint:nilnil // A nil resource means no match.
 	}
 
 	// 3. Get the cached list of remote resources.
 	remoteList, err := cache.list(ctx, desc)
 	if err != nil {
-		return "", "", false, err
+		return nil, err
 	}
 	if remoteList == nil {
-		return "", "", false, nil
+		return nil, nil //nolint:nilnil // A nil resource means no match.
 	}
 
 	// 4. Find a remote resource with the same natural key.
 	for i := range remoteList.Items {
 		remoteKey, ok := extractor(&remoteList.Items[i])
 		if ok && remoteKey == localKey {
-			return remoteList.Items[i].GetName(), remoteList.Items[i].GetResourceVersion(), true, nil
+			return &remoteList.Items[i], nil
 		}
 	}
 
-	return "", "", false, nil
+	return nil, nil //nolint:nilnil // A nil resource means no match.
 }

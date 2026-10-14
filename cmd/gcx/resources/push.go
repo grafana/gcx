@@ -105,11 +105,14 @@ func pushCmd(configOpts *cmdconfig.Options) *cobra.Command {
 
 	gcx resources push dashboards.v1alpha1.dashboard.grafana.app/foo folders.v1alpha1.folder.grafana.app/qux
 
-	# Provider-backed resource types (SLO, Synthetic Monitoring, Alerting):
+	# Provider-backed resources (SLO and Synthetic Monitoring):
 
 	gcx resources push slo -p ./slo-defs/
-	gcx resources push checks -p ./checks/
-	gcx resources push rules -p ./rules/
+	gcx resources push checks.syntheticmonitoring -p ./checks/
+
+	# Native Grafana alert rules:
+
+	gcx resources push alertrules -p ./alertrules/
 
 	# Mixed push: native and provider resources from the same directory
 	# (types auto-detected from apiVersion/kind in YAML files):

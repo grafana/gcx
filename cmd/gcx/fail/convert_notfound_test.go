@@ -20,7 +20,7 @@ func TestErrorToDetailedError_AdapterNotFound(t *testing.T) {
 	for _, err := range []error{
 		adapter.ErrNotFound,
 		fmt.Errorf("incidents: get missing-id: %w", fmt.Errorf("incident: %w", adapter.ErrNotFound)),
-		fmt.Errorf("pipeline %q: %w", "absent-name", adapter.ErrNotFound),
+		fmt.Errorf("report %w", adapter.ErrNotFound),
 	} {
 		t.Run(err.Error(), func(t *testing.T) {
 			got := fail.ErrorToDetailedError(err)

@@ -12,10 +12,10 @@
 |------|----------|---------|------|
 | 0 | `ExitSuccess` | Success | Command completed without errors |
 | 1 | `ExitGeneralError` | General error | Unexpected error, business logic failure |
-| 2 | `ExitUsageError` | Usage error | Bad flags, invalid selectors, missing args |
+| 2 | `ExitUsageError` | Usage error | Invalid selectors, unknown commands, missing required flags (see § 2.3 for what Cobra still surfaces as 1) |
 | 3 | `ExitAuthFailure` | Auth failure | 401/403, missing or invalid credentials |
 | 4 | `ExitPartialFailure` | Partial failure | Some resources succeeded, others failed |
-| 5 | `ExitCancelled` | Cancelled | User pressed Ctrl+C (SIGINT), `context.Canceled`, a declined confirmation prompt, or a server-reported cancellation |
+| 5 | `ExitCancelled` | Cancelled | Ctrl+C (SIGINT), `context.Canceled`, explicit confirmation cancellation (see § 2.4 for legacy exceptions), or server-reported cancellation |
 | 6 | `ExitVersionIncompatible` | Version incompatible | Grafana version < 12 detected |
 
 Constants defined in `internal/gcxerrors/exitcodes.go`.
@@ -48,8 +48,8 @@ Constants defined in `internal/gcxerrors/exitcodes.go`.
   final exit code rather than about any one of them. `isSilentCancellation` in
   `main.go` exits 5 without printing an error for an interrupted invocation.
   Commands that stop early after reporting their own outcome carry the same code
-  themselves, and not through one error type: a declined confirmation prompt
-  returns a `DetailedError` with `ExitCode: ExitCancelled`
+  themselves, and not through one error type: commands following the declined
+  confirmation contract return a `DetailedError` with `ExitCode: ExitCancelled`
   (`internal/providers/irm/oncall_actions.go`,
   `internal/providers/assistant/mcpservers/commands.go`), while an aborted
   `dev scaffold` and the agent-mode assistant and instrumentation wait paths
@@ -127,6 +127,23 @@ Cobra flag parsing and positional argument validation errors are wrapped in
 running that command with `--help`. Unknown commands and missing required
 flags also exit with code 2. `SilenceUsage: true` keeps Cobra from printing a
 second usage message alongside the structured error.
+
+### 2.4 Declined Confirmations
+
+New confirmation paths return `gcxerrors.DetailedError` with
+`ExitCode: ExitCancelled` after `ConfirmDestructive` returns `(false, nil)`.
+The helper does not assign an exit code for the caller. See the
+[implementation example](safety.md#32-the-force-flag-and-providersconfirmdestructive-implemented).
+
+**Existing compatibility gap:** a negative answer still returns `nil` (exit 0)
+in `gcx datasources delete`, `gcx slo definitions delete`, `gcx slo reports delete`,
+and Synth, adaptive-signal, and several other provider mutation paths. By
+contrast, IRM OnCall actions and Assistant MCP-server deletion explicitly return
+exit 5. Do not use an existing success-on-decline path as the template for a new
+command, or change its released behavior incidentally in a guidance cleanup.
+A compatibility migration must identify the affected commands and update their
+output and exit-code tests together. EOF is separate: `ConfirmDestructive`
+returns an error when no interactive input is available.
 
 Reference: `cmd/gcx/main.go`, `internal/gcxerrors/detailed.go`,
 `cmd/gcx/fail/convert.go`

@@ -144,3 +144,19 @@ func TestFormatTime(t *testing.T) {
 		})
 	}
 }
+
+type failingResponseBody struct{ err error }
+
+func (b failingResponseBody) Read([]byte) (int, error) { return 0, b.err }
+func (b failingResponseBody) Close() error             { return nil }
+
+func TestHandleErrorResponse_BodyReadFailure(t *testing.T) {
+	cause := errors.New("body read failed")
+	resp := &http.Response{StatusCode: http.StatusBadGateway, Body: failingResponseBody{err: cause}}
+	err := assistanthttp.HandleErrorResponse(resp)
+	require.EqualError(t, err, "request failed with status 502 (could not read body: body read failed)")
+	var statusErr *gcxerrors.HTTPStatusError
+	require.ErrorAs(t, err, &statusErr)
+	assert.Equal(t, http.StatusBadGateway, statusErr.Status)
+	require.ErrorIs(t, err, cause)
+}

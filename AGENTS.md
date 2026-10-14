@@ -74,6 +74,7 @@ cmd/gcx/
   config/       Config management (set, use-context, view, check)
   resources/    Resource commands (get, list-types, list-examples, push, pull, delete, edit, validate)
   datasources/  Datasource commands (list, get, query, per-type subcommands via DatasourceProvider)
+  docs/         Documentation lookup (search, get, outline, list-products, list-links)
   providers/    Provider list command
   cloud/        Cloud platform commands (login, stack management, user org memberships)
   api/          Raw API passthrough
@@ -192,3 +193,7 @@ When creating or commenting on GitHub issues, **always anonymize system-specific
 - API tokens, credentials → never include, even partially
 
 This applies to issue bodies, comments, and code snippets embedded in issues.
+
+## Security
+
+Report security vulnerabilities through [Grafana's security issue reporting page](https://grafana.com/legal/report-a-security-issue/). Keep vulnerability reports private; do not file them as GitHub issues in this repository. Ordinary security-related engineering work, such as hardening and dependency maintenance, follows the normal issue workflow.

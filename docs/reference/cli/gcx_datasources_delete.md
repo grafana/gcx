@@ -6,8 +6,9 @@ Delete one or more datasources
 
 Delete one or more datasources by UID.
 
-Deletion prompts for confirmation unless --force/--yes, GCX_AUTO_APPROVE, or
-agent mode is in effect.
+Deletion prompts for confirmation unless --dry-run, --force/--yes, or enabled
+GCX_AUTO_APPROVE. Agent mode does not auto-approve destructive deletion:
+without an explicit bypass it fails with an actionable error.
 
 Exit codes: 0 (all deleted), 4 (some deletions failed).
 
