@@ -16,6 +16,11 @@ import (
 	"k8s.io/client-go/rest"
 )
 
+// datasourceParam names the datasource to query. Every other query
+// parameter is an exact-match label matcher, so this one is stripped from
+// user-supplied filters rather than forwarded as one.
+const datasourceParam = "datasource"
+
 // apiBasePath is the base path for all routes.
 const apiBasePath = "/api/plugins/grafana-dbo11y-app/resources/api/v1"
 
@@ -170,9 +175,9 @@ func queriesPath(serverID string) string {
 // response slice is normalised to an empty one so the filtered and unfiltered
 // paths cannot diverge in `-o json` between `null` and `[]`.
 func fetchInstances(ctx context.Context, client *apiClient, datasourceUID string, filters url.Values) ([]Instance, error) {
-	query := url.Values{"datasource": {datasourceUID}}
+	query := url.Values{datasourceParam: {datasourceUID}}
 	for label, values := range filters {
-		if label == "datasource" {
+		if label == datasourceParam {
 			continue
 		}
 		for _, v := range values {
@@ -192,7 +197,7 @@ func fetchInstances(ctx context.Context, client *apiClient, datasourceUID string
 
 // fetchInstanceDetail calls GET /instances/{serverID}.
 func fetchInstanceDetail(ctx context.Context, client *apiClient, datasourceUID, serverID string) (Instance, error) {
-	query := url.Values{"datasource": {datasourceUID}}
+	query := url.Values{datasourceParam: {datasourceUID}}
 	raw, err := apiGet[apiInstance](ctx, client, instancePath(serverID), query)
 	if err != nil {
 		return Instance{}, err
@@ -221,10 +226,10 @@ func fetchTopQueries(ctx context.Context, client *apiClient, datasourceUID, loki
 	}
 
 	query := url.Values{
-		"datasource": {datasourceUID},
-		"from":       {from.Format(time.RFC3339)},
-		"to":         {now.Format(time.RFC3339)},
-		"limit":      {strconv.Itoa(limit)},
+		datasourceParam: {datasourceUID},
+		"from":          {from.Format(time.RFC3339)},
+		"to":            {now.Format(time.RFC3339)},
+		"limit":         {strconv.Itoa(limit)},
 	}
 	if lokiDatasourceUID != "" {
 		query.Set("loki", lokiDatasourceUID)
