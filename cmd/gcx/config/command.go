@@ -1236,16 +1236,14 @@ Paths are literal: they name the exact location in the configuration file, start
 	return cmd
 }
 
-// deleteContextResult extends configMutation with the entries the delete
-// removed alongside the context.
+// deleteContextResult extends the shared single-target mutation with the
+// entries the delete removed alongside the context.
 type deleteContextResult struct {
-	configMutation `yaml:",inline"`
+	cmdio.SingleMutation `yaml:",inline"`
 
-	Context      string `json:"context" yaml:"context"`
-	StackRemoved string `json:"stack_removed,omitempty" yaml:"stack_removed,omitempty"`
-	CloudRemoved string `json:"cloud_removed,omitempty" yaml:"cloud_removed,omitempty"`
-
-	CurrentContextCleared bool `json:"current_context_cleared,omitempty" yaml:"current_context_cleared,omitempty"`
+	StackRemoved          string `json:"stack_removed,omitempty" yaml:"stack_removed,omitempty"`
+	CloudRemoved          string `json:"cloud_removed,omitempty" yaml:"cloud_removed,omitempty"`
+	CurrentContextCleared bool   `json:"current_context_cleared,omitempty" yaml:"current_context_cleared,omitempty"`
 	// RemainsInOtherLayer is set when another config layer still defines a
 	// context with this name, so it stays visible in list-contexts.
 	RemainsInOtherLayer bool `json:"remains_in_other_layer,omitempty" yaml:"remains_in_other_layer,omitempty"`
@@ -1264,7 +1262,8 @@ func (c *deleteContextTextCodec) Encode(w io.Writer, value any) error {
 	if !ok {
 		return errors.New("invalid data type for delete-context text codec: expected deleteContextResult")
 	}
-	removed := []string{fmt.Sprintf("context \"%s\"", result.Context)}
+	name := result.Target.Name
+	removed := []string{fmt.Sprintf("context \"%s\"", name)}
 	if result.StackRemoved != "" {
 		removed = append(removed, fmt.Sprintf("stack \"%s\"", result.StackRemoved))
 	}
@@ -1276,7 +1275,7 @@ func (c *deleteContextTextCodec) Encode(w io.Writer, value any) error {
 		cmdio.Info(w, "current-context cleared; pick one with 'gcx config use-context'")
 	}
 	if result.RemainsInOtherLayer {
-		cmdio.Info(w, "Context \"%s\" is still defined in another config layer", result.Context)
+		cmdio.Info(w, "Context \"%s\" is still defined in another config layer", name)
 	}
 	return nil
 }
@@ -1288,12 +1287,17 @@ func deleteContextCmd(configOpts *Options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "delete-context CONTEXT_NAME",
 		Args:  cobra.ExactArgs(1),
-		Short: "Delete a context and its unused stack and cloud entries",
+		Short: "Delete a context and its unused stack and cloud entries, including stored credentials",
 		Long: `Delete a context from a configuration file.
 
 The stack and cloud entries the context references are deleted as well, unless
-another context in any config layer still references them. If the deleted
-context is the current context, current-context is cleared.
+another context in any config layer still references them. Deleting a stack or
+cloud entry also deletes the credentials stored for it in the system keychain;
+this cannot be undone. Only local configuration and keychain entries are
+changed - nothing is sent to Grafana.
+
+If the deleted context is the current context, current-context is cleared. A
+recorded previous context ('use-context -') naming it is cleared too.
 
 When multiple config files are loaded (e.g. a local .gcx.yaml alongside the
 user config), use --file to choose which layer to update.`,
@@ -1307,37 +1311,55 @@ user config), use --file to choose which layer to update.`,
 				return err
 			}
 
+			name := args[0]
+
+			// Resolve existence against the merged view, as use-context does,
+			// so the error lists every context the user can see.
+			layered, err := config.LoadLayered(cmd.Context(), configOpts.ConfigFile)
+			if err != nil {
+				return err
+			}
+			if !layered.HasContext(name) {
+				return config.ContextNotFound(name, layered.ContextNames())
+			}
+
 			cfg, target, err := config.LoadForWrite(cmd.Context(), configOpts.ConfigFile, fileType)
 			if err != nil {
 				return err
 			}
-
-			name := args[0]
 			gCtx := cfg.Contexts[name]
 			if gCtx == nil {
-				return config.ContextNotFound(name, cfg.ContextNames())
+				return fmt.Errorf("context %q is not defined in the selected config layer: use --file to choose the layer that defines it", name)
 			}
 
 			targetPath, err := target()
 			if err != nil {
 				return err
 			}
-			others, err := config.OtherLayerReferences(configOpts.ConfigFile, targetPath)
+			remains, err := config.ContextDefinedInOtherLayer(configOpts.ConfigFile, targetPath, name)
 			if err != nil {
 				return err
 			}
 
+			result := deleteContextResult{
+				SingleMutation:      cmdio.NewSingleMutation("delete-context", cmdio.MutationTarget{Kind: "context", Name: name}),
+				RemainsInOtherLayer: remains,
+			}
+			changed := true
+			result.Changed = &changed
+
 			delete(cfg.Contexts, name)
-			result := deleteContextResult{Context: name, RemainsInOtherLayer: others.Contexts[name]}
 			if cfg.CurrentContext == name {
 				cfg.CurrentContext = ""
 				result.CurrentContextCleared = true
 			}
 
-			stackInUse := gCtx.Stack != "" && others.Stacks[gCtx.Stack]
-			cloudInUse := gCtx.Cloud != "" && others.Clouds[gCtx.Cloud]
-			for _, other := range cfg.Contexts {
-				if other == nil {
+			// A stack or cloud entry stays when any context in any layer still
+			// references it. The merged view covers every other name; a same-name
+			// context in another layer is counted through its merged references.
+			stackInUse, cloudInUse := false, false
+			for ctxName, other := range layered.Contexts {
+				if other == nil || (ctxName == name && !remains) {
 					continue
 				}
 				stackInUse = stackInUse || (gCtx.Stack != "" && other.Stack == gCtx.Stack)
@@ -1356,13 +1378,12 @@ user config), use --file to choose which layer to update.`,
 				return err
 			}
 
-			if !result.RemainsInOtherLayer {
+			if !remains {
 				if err := config.ClearPreviousContext(cmd.Context(), name); err != nil {
 					fmt.Fprintf(cmd.ErrOrStderr(), "warning: could not clear previous context at %s: %v\n", config.PreviousContextPath(), err)
 				}
 			}
 
-			result.configMutation = newConfigMutation("delete-context", "contexts."+name, target)
 			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}

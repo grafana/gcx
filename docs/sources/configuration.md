@@ -168,6 +168,16 @@ Switch to a different context:
 gcx config use-context staging
 ```
 
+Delete a context together with the stack and cloud entries no other context
+uses:
+
+```shell
+gcx config delete-context staging
+```
+
+This removes local configuration only, and deletes the credentials stored for
+the removed entries from the system keychain. Nothing is sent to Grafana.
+
 See the entire configuration:
 
 ```shell

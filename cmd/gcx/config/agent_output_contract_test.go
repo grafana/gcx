@@ -183,6 +183,25 @@ stacks:
 			},
 		},
 		{
+			name: "delete-context",
+			args: func(t *testing.T) []string {
+				t.Helper()
+				t.Setenv("XDG_STATE_HOME", t.TempDir())
+				configFile := testutils.CreateTempFile(t, twoContextsConfig)
+				return []string{"delete-context", "--config", configFile, "new"}
+			},
+			assert: func(t *testing.T, doc any) {
+				t.Helper()
+				obj := asObject(t, doc)
+				require.Equal(t, "gcx.mutation", obj["type"])
+				require.Equal(t, "delete-context", obj["action"])
+				require.Equal(t, true, obj["changed"])
+				target := asObject(t, obj["target"])
+				require.Equal(t, "context", target["kind"])
+				require.Equal(t, "new", target["name"])
+			},
+		},
+		{
 			// Idempotent no-op: the target context is already current, so the
 			// document must report changed=false (not omit the field, and not
 			// error) with a clean exit.

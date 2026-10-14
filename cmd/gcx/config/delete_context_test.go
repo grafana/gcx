@@ -104,6 +104,7 @@ func TestDeleteContext(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			isolateStateHome(t)
 			userDir, _ := isolatedConfigEnv(t)
 			path := writeUserConfig(t, userDir, deleteContextFixture)
 
@@ -125,6 +126,7 @@ func TestDeleteContext(t *testing.T) {
 }
 
 func TestDeleteContextKeepsEntriesReferencedByOtherLayer(t *testing.T) {
+	isolateStateHome(t)
 	userDir, workDir := isolatedConfigEnv(t)
 	path := writeUserConfig(t, userDir, `version: 1
 stacks:
@@ -157,6 +159,7 @@ contexts:
 }
 
 func TestDeleteContextReportsNameStillDefinedInOtherLayer(t *testing.T) {
+	isolateStateHome(t)
 	userDir, workDir := isolatedConfigEnv(t)
 	path := writeUserConfig(t, userDir, `version: 1
 stacks:
@@ -182,6 +185,7 @@ contexts:
 }
 
 func TestDeleteContextClearsPreviousContext(t *testing.T) {
+	isolateStateHome(t)
 	userDir, _ := isolatedConfigEnv(t)
 	writeUserConfig(t, userDir, deleteContextFixture)
 	require.NoError(t, config.WritePreviousContext(t.Context(), "b"))

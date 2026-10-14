@@ -40,6 +40,21 @@ func ReadPreviousContext() (string, error) {
 	return strings.TrimSpace(string(data)), nil
 }
 
+// lockPreviousContext takes the cross-process lock guarding the
+// previous-context file and returns the function that releases it.
+func lockPreviousContext(ctx context.Context, path string) (func(), error) {
+	lock := flock.New(path + ".lock")
+	lockCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	if ok, err := lock.TryLockContext(lockCtx, 50*time.Millisecond); err != nil || !ok {
+		if err != nil {
+			return nil, fmt.Errorf("lock previous-context: %w", err)
+		}
+		return nil, errors.New("lock previous-context: timed out")
+	}
+	return func() { _ = lock.Unlock() }, nil
+}
+
 // WritePreviousContext persists name as the previous context.
 //
 // Concurrent writers are guarded on two levels. An advisory flock (matching the
@@ -63,16 +78,11 @@ func WritePreviousContext(ctx context.Context, name string) error {
 		return fmt.Errorf("create previous-context dir: %w", err)
 	}
 
-	lock := flock.New(path + ".lock")
-	lockCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
-	if ok, err := lock.TryLockContext(lockCtx, 50*time.Millisecond); err != nil || !ok {
-		if err != nil {
-			return fmt.Errorf("lock previous-context: %w", err)
-		}
-		return errors.New("lock previous-context: timed out")
+	unlock, err := lockPreviousContext(ctx, path)
+	if err != nil {
+		return err
 	}
-	defer func() { _ = lock.Unlock() }()
+	defer unlock()
 
 	// os.CreateTemp creates the file with 0o600 perms, matching the previous
 	// fixed-name write.
@@ -104,16 +114,11 @@ func ClearPreviousContext(ctx context.Context, name string) error {
 		return err
 	}
 
-	lock := flock.New(path + ".lock")
-	lockCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
-	if ok, err := lock.TryLockContext(lockCtx, 50*time.Millisecond); err != nil || !ok {
-		if err != nil {
-			return fmt.Errorf("lock previous-context: %w", err)
-		}
-		return errors.New("lock previous-context: timed out")
+	unlock, err := lockPreviousContext(ctx, path)
+	if err != nil {
+		return err
 	}
-	defer func() { _ = lock.Unlock() }()
+	defer unlock()
 
 	if prev, err := ReadPreviousContext(); err != nil || prev != name {
 		return err
