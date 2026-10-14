@@ -370,6 +370,10 @@ summary. Push and delete always skip them. Read commands still show them;
 `gcx alert mute-timings export` and covers Grafana-managed intervals only. See [server-derived resource names](docs/architecture/resource-model.md#server-derived-native-names)
 for portable push behavior.
 
+Contact points, notification policies, templates, and mute timings that gcx
+creates or updates through Grafana's provisioning API remain editable in the
+Grafana UI by default.
+
 For an empty dashboard or missing application telemetry, follow
 [Diagnose missing telemetry with gcx](docs/guides/diagnose-missing-telemetry.md).
 

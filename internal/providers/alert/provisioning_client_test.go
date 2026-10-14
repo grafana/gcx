@@ -192,3 +192,92 @@ func TestClient_doJSON_NotFoundWrapsSentinelError(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorIs(t, err, alert.ErrProvisioningNotFound)
 }
+
+func TestClient_ProvisioningWriteProvenance(t *testing.T) {
+	ctx := context.Background()
+	tests := []struct {
+		name   string
+		method string
+		path   string
+		call   func(*alert.Client) error
+	}{
+		{"create contact point", http.MethodPost, "/api/v1/provisioning/contact-points", func(c *alert.Client) error {
+			_, err := c.CreateContactPoint(ctx, alert.ContactPoint{Name: "test"})
+			return err
+		}},
+		{"update contact point", http.MethodPut, "/api/v1/provisioning/contact-points/cp", func(c *alert.Client) error {
+			_, err := c.UpdateContactPoint(ctx, "cp", alert.ContactPoint{Name: "test"})
+			return err
+		}},
+		{"create mute timing", http.MethodPost, "/api/v1/provisioning/mute-timings", func(c *alert.Client) error {
+			_, err := c.CreateMuteTiming(ctx, alert.MuteTiming{Name: "test"})
+			return err
+		}},
+		{"update mute timing", http.MethodPut, "/api/v1/provisioning/mute-timings/test", func(c *alert.Client) error {
+			_, err := c.UpdateMuteTiming(ctx, "test", alert.MuteTiming{Name: "test"})
+			return err
+		}},
+		{"set notification policy", http.MethodPut, "/api/v1/provisioning/policies", func(c *alert.Client) error {
+			return c.SetNotificationPolicy(ctx, alert.NotificationPolicy{Receiver: "test"})
+		}},
+		{"upsert template", http.MethodPut, "/api/v1/provisioning/templates/test", func(c *alert.Client) error {
+			_, err := c.UpsertTemplate(ctx, alert.NotificationTemplate{Name: "test"})
+			return err
+		}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, tt.method, r.Method)
+				assert.Equal(t, tt.path, r.URL.Path)
+				assert.Equal(t, "true", r.Header.Get("X-Disable-Provenance"))
+				w.WriteHeader(http.StatusAccepted)
+			}))
+			defer server.Close()
+			require.NoError(t, tt.call(newTestClient(t, server)))
+		})
+	}
+}
+
+func TestClient_NonWriteRequestsOmitProvenanceHeader(t *testing.T) {
+	ctx := context.Background()
+	tests := []struct {
+		name   string
+		method string
+		path   string
+		call   func(*alert.Client) error
+	}{
+		{"list contact points", http.MethodGet, "/api/v1/provisioning/contact-points", func(c *alert.Client) error {
+			_, err := c.ListContactPoints(ctx)
+			return err
+		}},
+		{"get notification policy", http.MethodGet, "/api/v1/provisioning/policies", func(c *alert.Client) error {
+			_, err := c.GetNotificationPolicy(ctx)
+			return err
+		}},
+		{"delete contact point", http.MethodDelete, "/api/v1/provisioning/contact-points/cp", func(c *alert.Client) error {
+			return c.DeleteContactPoint(ctx, "cp")
+		}},
+		{"reset notification policy", http.MethodDelete, "/api/v1/provisioning/policies", func(c *alert.Client) error {
+			return c.ResetNotificationPolicy(ctx)
+		}},
+		{"export contact points", http.MethodGet, "/api/v1/provisioning/contact-points/export", func(c *alert.Client) error {
+			_, err := c.ExportContactPoints(ctx, "yaml")
+			return err
+		}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, tt.method, r.Method)
+				assert.Equal(t, tt.path, r.URL.Path)
+				assert.Empty(t, r.Header.Values("X-Disable-Provenance"))
+				w.WriteHeader(http.StatusNoContent)
+			}))
+			defer server.Close()
+			require.NoError(t, tt.call(newTestClient(t, server)))
+		})
+	}
+}

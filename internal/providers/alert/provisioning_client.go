@@ -25,7 +25,12 @@ var ErrProvisioningNotFound = errors.New("provisioning resource not found")
 // decodes a JSON response. Returns ErrProvisioningNotFound for 404 responses.
 // A 202 Accepted with an empty body is treated as success.
 func (c *Client) doJSON(ctx context.Context, method, path string, in, out any) error {
-	return doBody(ctx, c.httpClient, method, c.host+path, path, jsonBodyCodec(), ErrProvisioningNotFound, in, out)
+	var headers http.Header
+	if method == http.MethodPost || method == http.MethodPut {
+		// Match the dashboard default: keep provisioning writes editable in the UI.
+		headers = http.Header{"X-Disable-Provenance": {"true"}}
+	}
+	return doBody(ctx, c.httpClient, method, c.host+path, path, jsonBodyCodec(), ErrProvisioningNotFound, in, out, headers)
 }
 
 // doRaw performs an HTTP GET and returns the raw response body bytes.
