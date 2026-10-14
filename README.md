@@ -372,7 +372,17 @@ for portable push behavior.
 
 Contact points, notification policies, templates, and mute timings that gcx
 creates or updates through Grafana's provisioning API remain editable in the
-Grafana UI by default.
+Grafana UI by default. Pass `--allow-ui-updates=false` to contact-point or
+mute-timing create and update commands, `alert templates upsert`, or
+`alert notification-policies set` to use Grafana's default provisioning
+ownership. Grafana then prevents UI edits to the provisioned item.
+To update a provisioned contact point, keep `--allow-ui-updates=false`.
+Grafana can reject an attempt to make an existing provisioned contact point
+editable in the UI because its provenance cannot be changed by that update.
+
+```bash
+gcx alert contact-points create -f contact-point.yaml --allow-ui-updates=false
+```
 
 For an empty dashboard or missing application telemetry, follow
 [Diagnose missing telemetry with gcx](docs/guides/diagnose-missing-telemetry.md).
