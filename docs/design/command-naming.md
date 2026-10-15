@@ -89,7 +89,7 @@ Query operations are not disguised CRUD:
 
 Use the shorthand only where its domain meaning is clear. The cross-signal
 vocabulary and intentional aliases are documented in
-[Cross-Signal Command Consistency](../adrs/signal-provider-ux/001-cross-signal-command-consistency.md).
+[Cross-Signal Command Consistency](../rfcs/029-cross-signal-command-consistency.md).
 Do not characterize query commands as side-effect-free: supporting work such as
 datasource discovery may persist configuration.
 
@@ -163,5 +163,5 @@ This is different from a composite key whose parts together identify the child.
 
 For a new composite-identity or parent-required-`create` shape, either amend the
 Constitution to state the rule or record an explicit human-approved
-constitutional waiver in the approving PR or ADR. Do not create an implicit
+constitutional waiver in the approving PR or RFC. Do not create an implicit
 exception in this guide.

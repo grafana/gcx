@@ -31,7 +31,7 @@ For beyond-CRUD commands: brainstorm based on real APIs found in research
 
 Record decisions in the existing issue, RFC or implementation plan under
 [CONTRIBUTING](../../../../CONTRIBUTING.md#contributing-code). Novel architecture
-decisions follow repository ADR conventions; routine choices matching precedent
+decisions follow repository RFC conventions; routine choices matching precedent
 need no separate document.
 
 ## Plan smoke verification

@@ -69,9 +69,9 @@ Provider (internal/providers/slo/)
 
 **Dual access paths** are permanent: provider commands (`gcx slo definitions list`) give ergonomic domain-specific tables; generic commands (`gcx resources get slos.v1alpha1.slo.ext.grafana.app`) serve the push/pull pipeline. JSON/YAML output is identical across both paths by construction (both use the same `ResourceAdapter`).
 
-**Declarative registration front door**: `adapter.Resource[T]` + `adapter.NewProvider` (command factories attach via `WithCommands`) let a provider declare a resource type once, by implementing plain capability interfaces (`Lister[T]`, `Getter[T]`, `Creator[T]`, `Updater[T]`, `Deleter[T]`, `Validator[T]`) on its client, instead of hand-building a `Registration`. Capability detection is confined to a single audited `any`-assertion seam in `internal/resources/adapter/capability.go` — see ADR-025 and patterns.md's "Sanctioned Exception — Single-Seam Capability Assertion". Provider commands and registration share `Resource.TypedCRUD`; Grafana-backed command groups use `providers.BindGrafanaResource` for lazy binding; each leaf calls `Load` to resolve a fresh config snapshot and construct the declared client.
+**Declarative registration front door**: `adapter.Resource[T]` + `adapter.NewProvider` (command factories attach via `WithCommands`) let a provider declare a resource type once, by implementing plain capability interfaces (`Lister[T]`, `Getter[T]`, `Creator[T]`, `Updater[T]`, `Deleter[T]`, `Validator[T]`) on its client, instead of hand-building a `Registration`. Capability detection is confined to a single audited `any`-assertion seam in `internal/resources/adapter/capability.go` — see RFC 026 and patterns.md's "Sanctioned Exception — Single-Seam Capability Assertion". Provider commands and registration share `Resource.TypedCRUD`; Grafana-backed command groups use `providers.BindGrafanaResource` for lazy binding; each leaf calls `Load` to resolve a fresh config snapshot and construct the declared client.
 
-**Deep-dive:** [patterns.md](docs/architecture/patterns.md) [§11 (Provider Plugin System)](docs/architecture/patterns.md#11-provider-plugin-system), [§16 (ResourceAdapter and Provider CRUD Routing)](docs/architecture/patterns.md#16-resourceadapter-and-provider-crud-routing), [§17 (K8s Envelope Wrapping)](docs/architecture/patterns.md#17-k8s-envelope-wrapping-for-provider-listget), [§18 (Table-Driven TypedCRUD)](docs/architecture/patterns.md#18-table-driven-typedcrud-registration-for-providers), [§19 (Singleton Adapter)](docs/architecture/patterns.md#19-singleton-adapter-pattern), [§20 (ETag-as-Annotation)](docs/architecture/patterns.md#20-etag-as-annotation-pattern). Implementation guide: [provider-guide.md](docs/reference/provider-guide.md).
+**Deep-dive:** [resource and provider patterns](docs/architecture/patterns.md). Implementation guide: [provider-guide.md](docs/reference/provider-guide.md).
 
 ### 3. Signal Providers
 
@@ -121,7 +121,7 @@ Cross-product onboarding helpers. Not a provider — standalone command area.
 
 - **`setup status`** — Aggregated connection, auth, and product-availability snapshot
 
-The instrumentation onboarding wizard lives under the Instrumentation Hub provider (`gcx instrumentation setup`), not under `gcx setup`. See ADR-018 for the rationale.
+The instrumentation onboarding wizard lives under the Instrumentation Hub provider (`gcx instrumentation setup`), not under `gcx setup`. See RFC 019 for the rationale.
 
 ### 6. Instrumentation Hub (`gcx instrumentation`)
 
@@ -134,7 +134,7 @@ Action-verb command tree for Grafana Cloud's Instrumentation Hub. Backed by flee
 - **`instrumentation clusters [list|get|configure|remove|wait]`** + nested **`apps`** — Declared-state read/write with tri-state flag semantics on `configure` and a per-namespace optimistic-lock guard
 - **`instrumentation services [list|get|include|exclude|clear]`** — Observed-state fleet sweep via `RunK8sDiscovery` with DWIM single-workload mutation
 
-Uses `internal/providers/instrumentation/` (provider, types, output codecs, RMW helper, helm formatter, enumeration helper) and `internal/fleet/` (shared base HTTP client, also used by the fleet provider; it reaches Fleet Management through the `grafana-collector-app` plugin proxy on the stack — see ADR-023). `check` and `explain` are thin cmd/-only wrappers around the upstream `github.com/grafana/otel-checker/checks` and `.../checks/explain` packages — no provider glue. `check --fix-plan=assistant` embeds Grafana Assistant via `internal/providers/assistant.ResolveClientOptions` + `RequireGrafanaCloud` (reused from the same auth resolution used by `gcx assistant prompt`), then calls `ChatWithApproval` directly; the two-mode dispatch (local vs. assistant, no cross-mode fallback) lives in `cmd/gcx/instrumentation/check/fixplan/`. See ADR-018 for the design.
+Uses `internal/providers/instrumentation/` (provider, types, output codecs, RMW helper, helm formatter, enumeration helper) and `internal/fleet/` (shared base HTTP client, also used by the fleet provider; it reaches Fleet Management through the `grafana-collector-app` plugin proxy on the stack — see RFC 024). `check` and `explain` are thin cmd/-only wrappers around the upstream `github.com/grafana/otel-checker/checks` and `.../checks/explain` packages — no provider glue. `check --fix-plan=assistant` embeds Grafana Assistant via `internal/providers/assistant.ResolveClientOptions` + `RequireGrafanaCloud` (reused from the same auth resolution used by `gcx assistant prompt`), then calls `ChatWithApproval` directly; the two-mode dispatch (local vs. assistant, no cross-mode fallback) lives in `cmd/gcx/instrumentation/check/fixplan/`. See RFC 019 for the design.
 
 ### 7. Configuration
 
@@ -215,97 +215,13 @@ with the selected local installation for list/install/update/uninstall; retired
 entries remain addressable without automatic deletion or replacement installation.
 See [CLI layer: Portable Skill Lifecycle](docs/architecture/cli-layer.md#portable-skill-lifecycle).
 
-## Architecture Decision Records
+## Design rationale
 
-| ADR | Title | Status |
-|-----|-------|--------|
-| [001](docs/adrs/legacy/001-query-under-datasources.md) | Move query under datasources with per-kind subcommands | accepted |
-| [002](docs/adrs/adapter-schema-example/001-align-examples-with-schemas-ux.md) | Align `resources examples` with `resources schemas` UX | accepted |
-| [003](docs/adrs/cloud-rest-config/001-cloud-config-and-gcom.md) | CloudConfig in Context and GCOM Stack Discovery | accepted |
-| [004](docs/adrs/config-layering/001-multi-file-config-layering.md) | Multi-File Config Layering (System/User/Local) | accepted |
-| [005](docs/adrs/constitution-design-principles/001-codify-cli-design-principles.md) | Codify CLI Design Principles in CONSTITUTION.md and Design Guide | accepted |
-| [006](docs/adrs/conventional-commits/001-pr-title-enforcement.md) | Conventional Commits via PR Title Enforcement | accepted |
-| [007](docs/adrs/provider-consolidation/001-consolidation-strategy.md) | Provider Consolidation Strategy | accepted |
-| [008](docs/adrs/typed-resource-adapter-compliance/001-typed-resource-adapter-foundation.md) | TypedResourceAdapter[T] with ResourceIdentity and Provider Command Migration | accepted |
-| [009](docs/adrs/migrate-provider-rewrite/001-three-stage-blackbox-verification.md) | Three-Stage Skill Structure with Dual Blackbox Isolation | retired (skill removed) |
-| [010](docs/adrs/oncall-typed-crud/001-table-driven-typedcrud.md) | Table-driven TypedCRUD[T] for OnCall Adapter | proposed |
-| [011](docs/adrs/adaptive-provider/001-cli-ux-and-resource-adapter-design.md) | Adaptive telemetry provider: CLI UX, adapter scope, verb naming | proposed |
-| [012](docs/adrs/migrate-provider-rewrite/002-five-phase-pipeline-redesign.md) | Five-phase pipeline redesign for /migrate-provider | retired (skill removed) |
-| [013](docs/adrs/appo11y-provider/001-cli-ux-and-resource-adapter-design.md) | App O11y provider: singleton TypedCRUD, ETag-as-annotation, verb naming | accepted |
-| [014](docs/adrs/instrumentation/001-instrumentation-provider-design.md) | Declarative Instrumentation Setup under `gcx setup` | superseded by [018] |
-| [015](docs/adrs/faro-provider/001-faro-provider-design.md) | Faro provider: CLI UX, TypedCRUD adapter, sourcemaps as sub-resource verbs | proposed |
-| [016](docs/adrs/dashboards-provider/001-dashboards-provider-design.md) | Dashboards provider: CRUD shorthands, search, and version history | accepted |
-| [017](docs/adrs/traces-get-table/001-tree-table-render-for-traces-get.md) | Tree-table rendering for `traces get` | accepted |
-| [018](docs/adrs/instrumentation/002-cli-redesign.md) | `gcx instrumentation` CLI redesign: action verbs over Set/Get + observed state | accepted |
-| [019](docs/adrs/oncall-alert-group-rich-shape/001-rich-shape-and-list-defaults.md) | Rich `AlertGroup` shape and actionable `alert-groups list` defaults | implemented |
-| [020](docs/adrs/sm-datasource-proxy/001-dual-mode-transport.md) | Synthetic Monitoring dual-mode transport: datasource proxy primary, direct SM API fallback | accepted |
-| [021](docs/adrs/assistant-provider/001-assistant-provider-and-mcp-servers-as-resources.md) | Assistant provider + MCP servers as resources | proposed |
-| [022](docs/adrs/config-v1/001-versioned-split-config-and-secret-trust.md) | Versioned Split Config and Source-Bound Secret Trust | proposed |
-| [023](docs/adrs/fleet-plugin-proxy/001-fleet-via-collector-app-proxy.md) | Fleet Management through the collector app plugin proxy | accepted |
-| [024](docs/adrs/provider-consolidation/002-shared-table-declaration.md) | Providers declare table columns instead of writing codecs | accepted |
-| [025](docs/adrs/declarative-provider-registration/001-declarative-resource-front-door.md) | Declarative `adapter.Resource[T]` + `adapter.NewProvider` registration front door | accepted |
-| [026](docs/adrs/provider-owned-resource-hooks/026-provider-owned-resource-hooks.md) | Provider-owned identity and reconciliation hooks | accepted |
-
-See [docs/adrs/](docs/adrs/) for all ADRs.
+Engineering proposals and historical decisions live in [RFCs](docs/rfcs/). Each record carries its own status; a proposal is not evidence of implementation.
 
 ## Architecture Docs
 
-Deep-dive docs live in [docs/architecture/](docs/architecture/). Each covers one domain:
-
-| Document | Domain | When to Read |
-|----------|--------|--------------|
-| [architecture.md](docs/architecture/architecture.md) | Full system architecture with diagrams | First-time orientation |
-| [auth-system.md](docs/architecture/auth-system.md) | OAuth PKCE, SA tokens, Cloud Access Policy tokens, RefreshTransport | Modifying or debugging auth |
-| [cli-layer.md](docs/architecture/cli-layer.md) | Command tree, Options pattern, lifecycle | Adding/modifying CLI commands |
-| [client-api-layer.md](docs/architecture/client-api-layer.md) | Dynamic client, auth, error translation | API communication changes |
-| [config-system.md](docs/architecture/config-system.md) | Contexts, env vars, TLS, namespace resolution | Config or auth changes |
-| [data-flows.md](docs/architecture/data-flows.md) | Push/Pull/Serve/Delete pipelines | Modifying resource sync |
-| [login-system.md](docs/architecture/login-system.md) | `gcx login` orchestration, sentinel-retry, validation pipeline | Modifying or debugging login |
-| [patterns.md](docs/architecture/patterns.md) | Recurring patterns catalog | Before implementing new features |
-| [project-structure.md](docs/architecture/project-structure.md) | Build system, CI/CD, dependencies | Build issues, adding deps |
-| [resource-model.md](docs/architecture/resource-model.md) | Resource, Selector, Filter, Discovery | Modifying resource handling |
-
-See also: [docs/design/](docs/design/) for UX implementation guides, [docs/reference/](docs/reference/) for provider guides and CLI reference.
-
-### How to Navigate
-
-- **Starting a new feature**: Read `architecture.md` → `patterns.md` → relevant domain doc
-- **Fixing a bug**: Jump directly to the relevant domain doc
-- **Adding a CLI command**: Read `cli-layer.md` first, then `patterns.md`
-- **Understanding a data flow**: Read `data-flows.md`
-- **Adding config fields**: Read `config-system.md`
-- **Debugging or modifying login**: Read `login-system.md`
-- **Debugging or modifying auth**: Read `auth-system.md`
-- **Modifying resource handling**: Read `resource-model.md`
-- **API communication or errors**: Read `client-api-layer.md`
-- **Build issues or dependencies**: Read `project-structure.md`
-
-### Worked Examples
-
-**How does a resource get pushed to Grafana?**
-1. [data-flows.md](docs/architecture/data-flows.md) § "PUSH Pipeline" — numbered steps (parse selectors → resolve → read → push → summary)
-2. [resource-model.md](docs/architecture/resource-model.md) — Selector/Filter concepts
-3. [client-api-layer.md](docs/architecture/client-api-layer.md) — how Create/Update calls work
-
-**Adding a new CLI flag to `push`:**
-1. [cli-layer.md](docs/architecture/cli-layer.md) § "The Options Pattern"
-2. Look at `push.go` as the canonical example
-3. Add to opts struct → bind in `setup()` → validate in `Validate()`
-
-**Adding support for a new resource type:**
-1. [resource-model.md](docs/architecture/resource-model.md) § "Discovery System" — types are discovered at runtime, no hardcoding
-2. [patterns.md](docs/architecture/patterns.md) § "Processor Pipeline" — if custom handling is needed
-3. [data-flows.md](docs/architecture/data-flows.md) — where processors are applied
-
-**Adding a new provider:**
-1. [provider-guide.md](docs/reference/provider-guide.md) — step-by-step implementation guide
-2. [patterns.md](docs/architecture/patterns.md) § "Provider Plugin System" — interface, registration, TypedCRUD
-3. [provider-checklist.md](docs/design/provider-checklist.md) — UX compliance checklist
-
-**Debugging an authentication issue:**
-1. [auth-system.md](docs/architecture/auth-system.md) § "Grafana auth selection" — authoritative methods and legacy precedence
-2. [client-api-layer.md](docs/architecture/client-api-layer.md) — how auth wires into `rest.Config`
-3. [config-system.md](docs/architecture/config-system.md) — env var override behavior
+Use the [architecture guide](docs/architecture/README.md) to find the relevant subsystem. [Design rules](docs/design/) cover CLI behavior; the [provider guide](docs/reference/provider-guide.md) explains extension points.
 
 ## Taste Rules
 

@@ -403,7 +403,7 @@ func (c *Client) SetAppInstrumentation(ctx context.Context, clusterName string, 
 // Note: wire-fixture tests confirm the response mapper
 // correctly preserves SELECTION_EXCLUDED. If the live stack returns "" after
 // SetK8SInstrumentation(SELECTION_EXCLUDED), the bug is server-side.
-// See docs/adrs/instrumentation/002-cli-redesign.md § "E — Selection enum hygiene".
+// See docs/rfcs/019-cli-redesign.md § "E — Selection enum hygiene".
 func (c *Client) GetK8SInstrumentation(ctx context.Context, clusterName string) (*GetK8SInstrumentationResponse, error) {
 	resp, err := c.fleet.DoRequest(ctx, pathGetK8SInstrumentation, getK8SRequest{ClusterName: clusterName})
 	if err != nil {

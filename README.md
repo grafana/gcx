@@ -411,7 +411,7 @@ gcx alert contact-points create -f contact-point.yaml --allow-ui-updates=false
 ```
 
 For an empty dashboard or missing application telemetry, follow
-[Diagnose missing telemetry with gcx](docs/guides/diagnose-missing-telemetry.md).
+[Diagnose missing telemetry with gcx](docs/sources/guides/diagnose-missing-telemetry.md).
 
 Synthetic Monitoring check manifests support optional `spec.folderUid` for folder
 assignment. See the [check management guide](claude-plugin/skills/synth-manage-checks/SKILL.md#step-3-build-yaml-definition)
@@ -739,9 +739,9 @@ jobs:
 |-------|-------------|
 | [Installation](docs/sources/installation.md) | Install gcx on macOS, Linux, and Windows |
 | [Configuration](docs/sources/configuration.md) | Contexts, authentication, environment variables |
-| [Managing Resources](docs/guides/manage-resources.md) | Get, push, pull, delete, edit, validate |
-| [Dashboards as Code](docs/guides/dashboards-as-code.md) | Dashboard-as-code workflow with live dev server |
-| [Linting Resources](docs/guides/lint-resources.md) | Lint dashboards and alert rules with Rego policies |
+| [Managing Resources](docs/sources/guides/manage-resources.md) | Get, push, pull, delete, edit, validate |
+| [Dashboards as Code](docs/sources/guides/dashboards-as-code.md) | Dashboard-as-code workflow with live dev server |
+| [Linting Resources](docs/sources/guides/lint-resources.md) | Lint dashboards and alert rules with Rego policies |
 | [CLI Reference](docs/sources/cli-reference.md) | Full command reference (auto-generated) |
 | [Engineering RFCs](docs/rfcs/README.md) | Proposals, technical designs, and review workflows |
 

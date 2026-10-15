@@ -132,7 +132,7 @@ gcx resources get mcpservers/tenant-github -o yaml
 gcx resources push mcpservers/tenant-github.yaml
 ```
 
-`metadata.name` is computed as `{scope}-{slug(name)}`; matching across stacks uses the natural key `(scope, name, url)`, not the server-assigned ID. On `push`, manifest headers follow the same explicit write-intent model as the command path (a header with a value overwrites, a name-only header preserves the stored secret on update, and an omitted header is removed) — with `fromEnv`/`fromFile` sourcing available for CI. See [ADR-021](../adrs/assistant-provider/001-assistant-provider-and-mcp-servers-as-resources.md) for the full design.
+`metadata.name` is computed as `{scope}-{slug(name)}`; matching across stacks uses the natural key `(scope, name, url)`, not the server-assigned ID. On `push`, manifest headers follow the same explicit write-intent model as the command path (a header with a value overwrites, a name-only header preserves the stored secret on update, and an omitted header is removed) — with `fromEnv`/`fromFile` sourcing available for CI. See [RFC 022](../rfcs/022-assistant-provider-and-mcp-servers-as-resources.md) for the full design.
 
 ## CLI reference
 

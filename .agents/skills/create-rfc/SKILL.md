@@ -7,15 +7,15 @@ description: Research, interview, and develop an engineering RFC from an idea, n
 
 Produce one self-contained RFC that engineers outside the conversation can review. Research establishes facts; the interview resolves consequential decisions. Maintain the same document throughout, using the [Rust-based RFC template](references/rfc-template.md). This skill ends with RFC review, not implementation or publication.
 
-This is a public repository. Use public evidence or independently developed material suitable for public review. Keep restricted research outside the checkout; removing links or attribution does not make internal findings publishable. See [the RFC index](../../../docs/rfcs/README.md) for location and conventions.
+This is a public repository. Use public evidence or independently developed material suitable for public review. Keep restricted research outside the checkout; removing links or attribution does not make internal findings publishable. See [RFC conventions](../../../docs/rfcs/README.md) for location and conventions.
 
 ## Establish the starting point
 
 Read the supplied material, relevant repository guidance, and existing RFC conventions. Identify the problem, audience, constraints, settled decisions, and consequential gaps. An existing draft is the starting artifact: preserve its accepted decisions and focus on contradictions or missing reasoning.
 
-In this repository, use `docs/rfcs/NNN-title.md` and add an entry to `docs/rfcs/README.md`. Select the next available number starting at `001`. Outside a repository, use a suitable user-visible working directory. Keep subsequent revisions in the same file. If the destination is shared, prepare a private copy until publication is authorized.
+In this repository, use `docs/rfcs/NNN-title.md` and record status near the title. Select the next available number starting at `001`. Outside a repository, use a suitable user-visible working directory. Keep subsequent revisions in the same file. If the destination is shared, prepare a private copy until publication is authorized.
 
-Create an initial RFC with established facts and clearly marked open questions. Use it as the single design document rather than creating separate glossaries, context documents, ADRs or research reports. Place terminology near the end, followed by a references section when needed. Required private execution notes may hold resumption state, but must not become an alternative design source. Keep incidental experiment artifacts out of the RFC's narrative.
+Create an initial RFC with established facts and clearly marked open questions. Use it as the single design document rather than creating separate glossaries, context documents or research reports. Place terminology near the end, followed by a references section when needed. Required private execution notes may hold resumption state, but must not become an alternative design source. Keep incidental experiment artifacts out of the RFC's narrative.
 
 ## Research and interview in rounds
 

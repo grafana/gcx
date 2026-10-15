@@ -438,9 +438,7 @@ change that landed this contract.
 > **Status: proposed.** Implemented as an opt-in shared contract in
 > `internal/output/listmeta.go` and migrated to two exemplar commands
 > (`datasources list`, `irm oncall alert-groups list`).
-> Not yet a repo-wide requirement; see
-> `docs/research/2026-07-17-global-limit-investigation.md` for the migration
-> plan and open questions.
+> Not yet a repo-wide requirement; apply the contract below when migrating other list commands.
 
 List commands must never truncate silently. All truncation flows through the
 shared helpers in `internal/output/listmeta.go` — do not roll per-command
@@ -590,8 +588,7 @@ pre-flatten to the JSON-decoded representation. An empty dynamic envelope has
 no element type to reflect on, so discovery degrades to the envelope's own
 keys (never `list_meta.*`). `unstructured.UnstructuredList` values are not
 part of the contract yet — no producer attaches truncation metadata to
-unstructured lists; that lands with the resources-pipeline migration (see the
-research doc's remaining-migration section).
+unstructured lists. A resources-pipeline migration would need to establish that contract.
 
 ### 15.6 Reference migrations
 
@@ -605,5 +602,4 @@ research doc's remaining-migration section).
 `alert rules list` is deliberately not migrated yet: its JSON/YAML output is
 a bare array (no envelope to carry `list_meta`) and its `--limit` counts
 different units per format (flattened rules in the table, groups in JSON).
-The envelope and unit decisions are tracked in
-`docs/research/2026-07-17-global-limit-investigation.md` §6–7.
+The envelope shape and counting unit need to be settled before migration.

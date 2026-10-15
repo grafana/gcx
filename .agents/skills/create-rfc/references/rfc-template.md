@@ -7,6 +7,8 @@ Suggested outline:
 ```markdown
 # RFC NNN: <Title>
 
+**Status**: proposed
+
 ## Summary
 
 One paragraph describing the proposal and its effect.

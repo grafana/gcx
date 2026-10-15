@@ -135,7 +135,7 @@ second usage message alongside the structured error.
 New confirmation paths return `gcxerrors.DetailedError` with
 `ExitCode: ExitCancelled` after `ConfirmDestructive` returns `(false, nil)`.
 The helper does not assign an exit code for the caller. See the
-[implementation example](safety.md#32-the-force-flag-and-providersconfirmdestructive-implemented).
+[implementation example](safety.md#32-the---force-flag-and-providersconfirmdestructive-implemented).
 
 **Existing compatibility gap:** a negative answer still returns `nil` (exit 0)
 in `gcx datasources delete`, `gcx slo definitions delete`, `gcx slo reports delete`,

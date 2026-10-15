@@ -31,8 +31,7 @@ a document):
   gcx. For a new leaf, name the nearest existing sibling and the one sentence an
   agent would use to choose between them. If a person who knows the tree can't
   say which command applies, an agent can't either.
-- **Path** — from `docs/design/command-naming.md` plus precedent in the real tree
-  and `docs/plans/list-subject-verdicts.md`.
+- **Path** — from `docs/design/command-naming.md` plus precedent in the real tree.
 - **Backend + wiring** — what serves the data, verified by a probe rather than
   assumed, and which wiring carries it. A probe that is unavailable, inconclusive
   or outside the target you were placed in scope for is reported `UNVERIFIED` —

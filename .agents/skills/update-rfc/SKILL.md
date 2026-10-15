@@ -7,7 +7,7 @@ description: Reconcile an existing engineering RFC with implemented changes and 
 
 Update the existing RFC so engineers can understand the current design, what has been implemented, and what remains unverified. Preserve its identity and agreed intent while incorporating concrete implementation evidence. Work in one document, with terminology near the end, followed by a references section when needed; keep its Rust-style structure or established repository format.
 
-This is a public repository. Use public evidence or independently developed material suitable for public review. Keep restricted research outside the checkout; removing links or attribution does not make internal findings publishable. See [the RFC index](../../../docs/rfcs/README.md) for location and conventions.
+This is a public repository. Use public evidence or independently developed material suitable for public review. Keep restricted research outside the checkout; removing links or attribution does not make internal findings publishable. See [RFC conventions](../../../docs/rfcs/README.md) for location and conventions.
 
 ## Invocation
 

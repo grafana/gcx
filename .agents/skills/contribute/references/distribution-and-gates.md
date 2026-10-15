@@ -24,7 +24,7 @@ column literally — some rows are CI-enforced and some only look like it:
 | Resource-type agent metadata, **native K8s types** | `internal/agent/known_resources.go` | `internal/agent/known_resources_test.go` |
 | Resource-type agent metadata, **adapter-backed** | adapter `Registration.Operations` | **nothing.** `known_resources_test.go` only walks `agent.KnownResources`; no test asserts `Operations` is populated on an adapter registration. Review-enforced only |
 | Released reference | `mise run tag` includes references in the release changelog PR; leave unchanged in command PRs | Generator tests in CI |
-| Package map | `docs/architecture/project-structure.md` | AGENTS.md PR checklist step 4 (human-enforced) |
+| Architecture guidance, when boundaries or contracts change | Relevant document in `docs/architecture/` | [Documentation maintenance](../../../../docs/reference/doc-maintenance.md) (review-enforced) |
 
 ### The gap CI does not cover, and it is a judgement call
 
