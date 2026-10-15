@@ -1048,7 +1048,7 @@ back directly. Field names are case-sensitive, and unknown fields are rejected.`
 			}
 			configs, err := parseNotificationConfigs(data)
 			if err != nil {
-				return fmt.Errorf("failed to parse notifications file: expected an alertConfigs wrapper, one config, or a config list with exact field names (for example, matchLabels); correct the YAML and retry gcx kg notifications upsert -f <file>: %w", err)
+				return fmt.Errorf("failed to parse notifications file: %w", err)
 			}
 			if len(configs) == 0 {
 				return errors.New("no notification configs found in file")
@@ -1157,9 +1157,6 @@ func parseNotificationConfigs(data []byte) ([]AlertConfig, error) {
 				return nil, err
 			}
 			return wrapped.AlertConfigs, nil
-		}
-		if len(root.Content) == 0 {
-			return nil, nil
 		}
 		var config AlertConfig
 		if err := decodeStrict(&config); err != nil {

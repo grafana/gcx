@@ -345,9 +345,8 @@ func TestNotifications_Upsert_RejectsUnknownFields(t *testing.T) {
 			cmd.SetIn(bytes.NewBufferString(tt.input))
 			err := cmd.Execute()
 			require.Error(t, err)
+			assert.Contains(t, err.Error(), "failed to parse notifications file")
 			assert.Contains(t, err.Error(), "field matchlabels not found")
-			assert.Contains(t, err.Error(), "expected an alertConfigs wrapper, one config, or a config list")
-			assert.Contains(t, err.Error(), "retry gcx kg notifications upsert -f <file>")
 		})
 	}
 }
