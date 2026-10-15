@@ -99,6 +99,7 @@ Accepts the `strconv.ParseBool` vocabulary and nothing else. Setting it is not t
 | `OPENCODE` | OpenCode | Boolean identity signal |
 | `PI_CODING_AGENT` | Pi | Boolean identity signal |
 | `HERMES_AGENT` | Hermes Agent | Boolean identity signal |
+| `OPENCLAW_SHELL` | OpenClaw | The value `exec` enables agent mode. Other values, such as `tui-local` for user commands, are ignored. |
 
 Boolean signals accept `1`, `true`, or `yes`, without case sensitivity.
 Session markers require a non-empty value.
@@ -134,6 +135,7 @@ Only fixed labels reach telemetry. Unknown values fall through to other signals.
 | Crush | `crush` | Use an explicit or shared identity |
 | Amazon Q | `amazon-q` | `AMAZON_Q` (existing support) |
 | Hermes Agent | `hermes` | `HERMES_AGENT`, or `AI_AGENT=hermes-agent` |
+| OpenClaw | `openclaw` | `OPENCLAW_SHELL=exec` |
 
 Aliases map to fixed labels: `github-copilot-cli` → `github-copilot`,
 `kilo` and `kilocode` → `kilo-code`, `droid` → `factory-droid`,
@@ -180,6 +182,11 @@ configuration directories, or the terminal application.
 - Hermes Agent sets `HERMES_AGENT=true` and `AI_AGENT=hermes-agent` in its
   [session command wrapper](https://github.com/NousResearch/hermes-agent/blob/main/tools/environments/base_session_env.py).
   Both default only when unset, so an outer harness value is kept.
+- OpenClaw sets `OPENCLAW_SHELL=exec` for commands run by its
+  [exec tool](https://github.com/openclaw/openclaw/blob/main/docs/tools/exec.md).
+  It sets `OPENCLAW_SHELL=tui-local` for shell commands the user runs from its
+  [TUI](https://github.com/openclaw/openclaw/blob/main/docs/web/tui.md), so gcx
+  accepts only `exec`.
 
 Native markers take precedence over the shared `AI_AGENT` fallback and the
 legacy `AGENT=goose` fallback. Shared variables can be inherited from an outer

@@ -24,6 +24,9 @@ func TestHarnessSignals(t *testing.T) {
 		{"hermes marker", map[string]string{"HERMES_AGENT": "true"}, "hermes"},
 		{"hermes shared identity", map[string]string{"AI_AGENT": "hermes-agent"}, "hermes"},
 		{"hermes session id is not identity", map[string]string{"HERMES_SESSION_ID": "synthetic-session-id"}, ""},
+		{"openclaw exec tool", map[string]string{"OPENCLAW_SHELL": "exec"}, "openclaw"},
+		{"openclaw TUI shell is human", map[string]string{"OPENCLAW_SHELL": "tui-local"}, ""},
+		{"openclaw exec before inherited shared identity", map[string]string{"AI_AGENT": "codex", "OPENCLAW_SHELL": "exec"}, "openclaw"},
 		{"kilo before opencode", map[string]string{"KILO": "1", "OPENCODE": "1", "AGENT": "1"}, "kilo-code"},
 		{"qwen before gemini", map[string]string{"QWEN_CODE": "1", "GEMINI_CLI": "1"}, "qwen-code"},
 		{"explicit nested agent", map[string]string{"GCX_AGENT_NAME": "crush", "CLAUDECODE": "1"}, "crush"},
@@ -62,7 +65,7 @@ func TestHarnessSignals(t *testing.T) {
 }
 
 func TestSupportedHarnessNames(t *testing.T) {
-	names := []string{"claude-code", "codex", "cursor", "github-copilot", "gemini-cli", "opencode", "cline", "kilo-code", "kiro", "factory-droid", "amp", "augment", "junie", "devin", "openhands", "goose", "aider", "qwen-code", "pi", "crush", "amazon-q", "hermes"}
+	names := []string{"claude-code", "codex", "cursor", "github-copilot", "gemini-cli", "opencode", "cline", "kilo-code", "kiro", "factory-droid", "amp", "augment", "junie", "devin", "openhands", "goose", "aider", "qwen-code", "pi", "crush", "amazon-q", "hermes", "openclaw"}
 	for _, name := range names {
 		for _, env := range []string{"GCX_AGENT_NAME", "AI_AGENT"} {
 			t.Run(name+"/"+env, func(t *testing.T) {

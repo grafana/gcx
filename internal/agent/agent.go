@@ -17,6 +17,7 @@ const (
 	envName          = "GCX_AGENT_NAME"
 	envAIIdentity    = "AI_AGENT"
 	envGooseIdentity = "AGENT"
+	envOpenClawShell = "OPENCLAW_SHELL"
 )
 
 // Env documents the explicit agent controls for the environment reference.
@@ -67,8 +68,8 @@ var harnessSessionVars = []struct{ envVar, name string }{ //nolint:gochecknoglob
 // EnvironmentVariables returns the detection inputs. Test helpers use this
 // list to clear inherited signals before they test human and agent behavior.
 func EnvironmentVariables() []string {
-	vars := make([]string, 0, 4+len(harnessEnvVars)+len(harnessSessionVars))
-	vars = append(vars, envMode, envName, envAIIdentity, envGooseIdentity)
+	vars := make([]string, 0, 5+len(harnessEnvVars)+len(harnessSessionVars))
+	vars = append(vars, envMode, envName, envAIIdentity, envGooseIdentity, envOpenClawShell)
 	for _, h := range harnessEnvVars {
 		vars = append(vars, h.envVar)
 	}
@@ -158,6 +159,10 @@ func Name() string {
 			return h.name
 		}
 	}
+	// OpenClaw also sets tui-local for commands the user runs from its TUI.
+	if os.Getenv(envOpenClawShell) == "exec" {
+		return "openclaw"
+	}
 	if name := supportedName(os.Getenv(envAIIdentity)); name != "" {
 		return name
 	}
@@ -176,7 +181,7 @@ func supportedName(value string) string {
 	case "claude-code", "codex", "cursor", "github-copilot", "gemini-cli",
 		"opencode", "cline", "kilo-code", "kiro", "factory-droid", "amp",
 		"augment", "junie", "devin", "openhands", "goose", "aider",
-		"qwen-code", "pi", "crush", "amazon-q", "hermes":
+		"qwen-code", "pi", "crush", "amazon-q", "hermes", "openclaw":
 		return name
 	case "github-copilot-cli":
 		return "github-copilot"
