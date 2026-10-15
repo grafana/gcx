@@ -99,8 +99,8 @@ func TestFaroGet_ErrorsAreNotReportedAsMissingApp(t *testing.T) {
 	}))
 	t.Cleanup(forbidden.Close)
 
-	// "App 1" goes straight to the list; "app-1" is slug-shaped and hits the
-	// per-ID GET first. Neither may turn a 403 into "no app has that name".
+	// A display name and a slug-id both resolve from the app list. A 403 on
+	// that list must not turn into "no app has that name".
 	for _, arg := range []string{"App 1", "app-1"} {
 		_, _, err := runFaroCommand(t, forbidden, func(l *fakeConfigLoader) *cobra.Command {
 			return newGetCommand(l)
@@ -112,9 +112,9 @@ func TestFaroGet_ErrorsAreNotReportedAsMissingApp(t *testing.T) {
 }
 
 func TestFaroGet_Resolution(t *testing.T) {
-	// "Shop-7" and "2024" look like IDs; ID 7 and 2024 do not exist, so they
-	// must fall through to the name lookup. "probe-1" ends in the ID of an app
-	// that does exist (App 1), and must still resolve to itself.
+	// "Shop-7" and "2024" look like IDs, but no app has ID 7 or 2024, so they
+	// match by name. "probe-1" ends in the ID of App 1 and must still resolve
+	// to itself.
 	server := newNamedAppServer(t, []string{"App 1", "Shop-7", "2024", "probe-1"})
 
 	tests := []struct {
