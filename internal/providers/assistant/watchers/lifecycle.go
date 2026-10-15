@@ -7,6 +7,7 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/assistant/watcher"
@@ -78,7 +79,14 @@ func runLifecycle(cmd *cobra.Command, client *clientwatchers.Client, opts *readO
 	if verb == "unarchive" && item.ArchivedAt == nil {
 		return errors.New("unarchive requires an archived Watcher; inspect gcx assistant watchers status WATCHER")
 	}
-	result := lifecycleResult{SingleMutation: cmdio.NewSingleMutation(verb, cmdio.MutationTarget{Kind: watcher.WatcherKind, Name: watcher.Watcher{Title: item.Name}.GetResourceName(), ID: item.ID}), Outcome: "accepted"}
+	action := verb + "d"
+	switch verb {
+	case "start":
+		action = "started"
+	case "run":
+		action = "run-requested"
+	}
+	result := lifecycleResult{SingleMutation: cmdio.NewSingleMutation(action, cmdio.MutationTarget{Kind: watcher.WatcherKind, Name: watcher.Watcher{Title: item.Name}.GetResourceName(), ID: item.ID}), Outcome: "accepted"}
 	var observed *clientwatchers.Watcher
 	switch verb {
 	case "start":
@@ -118,7 +126,7 @@ func runLifecycle(cmd *cobra.Command, client *clientwatchers.Client, opts *readO
 			result.Observation = "unavailable"
 		}
 		readback, readErr := client.Get(cmd.Context(), item.ID)
-		if readErr == nil && readback.ID == item.ID {
+		if readErr == nil {
 			setLifecycleObservation(&result, readback, "readback")
 		}
 	}
@@ -237,17 +245,20 @@ func encodeLifecycle(dst io.Writer, result lifecycleResult) error {
 }
 
 func encodeHistory(dst io.Writer, result historyResult) error {
+	if _, err := fmt.Fprintf(dst, "Watcher: %s (ID %s)\n", result.Name, result.ID); err != nil {
+		return err
+	}
 	table := style.NewTable("ID", "STATUS", "ASSESSMENT", "STARTED", "FINISHED", "VERSION")
 	for _, item := range result.Items {
 		finished := "-"
 		if item.FinishedAt != nil {
-			finished = item.FinishedAt.Format("2006-01-02T15:04:05Z07:00")
+			finished = item.FinishedAt.Format(time.RFC3339)
 		}
 		severity := item.Assessment
 		if severity == "" {
 			severity = "-"
 		}
-		table.Row(item.ID, item.Status, severity, item.StartedAt.Format("2006-01-02T15:04:05Z07:00"), finished, strconv.FormatInt(item.DefinitionVersion, 10))
+		table.Row(item.ID, item.Status, severity, item.StartedAt.Format(time.RFC3339), finished, strconv.FormatInt(item.DefinitionVersion, 10))
 	}
 	if err := table.Render(dst); err != nil {
 		return err

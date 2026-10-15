@@ -95,6 +95,7 @@ func decodeLifecycleOutput(t *testing.T, out *bytes.Buffer, value any) {
 
 func TestPublicLifecycleRoutes(t *testing.T) {
 	testutils.SetAgentMode(t, false)
+	actions := map[string]string{"start": "started", "pause": "paused", "run": "run-requested", "archive": "archived", "unarchive": "unarchived"}
 	for _, verb := range []string{"start", "pause", "run", "archive", "unarchive", "list-runs"} {
 		t.Run(verb, func(t *testing.T) {
 			item := savedCommandFixture()
@@ -159,7 +160,7 @@ func TestPublicLifecycleRoutes(t *testing.T) {
 			decodeLifecycleOutput(t, out, &result)
 			require.Equal(t, "gcx.mutation", result.Type)
 			require.Equal(t, "1", result.SchemaVersion)
-			require.Equal(t, verb, result.Action)
+			require.Equal(t, actions[verb], result.Action)
 			require.Equal(t, item.ID, result.Target.ID)
 			require.Equal(t, "checkout-health", result.Target.Name)
 			require.Equal(t, "accepted", result.Outcome)
@@ -323,6 +324,7 @@ func TestPublicRunAcceptanceIsNotCompletion(t *testing.T) {
 			}
 			var result lifecycleResult
 			decodeLifecycleOutput(t, out, &result)
+			require.Equal(t, "run-requested", result.Action)
 			require.Equal(t, tc.outcome, result.Outcome)
 			require.Equal(t, tc.taskID, result.TaskID)
 			require.Equal(t, "unavailable", result.Correlation)
@@ -533,6 +535,7 @@ func TestPublicLifecycleAndHistoryCodecs(t *testing.T) {
 						require.Contains(t, out.String(), "paused")
 						require.Contains(t, out.String(), item.ID)
 					} else {
+						require.Contains(t, out.String(), "Watcher: checkout-health (ID "+item.ID+")")
 						require.Contains(t, out.String(), "failed-run")
 						require.Contains(t, out.String(), "failed")
 						require.Contains(t, out.String(), "Coverage:")

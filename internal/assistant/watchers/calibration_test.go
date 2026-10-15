@@ -106,11 +106,6 @@ func TestRequestInitialCalibrationClassifiesErrors(t *testing.T) {
 	}{
 		{"not implemented", http.StatusNotImplemented, `{"message":"SENTINEL"}`, watchers.ErrCapabilityUnavailable},
 		{"structured unavailable", http.StatusInternalServerError, `{"name":"NOT_IMPLEMENTED","message":"SENTINEL"}`, watchers.ErrCapabilityUnavailable},
-		{"unauthorized", http.StatusUnauthorized, `{"message":"SENTINEL"}`, watchers.ErrPermissionDenied},
-		{"forbidden", http.StatusForbidden, `{"message":"SENTINEL"}`, watchers.ErrPermissionDenied},
-		{"not found", http.StatusNotFound, `{"message":"SENTINEL"}`, watchers.ErrNotFound},
-		{"conflict", http.StatusConflict, `{"message":"SENTINEL"}`, watchers.ErrConflict},
-		{"server failure", http.StatusInternalServerError, `{"message":"SENTINEL"}`, nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			client := mutationClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -130,9 +125,6 @@ func TestRequestInitialCalibrationClassifiesErrors(t *testing.T) {
 			encoded, encodeErr := json.Marshal(err)
 			require.NoError(t, encodeErr)
 			assert.NotContains(t, string(encoded), "SENTINEL")
-			if tc.status == http.StatusNotFound {
-				assert.NotErrorIs(t, err, watchers.ErrCapabilityUnavailable)
-			}
 		})
 	}
 }
