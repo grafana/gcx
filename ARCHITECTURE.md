@@ -75,7 +75,7 @@ Provider (internal/providers/slo/)
 
 ### Assistant Watcher configuration
 
-The Assistant provider registers Watcher configuration beside MCPServer. Dedicated configuration commands and generic resource operations share the typed adapter; runtime status remains a separate read view. Optional provider-neutral hooks retain complete envelopes and batches before identity-keyed insertion or mutation, while the adapter owns identity, reconciliation and partial-read policy. See [ADR-026](docs/adrs/provider-owned-resource-hooks/026-provider-owned-resource-hooks.md), [Assistant Watchers](docs/reference/assistant-watchers.md) and the [package map](docs/architecture/project-structure.md).
+The Assistant provider registers Watcher configuration beside MCPServer. Dedicated configuration commands and generic resource operations share the typed adapter; runtime status remains a separate read view. Optional provider-neutral hooks retain complete envelopes and batches before identity-keyed insertion or mutation, while the adapter owns identity, reconciliation and partial-read policy. See [ADR-026](docs/adrs/provider-owned-resource-hooks/026-provider-owned-resource-hooks.md), [Assistant Watchers](docs/sources/guides/manage-assistant-watchers.md) and the [package map](docs/architecture/project-structure.md).
 
 ### 3. Signal Providers
 
@@ -249,7 +249,6 @@ See [CLI layer: Portable Skill Lifecycle](docs/architecture/cli-layer.md#portabl
 | [024](docs/adrs/provider-consolidation/002-shared-table-declaration.md) | Providers declare table columns instead of writing codecs | accepted |
 | [025](docs/adrs/declarative-provider-registration/001-declarative-resource-front-door.md) | Declarative `adapter.Resource[T]` + `adapter.NewProvider` registration front door | accepted |
 | [026](docs/adrs/provider-owned-resource-hooks/026-provider-owned-resource-hooks.md) | Provider-owned identity and reconciliation hooks | accepted |
-| [027](docs/adrs/assistant-watcher-versions/027-composite-version-addressing.md) | Assistant Watcher version addressing | accepted |
 
 See [docs/adrs/](docs/adrs/) for all ADRs.
 
