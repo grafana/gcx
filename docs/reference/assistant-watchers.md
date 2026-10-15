@@ -112,4 +112,27 @@ This fragment belongs under `spec` in a complete manifest. Keep resolved values 
 
 Dedicated deletion uses the same typed deletion implementation as generic resources and the shared confirmation/`--force` rules. It accepts a server ID or an unambiguous resource name. Deletion selects identity without requiring enrollment or complete configuration export; unsupported settings do not prevent explicit deletion.
 
-File-based resource deletion addresses an annotated ID exactly. A stale ID fails as not found and never falls back to title or resource name. Without an ID, the resource name follows normal ambiguity rules. Delete dry-run selects identities without deleting them. Lifecycle controls, run history and version-history commands remain outside this slice. Calibration follow-up stays in Grafana; gcx has no calibration request, cancel, retry or recalibrate commands.
+File-based resource deletion addresses an annotated ID exactly. A stale ID fails as not found and never falls back to title or resource name. Without an ID, the resource name follows normal ambiguity rules. Delete dry-run selects identities without deleting them. Lifecycle controls and run history are described below; definition-version operations remain separate from archive recovery. Calibration follow-up stays in Grafana; gcx has no calibration request, cancel, retry or recalibrate commands.
+
+## Lifecycle and run history
+
+```bash
+gcx assistant watchers start checkout-health -o json
+gcx assistant watchers run checkout-health -o json
+gcx assistant watchers list-runs checkout-health --limit 20 -o json
+gcx assistant watchers pause checkout-health -o json
+gcx assistant watchers archive checkout-health -o json
+gcx assistant watchers unarchive checkout-health -o json
+```
+
+`start` asks the server to activate a calibrated definition with at least one enabled check. It can immediately enqueue a scan and deliver configured notifications or launch investigations; event-only Watchers wait for their trigger. An initial scan request can fail after monitoring has become active. Failed lifecycle results retain the selected identity, report any observed lifecycle from a best-effort readback, and return nonzero. Inspect `status` before retrying. gcx never automatically retries or rolls back lifecycle requests.
+
+`pause` stops future scans. An in-flight scan may finish and deliver configured notifications or investigations. Finish or cancel calibration in Grafana before pausing a calibrating Watcher. Neither pause nor archive promises cancellation of an already executing scan or its notifications.
+
+`run` reports request acceptance, skipped work or a rejected/uncertain request. Acceptance never means a completed assessment. Its `taskId` is an enqueue identifier; history records use different IDs and exact correlation is unavailable. Do not assume the newest history entry belongs to this request. The API enforces lifecycle, calibration and enabled-check requirements. Running may require create permission in addition to write permission; being able to edit a Watcher does not establish permission to run it.
+
+`list-runs` returns bounded summaries of the newest retained caller-visible executions: ID, execution status, assessment, trigger, timestamps and definition version. The default limit is 20; `--limit` accepts 1 through 100. gcx reads an extra entry, including a second request at the maximum limit, to report `coverage.hasMore`. Coverage is not an atomic snapshot or a promise of lifetime retention. Field selection preserves coverage. Failed, running and unknown execution states never render a healthy assessment; use Grafana for full run evidence.
+
+`archive` requires an observed, explicitly paused, non-archived Watcher. gcx never invokes pause implicitly. This precheck and the archive request are not atomic: another client's concurrent start can be stopped by archive. Configuration and history remain available; archive can cancel pending calibration and resolve active Grafana Alerting findings.
+
+`unarchive` requires an archived Watcher and recovers it without activating monitoring. It clears automatic-stop archive intent but retains the stop deadline, which can still prevent a later start. A concurrent start by another client can supersede recovery; an unexpected active response is reported as an error without an implicit corrective pause. Archive recovery is separate from restoring a definition version.

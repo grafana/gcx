@@ -36,7 +36,7 @@ gcx/
 │   ├── agentlog/             # Agent invocation failure logger (opt-in JSONL disk log, XDG state dir — wired into handleError in cmd/gcx/main.go)
 │   ├── assistant/            # Assistant client packages (prompt state, investigations, MCP integrations, Watcher configuration)
 │   │   ├── mcpservers/       # MCP-servers HTTP client (offset pagination, full-exhaustion List)
-│   │   ├── watchers/         # Watcher configuration client, exhaustive paging, mutations and runtime observations (watcherstest/ contains shared HTTP test fixtures)
+│   │   ├── watchers/         # Watcher configuration client, exhaustive paging, lifecycle controls, bounded run history and runtime observations (watcherstest/ contains shared HTTP test fixtures)
 │   │   ├── watcher/          # Watcher manifest schema, typed reconciliation adapter and identity resolution
 │   │   └── mcpserver/        # MCPServer manifest domain type + TypedCRUD adapter wiring + header write-intent mapping
 │   ├── auth/                 # OAuth PKCE flow, token refresh transport
