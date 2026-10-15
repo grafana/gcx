@@ -226,3 +226,21 @@ func TestOwnedBatchPlanningFailureRetainsOtherKinds(t *testing.T) {
 	require.Empty(t, failed.dispatched)
 	require.Len(t, good.dispatched, 1)
 }
+
+func TestOwnedDeleteSelectionCancellationIsNotBatchFailure(t *testing.T) {
+	for _, cause := range []error{context.Canceled, errors.New("interrupt signal received")} {
+		t.Run(cause.Error(), func(t *testing.T) {
+			ctx, cancel := context.WithCancelCause(t.Context())
+			cancel(cause)
+			desc := dashboardDescriptor()
+			a := &ownedHookAdapter{selectionErr: cause}
+			summary, err := remote.NewPuller(hookRouter(desc, a), &mockPullRegistry{}).Pull(ctx, remote.PullRequest{
+				Filters:   resources.Filters{{Descriptor: desc, Type: resources.FilterTypeAll}},
+				Resources: resources.NewResources(), IdentityOnlyDelete: true,
+			})
+			require.ErrorIs(t, err, cause)
+			require.Zero(t, summary.FailedCount())
+			require.Empty(t, summary.Failures())
+		})
+	}
+}

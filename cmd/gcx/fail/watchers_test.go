@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/gcx/internal/assistant/watcher"
 	"github.com/grafana/gcx/internal/assistant/watchers"
 	"github.com/grafana/gcx/internal/config"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/client-go/rest"
@@ -60,8 +61,8 @@ func TestWatcherNotFoundAndPermissionClassification(t *testing.T) {
 		summary    string
 	}{
 		{"missing collection", http.StatusNotFound, true, "Endpoint not available"},
-		{"missing detail", http.StatusNotFound, false, "Assistant Watchers API resource not found"},
-		{"denied detail", http.StatusForbidden, false, "Authentication failed querying Assistant Watchers"},
+		{"missing detail", http.StatusNotFound, false, gcxerrors.SummaryResourceNotFound},
+		{"denied detail", http.StatusForbidden, false, gcxerrors.SummaryAuthorizationFailed},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(tc.status) }))
@@ -101,7 +102,7 @@ func TestWatcherMixedReadFailuresPreserveSelectedErrorClassification(t *testing.
 
 	converted := fail.ErrorToDetailedError(&watcher.ListReadError{Failures: failures})
 	require.NotNil(t, converted)
-	assert.Equal(t, "Authentication failed querying Assistant Watchers", converted.Summary)
+	assert.Equal(t, gcxerrors.SummaryAuthorizationFailed, converted.Summary)
 	require.NotNil(t, converted.ExitCode)
 	assert.Equal(t, 3, *converted.ExitCode)
 }

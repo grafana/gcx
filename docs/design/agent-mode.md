@@ -33,7 +33,8 @@ spellings: `--agent=t` is accepted but selects false, while `--agent=yes` is
 rejected by Cobra. These are existing parser quirks, not recommended syntax.
 
 **Identity priority:** supported `GCX_AGENT_NAME` > native boolean signals
-in source order > native session markers in source order > supported
+in source order > native session markers in source order >
+`OPENCLAW_SHELL=exec` > supported
 `AI_AGENT` > `AGENT=goose`. Kilo precedes OpenCode. Qwen precedes Gemini CLI.
 A native marker takes precedence over a shared variable inherited from an outer
 harness. `GCX_AGENT_NAME` is the deliberate gcx override for a nested agent.

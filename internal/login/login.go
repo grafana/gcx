@@ -84,7 +84,7 @@ type Inputs struct {
 	OrgID                    int
 	UseOAuth                 bool
 	// OAuthCallbackPort fixes the local port for the OAuth callback server.
-	// Zero means auto-pick from the default range. Useful when only specific
+	// Zero means the OS assigns an ephemeral port. Useful when only specific
 	// ports are forwarded between a remote dev host and the user's browser.
 	OAuthCallbackPort int
 	// OAuthManual completes the OAuth flow without a callback server. gcx

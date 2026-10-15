@@ -12,12 +12,15 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/cmd/gcx/root"
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/gcxerrors"
+	"github.com/grafana/gcx/internal/resources/dynamic"
 	"github.com/grafana/gcx/internal/telemetry"
 )
 
@@ -73,6 +76,13 @@ func TestIsSilentCancellation(t *testing.T) {
 		{name: "nil error", err: nil, want: false},
 		{name: "bare context.Canceled", err: context.Canceled, want: true},
 		{name: "wrapped context.Canceled", err: fmt.Errorf("query: %w", context.Canceled), want: true},
+		{
+			name: "canceled dynamic-client request",
+			err: dynamic.ParseStatusError(&url.Error{
+				Op: "Get", URL: "http://example.invalid", Err: context.Canceled,
+			}),
+			want: true,
+		},
 		{name: "deadline exceeded is not a cancellation", err: context.DeadlineExceeded, want: false},
 		{name: "unrelated error", err: errors.New("boom"), want: false},
 		{
@@ -532,5 +542,35 @@ func TestBuildUsageEvent_APIRequestDetail(t *testing.T) {
 	}
 	if event.APIDatasourceTypes != "prometheus" {
 		t.Errorf("APIDatasourceTypes = %q, want %q", event.APIDatasourceTypes, "prometheus")
+	}
+}
+
+type mutationCancellationError struct {
+	cause error
+	saved bool
+}
+
+func (e mutationCancellationError) Error() string          { return "resource id=example: " + e.cause.Error() }
+func (e mutationCancellationError) Unwrap() error          { return e.cause }
+func (e mutationCancellationError) MutationWasSaved() bool { return e.saved }
+
+func TestSavedMutationCancellationKeepsReceipt(t *testing.T) {
+	for _, cause := range []error{context.Canceled, errors.New("interrupt signal received")} {
+		for _, saved := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/saved=%t", cause, saved), func(t *testing.T) {
+				ctx, cancel := context.WithCancelCause(t.Context())
+				cancel(cause)
+				err := fmt.Errorf("edit resource: %w", mutationCancellationError{cause: cause, saved: saved})
+				if got := isSilentCancellation(ctx, err); got != !saved {
+					t.Fatalf("silent cancellation = %t, saved=%t", got, saved)
+				}
+				if saved {
+					detail := fail.ErrorToDetailedError(err)
+					if detail == nil || detail.ExitCode == nil || *detail.ExitCode != gcxerrors.ExitPartialFailure || !strings.Contains(detail.Details, "id=example") {
+						t.Fatalf("saved mutation lost its receipt or partial-failure status: %+v", detail)
+					}
+				}
+			})
+		}
 	}
 }
