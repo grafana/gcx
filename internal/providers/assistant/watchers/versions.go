@@ -1,9 +1,11 @@
 package watchers
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -69,16 +71,10 @@ type versionOpts struct {
 	Version int64
 }
 
-func (o *versionOpts) Validate() error {
-	if o.Version < 1 {
-		return errors.New("VERSION must be a positive integer")
-	}
-	return o.readOpts.Validate()
-}
-func parseVersion(value string) (int64, error) {
+func parseVersion(name, value string) (int64, error) {
 	version, err := strconv.ParseInt(value, 10, 64)
 	if err != nil || version < 1 {
-		return 0, errors.New("VERSION must be a positive integer")
+		return 0, fmt.Errorf("%s must be a positive integer, got %q; try gcx assistant watchers list-versions WATCHER to see retained versions", name, value)
 	}
 	return version, nil
 }
@@ -95,7 +91,7 @@ func newVersionGetCommand(loader *providers.ConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{Use: "get WATCHER VERSION", Short: "Read one retained Watcher definition version.", Long: "Read one positive definition version and its retained change metadata, including server-reported learning effects when present. The definition is the version API's monitoring definition, not a reusable configuration manifest. Missing versions may be pruned or unavailable; gcx never invents earlier definitions. Use watchers get for current configuration.", Args: cobra.ExactArgs(2), Example: "  gcx assistant watchers versions get checkout-health 2 -o yaml", RunE: func(cmd *cobra.Command, args []string) error {
 		opts.Ref = args[0]
 		var err error
-		opts.Version, err = parseVersion(args[1])
+		opts.Version, err = parseVersion("VERSION", args[1])
 		if err != nil {
 			return err
 		}
@@ -121,22 +117,16 @@ type versionDiffOpts struct {
 	To int64
 }
 
-func (o *versionDiffOpts) Validate() error {
-	if o.To < 1 {
-		return errors.New("TO_VERSION must be a positive integer")
-	}
-	return o.versionOpts.Validate()
-}
 func newVersionDiffCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &versionDiffOpts{}
 	cmd := &cobra.Command{Use: "diff WATCHER FROM_VERSION TO_VERSION", Short: "Compare two retained Watcher definitions.", Long: "Fetch two retained versions and compare only their definition documents. Changes use sorted JSON pointer paths; arrays are compared as complete values. Runtime observations, audit metadata and learning-transition metadata are excluded. An unavailable version stops comparison instead of synthesizing history. This command does not write configuration.", Args: cobra.ExactArgs(3), Example: "  gcx assistant watchers versions diff checkout-health 1 2 -o json", RunE: func(cmd *cobra.Command, args []string) error {
 		opts.Ref = args[0]
 		var err error
-		opts.Version, err = parseVersion(args[1])
+		opts.Version, err = parseVersion("FROM_VERSION", args[1])
 		if err != nil {
 			return err
 		}
-		opts.To, err = parseVersion(args[2])
+		opts.To, err = parseVersion("TO_VERSION", args[2])
 		if err != nil {
 			return err
 		}
@@ -151,7 +141,7 @@ func newVersionDiffCommand(loader *providers.ConfigLoader) *cobra.Command {
 	}}
 	markExperimental(cmd)
 	cmd.Annotations[agent.AnnotationTokenCost] = "large"
-	cmd.Annotations[agent.AnnotationLLMHint] = "Compares only two retained definitions; large changed arrays can produce large output. Use --json changes or --jq '.changes | map({path, operation})' to select changes."
+	cmd.Annotations[agent.AnnotationLLMHint] = "Compares only two retained definitions; large changed arrays can produce large output. Use --json path,operation to narrow each change while retaining version and definition-only scope metadata."
 	opts.setup(cmd.Flags())
 	return cmd
 }
@@ -186,7 +176,7 @@ func newVersionRestoreCommand(loader *providers.ConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{Use: "restore WATCHER VERSION", Short: "Restore a retained definition of an explicitly paused Watcher.", Long: "Create a new current version from one retained monitoring definition. Pause the Watcher separately first; gcx never pauses or starts it implicitly. --expected-current-version must be the current version you inspected; the server rejects a stale guard and conflicting calibration or execution. Restore retains current actions and other settings outside the version definition; it does not restore every manifest setting or copy historical learned run state. The result reports restored scope and observed inactive state, which may be draft. Confirmation is required unless --force or shared auto-approval applies. A lost response may mean restore saved: inspect status and list-versions before retrying; gcx never retries or rolls back automatically.", Args: cobra.ExactArgs(2), Example: "  gcx assistant watchers pause checkout-health\n  gcx assistant watchers status checkout-health -o json\n  gcx assistant watchers versions restore checkout-health 1 --expected-current-version 3 --force -o json", RunE: func(cmd *cobra.Command, args []string) error {
 		opts.Ref = args[0]
 		var err error
-		opts.Version, err = parseVersion(args[1])
+		opts.Version, err = parseVersion("VERSION", args[1])
 		if err != nil {
 			return err
 		}
@@ -262,6 +252,8 @@ type versionDiffResult struct {
 	Changes     []watcher.DefinitionChange `json:"changes"`
 }
 
+func (versionDiffResult) ListItemsKey() string { return "changes" }
+
 func runVersionDiff(cmd *cobra.Command, client *clientwatchers.Client, opts *versionDiffOpts) error {
 	item, err := watcher.Resolve(cmd.Context(), client, opts.Ref)
 	if err != nil {
@@ -298,7 +290,7 @@ type versionRestoreResult struct {
 	ExpectedCurrentVersion int64                              `json:"expectedCurrentVersion"`
 	SavedVersion           *clientwatchers.VersionSummary     `json:"savedVersion,omitempty"`
 	Observed               *watcher.VersionRestoreObservation `json:"observed,omitempty"`
-	Scope                  versionRestoreScope                `json:"scope"`
+	Scope                  *versionRestoreScope               `json:"scope,omitempty"`
 	Guidance               string                             `json:"guidance,omitempty"`
 }
 
@@ -322,14 +314,23 @@ func runVersionRestore(cmd *cobra.Command, client *clientwatchers.Client, opts *
 	if outcome == nil {
 		return restoreErr
 	}
-	result := versionRestoreResult{SingleMutation: cmdio.NewSingleMutation("restore", cmdio.MutationTarget{Kind: watcher.WatcherKind, Name: watcher.Watcher{Title: item.Name}.GetResourceName(), ID: item.ID}), Outcome: outcome.Outcome, RequestedVersion: opts.Version, ExpectedCurrentVersion: opts.Expected, Observed: outcome.Observed, Guidance: outcome.Guidance, Scope: versionRestoreScope{
-		Restored: []string{"schemaVersion", "name", "description", "prompt", "triggerIntervalSeconds", "sensitivity", "disableDecisionSkip", "datasourceUids", "queries", "calibrationContext", "staticLogPolicies"},
-		Retained: []string{"notification and investigation actions", "secrets", "labels", "automatic-stop settings", "automatic-recalibration enrollment"},
-		Learning: "server-reconciled; historical learned run state is not copied",
-	}}
+	result := versionRestoreResult{SingleMutation: cmdio.NewSingleMutation("restore", cmdio.MutationTarget{Kind: watcher.WatcherKind, Name: watcher.Watcher{Title: item.Name}.GetResourceName(), ID: item.ID}), Outcome: outcome.Outcome, RequestedVersion: opts.Version, ExpectedCurrentVersion: opts.Expected, Observed: outcome.Observed, Guidance: outcome.Guidance}
 	result.Changed = outcome.Changed
 	if outcome.Accepted != nil {
 		result.SavedVersion = &outcome.Accepted.VersionSummary
+		var fields map[string]json.RawMessage
+		// The accepted response already validates definition as a JSON object.
+		_ = json.Unmarshal(outcome.Accepted.Definition, &fields)
+		restored := make([]string, 0, len(fields))
+		for field := range fields {
+			restored = append(restored, field)
+		}
+		slices.Sort(restored)
+		result.Scope = &versionRestoreScope{
+			Restored: restored,
+			Retained: []string{"notification and investigation actions", "secrets", "labels", "automatic-stop settings", "automatic-recalibration enrollment"},
+			Learning: "server-reconciled; historical learned run state is not copied",
+		}
 	}
 	if restoreErr != nil {
 		result.Error = restoreErr.Error()
@@ -363,7 +364,11 @@ func encodeVersionList(dst io.Writer, result versionListResult) error {
 	if result.Coverage.NextBeforeVersion != nil {
 		next = strconv.FormatInt(*result.Coverage.NextBeforeVersion, 10)
 	}
-	_, err := fmt.Fprintf(dst, "Coverage: %d retained finalized versions; before: %d; next --before-version: %s; retention server-controlled, lifetime completeness unknown; not an atomic snapshot.\n", result.Coverage.Returned, result.Coverage.BeforeVersion, next)
+	before := "newest"
+	if result.Coverage.BeforeVersion != 0 {
+		before = strconv.FormatInt(result.Coverage.BeforeVersion, 10)
+	}
+	_, err := fmt.Fprintf(dst, "Coverage: %d retained finalized versions; before: %s; next --before-version: %s; retention server-controlled, lifetime completeness unknown; not an atomic snapshot.\n", result.Coverage.Returned, before, next)
 	return err
 }
 func encodeVersionGet(dst io.Writer, result versionGetResult) error {
@@ -398,7 +403,7 @@ func encodeVersionDiff(dst io.Writer, result versionDiffResult) error {
 	return err
 }
 func encodeVersionRestore(dst io.Writer, result versionRestoreResult) error {
-	table := style.NewTable("NAME", "ID", "OUTCOME", "RESTORED FROM", "NEW VERSION", "OBSERVED LIFECYCLE")
+	table := style.NewTable("NAME", "ID", "OUTCOME", "REQUESTED VERSION", "NEW VERSION", "OBSERVED LIFECYCLE")
 	saved, lifecycle := "unknown", "unknown"
 	if result.SavedVersion != nil {
 		saved = strconv.FormatInt(result.SavedVersion.Version, 10)
@@ -410,7 +415,12 @@ func encodeVersionRestore(dst io.Writer, result versionRestoreResult) error {
 	if err := table.Render(dst); err != nil {
 		return err
 	}
-	for _, line := range []string{"Restored: " + strings.Join(result.Scope.Restored, ", "), "Retained: " + strings.Join(result.Scope.Retained, ", "), result.Scope.Learning, result.Error, result.Guidance} {
+	lines := []string{}
+	if result.Scope != nil {
+		lines = append(lines, "Restored: "+strings.Join(result.Scope.Restored, ", "), "Retained: "+strings.Join(result.Scope.Retained, ", "), result.Scope.Learning)
+	}
+	lines = append(lines, result.Error, result.Guidance)
+	for _, line := range lines {
 		if line != "" {
 			if _, err := fmt.Fprintln(dst, line); err != nil {
 				return err

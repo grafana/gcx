@@ -108,14 +108,11 @@ type VersionRestoreObservation struct {
 // VersionRestoreOutcome separates acceptance evidence from later observations.
 // Unknown writes deliberately omit Changed and Accepted.
 type VersionRestoreOutcome struct {
-	WatcherID              string                     `json:"watcherId"`
-	RequestedVersion       int64                      `json:"requestedVersion"`
-	ExpectedCurrentVersion int64                      `json:"expectedCurrentVersion"`
-	Outcome                string                     `json:"outcome"`
-	Changed                *bool                      `json:"changed,omitempty"`
-	Accepted               *watchers.VersionDetail    `json:"accepted,omitempty"`
-	Observed               *VersionRestoreObservation `json:"observed,omitempty"`
-	Guidance               string                     `json:"guidance,omitempty"`
+	Outcome  string                     `json:"outcome"`
+	Changed  *bool                      `json:"changed,omitempty"`
+	Accepted *watchers.VersionDetail    `json:"accepted,omitempty"`
+	Observed *VersionRestoreObservation `json:"observed,omitempty"`
+	Guidance string                     `json:"guidance,omitempty"`
 }
 
 // ValidateVersionRestore checks the resolved snapshot and request before the
@@ -152,7 +149,7 @@ func RestoreVersion(ctx context.Context, client *watchers.Client, current *watch
 	if err := ValidateVersionRestore(current, version, expected, summary); err != nil {
 		return nil, err
 	}
-	result := &VersionRestoreOutcome{WatcherID: current.ID, RequestedVersion: version, ExpectedCurrentVersion: expected}
+	result := &VersionRestoreOutcome{}
 	accepted, err := client.RestoreVersion(ctx, current.ID, version, expected, summary)
 	if err != nil {
 		var unknown *watchers.UnknownRestoreError

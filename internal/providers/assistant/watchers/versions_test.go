@@ -142,6 +142,8 @@ func TestVersionRestoreReceipts(t *testing.T) {
 		{name: "lost readback", format: "json", outcome: "saved-unverified", status: "paused", code: 4, readbackFail: true},
 		{name: "later active", format: "json", outcome: "saved-unverified", status: "running", code: 4},
 		{name: "unknown response", format: "json", outcome: "unknown", status: "paused", code: 1, unknown: true},
+		{name: "unknown yaml", format: "yaml", outcome: "unknown", status: "paused", code: 1, unknown: true},
+		{name: "unknown human", format: "text", outcome: "unknown", status: "paused", code: 1, unknown: true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -157,7 +159,7 @@ func TestVersionRestoreReceipts(t *testing.T) {
 						_, _ = fmt.Fprint(w, `{"data":`)
 						return true
 					}
-					v := commandVersion(3, `{"prompt":"restored"}`)
+					v := commandVersion(3, `{"prompt":"restored","futureSetting":{"enabled":true}}`)
 					target := int64(1)
 					v.RollbackFromVersion = &target
 					lifecycleEnvelope(w, v)
@@ -185,9 +187,13 @@ func TestVersionRestoreReceipts(t *testing.T) {
 				require.ErrorAs(t, err, &emitted)
 				require.Equal(t, tc.code, emitted.Code)
 			}
-			if tc.format == "text" {
-				require.Contains(t, out.String(), "Restored:")
-			} else {
+			switch {
+			case tc.format == "text" && tc.unknown:
+				require.NotContains(t, out.String(), "Restored:")
+				require.NotContains(t, out.String(), "Retained:")
+			case tc.format == "text":
+				require.Contains(t, out.String(), "Restored: futureSetting, prompt")
+			default:
 				var got versionRestoreResult
 				decodeLifecycleOutput(t, out, &got)
 				require.Equal(t, "gcx.mutation", got.Type)
@@ -196,10 +202,13 @@ func TestVersionRestoreReceipts(t *testing.T) {
 				require.EqualValues(t, 2, got.ExpectedCurrentVersion)
 				require.EqualValues(t, 1, got.RequestedVersion)
 				if tc.unknown {
+					require.Nil(t, got.Scope)
 					require.Nil(t, got.Changed)
 					require.Nil(t, got.SavedVersion)
 					require.Contains(t, got.Guidance, "retry")
 				} else {
+					require.NotNil(t, got.Scope)
+					require.Equal(t, []string{"futureSetting", "prompt"}, got.Scope.Restored)
 					require.NotNil(t, got.Changed)
 					require.True(t, *got.Changed)
 					require.EqualValues(t, 3, got.SavedVersion.Version)
@@ -239,6 +248,104 @@ func TestVersionRestoreConfirmationAndPreconditions(t *testing.T) {
 			require.Error(t, cmd.ExecuteContext(t.Context()))
 			require.Empty(t, out.String())
 			require.Len(t, log.snapshot(), 1)
+		})
+	}
+}
+
+func TestVersionDiffSelectionPreservesMetadata(t *testing.T) {
+	testutils.SetAgentMode(t, false)
+	for _, empty := range []bool{false, true} {
+		t.Run(strconv.FormatBool(empty), func(t *testing.T) {
+			item := savedCommandFixture()
+			loader, _ := lifecycleCommandFixture(t, item, func(w http.ResponseWriter, r *http.Request) bool {
+				if strings.Contains(r.URL.Path, "/revisions/") {
+					version := int64(1)
+					definition := `{"prompt":"old"}`
+					if strings.HasSuffix(r.URL.Path, "/2") {
+						version = 2
+						if !empty {
+							definition = `{"prompt":"new"}`
+						}
+					}
+					lifecycleEnvelope(w, commandVersion(version, definition))
+					return true
+				}
+				return false
+			})
+			cmd, out, _ := mutationCommand(t, loader, []string{"versions", "diff", item.ID, "1", "2", "--json", "path,operation", "-o", "json"}, "")
+			require.NoError(t, cmd.ExecuteContext(t.Context()))
+			var got struct {
+				Name        string              `json:"name"`
+				ID          string              `json:"id"`
+				FromVersion int64               `json:"fromVersion"`
+				ToVersion   int64               `json:"toVersion"`
+				Scope       string              `json:"scope"`
+				Changes     []map[string]string `json:"changes"`
+			}
+			decodeLifecycleOutput(t, out, &got)
+			require.Equal(t, "definition-only", got.Scope)
+			require.EqualValues(t, 1, got.FromVersion)
+			require.EqualValues(t, 2, got.ToVersion)
+			require.Equal(t, item.ID, got.ID)
+			require.Equal(t, "checkout-health", got.Name)
+			if empty {
+				require.Empty(t, got.Changes)
+				require.NotNil(t, got.Changes)
+			} else {
+				require.Equal(t, []map[string]string{{"path": "/prompt", "operation": "replace"}}, got.Changes)
+			}
+		})
+	}
+}
+
+func TestVersionParseNamesRejectedPositional(t *testing.T) {
+	testutils.SetAgentMode(t, false)
+	for _, value := range []string{"abc", "0", "", "9223372036854775808"} {
+		for _, tc := range []struct {
+			name string
+			args []string
+		}{
+			{"VERSION", []string{"versions", "get", "fixture", value}},
+			{"FROM_VERSION", []string{"versions", "diff", "fixture", value, "2"}},
+			{"TO_VERSION", []string{"versions", "diff", "fixture", "1", value}},
+			{"VERSION", []string{"versions", "restore", "fixture", value, "--expected-current-version=2", "--force"}},
+		} {
+			t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
+				loader, log := lifecycleCommandFixture(t, savedCommandFixture(), nil)
+				cmd, out, _ := mutationCommand(t, loader, tc.args, "")
+				err := cmd.ExecuteContext(t.Context())
+				require.ErrorContains(t, err, tc.name+" must be a positive integer")
+				require.ErrorContains(t, err, fmt.Sprintf("got %q", value))
+				require.ErrorContains(t, err, "gcx assistant watchers list-versions WATCHER")
+				require.Empty(t, out.String())
+				require.Empty(t, log.snapshot())
+			})
+		}
+	}
+}
+
+func TestVersionListHumanCursor(t *testing.T) {
+	testutils.SetAgentMode(t, false)
+	for _, before := range []int64{0, 9} {
+		t.Run(strconv.FormatInt(before, 10), func(t *testing.T) {
+			item := savedCommandFixture()
+			loader, _ := lifecycleCommandFixture(t, item, func(w http.ResponseWriter, r *http.Request) bool {
+				if strings.HasSuffix(r.URL.Path, "/revisions") {
+					lifecycleEnvelope(w, map[string]any{"revisions": []clientwatchers.VersionSummary{}})
+					return true
+				}
+				return false
+			})
+			args := []string{"list-versions", item.ID, "-o", "text"}
+			want := "before: newest"
+			if before != 0 {
+				args = append(args, "--before-version="+strconv.FormatInt(before, 10))
+				want = "before: 9"
+			}
+			cmd, out, _ := mutationCommand(t, loader, args, "")
+			require.NoError(t, cmd.ExecuteContext(t.Context()))
+			require.Contains(t, out.String(), want)
+			require.NotContains(t, out.String(), "before: 0")
 		})
 	}
 }
