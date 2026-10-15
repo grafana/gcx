@@ -3,6 +3,8 @@ package watcher
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/grafana/gcx/internal/assistant/watchers"
@@ -121,13 +123,15 @@ func TestAlertingRoutingSelection(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			raw := contractRaw()
-			raw.Labels = map[string]string{"__grafana_managed_route__": tt.legacy}
+			raw.Labels = map[string]string{"__grafana_managed_route__": tt.legacy, "service": "example"}
 			raw.Actions.Alerting = &watchers.AlertingAction{MinSeverity: "warning", RoutingTree: tt.current}
 			fixture := contractFixture(raw)
 			client := clientForServer(t, fixture.ServeHTTP)
 			desired := WatcherFromResponse(raw, false)
 			desired.Notifications.Alerting.RoutingTree = tt.desired
-			originalLabels := map[string]string{"__grafana_managed_route__": tt.legacy}
+			// Previously exported manifests may still carry the legacy label.
+			desired.Labels["__grafana_managed_route__"] = tt.legacy
+			originalLabels := map[string]string{"__grafana_managed_route__": tt.legacy, "service": "example"}
 			result, err := reconcile(t.Context(), client, desired, raw.ID)
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, result.Notifications.Alerting.RoutingTree)
@@ -199,4 +203,83 @@ func TestNotificationLegacyRouteWithoutAlertingBlock(t *testing.T) {
 	require.NoError(t, err)
 	actions := testObject(t, contractRequest(t, fixture, 0)["actions"])
 	assert.Equal(t, "legacy-route", testObject(t, actions["alerting"])["routingTree"])
+}
+
+func TestDisabledLegacySlackTargetsRemainReadable(t *testing.T) {
+	for _, target := range []watchers.ChatTarget{
+		{Type: "channel", UserID: "U_EXAMPLE"},
+		{Type: "channel", TeamID: "T_EXAMPLE"},
+		{Type: "channel", UserID: "U_EXAMPLE", TeamID: "T_EXAMPLE"},
+	} {
+		t.Run(target.UserID+target.TeamID, func(t *testing.T) {
+			raw := contractRaw()
+			raw.Actions.Slack = &watchers.ChatAction{Target: &target, MinSeverity: "warning"}
+			fixture := contractFixture(raw)
+			client := clientForServer(t, fixture.ServeHTTP)
+			crud := NewTypedCRUDForClient(client, "example")
+			got, err := crud.Get(t.Context(), raw.ID)
+			require.NoError(t, err)
+			assert.Equal(t, target.UserID, got.Spec.Notifications.Slack.UserID)
+			assert.Equal(t, target.TeamID, got.Spec.Notifications.Slack.TeamID)
+			items, err := crud.List(t.Context(), 0)
+			require.NoError(t, err)
+			require.Len(t, items, 1)
+			assert.Equal(t, got.Spec, items[0].Spec)
+			data, err := json.Marshal(got.Spec)
+			require.NoError(t, err)
+			var decoded Watcher
+			require.NoError(t, json.Unmarshal(data, &decoded))
+			result, err := reconcile(t.Context(), client, decoded, raw.ID)
+			require.NoError(t, err)
+			assert.False(t, result.MutationOutcome().Changed)
+			assert.Zero(t, fixture.MutationCalls())
+		})
+	}
+}
+
+func TestAlertingLegacyResetWithOmittedRouteResponse(t *testing.T) {
+	raw := contractRaw()
+	raw.Labels = map[string]string{"__grafana_managed_route__": "operations", "service": "example"}
+	raw.Actions.Alerting = &watchers.AlertingAction{MinSeverity: "warning"}
+	fixture := contractFixture(raw)
+	client := clientForServer(t, func(w http.ResponseWriter, r *http.Request) {
+		recorder := httptest.NewRecorder()
+		fixture.ServeHTTP(recorder, r)
+		var envelope map[string]any
+		if !assert.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &envelope)) {
+			http.Error(w, "invalid fixture response", http.StatusInternalServerError)
+			return
+		}
+		if data, ok := envelope["data"].(map[string]any); ok {
+			if actions, ok := data["actions"].(map[string]any); ok {
+				if alerting, ok := actions["alerting"].(map[string]any); ok {
+					delete(alerting, "routingTree")
+				}
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(recorder.Code)
+		assert.NoError(t, json.NewEncoder(w).Encode(envelope))
+	})
+	desired, err := ReadManifest(t.Context(), client, raw)
+	require.NoError(t, err)
+	assert.Equal(t, "operations", desired.Notifications.Alerting.RoutingTree)
+	assert.Equal(t, map[string]string{"service": "example"}, desired.Labels)
+	// Keep a stale label to exercise manifests exported before the dedicated field.
+	desired.Labels["__grafana_managed_route__"] = "operations"
+	desired.Notifications.Alerting.RoutingTree = ""
+	result, err := reconcile(t.Context(), client, desired, raw.ID)
+	require.NoError(t, err)
+	assert.Empty(t, result.Notifications.Alerting.RoutingTree)
+	assert.Equal(t, map[string]string{"service": "example"}, result.Labels)
+	assert.Equal(t, "operations", desired.Labels["__grafana_managed_route__"])
+	require.Equal(t, 1, fixture.MutationCalls())
+	request := contractRequest(t, fixture, 0)
+	assert.Equal(t, map[string]any{"service": "example"}, request["labels"])
+	actions := testObject(t, request["actions"])
+	assert.Empty(t, testObject(t, actions["alerting"])["routingTree"])
+	_, err = reconcile(t.Context(), client, desired, raw.ID)
+	require.NoError(t, err)
+	assert.Equal(t, 1, fixture.MutationCalls())
+	contractNoLifecycle(t, fixture)
 }

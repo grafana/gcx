@@ -31,11 +31,9 @@ func buildWatcherSchema() json.RawMessage {
 		"enabled": boolean, "targetType": map[string]any{"type": "string", "pattern": `\S`, "default": "channel", "description": "Known values: channel, dm. Other strings are validated by the API."},
 		"channelId": str, "userId": str, "teamId": str, "severity": severity,
 	})
-	targetPresent := make([]any, 0, 4)
+	targetPresent := make([]any, 0, 2)
 	targetPresent = append(targetPresent, map[string]any{"required": []string{"enabled"}, "properties": map[string]any{"enabled": map[string]any{"const": true}}})
-	for _, field := range []string{"channelId", "userId", "teamId"} {
-		targetPresent = append(targetPresent, map[string]any{"required": []string{field}, "properties": map[string]any{field: map[string]any{"type": "string", "minLength": 1}}})
-	}
+	targetPresent = append(targetPresent, map[string]any{"required": []string{"channelId"}, "properties": map[string]any{"channelId": map[string]any{"type": "string", "minLength": 1}}})
 	slack["allOf"] = []any{
 		map[string]any{
 			"if":   map[string]any{"properties": map[string]any{"targetType": map[string]any{"const": "channel"}}, "anyOf": targetPresent},

@@ -18,16 +18,19 @@ func (w *Watcher) UnsupportedConfiguration() []string {
 		out = append(out, w.AutoStop.unsupported...)
 	}
 	out = append(out, w.Actions.unsupported...)
-	for index, action := range []*ChatAction{w.Actions.Slack, w.Actions.MSTeams} {
+	for _, action := range []*ChatAction{w.Actions.Slack, w.Actions.MSTeams} {
 		if action == nil {
 			continue
 		}
 		out = append(out, action.unsupported...)
 		if action.Target != nil {
 			out = append(out, action.Target.unsupported...)
-			if index == 1 && (action.Target.Type != "" && action.Target.Type != "channel" || action.Target.UserID != "" || action.Target.TeamID != "") {
-				out = append(out, "notification targeting")
-			}
+		}
+	}
+	if action := w.Actions.MSTeams; action != nil && action.Target != nil {
+		target := action.Target
+		if target.Type != "" && target.Type != "channel" || target.UserID != "" || target.TeamID != "" {
+			out = append(out, "notification targeting")
 		}
 	}
 	if a := w.Actions.Webhook; a != nil {
