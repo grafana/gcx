@@ -5,7 +5,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"strconv"
 	"testing"
 
 	"github.com/grafana/gcx/internal/auth"
@@ -142,8 +141,10 @@ func TestCloudLoginRejectsAmbiguousLayeredWrite(t *testing.T) {
 	cmd.SetArgs([]string{"--cloud-token", "must-not-be-written"})
 	err := cmd.ExecuteContext(t.Context())
 	require.ErrorContains(t, err, "write target is ambiguous")
-	require.ErrorContains(t, err, "--config "+strconv.Quote(userPath))
-	require.ErrorContains(t, err, "--config "+strconv.Quote(localPath))
+	require.ErrorContains(t, err, "--config ")
+	for _, path := range []string{userPath, localPath} {
+		require.Contains(t, filepath.ToSlash(err.Error()), filepath.ToSlash(path))
+	}
 
 	userRaw, readErr := os.ReadFile(userPath)
 	require.NoError(t, readErr)
@@ -528,7 +529,9 @@ func isolateCloudConfigEnv(t *testing.T) (string, string) {
 	t.Helper()
 	userDir := t.TempDir()
 	workDir := t.TempDir()
-	t.Setenv("HOME", t.TempDir())
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	t.Setenv("XDG_CONFIG_HOME", userDir)
 	t.Setenv("XDG_CONFIG_DIRS", t.TempDir())
 	t.Setenv("GCX_CONFIG", "")

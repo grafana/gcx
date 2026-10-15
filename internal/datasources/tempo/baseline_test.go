@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"runtime"
 	"testing"
 	"time"
 
@@ -199,7 +200,11 @@ current-context: default
 	require.NotNil(t, result.ListMeta)
 	assert.True(t, result.ListMeta.Truncated)
 	assert.Equal(t, 20, result.ListMeta.Returned)
-	assert.Contains(t, result.ListMeta.Continue, "--limit 40")
+	if runtime.GOOS == "windows" {
+		assert.Contains(t, result.ListMeta.Continue, "'--limit' '40'")
+	} else {
+		assert.Contains(t, result.ListMeta.Continue, "--limit 40")
+	}
 	assert.Contains(t, stderr.String(), fmt.Sprintf(`warn: seed trace %q is partial; baseline retrieval uses only the spans returned by Tempo`, seedID))
 	assert.Contains(t, stderr.String(), "showing first 20; more results are available")
 }

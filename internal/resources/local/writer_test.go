@@ -112,13 +112,14 @@ func TestFSWriter_PathContainment_TraversalRejected(t *testing.T) {
 
 func TestFSWriter_PathContainment_AbsoluteFilenameRejected(t *testing.T) {
 	outputDir := t.TempDir()
+	absFilename := filepath.Join(t.TempDir(), "outside.yaml")
 
 	writer := local.FSWriter{
 		Path:        outputDir,
 		Encoder:     format.NewYAMLCodec(),
 		StopOnError: true,
 		Namer: func(_ *resources.Resource) (string, error) {
-			return "/etc/passwd", nil
+			return absFilename, nil
 		},
 	}
 

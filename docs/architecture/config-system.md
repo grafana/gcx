@@ -416,14 +416,16 @@ example, an unavailable credential store), that per-file reason is retained in
 the same consolidated warning.
 
 A single-source migration is serialized by canonical source identity. It first
-creates a write-once, mode-0600 `<file>.legacy.bak` containing the exact raw
-legacy bytes. An existing backup authorizes replacement only if its bytes match
-the source exactly. Converted bytes are decode-verified before the config is
+creates a write-once `<file>.legacy.bak` containing the exact raw legacy bytes.
+On Unix, the backup has mode `0600`. On Windows, a protected DACL grants
+access only to the current user, SYSTEM, and Administrators. The DACL is set
+when the file is created, before any plaintext is written. An existing backup
+authorizes replacement only if its bytes match the source exactly. Converted bytes are decode-verified before the config is
 atomically replaced, and both backup creation and replacement are durably
 synced. The backup is deliberately not scrubbed: if the legacy source contained
-plaintext credentials, its exact backup retains them indefinitely at mode
-`0600` until the user removes it after gaining rollback confidence. Plaintext
-values in the new v1 file and trusted legacy keychain values move to
+plaintext credentials, its exact backup retains them with these permissions
+until the user removes it after checking that rollback is no longer needed.
+Plaintext values in the new v1 file and trusted legacy keychain values move to
 source/owner/field/destination-bound, generation-addressed accounts. Legacy
 accounts are never deleted, so an exact backup containing a legacy sentinel
 remains restorable. Predictable legacy sentinels are accepted only by the
@@ -433,6 +435,10 @@ securely permissioned file deliberately selected through
 identity; generic internal construction of an explicit source grants no
 authority. Symlinked home/XDG paths work through canonical identity
 comparison. These sentinels are not portable authority in ordinary v1 loading.
+On Windows, legacy source trust requires current-user ownership. The file
+DACL must not grant write access to other users except SYSTEM and
+Administrators. Backup checks also reject data read access for other users.
+These checks use the open file handle and retain the source identity checks.
 A read-only source migrates in memory with a warning on every invocation.
 
 ---

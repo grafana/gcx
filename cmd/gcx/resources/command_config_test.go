@@ -67,7 +67,9 @@ func (a *configRoutingTestAdapter) Example() json.RawMessage { return nil }
 // a lazy adapter factory must read S1, the destructive router call must target
 // S1, and provider write-back must mutate S1 only.
 func TestResourcesCommand_ConfigFileRoutesLazyAdapterDeleteAndWriteback(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("XDG_CONFIG_DIRS", t.TempDir())
 

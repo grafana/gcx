@@ -60,6 +60,7 @@ func TestRunRejectsNonTargetLayerChangeDuringAuthentication(t *testing.T) {
 	systemDir := t.TempDir()
 	workDir := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	t.Setenv("XDG_CONFIG_HOME", userDir)
 	t.Setenv("XDG_CONFIG_DIRS", systemDir)
 	t.Setenv("GCX_CONFIG", "")

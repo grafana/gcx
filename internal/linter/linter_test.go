@@ -2,6 +2,7 @@ package linter_test
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 
 	"github.com/grafana/gcx/internal/linter"
@@ -88,7 +89,7 @@ func TestLinter_Lint_directoryInputs(t *testing.T) {
 	req.Equal("dashboard", violation.ResourceType)
 	req.Equal("idiomatic", violation.Category)
 	req.Equal("warning", violation.Severity)
-	req.Equal("testdata/dashboards/missing-panel-title.json", violation.Location.File)
+	req.Equal(filepath.FromSlash("testdata/dashboards/missing-panel-title.json"), violation.Location.File)
 	req.Equal("panel 4 has no title", violation.Details)
 	req.Equal("Panels should have a title and description.", violation.Description)
 	req.ElementsMatch([]linter.RelatedResource{

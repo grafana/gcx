@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -1539,8 +1540,10 @@ func TestErrorToDetailedError_KeychainLocked(t *testing.T) {
 			require.Error(t, got.Parent)
 			require.ErrorIs(t, got.Parent, credentials.ErrLocked)
 			assert.Equal(t, docs.Keychain, got.DocsLink)
-			// convert_internal_test.go pins the per-platform suggestions.
-			assert.NotEmpty(t, got.Suggestions)
+			// Windows Credential Manager has no session unlock command.
+			if runtime.GOOS != "windows" {
+				assert.NotEmpty(t, got.Suggestions)
+			}
 			assert.NotContains(t, strings.Join(got.Suggestions, "\n"), "GCX_KEYCHAIN=off")
 		})
 	}

@@ -18,7 +18,12 @@ func TestCreateConfigForTypeLocalDoesNotFollowExistingSymlink(t *testing.T) {
 	target := filepath.Join(t.TempDir(), "victim.yaml")
 	original := []byte("victim: unchanged\n")
 	require.NoError(t, os.WriteFile(target, original, 0o600))
-	require.NoError(t, os.Symlink(target, filepath.Join(work, internalConfig.LocalConfigFileName)))
+	if err := os.Symlink(target, filepath.Join(work, internalConfig.LocalConfigFileName)); err != nil {
+		if runtime.GOOS == "windows" {
+			t.Skipf("Windows runner cannot create a symlink: %v", err)
+		}
+		require.NoError(t, err)
+	}
 
 	path, err := createConfigForType("local")
 	require.ErrorContains(t, err, "symlinks are not allowed")
@@ -97,6 +102,7 @@ func TestResolveRawEditTargetSelectsBrokenDiscoveredLayer(t *testing.T) {
 	home := t.TempDir()
 	work := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	t.Setenv("XDG_CONFIG_DIRS", filepath.Join(home, "system-config"))
 	t.Setenv(internalConfig.ConfigFileEnvVar, "")

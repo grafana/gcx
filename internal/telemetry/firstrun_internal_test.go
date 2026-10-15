@@ -3,6 +3,7 @@ package telemetry
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -176,6 +177,7 @@ func TestFirstRunNoticeSuppressedWhenModeNotEnabled(t *testing.T) {
 func TestFirstRunNoticeSkippedWhenStateHomeUnknown(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", "")
 	t.Setenv("HOME", "")
+	t.Setenv("USERPROFILE", "")
 	assert.Empty(t, FirstRunNoticePath(), "unknown state home must not yield a relative path")
 
 	var out strings.Builder
@@ -232,14 +234,28 @@ Find out more at https://grafana.com/docs/grafana/latest/as-code/observability-a
 }
 
 func TestFirstRunNoticeSkippedWhenStateDirUnwritable(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix file permissions do not apply to Windows")
+	}
 	if os.Geteuid() == 0 {
 		t.Skip("permission checks do not apply to root")
 	}
-	readonly := filepath.Join(t.TempDir(), "readonly")
-	require.NoError(t, os.MkdirAll(readonly, 0o500))
-	path := filepath.Join(readonly, "gcx", firstRunNoticeFileName)
+	stateHome := t.TempDir()
+	require.NoError(t, os.Chmod(stateHome, 0o500))
+	t.Cleanup(func() { require.NoError(t, os.Chmod(stateHome, 0o700)) })
+	path := filepath.Join(stateHome, "gcx", firstRunNoticeFileName)
 
 	var out strings.Builder
 	maybeShowFirstRunNotice(&out, ModeEnabled, true, false, false, path)
-	assert.Empty(t, out.String(), "unwritable flag file must skip the notice, not repeat it")
+	assert.Empty(t, out.String(), "unwritable state directory must skip the notice")
+}
+
+func TestFirstRunNoticeSkippedWhenStateHomeIsFile(t *testing.T) {
+	blocked := filepath.Join(t.TempDir(), "blocked")
+	require.NoError(t, os.WriteFile(blocked, []byte("file, not directory"), 0o600))
+	path := filepath.Join(blocked, "gcx", firstRunNoticeFileName)
+
+	var out strings.Builder
+	maybeShowFirstRunNotice(&out, ModeEnabled, true, false, false, path)
+	assert.Empty(t, out.String(), "state home file must skip the notice")
 }

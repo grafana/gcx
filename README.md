@@ -57,6 +57,20 @@ gcx dashboards snapshot my-dashboard --timeout 3m
 
 ## Installation
 
+**Windows (PowerShell 7 or Windows PowerShell 5.1):**
+
+```powershell
+irm https://raw.githubusercontent.com/grafana/gcx/main/scripts/install.ps1 | iex
+gcx --version
+```
+
+The installer checks the SHA-256 checksum. It installs `gcx.exe` in
+`$env:LOCALAPPDATA\gcx\bin` and adds that directory to your user `PATH`.
+Run the command again to upgrade. Use `GCX_VERSION` or `GCX_INSTALL_DIR` to
+select a version or directory. See the [Windows install guide](docs/sources/installation.md#install-on-windows)
+for manual ZIP installation and uninstall steps. For WSL, use the Linux
+installer inside WSL.
+
 **Quick install (Linux/macOS):**
 
 ```sh
@@ -101,7 +115,7 @@ That build needs Homebrew's `go`, which Homebrew installs as a build
 dependency. The first install takes 30–60 seconds while Go fetches
 dependencies.
 
-**Pre-built binary (Linux/macOS/Windows):**
+**Pre-built binary (Linux/macOS):**
 
 Download the latest archive for your OS and architecture from the
 [releases page](https://github.com/grafana/gcx/releases/latest),

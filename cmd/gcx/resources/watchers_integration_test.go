@@ -41,7 +41,9 @@ func watcherResourceCLIWithDiagnostics(t *testing.T, fixture *watcherstest.Serve
 	t.Helper()
 	t.Setenv("GCX_DISCOVERY_CACHE_DIR", t.TempDir())
 	t.Setenv("GCX_KEYCHAIN", "off")
-	t.Setenv("HOME", t.TempDir())
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("XDG_CONFIG_DIRS", t.TempDir())
 	for _, name := range []string{"GRAFANA_SERVER", "GRAFANA_TOKEN", "GRAFANA_USER", "GRAFANA_PASSWORD", "GRAFANA_PROXY_ENDPOINT"} {

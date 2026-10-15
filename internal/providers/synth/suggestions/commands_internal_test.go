@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -402,7 +403,11 @@ func TestCommand_LimitDefaultsToTenAndKeepsServerOrder(t *testing.T) {
 	assert.Equal(t, 10, meta.Returned)
 	require.NotNil(t, meta.Total)
 	assert.Equal(t, 22, *meta.Total)
-	assert.Contains(t, meta.Continue, "--limit 0")
+	if runtime.GOOS == "windows" {
+		assert.Contains(t, meta.Continue, "'--limit' '0'")
+	} else {
+		assert.Contains(t, meta.Continue, "--limit 0")
+	}
 
 	assert.Contains(t, stderr, "showing first 10 of 22")
 	assert.NotContains(t, stdout, "showing first")

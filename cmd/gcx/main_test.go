@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -208,6 +209,7 @@ func TestConfigSetUnavailableKeychainFailsClosedProcess(t *testing.T) {
 
 	for _, agentMode := range []string{"false", "true"} {
 		t.Run("agent-mode="+agentMode, func(t *testing.T) {
+			userHome := t.TempDir()
 			configPath := filepath.Join(t.TempDir(), "config.yaml")
 			contents := []byte(`version: 1
 stacks:
@@ -237,7 +239,8 @@ current-context: smoke
 				"GCX_TELEMETRY=disabled",
 				"GCX_NO_UPDATE_NOTIFIER=1",
 				"NO_COLOR=1",
-				"HOME="+t.TempDir(),
+				"HOME="+userHome,
+				"USERPROFILE="+userHome,
 				"XDG_CONFIG_HOME="+t.TempDir(),
 				"XDG_CONFIG_DIRS="+t.TempDir(),
 				"XDG_CACHE_HOME="+t.TempDir(),
@@ -289,8 +292,10 @@ current-context: smoke
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got := info.Mode().Perm(); got != 0o600 {
-				t.Fatalf("config permissions = %o, want 600", got)
+			if runtime.GOOS != "windows" {
+				if got := info.Mode().Perm(); got != 0o600 {
+					t.Fatalf("config permissions = %o, want 600", got)
+				}
 			}
 		})
 	}
@@ -366,6 +371,7 @@ current-context: old
 		{name: "agent incompatible version", agentMode: "true", configPath: versionConfigPath, grafanaServer: versionServer.URL, grafanaToken: "test-token", wantExitCode: 6, wantOutput: "gcx requires Grafana 12.0.0 or later"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			userHome := t.TempDir()
 			var stdout bytes.Buffer
 			var stderr bytes.Buffer
 			// Re-exec the trusted current test binary to verify the actual process exit path.
@@ -378,7 +384,8 @@ current-context: old
 				"GCX_AGENT_MODE="+tc.agentMode,
 				"GCX_TELEMETRY=disabled",
 				"NO_COLOR=1",
-				"HOME="+t.TempDir(),
+				"HOME="+userHome,
+				"USERPROFILE="+userHome,
 				"XDG_CONFIG_HOME="+t.TempDir(),
 				"XDG_CONFIG_DIRS="+t.TempDir(),
 				"XDG_CACHE_HOME="+t.TempDir(),

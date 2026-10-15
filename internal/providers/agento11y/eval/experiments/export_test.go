@@ -696,7 +696,7 @@ func TestPublishCompletedBundle_RetainsStagingWhenDestinationIsAbsent(t *testing
 
 	require.ErrorIs(t, err, publishErr)
 	assert.True(t, retained)
-	assert.Contains(t, err.Error(), stagingDir)
+	assert.Contains(t, err.Error(), fmt.Sprintf("%q", stagingDir))
 	assert.DirExists(t, stagingDir)
 	assert.NoDirExists(t, outputDir)
 }

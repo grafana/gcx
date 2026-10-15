@@ -3,6 +3,10 @@ package config
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
+	"runtime"
+	"strconv"
+	"strings"
 
 	"github.com/grafana/gcx/internal/credentials"
 )
@@ -62,11 +66,27 @@ func (e CredentialRejectedError) Error() string {
 		return message + "; unlock the keychain in this session, then retry"
 	}
 	if e.Source != "" {
-		message += fmt.Sprintf("; review the file and re-authenticate with --config %q", e.Source)
+		message += "; review the file and re-authenticate with --config " + quoteConfigPath(e.Source)
 	} else {
 		message += "; re-authenticate with an explicitly selected --config file"
 	}
 	return message
+}
+
+// quoteConfigPath formats a config path for command hints. Windows hints use
+// PowerShell syntax when an argument needs quotes.
+func quoteConfigPath(path string) string {
+	return quoteConfigPathForOS(path, runtime.GOOS)
+}
+
+func quoteConfigPathForOS(path, goos string) string {
+	if goos == "windows" {
+		// PowerShell 5.1 can lose a trailing backslash when it calls a native
+		// command. Forward slashes preserve that separator in this path fragment.
+		path = strings.ReplaceAll(filepath.ToSlash(path), `\`, "/")
+		return "'" + strings.ReplaceAll(path, "'", "''") + "'"
+	}
+	return strconv.Quote(path)
 }
 
 func (e CredentialRejectedError) Unwrap() error {

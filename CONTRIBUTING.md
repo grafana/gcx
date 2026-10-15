@@ -207,6 +207,23 @@ $ mise run all             # lint + tests + build + docs
 $ mise tasks               # list all available tasks
 ```
 
+For native Windows development, install Go at the version in `go.mod`. Run
+these commands in PowerShell:
+
+```powershell
+$env:GCX_AGENT_MODE = 'false'
+go test ./...
+New-Item -ItemType Directory -Path bin -Force | Out-Null
+go build -buildvcs=false -o bin/gcx.exe ./cmd/gcx/
+./bin/gcx.exe --version
+./scripts/install_test.ps1
+```
+
+Run the installer tests in PowerShell 7 and Windows PowerShell 5.1 on AMD64.
+The Windows CI job also runs the Go tests, build, and PowerShell 7 installer
+tests on ARM64. The `mise run build` and `mise run install` tasks use Bash and
+Unix paths. Use the commands above for a native Windows build.
+
 ### Testing against a real Grafana API
 
 While unit tests are valuable for testing individual components, integration testing against a real Grafana instance is important to ensure `gcx` works correctly with the actual Grafana API.

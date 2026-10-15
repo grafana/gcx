@@ -795,12 +795,7 @@ func (command destinationRecoveryCommand) args() []string {
 }
 
 func (command destinationRecoveryCommand) String() string {
-	return "gcx config set --config " + shellQuote(command.ConfigFile) + " " +
-		shellQuote(command.Path) + " " + shellQuote(command.Value)
-}
-
-func shellQuote(value string) string {
-	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
+	return cmdio.ShellCommand([]string{"gcx", "config", "set", "--config", command.ConfigFile, command.Path, command.Value})
 }
 
 func runtimeOnlyBearerDestinationError(
@@ -967,12 +962,20 @@ func runtimeOnlyDestinationEditorRecoveryError(
 		),
 		Parent: cause,
 		Suggestions: []string{
-			"If the explicit config does not exist yet, initialize it: gcx config set --config " + shellQuote(configFile) + " version '1'",
-			"Open the selected config: gcx config edit --config " + shellQuote(configFile),
+			"If the explicit config does not exist yet, initialize it: " + editorRecoveryInitCommand(configFile),
+			"Open the selected config: " + editorRecoveryEditCommand(configFile),
 			"Then rerun the same gcx login command",
 			"Or unset the listed GRAFANA_* overrides and retry if they were not intended for this context",
 		},
 	}
+}
+
+func editorRecoveryInitCommand(configFile string) string {
+	return cmdio.ShellCommand([]string{"gcx", "config", "set", "--config", configFile, "version", "1"})
+}
+
+func editorRecoveryEditCommand(configFile string) string {
+	return cmdio.ShellCommand([]string{"gcx", "config", "edit", "--config", configFile})
 }
 
 func loadLoginSourceContext(ctx context.Context, flags *loginOpts, contextName string) (config.Config, *config.Context, string, error) {

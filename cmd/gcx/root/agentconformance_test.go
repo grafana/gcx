@@ -86,11 +86,14 @@ func buildGcx(t *testing.T) string {
 func conformanceEnv(home string) []string {
 	return []string{
 		"HOME=" + home,
+		"USERPROFILE=" + home,
 		"XDG_CONFIG_HOME=" + filepath.Join(home, ".config"),
 		"XDG_STATE_HOME=" + filepath.Join(home, ".state"),
 		// swept commands run for real: agent prune deletes from os.TempDir(),
 		// so the host temp dir must not leak in
 		"TMPDIR=" + home,
+		"TEMP=" + home,
+		"TMP=" + home,
 		"PATH=" + os.Getenv("PATH"),
 		// This is a production binary. The Go test Keychain guard does not apply.
 		"GCX_KEYCHAIN=off",

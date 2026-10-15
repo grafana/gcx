@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -307,6 +308,7 @@ func publicationCases() []publishCase {
 // Execute the real publish step against the stub, with one scripted response
 // per POST and per head read.
 func TestReviewWorkflowPublication(t *testing.T) {
+	skipWindowsShellTest(t)
 	if _, err := exec.LookPath("jq"); err != nil {
 		t.Skip("jq is required to execute the review workflow")
 	}
@@ -597,6 +599,7 @@ func section(doc, heading string) string {
 // Run the skill's posting example against a fake gh, including shell syntax in
 // the review text. It must reach stdin unchanged without creating payload files.
 func TestReviewSkillPostsJSONOnStdin(t *testing.T) {
+	skipWindowsShellTest(t)
 	data, err := os.ReadFile(skillPath)
 	if err != nil {
 		t.Fatal(err)
@@ -644,5 +647,12 @@ func TestReviewSkillPostsJSONOnStdin(t *testing.T) {
 	files, err := os.ReadDir(dir)
 	if err != nil || len(files) != 1 || files[0].Name() != "gh" {
 		t.Fatalf("posting example created files: %v (error: %v)", files, err)
+	}
+}
+
+func skipWindowsShellTest(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("this test executes a Bash workflow with POSIX stubs")
 	}
 }

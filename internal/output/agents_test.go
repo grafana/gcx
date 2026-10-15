@@ -13,6 +13,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func setSpillTempDir(t *testing.T, dir string) {
+	t.Helper()
+	t.Setenv("TMPDIR", dir)
+	t.Setenv("TMP", dir)
+	t.Setenv("TEMP", dir)
+}
+
 func TestAgentsCodec_BelowThreshold(t *testing.T) {
 	codec := cmdio.NewAgentsCodecForTesting()
 
@@ -31,7 +38,7 @@ func TestAgentsCodec_BelowThreshold(t *testing.T) {
 
 func TestAgentsCodec_AboveThreshold_Spills(t *testing.T) {
 	t.Setenv("GCX_AGENT_SPILL_BYTES", "50")
-	t.Setenv("TMPDIR", t.TempDir())
+	setSpillTempDir(t, t.TempDir())
 
 	codec := cmdio.NewAgentsCodecForTesting()
 
@@ -95,7 +102,7 @@ func TestAgentsCodec_Spill_ListEnvelope(t *testing.T) {
 	// A ListEnvelope spill must preview and count the items under the
 	// declared key, not treat the envelope as an opaque struct.
 	t.Setenv("GCX_AGENT_SPILL_BYTES", "50")
-	t.Setenv("TMPDIR", t.TempDir())
+	setSpillTempDir(t, t.TempDir())
 
 	codec := cmdio.NewAgentsCodecForTesting()
 
@@ -129,7 +136,7 @@ func TestAgentsCodec_Spill_ListEnvelope(t *testing.T) {
 
 func TestAgentsCodec_NonSlice_OmitsItems(t *testing.T) {
 	t.Setenv("GCX_AGENT_SPILL_BYTES", "1")
-	t.Setenv("TMPDIR", t.TempDir())
+	setSpillTempDir(t, t.TempDir())
 
 	codec := cmdio.NewAgentsCodecForTesting()
 
@@ -147,7 +154,7 @@ func TestAgentsCodec_NonSlice_OmitsItems(t *testing.T) {
 
 func TestAgentsCodec_NonSlice_PreviewIsKeyNames(t *testing.T) {
 	t.Setenv("GCX_AGENT_SPILL_BYTES", "1")
-	t.Setenv("TMPDIR", t.TempDir())
+	setSpillTempDir(t, t.TempDir())
 
 	codec := cmdio.NewAgentsCodecForTesting()
 
@@ -177,7 +184,7 @@ func TestAgentsCodec_NonSlice_PreviewIsKeyNames(t *testing.T) {
 
 func TestAgentsCodec_StructWithItems_CountsItems(t *testing.T) {
 	t.Setenv("GCX_AGENT_SPILL_BYTES", "1")
-	t.Setenv("TMPDIR", t.TempDir())
+	setSpillTempDir(t, t.TempDir())
 
 	type listValue struct {
 		Items []map[string]any
@@ -208,7 +215,7 @@ func TestAgentsCodec_StructWithItems_CountsItems(t *testing.T) {
 func TestAgentsCodec_ZeroThresholdDisablesSpill(t *testing.T) {
 	t.Setenv("GCX_AGENT_SPILL_BYTES", "0")
 	dir := t.TempDir()
-	t.Setenv("TMPDIR", dir)
+	setSpillTempDir(t, dir)
 
 	codec := cmdio.NewAgentsCodecForTesting()
 	data := map[string]string{"payload": strings.Repeat("x", 512*1024)}
@@ -244,7 +251,7 @@ func TestAgentsCodec_InvalidEnvVar_FallsBackToDefault(t *testing.T) {
 
 func TestAgentsCodec_SpillEnvelope_UsesTotalItems(t *testing.T) {
 	t.Setenv("GCX_AGENT_SPILL_BYTES", "1")
-	t.Setenv("TMPDIR", t.TempDir())
+	setSpillTempDir(t, t.TempDir())
 
 	codec := cmdio.NewAgentsCodecForTesting()
 	data := []map[string]any{{"name": "alpha"}, {"name": "beta"}}
@@ -261,7 +268,7 @@ func TestAgentsCodec_SpillEnvelope_UsesTotalItems(t *testing.T) {
 
 func TestAgentsCodec_SpillEnvelope_UsesPreviewSample(t *testing.T) {
 	t.Setenv("GCX_AGENT_SPILL_BYTES", "1")
-	t.Setenv("TMPDIR", t.TempDir())
+	setSpillTempDir(t, t.TempDir())
 
 	codec := cmdio.NewAgentsCodecForTesting()
 	data := []map[string]any{{"name": "alpha"}, {"name": "beta"}}
@@ -278,7 +285,7 @@ func TestAgentsCodec_SpillEnvelope_UsesPreviewSample(t *testing.T) {
 
 func TestAgentsCodec_Spill_HasMessageField(t *testing.T) {
 	t.Setenv("GCX_AGENT_SPILL_BYTES", "1")
-	t.Setenv("TMPDIR", t.TempDir())
+	setSpillTempDir(t, t.TempDir())
 
 	var errBuf bytes.Buffer
 	codec := cmdio.NewAgentsCodecWithErrWriter(&errBuf)
@@ -297,7 +304,7 @@ func TestAgentsCodec_Spill_HasMessageField(t *testing.T) {
 
 func TestAgentsCodec_Spill_EmitsStderrHint(t *testing.T) {
 	t.Setenv("GCX_AGENT_SPILL_BYTES", "1")
-	t.Setenv("TMPDIR", t.TempDir())
+	setSpillTempDir(t, t.TempDir())
 
 	// TTY mode: the hint stays a plain "hint: ..." line.
 	agent.SetFlag(false)
@@ -324,7 +331,7 @@ func TestAgentsCodec_Spill_EmitsStderrHint(t *testing.T) {
 // raw prose — a bare "hint: ..." line would break agent stderr parsing.
 func TestAgentsCodec_Spill_AgentModeHintIsJSONL(t *testing.T) {
 	t.Setenv("GCX_AGENT_SPILL_BYTES", "1")
-	t.Setenv("TMPDIR", t.TempDir())
+	setSpillTempDir(t, t.TempDir())
 
 	agent.SetFlag(true)
 	t.Cleanup(func() { agent.SetFlag(false) })

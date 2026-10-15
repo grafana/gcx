@@ -277,6 +277,7 @@ func TestSetKeychainPolicyRejectsSourceIdentityChangeAfterLockSelection(t *testi
 	home := t.TempDir()
 	xdgHome := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	t.Setenv("XDG_CONFIG_HOME", xdgHome)
 	t.Setenv("XDG_CONFIG_DIRS", t.TempDir())
 	t.Setenv("GCX_CONFIG", "")

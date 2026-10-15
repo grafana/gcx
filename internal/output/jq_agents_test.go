@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -25,7 +26,7 @@ func TestOptions_JQ_FormatAndFlagOrder(t *testing.T) {
 			t.Run(fmt.Sprintf("agent=%t/default=%s", agentMode, defaultFormat), func(t *testing.T) {
 				testutils.SetAgentMode(t, agentMode)
 				t.Setenv("GCX_AGENT_SPILL_BYTES", "1") // JSON jq must still stay inline.
-				t.Setenv("TMPDIR", t.TempDir())
+				setSpillTempDir(t, t.TempDir())
 				for _, output := range []string{"", "json", "agents", "text", "table", "yaml", "bogus"} {
 					for _, jqFirst := range []bool{false, true} {
 						t.Run(fmt.Sprintf("output=%s/jqFirst=%t", output, jqFirst), func(t *testing.T) {
@@ -77,7 +78,7 @@ func TestOptions_JQ_FormatAndFlagOrder(t *testing.T) {
 
 func TestOptions_JQ_JSONStreamCompatibility(t *testing.T) {
 	t.Setenv("GCX_AGENT_SPILL_BYTES", "1")
-	t.Setenv("TMPDIR", t.TempDir())
+	setSpillTempDir(t, t.TempDir())
 	tests := []struct {
 		query   string
 		want    string
@@ -197,7 +198,7 @@ func TestOptions_JQ_AgentsStream(t *testing.T) {
 			testutils.SetAgentMode(t, true)
 			t.Setenv("GCX_AGENT_SPILL_BYTES", tt.threshold)
 			dir := t.TempDir()
-			t.Setenv("TMPDIR", dir)
+			setSpillTempDir(t, dir)
 			var stdout, stderr bytes.Buffer
 			opts := jqAgentsOptions(t, tt.query, &stderr)
 			require.NoError(t, opts.Encode(&stdout, tt.value))
@@ -232,7 +233,9 @@ func TestOptions_JQ_AgentsStream(t *testing.T) {
 			assert.Equal(t, tt.want, string(payload), "no array wrapping, number rounding, or receipt in the file")
 			info, err := os.Stat(path)
 			require.NoError(t, err)
-			assert.Equal(t, os.FileMode(0600), info.Mode().Perm())
+			if runtime.GOOS != "windows" {
+				assert.Equal(t, os.FileMode(0600), info.Mode().Perm())
+			}
 			var hint map[string]any
 			require.NoError(t, json.Unmarshal(stderr.Bytes(), &hint), "one typed spill hint")
 			assert.Equal(t, "hint", hint["class"])
@@ -271,7 +274,7 @@ func TestOptions_JQ_AgentsErrors(t *testing.T) {
 			t.Run(tt.name+"/threshold="+threshold, func(t *testing.T) {
 				t.Setenv("GCX_AGENT_SPILL_BYTES", threshold)
 				dir := t.TempDir()
-				t.Setenv("TMPDIR", dir)
+				setSpillTempDir(t, dir)
 				var stdout, stderr bytes.Buffer
 				err := jqAgentsOptions(t, tt.query, &stderr).Encode(&stdout, tt.value)
 				require.ErrorContains(t, err, tt.wantErr)
@@ -296,7 +299,7 @@ func TestOptions_JQ_AgentsErrors(t *testing.T) {
 
 func TestOptions_JQ_AgentsIOErrors(t *testing.T) {
 	t.Run("create spill file", func(t *testing.T) {
-		t.Setenv("TMPDIR", filepath.Join(t.TempDir(), "missing"))
+		setSpillTempDir(t, filepath.Join(t.TempDir(), "missing"))
 		t.Setenv("GCX_AGENT_SPILL_BYTES", "1")
 		var stdout bytes.Buffer
 		err := jqAgentsOptions(t, "1", io.Discard).Encode(&stdout, nil)
@@ -306,7 +309,7 @@ func TestOptions_JQ_AgentsIOErrors(t *testing.T) {
 	for _, threshold := range []string{"1", "102400"} {
 		t.Run("stdout/threshold="+threshold, func(t *testing.T) {
 			dir := t.TempDir()
-			t.Setenv("TMPDIR", dir)
+			setSpillTempDir(t, dir)
 			t.Setenv("GCX_AGENT_SPILL_BYTES", threshold)
 			wantErr := errors.New("stdout failed")
 			var stderr bytes.Buffer

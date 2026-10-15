@@ -49,7 +49,7 @@ var keychainStoreFn = defaultKeychainStore
 // atomic replacement fails.
 //
 //nolint:gochecknoglobals // narrow filesystem failure-injection seam.
-var renameConfigFile = os.Rename
+var renameConfigFile = renameConfigFileWithRetry
 
 // syncConfigDirectory is a test seam for the post-rename durability barrier.
 // Old keychain generations are deleted only after it succeeds.
@@ -280,7 +280,7 @@ func probeConfigSource(path, typ string) (ConfigSource, bool, error) {
 // symlinks.
 func readConfigSource(source ConfigSource) ([]byte, error) {
 	if source.Type != "local" {
-		return os.ReadFile(source.Path)
+		return readConfigFile(source.Path)
 	}
 	before, err := os.Lstat(source.Path)
 	if err != nil {
@@ -755,7 +755,7 @@ func readConfigFileForLayer(filename, layer string) ([]byte, error) {
 	if layer == "local" {
 		return readConfigSource(ConfigSource{Path: filename, Type: layer})
 	}
-	return os.ReadFile(filename)
+	return readConfigFile(filename)
 }
 
 func prepareConfigRuntimeForWrite(filename string, cfg *Config) error {
@@ -873,7 +873,7 @@ func writeConfig(ctx context.Context, source Source, cfg Config, opts writeOptio
 	}
 	var previousContents []byte
 	if keychainTxn != nil && len(keychainTxn.deletes) > 0 {
-		previousContents, err = os.ReadFile(writeFilename)
+		previousContents, err = readConfigFile(writeFilename)
 		if err != nil {
 			return 0, fmt.Errorf("capture config before keychain deletion: %w", err)
 		}
@@ -1007,7 +1007,7 @@ func configLockFile(sourceIdentity string) (string, error) {
 }
 
 func validateConfigWriteSnapshot(filename, sourceIdentity string, cfg *Config) error {
-	contents, err := os.ReadFile(filename)
+	contents, err := readConfigFile(filename)
 	if err != nil {
 		if os.IsNotExist(err) && !cfg.hasSourceRevision {
 			return nil
@@ -1641,7 +1641,7 @@ func diagnosticsSourcePaths(ctx context.Context) []string {
 // like `telemetry: disabled` are honoured even on the run that performs the
 // migration. Missing or malformed files yield (nil, err).
 func readDiagnostics(path string) (*DiagnosticsConfig, error) {
-	contents, err := os.ReadFile(path)
+	contents, err := readConfigFile(path)
 	if err != nil {
 		return nil, err
 	}

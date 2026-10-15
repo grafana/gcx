@@ -539,7 +539,7 @@ func ambiguousCloudCredentialDestinationError(
 		repairCommand += " " + entry.sourceLayer
 	default:
 		if source != "" {
-			repairCommand += " --config " + strconv.Quote(source)
+			repairCommand += " --config " + quoteConfigPath(source)
 		}
 	}
 
@@ -1110,7 +1110,7 @@ func validateLocalExternalTLSCredentials(cfg *Config) error {
 		}
 		tlsConfig := stack.Grafana.TLS
 		if tlsConfig.CertFile != "" || tlsConfig.KeyFile != "" {
-			return fmt.Errorf("repository-local stack %q cannot select external TLS client credential files; use --config %s to authorize this file explicitly", name, cfg.Source)
+			return fmt.Errorf("repository-local stack %q cannot select external TLS client credential files; use --config %s to authorize this file explicitly", name, quoteConfigPath(cfg.Source))
 		}
 		return nil
 	}
