@@ -104,11 +104,9 @@ range alone would suggest.`,
 				Limit: limit,
 			}
 
-			wait, cancelPreflight := startStatsPreflight(ctx, client, cmd.ErrOrStderr(), datasourceUID, expr, req.IsRange(), start, end, now, preflight)
+			reportStatsPreflight(ctx, client, cmd.ErrOrStderr(), datasourceUID, expr, req.IsRange(), start, end, now, preflight)
 
 			resp, err := client.Query(ctx, datasourceUID, req)
-			// Grace window avoids losing the check to a fast query (see statsPreflightGraceAfterQuery).
-			finishStatsPreflight(wait, cancelPreflight)
 			if err != nil {
 				return fmt.Errorf("query failed: %w", err)
 			}

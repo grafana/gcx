@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"sync"
 	"time"
 
 	"github.com/dustin/go-humanize"
@@ -156,40 +155,12 @@ func runStatsPreflight(ctx context.Context, client *loki.Client, stderr io.Write
 	cmdio.Info(stderr, "query may scan approximately %s of data; use --skip-stats to skip this check", humanize.IBytes(totalBytes))
 }
 
-// startStatsPreflight runs the estimate concurrently with the real query so
-// it adds no latency. Pass the returned wait and cancel to
-// finishStatsPreflight after issuing the real query. It does nothing (and
-// returns no-op functions) when --skip-stats is set.
-func startStatsPreflight(ctx context.Context, client *loki.Client, stderr io.Writer, datasourceUID, expr string, isRange bool, start, end, now time.Time, preflight *statsPreflightOpts) (func(), func()) {
+// reportStatsPreflight runs the estimate before the real query so the
+// result is always printed first. It's bounded by statsPreflightTimeout, never
+// blocks the query, and does nothing when --skip-stats is set.
+func reportStatsPreflight(ctx context.Context, client *loki.Client, stderr io.Writer, datasourceUID, expr string, isRange bool, start, end, now time.Time, preflight *statsPreflightOpts) {
 	if preflight.SkipStats {
-		return func() {}, func() {}
+		return
 	}
-
-	preflightCtx, cancelPreflight := context.WithCancel(ctx)
-	var wg sync.WaitGroup
-	wg.Go(func() {
-		runStatsPreflight(preflightCtx, client, stderr, datasourceUID, expr, isRange, start, end, now, preflight.warnBytes)
-	})
-	return wg.Wait, cancelPreflight
-}
-
-// statsPreflightGraceAfterQuery bounds how long finishStatsPreflight waits
-// for the async check before cancelling it, absorbing races with a fast query.
-var statsPreflightGraceAfterQuery = 500 * time.Millisecond //nolint:gochecknoglobals // test-overridable grace window
-
-// finishStatsPreflight lets the async check finish naturally (up to the
-// grace window) before cancelling, so a fast query can't silently drop it.
-func finishStatsPreflight(wait, cancel func()) {
-	done := make(chan struct{})
-	go func() {
-		wait()
-		close(done)
-	}()
-
-	select {
-	case <-done:
-	case <-time.After(statsPreflightGraceAfterQuery):
-		cancel()
-		<-done
-	}
+	runStatsPreflight(ctx, client, stderr, datasourceUID, expr, isRange, start, end, now, preflight.warnBytes)
 }
