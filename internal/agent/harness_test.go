@@ -27,6 +27,7 @@ func TestHarnessSignals(t *testing.T) {
 		{"openclaw exec tool", map[string]string{"OPENCLAW_SHELL": "exec"}, "openclaw"},
 		{"openclaw exec normalized", map[string]string{"OPENCLAW_SHELL": " EXEC "}, "openclaw"},
 		{"openclaw TUI shell is human", map[string]string{"OPENCLAW_SHELL": "tui-local"}, ""},
+		{"native marker before openclaw exec", map[string]string{"CLAUDECODE": "1", "OPENCLAW_SHELL": "exec"}, "claude-code"},
 		{"openclaw exec before inherited shared identity", map[string]string{"AI_AGENT": "codex", "OPENCLAW_SHELL": "exec"}, "openclaw"},
 		{"kilo before opencode", map[string]string{"KILO": "1", "OPENCODE": "1", "AGENT": "1"}, "kilo-code"},
 		{"qwen before gemini", map[string]string{"QWEN_CODE": "1", "GEMINI_CLI": "1"}, "qwen-code"},
