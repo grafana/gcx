@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
@@ -60,10 +61,10 @@ func (o *listSourcemapsOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 }
 
-func newListSourcemapsCommand(loader *providers.ConfigLoader) *cobra.Command {
+func newListSourcemapsCommand(loader RESTConfigLoader) *cobra.Command {
 	opts := &listSourcemapsOpts{}
 	cmd := &cobra.Command{
-		Use:   "list-sourcemaps <app-name>",
+		Use:   "list-sourcemaps <slug-id|name>",
 		Short: "List sourcemaps for a Frontend Observability app.",
 		Example: `  # List all sourcemaps for an app.
   gcx frontend apps list-sourcemaps my-web-app-42
@@ -91,9 +92,12 @@ func newListSourcemapsCommand(loader *providers.ConfigLoader) *cobra.Command {
 				return err
 			}
 
-			appID := resolveAppID(args[0])
+			target, err := resolveApp(ctx, newAppCRUD(client, cfg.Namespace), args[0])
+			if err != nil {
+				return err
+			}
 
-			bundles, err := client.ListSourcemaps(ctx, appID, opts.Limit)
+			bundles, err := client.ListSourcemaps(ctx, target.Spec.ID, opts.Limit)
 			if err != nil {
 				return err
 			}
@@ -168,8 +172,19 @@ func (o *applySourcemapOpts) Validate() error {
 func newApplySourcemapCommand(loader sourcemapUploadConfigLoader) *cobra.Command {
 	opts := &applySourcemapOpts{}
 	cmd := &cobra.Command{
-		Use:   "apply-sourcemap <app-name>",
+		Use:   "apply-sourcemap <slug-id|name>",
 		Short: "Upload a sourcemap for a Frontend Observability app.",
+		Long: `Upload a sourcemap for a Frontend Observability app.
+
+The argument is a slug-id (my-web-app-42), numeric ID or display name. When
+the context has a Grafana server and token, gcx lists the apps and resolves
+the argument as in "gcx frontend apps get".
+
+The upload itself needs only a Cloud token. Without a Grafana server and
+token, or when listing apps fails, gcx takes the ID from the slug-id or
+numeric ID without checking it, and prints a warning. A display name then
+fails, and a slug-id such as checkout-2024 uploads to app 2024 even when app
+2024 has another name.`,
 		Example: `  # Upload a sourcemap bundle.
   gcx frontend apps apply-sourcemap my-web-app-42 -f bundle.js.map`,
 		Args: cobra.ExactArgs(1),
@@ -185,6 +200,13 @@ func newApplySourcemapCommand(loader sourcemapUploadConfigLoader) *cobra.Command
 				CredentialEnv:   "GRAFANA_CLOUD_TOKEN",
 				RejectAutoLocal: true,
 			})
+			if err != nil {
+				return err
+			}
+
+			// Resolve the app before the Faro API URL is discovered and
+			// cached, so a wrong argument does not write to the config.
+			appID, err := resolveUploadAppID(ctx, cmd.ErrOrStderr(), snapshot.GrafanaConfig, args[0])
 			if err != nil {
 				return err
 			}
@@ -221,7 +243,6 @@ func newApplySourcemapCommand(loader sourcemapUploadConfigLoader) *cobra.Command
 			}
 
 			// Upload the sourcemap.
-			appID := resolveAppID(args[0])
 			if err := UploadSourcemap(ctx, faroAPIURL, cloudCfg.Stack.ID, cloudCfg.Token, appID, bundleID, f, contentType); err != nil {
 				return err
 			}
@@ -277,7 +298,7 @@ func (o *deleteSourcemapOpts) Validate() error { return o.IO.Validate() }
 func newDeleteSourcemapCommand(loader RESTConfigLoader) *cobra.Command {
 	opts := &deleteSourcemapOpts{}
 	cmd := &cobra.Command{
-		Use:   "delete-sourcemap <app-name> <bundle-id> [bundle-id...]",
+		Use:   "delete-sourcemap <slug-id|name> <bundle-id> [bundle-id...]",
 		Short: "Delete sourcemap bundles from a Frontend Observability app.",
 		Example: `  # Delete a single sourcemap bundle.
   gcx frontend apps delete-sourcemap my-web-app-42 1234567890-abc12
@@ -302,7 +323,11 @@ func newDeleteSourcemapCommand(loader RESTConfigLoader) *cobra.Command {
 				return err
 			}
 
-			appID := resolveAppID(args[0])
+			target, err := resolveApp(ctx, newAppCRUD(client, cfg.Namespace), args[0])
+			if err != nil {
+				return err
+			}
+			appID := target.Spec.ID
 			bundleIDs := args[1:]
 
 			if err := client.DeleteSourcemaps(ctx, appID, bundleIDs); err != nil {
@@ -322,6 +347,36 @@ func newDeleteSourcemapCommand(loader RESTConfigLoader) *cobra.Command {
 	}
 	opts.setup(cmd.Flags())
 	return cmd
+}
+
+// resolveUploadAppID finds the ID of the app that arg names. The upload itself
+// needs only a Cloud token, so when gcx cannot list apps (no Grafana config,
+// or the list fails) the ID comes from the slug-id or numeric ID unchecked. A
+// list that succeeds is authoritative: "no such app" and "ambiguous" stay
+// errors.
+func resolveUploadAppID(ctx context.Context, stderr io.Writer, grafanaCfg *config.NamespacedRESTConfig, arg string) (string, error) {
+	listErr := errors.New("no Grafana server and token in the context")
+	if grafanaCfg != nil {
+		client, err := NewClient(*grafanaCfg)
+		if err != nil {
+			return "", fmt.Errorf("failed to create faro client: %w", err)
+		}
+		apps, err := newAppCRUD(client, grafanaCfg.Namespace).List(ctx, 0)
+		if err == nil {
+			target, err := pickApp(apps, arg)
+			if err != nil {
+				return "", err
+			}
+			return target.Spec.ID, nil
+		}
+		listErr = err
+	}
+	id, ok := adapter.ExtractIDFromSlug(arg)
+	if !ok {
+		return "", fmt.Errorf("faro app %q: cannot list apps to resolve a display name (%w); pass the app's slug-id or numeric ID", arg, listErr)
+	}
+	cmdio.Warning(stderr, "cannot list apps to check %q (%v); uploading to app ID %s unchecked", arg, listErr, id)
+	return id, nil
 }
 
 // resolveFaroAPIURL resolves the Faro API URL from provider config cache,
@@ -346,13 +401,4 @@ func resolveFaroAPIURL(ctx context.Context, loader sourcemapUploadConfigLoader, 
 	_ = loader.SaveProviderConfig(ctx, "faro", "faro-api-url", apiURL)
 
 	return apiURL, nil
-}
-
-// resolveAppID extracts the numeric ID from a slug-id composite name,
-// falling back to using the argument as-is.
-func resolveAppID(name string) string {
-	if id, ok := adapter.ExtractIDFromSlug(name); ok {
-		return id
-	}
-	return name
 }

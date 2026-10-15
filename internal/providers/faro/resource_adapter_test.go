@@ -145,6 +145,16 @@ func TestResourceAdapter_Get(t *testing.T) {
 			wantName: "my-web-app-42",
 		},
 		{
+			// A slug-id refers to an app only when the slug is the app's own.
+			name: "slug of another app is not found",
+			id:   "checkout-42",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				writeJSON(w, map[string]any{"id": 42, "name": "my-web-app"})
+			},
+			wantErr:      true,
+			wantNotFound: true,
+		},
+		{
 			name: "propagates not found error",
 			id:   "missing-999",
 			handler: func(w http.ResponseWriter, _ *http.Request) {
@@ -228,17 +238,119 @@ func TestResourceAdapter_PushCreatesMissingApp(t *testing.T) {
 		createBody["extraLogLabels"])
 }
 
-func TestResourceAdapter_Delete(t *testing.T) {
+// TestResourceAdapter_PushRefusesAnotherAppsName follows the resources push path
+// for a copied manifest: metadata.name still names app 42, but spec.name names
+// a new app. Push must not write the copy over app 42.
+func TestResourceAdapter_PushRefusesAnotherAppsName(t *testing.T) {
+	put := false
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, http.MethodDelete, r.Method)
-		assert.Contains(t, r.URL.Path, "/42")
-		w.WriteHeader(http.StatusNoContent)
+		if r.Method == http.MethodPut {
+			put = true
+		}
+		writeJSON(w, map[string]any{"id": 42, "name": "checkout"})
 	}))
 	defer server.Close()
 
 	a := newTestAdapter(t, server, "stack-123")
-	err := a.Delete(t.Context(), "my-web-app-42", metav1.DeleteOptions{})
+	_, err := a.Get(t.Context(), "checkout-42", metav1.GetOptions{})
 	require.NoError(t, err)
+
+	obj := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": faro.APIVersion,
+		"kind":       faro.Kind,
+		"metadata":   map[string]any{"name": "checkout-42"},
+		"spec": map[string]any{
+			"name":        "checkout-staging",
+			"corsOrigins": []any{map[string]any{"url": "https://staging.example.com"}},
+		},
+	}}
+	_, err = a.Update(t.Context(), obj, metav1.UpdateOptions{})
+	require.ErrorContains(t, err, `is named "checkout", not "checkout-staging"`)
+	assert.False(t, put, "push must not overwrite app 42")
+}
+
+// TestResourceAdapter_PushKeepsOmittedLists checks the resources push path: a
+// manifest without corsOrigins keeps the stored origins, and an explicit empty
+// list clears them.
+func TestResourceAdapter_PushKeepsOmittedLists(t *testing.T) {
+	tests := []struct {
+		name     string
+		spec     map[string]any
+		wantCORS any
+	}{
+		{
+			name:     "omitted",
+			spec:     map[string]any{"name": "web"},
+			wantCORS: []any{map[string]any{"url": "https://a.example.com"}},
+		},
+		{
+			name: "explicit empty",
+			spec: map[string]any{"name": "web", "corsOrigins": []any{}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var putBody map[string]any
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodPut {
+					body, _ := io.ReadAll(r.Body)
+					_ = json.Unmarshal(body, &putBody)
+					_, _ = w.Write(body)
+					return
+				}
+				writeJSON(w, map[string]any{"id": 42, "name": "web", "corsOrigins": []any{map[string]any{"url": "https://a.example.com"}}})
+			}))
+			defer server.Close()
+
+			a := newTestAdapter(t, server, "stack-123")
+			obj := &unstructured.Unstructured{Object: map[string]any{
+				"apiVersion": faro.APIVersion,
+				"kind":       faro.Kind,
+				"metadata":   map[string]any{"name": "web-42"},
+				"spec":       tt.spec,
+			}}
+			_, err := a.Update(t.Context(), obj, metav1.UpdateOptions{})
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantCORS, putBody["corsOrigins"])
+		})
+	}
+}
+
+func TestResourceAdapter_Delete(t *testing.T) {
+	tests := []struct {
+		name         string
+		resource     string
+		wantDeleted  bool
+		wantNotFound bool
+	}{
+		{name: "deletes the app the slug-id names", resource: "my-web-app-42", wantDeleted: true},
+		{name: "deletes by bare ID", resource: "42", wantDeleted: true},
+		{name: "refuses a slug-id with another app's slug", resource: "checkout-42", wantNotFound: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			deleted := false
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Contains(t, r.URL.Path, "/42")
+				if r.Method == http.MethodDelete {
+					deleted = true
+					w.WriteHeader(http.StatusNoContent)
+					return
+				}
+				writeJSON(w, map[string]any{"id": 42, "name": "my-web-app"})
+			}))
+			defer server.Close()
+
+			a := newTestAdapter(t, server, "stack-123")
+			err := a.Delete(t.Context(), tt.resource, metav1.DeleteOptions{})
+			assert.Equal(t, tt.wantDeleted, deleted)
+			if tt.wantNotFound {
+				require.ErrorIs(t, err, adapter.ErrNotFound)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
 }
 
 func TestResourceAdapter_ListPopulatesMetadata(t *testing.T) {
