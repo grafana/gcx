@@ -75,7 +75,7 @@ func prepareUpdate(current, app *FaroApp) error {
 	// Compare slugs, as the natural key does, so a cross-stack push of
 	// "My App" still updates an app stored as "my-app".
 	if adapter.SlugifyName(app.Name) != adapter.SlugifyName(current.Name) {
-		return fmt.Errorf("faro app %s is named %q, not %q, and the API cannot rename an app: set spec.name to %q, or remove the ID from metadata.name to create a new app",
+		return fmt.Errorf("faro app %s is named %q, not %q, and the API cannot rename an app: set spec.name to %q",
 			current.GetResourceName(), current.Name, app.Name, current.Name)
 	}
 	app.Name = current.Name
