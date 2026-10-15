@@ -351,6 +351,51 @@ func TestNotifications_Upsert_RejectsUnknownFields(t *testing.T) {
 	}
 }
 
+func TestNotifications_Upsert_MultipleDocuments(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       string
+		wantErr     string
+		wantUpserts []string
+	}{
+		{name: "second document is rejected", input: "name: a\n---\nname: b\n", wantErr: "multiple YAML documents are not supported"},
+		{name: "second list document is rejected", input: "- name: a\n---\n- name: b\n", wantErr: "multiple YAML documents are not supported"},
+		{name: "trailing separator is allowed", input: "name: a\n---\n", wantUpserts: []string{"a"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var upserted []string
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var got kg.AlertConfig
+				if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&got)) {
+					w.WriteHeader(http.StatusBadRequest)
+					return
+				}
+				upserted = append(upserted, got.Name)
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer server.Close()
+
+			cmd := kg.NewNotificationsCommand(writeLoaderFor(server))
+			cmd.SilenceUsage = true
+			cmd.SilenceErrors = true
+			cmd.SetArgs([]string{"upsert", "-f", "-"})
+			cmd.SetIn(bytes.NewBufferString(tt.input))
+			cmd.SetOut(&bytes.Buffer{})
+			err := cmd.Execute()
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
+				assert.Empty(t, upserted, "nothing may be sent when a later document would be dropped")
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantUpserts, upserted)
+		})
+	}
+}
+
 func TestNotifications_Upsert_EmptyFile(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 		t.Error("server must not be hit when the file has no configs")

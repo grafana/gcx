@@ -1137,7 +1137,25 @@ func parseNotificationConfigs(data []byte) ([]AlertConfig, error) {
 	decodeStrict := func(v any) error {
 		decoder := yaml.NewDecoder(bytes.NewReader(data))
 		decoder.KnownFields(true)
-		return decoder.Decode(v)
+		if err := decoder.Decode(v); err != nil {
+			return err
+		}
+		// Reject later documents instead of dropping them, so joined get output
+		// can't silently lose every config after the first. yaml.v3 decodes a
+		// trailing "---" as an empty null document, which is allowed.
+		for {
+			var extra yaml.Node
+			err := decoder.Decode(&extra)
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+			if len(extra.Content) > 0 && extra.Content[0].Tag != "!!null" {
+				return errors.New("multiple YAML documents are not supported; put the configs in one list")
+			}
+		}
 	}
 
 	switch root.Kind {
