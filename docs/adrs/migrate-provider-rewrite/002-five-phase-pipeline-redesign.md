@@ -1,7 +1,7 @@
 # Five-Phase Pipeline Redesign for /migrate-provider
 
 **Created**: 2026-03-27
-**Status**: accepted
+**Status**: retired — the repository no longer ships the migrate-provider skill
 **Bead**: TBD
 **Supersedes**: [001-three-stage-blackbox-verification](001-three-stage-blackbox-verification.md)
 
