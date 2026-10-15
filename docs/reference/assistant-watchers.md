@@ -59,7 +59,7 @@ Mutation refuses meaningful configuration that the established manifest cannot r
 
 ## Slack destinations and Alerting routing
 
-Slack retains the existing `channelId` field. Set `targetType: dm` with a Slack `userId` for a direct message, or use `targetType: channel` with `channelId` for a channel. Optional `teamId` selects the Slack workspace. A supplied channel or direct-message target requires its corresponding nonblank ID even when notifications are disabled; an omitted disabled channel destination remains valid. Teams retains its channel-only configuration.
+Slack retains the existing `channelId` field. Set `targetType: dm` with a Slack `userId` for a direct message, or use `targetType: channel` with `channelId` for a channel. Optional `teamId` selects the Slack workspace. Enabled channels require a nonblank `channelId`; a direct-message target requires a nonblank `userId` even when disabled. For compatibility, disabled channel destinations may retain workspace or user identifiers before a channel is selected. These remain inspectable and exportable; the API validates whether the complete target can be saved on apply. A supplied whitespace-only channel ID is invalid. Teams retains its channel-only configuration.
 
 ```yaml
 notifications:
@@ -77,7 +77,7 @@ notifications:
 
 This fragment belongs under `spec`. Alerting uses the same severity vocabulary as the other destinations, defaulting to `warning-and-critical`. `routingTree` selects a named Grafana Alerting notification policy tree; omission or an empty string selects the default tree. gcx configures the destination selection, while Grafana Alerting manages the policy trees and contact points.
 
-An explicit routing selection takes precedence over the legacy `__grafana_managed_route__` label. Exports recover the legacy selection when the server has no explicit routing field. A changed route is trimmed, and `default` or `user-defined` selects the default tree. An unchanged exported legacy route retains its exact value on reapply, including when other configuration changes. To reset such a legacy value, set `routingTree: ""` explicitly. Optional fields remain authoritative: omitting the new fields restores their defaults, and omitting Slack destination IDs removes them.
+An explicit routing selection takes precedence over the legacy `__grafana_managed_route__` label. Exports recover the legacy selection when the server has no explicit routing field, then omit that reserved label from `spec.labels`. Writes also omit it so it cannot override a later reset; ordinary labels are retained. A changed route is trimmed, and `default` or `user-defined` selects the default tree. An unchanged exported legacy route retains its exact value on reapply, including when other configuration changes. To reset such a legacy value, set `routingTree: ""` explicitly. Optional fields remain authoritative: omitting the new fields restores their defaults, and omitting Slack destination IDs removes them.
 
 ## Apply, compare and recover
 

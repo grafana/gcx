@@ -22,6 +22,7 @@ const (
 	WatcherAPIVersion   = WatcherAPIGroup + "/" + WatcherVersion
 	WatcherKind         = "Watcher"
 	WatcherIDAnnotation = WatcherAPIGroup + "/watcher-id"
+	legacyRoutingLabel  = "__grafana_managed_route__"
 )
 
 // Watcher is the configuration-only manifest spec. Runtime identity is carried
@@ -266,10 +267,10 @@ func validateSlackTarget(slack SlackNotification) error {
 	if strings.TrimSpace(slack.TargetType) == "" {
 		return errors.New("spec.notifications.slack.targetType requires a nonblank string")
 	}
-	hasTarget := slack.ChannelID != "" || slack.UserID != "" || slack.TeamID != ""
 	switch slack.TargetType {
 	case "channel":
-		if (slack.Enabled || hasTarget) && strings.TrimSpace(slack.ChannelID) == "" {
+		// Disabled legacy destinations can retain ancillary IDs before selection.
+		if (slack.Enabled || slack.ChannelID != "") && strings.TrimSpace(slack.ChannelID) == "" {
 			return errors.New("spec.notifications.slack.channelId is required for a channel target")
 		}
 	case "dm":

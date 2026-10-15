@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"maps"
 	"slices"
 	"strings"
 	"sync"
@@ -291,14 +290,11 @@ func WatcherFromResponse(raw watchers.Watcher, automaticRecalibration bool) Watc
 		Title: raw.Name, Description: raw.Description, Prompt: raw.Prompt,
 		DatasourceUIDs: append([]string{}, raw.DatasourceUIDs...), Interval: (time.Duration(raw.TriggerIntervalSeconds) * time.Second).String(),
 		Sensitivity: raw.Sensitivity, SkipReviewOnCleanRuns: !raw.DisableDecisionSkip,
-		Labels: maps.Clone(raw.Labels), AutomaticRecalibration: EnabledSetting{Enabled: automaticRecalibration},
+		Labels: configurationLabels(raw.Labels), AutomaticRecalibration: EnabledSetting{Enabled: automaticRecalibration},
 		Notifications: Notifications{Slack: SlackNotification{TargetType: "channel", Severity: "warning-and-critical"}, Teams: ChannelNotification{Severity: "warning-and-critical"}, Alerting: AlertingNotification{Severity: "warning-and-critical"}, Webhook: WebhookNotification{Severity: "warning-and-critical"}},
 		Investigation: Investigation{TeamAccess: []string{}}, serverID: raw.ID,
 	}
-	if result.Labels == nil {
-		result.Labels = map[string]string{}
-	}
-	result.Notifications.Alerting.RoutingTree = result.Labels["__grafana_managed_route__"]
+	result.Notifications.Alerting.RoutingTree = raw.Labels[legacyRoutingLabel]
 	if raw.AutoStop != nil {
 		result.AutoStop.Archive = raw.AutoStop.Archive
 		if raw.AutoStop.PauseAt != nil {
