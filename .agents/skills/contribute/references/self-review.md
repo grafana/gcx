@@ -399,7 +399,7 @@ Sweep both the portable user skills and repo-local contributor skills for
 routing your change affects:
 
 ```bash
-rg -n "<your command or the path it replaces>" claude-plugin/skills .claude/skills
+rg -n "<your command or the path it replaces>" claude-plugin/skills .agents/skills
 ```
 
 The drift test only catches invocations of commands that no longer exist — it

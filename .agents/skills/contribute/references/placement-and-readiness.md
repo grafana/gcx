@@ -93,11 +93,15 @@ everything below is a wiring option within or beside them, not a new tier:
   [distribution-and-gates.md § The gap CI does not cover](distribution-and-gates.md#the-gap-ci-does-not-cover-and-it-is-a-judgement-call).
 - **Skill-only** — a portable workflow for people using gcx across projects
   ships under `claude-plugin/skills/`. A workflow used only while contributing
-  to this repository lives under `.claude/skills/`. Neither needs Go code.
+  to this repository lives under `.agents/skills/`. Neither needs Go code.
 - **`gcx api`** is a raw diagnostic fallback (token cost: large, exempt from the
   structured output contract). It is never the integration target — if the
   paved answer to a recurring need is "curl through `gcx api`", the need isn't
   integrated yet.
+
+For ambiguous provider versus resource placement, consult
+[provider placement](provider-placement.md), including auth/destination resolution
+and the commands-only K8s exception.
 
 ## 4. Wiring mechanics
 
@@ -109,7 +113,7 @@ everything below is a wiring option within or beside them, not a new tier:
 | Signal command | `signals.Descriptor` + `signals.Command()` | `internal/providers/metrics/provider.go` | ARCHITECTURE.md §3 |
 | Datasource kind | `datasources.RegisterProvider()` in `internal/datasources/providers/<kind>.go` (package already blank-imported). Generic routing is a **separate, conditional** decision — a `dispatch` entry in `cmd/gcx/datasources/query_routes.go` if `<uid> <expr>` fits, a `redirects` entry if it does not ([detail](distribution-and-gates.md#the-gap-ci-does-not-cover-and-it-is-a-judgement-call)) | `internal/datasources/providers/prometheus.go` | ADR 001, docs/architecture/patterns.md §12 |
 | Portable user skill | directory under `claude-plugin/skills/` (auto-embedded) + row in `claude-plugin/README.md` | any sibling skill | AGENTS.md Key Conventions |
-| Repository contributor skill | directory under `.claude/skills/` (discovered from the checkout; not embedded) | `.claude/skills/add-provider/` | AGENTS.md Key Conventions |
+| Repository contributor skill | directory under `.agents/skills/` (discovered from the checkout; not embedded) | `.agents/skills/contribute/` | AGENTS.md Key Conventions |
 
 ## 5. Backend-readiness gate
 

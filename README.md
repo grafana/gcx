@@ -26,7 +26,7 @@ For tools without a native signal, set `GCX_AGENT_NAME` to a supported label.
 See [agent detection and harness names](docs/design/environment-variables.md#agent-mode-variables).
 
 Contributing a new Grafana domain capability to gcx? Ask your coding agent to
-use [`integrate-with-gcx`](.claude/skills/integrate-with-gcx/SKILL.md)
+use [`contribute`](.agents/skills/contribute/SKILL.md)
 before choosing a command, provider, or datasource path.
 
 ## Choosing between gcx and Grafana MCP

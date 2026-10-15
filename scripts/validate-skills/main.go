@@ -24,10 +24,16 @@ type skillFrontMatter struct {
 // drops a skill from either one.
 const (
 	bundleRoot    = "claude-plugin/skills"
-	repoLocalRoot = ".claude/skills"
+	repoLocalRoot = ".agents/skills"
 )
 
 func main() {
+	// One shared tree keeps both agent discovery paths in sync without generation.
+	if target, err := os.Readlink(".claude/skills"); err != nil || target != "../.agents/skills" {
+		fmt.Fprintln(os.Stderr, ".claude/skills must be a symlink to ../.agents/skills")
+		os.Exit(1)
+	}
+
 	bundled, err := skillFilesUnder(bundleRoot)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "walk %s: %v\n", bundleRoot, err)
