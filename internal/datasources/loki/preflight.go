@@ -136,11 +136,9 @@ func computeStatsBytes(ctx context.Context, client *loki.Client, datasourceUID, 
 }
 
 // runStatsPreflight calls computeStatsBytes and reports the estimate to
-// stderr: an info line for every query, upgraded to a warning that suggests
-// narrowing the query when the sum exceeds warnBytes. Callers must check
-// SkipStats themselves before calling — this never skips on its own, so no
-// goroutine needs spawning when the check is off. warnBytes is expected to
-// already be resolved (e.g. via statsPreflightOpts.Validate).
+// stderr: a ⚠ line for every query, extended with a suggestion to narrow
+// the query when the sum exceeds warnBytes. It never skips on its own
+// (see reportStatsPreflight); warnBytes must already be resolved via Validate.
 func runStatsPreflight(ctx context.Context, client *loki.Client, stderr io.Writer, datasourceUID, expr string, isRange bool, start, end, now time.Time, warnBytes uint64) {
 	totalBytes, ok := computeStatsBytes(ctx, client, datasourceUID, expr, isRange, start, end, now)
 	if !ok {
@@ -152,7 +150,7 @@ func runStatsPreflight(ctx context.Context, client *loki.Client, stderr io.Write
 			humanize.IBytes(totalBytes), humanize.IBytes(warnBytes))
 		return
 	}
-	cmdio.Info(stderr, "query may scan approximately %s of data; use --skip-stats to skip this check", humanize.IBytes(totalBytes))
+	cmdio.Warning(stderr, "query may scan approximately %s of data; use --skip-stats to skip this check", humanize.IBytes(totalBytes))
 }
 
 // reportStatsPreflight runs the estimate before the real query so the
