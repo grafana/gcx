@@ -53,6 +53,7 @@ var harnessEnvVars = []struct{ envVar, name string }{ //nolint:gochecknoglobals
 	{"GOOSE_TERMINAL", "goose"},
 	{"OPENCODE", "opencode"},
 	{"PI_CODING_AGENT", "pi"},
+	{"HERMES_AGENT", "hermes"},
 }
 
 // Session markers contain an identifier, not a boolean. Read only presence;
@@ -175,7 +176,7 @@ func supportedName(value string) string {
 	case "claude-code", "codex", "cursor", "github-copilot", "gemini-cli",
 		"opencode", "cline", "kilo-code", "kiro", "factory-droid", "amp",
 		"augment", "junie", "devin", "openhands", "goose", "aider",
-		"qwen-code", "pi", "crush", "amazon-q":
+		"qwen-code", "pi", "crush", "amazon-q", "hermes":
 		return name
 	case "github-copilot-cli":
 		return "github-copilot"
@@ -185,6 +186,8 @@ func supportedName(value string) string {
 		return "factory-droid"
 	case "auggie":
 		return "augment"
+	case "hermes-agent":
+		return "hermes"
 	default:
 		return ""
 	}
