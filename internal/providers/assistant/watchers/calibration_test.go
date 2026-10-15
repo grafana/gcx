@@ -120,13 +120,19 @@ func TestCreatePartialConfigurationSkipsCalibration(t *testing.T) {
 }
 
 func TestStatusCalibrationGuidance(t *testing.T) {
-	for _, state := range []string{"idle", "queued", "running", "completed", "failed", "cancelled", "needs_input", "future-state"} {
-		t.Run(state, func(t *testing.T) {
+	for _, tc := range []struct{ state, lifecycle string }{
+		{"idle", "paused"}, {"queued", "paused"}, {"running", "paused"},
+		{"completed", "paused"}, {"completed", "running"}, {"failed", "paused"},
+		{"cancelled", "paused"}, {"needs_input", "paused"}, {"future-state", "paused"},
+	} {
+		t.Run(tc.state+"/"+tc.lifecycle, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, http.MethodGet, r.Method)
-				var response any = fixture()
+				item := fixture()
+				item.Status = tc.lifecycle
+				var response any = item
 				if strings.HasSuffix(r.URL.Path, "/initial-calibration") {
-					response = clientwatchers.Calibration{Status: state}
+					response = clientwatchers.Calibration{Status: tc.state}
 				}
 				assert.NoError(t, json.NewEncoder(w).Encode(map[string]any{"data": response}))
 			}))
@@ -137,14 +143,19 @@ func TestStatusCalibrationGuidance(t *testing.T) {
 			require.NoError(t, runStatus(cmd, clientwatchers.NewClient(base), &readOpts{IO: cmdio.Options{OutputFormat: "json"}, Ref: fixture().ID}))
 			var result statusResult
 			require.NoError(t, json.Unmarshal(out.Bytes(), &result))
-			require.Equal(t, state, result.Calibration.State)
+			require.Equal(t, tc.state, result.Calibration.State)
 			require.NotEmpty(t, result.Calibration.Guidance)
 			require.Contains(t, result.Calibration.Guidance, "Grafana", "guidance must name where to continue")
-			if state == "failed" || state == "needs_input" {
+			if tc.state == "failed" || tc.state == "needs_input" {
 				require.Contains(t, result.Calibration.Guidance, "do not start")
 			}
-			if state == "completed" {
-				require.Contains(t, result.Calibration.Guidance, "does not establish readiness")
+			if tc.state == "completed" {
+				if tc.lifecycle == "running" {
+					require.Contains(t, result.Calibration.Guidance, "monitoring is already active")
+					require.NotContains(t, result.Calibration.Guidance, "before explicitly starting")
+				} else {
+					require.Contains(t, result.Calibration.Guidance, "does not establish readiness")
+				}
 			}
 		})
 	}
