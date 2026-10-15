@@ -27,14 +27,13 @@ func TestFindApp(t *testing.T) {
 		want    int
 		wantErr string
 	}{
-		{name: "display name", arg: "checkout-1", want: 1},
 		{name: "slug-id", arg: "checkout-1-2", want: 1},
 		{name: "slug-id in another case", arg: "Checkout-1-2", want: 1},
 		{name: "numeric ID", arg: "2", want: 1},
 		{name: "display name that ends in another app's ID", arg: "checkout-1", want: 1},
 		{name: "numeric display name with no app at that ID", arg: "7", want: 3},
 		{name: "one app's name and another app's slug-id", arg: "web-1", wantErr: "ambiguous"},
-		{name: "slug-id with another app's slug", arg: "checkout-1", want: 1},
+		{name: "slug-id with another app's slug", arg: "web-2", wantErr: "no app has that slug-id or name"},
 		{name: "unknown", arg: "nope", wantErr: "no app has that slug-id or name"},
 		{name: "unknown slug-id", arg: "nope-1", wantErr: "no app has that slug-id or name"},
 	}
