@@ -72,7 +72,7 @@ Dedicated creation also includes a `resource` configuration manifest and a separ
 | `accepted` | The request was accepted; checks are not necessarily ready. Follow `status WATCHER` and review calibration in Grafana. |
 | `unavailable` | The definition was created but background calibration is unsupported. Calibrate it in Grafana. Creation exits successfully. |
 | `error` | The definition was created but request acceptance could not be confirmed. Inspect `status WATCHER` and continue in Grafana; exit 4. |
-| `not-requested` | A configuration stage failed after creation. Resolve that stage with `update`, then calibrate in Grafana; exit 4. |
+| `not-requested` | A configuration stage or local result encoding failed after creation. Inspect the reported failure, resolve any failed configuration stage with `update`, then calibrate in Grafana; exit 4. |
 
 Request failures retain the created Watcher. There is no automatic retry or deletion; a timeout or invalid response can leave calibration running despite an `error` outcome. Do not rerun `create`. Partial configuration results retain identity and stage outcomes but omit the unverified resource manifest. `update`, generic push and deletion do not request calibration and keep their configuration mutation output.
 
