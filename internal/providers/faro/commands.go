@@ -362,7 +362,7 @@ keep their stored values; an empty geolocationCountryDenylist clears it.`,
 
 			target, err := resolveApp(ctx, crud, name)
 			if err != nil {
-				return fmt.Errorf("updating faro app %q: %w", name, err)
+				return err
 			}
 
 			typedObj := &adapter.TypedObject[FaroApp]{Spec: *app}
@@ -435,7 +435,7 @@ another app's slug-id or ID is an error. There is no confirmation prompt.`,
 
 			target, err := resolveApp(ctx, crud, name)
 			if err != nil {
-				return fmt.Errorf("deleting faro app %q: %w", name, err)
+				return err
 			}
 			if err := crud.Delete(ctx, target.GetName()); err != nil {
 				return fmt.Errorf("deleting faro app %q: %w", name, err)
