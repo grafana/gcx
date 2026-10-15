@@ -53,9 +53,31 @@ spec:
 
 Optional fields are authoritative, including when omitted: description defaults to empty, data-source and team collections and labels to empty, interval to `10m`, sensitivity to `balanced`, clean-run review skipping to enabled, and optional notifications, investigation, automatic stop and automatic recalibration to disabled. Notification severity defaults to `warning-and-critical`. Omitted destinations become disabled; omitted collection entries are removed. Disabled automatic stop clears its deadline and archive intent. Secret omission has separate preservation semantics below.
 
-Sensitivity and notification severity are open strings. Documented sensitivity values are `sensitive`, `balanced` and `relaxed`; documented severity values are `warning-and-critical` and `critical`. Unfamiliar values survive read/export and produce nonfatal client-validation warnings naming the field, value and known values. The API decides whether they are accepted on apply. Unknown fields, incorrect types and invalid dependencies still fail validation.
+Sensitivity, notification severity and Slack target types are open strings. Documented sensitivity values are `sensitive`, `balanced` and `relaxed`; documented severity values are `warning-and-critical` and `critical`. Slack target types are `channel` (the default) and `dm`. Unfamiliar values survive read/export and produce nonfatal client-validation warnings naming the field, value and known values. The API decides whether they are accepted on apply. Unknown fields, incorrect types and invalid dependencies still fail validation.
 
-Mutation refuses meaningful configuration that the established manifest cannot represent, including additional notification targeting or delivery settings, nonstandard Alerting severity or named routing, and custom automatic-recalibration schedules. The refusal identifies the setting category without exposing its values. Use Grafana to manage those settings. Calibration-owned content, observed lifecycle and audit fields, and deprecated compatibility settings do not independently block configuration writes. The API decides whether an archived or calibrating Watcher can be edited; gcx reports its rejection rather than imposing a local state rule.
+Mutation refuses meaningful configuration that the established manifest cannot represent, including additional Teams targeting or delivery settings and custom automatic-recalibration schedules. Custom schedules remain outside the manifest model. The refusal identifies the setting category without exposing its values. Use Grafana to manage those settings. Calibration-owned content, observed lifecycle and audit fields, and deprecated compatibility settings do not independently block configuration writes. The API decides whether an archived or calibrating Watcher can be edited; gcx reports its rejection rather than imposing a local state rule.
+
+## Slack destinations and Alerting routing
+
+Slack retains the existing `channelId` field. Set `targetType: dm` with a Slack `userId` for a direct message, or use `targetType: channel` with `channelId` for a channel. Optional `teamId` selects the Slack workspace. A supplied channel or direct-message target requires its corresponding nonblank ID even when notifications are disabled; an omitted disabled channel destination remains valid. Teams retains its channel-only configuration.
+
+```yaml
+notifications:
+  slack:
+    enabled: false
+    targetType: dm
+    userId: U_EXAMPLE
+    teamId: T_EXAMPLE
+    severity: critical
+  alerting:
+    enabled: false
+    severity: critical
+    routingTree: example-policy-tree
+```
+
+This fragment belongs under `spec`. Alerting uses the same severity vocabulary as the other destinations, defaulting to `warning-and-critical`. `routingTree` selects a named Grafana Alerting notification policy tree; omission or an empty string selects the default tree. gcx configures the destination selection, while Grafana Alerting manages the policy trees and contact points.
+
+An explicit routing selection takes precedence over the legacy `__grafana_managed_route__` label. Exports recover the legacy selection when the server has no explicit routing field. A changed route is trimmed, and `default` or `user-defined` selects the default tree. An unchanged exported legacy route retains its exact value on reapply, including when other configuration changes. To reset such a legacy value, set `routingTree: ""` explicitly. Optional fields remain authoritative: omitting the new fields restores their defaults, and omitting Slack destination IDs removes them.
 
 ## Apply, compare and recover
 

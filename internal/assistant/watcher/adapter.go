@@ -292,12 +292,13 @@ func WatcherFromResponse(raw watchers.Watcher, automaticRecalibration bool) Watc
 		DatasourceUIDs: append([]string{}, raw.DatasourceUIDs...), Interval: (time.Duration(raw.TriggerIntervalSeconds) * time.Second).String(),
 		Sensitivity: raw.Sensitivity, SkipReviewOnCleanRuns: !raw.DisableDecisionSkip,
 		Labels: maps.Clone(raw.Labels), AutomaticRecalibration: EnabledSetting{Enabled: automaticRecalibration},
-		Notifications: Notifications{Slack: ChannelNotification{Severity: "warning-and-critical"}, Teams: ChannelNotification{Severity: "warning-and-critical"}, Webhook: WebhookNotification{Severity: "warning-and-critical"}},
+		Notifications: Notifications{Slack: SlackNotification{TargetType: "channel", Severity: "warning-and-critical"}, Teams: ChannelNotification{Severity: "warning-and-critical"}, Alerting: AlertingNotification{Severity: "warning-and-critical"}, Webhook: WebhookNotification{Severity: "warning-and-critical"}},
 		Investigation: Investigation{TeamAccess: []string{}}, serverID: raw.ID,
 	}
 	if result.Labels == nil {
 		result.Labels = map[string]string{}
 	}
+	result.Notifications.Alerting.RoutingTree = result.Labels["__grafana_managed_route__"]
 	if raw.AutoStop != nil {
 		result.AutoStop.Archive = raw.AutoStop.Archive
 		if raw.AutoStop.PauseAt != nil {
@@ -306,13 +307,26 @@ func WatcherFromResponse(raw watchers.Watcher, automaticRecalibration bool) Watc
 		}
 	}
 	if action := raw.Actions.Slack; action != nil {
-		result.Notifications.Slack = channelFromResponse(action)
+		result.Notifications.Slack.Enabled = action.Enabled
+		result.Notifications.Slack.Severity = severityFromResponse(action.MinSeverity)
+		if target := action.Target; target != nil {
+			if target.Type != "" {
+				result.Notifications.Slack.TargetType = target.Type
+			}
+			result.Notifications.Slack.ChannelID = target.ChannelID
+			result.Notifications.Slack.UserID = target.UserID
+			result.Notifications.Slack.TeamID = target.TeamID
+		}
 	}
 	if action := raw.Actions.MSTeams; action != nil {
 		result.Notifications.Teams = channelFromResponse(action)
 	}
 	if action := raw.Actions.Alerting; action != nil {
 		result.Notifications.Alerting.Enabled = action.Enabled
+		result.Notifications.Alerting.Severity = severityFromResponse(action.MinSeverity)
+		if action.RoutingTree != nil {
+			result.Notifications.Alerting.RoutingTree = *action.RoutingTree
+		}
 	}
 	if action := raw.Actions.Webhook; action != nil {
 		result.Notifications.Webhook = webhookFromResponse(action)

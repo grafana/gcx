@@ -22,17 +22,23 @@ func minimalWatcher(t *testing.T) Watcher {
 	return w
 }
 func TestOpenValuesRetainStrictShape(t *testing.T) {
-	for _, field := range []string{"sensitivity", "slack", "teams", "webhook"} {
+	for _, field := range []string{"sensitivity", "slack", "teams", "webhook", "alerting", "slack target"} {
 		t.Run(field, func(t *testing.T) {
 			w := minimalWatcher(t)
 			path := "spec.sensitivity"
-			if field == "sensitivity" {
+			switch field {
+			case "sensitivity":
 				w.Sensitivity = "future-value"
-			} else {
+			case "slack target":
+				path = "spec.notifications.slack.targetType"
+				w.Notifications.Slack.TargetType = "future-value"
+			default:
 				path = "spec.notifications." + field + ".severity"
 				switch field {
 				case "slack":
 					w.Notifications.Slack.Severity = "future-value"
+				case "alerting":
+					w.Notifications.Alerting.Severity = "future-value"
 				case "teams":
 					w.Notifications.Teams.Severity = "future-value"
 				case "webhook":
@@ -256,8 +262,6 @@ func TestReconcileRefusesBeforeSources(t *testing.T) {
 		detail     string
 		enrollment watchers.Enrollment
 	}{
-		{"targeting", `{"slack":{"enabled":false,"target":{"type":"dm","userId":"private"}}}`, watchers.Enrollment{}},
-		{"alert routing", `{"alerting":{"routingTree":"custom"}}`, watchers.Enrollment{}},
 		{"unknown webhook setting", `{"webhook":{"futureOption":"private"}}`, watchers.Enrollment{}},
 		{"custom schedule", `{}`, watchers.Enrollment{ScheduleCron: "0 1 * * *"}},
 	}

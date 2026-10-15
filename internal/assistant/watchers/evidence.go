@@ -18,14 +18,14 @@ func (w *Watcher) UnsupportedConfiguration() []string {
 		out = append(out, w.AutoStop.unsupported...)
 	}
 	out = append(out, w.Actions.unsupported...)
-	for _, action := range []*ChatAction{w.Actions.Slack, w.Actions.MSTeams} {
+	for index, action := range []*ChatAction{w.Actions.Slack, w.Actions.MSTeams} {
 		if action == nil {
 			continue
 		}
 		out = append(out, action.unsupported...)
 		if action.Target != nil {
 			out = append(out, action.Target.unsupported...)
-			if action.Target.Type != "" && action.Target.Type != "channel" || action.Target.UserID != "" || action.Target.TeamID != "" {
+			if index == 1 && (action.Target.Type != "" && action.Target.Type != "channel" || action.Target.UserID != "" || action.Target.TeamID != "") {
 				out = append(out, "notification targeting")
 			}
 		}
@@ -41,18 +41,6 @@ func (w *Watcher) UnsupportedConfiguration() []string {
 	}
 	if a := w.Actions.Alerting; a != nil {
 		out = append(out, a.unsupported...)
-		if a.MinSeverity != "" && a.MinSeverity != "warning" {
-			out = append(out, "Alerting severity")
-		}
-		var tree string
-		if a.RoutingTree != nil {
-			tree = *a.RoutingTree
-		} else {
-			tree = w.Labels["__grafana_managed_route__"]
-		}
-		if tree != "" && tree != "default" && tree != "user-defined" {
-			out = append(out, "Alerting routing")
-		}
 	}
 	if a := w.Actions.Investigation; a != nil {
 		out = append(out, a.unsupported...)
