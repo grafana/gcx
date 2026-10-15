@@ -25,6 +25,7 @@ func TestHarnessSignals(t *testing.T) {
 		{"hermes shared identity", map[string]string{"AI_AGENT": "hermes-agent"}, "hermes"},
 		{"hermes session id is not identity", map[string]string{"HERMES_SESSION_ID": "synthetic-session-id"}, ""},
 		{"openclaw exec tool", map[string]string{"OPENCLAW_SHELL": "exec"}, "openclaw"},
+		{"openclaw exec normalized", map[string]string{"OPENCLAW_SHELL": " EXEC "}, "openclaw"},
 		{"openclaw TUI shell is human", map[string]string{"OPENCLAW_SHELL": "tui-local"}, ""},
 		{"openclaw exec before inherited shared identity", map[string]string{"AI_AGENT": "codex", "OPENCLAW_SHELL": "exec"}, "openclaw"},
 		{"kilo before opencode", map[string]string{"KILO": "1", "OPENCODE": "1", "AGENT": "1"}, "kilo-code"},
