@@ -136,3 +136,30 @@ gcx assistant watchers unarchive checkout-health -o json
 `archive` requires an observed, explicitly paused, non-archived Watcher. gcx never invokes pause implicitly. This precheck and the archive request are not atomic: another client's concurrent start can be stopped by archive. Configuration and history remain available; archive can cancel pending calibration and resolve active Grafana Alerting findings.
 
 `unarchive` requires an archived Watcher and recovers it without activating monitoring. It clears automatic-stop archive intent but retains the stop deadline, which can still prevent a later start. A concurrent start by another client can supersede recovery; an unexpected active response is reported as an error without an implicit corrective pause. Archive recovery is separate from restoring a definition version.
+
+## Retained definition versions
+
+```bash
+gcx assistant watchers list-versions checkout-health --limit 20 -o json
+gcx assistant watchers list-versions checkout-health --before-version 12 -o yaml
+gcx assistant watchers versions get checkout-health 2 -o yaml
+gcx assistant watchers versions diff checkout-health 1 2 -o json
+```
+
+`list-versions` reads one newest-first page, with `--limit` between 1 and 100 (default 20). Continue by passing `coverage.nextBeforeVersion` as `--before-version`. The cursor is exclusive and deliberately excludes newer versions. Coverage and continuation remain visible under `--json` item selection. Empty or exhausted pages describe only the requested server-retained history; they do not prove complete lifetime history or that an earlier version never existed. Retention is server-controlled, reads are permission-scoped, and paging is not an atomic snapshot.
+
+`versions get` returns the retained definition and available version identifier, time, actor, change summary and server-reported learning-transition evidence. It does not infer how backend learning works. Missing versions may be pruned or unavailable. `versions diff` fetches the two requested retained definitions and reports sorted JSON pointer paths, with arrays compared as complete values. Only definition documents participate; timestamps, actor and learning-transition metadata do not. Missing fields and explicit null values remain distinct, and numbers retain their JSON representation without floating-point conversion. These version definitions are read-only evidence, not manifests for `resources push`.
+
+## Restore a definition version
+
+```bash
+gcx assistant watchers pause checkout-health
+gcx assistant watchers status checkout-health -o json
+gcx assistant watchers versions restore checkout-health 1 --expected-current-version 3 --force -o json
+```
+
+Inspect the current definition version and supply it explicitly as `--expected-current-version`. Restore requires the Watcher to already be non-archived and paused; gcx never pauses it implicitly. The server checks the version guard when saving and rejects conflicting calibration or execution. A stale guard is refused rather than silently refreshed. `--summary` optionally records a reason of at most 1000 Unicode characters. Restore uses the shared confirmation flow; agent invocations use `--force` or shared auto-approval.
+
+Restore creates a new current version from the selected monitoring definition: name, description, prompt, interval, sensitivity, decision-skip setting, data source UIDs, checks, calibration context and static log policies. It retains current notification/investigation actions and secrets, labels, automatic-stop settings and automatic-recalibration enrollment. It does not restore every configuration-manifest setting or copy historical learned run state; learning effects are reconciled by the server. Archive recovery remains the separately named `unarchive` operation.
+
+The structured mutation result reports the requested historical version, the supplied guard, the saved new-version metadata, actual restore scope and subsequent lifecycle/version observation. A restored definition can be an inactive draft; gcx never starts it. Another caller can change the Watcher after restore, so accepted save evidence and later observations are separate. A saved restore whose readback fails or no longer matches returns a saved partial result and exit 4. A lost, truncated or invalid response can leave the outcome unknown: inspect `status` and `list-versions` before retrying. Unknown outcomes omit an invented `changed` value or new version. No automatic retry, rollback or corrective pause is attempted.

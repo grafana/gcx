@@ -28,6 +28,8 @@
   "gcx assistant watchers run",
   "gcx assistant watchers start",
   "gcx assistant watchers status",
+  "gcx assistant watchers versions diff",
+  "gcx assistant watchers versions restore",
   "gcx assistant watchers unarchive",
   "gcx cloud login",
   "gcx dashboards snapshot",

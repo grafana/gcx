@@ -249,6 +249,7 @@ See [CLI layer: Portable Skill Lifecycle](docs/architecture/cli-layer.md#portabl
 | [024](docs/adrs/provider-consolidation/002-shared-table-declaration.md) | Providers declare table columns instead of writing codecs | accepted |
 | [025](docs/adrs/declarative-provider-registration/001-declarative-resource-front-door.md) | Declarative `adapter.Resource[T]` + `adapter.NewProvider` registration front door | accepted |
 | [026](docs/adrs/provider-owned-resource-hooks/026-provider-owned-resource-hooks.md) | Provider-owned identity and reconciliation hooks | accepted |
+| [027](docs/adrs/assistant-watcher-versions/027-composite-version-addressing.md) | Assistant Watcher version addressing | accepted |
 
 See [docs/adrs/](docs/adrs/) for all ADRs.
 
