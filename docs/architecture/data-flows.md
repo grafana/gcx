@@ -341,7 +341,7 @@ backing client is a REST adapter or the k8s dynamic client.
 
 ### Assistant Watcher configuration
 
-Watcher configuration follows the provider REST pull pipeline through its shared typed adapter. Before collection insertion, the Watcher adapter supplies a preflight that checks its visible identity index; the generic puller invokes that check and reports rejected items without knowing their resource kind. Runtime status uses separate read-only observations and never enters a manifest. See [Assistant Watchers](../reference/assistant-watchers.md).
+Watcher configuration follows the provider REST pull pipeline through its shared typed adapter. Before collection insertion, the Watcher adapter supplies a preflight that checks its visible identity index; the generic puller invokes that check and reports rejected items without knowing their resource kind. Runtime status uses separate read-only observations and never enters a manifest. See [Assistant Watchers](../sources/guides/manage-assistant-watchers.md).
 
 Configuration push resolves the full local batch before writes and passes each complete envelope to the owned adapter before generic name or natural-key probes. Delete selects minimal identity envelopes before configuration reads or deduplication. The Watcher adapter shares reconciliation with dedicated create/update/delete commands and preserves saved identity on a failed follow-up stage. Kinds without these optional hooks keep their existing pipelines. See [ADR-026](../adrs/provider-owned-resource-hooks/026-provider-owned-resource-hooks.md).
 

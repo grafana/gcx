@@ -75,7 +75,7 @@ Provider (internal/providers/slo/)
 
 ### Assistant Watcher configuration
 
-The Assistant provider registers Watcher configuration beside MCPServer. Dedicated configuration commands and generic resource operations share the typed adapter; runtime status remains a separate read view. Optional provider-neutral hooks retain complete envelopes and batches before identity-keyed insertion or mutation, while the adapter owns identity, reconciliation and partial-read policy. See [ADR-026](docs/adrs/provider-owned-resource-hooks/026-provider-owned-resource-hooks.md), [Assistant Watchers](docs/reference/assistant-watchers.md) and the [package map](docs/architecture/project-structure.md).
+The Assistant provider registers Watcher configuration beside MCPServer. Dedicated configuration commands and generic resource operations share the typed adapter; runtime status remains a separate read view. Optional provider-neutral hooks retain complete envelopes and batches before identity-keyed insertion or mutation, while the adapter owns identity, reconciliation and partial-read policy. See [ADR-026](docs/adrs/provider-owned-resource-hooks/026-provider-owned-resource-hooks.md), [Assistant Watchers](docs/sources/guides/manage-assistant-watchers.md) and the [package map](docs/architecture/project-structure.md).
 
 ### 3. Signal Providers
 
