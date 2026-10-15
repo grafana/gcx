@@ -67,18 +67,15 @@ func lookupByResourceName(ctx context.Context, client *Client, name string) (*Fa
 }
 
 // prepareUpdate checks app against the stored app and fills in what the
-// manifest leaves out. The API never renames an app, so a different spec.name
-// means the manifest names another app. The API replaces corsOrigins and
-// extraLogLabels in full, so an omitted list keeps the stored one and only an
-// explicit empty list clears it.
+// manifest leaves out. The API ignores a new name on update, so any change to
+// spec.name, even in case or punctuation, is an error rather than a silent
+// no-op. The API replaces corsOrigins and extraLogLabels in full, so an
+// omitted list keeps the stored one and only an explicit empty list clears it.
 func prepareUpdate(current, app *FaroApp) error {
-	// Compare slugs, as the natural key does, so a cross-stack push of
-	// "My App" still updates an app stored as "my-app".
-	if adapter.SlugifyName(app.Name) != adapter.SlugifyName(current.Name) {
+	if app.Name != current.Name {
 		return fmt.Errorf("faro app %s is named %q, not %q, and the API cannot rename an app: set spec.name to %q",
 			current.GetResourceName(), current.Name, app.Name, current.Name)
 	}
-	app.Name = current.Name
 	if app.CORSOrigins == nil {
 		app.CORSOrigins = current.CORSOrigins
 	}

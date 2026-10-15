@@ -334,7 +334,7 @@ func newUpdateCommand(loader RESTConfigLoader) *cobra.Command {
 		Long: `Update a Frontend Observability app from a file. The argument is a slug-id,
 numeric ID or display name, resolved as in "gcx frontend apps get".
 
-The API cannot rename an app, so spec.name must match the stored name. Omit
+The API cannot rename an app, so spec.name must match the stored name exactly. Omit
 spec.corsOrigins or spec.extraLogLabels to keep the stored list; an empty list
 or map clears it. Omit spec.runtime to keep the stored runtime; an empty
 runtime is invalid. The API ignores changes to spec.appType. Omitted settings

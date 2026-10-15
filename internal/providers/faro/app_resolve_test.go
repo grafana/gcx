@@ -236,8 +236,8 @@ func TestFaroUpdate_RefusesAnotherAppsName(t *testing.T) {
 		wantPutAs string
 	}{
 		{name: "same name", specName: "checkout", wantPutAs: "checkout"},
-		// Slugs match, so this is the same app; the stored name is kept.
-		{name: "same slug in another form", specName: "Checkout", wantPutAs: "checkout"},
+		// The API would keep "checkout", so a change in case is refused too.
+		{name: "same slug in another form", specName: "Checkout", wantErr: `is named "checkout", not "Checkout"`},
 		{name: "another name", specName: "checkout-staging", wantErr: `is named "checkout", not "checkout-staging"`},
 	}
 	for _, tc := range tests {
