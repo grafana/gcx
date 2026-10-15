@@ -195,35 +195,64 @@ func TestFaroCommands_AcceptDisplayName(t *testing.T) {
 	}
 }
 
-// TestFaroApplySourcemap_CloudTokenOnly checks that a context with only a
-// Cloud token, as in a build pipeline, can still upload by slug-id or ID.
-func TestFaroApplySourcemap_CloudTokenOnly(t *testing.T) {
+// TestFaroApplySourcemap_UnlistedApps checks that the upload, which needs only
+// a Cloud token, still works by slug-id or ID when gcx cannot list apps, and
+// that a list that does work stays authoritative.
+func TestFaroApplySourcemap_UnlistedApps(t *testing.T) {
 	sourcemap := writeTestFile(t, "bundle.js.map", `{"version":3}`)
 	tests := []struct {
 		name      string
+		grafana   bool
+		listCode  int
 		arg       string
 		wantCalls []string
 		wantErr   string
+		wantWarn  string
 	}{
-		{name: "slug-id", arg: "my-web-app-8", wantCalls: []string{"UPLOAD 8/sourcemaps/b1"}},
-		{name: "numeric ID", arg: "8", wantCalls: []string{"UPLOAD 8/sourcemaps/b1"}},
-		{name: "display name", arg: "My Web App", wantErr: "pass the app's slug-id or numeric ID"},
+		{name: "no Grafana, slug-id", arg: "my-web-app-8", wantCalls: []string{"UPLOAD 8/sourcemaps/b1"}, wantWarn: "unchecked"},
+		{name: "no Grafana, numeric ID", arg: "8", wantCalls: []string{"UPLOAD 8/sourcemaps/b1"}, wantWarn: "unchecked"},
+		{name: "no Grafana, display name", arg: "My Web App", wantErr: "pass the app's slug-id or numeric ID"},
+		{name: "list denied, slug-id", grafana: true, listCode: http.StatusForbidden, arg: "my-web-app-8", wantCalls: []string{"UPLOAD 8/sourcemaps/b1"}, wantWarn: "403"},
+		{name: "list denied, display name", grafana: true, listCode: http.StatusForbidden, arg: "My Web App", wantErr: "403"},
+		// A list that works is authoritative, so no unchecked upload to app 2024.
+		{name: "list works, no such app", grafana: true, listCode: http.StatusOK, arg: "Checkout-2024", wantErr: "no app has that slug-id or name"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			server, api := newFakeAppAPI(t, map[string]any{"id": 8, "name": "My Web App"})
-			cmd := newApplySourcemapCommand(&fakeConfigLoader{faroAPIURL: server.URL})
+			var calls []string
+			mux := http.NewServeMux()
+			mux.HandleFunc(basePath, func(w http.ResponseWriter, _ *http.Request) {
+				if tc.listCode != http.StatusOK {
+					http.Error(w, "forbidden", tc.listCode)
+					return
+				}
+				_ = json.NewEncoder(w).Encode([]map[string]any{{"id": 8, "name": "My Web App"}})
+			})
+			mux.HandleFunc("/api/v1/app/", func(w http.ResponseWriter, r *http.Request) {
+				calls = append(calls, "UPLOAD "+strings.TrimPrefix(r.URL.Path, "/api/v1/app/"))
+				w.WriteHeader(http.StatusOK)
+			})
+			server := httptest.NewServer(mux)
+			t.Cleanup(server.Close)
+
+			loader := &fakeConfigLoader{faroAPIURL: server.URL}
+			if tc.grafana {
+				loader.grafanaURL = server.URL
+			}
+			var stderr strings.Builder
+			cmd := newApplySourcemapCommand(loader)
 			cmd.SetOut(io.Discard)
-			cmd.SetErr(io.Discard)
+			cmd.SetErr(&stderr)
 			cmd.SetArgs([]string{tc.arg, "-f", sourcemap, "--bundle-id", "b1", "-o", "json"})
 			err := cmd.Execute()
 			if tc.wantErr != "" {
 				require.ErrorContains(t, err, tc.wantErr)
-				assert.Empty(t, api.calls)
+				assert.Empty(t, calls)
 				return
 			}
 			require.NoError(t, err)
-			assert.Equal(t, tc.wantCalls, api.calls)
+			assert.Equal(t, tc.wantCalls, calls)
+			assert.Contains(t, stderr.String(), tc.wantWarn)
 		})
 	}
 }

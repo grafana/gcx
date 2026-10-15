@@ -92,6 +92,11 @@ func resolveApp(ctx context.Context, crud *adapter.TypedCRUD[FaroApp], arg strin
 	if err != nil {
 		return nil, err
 	}
+	return pickApp(apps, arg)
+}
+
+// pickApp returns the app in apps that arg names, as findApp matches it.
+func pickApp(apps []adapter.TypedObject[FaroApp], arg string) (*adapter.TypedObject[FaroApp], error) {
 	specs := make([]FaroApp, len(apps))
 	for i := range apps {
 		specs[i] = apps[i].Spec

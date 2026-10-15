@@ -159,6 +159,17 @@ func newApplySourcemapCommand(loader sourcemapUploadConfigLoader) *cobra.Command
 	cmd := &cobra.Command{
 		Use:   "apply-sourcemap <slug-id|name>",
 		Short: "Upload a sourcemap for a Frontend Observability app.",
+		Long: `Upload a sourcemap for a Frontend Observability app.
+
+The argument is a slug-id (my-web-app-42), numeric ID or display name. When
+the context has a Grafana server and token, gcx lists the apps and resolves
+the argument as in "gcx frontend apps get".
+
+The upload itself needs only a Cloud token. Without a Grafana server and
+token, or when listing apps fails, gcx takes the ID from the slug-id or
+numeric ID without checking it, and prints a warning. A display name then
+fails, and a slug-id such as checkout-2024 uploads to app 2024 even when app
+2024 has another name.`,
 		Example: `  # Upload a sourcemap bundle.
   gcx frontend apps apply-sourcemap my-web-app-42 -f bundle.js.map`,
 		Args: cobra.ExactArgs(1),
@@ -180,7 +191,7 @@ func newApplySourcemapCommand(loader sourcemapUploadConfigLoader) *cobra.Command
 
 			// Resolve the app before the Faro API URL is discovered and
 			// cached, so a wrong argument does not write to the config.
-			appID, err := resolveUploadAppID(ctx, snapshot.GrafanaConfig, args[0])
+			appID, err := resolveUploadAppID(ctx, cmd.ErrOrStderr(), snapshot.GrafanaConfig, args[0])
 			if err != nil {
 				return err
 			}
@@ -323,25 +334,34 @@ func newDeleteSourcemapCommand(loader RESTConfigLoader) *cobra.Command {
 	return cmd
 }
 
-// resolveUploadAppID finds the ID of the app that arg names. A build pipeline
-// can upload with only a Cloud token, so without a Grafana config the ID comes
-// from the slug-id or numeric ID itself.
-func resolveUploadAppID(ctx context.Context, grafanaCfg *config.NamespacedRESTConfig, arg string) (string, error) {
-	if grafanaCfg == nil {
-		if id, ok := adapter.ExtractIDFromSlug(arg); ok {
-			return id, nil
+// resolveUploadAppID finds the ID of the app that arg names. The upload itself
+// needs only a Cloud token, so when gcx cannot list apps (no Grafana config,
+// or the list fails) the ID comes from the slug-id or numeric ID unchecked. A
+// list that succeeds is authoritative: "no such app" and "ambiguous" stay
+// errors.
+func resolveUploadAppID(ctx context.Context, stderr io.Writer, grafanaCfg *config.NamespacedRESTConfig, arg string) (string, error) {
+	listErr := errors.New("no Grafana server and token in the context")
+	if grafanaCfg != nil {
+		client, err := NewClient(*grafanaCfg)
+		if err != nil {
+			return "", fmt.Errorf("failed to create faro client: %w", err)
 		}
-		return "", fmt.Errorf("faro app %q: a display name needs a Grafana server and token in the context; pass the app's slug-id or numeric ID", arg)
+		apps, err := newAppCRUD(client, grafanaCfg.Namespace).List(ctx, 0)
+		if err == nil {
+			target, err := pickApp(apps, arg)
+			if err != nil {
+				return "", err
+			}
+			return target.Spec.ID, nil
+		}
+		listErr = err
 	}
-	client, err := NewClient(*grafanaCfg)
-	if err != nil {
-		return "", fmt.Errorf("failed to create faro client: %w", err)
+	id, ok := adapter.ExtractIDFromSlug(arg)
+	if !ok {
+		return "", fmt.Errorf("faro app %q: cannot list apps to resolve a display name (%w); pass the app's slug-id or numeric ID", arg, listErr)
 	}
-	target, err := resolveApp(ctx, newAppCRUD(client, grafanaCfg.Namespace), arg)
-	if err != nil {
-		return "", err
-	}
-	return target.Spec.ID, nil
+	cmdio.Warning(stderr, "cannot list apps to check %q (%v); uploading to app ID %s unchecked", arg, listErr, id)
+	return id, nil
 }
 
 // resolveFaroAPIURL resolves the Faro API URL from provider config cache,
