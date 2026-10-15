@@ -222,21 +222,18 @@ func TestRunHistoryBoundedPagination(t *testing.T) {
 	for _, tc := range []struct {
 		name           string
 		limit, total   int
-		cursor         string
 		wantMore       bool
 		wantPageLimits []string
 	}{
-		{"empty", 20, 0, "", false, []string{"21:0"}},
-		{"less than N", 20, 19, "", false, []string{"21:0"}},
-		{"exact N", 20, 20, "", false, []string{"21:0"}},
-		{"N plus one", 20, 21, "", true, []string{"21:0"}},
-		{"cursor", 20, 1, "more", true, []string{"21:0"}},
-		{"minimum", 1, 2, "", true, []string{"2:0"}},
-		{"below maximum", 99, 100, "", true, []string{"100:0"}},
-		{"maximum short", 100, 99, "", false, []string{"100:0"}},
-		{"maximum exact", 100, 100, "", false, []string{"100:0", "1:100"}},
-		{"maximum with more", 100, 101, "", true, []string{"100:0", "1:100"}},
-		{"maximum cursor", 100, 100, "more", true, []string{"100:0", "1:100"}},
+		{"empty", 20, 0, false, []string{"21:0"}},
+		{"less than N", 20, 19, false, []string{"21:0"}},
+		{"exact N", 20, 20, false, []string{"21:0"}},
+		{"N plus one", 20, 21, true, []string{"21:0"}},
+		{"minimum", 1, 2, true, []string{"2:0"}},
+		{"below maximum", 99, 100, true, []string{"100:0"}},
+		{"maximum short", 100, 99, false, []string{"100:0"}},
+		{"maximum exact", 100, 100, false, []string{"100:0", "1:100"}},
+		{"maximum with more", 100, 101, true, []string{"100:0", "1:100"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var requests []string
@@ -253,7 +250,7 @@ func TestRunHistoryBoundedPagination(t *testing.T) {
 				for i := offset; i < min(tc.total, offset+limit); i++ {
 					items = append(items, historyRun(i))
 				}
-				writeData(t, w, map[string]any{"runs": items, "nextCursor": tc.cursor})
+				writeData(t, w, map[string]any{"runs": items})
 			}))
 			result, err := client.ListRuns(t.Context(), "id/with?characters", tc.limit)
 			require.NoError(t, err)
@@ -319,6 +316,8 @@ func TestRunHistoryFailedProbeCannotClaimCompleteness(t *testing.T) {
 		status int
 	}{
 		{`{"data":{}}`, 200}, {`{"data":{"runs":null}}`, 200}, {`SENTINEL`, 200}, {`{"message":"SENTINEL"}`, 403},
+		{`{"data":{"runs":[{}]}}`, 200},
+		{`{"data":{"runs":[{},{}]}}`, 200},
 	} {
 		t.Run(tc.body, func(t *testing.T) {
 			var calls atomic.Int32
@@ -416,9 +415,7 @@ func TestLifecycleKnownRefusalsUseFixedReasons(t *testing.T) {
 		{"calibrating start", "start", "agent is calibrating", "wait for calibration to finish", 400},
 		{"calibrating pause", "pause", "the watcher is calibrating and does not scan until calibration ends", "wait for calibration to finish", 409},
 		{"archived", "run", "restore the archived watcher first", "unarchive the Watcher", 409},
-		{"datasource", "run", "enabled metrics query requires a datasource", "requires a datasource", 400},
-		{"definition conflict", "start", "watcher definition changed since it was read", "configuration changed during the request", 409},
-		{"unknown", "start", "SENTINEL", "readiness or request validation failed", 400},
+		{"calibrating run", "run", "agent is calibrating and cannot be run", "wait for calibration to finish", 409},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			client := mutationClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -434,6 +431,45 @@ func TestLifecycleKnownRefusalsUseFixedReasons(t *testing.T) {
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tc.want)
 			assert.NotContains(t, err.Error(), "SENTINEL")
+		})
+	}
+}
+
+func TestLifecycleUnknownRefusalVariationsUseSafeFallback(t *testing.T) {
+	for _, message := range []string{
+		"watcher is draft",
+		"has not been calibrated",
+		"not calibrated",
+		"no enabled queries",
+		"no enabled checks",
+		"at least one query must be enabled",
+		"stop deadline has expired",
+		"auto-stop has expired",
+		"automatic stop has expired",
+		"stop time has passed",
+		"watcher is calibrating",
+		"finish or cancel calibration",
+		"watcher is archived",
+		"agent is archived",
+		"missing datasource",
+		"requires a datasource",
+		"definition changed",
+		"definition version",
+		"SENTINEL",
+	} {
+		t.Run(message, func(t *testing.T) {
+			client := mutationClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusBadRequest)
+				assert.NoError(t, json.NewEncoder(w).Encode(map[string]any{"message": message + " SENTINEL", "details": "SENTINEL"}))
+			}))
+			_, err := client.Start(t.Context(), "id")
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "Watcher readiness or request validation failed; inspect calibration, enabled checks, and the automatic-stop deadline")
+			assert.NotContains(t, err.Error(), message)
+			assert.NotContains(t, err.Error(), "SENTINEL")
+			encoded, encodeErr := json.Marshal(err)
+			require.NoError(t, encodeErr)
+			assert.NotContains(t, string(encoded), "SENTINEL")
 		})
 	}
 }

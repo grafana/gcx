@@ -91,17 +91,17 @@ func (c *Client) ListRuns(ctx context.Context, id string, limit int) (*RunHistor
 	if limit < 1 || limit > 100 {
 		return nil, errors.New("Watcher run history limit must be between 1 and 100")
 	}
-	page, cursor, err := c.runPage(ctx, path, min(limit+1, 100), 0)
+	page, err := c.runPage(ctx, path, min(limit+1, 100), 0)
 	if err != nil {
 		return nil, err
 	}
-	result := &RunHistory{Items: page, HasMore: len(page) > limit || cursor != ""}
+	result := &RunHistory{Items: page, HasMore: len(page) > limit}
 	if limit == 100 && len(page) == 100 {
-		probe, next, err := c.runPage(ctx, path, 1, 100)
+		probe, err := c.runPage(ctx, path, 1, 100)
 		if err != nil {
 			return nil, err
 		}
-		result.HasMore = result.HasMore || len(probe) > 0 || next != ""
+		result.HasMore = len(probe) > 0
 	}
 	if len(result.Items) > limit {
 		result.Items = result.Items[:limit]
@@ -109,31 +109,30 @@ func (c *Client) ListRuns(ctx context.Context, id string, limit int) (*RunHistor
 	return result, nil
 }
 
-func (c *Client) runPage(ctx context.Context, path string, limit, offset int) ([]Run, string, error) {
+func (c *Client) runPage(ctx context.Context, path string, limit, offset int) ([]Run, error) {
 	params := url.Values{"limit": {strconv.Itoa(limit)}, "offset": {strconv.Itoa(offset)}}
 	var page struct {
-		Runs       *[]Run `json:"runs"`
-		NextCursor string `json:"nextCursor"`
+		Runs *[]Run `json:"runs"`
 	}
 	if err := c.read(ctx, path+"/runs?"+params.Encode(), "list Watcher runs", false, &page); err != nil {
-		return nil, "", err
+		return nil, err
 	}
 	if page.Runs == nil {
-		return nil, "", errors.New("list Watcher runs: response omits collection items")
+		return nil, errors.New("list Watcher runs: response omits collection items")
 	}
 	if len(*page.Runs) > limit {
-		return nil, "", errors.New("list Watcher runs: response exceeds the requested page size")
+		return nil, errors.New("list Watcher runs: response exceeds the requested page size")
 	}
 	for i := range *page.Runs {
 		item := &(*page.Runs)[i]
 		if strings.TrimSpace(item.ID) == "" || strings.TrimSpace(item.Status) == "" || item.StartedAt.IsZero() {
-			return nil, "", errors.New("list Watcher runs: response contains an incomplete run")
+			return nil, errors.New("list Watcher runs: response contains an incomplete run")
 		}
 		if item.Status != "completed" || (item.Assessment != "ok" && item.Assessment != "warning" && item.Assessment != "critical") {
 			item.Assessment = ""
 		}
 	}
-	return *page.Runs, page.NextCursor, nil
+	return *page.Runs, nil
 }
 
 // lifecycleAPIReason returns fixed public guidance, never server-supplied details.
@@ -172,28 +171,26 @@ func lifecycleAPIReason(operation string, kind error, message string) string {
 }
 
 func lifecycleRefusalReason(operation, message string) string {
-	if strings.Contains(message, "restore the archived watcher first") || strings.Contains(message, "watcher is archived") || strings.Contains(message, "agent is archived") {
+	if strings.Contains(message, "restore the archived watcher first") {
 		return "unarchive the Watcher before requesting this operation"
 	}
-	if strings.Contains(message, "finish or cancel calibration") || strings.Contains(message, "agent is calibrating") || strings.Contains(message, "watcher is calibrating") {
+	if operation == "pause Watcher" && strings.Contains(message, "the watcher is calibrating and does not scan until calibration ends") {
 		return "wait for calibration to finish or cancel calibration in Grafana before requesting this operation"
 	}
 	if operation != "start Watcher" && operation != "request Watcher run" {
 		return ""
 	}
 	switch {
-	case strings.Contains(message, "agent is draft"), strings.Contains(message, "watcher is draft"):
+	case strings.Contains(message, "agent is calibrating"):
+		return "wait for calibration to finish or cancel calibration in Grafana before requesting this operation"
+	case strings.Contains(message, "agent is draft"):
 		return "Watcher is a draft; calibrate it in Grafana before starting or requesting a run"
-	case strings.Contains(message, "must be calibrated at least once"), strings.Contains(message, "has not been calibrated"), strings.Contains(message, "not calibrated"):
+	case strings.Contains(message, "it must be calibrated at least once"):
 		return "Watcher has not been calibrated; calibrate it in Grafana before starting or requesting a run"
-	case strings.Contains(message, "no enabled queries"), strings.Contains(message, "no enabled checks"), strings.Contains(message, "at least one query must be enabled"), strings.Contains(message, "at least one enabled query is required"):
+	case strings.Contains(message, "at least one enabled query is required"):
 		return "Watcher has no enabled checks; enable and calibrate a check in Grafana before starting or requesting a run"
-	case strings.Contains(message, "stop deadline has expired"), strings.Contains(message, "auto-stop has expired"), strings.Contains(message, "automatic stop has expired"), strings.Contains(message, "stop time has passed"):
+	case strings.Contains(message, "stop time has passed; extend or remove it before starting"):
 		return "Watcher automatic-stop deadline has expired; inspect its configuration in Grafana"
-	case strings.Contains(message, "missing datasource"), strings.Contains(message, "requires a datasource"):
-		return "an enabled Watcher check requires a datasource; inspect its configuration in Grafana"
-	case strings.Contains(message, "definition changed"), strings.Contains(message, "definition version"):
-		return "Watcher configuration changed during the request; inspect current status before retrying"
 	default:
 		return ""
 	}

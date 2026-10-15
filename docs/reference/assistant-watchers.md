@@ -72,7 +72,7 @@ Dedicated creation also includes a `resource` configuration manifest and a separ
 | `accepted` | The request was accepted; checks are not necessarily ready. Follow `status WATCHER` and review calibration in Grafana. |
 | `unavailable` | The definition was created but background calibration is unsupported. Calibrate it in Grafana. Creation exits successfully. |
 | `error` | The definition was created but request acceptance could not be confirmed. Inspect `status WATCHER` and continue in Grafana; exit 4. |
-| `not-requested` | A configuration stage failed after creation. Resolve that stage with `update`, then calibrate in Grafana; exit 4. |
+| `not-requested` | A configuration stage or local result encoding failed after creation. Inspect the reported failure, resolve any failed configuration stage with `update`, then calibrate in Grafana; exit 4. |
 
 Request failures retain the created Watcher. There is no automatic retry or deletion; a timeout or invalid response can leave calibration running despite an `error` outcome. Do not rerun `create`. Partial configuration results retain identity and stage outcomes but omit the unverified resource manifest. `update`, generic push and deletion do not request calibration and keep their configuration mutation output.
 
@@ -126,6 +126,8 @@ gcx assistant watchers unarchive checkout-health -o json
 ```
 
 `start` asks the server to activate a calibrated definition with at least one enabled check. It can immediately enqueue a scan and deliver configured notifications or launch investigations; event-only Watchers wait for their trigger. An initial scan request can fail after monitoring has become active. Failed lifecycle results retain the selected identity, report any observed lifecycle from a best-effort readback, and return nonzero. Inspect `status` before retrying. gcx never automatically retries or rolls back lifecycle requests.
+
+Lifecycle receipts use `action` values `started`, `paused`, `archived`, `unarchived` and `run-requested`. The separate `outcome` says whether the request was accepted, skipped, rejected or uncertain; `run-requested` never means that a scan completed. Human run-history tables identify the Watcher by resource name and server ID.
 
 `pause` stops future scans. An in-flight scan may finish and deliver configured notifications or investigations. Finish or cancel calibration in Grafana before pausing a calibrating Watcher. Neither pause nor archive promises cancellation of an already executing scan or its notifications.
 
