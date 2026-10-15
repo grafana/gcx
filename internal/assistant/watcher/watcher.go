@@ -56,16 +56,31 @@ type EnabledSetting struct {
 }
 
 type Notifications struct {
-	Slack    ChannelNotification `json:"slack"`
-	Teams    ChannelNotification `json:"teams"`
-	Alerting EnabledSetting      `json:"alerting"`
-	Webhook  WebhookNotification `json:"webhook"`
+	Slack    SlackNotification    `json:"slack"`
+	Teams    ChannelNotification  `json:"teams"`
+	Alerting AlertingNotification `json:"alerting"`
+	Webhook  WebhookNotification  `json:"webhook"`
+}
+
+type SlackNotification struct {
+	Enabled    bool   `json:"enabled"`
+	TargetType string `json:"targetType"`
+	ChannelID  string `json:"channelId,omitempty"`
+	UserID     string `json:"userId,omitempty"`
+	TeamID     string `json:"teamId,omitempty"`
+	Severity   string `json:"severity"`
 }
 
 type ChannelNotification struct {
 	Enabled   bool   `json:"enabled"`
 	ChannelID string `json:"channelId,omitempty"`
 	Severity  string `json:"severity"`
+}
+
+type AlertingNotification struct {
+	Enabled     bool   `json:"enabled"`
+	Severity    string `json:"severity"`
+	RoutingTree string `json:"routingTree"`
 }
 
 type WebhookNotification struct {
@@ -109,7 +124,7 @@ func (w *Watcher) UnmarshalJSON(data []byte) error {
 	next := plain{
 		Interval: (time.Duration(watchers.DefaultIntervalSeconds) * time.Second).String(), Sensitivity: watchers.DefaultSensitivity, SkipReviewOnCleanRuns: true,
 		DatasourceUIDs: []string{}, Labels: map[string]string{},
-		Notifications: Notifications{Slack: ChannelNotification{Severity: "warning-and-critical"}, Teams: ChannelNotification{Severity: "warning-and-critical"}, Webhook: WebhookNotification{Severity: "warning-and-critical"}},
+		Notifications: Notifications{Slack: SlackNotification{TargetType: "channel", Severity: "warning-and-critical"}, Teams: ChannelNotification{Severity: "warning-and-critical"}, Alerting: AlertingNotification{Severity: "warning-and-critical"}, Webhook: WebhookNotification{Severity: "warning-and-critical"}},
 		Investigation: Investigation{TeamAccess: []string{}},
 	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
@@ -215,20 +230,21 @@ func (w Watcher) Validate() error {
 	if w.AutoStop.Archive && !w.AutoStop.Enabled {
 		return errors.New("spec.autoStop.archive requires an enabled autoStop")
 	}
-	for _, channel := range []struct {
-		name  string
-		value ChannelNotification
-	}{{"slack", w.Notifications.Slack}, {"teams", w.Notifications.Teams}} {
-		if err := validateSeverity("spec.notifications."+channel.name+".severity", channel.value.Severity); err != nil {
-			return err
-		}
-		if channel.value.Enabled && strings.TrimSpace(channel.value.ChannelID) == "" {
-			return fmt.Errorf("spec.notifications.%s.channelId is required when enabled", channel.name)
-		}
+	slack := w.Notifications.Slack
+	if err := validateSlackTarget(slack); err != nil {
+		return err
+	}
+	if w.Notifications.Teams.Enabled && strings.TrimSpace(w.Notifications.Teams.ChannelID) == "" {
+		return errors.New("spec.notifications.teams.channelId is required when enabled")
 	}
 	webhook := w.Notifications.Webhook
-	if err := validateSeverity("spec.notifications.webhook.severity", webhook.Severity); err != nil {
-		return err
+	for _, notification := range []struct{ name, severity string }{
+		{"slack", slack.Severity}, {"teams", w.Notifications.Teams.Severity},
+		{"alerting", w.Notifications.Alerting.Severity}, {"webhook", webhook.Severity},
+	} {
+		if err := validateSeverity("spec.notifications."+notification.name+".severity", notification.severity); err != nil {
+			return err
+		}
 	}
 	for _, input := range []struct {
 		name  string
@@ -242,6 +258,24 @@ func (w Watcher) Validate() error {
 	}
 	if webhook.Enabled && (webhook.URL == nil || webhook.URL.Clear) {
 		return errors.New("spec.notifications.webhook.url requires a source or preserve: true when enabled")
+	}
+	return nil
+}
+
+func validateSlackTarget(slack SlackNotification) error {
+	if strings.TrimSpace(slack.TargetType) == "" {
+		return errors.New("spec.notifications.slack.targetType requires a nonblank string")
+	}
+	hasTarget := slack.ChannelID != "" || slack.UserID != "" || slack.TeamID != ""
+	switch slack.TargetType {
+	case "channel":
+		if (slack.Enabled || hasTarget) && strings.TrimSpace(slack.ChannelID) == "" {
+			return errors.New("spec.notifications.slack.channelId is required for a channel target")
+		}
+	case "dm":
+		if strings.TrimSpace(slack.UserID) == "" {
+			return errors.New("spec.notifications.slack.userId is required for a dm target")
+		}
 	}
 	return nil
 }
