@@ -842,10 +842,7 @@ The shared transport in `internal/query/kg` serves both the KG provider and App 
 
 ### Assistant Provider
 
-`Commands()` preserves the previously hand-mounted `gcx assistant` tree (`prompt`, `dashboard`, `conversation`, `investigations`, `mcp-servers`) and adds experimental `watchers` configuration and status commands; `TypedRegistrations()` registers `TypedCRUD[MCPServer]` and `TypedCRUD[Watcher]`, so MCP-server configuration flows through `gcx resources get/pull/push/delete` for both `user` and `tenant` scope. See ADR-021.
-
-
-Watcher configuration uses the typed resource pipeline for get/pull/push/delete, while status reports runtime observations separately. Its client lives in `internal/assistant/watchers/`, schema, identity and reconciliation policy in `internal/assistant/watcher/`, and commands in `internal/providers/assistant/watchers/`. The Watcher adapter owns complete batch collision checks, partial-read diagnostics and configuration reconciliation. Generic resource packages invoke optional provider-neutral contracts before identity-keyed insertion or mutation, preserving full envelopes and selecting deletion identities without configuration exports. See [ADR-026](../adrs/provider-owned-resource-hooks/026-provider-owned-resource-hooks.md).
+`Commands()` exposes the `gcx assistant` tree. MCP-server configuration uses `TypedCRUD[MCPServer]` and flows through `gcx resources get/pull/push/delete` for both `user` and `tenant` scope. See ADR-021.
 
 | File | Purpose |
 |------|---------|
