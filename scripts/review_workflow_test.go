@@ -15,7 +15,7 @@ import (
 
 const (
 	workflowPath = "../.github/workflows/claude-code-review.yml"
-	skillPath    = "../.claude/skills/review-pr/SKILL.md"
+	skillPath    = "../.agents/skills/review-pr/SKILL.md"
 	publishStep  = "Publish review"
 	reviewHead   = "abc1230000000000000000000000000000000000"
 	movedHead    = "def4560000000000000000000000000000000000"

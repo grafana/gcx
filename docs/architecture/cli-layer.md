@@ -216,7 +216,7 @@ own placement analysis regardless of tier. Provider commands over a native
 see `CONSTITUTION.md` § Architecture Invariants); dashboards still hand-rolls this
 access until its pending migration lands.
 
-See `.claude/skills/add-provider/references/decision-tree.md` for the full
+See [provider placement](../../.agents/skills/contribute/references/provider-placement.md) for the full
 decision tree.
 
 ### Provider command structure
@@ -297,8 +297,9 @@ func (l *ConfigLoader) LoadGrafanaConfig(ctx context.Context) (config.Namespaced
 
 ### Adding a new provider
 
-Follow the `/add-provider` skill or `docs/reference/provider-guide.md` for the
-step-by-step implementation guide.
+Start with the [`contribute`](../../.agents/skills/contribute/SKILL.md) skill and
+its provider implementation reference; [provider-guide.md](../reference/provider-guide.md)
+contains the canonical implementation recipe.
 
 ---
 

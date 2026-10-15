@@ -1,6 +1,6 @@
 ---
 name: update-rfc
-description: Reconcile an existing engineering RFC with implemented changes and verification evidence, including PoCs and verified or archived OpenSpec changes. Run when explicitly instructed to update an RFC after verified implementation. After OpenSpec archival, suggest this follow-up without starting it automatically.
+description: Reconcile an existing engineering RFC with implemented changes and verification evidence, including PoCs and verified implementation work. Run when explicitly instructed to update an RFC after verified implementation.
 ---
 
 # Update RFC
@@ -11,7 +11,7 @@ This is a public repository. Use public evidence or independently developed mate
 
 ## Invocation
 
-Run on an explicit instruction to update the RFC, including a combined request such as “verify, archive, and update the RFC.” After archival, suggest “Would you like to update the RFC?” if that work has not already been requested. Archival alone is not authorization to run this skill. This guidance does not install hooks or modify other archival workflows.
+Run on an explicit instruction to update the RFC, including a combined request such as “verify the implementation and update the RFC.” Completing implementation alone is not authorization to run this skill.
 
 ## Locate the RFC and evidence
 
@@ -19,13 +19,13 @@ Read repository guidance, the target RFC, and the supplied implementation refere
 
 Establish the implementation boundary: change or commit range, relevant code and configuration, verification results, and environment. A local diff is evidence of local work, not of merge or deployment. Prefer focused reads of affected interfaces and behaviors to a repository-wide audit.
 
-When OpenSpec is present, inspect the relevant proposal, design, delta specs, tasks and available verification findings. For archived changes, locate the actual archive and inspect any corresponding canonical specifications. Confirm the mapping to the code rather than inferring completion from an archive directory or checked task list. OpenSpec is optional; code, diffs, tests and other design records support the same workflow. This skill does not verify or archive an OpenSpec change on the user's behalf unless separately requested.
+Inspect relevant design records, implementation plans and available verification findings. Confirm their mapping to the code rather than inferring completion from a checked task list.
 
 Build a working comparison between affected RFC claims and evidence: unchanged, implemented as designed, implemented differently, partially implemented, deferred, or still unknown. Keep this comparison in working context or required private notes, not a new companion design document.
 
 ## Reconcile intent with implementation
 
-This skill normally runs after implementation has already been verified. Use existing proof: OpenSpec specifications and verification findings, other documentation, PRs, code, and recorded test or runtime results. Inspect what that evidence establishes and its scope; do not initiate new implementation verification or rerun tests. If verification is missing, ambiguous, or contradictory, pause the affected update and ask the human to clarify or provide the existing proof. Never infer a passed check from code alone.
+This skill normally runs after implementation has already been verified. Use existing proof: specifications, verification findings, documentation, PRs, code, and recorded test or runtime results. Inspect what that evidence establishes and its scope; do not initiate new implementation verification or rerun tests. If verification is missing, ambiguous, or contradictory, pause the affected update and ask the human to clarify or provide the existing proof. Never infer a passed check from code alone.
 
 Apply these distinctions:
 

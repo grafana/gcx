@@ -88,7 +88,7 @@ treating a kind as a candidate.
 |-------|------------------------------------------|
 | `TestAgentConformance_EveryFiniteLeafEmitsOneJSONValue` | Runs every finite/artifact/stream leaf with NO arguments in a fully isolated environment (empty HOME, closed stdin, 20s timeout, agent mode on). Failures: cobra usage text on stdout instead of one JSON error document; a prompt or editor that blocks (interactive paths must not block in agent mode); in-band `exitCode` disagreeing with the process exit code. |
 | `TestConsistency_*` family | The wiring table above. The error text names the file to edit. |
-| `TestSkillsGcxInvocationsMatchCommandTree` | Every gcx invocation in skill markdown — shell fences and inline backtick spans, `gcx` and `bin/gcx` forms — must resolve against the real tree. Covers **both** trees: the embedded `claude-plugin/skills/` bundle and repo-local `.claude/skills/`. Each tree must yield discovered documents, a `SKILL.md` per skill root, and at least one invocation — there is no invocation-count floor. |
+| `TestSkillsGcxInvocationsMatchCommandTree` | Every gcx invocation in skill markdown — shell fences and inline backtick spans, `gcx` and `bin/gcx` forms — must resolve against the real tree. Covers **both** trees: the embedded `claude-plugin/skills/` bundle and repo-local `.agents/skills/`. Each tree must yield discovered documents, a `SKILL.md` per skill root, and at least one invocation — there is no invocation-count floor. |
 
 These enforce wiring and protocol shape only. Request mapping, filtering
 semantics, pagination and error taxonomy are proven by YOUR package tests
@@ -114,7 +114,7 @@ validate-skills, lint, tests, build and docs — you do not need to run those
 separately as well.
 
 For a skill-only change — both gates cover the embedded `claude-plugin/skills/`
-bundle **and** repo-local `.claude/skills/`, so either tree is checked:
+bundle **and** repo-local `.agents/skills/`, so either tree is checked:
 
 ```bash
 mise run validate-skills

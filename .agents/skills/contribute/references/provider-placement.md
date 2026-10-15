@@ -1,10 +1,7 @@
-# Decision Tree: Provider vs Resources Command
+# Provider versus resource placement
 
-> **Scope: direct invocation of `add-provider`.** If you arrived from
-> `integrate-with-gcx`, its placement section already settled the tier with
-> probe evidence — record that verdict and skip this file. Re-deriving it here
-> duplicates work and risks contradicting a decision that was made against the
-> live API.
+Consult only when placement remains unresolved; reuse an accepted placement
+decision rather than deriving it again.
 
 When should you create a new provider vs using the existing `gcx resources` command?
 
@@ -31,11 +28,9 @@ and discoverable on Grafana's /apis endpoint?
               Check if it's a UI-only feature or if the API is internal.
               → Cannot integrate without an accessible API.
 
-NOTE: if the design that falls out is a commands-only provider calling the
-K8s dynamic client, CONSTITUTION.md § Architecture Invariants records
-internal/providers/dashboards/ as the ONE documented exception (ADR 016).
-A second extends that exception: explicit human approval and a
-CONSTITUTION change are required before building it.
+NOTE: provider commands over native /apis resources must use the shared
+native binding (internal/providers/native), as required by CONSTITUTION.md.
+Do not call the K8s dynamic client or build a discovery registry directly.
 ```
 
 ## Detailed Criteria
