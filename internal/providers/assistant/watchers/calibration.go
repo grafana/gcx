@@ -26,7 +26,7 @@ type createResult struct {
 }
 
 func emitCreate(cmd *cobra.Command, opts *cmdio.Options, client *clientwatchers.Client, crud *adapter.TypedCRUD[watcher.Watcher], saved watcher.Watcher, partial *watcher.PartialCompletionError) error {
-	result := createResult{mutationResult: newMutationResult("created", saved), Calibration: calibrationRequestResult{Outcome: "not-requested", Guidance: "Resolve the configuration failure, then calibrate in Grafana. Do not rerun create."}}
+	result := createResult{mutationResult: newMutationResult("created", saved), Calibration: calibrationRequestResult{Outcome: "not-requested", Guidance: "Resolve the reported failure, then calibrate in Grafana. Do not rerun create."}}
 	var failure error
 	if partial != nil {
 		failure = partial
