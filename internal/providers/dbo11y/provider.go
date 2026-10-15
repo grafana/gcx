@@ -1,12 +1,10 @@
 // Package dbo11y implements the `gcx dbo11y` provider, exposing Grafana
-// Database Observability data (postgres_exporter + pg_stat_statements metrics
-// collected via the `database_observability.postgres` Alloy component /
-// `integrations/db-o11y` job convention) as CLI commands.
+// Database Observability data as CLI commands via the Database
+// Observability API (see client.go).
 package dbo11y
 
 import (
 	"github.com/grafana/gcx/internal/providers"
-	"github.com/grafana/gcx/internal/providers/dbo11y/instances"
 	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
 )
@@ -51,7 +49,7 @@ func (p *DBO11yProvider) Commands() []*cobra.Command {
 	// Bind config flags on the parent — all subcommands inherit these.
 	loader.BindFlags(cmd.PersistentFlags())
 
-	cmd.AddCommand(instances.Commands(loader))
+	cmd.AddCommand(instancesCommand(loader))
 	return []*cobra.Command{cmd}
 }
 

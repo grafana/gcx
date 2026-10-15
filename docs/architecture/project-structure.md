@@ -70,8 +70,7 @@ gcx/
 │   │   ├── appo11y/          # App Observability provider (singleton config resources)
 │   │   │   ├── overrides/    # MetricsGeneratorConfig with ETag concurrency
 │   │   │   └── settings/     # PluginSettings
-│   │   ├── dbo11y/           # Database Observability provider (query/discovery views, no CRUD resources)
-│   │   │   └── instances/    # Instance inventory + health/query-performance snapshot from postgres_exporter + pg_stat_statements
+│   │   ├── dbo11y/           # Database Observability provider — single package: instance inventory and query performance read from the Database Observability API (no CRUD resources)
 │   │   ├── alert/            # Alert provider (rules, groups, provisioning, native routing trees/time intervals/template groups)
 │   │   ├── assistant/        # Assistant provider — lift-and-shift of the `gcx assistant` command tree; TypedRegistrations() registers MCPServer and Watcher configuration adapters; watcher commands live in internal/providers/assistant/watchers/; exports ResolveClientOptions and RequireGrafanaCloud for other command trees embedding Assistant calls (used by `instrumentation check --fix-plan=assistant`)
 │   │   ├── dashboards/       # Dashboards provider (CRUD, search, version history, snapshot) — CLI: `gcx dashboards`

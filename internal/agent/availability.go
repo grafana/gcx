@@ -30,6 +30,7 @@ var cloudOnlyPaths = []string{
 	"gcx kg",                   // Knowledge Graph / Asserts — Grafana Cloud
 	"gcx frontend",             // Frontend Observability — Grafana Cloud
 	"gcx appo11y",              // Application Observability — Grafana Cloud
+	"gcx dbo11y",               // Database Observability — Grafana Cloud
 	"gcx agento11y",            // Agent Observability — Grafana Cloud
 	// Instrumentation Hub — Grafana Cloud service. Narrowed to specific
 	// subtrees because `gcx instrumentation check`, `explain`, and

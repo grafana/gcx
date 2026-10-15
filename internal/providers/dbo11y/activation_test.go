@@ -1,4 +1,4 @@
-package instances //nolint:testpackage // Tests cover unexported activation-check logic.
+package dbo11y //nolint:testpackage // Tests cover unexported activation-check logic.
 
 import (
 	"context"
