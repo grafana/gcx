@@ -8,8 +8,10 @@ import (
 	"os"
 	"strings"
 
+	"github.com/grafana/gcx/internal/config"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -166,25 +168,19 @@ func newApplySourcemapCommand(loader sourcemapUploadConfigLoader) *cobra.Command
 			}
 
 			ctx := cmd.Context()
-
-			// Resolve the app before anything else, so a wrong argument fails
-			// before the Faro API URL is discovered and cached.
-			crud, _, err := NewTypedCRUD(ctx, loader)
-			if err != nil {
-				return err
-			}
-			target, err := resolveApp(ctx, crud, args[0])
-			if err != nil {
-				return err
-			}
-			appID := target.Spec.ID
-
 			snapshot, err := loader.LoadDirectProviderSnapshot(ctx, providers.DirectProviderPolicy{
 				ProviderName:    "faro",
 				EndpointKeys:    []string{"faro-api-url"},
 				CredentialEnv:   "GRAFANA_CLOUD_TOKEN",
 				RejectAutoLocal: true,
 			})
+			if err != nil {
+				return err
+			}
+
+			// Resolve the app before the Faro API URL is discovered and
+			// cached, so a wrong argument does not write to the config.
+			appID, err := resolveUploadAppID(ctx, snapshot.GrafanaConfig, args[0])
 			if err != nil {
 				return err
 			}
@@ -325,6 +321,27 @@ func newDeleteSourcemapCommand(loader RESTConfigLoader) *cobra.Command {
 	}
 	opts.setup(cmd.Flags())
 	return cmd
+}
+
+// resolveUploadAppID finds the ID of the app that arg names. A build pipeline
+// can upload with only a Cloud token, so without a Grafana config the ID comes
+// from the slug-id or numeric ID itself.
+func resolveUploadAppID(ctx context.Context, grafanaCfg *config.NamespacedRESTConfig, arg string) (string, error) {
+	if grafanaCfg == nil {
+		if id, ok := adapter.ExtractIDFromSlug(arg); ok {
+			return id, nil
+		}
+		return "", fmt.Errorf("faro app %q: a display name needs a Grafana server and token in the context; pass the app's slug-id or numeric ID", arg)
+	}
+	client, err := NewClient(*grafanaCfg)
+	if err != nil {
+		return "", fmt.Errorf("failed to create faro client: %w", err)
+	}
+	target, err := resolveApp(ctx, newAppCRUD(client, grafanaCfg.Namespace), arg)
+	if err != nil {
+		return "", err
+	}
+	return target.Spec.ID, nil
 }
 
 // resolveFaroAPIURL resolves the Faro API URL from provider config cache,

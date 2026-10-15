@@ -196,6 +196,39 @@ func TestFaroCommands_AcceptDisplayName(t *testing.T) {
 	}
 }
 
+// TestFaroApplySourcemap_CloudTokenOnly checks that a context with only a
+// Cloud token, as in a build pipeline, can still upload by slug-id or ID.
+func TestFaroApplySourcemap_CloudTokenOnly(t *testing.T) {
+	sourcemap := writeTestFile(t, "bundle.js.map", `{"version":3}`)
+	tests := []struct {
+		name      string
+		arg       string
+		wantCalls []string
+		wantErr   string
+	}{
+		{name: "slug-id", arg: "my-web-app-8", wantCalls: []string{"UPLOAD 8/sourcemaps/b1"}},
+		{name: "numeric ID", arg: "8", wantCalls: []string{"UPLOAD 8/sourcemaps/b1"}},
+		{name: "display name", arg: "My Web App", wantErr: "pass the app's slug-id or numeric ID"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			server, api := newFakeAppAPI(t, map[string]any{"id": 8, "name": "My Web App"})
+			cmd := newApplySourcemapCommand(&fakeConfigLoader{faroAPIURL: server.URL})
+			cmd.SetOut(io.Discard)
+			cmd.SetErr(io.Discard)
+			cmd.SetArgs([]string{tc.arg, "-f", sourcemap, "--bundle-id", "b1", "-o", "json"})
+			err := cmd.Execute()
+			if tc.wantErr != "" {
+				require.ErrorContains(t, err, tc.wantErr)
+				assert.Empty(t, api.calls)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantCalls, api.calls)
+		})
+	}
+}
+
 func TestFaroUpdate_RefusesAnotherAppsName(t *testing.T) {
 	tests := []struct {
 		name      string
