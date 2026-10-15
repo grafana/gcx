@@ -29,14 +29,34 @@ func NewContactPointsDeleteCommandForTest(loader GrafanaConfigLoader) *cobra.Com
 	return newContactPointsDeleteCommand(loader)
 }
 
+func NewContactPointsCreateCommandForTest(loader GrafanaConfigLoader) *cobra.Command {
+	return newContactPointsCreateCommand(loader)
+}
+
+func NewContactPointsUpdateCommandForTest(loader GrafanaConfigLoader) *cobra.Command {
+	return newContactPointsUpdateCommand(loader)
+}
+
 // NewMuteTimingsDeleteCommandForTest wraps newMuteTimingsDeleteCommand.
 func NewMuteTimingsDeleteCommandForTest(loader GrafanaConfigLoader) *cobra.Command {
 	return newMuteTimingsDeleteCommand(loader)
 }
 
+func NewMuteTimingsCreateCommandForTest(loader GrafanaConfigLoader) *cobra.Command {
+	return newMuteTimingsCreateCommand(loader)
+}
+
+func NewMuteTimingsUpdateCommandForTest(loader GrafanaConfigLoader) *cobra.Command {
+	return newMuteTimingsUpdateCommand(loader)
+}
+
 // NewTemplatesDeleteCommandForTest wraps newTemplatesDeleteCommand.
 func NewTemplatesDeleteCommandForTest(loader GrafanaConfigLoader) *cobra.Command {
 	return newTemplatesDeleteCommand(loader)
+}
+
+func NewTemplatesUpsertCommandForTest(loader GrafanaConfigLoader) *cobra.Command {
+	return newTemplatesUpsertCommand(loader)
 }
 
 // NewNotificationPoliciesSetCommandForTest wraps newNotificationPoliciesSetCommand.

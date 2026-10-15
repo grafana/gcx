@@ -42,12 +42,14 @@ func (p *KGProvider) Commands() []*cobra.Command {
 		newStatusCommand(loader),
 		// Configuration upload
 		newRulesCommand(loader),
+		newThresholdsCommand(loader),
 		newModelRulesCommand(loader),
 		newSuppressionsCommand(loader),
 		newNotificationsCommand(loader),
 		newRelabelRulesCommand(loader),
 		// Entities
 		newEntitiesCommand(loader),
+		newGraphCommand(loader),
 		// Relationships (custom, API-origin)
 		newRelationshipsCommand(loader),
 		// Assertions

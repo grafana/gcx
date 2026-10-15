@@ -29,7 +29,7 @@ func TestWatcherValidation(t *testing.T) {
 		{"subsecond interval", func(s map[string]any) { s["interval"] = "500ms" }, "interval"},
 		{"below target range", func(s map[string]any) { s["interval"] = "1s" }, "interval"},
 		{"above target range", func(s map[string]any) { s["interval"] = "1d" }, "interval"},
-		{"sensitivity enum", func(s map[string]any) { s["sensitivity"] = "maximum" }, "sensitivity"},
+		{"sensitivity enum", func(s map[string]any) { s["sensitivity"] = " " }, "sensitivity"},
 		{"timestamp offset", func(s map[string]any) { s["autoStop"] = map[string]any{"at": "2030-01-01T18:00:00"} }, "autoStop.at"},
 		{"timestamp date", func(s map[string]any) { s["autoStop"] = map[string]any{"at": "2030-02-30T18:00:00Z"} }, "autoStop.at"},
 		{"stop requires time", func(s map[string]any) { s["autoStop"] = map[string]any{"enabled": true} }, "autoStop.at"},
@@ -39,7 +39,7 @@ func TestWatcherValidation(t *testing.T) {
 		}, "slack.channelId"},
 		{"teams requires channel", func(s map[string]any) { s["notifications"] = map[string]any{"teams": map[string]any{"enabled": true}} }, "teams.channelId"},
 		{"severity enum", func(s map[string]any) {
-			s["notifications"] = map[string]any{"webhook": map[string]any{"severity": "warning"}}
+			s["notifications"] = map[string]any{"webhook": map[string]any{"severity": " "}}
 		}, "webhook.severity"},
 		{"unknown nested field", func(s map[string]any) { s["investigation"] = map[string]any{"teams": []string{"example"}} }, "unknown field"},
 		{"webhook requires URL", func(s map[string]any) {

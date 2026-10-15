@@ -3,7 +3,6 @@ package resources_test
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -34,6 +33,11 @@ func watcherFixture(id, title string) watchers.Watcher {
 }
 
 func watcherResourceCLI(t *testing.T, fixture *watcherstest.Server) func(...string) ([]byte, error) {
+	t.Helper()
+	return watcherResourceCLIWithDiagnostics(t, fixture, nil)
+}
+
+func watcherResourceCLIWithDiagnostics(t *testing.T, fixture *watcherstest.Server, diagnostics *bytes.Buffer) func(...string) ([]byte, error) {
 	t.Helper()
 	t.Setenv("GCX_DISCOVERY_CACHE_DIR", t.TempDir())
 	t.Setenv("GCX_KEYCHAIN", "off")
@@ -78,6 +82,9 @@ func watcherResourceCLI(t *testing.T, fixture *watcherstest.Server) func(...stri
 		var stdout, stderr bytes.Buffer
 		root.SetOut(&stdout)
 		root.SetErr(&stderr)
+		if diagnostics != nil {
+			root.SetErr(diagnostics)
+		}
 		root.SetArgs(append([]string{"resources", "--config", path, "--context", "test"}, args...))
 		err := root.ExecuteContext(t.Context())
 		return stdout.Bytes(), err
@@ -454,11 +461,11 @@ func TestWatcherGenericGetByNameAndIDMatchesPulledManifest(t *testing.T) {
 	assert.Equal(t, byID.GetAnnotations(), pulled.GetAnnotations())
 }
 
-func TestWatcherGenericPushAndDeleteAreUnsupportedWithoutMutationRequests(t *testing.T) {
+func TestWatcherGenericPushAndDeleteMutationPaths(t *testing.T) {
 	for _, operation := range []string{"push", "delete"} {
 		for _, dryRun := range []bool{false, true} {
 			t.Run(operation+"/dryRun="+strconv.FormatBool(dryRun), func(t *testing.T) {
-				fixture := &watcherstest.Server{Current: [][]watchers.Watcher{{watcherFixture("server-id", "Unique")}}}
+				fixture := &watcherstest.Server{AllowWrites: true, Current: [][]watchers.Watcher{{watcherFixture("server-id", "Unique")}}}
 				execute := watcherResourceCLI(t, fixture)
 				dest := t.TempDir()
 				_, err := execute("pull", "watcher/server-id", "--path", dest)
@@ -471,44 +478,44 @@ func TestWatcherGenericPushAndDeleteAreUnsupportedWithoutMutationRequests(t *tes
 					args = append(args, "--dry-run")
 				}
 				output, err := execute(args...)
-				requireWatcherPartialFailure(t, err)
+				require.NoError(t, err)
 				var result cmdio.BatchMutation
 				require.NoError(t, json.Unmarshal(output, &result), string(output))
-				assert.Zero(t, result.Summary.Succeeded)
-				assert.Equal(t, 1, result.Summary.Failed)
-				assert.Zero(t, result.Summary.Skipped)
-				require.Len(t, result.Failures, 1)
-				assert.Contains(t, result.Failures[0].Error, "Watcher "+operation+" is not supported yet")
-				assert.Contains(t, result.Failures[0].Error, "Grafana")
-				assert.Zero(t, fixture.MutationCalls())
+				assert.Zero(t, result.Summary.Failed)
+				if dryRun {
+					assert.Equal(t, 1, result.Summary.Skipped)
+					assert.Zero(t, fixture.MutationCalls())
+				} else {
+					assert.Equal(t, 1, result.Summary.Succeeded)
+					if operation == "delete" {
+						assert.Equal(t, 1, fixture.MutationCalls())
+					} else {
+						assert.Zero(t, fixture.MutationCalls())
+					}
+				}
 			})
 		}
 	}
 }
 
-func TestWatcherGenericDeleteSelectorsRefuseBeforeConfigurationReads(t *testing.T) {
-	for _, fixture := range []*watcherstest.Server{
-		{},
-		{CurrentStatus: http.StatusForbidden},
-		{Current: [][]watchers.Watcher{{watcherFixture("one", "Same title"), watcherFixture("two", "Same-title")}}},
-		{Current: [][]watchers.Watcher{{watcherFixture("one", "Unique")}}, EnrollmentStatus: map[string]int{"one": http.StatusForbidden}},
-	} {
-		execute := watcherResourceCLI(t, fixture)
-		for _, selector := range []string{"watchers", "watcher/one", "watchers." + watcher.WatcherVersion + "." + watcher.WatcherAPIGroup + "/one"} {
-			for _, dryRun := range []bool{false, true} {
-				args := []string{"delete", selector, "--yes", "--output", "json"}
-				if dryRun {
-					args = append(args, "--dry-run")
-				}
-				_, err := execute(args...)
-				require.ErrorIs(t, err, errors.ErrUnsupported)
-				assert.Contains(t, err.Error(), "Watcher delete is not supported yet")
-				assert.Zero(t, fixture.CollectionReads(false))
-				assert.Zero(t, fixture.CollectionReads(true))
-				assert.Zero(t, fixture.EnrollmentReads("one"))
-				assert.Zero(t, fixture.MutationCalls())
+func TestWatcherGenericDeleteAvoidsConfigurationReads(t *testing.T) {
+	for _, dryRun := range []bool{false, true} {
+		t.Run(strconv.FormatBool(dryRun), func(t *testing.T) {
+			fixture := &watcherstest.Server{AllowWrites: true, Current: [][]watchers.Watcher{{watcherFixture("one", "Same title"), watcherFixture("two", "Same-title")}}, DetailStatus: map[string]int{"one": http.StatusForbidden}, EnrollmentStatus: map[string]int{"one": http.StatusNotImplemented}}
+			execute := watcherResourceCLI(t, fixture)
+			args := []string{"delete", "watcher/one", "--yes", "--output", "json"}
+			if dryRun {
+				args = append(args, "--dry-run")
 			}
-		}
+			output, err := execute(args...)
+			require.NoError(t, err, string(output))
+			assert.Zero(t, fixture.EnrollmentReads("one"))
+			if dryRun {
+				assert.Zero(t, fixture.MutationCalls())
+			} else {
+				assert.Equal(t, 1, fixture.MutationCalls())
+			}
+		})
 	}
 }
 
@@ -590,5 +597,58 @@ func TestWatcherGenericSelectorFreePullIndividualUnavailableIsFailure(t *testing
 			require.ErrorIs(t, err, os.ErrNotExist)
 			assert.Zero(t, fixture.MutationCalls())
 		})
+	}
+}
+
+func TestWatcherGenericDryRunWarningsWithoutTargetOrSecretReads(t *testing.T) {
+	for _, verb := range []string{"push", "validate"} {
+		t.Run(verb, func(t *testing.T) {
+			fixture := &watcherstest.Server{CurrentStatus: http.StatusForbidden, ArchivedStatus: http.StatusForbidden}
+			var diagnostics bytes.Buffer
+			execute := watcherResourceCLIWithDiagnostics(t, fixture, &diagnostics)
+			dir := t.TempDir()
+			obj := map[string]any{"apiVersion": watcher.WatcherAPIVersion, "kind": watcher.WatcherKind, "metadata": map[string]any{"name": "local"}, "spec": map[string]any{"title": "Local", "prompt": "Watch", "sensitivity": "future", "notifications": map[string]any{"webhook": map[string]any{"url": map[string]any{"fromFile": "/must-not-read"}}}}}
+			data, err := json.Marshal(obj)
+			require.NoError(t, err)
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "local.json"), data, 0600))
+			args := []string{verb, "--path", dir, "-o", "json"}
+			if verb == "push" {
+				args = append(args, "--dry-run")
+			}
+			output, err := execute(args...)
+			require.NoError(t, err, string(output))
+			assert.Contains(t, diagnostics.String(), "spec.sensitivity")
+			assert.Contains(t, diagnostics.String(), "future")
+			assert.Contains(t, diagnostics.String(), "known values")
+			assert.Zero(t, fixture.CollectionReads(false))
+			assert.Zero(t, fixture.CollectionReads(true))
+			assert.Zero(t, fixture.MutationCalls())
+		})
+	}
+}
+
+func TestWatcherGenericPartialCompletionAlwaysEmitsSavedReceipt(t *testing.T) {
+	for _, policy := range []string{"fail", "ignore", "abort"} {
+		for _, status := range []int{http.StatusForbidden, http.StatusServiceUnavailable} {
+			t.Run(policy+"/"+strconv.Itoa(status), func(t *testing.T) {
+				fixture := &watcherstest.Server{AllowWrites: true, Current: [][]watchers.Watcher{{watcherFixture("id-one", "Unique")}}, EnrollmentWriteStatus: map[string]int{"id-one": status}}
+				execute := watcherResourceCLI(t, fixture)
+				dir := t.TempDir()
+				obj := map[string]any{"apiVersion": watcher.WatcherAPIVersion, "kind": watcher.WatcherKind, "metadata": map[string]any{"name": "unique", "annotations": map[string]any{watcher.WatcherIDAnnotation: "id-one"}}, "spec": map[string]any{"title": "Unique", "prompt": "Updated prompt", "interval": "5m", "automaticRecalibration": map[string]any{"enabled": true}}}
+				data, err := json.Marshal(obj)
+				require.NoError(t, err)
+				path := filepath.Join(dir, "watcher.json")
+				require.NoError(t, os.WriteFile(path, data, 0600))
+				output, err := execute("push", "--path", path, "--on-error", policy, "-o", "json")
+				requireWatcherPartialFailure(t, err)
+				var result cmdio.BatchMutation
+				require.NoError(t, json.Unmarshal(output, &result))
+				require.Len(t, result.Failures, 1)
+				assert.Contains(t, result.Failures[0].Error, "id-one")
+				assert.Contains(t, result.Failures[0].Error, "configuration saved")
+				assert.Contains(t, result.Failures[0].Error, "enrollment failed")
+				assert.Equal(t, 2, fixture.MutationCalls())
+			})
+		}
 	}
 }

@@ -386,12 +386,9 @@ they are closed rather than forgotten.
 
 ## T11: Skills and generated docs
 
-Regenerate references and inspect the generated page for your command:
-
-```bash
-GCX_AGENT_MODE=false mise run reference
-git diff --stat docs/reference/
-```
+Keep the released reference unchanged in command PRs. `mise run tag` generates
+references with the upcoming version and includes them in the release changelog
+PR. Run `mise run docs` to validate the checked-in pages.
 
 Underscore-prefixed identifiers (a metrics `__name__`) render as bold markdown
 unless backticked. Help text carrying a removed config key or a stale default is

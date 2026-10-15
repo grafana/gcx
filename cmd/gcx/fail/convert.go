@@ -69,6 +69,7 @@ func ErrorToDetailedError(err error) *gcxerrors.DetailedError {
 		convertAlreadyReported,             // Command already rendered a complete diagnostic report
 		convertUnknownFieldSelectionErrors, // --json unknown-field validation
 		convertJQRuntimeErrors,             // --jq runtime failures — includes output shape summary
+		convertSavedMutationErrors,
 		convertPartialFailureErrors,
 		convertUsageErrors,
 		convertCobraUnknownCommandErrors,
@@ -1822,4 +1823,12 @@ func convertContextCanceled(err error) (*gcxerrors.DetailedError, bool) {
 	}
 
 	return nil, false
+}
+
+func convertSavedMutationErrors(err error) (*gcxerrors.DetailedError, bool) {
+	var saved adapter.SavedMutationError
+	if !errors.As(err, &saved) || !saved.MutationWasSaved() {
+		return nil, false
+	}
+	return &gcxerrors.DetailedError{Summary: gcxerrors.SummaryPartialFailure, Details: saved.Error(), ExitCode: new(gcxerrors.ExitPartialFailure), Suggestions: []string{"Inspect the saved resource, resolve the failed stage, then reapply the desired manifest."}}, true
 }

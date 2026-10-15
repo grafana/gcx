@@ -197,7 +197,7 @@ If you want to persist this configuration, [create a context](#define-contexts).
 
 ## Configuration reference
 
-This schema describes configuration fields and their types in gcx **v1.5.0**.
+This schema describes configuration fields and their types in gcx **v1.6.0**.
 
 ```yaml
 # Config holds the information needed to connect to remote Grafana instances.

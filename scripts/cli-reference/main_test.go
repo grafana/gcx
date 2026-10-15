@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"regexp"
 	"strings"
 	"testing"
@@ -8,7 +9,32 @@ import (
 	"github.com/grafana/gcx/cmd/gcx/root"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
+	"github.com/yuin/goldmark"
 )
+
+func TestLongHelpShellComments(t *testing.T) {
+	for _, description := range []string{
+		"Recommended workflow:\n\n  gcx dashboards get <name> -o yaml > dashboard.yaml\n  # edit dashboard.yaml\n  gcx dashboards update <name> -f dashboard.yaml",
+		"Examples:\n  # List all workloads\n  gcx instrumentation services list\n\n  # Filter to a specific cluster\n  gcx instrumentation services list --cluster <cluster>",
+	} {
+		cmd := &cobra.Command{Use: "gcx", Long: description}
+		page := render(cmd, "v1.2.3", "# Env")
+		_, body, found := strings.Cut(page, "\n---\n")
+		require.True(t, found)
+		var html bytes.Buffer
+		require.NoError(t, goldmark.Convert([]byte(body), &html))
+		require.Equal(t, 1, strings.Count(html.String(), "<h1>"), html.String())
+		require.Contains(t, html.String(), "<h1>CLI reference</h1>")
+		require.Less(t, strings.Index(html.String(), "<h1>CLI reference</h1>"), strings.Index(html.String(), "This reference describes"))
+		require.Contains(t, html.String(), `<pre><code class="language-shell">`)
+		require.Contains(t, html.String(), "  # ")
+		if strings.Contains(description, "<name>") {
+			require.Contains(t, html.String(), "&lt;name&gt;")
+		} else {
+			require.Contains(t, html.String(), "&lt;cluster&gt;")
+		}
+	}
+}
 
 func TestRenderCommands(t *testing.T) {
 	for _, tc := range []struct {
@@ -58,6 +84,10 @@ func TestFullCommandCoverageAndLinks(t *testing.T) {
 	cmd := root.Command("v1.2.3")
 	cmd.Use = "gcx"
 	page := render(cmd, "v1.2.3", "# Env\n\n## `GCX_TEST`\n\nTest variable")
+	var html bytes.Buffer
+	require.NoError(t, goldmark.Convert([]byte(page), &html))
+	require.Equal(t, 1, strings.Count(html.String(), "<h1>"))
+	require.Contains(t, html.String(), "<h1>CLI reference</h1>")
 	ids := map[string]bool{"commands": true, "environment-variables": true}
 	for _, match := range regexp.MustCompile(`\{#([^}]+)\}`).FindAllStringSubmatch(page, -1) {
 		require.False(t, ids[match[1]], "duplicate anchor %s", match[1])

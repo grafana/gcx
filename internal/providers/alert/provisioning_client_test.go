@@ -170,6 +170,7 @@ func TestClient_Export_ReturnsRawBody(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/api/v1/provisioning/contact-points/export", r.URL.Path)
 		assert.Equal(t, "yaml", r.URL.Query().Get("format"))
+		assert.Empty(t, r.Header.Values("X-Disable-Provenance"))
 		w.Header().Set("Content-Type", "application/yaml")
 		_, _ = w.Write([]byte("apiVersion: 1\ncontactPoints: []\n"))
 	}))
@@ -191,4 +192,54 @@ func TestClient_doJSON_NotFoundWrapsSentinelError(t *testing.T) {
 	_, err := client.GetMuteTiming(context.Background(), "missing")
 	require.Error(t, err)
 	assert.ErrorIs(t, err, alert.ErrProvisioningNotFound)
+}
+
+func TestClient_ProvisioningRequestProvenance(t *testing.T) {
+	ctx := context.Background()
+	tests := []struct {
+		name       string
+		call       func(*alert.Client) error
+		wantHeader bool
+	}{
+		{"post default", func(c *alert.Client) error {
+			_, err := c.CreateContactPoint(ctx, alert.ContactPoint{Name: "test"})
+			return err
+		}, true},
+		{"post opt-out", func(c *alert.Client) error {
+			_, err := c.CreateContactPoint(ctx, alert.ContactPoint{Name: "test"}, false)
+			return err
+		}, false},
+		{"put default", func(c *alert.Client) error {
+			return c.SetNotificationPolicy(ctx, alert.NotificationPolicy{Receiver: "test"})
+		}, true},
+		{"put opt-out", func(c *alert.Client) error {
+			return c.SetNotificationPolicy(ctx, alert.NotificationPolicy{Receiver: "test"}, false)
+		}, false},
+		{"get", func(c *alert.Client) error {
+			_, err := c.ListContactPoints(ctx)
+			return err
+		}, false},
+		{"delete", func(c *alert.Client) error {
+			return c.DeleteContactPoint(ctx, "cp")
+		}, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if tt.wantHeader {
+					assert.Equal(t, []string{"true"}, r.Header.Values("X-Disable-Provenance"))
+				} else {
+					assert.Empty(t, r.Header.Values("X-Disable-Provenance"))
+				}
+				if r.Method == http.MethodGet {
+					writeJSON(w, []alert.ContactPoint{})
+				} else {
+					w.WriteHeader(http.StatusAccepted)
+				}
+			}))
+			defer server.Close()
+			require.NoError(t, tt.call(newTestClient(t, server)))
+		})
+	}
 }

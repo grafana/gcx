@@ -76,7 +76,7 @@ much easier to say yes to.
 "Not gcx" usually means a backend prerequisite: gcx wraps product APIs, it
 does not fix them. Missing pagination, unstable payloads or unclear RBAC need
 to be solved by the owning team first. In the meantime,
-[`gcx api`](docs/reference/cli/gcx_api.md) gives raw access to any Grafana API.
+[`gcx api`](docs/sources/cli-reference.md#gcx-api-gcx-api) gives raw access to any Grafana API.
 
 ## Prefer extending a command over adding one
 
@@ -111,16 +111,15 @@ is how we keep that cost from landing on you as a rejection.
 
 ## Conventions we enforce
 
-Run `mise run gate` (lint + tests + build) before pushing, and
-`GCX_AGENT_MODE=false mise run reference` if you touched commands, flags,
-config or env vars. The specifics:
+Run `mise run gate` (lint + tests + build) before pushing. The specifics:
 
 - **Signed commits are required.** Every commit must have a verified
   signature — this is
   [a Grafana organisation-wide policy](https://community.grafana.com/t/action-required-signed-commits-mandatory-for-all-grafana-repositories/163404).
   Set it up once; it is the most common reason a finished PR sits unmerged.
-- **Generated reference docs must not drift.** The `Documentation` check runs
-  `mise run reference-drift`; regenerate with the command above.
+- **Documentation must build.** The `Documentation` check builds `docs/sources`;
+  run `mise run docs` locally. `mise run tag` includes reference updates in the
+  release changelog PR; leave them unchanged in command PRs.
 - **Every `gcx` invocation in a skill must exist.**
   `TestSkillsGcxInvocationsMatchCommandTree` checks `claude-plugin/skills/`
   and `.claude/skills/` against the real command tree.
@@ -191,10 +190,12 @@ Install mise and set up the project. For macOS:
 $ brew install mise        # or: curl https://mise.run | sh
 $ mise trust               # trust the mise.toml configuration
 $ mise install             # install tools (Go, golangci-lint, etc.)
-$ mise run deps            # install Go modules and Python requirements, including MkDocs
+$ mise run deps            # install Go modules
 ```
 
-Run `mise run deps` before `mise run docs` or `mise run all`.
+Run `mise run deps` before `mise run all`. Documentation builds require Docker.
+`mise run docs` builds `docs/sources` using Grafana’s website image without
+regenerating reference files; `mise run serve-docs` starts a local preview.
 
 Some mise commands for local development:
 

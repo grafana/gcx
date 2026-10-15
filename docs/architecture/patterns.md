@@ -514,6 +514,18 @@ Do not introduce new serialization bridges, dispatch patterns, or
 type-erasure mechanisms. If TypedCRUD does not fit your use case, raise
 the issue for architectural discussion.
 
+### Sanctioned Exception — Provider-Owned Resource Hooks
+
+[ADR-026](../adrs/provider-owned-resource-hooks/026-provider-owned-resource-hooks.md)
+authorizes optional provider-neutral adapter hooks for pull preflight and partial
+multi-get/read reporting, complete batch push preflight, per-item envelope
+mutation dispatch, and identity-only delete selection. These preserve annotations
+and every selected identity before generic probes or name-keyed insertion.
+Domain identity and reconciliation remain in the owning adapter; generic pipelines
+use shared types and never branch on product names. Kinds without hooks retain
+the existing TypedCRUD pipeline. This exception permits only the recorded hook
+seams, not new serialization bridges or a generic reconciliation framework.
+
 ### Sanctioned Exception — Single-Seam Capability Assertion (`adapter.Resource[T]`)
 
 The declarative `adapter.Resource[T]` + `adapter.NewProvider` registration
@@ -914,13 +926,10 @@ TLS handling. The K8s dynamic client path chains
 `NewNamespacedRESTConfig`. The OpenAPI health client manages its own transport
 but consumes the same effective auth method and selected TLS view.
 
-### 5. CI Drift Check Coverage
+### 5. Released CLI Reference
 
-**Observed in:** Project Structure domain notes that the CI `docs` job only
-checks `cli-reference-drift`, not all three reference generators. `mise.toml`
-has `reference-drift` targeting all four.
-
-**Resolution:** `mise.toml` has all four drift check tasks
-(`reference-drift:cli`, `reference-drift:env-var`, `reference-drift:config`,
-`reference-drift:linter-rules`) plus a combined `reference-drift` task. CI now
-invokes `mise run reference-drift` which runs all four.
+The CLI reference is a release snapshot, while `main` may contain
+unreleased commands. CI therefore tests the generator and builds the committed
+Grafana website pages without asserting reference equality against `main`.
+`mise run tag` refreshes the reference from the release checkout with the upcoming
+version and includes it in the changelog PR.

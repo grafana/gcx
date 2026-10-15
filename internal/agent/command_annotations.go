@@ -330,7 +330,8 @@ var commandAnnotations = map[string]annotation{
 	// -----------------------------------------------------------------------
 	// Knowledge Graph provider
 	// -----------------------------------------------------------------------
-	"gcx kg entities query":       {Cost: "medium", Hint: "\"MATCH (s:Service) RETURN s LIMIT 10\" [--since 1h] | read-only Cypher query; always include LIMIT for targeted lookups; omit for broad discovery"},
+	"gcx kg entities query":       {Cost: "medium", Hint: "deprecated legacy Cypher search (entities, edges, pageNum, lastPage); retained through v1.x | prefer gcx kg graph query for new workflows and update output parsing | narrow MATCH and include LIMIT for targeted lookups"},
+	"gcx kg graph query":          {Cost: "medium", Hint: "\"MATCH (s:Service) RETURN s.name AS name LIMIT 10\" [--since 1h] | read-only Cypher rows (columns, rows, stats); requires literal LIMIT; use narrow MATCH and bounded paths; defaults to last 1h; use kg entities list/inspect for health"},
 	"gcx kg entities correlate":   {Cost: "medium", Hint: "--alert-labels 'alertname=<name>,job=<job>' [--since 1h] | resolve the affected entities for a firing alert from its labels (the \"I have an alert, which entity?\" entry point) | provide alerts inline (repeatable), from an Alertmanager webhook via -f/stdin, or both | empty result exits 0 with a notice | use this instead of list/inspect when you have an alert rather than a known entity name"},
 	"gcx kg diagnose":             {Cost: "medium", Hint: "[--env <env>] | run diagnostic checks on the Knowledge Graph pipeline: stack status, sanity checks, entity counts, scopes, telemetry configs, recording rule metrics, and an aggregate instrumentation-quality summary"},
 	"gcx kg diagnose service":     {Cost: "medium", Hint: "<service-name> [--env <env>] | deep diagnosis for a specific service: entity lookup, relationships, per-service metrics, interpreted diagnosis with next steps"},
@@ -362,6 +363,8 @@ var commandAnnotations = map[string]annotation{
 	"gcx kg quality list":         {Cost: "medium", Hint: "--env <env> [--namespace <ns>] [--sort asc|desc] [--failed-check <id> ...] -o json | rank entities by instrumentation quality percent; --sort asc surfaces the worst-instrumented services first; filter to specific gaps with --failed-check (e.g. span-metrics, service-graph-metrics)"},
 	"gcx kg quality get":          {Cost: "small", Hint: "<entity-name> --env <env> [--namespace <ns>] -o json | full quality report for one entity: per-check state/impact, remediation doc links, and resolved query templates"},
 	"gcx kg status":               {Cost: "small"},
+	"gcx kg thresholds get":       {Cost: "small", Hint: "summarize the whole v1 threshold config; use -o yaml for the full PrometheusRules resource envelope"},
+	"gcx kg thresholds list":      {Cost: "small", Hint: "--category request|resource | per-category thresholds as items with scope=custom|global (v1 has no health category)"},
 	"gcx kg suppressions upsert":  {Cost: "small", Hint: "-f suppressions.yaml (or pipe YAML via stdin) | upsert (create or update) one or more alert suppressions; never deletes remote entries absent from the file; add --dry-run to validate against the backend and preview the remote->local diff without uploading"},
 	"gcx kg suppressions delete":  {Cost: "small"},
 	"gcx kg suppressions list":    {Cost: "small"},
@@ -678,6 +681,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx synthetic-monitoring query":              {Cost: "small", Hint: "<name> -p job=<job> -p instance=<target> -p frequency=<ms>"},
 	"gcx synthetic-monitoring queries get":        {Cost: "small", Hint: "<name>. Full parameter schema plus a ready-to-run 'query' invocation. Requires SM app v1.62.0+."},
 	"gcx synthetic-monitoring queries list":       {Cost: "small", Hint: "Requires SM app v1.62.0+."},
+	"gcx synthetic-monitoring suggestions list":   {Cost: "medium", Hint: "--json id,target,confidence,score keeps output small (full records are ~3 KB each; --limit defaults to 10). Each run generates suggestions anew: a paid, experimental LLM call over the stack's telemetry; unavailable in some regions."},
 	"gcx synthetic-monitoring probes create":      {Cost: "small"},
 	"gcx synthetic-monitoring probes delete":      {Cost: "small"},
 	"gcx synthetic-monitoring probes deploy":      {Cost: "small"},

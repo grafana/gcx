@@ -416,6 +416,16 @@ invoke it before resource reads so a read-only resource is refused even when its
 collection is empty or its configuration cannot be exported. Unregistered native
 resources retain their existing mutation paths.
 
+Optional `PushPreflighter` and `EnvelopePusher` contracts let an owned adapter
+resolve the full local batch and dispatch complete envelopes before generic
+existence or natural-key probes. The reader retains same-name objects only for
+kinds opting into batch preflight. `DeleteSelector` returns minimal identity
+envelopes before full configuration reads or deduplication; file-based selection
+can therefore enforce annotated IDs exactly. Shared resource code does not own
+product identity or reconciliation. Kinds without these hooks retain their
+existing behavior. See [ADR-026](../adrs/provider-owned-resource-hooks/026-provider-owned-resource-hooks.md)
+for the sanctioned dispatch exception.
+
 ### TypedCRUD and ResourceIdentity
 
 Most providers use `TypedCRUD[T]` to implement `ResourceAdapter` without hand-writing

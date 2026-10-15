@@ -69,7 +69,7 @@ See [../architecture/config-system.md](../architecture/config-system.md) for the
 
 | Variable | Effect | Documentation |
 |----------|--------|---------------|
-| `GCX_AUTO_APPROVE` | Auto-enable `--force` on delete operations | See `docs/reference/environment-variables/` |
+| `GCX_AUTO_APPROVE` | Auto-enable `--force` on delete operations | See [CLI reference](../sources/cli-reference.md#gcx_auto_approve) |
 
 Accepts the `strconv.ParseBool` vocabulary and nothing else. Setting it is not the same as enabling it, and an unparseable value fails the command outright — [safety.md](safety.md) § 3.3 owns the truth table.
 

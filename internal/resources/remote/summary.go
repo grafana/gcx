@@ -1,11 +1,13 @@
 package remote
 
 import (
+	"errors"
 	"maps"
 	"sync"
 	"sync/atomic"
 
 	"github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/resources/adapter"
 )
 
 // OperationSummary tracks the results of a batch resource operation in a thread-safe manner.
@@ -18,6 +20,7 @@ type OperationSummary struct {
 	mu           sync.Mutex
 	failures     []OperationFailure
 	skipReasons  map[string]int
+	warnings     []string
 }
 
 // OperationFailure describes a single resource operation failure.
@@ -98,4 +101,32 @@ func (s *OperationSummary) Failures() []OperationFailure {
 	defer s.mu.Unlock()
 
 	return s.failures
+}
+
+// RecordWarnings retains nonfatal diagnostics without changing result envelopes.
+func (s *OperationSummary) RecordWarnings(warnings []string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.warnings = append(s.warnings, warnings...)
+}
+
+// Warnings returns a snapshot safe for reporting after operation completion.
+func (s *OperationSummary) Warnings() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.warnings...)
+}
+
+// HasSavedMutationFailure reports an incomplete operation with a saved write.
+func (s *OperationSummary) HasSavedMutationFailure() bool {
+	if s == nil {
+		return false
+	}
+	for _, failure := range s.Failures() {
+		var saved adapter.SavedMutationError
+		if errors.As(failure.Error, &saved) && saved.MutationWasSaved() {
+			return true
+		}
+	}
+	return false
 }

@@ -57,7 +57,8 @@ type BackendURLs struct {
 
 // BackendURLsFromStack resolves datasource write endpoints from the Grafana
 // Cloud stack info returned by GCOM. The URLs include the required push path
-// suffixes. The Tempo URL is converted to gRPC host:port format.
+// suffixes. The Tempo URL is converted to gRPC host:port format. The Pyroscope
+// URL stays bare because pyroscope.write appends its own push path.
 func BackendURLsFromStack(stack cloud.StackInfo) BackendURLs {
 	return BackendURLs{
 		MimirURL:          appendPath(stack.HMInstancePromURL, "/api/prom/push"),
@@ -66,7 +67,7 @@ func BackendURLsFromStack(stack cloud.StackInfo) BackendURLs {
 		LokiUsername:      strconv.Itoa(stack.HLInstanceID),
 		TempoURL:          toGRPCHostPort(stack.HTInstanceURL),
 		TempoUsername:     strconv.Itoa(stack.HTInstanceID),
-		PyroscopeURL:      appendPath(stack.HPInstanceURL, "/ingest"),
+		PyroscopeURL:      appendPath(stack.HPInstanceURL, ""),
 		PyroscopeUsername: strconv.Itoa(stack.HPInstanceID),
 		OTLPURL:           otlpGatewayURL(stack),
 		OTLPUsername:      strconv.Itoa(stack.ID),

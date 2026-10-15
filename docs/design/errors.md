@@ -221,7 +221,7 @@ not in the summary.
 | `Invalid stack request` | GCOM rejected stack create/update arguments (409 with code `InvalidArgument`) |
 | `Invalid query` | The datasource rejected a query or query request (HTTP 400), including query-language parse errors |
 | `Unsupported Grafana version` | The Grafana server is older than gcx supports (exit code 6) |
-| `Partial failure` | A batch operation completed, but some resources failed (exit code 4); the counts go in details |
+| `Partial failure` | Some batch operations failed, or a mutation saved a write before a later stage failed (exit code 4); preserve counts or saved identity in details |
 | `Network error` | Connection refused, DNS failure, server unreachable, timeouts |
 | `API error` | Non-404/403 HTTP error from backend |
 | `Endpoint not available` | The requested API route, resource type, or API version is absent on this deployment (e.g. an experimental or Cloud-only endpoint, or no Kubernetes-style `/apis`), as opposed to a missing resource instance |

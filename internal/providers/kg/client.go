@@ -39,6 +39,8 @@ const (
 	ruleByNameFmt            = rulesPath + "/%s"
 	rulesSchemaPath          = rulesPath + "/schema"
 	rulesValidateSyncPath    = rulesPath + "-validate-sync"
+	thresholdRulesPath       = pluginResourcePath + "/asserts/api-server/v1/config/threshold-rules"
+	thresholdRulesByCatFmt   = thresholdRulesPath + "/%s" // request|resource
 	modelRulesPath           = pluginResourcePath + "/asserts/api-server/v1/config/model-rules"
 	modelRulesByNameFmt      = modelRulesPath + "/%s"
 	modelRulesSchemaPath     = modelRulesPath + "/schema"
@@ -134,6 +136,27 @@ func (c *Client) GetPromRulesSchema(ctx context.Context) (map[string]any, error)
 		return nil, fmt.Errorf("kg: get prom rules schema: %w", err)
 	}
 	return result, nil
+}
+
+// GetThresholds fetches the whole threshold config (v1). The response is a
+// PrometheusRulesDto, identical to the prom-rules whole-config shape, so it decodes
+// into [Rule].
+func (c *Client) GetThresholds(ctx context.Context) (*Rule, error) {
+	var rule Rule
+	if err := c.GetJSON(ctx, thresholdRulesPath, &rule); err != nil {
+		return nil, fmt.Errorf("kg: get thresholds: %w", err)
+	}
+	return &rule, nil
+}
+
+// GetThresholdsByCategory fetches the structured per-category threshold view (v1).
+// category must be "request" or "resource" (v1 has no health category).
+func (c *Client) GetThresholdsByCategory(ctx context.Context, category string) (*ThresholdRulesDto, error) {
+	var dto ThresholdRulesDto
+	if err := c.GetJSON(ctx, fmt.Sprintf(thresholdRulesByCatFmt, url.PathEscape(category)), &dto); err != nil {
+		return nil, fmt.Errorf("kg: get %s thresholds: %w", category, err)
+	}
+	return &dto, nil
 }
 
 // UploadModelRules uploads model rules configuration.
@@ -788,6 +811,21 @@ func (c *Client) FetchProfileConfigs(ctx context.Context) (ProfileConfigsRespons
 		return ProfileConfigsResponse{}, fmt.Errorf("kg: fetch profile configs: %w", err)
 	}
 	return resp, nil
+}
+
+// CypherQuery executes a bounded read-only query and preserves its projected rows.
+func (c *Client) CypherQuery(ctx context.Context, req CypherQueryRequest) (*CypherQueryResponse, error) {
+	var result CypherQueryResponse
+	if err := c.PostJSON(ctx, pluginResourcePath+"/asserts/api-server/v1/query/cypher", req, &result); err != nil {
+		return nil, fmt.Errorf("kg: cypher query: %w", err)
+	}
+	if result.Columns == nil {
+		result.Columns = []string{}
+	}
+	if result.Rows == nil {
+		result.Rows = [][]json.RawMessage{}
+	}
+	return &result, nil
 }
 
 // CypherSearch runs a read-only Cypher query against the Knowledge Graph.

@@ -23,7 +23,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/rest"
 )
 
@@ -353,28 +352,25 @@ func TestNoSecretMarkersWithoutConfirmedPresence(t *testing.T) {
 	}
 }
 
-func TestMutationsUnsupportedWithoutHTTP(t *testing.T) {
-	calls := 0
+func TestMutationValidationBeforeHTTP(t *testing.T) {
 	client := clientForServer(t, func(w http.ResponseWriter, r *http.Request) {
-		calls++
 		t.Errorf("unexpected HTTP %s", r.URL)
 		http.NotFound(w, r)
 	})
 	crud := NewTypedCRUDForClient(client, "")
-	assert.Nil(t, crud.CreateFn)
-	assert.Nil(t, crud.UpdateFn)
-	assert.Nil(t, crud.DeleteFn)
-	assert.Nil(t, crud.ValidateFn)
-	api := crud.AsAdapter()
-	obj := &unstructured.Unstructured{Object: map[string]any{"spec": validSpec()}}
-	_, err := api.Create(context.Background(), obj, metav1.CreateOptions{})
-	require.ErrorIs(t, err, errors.ErrUnsupported)
-	_, err = api.Update(context.Background(), obj, metav1.UpdateOptions{})
-	require.ErrorIs(t, err, errors.ErrUnsupported)
-	err = api.Delete(context.Background(), "id", metav1.DeleteOptions{})
-	require.ErrorIs(t, err, errors.ErrUnsupported)
-	assert.Zero(t, calls)
-	require.ErrorIs(t, UnsupportedMutation("push"), errors.ErrUnsupported)
+	require.NotNil(t, crud.CreateFn)
+	require.NotNil(t, crud.UpdateFn)
+	require.NotNil(t, crud.DeleteFn)
+	for _, update := range []bool{false, true} {
+		var err error
+		obj := &adapter.TypedObject[Watcher]{Spec: Watcher{Title: "Example"}}
+		if update {
+			_, err = crud.Update(t.Context(), "id", obj)
+		} else {
+			_, err = crud.Create(t.Context(), obj)
+		}
+		require.ErrorContains(t, err, "prompt")
+	}
 }
 
 func testObject(t *testing.T, value any) map[string]any {
@@ -388,9 +384,9 @@ func TestManifestReadsRejectInvalidObservedConfiguration(t *testing.T) {
 	client := clientForServer(t, func(w http.ResponseWriter, r *http.Request) { writeData(t, w, map[string]any{"enabled": false}) })
 	for _, corrupt := range []func(*watchers.Watcher){
 		func(raw *watchers.Watcher) { raw.TriggerIntervalSeconds = 0 },
-		func(raw *watchers.Watcher) { raw.Sensitivity = "future-value" },
+		func(raw *watchers.Watcher) { raw.Sensitivity = " " },
 		func(raw *watchers.Watcher) {
-			raw.Actions.Webhook = &watchers.WebhookAction{MinSeverity: "future-value"}
+			raw.Actions.Webhook = &watchers.WebhookAction{MinSeverity: " "}
 		},
 		func(raw *watchers.Watcher) { raw.Actions.Webhook = &watchers.WebhookAction{Enabled: true} },
 	} {

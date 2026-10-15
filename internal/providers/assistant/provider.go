@@ -61,7 +61,7 @@ func (p *AssistantProvider) TypedRegistrations() []adapter.Registration {
 		{
 			Factory: watcher.NewLazyFactory(), Descriptor: watchDesc, GVK: watchDesc.GroupVersionKind(),
 			Schema: watcher.WatcherSchema, Example: watcher.WatcherExample(),
-			CheckMutation: watcher.UnsupportedMutation,
+			RetainLocalDuplicates: true,
 		},
 	}
 }

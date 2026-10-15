@@ -8,6 +8,7 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/grafana/gcx/internal/assistant/assistanthttp"
@@ -51,6 +52,11 @@ func NewTypedCRUDForClient(client *watchers.Client, namespace string) *adapter.T
 // resolve across both visible partitions regardless of this selection.
 func NewTypedCRUDForClientArchived(client *watchers.Client, namespace string, archived bool) *adapter.TypedCRUD[Watcher] {
 	return &adapter.TypedCRUD[Watcher]{
+		CreateFn: func(ctx context.Context, w *Watcher) (*Watcher, error) { return createConfiguration(ctx, client, w) },
+		UpdateFn: func(ctx context.Context, ref string, w *Watcher) (*Watcher, error) {
+			return updateConfiguration(ctx, client, ref, w)
+		},
+		DeleteFn: func(ctx context.Context, ref string) error { return deleteConfiguration(ctx, client, ref) },
 		ListFn: adapter.LimitedListFn(func(ctx context.Context) ([]Watcher, error) {
 			raw, err := client.ListAll(ctx, archived)
 			if errors.Is(err, watchers.ErrCapabilityUnavailable) {
@@ -337,14 +343,12 @@ func severityFromResponse(raw string) string {
 	}
 }
 
-func UnsupportedMutation(operation string) error {
-	return fmt.Errorf("Watcher %s is not supported yet; continue in Grafana: %w", operation, errors.ErrUnsupported)
-}
-
 type manifestAdapter struct {
 	adapter.ResourceAdapter
 
 	client *watchers.Client
+	planMu sync.Mutex
+	plans  map[string]pushPlan
 }
 
 func (a *manifestAdapter) Schema() json.RawMessage { return WatcherSchema() }

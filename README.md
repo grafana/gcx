@@ -370,6 +370,20 @@ summary. Push and delete always skip them. Read commands still show them;
 `gcx alert mute-timings export` and covers Grafana-managed intervals only. See [server-derived resource names](docs/architecture/resource-model.md#server-derived-native-names)
 for portable push behavior.
 
+Contact points, notification policies, templates, and mute timings that gcx
+creates or updates through Grafana's provisioning API remain editable in the
+Grafana UI by default. Pass `--allow-ui-updates=false` to contact-point or
+mute-timing create and update commands, `alert templates upsert`, or
+`alert notification-policies set` to use Grafana's default provisioning
+ownership. Grafana then prevents UI edits to the provisioned item.
+To update a provisioned contact point, keep `--allow-ui-updates=false`.
+Grafana can reject an attempt to make an existing provisioned contact point
+editable in the UI because its provenance cannot be changed by that update.
+
+```bash
+gcx alert contact-points create -f contact-point.yaml --allow-ui-updates=false
+```
+
 For an empty dashboard or missing application telemetry, follow
 [Diagnose missing telemetry with gcx](docs/guides/diagnose-missing-telemetry.md).
 
@@ -531,7 +545,7 @@ gcx provides dedicated commands for each Grafana Cloud product:
 | **Alerting** | `gcx alert` | `alert rules list`, `alert groups list` |
 | **k6 Cloud** | `gcx k6` | `k6 load-tests list`, `k6 runs list` |
 | **Fleet Management** | `gcx fleet` | `fleet pipelines list`, `fleet collectors list` |
-| **Knowledge Graph** | `gcx kg` | `kg status`, `kg entities list`, `kg entities inspect` |
+| **Knowledge Graph** | `gcx kg` | `kg status`, `kg entities list`, `kg entities inspect`, `kg graph query` |
 | **Frontend Observability** | `gcx frontend` | `frontend apps list`, `frontend apps get` |
 | **App Observability** | `gcx appo11y` | `appo11y overrides get`, `appo11y settings get` |
 | **Agent Observability** | `gcx agento11y` | `agento11y conversations list`, `agento11y experiments pull`, `agento11y rules list` |
@@ -572,9 +586,9 @@ gcx resources delete dashboards/my-dashboard
 ### Mobile Frontend Observability apps
 
 Mobile Frontend Observability app manifests set `spec.appType: mobile` and a mobile
-`spec.runtime`. See [`gcx frontend apps create`](docs/reference/cli/gcx_frontend_apps_create.md)
+`spec.runtime`. See [`gcx frontend apps create`](docs/sources/cli-reference.md#gcx-frontend-apps-create-gcx-frontend-apps-create)
 for the runtimes and an example manifest, and
-[`gcx frontend apps update`](docs/reference/cli/gcx_frontend_apps_update.md) for what an update keeps.
+[`gcx frontend apps update`](docs/sources/cli-reference.md#gcx-frontend-apps-update-gcx-frontend-apps-update) for what an update keeps.
 
 ## Alerting & Datasource Queries
 
@@ -621,11 +635,11 @@ gcx dev lint new dashboard my-rule              # create custom rule
 go run . && gcx resources push -p ./resources
 ```
 
-## Inspect Assistant Watchers (experimental)
+## Manage Assistant Watchers (experimental)
 
-Read Watcher configuration with `gcx assistant watchers list` and `get WATCHER`, inspect runtime observations with `status WATCHER`, or export manifests with `gcx resources pull watchers`. Requires Grafana Cloud; writes are not supported yet. See [Assistant Watchers](docs/reference/assistant-watchers.md).
+Read Watcher configuration with `gcx assistant watchers list` and `get WATCHER`, inspect runtime observations with `status WATCHER`, or export manifests with `gcx resources pull watchers`. Apply configuration with `create -f FILE`, `update WATCHER -f FILE` or `gcx resources push`; remove a Watcher with `delete WATCHER --force`. Creation stays inactive and uncalibrated. Requires Grafana Cloud. See [Assistant Watchers](docs/reference/assistant-watchers.md).
 
-Pulling all resource types can include read-only Watchers. Select writable types for a pull/push workflow; pushing Watcher manifests reports an unsupported operation.
+Pulled Watcher manifests can be pushed back unchanged. Applying configuration preserves calibrated content and learned state; meaningful settings outside the manifest model cause an explicit refusal.
 
 ## Raw API Access
 
