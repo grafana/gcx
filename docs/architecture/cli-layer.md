@@ -216,7 +216,7 @@ own placement analysis regardless of tier. Provider commands over a native
 see `CONSTITUTION.md` § Architecture Invariants); dashboards still hand-rolls this
 access until its pending migration lands.
 
-See `.claude/skills/add-provider/references/decision-tree.md` for the full
+See [provider placement](../../.agents/skills/contribute/references/provider-placement.md) for the full
 decision tree.
 
 ### Provider command structure
@@ -274,8 +274,6 @@ gcx synthetic-monitoring [internal/providers/synth/provider.go]
     └── list
 ```
 
-The Assistant provider includes experimental `assistant watchers list/get/status/create/update/delete` commands. Configuration commands use the registered Watcher typed adapter; create and update accept complete file manifests, delete uses the shared destructive confirmation helper, and status is a separate runtime view. Dedicated create requests initial background calibration after a successful configuration save, without automatic activation; this domain operation remains outside the typed adapter and generic push. Mutation codecs expose identity and stage outcomes, including partial completion with exit 4. Lifecycle controls (`start`, `pause`, `run`, `archive`, `unarchive`) and bounded `list-runs` history use the product client beside the configuration adapter; they never enter generic reconciliation. Structured lifecycle results distinguish request outcomes from observed state and execution assessments. See [Assistant Watchers](../reference/assistant-watchers.md).
-
 ### Config loading pattern
 
 Provider commands cannot import `cmd/gcx/config` (import cycle). Instead,
@@ -297,8 +295,9 @@ func (l *ConfigLoader) LoadGrafanaConfig(ctx context.Context) (config.Namespaced
 
 ### Adding a new provider
 
-Follow the `/add-provider` skill or `docs/reference/provider-guide.md` for the
-step-by-step implementation guide.
+Start with the [`contribute`](../../.agents/skills/contribute/SKILL.md) skill and
+its provider implementation reference; [provider-guide.md](../reference/provider-guide.md)
+contains the canonical implementation recipe.
 
 ---
 

@@ -531,7 +531,7 @@ type regionsOpts struct {
 }
 
 func (o *regionsOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &regionTableCodec{})
+	cmdio.RegisterTable(&o.IO, regionTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 }

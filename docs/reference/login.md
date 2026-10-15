@@ -154,7 +154,7 @@ Do one of these two steps. gcx accepts the one that completes first.
 
   1. Add a port forward to this SSH session. Press Enter, then press ~C,
      then type this line:
-       -L 54321:127.0.0.1:54321
+       -L 43817:127.0.0.1:43817
 
   2. Approve the login in the browser on your computer. The browser then
      goes to an address that does not load. Copy that address and paste it

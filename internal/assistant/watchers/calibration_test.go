@@ -129,6 +129,70 @@ func TestRequestInitialCalibrationClassifiesErrors(t *testing.T) {
 	}
 }
 
+func TestRequestInitialCalibration404ConfirmsSavedIdentity(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		readStatus  int
+		readBody    string
+		cancelRead  bool
+		unavailable bool
+	}{
+		{name: "missing route", readBody: `{"data":{"id":"id","name":"Example"}}`, unavailable: true},
+		{name: "missing Watcher", readStatus: http.StatusNotFound},
+		{name: "access denied", readStatus: http.StatusForbidden},
+		{name: "read failure", readStatus: http.StatusInternalServerError},
+		{name: "invalid identity", readBody: `{"data":{"name":"Example"}}`},
+		{name: "different identity", readBody: `{"data":{"id":"different","name":"Example"}}`},
+		{name: "cancelled read", cancelRead: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			var posts, reads atomic.Int32
+			client := mutationClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodPost {
+					posts.Add(1)
+					assert.Equal(t, basePath+"/id/initial-calibration", r.URL.Path)
+					body, err := io.ReadAll(r.Body)
+					assert.NoError(t, err)
+					assert.JSONEq(t, `{"startWhenReady":false}`, string(body))
+					http.Error(w, "SENTINEL", http.StatusNotFound)
+					return
+				}
+				reads.Add(1)
+				assert.Equal(t, http.MethodGet, r.Method)
+				assert.Equal(t, basePath+"/id", r.URL.Path)
+				if tc.cancelRead {
+					cancel()
+					return
+				}
+				if tc.readStatus != 0 {
+					http.Error(w, "SENTINEL", tc.readStatus)
+					return
+				}
+				_, _ = fmt.Fprint(w, tc.readBody)
+			}))
+			result, err := client.RequestInitialCalibration(ctx, "id")
+			require.Error(t, err)
+			require.Nil(t, result)
+			if tc.unavailable {
+				require.ErrorIs(t, err, watchers.ErrCapabilityUnavailable)
+				require.NotErrorIs(t, err, watchers.ErrNotFound)
+			} else {
+				require.ErrorIs(t, err, watchers.ErrNotFound)
+				require.NotErrorIs(t, err, watchers.ErrCapabilityUnavailable)
+			}
+			var apiErr *watchers.APIError
+			require.ErrorAs(t, err, &apiErr)
+			assert.Equal(t, http.StatusNotFound, apiErr.HTTPStatusCode())
+			assert.Equal(t, "request Watcher initial calibration", apiErr.Operation)
+			assert.NotContains(t, err.Error(), "SENTINEL")
+			assert.Equal(t, int32(1), posts.Load())
+			assert.Equal(t, int32(1), reads.Load())
+		})
+	}
+}
+
 func TestRequestInitialCalibrationInputAndCancellationSendNothing(t *testing.T) {
 	var calls atomic.Int32
 	client := mutationClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

@@ -73,10 +73,6 @@ Provider (internal/providers/slo/)
 
 **Deep-dive:** [patterns.md](docs/architecture/patterns.md) [§11 (Provider Plugin System)](docs/architecture/patterns.md#11-provider-plugin-system), [§16 (ResourceAdapter and Provider CRUD Routing)](docs/architecture/patterns.md#16-resourceadapter-and-provider-crud-routing), [§17 (K8s Envelope Wrapping)](docs/architecture/patterns.md#17-k8s-envelope-wrapping-for-provider-listget), [§18 (Table-Driven TypedCRUD)](docs/architecture/patterns.md#18-table-driven-typedcrud-registration-for-providers), [§19 (Singleton Adapter)](docs/architecture/patterns.md#19-singleton-adapter-pattern), [§20 (ETag-as-Annotation)](docs/architecture/patterns.md#20-etag-as-annotation-pattern). Implementation guide: [provider-guide.md](docs/reference/provider-guide.md).
 
-### Assistant Watcher configuration
-
-The Assistant provider registers Watcher configuration beside MCPServer. Dedicated configuration commands and generic resource operations share the typed adapter; runtime status remains a separate read view. Optional provider-neutral hooks retain complete envelopes and batches before identity-keyed insertion or mutation, while the adapter owns identity, reconciliation and partial-read policy. See [ADR-026](docs/adrs/provider-owned-resource-hooks/026-provider-owned-resource-hooks.md), [Assistant Watchers](docs/reference/assistant-watchers.md) and the [package map](docs/architecture/project-structure.md).
-
 ### 3. Signal Providers
 
 Top-level commands for querying observability datasources: `metrics`, `logs`, `traces`, `profiles`. These bypass the K8s dynamic client and call datasource HTTP APIs directly.
@@ -231,10 +227,10 @@ See [CLI layer: Portable Skill Lifecycle](docs/architecture/cli-layer.md#portabl
 | [006](docs/adrs/conventional-commits/001-pr-title-enforcement.md) | Conventional Commits via PR Title Enforcement | accepted |
 | [007](docs/adrs/provider-consolidation/001-consolidation-strategy.md) | Provider Consolidation Strategy | accepted |
 | [008](docs/adrs/typed-resource-adapter-compliance/001-typed-resource-adapter-foundation.md) | TypedResourceAdapter[T] with ResourceIdentity and Provider Command Migration | accepted |
-| [009](docs/adrs/migrate-provider-rewrite/001-three-stage-blackbox-verification.md) | Three-Stage Skill Structure with Dual Blackbox Isolation | superseded by [012] |
+| [009](docs/adrs/migrate-provider-rewrite/001-three-stage-blackbox-verification.md) | Three-Stage Skill Structure with Dual Blackbox Isolation | retired (skill removed) |
 | [010](docs/adrs/oncall-typed-crud/001-table-driven-typedcrud.md) | Table-driven TypedCRUD[T] for OnCall Adapter | proposed |
 | [011](docs/adrs/adaptive-provider/001-cli-ux-and-resource-adapter-design.md) | Adaptive telemetry provider: CLI UX, adapter scope, verb naming | proposed |
-| [012](docs/adrs/migrate-provider-rewrite/002-five-phase-pipeline-redesign.md) | Five-phase pipeline redesign for /migrate-provider | accepted |
+| [012](docs/adrs/migrate-provider-rewrite/002-five-phase-pipeline-redesign.md) | Five-phase pipeline redesign for /migrate-provider | retired (skill removed) |
 | [013](docs/adrs/appo11y-provider/001-cli-ux-and-resource-adapter-design.md) | App O11y provider: singleton TypedCRUD, ETag-as-annotation, verb naming | accepted |
 | [014](docs/adrs/instrumentation/001-instrumentation-provider-design.md) | Declarative Instrumentation Setup under `gcx setup` | superseded by [018] |
 | [015](docs/adrs/faro-provider/001-faro-provider-design.md) | Faro provider: CLI UX, TypedCRUD adapter, sourcemaps as sub-resource verbs | proposed |

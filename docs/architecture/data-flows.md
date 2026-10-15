@@ -168,7 +168,7 @@ Key files:
 
 ## 3. PULL Pipeline
 
-Selector-free pull (and get through the same puller) counts an unavailable Assistant Watcher or MCP server collection API as skipped via `adapter.ErrUnavailable`; explicit selections and per-item read failures still fail.
+Selector-free pull (and get through the same puller) counts collection APIs marked unavailable via `adapter.ErrUnavailable` as skipped; explicit selections and per-item read failures still fail.
 
 Entry point: `cmd/gcx/resources/pull.go` (mirrors push structure).
 
@@ -338,14 +338,6 @@ interact with the same Pusher/Puller/Deleter interface regardless of whether the
 backing client is a REST adapter or the k8s dynamic client.
 
 ---
-
-### Assistant Watcher configuration
-
-Watcher configuration follows the provider REST pull pipeline through its shared typed adapter. Before collection insertion, the Watcher adapter supplies a preflight that checks its visible identity index; the generic puller invokes that check and reports rejected items without knowing their resource kind. Runtime status uses separate read-only observations and never enters a manifest. See [Assistant Watchers](../reference/assistant-watchers.md).
-
-Configuration push resolves the full local batch before writes and passes each complete envelope to the owned adapter before generic name or natural-key probes. Delete selects minimal identity envelopes before configuration reads or deduplication. The Watcher adapter shares reconciliation with dedicated create/update/delete commands and preserves saved identity on a failed follow-up stage. Kinds without these optional hooks keep their existing pipelines. See [ADR-026](../adrs/provider-owned-resource-hooks/026-provider-owned-resource-hooks.md).
-
-Typed list adapters retain items returned alongside an error. Watcher bulk reads expose per-item failures and skips through the adapter partial-read contract, so the generic puller can retain successful configurations and record accurate coverage without importing Watcher types. Collection failures remain fatal; abort mode stops before file processing. Dedicated list discloses incomplete coverage and the affected candidates.
 
 ## 5. QUERY Pipeline
 

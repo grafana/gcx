@@ -2,7 +2,6 @@ package watchers
 
 import (
 	"errors"
-	"fmt"
 
 	"github.com/grafana/gcx/internal/assistant/watcher"
 	clientwatchers "github.com/grafana/gcx/internal/assistant/watchers"
@@ -47,7 +46,7 @@ func emitCreate(cmd *cobra.Command, opts *cmdio.Options, client *clientwatchers.
 			default:
 				failure = requestErr
 				result.Calibration = calibrationRequestResult{Outcome: "error", Guidance: "Watcher created; calibration acceptance could not be confirmed. Inspect gcx assistant watchers status " + saved.ServerID() + " and continue in Grafana. Do not rerun create."}
-				result.Error = fmt.Sprintf("%s; %s", requestErr, result.Calibration.Guidance)
+				result.Error = requestErr.Error()
 			}
 		}
 	}
