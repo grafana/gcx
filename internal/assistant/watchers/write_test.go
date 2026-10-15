@@ -109,7 +109,7 @@ func TestWriteFailuresAreClassifiedAndRedacted(t *testing.T) {
 		{"invalid", 400, watchers.ErrInvalidConfiguration, `{"message":"SENTINEL"}`, ""},
 		{"invalid shape", 422, watchers.ErrInvalidConfiguration, `{"message":"SENTINEL"}`, ""},
 		{"archived", 409, watchers.ErrConflict, `{"error":"invalid state: restore the archived watcher first SENTINEL"}`, "restore the archived Watcher"},
-		{"calibrating", 409, watchers.ErrConflict, `{"message":"finish or cancel calibration before updating the watcher SENTINEL"}`, "finish or cancel calibration"},
+		{"calibrating", 409, watchers.ErrConflict, `{"message":"finish or cancel calibration before updating the watcher SENTINEL"}`, "cancel calibration in Grafana"},
 		{"conflict", 409, watchers.ErrConflict, `{"message":"SENTINEL"}`, ""},
 		{"server", 500, nil, `{"message":"SENTINEL"}`, ""},
 	} {
