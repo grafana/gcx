@@ -113,7 +113,7 @@ func TestPublicCreateFileAndUpdateIdentity(t *testing.T) {
 	require.NotEmpty(t, created.Target.ID)
 	require.True(t, *created.Changed)
 	requests := fixture.MutationRequests()
-	require.Len(t, requests, 1)
+	require.Len(t, requests, 2)
 	require.Equal(t, http.MethodPost, requests[0].Method)
 	var payload clientwatchers.ConfigurationRequest
 	require.NoError(t, json.Unmarshal(requests[0].Body, &payload))
@@ -126,12 +126,12 @@ func TestPublicCreateFileAndUpdateIdentity(t *testing.T) {
 	err := cmd.ExecuteContext(t.Context())
 	require.ErrorContains(t, err, "already exists")
 	require.Empty(t, out.String())
-	require.Equal(t, 1, fixture.MutationCalls())
+	require.Equal(t, 2, fixture.MutationCalls())
 
 	cmd, out, _ = mutationCommand(t, loader, []string{"update", created.Target.ID, "-f", "-", "-o", "json"}, commandManifest("Renamed health", "22222222-2222-4222-8222-222222222222", ""))
 	require.ErrorContains(t, cmd.ExecuteContext(t.Context()), "conflicts")
 	require.Empty(t, out.String())
-	require.Equal(t, 1, fixture.MutationCalls())
+	require.Equal(t, 2, fixture.MutationCalls())
 
 	cmd, out, _ = mutationCommand(t, loader, []string{"update", created.Target.ID, "-f", "-", "-o", "json"}, commandManifest("Renamed health", created.Target.ID, ""))
 	require.NoError(t, cmd.ExecuteContext(t.Context()))
@@ -141,8 +141,8 @@ func TestPublicCreateFileAndUpdateIdentity(t *testing.T) {
 	require.Equal(t, created.Target.ID, updated.Target.ID)
 	require.Equal(t, "renamed-health", updated.Target.Name)
 	require.True(t, *updated.Changed)
-	require.Equal(t, http.MethodPut, fixture.MutationRequests()[1].Method)
-	require.True(t, strings.HasSuffix(fixture.MutationRequests()[1].Path, "/"+created.Target.ID))
+	require.Equal(t, http.MethodPut, fixture.MutationRequests()[2].Method)
+	require.True(t, strings.HasSuffix(fixture.MutationRequests()[2].Path, "/"+created.Target.ID))
 }
 
 func TestPublicMutationFormatParityAndNoop(t *testing.T) {
@@ -330,7 +330,7 @@ func TestPublicCreateDeleteSupportedFormats(t *testing.T) {
 			require.Contains(t, out.String(), "deleted")
 			require.Contains(t, out.String(), item.ID)
 			require.Contains(t, out.String(), "checkout-health")
-			require.Equal(t, 2, fixture.MutationCalls())
+			require.Equal(t, 3, fixture.MutationCalls())
 		})
 	}
 }
