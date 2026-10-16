@@ -35,6 +35,14 @@ func TestEnforceLimit(t *testing.T) {
 		want  string
 	}{
 		{"appends LIMIT when missing", "SELECT 1", 100, "SELECT 1 LIMIT 100"},
+		{"multiline DESC keeps limit", "SELECT * FROM events\nORDER BY ts\nDESC", 100, "SELECT * FROM events\nORDER BY ts\nDESC LIMIT 100"},
+		{"indented lowercase desc keeps limit", "SELECT * FROM events\nORDER BY ts\n  desc;", 100, "SELECT * FROM events\nORDER BY ts\n  desc LIMIT 100;"},
+		{"multiline EXISTS keeps limit", "SELECT * FROM events WHERE\nEXISTS (SELECT 1)", 100, "SELECT * FROM events WHERE\nEXISTS (SELECT 1) LIMIT 100"},
+		{"multiline CHECK keeps limit", "SELECT\ncheck\nFROM events", 100, "SELECT\ncheck\nFROM events LIMIT 100"},
+		{"multiline DESC caps existing LIMIT", "SELECT * FROM events ORDER BY ts\nDESC LIMIT 5000", 100, "SELECT * FROM events ORDER BY ts\nDESC LIMIT 1000"},
+		{"multiline limit 0 disables enforcement", "SELECT * FROM events ORDER BY ts\nDESC", 0, "SELECT * FROM events ORDER BY ts\nDESC"},
+		{"bail on leading whitespace describe", " \n\tdescribe table events", 100, " \n\tdescribe table events"},
+		{"bail on leading whitespace explain", "\n  EXPLAIN SELECT * FROM events", 100, "\n  EXPLAIN SELECT * FROM events"},
 		{"appends LIMIT with trailing semicolon", "SELECT 1;", 100, "SELECT 1 LIMIT 100;"},
 		{"keeps existing LIMIT if under max", "SELECT 1 LIMIT 50", 100, "SELECT 1 LIMIT 50"},
 		{"caps existing LIMIT exceeding max", "SELECT 1 LIMIT 5000", 1000, "SELECT 1 LIMIT 1000"},
@@ -61,6 +69,34 @@ func TestEnforceLimit(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got := clickhouse.EnforceLimit(tt.sql, tt.limit, 1000)
 			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestEnforceLimitSentinel(t *testing.T) {
+	tests := []struct {
+		name       string
+		sql        string
+		want       string
+		wantCapped bool
+	}{
+		{"multiline DESC", "SELECT * FROM events ORDER BY ts\nDESC", "SELECT * FROM events ORDER BY ts\nDESC LIMIT 101", true},
+		{"multiline EXISTS", "SELECT * FROM events WHERE\nEXISTS (SELECT 1)", "SELECT * FROM events WHERE\nEXISTS (SELECT 1) LIMIT 101", true},
+		{"multiline CHECK", "SELECT\ncheck\nFROM events", "SELECT\ncheck\nFROM events LIMIT 101", true},
+		{"leading whitespace DESCRIBE", " \n\tdescribe table events", " \n\tdescribe table events", false},
+		{"leading whitespace EXPLAIN", "\n  EXPLAIN SELECT 1", "\n  EXPLAIN SELECT 1", false},
+		{"mid-statement SETTINGS", "SELECT 1\nSETTINGS max_threads=1", "SELECT 1\nSETTINGS max_threads=1", false},
+		{"mid-statement FORMAT", "SELECT 1\nFORMAT JSON", "SELECT 1\nFORMAT JSON", false},
+		{"mid-statement LIMIT BY", "SELECT * FROM events\nLIMIT 10 BY ts", "SELECT * FROM events\nLIMIT 10 BY ts", false},
+		{"mid-statement LIMIT OFFSET", "SELECT * FROM events\nLIMIT 10 OFFSET 5", "SELECT * FROM events\nLIMIT 10 OFFSET 5", false},
+		{"mid-statement LIMIT comma", "SELECT * FROM events\nLIMIT 5, 10", "SELECT * FROM events\nLIMIT 5, 10", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, eff, capped := clickhouse.EnforceLimitSentinel(tt.sql, 100, 1000)
+			assert.Equal(t, tt.want, got)
+			assert.Equal(t, 100, eff)
+			assert.Equal(t, tt.wantCapped, capped)
 		})
 	}
 }
