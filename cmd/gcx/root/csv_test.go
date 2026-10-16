@@ -13,6 +13,7 @@ import (
 
 	"github.com/grafana/gcx/cmd/gcx/root"
 	"github.com/grafana/gcx/internal/testutils"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -64,11 +65,25 @@ func TestCSVQueryCommands(t *testing.T) {
 }
 
 func TestCSVIsExplicitlyRegistered(t *testing.T) {
-	for _, path := range []string{"datasources tempo get", "datasources azuremonitor query", "datasources query"} {
-		t.Run(path, func(t *testing.T) {
-			cmd, _, err := root.Command("test").Find(strings.Fields(path))
-			require.NoError(t, err)
-			assert.NotContains(t, cmd.Flags().Lookup("output").Usage, "csv")
-		})
+	want := []string{
+		"gcx datasources loki metrics",
+		"gcx datasources loki query",
+		"gcx datasources prometheus query",
+		"gcx logs metrics",
+		"gcx logs query",
+		"gcx metrics billing query",
+		"gcx metrics query",
 	}
+	var got []string
+	var walk func(*cobra.Command)
+	walk = func(cmd *cobra.Command) {
+		if flag := cmd.Flags().Lookup("output"); flag != nil && strings.Contains(flag.Usage, "csv") {
+			got = append(got, cmd.CommandPath())
+		}
+		for _, child := range cmd.Commands() {
+			walk(child)
+		}
+	}
+	walk(root.Command("test"))
+	assert.ElementsMatch(t, want, got)
 }
