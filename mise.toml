@@ -26,7 +26,7 @@ description = "Lint the codebase with golangci-lint"
 run = "golangci-lint run -c .golangci.yaml"
 
 [tasks."validate-skills"]
-description = "Validate skill front matter (claude-plugin/skills + .claude/skills)"
+description = "Validate skill front matter (claude-plugin/skills + .agents/skills)"
 run = "go run ./scripts/validate-skills"
 
 [tasks.tests]
