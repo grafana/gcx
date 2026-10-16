@@ -47,7 +47,7 @@ gcx/
 │   │   └── testdata/         # YAML fixtures for config unit tests
 │   ├── credentials/          # OS-keychain backend for token-shaped secrets; sentinel format + Store interface; auto-disabled under `go test`
 │   ├── format/               # JSON/YAML codec, format auto-detection
-│   ├── output/               # Output codec registry (json, yaml, text, wide), field selection, user-facing messages
+│   ├── output/               # Output codec registry (json, yaml, text, wide, opt-in CSV), field selection, user-facing messages
 │   ├── gcxerrors/            # Shared error contracts: exit codes, DetailedError + JSON error envelope, UsageError + command usage helper, EmittedError, PartialFailureError, HTTPStatusError (typed transport-status carrier)
 │   ├── grafana/              # Thin wrapper over grafana-openapi-client-go
 │   ├── graph/                # Terminal chart rendering (ntcharts + lipgloss)
@@ -116,7 +116,7 @@ gcx/
 │   │   ├── postgres/         # PostgreSQL datasource commands (query, list-tables, describe-table)
 │   │   └── query/            # Shared query CLI utils (time parsing, codecs, opts, resolve helpers)
 │   ├── query/                # Datasource query clients
-│   │   ├── dataframe/        # Shared Grafana data frame wire types for unified datasource query API responses
+│   │   ├── dataframe/        # Shared Grafana data frame wire types and tabular CSV projections
 │   │   ├── grafanaquery/     # Shared POST transport for /apis/query.grafana.app/.../query with /api/ds/query fallback
 │   │   ├── azuremonitor/     # Azure Monitor HTTP query client (metric queries, KQL logs + resource graph, ARM discovery via datasource resource proxy)
 │   │   ├── cloudmonitoring/  # Google Cloud Monitoring HTTP query client (time-series list queries, project/metric discovery)
