@@ -65,7 +65,7 @@ func TestCSVQueryCommands(t *testing.T) {
 }
 
 func TestCSVIsExplicitlyRegistered(t *testing.T) {
-	for _, path := range []string{"datasources tempo get", "datasources azuremonitor query", "datasources query"} {
+	for _, path := range []string{"datasources tempo get", "datasources azuremonitor list-subscriptions", "datasources query"} {
 		t.Run(path, func(t *testing.T) {
 			cmd, _, err := root.Command("test").Find(strings.Fields(path))
 			require.NoError(t, err)
@@ -76,17 +76,20 @@ func TestCSVIsExplicitlyRegistered(t *testing.T) {
 
 func TestRemainingCSVRegistrations(t *testing.T) {
 	for kind, commands := range map[string][]string{
-		"athena":        {"query", "list-catalogs", "list-databases", "list-tables", "describe-table"},
-		"bigquery":      {"query", "list-datasets", "list-tables", "describe-table"},
-		"clickhouse":    {"query", "list-tables", "describe-table"},
-		"postgres":      {"query", "list-tables", "describe-table"},
-		"mysql":         {"query", "list-tables", "describe-table"},
-		"mssql":         {"query", "list-tables", "describe-table"},
-		"influxdb":      {"query"},
-		"infinity":      {"query"},
-		"pinot":         {"query"},
-		"elasticsearch": {"query"},
-		"opensearch":    {"query"},
+		"athena":          {"query", "list-catalogs", "list-databases", "list-tables", "describe-table"},
+		"bigquery":        {"query", "list-datasets", "list-tables", "describe-table"},
+		"clickhouse":      {"query", "list-tables", "describe-table"},
+		"postgres":        {"query", "list-tables", "describe-table"},
+		"mysql":           {"query", "list-tables", "describe-table"},
+		"mssql":           {"query", "list-tables", "describe-table"},
+		"influxdb":        {"query"},
+		"infinity":        {"query"},
+		"pinot":           {"query"},
+		"elasticsearch":   {"query", "metrics"},
+		"opensearch":      {"query", "metrics"},
+		"cloudwatch":      {"query"},
+		"cloudmonitoring": {"query"},
+		"azuremonitor":    {"query", "logs query", "resource-graph query"},
 	} {
 		for _, name := range commands {
 			t.Run(kind+"/"+name, func(t *testing.T) {

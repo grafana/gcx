@@ -109,10 +109,14 @@ The following datasource commands also support `-o csv`:
 | SQL rows | `athena query`, `bigquery query`, `clickhouse query`, `mssql query`, `mysql query`, `pinot query`, `postgres query` |
 | Other tables | `influxdb query`, `infinity query`, `elasticsearch query`, `opensearch query` |
 | SQL discovery | Athena catalogs/databases/tables/columns; BigQuery datasets/tables/columns; ClickHouse, MSSQL, MySQL, and PostgreSQL tables/columns |
+| Azure tables | `azuremonitor logs query`, `azuremonitor resource-graph query` |
+| Metrics | `cloudwatch query`, `cloudmonitoring query`, `azuremonitor query`, `elasticsearch metrics`, `opensearch metrics` |
 
 Table exports retain source column names and values, including epoch-millisecond
 time fields where the query response uses them. Objects and arrays use JSON
 inside a cell; nulls and missing values use empty cells.
+Cloud and search-engine metric timestamps use UTC RFC3339 with fractional
+seconds. Metric label columns are sorted and prefixed with `label.`.
 
 ## Migrate from `grafanactl`
 
