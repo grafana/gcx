@@ -42,9 +42,10 @@ const (
 //   - A small, enumerated set of fields is derived from how the command ran
 //     rather than from a name, and each is documented on its own field below:
 //     OutputFormat (the value of --output, filtered to a fixed list of formats),
-//     DryRun (whether the operation ran in dry-run mode), and GrafanaAuthMethod
+//     DryRun (whether the operation ran in dry-run mode), GrafanaAuthMethod
 //     (the authentication category selected for the Grafana connection, clamped
-//     to a fixed vocabulary). None says anything about the user, their
+//     to a fixed vocabulary), and LoginStage (the last login step reached, also
+//     a fixed vocabulary). None says anything about the user, their
 //     organisation, or their data.
 //
 // Do not phrase this as "the only exception is X". That form is a promise about
@@ -128,6 +129,14 @@ type Event struct {
 	// mode is the field's reason to exist. Eligible on every outcome,
 	// including success and canceled.
 	GrafanaAuthMethod string `json:"grafana_auth_method,omitempty"`
+
+	// LoginStage is the last step `gcx login` or `gcx signup` entered, clamped
+	// to the vocabulary in loginstage.go. "complete" means the connection was
+	// saved, so it is the only reliable success signal for a login: an
+	// abandoned prompt exits 0 too. Absent on other commands and on help, and
+	// when the command stopped before the login pipeline started. Eligible on
+	// every outcome.
+	LoginStage string `json:"login_stage,omitempty"`
 
 	// Sanitized `gcx api` passthrough detail, set only for the api command.
 	// Each field carries a closed-vocabulary value produced by

@@ -24,9 +24,8 @@ const firstRunNoticeFileName = "telemetry-notice-shown"
 // flag file and would keep the consent text they were originally shown while
 // the collection behind it changed.
 //
-// Revision 3 discloses the Grafana authentication category and the failure
-// status/reason fields.
-const noticeRevision = "3"
+// Revision 4 discloses the login stage.
+const noticeRevision = "4"
 
 // firstRunNotice is the one-time message telling interactive users that
 // anonymous usage stats are on and how to opt out. The docs link is the
@@ -36,8 +35,9 @@ const noticeRevision = "3"
 // It names the fields derived from how the command ran rather than claiming a
 // single exception: output_format carries the value of --output (filtered to a
 // fixed list of formats), dry_run reports whether the operation ran in dry-run
-// mode (false does not imply anything was mutated), and grafana_auth_method is
-// the authentication category, clamped to a fixed vocabulary.
+// mode (false does not imply anything was mutated), grafana_auth_method is
+// the authentication category, clamped to a fixed vocabulary, and login_stage
+// is the last login step reached, from a fixed vocabulary.
 // An enumeration like "the only exception is X" is a promise that has to be
 // re-audited against the whole event every time a field is added, and it was
 // wrong the first time it was written.
@@ -47,7 +47,7 @@ var firstRunNotice = `gcx collects anonymous usage statistics so we can make gcx
 
 For the resource commands that work on batches, we record fixed size categories for the operation's succeeded, failed and skipped portions, rather than numbers. What each portion counts depends on the command: for some it is individual resources, for others whole resource types. Two of those categories, "0" and "1", cover a single value each; the rest are ranges. We also record the output format used, and whether the operation ran in dry-run mode.
 
-For Grafana connections, we record the authentication category selected, such as oauth, token, basic, mtls, anonymous, or unknown, but never credentials. For some failed commands, we may also record a 4xx/5xx HTTP status code or a fixed Kubernetes reason category; these details are omitted for partial failures and cancellations.
+For Grafana connections, we record the authentication category selected, such as oauth, token, basic, mtls, anonymous, or unknown, but never credentials. For some failed commands, we may also record a 4xx/5xx HTTP status code or a fixed Kubernetes reason category; these details are omitted for partial failures and cancellations. For gcx login and gcx signup, we record the last step the login reached, such as browser or complete.
 You can opt out by setting GCX_TELEMETRY=disabled, or adding to your gcx config file:
   diagnostics:
     telemetry: disabled

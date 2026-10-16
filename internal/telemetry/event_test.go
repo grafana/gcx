@@ -53,6 +53,11 @@ func wantGrafanaAuthOnly() []string {
 	return []string{"grafana_auth_method"}
 }
 
+// wantLoginOnly is the login-stage field, set only for login and signup.
+func wantLoginOnly() []string {
+	return []string{"login_stage"}
+}
+
 func wantAPIOnly() []string {
 	return []string{"api_method", "api_route", "api_datasource_types"}
 }
@@ -108,6 +113,7 @@ func TestEventFieldInventory(t *testing.T) {
 		HTTPStatus:        403,
 		K8sReason:         "NotFound",
 		GrafanaAuthMethod: "token",
+		LoginStage:        "complete",
 	}
 
 	got := marshalKeys(t, full)
@@ -115,6 +121,7 @@ func TestEventFieldInventory(t *testing.T) {
 	want = append(want, wantBatchOnly()...)
 	want = append(want, wantErrorSignalsOnly()...)
 	want = append(want, wantGrafanaAuthOnly()...)
+	want = append(want, wantLoginOnly()...)
 	want = append(want, wantAPIOnly()...)
 	assert.ElementsMatch(t, want, keys(got), "full event must emit exactly the documented field set")
 }
@@ -134,12 +141,12 @@ func TestEventOmitsBatchFieldsWhenUnset(t *testing.T) {
 	}
 }
 
-// Absence is meaningful for all three new optional fields: no status found,
-// no Kubernetes reason found, no auth selection decided. Zero values must
-// vanish rather than travel as 0 or "".
+// Absence is meaningful for these optional fields: no status found, no
+// Kubernetes reason found, no auth selection decided, no login stage entered.
+// Zero values must vanish rather than travel as 0 or "".
 func TestEventOmitsErrorSignalAndAuthFieldsWhenUnset(t *testing.T) {
 	got := marshalKeys(t, telemetry.Event{Outcome: telemetry.OutcomeOK})
-	for _, field := range append(wantErrorSignalsOnly(), wantGrafanaAuthOnly()...) {
+	for _, field := range append(append(wantErrorSignalsOnly(), wantGrafanaAuthOnly()...), wantLoginOnly()...) {
 		assert.NotContains(t, got, field, "events without the signal must omit the field entirely")
 	}
 }
@@ -169,6 +176,16 @@ func TestGrafanaAuthMethodLabelClampsToVocabulary(t *testing.T) {
 		assert.Equal(t, label, telemetry.GrafanaAuthMethodLabel(label), "every listed method passes through unchanged")
 	}
 	assert.Len(t, telemetry.GrafanaAuthMethodLabels(), 6, "six values is the receiver-gated contract")
+}
+
+func TestLoginStageLabelClampsToVocabulary(t *testing.T) {
+	assert.Empty(t, telemetry.LoginStageLabel(""), "no stage recorded means the field is omitted")
+	assert.Equal(t, telemetry.LoginStageUnknown, telemetry.LoginStageLabel("https://stack.grafana.net/callback?code=x"),
+		"an out-of-contract value must not travel verbatim")
+
+	for _, label := range telemetry.LoginStageLabels() {
+		assert.Equal(t, label, telemetry.LoginStageLabel(label), "every listed stage passes through unchanged")
+	}
 }
 
 // The zero bucket and a false dry-run are real answers, so omitempty must not

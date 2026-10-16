@@ -17,6 +17,7 @@ import (
 
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/auth"
+	"github.com/grafana/gcx/internal/telemetry/capture"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -162,6 +163,8 @@ func sendCallback(t *testing.T, method, rawURL string) (int, string) {
 // picks it again, and before the gate its callback aborted the new login.
 func TestCallbackServerIgnoresCallbacksFromOtherAttempts(t *testing.T) {
 	localSessionForTest(t)
+	capture.Reset()
+	t.Cleanup(capture.Reset)
 	browser := recordBrowser(t)
 	var calls atomic.Int32
 	exchange := newExchangeServer(t, &calls)
@@ -195,6 +198,7 @@ func TestCallbackServerIgnoresCallbacksFromOtherAttempts(t *testing.T) {
 
 	assertStillWaiting(t, done)
 	assert.Zero(t, calls.Load(), "no ignored callback may spend a code")
+	assert.Empty(t, capture.CurrentLoginStage(), "a callback from another attempt is not this login's progress")
 
 	status, body = sendCallback(t, http.MethodGet, callbackURL(port, ours))
 	assert.Equal(t, http.StatusOK, status)
@@ -217,6 +221,8 @@ func TestCallbackServerIgnoresCallbacksFromOtherAttempts(t *testing.T) {
 // neutral page instead of a failure.
 func TestCallbackServerStopsOnBrowserCancel(t *testing.T) {
 	localSessionForTest(t)
+	capture.Reset()
+	t.Cleanup(capture.Reset)
 	browser := recordBrowser(t)
 	var calls atomic.Int32
 	newExchangeServer(t, &calls)
@@ -236,6 +242,8 @@ func TestCallbackServerStopsOnBrowserCancel(t *testing.T) {
 	outcome := waitForOutcome(t, done)
 	require.ErrorIs(t, outcome.err, auth.ErrBrowserCancelled)
 	assert.Zero(t, calls.Load())
+	assert.Equal(t, "callback", capture.CurrentLoginStage(),
+		"a consent-page Cancel is the browser's answer, unlike an interrupt while waiting")
 }
 
 // TestFlowRun_ManualStopsOnBrowserCancel covers the manual paste route: a
@@ -776,6 +784,8 @@ func TestTerminalDeviceCandidates(t *testing.T) {
 // consent page's own answer and still ends the login.
 func TestCallbackServerKeepsWaitingAfterAnIncompleteCallback(t *testing.T) {
 	localSessionForTest(t)
+	capture.Reset()
+	t.Cleanup(capture.Reset)
 	browser := recordBrowser(t)
 	var calls atomic.Int32
 	exchange := newExchangeServer(t, &calls)
@@ -809,6 +819,7 @@ func TestCallbackServerKeepsWaitingAfterAnIncompleteCallback(t *testing.T) {
 	assertStillWaiting(t, done)
 	assert.Zero(t, calls.Load(), "an incomplete callback may not spend a code")
 	assert.Contains(t, out.String(), "gcx ignored it and is still waiting", "the terminal says why nothing happened")
+	assert.Empty(t, capture.CurrentLoginStage(), "the login is still waiting for the browser")
 
 	status, body := sendCallback(t, http.MethodGet, callbackURL(port, ours))
 	assert.Equal(t, http.StatusOK, status)
@@ -817,6 +828,7 @@ func TestCallbackServerKeepsWaitingAfterAnIncompleteCallback(t *testing.T) {
 	require.NoError(t, outcome.err)
 	assert.Equal(t, "gat_token", outcome.result.Token)
 	assert.Equal(t, int32(1), calls.Load())
+	assert.Equal(t, "callback", capture.CurrentLoginStage())
 }
 
 func TestCallbackServerEndsOnProviderErrorAfterAnIncompleteCallback(t *testing.T) {

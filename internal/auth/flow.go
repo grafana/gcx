@@ -634,6 +634,10 @@ func (e *ExchangeStatusError) Error() string {
 	return fmt.Sprintf("oauth token exchange failed: status %d from %s", e.StatusCode, e.Path)
 }
 
+// HTTPStatusCode lets the usage event report the exchange status as
+// http_status, like any other HTTP failure.
+func (e *ExchangeStatusError) HTTPStatusCode() int { return e.StatusCode }
+
 type exchangeResponse struct {
 	Status string `json:"status"`
 	Data   struct {

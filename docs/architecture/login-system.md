@@ -186,6 +186,14 @@ suggests no further credential. With
 in the browser ... Checking the connection to <stack>..." with no success
 mark, so the summary, printed only after the save, is the one success line.
 
+For the usage event, login and signup record the last pipeline step they
+entered through `capture.SetLoginStage`: `preflight` at the start of
+`runLogin`, `credentials` and `browser` in the OAuth branch of
+`resolveGrafanaAuth`, `callback` in `handleCallbackParams` once a callback with
+this login's state ends the wait, `validate` after auth resolves, `persist` and
+`complete` around the config write in `persistContext`. Only `complete` means
+the connection was saved; an abandoned prompt exits 0 without it.
+
 The pipeline reads top-to-bottom in `Run()` (login.go:180). Each step returns
 early on failure; sentinel branches unwind to the CLI for interactive
 resolution and re-entry:

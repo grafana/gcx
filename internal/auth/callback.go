@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/url"
 	"sync/atomic"
+
+	"github.com/grafana/gcx/internal/telemetry/capture"
 )
 
 // errStateMismatch reports that the callback state does not match the state
@@ -261,8 +263,14 @@ func awaitCallbackOrPaste[T any](
 // ParseCallbackInput. Keeping one implementation stops the two paths from
 // diverging on the state check, the PKCE exchange, or endpoint validation.
 func handleCallbackParams(ctx context.Context, q url.Values, expectedState, codeVerifier string, guard *exchangeGuard) (*Result, *callbackError) {
+	// The login stage moves to "callback" only for a callback that ends this
+	// login's wait: its Cancel, or a code about to be exchanged. A foreign or
+	// incomplete callback leaves the login waiting, so it records nothing.
 	code, cerr := checkCallbackBasics(q, expectedState)
 	if cerr != nil {
+		if errors.Is(cerr.err, ErrBrowserCancelled) {
+			capture.SetLoginStage("callback")
+		}
 		return nil, cerr
 	}
 
@@ -278,6 +286,7 @@ func handleCallbackParams(ctx context.Context, q url.Values, expectedState, code
 		return nil, &callbackError{err: errExchangeClaimed, page: "The login already completed in the terminal."}
 	}
 
+	capture.SetLoginStage("callback")
 	exchangeResult, err := exchangeCodeForToken(ctx, endpoint, code, codeVerifier)
 	if err != nil {
 		return nil, &callbackError{err: fmt.Errorf("token exchange failed: %w", err), page: "Token exchange failed"}

@@ -1,5 +1,9 @@
 ## Unreleased
 
+- Anonymous usage statistics for `gcx login` and `gcx signup` now record the
+  last login step reached (`login_stage`), and a failed OAuth token exchange
+  reports its HTTP status. The one-time telemetry notice is shown again to
+  disclose the new field.
 - Classify CLI failures with consistent category summaries and preserve operation context, server messages, codes, and trace IDs without repeated diagnostics. HTTP 401/403 errors carried by shared provider transports, Assistant helpers, and `gcx api`, missing Cloud credentials, and missing SM credentials/stack prerequisites now exit 3 instead of 1; the instrumentation mutual-exclusion error converter now assigns exit 2 instead of 1 (the current setup command does not emit its sentinel). HTML error pages are replaced with generic API-response details while retaining auth classification; `gcx api` continues to show the full body. Fleet 404s mean `Resource not found` only for Connect `code: "not_found"`; other 404s mean `Endpoint not available`.
 
 ## v1.6.0 (2026-10-13)
