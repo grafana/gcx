@@ -134,6 +134,7 @@ open it in your browser after the query succeeds.`,
 		agent.AnnotationLLMHint:   "gcx datasources bigquery query -d UID 'SELECT count(*) FROM `dataset.events`' -o json",
 	}
 
+	cmdio.RegisterCSV(&shared.IO)
 	shared.Setup(cmd.Flags(), false)
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.bigquery is configured)")
 	cmd.Flags().IntVar(&limit, "limit", defaultLimit, fmt.Sprintf("Max rows to return; requests above %d are capped, with a warning (0 disables enforcement)", maxLimit))

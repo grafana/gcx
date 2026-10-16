@@ -6,6 +6,7 @@ import (
 
 	"github.com/grafana/gcx/internal/agent"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/athena"
 	"github.com/spf13/cobra"
@@ -139,6 +140,7 @@ open it in your browser after the query succeeds.`,
 		agent.AnnotationLLMHint:   `gcx datasources athena query -d UID 'SELECT count(*) FROM events' -o json`,
 	}
 
+	cmdio.RegisterCSV(&shared.IO)
 	shared.Setup(cmd.Flags(), false)
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.athena is configured)")
 	cmd.Flags().IntVar(&limit, "limit", defaultLimit, "Max rows to return (0 disables enforcement)")
