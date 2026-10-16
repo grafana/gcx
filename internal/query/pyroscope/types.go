@@ -212,6 +212,39 @@ const (
 	HeatmapQueryTypeSpan = "HEATMAP_QUERY_TYPE_SPAN"
 )
 
+// AnomalyType constants mirror the pyroscope querier.v1.AnomalyType enum.
+const (
+	AnomalyTypeStacktrace = "ANOMALY_TYPE_STACKTRACE"
+)
+
+type QueryAnomaliesRequest struct {
+	ProfileTypeID string
+	LabelSelector string
+	Start         time.Time
+	End           time.Time
+	AnomalyTypes  []string // defaults to [AnomalyTypeStacktrace] when empty
+}
+
+// QueryAnomaliesResponse has one field per anomaly source; only
+// AnomalyTypeStacktrace exists today, so only StacktraceAnomalies is populated.
+type QueryAnomaliesResponse struct {
+	StacktraceAnomalies []StacktraceAnomaly `json:"stacktraceAnomalies"`
+}
+
+// StacktraceAnomaly mirrors querier.v1.StacktraceAnomaly: a profile flagged
+// by the stacktrace anomaly source and confirmed present in ingested data.
+type StacktraceAnomaly struct {
+	ProfileID string      `json:"profileId"`
+	Timestamp json.Number `json:"timestamp"` // ms since epoch, encoded as string
+	Labels    []LabelPair `json:"labels,omitempty"`
+	Score     float64     `json:"score"`
+}
+
+func (a StacktraceAnomaly) TimestampMs() int64 {
+	v, _ := a.Timestamp.Int64()
+	return v
+}
+
 // Exemplar is a single profile sample (optionally span-linked) attached to a
 // TimePoint (SelectSeries) or HeatmapSlot (SelectHeatmap).
 type Exemplar struct {

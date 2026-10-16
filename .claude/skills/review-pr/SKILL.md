@@ -68,9 +68,9 @@ Do that even when the argument for them is strong.
 ## Do not report
 
 - Anything CI already enforces: `mise run lint`, the test suite,
-  `reference-drift`, `validate-skills`, and the conformance suites in
+  the `Documentation` build, `validate-skills`, and the conformance suites in
   `cmd/gcx/root/`.
-- Generated files under `docs/reference/cli/`, and anything in `vendor/`.
+- The generated release snapshot `docs/sources/cli-reference.md`, and anything in `vendor/`.
 - Missing test coverage in files the diff did not touch.
 
 ## Report shape
@@ -211,7 +211,7 @@ directly on stdin; the tracked allowlist grants no file-write permission. A
 quoted heredoc keeps backticks, dollar signs, and suggestions literal:
 
 ```bash
-gh api repos/{owner}/{repo}/pulls/{n}/reviews -X POST --input - <<'REVIEW_JSON'
+gh api repos/grafana/gcx/pulls/{n}/reviews -X POST --input - <<'REVIEW_JSON'
 {
   "event": "COMMENT",
   "commit_id": "<reviewed head SHA>",
@@ -223,6 +223,10 @@ REVIEW_JSON
 
 Replace the placeholders, use the chosen event for a human-invoked review,
 and put the inline findings in `comments`. Leave it empty for a clean review.
+Keep the endpoint first, unquoted, and followed by `-X POST`, matching the review
+permission in `.claude/settings.json`. Record the returned review ID. If
+publication is denied, stop and report the failed command. Do not retry through
+scripts, post test comments, or switch to a regular PR comment.
 
 Each comment needs `path`, `line`, and `side`. Use `RIGHT` for the file after
 the change. A range also needs `start_line` and `start_side`.

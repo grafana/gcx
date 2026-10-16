@@ -29,7 +29,7 @@ func StaticDescriptor() resources.Descriptor {
 
 // HookRuleSchema returns a JSON Schema for the HookRule resource type.
 func HookRuleSchema() json.RawMessage {
-	return adapter.SchemaFromType[eval.HookRuleDefinition](StaticDescriptor())
+	return adapter.SchemaFromType[eval.HookRuleDefinition](StaticDescriptor())()
 }
 
 func hookRuleStripFields() []string {

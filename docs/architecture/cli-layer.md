@@ -29,6 +29,9 @@ gcx (root)
 │   └── view
 │       └── --output / -o   [yaml|json, default: yaml]
 │
+├── login  [CONTEXT_NAME]    [cmd/gcx/login/command.go]  Log in to a Grafana instance (token, browser OAuth, Basic auth)
+├── signup [CONTEXT_NAME]    [cmd/gcx/login/signup.go]   Create a Grafana Cloud account and save a connection to its first stack
+│
 ├── resources                [cmd/gcx/resources/command.go]
 │   ├── --config             [persistent: inherited from config.Options]
 │   ├── --context            [persistent: inherited from config.Options]
@@ -60,6 +63,13 @@ gcx (root)
 │   ├── list
 │   ├── get    NAME
 │   └── query                DATASOURCE_UID EXPR (auto-detect type) [--from] [--to] [--step] [--since] [--limit] [--profile-type] [--max-nodes] [-o]
+│
+├── docs                     [cmd/gcx/docs/command.go]
+│   ├── search  QUERY        Search the grafana.com docs index [--product] [--limit]
+│   ├── get     URL          Fetch a page as bounded markdown [--section] [--offset] [--limit]
+│   ├── outline URL          List headings of a page
+│   ├── list-products        List indexed doc products with entry counts
+│   └── list-links           List curated canonical doc URLs (no network)
 │
 ├── metrics                  [internal/providers/metrics/provider.go] (registered via providers.Register)
 │   ├── query                [DATASOURCE_UID] EXPR   [--from] [--to] [--step] [--since] [-o]
@@ -155,6 +165,15 @@ Key: SELECTOR = `kind[/name[,name...]]` or long form `kind.group/name`
 
 ---
 
+## Agent Identity
+
+`internal/agent` resolves native signals and supported explicit names.
+Command defaults and usage telemetry use the same detector.
+`GCX_AGENT_NAME` supports harnesses without a native marker.
+Only fixed labels reach telemetry. Test helpers clear the detector's full
+input list through `agent.EnvironmentVariables()`.
+See [agent mode](../design/agent-mode.md#61-detection) for precedence.
+
 ## Portable Skill Lifecycle
 
 `claude-plugin/assets.go` embeds `skills/` and `skills-catalog.yaml` separately.
@@ -192,10 +211,10 @@ Do you need only standard CRUD on an externally accessible, discoverable
 Being on `/apis` settles CRUD, not the command surface: `gcx dashboards` and
 `gcx alert` are dedicated command trees over `/apis`-backed products, because
 their real operations are not CRUD verbs. Product-specific operations need their
-own placement analysis regardless of tier. And a commands-only provider that calls
-the K8s dynamic client extends the single documented exception in
-`CONSTITUTION.md` § Architecture Invariants (`internal/providers/dashboards/`,
-ADR 016), which requires explicit human approval.
+own placement analysis regardless of tier. Provider commands over a native
+`/apis` resource go through the shared native binding (`internal/providers/native`,
+see `CONSTITUTION.md` § Architecture Invariants); dashboards still hand-rolls this
+access until its pending migration lands.
 
 See `.claude/skills/add-provider/references/decision-tree.md` for the full
 decision tree.
@@ -255,6 +274,8 @@ gcx synthetic-monitoring [internal/providers/synth/provider.go]
     └── list
 ```
 
+The Assistant provider includes experimental `assistant watchers list/get/status/create/update/delete` commands. Configuration commands use the registered Watcher typed adapter; create and update accept complete file manifests, delete uses the shared destructive confirmation helper, and status is a separate runtime view. Mutation codecs expose identity and stage outcomes, including partial completion with exit 4. See [Assistant Watchers](../reference/assistant-watchers.md).
+
 ### Config loading pattern
 
 Provider commands cannot import `cmd/gcx/config` (import cycle). Instead,
@@ -290,6 +311,9 @@ cmd/gcx/
 │   └── command.go           Root cobra command: logging setup, PersistentPreRun
 ├── config/
 │   └── command.go           config group + all config subcommands + Options type
+├── login/
+│   ├── command.go           login command; runLogin is the pipeline signup shares
+│   └── signup.go            signup command: preflight, recovery commands
 ├── resources/
 │   ├── command.go           resources group (wires configOpts to all subcommands)
 │   ├── get.go               resources get
@@ -309,6 +333,14 @@ cmd/gcx/
 │   ├── get.go               datasources get
 │   ├── query.go             QueryCmd() — auto-detecting query (shared infra from internal/datasources/query/)
 │   └── query_routes.go      per-kind dispatch handlers and typed-command redirects
+├── docs/
+│   ├── command.go           docs group + index loader + fetch seam
+│   ├── search.go            docs search
+│   ├── get.go               docs get
+│   ├── outline.go           docs outline
+│   ├── products.go          docs list-products
+│   ├── links.go             docs list-links
+│   └── testdata/            sample index fixture
 ├── providers/
 │   └── command.go           providers command — lists registered providers
 ├── setup/
@@ -666,11 +698,14 @@ func (c *tableCodec) Decode(io.Reader, any) error { return errors.New("not suppo
 Four colored message functions output to a given `io.Writer`:
 
 ```go
-cmdio.Success(cmd.OutOrStdout(), "%d resources pushed, %d errors", ok, fail)
-cmdio.Warning(cmd.OutOrStdout(), "...")
-cmdio.Error(cmd.OutOrStdout(), "...")
-cmdio.Info(cmd.OutOrStdout(), "...")
+cmdio.Success(cmd.ErrOrStderr(), "%d resources pushed, %d errors", ok, fail)
+cmdio.Warning(cmd.ErrOrStderr(), "...")
+cmdio.Error(cmd.ErrOrStderr(), "...")
+cmdio.Info(cmd.ErrOrStderr(), "...")
 ```
+
+Pass the **stderr** writer: stdout carries the result, stderr the diagnostics
+(see [output.md § 1.4](../design/output.md) and CONSTITUTION.md § Output).
 
 They prefix with colored Unicode symbols (✔ ⚠ ✘ 🛈). `--no-color` disables all color globally via `color.NoColor = true` in root's `PersistentPreRun`.
 
@@ -696,7 +731,7 @@ type DetailedError struct {
 
 Renders as:
 ```
-Error: Resource not found - code 404
+Error: Resource not found
 │
 ├─ Details:
 │
@@ -711,6 +746,19 @@ Error: Resource not found - code 404
 
 Commands can return a `DetailedError` directly from `RunE`. Business logic layers can also return them (e.g. `fetch.go` returns one when `ExpectSingleTarget` is violated).
 
+### Command Usage and Server Capabilities
+
+`internal/gcxerrors.UsageError` and `NewCommandUsageError` provide the same
+expected usage line and help suggestion to command implementations in both
+`cmd/` and `internal/`. The `cmd/gcx/fail` exports remain compatibility wrappers;
+the converter renders these errors as `Invalid command usage` with exit 2.
+
+Malformed resource selectors also exit 2, with suggestions that apply to any
+resource command. Discovery returns `resources.UnsupportedResourceError` when
+a well-formed resource type or API version is absent from the server. This is
+`Endpoint not available` with exit 1, including dashboard commands using their
+default API version. It does not imply incorrect command syntax.
+
 ### `ErrorToDetailedError` — Error Conversion Pipeline
 
 `main.go:handleError` calls this on any error before printing. It runs a chain of type-specific converters:
@@ -719,19 +767,40 @@ Commands can return a `DetailedError` directly from `RunE`. Business logic layer
 ErrorToDetailedError(err)
     │
     ├─ errors.As(err, &DetailedError{}) → return as-is if already detailed
-    ├─ convertWaitTimeoutEmitted → ErrWaitTimeoutEmitted sentinel (suppress secondary output)
-    ├─ convertUnknownFieldSelectionErrors → UnknownFieldSelectionError (--json unknown field)
-    ├─ convertPartialFailureErrors → PartialFailureError (exit 4)
-    ├─ convertUsageErrors    → UsageError (exit 2)
-    ├─ convertConfigErrors   → ValidationError, UnmarshalError, ErrContextNotFound
-    ├─ convertFSErrors       → fs.PathError (not exist, invalid, permission)
-    ├─ convertResourcesErrors → InvalidSelectorError
-    ├─ convertNetworkErrors  → url.Error
-    ├─ convertAPIErrors      → k8s StatusError (401, 403, 404, ...)
-    └─ fallback: DetailedError{Summary: "Unexpected error", Parent: err}
+    ├─ ... domain and transport converters (specific errors first)
+    ├─ convertHTTPStatusErrors → concrete gcxerrors.HTTPStatusError
+    └─ fallbackDetailedError  → Unexpected error
 ```
 
-**Adding new error conversions:** add a `convertXxxErrors` function following the `func(error) (*DetailedError, bool)` signature and append it to the `errorConverters` slice in `ErrorToDetailedError`.
+`convertHTTPStatusErrors` is the final typed converter, immediately before the
+fallback. This preserves specialized handling for errors that carry domain
+context while still classifying otherwise-unhandled HTTP failures. It matches
+the concrete `gcxerrors.HTTPStatusError` type through `errors.As`; the shared
+`HTTPStatusCode()` interface is used by telemetry and is not the converter's
+match condition.
+
+The HTTP status determines the broad classification: 401 is `Authentication
+failed`, 403 is `Authorization failed`, 404 is `Resource not found`, 409 is
+`Resource conflict`, and other statuses are `API error`. Authentication and
+authorization both use exit 3. An HTML response does not change this
+status-based summary or exit code; converters replace HTML response details
+with a generic explanation so an SSO page is not rendered as an API message.
+The raw `gcx api` command is exempt from that rendering rule and keeps its full
+response body as passthrough output.
+
+Every converter summary uses an exported constant from `internal/gcxerrors`.
+The converter tests enforce that rule with an AST check (including helper
+returns), check that the constants match the summary table in
+`docs/design/errors.md`, and verify produced summaries at runtime. Whole-struct
+copies of an already-converted `DetailedError` are allowed. The fallback uses
+`Unexpected error` and puts the complete original message in `Details`; it
+leaves `Parent` unset so the message is not repeated.
+
+**Adding new error conversions:** add a `convertXxxErrors` function following
+the `func(error) (*DetailedError, bool)` signature and append it to the
+`errorConverters` slice in `ErrorToDetailedError`. Keep the HTTP status
+converter last among typed converters, and use a summary constant from
+`internal/gcxerrors`.
 
 ---
 
@@ -849,7 +918,7 @@ cmd.AddCommand(myCmd(configOpts))
 | `configOpts.LoadGrafanaConfig` is called in `RunE`, not at construction | All resource commands |
 | `--config` and `--context` are persistent on the group, not per-subcommand | `resources/command.go`, `config/command.go` |
 | All errors bubble up through `RunE` return value; never `os.Exit` in commands | All commands |
-| Status messages go to `cmd.OutOrStdout()`, not `os.Stdout` directly | All commands |
+| Status messages go to `cmd.ErrOrStderr()`, never `os.Stdout`/`os.Stderr` directly | All commands |
 | Custom table codecs implement `format.Codec` and are registered before `BindFlags` | `get.go`, `list.go`, `validate.go` |
 | Data fetching is format-agnostic — fetch all fields, let codecs filter display | All commands with custom codecs |
 | `OnErrorMode` is always validated in `opts.Validate()`, not inline | All multi-resource commands |

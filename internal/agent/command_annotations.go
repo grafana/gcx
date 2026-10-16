@@ -28,6 +28,17 @@ var commandAnnotations = map[string]annotation{
 	// Core CLI commands (cmd/gcx/)
 	// -----------------------------------------------------------------------
 
+	// docs — Grafana documentation lookup (read-only, no auth required).
+	// search/list-products pay a one-time index download (up to ~10 MiB) on
+	// the first call; get/outline fetch a single page (capped at 2 MiB).
+	// list-links is served from a built-in registry with no network, so it
+	// alone is "small".
+	"gcx docs search":        {Cost: "medium", Hint: "search Grafana docs by keyword; first call downloads the docs index. --product <name> --limit 10 -o json. For curated canonical URLs run 'gcx docs list-links'"},
+	"gcx docs get":           {Cost: "medium", Hint: "fetch a doc page as bounded markdown; --section <heading> --offset 0 --limit 80 -o json"},
+	"gcx docs outline":       {Cost: "medium", Hint: "fetch a doc page and list its headings to target sections with 'gcx docs get --section'"},
+	"gcx docs list-products": {Cost: "medium", Hint: "list indexed doc products with entry counts; first call downloads the docs index"},
+	"gcx docs list-links":    {Cost: "small", Hint: "list curated canonical doc URLs (no network); pass a URL to 'gcx docs get' to read content"},
+
 	"gcx api": {Cost: "large", Hint: "Run gcx help-tree --depth 1 to discover dedicated commands. Prefer gcx slo, gcx metrics query, gcx logs query, gcx alert, etc. Reserve gcx api for endpoints without a dedicated command. Example: GET /api/health -o json"},
 
 	// assistant
@@ -45,6 +56,9 @@ var commandAnnotations = map[string]annotation{
 	"gcx assistant investigations share":           {Cost: "small", Hint: "<id> --team=<name> (repeatable)"},
 	"gcx assistant conversation list":              {Cost: "small", Hint: "Discover conversation IDs. --source assistant,slack,cli (default), --limit, --offset, -o json"},
 	"gcx assistant conversation get":               {Cost: "large", Hint: "Pull a conversation transcript by ID or shared URL. AI SDK results cover the main thread; shared snapshots are read-only here. Example: <id-or-url> -o json"},
+	"gcx assistant watchers list":                  {Cost: "large", Hint: "Enumerates all visible Watchers. Prefer gcx assistant watchers get WATCHER for one configuration or status WATCHER for runtime observations; use --json spec.title or --jq to select fields."},
+	"gcx assistant watchers get":                   {Cost: "medium", Hint: "Read one configuration-only manifest by resource name or server ID. Use status for runtime observations."},
+	"gcx assistant watchers status":                {Cost: "large", Hint: "Read one Watcher runtime view including calibrated checks. Use get for reusable configuration and --json lifecycle,calibration or --jq to select observations."},
 	"gcx assistant mcp-servers create":             {Cost: "small"},
 	"gcx assistant mcp-servers delete":             {Cost: "small"},
 	"gcx assistant mcp-servers get":                {Cost: "small"},
@@ -53,6 +67,7 @@ var commandAnnotations = map[string]annotation{
 
 	// login
 	"gcx login":       {Cost: "small", Hint: "Browser OAuth (recommended for Grafana Cloud): gcx login <ctx> --server <url> --oauth — opens a browser for the user to approve; works in agent mode. Non-interactive token: gcx login <ctx> --yes --server <url> --token <grafana-sa-token> [--cloud-token <cap-token>]. Service-account tokens (--token) are created inside the Grafana instance — see " + docs.ServiceAccounts + ". Cloud access-policy tokens (--cloud-token) are created at grafana.com — see " + docs.AccessPolicies + ". Append .md to any grafana.com/docs URL to fetch markdown. Do not guess token URLs."},
+	"gcx signup":      {Cost: "small", Hint: "Creates a Grafana Cloud account and connects gcx to its first stack. A person completes the browser steps (sign-up, email verification, first-stack creation) and approves Connect gcx. A browser already signed in to Grafana Cloud skips sign-up and asks for one of that account's stacks, or goes straight to Connect gcx with one organization and one stack. In agent mode gcx prints the URL for the person and asks no questions. Pass an unused CONTEXT_NAME. If it fails after the browser step started, run the gcx login command the error shows, never signup again. It saves no Cloud credential; for Cloud product APIs add a Cloud Access Policy token afterwards: gcx cloud login --context <ctx> --cloud-token <token>. For an existing account use gcx login instead."},
 	"gcx cloud login": {Cost: "small", Hint: "Authenticate to the Grafana Cloud platform API (grafana.com) for managing stacks and access policies, distinct from 'gcx login' which targets a single stack. Browser OAuth by default; non-interactive: gcx cloud login --cloud-token <cap-token>. Cloud access-policy tokens are created at grafana.com, see " + docs.AccessPolicies + "."},
 
 	// commands
@@ -203,6 +218,21 @@ var commandAnnotations = map[string]annotation{
 	"gcx alert notification-policies set":        {Cost: "small"},
 	"gcx alert notification-policies reset":      {Cost: "small"},
 	"gcx alert notification-policies export":     {Cost: "medium", Hint: "--format yaml"},
+	"gcx alert time-intervals list":              {Cost: "medium", Hint: "Use get <title> for one native manifest; --json metadata.name,spec.name narrows the inventory."},
+	"gcx alert time-intervals get":               {Cost: "medium", Hint: "<title> -o yaml returns a native manifest; --json spec selects its configuration."},
+	"gcx alert time-intervals create":            {Cost: "small", Hint: "-f manifest.yaml creates only; the server derives the API name."},
+	"gcx alert time-intervals update":            {Cost: "small", Hint: "<current-title> -f manifest.yaml selects the current title; retain the fetched resourceVersion."},
+	"gcx alert time-intervals delete":            {Cost: "small", Hint: "<title> --force"},
+	"gcx alert template-groups list":             {Cost: "medium", Hint: "Use get <title> for one native manifest; --json metadata.name,spec.title,spec.kind narrows the inventory."},
+	"gcx alert template-groups get":              {Cost: "medium", Hint: "<title> -o yaml returns a native manifest; --json spec selects its configuration."},
+	"gcx alert template-groups create":           {Cost: "small", Hint: "-f manifest.yaml creates only; the server derives the API name."},
+	"gcx alert template-groups update":           {Cost: "small", Hint: "<current-title> -f manifest.yaml selects the current title; retain the fetched resourceVersion."},
+	"gcx alert template-groups delete":           {Cost: "small", Hint: "<title> --force"},
+	"gcx alert routing-trees list":               {Cost: "small"},
+	"gcx alert routing-trees get":                {Cost: "small", Hint: "<name> -o yaml"},
+	"gcx alert routing-trees create":             {Cost: "small", Hint: "-f tree.yaml"},
+	"gcx alert routing-trees update":             {Cost: "small", Hint: "<name> -f tree.yaml"},
+	"gcx alert routing-trees delete":             {Cost: "small", Hint: "<name> --force"},
 	"gcx alert templates list":                   {Cost: "small"},
 	"gcx alert templates get":                    {Cost: "small"},
 	"gcx alert templates upsert":                 {Cost: "small"},
@@ -300,7 +330,8 @@ var commandAnnotations = map[string]annotation{
 	// -----------------------------------------------------------------------
 	// Knowledge Graph provider
 	// -----------------------------------------------------------------------
-	"gcx kg entities query":       {Cost: "medium", Hint: "\"MATCH (s:Service) RETURN s LIMIT 10\" [--since 1h] | read-only Cypher query; always include LIMIT for targeted lookups; omit for broad discovery"},
+	"gcx kg entities query":       {Cost: "medium", Hint: "deprecated legacy Cypher search (entities, edges, pageNum, lastPage); retained through v1.x | prefer gcx kg graph query for new workflows and update output parsing | narrow MATCH and include LIMIT for targeted lookups"},
+	"gcx kg graph query":          {Cost: "medium", Hint: "\"MATCH (s:Service) RETURN s.name AS name LIMIT 10\" [--since 1h] | read-only Cypher rows (columns, rows, stats); requires literal LIMIT; use narrow MATCH and bounded paths; defaults to last 1h; use kg entities list/inspect for health"},
 	"gcx kg entities correlate":   {Cost: "medium", Hint: "--alert-labels 'alertname=<name>,job=<job>' [--since 1h] | resolve the affected entities for a firing alert from its labels (the \"I have an alert, which entity?\" entry point) | provide alerts inline (repeatable), from an Alertmanager webhook via -f/stdin, or both | empty result exits 0 with a notice | use this instead of list/inspect when you have an alert rather than a known entity name"},
 	"gcx kg diagnose":             {Cost: "medium", Hint: "[--env <env>] | run diagnostic checks on the Knowledge Graph pipeline: stack status, sanity checks, entity counts, scopes, telemetry configs, recording rule metrics, and an aggregate instrumentation-quality summary"},
 	"gcx kg diagnose service":     {Cost: "medium", Hint: "<service-name> [--env <env>] | deep diagnosis for a specific service: entity lookup, relationships, per-service metrics, interpreted diagnosis with next steps"},
@@ -332,6 +363,8 @@ var commandAnnotations = map[string]annotation{
 	"gcx kg quality list":         {Cost: "medium", Hint: "--env <env> [--namespace <ns>] [--sort asc|desc] [--failed-check <id> ...] -o json | rank entities by instrumentation quality percent; --sort asc surfaces the worst-instrumented services first; filter to specific gaps with --failed-check (e.g. span-metrics, service-graph-metrics)"},
 	"gcx kg quality get":          {Cost: "small", Hint: "<entity-name> --env <env> [--namespace <ns>] -o json | full quality report for one entity: per-check state/impact, remediation doc links, and resolved query templates"},
 	"gcx kg status":               {Cost: "small"},
+	"gcx kg thresholds get":       {Cost: "small", Hint: "summarize the whole v1 threshold config; use -o yaml for the full PrometheusRules resource envelope"},
+	"gcx kg thresholds list":      {Cost: "small", Hint: "--category request|resource | per-category thresholds as items with scope=custom|global (v1 has no health category)"},
 	"gcx kg suppressions upsert":  {Cost: "small", Hint: "-f suppressions.yaml (or pipe YAML via stdin) | upsert (create or update) one or more alert suppressions; never deletes remote entries absent from the file; add --dry-run to validate against the backend and preview the remote->local diff without uploading"},
 	"gcx kg suppressions delete":  {Cost: "small"},
 	"gcx kg suppressions list":    {Cost: "small"},
@@ -648,6 +681,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx synthetic-monitoring query":              {Cost: "small", Hint: "<name> -p job=<job> -p instance=<target> -p frequency=<ms>"},
 	"gcx synthetic-monitoring queries get":        {Cost: "small", Hint: "<name>. Full parameter schema plus a ready-to-run 'query' invocation. Requires SM app v1.62.0+."},
 	"gcx synthetic-monitoring queries list":       {Cost: "small", Hint: "Requires SM app v1.62.0+."},
+	"gcx synthetic-monitoring suggestions list":   {Cost: "medium", Hint: "--json id,target,confidence,score keeps output small (full records are ~3 KB each; --limit defaults to 10). Each run generates suggestions anew: a paid, experimental LLM call over the stack's telemetry; unavailable in some regions."},
 	"gcx synthetic-monitoring probes create":      {Cost: "small"},
 	"gcx synthetic-monitoring probes delete":      {Cost: "small"},
 	"gcx synthetic-monitoring probes deploy":      {Cost: "small"},

@@ -205,6 +205,26 @@ func TestAgentsCodec_StructWithItems_CountsItems(t *testing.T) {
 	assert.LessOrEqual(t, len(preview), 3)
 }
 
+func TestAgentsCodec_ZeroThresholdDisablesSpill(t *testing.T) {
+	t.Setenv("GCX_AGENT_SPILL_BYTES", "0")
+	dir := t.TempDir()
+	t.Setenv("TMPDIR", dir)
+
+	codec := cmdio.NewAgentsCodecForTesting()
+	data := map[string]string{"payload": strings.Repeat("x", 512*1024)}
+
+	var buf bytes.Buffer
+	require.NoError(t, codec.Encode(&buf, data))
+
+	var got map[string]string
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &got), "stdout carries the full payload, not a spill receipt")
+	assert.Equal(t, data, got)
+	files, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	assert.Empty(t, files, "no spill file")
+	assert.Equal(t, 0, cmdio.SpillThreshold())
+}
+
 func TestAgentsCodec_InvalidEnvVar_FallsBackToDefault(t *testing.T) {
 	t.Setenv("GCX_AGENT_SPILL_BYTES", "not-a-number")
 

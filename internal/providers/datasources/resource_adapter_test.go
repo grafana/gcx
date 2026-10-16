@@ -29,7 +29,7 @@ func TestProviderTypedRegistrations(t *testing.T) {
 	assert.Equal(t, provds.StaticDescriptor().GroupVersionKind(), reg.GVK)
 	// Every registration must carry a non-nil Schema, and a non-nil Example for
 	// writable resources.
-	require.NotNil(t, reg.Schema)
+	require.NotNil(t, reg.Schema())
 	require.NotNil(t, reg.Example)
 	require.NotNil(t, reg.Factory)
 }

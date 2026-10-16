@@ -14,6 +14,13 @@ const (
 	appTypeWeb    = "web"
 	appTypeMobile = "mobile"
 
+	// runtimeWebJS pairs with appTypeWeb; the other runtimes pair with appTypeMobile.
+	runtimeWebJS         = "web-js"
+	runtimeFlutter       = "flutter"
+	runtimeReactNative   = "react-native"
+	runtimeAndroidNative = "android-native"
+	runtimeSwiftNative   = "swift-native"
+
 	datasourceLoki  = "loki"
 	datasourcePinot = "pinot"
 

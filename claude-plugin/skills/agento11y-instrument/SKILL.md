@@ -133,8 +133,15 @@ the endpoint is set under the wrong name (e.g. `AGENTO11Y_API_ENDPOINT` — the 
    their own login (the Agent Observability setup screen gives them the exact command, or they use
    `gcx login`). Instrumentation itself needs no gcx login — only Step 5 verification does, so this
    never blocks writing the code.
-2. `gcx cloud stacks list`, then `gcx cloud stacks get <stack-slug>` — identify the target stack and
-   its URLs. This gives you the stack to point the developer at, and confirms which tenant the Step 5
+2. `gcx cloud orgs list` — discover organisation slugs using browser Cloud OAuth.
+   If re-authentication is needed, use `gcx cloud login` with the same context;
+   default scopes include `profile` and stack management. Access-policy tokens
+   cannot list memberships and override OAuth when `GRAFANA_CLOUD_TOKEN` or
+   `cloud.<entry>.token` is set. With access-policy authentication, ask the developer
+   for their organisation slug instead.
+   Have the developer select the intended slug, then run
+   `gcx cloud stacks list --org <org-slug>` and `gcx cloud stacks get <stack-slug>`
+   to identify the target stack and its URLs. This gives you the stack to point the developer at, and confirms which tenant the Step 5
    verification will read from.
 
 **What still needs the Connection page (gcx cannot do these today):**

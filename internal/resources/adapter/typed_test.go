@@ -59,6 +59,44 @@ func newWidgetCRUD(widgets []TestWidget) *adapter.TypedCRUD[TestWidget] {
 	}
 }
 
+func TestTypedListsPreservePartialItemsAndErrors(t *testing.T) {
+	cause := errors.New("one item could not be read")
+	widgets := []TestWidget{{ID: "one", Name: "One"}, {ID: "two", Name: "Two"}}
+	crud := newWidgetCRUD(nil)
+	crud.ListFn = adapter.LimitedListFn(func(context.Context) ([]TestWidget, error) {
+		return widgets, cause
+	})
+	typed, err := crud.List(t.Context(), 1)
+	require.ErrorIs(t, err, cause)
+	require.Len(t, typed, 1)
+	assert.Equal(t, "one", typed[0].Name)
+	untyped, err := crud.AsAdapter().List(t.Context(), metav1.ListOptions{Limit: 1})
+	require.ErrorIs(t, err, cause)
+	require.NotNil(t, untyped)
+	require.Len(t, untyped.Items, 1)
+	assert.Equal(t, "one", untyped.Items[0].GetName())
+
+	// Name resolution must not claim success from an incomplete collection:
+	// another unread item could affect identity resolution.
+	crud.GetFn = nil
+	item, err := crud.Get(t.Context(), "one")
+	require.ErrorIs(t, err, cause)
+	assert.Nil(t, item)
+	untypedItem, err := crud.AsAdapter().Get(t.Context(), "one", metav1.GetOptions{})
+	require.ErrorIs(t, err, cause)
+	assert.Nil(t, untypedItem)
+
+	crud.ListFn = adapter.LimitedListFn(func(context.Context) ([]TestWidget, error) {
+		return nil, cause
+	})
+	typed, err = crud.List(t.Context(), 0)
+	require.ErrorIs(t, err, cause)
+	assert.Nil(t, typed)
+	untyped, err = crud.AsAdapter().List(t.Context(), metav1.ListOptions{})
+	require.ErrorIs(t, err, cause)
+	assert.Nil(t, untyped)
+}
+
 // buildWidgetUnstructured builds a minimal unstructured object for Create/Update tests.
 func buildWidgetUnstructured(name, widgetName, color string) *unstructured.Unstructured {
 	return &unstructured.Unstructured{
@@ -452,7 +490,7 @@ func TestBuildRegistration(t *testing.T) {
 	// Descriptor/GVK/Schema are auto-derived; Example is carried as given.
 	assert.Equal(t, widgetDesc, reg.Descriptor)
 	assert.Equal(t, widgetDesc.GroupVersionKind(), reg.GVK)
-	assert.NotNil(t, reg.Schema, "schema must be auto-derived from T, not hand-threaded")
+	assert.True(t, reg.Schema != nil && reg.Schema() != nil, "schema must be auto-derived from T, not hand-threaded")
 	assert.Equal(t, example, reg.Example)
 
 	a, err := reg.Factory(t.Context())

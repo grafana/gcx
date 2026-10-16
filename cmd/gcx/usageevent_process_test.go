@@ -485,6 +485,12 @@ func (b *syncBuffer) String() string {
 // config, and state path pointed somewhere harmless.
 func startUsageEventHelper(t *testing.T, grafanaURL, endpoint string, args ...string) *usageEventHelper {
 	t.Helper()
+	return startUsageEventHelperEnv(t, grafanaURL, endpoint, nil, args...)
+}
+
+// startUsageEventHelperEnv adds invocation-specific environment controls.
+func startUsageEventHelperEnv(t *testing.T, grafanaURL, endpoint string, extraEnv []string, args ...string) *usageEventHelper {
+	t.Helper()
 
 	// exec resets a caught signal to SIG_DFL in the child but preserves an
 	// inherited SIG_IGN, and a background job of a non-interactive shell
@@ -523,6 +529,7 @@ func startUsageEventHelper(t *testing.T, grafanaURL, endpoint string, args ...st
 		"GRAFANA_STACK_ID=",
 		usageEventArgsEnv+"="+encodeHelperArgs(t, args),
 	)
+	helper.cmd.Env = append(helper.cmd.Env, extraEnv...)
 	require.NoError(t, helper.cmd.Start())
 	return helper
 }

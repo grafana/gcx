@@ -79,14 +79,16 @@ Similarly, prefer `gcx metrics query` over `gcx datasources query <prometheus-ui
 for PromQL queries — the signal-specific command handles datasource resolution
 automatically.
 
-## Verify Context First
+## Target Context
 
-Before any operation, confirm which environment is targeted:
-- `gcx config check` — validates the active context and tests connectivity
-- `gcx config view` — shows full config (secrets redacted; use `--raw` to reveal)
-- `gcx config current-context` — shows just the active context name
-- `gcx config use-context <name>` — switch contexts
-- `--context <name>` flag on any command — target a specific context without switching
+When the target context is known, pass `--context <name>` directly;
+no separate configuration or connectivity check is needed.
+Inspect configuration only when the target is ambiguous or a request fails
+with a configuration, authentication, or connectivity error:
+- `gcx config list-contexts` — list configured contexts and their servers
+- `gcx config current-context` — show the active context name
+- `gcx config check` — validate the active context and test connectivity
+- `gcx config view` — inspect configuration with secrets redacted
 
 ## Output Control
 
@@ -175,14 +177,19 @@ gcx traces tags -d <tempo-uid> -l resource.service.name --llm -o json
 
 # Full trace body in Tempo's LLM-friendly trace encoding.
 gcx traces get -d <tempo-uid> <trace-id> --llm -o json
+# When the search's time range is known:
+gcx traces get -d <tempo-uid> <trace-id> --from <search-from> --to <search-to> --llm -o json
 # equivalent legacy path:
 gcx datasources tempo get -d <tempo-uid> <trace-id> --llm -o json
 ```
 
 Use `gcx traces labels -d <tempo-uid>` to discover attribute names first. Use
 `gcx traces query` to find trace IDs, then `gcx traces get --llm -o json` to inspect
-a selected trace. Omit `--llm` only when the user explicitly needs raw Tempo/OTLP
-JSON or the standard `tagValues: [{type, value}]` shape for schema/debugging work.
+a selected trace. Pass `--since` or `--from`/`--to` (e.g. the search's time range)
+to make the lookup much faster. Omit them when the time range is unknown; a
+range that misses the trace returns not found.
+Omit `--llm` only when the user explicitly needs raw Tempo/OTLP JSON or the
+standard `tagValues: [{type, value}]` shape for schema/debugging work.
 
 ### Shrinking large traces before analysis
 

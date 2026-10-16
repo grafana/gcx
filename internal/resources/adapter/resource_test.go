@@ -249,7 +249,7 @@ func TestResource_SchemaAndExampleAreDerived(t *testing.T) {
 	p := adapter.NewProvider("fakeprovider", "Fake provider for tests", fakeDeps, res)
 	reg := p.TypedRegistrations()[0]
 
-	assert.NotNil(t, reg.Schema, "schema must be auto-derived from T, not hand-threaded")
+	assert.True(t, reg.Schema != nil && reg.Schema() != nil, "schema must be auto-derived from T, not hand-threaded")
 	require.NotNil(t, reg.Example, "example must be derived from Resource.Example")
 	assert.Contains(t, string(reg.Example), `"my-gadget"`)
 

@@ -26,28 +26,25 @@ func Resolve(ctx context.Context, cfg config.NamespacedRESTConfig, apiVersion st
 		return resources.Descriptor{}, fmt.Errorf("discovery failed: %w", err)
 	}
 
-	selectorStr := "dashboards"
+	selector := resources.Selector{
+		Type:             resources.FilterTypeAll,
+		GroupVersionKind: resources.PartialGVK{Resource: "dashboards"},
+	}
 	if apiVersion != "" {
 		// Parse group/version (e.g. "dashboard.grafana.app/v1" or "v1").
 		gv, parseErr := schema.ParseGroupVersion(apiVersion)
 		if parseErr != nil {
 			return resources.Descriptor{}, fmt.Errorf("invalid --api-version %q: %w", apiVersion, parseErr)
 		}
-		// Build "resource.version.group" selector syntax for ParseSelectors.
-		if gv.Group != "" {
-			selectorStr = fmt.Sprintf("dashboards.%s.%s", gv.Version, gv.Group)
-		} else {
-			selectorStr = "dashboards." + gv.Version
+		if gv.Version == "" {
+			return resources.Descriptor{}, fmt.Errorf("invalid --api-version %q: version must not be empty", apiVersion)
 		}
-	}
-
-	sels, err := resources.ParseSelectors([]string{selectorStr})
-	if err != nil {
-		return resources.Descriptor{}, fmt.Errorf("invalid selector: %w", err)
+		selector.GroupVersionKind.Group = gv.Group
+		selector.GroupVersionKind.Version = gv.Version
 	}
 
 	filters, err := reg.MakeFilters(discovery.MakeFiltersOptions{
-		Selectors:            sels,
+		Selectors:            resources.Selectors{selector},
 		PreferredVersionOnly: true,
 	})
 	if err != nil {

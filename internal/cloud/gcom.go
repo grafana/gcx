@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -14,7 +15,6 @@ import (
 	"time"
 
 	"github.com/grafana/gcx/internal/httputils"
-	"github.com/grafana/gcx/internal/retry"
 )
 
 const (
@@ -85,6 +85,7 @@ type Region struct {
 
 // CreateStackRequest is the request body for creating a new Grafana Cloud stack.
 type CreateStackRequest struct {
+	Org              string            `json:"org"`
 	Name             string            `json:"name"`
 	Slug             string            `json:"slug"`
 	URL              string            `json:"url,omitempty"`
@@ -114,6 +115,8 @@ type GCOMHTTPError struct {
 	Body    string
 	Code    string
 	Message string
+	// ContentType is the response Content-Type header.
+	ContentType string
 }
 
 func (e *GCOMHTTPError) Error() string {
@@ -123,10 +126,11 @@ func (e *GCOMHTTPError) Error() string {
 
 // newGCOMHTTPError builds a GCOMHTTPError from a non-200 response, keeping the
 // raw body verbatim and extracting code/message when the body is a JSON object.
-func newGCOMHTTPError(status int, body []byte) *GCOMHTTPError {
+func newGCOMHTTPError(resp *http.Response, body []byte) *GCOMHTTPError {
 	httpErr := &GCOMHTTPError{
-		Status: status,
-		Body:   strings.TrimSpace(string(body)),
+		Status:      resp.StatusCode,
+		ContentType: resp.Header.Get("Content-Type"),
+		Body:        strings.TrimSpace(string(body)),
 	}
 	var parsed struct {
 		Code    string `json:"code"`
@@ -152,8 +156,8 @@ type GCOMClient struct {
 // NewGCOMClient returns a new GCOMClient configured to call the given base URL
 // using the provided Bearer token.
 //
-// The client uses a 30-second timeout and will not follow HTTP redirects to a
-// different domain than baseURL.
+// The client uses a 30-second timeout, except stack creation allows two minutes.
+// It will not follow HTTP redirects to a different domain than baseURL.
 func NewGCOMClient(baseURL, token string) (*GCOMClient, error) {
 	baseURL = strings.TrimRight(baseURL, "/")
 
@@ -166,9 +170,8 @@ func NewGCOMClient(baseURL, token string) (*GCOMClient, error) {
 		return nil, fmt.Errorf("gcom client: base URL must use HTTPS (got %q)", parsedBase.Scheme)
 	}
 
-	httpClient := &http.Client{
-		Timeout:   30 * time.Second,
-		Transport: &httputils.UserAgentTransport{Base: &retry.Transport{}},
+	httpClient := httputils.NewClient(httputils.ClientOpts{
+		Timeout: 30 * time.Second,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if req.URL.Host != parsedBase.Host {
 				return fmt.Errorf("gcom client: refusing cross-domain redirect to %s (configured base: %s)",
@@ -176,7 +179,7 @@ func NewGCOMClient(baseURL, token string) (*GCOMClient, error) {
 			}
 			return nil
 		},
-	}
+	})
 
 	return &GCOMClient{
 		baseURL: baseURL,
@@ -211,7 +214,7 @@ func (c *GCOMClient) GetStack(ctx context.Context, slug string) (StackInfo, erro
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return StackInfo{}, newGCOMHTTPError(resp.StatusCode, body)
+		return StackInfo{}, newGCOMHTTPError(resp, body)
 	}
 
 	var info StackInfo
@@ -248,7 +251,7 @@ func (c *GCOMClient) ListStacks(ctx context.Context, orgSlug string) ([]StackInf
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, newGCOMHTTPError(resp.StatusCode, body)
+		return nil, newGCOMHTTPError(resp, body)
 	}
 
 	var envelope struct {
@@ -279,19 +282,23 @@ func (c *GCOMClient) CreateStack(ctx context.Context, r CreateStackRequest) (Sta
 	c.setHeaders(req)
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := c.http.Do(req)
+	// Provisioning can outlast the default timeout. Copy the client so other
+	// operations retain their timeout, including concurrent requests.
+	createClient := *c.http
+	createClient.Timeout = 2 * time.Minute
+	resp, err := createClient.Do(req)
 	if err != nil {
-		return StackInfo{}, fmt.Errorf("gcom client: do request: %w", err)
+		return StackInfo{}, stackCreationError(r.Slug, fmt.Errorf("gcom client: do request: %w", err))
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return StackInfo{}, fmt.Errorf("gcom client: read response body: %w", err)
+		return StackInfo{}, stackCreationError(r.Slug, fmt.Errorf("gcom client: read response body: %w", err))
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return StackInfo{}, newGCOMHTTPError(resp.StatusCode, body)
+		return StackInfo{}, newGCOMHTTPError(resp, body)
 	}
 
 	var info StackInfo
@@ -332,7 +339,7 @@ func (c *GCOMClient) UpdateStack(ctx context.Context, slug string, r UpdateStack
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return StackInfo{}, newGCOMHTTPError(resp.StatusCode, body)
+		return StackInfo{}, newGCOMHTTPError(resp, body)
 	}
 
 	var info StackInfo
@@ -368,7 +375,7 @@ func (c *GCOMClient) DeleteStack(ctx context.Context, slug string) error {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return newGCOMHTTPError(resp.StatusCode, body)
+		return newGCOMHTTPError(resp, body)
 	}
 	return nil
 }
@@ -399,7 +406,7 @@ func (c *GCOMClient) ListRegions(ctx context.Context) ([]Region, error) {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, newGCOMHTTPError(resp.StatusCode, body)
+		return nil, newGCOMHTTPError(resp, body)
 	}
 
 	var envelope struct {
@@ -454,4 +461,20 @@ func isLoopbackHost(host string) bool {
 	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
+}
+
+// StackCreationTimeoutError identifies an uncertain creation outcome after a deadline.
+type StackCreationTimeoutError struct {
+	Slug string
+	Err  error
+}
+
+func (e *StackCreationTimeoutError) Error() string { return e.Err.Error() }
+func (e *StackCreationTimeoutError) Unwrap() error { return e.Err }
+
+func stackCreationError(slug string, err error) error {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return &StackCreationTimeoutError{Slug: slug, Err: err}
+	}
+	return err
 }

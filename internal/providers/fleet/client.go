@@ -56,18 +56,11 @@ func readErrorBody(resp *http.Response) string {
 // response body once, so callers must not read the body again.
 func httpError(resp *http.Response, path string) *fleetbase.HTTPError {
 	return &fleetbase.HTTPError{
-		Status: resp.StatusCode,
-		Path:   path,
-		Body:   readErrorBody(resp),
+		Status:      resp.StatusCode,
+		ContentType: resp.Header.Get("Content-Type"),
+		Path:        path,
+		Body:        readErrorBody(resp),
 	}
-}
-
-// pluginRouteMissing reports whether a 404 came from Grafana because the
-// collector app plugin is absent or disabled, rather than from Fleet Management
-// because the resource is absent.
-func pluginRouteMissing(err *fleetbase.HTTPError) bool {
-	return err.Status == http.StatusNotFound &&
-		fleetbase.IsPluginMissingBody(err.Body)
 }
 
 // ListPipelines returns all pipelines.
@@ -92,7 +85,7 @@ func (c *Client) ListPipelines(ctx context.Context) ([]Pipeline, error) {
 	return result.Pipelines, nil
 }
 
-// GetPipeline returns a single pipeline by ID. Returns nil if not found.
+// GetPipeline returns a single pipeline by ID or a typed HTTP error.
 func (c *Client) GetPipeline(ctx context.Context, id string) (*Pipeline, error) {
 	resp, err := c.doRequest(ctx, pathGetPipeline, map[string]string{"id": id})
 	if err != nil {
@@ -101,11 +94,7 @@ func (c *Client) GetPipeline(ctx context.Context, id string) (*Pipeline, error) 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		apiErr := httpError(resp, pathGetPipeline)
-		if apiErr.Status == http.StatusNotFound && !pluginRouteMissing(apiErr) {
-			return nil, fmt.Errorf("fleet: get pipeline %s: not found", id)
-		}
-		return nil, fmt.Errorf("fleet: get pipeline %s: %w", id, apiErr)
+		return nil, fmt.Errorf("fleet: get pipeline %s: %w", id, httpError(resp, pathGetPipeline))
 	}
 
 	var result Pipeline
@@ -189,7 +178,7 @@ func (c *Client) ListCollectors(ctx context.Context) ([]Collector, error) {
 	return result.Collectors, nil
 }
 
-// GetCollector returns a single collector by ID. Returns nil if not found.
+// GetCollector returns a single collector by ID or a typed HTTP error.
 func (c *Client) GetCollector(ctx context.Context, id string) (*Collector, error) {
 	resp, err := c.doRequest(ctx, pathGetCollector, map[string]string{"id": id})
 	if err != nil {
@@ -198,11 +187,7 @@ func (c *Client) GetCollector(ctx context.Context, id string) (*Collector, error
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		apiErr := httpError(resp, pathGetCollector)
-		if apiErr.Status == http.StatusNotFound && !pluginRouteMissing(apiErr) {
-			return nil, fmt.Errorf("fleet: get collector %s: not found", id)
-		}
-		return nil, fmt.Errorf("fleet: get collector %s: %w", id, apiErr)
+		return nil, fmt.Errorf("fleet: get collector %s: %w", id, httpError(resp, pathGetCollector))
 	}
 
 	var result Collector

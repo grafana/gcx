@@ -105,6 +105,15 @@ recorded verbatim.
 
 - **`gcx appo11y services labels`** — ADR §8 case (b): the positional is the parent service's ID and labels are a parent-scoped, non-independently-addressable collection (--label is a narrowing filter returning a one-element Items list), while §4/§10 confine the `labels` shorthand to signal/per-datasource families excluding appo11y — so the compound list-labels, matching sibling `services list-operations <service>` which §8 cites verbatim.
 
+### Cloud organisation discovery
+
+Keep `gcx cloud orgs list`. Under [command naming: place each operation by the
+identity it requires](../design/command-naming.md#place-each-operation-by-the-identity-it-requires),
+a noun group applies when an operation enumerates a resource group without a
+parent identity. This command lists the user's organisation memberships without
+requiring a parent identity.
+This command only lists memberships and does not change stack creation.
+
 ### cloud — tail sweep (wave 2)
 
 | Current | Verdict | Target |

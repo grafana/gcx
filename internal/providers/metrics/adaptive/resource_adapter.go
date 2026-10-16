@@ -43,7 +43,7 @@ func RuleDescriptor() resources.Descriptor { return ruleDescriptorVar }
 
 // RuleSchema returns a JSON Schema for the AggregationRule resource type.
 func RuleSchema() json.RawMessage {
-	return adapter.SchemaFromType[MetricRule](RuleDescriptor())
+	return adapter.SchemaFromType[MetricRule](RuleDescriptor())()
 }
 
 // RuleExample returns an example AggregationRule manifest as JSON.
@@ -273,7 +273,7 @@ func SegmentDescriptor() resources.Descriptor { return segmentDescriptorVar }
 
 // SegmentSchema returns a JSON Schema for the MetricSegment resource type.
 func SegmentSchema() json.RawMessage {
-	return adapter.SchemaFromType[MetricSegment](SegmentDescriptor())
+	return adapter.SchemaFromType[MetricSegment](SegmentDescriptor())()
 }
 
 // SegmentExample returns an example MetricSegment manifest as JSON.
@@ -350,7 +350,7 @@ func ExemptionDescriptor() resources.Descriptor { return exemptionDescriptorVar 
 
 // ExemptionSchema returns a JSON Schema for the MetricExemption resource type.
 func ExemptionSchema() json.RawMessage {
-	return adapter.SchemaFromType[MetricExemption](ExemptionDescriptor())
+	return adapter.SchemaFromType[MetricExemption](ExemptionDescriptor())()
 }
 
 // ExemptionExample returns an example MetricExemption manifest as JSON.

@@ -1,12 +1,150 @@
 ## Unreleased
 
-- Label the `--insecure-log-http-payload` dumps `http request dump` and `http response dump`, so you can find them in the debug log. A wire dump holds no word that identifies it, so a search for "body" never matched.
-- Show the OAuth bearer token in the `--insecure-log-http-payload` dump. The dump is now the innermost transport layer, so it shows every header that reaches the wire. Before this change the dump ran before the OAuth transport added the header, and the flag help promised the token. One consequence: the dump now also shows the OAuth token refresh exchange, which carries the refresh token and the rotated token pair.
-- Dump an outgoing request with `httputil.DumpRequestOut`, so `Content-Length` and `Accept-Encoding` appear.
-- Report the reason when a payload dump fails. The error was discarded, which logged an empty line.
-- Correct the recommended verbosity in the `--insecure-log-http-payload` reference and flag help: the dumps log at Debug level, which needs `-vvv`.
+- Classify CLI failures with consistent category summaries and preserve operation context, server messages, codes, and trace IDs without repeated diagnostics. HTTP 401/403 errors carried by shared provider transports, Assistant helpers, and `gcx api`, missing Cloud credentials, and missing SM credentials/stack prerequisites now exit 3 instead of 1; the instrumentation mutual-exclusion error converter now assigns exit 2 instead of 1 (the current setup command does not emit its sentinel). HTML error pages are replaced with generic API-response details while retaining auth classification; `gcx api` continues to show the full body. Fleet 404s mean `Resource not found` only for Connect `code: "not_found"`; other 404s mean `Endpoint not available`.
 
-- Added experimental Tempo TraceByID V2 params to `gcx traces get` / `gcx datasources tempo get`: `--filter` filters the trace to spans matching a TraceQL spanset expression, with `--keep-hierarchy`, `--match-depth`, and `--ancestor-depth` shaping how much surrounding context is kept; `--prune` (plus `--prune-group-by`, `--prune-min-spans`, `--prune-max-parent-depth`) collapses repeated sibling spans into a single aggregated span. `--prune` is off unless set. Both are aimed at shrinking large traces before `--llm` analysis.
+## v1.6.0 (2026-10-13)
+
+### Breaking changes
+
+- Faro app writes now reject `spec.settings.geolocationLevel: region`.
+  Change it to `subdivision` in saved manifests before you upgrade.
+  This affects `gcx frontend apps` writes and resource pushes. Before this
+  release, gcx ignored Faro app settings on writes, so `region` never took
+  effect. Faro settings now reach the API. (#1444)
+- `gcx datasources loki labels` and `gcx logs labels` now reject stray
+  positional arguments. They also reject an explicit empty `--query` or
+  `--label`. Omit these flags for an unscoped label list. Give each flag
+  a nonempty value when you use it. (#1325)
+
+### New commands and improvements
+
+- Add `gcx signup` to create a Grafana Cloud account and save its first
+  connection. Complete account setup in the browser. If the connection
+  fails after signup, finish it with `gcx login`. (#1383)
+- Let `gcx login --cloud --oauth` open the stack chooser when no server
+  is set. Browser cancellation now exits with code 5. On macOS, the
+  terminal watcher uses its own device, so SSH paste works. (#1383)
+- Add `gcx docs` commands to search and read Grafana product docs.
+  (#1234)
+- Add `gcx alert routing-trees` commands to manage native alert routing
+  trees. (#1472)
+- Add experimental `gcx profiles query-anomalies` and
+  `gcx datasources pyroscope query-anomalies` commands. Their flags and
+  output may change. (#1435)
+- Add `--query` to scope Loki label and value lists. (#1325)
+- Add `--dry-run` to Synthetic Monitoring check create and update.
+  (#1429)
+- Add an experimental Go sandbox module that runs gcx as WebAssembly.
+  Reduce its build size and startup time. (#1440)
+- Keep resource manager identity stable across gcx upgrades. Resolve
+  resource selectors with dotted API groups. (#1537, #1441)
+- Correct Faro app settings writes. Preserve labels and mobile
+  classification on create. Report truncated lists and accept app names
+  in get. (#1444, #1390, #1445)
+- Read service map metadata correctly. Fix the SLO server interval
+  example. Scope k6 load tests to the selected project. (#1457, #1452,
+  #1450)
+- Name missing permissions in Faro proxy errors. Show native alert rule
+  selectors in help. Recover after concurrent config writes. (#1518,
+  #1458, #1485)
+- Detect Codex, Gemini, and other agent hosts. Let
+  `GCX_AGENT_SPILL_BYTES=0` disable output spilling. (#1461, #1439)
+- Update docs, security reporting guidance, and on-call command
+  discovery. (#1520, #1206, #1305)
+
+## v1.5.0 (2026-10-05)
+
+## Breaking changes: Cloud stack creation
+
+- `gcx cloud stacks create` now requires `--org <org-slug>`, including
+  dry runs. The Cloud API validates access to the selected organisation.
+- Successful creation defaults to YAML and returns only `name`, `orgSlug`,
+  `slug`, `status`, and `url` in every output format. Use 
+  `gcx cloud stacks get <slug> -o json` for full details. Dry runs still
+  return a request preview.
+- Creation trims whitespace around `--org` and `--name`; stack slugs retain
+  strict lowercase-alphanumeric validation. Blank values are rejected.
+
+Update scripts before upgrading:
+
+```sh
+# Add the explicit destination organisation to existing create commands.
+gcx cloud stacks create --org example-org --name demo --slug demo --region us --dry-run
+
+# After creation, retrieve fields omitted from the concise result.
+gcx cloud stacks get demo -o json
+```
+
+## Cloud organisation discovery and creation
+
+- Add `gcx cloud orgs list` to show organisation slugs and membership roles
+  for the signed-in user.
+  - Fresh Cloud OAuth logins request `profile`. Rerun `gcx cloud login` if
+  your saved login lacks that scope. 
+- Allow two minutes for stack creation. If it times out, check
+  `gcx cloud stacks get <slug>` with the same config/context before retrying:
+  the stack may already exist or still be provisioning.
+- Reject blank organisation values in `cloud stacks list`; that command
+  already required `--org` before this release.
+
+## Other improvements
+
+- Preserve Synthetic Monitoring `spec.folderUid` in check manifests,
+  responses, and resource workflows. Omit it to retain the assignment;
+  supply an empty string to clear it.
+- Explain how `--since` or `--from`/`--to` can speed up trace-ID lookup.
+  Use the correct time range; one that excludes the trace returns not found.
+- Show an Interactive Learning link after text-mode login when the
+  Pathfinder plugin is installed and enabled. JSON/YAML output is unchanged.
+- Add a contributor RFC for unified alerting resource workflows; it does
+  not introduce a new runtime alerting API.
+
+## v1.4.0 (2026-10-02)
+
+**Metrics and traces**
+- Add `gcx metrics search metric-names/label-names/label-values` and
+  `gcx datasources prometheus search-metric-names/search-label-names/search-label-values`,
+  backed by the experimental Prometheus/Mimir search API (#1374)
+- Add experimental TraceByID options to `gcx traces get` and
+  `gcx datasources tempo get`: `--filter` keeps the spans that match a TraceQL
+  spanset expression, shaped by `--keep-hierarchy`, `--match-depth` and
+  `--ancestor-depth`; `--prune` (with `--prune-group-by`, `--prune-min-spans`,
+  `--prune-max-parent-depth`) collapses repeated sibling spans. Both are off
+  unless set, and aim at shrinking large traces before `--llm` analysis (#1250)
+
+**Authentication and configuration**
+- Add Basic authentication to `gcx login` (#1389)
+- List the available contexts when the requested context is not found (#1210)
+
+**Agent Observability**
+- Add `gcx agento11y model-rates` to set your own negotiated model prices (#1377)
+
+**Synthetic Monitoring and IRM**
+- Add `gcx synthetic-monitoring queries list/get` for named queries (#1373)
+- Manage IRM OnCall integration alert templates and maintenance mode (#1188)
+
+**Application Observability**
+- Add `gcx appo11y operations list/get` (#1334)
+- Show service metadata, Explore links and Knowledge Graph data for services
+  (#1330, #1333)
+- Resolve scoped Knowledge Graph services by their exact name (#1384)
+
+**Security and debugging**
+- `--insecure-log-http-payload` dumps now run at the innermost transport layer
+  and show every header that reaches the wire, including the OAuth bearer
+  token. They also show the OAuth token refresh exchange, which carries the
+  refresh token and the rotated token pair. Treat captured debug logs as
+  secrets (#1190)
+- Label the dumps `http request dump` and `http response dump`, include
+  `Content-Length` and `Accept-Encoding` in request dumps, report why a dump
+  failed, and document that dumps log at Debug level (`-vvv`) (#1190)
+
+**Docs and internals**
+- Add guides for managing resources and diagnosing missing telemetry
+  (#1413, #1368)
+- Clarify the MkDocs setup and fix broken links (#1378, #1417)
+- Move Knowledge Graph transport into a shared internal client (#1331, #1332)
+
 ## v1.3.1 (2026-09-22)
 
 **Synthetic Monitoring**

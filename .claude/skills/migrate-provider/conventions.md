@@ -110,7 +110,7 @@ func (p *Provider) TypedRegistrations() []adapter.Registration {
         Descriptor: staticDescriptor,
         Aliases:    staticAliases,
         GVK:        staticDescriptor.GroupVersionKind(),
-        Schema:     resourceSchema(),   // json.RawMessage — required, non-nil
+        Schema:     resourceSchema,     // func() json.RawMessage — required, non-nil
         Example:    resourceExample(),  // json.RawMessage — MAY be nil for read-only resources
     }}
 }

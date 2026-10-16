@@ -17,6 +17,7 @@ jobs:
   release:
     permissions:
       contents: write # to push new branches
+      packages: write # to push ghcr.io/grafana/gcx
     name: Release
     runs-on: ubuntu-latest
 
@@ -32,6 +33,16 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set release notes
         run: |

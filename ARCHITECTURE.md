@@ -38,6 +38,10 @@ Grafana K8s API                      /apis/{group}/{version}/namespaces/{ns}/{pl
 
 **Key abstractions** ([resource-model.md](docs/architecture/resource-model.md)): `Resource` wraps `unstructured.Unstructured` — no pre-generated Go types. `Selector` → `Filter` two-stage resolution keeps CLI ignorant of API details. `Processor` pipeline composes transformations at defined pipeline points. `Discovery` registry resolves plural names and short names to full GVKs at runtime.
 
+Selectors accept both `resource.version.group` and `resource.group`, including
+dotted API groups. Discovery tries the versioned reading first, then the full
+group name, for both native resources and provider adapters.
+
 **Data flows** ([data-flows.md](docs/architecture/data-flows.md)): Push reads local files, resolves selectors, applies processors, pushes via dynamic client with folder-before-dashboard ordering and bounded concurrency (errgroup, default 10). Pull fetches from API, strips server-managed fields, writes to disk grouped by kind.
 
 ### 2. Provider System
@@ -68,6 +72,10 @@ Provider (internal/providers/slo/)
 **Declarative registration front door**: `adapter.Resource[T]` + `adapter.NewProvider` (command factories attach via `WithCommands`) let a provider declare a resource type once, by implementing plain capability interfaces (`Lister[T]`, `Getter[T]`, `Creator[T]`, `Updater[T]`, `Deleter[T]`, `Validator[T]`) on its client, instead of hand-building a `Registration`. Capability detection is confined to a single audited `any`-assertion seam in `internal/resources/adapter/capability.go` — see ADR-025 and patterns.md's "Sanctioned Exception — Single-Seam Capability Assertion". Provider commands and registration share `Resource.TypedCRUD`; Grafana-backed command groups use `providers.BindGrafanaResource` for lazy binding; each leaf calls `Load` to resolve a fresh config snapshot and construct the declared client.
 
 **Deep-dive:** [patterns.md](docs/architecture/patterns.md) [§11 (Provider Plugin System)](docs/architecture/patterns.md#11-provider-plugin-system), [§16 (ResourceAdapter and Provider CRUD Routing)](docs/architecture/patterns.md#16-resourceadapter-and-provider-crud-routing), [§17 (K8s Envelope Wrapping)](docs/architecture/patterns.md#17-k8s-envelope-wrapping-for-provider-listget), [§18 (Table-Driven TypedCRUD)](docs/architecture/patterns.md#18-table-driven-typedcrud-registration-for-providers), [§19 (Singleton Adapter)](docs/architecture/patterns.md#19-singleton-adapter-pattern), [§20 (ETag-as-Annotation)](docs/architecture/patterns.md#20-etag-as-annotation-pattern). Implementation guide: [provider-guide.md](docs/reference/provider-guide.md).
+
+### Assistant Watcher configuration
+
+The Assistant provider registers Watcher configuration beside MCPServer. Dedicated configuration commands and generic resource operations share the typed adapter; runtime status remains a separate read view. Optional provider-neutral hooks retain complete envelopes and batches before identity-keyed insertion or mutation, while the adapter owns identity, reconciliation and partial-read policy. See [ADR-026](docs/adrs/provider-owned-resource-hooks/026-provider-owned-resource-hooks.md), [Assistant Watchers](docs/reference/assistant-watchers.md) and the [package map](docs/architecture/project-structure.md).
 
 ### 3. Signal Providers
 
@@ -240,6 +248,7 @@ See [CLI layer: Portable Skill Lifecycle](docs/architecture/cli-layer.md#portabl
 | [023](docs/adrs/fleet-plugin-proxy/001-fleet-via-collector-app-proxy.md) | Fleet Management through the collector app plugin proxy | accepted |
 | [024](docs/adrs/provider-consolidation/002-shared-table-declaration.md) | Providers declare table columns instead of writing codecs | accepted |
 | [025](docs/adrs/declarative-provider-registration/001-declarative-resource-front-door.md) | Declarative `adapter.Resource[T]` + `adapter.NewProvider` registration front door | accepted |
+| [026](docs/adrs/provider-owned-resource-hooks/026-provider-owned-resource-hooks.md) | Provider-owned identity and reconciliation hooks | accepted |
 
 See [docs/adrs/](docs/adrs/) for all ADRs.
 

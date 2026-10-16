@@ -8,11 +8,13 @@ gcx/
 │   └── gcx/           # Binary entry point (public surface)
 │       ├── main.go           # Version vars, main(), error handler
 │       ├── root/             # Root Cobra command, global flags, logging setup
-│       ├── auth/             # OAuth login command (browser-based PKCE flow)
+│       ├── login/            # 'login' and 'signup' commands (token, browser OAuth PKCE, Basic auth; account creation)
+│       ├── cloud/            # Cloud login, stack management, and OAuth user organisation memberships
 │       ├── config/           # 'config' subcommand implementations
 │       ├── resources/        # 'resources' subcommand implementations
 │       ├── datasources/      # 'datasources' subcommand (list, get, query)
 │       │                     #   query.go + query_routes.go: auto-detecting query and its per-kind routing tables
+│       ├── docs/             # 'docs' subcommand (search, get, outline, list-products, list-links)
 │       ├── commands/         # 'commands' catalog (agent metadata, resource types, live validation)
 │       ├── helptree/        # 'help-tree' compact text tree for agent context injection
 │       ├── setup/            # 'setup' command area (cross-product onboarding helpers)
@@ -30,21 +32,23 @@ gcx/
 │       └── fail/             # Error → DetailedError conversion, exit codes
 │
 ├── internal/                 # All non-public packages (Go enforced)
-│   ├── agent/                # Agent-mode detection, command annotations, known-resource registry with operation hints
+│   ├── agent/                # Agent mode and identity detection, command annotations, known-resource registry with operation hints
 │   ├── agentlog/             # Agent invocation failure logger (opt-in JSONL disk log, XDG state dir — wired into handleError in cmd/gcx/main.go)
-│   ├── assistant/            # Assistant client packages (prompt state, investigations, MCP server integrations)
+│   ├── assistant/            # Assistant client packages (prompt state, investigations, MCP integrations, Watcher configuration)
 │   │   ├── mcpservers/       # MCP-servers HTTP client (offset pagination, full-exhaustion List)
+│   │   ├── watchers/         # Watcher configuration client, exhaustive paging, mutations and runtime observations (watcherstest/ contains shared HTTP test fixtures)
+│   │   ├── watcher/          # Watcher manifest schema, typed reconciliation adapter and identity resolution
 │   │   └── mcpserver/        # MCPServer manifest domain type + TypedCRUD adapter wiring + header write-intent mapping
 │   ├── auth/                 # OAuth PKCE flow, token refresh transport
 │   │   └── adaptive/         # Shared adaptive telemetry auth (GCOM caching, Basic auth)
-│   ├── cloud/                # Grafana Cloud stack discovery via GCOM API
+│   ├── cloud/                # Grafana Cloud stack discovery and user organisation memberships via GCOM API
 │   ├── fleet/                # Shared fleet base client (HTTP + stack config, over the grafana-collector-app plugin proxy — shared by fleet provider and instrumentation provider)
 │   ├── config/               # Config loading, context management, auth types (auto-migrates plaintext token-shaped secrets into the OS keychain via internal/credentials)
 │   │   └── testdata/         # YAML fixtures for config unit tests
 │   ├── credentials/          # OS-keychain backend for token-shaped secrets; sentinel format + Store interface; auto-disabled under `go test`
 │   ├── format/               # JSON/YAML codec, format auto-detection
 │   ├── output/               # Output codec registry (json, yaml, text, wide), field selection, user-facing messages
-│   ├── gcxerrors/            # Shared error contracts: exit codes, DetailedError + JSON error envelope, EmittedError, PartialFailureError, HTTPStatusError (typed transport-status carrier)
+│   ├── gcxerrors/            # Shared error contracts: exit codes, DetailedError + JSON error envelope, UsageError + command usage helper, EmittedError, PartialFailureError, HTTPStatusError (typed transport-status carrier)
 │   ├── grafana/              # Thin wrapper over grafana-openapi-client-go
 │   ├── graph/                # Terminal chart rendering (ntcharts + lipgloss)
 │   ├── httputils/            # REST client helpers, request/response utilities
@@ -68,8 +72,8 @@ gcx/
 │   │   │   └── settings/     # PluginSettings
 │   │   ├── dbo11y/           # Database Observability provider (query/discovery views, no CRUD resources)
 │   │   │   └── instances/    # Instance inventory + health/query-performance snapshot from postgres_exporter + pg_stat_statements
-│   │   ├── alert/            # Alert provider (rules and groups)
-│   │   ├── assistant/        # Assistant provider — lift-and-shift of the `gcx assistant` command tree; TypedRegistrations() registers the MCPServer adapter (internal/assistant/mcpserver/); exports ResolveClientOptions and RequireGrafanaCloud for other command trees embedding Assistant calls (used by `instrumentation check --fix-plan=assistant`)
+│   │   ├── alert/            # Alert provider (rules, groups, provisioning, native routing trees/time intervals/template groups)
+│   │   ├── assistant/        # Assistant provider — lift-and-shift of the `gcx assistant` command tree; TypedRegistrations() registers MCPServer and Watcher configuration adapters; watcher commands live in internal/providers/assistant/watchers/; exports ResolveClientOptions and RequireGrafanaCloud for other command trees embedding Assistant calls (used by `instrumentation check --fix-plan=assistant`)
 │   │   ├── dashboards/       # Dashboards provider (CRUD, search, version history, snapshot) — CLI: `gcx dashboards`
 │   │   │   ├── descriptor/   # Descriptor helpers (GVK, preferred version resolution)
 │   │   │   ├── search/       # Full-text search via dashboard.grafana.app search endpoint
@@ -82,8 +86,9 @@ gcx/
 │   │   │   ├── helm/         # Helm command formatter for the setup wizard
 │   │   │   ├── output/       # View types and table/JSON codecs (clusters, apps, services; wait/mutation envelopes)
 │   │   │   └── rmw/          # Read-modify-write helper with optimistic-lock guard
+│   │   ├── native/           # Shared native-resource binding (native.Bind → descriptor + dynamic client after validation; ReadManifest); no CLI imports
 │   │   ├── k6/              # k6 Cloud provider (projects, tests, runs, envvars)
-│   │   ├── kg/               # Knowledge Graph (Asserts) provider (rules, entities, insights, diagnose, quality reports)
+│   │   ├── kg/               # Knowledge Graph (Asserts) provider (rules, entities, graph queries, insights, diagnose, quality reports)
 │   │   ├── slo/              # SLO provider implementation
 │   │   │   ├── api/          # Shared resource group/version; kinds stay in declarations
 │   │   │   ├── definitions/  # SLO definitions and status queries
@@ -155,18 +160,15 @@ gcx/
 │   ├── shared/               # Shared utilities (date handling, duration, etc.) to be shared across integrations.
 │
 ├── scripts/                  # Standalone Go programs for code generation
-│   ├── cmd-reference/        # Generates CLI docs from Cobra tree
+│   ├── cli-reference/        # Renders released CLI and configuration references
 │   ├── config-reference/     # Generates config YAML reference from Go structs
-│   ├── env-vars-reference/   # Generates env-var docs from struct tags
-│   └── linter-rules-reference/  # Generates linter rule reference documentation
+│   └── env-vars-reference/   # Generates env-var docs from struct tags
 │
 ├── docs/                     # Documentation source (checked in)
-│   ├── assets/               # Logo, custom CSS
-│   ├── guides/               # Hand-written user guides
-│   └── reference/            # Auto-generated reference pages (committed)
-│       ├── cli/              # Per-command Markdown (from scripts/cmd-reference)
-│       ├── configuration/    # Config YAML reference (from scripts/config-reference)
-│       └── environment-variables/ # Env-var table (from scripts/env-vars-reference)
+│   ├── sources/              # Grafana website pages, including released CLI reference
+│   └── reference/            # Handwritten reference and contributor documentation
+│       ├── configuration/    # Handwritten credential storage documentation
+│       └── linter-rules/     # Handwritten linter rule documentation
 │
 ├── testdata/                 # Integration test fixtures (top-level)
 │   ├── grafana.ini           # Grafana config for docker-compose Grafana service
@@ -174,16 +176,18 @@ gcx/
 │   ├── default-config.yaml   # Default config fixture
 │   └── folder.yaml           # Sample resource manifest
 │
-├── bin/                      # Build output (gitignored)
-├── build/                    # mkdocs output (gitignored)
+├── experimental/             # Separate Go modules, outside the CLI's build and dependencies
+│   └── sandbox/              # Runs gcx as wasip1 in wazero for embedding (module: github.com/grafana/gcx/experimental/sandbox, v0)
 │
-├── go.mod / go.sum           # Go module definition (module: github.com/grafana/gcx)
+├── bin/                      # Build output (gitignored)
+├── build/                    # Local build artifacts (gitignored)
+│
+├── go.mod / go.sum           # Main Go module definition (module: github.com/grafana/gcx)
 ├── .golangci.yaml            # Linter configuration (golangci-lint v2)
-├── .goreleaser.yaml          # Release pipeline (cross-platform builds + GitHub Release)
-├── mise.toml                 # Reproducible toolchain (Go, golangci-lint, goreleaser, Python)
-├── docker-compose.yml        # Integration test environment (Grafana 12 + MySQL 9)
-├── mkdocs.yml                # Documentation site config (Material theme)
-└── requirements.txt          # Python packages for mkdocs
+├── .goreleaser.yaml          # Release pipeline (cross-platform builds + GitHub Release + container image)
+├── Dockerfile                # Release image: prebuilt binary on distroless (used by GoReleaser dockers_v2)
+├── mise.toml                 # Reproducible toolchain (Go, golangci-lint, goreleaser)
+└── docker-compose.yml        # Integration test environment (Grafana 12 + MySQL 9)
 ```
 
 ### Rationale for cmd/ vs internal/ split
@@ -192,7 +196,9 @@ gcx/
 output formatting, and error translation. It holds no business logic.
 
 `internal/` enforces Go's package visibility rule — external consumers cannot
-import these packages. This is intentional: gcx has no public Go API.
+import these packages. This is intentional: the main module has no public Go
+API. The one exception is `experimental/sandbox`, a separate v0 module for
+embedding gcx (see its README).
 The split within `internal/` mirrors functional layers (config, resources,
 server) rather than technical concerns, making it easy to locate code by feature.
 
@@ -203,7 +209,7 @@ server) rather than technical concerns, making it easy to locate code by feature
 ### Toolchain
 
 Tools are managed by [mise](https://mise.jdx.dev/) via `mise.toml`. Once
-`mise install` has been run, all tools (Go, golangci-lint, goreleaser, Python)
+`mise install` has been run, all tools (Go, golangci-lint, goreleaser)
 are available. All development commands use `mise run`, which ensures the correct
 tool versions are used regardless of shell configuration.
 
@@ -216,11 +222,10 @@ tool versions are used regardless of shell configuration.
 | `mise run install` | Copies binary to `$GOPATH/bin` |
 | `mise run tests` | `go test -v ./...` (all packages, with race detection implied) |
 | `mise run lint` | Runs `golangci-lint run -c .golangci.yaml` |
-| `mise run deps` | `go mod download` + `uv pip install -r requirements.txt` |
-| `mise run docs` | Runs `reference` then `mkdocs build` → `build/documentation/` |
-| `mise run reference` | Runs all four doc-generation scripts |
-| `mise run reference-drift` | Re-generates docs, fails if `git diff` finds changes |
-| `mise run serve-docs` | `mkdocs serve` with live reload for doc development |
+| `mise run deps` | `go mod download` |
+| `mise run docs` | Builds Grafana website docs with Docker; no reference generation |
+| `mise run docs:refresh` | Generates CLI and configuration references from the latest stable release |
+| `mise run serve-docs` | Grafana website preview on localhost:3002 |
 | `mise run test-env-up` | `docker-compose up -d` + health-wait loop |
 | `mise run test-env-down` | `docker-compose down` |
 | `mise run test-env-clean` | `docker-compose down -v` (removes volumes) |
@@ -273,7 +278,10 @@ this.
 
 ## 4. CI/CD Pipeline (GitHub Actions)
 
-Three workflow files under `.github/workflows/`:
+The main workflows under `.github/workflows/` are described below. The others are
+`publish-homebrew-formula.yml` (updates the Homebrew tap after a release),
+`deploy-pr-preview.yml` (docs previews for PRs), and `claude.yml` /
+`claude-code-review.yml` (automated assistance and review).
 
 ### ci.yaml — Pull Request and Main Branch Gate
 
@@ -285,10 +293,10 @@ Three parallel jobs:
 PR / push to main
 ├── linters  → mise run lint
 ├── tests    → mise run tests
-└── docs     → mise run reference-drift + mise run docs
+└── docs     → Grafana website build for docs/sources
 ```
 
-All jobs:
+The lint and test jobs:
 1. Checkout with `persist-credentials: false` (minimal permissions)
 2. Restore Go module cache keyed on `go.sum` hash
 3. Install tools via mise (cached)
@@ -300,7 +308,7 @@ Triggered on: `v*` tag push.
 
 ```
 v* tag push
-└── release           → goreleaser release --clean  (builds + GitHub Release)
+└── release           → goreleaser release --clean  (builds + GitHub Release + ghcr.io image)
 ```
 
 GoReleaser builds with `CGO_ENABLED=0` for all three platforms (linux, darwin,
@@ -308,6 +316,8 @@ windows) and creates:
 - `tar.gz` archives for Linux/macOS (uname-compatible naming)
 - `zip` archive for Windows
 - `gcx_checksums.txt`
+- a multi-arch (`linux/amd64`, `linux/arm64`) container image, `ghcr.io/grafana/gcx`,
+  tagged `vX.Y.Z`, plus `vX.Y`, `vX` and `latest` for non-prereleases
 
 The changelog is auto-generated from `git log` via GitHub, filtering out
 `docs:`, `test:`, `tests:`, `chore:`, and merge commits.
@@ -315,15 +325,28 @@ The changelog is auto-generated from `git log` via GitHub, filtering out
 Release concurrency is set to `cancel-in-progress: false` so in-flight releases
 always complete.
 
-### publish-docs.yaml — Manual Doc Deployment
+### deploy-pr-preview.yml — Grafana Docs Preview
 
-Triggered on: `workflow_dispatch` only (manual trigger).
-
-Used to republish documentation outside the normal release cadence without
-cutting a new release. Follows the same build + upload + deploy pattern as
-the release workflow.
+Changes to `docs/sources` on same-repository PRs get a Grafana website preview
+through Writers’ Toolkit. Fork PRs are still checked by the `Documentation` build.
 
 ---
+
+### sandbox.yaml — wasip1 Build and Sandbox Tests
+
+Triggered on: PRs and pushes to `main` that touch Go code, `go.mod`/`go.sum`,
+`experimental/sandbox/` or `mise.toml`. Builds gcx for `GOOS=wasip1` with
+`experimental/sandbox/build.sh`, then lints, vets and tests the
+`experimental/sandbox` module, including end-to-end tests against the built
+module.
+
+### publish-gcx-wasm.yaml — gcx.wasm Images
+
+Triggered on: pushes to `main`, `experimental/sandbox/v*` tags, and manual runs
+(with an optional `sandbox_version` to publish an existing sandbox tag). Builds
+`gcx.wasm`, precompiles it natively on amd64 and arm64 runners, and publishes
+`ghcr.io/grafana/gcx-wasm` images holding `/gcx.wasm`, `/gcx.commit` and the
+compiled code in `/cache/`. See the sandbox README's "Prebuilt images" section.
 
 ## 5. Dependency Management
 
@@ -359,22 +382,20 @@ tree (e.g. fully offline work); it is never required.
 
 ## 6. Code Generation (scripts/)
 
-All three generators are standalone `main` packages run via `go run`:
+The release reference is generated explicitly with `mise run docs:refresh`.
+Normal `mise run docs` builds the Grafana website documentation using Docker;
+it neither regenerates nor checks the release snapshot against `main`.
 
-```
-mise run reference
-    ├── mise run reference:cli           → go run scripts/cmd-reference/*.go <outputDir>
-    ├── mise run reference:env-var       → go run scripts/env-vars-reference/*.go <outputDir>
-    ├── mise run reference:config        → go run scripts/config-reference/*.go <outputDir>
-    └── mise run reference:linter-rules  → go run scripts/linter-rules-reference/*.go <outputDir>
-```
+### Released CLI Reference
 
-### CLI Reference (`scripts/cmd-reference/main.go`)
-
-Uses `github.com/spf13/cobra/doc.GenMarkdownTree` to walk the entire Cobra
-command tree and emit one `.md` file per command into `docs/reference/cli/`.
-The root command is instantiated with a fixed version string `"version"` since
-the actual version is not relevant for documentation.
+`mise run docs:refresh` downloads the latest stable release source and runs
+the renderer in `scripts/cli-reference/` against it. Commands and environment variables go in
+`docs/sources/cli-reference.md`; the config schema replaces the generated section
+at the bottom of `docs/sources/configuration.md`, preserving the guide above it.
+With an upcoming version argument, `mise run docs:refresh -- vX.Y.Z` uses the
+current checkout instead. `mise run tag` calls this mode and commits the references
+with the changelog in the release PR. Standalone updates to a published release
+can use a separate documentation PR.
 
 ### Config Reference (`scripts/config-reference/main.go`)
 
@@ -385,29 +406,23 @@ Uses two techniques simultaneously:
    files to extract GoDoc comments on struct types and fields
 
 The output is a fully commented YAML skeleton showing every configuration key
-with its type and documentation comment, written to
-`docs/reference/configuration/index.md`.
+with its type and documentation comment, written to a temporary fragment
+that the single-page renderer includes.
 
 ### Env-Var Reference (`scripts/env-vars-reference/main.go`)
 
 Same AST + reflect approach, but reads `env:` struct tags instead of `yaml:`
 tags to discover all environment variable names. Emits a sorted Markdown
-document to `docs/reference/environment-variables/index.md`.
+fragment for the single-page renderer. Variables handled outside tagged structs
+are supplemented from the release’s `docs/design/environment-variables.md`.
 
-### Drift Detection Pattern
+### Release Snapshot Validation
 
-```bash
-# mise run reference-drift:cli runs reference:cli first, then:
-if ! git diff --exit-code --quiet HEAD ./docs/reference/cli/ ; then
-    echo "Drift detected..."
-    exit 1
-    fi
-```
-
-Generated docs are committed to the repo. CI re-generates them and uses
-`git diff --exit-code` to fail if the output changed. This enforces that
-generated docs always reflect the current code — developers must regenerate
-and commit them when commands or config structs change.
+Generator tests check command coverage, anchors, flag inheritance, and stable
+output. CI builds the checked-in `docs/sources` pages, including the released
+reference, without comparing that snapshot against unreleased commands on `main`.
+Reference updates get the same required checks and Grafana website preview as
+other documentation PRs.
 
 ---
 
@@ -477,25 +492,16 @@ is provided for manual developer testing only. This is identified as a gap
 
 ---
 
-## 9. Documentation Tooling (mkdocs)
+## 9. Documentation Tooling (Grafana Website)
 
-`mkdocs.yml` configures a Material-theme static site:
+`docs/sources` is published through the Grafana website documentation pipeline.
+`mise run docs` builds it with `grafana/docs-base`; `mise run serve-docs` runs the
+same website locally on port 3002. Both require Docker. The required
+`Documentation` CI job runs the website build on PRs and pushes to `main`.
 
-- **Theme**: `material` with light/dark palette toggle
-- **Plugins**: `search` + `mkdocs-nav-weight` (controls page ordering in nav)
-- **Extensions**: `admonition`, `pymdownx.superfences` (code blocks),
-  `pymdownx.tabbed` (tabbed content), `pymdownx.highlight` (syntax highlighting)
-- **Output**: `build/documentation/` (via `mise run docs`)
-
-Python dependencies pinned in `requirements.txt`:
-```
-mkdocs==1.6.1
-mkdocs-material==9.7.1
-mkdocs-material-extensions==1.3.1
-mkdocs-nav-weight==0.3.0
-```
-
-These are installed via `uv pip install -r requirements.txt` during `mise run deps`.
+The release reference is a committed snapshot updated by `mise run tag` in the changelog PR.
+Handwritten architecture, design, and contributor guides remain in the repository.
+There is no separate MkDocs/GitHub Pages site or Python documentation toolchain.
 
 ---
 
@@ -516,10 +522,10 @@ mise run all                  # lint + tests + build + docs (full gate)
 
 ### Generate and Check Documentation
 ```bash
-mise run reference            # regenerate all reference docs
-mise run reference-drift      # fail if generated docs are stale
-mise run docs                 # build full mkdocs site
-mise run serve-docs           # live-reload doc server at localhost:8000
+mise run docs                 # build Grafana website docs (Docker)
+mise run serve-docs           # preview at localhost:3002
+# Release snapshot generation is separate from normal command PRs:
+mise run docs:refresh          # regenerate from the latest stable release, then open a PR
 ```
 
 ### Integration Testing (manual)

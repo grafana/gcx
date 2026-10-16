@@ -17,7 +17,7 @@ import (
 	"github.com/grafana/gcx/cmd/gcx/commands"
 	"github.com/grafana/gcx/cmd/gcx/config"
 	"github.com/grafana/gcx/cmd/gcx/datasources"
-	"github.com/grafana/gcx/cmd/gcx/dev"
+	docscmd "github.com/grafana/gcx/cmd/gcx/docs"
 	"github.com/grafana/gcx/cmd/gcx/helptree"
 	instrumentationcmd "github.com/grafana/gcx/cmd/gcx/instrumentation"
 	logincmd "github.com/grafana/gcx/cmd/gcx/login"
@@ -202,7 +202,11 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 			ctx = internalconfig.ContextWithWarningWriter(ctx, cmd.ErrOrStderr())
 
 			// Thread --context into Go context so provider config loaders
-			// can discover it via config.ContextNameFromCtx().
+			// can discover it via config.ContextNameFromCtx(). GCX_CONTEXT is
+			// the flag's environment equivalent and applies when it is unset.
+			if contextName == "" {
+				contextName = os.Getenv(internalconfig.ContextEnvVar)
+			}
 			if contextName != "" {
 				ctx = internalconfig.ContextWithName(ctx, contextName)
 			}
@@ -228,11 +232,11 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 		},
 	}
 
-	rootCmd.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
+	rootCmd.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
 		if strings.Contains(err.Error(), "--log-http-payload") && strings.Contains(err.Error(), "flag has been renamed") {
-			return errors.New("--log-http-payload has been renamed; use --insecure-log-http-payload instead")
+			err = errors.New("--log-http-payload has been renamed; use --insecure-log-http-payload instead")
 		}
-		return err
+		return commandUsageError(cmd, err)
 	})
 
 	defaultHelp := rootCmd.HelpFunc()
@@ -246,10 +250,12 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	rootCmd.AddCommand(api.Command())
 	rootCmd.AddCommand(cloudcmd.Command())
 	rootCmd.AddCommand(logincmd.Command())
+	rootCmd.AddCommand(logincmd.SignupCommand())
 	rootCmd.AddCommand(config.Command())
-	rootCmd.AddCommand(dev.Command())
+	addDevCommand(rootCmd)
 	rootCmd.AddCommand(setup.Command())
 	rootCmd.AddCommand(versioncmd.Command())
+	rootCmd.AddCommand(docscmd.Command())
 	rootCmd.AddCommand(instrumentationcmd.Command())
 	rootCmd.AddCommand(datasources.Command())
 	rootCmd.AddCommand(resources.Command())
@@ -282,7 +288,7 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 
 	rootCmd.PersistentFlags().BoolVar(&noColors, "no-color", noColors, "Disable color output")
 	rootCmd.PersistentFlags().BoolVar(&noTruncate, "no-truncate", false, "Disable table column truncation (auto-enabled when stdout is piped)")
-	rootCmd.PersistentFlags().BoolVar(&agentFlag, "agent", false, "Enable agent mode (JSON output, no color). Auto-detected from CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, GITHUB_COPILOT, AMAZON_Q, OPENCODE, PI_CODING_AGENT, or GCX_AGENT_MODE env vars.")
+	rootCmd.PersistentFlags().BoolVar(&agentFlag, "agent", false, "Enable agent mode (JSON output, no color). Auto-detected from known agent identity variables. Set GCX_AGENT_NAME to identify a supported harness, or GCX_AGENT_MODE to control the mode.")
 	rootCmd.PersistentFlags().CountVarP(&verbosity, "verbose", "v", "Verbose mode. Multiple -v options increase the verbosity (maximum: 3).")
 	rootCmd.PersistentFlags().StringVar(&contextName, "context", "", "Name of the context to use (overrides current-context in config)")
 	rootCmd.PersistentFlags().BoolVar(&insecureLogHTTPPayload, "insecure-log-http-payload", false,
@@ -298,6 +304,8 @@ func newCommand(version string, pp []providers.Provider) *cobra.Command {
 	// that Cobra will execute.
 	rootCmd.InitDefaultHelpCmd()
 	rootCmd.InitDefaultCompletionCmd()
+
+	wrapArgumentErrors(rootCmd)
 
 	// Apply centralized agent annotations (token_cost, llm_hint) to the
 	// full command tree. Must run after all commands are registered.

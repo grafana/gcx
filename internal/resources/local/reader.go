@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/logs"
 	"github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/grafana-app-sdk/logging"
 	"golang.org/x/sync/errgroup"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -189,6 +190,10 @@ func (reader *FSReader) Read(
 
 		for res := range resCh {
 			obj := res.Object
+			if adapter.RetainsLocalDuplicates(obj.GroupVersionKind()) {
+				dst.AddDistinct(&obj)
+				continue
+			}
 
 			if _, ok := idx[objIdx{
 				gvk:  obj.Raw.GetGroupVersionKind(),

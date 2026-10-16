@@ -28,7 +28,7 @@ func StaticDescriptor() resources.Descriptor {
 
 // CollectionSchema returns a JSON Schema for the Collection resource type.
 func CollectionSchema() json.RawMessage {
-	return adapter.SchemaFromType[Collection](StaticDescriptor())
+	return adapter.SchemaFromType[Collection](StaticDescriptor())()
 }
 
 // stripFields lists server-managed fields that must not appear in the YAML

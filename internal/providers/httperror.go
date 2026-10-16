@@ -2,6 +2,7 @@ package providers
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,6 +13,41 @@ import (
 // maxErrorBodyBytes caps how much of a non-2xx response body HandleErrorResponse
 // reads, guarding against an unbounded read from a misbehaving proxy or server.
 const maxErrorBodyBytes = 1 << 20 // 1 MiB
+
+// pluginRouteDeniedMessage is the message Grafana's plugin proxy returns when
+// the caller lacks the RBAC action a plugin route requires (its reqAction).
+const pluginRouteDeniedMessage = "plugin proxy route access denied"
+
+// PluginRouteDeniedError reports that Grafana's plugin proxy refused a route
+// because the caller lacks the RBAC action the route requires. The raw 403
+// body does not name the action, so the client that knows the route supplies
+// it. cmd/gcx/fail renders the action, the role and the auth exit code.
+type PluginRouteDeniedError struct {
+	// Action is the RBAC action the route requires.
+	Action string
+	// Role is a role that grants Action.
+	Role string
+	// Cause is the error the client built from the response.
+	Cause error
+}
+
+// Error keeps the client's message unchanged.
+func (e *PluginRouteDeniedError) Error() string { return e.Cause.Error() }
+
+func (e *PluginRouteDeniedError) Unwrap() error { return e.Cause }
+
+// HTTPStatusCode lets the usage-event reporter record the status.
+func (e *PluginRouteDeniedError) HTTPStatusCode() int { return http.StatusForbidden }
+
+// IsPluginRouteDenied reports whether a response is the plugin proxy refusing
+// a route. A 403 from the plugin backend itself returns false.
+func IsPluginRouteDenied(statusCode int, body []byte) bool {
+	if statusCode != http.StatusForbidden {
+		return false
+	}
+	var errResp ErrorResponse
+	return json.Unmarshal(body, &errResp) == nil && errResp.message() == pluginRouteDeniedMessage
+}
 
 // ErrorResponse is the common JSON error-body shape returned by Grafana Cloud
 // product plugin APIs. They disagree on the field name for the human-readable
@@ -52,10 +88,17 @@ func (e ErrorResponse) message() string {
 func HandleErrorResponse(resp *http.Response) error {
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
 	if err != nil {
-		return statusError(resp.StatusCode, err,
+		statusErr := statusError(resp.StatusCode, err, "", "",
 			"request failed with status %d (could not read body: %v)", resp.StatusCode, err)
+		statusErr.ContentType = resp.Header.Get("Content-Type")
+		return statusErr
 	}
-	return FormatError(resp.StatusCode, body)
+	formatted := FormatError(resp.StatusCode, body)
+	var statusErr *gcxerrors.HTTPStatusError
+	if errors.As(formatted, &statusErr) {
+		statusErr.ContentType = resp.Header.Get("Content-Type")
+	}
+	return formatted
 }
 
 // FormatError builds a descriptive error from an already-read non-2xx status
@@ -70,30 +113,34 @@ func HandleErrorResponse(resp *http.Response) error {
 // them exactly — and must never change, byte for byte.
 func FormatError(statusCode int, body []byte) error {
 	var errResp ErrorResponse
+	var traceID string
 	if err := json.Unmarshal(body, &errResp); err == nil {
+		traceID = errResp.TraceID
 		if msg := errResp.message(); msg != "" {
 			if errResp.TraceID != "" {
-				return statusError(statusCode, nil,
+				return statusError(statusCode, nil, msg, errResp.TraceID,
 					"request failed with status %d: %s (traceID %s)", statusCode, msg, errResp.TraceID)
 			}
-			return statusError(statusCode, nil, "request failed with status %d: %s", statusCode, msg)
+			return statusError(statusCode, nil, msg, "", "request failed with status %d: %s", statusCode, msg)
 		}
 	}
 
 	if len(body) > 0 {
-		return statusError(statusCode, nil, "request failed with status %d: %s", statusCode, string(body))
+		return statusError(statusCode, nil, string(body), traceID, "request failed with status %d: %s", statusCode, string(body))
 	}
 
-	return statusError(statusCode, nil, "request failed with status %d", statusCode)
+	return statusError(statusCode, nil, "", "", "request failed with status %d", statusCode)
 }
 
 // statusError renders one of the message forms above into the typed carrier.
 // cause is nil for the forms that never wrapped anything, preserving each
 // call site's pre-migration unwrap shape.
-func statusError(status int, cause error, format string, args ...any) error {
+func statusError(status int, cause error, serverMessage, traceID, format string, args ...any) *gcxerrors.HTTPStatusError {
 	return &gcxerrors.HTTPStatusError{
-		Status:  status,
-		Message: fmt.Sprintf(format, args...),
-		Cause:   cause,
+		Status:        status,
+		Message:       fmt.Sprintf(format, args...),
+		ServerMessage: serverMessage,
+		TraceID:       traceID,
+		Cause:         cause,
 	}
 }

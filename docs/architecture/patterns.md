@@ -170,14 +170,31 @@ Errors flow through a multi-layer translation chain:
 k8s StatusError  -->  APIError (formatted)  -->  DetailedError (rich rendering)
 ```
 
-- `ParseStatusError` in the dynamic client layer normalizes k8s errors into `APIError`
+- The dynamic client layer normalizes Kubernetes status errors and providers
+  preserve HTTP status and parsed server context in typed errors
 - `ErrorToDetailedError` in the CLI layer converts any error into `DetailedError`
   with a summary, details, suggestions, and optional docs link
 - Commands never call `os.Exit` -- they return errors from `RunE`, and `main.go`
   handles the exit code
 
-The conversion pipeline is extensible: new error types are handled by adding a
-converter function to the `errorConverters` slice.
+Converters run from specific domain handling to general handling. The concrete
+`gcxerrors.HTTPStatusError` converter is last, immediately before the fallback,
+so it classifies HTTP failures that no domain converter claimed. Status 401
+maps to `Authentication failed`, 403 to `Authorization failed`, 404 to
+`Resource not found`, 409 to `Resource conflict`, and other statuses to `API
+error`. Authentication and authorization failures use exit code 3. HTML
+responses keep the status-based summary and exit code, while their details use
+a generic message instead of rendering the HTML body. `gcx api` keeps its raw
+response body as passthrough output.
+
+Converter summaries come from exported constants in `internal/gcxerrors`.
+Tests use the Go AST to reject literal summaries and non-constant helper
+returns, compare the constants against the `docs/design/errors.md` vocabulary
+table, and check converted errors at runtime. The fallback always uses
+`Unexpected error`, copies the full message into `Details`, and leaves `Parent`
+unset to avoid repeating the message. Add new converters to the
+`errorConverters` slice, preserving the HTTP status converter as its final
+typed entry.
 
 ---
 
@@ -363,25 +380,31 @@ Cross-reference: Pattern 12 (Direct HTTP Client for Datasource APIs).
 
 ### 15. Agent Mode Detection and Pipe-Aware Output
 
-gcx detects at startup whether it is running inside an AI agent
-environment (Claude Code, Cursor, GitHub Copilot, Amazon Q, opencode, pi) and adjusts
-its behavior accordingly. Detection happens at `init()` time by reading
-well-known environment variables; the `--agent` CLI flag overrides env
-detection when explicitly set.
+gcx detects agent identity at startup from native signals or supported names.
+Detection runs at `init()` time. The `--agent` flag overrides the detected mode.
 
-**Detection priority:**
+**Mode priority:**
 
 | Priority | Mechanism | Notes |
 |----------|-----------|-------|
-| 1 | `GCX_AGENT_MODE` env var | Explicit override — falsy value disables agent mode even if other vars are set |
-| 2 | `CLAUDECODE`, `CLAUDE_CODE`, `CURSOR_AGENT`, `GITHUB_COPILOT`, `AMAZON_Q`, `OPENCODE`, `PI_CODING_AGENT` env vars | Any truthy value enables agent mode |
-| 3 | `--agent` CLI flag | Applied after env detection; always takes precedence when explicitly passed |
+| 1 | Explicit `--agent` flag | Enables or disables mode after environment detection |
+| 2 | Valid `GCX_AGENT_MODE` value | Explicit mode override |
+| 3 | Supported identity | Native signals, `GCX_AGENT_NAME`, `AI_AGENT`, or `AGENT=goose` enable mode |
+| 4 | Default | Agent mode is disabled |
+
+Identity resolution starts with `GCX_AGENT_NAME`, then native markers, then
+`AI_AGENT`, then `AGENT=goose`. Mode opt-out does not clear the identity
+label. Usage telemetry uses the same fixed label as the detector.
+See the [environment reference](../design/environment-variables.md#agent-mode-variables)
+for the complete signal list and supported names. See
+[agent mode](../design/agent-mode.md#61-detection) for the full precedence rules.
 
 **Behavioral effects when agent mode is active:**
 - Color output disabled globally (`color.NoColor = true`)
-- Default output format overridden to `json` (machine-parseable by default)
+- Default display format overridden to `agents` (compact JSON below 100 KiB, temp-file spill above)
+- `resources pull` and `resources edit` pin their file format and reject `-o agents`; deprecated SLO pulls retain fixed YAML without an `-o` flag
 - Pipe-aware behaviors forced: `IsPiped=true`, `NoTruncate=true` regardless of TTY state
-- In-band error JSON written to stdout on failure (see `cmd/gcx/fail/json.go`)
+- In-band error JSON written to stdout on failure (see `internal/gcxerrors/json.go`)
 
 **Pipe detection** is also independent of agent mode. Root `PersistentPreRun` calls
 `terminal.Detect()` which checks `term.IsTerminal(os.Stdout.Fd())`. When piped:
@@ -393,11 +416,11 @@ The `--no-truncate` persistent flag provides explicit control for non-TTY use ca
 behaviors regardless of actual TTY state.
 
 **Key files:**
-- `internal/agent/agent.go` — `IsAgentMode()`, `SetFlag()`, `DetectedFromEnv()`
+- `internal/agent/agent.go` — `IsAgentMode()`, `SetFlag()`, `DetectedFromEnv()`, `Name()`
 - `internal/terminal/terminal.go` — `Detect()`, `IsPiped()`, `NoTruncate()`, setters
 - `cmd/gcx/root/command.go` — orchestrates detection order in `PersistentPreRun`
 - `internal/output/format.go` — `io.Options` fields `IsPiped`, `NoTruncate`, `JSONFields`
-- `cmd/gcx/fail/json.go` — `DetailedError.WriteJSON` for in-band error reporting
+- `internal/gcxerrors/json.go` — `DetailedError.WriteJSON` for in-band error reporting
 
 **Evidence:**
 - `internal/agent/` package with `init()`-time env-var detection
@@ -422,7 +445,7 @@ This applies to provider commands (`slo`, `synth`, `alert`) which each define a 
 
 ### 16. ResourceAdapter and Provider CRUD Routing
 
-Provider-backed resource types (SLO, Synthetic Monitoring, Alert) implement the
+Provider-backed resource types (SLO, Synthetic Monitoring) implement the
 `adapter.ResourceAdapter` interface to bridge their REST clients to the unified
 `resources` pipeline. Providers return their `adapter.Registration` values from
 `Provider.TypedRegistrations()`; the single `providers.Register()` call in the
@@ -490,6 +513,18 @@ interfaces directly, eliminating the TypedCRUD bridge.
 Do not introduce new serialization bridges, dispatch patterns, or
 type-erasure mechanisms. If TypedCRUD does not fit your use case, raise
 the issue for architectural discussion.
+
+### Sanctioned Exception — Provider-Owned Resource Hooks
+
+[ADR-026](../adrs/provider-owned-resource-hooks/026-provider-owned-resource-hooks.md)
+authorizes optional provider-neutral adapter hooks for pull preflight and partial
+multi-get/read reporting, complete batch push preflight, per-item envelope
+mutation dispatch, and identity-only delete selection. These preserve annotations
+and every selected identity before generic probes or name-keyed insertion.
+Domain identity and reconciliation remain in the owning adapter; generic pipelines
+use shared types and never branch on product names. Kinds without hooks retain
+the existing TypedCRUD pipeline. This exception permits only the recorded hook
+seams, not new serialization bridges or a generic reconciliation framework.
 
 ### Sanctioned Exception — Single-Seam Capability Assertion (`adapter.Resource[T]`)
 
@@ -781,7 +816,60 @@ c.doRequest(ctx, http.MethodPost, fmt.Sprintf("%s/%s/apply", recsPath, id), nil)
 - `internal/providers/kg/client.go`: `ruleByNameFmt`, `suppressionByNameFmt`
 - `internal/providers/agento11y/*/client.go`: `conversationByIDFmt`, `generationByIDFmt`, `ruleByIDFmt`, `templateByIDFmt`, `evaluatorByIDFmt`
 
+### 22. Native Resource Binding (Adopt)
+
+**Observation:** Some provider commands manage a Kubernetes-compatible resource
+that Grafana serves natively and gcx discovers from the server (for example
+`gcx alert routing-trees` over `routingtrees.notifications.alerting.grafana.app`).
+These commands must not register an adapter for the GVK (that would take the
+GVK away from the dynamic client in `gcx resources` and pin one version), and
+must not build discovery registries or dynamic clients by hand.
+
+**Rule:** Bind the resource once in the command factory with
+`native.Bind(loader, native.Config{Group, Resource})` from
+`internal/providers/native`. Leaves call `Binding.Load` only after validation
+and any confirmation; `Load` resolves a fresh config snapshot, the descriptor
+(server-preferred version unless `LoadOptions.APIVersion` is set), and a
+dynamic client. Nothing is cached between calls.
+
+```go
+binding := native.Bind(loader, native.Config{
+    Group:    "notifications.alerting.grafana.app",
+    Resource: "routingtrees",
+})
+// in RunE, after validation:
+access, err := binding.Load(ctx, native.LoadOptions{APIVersion: opts.APIVersion})
+list, err := access.Client.List(ctx, access.Descriptor, metav1.ListOptions{})
+```
+
+**Reuse constraints:**
+- `native` imports no cobra, `cmdio`, terminal, or prompt packages
+  (`TestNoCLIImports` enforces direct imports).
+- `native.WithRegistry` replaces the on-disk discovery cache, e.g. for a
+  long-running multi-tenant process.
+- `native.ReadManifest(filename, stdin)` reads `-f` input from an injected
+  reader (`cmd.InOrStdin()`), never `os.Stdin`.
+- Tests inject `native.Fixed(access)` or `native.Func(f)` instead of a server.
+
+**Key files:**
+- `internal/providers/native/native.go`: `Bind`, `Binding.Load`, `Fixed`, `Func`, `WithRegistry`, `ParseAPIVersion`
+- `internal/providers/native/manifest.go`: `ReadManifest`
+- `internal/providers/alert/routing_trees_commands.go`: first adopter
+- `internal/providers/alert/time_intervals_commands.go` and `template_groups_commands.go`: exact title lookup, caller-version updates, and server-derived creates
+- Constitution: "Native resources go through the shared native binding". Dashboards still hand-rolls access until its migration lands.
+
 ---
+
+### Server-derived identity policy
+
+Native command creates and generic push share the pure policy in
+`internal/resources/native_identity.go`. Write callers validate logical identity and read-only status;
+create preparation only copies and strips server fields. The policy neither registers
+adapters nor synthesizes opaque API names. Push reuses the natural-key cache
+when a name hint is absent or mismatched and rejects ambiguous native matches.
+Dedicated update uses an explicit current-title subject, while push matches the
+desired identity. See [resource model](resource-model.md#server-derived-native-names)
+and [push flow](data-flows.md#2-push-pipeline).
 
 ## Contradiction Resolutions
 
@@ -838,13 +926,10 @@ TLS handling. The K8s dynamic client path chains
 `NewNamespacedRESTConfig`. The OpenAPI health client manages its own transport
 but consumes the same effective auth method and selected TLS view.
 
-### 5. CI Drift Check Coverage
+### 5. Released CLI Reference
 
-**Observed in:** Project Structure domain notes that the CI `docs` job only
-checks `cli-reference-drift`, not all three reference generators. `mise.toml`
-has `reference-drift` targeting all four.
-
-**Resolution:** `mise.toml` has all four drift check tasks
-(`reference-drift:cli`, `reference-drift:env-var`, `reference-drift:config`,
-`reference-drift:linter-rules`) plus a combined `reference-drift` task. CI now
-invokes `mise run reference-drift` which runs all four.
+The CLI reference is a release snapshot, while `main` may contain
+unreleased commands. CI therefore tests the generator and builds the committed
+Grafana website pages without asserting reference equality against `main`.
+`mise run tag` refreshes the reference from the release checkout with the upcoming
+version and includes it in the changelog PR.

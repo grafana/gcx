@@ -116,8 +116,9 @@ func fetchPinotSession(ctx context.Context, client pinotQuerier, uid string, p s
 
 	if p.AppType == "" {
 		// Need web vs mobile before the journey UNION (mobile drops
-		// app_memory / app_cpu_usage). App GET has no type; the
-		// measurements row we just fetched already has sdkName + osName.
+		// app_memory / app_cpu_usage). The stored appType can be missing
+		// or wrong on older apps; the measurements row we just fetched
+		// already has sdkName + osName.
 		p.AppType = inferAppType(pinotCell(userMeta, "sdk_name"), pinotCell(userMeta, "os_name"))
 	}
 

@@ -66,6 +66,12 @@ func (p *Provider) descriptor() signals.Descriptor {
   # Get values for a specific label
   gcx logs labels -d UID --label job
 
+  # Filter labels with a query
+  gcx logs labels -d UID --query '{app="foo"}'
+
+  # Filter label values with a query
+  gcx logs labels -d UID --label job --query '{app="foo"}'
+
   # Output as JSON
   gcx logs labels -d UID -o json`,
 			},
@@ -99,21 +105,21 @@ func (p *Provider) descriptor() signals.Descriptor {
 					Factory:    adaptivelogs.NewExemptionAdapterFactory(loader),
 					Descriptor: adaptivelogs.ExemptionDescriptor(),
 					GVK:        adaptivelogs.ExemptionDescriptor().GroupVersionKind(),
-					Schema:     adaptivelogs.ExemptionSchema(),
+					Schema:     adaptivelogs.ExemptionSchema,
 					Example:    adaptivelogs.ExemptionExample(),
 				},
 				{
 					Factory:    adaptivelogs.NewSegmentAdapterFactory(loader),
 					Descriptor: adaptivelogs.SegmentDescriptor(),
 					GVK:        adaptivelogs.SegmentDescriptor().GroupVersionKind(),
-					Schema:     adaptivelogs.SegmentSchema(),
+					Schema:     adaptivelogs.SegmentSchema,
 					Example:    adaptivelogs.SegmentExample(),
 				},
 				{
 					Factory:    adaptivelogs.NewDropRuleAdapterFactory(loader),
 					Descriptor: adaptivelogs.DropRuleDescriptor(),
 					GVK:        adaptivelogs.DropRuleDescriptor().GroupVersionKind(),
-					Schema:     adaptivelogs.DropRuleSchema(),
+					Schema:     adaptivelogs.DropRuleSchema,
 					Example:    adaptivelogs.DropRuleExample(),
 				},
 			}

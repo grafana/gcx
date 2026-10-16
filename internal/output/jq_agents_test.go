@@ -190,6 +190,7 @@ func TestOptions_JQ_AgentsStream(t *testing.T) {
 		{name: "default threshold", query: ".", value: strings.Repeat("x", 102397), threshold: "", want: "\"" + strings.Repeat("x", 102397) + "\"\n", values: 1},
 		{name: "default threshold exceeded", query: ".", value: strings.Repeat("x", 102398), threshold: "", want: "\"" + strings.Repeat("x", 102398) + "\"\n", values: 1, spill: true},
 		{name: "invalid threshold falls back", query: "1", threshold: "invalid", want: "1\n", values: 1},
+		{name: "zero disables spilling", query: "range(0; 60000) | 0", threshold: "0", want: strings.Repeat("0\n", 60000), values: 60000}, // 120 KB, above the default
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

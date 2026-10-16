@@ -68,6 +68,7 @@ func Command() *cobra.Command {
 	}
 
 	cmd.AddCommand(stacks.NewCommand())
+	cmd.AddCommand(orgsCommand())
 	cmd.AddCommand(loginCmd())
 
 	return cmd
@@ -94,8 +95,8 @@ By default, opens a browser for interactive OAuth2 authentication.
 EXPERIMENTAL: interactive OAuth login is an experimental flow that stores an
 OAuth-issued token in the cloud entry's oauth-token field. Some commands that
 talk to grafana.com do not yet work with an OAuth token, and the token cannot
-be refreshed - when it expires, run this command again. For full
-functionality, pass a Cloud Access Policy token via --cloud-token instead.
+be refreshed - when it expires, run this command again. Use a Cloud Access
+Policy token via --cloud-token for operations that do not support OAuth.
 
 For non-interactive use (CI/CD, scripts), pass a Cloud Access Policy token
 directly via --cloud-token.
@@ -207,13 +208,13 @@ func autoLocalCloudCredentialError(target config.ConfigSource) error {
 func currentCloudConfig(ctx context.Context, configOpts *cmdconfig.Options) (config.Config, *config.Context, string, error) {
 	cfg, err := configOpts.LoadConfigTolerant(ctx)
 	if errors.Is(err, os.ErrNotExist) {
-		name := config.ResolveContextName(configOpts.Context, cfg)
+		name := config.ResolveContextName(configOpts.EffectiveContext(), cfg)
 		return cfg, nil, name, nil
 	}
 	if err != nil {
 		return config.Config{}, nil, "", err
 	}
-	name := config.ResolveContextName(configOpts.Context, cfg)
+	name := config.ResolveContextName(configOpts.EffectiveContext(), cfg)
 	return cfg, cfg.Contexts[name], name, nil
 }
 
