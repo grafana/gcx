@@ -111,7 +111,7 @@ const grafanaAuthMethodAnonymous = "anonymous"
 // allowlist on the way out.
 func (context *Context) selectGrafanaAuth() (grafanaAuthSelection, error) {
 	if context != nil && context.runtimeSecretOverrides[credentials.FieldGrafanaToken] {
-		selection := grafanaAuthSelection{mode: grafanaAuthToken, explicit: true}
+		selection := grafanaAuthSelection{mode: grafanaAuthToken, explicit: context.Grafana != nil && strings.TrimSpace(context.Grafana.AuthMethod) != ""}
 		capture.SetGrafanaAuthMethod(grafanaAuthMethodLabel(context.Grafana, selection, nil))
 		return selection, nil
 	}
