@@ -166,7 +166,7 @@ type groupsStatusOpts struct {
 }
 
 func (o *groupsStatusOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &GroupsStatusTableCodec{})
+	cmdio.RegisterTable(&o.IO, GroupsStatusTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 }
@@ -222,51 +222,40 @@ func newGroupsStatusCommand(loader GrafanaConfigLoader) *cobra.Command {
 	return cmd
 }
 
-// GroupsStatusTableCodec renders alert rule group status summaries as a tabular table.
-type GroupsStatusTableCodec struct{}
-
-func (c *GroupsStatusTableCodec) Format() format.Format { return "table" }
-
-func (c *GroupsStatusTableCodec) Encode(w io.Writer, v any) error {
-	groups, ok := v.([]RuleGroup)
-	if !ok {
-		return errors.New("invalid data type for status table codec: expected []RuleGroup")
+func GroupsStatusTable() cmdio.Table[RuleGroup] {
+	return cmdio.Table[RuleGroup]{
+		Columns: []cmdio.Column[RuleGroup]{
+			{Header: "GROUP", Content: func(g RuleGroup) string { return g.Name }},
+			{Header: "RULES", Content: func(g RuleGroup) string { return strconv.Itoa(len(g.Rules)) }},
+			{Header: "FIRING", Content: func(g RuleGroup) string { return groupStateCount(g, StateFiring) }},
+			{Header: "PENDING", Content: func(g RuleGroup) string { return groupStateCount(g, StatePending) }},
+			{Header: "INACTIVE", Content: func(g RuleGroup) string { return groupStateCount(g, StateInactive) }},
+			{Header: "LAST_EVAL", Content: func(g RuleGroup) string {
+				if g.LastEvaluation == "0001-01-01T00:00:00Z" {
+					return "never"
+				}
+				return g.LastEvaluation
+			}},
+		},
+		// Keep prose in the table codec so JSON, YAML and agents still encode [].
+		Empty: func(w io.Writer) error {
+			cmdio.Info(w, "No alert rule groups found.")
+			return nil
+		},
 	}
-
-	if len(groups) == 0 {
-		// Human empty state: the exact styled line the command has always
-		// printed. The check lives in the table codec so only human output
-		// gets prose — json/yaml/agents encode [] instead.
-		cmdio.Info(w, "No alert rule groups found.")
-		return nil
-	}
-
-	t := style.NewTable("GROUP", "RULES", "FIRING", "PENDING", "INACTIVE", "LAST_EVAL")
-	for _, g := range groups {
-		firing, pending, inactive := 0, 0, 0
-		for _, r := range g.Rules {
-			switch r.State {
-			case StateFiring:
-				firing++
-			case StatePending:
-				pending++
-			case StateInactive:
-				inactive++
-			default:
-				// The Grafana alerting API only returns firing/pending/inactive,
-				// but count unexpected states as inactive defensively.
-				inactive++
-			}
-		}
-		lastEval := g.LastEvaluation
-		if lastEval == "0001-01-01T00:00:00Z" {
-			lastEval = "never"
-		}
-		t.Row(g.Name, strconv.Itoa(len(g.Rules)), strconv.Itoa(firing), strconv.Itoa(pending), strconv.Itoa(inactive), lastEval)
-	}
-	return t.Render(w)
 }
 
-func (c *GroupsStatusTableCodec) Decode(r io.Reader, v any) error {
-	return errors.New("status table codec does not support decoding")
+func groupStateCount(g RuleGroup, state string) string {
+	count := 0
+	for _, r := range g.Rules {
+		ruleState := r.State
+		// Preserve the status summary's treatment of unexpected states as inactive.
+		if ruleState != StateFiring && ruleState != StatePending {
+			ruleState = StateInactive
+		}
+		if ruleState == state {
+			count++
+		}
+	}
+	return strconv.Itoa(count)
 }

@@ -178,7 +178,7 @@ func TestStatusTableCodec_Encode(t *testing.T) {
 	}
 
 	t.Run("default table", func(t *testing.T) {
-		codec := &definitions.StatusTableCodec{}
+		codec := definitions.StatusTable().Codec("table")
 		var buf bytes.Buffer
 		err := codec.Encode(&buf, results)
 		if err != nil {
@@ -236,7 +236,7 @@ func TestStatusTableCodec_Encode(t *testing.T) {
 			},
 		}
 
-		codec := &definitions.StatusTableCodec{Wide: true}
+		codec := definitions.StatusTable().Codec("wide")
 		var buf bytes.Buffer
 		err := codec.Encode(&buf, wideResults)
 		if err != nil {
@@ -262,7 +262,7 @@ func TestStatusTableCodec_Encode(t *testing.T) {
 }
 
 func TestStatusTableCodec_InvalidType(t *testing.T) {
-	codec := &definitions.StatusTableCodec{}
+	codec := definitions.StatusTable().Codec("table")
 	var buf bytes.Buffer
 	err := codec.Encode(&buf, "invalid")
 	if err == nil {

@@ -15,7 +15,6 @@ import (
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/prometheus"
-	"github.com/grafana/gcx/internal/style"
 	"github.com/grafana/promql-builder/go/promql"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -55,8 +54,7 @@ type statusOpts struct {
 }
 
 func (o *statusOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &StatusTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &StatusTableCodec{Wide: true})
+	cmdio.RegisterTable(&o.IO, StatusTable())
 	o.IO.RegisterCustomCodec("graph", &statusGraphCodec{})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
@@ -382,55 +380,20 @@ func parseSampleValue(sample prometheus.Sample) *float64 {
 // status table codec
 // ---------------------------------------------------------------------------
 
-// StatusTableCodec renders StatusResult data as a tabular table.
-type StatusTableCodec struct {
-	Wide bool
-}
-
-// Format returns the codec format identifier.
-func (c *StatusTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
-	}
-	return "table"
-}
-
-// Encode writes the status results as a formatted table.
-func (c *StatusTableCodec) Encode(w io.Writer, v any) error {
-	results, ok := v.([]StatusResult)
-	if !ok {
-		return errors.New("invalid data type for status table codec: expected []StatusResult")
-	}
-
-	var t *style.TableBuilder
-	if c.Wide {
-		t = style.NewTable("NAME", "UUID", "OBJECTIVE", "WINDOW", "SLI", "BUDGET", "BURN_RATE", "SLI_1H", "SLI_1D", "STATUS")
-	} else {
-		t = style.NewTable("NAME", "UUID", "OBJECTIVE", "WINDOW", "SLI", "BUDGET", "STATUS")
-	}
-
-	for _, r := range results {
-		objective := formatPercent(r.Objective)
-		sliStr := formatOptionalPercent(r.SLI)
-		budgetStr := formatOptionalBudget(r.Budget)
-
-		if c.Wide {
-			burnRateStr := formatOptionalBurnRate(r.BurnRate)
-			sli1h := formatOptionalPercent(r.SLI1h)
-			sli1d := formatOptionalPercent(r.SLI1d)
-			t.Row(r.Name, r.UUID, objective, r.Window, sliStr, budgetStr,
-				burnRateStr, sli1h, sli1d, r.Status)
-		} else {
-			t.Row(r.Name, r.UUID, objective, r.Window, sliStr, budgetStr, r.Status)
-		}
-	}
-
-	return t.Render(w)
-}
-
-// Decode is not supported for the status table codec.
-func (c *StatusTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("status table codec does not support decoding")
+// StatusTable declares the narrow and wide columns for SLO status output.
+func StatusTable() cmdio.Table[StatusResult] {
+	return cmdio.Table[StatusResult]{Columns: []cmdio.Column[StatusResult]{
+		{Header: "NAME", Content: func(r StatusResult) string { return r.Name }},
+		{Header: "UUID", Content: func(r StatusResult) string { return r.UUID }},
+		{Header: "OBJECTIVE", Content: func(r StatusResult) string { return formatPercent(r.Objective) }},
+		{Header: "WINDOW", Content: func(r StatusResult) string { return r.Window }},
+		{Header: "SLI", Content: func(r StatusResult) string { return formatOptionalPercent(r.SLI) }},
+		{Header: "BUDGET", Content: func(r StatusResult) string { return formatOptionalBudget(r.Budget) }},
+		{Header: "BURN_RATE", Visible: cmdio.WideOnly, Content: func(r StatusResult) string { return formatOptionalBurnRate(r.BurnRate) }},
+		{Header: "SLI_1H", Visible: cmdio.WideOnly, Content: func(r StatusResult) string { return formatOptionalPercent(r.SLI1h) }},
+		{Header: "SLI_1D", Visible: cmdio.WideOnly, Content: func(r StatusResult) string { return formatOptionalPercent(r.SLI1d) }},
+		{Header: "STATUS", Content: func(r StatusResult) string { return r.Status }},
+	}}
 }
 
 // ---------------------------------------------------------------------------
