@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"reflect"
 
 	"github.com/grafana/gcx/internal/format"
 )
@@ -29,7 +30,7 @@ func (c CSV[T]) Decode(io.Reader, any) error {
 func (c CSV[T]) Encode(w io.Writer, data any) error {
 	value, ok := data.(T)
 	if !ok {
-		return fmt.Errorf("invalid data type for csv codec: expected %T, got %T", value, data)
+		return fmt.Errorf("invalid data type for csv codec: expected %v, got %T", reflect.TypeFor[T](), data)
 	}
 	columns, rows, err := c.Records(value)
 	if err != nil {

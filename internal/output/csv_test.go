@@ -50,6 +50,8 @@ func TestCSVErrors(t *testing.T) {
 	}}
 	require.ErrorIs(t, codec.Encode(io.Discard, "value"), failure)
 	require.ErrorContains(t, codec.Encode(io.Discard, 1), "invalid data type")
+	interfaceCodec := output.CSV[output.CSVMarshaler]{Records: output.CSVMarshaler.CSVRecords}
+	require.EqualError(t, interfaceCodec.Encode(io.Discard, 1), "invalid data type for csv codec: expected output.CSVMarshaler, got int")
 	require.Error(t, codec.Decode(strings.NewReader(""), nil))
 	codec.Records = func(string) ([]string, [][]string, error) { return []string{"name"}, nil, nil }
 	require.ErrorIs(t, codec.Encode(csvFailWriter{failure}, "value"), failure)
