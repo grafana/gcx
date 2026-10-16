@@ -6,6 +6,7 @@ import (
 
 	"github.com/grafana/gcx/internal/agent"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/tempo"
 	"github.com/spf13/cobra"
@@ -133,6 +134,7 @@ explicit time range via --since or --from/--to.`,
 		agent.AnnotationLLMHint:   `gcx datasources tempo query -d UID '{ span.http.status_code >= 500 }' -o json`,
 	}
 
+	cmdio.RegisterCSV(&shared.IO)
 	shared.Setup(cmd.Flags(), false)
 	shared.SetupErrorOnEmptyFlag(cmd.Flags())
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.tempo is configured)")
