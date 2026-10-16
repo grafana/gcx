@@ -80,7 +80,7 @@ optional: a positive duration (e.g., 30s) or a positive number of seconds
   gcx datasources loki query-patterns '{job="varlogs"}'
 
   # Detect patterns over a specific window
-  gcx datasources loki query-patterns -d UID '{job="varlogs"}' --since 6h
+  gcx datasources loki query-patterns -d UID '{job="varlogs"}' --since 3h
 
   # Output as JSON
   gcx datasources loki query-patterns -d UID '{job="varlogs"}' -o json`,

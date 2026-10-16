@@ -98,7 +98,7 @@ func (p *Provider) descriptor() signals.Descriptor {
   gcx logs query-patterns '{job="varlogs"}'
 
   # Detect patterns over a specific window
-  gcx logs query-patterns -d UID '{job="varlogs"}' --since 6h
+  gcx logs query-patterns -d UID '{job="varlogs"}' --since 3h
 
   # Output as JSON
   gcx logs query-patterns -d UID '{job="varlogs"}' -o json`,
