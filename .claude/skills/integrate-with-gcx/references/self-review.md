@@ -193,11 +193,13 @@ a file with a receipt, and pre-truncation defeats it.
 - Summaries in `cmd/gcx/fail/` converters must come from the closed vocabulary
   in `docs/design/errors.md` §"Summary vocabulary". That scope is the converters
   — it is not a constraint on arbitrary command error text.
-- Exit codes per `docs/design/exit-codes.md` (0-6). **Known gap:** cobra's own
-  usage errors (bad flags, missing args) currently exit **1**, not 2; §2.3
-  records overriding them as future work. Code 2 is reachable when you set it
-  explicitly. Don't claim 2 for a path you didn't wire, and don't "fix" the
-  global behavior in a feature PR — flag it if it bites you.
+- Exit codes per `docs/design/exit-codes.md` (0-6). **Known gap:** two cobra
+  usage errors still exit **1**, not 2 — an unknown flag and a missing
+  positional arg. Unknown commands and missing *required flags* are mapped to 2
+  today, and so is any usage error you raise yourself through
+  `fail.NewCommandUsageError`; §2.3 has the verified table. Don't claim 2 for a
+  path you didn't wire, and don't "fix" the two remaining cases in a feature
+  PR — flag it if it bites you.
 - Invalid input reports the rejected value, the expected format or allowed
   values, and a runnable corrected call. "invalid selector" alone strands both
   humans and agents.
@@ -384,12 +386,9 @@ they are closed rather than forgotten.
 
 ## T11: Skills and generated docs
 
-Regenerate references and inspect the generated page for your command:
-
-```bash
-GCX_AGENT_MODE=false mise run reference
-git diff --stat docs/reference/
-```
+Keep the released reference unchanged in command PRs. `mise run tag` generates
+references with the upcoming version and includes them in the release changelog
+PR. Run `mise run docs` to validate the checked-in pages.
 
 Underscore-prefixed identifiers (a metrics `__name__`) render as bold markdown
 unless backticked. Help text carrying a removed config key or a stale default is

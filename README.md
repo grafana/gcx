@@ -345,6 +345,8 @@ gcx dashboards search "node exporter"           # full-text search by title/tag/
 gcx resources get folders                       # list all folders
 gcx resources get dashboards.dashboard.grafana.app/my-dash  # get by resource.group/name
 gcx alert rules list                            # list alert rules
+gcx alert time-intervals list                   # native notification time intervals
+gcx alert template-groups list                  # native notification template groups
 
 # Grafana Cloud products
 gcx synthetic-monitoring checks list            # list synthetic monitoring checks
@@ -354,6 +356,32 @@ gcx k6 load-tests list                          # list k6 load tests
 # Query more datasources
 gcx logs query '{app="nginx"} |= "error"' --since 1h
 gcx traces query '{.cluster="dev-us-central-0"}' --since 1h
+```
+
+Unnamed native time interval and template group manifests can share a push
+directory: distinct titles remain separate, and template kind is part of the
+identity. To delete these resources, use the dedicated `alert time-intervals delete`
+or `alert template-groups delete` commands, or pass pulled files with real API
+names to `resources delete -p`; unnamed files are rejected before any request for
+that file. Pull includes read-only native intervals and template groups by default for
+backup, audit, and diffing; `--skip-read-only` excludes them with a reason in the
+summary. Push and delete always skip them. Read commands still show them;
+`resources edit` refuses them before opening an editor. Provisioning export remains under
+`gcx alert mute-timings export` and covers Grafana-managed intervals only. See [server-derived resource names](docs/architecture/resource-model.md#server-derived-native-names)
+for portable push behavior.
+
+Contact points, notification policies, templates, and mute timings that gcx
+creates or updates through Grafana's provisioning API remain editable in the
+Grafana UI by default. Pass `--allow-ui-updates=false` to contact-point or
+mute-timing create and update commands, `alert templates upsert`, or
+`alert notification-policies set` to use Grafana's default provisioning
+ownership. Grafana then prevents UI edits to the provisioned item.
+To update a provisioned contact point, keep `--allow-ui-updates=false`.
+Grafana can reject an attempt to make an existing provisioned contact point
+editable in the UI because its provenance cannot be changed by that update.
+
+```bash
+gcx alert contact-points create -f contact-point.yaml --allow-ui-updates=false
 ```
 
 For an empty dashboard or missing application telemetry, follow
@@ -451,9 +479,10 @@ def2  Memory leak in payment-svc                resolved   1h ago
 
 The agentic workflow above is one example. gcx supports a wide range of workflows:
 
-- **Resource GitOps** — Pull resources to local files, let your agent edit them, push back to Grafana (`gcx resources pull` / `gcx resources push`)
+- **Resource GitOps** — Pull writable resource types to local files, let your agent edit them, push back to Grafana (`gcx resources pull` / `gcx resources push`)
 - **Explore your data** — Discover datasources, metrics, labels, and log streams before writing queries (`gcx datasources list`, `gcx metrics labels`)
 - **Bring Assistant context into your agent** — Read a conversation by ID or a shared Grafana Assistant URL, including AI SDK main-thread transcripts (`gcx assistant conversation get <id-or-url> -o json`)
+- **Look up product docs** — Search and read Grafana documentation from the terminal (`gcx docs search`, `gcx docs get`)
 - **SLO management** — Create, monitor, and investigate SLOs from your terminal (`gcx slo definitions list`, `gcx slo reports list`)
 - **Onboarding & setup** — Instrument a Kubernetes cluster and configure Grafana Cloud products (`gcx instrumentation setup`)
 - **Observability as Code** — Scaffold a project, import existing dashboards as Go code, lint, and deploy (`gcx dev scaffold`, `gcx dev import`)
@@ -516,7 +545,7 @@ gcx provides dedicated commands for each Grafana Cloud product:
 | **Alerting** | `gcx alert` | `alert rules list`, `alert groups list` |
 | **k6 Cloud** | `gcx k6` | `k6 load-tests list`, `k6 runs list` |
 | **Fleet Management** | `gcx fleet` | `fleet pipelines list`, `fleet collectors list` |
-| **Knowledge Graph** | `gcx kg` | `kg status`, `kg entities list`, `kg entities inspect` |
+| **Knowledge Graph** | `gcx kg` | `kg status`, `kg entities list`, `kg entities inspect`, `kg graph query` |
 | **Frontend Observability** | `gcx frontend` | `frontend apps list`, `frontend apps get` |
 | **App Observability** | `gcx appo11y` | `appo11y overrides get`, `appo11y settings get` |
 | **Agent Observability** | `gcx agento11y` | `agento11y conversations list`, `agento11y experiments pull`, `agento11y rules list` |
@@ -553,6 +582,13 @@ gcx resources edit dashboards/my-dashboard
 # Delete a resource
 gcx resources delete dashboards/my-dashboard
 ```
+
+### Mobile Frontend Observability apps
+
+Mobile Frontend Observability app manifests set `spec.appType: mobile` and a mobile
+`spec.runtime`. See [`gcx frontend apps create`](docs/sources/cli-reference.md#gcx-frontend-apps-create-gcx-frontend-apps-create)
+for the runtimes and an example manifest, and
+[`gcx frontend apps update`](docs/sources/cli-reference.md#gcx-frontend-apps-update-gcx-frontend-apps-update) for what an update keeps.
 
 ## Alerting & Datasource Queries
 
@@ -599,6 +635,12 @@ gcx dev lint new dashboard my-rule              # create custom rule
 go run . && gcx resources push -p ./resources
 ```
 
+## Manage Assistant Watchers (experimental)
+
+Read Watcher configuration with `gcx assistant watchers list` and `get WATCHER`, inspect runtime observations with `status WATCHER`, or export manifests with `gcx resources pull watchers`. Apply configuration with `create -f FILE`, `update WATCHER -f FILE` or `gcx resources push`; remove a Watcher with `delete WATCHER --force`. Creation stays inactive and uncalibrated. Requires Grafana Cloud. See [Assistant Watchers](docs/reference/assistant-watchers.md).
+
+Pulled Watcher manifests can be pushed back unchanged. Applying configuration preserves calibrated content and learned state; meaningful settings outside the manifest model cause an explicit refusal.
+
 ## Raw API Access
 
 For anything not covered by built-in commands, use the API passthrough:
@@ -626,6 +668,10 @@ gcx resources push -p ./resources
 ```
 
 gcx push is idempotent — running it multiple times produces the same result. Folders are automatically pushed before dashboards to satisfy dependencies.
+
+Updates preserve the existing `kubectl` manager identity, including identities from
+`grafanactl` and older gcx releases. New resources use the stable identity `gcx`.
+See [manager metadata](docs/architecture/resource-model.md#manager-metadata).
 
 > **gcx resources push/pull vs GitSync:** Grafana's [Git Sync](https://grafana.com/docs/grafana/latest/as-code/observability-as-code/git-sync/) provides bi-directional sync between a git repo and Grafana for dashboards. `gcx resources push/pull` enables users to create their own as-code resource synchronisation workflows. `gcx resources push/pull` also works with all resources available in `gcx resources get`, not just dashboards.
 
@@ -676,7 +722,7 @@ jobs:
 | [Managing Resources](docs/guides/manage-resources.md) | Get, push, pull, delete, edit, validate |
 | [Dashboards as Code](docs/guides/dashboards-as-code.md) | Dashboard-as-code workflow with live dev server |
 | [Linting Resources](docs/guides/lint-resources.md) | Lint dashboards and alert rules with Rego policies |
-| [CLI Reference](docs/reference/cli/) | Full command reference (auto-generated) |
+| [CLI Reference](docs/sources/cli-reference.md) | Full command reference (auto-generated) |
 | [Engineering RFCs](docs/rfcs/README.md) | Proposals, technical designs, and review workflows |
 
 ## Usage statistics

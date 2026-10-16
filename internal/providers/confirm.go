@@ -51,11 +51,13 @@ func CheckDestructiveBypass(force bool) (bool, error) {
 // Bypass chain (via [CheckDestructiveBypass]):
 //  1. --force flag → proceed immediately
 //  2. GCX_AUTO_APPROVE env var → proceed (CI/CD pipelines)
-//  3. Agent mode detected without --force → fail with actionable error
+//  3. Agent mode detected, neither bypass above applied → fail with an
+//     actionable error
 //  4. Otherwise → interactive [y/N] prompt (returns false on EOF or "no")
 //
-// Agent mode requires explicit --force so that agents must deliberately
-// acknowledge destructive operations rather than silently proceeding.
+// Agent mode requires an explicit bypass — --force or GCX_AUTO_APPROVE — so
+// that agents must deliberately acknowledge destructive operations rather than
+// silently proceeding.
 func ConfirmDestructive(in io.Reader, out io.Writer, force bool, prompt string) (bool, error) {
 	bypass, err := CheckDestructiveBypass(force)
 	if bypass || err != nil {

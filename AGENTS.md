@@ -19,7 +19,7 @@
 | [docs/design/](docs/design/) | Prescriptive UX implementation rules (output, errors, agent mode, naming, …) |
 | [docs/rfcs/](docs/rfcs/README.md) | Engineering proposals, design tradeoffs, and validation criteria |
 | [docs/glossary/](docs/glossary/README.md) | Shipped domain terms, one file per context (proposed terms stay in RFCs) |
-| [docs/reference/](docs/reference/) | Provider guides, CLI reference, migration analysis |
+| [docs/reference/](docs/reference/) | Handwritten provider guides and contributor references |
 | [docs/_templates/](docs/_templates/) | Spec and planning templates (feature, bugfix, refactor, ADR, research) |
 
 ## Architecture at a Glance
@@ -52,12 +52,12 @@ mise run tests       # Run all tests with race detection
 mise run lint        # Run golangci-lint
 mise run gate        # lint + tests + build (no docs) — fast pre-push gate for code changes
 mise run all         # lint + tests + build + docs
-mise run docs        # Generate + build all documentation
+mise run docs        # Build Grafana website docs (requires Docker)
 ```
 
 **Without mise**: replace with direct Go commands — `go build -buildvcs=false -o bin/gcx ./cmd/gcx/` and `go test ./...`. Always build to `bin/gcx`. Lint runs in Go **module mode** (`golangci-lint`'s `modules-download-mode: readonly`), so no `vendor/` directory is needed locally — the module cache (`go mod download`, run automatically on worktree entry) is sufficient.
 
-> **Agent environments**: always prefix `mise run docs`, `mise run reference`, and `mise run all` with `GCX_AGENT_MODE=false` — agent-mode auto-detection changes output defaults, producing wrong CLI reference docs. The `tests` tasks pin `GCX_AGENT_MODE=false` themselves, so `mise run tests` needs no prefix.
+> **Agent environments**: the test tasks and release-reference generator pin `GCX_AGENT_MODE=false` themselves. Normal docs builds validate `docs/sources` without regenerating the released CLI reference.
 
 ## Testing
 
@@ -74,6 +74,7 @@ cmd/gcx/
   config/       Config management (set, use-context, view, check)
   resources/    Resource commands (get, list-types, list-examples, push, pull, delete, edit, validate)
   datasources/  Datasource commands (list, get, query, per-type subcommands via DatasourceProvider)
+  docs/         Documentation lookup (search, get, outline, list-products, list-links)
   providers/    Provider list command
   cloud/        Cloud platform commands (login, stack management, user org memberships)
   api/          Raw API passthrough
@@ -134,7 +135,7 @@ You MUST run this checklist when creating a PR or updating an existing PR with n
    ```bash
    git fetch origin main && git rebase origin/main
    ```
-3. **Quality gates pass** — `mise run docs` auto-detects agent mode from env vars (`CLAUDECODE`, `CLAUDE_CODE`) and flips output defaults, producing wrong docs. Always override:
+3. **Quality gates pass** (Docker is required for the Grafana docs build):
    ```bash
    GCX_AGENT_MODE=false mise run all
    ```
@@ -166,16 +167,14 @@ Run this checklist **before every commit** (not only before PR/push):
    ```bash
    go test ./...
    ```
-5. **Reference docs regenerated** (CI runs `mise run reference-drift` which fails on any drift)
-   ```bash
-   GCX_AGENT_MODE=false mise run reference
-   ```
-   This regenerates CLI reference, env-var reference, config reference, and linter-rules reference. Required when changes touch commands, flags, config fields, env vars, or linter rules.
-6. **Docs build succeeds** (CI runs `mise run docs` after the drift check)
+5. **Released reference stays separate** — do not regenerate `docs/sources/cli-reference.md`
+   in command PRs. `mise run tag` refreshes references in the release changelog PR;
+   use `mise run docs:refresh` for standalone updates to the latest stable release.
+   Test generator changes with `go test ./scripts/...`.
+6. **Docs build succeeds** (Docker required; CI preserves the `Documentation` check)
    ```bash
    mise run docs
    ```
-   If `mise`/`mkdocs` is unavailable, skip — CI will catch build failures.
 7. **No unstaged surprises**
    ```bash
    git status
@@ -192,3 +191,7 @@ When creating or commenting on GitHub issues, **always anonymize system-specific
 - API tokens, credentials → never include, even partially
 
 This applies to issue bodies, comments, and code snippets embedded in issues.
+
+## Security
+
+Report security vulnerabilities through [Grafana's security issue reporting page](https://grafana.com/legal/report-a-security-issue/). Keep vulnerability reports private; do not file them as GitHub issues in this repository. Ordinary security-related engineering work, such as hardening and dependency maintenance, follows the normal issue workflow.

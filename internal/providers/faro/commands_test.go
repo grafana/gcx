@@ -41,6 +41,7 @@ func tableCells(output string) [][]string {
 }
 
 func TestAppTable_Encode(t *testing.T) {
+	runtime := "android-native"
 	tests := []struct {
 		name     string
 		wide     bool
@@ -74,14 +75,16 @@ func TestAppTable_Encode(t *testing.T) {
 					AppKey:                "abc123",
 					CollectEndpointURL:    "https://faro.example.com/collect/abc123",
 					OTLPIngestEndpointURL: "https://faro.example.com/otlp",
+					AppType:               "mobile",
+					Runtime:               &runtime,
 					CORSOrigins:           []faro.CORSOrigin{{URL: "https://app.example.com"}},
 					ExtraLogLabels:        map[string]string{"team": "frontend"},
-					Settings:              &faro.FaroAppSettings{GeolocationEnabled: true, GeolocationLevel: "country"},
+					Settings:              &faro.FaroAppSettings{GeolocationEnabled: new(true), GeolocationLevel: "country"},
 				},
 			},
-			wantCols: []string{"NAME", "APP KEY", "COLLECT ENDPOINT URL", "OTLP INGEST ENDPOINT URL", "CORS ORIGINS", "EXTRA LOG LABELS", "GEOLOCATION"},
+			wantCols: []string{"NAME", "APP KEY", "COLLECT ENDPOINT URL", "APP TYPE", "RUNTIME", "OTLP INGEST ENDPOINT URL", "CORS ORIGINS", "EXTRA LOG LABELS", "GEOLOCATION"},
 			wantRows: [][]string{
-				{"my-app-42", "abc123", "https://faro.example.com/collect/abc123", "https://faro.example.com/otlp", "https://app.example.com", "team=frontend", "country"},
+				{"my-app-42", "abc123", "https://faro.example.com/collect/abc123", "mobile", "android-native", "https://faro.example.com/otlp", "https://app.example.com", "team=frontend", "country"},
 			},
 		},
 		{
@@ -92,10 +95,10 @@ func TestAppTable_Encode(t *testing.T) {
 					Name: "minimal-app",
 				},
 			},
-			wantCols: []string{"NAME", "APP KEY", "COLLECT ENDPOINT URL", "OTLP INGEST ENDPOINT URL", "CORS ORIGINS", "EXTRA LOG LABELS", "GEOLOCATION"},
+			wantCols: []string{"NAME", "APP KEY", "COLLECT ENDPOINT URL", "APP TYPE", "RUNTIME", "OTLP INGEST ENDPOINT URL", "CORS ORIGINS", "EXTRA LOG LABELS", "GEOLOCATION"},
 			// One dash per empty column, so deleting a dash branch fails here.
 			wantRows: [][]string{
-				{"minimal-app-", "-", "-", "-", "-", "-", "-"},
+				{"minimal-app-", "-", "-", "-", "-", "-", "-", "-", "-"},
 			},
 		},
 		{

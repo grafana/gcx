@@ -20,6 +20,7 @@ type RegistryIndex struct {
 	shortGroups       map[string]string
 	longGroups        map[string]struct{}
 	preferredVersions map[string]schema.GroupVersion
+	staticFallbacks   map[schema.GroupKind]resources.Descriptor
 	descriptors       map[schema.GroupVersion]resources.Descriptors
 	singularNames     map[string][]schema.GroupKind
 	pluralNames       map[string][]schema.GroupKind
@@ -32,6 +33,7 @@ func NewRegistryIndex() RegistryIndex {
 		shortGroups:       make(map[string]string),
 		longGroups:        make(map[string]struct{}),
 		preferredVersions: make(map[string]schema.GroupVersion),
+		staticFallbacks:   make(map[schema.GroupKind]resources.Descriptor),
 		descriptors:       make(map[schema.GroupVersion]resources.Descriptors),
 		kindNames:         make(map[string][]schema.GroupKind),
 		singularNames:     make(map[string][]schema.GroupKind),
@@ -52,12 +54,14 @@ func (r *RegistryIndex) GetDescriptors() resources.Descriptors {
 	return res
 }
 
-// GetPreferredVersions returns all preferred versions of the API groups.
+// GetPreferredVersions returns the preferred descriptors of the API groups,
+// plus statically registered kinds absent from their group's preferred version.
 func (r *RegistryIndex) GetPreferredVersions() resources.Descriptors {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
 
 	res := make(resources.Descriptors, 0, len(r.preferredVersions))
+	seen := make(map[schema.GroupKind]bool)
 	for _, gv := range r.preferredVersions {
 		desc, ok := r.descriptors[gv]
 		if !ok {
@@ -67,6 +71,14 @@ func (r *RegistryIndex) GetPreferredVersions() resources.Descriptors {
 		}
 
 		res = append(res, desc...)
+		for _, item := range desc {
+			seen[item.GroupVersionKind().GroupKind()] = true
+		}
+	}
+	for gk, desc := range r.staticFallbacks {
+		if !seen[gk] {
+			res = append(res, desc)
+		}
 	}
 
 	return res
@@ -96,6 +108,12 @@ func (r *RegistryIndex) RegisterStatic(desc resources.Descriptor, aliases []stri
 
 	// Register the kind name.
 	gk := schema.GroupKind{Group: gv.Group, Kind: desc.Kind}
+	// A native group can prefer a version that does not contain this provider
+	// kind. Retain its first static registration without replacing the native
+	// preference for the group's other kinds.
+	if _, ok := r.staticFallbacks[gk]; !ok {
+		r.staticFallbacks[gk] = desc
+	}
 	r.kindNames[desc.Kind] = append(r.kindNames[desc.Kind], gk)
 
 	// Register singular name.
@@ -140,7 +158,8 @@ func (r *RegistryIndex) LookupPartialGVK(gvk resources.PartialGVK) (resources.De
 // LookupPreferredPerGroup returns the preferred-version descriptor for every group
 // that supports the given resource. When no group is specified in the partial GVK,
 // this returns one descriptor per unique group (using each group's preferred version)
-// instead of picking an arbitrary single group.
+// instead of picking an arbitrary single group. Statically registered kinds absent
+// from the preferred version use their first registered descriptor.
 // If a group or version is specified, it falls back to single-descriptor lookup.
 func (r *RegistryIndex) LookupPreferredPerGroup(gvk resources.PartialGVK) (resources.Descriptors, bool) {
 	if gvk.Group != "" || gvk.Version != "" {
@@ -165,19 +184,8 @@ func (r *RegistryIndex) LookupPreferredPerGroup(gvk resources.PartialGVK) (resou
 		}
 		seen[gk.Group] = struct{}{}
 
-		gv, ok := r.preferredVersions[gk.Group]
-		if !ok {
-			continue
-		}
-		descs, ok := r.descriptors[gv]
-		if !ok {
-			continue
-		}
-		for _, desc := range descs {
-			if desc.Kind == gk.Kind {
-				result = append(result, desc)
-				break
-			}
+		if desc, ok := r.resolveDescriptor(gk, ""); ok {
+			result = append(result, desc)
 		}
 	}
 
@@ -346,6 +354,7 @@ func (r *RegistryIndex) Update(ctx context.Context, groups []*metav1.APIGroup, l
 	r.shortGroups = shortGroups
 	r.longGroups = longGroups
 	r.preferredVersions = preferredVersions
+	r.staticFallbacks = make(map[schema.GroupKind]resources.Descriptor)
 	r.descriptors = descriptors
 	r.kindNames = kindNames
 	r.singularNames = singularNames
@@ -424,6 +433,7 @@ func (r *RegistryIndex) filterCandidates(
 
 // resolveDescriptor resolves a group/kind candidate to its descriptor at the
 // requested version, or at the group's preferred version when none is given.
+// A static registration supplies kinds absent from that preferred version.
 func (r *RegistryIndex) resolveDescriptor(gk schema.GroupKind, version string) (resources.Descriptor, bool) {
 	groupVersion := schema.GroupVersion{Group: gk.Group, Version: version}
 
@@ -435,15 +445,14 @@ func (r *RegistryIndex) resolveDescriptor(gk schema.GroupKind, version string) (
 		groupVersion.Version = gv.Version
 	}
 
-	descs, ok := r.descriptors[groupVersion]
-	if !ok {
-		return resources.Descriptor{}, false
-	}
-
-	for _, desc := range descs {
+	for _, desc := range r.descriptors[groupVersion] {
 		if desc.Kind == gk.Kind {
 			return desc, true
 		}
+	}
+	if version == "" {
+		desc, ok := r.staticFallbacks[gk]
+		return desc, ok
 	}
 
 	return resources.Descriptor{}, false

@@ -13,7 +13,7 @@ import (
 const notificationsGroup = "notifications.alerting.grafana.app"
 
 var notificationResources = []string{ //nolint:gochecknoglobals // Test fixture.
-	"routingtrees", "receivers", "templategroups", "timeintervals", "inhibitionrules"}
+	"routingtrees", "receivers", "templategroups", "timeintervals", "inhibitionrules", "unreviewedresources"}
 
 // notificationsDiscovery mimics a Grafana 13 server: v1beta1 preferred,
 // v0alpha1 still served, every notification resource in both versions.
@@ -40,7 +40,7 @@ func notificationsDiscovery() ([]*metav1.APIGroup, []*metav1.APIResourceList) {
 }
 
 func TestFilterDiscoveryResults_PartiallyExposedGroups(t *testing.T) {
-	partial := map[string][]string{notificationsGroup: {"routingtrees"}}
+	partial := map[string][]string{notificationsGroup: {"routingtrees", "timeintervals", "templategroups"}}
 
 	tests := []struct {
 		name          string
@@ -53,7 +53,7 @@ func TestFilterDiscoveryResults_PartiallyExposedGroups(t *testing.T) {
 			name:          "allowlisted resource kept, others dropped",
 			partial:       partial,
 			wantGroup:     true,
-			wantResources: []string{"routingtrees"},
+			wantResources: []string{"routingtrees", "timeintervals", "templategroups"},
 		},
 		{
 			name:          "no allowlist keeps every resource",
@@ -97,7 +97,7 @@ func TestFilterDiscoveryResults_PartiallyExposedGroups(t *testing.T) {
 	}
 }
 
-func TestRegistry_NotificationsGroupExposesOnlyRoutingTrees(t *testing.T) {
+func TestRegistry_NotificationsGroupExposesReviewedResources(t *testing.T) {
 	groups, lists := notificationsDiscovery()
 	reg, err := discovery.NewCachedRegistry(t.Context(), &mockDiscoveryClient{groups: groups, resources: lists})
 	require.NoError(t, err)
@@ -112,36 +112,38 @@ func TestRegistry_NotificationsGroupExposesOnlyRoutingTrees(t *testing.T) {
 		})
 	}
 
-	t.Run("routingtrees resolves to preferred version", func(t *testing.T) {
-		filters, err := lookup("", "routingtrees")
-		require.NoError(t, err)
-		require.Len(t, filters, 1)
-		assert.Equal(t, "v1beta1", filters[0].Descriptor.GroupVersion.Version)
-	})
+	for _, exposed := range []string{"routingtrees", "timeintervals", "templategroups"} {
+		for _, version := range []string{"", "v1beta1", "v0alpha1"} {
+			t.Run(exposed+" resolves "+version, func(t *testing.T) {
+				filters, err := lookup(version, exposed)
+				require.NoError(t, err)
+				require.Len(t, filters, 1)
+				wantVersion := version
+				if wantVersion == "" {
+					wantVersion = "v1beta1"
+				}
+				assert.Equal(t, exposed, filters[0].Descriptor.Plural)
+				assert.Equal(t, wantVersion, filters[0].Descriptor.GroupVersion.Version)
+			})
+		}
+	}
 
-	t.Run("routingtrees resolves an explicit older version", func(t *testing.T) {
-		filters, err := lookup("v0alpha1", "routingtrees")
-		require.NoError(t, err)
-		require.Len(t, filters, 1)
-		assert.Equal(t, "v0alpha1", filters[0].Descriptor.GroupVersion.Version)
-	})
-
-	for _, hidden := range []string{"receivers", "templategroups", "timeintervals", "inhibitionrules"} {
+	for _, hidden := range []string{"receivers", "inhibitionrules", "unreviewedresources"} {
 		t.Run(hidden+" is not resolvable", func(t *testing.T) {
-			_, err := lookup("", hidden)
-			require.Error(t, err)
-			_, err = lookup("v1beta1", hidden)
-			require.Error(t, err)
+			for _, version := range []string{"", "v1beta1", "v0alpha1"} {
+				_, err := lookup(version, hidden)
+				require.Error(t, err)
+			}
 		})
 	}
 
-	t.Run("preferred resources list only routingtrees from the group", func(t *testing.T) {
+	t.Run("preferred resources list reviewed kinds from the group", func(t *testing.T) {
 		var plurals []string
 		for _, d := range reg.PreferredResources() {
 			if d.GroupVersion.Group == notificationsGroup {
 				plurals = append(plurals, d.Plural)
 			}
 		}
-		assert.Equal(t, []string{"routingtrees"}, plurals)
+		assert.ElementsMatch(t, []string{"routingtrees", "timeintervals", "templategroups"}, plurals)
 	})
 }

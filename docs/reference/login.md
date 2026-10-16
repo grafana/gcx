@@ -154,7 +154,7 @@ Do one of these two steps. gcx accepts the one that completes first.
 
   1. Add a port forward to this SSH session. Press Enter, then press ~C,
      then type this line:
-       -L 54321:127.0.0.1:54321
+       -L 43817:127.0.0.1:43817
 
   2. Approve the login in the browser on your computer. The browser then
      goes to an address that does not load. Copy that address and paste it
@@ -470,7 +470,7 @@ gcx config use-context my-stack
 gcx config view
 ```
 
-Secrets are redacted in the output. See [configuration reference](configuration/index.md) for the full config file layout.
+Secrets are redacted in the output. See [configuration reference](../sources/configuration.md#configuration-reference) for the full config file layout.
 
 ## How login works (mental model)
 
@@ -568,7 +568,7 @@ Each entry pairs the error you see with what it means and how to fix it.
 
 ## See also
 
-- [`gcx login` flag reference](cli/gcx_login.md) — exhaustive list of flags and options.
+- [`gcx login` flag reference](../sources/cli-reference.md#gcx-login-gcx-login) — exhaustive list of flags and options.
 - [Keychain credential storage](configuration/keychain.md) — credential storage rules and keychain error procedures.
 - [Login system architecture](../architecture/login-system.md) — how the login orchestrator works internally.
 - [Authentication subsystem](../architecture/auth-system.md) — OAuth PKCE, token lifecycle, `RefreshTransport`.

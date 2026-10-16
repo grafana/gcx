@@ -10,6 +10,7 @@ import (
 	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/gcx/internal/resources/discovery"
 	"github.com/grafana/gcx/internal/resources/local"
 	"github.com/grafana/gcx/internal/resources/remote"
@@ -93,11 +94,14 @@ func deleteCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	# Delete all dashboards using environment variable
 	GCX_AUTO_APPROVE=1 gcx resources delete dashboards
 
-	# Provider-backed resource types (SLO, Synthetic Monitoring, Alerting):
+	# Provider-backed resources (SLO and Synthetic Monitoring):
 
 	gcx resources delete slo/my-slo-uuid
-	gcx resources delete checks/my-check-uuid
-	gcx resources delete rules/my-rule-uuid
+	gcx resources delete checks.syntheticmonitoring/my-check-uuid
+
+	# Native Grafana alert rules:
+
+	gcx resources delete alertrules/my-rule-uid
 `,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -140,18 +144,26 @@ func deleteCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			}
 
 			var res resources.Resources
+			var fetchSummary *remote.OperationSummary
 
 			// Load resources by selectors only
 			if len(opts.Path) == 0 {
-				fetchRes, err := FetchResources(ctx, FetchRequest{
-					Config:      cfg,
-					StopOnError: opts.OnError.StopOnError(),
-				}, args)
+				// Provider mutation guards apply regardless of whether the
+				// selected definitions can be exported. Check the resolved types
+				// before reads so an empty fleet or export failure cannot turn a
+				// refused deletion into a successful zero-resource batch.
+				fetchRes, err := fetchResources(ctx, FetchRequest{
+					Config:             cfg,
+					IdentityOnlyDelete: true,
+					StopOnError:        opts.OnError.StopOnError(),
+					ExcludeReadOnly:    true,
+				}, args, rejectUnsupportedDelete)
 				if err != nil {
 					return err
 				}
 
 				res = fetchRes.Resources
+				fetchSummary = fetchRes.PullSummary
 			} else {
 				// Load resources from the filesystem
 				res = *resources.NewResources()
@@ -172,13 +184,19 @@ func deleteCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			}
 
 			req := remote.DeleteRequest{
-				Resources:      &res,
-				MaxConcurrency: opts.MaxConcurrent,
-				StopOnError:    opts.OnError.StopOnError(),
-				DryRun:         opts.DryRun,
+				Resources:              &res,
+				MaxConcurrency:         opts.MaxConcurrent,
+				StopOnError:            opts.OnError.StopOnError(),
+				DryRun:                 opts.DryRun,
+				ResolveLocalIdentities: len(opts.Path) > 0,
 			}
 
 			summary, err := deleter.Delete(ctx, req)
+			if summary != nil && fetchSummary != nil {
+				for _, failure := range fetchSummary.Failures() {
+					summary.RecordFailure(failure.Resource, failure.Error)
+				}
+			}
 			if err != nil {
 				if summary != nil {
 					// Hard abort: the returned error is the result document
@@ -189,6 +207,13 @@ func deleteCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				return err
 			}
 
+			if fetchSummary != nil {
+				for reason, count := range fetchSummary.SkippedReasons() {
+					for range count {
+						summary.RecordSkipped(reason)
+					}
+				}
+			}
 			result := batchMutationFromSummary("deleted", summary, opts.DryRun)
 			// The deletion is done and its counts are final; a later rendering
 			// or stdout failure does not restore anything.
@@ -213,6 +238,15 @@ func deleteCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	opts.setup(cmd.Flags())
 
 	return cmd
+}
+
+func rejectUnsupportedDelete(filters resources.Filters) error {
+	for _, filter := range filters {
+		if err := adapter.CheckMutation(filter.Descriptor, "delete"); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func loadResourcesFromDirectories(ctx context.Context, cfg config.NamespacedRESTConfig, res *resources.Resources, opts *deleteOpts, selectors resources.Selectors) error {

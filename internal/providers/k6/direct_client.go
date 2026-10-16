@@ -383,9 +383,9 @@ func (c *DirectClient) GetProjectByName(ctx context.Context, name string) (*Proj
 // ---------------------------------------------------------------------------
 
 // ListLoadTestsByProject retrieves load tests filtered by project ID.
-// Uses the server-side project_id query parameter to avoid fetching all tests.
+// Uses the project collection endpoint to avoid fetching other projects.
 func (c *DirectClient) ListLoadTestsByProject(ctx context.Context, projectID int) ([]LoadTest, error) {
-	path := fmt.Sprintf(loadTestsPath+"?project_id=%d", projectID)
+	path := fmt.Sprintf(projectsPath+"/%d/load_tests", projectID)
 	return c.listLoadTests(ctx, path, 0)
 }
 

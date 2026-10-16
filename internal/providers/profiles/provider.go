@@ -158,6 +158,20 @@ with the same selector and profile type.`,
   # Output as JSON (times are milliseconds since epoch)
   gcx profiles data-range -d UID -o json`,
 			},
+			{
+				Build:     dspyroscope.AnomaliesCmd,
+				TokenCost: "small",
+				LLMHint:   `gcx profiles query-anomalies -d abc123 '{service_name="frontend"}' --since 1h -o json`,
+				Example: `
+  # Anomalies for a service in the last hour
+  gcx profiles query-anomalies -d abc123 '{service_name="frontend"}' --since 1h
+
+  # Every service in a namespace (selector may resolve to multiple services)
+  gcx profiles query-anomalies -d abc123 '{namespace="prod"}' --since 1h
+
+  # Output as JSON
+  gcx profiles query-anomalies -d abc123 '{service_name="frontend"}' --since 1h -o json`,
+			},
 		},
 		ExtraCommands: []signals.CommandBuilder{func(*providers.ConfigLoader) *cobra.Command {
 			return adaptiveStubCmd()

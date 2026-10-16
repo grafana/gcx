@@ -136,4 +136,4 @@ gcx resources push mcpservers/tenant-github.yaml
 
 ## CLI reference
 
-For the generated command reference, see [`gcx assistant mcp-servers`](./cli/gcx_assistant_mcp-servers.md).
+For the generated command reference, see [`gcx assistant mcp-servers`](../sources/cli-reference.md#gcx-assistant-mcp-servers-gcx-assistant-mcp-servers).

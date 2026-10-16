@@ -228,8 +228,11 @@ Constants defined in `loader.go`:
 StandardConfigFolder   = "gcx"
 StandardConfigFileName = "config.yaml"
 ConfigFileEnvVar       = "GCX_CONFIG"
+ContextEnvVar          = "GCX_CONTEXT"
 configFilePermissions  = 0o600   // file is always written with these perms
 ```
+
+`GCX_CONTEXT` selects an existing context to use for the current command invocation; the selection affects the current invocation only. It is resolved by the CLI layer next to the `--context` flag (`cmd/gcx`), with the flag taking precedence, and reaches the loader as a regular context-selection override — `LoadLayered` itself never reads it. An unknown name fails with the same `invalid context` error as an unknown `--context`.
 
 If no config file exists at the standard location, an empty one is created
 automatically with a single `default` context:

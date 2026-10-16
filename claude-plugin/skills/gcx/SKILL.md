@@ -79,14 +79,16 @@ Similarly, prefer `gcx metrics query` over `gcx datasources query <prometheus-ui
 for PromQL queries — the signal-specific command handles datasource resolution
 automatically.
 
-## Verify Context First
+## Target Context
 
-Before any operation, confirm which environment is targeted:
-- `gcx config check` — validates the active context and tests connectivity
-- `gcx config view` — shows full config (secrets redacted; use `--raw` to reveal)
-- `gcx config current-context` — shows just the active context name
-- `gcx config use-context <name>` — switch contexts
-- `--context <name>` flag on any command — target a specific context without switching
+When the target context is known, pass `--context <name>` directly;
+no separate configuration or connectivity check is needed.
+Inspect configuration only when the target is ambiguous or a request fails
+with a configuration, authentication, or connectivity error:
+- `gcx config list-contexts` — list configured contexts and their servers
+- `gcx config current-context` — show the active context name
+- `gcx config check` — validate the active context and test connectivity
+- `gcx config view` — inspect configuration with secrets redacted
 
 ## Output Control
 

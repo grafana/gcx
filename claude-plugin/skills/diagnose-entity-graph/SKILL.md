@@ -247,14 +247,18 @@ Extra `asserts_env` values (like AWS account IDs) that don't match any
 
 ## Step 7: Per-Service Investigation
 
-For a specific missing or edge-less service:
+For a specific missing or edge-less service, query bounded rows. The response has
+`columns`, `rows`, and `stats`; node cells contain `kind`, response-local `ref`,
+`labels`, and `properties`; relationship cells use `type`, `startRef`, and `endRef`.
+Scalar projections return their values directly.
+Use identity properties to correlate results across requests.
 
 ```bash
 # Find in graph
-gcx kg entities query "MATCH (s:Service {name: \"SERVICE\"}) RETURN s" --since 1h
+gcx kg graph query "MATCH (s:Service {name: \"SERVICE\"}) RETURN s LIMIT 10" --since 1h
 
 # Check relationships
-gcx kg entities query "MATCH (s:Service {name: \"SERVICE\"})-[r]-(other) RETURN s, r, other" --since 1h
+gcx kg graph query "MATCH (s:Service {name: \"SERVICE\"})-[r]-(other) RETURN s, r, other LIMIT 20" --since 1h
 
 # Source metrics
 gcx metrics query 'count(traces_service_graph_request_total{client="SERVICE"})' --since 1h

@@ -3,6 +3,8 @@ package discovery_test
 import (
 	"testing"
 
+	"github.com/grafana/gcx/internal/assistant/mcpserver"
+	"github.com/grafana/gcx/internal/assistant/watcher"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/discovery"
 	"github.com/stretchr/testify/assert"
@@ -1129,4 +1131,113 @@ func getMultiGroupSameResourceDiscovery() ([]*metav1.APIGroup, []*metav1.APIReso
 	}
 
 	return groups, resources
+}
+
+func assistantMixedVersionDiscovery() ([]*metav1.APIGroup, []*metav1.APIResourceList, resources.Descriptor) {
+	page := resources.Descriptor{
+		GroupVersion: schema.GroupVersion{Group: watcher.WatcherAPIGroup, Version: "v0alpha1"},
+		Kind:         "Page", Singular: "page", Plural: "pages",
+	}
+	version := metav1.GroupVersionForDiscovery{GroupVersion: page.GroupVersion.String(), Version: page.GroupVersion.Version}
+	groups := []*metav1.APIGroup{{Name: page.GroupVersion.Group, Versions: []metav1.GroupVersionForDiscovery{version}, PreferredVersion: version}}
+	lists := []*metav1.APIResourceList{{
+		GroupVersion: page.GroupVersion.String(),
+		APIResources: []metav1.APIResource{{Name: page.Plural, SingularName: page.Singular, Kind: page.Kind, Namespaced: true}},
+	}}
+	return groups, lists, page
+}
+
+func TestRegistryIndex_StaticKindsOutsideNativePreferredVersion(t *testing.T) {
+	idx := discovery.NewRegistryIndex()
+	groups, lists, page := assistantMixedVersionDiscovery()
+	require.NoError(t, idx.Update(t.Context(), groups, lists))
+	watch := watcher.WatcherDescriptor()
+	mcp := mcpserver.MCPServerDescriptor()
+	idx.RegisterStatic(watch, nil)
+	idx.RegisterStatic(mcp, nil)
+
+	for _, want := range []resources.Descriptor{watch, mcp, page} {
+		for _, resource := range []string{want.Kind, want.Singular, want.Plural} {
+			for _, group := range []string{"", "assistant", watcher.WatcherAPIGroup} {
+				t.Run(resource+"/"+group, func(t *testing.T) {
+					gvk := resources.PartialGVK{Resource: resource, Group: group}
+					desc, ok := idx.LookupPartialGVK(gvk)
+					require.True(t, ok)
+					assert.Equal(t, want, desc)
+					descs, ok := idx.LookupPreferredPerGroup(gvk)
+					require.True(t, ok)
+					assert.Equal(t, resources.Descriptors{want}, descs)
+				})
+			}
+		}
+		gvk := resources.PartialGVK{Resource: want.Plural, Group: want.GroupVersion.Group, Version: want.GroupVersion.Version}
+		desc, ok := idx.LookupPartialGVK(gvk)
+		require.True(t, ok)
+		assert.Equal(t, want, desc)
+	}
+	assert.ElementsMatch(t, resources.Descriptors{page, watch, mcp}, idx.GetPreferredVersions())
+
+	for _, want := range []resources.Descriptor{watch, mcp} {
+		for _, version := range []string{"v0alpha1", "v9"} {
+			gvk := resources.PartialGVK{Resource: want.Plural, Group: want.GroupVersion.Group, Version: version}
+			_, ok := idx.LookupPartialGVK(gvk)
+			assert.False(t, ok, "an explicit unsupported version must not use a static fallback")
+			_, ok = idx.LookupPreferredPerGroup(gvk)
+			assert.False(t, ok)
+			_, ok = idx.LookupAllVersionsForPartialGVK(gvk)
+			assert.False(t, ok)
+		}
+	}
+}
+
+func TestRegistryIndex_StaticFallbackPreservesNativeKindPreference(t *testing.T) {
+	idx := discovery.NewRegistryIndex()
+	groups, lists, native := assistantMixedVersionDiscovery()
+	require.NoError(t, idx.Update(t.Context(), groups, lists))
+	alternate := native
+	alternate.GroupVersion.Version = "v1alpha1"
+	idx.RegisterStatic(alternate, nil)
+
+	gvk := resources.PartialGVK{Resource: native.Plural}
+	desc, ok := idx.LookupPartialGVK(gvk)
+	require.True(t, ok)
+	assert.Equal(t, native, desc)
+	descs, ok := idx.LookupPreferredPerGroup(gvk)
+	require.True(t, ok)
+	assert.Equal(t, resources.Descriptors{native}, descs)
+	assert.Equal(t, resources.Descriptors{native}, idx.GetPreferredVersions())
+
+	gvk.Version = alternate.GroupVersion.Version
+	desc, ok = idx.LookupPartialGVK(gvk)
+	require.True(t, ok)
+	assert.Equal(t, alternate, desc)
+}
+
+func TestRegistryIndex_StaticFallbackFirstRegistrationWins(t *testing.T) {
+	idx := discovery.NewRegistryIndex()
+	groups, lists, page := assistantMixedVersionDiscovery()
+	require.NoError(t, idx.Update(t.Context(), groups, lists))
+	first := watcher.WatcherDescriptor()
+	second := first
+	second.GroupVersion.Version = "v2alpha1"
+	idx.RegisterStatic(first, nil)
+	idx.RegisterStatic(second, nil)
+
+	gvk := resources.PartialGVK{Resource: first.Plural}
+	desc, ok := idx.LookupPartialGVK(gvk)
+	require.True(t, ok)
+	assert.Equal(t, first, desc)
+	descs, ok := idx.LookupPreferredPerGroup(gvk)
+	require.True(t, ok)
+	assert.Equal(t, resources.Descriptors{first}, descs)
+	assert.ElementsMatch(t, resources.Descriptors{page, first}, idx.GetPreferredVersions())
+
+	gvk.Version = second.GroupVersion.Version
+	desc, ok = idx.LookupPartialGVK(gvk)
+	require.True(t, ok)
+	assert.Equal(t, second, desc)
+	gvk.Version = ""
+	all, ok := idx.LookupAllVersionsForPartialGVK(gvk)
+	require.True(t, ok)
+	assert.ElementsMatch(t, resources.Descriptors{first, second}, all)
 }

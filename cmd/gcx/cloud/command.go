@@ -208,13 +208,13 @@ func autoLocalCloudCredentialError(target config.ConfigSource) error {
 func currentCloudConfig(ctx context.Context, configOpts *cmdconfig.Options) (config.Config, *config.Context, string, error) {
 	cfg, err := configOpts.LoadConfigTolerant(ctx)
 	if errors.Is(err, os.ErrNotExist) {
-		name := config.ResolveContextName(configOpts.Context, cfg)
+		name := config.ResolveContextName(configOpts.EffectiveContext(), cfg)
 		return cfg, nil, name, nil
 	}
 	if err != nil {
 		return config.Config{}, nil, "", err
 	}
-	name := config.ResolveContextName(configOpts.Context, cfg)
+	name := config.ResolveContextName(configOpts.EffectiveContext(), cfg)
 	return cfg, cfg.Contexts[name], name, nil
 }
 

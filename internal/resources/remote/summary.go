@@ -1,10 +1,13 @@
 package remote
 
 import (
+	"errors"
+	"maps"
 	"sync"
 	"sync/atomic"
 
 	"github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/resources/adapter"
 )
 
 // OperationSummary tracks the results of a batch resource operation in a thread-safe manner.
@@ -16,6 +19,8 @@ type OperationSummary struct {
 	truncated    atomic.Bool
 	mu           sync.Mutex
 	failures     []OperationFailure
+	skipReasons  map[string]int
+	warnings     []string
 }
 
 // OperationFailure describes a single resource operation failure.
@@ -33,11 +38,22 @@ func (s *OperationSummary) RecordSuccess() {
 	s.successCount.Add(1)
 }
 
-// RecordSkipped records something the API could not do through no fault of the user: a
-// resource type it cannot list (puller), or a dry-run against a resource that ignores
-// server-side dryRun (pusher/deleter). Skips are not failures and do not affect the exit code.
-func (s *OperationSummary) RecordSkipped() {
+// RecordSkipped records a non-failure outcome and its human-readable reason.
+func (s *OperationSummary) RecordSkipped(reason string) {
 	s.skippedCount.Add(1)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.skipReasons == nil {
+		s.skipReasons = make(map[string]int)
+	}
+	s.skipReasons[reason]++
+}
+
+// SkippedReasons returns an independent snapshot of skip counts by reason.
+func (s *OperationSummary) SkippedReasons() map[string]int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return maps.Clone(s.skipReasons)
 }
 
 // RecordFailure records a failed operation. res may be nil when the failure is not
@@ -85,4 +101,32 @@ func (s *OperationSummary) Failures() []OperationFailure {
 	defer s.mu.Unlock()
 
 	return s.failures
+}
+
+// RecordWarnings retains nonfatal diagnostics without changing result envelopes.
+func (s *OperationSummary) RecordWarnings(warnings []string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.warnings = append(s.warnings, warnings...)
+}
+
+// Warnings returns a snapshot safe for reporting after operation completion.
+func (s *OperationSummary) Warnings() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.warnings...)
+}
+
+// HasSavedMutationFailure reports an incomplete operation with a saved write.
+func (s *OperationSummary) HasSavedMutationFailure() bool {
+	if s == nil {
+		return false
+	}
+	for _, failure := range s.Failures() {
+		var saved adapter.SavedMutationError
+		if errors.As(failure.Error, &saved) && saved.MutationWasSaved() {
+			return true
+		}
+	}
+	return false
 }

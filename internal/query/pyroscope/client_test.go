@@ -872,3 +872,71 @@ func TestClient_Query_DotFormat(t *testing.T) {
 		})
 	}
 }
+
+func TestClient_QueryAnomalies(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Contains(t, r.URL.Path, "querier.v1.QuerierService/QueryAnomalies")
+		var body map[string]any
+		if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&body)) {
+			return
+		}
+		assert.Equal(t, "process_cpu:cpu:nanoseconds:cpu:nanoseconds", body["profileTypeID"])
+		assert.Equal(t, `{service_name="frontend"}`, body["labelSelector"])
+		assert.Equal(t, []any{"ANOMALY_TYPE_STACKTRACE"}, body["anomalyTypes"])
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"stacktraceAnomalies": [
+				{"profileId": "11111111-1111-1111-1111-111111111111", "timestamp": "1000", "score": -0.9}
+			]
+		}`))
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	resp, err := client.QueryAnomalies(context.Background(), "test-uid", pyroscope.QueryAnomaliesRequest{
+		ProfileTypeID: "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
+		LabelSelector: `{service_name="frontend"}`,
+	})
+	require.NoError(t, err)
+	require.Len(t, resp.StacktraceAnomalies, 1)
+	assert.Equal(t, "11111111-1111-1111-1111-111111111111", resp.StacktraceAnomalies[0].ProfileID)
+	assert.InDelta(t, -0.9, resp.StacktraceAnomalies[0].Score, 0.0001)
+	assert.EqualValues(t, 1000, resp.StacktraceAnomalies[0].TimestampMs())
+}
+
+func TestClient_QueryAnomalies_OmitsEmptyResultAsEmptyArray(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	resp, err := client.QueryAnomalies(context.Background(), "test-uid", pyroscope.QueryAnomaliesRequest{
+		ProfileTypeID: "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
+		LabelSelector: `{}`,
+	})
+	require.NoError(t, err)
+	assert.NotNil(t, resp.StacktraceAnomalies, "an omitted stacktraceAnomalies must serialize as an empty array")
+	assert.Empty(t, resp.StacktraceAnomalies)
+}
+
+func TestClient_QueryAnomalies_NonOKUsesProfileAnomaliesOperation(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusFailedDependency)
+		_, _ = w.Write([]byte(`{"message":"anomaly_type ANOMALY_TYPE_STACKTRACE requires query-frontend.anomaly-api.url to be configured"}`))
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	_, err := client.QueryAnomalies(context.Background(), "test-uid", pyroscope.QueryAnomaliesRequest{
+		ProfileTypeID: "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
+		LabelSelector: `{}`,
+	})
+	require.Error(t, err)
+
+	var apiErr *queryerror.APIError
+	require.ErrorAs(t, err, &apiErr)
+	assert.Equal(t, "profile anomalies query", apiErr.Operation)
+}

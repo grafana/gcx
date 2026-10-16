@@ -129,6 +129,7 @@ func validateCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			}
 
 			summary, err := pusher.Push(ctx, req)
+			reportOperationWarnings(cmd.ErrOrStderr(), summary)
 			if err != nil {
 				return err
 			}
@@ -170,6 +171,15 @@ func reportValidation(w io.Writer, ioOpts cmdio.Options, summary *remote.Operati
 		return encodeValidationSummary(w, ioOpts, summary)
 	}
 	return reportValidationText(w, ioOpts, summary)
+}
+
+func reportOperationWarnings(w io.Writer, summary *remote.OperationSummary) {
+	if summary == nil {
+		return
+	}
+	for _, warning := range summary.Warnings() {
+		cmdio.Warning(w, "%s", warning)
+	}
 }
 
 func reportValidationText(w io.Writer, ioOpts cmdio.Options, summary *remote.OperationSummary) error {

@@ -32,7 +32,7 @@ func SloResource() adapter.Resource[Slo] {
 			Query: Query{
 				Type: "freeform",
 				Freeform: &FreeformQuery{
-					Query: `sum(rate(http_requests_total{status!~"5.."}[5m])) / sum(rate(http_requests_total[5m]))`,
+					Query: `sum(rate(http_requests_total{status!~"5.."}[$__rate_interval])) / sum(rate(http_requests_total[$__rate_interval]))`,
 				},
 			},
 			Objectives: []Objective{{Value: 0.995, Window: "28d"}},

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/grafana/gcx/internal/assistant/mcpserver"
+	"github.com/grafana/gcx/internal/assistant/watcher"
 	"github.com/grafana/gcx/internal/providers"
 	assistantprovider "github.com/grafana/gcx/internal/providers/assistant"
 	"github.com/stretchr/testify/assert"
@@ -33,7 +34,7 @@ func TestProviderRegistration(t *testing.T) {
 			subNames = append(subNames, sub.Name())
 		}
 
-		for _, expected := range []string{"prompt", "conversation", "investigations", "mcp-servers"} {
+		for _, expected := range []string{"prompt", "conversation", "investigations", "mcp-servers", "watchers"} {
 			assert.Contains(t, subNames, expected, "missing subcommand %q", expected)
 		}
 	})
@@ -51,8 +52,13 @@ func TestProviderRegistration(t *testing.T) {
 
 	t.Run("TypedRegistrations", func(t *testing.T) {
 		regs := p.TypedRegistrations()
-		require.Len(t, regs, 1, "exactly one adapter registration — MCPServer")
+		require.Len(t, regs, 2, "MCPServer and Watcher adapters")
 
+		watchReg := regs[1]
+		assert.Equal(t, watcher.WatcherDescriptor().GroupVersionKind(), watchReg.GVK)
+		assert.NotNil(t, watchReg.Schema())
+		assert.NotNil(t, watchReg.Example)
+		assert.NotNil(t, watchReg.Factory)
 		reg := regs[0]
 		assert.Equal(t, mcpserver.MCPServerKind, reg.GVK.Kind)
 		assert.Equal(t, mcpserver.MCPServerAPIGroup, reg.GVK.Group)

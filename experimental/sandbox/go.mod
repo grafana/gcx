@@ -4,7 +4,7 @@ go 1.25.0
 
 require github.com/tetratelabs/wazero v1.12.1-0.20261008132129-ba9152059a15
 
-require golang.org/x/sys v0.44.0 // indirect
+require golang.org/x/sys v0.44.0
 
 // wazero with fixes not yet upstream: compiled code is mapped from the
 // compilation cache file instead of copied into memory, without reading it

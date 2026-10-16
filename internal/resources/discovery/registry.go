@@ -45,7 +45,7 @@ var ignoredResourceGroups = []string{
 //
 //nolint:gochecknoglobals
 var partiallyExposedGroups = map[string][]string{
-	"notifications.alerting.grafana.app": {"routingtrees"},
+	"notifications.alerting.grafana.app": {"routingtrees", "timeintervals", "templategroups"},
 }
 
 // Client is a client that can be used to discover resources.
@@ -246,9 +246,9 @@ func (r *Registry) makeFiltersForSelector(selector resources.Selector, preferred
 				gvk.Resource, gvk.Group, gvk.Version, groupOnly,
 			)
 		}
-		return nil, resources.InvalidSelectorError{
-			Command: selector.String(),
-			Err:     message,
+		return nil, &resources.UnsupportedResourceError{
+			Selector: selector.String(),
+			Reason:   message,
 		}
 	}
 

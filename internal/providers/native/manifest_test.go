@@ -9,6 +9,7 @@ import (
 	"github.com/grafana/gcx/internal/providers/native"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 const yamlManifest = `apiVersion: notifications.alerting.grafana.app/v1beta1
@@ -58,6 +59,27 @@ func TestReadManifest(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, tc.wantName, obj.GetName())
 			assert.Equal(t, "RoutingTree", obj.GetKind())
+		})
+	}
+}
+
+func TestReadManifestYAMLNumbers(t *testing.T) {
+	tests := []struct{ name, number string }{{"integer", "8"}, {"large exact integer", "9007199254740993"}, {"negative", "-8"}, {"fraction", "0.25"}}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			input := "apiVersion: notifications.alerting.grafana.app/v1beta1\nkind: TimeInterval\nmetadata:\n  generation: 8\nspec:\n  unknown: " + tc.number + "\n"
+			obj, err := native.ReadManifest("-", strings.NewReader(input))
+			require.NoError(t, err)
+			var copyObj any
+			require.NotPanics(t, func() { copyObj = obj.DeepCopy() })
+			require.Equal(t, obj, copyObj)
+			require.Equal(t, int64(8), obj.GetGeneration())
+			if tc.name == "large exact integer" {
+				unknown, found, err := unstructured.NestedInt64(obj.Object, "spec", "unknown")
+				require.NoError(t, err)
+				require.True(t, found)
+				require.Equal(t, int64(9007199254740993), unknown)
+			}
 		})
 	}
 }
