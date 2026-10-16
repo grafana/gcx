@@ -38,6 +38,8 @@ func (c *queryTableCodec) Encode(w io.Writer, data any) error {
 		return loki.FormatQueryTable(w, resp)
 	case *loki.MetricQueryResponse:
 		return loki.FormatMetricQueryTable(w, resp)
+	case *loki.PatternsResponse:
+		return loki.FormatPatternsTable(w, resp)
 	case *pyroscope.QueryResponse:
 		return pyroscope.FormatQueryTable(w, resp)
 	case *tempo.SearchResponse:
@@ -99,6 +101,8 @@ func (c *queryWideCodec) Encode(w io.Writer, data any) error {
 		return prometheus.FormatWideTable(w, resp)
 	case *loki.QueryResponse:
 		return loki.FormatQueryTableWide(w, resp)
+	case *loki.PatternsResponse:
+		return loki.FormatPatternsTable(w, resp)
 	case *tempo.SearchResponse:
 		return tempo.FormatSearchTable(w, resp)
 	case *tempo.BaselineResult:
