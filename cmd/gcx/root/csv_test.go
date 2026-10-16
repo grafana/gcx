@@ -22,6 +22,7 @@ func TestCSVQueryCommands(t *testing.T) {
 	logFrame := `{"results":{"A":{"frames":[{"schema":{"fields":[{"name":"Time","type":"time"},{"name":"Line","type":"string","labels":{"app":"api"}}]},"data":{"values":[[1700000000125],["original, line"]]}}]}}}`
 	for _, tt := range []struct{ path, kind, expr, response, want string }{
 		{"metrics query", "prometheus", "up", metricFrame, "1700000000.125"},
+		{"datasources postgres query", "postgres", "select 1", metricFrame, "1700000000125"},
 		{"datasources prometheus query", "prometheus", "up", metricFrame, "1700000000.125"},
 		{"logs query", "loki", `{app="api"}`, logFrame, "original, line"},
 		{"datasources loki query", "loki", `{app="api"}`, logFrame, "original, line"},
@@ -70,5 +71,32 @@ func TestCSVIsExplicitlyRegistered(t *testing.T) {
 			require.NoError(t, err)
 			assert.NotContains(t, cmd.Flags().Lookup("output").Usage, "csv")
 		})
+	}
+}
+
+func TestRemainingCSVRegistrations(t *testing.T) {
+	for kind, commands := range map[string][]string{
+		"athena":        {"query", "list-catalogs", "list-databases", "list-tables", "describe-table"},
+		"bigquery":      {"query", "list-datasets", "list-tables", "describe-table"},
+		"clickhouse":    {"query", "list-tables", "describe-table"},
+		"postgres":      {"query", "list-tables", "describe-table"},
+		"mysql":         {"query", "list-tables", "describe-table"},
+		"mssql":         {"query", "list-tables", "describe-table"},
+		"influxdb":      {"query"},
+		"infinity":      {"query"},
+		"pinot":         {"query"},
+		"elasticsearch": {"query"},
+		"opensearch":    {"query"},
+	} {
+		for _, name := range commands {
+			t.Run(kind+"/"+name, func(t *testing.T) {
+				cmd, args, err := root.Command("test").Find(append([]string{"datasources", kind}, strings.Fields(name)...))
+				require.NoError(t, err)
+				require.Empty(t, args)
+				flag := cmd.Flags().Lookup("output")
+				require.NotNil(t, flag)
+				assert.Contains(t, flag.Usage, "csv")
+			})
+		}
 	}
 }

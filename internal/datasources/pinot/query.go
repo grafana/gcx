@@ -23,6 +23,7 @@ type queryOpts struct {
 }
 
 func (opts *queryOpts) setup(flags *pflag.FlagSet) {
+	cmdio.RegisterCSV(&opts.IO)
 	opts.Setup(flags, false)
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.pinot is configured)")
 	flags.StringVar(&opts.Table, "table", "", "StarTree table name when the SQL has no extractable FROM (required in that case)")

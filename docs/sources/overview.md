@@ -99,7 +99,20 @@ Metric exports contain `timestamp_unix_seconds`, `value`, and sorted
 `message`, and separate `label.<name>`, `metadata.<name>`, and `parsed.<name>`
 columns. Timestamps retain their source precision. CSV exports every returned
 sample or log entry; query limits still apply. Use JSON for response metadata
-such as query statistics. Empty results contain column headers.
+such as query statistics. Empty results contain column headers when the response
+provides a schema.
+
+The following datasource commands also support `-o csv`:
+
+| Results | Commands under `gcx datasources` |
+| --- | --- |
+| SQL rows | `athena query`, `bigquery query`, `clickhouse query`, `mssql query`, `mysql query`, `pinot query`, `postgres query` |
+| Other tables | `influxdb query`, `infinity query`, `elasticsearch query`, `opensearch query` |
+| SQL discovery | Athena catalogs/databases/tables/columns; BigQuery datasets/tables/columns; ClickHouse, MSSQL, MySQL, and PostgreSQL tables/columns |
+
+Table exports retain source column names and values, including epoch-millisecond
+time fields where the query response uses them. Objects and arrays use JSON
+inside a cell; nulls and missing values use empty cells.
 
 ## Migrate from `grafanactl`
 
