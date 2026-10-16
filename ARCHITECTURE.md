@@ -6,6 +6,13 @@ See [VISION.md](VISION.md) for goals, roadmap, and product surface.
 
 **In brief:** A CLI for managing Grafana and Grafana Cloud. Supports dynamic Grafana API resources via a kubectl-like resources layer, and per-product features via the provider interface. Includes observability-as-code workflows (`gcx dev`), multi-stack configuration/contexts, and Grafana Assistant integration. Optimized for AI agents and human use.
 
+## Experimental subprocess extensions
+
+The `gcx ext` PoC installs local compiled extensions and executes them as separate
+processes. Its optional generic SDK invokes gcx commands for data access; it does
+not share host clients or use RPC. See the [resource-explorer example](examples/extensions/resource-explorer/README.md)
+for the execution boundary, supported subset and validation instructions.
+
 ## System Overview
 
 ### 1. Resources Pipeline

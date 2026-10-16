@@ -69,6 +69,7 @@ Prefer table-driven tests. See existing `_test.go` files for patterns.
 
 ```
 cmd/gcx/
+  ext/          Experimental local extension installation and raw subprocess dispatch
   root/         CLI root (logging, global flags)
   login/        Unified login and signup commands (token + OAuth PKCE + Basic auth, interactive prompts)
   config/       Config management (set, use-context, view, check)
@@ -87,7 +88,9 @@ cmd/gcx/
   dev/          Developer tools (import, scaffold, generate, lint, serve)
   fail/         Structured error conversion
 
+internal/ext/    Experimental local extension store and process execution
 internal/        Non-public packages — full annotated map: docs/architecture/project-structure.md
+experimental/extensionsdk/  Optional generic subprocess SDK (separate module)
 experimental/    Separate Go modules outside the CLI's build: sandbox/ runs gcx as wasip1 in wazero for embedding
 ```
 

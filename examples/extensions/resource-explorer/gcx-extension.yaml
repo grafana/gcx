@@ -1,0 +1,8 @@
+schemaVersion: 1
+name: resource-explorer
+description: Explore Grafana resource types, schemas and objects in a terminal
+version: 0.1.0
+minGCXVersion: 0.0.0
+platforms:
+  - selector: {os: "*", arch: "*"}
+    path: ./bin/resource-explorer

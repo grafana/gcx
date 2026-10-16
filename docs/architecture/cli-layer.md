@@ -9,6 +9,11 @@ gcx (root)
 ├── --agent                  [persistent flag: enable agent mode]
 ├── --verbose / -v           [persistent flag, count]
 │
+├── ext                      [cmd/gcx/ext/ — experimental; native builds only]
+│   ├── install <local-checkout>
+│   ├── list
+│   └── <name> [args...]      Raw subprocess dispatch; extension owns trailing arguments
+│
 ├── api                      [cmd/gcx/api/command.go]
 │   ├── --config             [persistent: inherited from config.Options]
 │   ├── --context            [persistent: inherited from config.Options]

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime/debug"
+	"slices"
 	"strings"
 	"time"
 
@@ -75,9 +76,12 @@ func main() {
 	// prefer sticking to err != nil format, than optimizing for calling exitWith
 	// once
 	// Validation parses flags in root trimming, Cobra traversal, and group
-	// validation. Use a separate tree so none of those paths can append
-	// repeatable values or change custom flag state on the execution tree.
-	if err := root.ValidateArgs(root.Command(formattedVersion), os.Args[1:]); err != nil {
+	// validation. Keep argument rewriting and validation off the execution tree
+	// so repeatable flags and custom flag state are only applied once there.
+	validationCmd := root.Command(formattedVersion)
+	args := root.RewriteExtensionArgs(validationCmd, os.Args[1:])
+	cmd.SetArgs(args)
+	if err := root.ValidateArgs(validationCmd, args); err != nil {
 		exitWith(cmd, gate, start, reportError(err, boolFlags, subCmds))
 	}
 
@@ -192,7 +196,12 @@ func abandonsExport(interrupted bool, exitCode int) bool {
 // and calls agent.SetFlag() accordingly. This runs before Cobra's flag parsing
 // so that agent mode state is available during command construction.
 func preParseAgentFlag() {
-	for _, arg := range os.Args[1:] {
+	args := os.Args[1:]
+	// An extension's --agent flag belongs to that extension, not the host.
+	if slices.Contains(args, "ext") {
+		args = root.RewriteExtensionArgs(root.Command(""), args)
+	}
+	for _, arg := range args {
 		if arg == "--" {
 			return // stop scanning after double-dash
 		}

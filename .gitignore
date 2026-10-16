@@ -33,3 +33,5 @@ test-*.yaml
 .beads
 .beads-credential-key
 
+
+.resource-explorer-local/

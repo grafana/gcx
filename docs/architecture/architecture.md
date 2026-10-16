@@ -15,6 +15,11 @@
 
 ## 1. Architecture Overview
 
+The experimental `internal/ext` package owns local extension installation and
+process execution, wired by `cmd/gcx/ext`. The optional generic SDK is a separate
+module in `experimental/extensionsdk`; extensions call CLI subprocesses, not
+internal host APIs. See the [example and scope](../../examples/extensions/resource-explorer/README.md).
+
 ### Layered Structure
 
 ```
