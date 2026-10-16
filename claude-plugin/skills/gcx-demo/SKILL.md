@@ -1,12 +1,9 @@
 ---
 name: gcx-demo
-description: >
-  Run a narrated, read-only demo tour of gcx for customer or colleague
-  presentations. Showcases the breadth of gcx across every Grafana Cloud
-  product area — resources, datasources, metrics, logs, traces, SLOs,
-  alerts, synthetic monitoring, IRM, k6, fleet, and more. All commands are
-  strictly read-only. Trigger when the user says "demo gcx", "show off gcx",
-  "customer demo", "gcx tour", or "/gcx-demo".
+description: >-
+  Runs a narrated, read-only demo tour of gcx across Grafana Cloud products for
+  customer or colleague presentations. Use for "demo gcx", "gcx tour", or
+  "customer demo".
 user-invocable: true
 argument-hint: "[--context <name>]"
 allowed-tools: Bash, AskUserQuestion

@@ -169,6 +169,7 @@ type publishCase struct {
 	wantOutput    string   // substring of the step's own output
 	wantInBody    []string // substrings of the last posted review body
 	wantComments  int      // inline comments on the last posted review
+	wantRange     [2]int   // start and end lines of the first inline comment
 	wantSummary   string   // substring of $GITHUB_STEP_SUMMARY
 	wantNoSummary bool     // the step summary must claim nothing
 }
@@ -184,6 +185,23 @@ func publicationCases() []publishCase {
 		output: findings, post1: submitted(reviewHead),
 		wantPublished: true, wantPosts: 1, wantComments: 2,
 		wantInBody: []string{"**Intent.** Adds a command."},
+	}, {
+		name:          "a reversed same-side range is normalized before publication",
+		output:        strings.NewReplacer(`"line":52`, `"line":4`, `"start_line":40`, `"start_line":7`).Replace(rangeFinding),
+		post1:         submitted(reviewHead),
+		wantPublished: true, wantPosts: 1, wantComments: 1,
+		wantRange: [2]int{4, 7},
+	}, {
+		name:   "an ordered range is preserved",
+		output: rangeFinding, post1: submitted(reviewHead),
+		wantPublished: true, wantPosts: 1, wantComments: 1,
+		wantRange: [2]int{40, 52},
+	}, {
+		name:          "a range across diff sides is not reordered by line number",
+		output:        strings.NewReplacer(`"line":52`, `"line":4`, `"start_side":"RIGHT"`, `"start_side":"LEFT"`).Replace(rangeFinding),
+		post1:         submitted(reviewHead),
+		wantPublished: true, wantPosts: 1, wantComments: 1,
+		wantRange: [2]int{40, 4},
 	}, {
 		name:      "an incomplete review is not published",
 		output:    `{"review":null}`,
@@ -413,12 +431,33 @@ func TestReviewWorkflowPublication(t *testing.T) {
 			if tt.wantPublished && len(review.Comments) != tt.wantComments {
 				t.Errorf("posted %d inline comments, want %d", len(review.Comments), tt.wantComments)
 			}
+			checkReviewRange(t, review.Comments, tt.wantRange)
 			for _, want := range tt.wantInBody {
 				if !strings.Contains(review.Body, want) {
 					t.Errorf("posted body is missing %q:\n%s", want, review.Body)
 				}
 			}
 		})
+	}
+}
+
+func checkReviewRange(t *testing.T, comments []json.RawMessage, want [2]int) {
+	t.Helper()
+	if want == [2]int{} {
+		return
+	}
+	if len(comments) == 0 {
+		t.Fatal("no inline comment to check the range")
+	}
+	var comment struct {
+		StartLine int `json:"start_line"`
+		Line      int `json:"line"`
+	}
+	if err := json.Unmarshal(comments[0], &comment); err != nil {
+		t.Fatal(err)
+	}
+	if got := [2]int{comment.StartLine, comment.Line}; got != want {
+		t.Errorf("posted range = %v, want %v", got, want)
 	}
 }
 
