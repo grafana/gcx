@@ -116,7 +116,7 @@ gcx/
 │   │   ├── postgres/         # PostgreSQL datasource commands (query, list-tables, describe-table)
 │   │   └── query/            # Shared query CLI utils (time parsing, codecs, opts, resolve helpers)
 │   ├── query/                # Datasource query clients
-│   │   ├── dataframe/        # Shared Grafana data frame wire types and tabular CSV projections
+│   │   ├── dataframe/        # Shared Grafana data frame wire types and tabular/time-series CSV projections
 │   │   ├── grafanaquery/     # Shared POST transport for /apis/query.grafana.app/.../query with /api/ds/query fallback
 │   │   ├── azuremonitor/     # Azure Monitor HTTP query client (metric queries, KQL logs + resource graph, ARM discovery via datasource resource proxy)
 │   │   ├── cloudmonitoring/  # Google Cloud Monitoring HTTP query client (time-series list queries, project/metric discovery)
