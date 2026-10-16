@@ -6,6 +6,7 @@ import (
 
 	"github.com/grafana/gcx/internal/agent"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/loki"
 	"github.com/spf13/cobra"
@@ -27,7 +28,7 @@ EXPR is the LogQL expression to evaluate.
 Datasource is resolved from -d flag or datasources.loki in your context.
 
 Default table output is optimized for humans. Use -o raw for original line
-bodies or -o json for the full structured response.
+bodies, -o csv for original lines and separate label columns, or -o json for the full structured response.
 
 Default --limit is 50; use --limit 0 for no cap.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
@@ -128,6 +129,7 @@ open it in your browser after the query succeeds.`,
 		agent.AnnotationLLMHint:   `gcx datasources loki query -d UID '{job="grafana"}' -o json`,
 	}
 
+	cmdio.RegisterCSV(&shared.IO)
 	dsquery.RegisterCodecs(&shared.IO, false)
 	shared.IO.RegisterCustomCodec("raw", loki.NewRawQueryCodec())
 	shared.IO.BindFlags(cmd.Flags())

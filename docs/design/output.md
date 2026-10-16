@@ -86,6 +86,10 @@ ioOpts.RegisterCustomCodec("text", myTableCodec)
 ioOpts.DefaultFormat("text")   // makes "text" the default instead of "json"
 ```
 
+CSV is opt-in through `output.RegisterCSV(&opts.IO)` before binding flags.
+Results implement `output.CSVMarshaler`; `output.CSV[T]` also accepts typed
+projections. Both supply export columns and rows independently of terminal tables.
+
 **Data fetching is format-agnostic.** Commands must fetch all available data
 in `RunE` regardless of the `--output` value. The output format controls
 **presentation**, not **data acquisition**. Table/wide codecs select which

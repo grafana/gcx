@@ -303,6 +303,7 @@ layer, so it shows every header that an outer layer adds.
 **Output rendering:** Query results can be rendered as tables, JSON/YAML, or
 terminal charts (`internal/graph`). The `query` command registers custom codecs
 (`queryTableCodec`, `queryGraphCodec`) into the `io.Options` codec registry.
+CSV output support is registered separately per command through `output.RegisterCSV`.
 
 **Evidence:**
 - `internal/query/grafanaquery/client.go`: shared POST transport for clients using Grafana's unified datasource query API, including `/api/ds/query` fallback and response-size limiting
