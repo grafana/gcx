@@ -1,7 +1,7 @@
 ---
 type: feature-plan
-title: "KG thresholds — CRUD over v1 threshold config (read-only first)"
-status: reads-implemented (writes pending)
+title: "KG thresholds — CRUD over v1 threshold config"
+status: implemented (write wire shapes not yet live-verified)
 spec: # this plan is the design of record
 created: 2026-07-28
 issue: https://github.com/grafana/gcx/issues/1078
@@ -10,12 +10,16 @@ issue: https://github.com/grafana/gcx/issues/1078
 # Design: `gcx kg thresholds`
 
 > **Date**: 2026-07-28
-> **Status**: reads implemented in #1316 and verified against a dev stack; writes pending.
+> **Status**: reads implemented in #1316 and verified against a dev stack; writes
+> (`update`, `upsert`, `delete`) implemented from the endpoint map and httptest only —
+> the `dev` credentials lacked write access (HTTP 403), so the wire shapes, notably
+> the `update` HTTP method (POST per the issue; prom-rules uses PUT), are not yet
+> verified against a live backend.
 > **Implements**: issue #1078 — CRUD over the **v1** Asserts threshold config API
 > (`/v1/config/threshold-rule(s)`). Target v1, not v2 — the Asserts plugin UI and
 > all real user config run on v1; v2 is unadopted.
-> **Scope of this branch**: **read-only first** — `list` + `get`. Writes (`set`,
-> `upsert`, `delete`) land in a follow-up once the read shapes are proven live.
+> **Scope**: reads (`list` + `get`) shipped first in #1316; writes followed in a
+> separate PR.
 > **Owner**: Kevin Blaschke.
 
 ## Problem
@@ -37,11 +41,11 @@ plugin-resource prefix as the rest of kg:
 | `get [-o table\|wide\|yaml\|json\|agents]` | `GET .../threshold-rules` | **`PrometheusRulesDto`** = existing `Rule` type. Table summarizes counts; machine formats return the full resource envelope. |
 | `list --category request\|resource` | `GET .../threshold-rules/{request\|resource}` | **`ThresholdRulesDto`** (new type, below). |
 
-Deferred to the follow-up branch (writes):
+Writes:
 
-| gcx verb (follow-up) | Endpoint | Body |
+| gcx verb | Endpoint | Body |
 |---|---|---|
-| `set -f` | `POST .../threshold-rules/` (x-yaml) | whole-config replace — **destructive**, confirm + `--force` |
+| `update -f` (issue #1078 called it `set -f`; `set` is not a canonical operation) | `POST .../threshold-rules/` (x-yaml) | whole-config replace — **destructive**, confirm + `--force`; accepts the `kind: Thresholds` document from `get -o yaml` (unwrapped to its spec) or a bare PrometheusRules document; rejects other kinds and empty `groups` |
 | `upsert` | `POST .../threshold-rule` | `{record, expr, labels}` single create-or-update |
 | `delete` | `POST .../threshold-rule/delete` | `{record, expr, labels}` single delete (POST-with-body, full-triple identity) |
 
@@ -161,10 +165,8 @@ existing kg test pattern):
   with per-item field selection and `scope` preserving the custom/global split.
 - `--category` validation: reject anything other than `request`/`resource`.
 
-## Out of scope (this branch)
+## Out of scope
 
-- Writes (`set`/`upsert`/`delete`) — follow-up branch; `set` is destructive
-  (confirm + `--force`), `delete` is POST-with-body keyed on `{record, expr, labels}`.
 - `--dry-run` — no validate endpoint for thresholds, so any future dry-run is
-  diff-only. Not needed for read-only.
+  diff-only. Not implemented with the writes either.
 - v2 (`/v2/config/threshold`) — unadopted by the UI; revisit only if the product migrates.

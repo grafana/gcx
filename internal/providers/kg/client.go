@@ -41,6 +41,8 @@ const (
 	rulesValidateSyncPath    = rulesPath + "-validate-sync"
 	thresholdRulesPath       = pluginResourcePath + "/asserts/api-server/v1/config/threshold-rules"
 	thresholdRulesByCatFmt   = thresholdRulesPath + "/%s" // request|resource
+	thresholdRulePath        = pluginResourcePath + "/asserts/api-server/v1/config/threshold-rule"
+	thresholdRuleDeletePath  = thresholdRulePath + "/delete"
 	modelRulesPath           = pluginResourcePath + "/asserts/api-server/v1/config/model-rules"
 	modelRulesByNameFmt      = modelRulesPath + "/%s"
 	modelRulesSchemaPath     = modelRulesPath + "/schema"
@@ -157,6 +159,38 @@ func (c *Client) GetThresholdsByCategory(ctx context.Context, category string) (
 		return nil, fmt.Errorf("kg: get %s thresholds: %w", category, err)
 	}
 	return &dto, nil
+}
+
+// ThresholdIdentity is the {record, expr, labels} triple that identifies a single
+// v1 threshold. The backend has no delete-by-name, so upsert and delete both
+// take the full triple.
+type ThresholdIdentity struct {
+	Record string            `json:"record"`
+	Expr   string            `json:"expr"`
+	Labels map[string]string `json:"labels,omitempty"`
+}
+
+// UpsertThreshold creates or updates a single threshold (v1).
+func (c *Client) UpsertThreshold(ctx context.Context, t ThresholdIdentity) error {
+	if err := c.PostJSON(ctx, thresholdRulePath, t, nil); err != nil {
+		return fmt.Errorf("kg: upsert threshold %q: %w", t.Record, err)
+	}
+	return nil
+}
+
+// DeleteThreshold deletes a single threshold (v1). The backend takes the full
+// identity triple in a POST body rather than a DELETE verb.
+func (c *Client) DeleteThreshold(ctx context.Context, t ThresholdIdentity) error {
+	if err := c.PostJSON(ctx, thresholdRuleDeletePath, t, nil); err != nil {
+		return fmt.Errorf("kg: delete threshold %q: %w", t.Record, err)
+	}
+	return nil
+}
+
+// ReplaceThresholds replaces the whole threshold config (v1) from a PrometheusRules
+// YAML document. This is destructive: anything absent from yamlContent is removed.
+func (c *Client) ReplaceThresholds(ctx context.Context, yamlContent string) error {
+	return c.DoYAML(ctx, http.MethodPost, thresholdRulesPath+"/", yamlContent)
 }
 
 // UploadModelRules uploads model rules configuration.
