@@ -6,6 +6,7 @@ import (
 
 	"github.com/grafana/gcx/internal/agent"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/loki"
 	"github.com/spf13/cobra"
@@ -26,7 +27,7 @@ EXPR is a metric LogQL expression (e.g., rate, count_over_time, sum).
 Datasource is resolved from -d flag or datasources.loki in your context.
 
 Unlike 'logs query' which returns log lines, 'logs metrics' returns
-time-series data with proper table, graph, and JSON formatters.
+time-series data with table, graph, JSON, and CSV formatters.
 
 Instant vs range is deduced from time flags: no time flags = instant query,
 --since or --from/--to = range query.
@@ -129,6 +130,7 @@ open it in your browser after the query succeeds.`,
 		agent.AnnotationLLMHint:   `gcx datasources loki metrics -d UID 'rate({job="grafana"}[5m])' --since 1h -o json`,
 	}
 
+	cmdio.RegisterCSV(&shared.IO)
 	shared.Setup(cmd.Flags(), true)
 	shared.SetupErrorOnEmptyFlag(cmd.Flags())
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.loki is configured)")

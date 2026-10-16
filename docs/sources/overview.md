@@ -83,6 +83,24 @@ If you want to work with resources managed by other tools, such as Terraform or 
 
 At the moment, if you extract a dashboard as a JSON (`gcx resources pull dashboards -o json`), `gcx` only returns the original JSON, and can't convert it to a different version.
 
+### Export query results as CSV
+
+Use `-o csv` with `gcx metrics query`, `gcx logs query`, or `gcx logs metrics`
+to export rows for spreadsheets and SQL tools. Their `datasources prometheus`
+and `datasources loki` equivalents support the same format.
+
+```shell
+gcx metrics query 'up' --since 1h -o csv > samples.csv
+gcx logs query '{app="api"}' --since 1h --limit 0 -o csv > logs.csv
+```
+
+Metric exports contain `timestamp_unix_seconds`, `value`, and sorted
+`label.<name>` columns. Log exports contain `timestamp_unix_nano`, the original
+`message`, and separate `label.<name>`, `metadata.<name>`, and `parsed.<name>`
+columns. Timestamps retain their source precision. CSV exports every returned
+sample or log entry; query limits still apply. Use JSON for response metadata
+such as query statistics. Empty results contain column headers.
+
 ## Migrate from `grafanactl`
 
 If you want to migrate from `grafanctl` to `gcx`, search-and-replace `grafanactl` with `gcx`. For `grafanactl resources serve`, use `gcx dev serve` instead.

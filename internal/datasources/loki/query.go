@@ -49,7 +49,7 @@ EXPR is the LogQL expression to evaluate.
 Datasource is resolved from -d flag or datasources.loki in your context.
 
 Default table output is optimized for humans. Use -o raw for original line
-bodies or -o json for the full structured response.
+bodies, -o csv for original lines and separate label columns, or -o json for the full structured response.
 
 Default --limit is 50. --limit 0 omits the limit, so Loki's own default
 applies (100 lines in Loki's range-query API).
@@ -164,6 +164,7 @@ backend's own line limits, so it can undercount a busy time range.`,
 		agent.AnnotationLLMHint:   `gcx datasources loki query -d UID '{job="grafana"}' -o json`,
 	}
 
+	cmdio.RegisterCSV(&shared.IO)
 	dsquery.RegisterCodecs(&shared.IO, true)
 	shared.IO.RegisterCustomCodec("raw", loki.NewRawQueryCodec())
 	shared.IO.BindFlags(cmd.Flags())
