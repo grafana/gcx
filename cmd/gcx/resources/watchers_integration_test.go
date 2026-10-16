@@ -51,6 +51,10 @@ func watcherResourceCLIWithDiagnostics(t *testing.T, fixture *watcherstest.Serve
 	t.Cleanup(func() { agent.SetFlag(false) })
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
+		case agento11yWorkflowBase + "evaluators", agento11yWorkflowBase + "rules", agento11yWorkflowBase + "hook-rules", agento11yWorkflowBase + "collections":
+			// Agent Observability is registered by the workflow tests in this package.
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"items":[]}`))
 		case "/api":
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(metav1.APIVersions{TypeMeta: metav1.TypeMeta{Kind: "APIVersions", APIVersion: "v1"}, Versions: []string{}})
