@@ -5,20 +5,16 @@ import "fmt"
 // CSVRecords preserves sample values and Unix-second timestamps without the
 // terminal formatter's rounding. Prefixes keep labels distinct from data fields.
 func (resp *QueryResponse) CSVRecords() ([]string, [][]string, error) {
-	switch resp.Data.ResultType {
-	case "vector", "matrix", "scalar":
-	default:
-		return nil, nil, fmt.Errorf("unsupported result type for csv: %s", resp.Data.ResultType)
-	}
 	labels := collectLabelNames(resp.Data.Result)
-	columns := []string{"timestamp_unix_seconds", "value"}
+	columns := make([]string, 0, 2+len(labels))
+	columns = append(columns, "timestamp_unix_seconds", "value")
 	for _, label := range labels {
 		columns = append(columns, "label."+label)
 	}
 	var rows [][]string
 	for _, sample := range resp.Data.Result {
 		points := sample.Values
-		if resp.Data.ResultType != "matrix" {
+		if len(points) == 0 && len(sample.Value) > 0 {
 			points = [][]any{sample.Value}
 		}
 		for _, point := range points {

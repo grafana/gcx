@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -77,8 +78,11 @@ func TestCSVIsExplicitlyRegistered(t *testing.T) {
 	var got []string
 	var walk func(*cobra.Command)
 	walk = func(cmd *cobra.Command) {
-		if flag := cmd.Flags().Lookup("output"); flag != nil && strings.Contains(flag.Usage, "csv") {
-			got = append(got, cmd.CommandPath())
+		if flag := cmd.Flags().Lookup("output"); flag != nil {
+			_, formats, _ := strings.Cut(flag.Usage, "One of: ")
+			if slices.Contains(strings.Split(formats, ", "), "csv") {
+				got = append(got, cmd.CommandPath())
+			}
 		}
 		for _, child := range cmd.Commands() {
 			walk(child)

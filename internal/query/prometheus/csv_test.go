@@ -23,9 +23,11 @@ func TestCSVRecords(t *testing.T) {
 			{"1700000000.125", "NaN", "upper", "lower", "label value"}, {"1700000001.5", "+Inf", "", "other", ""},
 		}},
 		{name: "matrix emits every sample", data: prometheus.ResultData{ResultType: "matrix", Result: []prometheus.Sample{{Metric: map[string]string{"job": "api"}, Values: [][]any{{1.25, "2"}, {2.5, "3"}}}}}, columns: []string{"timestamp_unix_seconds", "value", "label.job"}, rows: [][]string{{"1.25", "2", "api"}, {"2.5", "3", "api"}}},
-		{name: "scalar", data: prometheus.ResultData{ResultType: "scalar", Result: []prometheus.Sample{{Value: []any{float64(1), "5"}}}}, columns: []string{"timestamp_unix_seconds", "value"}, rows: [][]string{{"1", "5"}}},
+		{name: "matrix retains single-point series", data: prometheus.ResultData{ResultType: "matrix", Result: []prometheus.Sample{
+			{Metric: map[string]string{"job": "a"}, Values: [][]any{{1.0, "2"}, {2.0, "3"}}},
+			{Metric: map[string]string{"job": "b"}, Value: []any{1.0, "4"}},
+		}}, columns: []string{"timestamp_unix_seconds", "value", "label.job"}, rows: [][]string{{"1", "2", "a"}, {"2", "3", "a"}, {"1", "4", "b"}}},
 		{name: "empty", data: prometheus.ResultData{ResultType: "vector"}, columns: []string{"timestamp_unix_seconds", "value"}},
-		{name: "unsupported", data: prometheus.ResultData{ResultType: "string"}, wantErr: "unsupported result type"},
 		{name: "invalid sample", data: prometheus.ResultData{ResultType: "vector", Result: []prometheus.Sample{{Value: []any{1}}}}, wantErr: "invalid metric sample"},
 	}
 	for _, tt := range tests {
