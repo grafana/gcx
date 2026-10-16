@@ -271,9 +271,9 @@ func (p *Puller) pullFilter(ctx, invocationCtx context.Context, req PullRequest,
 			case req.Filters.IsEmpty() && errors.Is(err, adapter.ErrUnavailable):
 				logger.Debug("Skipping unavailable resource type", logs.Err(err), slog.String("cmd", filt.String()))
 				summary.RecordSkipped("unavailable")
-			case isUnsupportedResourceType(err):
-				// 404/405 = sub-resource that can't be listed; skip silently
-				// regardless of StopOnError — these are never actionable.
+			case errors.Is(err, errors.ErrUnsupported) || isUnsupportedResourceType(err):
+				// Unsupported List operations cannot be exported by enumeration,
+				// regardless of StopOnError.
 				logger.Debug("Skipping unsupported resource type", logs.Err(err), slog.String("cmd", filt.String()))
 				summary.RecordSkipped("not listable")
 			case req.StopOnError:

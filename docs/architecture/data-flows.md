@@ -194,7 +194,7 @@ Entry point: `cmd/gcx/resources/pull.go` (mirrors push structure).
   │      FilterTypeMultiple → client.GetMultiple(ctx, desc, names, ...)  │
   │      FilterTypeSingle   → client.Get(ctx, desc, name, ...)           │
   │                                                                       │
-  │    404 / 405 responses: counted as not-listable skips, not errors.   │
+  │    404 / 405 and unsupported List operations: counted as skips.     │
   │    Some resource types discovered via the API may not support List   │
   │    or Get; the pull pipeline ignores them rather than failing.       │
   │                                                                       │
