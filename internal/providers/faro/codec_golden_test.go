@@ -54,3 +54,22 @@ func TestAppTableGoldenEmpty(t *testing.T) {
 
 	testutils.Golden(t, "apps_table_empty", buf.String())
 }
+
+func TestSourcemapTableGolden(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		rows []faro.SourcemapBundle
+	}{
+		{"sourcemaps_text", []faro.SourcemapBundle{
+			{ID: "bundle-2", Created: "2026-09-01T12:00:00Z", Updated: "2026-09-02T12:00:00Z"},
+			{ID: "bundle-1"},
+		}},
+		{"sourcemaps_text_empty", []faro.SourcemapBundle{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			require.NoError(t, faro.SourcemapTable().Codec("text").Encode(&buf, tc.rows))
+			testutils.Golden(t, tc.name, buf.String())
+		})
+	}
+}

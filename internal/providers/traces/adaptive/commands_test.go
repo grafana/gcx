@@ -14,71 +14,6 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// policyTableCodec
-// ---------------------------------------------------------------------------
-
-func TestPolicyTableCodec_List(t *testing.T) {
-	policies := []traces.Policy{
-		{ID: "p1", Name: "Sample 10%", Type: "probabilistic", ExpiresAt: "2026-12-31T00:00:00Z"},
-		{ID: "p2", Name: "Rate limit", Type: "rate_limiting", ExpiresAt: ""},
-	}
-
-	t.Run("table format", func(t *testing.T) {
-		var buf bytes.Buffer
-		codec := traces.NewPolicyTableCodec(false)
-		err := codec.Encode(&buf, policies)
-		require.NoError(t, err)
-
-		output := buf.String()
-		assert.Contains(t, output, "ID")
-		assert.Contains(t, output, "NAME")
-		assert.Contains(t, output, "TYPE")
-		assert.Contains(t, output, "EXPIRES AT")
-		assert.Contains(t, output, "p1")
-		assert.Contains(t, output, "Sample 10%")
-		assert.Contains(t, output, "probabilistic")
-		assert.Contains(t, output, "p2")
-		assert.Contains(t, output, "Rate limit")
-		// Table format should NOT contain wide columns
-		assert.NotContains(t, output, "CREATED BY")
-	})
-
-	t.Run("wide format", func(t *testing.T) {
-		var buf bytes.Buffer
-		codec := traces.NewPolicyTableCodec(true)
-		err := codec.Encode(&buf, policies)
-		require.NoError(t, err)
-
-		output := buf.String()
-		assert.Contains(t, output, "CREATED BY")
-		assert.Contains(t, output, "CREATED AT")
-	})
-
-	t.Run("wrong type", func(t *testing.T) {
-		var buf bytes.Buffer
-		codec := traces.NewPolicyTableCodec(false)
-		err := codec.Encode(&buf, "not a slice")
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "expected []Policy")
-	})
-
-	t.Run("empty list", func(t *testing.T) {
-		var buf bytes.Buffer
-		codec := traces.NewPolicyTableCodec(false)
-		err := codec.Encode(&buf, []traces.Policy{})
-		require.NoError(t, err)
-		// Should still have header
-		assert.Contains(t, buf.String(), "ID")
-	})
-
-	t.Run("decode unsupported", func(t *testing.T) {
-		codec := traces.NewPolicyTableCodec(false)
-		err := codec.Decode(nil, nil)
-		require.Error(t, err)
-	})
-}
-
-// ---------------------------------------------------------------------------
 // ReadPolicyFromFile (via stdin simulation)
 // ---------------------------------------------------------------------------
 
@@ -132,7 +67,7 @@ func TestPoliciesList_Integration(t *testing.T) {
 
 	// Verify table output works end-to-end
 	var buf bytes.Buffer
-	codec := traces.NewPolicyTableCodec(false)
+	codec := traces.PolicyTable().Codec("table")
 	require.NoError(t, codec.Encode(&buf, got))
 	assert.Contains(t, buf.String(), "p1")
 	assert.Contains(t, buf.String(), "p2")
