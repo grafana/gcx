@@ -57,9 +57,6 @@ func (resp *MetricQueryResponse) CSVRecords() ([]string, [][]string, error) {
 	samples := make([]prometheus.Sample, len(resp.Data.Result))
 	for i, sample := range resp.Data.Result {
 		samples[i] = prometheus.Sample(sample)
-		if resp.Data.ResultType == "matrix" && len(sample.Values) == 0 && len(sample.Value) > 0 {
-			samples[i].Values = [][]any{sample.Value}
-		}
 	}
 	return (&prometheus.QueryResponse{Data: prometheus.ResultData{
 		ResultType: resp.Data.ResultType,
