@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -24,6 +26,8 @@ type NamespacedRESTConfig struct {
 	rest.Config
 
 	Namespace string
+
+	OrgID int64
 
 	// GrafanaURL is the user-facing Grafana server URL (e.g., "https://mystack.grafana.net").
 	// This is always the original grafana.server value, even when Host is rewritten
@@ -495,6 +499,10 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) (NamespacedRESTCo
 	// Outermost layer: retry for rate limiting (429) and transient errors.
 	prevWrap := rcfg.WrapTransport
 	payloadLogging := httputils.PayloadLogging(ctx)
+	grafanaEndpoint, err := url.Parse(rcfg.Host)
+	if err != nil {
+		return NamespacedRESTConfig{}, err
+	}
 	rcfg.WrapTransport = func(rt http.RoundTripper) http.RoundTripper {
 		rt = httputils.WireTransport(rt)
 		// Innermost layer: dump the bytes that reach the wire, after every
@@ -505,6 +513,9 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) (NamespacedRESTCo
 		}
 		if prevWrap != nil {
 			rt = prevWrap(rt)
+		}
+		if cfg.Grafana.OrgID != 0 {
+			rt = &grafanaOrgTransport{base: rt, endpoint: grafanaEndpoint, orgID: strconv.FormatInt(cfg.Grafana.OrgID, 10)}
 		}
 		rt = &httputils.LoggingRoundTripper{Base: rt}
 		rt = &retry.Transport{Base: rt}
@@ -517,9 +528,29 @@ func NewNamespacedRESTConfig(ctx context.Context, cfg Context) (NamespacedRESTCo
 	return NamespacedRESTConfig{
 		Config:                 rcfg,
 		Namespace:              namespace,
+		OrgID:                  cfg.Grafana.OrgID,
 		GrafanaURL:             strings.TrimSuffix(cfg.Grafana.Server, "/"),
 		oauthTransport:         oauthTransport,
 		oauthCredentialBinding: oauthCredentialBinding,
 		keychainPolicy:         cfg.keychainPolicy,
 	}, nil
+}
+
+// The REST transport is also reused for direct Cloud and product APIs, whose
+// organisation identifiers are unrelated to Grafana's org-id.
+type grafanaOrgTransport struct {
+	base     http.RoundTripper
+	endpoint *url.URL
+	orgID    string
+}
+
+func (t *grafanaOrgTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.URL.Scheme != t.endpoint.Scheme || req.URL.Host != t.endpoint.Host ||
+		(t.endpoint.Path != "" && !strings.HasPrefix(req.URL.Path, strings.TrimSuffix(t.endpoint.Path, "/")+"/")) ||
+		req.Header.Get("X-Grafana-Org-Id") != "" {
+		return t.base.RoundTrip(req)
+	}
+	clone := req.Clone(req.Context())
+	clone.Header.Set("X-Grafana-Org-Id", t.orgID)
+	return t.base.RoundTrip(clone)
 }

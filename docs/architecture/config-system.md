@@ -76,6 +76,13 @@ Source files:
 - `internal/config/errors.go` — `ValidationError`, `UnmarshalError`,
   `ContextNotFound`, `UnsupportedVersionError`
 
+Configured `grafana.org-id` also selects the organisation for Grafana HTTP
+requests through `X-Grafana-Org-Id`, including legacy fallback and plugin APIs.
+The header stays within the configured Grafana endpoint; transports reused for
+Cloud or product endpoints do not inherit it. Explicit request headers override
+this default. Dashboard snapshots inherit the configured org unless `--org-id`
+selects another one.
+
 ### Comparison to kubectl kubeconfig
 
 | kubectl kubeconfig | gcx config | Notes |

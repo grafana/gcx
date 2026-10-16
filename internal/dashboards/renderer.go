@@ -30,7 +30,7 @@ type RenderRequest struct {
 	// PanelID, if non-zero, renders a single panel via /render/d-solo/.
 	PanelID int
 
-	// OrgID is the Grafana organization ID. Defaults to 1.
+	// OrgID overrides the configured Grafana organisation; defaults to 1 when unset.
 	OrgID int
 
 	// Width and Height of the rendered image in pixels.
@@ -90,6 +90,10 @@ func (c *Client) Render(ctx context.Context, req RenderRequest) ([]byte, error) 
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
+	// Keep Grafana's authentication org aligned with the renderer's orgId,
+	// including an explicit per-render override of the configured default.
+	httpReq.Header.Set("X-Grafana-Org-Id", httpReq.URL.Query().Get("orgId"))
+
 	httpClient := c.httpClient
 	if req.Timeout > 0 {
 		requestClient := *c.httpClient
@@ -139,6 +143,9 @@ func (c *Client) buildRenderURL(req RenderRequest) (string, error) {
 	q := u.Query()
 
 	orgID := req.OrgID
+	if orgID == 0 {
+		orgID = int(c.restConfig.OrgID)
+	}
 	if orgID == 0 {
 		orgID = 1
 	}

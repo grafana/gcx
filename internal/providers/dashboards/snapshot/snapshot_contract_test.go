@@ -474,3 +474,41 @@ func TestSnapshot_ExplicitFormatOverride(t *testing.T) {
 		})
 	}
 }
+
+func TestSnapshotConfiguredOrg(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"configured", nil, "99999"},
+		{"explicit override", []string{"--org-id", "12345"}, "12345"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if got := r.URL.Query().Get("orgId"); got != test.want {
+					t.Errorf("orgId=%q, want %q", got, test.want)
+				}
+				if got := r.Header.Get("X-Grafana-Org-Id"); got != test.want {
+					t.Errorf("org header=%q, want %q", got, test.want)
+				}
+				_, _ = w.Write(testPNG)
+			}))
+			defer server.Close()
+			cfg, err := config.NewNamespacedRESTConfig(t.Context(), config.Context{Grafana: &config.GrafanaConfig{
+				Server: server.URL, StackID: 12345, OrgID: 99999, User: "user", Password: "password",
+			}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			loader := &stubLoader{cfg: cfg}
+			cmd := snapshot.Commands(loader)
+			cmd.SetOut(io.Discard)
+			cmd.SetErr(io.Discard)
+			cmd.SetArgs(append([]string{"example", "--output-dir", t.TempDir()}, test.args...))
+			if err := cmd.ExecuteContext(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
