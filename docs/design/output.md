@@ -23,6 +23,12 @@ ioOpts := &io.Options{}
 ioOpts.BindFlags(cmd.Flags())
 ```
 
+CSV is opt-in through `output.RegisterCSV(&opts.IO)` before binding flags.
+Results implement `output.CSVMarshaler`; `output.CSV[T]` also accepts typed
+projections. Both supply export columns and rows independently of terminal tables.
+Prometheus queries (including `metrics billing query`) and Loki logs/metrics
+support CSV.
+
 #### 1.1.1 Agents Codec
 
 The `agents` codec is optimised for AI-agent contexts. It emits compact JSON
@@ -592,14 +598,3 @@ These guarantees hold for typed envelope structs and for envelopes assembled as 
 **Implemented behavior:** IRM alert-group bulk-by-filter mutations retain a separate 1000-item target-enumeration cap (`alertGroupBulkTargetCap` in `internal/providers/irm/oncall_actions.go`). `resolveBulkTargets` limits enumeration to the first 1000 matching raw items, deduplicates the returned targets, and discards pagination metadata. When more matches exist, the mutation proceeds on that bounded set without disclosing the truncation; `summary.matched` counts the selected targets, not all matching groups. This cap does not apply to the read-only `irm oncall alert-groups list` command, whose `--limit 0` follows cursors to exhaustion.
 
 **Open decision:** whether a truncated bulk mutation should warn, refuse to proceed, or disclose partial targeting another way remains unresolved. The proposed list-output contract above does not settle this mutation behavior; this subsection records the current implementation and the decision still needed, without prescribing a runtime change.
-
-### CSV export codecs
-
-CSV is opt-in through `output.RegisterCSV(&opts.IO)` before output flags
-are bound. Results implement `output.CSVMarshaler`, returning column names and rectangular
-string rows. The typed `output.CSV[T]` codec also accepts a projection for payloads
-such as slices that cannot implement the interface. It handles CSV escaping and writer errors;
-projections define the export schema independently of `Table[T]` display rules.
-Keep original values and all returned rows, use explicit units, and prefix dynamic
-label columns to avoid collisions. Empty results emit headers when the schema is
-known. Do not register CSV on commands without a projection.
