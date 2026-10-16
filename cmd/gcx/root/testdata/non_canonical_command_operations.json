@@ -116,5 +116,6 @@
   "gcx traces adaptive recommendations apply",
   "gcx traces adaptive recommendations dismiss",
   "gcx traces baseline",
-  "gcx traces diff"
+  "gcx traces diff",
+  "gcx plugins run"
 ]

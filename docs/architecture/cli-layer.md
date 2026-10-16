@@ -9,6 +9,9 @@ gcx (root)
 ├── --agent                  [persistent flag: enable agent mode]
 ├── --verbose / -v           [persistent flag, count]
 │
+├── plugins                  [cmd/gcx/plugins/ — experimental; native builds only]
+│   └── run <executable> -- [args...]  Typed host RPC; output owned by the plugin
+│
 ├── api                      [cmd/gcx/api/command.go]
 │   ├── --config             [persistent: inherited from config.Options]
 │   ├── --context            [persistent: inherited from config.Options]

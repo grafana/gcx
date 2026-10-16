@@ -13,6 +13,9 @@ src=$here/build/src
 
 mkdir -p "$src"
 rsync -a --delete --exclude .git --exclude /bin --exclude /dist --exclude /vendor --exclude /build --exclude /experimental "$root/" "$src/"
+# Vendoring resolves the unpublished local SDK even though plugins are native-only.
+mkdir -p "$src/experimental/pluginsdk"
+rsync -a --delete "$root/experimental/pluginsdk/" "$src/experimental/pluginsdk/"
 cd "$src"
 go mod vendor
 cp -r "$here/patches/." vendor/

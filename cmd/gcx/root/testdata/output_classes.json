@@ -566,6 +566,7 @@
  "gcx profiles metrics": "finite",
  "gcx profiles query": "finite",
  "gcx profiles series": "finite",
+ "gcx plugins run": "raw",
  "gcx providers list": "finite",
  "gcx resources delete": "finite",
  "gcx resources edit": "interactive",

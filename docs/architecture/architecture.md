@@ -15,6 +15,12 @@
 
 ## 1. Architecture Overview
 
+The experimental `internal/pluginhost` package serves typed read-only resource
+callbacks using shared discovery and pull infrastructure. `cmd/gcx/plugins` owns
+configuration and CLI wiring; `experimental/pluginsdk` is the separate public
+module containing the versioned RPC contract and process lifecycle. See the
+[example and scope](../../examples/plugins/resource-explorer/README.md).
+
 ### Layered Structure
 
 ```

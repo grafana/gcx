@@ -1,0 +1,44 @@
+syntax = "proto3";
+package gcx.plugin.v1;
+option go_package = "github.com/grafana/gcx/experimental/pluginsdk;pluginsdk";
+
+service Extension { rpc Run(RunRequest) returns (RunResponse); }
+service ResourceHost {
+  rpc ListTypes(ListTypesRequest) returns (ListTypesResponse);
+  rpc GetSchemas(GetSchemasRequest) returns (GetSchemasResponse);
+  rpc ListResources(ListResourcesRequest) returns (ListResourcesResponse);
+}
+message RunRequest {
+  uint32 host_broker_id = 1;
+  repeated string args = 2;
+  bool interactive = 3;
+}
+message RunResponse { int32 exit_code = 1; bytes stdout = 2; string stderr = 3; }
+message ResourceType {
+  string group = 1;
+  string version = 2;
+  string kind = 3;
+  string plural = 4;
+  string singular = 5;
+}
+message ListTypesRequest { repeated string selectors = 1; }
+message ListTypesResponse { repeated ResourceType types = 1; }
+message GetSchemasRequest { repeated ResourceType types = 1; }
+message ResourceSchema { ResourceType type = 1; bytes spec_json = 2; }
+message GetSchemasResponse { repeated ResourceSchema schemas = 1; repeated string warnings = 2; }
+message ListResourcesRequest { ResourceType type = 1; }
+message ResourceMetadata { string name = 1; string namespace = 2; string uid = 3; }
+message Resource {
+  ResourceMetadata metadata = 1;
+  string api_version = 2;
+  string kind = 3;
+  // Dynamic resource payloads stay lossless; typed metadata is available separately.
+  bytes object_json = 4;
+}
+message ResourceFailure { string message = 1; }
+message ListResourcesResponse {
+  repeated Resource items = 1;
+  repeated ResourceFailure failures = 2;
+  bool truncated = 3;
+  repeated string warnings = 4;
+}
