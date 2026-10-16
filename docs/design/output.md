@@ -26,8 +26,6 @@ ioOpts.BindFlags(cmd.Flags())
 CSV is opt-in through `output.RegisterCSV(&opts.IO)` before binding flags.
 Results implement `output.CSVMarshaler`; `output.CSV[T]` also accepts typed
 projections. Both supply export columns and rows independently of terminal tables.
-Prometheus queries (including `metrics billing query`) and Loki logs/metrics
-support CSV.
 
 #### 1.1.1 Agents Codec
 
