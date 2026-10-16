@@ -107,16 +107,26 @@ The following datasource commands also support `-o csv`:
 | Results | Commands under `gcx datasources` |
 | --- | --- |
 | SQL rows | `athena query`, `bigquery query`, `clickhouse query`, `mssql query`, `mysql query`, `pinot query`, `postgres query` |
-| Other tables | `influxdb query`, `infinity query`, `elasticsearch query`, `opensearch query` |
+| Other tables | `influxdb query`, `infinity query`, `elasticsearch query`, `opensearch query`, `azuremonitor logs query`, `azuremonitor resource-graph query` |
+| Metrics | `cloudwatch query`, `cloudmonitoring query`, `azuremonitor query`, `elasticsearch metrics`, `opensearch metrics`, `tempo metrics` |
+| Traces | `tempo search`, `tempo baseline` (candidate rows) |
+| Profiles | `pyroscope query` (function summaries) |
 | SQL discovery | Athena catalogs/databases/tables/columns; BigQuery datasets/tables/columns; ClickHouse, MSSQL, MySQL, and PostgreSQL tables/columns |
-| Azure tables | `azuremonitor logs query`, `azuremonitor resource-graph query` |
-| Metrics | `cloudwatch query`, `cloudmonitoring query`, `azuremonitor query`, `elasticsearch metrics`, `opensearch metrics` |
+
+`gcx datasources query` supports CSV for its automatically routed queries. Signal
+aliases such as `gcx traces search` and `gcx profiles query` use the same codecs.
+Full trace retrieval (`traces get`) does not have a CSV projection.
 
 Table exports retain source column names and values, including epoch-millisecond
 time fields where the query response uses them. Objects and arrays use JSON
-inside a cell; nulls and missing values use empty cells.
-Cloud and search-engine metric timestamps use UTC RFC3339 with fractional
-seconds. Metric label columns are sorted and prefixed with `label.`.
+inside a cell; nulls and missing values use empty cells. Cloud and search-engine
+metric timestamps use UTC RFC3339 with fractional seconds; Tempo metric timestamps
+use Unix milliseconds. Metric label columns are sorted and prefixed with `label.`.
+
+Profile exports contain function name, self and total values, and percentage.
+They include all named functions in the returned flamegraph, excluding its
+synthetic `other` bucket; `--max-nodes` still limits the server response. CSV does
+not apply the terminal's top-20 cap or shorten function names.
 
 ## Migrate from `grafanactl`
 
