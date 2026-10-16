@@ -306,6 +306,10 @@ Loading steps (in `Load`):
    preserves the sentinel and the typed `credentials.ErrLocked` cause. A
    credential consumer surfaces that cause as the `Keychain locked` envelope;
    config inspection and repair continue to use the recorded rejection reason.
+   On Linux without a display, opening the store first checks the selected
+   Secret Service collection with a bounded D-Bus request. An already locked
+   collection returns `credentials.ErrLocked` before go-keyring can request an
+   interactive unlock prompt.
    Under `go test`, the default store is unavailable, so test binaries never
    prompt the OS keychain.
 9. **Migrate plaintext token-shaped secrets**: plaintext values in tracked stack
