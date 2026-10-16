@@ -573,10 +573,10 @@ func TestDefinitionsPushPreservesLegacyIdentity(t *testing.T) {
 						} else {
 							assert.NotContains(t, item, "uuid")
 						}
-					case uuid == "target-uuid":
+					case uuid == "target-uuid" || uuid == "":
 						assert.Zero(t, st.createCalls)
 						assert.Equal(t, "updated", item["action"])
-						assert.Equal(t, uuid, item["uuid"])
+						assert.Equal(t, "target-uuid", item["uuid"])
 					default:
 						assert.Equal(t, 1, st.createCalls)
 						assert.Equal(t, "created", item["action"])
