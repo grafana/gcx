@@ -569,11 +569,21 @@ func formatKeyValue(key, value string) string {
 }
 
 func formatHumanTimestamp(raw string) string {
-	nanos, err := strconv.ParseInt(raw, 10, 64)
+	t, err := ParseTimestamp(raw)
 	if err != nil {
 		return raw
 	}
-	return time.Unix(0, nanos).UTC().Format(time.RFC3339Nano)
+	return t.UTC().Format(time.RFC3339Nano)
+}
+
+// ParseTimestamp parses a LogEntry's Timestamp field — Loki's raw
+// nanosecond-epoch string — into a time.Time.
+func ParseTimestamp(raw string) (time.Time, error) {
+	nanos, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("failed to parse timestamp: %w", err)
+	}
+	return time.Unix(0, nanos), nil
 }
 
 func collectMetricLabelNames(samples []MetricQuerySample) []string {
