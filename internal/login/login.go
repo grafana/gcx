@@ -1076,6 +1076,11 @@ func persistContext(ctx context.Context, opts Options, contextName string, tempC
 
 	// Re-auth mode: preserve existing context fields, update only auth.
 	if existing == nil {
+		for name, other := range cfg.Contexts {
+			if other != nil && other.Stack == contextName {
+				return fmt.Errorf("stack entry %q is already used by context %q; choose a different context name with gcx login <new-name>", contextName, name)
+			}
+		}
 		cfg.SetContext(contextName, true, config.Context{})
 		existing = cfg.Contexts[contextName]
 	} else {

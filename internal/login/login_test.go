@@ -1963,3 +1963,33 @@ func TestRun_ManualOAuthWithoutReaderFails(t *testing.T) {
 	assert.Contains(t, err.Error(), "reader")
 	assert.False(t, called, "the auth flow must not start without a reader")
 }
+
+func TestRun_NewContextDoesNotOverwriteAnotherContextsStack(t *testing.T) {
+	usePlaintextCredentialStorage(t)
+	src := configSource(t.TempDir())
+	configPath, err := src()
+	require.NoError(t, err)
+	original := []byte(`version: 1
+stacks:
+  fresh:
+    grafana:
+      server: https://old.example.invalid
+      token: old-token
+      auth-method: token
+      org-id: 1
+contexts:
+  old:
+    stack: fresh
+current-context: old
+`)
+	require.NoError(t, os.WriteFile(configPath, original, 0o600))
+	_, err = login.Run(t.Context(), &login.Options{
+		Inputs: login.Inputs{ContextName: "fresh", Server: "https://new.example.invalid", GrafanaToken: "new-token", Target: login.TargetOnPrem, Yes: true},
+		Hooks:  login.Hooks{ConfigSource: src, ValidateFn: noopValidate, PathfinderFn: func(context.Context, config.NamespacedRESTConfig) bool { return false }},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "stack entry")
+	persisted, readErr := os.ReadFile(configPath)
+	require.NoError(t, readErr)
+	assert.Equal(t, original, persisted)
+}
