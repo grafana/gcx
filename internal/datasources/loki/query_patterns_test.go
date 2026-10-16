@@ -204,7 +204,11 @@ func TestQueryPatternsCmd_RejectsStaticallyInvalidInputBeforeAnyIO(t *testing.T)
 		"step negative":             {[]string{`{job="x"}`, "--step", "-1"}, "invalid --step"},
 		"step negative duration":    {[]string{`{job="x"}`, "--step", "-5s"}, "invalid --step"},
 		"step zero duration":        {[]string{`{job="x"}`, "--step", "0s"}, "invalid --step"},
+		"unquoted matcher value":    {[]string{`{job=x}`}, "invalid stream selector"},
+		"invalid regex":             {[]string{`{job=~"["}`}, "invalid stream selector"},
+		"two selectors":             {[]string{`{job="x"} {env="prod"}`}, "invalid stream selector"},
 		"step garbage":              {[]string{`{job="x"}`, "--step", "bogus"}, "invalid --step"},
+		"step fractional duration":  {[]string{`{job="x"}`, "--step", "1.5h"}, "invalid --step"},
 		"step infinite":             {[]string{`{job="x"}`, "--step", "Inf"}, "invalid --step"},
 		"reversed range":            {[]string{`{job="x"}`, "--from", "now", "--to", "now-1h"}, "must be before"},
 		"malformed time":            {[]string{`{job="x"}`, "--from", "not-a-time", "--to", "now"}, "invalid --from"},
@@ -222,7 +226,7 @@ func TestQueryPatternsCmd_RejectsStaticallyInvalidInputBeforeAnyIO(t *testing.T)
 }
 
 func TestQueryPatternsCmd_AcceptsDocumentedStepForms(t *testing.T) {
-	for _, step := range []string{"30s", "1m", "30", "1.5"} {
+	for _, step := range []string{"30s", "1m", "1d", "1w", "30", "1.5"} {
 		captured, _, err := execQueryPatternsCmd(t, []string{`{job="varlogs"}`, "--since", "1h", "--step", step})
 		require.NoError(t, err, step)
 		assert.Equal(t, step, captured[patternsPath].Get("step"), step)

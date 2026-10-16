@@ -104,6 +104,7 @@ type PatternsResponse struct {
 // request params this endpoint takes.
 type Pattern struct {
 	Pattern string    `json:"pattern"`
+	Level   string    `json:"level,omitempty"`
 	Samples [][]int64 `json:"samples"`
 }
 

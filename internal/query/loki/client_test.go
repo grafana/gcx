@@ -230,7 +230,7 @@ func TestClient_Patterns(t *testing.T) {
 		capturedPath = r.URL.Path
 		capturedQuery = r.URL.Query()
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"status":"success","data":[{"pattern":"<_> level=error <_>","samples":[[1711839260,1],[1711839270,2]]}]}`))
+		_, _ = w.Write([]byte(`{"status":"success","data":[{"pattern":"<_> level=error <_>","level":"error","samples":[[1711839260,1],[1711839270,2]]},{"pattern":"<_> started <_>","samples":[[1711839260,3]]}]}`))
 	}))
 	defer server.Close()
 
@@ -249,9 +249,11 @@ func TestClient_Patterns(t *testing.T) {
 	assert.Equal(t, strconv.FormatInt(end.UnixNano(), 10), capturedQuery.Get("end"))
 	assert.Equal(t, "10s", capturedQuery.Get("step"))
 
-	require.Len(t, resp.Data, 1)
+	require.Len(t, resp.Data, 2)
 	assert.Equal(t, "<_> level=error <_>", resp.Data[0].Pattern)
+	assert.Equal(t, "error", resp.Data[0].Level)
 	assert.Equal(t, [][]int64{{1711839260, 1}, {1711839270, 2}}, resp.Data[0].Samples)
+	assert.Empty(t, resp.Data[1].Level, "level is optional")
 }
 
 func TestClient_Patterns_OmitsStepWhenEmpty(t *testing.T) {

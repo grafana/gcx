@@ -12,6 +12,7 @@ import (
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/loki"
+	promparser "github.com/prometheus/prometheus/promql/parser"
 	"github.com/spf13/cobra"
 )
 
@@ -31,6 +32,10 @@ func validatePatternsSelector(expr string) error {
 	if !strings.HasPrefix(trimmed, "{") || !strings.HasSuffix(trimmed, "}") {
 		return fmt.Errorf("the expression must be a bare stream selector such as '{job=\"varlogs\"}'; pipeline stages, line filters and metric expressions are rejected by Loki (got %q)", expr)
 	}
+	// Loki's matcher syntax matches PromQL's; this rejects unquoted values, bad regexes and multiple selectors.
+	if _, err := promparser.NewParser(promparser.Options{}).ParseMetricSelector(trimmed); err != nil {
+		return fmt.Errorf("invalid stream selector %q: %w", expr, err)
+	}
 	return nil
 }
 
@@ -40,7 +45,7 @@ func validatePatternsStep(step string) error {
 	if step == "" {
 		return nil
 	}
-	if d, err := time.ParseDuration(step); err == nil && d > 0 {
+	if d, err := dsquery.ParseDuration(step); err == nil && d > 0 {
 		return nil
 	}
 	if f, err := strconv.ParseFloat(step, 64); err == nil && f > 0 && !math.IsInf(f, 0) {
@@ -73,7 +78,7 @@ number returned, and retention depends on the deployment, so a long --since
 does not guarantee complete coverage of that window.
 
 Default time range is the last hour when no time flags are given. --step is
-optional: a positive duration (e.g., 30s) or a positive number of seconds
+optional: a positive duration (e.g., 30s, 1d) or a positive number of seconds
 (e.g., 1.5); when omitted, Loki chooses the bucket size.`,
 		Example: `
   # Detect patterns using configured default datasource
