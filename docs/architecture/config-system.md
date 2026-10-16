@@ -549,6 +549,17 @@ func (config *Config) GetCurrentContext() *Context {
 
 Returns `nil` if `CurrentContext` is empty or not found — callers must check.
 
+### Strict Context Mode
+
+Set `GCX_REQUIRE_CONTEXT=true` to require `--context <name>` on commands that
+reach Grafana, preventing another session's `config use-context` from retargeting
+them. Missing context selection exits with code 2; local commands are exempt.
+`GRAFANA_SERVER` alone does not satisfy the guard, except for `gcx login`, which
+also accepts a context argument or `--server`.
+
+The guard runs before Cobra dispatch in `cmd/gcx/root/contextguard.go` so subtree
+hooks cannot bypass it. Exempt paths live in `internal/agent/context_policy.go`.
+
 ---
 
 ## From Config to REST Client
@@ -953,7 +964,10 @@ affect command behavior but are not tied to any specific Grafana context.
 ```go
 // internal/config/cli_options.go
 type CLIOptions struct {
-    AutoApprove bool `env:"GCX_AUTO_APPROVE"`
+    AutoApprove           bool   `env:"GCX_AUTO_APPROVE"`
+    DisableUpdateNotifier string `env:"GCX_NO_UPDATE_NOTIFIER"`
+    Keychain              string `env:"GCX_KEYCHAIN"`
+    RequireContext        string `env:"GCX_REQUIRE_CONTEXT"`
 }
 
 func LoadCLIOptions() (CLIOptions, error)
@@ -964,13 +978,17 @@ context-scoped env vars) to parse global environment variables into a
 `CLIOptions` struct. Unlike context overrides, these options are loaded
 independently — they do not read from the config file or affect any context.
 
-**Current usage:** The `delete` command calls `LoadCLIOptions()` in its `RunE`
-and, when `AutoApprove` is true (or `--yes`/`-y` is passed), automatically
-enables the `--force` flag for non-interactive operation in CI/CD pipelines.
+**`AutoApprove` usage:** The `delete` command calls `LoadCLIOptions()` in its
+`RunE` and, when `AutoApprove` is true (or `--yes`/`-y` is passed),
+automatically enables the `--force` flag for non-interactive operation in CI/CD
+pipelines.
 
 | Env Var | CLI Flag | Effect |
 |---------|----------|--------|
 | `GCX_AUTO_APPROVE` | `--yes` / `-y` | Auto-enables `--force` on delete |
+| `GCX_NO_UPDATE_NOTIFIER` | (none) | Disables the periodic gcx/skill update notifier when non-empty |
+| `GCX_KEYCHAIN` | (none) | `off` stores credentials in plaintext in the config file instead of the OS keychain |
+| `GCX_REQUIRE_CONTEXT` | (none) | Require `--context` on commands that reach Grafana; see [Strict Context Mode](#strict-context-mode) |
 
 See [environment-variables.md](../design/environment-variables.md) for the full environment
 variable reference.
