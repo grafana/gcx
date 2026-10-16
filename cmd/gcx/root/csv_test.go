@@ -23,6 +23,7 @@ func TestCSVQueryCommands(t *testing.T) {
 	logFrame := `{"results":{"A":{"frames":[{"schema":{"fields":[{"name":"Time","type":"time"},{"name":"Line","type":"string","labels":{"app":"api"}}]},"data":{"values":[[1700000000125],["original, line"]]}}]}}}`
 	for _, tt := range []struct{ path, kind, expr, response, want string }{
 		{"metrics query", "prometheus", "up", metricFrame, "1700000000.125"},
+		{"datasources query test-ds", "prometheus", "up", metricFrame, "1700000000.125"},
 		{"datasources postgres query", "postgres", "select 1", metricFrame, "1700000000125"},
 		{"datasources prometheus query", "prometheus", "up", metricFrame, "1700000000.125"},
 		{"logs query", "loki", `{app="api"}`, logFrame, "original, line"},
@@ -54,7 +55,11 @@ func TestCSVQueryCommands(t *testing.T) {
 			var stdout, stderr bytes.Buffer
 			cmd.SetOut(&stdout)
 			cmd.SetErr(&stderr)
-			cmd.SetArgs(append(strings.Fields(tt.path), tt.expr, "-d", "test-ds", "--config", config, "-o", "csv"))
+			args := append(strings.Fields(tt.path), tt.expr, "--config", config, "-o", "csv")
+			if tt.path != "datasources query test-ds" {
+				args = append(args, "-d", "test-ds")
+			}
+			cmd.SetArgs(args)
 			require.NoError(t, cmd.Execute())
 			assert.Equal(t, 1, queries)
 			assert.Contains(t, stdout.String(), tt.want)
@@ -103,10 +108,19 @@ func TestCSVIsExplicitlyRegistered(t *testing.T) {
 		"gcx datasources postgres list-tables",
 		"gcx datasources postgres query",
 		"gcx datasources prometheus query",
+		"gcx datasources pyroscope query",
+		"gcx datasources query",
+		"gcx datasources tempo baseline",
+		"gcx datasources tempo metrics",
+		"gcx datasources tempo query",
 		"gcx logs metrics",
 		"gcx logs query",
 		"gcx metrics billing query",
 		"gcx metrics query",
+		"gcx profiles query",
+		"gcx traces baseline",
+		"gcx traces metrics",
+		"gcx traces query",
 	}
 	var got []string
 	var walk func(*cobra.Command)
