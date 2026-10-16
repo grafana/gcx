@@ -13,6 +13,7 @@ import (
 
 	"github.com/grafana/gcx/cmd/gcx/root"
 	"github.com/grafana/gcx/internal/testutils"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -70,38 +71,67 @@ func TestCSVQueryCommands(t *testing.T) {
 }
 
 func TestCSVIsExplicitlyRegistered(t *testing.T) {
-	for _, path := range []string{"datasources tempo get", "datasources azuremonitor list-subscriptions", "datasources prometheus labels"} {
-		t.Run(path, func(t *testing.T) {
-			cmd, _, err := root.Command("test").Find(strings.Fields(path))
-			require.NoError(t, err)
-			assert.NotContains(t, cmd.Flags().Lookup("output").Usage, "csv")
-		})
+	want := []string{
+		"gcx datasources athena describe-table",
+		"gcx datasources athena list-catalogs",
+		"gcx datasources athena list-databases",
+		"gcx datasources athena list-tables",
+		"gcx datasources athena query",
+		"gcx datasources azuremonitor logs query",
+		"gcx datasources azuremonitor query",
+		"gcx datasources azuremonitor resource-graph query",
+		"gcx datasources bigquery describe-table",
+		"gcx datasources bigquery list-datasets",
+		"gcx datasources bigquery list-tables",
+		"gcx datasources bigquery query",
+		"gcx datasources clickhouse describe-table",
+		"gcx datasources clickhouse list-tables",
+		"gcx datasources clickhouse query",
+		"gcx datasources cloudmonitoring query",
+		"gcx datasources cloudwatch query",
+		"gcx datasources elasticsearch metrics",
+		"gcx datasources elasticsearch query",
+		"gcx datasources infinity query",
+		"gcx datasources influxdb query",
+		"gcx datasources loki metrics",
+		"gcx datasources loki query",
+		"gcx datasources mssql describe-table",
+		"gcx datasources mssql list-tables",
+		"gcx datasources mssql query",
+		"gcx datasources mysql describe-table",
+		"gcx datasources mysql list-tables",
+		"gcx datasources mysql query",
+		"gcx datasources opensearch metrics",
+		"gcx datasources opensearch query",
+		"gcx datasources pinot query",
+		"gcx datasources postgres describe-table",
+		"gcx datasources postgres list-tables",
+		"gcx datasources postgres query",
+		"gcx datasources prometheus query",
+		"gcx datasources pyroscope query",
+		"gcx datasources query",
+		"gcx datasources tempo baseline",
+		"gcx datasources tempo metrics",
+		"gcx datasources tempo query",
+		"gcx logs metrics",
+		"gcx logs query",
+		"gcx metrics billing query",
+		"gcx metrics query",
+		"gcx profiles query",
+		"gcx traces baseline",
+		"gcx traces metrics",
+		"gcx traces query",
 	}
-}
-
-func TestRemainingCSVRegistrations(t *testing.T) {
-	for kind, commands := range map[string][]string{
-		"athena":     {"query", "list-catalogs", "list-databases", "list-tables", "describe-table"},
-		"bigquery":   {"query", "list-datasets", "list-tables", "describe-table"},
-		"clickhouse": {"query", "list-tables", "describe-table"},
-		"postgres":   {"query", "list-tables", "describe-table"},
-		"mysql":      {"query", "list-tables", "describe-table"},
-		"mssql":      {"query", "list-tables", "describe-table"},
-		"influxdb":   {"query"}, "infinity": {"query"}, "pinot": {"query"}, "pyroscope": {"query"},
-		"tempo":      {"search", "metrics", "baseline"},
-		"cloudwatch": {"query"}, "cloudmonitoring": {"query"},
-		"azuremonitor":  {"query", "logs query", "resource-graph query"},
-		"elasticsearch": {"query", "metrics"}, "opensearch": {"query", "metrics"},
-	} {
-		for _, name := range commands {
-			t.Run(kind+"/"+name, func(t *testing.T) {
-				cmd, args, err := root.Command("test").Find(append([]string{"datasources", kind}, strings.Fields(name)...))
-				require.NoError(t, err)
-				require.Empty(t, args)
-				flag := cmd.Flags().Lookup("output")
-				require.NotNil(t, flag)
-				assert.Contains(t, flag.Usage, "csv")
-			})
+	var got []string
+	var walk func(*cobra.Command)
+	walk = func(cmd *cobra.Command) {
+		if flag := cmd.Flags().Lookup("output"); flag != nil && strings.Contains(flag.Usage, "csv") {
+			got = append(got, cmd.CommandPath())
+		}
+		for _, child := range cmd.Commands() {
+			walk(child)
 		}
 	}
+	walk(root.Command("test"))
+	assert.ElementsMatch(t, want, got)
 }
