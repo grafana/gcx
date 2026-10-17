@@ -306,6 +306,10 @@ Loading steps (in `Load`):
    preserves the sentinel and the typed `credentials.ErrLocked` cause. A
    credential consumer surfaces that cause as the `Keychain locked` envelope;
    config inspection and repair continue to use the recorded rejection reason.
+   On Linux without a display, opening the store first checks the selected
+   Secret Service collection with a bounded D-Bus request. An already locked
+   collection returns `credentials.ErrLocked` before go-keyring can request an
+   interactive unlock prompt.
    Under `go test`, the default store is unavailable, so test binaries never
    prompt the OS keychain.
 9. **Migrate plaintext token-shaped secrets**: plaintext values in tracked stack
@@ -326,7 +330,10 @@ Loading steps (in `Load`):
    file.
 10. Apply each `Override` function in order, then lazily resolve a context selected
    by an override
-11. On `ValidationError`, annotate the error with YAML source information
+11. On `ValidationError`, annotate the error with YAML source information when
+    its path exists in the file. Environment-only values keep the original
+    validation message, source filename, and recovery suggestions without a YAML
+    annotation.
 
 `Write` validates the schema version and binds the configuration to its actual
 target source before encoding. Its keychain reconcile pass is mutation-aware:

@@ -22,7 +22,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/yaml"
 )
 
-func mutationFixture(t *testing.T, fixture *watcherstest.Server) *providers.ConfigLoader {
+func mutationFixture(t *testing.T, fixture http.Handler) *providers.ConfigLoader {
 	t.Helper()
 	server := httptest.NewServer(fixture)
 	t.Cleanup(server.Close)

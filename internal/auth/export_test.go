@@ -157,3 +157,8 @@ func RenderSuccessPage(w http.ResponseWriter, instanceEndpoint string) {
 func RenderSuccessPageWithLink(w http.ResponseWriter, link *url.URL) {
 	renderSuccessPage(w, link)
 }
+
+// ListenOnCallbackPort exposes the unexported listenOnCallbackPort.
+func ListenOnCallbackPort(ctx context.Context, bindAddress string, fixedPort int) (net.Listener, int, error) {
+	return listenOnCallbackPort(ctx, bindAddress, fixedPort)
+}

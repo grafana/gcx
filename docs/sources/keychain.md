@@ -175,7 +175,8 @@ busctl --user get-property org.freedesktop.secrets \
   org.freedesktop.Secret.Collection Locked
 ```
 
-`b true` means that the collection is locked.
+`b true` means that the collection is locked. If the login collection is absent,
+query `/org/freedesktop/secrets/aliases/default` instead.
 
 `gnome-keyring-daemon --unlock` reads the password from standard input. It does
 not show a prompt. The `--daemonize` option creates a child process, so a

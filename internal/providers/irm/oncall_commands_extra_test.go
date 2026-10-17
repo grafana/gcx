@@ -721,7 +721,7 @@ func TestEmitWarnEmitNote_Format(t *testing.T) {
 	})
 }
 
-// fakeTimezoneAPI records the timezone that list-final-shifts sends and serves
+// fakeTimezoneAPI records the timezone and start date that list-final-shifts sends and serves
 // the schedule that the command falls back to.
 type fakeTimezoneAPI struct {
 	OnCallAPI
@@ -729,6 +729,7 @@ type fakeTimezoneAPI struct {
 	scheduleTZ  string
 	scheduleErr error
 	gotTZ       string
+	gotDate     string
 	getCalls    int
 }
 
@@ -740,8 +741,9 @@ func (f *fakeTimezoneAPI) GetSchedule(_ context.Context, id string) (*Schedule, 
 	return &Schedule{ID: id, Name: "probe", TimeZone: f.scheduleTZ}, nil
 }
 
-func (f *fakeTimezoneAPI) ListFilterEvents(_ context.Context, _, userTZ, _ string, _ int) (*FilterEventsResponse, error) {
+func (f *fakeTimezoneAPI) ListFilterEvents(_ context.Context, _, userTZ, date string, _ int) (*FilterEventsResponse, error) {
 	f.gotTZ = userTZ
+	f.gotDate = date
 	return &FilterEventsResponse{}, nil
 }
 
@@ -848,5 +850,22 @@ func TestScheduleListFinalShiftsTimezone(t *testing.T) {
 				t.Errorf("stderr = %q, want it to contain %q", stderr, tt.wantWarn)
 			}
 		})
+	}
+}
+
+// TestScheduleListFinalShiftsStart pins that --start reaches the client as the
+// start of the range instead of being dropped on the way.
+func TestScheduleListFinalShiftsStart(t *testing.T) {
+	setAgentMode(t, false)
+
+	fake := &fakeTimezoneAPI{scheduleTZ: "UTC"}
+	_, _, err := runNounCmd(t, func() *cobra.Command {
+		return newSchedulesCmd(&fakeLoader{client: fake})
+	}, "", "list-final-shifts", "SCHED1", "-o", "json", "--start", "2026-11-01", "--end", "2026-11-30")
+	if err != nil {
+		t.Fatalf("error = %v, want nil", err)
+	}
+	if fake.gotDate != "2026-11-01" {
+		t.Errorf("date = %q, want %q", fake.gotDate, "2026-11-01")
 	}
 }

@@ -1,7 +1,7 @@
 # Three-Stage Skill Structure with Dual Blackbox Isolation
 
 **Created**: 2026-03-24
-**Status**: superseded
+**Status**: retired — the repository no longer ships the migrate-provider skill
 **Superseded by**: [002-five-phase-pipeline-redesign](002-five-phase-pipeline-redesign.md)
 **Bead**: gcx-experiments-zn8
 **Supersedes**: none

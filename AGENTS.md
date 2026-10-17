@@ -17,10 +17,10 @@
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Dev setup, testing environment, contribution workflow |
 | [docs/architecture/](docs/architecture/) | Deep-dive architecture docs (patterns, resource model, CLI layer, data flows, …) |
 | [docs/design/](docs/design/) | Prescriptive UX implementation rules (output, errors, agent mode, naming, …) |
-| [docs/rfcs/](docs/rfcs/README.md) | Engineering proposals, design tradeoffs, and validation criteria |
+| [docs/rfcs/](docs/rfcs/README.md) | Engineering proposals, design tradeoffs, and open questions |
 | [docs/glossary/](docs/glossary/README.md) | Shipped domain terms, one file per context (proposed terms stay in RFCs) |
 | [docs/reference/](docs/reference/) | Handwritten provider guides and contributor references |
-| [docs/_templates/](docs/_templates/) | Spec and planning templates (feature, bugfix, refactor, ADR, research) |
+| [docs/_templates/](docs/_templates/) | ADR and research report templates |
 
 ## Architecture at a Glance
 
@@ -38,8 +38,8 @@ Two tiers: **K8s resource tier** (dashboards, folders via `/apis`) and **Cloud p
 - **Format-agnostic data fetching**: Commands fetch all data regardless of `--output` format; codecs control display, not data acquisition (see Pattern 13 in `docs/architecture/patterns.md`)
 - **PromQL via promql-builder**: Use `github.com/grafana/promql-builder/go/promql` for PromQL construction, not string formatting (see Pattern 14 in `docs/architecture/patterns.md`)
 - **Datasource query reuse**: Datasource clients that call Grafana's unified datasource query API (`/apis/query.grafana.app/.../query`, with `/api/ds/query` fallback) should reuse `internal/query/grafanaquery` for HTTP transport and `internal/query/dataframe` for Grafana data frame wire types. Do not duplicate POST/fallback/response-limit logic or `GrafanaQueryResponse`/`DataFrame` structs in each datasource package.
-- **Explore links are required on query commands**: Every query-class datasource leaf command must build a Grafana Explore URL in `internal/datasources/{kind}/explore.go` and expose it via `--share-link`/`--open` through `dsquery.ExploreLinkOpts` + `dsquery.EncodeAndHandleExplore`. See Step 1c in [.claude/skills/add-datasource/SKILL.md](.claude/skills/add-datasource/SKILL.md) for the rules.
-- **Agent skill placement follows its audience**: Portable workflows for people using gcx live under `claude-plugin/skills/`; repository-only contributor workflows live under `.claude/skills/`. Do not add distributable gcx skills under repo-local `.agents/skills/` — that changes repo-context discovery semantics for tools that scan `.agents`. Both skill trees are gated: `TestSkillsGcxInvocationsMatchCommandTree` (`cmd/gcx/root/skillsdrift_test.go`) validates every `gcx` invocation in `claude-plugin/skills/` **and** repo-local `.claude/skills/` against the real command tree, failing CI on unknown commands or flags, and `mise run validate-skills` parses the front matter of both.
+- **Explore links are required on query commands**: Every query-class datasource leaf command must build a Grafana Explore URL in `internal/datasources/{kind}/explore.go` and expose it via `--share-link`/`--open` through `dsquery.ExploreLinkOpts` + `dsquery.EncodeAndHandleExplore`. See [Step 1c: Explore link](.agents/skills/contribute/references/datasource-implementation.md#step-1c-explore-link-required) for the rules.
+- **Agent skill placement follows its audience**: Portable workflows for people using gcx live under `claude-plugin/skills/`; repository-only contributor workflows live under `.agents/skills/`. `.claude/skills` is a relative symlink to that canonical tree; edit the source files rather than creating copies. Distributable gcx skills belong in the embedded `claude-plugin/skills/` bundle. `mise run validate-skills` checks that Git tracks `.claude/skills` as a symlink to exactly `../.agents/skills`. Both skill trees are gated: `TestSkillsGcxInvocationsMatchCommandTree` (`cmd/gcx/root/skillsdrift_test.go`) validates every `gcx` invocation in `claude-plugin/skills/` **and** repo-local `.agents/skills/` against the real command tree, failing CI on unknown commands or flags, and `mise run validate-skills` parses the front matter of both.
 
 - **Skill lifecycle metadata lives in `claude-plugin/skills-catalog.yaml`**: Register every bundled skill as active or deprecated and append its name to `internal/skills/testdata/shipped_skills.txt`. This snapshot is append-only. When removing content, retain the catalog entry as retired indefinitely so old installations remain removable; `TestBundledCatalog` checks retention against the snapshot. See [skill lifecycle](claude-plugin/README.md#skill-lifecycle).
 - **wasip1 variants**: gcx is also built for `GOOS=wasip1` to run embedded in a WebAssembly sandbox. A `*_wasip1.go` file paired with a `//go:build !wasip1` file replaces a host-only piece: there are no outbound sockets (HTTP goes to the host via `httputils.WireTransport`), no terminal UIs, and `gcx dev` and `instrumentation check/explain/list-explanations` are left out. When you change a function with a wasip1 variant, change both; `mise run vet:wasip1` (part of `gate`) compiles the packages that build without third-party stubs. The full wasip1 build lives in `experimental/sandbox` (`build.sh`, checked by the Sandbox CI job): when a dependency change breaks it, fix the stubs in `experimental/sandbox/patches/`.
@@ -101,10 +101,12 @@ experimental/    Separate Go modules outside the CLI's build: sandbox/ runs gcx 
 | **Modifying resource handling** | [ARCHITECTURE.md](ARCHITECTURE.md) § Resources Pipeline | [docs/architecture/resource-model.md](docs/architecture/resource-model.md), [docs/architecture/data-flows.md](docs/architecture/data-flows.md) |
 | **Changing config or auth** | [ARCHITECTURE.md](ARCHITECTURE.md) § Configuration + § Auth | [docs/architecture/config-system.md](docs/architecture/config-system.md), [docs/architecture/client-api-layer.md](docs/architecture/client-api-layer.md) |
 | **Fixing a bug** | [ARCHITECTURE.md](ARCHITECTURE.md) for the relevant subsystem | Jump directly to the deep-dive doc for that domain |
-| **Creating or revising an RFC** | [RFC index and conventions](docs/rfcs/README.md), repo-local [create-rfc](.claude/skills/create-rfc/SKILL.md) | Use [update-rfc](.claude/skills/update-rfc/SKILL.md) when explicitly asked to reconcile verified implementation evidence |
+| **Creating or revising an RFC** | [RFC index and conventions](docs/rfcs/README.md), repo-local [create-rfc](.agents/skills/create-rfc/SKILL.md) | Use [update-rfc](.agents/skills/update-rfc/SKILL.md) when explicitly asked to reconcile verified implementation evidence |
+| **Reviewing an RFC** | Repo-local [review-rfc](.agents/skills/review-rfc/SKILL.md), the originating request and [RFC conventions](docs/rfcs/README.md) | Check claims, scope, repository rules, consistency and unresolved questions before sharing or acceptance |
+| **Planning work before implementation** | Repo-local [`contribute`](.agents/skills/contribute/SKILL.md) and the [contribution workflow](CONTRIBUTING.md#contributing-code) | Load the proposal or RFC specialist only when the selected route needs it; keep restricted research outside the checkout |
 | **Planning a new feature** | [VISION.md](VISION.md) (does it belong?), [CONSTITUTION.md](CONSTITUTION.md) (can we build it within the rules?) | [DESIGN.md](DESIGN.md) for UX, [ARCHITECTURE.md](ARCHITECTURE.md) for structure |
-| **Adding, extending, or reviewing a gcx capability (domain teams)** | Read the repo-local [`integrate-with-gcx`](.claude/skills/integrate-with-gcx/SKILL.md) contributor skill first — it covers necessity, placement, readiness, contract, and self-review | [docs/design/command-naming.md](docs/design/command-naming.md), [docs/reference/provider-guide.md](docs/reference/provider-guide.md) |
-| **Reviewing someone else's PR** | The repo-local [`review-pr`](.claude/skills/review-pr/SKILL.md) skill — report shape, over-engineering rubric, lock-in ranking | [Compliance Hierarchy](#compliance-hierarchy) below — check all 4 levels in order |
+| **Adding, extending, or reviewing a gcx capability (domain teams)** | Repo-local [`contribute`](.agents/skills/contribute/SKILL.md) — necessity, placement, readiness, contract, implementation references, and self-review | [docs/design/command-naming.md](docs/design/command-naming.md), [docs/reference/provider-guide.md](docs/reference/provider-guide.md) |
+| **Reviewing someone else's PR** | The repo-local [`review-pr`](.agents/skills/review-pr/SKILL.md) skill — report shape, over-engineering rubric, lock-in ranking | [Compliance Hierarchy](#compliance-hierarchy) below — check all 4 levels in order |
 
 ## Compliance Hierarchy
 
@@ -124,7 +126,7 @@ Check work against these docs during planning, design, and implementation — in
 
 ## Releasing
 
-Release steps live in the `release` skill ([.claude/skills/release/SKILL.md](.claude/skills/release/SKILL.md)) — invoke it when tagging a release.
+Release steps live in the `release` skill ([.agents/skills/release/SKILL.md](.agents/skills/release/SKILL.md)) — invoke it when tagging a release.
 
 ## Mandatory Pull Request Checklist
 

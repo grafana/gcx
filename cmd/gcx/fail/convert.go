@@ -336,7 +336,6 @@ func keychainLockedSuggestions(goos string) []string {
 		return []string{
 			"Unlock the keyring, then retry the command",
 			"Run gcx from a desktop session, where a password prompt can appear",
-			"Check the lock state: busctl --user get-property org.freedesktop.secrets /org/freedesktop/secrets/collection/login org.freedesktop.Secret.Collection Locked",
 			"Supply the credential in an environment variable, such as GRAFANA_TOKEN, if you cannot unlock the keyring on this host",
 		}
 	default:

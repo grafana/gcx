@@ -20,4 +20,4 @@ require golang.org/x/sys v0.44.0
 // both lines: without the replace, Go looks for the required pseudo-version
 // in upstream wazero, which doesn't have it, and the build fails. Drop both
 // once wazero releases the fixes.
-replace github.com/tetratelabs/wazero => github.com/sd2k/wazero v0.0.0-20261008132129-ba9152059a15
+replace github.com/tetratelabs/wazero => github.com/grafana/wazero v0.0.0-20261008132129-ba9152059a15
