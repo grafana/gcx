@@ -1,6 +1,6 @@
 ---
 title: Manage Assistant Watchers
-description: Use gcx to create Assistant Watchers, follow calibration, review and update configuration, save reusable manifests, control monitoring, inspect run history, and delete Watchers in Grafana Cloud.
+description: Use gcx to create Assistant Watchers, follow calibration, review and update configuration, save reusable manifests, control monitoring, inspect run history, restore definition versions, and delete Watchers in Grafana Cloud.
 labels:
   products:
     - cloud
@@ -169,6 +169,53 @@ gcx assistant watchers unarchive WATCHER
 ```
 
 Review its status and automatic-stop deadline before starting again. Recovery retains that deadline. Archive recovery doesn't restore a previous definition version.
+
+## Compare definition versions
+
+To inspect saved definitions before restoring one, follow these steps:
+
+1. List retained versions:
+
+   ```shell
+   gcx assistant watchers list-versions WATCHER --limit 20 -o json
+   ```
+
+   Results contain one page. If `coverage.nextBeforeVersion` is present, pass it as `--before-version` to read the next page. Server retention can exclude older versions.
+
+1. Read the definition you want to inspect:
+
+   ```shell
+   gcx assistant watchers versions get WATCHER VERSION -o yaml
+   ```
+
+1. Compare two definitions:
+
+   ```shell
+   gcx assistant watchers versions diff WATCHER FROM_VERSION TO_VERSION -o json
+   ```
+
+   The diff compares definitions only. Add `--json path,operation` to show changed paths and operations while retaining the compared versions and scope.
+
+## Restore a definition version
+
+Restore creates a new current definition version. It retains current notification actions and settings outside the definition; it doesn't copy historical learned state.
+
+1. Pause the non-archived Watcher and inspect its current version:
+
+   ```shell
+   gcx assistant watchers pause WATCHER
+   gcx assistant watchers status WATCHER -o json
+   ```
+
+1. Replace `CURRENT_VERSION` with the version reported by `status`, then restore the selected `VERSION` and confirm:
+
+   ```shell
+   gcx assistant watchers versions restore WATCHER VERSION --expected-current-version CURRENT_VERSION -o json
+   ```
+
+   A stale guard is rejected. Inspect status and compare again before choosing a new guard.
+
+The restored Watcher stays inactive and can become a draft that needs calibration. Review it in Grafana before starting monitoring. If the write outcome is unknown, inspect `status` and `list-versions` before retrying. A confirmed save followed by failed verification returns exit code 4; inspect the saved version instead of repeating the restore.
 
 ## Delete a Watcher
 
