@@ -1,6 +1,6 @@
 ---
 title: Manage Assistant Watchers
-description: Use gcx to create Assistant Watchers, follow calibration, review and update configuration, save reusable manifests, and delete Watchers in Grafana Cloud.
+description: Use gcx to create Assistant Watchers, follow calibration, review and update configuration, save reusable manifests, control monitoring, inspect run history, and delete Watchers in Grafana Cloud.
 labels:
   products:
     - cloud
@@ -56,7 +56,7 @@ To create a Watcher, follow these steps:
    gcx assistant watchers status WATCHER -o json
    ```
 
-   An `accepted` request means calibration was requested, not that checks are ready. Wait while it is queued or running. If calibration fails, is cancelled, or needs input, continue in Grafana. When it completes, review the enabled checks and lifecycle in Grafana before explicitly starting monitoring.
+   An `accepted` request means calibration was requested, not that checks are ready. Wait while it is queued or running. If calibration fails, is cancelled, or needs input, continue in Grafana. When it completes, review the enabled checks in Grafana before [starting monitoring](#start-and-pause-monitoring).
 
 If the request outcome is `unavailable`, calibrate the saved Watcher in Grafana. An `error` or `not-requested` outcome returns exit code 4 and retains the Watcher identity. Inspect the reported failure and status; resolve any failed configuration stage with `update`, then continue in Grafana. Do not repeat `create`: a request error can leave calibration running.
 
@@ -119,6 +119,56 @@ An unchanged apply sends no mutation unless you supply secret values. Push saves
 Use `fromEnv` or `fromFile` to supply a secret, for example `url: { fromEnv: WATCHER_WEBHOOK_URL }`. Exports use `{ preserve: true }` for saved secrets; omitting a secret on update also preserves it. Use `{ clear: true }` to remove one. You can't use preserve markers when creating a Watcher.
 
 When supplying or clearing a webhook URL, also supply or clear every saved bearer token and signing secret. Keep resolved secrets out of manifests and version control.
+
+## Start and pause monitoring
+
+After calibration completes with at least one enabled check, start your Watcher:
+
+```shell
+gcx assistant watchers start WATCHER
+```
+
+Starting can immediately run a scan; event-only Watchers wait for their trigger. Both start and run can send configured notifications or launch investigations. If start fails, inspect `gcx assistant watchers status WATCHER` before retrying: monitoring might already be active.
+
+To stop future scans, pause the Watcher:
+
+```shell
+gcx assistant watchers pause WATCHER
+```
+
+Finish or cancel calibration in Grafana before pausing. An in-flight scan can still finish and send notifications or launch investigations.
+
+## Request a run and inspect history
+
+Request a scan without changing the schedule, then inspect recent executions:
+
+```shell
+gcx assistant watchers run WATCHER -o json
+gcx assistant watchers list-runs WATCHER --limit 20 -o json
+```
+
+The run receipt reports acceptance, skipped work, or failure. Acceptance doesn't mean the scan completed. Its `taskId` can't be matched to history IDs; don't assume the newest execution belongs to your request. Running might require create permission in addition to write permission.
+
+History shows execution status separately from assessment. The default limit is 20, and the maximum is 100. `coverage.hasMore` indicates additional retained history; results aren't a snapshot of all past runs. For full run evidence, open the Watcher in Grafana.
+
+## Archive and recover a Watcher
+
+Pause before archiving to retain the Watcher's configuration and history:
+
+```shell
+gcx assistant watchers pause WATCHER
+gcx assistant watchers archive WATCHER
+```
+
+Archive refuses a Watcher observed as active. Keep other clients from starting it during this sequence: the pause check and archive aren't atomic. Archiving can cancel calibration and resolve active Grafana Alerting findings.
+
+Recover an archived Watcher without activating monitoring:
+
+```shell
+gcx assistant watchers unarchive WATCHER
+```
+
+Review its status and automatic-stop deadline before starting again. Recovery retains that deadline. Archive recovery doesn't restore a previous definition version.
 
 ## Delete a Watcher
 
