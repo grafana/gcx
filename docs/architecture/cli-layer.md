@@ -274,8 +274,6 @@ gcx synthetic-monitoring [internal/providers/synth/provider.go]
     └── list
 ```
 
-The Assistant provider includes experimental `assistant watchers list/get/status/create/update/delete` commands. Configuration commands use the registered Watcher typed adapter; create and update accept complete file manifests, delete uses the shared destructive confirmation helper, and status is a separate runtime view. Dedicated create requests initial background calibration after a successful configuration save, without automatic activation; this domain operation remains outside the typed adapter and generic push. Mutation codecs expose identity and stage outcomes, including partial completion with exit 4. Lifecycle controls (`start`, `pause`, `run`, `archive`, `unarchive`) and bounded `list-runs` history use the product client beside the configuration adapter; they never enter generic reconciliation. Structured lifecycle results distinguish request outcomes from observed state and execution assessments. Version list/get/diff and guarded restore are dedicated domain operations: paging discloses retained history, comparisons use definitions only, and restore reports accepted versus uncertain writes separately from observed state. The experimental version command shapes have an explicit human-approved naming exception limited to this Watcher feature. See [Assistant Watchers](../sources/guides/manage-assistant-watchers.md).
-
 ### Config loading pattern
 
 Provider commands cannot import `cmd/gcx/config` (import cycle). Instead,

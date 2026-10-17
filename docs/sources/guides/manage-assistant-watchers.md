@@ -14,7 +14,7 @@ weight: 100
 
 # Manage Assistant Watchers
 
-Use `gcx` to create Watchers and keep their configuration in version control. Watcher commands are experimental and require Grafana Cloud.
+Use `gcx` to create Watchers and keep their configuration in version control. **Watcher commands are experimental and require Grafana Cloud**.
 
 ## Before you begin
 
@@ -116,7 +116,7 @@ An unchanged apply sends no mutation unless you supply secret values. Push saves
 
 ## Supply webhook secrets
 
-Use `fromEnv` or `fromFile` to supply a secret, for example `url: { fromEnv: WATCHER_WEBHOOK_URL }`. Exports use `{ preserve: true }` for saved secrets; omitting a secret on update also preserves it. Use `{ clear: true }` to remove one. Preserve markers cannot be used when creating a Watcher.
+Use `fromEnv` or `fromFile` to supply a secret, for example `url: { fromEnv: WATCHER_WEBHOOK_URL }`. Exports use `{ preserve: true }` for saved secrets; omitting a secret on update also preserves it. Use `{ clear: true }` to remove one. You can't use preserve markers when creating a Watcher.
 
 When supplying or clearing a webhook URL, also supply or clear every saved bearer token and signing secret. Keep resolved secrets out of manifests and version control.
 
