@@ -274,8 +274,6 @@ gcx synthetic-monitoring [internal/providers/synth/provider.go]
     └── list
 ```
 
-The Assistant provider includes experimental `assistant watchers list/get/status/create/update/delete` commands. Configuration commands use the registered Watcher typed adapter; create and update accept complete file manifests, delete uses the shared destructive confirmation helper, and status is a separate runtime view. Mutation codecs expose identity and stage outcomes, including partial completion with exit 4. See [Assistant Watchers](../reference/assistant-watchers.md).
-
 ### Config loading pattern
 
 Provider commands cannot import `cmd/gcx/config` (import cycle). Instead,
