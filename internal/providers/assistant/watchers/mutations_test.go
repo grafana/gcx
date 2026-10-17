@@ -101,7 +101,7 @@ func TestPublicCreateFileAndUpdateIdentity(t *testing.T) {
 	fixture := &watcherstest.Server{AllowWrites: true}
 	loader := mutationFixture(t, fixture)
 	path := filepath.Join(t.TempDir(), "watcher.yaml")
-	require.NoError(t, os.WriteFile(path, []byte(commandManifest("Checkout health", "", "  interval: 20m\n  sensitivity: relaxed\n")), 0600))
+	require.NoError(t, os.WriteFile(path, []byte(commandManifest("Checkout health", "", "  interval: 20m\n  sensitivity: relaxed\n  notifications:\n    slack:\n      targetType: dm\n      userId: U_EXAMPLE\n      teamId: T_EXAMPLE\n    alerting:\n      severity: critical\n      routingTree: operations\n")), 0600))
 	cmd, out, _ := mutationCommand(t, loader, []string{"create", "-f", path, "-o", "json"}, "")
 	require.NoError(t, cmd.ExecuteContext(t.Context()))
 	var created mutationResult
@@ -120,6 +120,9 @@ func TestPublicCreateFileAndUpdateIdentity(t *testing.T) {
 	require.Equal(t, "Checkout health", *payload.Name)
 	require.Equal(t, 1200, *payload.TriggerIntervalSeconds)
 	require.Equal(t, "relaxed", *payload.Sensitivity)
+	require.Equal(t, &clientwatchers.ChatTarget{Type: "dm", UserID: "U_EXAMPLE", TeamID: "T_EXAMPLE"}, payload.Actions.Slack.Target)
+	require.Equal(t, "critical", payload.Actions.Alerting.MinSeverity)
+	require.Equal(t, "operations", *payload.Actions.Alerting.RoutingTree)
 	require.NotContains(t, string(requests[0].Body), "status")
 
 	cmd, out, _ = mutationCommand(t, loader, []string{"create", "-f", path, "-o", "json"}, "")

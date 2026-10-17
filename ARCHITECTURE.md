@@ -73,10 +73,6 @@ Provider (internal/providers/slo/)
 
 **Deep-dive:** [patterns.md](docs/architecture/patterns.md) [§11 (Provider Plugin System)](docs/architecture/patterns.md#11-provider-plugin-system), [§16 (ResourceAdapter and Provider CRUD Routing)](docs/architecture/patterns.md#16-resourceadapter-and-provider-crud-routing), [§17 (K8s Envelope Wrapping)](docs/architecture/patterns.md#17-k8s-envelope-wrapping-for-provider-listget), [§18 (Table-Driven TypedCRUD)](docs/architecture/patterns.md#18-table-driven-typedcrud-registration-for-providers), [§19 (Singleton Adapter)](docs/architecture/patterns.md#19-singleton-adapter-pattern), [§20 (ETag-as-Annotation)](docs/architecture/patterns.md#20-etag-as-annotation-pattern). Implementation guide: [provider-guide.md](docs/reference/provider-guide.md).
 
-### Assistant Watcher configuration
-
-The Assistant provider registers Watcher configuration beside MCPServer. Dedicated configuration commands and generic resource operations share the typed adapter; runtime status remains a separate read view. Optional provider-neutral hooks retain complete envelopes and batches before identity-keyed insertion or mutation, while the adapter owns identity, reconciliation and partial-read policy. See [ADR-026](docs/adrs/provider-owned-resource-hooks/026-provider-owned-resource-hooks.md), [Assistant Watchers](docs/reference/assistant-watchers.md) and the [package map](docs/architecture/project-structure.md).
-
 ### 3. Signal Providers
 
 Top-level commands for querying observability datasources: `metrics`, `logs`, `traces`, `profiles`. These bypass the K8s dynamic client and call datasource HTTP APIs directly.

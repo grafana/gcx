@@ -78,7 +78,7 @@
 # non-standard command operations
 /cmd/gcx/root/testdata/non_canonical_command_operations.json @grafana/grafana-gcx
 
-/docs/reference/assistant-watchers* @grafana/grafana-gcx @grafana/grafana-assistant-loop
+/docs/sources/guides/manage-assistant-watchers* @grafana/grafana-gcx @grafana/grafana-assistant-loop
 /docs/reference/assistant-mcp-servers.md @grafana/grafana-gcx @grafana/grafana-assistant-loop
 /openspec/specs/assistant/ @grafana/grafana-gcx @grafana/grafana-assistant-loop
 /openspec/changes/**/specs/assistant/ @grafana/grafana-gcx @grafana/grafana-assistant-loop
