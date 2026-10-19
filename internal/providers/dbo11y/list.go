@@ -246,3 +246,12 @@ func orDash(v string) string {
 	}
 	return v
 }
+
+// boolYesNo renders a flag for the table codecs. Not orDash's empty-is-unknown
+// treatment: a false here is an answer, not a missing value.
+func boolYesNo(v bool) string {
+	if v {
+		return "yes"
+	}
+	return "no"
+}
