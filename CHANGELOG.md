@@ -6,10 +6,6 @@
 
 ### Breaking changes
 
-- `gcx dbo11y instances list` reports the collector's labels as a `labels`
-  map keyed by raw label name, rather than as separate `namespace` and
-  `environment` fields. Read `service_namespace` and
-  `deployment_environment` from the map for the old values.
 - `--filter` on `gcx dbo11y instances list` and `gcx dbo11y instances get`
   matches exact key values only. `!=`, `=~` and `!~` now exit 2, as does
   giving one label two values. On `gcx dbo11y instances get` it accepts only
@@ -18,9 +14,6 @@
 - `gcx dbo11y instances get` ignores `--since`: figures cover the backend's
   own fixed window, so a script passing `--since 1h` now reports 5m values.
   `--top 0` returns the API maximum of 100 rather than every statement.
-- `gcx dbo11y instances list` reports the monitored endpoint as `name`.
-  It previously reported a separate service name, so the value changes on
-  stacks that set both.
 
 ### New commands and improvements
 
@@ -32,11 +25,23 @@
 - `gcx dbo11y instances get` reports where the instance is waiting under
   `wait_events`, across every query rather than one at a time, using the
   collector's own categories (`IO Wait`, `Lock Wait`, and so on) rather
-  than raw engine event names.
+  than raw engine event names. Each row is `{type, wait_seconds}`; the
+  previous `{type, event, count}` counted waiting sessions per raw event.
+- `gcx dbo11y instances list` reports the collector's labels under
+  `labels`, keyed by raw label name — which is what `--filter` matches, so
+  what you see is what you can filter by. `namespace` and `environment`
+  continue to be reported as their own fields, lifted out of that map.
 - `gcx dbo11y instances get` reports `health.up` as the instance's presence
   in the Database Observability inventory. The collector stops publishing an
   instance it cannot reach, so presence is the health signal rather than a
-  separate check.
+  separate check. `health`'s scrape-detail fields (`has_up`, `scrape_error`,
+  `has_scrape_error`, `scrape_duration_seconds`, `has_scrape_duration`) are
+  gone with the Postgres exporter metrics they read.
+- `gcx dbo11y instances get` reports the session count, its breakdown and
+  the transaction age under `sessions` rather than as top-level
+  `connections` and `longest_tx_seconds`/`has_longest_tx`. `sessions.by_state`
+  is a map keyed by state, where `connections` was a list of
+  `{state, count}` rows.
 - `gcx dbo11y instances list` and `get` read the Database Observability
   API instead of building PromQL themselves, so they report instances on
   stacks the previous approach could not see at all, and cover MySQL and

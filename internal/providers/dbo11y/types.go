@@ -123,12 +123,19 @@ type Metrics struct {
 
 // Instance is a single row of the database inventory.
 //
-// Name and Host both carry the `instance` label, the only human-readable
-// identifier the API returns: depending on how the collector is configured
-// that is either a host:port endpoint or a logical name. ServerID is what
-// `instances get` takes.
+// Name is the collector's `service_name` where it sets one, and the monitored
+// endpoint otherwise. Host is always the endpoint. ServerID is the product's
+// own identifier, which `instances get` also accepts.
 type Instance struct {
-	Name               string `json:"name" yaml:"name"`
+	Name string `json:"name" yaml:"name"`
+
+	// Namespace and Environment are the two labels this command has always
+	// reported as fields of their own. They are `service_namespace` and
+	// `deployment_environment` in Labels, lifted out so the shape a caller
+	// parsed before still holds.
+	Namespace   string `json:"namespace,omitempty" yaml:"namespace,omitempty"`
+	Environment string `json:"environment,omitempty" yaml:"environment,omitempty"`
+
 	Engine             string `json:"engine,omitempty" yaml:"engine,omitempty"`
 	EngineVersion      string `json:"engine_version,omitempty" yaml:"engine_version,omitempty"`
 	Host               string `json:"host,omitempty" yaml:"host,omitempty"`
@@ -151,9 +158,19 @@ type Instance struct {
 }
 
 // toInstance converts the API's wire shape into the output contract.
+//
+// Name prefers the collector's `service_name` label and falls back to the
+// endpoint, which is the identity this command has always reported: a stack
+// that sets a service name sees it here, and one that does not sees the
+// endpoint. Host carries the endpoint either way, and `instances get` resolves
+// an argument against both, so neither lookup depends on which one Name took.
 func (a apiInstance) toInstance() Instance {
+	name := a.Labels["service_name"]
+	if name == "" {
+		name = a.Instance
+	}
 	return Instance{
-		Name:               a.Instance,
+		Name:               name,
 		Engine:             a.Engine,
 		EngineVersion:      a.EngineVersion,
 		Host:               a.Instance,
@@ -162,6 +179,8 @@ func (a apiInstance) toInstance() Instance {
 		ProviderAccount:    a.CloudProvider.account(),
 		ProviderRegion:     a.CloudProvider.region(),
 		ServerID:           a.ServerID,
+		Namespace:          a.Labels["service_namespace"],
+		Environment:        a.Labels["deployment_environment"],
 		Labels:             a.Labels,
 		Metrics:            a.Metrics,
 	}
