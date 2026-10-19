@@ -23,6 +23,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -92,17 +94,36 @@ func newFakeK6Loader(t *testing.T) *mockLoader {
 	mux.HandleFunc("GET /cloud/v6/load_tests/4", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"id":4,"name":"t","project_id":3}`))
 	})
-	// Newest first, as k6 Cloud returns runs for $orderby=created desc.
-	mux.HandleFunc("GET /cloud/v6/load_tests/4/test_runs", func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{"value":[` +
-			`{"id":12,"test_id":4,"project_id":3,"status":"completed",` +
-			`"status_details":{"type":"completed","entered":"2026-01-02T01:00:00Z","extra":null},` +
-			`"result":"failed","result_details":{"type":"failed","message":"One or more thresholds failed.","code":null},` +
-			`"created":"2026-01-02T00:00:00Z","ended":"2026-01-02T01:00:00Z"},` +
+	// Oldest first unless $orderby=created desc is sent, paged by $top and
+	// $skip, as k6 Cloud does.
+	mux.HandleFunc("GET /cloud/v6/load_tests/4/test_runs", func(w http.ResponseWriter, r *http.Request) {
+		runs := []string{
 			`{"id":11,"test_id":4,"project_id":3,"status":"completed",` +
-			`"status_details":{"type":"completed","entered":"2026-01-01T01:00:00Z","extra":null},` +
-			`"result":"passed","result_details":null,` +
-			`"created":"2026-01-01T00:00:00Z","ended":"2026-01-01T01:00:00Z"}]}`))
+				`"status_details":{"type":"completed","entered":"2026-01-01T01:00:00Z","extra":null},` +
+				`"result":"passed","result_details":null,` +
+				`"created":"2026-01-01T00:00:00Z","ended":"2026-01-01T01:00:00Z"}`,
+			`{"id":12,"test_id":4,"project_id":3,"status":"completed",` +
+				`"status_details":{"type":"completed","entered":"2026-01-02T01:00:00Z","extra":null},` +
+				`"result":"failed","result_details":{"type":"failed","message":"One or more thresholds failed.","code":null},` +
+				`"created":"2026-01-02T00:00:00Z","ended":"2026-01-02T01:00:00Z"}`,
+		}
+		q := r.URL.Query()
+		if q.Get("$orderby") == "created desc" {
+			slices.Reverse(runs)
+		}
+		skip, _ := strconv.Atoi(q.Get("$skip"))
+		top, err := strconv.Atoi(q.Get("$top"))
+		if err != nil {
+			top = 1000
+		}
+		page := runs[min(skip, len(runs)):min(skip+top, len(runs))]
+		_, _ = w.Write([]byte(`{"value":[` + strings.Join(page, ",") + `]}`))
+	})
+	mux.HandleFunc("GET /cloud/v6/load_tests/6", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"id":6,"name":"never-run","project_id":3}`))
+	})
+	mux.HandleFunc("GET /cloud/v6/load_tests/6/test_runs", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"value":[]}`))
 	})
 
 	// schedules
@@ -561,6 +582,31 @@ func TestK6RunsList_ReportsV6RunFields(t *testing.T) {
 		assert.NotContains(t, run, "load_test_id")
 		assert.NotContains(t, run, "result_status")
 	}
+}
+
+func TestK6RunsList_LimitReturnsNewestRuns(t *testing.T) {
+	loader := newFakeK6Loader(t)
+	stdout, _, err := runK6Command(t, false, loader, newRunsListCommand, []string{"4", "--limit", "1", "-o", "json"}, "")
+	require.NoError(t, err)
+
+	var runs []map[string]any
+	require.NoError(t, json.Unmarshal([]byte(stdout), &runs), stdout)
+	require.Len(t, runs, 1)
+	assert.EqualValues(t, 12, runs[0]["id"])
+}
+
+func TestK6RunsList_NoRunsIsEmptyArray(t *testing.T) {
+	loader := newFakeK6Loader(t)
+	stdout, _, err := runK6Command(t, false, loader, newRunsListCommand, []string{"6", "-o", "json"}, "")
+	require.NoError(t, err)
+	assert.Equal(t, "[]", strings.TrimSpace(stdout))
+}
+
+func TestK6TestRunStatus_NoRuns(t *testing.T) {
+	loader := newFakeK6Loader(t)
+	_, _, err := runK6Command(t, false, loader, newTestrunStatusCommand, []string{"--id", "6"}, "")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no test runs found for load test 6")
 }
 
 func TestTestRunStatus_ResultRepresentations(t *testing.T) {

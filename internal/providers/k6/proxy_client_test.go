@@ -371,7 +371,7 @@ func TestProxyClient_ListTestRuns(t *testing.T) {
 	})
 
 	client := newAuthenticatedProxyClient(t, handler)
-	runs, err := client.ListTestRuns(t.Context(), 6)
+	runs, err := client.ListTestRuns(t.Context(), 6, 0)
 	require.NoError(t, err)
 	require.Len(t, runs, 1)
 	assert.Equal(t, 6, runs[0].TestID)

@@ -514,24 +514,9 @@ func (c *ProxyClient) GetLoadTestByName(ctx context.Context, projectID int, name
 // Test Runs
 // ---------------------------------------------------------------------------
 
-// ListTestRuns retrieves all test runs for a load test.
-func (c *ProxyClient) ListTestRuns(ctx context.Context, loadTestID int) ([]TestRunStatus, error) {
-	path := fmt.Sprintf(loadTestsPath+"/%d/test_runs", loadTestID)
-	resp, err := c.doJSON(ctx, http.MethodGet, path, nil)
-	if err != nil {
-		return nil, fmt.Errorf("k6: list test runs: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("k6: list test runs for %d: status %d: %s", loadTestID, resp.StatusCode, readErrorBody(resp))
-	}
-
-	result, err := decodeJSON[testRunsResponse](resp)
-	if err != nil {
-		return nil, err
-	}
-	return result.Value, nil
+// ListTestRuns retrieves a load test's runs, newest first. A limit of 0 returns all of them.
+func (c *ProxyClient) ListTestRuns(ctx context.Context, loadTestID, limit int) ([]TestRunStatus, error) {
+	return listTestRuns(ctx, c.doJSON, loadTestID, limit)
 }
 
 // ---------------------------------------------------------------------------

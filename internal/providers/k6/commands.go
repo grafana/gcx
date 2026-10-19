@@ -921,11 +921,10 @@ func newRunsListCommand(loader CloudConfigLoader) *cobra.Command {
 				return errors.New("either a load test ID/name argument or --id is required")
 			}
 
-			runs, err := client.ListTestRuns(ctx, loadTestID)
+			runs, err := client.ListTestRuns(ctx, loadTestID, int(opts.Limit))
 			if err != nil {
 				return err
 			}
-			runs = adapter.TruncateSlice(runs, opts.Limit)
 			return opts.IO.Encode(cmd.OutOrStdout(), runs)
 		},
 	}
@@ -1969,7 +1968,7 @@ func newTestrunStatusCommand(loader CloudConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			runs, err := client.ListTestRuns(ctx, test.ID)
+			runs, err := client.ListTestRuns(ctx, test.ID, 1)
 			if err != nil {
 				return err
 			}
@@ -2033,11 +2032,10 @@ func newTestrunRunsListCommand(loader CloudConfigLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			runs, err := client.ListTestRuns(ctx, test.ID)
+			runs, err := client.ListTestRuns(ctx, test.ID, int(opts.Limit))
 			if err != nil {
 				return err
 			}
-			runs = adapter.TruncateSlice(runs, opts.Limit)
 			return opts.IO.Encode(cmd.OutOrStdout(), runs)
 		},
 	}
