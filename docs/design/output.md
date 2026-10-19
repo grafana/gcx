@@ -89,6 +89,11 @@ ioOpts.DefaultFormat("text")   // makes "text" the default instead of "json"
 CSV is opt-in through `output.RegisterCSV(&opts.IO)` before binding flags.
 Results implement `output.CSVMarshaler`; `output.CSV[T]` also accepts typed
 projections. Both supply export columns and rows independently of terminal tables.
+CSV preserves cell values, including formula prefixes. Spreadsheet applications
+may interpret untrusted log messages or label values as formulas; import those
+columns as text rather than opening the CSV directly. Missing Prometheus and Loki
+metric samples are represented as `NaN`, not zero. Their graph output skips
+non-finite samples.
 
 **Data fetching is format-agnostic.** Commands must fetch all available data
 in `RunE` regardless of the `--output` value. The output format controls

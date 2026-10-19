@@ -2,6 +2,7 @@ package graph
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -85,6 +86,10 @@ func parsePoint(tsVal, valVal any) (time.Time, float64, error) {
 		value = v
 	default:
 		return ts, value, fmt.Errorf("unexpected value type: %T", valVal)
+	}
+
+	if math.IsNaN(value) || math.IsInf(value, 0) {
+		return ts, value, fmt.Errorf("non-finite sample value: %v", value)
 	}
 
 	return ts, value, nil
