@@ -27,12 +27,12 @@ alone would let updates replace cron schedules with one-time schedules.
 - [x] 3.2 Add `cron` (`schedule`, `time_zone`) to schedule reads and writes, and `byday`, `until` and `count` to recurrence rules. Update the Schedule resource schema and example. Add the RECURRENCE column to the `gcx k6 schedules list` table. Verify that the "Show every recurrence setting" scenarios pass for `schedules get`, `schedules list` and `gcx resources get`, that the three "Show each schedule's recurrence in the schedules table" scenarios pass, and that the adapter schema tests pass.
 - [x] 3.3 Re-implement schedule updates in both clients: read the schedule's `load_test_id`, then POST the full request to that load test's schedule route. Use this for `gcx k6 schedules update` and the Schedule adapter's update. Verify the "Update to a cron schedule" scenario, and that pulling and pushing a cron schedule leaves its cron expression and time zone unchanged.
 - [x] 3.4 Re-implement schedule deletes in both clients. `gcx k6 load-tests delete-schedule` reads the load test's schedule and then calls `DELETE /cloud/v6/schedules/{id}`. The adapter's delete calls `DELETE /cloud/v6/schedules/{id}` directly. A not-found answer from the correct route means success; any other error fails. Replace `DeleteScheduleByLoadTest` in the `API` interface. Verify the three "Delete a load test's schedule" scenarios pass.
-- [ ] 3.5 Add *schedule*, *cron schedule* and *recurrence rule* to `docs/glossary/k6.md`. Describe the `delete-schedule` behavior change in the PR description. Run the AGENTS.md PR checklist (`GCX_AGENT_MODE=false mise run all`) and verify it passes.
+- [x] 3.5 Add *schedule*, *cron schedule* and *recurrence rule* to `docs/glossary/k6.md`. Describe the `delete-schedule` behavior change in the PR description. Run the AGENTS.md PR checklist (`GCX_AGENT_MODE=false mise run all`) and verify it passes.
 
 ## 4. Load test project guard (PR 4)
 
-- [ ] 4.1 Add tests for `gcx k6 load-tests update -f` and the LoadTest adapter's update. A different `project_id` fails with an error naming `project_id`, and the fake asserts no PATCH or script PUT was sent. A matching or omitted `project_id` updates the name. Verify the different-project case fails against today's code.
-- [ ] 4.2 Add one shared check, used by both update paths, that reads the load test and rejects a non-zero `project_id` different from its project before any write. Verify the 4.1 tests pass.
+- [x] 4.1 Add tests for `gcx k6 load-tests update -f` and the LoadTest adapter's update. A different `project_id` fails with an error naming `project_id`, and the fake asserts no PATCH or script PUT was sent. A matching or omitted `project_id` updates the name. Verify the different-project case fails against today's code.
+- [x] 4.2 Add one shared check, used by both update paths, that reads the load test and rejects a non-zero `project_id` different from its project before any write. Verify the 4.1 tests pass.
 - [ ] 4.3 Run the AGENTS.md PR checklist (`GCX_AGENT_MODE=false mise run all`) and verify it passes.
 
 ## 5. Live verification

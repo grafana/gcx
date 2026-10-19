@@ -235,7 +235,7 @@ func newLoadTestCRUD(c API, ns string, desc resources.Descriptor) adapter.Resour
 			if err != nil {
 				return nil, fmt.Errorf("k6: invalid load test ID %q: %w", name, err)
 			}
-			if err := c.UpdateLoadTest(ctx, id, lt.Name, lt.Script); err != nil {
+			if err := updateLoadTest(ctx, c, id, *lt); err != nil {
 				return nil, err
 			}
 			return c.GetLoadTest(ctx, id)
@@ -599,7 +599,7 @@ func NewTypedCRUDLoadTest(ctx context.Context, loader CloudConfigLoader) (*adapt
 			if err != nil {
 				return nil, fmt.Errorf("k6: invalid load test ID %q: %w", name, err)
 			}
-			if err := client.UpdateLoadTest(ctx, id, lt.Name, lt.Script); err != nil {
+			if err := updateLoadTest(ctx, client, id, *lt); err != nil {
 				return nil, err
 			}
 			return client.GetLoadTest(ctx, id)

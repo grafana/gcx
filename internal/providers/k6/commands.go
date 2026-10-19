@@ -709,7 +709,7 @@ func newTestsUpdateCommand(loader CloudConfigLoader) *cobra.Command {
 				return fmt.Errorf("failed to parse input: %w", err)
 			}
 
-			if err := client.UpdateLoadTest(ctx, id, lt.Name, lt.Script); err != nil {
+			if err := updateLoadTest(ctx, client, id, lt); err != nil {
 				return err
 			}
 
