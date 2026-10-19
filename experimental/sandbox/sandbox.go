@@ -21,6 +21,8 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/tetratelabs/wazero"
@@ -36,7 +38,8 @@ type Config struct {
 	// avoids the ~40s cold compile of gcx. It can be read-only when it
 	// already holds this module's code. If it can't be read, or a miss can't
 	// be written, New compiles without it rather than fail, and
-	// Runtime.CacheError says why.
+	// Runtime.CacheError says why. A read-only miss compiles twice: wazero
+	// fails only when storing the first.
 	CacheDir string
 	// MemoryLimitBytes caps each instance's linear memory, rounded down to
 	// 64 KiB pages. Zero means wazero's default (4 GiB).
@@ -64,6 +67,7 @@ type Runtime struct {
 	compiled  wazero.CompiledModule
 	transport http.RoundTripper
 	cache     wazero.CompilationCache // nil without Config.CacheDir
+	cacheDir  string                  // Config.CacheDir
 	cacheErr  error                   // why New compiled without Config.CacheDir
 	root      string                  // empty directory mounted read-only at /
 
@@ -90,7 +94,7 @@ type Runtime struct {
 // New compiles the gcx wasip1 module (see build.sh).
 func New(ctx context.Context, wasm []byte, cfg Config) (*Runtime, error) {
 	r, err := newRuntime(ctx, wasm, cfg)
-	if err == nil || cfg.CacheDir == "" || !isCacheError(err) {
+	if err == nil || !isCacheError(err, cfg.CacheDir) {
 		return r, err
 	}
 	// The cache's files can't be read or written, such as a root-only copy,
@@ -113,11 +117,22 @@ func (r *Runtime) CacheError() error { return r.cacheErr }
 // as text alone.
 var errCacheDir = errors.New("opening the compilation cache")
 
-// isCacheError reports whether err came from the compilation cache rather
-// than from compiling: wazero returns its files' *fs.PathError as is.
-func isCacheError(err error) bool {
+// isCacheError reports whether err came from the compilation cache in dir
+// rather than from compiling: wazero returns its files' *fs.PathError as is.
+// Other paths, such as the guest's root under TMPDIR, aren't the cache's.
+func isCacheError(err error, dir string) bool {
+	if dir == "" {
+		return false
+	}
+	if errors.Is(err, errCacheDir) {
+		return true
+	}
 	var pathErr *fs.PathError
-	return errors.Is(err, errCacheDir) || errors.As(err, &pathErr)
+	if !errors.As(err, &pathErr) {
+		return false
+	}
+	rel, relErr := filepath.Rel(dir, pathErr.Path)
+	return relErr == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 func newRuntime(ctx context.Context, wasm []byte, cfg Config) (*Runtime, error) {
@@ -142,6 +157,7 @@ func newRuntime(ctx context.Context, wasm []byte, cfg Config) (*Runtime, error) 
 		rt:           wazero.NewRuntimeWithConfig(ctx, rcfg),
 		transport:    cfg.Transport,
 		cache:        cache,
+		cacheDir:     cfg.CacheDir,
 		newRunMemory: newRunMemory,
 		releaseImage: func() {},
 		cancels:      map[*context.CancelCauseFunc]struct{}{},
@@ -173,7 +189,7 @@ func (r *Runtime) init(ctx context.Context, wasm []byte) error {
 	// every instance shares (see image_linux.go).
 	module, runMemory, release := newMemoryImage(wasm)
 	compiled, err := r.rt.CompileModule(ctx, module)
-	if err != nil && release != nil && !isCacheError(err) {
+	if err != nil && release != nil && !isCacheError(err, r.cacheDir) {
 		// The image is best effort: if wazero rejects the module without its
 		// segments, run the original, which copies them into each instance.
 		// A cache error isn't a rejection, and retrying would only report

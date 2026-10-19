@@ -146,7 +146,8 @@ of about 40 s, and the cache can stay read-only. Its files are world-readable,
 so the embedder can run as any user. If they can't be read, or the cache misses
 and can't be written, `New` compiles from scratch instead of failing, and
 `Runtime.CacheError` says why: log it, since every start then takes ~40 s or
-more.
+more. A read-only cache that misses costs two compiles, about 80 s: wazero
+fails only when storing the first.
 
 - **Use the tag matching your version of this module.** A sandbox host runs only
   modules from the same gcx version, so pin `sandbox-vX.Y.Z` to match your

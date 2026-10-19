@@ -5,11 +5,14 @@ package sandbox
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
 	"testing"
+	"time"
 )
 
 // cachedRuntime compiles the stdin guest with dir as its cache.
@@ -78,11 +81,63 @@ func assertRuns(t *testing.T, r *Runtime) {
 func TestNewUsesCache(t *testing.T) {
 	dir := t.TempDir()
 	cachedRuntime(t, dir)
+	before := cacheEntries(t, dir)
 	r := cachedRuntime(t, dir)
 	if err := r.CacheError(); err != nil {
 		t.Fatalf("CacheError: %v, want nil", err)
 	}
+	// A miss would have rewritten the entry.
+	if after := cacheEntries(t, dir); !maps.Equal(after, before) {
+		t.Fatalf("cache entries changed from %v to %v: New missed", before, after)
+	}
 	assertRuns(t, r)
+}
+
+// cacheEntries returns the modification time of each entry in dir.
+func cacheEntries(t *testing.T, dir string) map[string]time.Time {
+	t.Helper()
+	paths, err := filepath.Glob(filepath.Join(dir, "*", "*"))
+	if err != nil || len(paths) == 0 {
+		t.Fatalf("no cache entries (%v)", err)
+	}
+	entries := map[string]time.Time{}
+	for _, p := range paths {
+		info, err := os.Stat(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		entries[p] = info.ModTime()
+	}
+	return entries
+}
+
+// Errors outside the cache directory, like the guest's root under TMPDIR,
+// aren't the cache's.
+func TestIsCacheError(t *testing.T) {
+	dir := t.TempDir()
+	inCache := &fs.PathError{Op: "open", Path: filepath.Join(dir, "wazero-v1", "entry"), Err: fs.ErrPermission}
+	outside := &fs.PathError{Op: "mkdirtemp", Path: filepath.Join(os.TempDir(), "gcx-sandbox-root"), Err: fs.ErrPermission}
+	sibling := &fs.PathError{Op: "open", Path: dir + "-other/entry", Err: fs.ErrPermission}
+	for _, tc := range []struct {
+		name string
+		err  error
+		dir  string
+		want bool
+	}{
+		{name: "entry in the cache", err: inCache, dir: dir, want: true},
+		{name: "wrapped entry in the cache", err: fmt.Errorf("compiling: %w", inCache), dir: dir, want: true},
+		{name: "opening the cache", err: fmt.Errorf("%w: %w", errCacheDir, errors.New("mkdir: permission denied")), dir: dir, want: true},
+		{name: "path outside the cache", err: outside, dir: dir, want: false},
+		{name: "sibling of the cache", err: sibling, dir: dir, want: false},
+		{name: "no cache", err: inCache, dir: "", want: false},
+		{name: "not a path error", err: errors.New("invalid module"), dir: dir, want: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isCacheError(tc.err, tc.dir); got != tc.want {
+				t.Fatalf("isCacheError(%v) = %v, want %v", tc.err, got, tc.want)
+			}
+		})
+	}
 }
 
 // A cache its user can't read, like a root-only copy in an image, costs a

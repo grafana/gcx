@@ -44,6 +44,11 @@ func run() error {
 		return fmt.Errorf("compiling: %w", err)
 	}
 	defer rt.Close(ctx)
+	// New compiles without a cache it can't use, which would publish an
+	// empty one.
+	if err := rt.CacheError(); err != nil {
+		return fmt.Errorf("the cache did not take the compiled code: %w", err)
+	}
 	fmt.Fprintf(os.Stdout, "compiled in %v\n", time.Since(start).Round(time.Millisecond))
 
 	var stdout, stderr bytes.Buffer
