@@ -67,10 +67,6 @@ Basic authentication, but it does not select Basic mode by itself. A password
 without a deliberate user/method selection is not a complete credential and
 must not let ambient process state override OAuth, token, or mTLS.
 
-Legacy contexts with no `auth-method` retain configured TLS client certificates
-when `GRAFANA_TOKEN` overrides HTTP authentication, so gateways that require both
-mTLS and a bearer token remain usable.
-
 Legacy contexts with no `auth-method` retain compatibility inference in this
 order: OAuth proxy, service-account token, Basic, then mTLS or anonymous. A
 partial or rejected higher-priority credential is evidence that authentication
