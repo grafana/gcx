@@ -9,7 +9,7 @@ Produce one proposal that a reader with no access to the conversation can unders
 
 Read the [contribution workflow](../../../CONTRIBUTING.md#contributing-code) for when a proposal is needed and what follows acceptance. Use [`contribute`](../contribute/SKILL.md) when selecting the contribution route or preparing implementation. Follow that policy; a user may also request a proposal draft for work whose route does not require one.
 
-The repository is public. Follow the anonymization rules in the GitHub Issues section of [CLAUDE.md](../../../CLAUDE.md). Use public evidence or independently developed material suitable for public review. Keep restricted research outside the checkout; removing links or attribution does not make internal findings publishable.
+The repository is public. Follow the anonymization rules in the GitHub Issues section of [CLAUDE.md](../../../AGENTS.md). Use public evidence or independently developed material suitable for public review. Keep restricted research outside the checkout; removing links or attribution does not make internal findings publishable.
 
 ## Ground the idea
 

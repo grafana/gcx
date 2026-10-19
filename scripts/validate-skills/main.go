@@ -28,9 +28,9 @@ const (
 )
 
 func main() {
-	// One shared tree keeps both agent discovery paths in sync without generation.
-	if target, err := os.Readlink(".claude/skills"); err != nil || target != "../.agents/skills" {
-		fmt.Fprintln(os.Stderr, ".claude/skills must be a symlink to ../.agents/skills")
+	// Validate the Git entry: some checkouts materialize symlinks as files or directories.
+	if err := validateTrackedSkillsLink(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 
@@ -73,6 +73,33 @@ func main() {
 	}
 
 	_, _ = fmt.Fprintf(os.Stdout, "validated %s, %s\n", bundleRoot, repoLocalRoot)
+}
+
+// validateTrackedSkillsLink checks the index mode and blob, independent of how
+// the working tree represents the link. Checking the index also validates staged changes.
+func validateTrackedSkillsLink() error {
+	const path = ".claude/skills"
+	out, err := exec.CommandContext(context.Background(), "git", "ls-files", "--stage", "-z", "--", path).Output()
+	if err != nil {
+		return fmt.Errorf("read tracked skills link: %w", err)
+	}
+	entries := strings.Split(strings.TrimSuffix(string(out), "\x00"), "\x00")
+	if len(entries) != 1 {
+		return errors.New("git must track .claude/skills as a symlink to ../.agents/skills")
+	}
+	metadata, name, ok := strings.Cut(entries[0], "\t")
+	fields := strings.Fields(metadata)
+	if !ok || name != path || len(fields) != 3 || fields[0] != "120000" || fields[2] != "0" {
+		return errors.New("git must track .claude/skills as a symlink to ../.agents/skills")
+	}
+	target, err := exec.CommandContext(context.Background(), "git", "cat-file", "blob", ":.claude/skills").Output()
+	if err != nil {
+		return fmt.Errorf("read tracked skills link target: %w", err)
+	}
+	if string(target) != "../.agents/skills" {
+		return errors.New("git-tracked .claude/skills must point to ../.agents/skills")
+	}
+	return nil
 }
 
 // skillFilesUnder returns every SKILL.md below root.

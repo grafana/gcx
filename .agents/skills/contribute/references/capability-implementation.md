@@ -15,7 +15,7 @@ current build; user-facing examples say `gcx`.
 
 > Detail: [placement-and-readiness.md](placement-and-readiness.md)
 
-Inventory the tree first — a new leaf competes for every agent's attention:
+Inventory the tree first to see if an existing command tree would suit the new capability:
 
 ```bash
 bin/gcx help-tree

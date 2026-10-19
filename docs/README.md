@@ -22,7 +22,7 @@ To build the Grafana.com-style docs locally:
 - **[ARCHITECTURE.md](../ARCHITECTURE.md)** — Architecture overview, pipeline diagrams, ADR index
 - **[DESIGN.md](../DESIGN.md)** — CLI UX design: command grammar, output model, taste rules
 - **[CONTRIBUTING.md](../CONTRIBUTING.md)** — Dev setup, testing, contribution workflow
-- **[Engineering RFCs](rfcs/README.md)** — Proposals, tradeoffs, and validation criteria
+- **[Engineering RFCs](rfcs/README.md)** — Proposals, tradeoffs, and open questions
 - **[Architecture](architecture/README.md)** — Deep-dive architecture docs per domain
 
 ## Directory Layout
