@@ -37,7 +37,7 @@ func TestGroupRulesTableCodec_Encode(t *testing.T) {
 }
 
 func TestGroupsStatusTableCodec_Encode(t *testing.T) {
-	codec := &alert.GroupsStatusTableCodec{}
+	codec := alert.GroupsStatusTable().Codec("table")
 	assert.Equal(t, "table", string(codec.Format()))
 
 	groups := []alert.RuleGroup{
@@ -81,7 +81,7 @@ func TestGroupsStatusTableCodec_Encode(t *testing.T) {
 }
 
 func TestGroupsStatusTableCodec_InvalidType(t *testing.T) {
-	codec := &alert.GroupsStatusTableCodec{}
+	codec := alert.GroupsStatusTable().Codec("table")
 	var buf bytes.Buffer
 	err := codec.Encode(&buf, "not a slice")
 	require.Error(t, err)

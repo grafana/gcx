@@ -100,6 +100,8 @@ const grafanaAuthMethodAnonymous = "anonymous"
 // over a persisted auth-method from another mode. The marker lives only on the
 // resolved Context, so this derived selector can never be serialized back into
 // the stack's auth-method field.
+// The selection's explicit flag follows the persisted auth-method to preserve
+// its TLS policy even when the runtime token selects a different mode.
 //
 // Every decided selection is also recorded for the anonymous usage event here
 // rather than in any one consumer, because this method is the single authority
