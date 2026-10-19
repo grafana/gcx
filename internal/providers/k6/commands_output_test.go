@@ -82,7 +82,10 @@ func newFakeK6Loader(t *testing.T) *mockLoader {
 	mux.HandleFunc("DELETE /cloud/v6/load_tests/9", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	})
-	mux.HandleFunc("DELETE /cloud/v6/load_tests/9/schedule", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("GET /cloud/v6/load_tests/9/schedule", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"id":12,"load_test_id":9}`))
+	})
+	mux.HandleFunc("DELETE /cloud/v6/schedules/12", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	})
 	mux.HandleFunc("POST /cloud/v6/load_tests/9/schedule", func(w http.ResponseWriter, _ *http.Request) {
@@ -127,7 +130,7 @@ func newFakeK6Loader(t *testing.T) *mockLoader {
 	})
 
 	// schedules
-	mux.HandleFunc("PUT /cloud/v6/schedules/12", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("GET /cloud/v6/schedules/12", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"id":12,"load_test_id":9}`))
 	})
 

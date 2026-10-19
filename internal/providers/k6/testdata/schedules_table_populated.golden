@@ -1,3 +1,4 @@
-ID  LOAD TEST  STARTS            NEXT RUN          DEACTIVATED
-42  7          2026-09-01T12:34  2026-09-02T13:45  yes
-7   0          -                 -                 -
+ID  LOAD TEST  STARTS            RECURRENCE                      NEXT RUN          DEACTIVATED
+42  7          2026-09-01T12:34  cron 20 13 * * * Europe/London  2026-09-02T13:45  yes
+43  8          2026-09-01T12:34  WEEKLY every 2 on MO,FR         -                 -
+7   0          -                 once                            -                 -

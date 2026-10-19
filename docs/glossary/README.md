@@ -7,7 +7,7 @@ feature ships; then they move here.
 | Context | File | Covers |
 |---------|------|--------|
 | Alerting | [alerting.md](alerting.md) | Notification routing: routing trees, notification policies, receivers, integrations |
-| k6 | [k6.md](k6.md) | Grafana Cloud k6: load tests, test runs, run status and results |
+| k6 | [k6.md](k6.md) | Grafana Cloud k6: load tests, test runs, run status and results, schedules |
 
 ## How the contexts relate
 

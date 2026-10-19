@@ -268,6 +268,7 @@ func newScheduleCRUD(c API, ns string, desc resources.Descriptor) adapter.Resour
 			req := ScheduleRequest{
 				Starts:         s.Starts,
 				RecurrenceRule: s.RecurrenceRule,
+				Cron:           s.Cron,
 			}
 			return c.CreateSchedule(ctx, s.LoadTestID, req)
 		},
@@ -279,6 +280,7 @@ func newScheduleCRUD(c API, ns string, desc resources.Descriptor) adapter.Resour
 			req := ScheduleRequest{
 				Starts:         s.Starts,
 				RecurrenceRule: s.RecurrenceRule,
+				Cron:           s.Cron,
 			}
 			return c.UpdateScheduleByID(ctx, id, req)
 		},
@@ -287,12 +289,7 @@ func newScheduleCRUD(c API, ns string, desc resources.Descriptor) adapter.Resour
 			if err != nil {
 				return fmt.Errorf("k6: invalid schedule ID %q: %w", name, err)
 			}
-			// Get the schedule first to find its load test ID for deletion.
-			s, err := c.GetSchedule(ctx, id)
-			if err != nil {
-				return err
-			}
-			return c.DeleteScheduleByLoadTest(ctx, s.LoadTestID)
+			return c.DeleteSchedule(ctx, id)
 		},
 		Namespace:   ns,
 		StripFields: []string{"id"},
@@ -478,7 +475,18 @@ func scheduleSchema() json.RawMessage {
 			"properties": map[string]any{
 				"frequency": map[string]any{"type": "string"},
 				"interval":  map[string]any{"type": "integer"},
+				"byday":     map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+				"until":     map[string]any{"type": "string"},
+				"count":     map[string]any{"type": "integer"},
 			},
+		},
+		"cron": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"schedule":  map[string]any{"type": "string"},
+				"time_zone": map[string]any{"type": "string"},
+			},
+			"required": []string{"schedule", "time_zone"},
 		},
 		"deactivated": map[string]any{"type": "boolean"},
 	}, []string{"load_test_id"})
@@ -488,9 +496,9 @@ func scheduleExample() json.RawMessage {
 	return resourceExample("Schedule", "12345", map[string]any{
 		"load_test_id": 1,
 		"starts":       "2026-01-01T00:00:00Z",
-		"recurrence_rule": map[string]any{
-			"frequency": "DAILY",
-			"interval":  1,
+		"cron": map[string]any{
+			"schedule":  "0 6 * * 1-5",
+			"time_zone": "UTC",
 		},
 	})
 }
@@ -626,6 +634,7 @@ func NewTypedCRUDSchedule(ctx context.Context, loader CloudConfigLoader) (*adapt
 			req := ScheduleRequest{
 				Starts:         s.Starts,
 				RecurrenceRule: s.RecurrenceRule,
+				Cron:           s.Cron,
 			}
 			return client.CreateSchedule(ctx, s.LoadTestID, req)
 		},
@@ -637,6 +646,7 @@ func NewTypedCRUDSchedule(ctx context.Context, loader CloudConfigLoader) (*adapt
 			req := ScheduleRequest{
 				Starts:         s.Starts,
 				RecurrenceRule: s.RecurrenceRule,
+				Cron:           s.Cron,
 			}
 			return client.UpdateScheduleByID(ctx, id, req)
 		},
@@ -645,11 +655,7 @@ func NewTypedCRUDSchedule(ctx context.Context, loader CloudConfigLoader) (*adapt
 			if err != nil {
 				return fmt.Errorf("k6: invalid schedule ID %q: %w", name, err)
 			}
-			s, err := client.GetSchedule(ctx, id)
-			if err != nil {
-				return err
-			}
-			return client.DeleteScheduleByLoadTest(ctx, s.LoadTestID)
+			return client.DeleteSchedule(ctx, id)
 		},
 	}
 	return crud, ns, nil

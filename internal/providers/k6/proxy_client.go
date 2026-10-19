@@ -678,42 +678,19 @@ func (c *ProxyClient) CreateSchedule(ctx context.Context, loadTestID int, req Sc
 	return &s, nil
 }
 
-// UpdateScheduleByID updates a schedule by its ID.
+// UpdateScheduleByID replaces a schedule, keeping it on the same load test.
 func (c *ProxyClient) UpdateScheduleByID(ctx context.Context, id int, req ScheduleRequest) (*Schedule, error) {
-	resp, err := c.doJSON(ctx, http.MethodPut, fmt.Sprintf(schedulesPath+"/%d", id), req)
-	if err != nil {
-		return nil, fmt.Errorf("k6: update schedule: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
-		return nil, fmt.Errorf("k6: update schedule %d: status %d: %s", id, resp.StatusCode, readErrorBody(resp))
-	}
-
-	if resp.StatusCode == http.StatusNoContent {
-		return c.GetSchedule(ctx, id)
-	}
-
-	s, err := decodeJSON[Schedule](resp)
-	if err != nil {
-		return nil, err
-	}
-	return &s, nil
+	return updateSchedule(ctx, c, id, req)
 }
 
-// DeleteScheduleByLoadTest deletes the schedule for a load test.
-func (c *ProxyClient) DeleteScheduleByLoadTest(ctx context.Context, loadTestID int) error {
-	path := fmt.Sprintf(loadTestsPath+"/%d/schedule", loadTestID)
-	resp, err := c.doJSON(ctx, http.MethodDelete, path, nil)
-	if err != nil {
-		return fmt.Errorf("k6: delete schedule: %w", err)
-	}
-	defer resp.Body.Close()
+// DeleteSchedule deletes a schedule by ID. A schedule that is already gone counts as deleted.
+func (c *ProxyClient) DeleteSchedule(ctx context.Context, id int) error {
+	return deleteSchedule(ctx, c.doJSON, id)
+}
 
-	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusNotFound {
-		return fmt.Errorf("k6: delete schedule for load test %d: status %d: %s", loadTestID, resp.StatusCode, readErrorBody(resp))
-	}
-	return nil
+// GetLoadTestSchedule returns a load test's schedule, or errNoSchedule when it has none.
+func (c *ProxyClient) GetLoadTestSchedule(ctx context.Context, loadTestID int) (*Schedule, error) {
+	return getLoadTestSchedule(ctx, c.doJSON, loadTestID)
 }
 
 // ---------------------------------------------------------------------------

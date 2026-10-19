@@ -47,7 +47,8 @@ type API interface { //nolint:interfacebloat
 	GetSchedule(ctx context.Context, id int) (*Schedule, error)
 	CreateSchedule(ctx context.Context, loadTestID int, req ScheduleRequest) (*Schedule, error)
 	UpdateScheduleByID(ctx context.Context, id int, req ScheduleRequest) (*Schedule, error)
-	DeleteScheduleByLoadTest(ctx context.Context, loadTestID int) error
+	DeleteSchedule(ctx context.Context, id int) error
+	GetLoadTestSchedule(ctx context.Context, loadTestID int) (*Schedule, error)
 
 	// Load zones
 	ListLoadZones(ctx context.Context) ([]LoadZone, error)

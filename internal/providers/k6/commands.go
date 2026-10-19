@@ -850,9 +850,7 @@ func newTestsDeleteScheduleCommand(loader CloudConfigLoader) *cobra.Command {
 		successText: func(m cmdio.SingleMutation) string {
 			return "Deleted schedule for load test " + m.Target.ID
 		},
-		deleteFn: func(ctx context.Context, client API, id int) error {
-			return client.DeleteScheduleByLoadTest(ctx, id)
-		},
+		deleteFn: deleteLoadTestSchedule,
 	})
 }
 
@@ -1241,6 +1239,7 @@ func ScheduleTable() cmdio.Table[Schedule] {
 		{Header: "ID", Content: func(s Schedule) string { return strconv.Itoa(s.ID) }},
 		{Header: "LOAD TEST", Content: func(s Schedule) string { return strconv.Itoa(s.LoadTestID) }},
 		{Header: "STARTS", Content: func(s Schedule) string { return tableTimestamp(s.Starts) }},
+		{Header: "RECURRENCE", Content: scheduleRecurrence},
 		{Header: "NEXT RUN", Content: func(s Schedule) string { return tableTimestamp(s.NextRun) }},
 		{Header: "DEACTIVATED", Content: func(s Schedule) string {
 			if s.Deactivated {
@@ -1249,6 +1248,21 @@ func ScheduleTable() cmdio.Table[Schedule] {
 			return "-"
 		}},
 	}}
+}
+
+func scheduleRecurrence(s Schedule) string {
+	switch {
+	case s.Cron != nil:
+		return "cron " + s.Cron.Schedule + " " + s.Cron.TimeZone
+	case s.RecurrenceRule != nil:
+		recurrence := fmt.Sprintf("%s every %d", s.RecurrenceRule.Frequency, s.RecurrenceRule.Interval)
+		if len(s.RecurrenceRule.ByDay) > 0 {
+			recurrence += " on " + strings.Join(s.RecurrenceRule.ByDay, ",")
+		}
+		return recurrence
+	default:
+		return "once"
+	}
 }
 
 type schedulesListOpts struct {
@@ -1435,11 +1449,12 @@ func newSchedulesUpdateCommand(loader CloudConfigLoader) *cobra.Command {
 				return fmt.Errorf("failed to parse input: %w", err)
 			}
 
-			if _, err := client.UpdateScheduleByID(ctx, id, req); err != nil {
+			updated, err := client.UpdateScheduleByID(ctx, id, req)
+			if err != nil {
 				return err
 			}
 
-			result := cmdio.NewSingleMutation("updated", cmdio.MutationTarget{Kind: "schedule", ID: strconv.Itoa(id)})
+			result := cmdio.NewSingleMutation("updated", cmdio.MutationTarget{Kind: "schedule", ID: strconv.Itoa(updated.ID)})
 			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
 	}

@@ -632,64 +632,6 @@ func TestProxyClient_CreateSchedule(t *testing.T) {
 	assert.Equal(t, 10, s.ID)
 }
 
-func TestProxyClient_UpdateScheduleByID(t *testing.T) {
-	t.Run("200 OK with body", func(t *testing.T) {
-		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			assert.Equal(t, http.MethodPut, r.Method)
-			assert.Equal(t, "/cloud/v6/schedules/10", r.URL.Path)
-			writeJSON(t, w, map[string]any{
-				"id": 10, "load_test_id": 5, "starts": "2026-07-01T12:00:00Z",
-			})
-		})
-
-		client := newAuthenticatedProxyClient(t, handler)
-		s, err := client.UpdateScheduleByID(t.Context(), 10, k6.ScheduleRequest{
-			Starts: "2026-07-01T12:00:00Z",
-		})
-		require.NoError(t, err)
-		assert.Equal(t, "2026-07-01T12:00:00Z", s.Starts)
-	})
-
-	t.Run("204 No Content re-fetches", func(t *testing.T) {
-		calls := 0
-		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			calls++
-			if calls == 1 {
-				assert.Equal(t, http.MethodPut, r.Method)
-				w.WriteHeader(http.StatusNoContent)
-				return
-			}
-			// Re-fetch via GetSchedule
-			assert.Equal(t, http.MethodGet, r.Method)
-			assert.Equal(t, "/cloud/v6/schedules/10", r.URL.Path)
-			writeJSON(t, w, map[string]any{
-				"id": 10, "load_test_id": 5, "starts": "2026-07-01T12:00:00Z",
-			})
-		})
-
-		client := newAuthenticatedProxyClient(t, handler)
-		s, err := client.UpdateScheduleByID(t.Context(), 10, k6.ScheduleRequest{
-			Starts: "2026-07-01T12:00:00Z",
-		})
-		require.NoError(t, err)
-		require.NotNil(t, s)
-		assert.Equal(t, 10, s.ID)
-		assert.Equal(t, 2, calls)
-	})
-}
-
-func TestProxyClient_DeleteScheduleByLoadTest(t *testing.T) {
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, http.MethodDelete, r.Method)
-		assert.Equal(t, "/cloud/v6/load_tests/5/schedule", r.URL.Path)
-		w.WriteHeader(http.StatusNoContent)
-	})
-
-	client := newAuthenticatedProxyClient(t, handler)
-	err := client.DeleteScheduleByLoadTest(t.Context(), 5)
-	require.NoError(t, err)
-}
-
 func TestProxyClient_ListLoadZones(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)

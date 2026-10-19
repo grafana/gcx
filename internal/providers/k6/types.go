@@ -124,6 +124,7 @@ type Schedule struct {
 	LoadTestID     int             `json:"load_test_id,omitzero"`
 	Starts         string          `json:"starts,omitzero"`
 	RecurrenceRule *RecurrenceRule `json:"recurrence_rule,omitzero"`
+	Cron           *ScheduleCron   `json:"cron,omitzero"`
 	Deactivated    bool            `json:"deactivated,omitzero"`
 	Created        string          `json:"created,omitzero"`
 	NextRun        string          `json:"next_run,omitzero"`
@@ -131,14 +132,25 @@ type Schedule struct {
 
 // RecurrenceRule defines how often a schedule runs.
 type RecurrenceRule struct {
-	Frequency string `json:"frequency"` // HOURLY, DAILY, WEEKLY, MONTHLY
-	Interval  int    `json:"interval"`
+	Frequency string   `json:"frequency"` // HOURLY, DAILY, WEEKLY, MONTHLY, YEARLY
+	Interval  int      `json:"interval"`
+	ByDay     []string `json:"byday,omitzero"` // MO through SU, WEEKLY only
+	Until     string   `json:"until,omitzero"`
+	Count     int      `json:"count,omitzero"`
+}
+
+// ScheduleCron runs a schedule on a cron expression in a time zone.
+type ScheduleCron struct {
+	Schedule string `json:"schedule"`
+	TimeZone string `json:"time_zone"`
 }
 
 // ScheduleRequest is the request body for creating or updating a schedule.
+// k6 Cloud accepts either a recurrence rule or a cron schedule, not both.
 type ScheduleRequest struct {
 	Starts         string          `json:"starts,omitzero"`
 	RecurrenceRule *RecurrenceRule `json:"recurrence_rule,omitzero"`
+	Cron           *ScheduleCron   `json:"cron,omitzero"`
 }
 
 // schedulesResponse is the response from listing schedules.
