@@ -234,5 +234,21 @@ func (a apiQuery) toTopQuery() TopQuery {
 type InstanceDetail struct {
 	Instance   Instance   `json:"instance" yaml:"instance"`
 	Window     string     `json:"window" yaml:"window"`
+	Health     Health     `json:"health" yaml:"health"`
 	TopQueries []TopQuery `json:"top_queries,omitempty" yaml:"top_queries,omitempty"`
+}
+
+// Health is whether the instance is reporting to Database Observability.
+//
+// It is the instance's presence in the inventory rather than a separate
+// measurement, because presence already is one: the collector unregisters an
+// instance after three consecutive failed database pings, so one it cannot
+// reach stops being returned after about three minutes. Up is therefore true
+// for every instance the API knows about and false for one it does not.
+//
+// What that cannot distinguish is an instance that has gone away from one that
+// never existed — both are simply absent — so a false Up is reported alongside
+// the not-found hint rather than on its own.
+type Health struct {
+	Up bool `json:"up" yaml:"up"`
 }

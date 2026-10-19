@@ -93,11 +93,16 @@ Postgres, MySQL and SQL Server. Top queries are ranked by the share of
 database time each statement accounts for, and carry the statement's own
 normalized SQL.
 
-Exporter health, connection counts by state, active wait events and the
-longest running transaction are not reported: the API models the inventory,
-a RED rollup and per-statement performance, not scrape health or session
-state. Those signals live in the stack's own metrics, so "gcx metrics query"
-reaches them, for example sum by (state) (pg_stat_activity_count{...}).
+"health" reports whether the instance is reporting to Database Observability,
+which is its presence in the inventory rather than a separate check: the
+collector stops publishing an instance it cannot reach after about three
+minutes, so an instance that answers at all is one being collected from.
+
+Connection counts by state, active wait events and the longest running
+transaction are not reported: the API models the inventory, a RED rollup and
+per-statement performance, not instance-wide session state. Those signals live
+in the stack's own metrics, so "gcx metrics query" reaches them, for example
+sum by (state) (pg_stat_activity_count{...}).
 
 --filter only scopes the top-queries view to one database; the instance
 metadata is unaffected.`,
@@ -120,7 +125,7 @@ metadata is unaffected.`,
 		RunE: runGet(loader, opts),
 		Annotations: map[string]string{
 			agent.AnnotationTokenCost: "small",
-			agent.AnnotationLLMHint:   `Per-instance Database Observability snapshot, read from the Database Observability API. Argument is the instance name from 'gcx dbo11y instances list' or its server_id; both resolve. Reports instance metadata, a RED rollup under instance.metrics (qps, avg_latency_ms, error_rate, AWS-only cpu_percent) over the backend's own fixed window, and top_queries ranked by time_per_second (share of database time) with query_text, rows_examined and per-query error_rate. Engine-agnostic across Postgres/MySQL/SQL Server, except that per-query error_rate is absent for postgres and rows_examined is absent for sql_server. Exporter health, connection counts, wait events and the longest running transaction are not reported: the API models inventory, RED and per-statement performance, not scrape health or instance-wide session state (its wait-event route is per-query, not per-instance). Use 'gcx metrics query' against pg_stat_activity for those, and note that an instance leaving 'instances list' is itself a connectivity signal — the collector unregisters its inventory metric after ~3 minutes of failed pings. --top (default 10) caps the queries list, clamped to the API maximum of 100; each row carries its SQL text, so a high --top costs several times the default output. --since is accepted but has no effect yet: the backend evaluates each query's figures over its own fixed window. --filter label=value (repeatable, ANDed) scopes top queries via datname, schema, database, query_id or digest; exact match only, and any other field is a usage error rather than an empty result. The queries route ignores filters, so gcx applies them after the API has ranked the statements. On a name or server_id that matches nothing this command emits its result document, checks the stack's Database Observability activation status, and exits 1. Examples: gcx dbo11y instances get <instance> -o json; gcx dbo11y instances get <instance> --top 20 -o json`,
+			agent.AnnotationLLMHint:   `Per-instance Database Observability snapshot, read from the Database Observability API. Argument is the instance name from 'gcx dbo11y instances list' or its server_id; both resolve. Reports instance metadata, a RED rollup under instance.metrics (qps, avg_latency_ms, error_rate, AWS-only cpu_percent) over the backend's own fixed window, and top_queries ranked by time_per_second (share of database time) with query_text, rows_examined and per-query error_rate. Engine-agnostic across Postgres/MySQL/SQL Server, except that per-query error_rate is absent for postgres and rows_examined is absent for sql_server. health.up reports whether the instance is reporting to Database Observability, which is its presence in the inventory rather than a separate check — the collector unregisters an instance it cannot reach after ~3 minutes of failed pings, so an instance that answers at all is being collected from, and a missing one reports health.up false alongside the not-found hint. Connection counts, wait events and the longest running transaction are not reported: the API models inventory, RED and per-statement performance, not instance-wide session state (its wait-event route is per-query, not per-instance). Use 'gcx metrics query' against pg_stat_activity for those. --top (default 10) caps the queries list, clamped to the API maximum of 100; each row carries its SQL text, so a high --top costs several times the default output. --since is accepted but has no effect yet: the backend evaluates each query's figures over its own fixed window. --filter label=value (repeatable, ANDed) scopes top queries via datname, schema, database, query_id or digest; exact match only, and any other field is a usage error rather than an empty result. The queries route ignores filters, so gcx applies them after the API has ranked the statements. On a name or server_id that matches nothing this command emits its result document, checks the stack's Database Observability activation status, and exits 1. Examples: gcx dbo11y instances get <instance> -o json; gcx dbo11y instances get <instance> --top 20 -o json`,
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -183,8 +188,10 @@ func runGet(loader *providers.ConfigLoader, opts *getOpts) func(*cobra.Command, 
 		}
 
 		detail := &InstanceDetail{
-			Instance:   inst,
-			Window:     backendQueryWindow,
+			Instance: inst,
+			Window:   backendQueryWindow,
+			// The API returned this instance, which is what reporting means.
+			Health:     Health{Up: true},
 			TopQueries: topQueries,
 		}
 		if encErr := opts.IO.Encode(cmd.OutOrStdout(), detail); encErr != nil {
@@ -262,6 +269,8 @@ func isInstanceMiss(err error) bool {
 // as a mistyped name, so the activation state decides which of the two the
 // message describes.
 func reportInstanceMiss(ctx context.Context, cmd *cobra.Command, io *cmdio.Options, cfg internalconfig.NamespacedRESTConfig, name string) error {
+	// Health.Up is left false: the API does not know this instance, which is the
+	// only sense in which this command reports an instance as down.
 	detail := &InstanceDetail{Instance: Instance{Name: name}, Window: backendQueryWindow}
 
 	if activated, actErr := checkActivation(ctx, cfg); actErr == nil && !activated {
@@ -369,6 +378,7 @@ func (c *instanceDetailCodec) Encode(w io.Writer, v any) error {
 
 	inst := &detail.Instance
 	writeRow("Name", orDash(inst.Name))
+	writeRow("Reporting", boolYesNo(detail.Health.Up))
 	writeRow("Engine", orDash(inst.Engine))
 	writeRow("Version", orDash(inst.EngineVersion))
 	writeRow("Provider", orDash(inst.ProviderName))

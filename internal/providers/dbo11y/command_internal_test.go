@@ -176,3 +176,56 @@ func TestInstancesList_RejectsDatasourceAsAFilter(t *testing.T) {
 		t.Errorf("error should point at the flag, got %v", err)
 	}
 }
+
+// Health is the instance's presence in the API, so the two paths that emit a
+// result document have to disagree about it — otherwise the field says nothing.
+func TestInstancesGet_HealthTracksPresence(t *testing.T) {
+	t.Run("an instance the API returns is reporting", func(t *testing.T) {
+		stdout, _, err := runCommand(t, func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			switch r.URL.Path {
+			case "/bootdata":
+				http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
+			case apiBasePath + instancePath("srv-1"):
+				w.Write([]byte(`{"status":"success","data":{"server_id":"srv-1","instance":"db-1","engine":"postgres"}}`)) //nolint:errcheck // test helper
+			case apiBasePath + queriesPath("srv-1"):
+				w.Write([]byte(`{"status":"success","data":{"queries":[]}}`)) //nolint:errcheck // test helper
+			default:
+				w.Write([]byte(`{"status":"success","data":[]}`)) //nolint:errcheck // test helper
+			}
+		}, "instances", "get", "srv-1", "-o", "json")
+		if err != nil {
+			t.Fatalf("GetInstance: %v", err)
+		}
+		assertOneJSONValue(t, stdout)
+		if !strings.Contains(stdout, `"up": true`) && !strings.Contains(stdout, `"up":true`) {
+			t.Errorf("expected health.up true for an instance the API returned:\n%s", stdout)
+		}
+	})
+
+	t.Run("an instance the API does not know is not reporting", func(t *testing.T) {
+		stdout, _, err := runCommand(t, func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			switch r.URL.Path {
+			case "/bootdata":
+				http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
+			case activationPath:
+				// Activated, so the miss is the argument's fault, not the stack's.
+				w.Write([]byte(`{"spec":{"enabled":true}}`)) //nolint:errcheck // test helper
+			case apiBasePath + instancesPath:
+				w.Write([]byte(`{"status":"success","data":[]}`)) //nolint:errcheck // test helper
+			default:
+				w.WriteHeader(http.StatusNotFound)
+				w.Write([]byte(`{"status":"error","error":{"code":"instance_not_found","message":"instance not found"}}`)) //nolint:errcheck // test helper
+			}
+		}, "instances", "get", "nosuchthing", "-o", "json")
+
+		if err == nil {
+			t.Fatal("expected a non-zero exit for an instance the API does not know")
+		}
+		assertOneJSONValue(t, stdout)
+		if !strings.Contains(stdout, `"up": false`) && !strings.Contains(stdout, `"up":false`) {
+			t.Errorf("expected health.up false alongside the not-found document:\n%s", stdout)
+		}
+	})
+}

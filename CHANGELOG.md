@@ -6,9 +6,8 @@
 ### Breaking changes
 
 - `gcx dbo11y instances list` no longer reports `namespace`, `environment`
-  or `labels`, and `gcx dbo11y instances get` no longer reports exporter
-  health, connection counts by state, active wait events or the longest
-  running transaction.
+  or `labels`, and `gcx dbo11y instances get` no longer reports connection
+  counts by state, active wait events or the longest running transaction.
 - `--filter` on `gcx dbo11y instances list` and `gcx dbo11y instances get`
   matches exact key values only. `!=`, `=~` and `!~` now exit 2, as does
   giving one label two values. On `gcx dbo11y instances get` it accepts only
@@ -23,6 +22,10 @@
 
 ### New commands and improvements
 
+- `gcx dbo11y instances get` reports `health.up` as the instance's presence
+  in the Database Observability inventory. The collector stops publishing an
+  instance it cannot reach, so presence is the health signal rather than a
+  separate check.
 - `gcx dbo11y instances list` and `get` read the Database Observability
   API instead of building PromQL themselves, so they report instances on
   stacks the previous approach could not see at all, and cover MySQL and
