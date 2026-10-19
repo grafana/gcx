@@ -345,7 +345,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx kg meta logs":            {Cost: "small", Hint: "Loki label mappings for log drilldown"},
 	"gcx kg meta metrics":         {Cost: "small", Hint: "asserts:* KPI catalog — Knowledge Graph recording rules (rate/error/latency, cpu/memory) + entity-property→Prometheus-label mapping for building selectors"},
 	"gcx kg meta profiles":        {Cost: "small", Hint: "Pyroscope label mappings for profile drilldown"},
-	"gcx kg meta schema":          {Cost: "medium", Hint: "entity types + relationships [--since 1h]"},
+	"gcx kg meta schema":          {Cost: "medium", Hint: "entity types + relationships [--since 1h | --from/--to] | output nests under .schema: --jq '.schema.entityTypes[] | select(.type == \"Pod\") | .properties' for one type's properties, --jq '.schema.relationships[]' for 'A --TYPE--> B' strings"},
 	"gcx kg meta scopes":          {Cost: "small", Hint: "all valid env/namespace/site filter values — run before filtering entities"},
 	"gcx kg meta traces":          {Cost: "small", Hint: "Tempo label mappings for trace drilldown"},
 	"gcx kg model-rules upsert":   {Cost: "small"},
