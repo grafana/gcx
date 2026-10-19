@@ -57,7 +57,7 @@ func CSVSeriesRecords(series []CSVSeries, includeUnit bool) ([]string, [][]strin
 		labels = append(labels, key)
 	}
 	slices.Sort(labels)
-	columns := []string{"timestamp", "value", "series"}
+	columns := []string{"timestamp_rfc3339", "value", "series"}
 	if includeUnit {
 		columns = append(columns, "unit")
 	}
@@ -74,7 +74,7 @@ func CSVSeriesRecords(series []CSVSeries, includeUnit bool) ([]string, [][]strin
 			if s.Values[i] != nil {
 				value = strconv.FormatFloat(*s.Values[i], 'f', -1, 64)
 			}
-			row := []string{timestamp.UTC().Format(time.RFC3339Nano), value, s.Name}
+			row := []string{timestamp.UTC().Format("2006-01-02T15:04:05.000000000Z07:00"), value, s.Name}
 			if includeUnit {
 				row = append(row, s.Unit)
 			}

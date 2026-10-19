@@ -28,12 +28,14 @@ func TestCSVRecords(t *testing.T) {
 
 func TestMetricCSVRecords(t *testing.T) {
 	value := 2.5
-	r := &azuremonitor.QueryResponse{Frames: []azuremonitor.Frame{{Name: "metric", Timestamps: []time.Time{time.UnixMilli(1700000000123), time.UnixMilli(1700000000456)}, Values: []*float64{&value, nil}}}}
+	r := &azuremonitor.QueryResponse{Frames: []azuremonitor.Frame{{Name: "metric", Unit: "Percent", Labels: map[string]string{"region": "west"}, Timestamps: []time.Time{time.UnixMilli(1700000000123), time.Unix(1700000001, 0)}, Values: []*float64{&value, nil}}}}
 	var out bytes.Buffer
 	require.NoError(t, (cmdio.CSV[cmdio.CSVMarshaler]{Records: cmdio.CSVMarshaler.CSVRecords}).Encode(&out, r))
 	rows, err := csv.NewReader(&out).ReadAll()
 	require.NoError(t, err)
-	require.Len(t, rows, 3)
-	assert.Equal(t, []string{"2023-11-14T22:13:20.123Z", "2.5", "metric"}, rows[1][:3])
-	assert.Empty(t, rows[2][1])
+	assert.Equal(t, [][]string{
+		{"timestamp_rfc3339", "value", "series", "unit", "label.region"},
+		{"2023-11-14T22:13:20.123000000Z", "2.5", "metric", "Percent", "west"},
+		{"2023-11-14T22:13:21.000000000Z", "", "metric", "Percent", "west"},
+	}, rows)
 }
