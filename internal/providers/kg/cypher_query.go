@@ -41,12 +41,11 @@ Time window. Every query runs over a window: --since (ending now) or both
 it existed at any point in the window; this is checked at every MATCH and
 before aggregation. It is not a snapshot: elements of one path need not
 coexist, entities can expire and reappear, and no match now does not mean it
-never existed. Pass the same --from/--to to every command in a task (kg meta,
-kg entities, metrics, logs), e.g. 'gcx kg meta scopes --from <start> --to <end>':
-they all default to the last hour, and --since is relative to now, so use
---from/--to for a past incident. --from must be before --to; for an instant,
-query a short window around it (e.g. one minute either side), not a wide
-window that also covers other times.
+never existed. Use the same --from/--to for kg meta schema, kg meta scopes,
+kg entities, metrics and logs. --since is relative to now; use --from/--to for
+a past incident. --from must be before --to; for an instant, query a short
+window around it (e.g. one minute either side), not a wide window that also
+covers other times.
 
 LIMIT. Every query needs a literal LIMIT (CYPHER_LIMIT_REQUIRED). It is capped
 per tenant, 300 by default; a larger LIMIT is rejected (CYPHER_LIMIT_TOO_LARGE)
@@ -73,14 +72,18 @@ plain node properties, e.g.
 
 Relationships. Types and directions are schema-specific: check the
 'A --TYPE--> B' list in 'gcx kg meta schema', and match both directions when
-looking for what depends on an entity.
+looking for what depends on an entity. One query can do it with the undirected
+form, returning both ends to keep the direction:
+'MATCH (a)-[r:TYPE]-(b) RETURN startNode(r).name, endNode(r).name LIMIT 50'.
 
 A property, scope value, label, relationship type or direction that does not
 exist matches nothing: the result is empty, not an error.
 
 Insights. This command never returns insights (Saturation, Anomaly, Amend,
-Failure, Error), and none should be inferred from its rows. For an entity's
-health, use 'gcx kg entities inspect' with its name, type and scope.`,
+Failure, Error), and none should be inferred from its rows. For current health,
+use 'gcx kg entities list' with the same type, name, scope and window (add
+--insight to filter to entities with active insights); use
+'gcx kg entities inspect' for the full timeline.`,
 		Example: `  gcx kg graph query "MATCH (s:Service) RETURN s.name AS name LIMIT 10"
   gcx kg graph query "MATCH (s:Service {name: 'checkout', env: 'prod'}) RETURN s LIMIT 1" --since 1h
   gcx kg graph query "MATCH (s:Service) RETURN s.name AS name ORDER BY s.name SKIP 50 LIMIT 50" --since 1h
