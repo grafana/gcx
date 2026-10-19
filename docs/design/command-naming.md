@@ -87,11 +87,7 @@ Query operations are not disguised CRUD:
 - `labels`, `series`, `metrics`, and `metadata` are established shorthand
   operations in signal and datasource command families.
 
-Use the shorthand only where its domain meaning is clear. The cross-signal
-vocabulary and intentional aliases are documented in
-[Cross-Signal Command Consistency](../rfcs/029-cross-signal-command-consistency.md).
-Do not characterize query commands as side-effect-free: supporting work such as
-datasource discovery may persist configuration.
+Use the shorthand only where its domain meaning is clear. The cross-signal vocabulary and intentional aliases are documented in [Cross-Signal Command Consistency](../rfcs/029-cross-signal-command-consistency.md). Do not characterize query commands as side-effect-free: supporting work such as datasource discovery may persist configuration.
 
 ## View verbs
 
@@ -161,7 +157,4 @@ are operands. In the second example, collection membership is changed, the
 collection ID scopes that relationship, and saved-conversation IDs are operands.
 This is different from a composite key whose parts together identify the child.
 
-For a new composite-identity or parent-required-`create` shape, either amend the
-Constitution to state the rule or record an explicit human-approved
-constitutional waiver in the approving PR or RFC. Do not create an implicit
-exception in this guide.
+For a new composite-identity or parent-required-`create` shape, either amend the Constitution to state the rule or record an explicit human-approved constitutional waiver in the approving PR or RFC. Do not create an implicit exception in this guide.

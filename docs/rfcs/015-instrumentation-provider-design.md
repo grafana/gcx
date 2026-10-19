@@ -27,10 +27,7 @@ need to discover and instrument services autonomously.
 
 Key forces:
 
-1. **Instrumentation is onboarding, not CRUD.** The user journey is
-   discover → configure → verify, not create/update/delete on resources.
-   This pattern recurs across other Grafana Cloud products (KG setup,
-   integrations install, auth bootstrap). This proposal considered a wider `gcx setup` framework.
+1. **Instrumentation is onboarding, not CRUD.** The user journey is discover → configure → verify, not create/update/delete on resources. This pattern recurs across other Grafana Cloud products (KG setup, integrations install, auth bootstrap). This proposal considered a wider `gcx setup` framework.
 
 2. **Declarative > imperative for durability.** Instrumentation config
    should be a versionable, portable artifact — pulled from one stack,
@@ -165,9 +162,7 @@ will guard against editing pipelines whose name starts with
 
 ### Two-stage delivery
 
-**Stage 1 (this RFC): Declarative apply.**
-`discover`, `show`, `apply -f`, `status`. Manifest-first workflow.
-Shared fleet client extraction. Pipeline protection guard.
+**Stage 1 (this RFC): Declarative apply.** `discover`, `show`, `apply -f`, `status`. Manifest-first workflow. Shared fleet client extraction. Pipeline protection guard.
 
 **Stage 2 (follow-up): Imperative add.**
 `gcx setup instrumentation add --cluster X --namespace Y --tracing` —

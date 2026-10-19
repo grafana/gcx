@@ -30,10 +30,7 @@ Constraints on any solution:
    JSON output when `GCX_AGENT_MODE`/`CLAUDECODE`/`CLAUDE_CODE` are set,
    regardless of the registered default. Whatever we register must layer
    under that override, not replace it.
-2. **Reuse the shared codec pipeline.** Pattern 13 (format-agnostic data
-   fetching) and the cross-signal SharedOpts pattern (see
-   `docs/rfcs/029-cross-signal-command-consistency.md`)
-   require codecs to control display, not data acquisition.
+2. **Reuse the shared codec pipeline.** Pattern 13 (format-agnostic data fetching) and the cross-signal SharedOpts pattern (see `docs/rfcs/029-cross-signal-command-consistency.md`) require codecs to control display, not data acquisition.
 3. **Stay within "navigable summary" scope.** The non-goal is replacing
    Grafana Explore. This is a CLI summary, not a full waterfall UI.
 4. **Terminal styling rules apply.** Use `style.NewTable` so output

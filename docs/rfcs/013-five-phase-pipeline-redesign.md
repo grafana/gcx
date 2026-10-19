@@ -7,10 +7,7 @@
 
 ## Context
 
-The `/migrate-provider` skill was redesigned in RFC 010 from a flat checklist
-to a 3-stage pipeline (Audit → Build → Verify) with dual blackbox isolation
-("sealed envelopes"). RFC 010 assumed migrations are mechanical translations
-that don't need a Design stage.
+The `/migrate-provider` skill was redesigned in RFC 010 from a flat checklist to a 3-stage pipeline (Audit → Build → Verify) with dual blackbox isolation ("sealed envelopes"). RFC 010 assumed migrations are mechanical translations that don't need a Design stage.
 
 The first complex migration (adaptive telemetry provider — metrics, logs, traces)
 invalidated this assumption. Over the course of that migration, 13 design decisions
@@ -22,8 +19,7 @@ feed back into the skill are:
 - **D-002**: Progressive design discovery (iterative brainstorming with user
   approval at each step) produces better results than producing all artifacts
   at once.
-- **D-003**: Migrations must produce project-standard documentation artifacts
-  (RFCs, spec docs), not skill-specific ones.
+- **D-003**: Migrations must produce project-standard documentation artifacts (RFCs, spec docs), not skill-specific ones.
 - **D-004**: A Design Discovery phase with human-in-the-loop brainstorming is
   needed before speccing — it caught the read-only adapter issue and the verb
   naming issue early.
@@ -234,8 +230,7 @@ Keep the Audit → Build → Verify structure with dual blackbox isolation.
 
 ### Positive
 
-- Every migration produces project-standard artifacts (RFC + spec docs) that
-  are reusable by other tools and readable by future maintainers.
+- Every migration produces project-standard artifacts (RFC + spec docs) that are reusable by other tools and readable by future maintainers.
 - Progressive brainstorming catches design issues before they're baked into
   specs or code.
 - Mandatory smoke tests prevent the three bug classes discovered in D-012
@@ -248,9 +243,7 @@ Keep the Audit → Build → Verify structure with dual blackbox isolation.
 
 - Every migration pays the cost of all 5 phases, even trivial ones. Mitigated
   by Phase 1 converging quickly for simple providers.
-- Supersedes RFC 010, which was only recently written. The current skill
-  structure has been used for 6 provider ports — changing it requires updating
-  all reference materials.
+- Supersedes RFC 010, which was only recently written. The current skill structure has been used for 6 provider ports — changing it requires updating all reference materials.
 - More phases = more gates = more user interaction required. Mitigated by
   Phase 0 being fully autonomous and Phase 1 being quick for simple providers.
 

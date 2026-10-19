@@ -137,33 +137,20 @@ suggests no further credential. With
 in the browser ... Checking the connection to <stack>..." with no success
 mark, so the summary, printed only after the save, is the one success line.
 
-The pipeline reads top-to-bottom in `Run()`. Each step returns
-early on failure; sentinel branches unwind to the CLI for interactive
-resolution and re-entry:
+The pipeline reads top-to-bottom in `Run()`. Each step returns early on failure; sentinel branches unwind to the CLI for interactive resolution and re-entry:
 
 1. **Server check**. Missing server → `ErrNeedInput{server}`.
-2. **Scheme normalization**. A bare hostname is rewritten to
-   `https://<host>`. Callers that need `http://` must pass it explicitly.
-3. **Target detection**. Delegates to `detectTarget`; see the
-   next section. An unresolved target with `--yes` or agent mode falls
-   through to `TargetOnPrem`; otherwise it yields
-   `ErrNeedClarification{target}`.
-4. **Grafana auth resolution** (`resolveGrafanaAuth`). Picks
-   between explicit token and OAuth based on input flags. Missing auth
-   yields `ErrNeedInput{grafana-auth}`.
-5. **Context-name derivation**. Falls back to
-   `config.ContextNameFromServerURL`, which returns the stack slug for known
-   Grafana Cloud URLs and a hyphenated hostname otherwise.
+2. **Scheme normalization**. A bare hostname is rewritten to `https://<host>`. Callers that need `http://` must pass it explicitly.
+3. **Target detection**. Delegates to `detectTarget`; see the next section. An unresolved target with `--yes` or agent mode falls through to `TargetOnPrem`; otherwise it yields `ErrNeedClarification{target}`.
+4. **Grafana auth resolution** (`resolveGrafanaAuth`). Picks between explicit token and OAuth based on input flags. Missing auth yields `ErrNeedInput{grafana-auth}`.
+5. **Context-name derivation**. Falls back to `config.ContextNameFromServerURL`, which returns the stack slug for known Grafana Cloud URLs and a hyphenated hostname otherwise.
 6. **Cloud auth resolution** (`resolveCloudAuth`). Only runs for
    `TargetCloud`; a missing credential yields an optional
    `ErrNeedInput{cloud-token}`. The CLI can keep an existing CAP or unexpired
    OAuth credential without changing its kind, paste a CAP, run direct GCOM
    OAuth, or skip Cloud functionality.
-7. **Validation**. Delegated to `Validate` (see below); the
-   CLI offers an escape hatch for interactive users when validation fails.
-8. **Persistence** (`persistContext`). Writes only after all
-   checks pass; may raise `ErrNeedClarification{allow-override}` when the
-   context already targets a different server.
+7. **Validation**. Delegated to `Validate` (see below); the CLI offers an escape hatch for interactive users when validation fails.
+8. **Persistence** (`persistContext`). Writes only after all checks pass; may raise `ErrNeedClarification{allow-override}` when the context already targets a different server.
 
 ---
 
@@ -180,19 +167,10 @@ for the named field, mutate `*Options` with the answer, and re-enter
 
 Two sentinel types exist:
 
-- `ErrNeedInput{Fields, Optional, Hint}` signals a missing
-  value the caller must supply. `Fields` lists one or more missing field
-  names; `Optional=true` lets the CLI offer "skip" alongside the input
-  prompt (used for `cloud-token`).
-- `ErrNeedClarification{Field, Question, Choices}` signals
-  an ambiguous state the caller must resolve. The CLI presents `Choices`
-  as a select and writes the answer back into `*Options` or `RetryState`.
+- `ErrNeedInput{Fields, Optional, Hint}` signals a missing value the caller must supply. `Fields` lists one or more missing field names; `Optional=true` lets the CLI offer "skip" alongside the input prompt (used for `cloud-token`).
+- `ErrNeedClarification{Field, Question, Choices}` signals an ambiguous state the caller must resolve. The CLI presents `Choices` as a select and writes the answer back into `*Options` or `RetryState`.
 
-Because `Options` is a pointer, values written by the CLI (either into
-`Inputs` fields or into `RetryState`) survive across retries. The partial
-`StagedContext` inside `RetryState` additionally caches resolved auth state
-so the next iteration does not re-run an OAuth flow that already succeeded.
-The resolved `Target` is propagated back into `opts.Target` so target detection also runs only once.
+Because `Options` is a pointer, values written by the CLI (either into `Inputs` fields or into `RetryState`) survive across retries. The partial `StagedContext` inside `RetryState` additionally caches resolved auth state so the next iteration does not re-run an OAuth flow that already succeeded. The resolved `Target` is propagated back into `opts.Target` so target detection also runs only once.
 
 ```mermaid
 sequenceDiagram
@@ -234,62 +212,32 @@ drives every sentinel-driven step. Sentinel fields currently in use:
 
 ## Target Detection
 
-`DetectTarget` runs three tiers, in order, and stops at the
-first match:
+`DetectTarget` runs three tiers, in order, and stops at the first match:
 
-1. **Known-cloud suffix table.** `config.StackSlugFromServerURL`
-   (`internal/config/types.go`) matches the server hostname against
-   `grafanaCloudStackSuffixes` (`.grafana.net`, `.grafana-dev.net`,
-   `.grafana-ops.net`). A match yields `TargetCloud` with no network call.
-2. **Localhost heuristic.** `isLocalHostname` returns true
-   for loopback addresses (`localhost`, `127.0.0.1`, `::1`,
-   `*.localhost`), RFC 1918 IPv4 ranges (`10/8`, `172.16/12`,
-   `192.168/16`), and IPv6 ULA (`fd00::/8`). Matches yield `TargetOnPrem`
-   with no network call. Intranet suffixes like `.local` or `.corp` are
-   not treated as local.
-3. **HTTP probe.** `probeTarget` fetches
-   `/api/frontend/settings` via `grafana.FetchAnonymousSettings` with a
-   three-second timeout. A valid response whose `buildInfo.grafanaUrl` host
-   matches `config.IsGrafanaCloudHost` (which additionally covers the
-   `.grafana.com`, `.grafana-dev.com`, `.grafana-ops.com` root domains) →
-   `TargetCloud`. A valid response with no Cloud marker → `TargetOnPrem`.
-   Any error, timeout, or unparseable URL → `TargetUnknown`.
+1. **Known-cloud suffix table.** `config.StackSlugFromServerURL` (`internal/config/types.go`) matches the server hostname against `grafanaCloudStackSuffixes` (`.grafana.net`, `.grafana-dev.net`, `.grafana-ops.net`). A match yields `TargetCloud` with no network call.
+2. **Localhost heuristic.** `isLocalHostname` returns true for loopback addresses (`localhost`, `127.0.0.1`, `::1`, `*.localhost`), RFC 1918 IPv4 ranges (`10/8`, `172.16/12`, `192.168/16`), and IPv6 ULA (`fd00::/8`). Matches yield `TargetOnPrem` with no network call. Intranet suffixes like `.local` or `.corp` are not treated as local.
+3. **HTTP probe.** `probeTarget` fetches `/api/frontend/settings` via `grafana.FetchAnonymousSettings` with a three-second timeout. A valid response whose `buildInfo.grafanaUrl` host matches `config.IsGrafanaCloudHost` (which additionally covers the `.grafana.com`, `.grafana-dev.com`, `.grafana-ops.com` root domains) → `TargetCloud`. A valid response with no Cloud marker → `TargetOnPrem`. Any error, timeout, or unparseable URL → `TargetUnknown`.
 
-Explicit overrides short-circuit detection: passing `--cloud` forces
-`TargetCloud` before `Run()` ever invokes detection (set at
-`cmd/gcx/login/command.go`). When detection returns `TargetUnknown`,
-`--yes` or agent mode (`agent.IsAgentMode`) defaults the target to
-`TargetOnPrem`; interactive sessions receive the
-`target` clarification sentinel instead.
+Explicit overrides short-circuit detection: passing `--cloud` forces `TargetCloud` before `Run()` ever invokes detection (set at `cmd/gcx/login/command.go`). When detection returns `TargetUnknown`, `--yes` or agent mode (`agent.IsAgentMode`) defaults the target to `TargetOnPrem`; interactive sessions receive the `target` clarification sentinel instead.
 
 ---
 
 ## Validation Pipeline
 
-`Validate` runs four checks in order and fails fast. The
-first failure surfaces as a validation error; no partial state is written
-to disk.
+`Validate` runs four checks in order and fails fast. The first failure surfaces as a validation error; no partial state is written to disk.
 
 1. **Grafana health and version.** `grafana.GetVersion` hits `/api/health`;
    network failure surfaces here.
 2. **K8s API availability.** `discovery.NewDefaultRegistry(ctx, restCfg)`
    probes `/apis` using the same REST config the command will use later.
-3. **Version floor.** The parsed semver must satisfy `Major() >= 12`. An
-   unparseable or suppressed version string (Grafana Cloud sometimes hides
-   it from anonymous callers) bypasses the check rather than failing; the
-   returned version reads `"unknown"` in that case.
+3. **Version floor.** The parsed semver must satisfy `Major() >= 12`. An unparseable or suppressed version string (Grafana Cloud sometimes hides it from anonymous callers) bypasses the check rather than failing; the returned version reads `"unknown"` in that case.
 4. **GCOM reachability.** Only when `Target == TargetCloud`, an untrusted
    Cloud token is supplied, and `resolveStackSlug` produced a non-empty slug.
    `cloud.GCOMClient.GetStack` confirms the slug is reachable with the
    supplied token. Browser-issued and explicitly kept credentials are already
    trusted and skip this typo-oriented CAP check.
 
-Tests inject each step via the `grafanaClient`, `discovery`, and
-`gcomClient` fields on the `validator` struct. The
-higher-level `Hooks.ValidateFn` override replaces the entire pipeline.
-`Run()` bypasses validation altogether when `RetryState.ForceSave` is set,
-which the CLI enables after the user answers the `save-unvalidated`
-clarification affirmatively.
+Tests inject each step via the `grafanaClient`, `discovery`, and `gcomClient` fields on the `validator` struct. The higher-level `Hooks.ValidateFn` override replaces the entire pipeline. `Run()` bypasses validation altogether when `RetryState.ForceSave` is set, which the CLI enables after the user answers the `save-unvalidated` clarification affirmatively.
 
 ---
 
@@ -316,10 +264,7 @@ authoritative configuration boundary. Guarded reloads use the pinned raw bytes
 with migration persistence suppressed, so verification itself cannot create a
 backup, migrate a file, or mutate credentials.
 
-`persistContext` loads the current config (tolerating
-`os.ErrNotExist`), inserts or updates the context — creating a stack entry
-named after the context, plus the `stack:` binding — and writes the file
-back. Two paths diverge based on whether the context already exists:
+`persistContext` loads the current config (tolerating `os.ErrNotExist`), inserts or updates the context — creating a stack entry named after the context, plus the `stack:` binding — and writes the file back. Two paths diverge based on whether the context already exists:
 
 **New-context path.** A fresh stack entry and `Context` binding are added
 and marked current; the stack's `slug` is populated when resolved.
@@ -328,16 +273,7 @@ logins so the later
 `GrafanaConfig.validateNamespace` does not attempt `/bootdata` stack
 discovery against an OSS instance that cannot answer.
 
-**Re-auth path.** `mergeAuthIntoExisting` copies only the
-auth-bearing fields — `Server`, `AuthMethod`, `APIToken`, `OAuthToken`,
-`OAuthRefreshToken`, `OAuthTokenExpiresAt`, `OAuthRefreshExpiresAt`,
-`ProxyEndpoint` — onto the context's stack entry (creating it for legacy
-detached contexts), and routes incoming cloud auth through
-`EnsureCloudEntry` to a named cloud entry. User-set values such as
-`OrgID=42` and custom datasource defaults survive untouched. Provider-specific
-tokens survive only while their bound destination is unchanged; changing the
-server, proxy, TLS identity, or basic-auth username clears affected credentials
-such as the Synthetic Monitoring token.
+**Re-auth path.** `mergeAuthIntoExisting` copies only the auth-bearing fields — `Server`, `AuthMethod`, `APIToken`, `OAuthToken`, `OAuthRefreshToken`, `OAuthTokenExpiresAt`, `OAuthRefreshExpiresAt`, `ProxyEndpoint` — onto the context's stack entry (creating it for legacy detached contexts), and routes incoming cloud auth through `EnsureCloudEntry` to a named cloud entry. User-set values such as `OrgID=42` and custom datasource defaults survive untouched. Provider-specific tokens survive only while their bound destination is unchanged; changing the server, proxy, TLS identity, or basic-auth username clears affected credentials such as the Synthetic Monitoring token.
 
 **Cloud credential and endpoint preservation.** CAP credentials persist in
 `CloudEntry.Token`; direct Cloud OAuth persists in `OAuthToken` with expiry,
@@ -416,5 +352,4 @@ the `ResolveTokenPersistenceSource` selection used by OAuth token rotation
   stored, merged, and turned into REST clients.
 - [Login reference (user-facing)](../reference/login.md) — how to log in
   and troubleshoot common errors.
-- [RFC 028: Login + config consolidation](../rfcs/028-login-config-consolidation.md)
-  — historical rationale.
+- [RFC 028: Login + config consolidation](../rfcs/028-login-config-consolidation.md) — historical rationale.

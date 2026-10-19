@@ -214,25 +214,8 @@ agent mode detection, behavior changes, and opt-out mechanisms.
   product's own auth mechanism. `NewDefaultClient(ctx)` returns an `*http.Client`
   with `LoggingRoundTripper` and no auth injection — providers set their own
   auth headers per request.
-- **Fleet Management runs through the plugin proxy.** Fleet Management and the
-  Instrumentation Hub reach their API at `cfg.Host`, through the
-  `grafana-collector-app` plugin proxy
-  (`/api/plugin-proxy/grafana-collector-app/fleet-management-api/…`). The plugin
-  adds the Fleet Management credentials and the tenant headers server-side, so
-  the client carries the caller's Grafana credential only and uses
-  `rest.HTTPClientFor()`, the same as Faro. Fleet Management needs no
-  grafana.com token and no `fleet-management` access policy scope. See RFC 024.
-- **Synth is dual-mode (carve-out).** Synthetic Monitoring reaches its API two
-  ways: (1) primary — Grafana's datasource proxy at `cfg.Host`
-  (`/api/datasources/proxy/uid/<sm-uid>/sm/…`) via `rest.HTTPClientFor()` in
-  `internal/query/synth`, carrying the caller's Grafana credential (the SM token
-  is injected server-side by the plugin's `sm` proxy route, so the client never
-  handles it); (2) fallback — the direct SM API (external domain) via
-  `httputils.NewDefaultClient(ctx)` + an SM token, taken only on a proxy 403 or
-  when no SM datasource UID resolves. Both usages are consistent with the rule
-  above (proxy = `cfg.Host`; direct = external domain). The dual path preserves
-  token-based access for CI/headless environments while letting OAuth/SAT callers
-  drop the SM token. See RFC 021.
+- **Fleet Management runs through the plugin proxy.** Fleet Management and the Instrumentation Hub reach their API at `cfg.Host`, through the `grafana-collector-app` plugin proxy (`/api/plugin-proxy/grafana-collector-app/fleet-management-api/…`). The plugin adds the Fleet Management credentials and the tenant headers server-side, so the client carries the caller's Grafana credential only and uses `rest.HTTPClientFor()`, the same as Faro. Fleet Management needs no grafana.com token and no `fleet-management` access policy scope. See RFC 024.
+- **Synth is dual-mode (carve-out).** Synthetic Monitoring reaches its API two ways: (1) primary — Grafana's datasource proxy at `cfg.Host` (`/api/datasources/proxy/uid/<sm-uid>/sm/…`) via `rest.HTTPClientFor()` in `internal/query/synth`, carrying the caller's Grafana credential (the SM token is injected server-side by the plugin's `sm` proxy route, so the client never handles it); (2) fallback — the direct SM API (external domain) via `httputils.NewDefaultClient(ctx)` + an SM token, taken only on a proxy 403 or when no SM datasource UID resolves. Both usages are consistent with the rule above (proxy = `cfg.Host`; direct = external domain). The dual path preserves token-based access for CI/headless environments while letting OAuth/SAT callers drop the SM token. See RFC 021.
 - **All HTTP clients via `httputils`.** Production code must create HTTP clients
   through `httputils.NewDefaultClient(ctx)` or `httputils.NewClient(ClientOpts{...})`.
   Bare `http.DefaultClient`, standalone `&http.Client{}`, and custom transports

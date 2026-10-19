@@ -323,10 +323,7 @@ Scope the access policy to what you manage. `stacks:read` is the required baseli
 | `stacks:write` | Creating or updating stacks |
 | `set:alloy-data-write` | Instrumentation Hub setup (`gcx instrumentation`) |
 
-`gcx fleet` and `gcx instrumentation` need no scope here. Fleet Management
-reaches its API through the `grafana-collector-app` plugin proxy on your stack,
-so your Grafana login alone is enough. See
-[RFC 024](../rfcs/024-fleet-via-collector-app-proxy.md).
+`gcx fleet` and `gcx instrumentation` need no scope here. Fleet Management reaches its API through the `grafana-collector-app` plugin proxy on your stack, so your Grafana login alone is enough. See [RFC 024](../rfcs/024-fleet-via-collector-app-proxy.md).
 
 The Cloud Access Policy token is for Grafana Cloud product APIs (GCOM stack management, Synthetic Monitoring, k6, IRM, SLO). Signal queries (`gcx metrics`, `gcx logs`, `gcx traces`, `gcx profiles`) authenticate with your Grafana token (OAuth or service account), not this token. When in doubt, start narrow and widen the policy as commands report missing-scope errors — the token can be re-scoped without re-running `gcx login`.
 

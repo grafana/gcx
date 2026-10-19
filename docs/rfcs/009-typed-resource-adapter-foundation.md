@@ -177,9 +177,7 @@ spec map level and requires JSON→map→delete. The approach is hybrid:
 - **Keep `NameFn`/`RestoreNameFn` as config**: Pragmatic but misses the opportunity to
   make domain types self-describing. `ResourceIdentity` is minimal (2 methods) and
   enables future K8s machinery use.
-- **Keep dual registries, defer unification**: The design analysis found that
-  `Provider.Registrations()` is a ~100-150 LOC change that collapses 13 init() into 8
-  with zero new logic — just relocation. No reason to defer when the lift is this small.
+- **Keep dual registries, defer unification**: The design analysis found that `Provider.Registrations()` is a ~100-150 LOC change that collapses 13 init() into 8 with zero new logic — just relocation. No reason to defer when the lift is this small.
 - **Full registry convergence with ProviderMeta**: The research report proposes a
   `ProviderMeta` type and `RegisterProvider()` API that fully decouples provider
   metadata from the Provider interface. This is the right long-term target but is a
@@ -216,8 +214,7 @@ spec map level and requires JSON→map→delete. The approach is hybrid:
 
 ### Follow-up work
 
-- **Full registry convergence**: Introduce `ProviderMeta` type, move ConfigKeys/Validate
-  out of Provider interface, enable `providers list` from a unified registry.
+- **Full registry convergence**: Introduce `ProviderMeta` type, move ConfigKeys/Validate out of Provider interface, enable `providers list` from a unified registry.
 - **StripFields elimination**: Investigate using struct tags or separate spec types to
   avoid the JSON→map→delete pattern entirely.
 - **Provider command deprecation**: After migration, deprecate provider-specific CRUD

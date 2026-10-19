@@ -43,15 +43,7 @@ integration). Design A requires backend changes (true CRUD endpoints,
 resource versions, server-side tombstones) that are not on the immediate
 roadmap; Design B fits the backend as it exists today.
 
-RFC 015 (`015-instrumentation-provider-design.md`) staked an earlier
-position — instrumentation as a declarative-manifest workflow under a
-`gcx setup` framework with optimistic-locking `apply -f`. PR #531
-implemented an evolution of that direction (top-level `gcx instrumentation`
-with CRD kinds plus push/pull) and the smoke loop demonstrated that the
-declarative facade does not survive contact with the Set/Get + observed-
-state backend. RFC 015 is superseded by this redesign; the rationale that
-remained valid (per-namespace/per-workload granularity, agent-friendliness,
-shared `internal/fleet/` client) is preserved here in non-declarative form.
+RFC 015 (`015-instrumentation-provider-design.md`) staked an earlier position — instrumentation as a declarative-manifest workflow under a `gcx setup` framework with optimistic-locking `apply -f`. PR #531 implemented an evolution of that direction (top-level `gcx instrumentation` with CRD kinds plus push/pull) and the smoke loop demonstrated that the declarative facade does not survive contact with the Set/Get + observed- state backend. RFC 015 is superseded by this redesign; the rationale that remained valid (per-namespace/per-workload granularity, agent-friendliness, shared `internal/fleet/` client) is preserved here in non-declarative form.
 
 The audiences for this surface are locked from prior brainstorming:
 
@@ -138,17 +130,7 @@ namespace → service via flags rather than verbs (consistent with the D9
 | `status` | same cluster set as `clusters list` (merge with `ListPipelines` so pre-Alloy clusters appear); `RunK8sDiscovery()` when drilling to namespace via `--namespace`. |
 | `wait` | poll `RunK8sMonitoring()` at 5s intervals; treat absence from response as `PENDING_INSTRUMENTATION` and continue polling; declared-state pre-flight (`GetK8SInstrumentation`) avoids polling-to-timeout when no cluster has been declared (Amendment B). |
 
-`get`/`list` treat declared-state endpoints (`Get*`, `ListPipelines` for
-enumeration fallback) as the source of truth for resource existence and
-configuration; observed-state endpoints (`RunK8sMonitoring`) are
-cross-referenced for STATUS only. `status`/`wait` go through observed-state
-endpoints with the same merge so the cluster set agrees with `list`/`get`.
-Both read paths exist because both questions are real ("what did I
-configure?" vs "what is Beyla actually seeing?"); collapsing them into
-one verb is what produced B-531-02 and B-531-05. The original draft of
-this RFC specified single-source enumeration on `list`/`get`; Open
-Question 1 was resolved empirically (see Update §2026-04-28) and the
-merge was introduced before implementation.
+`get`/`list` treat declared-state endpoints (`Get*`, `ListPipelines` for enumeration fallback) as the source of truth for resource existence and configuration; observed-state endpoints (`RunK8sMonitoring`) are cross-referenced for STATUS only. `status`/`wait` go through observed-state endpoints with the same merge so the cluster set agrees with `list`/`get`. Both read paths exist because both questions are real ("what did I configure?" vs "what is Beyla actually seeing?"); collapsing them into one verb is what produced B-531-02 and B-531-05. The original draft of this RFC specified single-source enumeration on `list`/`get`; Open Question 1 was resolved empirically (see Update §2026-04-28) and the merge was introduced before implementation.
 
 ### Verb semantics
 
@@ -272,14 +254,7 @@ than none, and divides command-discovery effort across two surfaces. When
 the backend supports it, `instrumentation apply -f` re-enters as a single
 addition rather than a coexistence.
 
-**Keep `gcx setup instrumentation` framework from RFC 015.** Earlier
-RFC placed instrumentation under a dedicated `setup` area with declarative
-manifests and `apply -f`. **Rejected** because (a) the manifest workflow
-ran into the same backend blockers as Design A, (b) the `setup` area
-generalization to other products did not materialize, and (c) the
-audience-A onboarding path is better served by a single top-level
-`gcx instrumentation setup <cluster>` wizard than by a multi-product
-framework. RFC 015 marked superseded.
+**Keep `gcx setup instrumentation` framework from RFC 015.** Earlier RFC placed instrumentation under a dedicated `setup` area with declarative manifests and `apply -f`. **Rejected** because (a) the manifest workflow ran into the same backend blockers as Design A, (b) the `setup` area generalization to other products did not materialize, and (c) the audience-A onboarding path is better served by a single top-level `gcx instrumentation setup <cluster>` wizard than by a multi-product framework. RFC 015 marked superseded.
 
 ## Consequences
 
@@ -332,13 +307,8 @@ framework. RFC 015 marked superseded.
 
 ### Neutral / Follow-up
 
-- **PR-531 commit `e14256a` salvage.** Plumbing — fleet client extraction,
-  table builders, status-enum parsing — may be cherry-picked into the new
-  branch in a separate session. Not part of this RFC.
-- **Smoke-loop revalidation.** After implementation, the smoke matrix is
-  re-run with PASS criteria updated for B-531-02/05/08 to reflect the
-  reclassified-as-by-design semantics. Acceptance is tracked outside this
-  RFC.
+- **PR-531 commit `e14256a` salvage.** Plumbing — fleet client extraction, table builders, status-enum parsing — may be cherry-picked into the new branch in a separate session. Not part of this RFC.
+- **Smoke-loop revalidation.** After implementation, the smoke matrix is re-run with PASS criteria updated for B-531-02/05/08 to reflect the reclassified-as-by-design semantics. Acceptance is tracked outside this RFC.
 - **Open question 1 — RESOLVED (2026-04-28).** Empirical reading of
   `grafana/fleet-management/pkg/discovery/v1/prometheus.go:204-306`
   showed the original investigation hypothesis was incorrect:
@@ -368,8 +338,7 @@ framework. RFC 015 marked superseded.
 
 ## Update — 2026-04-28 (Open Question 1 resolution)
 
-This section records the empirical correction to the original RFC draft
-that landed before implementation began.
+This section records the empirical correction to the original RFC draft that landed before implementation began.
 
 ### What changed
 
@@ -404,13 +373,8 @@ that landed before implementation began.
 
 ### What did NOT change
 
-- The action-verb command tree, audience locking (A primary, C secondary,
-  B deferred), bare-domain-type output (no K8s envelope), no-GVK
-  registration, tri-state flag semantics, optimistic-lock conflict
-  surfacing, and the `setup` wizard contract are unchanged from the
-  original RFC.
-- Rejected alternatives (Design A, tactical CRUD-with-fixes, hybrid,
-  RFC 015 setup framework) remain rejected for the same reasons.
+- The action-verb command tree, audience locking (A primary, C secondary, B deferred), bare-domain-type output (no K8s envelope), no-GVK registration, tri-state flag semantics, optimistic-lock conflict surfacing, and the `setup` wizard contract are unchanged from the original RFC.
+- Rejected alternatives (Design A, tactical CRUD-with-fixes, hybrid, RFC 015 setup framework) remain rejected for the same reasons.
 
 ## Amendments — 2026-04-30 (post-smoke-test)
 

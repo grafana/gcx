@@ -5,11 +5,7 @@
 **Bead**: none
 **Supersedes**: none
 
-> **Proposed amendment:** [RFC 023](023-versioned-split-config-and-secret-trust.md)
-> would retain system/user/local discovery and explicit write targeting, but
-> replace field-level merge for credential-bearing entries with atomic `stacks`
-> and `cloud` entries and add a semantic preflight for layered legacy migration.
-> The implementation follows that model while ratification remains pending.
+> **Proposed amendment:** [RFC 023](023-versioned-split-config-and-secret-trust.md) would retain system/user/local discovery and explicit write targeting, but replace field-level merge for credential-bearing entries with atomic `stacks` and `cloud` entries and add a semantic preflight for layered legacy migration. The implementation follows that model while ratification remains pending.
 
 ## Context
 

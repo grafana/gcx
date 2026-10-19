@@ -455,25 +455,11 @@ the issue for architectural discussion.
 
 ### Sanctioned Exception — Provider-Owned Resource Hooks
 
-[RFC 027](../rfcs/027-provider-owned-resource-hooks.md)
-authorizes optional provider-neutral adapter hooks for pull preflight and partial
-multi-get/read reporting, complete batch push preflight, per-item envelope
-mutation dispatch, and identity-only delete selection. These preserve annotations
-and every selected identity before generic probes or name-keyed insertion.
-Domain identity and reconciliation remain in the owning adapter; generic pipelines
-use shared types and never branch on product names. Kinds without hooks retain
-the existing TypedCRUD pipeline. This exception permits only the recorded hook
-seams, not new serialization bridges or a generic reconciliation framework.
+[RFC 027](../rfcs/027-provider-owned-resource-hooks.md) authorizes optional provider-neutral adapter hooks for pull preflight and partial multi-get/read reporting, complete batch push preflight, per-item envelope mutation dispatch, and identity-only delete selection. These preserve annotations and every selected identity before generic probes or name-keyed insertion. Domain identity and reconciliation remain in the owning adapter; generic pipelines use shared types and never branch on product names. Kinds without hooks retain the existing TypedCRUD pipeline. This exception permits only the recorded hook seams, not new serialization bridges or a generic reconciliation framework.
 
 ### Sanctioned Exception — Single-Seam Capability Assertion (`adapter.Resource[T]`)
 
-The declarative `adapter.Resource[T]` + `adapter.NewProvider` registration
-model (see [RFC 026](../rfcs/026-declarative-resource-front-door.md)) needs
-to determine, at registration time, which CRUD verbs a provider's `NewClient`
-result actually supports. Detecting capability-interface satisfaction
-intrinsically requires a type assertion on the `any` value `NewClient`
-returns — there is no generics-only way to do this within the TypedCRUD
-model. The RFC records this narrow exception.
+The declarative `adapter.Resource[T]` + `adapter.NewProvider` registration model (see [RFC 026](../rfcs/026-declarative-resource-front-door.md)) needs to determine, at registration time, which CRUD verbs a provider's `NewClient` result actually supports. Detecting capability-interface satisfaction intrinsically requires a type assertion on the `any` value `NewClient` returns — there is no generics-only way to do this within the TypedCRUD model. The RFC records this narrow exception.
 
 This is a **documented, audited exception** to the "no `any` type erasure"
 rule above, narrowly scoped:
@@ -601,12 +587,7 @@ return opts.IO.Encode(cmd.OutOrStdout(), objs)
 
 ### 18. Table-Driven TypedCRUD Registration for Providers
 
-Providers with many resource types use the
-`adapter` package's generic `BuildRegistration[T, C]` builder with functional
-options to register each type in a single, self-contained call. This lives in
-`internal/resources/adapter` (not per-provider) and replaces the earlier
-switch-dispatch pattern where a single adapter struct dispatched all types
-through runtime kind-string matching.
+Providers with many resource types use the `adapter` package's generic `BuildRegistration[T, C]` builder with functional options to register each type in a single, self-contained call. This lives in `internal/resources/adapter` (not per-provider) and replaces the earlier switch-dispatch pattern where a single adapter struct dispatched all types through runtime kind-string matching.
 
 **Pattern structure:**
 

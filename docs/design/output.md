@@ -435,10 +435,7 @@ change that landed this contract.
 
 ## 15. List Truncation Contract [PROPOSED — #387 Track C]
 
-> **Status: proposed.** Implemented as an opt-in shared contract in
-> `internal/output/listmeta.go` and migrated to two exemplar commands
-> (`datasources list`, `irm oncall alert-groups list`).
-> Not yet a repo-wide requirement; apply the contract below when migrating other list commands.
+> **Status: proposed.** Implemented as an opt-in shared contract in `internal/output/listmeta.go` and migrated to two exemplar commands (`datasources list`, `irm oncall alert-groups list`). Not yet a repo-wide requirement; apply the contract below when migrating other list commands.
 
 List commands must never truncate silently. All truncation flows through the
 shared helpers in `internal/output/listmeta.go` — do not roll per-command
@@ -577,18 +574,7 @@ The reserved key is transparent to field selection and discovery
 Only the reserved `list_meta` key gets this treatment; envelopes with other
 extra keys keep the pre-existing selection behavior.
 
-These guarantees hold for typed envelope structs and for envelopes assembled
-as dynamic `map[string]any` values — for dynamic maps, the reserved key
-itself is the opt-in signal: a map without `list_meta` keeps whole-object
-selection and as-is discovery even when it happens to be items-shaped, so raw
-passthrough payloads (`gcx api`) are unaffected by the reservation. Dynamic
-maps may hold native Go values (a `*ListMeta`, a typed item slice) — envelope
-handling JSON-normalizes the map first, so producers don't have to
-pre-flatten to the JSON-decoded representation. An empty dynamic envelope has
-no element type to reflect on, so discovery degrades to the envelope's own
-keys (never `list_meta.*`). `unstructured.UnstructuredList` values are not
-part of the contract yet — no producer attaches truncation metadata to
-unstructured lists. A resources-pipeline migration would need to establish that contract.
+These guarantees hold for typed envelope structs and for envelopes assembled as dynamic `map[string]any` values — for dynamic maps, the reserved key itself is the opt-in signal: a map without `list_meta` keeps whole-object selection and as-is discovery even when it happens to be items-shaped, so raw passthrough payloads (`gcx api`) are unaffected by the reservation. Dynamic maps may hold native Go values (a `*ListMeta`, a typed item slice) — envelope handling JSON-normalizes the map first, so producers don't have to pre-flatten to the JSON-decoded representation. An empty dynamic envelope has no element type to reflect on, so discovery degrades to the envelope's own keys (never `list_meta.*`). `unstructured.UnstructuredList` values are not part of the contract yet — no producer attaches truncation metadata to unstructured lists. A resources-pipeline migration would need to establish that contract.
 
 ### 15.6 Reference migrations
 
@@ -599,7 +585,4 @@ unstructured lists. A resources-pipeline migration would need to establish that 
   `--limit 0` drains every `next` cursor) and over-fetch-by-one
   (`TruncatePagedList`, alternate-implementation fallback path) variants.
 
-`alert rules list` is deliberately not migrated yet: its JSON/YAML output is
-a bare array (no envelope to carry `list_meta`) and its `--limit` counts
-different units per format (flattened rules in the table, groups in JSON).
-The envelope shape and counting unit need to be settled before migration.
+`alert rules list` is deliberately not migrated yet: its JSON/YAML output is a bare array (no envelope to carry `list_meta`) and its `--limit` counts different units per format (flattened rules in the table, groups in JSON). The envelope shape and counting unit need to be settled before migration.

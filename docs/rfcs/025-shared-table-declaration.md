@@ -7,8 +7,7 @@
 
 ## Context
 
-RFC 008 moved the cloud CLI's providers into gcx. Each provider brought its own
-code for printing tables.
+RFC 008 moved the cloud CLI's providers into gcx. Each provider brought its own code for printing tables.
 
 That left a lot of copies. The provider packages hold 174 codec types today. 152
 of them have the same `Decode` method, which only returns an error. 68 have the
@@ -20,9 +19,7 @@ Copies drift. Two files that should print the same thing stop matching, and a
 fix to one is not a fix to the others. The narrow and wide versions of a single
 table drift too, because they are written as two separate blocks of code.
 
-This is a result of how RFC 008 ported providers, not a break from it. RFC 008
-kept each provider's clients and types as they were, and rendering was ported
-the same way.
+This is a result of how RFC 008 ported providers, not a break from it. RFC 008 kept each provider's clients and types as they were, and rendering was ported the same way.
 
 ## Decision
 

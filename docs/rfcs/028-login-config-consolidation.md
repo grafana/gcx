@@ -5,11 +5,7 @@
 **Status**: accepted
 **Supersedes**: none
 
-> **Proposed amendment:** [RFC 023](023-versioned-split-config-and-secret-trust.md)
-> would supersede the config-storage details in this RFC. The implementation
-> follows that model while ratification remains pending: login writes named
-> stack/Cloud entries and preserves the distinction and metadata between CAP and
-> OAuth Cloud credentials. Login orchestration remains accepted.
+> **Proposed amendment:** [RFC 023](023-versioned-split-config-and-secret-trust.md) would supersede the config-storage details in this RFC. The implementation follows that model while ratification remains pending: login writes named stack/Cloud entries and preserves the distinction and metadata between CAP and OAuth Cloud credentials. Login orchestration remains accepted.
 
 <!-- Status lifecycle: proposed -> accepted -> deprecated | superseded -->
 
@@ -21,12 +17,9 @@ to populate server, token, and namespace fields, then `auth login` for OAuth, th
 `gcx config`, and `gcx setup` are unclear — auth is conceptually part of config but lives
 as a separate top-level command.
 
-This design proposes a unified `gcx login` command that collapses the entire onboarding flow into a
-single guided interaction.
+This design proposes a unified `gcx login` command that collapses the entire onboarding flow into a single guided interaction.
 
-This RFC decides the internal architecture, command structure, Cloud detection strategy,
-auth deprecation path, config schema changes, CI/agent support, and validation approach
-for `gcx login`.
+This RFC decides the internal architecture, command structure, Cloud detection strategy, auth deprecation path, config schema changes, CI/agent support, and validation approach for `gcx login`.
 
 ### Forces
 
@@ -306,10 +299,7 @@ error: `"gcx auth" has been removed. Use "gcx login" instead.`
 
 ### 7. Config Schema Changes
 
-> This section records the original decision. Proposed RFC 023 would supersede
-> its storage details. The version 1 implementation places `GrafanaConfig` under
-> a named stack, Cloud credentials in named `cloud` entries, and references to
-> those entries in contexts while ratification remains pending.
+> This section records the original decision. Proposed RFC 023 would supersede its storage details. The version 1 implementation places `GrafanaConfig` under a named stack, Cloud credentials in named `cloud` entries, and references to those entries in contexts while ratification remains pending.
 
 One new field added to `GrafanaConfig`:
 
@@ -449,8 +439,7 @@ deprecation, which breaks scripts.
 
 ## Decisions added after initial implementation
 
-The following decisions were made while stabilizing the first end-to-end
-login flow in PR #529. They extend this RFC.
+The following decisions were made while stabilizing the first end-to-end login flow in PR #529. They extend this RFC.
 
 ### Positional CONTEXT_NAME argument
 

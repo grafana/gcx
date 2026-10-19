@@ -410,8 +410,7 @@ editable in the UI because its provenance cannot be changed by that update.
 gcx alert contact-points create -f contact-point.yaml --allow-ui-updates=false
 ```
 
-For an empty dashboard or missing application telemetry, follow
-[Diagnose missing telemetry with gcx](docs/sources/guides/diagnose-missing-telemetry.md).
+For an empty dashboard or missing application telemetry, follow [Diagnose missing telemetry with gcx](docs/sources/guides/diagnose-missing-telemetry.md).
 
 Synthetic Monitoring check manifests support optional `spec.folderUid` for folder
 assignment. See the [check management guide](claude-plugin/skills/synth-manage-checks/SKILL.md#step-3-build-yaml-definition)

@@ -6,12 +6,7 @@
 
 ## Context
 
-[RFC 009](009-typed-resource-adapter-foundation.md)
-established `TypedCRUD[T]` and the single `providers.Register()` entry point.
-It left providers to construct their own `adapter.Registration` values. SLO
-repeated its CRUD wiring in two factories, while OnCall maintained a private
-generic registration builder. The unused `TypedRegistration[T]` offered a
-third construction path.
+[RFC 009](009-typed-resource-adapter-foundation.md) established `TypedCRUD[T]` and the single `providers.Register()` entry point. It left providers to construct their own `adapter.Registration` values. SLO repeated its CRUD wiring in two factories, while OnCall maintained a private generic registration builder. The unused `TypedRegistration[T]` offered a third construction path.
 
 Registrations also repeated schema and GVK derivation. Adapters produced by
 `TypedCRUD.AsAdapter()` returned a nil schema despite having enough type
@@ -45,13 +40,7 @@ constructors. Constructors reuse the supplied transport. The loader remains
 in the provider because importing `providers` from `adapter` would create an
 import cycle.
 
-Clients implement only the operations they support: `Lister[T]`, `Getter[T]`,
-`Creator[T]`, `Updater[T]`, `Deleter[T]`, and `Validator[T]`. The single
-`newCapabilityCRUD` function in `capability.go` tests those interfaces and
-wires the corresponding `TypedCRUD` functions. This is the narrow exception
-to the type-erasure guidance in [Pattern 16](../architecture/patterns.md):
-capability assertions stay in the adapter package, never in providers.
-Provider clients use compile-time interface assertions to catch signature drift.
+Clients implement only the operations they support: `Lister[T]`, `Getter[T]`, `Creator[T]`, `Updater[T]`, `Deleter[T]`, and `Validator[T]`. The single `newCapabilityCRUD` function in `capability.go` tests those interfaces and wires the corresponding `TypedCRUD` functions. This is the narrow exception to the type-erasure guidance in [Pattern 16](../architecture/patterns.md): capability assertions stay in the adapter package, never in providers. Provider clients use compile-time interface assertions to catch signature drift.
 
 Unsupported operations return `errors.ErrUnsupported`. Dry-run create/update
 uses `Validator` when available; otherwise it skips the mutation and returns

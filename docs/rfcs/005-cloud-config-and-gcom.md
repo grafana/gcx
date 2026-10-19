@@ -5,11 +5,7 @@
 **Bead**: none
 **Supersedes**: none
 
-> **Proposed amendment:** [RFC 023](023-versioned-split-config-and-secret-trust.md)
-> would move Grafana connection/provider data to named `stacks`, move GCOM auth
-> to named `cloud` entries, and make contexts thin bindings. The implementation
-> follows that model while ratification remains pending. The GCOM discovery and
-> shared `LoadCloudConfig` decisions below remain accepted.
+> **Proposed amendment:** [RFC 023](023-versioned-split-config-and-secret-trust.md) would move Grafana connection/provider data to named `stacks`, move GCOM auth to named `cloud` entries, and make contexts thin bindings. The implementation follows that model while ratification remains pending. The GCOM discovery and shared `LoadCloudConfig` decisions below remain accepted.
 
 ## Context
 

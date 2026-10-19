@@ -12,10 +12,7 @@ SERVE:  Local disk → watch → FSReader → HTTP proxy → live reload → Bro
 QUERY:  Flags → query client → Grafana datasource API → parse → render
 ```
 
-The first four share the same `Resource`/`Resources` abstraction as the central in-memory
-representation. The `Processor` interface (`remote/remote.go`) provides a composable
-transformation stage in push and pull. The QUERY pipeline is independent — it operates
-on time series data and does not use the resource model.
+The first four share the same `Resource`/`Resources` abstraction as the central in-memory representation. The `Processor` interface (`remote/remote.go`) provides a composable transformation stage in push and pull. The QUERY pipeline is independent — it operates on time series data and does not use the resource model.
 
 ---
 
@@ -327,22 +324,7 @@ generic dispatcher is a separate, conditional decision:
    `QueryCmd` and `ExtraCommands` automatically — no per-kind wiring in the
    command layer. Registered kinds live in `internal/datasources/providers/`;
    read that directory rather than trusting a list here.
-2. **Generic `datasources query` — table-driven, and deliberately not at
-   parity.** The auto-detecting command resolves the datasource type over the API
-   and routes it through two disjoint tables in
-   `cmd/gcx/datasources/query_routes.go`: `dispatch` maps a normalized kind to a
-   handler, for kinds the `<uid> <expr>` form carries honestly; `redirects` maps a
-   kind to a message naming the typed command, for kinds whose query is
-   structured. A kind is in one table, the other, or neither — never both, which
-   the tests assert. Registration does **not** reach these tables and no test
-   enforces parity, because parity is not always the right answer: a kind whose
-   query cannot be expressed as one string does not belong in the generic form.
-   CloudWatch is the redirect case for that reason, pointing at
-   `datasources cloudwatch query` and its structured flags (namespace, metric,
-   dimensions, region, statistic, period). The redirect lookup runs *before*
-   expression resolution and before the dispatch lookup: ordering is
-   load-bearing, because an argument-less call would otherwise fail in
-   `ResolveExpr` and never reach the redirect. Kinds in neither table fall to the unsupported-kind default, whose message is derived from the tables rather than hand-maintained. Read `newQueryRoutes()` for current routing.
+2. **Generic `datasources query` — table-driven, and deliberately not at parity.** The auto-detecting command resolves the datasource type over the API and routes it through two disjoint tables in `cmd/gcx/datasources/query_routes.go`: `dispatch` maps a normalized kind to a handler, for kinds the `<uid> <expr>` form carries honestly; `redirects` maps a kind to a message naming the typed command, for kinds whose query is structured. A kind is in one table, the other, or neither — never both, which the tests assert. Registration does **not** reach these tables and no test enforces parity, because parity is not always the right answer: a kind whose query cannot be expressed as one string does not belong in the generic form. CloudWatch is the redirect case for that reason, pointing at `datasources cloudwatch query` and its structured flags (namespace, metric, dimensions, region, statistic, period). The redirect lookup runs *before* expression resolution and before the dispatch lookup: ordering is load-bearing, because an argument-less call would otherwise fail in `ResolveExpr` and never reach the redirect. Kinds in neither table fall to the unsupported-kind default, whose message is derived from the tables rather than hand-maintained. Read `newQueryRoutes()` for current routing.
 
 ```
 User invocation:

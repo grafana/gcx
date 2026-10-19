@@ -459,8 +459,7 @@ if opts.Context != "" {
 }
 ```
 
-To switch permanently: `gcx config use-context <name>` writes the
-updated `current-context` field back to the file (`command.go`).
+To switch permanently: `gcx config use-context <name>` writes the updated `current-context` field back to the file (`command.go`).
 
 `GetCurrentContext()` (types.go):
 ```go
@@ -700,8 +699,7 @@ Path traversal algorithm (`editor.go`):
 - Leaf kinds handled: `string`, `[]byte` (slice), `bool`, `int64`
 - `unset` mode: resets to zero value at the leaf or removes map entry
 
-Important: path traversal uses **YAML tag names** (e.g., `insecure-skip-verify`),
-not Go field names (e.g., `Insecure`). The tag lookup is at `editor.go`:
+Important: path traversal uses **YAML tag names** (e.g., `insecure-skip-verify`), not Go field names (e.g., `Insecure`). The tag lookup is at `editor.go`:
 ```go
 yamlName := strings.Split(fieldType.Tag.Get("yaml"), ",")[0]
 if yamlName != step { continue }

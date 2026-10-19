@@ -43,20 +43,11 @@ This RFC decides how to fill those gaps.
 - [CONSTITUTION.md](../../CONSTITUTION.md) — providers are self-registering plugins; K8s envelope is the file format
 - Existing precedent: [internal/providers/agento11y/eval/templates/commands.go](../../internal/providers/agento11y/eval/templates/commands.go) for `versions` sub-command shape
 - Current dashboards command tree: [internal/providers/dashboards/commands.go](../../internal/providers/dashboards/commands.go)
-- Resources pipeline entrypoints reused by the new provider:
-  [internal/resources/dynamic/](../../internal/resources/dynamic) (K8s dynamic client — primary surface),
-  [internal/resources/discovery/](../../internal/resources/discovery) (preferred-version resolution),
-  [internal/resources/remote/](../../internal/resources/remote) (Pusher/Puller/Deleter — used by the declarative `resources push/pull` path, **not** by this provider's imperative CRUD),
-  [internal/resources/adapter/typed.go](../../internal/resources/adapter/typed.go) (TypedCRUD[T])
+- Resources pipeline entrypoints reused by the new provider: [internal/resources/dynamic/](../../internal/resources/dynamic) (K8s dynamic client — primary surface), [internal/resources/discovery/](../../internal/resources/discovery) (preferred-version resolution), [internal/resources/remote/](../../internal/resources/remote) (Pusher/Puller/Deleter — used by the declarative `resources push/pull` path, **not** by this provider's imperative CRUD), [internal/resources/adapter/typed.go](../../internal/resources/adapter/typed.go) (TypedCRUD[T])
 
 ### Research status
 
-This RFC was drafted ahead of the research pass that would firm up the
-wire-protocol details for search, version history, restore, preferred
-version, and list-payload completeness. That pass has completed.
-The findings are folded into the Decision section below; the closing
-[Research Findings](#research-findings) section summarizes each resolution
-and lists the residual live-instance probes recommended pre-merge.
+This RFC was drafted ahead of the research pass that would firm up the wire-protocol details for search, version history, restore, preferred version, and list-payload completeness. That pass has completed. The findings are folded into the Decision section below; the closing [Research Findings](#research-findings) section summarizes each resolution and lists the residual live-instance probes recommended pre-merge.
 
 ### Constraints (from the sources above)
 
@@ -116,8 +107,7 @@ A new self-registering provider package is created at
 `internal/providers/slo/` (provider root + one sub-package per command
 group). The package:
 
-- Defines `DashboardsProvider` implementing the
-  [providers.Provider](../../internal/providers/provider.go) interface.
+- Defines `DashboardsProvider` implementing the [providers.Provider](../../internal/providers/provider.go) interface.
 - Self-registers in `init()` via `providers.Register()`.
 - Contributes a single root `dashboards` Cobra command with CRUD, search,
   versions (list + restore), and the existing snapshot as subcommands.
@@ -131,22 +121,7 @@ group). The package:
 - `Validate()` returns `nil` and `ConfigKeys()` returns `nil` — dashboards
   use Grafana's built-in authentication, same as SLO.
 
-The provider's CRUD command implementations delegate to the K8s dynamic
-client in the resources pipeline
-(`internal/resources/dynamic.NamespacedClient`) scoped to the dashboards
-GVR resolved via
-[discovery.Registry](../../internal/resources/discovery/registry.go).
-`create`, `update`, and `delete` call `NamespacedClient.{Create, Update,
-Delete}` directly — **not** `remote.Pusher`/`Puller`. Pusher/Puller
-implement upsert/batch semantics for the declarative `gcx resources push`
-pipeline, which is incompatible with the fail-fast Contract 5 semantics
-of imperative commands (`create` must 409 on duplicate; `update` must
-404 on missing). `list-versions` and `versions restore` are also pure
-K8s LIST + GET + UPDATE via `NamespacedClient` — see the wire-protocol
-subsections below. Only `search` (and, transitively, nothing else —
-`list` does not expose `--folder`) needs a purpose-built thin HTTP
-client, because the `/search` endpoint is v0alpha1-pinned and lives
-outside the dynamic client's verb surface.
+The provider's CRUD command implementations delegate to the K8s dynamic client in the resources pipeline (`internal/resources/dynamic.NamespacedClient`) scoped to the dashboards GVR resolved via [discovery.Registry](../../internal/resources/discovery/registry.go). `create`, `update`, and `delete` call `NamespacedClient.{Create, Update, Delete}` directly — **not** `remote.Pusher`/`Puller`. Pusher/Puller implement upsert/batch semantics for the declarative `gcx resources push` pipeline, which is incompatible with the fail-fast Contract 5 semantics of imperative commands (`create` must 409 on duplicate; `update` must 404 on missing). `list-versions` and `versions restore` are also pure K8s LIST + GET + UPDATE via `NamespacedClient` — see the wire-protocol subsections below. Only `search` (and, transitively, nothing else — `list` does not expose `--folder`) needs a purpose-built thin HTTP client, because the `/search` endpoint is v0alpha1-pinned and lives outside the dynamic client's verb surface.
 
 **Alternatives considered and rejected** (for this decision only):
 
@@ -223,13 +198,7 @@ CRUD + search + snapshot surface.
   Wide:   NAME  TITLE  FOLDER  TAGS  PANELS  URL  AGE
   ```
 
-  **STATUS column is intentionally dropped for dashboards** — dashboards
-  have no runtime state (no "enabled/failing/ok"), and Contract 1 explicitly
-  qualifies STATUS as applicable only "if the resource has a state". The
-  column is omitted and this choice is documented as a Contract 1 exception
-  in [docs/design/output.md](../design/output.md). See
-  [Open question 1](#open-questions) for the alternative of surfacing
-  `schemaVersion` as a separate column.
+  **STATUS column is intentionally dropped for dashboards** — dashboards have no runtime state (no "enabled/failing/ok"), and Contract 1 explicitly qualifies STATUS as applicable only "if the resource has a state". The column is omitted and this choice is documented as a Contract 1 exception in [docs/design/output.md](../design/output.md). See [Open question 1](#open-questions) for the alternative of surfacing `schemaVersion` as a separate column.
 
 - **Contract 2 (envelope)** — `get -o yaml|json`, `list -o yaml|json`,
   `search -o yaml|json`, and `list-versions -o yaml|json` all produce
@@ -468,10 +437,7 @@ single command (pipeline class (D) — legacy REST under `/api/`, not
 `/apis/`); (d) it has no request-body slot for a commit message, so
 `--message` would be unsupported.
 
-**Command shape — `versions restore` adopted (closes [OQ2](#open-questions)).**
-A flat action verb `rollback <name> --to <version>` was the pre-research
-leaning. After research and interactive review, the RFC adopts nested
-noun/verb `versions restore <name> <version>`:
+**Command shape — `versions restore` adopted (closes [OQ2](#open-questions)).** A flat action verb `rollback <name> --to <version>` was the pre-research leaning. After research and interactive review, the RFC adopts nested noun/verb `versions restore <name> <version>`:
 - Groups semantically with `versions list` under the `versions` noun.
 - Matches the sigil precedent (`sigil templates versions …`).
 - Two positionals are terser than positional + `--to` flag for the
@@ -496,11 +462,7 @@ action-verb semantics.
 
 #### Version-discovery strategy
 
-- Default: use the preferred version reported by
-  [discovery.Registry](../../internal/resources/discovery/registry.go)
-  for `dashboard.grafana.app`, via `LookupPartialGVK()` — identical to
-  the resources pipeline. gcx **never hardcodes** the CRUD version.
-  (The `v0alpha1`-only search endpoint is the one documented exception.)
+- Default: use the preferred version reported by [discovery.Registry](../../internal/resources/discovery/registry.go) for `dashboard.grafana.app`, via `LookupPartialGVK()` — identical to the resources pipeline. gcx **never hardcodes** the CRUD version. (The `v0alpha1`-only search endpoint is the one documented exception.)
 - Override: `--api-version` flag on each command for explicit pinning
   (matches the flag shape used by `gcx resources get`).
 
@@ -625,22 +587,12 @@ Other selectors return either full or silently-empty results.
 ### Neutral / follow-up
 
 - Moving snapshot logic from `cmd/gcx/dashboards/snapshot.go` into the provider package changes its import path; downstream imports need to follow the move.
-- [claude-plugin/skills/manage-dashboards/](../../claude-plugin/skills/manage-dashboards)
-  should be updated to reference the new CRUD commands alongside the
-  existing `resources` path, and to document the `list` / `search
-  --folder` split.
-- If future user feedback requests additional search filters (e.g.,
-  `--starred` — not confirmed supported by the v0alpha1 endpoint in the
-  research pass; folder-path syntax — not confirmed either), the flag
-  set should be widened in a follow-up amendment to this RFC, not a
-  separate RFC.
+- [claude-plugin/skills/manage-dashboards/](../../claude-plugin/skills/manage-dashboards) should be updated to reference the new CRUD commands alongside the existing `resources` path, and to document the `list` / `search --folder` split.
+- If future user feedback requests additional search filters (e.g., `--starred` — not confirmed supported by the v0alpha1 endpoint in the research pass; folder-path syntax — not confirmed either), the flag set should be widened in a follow-up amendment to this RFC, not a separate RFC.
 
 ## Research Findings
 
-The research dependencies identified when this RFC was drafted are resolved below.
-The resolutions are folded into the Decision section above; this section
-recaps each one and lists the residual live-instance probes recommended
-pre-merge.
+The research dependencies identified when this RFC was drafted are resolved below. The resolutions are folded into the Decision section above; this section recaps each one and lists the residual live-instance probes recommended pre-merge.
 
 1. **Search endpoint capabilities — resolved.** URL
    `GET /apis/dashboard.grafana.app/v0alpha1/namespaces/{ns}/search`,
@@ -658,26 +610,11 @@ pre-merge.
    folder-path syntax and `starred` filter were not confirmed; both
    omitted from v1.
 
-2. **Version-history endpoint shape — resolved.** Plain K8s LIST on the
-   main dashboards collection with magic selectors
-   (`labelSelector=grafana.app/get-history=true&fieldSelector=metadata.name={uid}`).
-   Not a subresource; not a separate CRD; not the legacy REST endpoint.
-   Each item is a full Dashboard object; `metadata.generation` is the
-   version identifier; `grafana.app/message` / `grafana.app/updatedBy`
-   annotations carry the commit message and author. Pipeline class (A)
-   — reuses `dynamic.NamespacedClient.List()` as-is; no new HTTP client.
-   This reclassification removes a client surface that the pre-research
-   RFC draft assumed was necessary.
+2. **Version-history endpoint shape — resolved.** Plain K8s LIST on the main dashboards collection with magic selectors (`labelSelector=grafana.app/get-history=true&fieldSelector=metadata.name={uid}`). Not a subresource; not a separate CRD; not the legacy REST endpoint. Each item is a full Dashboard object; `metadata.generation` is the version identifier; `grafana.app/message` / `grafana.app/updatedBy` annotations carry the commit message and author. Pipeline class (A) — reuses `dynamic.NamespacedClient.List()` as-is; no new HTTP client. This reclassification removes a client surface that the pre-research RFC draft assumed was necessary.
 
 3. **Restore (rollback) semantics — resolved; path chosen.** Two viable
    paths, both with identical append semantics (new generation = current
-   + 1). RFC chooses the **K8s-compound path** (LIST history → GET
-   current → PUT with historical spec + `grafana.app/message`
-   annotation), matching what the Grafana UI does — pipeline class (A),
-   zero new client surface. The legacy REST path
-   (`POST /api/dashboards/uid/{uid}/restore` with body `{"version": N}`)
-   is explicitly rejected: class (D), UI has stopped using it, endpoint
-   marked in Swagger for eventual removal, no `--message` slot.
+   + 1). RFC chooses the **K8s-compound path** (LIST history → GET current → PUT with historical spec + `grafana.app/message` annotation), matching what the Grafana UI does — pipeline class (A), zero new client surface. The legacy REST path (`POST /api/dashboards/uid/{uid}/restore` with body `{"version": N}`) is explicitly rejected: class (D), UI has stopped using it, endpoint marked in Swagger for eventual removal, no `--message` slot.
 
 4. **Preferred API version — resolved.** `v2` in both OSS 12.x (default)
    and current Grafana Cloud — `FlagDashboardNewLayouts` is GA with
@@ -689,14 +626,7 @@ pre-merge.
    as opaque JSON for CRUD; only the wide-mode PANELS codec branches on
    `apiVersion`.
 
-5. **List-payload completeness — resolved.** LIST returns full Dashboard
-   objects per item — `title` and `tags` inside `spec`; folder as
-   annotation `grafana.app/folder`. Panel count walks `spec.panels` (v1)
-   or `spec.elements` (v2). No per-item fan-out required; table output
-   performs one folder LIST for path resolution. Important consequence:
-   `--folder` filter cannot use labelSelector (annotation, not label) — RFC
-   removes `--folder` from `list` and routes folder filtering to
-   `search --folder UID` instead.
+5. **List-payload completeness — resolved.** LIST returns full Dashboard objects per item — `title` and `tags` inside `spec`; folder as annotation `grafana.app/folder`. Panel count walks `spec.panels` (v1) or `spec.elements` (v2). No per-item fan-out required; table output performs one folder LIST for path resolution. Important consequence: `--folder` filter cannot use labelSelector (annotation, not label) — RFC removes `--folder` from `list` and routes folder filtering to `search --folder UID` instead.
 
 ### Live-stack validation (completed 2026-04-21)
 
@@ -717,26 +647,10 @@ Deltas folded back into the Decision section:
 - Search command: `type=dash-db` ignored server-side; `type=dashboard` (modern form) IS honored — no client-side filter needed; raw response shape clarified.
 - Version history: TIMESTAMP column sources `grafana.app/updatedTimestamp` annotation, not `metadata.creationTimestamp`.
 
-None of the deltas invalidate the RFC's accepted decisions; all are
-implementation-detail refinements. Overall confidence now ~96%.
+None of the deltas invalidate the RFC's accepted decisions; all are implementation-detail refinements. Overall confidence now ~96%.
 
 ## Open Questions
 
-1. **`schemaVersion` or `version` as a column?** Contract 1 reserves the
-   STATUS column for resources that have runtime state. Dashboards don't,
-   but they do have a `schemaVersion` (dashboard JSON schema revision) and
-   a `resourceVersion` (K8s optimistic-concurrency token). Should wide
-   output surface either of these as a column in place of STATUS? Leaning
-   no — `schemaVersion` is an implementation detail users rarely need, and
-   `resourceVersion` is a transient etag. This RFC leaves them out; easy
-   to add later if user feedback asks.
+1. **`schemaVersion` or `version` as a column?** Contract 1 reserves the STATUS column for resources that have runtime state. Dashboards don't, but they do have a `schemaVersion` (dashboard JSON schema revision) and a `resourceVersion` (K8s optimistic-concurrency token). Should wide output surface either of these as a column in place of STATUS? Leaning no — `schemaVersion` is an implementation detail users rarely need, and `resourceVersion` is a transient etag. This RFC leaves them out; easy to add later if user feedback asks.
 
-2. **`rollback` vs `versions restore`** — *resolved.* The RFC adopts
-   nested noun/verb `versions restore <name> <version>` over the flat
-   `rollback <name> --to <version>` that was the pre-research leaning.
-   Reasons: groups semantically with `versions list` under the
-   `versions` noun; mirrors the sigil precedent (`sigil templates
-   versions …`); two positionals read naturally as "restore dashboard X
-   version 3" and are terser than positional + `--to` for the common
-   case. The two-positional shape is documented as an extension of
-   Contract 7 (see Verb contract application).
+2. **`rollback` vs `versions restore`** — *resolved.* The RFC adopts nested noun/verb `versions restore <name> <version>` over the flat `rollback <name> --to <version>` that was the pre-research leaning. Reasons: groups semantically with `versions list` under the `versions` noun; mirrors the sigil precedent (`sigil templates versions …`); two positionals read naturally as "restore dashboard X version 3" and are terser than positional + `--to` for the common case. The two-positional shape is documented as an extension of Contract 7 (see Verb contract application).
