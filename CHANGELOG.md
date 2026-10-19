@@ -3,11 +3,13 @@
 ### Fixes
 
 - Classify CLI failures with consistent category summaries and preserve operation context, server messages, codes, and trace IDs without repeated diagnostics. HTTP 401/403 errors carried by shared provider transports, Assistant helpers, and `gcx api`, missing Cloud credentials, and missing SM credentials/stack prerequisites now exit 3 instead of 1; the instrumentation mutual-exclusion error converter now assigns exit 2 instead of 1 (the current setup command does not emit its sentinel). HTML error pages are replaced with generic API-response details while retaining auth classification; `gcx api` continues to show the full body. Fleet 404s mean `Resource not found` only for Connect `code: "not_found"`; other 404s mean `Endpoint not available`.
+
 ### Breaking changes
 
-- `gcx dbo11y instances list` no longer reports `namespace`, `environment`
-  or `labels`, and `gcx dbo11y instances get` no longer reports connection
-  counts by state, active wait events or the longest running transaction.
+- `gcx dbo11y instances list` reports the collector's labels as a `labels`
+  map keyed by raw label name, rather than as separate `namespace` and
+  `environment` fields. Read `service_namespace` and
+  `deployment_environment` from the map for the old values.
 - `--filter` on `gcx dbo11y instances list` and `gcx dbo11y instances get`
   matches exact key values only. `!=`, `=~` and `!~` now exit 2, as does
   giving one label two values. On `gcx dbo11y instances get` it accepts only
@@ -22,6 +24,15 @@
 
 ### New commands and improvements
 
+- `gcx dbo11y instances get` reports the instance's session state under
+  `sessions`: the connection count against the engine's own limit, the
+  breakdown by session state, and the age of the oldest open transaction.
+  The limit is new — the previous implementation reported counts with
+  nothing to compare them against.
+- `gcx dbo11y instances get` reports where the instance is waiting under
+  `wait_events`, across every query rather than one at a time, using the
+  collector's own categories (`IO Wait`, `Lock Wait`, and so on) rather
+  than raw engine event names.
 - `gcx dbo11y instances get` reports `health.up` as the instance's presence
   in the Database Observability inventory. The collector stops publishing an
   instance it cannot reach, so presence is the health signal rather than a

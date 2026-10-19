@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 
@@ -98,11 +99,17 @@ which is its presence in the inventory rather than a separate check: the
 collector stops publishing an instance it cannot reach after about three
 minutes, so an instance that answers at all is one being collected from.
 
-Connection counts by state, active wait events and the longest running
-transaction are not reported: the API models the inventory, a RED rollup and
-per-statement performance, not instance-wide session state. Those signals live
-in the stack's own metrics, so "gcx metrics query" reaches them, for example
-sum by (state) (pg_stat_activity_count{...}).
+"sessions" reports the connection count against the engine's own limit, the
+breakdown by session state, and the age of the oldest open transaction.
+Coverage differs by engine: Postgres reports all of it, MySQL a count and a
+limit only, SQL Server none.
+
+"wait_events" reports where the instance spent time waiting, across every
+query, in the collector's own categories rather than raw engine event names.
+
+Both come from routes a stack's plugin may predate. Where that is so they are
+omitted and the rest of the result still stands, rather than failing the
+command.
 
 --filter only scopes the top-queries view to one database; the instance
 metadata is unaffected.`,
@@ -125,7 +132,7 @@ metadata is unaffected.`,
 		RunE: runGet(loader, opts),
 		Annotations: map[string]string{
 			agent.AnnotationTokenCost: "small",
-			agent.AnnotationLLMHint:   `Per-instance Database Observability snapshot, read from the Database Observability API. Argument is the instance name from 'gcx dbo11y instances list' or its server_id; both resolve. Reports instance metadata, a RED rollup under instance.metrics (qps, avg_latency_ms, error_rate, AWS-only cpu_percent) over the backend's own fixed window, and top_queries ranked by time_per_second (share of database time) with query_text, rows_examined and per-query error_rate. Engine-agnostic across Postgres/MySQL/SQL Server, except that per-query error_rate is absent for postgres and rows_examined is absent for sql_server. health.up reports whether the instance is reporting to Database Observability, which is its presence in the inventory rather than a separate check — the collector unregisters an instance it cannot reach after ~3 minutes of failed pings, so an instance that answers at all is being collected from, and a missing one reports health.up false alongside the not-found hint. Connection counts, wait events and the longest running transaction are not reported: the API models inventory, RED and per-statement performance, not instance-wide session state (its wait-event route is per-query, not per-instance). Use 'gcx metrics query' against pg_stat_activity for those. --top (default 10) caps the queries list, clamped to the API maximum of 100; each row carries its SQL text, so a high --top costs several times the default output. --since is accepted but has no effect yet: the backend evaluates each query's figures over its own fixed window. --filter label=value (repeatable, ANDed) scopes top queries via datname, schema, database, query_id or digest; exact match only, and any other field is a usage error rather than an empty result. The queries route ignores filters, so gcx applies them after the API has ranked the statements. On a name or server_id that matches nothing this command emits its result document, checks the stack's Database Observability activation status, and exits 1. Examples: gcx dbo11y instances get <instance> -o json; gcx dbo11y instances get <instance> --top 20 -o json`,
+			agent.AnnotationLLMHint:   `Per-instance Database Observability snapshot, read from the Database Observability API. Argument is the instance name from 'gcx dbo11y instances list' or its server_id; both resolve. Reports instance metadata, a RED rollup under instance.metrics (qps, avg_latency_ms, error_rate, AWS-only cpu_percent) over the backend's own fixed window, and top_queries ranked by time_per_second (share of database time) with query_text, rows_examined and per-query error_rate. Engine-agnostic across Postgres/MySQL/SQL Server, except that per-query error_rate is absent for postgres and rows_examined is absent for sql_server. health.up reports whether the instance is reporting to Database Observability, which is its presence in the inventory rather than a separate check — the collector unregisters an instance it cannot reach after ~3 minutes of failed pings, so an instance that answers at all is being collected from, and a missing one reports health.up false alongside the not-found hint. sessions reports total and max_connections (both engines that report sessions), by_state and longest_transaction_seconds (postgres only), and is absent for sql_server. wait_events is the instance-wide breakdown in the collector's categories (IO Wait, Lock Wait, Network Wait, Engine Wait, Replication Wait, Other Wait), ordered with the dominant cause first. instance.labels carries the collector's labels keyed by raw label name, which is what --filter matches on. sessions and wait_events come from routes an older plugin may not serve; they are omitted in that case rather than failing the command. --top (default 10) caps the queries list, clamped to the API maximum of 100; each row carries its SQL text, so a high --top costs several times the default output. --since is accepted but has no effect yet: the backend evaluates each query's figures over its own fixed window. --filter label=value (repeatable, ANDed) scopes top queries via datname, schema, database, query_id or digest; exact match only, and any other field is a usage error rather than an empty result. The queries route ignores filters, so gcx applies them after the API has ranked the statements. On a name or server_id that matches nothing this command emits its result document, checks the stack's Database Observability activation status, and exits 1. Examples: gcx dbo11y instances get <instance> -o json; gcx dbo11y instances get <instance> --top 20 -o json`,
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -180,6 +187,19 @@ func runGet(loader *providers.ConfigLoader, opts *getOpts) func(*cobra.Command, 
 			return reportInstanceMiss(ctx, cmd, &opts.IO, cfg, name)
 		}
 
+		// Session state and the wait-event breakdown are each one request and
+		// each optional: a stack whose plugin predates the route reports
+		// nothing rather than failing the command, since stacks upgrade on
+		// their own schedule. A real failure still surfaces.
+		sessions, haveSessions, sessionsErr := fetchSessions(ctx, client, datasourceUID, inst.ServerID)
+		if sessionsErr != nil {
+			return sessionsErr
+		}
+		waitEvents, waitErr := fetchWaitEvents(ctx, client, datasourceUID, lokiDatasourceUID, inst.ServerID)
+		if waitErr != nil {
+			return waitErr
+		}
+
 		topQueries, truncated, queriesErr := fetchAndFilterTopQueries(ctx, client, datasourceUID, lokiDatasourceUID, inst.ServerID, opts.Since, opts.Top, filters)
 		if truncated {
 			cmdio.EmitHint(cmd.ErrOrStderr(),
@@ -192,7 +212,11 @@ func runGet(loader *providers.ConfigLoader, opts *getOpts) func(*cobra.Command, 
 			Window:   backendQueryWindow,
 			// The API returned this instance, which is what reporting means.
 			Health:     Health{Up: true},
+			WaitEvents: waitEvents,
 			TopQueries: topQueries,
+		}
+		if haveSessions {
+			detail.Sessions = &sessions
 		}
 		if encErr := opts.IO.Encode(cmd.OutOrStdout(), detail); encErr != nil {
 			return encErr
@@ -390,6 +414,14 @@ func (c *instanceDetailCodec) Encode(w io.Writer, v any) error {
 	}
 	fmt.Fprintln(tw)
 
+	if sess := detail.Sessions; sess != nil {
+		writeRow("Connections", fmtConnections(sess))
+		if sess.LongestTransactionSeconds != nil {
+			writeRow("Longest txn", formatSeconds(*sess.LongestTransactionSeconds, true))
+		}
+		fmt.Fprintln(tw)
+	}
+
 	if m := inst.Metrics; m != nil {
 		// Fields are individually omitted by the API (not zeroed) when their
 		// engine isn't modelled (QPS/AvgLatencyMs/ErrorRate: mysql and
@@ -404,6 +436,18 @@ func (c *instanceDetailCodec) Encode(w io.Writer, v any) error {
 
 	if err := tw.Flush(); err != nil {
 		return err
+	}
+
+	if len(detail.WaitEvents) > 0 {
+		fmt.Fprintln(w, "Waiting on:")
+		wtw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+		for _, e := range detail.WaitEvents {
+			fmt.Fprintf(wtw, "  %s:\t%s\n", e.Type, formatSeconds(e.WaitSeconds, true))
+		}
+		if err := wtw.Flush(); err != nil {
+			return err
+		}
+		fmt.Fprintln(w)
 	}
 
 	fmt.Fprintf(w, "Top queries by time share (window %s):\n", detail.Window)
@@ -509,4 +553,22 @@ func singleLineTruncate(s string, maxLen int) string {
 		return string(r[:maxLen]) + "..."
 	}
 	return s
+}
+
+// fmtConnections renders the session count against the engine's own limit, which
+// is the pair that means something — a count alone says nothing about headroom.
+// Either half can be missing: SQL Server reports neither, and an engine without
+// a state breakdown still reports both of these.
+func fmtConnections(s *Sessions) string {
+	switch {
+	case s.Total == nil:
+		return "-"
+	case s.MaxConnections == nil || *s.MaxConnections == 0:
+		return strconv.FormatFloat(*s.Total, 'f', -1, 64)
+	default:
+		return fmt.Sprintf("%s / %s (%.0f%%)",
+			strconv.FormatFloat(*s.Total, 'f', -1, 64),
+			strconv.FormatFloat(*s.MaxConnections, 'f', -1, 64),
+			*s.Total / *s.MaxConnections * 100)
+	}
 }

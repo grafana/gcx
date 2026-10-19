@@ -190,6 +190,10 @@ func TestInstancesGet_HealthTracksPresence(t *testing.T) {
 				w.Write([]byte(`{"status":"success","data":{"server_id":"srv-1","instance":"db-1","engine":"postgres"}}`)) //nolint:errcheck // test helper
 			case apiBasePath + queriesPath("srv-1"):
 				w.Write([]byte(`{"status":"success","data":{"queries":[]}}`)) //nolint:errcheck // test helper
+			case apiBasePath + sessionsPath("srv-1"):
+				w.Write([]byte(`{"status":"success","data":{"server_id":"srv-1","engine":"postgres","total":25,"max_connections":429,"by_state":{"idle":16,"active":9},"longest_transaction_seconds":105.34}}`)) //nolint:errcheck // test helper
+			case apiBasePath + waitEventsPath("srv-1"):
+				w.Write([]byte(`{"status":"success","data":{"server_id":"srv-1","wait_events":[{"type":"Lock Wait","wait_seconds":12.5}],"total_wait_seconds":12.5}}`)) //nolint:errcheck // test helper
 			default:
 				w.Write([]byte(`{"status":"success","data":[]}`)) //nolint:errcheck // test helper
 			}
@@ -200,6 +204,52 @@ func TestInstancesGet_HealthTracksPresence(t *testing.T) {
 		assertOneJSONValue(t, stdout)
 		if !strings.Contains(stdout, `"up": true`) && !strings.Contains(stdout, `"up":true`) {
 			t.Errorf("expected health.up true for an instance the API returned:\n%s", stdout)
+		}
+		for _, want := range []string{"max_connections", "longest_transaction_seconds", "Lock Wait"} {
+			if !strings.Contains(stdout, want) {
+				t.Errorf("expected %q in the result document:\n%s", want, stdout)
+			}
+		}
+	})
+
+	// Stacks upgrade on their own schedule, so a gcx that knows about /sessions
+	// and /wait-events will meet plugins that do not serve them. An unmounted
+	// route answers a bare text/plain 404 with no error code, which has to read
+	// as "not available here" rather than failing the command — otherwise the
+	// whole command breaks on every stack that is one release behind.
+	t.Run("routes an older plugin does not serve are skipped, not fatal", func(t *testing.T) {
+		stdout, _, err := runCommand(t, func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/bootdata":
+				http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
+			case apiBasePath + instancePath("srv-1"):
+				w.Header().Set("Content-Type", "application/json")
+				w.Write([]byte(`{"status":"success","data":{"server_id":"srv-1","instance":"db-1","engine":"postgres"}}`)) //nolint:errcheck // test helper
+			case apiBasePath + queriesPath("srv-1"):
+				w.Header().Set("Content-Type", "application/json")
+				w.Write([]byte(`{"status":"success","data":{"queries":[]}}`)) //nolint:errcheck // test helper
+			case apiBasePath + sessionsPath("srv-1"), apiBasePath + waitEventsPath("srv-1"):
+				// What an unmounted route actually answers.
+				w.WriteHeader(http.StatusNotFound)
+				w.Write([]byte("404 page not found\n")) //nolint:errcheck // test helper
+			default:
+				w.Header().Set("Content-Type", "application/json")
+				w.Write([]byte(`{"status":"success","data":[]}`)) //nolint:errcheck // test helper
+			}
+		}, "instances", "get", "srv-1", "-o", "json")
+
+		if err != nil {
+			t.Fatalf("an older plugin must not fail the command: %v", err)
+		}
+		assertOneJSONValue(t, stdout)
+		for _, absent := range []string{"sessions", "wait_events"} {
+			if strings.Contains(stdout, absent) {
+				t.Errorf("expected %q to be omitted when the route is unmounted:\n%s", absent, stdout)
+			}
+		}
+		// The rest of the document still stands.
+		if !strings.Contains(stdout, `"up": true`) && !strings.Contains(stdout, `"up":true`) {
+			t.Errorf("expected the instance still to be reported:\n%s", stdout)
 		}
 	})
 

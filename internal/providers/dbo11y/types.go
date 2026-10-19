@@ -9,11 +9,12 @@ package dbo11y
 // /instances/{server_id}. It exists only to decode the response; everything
 // downstream works with the Instance output type.
 type apiInstance struct {
-	ServerID      string        `json:"server_id"`
-	Instance      string        `json:"instance"`
-	Engine        string        `json:"engine"`
-	EngineVersion string        `json:"engine_version"`
-	CloudProvider cloudProvider `json:"cloud_provider"`
+	ServerID      string            `json:"server_id"`
+	Instance      string            `json:"instance"`
+	Engine        string            `json:"engine"`
+	EngineVersion string            `json:"engine_version"`
+	CloudProvider cloudProvider     `json:"cloud_provider"`
+	Labels        map[string]string `json:"labels"`
 	// Metrics is populated on the detail route only; the list route never
 	// includes it.
 	Metrics *Metrics `json:"metrics,omitempty"`
@@ -127,16 +128,26 @@ type Metrics struct {
 // that is either a host:port endpoint or a logical name. ServerID is what
 // `instances get` takes.
 type Instance struct {
-	Name               string   `json:"name" yaml:"name"`
-	Engine             string   `json:"engine,omitempty" yaml:"engine,omitempty"`
-	EngineVersion      string   `json:"engine_version,omitempty" yaml:"engine_version,omitempty"`
-	Host               string   `json:"host,omitempty" yaml:"host,omitempty"`
-	InstanceIdentifier string   `json:"instance_identifier,omitempty" yaml:"instance_identifier,omitempty"`
-	ProviderName       string   `json:"provider_name,omitempty" yaml:"provider_name,omitempty"`
-	ProviderAccount    string   `json:"provider_account,omitempty" yaml:"provider_account,omitempty"`
-	ProviderRegion     string   `json:"provider_region,omitempty" yaml:"provider_region,omitempty"`
-	ServerID           string   `json:"server_id,omitempty" yaml:"server_id,omitempty"`
-	Metrics            *Metrics `json:"metrics,omitempty" yaml:"metrics,omitempty"`
+	Name               string `json:"name" yaml:"name"`
+	Engine             string `json:"engine,omitempty" yaml:"engine,omitempty"`
+	EngineVersion      string `json:"engine_version,omitempty" yaml:"engine_version,omitempty"`
+	Host               string `json:"host,omitempty" yaml:"host,omitempty"`
+	InstanceIdentifier string `json:"instance_identifier,omitempty" yaml:"instance_identifier,omitempty"`
+	ProviderName       string `json:"provider_name,omitempty" yaml:"provider_name,omitempty"`
+	ProviderAccount    string `json:"provider_account,omitempty" yaml:"provider_account,omitempty"`
+	ProviderRegion     string `json:"provider_region,omitempty" yaml:"provider_region,omitempty"`
+	ServerID           string `json:"server_id,omitempty" yaml:"server_id,omitempty"`
+
+	// Labels carries the collector's own labels for the instance — `cluster`,
+	// `deployment_environment`, `service_name` and whatever else an operator
+	// set. Keyed by raw label name, which is also what `--filter` matches on,
+	// so what you see here is what you can filter by.
+	//
+	// Absent for an instance with none, and for any stack whose plugin predates
+	// the field.
+	Labels map[string]string `json:"labels,omitempty" yaml:"labels,omitempty"`
+
+	Metrics *Metrics `json:"metrics,omitempty" yaml:"metrics,omitempty"`
 }
 
 // toInstance converts the API's wire shape into the output contract.
@@ -151,8 +162,96 @@ func (a apiInstance) toInstance() Instance {
 		ProviderAccount:    a.CloudProvider.account(),
 		ProviderRegion:     a.CloudProvider.region(),
 		ServerID:           a.ServerID,
+		Labels:             a.Labels,
 		Metrics:            a.Metrics,
 	}
+}
+
+// apiSessions is the wire shape of GET /instances/{server_id}/sessions.
+type apiSessions struct {
+	Engine                    string             `json:"engine"`
+	Total                     *float64           `json:"total"`
+	MaxConnections            *float64           `json:"max_connections"`
+	ByState                   map[string]float64 `json:"by_state"`
+	LongestTransactionSeconds *float64           `json:"longest_transaction_seconds"`
+}
+
+// Sessions is the instance's session state as `instances get` reports it: how
+// many connections it holds, how that compares with the engine's own limit, and
+// how long the oldest transaction has been open.
+//
+// Engine coverage is uneven and shows in which fields arrive. Postgres and
+// MySQL both report a count and a limit; only Postgres breaks the count down by
+// state or reports a transaction age. SQL Server reports none of it, and so does
+// any stack whose plugin predates the route — in both cases `sessions` is
+// absent rather than zeroed.
+type Sessions struct {
+	Total          *float64 `json:"total,omitempty" yaml:"total,omitempty"`
+	MaxConnections *float64 `json:"max_connections,omitempty" yaml:"max_connections,omitempty"`
+
+	// ByState names the engine's own session states verbatim, and carries only
+	// the ones currently holding a session.
+	ByState map[string]float64 `json:"by_state,omitempty" yaml:"by_state,omitempty"`
+
+	// LongestTransactionSeconds is Postgres-only. A reported 0 means nothing is
+	// open, which is the ordinary case.
+	LongestTransactionSeconds *float64 `json:"longest_transaction_seconds,omitempty" yaml:"longest_transaction_seconds,omitempty"`
+}
+
+// toSessions converts the wire shape, dropping the engine: `instances get`
+// already reports it on the instance itself.
+//
+// A response carrying nothing but identity — an engine that reports no sessions
+// — becomes nil, so the field is omitted rather than serialized as an empty
+// object.
+func (a apiSessions) toSessions() *Sessions {
+	if a.Total == nil && a.MaxConnections == nil && len(a.ByState) == 0 && a.LongestTransactionSeconds == nil {
+		return nil
+	}
+	return &Sessions{
+		Total:                     a.Total,
+		MaxConnections:            a.MaxConnections,
+		ByState:                   a.ByState,
+		LongestTransactionSeconds: a.LongestTransactionSeconds,
+	}
+}
+
+// apiWaitEvents is the wire shape of GET /instances/{server_id}/wait-events.
+type apiWaitEvents struct {
+	WaitEvents []apiWaitEvent `json:"wait_events"`
+}
+
+type apiWaitEvent struct {
+	Type        string  `json:"type"`
+	WaitSeconds float64 `json:"wait_seconds"`
+}
+
+// WaitEvent is one category of the instance-wide wait-time breakdown, ordered
+// by the API with the dominant cause first.
+//
+// The categories are the collector's own — `IO Wait`, `Lock Wait`,
+// `Network Wait`, `Engine Wait`, `Replication Wait`, `Other Wait` — not raw
+// engine event names, and categories with no recorded wait are omitted.
+type WaitEvent struct {
+	Type        string  `json:"type" yaml:"type"`
+	WaitSeconds float64 `json:"wait_seconds" yaml:"wait_seconds"`
+}
+
+// toWaitEvents converts the wire rows, preserving the API's ordering. The two
+// row types are field-identical, so this is a conversion rather than a copy —
+// they stay separate because the wire shape is the API's to change. Returns
+// nil for an empty breakdown so the field is omitted rather than printed as an
+// empty list — which an instance that simply waited for nothing shares with one
+// whose collector predates the categorised stream.
+func (a apiWaitEvents) toWaitEvents() []WaitEvent {
+	if len(a.WaitEvents) == 0 {
+		return nil
+	}
+	out := make([]WaitEvent, 0, len(a.WaitEvents))
+	for _, e := range a.WaitEvents {
+		out = append(out, WaitEvent(e))
+	}
+	return out
 }
 
 // InstancesResponse is the top-level shape returned by `instances list`. The
@@ -232,10 +331,12 @@ func (a apiQuery) toTopQuery() TopQuery {
 
 // InstanceDetail is the `instances get` response.
 type InstanceDetail struct {
-	Instance   Instance   `json:"instance" yaml:"instance"`
-	Window     string     `json:"window" yaml:"window"`
-	Health     Health     `json:"health" yaml:"health"`
-	TopQueries []TopQuery `json:"top_queries,omitempty" yaml:"top_queries,omitempty"`
+	Instance   Instance    `json:"instance" yaml:"instance"`
+	Window     string      `json:"window" yaml:"window"`
+	Health     Health      `json:"health" yaml:"health"`
+	Sessions   *Sessions   `json:"sessions,omitempty" yaml:"sessions,omitempty"`
+	WaitEvents []WaitEvent `json:"wait_events,omitempty" yaml:"wait_events,omitempty"`
+	TopQueries []TopQuery  `json:"top_queries,omitempty" yaml:"top_queries,omitempty"`
 }
 
 // Health is whether the instance is reporting to Database Observability.
