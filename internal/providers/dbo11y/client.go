@@ -3,6 +3,7 @@ package dbo11y
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -168,6 +169,68 @@ func instancePath(serverID string) string {
 
 func queriesPath(serverID string) string {
 	return instancePath(serverID) + "/queries"
+}
+
+func sessionsPath(serverID string) string {
+	return instancePath(serverID) + "/sessions"
+}
+
+func waitEventsPath(serverID string) string {
+	return instancePath(serverID) + "/wait-events"
+}
+
+// isRouteNotMounted reports whether a failure means the stack's plugin is older
+// than the route being asked for, rather than anything being wrong with the
+// request. An unmounted route answers a bare `404` with a `text/plain` body, so
+// it has no error code to key on — the absence of one is the signal, and a
+// mounted route that genuinely has nothing to say answers 200 instead.
+//
+// Stacks upgrade on their own schedule, so a command that reaches a newer route
+// has to treat this as "not available here" and carry on, not as an error.
+func isRouteNotMounted(err error) bool {
+	var apiErr *apiError
+	if !errors.As(err, &apiErr) {
+		return false
+	}
+	return apiErr.StatusCode == http.StatusNotFound && apiErr.Code == ""
+}
+
+// fetchSessions calls GET /instances/{serverID}/sessions. The bool reports
+// whether anything came back: false for a stack whose plugin predates the
+// route, and for an engine that reports no session state. Neither is a failure,
+// and the caller omits the field in both cases.
+func fetchSessions(ctx context.Context, client *apiClient, datasourceUID, serverID string) (Sessions, bool, error) {
+	query := url.Values{datasourceParam: {datasourceUID}}
+	raw, err := apiGet[apiSessions](ctx, client, sessionsPath(serverID), query)
+	if err != nil {
+		if isRouteNotMounted(err) {
+			return Sessions{}, false, nil
+		}
+		return Sessions{}, false, err
+	}
+	sessions := raw.toSessions()
+	if sessions == nil {
+		return Sessions{}, false, nil
+	}
+	return *sessions, true, nil
+}
+
+// fetchWaitEvents calls GET /instances/{serverID}/wait-events, the instance-wide
+// breakdown. Same tolerance: an older plugin reports nothing rather than
+// failing.
+func fetchWaitEvents(ctx context.Context, client *apiClient, datasourceUID, lokiDatasourceUID, serverID string) ([]WaitEvent, error) {
+	query := url.Values{datasourceParam: {datasourceUID}}
+	if lokiDatasourceUID != "" {
+		query.Set("loki", lokiDatasourceUID)
+	}
+	raw, err := apiGet[apiWaitEvents](ctx, client, waitEventsPath(serverID), query)
+	if err != nil {
+		if isRouteNotMounted(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return raw.toWaitEvents(), nil
 }
 
 // fetchInstances calls GET /instances, scoped to datasourceUID, with filters
