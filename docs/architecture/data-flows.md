@@ -936,3 +936,15 @@ Default `MaxConcurrent` = 10 (set in `push.go:30`, `pull.go`, etc.).
    when both resources have the `kubectl` manager kind. This applies to direct
    lookups and natural-key matches. See [Manager Metadata](resource-model.md#manager-metadata).
    Other update paths must also satisfy Grafana's version and ownership checks.
+
+## Experimental typed plugin flow
+
+`gcx plugins run <executable>` loads the selected configuration, creates a
+resource discovery registry, schema fetcher and puller, and starts the plugin
+through go-plugin. The SDK brokers a callback connection: the plugin calls typed
+resource methods and the host returns descriptors, schemas and objects. Calls
+reuse clients for that run and propagate cancellation over gRPC. The plugin owns
+its terminal UI and returns a typed application result when it finishes.
+
+See the [resource-explorer example](../../examples/plugins/resource-explorer/README.md)
+for terminal handling, trust boundaries and PoC limitations.

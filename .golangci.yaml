@@ -72,6 +72,9 @@ linters:
       - legacy
       - std-error-handling
     rules:
+      # Only this unpublished SDK is intentionally linked from the checkout.
+      - linters: [gomoddirectives]
+        text: 'local replacement are not allowed: github.com/grafana/gcx/experimental/pluginsdk'
       # Taint-analysis rules produce too many false positives for CLI tools
       # that intentionally handle user-controlled paths and URLs.
       - linters: [gosec]
