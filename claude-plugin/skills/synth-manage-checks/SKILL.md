@@ -197,4 +197,4 @@ Deleted check <ID> (<job-name> -> <target>)
 - **`--dry-run` fails with "does not support check validation"**: The SM API predates `check/validate` (requires synthetic-monitoring-api v0.98.0 or later). Run `create`/`update` without `--dry-run`; the API validates on write.
 - **Create fails with "check already exists"**: The check job+target combination may already exist. Use `gcx synthetic-monitoring checks list` to find it and update instead of create.
 - **No probes available**: Run `gcx synthetic-monitoring probes list`; if empty, verify gcx context and SM API access.
-- **Complex check types (MultiHTTP, Browser, Scripted)**: Settings map is not fully documented. Pull an existing check of that type as a template: `gcx synthetic-monitoring checks get <ID> -o yaml`.
+- **Complex check types (MultiHTTP, Browser, Scripted)**: See [Complex Check Types](references/check-types.md#complex-check-types-scripted-browser-multihttp) in check-types.md.
