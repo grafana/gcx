@@ -54,3 +54,9 @@ func TestAppTableGoldenEmpty(t *testing.T) {
 
 	testutils.Golden(t, "apps_table_empty", buf.String())
 }
+
+func TestSourcemapTableGolden(t *testing.T) {
+	testutils.AssertTableGolden(t, faro.SourcemapTable(), faro.SourcemapBundle{
+		ID: "bundle-2", Created: "2026-09-01T12:00:00Z", Updated: "2026-09-02T12:00:00Z",
+	}, "text")
+}

@@ -14,14 +14,13 @@ func TestKeychainLockedSuggestions(t *testing.T) {
 	tests := map[string]struct {
 		goos                string
 		wantSessionGuidance bool
-		wantLockStateCheck  bool
 		wantUnlockCommand   bool
 	}{
-		"linux":     {goos: "linux", wantSessionGuidance: true, wantLockStateCheck: true},
-		"freebsd":   {goos: "freebsd", wantSessionGuidance: true, wantLockStateCheck: true},
-		"netbsd":    {goos: "netbsd", wantSessionGuidance: true, wantLockStateCheck: true},
-		"openbsd":   {goos: "openbsd", wantSessionGuidance: true, wantLockStateCheck: true},
-		"dragonfly": {goos: "dragonfly", wantSessionGuidance: true, wantLockStateCheck: true},
+		"linux":     {goos: "linux", wantSessionGuidance: true},
+		"freebsd":   {goos: "freebsd", wantSessionGuidance: true},
+		"netbsd":    {goos: "netbsd", wantSessionGuidance: true},
+		"openbsd":   {goos: "openbsd", wantSessionGuidance: true},
+		"dragonfly": {goos: "dragonfly", wantSessionGuidance: true},
 		"darwin":    {goos: "darwin", wantSessionGuidance: true, wantUnlockCommand: true},
 	}
 	for name, test := range tests {
@@ -34,7 +33,7 @@ func TestKeychainLockedSuggestions(t *testing.T) {
 			assert.NotContains(t, joined, "systemd-ask-password")
 			assert.Contains(t, joined, "GRAFANA_TOKEN")
 			assert.Equal(t, test.wantSessionGuidance, strings.Contains(joined, "session"))
-			assert.Equal(t, test.wantLockStateCheck, strings.Contains(joined, "busctl"))
+			assert.NotContains(t, joined, "/org/freedesktop/secrets/collection/login")
 			assert.Equal(t, test.wantUnlockCommand, strings.Contains(joined, "security unlock-keychain"))
 		})
 	}
