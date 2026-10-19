@@ -15,6 +15,8 @@ Query production. Investigate alerts. Let the Assistant root-cause issues. Ship 
 
 *"Don't guess. Check the actual production data."*
 
+This branch also contains an experimental [resource-explorer extension and generic SDK PoC](examples/extensions/resource-explorer/README.md), with offline demo and local installation instructions.
+
 ## What is gcx?
 
 gcx is a CLI for Grafana — Cloud, Enterprise, and OSS alike. It gives you and your AI coding agent structured access to your Grafana instance: dashboards, alerts, SLOs, metrics, logs, traces, and more. Core features (resources, alerting, signal queries) work on any Grafana 12+; Grafana Cloud adds product-specific commands on top.

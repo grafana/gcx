@@ -12,6 +12,7 @@ gcx/
 │       ├── cloud/            # Cloud login, stack management, and OAuth user organisation memberships
 │       ├── config/           # 'config' subcommand implementations
 │       ├── resources/        # 'resources' subcommand implementations
+│       ├── ext/              # Experimental local extension install/list and raw subprocess dispatch
 │       ├── datasources/      # 'datasources' subcommand (list, get, query)
 │       │                     #   query.go + query_routes.go: auto-detecting query and its per-kind routing tables
 │       ├── docs/             # 'docs' subcommand (search, get, outline, list-products, list-links)
@@ -32,6 +33,7 @@ gcx/
 │       └── fail/             # Error → DetailedError conversion, exit codes
 │
 ├── internal/                 # All non-public packages (Go enforced)
+│   ├── ext/                  # PoC local git manifests, installation index/locking, and process execution
 │   ├── agent/                # Agent mode and identity detection, command annotations, known-resource registry with operation hints
 │   ├── agentlog/             # Agent invocation failure logger (opt-in JSONL disk log, XDG state dir — wired into handleError in cmd/gcx/main.go)
 │   ├── assistant/            # Assistant client packages (prompt state, investigations, MCP integrations, Watcher configuration)
@@ -177,6 +179,7 @@ gcx/
 │   └── folder.yaml           # Sample resource manifest
 │
 ├── experimental/             # Separate Go modules, outside the CLI's build and dependencies
+│   ├── extensionsdk/         # Optional generic subprocess SDK; no domain types or host dependency
 │   └── sandbox/              # Runs gcx as wasip1 in wazero for embedding (module: github.com/grafana/gcx/experimental/sandbox, v0)
 │
 ├── bin/                      # Build output (gitignored)
@@ -197,8 +200,8 @@ output formatting, and error translation. It holds no business logic.
 
 `internal/` enforces Go's package visibility rule — external consumers cannot
 import these packages. This is intentional: the main module has no public Go
-API. The one exception is `experimental/sandbox`, a separate v0 module for
-embedding gcx (see its README).
+API. Separate experimental modules expose embedding through `experimental/sandbox`
+and optional subprocess helpers through `experimental/extensionsdk` (see their READMEs).
 The split within `internal/` mirrors functional layers (config, resources,
 server) rather than technical concerns, making it easy to locate code by feature.
 

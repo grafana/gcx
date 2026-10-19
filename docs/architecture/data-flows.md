@@ -936,3 +936,14 @@ Default `MaxConcurrent` = 10 (set in `push.go:30`, `pull.go`, etc.).
    when both resources have the `kubectl` manager kind. This applies to direct
    lookups and natural-key matches. See [Manager Metadata](resource-model.md#manager-metadata).
    Other update paths must also satisfy Grafana's version and ownership checks.
+
+## Experimental extension subprocess flow
+
+`gcx ext <name>` resolves an installed executable through `internal/ext`, holds a
+shared store lock, and forwards terminal streams and the selected context. The
+extension uses the optional generic SDK to launch the invoking gcx binary with
+command arguments and JSON output. Each call loads its own configuration and
+clients; responses return to the extension for decoding and presentation.
+
+The [resource-explorer example](../../examples/extensions/resource-explorer/README.md)
+documents local installation, cancellation, trust boundaries and PoC limitations.
