@@ -8,40 +8,25 @@ import (
 	"os"
 	"strings"
 
-	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/resources/adapter"
-	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
 
-// SourcemapTableCodec renders sourcemap bundles as a table.
-type SourcemapTableCodec struct{}
-
-func (c *SourcemapTableCodec) Format() format.Format { return "text" }
-
-func (c *SourcemapTableCodec) Encode(w io.Writer, v any) error {
-	bundles, ok := v.([]SourcemapBundle)
-	if !ok {
-		return fmt.Errorf("invalid data type for sourcemap table codec: expected []SourcemapBundle, got %T", v)
+func SourcemapTable() cmdio.Table[SourcemapBundle] {
+	return cmdio.Table[SourcemapBundle]{
+		Columns: []cmdio.Column[SourcemapBundle]{
+			{Header: "BUNDLE ID", Content: func(b SourcemapBundle) string { return b.ID }},
+			{Header: "CREATED", Content: func(b SourcemapBundle) string { return b.Created }},
+			{Header: "UPDATED", Content: func(b SourcemapBundle) string { return b.Updated }},
+		},
+		Empty: func(w io.Writer) error {
+			_, err := fmt.Fprintln(w, "No sourcemap bundles found.")
+			return err
+		},
 	}
-
-	if len(bundles) == 0 {
-		_, err := fmt.Fprintln(w, "No sourcemap bundles found.")
-		return err
-	}
-
-	t := style.NewTable("BUNDLE ID", "CREATED", "UPDATED")
-	for _, b := range bundles {
-		t.Row(b.ID, b.Created, b.Updated)
-	}
-	return t.Render(w)
-}
-
-func (c *SourcemapTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("text format does not support decoding")
 }
 
 // ---------------------------------------------------------------------------
@@ -55,7 +40,7 @@ type listSourcemapsOpts struct {
 
 func (o *listSourcemapsOpts) setup(flags *pflag.FlagSet) {
 	flags.IntVar(&o.Limit, "limit", 0, "Maximum number of sourcemaps to return (0 for all)")
-	o.IO.RegisterCustomCodec("text", &SourcemapTableCodec{})
+	cmdio.RegisterTableAs(&o.IO, SourcemapTable(), "text")
 	o.IO.DefaultFormat("text")
 	o.IO.BindFlags(flags)
 }

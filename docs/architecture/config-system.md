@@ -328,7 +328,8 @@ Loading steps (in `Load`):
    by an override
 11. On `ValidationError`, annotate the error with YAML source information when
     its path exists in the file. Environment-only values keep the original
-    validation message and recovery suggestions without a YAML annotation.
+    validation message, source filename, and recovery suggestions without a YAML
+    annotation.
 
 `Write` validates the schema version and binds the configuration to its actual
 target source before encoding. Its keychain reconcile pass is mutation-aware:

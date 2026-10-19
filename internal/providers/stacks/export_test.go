@@ -69,11 +69,11 @@ func ExportStackTableCodec(wide bool) interface {
 	return &stackTableCodec{Wide: wide}
 }
 
-// ExportRegionTableCodec returns a regionTableCodec for external tests.
-func ExportRegionTableCodec() interface {
+// ExportRegionTable returns the regions table codec for external tests.
+func ExportRegionTable() interface {
 	Encode(w io.Writer, v any) error
 } {
-	return &regionTableCodec{}
+	return regionTable().Codec("table")
 }
 
 // ExportEncodeStackTable encodes stacks using the table codec and returns the output.
@@ -93,6 +93,6 @@ func ExportEncodeStackTableSingle(stack cloud.StackInfo) (string, error) {
 // ExportEncodeRegionTable encodes regions using the table codec and returns the output.
 func ExportEncodeRegionTable(regions []cloud.Region) (string, error) {
 	var buf bytes.Buffer
-	err := (&regionTableCodec{}).Encode(&buf, regions)
+	err := regionTable().Codec("table").Encode(&buf, regions)
 	return buf.String(), err
 }

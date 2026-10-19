@@ -32,6 +32,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/cmd/gcx/root"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/agento11y"
@@ -385,7 +386,7 @@ func TestAgento11y_EnvVarSmoke(t *testing.T) {
 func TestAgento11y_EnvOnlyAuth(t *testing.T) {
 	for _, namespace := range []bool{false, true} {
 		t.Run(fmt.Sprintf("namespace configured=%t", namespace), func(t *testing.T) {
-			testutils.SandboxConfigEnv(t)
+			home := testutils.SandboxConfigEnv(t)
 			srv, rec := newPluginServer(t)
 			t.Setenv("GRAFANA_SERVER", srv.URL)
 			t.Setenv("GRAFANA_TOKEN", "env-token")
@@ -396,6 +397,9 @@ func TestAgento11y_EnvOnlyAuth(t *testing.T) {
 			if !namespace {
 				require.ErrorContains(t, err, "missing stacks.default.grafana.org-id or stacks.default.grafana.stack-id")
 				assert.NotContains(t, err.Error(), "node not found")
+				detail := fail.ErrorToDetailedError(err)
+				require.NotNil(t, detail)
+				assert.Contains(t, detail.Details, fmt.Sprintf("Invalid configuration found in '%s':", defaultConfigPath(home)))
 				return
 			}
 			require.NoError(t, err, "stderr: %s", stderr)
