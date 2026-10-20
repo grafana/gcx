@@ -308,7 +308,7 @@ Triggered on: `v*` tag push.
 
 ```
 v* tag push
-└── release           → goreleaser release --clean  (builds + GitHub Release + ghcr.io image)
+└── release           → goreleaser release --clean  (builds + GitHub Release + container images)
 ```
 
 GoReleaser builds with `CGO_ENABLED=0` for all three platforms (linux, darwin,
@@ -316,8 +316,12 @@ windows) and creates:
 - `tar.gz` archives for Linux/macOS (uname-compatible naming)
 - `zip` archive for Windows
 - `gcx_checksums.txt`
-- a multi-arch (`linux/amd64`, `linux/arm64`) container image, `ghcr.io/grafana/gcx`,
-  tagged `vX.Y.Z`, plus `vX.Y`, `vX` and `latest` for non-prereleases
+- a multi-arch (`linux/amd64`, `linux/arm64`) container image tagged `vX.Y.Z`,
+  plus `vX.Y`, `vX` and `latest` for non-prereleases, pushed from one build to
+  `ghcr.io/grafana/gcx` and to the GAR repository
+  `us-docker.pkg.dev/grafanalabs-global/dockerhub-gcx-prod-mirror/gcx`, which
+  Grafana mirrors to `docker.io/grafana/gcx`. Both copies share the same
+  digests, so the SBOM attestation applies to both.
 
 The changelog is auto-generated from `git log` via GitHub, filtering out
 `docs:`, `test:`, `tests:`, `chore:`, and merge commits.

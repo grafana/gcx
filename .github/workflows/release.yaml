@@ -18,6 +18,7 @@ jobs:
     permissions:
       contents: write # to push new branches
       packages: write # to push ghcr.io/grafana/gcx
+      id-token: write # to authenticate to GAR (Docker Hub mirror) via OIDC
     name: Release
     runs-on: ubuntu-latest
 
@@ -43,6 +44,14 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Grafana publishes to Docker Hub by pushing to the GAR repository
+      # `dockerhub-gcx-prod-mirror`, which is mirrored to docker.io/grafana/gcx.
+      # GoReleaser pushes both registries from the same build in a later step.
+      - name: Log in to GAR (Docker Hub mirror)
+        uses: grafana/shared-workflows/actions/login-to-gar@afad5c7621e788905e6417f05b492972685ab1eb # login-to-gar/v1.0.4
+        with:
+          registry: us-docker.pkg.dev
 
       - name: Set release notes
         run: |
