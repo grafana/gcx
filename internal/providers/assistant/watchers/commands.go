@@ -33,9 +33,14 @@ func markExperimental(cmd *cobra.Command) {
 
 // Commands returns the experimental Watcher subtree.
 func Commands(loader *providers.ConfigLoader) *cobra.Command {
-	cmd := &cobra.Command{Use: "watchers", Short: "Manage Assistant Watcher configuration.", Long: "Read and manage recurring telemetry-monitoring definitions. Use get for configuration, status for calibration and assessments, and create/update for authoritative configuration manifests. Configuration writes do not activate Watchers or request calibration.", Example: "  gcx assistant watchers list\n  gcx assistant watchers get checkout-health -o yaml\n  gcx assistant watchers update checkout-health -f watcher.yaml"}
+	cmd := &cobra.Command{Use: "watchers", Short: "Manage Assistant Watcher configuration.", Long: "Read and manage recurring telemetry-monitoring definitions. Use get for configuration and status for calibration and assessments. Create saves configuration and requests background calibration without automatic activation. Update and resources push reconcile configuration without requesting calibration. Use explicit start/pause/run controls, list-runs for bounded execution summaries, and archive/unarchive to retain inactive definitions and history.", Example: "  gcx assistant watchers list\n  gcx assistant watchers get checkout-health -o yaml\n  gcx assistant watchers update checkout-health -f watcher.yaml"}
 	markExperimental(cmd)
+	cmd.AddCommand(newVersionListCommand(loader), newVersionsCommand(loader))
 	cmd.AddCommand(newListCommand(loader), newReadCommand(loader, false), newReadCommand(loader, true), newWriteCommand(loader, false), newWriteCommand(loader, true), newDeleteCommand(loader))
+	for _, verb := range []string{"start", "pause", "run", "archive", "unarchive"} {
+		cmd.AddCommand(newLifecycleCommand(loader, verb))
+	}
+	cmd.AddCommand(newHistoryCommand(loader))
 	return cmd
 }
 
@@ -232,6 +237,7 @@ type calibration struct {
 	State        string                 `json:"state"`
 	Availability string                 `json:"availability,omitempty"`
 	Message      string                 `json:"message,omitempty"`
+	Guidance     string                 `json:"guidance"`
 	Context      string                 `json:"context,omitempty"`
 	StartedAt    *time.Time             `json:"startedAt,omitempty"`
 	Checks       []clientwatchers.Check `json:"checks"`
@@ -286,6 +292,7 @@ func runStatus(cmd *cobra.Command, client *clientwatchers.Client, opts *readOpts
 			result.Calibration.Availability = "access-denied"
 		}
 		result.Calibration.Message = err.Error()
+		result.Calibration.Guidance = "Calibration progress could not be read. Inspect calibration in Grafana before starting monitoring."
 	} else {
 		result.Calibration.State = progress.Status
 		result.Calibration.Message = progress.Message
@@ -293,6 +300,7 @@ func runStatus(cmd *cobra.Command, client *clientwatchers.Client, opts *readOpts
 		if progress.Status == "failed" || progress.Status == "needs_input" {
 			result.Calibration.Message = "Continue calibration in Grafana. " + progress.Message
 		}
+		result.Calibration.Guidance = calibrationGuidance(progress.Status, item.Status)
 	}
 	return opts.IO.Encode(cmd.OutOrStdout(), result)
 }
@@ -304,6 +312,32 @@ func (c *tableCodec) Decode(io.Reader, any) error {
 	return errors.New("table format does not support decoding")
 }
 func (c *tableCodec) Encode(dst io.Writer, value any) error {
+	if result, ok := value.(versionListResult); ok {
+		return encodeVersionList(dst, result)
+	}
+	if result, ok := value.(versionGetResult); ok {
+		return encodeVersionGet(dst, result)
+	}
+	if result, ok := value.(versionDiffResult); ok {
+		return encodeVersionDiff(dst, result)
+	}
+	if result, ok := value.(versionRestoreResult); ok {
+		return encodeVersionRestore(dst, result)
+	}
+
+	if result, ok := value.(lifecycleResult); ok {
+		return encodeLifecycle(dst, result)
+	}
+	if result, ok := value.(historyResult); ok {
+		return encodeHistory(dst, result)
+	}
+	if result, ok := value.(createResult); ok {
+		if err := c.Encode(dst, result.mutationResult); err != nil {
+			return err
+		}
+		_, err := fmt.Fprintf(dst, "Calibration request: %s\n%s\n", result.Calibration.Outcome, result.Calibration.Guidance)
+		return err
+	}
 	if result, ok := value.(mutationResult); ok {
 		table := style.NewTable("OPERATION", "NAME", "ID", "CONFIGURATION", "ENROLLMENT", "READBACK")
 		table.Row(result.Action, result.Target.Name, result.Target.ID, result.Outcome.Configuration, result.Outcome.Enrollment, result.Outcome.Readback)

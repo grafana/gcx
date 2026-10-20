@@ -168,7 +168,7 @@ Key files:
 
 ## 3. PULL Pipeline
 
-Selector-free pull (and get through the same puller) counts collection APIs that return `adapter.ErrUnavailable` as skipped; explicit selections and per-item read failures still fail.
+Selector-free pull (and get through the same puller) counts collection APIs marked unavailable via `adapter.ErrUnavailable` as skipped; explicit selections and per-item read failures still fail.
 
 Entry point: `cmd/gcx/resources/pull.go` (mirrors push structure).
 

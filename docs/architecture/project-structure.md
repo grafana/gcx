@@ -37,7 +37,7 @@ gcx/
 │   ├── assistant/            # Assistant client packages (prompt state, investigations, MCP integrations)
 │   │   ├── mcpservers/       # MCP-servers HTTP client (offset pagination, full-exhaustion List)
 │   │   ├── watchers/         # HTTP client and shared test fixtures
-│   │   ├── watcher/          # Typed resource adapter
+│   │   ├── watcher/          # Resource schema and adapter
 │   │   └── mcpserver/        # MCPServer manifest domain type + TypedCRUD adapter wiring + header write-intent mapping
 │   ├── auth/                 # OAuth PKCE flow, token refresh transport
 │   │   └── adaptive/         # Shared adaptive telemetry auth (GCOM caching, Basic auth)
@@ -73,7 +73,8 @@ gcx/
 │   │   ├── dbo11y/           # Database Observability provider (query/discovery views, no CRUD resources)
 │   │   │   └── instances/    # Instance inventory + health/query-performance snapshot from postgres_exporter + pg_stat_statements
 │   │   ├── alert/            # Alert provider (rules, groups, provisioning, native routing trees/time intervals/template groups)
-│   │   ├── assistant/        # Assistant provider — lift-and-shift of the `gcx assistant` command tree; TypedRegistrations() registers resource adapters; exports ResolveClientOptions and RequireGrafanaCloud for other command trees embedding Assistant calls (used by `instrumentation check --fix-plan=assistant`)
+│   │   ├── assistant/        # Assistant provider — lift-and-shift of the `gcx assistant` command tree; TypedRegistrations() supplies resource adapters; exports ResolveClientOptions and RequireGrafanaCloud for other command trees embedding Assistant calls (used by `instrumentation check --fix-plan=assistant`)
+│   │   │   └── watchers/     # Commands
 │   │   ├── dashboards/       # Dashboards provider (CRUD, search, version history, snapshot) — CLI: `gcx dashboards`
 │   │   │   ├── descriptor/   # Descriptor helpers (GVK, preferred version resolution)
 │   │   │   ├── search/       # Full-text search via dashboard.grafana.app search endpoint

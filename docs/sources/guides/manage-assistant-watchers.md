@@ -1,6 +1,6 @@
 ---
 title: Manage Assistant Watchers
-description: Use gcx to create Assistant Watchers, update configuration, configure notifications, save reusable manifests, and delete Watchers in Grafana Cloud.
+description: Use gcx to create Assistant Watchers, follow calibration, review and update configuration, configure notifications, save reusable manifests, control monitoring, inspect run history, restore definition versions, and delete Watchers in Grafana Cloud.
 labels:
   products:
     - cloud
@@ -23,7 +23,7 @@ Use `gcx` to create Watchers and keep their configuration in version control. **
 
 Commands use your selected context. Add `--context CONTEXT` to select another context.
 
-## Create a Watcher
+## Create a Watcher and follow calibration
 
 To create a Watcher, follow these steps:
 
@@ -48,7 +48,17 @@ To create a Watcher, follow these steps:
    gcx assistant watchers create -f watcher.yaml -o json
    ```
 
-   Creation saves an inactive, uncalibrated definition. Notification destinations and investigations are disabled unless you enable them in the manifest. Continue in Grafana to calibrate the Watcher and start monitoring.
+   The result includes the saved resource and a separate calibration request outcome. Creation requests background calibration without automatically starting monitoring. Notification destinations and investigations are disabled unless you enable them in the manifest.
+
+1. Replace `WATCHER` with the returned resource name or ID and inspect progress:
+
+   ```shell
+   gcx assistant watchers status WATCHER -o json
+   ```
+
+   An `accepted` request means calibration was requested, not that checks are ready. Wait while it is queued or running. If calibration fails, is cancelled, or needs input, continue in Grafana. When it completes, review the enabled checks in Grafana before [starting monitoring](#start-and-pause-monitoring).
+
+If the request outcome is `unavailable`, calibrate the saved Watcher in Grafana. An `error` or `not-requested` outcome returns exit code 4 and retains the Watcher identity. Inspect the reported failure and status; resolve any failed configuration stage with `update`, then continue in Grafana. Do not repeat `create`: a request error can leave calibration running.
 
 ## Inspect and update configuration
 
@@ -138,6 +148,104 @@ Notification severity defaults to `warning-and-critical`. Set `routingTree: ""` 
 Use `fromEnv` or `fromFile` to supply a secret, for example `url: { fromEnv: WATCHER_WEBHOOK_URL }`. Exports use `{ preserve: true }` for saved secrets; omitting a secret on update also preserves it. Use `{ clear: true }` to remove one. You can't use preserve markers when creating a Watcher.
 
 When supplying or clearing a webhook URL, also supply or clear every saved bearer token and signing secret. Keep resolved secrets out of manifests and version control.
+
+## Start and pause monitoring
+
+After calibration completes with at least one enabled check, start your Watcher:
+
+```shell
+gcx assistant watchers start WATCHER
+```
+
+Starting can immediately run a scan; event-only Watchers wait for their trigger. Both start and run can send configured notifications or launch investigations. If start fails, inspect `gcx assistant watchers status WATCHER` before retrying: monitoring might already be active.
+
+To stop future scans, pause the Watcher:
+
+```shell
+gcx assistant watchers pause WATCHER
+```
+
+Finish or cancel calibration in Grafana before pausing. An in-flight scan can still finish and send notifications or launch investigations.
+
+## Request a run and inspect history
+
+Request a scan without changing the schedule, then inspect recent executions:
+
+```shell
+gcx assistant watchers run WATCHER -o json
+gcx assistant watchers list-runs WATCHER --limit 20 -o json
+```
+
+The run receipt reports acceptance, skipped work, or failure. Acceptance doesn't mean the scan completed. Its `taskId` can't be matched to history IDs; don't assume the newest execution belongs to your request. Running might require create permission in addition to write permission.
+
+History shows execution status separately from assessment. The default limit is 20, and the maximum is 100. `coverage.hasMore` indicates additional retained history; results aren't a snapshot of all past runs. For full run evidence, open the Watcher in Grafana.
+
+## Archive and recover a Watcher
+
+Pause before archiving to retain the Watcher's configuration and history:
+
+```shell
+gcx assistant watchers pause WATCHER
+gcx assistant watchers archive WATCHER
+```
+
+Archive only accepts a Watcher whose status is `paused`; pause it first. If it is calibrating, finish or cancel calibration in Grafana before pausing. Keep other clients from starting it during this sequence: the pause check and archive aren't atomic. Archiving can resolve active Grafana Alerting findings.
+
+Recover an archived Watcher without activating monitoring:
+
+```shell
+gcx assistant watchers unarchive WATCHER
+```
+
+Review its status and automatic-stop deadline before starting again. Recovery retains that deadline. Archive recovery doesn't restore a previous definition version.
+
+## Compare definition versions
+
+To inspect saved definitions before restoring one, follow these steps:
+
+1. List retained versions:
+
+   ```shell
+   gcx assistant watchers list-versions WATCHER --limit 20 -o json
+   ```
+
+   Results contain one page. If `coverage.nextBeforeVersion` is present, pass it as `--before-version` to read the next page. Server retention can exclude older versions.
+
+1. Read the definition you want to inspect:
+
+   ```shell
+   gcx assistant watchers versions get WATCHER VERSION -o yaml
+   ```
+
+1. Compare two definitions:
+
+   ```shell
+   gcx assistant watchers versions diff WATCHER FROM_VERSION TO_VERSION -o json
+   ```
+
+   The diff compares definitions only. Add `--json path,operation` to show changed paths and operations while retaining the compared versions and scope.
+
+## Restore a definition version
+
+Restore creates a new current definition version. It requires a non-archived Watcher in `draft`, `paused`, or `ready` state. It retains current notification actions and settings outside the definition; it doesn't copy historical learned state.
+
+1. Inspect the Watcher's lifecycle and current version:
+
+   ```shell
+   gcx assistant watchers status WATCHER -o json
+   ```
+
+   For a running Watcher, run `gcx assistant watchers pause WATCHER` first. Finish or cancel calibration in Grafana before restoring.
+
+1. Replace `CURRENT_VERSION` with the version reported by `status`, then restore the selected `VERSION` and confirm:
+
+   ```shell
+   gcx assistant watchers versions restore WATCHER VERSION --expected-current-version CURRENT_VERSION -o json
+   ```
+
+   A stale guard is rejected. Inspect status and compare again before choosing a new guard.
+
+The restored Watcher stays inactive and can become a draft that needs calibration. You can restore another version from that draft without pausing it. Review it in Grafana before starting monitoring. If the write outcome is unknown, inspect `status` and `list-versions` before retrying. A confirmed save followed by failed verification returns exit code 4; inspect the saved version instead of repeating the restore.
 
 ## Delete a Watcher
 

@@ -42,7 +42,7 @@ func (o *writeOpts) Validate() error {
 func newWriteCommand(loader *providers.ConfigLoader, update bool) *cobra.Command {
 	opts := &writeOpts{Update: update}
 	subject := ""
-	verb, use, short, long, args := "create", "create", "Create an inactive Assistant Watcher.", "Create one inactive, uncalibrated Watcher from a complete configuration manifest. An existing exact title is an error; use update to change it. Omitted optional settings receive authoritative defaults. Secret inputs use fromEnv/fromFile or clear; preserve markers are rejected on create. Use gcx resources push --dry-run for client-side manifest validation without mutation. This command does not activate monitoring or request calibration.", cobra.NoArgs
+	verb, use, short, long, args := "create", "create", "Create an Assistant Watcher and request calibration.", "Create one inactive Watcher from a complete configuration manifest, then request its first background calibration without automatic activation. The result includes the saved resource and a separate calibration request outcome; acceptance does not mean checks are ready. If calibration is unavailable or the request fails, the Watcher is retained without retry or rollback; continue in Grafana. An existing exact title is an error; use update to change it. Omitted optional settings receive authoritative defaults. Secret inputs use fromEnv/fromFile or clear; preserve markers are rejected on create. Use gcx resources push --dry-run for client-side manifest validation without mutation. Use resources push to save configuration without requesting calibration.", cobra.NoArgs
 	if update {
 		subject = " checkout-health"
 		verb, use, short, long, args = "update", "update WATCHER", "Reconcile an Assistant Watcher's configuration.", "Replace the modeled configuration of the selected Watcher from a complete manifest. WATCHER accepts a resource name or server ID and is authoritative; a conflicting manifest ID is rejected. Omitted optional settings receive defaults, including disabled destinations and empty collections. Unchanged configuration sends no mutation. Calibration-owned content is preserved; meaningful settings outside the manifest model refuse mutation. Every changed definition sends the complete modeled configuration, including secret-only edits. Use gcx resources push --dry-run for client-side validation without mutation. This command does not activate monitoring or request calibration.", cobra.ExactArgs(1)
@@ -79,7 +79,13 @@ func newWriteCommand(loader *providers.ConfigLoader, update bool) *cobra.Command
 			if !errors.As(err, &partial) {
 				return err
 			}
+			if !update {
+				return emitCreate(cmd, &opts.IO, client, crud, partial.Watcher, partial)
+			}
 			return emitMutation(cmd, &opts.IO, verb, partial.Watcher, partial)
+		}
+		if !update {
+			return emitCreate(cmd, &opts.IO, client, crud, saved.Spec, nil)
 		}
 		return emitMutation(cmd, &opts.IO, verb, saved.Spec, nil)
 	}}

@@ -842,7 +842,7 @@ The shared transport in `internal/query/kg` serves both the KG provider and App 
 
 ### Assistant Provider
 
-`Commands()` preserves the previously hand-mounted `gcx assistant` tree (`prompt`, `dashboard`, `conversation`, `investigations`, `mcp-servers`); `TypedRegistrations()` registers `TypedCRUD[MCPServer]`, so MCP-server configuration flows through `gcx resources get/pull/push/delete` for both `user` and `tenant` scope. See ADR-021.
+`Commands()` exposes the `gcx assistant` tree. MCP-server configuration uses `TypedCRUD[MCPServer]` and flows through `gcx resources get/pull/push/delete` for both `user` and `tenant` scope. See ADR-021.
 
 | File | Purpose |
 |------|---------|
