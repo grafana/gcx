@@ -48,6 +48,9 @@ func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
 EXPR is the LogQL expression to evaluate.
 Datasource is resolved from -d flag or datasources.loki in your context.
 
+CSV preserves original cell values. Spreadsheet apps may interpret values as
+formulas; import untrusted CSV columns as text.
+
 Default table output is optimized for humans. Use -o raw for original line
 bodies, -o csv for original lines and separate label columns, or -o json for the full structured response.
 
@@ -130,6 +133,7 @@ backend's own line limits, so it can undercount a busy time range.`,
 				}
 			}
 
+			dsquery.SurfaceLogLimit(cmd.ErrOrStderr(), resp, limit)
 			exploreURL := LogsExploreURL(cfg.GrafanaURL, dsquery.ExploreQuery{
 				DatasourceUID:  datasourceUID,
 				DatasourceType: dsType,

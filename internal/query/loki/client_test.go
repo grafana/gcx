@@ -3,6 +3,7 @@ package loki_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -340,4 +341,39 @@ func TestClient_Patterns_NonNotFoundErrorsAreNotLabelledUnavailable(t *testing.T
 	_, err = client.Patterns(context.Background(), "loki-uid", `{job="varlogs"}`, time.Unix(1, 0), time.Unix(2, 0), "")
 	require.Error(t, err)
 	assert.NotContains(t, err.Error(), "HTTP 404")
+}
+
+func TestMetricQueryPreservesSampleValues(t *testing.T) {
+	for _, count := range []int{1, 2} {
+		for _, tc := range []struct{ name, value, want string }{
+			{"null", "null", "NaN"}, {"nan", `"NaN"`, "NaN"}, {"invalid", `"invalid"`, "invalid"},
+			{"zero", "0", "0"}, {"infinity", `"+Inf"`, "+Inf"}, {"negative", "-3.5", "-3.5"},
+		} {
+			t.Run(fmt.Sprintf("%s/points=%d", tc.name, count), func(t *testing.T) {
+				timestamps, values := "1250", tc.value
+				if count == 2 {
+					timestamps += ",2500"
+					values += "," + tc.value
+				}
+				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+					fmt.Fprintf(w, `{"results":{"A":{"frames":[{"schema":{"fields":[{"name":"Time","type":"time"},{"name":"Value","type":"number"}]},"data":{"values":[[%s],[%s]]}}]}}}`, timestamps, values)
+				}))
+				defer server.Close()
+				client, err := loki.NewClient(config.NamespacedRESTConfig{Config: rest.Config{Host: server.URL}})
+				require.NoError(t, err)
+				resp, err := client.MetricQuery(context.Background(), "uid", loki.QueryRequest{Query: "count_over_time({app=\"api\"}[5m])"})
+				require.NoError(t, err)
+				_, rows, err := resp.CSVRecords()
+				require.NoError(t, err)
+				require.Len(t, rows, count)
+				assert.Equal(t, []string{"1.25", tc.want}, rows[0])
+				if count == 2 {
+					assert.Equal(t, []string{"2.5", tc.want}, rows[1])
+				}
+				encoded, err := json.Marshal(resp)
+				require.NoError(t, err)
+				assert.Contains(t, string(encoded), strconv.Quote(tc.want))
+			})
+		}
+	}
 }

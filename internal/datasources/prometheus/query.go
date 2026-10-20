@@ -32,6 +32,10 @@ func QueryCmdWithDefault(loader *providers.ConfigLoader, defaultDS string) *cobr
 EXPR is the PromQL expression to evaluate, passed as a positional argument or
 via --expr (familiar to promtool users).
 Datasource is resolved from -d flag or datasources.prometheus in your context.
+
+CSV preserves original cell values. Spreadsheet apps may interpret values as
+formulas; import untrusted CSV columns as text.
+
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
 open it in your browser after the query succeeds.`,
 		Example: `

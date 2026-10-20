@@ -26,6 +26,9 @@ func MetricsCmd(loader *providers.ConfigLoader) *cobra.Command {
 EXPR is a metric LogQL expression (e.g., rate, count_over_time, sum).
 Datasource is resolved from -d flag or datasources.loki in your context.
 
+CSV preserves original cell values. Spreadsheet apps may interpret values as
+formulas; import untrusted CSV columns as text.
+
 Unlike 'logs query' which returns log lines, 'logs metrics' returns
 time-series data with table, graph, JSON, and CSV formatters.
 

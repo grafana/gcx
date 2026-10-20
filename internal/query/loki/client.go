@@ -11,6 +11,7 @@ import (
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/httputils"
+	"github.com/grafana/gcx/internal/query/dataframe"
 	"github.com/grafana/gcx/internal/query/grafanaquery"
 	"github.com/grafana/gcx/internal/queryerror"
 	"k8s.io/client-go/rest"
@@ -720,13 +721,13 @@ func convertMetricResponse(grafanaResp *GrafanaQueryResponse) *MetricQueryRespon
 			sample.Values = make([][]any, len(timeValues))
 			for i := range timeValues {
 				ts := toFloat64(timeValues[i]) / 1000.0
-				val := toFloat64(valueValues[i])
-				sample.Values[i] = []any{ts, strconv.FormatFloat(val, 'f', -1, 64)}
+				val := dataframe.MetricValue(valueValues[i])
+				sample.Values[i] = []any{ts, val}
 			}
 		} else {
 			ts := toFloat64(timeValues[0]) / 1000.0
-			val := toFloat64(valueValues[0])
-			sample.Value = []any{ts, strconv.FormatFloat(val, 'f', -1, 64)}
+			val := dataframe.MetricValue(valueValues[0])
+			sample.Value = []any{ts, val}
 		}
 
 		result.Data.Result = append(result.Data.Result, sample)
