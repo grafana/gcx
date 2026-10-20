@@ -198,14 +198,15 @@ To inspect saved definitions before restoring one, follow these steps:
 
 ## Restore a definition version
 
-Restore creates a new current definition version. It retains current notification actions and settings outside the definition; it doesn't copy historical learned state.
+Restore creates a new current definition version. It requires a non-archived Watcher in `draft`, `paused`, or `ready` state. It retains current notification actions and settings outside the definition; it doesn't copy historical learned state.
 
-1. Pause the non-archived Watcher and inspect its current version:
+1. Inspect the Watcher's lifecycle and current version:
 
    ```shell
-   gcx assistant watchers pause WATCHER
    gcx assistant watchers status WATCHER -o json
    ```
+
+   For a running Watcher, run `gcx assistant watchers pause WATCHER` first. Finish or cancel calibration in Grafana before restoring.
 
 1. Replace `CURRENT_VERSION` with the version reported by `status`, then restore the selected `VERSION` and confirm:
 
@@ -215,7 +216,7 @@ Restore creates a new current definition version. It retains current notificatio
 
    A stale guard is rejected. Inspect status and compare again before choosing a new guard.
 
-The restored Watcher stays inactive and can become a draft that needs calibration. Review it in Grafana before starting monitoring. If the write outcome is unknown, inspect `status` and `list-versions` before retrying. A confirmed save followed by failed verification returns exit code 4; inspect the saved version instead of repeating the restore.
+The restored Watcher stays inactive and can become a draft that needs calibration. You can restore another version from that draft without pausing it. Review it in Grafana before starting monitoring. If the write outcome is unknown, inspect `status` and `list-versions` before retrying. A confirmed save followed by failed verification returns exit code 4; inspect the saved version instead of repeating the restore.
 
 ## Delete a Watcher
 

@@ -105,6 +105,8 @@ func TestValidateVersionRestore(t *testing.T) {
 		wantErr  string
 	}{
 		{name: "paused", current: &watchers.Watcher{ID: "example", Status: "paused", DefinitionVersion: 2}, expected: 2},
+		{name: "draft", current: &watchers.Watcher{ID: "example", Status: "draft", DefinitionVersion: 2}, expected: 2},
+		{name: "ready", current: &watchers.Watcher{ID: "example", Status: "ready", DefinitionVersion: 2}, expected: 2},
 		{name: "no identity", current: &watchers.Watcher{Status: "paused", DefinitionVersion: 2}, expected: 2, wantErr: "resolved Watcher identity"},
 		{name: "blank identity", current: &watchers.Watcher{ID: " \t", Status: "paused", DefinitionVersion: 2}, expected: 2, wantErr: "resolved Watcher identity"},
 		{name: "nil current", expected: 2, wantErr: "resolved Watcher identity"},
@@ -120,10 +122,10 @@ func TestValidateVersionRestore(t *testing.T) {
 			}
 		})
 	}
-	for _, status := range []string{"running", "draft", "ready", "calibrating", "", "future-state"} {
+	for _, status := range []string{"running", "calibrating", "archived", "", "future-state", "PAUSED", "paused "} {
 		t.Run("lifecycle "+status, func(t *testing.T) {
 			err := watcher.ValidateVersionRestore(&watchers.Watcher{ID: "example", Status: status, DefinitionVersion: 2}, 2)
-			require.ErrorContains(t, err, "explicitly paused")
+			require.ErrorContains(t, err, "requires an inactive Watcher")
 		})
 	}
 }

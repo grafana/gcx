@@ -123,13 +123,17 @@ func ValidateVersionRestore(current *watchers.Watcher, expected int64) error {
 	if current.ArchivedAt != nil {
 		return errors.New("restore Watcher version requires a non-archived Watcher")
 	}
-	if current.Status != "paused" {
-		return errors.New("restore Watcher version requires an explicitly paused Watcher; pause it before restoring")
+	if !inactiveForVersionRestore(current.Status) {
+		return errors.New("restore Watcher version requires an inactive Watcher (draft, paused, or ready); inspect gcx assistant watchers status WATCHER")
 	}
 	if current.DefinitionVersion != expected {
 		return fmt.Errorf("restore Watcher version: expected current version %d does not match observed version %d; inspect current status before choosing a new guard", expected, current.DefinitionVersion)
 	}
 	return nil
+}
+
+func inactiveForVersionRestore(status string) bool {
+	return status == "draft" || status == "paused" || status == "ready"
 }
 
 // RestoreVersion submits one guarded restore after the caller validates the
@@ -177,8 +181,7 @@ func RestoreVersion(ctx context.Context, client *watchers.Client, current *watch
 		return result, fmt.Errorf("Watcher version restore saved, but verification failed: %w", err)
 	}
 	result.Observed = &VersionRestoreObservation{CurrentVersion: observed.DefinitionVersion, Lifecycle: observed.Status, Archived: observed.ArchivedAt != nil}
-	inactive := observed.Status == "draft" || observed.Status == "paused" || observed.Status == "ready"
-	if observed.DefinitionVersion != accepted.Version || observed.ArchivedAt != nil || !inactive {
+	if observed.DefinitionVersion != accepted.Version || observed.ArchivedAt != nil || !inactiveForVersionRestore(observed.Status) {
 		result.Outcome = "saved-unverified"
 		result.Guidance = "Restore saved a new version, but the later Watcher state does not confirm that version is current and inactive. Inspect Watcher status; do not repeat the restore."
 		return result, errors.New("Watcher version restore saved, but later state does not match verification")

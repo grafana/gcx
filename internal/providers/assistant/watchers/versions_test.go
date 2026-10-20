@@ -366,19 +366,89 @@ func TestVersionRestoreCancellationDuringResponseBody(t *testing.T) {
 		})
 	}
 }
+func TestVersionRestoreCanRestoreAgainFromDraft(t *testing.T) {
+	testutils.SetAgentMode(t, false)
+	for _, initial := range []string{"draft", "paused", "ready"} {
+		t.Run(initial, func(t *testing.T) {
+			item := savedCommandFixture()
+			item.Status = initial
+			item.DefinitionVersion = 2
+			var posts atomic.Int64
+			loader, log := lifecycleCommandFixture(t, item, func(w http.ResponseWriter, r *http.Request) bool {
+				if r.Method == http.MethodPost {
+					n := posts.Add(1)
+					assert.Equal(t, lifecycleAPIPath+"/"+item.ID+"/revisions/"+strconv.FormatInt(n, 10)+"/restore", r.URL.Path)
+					version := commandVersion(n+2, `{"prompt":"restored"}`)
+					version.RollbackFromVersion = &n
+					lifecycleEnvelope(w, version)
+					return true
+				}
+				if r.Method == http.MethodGet && r.URL.Path == lifecycleAPIPath+"/"+item.ID {
+					observed := item
+					observed.DefinitionVersion += posts.Load()
+					if posts.Load() == 1 {
+						observed.Status = "draft"
+					} else if posts.Load() == 2 {
+						observed.Status = "ready"
+					}
+					lifecycleEnvelope(w, observed)
+					return true
+				}
+				return false
+			})
+			for _, target := range []int64{1, 2} {
+				cmd, out, _ := mutationCommand(t, loader, []string{"versions", "restore", item.ID, strconv.FormatInt(target, 10), "--expected-current-version=" + strconv.FormatInt(target+1, 10), "--force", "-o", "json"}, "")
+				require.NoError(t, cmd.ExecuteContext(t.Context()))
+				var result versionRestoreResult
+				decodeLifecycleOutput(t, out, &result)
+				require.Equal(t, "accepted", result.Outcome)
+				require.Equal(t, target+2, result.SavedVersion.Version)
+				if target == 1 {
+					require.Equal(t, "draft", result.Observed.Lifecycle)
+				} else {
+					require.Equal(t, "ready", result.Observed.Lifecycle)
+				}
+			}
+			require.EqualValues(t, 2, posts.Load())
+			requests := log.snapshot()
+			require.Len(t, requests, 6)
+			for i, request := range requests {
+				if request.Method == http.MethodPost {
+					var body struct {
+						Expected int64 `json:"expectedDefinitionVersion"`
+					}
+					require.NoError(t, json.Unmarshal([]byte(request.Body), &body))
+					expected := int64(i/3 + 2)
+					require.Equal(t, expected, body.Expected)
+				}
+			}
+		})
+	}
+}
+
 func TestVersionRestoreConfirmationAndPreconditions(t *testing.T) {
 	testutils.SetAgentMode(t, false)
 	for _, tc := range []struct {
 		name, state, input string
 		expected           int64
 		force              bool
+		archived           bool
 	}{
-		{"running", "running", "", 2, true}, {"draft", "draft", "", 2, true}, {"calibrating", "calibrating", "", 2, true}, {"stale", "paused", "", 1, true}, {"declined", "paused", "n\n", 2, false},
+		{name: "running", state: "running", expected: 2, force: true},
+		{name: "calibrating", state: "calibrating", expected: 2, force: true},
+		{name: "unknown", state: "future-state", expected: 2, force: true},
+		{name: "archived ready", state: "ready", expected: 2, force: true, archived: true},
+		{name: "stale", state: "paused", expected: 1, force: true},
+		{name: "declined", state: "paused", input: "n\n", expected: 2},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			item := savedCommandFixture()
 			item.Status = tc.state
 			item.DefinitionVersion = 2
+			if tc.archived {
+				archived := time.Now()
+				item.ArchivedAt = &archived
+			}
 			loader, log := lifecycleCommandFixture(t, item, nil)
 			args := []string{"versions", "restore", item.ID, "1", "--expected-current-version=" + strconv.FormatInt(tc.expected, 10), "-o", "json"}
 			if tc.force {

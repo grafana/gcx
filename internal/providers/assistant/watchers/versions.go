@@ -79,7 +79,7 @@ func parseVersion(name, value string) (int64, error) {
 	return version, nil
 }
 func newVersionsCommand(loader *providers.ConfigLoader) *cobra.Command {
-	cmd := &cobra.Command{Use: "versions", Short: "Inspect, compare and restore retained Watcher definitions.", Long: "Read retained finalized definitions and compare their definition fields. Restore requires a separately paused Watcher and an explicit current-version guard; it never starts monitoring."}
+	cmd := &cobra.Command{Use: "versions", Short: "Inspect, compare and restore retained Watcher definitions.", Long: "Read retained finalized definitions and compare their definition fields. Restore requires a non-archived inactive Watcher (draft, paused or ready) and an explicit current-version guard; it never starts monitoring."}
 	markExperimental(cmd)
 	cmd.AddCommand(newVersionGetCommand(loader), newVersionDiffCommand(loader), newVersionRestoreCommand(loader))
 	return cmd
@@ -173,7 +173,7 @@ func (o *versionRestoreOpts) Validate() error {
 //nolint:dupl // Get and restore retain independent options and safety wiring.
 func newVersionRestoreCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &versionRestoreOpts{}
-	cmd := &cobra.Command{Use: "restore WATCHER VERSION", Short: "Restore a retained definition of an explicitly paused Watcher.", Long: "Create a new current version from one retained monitoring definition. Pause the Watcher separately first; gcx never pauses or starts it implicitly. --expected-current-version must be the current version you inspected; the server rejects a stale guard and conflicting calibration or execution. Restore retains current actions and other settings outside the version definition; it does not restore every manifest setting or copy historical learned run state. The result reports restored scope and observed inactive state, which may be draft. Confirmation is required unless --force or shared auto-approval applies. A lost response may mean restore saved: inspect status and list-versions before retrying; gcx never retries or rolls back automatically.", Args: cobra.ExactArgs(2), Example: "  gcx assistant watchers pause checkout-health\n  gcx assistant watchers status checkout-health -o json\n  gcx assistant watchers versions restore checkout-health 1 --expected-current-version 3 --force -o json", RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "restore WATCHER VERSION", Short: "Restore a retained definition of an inactive Watcher.", Long: "Create a new current version from one retained monitoring definition. The Watcher must be non-archived and draft, paused or ready. Pause a running Watcher separately; finish or cancel calibration in Grafana. gcx never pauses or starts it implicitly. --expected-current-version must be the current version you inspected; the server rejects a stale guard and conflicting calibration or execution. Restore retains current actions and other settings outside the version definition; it does not restore every manifest setting or copy historical learned run state. The result reports restored scope and observed inactive state, which may be draft. Confirmation is required unless --force or shared auto-approval applies. A lost response may mean restore saved: inspect status and list-versions before retrying; gcx never retries or rolls back automatically.", Args: cobra.ExactArgs(2), Example: "  gcx assistant watchers status checkout-health -o json\n  gcx assistant watchers versions restore checkout-health 1 --expected-current-version 3 --force -o json", RunE: func(cmd *cobra.Command, args []string) error {
 		opts.Ref = args[0]
 		var err error
 		opts.Version, err = parseVersion("VERSION", args[1])
@@ -191,7 +191,7 @@ func newVersionRestoreCommand(loader *providers.ConfigLoader) *cobra.Command {
 	}}
 	markExperimental(cmd)
 	cmd.Annotations[agent.AnnotationTokenCost] = "medium"
-	cmd.Annotations[agent.AnnotationLLMHint] = "Requires explicit pause and the caller's current-version guard. Reports saved versus uncertain restore and readback separately; inspect status/history before retrying an uncertain result."
+	cmd.Annotations[agent.AnnotationLLMHint] = "Requires inactive draft/paused/ready state and the caller's current-version guard. Reports saved versus uncertain restore and readback separately; inspect status/history before retrying an uncertain result."
 	opts.setup(cmd.Flags())
 	return cmd
 }
