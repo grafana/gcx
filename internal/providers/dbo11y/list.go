@@ -36,7 +36,7 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 	o.IO.BindFlags(flags)
 
 	flags.StringVarP(&o.Datasource, "datasource", "d", "", "Prometheus datasource UID (defaults to datasources.prometheus in config or auto-discovery)")
-	flags.StringArrayVar(&o.Filters, "filter", nil, "Restrict to instances matching label=value, e.g. --filter engine=postgres (repeatable, ANDed). Applied by the API against any label the monitored instances carry, including ones it does not report such as cluster or deployment_environment. Values are matched exactly and are case sensitive; the API has no regex or negation")
+	flags.StringArrayVar(&o.Filters, "filter", nil, "Restrict to instances matching label=value, label!=value, label=~regex or label!~regex, e.g. --filter engine=~post.* (repeatable, ANDed). Regexes are anchored. name and host both match the instance endpoint; filter on service_name to match the NAME column")
 	flags.IntVar(&o.Limit, "limit", instancesListDefaultLimit, "Limit the number of instances returned (0 = unlimited)")
 }
 
@@ -65,10 +65,16 @@ Each row also carries a server_id, the identifier the product keys an
 instance by. "gcx dbo11y instances get" accepts either that or the instance
 name.
 
-The API reports no namespace or environment, so neither is shown. They
-remain filterable, since --filter is matched against the telemetry rather
-than against this output — "--filter deployment_environment=prod" works, it
-just cannot be displayed.
+--filter matches the telemetry's own label names rather than these column
+headings, so it reaches labels the table does not show: "--filter
+cluster=eu-west" and "--filter deployment_environment=prod" both work.
+Namespace and environment are reported under -o json and -o yaml rather than
+as columns.
+
+NAME and HOST are where a heading and its label diverge. Both match the
+instance endpoint, so on a stack that sets a service name — which NAME shows
+in preference to the endpoint — "--filter name=" does not match what NAME
+displays. Use "--filter service_name=payments" to match that.
 
 Related: "gcx dbo11y instances get <instance>" drills into one instance's
 query performance.
@@ -89,7 +95,7 @@ hint to activate it instead of a generic empty result.`,
 		RunE: runList(loader, opts),
 		Annotations: map[string]string{
 			agent.AnnotationTokenCost: "small",
-			agent.AnnotationLLMHint:   `Database Observability instance inventory, read from the Database Observability API: one row per monitored database under {"items": [...]} with name, engine, engine_version, host, provider_name/_account/_region, instance_identifier and server_id. Covers Postgres, MySQL and SQL Server. The API reports no namespace, environment or raw labels, so those fields are not emitted. Pairs with 'gcx dbo11y instances get <instance>', which accepts either the name or the server_id. --filter label=value (repeatable, ANDed) is forwarded to the API, which matches it against the monitored instances' own labels — so it works on labels the response omits (cluster, dsn, job, service_namespace, deployment_environment) as well as the reported fields. Exact match only: != =~ !~ are usage errors, as the API has no equivalent. A label the telemetry does not carry matches nothing rather than erroring, so an empty result is echoed back with the filters that produced it. On an empty result this command also checks the stack's Database Observability activation status and, if not activated, exits 1 with a specific hint. Examples: gcx dbo11y instances list -o json; gcx dbo11y instances list --filter engine=postgres -o json`,
+			agent.AnnotationLLMHint:   `Database Observability instance inventory, read from the Database Observability API: one row per monitored database under {"items": [...]} with name, engine, engine_version, host, provider_name/_account/_region, instance_identifier and server_id. Covers Postgres, MySQL and SQL Server. Also reports namespace, environment and the collector's labels. Pairs with 'gcx dbo11y instances get <instance>', which accepts either the name or the server_id. --filter accepts label=value, label!=value, label=~regex and label!~regex (repeatable, ANDed), matching the monitored instances' own labels — so it works on labels not reported as fields (cluster, service_namespace, deployment_environment) as well as the reported ones. Regexes are anchored. The labels name and host both resolve to the instance endpoint, so on a stack that sets service_name the NAME field shows the service name while --filter name= still matches the endpoint; filter on service_name to match what NAME shows. Only = is forwarded to the API; != =~ !~ are applied to its response, so a request using one fetches the fleet and narrows it locally. An absent label compares as the empty string, as in Prometheus, so engine!=mysql holds for a row carrying no engine. A filter matching nothing is echoed back with the filters that produced it rather than erroring. On an empty result this command also checks the stack's Database Observability activation status and, if not activated, exits 1 with a specific hint. Examples: gcx dbo11y instances list -o json; gcx dbo11y instances list --filter engine=postgres -o json`,
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -101,7 +107,7 @@ func runList(loader *providers.ConfigLoader, opts *listOpts) func(*cobra.Command
 		if err := opts.Validate(cmd); err != nil {
 			return err
 		}
-		filters, _, err := parseFilters(opts.Filters)
+		filters, err := parseFilters(opts.Filters)
 		if err != nil {
 			return gcxerrors.NewCommandUsageError(cmd, "", err)
 		}
@@ -123,7 +129,7 @@ func runList(loader *providers.ConfigLoader, opts *listOpts) func(*cobra.Command
 			return fmt.Errorf("failed to create Database Observability client: %w", err)
 		}
 
-		items, err := fetchInstances(ctx, client, datasourceUID, filters)
+		items, err := fetchInstances(ctx, client, datasourceUID, apiFilters(filters))
 		if err != nil {
 			var apiErr *apiError
 			if !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusNotFound {
@@ -135,10 +141,7 @@ func runList(loader *providers.ConfigLoader, opts *listOpts) func(*cobra.Command
 			return err
 		}
 
-		// A filter that legitimately matches nothing is not a reason to
-		// question whether the product is activated. Exact-match filters are
-		// applied by the API, so an empty result here is only unambiguously
-		// "nothing is monitored" when no filter was in play at all.
+		items = filterInstances(items, filters)
 		if len(items) == 0 && len(filters) == 0 {
 			// Best-effort diagnostic enrichment: it can only make the "no
 			// instances" case more specific, never less — an inconclusive
@@ -156,10 +159,8 @@ func runList(loader *providers.ConfigLoader, opts *listOpts) func(*cobra.Command
 		// typo visible without rejecting a legitimate filter.
 		if len(items) == 0 && len(filters) > 0 {
 			applied := make([]string, 0, len(filters))
-			for label, values := range filters {
-				for _, v := range values {
-					applied = append(applied, label+"="+v)
-				}
+			for _, f := range filters {
+				applied = append(applied, f.label+string(f.op)+f.value)
 			}
 			sort.Strings(applied)
 			cmdio.EmitHint(cmd.ErrOrStderr(),

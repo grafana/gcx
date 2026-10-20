@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"net/http"
-	"net/url"
 	"strings"
 	"testing"
 
@@ -291,7 +290,10 @@ func TestFetchAndFilterTopQueries_OverfetchesForFilters(t *testing.T) {
 			`{"query_id":"3","database":"payments"}]}}`))
 	})
 
-	filters := url.Values{"database": {"payments"}}
+	filters, err := parseFilters([]string{"database=payments"})
+	if err != nil {
+		t.Fatalf("parseFilters() err = %v", err)
+	}
 	got, truncated, err := fetchAndFilterTopQueries(context.Background(), client, "prom-uid", "", "s1", "5m", 1, filters)
 	if err != nil {
 		t.Fatalf("err = %v", err)

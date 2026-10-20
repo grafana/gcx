@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -53,7 +52,7 @@ func (o *getOpts) setup(flags *pflag.FlagSet) {
 	flags.StringVarP(&o.Datasource, "datasource", "d", "", "Prometheus datasource UID (defaults to datasources.prometheus in config or auto-discovery)")
 	flags.StringVar(&o.Since, "since", defaultQueryWindow, "Window the top-queries and wait-event figures cover (e.g. 1m, 5m, 1h). Does not apply to instance.metrics, which the API reports over a fixed five minutes")
 	flags.IntVar(&o.Top, "top", defaultTopQueriesLimit, fmt.Sprintf("Limit the number of top queries returned (0 = the API maximum; values above %d are clamped to it)", maxTopQueries))
-	flags.StringArrayVar(&o.Filters, "filter", nil, "Restrict the top-queries view with label=value, e.g. --filter datname=payments (repeatable, ANDed). Accepts datname, schema, database, query_id and digest. The queries route ignores filters, so these are applied after ranking — a quiet database outside the instance's busiest 100 reports nothing")
+	flags.StringArrayVar(&o.Filters, "filter", nil, "Restrict the top-queries view with label=value, label!=value, label=~regex or label!~regex, e.g. --filter datname=~payments.*")
 }
 
 func (o *getOpts) Validate(cmd *cobra.Command) error {
@@ -111,8 +110,9 @@ Both come from routes a stack's plugin may predate. Where that is so they are
 omitted and the rest of the result still stands, rather than failing the
 command.
 
---filter only scopes the top-queries view to one database; the instance
-metadata is unaffected.`,
+--filter only scopes the top-queries view; the instance metadata is
+unaffected. It takes label=value, label!=value, label=~regex and
+label!~regex, with regexes anchored.`,
 		Example: `
   # Query performance for one instance, by name
   gcx dbo11y instances get quickpizza-db
@@ -132,7 +132,7 @@ metadata is unaffected.`,
 		RunE: runGet(loader, opts),
 		Annotations: map[string]string{
 			agent.AnnotationTokenCost: "small",
-			agent.AnnotationLLMHint:   `Per-instance Database Observability snapshot, read from the Database Observability API. Argument is the instance name from 'gcx dbo11y instances list' or its server_id; both resolve. Reports instance metadata, a RED rollup under instance.metrics (qps, avg_latency_ms, error_rate, AWS-only cpu_percent) over a fixed five-minute window, and top_queries ranked by time_per_second (share of database time) with query_text, rows_examined and per-query error_rate. Engine-agnostic across Postgres/MySQL/SQL Server, except that per-query error_rate is absent for postgres and rows_examined is absent for sql_server. health.up reports whether the instance is reporting to Database Observability, which is its presence in the inventory rather than a separate check — the collector unregisters an instance it cannot reach after ~3 minutes of failed pings, so an instance that answers at all is being collected from, and a missing one reports health.up false alongside the not-found hint. sessions reports total and max_connections (both engines that report sessions), by_state and longest_transaction_seconds (postgres only), and is absent for sql_server. wait_events is the instance-wide breakdown in the collector's categories (IO Wait, Lock Wait, Network Wait, Engine Wait, Replication Wait, Other Wait), ordered with the dominant cause first. instance.labels carries the collector's labels keyed by raw label name, which is what --filter matches on. sessions and wait_events come from routes an older plugin may not serve; they are omitted in that case rather than failing the command. --top (default 10) caps the queries list, clamped to the API maximum of 100; each row carries its SQL text, so a high --top costs several times the default output. --since (default 5m) sizes the window top_queries and wait_events cover; the top-queries figures are floored at a minute. It does not apply to instance.metrics, which the API reports over a fixed five minutes. --filter label=value (repeatable, ANDed) scopes top queries via datname, schema, database, query_id or digest; exact match only, and any other field is a usage error rather than an empty result. The queries route ignores filters, so gcx applies them after the API has ranked the statements. On a name or server_id that matches nothing this command emits its result document, checks the stack's Database Observability activation status, and exits 1. Examples: gcx dbo11y instances get <instance> -o json; gcx dbo11y instances get <instance> --top 20 -o json`,
+			agent.AnnotationLLMHint:   `Per-instance Database Observability snapshot, read from the Database Observability API. Argument is the instance name from 'gcx dbo11y instances list' or its server_id; both resolve. Reports instance metadata, a RED rollup under instance.metrics (qps, avg_latency_ms, error_rate, AWS-only cpu_percent) over a fixed five-minute window, and top_queries ranked by time_per_second (share of database time) with query_text, rows_examined and per-query error_rate. Engine-agnostic across Postgres/MySQL/SQL Server, except that per-query error_rate is absent for postgres and rows_examined is absent for sql_server. health.up reports whether the instance is reporting to Database Observability, which is its presence in the inventory rather than a separate check — the collector unregisters an instance it cannot reach after ~3 minutes of failed pings, so an instance that answers at all is being collected from, and a missing one reports health.up false alongside the not-found hint. sessions reports total and max_connections (both engines that report sessions), by_state and longest_transaction_seconds (postgres only), and is absent for sql_server. wait_events is the instance-wide breakdown in the collector's categories (IO Wait, Lock Wait, Network Wait, Engine Wait, Replication Wait, Other Wait), ordered with the dominant cause first. instance.labels carries the collector's labels keyed by raw label name, which is what --filter matches on. sessions and wait_events come from routes an older plugin may not serve; they are omitted in that case rather than failing the command. --top (default 10) caps the queries list, clamped to the API maximum of 100; each row carries its SQL text, so a high --top costs several times the default output. --since (default 5m) sizes the window top_queries and wait_events cover; the top-queries figures are floored at a minute. It does not apply to instance.metrics, which the API reports over a fixed five minutes. --filter accepts label=value, label!=value, label=~regex and label!~regex (repeatable, ANDed) and scopes top queries via datname, schema, database, query_id or digest; regexes are anchored, and any other field is a usage error rather than an empty result. The queries route ignores filters, so gcx applies them after the API has ranked the statements. On a name or server_id that matches nothing this command emits its result document, checks the stack's Database Observability activation status, and exits 1. Examples: gcx dbo11y instances get <instance> -o json; gcx dbo11y instances get <instance> --top 20 -o json`,
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -148,11 +148,11 @@ func runGet(loader *providers.ConfigLoader, opts *getOpts) func(*cobra.Command, 
 		if name == "" {
 			return gcxerrors.NewCommandUsageError(cmd, "instance name is required", nil)
 		}
-		filters, typedAs, err := parseFilters(opts.Filters)
+		filters, err := parseFilters(opts.Filters)
 		if err != nil {
 			return gcxerrors.NewCommandUsageError(cmd, "", err)
 		}
-		if err := validateTopQueryFilters(filters, typedAs); err != nil {
+		if err := validateTopQueryFilters(filters); err != nil {
 			return gcxerrors.NewCommandUsageError(cmd, "", err)
 		}
 
@@ -343,7 +343,7 @@ func nextTopSuggestion(top int) int {
 //
 // A fetch failure is returned as-is, with no rows. The caller decides what
 // to do with it, and has the instance's identity and metrics already.
-func fetchAndFilterTopQueries(ctx context.Context, client *apiClient, datasourceUID, lokiDatasourceUID, serverID, since string, limit int, filters url.Values) ([]TopQuery, bool, error) {
+func fetchAndFilterTopQueries(ctx context.Context, client *apiClient, datasourceUID, lokiDatasourceUID, serverID, since string, limit int, filters []filter) ([]TopQuery, bool, error) {
 	effectiveLimit := limit
 	if effectiveLimit <= 0 || effectiveLimit > maxTopQueries {
 		effectiveLimit = maxTopQueries
