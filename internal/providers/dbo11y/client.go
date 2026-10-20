@@ -215,11 +215,30 @@ func fetchSessions(ctx context.Context, client *apiClient, datasourceUID, server
 	return *sessions, true, nil
 }
 
+// windowParams renders since as the from/to pair the API's routes read. A
+// route given neither falls back to its own default window rather than to no
+// window at all, so both are always sent.
+func windowParams(since string) (url.Values, error) {
+	dur, err := model.ParseDuration(since)
+	if err != nil {
+		return nil, fmt.Errorf("invalid --since %q: %w", since, err)
+	}
+	now := time.Now().UTC()
+	return url.Values{
+		"from": {now.Add(-time.Duration(dur)).Format(time.RFC3339)},
+		"to":   {now.Format(time.RFC3339)},
+	}, nil
+}
+
 // fetchWaitEvents calls GET /instances/{serverID}/wait-events, the instance-wide
-// breakdown. Same tolerance: an older plugin reports nothing rather than
-// failing.
-func fetchWaitEvents(ctx context.Context, client *apiClient, datasourceUID, lokiDatasourceUID, serverID string) ([]WaitEvent, error) {
-	query := url.Values{datasourceParam: {datasourceUID}}
+// breakdown, over [now-since, now]. Same tolerance: an older plugin reports
+// nothing rather than failing.
+func fetchWaitEvents(ctx context.Context, client *apiClient, datasourceUID, lokiDatasourceUID, serverID, since string) ([]WaitEvent, error) {
+	query, err := windowParams(since)
+	if err != nil {
+		return nil, err
+	}
+	query.Set(datasourceParam, datasourceUID)
 	if lokiDatasourceUID != "" {
 		query.Set("loki", lokiDatasourceUID)
 	}
@@ -277,23 +296,17 @@ type queriesResponse struct {
 // request to [now-since, now]. limit <= 0 or > maxTopQueries is clamped to
 // maxTopQueries, the API's own cap.
 func fetchTopQueries(ctx context.Context, client *apiClient, datasourceUID, lokiDatasourceUID, serverID, since string, limit int) ([]TopQuery, error) {
-	dur, err := model.ParseDuration(since)
+	query, err := windowParams(since)
 	if err != nil {
-		return nil, fmt.Errorf("invalid --since %q: %w", since, err)
+		return nil, err
 	}
-	now := time.Now().UTC()
-	from := now.Add(-time.Duration(dur))
 
 	if limit <= 0 || limit > maxTopQueries {
 		limit = maxTopQueries
 	}
 
-	query := url.Values{
-		datasourceParam: {datasourceUID},
-		"from":          {from.Format(time.RFC3339)},
-		"to":            {now.Format(time.RFC3339)},
-		"limit":         {strconv.Itoa(limit)},
-	}
+	query.Set(datasourceParam, datasourceUID)
+	query.Set("limit", strconv.Itoa(limit))
 	if lokiDatasourceUID != "" {
 		query.Set("loki", lokiDatasourceUID)
 	}

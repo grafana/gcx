@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"testing"
+	"time"
 
 	internalconfig "github.com/grafana/gcx/internal/config"
 	"k8s.io/client-go/rest"
@@ -343,6 +344,47 @@ func TestFetchTopQueries_InvalidSince(t *testing.T) {
 		t.Fatal("should not make a request when --since fails to parse")
 	})
 	if _, err := fetchTopQueries(context.Background(), client, "prom-uid", "", "s1", "not-a-duration", 10); err == nil {
+		t.Fatal("expected an error for an invalid --since value")
+	}
+}
+
+func TestFetchWaitEvents_SendsRequestedWindow(t *testing.T) {
+	// The route falls back to its own five-minute default when from/to are
+	// absent, so the caller's --since has to reach it. Left off, the breakdown
+	// silently covers a different span from the top queries printed beside it.
+	var gotQuery url.Values
+	client := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.Query()
+		w.Write([]byte(`{"status":"success","data":{"wait_events":[{"type":"IO Wait","wait_seconds":12}]}}`)) //nolint:errcheck // test helper
+	})
+	got, err := fetchWaitEvents(context.Background(), client, "prom-uid", "loki-uid", "s1", "1h")
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if len(got) != 1 || got[0].Type != "IO Wait" || got[0].WaitSeconds != 12 {
+		t.Errorf("got %+v", got)
+	}
+	from, err := time.Parse(time.RFC3339, gotQuery.Get("from"))
+	if err != nil {
+		t.Fatalf("from = %q: %v", gotQuery.Get("from"), err)
+	}
+	to, err := time.Parse(time.RFC3339, gotQuery.Get("to"))
+	if err != nil {
+		t.Fatalf("to = %q: %v", gotQuery.Get("to"), err)
+	}
+	if width := to.Sub(from); width != time.Hour {
+		t.Errorf("window width = %v, want 1h (the requested --since)", width)
+	}
+	if gotQuery.Get("loki") != "loki-uid" {
+		t.Errorf("loki query param = %q, want %q", gotQuery.Get("loki"), "loki-uid")
+	}
+}
+
+func TestFetchWaitEvents_InvalidSince(t *testing.T) {
+	client := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("should not make a request when --since fails to parse")
+	})
+	if _, err := fetchWaitEvents(context.Background(), client, "prom-uid", "", "s1", "not-a-duration"); err == nil {
 		t.Fatal("expected an error for an invalid --since value")
 	}
 }
