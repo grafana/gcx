@@ -1,9 +1,25 @@
 ## v1.7.0 (2026-10-20)
 
+### Breaking changes
+
+- Some failures now exit with different codes. HTTP 401/403 from product
+  commands, Assistant helpers and `gcx api`, and missing Cloud or Synthetic
+  Monitoring credentials exit 3 instead of 1. Unknown flags and missing or
+  extra positional arguments exit 2 instead of 1. Error summaries use a fixed
+  vocabulary (`Authentication failed`, `Authorization failed`,
+  `Resource not found`, `Resource conflict`, `Invalid command usage`).
+  Update scripts that branch on exit 1 or match the old error text. (#1483)
+- Contact points, notification policies, templates and mute timings that gcx
+  writes now stay editable in the Grafana UI by default. Pass
+  `--allow-ui-updates=false` to keep them provisioned. Updating a contact
+  point that is already provisioned requires `--allow-ui-updates=false`;
+  without it Grafana rejects the update. Alert rules are unchanged. (#1553)
+
+### New commands and improvements
+
 - Add Assistant Watchers: inspect, export, create, update and lifecycle commands
 - Watchers: run history, version restore, calibration and notification routing
 - Add alerting time interval and template group workflows
-- Alert rules now stay editable in the Grafana UI by default, with an opt-out
 - Add `kg` graph queries and threshold commands; deprecate legacy entity queries
 - Improve `kg` graph query and meta schema help, with `--jq` examples
 - Add `synthetic-monitoring suggestions list`
@@ -12,7 +28,6 @@
 - Select the active context with the `GCX_CONTEXT` environment variable
 - Detect Hermes Agent and OpenClaw to turn on agent mode
 - Publish a container image to ghcr.io
-- Classify errors consistently, with clearer HTTP error summaries
 - Make SLO, Synthetic, Alerting, k6, Fleet, stack and telemetry tables consistent
 - Fix decoding of SLOs that use grafanaQueries
 - Fix `irm oncall schedules list-final-shifts` ignoring `--start`
@@ -22,11 +37,6 @@
 - Fix instrumentation sending a Pyroscope URL ending in `/ingest`
 - Sandbox recovers from a broken compilation cache and reports why
 - Docs: CLI reference now ships with releases; added Grafana MCP comparison
-
-
-## Unreleased
-
-- Classify CLI failures with consistent category summaries and preserve operation context, server messages, codes, and trace IDs without repeated diagnostics. HTTP 401/403 errors carried by shared provider transports, Assistant helpers, and `gcx api`, missing Cloud credentials, and missing SM credentials/stack prerequisites now exit 3 instead of 1; the instrumentation mutual-exclusion error converter now assigns exit 2 instead of 1 (the current setup command does not emit its sentinel). HTML error pages are replaced with generic API-response details while retaining auth classification; `gcx api` continues to show the full body. Fleet 404s mean `Resource not found` only for Connect `code: "not_found"`; other 404s mean `Endpoint not available`.
 
 ## v1.6.0 (2026-10-13)
 
