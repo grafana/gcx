@@ -189,7 +189,7 @@ $ docker-compose logs -f grafana
 
 ### Generating a changelog and tagging
 
-Releases are automated via `mise run tag`. It requires the `claude` CLI and [`svu`](https://github.com/caarlos0/svu).
+Releases are automated via `mise run tag`. It requires the `claude` CLI; `svu` is installed by `mise install`.
 
 ```console
 $ mise run tag -- patch   # or minor, major
