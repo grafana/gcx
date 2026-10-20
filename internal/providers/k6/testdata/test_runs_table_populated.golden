@@ -1,4 +1,4 @@
-ID  TEST ID  STATUS    RESULT   CREATED           ENDED
-42  7        finished  pending  2026-09-01T12:34  2026-09-01T13:45
-7   0        running   passed   -                 -
-9   0                  99       -                 -
+ID  TEST ID  STATUS     RESULT  CREATED           ENDED
+44  7        running    -       2026-09-03T12:34  -
+43  7        completed  failed  2026-09-02T12:34  2026-09-02T13:45
+42  7        completed  passed  2026-09-01T12:34  2026-09-01T13:45

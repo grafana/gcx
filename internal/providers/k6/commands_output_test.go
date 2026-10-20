@@ -92,8 +92,16 @@ func newFakeK6Loader(t *testing.T) *mockLoader {
 	mux.HandleFunc("GET /cloud/v6/load_tests/4", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"id":4,"name":"t","project_id":3}`))
 	})
+	// Newest first, as k6 Cloud returns runs for $orderby=created desc.
 	mux.HandleFunc("GET /cloud/v6/load_tests/4/test_runs", func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{"value":[{"id":11,"load_test_id":4,"status":"finished","result_status":1,` +
+		_, _ = w.Write([]byte(`{"value":[` +
+			`{"id":12,"test_id":4,"project_id":3,"status":"completed",` +
+			`"status_details":{"type":"completed","entered":"2026-01-02T01:00:00Z","extra":null},` +
+			`"result":"failed","result_details":{"type":"failed","message":"One or more thresholds failed.","code":null},` +
+			`"created":"2026-01-02T00:00:00Z","ended":"2026-01-02T01:00:00Z"},` +
+			`{"id":11,"test_id":4,"project_id":3,"status":"completed",` +
+			`"status_details":{"type":"completed","entered":"2026-01-01T01:00:00Z","extra":null},` +
+			`"result":"passed","result_details":null,` +
 			`"created":"2026-01-01T00:00:00Z","ended":"2026-01-01T01:00:00Z"}]}`))
 	})
 
@@ -522,16 +530,83 @@ func TestK6TestRunStatusCommand_OutputContract(t *testing.T) {
 			name:  "test-run status",
 			build: newTestrunStatusCommand,
 			args:  []string{"--id", "4"},
-			wantHuman: "Run ID:  11\n" +
-				"Status:  finished\n" +
-				"Result:  passed\n" +
-				"Created: 2026-01-01T00:00:00Z\n" +
-				"Ended:   2026-01-01T01:00:00Z\n",
+			wantHuman: "Run ID:  12\n" +
+				"Status:  completed\n" +
+				"Result:  failed\n" +
+				"Created: 2026-01-02T00:00:00Z\n" +
+				"Ended:   2026-01-02T01:00:00Z\n",
 			wantAgent: map[string]any{
-				"id": float64(11), "load_test_id": float64(4),
-				"status": "finished", "result_status": float64(1),
+				"id": float64(12), "test_id": float64(4),
+				"status": "completed", "result": "failed",
+				"result_details.message": "One or more thresholds failed.",
 			},
-			wantYAMLSubstrs: []string{"id: 11", "status: finished"},
+			wantYAMLSubstrs: []string{"id: 12", "test_id: 4", "result: failed"},
 		},
 	})
+}
+
+func TestK6RunsList_ReportsV6RunFields(t *testing.T) {
+	loader := newFakeK6Loader(t)
+	stdout, _, err := runK6Command(t, false, loader, newRunsListCommand, []string{"4", "-o", "json"}, "")
+	require.NoError(t, err)
+
+	var runs []map[string]any
+	require.NoError(t, json.Unmarshal([]byte(stdout), &runs), stdout)
+	require.Len(t, runs, 2)
+	assert.Equal(t, "failed", runs[0]["result"])
+	assert.Equal(t, "One or more thresholds failed.", lookup(runs[0], "result_details.message"))
+	assert.Equal(t, "passed", runs[1]["result"])
+	for _, run := range runs {
+		assert.EqualValues(t, 4, run["test_id"])
+		assert.NotContains(t, run, "load_test_id")
+		assert.NotContains(t, run, "result_status")
+	}
+}
+
+func TestTestRunStatus_ResultRepresentations(t *testing.T) {
+	tests := []struct {
+		name       string
+		run        TestRunStatus
+		wantText   string
+		wantResult any
+	}{
+		{
+			name:       "passed",
+			run:        TestRunStatus{ID: 1, TestID: 4, Status: "completed", Result: new("passed")},
+			wantText:   "Result:  passed\n",
+			wantResult: "passed",
+		},
+		{
+			name: "failed",
+			run: TestRunStatus{
+				ID: 2, TestID: 4, Status: "completed", Result: new("failed"),
+				ResultDetails: &TestRunResultDetails{Type: "failed", Message: new("One or more thresholds failed.")},
+			},
+			wantText:   "Result:  failed\n",
+			wantResult: "failed",
+		},
+		{
+			name:       "unfinished",
+			run:        TestRunStatus{ID: 3, TestID: 4, Status: "running"},
+			wantText:   "Result:  -\n",
+			wantResult: nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var text bytes.Buffer
+			require.NoError(t, (&testRunStatusTextCodec{}).Encode(&text, tt.run))
+			assert.Contains(t, text.String(), tt.wantText)
+
+			raw, err := json.Marshal(tt.run)
+			require.NoError(t, err)
+			var doc map[string]any
+			require.NoError(t, json.Unmarshal(raw, &doc))
+			assert.Contains(t, doc, "result", "an unfinished run must report result: null, not omit it")
+			assert.Equal(t, tt.wantResult, doc["result"])
+			assert.EqualValues(t, 4, doc["test_id"])
+			assert.NotContains(t, doc, "load_test_id")
+			assert.NotContains(t, doc, "result_status")
+		})
+	}
 }

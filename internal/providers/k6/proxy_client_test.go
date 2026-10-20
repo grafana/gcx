@@ -360,7 +360,12 @@ func TestProxyClient_ListTestRuns(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		writeJSON(t, w, map[string]any{
 			"value": []map[string]any{
-				{"id": 101, "load_test_id": 6, "status": "finished", "result_status": 1, "created": "2026-01-01T00:00:00Z"},
+				{
+					"id": 101, "test_id": 6, "status": "completed", "result": "failed",
+					"status_details": map[string]any{"type": "completed", "entered": "2026-01-01T01:00:00Z", "extra": nil},
+					"result_details": map[string]any{"type": "failed", "message": "One or more thresholds failed.", "code": nil},
+					"created":        "2026-01-01T00:00:00Z", "ended": "2026-01-01T01:00:00Z",
+				},
 			},
 		})
 	})
@@ -368,9 +373,15 @@ func TestProxyClient_ListTestRuns(t *testing.T) {
 	client := newAuthenticatedProxyClient(t, handler)
 	runs, err := client.ListTestRuns(t.Context(), 6)
 	require.NoError(t, err)
-	assert.Len(t, runs, 1)
-	assert.Equal(t, "finished", runs[0].Status)
-	assert.Equal(t, 1, runs[0].ResultStatus)
+	require.Len(t, runs, 1)
+	assert.Equal(t, 6, runs[0].TestID)
+	assert.Equal(t, "completed", runs[0].Status)
+	require.NotNil(t, runs[0].Result)
+	assert.Equal(t, "failed", *runs[0].Result)
+	require.NotNil(t, runs[0].ResultDetails)
+	assert.Equal(t, "One or more thresholds failed.", *runs[0].ResultDetails.Message)
+	require.NotNil(t, runs[0].StatusDetails)
+	assert.Equal(t, "completed", runs[0].StatusDetails.Type)
 }
 
 func TestProxyClient_ListEnvVars(t *testing.T) {

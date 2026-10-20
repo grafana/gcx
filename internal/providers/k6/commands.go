@@ -936,9 +936,9 @@ func newRunsListCommand(loader CloudConfigLoader) *cobra.Command {
 func TestRunTable() cmdio.Table[TestRunStatus] {
 	return cmdio.Table[TestRunStatus]{Columns: []cmdio.Column[TestRunStatus]{
 		{Header: "ID", Content: func(r TestRunStatus) string { return strconv.Itoa(r.ID) }},
-		{Header: "TEST ID", Content: func(r TestRunStatus) string { return strconv.Itoa(r.LoadTestID) }},
+		{Header: "TEST ID", Content: func(r TestRunStatus) string { return strconv.Itoa(r.TestID) }},
 		{Header: "STATUS", Content: func(r TestRunStatus) string { return r.Status }},
-		{Header: "RESULT", Content: func(r TestRunStatus) string { return resultStatusString(r.ResultStatus) }},
+		{Header: "RESULT", Content: func(r TestRunStatus) string { return runResult(r.Result) }},
 		{Header: "CREATED", Content: func(r TestRunStatus) string { return tableTimestamp(r.Created) }},
 		{Header: "ENDED", Content: func(r TestRunStatus) string { return tableTimestamp(r.Ended) }},
 	}}
@@ -951,17 +951,11 @@ func tableTimestamp(value string) string {
 	return cmdio.OrDash(value)
 }
 
-func resultStatusString(status int) string {
-	switch status {
-	case 0:
-		return "pending"
-	case 1:
-		return "passed"
-	case 2:
-		return "failed"
-	default:
-		return strconv.Itoa(status)
+func runResult(result *string) string {
+	if result == nil {
+		return "-"
 	}
+	return cmdio.OrDash(*result)
 }
 
 // ---------------------------------------------------------------------------

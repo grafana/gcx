@@ -1,6 +1,9 @@
 package k6
 
-import "strconv"
+import (
+	"encoding/json"
+	"strconv"
+)
 
 // ---------- ResourceIdentity implementations ----------
 
@@ -53,15 +56,31 @@ type EnvVar struct {
 	Description string `json:"description,omitempty"`
 }
 
-// TestRunStatus represents the status of a k6 test run.
+// TestRunStatus represents a k6 test run (v6 API).
 type TestRunStatus struct {
-	ID           int    `json:"id,omitempty"`
-	LoadTestID   int    `json:"load_test_id"`
-	Status       string `json:"status"`
-	ResultStatus int    `json:"result_status"`
-	Created      string `json:"created,omitempty"`
-	Ended        string `json:"ended,omitempty"`
-	ReferenceID  string `json:"reference_id,omitempty"`
+	ID            int                   `json:"id,omitempty"`
+	TestID        int                   `json:"test_id"`
+	Status        string                `json:"status"`
+	StatusDetails *TestRunStatusDetails `json:"status_details"`
+	// Result is passed, failed or error, and null until the run finishes.
+	Result        *string               `json:"result"`
+	ResultDetails *TestRunResultDetails `json:"result_details"`
+	Created       string                `json:"created,omitempty"`
+	Ended         string                `json:"ended,omitempty"`
+}
+
+// TestRunStatusDetails describes where a test run is in its lifecycle.
+type TestRunStatusDetails struct {
+	Type    string          `json:"type"`
+	Entered string          `json:"entered,omitempty"`
+	Extra   json.RawMessage `json:"extra,omitempty"`
+}
+
+// TestRunResultDetails explains a finished test run's result.
+type TestRunResultDetails struct {
+	Type    string  `json:"type"`
+	Message *string `json:"message"`
+	Code    *int    `json:"code"`
 }
 
 // projectsResponse is the response from listing projects.
