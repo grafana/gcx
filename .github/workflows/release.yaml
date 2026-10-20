@@ -18,7 +18,7 @@ jobs:
     permissions:
       contents: write # to push new branches
       packages: write # to push ghcr.io/grafana/gcx
-      id-token: write # to log in to GAR
+      id-token: write # for keyless cosign signing and the GAR login
     name: Release
     runs-on: ubuntu-latest
 
@@ -50,6 +50,11 @@ jobs:
         with:
           registry: us-docker.pkg.dev
 
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: "v3.1.3"
+
       - name: Set release notes
         run: |
           delimiter="$(openssl rand -hex 16)"
@@ -62,7 +67,7 @@ jobs:
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@1a80836c5c9d9e5755a25cb59ec6f45a3b5f41a8 # v7.2.1
         with:
-          version: "~> v2"
+          version: "v2.13.3" # keep in sync with mise.toml
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
