@@ -14,6 +14,12 @@
   `--allow-ui-updates=false` to keep them provisioned. Updating a contact
   point that is already provisioned requires `--allow-ui-updates=false`;
   without it Grafana rejects the update. Alert rules are unchanged. (#1553)
+- `gcx synthetic-monitoring checks status` and `checks get --show-status` now
+  read from the Synthetic Monitoring datasource and require Synthetic
+  Monitoring app v1.64.0 or later. `SUCCESS` (JSON `success`) is now
+  reachability over 3 hours instead of a 5-minute `probe_success` average, so
+  some checks may change between `OK` and `FAILING`. `--datasource-uid` is
+  hidden and ignored; it is still accepted, with a warning. (#1489)
 
 ### New commands and improvements
 
@@ -23,7 +29,6 @@
 - Add `kg` graph queries and threshold commands; deprecate legacy entity queries
 - Improve `kg` graph query and meta schema help, with `--jq` examples
 - Add `synthetic-monitoring suggestions list`
-- Synthetic Monitoring check status now reads from SM named queries
 - Describe the profiling workflow in `profiles` help
 - Select the active context with the `GCX_CONTEXT` environment variable
 - Detect Hermes Agent and OpenClaw to turn on agent mode
