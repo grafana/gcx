@@ -11,9 +11,9 @@
   giving one label two values. On `gcx dbo11y instances get` it accepts only
   `database`, `datname`, `schema`, `query_id` and `digest`; any other field
   exits 2.
-- `gcx dbo11y instances get` ignores `--since`: figures cover the backend's
-  own fixed window, so a script passing `--since 1h` now reports 5m values.
-  `--top 0` returns the API maximum of 100 rather than every statement.
+- `gcx dbo11y instances get --top 0` returns the API maximum of 100
+  statements rather than every one. The queries route caps its `limit` at
+  100 and offers no way to page past it.
 
 ### New commands and improvements
 
@@ -22,6 +22,9 @@
   breakdown by session state, and the age of the oldest open transaction.
   The limit is new — the previous implementation reported counts with
   nothing to compare them against.
+- `--since` sizes the window both `top_queries` and `wait_events` cover. It
+  does not move `instance.metrics`, which the API reports over a fixed
+  five-minute window.
 - `gcx dbo11y instances get` reports where the instance is waiting under
   `wait_events`, across every query rather than one at a time, using the
   collector's own categories (`IO Wait`, `Lock Wait`, and so on) rather
