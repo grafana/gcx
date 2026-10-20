@@ -3,6 +3,7 @@ package dataframe
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"slices"
 	"strconv"
 	"time"
@@ -52,11 +53,7 @@ func CSVSeriesRecords(series []CSVSeries, includeUnit bool) ([]string, [][]strin
 			keys[key] = true
 		}
 	}
-	labels := make([]string, 0, len(keys))
-	for key := range keys {
-		labels = append(labels, key)
-	}
-	slices.Sort(labels)
+	labels := slices.Sorted(maps.Keys(keys))
 	columns := []string{"timestamp_rfc3339", "value", "series"}
 	if includeUnit {
 		columns = append(columns, "unit")

@@ -13,12 +13,34 @@ import (
 )
 
 func TestCSVRecords(t *testing.T) {
-	r := &azuremonitor.TableResponse{Columns: []azuremonitor.Column{{Name: "time", Type: "time"}, {Name: "Name"}, {Name: "name"}, {Name: "nil"}, {Name: "nested"}}, Rows: [][]any{{1700000000123.0, "UPPER,\nNAME", "lower", nil, map[string]any{"a": true}}}}
+	var frame testFrame
+	frame.Schema.Fields = []testField{
+		{Name: "time", Type: "time"},
+		{Name: "Name", Type: "string"},
+		{Name: "name", Type: "string"},
+		{Name: "nil", Type: "string"},
+		{Name: "nested", Type: "other"},
+	}
+	frame.Data.Values = []any{
+		[]any{1700000000123, 1700000000987, 1700000001000},
+		[]any{"UPPER,\nNAME", "second", "whole second"},
+		[]any{"lower", "lower", "lower"},
+		[]any{nil, nil, nil},
+		[]any{map[string]any{"a": true}, nil, nil},
+	}
+	body := queryResultBody(t, testResultEntry{Frames: []testFrame{frame}})
+	r, err := azuremonitor.ParseTableResponse(body, "logs")
+	require.NoError(t, err)
 	var out bytes.Buffer
 	require.NoError(t, (cmdio.CSV[cmdio.CSVMarshaler]{Records: cmdio.CSVMarshaler.CSVRecords}).Encode(&out, r))
 	rows, err := csv.NewReader(&out).ReadAll()
 	require.NoError(t, err)
-	assert.Equal(t, [][]string{{"time", "Name", "name", "nil", "nested"}, {"1700000000123", "UPPER,\nNAME", "lower", "", `{"a":true}`}}, rows)
+	assert.Equal(t, [][]string{
+		{"time", "Name", "name", "nil", "nested"},
+		{"2023-11-14T22:13:20.123Z", "UPPER,\nNAME", "lower", "", `{"a":true}`},
+		{"2023-11-14T22:13:20.987Z", "second", "lower", "", ""},
+		{"2023-11-14T22:13:21Z", "whole second", "lower", "", ""},
+	}, rows)
 	r.Rows = nil
 	columns, rows, err := r.CSVRecords()
 	require.NoError(t, err)
