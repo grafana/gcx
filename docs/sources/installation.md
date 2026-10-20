@@ -130,11 +130,15 @@ to two registries:
 - `docker.io/grafana/gcx` (Docker Hub)
 - `ghcr.io/grafana/gcx` (GitHub Container Registry)
 
-Both carry identical tags and the same image digests. The entrypoint is `gcx`:
+Both carry identical tags and the same image digests. The entrypoint is `gcx`.
+
+From Docker Hub:
 
 ```sh
-docker run --rm grafana/gcx:latest --version
+docker run --rm docker.io/grafana/gcx:latest --version
 ```
+
+From GitHub Container Registry:
 
 ```sh
 docker run --rm ghcr.io/grafana/gcx:latest --version
