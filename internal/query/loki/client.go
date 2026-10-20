@@ -24,6 +24,10 @@ type Client struct {
 	queryClient *grafanaquery.Client
 }
 
+var contentFields = map[string]bool{ //nolint:gochecknoglobals // constant-like lookup table
+	"Line": true, "line": true, "body": true, "Body": true, "value": true,
+}
+
 func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
 	httpClient, err := rest.HTTPClientFor(&cfg.Config)
 	if err != nil {
@@ -53,10 +57,7 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 		for _, field := range frame.Schema.Fields {
 			hasTime = hasTime || field.Type == "time"
 			hasValue = hasValue || field.Type == "number"
-			switch field.Name {
-			case "Line", "line", "body", "Body", "value":
-				hasLine = true
-			}
+			hasLine = hasLine || contentFields[field.Name]
 		}
 		if hasTime && hasValue && !hasLine {
 			return nil, errors.New("query returned metrics instead of log streams; use `gcx logs metrics` with the same datasource and expression")
@@ -528,10 +529,6 @@ func convertLegacyFormat(frame DataFrame, result *QueryResponse) {
 	labels := make(map[string]string)
 
 	var fallbackValueIdx = -1
-	contentFields := map[string]bool{
-		"Line": true, "line": true, "body": true, "Body": true, "value": true,
-	}
-
 	for i, field := range frame.Schema.Fields {
 		switch field.Type {
 		case "time":
