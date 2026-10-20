@@ -8,6 +8,7 @@ RFCs propose engineering changes for review: the problem, user experience, techn
 | --- | --- |
 | [001: Unify alerting configuration and resource workflows](001-alerting-provider-refactor.md) | Proposed |
 | [002: Manage Assistant Watchers through gcx](002-assistant-watchers.md) | Proposed |
+| [003: Third-party extensions](003-third-party-extensions.md) | Proposed |
 
 ## Authoring and maintenance
 
