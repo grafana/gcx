@@ -12,15 +12,13 @@
 |------|---------|
 | [VISION.md](VISION.md) | Goals, product surface, roadmap themes, release timeline |
 | [CONSTITUTION.md](CONSTITUTION.md) | Invariants — things that cannot change without explicit human approval |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | System overview (all 7 subsystems), pipeline diagrams, ADR index |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | System boundaries, extension points, and pipeline diagrams |
 | [DESIGN.md](DESIGN.md) | CLI UX design: command grammar, output model, exit codes |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Dev setup, testing environment, contribution workflow |
 | [docs/architecture/](docs/architecture/) | Deep-dive architecture docs (patterns, resource model, CLI layer, data flows, …) |
 | [docs/design/](docs/design/) | Prescriptive UX implementation rules (output, errors, agent mode, naming, …) |
 | [docs/rfcs/](docs/rfcs/README.md) | Engineering proposals, design tradeoffs, and open questions |
-| [docs/glossary/](docs/glossary/README.md) | Shipped domain terms, one file per context (proposed terms stay in RFCs) |
 | [docs/reference/](docs/reference/) | Handwritten provider guides and contributor references |
-| [docs/_templates/](docs/_templates/) | ADR and research report templates |
 
 ## Architecture at a Glance
 
@@ -63,33 +61,9 @@ mise run docs        # Build Grafana website docs (requires Docker)
 
 Prefer table-driven tests. See existing `_test.go` files for patterns.
 
-## Package Map
+## Source navigation
 
-> Full map with sub-packages: [docs/architecture/project-structure.md](docs/architecture/project-structure.md)
-
-```
-cmd/gcx/
-  root/         CLI root (logging, global flags)
-  login/        Unified login and signup commands (token + OAuth PKCE + Basic auth, interactive prompts)
-  config/       Config management (set, use-context, view, check)
-  resources/    Resource commands (get, list-types, list-examples, push, pull, delete, edit, validate)
-  datasources/  Datasource commands (list, get, query, per-type subcommands via DatasourceProvider)
-  docs/         Documentation lookup (search, get, outline, list-products, list-links)
-  providers/    Provider list command
-  cloud/        Cloud platform commands (login, stack management, user org memberships)
-  api/          Raw API passthrough
-  linter/       Linting (mounted under dev lint)
-  commands/     Commands catalog (agent metadata)
-  helptree/     Help tree for agent context
-  setup/        Onboarding (gcx setup status)
-  instrumentation/  Instrumentation Hub commands (clusters, services, setup wizard, status, check, explain, list-explanations)
-  skills/       Portable Agent Skills installer for .agents-compatible tools (install/update/list/get/uninstall; get reads bundled SKILL.md or references without installing)
-  dev/          Developer tools (import, scaffold, generate, lint, serve)
-  fail/         Structured error conversion
-
-internal/        Non-public packages — full annotated map: docs/architecture/project-structure.md
-experimental/    Separate Go modules outside the CLI's build: sandbox/ runs gcx as wasip1 in wazero for embedding
-```
+Start with [project structure](docs/architecture/project-structure.md) for module boundaries. Browse `cmd/gcx/` for command wiring and `internal/` for implementation; use `bin/gcx help-tree` for the current command surface.
 
 ## What to Read Before You Start
 
@@ -101,7 +75,7 @@ experimental/    Separate Go modules outside the CLI's build: sandbox/ runs gcx 
 | **Modifying resource handling** | [ARCHITECTURE.md](ARCHITECTURE.md) § Resources Pipeline | [docs/architecture/resource-model.md](docs/architecture/resource-model.md), [docs/architecture/data-flows.md](docs/architecture/data-flows.md) |
 | **Changing config or auth** | [ARCHITECTURE.md](ARCHITECTURE.md) § Configuration + § Auth | [docs/architecture/config-system.md](docs/architecture/config-system.md), [docs/architecture/client-api-layer.md](docs/architecture/client-api-layer.md) |
 | **Fixing a bug** | [ARCHITECTURE.md](ARCHITECTURE.md) for the relevant subsystem | Jump directly to the deep-dive doc for that domain |
-| **Creating or revising an RFC** | [RFC index and conventions](docs/rfcs/README.md), repo-local [create-rfc](.agents/skills/create-rfc/SKILL.md) | Use [update-rfc](.agents/skills/update-rfc/SKILL.md) when explicitly asked to reconcile verified implementation evidence |
+| **Creating or revising an RFC** | [RFC conventions](docs/rfcs/README.md), repo-local [create-rfc](.agents/skills/create-rfc/SKILL.md) | Use [update-rfc](.agents/skills/update-rfc/SKILL.md) when explicitly asked to reconcile verified implementation evidence |
 | **Reviewing an RFC** | Repo-local [review-rfc](.agents/skills/review-rfc/SKILL.md), the originating request and [RFC conventions](docs/rfcs/README.md) | Check claims, scope, repository rules, consistency and unresolved questions before sharing or acceptance |
 | **Planning work before implementation** | Repo-local [`contribute`](.agents/skills/contribute/SKILL.md) and the [contribution workflow](CONTRIBUTING.md#contributing-code) | Load the proposal or RFC specialist only when the selected route needs it; keep restricted research outside the checkout |
 | **Planning a new feature** | [VISION.md](VISION.md) (does it belong?), [CONSTITUTION.md](CONSTITUTION.md) (can we build it within the rules?) | [DESIGN.md](DESIGN.md) for UX, [ARCHITECTURE.md](ARCHITECTURE.md) for structure |
@@ -117,7 +91,7 @@ Check work against these docs during planning, design, and implementation — in
 | 1 | [CONSTITUTION.md](CONSTITUTION.md) | **Hard invariant** — violation is a bug | Architecture invariants, dependency rules, provider registration, CLI grammar, typed resource requirements | Stop. Fix before proceeding. Violation requires explicit human approval to waive. |
 | 2 | [VISION.md](VISION.md) | **Strategic alignment** — violation is wasted work | Does this belong in gcx? Does it align with dual-purpose design, core beliefs, product surface? | Pause. Confirm direction with a human before investing more effort. |
 | 3 | [DESIGN.md](DESIGN.md) | **UX rules** — violation is a UX defect | Output model, exit codes, safety patterns, taste rules in [docs/design/](docs/design/) | Fix. New code must comply. |
-| 4 | [ARCHITECTURE.md](ARCHITECTURE.md) | **Structural guidance** — violation is tech debt | Pipeline placement, package boundaries, patterns in [docs/architecture/](docs/architecture/README.md) | Prefer compliance. Deviation is acceptable with rationale (document in commit or ADR). |
+| 4 | [ARCHITECTURE.md](ARCHITECTURE.md) | **Structural guidance** — violation is tech debt | Pipeline placement, package boundaries, patterns in [docs/architecture/](docs/architecture/README.md) | Prefer compliance. Deviation is acceptable with rationale (document in commit or RFC). |
 
 **When to check:**
 - **Planning/design**: Check VISION (2) and CONSTITUTION (1) — are we building the right thing, and can we build it within the rules?
@@ -141,7 +115,7 @@ You MUST run this checklist when creating a PR or updating an existing PR with n
    ```bash
    GCX_AGENT_MODE=false mise run all
    ```
-4. **Doc maintenance gate** — run the structural checks in [docs/reference/doc-maintenance.md](docs/reference/doc-maintenance.md). Update `CLAUDE.md`, `ARCHITECTURE.md` (ADR table), and relevant `docs/architecture/` files (including the package map in `project-structure.md`) if any are stale.
+4. **Doc maintenance gate** — follow [documentation maintenance](docs/reference/doc-maintenance.md). Update guidance affected by changed behavior, architectural boundaries, or contributor workflows; do not mirror package lists or proposal inventories.
 5. **Push**
    ```bash
    git push

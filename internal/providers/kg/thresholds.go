@@ -220,7 +220,7 @@ func encodeThresholdRowsOrValue[T any](opts *cmdio.Options, w io.Writer, rows []
 }
 
 // thresholdTable declares the threshold columns for both the narrow and wide
-// renderings — LABELS is the only wide-only column (ADR-002).
+// renderings — LABELS is the only wide-only column.
 func thresholdTable() cmdio.Table[thresholdRow] {
 	return cmdio.Table[thresholdRow]{
 		Columns: []cmdio.Column[thresholdRow]{

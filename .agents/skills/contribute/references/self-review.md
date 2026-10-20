@@ -169,14 +169,7 @@ is not "always in the payload":
 `TruncatePagedList` for paginated ones), `AttachListMeta` to finalize, and
 `EmitListTruncationHint` after the payload.
 
-**Its status, stated accurately:** `docs/design/output.md` §15 is marked
-**PROPOSED** (#387 Track C) and is implemented as an *opt-in* contract, migrated
-so far only to the exemplar commands §15 names — read it there, since which
-commands have migrated changes as the contract rolls out. It is **not** a
-repo-wide requirement and **not** mandatory for every new list command. Note also that a client-side-capped source must not use the binder,
-because "0 means all" would be dishonest there — it discloses the cap via
-`ListMeta.Cap` and the cap-variant hint instead. Migration plan and open
-questions: `docs/research/2026-07-17-global-limit-investigation.md`.
+**Its status, stated accurately:** `docs/design/output.md` §15 is marked **PROPOSED** (#387 Track C) and is implemented as an *opt-in* contract, migrated so far only to the exemplar commands §15 names — read it there, since which commands have migrated changes as the contract rolls out. It is **not** a repo-wide requirement and **not** mandatory for every new list command. Note also that a client-side-capped source must not use the binder, because "0 means all" would be dishonest there — it discloses the cap via `ListMeta.Cap` and the cap-variant hint instead. Use the contract in `docs/design/output.md` when planning further migrations.
 
 Also check the zero-result path: a field your success schema declares as an
 array must not serialize as `null` when empty, in the machine formats your
@@ -262,24 +255,15 @@ Released names are frozen within the major version — a wrong name is not
 fixable later, which is why this question has repeatedly consumed review rounds
 when left to review time. It is answerable in minutes.
 
-Read the placement rule (per operation, not per subject) and the catalog-facet
-rule in `docs/design/command-naming.md`, then check the real tree:
+Read the placement and catalog-facet rules in [command naming](../../../../docs/design/command-naming.md), including the [addressability precedents](../../../../docs/design/command-naming.md#addressability-precedents), then check the real tree:
 
 ```bash
 bin/gcx help-tree
 ```
 
-Is there a sibling with the same shape? Would this be the first bare `<verb>` at
-this level? Does an existing family use an `<operation>-<subject>` compound for
-the same kind of facet? Check the adjudicated precedent record at
-`docs/plans/list-subject-verdicts.md` — it has settled dozens of borderline
-cases (notably: filter-flag usage does NOT make a value "addressable", and
-ID-less value enumerations take the compound).
+Is there a sibling with the same shape? Would this be the first bare `<verb>` at this level? Does an existing family use an `<operation>-<subject>` compound for the same kind of facet? Filter-flag usage does not make a value "addressable", and ID-less value enumerations take the compound.
 
-If the guide plus the precedent record still leave your shape ambiguous, raise it
-as a question rather than self-adjudicating — a wrong self-adjudication ships
-forever. Cite rules by document path and section, never by PR or issue number
-from memory; a wrong number sends reviewers chasing ghosts.
+If the guide and existing command shapes still leave your shape ambiguous, raise it as a question rather than self-adjudicating — a wrong self-adjudication ships forever. Cite rules by document path and section, never by PR or issue number from memory; a wrong number sends reviewers chasing ghosts.
 
 ## T8: Tests that cannot fail
 
@@ -390,10 +374,7 @@ Keep the released reference unchanged in command PRs. `mise run tag` generates
 references with the upcoming version and includes them in the release changelog
 PR. Run `mise run docs` to validate the checked-in pages.
 
-Underscore-prefixed identifiers (a metrics `__name__`) render as bold markdown
-unless backticked. Help text carrying a removed config key or a stale default is
-a regression multiplier — it lands on several generated pages at once. New
-packages get a row in `docs/architecture/project-structure.md`.
+Underscore-prefixed identifiers (a metrics `__name__`) render as bold markdown unless backticked. Help text carrying a removed config key or a stale default is a regression multiplier — it lands on several generated pages at once. Update architecture guidance when responsibilities or boundaries change; adding a package alone needs no documentation entry.
 
 Sweep both the portable user skills and repo-local contributor skills for
 routing your change affects:

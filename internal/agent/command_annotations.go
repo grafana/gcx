@@ -136,7 +136,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx setup status": {Cost: "small"},
 
 	// -----------------------------------------------------------------------
-	// Instrumentation provider (action-verb tree — ADR-018)
+	// Instrumentation provider (action-verb tree — RFC 019)
 	// -----------------------------------------------------------------------
 
 	// clusters verb group

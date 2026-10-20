@@ -17,47 +17,16 @@ To build the Grafana.com-style docs locally:
 
 ## For Contributors & Agents
 
-- **[CLAUDE.md](../CLAUDE.md)** — Agent entry point: doc map, build commands, package index
+- **[CLAUDE.md](../CLAUDE.md)** — Agent entry point: doc map and build commands
 - **[CONSTITUTION.md](../CONSTITUTION.md)** — Project invariants and constraints (authoritative)
-- **[ARCHITECTURE.md](../ARCHITECTURE.md)** — Architecture overview, pipeline diagrams, ADR index
+- **[ARCHITECTURE.md](../ARCHITECTURE.md)** — Architecture overview and pipeline diagrams
 - **[DESIGN.md](../DESIGN.md)** — CLI UX design: command grammar, output model, taste rules
 - **[CONTRIBUTING.md](../CONTRIBUTING.md)** — Dev setup, testing, contribution workflow
 - **[Engineering RFCs](rfcs/README.md)** — Proposals, tradeoffs, and open questions
 - **[Architecture](architecture/README.md)** — Deep-dive architecture docs per domain
 
-## Directory Layout
+## Maintaining documentation
 
-```
-docs/
-├── architecture/     # Per-domain codebase analysis
-├── rfcs/             # Numbered engineering proposals and review workflows
-├── adrs/             # Architecture Decision Records
-├── sources/          # Grafana.com-mounted user-facing docs, including user-facing how-to guides
-├── reference/        # Evergreen tool/API docs, auto-generated CLI reference
-├── research/         # Point-in-time research reports
-├── specs/            # Ephemeral spec packages (cleaned after merge)
-├── _templates/       # Templates for ADRs and research reports
-└── assets/           # Images and static assets
-```
+Follow the [contribution guide](../CONTRIBUTING.md#contributing-code) for when an [RFC](rfcs/README.md) is required. Developers choose their own implementation and planning tools. Keep design decisions and terminology in the RFC; keep current user-facing behavior in the relevant guide.
 
-### Templates
-
-Available in [`_templates/`](_templates/):
-
-| Template | Use For |
-|----------|---------|
-| `adr.md` | Architecture Decision Records |
-| `research.md` | Research reports |
-
-Follow the [contribution guide](../CONTRIBUTING.md#contributing-code) for when an [RFC](rfcs/README.md) is required. Developers choose their own implementation and planning tools.
-
-### Conventions
-
-| Scope | Convention | Example |
-|-------|-----------|---------|
-| Point-in-time docs | `YYYY-MM-DD-short-name.md` | `2026-03-27-gap-analysis.md` |
-| RFCs | `NNN-title.md`, indexed in `rfcs/README.md` | `001-alerting-provider-refactor.md` |
-| Evergreen docs | Descriptive name, no date | `provider-guide.md` |
-| Feature subdirs | Lowercase hyphenated | `cloud-rest-config/` |
-
-See [reference/doc-maintenance.md](reference/doc-maintenance.md) for which docs to update when.
+See [documentation maintenance](reference/doc-maintenance.md) for what to update when behavior or architecture changes. Browse the directories for available documents instead of maintaining duplicate inventories.

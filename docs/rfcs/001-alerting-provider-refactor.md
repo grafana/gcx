@@ -1,5 +1,7 @@
 # RFC 001: Unify alerting configuration and resource workflows
 
+**Status**: proposed
+
 ## Summary
 
 We propose a shared resource-access binding for alerting configuration, used by both dedicated commands and `gcx resources`. This follows the dashboards model: users can choose imperative CRUD or declarative push without encountering different resource identities or manifest formats. Shared helpers would reduce client setup and compatibility code, while the existing declarative adapter framework would serve suitable REST-only resources.
@@ -248,9 +250,9 @@ provenance, and Grafana 12.x runtime remain unit/recording-test coverage.
 
 ## Prior art
 
-**Dashboards provider.** The [dashboards provider](../adrs/dashboards-provider/001-dashboards-provider-design.md) uses the same native resource model and dynamic client machinery for dedicated commands and `gcx resources`, so users can mix imperative and declarative workflows without meeting different identities or manifest formats. This RFC applies that model to alerting and proposes a shared binding for both command surfaces.
+**Dashboards provider.** The [dashboards provider](017-dashboards-provider-design.md) uses the same native resource model and dynamic client machinery for dedicated commands and `gcx resources`, so users can mix imperative and declarative workflows without meeting different identities or manifest formats. This RFC applies that model to alerting and proposes a shared binding for both command surfaces.
 
-**Declarative provider framework.** REST-only resources already use `adapter.Resource[T]`, `TypedCRUD` and `providers.BindGrafanaResource`, as described in the [provider guide](../reference/provider-guide.md) and the [declarative provider architecture](../adrs/declarative-provider-registration/001-declarative-resource-front-door.md). Suitable alerting resources keep that path instead of gaining a new one.
+**Declarative provider framework.** REST-only resources already use `adapter.Resource[T]`, `TypedCRUD` and `providers.BindGrafanaResource`, as described in the [provider guide](../reference/provider-guide.md) and the [declarative provider architecture](026-declarative-resource-front-door.md). Suitable alerting resources keep that path instead of gaining a new one.
 
 ## Unresolved questions
 
@@ -263,4 +265,11 @@ provenance, and Grafana 12.x runtime remain unit/recording-test coverage.
 
 ## Terminology
 
-Routing tree, default tree, named tree, notification policy, receiver, and integration shipped with the routing-trees slice. Their definitions live in [the alerting glossary](../glossary/alerting.md). Define any new terms a later slice proposes here until that slice ships.
+- **Routing tree:** a hierarchy of notification policies that selects receivers and grouping and timing behavior. A stack has one default tree and may have named trees.
+- **Default tree:** the tree named `user-defined`; deleting it resets Grafana's built-in configuration.
+- **Named tree:** an additional tree with its own name, created and deleted independently of the default tree.
+- **Notification policy:** a node containing matchers, a receiver, and timing; child policies refine their parent.
+- **Receiver:** a named destination containing one or more integrations. Grafana's UI also calls it a contact point.
+- **Integration:** one delivery configuration within a receiver, such as a Slack channel or email address, with its own settings and credentials.
+- **Template group:** a named set of notification templates used to format messages.
+- **Time interval:** named time ranges used to mute or allow notifications.

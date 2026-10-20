@@ -146,7 +146,7 @@ func manifestHeaders(inputs []assistantmcp.Header) []mcpserver.MCPServerHeader {
 }
 
 // applyUpdate overlays a partial CLI update onto the current server manifest.
-// scope, name, and url form the immutable natural-key identity (ADR-021
+// scope, name, and url form the immutable natural-key identity (RFC 022
 // Decision 3), so an attempt to change any of them via update is a clear
 // error rather than a silent no-op — delete and recreate to change identity. Headers follow the CLI write-intent model: no --header flags
 // (nil) preserves every current header; any --header flags become the full

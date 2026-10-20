@@ -439,7 +439,7 @@ func TestFormatTeamCellPreservesID(t *testing.T) {
 }
 
 // TestAlertRuleCell — wide-mode RULE column URL-over-UID precedence.
-// (Default columns dropped DASHBOARD; RULE is wide-only — see ADR §6.)
+// (Default columns dropped DASHBOARD; RULE is wide-only — see RFC 020 §6.)
 func TestAlertRuleCell(t *testing.T) {
 	t.Parallel()
 	mk := func(uid, urlStr string) alertEnvelope {
