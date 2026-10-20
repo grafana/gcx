@@ -184,7 +184,7 @@ gcx/
 │
 ├── go.mod / go.sum           # Main Go module definition (module: github.com/grafana/gcx)
 ├── .golangci.yaml            # Linter configuration (golangci-lint v2)
-├── .goreleaser.yaml          # Release pipeline (cross-platform builds + GitHub Release + container image)
+├── .goreleaser.yaml          # Release pipeline (cross-platform builds + GitHub Release + container image + Sigstore signatures)
 ├── Dockerfile                # Release image: prebuilt binary on distroless (used by GoReleaser dockers_v2)
 ├── mise.toml                 # Reproducible toolchain (Go, golangci-lint, goreleaser)
 └── docker-compose.yml        # Integration test environment (Grafana 12 + MySQL 9)
@@ -309,7 +309,7 @@ Triggered on: `v*` tag push.
 ```
 v* tag push
 └── release           → cosign install
-                      goreleaser release --clean  (builds + GitHub Release + ghcr.io image + Sigstore signatures)
+                      → goreleaser release --clean  (builds + GitHub Release + ghcr.io image + Sigstore signatures)
 ```
 
 GoReleaser builds with `CGO_ENABLED=0` for all three platforms (linux, darwin,

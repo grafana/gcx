@@ -27,6 +27,10 @@ The script:
 - Verifies the SHA-256 checksum.
 - Installs the binary to `~/.local/bin`.
 
+The checksum check catches a corrupted download, but it does not prove the
+archive came from the gcx release workflow. To check that, refer to
+[Verify a release](#verify-a-release).
+
 ### Upgrade
 
 To upgrade, run the same command again. The script always installs the latest release.
@@ -143,7 +147,8 @@ through `sh -c`.
 
 ## Verify a release
 
-Every release is signed keylessly with [Sigstore](https://www.sigstore.dev/).
+Releases after v1.6.0 are signed keylessly with [Sigstore](https://www.sigstore.dev/).
+Earlier releases have no signatures, and `cosign` reports `no matching signatures` for them.
 There is no gcx public key to fetch: the release workflow signs with a
 short-lived certificate issued against its GitHub Actions OIDC token, so a
 signature proves an artifact came out of `.github/workflows/release.yaml` in
