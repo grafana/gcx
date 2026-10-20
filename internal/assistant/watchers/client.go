@@ -121,6 +121,9 @@ func (c *Client) Get(ctx context.Context, id string) (*Watcher, error) {
 	if strings.TrimSpace(item.ID) == "" || strings.TrimSpace(item.Name) == "" {
 		return nil, errors.New("get Watcher: response has no resource identity")
 	}
+	if item.ID != id {
+		return nil, errors.New("get Watcher: response has an unexpected resource identity")
+	}
 	return &item, nil
 }
 
@@ -224,8 +227,11 @@ func readAPIError(resp *http.Response, operation string, collection bool) error 
 		case strings.Contains(message, "restore the archived watcher first"):
 			apiErr.Reason = "restore the archived Watcher before editing"
 		case strings.Contains(message, "finish or cancel calibration before updating"):
-			apiErr.Reason = "finish or cancel calibration before editing the Watcher"
+			apiErr.Reason = "wait for calibration to finish or cancel calibration in Grafana before editing the Watcher"
 		}
+	}
+	if reason := lifecycleAPIReason(operation, apiErr.kind, wire.Message+" "+wire.Error); reason != "" {
+		apiErr.Reason = reason
 	}
 	return apiErr
 }

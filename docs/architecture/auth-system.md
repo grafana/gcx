@@ -502,42 +502,13 @@ sequenceDiagram
 
 ---
 
-## File pointers
+## Implementation Boundary
 
-```
-internal/auth/
-  flow.go             OAuth PKCE flow, callback server, exchange,
-                      state/endpoint validation
-  callback.go         Shared callback-parameter handling for both the HTTP
-                      callback and the manual paste path
-  manual.go           Manual paste mode: redirect-URL parsing, line reader,
-                      SSH hint
-  paste.go            Paste watcher: reads a redirect URL from /dev/tty while
-                      the callback server also listens
-  flush_linux.go      Terminal input flush, one file for each platform family.
-  flush_bsd.go        Close calls it, so text without a newline never reaches
-  flush_other.go      the shell after gcx exits.
-  gcom.go             Direct Grafana Cloud OAuth PKCE flow and response metadata
-  transport.go        RefreshTransport, StoredTokens, TokenRefresher,
-                      TokenLocker, TokenReloader, DoRefresh
-
-internal/config/
-  types.go            APIToken (SA token), CloudEntry CAP/OAuth fields,
-                      expiry/scopes, Grafana OAuth fields, ProxyEndpoint
-  rest.go             Bearer attachment, WrapTransport wiring,
-                      NewNamespacedRESTConfig, WireTokenPersistence,
-                      ResolveTokenPersistenceSource
-
-internal/auth/adaptive/
-  — out of scope for this document (used by signal providers for
-     adaptive telemetry auth). Follow-up documentation tracked separately.
-```
-
----
+[internal/auth](../../internal/auth/) owns PKCE, callback handling, token exchange, and refresh transport. [internal/config](../../internal/config/) owns selected-auth transport wiring and source-bound token persistence. The auth package receives persistence and locking hooks rather than owning configuration storage.
 
 ## See also
 
 - [Login system](login-system.md) — how the login orchestrator uses this subsystem.
 - [Configuration and context system](config-system.md) — where tokens are stored and how secrets are redacted.
 - [Login reference (user-facing)](../reference/login.md) — user-facing auth-method walkthroughs.
-- [ADR 001: Login + config consolidation](../adrs/login-consolidation/001-login-config-consolidation.md) — historical rationale, including OAuth-proxy decision.
+- [RFC 028: Login + config consolidation](../rfcs/028-login-config-consolidation.md) — historical rationale, including OAuth-proxy decision.

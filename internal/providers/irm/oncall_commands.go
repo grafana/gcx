@@ -889,13 +889,13 @@ func webhookTable() cmdio.Table[unstructured.Unstructured] {
 // summary, severity, state, runbookURL, subject, timestamps, links,
 // alertsCount, raw) defined on oncalltypes.AlertGroupStatus.
 // The table codec below mirrors the locked SRE-persona column shape for
-// `irm oncall alert-groups list` (see ADR §6).
+// `irm oncall alert-groups list` (see RFC 020 §6).
 
 // SubjectLabelPriority is the column-rendering priority for AlertGroup
 // subject labels: keys present in this list are picked first (in order);
 // remaining keys fall back to alphabetical order.
 //
-//nolint:gochecknoglobals // stable shape, configured per ADR §6.
+//nolint:gochecknoglobals // stable shape, configured per RFC 020 §6.
 var SubjectLabelPriority = []string{
 	"service",
 	"job",
@@ -911,7 +911,7 @@ var SubjectLabelPriority = []string{
 // DimensionsLabelPriority is the column-rendering priority for per-Alert
 // dimensions labels (`pod` is the dominant single-row discriminator).
 //
-//nolint:gochecknoglobals // stable shape, configured per ADR §6.
+//nolint:gochecknoglobals // stable shape, configured per RFC 020 §6.
 var DimensionsLabelPriority = []string{
 	"pod",
 	"instance",
@@ -1129,12 +1129,12 @@ func (c *alertGroupTableCodec) Encode(w io.Writer, v any) error {
 		fixedColsWidth int
 	)
 	if c.Wide {
-		// Wide layout (ADR §6): ID, TITLE, TEAM, SEVERITY, STATE, RULE, SUBJECT, ALERTS, AGE
+		// Wide layout (RFC 020 §6): ID, TITLE, TEAM, SEVERITY, STATE, RULE, SUBJECT, ALERTS, AGE
 		t = style.NewTable("ID", "TITLE", "TEAM", "SEVERITY", "STATE", "RULE", "SUBJECT", "ALERTS", "AGE")
 		colWidths = []int{16, 0, 0, 10, 14, 0, 0, 8, 12}
 		t.MultilineCells(true) // SUBJECT cell embeds newlines in wide mode.
 	} else {
-		// Default layout (ADR §6): ID, TITLE, SEVERITY, STATE, TEAM, SUBJECT, AGE
+		// Default layout (RFC 020 §6): ID, TITLE, SEVERITY, STATE, TEAM, SUBJECT, AGE
 		t = style.NewTable("ID", "TITLE", "SEVERITY", "STATE", "TEAM", "SUBJECT", "AGE")
 		colWidths = []int{16, 0, 10, 14, 0, 0, 12}
 	}
@@ -1319,7 +1319,7 @@ func slackChannelTable() cmdio.Table[unstructured.Unstructured] {
 // --- Alert codec (typed: accepts []alertEnvelope) ---
 //
 // Emitted by `irm oncall alert-groups list-alerts <id>`. Locked column set
-// (ADR §6 + brief): default = ID, STATE, DIMENSIONS, COUNT.
+// (RFC 020 §6 + brief): default = ID, STATE, DIMENSIONS, COUNT.
 // Wide adds RULE before DIMENSIONS. DIMENSIONS is the per-alert label diff
 // vs the parent group's commonLabels; under default collapse mode rows
 // represent unique label sets and COUNT is the count of stored alerts that

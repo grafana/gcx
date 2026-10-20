@@ -86,6 +86,8 @@ func (w Watcher) Warnings() []string {
 	}{
 		{"spec.sensitivity", w.Sensitivity, []string{"sensitive", "balanced", "relaxed"}},
 		{"spec.notifications.slack.severity", w.Notifications.Slack.Severity, []string{"warning-and-critical", "critical"}},
+		{"spec.notifications.slack.targetType", w.Notifications.Slack.TargetType, []string{"channel", "dm"}},
+		{"spec.notifications.alerting.severity", w.Notifications.Alerting.Severity, []string{"warning-and-critical", "critical"}},
 		{"spec.notifications.teams.severity", w.Notifications.Teams.Severity, []string{"warning-and-critical", "critical"}},
 		{"spec.notifications.webhook.severity", w.Notifications.Webhook.Severity, []string{"warning-and-critical", "critical"}},
 	}
@@ -237,6 +239,12 @@ func reconcile(ctx context.Context, client *watchers.Client, desired Watcher, id
 		}
 		current = WatcherFromResponse(*raw, enrollment.Enabled)
 	}
+	// Keep unchanged legacy route names intact; only a changed selection uses
+	// the API's trimming and default aliases. This also makes explicit reset
+	// distinct from retaining a stored alias.
+	if desired.Notifications.Alerting.RoutingTree != current.Notifications.Alerting.RoutingTree {
+		desired.Notifications.Alerting.RoutingTree = canonicalRoutingTree(desired.Notifications.Alerting.RoutingTree)
+	}
 	configChanged := id == "" || !reflect.DeepEqual(normalized(desired), normalized(current))
 	secretChanged := secretsChanged(desired, current)
 	if configChanged || secretChanged {
@@ -293,6 +301,10 @@ func normalized(w Watcher) Watcher {
 	w.Notifications.Webhook.URL = nil
 	w.Notifications.Webhook.BearerToken = nil
 	w.Notifications.Webhook.SigningSecret = nil
+	w.Notifications.Slack.Severity = severityToRequest(w.Notifications.Slack.Severity)
+	w.Notifications.Teams.Severity = severityToRequest(w.Notifications.Teams.Severity)
+	w.Notifications.Alerting.Severity = severityToRequest(w.Notifications.Alerting.Severity)
+	w.Notifications.Webhook.Severity = severityToRequest(w.Notifications.Webhook.Severity)
 	duration, _ := shared.ParseDuration(w.Interval)
 	w.Interval = strconv.Itoa(effectiveCadence(int(duration / time.Second)))
 	if !w.AutoStop.Enabled {
@@ -302,9 +314,7 @@ func normalized(w Watcher) Watcher {
 	}
 	w.DatasourceUIDs = sortedUnique(w.DatasourceUIDs)
 	w.Investigation.TeamAccess = sortedUnique(w.Investigation.TeamAccess)
-	if len(w.Labels) == 0 {
-		w.Labels = map[string]string{}
-	}
+	w.Labels = configurationLabels(w.Labels)
 	return w
 }
 func sortedUnique(values []string) []string {
@@ -342,6 +352,26 @@ func severityToRequest(value string) string {
 	}
 	return value
 }
+
+func canonicalRoutingTree(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "default" || value == "user-defined" {
+		return ""
+	}
+	return value
+}
+
+// Routing has its own field. Retaining the legacy label would let an omitted
+// routing field in a server response resurrect a selection explicitly cleared.
+func configurationLabels(labels map[string]string) map[string]string {
+	result := maps.Clone(labels)
+	delete(result, legacyRoutingLabel)
+	if result == nil {
+		result = map[string]string{}
+	}
+	return result
+}
+
 func configurationRequest(w Watcher) *watchers.ConfigurationRequest {
 	duration, _ := shared.ParseDuration(w.Interval)
 	stop := &watchers.AutoStop{}
@@ -357,7 +387,12 @@ func configurationRequest(w Watcher) *watchers.ConfigurationRequest {
 		}
 		return &watchers.ChatAction{Enabled: n.Enabled, Target: target, MinSeverity: severityToRequest(n.Severity)}
 	}
-	return &watchers.ConfigurationRequest{Name: new(w.Title), Description: new(w.Description), Prompt: new(w.Prompt), TriggerIntervalSeconds: new(effectiveCadence(int(duration / time.Second))), Sensitivity: new(w.Sensitivity), DisableDecisionSkip: new(!w.SkipReviewOnCleanRuns), DatasourceUIDs: new(append([]string{}, w.DatasourceUIDs...)), Labels: new(maps.Clone(w.Labels)), AutoStop: stop, Actions: &watchers.WriteActions{Slack: channel(w.Notifications.Slack), MSTeams: channel(w.Notifications.Teams), Alerting: &watchers.AlertingAction{Enabled: w.Notifications.Alerting.Enabled, MinSeverity: "warning", RoutingTree: new("")}, Investigation: &watchers.InvestigationAction{Enabled: w.Investigation.Enabled, TeamNames: append([]string{}, w.Investigation.TeamAccess...)}, Webhook: &watchers.WebhookWriteAction{Enabled: new(w.Notifications.Webhook.Enabled), MinSeverity: new(severityToRequest(w.Notifications.Webhook.Severity))}}}
+	slack := w.Notifications.Slack
+	var target *watchers.ChatTarget
+	if slack.Enabled || slack.ChannelID != "" || slack.UserID != "" || slack.TeamID != "" || slack.TargetType != "channel" {
+		target = &watchers.ChatTarget{Type: slack.TargetType, ChannelID: slack.ChannelID, UserID: slack.UserID, TeamID: slack.TeamID}
+	}
+	return &watchers.ConfigurationRequest{Name: new(w.Title), Description: new(w.Description), Prompt: new(w.Prompt), TriggerIntervalSeconds: new(effectiveCadence(int(duration / time.Second))), Sensitivity: new(w.Sensitivity), DisableDecisionSkip: new(!w.SkipReviewOnCleanRuns), DatasourceUIDs: new(append([]string{}, w.DatasourceUIDs...)), Labels: new(configurationLabels(w.Labels)), AutoStop: stop, Actions: &watchers.WriteActions{Slack: &watchers.ChatAction{Enabled: slack.Enabled, Target: target, MinSeverity: severityToRequest(slack.Severity)}, MSTeams: channel(w.Notifications.Teams), Alerting: &watchers.AlertingAction{Enabled: w.Notifications.Alerting.Enabled, MinSeverity: severityToRequest(w.Notifications.Alerting.Severity), RoutingTree: new(w.Notifications.Alerting.RoutingTree)}, Investigation: &watchers.InvestigationAction{Enabled: w.Investigation.Enabled, TeamNames: append([]string{}, w.Investigation.TeamAccess...)}, Webhook: &watchers.WebhookWriteAction{Enabled: new(w.Notifications.Webhook.Enabled), MinSeverity: new(severityToRequest(w.Notifications.Webhook.Severity))}}}
 }
 func secretPairs(desired, current Watcher) [][2]*SecretInput {
 	return [][2]*SecretInput{{desired.Notifications.Webhook.URL, current.Notifications.Webhook.URL}, {desired.Notifications.Webhook.BearerToken, current.Notifications.Webhook.BearerToken}, {desired.Notifications.Webhook.SigningSecret, current.Notifications.Webhook.SigningSecret}}

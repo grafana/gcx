@@ -498,6 +498,40 @@ func TestWatcherGenericPushAndDeleteMutationPaths(t *testing.T) {
 	}
 }
 
+func TestWatcherPushNeverRequestsCalibration(t *testing.T) {
+	for _, dryRun := range []bool{false, true} {
+		t.Run(strconv.FormatBool(dryRun), func(t *testing.T) {
+			fixture := &watcherstest.Server{AllowWrites: true}
+			execute := watcherResourceCLI(t, fixture)
+			path := filepath.Join(t.TempDir(), "watcher.json")
+			spec := map[string]any{"title": "Unique", "prompt": "Watch errors"}
+			manifest := map[string]any{"apiVersion": watcher.WatcherAPIVersion, "kind": watcher.WatcherKind, "metadata": map[string]any{"name": "unique"}, "spec": spec}
+			args := []string{"push", "--path", path, "--output", "json"}
+			if dryRun {
+				args = append(args, "--dry-run")
+			}
+			for _, prompt := range []string{"Watch errors", "Watch latency", "Watch latency"} {
+				spec["prompt"] = prompt
+				data, err := json.Marshal(manifest)
+				require.NoError(t, err)
+				require.NoError(t, os.WriteFile(path, data, 0600))
+				_, err = execute(args...)
+				require.NoError(t, err)
+			}
+			for _, request := range fixture.MutationRequests() {
+				assert.NotContains(t, request.Path, "/initial-calibration")
+				assert.NotContains(t, request.Path, "/start")
+				assert.NotContains(t, request.Path, "/pause")
+			}
+			if dryRun {
+				assert.Zero(t, fixture.MutationCalls())
+			} else {
+				assert.Equal(t, 2, fixture.MutationCalls(), "one configuration create and one update; repeated push is unchanged")
+			}
+		})
+	}
+}
+
 func TestWatcherGenericDeleteAvoidsConfigurationReads(t *testing.T) {
 	for _, dryRun := range []bool{false, true} {
 		t.Run(strconv.FormatBool(dryRun), func(t *testing.T) {

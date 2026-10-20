@@ -48,7 +48,7 @@ type alertGroupListOpts struct {
 	// endpoint's `next` cursors to exhaustion.
 	Limit int
 
-	// Filter flags. See ADR 001 § 1 (alert-groups list defaults).
+	// Filter flags. See RFC 020 § 1 (alert-groups list defaults).
 	States             []string
 	Teams              []string
 	Integrations       []string
@@ -248,7 +248,7 @@ type alertGroupListFilters struct {
 }
 
 // resolveAlertGroupListFilters validates and normalizes the user-facing flag
-// set into wire-ready filters, applying ADR 001 § 1 defaults:
+// set into wire-ready filters, applying RFC 020 § 1 defaults:
 //   - status defaults to firing+acknowledged+silenced (excluding resolved),
 //   - is_root=true is always applied (excluding child groups merged into parents),
 //   - --all bypasses both defaults,
@@ -825,9 +825,9 @@ type alertGroupPageInfo struct {
 // pagination ends at or before the limit, and always at limit == 0. Nothing
 // is silenced here; each caller decides how to surface the page info. The
 // list command emits list_meta plus stderr hints; resolveBulkTargets
-// discards it, so a bounded bulk-by-filter sweep is still silent — tracked
-// for a per-command decision in
-// docs/research/2026-07-17-global-limit-investigation.md § 6.
+// discards it, so a bounded bulk-by-filter sweep is still silent. See the
+// open disclosure decision in docs/design/output.md § 15.7
+// (IRM bulk-by-filter mutations).
 func listAlertGroupsRaw(ctx context.Context, c *OnCallClient, filters alertGroupListFilters, limit int) ([]json.RawMessage, alertGroupPageInfo, error) {
 	params := url.Values{}
 	if w := filters.StartedAt; w != nil {
@@ -1020,7 +1020,7 @@ func alertCollapseKey(env alertEnvelope) string {
 	return "id:" + env.Metadata.Name
 }
 
-// applyAlertCollapse implements the ADR §6 collapse semantics for
+// applyAlertCollapse implements the RFC 020 §6 collapse semantics for
 // `alert-groups list-alerts`. With history=false (default), groups stored
 // alerts by alertCollapseKey; emits one envelope per unique key with
 // status.occurrences = count within that group; preserves the first-seen
@@ -1244,7 +1244,7 @@ func newAlertGroupListAlertsCommand(loader OnCallConfigLoader) *cobra.Command {
 				return err
 			}
 
-			// Collapse semantics (ADR §6 + brief A2): default mode groups
+			// Collapse semantics (RFC 020 §6 + brief A2): default mode groups
 			// stored alerts by their AM fingerprint (== hash of labels) and
 			// emits one row per unique label set with occurrences=N. With
 			// --history the collapse is bypassed: every stored alert is its

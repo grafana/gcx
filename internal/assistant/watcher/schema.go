@@ -27,6 +27,24 @@ func buildWatcherSchema() json.RawMessage {
 		result["allOf"] = []any{whenTrue("enabled", map[string]any{"required": []string{"channelId"}, "properties": map[string]any{"channelId": nonblank}})}
 		return result
 	}
+	slack := schemaObject(map[string]any{
+		"enabled": boolean, "targetType": map[string]any{"type": "string", "pattern": `\S`, "default": "channel", "description": "Known values: channel, dm. Other strings are validated by the API."},
+		"channelId": str, "userId": str, "teamId": str, "severity": severity,
+	})
+	targetPresent := make([]any, 0, 2)
+	targetPresent = append(targetPresent, map[string]any{"required": []string{"enabled"}, "properties": map[string]any{"enabled": map[string]any{"const": true}}})
+	targetPresent = append(targetPresent, map[string]any{"required": []string{"channelId"}, "properties": map[string]any{"channelId": map[string]any{"type": "string", "minLength": 1}}})
+	slack["allOf"] = []any{
+		map[string]any{
+			"if":   map[string]any{"properties": map[string]any{"targetType": map[string]any{"const": "channel"}}, "anyOf": targetPresent},
+			"then": map[string]any{"required": []string{"channelId"}, "properties": map[string]any{"channelId": nonblank}},
+		},
+		map[string]any{
+			"if":   map[string]any{"required": []string{"targetType"}, "properties": map[string]any{"targetType": map[string]any{"const": "dm"}}},
+			"then": map[string]any{"required": []string{"userId"}, "properties": map[string]any{"userId": nonblank}},
+		},
+	}
+	alerting := schemaObject(map[string]any{"enabled": boolean, "severity": severity, "routingTree": map[string]any{"type": "string", "default": "", "description": "Named notification policy tree; empty selects the default tree."}})
 	autoStop := schemaObject(map[string]any{"enabled": boolean, "at": map[string]any{"type": "string", "format": "date-time", "pattern": `^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$`}, "archive": boolean})
 	autoStop["allOf"] = []any{
 		whenTrue("enabled", map[string]any{"required": []string{"at"}}),
@@ -43,7 +61,7 @@ func buildWatcherSchema() json.RawMessage {
 		"skipReviewOnCleanRuns": map[string]any{"type": "boolean", "default": true}, "autoStop": autoStop,
 		"labels":                 map[string]any{"type": "object", "additionalProperties": str, "default": map[string]string{}},
 		"automaticRecalibration": enabled(),
-		"notifications":          schemaObject(map[string]any{"slack": channel(), "teams": channel(), "alerting": enabled(), "webhook": webhook}),
+		"notifications":          schemaObject(map[string]any{"slack": slack, "teams": channel(), "alerting": alerting, "webhook": webhook}),
 		"investigation":          schemaObject(map[string]any{"enabled": boolean, "teamAccess": stringsArray}),
 	}, "title", "prompt")
 	envelope := schemaObject(map[string]any{
@@ -82,9 +100,9 @@ func WatcherExample() json.RawMessage {
 			"autoStop": map[string]any{"enabled": false, "at": "2030-01-01T18:00:00Z", "archive": false}, "labels": map[string]string{"service": "checkout", "team": "example-team"},
 			"automaticRecalibration": map[string]any{"enabled": false},
 			"notifications": map[string]any{
-				"slack":    map[string]any{"enabled": false, "channelId": "C_EXAMPLE", "severity": "warning-and-critical"},
+				"slack":    map[string]any{"enabled": false, "targetType": "dm", "userId": "U_EXAMPLE", "teamId": "T_EXAMPLE", "severity": "warning-and-critical"},
 				"teams":    map[string]any{"enabled": false, "channelId": "example-channel", "severity": "warning-and-critical"},
-				"alerting": map[string]any{"enabled": false},
+				"alerting": map[string]any{"enabled": false, "severity": "critical", "routingTree": "example-policy-tree"},
 				"webhook":  map[string]any{"enabled": false, "severity": "critical", "url": map[string]any{"fromEnv": "WATCHER_WEBHOOK_URL"}, "bearerToken": map[string]any{"fromEnv": "WATCHER_WEBHOOK_TOKEN"}, "signingSecret": map[string]any{"fromFile": "./secrets/webhook-signing-key"}},
 			},
 			"investigation": map[string]any{"enabled": false, "teamAccess": []string{"example-team"}},
