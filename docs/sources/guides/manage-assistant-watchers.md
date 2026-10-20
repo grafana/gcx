@@ -160,7 +160,7 @@ gcx assistant watchers pause WATCHER
 gcx assistant watchers archive WATCHER
 ```
 
-Archive refuses a Watcher observed as active. Keep other clients from starting it during this sequence: the pause check and archive aren't atomic. Archiving can cancel calibration and resolve active Grafana Alerting findings.
+Archive only accepts a Watcher whose status is `paused`; pause it first. If it is calibrating, finish or cancel calibration in Grafana before pausing. Keep other clients from starting it during this sequence: the pause check and archive aren't atomic. Archiving can resolve active Grafana Alerting findings.
 
 Recover an archived Watcher without activating monitoring:
 
