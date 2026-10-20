@@ -23,8 +23,10 @@ import (
 func TestCSVQueryCommands(t *testing.T) {
 	metricFrame := `{"results":{"A":{"frames":[{"schema":{"fields":[{"name":"Time","type":"time"},{"name":"Value","type":"number","labels":{"job":"api"}}]},"data":{"values":[[1700000000125],[3.5]]}}]}}}`
 	logFrame := `{"results":{"A":{"frames":[{"schema":{"fields":[{"name":"Time","type":"time"},{"name":"Line","type":"string","labels":{"app":"api"}}]},"data":{"values":[[1700000000125],["original, line"]]}}]}}}`
+	tableFrame := `{"results":{"A":{"frames":[{"schema":{"fields":[{"name":"database","type":"string"},{"name":"name","type":"string"},{"name":"engine","type":"string"},{"name":"total_rows","type":"number"},{"name":"total_bytes","type":"number"}]},"data":{"values":[["otel"],["logs"],["MergeTree"],[42],[1024]]}}]}}}`
 	for _, tt := range []struct{ path, kind, expr, response, want string }{
 		{"metrics query", "prometheus", "up", metricFrame, "1700000000.125"},
+		{"datasources clickhouse list-tables", "clickhouse", "", tableFrame, "database,name,engine,total_rows,total_bytes\notel,logs,MergeTree,42,1024\n"},
 		{"datasources postgres query", "postgres", "select 1", metricFrame, "1700000000125"},
 		{"datasources prometheus query", "prometheus", "up", metricFrame, "1700000000.125"},
 		{"logs query", "loki", `{app="api"}`, logFrame, "original, line"},
@@ -56,7 +58,11 @@ func TestCSVQueryCommands(t *testing.T) {
 			var stdout, stderr bytes.Buffer
 			cmd.SetOut(&stdout)
 			cmd.SetErr(&stderr)
-			cmd.SetArgs(append(strings.Fields(tt.path), tt.expr, "-d", "test-ds", "--config", config, "-o", "csv"))
+			args := strings.Fields(tt.path)
+			if tt.expr != "" {
+				args = append(args, tt.expr)
+			}
+			cmd.SetArgs(append(args, "-d", "test-ds", "--config", config, "-o", "csv"))
 			require.NoError(t, cmd.Execute())
 			assert.Equal(t, 1, queries)
 			assert.Contains(t, stdout.String(), tt.want)
@@ -69,8 +75,34 @@ func TestCSVQueryCommands(t *testing.T) {
 
 func TestCSVIsExplicitlyRegistered(t *testing.T) {
 	want := []string{
+		"gcx datasources athena describe-table",
+		"gcx datasources athena list-catalogs",
+		"gcx datasources athena list-databases",
+		"gcx datasources athena list-tables",
+		"gcx datasources athena query",
+		"gcx datasources bigquery describe-table",
+		"gcx datasources bigquery list-datasets",
+		"gcx datasources bigquery list-tables",
+		"gcx datasources bigquery query",
+		"gcx datasources clickhouse describe-table",
+		"gcx datasources clickhouse list-tables",
+		"gcx datasources clickhouse query",
+		"gcx datasources elasticsearch query",
+		"gcx datasources infinity query",
+		"gcx datasources influxdb query",
 		"gcx datasources loki metrics",
 		"gcx datasources loki query",
+		"gcx datasources mssql describe-table",
+		"gcx datasources mssql list-tables",
+		"gcx datasources mssql query",
+		"gcx datasources mysql describe-table",
+		"gcx datasources mysql list-tables",
+		"gcx datasources mysql query",
+		"gcx datasources opensearch query",
+		"gcx datasources pinot query",
+		"gcx datasources postgres describe-table",
+		"gcx datasources postgres list-tables",
+		"gcx datasources postgres query",
 		"gcx datasources prometheus query",
 		"gcx logs metrics",
 		"gcx logs query",
@@ -145,32 +177,5 @@ func TestLokiLimitWarningCommands(t *testing.T) {
 				assert.True(t, json.Valid(stdout.Bytes()), stdout.String())
 			}
 		})
-	}
-}
-
-func TestRemainingCSVRegistrations(t *testing.T) {
-	for kind, commands := range map[string][]string{
-		"athena":        {"query", "list-catalogs", "list-databases", "list-tables", "describe-table"},
-		"bigquery":      {"query", "list-datasets", "list-tables", "describe-table"},
-		"clickhouse":    {"query", "list-tables", "describe-table"},
-		"postgres":      {"query", "list-tables", "describe-table"},
-		"mysql":         {"query", "list-tables", "describe-table"},
-		"mssql":         {"query", "list-tables", "describe-table"},
-		"influxdb":      {"query"},
-		"infinity":      {"query"},
-		"pinot":         {"query"},
-		"elasticsearch": {"query"},
-		"opensearch":    {"query"},
-	} {
-		for _, name := range commands {
-			t.Run(kind+"/"+name, func(t *testing.T) {
-				cmd, args, err := root.Command("test").Find(append([]string{"datasources", kind}, strings.Fields(name)...))
-				require.NoError(t, err)
-				require.Empty(t, args)
-				flag := cmd.Flags().Lookup("output")
-				require.NotNil(t, flag)
-				assert.Contains(t, flag.Usage, "csv")
-			})
-		}
 	}
 }

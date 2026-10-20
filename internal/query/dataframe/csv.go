@@ -10,9 +10,9 @@ import (
 // retain their query response representation, including epoch milliseconds.
 func CSVRows(columns []string, values [][]any) ([]string, [][]string, error) {
 	rows := make([][]string, 0, len(values))
-	for _, values := range values {
-		row := make([]string, len(values))
-		for i, value := range values {
+	for _, cells := range values {
+		row := make([]string, len(cells))
+		for i, value := range cells {
 			switch v := value.(type) {
 			case nil:
 			case string:
