@@ -50,11 +50,8 @@ archives:
 # only get their exact version tag; the floating tags (vX.Y, vX, latest) are
 # skipped, as GoReleaser drops tags that render empty.
 #
-# Both registries are pushed from the same build, so the Docker Hub copy shares
-# the ghcr digests and therefore the same SBOM attestation. The second entry is
-# Grafana's internal Artifact Registry mirror: the org publishes to Docker Hub
-# by pushing to `dockerhub-<name>-prod-mirror` in GAR, which is mirrored to
-# `docker.io/grafana/gcx`. We never push docker.io directly.
+# Both images come from the same build, so they share digests and the SBOM
+# attestation. The second image is published to docker.io/grafana/gcx.
 dockers_v2:
   - id: gcx
     ids: [gcx]

@@ -317,11 +317,9 @@ windows) and creates:
 - `zip` archive for Windows
 - `gcx_checksums.txt`
 - a multi-arch (`linux/amd64`, `linux/arm64`) container image tagged `vX.Y.Z`,
-  plus `vX.Y`, `vX` and `latest` for non-prereleases, pushed from one build to
-  `ghcr.io/grafana/gcx` and to the GAR repository
-  `us-docker.pkg.dev/grafanalabs-global/dockerhub-gcx-prod-mirror/gcx`, which
-  Grafana mirrors to `docker.io/grafana/gcx`. Both copies share the same
-  digests, so the SBOM attestation applies to both.
+  plus `vX.Y`, `vX` and `latest` for non-prereleases, published from one build
+  to `ghcr.io/grafana/gcx` and `docker.io/grafana/gcx`. Both copies share the
+  same digests, so the SBOM attestation applies to both.
 
 The changelog is auto-generated from `git log` via GitHub, filtering out
 `docs:`, `test:`, `tests:`, `chore:`, and merge commits.
