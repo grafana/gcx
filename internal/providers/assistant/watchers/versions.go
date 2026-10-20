@@ -1,6 +1,7 @@
 package watchers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -24,8 +25,9 @@ import (
 type versionListOpts struct {
 	readOpts
 
-	Limit  int
-	Before int64
+	Limit     int
+	Before    int64
+	BeforeSet bool
 }
 
 func (o *versionListOpts) setup(flags *pflag.FlagSet) {
@@ -37,8 +39,8 @@ func (o *versionListOpts) Validate() error {
 	if o.Limit < 1 || o.Limit > 100 {
 		return errors.New("--limit must be between 1 and 100")
 	}
-	if o.Before < 0 {
-		return errors.New("--before-version must be a positive version cursor")
+	if o.Before < 0 || (o.BeforeSet && o.Before == 0) {
+		return errors.New("--before-version must be positive when supplied")
 	}
 	return o.readOpts.Validate()
 }
@@ -46,11 +48,9 @@ func newVersionListCommand(loader *providers.ConfigLoader) *cobra.Command {
 	opts := &versionListOpts{}
 	cmd := &cobra.Command{Use: "list-versions WATCHER", Short: "List a page of retained Watcher definition versions.", Long: "Read one newest-first page of retained finalized definition summaries, including actor, time, change summary and server-reported learning effects. --limit defaults to 20 (1-100). Continue with coverage.nextBeforeVersion using --before-version. Coverage describes caller-visible server-retained history, not lifetime history or an atomic snapshot; a cursor intentionally excludes newer versions. Retention is controlled by the server. Use versions get for one retained definition and versions diff to compare definitions.", Args: cobra.ExactArgs(1), Example: "  gcx assistant watchers list-versions checkout-health --limit 20 -o json\n  gcx assistant watchers list-versions checkout-health --before-version 12 -o yaml", RunE: func(cmd *cobra.Command, args []string) error {
 		opts.Ref = args[0]
+		opts.BeforeSet = cmd.Flags().Changed("before-version")
 		if err := opts.Validate(); err != nil {
 			return err
-		}
-		if cmd.Flags().Changed("before-version") && opts.Before == 0 {
-			return errors.New("--before-version must be positive when supplied")
 		}
 		client, _, err := newClient(cmd, loader)
 		if err != nil {
@@ -299,7 +299,7 @@ func runVersionRestore(cmd *cobra.Command, client *clientwatchers.Client, opts *
 	if err != nil {
 		return err
 	}
-	if err := watcher.ValidateVersionRestore(item, opts.Version, opts.Expected, opts.Summary); err != nil {
+	if err := watcher.ValidateVersionRestore(item, opts.Expected); err != nil {
 		return err
 	}
 	proceed, err := providers.ConfirmDestructive(cmd.InOrStdin(), cmd.ErrOrStderr(), opts.Force, fmt.Sprintf("Restore Watcher %q from version %d?", opts.Ref, opts.Version))
@@ -340,8 +340,13 @@ func runVersionRestore(cmd *cobra.Command, client *clientwatchers.Client, opts *
 	}
 	if restoreErr != nil {
 		code := gcxerrors.ExitGeneralError
-		if outcome.Accepted != nil {
+		switch {
+		case outcome.Accepted != nil:
 			code = gcxerrors.ExitPartialFailure
+		case errors.Is(restoreErr, clientwatchers.ErrPermissionDenied):
+			code = gcxerrors.ExitAuthFailure
+		case errors.Is(restoreErr, context.Canceled):
+			code = gcxerrors.ExitCancelled
 		}
 		return gcxerrors.NewEmittedError(code, restoreErr)
 	}

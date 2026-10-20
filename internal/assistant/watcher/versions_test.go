@@ -96,8 +96,39 @@ func versionDomainClient(t *testing.T, handler http.HandlerFunc) *watchers.Clien
 	return watchers.NewClient(base)
 }
 
-func TestRestoreVersionRefusesBeforeIO(t *testing.T) {
+func TestValidateVersionRestore(t *testing.T) {
 	archived := time.Now()
+	for _, tt := range []struct {
+		name     string
+		current  *watchers.Watcher
+		expected int64
+		wantErr  string
+	}{
+		{name: "paused", current: &watchers.Watcher{ID: "example", Status: "paused", DefinitionVersion: 2}, expected: 2},
+		{name: "no identity", current: &watchers.Watcher{Status: "paused", DefinitionVersion: 2}, expected: 2, wantErr: "resolved Watcher identity"},
+		{name: "blank identity", current: &watchers.Watcher{ID: " \t", Status: "paused", DefinitionVersion: 2}, expected: 2, wantErr: "resolved Watcher identity"},
+		{name: "nil current", expected: 2, wantErr: "resolved Watcher identity"},
+		{name: "archived", current: &watchers.Watcher{ID: "example", Status: "paused", DefinitionVersion: 2, ArchivedAt: &archived}, expected: 2, wantErr: "non-archived"},
+		{name: "stale guard", current: &watchers.Watcher{ID: "example", Status: "paused", DefinitionVersion: 3}, expected: 2, wantErr: "does not match observed version 3"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			err := watcher.ValidateVersionRestore(tt.current, tt.expected)
+			if tt.wantErr == "" {
+				require.NoError(t, err)
+			} else {
+				require.ErrorContains(t, err, tt.wantErr)
+			}
+		})
+	}
+	for _, status := range []string{"running", "draft", "ready", "calibrating", "", "future-state"} {
+		t.Run("lifecycle "+status, func(t *testing.T) {
+			err := watcher.ValidateVersionRestore(&watchers.Watcher{ID: "example", Status: status, DefinitionVersion: 2}, 2)
+			require.ErrorContains(t, err, "explicitly paused")
+		})
+	}
+}
+
+func TestRestoreVersionInvalidArgumentsReturnNoOutcomeBeforeIO(t *testing.T) {
 	for _, tt := range []struct {
 		name     string
 		current  *watchers.Watcher
@@ -107,8 +138,6 @@ func TestRestoreVersionRefusesBeforeIO(t *testing.T) {
 	}{
 		{name: "no identity", current: &watchers.Watcher{Status: "paused", DefinitionVersion: 2}, version: 1, expected: 2},
 		{name: "nil current", version: 1, expected: 2},
-		{name: "archived", current: &watchers.Watcher{ID: "example", Status: "paused", DefinitionVersion: 2, ArchivedAt: &archived}, version: 1, expected: 2},
-		{name: "stale guard", current: &watchers.Watcher{ID: "example", Status: "paused", DefinitionVersion: 3}, version: 1, expected: 2},
 		{name: "missing guard", current: &watchers.Watcher{ID: "example", Status: "paused", DefinitionVersion: 2}, version: 1},
 		{name: "invalid version", current: &watchers.Watcher{ID: "example", Status: "paused", DefinitionVersion: 2}, version: -1, expected: 2},
 		{name: "summary too long", current: &watchers.Watcher{ID: "example", Status: "paused", DefinitionVersion: 2}, version: 1, expected: 2, summary: strings.Repeat("\u754c", 1001)},
@@ -125,40 +154,83 @@ func TestRestoreVersionRefusesBeforeIO(t *testing.T) {
 			assert.Zero(t, calls.Load())
 		})
 	}
-	for _, status := range []string{"running", "draft", "ready", "calibrating", "", "future-state"} {
-		t.Run("lifecycle "+status, func(t *testing.T) {
-			var calls atomic.Int32
-			client := versionDomainClient(t, func(w http.ResponseWriter, _ *http.Request) {
-				calls.Add(1)
-				w.WriteHeader(http.StatusInternalServerError)
-			})
-			outcome, err := watcher.RestoreVersion(t.Context(), client, &watchers.Watcher{ID: "example", Status: status, DefinitionVersion: 2}, 1, 2, "")
-			require.ErrorContains(t, err, "explicitly paused")
-			assert.Nil(t, outcome)
-			assert.Zero(t, calls.Load())
-		})
-	}
+	outcome, err := watcher.RestoreVersion(t.Context(), nil, &watchers.Watcher{ID: "example"}, 1, 2, "")
+	require.ErrorContains(t, err, "requires a client")
+	assert.Nil(t, outcome)
 }
 
-func TestRestoreVersionRaceIsRejectedWithoutRetry(t *testing.T) {
-	var posts atomic.Int32
-	client := versionDomainClient(t, func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, http.MethodPost, r.Method)
-		assert.Equal(t, versionDomainPath+"/revisions/1/restore", r.URL.Path)
-		posts.Add(1)
-		var request struct {
-			ExpectedDefinitionVersion int64 `json:"expectedDefinitionVersion"`
-		}
-		assert.NoError(t, json.NewDecoder(r.Body).Decode(&request))
-		assert.Equal(t, int64(2), request.ExpectedDefinitionVersion)
-		w.WriteHeader(http.StatusConflict)
-		_, _ = w.Write([]byte(`{"message":"definition version changed"}`))
-	})
-	result, err := watcher.RestoreVersion(t.Context(), client, &watchers.Watcher{ID: "example", Status: "paused", DefinitionVersion: 2}, 1, 2, "")
-	require.Error(t, err)
-	require.ErrorIs(t, err, watchers.ErrConflict)
-	assert.Nil(t, result)
-	assert.Equal(t, int32(1), posts.Load())
+func TestRestoreVersionRejectionObservesLaterStateWithoutRetry(t *testing.T) {
+	for _, tt := range []struct {
+		name        string
+		status      int
+		readFailure bool
+		wrongID     bool
+	}{
+		{name: "conflict with concurrent newer version", status: http.StatusConflict},
+		{name: "conflict with read denied", status: http.StatusConflict, readFailure: true},
+		{name: "permission denied with read denied", status: http.StatusForbidden, readFailure: true},
+		{name: "conflict with wrong identity", status: http.StatusConflict, wrongID: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var posts, gets atomic.Int32
+			client := versionDomainClient(t, func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodPost {
+					posts.Add(1)
+					assert.Equal(t, versionDomainPath+"/revisions/1/restore", r.URL.Path)
+					var request struct {
+						ExpectedDefinitionVersion int64 `json:"expectedDefinitionVersion"`
+					}
+					assert.NoError(t, json.NewDecoder(r.Body).Decode(&request))
+					assert.Equal(t, int64(2), request.ExpectedDefinitionVersion)
+					w.WriteHeader(tt.status)
+					_, _ = w.Write([]byte(`{"message":"sentinel-secret"}`))
+					return
+				}
+				assert.Equal(t, http.MethodGet, r.Method)
+				assert.Equal(t, versionDomainPath, r.URL.Path)
+				gets.Add(1)
+				if tt.readFailure {
+					w.WriteHeader(http.StatusForbidden)
+					_, _ = w.Write([]byte(`{"message":"readback-secret"}`))
+					return
+				}
+				id := "example"
+				if tt.wrongID {
+					id = "different"
+				}
+				assert.NoError(t, json.NewEncoder(w).Encode(map[string]any{"data": watchers.Watcher{ID: id, Name: "Example", Status: "running", DefinitionVersion: 4}}))
+			})
+			result, err := watcher.RestoreVersion(t.Context(), client, &watchers.Watcher{ID: "example", Status: "paused", DefinitionVersion: 2}, 1, 2, "")
+			require.Error(t, err)
+			var apiErr *watchers.APIError
+			require.ErrorAs(t, err, &apiErr)
+			assert.Equal(t, tt.status, apiErr.StatusCode)
+			if tt.status == http.StatusConflict {
+				require.ErrorIs(t, err, watchers.ErrConflict)
+			} else {
+				require.ErrorIs(t, err, watchers.ErrPermissionDenied)
+			}
+			require.NotNil(t, result)
+			assert.Equal(t, "rejected", result.Outcome)
+			require.NotNil(t, result.Changed)
+			assert.False(t, *result.Changed)
+			assert.Nil(t, result.Accepted)
+			assert.Contains(t, result.Guidance, "Restore was rejected")
+			if tt.readFailure || tt.wrongID {
+				assert.Nil(t, result.Observed)
+			} else {
+				assert.Equal(t, &watcher.VersionRestoreObservation{CurrentVersion: 4, Lifecycle: "running"}, result.Observed)
+			}
+			encoded, encodeErr := json.Marshal(result)
+			require.NoError(t, encodeErr)
+			assert.Contains(t, string(encoded), `"changed":false`)
+			assert.NotContains(t, string(encoded), `"accepted"`)
+			assert.NotContains(t, string(encoded)+err.Error(), "sentinel-secret")
+			assert.NotContains(t, string(encoded)+err.Error(), "readback-secret")
+			assert.Equal(t, int32(1), posts.Load())
+			assert.Equal(t, int32(1), gets.Load())
+		})
+	}
 }
 
 func TestRestoreVersionAcceptanceAndLaterObservation(t *testing.T) {

@@ -1,8 +1,10 @@
 package watchers //nolint:testpackage // Verify public command routing, receipts and codec coverage.
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -10,11 +12,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/gcx/internal/assistant/assistanthttp"
 	clientwatchers "github.com/grafana/gcx/internal/assistant/watchers"
+	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/gcxerrors"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/testutils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"k8s.io/client-go/rest"
 )
 
 func commandVersion(version int64, definition string) clientwatchers.VersionDetail {
@@ -135,6 +141,8 @@ func TestVersionRestoreReceipts(t *testing.T) {
 		name, format, outcome, status string
 		code                          int
 		unknown, readbackFail         bool
+		rejectedStatus                int
+		cancelReadback                bool
 	}{
 		{name: "accepted draft", format: "json", outcome: "accepted", status: "draft"},
 		{name: "accepted yaml", format: "yaml", outcome: "accepted", status: "paused"},
@@ -144,9 +152,15 @@ func TestVersionRestoreReceipts(t *testing.T) {
 		{name: "unknown response", format: "json", outcome: "unknown", status: "paused", code: 1, unknown: true},
 		{name: "unknown yaml", format: "yaml", outcome: "unknown", status: "paused", code: 1, unknown: true},
 		{name: "unknown human", format: "text", outcome: "unknown", status: "paused", code: 1, unknown: true},
+		{name: "stale rejection", format: "json", outcome: "rejected", status: "paused", code: gcxerrors.ExitGeneralError, rejectedStatus: http.StatusConflict},
+		{name: "forbidden rejection", format: "yaml", outcome: "rejected", status: "paused", code: gcxerrors.ExitAuthFailure, rejectedStatus: http.StatusForbidden, readbackFail: true},
+		{name: "rejection human", format: "text", outcome: "rejected", status: "paused", code: gcxerrors.ExitGeneralError, rejectedStatus: http.StatusConflict},
+		{name: "saved then cancelled", format: "json", outcome: "saved-unverified", code: gcxerrors.ExitPartialFailure, cancelReadback: true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
 			item := savedCommandFixture()
 			item.Status = "paused"
 			item.DefinitionVersion = 2
@@ -155,6 +169,11 @@ func TestVersionRestoreReceipts(t *testing.T) {
 				if r.Method == http.MethodPost {
 					assert.True(t, strings.HasSuffix(r.URL.Path, "/revisions/1/restore"))
 					submitted.Store(true)
+					if tc.rejectedStatus != 0 {
+						w.WriteHeader(tc.rejectedStatus)
+						_, _ = fmt.Fprint(w, `{"message":"SENTINEL_PRIVATE_SERVER_BODY"}`)
+						return true
+					}
 					if tc.unknown {
 						_, _ = fmt.Fprint(w, `{"data":`)
 						return true
@@ -166,6 +185,11 @@ func TestVersionRestoreReceipts(t *testing.T) {
 					return true
 				}
 				if r.Method == http.MethodGet && r.URL.Path == lifecycleAPIPath+"/"+item.ID && submitted.Load() {
+					if tc.cancelReadback {
+						cancel()
+						<-r.Context().Done()
+						return true
+					}
 					if tc.readbackFail {
 						w.WriteHeader(http.StatusForbidden)
 						return true
@@ -179,7 +203,7 @@ func TestVersionRestoreReceipts(t *testing.T) {
 				return false
 			})
 			cmd, out, _ := mutationCommand(t, loader, []string{"versions", "restore", item.ID, "1", "--expected-current-version=2", "--summary=fixture reason", "--force", "-o", tc.format}, "")
-			err := cmd.ExecuteContext(t.Context())
+			err := cmd.ExecuteContext(ctx)
 			if tc.code == 0 {
 				require.NoError(t, err)
 			} else {
@@ -188,9 +212,10 @@ func TestVersionRestoreReceipts(t *testing.T) {
 				require.Equal(t, tc.code, emitted.Code)
 			}
 			switch {
-			case tc.format == "text" && tc.unknown:
+			case tc.format == "text" && (tc.unknown || tc.rejectedStatus != 0):
 				require.NotContains(t, out.String(), "Restored:")
 				require.NotContains(t, out.String(), "Retained:")
+				require.Contains(t, out.String(), tc.outcome)
 			case tc.format == "text":
 				require.Contains(t, out.String(), "Restored: futureSetting, prompt")
 			default:
@@ -201,12 +226,25 @@ func TestVersionRestoreReceipts(t *testing.T) {
 				require.Equal(t, item.ID, got.Target.ID)
 				require.EqualValues(t, 2, got.ExpectedCurrentVersion)
 				require.EqualValues(t, 1, got.RequestedVersion)
-				if tc.unknown {
+				switch {
+				case tc.unknown:
 					require.Nil(t, got.Scope)
 					require.Nil(t, got.Changed)
 					require.Nil(t, got.SavedVersion)
 					require.Contains(t, got.Guidance, "retry")
-				} else {
+				case tc.rejectedStatus != 0:
+					require.Nil(t, got.Scope)
+					require.Nil(t, got.SavedVersion)
+					require.NotNil(t, got.Changed)
+					require.False(t, *got.Changed)
+					require.Contains(t, got.Guidance, "rejected")
+					if tc.readbackFail {
+						require.Nil(t, got.Observed)
+					} else {
+						require.NotNil(t, got.Observed)
+						require.EqualValues(t, 3, got.Observed.CurrentVersion)
+					}
+				default:
 					require.NotNil(t, got.Scope)
 					require.Equal(t, []string{"futureSetting", "prompt"}, got.Scope.Restored)
 					require.NotNil(t, got.Changed)
@@ -214,6 +252,7 @@ func TestVersionRestoreReceipts(t *testing.T) {
 					require.EqualValues(t, 3, got.SavedVersion.Version)
 				}
 			}
+			require.NotContains(t, out.String(), "SENTINEL_PRIVATE_SERVER_BODY")
 			posts := 0
 			for _, r := range log.snapshot() {
 				if r.Method == http.MethodPost {
@@ -223,6 +262,107 @@ func TestVersionRestoreReceipts(t *testing.T) {
 				}
 			}
 			require.Equal(t, 1, posts)
+		})
+	}
+}
+
+func TestVersionRestoreCancelledWriteKeepsUnknownReceipt(t *testing.T) {
+	testutils.SetAgentMode(t, false)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	item := savedCommandFixture()
+	item.Status = "paused"
+	item.DefinitionVersion = 2
+	loader, log := lifecycleCommandFixture(t, item, func(_ http.ResponseWriter, r *http.Request) bool {
+		if r.Method != http.MethodPost {
+			return false
+		}
+		cancel()
+		<-r.Context().Done()
+		return true
+	})
+	cmd, out, _ := mutationCommand(t, loader, []string{"versions", "restore", item.ID, "1", "--expected-current-version=2", "--force", "-o", "json"}, "")
+	err := cmd.ExecuteContext(ctx)
+	var emitted *gcxerrors.EmittedError
+	require.ErrorAs(t, err, &emitted)
+	require.Equal(t, gcxerrors.ExitCancelled, emitted.Code)
+	require.ErrorIs(t, err, context.Canceled)
+	var result versionRestoreResult
+	decodeLifecycleOutput(t, out, &result)
+	require.Equal(t, "unknown", result.Outcome)
+	require.Equal(t, item.ID, result.Target.ID)
+	require.EqualValues(t, 1, result.RequestedVersion)
+	require.EqualValues(t, 2, result.ExpectedCurrentVersion)
+	require.Nil(t, result.Changed)
+	require.Nil(t, result.Scope)
+	require.Nil(t, result.SavedVersion)
+	require.Contains(t, result.Guidance, "retry")
+	require.Len(t, log.snapshot(), 2)
+}
+
+type versionRestoreRoundTripper func(*http.Request) (*http.Response, error)
+
+func (f versionRestoreRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
+	return f(r)
+}
+
+type versionRestoreCancelledBody struct{ cancel context.CancelFunc }
+
+func (b versionRestoreCancelledBody) Read([]byte) (int, error) {
+	b.cancel()
+	return 0, context.Canceled
+}
+
+func TestVersionRestoreCancellationDuringResponseBody(t *testing.T) {
+	testutils.SetAgentMode(t, false)
+	for _, tc := range []struct {
+		name, outcome string
+		status, code  int
+	}{
+		{"success headers", "unknown", http.StatusOK, gcxerrors.ExitCancelled},
+		{"permission headers", "rejected", http.StatusForbidden, gcxerrors.ExitAuthFailure},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			item := savedCommandFixture()
+			item.Status = "paused"
+			item.DefinitionVersion = 2
+			var posts atomic.Int32
+			base, err := assistanthttp.NewClient(config.NamespacedRESTConfig{Config: rest.Config{
+				Host: "https://example.invalid",
+				WrapTransport: func(http.RoundTripper) http.RoundTripper {
+					return versionRestoreRoundTripper(func(r *http.Request) (*http.Response, error) {
+						if r.Method == http.MethodPost {
+							posts.Add(1)
+							return &http.Response{StatusCode: tc.status, Header: http.Header{}, Body: io.NopCloser(versionRestoreCancelledBody{cancel}), Request: r}, nil
+						}
+						body, marshalErr := json.Marshal(map[string]any{"data": item})
+						require.NoError(t, marshalErr)
+						return &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(string(body))), Request: r}, nil
+					})
+				},
+			}})
+			require.NoError(t, err)
+			cmd, out := outputCommand(t)
+			cmd.SetContext(ctx)
+			err = runVersionRestore(cmd, clientwatchers.NewClient(base), &versionRestoreOpts{versionOpts: versionOpts{readOpts: readOpts{Ref: item.ID, IO: cmdio.Options{OutputFormat: "json"}}, Version: 1}, Expected: 2, Force: true})
+			var emitted *gcxerrors.EmittedError
+			require.ErrorAs(t, err, &emitted)
+			require.Equal(t, tc.code, emitted.Code)
+			require.ErrorIs(t, err, context.Canceled)
+			var result versionRestoreResult
+			decodeLifecycleOutput(t, out, &result)
+			require.Equal(t, tc.outcome, result.Outcome)
+			require.Nil(t, result.SavedVersion)
+			require.Nil(t, result.Scope)
+			if tc.outcome == "rejected" {
+				require.NotNil(t, result.Changed)
+				require.False(t, *result.Changed)
+			} else {
+				require.Nil(t, result.Changed)
+			}
+			require.EqualValues(t, 1, posts.Load())
 		})
 	}
 }

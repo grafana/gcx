@@ -10,7 +10,6 @@ import (
 	"reflect"
 	"slices"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/grafana/gcx/internal/assistant/watchers"
 )
@@ -115,17 +114,11 @@ type VersionRestoreOutcome struct {
 	Guidance string                     `json:"guidance,omitempty"`
 }
 
-// ValidateVersionRestore checks the resolved snapshot and request before the
+// ValidateVersionRestore checks the resolved snapshot and guard before the
 // caller asks for confirmation. The server remains authoritative across races.
-func ValidateVersionRestore(current *watchers.Watcher, version, expected int64, summary string) error {
+func ValidateVersionRestore(current *watchers.Watcher, expected int64) error {
 	if current == nil || strings.TrimSpace(current.ID) == "" {
 		return errors.New("restore Watcher version requires a resolved Watcher identity")
-	}
-	if version <= 0 || expected <= 0 {
-		return errors.New("restore Watcher version and expected current version must be positive")
-	}
-	if utf8.RuneCountInString(summary) > 1000 {
-		return errors.New("restore Watcher version summary must be at most 1000 Unicode characters")
 	}
 	if current.ArchivedAt != nil {
 		return errors.New("restore Watcher version requires a non-archived Watcher")
@@ -139,26 +132,40 @@ func ValidateVersionRestore(current *watchers.Watcher, version, expected int64, 
 	return nil
 }
 
-// RestoreVersion submits one guarded restore after the caller resolves identity
-// and confirms intent. It never changes lifecycle, calibrates, or retries a write.
+// RestoreVersion submits one guarded restore after the caller validates the
+// resolved snapshot and confirms intent. It never changes lifecycle, calibrates,
+// or retries a write.
 // An outcome accompanied by an error must still be shown to the caller.
 func RestoreVersion(ctx context.Context, client *watchers.Client, current *watchers.Watcher, version, expected int64, summary string) (*VersionRestoreOutcome, error) {
 	if client == nil {
 		return nil, errors.New("restore Watcher version requires a client")
 	}
-	if err := ValidateVersionRestore(current, version, expected, summary); err != nil {
-		return nil, err
+	if current == nil || strings.TrimSpace(current.ID) == "" {
+		return nil, errors.New("restore Watcher version requires a resolved Watcher identity")
 	}
 	result := &VersionRestoreOutcome{}
 	accepted, err := client.RestoreVersion(ctx, current.ID, version, expected, summary)
 	if err != nil {
 		var unknown *watchers.UnknownRestoreError
-		if !errors.As(err, &unknown) {
-			return nil, err
+		if errors.As(err, &unknown) {
+			// A cancelled response decoder can report only an invalid body.
+			// Keep cancellation discoverable without losing the uncertain write.
+			result.Outcome = "unknown"
+			result.Guidance = "Restore may have applied. Inspect Watcher status and retained version history before retrying; do not resubmit blindly."
+			return result, errors.Join(err, ctx.Err())
 		}
-		result.Outcome = "unknown"
-		result.Guidance = "Restore may have applied. Inspect Watcher status and retained version history before retrying; do not resubmit blindly."
-		return result, err
+		var apiErr *watchers.APIError
+		if errors.As(err, &apiErr) && apiErr.StatusCode >= 400 && apiErr.StatusCode < 500 {
+			changed := false
+			result.Outcome = "rejected"
+			result.Changed = &changed
+			result.Guidance = "Restore was rejected. Inspect Watcher status and retained version history before retrying. No automatic retry was attempted."
+			if observed, readErr := client.Get(ctx, current.ID); readErr == nil {
+				result.Observed = &VersionRestoreObservation{CurrentVersion: observed.DefinitionVersion, Lifecycle: observed.Status, Archived: observed.ArchivedAt != nil}
+			}
+			return result, err
+		}
+		return nil, err
 	}
 	changed := true
 	result.Accepted = accepted
