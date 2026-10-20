@@ -38,6 +38,10 @@ func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
 
 // Query executes a Prometheus query against the specified datasource.
 func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryRequest) (*QueryResponse, error) {
+	maxDataPoints, err := req.maxDataPoints()
+	if err != nil {
+		return nil, err
+	}
 	// Build the query object with datasource info
 	query := map[string]any{
 		"refId": "A",
@@ -56,6 +60,8 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 		to = strconv.FormatInt(req.End.UnixMilli(), 10)
 		if req.Step > 0 {
 			query["intervalMs"] = req.Step.Milliseconds()
+			// Grafana otherwise selects a coarser interval from its default point budget.
+			query["maxDataPoints"] = maxDataPoints
 		}
 	} else {
 		query["instant"] = true
@@ -107,7 +113,11 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 	// Convert to Prometheus-style response. Pass the request intent so the result
 	// type reflects what was asked (range -> matrix, instant -> vector), not the
 	// shape of the data that came back.
-	return convertGrafanaResponse(&grafanaResp, req.IsRange()), nil
+	result := convertGrafanaResponse(&grafanaResp, req.IsRange())
+	if req.IsRange() && req.Step > 0 {
+		result.setResolution(req.Step)
+	}
+	return result, nil
 }
 
 // Labels returns all label names. Optional match selectors scope the result

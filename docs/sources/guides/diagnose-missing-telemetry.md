@@ -88,6 +88,20 @@ Keep in mind the following:
 
 With `--error-on-empty`, an empty response exits unsuccessfully; without it, a successful empty query, an invalid query, and a failed connection are different observations. The flag is supported on the Prometheus query, Loki logs/metrics, Tempo search/metrics, and Pyroscope query commands, but it's not a generic flag for unrelated datasource query commands.
 
+### Check range-query resolution
+
+For Prometheus range queries, set `--step` when investigating short-lived changes:
+
+```bash
+gcx metrics query 'vector(1)' --datasource 'PROMETHEUS_DATASOURCE_UID' \
+  --since 1h --step 1s -o json \
+  --config "$GCX_CONFIG" --context diagnostics
+```
+
+gcx derives the point budget from the range and step so Grafana's default budget doesn't reduce the requested resolution. The minimum step is `1ms`; Grafana and the datasource enforce their own query limits. Omitting `--step` preserves the default interval behavior.
+
+JSON output includes the requested and observed timestamp spacing in `resolution`. gcx warns when they differ. Datasource limits or gaps in data can increase the observed spacing, so a coarser result alone doesn't prove that samples are missing from storage.
+
 ## Use an agent for diagnostics
 
 Start the agent in the relevant application or test checkout, and provide it with the symptoms and boundaries for diagnostics:

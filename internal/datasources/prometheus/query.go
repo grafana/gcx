@@ -6,6 +6,7 @@ import (
 
 	"github.com/grafana/gcx/internal/agent"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
+	"github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/spf13/cobra"
@@ -31,6 +32,10 @@ func QueryCmdWithDefault(loader *providers.ConfigLoader, defaultDS string) *cobr
 EXPR is the PromQL expression to evaluate, passed as a positional argument or
 via --expr (familiar to promtool users).
 Datasource is resolved from -d flag or datasources.prometheus in your context.
+For range queries, --step must be at least 1ms and is sent in whole milliseconds.
+An explicit step sets the point budget to ceil(range / step).
+The datasource may still impose a coarser interval. JSON output reports observed
+timestamp spacing in resolution; gaps in data can also increase that spacing.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
 open it in your browser after the query succeeds.`,
 		Example: `
@@ -62,24 +67,6 @@ open it in your browser after the query succeeds.`,
 				return err
 			}
 
-			ctx := cmd.Context()
-
-			// Resolve datasource UID from -d flag, config, or Grafana auto-discovery.
-			cfgCtx, cfg, err := dsquery.LoadContextAndConfig(ctx, loader)
-			if err != nil {
-				return err
-			}
-
-			effectiveDS := datasource
-			if effectiveDS == "" {
-				effectiveDS = defaultDS
-			}
-
-			datasourceUID, dsType, err := dsquery.ResolveValidateAndSaveDatasource(ctx, loader, effectiveDS, cfgCtx, cfg, "prometheus")
-			if err != nil {
-				return err
-			}
-
 			now := time.Now()
 			start, end, step, err := shared.ParseTimes(now)
 			if err != nil {
@@ -96,11 +83,6 @@ open it in your browser after the query succeeds.`,
 				start = t
 			}
 
-			client, err := prometheus.NewClient(cfg)
-			if err != nil {
-				return fmt.Errorf("failed to create client: %w", err)
-			}
-
 			req := prometheus.QueryRequest{
 				Query:   expr,
 				Start:   start,
@@ -108,10 +90,42 @@ open it in your browser after the query succeeds.`,
 				Step:    step,
 				Instant: instant,
 			}
+			if req.IsRange() && shared.Step != "" && step == 0 {
+				return fmt.Errorf("query step %s must be at least 1ms", step)
+			}
+			if err := req.Validate(); err != nil {
+				return err
+			}
+
+			ctx := cmd.Context()
+			cfgCtx, cfg, err := dsquery.LoadContextAndConfig(ctx, loader)
+			if err != nil {
+				return err
+			}
+			effectiveDS := datasource
+			if effectiveDS == "" {
+				effectiveDS = defaultDS
+			}
+			datasourceUID, dsType, err := dsquery.ResolveValidateAndSaveDatasource(ctx, loader, effectiveDS, cfgCtx, cfg, "prometheus")
+			if err != nil {
+				return err
+			}
+			client, err := prometheus.NewClient(cfg)
+			if err != nil {
+				return fmt.Errorf("failed to create client: %w", err)
+			}
 
 			resp, err := client.Query(ctx, datasourceUID, req)
 			if err != nil {
 				return fmt.Errorf("query failed: %w", err)
+			}
+			if resolution := resp.Resolution; resolution != nil {
+				for _, observed := range resolution.ObservedStepMs {
+					if observed != resolution.RequestedStepMs {
+						output.EmitWarn(cmd.ErrOrStderr(), fmt.Sprintf("returned timestamp spacing %v ms differs from requested --step %s; datasource limits or gaps in data may affect resolution", resolution.ObservedStepMs, step))
+						break
+					}
+				}
 			}
 			exploreURL := QueryExploreURL(cfg.GrafanaURL, dsquery.ExploreQuery{
 				DatasourceUID:  datasourceUID,

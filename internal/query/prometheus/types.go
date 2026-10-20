@@ -1,6 +1,10 @@
 package prometheus
 
 import (
+	"errors"
+	"fmt"
+	"math"
+	"slices"
 	"strconv"
 	"time"
 
@@ -21,12 +25,61 @@ func (r QueryRequest) IsRange() bool {
 	return !r.Instant && !r.Start.IsZero() && !r.End.IsZero()
 }
 
+// Validate allows commands to reject invalid ranges before loading credentials.
+func (r QueryRequest) Validate() error {
+	_, err := r.maxDataPoints()
+	return err
+}
+
+func (r QueryRequest) maxDataPoints() (int64, error) {
+	if !r.IsRange() || r.Step == 0 {
+		return 0, nil
+	}
+	if r.Step < time.Millisecond {
+		return 0, fmt.Errorf("query step %s must be at least 1ms", r.Step)
+	}
+	start, end := r.Start.UnixMilli(), r.End.UnixMilli()
+	if end < start || (start < 0 && end > math.MaxInt64+start) {
+		return 0, errors.New("query range must be non-negative and fit in int64 milliseconds")
+	}
+	rangeMs, stepMs := end-start, r.Step.Milliseconds()
+	required := rangeMs / stepMs
+	if rangeMs%stepMs != 0 {
+		required++
+	}
+	return required, nil
+}
+
 // QueryResponse represents the response from a Prometheus query.
 type QueryResponse struct {
-	Status    string     `json:"status"`
-	Data      ResultData `json:"data"`
-	ErrorType string     `json:"errorType,omitempty"`
-	Error     string     `json:"error,omitempty"`
+	Status     string           `json:"status"`
+	Data       ResultData       `json:"data"`
+	ErrorType  string           `json:"errorType,omitempty"`
+	Error      string           `json:"error,omitempty"`
+	Resolution *QueryResolution `json:"resolution,omitempty"`
+}
+
+// QueryResolution reports timestamp spacing, which can also reflect gaps in data.
+type QueryResolution struct {
+	RequestedStepMs int64   `json:"requestedStepMs"`
+	ObservedStepMs  []int64 `json:"observedStepMs"`
+}
+
+func (r *QueryResponse) setResolution(step time.Duration) {
+	observed := make(map[int64]struct{})
+	for _, sample := range r.Data.Result {
+		for i := 1; i < len(sample.Values); i++ {
+			previous := toFloat64(sample.Values[i-1][0])
+			current := toFloat64(sample.Values[i][0])
+			observed[int64(math.Round((current-previous)*1000))] = struct{}{}
+		}
+	}
+	steps := make([]int64, 0, len(observed))
+	for value := range observed {
+		steps = append(steps, value)
+	}
+	slices.Sort(steps)
+	r.Resolution = &QueryResolution{RequestedStepMs: step.Milliseconds(), ObservedStepMs: steps}
 }
 
 // ResultData holds the query result data.

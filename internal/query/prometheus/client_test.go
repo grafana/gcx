@@ -2,11 +2,14 @@ package prometheus_test
 
 import (
 	"context"
+	"encoding/json"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/query/prometheus"
@@ -14,6 +17,79 @@ import (
 	"github.com/stretchr/testify/require"
 	"k8s.io/client-go/rest"
 )
+
+func TestQuery_StepBudget(t *testing.T) {
+	tests := []struct {
+		name       string
+		rangeMs    int64
+		step       time.Duration
+		instant    bool
+		wantBudget int64
+		wantErr    string
+	}{
+		{name: "omitted step", rangeMs: 3600000},
+		{name: "aligned range", rangeMs: 3600000, step: time.Second, wantBudget: 3600},
+		{name: "unaligned range rounds up", rangeMs: 3600001, step: time.Second, wantBudget: 3601},
+		{name: "step larger than range", rangeMs: 1000, step: 2 * time.Second, wantBudget: 1},
+		{name: "minimum step", rangeMs: 10, step: time.Millisecond, wantBudget: 10},
+		{name: "sub-millisecond step", rangeMs: 10, step: time.Microsecond, wantErr: "must be at least 1ms"},
+		{name: "negative step", rangeMs: 10, step: -time.Second, wantErr: "must be at least 1ms"},
+		{name: "large budget", rangeMs: 100001000, step: time.Second, wantBudget: 100001},
+		{name: "unaligned large budget", rangeMs: 100000001, step: time.Second, wantBudget: 100001},
+		{name: "ceiling does not overflow", rangeMs: math.MaxInt64, step: time.Second, wantBudget: 9223372036854776},
+		{name: "reversed range", rangeMs: -1, step: time.Second, wantErr: "range must be non-negative"},
+		{name: "instant unchanged", rangeMs: 3600000, step: time.Second, instant: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var body struct {
+				Queries []map[string]any `json:"queries"`
+			}
+			calls := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				assert.Equal(t, http.MethodPost, r.Method)
+				assert.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+				_, _ = w.Write([]byte(`{"results":{"A":{"frames":[]}}}`))
+			}))
+			defer server.Close()
+
+			client := newTestClient(t, server.URL)
+			resp, err := client.Query(context.Background(), "prom-uid", prometheus.QueryRequest{
+				Query: "vector(1)", Start: time.UnixMilli(0), End: time.UnixMilli(tt.rangeMs),
+				Step: tt.step, Instant: tt.instant,
+			})
+			if tt.wantErr != "" {
+				require.ErrorContains(t, err, tt.wantErr)
+				assert.Zero(t, calls, "invalid requests must fail before network I/O")
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, 1, calls)
+			require.Len(t, body.Queries, 1)
+			query := body.Queries[0]
+			if tt.wantBudget == 0 {
+				assert.NotContains(t, query, "maxDataPoints")
+				assert.EqualValues(t, 60000, query["intervalMs"])
+				assert.Nil(t, resp.Resolution)
+			} else {
+				assert.EqualValues(t, tt.wantBudget, query["maxDataPoints"])
+				assert.EqualValues(t, tt.step.Milliseconds(), query["intervalMs"])
+				require.NotNil(t, resp.Resolution)
+				assert.Equal(t, []int64{}, resp.Resolution.ObservedStepMs)
+			}
+		})
+	}
+}
+
+func TestQuery_RangeOverflow(t *testing.T) {
+	client := &prometheus.Client{}
+	_, err := client.Query(context.Background(), "prom-uid", prometheus.QueryRequest{
+		Query: "vector(1)", Start: time.UnixMilli(-1), End: time.UnixMilli(math.MaxInt64),
+		Step: time.Second,
+	})
+	require.ErrorContains(t, err, "fit in int64 milliseconds")
+}
 
 func TestQuery_FallsBackOn403(t *testing.T) {
 	var paths []string
