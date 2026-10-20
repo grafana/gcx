@@ -473,7 +473,7 @@ on PATH and `mise run` invokes them with the correct versions.
 
 Relevant GitHub Actions workflows:
 - **ci.yaml**: PR/push gate -- lint, tests, Grafana documentation build (parallel jobs)
-- **release.yaml**: Tag-triggered -- goreleaser cross-platform builds + GitHub Release
+- **release.yaml**: Tag-triggered -- goreleaser cross-platform builds + GitHub Release + keyless Sigstore signatures (images and checksums)
 - **deploy-pr-preview.yml**: Grafana website preview for same-repository docs PRs
 
 ### Code Generation

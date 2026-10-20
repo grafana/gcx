@@ -72,6 +72,39 @@ checksum:
   name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
   algorithm: sha256
 
+# Keyless Sigstore signing. Both pipes run cosign with no key material: on the
+# release workflow cosign takes an OIDC token from GitHub Actions
+# (`id-token: write`) and gets a short-lived certificate from Fulcio, so the
+# signature carries the workflow identity instead of a long-lived key.
+
+# Sign the checksums file, which in turn covers every archive. `--bundle`
+# writes certificate and signature into one .sigstore.json, as cosign v3
+# expects; verify with `cosign verify-blob --bundle`.
+signs:
+  - id: checksums
+    cmd: cosign
+    signature: "${artifact}.sigstore.json"
+    args:
+      - "sign-blob"
+      - "--bundle=${signature}"
+      - "${artifact}"
+      - "--yes"
+    artifacts: checksum
+
+# Sign the images. `artifacts` is deliberately left at its default empty value,
+# which is the selector for images built by `dockers_v2` ('images' and
+# 'manifests' select the deprecated `dockers`/`docker_manifests` pipes instead).
+# GoReleaser runs this once per pushed reference and fills ${artifact} and
+# ${digest} from the push, so every tag in every registry under
+# `dockers_v2.images` is signed with no further configuration here.
+docker_signs:
+  - id: images
+    cmd: cosign
+    args:
+      - "sign"
+      - "${artifact}@${digest}"
+      - "--yes"
+
 release:
   header: "{{ .Env.RELEASE_NOTES }}"
 

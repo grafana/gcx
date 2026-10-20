@@ -308,16 +308,28 @@ Triggered on: `v*` tag push.
 
 ```
 v* tag push
-└── release           → goreleaser release --clean  (builds + GitHub Release + ghcr.io image)
+└── release           → cosign install
+                      goreleaser release --clean  (builds + GitHub Release + ghcr.io image + Sigstore signatures)
 ```
 
 GoReleaser builds with `CGO_ENABLED=0` for all three platforms (linux, darwin,
 windows) and creates:
 - `tar.gz` archives for Linux/macOS (uname-compatible naming)
 - `zip` archive for Windows
-- `gcx_checksums.txt`
+- `gcx_<version>_checksums.txt`
+- `gcx_<version>_checksums.txt.sigstore.json` — keyless Sigstore signature over
+  the checksums file (`signs` pipe)
 - a multi-arch (`linux/amd64`, `linux/arm64`) container image, `ghcr.io/grafana/gcx`,
   tagged `vX.Y.Z`, plus `vX.Y`, `vX` and `latest` for non-prereleases
+
+Each pushed image reference is also signed keylessly (`docker_signs`), and the
+signature is stored in the registry alongside the image. Both pipes run
+`cosign` with no key material: the workflow has `id-token: write`, so cosign
+exchanges the GitHub Actions OIDC token for a short-lived Fulcio certificate.
+`docker_signs.artifacts` is left at its default empty value, which is the
+selector for `dockers_v2` images, so any registry added to `dockers_v2.images`
+is signed without further configuration. Verification commands are in
+[the installation docs](../sources/installation.md#verify-a-release).
 
 The changelog is auto-generated from `git log` via GitHub, filtering out
 `docs:`, `test:`, `tests:`, `chore:`, and merge commits.
