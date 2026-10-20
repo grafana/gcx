@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
 	"testing"
 	"time"
 
@@ -177,6 +178,36 @@ func TestFetchInstances(t *testing.T) {
 	// name and host.
 	if got[0].Name != "db-1" || got[0].Host != "db-1" {
 		t.Errorf("name = %q, host = %q, want both %q", got[0].Name, got[0].Host, "db-1")
+	}
+}
+
+func TestFetchInstances_SortsRows(t *testing.T) {
+	// The route neither orders its rows nor takes a limit, and `instances
+	// list` clips to --limit, so without an order here which rows survive the
+	// clip would follow whatever the API happened to return.
+	client := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status":"success","data":[` + //nolint:errcheck // test helper
+			`{"server_id":"s3","instance":"pg-2"},` +
+			`{"server_id":"s2","instance":"pg-1"},` +
+			`{"server_id":"s1","instance":"pg-1"}]}`))
+	})
+	got, err := fetchInstances(context.Background(), client, "prom-uid", nil)
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	names := make([]string, 0, len(got))
+	ids := make([]string, 0, len(got))
+	for _, i := range got {
+		names = append(names, i.Name)
+		ids = append(ids, i.ServerID)
+	}
+	if !reflect.DeepEqual(names, []string{"pg-1", "pg-1", "pg-2"}) {
+		t.Errorf("names = %v, want them sorted", names)
+	}
+	// server_id breaks the tie, so two instances sharing a name keep a stable
+	// order between runs rather than the response's.
+	if !reflect.DeepEqual(ids, []string{"s1", "s2", "s3"}) {
+		t.Errorf("server_ids = %v, want s1 before s2 within the pg-1 pair", ids)
 	}
 }
 
@@ -411,24 +442,6 @@ func TestFetchInstances_PushesFiltersAsLabelMatchers(t *testing.T) {
 	}
 	if got := gotQuery.Get("datasource"); got != "prom-uid" {
 		t.Errorf("datasource param = %q, want it preserved", got)
-	}
-}
-
-func TestFetchInstances_FilterCannotShadowDatasource(t *testing.T) {
-	// A matcher labelled "datasource" would otherwise redirect the whole
-	// request at another datasource.
-	var gotQuery url.Values
-	client := testClient(t, func(w http.ResponseWriter, r *http.Request) {
-		gotQuery = r.URL.Query()
-		w.Write([]byte(`{"status":"success","data":[]}`)) //nolint:errcheck // test helper
-	})
-
-	filters := url.Values{"datasource": {"someone-elses-uid"}}
-	if _, err := fetchInstances(context.Background(), client, "prom-uid", filters); err != nil {
-		t.Fatalf("err = %v", err)
-	}
-	if got := gotQuery["datasource"]; len(got) != 1 || got[0] != "prom-uid" {
-		t.Errorf("datasource = %v, want only the resolved UID", got)
 	}
 }
 

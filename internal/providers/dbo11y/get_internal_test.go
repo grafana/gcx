@@ -50,9 +50,9 @@ func TestGetOpts_Validate_Since(t *testing.T) {
 		{"unparseable is invalid", "not-a-duration", true},
 		{"zero is invalid", "0s", true},
 		{"negative is invalid", "-5m", true},
-		// The queries route enforces no minimum width — only from < to — so a
-		// sub-minute value is accepted rather than rejected on the strength of
-		// a floor that route does not have.
+		// Accepted rather than rejected: the route takes any range with from <
+		// to. It then evaluates the RED arms over at least a minute, so a
+		// sub-minute --since reports a minute's figures instead of erroring.
 		{"sub-minute is valid", "30s", false},
 	}
 	for _, c := range cases {

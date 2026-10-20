@@ -21,6 +21,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"golang.org/x/sync/errgroup"
 )
 
 // defaultQueryWindow is the range requested for the top-queries view when
@@ -184,23 +185,46 @@ func runGet(loader *providers.ConfigLoader, opts *getOpts) func(*cobra.Command, 
 			if !isInstanceMiss(err) {
 				return err
 			}
-			return reportInstanceMiss(ctx, cmd, &opts.IO, cfg, name)
+			return reportInstanceMiss(ctx, cmd, &opts.IO, cfg, name, opts.Since)
 		}
 
-		// Session state and the wait-event breakdown are each one request and
-		// each optional: a stack whose plugin predates the route reports
-		// nothing rather than failing the command, since stacks upgrade on
-		// their own schedule. A real failure still surfaces.
-		sessions, haveSessions, sessionsErr := fetchSessions(ctx, client, datasourceUID, inst.ServerID)
-		if sessionsErr != nil {
-			return sessionsErr
+		// Three independent reads: none needs anything from the others beyond
+		// the server_id already in hand, so they go out together rather than
+		// making the snapshot cost three round trips in series.
+		//
+		// Session state and the wait-event breakdown are each optional: a
+		// stack whose plugin predates the route reports nothing rather than
+		// failing the command, since stacks upgrade on their own schedule. A
+		// real failure still surfaces.
+		var (
+			sessions     Sessions
+			haveSessions bool
+			waitEvents   []WaitEvent
+			topQueries   []TopQuery
+			truncated    bool
+			queriesErr   error
+		)
+		g, gctx := errgroup.WithContext(ctx)
+		g.Go(func() error {
+			var err error
+			sessions, haveSessions, err = fetchSessions(gctx, client, datasourceUID, inst.ServerID)
+			return err
+		})
+		g.Go(func() error {
+			var err error
+			waitEvents, err = fetchWaitEvents(gctx, client, datasourceUID, lokiDatasourceUID, inst.ServerID, opts.Since)
+			return err
+		})
+		g.Go(func() error {
+			// Captured rather than returned: a top-queries failure still
+			// leaves a result document worth emitting, and returning it here
+			// would cancel the two siblings that document reports.
+			topQueries, truncated, queriesErr = fetchAndFilterTopQueries(gctx, client, datasourceUID, lokiDatasourceUID, inst.ServerID, opts.Since, opts.Top, filters)
+			return nil
+		})
+		if err := g.Wait(); err != nil {
+			return err
 		}
-		waitEvents, waitErr := fetchWaitEvents(ctx, client, datasourceUID, lokiDatasourceUID, inst.ServerID, opts.Since)
-		if waitErr != nil {
-			return waitErr
-		}
-
-		topQueries, truncated, queriesErr := fetchAndFilterTopQueries(ctx, client, datasourceUID, lokiDatasourceUID, inst.ServerID, opts.Since, opts.Top, filters)
 		if truncated {
 			cmdio.EmitHint(cmd.ErrOrStderr(),
 				fmt.Sprintf("showing top %d queries by time share", len(topQueries)),
@@ -209,7 +233,10 @@ func runGet(loader *providers.ConfigLoader, opts *getOpts) func(*cobra.Command, 
 
 		detail := &InstanceDetail{
 			Instance: inst,
-			Window:   backendQueryWindow,
+			// The window the figures were requested over, which is what
+			// --since asks for. instance.metrics is the exception and covers
+			// the API's own fixed five minutes whatever this says.
+			Window: opts.Since,
 			// The API returned this instance, which is what reporting means.
 			Health:     Health{Up: true},
 			WaitEvents: waitEvents,
@@ -292,10 +319,10 @@ func isInstanceMiss(err error) bool {
 // A stack with Database Observability switched off looks the same from here
 // as a mistyped name, so the activation state decides which of the two the
 // message describes.
-func reportInstanceMiss(ctx context.Context, cmd *cobra.Command, io *cmdio.Options, cfg internalconfig.NamespacedRESTConfig, name string) error {
+func reportInstanceMiss(ctx context.Context, cmd *cobra.Command, io *cmdio.Options, cfg internalconfig.NamespacedRESTConfig, name, window string) error {
 	// Health.Up is left false: the API does not know this instance, which is the
 	// only sense in which this command reports an instance as down.
-	detail := &InstanceDetail{Instance: Instance{Name: name}, Window: backendQueryWindow}
+	detail := &InstanceDetail{Instance: Instance{Name: name}, Window: window}
 
 	if activated, actErr := checkActivation(ctx, cfg); actErr == nil && !activated {
 		cmdio.EmitWarn(cmd.ErrOrStderr(), notActivatedError().Error())

@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -17,9 +18,10 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-// datasourceParam names the datasource to query. Every other query
-// parameter is an exact-match label matcher, so this one is stripped from
-// user-supplied filters rather than forwarded as one.
+// datasourceParam names the datasource to query. Every other query parameter
+// is an exact-match label matcher, so a --filter on this name is refused as a
+// usage error by parseFilter rather than forwarded as a matcher — silently
+// dropping it would answer with the whole inventory instead.
 const datasourceParam = "datasource"
 
 // apiBasePath is the base path for all routes.
@@ -156,13 +158,6 @@ const instancesPath = "/instances"
 // callers clamp to it rather than forwarding a larger value.
 const maxTopQueries = 100
 
-// backendQueryWindow is the width the backend evaluates each query's own
-// figures over, regardless of the range a caller asks for: every arm of the
-// top-queries lookup is an instant query with its lookback baked into the
-// expression. Reported as the `window` of an `instances get` result so the
-// figures are labelled with the width they actually cover.
-const backendQueryWindow = "5m"
-
 func instancePath(serverID string) string {
 	return instancesPath + "/" + url.PathEscape(serverID)
 }
@@ -259,9 +254,6 @@ func fetchWaitEvents(ctx context.Context, client *apiClient, datasourceUID, loki
 func fetchInstances(ctx context.Context, client *apiClient, datasourceUID string, filters url.Values) ([]Instance, error) {
 	query := url.Values{datasourceParam: {datasourceUID}}
 	for label, values := range filters {
-		if label == datasourceParam {
-			continue
-		}
 		for _, v := range values {
 			query.Add(label, v)
 		}
@@ -274,6 +266,16 @@ func fetchInstances(ctx context.Context, client *apiClient, datasourceUID string
 	for _, a := range raw {
 		out = append(out, a.toInstance())
 	}
+	// The route neither orders its rows nor takes a limit, so there is no
+	// ranking to inherit — and `instances list` clips to --limit. Without an
+	// order here, which rows survive that clip would follow whatever the API
+	// happened to return, and two runs a minute apart could disagree.
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Name != out[j].Name {
+			return out[i].Name < out[j].Name
+		}
+		return out[i].ServerID < out[j].ServerID
+	})
 	return out, nil
 }
 

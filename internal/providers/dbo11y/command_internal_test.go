@@ -162,9 +162,8 @@ func TestInstancesGet_NotFoundStillEmitsOneDocument(t *testing.T) {
 }
 
 func TestInstancesList_RejectsDatasourceAsAFilter(t *testing.T) {
-	// `datasource` is stripped before the filters go on the wire, so
-	// accepting it would answer with the whole inventory while the user
-	// believes it was applied.
+	// Refused rather than dropped: silently dropping it would answer with the
+	// whole inventory while the user believes it was applied.
 	_, _, err := runCommand(t, func(w http.ResponseWriter, r *http.Request) {
 		t.Error("expected the filter to be rejected before any request")
 	}, "instances", "list", "--filter", "datasource=someone-elses-uid")
@@ -174,6 +173,76 @@ func TestInstancesList_RejectsDatasourceAsAFilter(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "--datasource") {
 		t.Errorf("error should point at the flag, got %v", err)
+	}
+}
+
+// The three per-instance reads run together, and a top-queries failure is the
+// one of them that does not sink the command: identity, health, sessions and
+// the wait breakdown are already in hand, so the document stands and the exit
+// code says it is incomplete. Pinned because running them concurrently makes it
+// easy to turn this into a hard failure by returning the error to the group.
+func TestInstancesGet_TopQueriesFailureStillEmitsTheRest(t *testing.T) {
+	stdout, stderr, err := runCommand(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/bootdata":
+			http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
+		case apiBasePath + instancePath("srv-1"):
+			w.Write([]byte(`{"status":"success","data":{"server_id":"srv-1","instance":"db-1","engine":"postgres"}}`)) //nolint:errcheck // test helper
+		case apiBasePath + queriesPath("srv-1"):
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(`{"status":"error","error":{"code":"upstream","message":"datasource unavailable"}}`)) //nolint:errcheck // test helper
+		case apiBasePath + sessionsPath("srv-1"):
+			w.Write([]byte(`{"status":"success","data":{"server_id":"srv-1","engine":"postgres","total":3,"max_connections":100}}`)) //nolint:errcheck // test helper
+		case apiBasePath + waitEventsPath("srv-1"):
+			w.Write([]byte(`{"status":"success","data":{"server_id":"srv-1","wait_events":[{"type":"IO Wait","wait_seconds":4}]}}`)) //nolint:errcheck // test helper
+		default:
+			w.Write([]byte(`{"status":"success","data":[]}`)) //nolint:errcheck // test helper
+		}
+	}, "instances", "get", "srv-1", "-o", "json")
+
+	if err == nil {
+		t.Fatal("expected a non-zero exit for an incomplete result")
+	}
+	assertOneJSONValue(t, stdout)
+	// The siblings survived rather than being cancelled with the failure.
+	for _, want := range []string{"max_connections", "IO Wait"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("expected %q to survive the top-queries failure:\n%s", want, stdout)
+		}
+	}
+	if !strings.Contains(stderr, "top queries unavailable") {
+		t.Errorf("expected the warning to name what was lost, got %q", stderr)
+	}
+}
+
+// The reported window has to follow --since, since the figures it labels are
+// fetched over that range. Reporting a constant made the label disagree with
+// the request.
+func TestInstancesGet_WindowReportsTheRequestedRange(t *testing.T) {
+	stdout, _, err := runCommand(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/bootdata":
+			http.Error(w, `{"message":"not a cloud stack"}`, http.StatusNotFound)
+		case apiBasePath + instancePath("srv-1"):
+			w.Write([]byte(`{"status":"success","data":{"server_id":"srv-1","instance":"db-1","engine":"postgres"}}`)) //nolint:errcheck // test helper
+		case apiBasePath + queriesPath("srv-1"):
+			w.Write([]byte(`{"status":"success","data":{"queries":[]}}`)) //nolint:errcheck // test helper
+		case apiBasePath + sessionsPath("srv-1"):
+			w.Write([]byte(`{"status":"success","data":{"server_id":"srv-1","engine":"postgres","total":3}}`)) //nolint:errcheck // test helper
+		case apiBasePath + waitEventsPath("srv-1"):
+			w.Write([]byte(`{"status":"success","data":{"server_id":"srv-1","wait_events":[]}}`)) //nolint:errcheck // test helper
+		default:
+			w.Write([]byte(`{"status":"success","data":[]}`)) //nolint:errcheck // test helper
+		}
+	}, "instances", "get", "srv-1", "--since", "1h", "-o", "json")
+	if err != nil {
+		t.Fatalf("GetInstance: %v", err)
+	}
+	assertOneJSONValue(t, stdout)
+	if !strings.Contains(stdout, `"window": "1h"`) && !strings.Contains(stdout, `"window":"1h"`) {
+		t.Errorf("expected the requested window to be reported, got:\n%s", stdout)
 	}
 }
 
