@@ -1,3 +1,29 @@
+## v1.7.0 (2026-10-20)
+
+- Add Assistant Watchers: inspect, export, create, update and lifecycle commands
+- Watchers: run history, version restore, calibration and notification routing
+- Add alerting time interval and template group workflows
+- Alert rules now stay editable in the Grafana UI by default, with an opt-out
+- Add `kg` graph queries and threshold commands; deprecate legacy entity queries
+- Improve `kg` graph query and meta schema help, with `--jq` examples
+- Add `synthetic-monitoring suggestions list`
+- Synthetic Monitoring check status now reads from SM named queries
+- Describe the profiling workflow in `profiles` help
+- Select the active context with the `GCX_CONTEXT` environment variable
+- Detect Hermes Agent and OpenClaw to turn on agent mode
+- Publish a container image to ghcr.io
+- Classify errors consistently, with clearer HTTP error summaries
+- Make SLO, Synthetic, Alerting, k6, Fleet, stack and telemetry tables consistent
+- Fix decoding of SLOs that use grafanaQueries
+- Fix `irm oncall schedules list-final-shifts` ignoring `--start`
+- Fix OAuth login callback by using an OS-assigned port
+- Fix config validation errors and legacy mTLS with env-only auth or tokens
+- Fix Linux keychain prompting for unlock in headless sessions
+- Fix instrumentation sending a Pyroscope URL ending in `/ingest`
+- Sandbox recovers from a broken compilation cache and reports why
+- Docs: CLI reference now ships with releases; added Grafana MCP comparison
+
+
 ## Unreleased
 
 - Classify CLI failures with consistent category summaries and preserve operation context, server messages, codes, and trace IDs without repeated diagnostics. HTTP 401/403 errors carried by shared provider transports, Assistant helpers, and `gcx api`, missing Cloud credentials, and missing SM credentials/stack prerequisites now exit 3 instead of 1; the instrumentation mutual-exclusion error converter now assigns exit 2 instead of 1 (the current setup command does not emit its sentinel). HTML error pages are replaced with generic API-response details while retaining auth classification; `gcx api` continues to show the full body. Fleet 404s mean `Resource not found` only for Connect `code: "not_found"`; other 404s mean `Endpoint not available`.
