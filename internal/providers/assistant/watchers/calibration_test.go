@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/grafana/gcx/internal/assistant/assistanthttp"
@@ -31,7 +32,7 @@ func TestCreateCalibrationOutcomes(t *testing.T) {
 		{name: "accepted", outcome: "accepted"},
 		{name: "unavailable", status: 501, outcome: "unavailable"},
 		{name: "denied", status: 403, outcome: "error", partial: true},
-		{name: "disappeared", status: 404, outcome: "error", partial: true},
+		{name: "calibration route missing", status: 404, outcome: "unavailable"},
 		{name: "conflict", status: 409, outcome: "error", partial: true},
 		{name: "server error", status: 500, outcome: "error", partial: true},
 		{name: "invalid response", response: `{"data":{"status":"queued"}}`, outcome: "error", partial: true},
@@ -64,6 +65,9 @@ func TestCreateCalibrationOutcomes(t *testing.T) {
 				require.True(t, strings.HasSuffix(requests[1].Path, "/initial-calibration"))
 				require.JSONEq(t, `{"startWhenReady":false}`, string(requests[1].Body))
 				if output == "text" || output == "table" || output == "wide" {
+					if tc.outcome == "error" {
+						require.Equal(t, 1, strings.Count(out.String(), "calibration acceptance could not be confirmed."), "recovery guidance must appear only once")
+					}
 					return
 				}
 				decoder := yaml.NewYAMLOrJSONDecoder(out, 4096)
@@ -77,6 +81,9 @@ func TestCreateCalibrationOutcomes(t *testing.T) {
 				require.Equal(t, "checkout-health", metadata["name"])
 				require.Equal(t, tc.partial, result.Error != "")
 				require.NotEmpty(t, result.Calibration.Guidance)
+				if tc.outcome == "error" {
+					require.NotContains(t, result.Error, result.Calibration.Guidance)
+				}
 				if tc.outcome == "accepted" {
 					require.Equal(t, "queued", result.Calibration.State)
 					require.Contains(t, result.Calibration.Guidance, "does not establish readiness")
@@ -86,6 +93,40 @@ func TestCreateCalibrationOutcomes(t *testing.T) {
 			})
 		}
 	}
+}
+
+func TestCreateCalibration404WithMissingReadbackKeepsPartialFailure(t *testing.T) {
+	testutils.SetAgentMode(t, false)
+	const id = "00000000-0000-4000-8000-000000000001"
+	const path = "/api/plugins/grafana-assistant-app/resources/api/v1/watcher-agents/" + id
+	fixture := &watcherstest.Server{AllowWrites: true, CalibrationRequestStatus: http.StatusNotFound}
+	var calibrationRequested atomic.Bool
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && r.URL.Path == path+"/initial-calibration" {
+			calibrationRequested.Store(true)
+		}
+		if r.Method == http.MethodGet && r.URL.Path == path && calibrationRequested.Load() {
+			http.NotFound(w, r)
+			return
+		}
+		fixture.ServeHTTP(w, r)
+	})
+	cmd, out, _ := mutationCommand(t, mutationFixture(t, handler), []string{"create", "-f", "-", "-o", "json"}, commandManifest("Checkout health", "", ""))
+	err := cmd.ExecuteContext(t.Context())
+	var emitted *gcxerrors.EmittedError
+	require.ErrorAs(t, err, &emitted)
+	require.Equal(t, gcxerrors.ExitPartialFailure, emitted.Code)
+	var result createResult
+	require.NoError(t, json.Unmarshal(out.Bytes(), &result))
+	require.Equal(t, "error", result.Calibration.Outcome)
+	require.Equal(t, id, result.Target.ID)
+	require.Contains(t, result.Error, "HTTP 404")
+	require.Contains(t, result.Calibration.Guidance, "Do not rerun create")
+	require.Len(t, fixture.Current[0], 1, "failed confirmation must not roll back creation")
+	requests := fixture.MutationRequests()
+	require.Len(t, requests, 2, "one create and one calibration POST; no rollback or retry")
+	require.Equal(t, path+"/initial-calibration", requests[1].Path)
+	require.JSONEq(t, `{"startWhenReady":false}`, string(requests[1].Body))
 }
 
 func TestCreatePartialConfigurationSkipsCalibration(t *testing.T) {

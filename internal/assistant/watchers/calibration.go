@@ -20,6 +20,14 @@ func (c *Client) RequestInitialCalibration(ctx context.Context, id string) (*Cal
 	const operation = "request Watcher initial calibration"
 	var data json.RawMessage
 	if err := c.write(ctx, http.MethodPost, path+"/initial-calibration", operation, request, &data); err != nil {
+		var apiErr *APIError
+		if errors.As(err, &apiErr) && errors.Is(err, ErrNotFound) {
+			// A missing optional route and a deleted Watcher both return 404.
+			// Confirm the saved identity before treating calibration as unavailable.
+			if item, readErr := c.Get(ctx, id); readErr == nil && item.ID == id {
+				apiErr.kind = ErrCapabilityUnavailable
+			}
+		}
 		return nil, err
 	}
 	var response struct {

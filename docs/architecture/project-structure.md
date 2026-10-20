@@ -74,6 +74,7 @@ gcx/
 │   │   │   └── instances/    # Instance inventory + health/query-performance snapshot from postgres_exporter + pg_stat_statements
 │   │   ├── alert/            # Alert provider (rules, groups, provisioning, native routing trees/time intervals/template groups)
 │   │   ├── assistant/        # Assistant provider — lift-and-shift of the `gcx assistant` command tree; TypedRegistrations() supplies resource adapters; exports ResolveClientOptions and RequireGrafanaCloud for other command trees embedding Assistant calls (used by `instrumentation check --fix-plan=assistant`)
+│   │   │   └── watchers/     # Commands
 │   │   ├── dashboards/       # Dashboards provider (CRUD, search, version history, snapshot) — CLI: `gcx dashboards`
 │   │   │   ├── descriptor/   # Descriptor helpers (GVK, preferred version resolution)
 │   │   │   ├── search/       # Full-text search via dashboard.grafana.app search endpoint
