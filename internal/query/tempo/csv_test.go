@@ -21,7 +21,8 @@ func TestCSVProjections(t *testing.T) {
 	}{
 		{"search", &tempo.SearchResponse{Traces: []tempo.SearchTrace{{TraceID: "id", RootServiceName: "api", RootTraceName: "GET, /", StartTimeUnixNano: "1700000000123456789", DurationMs: 123}}}, []string{"id", "api", "GET, /", "1700000000123456789", "123", ""}},
 		{"baseline", &tempo.BaselineResult{SeedTraceID: "seed", Candidates: []tempo.BaselineCandidate{{TraceID: "id", ErrorCount: &zero}}}, []string{"seed", "id", "", "", "", "0", "", "", "0"}},
-		{"instant", &tempo.MetricsResponse{Series: []tempo.MetricsSeries{{TimestampMs: "1700000000123", Value: &value, Labels: []tempo.MetricsLabel{{Key: "value", Value: map[string]any{"stringValue": "label"}}}}}}, []string{"1700000000123", "3.25", "label"}},
+		{"instant", &tempo.MetricsResponse{Instant: true, Series: []tempo.MetricsSeries{{Value: &value, Labels: []tempo.MetricsLabel{{Key: "value", Value: map[string]any{"stringValue": "label"}}}}}}, []string{"3.25", "label"}},
+		{"range samples take precedence", &tempo.MetricsResponse{Series: []tempo.MetricsSeries{{Value: &value, Samples: []tempo.MetricsSample{{TimestampMs: "1700000000123", Value: 9}}}}}, []string{"1700000000123", "9"}},
 		{"range", &tempo.MetricsResponse{Series: []tempo.MetricsSeries{{Samples: []tempo.MetricsSample{{TimestampMs: "1700000000123", Value: 3.25}}}}}, []string{"1700000000123", "3.25"}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

@@ -3,6 +3,7 @@ package loki
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -45,6 +46,21 @@ func (c *Client) Query(ctx context.Context, datasourceUID string, req QueryReque
 	grafanaResp, err := c.executeQuery(ctx, body, "query")
 	if err != nil {
 		return nil, err
+	}
+
+	for _, frame := range grafanaResp.Results["A"].Frames {
+		var hasTime, hasValue, hasLine bool
+		for _, field := range frame.Schema.Fields {
+			hasTime = hasTime || field.Type == "time"
+			hasValue = hasValue || field.Type == "number"
+			switch field.Name {
+			case "Line", "line", "body", "Body", "value":
+				hasLine = true
+			}
+		}
+		if hasTime && hasValue && !hasLine {
+			return nil, errors.New("query returned metrics instead of log streams; use `gcx logs metrics` with the same datasource and expression")
+		}
 	}
 
 	return convertGrafanaResponse(grafanaResp), nil

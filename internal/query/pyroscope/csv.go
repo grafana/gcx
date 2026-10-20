@@ -7,7 +7,7 @@ import (
 )
 
 func (r *QueryResponse) CSVRecords() ([]string, [][]string, error) {
-	columns := []string{"function", "self", "total", "percentage"}
+	columns := []string{"function", "self", "total", "self_percentage"}
 	if r.Flamegraph == nil {
 		return columns, nil, nil
 	}

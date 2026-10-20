@@ -24,5 +24,6 @@ func TestCSVExportsAllFunctions(t *testing.T) {
 	rows, err := csv.NewReader(&out).ReadAll()
 	require.NoError(t, err)
 	require.Len(t, rows, 26)
+	assert.Equal(t, []string{"function", "self", "total", "self_percentage"}, rows[0])
 	assert.Equal(t, []string{"long.function.name.0", "1", "1", "1"}, rows[1])
 }

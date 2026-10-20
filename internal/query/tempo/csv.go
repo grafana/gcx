@@ -36,7 +36,10 @@ func (r *MetricsResponse) CSVRecords() ([]string, [][]string, error) {
 	}
 	slices.Sort(labels)
 	columns := make([]string, 0, 2+len(labels))
-	columns = append(columns, "timestamp_unix_ms", "value")
+	if !r.Instant {
+		columns = append(columns, "timestamp_unix_ms")
+	}
+	columns = append(columns, "value")
 	for _, label := range labels {
 		columns = append(columns, "label."+label)
 	}
@@ -47,12 +50,15 @@ func (r *MetricsResponse) CSVRecords() ([]string, [][]string, error) {
 			values[label.Key] = extractLabelValue(label.Value)
 		}
 		samples := s.Samples
-		if s.Value != nil {
+		if len(samples) == 0 && s.Value != nil {
 			samples = []MetricsSample{{TimestampMs: s.TimestampMs, Value: *s.Value}}
 		}
 		for _, sample := range samples {
 			row := make([]string, 0, len(columns))
-			row = append(row, sample.TimestampMs, strconv.FormatFloat(sample.Value, 'f', -1, 64))
+			if !r.Instant {
+				row = append(row, sample.TimestampMs)
+			}
+			row = append(row, strconv.FormatFloat(sample.Value, 'f', -1, 64))
 			for _, label := range labels {
 				row = append(row, values[label])
 			}

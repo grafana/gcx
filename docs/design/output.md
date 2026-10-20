@@ -95,7 +95,10 @@ CSV exports use `timestamp_rfc3339`: UTC RFC3339 with exactly nine fractional
 digits, including zeros for whole-second samples. This preserves timestamp
 precision and chronological ordering when sorting the column as text. Prometheus
 and Loki retain their source epoch representations in `timestamp_unix_seconds`
-and `timestamp_unix_nano`, respectively.
+and `timestamp_unix_nano`, respectively. Tempo range metrics use
+`timestamp_unix_ms`; instant metrics omit the timestamp column because the API
+returns no sample timestamp. Tempo search and baseline rows use
+`start_time_unix_nano`.
 
 Azure Log Analytics and Resource Graph time columns retain UTC RFC3339 strings,
 including fractional seconds when present in the source timestamps.
