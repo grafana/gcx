@@ -39,7 +39,8 @@ func run() error {
 	ctx := context.Background()
 
 	start := time.Now()
-	rt, err := sandbox.New(ctx, wasm, sandbox.Config{CacheDir: os.Args[2]})
+	cacheDir := os.Args[2]
+	rt, err := sandbox.New(ctx, wasm, sandbox.Config{CacheDir: cacheDir})
 	if err != nil {
 		return fmt.Errorf("compiling: %w", err)
 	}
@@ -62,7 +63,7 @@ func run() error {
 	if _, err := stdout.WriteTo(os.Stdout); err != nil {
 		return err
 	}
-	return makeReadable(os.Args[2])
+	return makeReadable(cacheDir)
 }
 
 // makeReadable lets any user read the cache, which wazero writes owner-only:

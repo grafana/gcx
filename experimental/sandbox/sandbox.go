@@ -131,6 +131,11 @@ func isCacheError(err error, dir string) bool {
 	if !errors.As(err, &pathErr) {
 		return false
 	}
+	// wazero makes the cache directory absolute, so its errors' paths are.
+	dir, absErr := filepath.Abs(dir)
+	if absErr != nil {
+		return false
+	}
 	rel, relErr := filepath.Rel(dir, pathErr.Path)
 	return relErr == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }

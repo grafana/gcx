@@ -118,6 +118,12 @@ func TestIsCacheError(t *testing.T) {
 	inCache := &fs.PathError{Op: "open", Path: filepath.Join(dir, "wazero-v1", "entry"), Err: fs.ErrPermission}
 	outside := &fs.PathError{Op: "mkdirtemp", Path: filepath.Join(os.TempDir(), "gcx-sandbox-root"), Err: fs.ErrPermission}
 	sibling := &fs.PathError{Op: "open", Path: dir + "-other/entry", Err: fs.ErrPermission}
+	// wazero reports paths in a relative cache directory as absolute.
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	relEntry := &fs.PathError{Op: "open", Path: filepath.Join(wd, "cache", "wazero-v1", "entry"), Err: fs.ErrPermission}
 	for _, tc := range []struct {
 		name string
 		err  error
@@ -130,6 +136,8 @@ func TestIsCacheError(t *testing.T) {
 		{name: "path outside the cache", err: outside, dir: dir, want: false},
 		{name: "sibling of the cache", err: sibling, dir: dir, want: false},
 		{name: "no cache", err: inCache, dir: "", want: false},
+		{name: "entry in a relative cache", err: relEntry, dir: "cache", want: true},
+		{name: "path outside a relative cache", err: outside, dir: "cache", want: false},
 		{name: "not a path error", err: errors.New("invalid module"), dir: dir, want: false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -141,12 +149,26 @@ func TestIsCacheError(t *testing.T) {
 }
 
 // A cache its user can't read, like a root-only copy in an image, costs a
-// compile rather than failing New, and CacheError says why.
+// compile rather than failing New, and CacheError says why. That holds for a
+// relative CacheDir too, whose errors wazero reports with absolute paths.
 func TestNewCompilesWithoutUnreadableCache(t *testing.T) {
 	skipAsRoot(t)
+	for _, relative := range []bool{false, true} {
+		t.Run(fmt.Sprintf("relative=%v", relative), func(t *testing.T) {
+			testNewCompilesWithoutUnreadableCache(t, relative)
+		})
+	}
+}
+
+func testNewCompilesWithoutUnreadableCache(t *testing.T, relative bool) {
+	t.Helper()
 	dir := t.TempDir()
 	cachedRuntime(t, dir)
 	chmodAll(t, dir, 0o700, 0o000)
+	if relative {
+		t.Chdir(filepath.Dir(dir))
+		dir = filepath.Base(dir)
+	}
 
 	r := cachedRuntime(t, dir)
 	var pathErr *fs.PathError

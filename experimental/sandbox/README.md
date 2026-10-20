@@ -138,6 +138,9 @@ COPY --from=gcx / /usr/share/gcx/
 ```go
 wasm, _ := os.ReadFile("/usr/share/gcx/gcx.wasm")
 rt, err := sandbox.New(ctx, wasm, sandbox.Config{CacheDir: "/usr/share/gcx/cache"})
+if err == nil && rt.CacheError() != nil {
+	logger.Warn("compiled gcx without the cache", "error", rt.CacheError())
+}
 ```
 
 Each image holds `/gcx.wasm`, `/gcx.commit`, and `/cache/`, which is wazero's
