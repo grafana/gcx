@@ -586,3 +586,9 @@ These guarantees hold for typed envelope structs and for envelopes assembled as 
   (`TruncatePagedList`, alternate-implementation fallback path) variants.
 
 `alert rules list` is deliberately not migrated yet: its JSON/YAML output is a bare array (no envelope to carry `list_meta`) and its `--limit` counts different units per format (flattened rules in the table, groups in JSON). The envelope shape and counting unit need to be settled before migration.
+
+### 15.7 IRM bulk-by-filter mutations
+
+**Implemented behavior:** IRM alert-group bulk-by-filter mutations retain a separate 1000-item target-enumeration cap (`alertGroupBulkTargetCap` in `internal/providers/irm/oncall_actions.go`). `resolveBulkTargets` limits enumeration to the first 1000 matching raw items, deduplicates the returned targets, and discards pagination metadata. When more matches exist, the mutation proceeds on that bounded set without disclosing the truncation; `summary.matched` counts the selected targets, not all matching groups. This cap does not apply to the read-only `irm oncall alert-groups list` command, whose `--limit 0` follows cursors to exhaustion.
+
+**Open decision:** whether a truncated bulk mutation should warn, refuse to proceed, or disclose partial targeting another way remains unresolved. The proposed list-output contract above does not settle this mutation behavior; this subsection records the current implementation and the decision still needed, without prescribing a runtime change.

@@ -255,8 +255,7 @@ Released names are frozen within the major version — a wrong name is not
 fixable later, which is why this question has repeatedly consumed review rounds
 when left to review time. It is answerable in minutes.
 
-Read the placement rule (per operation, not per subject) and the catalog-facet
-rule in `docs/design/command-naming.md`, then check the real tree:
+Read the placement and catalog-facet rules in [command naming](../../../../docs/design/command-naming.md), including the [addressability precedents](../../../../docs/design/command-naming.md#addressability-precedents), then check the real tree:
 
 ```bash
 bin/gcx help-tree

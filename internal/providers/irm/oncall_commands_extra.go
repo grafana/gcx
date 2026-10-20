@@ -825,9 +825,9 @@ type alertGroupPageInfo struct {
 // pagination ends at or before the limit, and always at limit == 0. Nothing
 // is silenced here; each caller decides how to surface the page info. The
 // list command emits list_meta plus stderr hints; resolveBulkTargets
-// discards it, so a bounded bulk-by-filter sweep is still silent — tracked
-// for a per-command decision in
-// docs/design/output.md § 15.
+// discards it, so a bounded bulk-by-filter sweep is still silent. See the
+// open disclosure decision in docs/design/output.md § 15.7
+// (IRM bulk-by-filter mutations).
 func listAlertGroupsRaw(ctx context.Context, c *OnCallClient, filters alertGroupListFilters, limit int) ([]json.RawMessage, alertGroupPageInfo, error) {
 	params := url.Values{}
 	if w := filters.StartedAt; w != nil {
