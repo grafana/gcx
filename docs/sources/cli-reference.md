@@ -6955,7 +6955,7 @@ gcx datasources athena describe-table TABLE [flags]
   -h, --help                help for describe-table
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
+  -o, --output string       Output format. One of: agents, csv, json, table, wide, yaml (default "table")
       --region string       AWS region override
 ```
 
@@ -6988,7 +6988,7 @@ gcx datasources athena list-catalogs [flags]
   -h, --help                help for list-catalogs
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
+  -o, --output string       Output format. One of: agents, csv, json, table, wide, yaml (default "table")
       --region string       AWS region override
 ```
 
@@ -7022,7 +7022,7 @@ gcx datasources athena list-databases [flags]
   -h, --help                help for list-databases
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
+  -o, --output string       Output format. One of: agents, csv, json, table, wide, yaml (default "table")
       --region string       AWS region override
 ```
 
@@ -7060,7 +7060,7 @@ gcx datasources athena list-tables [flags]
   -h, --help                help for list-tables
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
+  -o, --output string       Output format. One of: agents, csv, json, table, wide, yaml (default "table")
       --region string       AWS region override
 ```
 
@@ -7114,7 +7114,7 @@ gcx datasources athena query [EXPR] [flags]
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int           Max rows to return (0 disables enforcement) (default 100)
       --open                Open the executed query in Grafana Explore
-  -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
+  -o, --output string       Output format. One of: agents, csv, json, table, wide, yaml (default "table")
       --region string       AWS region override
       --result-reuse        Enable Athena query result reuse (engine v3)
       --share-link          Print the Grafana Explore URL for the executed query to stderr
@@ -7341,7 +7341,7 @@ gcx datasources azuremonitor logs query KQL [flags]
       --jq string               jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string             Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --open                    Open the executed query in Grafana Explore
-  -o, --output string           Output format. One of: agents, json, table, wide, yaml (default "table")
+  -o, --output string           Output format. One of: agents, csv, json, table, wide, yaml (default "table")
       --resource-group string   Azure resource group of the workspace (required)
       --share-link              Print the Grafana Explore URL for the executed query to stderr
       --since string            Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
@@ -7420,7 +7420,7 @@ gcx datasources azuremonitor query [flags]
       --metric string               Metric name, e.g. Transactions (required)
       --namespace string            Metric namespace, e.g. Microsoft.Storage/storageAccounts (required)
       --open                        Open the executed query in Grafana Explore
-  -o, --output string               Output format. One of: agents, graph, json, table, wide, yaml (default "table")
+  -o, --output string               Output format. One of: agents, csv, graph, json, table, wide, yaml (default "table")
       --region string               Azure region, e.g. uksouth (optional; used for multi-resource queries)
       --resource string             Azure resource name; use the slash form for sub-resources, e.g. mystorage/blobServices/default (required)
       --resource-group string       Azure resource group name (required)
@@ -7496,7 +7496,7 @@ gcx datasources azuremonitor resource-graph query KQL [flags]
       --jq string                  jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string                Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --open                       Open the executed query in Grafana Explore
-  -o, --output string              Output format. One of: agents, json, table, wide, yaml (default "table")
+  -o, --output string              Output format. One of: agents, csv, json, table, wide, yaml (default "table")
       --share-link                 Print the Grafana Explore URL for the executed query to stderr
       --subscription stringArray   Azure subscription ID to query (repeatable; at least one required)
 ```
@@ -7562,7 +7562,7 @@ gcx datasources bigquery describe-table TABLE [flags]
   -h, --help                help for describe-table
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
+  -o, --output string       Output format. One of: agents, csv, json, table, wide, yaml (default "table")
       --project string      GCP project ID (default: the datasource's default project)
 ```
 
@@ -7603,7 +7603,7 @@ gcx datasources bigquery list-datasets [flags]
   -h, --help                help for list-datasets
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
+  -o, --output string       Output format. One of: agents, csv, json, table, wide, yaml (default "table")
       --project string      GCP project ID (default: the datasource's default project)
 ```
 
@@ -7646,7 +7646,7 @@ gcx datasources bigquery list-tables [flags]
   -h, --help                help for list-tables
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
+  -o, --output string       Output format. One of: agents, csv, json, table, wide, yaml (default "table")
       --project string      GCP project ID (default: the datasource's default project)
 ```
 
@@ -7706,7 +7706,7 @@ gcx datasources bigquery query [EXPR] [flags]
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int           Max rows to return; requests above 1000 are capped, with a warning (0 disables enforcement) (default 100)
       --open                Open the executed query in Grafana Explore
-  -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
+  -o, --output string       Output format. One of: agents, csv, json, table, wide, yaml (default "table")
       --share-link          Print the Grafana Explore URL for the executed query to stderr
       --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --step string         Query step (e.g., '15s', '1m')
@@ -7764,7 +7764,7 @@ gcx datasources clickhouse describe-table TABLE [flags]
   -h, --help                help for describe-table
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
+  -o, --output string       Output format. One of: agents, csv, json, table, wide, yaml (default "table")
 ```
 
 Inherits `--config` from [`gcx datasources clickhouse`](#gcx-datasources-clickhouse-flags).
@@ -7802,7 +7802,7 @@ gcx datasources clickhouse list-tables [flags]
   -h, --help                help for list-tables
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
+  -o, --output string       Output format. One of: agents, csv, json, table, wide, yaml (default "table")
 ```
 
 Inherits `--config` from [`gcx datasources clickhouse`](#gcx-datasources-clickhouse-flags).
@@ -7853,7 +7853,7 @@ gcx datasources clickhouse query [EXPR] [flags]
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int           Max rows to return (0 disables enforcement) (default 100)
       --open                Open the executed query in Grafana Explore
-  -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
+  -o, --output string       Output format. One of: agents, csv, json, table, wide, yaml (default "table")
       --share-link          Print the Grafana Explore URL for the executed query to stderr
       --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --step string         Query step (e.g., '15s', '1m')
@@ -8013,7 +8013,7 @@ gcx datasources cloudmonitoring query [flags]
       --json string               Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --metric string             Metric type, e.g. compute.googleapis.com/instance/cpu/utilization (required)
       --open                      Open the executed query in Grafana Explore
-  -o, --output string             Output format. One of: agents, graph, json, table, wide, yaml (default "table")
+  -o, --output string             Output format. One of: agents, csv, graph, json, table, wide, yaml (default "table")
       --project string            GCP project ID (required)
       --reducer string            Cross-series reducer: REDUCE_NONE, REDUCE_MEAN, REDUCE_SUM, REDUCE_MIN, REDUCE_MAX, REDUCE_COUNT, ... (default "REDUCE_NONE")
       --share-link                Print the Grafana Explore URL for the executed query to stderr
@@ -8252,7 +8252,7 @@ gcx datasources cloudwatch query [flags]
       --metric string               CloudWatch metric name, e.g. CPUUtilization (required)
       --namespace string            CloudWatch namespace, e.g. AWS/EC2 (required)
       --open                        Open the executed query in Grafana Explore
-  -o, --output string               Output format. One of: agents, graph, json, table, wide, yaml (default "table")
+  -o, --output string               Output format. One of: agents, csv, graph, json, table, wide, yaml (default "table")
       --period string               Period in seconds (e.g. 60, 300) or "auto" to let CloudWatch pick a period that fits the time range (default "auto")
       --region string               AWS region, e.g. us-east-1 (required)
       --share-link                  Print the Grafana Explore URL for the executed query to stderr
@@ -8485,7 +8485,7 @@ gcx datasources elasticsearch metrics [EXPR] [flags]
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --open                Open the executed query in Grafana Explore
-  -o, --output string       Output format. One of: agents, graph, json, table, wide, yaml (default "table")
+  -o, --output string       Output format. One of: agents, csv, graph, json, table, wide, yaml (default "table")
       --share-link          Print the Grafana Explore URL for the executed query to stderr
       --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --step string         Query step (e.g., '15s', '1m')
@@ -8551,7 +8551,7 @@ gcx datasources elasticsearch query [EXPR] [flags]
       --limit int           Max documents to return (1-1000) (default 100)
       --mode string         Search mode: "documents" (raw documents) or "logs" (newest-first, plugin-internal fields omitted) (default "documents")
       --open                Open the executed query in Grafana Explore
-  -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
+  -o, --output string       Output format. One of: agents, csv, json, table, wide, yaml (default "table")
       --share-link          Print the Grafana Explore URL for the executed query to stderr
       --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --step string         Query step (e.g., '15s', '1m')
@@ -8695,7 +8695,7 @@ gcx datasources infinity query [EXPR] [flags]
   -h, --help                help for query
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
+  -o, --output string       Output format. One of: agents, csv, json, table, wide, yaml (default "table")
       --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --to string           End time (RFC3339, Unix timestamp, or relative like 'now')
 ```
@@ -8902,7 +8902,7 @@ gcx datasources influxdb query [EXPR] [flags]
   -h, --help                help for query
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
+  -o, --output string       Output format. One of: agents, csv, json, table, wide, yaml (default "table")
       --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --to string           End time (RFC3339, Unix timestamp, or relative like 'now')
 ```
@@ -9022,8 +9022,11 @@ Execute a metric LogQL query and return time-series results.
 EXPR is a metric LogQL expression (e.g., rate, count_over_time, sum).
 Datasource is resolved from -d flag or datasources.loki in your context.
 
+CSV preserves original cell values. Spreadsheet apps may interpret values as
+formulas; import untrusted CSV columns as text.
+
 Unlike 'logs query' which returns log lines, 'logs metrics' returns
-time-series data with proper table, graph, and JSON formatters.
+time-series data with table, graph, JSON, and CSV formatters.
 
 Instant vs range is deduced from time flags: no time flags = instant query,
 --since or --from/--to = range query.
@@ -9064,7 +9067,7 @@ gcx datasources loki metrics [EXPR] [flags]
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --open                Open the executed query in Grafana Explore
-  -o, --output string       Output format. One of: agents, graph, json, table, wide, yaml (default "table")
+  -o, --output string       Output format. One of: agents, csv, graph, json, table, wide, yaml (default "table")
       --share-link          Print the Grafana Explore URL for the executed query to stderr
       --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --step string         Query step (e.g., '15s', '1m')
@@ -9082,12 +9085,19 @@ Execute a LogQL query against a Loki datasource.
 EXPR is the LogQL expression to evaluate.
 Datasource is resolved from -d flag or datasources.loki in your context.
 
-Default table output is optimized for humans. Use -o raw for original line
-bodies or -o json for the full structured response.
+CSV preserves original cell values. Spreadsheet apps may interpret values as
+formulas; import untrusted CSV columns as text.
 
-Default --limit is 50; use --limit 0 for no cap.
+Default table output is optimized for humans. Use -o raw for original line
+bodies, -o csv for original lines and separate label columns, or -o json for the full structured response.
+
+Default --limit is 50. --limit 0 omits the limit, so Loki's own default
+applies (100 lines in Loki's range-query API).
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
 open it in your browser after the query succeeds.
+Use -o graph for a log-volume-over-time chart of the lines the query
+returned, counted per level. It does not cover lines beyond --limit or the
+backend's own line limits, so it can undercount a busy time range.
 
 ```shell
 gcx datasources loki query [EXPR] [flags]
@@ -9104,6 +9114,9 @@ gcx datasources loki query [EXPR] [flags]
 
   # Print a Grafana Explore share link for the query
   gcx datasources loki query '{job="varlogs"}' --share-link
+
+  # Log volume over time, colored by level
+  gcx datasources loki query -d UID '{job="varlogs"}' -o graph
 
   # Raw line bodies only
   gcx datasources loki query -d UID '{job="varlogs"}' -o raw
@@ -9122,10 +9135,67 @@ gcx datasources loki query [EXPR] [flags]
   -h, --help                help for query
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --limit int           Maximum number of log lines to return (0 means no limit) (default 50)
+      --limit int           Maximum number of log lines to return (0 omits the limit, so Loki's default applies) (default 50)
       --open                Open the executed query in Grafana Explore
-  -o, --output string       Output format. One of: agents, json, raw, table, wide, yaml (default "table")
+  -o, --output string       Output format. One of: agents, csv, graph, json, raw, table, wide, yaml (default "table")
       --share-link          Print the Grafana Explore URL for the executed query to stderr
+      --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
+      --step string         Query step (e.g., '15s', '1m')
+      --to string           End time (RFC3339, Unix timestamp, or relative like 'now')
+```
+
+Inherits `--config` from [`gcx datasources loki`](#gcx-datasources-loki-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx datasources loki query-patterns` {#gcx-datasources-loki-query-patterns}
+
+Detect recurring log line patterns for a LogQL stream selector.
+
+EXPR must be a bare stream selector (e.g., '{job="varlogs"}'). Loki's patterns
+endpoint rejects pipeline stages, line filters, and metric expressions.
+Datasource is resolved from -d flag or datasources.loki in your context.
+
+Requires a Loki version that supports the patterns API (3.x) with the pattern
+ingester and querier enabled. Otherwise the endpoint may be unavailable and the
+command fails with an error rather than returning empty data.
+
+The result is the patterns and sample counts the backend retained for the
+range, not a complete inventory: Loki prunes low-volume patterns and caps the
+number returned, and retention depends on the deployment, so a long --since
+does not guarantee complete coverage of that window.
+
+Default time range is the last hour when no time flags are given. --step is
+optional: a positive duration (e.g., 30s, 1d) or a positive number of seconds
+(e.g., 1.5); when omitted, Loki chooses the bucket size.
+
+```shell
+gcx datasources loki query-patterns [EXPR] [flags]
+```
+
+**Examples**
+
+```shell
+# Detect patterns using configured default datasource
+  gcx datasources loki query-patterns '{job="varlogs"}'
+
+  # Detect patterns over a specific window
+  gcx datasources loki query-patterns -d UID '{job="varlogs"}' --since 3h
+
+  # Output as JSON
+  gcx datasources loki query-patterns -d UID '{job="varlogs"}' -o json
+```
+
+**Flags**
+
+```text
+  -d, --datasource string   Datasource UID (required unless datasources.loki is configured)
+      --expr string         Query expression (alternative to positional argument)
+      --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
+  -h, --help                help for query-patterns
+      --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
       --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --step string         Query step (e.g., '15s', '1m')
       --to string           End time (RFC3339, Unix timestamp, or relative like 'now')
@@ -9228,7 +9298,7 @@ gcx datasources mssql describe-table TABLE [flags]
   -h, --help                help for describe-table
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
+  -o, --output string       Output format. One of: agents, csv, json, table, wide, yaml (default "table")
       --schema string       Schema the table belongs to (e.g. dbo)
 ```
 
@@ -9269,7 +9339,7 @@ gcx datasources mssql list-tables [flags]
   -h, --help                help for list-tables
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
+  -o, --output string       Output format. One of: agents, csv, json, table, wide, yaml (default "table")
       --schema string       Filter tables to this schema (e.g. dbo)
 ```
 
@@ -9330,7 +9400,7 @@ gcx datasources mssql query [EXPR] [flags]
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int           Max rows to return via injected TOP (n) (0 disables injection) (default 100)
       --open                Open the executed query in Grafana Explore
-  -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
+  -o, --output string       Output format. One of: agents, csv, json, table, wide, yaml (default "table")
       --share-link          Print the Grafana Explore URL for the executed query to stderr
       --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --step string         Query step (e.g., '15s', '1m')
@@ -9395,7 +9465,7 @@ gcx datasources mysql describe-table TABLE [flags]
   -h, --help                help for describe-table
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
+  -o, --output string       Output format. One of: agents, csv, json, table, wide, yaml (default "table")
 ```
 
 Inherits `--config` from [`gcx datasources mysql`](#gcx-datasources-mysql-flags).
@@ -9434,7 +9504,7 @@ gcx datasources mysql list-tables [flags]
   -h, --help                help for list-tables
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
+  -o, --output string       Output format. One of: agents, csv, json, table, wide, yaml (default "table")
 ```
 
 Inherits `--config` from [`gcx datasources mysql`](#gcx-datasources-mysql-flags).
@@ -9479,7 +9549,7 @@ gcx datasources mysql query [EXPR] [flags]
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int           Max rows to return; requests above 1000 are capped, with a warning (0 disables enforcement) (default 100)
-  -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
+  -o, --output string       Output format. One of: agents, csv, json, table, wide, yaml (default "table")
       --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --step string         Query step (e.g., '15s', '1m')
       --to string           End time (RFC3339, Unix timestamp, or relative like 'now')
@@ -9624,7 +9694,7 @@ gcx datasources opensearch metrics [EXPR] [flags]
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --open                Open the executed query in Grafana Explore
-  -o, --output string       Output format. One of: agents, graph, json, table, wide, yaml (default "table")
+  -o, --output string       Output format. One of: agents, csv, graph, json, table, wide, yaml (default "table")
       --share-link          Print the Grafana Explore URL for the executed query to stderr
       --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --step string         Query step (e.g., '15s', '1m')
@@ -9690,7 +9760,7 @@ gcx datasources opensearch query [EXPR] [flags]
       --limit int           Max documents to return (1-1000) (default 100)
       --mode string         Search mode: "documents" (raw documents) or "logs" (newest-first, plugin-internal fields omitted) (default "documents")
       --open                Open the executed query in Grafana Explore
-  -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
+  -o, --output string       Output format. One of: agents, csv, json, table, wide, yaml (default "table")
       --share-link          Print the Grafana Explore URL for the executed query to stderr
       --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --step string         Query step (e.g., '15s', '1m')
@@ -9816,7 +9886,7 @@ gcx datasources pinot query [EXPR] [flags]
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int           Max rows to return; requests above 1000 are capped (stderr notice when the query is adjusted). 0 disables enforcement (default 100)
       --open                Open the executed query in Grafana Explore
-  -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
+  -o, --output string       Output format. One of: agents, csv, json, table, wide, yaml (default "table")
       --share-link          Print the Grafana Explore URL for the executed query to stderr
       --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --step string         Query step (e.g., '15s', '1m')
@@ -9878,7 +9948,7 @@ gcx datasources postgres describe-table TABLE [flags]
   -h, --help                help for describe-table
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
+  -o, --output string       Output format. One of: agents, csv, json, table, wide, yaml (default "table")
       --schema string       Schema of the table (exact match, case-sensitive; defaults to all schemas)
 ```
 
@@ -9917,7 +9987,7 @@ gcx datasources postgres list-tables [flags]
   -h, --help                help for list-tables
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-  -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
+  -o, --output string       Output format. One of: agents, csv, json, table, wide, yaml (default "table")
       --schema string       Filter tables to this schema (exact match, case-sensitive)
 ```
 
@@ -9963,7 +10033,7 @@ gcx datasources postgres query [EXPR] [flags]
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int           Max rows to return; requests above 1000 are capped, with a warning (0 disables enforcement) (default 100)
-  -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
+  -o, --output string       Output format. One of: agents, csv, json, table, wide, yaml (default "table")
       --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --step string         Query step (e.g., '15s', '1m')
       --to string           End time (RFC3339, Unix timestamp, or relative like 'now')
@@ -10081,6 +10151,10 @@ Execute a PromQL query against a Prometheus datasource.
 EXPR is the PromQL expression to evaluate, passed as a positional argument or
 via --expr (familiar to promtool users).
 Datasource is resolved from -d flag or datasources.prometheus in your context.
+
+CSV preserves original cell values. Spreadsheet apps may interpret values as
+formulas; import untrusted CSV columns as text.
+
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
 open it in your browser after the query succeeds.
 
@@ -10106,6 +10180,9 @@ gcx datasources prometheus query [EXPR] [flags]
   # Print a Grafana Explore share link for the executed query
   gcx datasources prometheus query 'up' --share-link
 
+  # Export samples as CSV
+  gcx datasources prometheus query -d UID 'up' -o csv
+
   # Output as JSON
   gcx datasources prometheus query -d UID 'up' -o json
 ```
@@ -10121,7 +10198,7 @@ gcx datasources prometheus query [EXPR] [flags]
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --open                Open the executed query in Grafana Explore
-  -o, --output string       Output format. One of: agents, graph, json, table, wide, yaml (default "table")
+  -o, --output string       Output format. One of: agents, csv, graph, json, table, wide, yaml (default "table")
       --share-link          Print the Grafana Explore URL for the executed query to stderr
       --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --step string         Query step (e.g., '15s', '1m')
@@ -10753,7 +10830,7 @@ gcx datasources pyroscope query [EXPR] [flags]
       --jq string                     jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string                   Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --max-nodes int                 Maximum nodes in the result (defaults: pprof 0/unlimited, dot 100-node call graph rendered server-side, 50000 for all other formats)
-  -o, --output string                 Output format. One of: agents, dot, graph, json, pprof, table, wide, yaml (default "table")
+  -o, --output string                 Output format. One of: agents, csv, dot, graph, json, pprof, table, wide, yaml (default "table")
       --pprof-overwrite               Overwrite the output file if it already exists (only with -o pprof)
       --pprof-path string             Destination path for pprof binary output (only with -o pprof; default: profile-YYYY-MM-DD-HHMMSS.pb.gz)
       --profile-id strings            Drill down to specific profile UUIDs from exemplar queries (repeatable)
@@ -10920,7 +10997,7 @@ gcx datasources query DATASOURCE_UID [EXPR] [flags]
       --json string           Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int             Maximum log lines for loki, or max rows for pinot (0 means no limit). Pinot uses 100 when --limit is omitted; stderr notes when PinotQL is adjusted (default 50)
       --max-nodes int         Maximum nodes in flame graph (pyroscope only) (default 1024)
-  -o, --output string         Output format. One of: agents, graph, json, table, wide, yaml (default "table")
+  -o, --output string         Output format. One of: agents, csv, graph, json, table, wide, yaml (default "table")
       --profile-type string   Profile type ID for pyroscope queries (e.g., 'process_cpu:cpu:nanoseconds:cpu:nanoseconds')
       --since string          Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --step string           Query step (e.g., '15s', '1m')
@@ -11085,7 +11162,7 @@ gcx datasources tempo baseline TRACE_ID [flags]
       --jq string            jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int            Maximum number of candidates to return; must be at least 1 (default 20)
-  -o, --output string        Output format. One of: agents, json, table, wide, yaml (default "table")
+  -o, --output string        Output format. One of: agents, csv, json, table, wide, yaml (default "table")
       --to string            Absolute end time override (RFC3339, Unix timestamp, or relative like 'now'); requires --from
       --window string        Search window padding applied before and after the seed trace's time range, so candidates from before or after the seed are eligible (e.g., 30m, 6h, 7d). Ignored when --from/--to are set (default "30m")
 ```
@@ -11356,7 +11433,7 @@ gcx datasources tempo metrics [TRACEQL] [flags]
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --open                Open the executed query in Grafana Explore
-  -o, --output string       Output format. One of: agents, graph, json, table, wide, yaml (default "table")
+  -o, --output string       Output format. One of: agents, csv, graph, json, table, wide, yaml (default "table")
       --share-link          Print the Grafana Explore URL for the executed query to stderr
       --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --step string         Query step (e.g., '15s', '1m')
@@ -11414,7 +11491,7 @@ gcx datasources tempo query [TRACEQL] [flags]
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int           Maximum number of traces to return (0 means no limit) (default 20)
       --open                Open the executed query in Grafana Explore
-  -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
+  -o, --output string       Output format. One of: agents, csv, json, table, wide, yaml (default "table")
       --share-link          Print the Grafana Explore URL for the executed query to stderr
       --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --step string         Query step (e.g., '15s', '1m')
@@ -19551,8 +19628,11 @@ Execute a metric LogQL query and return time-series results.
 EXPR is a metric LogQL expression (e.g., rate, count_over_time, sum).
 Datasource is resolved from -d flag or datasources.loki in your context.
 
+CSV preserves original cell values. Spreadsheet apps may interpret values as
+formulas; import untrusted CSV columns as text.
+
 Unlike 'logs query' which returns log lines, 'logs metrics' returns
-time-series data with proper table, graph, and JSON formatters.
+time-series data with table, graph, JSON, and CSV formatters.
 
 Instant vs range is deduced from time flags: no time flags = instant query,
 --since or --from/--to = range query.
@@ -19587,7 +19667,7 @@ gcx logs metrics [EXPR] [flags]
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --open                Open the executed query in Grafana Explore
-  -o, --output string       Output format. One of: agents, graph, json, table, wide, yaml (default "table")
+  -o, --output string       Output format. One of: agents, csv, graph, json, table, wide, yaml (default "table")
       --share-link          Print the Grafana Explore URL for the executed query to stderr
       --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --step string         Query step (e.g., '15s', '1m')
@@ -19605,12 +19685,19 @@ Execute a LogQL query against a Loki datasource.
 EXPR is the LogQL expression to evaluate.
 Datasource is resolved from -d flag or datasources.loki in your context.
 
-Default table output is optimized for humans. Use -o raw for original line
-bodies or -o json for the full structured response.
+CSV preserves original cell values. Spreadsheet apps may interpret values as
+formulas; import untrusted CSV columns as text.
 
-Default --limit is 50; use --limit 0 for no cap.
+Default table output is optimized for humans. Use -o raw for original line
+bodies, -o csv for original lines and separate label columns, or -o json for the full structured response.
+
+Default --limit is 50. --limit 0 omits the limit, so Loki's own default
+applies (100 lines in Loki's range-query API).
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
 open it in your browser after the query succeeds.
+Use -o graph for a log-volume-over-time chart of the lines the query
+returned, counted per level. It does not cover lines beyond --limit or the
+backend's own line limits, so it can undercount a busy time range.
 
 ```shell
 gcx logs query [EXPR] [flags]
@@ -19627,6 +19714,9 @@ gcx logs query [EXPR] [flags]
 
   # Print a Grafana Explore share link for the query
   gcx logs query '{job="varlogs"}' --share-link
+
+  # Log volume over time, colored by level
+  gcx logs query -d abc123 '{job="varlogs"}' -o graph
 
   # Raw line bodies only
   gcx logs query -d abc123 '{job="varlogs"}' -o raw
@@ -19645,10 +19735,67 @@ gcx logs query [EXPR] [flags]
   -h, --help                help for query
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
-      --limit int           Maximum number of log lines to return (0 means no limit) (default 50)
+      --limit int           Maximum number of log lines to return (0 omits the limit, so Loki's default applies) (default 50)
       --open                Open the executed query in Grafana Explore
-  -o, --output string       Output format. One of: agents, json, raw, table, wide, yaml (default "table")
+  -o, --output string       Output format. One of: agents, csv, graph, json, raw, table, wide, yaml (default "table")
       --share-link          Print the Grafana Explore URL for the executed query to stderr
+      --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
+      --step string         Query step (e.g., '15s', '1m')
+      --to string           End time (RFC3339, Unix timestamp, or relative like 'now')
+```
+
+Inherits `--config` from [`gcx logs`](#gcx-logs-flags).
+
+Inherits `--agent`, `--context`, `--insecure-log-http-payload`, `--no-color`, `--no-truncate`, `--verbose` from [`gcx`](#gcx-flags).
+
+### `gcx logs query-patterns` {#gcx-logs-query-patterns}
+
+Detect recurring log line patterns for a LogQL stream selector.
+
+EXPR must be a bare stream selector (e.g., '{job="varlogs"}'). Loki's patterns
+endpoint rejects pipeline stages, line filters, and metric expressions.
+Datasource is resolved from -d flag or datasources.loki in your context.
+
+Requires a Loki version that supports the patterns API (3.x) with the pattern
+ingester and querier enabled. Otherwise the endpoint may be unavailable and the
+command fails with an error rather than returning empty data.
+
+The result is the patterns and sample counts the backend retained for the
+range, not a complete inventory: Loki prunes low-volume patterns and caps the
+number returned, and retention depends on the deployment, so a long --since
+does not guarantee complete coverage of that window.
+
+Default time range is the last hour when no time flags are given. --step is
+optional: a positive duration (e.g., 30s, 1d) or a positive number of seconds
+(e.g., 1.5); when omitted, Loki chooses the bucket size.
+
+```shell
+gcx logs query-patterns [EXPR] [flags]
+```
+
+**Examples**
+
+```shell
+# Detect patterns using configured default datasource
+  gcx logs query-patterns '{job="varlogs"}'
+
+  # Detect patterns over a specific window
+  gcx logs query-patterns -d UID '{job="varlogs"}' --since 3h
+
+  # Output as JSON
+  gcx logs query-patterns -d UID '{job="varlogs"}' -o json
+```
+
+**Flags**
+
+```text
+  -d, --datasource string   Datasource UID (required unless datasources.loki is configured)
+      --expr string         Query expression (alternative to positional argument)
+      --from string         Start time (RFC3339, Unix timestamp, or relative like 'now-1h')
+  -h, --help                help for query-patterns
+      --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
+      --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
+  -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
       --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --step string         Query step (e.g., '15s', '1m')
       --to string           End time (RFC3339, Unix timestamp, or relative like 'now')
@@ -20287,6 +20434,10 @@ Execute a PromQL query against a Prometheus datasource.
 EXPR is the PromQL expression to evaluate, passed as a positional argument or
 via --expr (familiar to promtool users).
 Datasource is resolved from -d flag or datasources.prometheus in your context.
+
+CSV preserves original cell values. Spreadsheet apps may interpret values as
+formulas; import untrusted CSV columns as text.
+
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
 open it in your browser after the query succeeds.
 
@@ -20321,7 +20472,7 @@ gcx metrics billing query [EXPR] [flags]
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --open                Open the executed query in Grafana Explore
-  -o, --output string       Output format. One of: agents, graph, json, table, wide, yaml (default "table")
+  -o, --output string       Output format. One of: agents, csv, graph, json, table, wide, yaml (default "table")
       --share-link          Print the Grafana Explore URL for the executed query to stderr
       --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --step string         Query step (e.g., '15s', '1m')
@@ -20605,6 +20756,10 @@ Execute a PromQL query against a Prometheus datasource.
 EXPR is the PromQL expression to evaluate, passed as a positional argument or
 via --expr (familiar to promtool users).
 Datasource is resolved from -d flag or datasources.prometheus in your context.
+
+CSV preserves original cell values. Spreadsheet apps may interpret values as
+formulas; import untrusted CSV columns as text.
+
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
 open it in your browser after the query succeeds.
 
@@ -20645,7 +20800,7 @@ gcx metrics query [EXPR] [flags]
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --open                Open the executed query in Grafana Explore
-  -o, --output string       Output format. One of: agents, graph, json, table, wide, yaml (default "table")
+  -o, --output string       Output format. One of: agents, csv, graph, json, table, wide, yaml (default "table")
       --share-link          Print the Grafana Explore URL for the executed query to stderr
       --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --step string         Query step (e.g., '15s', '1m')
@@ -21357,7 +21512,7 @@ gcx profiles query [EXPR] [flags]
       --jq string                     jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string                   Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --max-nodes int                 Maximum nodes in the result (defaults: pprof 0/unlimited, dot 100-node call graph rendered server-side, 50000 for all other formats)
-  -o, --output string                 Output format. One of: agents, dot, graph, json, pprof, table, wide, yaml (default "table")
+  -o, --output string                 Output format. One of: agents, csv, dot, graph, json, pprof, table, wide, yaml (default "table")
       --pprof-overwrite               Overwrite the output file if it already exists (only with -o pprof)
       --pprof-path string             Destination path for pprof binary output (only with -o pprof; default: profile-YYYY-MM-DD-HHMMSS.pb.gz)
       --profile-id strings            Drill down to specific profile UUIDs from exemplar queries (repeatable)
@@ -23556,7 +23711,7 @@ gcx traces baseline TRACE_ID [flags]
       --jq string            jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string          Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int            Maximum number of candidates to return; must be at least 1 (default 20)
-  -o, --output string        Output format. One of: agents, json, table, wide, yaml (default "table")
+  -o, --output string        Output format. One of: agents, csv, json, table, wide, yaml (default "table")
       --to string            Absolute end time override (RFC3339, Unix timestamp, or relative like 'now'); requires --from
       --window string        Search window padding applied before and after the seed trace's time range, so candidates from before or after the seed are eligible (e.g., 30m, 6h, 7d). Ignored when --from/--to are set (default "30m")
 ```
@@ -23806,7 +23961,7 @@ gcx traces metrics [TRACEQL] [flags]
       --jq string           jq expression to apply to JSON output. Mutually exclusive with --json.
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --open                Open the executed query in Grafana Explore
-  -o, --output string       Output format. One of: agents, graph, json, table, wide, yaml (default "table")
+  -o, --output string       Output format. One of: agents, csv, graph, json, table, wide, yaml (default "table")
       --share-link          Print the Grafana Explore URL for the executed query to stderr
       --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --step string         Query step (e.g., '15s', '1m')
@@ -23858,7 +24013,7 @@ gcx traces query [TRACEQL] [flags]
       --json string         Comma-separated list of fields to include in JSON output, or 'list' (or '?') to discover available fields
       --limit int           Maximum number of traces to return (0 means no limit) (default 20)
       --open                Open the executed query in Grafana Explore
-  -o, --output string       Output format. One of: agents, json, table, wide, yaml (default "table")
+  -o, --output string       Output format. One of: agents, csv, json, table, wide, yaml (default "table")
       --share-link          Print the Grafana Explore URL for the executed query to stderr
       --since string        Duration before --to, or now if omitted (e.g., 30m, 6h, 7d); mutually exclusive with --from
       --step string         Query step (e.g., '15s', '1m')
