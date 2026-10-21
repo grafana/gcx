@@ -373,7 +373,7 @@ func TestStrictContextSweep_InheritedEndpointNeverHit(t *testing.T) {
 	// Analyse.
 	var skipped, reaching, refusedB, timedOut, runnable int
 	var violations, notRefused, selectedMissed, timeoutList []string
-	var skippedList []string
+	var skippedList, refusedNotReaching []string
 	reachSet := []string{}
 	for _, sc := range cmds {
 		if sc.Skip != "" {
@@ -427,6 +427,16 @@ func TestStrictContextSweep_InheritedEndpointNeverHit(t *testing.T) {
 				}
 			}
 		}
+		var extra []string
+		for i, r := range sc.Passes["b"] {
+			if r.Refused && !reachedShapes[i] {
+				a := sc.Passes["a"][i]
+				extra = append(extra, fmt.Sprintf("%d(a: exit=%d timedOut=%v)", i, a.Exit, a.TimedOut))
+			}
+		}
+		if len(extra) > 0 {
+			refusedNotReaching = append(refusedNotReaching, sc.Path+" shapes="+strings.Join(extra, ","))
+		}
 		if anyRefused {
 			refusedB++
 		}
@@ -471,6 +481,7 @@ func TestStrictContextSweep_InheritedEndpointNeverHit(t *testing.T) {
 		}
 		return l
 	}())
+	report("REFUSED BUT NOT REACHING (pass b \\ pass a)", refusedNotReaching)
 	report("SELECTED LISTENER NOT HIT IN (c)/(c2) for a reaching shape", selectedMissed)
 	report("KNOWN FAIL-OPEN (reported, not failing)", known)
 	report("VIOLATIONS", hard)
