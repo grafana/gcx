@@ -63,12 +63,16 @@ shortestPath(), EXISTS{}/COUNT{} subqueries and unbounded variable-length paths.
 Scope. Match an entity on name, type (node label, e.g. :Service) and scope
 (env, site, namespace) together. Scope is stack-specific: relabel rules decide
 which label feeds each dimension (often cluster becomes env), and not every
-type carries all three. Discover values with 'gcx kg meta scopes' and per-type
-properties with 'gcx kg meta schema', over the same window and once per window;
-never guess them. A dimension that scopes lists only as "none" is unset: leave
-it out rather than filling it with another dimension's value. Scope values are
-plain node properties, e.g.
+type carries all three. Discover values with 'gcx kg meta scopes', over the same
+window and once per window; never guess them. A dimension that scopes lists only
+as "none" is unset: leave it out rather than filling it with another
+dimension's value. Scope values are plain node properties, e.g.
 'MATCH (s:Service {name: "checkout", env: "prod"}) RETURN s LIMIT 1'.
+
+Properties. Before writing a query, check that every property it uses is listed
+for that type in 'gcx kg meta schema' over the same window, e.g.
+--jq '.schema.entityTypes[] | select(.type == "Pod") | .properties'. A property
+that is not listed returns null.
 
 Relationships. Types and directions are schema-specific: check the
 'A --TYPE--> B' list in 'gcx kg meta schema', and match both directions when
