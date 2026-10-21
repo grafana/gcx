@@ -54,9 +54,10 @@ formulas; import untrusted CSV columns as text.
 Default table output is optimized for humans. Use -o raw for original line
 bodies, -o csv for original lines and separate label columns, or -o json for the full structured response.
 
-Default --limit is 50. Use --limit 0 for the backend default limit, not unlimited
-results. For counts, use 'gcx datasources loki metrics' with no time flags: an
-instant query returns one value per series.
+Default --limit is 50. --limit 0 omits the limit, so Loki's own default
+applies (100 lines in Loki's range-query API), not unlimited results. For
+counts, use 'gcx datasources loki metrics' with no time flags: an instant
+query returns one value per series.
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
 open it in your browser after the query succeeds.
 Use -o graph for a log-volume-over-time chart of the lines the query
@@ -184,7 +185,7 @@ backend's own line limits, so it can undercount a busy time range.`,
 	cmd.Flags().StringVar(&shared.Step, "step", "", "Query step (e.g., '15s', '1m')")
 	shared.SetupExprFlag(cmd.Flags())
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.loki is configured)")
-	cmd.Flags().IntVar(&limit, "limit", dsquery.DefaultLokiLimit, "Maximum number of log lines to return (0 uses the backend default limit)")
+	cmd.Flags().IntVar(&limit, "limit", dsquery.DefaultLokiLimit, "Maximum number of log lines to return (0 omits the limit, so Loki's default applies)")
 	share.Setup(cmd.Flags(), "executed query")
 
 	return cmd
