@@ -980,12 +980,15 @@ func loadLoginSourceContext(ctx context.Context, flags *loginOpts, contextName s
 	// an unnamed GRAFANA_SERVER to the current context first can reject that
 	// context's stored credential (or make it appear to be the mutation target)
 	// before we have inferred the server-derived context the user actually chose.
-	cfg, err := config.LoadLayered(ctx, flags.Config.ConfigFile)
+	cfg, err := config.LoadLayered(ctx, flags.Config.ConfigFile, config.FileScope)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return config.Config{}, nil, contextName, err
 	}
 	selectionServer := requestedLoginServer(flags.Server, nil)
-	sourceCtx, resolvedName := resolveSourceContext(cfg, contextName, selectionServer)
+	sourceCtx, resolvedName, err := resolveSourceContext(cfg, contextName, selectionServer)
+	if err != nil {
+		return config.Config{}, nil, contextName, err
+	}
 	if sourceCtx == nil {
 		// No configured context describes the requested server, so the reload
 		// below is skipped and the telemetry kind captured by the load above
@@ -1848,17 +1851,21 @@ func structuredClarificationError(e *login.ErrNeedClarification) error {
 //
 // When no name is given, the name is derived from --server so that
 // `gcx login --server <new>` doesn't clobber the unrelated current context.
-// With neither name nor server, falls back to the current context.
-func resolveSourceContext(cfg config.Config, contextName, server string) (*config.Context, string) {
+// With neither name nor server, falls back to the current context, except in
+// strict context mode, where inheriting it is refused.
+func resolveSourceContext(cfg config.Config, contextName, server string) (*config.Context, string, error) {
 	server = login.NormalizeServerURL(server)
 	switch {
 	case contextName != "":
-		return cfg.Contexts[contextName], contextName
+		return cfg.Contexts[contextName], contextName, nil
 	case server != "":
 		name := config.ContextNameFromServerURL(server)
-		return cfg.Contexts[name], name
+		return cfg.Contexts[name], name, nil
 	default:
-		return cfg.GetCurrentContext(), cfg.CurrentContext
+		if config.StrictContextEnabled() && cfg.CurrentContext != "" {
+			return nil, "", &config.ContextRequiredError{Inherited: cfg.CurrentContext, Available: cfg.ContextNames()}
+		}
+		return cfg.GetCurrentContext(), cfg.CurrentContext, nil
 	}
 }
 
