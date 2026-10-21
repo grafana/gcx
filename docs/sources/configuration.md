@@ -150,7 +150,7 @@ GRAFANA_SERVER='http://localhost:3000' GRAFANA_ORG_ID='1' gcx config check
 Depending on your authentication method, also set one of the following:
 
 - If you use a [Grafana service account](https://grafana.com/docs/grafana/latest/administration/service-accounts/) (recommended), set a [token](/cli-reference#environment-variables).
-- If you use basic authentication, set a [username](./cli-reference#grafana_user) and a [password](./cli-reference#grafana_password).
+- If you use basic authentication, set a [username](/cli-reference#grafana_user) and a [password](/cli-reference#grafana_password).
 
 After you configure authentication, you can start using `gcx`.
 
