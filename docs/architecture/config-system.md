@@ -476,8 +476,9 @@ Set `GCX_REQUIRE_CONTEXT=true` to refuse any load that would take its context
 from the `current-context` field of the file. Then another session's
 `config use-context` cannot retarget a command. A refused command exits with
 code 2. Name the context with `--context` or `GCX_CONTEXT`. `gcx login` and
-`gcx signup` ignore `GCX_CONTEXT`. They take a `CONTEXT_NAME` argument,
-`--context`, `--server` or `GRAFANA_SERVER`. Env-only setups use
+`gcx signup` ignore `GCX_CONTEXT`. `gcx login` takes a `CONTEXT_NAME` argument,
+`--context`, `--server` or `GRAFANA_SERVER`. `gcx signup` takes a
+`CONTEXT_NAME` argument or `--context`. Env-only setups use
 `--context default`. `config.LoadLayered` enforces the mode
 (`internal/config/loader.go`, `selection.go`) through `config.SelectContext`
 and `config.FileScope`. Commands that never load config are not affected.
