@@ -370,7 +370,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx kg suppressions list":    {Cost: "small"},
 	"gcx kg notifications list":   {Cost: "small", Hint: "[--category request|resource|health|slo] | list alert notification configs (AlertConfig); distinct from suppressions (disabled-alert configs)"},
 	"gcx kg notifications get":    {Cost: "small", Hint: "<name> | get one alert notification config by name (list-then-filter; no by-name GET on the backend)"},
-	"gcx kg notifications upsert": {Cost: "small", Hint: "-f notifications.yaml (or pipe YAML via stdin) | upsert (create or update) one or more alert notification configs; never deletes remote entries absent from the file"},
+	"gcx kg notifications upsert": {Cost: "small", Hint: "-f notifications.yaml (or pipe YAML from notifications get/list) | accepts an alertConfigs wrapper, one config, or a config list; exact field names required; never deletes absent remote entries"},
 	"gcx kg notifications delete": {Cost: "small"},
 	"gcx kg entities upsert":      {Cost: "small", Hint: "--domain <d> --type <Type> --name <n> [--scope k=v] [--property k=v] [--ttl 1h] | upsert a custom (API-origin) entity; experimental (KG write API, gated server-side)"},
 	"gcx kg entities delete":      {Cost: "small", Hint: "<Type--Name> --domain <d> [--scope k=v] [--force] | delete a custom entity; --scope must match the value used at upsert; experimental (KG write API, gated server-side)"},

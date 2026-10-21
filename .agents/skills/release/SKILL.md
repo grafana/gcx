@@ -21,7 +21,7 @@ Include affected users, exact before/after behaviour, and concrete migration ins
 
 ## Release
 
-Automated via `mise run tag`. Requires `claude` CLI and [`svu`](https://github.com/caarlos0/svu).
+Automated via `mise run tag`. Requires `claude` CLI; [`svu`](https://github.com/caarlos0/svu) comes from `mise install`.
 
 ```bash
 mise run tag -- patch   # or minor, major
