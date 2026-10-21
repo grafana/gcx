@@ -1,6 +1,55 @@
-## Unreleased
+## v1.7.0 (2026-10-20)
 
-- Classify CLI failures with consistent category summaries and preserve operation context, server messages, codes, and trace IDs without repeated diagnostics. HTTP 401/403 errors carried by shared provider transports, Assistant helpers, and `gcx api`, missing Cloud credentials, and missing SM credentials/stack prerequisites now exit 3 instead of 1; the instrumentation mutual-exclusion error converter now assigns exit 2 instead of 1 (the current setup command does not emit its sentinel). HTML error pages are replaced with generic API-response details while retaining auth classification; `gcx api` continues to show the full body. Fleet 404s mean `Resource not found` only for Connect `code: "not_found"`; other 404s mean `Endpoint not available`.
+### Breaking changes
+
+- Some failures now exit with different codes. HTTP 401/403 from product
+  commands, Assistant helpers and `gcx api`, and missing Cloud or Synthetic
+  Monitoring credentials exit 3 instead of 1. Unknown flags and missing or
+  extra positional arguments exit 2 instead of 1. Error summaries use a fixed
+  vocabulary (`Authentication failed`, `Authorization failed`,
+  `Resource not found`, `Resource conflict`, `Invalid command usage`).
+  Update scripts that branch on exit 1 or match the old error text. (#1483)
+- Contact points, notification policies, templates and mute timings that gcx
+  writes now stay editable in the Grafana UI by default. Pass
+  `--allow-ui-updates=false` to keep them provisioned. Updating a contact
+  point that is already provisioned requires `--allow-ui-updates=false`;
+  without it Grafana rejects the update. Alert rules are unchanged. (#1553)
+- `gcx synthetic-monitoring checks status` and `checks get --show-status` now
+  read from the Synthetic Monitoring datasource and require Synthetic
+  Monitoring app v1.64.0 or later. `SUCCESS` (JSON `success`) is now
+  reachability over 3 hours instead of a 5-minute `probe_success` average, so
+  some checks may change between `OK` and `FAILING`. `--datasource-uid` is
+  hidden and ignored; it is still accepted, with a warning. (#1489)
+- `gcx logs query` and `gcx datasources loki query` (including generic
+  `datasources query` against Loki) now reject metric queries such as
+  `rate(...)` in every output format, instead of printing metric values as
+  log lines. Run metric queries with `gcx logs metrics`. (#1580)
+
+### New commands and improvements
+
+- Add Assistant Watchers: inspect, export, create, update and lifecycle commands
+- Watchers: run history, version restore, calibration and notification routing
+- Add alerting time interval and template group workflows
+- Add `kg` graph queries and threshold commands; deprecate legacy entity queries
+- Improve `kg` graph query and meta schema help, with `--jq` examples
+- Add `synthetic-monitoring suggestions list`
+- Add CSV output (`-o csv`) for Prometheus, Loki, SQL, tabular, Cloud,
+  search-metrics, Tempo and Pyroscope queries
+- Add `datasources loki query-patterns` and `logs query-patterns`
+- Render `-o graph` for Loki log queries as a log-volume histogram
+- Describe the profiling workflow in `profiles` help
+- Select the active context with the `GCX_CONTEXT` environment variable
+- Detect Hermes Agent and OpenClaw to turn on agent mode
+- Publish a container image to ghcr.io and Docker Hub, signed with keyless cosign
+- Make SLO, Synthetic, Alerting, k6, Fleet, stack and telemetry tables consistent
+- Fix decoding of SLOs that use grafanaQueries
+- Fix `irm oncall schedules list-final-shifts` ignoring `--start`
+- Fix OAuth login callback by using an OS-assigned port
+- Fix config validation errors and legacy mTLS with env-only auth or tokens
+- Fix Linux keychain prompting for unlock in headless sessions
+- Fix instrumentation sending a Pyroscope URL ending in `/ingest`
+- Sandbox recovers from a broken compilation cache and reports why
+- Docs: CLI reference now ships with releases; added Grafana MCP comparison
 
 ## v1.6.0 (2026-10-13)
 
