@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -200,7 +201,7 @@ func sweepInvoke(args []string, pass sweepPass) (sweepRun, error) {
 	var cmd *exec.Cmd
 	env := strictBaseEnv()
 	if bin := os.Getenv(sweepBinaryEnv); bin != "" {
-		cmd = exec.CommandContext(ctx, bin, full...) //nolint:gosec
+		cmd = exec.CommandContext(ctx, bin, full...)
 	} else {
 		encoded, err := json.Marshal(full)
 		if err != nil {
@@ -283,7 +284,7 @@ func sweepHasFlag(cmd *cobra.Command, long string) bool {
 }
 
 func sweepShapes(path []string, hasYes bool) [][]string {
-	var shapes [][]string
+	shapes := make([][]string, 0, 3)
 	for _, extra := range [][]string{nil, {"x"}, {"x", "x"}} {
 		args := append(append([]string(nil), path...), extra...)
 		if hasYes {
@@ -294,6 +295,7 @@ func sweepShapes(path []string, hasYes bool) [][]string {
 	return shapes
 }
 
+//nolint:gocyclo,maintidx // one linear sweep-and-report flow
 func TestStrictContextSweep_InheritedEndpointNeverHit(t *testing.T) {
 	if os.Getenv(sweepGate) != "1" {
 		t.Skip("set " + sweepGate + "=1 to run the command sweep")
@@ -356,7 +358,7 @@ func TestStrictContextSweep_InheritedEndpointNeverHit(t *testing.T) {
 			defer wg.Done()
 			defer func() { <-sem }()
 			run, err := sweepInvoke(j.args, j.pass)
-			run.Shape = fmt.Sprintf("%d", j.shape)
+			run.Shape = strconv.Itoa(j.shape)
 			mu.Lock()
 			defer mu.Unlock()
 			if err != nil {
@@ -390,7 +392,7 @@ func TestStrictContextSweep_InheritedEndpointNeverHit(t *testing.T) {
 			reaching++
 			sc.reaching = []string{}
 			for i := range reachedShapes {
-				sc.reaching = append(sc.reaching, fmt.Sprint(i))
+				sc.reaching = append(sc.reaching, strconv.Itoa(i))
 			}
 			sort.Strings(sc.reaching)
 			reachSet = append(reachSet, sc.Path)
