@@ -122,6 +122,7 @@ func TestStatsCmd_BytesIsTheSoleResultWithNoDuplicateStderrDiagnostic(t *testing
 		stdout, stderr, err := execStatsCmd(t, "-o", "table")
 		require.NoError(t, err)
 		assert.Contains(t, stdout, "36 MiB would be scanned")
+		assert.NotContains(t, stdout, "⚠")
 		assert.Empty(t, stderr)
 	})
 
@@ -132,6 +133,11 @@ func TestStatsCmd_BytesIsTheSoleResultWithNoDuplicateStderrDiagnostic(t *testing
 		assert.Contains(t, stdout, `"bytes"`)
 		assert.Empty(t, stderr)
 	})
+}
+
+func TestStatsCmd_RejectsReversedTimeRange(t *testing.T) {
+	_, _, err := execStatsCmd(t, "--from", "now", "--to", "now-1h")
+	require.ErrorContains(t, err, "must be before end")
 }
 
 // TestStatsCmd_QueriesSelectorsConcurrently pins the fix for the "batch I/O
