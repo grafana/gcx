@@ -273,3 +273,14 @@ func TestLoadLayered_StrictRefusalWinsOverLaterOverrideError(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadLayered_StrictFileScopeFirstBeatsFailingOverride(t *testing.T) {
+	scrubStrictEnv(t)
+	t.Setenv("GCX_REQUIRE_CONTEXT", "true")
+	file := selectionTargets()[0].setup(t, selectionConfig)
+	boom := errors.New("env override failed")
+
+	_, err := config.LoadLayered(t.Context(), file, config.FileScope, config.SelectContext(""), func(*config.Config) error { return boom })
+	require.ErrorIs(t, err, boom)
+	require.NotErrorIs(t, err, config.ErrContextRequired)
+}

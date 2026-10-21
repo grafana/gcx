@@ -1471,3 +1471,22 @@ func TestOptionsLoadConfig_StrictAcceptsGCXContext(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "b", cfg.CurrentContext)
 }
+
+// A failing env override must surface as itself for file-scoped commands, not be
+// replaced by the strict refusal (FileScope has to run before anything that can fail).
+func TestConfigCommands_StrictFileScopedEnvError(t *testing.T) {
+	isolateStateHome(t)
+	t.Setenv("GCX_REQUIRE_CONTEXT", "true")
+	t.Setenv("GCX_CONTEXT", "")
+	t.Setenv("GRAFANA_ORG_ID", "not-a-number")
+
+	for _, cmd := range []string{"view", "current-context", "list-contexts"} {
+		t.Run(cmd, func(t *testing.T) {
+			configFile := testutils.CreateTempFile(t, strictCommandConfig)
+			_, err := runConfigCmd(t, "--config", configFile, cmd)
+			require.Error(t, err)
+			require.NotErrorIs(t, err, internalconfig.ErrContextRequired)
+			require.Contains(t, err.Error(), "GRAFANA_ORG_ID")
+		})
+	}
+}

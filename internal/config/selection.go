@@ -84,6 +84,10 @@ func SelectContext(name string) Override {
 // FileScope is an Override for loads that inspect the config file itself rather
 // than a context's target, so strict context mode does not apply to them.
 //
+// Apply it before any override that can fail (SelectContext with a name, env
+// parsing): the loader stops at the first failing override, so a FileScope placed
+// after one never runs and the load is treated as an unscoped, inherited one.
+//
 //nolint:gochecknoglobals // Stateless Override value used like a constant at call sites.
 var FileScope Override = func(cfg *Config) error {
 	cfg.fileScoped = true

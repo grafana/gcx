@@ -214,6 +214,8 @@ func TestStrictContext_Accepted(t *testing.T) {
 		{strictCase{name: "env", args: []string{"api", "/api/health"}, env: []string{"GCX_CONTEXT=selected"}}, refused},
 		{strictCase{name: "config check with flag", args: []string{"config", "check", "--context", "selected"}}, "Current context: selected"},
 		{strictCase{name: "env-only setup", args: []string{"--context", "default", "api", "/api/health"}, noConfig: true, env: envOnly}, refused},
+		// A failing env override must not turn a file-scoped command into a refusal.
+		{strictCase{name: "config view with invalid env", args: []string{"config", "view"}, env: []string{"GRAFANA_ORG_ID=not-a-number"}}, "GRAFANA_ORG_ID"},
 		// login derives its target from GRAFANA_SERVER and, with stdin not a TTY,
 		// must fail fast; reaching the health check proves target resolution passed.
 		{strictCase{name: "login with server", args: []string{"login", "--yes"}, env: []string{"GRAFANA_SERVER=" + strictUnreachable, "GRAFANA_TOKEN=x"}}, "health check failed"},
