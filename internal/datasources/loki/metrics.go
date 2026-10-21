@@ -38,7 +38,13 @@ Use --share-link to print the equivalent Grafana Explore URL, or --open to
 open it in your browser after the query succeeds. There is no
 --drilldown-link here: every metric LogQL expression is wrapped in an
 aggregation function (rate, count_over_time, ...), which Logs Drilldown's
-filter model can never represent — use 'loki query' for Drilldown links.`,
+filter model can never represent — use 'loki query' for Drilldown links.
+
+On Grafana Cloud targets, a query cost guardrail runs first: the query is
+estimated with Loki index-stats and refused, with guidance on how to narrow it,
+when it exceeds the tenant's byte budget or time-range cap. There is no flag to
+bypass it. In agent mode a query that cannot be assessed is also refused.
+Self-hosted Grafana targets are not guarded.`,
 		Example: `
   # Rate of log lines over 5 minutes
   gcx datasources loki metrics 'rate({job="varlogs"}[5m])' --since 1h -o table
@@ -94,6 +100,10 @@ filter model can never represent — use 'loki query' for Drilldown links.`,
 				Start: start,
 				End:   end,
 				Step:  step,
+			}
+
+			if err := guardQuery(ctx, cfgCtx, cfg, client, cmd.ErrOrStderr(), datasourceUID, expr, req.IsRange(), start, end, now); err != nil {
+				return err
 			}
 
 			resp, err := client.MetricQuery(ctx, datasourceUID, req)
