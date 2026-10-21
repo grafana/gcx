@@ -170,7 +170,7 @@ Refer to [Authentication](/docs/sources/authentication) for the available paths 
 
 `gcx` is compatible with any AI agent. Agent mode uses known identity signals, including Codex and Gemini CLI. For tools without a native signal, set `GCX_AGENT_NAME` to a supported label. Refer to [agent detection and harness names](docs/design/environment-variables.md#agent-mode-variables) for details.
 
-If you're contributing a new Grafana domain capability to `gcx`, ask your coding agent to use [`integrate-with-gcx`](.claude/skills/integrate-with-gcx/SKILL.md) before choosing a command, provider, or data source path.
+If you're contributing a new Grafana domain capability to `gcx`, ask your coding agent to use [`contribute`](.agents/skills/contribute/SKILL.md) before choosing a command, provider, or data source path.
 
 ### Install agent skills
 
