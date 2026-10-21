@@ -61,21 +61,12 @@ func (opts *Options) EffectiveContext() string {
 // This function should only be used by config-related commands, to allow the
 // user to iterate on the configuration until it becomes valid.
 func (opts *Options) LoadConfigTolerant(ctx context.Context, extraOverrides ...config.Override) (config.Config, error) {
-	var overrides []config.Override
-
 	// Select the target context before applying context-scoped environment
 	// variables. Otherwise --context switches only after env values have already
-	// been written into the context named by current-context.
-	if contextName := opts.EffectiveContext(); contextName != "" {
-		overrides = append(overrides, func(cfg *config.Config) error {
-			if !cfg.HasContext(contextName) {
-				return config.ContextNotFound(contextName, cfg.ContextNames())
-			}
-
-			cfg.CurrentContext = contextName
-			return nil
-		})
-	}
+	// been written into the context named by current-context. The selection is
+	// always declared, even when empty, so strict context mode can tell an
+	// inherited current-context from a named one.
+	overrides := []config.Override{config.SelectContext(opts.EffectiveContext())}
 
 	overrides = append(overrides,
 		// If Grafana-related env variables are set, use them to configure the
@@ -185,7 +176,7 @@ func (opts *Options) LoadGrafanaConfigWithContext(ctx context.Context) (config.N
 // This function should only be used by config-related commands, to allow the
 // user to iterate on the configuration until it becomes valid.
 func (opts *Options) loadConfigTolerantLayered(ctx context.Context) (config.Config, error) {
-	return config.LoadLayered(ctx, opts.ConfigFile)
+	return config.LoadLayered(ctx, opts.ConfigFile, config.FileScope)
 }
 
 func (opts *Options) ConfigSource() config.Source {
@@ -342,7 +333,7 @@ func viewCmd(configOpts *Options) *cobra.Command {
 				return err
 			}
 
-			cfg, err := configOpts.LoadConfigTolerant(cmd.Context())
+			cfg, err := configOpts.LoadConfigTolerant(cmd.Context(), config.FileScope)
 			if err != nil {
 				return err
 			}
@@ -435,7 +426,7 @@ func currentContextCmd(configOpts *Options) *cobra.Command {
 				return err
 			}
 
-			cfg, err := configOpts.LoadConfigTolerant(cmd.Context())
+			cfg, err := configOpts.LoadConfigTolerant(cmd.Context(), config.FileScope)
 			if err != nil {
 				return err
 			}
@@ -510,7 +501,7 @@ func listContextsCmd(configOpts *Options) *cobra.Command {
 				return err
 			}
 
-			cfg, err := configOpts.LoadConfigTolerant(cmd.Context())
+			cfg, err := configOpts.LoadConfigTolerant(cmd.Context(), config.FileScope)
 			if err != nil {
 				return err
 			}
@@ -851,7 +842,7 @@ user config), use --file to choose which layer to update.`,
 			// Cross-layer load: a context defined only in the user layer is
 			// still a valid target when --file local is specified, and the
 			// interactive picker needs the merged view.
-			layered, err := config.LoadLayered(cmd.Context(), configOpts.ConfigFile)
+			layered, err := config.LoadLayered(cmd.Context(), configOpts.ConfigFile, config.FileScope)
 			if err != nil {
 				return err
 			}

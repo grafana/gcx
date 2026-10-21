@@ -1415,3 +1415,59 @@ contexts:
 		},
 	}.Run(t)
 }
+
+const strictCommandConfig = `version: 1
+stacks:
+  a:
+    grafana:
+      server: https://a.example.com
+      org-id: 1
+  b:
+    grafana:
+      server: https://b.example.com
+      org-id: 1
+contexts:
+  a:
+    stack: a
+  b:
+    stack: b
+current-context: a
+`
+
+func TestConfigCommands_StrictFileScoped(t *testing.T) {
+	isolateStateHome(t)
+	t.Setenv("GCX_REQUIRE_CONTEXT", "true")
+	t.Setenv("GCX_CONTEXT", "")
+
+	for _, args := range [][]string{
+		{"view"},
+		{"current-context"},
+		{"list-contexts"},
+		{"path"},
+		{"use-context", "b"},
+		{"set", "stacks.a.grafana.server", "x"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			configFile := testutils.CreateTempFile(t, strictCommandConfig)
+			_, err := runConfigCmd(t, append([]string{"--config", configFile}, args...)...)
+			require.NoError(t, err)
+		})
+	}
+
+	t.Run("check stays enforced", func(t *testing.T) {
+		configFile := testutils.CreateTempFile(t, strictCommandConfig)
+		_, err := runConfigCmd(t, "--config", configFile, "check")
+		require.ErrorIs(t, err, internalconfig.ErrContextRequired)
+	})
+}
+
+func TestOptionsLoadConfig_StrictAcceptsGCXContext(t *testing.T) {
+	t.Setenv("GCX_REQUIRE_CONTEXT", "true")
+	t.Setenv("GCX_CONTEXT", "b")
+	configFile := testutils.CreateTempFile(t, strictCommandConfig)
+
+	opts := &config.Options{ConfigFile: configFile}
+	cfg, err := opts.LoadConfig(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, "b", cfg.CurrentContext)
+}
