@@ -45,7 +45,7 @@ This flow:
 
 1. Opens a browser for OAuth.
 1. Saves the access token.
-1. Refreshes the token and proxy endpoint to the `my-stack` context's named stack entry and makes the context current. 
+1. Saves the access token, refresh token, and proxy endpoint to the `my-stack` context's named stack entry, and makes the context current.
 1. `gcx` stops before the browser flow when the current process cannot write to the OS credential store. 
 
 Note that agent users must approve the same command outside the sandbox. Refer to [Keychain credential storage](/keychain).
