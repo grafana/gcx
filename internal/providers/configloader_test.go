@@ -1722,7 +1722,9 @@ func TestConfigLoader_StrictRefusesInheritedContext(t *testing.T) {
 			named := &providers.ConfigLoader{}
 			named.SetConfigFile(cfgFile)
 			named.SetContextName("b")
-			assert.NotErrorIs(t, load(named), internalconfig.ErrContextRequired)
+			namedErr := load(named)
+			require.NotErrorIs(t, namedErr, internalconfig.ErrContextRequired)
+			require.NotErrorIs(t, namedErr, internalconfig.ErrContextSelectionUndeclared)
 		})
 	}
 }

@@ -217,6 +217,11 @@ func convertConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 			"Or set GCX_CONTEXT=<name> for this shell",
 			"Or turn strict mode off: unset GCX_REQUIRE_CONTEXT",
 		}
+		if reqErr != nil && reqErr.Login {
+			// login ignores GCX_CONTEXT, so suggesting it cannot help.
+			suggestions[0] = "Pass a context name: gcx login <name>, or --context <name> / --server <url>"
+			suggestions = append(suggestions[:1], suggestions[2:]...)
+		}
 		if len(available) > 0 {
 			suggestions = append(suggestions, "Configured contexts: "+cappedNameList(available))
 		}

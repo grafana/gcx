@@ -2115,3 +2115,20 @@ func TestErrorToDetailedError_ContextRequired(t *testing.T) {
 	assert.Contains(t, got.Suggestions,
 		"Configured contexts: a, b, c, d, e, +2 more")
 }
+
+func TestErrorToDetailedError_ContextRequired_Login(t *testing.T) {
+	got := toDetailedError(t, &config.ContextRequiredError{
+		Inherited: "prod",
+		Available: []string{"a", "b"},
+		Login:     true,
+	})
+
+	require.NotNil(t, got)
+	for _, s := range got.Suggestions {
+		assert.NotContains(t, s, "GCX_CONTEXT", "login ignores GCX_CONTEXT")
+	}
+	assert.Contains(t, got.Suggestions,
+		"Pass a context name: gcx login <name>, or --context <name> / --server <url>")
+	assert.Contains(t, got.Suggestions, "Or turn strict mode off: unset GCX_REQUIRE_CONTEXT")
+	assert.Contains(t, got.Suggestions, "Configured contexts: a, b")
+}

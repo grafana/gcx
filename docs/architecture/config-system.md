@@ -910,7 +910,7 @@ pipelines.
 | `GCX_AUTO_APPROVE` | `--yes` / `-y` | Auto-enables `--force` on delete |
 | `GCX_NO_UPDATE_NOTIFIER` | (none) | Disables the periodic gcx/skill update notifier when non-empty |
 | `GCX_KEYCHAIN` | (none) | `off` stores credentials in plaintext in the config file instead of the OS keychain |
-| `GCX_REQUIRE_CONTEXT` | (none) | Require `--context` on commands that reach Grafana; see [Strict Context Mode](#strict-context-mode) |
+| `GCX_REQUIRE_CONTEXT` | (none) | Refuse commands that would fall back to `current-context`; name one with `--context` or `GCX_CONTEXT`; see [Strict Context Mode](#strict-context-mode) |
 
 See [environment-variables.md](../design/environment-variables.md) for the full environment
 variable reference.

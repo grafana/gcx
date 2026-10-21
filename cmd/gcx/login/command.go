@@ -1863,7 +1863,10 @@ func resolveSourceContext(cfg config.Config, contextName, server string) (*confi
 		return cfg.Contexts[name], name, nil
 	default:
 		if config.StrictContextEnabled() && cfg.CurrentContext != "" {
-			return nil, "", &config.ContextRequiredError{Inherited: cfg.CurrentContext, Available: cfg.ContextNames()}
+			// The pre-load captured the inherited context's target kind; a
+			// refused login must report none.
+			config.ClearCapturedTargetKind()
+			return nil, "", &config.ContextRequiredError{Inherited: cfg.CurrentContext, Available: cfg.ContextNames(), Login: true}
 		}
 		return cfg.GetCurrentContext(), cfg.CurrentContext, nil
 	}

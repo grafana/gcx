@@ -2720,3 +2720,35 @@ func TestRunLogin_StrictEmptyPositionalRefused(t *testing.T) {
 	require.ErrorIs(t, err, config.ErrContextRequired)
 	assert.Zero(t, browser.started())
 }
+
+// TestLoadLoginSourceContext_StrictRefusalClearsTargetKind pins that a refused
+// strict login reports no target kind, even though the pre-load captured the
+// inherited context's.
+func TestLoadLoginSourceContext_StrictRefusalClearsTargetKind(t *testing.T) {
+	t.Setenv("GCX_REQUIRE_CONTEXT", "true")
+	t.Setenv("GCX_KEYCHAIN", "off")
+	cfgFile := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, os.WriteFile(cfgFile, []byte(`version: 1
+stacks:
+  a:
+    grafana:
+      server: https://a.grafana.net
+      token: x
+contexts:
+  a:
+    stack: a
+current-context: a
+`), 0o600))
+	config.ClearCapturedTargetKind()
+	t.Cleanup(config.ClearCapturedTargetKind)
+	// Prime a non-unknown kind, as the pre-load of the inherited context does.
+	config.CaptureTargetKindForServer("https://a.grafana.net")
+	require.NotEqual(t, string(config.TargetKindUnknown), config.CapturedTargetKind())
+
+	flags := &loginOpts{}
+	flags.Config.ConfigFile = cfgFile
+	_, src, _, err := loadLoginSourceContext(t.Context(), flags, "")
+	require.ErrorIs(t, err, config.ErrContextRequired)
+	assert.Nil(t, src)
+	assert.Equal(t, string(config.TargetKindUnknown), config.CapturedTargetKind())
+}

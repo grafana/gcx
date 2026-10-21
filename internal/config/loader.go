@@ -508,6 +508,9 @@ func CreateDefaultConfigFile(file string) error {
 // Load reads the config document named by source. It reads the ambient config
 // layer, if a caller set one through ContextWithConfigSource, once here and
 // passes it down as an explicit option.
+// This load is not checked by strict context mode. A caller that then uses
+// CurrentContext to target a stack must resolve the name through
+// ResolveContextName or an enforced LoadLayered.
 func Load(ctx context.Context, source Source, overrides ...Override) (Config, error) {
 	return load(ctx, source, loadOptions{layer: configLayerFromCtx(ctx)}, overrides...)
 }
@@ -525,6 +528,10 @@ func Load(ctx context.Context, source Source, overrides ...Override) (Config, er
 // It takes a whole Config rather than an exported policy value deliberately:
 // the policy type is private, so a caller cannot manufacture a plaintext
 // opt-out without first loading trusted configuration.
+//
+// This load is not checked by strict context mode. A caller that then uses
+// CurrentContext to target a stack must resolve the name through
+// ResolveContextName or an enforced LoadLayered.
 func LoadUnderResolvedPolicy(ctx context.Context, source Source, resolved Config, overrides ...Override) (Config, error) {
 	opts := loadOptions{layer: configLayerFromCtx(ctx)}
 	if resolved.keychainPolicy.source != "" {
@@ -1367,6 +1374,10 @@ func loadLayeredSources(ctx context.Context, sources []ConfigSource, opts loadOp
 //
 // explicitFile is the value of the --config flag; fileType is the value of
 // the --file flag. Both may be empty.
+//
+// This load is not checked by strict context mode. A caller that then uses
+// CurrentContext to target a stack must resolve the name through
+// ResolveContextName or an enforced LoadLayered.
 func LoadForWrite(ctx context.Context, explicitFile, fileType string) (Config, Source, error) {
 	return loadForWrite(ctx, explicitFile, fileType, loadOptions{layer: configLayerFromCtx(ctx)})
 }
