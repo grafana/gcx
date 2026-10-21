@@ -474,16 +474,14 @@ Returns `nil` if `CurrentContext` is empty or not found — callers must check.
 
 Set `GCX_REQUIRE_CONTEXT=true` to refuse any load whose context would come from
 the file's `current-context`, so another session's `config use-context` cannot
-retarget a command. A context is named by `--context` or `GCX_CONTEXT`;
-`gcx login` and `gcx signup` also accept a `CONTEXT_NAME` argument, `--server`
-or `GRAFANA_SERVER`. `GRAFANA_SERVER` alone does not count elsewhere. Env-only
-setups (no config file) use `--context default`. A refusal exits 2.
-
-Enforcement lives in `config.LoadLayered` (`internal/config/loader.go`,
-`selection.go`), driven by `config.SelectContext` and `config.FileScope`, so
-commands that never load config are unaffected. `config view`, `current-context`,
-`list-contexts`, `path`, `use-context`, `set` and `unset` are never refused;
-`config check` is.
+retarget a command (exit 2). `--context` or `GCX_CONTEXT` names a context, except
+for `gcx login`/`signup`, which ignore `GCX_CONTEXT` and take a `CONTEXT_NAME`
+argument, `--context`, `--server` or `GRAFANA_SERVER`. Env-only setups use
+`--context default`. Enforcement lives in `config.LoadLayered`
+(`internal/config/loader.go`, `selection.go`) via `config.SelectContext` and
+`config.FileScope`, so commands that never load config are unaffected.
+`config view`, `current-context`, `list-contexts`, `path`, `use-context`, `set`
+and `unset` are never refused; `config check` is.
 
 ---
 
