@@ -7,7 +7,7 @@ labels:
     - cloud
     - enterprise
     - oss
-weight: 3
+weight: 5
 ---
 
 # Configure `gcx`

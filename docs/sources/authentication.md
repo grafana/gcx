@@ -7,7 +7,7 @@ labels:
     - cloud
     - enterprise
     - oss
-weight: 3
+weight: 4
 ---
 
 # Authenticate `gcx`
