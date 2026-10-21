@@ -68,8 +68,9 @@ name.
 --filter matches the telemetry's own label names rather than these column
 headings, so it reaches labels the table does not show: "--filter
 cluster=eu-west" and "--filter deployment_environment=prod" both work.
-Namespace and environment are reported under -o json and -o yaml rather than
-as columns.
+Namespace and environment come from the collector's "service_namespace" and
+"deployment_environment" labels, lifted out of the label map into fields of
+their own: environment is a column, namespace appears under -o wide.
 
 NAME and HOST are where a heading and its label diverge. Both match the
 instance endpoint, so on a stack that sets a service name — which NAME shows
@@ -216,7 +217,9 @@ func InstancesTable() cmdio.Table[Instance] {
 			{Header: "NAME", Content: func(i Instance) string { return orDash(i.Name) }},
 			{Header: "ENGINE", Content: func(i Instance) string { return orDash(i.Engine) }},
 			{Header: "VERSION", Content: func(i Instance) string { return orDash(i.EngineVersion) }},
+			{Header: "ENVIRONMENT", Content: func(i Instance) string { return orDash(i.Environment) }},
 			{Header: "PROVIDER", Content: func(i Instance) string { return orDash(i.ProviderName) }},
+			{Header: "NAMESPACE", Visible: cmdio.WideOnly, Content: func(i Instance) string { return orDash(i.Namespace) }},
 			{Header: "HOST", Visible: cmdio.WideOnly, Content: func(i Instance) string { return orDash(i.Host) }},
 			{Header: "IDENTIFIER", Visible: cmdio.WideOnly, Content: func(i Instance) string { return orDash(i.InstanceIdentifier) }},
 			{Header: "REGION", Visible: cmdio.WideOnly, Content: func(i Instance) string { return orDash(i.ProviderRegion) }},

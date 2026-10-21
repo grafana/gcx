@@ -22,6 +22,10 @@ func TestInstancesTable_Encode(t *testing.T) {
 			ProviderName:       "aws",
 			ProviderRegion:     "eu-west-1",
 			InstanceIdentifier: "prod-postgres-1-rds",
+			// Lifted out of the collector's labels, which is where the two
+			// columns below get their values.
+			Environment: "production",
+			Namespace:   "payments",
 		},
 	}
 
@@ -31,12 +35,12 @@ func TestInstancesTable_Encode(t *testing.T) {
 	}
 	out := buf.String()
 
-	for _, want := range []string{"NAME", "ENGINE", "VERSION", "PROVIDER", "prod-postgres-1", "postgres", "17.9", "aws"} {
+	for _, want := range []string{"NAME", "ENGINE", "VERSION", "ENVIRONMENT", "PROVIDER", "prod-postgres-1", "postgres", "17.9", "aws", "production"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("table output missing %q\n---\n%s", want, out)
 		}
 	}
-	for _, notWant := range []string{"HOST", "IDENTIFIER", "REGION", "SERVER ID", "eu-west-1", items[0].ServerID} {
+	for _, notWant := range []string{"HOST", "IDENTIFIER", "REGION", "SERVER ID", "NAMESPACE", "eu-west-1", "payments", items[0].ServerID} {
 		if strings.Contains(out, notWant) {
 			t.Errorf("narrow table should not show %q (wide-only), got:\n%s", notWant, out)
 		}
@@ -108,9 +112,9 @@ func TestInstancesTable_Encode_MissingFields(t *testing.T) {
 			dashes++
 		}
 	}
-	// Absent: engine, version, provider, host, identifier, region.
-	// Present: name, server_id.
-	if want := 6; dashes != want {
+	// Absent: engine, version, environment, provider, namespace, host,
+	// identifier, region. Present: name, server_id.
+	if want := 8; dashes != want {
 		t.Errorf("expected %d dash cells for the absent fields, got %d in %q", want, dashes, dataLine)
 	}
 }
