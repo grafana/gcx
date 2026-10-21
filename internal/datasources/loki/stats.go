@@ -74,7 +74,7 @@ func StatsCmd(loader *providers.ConfigLoader) *cobra.Command {
 		Long: `Query Loki's index-stats endpoint for a label matcher and time range.
 
 Returns the estimated bytes scanned WITHOUT executing the query — useful to
-estimate the cost of a query before running it with 'loki query' or 'loki metrics'.
+estimate the cost of a query before running it with 'query' or 'metrics'.
 
 EXPR is the LogQL expression to evaluate (the same expression accepted by
 'query'/'metrics' can be reused as-is) — only its stream selector(s) (the
@@ -97,7 +97,13 @@ question this command answers, but remain available via -o json/-o yaml.`,
   gcx datasources loki stats -d UID '{job="varlogs"}' --since 1h
 
   # Output as JSON
-  gcx datasources loki stats -d UID '{job="varlogs"}' --since 1h -o json`,
+  gcx datasources loki stats -d UID '{job="varlogs"}' --since 1h -o json
+
+  # Explicit window
+  gcx datasources loki stats -d UID '{job="varlogs"}' --from now-6h --to now-1h
+
+  # A range vector widens the window by its [24h] lookback
+  gcx logs stats -d UID 'rate({job="varlogs"}[24h])' --since 1h`,
 		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Validate(); err != nil {
@@ -131,6 +137,9 @@ question this command answers, but remain available via -o json/-o yaml.`,
 			if err != nil {
 				return err
 			}
+			if opts.Time.IsRange() && !start.Before(end) {
+				return fmt.Errorf("invalid time range: start (%s) must be before end (%s)", start.Format(time.RFC3339), end.Format(time.RFC3339))
+			}
 			start, end = resolveStatsWindow(expr, opts.Time.IsRange(), start, end, now)
 
 			client, err := loki.NewClient(cfg)
@@ -148,7 +157,7 @@ question this command answers, but remain available via -o json/-o yaml.`,
 				g.Go(func() error {
 					selectorResp, err := client.IndexStats(gCtx, datasourceUID, selector, start, end)
 					if err != nil {
-						return fmt.Errorf("failed to get index stats for selector %s: %w", selector, err)
+						return fmt.Errorf("failed to get index stats for selector %q: %w", selector, err)
 					}
 					selectorResps[i] = selectorResp
 					return nil

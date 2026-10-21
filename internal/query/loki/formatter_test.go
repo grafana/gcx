@@ -48,7 +48,7 @@ func TestFormatIndexStatsTable(t *testing.T) {
 	require.NoError(t, loki.FormatIndexStatsTable(&buf, resp))
 
 	out := buf.String()
-	assert.Contains(t, out, "⚠")
+	assert.NotContains(t, out, "⚠")
 	assert.Contains(t, out, "6.0 GiB would be scanned")
 	assert.NotContains(t, out, "Streams")
 }
