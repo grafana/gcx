@@ -126,16 +126,32 @@ func inheritedRefusal(cfg *Config) error {
 }
 
 // ResolveContextName picks the context to use. It returns the explicit override
-// when set, then the current context of the config, then the default. Strict
-// context mode refuses the fallback to a non-empty current context.
+// when set. Otherwise it follows the selection that the load recorded.
+//
+// An explicit or empty selection returns the current context, or the default
+// when that is empty. Strict context mode does not refuse these, because the
+// file did not supply the name. An inherited selection is refused in strict
+// mode. That load already failed, so this is a second check.
+//
+// A config without a recorded selection comes from a raw Load call. For it,
+// strict context mode refuses a non-empty current context. Outside strict mode,
+// all cases return the current context, or the default when that is empty.
 func ResolveContextName(override string, cfg Config) (string, error) {
 	if override != "" {
 		return override, nil
 	}
-	if cfg.CurrentContext != "" {
-		if StrictContextEnabled() {
+	if StrictContextEnabled() {
+		switch cfg.contextSelection {
+		case selectionExplicit, selectionNone:
+		case selectionInherited:
 			return "", &ContextRequiredError{Inherited: cfg.CurrentContext, Available: cfg.ContextNames()}
+		case selectionUndeclared:
+			if cfg.CurrentContext != "" {
+				return "", &ContextRequiredError{Inherited: cfg.CurrentContext, Available: cfg.ContextNames()}
+			}
 		}
+	}
+	if cfg.CurrentContext != "" {
 		return cfg.CurrentContext, nil
 	}
 	return DefaultContextName, nil

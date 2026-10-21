@@ -204,28 +204,61 @@ func TestLoadForWrite_StrictNotEnforced(t *testing.T) {
 }
 
 func TestResolveContextName(t *testing.T) {
-	withCurrent := config.Config{CurrentContext: "a"}
+	// selected builds a config whose recorded selection has the given state.
+	selected := func(t *testing.T, current, name string) config.Config {
+		t.Helper()
+		cfg := config.Config{
+			Contexts:       map[string]*config.Context{"a": {}, "b": {}},
+			CurrentContext: current,
+		}
+		require.NoError(t, config.SelectContext(name)(&cfg))
+		return cfg
+	}
+	undeclared := func(current string) config.Config {
+		return config.Config{CurrentContext: current}
+	}
 
 	tests := []struct {
 		name     string
 		strict   string
 		override string
-		cfg      config.Config
+		cfg      func(t *testing.T) config.Config
 		want     string
 		wantErr  bool
 	}{
-		{name: "override wins", override: "x", cfg: withCurrent, want: "x"},
-		{name: "override wins in strict", strict: "true", override: "x", cfg: withCurrent, want: "x"},
-		{name: "current context, non-strict", cfg: withCurrent, want: "a"},
-		{name: "inherited current context refused in strict", strict: "true", cfg: withCurrent, wantErr: true},
-		{name: "default without current context, non-strict", cfg: config.Config{}, want: config.DefaultContextName},
-		{name: "default without current context, strict", strict: "true", cfg: config.Config{}, want: config.DefaultContextName},
+		{name: "override wins", override: "x", cfg: func(*testing.T) config.Config { return undeclared("a") }, want: "x"},
+		{name: "override wins in strict", strict: "true", override: "x", cfg: func(*testing.T) config.Config { return undeclared("a") }, want: "x"},
+
+		{name: "undeclared with current, non-strict", cfg: func(*testing.T) config.Config { return undeclared("a") }, want: "a"},
+		{name: "undeclared with current, strict", strict: "true", cfg: func(*testing.T) config.Config { return undeclared("a") }, wantErr: true},
+		{name: "undeclared without current, non-strict", cfg: func(*testing.T) config.Config { return undeclared("") }, want: config.DefaultContextName},
+		{name: "undeclared without current, strict", strict: "true", cfg: func(*testing.T) config.Config { return undeclared("") }, want: config.DefaultContextName},
+
+		{name: "explicit, non-strict", cfg: func(t *testing.T) config.Config { return selected(t, "a", "b") }, want: "b"},
+		{name: "explicit, strict", strict: "true", cfg: func(t *testing.T) config.Config { return selected(t, "a", "b") }, want: "b"},
+
+		{name: "inherited, non-strict", cfg: func(t *testing.T) config.Config { return selected(t, "a", "") }, want: "a"},
+		{name: "inherited, strict", strict: "true", cfg: func(t *testing.T) config.Config { return selected(t, "a", "") }, wantErr: true},
+
+		{name: "none, non-strict", cfg: func(t *testing.T) config.Config { return selected(t, "", "") }, want: config.DefaultContextName},
+		{name: "none, strict", strict: "true", cfg: func(t *testing.T) config.Config { return selected(t, "", "") }, want: config.DefaultContextName},
+		{
+			// An env override can set current-context after the load recorded none.
+			name:   "none with env-set current context, strict",
+			strict: "true",
+			cfg: func(t *testing.T) config.Config {
+				cfg := selected(t, "", "")
+				cfg.CurrentContext = config.DefaultContextName
+				return cfg
+			},
+			want: config.DefaultContextName,
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("GCX_REQUIRE_CONTEXT", tc.strict)
 
-			got, err := config.ResolveContextName(tc.override, tc.cfg)
+			got, err := config.ResolveContextName(tc.override, tc.cfg(t))
 			if tc.wantErr {
 				require.ErrorIs(t, err, config.ErrContextRequired)
 				var reqErr *config.ContextRequiredError
