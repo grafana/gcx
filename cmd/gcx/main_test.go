@@ -390,7 +390,6 @@ current-context: old
 				"GCX_AGENT_MODE="+tc.agentMode,
 				"GCX_TELEMETRY=disabled",
 				"GCX_REQUIRE_CONTEXT=",
-				"GCX_KEYCHAIN=",
 				"GCX_KEYCHAIN=off",
 				"NO_COLOR=1",
 				"HOME="+t.TempDir(),

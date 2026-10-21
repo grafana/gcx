@@ -483,7 +483,9 @@ code 2. Name the context with `--context` or `GCX_CONTEXT`. `gcx login` and
 (`internal/config/loader.go`, `selection.go`) through `config.SelectContext`
 and `config.FileScope`. Commands that never load config are not affected.
 `config view`, `current-context`, `list-contexts`, `path`, `use-context`, `set`
-and `unset` are never refused. `config check` is refused.
+and `unset` are never refused. `config check` without `--context` checks every
+configured context, so the mode refuses it. Run `gcx config check --context
+<name>` for each context instead.
 
 ---
 

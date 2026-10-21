@@ -262,11 +262,12 @@ func TestStrictContext_LocalCommandsNeverRefused(t *testing.T) {
 		{"instrumentation", "list-explanations"},
 	}
 	// These may legitimately exit non-zero, so only the refusal is asserted.
-	// docs list-products is not here: it fetches the docs index over the
-	// network. The sweep covers it instead.
-	lenient := map[string]string{
-		"instrumentation check --language go": "findings depend on the workstation " +
-			"(collector config, OTEL_* variables) and exit non-zero when checks fail",
+	// docs list-products is not here, because it fetches the docs index over
+	// the network.
+	lenient := []string{
+		// Findings depend on the workstation (collector config, OTEL_*
+		// variables) and the command exits non-zero when checks fail.
+		"instrumentation check --language go",
 	}
 	for _, args := range offline {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
@@ -275,7 +276,7 @@ func TestStrictContext_LocalCommandsNeverRefused(t *testing.T) {
 			assert.NotContains(t, res.stdout+res.stderr, strictRefusalDetail)
 		})
 	}
-	for cmdline := range lenient {
+	for _, cmdline := range lenient {
 		t.Run(cmdline, func(t *testing.T) {
 			res := runStrictContext(t, strictCase{args: strings.Fields(cmdline)})
 			assert.False(t, res.refused(), "refused: exit=%d stdout=%s stderr=%s", res.exitCode, res.stdout, res.stderr)
