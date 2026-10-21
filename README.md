@@ -110,30 +110,31 @@ This toggle is experimental in 12.x, requires a restart, and Unified Alerting mu
 
 ### Install `gcx`
 
-> Refer to [Installation](/docs/sources/installation) for full details on how to install `gcx`.
+> For other installation options such as the binary or Go install, refer to the main [Installation](/docs/sources/installation) doc.
 
-**Quick install (Linux/macOS):**
+The quickest way to install `gcx` in Linux or macOS is with the script, which downloads the latest release, verifies the SHA-256 checksum, and installs to `~/.local/bin`.
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/grafana/gcx/main/scripts/install.sh | sh
 ```
 
-Downloads the latest release, verifies the SHA-256 checksum, and installs to `~/.local/bin`. Override the location with `GCX_INSTALL_DIR`:
+You can override the location with `GCX_INSTALL_DIR`:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/grafana/gcx/main/scripts/install.sh | GCX_INSTALL_DIR=/usr/local/bin sh
 ```
 
-To upgrade, run the same command again, then check `gcx --version`. If the version does not change, you have a second `gcx` earlier in your `PATH` — run `which -a gcx` and see [The version does not change after an upgrade](docs/sources/installation.md#the-version-does-not-change-after-an-upgrade).
+To upgrade, run the same command again, then check `gcx --version`. 
 
-**Homebrew (macOS and Linux):**
+#### Homebrew
+
+To install `gcx` using Homebrew in Linux or macOS run: 
 
 ```bash
 brew install gcx
 ```
 
-Installs the `gcx` formula from homebrew-core. Homebrew has a prebuilt bottle
-for macOS and Linux, so the install takes seconds and needs no tap.
+This installs the `gcx` formula from homebrew-core. Homebrew has a prebuilt bottle for macOS and Linux, so the install takes seconds and needs no tap.
 
 To update to the latest version:
 
@@ -141,46 +142,11 @@ To update to the latest version:
 brew update && brew upgrade gcx
 ```
 
-The Grafana tap also carries `gcx`. Use it if you want Homebrew to compile the binary on your machine:
+The Grafana tap also carries `gcx`. Use it if you want Homebrew to compile the binary on your machine, run:
 
 ```bash
 brew install grafana/grafana/gcx
 ```
-
-That build needs Homebrew's `go`, which Homebrew installs as a build dependency. The first install takes 30–60 seconds while Go fetches
-dependencies.
-
-**Pre-built binary (Linux/macOS/Windows):**
-
-Download the latest archive for your OS and architecture from the [releases page](https://github.com/grafana/gcx/releases/latest),
-extract it, and move the binary to your PATH:
-
-```bash
-tar xzf gcx_*.tar.gz
-chmod +x gcx && sudo mv gcx /usr/local/bin/
-```
-
-On macOS, the manually-downloaded binary may be blocked on first run with
-*"Apple could not verify…"* or `killed: 9` — see
-[macOS Gatekeeper and killed: 9](docs/sources/installation.md#macos-gatekeeper-and-killed-9)
-for the one-time workaround. The `curl | sh` installer above handles this
-automatically.
-
-**Go install:**
-
-```bash
-go install github.com/grafana/gcx/cmd/gcx@latest
-```
-
-**Shell completion:**
-
-```bash
-gcx completion zsh > "${fpath[1]}/_gcx"   # zsh
-gcx completion bash > /etc/bash_completion.d/gcx  # bash
-gcx completion fish > ~/.config/fish/completions/gcx.fish  # fish
-```
-
-**Verify:** `gcx --version`
 
 ### Access Grafana
 
