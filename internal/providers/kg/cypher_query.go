@@ -81,9 +81,10 @@ exist matches nothing: the result is empty, not an error.
 
 Insights. This command never returns insights (Saturation, Anomaly, Amend,
 Failure, Error), and none should be inferred from its rows. For current health,
-use 'gcx kg entities list' with the same type, name, scope and window (add
---insight to filter to entities with active insights); use
-'gcx kg entities inspect' for the full timeline.`,
+use 'gcx kg entities list' (add --insight to filter to entities with active
+insights); use 'gcx kg entities inspect' for the full timeline. Call both with
+the same window and all three of --env, --site and --namespace (leave out a
+null one), so return n.env, n.site and n.namespace in this query.`,
 		Example: `  gcx kg graph query "MATCH (s:Service) RETURN s.name AS name LIMIT 10"
   gcx kg graph query "MATCH (s:Service {name: 'checkout', env: 'prod'}) RETURN s LIMIT 1" --since 1h
   gcx kg graph query "MATCH (s:Service) RETURN s.name AS name ORDER BY s.name SKIP 50 LIMIT 50" --since 1h
