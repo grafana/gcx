@@ -51,6 +51,11 @@ func newListSourcemapsCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list-sourcemaps <slug-id|name>",
 		Short: "List sourcemaps for a Frontend Observability app.",
+		Long: `List sourcemaps for a Frontend Observability app.
+
+The argument is a slug-id (my-web-app-42), numeric ID or display name. gcx
+lists the apps and resolves it as in "gcx frontend apps get", so an argument
+that is one app's name and another app's slug-id or ID is an error.`,
 		Example: `  # List all sourcemaps for an app.
   gcx frontend apps list-sourcemaps my-web-app-42
 
@@ -285,6 +290,11 @@ func newDeleteSourcemapCommand(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "delete-sourcemap <slug-id|name> <bundle-id> [bundle-id...]",
 		Short: "Delete sourcemap bundles from a Frontend Observability app.",
+		Long: `Delete sourcemap bundles from a Frontend Observability app.
+
+The argument is a slug-id (my-web-app-42), numeric ID or display name. gcx
+lists the apps and resolves it as in "gcx frontend apps get", so an argument
+that is one app's name and another app's slug-id or ID is an error.`,
 		Example: `  # Delete a single sourcemap bundle.
   gcx frontend apps delete-sourcemap my-web-app-42 1234567890-abc12
 
