@@ -472,14 +472,18 @@ Returns `nil` if `CurrentContext` is empty or not found — callers must check.
 
 ### Strict Context Mode
 
-Set `GCX_REQUIRE_CONTEXT=true` to require `--context <name>` on commands that
-reach Grafana, preventing another session's `config use-context` from retargeting
-them. Missing context selection exits with code 2; local commands are exempt.
-`GRAFANA_SERVER` alone does not satisfy the guard, except for `gcx login`, which
-also accepts a context argument or `--server`.
+Set `GCX_REQUIRE_CONTEXT=true` to refuse any load whose context would come from
+the file's `current-context`, so another session's `config use-context` cannot
+retarget a command. A context is named by `--context` or `GCX_CONTEXT`;
+`gcx login` and `gcx signup` also accept a `CONTEXT_NAME` argument, `--server`
+or `GRAFANA_SERVER`. `GRAFANA_SERVER` alone does not count elsewhere. Env-only
+setups (no config file) use `--context default`. A refusal exits 2.
 
-The guard runs before Cobra dispatch in `cmd/gcx/root/contextguard.go` so subtree
-hooks cannot bypass it. Exempt paths live in `internal/agent/context_policy.go`.
+Enforcement lives in `config.LoadLayered` (`internal/config/loader.go`,
+`selection.go`), driven by `config.SelectContext` and `config.FileScope`, so
+commands that never load config are unaffected. `config view`, `current-context`,
+`list-contexts`, `path`, `use-context`, `set` and `unset` are never refused;
+`config check` is.
 
 ---
 
