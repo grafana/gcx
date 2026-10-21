@@ -75,9 +75,10 @@ for that type in 'gcx kg meta schema' over the same window, e.g.
 that is not listed returns null.
 
 Relationships. Types and directions are schema-specific: check the
-'A --TYPE--> B' list in 'gcx kg meta schema', and match both directions when
-looking for what depends on an entity. One query can do it with the undirected
-form, returning both ends to keep the direction:
+'A --TYPE--> B' strings in 'gcx kg meta schema' over the same window, e.g.
+--jq '.schema.relationships[] | select(test("Service"))', and match both
+directions when looking for what depends on an entity. One query can do it
+with the undirected form, returning both ends to keep the direction:
 'MATCH (a)-[r:TYPE]-(b) RETURN startNode(r).name, endNode(r).name LIMIT 50'.
 
 A property, scope value, label, relationship type or direction that does not
