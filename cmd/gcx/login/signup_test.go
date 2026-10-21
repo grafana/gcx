@@ -563,6 +563,6 @@ func TestSignup_StrictNamedTargetAccepted(t *testing.T) {
 	path := strictSignupSeed(t)
 
 	_, err := runSignup(t, "newname", "--config", path)
-	assert.NotErrorIs(t, err, config.ErrContextRequired)
-	assert.NotErrorIs(t, err, config.ErrContextSelectionUndeclared)
+	require.NotErrorIs(t, err, config.ErrContextRequired)
+	require.NotErrorIs(t, err, config.ErrContextSelectionUndeclared)
 }
