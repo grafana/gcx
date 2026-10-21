@@ -18,6 +18,30 @@ import (
 	"k8s.io/client-go/rest"
 )
 
+// queryTagsHeader carries Loki query tags. Loki records "Source=<value>" in its
+// query logs, which is how gcx traffic is told apart from the assistant and
+// MCP traffic when sizing the cost guardrail.
+const queryTagsHeader = "X-Query-Tags"
+
+// queryTagsTransport tags every Loki request as coming from gcx unless the
+// caller already set tags.
+type queryTagsTransport struct {
+	base http.RoundTripper
+}
+
+func (t *queryTagsTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	base := t.base
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	if req.Header.Get(queryTagsHeader) != "" {
+		return base.RoundTrip(req)
+	}
+	clone := req.Clone(req.Context())
+	clone.Header.Set(queryTagsHeader, "Source=gcx")
+	return base.RoundTrip(clone)
+}
+
 type Client struct {
 	restConfig  config.NamespacedRESTConfig
 	httpClient  *http.Client
@@ -33,6 +57,8 @@ func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create HTTP client: %w", err)
 	}
+
+	httpClient.Transport = &queryTagsTransport{base: httpClient.Transport}
 
 	return &Client{
 		restConfig:  cfg,
