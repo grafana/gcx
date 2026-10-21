@@ -139,7 +139,7 @@ gcx config view
 
 ## Configure `gcx` with environment variables 
 
-Every supported environment variable is listed in our [reference documentation](./cli-reference.md).
+Every supported environment variable is listed in our [reference documentation](/cli-reference).
 
 Since `gcx` connects to Grafana through the REST API, you must configure authentication credentials. At minimum, set the Grafana URL and organization ID:
 
@@ -149,7 +149,7 @@ GRAFANA_SERVER='http://localhost:3000' GRAFANA_ORG_ID='1' gcx config check
 
 Depending on your authentication method, also set one of the following:
 
-- If you use a [Grafana service account](https://grafana.com/docs/grafana/latest/administration/service-accounts/) (recommended), set a [token](./cli-reference#environment-variables).
+- If you use a [Grafana service account](https://grafana.com/docs/grafana/latest/administration/service-accounts/) (recommended), set a [token](/cli-reference#environment-variables).
 - If you use basic authentication, set a [username](./cli-reference#grafana_user) and a [password](./cli-reference#grafana_password).
 
 After you configure authentication, you can start using `gcx`.
