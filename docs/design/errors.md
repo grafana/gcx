@@ -220,6 +220,7 @@ not in the summary.
 | `Resource conflict` | Optimistic lock / RMW conflict, or an API-reported conflict whose exact cause is not machine-discriminable (e.g. GCOM stack 409s, including delete protection) |
 | `Invalid stack request` | GCOM rejected stack create/update arguments (409 with code `InvalidArgument`) |
 | `Invalid query` | The datasource rejected a query or query request (HTTP 400), including query-language parse errors |
+| `Query blocked` | gcx refused to run a query before execution because a cost guardrail (for example the Grafana Cloud Loki query policy) judged it too expensive or impossible to assess in agent mode. Not an API rejection: no request ran. Details carry the estimate and reasons; suggestions say how to narrow the query |
 | `Unsupported Grafana version` | The Grafana server is older than gcx supports (exit code 6) |
 | `Partial failure` | Some batch operations failed, or a mutation saved a write before a later stage failed (exit code 4); preserve counts or saved identity in details |
 | `Network error` | Connection refused, DNS failure, server unreachable, timeouts |

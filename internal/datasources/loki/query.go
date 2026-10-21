@@ -64,7 +64,13 @@ the Explore URL for expressions Drilldown's simple filter model can't
 represent, e.g. parser stages or aggregations).
 Use -o graph for a log-volume-over-time chart of the lines the query
 returned, counted per level. It does not cover lines beyond --limit or the
-backend's own line limits, so it can undercount a busy time range.`,
+backend's own line limits, so it can undercount a busy time range.
+
+On Grafana Cloud targets, a query cost guardrail runs first: the query is
+estimated with Loki index-stats and refused, with guidance on how to narrow it,
+when it exceeds the tenant's byte budget or time-range cap. There is no flag to
+bypass it. In agent mode a query that cannot be assessed is also refused.
+Self-hosted Grafana targets are not guarded.`,
 		Example: `
   # Query logs using configured default datasource
   gcx datasources loki query '{job="varlogs"}'
@@ -127,6 +133,10 @@ backend's own line limits, so it can undercount a busy time range.`,
 				End:   end,
 				Step:  step,
 				Limit: limit,
+			}
+
+			if err := guardQuery(ctx, cfgCtx, cfg, client, cmd.ErrOrStderr(), datasourceUID, expr, req.IsRange(), start, end, now); err != nil {
+				return err
 			}
 
 			resp, err := client.Query(ctx, datasourceUID, req)

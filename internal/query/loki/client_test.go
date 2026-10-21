@@ -440,3 +440,19 @@ func TestMetricQueryPreservesSampleValues(t *testing.T) {
 		}
 	}
 }
+
+func TestClientTagsRequestsAsGCX(t *testing.T) {
+	var got string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.Header.Get("X-Query-Tags")
+		_, _ = w.Write([]byte(`{"streams":0,"chunks":0,"bytes":0,"entries":0}`))
+	}))
+	defer srv.Close()
+
+	client, err := loki.NewClient(config.NamespacedRESTConfig{Config: rest.Config{Host: srv.URL}, Namespace: "default"})
+	require.NoError(t, err)
+
+	_, err = client.IndexStats(context.Background(), "uid", `{app="x"}`, time.Now().Add(-time.Hour), time.Now())
+	require.NoError(t, err)
+	assert.Equal(t, "Source=gcx", got)
+}
