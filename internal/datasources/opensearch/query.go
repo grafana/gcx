@@ -35,6 +35,7 @@ type queryOpts struct {
 }
 
 func (opts *queryOpts) setup(flags *pflag.FlagSet) {
+	cmdio.RegisterCSV(&opts.IO)
 	opts.Setup(flags, false)
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.opensearch is configured)")
 	flags.StringVar(&opts.Mode, "mode", modeDocuments, fmt.Sprintf("Search mode: %q (raw documents) or %q (newest-first, plugin-internal fields omitted)", modeDocuments, modeLogs))

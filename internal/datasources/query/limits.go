@@ -1,9 +1,11 @@
 package query
 
 import (
+	"fmt"
 	"io"
 
 	cmdio "github.com/grafana/gcx/internal/output"
+	"github.com/grafana/gcx/internal/query/loki"
 	querysql "github.com/grafana/gcx/internal/query/sql"
 )
 
@@ -31,5 +33,20 @@ func SurfaceRowLimits(w io.Writer, resp *querysql.QueryResponse, capped bool, ef
 	}
 	for _, notice := range resp.Notices {
 		cmdio.EmitHint(w, notice, "")
+	}
+}
+
+// SurfaceLogLimit warns when Loki fills the requested limit; the response does
+// not tell us whether more matching lines remain.
+func SurfaceLogLimit(w io.Writer, resp *loki.QueryResponse, limit int) {
+	if limit <= 0 {
+		return
+	}
+	count := 0
+	for _, stream := range resp.Data.Result {
+		count += len(stream.Values)
+	}
+	if count >= limit {
+		cmdio.EmitHint(w, fmt.Sprintf("query reached --limit %d; results may be incomplete. Increase --limit to retrieve more log lines", limit), "")
 	}
 }

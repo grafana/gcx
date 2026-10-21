@@ -17,7 +17,6 @@ import (
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources"
 	"github.com/grafana/gcx/internal/resources/adapter"
-	"github.com/grafana/gcx/internal/style"
 	"github.com/grafana/gcx/internal/terminal"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -177,8 +176,7 @@ type projectsListOpts struct {
 }
 
 func (o *projectsListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &ProjectTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &ProjectTableCodec{Wide: true})
+	cmdio.RegisterTable(&o.IO, ProjectTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
@@ -227,67 +225,20 @@ func newProjectsListCommand(loader CloudConfigLoader) *cobra.Command {
 	return cmd
 }
 
-// ProjectTableCodec renders projects as a tabular table.
-type ProjectTableCodec struct {
-	Wide bool
-}
-
-func (c *ProjectTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
-	}
-	return "table"
-}
-
-func (c *ProjectTableCodec) Encode(w io.Writer, v any) error {
-	projects, ok := v.([]Project)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []Project")
-	}
-
-	var t *style.TableBuilder
-	if c.Wide {
-		t = style.NewTable("ID", "NAME", "DEFAULT", "FOLDER UID", "CREATED", "UPDATED")
-	} else {
-		t = style.NewTable("ID", "NAME", "DEFAULT", "CREATED")
-	}
-
-	for _, p := range projects {
-		created := p.Created
-		if len(created) > 16 {
-			created = created[:16]
-		}
-		if created == "" {
-			created = "-"
-		}
-
-		isDefault := "-"
-		if p.IsDefault {
-			isDefault = "yes"
-		}
-
-		if c.Wide {
-			updated := p.Updated
-			if len(updated) > 16 {
-				updated = updated[:16]
+func ProjectTable() cmdio.Table[Project] {
+	return cmdio.Table[Project]{Columns: []cmdio.Column[Project]{
+		{Header: "ID", Content: func(p Project) string { return strconv.Itoa(p.ID) }},
+		{Header: "NAME", Content: func(p Project) string { return p.Name }},
+		{Header: "DEFAULT", Content: func(p Project) string {
+			if p.IsDefault {
+				return "yes"
 			}
-			if updated == "" {
-				updated = "-"
-			}
-			folderUID := p.GrafanaFolderUID
-			if folderUID == "" {
-				folderUID = "-"
-			}
-			t.Row(strconv.Itoa(p.ID), p.Name, isDefault, folderUID, created, updated)
-		} else {
-			t.Row(strconv.Itoa(p.ID), p.Name, isDefault, created)
-		}
-	}
-	return t.Render(w)
-}
-
-func (c *ProjectTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
+			return "-"
+		}},
+		{Header: "FOLDER UID", Visible: cmdio.WideOnly, Content: func(p Project) string { return cmdio.OrDash(p.GrafanaFolderUID) }},
+		{Header: "CREATED", Content: func(p Project) string { return tableTimestamp(p.Created) }},
+		{Header: "UPDATED", Visible: cmdio.WideOnly, Content: func(p Project) string { return tableTimestamp(p.Updated) }},
+	}}
 }
 
 type projectsGetOpts struct {
@@ -563,8 +514,7 @@ type testsListOpts struct {
 }
 
 func (o *testsListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &LoadTestTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &LoadTestTableCodec{Wide: true})
+	cmdio.RegisterTable(&o.IO, LoadTestTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.IntVar(&o.ProjectID, "project-id", 0, "Filter by project ID")
@@ -608,58 +558,14 @@ func newTestsListCommand(loader CloudConfigLoader) *cobra.Command {
 	return cmd
 }
 
-// LoadTestTableCodec renders load tests as a tabular table.
-type LoadTestTableCodec struct {
-	Wide bool
-}
-
-func (c *LoadTestTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
-	}
-	return "table"
-}
-
-func (c *LoadTestTableCodec) Encode(w io.Writer, v any) error {
-	tests, ok := v.([]LoadTest)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []LoadTest")
-	}
-
-	var tbl *style.TableBuilder
-	if c.Wide {
-		tbl = style.NewTable("ID", "NAME", "PROJECT", "CREATED", "UPDATED")
-	} else {
-		tbl = style.NewTable("ID", "NAME", "PROJECT", "CREATED")
-	}
-
-	for _, t := range tests {
-		created := t.Created
-		if len(created) > 16 {
-			created = created[:16]
-		}
-		if created == "" {
-			created = "-"
-		}
-
-		if c.Wide {
-			updated := t.Updated
-			if len(updated) > 16 {
-				updated = updated[:16]
-			}
-			if updated == "" {
-				updated = "-"
-			}
-			tbl.Row(strconv.Itoa(t.ID), t.Name, strconv.Itoa(t.ProjectID), created, updated)
-		} else {
-			tbl.Row(strconv.Itoa(t.ID), t.Name, strconv.Itoa(t.ProjectID), created)
-		}
-	}
-	return tbl.Render(w)
-}
-
-func (c *LoadTestTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
+func LoadTestTable() cmdio.Table[LoadTest] {
+	return cmdio.Table[LoadTest]{Columns: []cmdio.Column[LoadTest]{
+		{Header: "ID", Content: func(t LoadTest) string { return strconv.Itoa(t.ID) }},
+		{Header: "NAME", Content: func(t LoadTest) string { return t.Name }},
+		{Header: "PROJECT", Content: func(t LoadTest) string { return strconv.Itoa(t.ProjectID) }},
+		{Header: "CREATED", Content: func(t LoadTest) string { return tableTimestamp(t.Created) }},
+		{Header: "UPDATED", Visible: cmdio.WideOnly, Content: func(t LoadTest) string { return tableTimestamp(t.Updated) }},
+	}}
 }
 
 type testsGetOpts struct {
@@ -972,7 +878,7 @@ type runsListOpts struct {
 }
 
 func (o *runsListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &TestRunTableCodec{})
+	cmdio.RegisterTable(&o.IO, TestRunTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.IntVar(&o.ProjectID, "project-id", 0, "Project ID (required when looking up by name)")
@@ -1027,42 +933,22 @@ func newRunsListCommand(loader CloudConfigLoader) *cobra.Command {
 	return cmd
 }
 
-// TestRunTableCodec renders test runs as a tabular table.
-type TestRunTableCodec struct{}
-
-func (c *TestRunTableCodec) Format() format.Format { return "table" }
-
-func (c *TestRunTableCodec) Encode(w io.Writer, v any) error {
-	runs, ok := v.([]TestRunStatus)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []TestRunStatus")
-	}
-
-	t := style.NewTable("ID", "TEST ID", "STATUS", "RESULT", "CREATED", "ENDED")
-
-	for _, r := range runs {
-		created := r.Created
-		if len(created) > 16 {
-			created = created[:16]
-		}
-		if created == "" {
-			created = "-"
-		}
-		ended := r.Ended
-		if len(ended) > 16 {
-			ended = ended[:16]
-		}
-		if ended == "" {
-			ended = "-"
-		}
-		result := resultStatusString(r.ResultStatus)
-		t.Row(strconv.Itoa(r.ID), strconv.Itoa(r.LoadTestID), r.Status, result, created, ended)
-	}
-	return t.Render(w)
+func TestRunTable() cmdio.Table[TestRunStatus] {
+	return cmdio.Table[TestRunStatus]{Columns: []cmdio.Column[TestRunStatus]{
+		{Header: "ID", Content: func(r TestRunStatus) string { return strconv.Itoa(r.ID) }},
+		{Header: "TEST ID", Content: func(r TestRunStatus) string { return strconv.Itoa(r.LoadTestID) }},
+		{Header: "STATUS", Content: func(r TestRunStatus) string { return r.Status }},
+		{Header: "RESULT", Content: func(r TestRunStatus) string { return resultStatusString(r.ResultStatus) }},
+		{Header: "CREATED", Content: func(r TestRunStatus) string { return tableTimestamp(r.Created) }},
+		{Header: "ENDED", Content: func(r TestRunStatus) string { return tableTimestamp(r.Ended) }},
+	}}
 }
 
-func (c *TestRunTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
+func tableTimestamp(value string) string {
+	if len(value) > 16 {
+		return value[:16]
+	}
+	return cmdio.OrDash(value)
 }
 
 func resultStatusString(status int) string {
@@ -1103,7 +989,7 @@ type envVarsListOpts struct {
 }
 
 func (o *envVarsListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &EnvVarTableCodec{})
+	cmdio.RegisterTable(&o.IO, EnvVarTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
@@ -1135,35 +1021,18 @@ func newEnvVarsListCommand(loader CloudConfigLoader) *cobra.Command {
 	return cmd
 }
 
-// EnvVarTableCodec renders environment variables as a tabular table.
-type EnvVarTableCodec struct{}
-
-func (c *EnvVarTableCodec) Format() format.Format { return "table" }
-
-func (c *EnvVarTableCodec) Encode(w io.Writer, v any) error {
-	envVars, ok := v.([]EnvVar)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []EnvVar")
-	}
-
-	t := style.NewTable("ID", "NAME", "VALUE", "DESCRIPTION")
-
-	for _, e := range envVars {
-		desc := e.Description
-		if desc == "" {
-			desc = "-"
-		}
-		value := e.Value
-		if len(value) > 40 {
-			value = value[:37] + "..."
-		}
-		t.Row(strconv.Itoa(e.ID), e.Name, value, desc)
-	}
-	return t.Render(w)
-}
-
-func (c *EnvVarTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
+func EnvVarTable() cmdio.Table[EnvVar] {
+	return cmdio.Table[EnvVar]{Columns: []cmdio.Column[EnvVar]{
+		{Header: "ID", Content: func(e EnvVar) string { return strconv.Itoa(e.ID) }},
+		{Header: "NAME", Content: func(e EnvVar) string { return e.Name }},
+		{Header: "VALUE", Content: func(e EnvVar) string {
+			if len(e.Value) > 40 {
+				return e.Value[:37] + "..."
+			}
+			return e.Value
+		}},
+		{Header: "DESCRIPTION", Content: func(e EnvVar) string { return cmdio.OrDash(e.Description) }},
+	}}
 }
 
 type envVarsCreateOpts struct {
@@ -1374,45 +1243,19 @@ func newSchedulesCommand(loader CloudConfigLoader) *cobra.Command {
 	return cmd
 }
 
-// ScheduleTableCodec renders schedules as a tabular table.
-type ScheduleTableCodec struct{}
-
-func (c *ScheduleTableCodec) Format() format.Format { return "table" }
-
-func (c *ScheduleTableCodec) Encode(w io.Writer, v any) error {
-	schedules, ok := v.([]Schedule)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []Schedule")
-	}
-
-	t := style.NewTable("ID", "LOAD TEST", "STARTS", "NEXT RUN", "DEACTIVATED")
-
-	for _, s := range schedules {
-		starts := s.Starts
-		if len(starts) > 16 {
-			starts = starts[:16]
-		}
-		if starts == "" {
-			starts = "-"
-		}
-		nextRun := s.NextRun
-		if len(nextRun) > 16 {
-			nextRun = nextRun[:16]
-		}
-		if nextRun == "" {
-			nextRun = "-"
-		}
-		deactivated := "-"
-		if s.Deactivated {
-			deactivated = "yes"
-		}
-		t.Row(strconv.Itoa(s.ID), strconv.Itoa(s.LoadTestID), starts, nextRun, deactivated)
-	}
-	return t.Render(w)
-}
-
-func (c *ScheduleTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
+func ScheduleTable() cmdio.Table[Schedule] {
+	return cmdio.Table[Schedule]{Columns: []cmdio.Column[Schedule]{
+		{Header: "ID", Content: func(s Schedule) string { return strconv.Itoa(s.ID) }},
+		{Header: "LOAD TEST", Content: func(s Schedule) string { return strconv.Itoa(s.LoadTestID) }},
+		{Header: "STARTS", Content: func(s Schedule) string { return tableTimestamp(s.Starts) }},
+		{Header: "NEXT RUN", Content: func(s Schedule) string { return tableTimestamp(s.NextRun) }},
+		{Header: "DEACTIVATED", Content: func(s Schedule) string {
+			if s.Deactivated {
+				return "yes"
+			}
+			return "-"
+		}},
+	}}
 }
 
 type schedulesListOpts struct {
@@ -1421,7 +1264,7 @@ type schedulesListOpts struct {
 }
 
 func (o *schedulesListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &ScheduleTableCodec{})
+	cmdio.RegisterTable(&o.IO, ScheduleTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
@@ -1631,31 +1474,12 @@ func newLoadZonesCommand(loader CloudConfigLoader) *cobra.Command {
 	return cmd
 }
 
-// LoadZoneTableCodec renders load zones as a tabular table.
-type LoadZoneTableCodec struct{}
-
-func (c *LoadZoneTableCodec) Format() format.Format { return "table" }
-
-func (c *LoadZoneTableCodec) Encode(w io.Writer, v any) error {
-	zones, ok := v.([]LoadZone)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []LoadZone")
-	}
-
-	t := style.NewTable("ID", "NAME", "k6 LOAD ZONE ID")
-
-	for _, z := range zones {
-		k6ID := z.K6LoadZoneID
-		if k6ID == "" {
-			k6ID = "-"
-		}
-		t.Row(strconv.Itoa(z.ID), z.Name, k6ID)
-	}
-	return t.Render(w)
-}
-
-func (c *LoadZoneTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
+func LoadZoneTable() cmdio.Table[LoadZone] {
+	return cmdio.Table[LoadZone]{Columns: []cmdio.Column[LoadZone]{
+		{Header: "ID", Content: func(z LoadZone) string { return strconv.Itoa(z.ID) }},
+		{Header: "NAME", Content: func(z LoadZone) string { return z.Name }},
+		{Header: "k6 LOAD ZONE ID", Content: func(z LoadZone) string { return cmdio.OrDash(z.K6LoadZoneID) }},
+	}}
 }
 
 type loadZonesListOpts struct {
@@ -1664,7 +1488,7 @@ type loadZonesListOpts struct {
 }
 
 func (o *loadZonesListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &LoadZoneTableCodec{})
+	cmdio.RegisterTable(&o.IO, LoadZoneTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.Int64Var(&o.Limit, "limit", 50, "Maximum number of items to return (0 for all)")
@@ -1805,30 +1629,11 @@ func newLoadZonesDeleteCommand(loader CloudConfigLoader) *cobra.Command {
 // update-allowed-projects) rather than a nested noun group.
 // ---------------------------------------------------------------------------
 
-// AllowedProjectTableCodec renders allowed projects as a tabular table.
-type AllowedProjectTableCodec struct{}
-
-func (c *AllowedProjectTableCodec) Format() format.Format { return "table" }
-
-func (c *AllowedProjectTableCodec) Encode(w io.Writer, v any) error {
-	projects, ok := v.([]AllowedProject)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []AllowedProject")
-	}
-
-	t := style.NewTable("ID", "NAME")
-	for _, p := range projects {
-		name := p.Name
-		if name == "" {
-			name = "-"
-		}
-		t.Row(strconv.Itoa(p.ID), name)
-	}
-	return t.Render(w)
-}
-
-func (c *AllowedProjectTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
+func AllowedProjectTable() cmdio.Table[AllowedProject] {
+	return cmdio.Table[AllowedProject]{Columns: []cmdio.Column[AllowedProject]{
+		{Header: "ID", Content: func(p AllowedProject) string { return strconv.Itoa(p.ID) }},
+		{Header: "NAME", Content: func(p AllowedProject) string { return cmdio.OrDash(p.Name) }},
+	}}
 }
 
 type allowedProjectsListOpts struct {
@@ -1836,7 +1641,7 @@ type allowedProjectsListOpts struct {
 }
 
 func (o *allowedProjectsListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &AllowedProjectTableCodec{})
+	cmdio.RegisterTable(&o.IO, AllowedProjectTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 }
@@ -1939,30 +1744,11 @@ func newUpdateAllowedProjectsCommand(loader CloudConfigLoader) *cobra.Command { 
 // `load-zones`.
 // ---------------------------------------------------------------------------
 
-// AllowedLoadZoneTableCodec renders allowed load zones as a tabular table.
-type AllowedLoadZoneTableCodec struct{}
-
-func (c *AllowedLoadZoneTableCodec) Format() format.Format { return "table" }
-
-func (c *AllowedLoadZoneTableCodec) Encode(w io.Writer, v any) error {
-	zones, ok := v.([]AllowedLoadZone)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []AllowedLoadZone")
-	}
-
-	t := style.NewTable("ID", "NAME")
-	for _, z := range zones {
-		name := z.Name
-		if name == "" {
-			name = "-"
-		}
-		t.Row(strconv.Itoa(z.ID), name)
-	}
-	return t.Render(w)
-}
-
-func (c *AllowedLoadZoneTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
+func AllowedLoadZoneTable() cmdio.Table[AllowedLoadZone] {
+	return cmdio.Table[AllowedLoadZone]{Columns: []cmdio.Column[AllowedLoadZone]{
+		{Header: "ID", Content: func(z AllowedLoadZone) string { return strconv.Itoa(z.ID) }},
+		{Header: "NAME", Content: func(z AllowedLoadZone) string { return cmdio.OrDash(z.Name) }},
+	}}
 }
 
 type allowedLoadZonesListOpts struct {
@@ -1970,7 +1756,7 @@ type allowedLoadZonesListOpts struct {
 }
 
 func (o *allowedLoadZonesListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &AllowedLoadZoneTableCodec{})
+	cmdio.RegisterTable(&o.IO, AllowedLoadZoneTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 }
@@ -2221,7 +2007,7 @@ type testrunRunsListOpts struct {
 }
 
 func (o *testrunRunsListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &TestRunTableCodec{})
+	cmdio.RegisterTable(&o.IO, TestRunTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.IntVar(&o.ProjectID, "project-id", 0, "k6 Cloud project ID (required when using name lookup)")

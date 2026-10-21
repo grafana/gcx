@@ -69,6 +69,7 @@ func (opts *pyroscopeQueryOpts) setup(flags *pflag.FlagSet) {
 	// Register pprof and dot before shared.Setup so they appear in the -o help string.
 	opts.shared.IO.RegisterCustomCodec("pprof", &pprofCodec{})
 	opts.shared.IO.RegisterCustomCodec("dot", &dotCodec{})
+	cmdio.RegisterCSV(&opts.shared.IO)
 	opts.shared.Setup(flags, true)
 	opts.shared.SetupErrorOnEmptyFlag(flags)
 

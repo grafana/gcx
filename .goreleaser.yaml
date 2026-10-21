@@ -49,11 +49,15 @@ archives:
 # Multi-arch image, built from the linux binaries above. Prereleases (-rc, ...)
 # only get their exact version tag; the floating tags (vX.Y, vX, latest) are
 # skipped, as GoReleaser drops tags that render empty.
+#
+# Both images come from the same build, so they share digests and the SBOM
+# attestation. The second image is published to docker.io/grafana/gcx.
 dockers_v2:
   - id: gcx
     ids: [gcx]
     images:
       - ghcr.io/grafana/gcx
+      - us-docker.pkg.dev/grafanalabs-global/dockerhub-gcx-prod-mirror/gcx
     tags:
       - "v{{ .Version }}"
       - "{{ if not .Prerelease }}v{{ .Major }}.{{ .Minor }}{{ end }}"
@@ -62,6 +66,9 @@ dockers_v2:
     platforms:
       - linux/amd64
       - linux/arm64
+    # GoReleaser's default, set explicitly: attach an SBOM attestation
+    # (buildx --attest=type=sbom) to every pushed image.
+    sbom: true
     labels:
       "org.opencontainers.image.source": "https://github.com/grafana/gcx"
       "org.opencontainers.image.version": "{{ .Version }}"
@@ -71,6 +78,39 @@ dockers_v2:
 checksum:
   name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
   algorithm: sha256
+
+# Keyless Sigstore signing. Both pipes run cosign with no key material: on the
+# release workflow cosign takes an OIDC token from GitHub Actions
+# (`id-token: write`) and gets a short-lived certificate from Fulcio, so the
+# signature carries the workflow identity instead of a long-lived key.
+
+# Sign the checksums file, which in turn covers every archive. `--bundle`
+# writes certificate and signature into one .sigstore.json, as cosign v3
+# expects; verify with `cosign verify-blob --bundle`.
+signs:
+  - id: checksums
+    cmd: cosign
+    signature: "${artifact}.sigstore.json"
+    args:
+      - "sign-blob"
+      - "--bundle=${signature}"
+      - "${artifact}"
+      - "--yes"
+    artifacts: checksum
+
+# Sign the images. `artifacts` is deliberately left at its default empty value,
+# which is the selector for images built by `dockers_v2` ('images' and
+# 'manifests' select the deprecated `dockers`/`docker_manifests` pipes instead).
+# GoReleaser runs this once per pushed reference and fills ${artifact} and
+# ${digest} from the push, so every tag in every registry under
+# `dockers_v2.images` is signed with no further configuration here.
+docker_signs:
+  - id: images
+    cmd: cosign
+    args:
+      - "sign"
+      - "${artifact}@${digest}"
+      - "--yes"
 
 release:
   header: "{{ .Env.RELEASE_NOTES }}"

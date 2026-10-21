@@ -136,7 +136,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx setup status": {Cost: "small"},
 
 	// -----------------------------------------------------------------------
-	// Instrumentation provider (action-verb tree — ADR-018)
+	// Instrumentation provider (action-verb tree — RFC 019)
 	// -----------------------------------------------------------------------
 
 	// clusters verb group
@@ -331,7 +331,7 @@ var commandAnnotations = map[string]annotation{
 	// Knowledge Graph provider
 	// -----------------------------------------------------------------------
 	"gcx kg entities query":       {Cost: "medium", Hint: "deprecated legacy Cypher search (entities, edges, pageNum, lastPage); retained through v1.x | prefer gcx kg graph query for new workflows and update output parsing | narrow MATCH and include LIMIT for targeted lookups"},
-	"gcx kg graph query":          {Cost: "medium", Hint: "\"MATCH (s:Service) RETURN s.name AS name LIMIT 10\" [--since 1h] | read-only Cypher rows (columns, rows, stats); requires literal LIMIT; use narrow MATCH and bounded paths; defaults to last 1h; use kg entities list/inspect for health"},
+	"gcx kg graph query":          {Cost: "medium", Hint: "<cypher-query> [--since 1h | --from/--to] -o json | run read-only Cypher for projections, aggregates, and paths beyond what kg entities list/inspect expose. Requires literal LIMIT; same --from/--to on every related call; discover scope values with 'gcx kg meta scopes' and fields and relationship types with 'gcx kg meta schema' (same --from/--to) instead of guessing them; for an instant use a short window around it; use narrow MATCH and bounded paths; defaults to last 1h; never returns insights — use kg entities list (--insight) for current health, inspect for the full timeline. Example: \"MATCH (s:Service) RETURN s.name AS name LIMIT 10\" --since 1h"},
 	"gcx kg entities correlate":   {Cost: "medium", Hint: "--alert-labels 'alertname=<name>,job=<job>' [--since 1h] | resolve the affected entities for a firing alert from its labels (the \"I have an alert, which entity?\" entry point) | provide alerts inline (repeatable), from an Alertmanager webhook via -f/stdin, or both | empty result exits 0 with a notice | use this instead of list/inspect when you have an alert rather than a known entity name"},
 	"gcx kg diagnose":             {Cost: "medium", Hint: "[--env <env>] | run diagnostic checks on the Knowledge Graph pipeline: stack status, sanity checks, entity counts, scopes, telemetry configs, recording rule metrics, and an aggregate instrumentation-quality summary"},
 	"gcx kg diagnose service":     {Cost: "medium", Hint: "<service-name> [--env <env>] | deep diagnosis for a specific service: entity lookup, relationships, per-service metrics, interpreted diagnosis with next steps"},
@@ -345,7 +345,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx kg meta logs":            {Cost: "small", Hint: "Loki label mappings for log drilldown"},
 	"gcx kg meta metrics":         {Cost: "small", Hint: "asserts:* KPI catalog — Knowledge Graph recording rules (rate/error/latency, cpu/memory) + entity-property→Prometheus-label mapping for building selectors"},
 	"gcx kg meta profiles":        {Cost: "small", Hint: "Pyroscope label mappings for profile drilldown"},
-	"gcx kg meta schema":          {Cost: "medium", Hint: "entity types + relationships [--since 1h]"},
+	"gcx kg meta schema":          {Cost: "medium", Hint: "entity types + relationships [--since 1h | --from/--to] | output nests under .schema: --jq '.schema.entityTypes[] | select(.type == \"Pod\") | .properties' for one type's properties, --jq '.schema.relationships[]' for 'A --TYPE--> B' strings"},
 	"gcx kg meta scopes":          {Cost: "small", Hint: "all valid env/namespace/site filter values — run before filtering entities"},
 	"gcx kg meta traces":          {Cost: "small", Hint: "Tempo label mappings for trace drilldown"},
 	"gcx kg model-rules upsert":   {Cost: "small"},
@@ -370,7 +370,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx kg suppressions list":    {Cost: "small"},
 	"gcx kg notifications list":   {Cost: "small", Hint: "[--category request|resource|health|slo] | list alert notification configs (AlertConfig); distinct from suppressions (disabled-alert configs)"},
 	"gcx kg notifications get":    {Cost: "small", Hint: "<name> | get one alert notification config by name (list-then-filter; no by-name GET on the backend)"},
-	"gcx kg notifications upsert": {Cost: "small", Hint: "-f notifications.yaml (or pipe YAML via stdin) | upsert (create or update) one or more alert notification configs; never deletes remote entries absent from the file"},
+	"gcx kg notifications upsert": {Cost: "small", Hint: "-f notifications.yaml (or pipe YAML from notifications get/list) | accepts an alertConfigs wrapper, one config, or a config list; exact field names required; never deletes absent remote entries"},
 	"gcx kg notifications delete": {Cost: "small"},
 	"gcx kg entities upsert":      {Cost: "small", Hint: "--domain <d> --type <Type> --name <n> [--scope k=v] [--property k=v] [--ttl 1h] | upsert a custom (API-origin) entity; experimental (KG write API, gated server-side)"},
 	"gcx kg entities delete":      {Cost: "small", Hint: "<Type--Name> --domain <d> [--scope k=v] [--force] | delete a custom entity; --scope must match the value used at upsert; experimental (KG write API, gated server-side)"},

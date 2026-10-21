@@ -4,6 +4,7 @@ min_version = "2024.1.0"
 go = "1.26"
 golangci-lint = "2.12.2"
 goreleaser = "2.13.3"
+svu = "3.4.1"
 
 # =============================================================================
 # GENERAL
@@ -26,7 +27,7 @@ description = "Lint the codebase with golangci-lint"
 run = "golangci-lint run -c .golangci.yaml"
 
 [tasks."validate-skills"]
-description = "Validate skill front matter (claude-plugin/skills + .claude/skills)"
+description = "Validate skill front matter (claude-plugin/skills + .agents/skills)"
 run = "go run ./scripts/validate-skills"
 
 [tasks.tests]

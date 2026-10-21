@@ -6,6 +6,7 @@ import (
 
 	"github.com/grafana/gcx/internal/agent"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/spf13/cobra"
@@ -31,6 +32,10 @@ func QueryCmdWithDefault(loader *providers.ConfigLoader, defaultDS string) *cobr
 EXPR is the PromQL expression to evaluate, passed as a positional argument or
 via --expr (familiar to promtool users).
 Datasource is resolved from -d flag or datasources.prometheus in your context.
+
+CSV preserves original cell values. Spreadsheet apps may interpret values as
+formulas; import untrusted CSV columns as text.
+
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
 open it in your browser after the query succeeds.`,
 		Example: `
@@ -48,6 +53,9 @@ open it in your browser after the query succeeds.`,
 
   # Print a Grafana Explore share link for the executed query
   gcx datasources prometheus query 'up' --share-link
+
+  # Export samples as CSV
+  gcx datasources prometheus query -d UID 'up' -o csv
 
   # Output as JSON
   gcx datasources prometheus query -d UID 'up' -o json`,
@@ -149,6 +157,7 @@ open it in your browser after the query succeeds.`,
 		agent.AnnotationLLMHint:   `gcx datasources prometheus query -d UID 'up{job="grafana"}' -o json`,
 	}
 
+	cmdio.RegisterCSV(&shared.IO)
 	shared.Setup(cmd.Flags(), true)
 	shared.SetupErrorOnEmptyFlag(cmd.Flags())
 	shared.SetupInstantFlag(cmd.Flags())

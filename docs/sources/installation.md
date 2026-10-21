@@ -27,6 +27,10 @@ The script:
 - Verifies the SHA-256 checksum.
 - Installs the binary to `~/.local/bin`.
 
+The checksum check catches a corrupted download, but it does not prove the
+archive came from the gcx release workflow. To check that, refer to
+[Verify a release](#verify-a-release).
+
 ### Upgrade
 
 To upgrade, run the same command again. The script always installs the latest release.
@@ -124,8 +128,21 @@ For more information, refer to [macOS Gatekeeper and killed: 9](#macos-gatekeepe
 
 ## Run `gcx` in a container
 
-Each release publishes a multi-arch (`linux/amd64`, `linux/arm64`) image to
-`ghcr.io/grafana/gcx`. The entrypoint is `gcx`:
+Each release publishes the same multi-arch (`linux/amd64`, `linux/arm64`) image
+to two registries:
+
+- `docker.io/grafana/gcx` (Docker Hub)
+- `ghcr.io/grafana/gcx` (GitHub Container Registry)
+
+Both carry identical tags and the same image digests. The entrypoint is `gcx`.
+
+From Docker Hub:
+
+```sh
+docker run --rm docker.io/grafana/gcx:latest --version
+```
+
+From GitHub Container Registry:
 
 ```sh
 docker run --rm ghcr.io/grafana/gcx:latest --version
@@ -140,6 +157,88 @@ only get their exact tag.
 
 The image is based on distroless and has no shell, so run `gcx` directly, not
 through `sh -c`.
+
+## Verify a release
+
+Releases after v1.6.0 are signed keylessly with [Sigstore](https://www.sigstore.dev/).
+Earlier releases have no signatures, and `cosign` reports `no matching signatures` for them.
+There is no gcx public key to fetch: the release workflow signs with a
+short-lived certificate issued against its GitHub Actions OIDC token, so a
+signature proves an artifact came out of `.github/workflows/release.yaml` in
+`grafana/gcx` on a `v*` tag.
+
+Verification needs [`cosign`](https://docs.sigstore.dev/cosign/installation/)
+v3 or later.
+
+Two values appear in every command below:
+
+- `--certificate-identity` — the signing workflow, including the tag it ran on.
+- `--certificate-oidc-issuer` — always `https://token.actions.githubusercontent.com` for GitHub Actions.
+
+Check both. A signature with a valid certificate but a different identity was
+made by a different workflow.
+
+### Verify the image
+
+Replace `v1.5.0` with the tag you pulled:
+
+```sh
+cosign verify \
+  --certificate-identity 'https://github.com/grafana/gcx/.github/workflows/release.yaml@refs/tags/v1.5.0' \
+  --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+  ghcr.io/grafana/gcx:v1.5.0
+```
+
+The floating tags (`latest`, `v1.5`, `v1`) move between releases, so you do not
+know up front which tag signed the image behind them. Match any `v*` tag with
+an anchored regular expression instead:
+
+```sh
+cosign verify \
+  --certificate-identity-regexp '^https://github\.com/grafana/gcx/\.github/workflows/release\.yaml@refs/tags/v.*$' \
+  --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+  ghcr.io/grafana/gcx:latest
+```
+
+Keep the `^` and `$` anchors and the escaped dots. An unanchored pattern also
+matches identities from other repositories and other workflows.
+
+### Verify the archives
+
+The release signs the checksums file rather than each archive, and that file
+covers every archive in the release. Download the archive you want,
+`gcx_<version>_checksums.txt`, and `gcx_<version>_checksums.txt.sigstore.json`
+from the [release page](https://github.com/grafana/gcx/releases/latest) into
+the same directory.
+
+Verify the checksums file first:
+
+```sh
+cosign verify-blob \
+  --certificate-identity 'https://github.com/grafana/gcx/.github/workflows/release.yaml@refs/tags/v1.5.0' \
+  --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+  --bundle gcx_1.5.0_checksums.txt.sigstore.json \
+  gcx_1.5.0_checksums.txt
+```
+
+Only once that passes, check the archive against it:
+
+```sh
+sha256sum --check --ignore-missing gcx_1.5.0_checksums.txt
+```
+
+On macOS, use `shasum -a 256 --check --ignore-missing` instead.
+
+Doing it in this order matters. `sha256sum` on its own only proves the archive
+matches the checksums file next to it; verifying the signature first is what
+ties that file to the release workflow.
+
+### What the signature does and does not prove
+
+A keyless signature proves which workflow built the artifact. It is therefore
+only as strong as the controls on who can push `v*` tags and who can change
+`.github/workflows/` in `grafana/gcx`. It says nothing about the contents of
+the code itself.
 
 ## Install `gcx` from source
 

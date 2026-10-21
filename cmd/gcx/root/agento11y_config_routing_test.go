@@ -32,6 +32,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/cmd/gcx/root"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/agento11y"
@@ -366,9 +367,7 @@ current-context: a
 
 // TestAgento11y_EnvVarSmoke guards the env-override path that always worked for
 // #951's reporter: GRAFANA_SERVER/GRAFANA_TOKEN override an existing config
-// file, credentials included. (The env-only path with no config file at all
-// is broken on main for every ConfigLoader-based provider — tracked
-// separately in #1049 — and is out of scope here.)
+// file, credentials included.
 func TestAgento11y_EnvVarSmoke(t *testing.T) {
 	home := testutils.SandboxConfigEnv(t)
 	srvA, recA := newPluginServer(t)
@@ -382,4 +381,30 @@ func TestAgento11y_EnvVarSmoke(t *testing.T) {
 	assert.Positive(t, recB.count(), "expected requests on the env-var server")
 	assert.Empty(t, recB.wrongAuth("Bearer env-token"), "requests must carry the env token, not the config file's")
 	assert.Zero(t, recA.count(), "config-file server A must receive no requests, got %v", recA.all())
+}
+
+func TestAgento11y_EnvOnlyAuth(t *testing.T) {
+	for _, namespace := range []bool{false, true} {
+		t.Run(fmt.Sprintf("namespace configured=%t", namespace), func(t *testing.T) {
+			home := testutils.SandboxConfigEnv(t)
+			srv, rec := newPluginServer(t)
+			t.Setenv("GRAFANA_SERVER", srv.URL)
+			t.Setenv("GRAFANA_TOKEN", "env-token")
+			if namespace {
+				t.Setenv("GRAFANA_STACK_ID", "12345")
+			}
+			_, stderr, err := runAgento11y(t, "agento11y", "evaluators", "list", "-o", "json")
+			if !namespace {
+				require.ErrorContains(t, err, "missing stacks.default.grafana.org-id or stacks.default.grafana.stack-id")
+				assert.NotContains(t, err.Error(), "node not found")
+				detail := fail.ErrorToDetailedError(err)
+				require.NotNil(t, detail)
+				assert.Contains(t, detail.Details, fmt.Sprintf("Invalid configuration found in '%s':", defaultConfigPath(home)))
+				return
+			}
+			require.NoError(t, err, "stderr: %s", stderr)
+			assert.Positive(t, rec.count())
+			assert.Empty(t, rec.wrongAuth("Bearer env-token"))
+		})
+	}
 }

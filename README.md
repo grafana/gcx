@@ -26,8 +26,34 @@ For tools without a native signal, set `GCX_AGENT_NAME` to a supported label.
 See [agent detection and harness names](docs/design/environment-variables.md#agent-mode-variables).
 
 Contributing a new Grafana domain capability to gcx? Ask your coding agent to
-use [`integrate-with-gcx`](.claude/skills/integrate-with-gcx/SKILL.md)
+use [`contribute`](.agents/skills/contribute/SKILL.md)
 before choosing a command, provider, or datasource path.
+
+## Choosing between gcx and Grafana MCP
+
+`gcx` gives you and your coding agents access to Grafana through shell commands.
+Grafana MCP gives AI clients access through Model Context Protocol tools.
+
+Use **`gcx`** for terminal work, scripts, and CI/CD pipelines. It supports
+Grafana OSS, Enterprise, and Cloud; see the [compatibility matrix](#compatibility)
+for supported versions. You can pull resources into files, track changes in
+Git, and push resources to another environment. Dedicated commands
+also manage Grafana Cloud products such as SLOs, Synthetic Monitoring, k6, and
+Fleet.
+
+If your coding agent supports both shell commands and MCP, start with `gcx` for
+these workflows. Choose MCP when a specific tool or its connection model better
+meets your needs.
+
+Use **Grafana MCP** when your AI client needs an MCP connection, including
+clients without shell access. Choose between:
+
+- **Grafana Cloud MCP:** Grafana hosts the server. You authorize access through
+  your browser with OAuth. For more information, see the
+  [Cloud MCP documentation](https://grafana.com/docs/grafana-cloud/ai-tools/mcp-servers/cloud-mcp/).
+- **Open source Grafana MCP:** You run and configure the server. It connects to
+  Grafana Cloud or your own Grafana instance. For more information, see the
+  [open source MCP documentation](https://grafana.com/docs/grafana/latest/developer-resources/mcp/).
 
 ## Quick Start
 
@@ -384,8 +410,7 @@ editable in the UI because its provenance cannot be changed by that update.
 gcx alert contact-points create -f contact-point.yaml --allow-ui-updates=false
 ```
 
-For an empty dashboard or missing application telemetry, follow
-[Diagnose missing telemetry with gcx](docs/guides/diagnose-missing-telemetry.md).
+For an empty dashboard or missing application telemetry, follow [Diagnose missing telemetry with gcx](docs/sources/guides/diagnose-missing-telemetry.md).
 
 Synthetic Monitoring check manifests support optional `spec.folderUid` for folder
 assignment. See the [check management guide](claude-plugin/skills/synth-manage-checks/SKILL.md#step-3-build-yaml-definition)
@@ -635,12 +660,6 @@ gcx dev lint new dashboard my-rule              # create custom rule
 go run . && gcx resources push -p ./resources
 ```
 
-## Manage Assistant Watchers (experimental)
-
-Read Watcher configuration with `gcx assistant watchers list` and `get WATCHER`, inspect runtime observations with `status WATCHER`, or export manifests with `gcx resources pull watchers`. Apply configuration with `create -f FILE`, `update WATCHER -f FILE` or `gcx resources push`; remove a Watcher with `delete WATCHER --force`. Creation stays inactive and uncalibrated. Requires Grafana Cloud. See [Assistant Watchers](docs/reference/assistant-watchers.md).
-
-Pulled Watcher manifests can be pushed back unchanged. Applying configuration preserves calibrated content and learned state; meaningful settings outside the manifest model cause an explicit refusal.
-
 ## Raw API Access
 
 For anything not covered by built-in commands, use the API passthrough:
@@ -719,9 +738,9 @@ jobs:
 |-------|-------------|
 | [Installation](docs/sources/installation.md) | Install gcx on macOS, Linux, and Windows |
 | [Configuration](docs/sources/configuration.md) | Contexts, authentication, environment variables |
-| [Managing Resources](docs/guides/manage-resources.md) | Get, push, pull, delete, edit, validate |
-| [Dashboards as Code](docs/guides/dashboards-as-code.md) | Dashboard-as-code workflow with live dev server |
-| [Linting Resources](docs/guides/lint-resources.md) | Lint dashboards and alert rules with Rego policies |
+| [Managing Resources](docs/sources/guides/manage-resources.md) | Get, push, pull, delete, edit, validate |
+| [Dashboards as Code](docs/sources/guides/dashboards-as-code.md) | Dashboard-as-code workflow with live dev server |
+| [Linting Resources](docs/sources/guides/lint-resources.md) | Lint dashboards and alert rules with Rego policies |
 | [CLI Reference](docs/sources/cli-reference.md) | Full command reference (auto-generated) |
 | [Engineering RFCs](docs/rfcs/README.md) | Proposals, technical designs, and review workflows |
 

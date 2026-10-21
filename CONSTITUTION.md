@@ -45,7 +45,7 @@ OnCall, Fleet Management, etc.) using product-specific REST APIs.
   manage a Kubernetes-compatible resource discovered from the server use
   `internal/providers/native`. They never register an adapter for a discovered GVK,
   and never construct discovery registries or dynamic clients directly.
-  > **Pending migration:** the dashboards provider (`internal/providers/dashboards/`) still builds its descriptor and dynamic client by hand (see ADR 016, `docs/adrs/dashboards-provider/001-dashboards-provider-design.md`). Its migration to the native binding is the next slice of RFC 001 (`docs/rfcs/001-alerting-provider-refactor.md`); until it lands, this is a known gap, not a second exception.
+  > **Pending migration:** the dashboards provider (`internal/providers/dashboards/`) still builds its descriptor and dynamic client by hand (see RFC 017, `docs/rfcs/017-dashboards-provider-design.md`). Its migration to the native binding is the next slice of RFC 001 (`docs/rfcs/001-alerting-provider-refactor.md`); until it lands, this is a known gap, not a second exception.
 - **Schema/Example on Registration structs:** Every `adapter.Registration` struct (populated
   via `TypedRegistrations()`) must include a non-nil `Schema` field. These power the
   `resources list-types` command via the global `SchemaForGVK`/`ExampleForGVK` functions — `AsAdapter()`
@@ -195,7 +195,6 @@ agent mode detection, behavior changes, and opt-out mechanisms.
 
 - **Prefer stdlib over small dependencies.** Don't add a new `go.mod` dependency
   when the used API surface is small enough to reimplement (~100 LOC or less).
-  See [docs/research/2026-05-26-dependency-audit.md](docs/research/2026-05-26-dependency-audit.md) for examples.
 - `cmd/` may import `internal/`; `internal/` may not import `cmd/`.
 - No circular dependencies between packages.
 - Provider implementations (`internal/providers/*/`) may import core resource types but not
@@ -215,25 +214,8 @@ agent mode detection, behavior changes, and opt-out mechanisms.
   product's own auth mechanism. `NewDefaultClient(ctx)` returns an `*http.Client`
   with `LoggingRoundTripper` and no auth injection — providers set their own
   auth headers per request.
-- **Fleet Management runs through the plugin proxy.** Fleet Management and the
-  Instrumentation Hub reach their API at `cfg.Host`, through the
-  `grafana-collector-app` plugin proxy
-  (`/api/plugin-proxy/grafana-collector-app/fleet-management-api/…`). The plugin
-  adds the Fleet Management credentials and the tenant headers server-side, so
-  the client carries the caller's Grafana credential only and uses
-  `rest.HTTPClientFor()`, the same as Faro. Fleet Management needs no
-  grafana.com token and no `fleet-management` access policy scope. See ADR-023.
-- **Synth is dual-mode (carve-out).** Synthetic Monitoring reaches its API two
-  ways: (1) primary — Grafana's datasource proxy at `cfg.Host`
-  (`/api/datasources/proxy/uid/<sm-uid>/sm/…`) via `rest.HTTPClientFor()` in
-  `internal/query/synth`, carrying the caller's Grafana credential (the SM token
-  is injected server-side by the plugin's `sm` proxy route, so the client never
-  handles it); (2) fallback — the direct SM API (external domain) via
-  `httputils.NewDefaultClient(ctx)` + an SM token, taken only on a proxy 403 or
-  when no SM datasource UID resolves. Both usages are consistent with the rule
-  above (proxy = `cfg.Host`; direct = external domain). The dual path preserves
-  token-based access for CI/headless environments while letting OAuth/SAT callers
-  drop the SM token. See ADR-020.
+- **Fleet Management runs through the plugin proxy.** Fleet Management and the Instrumentation Hub reach their API at `cfg.Host`, through the `grafana-collector-app` plugin proxy (`/api/plugin-proxy/grafana-collector-app/fleet-management-api/…`). The plugin adds the Fleet Management credentials and the tenant headers server-side, so the client carries the caller's Grafana credential only and uses `rest.HTTPClientFor()`, the same as Faro. Fleet Management needs no grafana.com token and no `fleet-management` access policy scope. See RFC 024.
+- **Synth is dual-mode (carve-out).** Synthetic Monitoring reaches its API two ways: (1) primary — Grafana's datasource proxy at `cfg.Host` (`/api/datasources/proxy/uid/<sm-uid>/sm/…`) via `rest.HTTPClientFor()` in `internal/query/synth`, carrying the caller's Grafana credential (the SM token is injected server-side by the plugin's `sm` proxy route, so the client never handles it); (2) fallback — the direct SM API (external domain) via `httputils.NewDefaultClient(ctx)` + an SM token, taken only on a proxy 403 or when no SM datasource UID resolves. Both usages are consistent with the rule above (proxy = `cfg.Host`; direct = external domain). The dual path preserves token-based access for CI/headless environments while letting OAuth/SAT callers drop the SM token. See RFC 021.
 - **All HTTP clients via `httputils`.** Production code must create HTTP clients
   through `httputils.NewDefaultClient(ctx)` or `httputils.NewClient(ClientOpts{...})`.
   Bare `http.DefaultClient`, standalone `&http.Client{}`, and custom transports

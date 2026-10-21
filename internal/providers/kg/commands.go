@@ -1,6 +1,7 @@
 package kg
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -1024,7 +1025,11 @@ flag. Distinct from "gcx kg suppressions", which manages disabled-alert configs.
 
 Applies the entries in the input file, creating each config when absent or
 updating it when present. Remote configs absent from the file are never
-deleted.`,
+deleted.
+
+The input may be an alertConfigs wrapper, one bare config, or a bare list of
+configs, so YAML output from notifications get or list can be edited and passed
+back directly. Field names are case-sensitive, and unknown fields are rejected.`,
 		Example: `  gcx kg notifications upsert -f notifications.yaml
 
   echo 'alertConfigs:
@@ -1041,14 +1046,14 @@ deleted.`,
 			if err != nil {
 				return err
 			}
-			var configs AlertConfigs
-			if err := yaml.Unmarshal(data, &configs); err != nil {
+			configs, err := parseNotificationConfigs(data)
+			if err != nil {
 				return fmt.Errorf("failed to parse notifications file: %w", err)
 			}
-			if len(configs.AlertConfigs) == 0 {
+			if len(configs) == 0 {
 				return errors.New("no notification configs found in file")
 			}
-			for i, ac := range configs.AlertConfigs {
+			for i, ac := range configs {
 				if ac.Name == "" {
 					return fmt.Errorf("notification config %d has an empty name", i)
 				}
@@ -1061,9 +1066,9 @@ deleted.`,
 			if err != nil {
 				return err
 			}
-			total := len(configs.AlertConfigs)
+			total := len(configs)
 			result := cmdio.NewBatchMutation("upserted")
-			for i, ac := range configs.AlertConfigs {
+			for i, ac := range configs {
 				if err := client.UpsertNotification(cmd.Context(), ac); err != nil {
 					failure := fmt.Errorf("failed to upsert notification config %q (%d/%d succeeded): %w", ac.Name, i, total, err)
 					if i == 0 {
@@ -1114,6 +1119,71 @@ deleted.`,
 
 	cmd.AddCommand(listCmd, getCmd, createCmd, deleteCmd)
 	return cmd
+}
+
+// parseNotificationConfigs accepts the shapes notifications get and list print
+// (one config, or a list of configs) as well as an alertConfigs wrapper, and
+// rejects unknown fields so a misspelled key isn't silently dropped.
+func parseNotificationConfigs(data []byte) ([]AlertConfig, error) {
+	var document yaml.Node
+	if err := yaml.Unmarshal(data, &document); err != nil {
+		return nil, err
+	}
+	if len(document.Content) == 0 {
+		return nil, nil
+	}
+
+	root := document.Content[0]
+	decodeStrict := func(v any) error {
+		decoder := yaml.NewDecoder(bytes.NewReader(data))
+		decoder.KnownFields(true)
+		if err := decoder.Decode(v); err != nil {
+			return err
+		}
+		// Reject later documents instead of dropping them, so joined get output
+		// can't silently lose every config after the first. yaml.v3 decodes a
+		// trailing "---" as an empty null document, which is allowed.
+		for {
+			var extra yaml.Node
+			err := decoder.Decode(&extra)
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+			if len(extra.Content) > 0 && extra.Content[0].Tag != "!!null" {
+				return errors.New("multiple YAML documents are not supported; put the configs in one list")
+			}
+		}
+	}
+
+	switch root.Kind {
+	case yaml.SequenceNode:
+		var configs []AlertConfig
+		if err := decodeStrict(&configs); err != nil {
+			return nil, err
+		}
+		return configs, nil
+	case yaml.MappingNode:
+		for i := 0; i < len(root.Content); i += 2 {
+			if root.Content[i].Value != "alertConfigs" {
+				continue
+			}
+			var wrapped AlertConfigs
+			if err := decodeStrict(&wrapped); err != nil {
+				return nil, err
+			}
+			return wrapped.AlertConfigs, nil
+		}
+		var config AlertConfig
+		if err := decodeStrict(&config); err != nil {
+			return nil, err
+		}
+		return []AlertConfig{config}, nil
+	default:
+		return nil, errors.New("expected a notification config, a list of configs, or an alertConfigs wrapper")
+	}
 }
 
 type notificationsListOpts struct {
@@ -3254,6 +3324,24 @@ func newDescribeSchemaCmd(loader RESTConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "schema",
 		Short: "Show entity types, properties, and relationships.",
+		Long: `Show the entity types with their properties, and the relationships between
+them as 'A --TYPE--> B', for the requested window (the last hour by default;
+pass --from/--to for older data, the same window as your queries).
+
+The JSON output nests everything under .schema: .schema.entityTypes[] is
+{type, properties} and .schema.relationships[] is a string. Filter it with the
+built-in --jq rather than an external parser; -o text prints one line per type.`,
+		Example: `  # Show the schema for an incident window
+  gcx kg meta schema --from <start> --to <end>
+
+  # List the properties of one entity type
+  gcx kg meta schema --since 1h --jq '.schema.entityTypes[] | select(.type == "Pod") | .properties'
+
+  # List the relationships that involve one entity type
+  gcx kg meta schema --since 1h --jq '.schema.relationships[] | select(contains("Pod"))'
+
+  # Print one line per entity type with its properties
+  gcx kg meta schema --since 1h -o text`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err
