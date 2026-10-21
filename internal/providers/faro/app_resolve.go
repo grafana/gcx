@@ -73,7 +73,7 @@ func lookupByResourceName(ctx context.Context, client *Client, name string) (*Fa
 // omitted list keeps the stored one and only an explicit empty list clears it.
 func prepareUpdate(current, app *FaroApp) error {
 	if app.Name != current.Name {
-		return fmt.Errorf("faro app %s is named %q, not %q, and the API cannot rename an app: set spec.name to %q",
+		return fmt.Errorf("faro app %s is named %q, not %q, and the API cannot rename an app: set spec.name to %q to update it, or create a new app with \"gcx frontend apps create\" or with \"gcx resources push\" and no metadata.name",
 			current.GetResourceName(), current.Name, app.Name, current.Name)
 	}
 	if app.CORSOrigins == nil {
