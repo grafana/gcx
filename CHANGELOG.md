@@ -1,3 +1,8 @@
+## v1.7.1 (2026-10-21)
+
+- Fix Docker image build broken by an inline comment in the Dockerfile
+
+
 ## v1.7.0 (2026-10-20)
 
 ### Breaking changes

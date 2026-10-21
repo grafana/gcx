@@ -8,7 +8,7 @@ weight: 60
 
 # CLI reference
 
-This reference describes gcx **v1.7.0**. Run `gcx version` to check your installed version.
+This reference describes gcx **v1.7.1**. Run `gcx version` to check your installed version.
 
 Flag defaults below are for human mode. Agent mode changes defaults such as output format; explicit flags override those defaults.
 
@@ -18440,6 +18440,10 @@ Upsert (create or update) one or more alert notification configs from a YAML fil
 Applies the entries in the input file, creating each config when absent or
 updating it when present. Remote configs absent from the file are never
 deleted.
+
+The input may be an alertConfigs wrapper, one bare config, or a bare list of
+configs, so YAML output from notifications get or list can be edited and passed
+back directly. Field names are case-sensitive, and unknown fields are rejected.
 
 ```shell
 gcx kg notifications upsert [flags]
