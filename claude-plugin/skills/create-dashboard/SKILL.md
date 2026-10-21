@@ -130,7 +130,7 @@ gcx datasources list -o json
 | Pyroscope | `gcx datasources pyroscope list-profile-types -d <uid>` then `labels -d <uid>` | `gcx datasources pyroscope labels -d <uid> --label <label>` |
 
 Prometheus also has `gcx datasources prometheus metadata -d <uid>` for metric type and help text.
-For Prometheus scoped label lookups, fall back to `gcx api "/api/datasources/proxy/uid/<uid>/api/v1/label/<label>/values?match[]=<selector>"` — use the datasource `uid` from `gcx datasources list`; the list output has no numeric id.
+For Prometheus scoped label lookups, narrow with one `--match` selector or `--metric` (repeated `--match` selectors combine as a union): `gcx datasources prometheus labels -d <uid> --label <label> --match '{job="api"}'`.
 Other datasource types may have their own discovery subcommands — check `gcx datasources <type> --help` before using `gcx api`.
 
 Check units, histogram buckets, status labels, route/operation labels, cluster

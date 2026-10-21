@@ -105,14 +105,14 @@ natural follow-ons.
 
 ### Assistant
 
-Cloud-only. Requires `gcx login` (OAuth). Show the commands; run live only if
-the stack is healthy and the presenter has time — streaming output has variable
-latency.
+Cloud-only. Requires `gcx login` (OAuth). Each `prompt` consumes billable
+Grafana Assistant tokens. Show the commands; run live only if the stack is
+healthy and the presenter has time — streaming output has variable latency.
 
 ```bash
-gcx assistant prompt "What alerts are firing right now and why?"
-gcx assistant prompt "Which service owns checkout-latency?" --continue
-gcx assistant prompt "Summarize CPU on prod" --json
+gcx assistant prompt "Why is checkout-latency firing right now?"
+gcx assistant prompt "What changed right before it started?" --continue
+gcx assistant prompt "Why did CPU on prod spike this morning?" --json
 
 gcx assistant investigations list
 gcx assistant investigations get <id>

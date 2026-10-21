@@ -43,7 +43,7 @@ var commandAnnotations = map[string]annotation{
 
 	// assistant
 	"gcx assistant investigations cancel":          {Cost: "small"},
-	"gcx assistant investigations create":          {Cost: "small", Hint: "Use for deep cross-signal root cause analysis. Dispatches specialist agents for metrics, logs, traces, and profiles in parallel — more efficient than chaining individual gcx query commands. Example: --instruction=\"Checkout latency spike after deploy\""},
+	"gcx assistant investigations create":          {Cost: "small", Hint: "Starts a multi-agent Grafana Assistant investigation (billing: " + docs.AssistantPricing + "). Use when the user requests a Grafana Assistant investigation or continues an authorized Assistant workflow; handle an ordinary request to investigate or root-cause with direct signal queries. v1 stacks require --title and v2 stacks require --instruction; pass both to cover either. Example: --title=\"Checkout latency\" --instruction=\"Checkout latency spike after deploy\""},
 	"gcx assistant investigations get":             {Cost: "medium", Hint: "<id> -o json"},
 	"gcx assistant investigations get-narrative":   {Cost: "medium", Hint: "<id>; assistant-authored prose only (no tool plumbing)"},
 	"gcx assistant investigations list":            {Cost: "small"},
@@ -52,7 +52,7 @@ var commandAnnotations = map[string]annotation{
 	"gcx assistant investigations list-tool-calls": {Cost: "medium", Hint: "<id> [--name=<tool>] -o json; tool calls with results"},
 	"gcx assistant investigations mode":            {Cost: "small"},
 	"gcx assistant investigations pause":           {Cost: "small"},
-	"gcx assistant investigations resume":          {Cost: "small"},
+	"gcx assistant investigations resume":          {Cost: "small", Hint: "Restarts a paused v2 Grafana Assistant investigation (billing: " + docs.AssistantPricing + "). Use when the user asks to resume it. Example: <id>"},
 	"gcx assistant investigations share":           {Cost: "small", Hint: "<id> --team=<name> (repeatable)"},
 	"gcx assistant conversation list":              {Cost: "small", Hint: "Discover conversation IDs. --source assistant,slack,cli (default), --limit, --offset, -o json"},
 	"gcx assistant conversation get":               {Cost: "large", Hint: "Pull a conversation transcript by ID or shared URL. AI SDK results cover the main thread; shared snapshots are read-only here. Example: <id-or-url> -o json"},
@@ -156,7 +156,7 @@ var commandAnnotations = map[string]annotation{
 	// top-level single commands
 	"gcx instrumentation setup":             {Cost: "medium", Hint: "<cluster> --use-defaults -o json | Docs: " + docs.KubernetesMonitoring},
 	"gcx instrumentation status":            {Cost: "medium", Hint: "-o json | Docs: " + docs.KubernetesMonitoring},
-	"gcx instrumentation check":             {Cost: "small", Hint: "validates the LOCAL workstation's OTel setup (env vars, SDK deps, collector/Beyla/Alloy config, Grafana Cloud env creds). Without --fix-plan, no Grafana stack is queried. [components] --language <lang> -o json. Two fix-plan modes: --fix-plan=local aggregates the explain docs deterministically (offline, no billing). --fix-plan=assistant synthesizes a prioritized plan with Grafana Assistant — BILLABLE (see " + docs.AssistantPricing + ", cost medium), requires a Grafana Cloud context. Cost annotation stays 'small' because it reflects the base command; --fix-plan=assistant is the billable path."},
+	"gcx instrumentation check":             {Cost: "small", Hint: "validates the LOCAL workstation's OTel setup (env vars, SDK deps, collector/Beyla/Alloy config, Grafana Cloud env creds). Without --fix-plan, no Grafana stack is queried. [components] --language <lang> -o json. Two fix-plan modes: --fix-plan=local aggregates the explain docs deterministically (offline, no billing). --fix-plan=assistant synthesizes a prioritized plan with Grafana Assistant — BILLABLE (see " + docs.AssistantPricing + ", cost medium), requires a Grafana Cloud context; use it only when the user requests Grafana Assistant, otherwise --fix-plan=local. Cost annotation stays 'small' because it reflects the base command; --fix-plan=assistant is the billable path."},
 	"gcx instrumentation explain":           {Cost: "small", Hint: "Show a markdown explanation for an otel-checker finding by its explain ID (see the explain_id field in `gcx instrumentation check -o json` output). Use `gcx instrumentation list-explanations` to enumerate every registered ID."},
 	"gcx instrumentation list-explanations": {Cost: "medium", Hint: "-o json"},
 

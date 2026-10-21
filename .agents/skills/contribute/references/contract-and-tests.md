@@ -70,6 +70,15 @@ introduce `--filter` for the same idea; if siblings document
 "case-insensitive", match it or differ explicitly. Enum values and JSON field
 names match siblings for the same concepts.
 
+**Routing by request.** Route by what the user asked for, not by what the agent
+doesn't know yet. `Long`, `llm_hint`, and `Example` must not present a command
+as the fallback for missing inventory, empty results, or permission errors when
+direct discovery exists, and examples should show requests that belong to the
+command rather than ones a direct command already serves. A command that starts
+delegated or billed work (Grafana Assistant inference, test executions) says so
+in both `Long` and `llm_hint`, because `help-tree` shows only the hint, and
+links the pricing constant from `internal/docs/links.go`.
+
 **Defaults.** Every default needs a one-line rationale: it should produce a
 useful, bounded result with no extra parameters.
 
