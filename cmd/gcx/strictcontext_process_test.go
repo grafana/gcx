@@ -114,6 +114,8 @@ func runStrictContext(t *testing.T, tc strictCase) strictResult {
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	cmd.Stdin = nil
+	// The loader probes <cwd>/.gcx.yaml; keep the child out of the package dir.
+	cmd.Dir = t.TempDir()
 	agentMode := "false"
 	if tc.agentMode {
 		agentMode = "true"
@@ -172,6 +174,10 @@ func TestStrictContext_Refused(t *testing.T) {
 			res := runStrictContext(t, tc)
 			assert.Equal(t, 2, res.exitCode, "stdout=%s stderr=%s", res.stdout, res.stderr)
 			assert.Contains(t, res.stdout+res.stderr, strictRefusalDetail)
+			if tc.name == "login with GCX_CONTEXT only" {
+				// login ignores GCX_CONTEXT, so the refusal must not suggest it.
+				assert.NotContains(t, res.stdout+res.stderr, "GCX_CONTEXT=")
+			}
 		})
 	}
 }
@@ -248,8 +254,9 @@ func TestStrictContext_LocalCommandsNeverRefused(t *testing.T) {
 		{"instrumentation", "list-explanations"},
 	}
 	// These may legitimately exit non-zero, so only the refusal is asserted.
+	// docs list-products is not here: it fetches the docs index over the
+	// network. The sweep covers it instead.
 	lenient := map[string]string{
-		"docs list-products": "may need network to list products",
 		"instrumentation check --language go": "findings depend on the workstation " +
 			"(collector config, OTEL_* variables) and exit non-zero when checks fail",
 	}
