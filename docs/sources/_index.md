@@ -23,10 +23,6 @@ cards:
       description: Install `gcx` with the quick installer, Homebrew, or a prebuilt binary.
       href: installation/
       height: 24
-    - title: CLI reference
-      description: Commands, flags, environment variables, and configuration for the latest stable release.
-      href: cli-reference/
-      height: 24
     - title: Authentication
       description: Options for `gcx` authentication.
       href: authentication/
@@ -50,7 +46,11 @@ cards:
     - title: User guides
       description: User guides for dashboards as code, diagnostics, manage resources, and more. 
       href: guides/
-      height: 24      
+      height: 24  
+    - title: CLI reference
+      description: Commands, flags, environment variables, and configuration for the latest stable release.
+      href: cli-reference/
+      height: 24          
   title_class: pt-0 lh-1
 hero:
   title: gcx CLI
