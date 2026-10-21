@@ -165,6 +165,8 @@ func TestStrictContext_Refused(t *testing.T) {
 		{name: "commands --validate", args: []string{"commands", "--validate"}},
 		{name: "config check", args: []string{"config", "check"}},
 		{name: "login", args: []string{"login", ""}},
+		// Refusal precedes any OAuth step, so no browser opens.
+		{name: "signup", args: []string{"signup"}},
 		// First run (Review Focus 3): the auto-created template inherits "default".
 		{name: "no config file", args: []string{"slo", "definitions", "list"}, noConfig: true},
 		{name: "login with GCX_CONTEXT only", args: []string{"login"}, env: []string{"GCX_CONTEXT=selected"}},
@@ -174,6 +176,12 @@ func TestStrictContext_Refused(t *testing.T) {
 			res := runStrictContext(t, tc)
 			assert.Equal(t, 2, res.exitCode, "stdout=%s stderr=%s", res.stdout, res.stderr)
 			assert.Contains(t, res.stdout+res.stderr, strictRefusalDetail)
+			if tc.name == "signup" {
+				out := res.stdout + res.stderr
+				assert.Contains(t, out, "gcx signup <name>")
+				assert.NotContains(t, out, "gcx login")
+				assert.NotContains(t, out, "--server")
+			}
 			if tc.name == "login with GCX_CONTEXT only" {
 				// login ignores GCX_CONTEXT, so the refusal must not suggest it.
 				assert.NotContains(t, res.stdout+res.stderr, "GCX_CONTEXT=")

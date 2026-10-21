@@ -553,6 +553,9 @@ func TestSignup_StrictBareRefused(t *testing.T) {
 
 	_, err := runSignup(t, "--config", path)
 	require.ErrorIs(t, err, config.ErrContextRequired)
+	var reqErr *config.ContextRequiredError
+	require.ErrorAs(t, err, &reqErr)
+	assert.Equal(t, "signup", reqErr.Command)
 	assert.Zero(t, browser.started())
 }
 

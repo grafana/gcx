@@ -2466,7 +2466,7 @@ func TestResolveSourceContext(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			gotSource, gotName, err := resolveSourceContext(tt.cfg, tt.contextName, tt.server)
+			gotSource, gotName, err := resolveSourceContext(tt.cfg, tt.contextName, tt.server, "login")
 			require.NoError(t, err)
 			assert.Same(t, tt.wantSource, gotSource, "sourceCtx mismatch")
 			assert.Equal(t, tt.wantName, gotName, "contextName mismatch")
@@ -2676,7 +2676,7 @@ func TestResolveSourceContext_Strict(t *testing.T) {
 			} else {
 				t.Setenv("GCX_REQUIRE_CONTEXT", "")
 			}
-			_, name, err := resolveSourceContext(cfg, tt.contextName, tt.server)
+			_, name, err := resolveSourceContext(cfg, tt.contextName, tt.server, "login")
 			if tt.wantErr != nil {
 				require.ErrorIs(t, err, tt.wantErr)
 				var cre *config.ContextRequiredError
@@ -2692,7 +2692,7 @@ func TestResolveSourceContext_Strict(t *testing.T) {
 
 func TestResolveSourceContext_StrictNoCurrentContextFallsThrough(t *testing.T) {
 	t.Setenv("GCX_REQUIRE_CONTEXT", "true")
-	_, name, err := resolveSourceContext(config.Config{}, "", "")
+	_, name, err := resolveSourceContext(config.Config{}, "", "", "login")
 	require.NoError(t, err)
 	assert.Empty(t, name)
 }

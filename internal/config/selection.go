@@ -38,9 +38,10 @@ var ErrContextSelectionUndeclared = errors.New("internal error: config loaded wi
 type ContextRequiredError struct {
 	Inherited string
 	Available []string
-	// Login marks a refusal raised by gcx login/signup, which take their name
-	// from the positional argument or --context and ignore GCX_CONTEXT.
-	Login bool
+	// Command names the command that raised the refusal when it takes its
+	// context from the positional argument or --context and ignores
+	// GCX_CONTEXT: "login" or "signup". Empty for every other command.
+	Command string
 }
 
 func (e *ContextRequiredError) Error() string {

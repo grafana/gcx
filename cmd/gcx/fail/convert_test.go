@@ -2120,7 +2120,7 @@ func TestErrorToDetailedError_ContextRequired_Login(t *testing.T) {
 	got := toDetailedError(t, &config.ContextRequiredError{
 		Inherited: "prod",
 		Available: []string{"a", "b"},
-		Login:     true,
+		Command:   "login",
 	})
 
 	require.NotNil(t, got)
@@ -2129,6 +2129,25 @@ func TestErrorToDetailedError_ContextRequired_Login(t *testing.T) {
 	}
 	assert.Contains(t, got.Suggestions,
 		"Pass a context name: gcx login <name>, or --context <name> / --server <url>")
+	assert.Contains(t, got.Suggestions, "Or turn strict mode off: unset GCX_REQUIRE_CONTEXT")
+	assert.Contains(t, got.Suggestions, "Configured contexts: a, b")
+}
+
+func TestErrorToDetailedError_ContextRequired_Signup(t *testing.T) {
+	got := toDetailedError(t, &config.ContextRequiredError{
+		Inherited: "prod",
+		Available: []string{"a", "b"},
+		Command:   "signup",
+	})
+
+	require.NotNil(t, got)
+	for _, s := range got.Suggestions {
+		assert.NotContains(t, s, "GCX_CONTEXT", "signup ignores GCX_CONTEXT")
+		assert.NotContains(t, s, "gcx login", "login is a different flow")
+		assert.NotContains(t, s, "--server", "signup has no --server")
+	}
+	assert.Contains(t, got.Suggestions,
+		"Pass a context name: gcx signup <name>, or gcx signup --context <name>")
 	assert.Contains(t, got.Suggestions, "Or turn strict mode off: unset GCX_REQUIRE_CONTEXT")
 	assert.Contains(t, got.Suggestions, "Configured contexts: a, b")
 }

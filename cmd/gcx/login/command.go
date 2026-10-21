@@ -985,7 +985,7 @@ func loadLoginSourceContext(ctx context.Context, flags *loginOpts, contextName s
 		return config.Config{}, nil, contextName, err
 	}
 	selectionServer := requestedLoginServer(flags.Server, nil)
-	sourceCtx, resolvedName, err := resolveSourceContext(cfg, contextName, selectionServer)
+	sourceCtx, resolvedName, err := resolveSourceContext(cfg, contextName, selectionServer, loginCommandName(flags.signup))
 	if err != nil {
 		return config.Config{}, nil, contextName, err
 	}
@@ -1845,6 +1845,15 @@ func structuredClarificationError(e *login.ErrNeedClarification) error {
 	}
 }
 
+// loginCommandName names the command a loginOpts serves, for refusals whose
+// remedy differs between gcx login and gcx signup.
+func loginCommandName(signup bool) string {
+	if signup {
+		return "signup"
+	}
+	return "login"
+}
+
 // resolveSourceContext picks which context this login targets, returning it
 // alongside its (possibly-derived) name. A nil context signals new-context
 // creation to downstream code.
@@ -1852,8 +1861,9 @@ func structuredClarificationError(e *login.ErrNeedClarification) error {
 // When no name is given, the name is derived from --server so that
 // `gcx login --server <new>` doesn't clobber the unrelated current context.
 // With neither name nor server, falls back to the current context, except in
-// strict context mode, where inheriting it is refused.
-func resolveSourceContext(cfg config.Config, contextName, server string) (*config.Context, string, error) {
+// strict context mode, where inheriting it is refused. command ("login" or
+// "signup") labels that refusal.
+func resolveSourceContext(cfg config.Config, contextName, server, command string) (*config.Context, string, error) {
 	server = login.NormalizeServerURL(server)
 	switch {
 	case contextName != "":
@@ -1866,7 +1876,7 @@ func resolveSourceContext(cfg config.Config, contextName, server string) (*confi
 			// The pre-load captured the inherited context's target kind; a
 			// refused login must report none.
 			config.ClearCapturedTargetKind()
-			return nil, "", &config.ContextRequiredError{Inherited: cfg.CurrentContext, Available: cfg.ContextNames(), Login: true}
+			return nil, "", &config.ContextRequiredError{Inherited: cfg.CurrentContext, Available: cfg.ContextNames(), Command: command}
 		}
 		return cfg.GetCurrentContext(), cfg.CurrentContext, nil
 	}

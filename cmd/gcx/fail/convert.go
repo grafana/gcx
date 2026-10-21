@@ -217,10 +217,8 @@ func convertConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 			"Or set GCX_CONTEXT=<name> for this shell",
 			"Or turn strict mode off: unset GCX_REQUIRE_CONTEXT",
 		}
-		if reqErr != nil && reqErr.Login {
-			// login ignores GCX_CONTEXT, so suggesting it cannot help.
-			suggestions[0] = "Pass a context name: gcx login <name>, or --context <name> / --server <url>"
-			suggestions = append(suggestions[:1], suggestions[2:]...)
+		if reqErr != nil {
+			suggestions = commandContextSuggestions(reqErr.Command, suggestions)
 		}
 		if len(available) > 0 {
 			suggestions = append(suggestions, "Configured contexts: "+cappedNameList(available))
@@ -1863,4 +1861,19 @@ func convertSavedMutationErrors(err error) (*gcxerrors.DetailedError, bool) {
 		return nil, false
 	}
 	return &gcxerrors.DetailedError{Summary: gcxerrors.SummaryPartialFailure, Details: saved.Error(), ExitCode: new(gcxerrors.ExitPartialFailure), Suggestions: []string{"Inspect the saved resource, resolve the failed stage, then reapply the desired manifest."}}, true
+}
+
+// commandContextSuggestions adjusts the strict-mode suggestions for login and
+// signup, which ignore GCX_CONTEXT. signup has no --server, and gcx login
+// <name> is a different flow, so each names its own command.
+func commandContextSuggestions(command string, suggestions []string) []string {
+	switch command {
+	case "login":
+		suggestions[0] = "Pass a context name: gcx login <name>, or --context <name> / --server <url>"
+	case "signup":
+		suggestions[0] = "Pass a context name: gcx signup <name>, or gcx signup --context <name>"
+	default:
+		return suggestions
+	}
+	return append(suggestions[:1], suggestions[2:]...)
 }
