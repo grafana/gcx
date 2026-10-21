@@ -1472,8 +1472,8 @@ func TestOptionsLoadConfig_StrictAcceptsGCXContext(t *testing.T) {
 	require.Equal(t, "b", cfg.CurrentContext)
 }
 
-// A failing env override must surface as itself for file-scoped commands, not be
-// replaced by the strict refusal (FileScope has to run before anything that can fail).
+// A failing env override must show as itself for file-scoped commands. The strict
+// refusal must not replace it (FileScope has to run before anything that can fail).
 func TestConfigCommands_StrictFileScopedEnvError(t *testing.T) {
 	isolateStateHome(t)
 	t.Setenv("GCX_REQUIRE_CONTEXT", "true")

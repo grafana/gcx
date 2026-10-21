@@ -2698,8 +2698,8 @@ func TestResolveSourceContext_StrictNoCurrentContextFallsThrough(t *testing.T) {
 }
 
 // TestRunLogin_StrictEmptyPositionalRefused pins that `gcx login ""` cannot
-// fall back to the file's current-context in strict mode, and does so before
-// any prompt or network access.
+// fall back to the current-context of the file in strict context mode. The
+// refusal happens before any prompt or network access.
 func TestRunLogin_StrictEmptyPositionalRefused(t *testing.T) {
 	signupEnvironment(t, "true")
 	t.Setenv("GCX_REQUIRE_CONTEXT", "true")
@@ -2723,7 +2723,7 @@ func TestRunLogin_StrictEmptyPositionalRefused(t *testing.T) {
 
 // TestLoadLoginSourceContext_StrictRefusalClearsTargetKind pins that a refused
 // strict login reports no target kind, even though the pre-load captured the
-// inherited context's.
+// target kind of the inherited context.
 func TestLoadLoginSourceContext_StrictRefusalClearsTargetKind(t *testing.T) {
 	t.Setenv("GCX_REQUIRE_CONTEXT", "true")
 	t.Setenv("GCX_KEYCHAIN", "off")

@@ -81,10 +81,10 @@ func (r strictResult) refused() bool {
 	return r.exitCode == 2 && strings.Contains(r.stdout+r.stderr, strictRefusalDetail)
 }
 
-// strictBaseEnv is the child's inherited environment: an allowlist, so nothing
-// from the developer's shell (agent detection, keychain, caches, GRAFANA_*)
-// changes behaviour. An empty GRAFANA_SERVER would still overlay the config
-// file's server, so absent variables stay absent rather than set empty.
+// strictBaseEnv is the inherited environment of the child. It is an allowlist,
+// so nothing from the shell of the developer (agent detection, keychain, caches,
+// GRAFANA_*) changes behaviour. An empty GRAFANA_SERVER would still overlay the
+// server of the config file, so absent variables stay absent and are not set empty.
 func strictBaseEnv() []string {
 	var env []string
 	for _, key := range []string{"PATH", "TMPDIR", "GOCOVERDIR", "SystemRoot"} {

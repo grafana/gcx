@@ -38,9 +38,9 @@ depends = ["tests:cli", "tests:linter", "tests:install", "tests:tag"]
 # through `depends`). Without it, agent-mode auto-detection picks up CLAUDECODE
 # and friends from the developer's shell and flips confirm-prompt behaviour to
 # "requires --force", failing tests that exercise the prompts. CI has no such
-# env, so this keeps local runs honest. GCX_REQUIRE_CONTEXT is cleared because
-# loader-level strict mode refuses inherited contexts in unit tests when a
-# developer exports it.
+# env, so this keeps local runs honest. These tasks clear GCX_REQUIRE_CONTEXT
+# because strict context mode in the loader refuses inherited contexts in unit
+# tests when a developer exports it.
 [tasks."tests:cli"]
 description = "Run CLI tests"
 env = { GCX_AGENT_MODE = "false", GCX_REQUIRE_CONTEXT = "" }

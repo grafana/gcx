@@ -6,67 +6,67 @@ import (
 	"os"
 )
 
-// contextSelection records how a load decided which context it targets. Strict
-// context mode (GCX_REQUIRE_CONTEXT) refuses a load whose target came from the
-// shared current-context field of the config file.
+// contextSelection records how a load chose its target context. Strict context
+// mode (GCX_REQUIRE_CONTEXT) refuses a load whose target came from the shared
+// current-context field of the config file.
 type contextSelection int
 
 const (
-	// selectionUndeclared means no override stated how the context was chosen.
+	// selectionUndeclared means no override stated how the load chose the context.
 	selectionUndeclared contextSelection = iota
 	// selectionExplicit means the invocation named a context.
 	selectionExplicit
 	// selectionInherited means the invocation named none and the config file
-	// supplied a non-empty current-context.
+	// has a non-empty current-context.
 	selectionInherited
 	// selectionNone means the invocation named none and the config file has no
-	// current-context, so nothing was inherited.
+	// current-context, so the load inherited nothing.
 	selectionNone
 )
 
 // ErrContextRequired is the sentinel behind ContextRequiredError.
 var ErrContextRequired = errors.New("context selection required")
 
-// ErrContextSelectionUndeclared is returned in strict context mode when a load
-// declared neither a context selection nor FileScope. It signals a missing
+// ErrContextSelectionUndeclared is the error in strict context mode when a load
+// declared neither a context selection nor FileScope. It shows a missing
 // call-site declaration, not a user mistake, so it fails closed.
-var ErrContextSelectionUndeclared = errors.New("internal error: config loaded without declaring a context selection; strict context mode refuses it")
+var ErrContextSelectionUndeclared = errors.New("internal error: config loaded without a declared context selection, so strict context mode refuses it")
 
 // ContextRequiredError reports that strict context mode refused an invocation
-// that did not name a context. Inherited is the current-context the config file
-// would have supplied; Available lists the configured contexts.
+// that did not name a context. Inherited is the current-context that the config
+// file would have supplied. Available lists the configured contexts.
 type ContextRequiredError struct {
 	Inherited string
 	Available []string
-	// Command names the command that raised the refusal when it takes its
-	// context from the positional argument or --context and ignores
-	// GCX_CONTEXT: "login" or "signup". Empty for every other command.
+	// Command is "login" or "signup" when that command raised the refusal. Both
+	// take their context from the positional argument or --context and ignore
+	// GCX_CONTEXT. It is empty for every other command.
 	Command string
 }
 
 func (e *ContextRequiredError) Error() string {
-	return fmt.Sprintf("strict context mode: invocation does not name a context (current-context is %q)", e.Inherited)
+	return fmt.Sprintf("strict context mode: the command does not name a context (current-context is %q)", e.Inherited)
 }
 
 func (e *ContextRequiredError) Is(target error) bool {
 	return target == ErrContextRequired
 }
 
-// StrictContextEnabled reports whether GCX_REQUIRE_CONTEXT turns strict context
-// mode on, using the same parsing as CLIOptions.
+// StrictContextEnabled reports whether GCX_REQUIRE_CONTEXT turns on strict
+// context mode. It parses the variable the same way as CLIOptions.
 func StrictContextEnabled() bool {
 	return CLIOptions{RequireContext: os.Getenv("GCX_REQUIRE_CONTEXT")}.RequireContextEnabled()
 }
 
-// SelectContext returns an Override that declares the invocation's context
-// selection. A non-empty name selects that context (failing with
-// ContextNotFound when it does not exist) and counts as explicit. An empty name
-// leaves the current context alone and records it as inherited when the config
-// supplies one.
+// SelectContext returns an Override that declares the context selection of the
+// invocation. A non-empty name selects that context and counts as explicit. It
+// fails with ContextNotFound when the context does not exist. An empty name
+// leaves the current context as it is. The Override records it as inherited
+// when the config has a current-context.
 func SelectContext(name string) Override {
 	return func(cfg *Config) error {
 		if name == "" {
-			// A name given earlier in the override chain stays explicit.
+			// A name from an earlier override in the chain stays explicit.
 			if cfg.contextSelection == selectionUndeclared {
 				if cfg.CurrentContext != "" {
 					cfg.contextSelection = selectionInherited
@@ -85,12 +85,12 @@ func SelectContext(name string) Override {
 	}
 }
 
-// FileScope is an Override for loads that inspect the config file itself rather
-// than a context's target, so strict context mode does not apply to them.
+// FileScope is an Override for loads that inspect the config file itself, not
+// the target of a context. Strict context mode does not apply to them.
 //
 // Apply it before any override that can fail (SelectContext with a name, env
-// parsing): the loader stops at the first failing override, so a FileScope placed
-// after one never runs and the load is treated as an unscoped, inherited one.
+// parsing). The loader stops at the first failing override. A FileScope after
+// such an override never runs, so the load counts as unscoped and inherited.
 //
 //nolint:gochecknoglobals // Stateless Override value used like a constant at call sites.
 var FileScope Override = func(cfg *Config) error {
@@ -114,9 +114,10 @@ func checkContextSelection(cfg *Config) error {
 	return nil
 }
 
-// inheritedRefusal returns the strict-mode refusal for a load that failed after
-// recording an inherited selection, or nil. It never reports an undeclared
-// selection: a load that failed early may simply not have recorded one yet.
+// inheritedRefusal returns the strict context mode refusal for a load that
+// failed after it recorded an inherited selection, or nil. It never reports an
+// undeclared selection, because a load that failed early may not have recorded
+// one yet.
 func inheritedRefusal(cfg *Config) error {
 	if cfg.fileScoped || cfg.contextSelection != selectionInherited {
 		return nil
@@ -124,9 +125,9 @@ func inheritedRefusal(cfg *Config) error {
 	return &ContextRequiredError{Inherited: cfg.CurrentContext, Available: cfg.ContextNames()}
 }
 
-// ResolveContextName picks the context to operate on: the explicit override when
-// set, otherwise the config's current context, falling back to the default. In
-// strict context mode, falling back to a non-empty current context is refused.
+// ResolveContextName picks the context to use. It returns the explicit override
+// when set, then the current context of the config, then the default. Strict
+// context mode refuses the fallback to a non-empty current context.
 func ResolveContextName(override string, cfg Config) (string, error) {
 	if override != "" {
 		return override, nil

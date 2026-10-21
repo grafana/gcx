@@ -92,9 +92,9 @@ with a configuration, authentication, or connectivity error:
 
 If a command fails with "GCX_REQUIRE_CONTEXT is set, so gcx will not fall back
 to current-context", do not fall back to `current-context`. Pass
-`--context <name>` or set `GCX_CONTEXT=<name>` on that invocation (or ask the
-user which context to use). `gcx login` and `gcx signup` ignore `GCX_CONTEXT`;
-give them a context name argument or `--context`.
+`--context <name>` or set `GCX_CONTEXT=<name>` on that invocation, or ask the
+user which context to use. `gcx login` and `gcx signup` ignore `GCX_CONTEXT`.
+Give them a context name argument or `--context`.
 `gcx config list-contexts` lists the names you can choose from.
 
 ## Output Control

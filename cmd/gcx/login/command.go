@@ -1845,8 +1845,8 @@ func structuredClarificationError(e *login.ErrNeedClarification) error {
 	}
 }
 
-// loginCommandName names the command a loginOpts serves, for refusals whose
-// remedy differs between gcx login and gcx signup.
+// loginCommandName names the command that a loginOpts serves. Refusals use it
+// because the remedy differs between gcx login and gcx signup.
 func loginCommandName(signup bool) string {
 	if signup {
 		return "signup"
@@ -1860,9 +1860,9 @@ func loginCommandName(signup bool) string {
 //
 // When no name is given, the name is derived from --server so that
 // `gcx login --server <new>` doesn't clobber the unrelated current context.
-// With neither name nor server, falls back to the current context, except in
-// strict context mode, where inheriting it is refused. command ("login" or
-// "signup") labels that refusal.
+// With neither name nor server, it falls back to the current context. Strict
+// context mode refuses that fallback. command ("login" or "signup") labels the
+// refusal.
 func resolveSourceContext(cfg config.Config, contextName, server, command string) (*config.Context, string, error) {
 	server = login.NormalizeServerURL(server)
 	switch {

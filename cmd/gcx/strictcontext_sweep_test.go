@@ -27,11 +27,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The sweep measures the strict-mode security invariant over the whole command
-// tree: with GCX_REQUIRE_CONTEXT on and no context named, an invocation sends
-// no request to the inherited (current-context) endpoints.
+// The sweep checks the strict context mode security invariant over the whole
+// command tree. With GCX_REQUIRE_CONTEXT on and no context named, an invocation
+// sends no request to the inherited (current-context) endpoints.
 //
-// It is gated because it starts thousands of child processes:
+// The sweep is gated because it starts thousands of child processes:
 //
 //	GCX_STRICT_SWEEP=1 go test ./cmd/gcx/ -run TestStrictContextSweep -v -timeout 30m
 //
@@ -51,15 +51,16 @@ const (
 	sweepSelectedID = "selected"
 )
 
-// sweepSkips lists commands that are never invoked, with the reason. Matching
-// is by exact command path (without the leading "gcx").
+// sweepSkips lists commands that the sweep never invokes, with the reason. An
+// entry matches an exact command path (without the leading "gcx").
 var sweepSkips = map[string]string{ //nolint:gochecknoglobals
 	"dev serve":       "long-running dev server that listens on a port",
 	"resources serve": "long-running server that listens on a port",
 }
 
-// knownFailOpen lists command paths whose invariant violations are reported but
-// do not fail the sweep. Each entry needs a reason; the controller reviews them.
+// knownFailOpen lists command paths whose invariant violations the sweep
+// reports but does not fail on. Each entry needs a reason. The controller
+// reviews them.
 var knownFailOpen = map[string]string{} //nolint:gochecknoglobals
 
 type sweepRun struct {
@@ -168,7 +169,7 @@ var sweepPasses = []sweepPass{ //nolint:gochecknoglobals
 	{name: "c2", strict: true, env: true},
 }
 
-// sweepInvoke runs one invocation in a fully isolated sandbox and returns what
+// sweepInvoke runs one invocation in a fully isolated sandbox. It returns what
 // each listener saw.
 func sweepInvoke(args []string, pass sweepPass) (sweepRun, error) {
 	inherited, selected := newSweepRecorder(), newSweepRecorder()

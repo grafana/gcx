@@ -215,7 +215,7 @@ func convertConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 		suggestions := []string{
 			"Pass --context <name>",
 			"Or set GCX_CONTEXT=<name> for this shell",
-			"Or turn strict mode off: unset GCX_REQUIRE_CONTEXT",
+			"Or turn off strict context mode: unset GCX_REQUIRE_CONTEXT",
 		}
 		if reqErr != nil {
 			suggestions = commandContextSuggestions(reqErr.Command, suggestions)
@@ -226,7 +226,7 @@ func convertConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 		return &gcxerrors.DetailedError{
 			Summary: gcxerrors.SummaryInvalidCommandUsage,
 			Details: fmt.Sprintf("GCX_REQUIRE_CONTEXT is set, so gcx will not fall back to current-context (%q) from the config file. "+
-				"current-context is shared between sessions: another shell or agent can change it at any time.", inherited),
+				"Another shell or agent can change the shared current-context at any time.", inherited),
 			Parent:      err,
 			Suggestions: suggestions,
 			ExitCode:    new(gcxerrors.ExitUsageError),
@@ -259,8 +259,8 @@ func convertConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 	return nil, false
 }
 
-// cappedNameList joins names for inline display, capped so a large config does
-// not emit one very long line on every failure.
+// cappedNameList joins names for inline display. It caps the list so a large
+// config does not print one very long line on every failure.
 func cappedNameList(names []string) string {
 	const maxListed = 5
 	if len(names) <= maxListed {
@@ -1863,13 +1863,13 @@ func convertSavedMutationErrors(err error) (*gcxerrors.DetailedError, bool) {
 	return &gcxerrors.DetailedError{Summary: gcxerrors.SummaryPartialFailure, Details: saved.Error(), ExitCode: new(gcxerrors.ExitPartialFailure), Suggestions: []string{"Inspect the saved resource, resolve the failed stage, then reapply the desired manifest."}}, true
 }
 
-// commandContextSuggestions adjusts the strict-mode suggestions for login and
-// signup, which ignore GCX_CONTEXT. signup has no --server, and gcx login
-// <name> is a different flow, so each names its own command.
+// commandContextSuggestions adjusts the strict context mode suggestions for
+// login and signup, which ignore GCX_CONTEXT. signup has no --server, and
+// gcx login <name> is a different flow, so each names its own command.
 func commandContextSuggestions(command string, suggestions []string) []string {
 	switch command {
 	case "login":
-		suggestions[0] = "Pass a context name: gcx login <name>, or --context <name> / --server <url>"
+		suggestions[0] = "Pass a context name: gcx login <name>, or use --context <name> or --server <url>"
 	case "signup":
 		suggestions[0] = "Pass a context name: gcx signup <name>, or gcx signup --context <name>"
 	default:

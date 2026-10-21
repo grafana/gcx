@@ -472,16 +472,17 @@ Returns `nil` if `CurrentContext` is empty or not found — callers must check.
 
 ### Strict Context Mode
 
-Set `GCX_REQUIRE_CONTEXT=true` to refuse any load whose context would come from
-the file's `current-context`, so another session's `config use-context` cannot
-retarget a command (exit 2). `--context` or `GCX_CONTEXT` names a context, except
-for `gcx login`/`signup`, which ignore `GCX_CONTEXT` and take a `CONTEXT_NAME`
-argument, `--context`, `--server` or `GRAFANA_SERVER`. Env-only setups use
-`--context default`. Enforcement lives in `config.LoadLayered`
-(`internal/config/loader.go`, `selection.go`) via `config.SelectContext` and
-`config.FileScope`, so commands that never load config are unaffected.
+Set `GCX_REQUIRE_CONTEXT=true` to refuse any load that would take its context
+from the `current-context` field of the file. Then another session's
+`config use-context` cannot retarget a command. A refused command exits with
+code 2. Name the context with `--context` or `GCX_CONTEXT`. `gcx login` and
+`gcx signup` ignore `GCX_CONTEXT`. They take a `CONTEXT_NAME` argument,
+`--context`, `--server` or `GRAFANA_SERVER`. Env-only setups use
+`--context default`. `config.LoadLayered` enforces the mode
+(`internal/config/loader.go`, `selection.go`) through `config.SelectContext`
+and `config.FileScope`. Commands that never load config are not affected.
 `config view`, `current-context`, `list-contexts`, `path`, `use-context`, `set`
-and `unset` are never refused; `config check` is.
+and `unset` are never refused. `config check` is refused.
 
 ---
 
@@ -910,7 +911,7 @@ pipelines.
 | `GCX_AUTO_APPROVE` | `--yes` / `-y` | Auto-enables `--force` on delete |
 | `GCX_NO_UPDATE_NOTIFIER` | (none) | Disables the periodic gcx/skill update notifier when non-empty |
 | `GCX_KEYCHAIN` | (none) | `off` stores credentials in plaintext in the config file instead of the OS keychain |
-| `GCX_REQUIRE_CONTEXT` | (none) | Refuse commands that would fall back to `current-context`; name one with `--context` or `GCX_CONTEXT`; see [Strict Context Mode](#strict-context-mode) |
+| `GCX_REQUIRE_CONTEXT` | (none) | Refuse commands that would fall back to `current-context`. Name a context with `--context` or `GCX_CONTEXT`. See [Strict Context Mode](#strict-context-mode) |
 
 See [environment-variables.md](../design/environment-variables.md) for the full environment
 variable reference.
