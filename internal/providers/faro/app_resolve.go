@@ -92,29 +92,17 @@ func resolveApp(ctx context.Context, crud *adapter.TypedCRUD[FaroApp], arg strin
 	if err != nil {
 		return nil, err
 	}
-	return pickApp(apps, arg)
+	return findApp(apps, arg)
 }
 
-// pickApp returns the app in apps that arg names, as findApp matches it.
-func pickApp(apps []adapter.TypedObject[FaroApp], arg string) (*adapter.TypedObject[FaroApp], error) {
-	specs := make([]FaroApp, len(apps))
-	for i := range apps {
-		specs[i] = apps[i].Spec
-	}
-	i, err := findApp(specs, arg)
-	if err != nil {
-		return nil, err
-	}
-	return &apps[i], nil
-}
-
-// findApp returns the index of the app that arg names. A slug-id counts only
-// when its slug is that app's own, so a display name that ends in "-<digits>"
-// never resolves to the app with that ID. An argument that is one app's name
-// and another app's slug-id or ID is an error.
-func findApp(apps []FaroApp, arg string) (int, error) {
+// findApp returns the app in apps that arg names. A slug-id counts only when
+// its slug is that app's own, so a display name that ends in "-<digits>" never
+// resolves to the app with that ID. An argument that is one app's name and
+// another app's slug-id or ID is an error.
+func findApp(apps []adapter.TypedObject[FaroApp], arg string) (*adapter.TypedObject[FaroApp], error) {
 	byName, byID := -1, -1
-	for i, app := range apps {
+	for i := range apps {
+		app := &apps[i].Spec
 		if app.Name == arg {
 			byName = i
 		}
@@ -124,12 +112,12 @@ func findApp(apps []FaroApp, arg string) (int, error) {
 	}
 	switch {
 	case byName >= 0 && byID >= 0 && byName != byID:
-		return -1, fmt.Errorf("faro app %q is ambiguous: it is the name of %s and the slug-id or ID of %s; pass the slug-id of the app you mean",
-			arg, apps[byName].GetResourceName(), apps[byID].GetResourceName())
+		return nil, fmt.Errorf("faro app %q is ambiguous: it is the name of %s and the slug-id or ID of %s; pass the slug-id of the app you mean",
+			arg, apps[byName].Spec.GetResourceName(), apps[byID].Spec.GetResourceName())
 	case byName >= 0:
-		return byName, nil
+		return &apps[byName], nil
 	case byID >= 0:
-		return byID, nil
+		return &apps[byID], nil
 	}
-	return -1, fmt.Errorf("faro app %q: no app has that slug-id or name: %w", arg, adapter.ErrNotFound)
+	return nil, fmt.Errorf("faro app %q: no app has that slug-id or name: %w", arg, adapter.ErrNotFound)
 }

@@ -348,7 +348,7 @@ func resolveUploadAppID(ctx context.Context, stderr io.Writer, grafanaCfg *confi
 		}
 		apps, err := newAppCRUD(client, grafanaCfg.Namespace).List(ctx, 0)
 		if err == nil {
-			target, err := pickApp(apps, arg)
+			target, err := findApp(apps, arg)
 			if err != nil {
 				return "", err
 			}

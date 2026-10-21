@@ -9,17 +9,18 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestFindApp(t *testing.T) {
-	apps := []FaroApp{
-		{ID: "1", Name: "web"},
-		{ID: "2", Name: "checkout-1"},
-		{ID: "3", Name: "web-1"},
-		{ID: "4", Name: "7"},
+	apps := []adapter.TypedObject[FaroApp]{
+		{Spec: FaroApp{ID: "1", Name: "web"}},
+		{Spec: FaroApp{ID: "2", Name: "checkout-1"}},
+		{Spec: FaroApp{ID: "3", Name: "web-1"}},
+		{Spec: FaroApp{ID: "4", Name: "7"}},
 	}
 	tests := []struct {
 		name    string
@@ -45,7 +46,7 @@ func TestFindApp(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
-			assert.Equal(t, apps[tc.want].ID, apps[got].ID)
+			assert.Equal(t, apps[tc.want].Spec.ID, got.Spec.ID)
 		})
 	}
 }
