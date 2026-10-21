@@ -11,8 +11,8 @@ svu = "3.4.1"
 # =============================================================================
 
 [tasks.all]
-description = "Validate skills, lint, test, build, and validate docs"
-depends = ["validate-skills", "lint", "tests", "build", "docs"]
+description = "Validate skills, lint, test, build, build the Docker image, and validate docs"
+depends = ["validate-skills", "lint", "tests", "build", "docker:build", "docs"]
 
 [tasks.gate]
 description = "Fast pre-push gate for code changes: lint + tests + build (no docs)"
@@ -110,6 +110,24 @@ description = "Set up local development environment (commit template, etc.)"
 run = """
 git config commit.template .gitmessage
 echo "Git commit template configured"
+"""
+
+[tasks."docker:build"]
+description = "Build the gcx image from source and check it runs (requires Docker)"
+# Builds the Dockerfile's `local` stage. Releases build the default stage
+# from GoReleaser's binaries instead, but both share the runtime stage.
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+IMAGE="${IMAGE:-gcx:local}"
+docker build \
+    --target local \
+    --tag "$IMAGE" \
+    --build-arg GIT_REVISION="$(git rev-parse --short HEAD)" \
+    --build-arg GIT_VERSION="$(git describe --tags --exact-match 2>/dev/null || echo "")" \
+    --build-arg BUILD_DATE="$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+    .
+docker run --rm "$IMAGE" --version
 """
 
 [tasks.tag]
