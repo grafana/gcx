@@ -215,7 +215,7 @@ Note that `update`:
 To refresh existing skills and add every newly bundled one, run: 
 
 ```sh
-gcx agent skills update`
+gcx agent skills update
 gcx agent skills install --all 
 ```
 
