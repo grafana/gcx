@@ -28,7 +28,7 @@ cards:
       href: cli-reference/
       height: 24
     - title: Authentication
-      description: Authenticate `gcx`.
+      description: Options for `gcx` authentication.
       href: authentication/
       height: 24
     - title: Configuration
