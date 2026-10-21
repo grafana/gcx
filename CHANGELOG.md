@@ -1,6 +1,10 @@
 ## v1.7.1 (2026-10-21)
 
-- Fix Docker image build broken by an inline comment in the Dockerfile
+- Build release binaries with Go 1.26.10 and update `golang.org/x/net` to
+  v0.60.0, picking up standard library security fixes and five HTTP/2
+  fixes (GO-2026-6603, -6610, -6611, -6612, -6617) (#1625)
+- Fix the container image build, which stopped the v1.7.0 release before
+  it published binaries or images (#1623)
 
 
 ## v1.7.0 (2026-10-20)
