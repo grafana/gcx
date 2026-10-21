@@ -91,9 +91,7 @@ func SelectContext(name string) Override {
 // Apply it before any override that can fail (SelectContext with a name, env
 // parsing). The loader stops at the first failing override. A FileScope after
 // such an override never runs, so the load counts as unscoped and inherited.
-//
-//nolint:gochecknoglobals // Stateless Override value used like a constant at call sites.
-var FileScope Override = func(cfg *Config) error {
+func FileScope(cfg *Config) error {
 	cfg.fileScoped = true
 	return nil
 }
