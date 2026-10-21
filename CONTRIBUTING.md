@@ -51,7 +51,7 @@ For new features, please submit an RFC as a PR using the [RFC template](.agents/
 To help us review your PR, please:
 
 1. Add or update tests and documentation for the behavior you changed.
-2. Run `GCX_AGENT_MODE=false mise run all` to check skills, lint, tests, the build, and documentation. See [Development environment](#development-environment) for setup. Generated references are updated during releases; leave them unchanged in command PRs.
+2. Run `GCX_AGENT_MODE=false mise run all` to check skills, lint, tests, the build, the Docker image, and documentation. See [Development environment](#development-environment) for setup. Generated references are updated during releases; leave them unchanged in command PRs.
 3. Sign your commits. See Grafana's [signed-commit requirement](https://community.grafana.com/t/action-required-signed-commits-mandatory-for-all-grafana-repositories/163404).
 4. Use a descriptive PR title such as `fix(traces): handle empty results` or `docs: clarify setup` and the repository's [PR template](.github/pull_request_template.md).
 
@@ -86,7 +86,7 @@ $ mise install             # install tools (Go, golangci-lint, etc.)
 $ mise run deps            # install Go modules
 ```
 
-Run `mise run deps` before `mise run all`. Documentation builds require Docker.
+Run `mise run deps` before `mise run all`. The Docker image and documentation builds require Docker.
 `mise run docs` builds `docs/sources` using Grafana’s website image without
 regenerating reference files; `mise run serve-docs` starts a local preview.
 
@@ -96,7 +96,7 @@ Some mise commands for local development:
 $ mise run build           # build to bin/gcx
 $ mise run lint            # run golangci-lint
 $ mise run tests           # run all tests
-$ mise run all             # lint + tests + build + docs
+$ mise run all             # lint + tests + build + docker:build + docs
 $ mise tasks               # list all available tasks
 ```
 

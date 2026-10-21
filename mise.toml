@@ -11,8 +11,8 @@ svu = "3.4.1"
 # =============================================================================
 
 [tasks.all]
-description = "Validate skills, lint, test, build, and validate docs"
-depends = ["validate-skills", "lint", "tests", "build", "docs"]
+description = "Validate skills, lint, test, build, build the Docker image, and validate docs"
+depends = ["validate-skills", "lint", "tests", "build", "docker:build", "docs"]
 
 [tasks.gate]
 description = "Fast pre-push gate for code changes: lint + tests + build (no docs)"
@@ -110,6 +110,36 @@ description = "Set up local development environment (commit template, etc.)"
 run = """
 git config commit.template .gitmessage
 echo "Git commit template configured"
+"""
+
+[tasks."docker:build"]
+description = "Build the gcx image from source and check it runs (requires Docker)"
+# Builds the Dockerfile's `local` stage, then the default `release` stage
+# from that binary in a GoReleaser-style context.
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+IMAGE="${IMAGE:-gcx:local}"
+docker build \
+    --target local \
+    --tag "$IMAGE" \
+    --build-arg GIT_REVISION="$(git rev-parse --short HEAD)" \
+    --build-arg GIT_VERSION="$(git describe --tags --exact-match 2>/dev/null || echo "")" \
+    --build-arg BUILD_DATE="$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+    .
+docker run --rm "$IMAGE" --version
+
+# Also build the default (release) stage from a context laid out like
+# GoReleaser's dockers_v2 one: the binary at <os>/<arch>/gcx, no sources.
+PLATFORM="$(docker image inspect --format '{{ "{{.Os}}/{{.Architecture}}" }}' "$IMAGE")"
+CONTEXT="$(mktemp -d)"
+trap 'rm -rf "$CONTEXT"' EXIT
+mkdir -p "$CONTEXT/$PLATFORM"
+CID="$(docker create "$IMAGE")"
+docker cp "$CID:/usr/local/bin/gcx" "$CONTEXT/$PLATFORM/gcx"
+docker rm "$CID" >/dev/null
+docker build --platform "$PLATFORM" --file Dockerfile --tag "$IMAGE-release" "$CONTEXT"
+docker run --rm "$IMAGE-release" --version
 """
 
 [tasks.tag]

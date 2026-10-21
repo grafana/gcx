@@ -1,3 +1,12 @@
+## v1.7.1 (2026-10-21)
+
+- Build release binaries with Go 1.26.10 and update `golang.org/x/net` to
+  v0.60.0, picking up standard library security fixes and five HTTP/2
+  fixes (GO-2026-6603, -6610, -6611, -6612, -6617) (#1625)
+- Fix the container image build, which stopped the v1.7.0 release before
+  it published binaries or images (#1623)
+
+
 ## v1.7.0 (2026-10-20)
 
 ### Breaking changes
@@ -24,6 +33,11 @@
   `datasources query` against Loki) now reject metric queries such as
   `rate(...)` in every output format, instead of printing metric values as
   log lines. Run metric queries with `gcx logs metrics`. (#1580)
+- `gcx kg notifications upsert` now rejects unknown or misspelled fields, and
+  input containing more than one YAML document. Both previously succeeded,
+  dropping the unknown key or the extra documents. It now also accepts the
+  output of `notifications get` and `list` directly. Correct field names in
+  saved notification files before you upgrade. (#1571)
 
 ### New commands and improvements
 
