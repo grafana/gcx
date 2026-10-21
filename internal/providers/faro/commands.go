@@ -22,6 +22,14 @@ import (
 // NewTypedCRUD creates a TypedCRUD[FaroApp] for use in provider commands.
 // It loads the REST config from the loader and constructs the Faro client.
 func NewTypedCRUD(ctx context.Context, loader RESTConfigLoader) (*adapter.TypedCRUD[FaroApp], config.NamespacedRESTConfig, error) {
+	client, cfg, err := loadClient(ctx, loader)
+	if err != nil {
+		return nil, config.NamespacedRESTConfig{}, err
+	}
+	return newAppCRUD(client, cfg.Namespace), cfg, nil
+}
+
+func loadClient(ctx context.Context, loader RESTConfigLoader) (*Client, config.NamespacedRESTConfig, error) {
 	cfg, err := loader.LoadGrafanaConfig(ctx)
 	if err != nil {
 		return nil, config.NamespacedRESTConfig{}, fmt.Errorf("failed to load REST config for faro: %w", err)
@@ -31,8 +39,7 @@ func NewTypedCRUD(ctx context.Context, loader RESTConfigLoader) (*adapter.TypedC
 	if err != nil {
 		return nil, config.NamespacedRESTConfig{}, fmt.Errorf("failed to create faro client: %w", err)
 	}
-
-	return newAppCRUD(client, cfg.Namespace), cfg, nil
+	return client, cfg, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -350,7 +357,7 @@ keep their stored values; an empty geolocationCountryDenylist clears it.`,
 			ctx := cmd.Context()
 			name := args[0]
 
-			crud, restCfg, err := NewTypedCRUD(ctx, loader)
+			client, cfg, err := loadClient(ctx, loader)
 			if err != nil {
 				return err
 			}
@@ -360,24 +367,25 @@ keep their stored values; an empty geolocationCountryDenylist clears it.`,
 				return err
 			}
 
-			target, err := resolveApp(ctx, crud, name)
+			// The list that resolves the argument holds the full stored app, so
+			// update against it instead of the CRUD, which fetches it again.
+			target, err := resolveApp(ctx, newAppCRUD(client, cfg.Namespace), name)
 			if err != nil {
 				return err
 			}
+			if err := prepareUpdate(&target.Spec, app); err != nil {
+				return fmt.Errorf("updating faro app %q: %w", name, err)
+			}
 
-			typedObj := &adapter.TypedObject[FaroApp]{Spec: *app}
-			typedObj.SetName(target.GetName())
-			typedObj.SetNamespace(restCfg.Namespace)
-
-			updated, err := crud.Update(ctx, target.GetName(), typedObj)
+			updated, err := client.Update(ctx, target.Spec.ID, app)
 			if err != nil {
 				return fmt.Errorf("updating faro app %q: %w", name, err)
 			}
 
 			result := cmdio.NewSingleMutation("updated", cmdio.MutationTarget{
 				Kind: Kind,
-				Name: updated.Spec.Name,
-				ID:   updated.Spec.ID,
+				Name: updated.Name,
+				ID:   updated.ID,
 			})
 			return opts.IO.Encode(cmd.OutOrStdout(), result)
 		},
@@ -428,16 +436,16 @@ another app's slug-id or ID is an error. There is no confirmation prompt.`,
 			ctx := cmd.Context()
 			name := args[0]
 
-			crud, _, err := NewTypedCRUD(ctx, loader)
+			client, cfg, err := loadClient(ctx, loader)
 			if err != nil {
 				return err
 			}
 
-			target, err := resolveApp(ctx, crud, name)
+			target, err := resolveApp(ctx, newAppCRUD(client, cfg.Namespace), name)
 			if err != nil {
 				return err
 			}
-			if err := crud.Delete(ctx, target.GetName()); err != nil {
+			if err := client.Delete(ctx, target.Spec.ID); err != nil {
 				return fmt.Errorf("deleting faro app %q: %w", name, err)
 			}
 
