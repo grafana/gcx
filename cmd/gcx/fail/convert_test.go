@@ -2092,3 +2092,26 @@ func TestSignupIncompleteErrorKeepsAWrappedCause(t *testing.T) {
 
 	assert.Equal(t, 1, strings.Count(det.Error(), "address already in use"), det.Error())
 }
+
+func TestErrorToDetailedError_ContextRequired(t *testing.T) {
+	got := toDetailedError(t, &config.ContextRequiredError{
+		Inherited: "prod",
+		Available: []string{"a", "b", "c", "d", "e", "f", "g"},
+	})
+
+	require.NotNil(t, got)
+	require.NotNil(t, got.ExitCode)
+	assert.Equal(t, gcxerrors.ExitUsageError, *got.ExitCode)
+	// The brief asked for "This invocation does not name a context", but the
+	// enforced summary vocabulary (docs/design/errors.md) only admits constants.
+	assert.Equal(t, gcxerrors.SummaryInvalidCommandUsage, got.Summary)
+	assert.Equal(t,
+		`GCX_REQUIRE_CONTEXT is set, so gcx will not fall back to current-context ("prod") from the config file. `+
+			"current-context is shared between sessions: another shell or agent can change it at any time.",
+		got.Details)
+	assert.Contains(t, got.Suggestions, "Pass --context <name>")
+	assert.Contains(t, got.Suggestions, "Or set GCX_CONTEXT=<name> for this shell")
+	assert.Contains(t, got.Suggestions, "Or turn strict mode off: unset GCX_REQUIRE_CONTEXT")
+	assert.Contains(t, got.Suggestions,
+		"Configured contexts: a, b, c, d, e, +2 more")
+}

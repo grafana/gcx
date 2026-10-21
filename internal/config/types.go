@@ -128,6 +128,11 @@ type Config struct {
 	// never resolves unbound references. The legacy source stays untouched and
 	// a later load retries migration when the keychain is available.
 	migrationDeferred bool `json:"-" yaml:"-"`
+
+	// contextSelection and fileScoped record how the load declared its context
+	// target, for strict context mode (see selection.go).
+	contextSelection contextSelection `json:"-" yaml:"-"`
+	fileScoped       bool             `json:"-" yaml:"-"`
 }
 
 // CredentialsConfig controls credential persistence without owning secrets.

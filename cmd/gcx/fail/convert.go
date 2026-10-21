@@ -204,6 +204,32 @@ func convertConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 		}, true
 	}
 
+	if errors.Is(err, config.ErrContextRequired) {
+		var reqErr *config.ContextRequiredError
+		inherited := ""
+		var available []string
+		if errors.As(err, &reqErr) {
+			inherited = reqErr.Inherited
+			available = reqErr.Available
+		}
+		suggestions := []string{
+			"Pass --context <name>",
+			"Or set GCX_CONTEXT=<name> for this shell",
+			"Or turn strict mode off: unset GCX_REQUIRE_CONTEXT",
+		}
+		if len(available) > 0 {
+			suggestions = append(suggestions, "Configured contexts: "+cappedNameList(available))
+		}
+		return &gcxerrors.DetailedError{
+			Summary: gcxerrors.SummaryInvalidCommandUsage,
+			Details: fmt.Sprintf("GCX_REQUIRE_CONTEXT is set, so gcx will not fall back to current-context (%q) from the config file. "+
+				"current-context is shared between sessions: another shell or agent can change it at any time.", inherited),
+			Parent:      err,
+			Suggestions: suggestions,
+			ExitCode:    new(gcxerrors.ExitUsageError),
+		}, true
+	}
+
 	if errors.Is(err, config.ErrContextNotFound) {
 		suggestions := []string{
 			"Check for typos in the context name",
@@ -213,18 +239,10 @@ func convertConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 		var ctxErr *config.ContextNotFoundError
 		if errors.As(err, &ctxErr) && len(ctxErr.Available) > 0 {
 			// Keep the suggestion a command the user can run (see
-			// docs/design/errors.md 4.2), and cap the inline list so a large
-			// config does not emit one very long line on every failure.
-			const maxListed = 5
-			listed := ctxErr.Available
-			tail := ""
-			if len(listed) > maxListed {
-				tail = fmt.Sprintf(", +%d more", len(listed)-maxListed)
-				listed = listed[:maxListed]
-			}
+			// docs/design/errors.md 4.2).
 			suggestions = append([]string{
-				fmt.Sprintf("Use one of the configured contexts (%s%s), for example: gcx config use-context %s",
-					strings.Join(listed, ", "), tail, ctxErr.Available[0]),
+				fmt.Sprintf("Use one of the configured contexts (%s), for example: gcx config use-context %s",
+					cappedNameList(ctxErr.Available), ctxErr.Available[0]),
 			}, suggestions...)
 		}
 
@@ -236,6 +254,16 @@ func convertConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 	}
 
 	return nil, false
+}
+
+// cappedNameList joins names for inline display, capped so a large config does
+// not emit one very long line on every failure.
+func cappedNameList(names []string) string {
+	const maxListed = 5
+	if len(names) <= maxListed {
+		return strings.Join(names, ", ")
+	}
+	return fmt.Sprintf("%s, +%d more", strings.Join(names[:maxListed], ", "), len(names)-maxListed)
 }
 
 func convertAuthErrors(err error) (*gcxerrors.DetailedError, bool) {

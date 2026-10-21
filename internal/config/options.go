@@ -36,6 +36,11 @@ type loadOptions struct {
 	// must be stated per target rather than inherited from an ancestor load.
 	layer string
 
+	// enforceSelection makes loadLayeredTracked apply strict context mode to
+	// the loaded config. Only LoadLayered sets it; pre-write reloads must not
+	// be refused.
+	enforceSelection bool
+
 	// suppressMigrationPersistence makes a legacy config migrate in memory
 	// only: it takes no migration lock, writes no file, and marks the result
 	// migrationDeferred. Layered loads and pre-write reloads use it so that

@@ -1152,12 +1152,15 @@ func configWriteTarget(filename, canonicalSource string, allowSymlink bool) (str
 // GCX_CONTEXT is resolved by the CLI layer alongside the --context flag
 // (the flag wins); LoadLayered itself never reads it.
 func LoadLayered(ctx context.Context, explicitFile string, overrides ...Override) (Config, error) {
-	return loadLayeredTracked(ctx, explicitFile, loadOptions{layer: configLayerFromCtx(ctx)}, overrides...)
+	return loadLayeredTracked(ctx, explicitFile, loadOptions{layer: configLayerFromCtx(ctx), enforceSelection: true}, overrides...)
 }
 
 // loadLayeredTracked is LoadLayered with explicit options.
 func loadLayeredTracked(ctx context.Context, explicitFile string, opts loadOptions, overrides ...Override) (Config, error) {
 	cfg, err := loadLayered(ctx, explicitFile, opts, overrides...)
+	if err == nil && opts.enforceSelection && StrictContextEnabled() {
+		err = checkContextSelection(&cfg)
+	}
 	// Capture even when err is non-nil: the validation and credential-binding
 	// override paths below return a fully merged config, so the target is known
 	// even though the command will fail. Gating on success attributed those
@@ -1169,8 +1172,8 @@ func loadLayeredTracked(ctx context.Context, explicitFile string, opts loadOptio
 	// names whichever context was current before --context was applied, and that
 	// is not what the invocation targeted — classifying it would report a
 	// confidently wrong kind where the honest answer is that no target was ever
-	// resolved.
-	if !errors.Is(err, ErrContextNotFound) {
+	// resolved. A strict-mode refusal is the same: no context was ever named.
+	if !errors.Is(err, ErrContextNotFound) && !errors.Is(err, ErrContextRequired) {
 		captureTargetKind(&cfg)
 	}
 	return cfg, err
