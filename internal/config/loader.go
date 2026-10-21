@@ -1158,8 +1158,15 @@ func LoadLayered(ctx context.Context, explicitFile string, overrides ...Override
 // loadLayeredTracked is LoadLayered with explicit options.
 func loadLayeredTracked(ctx context.Context, explicitFile string, opts loadOptions, overrides ...Override) (Config, error) {
 	cfg, err := loadLayered(ctx, explicitFile, opts, overrides...)
-	if err == nil && opts.enforceSelection && StrictContextEnabled() {
-		err = checkContextSelection(&cfg)
+	if opts.enforceSelection && StrictContextEnabled() {
+		if err == nil {
+			err = checkContextSelection(&cfg)
+		} else if refusal := inheritedRefusal(&cfg); refusal != nil {
+			// A failed load whose target was inherited from current-context
+			// reports the refusal, not the (possibly unrelated) load error:
+			// the invocation must name a context before anything else matters.
+			err = refusal
+		}
 	}
 	// Capture even when err is non-nil: the validation and credential-binding
 	// override paths below return a fully merged config, so the target is known

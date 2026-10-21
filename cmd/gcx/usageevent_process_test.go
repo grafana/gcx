@@ -513,6 +513,7 @@ func startUsageEventHelperEnv(t *testing.T, grafanaURL, endpoint string, extraEn
 		"GCX_TELEMETRY_ENDPOINT="+endpoint,
 		"GCX_AGENT_MODE=false",
 		"GCX_NO_UPDATE_NOTIFIER=1",
+		"GCX_KEYCHAIN=off",
 		"GCX_REQUIRE_CONTEXT=",
 		"NO_COLOR=1",
 		"HOME="+t.TempDir(),

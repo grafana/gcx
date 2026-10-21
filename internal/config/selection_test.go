@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"errors"
 	"path/filepath"
 	"testing"
 
@@ -234,6 +235,41 @@ func TestResolveContextName(t *testing.T) {
 			}
 			require.NoError(t, err)
 			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+func TestLoadLayered_StrictRefusalWinsOverLaterOverrideError(t *testing.T) {
+	boom := errors.New("later override failed")
+	failing := func(*config.Config) error { return boom }
+
+	tests := []struct {
+		name      string
+		strict    string
+		overrides []config.Override
+		wantErr   error
+		wantKind  bool
+	}{
+		{"strict inherited then failure", "true", []config.Override{config.SelectContext(""), failing}, config.ErrContextRequired, false},
+		{"strict explicit then failure", "true", []config.Override{config.SelectContext("b"), failing}, boom, true},
+		{"non-strict inherited then failure", "", []config.Override{config.SelectContext(""), failing}, boom, true},
+		{"strict failure before selection", "true", []config.Override{failing, config.SelectContext("")}, boom, true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			scrubStrictEnv(t)
+			t.Setenv("GCX_REQUIRE_CONTEXT", tc.strict)
+			file := selectionTargets()[0].setup(t, selectionConfig)
+
+			config.ClearCapturedTargetKind()
+			_, err := config.LoadLayered(t.Context(), file, tc.overrides...)
+			require.ErrorIs(t, err, tc.wantErr)
+			require.NotErrorIs(t, err, config.ErrContextSelectionUndeclared)
+			if tc.wantKind {
+				assert.NotEmpty(t, config.CapturedTargetKind())
+			} else {
+				assert.Empty(t, config.CapturedTargetKind())
+			}
 		})
 	}
 }

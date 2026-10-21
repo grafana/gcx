@@ -81,17 +81,16 @@ func (r strictResult) refused() bool {
 	return r.exitCode == 2 && strings.Contains(r.stdout+r.stderr, strictRefusalDetail)
 }
 
-// strictBaseEnv is os.Environ() without the variables that would select a
-// context or overlay a stack. They are removed rather than set empty, because
-// an empty GRAFANA_SERVER still overlays the config file's server.
+// strictBaseEnv is the child's inherited environment: an allowlist, so nothing
+// from the developer's shell (agent detection, keychain, caches, GRAFANA_*)
+// changes behaviour. An empty GRAFANA_SERVER would still overlay the config
+// file's server, so absent variables stay absent rather than set empty.
 func strictBaseEnv() []string {
 	var env []string
-	for _, kv := range os.Environ() {
-		key, _, _ := strings.Cut(kv, "=")
-		if key == "GCX_CONTEXT" || key == "CONTEXT_NAME" || strings.HasPrefix(key, "GRAFANA_") {
-			continue
+	for _, key := range []string{"PATH", "TMPDIR", "GOCOVERDIR", "SystemRoot"} {
+		if v, ok := os.LookupEnv(key); ok {
+			env = append(env, key+"="+v)
 		}
-		env = append(env, kv)
 	}
 	return env
 }
@@ -124,6 +123,8 @@ func runStrictContext(t *testing.T, tc strictCase) strictResult {
 		strictContextProcessHelper+"=1",
 		strictContextArgsEnv+"="+string(encoded),
 		"GCX_REQUIRE_CONTEXT=true",
+		// Never touch the developer's OS keychain (inline tokens get migrated).
+		"GCX_KEYCHAIN=off",
 		"GCX_AGENT_MODE="+agentMode,
 		"GCX_TELEMETRY=disabled",
 		"GCX_NO_UPDATE_NOTIFIER=1",
@@ -162,6 +163,8 @@ func TestStrictContext_Refused(t *testing.T) {
 		{name: "commands --validate", args: []string{"commands", "--validate"}},
 		{name: "config check", args: []string{"config", "check"}},
 		{name: "login", args: []string{"login", ""}},
+		// First run (Review Focus 3): the auto-created template inherits "default".
+		{name: "no config file", args: []string{"slo", "definitions", "list"}, noConfig: true},
 		{name: "login with GCX_CONTEXT only", args: []string{"login"}, env: []string{"GCX_CONTEXT=selected"}},
 	}
 	for _, tc := range cases {
@@ -171,20 +174,6 @@ func TestStrictContext_Refused(t *testing.T) {
 			assert.Contains(t, res.stdout+res.stderr, strictRefusalDetail)
 		})
 	}
-}
-
-// TestStrictContext_NoConfigFile covers first run (Review Focus 3). CONCERN:
-// the brief expects a strict-mode refusal here, but the loader auto-creates a
-// template whose "default" context has no stack and validates it before the
-// selection check runs, so the user gets "Invalid configuration" (exit 1)
-// instead of the refusal. This pins the current
-// behaviour until the controller decides whether the selection check should run
-// before validation.
-func TestStrictContext_NoConfigFile(t *testing.T) {
-	res := runStrictContext(t, strictCase{args: []string{"slo", "definitions", "list"}, noConfig: true})
-	assert.Equal(t, 1, res.exitCode, "stdout=%s stderr=%s", res.stdout, res.stderr)
-	assert.Contains(t, res.stdout+res.stderr, "context references no stack with grafana config")
-	assert.NotContains(t, res.stdout+res.stderr, strictRefusalDetail)
 }
 
 func TestStrictContext_Refused_AgentMode(t *testing.T) {
@@ -212,35 +201,41 @@ func TestStrictContext_Refused_AgentMode(t *testing.T) {
 }
 
 func TestStrictContext_Accepted(t *testing.T) {
-	cases := []strictCase{
-		{name: "flag", args: []string{"--context", "selected", "api", "/api/health"}},
-		{name: "env", args: []string{"api", "/api/health"}, env: []string{"GCX_CONTEXT=selected"}},
-		{name: "config check with flag", args: []string{"config", "check", "--context", "selected"}},
-		{
-			name: "env-only setup", args: []string{"--context", "default", "api", "/api/health"},
-			noConfig: true, env: []string{"GRAFANA_SERVER=" + strictUnreachable},
-		},
-		// login derives its target from GRAFANA_SERVER; stdin is not a TTY so it
-		// must fail fast rather than prompt. Only the absence of a refusal matters.
-		{name: "login with server", args: []string{"login", "--yes"}, env: []string{"GRAFANA_SERVER=" + strictUnreachable}},
+	// The marker proves the command got past selection and acted on the selected
+	// target rather than failing for some unrelated reason.
+	const refused = "connection refused"
+	envOnly := []string{"GRAFANA_SERVER=" + strictUnreachable, "GRAFANA_ORG_ID=1", "GRAFANA_TOKEN=x"}
+	cases := []struct {
+		strictCase
+
+		marker string
+	}{
+		{strictCase{name: "flag", args: []string{"--context", "selected", "api", "/api/health"}}, refused},
+		{strictCase{name: "env", args: []string{"api", "/api/health"}, env: []string{"GCX_CONTEXT=selected"}}, refused},
+		{strictCase{name: "config check with flag", args: []string{"config", "check", "--context", "selected"}}, "Current context: selected"},
+		{strictCase{name: "env-only setup", args: []string{"--context", "default", "api", "/api/health"}, noConfig: true, env: envOnly}, refused},
+		// login derives its target from GRAFANA_SERVER and, with stdin not a TTY,
+		// must fail fast; reaching the health check proves target resolution passed.
+		{strictCase{name: "login with server", args: []string{"login", "--yes"}, env: []string{"GRAFANA_SERVER=" + strictUnreachable, "GRAFANA_TOKEN=x"}}, "health check failed"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			res := runStrictContext(t, tc)
-			assert.NotContains(t, res.stdout+res.stderr, strictRefusalDetail, "exit=%d", res.exitCode)
+			res := runStrictContext(t, tc.strictCase)
+			out := res.stdout + res.stderr
+			assert.NotContains(t, out, strictRefusalDetail, "exit=%d", res.exitCode)
+			assert.Contains(t, out, tc.marker, "exit=%d", res.exitCode)
 		})
 	}
 }
 
 func TestStrictContext_LocalCommandsNeverRefused(t *testing.T) {
-	cases := [][]string{
+	offline := [][]string{
 		{"version"},
 		{"help"},
 		{"completion", "bash"},
 		{"commands"},
 		{"help-tree"},
 		{"providers", "list"},
-		{"docs", "list-products"},
 		{"agent", "skills", "list"},
 		{"config", "view"},
 		{"config", "path"},
@@ -248,12 +243,24 @@ func TestStrictContext_LocalCommandsNeverRefused(t *testing.T) {
 		{"config", "current-context"},
 		{"config", "use-context", "selected"},
 		{"dev", "lint", "list-rules"},
-		{"instrumentation", "check"},
 		{"instrumentation", "list-explanations"},
 	}
-	for _, args := range cases {
+	// These may legitimately exit non-zero, so only the refusal is asserted.
+	lenient := map[string]string{
+		"docs list-products": "may need network to list products",
+		"instrumentation check --language go": "findings depend on the workstation " +
+			"(collector config, OTEL_* variables) and exit non-zero when checks fail",
+	}
+	for _, args := range offline {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			res := runStrictContext(t, strictCase{args: args})
+			assert.Equal(t, 0, res.exitCode, "stdout=%s stderr=%s", res.stdout, res.stderr)
+			assert.NotContains(t, res.stdout+res.stderr, strictRefusalDetail)
+		})
+	}
+	for cmdline := range lenient {
+		t.Run(cmdline, func(t *testing.T) {
+			res := runStrictContext(t, strictCase{args: strings.Fields(cmdline)})
 			assert.False(t, res.refused(), "refused: exit=%d stdout=%s stderr=%s", res.exitCode, res.stdout, res.stderr)
 			assert.NotContains(t, res.stdout+res.stderr, strictRefusalDetail)
 		})

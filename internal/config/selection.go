@@ -106,6 +106,16 @@ func checkContextSelection(cfg *Config) error {
 	return nil
 }
 
+// inheritedRefusal returns the strict-mode refusal for a load that failed after
+// recording an inherited selection, or nil. It never reports an undeclared
+// selection: a load that failed early may simply not have recorded one yet.
+func inheritedRefusal(cfg *Config) error {
+	if cfg.fileScoped || cfg.contextSelection != selectionInherited {
+		return nil
+	}
+	return &ContextRequiredError{Inherited: cfg.CurrentContext, Available: cfg.ContextNames()}
+}
+
 // ResolveContextName picks the context to operate on: the explicit override when
 // set, otherwise the config's current context, falling back to the default. In
 // strict context mode, falling back to a non-empty current context is refused.
