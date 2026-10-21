@@ -195,7 +195,7 @@ func TestInstancesGet_TopQueriesFailureStillEmitsTheRest(t *testing.T) {
 		case apiBasePath + sessionsPath("srv-1"):
 			w.Write([]byte(`{"status":"success","data":{"server_id":"srv-1","engine":"postgres","total":3,"max_connections":100}}`)) //nolint:errcheck // test helper
 		case apiBasePath + waitEventsPath("srv-1"):
-			w.Write([]byte(`{"status":"success","data":{"server_id":"srv-1","wait_events":[{"type":"IO Wait","wait_seconds":4}]}}`)) //nolint:errcheck // test helper
+			w.Write([]byte(`{"status":"success","data":{"server_id":"srv-1","wait_events":[{"type":"IO Wait","event":"DataFileRead","wait_seconds":4,"occurrences":9}]}}`)) //nolint:errcheck // test helper
 		default:
 			w.Write([]byte(`{"status":"success","data":[]}`)) //nolint:errcheck // test helper
 		}
@@ -262,7 +262,7 @@ func TestInstancesGet_HealthTracksPresence(t *testing.T) {
 			case apiBasePath + sessionsPath("srv-1"):
 				w.Write([]byte(`{"status":"success","data":{"server_id":"srv-1","engine":"postgres","total":25,"max_connections":429,"by_state":{"idle":16,"active":9},"longest_transaction_seconds":105.34}}`)) //nolint:errcheck // test helper
 			case apiBasePath + waitEventsPath("srv-1"):
-				w.Write([]byte(`{"status":"success","data":{"server_id":"srv-1","wait_events":[{"type":"Lock Wait","wait_seconds":12.5}],"total_wait_seconds":12.5}}`)) //nolint:errcheck // test helper
+				w.Write([]byte(`{"status":"success","data":{"server_id":"srv-1","wait_events":[{"type":"Lock Wait","event":"tuple","wait_seconds":12.5,"occurrences":2,"waiting_sessions":1}],"total_wait_seconds":12.5}}`)) //nolint:errcheck // test helper
 			default:
 				w.Write([]byte(`{"status":"success","data":[]}`)) //nolint:errcheck // test helper
 			}

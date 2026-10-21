@@ -241,27 +241,45 @@ type apiWaitEvents struct {
 }
 
 type apiWaitEvent struct {
-	Type        string  `json:"type"`
-	WaitSeconds float64 `json:"wait_seconds"`
+	Type            string   `json:"type"`
+	Event           string   `json:"event"`
+	WaitSeconds     float64  `json:"wait_seconds"`
+	Occurrences     float64  `json:"occurrences"`
+	WaitingSessions *float64 `json:"waiting_sessions"`
 }
 
-// WaitEvent is one category of the instance-wide wait-time breakdown, ordered
-// by the API with the dominant cause first.
+// WaitEvent is one (category, event) pair the instance waited on, ordered by
+// the API with the dominant cause first.
 //
-// The categories are the collector's own — `IO Wait`, `Lock Wait`,
-// `Network Wait`, `Engine Wait`, `Replication Wait`, `Other Wait` — not raw
-// engine event names, and categories with no recorded wait are omitted.
+// Categories are the collector's own — `IO Wait`, `Lock Wait`, `Network Wait`,
+// `Engine Wait`, `Replication Wait`, `Other Wait`. Events are the engine's own
+// names within them: `DataFileRead` on Postgres,
+// `wait/io/file/innodb/innodb_data_file` on MySQL. Pairs with no recorded wait
+// are omitted, and summing `wait_seconds` by type gives the per-category
+// breakdown.
 type WaitEvent struct {
-	Type        string  `json:"type" yaml:"type"`
+	Type  string `json:"type" yaml:"type"`
+	Event string `json:"event,omitempty" yaml:"event,omitempty"`
+
+	// WaitSeconds is time accumulated over the window; Occurrences is how many
+	// wait events made it up. Neither substitutes for the other — ten waits
+	// totalling a second is a different problem from one lasting a second.
 	WaitSeconds float64 `json:"wait_seconds" yaml:"wait_seconds"`
+	Occurrences float64 `json:"occurrences" yaml:"occurrences"`
+
+	// WaitingSessions is how many sessions are blocked on this event right
+	// now, counting only those executing a query. Absent means nothing is
+	// blocked on it, or the engine does not report what a session waits on —
+	// Postgres is the only one that does, so `instance.engine` tells which.
+	WaitingSessions *float64 `json:"waiting_sessions,omitempty" yaml:"waiting_sessions,omitempty"`
 }
 
 // toWaitEvents converts the wire rows, preserving the API's ordering. The two
-// row types are field-identical, so this is a conversion rather than a copy —
-// they stay separate because the wire shape is the API's to change. Returns
-// nil for an empty breakdown so the field is omitted rather than printed as an
-// empty list — which an instance that simply waited for nothing shares with one
-// whose collector predates the categorised stream.
+// row types are still field-identical, so this stays a conversion rather than a
+// field-by-field copy — they remain separate because the wire shape is the
+// API's to change. Returns nil for an empty breakdown so the field is omitted
+// rather than printed as an empty list — which an instance that simply waited
+// for nothing shares with one whose collector predates the categorised stream.
 func (a apiWaitEvents) toWaitEvents() []WaitEvent {
 	if len(a.WaitEvents) == 0 {
 		return nil

@@ -225,6 +225,16 @@ func windowParams(since string) (url.Values, error) {
 	}, nil
 }
 
+// waitEventRows caps the wait-event breakdown this command asks for.
+//
+// The route reports one row per (category, event) pair ordered by descending
+// wait, and its own default is 50 — too many for a snapshot that prints them
+// as a block, where the long tail is a list of events an instance barely
+// touched. Ten matches the top-queries default beside it. The API's
+// total_wait_seconds still covers the rows this drops, so the figure a reader
+// compares against is unaffected.
+const waitEventRows = 10
+
 // fetchWaitEvents calls GET /instances/{serverID}/wait-events, the instance-wide
 // breakdown, over [now-since, now]. Same tolerance: an older plugin reports
 // nothing rather than failing.
@@ -234,6 +244,7 @@ func fetchWaitEvents(ctx context.Context, client *apiClient, datasourceUID, loki
 		return nil, err
 	}
 	query.Set(datasourceParam, datasourceUID)
+	query.Set("limit", strconv.Itoa(waitEventRows))
 	if lokiDatasourceUID != "" {
 		query.Set("loki", lokiDatasourceUID)
 	}

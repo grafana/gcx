@@ -386,7 +386,7 @@ func TestFetchWaitEvents_SendsRequestedWindow(t *testing.T) {
 	var gotQuery url.Values
 	client := testClient(t, func(w http.ResponseWriter, r *http.Request) {
 		gotQuery = r.URL.Query()
-		w.Write([]byte(`{"status":"success","data":{"wait_events":[{"type":"IO Wait","wait_seconds":12}]}}`)) //nolint:errcheck // test helper
+		w.Write([]byte(`{"status":"success","data":{"wait_events":[{"type":"IO Wait","event":"DataFileRead","wait_seconds":12,"occurrences":48,"waiting_sessions":3}]}}`)) //nolint:errcheck // test helper
 	})
 	got, err := fetchWaitEvents(context.Background(), client, "prom-uid", "loki-uid", "s1", "1h")
 	if err != nil {
@@ -394,6 +394,11 @@ func TestFetchWaitEvents_SendsRequestedWindow(t *testing.T) {
 	}
 	if len(got) != 1 || got[0].Type != "IO Wait" || got[0].WaitSeconds != 12 {
 		t.Errorf("got %+v", got)
+	}
+	// The route's own default is 50 rows, which is more than this command's
+	// block can usefully print, so the cap travels explicitly.
+	if gotQuery.Get("limit") != "10" {
+		t.Errorf("limit = %q, want 10", gotQuery.Get("limit"))
 	}
 	from, err := time.Parse(time.RFC3339, gotQuery.Get("from"))
 	if err != nil {
@@ -408,6 +413,37 @@ func TestFetchWaitEvents_SendsRequestedWindow(t *testing.T) {
 	}
 	if gotQuery.Get("loki") != "loki-uid" {
 		t.Errorf("loki query param = %q, want %q", gotQuery.Get("loki"), "loki-uid")
+	}
+}
+
+func TestFetchWaitEvents_DecodesTheRowDetail(t *testing.T) {
+	// One row per (category, event) now, with two numbers beside the seconds.
+	// waiting_sessions is a pointer because absent and zero mean different
+	// things: nothing blocked versus an engine that does not report it.
+	client := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status":"success","data":{"wait_events":[` + //nolint:errcheck // test helper
+			`{"type":"IO Wait","event":"DataFileRead","wait_seconds":90,"occurrences":3,"waiting_sessions":7},` +
+			`{"type":"IO Wait","event":"WALWrite","wait_seconds":10,"occurrences":400}]}}`))
+	})
+	got, err := fetchWaitEvents(context.Background(), client, "prom-uid", "", "s1", "5m")
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("rows = %d, want 2", len(got))
+	}
+	if got[0].Event != "DataFileRead" || got[0].Occurrences != 3 {
+		t.Errorf("first row = %+v", got[0])
+	}
+	if got[0].WaitingSessions == nil || *got[0].WaitingSessions != 7 {
+		t.Errorf("waiting_sessions = %v, want 7", got[0].WaitingSessions)
+	}
+	// Same category, different event: the split the old shape could not express.
+	if got[1].Event != "WALWrite" || got[1].Type != "IO Wait" {
+		t.Errorf("second row = %+v", got[1])
+	}
+	if got[1].WaitingSessions != nil {
+		t.Errorf("waiting_sessions = %v, want nil where the API omitted it", *got[1].WaitingSessions)
 	}
 }
 

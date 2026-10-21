@@ -105,7 +105,10 @@ Coverage differs by engine: Postgres reports all of it, MySQL a count and a
 limit only, SQL Server none.
 
 "wait_events" reports where the instance spent time waiting, across every
-query, in the collector's own categories rather than raw engine event names.
+query. Each row is one (category, event) pair — the collector's category and
+the engine's own event name within it — carrying the time accumulated, how
+many waits made it up, and how many sessions are blocked on it right now.
+Postgres is the only engine that reports that last figure.
 
 Both come from routes a stack's plugin may predate. Where that is so they are
 omitted and the rest of the result still stands, rather than failing the
@@ -133,7 +136,7 @@ label!~regex, with regexes anchored.`,
 		RunE: runGet(loader, opts),
 		Annotations: map[string]string{
 			agent.AnnotationTokenCost: "small",
-			agent.AnnotationLLMHint:   `Per-instance Database Observability snapshot, read from the Database Observability API. Argument is the instance name from 'gcx dbo11y instances list' or its server_id; both resolve. Reports instance metadata, a RED rollup under instance.metrics (qps, avg_latency_ms, error_rate, AWS-only cpu_percent) over a fixed five-minute window, and top_queries ranked by time_per_second (share of database time) with query_text, rows_examined and per-query error_rate. Engine-agnostic across Postgres/MySQL/SQL Server, except that per-query error_rate is absent for postgres and rows_examined is absent for sql_server. health.up reports whether the instance is reporting to Database Observability, which is its presence in the inventory rather than a separate check — the collector unregisters an instance it cannot reach after ~3 minutes of failed pings, so an instance that answers at all is being collected from, and a missing one reports health.up false alongside the not-found hint. sessions reports total and max_connections (both engines that report sessions), by_state and longest_transaction_seconds (postgres only), and is absent for sql_server. wait_events is the instance-wide breakdown in the collector's categories (IO Wait, Lock Wait, Network Wait, Engine Wait, Replication Wait, Other Wait), ordered with the dominant cause first. instance.labels carries the collector's labels keyed by raw label name, which is what --filter matches on. sessions and wait_events come from routes an older plugin may not serve; they are omitted in that case rather than failing the command. --top (default 10) caps the queries list, clamped to the API maximum of 100; each row carries its SQL text, so a high --top costs several times the default output. --since (default 5m) sizes the window top_queries and wait_events cover; the top-queries figures are floored at a minute. It does not apply to instance.metrics, which the API reports over a fixed five minutes. --filter accepts label=value, label!=value, label=~regex and label!~regex (repeatable, ANDed) and scopes top queries via datname, schema, database, query_id or digest; regexes are anchored, and any other field is a usage error rather than an empty result. The queries route ignores filters, so gcx applies them after the API has ranked the statements. On a name or server_id that matches nothing this command emits its result document, checks the stack's Database Observability activation status, and exits 1. Examples: gcx dbo11y instances get <instance> -o json; gcx dbo11y instances get <instance> --top 20 -o json`,
+			agent.AnnotationLLMHint:   `Per-instance Database Observability snapshot, read from the Database Observability API. Argument is the instance name from 'gcx dbo11y instances list' or its server_id; both resolve. Reports instance metadata, a RED rollup under instance.metrics (qps, avg_latency_ms, error_rate, AWS-only cpu_percent) over a fixed five-minute window, and top_queries ranked by time_per_second (share of database time) with query_text, rows_examined and per-query error_rate. Engine-agnostic across Postgres/MySQL/SQL Server, except that per-query error_rate is absent for postgres and rows_examined is absent for sql_server. health.up reports whether the instance is reporting to Database Observability, which is its presence in the inventory rather than a separate check — the collector unregisters an instance it cannot reach after ~3 minutes of failed pings, so an instance that answers at all is being collected from, and a missing one reports health.up false alongside the not-found hint. sessions reports total and max_connections (both engines that report sessions), by_state and longest_transaction_seconds (postgres only), and is absent for sql_server. wait_events is the instance-wide breakdown, one row per (type, event): type is the collector's category (IO Wait, Lock Wait, Network Wait, Engine Wait, Replication Wait, Other Wait) and event is the engine's own name within it (DataFileRead on postgres, wait/io/... on mysql). Each row carries wait_seconds over the window, occurrences (how many waits made that up, counted from log lines) and waiting_sessions (sessions blocked on it right now, executing a query; postgres only, absent otherwise). Ordered with the dominant cause first and capped at 10 rows; summing wait_seconds by type gives the per-category breakdown. instance.labels carries the collector's labels keyed by raw label name, which is what --filter matches on. sessions and wait_events come from routes an older plugin may not serve; they are omitted in that case rather than failing the command. --top (default 10) caps the queries list, clamped to the API maximum of 100; each row carries its SQL text, so a high --top costs several times the default output. --since (default 5m) sizes the window top_queries and wait_events cover; the top-queries figures are floored at a minute. It does not apply to instance.metrics, which the API reports over a fixed five minutes. --filter accepts label=value, label!=value, label=~regex and label!~regex (repeatable, ANDed) and scopes top queries via datname, schema, database, query_id or digest; regexes are anchored, and any other field is a usage error rather than an empty result. The queries route ignores filters, so gcx applies them after the API has ranked the statements. On a name or server_id that matches nothing this command emits its result document, checks the stack's Database Observability activation status, and exits 1. Examples: gcx dbo11y instances get <instance> -o json; gcx dbo11y instances get <instance> --top 20 -o json`,
 		},
 	}
 	opts.setup(cmd.Flags())
@@ -469,7 +472,24 @@ func (c *instanceDetailCodec) Encode(w io.Writer, v any) error {
 		fmt.Fprintln(w, "Waiting on:")
 		wtw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
 		for _, e := range detail.WaitEvents {
-			fmt.Fprintf(wtw, "  %s:\t%s\n", e.Type, formatSeconds(e.WaitSeconds, true))
+			// The event name qualifies the category, so it reads as one label
+			// rather than a second column — `IO Wait / DataFileRead`. An event
+			// the collector did not name leaves the category standing alone.
+			label := e.Type
+			if e.Event != "" {
+				label += " / " + e.Event
+			}
+			// Occurrences and blocked sessions answer different questions from
+			// the seconds, so the narrow view carries all three: time, how many
+			// waits made it up, and what is stuck on it now.
+			detail := formatSeconds(e.WaitSeconds, true)
+			if e.Occurrences > 0 {
+				detail += fmt.Sprintf(" over %.0f", e.Occurrences)
+			}
+			if e.WaitingSessions != nil {
+				detail += fmt.Sprintf(", %.0f waiting now", *e.WaitingSessions)
+			}
+			fmt.Fprintf(wtw, "  %s:\t%s\n", label, detail)
 		}
 		if err := wtw.Flush(); err != nil {
 			return err

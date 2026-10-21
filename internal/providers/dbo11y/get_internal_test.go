@@ -169,6 +169,51 @@ func TestInstanceDetailCodec_Encode(t *testing.T) {
 	}
 }
 
+// The "Waiting on:" block composes a label from the category and the event and
+// appends two optional figures, none of which was covered before.
+func TestInstanceDetailCodec_Encode_WaitEvents(t *testing.T) {
+	seven := 7.0
+	detail := &InstanceDetail{
+		Instance: Instance{Name: "dev-postgres", Engine: "postgres"},
+		Window:   "5m",
+		WaitEvents: []WaitEvent{
+			{Type: "IO Wait", Event: "DataFileRead", WaitSeconds: 90, Occurrences: 48, WaitingSessions: &seven},
+			{Type: "Lock Wait", Event: "tuple", WaitSeconds: 10, Occurrences: 3},
+			// An event the collector did not name leaves the category alone,
+			// with no trailing separator.
+			{Type: "Engine Wait", WaitSeconds: 1},
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := (&instanceDetailCodec{}).Encode(&buf, detail); err != nil {
+		t.Fatalf("Encode() err = %v", err)
+	}
+	out := buf.String()
+
+	for _, want := range []string{
+		"Waiting on:",
+		"IO Wait / DataFileRead:",
+		"over 48",
+		"7 waiting now",
+		"Lock Wait / tuple:",
+		"over 3",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q\n---\n%s", want, out)
+		}
+	}
+
+	// The unnamed event renders as the bare category.
+	if !strings.Contains(out, "Engine Wait:") || strings.Contains(out, "Engine Wait /") {
+		t.Errorf("an unnamed event should leave the category alone:\n%s", out)
+	}
+	// Only Postgres reports blocked sessions, so the clause appears once here.
+	if n := strings.Count(out, "waiting now"); n != 1 {
+		t.Errorf("waiting-now clauses = %d, want 1 — absent must stay absent:\n%s", n, out)
+	}
+}
+
 func TestInstanceDetailCodec_Encode_Wide(t *testing.T) {
 	detail := &InstanceDetail{
 		Instance: Instance{
