@@ -59,7 +59,7 @@ The following applies:
 
 ## CLI command reference
 
-You can find the up-to-date command reference guide in the [CLI command reference](../cli-reference/) for the latest stable release.
+You can find the up-to-date command reference guide in the [CLI command reference](/cli-reference) for the latest stable release.
 
 ### Configure `gcx`
 
