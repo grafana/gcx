@@ -57,7 +57,7 @@ func FaroAppSchema() json.RawMessage {
 			"spec": map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"name":                  map[string]any{"type": "string"},
+					"name":                  map[string]any{"type": "string", "description": "Display name, set at creation. The API cannot rename an app, so on update it must match the stored name exactly."},
 					"appType":               map[string]any{"type": "string", "enum": []string{appTypeWeb, appTypeMobile}, "description": "Application type, set at creation. Use mobile for flutter, react-native, android-native, and swift-native; use web for web-js."},
 					"runtime":               map[string]any{"type": "string", "enum": []string{runtimeWebJS, runtimeFlutter, runtimeReactNative, runtimeAndroidNative, runtimeSwiftNative}, "description": "SDK runtime. Omit to preserve the runtime on update."},
 					"corsOrigins":           map[string]any{"type": "array", "items": map[string]any{"type": "object", "properties": map[string]any{"url": map[string]any{"type": "string"}}}},
@@ -160,42 +160,5 @@ func NewFactoryFromConfig(cfg internalconfig.NamespacedRESTConfig) adapter.Facto
 
 // newTypedAdapter builds the TypedCRUD[FaroApp] adapter for the given client and namespace.
 func newTypedAdapter(client *Client, namespace string) adapter.ResourceAdapter {
-	crud := &adapter.TypedCRUD[FaroApp]{
-		ListFn: adapter.LimitedListFn(client.List),
-
-		GetFn: func(ctx context.Context, name string) (*FaroApp, error) {
-			id, ok := adapter.ExtractIDFromSlug(name)
-			if !ok {
-				// Try as bare name.
-				id = name
-			}
-			return client.Get(ctx, id)
-		},
-
-		CreateFn: func(ctx context.Context, app *FaroApp) (*FaroApp, error) {
-			return client.Create(ctx, app)
-		},
-
-		UpdateFn: func(ctx context.Context, name string, app *FaroApp) (*FaroApp, error) {
-			id, ok := adapter.ExtractIDFromSlug(name)
-			if !ok {
-				id = name
-			}
-			return client.Update(ctx, id, app)
-		},
-
-		DeleteFn: func(ctx context.Context, name string) error {
-			id, ok := adapter.ExtractIDFromSlug(name)
-			if !ok {
-				id = name
-			}
-			return client.Delete(ctx, id)
-		},
-
-		StripFields: []string{"id"},
-		Namespace:   namespace,
-		Descriptor:  staticDescriptor,
-	}
-
-	return crud.AsAdapter()
+	return newAppCRUD(client, namespace).AsAdapter()
 }
