@@ -69,16 +69,16 @@ as "none" is unset: leave it out rather than filling it with another
 dimension's value. Scope values are plain node properties, e.g.
 'MATCH (s:Service {name: "checkout", env: "prod"}) RETURN s LIMIT 1'.
 
-Properties. Before writing a query, check that every property it uses is listed
-for that type in 'gcx kg meta schema' over the same window, e.g.
---jq '.schema.entityTypes[] | select(.type == "Pod") | .properties'. A property
-that is not listed returns null.
+Schema. Read it once per window, before writing queries:
+'gcx kg meta schema --from <start> --to <end> -o text' prints each entity type
+with its properties, then every 'A --TYPE--> B' relationship ('gcx kg meta all'
+with the same flags also prints scopes, metrics, logs, traces and profiles).
+Use only the labels, properties, relationship types and directions it lists.
+A property that is not listed returns null.
 
-Relationships. Types and directions are schema-specific: check the
-'A --TYPE--> B' strings in 'gcx kg meta schema' over the same window, e.g.
---jq '.schema.relationships[] | select(test("Service"))', and match both
-directions when looking for what depends on an entity. One query can do it
-with the undirected form, returning both ends to keep the direction:
+Relationships. Match both directions when looking for what depends on an
+entity. One query can do it with the undirected form, returning both ends to
+keep the direction:
 'MATCH (a)-[r:TYPE]-(b) RETURN startNode(r).name, endNode(r).name LIMIT 50'.
 
 A property, scope value, label, relationship type or direction that does not
@@ -86,16 +86,22 @@ exist matches nothing: the result is empty, not an error.
 
 Insights. This command never returns insights (Saturation, Anomaly, Amend,
 Failure, Error), and none should be inferred from its rows. For current health,
-use 'gcx kg entities list --type <type> --property name=<name>' (add --insight
-to filter to entities with active insights); use 'gcx kg entities inspect' for
-the full timeline. Call both with the same window and all three of --env,
---site and --namespace (leave out a null one), so return each node's env, site
-and namespace in this query.`,
-		Example: `  gcx kg graph query "MATCH (s:Service) RETURN s.name AS name LIMIT 10"
-  gcx kg graph query "MATCH (s:Service {name: 'checkout', env: 'prod'}) RETURN s LIMIT 1" --since 1h
-  gcx kg graph query "MATCH (s:Service) RETURN s.name AS name ORDER BY s.name SKIP 50 LIMIT 50" --since 1h
-  gcx kg graph query "MATCH (s:Service) RETURN count(s) AS services LIMIT 1" --since 1h
-  gcx kg graph query "MATCH p = (s:Service {name: 'checkout'})-[:CALLS*1..3]->(d) RETURN p, length(p) AS hops LIMIT 5" --since 24h`,
+use 'gcx kg entities list --type <type> --property name=<name>' (add
+--insight any to keep only entities with an active insight); use
+'gcx kg entities inspect' for the full timeline. Call both with the same window
+and all three of --env, --site and --namespace (leave out a null one), so
+return each node's env, site and namespace in this query.`,
+		Example: `  # Read a few schema-listed properties of one Volume, matched on name and scope, instead of returning the whole node (scope values from 'gcx kg meta scopes')
+  gcx kg graph query "MATCH (v:Volume {name: '<name>', env: '<env>', namespace: '<namespace>'}) RETURN v.storageclass AS storageclass, v.capacity_bytes AS capacity_bytes LIMIT 5" --from <start> --to <end>
+
+  # Count one env's Nodes per zone and instance type (Nodes have no namespace); while rowCount equals LIMIT, fetch the next page with SKIP 50
+  gcx kg graph query "MATCH (n:Node {env: '<env>'}) RETURN n.zone AS zone, n.instance_type AS instance_type, count(n) AS nodes ORDER BY zone, instance_type SKIP 0 LIMIT 50" --from <start> --to <end>
+
+  # Match one schema relationship type undirected around an env's Nodes and keep each edge's direction with startNode(r)/endNode(r)
+  gcx kg graph query "MATCH (n:Node {env: '<env>'})-[r:HOSTS]-(x) RETURN DISTINCT labels(startNode(r))[0] AS from_type, labels(endNode(r))[0] AS to_type ORDER BY from_type, to_type LIMIT 50" --from <start> --to <end>
+
+  # Trace the hosting paths from an env's cluster down to one ServiceInstance, up to 4 HOSTS hops, returning hop names rather than whole paths
+  gcx kg graph query "MATCH p = (c:KubeCluster {env: '<env>'})-[:HOSTS*1..4]->(i:ServiceInstance {name: '<name>', env: '<env>', namespace: '<namespace>'}) RETURN length(p) AS hops, nodes(p)[1].name AS hop1, nodes(p)[2].name AS hop2, nodes(p)[3].name AS hop3, nodes(p)[4].name AS hop4 ORDER BY hops LIMIT 50" --from <start> --to <end>`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.query = args[0]
