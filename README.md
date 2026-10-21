@@ -236,7 +236,7 @@ Here's how your coding agent with access to production investigates alerts with 
 
 **4. It prevents recurrence:** Instruments the service with OpenTelemetry spans, sets up a Synthetic Monitoring check on the checkout flow, and creates an alert rule on query duration.
 
-**5. It ships!** Tha Assistant opens a PR, tests pass, deploys to production. The alert resolves.
+**5. It ships!** The Assistant opens a PR, tests pass, deploys to production. The alert resolves.
 
 ```sh
 $ gcx assistant investigations list
