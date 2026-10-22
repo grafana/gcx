@@ -27,14 +27,19 @@ jobs:
     # '@claude review' is the only re-review path. There is no review-outcome
     # label to remove: the published review carries the commit it reviewed, so
     # a second signal would only add a second thing to keep true.
+    #
+    # The Anthropic key lives in Vault under grafana/gcx only, so the review
+    # fails in any other repository. Skip it outside the canonical repo.
     if: |
-      (github.event_name == 'pull_request' &&
-        github.event.pull_request.user.type != 'Bot' &&
-        github.event.pull_request.draft == false) ||
-      (github.event_name == 'issue_comment' &&
-        github.event.issue.pull_request != null &&
-        startsWith(github.event.comment.body, '@claude review') &&
-        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
+      github.repository == 'grafana/gcx' && (
+        (github.event_name == 'pull_request' &&
+          github.event.pull_request.user.type != 'Bot' &&
+          github.event.pull_request.draft == false) ||
+        (github.event_name == 'issue_comment' &&
+          github.event.issue.pull_request != null &&
+          startsWith(github.event.comment.body, '@claude review') &&
+          contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
+      )
     runs-on: ubuntu-latest
     # A review costs several dollars and a quarter of an hour. Opening a PR as
     # ready, or asking twice, must not buy two of them.
