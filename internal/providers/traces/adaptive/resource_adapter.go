@@ -33,7 +33,7 @@ func PolicyDescriptor() resources.Descriptor { return policyDescriptorVar }
 
 // PolicySchema returns the JSON schema for the Policy resource type.
 func PolicySchema() json.RawMessage {
-	return adapter.SchemaFromType[Policy](PolicyDescriptor())
+	return adapter.SchemaFromType[Policy](PolicyDescriptor())()
 }
 
 // PolicyExample returns an example Policy manifest as JSON.

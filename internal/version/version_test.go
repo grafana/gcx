@@ -5,6 +5,7 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/version"
 	"github.com/stretchr/testify/assert"
 )
@@ -22,15 +23,34 @@ func TestSetAndGet(t *testing.T) {
 
 func TestUserAgent(t *testing.T) {
 	version.Set("1.2.3")
+	setAgentMode(t, false)
 	t.Cleanup(func() { version.Set("") })
-	expected := fmt.Sprintf("gcx/1.2.3 (%s/%s)", runtime.GOOS, runtime.GOARCH)
+	expected := fmt.Sprintf("gcx/1.2.3 (%s/%s; user=human)", runtime.GOOS, runtime.GOARCH)
 	assert.Equal(t, expected, version.UserAgent())
 }
 
 func TestUserAgent_SNAPSHOT(t *testing.T) {
 	version.Set("")
-	expected := fmt.Sprintf("gcx/SNAPSHOT (%s/%s)", runtime.GOOS, runtime.GOARCH)
+	setAgentMode(t, false)
+	expected := fmt.Sprintf("gcx/SNAPSHOT (%s/%s; user=human)", runtime.GOOS, runtime.GOARCH)
 	assert.Equal(t, expected, version.UserAgent())
+}
+
+func TestUserAgent_AgentMode(t *testing.T) {
+	version.Set("1.2.3")
+	setAgentMode(t, true)
+	t.Cleanup(func() { version.Set("") })
+	expected := fmt.Sprintf("gcx/1.2.3 (%s/%s; user=agent)", runtime.GOOS, runtime.GOARCH)
+	assert.Equal(t, expected, version.UserAgent())
+}
+
+// setAgentMode forces agent mode on or off for the duration of the test,
+// restoring the value detected from the environment afterwards.
+func setAgentMode(t *testing.T, enabled bool) {
+	t.Helper()
+	previous := agent.IsAgentMode()
+	agent.SetFlag(enabled)
+	t.Cleanup(func() { agent.SetFlag(previous) })
 }
 
 func TestGetCommit_Default(t *testing.T) {

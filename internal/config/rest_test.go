@@ -1,16 +1,22 @@
 package config_test
 
 import (
+	"bytes"
 	"encoding/json"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	authlib "github.com/grafana/authlib/types"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/httputils"
+	"github.com/grafana/gcx/internal/logs"
 	"github.com/grafana/gcx/internal/retry"
+	"github.com/grafana/grafana-app-sdk/logging"
 )
 
 func TestNewNamespacedRESTConfig_PropagatesTLSConfig(t *testing.T) {
@@ -119,6 +125,71 @@ func TestNewNamespacedRESTConfig_ConfiguredStackIDSkipsBootdata(t *testing.T) {
 	}
 	if got, want := restCfg.Namespace, authlib.CloudNamespaceFormatter(12345); got != want {
 		t.Fatalf("expected namespace %s, got %s", want, got)
+	}
+}
+
+// The payload dump must be the innermost layer of the chain that WrapTransport
+// builds, so it shows every header an outer layer adds. auth.RefreshTransport
+// adds the OAuth bearer token, so its presence in the dump proves the order.
+func TestNewNamespacedRESTConfig_PayloadDumpIsInnermost(t *testing.T) {
+	const reqBody = `{"name":"primary-rotation"}`
+	const respBody = `{"id":"S123"}`
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(respBody))
+	}))
+	defer server.Close()
+
+	var logged bytes.Buffer
+	level := new(slog.LevelVar)
+	level.Set(slog.LevelDebug)
+	logger := logging.NewSLogLogger(logs.NewHandler(&logged, &logs.Options{Level: level}))
+	ctx := httputils.WithPayloadLogging(logging.Context(t.Context(), logger), true)
+
+	restCfg, err := config.NewNamespacedRESTConfig(ctx, config.Context{
+		Grafana: &config.GrafanaConfig{
+			Server:              server.URL,
+			ProxyEndpoint:       server.URL,
+			OAuthToken:          "gat_test",
+			OAuthRefreshToken:   "gar_test",
+			OAuthTokenExpiresAt: time.Now().Add(2 * time.Hour).Format(time.RFC3339),
+			StackID:             12345,
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if restCfg.WrapTransport == nil {
+		t.Fatal("expected WrapTransport to be set")
+	}
+
+	client := &http.Client{Transport: restCfg.WrapTransport(http.DefaultTransport)}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, server.URL+"/test", strings.NewReader(reqBody))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer resp.Body.Close()
+	if _, err := io.ReadAll(resp.Body); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := []string{
+		"http request dump",
+		reqBody,
+		"Authorization: Bearer gat_test",
+		httputils.CallerIDHeader + ": " + httputils.CallerIDValue,
+		"http response dump",
+		respBody,
+	}
+	for _, w := range want {
+		if !strings.Contains(logged.String(), w) {
+			t.Errorf("log is missing %q\ngot:\n%s", w, logged.String())
+		}
 	}
 }
 

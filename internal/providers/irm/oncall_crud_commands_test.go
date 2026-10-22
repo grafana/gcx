@@ -172,3 +172,124 @@ func TestRouteDeleteCommandAgentModeRequiresForce(t *testing.T) {
 		t.Errorf("expected no deletion in agent mode without --force, got %v", fake.deletedIDs)
 	}
 }
+
+// fakeManifestAPI stubs the schedule and shift create surface used by the
+// manifest-shape tests.
+type fakeManifestAPI struct {
+	OnCallAPI
+
+	gotSchedule Schedule
+	gotShift    ShiftRequest
+}
+
+func (f *fakeManifestAPI) CreateSchedule(_ context.Context, s Schedule) (*Schedule, error) {
+	f.gotSchedule = s
+	s.ID = "SNEW"
+	return &s, nil
+}
+
+func (f *fakeManifestAPI) CreateShift(_ context.Context, s ShiftRequest) (*Shift, error) {
+	f.gotShift = s
+	return &Shift{ID: "OSNEW", Name: s.Name, Type: s.Type}, nil
+}
+
+// TestScheduleCreateAcceptsEnvelopeManifest pins issue #1185 problem 1: the
+// K8s envelope that `resources list-examples` prints must reach the API with
+// every spec field intact, exactly as the equivalent bare manifest does.
+func TestScheduleCreateAcceptsEnvelopeManifest(t *testing.T) {
+	resetAgentMode(t)
+
+	tests := []struct {
+		name         string
+		manifest     string
+		wantName     string
+		wantTimeZone string
+	}{
+		{
+			name:         "generated envelope example",
+			manifest:     string(scheduleExample()),
+			wantName:     "my-schedule",
+			wantTimeZone: "UTC",
+		},
+		{
+			name: "bare spec",
+			manifest: `name: my schedule
+type: 2
+time_zone: Europe/Amsterdam
+`,
+			wantName:     "my schedule",
+			wantTimeZone: "Europe/Amsterdam",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fake := &fakeManifestAPI{}
+			cmd := newSchedulesCmd(&fakeLoader{client: fake})
+			out := &bytes.Buffer{}
+			cmd.SetOut(out)
+			cmd.SetErr(out)
+			cmd.SetArgs([]string{"create", "-f", writeManifest(t, tt.manifest), "-o", "json"})
+			if err := cmd.ExecuteContext(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+
+			got := fake.gotSchedule
+			if got.Name != tt.wantName {
+				t.Errorf("name = %q, want %q", got.Name, tt.wantName)
+			}
+			if got.Type != float64(2) {
+				t.Errorf("type = %#v, want float64(2)", got.Type)
+			}
+			if got.TimeZone != tt.wantTimeZone {
+				t.Errorf("time_zone = %q, want %q", got.TimeZone, tt.wantTimeZone)
+			}
+		})
+	}
+}
+
+// TestShiftCreateAcceptsEnvelopeManifest covers the rotation fields that issue
+// #1185 reports as unreachable from a manifest.
+func TestShiftCreateAcceptsEnvelopeManifest(t *testing.T) {
+	resetAgentMode(t)
+
+	fake := &fakeManifestAPI{}
+	cmd := newShiftsCmd(&fakeLoader{client: fake})
+	out := &bytes.Buffer{}
+	cmd.SetOut(out)
+	cmd.SetErr(out)
+	cmd.SetArgs([]string{"create", "-f", writeManifest(t, `apiVersion: oncall.ext.grafana.app/v1alpha1
+kind: Shift
+metadata:
+  name: my-shift
+spec:
+  name: my-shift
+  type: 2
+  schedule: SBBBBBBBBBBBB
+  shift_start: "2026-01-01T00:00:00"
+  frequency: 1
+  interval: 1
+  by_day: [MO, TU]
+  rolling_users: [[U1], [U2]]
+`), "-o", "json"})
+	if err := cmd.ExecuteContext(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	got := fake.gotShift
+	if got.Name != "my-shift" {
+		t.Errorf("name = %q, want %q", got.Name, "my-shift")
+	}
+	if got.Type != float64(2) {
+		t.Errorf("type = %#v, want float64(2)", got.Type)
+	}
+	if got.Frequency != float64(1) {
+		t.Errorf("frequency = %#v, want float64(1)", got.Frequency)
+	}
+	if got.RollingUsers == nil {
+		t.Error("rolling_users = nil, want the manifest value")
+	}
+	if len(got.ByDay) != 2 {
+		t.Errorf("by_day = %v, want two entries", got.ByDay)
+	}
+}

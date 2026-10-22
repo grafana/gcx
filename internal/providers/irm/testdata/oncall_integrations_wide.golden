@@ -1,0 +1,3 @@
+ID     NAME                                                                          TYPE     TEAM  URL
+row-1  Escalate to the on-call engineer and page the incident commander immediately  grafana  sre   https://example.invalid/hook
+row-2                                                                                         -     -

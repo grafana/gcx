@@ -30,7 +30,14 @@ type Query struct {
 	Ratio            *RatioQuery     `json:"ratio,omitempty"`
 	Threshold        *ThresholdQuery `json:"threshold,omitempty"`
 	FailureThreshold *ThresholdQuery `json:"failureThreshold,omitempty"`
-	GrafanaQueries   []any           `json:"grafanaQueries,omitempty"`
+	GrafanaQueries   *GrafanaQueries `json:"grafanaQueries,omitempty"`
+}
+
+// GrafanaQueries defines an SLO using datasource queries. The API wraps the
+// list in an object; each query is kept as is, since its shape depends on
+// the datasource.
+type GrafanaQueries struct {
+	GrafanaQueries []any `json:"grafanaQueries"`
 }
 
 // FreeformQuery is a freeform PromQL query.

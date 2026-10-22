@@ -1,6 +1,9 @@
 package fleet
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // GetResourceName returns the slug-id composite name for the pipeline.
 func (p Pipeline) GetResourceName() string {
@@ -46,10 +49,14 @@ func (c Collector) GetResourceName() string {
 
 // SetResourceName restores the collector ID from a slug-id composite name.
 func (c *Collector) SetResourceName(name string) {
+	// Collector IDs are arbitrary strings. Preserve the canonical ID when the
+	// manifest includes spec.id. Older manifests encoded numeric IDs only in
+	// metadata.name, so keep that fallback for compatibility.
+	if c.ID != "" {
+		return
+	}
 	if id, ok := extractIDFromSlug(name); ok {
 		c.ID = id
-	} else {
-		c.ID = name
 	}
 }
 
@@ -66,6 +73,48 @@ type Collector struct {
 	CreatedAt        *time.Time        `json:"created_at,omitempty"`
 	UpdatedAt        *time.Time        `json:"updated_at,omitempty"`
 	MarkedInactiveAt *time.Time        `json:"marked_inactive_at,omitempty"`
+}
+
+// UnmarshalJSON accepts both Fleet's camelCase protojson responses and gcx's
+// stable snake_case resource representation.
+func (c *Collector) UnmarshalJSON(data []byte) error {
+	type collectorAlias Collector
+	wire := struct {
+		collectorAlias
+
+		RemoteAttributesCamel map[string]string `json:"remoteAttributes"`
+		LocalAttributesCamel  map[string]string `json:"localAttributes"`
+		CollectorTypeCamel    *string           `json:"collectorType"`
+		CreatedAtCamel        *time.Time        `json:"createdAt"`
+		UpdatedAtCamel        *time.Time        `json:"updatedAt"`
+		MarkedInactiveAtCamel *time.Time        `json:"markedInactiveAt"`
+	}{collectorAlias: collectorAlias(*c)}
+
+	if err := json.Unmarshal(data, &wire); err != nil {
+		return err
+	}
+
+	*c = Collector(wire.collectorAlias)
+	if wire.RemoteAttributesCamel != nil {
+		c.RemoteAttributes = wire.RemoteAttributesCamel
+	}
+	if wire.LocalAttributesCamel != nil {
+		c.LocalAttributes = wire.LocalAttributesCamel
+	}
+	if wire.CollectorTypeCamel != nil {
+		c.CollectorType = *wire.CollectorTypeCamel
+	}
+	if wire.CreatedAtCamel != nil {
+		c.CreatedAt = wire.CreatedAtCamel
+	}
+	if wire.UpdatedAtCamel != nil {
+		c.UpdatedAt = wire.UpdatedAtCamel
+	}
+	if wire.MarkedInactiveAtCamel != nil {
+		c.MarkedInactiveAt = wire.MarkedInactiveAtCamel
+	}
+
+	return nil
 }
 
 // Limits represents tenant limits for a Fleet Management stack.

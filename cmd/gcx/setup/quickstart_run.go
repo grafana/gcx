@@ -99,7 +99,7 @@ func newQuickstartResult(steps []quickstartStep) quickstartResult {
 
 type contactPointsAPI interface {
 	ListContactPoints(ctx context.Context) ([]alert.ContactPoint, error)
-	CreateContactPoint(ctx context.Context, cp alert.ContactPoint) (*alert.ContactPoint, error)
+	CreateContactPoint(ctx context.Context, cp alert.ContactPoint, allowUIUpdates ...bool) (*alert.ContactPoint, error)
 }
 
 type alertRuleAPI interface {

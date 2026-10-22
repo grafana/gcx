@@ -1,0 +1,4 @@
+TYPE     NAME      SCOPE                ACTIVE
+Service  checkout  env=prod, site=west  true
+Pod      worker                         false
+												false

@@ -205,43 +205,6 @@ const inlineAssistantSource = "inline-assistant"
 // --limit/--offset honest. Ephemeral inline-assistant chats are excluded.
 const DefaultConversationSources = "assistant,slack,cli"
 
-// FetchChatMessages fetches messages for a chat from the REST API.
-func FetchChatMessages(ctx context.Context, baseURL, token, chatID string, httpClient *http.Client) ([]ChatMessage, error) {
-	endpoints := GetChatEndpoints(baseURL)
-	url := fmt.Sprintf("%s/%s/all-messages", endpoints.Chats(), chatID)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("X-App-Source", "cli")
-
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to send request: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("failed to fetch messages: HTTP %d: %s", resp.StatusCode, string(respBody))
-	}
-
-	var response struct {
-		Data struct {
-			Messages []ChatMessage `json:"messages"`
-		} `json:"data"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
-	}
-
-	return response.Data.Messages, nil
-}
-
 // CreateMessageStreamRequest creates a JSON-RPC request for message/stream.
 func CreateMessageStreamRequest(prompt, contextID string) ([]byte, error) {
 	params := MessageSendParams{

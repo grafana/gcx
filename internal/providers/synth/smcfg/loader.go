@@ -34,6 +34,11 @@ type DatasourceUIDSaver interface {
 	SaveMetricsDatasourceUID(ctx context.Context, uid string) error
 }
 
+// LogsDatasourceUIDSaver can persist a discovered Loki datasource UID to the SM provider config.
+type LogsDatasourceUIDSaver interface {
+	SaveLogsDatasourceUID(ctx context.Context, uid string) error
+}
+
 // StatusLoader combines SM config loading with Grafana REST config and full config loading.
 // Used by status/timeline commands that need SM API + Prometheus + datasource discovery.
 type StatusLoader interface {
@@ -41,4 +46,11 @@ type StatusLoader interface {
 	GrafanaConfigLoader
 	ConfigLoader
 	DatasourceUIDSaver
+}
+
+// AdHocLoader extends StatusLoader with Loki datasource caching, for the `test`
+// command that needs both Prometheus (SM API status) and Loki (ad-hoc results).
+type AdHocLoader interface {
+	StatusLoader
+	LogsDatasourceUIDSaver
 }

@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/gcx/internal/auth"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/login"
+	"github.com/grafana/gcx/internal/telemetry/capture"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -47,6 +48,81 @@ func fixedDetect(tgt login.Target) func(ctx context.Context, server string) (log
 // configSource returns a Source backed by a temp file in dir.
 func configSource(dir string) config.Source {
 	return config.ExplicitConfigFile(filepath.Join(dir, "config.yaml"))
+}
+
+func usePlaintextCredentialStorage(t *testing.T) {
+	t.Helper()
+	t.Setenv("GCX_KEYCHAIN", "off")
+}
+
+// The login stage is the last step Run entered, and "complete" is recorded
+// only once the config write succeeded: it is the success signal that an
+// abandoned prompt, which exits 0 too, cannot fake.
+func TestRunRecordsLoginStage(t *testing.T) {
+	oauthResult := &auth.Result{Token: "oauth-token", RefreshToken: "refresh-token", APIEndpoint: "https://grafana.example.invalid"}
+	failingValidate := func(context.Context, login.Options, config.NamespacedRESTConfig) (string, error) {
+		return "", errors.New("connection refused")
+	}
+
+	tests := []struct {
+		name      string
+		oauth     bool
+		persist   func() error
+		flow      login.AuthFlow
+		validate  func(context.Context, login.Options, config.NamespacedRESTConfig) (string, error)
+		blockSave bool
+		wantErr   bool
+		wantStage string
+	}{
+		{name: "token login saved", validate: noopValidate, wantStage: "complete"},
+		{name: "oauth login saved", oauth: true, flow: &stubAuthFlow{result: oauthResult}, validate: noopValidate, wantStage: "complete"},
+		{name: "credential store unavailable", oauth: true, persist: func() error { return errors.New("keychain locked") }, wantErr: true, wantStage: "credentials"},
+		{name: "browser login failed", oauth: true, flow: &stubAuthFlow{err: errors.New("callback server error")}, wantErr: true, wantStage: "browser"},
+		{name: "connection check failed", validate: failingValidate, wantErr: true, wantStage: "validate"},
+		{name: "config write failed", validate: noopValidate, blockSave: true, wantErr: true, wantStage: "persist"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			usePlaintextCredentialStorage(t)
+			capture.Reset()
+			t.Cleanup(capture.Reset)
+
+			dir := t.TempDir()
+			source := configSource(dir)
+			if tc.blockSave {
+				blocker := filepath.Join(dir, "blocker")
+				require.NoError(t, os.WriteFile(blocker, nil, 0o600))
+				source = config.ExplicitConfigFile(filepath.Join(blocker, "config.yaml"))
+			}
+			opts := &login.Options{
+				Inputs: login.Inputs{
+					Server:      "https://grafana.example.invalid",
+					ContextName: "default",
+					Target:      login.TargetOnPrem,
+					Yes:         true,
+				},
+				Hooks: login.Hooks{
+					ConfigSource:               source,
+					CheckCredentialPersistence: tc.persist,
+					ValidateFn:                 tc.validate,
+				},
+			}
+			if tc.oauth {
+				opts.UseOAuth = true
+				opts.NewAuthFlow = func(string, auth.Options) login.AuthFlow { return tc.flow }
+			} else {
+				opts.GrafanaToken = "glsa_token"
+			}
+
+			_, err := login.Run(t.Context(), opts)
+			if tc.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+			assert.Equal(t, tc.wantStage, capture.CurrentLoginStage())
+		})
+	}
 }
 
 func TestRunRejectsNonTargetLayerChangeDuringAuthentication(t *testing.T) {
@@ -141,7 +217,7 @@ contexts:
 }
 
 func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexity is inherent to spec-required coverage
-	t.Parallel()
+	usePlaintextCredentialStorage(t)
 
 	oauthResult := &auth.Result{
 		Token:            "gat_test",
@@ -218,7 +294,7 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 						CloudCredentialKind:      login.CloudCredentialOAuth,
 						CloudTokenTrusted:        true,
 						CloudOAuthTokenExpiresAt: "2030-01-01T00:00:00Z",
-						CloudOAuthScopes:         []string{"stacks:read", "fleet-management:read"},
+						CloudOAuthScopes:         []string{"stacks:read", "metrics:write"},
 					},
 					Hooks: login.Hooks{
 						ConfigSource: configSource(dir),
@@ -238,7 +314,7 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 				assert.Equal(t, "gcom-oauth-token", ctx.CloudEntry.OAuthToken, "OAuth-issued tokens land in oauth-token, not token")
 				assert.Empty(t, ctx.CloudEntry.Token)
 				assert.Equal(t, "2030-01-01T00:00:00Z", ctx.CloudEntry.OAuthTokenExpiresAt)
-				assert.ElementsMatch(t, []string{"stacks:read", "fleet-management:read"}, ctx.CloudEntry.OAuthScopes)
+				assert.ElementsMatch(t, []string{"stacks:read", "metrics:write"}, ctx.CloudEntry.OAuthScopes)
 				assert.Equal(t, "https://grafana-ops.com", ctx.CloudEntry.OAuthUrl, "OAuth token must record its GCOM origin")
 				assert.Equal(t, "https://grafana-ops.com", ctx.CloudEntry.APIUrl, "APIUrl defaults to the same GCOM root")
 			},
@@ -674,8 +750,6 @@ func TestRun(t *testing.T) { //nolint:maintidx // 8 table-driven cases; complexi
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
 			dir := t.TempDir()
 			opts := tc.opts(dir)
 			src := opts.ConfigSource
@@ -765,7 +839,7 @@ func TestResolveCloudEndpoints(t *testing.T) {
 }
 
 func TestTrustedCAPIsPersistedAsCAP(t *testing.T) {
-	t.Parallel()
+	usePlaintextCredentialStorage(t)
 
 	dir := t.TempDir()
 	source := configSource(dir)
@@ -842,7 +916,7 @@ func TestRuntimeTLSOverrideRejectsNonDurableBearerCredential(t *testing.T) {
 }
 
 func TestStoredProxyTokenReauthPreservesDestinationBinding(t *testing.T) {
-	t.Parallel()
+	usePlaintextCredentialStorage(t)
 
 	const (
 		server = "https://grafana.example.invalid"
@@ -947,6 +1021,7 @@ func TestRunAgentModeMissingServer(t *testing.T) {
 // on-prem without returning ErrNeedClarification (D17, NC-007, AC-008).
 // Cannot be parallel: calls t.Setenv, which is incompatible with parallel parent tests.
 func TestRunAgentModeAmbiguousURL(t *testing.T) {
+	usePlaintextCredentialStorage(t)
 	t.Setenv("GCX_AGENT_MODE", "1")
 	agent.ResetForTesting()
 	t.Cleanup(func() {
@@ -986,6 +1061,8 @@ func (c *countingAuthFlow) Run(_ context.Context) (*auth.Result, error) {
 }
 
 func TestRun_OAuthRunsOnceAcrossRetries(t *testing.T) {
+	usePlaintextCredentialStorage(t)
+
 	// Ensure agent mode is off so resolveCloudAuth returns ErrNeedInput instead of skipping.
 	t.Setenv("GCX_AGENT_MODE", "0")
 	agent.ResetForTesting()
@@ -1041,6 +1118,8 @@ func TestRun_OAuthRunsOnceAcrossRetries(t *testing.T) {
 }
 
 func TestRun_PersistsOAuthRotationPerformedDuringValidation(t *testing.T) {
+	usePlaintextCredentialStorage(t)
+
 	dir := t.TempDir()
 	var refreshCalls atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1111,6 +1190,8 @@ func TestRun_PersistsOAuthRotationPerformedDuringValidation(t *testing.T) {
 }
 
 func TestPersist_ServerMismatch_EmitsClarification(t *testing.T) {
+	usePlaintextCredentialStorage(t)
+
 	dir := t.TempDir()
 
 	// Seed an existing context with a different server.
@@ -1165,6 +1246,8 @@ func TestPersist_ServerMismatch_EmitsClarification(t *testing.T) {
 }
 
 func TestPersist_ServerMismatch_AllowOverrideBypasses(t *testing.T) {
+	usePlaintextCredentialStorage(t)
+
 	dir := t.TempDir()
 
 	seed := config.Config{}
@@ -1218,6 +1301,8 @@ func TestPersist_ServerMismatch_AllowOverrideBypasses(t *testing.T) {
 }
 
 func TestPersist_UnboundContextSameNamedStackStillRequiresServerOverride(t *testing.T) {
+	usePlaintextCredentialStorage(t)
+
 	dir := t.TempDir()
 	seed := config.Config{}
 	seed.SetStack("prod", config.StackConfig{
@@ -1258,6 +1343,8 @@ func TestPersist_UnboundContextSameNamedStackStillRequiresServerOverride(t *test
 }
 
 func TestPersist_ServerMismatch_YesDoesNotBypass(t *testing.T) {
+	usePlaintextCredentialStorage(t)
+
 	dir := t.TempDir()
 
 	seed := config.Config{}
@@ -1353,6 +1440,7 @@ func TestRun_ValidationFailure_EmitsSaveUnvalidatedClarification(t *testing.T) {
 // context (including the token), and returns no error. Other validation failures
 // still hard-fail / prompt (covered by the save-unvalidated test above).
 func TestRun_OptionalCloudTokenRejected_WarnsAndPersists(t *testing.T) {
+	usePlaintextCredentialStorage(t)
 	t.Setenv("GCX_AGENT_MODE", "0")
 	agent.ResetForTesting()
 
@@ -1393,6 +1481,8 @@ func TestRun_OptionalCloudTokenRejected_WarnsAndPersists(t *testing.T) {
 }
 
 func TestRun_ForceSave_BypassesValidation(t *testing.T) {
+	usePlaintextCredentialStorage(t)
+
 	dir := t.TempDir()
 	validatorCalled := false
 	opts := login.Options{
@@ -1467,6 +1557,8 @@ func TestRun_ValidationFailure_YesFlagBypassesPrompt(t *testing.T) {
 }
 
 func TestRun_NormalizesServerScheme(t *testing.T) {
+	usePlaintextCredentialStorage(t)
+
 	dir := t.TempDir()
 	opts := login.Options{
 		Inputs: login.Inputs{
@@ -1507,6 +1599,8 @@ func TestRun_NormalizesServerScheme(t *testing.T) {
 }
 
 func TestRun_TLSPropagatedToContext(t *testing.T) {
+	usePlaintextCredentialStorage(t)
+
 	dir := t.TempDir()
 
 	tlsCfg := &config.TLS{
@@ -1544,6 +1638,8 @@ func TestRun_TLSPropagatedToContext(t *testing.T) {
 }
 
 func TestRun_ReauthPreservesTLS(t *testing.T) {
+	usePlaintextCredentialStorage(t)
+
 	dir := t.TempDir()
 
 	// Seed config with TLS settings
@@ -1595,6 +1691,8 @@ func TestRun_ReauthPreservesTLS(t *testing.T) {
 }
 
 func TestRun_TLSPassedToDetectFn(t *testing.T) {
+	usePlaintextCredentialStorage(t)
+
 	dir := t.TempDir()
 
 	var detectCalled bool
@@ -1625,6 +1723,8 @@ func TestRun_TLSPassedToDetectFn(t *testing.T) {
 }
 
 func TestRun_TLSPassedToValidateFn(t *testing.T) {
+	usePlaintextCredentialStorage(t)
+
 	dir := t.TempDir()
 
 	var validatedTLS *config.TLS
@@ -1694,6 +1794,7 @@ func TestRun_MTLSOnlyAuth(t *testing.T) {
 // token, the ErrNeedInput hint guides the user to where a token is created and
 // which scopes are recommended (issue #820).
 func TestRun_CloudTokenHintGuidance(t *testing.T) {
+	usePlaintextCredentialStorage(t)
 	t.Setenv("GCX_AGENT_MODE", "0")
 	agent.ResetForTesting()
 	t.Cleanup(func() { agent.ResetForTesting() })
@@ -1733,7 +1834,7 @@ func TestRun_CloudTokenHintGuidance(t *testing.T) {
 	assert.Contains(t, hint, "access-policies", "hint must link to the access-policies docs")
 	assert.Contains(t, hint, "stacks:read", "hint must name stacks:read as the required baseline scope")
 	assert.Contains(t, hint, "metrics:write", "hint must name the Synthetic Monitoring write scopes")
-	assert.Contains(t, hint, "fleet-management:read", "hint must name the Fleet scope")
+	assert.NotContains(t, hint, "fleet-management", "Fleet needs no grafana.com scope")
 	assert.Contains(t, hint, "stacks:write", "hint must name the stack-management scope")
 	assert.Contains(t, strings.ToLower(hint), "skip", "hint must retain the skip affordance")
 }
@@ -1742,7 +1843,7 @@ func TestRun_CloudTokenHintGuidance(t *testing.T) {
 // while building the REST config (via /bootdata) is written to the saved
 // context, so later commands skip the discovery round-trip.
 func TestRun_PersistsDiscoveredStackID(t *testing.T) {
-	t.Parallel()
+	usePlaintextCredentialStorage(t)
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/bootdata" {
@@ -1786,6 +1887,7 @@ func TestRun_PersistsDiscoveredStackID(t *testing.T) {
 // progress Writer (wrapping up the OAuth step) and frames the upcoming optional
 // Cloud API token prompt — rather than jumping straight into the prompt.
 func TestRun_OAuthSuccess_AnnouncesSignInBeforeCloudTokenPrompt(t *testing.T) {
+	usePlaintextCredentialStorage(t)
 	t.Setenv("GCX_AGENT_MODE", "0")
 	agent.ResetForTesting()
 
@@ -1829,6 +1931,7 @@ func TestRun_OAuthSuccess_AnnouncesSignInBeforeCloudTokenPrompt(t *testing.T) {
 // TestRun_OAuthSuccess_AnnouncesSignInWithoutEmail verifies the success line
 // degrades gracefully when the OAuth result carries no email.
 func TestRun_OAuthSuccess_AnnouncesSignInWithoutEmail(t *testing.T) {
+	usePlaintextCredentialStorage(t)
 	t.Setenv("GCX_AGENT_MODE", "0")
 	agent.ResetForTesting()
 
@@ -1865,6 +1968,8 @@ func TestRun_OAuthSuccess_AnnouncesSignInWithoutEmail(t *testing.T) {
 }
 
 func TestRun_ManualOAuthReachesAuthOptions(t *testing.T) {
+	usePlaintextCredentialStorage(t)
+
 	var buf bytes.Buffer
 	reader := strings.NewReader("")
 	var got auth.Options

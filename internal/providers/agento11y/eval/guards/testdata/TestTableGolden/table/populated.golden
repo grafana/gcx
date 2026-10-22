@@ -1,0 +1,3 @@
+ID       ENABLED  PHASE    PRIORITY  SELECTOR             ACTION
+guard-1  yes      request  10        {agent="assistant"}  warn
+			no                0                              

@@ -1,18 +1,43 @@
 package fleet
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 )
 
-// ReadErrorBody reads and returns the response body as a string for error messages.
+// maxResponseBodyBytes caps Fleet response bodies at 1 MiB.
+const maxResponseBodyBytes int64 = 1 << 20
+
+// IsResourceNotFoundBody reports whether a response is a Connect error whose
+// code identifies an absent resource. Other 404 bodies indicate an unavailable
+// plugin, route, or RPC endpoint, even when their message says "not found".
+func IsResourceNotFoundBody(body string) bool {
+	var connectError struct {
+		Code string `json:"code"`
+	}
+	return json.Unmarshal([]byte(body), &connectError) == nil && connectError.Code == "not_found"
+}
+
+// ReadErrorBody reads up to 1 MiB of a response body for error messages.
 func ReadErrorBody(resp *http.Response) string {
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBodyBytes))
 	if err != nil {
 		return "(could not read body)"
 	}
 	return string(body)
+}
+
+// PipelineNotFoundError reports a failed pipeline name lookup. It intentionally
+// does not wrap adapter.ErrNotFound: a name miss is not a strict identity miss
+// and must not make resource adapters create or skip the requested resource.
+type PipelineNotFoundError struct {
+	Name string
+}
+
+func (e *PipelineNotFoundError) Error() string {
+	return fmt.Sprintf("pipeline %q not found", e.Name)
 }
 
 // HTTPError represents a non-2xx HTTP response from the Fleet Management API.
@@ -25,6 +50,8 @@ type HTTPError struct {
 	Path string
 	// Body is the trimmed response body (for diagnostics).
 	Body string
+	// ContentType is the response Content-Type header, when available.
+	ContentType string
 }
 
 func (e *HTTPError) Error() string {

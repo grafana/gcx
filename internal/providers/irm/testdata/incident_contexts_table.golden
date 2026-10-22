@@ -1,0 +1,3 @@
+CONTEXTID  TYPE        STATUS  ALERTGROUPID  TITLE
+ctx-1      alertGroup  firing  ag-99         Checkout latency regression affecting EU custom...
+ctx-2      -           -       -             -

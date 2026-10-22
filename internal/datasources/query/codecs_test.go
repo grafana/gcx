@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/gcx/internal/query/infinity"
 	"github.com/grafana/gcx/internal/query/influxdb"
 	"github.com/grafana/gcx/internal/query/loki"
+	"github.com/grafana/gcx/internal/query/opensearch"
 	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/grafana/gcx/internal/query/tempo"
 	"github.com/stretchr/testify/assert"
@@ -29,14 +30,6 @@ func TestGraphCodecRejectsUnsupportedResponseTypes(t *testing.T) {
 		return ioOpts
 	}
 
-	t.Run("rejects loki log stream responses", func(t *testing.T) {
-		var out bytes.Buffer
-		err := newGraphIO().Encode(&out, &loki.QueryResponse{})
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "graph output is not supported for log stream queries")
-		assert.Contains(t, err.Error(), "gcx logs metrics")
-	})
-
 	t.Run("rejects tempo trace search responses", func(t *testing.T) {
 		var out bytes.Buffer
 		err := newGraphIO().Encode(&out, &tempo.SearchResponse{})
@@ -50,6 +43,29 @@ func TestGraphCodecRejectsUnsupportedResponseTypes(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "Infinity")
 	})
+}
+
+func TestGraphCodecRendersLokiLogVolume(t *testing.T) {
+	ioOpts := &cmdio.Options{OutputFormat: "graph"}
+	dsquery.RegisterCodecs(ioOpts, true)
+
+	resp := &loki.QueryResponse{
+		Data: loki.QueryResultData{
+			Result: []loki.StreamEntry{
+				{
+					Stream: map[string]string{"app": "foo"},
+					Values: []loki.LogEntry{
+						{Timestamp: "1700000000000000000", Line: "something happened", StructuredMetadata: map[string]string{"detected_level": "info"}},
+						{Timestamp: "1700000030000000000", Line: "ERROR something broke"},
+					},
+				},
+			},
+		},
+	}
+
+	var out bytes.Buffer
+	require.NoError(t, ioOpts.Encode(&out, resp))
+	assert.NotEmpty(t, out.String())
 }
 
 func TestQueryCodecsAcceptAzureMonitorResponses(t *testing.T) {
@@ -117,6 +133,43 @@ func TestQueryCodecsElasticsearchMetrics(t *testing.T) {
 	t.Run("table codec renders series rows", func(t *testing.T) {
 		var out bytes.Buffer
 		require.NoError(t, newIO("table").Encode(&out, resp))
+		assert.Contains(t, out.String(), "tempo")
+		assert.Contains(t, out.String(), "8")
+	})
+
+	t.Run("graph codec renders a chart", func(t *testing.T) {
+		var out bytes.Buffer
+		require.NoError(t, newIO("graph").Encode(&out, resp))
+		assert.Contains(t, out.String(), "tempo")
+	})
+}
+
+func TestQueryCodecsOpenSearchMetrics(t *testing.T) {
+	newIO := func(format string) *cmdio.Options {
+		t.Helper()
+		ioOpts := &cmdio.Options{OutputFormat: format}
+		dsquery.RegisterCodecs(ioOpts, true)
+		return ioOpts
+	}
+
+	resp := &opensearch.MetricsResponse{
+		Series: []opensearch.MetricSeries{{
+			Name:       "tempo",
+			Timestamps: []time.Time{time.Date(2026, 7, 14, 0, 0, 0, 0, time.UTC)},
+			Values:     []*float64{ptrFloat(8)},
+		}},
+	}
+
+	t.Run("table codec renders series rows", func(t *testing.T) {
+		var out bytes.Buffer
+		require.NoError(t, newIO("table").Encode(&out, resp))
+		assert.Contains(t, out.String(), "tempo")
+		assert.Contains(t, out.String(), "8")
+	})
+
+	t.Run("wide codec renders series rows", func(t *testing.T) {
+		var out bytes.Buffer
+		require.NoError(t, newIO("wide").Encode(&out, resp))
 		assert.Contains(t, out.String(), "tempo")
 		assert.Contains(t, out.String(), "8")
 	})

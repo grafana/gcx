@@ -1,6 +1,7 @@
 package retry
 
 import (
+	"context"
 	"errors"
 	"io"
 	"math"
@@ -87,6 +88,9 @@ func (t *Transport) maxRetryAfter() time.Duration {
 
 // RoundTrip executes the request with retry logic for transient failures.
 func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if disabled, _ := req.Context().Value(disableRetriesKey{}).(bool); disabled {
+		return t.base().RoundTrip(req)
+	}
 	var resp *http.Response
 	var err error
 
@@ -265,6 +269,13 @@ func isTransientConnectionError(err error) bool {
 		return dnsErr.IsTemporary
 	}
 
+	// Errors that classify themselves, such as those the wasip1 host
+	// transport reports in place of a net.OpError.
+	var transient interface{ Transient() bool }
+	if errors.As(err, &transient) {
+		return transient.Transient()
+	}
+
 	// Fallback: check for net.Error interface (timeout, temporary).
 	var netErr net.Error
 	if errors.As(err, &netErr) {
@@ -282,4 +293,12 @@ func drainAndClose(body io.ReadCloser) {
 	}
 	io.CopyN(io.Discard, body, 4096) //nolint:errcheck // Best-effort drain for connection reuse.
 	body.Close()
+}
+
+type disableRetriesKey struct{}
+
+// WithoutRetries marks an operation whose side effects must be reported after
+// one attempt rather than replayed implicitly by this transport.
+func WithoutRetries(ctx context.Context) context.Context {
+	return context.WithValue(ctx, disableRetriesKey{}, true)
 }

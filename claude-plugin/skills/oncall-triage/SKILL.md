@@ -1,6 +1,10 @@
 ---
 name: oncall-triage
-description: Triages active Grafana OnCall alert groups via gcx - list, inspect, acknowledge, silence, resolve. Use when the user is triaging what is actively paging in Grafana OnCall, or asks about active alert groups, acknowledging or silencing or resolving fires, on-call queue, or "what's paging right now". Trigger on phrases like "what's paging", "on-call alerts", "ack this", "silence the page", "what's firing in OnCall", "show me active pages", or any reference to OnCall alert groups. For root cause of why a Grafana alert rule is evaluating (rule-side, pre-routing) use investigate-alert. For schedules, integrations, or escalation chains use the gcx skill.
+description: >-
+  Triages active Grafana OnCall alert groups via gcx: list, inspect,
+  acknowledge, silence, resolve. Use for "what's paging" or the on-call queue.
+  For why an alert rule fires use investigate-alert. For schedules,
+  integrations, or escalation chains use the gcx skill.
 allowed-tools: Bash
 ---
 

@@ -1,27 +1,11 @@
 ---
 name: agento11y-instrument
-description: >
-  Sets up and instruments a developer's own LLM app or agent to send generations and
-  agentic workflow to Grafana Agent Observability (the Agent Observability SDKs) — greenfield setup,
-  fixing broken instrumentation, or filling gaps in existing instrumentation. Uses gcx
-  for the parts a static prompt can't do: `gcx login` / `gcx cloud stacks` to find the
-  stack, and `gcx agento11y agents|conversations|generations` to VERIFY that data actually
-  lands — so it iterates (instrument → run → verify → fix) until generations arrive, not
-  blindly. Reads the app's code, detects language/framework, classifies instrumentation
-  state (none / partial / broken), then runs a fixed gap checklist whose #1 item is the
-  silent failure no other prompt catches: the SDK emits OTel spans/metrics but never
-  creates a TracerProvider/MeterProvider, so without them all metrics go to a no-op and are
-  lost. Also checks agent_version (required for per-version Performance charts), set_result
-  completeness, SYNC vs STREAM, parent_generation_ids DAG links, and workflow-step coverage.
-  Recommends changes citing file:line and, only with explicit confirmation, applies minimal
-  diffs that don't change app behavior. Pulls SDK reference from agento11y's llms.txt rather
-  than restating it, and hands off to `agento11y-test-starter` once data flows. It does NOT
-  write test suites or set up tenant evaluations, rules, or guards — offline test suites are
-  `agento11y-test-starter`, tenant eval rules + guards are `agento11y-prod-setup`;
-  does NOT install coding-agent telemetry plugins (that is llms.txt "Path A"); does NOT mint
-  or store credentials or invent endpoints. Trigger on phrases like "instrument my app",
-  "send my agent's traces to Grafana", "set up AI observability for my app", "my generations
-  aren't showing up", "why is Performance empty", "add Agent Observability to my code", "fix my instrumentation".
+description: >-
+  Instruments a developer's own LLM app or repairs missing generations and empty
+  Performance charts in Grafana Agent Observability. Applies confirmed changes
+  and verifies generation ingest, traces, and metrics. Excludes coding-agent
+  telemetry plugins. For offline tests use agento11y-test-starter; for eval rules
+  and guards use agento11y-prod-setup.
 allowed-tools: Bash, Read, Grep, Glob, Edit, Write, WebFetch
 ---
 
@@ -133,8 +117,15 @@ the endpoint is set under the wrong name (e.g. `AGENTO11Y_API_ENDPOINT` — the 
    their own login (the Agent Observability setup screen gives them the exact command, or they use
    `gcx login`). Instrumentation itself needs no gcx login — only Step 5 verification does, so this
    never blocks writing the code.
-2. `gcx cloud stacks list`, then `gcx cloud stacks get <stack-slug>` — identify the target stack and
-   its URLs. This gives you the stack to point the developer at, and confirms which tenant the Step 5
+2. `gcx cloud orgs list` — discover organisation slugs using browser Cloud OAuth.
+   If re-authentication is needed, use `gcx cloud login` with the same context;
+   default scopes include `profile` and stack management. Access-policy tokens
+   cannot list memberships and override OAuth when `GRAFANA_CLOUD_TOKEN` or
+   `cloud.<entry>.token` is set. With access-policy authentication, ask the developer
+   for their organisation slug instead.
+   Have the developer select the intended slug, then run
+   `gcx cloud stacks list --org <org-slug>` and `gcx cloud stacks get <stack-slug>`
+   to identify the target stack and its URLs. This gives you the stack to point the developer at, and confirms which tenant the Step 5
    verification will read from.
 
 **What still needs the Connection page (gcx cannot do these today):**

@@ -76,7 +76,7 @@ canonical portable skill bundle.
 | `manage-dashboards` | Operate existing dashboards: list, search, pull, push, validate, promote, restore, delete, and snapshot |
 | `investigate-alert` | Investigate why a Grafana alert is firing and what it impacts |
 | `oncall-triage` | Triage active Grafana OnCall alert groups: list, inspect, acknowledge, silence, resolve |
-| `debug-with-grafana` | Run a structured diagnostic workflow across metrics, logs, and dashboards |
+| `debug-with-grafana` | Investigate with metrics, logs, and traces; use baseline candidates and trace diff to localize request regressions |
 | `diagnose-entity-graph` | Diagnose Knowledge Graph problems: missing entities, missing edges, broken trace context propagation, service-name collisions |
 | `slo-check-status` | Check SLO health and summarize current status |
 | `slo-investigate` | Diagnose why a specific SLO is breaching or alerting |
@@ -92,13 +92,53 @@ canonical portable skill bundle.
 | `gcx-observability` | Roll out end-to-end observability: instrumentation, SLOs, alerts, synth, k6, IRM, dashboards, and cost optimization |
 | `gcx-demo` | Run a narrated, read-only demo tour of gcx across every Grafana Cloud product area — for customer or colleague presentations |
 
+## Skill Lifecycle
+
+`skills-catalog.yaml` records release metadata independently of the skill files:
+
+- **active:** bundled and available for installation and updates.
+- **deprecated:** still bundled; install, get, and update report a warning.
+- **retired:** no bundled content; existing local copies remain visible and
+  removable with `gcx agent skills uninstall`, including `--all --yes`.
+
+Entries may include an optional `replacement` skill name and `message` explaining
+what changed. Replacements are informational labels, not redirects; gcx does not
+follow replacement chains. Every bundled skill needs an active or deprecated
+entry. When removing content, change its entry to retired and **keep it
+indefinitely** so users can skip releases. Append every new bundled name to
+`internal/skills/testdata/shipped_skills.txt`. This committed snapshot is append-only:
+never remove names or regenerate it from the current bundle during retirement.
+`TestBundledCatalog` requires the catalog to retain every snapshot name, even after
+its directory disappears, and requires new bundled names to enter the snapshot.
+It also checks catalog/content consistency and replacement existence against the
+embedded release. These checks run only in tests so a packaging mismatch cannot
+block uninstall.
+
+For the `.agents` installer, commands reconcile the catalog with the selected
+`--dir` (default `~/.agents`). `list` includes bundled skills and locally present
+retired entries, including incomplete installations without `SKILL.md`. `update`
+refreshes installed bundled skills and reports retired copies without changing
+them. It never installs replacements automatically or prunes obsolete local files.
+Install/update receipts include lifecycle notices in JSON as well as warnings on
+stderr. `get` reads only bundled content, not a local copy.
+
+Directories absent from the catalog are unmanaged and never targeted. Reconciliation
+tracks catalog membership internally in `SkillState.Known`, separate from the
+release `status`.
+Per-skill stat failures report `installed: false` without blocking inventory or
+operations on other skills. Catalog names do **not** establish ownership of local files:
+there is no installation receipt or local-modification tracking yet. Explicit
+uninstall removes the selected directory and its local edits. These lifecycle
+rules apply to `gcx agent skills`; the Claude plugin manager consumes the skill
+content directly and does not interpret the catalog.
+
 ## Agents
 
 Agents are specialist personas invoked automatically for multi-step tasks.
 
 | Agent | Purpose |
 |-------|---------|
-| `grafana-debugger` | Autonomous debugging specialist — runs the full diagnostic workflow, correlates signals across datasources, and produces a root-cause report |
+| `grafana-debugger` | Delegates to `debug-with-grafana` for question-led diagnosis and evidence-backed conclusions |
 
 ## Plugin Structure
 
@@ -108,6 +148,7 @@ claude-plugin/
 │   └── plugin.json           # Plugin manifest
 ├── agents/
 │   └── grafana-debugger.md   # Claude-specific specialist agent
+├── skills-catalog.yaml      # Release lifecycle metadata, including retired names
 └── skills/
     ├── <skill-name>/
     │   ├── SKILL.md
@@ -120,9 +161,20 @@ claude-plugin/
 **Debugging a production incident:**
 > "Latency on the checkout service spiked 10 minutes ago. Debug it."
 
-Claude will invoke `grafana-debugger`, run the `debug-with-grafana` skill,
-query Prometheus for latency metrics, correlate with Loki error logs, and
-return a root-cause analysis with the exact query commands used.
+Claude will invoke `grafana-debugger` and follow `debug-with-grafana`: scope the
+incident with existing metrics, locate a representative anomalous trace, and
+compare qualified baseline candidates with `gcx traces diff` when supported.
+The differences direct targeted log, resource, or deployment checks. Conclusions
+include evidence links and distinguish localized changes from proven causes.
+Missing signals do not block an otherwise answerable question.
+
+**Comparing a supplied trace:**
+> "What changed in this slow trace compared with normal requests?"
+
+The skill inspects the supplied trace directly, uses `gcx traces baseline` to
+retrieve comparison candidates, qualifies them, and diffs baseline A against
+anomalous B. It checks repeatability when needed and reports sampling, partiality,
+or unavailable comparison capabilities rather than assuming a guaranteed RCA.
 
 **Dashboard creation workflow:**
 > "Create a checkout service triage dashboard in the SRE folder."

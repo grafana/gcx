@@ -1,6 +1,9 @@
 ---
 name: slo-manage
-description: Creates, updates, syncs, and deletes Grafana SLO definitions via gcx with dry-run validation and GitOps pull/push workflows. Use when the user wants to create, update, pull, push, or delete SLO definitions. Trigger on phrases like "create an SLO", "update SLO objective", "push SLO", "pull SLOs", "delete SLO", or "GitOps sync SLOs". For checking SLO health or status, use slo-check-status instead. For investigating a breaching SLO, use slo-investigate instead.
+description: >-
+  Creates, updates, pulls, pushes, and deletes Grafana SLO definitions via gcx,
+  with dry-run validation and GitOps sync. For SLO health use slo-check-status.
+  For a breaching SLO use slo-investigate.
 allowed-tools: Bash, Read, Write, Edit
 ---
 
@@ -91,18 +94,19 @@ spec:
     uid: <prometheus-uid>
 ```
 
-### Step 4: Validate with dry-run, then push
+### Step 4: Preview with dry-run, then push
 
 ```bash
-gcx slo definitions push slo.yaml --dry-run
-gcx slo definitions push slo.yaml
+gcx resources push slos -p slo.yaml --dry-run
+gcx resources push slos -p slo.yaml
 ```
 
 **Push semantics:**
-- `metadata.name` empty → always creates (server assigns UUID)
-- `metadata.name` set to UUID → upsert (updates if exists, creates if not)
+- `metadata.name` set to UUID → update if it exists; otherwise match by the SLO name before creating.
+- Empty `metadata.name` → match by the SLO name before creating; the server assigns a UUID only when creating.
+- A dry-run against an adapter without server validation is reported as unverified and sends no writes; it does not establish that the backend accepts the manifest.
 
-After creation, server assigns UUID. Run `gcx slo definitions list` to confirm.
+Run `gcx slo definitions list` to confirm.
 
 ## Workflow 2: Update Existing SLO
 
@@ -120,8 +124,8 @@ Do not modify `metadata.name` (UUID) or `readOnly` fields.
 ### Step 3: Dry-run, then push
 
 ```bash
-gcx slo definitions push slo.yaml --dry-run
-gcx slo definitions push slo.yaml
+gcx resources push slos -p slo.yaml --dry-run
+gcx resources push slos -p slo.yaml
 ```
 
 ## Workflow 3: GitOps Sync (Pull/Push)
@@ -129,15 +133,15 @@ gcx slo definitions push slo.yaml
 ### Pull all SLOs to disk
 
 ```bash
-gcx slo definitions pull -d ./slos
-# Writes to ./slos/SLO/<uuid>.yaml
+gcx resources pull slos -p ./slos -o yaml
+# Writes to ./slos/slos.v1alpha1.slo.ext.grafana.app/<uuid>.yaml
 ```
 
 ### Push directory of SLOs
 
 ```bash
-gcx slo definitions push ./slos/SLO/*.yaml --dry-run
-gcx slo definitions push ./slos/SLO/*.yaml
+gcx resources push slos -p ./slos --dry-run
+gcx resources push slos -p ./slos
 ```
 
 ## Workflow 4: Delete SLO

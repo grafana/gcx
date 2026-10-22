@@ -17,7 +17,7 @@ import (
 func StaticDescriptor() resources.Descriptor {
 	return resources.Descriptor{
 		GroupVersion: schema.GroupVersion{
-			Group:   "sigil.ext.grafana.app",
+			Group:   "agento11y.ext.grafana.app",
 			Version: "v1alpha1",
 		},
 		Kind:     "Collection",
@@ -28,7 +28,7 @@ func StaticDescriptor() resources.Descriptor {
 
 // CollectionSchema returns a JSON Schema for the Collection resource type.
 func CollectionSchema() json.RawMessage {
-	return adapter.SchemaFromType[Collection](StaticDescriptor())
+	return adapter.SchemaFromType[Collection](StaticDescriptor())()
 }
 
 // stripFields lists server-managed fields that must not appear in the YAML

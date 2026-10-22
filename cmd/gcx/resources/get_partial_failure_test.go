@@ -4,17 +4,150 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"net"
+	"net/url"
 	"strings"
 	"testing"
 
 	"github.com/grafana/gcx/cmd/gcx/resources"
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/gcxerrors"
+	"github.com/grafana/gcx/internal/queryerror"
 	"github.com/grafana/gcx/internal/resources/remote"
 	"github.com/spf13/pflag"
+	"github.com/stretchr/testify/require"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
+
+func TestGetPartialFailure_IncludesClassifiedCauses(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		agentMode bool
+		format    string
+		jsonField string
+	}{
+		{name: "human JSON", format: "json"},
+		{name: "agent JSON", agentMode: true, format: "json"},
+		{name: "agent field selection", agentMode: true, jsonField: "metadata.name"},
+		{name: "agent YAML", agentMode: true, format: "yaml"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			agent.SetFlag(tc.agentMode)
+			t.Cleanup(func() { agent.SetFlag(false) })
+			flags := pflag.NewFlagSet("get", pflag.ContinueOnError)
+			opts := resources.NewGetOptsForTest(flags)
+			if tc.jsonField != "" {
+				require.NoError(t, flags.Set("json", tc.jsonField))
+			} else {
+				require.NoError(t, flags.Set("output", tc.format))
+			}
+			require.NoError(t, opts.Validate())
+			forbidden := fmt.Errorf("dashboards: %w", &apierrors.StatusError{ErrStatus: metav1.Status{
+				Code: 403, Reason: metav1.StatusReasonForbidden, Message: "access denied by policy",
+			}})
+			transport := fmt.Errorf("folders: %w", &url.Error{
+				Op: "Get", URL: "https://example.grafana.net/apis/folders",
+				Err: &net.OpError{Op: "dial", Net: "tcp", Err: errors.New("connection refused")},
+			})
+			var firstStdout, firstStderr string
+			for _, reverse := range []bool{false, true} {
+				summary := &remote.OperationSummary{}
+				causes := []error{forbidden, transport}
+				if reverse {
+					causes[0], causes[1] = causes[1], causes[0]
+				}
+				for _, cause := range causes {
+					summary.RecordFailure(nil, cause)
+				}
+				var stdout, stderr bytes.Buffer
+				opts.IO.ErrWriter = &stderr
+				err := resources.WriteGetOutputForTest(&stdout, &stderr, opts,
+					&resources.FetchResponse{PullSummary: summary}, unstructured.UnstructuredList{})
+				var emitted *gcxerrors.EmittedError
+				require.ErrorAs(t, err, &emitted)
+				require.Equal(t, gcxerrors.ExitPartialFailure, emitted.Code)
+				require.ErrorIs(t, err, forbidden)
+				require.ErrorIs(t, err, transport)
+				var details string
+				if tc.agentMode && tc.format != "yaml" {
+					var doc struct {
+						Type  string `json:"type"`
+						Error struct {
+							Details  string `json:"details"`
+							ExitCode int    `json:"exitCode"`
+						} `json:"error"`
+					}
+					dec := json.NewDecoder(bytes.NewReader(stdout.Bytes()))
+					require.NoError(t, dec.Decode(&doc))
+					require.Equal(t, "gcx.partial_result", doc.Type)
+					require.Equal(t, 4, doc.Error.ExitCode)
+					var second any
+					require.ErrorIs(t, dec.Decode(&second), io.EOF)
+					details = doc.Error.Details
+				} else {
+					details = stderr.String()
+				}
+				for _, want := range []string{"Authorization failed", "403 Forbidden", "access denied by policy", "dashboards", "Network error", "connection refused", "folders"} {
+					require.Contains(t, details, want)
+				}
+				require.Equal(t, 1, strings.Count(details, "access denied by policy"))
+				if reverse {
+					require.Equal(t, firstStdout, stdout.String())
+					require.Equal(t, firstStderr, stderr.String())
+				} else {
+					firstStdout, firstStderr = stdout.String(), stderr.String()
+				}
+			}
+		})
+	}
+}
+
+func TestGetPartialFailure_AgentWarningKeepsMultipartFailureTogether(t *testing.T) {
+	agent.SetFlag(true)
+	t.Cleanup(func() { agent.SetFlag(false) })
+
+	flags := pflag.NewFlagSet("get", pflag.ContinueOnError)
+	opts := resources.NewGetOptsForTest(flags)
+	require.NoError(t, flags.Set("output", "yaml"))
+	require.NoError(t, opts.Validate())
+
+	summary := &remote.OperationSummary{}
+	summary.RecordFailure(nil, queryerror.New("prometheus", "query", 400, "parse error near offset 10", "backend"))
+	var stdout, stderr bytes.Buffer
+	opts.IO.ErrWriter = &stderr
+	err := resources.WriteGetOutputForTest(&stdout, &stderr, opts,
+		&resources.FetchResponse{PullSummary: summary}, unstructured.UnstructuredList{})
+	var emitted *gcxerrors.EmittedError
+	require.ErrorAs(t, err, &emitted)
+	require.Equal(t, gcxerrors.ExitPartialFailure, emitted.Code)
+
+	var warnings []struct {
+		Class   string `json:"class"`
+		Summary string `json:"summary"`
+	}
+	for line := range strings.SplitSeq(strings.TrimSpace(stderr.String()), "\n") {
+		var event struct {
+			Class   string `json:"class"`
+			Summary string `json:"summary"`
+		}
+		require.NoError(t, json.Unmarshal([]byte(line), &event))
+		if event.Class == "warning" {
+			warnings = append(warnings, event)
+		}
+	}
+
+	require.Len(t, warnings, 2, "one summary warning plus one warning for the original failure")
+	require.Equal(t, "warning", warnings[0].Class)
+	require.Equal(t, "warning", warnings[1].Class)
+	require.Contains(t, warnings[1].Summary, "Invalid PromQL query")
+	require.Contains(t, warnings[1].Summary, "parse error near offset 10")
+	require.Contains(t, warnings[1].Summary, "Source: backend")
+	require.Equal(t, 2, strings.Count(warnings[1].Summary, "\n\n"), "all three converter detail parts stay in one warning")
+}
 
 // These tests pin the atomic-stdout contract for `resources get` partial
 // failures. Before the fix the three paths disagreed:
@@ -124,10 +257,7 @@ func TestGetPartialFailure_AtomicStdout(t *testing.T) {
 	}
 }
 
-// TestGetPartialFailure_JQKeepsShape pins that an active --jq transformation
-// is never dropped by the agent-mode fused envelope: the jq output keeps its
-// shape (identical to a success run) and the failure travels via the typed
-// stderr diagnostic + EmittedError exit 4, like other explicit formats.
+// Partial failures preserve jq output; stderr and EmittedError carry the failure.
 func TestGetPartialFailure_JQKeepsShape(t *testing.T) {
 	agent.SetFlag(true)
 	t.Cleanup(func() { agent.SetFlag(false) })
@@ -138,39 +268,47 @@ func TestGetPartialFailure_JQKeepsShape(t *testing.T) {
 		"metadata":   map[string]any{"name": "alpha"},
 	}}
 
-	flags := pflag.NewFlagSet("get", pflag.ContinueOnError)
-	opts := resources.NewGetOptsForTest(flags)
-	if err := flags.Set("jq", ".items[].metadata.name"); err != nil {
-		t.Fatalf("set --jq: %v", err)
-	}
-	if err := opts.Validate(); err != nil {
-		t.Fatalf("Validate() = %v", err)
-	}
+	for _, outputFormat := range []string{"json", "agents"} {
+		t.Run(outputFormat, func(t *testing.T) {
+			t.Setenv("GCX_AGENT_SPILL_BYTES", "102400")
+			flags := pflag.NewFlagSet("get", pflag.ContinueOnError)
+			opts := resources.NewGetOptsForTest(flags)
+			if err := flags.Set("output", outputFormat); err != nil {
+				t.Fatalf("set -o: %v", err)
+			}
+			if err := flags.Set("jq", ".items[].metadata.name"); err != nil {
+				t.Fatalf("set --jq: %v", err)
+			}
+			if err := opts.Validate(); err != nil {
+				t.Fatalf("Validate() = %v", err)
+			}
 
-	summary := &remote.OperationSummary{}
-	summary.RecordSuccess()
-	summary.RecordFailure(nil, errors.New("boom"))
-	res := &resources.FetchResponse{PullSummary: summary}
-	output := unstructured.UnstructuredList{Items: []unstructured.Unstructured{item}}
+			summary := &remote.OperationSummary{}
+			summary.RecordSuccess()
+			summary.RecordFailure(nil, errors.New("boom"))
+			res := &resources.FetchResponse{PullSummary: summary}
+			output := unstructured.UnstructuredList{Items: []unstructured.Unstructured{item}}
 
-	var stdout, stderr bytes.Buffer
-	opts.IO.ErrWriter = &stderr
-	err := resources.WriteGetOutputForTest(&stdout, &stderr, opts, res, output)
+			var stdout, stderr bytes.Buffer
+			opts.IO.ErrWriter = &stderr
+			err := resources.WriteGetOutputForTest(&stdout, &stderr, opts, res, output)
 
-	var emitted *gcxerrors.EmittedError
-	if !errors.As(err, &emitted) {
-		t.Fatalf("writeGetOutput() error = %T (%v), want *gcxerrors.EmittedError", err, err)
-	}
-	if emitted.Code != gcxerrors.ExitPartialFailure {
-		t.Fatalf("EmittedError.Code = %d, want %d", emitted.Code, gcxerrors.ExitPartialFailure)
-	}
+			var emitted *gcxerrors.EmittedError
+			if !errors.As(err, &emitted) {
+				t.Fatalf("writeGetOutput() error = %T (%v), want *gcxerrors.EmittedError", err, err)
+			}
+			if emitted.Code != gcxerrors.ExitPartialFailure {
+				t.Fatalf("EmittedError.Code = %d, want %d", emitted.Code, gcxerrors.ExitPartialFailure)
+			}
 
-	// stdout must be the jq transformation, not a fused envelope.
-	got := strings.TrimSpace(stdout.String())
-	if got != `"alpha"` {
-		t.Fatalf("stdout = %q, want jq output %q", got, `"alpha"`)
-	}
-	if !strings.Contains(stderr.String(), "failed to get") {
-		t.Fatalf("stderr = %q, want partial-failure diagnostic", stderr.String())
+			// stdout must be the jq transformation, not a fused envelope.
+			got := strings.TrimSpace(stdout.String())
+			if got != `"alpha"` {
+				t.Fatalf("stdout = %q, want jq output %q", got, `"alpha"`)
+			}
+			if !strings.Contains(stderr.String(), "failed to get") {
+				t.Fatalf("stderr = %q, want partial-failure diagnostic", stderr.String())
+			}
+		})
 	}
 }

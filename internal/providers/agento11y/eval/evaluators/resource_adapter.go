@@ -18,7 +18,7 @@ import (
 func StaticDescriptor() resources.Descriptor {
 	return resources.Descriptor{
 		GroupVersion: schema.GroupVersion{
-			Group:   "sigil.ext.grafana.app",
+			Group:   "agento11y.ext.grafana.app",
 			Version: "v1alpha1",
 		},
 		Kind:     "Evaluator",
@@ -29,7 +29,7 @@ func StaticDescriptor() resources.Descriptor {
 
 // EvaluatorSchema returns a JSON Schema for the Evaluator resource type.
 func EvaluatorSchema() json.RawMessage {
-	return adapter.SchemaFromType[eval.EvaluatorDefinition](StaticDescriptor())
+	return adapter.SchemaFromType[eval.EvaluatorDefinition](StaticDescriptor())()
 }
 
 func evalStripFields() []string {

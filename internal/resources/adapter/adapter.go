@@ -37,16 +37,15 @@ type ResourceAdapter interface {
 	// Aliases returns short names for selector resolution (e.g., "slo", "checks").
 	Aliases() []string
 
-	// Schema returns the JSON Schema for this resource type, or nil if not
-	// available on this adapter instance. Note: adapters created via
-	// TypedCRUD.AsAdapter() return nil — schema/example are only injected
-	// through TypedRegistration.ToRegistration(). Use SchemaForGVK() for
-	// authoritative global lookup.
+	// Schema returns the JSON Schema for this resource type. Adapters created
+	// via TypedCRUD.AsAdapter() always derive this from T (SchemaFromType) —
+	// it is never nil. Use SchemaForGVK() for the authoritative
+	// global-registration lookup instead, when available.
 	Schema() json.RawMessage
 
 	// Example returns an example manifest for this resource type, or nil if
-	// not available on this adapter instance. Same caveat as Schema() — use
-	// ExampleForGVK() for authoritative global lookup.
+	// none was set (TypedCRUD.Example). Use ExampleForGVK() for the
+	// authoritative global-registration lookup instead, when available.
 	Example() json.RawMessage
 }
 
@@ -54,3 +53,82 @@ type ResourceAdapter interface {
 // It is only invoked when a provider resource type is actually selected by a command,
 // ensuring provider config is not loaded eagerly at startup.
 type Factory func(ctx context.Context) (ResourceAdapter, error)
+
+// ReadFailure identifies one unsuccessful read in a partially usable result.
+// Resource may be nil when only the requested reference is known.
+type ReadFailure struct {
+	Resource *unstructured.Unstructured
+	Err      error
+}
+
+// PartialReadError accompanies successful items with per-item coverage metadata.
+// Ordinary collection failures must not implement this contract.
+type PartialReadError interface {
+	error
+	ReadFailures() []ReadFailure
+	SkippedReads() int
+}
+
+// MultipleGetter optionally preserves usable selections when another reference
+// fails. Failures are returned through PartialReadError.
+type MultipleGetter interface {
+	GetMultiple(ctx context.Context, names []string, opts metav1.GetOptions) ([]unstructured.Unstructured, error)
+}
+
+// PullSelection retains every fetched object before identity-keyed insertion.
+type PullSelection struct {
+	Filter resources.Filter
+	Items  []unstructured.Unstructured
+}
+
+// PullPreflight checks an object before processors or collection insertion.
+type PullPreflight func(context.Context, resources.Filter, unstructured.Unstructured) error
+
+// PullPreflighter optionally supplies a fresh identity check for one pull.
+// The complete selection is supplied so duplicate identities remain observable.
+type PullPreflighter interface {
+	NewPullPreflight(selections []PullSelection) PullPreflight
+}
+
+// PushSelection retains every local envelope before any mutation or identity probe.
+type PushSelection struct {
+	Descriptor resources.Descriptor
+	Items      []*resources.Resource
+}
+
+// PushPreflight checks a resource against an invocation-scoped identity plan.
+// It may retain resolved addressing metadata on the resource for envelope dispatch.
+type PushPreflight func(context.Context, *resources.Resource) error
+
+// PushPreflighter optionally resolves a complete batch before concurrent writes.
+// Dry-runs bypass this remote identity planning and use PushEnvelope directly.
+type PushPreflighter interface {
+	NewPushPreflight(ctx context.Context, selections []PushSelection) (PushPreflight, error)
+}
+
+// EnvelopePusher owns upsert and local dry-run validation for a complete envelope.
+// It runs before the shared name/existence/natural-key probes.
+type EnvelopePusher interface {
+	PushEnvelope(ctx context.Context, obj *unstructured.Unstructured, opts metav1.CreateOptions) error
+}
+
+// DeleteSelector selects minimal identity envelopes without configuration reads.
+// Nil manifests request selector-based resolution; nonnil manifests request
+// strict resolution of the addressing metadata in local files.
+// Returned metadata.name values are the IDs passed to the shared Delete method.
+type DeleteSelector interface {
+	SelectDelete(ctx context.Context, filter resources.Filter, manifests []unstructured.Unstructured) ([]unstructured.Unstructured, error)
+}
+
+// OperationWarnings carries safe, nonfatal diagnostics alongside an outcome.
+// An unverified dry-run may implement this without changing the output envelope.
+type OperationWarnings interface {
+	OperationWarnings() []string
+}
+
+// SavedMutationError identifies a failed operation whose earlier write succeeded.
+// Callers must preserve the receipt and partial-failure status even when aborting.
+type SavedMutationError interface {
+	error
+	MutationWasSaved() bool
+}

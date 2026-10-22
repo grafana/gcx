@@ -428,6 +428,79 @@ current-context: prod`)
 	require.Equal(t, "prod-token", cfg.Contexts["prod"].Grafana.APIToken)
 }
 
+func TestOptions_LoadConfigTolerant_EnvironmentContextSelection(t *testing.T) {
+	configFile := testutils.CreateTempFile(t, `version: 1
+stacks:
+  prod:
+    grafana:
+      server: https://prod.grafana.net
+      token: prod-token
+      org-id: 1
+  staging:
+    grafana:
+      server: https://staging.grafana.net
+      token: staging-token
+      org-id: 1
+contexts:
+  prod:
+    stack: prod
+  staging:
+    stack: staging
+current-context: prod`)
+	t.Setenv(internalconfig.ContextEnvVar, "staging")
+	t.Setenv("GRAFANA_TOKEN", "env-token")
+
+	cfg, err := (&config.Options{ConfigFile: configFile}).LoadConfigTolerant(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, "staging", cfg.CurrentContext)
+	require.Equal(t, "env-token", cfg.Contexts["staging"].Grafana.APIToken)
+	require.Equal(t, "prod-token", cfg.Contexts["prod"].Grafana.APIToken)
+
+	cfg, err = (&config.Options{ConfigFile: configFile, Context: "prod"}).LoadConfigTolerant(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, "prod", cfg.CurrentContext)
+	require.Equal(t, "env-token", cfg.Contexts["prod"].Grafana.APIToken)
+	require.Equal(t, "staging-token", cfg.Contexts["staging"].Grafana.APIToken)
+
+	contents, err := os.ReadFile(configFile)
+	require.NoError(t, err)
+	require.Contains(t, string(contents), "current-context: prod")
+	require.NotContains(t, string(contents), "env-token")
+}
+
+func TestCurrentContextEnvironmentSelection(t *testing.T) {
+	t.Setenv(internalconfig.ContextEnvVar, "prod")
+	output, err := runConfigCmd(t, "current-context", "--config", "testdata/config.yaml")
+	require.NoError(t, err)
+	require.Equal(t, "prod\n", output)
+
+	output, err = runConfigCmd(t, "current-context", "--config", "testdata/config.yaml", "--context", "local")
+	require.NoError(t, err)
+	require.Equal(t, "local\n", output)
+
+	t.Setenv(internalconfig.ContextEnvVar, "missing")
+	output, err = runConfigCmd(t, "current-context", "--config", "testdata/config.yaml", "--context", "prod")
+	require.NoError(t, err)
+	require.Equal(t, "prod\n", output)
+}
+
+func TestOptions_EffectiveContext(t *testing.T) {
+	t.Setenv(internalconfig.ContextEnvVar, "from-env")
+	require.Equal(t, "from-env", (&config.Options{}).EffectiveContext())
+	require.Equal(t, "from-flag", (&config.Options{Context: "from-flag"}).EffectiveContext())
+
+	t.Setenv(internalconfig.ContextEnvVar, "")
+	require.Empty(t, (&config.Options{}).EffectiveContext())
+	require.Equal(t, "from-flag", (&config.Options{Context: "from-flag"}).EffectiveContext())
+}
+
+func TestCurrentContextEnvironmentSelection_unknownContext(t *testing.T) {
+	t.Setenv(internalconfig.ContextEnvVar, "missing")
+	_, err := runConfigCmd(t, "current-context", "--config", "testdata/config.yaml")
+	require.ErrorIs(t, err, internalconfig.ErrContextNotFound)
+	require.ErrorContains(t, err, `invalid context "missing"`)
+}
+
 func TestOptions_LoadConfig_ValidatesSelectedContext(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -748,6 +821,7 @@ current-context: default
 	testutils.CommandTestCase{
 		Cmd:     config.Command(),
 		Command: []string{"set", "--config", configFile, "cloud.shared.token", "new-cap"},
+		Env:     map[string]string{"GCX_KEYCHAIN": "off"},
 		Assertions: []testutils.CommandAssertion{
 			testutils.CommandSuccess(),
 		},
@@ -763,6 +837,7 @@ current-context: default
 	testutils.CommandTestCase{
 		Cmd:     config.Command(),
 		Command: []string{"set", "--config", configFile, "cloud.shared.oauth-token", "new-oauth"},
+		Env:     map[string]string{"GCX_KEYCHAIN": "off"},
 		Assertions: []testutils.CommandAssertion{
 			testutils.CommandSuccess(),
 		},
@@ -781,6 +856,7 @@ current-context: default
 		testutils.CommandTestCase{
 			Cmd:     config.Command(),
 			Command: command,
+			Env:     map[string]string{"GCX_KEYCHAIN": "off"},
 			Assertions: []testutils.CommandAssertion{
 				testutils.CommandSuccess(),
 			},
@@ -832,6 +908,51 @@ current-context: dev`),
 		},
 	}
 	viewCmd.Run(t)
+}
+
+func Test_UnsetCommandKeychainPolicy(t *testing.T) {
+	tests := []struct {
+		name string
+		path string
+	}{
+		{name: "credentials.keychain", path: "credentials.keychain"},
+		{name: "bare credentials section", path: "credentials"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			isolatedConfigEnv(t)
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			original := []byte("version: 1\ncredentials:\n  keychain: \"off\"\ncontexts: {}\n")
+			require.NoError(t, os.WriteFile(path, original, 0o600))
+
+			_, err := runConfigCmd(t, "unset", "--config", path, test.path)
+			require.NoError(t, err)
+
+			raw, readErr := os.ReadFile(path)
+			require.NoError(t, readErr)
+			require.NotContains(t, string(raw), "keychain:")
+			// Clearing must drop the whole `credentials:` mapping, not just
+			// blank Keychain and leave `credentials: {}` behind.
+			require.NotContains(t, string(raw), "credentials:")
+		})
+	}
+}
+
+func Test_UnsetCommandKeychainPolicyRejectsAutoDiscoveredLocalTarget(t *testing.T) {
+	_, workDir := isolatedConfigEnv(t)
+	localPath := writeLocalConfig(t, workDir, "version: 1\ncredentials:\n  keychain: \"off\"\ncontexts:\n  default: {}\ncurrent-context: default\n")
+
+	before, readErr := os.ReadFile(localPath)
+	require.NoError(t, readErr)
+
+	_, err := runConfigCmd(t, "unset", "credentials.keychain")
+	require.Error(t, err)
+	require.ErrorContains(t, err, "local")
+
+	after, readErr := os.ReadFile(localPath)
+	require.NoError(t, readErr)
+	require.Equal(t, before, after)
 }
 
 func Test_ViewCommand_withEnvironmentVariables(t *testing.T) {
@@ -1169,6 +1290,34 @@ contexts:
 	userPath := filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "gcx", "config.yaml")
 	_, statErr := os.Stat(userPath)
 	require.True(t, os.IsNotExist(statErr), "user config must not be created, got: %v", statErr)
+}
+
+func Test_SetCommandRejectsInvalidKeychainPolicyValue(t *testing.T) {
+	tests := []struct {
+		name  string
+		value string
+	}{
+		{name: "empty value", value: ""},
+		{name: "non-empty invalid value", value: "disabled"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			isolatedConfigEnv(t)
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			original := []byte("version: 1\ncredentials: {}\ncontexts: {}\n")
+			require.NoError(t, os.WriteFile(path, original, 0o600))
+
+			_, err := runConfigCmd(t, "set", "--config", path, "credentials.keychain", test.value)
+			require.Error(t, err)
+			require.ErrorContains(t, err, "credentials.keychain")
+			require.ErrorContains(t, err, "on or off")
+
+			contents, readErr := os.ReadFile(path)
+			require.NoError(t, readErr)
+			require.Equal(t, original, contents)
+		})
+	}
 }
 
 func Test_UseContextCommand_PreviousSwitch(t *testing.T) {

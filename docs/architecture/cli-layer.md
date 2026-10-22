@@ -1,163 +1,42 @@
 # CLI Layer and Command Patterns
 
-## Command Tree
+## Command Composition
 
-```
-gcx (root)
-├── --no-color               [persistent flag]
-├── --no-truncate            [persistent flag: disable table column truncation]
-├── --agent                  [persistent flag: enable agent mode]
-├── --verbose / -v           [persistent flag, count]
-│
-├── api                      [cmd/gcx/api/command.go]
-│   ├── --config             [persistent: inherited from config.Options]
-│   ├── --context            [persistent: inherited from config.Options]
-│   ├── --method / -X        HTTP method (default: GET, or POST if -d is set)
-│   ├── --data / -d          Request body (@file, @-, or literal). Implies POST.
-│   ├── --header / -H        Custom headers (repeatable)
-│   └── --output / -o        json|yaml  [default: json]
-│
-├── config                   [cmd/gcx/config/command.go]
-│   ├── --config             [persistent: path to config file]
-│   ├── --context            [persistent: context override]
-│   ├── check
-│   ├── current-context
-│   ├── list-contexts
-│   ├── set      PROPERTY_NAME PROPERTY_VALUE
-│   ├── unset    PROPERTY_NAME
-│   ├── use-context CONTEXT_NAME
-│   └── view
-│       └── --output / -o   [yaml|json, default: yaml]
-│
-├── resources                [cmd/gcx/resources/command.go]
-│   ├── --config             [persistent: inherited from config.Options]
-│   ├── --context            [persistent: inherited from config.Options]
-│   ├── delete [SELECTOR]...
-│   ├── edit   SELECTOR
-│   ├── get    [SELECTOR]...
-│   ├── list-types           [formerly "schemas"; --no-schema flag to skip OpenAPI fetch]
-│   ├── pull   [SELECTOR]...
-│   ├── push   [SELECTOR]...
-│   └── validate [SELECTOR]...
-│
-├── dashboards               [internal/providers/dashboards/ — mounted via provider self-registration]
-│   ├── --config             [persistent: inherited from config.Options]
-│   ├── --context            [persistent: inherited from config.Options]
-│   ├── list                 List dashboards
-│   ├── get   NAME           Get a dashboard by name
-│   ├── create               Create a dashboard from file/stdin
-│   ├── update NAME          Update an existing dashboard
-│   ├── delete NAME...       Delete one or more dashboards
-│   ├── search               Full-text search (title, tag, folder) via dashboard.grafana.app/search
-│   ├── list-versions NAME   List version history for a dashboard
-│   ├── versions             Dashboard version history group
-│   │   └── restore NAME     Restore a dashboard to a previous version
-│   └── snapshot UID...      Render dashboard/panel PNG snapshots via Image Renderer
-│
-├── datasources              [cmd/gcx/datasources/command.go]
-│   ├── --config             [persistent: inherited from config.Options]
-│   ├── --context            [persistent: inherited from config.Options]
-│   ├── list
-│   ├── get    NAME
-│   └── query                DATASOURCE_UID EXPR (auto-detect type) [--from] [--to] [--step] [--since] [--limit] [--profile-type] [--max-nodes] [-o]
-│
-├── metrics                  [internal/providers/metrics/provider.go] (registered via providers.Register)
-│   ├── query                [DATASOURCE_UID] EXPR   [--from] [--to] [--step] [--since] [-o]
-│   ├── labels               [--datasource/-d UID] [--label/-l NAME]
-│   ├── metadata             [--datasource/-d UID] [--metric/-m NAME]
-│   ├── series               [SELECTOR] [--datasource/-d UID] [--match SELECTOR]... [--from] [--to] [--since]
-│   ├── billing              Query grafanacloud_* billing metrics via pre-provisioned grafanacloud-usage datasource
-│   │   ├── query            EXPR   [--from] [--to] [--step] [--since] [-o]
-│   │   ├── labels           [--label/-l NAME]
-│   │   └── series           [SELECTOR] [--match SELECTOR]... [--from] [--to] [--since]
-│   └── adaptive             Adaptive Metrics (rules list/get/create/update/delete, recommendations list/diff/apply)
-│
-├── logs                     [internal/providers/logs/provider.go] (registered via providers.Register)
-│   ├── query                [DATASOURCE_UID] EXPR   [--from] [--to] [--since] [--limit] [-o]
-│   ├── labels               [--datasource/-d UID] [--label/-l NAME]
-│   ├── series               --match SELECTOR... [--datasource/-d UID]
-│   └── adaptive             Adaptive Logs (patterns, exemptions, segments)
-│
-├── traces                   [internal/providers/traces/provider.go] (registered via providers.Register)
-│   ├── query                (stub — "not yet implemented")
-│   └── adaptive             Adaptive Traces (policies, recommendations)
-│
-├── profiles                 [internal/providers/profiles/provider.go] (registered via providers.Register)
-│   ├── query                [DATASOURCE_UID] EXPR --profile-type TYPE [--from] [--to] [--since] [--max-nodes] [--profile-id UUID]... [--span-id ID]... [--trace-id ID]... [--stacktrace-selector FN]... [-o]
-│   ├── labels               [--datasource/-d UID] [--label/-l NAME]
-│   ├── list-profile-types   [--datasource/-d UID]
-│   ├── series               [DATASOURCE_UID] EXPR --profile-type TYPE [--top] [--group-by] [--limit]
-│   └── adaptive             (stub — "not yet available")
-│
-├── providers                [cmd/gcx/providers/command.go]
-│   └── (list; no subcommands — prints NAME/DESCRIPTION table of registered providers)
-│
-├── setup                    [cmd/gcx/setup/command.go]
-│   ├── --config             [persistent: inherited from providers.ConfigLoader]
-│   ├── --context            [persistent: inherited from root command]
-│   └── status               Aggregated setup status across all products
-│
-├── instrumentation          [cmd/gcx/instrumentation/command.go]
-│   ├── status               Workload-level instrumentation status (observed state)
-│   │   └── --output / -o    table|wide|json|yaml
-│   ├── setup <CLUSTER>      Generate helm install command + access-policy guidance
-│   │   ├── --use-defaults   Apply FR-040 defaults without prompting
-│   │   ├── --cost-metrics[=true|false]  Override costMetrics default
-│   │   ├── --print-helm-only  Print helm command and exit
-│   │   └── --output / -o    table|wide|json|yaml
-│   ├── clusters             Cluster-level instrumentation management
-│   │   ├── list             List all configured clusters
-│   │   ├── get <CLUSTER>    Get cluster instrumentation config
-│   │   ├── configure <CLUSTER>  Configure cluster instrumentation
-│   │   ├── remove <CLUSTER> Remove cluster instrumentation config
-│   │   ├── wait <CLUSTER>   Wait for cluster to reach INSTRUMENTED status
-│   │   └── apps             Namespace-level Beyla app instrumentation
-│   │       ├── list <CLUSTER>           List namespace entries
-│   │       ├── get <CLUSTER> <NS>       Get namespace instrumentation
-│   │       ├── configure <CLUSTER> <NS> Configure namespace instrumentation
-│   │       ├── remove <CLUSTER> <NS>    Remove namespace instrumentation
-│   │       └── wait <CLUSTER> <NS>      Wait for namespace to be instrumented
-│   └── services             Service-level workload inclusion/exclusion
-│       ├── list             List workloads with inclusion state
-│       ├── get              Get workload inclusion state
-│       ├── include          Include a workload
-│       ├── exclude          Exclude a workload
-│       └── clear            Clear workload inclusion override
-│
-├── skills                   [cmd/gcx/skills/command.go]
-│   ├── install             Install the canonical portable gcx Agent Skills bundle into a .agents root
-│   │   ├── --dir           .agents root directory (default: ~/.agents)
-│   │   ├── --force         Overwrite existing differing files
-│   │   ├── --dry-run       Preview installation without writing files
-│   │   └── --output / -o   text|json|yaml
-│   ├── update              Update installed bundled gcx skills in a .agents root
-│   │   ├── --dir           .agents root directory (default: ~/.agents)
-│   │   ├── --dry-run       Preview updates without writing files
-│   │   └── --output / -o   text|json|yaml
-│   ├── list                List bundled gcx skills and install status
-│   └── uninstall           Remove gcx-managed skills from a .agents root
-│
-└── dev                      [cmd/gcx/dev/command.go]
-    ├── generate [FILE_PATH]... Generate typed Go stubs for new resources
-    ├── import               Import existing Grafana resources as code
-    ├── scaffold             Scaffold a new gcx-based project
-    ├── serve  [DIR]...      Serve resources locally (moved from resources serve)
-    └── lint                 Lint resources (moved from top-level linter command)
-        ├── run              Lint resources against configured rules [Use: "run"]
-        ├── new              Scaffold a new linter rule
-        ├── rules            List available linter rules
-        └── test             Run rule test suite
-```
+The root Cobra command assembles built-in groups and registered provider commands. `cmd/gcx` owns executable wiring, while provider factories contribute their product surfaces from `internal/providers`. Resolve the current command and flag surface from built-in help or the [released CLI reference](../sources/cli-reference.md), rather than maintaining a second command tree here.
 
-Key: SELECTOR = `kind[/name[,name...]]` or long form `kind.group/name`
+CLI wiring validates input, loads configuration at execution time, calls domain operations, and renders their results. Business behavior belongs in the relevant domain package. Command placement and naming follow [command naming](../design/command-naming.md).
 
----
+## Agent Identity
+
+`internal/agent` resolves native signals and supported explicit names.
+Command defaults and usage telemetry use the same detector.
+`GCX_AGENT_NAME` supports harnesses without a native marker.
+Only fixed labels reach telemetry. Test helpers clear the detector's full
+input list through `agent.EnvironmentVariables()`.
+See [agent mode](../design/agent-mode.md#61-detection) for precedence.
+
+## Portable Skill Lifecycle
+
+`claude-plugin/assets.go` embeds `skills/` and `skills-catalog.yaml` separately.
+`internal/skills` decodes active/deprecated/retired metadata and reconciles it with
+the selected local `.agents` root. `TestBundledCatalog` checks content consistency
+and replacement existence at build time, not on the uninstall recovery path.
+It also requires the catalog to retain every name in the committed, append-only
+`internal/skills/testdata/shipped_skills.txt` snapshot, independently of current
+bundle contents. New bundled names must be appended to that snapshot. Install, update, list,
+and uninstall share this read-only reconciliation; get reads bundled content only.
+CLI wiring and codecs remain in `cmd/gcx/skills`; the background update notifier
+uses the same update preview, including retirement notices.
+
+Retired catalog entries remain after content removal so old installations stay
+manageable across skipped releases. Uncataloged local directories are unmanaged.
+Catalog membership does not prove ownership; no installation manifest or file
+pruning is implemented. See [skill lifecycle](https://github.com/grafana/gcx/blob/main/claude-plugin/README.md#skill-lifecycle)
+for maintenance rules and command behavior.
 
 ## Provider Command Groups
 
-Providers contribute top-level command groups to gcx. Unlike `resources`
-subcommands (which use the dynamic K8s client), provider commands wrap
-product-specific REST APIs and translate to/from the K8s envelope format.
+Providers contribute product-specific command groups to gcx. They can use native Grafana resources or product REST APIs. Resources backed by a product API use adapters to participate in the generic resource pipeline.
 
 ### When to use a provider vs `resources`
 
@@ -171,68 +50,19 @@ Do you need only standard CRUD on an externally accessible, discoverable
 Being on `/apis` settles CRUD, not the command surface: `gcx dashboards` and
 `gcx alert` are dedicated command trees over `/apis`-backed products, because
 their real operations are not CRUD verbs. Product-specific operations need their
-own placement analysis regardless of tier. And a commands-only provider that calls
-the K8s dynamic client extends the single documented exception in
-`CONSTITUTION.md` § Architecture Invariants (`internal/providers/dashboards/`,
-ADR 016), which requires explicit human approval.
+own placement analysis regardless of tier. Provider commands over a native
+`/apis` resource go through the shared native binding (`internal/providers/native`,
+see `CONSTITUTION.md` § Architecture Invariants); dashboards still hand-rolls this
+access until its pending migration lands.
 
-See `.claude/skills/add-provider/references/decision-tree.md` for the full
+See [provider placement](../../.agents/skills/contribute/references/provider-placement.md) for the full
 decision tree.
 
 ### Provider command structure
 
-Provider commands follow a consistent pattern: a top-level group command with
-resource-type subcommands underneath. Each resource type gets standard CRUD
-operations plus optional product-specific commands.
+Providers contribute product-specific command groups, with resource-type groups where appropriate. Expose supported operations according to the command contract. Human CRUD commands must use the same typed resource conversion and adapter behavior as the generic resource pipeline. Operational views and query results can use their own result types.
 
-```
-gcx {provider}           [contributed by Provider.Commands()]
-├── --config                    [persistent: inherited via providers.ConfigLoader]
-├── --context                   [persistent: inherited from root command]
-│
-├── {resource-type}             [one group per resource type]
-│   ├── list                    [always: list all resources]
-│   ├── get    <id>             [always: get single resource]
-│   ├── push   [path...]        [always: create-or-update from local files]
-│   ├── pull                    [always: export to local files]
-│   ├── delete <id...>          [always: delete resources]
-│   └── status [id]             [optional: operational health data]
-│
-└── {other-resource-type}       [if product has multiple resource types]
-    └── (same CRUD pattern)
-```
-
-### Current providers
-
-```
-gcx slo                  [internal/providers/slo/provider.go]
-├── definitions                 CRUD + status/timeline for SLO definitions
-│   ├── list
-│   ├── get    <uuid>
-│   ├── push   [path...]
-│   ├── pull
-│   ├── delete <uuid...>
-│   └── status [uuid]
-└── reports                     CRUD + status for SLO reports
-    ├── list
-    ├── get    <uuid>
-    ├── push   [path...]
-    ├── pull
-    ├── delete <uuid...>
-    └── status [uuid]
-
-gcx synthetic-monitoring [internal/providers/synth/provider.go]
-├── checks                      CRUD + status/timeline for Synthetic Monitoring checks
-│   ├── list
-│   ├── get    <id>
-│   ├── push   [path...]
-│   ├── pull
-│   ├── delete <id...>
-│   ├── status [id]
-│   └── timeline [id]
-└── probes                      List Synthetic Monitoring probes
-    └── list
-```
+See the [provider guide](../reference/provider-guide.md) for the implementation recipe and [resource routing](resource-model.md#5b-provider-backed-resources-resourceadapter-typedcrud-and-router) for the adapter contract.
 
 ### Config loading pattern
 
@@ -255,71 +85,9 @@ func (l *ConfigLoader) LoadGrafanaConfig(ctx context.Context) (config.Namespaced
 
 ### Adding a new provider
 
-Follow the `/add-provider` skill or `docs/reference/provider-guide.md` for the
-step-by-step implementation guide.
-
----
-
-## File Layout
-
-```
-cmd/gcx/
-├── main.go                  Entry point — wires root.Command, calls handleError
-├── root/
-│   └── command.go           Root cobra command: logging setup, PersistentPreRun
-├── config/
-│   └── command.go           config group + all config subcommands + Options type
-├── resources/
-│   ├── command.go           resources group (wires configOpts to all subcommands)
-│   ├── get.go               resources get
-│   ├── schemas.go           resources list-types
-│   ├── pull.go              resources pull
-│   ├── push.go              resources push
-│   ├── delete.go            resources delete
-│   ├── edit.go              resources edit
-│   ├── validate.go          resources validate
-│   ├── serve.go             dev serve (exported as ServeCmd; formerly resources serve)
-│   ├── fetch.go             SHARED: remote fetch helper used by get/edit/delete
-│   ├── onerror.go           SHARED: OnErrorMode type + --on-error flag binding
-│   └── editor.go            SHARED: interactive editor (EDITOR env var)
-├── datasources/
-│   ├── command.go           datasources group (list, get, query)
-│   ├── list.go              datasources list
-│   ├── get.go               datasources get
-│   ├── query.go             QueryCmd() — auto-detecting query (shared infra from internal/datasources/query/)
-│   └── query_routes.go      per-kind dispatch handlers and typed-command redirects
-├── providers/
-│   └── command.go           providers command — lists registered providers
-├── setup/
-│   └── command.go           setup group + aggregated status (wires providers.ConfigLoader)
-├── instrumentation/
-│   ├── command.go           instrumentation group (wires all subcommands)
-│   ├── status/              instrumentation status — workload-level observed state
-│   ├── setup/               instrumentation setup — helm command + access-policy guidance
-│   ├── clusters/            cluster-level instrumentation (list, get, configure, remove, wait)
-│   │   └── apps/            namespace-level Beyla app instrumentation (list, get, configure, remove, wait)
-│   └── services/            service-level workload inclusion/exclusion (list, get, include, exclude, clear)
-├── linter/
-│   ├── command.go           lint subgroup (run, new, list-rules, test subcommands; mounted under dev lint)
-│   ├── lint.go              dev lint run — lint resources against configured rules  [Use: "run"]
-│   ├── new.go               dev lint new — scaffold a new linter rule
-│   ├── rules.go             dev lint list-rules — list available linter rules
-│   └── test.go              dev lint test — run rule test suite
-├── dev/
-│   ├── command.go           dev group (generate, import, scaffold, lint, serve subcommands)
-│   ├── generate.go          dev generate — generate typed Go stubs for new resources
-│   ├── import.go            dev import — import Grafana resources as code
-│   ├── scaffold.go          dev scaffold — scaffold a new project
-│   └── templates/           Embedded Go templates for generate/import/scaffold
-├── fail/
-│   ├── detailed.go          DetailedError type — rich error formatting
-│   ├── convert.go           ErrorToDetailedError — error-type dispatch table
-│   └── json.go              DetailedError.WriteJSON — in-band JSON error for agent mode
-└── io/
-    ├── format.go            Options type — --output/-o + --json flags + codec registry
-    ├── field_select.go      FieldSelectCodec — JSON field filtering + DiscoverFields
-    └── messages.go          Success/Warning/Error/Info colored printers
-```
+Start with the [`contribute`](../../.agents/skills/contribute/SKILL.md) skill and
+its provider implementation reference; [provider-guide.md](../reference/provider-guide.md)
+contains the canonical implementation recipe.
 
 ---
 
@@ -402,11 +170,11 @@ User invokes: gcx resources push dashboards/foo -p ./resources
 
 cobra.Execute()
     │
-    ├─ PersistentPreRun [root/command.go:27]
+    ├─ PersistentPreRun [root/command.go]
     │       Configures slog verbosity, klog logger.
     │       Attaches logger to cmd.Context() via logging.Context().
     │
-    └─ RunE [push.go:95]
+    └─ RunE [push.go]
             │
             ├─ 1. opts.Validate()
             │       Checks flag constraints (paths non-empty, concurrency > 0, etc.)
@@ -585,9 +353,13 @@ empty), and the agents codec's spill summary previews and counts the
 envelope's items. The opt-in is deliberate: a structural multi-key heuristic
 would misclassify detail objects that happen to contain one nested array.
 
-Built-in codecs: `json` and `yaml` (always available). Commands register additional ones (e.g. `text`, `wide`, `graph`) by calling `RegisterCustomCodec` before `BindFlags`.
+Use `Options.Encode` for structured output: `Codec().Encode` bypasses jq,
+field selection, and discovery. jq runs before formatting or spilling; see
+[the output contract](../design/output.md#16-jq-transformation).
 
-The `graph` codec is a special-purpose output format available on per-kind `query` subcommands (`metrics query`, `logs query`, `profiles series`, etc.) and `synth checks status`. It renders Prometheus or Loki query results (or check status metrics) as a terminal line chart using `ntcharts` and `lipgloss` (via `internal/graph`). Terminal width is detected at render time via `golang.org/x/term`.
+Built-in codecs: `json`, `yaml`, and `agents` (always available). Commands register additional ones (e.g. `text`, `wide`, `graph`) by calling `RegisterCustomCodec` before `BindFlags`.
+
+The `graph` codec is a special-purpose output format available on per-kind `query` subcommands (`metrics query`, `logs query`, `profiles metrics`, etc.) and `synth checks status`. It renders Prometheus or Loki query results (or check status metrics) as a terminal line chart using `ntcharts` and `lipgloss` (via `internal/graph`). Terminal width is detected at render time via `golang.org/x/term`.
 
 The `wide` codec is available on `slo definitions list`, `slo reports list`, and `synth checks status`. It shows additional detail columns compared to the default `text` table codec.
 
@@ -624,28 +396,38 @@ on a sample object fetched from the API.
 
 ### Custom Table Codecs
 
-Commands define their own table-rendering codec by implementing `format.Codec`:
+Ordinary provider tables declare columns with `output.Table[T]` (see
+[RFC 025](../rfcs/025-shared-table-declaration.md)).
+For wrapper or singleton payloads, `output.TableAdapter[P, T]` extracts rows
+inside the human codec while JSON/YAML retain the complete payload:
 
 ```go
-type tableCodec struct { wide bool }
-
-func (c *tableCodec) Format() format.Format { return "text" }
-func (c *tableCodec) Encode(output io.Writer, input any) error { /* render table */ }
-func (c *tableCodec) Decode(io.Reader, any) error { return errors.New("not supported") }
+table := output.TableAdapter[Result, Item]{
+    Table: itemTable(),
+    Rows: func(result Result) ([]Item, error) { return result.Items, nil },
+}
+opts.IO.RegisterCustomCodec("table", table.Codec("table"))
+opts.IO.RegisterCustomCodec("wide", table.Codec("wide"))
 ```
 
-`get.go` uses `k8s.io/cli-runtime/pkg/printers.NewTablePrinter` to produce kubectl-style output. `list.go` and `validate.go` use `text/tabwriter` directly.
+Register only the formats the command supports, before `BindFlags`, and pass the
+complete result to `opts.IO.Encode` for every format. Specialised reports retain
+custom `format.Codec` implementations. Resource commands also use Kubernetes
+table printers and `text/tabwriter` for their specialised output.
 
 ### Status Messages (`messages.go`)
 
 Four colored message functions output to a given `io.Writer`:
 
 ```go
-cmdio.Success(cmd.OutOrStdout(), "%d resources pushed, %d errors", ok, fail)
-cmdio.Warning(cmd.OutOrStdout(), "...")
-cmdio.Error(cmd.OutOrStdout(), "...")
-cmdio.Info(cmd.OutOrStdout(), "...")
+cmdio.Success(cmd.ErrOrStderr(), "%d resources pushed, %d errors", ok, fail)
+cmdio.Warning(cmd.ErrOrStderr(), "...")
+cmdio.Error(cmd.ErrOrStderr(), "...")
+cmdio.Info(cmd.ErrOrStderr(), "...")
 ```
+
+Pass the **stderr** writer: stdout carries the result, stderr the diagnostics
+(see [output.md § 1.4](../design/output.md) and CONSTITUTION.md § Output).
 
 They prefix with colored Unicode symbols (✔ ⚠ ✘ 🛈). `--no-color` disables all color globally via `color.NoColor = true` in root's `PersistentPreRun`.
 
@@ -671,7 +453,7 @@ type DetailedError struct {
 
 Renders as:
 ```
-Error: Resource not found - code 404
+Error: Resource not found
 │
 ├─ Details:
 │
@@ -686,6 +468,19 @@ Error: Resource not found - code 404
 
 Commands can return a `DetailedError` directly from `RunE`. Business logic layers can also return them (e.g. `fetch.go` returns one when `ExpectSingleTarget` is violated).
 
+### Command Usage and Server Capabilities
+
+`internal/gcxerrors.UsageError` and `NewCommandUsageError` provide the same
+expected usage line and help suggestion to command implementations in both
+`cmd/` and `internal/`. The `cmd/gcx/fail` exports remain compatibility wrappers;
+the converter renders these errors as `Invalid command usage` with exit 2.
+
+Malformed resource selectors also exit 2, with suggestions that apply to any
+resource command. Discovery returns `resources.UnsupportedResourceError` when
+a well-formed resource type or API version is absent from the server. This is
+`Endpoint not available` with exit 1, including dashboard commands using their
+default API version. It does not imply incorrect command syntax.
+
 ### `ErrorToDetailedError` — Error Conversion Pipeline
 
 `main.go:handleError` calls this on any error before printing. It runs a chain of type-specific converters:
@@ -694,19 +489,40 @@ Commands can return a `DetailedError` directly from `RunE`. Business logic layer
 ErrorToDetailedError(err)
     │
     ├─ errors.As(err, &DetailedError{}) → return as-is if already detailed
-    ├─ convertWaitTimeoutEmitted → ErrWaitTimeoutEmitted sentinel (suppress secondary output)
-    ├─ convertUnknownFieldSelectionErrors → UnknownFieldSelectionError (--json unknown field)
-    ├─ convertPartialFailureErrors → PartialFailureError (exit 4)
-    ├─ convertUsageErrors    → UsageError (exit 2)
-    ├─ convertConfigErrors   → ValidationError, UnmarshalError, ErrContextNotFound
-    ├─ convertFSErrors       → fs.PathError (not exist, invalid, permission)
-    ├─ convertResourcesErrors → InvalidSelectorError
-    ├─ convertNetworkErrors  → url.Error
-    ├─ convertAPIErrors      → k8s StatusError (401, 403, 404, ...)
-    └─ fallback: DetailedError{Summary: "Unexpected error", Parent: err}
+    ├─ ... domain and transport converters (specific errors first)
+    ├─ convertHTTPStatusErrors → concrete gcxerrors.HTTPStatusError
+    └─ fallbackDetailedError  → Unexpected error
 ```
 
-**Adding new error conversions:** add a `convertXxxErrors` function following the `func(error) (*DetailedError, bool)` signature and append it to the `errorConverters` slice in `ErrorToDetailedError`.
+`convertHTTPStatusErrors` is the final typed converter, immediately before the
+fallback. This preserves specialized handling for errors that carry domain
+context while still classifying otherwise-unhandled HTTP failures. It matches
+the concrete `gcxerrors.HTTPStatusError` type through `errors.As`; the shared
+`HTTPStatusCode()` interface is used by telemetry and is not the converter's
+match condition.
+
+The HTTP status determines the broad classification: 401 is `Authentication
+failed`, 403 is `Authorization failed`, 404 is `Resource not found`, 409 is
+`Resource conflict`, and other statuses are `API error`. Authentication and
+authorization both use exit 3. An HTML response does not change this
+status-based summary or exit code; converters replace HTML response details
+with a generic explanation so an SSO page is not rendered as an API message.
+The raw `gcx api` command is exempt from that rendering rule and keeps its full
+response body as passthrough output.
+
+Every converter summary uses an exported constant from `internal/gcxerrors`.
+The converter tests enforce that rule with an AST check (including helper
+returns), check that the constants match the summary table in
+`docs/design/errors.md`, and verify produced summaries at runtime. Whole-struct
+copies of an already-converted `DetailedError` are allowed. The fallback uses
+`Unexpected error` and puts the complete original message in `Details`; it
+leaves `Parent` unset so the message is not repeated.
+
+**Adding new error conversions:** add a `convertXxxErrors` function following
+the `func(error) (*DetailedError, bool)` signature and append it to the
+`errorConverters` slice in `ErrorToDetailedError`. Keep the HTTP status
+converter last among typed converters, and use a summary constant from
+`internal/gcxerrors`.
 
 ---
 
@@ -728,105 +544,22 @@ config.Options
 
 ## Convention: Adding a New `resources` Subcommand
 
-**Step 1.** Create `cmd/gcx/resources/mycommand.go`.
+1. Follow the options and lifecycle patterns above in the resource command package.
+2. Reuse configuration, fetch, output, and error helpers; register custom codecs before binding output flags.
+3. Register the constructor with the resource command group.
+4. Verify the command contract through the [contributor workflow](../../.agents/skills/contribute/SKILL.md).
 
-**Step 2.** Follow the standard structure:
-
-```go
-package resources
-
-import (
-    cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
-    cmdio     "github.com/grafana/gcx/internal/output"
-    "github.com/spf13/cobra"
-    "github.com/spf13/pflag"
-)
-
-type myOpts struct {
-    IO      cmdio.Options   // include if command has --output flag
-    OnError OnErrorMode     // include if command operates on multiple resources
-    // ... command-specific fields
-}
-
-func (opts *myOpts) setup(flags *pflag.FlagSet) {
-    // Register any custom output codecs BEFORE BindFlags.
-    opts.IO.DefaultFormat("text")
-    opts.IO.RegisterCustomCodec("text", &myTableCodec{})
-    opts.IO.BindFlags(flags)
-
-    bindOnErrorFlag(flags, &opts.OnError)  // if needed
-    flags.StringVar(&opts.SomeField, "some-flag", "default", "description")
-}
-
-func (opts *myOpts) Validate() error {
-    if err := opts.IO.Validate(); err != nil {
-        return err
-    }
-    return opts.OnError.Validate()
-}
-
-func myCmd(configOpts *cmdconfig.Options) *cobra.Command {
-    opts := &myOpts{}
-
-    cmd := &cobra.Command{
-        Use:     "mycommand [RESOURCE_SELECTOR]...",
-        Args:    cobra.ArbitraryArgs,
-        Short:   "One-liner description",
-        Long:    "Longer description.",
-        Example: "\n\tgcx resources mycommand dashboards/foo",
-        RunE: func(cmd *cobra.Command, args []string) error {
-            ctx := cmd.Context()
-
-            if err := opts.Validate(); err != nil {
-                return err
-            }
-
-            cfg, err := configOpts.LoadGrafanaConfig(ctx)
-            if err != nil {
-                return err
-            }
-
-            // Use fetchResources if you need to read from Grafana:
-            res, err := fetchResources(ctx, fetchRequest{Config: cfg}, args)
-            if err != nil {
-                return err
-            }
-
-            codec, err := opts.IO.Codec()
-            if err != nil {
-                return err
-            }
-
-            return codec.Encode(cmd.OutOrStdout(), res.Resources.ToUnstructuredList())
-        },
-    }
-
-    opts.setup(cmd.Flags())
-    return cmd
-}
-```
-
-**Step 3.** Register in `resources/command.go`:
-
-```go
-cmd.AddCommand(myCmd(configOpts))
-```
-
-**Step 4.** No other wiring needed. Error handling, config loading, and logging are automatic.
-
----
+Use an existing neighboring command as the implementation example so imports, helper names, and wiring stay current.
 
 ## Key Invariants
 
-| Rule | Location |
-|---|---|
-| `opts.Validate()` is the FIRST call in `RunE` | All resource commands |
-| `configOpts.LoadGrafanaConfig` is called in `RunE`, not at construction | All resource commands |
-| `--config` and `--context` are persistent on the group, not per-subcommand | `resources/command.go`, `config/command.go` |
-| All errors bubble up through `RunE` return value; never `os.Exit` in commands | All commands |
-| Status messages go to `cmd.OutOrStdout()`, not `os.Stdout` directly | All commands |
-| Custom table codecs implement `format.Codec` and are registered before `BindFlags` | `get.go`, `list.go`, `validate.go` |
-| Data fetching is format-agnostic — fetch all fields, let codecs filter display | All commands with custom codecs |
-| `OnErrorMode` is always validated in `opts.Validate()`, not inline | All multi-resource commands |
-| `terminal.Detect()` is called once in `PersistentPreRun`; use `terminal.IsPiped()` / `terminal.NoTruncate()` everywhere else | `root/command.go`, all table codecs |
-| `--json` is mutually exclusive with `-o/--output`; enforced in `io.Options.Validate()` | `io/format.go` |
+- `opts.Validate()` is the FIRST call in `RunE`
+- `configOpts.LoadGrafanaConfig` is called in `RunE`, not at construction
+- `--config` and `--context` are persistent on the group, not per-subcommand
+- All errors bubble up through `RunE` return value; never `os.Exit` in commands
+- Status messages go to `cmd.ErrOrStderr()`, never `os.Stdout`/`os.Stderr` directly
+- Custom table codecs implement `format.Codec` and are registered before `BindFlags`
+- Data fetching is format-agnostic — fetch all fields, let codecs filter display
+- `OnErrorMode` is always validated in `opts.Validate()`, not inline
+- `terminal.Detect()` is called once in `PersistentPreRun`; use `terminal.IsPiped()` / `terminal.NoTruncate()` everywhere else
+- `--json` is mutually exclusive with `-o/--output`; enforced in `io.Options.Validate()`

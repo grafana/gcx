@@ -19,6 +19,7 @@ import (
 const (
 	renderSoloPanelPathFmt = "/render/d-solo/%s/"
 	renderDashboardPathFmt = "/render/d/%s/"
+	renderTimeoutOverhead  = 30 * time.Second
 )
 
 // RenderRequest holds parameters for a dashboard render request.
@@ -48,6 +49,10 @@ type RenderRequest struct {
 
 	// Tz is the timezone string (e.g. "UTC", "America/New_York").
 	Tz string
+
+	// Timeout is the maximum time Grafana's renderer may spend on this render.
+	// A zero value leaves the render timeout and HTTP client behavior unchanged.
+	Timeout time.Duration
 
 	// Vars holds dashboard template variable overrides (key → value).
 	// Each entry is sent as var-{key}={value} on the render URL.
@@ -85,7 +90,14 @@ func (c *Client) Render(ctx context.Context, req RenderRequest) ([]byte, error) 
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	resp, err := c.httpClient.Do(httpReq)
+	httpClient := c.httpClient
+	if req.Timeout > 0 {
+		requestClient := *c.httpClient
+		requestClient.Timeout = req.Timeout + renderTimeoutOverhead
+		httpClient = &requestClient
+	}
+
+	resp, err := httpClient.Do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute render request: %w", err)
 	}
@@ -161,6 +173,9 @@ func (c *Client) buildRenderURL(req RenderRequest) (string, error) {
 	}
 	if req.Theme != "" {
 		q.Set("theme", req.Theme)
+	}
+	if req.Timeout > 0 {
+		q.Set("timeout", strconv.FormatInt(int64(req.Timeout/time.Second), 10))
 	}
 
 	// Kiosk mode removes sidebar, nav bar, and other UI chrome so the

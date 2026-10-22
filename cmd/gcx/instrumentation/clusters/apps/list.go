@@ -19,8 +19,7 @@ import (
 func makeListCmd(factory appClientFactory) *cobra.Command {
 	opts := &output.Options{}
 	opts.DefaultFormat("text")
-	opts.RegisterCustomCodec("text", &instoutput.AppTableCodec{Wide: false})
-	opts.RegisterCustomCodec("wide", &instoutput.AppTableCodec{Wide: true})
+	output.RegisterTableAs(opts, instoutput.AppTable(), output.FormatText)
 	opts.SetJSONFieldValidator(output.MakeFieldValidator(instoutput.AppView{}))
 
 	cmd := &cobra.Command{
@@ -40,7 +39,7 @@ Use "gcx instrumentation status" for observed-state status.`,
 			// --json list (field discovery): introspect AppView shape without
 			// requiring a cluster positional or making any API call.
 			if opts.JSONDiscovery {
-				return opts.Encode(cmd.OutOrStdout(), instoutput.AppListEnvelope{Items: []instoutput.AppView{{}}})
+				return opts.Encode(cmd.OutOrStdout(), instoutput.ListEnvelope[instoutput.AppView]{Items: []instoutput.AppView{{}}})
 			}
 
 			if len(args) != 1 {
@@ -88,7 +87,7 @@ Use "gcx instrumentation status" for observed-state status.`,
 				})
 			}
 
-			return opts.Encode(cmd.OutOrStdout(), instoutput.AppListEnvelope{Items: views})
+			return instoutput.EncodeList(opts, cmd.OutOrStdout(), views)
 		},
 	}
 

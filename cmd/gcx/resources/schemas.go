@@ -79,6 +79,7 @@ func listTypesCmd(configOpts *cmdconfig.Options) *cobra.Command {
 				}
 				filters, filterErr := reg.MakeFilters(discovery.MakeFiltersOptions{
 					Selectors:            sels,
+					Warn:                 cmd.ErrOrStderr(),
 					PreferredVersionOnly: true,
 				})
 				if filterErr != nil {

@@ -1,5 +1,5 @@
 // oncall_actions.go — vanguard implementation of the action-verb pattern
-// (ADR § 7.1 / § 8). This file is the canonical home for shared types and
+// (RFC 020 §§ 3.1–3.2). This file is the canonical home for shared types and
 // helpers used by all bulk-capable action verbs on alert-groups (acknowledge,
 // resolve, unresolve, silence, unsilence, unacknowledge); the remaining five
 // verbs are mechanical clones of the acknowledge command defined here.
@@ -139,7 +139,7 @@ type mutationTargetError struct {
 func boolPtr(b bool) *bool { return &b }
 
 // ---------------------------------------------------------------------------
-// stderr-side: progress events + diagnostic class records (ADR § 8.2).
+// stderr-side: progress events + diagnostic class records (RFC 020 §§ 3.1, 4.2).
 // ---------------------------------------------------------------------------
 
 // actionProgressEvent is a per-target progress record emitted on stderr as
@@ -168,7 +168,7 @@ func emitProgressLine(stderr io.Writer, verbPresent, alertGroupID, eventName str
 	fmt.Fprintf(stderr, "→ %s %s...\n", verbPresent, alertGroupID)
 }
 
-// emitHint writes a hint event to stderr in the form mandated by ADR § 8.2:
+// emitHint writes a hint event to stderr in the form mandated by RFC 020 § 4.2:
 // agent mode → JSONL; TTY → "hint: <summary>: <command>".
 // Delegates to output.EmitHint — package-private alias kept for call-site
 // brevity within the irm package and backward compat with white-box tests.
@@ -211,7 +211,7 @@ func emitTTYSummary(stderr io.Writer, line string) {
 // alertGroupActionVerbOpts collects the flags shared by every bulk-capable
 // alert-group action verb (acknowledge / resolve / unresolve / silence /
 // unsilence / unacknowledge). Filter flags mirror `alert-groups list`
-// exactly (ADR § 7.4).
+// exactly (RFC 020 § 3.4).
 type alertGroupActionVerbOpts struct {
 	// IO routes mutation-result output through the codec system
 	// (CONSTITUTION: all output goes through codecs). The default is JSON to
@@ -800,6 +800,16 @@ func resolveSingleTarget(ctx context.Context, client OnCallAPI, id string) (ackn
 	return acknowledgeTarget{ID: id, State: alertGroupStatusString(ag)}, nil
 }
 
+// alertGroupBulkTargetCap bounds bulk-by-filter target enumeration. The read
+// path (`alert-groups list`) has no client-side ceiling — `--limit 0` there
+// means all (grafana/gcx#1157) — but a mutation sweep has no user-supplied
+// limit to bound it, so it keeps one of its own rather than acking or
+// resolving an unbounded set. A filter matching more than this still operates
+// silently on the first alertGroupBulkTargetCap raw items before target
+// deduplication; the open disclosure decision is recorded in
+// docs/design/output.md § 15.7 (IRM bulk-by-filter mutations).
+const alertGroupBulkTargetCap = 1000
+
 // resolveBulkTargets returns the deduplicated, sorted list of targets to
 // operate on (bulk-by-filter path), plus their current state.
 func resolveBulkTargets(ctx context.Context, client OnCallAPI, opts *alertGroupActionVerbOpts) ([]acknowledgeTarget, error) {
@@ -813,9 +823,9 @@ func resolveBulkTargets(ctx context.Context, client OnCallAPI, opts *alertGroupA
 		return nil, errors.New("bulk-by-filter requires the OAuth plugin proxy; SA-token mode does not support rich list operations")
 	}
 
-	// Bulk action targets aren't UI-truncated — pass limit=0 so the existing
-	// hardCap is the only bound. The hint affordance is list-only.
-	rawItems, _, err := reader.ListAlertGroupsRaw(ctx, filters, 0)
+	// Bulk action targets aren't UI-truncated — pass the bulk cap as the
+	// limit so the sweep stays bounded. The hint affordance is list-only.
+	rawItems, _, err := reader.ListAlertGroupsRaw(ctx, filters, alertGroupBulkTargetCap)
 	if err != nil {
 		return nil, err
 	}

@@ -31,6 +31,7 @@ var commandSkills = map[string][]string{
 	"gcx agento11y":   {"agento11y", "agento11y-instrument"},
 	"gcx setup":       {"setup-gcx"},
 	"gcx login":       {"setup-gcx"},
+	"gcx signup":      {"setup-gcx"},
 }
 
 // SkillsForCommand returns the bundled skill names mapped to the nearest mapped

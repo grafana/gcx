@@ -19,8 +19,7 @@ type getOpts struct {
 }
 
 func (o *getOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &instrOutput.ClusterTableCodec{Wide: false})
-	o.IO.RegisterCustomCodec("wide", &instrOutput.ClusterTableCodec{Wide: true})
+	cmdio.RegisterTable(&o.IO, instrOutput.ClusterTable())
 	o.IO.DefaultFormat("table")
 	o.IO.SetJSONFieldValidator(cmdio.MakeFieldValidator(instrOutput.ClusterView{}))
 	o.IO.BindFlags(flags)

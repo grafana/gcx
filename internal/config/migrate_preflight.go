@@ -170,10 +170,9 @@ func preflightLayeredSources(sources []ConfigSource, legacyFound ...*bool) error
 			}
 			hasLegacy = true
 		} else {
-			decoded := &Config{}
-			codec := &format.YAMLCodec{BytesAsBase64: true}
-			if err := codec.Decode(bytes.NewReader(contents), decoded); err != nil {
-				return UnmarshalError{File: source.Path, Err: err}
+			decoded, err := decodeCurrentMigrationLayer(source, contents)
+			if err != nil {
+				return err
 			}
 			layer.current = decoded
 			allLegacy = false
@@ -215,6 +214,19 @@ func preflightLayeredSources(sources []ConfigSource, legacyFound ...*bool) error
 			err, docs.ConfigMigration, strings.Join(paths, ", "))
 	}
 	return nil
+}
+
+func decodeCurrentMigrationLayer(source ConfigSource, contents []byte) (*Config, error) {
+	decodeContents, err := typedConfigContents(contents, source.Type)
+	if err != nil {
+		return nil, UnmarshalError{File: source.Path, Err: err}
+	}
+	decoded := &Config{}
+	codec := &format.YAMLCodec{BytesAsBase64: true}
+	if err := codec.Decode(bytes.NewReader(decodeContents), decoded); err != nil {
+		return nil, UnmarshalError{File: source.Path, Err: err}
+	}
+	return decoded, nil
 }
 
 // reconstructInterruptedLegacyLayers proves that a mixed configuration is an

@@ -195,6 +195,30 @@ current-context: default
 	assert.Contains(t, err.Error(), "context has no cloud auth")
 }
 
+// TestConfigLoader_UnknownContextListsAvailableContexts pins the resolution
+// path: an unknown --context must surface a ContextNotFoundError carrying the
+// available context names. It fails if a call site drops cfg.ContextNames(),
+// which the converter-level tests alone cannot catch.
+func TestConfigLoader_UnknownContextListsAvailableContexts(t *testing.T) {
+	cfgFile := writeConfigFile(t, `
+version: 1
+contexts:
+  dev: {}
+  prod: {}
+current-context: dev
+`)
+	loader := &providers.ConfigLoader{}
+	loader.SetConfigFile(cfgFile)
+	loader.SetContextName("bogus")
+
+	_, err := loader.LoadGrafanaConfig(context.Background())
+
+	var ctxErr *internalconfig.ContextNotFoundError
+	require.ErrorAs(t, err, &ctxErr)
+	assert.Equal(t, "bogus", ctxErr.Name)
+	assert.Equal(t, []string{"dev", "prod"}, ctxErr.Available)
+}
+
 func TestConfigLoader_LoadCloudConfig_MissingStack(t *testing.T) {
 	cfgFile := writeConfigFile(t, `
 version: 1
@@ -732,6 +756,7 @@ current-context: default
 // TestConfigLoader_SaveProviderConfig_ExistingProvider verifies that saving a key
 // to an already-configured provider preserves other keys.
 func TestConfigLoader_SaveProviderConfig_ExistingProvider(t *testing.T) {
+	t.Setenv("GCX_KEYCHAIN", "off")
 	cfgFile := writeConfigFile(t, `
 version: 1
 stacks:
@@ -786,6 +811,7 @@ current-context: default
 }
 
 func TestConfigLoader_SaveProviderConfig_DoesNotPersistEnvOverrides(t *testing.T) {
+	t.Setenv("GCX_KEYCHAIN", "off")
 	cfgFile := writeConfigFile(t, `
 version: 1
 stacks:
@@ -998,6 +1024,7 @@ current-context: default
 // LoadGrafanaConfig wires SetOnRefresh so that a token refresh persists the
 // new tokens back to the config file on disk.
 func TestConfigLoader_LoadGrafanaConfig_PersistsRefreshedTokens(t *testing.T) {
+	t.Setenv("GCX_KEYCHAIN", "off")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/cli/v1/auth/refresh":
@@ -1088,6 +1115,7 @@ current-context: default
 }
 
 func TestLoadGrafanaConfig_PersistsRefreshToLocalOAuthLayer(t *testing.T) {
+	t.Setenv("GCX_KEYCHAIN", "off")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/cli/v1/auth/refresh":
@@ -1186,6 +1214,7 @@ contexts:
 }
 
 func TestLoadGrafanaConfig_PersistsRefreshToStackOwningLayer(t *testing.T) {
+	t.Setenv("GCX_KEYCHAIN", "off")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/cli/v1/auth/refresh":

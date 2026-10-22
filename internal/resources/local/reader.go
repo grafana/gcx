@@ -13,7 +13,9 @@ import (
 
 	"github.com/grafana/gcx/internal/format"
 	"github.com/grafana/gcx/internal/logs"
+	"github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/resources"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/grafana/grafana-app-sdk/logging"
 	"golang.org/x/sync/errgroup"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -54,6 +56,8 @@ type FSReader struct {
 	// MaxConcurrentReads is the maximum number of concurrent file reads.
 	// If not set, the default is 1.
 	MaxConcurrentReads int
+	// Warn receives deprecation diagnostics; nil suppresses them.
+	Warn io.Writer
 }
 
 // Read reads all resources from the filesystem and returns them as an unstructured list.
@@ -186,9 +190,21 @@ func (reader *FSReader) Read(
 	// Read all results in parallel.
 	gr.Go(func() error {
 		idx := make(map[objIdx]resources.Resource)
+		warned := make(map[schema.GroupVersion]bool)
 
 		for res := range resCh {
 			obj := res.Object
+			gvk := obj.GroupVersionKind()
+			target := resources.NormalizeGVK(gvk)
+			if reader.Warn != nil && !warned[gvk.GroupVersion()] && resources.MatchesGroupAlias(target, gvk.Group) {
+				output.EmitWarn(reader.Warn, fmt.Sprintf("apiVersion %q is deprecated; use %q instead", gvk.GroupVersion(), target.GroupVersion()))
+				warned[gvk.GroupVersion()] = true
+			}
+
+			if adapter.RetainsLocalDuplicates(obj.GroupVersionKind()) {
+				dst.AddDistinct(&obj)
+				continue
+			}
 
 			if _, ok := idx[objIdx{
 				gvk:  obj.Raw.GetGroupVersionKind(),

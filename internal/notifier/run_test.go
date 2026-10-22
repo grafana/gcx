@@ -36,7 +36,7 @@ func TestMaybeNotifySkillsAt_WritesMessageAndStateWhenDue(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	if err := maybeNotifySkillsAt(testRunSkillsFS(), &out, statePath, root, now); err != nil {
+	if err := maybeNotifySkillsAt(testRunSkillsFS(), []byte("skills:\n  alpha: {status: active}\n"), &out, statePath, root, now); err != nil {
 		t.Fatalf("maybeNotifySkillsAt() error = %v", err)
 	}
 	if !strings.Contains(out.String(), "Run: gcx agent skills update") {
@@ -67,7 +67,7 @@ func TestMaybeNotifySkillsAt_SkipsWhenNotDue(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	if err := maybeNotifySkillsAt(testRunSkillsFS(), &out, statePath, root, now); err != nil {
+	if err := maybeNotifySkillsAt(testRunSkillsFS(), []byte("skills:\n  alpha: {status: active}\n"), &out, statePath, root, now); err != nil {
 		t.Fatalf("maybeNotifySkillsAt() error = %v", err)
 	}
 	if out.Len() != 0 {
@@ -101,7 +101,7 @@ func TestMaybeNotifySkillsAt_NoUpdateNeededMarksStateWithoutOutput(t *testing.T)
 	}
 
 	var out bytes.Buffer
-	if err := maybeNotifySkillsAt(testRunSkillsFS(), &out, statePath, root, now); err != nil {
+	if err := maybeNotifySkillsAt(testRunSkillsFS(), []byte("skills:\n  alpha: {status: active}\n"), &out, statePath, root, now); err != nil {
 		t.Fatalf("maybeNotifySkillsAt() error = %v", err)
 	}
 	if out.Len() != 0 {

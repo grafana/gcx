@@ -22,10 +22,12 @@ const (
 	datasourceBasePathFmt = "/api/prometheus/%s/api/v1/rules"
 )
 
-// Client fetches alert rules and groups from the Prometheus-compatible API.
+// Client fetches alert rules and groups from the Prometheus-compatible API,
+// and notification history from the alerting historian API.
 type Client struct {
 	httpClient *http.Client
 	host       string
+	namespace  string
 }
 
 // NewClient creates a new alert client.
@@ -34,7 +36,7 @@ func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create HTTP client: %w", err)
 	}
-	return &Client{httpClient: httpClient, host: cfg.Host}, nil
+	return &Client{httpClient: httpClient, host: cfg.Host, namespace: cfg.Namespace}, nil
 }
 
 // ListOptions configures filtering for List operations.

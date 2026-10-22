@@ -35,7 +35,7 @@ func (f *fakeContactPoints) ListContactPoints(context.Context) ([]alert.ContactP
 	return f.list, f.listErr
 }
 
-func (f *fakeContactPoints) CreateContactPoint(_ context.Context, cp alert.ContactPoint) (*alert.ContactPoint, error) {
+func (f *fakeContactPoints) CreateContactPoint(_ context.Context, cp alert.ContactPoint, _ ...bool) (*alert.ContactPoint, error) {
 	f.creates++
 	if f.createErr != nil {
 		return nil, f.createErr

@@ -7,12 +7,13 @@ import (
 	"io"
 	"strings"
 
-	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/agent"
 	dsquery "github.com/grafana/gcx/internal/datasources/query"
 	"github.com/grafana/gcx/internal/format"
+	"github.com/grafana/gcx/internal/gcxerrors"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
+	"github.com/grafana/gcx/internal/providers/appo11y/activation"
 	"github.com/grafana/gcx/internal/query/prometheus"
 	"github.com/grafana/gcx/internal/style"
 	"github.com/prometheus/common/model"
@@ -36,6 +37,7 @@ type operationsOpts struct {
 	Limit       int
 	Filters     []string
 	GroupBy     []string
+	KG          kgFlags
 }
 
 func (o *operationsOpts) setup(flags *pflag.FlagSet) {
@@ -52,6 +54,7 @@ func (o *operationsOpts) setup(flags *pflag.FlagSet) {
 	flags.IntVar(&o.Limit, "limit", operationsDefaultLimit, "Limit the number of operations returned (0 = unlimited; applied after sorting by time-share desc)")
 	flags.StringArrayVar(&o.Filters, "filter", nil, "Scope the operations breakdown to series matching a label matcher, e.g. --filter k8s_cluster_name=prod-us (repeatable). Use to break a multi-cluster/multi-region service down one cluster at a time; the label must exist on the span metrics")
 	flags.StringSliceVar(&o.GroupBy, "group-by", nil, "Break each operation out per distinct value of a label, e.g. --group-by k8s_cluster_name (comma-separated or repeatable). Time-share is normalized within each group so per-cluster hotspots are comparable; the label must exist on the span metrics")
+	o.KG.register(flags)
 }
 
 func (o *operationsOpts) Validate(cmd *cobra.Command) error {
@@ -59,19 +62,22 @@ func (o *operationsOpts) Validate(cmd *cobra.Command) error {
 		return err
 	}
 	if strings.TrimSpace(o.Since) == "" {
-		return fail.NewCommandUsageError(cmd, "--since must not be empty", nil)
+		return gcxerrors.NewCommandUsageError(cmd, "--since must not be empty", nil)
 	}
 	if _, err := model.ParseDuration(o.Since); err != nil {
-		return fail.NewCommandUsageError(cmd, fmt.Sprintf("--since %q is not a valid PromQL duration", o.Since), err)
+		return gcxerrors.NewCommandUsageError(cmd, fmt.Sprintf("--since %q is not a valid PromQL duration", o.Since), err)
 	}
 	if _, err := resolveSpanKinds(o.Kind); err != nil {
-		return fail.NewCommandUsageError(cmd, "", err)
+		return gcxerrors.NewCommandUsageError(cmd, "", err)
 	}
 	if _, _, err := resolveMetricsMode(o.MetricsMode); err != nil {
-		return fail.NewCommandUsageError(cmd, "", err)
+		return gcxerrors.NewCommandUsageError(cmd, "", err)
 	}
 	if o.Limit < 0 {
-		return fail.NewCommandUsageError(cmd, "--limit must be zero or positive", nil)
+		return gcxerrors.NewCommandUsageError(cmd, "--limit must be zero or positive", nil)
+	}
+	if _, err := o.KG.resolve(); err != nil {
+		return gcxerrors.NewCommandUsageError(cmd, "", err)
 	}
 	return nil
 }
@@ -129,23 +135,23 @@ func runOperations(loader *providers.ConfigLoader, opts *operationsOpts) func(*c
 		}
 		namespace, name, err := parseServiceArg(args[0], opts.Namespace)
 		if err != nil {
-			return fail.NewCommandUsageError(cmd, "", err)
+			return gcxerrors.NewCommandUsageError(cmd, "", err)
 		}
 		kinds, err := resolveSpanKinds(opts.Kind)
 		if err != nil {
-			return fail.NewCommandUsageError(cmd, "", err)
+			return gcxerrors.NewCommandUsageError(cmd, "", err)
 		}
 		mode, auto, err := resolveMetricsMode(opts.MetricsMode)
 		if err != nil {
-			return fail.NewCommandUsageError(cmd, "", err)
+			return gcxerrors.NewCommandUsageError(cmd, "", err)
 		}
 		matchers, err := parseFilters(opts.Filters)
 		if err != nil {
-			return fail.NewCommandUsageError(cmd, "", err)
+			return gcxerrors.NewCommandUsageError(cmd, "", err)
 		}
 		groupBy, err := parseGroupBy(opts.GroupBy)
 		if err != nil {
-			return fail.NewCommandUsageError(cmd, "", err)
+			return gcxerrors.NewCommandUsageError(cmd, "", err)
 		}
 
 		ctx := cmd.Context()
@@ -154,6 +160,8 @@ func runOperations(loader *providers.ConfigLoader, opts *operationsOpts) func(*c
 		if err != nil {
 			return err
 		}
+		activation.Gate(ctx, cfg, cmd.ErrOrStderr())
+		cat := opts.KG.catalog(cfg)
 
 		datasourceUID, err := dsquery.ResolveAndSaveDatasource(ctx, loader, opts.Datasource, cfgCtx, cfg, "prometheus")
 		if err != nil {
@@ -187,6 +195,10 @@ func runOperations(loader *providers.ConfigLoader, opts *operationsOpts) func(*c
 		response, err := fetchOperations(ctx, client, datasourceUID, namespace, name, opts.Since, kinds, mode, matchers, groupBy)
 		if err != nil {
 			return err
+		}
+		if cat != nil {
+			startMs, endMs := windowMs(opts.Since)
+			response.Service.KG = warnKGLookup(cmd.ErrOrStderr(), cat.lookupVerbose(ctx, name, startMs, endMs))
 		}
 
 		notFound := !response.Service.Instrumented && len(response.Items) == 0

@@ -35,6 +35,9 @@ func (p *Provider) descriptor() signals.Descriptor {
   # Print a Grafana Explore share link for the query
   gcx logs query '{job="varlogs"}' --share-link
 
+  # Log volume over time, colored by level
+  gcx logs query -d abc123 '{job="varlogs"}' -o graph
+
   # Raw line bodies only
   gcx logs query -d abc123 '{job="varlogs"}' -o raw
 
@@ -66,6 +69,12 @@ func (p *Provider) descriptor() signals.Descriptor {
   # Get values for a specific label
   gcx logs labels -d UID --label job
 
+  # Filter labels with a query
+  gcx logs labels -d UID --query '{app="foo"}'
+
+  # Filter label values with a query
+  gcx logs labels -d UID --label job --query '{app="foo"}'
+
   # Output as JSON
   gcx logs labels -d UID -o json`,
 			},
@@ -83,6 +92,20 @@ func (p *Provider) descriptor() signals.Descriptor {
   # Output as JSON
   gcx logs series -d UID --match '{job="varlogs"}' -o json`,
 			},
+			{
+				Build:     dsloki.QueryPatternsCmd,
+				TokenCost: "medium",
+				LLMHint:   `gcx logs query-patterns -d abc123 '{job="varlogs"}' --since 1h -o json`,
+				Example: `
+  # Detect patterns using configured default datasource
+  gcx logs query-patterns '{job="varlogs"}'
+
+  # Detect patterns over a specific window
+  gcx logs query-patterns -d UID '{job="varlogs"}' --since 3h
+
+  # Output as JSON
+  gcx logs query-patterns -d UID '{job="varlogs"}' -o json`,
+			},
 		},
 		Adaptive: &signals.AdaptiveSpec{
 			Build: adaptivelogs.Commands,
@@ -99,21 +122,21 @@ func (p *Provider) descriptor() signals.Descriptor {
 					Factory:    adaptivelogs.NewExemptionAdapterFactory(loader),
 					Descriptor: adaptivelogs.ExemptionDescriptor(),
 					GVK:        adaptivelogs.ExemptionDescriptor().GroupVersionKind(),
-					Schema:     adaptivelogs.ExemptionSchema(),
+					Schema:     adaptivelogs.ExemptionSchema,
 					Example:    adaptivelogs.ExemptionExample(),
 				},
 				{
 					Factory:    adaptivelogs.NewSegmentAdapterFactory(loader),
 					Descriptor: adaptivelogs.SegmentDescriptor(),
 					GVK:        adaptivelogs.SegmentDescriptor().GroupVersionKind(),
-					Schema:     adaptivelogs.SegmentSchema(),
+					Schema:     adaptivelogs.SegmentSchema,
 					Example:    adaptivelogs.SegmentExample(),
 				},
 				{
 					Factory:    adaptivelogs.NewDropRuleAdapterFactory(loader),
 					Descriptor: adaptivelogs.DropRuleDescriptor(),
 					GVK:        adaptivelogs.DropRuleDescriptor().GroupVersionKind(),
-					Schema:     adaptivelogs.DropRuleSchema(),
+					Schema:     adaptivelogs.DropRuleSchema,
 					Example:    adaptivelogs.DropRuleExample(),
 				},
 			}

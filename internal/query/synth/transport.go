@@ -24,13 +24,13 @@ type FallbackLoader interface {
 // Transport is the dual-mode SM transport: it prefers Grafana's datasource proxy
 // (the caller's Grafana credential, SM token injected server-side) and falls back
 // to the direct SM API + token on a proxy 403, or when no SM datasource UID could
-// be resolved. See docs/adrs/sm-datasource-proxy/001-dual-mode-transport.md.
+// be resolved. See docs/rfcs/021-dual-mode-transport.md.
 //
 // It is deliberately free of SM domain types (Check, Probe, …): it speaks only
 // status codes and raw bodies, so the typed clients in internal/providers/synth
 // own decoding and error mapping.
 type Transport struct {
-	proxy         *Client
+	proxy         *ProxyClient
 	datasourceUID string
 	fallback      FallbackLoader
 
@@ -49,9 +49,9 @@ type Transport struct {
 // SM API, with credentials resolved lazily via fallback.LoadSMConfig. A nil
 // fallback disables the direct path.
 func NewTransport(restCfg config.NamespacedRESTConfig, datasourceUID string, fallback FallbackLoader) (*Transport, error) {
-	var proxy *Client
+	var proxy *ProxyClient
 	if datasourceUID != "" {
-		p, err := NewClient(restCfg)
+		p, err := NewProxyClient(restCfg)
 		if err != nil {
 			return nil, fmt.Errorf("creating SM datasource-proxy client: %w", err)
 		}

@@ -20,6 +20,7 @@ import (
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	mcpserverscmd "github.com/grafana/gcx/internal/providers/assistant/mcpservers"
+	watcherscmd "github.com/grafana/gcx/internal/providers/assistant/watchers"
 	"github.com/spf13/cobra"
 	"k8s.io/client-go/rest"
 )
@@ -52,8 +53,9 @@ func Command() *cobra.Command {
 		Short: "Interact with Grafana Assistant",
 		Long: `Send prompts to Grafana Assistant and receive streaming responses via the A2A protocol.
 
-Requires Grafana Cloud with OAuth authentication (gcx login with browser flow).
-Service account tokens are not supported.
+Requires Grafana Cloud. Conversational commands use OAuth authentication
+(gcx login with browser flow). Management reads use the selected context
+identity and its permissions.
 
 Note: Grafana Assistant is billed based on tokens consumed, including requests
 made through gcx. See ` + docs.AssistantPricing + `.`,
@@ -89,6 +91,7 @@ made through gcx. See ` + docs.AssistantPricing + `.`,
 	cmd.AddCommand(conversationCommand(loader))
 	cmd.AddCommand(investigations.Commands(loader))
 	cmd.AddCommand(mcpserverscmd.Commands(loader))
+	cmd.AddCommand(watcherscmd.Commands(loader))
 	return cmd
 }
 
@@ -139,20 +142,28 @@ func promptCommand(configOpts *providers.ConfigLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "prompt <message>",
 		Short: "Send a single message to Grafana Assistant",
-		Long: `Send a single message to Grafana Assistant and receive the response.
-
-This is useful for scripting and automation. The response streams via
+		Long: `Send a single message to Grafana Assistant and stream the response via
 the A2A (Agent-to-Agent) protocol over Server-Sent Events.
+
+Use it when the user requests Grafana Assistant or continues an authorized
+Assistant workflow. Discovery, queries, and resource operations have direct gcx
+commands that return data without starting Assistant work; run
+'gcx help-tree --depth 1' to find them.
 
 Note: each prompt consumes billable Grafana Assistant tokens, including requests
 made through gcx. See ` + docs.AssistantPricing + `.`,
 		Args: cobra.ExactArgs(1),
-		Example: `  gcx assistant prompt "What alerts are firing?"
-  gcx assistant prompt "Show CPU usage" --json
+		Example: `  # Delegate a question to Grafana Assistant
+  gcx assistant prompt "Why is checkout-latency firing?"
+
+  # Emit the response as a JSON event stream for agents and scripts
+  gcx assistant prompt "Why is checkout-latency spiking?" --json
+
+  # Continue the previous conversation
   gcx assistant prompt "Follow up" --continue`,
 		Annotations: map[string]string{
 			agent.AnnotationTokenCost: "large",
-			agent.AnnotationLLMHint:   "Prefer deterministic gcx commands (gcx metrics query, gcx slo definitions status, gcx alert instances list) for precise data retrieval. Use assistant prompt for reasoning: root cause analysis, holistic health questions, or when you don't know which metrics/labels exist — the Assistant's Infrastructure Memories know your stack topology. Each prompt consumes billable Grafana Assistant tokens (" + docs.AssistantPricing + "). Example: \"Why is checkout-latency spiking?\" --json",
+			agent.AnnotationLLMHint:   "Delegates a question to Grafana Assistant and consumes billable Assistant tokens (" + docs.AssistantPricing + "). Use when the user requests Grafana Assistant or continues an authorized Assistant workflow; skip it when the user or project rules Assistant out. Discovery, queries, and resource operations have direct commands (gcx metrics list-names, gcx metrics query, gcx alert instances list; see gcx help-tree --depth 1). Example: \"Why is checkout-latency spiking?\" --json",
 		},
 		RunE: promptRunE(opts, configOpts),
 	}
@@ -332,9 +343,12 @@ func newAssistantStreamingHTTPClient(ctx context.Context, streamTimeoutSeconds i
 	if httputils.PayloadLogging(ctx) {
 		return httputils.NewClient(httputils.ClientOpts{
 			Timeout: d,
+			// NewClient applies the first middleware closest to the base
+			// transport, so the dump runs last and shows every header that
+			// reaches the wire.
 			Middlewares: []httputils.Middleware{
-				httputils.LoggingMiddleware,
 				httputils.RequestResponseLoggingMiddleware,
+				httputils.LoggingMiddleware,
 			},
 		})
 	}

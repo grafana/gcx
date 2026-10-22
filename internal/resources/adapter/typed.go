@@ -25,13 +25,15 @@ func TruncateSlice[T any](items []T, limit int64) []T {
 
 // LimitedListFn wraps a simple list function (no limit parameter) into the
 // ListFn signature expected by TypedCRUD, applying client-side truncation.
+// It retains any partial items and the accompanying error; callers must handle
+// that error before treating the collection as complete.
 func LimitedListFn[T any](fn func(ctx context.Context) ([]T, error)) func(ctx context.Context, limit int64) ([]T, error) {
 	return func(ctx context.Context, limit int64) ([]T, error) {
 		items, err := fn(ctx)
-		if err != nil {
+		if err != nil && items == nil {
 			return nil, err
 		}
-		return TruncateSlice(items, limit), nil
+		return TruncateSlice(items, limit), err
 	}
 }
 
@@ -65,6 +67,9 @@ type TypedCRUD[T ResourceNamer] struct {
 	// Nil means list is unsupported (returns errors.ErrUnsupported).
 	// Also used as a fallback for Get when GetFn is nil.
 	// The limit parameter caps the number of items returned (0 means no limit).
+	// Non-nil items with an error are partial results for callers that explicitly
+	// handle incomplete coverage. Get's name-lookup fallback requires a complete
+	// collection and returns the error without selecting a partial item.
 	ListFn func(ctx context.Context, limit int64) ([]T, error)
 
 	// GetFn returns a single item by name.
@@ -103,6 +108,12 @@ type TypedCRUD[T ResourceNamer] struct {
 
 	// Aliases are the short names for selector resolution.
 	Aliases []string
+
+	// Example is an optional static example manifest, exposed via
+	// AsAdapter()'s ResourceAdapter.Example(). Nil means no example is
+	// carried on this TypedCRUD instance — use ExampleForGVK for the
+	// authoritative global-registration lookup instead.
+	Example json.RawMessage
 }
 
 // resourceName extracts the name from a domain object using ResourceIdentity.
@@ -122,6 +133,7 @@ func (c *TypedCRUD[T]) restoreName(name string, item *T) {
 
 // List returns items as TypedObject[T] with correct TypeMeta and ObjectMeta.
 // The limit parameter caps the number of items returned (0 means no limit).
+// Non-nil items returned alongside an error are retained for partial-list callers.
 // Returns errors.ErrUnsupported when ListFn is nil.
 func (c *TypedCRUD[T]) List(ctx context.Context, limit int64) ([]TypedObject[T], error) {
 	if c.ListFn == nil {
@@ -129,7 +141,7 @@ func (c *TypedCRUD[T]) List(ctx context.Context, limit int64) ([]TypedObject[T],
 	}
 
 	items, err := c.ListFn(ctx, limit)
-	if err != nil {
+	if err != nil && items == nil {
 		return nil, err
 	}
 
@@ -137,12 +149,14 @@ func (c *TypedCRUD[T]) List(ctx context.Context, limit int64) ([]TypedObject[T],
 	for _, item := range items {
 		result = append(result, c.wrapTypedObject(item))
 	}
-	return result, nil
+	return result, err
 }
 
 // Get returns a single item by name as a TypedObject[T].
 // When GetFn is nil but ListFn is set, Get falls back to listing all items
 // and filtering by name (client-side emulation).
+// A failed list cannot establish complete identity coverage, even when its
+// partial items contain the requested name; the list error is returned instead.
 // Returns errors.ErrUnsupported when both GetFn and ListFn are nil.
 func (c *TypedCRUD[T]) Get(ctx context.Context, name string) (*TypedObject[T], error) {
 	if c.GetFn != nil {
@@ -228,13 +242,16 @@ func (c *TypedCRUD[T]) wrapTypedObject(item T) TypedObject[T] {
 	}
 }
 
-// AsAdapter returns a ResourceAdapter backed by this TypedCRUD.
-// Note: the returned adapter's Schema() and Example() return nil.
-// Schema/example are static registration metadata injected only via
-// TypedRegistration.ToRegistration(). Use SchemaForGVK/ExampleForGVK
-// for authoritative lookup.
+// AsAdapter returns a ResourceAdapter backed by this TypedCRUD. Schema is
+// always derived from T (SchemaFromType) — it is never nil. Example is
+// whatever c.Example carries (nil unless set). Use SchemaForGVK/ExampleForGVK
+// for the authoritative global-registration lookup instead, when available.
 func (c *TypedCRUD[T]) AsAdapter() ResourceAdapter {
-	return &typedAdapter[T]{crud: c}
+	return &typedAdapter[T]{
+		crud:    c,
+		schema:  SchemaFromType[T](c.Descriptor),
+		example: c.Example,
+	}
 }
 
 // ToUnstructured converts a domain object T into an unstructured Kubernetes envelope,
@@ -315,7 +332,7 @@ func (c *TypedCRUD[T]) fromUnstructured(obj *unstructured.Unstructured) (string,
 // typedAdapter wraps TypedCRUD[T] to implement the ResourceAdapter interface.
 type typedAdapter[T ResourceNamer] struct {
 	crud    *TypedCRUD[T]
-	schema  json.RawMessage
+	schema  func() json.RawMessage
 	example json.RawMessage
 }
 
@@ -328,7 +345,7 @@ func (a *typedAdapter[T]) Aliases() []string {
 }
 
 func (a *typedAdapter[T]) Schema() json.RawMessage {
-	return a.schema
+	return a.schema()
 }
 
 func (a *typedAdapter[T]) Example() json.RawMessage {
@@ -341,7 +358,7 @@ func (a *typedAdapter[T]) List(ctx context.Context, opts metav1.ListOptions) (*u
 	}
 
 	items, err := a.crud.ListFn(ctx, opts.Limit)
-	if err != nil {
+	if err != nil && items == nil {
 		return nil, err
 	}
 
@@ -354,7 +371,7 @@ func (a *typedAdapter[T]) List(ctx context.Context, opts metav1.ListOptions) (*u
 		result.Items = append(result.Items, u)
 	}
 
-	return result, nil
+	return result, err
 }
 
 func (a *typedAdapter[T]) Get(ctx context.Context, name string, _ metav1.GetOptions) (*unstructured.Unstructured, error) {
@@ -449,6 +466,8 @@ func (a *typedAdapter[T]) Delete(ctx context.Context, name string, opts metav1.D
 // unstructured object without performing any mutation. Without a ValidateFn
 // nothing beyond the already-done unstructured→typed conversion was checked,
 // so it returns ErrDryRunUnverified instead of a false success.
+// This applies to Create/Update. Delete dry-runs skip the mutation and return
+// nil without server validation.
 func (a *typedAdapter[T]) dryRunValidate(ctx context.Context, item *T) (*unstructured.Unstructured, error) {
 	if a.crud.ValidateFn == nil {
 		return nil, ErrDryRunUnverified
@@ -467,37 +486,9 @@ func isDryRun(dryRun []string) bool {
 	return slices.Contains(dryRun, metav1.DryRunAll)
 }
 
-// TypedRegistration bridges TypedCRUD to the existing Registration system.
-type TypedRegistration[T ResourceNamer] struct {
-	Descriptor  resources.Descriptor
-	Aliases     []string
-	GVK         schema.GroupVersionKind
-	Schema      json.RawMessage
-	Example     json.RawMessage
-	URLTemplate string // URL path template for deep links (e.g., "/a/grafana-oncall-app/schedules/{name}").
-	Factory     func(ctx context.Context) (*TypedCRUD[T], error)
-}
-
-// ToRegistration converts to a standard Registration.
-func (r TypedRegistration[T]) ToRegistration() Registration {
-	return Registration{
-		Factory: func(ctx context.Context) (ResourceAdapter, error) {
-			crud, err := r.Factory(ctx)
-			if err != nil {
-				return nil, err
-			}
-			a := &typedAdapter[T]{
-				crud:    crud,
-				schema:  r.Schema,
-				example: r.Example,
-			}
-			return a, nil
-		},
-		Descriptor:  r.Descriptor,
-		Aliases:     r.Aliases,
-		GVK:         r.GVK,
-		Schema:      r.Schema,
-		Example:     r.Example,
-		URLTemplate: r.URLTemplate,
-	}
+// FromUnstructured decodes a manifest and restores the domain identity from
+// metadata.name using the same conversion as generic resource mutations.
+func (c *TypedCRUD[T]) FromUnstructured(obj *unstructured.Unstructured) (*T, error) {
+	_, item, err := c.fromUnstructured(obj)
+	return item, err
 }

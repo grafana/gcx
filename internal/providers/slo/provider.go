@@ -9,30 +9,26 @@ import (
 )
 
 func init() { //nolint:gochecknoinits // Self-registration pattern (like database/sql drivers).
-	providers.Register(&SLOProvider{})
+	providers.Register(NewSLOProvider())
 }
 
-// SLOProvider manages Grafana SLO resources.
-type SLOProvider struct{}
+// shortDesc is the SLO provider's one-line description, shared by the cobra
+// command tree and adapter.NewProvider.
+const shortDesc = "Manage Grafana SLO definitions and reports"
 
-// Name returns the unique identifier for this provider.
-func (p *SLOProvider) Name() string { return "slo" }
+// NewSLOProvider registers SLO definitions and reports through their resource
+// declarations and attaches the product command tree.
+func NewSLOProvider() *adapter.Provider {
+	return adapter.NewProvider("slo", shortDesc, providers.LoadGrafanaDeps, definitions.SloResource(), reports.ReportResource()).
+		WithCommands(newSLOCommands)
+}
 
-// ShortDesc returns a one-line description of the provider.
-func (p *SLOProvider) ShortDesc() string { return "Manage Grafana SLO definitions and reports" }
-
-// Commands returns the Cobra commands contributed by this provider.
-func (p *SLOProvider) Commands() []*cobra.Command {
+func newSLOCommands() []*cobra.Command {
 	loader := &providers.ConfigLoader{}
 
 	sloCmd := &cobra.Command{
 		Use:   "slo",
-		Short: p.ShortDesc(),
-		PersistentPreRun: func(cmd *cobra.Command, args []string) {
-			if root := cmd.Root(); root.PersistentPreRun != nil {
-				root.PersistentPreRun(cmd, args)
-			}
-		},
+		Short: shortDesc,
 	}
 
 	// Bind config flags on the parent — all subcommands inherit these.
@@ -42,33 +38,4 @@ func (p *SLOProvider) Commands() []*cobra.Command {
 	sloCmd.AddCommand(reports.Commands(loader))
 
 	return []*cobra.Command{sloCmd}
-}
-
-// Validate checks that the given provider configuration is valid.
-// The SLO provider uses Grafana's built-in authentication, so no extra keys
-// are required.
-func (p *SLOProvider) Validate(cfg map[string]string) error {
-	return nil
-}
-
-// ConfigKeys returns the configuration keys used by this provider.
-// The SLO provider uses Grafana's built-in authentication and does not require
-// additional provider-specific keys.
-func (p *SLOProvider) ConfigKeys() []providers.ConfigKey {
-	return nil
-}
-
-// TypedRegistrations returns adapter registrations for SLO resource types.
-func (p *SLOProvider) TypedRegistrations() []adapter.Registration {
-	desc := definitions.StaticDescriptor()
-	return []adapter.Registration{
-		{
-			Factory:     definitions.NewLazyFactory(),
-			Descriptor:  desc,
-			GVK:         desc.GroupVersionKind(),
-			Schema:      definitions.SloSchema(),
-			Example:     definitions.SloExample(),
-			URLTemplate: "/a/grafana-slo-app/slo/{name}",
-		},
-	}
 }

@@ -41,7 +41,11 @@ OnCall, Fleet Management, etc.) using product-specific REST APIs.
   provider commands and the `resources` pipeline automatically. Provider-only
   commands with no adapter registration use their product clients directly — they
   are not required to construct an adapter merely to spell an honest `list` or `get`.
-  > **Exception:** The dashboards commands-only provider (`internal/providers/dashboards/`) calls the K8s dynamic client directly. This is the one documented exception — see ADR 016 (`docs/adrs/dashboards-provider/001-dashboards-provider-design.md`) for rationale and scope.
+- **Native resources go through the shared native binding.** Provider commands that
+  manage a Kubernetes-compatible resource discovered from the server use
+  `internal/providers/native`. They never register an adapter for a discovered GVK,
+  and never construct discovery registries or dynamic clients directly.
+  > **Pending migration:** the dashboards provider (`internal/providers/dashboards/`) still builds its descriptor and dynamic client by hand (see RFC 017, `docs/rfcs/017-dashboards-provider-design.md`). Its migration to the native binding is the next slice of RFC 001 (`docs/rfcs/001-alerting-provider-refactor.md`); until it lands, this is a known gap, not a second exception.
 - **Schema/Example on Registration structs:** Every `adapter.Registration` struct (populated
   via `TypedRegistrations()`) must include a non-nil `Schema` field. These power the
   `resources list-types` command via the global `SchemaForGVK`/`ExampleForGVK` functions — `AsAdapter()`
@@ -59,7 +63,7 @@ OnCall, Fleet Management, etc.) using product-specific REST APIs.
   the project or CLI itself, not on Grafana resources. Bare top-level
   verbs (single-token commands) are permitted only for two narrow
   categories: (1) foundational bootstrapping that precedes any area or
-  resource context — `gcx login`, `gcx setup`; and (2) CLI-meta commands
+  resource context — `gcx signup`, `gcx login`, `gcx setup`; and (2) CLI-meta commands
   that report on the binary itself rather than on Grafana — `gcx version`
   and Cobra-provided `help`/`completion`. This is an explicit, closed
   enumeration — any new top-level command must follow `$AREA $NOUN $VERB`
@@ -81,7 +85,10 @@ OnCall, Fleet Management, etc.) using product-specific REST APIs.
   release, unless the surface was explicitly marked experimental before
   release. The complete v1.0.0 command surface is therefore a supported
   compatibility exception for all v1.x releases, including invocations that
-  predate or deviate from the rules above.
+  predate or deviate from the rules above. One caveat to this rule is that commands marked as experimental may be removed or
+  changed without following the normal semver conventions - see
+  [experimental-commands.md](docs/design/experimental-commands.md) for how a command
+  is marked.
 
 ## Dual-Purpose Design
 
@@ -109,16 +116,22 @@ the discriminators as additive fields.)
 See [agent-mode.md](docs/design/agent-mode.md) for
 agent mode detection, behavior changes, and opt-out mechanisms.
 
-- **All output goes through the codec system.** No command writes unstructured
-  prose as its primary output. CRUD data commands output resources. CRUD
-  mutation commands output structured operation summaries. Extension commands
-  output domain-specific structured data.
-- **Default output is proportional to what is actionable.** Mutation summaries
-  enumerate exceptions (failures, skips) and summarize successes by count.
-  Full per-resource detail is opt-in.
+- **Primary output uses the shared output system and declared protocol.**
+  Finite commands encode structured resources, mutation results, or domain
+  data through codecs. Streams use shared event writers. Artifact commands
+  use codecs for file contents and `EmitArtifactResult` for terminal receipts.
+  Where supported, file-format flags select the contents, not the receipt. The declared `prose`,
+  `shell`, `raw`, `server`, and `interactive` classes follow their own protocols;
+  they do not establish an exception for ad-hoc prose from finite commands.
+- **Default output is proportional to what is actionable.** Batch mutation
+  summaries count successes and skips and enumerate failures. Command-specific
+  skip detail may explain an action the caller can take; full per-resource
+  success detail is opt-in where supported.
 - **STDOUT is the result, STDERR is the diagnostic.** Summary tables and
-  resource data go to stdout. Failure details and progress feedback go to
-  stderr. Both use structured formats (tables or JSON), not unstructured prose.
+  resource data go to stdout. Failure details needed to understand a structured
+  outcome belong in that result; advisory diagnostics and progress go to stderr
+  through the shared output/logging helpers. Diagnostics may be prose; they
+  must never replace required fields in the stdout result.
 
 ## Push/Pull Philosophy
 
@@ -143,8 +156,10 @@ agent mode detection, behavior changes, and opt-out mechanisms.
   Provider commands (`slo definitions list`) are ergonomic shorthands with
   domain-rich table output. Generic commands
   (`resources get slos.v1alpha1.slo.ext.grafana.app`) serve the push/pull
-  pipeline and cross-resource operations. Neither path is deprecated; both
-  are first-class.
+  pipeline and cross-resource operations. Both paths remain first-class for
+  CRUD access. SLO-specific push/pull commands are deprecated compatibility
+  wrappers around the shared resource pipeline; use `resources push/pull`
+  for new workflows. Their released invocations remain supported.
 - **For dual-path resources, JSON/YAML output is identical between both
   paths.** This is enforced structurally: provider CRUD commands must use
   their registered `ResourceAdapter` (via TypedCRUD) for data access, not raw
@@ -180,7 +195,6 @@ agent mode detection, behavior changes, and opt-out mechanisms.
 
 - **Prefer stdlib over small dependencies.** Don't add a new `go.mod` dependency
   when the used API surface is small enough to reimplement (~100 LOC or less).
-  See [docs/research/2026-05-26-dependency-audit.md](docs/research/2026-05-26-dependency-audit.md) for examples.
 - `cmd/` may import `internal/`; `internal/` may not import `cmd/`.
 - No circular dependencies between packages.
 - Provider implementations (`internal/providers/*/`) may import core resource types but not
@@ -193,24 +207,15 @@ agent mode detection, behavior changes, and opt-out mechanisms.
   credentials independently — this ensures consistent env var precedence,
   secret handling, and auth behavior across all providers.
 - **`httputils.NewDefaultClient(ctx)` for external APIs.** Provider clients
-  calling APIs outside the Grafana server (k6 Cloud, OnCall, Fleet —
+  calling APIs outside the Grafana server (k6 Cloud, OnCall —
   any domain other than `cfg.Host`) must use `httputils.NewDefaultClient(ctx)`,
   never `rest.HTTPClientFor()`. The k8s transport round-tripper injects the
   Grafana bearer token on every outgoing request, which conflicts with the
   product's own auth mechanism. `NewDefaultClient(ctx)` returns an `*http.Client`
   with `LoggingRoundTripper` and no auth injection — providers set their own
   auth headers per request.
-- **Synth is dual-mode (carve-out).** Synthetic Monitoring reaches its API two
-  ways: (1) primary — Grafana's datasource proxy at `cfg.Host`
-  (`/api/datasources/proxy/uid/<sm-uid>/sm/…`) via `rest.HTTPClientFor()` in
-  `internal/query/synth`, carrying the caller's Grafana credential (the SM token
-  is injected server-side by the plugin's `sm` proxy route, so the client never
-  handles it); (2) fallback — the direct SM API (external domain) via
-  `httputils.NewDefaultClient(ctx)` + an SM token, taken only on a proxy 403 or
-  when no SM datasource UID resolves. Both usages are consistent with the rule
-  above (proxy = `cfg.Host`; direct = external domain). The dual path preserves
-  token-based access for CI/headless environments while letting OAuth/SAT callers
-  drop the SM token. See ADR-020.
+- **Fleet Management runs through the plugin proxy.** Fleet Management and the Instrumentation Hub reach their API at `cfg.Host`, through the `grafana-collector-app` plugin proxy (`/api/plugin-proxy/grafana-collector-app/fleet-management-api/…`). The plugin adds the Fleet Management credentials and the tenant headers server-side, so the client carries the caller's Grafana credential only and uses `rest.HTTPClientFor()`, the same as Faro. Fleet Management needs no grafana.com token and no `fleet-management` access policy scope. See RFC 024.
+- **Synth is dual-mode (carve-out).** Synthetic Monitoring reaches its API two ways: (1) primary — Grafana's datasource proxy at `cfg.Host` (`/api/datasources/proxy/uid/<sm-uid>/sm/…`) via `rest.HTTPClientFor()` in `internal/query/synth`, carrying the caller's Grafana credential (the SM token is injected server-side by the plugin's `sm` proxy route, so the client never handles it); (2) fallback — the direct SM API (external domain) via `httputils.NewDefaultClient(ctx)` + an SM token, taken only on a proxy 403 or when no SM datasource UID resolves. Both usages are consistent with the rule above (proxy = `cfg.Host`; direct = external domain). The dual path preserves token-based access for CI/headless environments while letting OAuth/SAT callers drop the SM token. See RFC 021.
 - **All HTTP clients via `httputils`.** Production code must create HTTP clients
   through `httputils.NewDefaultClient(ctx)` or `httputils.NewClient(ClientOpts{...})`.
   Bare `http.DefaultClient`, standalone `&http.Client{}`, and custom transports

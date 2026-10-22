@@ -334,56 +334,147 @@ func TestAlertGroupList_MaxAgeAndFromAreMutuallyExclusive(t *testing.T) {
 	}
 }
 
-// TestAlertGroupList_RichPath_UnretrievableTotalNotAttached pins the honesty
-// guard on the drained-overshoot total: when the observed total exceeds the
-// hard cap and the cap was not the bound, attaching it would derive a
-// "--limit 0 retrieves everything" continuation that the cap makes a lie —
-// so the total stays unknown and the doubled-limit continuation is used.
-func TestAlertGroupList_RichPath_UnretrievableTotalNotAttached(t *testing.T) {
-	total := alertGroupListHardCap + 500
+// TestAlertGroupList_RichPath_LargeObservedTotalAttached: with the 1000-item
+// safety cap gone (grafana/gcx#1157), a drained-overshoot total is always
+// honest to attach no matter how large — `--limit 0` genuinely retrieves it,
+// so the continuation says exactly that.
+func TestAlertGroupList_RichPath_LargeObservedTotalAttached(t *testing.T) {
+	total := 1500
 	fake := &fakeRichListAPI{
 		items: rawAlertGroups(2),
 		page:  alertGroupPageInfo{HasMore: true, Total: &total},
 	}
-	payload, _ := runAlertGroupList(t, fake, "--limit", "950")
+	payload, stderr := runAlertGroupList(t, fake, "--limit", "950")
 
 	meta := payload.ListMeta
 	if meta == nil || !meta.Truncated {
 		t.Fatalf("list_meta = %+v, want truncated", meta)
 	}
-	if meta.Total != nil {
-		t.Errorf("list_meta.total = %d, want absent (total above the hard cap is not retrievable)", *meta.Total)
-	}
-	if meta.Continue != "gcx irm oncall alert-groups list --limit 4" {
-		t.Errorf("list_meta.continue = %q, want doubled-limit continuation", meta.Continue)
-	}
-}
-
-// TestAlertGroupList_RichPath_CapBoundedDrainedTotalAttached: a cap-bounded
-// page carries no continuation, so an observed total is always honest to
-// attach — the agent learns both the ceiling and the real set size.
-func TestAlertGroupList_RichPath_CapBoundedDrainedTotalAttached(t *testing.T) {
-	total := alertGroupListHardCap + 5
-	fake := &fakeRichListAPI{
-		items: rawAlertGroups(3),
-		page:  alertGroupPageInfo{HasMore: true, Total: &total},
-	}
-	payload, stderr := runAlertGroupList(t, fake, "--limit", "0")
-
-	meta := payload.ListMeta
-	if meta == nil || !meta.Truncated {
-		t.Fatalf("list_meta = %+v, want truncated", meta)
-	}
-	if meta.Cap != alertGroupListHardCap {
-		t.Errorf("list_meta.cap = %d, want %d", meta.Cap, alertGroupListHardCap)
+	if meta.Cap != 0 {
+		t.Errorf("list_meta.cap = %d, want 0 (this source has no client-side cap)", meta.Cap)
 	}
 	if meta.Total == nil || *meta.Total != total {
 		t.Fatalf("list_meta.total = %v, want %d (observed on the drained source)", meta.Total, total)
 	}
-	if meta.Continue != "" {
-		t.Errorf("list_meta.continue = %q, want empty (no --limit can beat the cap)", meta.Continue)
+	if meta.Continue != "gcx irm oncall alert-groups list --limit 0" {
+		t.Errorf("list_meta.continue = %q, want --limit 0 (the observed total is retrievable)", meta.Continue)
 	}
-	if !strings.Contains(stderr, "safety cap") {
-		t.Errorf("stderr missing cap-variant hint:\n%s", stderr)
+	if strings.Contains(stderr, "safety cap") {
+		t.Errorf("stderr carries a cap-variant hint but the cap is gone:\n%s", stderr)
+	}
+}
+
+// oldAlertGroupListHardCap is the client-side ceiling this command used to
+// impose on every fetch (grafana/gcx#1157). It is not a production constant
+// any more — the tests below keep it only to prove the ceiling is gone.
+const oldAlertGroupListHardCap = 1000
+
+// alertGroupPagesOf builds `count` items spread across pages of `perPage`,
+// each page pointing at the next.
+func alertGroupPagesOf(count, perPage int) []alertGroupPage {
+	var pages []alertGroupPage
+	for remaining := count; remaining > 0; remaining -= perPage {
+		n := min(remaining, perPage)
+		pages = append(pages, alertGroupPage{items: rawAlertGroups(n), hasNext: remaining > n})
+	}
+	return pages
+}
+
+// TestListAlertGroupsRaw_LimitZeroDrainsPastOldCap is the grafana/gcx#1157
+// regression: limit 0 follows every `next` cursor instead of stopping at the
+// old 1000-item ceiling, and reports the result as complete.
+func TestListAlertGroupsRaw_LimitZeroDrainsPastOldCap(t *testing.T) {
+	const total = oldAlertGroupListHardCap + 200
+	srv, state := newPagedAlertGroupsServer(t, alertGroupPagesOf(total, 100))
+
+	out, info, err := listAlertGroupsRaw(context.Background(), onCallClientFor(srv), alertGroupListFilters{}, 0)
+	if err != nil {
+		t.Fatalf("listAlertGroupsRaw: %v", err)
+	}
+	if len(out) != total {
+		t.Errorf("items = %d, want %d (limit 0 drains every page)", len(out), total)
+	}
+	if info.HasMore {
+		t.Error("HasMore = true, want false (the source was drained)")
+	}
+	if state.requests != total/100 {
+		t.Errorf("requests = %d, want %d (one per page)", state.requests, total/100)
+	}
+}
+
+// TestListAlertGroupsRaw_LimitAboveOldCap: an explicit limit above the old
+// ceiling is honored in full rather than silently cut down to 1000.
+func TestListAlertGroupsRaw_LimitAboveOldCap(t *testing.T) {
+	const limit = oldAlertGroupListHardCap + 200
+	srv, _ := newPagedAlertGroupsServer(t, alertGroupPagesOf(limit+300, 100))
+
+	out, info, err := listAlertGroupsRaw(context.Background(), onCallClientFor(srv), alertGroupListFilters{}, limit)
+	if err != nil {
+		t.Fatalf("listAlertGroupsRaw: %v", err)
+	}
+	if len(out) != limit {
+		t.Errorf("items = %d, want %d (the user's limit is the only bound)", len(out), limit)
+	}
+	if !info.HasMore {
+		t.Error("HasMore = false, want true (more pages remain beyond the limit)")
+	}
+}
+
+// TestListAlertGroupsRaw_NonAdvancingCursor: an unbounded drain trusts the
+// server to advance, so a `next` cursor that points back at the page just
+// fetched must terminate the walk rather than spin forever.
+func TestListAlertGroupsRaw_NonAdvancingCursor(t *testing.T) {
+	var (
+		srv      *httptest.Server
+		requests int
+	)
+	mux := http.NewServeMux()
+	mux.HandleFunc(BasePath+"/alertgroups/", func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+		if requests > 10 {
+			t.Fatal("pagination did not terminate on a non-advancing cursor")
+		}
+		next := srv.URL + "/oncall/api/internal/v1/alertgroups/?page=2"
+		body, err := json.Marshal(map[string]any{"results": rawAlertGroups(2), "next": &next})
+		if err != nil {
+			t.Fatalf("marshal page: %v", err)
+		}
+		_, _ = w.Write(body)
+	})
+	srv = httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	out, _, err := listAlertGroupsRaw(context.Background(), onCallClientFor(srv), alertGroupListFilters{}, 0)
+	if err != nil {
+		t.Fatalf("listAlertGroupsRaw: %v", err)
+	}
+	// Two requests: the initial path, then the cursor once. The third would
+	// repeat the second, so the walk stops with those four items in hand.
+	if requests != 2 {
+		t.Errorf("requests = %d, want 2 (stop once the cursor stops advancing)", requests)
+	}
+	if len(out) != 4 {
+		t.Errorf("items = %d, want 4 (whatever the server handed over before repeating)", len(out))
+	}
+}
+
+// TestAlertGroupList_LimitZeroReturnsEverything is the end-to-end form of the
+// grafana/gcx#1157 report: `--limit 0` over a window holding more than 1000
+// groups returns all of them, with no list_meta and no truncation hint — the
+// contract's signal that the output IS the complete set.
+func TestAlertGroupList_LimitZeroReturnsEverything(t *testing.T) {
+	const total = oldAlertGroupListHardCap + 200
+	srv, _ := newPagedAlertGroupsServer(t, alertGroupPagesOf(total, 100))
+
+	payload, stderr := runAlertGroupList(t, onCallClientFor(srv), "--all", "--max-age", "24h", "--limit", "0")
+
+	if len(payload.Items) != total {
+		t.Errorf("items = %d, want %d", len(payload.Items), total)
+	}
+	if payload.ListMeta != nil {
+		t.Errorf("list_meta = %+v, want absent (the page IS the complete set)", payload.ListMeta)
+	}
+	if strings.Contains(stderr, "showing first") {
+		t.Errorf("unexpected truncation hint on stderr:\n%s", stderr)
 	}
 }

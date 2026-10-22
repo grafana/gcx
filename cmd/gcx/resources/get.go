@@ -1,6 +1,7 @@
 package resources
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	cmdconfig "github.com/grafana/gcx/cmd/gcx/config"
+	"github.com/grafana/gcx/cmd/gcx/fail"
 	"github.com/grafana/gcx/internal/agent"
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/deeplink"
@@ -56,7 +58,7 @@ func schemaToFieldPaths(specSchema map[string]any) []string {
 // OpenAPI v3 schema endpoint. Returns an error if the schema is unavailable
 // (e.g. provider-backed resources), in which case the caller should fall back
 // to sample-fetch introspection.
-func discoverFieldsViaOpenAPI(ctx context.Context, cfg config.NamespacedRESTConfig, args []string) ([]string, error) {
+func discoverFieldsViaOpenAPI(ctx context.Context, cfg config.NamespacedRESTConfig, args []string, warn io.Writer) ([]string, error) {
 	sels, err := resources.ParseSelectors(args)
 	if err != nil {
 		return nil, err
@@ -69,6 +71,7 @@ func discoverFieldsViaOpenAPI(ctx context.Context, cfg config.NamespacedRESTConf
 
 	filters, err := reg.MakeFilters(discovery.MakeFiltersOptions{
 		Selectors:            sels,
+		Warn:                 warn,
 		PreferredVersionOnly: true,
 	})
 	if err != nil {
@@ -166,10 +169,10 @@ func getCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	gcx resources get dashboards/foo
 	gcx resources get dashboards/foo,bar
 
-	# Single resource kind, long kind format:
+	# Single resource kind, full API group:
 
-	gcx resources get dashboard.dashboards/foo
-	gcx resources get dashboard.dashboards/foo,bar
+	gcx resources get dashboards.dashboard.grafana.app/foo
+	gcx resources get dashboards.dashboard.grafana.app/foo,bar
 
 	# Single resource kind, long kind format with version:
 
@@ -181,21 +184,24 @@ func getCmd(configOpts *cmdconfig.Options) *cobra.Command {
 	gcx resources get dashboards/foo folders/qux
 	gcx resources get dashboards/foo,bar folders/qux,quux
 
-	# Multiple resource kinds, long kind format:
+	# Multiple resource kinds, full API groups:
 
-	gcx resources get dashboard.dashboards/foo folder.folders/qux
-	gcx resources get dashboard.dashboards/foo,bar folder.folders/qux,quux
+	gcx resources get dashboards.dashboard.grafana.app/foo folders.folder.grafana.app/qux
+	gcx resources get dashboards.dashboard.grafana.app/foo,bar folders.folder.grafana.app/qux,quux
 
 	# Multiple resource kinds, long kind format with version:
 
 	gcx resources get dashboards.v1alpha1.dashboard.grafana.app/foo folders.v1alpha1.folder.grafana.app/qux
 
-	# Provider-backed resource types (SLO, Synthetic Monitoring, Alerting):
+	# Provider-backed resources (SLO and Synthetic Monitoring):
 
 	gcx resources get slo
 	gcx resources get slo/my-slo-uuid
-	gcx resources get checks
-	gcx resources get rules
+	gcx resources get checks.syntheticmonitoring
+
+	# Native Grafana alert rules:
+
+	gcx resources get alertrules
 
 	# Discover available JSON fields for a resource type:
 
@@ -224,8 +230,10 @@ func getCmd(configOpts *cmdconfig.Options) *cobra.Command {
 			// --json ? discovery: try OpenAPI schema first (no instances needed),
 			// fall back to fetching a sample resource if OpenAPI is unavailable.
 			if opts.IO.JSONDiscovery {
-				fields, schemaErr := discoverFieldsViaOpenAPI(ctx, cfg, args)
+				var warnings bytes.Buffer
+				fields, schemaErr := discoverFieldsViaOpenAPI(ctx, cfg, args, &warnings)
 				if schemaErr == nil {
+					_, _ = cmd.ErrOrStderr().Write(warnings.Bytes())
 					for _, f := range fields {
 						fmt.Fprintln(cmd.OutOrStdout(), f)
 					}
@@ -236,6 +244,7 @@ func getCmd(configOpts *cmdconfig.Options) *cobra.Command {
 
 			fetchReq := FetchRequest{
 				Config:      cfg,
+				Warn:        cmd.ErrOrStderr(),
 				StopOnError: opts.OnError.StopOnError(),
 				Limit:       opts.Limit,
 			}
@@ -324,13 +333,12 @@ func writeGetOutput(stdout, stderr io.Writer, opts *getOpts, res *FetchResponse,
 		for i, item := range output.Items {
 			itemMaps[i] = item.Object
 		}
-		errSummary := fmt.Sprintf("%d resource(s) failed to get", res.PullSummary.FailedCount())
-		detErr := gcxerrors.DetailedError{Summary: errSummary}
+		detErr, _, cause := getFailureDetails(res)
 		if err := detErr.WriteJSONWithItems(stdout, gcxerrors.ExitPartialFailure, itemMaps); err != nil {
 			return err
 		}
 		emitGetTruncationHint(stderr, opts, res)
-		return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, errors.New(errSummary))
+		return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, cause)
 	}
 
 	var encodeErr error
@@ -374,9 +382,49 @@ func writeGetOutput(stdout, stderr io.Writer, opts *getOpts, res *FetchResponse,
 // error — exit 1 instead of the taxonomy's 4, and a duplicate error JSON
 // appended to stdout in agent mode.
 func partialGetFailure(stderr io.Writer, res *FetchResponse) error {
-	summary := fmt.Sprintf("%d resource(s) failed to get", res.PullSummary.FailedCount())
-	cmdio.EmitWarn(stderr, summary)
-	return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, errors.New(summary))
+	detailed, renderedDetails, cause := getFailureDetails(res)
+	if agent.IsAgentMode() {
+		cmdio.EmitWarn(stderr, detailed.Summary)
+		for _, detail := range renderedDetails {
+			cmdio.EmitWarn(stderr, detail)
+		}
+	} else {
+		fmt.Fprint(stderr, detailed.Error())
+	}
+	return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, cause)
+}
+
+// getFailureDetails uses the same classifications as single-resource errors.
+// Failures arrive concurrently, so sort their rendered details for stable output.
+// Keep the original causes for telemetry without printing them a second time.
+func getFailureDetails(res *FetchResponse) (gcxerrors.DetailedError, []string, error) {
+	var details []string
+	var causes []error
+	for _, failure := range res.PullSummary.Failures() {
+		err := failure.Error
+		if failure.Resource != nil {
+			err = fmt.Errorf("%s: %w", failure.Resource.Ref(), err)
+		}
+		causes = append(causes, err)
+		converted := fail.ErrorToDetailedError(err)
+		if converted == nil {
+			details = append(details, err.Error())
+			continue
+		}
+		parts := []string{converted.Summary}
+		if converted.Details != "" {
+			parts = append(parts, converted.Details)
+		}
+		if converted.Parent != nil && !gcxerrors.SameRenderedMessage(converted.Details, converted.Parent.Error()) {
+			parts = append(parts, converted.Parent.Error())
+		}
+		details = append(details, strings.Join(parts, ": "))
+	}
+	sort.Strings(details)
+	return gcxerrors.DetailedError{
+		Summary: fmt.Sprintf("%d resource(s) failed to get", res.PullSummary.FailedCount()),
+		Details: strings.Join(details, "\n\n"),
+	}, details, errors.Join(causes...)
 }
 
 // emitGetTruncationHint surfaces the per-resource-type truncation hint on
@@ -411,12 +459,11 @@ func writeFieldSelect(out, stderr io.Writer, opts *getOpts, res *FetchResponse, 
 		for i, item := range output.Items {
 			itemMaps[i] = cmdio.ExtractFields(item.Object, codec.Fields())
 		}
-		errSummary := fmt.Sprintf("%d resource(s) failed to get", res.PullSummary.FailedCount())
-		detErr := gcxerrors.DetailedError{Summary: errSummary}
+		detErr, _, cause := getFailureDetails(res)
 		if err := detErr.WriteJSONWithItems(out, gcxerrors.ExitPartialFailure, itemMaps); err != nil {
 			return err
 		}
-		return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, errors.New(errSummary))
+		return gcxerrors.NewEmittedError(gcxerrors.ExitPartialFailure, cause)
 	}
 
 	var encodeErr error

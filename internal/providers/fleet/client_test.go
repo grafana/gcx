@@ -6,7 +6,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
+	fleetbase "github.com/grafana/gcx/internal/fleet"
 	"github.com/grafana/gcx/internal/providers/fleet"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -14,7 +16,7 @@ import (
 
 func newTestClient(t *testing.T, server *httptest.Server) *fleet.Client {
 	t.Helper()
-	return fleet.NewClient(context.Background(), server.URL, "test-instance", "test-token", true, nil)
+	return fleet.NewClient(context.Background(), server.URL, nil)
 }
 
 func writeJSON(w http.ResponseWriter, v any) {
@@ -105,6 +107,7 @@ func TestClient_GetPipeline(t *testing.T) {
 			id:   "p-missing",
 			handler: func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusNotFound)
+				_, _ = w.Write([]byte(`{"code":"not_found","message":"resource not found"}`))
 			},
 			wantErr: true,
 			errMsg:  "not found",
@@ -340,14 +343,22 @@ func TestClient_DeletePipeline(t *testing.T) {
 }
 
 func TestClient_ListCollectors(t *testing.T) {
+	createdAt := "2026-08-01T10:00:00Z"
+	updatedAt := "2026-09-18T11:12:13Z"
+	inactiveAt := "2026-09-18T12:00:00Z"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
 		assert.Contains(t, r.URL.Path, "/collector.v1.CollectorService/ListCollectors")
 		writeJSON(w, map[string]any{
 			"collectors": []map[string]any{
-				{"id": "c-1", "name": "collector-1", "collector_type": "alloy"},
-				{"id": "c-2", "name": "collector-2", "collector_type": "alloy"},
-				{"id": "c-3", "name": "collector-3", "collector_type": "alloy"},
+				{
+					"id": "c-1", "name": "collector-1", "collectorType": "COLLECTOR_TYPE_ALLOY",
+					"localAttributes":  map[string]string{"collector.version": "1.10.2", "collector.os": "linux"},
+					"remoteAttributes": map[string]string{"env": "production"},
+					"createdAt":        createdAt, "updatedAt": updatedAt, "markedInactiveAt": inactiveAt,
+				},
+				{"id": "c-2", "name": "collector-2", "collectorType": "COLLECTOR_TYPE_ALLOY"},
+				{"id": "c-3", "name": "collector-3", "collectorType": "COLLECTOR_TYPE_ALLOY"},
 			},
 		})
 	}))
@@ -359,6 +370,15 @@ func TestClient_ListCollectors(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, collectors, 3)
 	assert.Equal(t, "c-1", collectors[0].ID)
+	assert.Equal(t, "COLLECTOR_TYPE_ALLOY", collectors[0].CollectorType)
+	assert.Equal(t, "1.10.2", collectors[0].LocalAttributes["collector.version"])
+	assert.Equal(t, "production", collectors[0].RemoteAttributes["env"])
+	require.NotNil(t, collectors[0].CreatedAt)
+	assert.Equal(t, createdAt, collectors[0].CreatedAt.Format(time.RFC3339))
+	require.NotNil(t, collectors[0].UpdatedAt)
+	assert.Equal(t, updatedAt, collectors[0].UpdatedAt.Format(time.RFC3339))
+	require.NotNil(t, collectors[0].MarkedInactiveAt)
+	assert.Equal(t, inactiveAt, collectors[0].MarkedInactiveAt.Format(time.RFC3339))
 }
 
 func TestClient_GetCollector(t *testing.T) {
@@ -392,6 +412,7 @@ func TestClient_GetCollector(t *testing.T) {
 			id:   "c-missing",
 			handler: func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusNotFound)
+				_, _ = w.Write([]byte(`{"code":"not_found","message":"resource not found"}`))
 			},
 			wantErr: true,
 			errMsg:  "not found",
@@ -422,34 +443,65 @@ func TestClient_GetCollector(t *testing.T) {
 }
 
 func TestClient_CreateCollector(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, http.MethodPost, r.Method)
-		assert.Contains(t, r.URL.Path, "/collector.v1.CollectorService/CreateCollector")
+	tests := []struct {
+		name     string
+		response map[string]any
+		wantID   string
+		wantName string
+	}{
+		{
+			name:     "uses complete server response",
+			response: map[string]any{"id": "server-id", "name": "server-name", "collector_type": "alloy"},
+			wantID:   "server-id",
+			wantName: "server-name",
+		},
+		{
+			name:     "fills fields omitted from partial response",
+			response: map[string]any{"name": "server-name"},
+			wantID:   "submitted-id",
+			wantName: "server-name",
+		},
+		{
+			name:     "uses submitted collector for empty response",
+			response: map[string]any{},
+			wantID:   "submitted-id",
+			wantName: "new-collector",
+		},
+	}
 
-		var body map[string]json.RawMessage
-		assert.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, http.MethodPost, r.Method)
+				assert.Contains(t, r.URL.Path, "/collector.v1.CollectorService/CreateCollector")
 
-		var col fleet.Collector
-		assert.NoError(t, json.Unmarshal(body["collector"], &col))
-		assert.Equal(t, "new-collector", col.Name)
-		assert.Equal(t, "alloy", col.CollectorType)
+				var body map[string]json.RawMessage
+				assert.NoError(t, json.NewDecoder(r.Body).Decode(&body))
 
-		writeJSON(w, map[string]any{
-			"id": "c-created", "name": "new-collector", "collector_type": "alloy",
+				var col fleet.Collector
+				assert.NoError(t, json.Unmarshal(body["collector"], &col))
+				assert.Equal(t, "submitted-id", col.ID)
+				assert.Equal(t, "new-collector", col.Name)
+				assert.Equal(t, "alloy", col.CollectorType)
+
+				writeJSON(w, tt.response)
+			}))
+			defer server.Close()
+
+			client := newTestClient(t, server)
+			created, err := client.CreateCollector(context.Background(), fleet.Collector{
+				ID:            "submitted-id",
+				Name:          "new-collector",
+				CollectorType: "alloy",
+			})
+
+			require.NoError(t, err)
+			require.NotNil(t, created)
+			assert.Equal(t, tt.wantID, created.ID)
+			assert.Equal(t, tt.wantName, created.Name)
+			assert.Equal(t, "alloy", created.CollectorType)
 		})
-	}))
-	defer server.Close()
-
-	client := newTestClient(t, server)
-	created, err := client.CreateCollector(context.Background(), fleet.Collector{
-		Name:          "new-collector",
-		CollectorType: "alloy",
-	})
-
-	require.NoError(t, err)
-	require.NotNil(t, created)
-	assert.Equal(t, "c-created", created.ID)
-	assert.Equal(t, "new-collector", created.Name)
+	}
 }
 
 func TestClient_DeleteCollector(t *testing.T) {
@@ -499,4 +551,111 @@ func TestClient_GetLimits(t *testing.T) {
 	assert.Equal(t, int64(10), *limits.RequestsPerSecondCollector)
 	require.NotNil(t, limits.RequestsPerSecondAPI)
 	assert.Equal(t, int64(20), *limits.RequestsPerSecondAPI)
+}
+
+// A 404 has two meanings behind the plugin proxy: Fleet Management has no such
+// resource, or Grafana has no such plugin route. The two must not be confused.
+func TestClient_NotFoundReturnsTypedError(t *testing.T) {
+	tests := []struct {
+		name            string
+		body            string
+		resourceMissing bool
+	}{
+		{"Connect resource error", `{"code":"not_found","message":"resource not found"}`, true},
+		{"plugin route error", `{"message":"plugin route match not found"}`, false},
+		{"plugin disabled", `{"message":"plugin is not enabled"}`, false},
+		{"unknown RPC", "404 page not found", false},
+		{"message only", `{"message":"resource not found"}`, false},
+		{"empty body", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/problem+json")
+				w.WriteHeader(http.StatusNotFound)
+				_, _ = w.Write([]byte(tt.body))
+			}))
+			defer server.Close()
+			client := newTestClient(t, server)
+			getters := []struct {
+				name string
+				get  func() error
+			}{
+				{"pipeline", func() error { _, err := client.GetPipeline(context.Background(), "p-missing"); return err }},
+				{"collector", func() error { _, err := client.GetCollector(context.Background(), "c-missing"); return err }},
+			}
+			for _, getter := range getters {
+				t.Run(getter.name, func(t *testing.T) {
+					err := getter.get()
+					require.Error(t, err)
+					assert.Contains(t, err.Error(), "get "+getter.name)
+					assert.Contains(t, err.Error(), string(getter.name[0])+"-missing")
+					var httpErr *fleetbase.HTTPError
+					require.ErrorAs(t, err, &httpErr)
+					assert.Equal(t, http.StatusNotFound, httpErr.Status)
+					assert.Equal(t, tt.body, httpErr.Body)
+					assert.Equal(t, "application/problem+json", httpErr.ContentType)
+					assert.Contains(t, httpErr.Path, "/Get")
+					assert.Equal(t, tt.resourceMissing, fleetbase.IsResourceNotFoundBody(httpErr.Body))
+				})
+			}
+		})
+	}
+}
+
+// Every non-2xx from a mutation must carry the typed error, so that
+// cmd/gcx/fail can map the status to an actionable message.
+func TestClient_MutationsReturnTypedError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"message":"forbidden"}`))
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+
+	tests := []struct {
+		name string
+		call func() error
+	}{
+		{"create pipeline", func() error {
+			_, err := client.CreatePipeline(context.Background(), fleet.Pipeline{Name: "p"})
+			return err
+		}},
+		{"update pipeline", func() error {
+			return client.UpdatePipeline(context.Background(), "1", fleet.Pipeline{Name: "p"})
+		}},
+		{"delete pipeline", func() error { return client.DeletePipeline(context.Background(), "1") }},
+		{"create collector", func() error {
+			_, err := client.CreateCollector(context.Background(), fleet.Collector{Name: "c"})
+			return err
+		}},
+		{"update collector", func() error {
+			return client.UpdateCollector(context.Background(), fleet.Collector{ID: "1", Name: "c"})
+		}},
+		{"delete collector", func() error { return client.DeleteCollector(context.Background(), "1") }},
+		{"list pipelines", func() error {
+			_, err := client.ListPipelines(context.Background())
+			return err
+		}},
+		{"list collectors", func() error {
+			_, err := client.ListCollectors(context.Background())
+			return err
+		}},
+		{"get limits", func() error {
+			_, err := client.GetLimits(context.Background())
+			return err
+		}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.call()
+			require.Error(t, err)
+
+			var httpErr *fleetbase.HTTPError
+			require.ErrorAs(t, err, &httpErr)
+			assert.Equal(t, http.StatusForbidden, httpErr.Status)
+		})
+	}
 }

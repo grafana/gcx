@@ -4,18 +4,17 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
 
 	"github.com/grafana/gcx/internal/config"
 	"github.com/grafana/gcx/internal/providers"
-	"k8s.io/client-go/rest"
+	"github.com/grafana/gcx/internal/resources/adapter"
 )
 
 // ErrNotFound is returned when a requested report does not exist (HTTP 404).
-var ErrNotFound = errors.New("report not found")
+var ErrNotFound = fmt.Errorf("report %w", adapter.ErrNotFound)
 
 const (
 	basePath        = "/api/plugins/grafana-slo-app/resources/v1/report"
@@ -28,21 +27,8 @@ type Client struct {
 	httpClient *http.Client
 }
 
-// NewClient creates a new SLO reports client.
-func NewClient(cfg config.NamespacedRESTConfig) (*Client, error) {
-	httpClient, err := rest.HTTPClientFor(&cfg.Config)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create HTTP client: %w", err)
-	}
-
-	return &Client{
-		restConfig: cfg,
-		httpClient: httpClient,
-	}, nil
-}
-
 // List returns all SLO reports.
-func (c *Client) List(ctx context.Context) ([]Report, error) {
+func (c *Client) List(ctx context.Context, opts adapter.ListOptions) ([]Report, error) {
 	resp, err := c.doRequest(ctx, http.MethodGet, basePath, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list reports: %w", err)
@@ -62,7 +48,7 @@ func (c *Client) List(ctx context.Context) ([]Report, error) {
 		return []Report{}, nil
 	}
 
-	return listResp.Reports, nil
+	return adapter.TruncateSlice(listResp.Reports, opts.Limit), nil
 }
 
 // Get returns a single SLO report by UUID.
@@ -90,7 +76,7 @@ func (c *Client) Get(ctx context.Context, uuid string) (*Report, error) {
 }
 
 // Create creates a new SLO report.
-func (c *Client) Create(ctx context.Context, report *Report) (*ReportCreateResponse, error) {
+func (c *Client) Create(ctx context.Context, report *Report) (*Report, error) {
 	body, err := json.Marshal(report)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal report: %w", err)
@@ -111,27 +97,33 @@ func (c *Client) Create(ctx context.Context, report *Report) (*ReportCreateRespo
 		return nil, fmt.Errorf("failed to decode report create response: %w", err)
 	}
 
-	return &createResp, nil
+	// The API can return 202; preserve the accepted request without requiring
+	// immediate read-after-write consistency.
+	created := *report
+	created.UUID = createResp.UUID
+	return &created, nil
 }
 
 // Update updates an existing SLO report.
-func (c *Client) Update(ctx context.Context, uuid string, report *Report) error {
+func (c *Client) Update(ctx context.Context, uuid string, report *Report) (*Report, error) {
 	body, err := json.Marshal(report)
 	if err != nil {
-		return fmt.Errorf("failed to marshal report: %w", err)
+		return nil, fmt.Errorf("failed to marshal report: %w", err)
 	}
 
 	resp, err := c.doRequest(ctx, http.MethodPut, fmt.Sprintf(reportByUUIDFmt, uuid), bytes.NewReader(body))
 	if err != nil {
-		return fmt.Errorf("failed to update report %s: %w", uuid, err)
+		return nil, fmt.Errorf("failed to update report %s: %w", uuid, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
-		return providers.HandleErrorResponse(resp)
+		return nil, providers.HandleErrorResponse(resp)
 	}
 
-	return nil
+	updated := *report
+	updated.UUID = uuid
+	return &updated, nil
 }
 
 // Delete deletes an SLO report by UUID.
@@ -167,3 +159,12 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body io.Rea
 
 	return resp, nil
 }
+
+// Report clients expose only the capabilities their API supports.
+var (
+	_ adapter.Lister[Report]  = (*Client)(nil)
+	_ adapter.Getter[Report]  = (*Client)(nil)
+	_ adapter.Creator[Report] = (*Client)(nil)
+	_ adapter.Updater[Report] = (*Client)(nil)
+	_ adapter.Deleter[Report] = (*Client)(nil)
+)

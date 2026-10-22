@@ -64,7 +64,7 @@ func TestExportPostsJSONToEndpointOverride(t *testing.T) {
 	require.NoError(t, json.Unmarshal(body, &decoded))
 	assert.Equal(t, event, decoded)
 
-	// parse_error_* fields mirror their omitempty tags: absent from the body
+	// Optional fields mirror their omitempty tags: absent from the body
 	// unless set.
 	var raw map[string]any
 	require.NoError(t, json.Unmarshal(body, &raw))
@@ -72,8 +72,40 @@ func TestExportPostsJSONToEndpointOverride(t *testing.T) {
 		"parse_error_kind", "parse_error_parent", "parse_error_token",
 		"attempted_command", "parse_error_flags", "parse_error_nearest",
 		"parse_error_distance",
+		"http_status", "k8s_reason", "grafana_auth_method",
 	} {
 		assert.NotContains(t, raw, key)
+	}
+}
+
+// The failure-depth and auth-method fields travel when set, exactly as the
+// builder wrote them.
+func TestExportCarriesErrorSignalAndAuthFields(t *testing.T) {
+	bodies := make(chan []byte, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		bodies <- body
+	}))
+	defer server.Close()
+	t.Setenv(envEndpoint, server.URL)
+
+	event := testEvent()
+	event.Outcome = OutcomeRuntimeError
+	event.ExitCode = 1
+	event.HTTPStatus = 403
+	event.K8sReason = "NotFound"
+	event.GrafanaAuthMethod = "token"
+	Export(event)
+
+	select {
+	case body := <-bodies:
+		var raw map[string]any
+		require.NoError(t, json.Unmarshal(body, &raw))
+		assert.InDelta(t, float64(403), raw["http_status"], 0)
+		assert.Equal(t, "NotFound", raw["k8s_reason"])
+		assert.Equal(t, "token", raw["grafana_auth_method"])
+	case <-time.After(5 * time.Second):
+		t.Fatal("no request received")
 	}
 }
 

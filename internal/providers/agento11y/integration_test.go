@@ -214,7 +214,7 @@ func TestIntegration_ConversationsListToTable(t *testing.T) {
 	require.Len(t, items, 2)
 
 	var buf bytes.Buffer
-	codec := &conversations.TableCodec{}
+	codec := conversations.Table().Codec("table")
 	require.NoError(t, codec.Encode(&buf, items))
 
 	output := buf.String()
@@ -253,7 +253,7 @@ func TestIntegration_ConversationsSearchToTable(t *testing.T) {
 	require.NoError(t, err)
 
 	var buf bytes.Buffer
-	codec := &conversations.SearchTableCodec{}
+	codec := conversations.SearchTable().Codec("table")
 	require.NoError(t, codec.Encode(&buf, resp.Conversations))
 
 	output := buf.String()
@@ -262,7 +262,7 @@ func TestIntegration_ConversationsSearchToTable(t *testing.T) {
 
 	// agents column only in wide mode
 	var wideBuf bytes.Buffer
-	wideCodec := &conversations.SearchTableCodec{Wide: true}
+	wideCodec := conversations.SearchTable().Codec("wide")
 	require.NoError(t, wideCodec.Encode(&wideBuf, resp.Conversations))
 	assert.Contains(t, wideBuf.String(), "my-agent")
 }
@@ -276,7 +276,7 @@ func TestIntegration_AgentsListToTable(t *testing.T) {
 	require.Len(t, items, 1)
 
 	var buf bytes.Buffer
-	codec := &agents.ListTableCodec{}
+	codec := agents.ListTable().Codec("table")
 	require.NoError(t, codec.Encode(&buf, items))
 
 	output := buf.String()
@@ -303,7 +303,7 @@ func TestIntegration_AgentsVersionsToTable(t *testing.T) {
 	require.NoError(t, err)
 
 	var buf bytes.Buffer
-	codec := &agents.VersionsTableCodec{}
+	codec := agents.VersionsTable().Codec("table")
 	require.NoError(t, codec.Encode(&buf, items))
 
 	assert.Contains(t, buf.String(), "sha256:abc123")
@@ -320,7 +320,7 @@ func TestIntegration_EvaluatorsListToTable(t *testing.T) {
 	assert.Equal(t, "eval-1", items[0].EvaluatorID)
 
 	var buf bytes.Buffer
-	codec := &evaluators.TableCodec{}
+	codec := evaluators.Table().Codec("table")
 	require.NoError(t, codec.Encode(&buf, items))
 
 	output := buf.String()
@@ -338,7 +338,7 @@ func TestIntegration_RulesListToTable(t *testing.T) {
 	assert.Equal(t, "rule-1", items[0].RuleID)
 
 	var buf bytes.Buffer
-	codec := &rules.TableCodec{}
+	codec := rules.Table().Codec("table")
 	require.NoError(t, codec.Encode(&buf, items))
 
 	output := buf.String()
@@ -358,7 +358,7 @@ func TestIntegration_GuardsListToTable(t *testing.T) {
 	assert.Equal(t, "guard-2", items[1].RuleID)
 
 	var buf bytes.Buffer
-	codec := &guards.TableCodec{}
+	codec := guards.Table().Codec("table")
 	require.NoError(t, codec.Encode(&buf, items))
 
 	output := buf.String()
@@ -419,7 +419,7 @@ func TestIntegration_TemplatesListToTable(t *testing.T) {
 	assert.Equal(t, "tpl-1", items[0].TemplateID)
 
 	var buf bytes.Buffer
-	codec := &templates.TableCodec{}
+	codec := templates.Table().Codec("table")
 	require.NoError(t, codec.Encode(&buf, items))
 
 	output := buf.String()
@@ -437,7 +437,7 @@ func TestIntegration_TemplateVersionsToTable(t *testing.T) {
 	require.Len(t, versions, 1)
 
 	var buf bytes.Buffer
-	codec := &templates.VersionsTableCodec{}
+	codec := templates.VersionsTable().Codec("table")
 	require.NoError(t, codec.Encode(&buf, versions))
 
 	output := buf.String()

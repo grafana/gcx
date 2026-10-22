@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	gcxerrors "github.com/grafana/gcx/internal/gcxerrors"
+	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers/instrumentation"
 	instrOutput "github.com/grafana/gcx/internal/providers/instrumentation/output"
 	"github.com/stretchr/testify/assert"
@@ -125,8 +126,7 @@ func TestRunGet(t *testing.T) {
 			}
 
 			opts := &getOpts{}
-			opts.IO.RegisterCustomCodec("table", &instrOutput.ClusterTableCodec{Wide: false})
-			opts.IO.RegisterCustomCodec("wide", &instrOutput.ClusterTableCodec{Wide: true})
+			cmdio.RegisterTable(&opts.IO, instrOutput.ClusterTable())
 			opts.IO.DefaultFormat("table")
 			opts.IO.OutputFormat = "json"
 

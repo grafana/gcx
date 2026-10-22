@@ -1,0 +1,3 @@
+NAME  CLUSTER       NAMESPACE  TYPE        LANG  STATUS
+cart  prod-eu-west  shop       deployment  go    OK
+bare  prod-eu-west  shop       daemonset         NODATA
