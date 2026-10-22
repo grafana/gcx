@@ -227,7 +227,6 @@ func convertConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 			Summary: gcxerrors.SummaryInvalidCommandUsage,
 			Details: fmt.Sprintf("GCX_REQUIRE_CONTEXT is set, so gcx will not fall back to current-context (%q) from the config file. "+
 				"Another shell or agent can change the shared current-context at any time.", inherited),
-			Parent:      err,
 			Suggestions: suggestions,
 			ExitCode:    new(gcxerrors.ExitUsageError),
 		}, true

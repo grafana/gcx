@@ -2109,6 +2109,8 @@ func TestErrorToDetailedError_ContextRequired(t *testing.T) {
 		`GCX_REQUIRE_CONTEXT is set, so gcx will not fall back to current-context ("prod") from the config file. `+
 			"Another shell or agent can change the shared current-context at any time.",
 		got.Details)
+	// The cause is in Details only. A Parent would print it a second time.
+	assert.Nil(t, got.Parent)
 	assert.Contains(t, got.Suggestions, "Pass --context <name>")
 	assert.Contains(t, got.Suggestions, "Or set GCX_CONTEXT=<name> for this shell")
 	assert.Contains(t, got.Suggestions, "Or turn off strict context mode: unset GCX_REQUIRE_CONTEXT")
