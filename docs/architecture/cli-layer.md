@@ -396,17 +396,24 @@ on a sample object fetched from the API.
 
 ### Custom Table Codecs
 
-Commands define their own table-rendering codec by implementing `format.Codec`:
+Ordinary provider tables declare columns with `output.Table[T]` (see
+[RFC 025](../rfcs/025-shared-table-declaration.md)).
+For wrapper or singleton payloads, `output.TableAdapter[P, T]` extracts rows
+inside the human codec while JSON/YAML retain the complete payload:
 
 ```go
-type tableCodec struct { wide bool }
-
-func (c *tableCodec) Format() format.Format { return "text" }
-func (c *tableCodec) Encode(output io.Writer, input any) error { /* render table */ }
-func (c *tableCodec) Decode(io.Reader, any) error { return errors.New("not supported") }
+table := output.TableAdapter[Result, Item]{
+    Table: itemTable(),
+    Rows: func(result Result) ([]Item, error) { return result.Items, nil },
+}
+opts.IO.RegisterCustomCodec("table", table.Codec("table"))
+opts.IO.RegisterCustomCodec("wide", table.Codec("wide"))
 ```
 
-`get.go` uses `k8s.io/cli-runtime/pkg/printers.NewTablePrinter` to produce kubectl-style output. `list.go` and `validate.go` use `text/tabwriter` directly.
+Register only the formats the command supports, before `BindFlags`, and pass the
+complete result to `opts.IO.Encode` for every format. Specialised reports retain
+custom `format.Codec` implementations. Resource commands also use Kubernetes
+table printers and `text/tabwriter` for their specialised output.
 
 ### Status Messages (`messages.go`)
 

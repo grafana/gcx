@@ -37,6 +37,7 @@ func countEntries(resp *loki.QueryResponse) int {
 func QueryCmd(loader *providers.ConfigLoader) *cobra.Command {
 	shared := &dsquery.SharedOpts{}
 	share := &dsquery.ExploreLinkOpts{}
+	drilldown := &dsquery.DrilldownLinkOpts{}
 	var limit int
 	var datasource string
 
@@ -57,7 +58,10 @@ bodies, -o csv for original lines and separate label columns, or -o json for the
 Default --limit is 50. --limit 0 omits the limit, so Loki's own default
 applies (100 lines in Loki's range-query API).
 Use --share-link to print the equivalent Grafana Explore URL, or --open to
-open it in your browser after the query succeeds.
+open it in your browser after the query succeeds. Use --drilldown-link or
+--open-drilldown for the equivalent Grafana Logs Drilldown URL (falls back to
+the Explore URL for expressions Drilldown's simple filter model can't
+represent, e.g. parser stages or aggregations).
 Use -o graph for a log-volume-over-time chart of the lines the query
 returned, counted per level. It does not cover lines beyond --limit or the
 backend's own line limits, so it can undercount a busy time range.`,
@@ -73,6 +77,9 @@ backend's own line limits, so it can undercount a busy time range.`,
 
   # Log volume over time, colored by level
   gcx datasources loki query -d UID '{job="varlogs"}' -o graph
+
+  # Print a Grafana Logs Drilldown link for the query
+  gcx datasources loki query '{job="varlogs"}' --drilldown-link
 
   # Raw line bodies only
   gcx datasources loki query -d UID '{job="varlogs"}' -o raw
@@ -154,6 +161,17 @@ backend's own line limits, so it can undercount a busy time range.`,
 			if resultErr != nil {
 				return resultErr
 			}
+
+			var drilldownURL string
+			if drilldown.Enabled() {
+				drilldownURL, _ = LogsDrilldownURL(cfg.GrafanaURL, datasourceUID, expr, start, end)
+			}
+			drilldownUnavailableMsg, drilldownFailedOpenMsg := dsquery.DrilldownMessages("query", "Logs Drilldown")
+			if err := dsquery.HandleDrilldownLinkWithExploreFallback(cmd, *drilldown, drilldownURL, drilldownUnavailableMsg, drilldownFailedOpenMsg,
+				*share, exploreURL, unavailableMsg, failedOpenMsg); err != nil {
+				return err
+			}
+
 			if shared.ErrorOnEmpty {
 				return dsquery.ErrorOnEmptyWithContext(resp, dsquery.EmptyResultContext{
 					Expr: expr, DatasourceUID: datasourceUID, Start: start, End: end,
@@ -179,6 +197,7 @@ backend's own line limits, so it can undercount a busy time range.`,
 	cmd.Flags().StringVarP(&datasource, "datasource", "d", "", "Datasource UID (required unless datasources.loki is configured)")
 	cmd.Flags().IntVar(&limit, "limit", dsquery.DefaultLokiLimit, "Maximum number of log lines to return (0 omits the limit, so Loki's default applies)")
 	share.Setup(cmd.Flags(), "executed query")
+	drilldown.Setup(cmd.Flags(), "executed query", "Logs Drilldown")
 
 	return cmd
 }
