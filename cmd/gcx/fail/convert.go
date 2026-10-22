@@ -212,14 +212,11 @@ func convertConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 			inherited = reqErr.Inherited
 			available = reqErr.Available
 		}
-		suggestions := []string{
-			"Pass --context <name>",
-			"Or set GCX_CONTEXT=<name> for this shell",
-			"Or turn off strict context mode: unset GCX_REQUIRE_CONTEXT",
-		}
+		command := ""
 		if reqErr != nil {
-			suggestions = commandContextSuggestions(reqErr.Command, suggestions)
+			command = reqErr.Command
 		}
+		suggestions := contextRequiredSuggestions(command)
 		if len(available) > 0 {
 			suggestions = append(suggestions, "Configured contexts: "+cappedNameList(available))
 		}
@@ -1862,20 +1859,27 @@ func convertSavedMutationErrors(err error) (*gcxerrors.DetailedError, bool) {
 	return &gcxerrors.DetailedError{Summary: gcxerrors.SummaryPartialFailure, Details: saved.Error(), ExitCode: new(gcxerrors.ExitPartialFailure), Suggestions: []string{"Inspect the saved resource, resolve the failed stage, then reapply the desired manifest."}}, true
 }
 
-// commandContextSuggestions adjusts the strict context mode suggestions for
-// login and signup, which ignore GCX_CONTEXT. signup has no --server, and
-// gcx login <name> is a different flow, so each names its own command.
-func commandContextSuggestions(command string, suggestions []string) []string {
-	var first string
+// contextRequiredSuggestions returns the strict context mode suggestions for a
+// command. login and signup ignore GCX_CONTEXT, and signup has no --server, so
+// each names its own command.
+func contextRequiredSuggestions(command string) []string {
+	const unset = "Or turn off strict context mode: unset GCX_REQUIRE_CONTEXT"
 	switch command {
 	case "login":
-		first = "Pass a context name: gcx login <name>, or use --context <name> or --server <url>"
+		return []string{
+			"Pass a context name: gcx login <name>, or use --context <name> or --server <url>",
+			unset,
+		}
 	case "signup":
-		first = "Pass a context name: gcx signup <name>, or gcx signup --context <name>"
+		return []string{
+			"Pass a context name: gcx signup <name>, or gcx signup --context <name>",
+			unset,
+		}
 	default:
-		return suggestions
+		return []string{
+			"Pass --context <name>",
+			"Or set GCX_CONTEXT=<name> for this shell",
+			unset,
+		}
 	}
-	out := make([]string, 0, len(suggestions)-1)
-	out = append(out, first)
-	return append(out, suggestions[2:]...)
 }
