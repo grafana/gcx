@@ -173,8 +173,10 @@ keep many contexts on one machine, or run `gcx` from coding agents, set
 `GCX_REQUIRE_CONTEXT`. Then a command cannot inherit the context that another
 session selected last. In strict context mode, a command that would use the
 current context must pass `--context <name>` or set `GCX_CONTEXT`. If it does
-not, it exits with code 2. `GRAFANA_SERVER` does not count. It overrides only
-the server URL of the current context.
+not, it exits with code 2. `gcx config check` without `--context` is an
+exception. It checks every configured context, the current context included,
+and names each one. `GRAFANA_SERVER` does not count. It overrides only the
+server URL of the current context.
 
 ```shell
 export GCX_REQUIRE_CONTEXT=true
