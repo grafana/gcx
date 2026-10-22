@@ -287,6 +287,10 @@ gcx logs series --match '{app="nginx"}'
 
 > `gcx` also supports Pyroscope (profiling) and Tempo (traces) data sources.
 
+### Session replay
+
+`frontend apps list-replay-sessions` lists sessions with replay events in the selected time window. JSON output includes `list_meta` when more sessions are available. `frontend sessions get-replay` saves every recording for a session in one file (JSON by default, or YAML with `-o yaml`).
+
 ### Check what's firing
 
 To check alerts:
