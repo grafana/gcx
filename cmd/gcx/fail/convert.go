@@ -216,7 +216,7 @@ func convertConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 		}
 		suggestions := contextRequiredSuggestions(command)
 		if len(available) > 0 {
-			suggestions = append(suggestions, "Configured contexts: "+cappedNameList(available))
+			suggestions = append(suggestions, "List the configured contexts ("+cappedNameList(available)+"): gcx config list-contexts")
 		}
 		return &gcxerrors.DetailedError{
 			Summary: gcxerrors.SummaryInvalidCommandUsage,
@@ -1875,8 +1875,8 @@ func contextRequiredSuggestions(command string) []string {
 		}
 	default:
 		return []string{
-			"Pass --context <name>",
-			"Or set GCX_CONTEXT=<name> for this shell",
+			"Name a context for this command: gcx --context <name> <command>",
+			"Or name it for this shell: export GCX_CONTEXT=<name>",
 			unset,
 		}
 	}

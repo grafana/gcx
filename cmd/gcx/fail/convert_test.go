@@ -2111,11 +2111,11 @@ func TestErrorToDetailedError_ContextRequired(t *testing.T) {
 		got.Details)
 	// The cause is in Details only. A Parent would print it a second time.
 	require.NoError(t, got.Parent)
-	assert.Contains(t, got.Suggestions, "Pass --context <name>")
-	assert.Contains(t, got.Suggestions, "Or set GCX_CONTEXT=<name> for this shell")
+	assert.Contains(t, got.Suggestions, "Name a context for this command: gcx --context <name> <command>")
+	assert.Contains(t, got.Suggestions, "Or name it for this shell: export GCX_CONTEXT=<name>")
 	assert.Contains(t, got.Suggestions, "Or turn off strict context mode: unset GCX_REQUIRE_CONTEXT")
 	assert.Contains(t, got.Suggestions,
-		"Configured contexts: a, b, c, d, e, +2 more")
+		"List the configured contexts (a, b, c, d, e, +2 more): gcx config list-contexts")
 }
 
 func TestErrorToDetailedError_ContextRequired_Login(t *testing.T) {
@@ -2132,7 +2132,7 @@ func TestErrorToDetailedError_ContextRequired_Login(t *testing.T) {
 	assert.Contains(t, got.Suggestions,
 		"Pass a context name: gcx login <name>, or use --context <name> or --server <url>")
 	assert.Contains(t, got.Suggestions, "Or turn off strict context mode: unset GCX_REQUIRE_CONTEXT")
-	assert.Contains(t, got.Suggestions, "Configured contexts: a, b")
+	assert.Contains(t, got.Suggestions, "List the configured contexts (a, b): gcx config list-contexts")
 }
 
 func TestErrorToDetailedError_ContextRequired_Signup(t *testing.T) {
@@ -2151,5 +2151,5 @@ func TestErrorToDetailedError_ContextRequired_Signup(t *testing.T) {
 	assert.Contains(t, got.Suggestions,
 		"Pass a context name: gcx signup <name>, or gcx signup --context <name>")
 	assert.Contains(t, got.Suggestions, "Or turn off strict context mode: unset GCX_REQUIRE_CONTEXT")
-	assert.Contains(t, got.Suggestions, "Configured contexts: a, b")
+	assert.Contains(t, got.Suggestions, "List the configured contexts (a, b): gcx config list-contexts")
 }
