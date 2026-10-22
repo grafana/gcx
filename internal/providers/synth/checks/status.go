@@ -84,8 +84,7 @@ type statusOpts struct {
 }
 
 func (o *statusOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &StatusTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &StatusTableCodec{Wide: true})
+	cmdio.RegisterTable(&o.IO, StatusTable())
 	o.IO.RegisterCustomCodec("graph", &StatusGraphCodec{})
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
@@ -221,10 +220,7 @@ Prometheus datasource, the values here come only from the app.`,
 			}
 
 			if len(filtered) == 0 {
-				// Prose formats keep the historical notice; structured
-				// formats (json/yaml/agents) must still emit exactly one
-				// document, so the empty result set goes through the codec.
-				if opts.IO.OutputFormat == "table" || opts.IO.OutputFormat == "wide" || opts.IO.OutputFormat == "graph" {
+				if opts.IO.OutputFormat == "graph" {
 					cmdio.Info(cmd.OutOrStdout(), "No checks found.")
 					return nil
 				}
@@ -969,56 +965,37 @@ func statusDisplayName(r CheckStatusResult) string {
 	return name
 }
 
-type StatusTableCodec struct {
-	Wide bool
-}
-
-func (c *StatusTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
+// StatusTable declares the narrow and wide columns for check status output.
+func StatusTable() cmdio.Table[CheckStatusResult] {
+	return cmdio.Table[CheckStatusResult]{
+		Columns: []cmdio.Column[CheckStatusResult]{
+			{Header: "NAME", Content: statusDisplayName},
+			{Header: "JOB", Content: func(r CheckStatusResult) string { return r.Job }},
+			{Header: "TARGET", Content: func(r CheckStatusResult) string { return r.Target }},
+			{Header: "TYPE", Visible: cmdio.WideOnly, Content: func(r CheckStatusResult) string { return r.Type }},
+			{Header: "SUCCESS", Content: func(r CheckStatusResult) string {
+				if r.Success == nil {
+					return "--"
+				}
+				return fmt.Sprintf("%.2f%%", *r.Success*100)
+			}},
+			{Header: "LATENCY", Content: func(r CheckStatusResult) string {
+				if r.LatencyMs == nil {
+					return "--"
+				}
+				return fmt.Sprintf("%.0fms", *r.LatencyMs)
+			}},
+			{Header: "PROBES_UP", Visible: cmdio.WideOnly, Content: func(r CheckStatusResult) string { return strconv.Itoa(r.ProbesUp) }},
+			{Header: "PROBES_TOTAL", Visible: cmdio.WideOnly, Content: func(r CheckStatusResult) string { return strconv.Itoa(r.ProbesTotal) }},
+			{Header: "PROBES", Visible: cmdio.WideOnly, Content: func(r CheckStatusResult) string { return strings.Join(r.ProbeNames, ", ") }},
+			{Header: "STATUS", Content: func(r CheckStatusResult) string { return r.Status }},
+		},
+		// Keep prose in the table codec so JSON, YAML and agents still encode [].
+		Empty: func(w io.Writer) error {
+			cmdio.Info(w, "No checks found.")
+			return nil
+		},
 	}
-	return "table"
-}
-
-func (c *StatusTableCodec) Encode(w io.Writer, v any) error {
-	results, ok := v.([]CheckStatusResult)
-	if !ok {
-		return errors.New("invalid data type for status table codec: expected []CheckStatusResult")
-	}
-
-	var t *style.TableBuilder
-	if c.Wide {
-		t = style.NewTable("NAME", "JOB", "TARGET", "TYPE", "SUCCESS", "LATENCY", "PROBES_UP", "PROBES_TOTAL", "PROBES", "STATUS")
-	} else {
-		t = style.NewTable("NAME", "JOB", "TARGET", "SUCCESS", "LATENCY", "STATUS")
-	}
-
-	for _, r := range results {
-		successStr := "--"
-		if r.Success != nil {
-			successStr = fmt.Sprintf("%.2f%%", *r.Success*100)
-		}
-
-		latencyStr := "--"
-		if r.LatencyMs != nil {
-			latencyStr = fmt.Sprintf("%.0fms", *r.LatencyMs)
-		}
-
-		name := statusDisplayName(r)
-		if c.Wide {
-			probesStr := strings.Join(r.ProbeNames, ", ")
-			t.Row(name, r.Job, r.Target, r.Type, successStr, latencyStr,
-				strconv.Itoa(r.ProbesUp), strconv.Itoa(r.ProbesTotal), probesStr, r.Status)
-		} else {
-			t.Row(name, r.Job, r.Target, successStr, latencyStr, r.Status)
-		}
-	}
-
-	return t.Render(w)
-}
-
-func (c *StatusTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("status table codec does not support decoding")
 }
 
 // ---------------------------------------------------------------------------

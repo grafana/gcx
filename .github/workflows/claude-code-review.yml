@@ -197,12 +197,18 @@ jobs:
           # The action fails the step itself when the session returns no
           # structured output at all, so what reaches here is schema-valid.
           # `null` is the session saying its correctness pass did not complete.
+          # GitHub requires ranges on the same diff side to run forwards.
           review=$(jq -ce '
             .review
             | select(type == "object")
             | select((.body | type) == "string")
             | select(.body | test("\\S"))
             | select((.comments | type) == "array")
+            | .comments |= map(
+                if .start_side == .side and .start_line > .line then
+                  . + {start_line: .line, line: .start_line}
+                else . end
+              )
           ' <<< "${REVIEW_OUTPUT:-}") ||
             fail "the review did not complete: no review payload. Check the claude-review-transcript-${PR_NUMBER} artifact."
 

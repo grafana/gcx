@@ -275,8 +275,7 @@ type pipelineListOpts struct {
 }
 
 func (o *pipelineListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &PipelineTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &PipelineTableCodec{Wide: true})
+	cmdio.RegisterTable(&o.IO, PipelineTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 
@@ -940,59 +939,19 @@ func (o *tenantLimitsOpts) setup(flags *pflag.FlagSet) {
 // Table codecs
 // ---------------------------------------------------------------------------
 
-// PipelineTableCodec renders pipelines as a tabular table.
-type PipelineTableCodec struct {
-	Wide bool
-}
-
-// Format returns the codec's format identifier.
-func (c *PipelineTableCodec) Format() format.Format {
-	if c.Wide {
-		return "wide"
-	}
-	return "table"
-}
-
-// Encode writes the pipeline list as a table.
-func (c *PipelineTableCodec) Encode(w io.Writer, v any) error {
-	pipelines, ok := v.([]Pipeline)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []Pipeline")
-	}
-
-	var t *style.TableBuilder
-	if c.Wide {
-		t = style.NewTable("ID", "NAME", "ENABLED", "CONFIG TYPE", "MATCHERS")
-	} else {
-		t = style.NewTable("ID", "NAME", "ENABLED")
-	}
-
-	for _, p := range pipelines {
-		enabled := "-"
-		if p.Enabled != nil {
-			enabled = strconv.FormatBool(*p.Enabled)
-		}
-		if c.Wide {
-			matchers := strings.Join(p.Matchers, ", ")
-			if matchers == "" {
-				matchers = "-"
+func PipelineTable() cmdio.Table[Pipeline] {
+	return cmdio.Table[Pipeline]{Columns: []cmdio.Column[Pipeline]{
+		{Header: "ID", Content: func(p Pipeline) string { return p.ID }},
+		{Header: "NAME", Content: func(p Pipeline) string { return p.Name }},
+		{Header: "ENABLED", Content: func(p Pipeline) string {
+			if p.Enabled == nil {
+				return "-"
 			}
-			configType := p.ConfigType
-			if configType == "" {
-				configType = "-"
-			}
-			t.Row(p.ID, p.Name, enabled, configType, matchers)
-		} else {
-			t.Row(p.ID, p.Name, enabled)
-		}
-	}
-
-	return t.Render(w)
-}
-
-// Decode is not supported for table format.
-func (c *PipelineTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
+			return strconv.FormatBool(*p.Enabled)
+		}},
+		{Header: "CONFIG TYPE", Visible: cmdio.WideOnly, Content: func(p Pipeline) string { return cmdio.OrDash(p.ConfigType) }},
+		{Header: "MATCHERS", Visible: cmdio.WideOnly, Content: func(p Pipeline) string { return cmdio.OrDash(strings.Join(p.Matchers, ", ")) }},
+	}}
 }
 
 // CollectorTableCodec renders collectors as a tabular table.

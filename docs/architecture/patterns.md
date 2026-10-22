@@ -1,6 +1,8 @@
-# Pattern Analysis and Contradiction Resolutions
+# Architectural Patterns
 
-## Architectural Patterns Identified
+These contracts explain recurring implementation choices. Use the linked domain guides and source implementations for current package and command details.
+
+## Patterns
 
 ### 1. Kubernetes Resource Model Adoption
 
@@ -15,12 +17,6 @@ architecture, not by preference.
 - Pagination, dry-run, and error semantics all follow Kubernetes conventions
 - The Descriptor/Filter/Selector abstraction mirrors how kubectl resolves GVK
 
-**Evidence across domains:**
-- Resource Model domain: `Resource` wraps `unstructured.Unstructured` + `GrafanaMetaAccessor`
-- Client/API domain: `NamespacedClient` wraps `k8s.io/client-go/dynamic.Interface`
-- Config domain: `NamespacedRESTConfig` bridges gcx config to `rest.Config`
-- Data Flows domain: push/pull use k8s `metav1.CreateOptions`, `ListOptions`, etc.
-
 ---
 
 ### 2. Options Pattern for CLI Commands
@@ -33,12 +29,6 @@ Every `resources` subcommand follows a strict four-part structure:
 
 Shared cross-cutting concerns (`OnErrorMode`, `io.Options`, `configOpts`) are
 composed into the opts struct via embedding or pointer injection, not inherited.
-
-**Evidence across domains:**
-- CLI Layer domain: push, pull, get, delete, edit, validate, list, serve all follow this
-- Config domain: `config.Options` is created once per command group and passed by pointer
-- Data Flows domain: `MaxConcurrent`, `DryRun`, `OnError` are all opts fields that
-  flow into `PushRequest`/`PullRequest` structs
 
 ---
 
@@ -97,11 +87,6 @@ Two distinct client paths serve different purposes:
 Within the dynamic client path, there are two specializations:
 - `NamespacedClient` -- used for push operations (Create/Update/Delete)
 - `VersionedClient` -- used for pull operations (List/Get, handles version re-fetch)
-
-**Evidence across domains:**
-- Client/API domain: documented both paths and their distinct transports
-- Config domain: `NewNamespacedRESTConfig` builds the k8s REST config; `ClientFromContext` builds the OpenAPI client
-- Data Flows domain: Pusher uses `NamespacedClient`; Puller uses `VersionedClient`
 
 ---
 
@@ -241,16 +226,7 @@ applies a secure-by-default model:
 Contexts reach provider settings through their `stack:` reference. Reflection-
 based editor picks them up via the `yaml:"providers"` tag.
 
-**Evidence:**
-- `internal/providers/provider.go`: `Provider` interface and `ConfigKey` type
-- `internal/providers/registry.go`: `All()` function
-- `internal/providers/resource.go`: `BoundResource.Load` and `LoadGrafanaDeps` share Grafana transport construction; commands bind the same resource declaration as registration.
-- `internal/providers/redact.go`: `RedactSecrets` implementation
-- `internal/providers/configloader.go`: Shared `ConfigLoader` struct — all providers use this instead of duplicating config loading logic. Provides `LoadGrafanaConfig`, `LoadCloudConfig`, `LoadProviderConfig` (provider-specific `map[string]string`), `SaveProviderConfig` (write-back), and `LoadFullConfig` (full `*config.Config`)
-- `internal/providers/alert/provider.go`: Second provider implementation (alert rules and groups)
-- `cmd/gcx/providers/command.go`: `providers list` command
-- `internal/config/types.go`: `Providers` field on `StackConfig`
-- `internal/resources/adapter/register.go`: Global adapter registration pattern (self-registration via `Register()` and `AllRegistrations()`)
+Provider resource declarations share lazy Grafana transport construction between registration and command binding. The shared `ConfigLoader` owns Grafana, Cloud, provider, and full-config loading plus provider-config write-back; commands reuse it instead of copying loading logic.
 
 ---
 
@@ -303,16 +279,9 @@ layer, so it shows every header that an outer layer adds.
 **Output rendering:** Query results can be rendered as tables, JSON/YAML, or
 terminal charts (`internal/graph`). The `query` command registers custom codecs
 (`queryTableCodec`, `queryGraphCodec`) into the `io.Options` codec registry.
+CSV output support is registered separately per command through `output.RegisterCSV`.
 
-**Evidence:**
-- `internal/query/grafanaquery/client.go`: shared POST transport for clients using Grafana's unified datasource query API, including `/api/ds/query` fallback and response-size limiting
-- `internal/query/dataframe/types.go`: shared Grafana data frame wire envelope for unified query responses
-- `internal/query/prometheus/client.go`: `NewClient` calls `rest.HTTPClientFor`
-- `internal/query/loki/client.go`: same pattern
-- `internal/datasources/query/codecs.go`: `queryTableCodec`, `queryGraphCodec` registration — shared by all per-kind query subcommands
-- `internal/datasources/{prometheus,loki,pyroscope,clickhouse,postgres,...}/query.go`: per-kind constructors wired under `datasources {kind} query`
-- `cmd/gcx/datasources/query_routes.go`: the auto-detecting `datasources query` picks a client from a routing table keyed by normalized kind — a kind is either expression-dispatchable or redirect-only, never both
-- `internal/graph/chart.go`: `RenderChart` auto-selects line vs bar chart
+Clients using the unified datasource-query API share `internal/query/grafanaquery` for POST, fallback, and response limits, and `internal/query/dataframe` for wire types. Auto-detecting query routes are disjoint: a kind is expression-dispatchable or redirects to a typed command. See [query flow](data-flows.md#5-query-pipeline).
 
 ---
 
@@ -335,11 +304,6 @@ only the wide table codec was expected to display.
 - The result struct contains all fields (SLI, Budget, BurnRate, SLI1h, SLI1d…)
 - Table codecs choose which subset of fields to render
 - JSON/YAML codecs serialize the full struct via standard `encoding/json` tags
-
-**Evidence:**
-- `internal/providers/slo/definitions/status.go`: `fetchMetrics` fetches all metrics unconditionally
-- `cmd/gcx/datasources/query.go`: query response passed to all codecs unchanged
-- `internal/output/format.go`: built-in JSON/YAML codecs fall through when no custom codec is registered
 
 **See also:** [output.md](../design/output.md) — codec requirements by command type and mutation command output spec.
 
@@ -371,10 +335,6 @@ regex matcher via `.LabelMatchRegexp()`. Group results back to individual
 resources using `sum by (uuid_label)(...)`.
 
 Cross-reference: Pattern 12 (Direct HTTP Client for Datasource APIs).
-
-**Evidence:**
-- `internal/providers/slo/definitions/status.go`: `buildBurnRateQuery`, `buildMetricQuery`
-- Dependency: `github.com/grafana/promql-builder/go` in `go.mod`
 
 ---
 
@@ -415,19 +375,6 @@ The `--no-truncate` persistent flag provides explicit control for non-TTY use ca
 (e.g., wide terminal output without truncation). Agent mode sets all pipe-aware
 behaviors regardless of actual TTY state.
 
-**Key files:**
-- `internal/agent/agent.go` — `IsAgentMode()`, `SetFlag()`, `DetectedFromEnv()`, `Name()`
-- `internal/terminal/terminal.go` — `Detect()`, `IsPiped()`, `NoTruncate()`, setters
-- `cmd/gcx/root/command.go` — orchestrates detection order in `PersistentPreRun`
-- `internal/output/format.go` — `io.Options` fields `IsPiped`, `NoTruncate`, `JSONFields`
-- `internal/gcxerrors/json.go` — `DetailedError.WriteJSON` for in-band error reporting
-
-**Evidence:**
-- `internal/agent/` package with `init()`-time env-var detection
-- `internal/terminal/` package with TTY detection and package-level state
-- Root command `PersistentPreRun` coordinates detection in a defined order
-- `io.Options.BindFlags` reads `terminal.IsPiped()` / `terminal.NoTruncate()` at flag-bind time
-
 **PersistentPreRun chaining convention:** In Cobra, a child command's `PersistentPreRun` replaces (not chains) the nearest ancestor's hook. Any command that defines its own `PersistentPreRun` must explicitly call the root hook first to preserve logger setup, TTY detection, and agent mode:
 
 ```go
@@ -461,13 +408,6 @@ falling back to the k8s dynamic client for non-provider resource types.
 - `adapter.Register()` / `adapter.AllRegistrations()`: global adapter registry, populated by `providers.Register()` from each provider's `TypedRegistrations()` — provider code never calls `adapter.Register()` directly
 - `ResourceClientRouter`: routes CRUD operations by GVK; lazily initializes adapter instances; falls back to dynamic client for unregistered GVKs
 - `RegistryIndex.RegisterStatic()`: injects provider descriptors into the discovery lookup indexes so provider types appear in `resources list-types` and resolve from `resources get slos`
-
-**Evidence:**
-- `internal/resources/adapter/adapter.go`: `ResourceAdapter` interface definition
-- `internal/resources/adapter/register.go`: `Register()`, `AllRegistrations()`, and global registration machinery
-- `internal/resources/adapter/router.go`: `ResourceClientRouter` implementation
-- `internal/providers/slo/definitions/resource_adapter.go`: SLO provider implementation
-- `internal/providers/synth/checks/resource_adapter.go`: Synthetic Monitoring implementation
 
 **Slug-ID naming convention (Fleet, Synth checks):** Providers whose APIs use
 numeric IDs but whose users want human-readable names use a composite
@@ -516,25 +456,11 @@ the issue for architectural discussion.
 
 ### Sanctioned Exception — Provider-Owned Resource Hooks
 
-[ADR-026](../adrs/provider-owned-resource-hooks/026-provider-owned-resource-hooks.md)
-authorizes optional provider-neutral adapter hooks for pull preflight and partial
-multi-get/read reporting, complete batch push preflight, per-item envelope
-mutation dispatch, and identity-only delete selection. These preserve annotations
-and every selected identity before generic probes or name-keyed insertion.
-Domain identity and reconciliation remain in the owning adapter; generic pipelines
-use shared types and never branch on product names. Kinds without hooks retain
-the existing TypedCRUD pipeline. This exception permits only the recorded hook
-seams, not new serialization bridges or a generic reconciliation framework.
+[RFC 027](../rfcs/027-provider-owned-resource-hooks.md) authorizes optional provider-neutral adapter hooks for pull preflight and partial multi-get/read reporting, complete batch push preflight, per-item envelope mutation dispatch, and identity-only delete selection. These preserve annotations and every selected identity before generic probes or name-keyed insertion. Domain identity and reconciliation remain in the owning adapter; generic pipelines use shared types and never branch on product names. Kinds without hooks retain the existing TypedCRUD pipeline. This exception permits only the recorded hook seams, not new serialization bridges or a generic reconciliation framework.
 
 ### Sanctioned Exception — Single-Seam Capability Assertion (`adapter.Resource[T]`)
 
-The declarative `adapter.Resource[T]` + `adapter.NewProvider` registration
-model (see [ADR-025](../adrs/declarative-provider-registration/001-declarative-resource-front-door.md)) needs
-to determine, at registration time, which CRUD verbs a provider's `NewClient`
-result actually supports. Detecting capability-interface satisfaction
-intrinsically requires a type assertion on the `any` value `NewClient`
-returns — there is no generics-only way to do this within the TypedCRUD
-model. The ADR records this narrow exception.
+The declarative `adapter.Resource[T]` + `adapter.NewProvider` registration model (see [RFC 026](../rfcs/026-declarative-resource-front-door.md)) needs to determine, at registration time, which CRUD verbs a provider's `NewClient` result actually supports. Detecting capability-interface satisfaction intrinsically requires a type assertion on the `any` value `NewClient` returns — there is no generics-only way to do this within the TypedCRUD model. The RFC records this narrow exception.
 
 This is a **documented, audited exception** to the "no `any` type erasure"
 rule above, narrowly scoped:
@@ -554,11 +480,7 @@ rule above, narrowly scoped:
   dry-run mutations skip the server call and return `ErrDryRunUnverified`,
   so the resource is reported as skipped rather than falsely valid.
 
-This qualifies Pattern 18's "No `any` type erasure — all 16 types use
-concrete generics" claim below: that claim describes the **hand-written,
-per-provider registration path** (OnCall's `adapter.BuildRegistration`). The
-separate declarative `Resource[T]` path uses exactly one sanctioned
-`any`-assertion seam, documented here.
+The no-type-erasure rule in Pattern 18 applies to hand-written registrations built with `adapter.BuildRegistration`. The separate declarative `Resource[T]` path uses exactly one sanctioned `any`-assertion seam, documented here.
 
 ### Provider ConfigLoader
 
@@ -567,15 +489,15 @@ binding and config resolution (YAML + env var precedence). The `--context`
 flag is owned by the root command and threaded to providers via
 `context.Context` (see "Context threading" below).
 
-| Method | Purpose | Used by |
-|--------|---------|---------|
-| `LoadGrafanaConfig(ctx)` | REST config for Grafana API calls | alert, fleet, incidents, kg, oncall, slo, synth |
-| `LoadCloudConfig(ctx)` | Cloud token + GCOM stack info | fleet |
-| `LoadProviderConfig(ctx, name)` | Provider-specific `map[string]string` + namespace | synth helper paths |
-| `LoadDirectProviderSnapshot(ctx, policy)` | One trust-checked snapshot of direct endpoint, Grafana auth, and Cloud auth | synth, faro, k6, adaptive signal auth |
-| `SaveProviderConfig(ctx, name, key, val)` | Write-back a single provider config key | assistant capability cache, faro, k6, synth |
-| `SaveDatasourceUID(ctx, kind, uid)` | Write back a selected datasource UID | shared datasource query resolver |
-| `LoadFullConfig(ctx)` | Full `*config.Config` (for cross-cutting lookups) | synth (datasource discovery) |
+| Method | Purpose |
+|--------|---------|
+| `LoadGrafanaConfig(ctx)` | REST config for Grafana API calls |
+| `LoadCloudConfig(ctx)` | Cloud token + GCOM stack info |
+| `LoadProviderConfig(ctx, name)` | Provider-specific `map[string]string` + namespace |
+| `LoadDirectProviderSnapshot(ctx, policy)` | One trust-checked snapshot of direct endpoint, Grafana auth, and Cloud auth |
+| `SaveProviderConfig(ctx, name, key, val)` | Write-back a single provider config key |
+| `SaveDatasourceUID(ctx, kind, uid)` | Write back a selected datasource UID |
+| `LoadFullConfig(ctx)` | Full `*config.Config` (for cross-cutting lookups) |
 
 Read paths apply the explicitly selected context before environment overrides.
 Write-back paths are deliberately different: `SaveProviderConfig` and
@@ -662,21 +584,11 @@ return opts.IO.Encode(cmd.OutOrStdout(), objs)
 | Read-only reference data | `kg meta scopes` | Discoverable metadata, not user-managed resources |
 | Singleton config | `env get` | Single config objects, not collections of resources |
 
-**Evidence:**
-- `internal/providers/slo/definitions/commands.go`: `newListCommand` — SLO list wraps via the declared resource's `TypedCRUD.ToUnstructured`
-- `internal/providers/fleet/provider.go`: `newPipelineListCommand`, `newCollectorListCommand`
-- `internal/providers/kg/commands.go`: `newRulesCommand` — rules list/get wrap via `RuleToResource`
-
 ---
 
 ### 18. Table-Driven TypedCRUD Registration for Providers
 
-Providers with many resource types (e.g., OnCall with 16 types) use the
-`adapter` package's generic `BuildRegistration[T, C]` builder with functional
-options to register each type in a single, self-contained call. This lives in
-`internal/resources/adapter` (not per-provider) and replaces the earlier
-switch-dispatch pattern where a single adapter struct dispatched all types
-through runtime kind-string matching.
+Providers with many resource types use the `adapter` package's generic `BuildRegistration[T, C]` builder with functional options to register each type in a single, self-contained call. This lives in `internal/resources/adapter` (not per-provider) and replaces the earlier switch-dispatch pattern where a single adapter struct dispatched all types through runtime kind-string matching.
 
 **Pattern structure:**
 
@@ -719,19 +631,10 @@ API group/version and client initialization pattern. The generic helper
 eliminates per-type boilerplate while keeping each registration self-documenting.
 
 **Key properties:**
-- No `any` type erasure in this hand-written registration pattern — all 16
-  types use concrete generics over both the resource type T and the client
-  type C. (The separate declarative `adapter.Resource[T]` registration path
-  uses exactly one sanctioned `any`-assertion seam; see "Sanctioned Exception
-  — Single-Seam Capability Assertion" above.)
+- No `any` type erasure in this hand-written registration pattern: registrations use concrete generics over both the resource type T and the client type C. The separate declarative `adapter.Resource[T]` registration path uses exactly one sanctioned `any`-assertion seam, as described above.
 - No switch/case dispatch — CRUD behavior determined at registration time
-- Functional options express the CRUD matrix declaratively (only 9/16 types support create, etc.)
+- Functional options express the supported CRUD operations declaratively
 - Special-case type conversions (e.g., Shift→ShiftRequest) are closures in the option, not if/else branches
-
-**Evidence:**
-- `internal/resources/adapter/builder.go`: `RegistrationMeta`, `NewRegistrationMeta`, `CRUDOption[T, C]`, `WithCreate`/`WithUpdate`/`WithDelete`, `BuildRegistration[T, C]`
-- `internal/providers/irm/oncall_adapter.go`: `oncallMeta` helper + 16 `adapter.BuildRegistration` calls
-- ADR: `docs/adrs/oncall-typed-crud/001-table-driven-typedcrud.md`
 
 ### 19. Singleton Adapter Pattern (Adopt)
 
@@ -746,11 +649,6 @@ verbs, these can be registered as TypedCRUD adapters with a hardcoded name
 a separate verb vocabulary. Bulk `resources pull` silently skips singletons
 (nil ListFn → `ErrUnsupported`), which is correct behavior.
 
-**Key files:**
-- `internal/providers/appo11y/overrides/resource_adapter.go`: TypedCRUD with only GetFn + UpdateFn
-- `internal/providers/appo11y/settings/resource_adapter.go`: Same pattern without ETag
-- ADR: `docs/adrs/appo11y-provider/001-cli-ux-and-resource-adapter-design.md`
-
 ### 20. ETag-as-Annotation Pattern (Adopt)
 
 **Observation:** When an API uses HTTP ETags for optimistic concurrency, the
@@ -762,11 +660,6 @@ get→edit→push round-trips, including file-based workflows.
 survives JSON/YAML serialization, is visible in `get -o yaml` output, and
 is automatically included when the user pushes a previously-pulled file.
 Unexported fields on domain types would be lost during marshal/unmarshal.
-
-**Key files:**
-- `internal/providers/appo11y/overrides/resource_adapter.go`: MetadataFn injects annotation, UpdateFn extracts it
-- `internal/providers/appo11y/overrides/adapter.go`: ToResource preserves annotation
-- ADR: `docs/adrs/appo11y-provider/001-cli-ux-and-resource-adapter-design.md`
 
 ### 21. API Path Constants (Adopt)
 
@@ -808,14 +701,6 @@ c.doRequest(ctx, http.MethodGet, basePath+"/"+url.PathEscape(id), nil)
 c.doRequest(ctx, http.MethodPost, fmt.Sprintf("%s/%s/apply", recsPath, id), nil)
 ```
 
-**Evidence:**
-- `internal/providers/traces/adaptive/client.go`: `policyByIDPathFmt`, `recommendationApplyFmt`, `recommendationDismissFmt`
-- `internal/providers/logs/adaptive/client.go`: `exemptionByIDFmt`, `dropRuleByIDFmt`
-- `internal/providers/metrics/adaptive/client.go`: `ruleByMetricFmt`, `exemptionByIDFmt`
-- `internal/providers/slo/definitions/client.go`: `sloByUUIDFmt`
-- `internal/providers/kg/client.go`: `ruleByNameFmt`, `suppressionByNameFmt`
-- `internal/providers/agento11y/*/client.go`: `conversationByIDFmt`, `generationByIDFmt`, `ruleByIDFmt`, `templateByIDFmt`, `evaluatorByIDFmt`
-
 ### 22. Native Resource Binding (Adopt)
 
 **Observation:** Some provider commands manage a Kubernetes-compatible resource
@@ -851,12 +736,7 @@ list, err := access.Client.List(ctx, access.Descriptor, metav1.ListOptions{})
   reader (`cmd.InOrStdin()`), never `os.Stdin`.
 - Tests inject `native.Fixed(access)` or `native.Func(f)` instead of a server.
 
-**Key files:**
-- `internal/providers/native/native.go`: `Bind`, `Binding.Load`, `Fixed`, `Func`, `WithRegistry`, `ParseAPIVersion`
-- `internal/providers/native/manifest.go`: `ReadManifest`
-- `internal/providers/alert/routing_trees_commands.go`: first adopter
-- `internal/providers/alert/time_intervals_commands.go` and `template_groups_commands.go`: exact title lookup, caller-version updates, and server-derived creates
-- Constitution: "Native resources go through the shared native binding". Dashboards still hand-rolls access until its migration lands.
+The native-binding rule is a [constitutional invariant](../../CONSTITUTION.md). Dashboards still has a known migration gap until its native access moves to the shared binding; this does not create an additional exception.
 
 ---
 
@@ -871,65 +751,10 @@ Dedicated update uses an explicit current-title subject, while push matches the
 desired identity. See [resource model](resource-model.md#server-derived-native-names)
 and [push flow](data-flows.md#2-push-pipeline).
 
-## Contradiction Resolutions
+## Cross-Layer Responsibilities
 
-### 1. DiscoverStackID Called Twice
+Concurrency limits belong to the pipeline that schedules work; HTTP rate limiting is separate. See [data flows](data-flows.md#11-concurrency-model-summary) and [client concurrency](client-api-layer.md#rate-limiting-and-concurrency) before changing either layer.
 
-**Observed in:** Config System domain and Client/API Layer domain.
+Push checks ownership because its inputs come from local files. Delete expects callers to filter fetched resources before invoking the deleter. See [mutation flows](data-flows.md) for the matching and safety rules.
 
-The config loading chain calls `DiscoverStackID` during validation (in
-`GrafanaConfig.validateNamespace`) and again in `NewNamespacedRESTConfig`. Both
-domains note this duplication. The Config System domain explicitly identifies it
-as "a known inefficiency (no caching between the two calls)."
-
-**Resolution:** This is a confirmed minor inefficiency, not a contradiction. Both
-calls are real. The second call is necessary because `NewNamespacedRESTConfig`
-operates on the already-validated config and needs the resolved namespace.
-Caching would require threading state between the validation and REST config
-construction steps.
-
-### 2. GetMultiple Concurrency Limit
-
-**Observed in:** Client/API domain says `GetMultiple` has "no SetLimit call,"
-while Data Flows domain says push operations use `errgroup.SetLimit(maxConcurrent)`.
-
-**Resolution:** Both are correct at different layers. `GetMultiple` in
-`NamespacedClient` runs fully concurrent Gets (bounded only by QPS/Burst at the
-HTTP transport level). Push concurrency is bounded by `ForEachConcurrently` in
-the Pusher, which wraps the per-resource push logic (including the Get-then-
-Create/Update upsert). The concurrency limit applies to the outer loop, not to
-the inner `GetMultiple`.
-
-### 3. Manager Metadata Check in Delete vs Push
-
-**Observed in:** Data Flows domain notes that Deleter does NOT check
-`IsManaged()`, while Push always checks it.
-
-**Resolution:** Intentional design difference, not a contradiction. The Deleter
-trusts the caller (the `delete` command) to have already filtered the resource
-list via `ExcludeManaged` in `fetchRequest`. The Pusher checks `IsManaged()`
-per-resource because the resource list comes from local files, not from a
-pre-filtered fetch.
-
-### 4. httputils Usage Scope
-
-**Observed in:** Client/API domain previously stated that `internal/httputils`
-was used only by the local development server, not by the dynamic client path.
-
-**Resolution:** This is no longer accurate after the HTTP logging refactor.
-`httputils` is the central HTTP client factory for direct non-K8s paths, while
-Grafana-authenticated paths reuse the selected `rest.Config` transport. Provider
-clients and the assistant client use those two routes; the dev server now uses
-`rest.TransportFor` so it shares authoritative token/Basic/mTLS selection and
-TLS handling. The K8s dynamic client path chains
-`httputils.LoggingRoundTripper` via `rest.Config.WrapTransport` in
-`NewNamespacedRESTConfig`. The OpenAPI health client manages its own transport
-but consumes the same effective auth method and selected TLS view.
-
-### 5. Released CLI Reference
-
-The CLI reference is a release snapshot, while `main` may contain
-unreleased commands. CI therefore tests the generator and builds the committed
-Grafana website pages without asserting reference equality against `main`.
-`mise run tag` refreshes the reference from the release checkout with the upcoming
-version and includes it in the changelog PR.
+Released CLI documentation describes a versioned snapshot, so ordinary builds must not compare it for equality with unreleased commands. See [documentation generation](project-structure.md#documentation-generation).

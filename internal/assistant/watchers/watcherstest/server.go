@@ -16,21 +16,23 @@ import (
 // Server serves paged Watcher reads and records supplementary read requests.
 // Configure its exported fields before starting an HTTP test server.
 type Server struct {
-	Current               [][]watchers.Watcher
-	Archived              [][]watchers.Watcher
-	CurrentStatus         int
-	ArchivedStatus        int
-	DetailStatus          map[string]int
-	EnrollmentStatus      map[string]int
-	Enrollment            map[string]bool
-	EnrollmentDetails     map[string]watchers.Enrollment
-	RawDetails            map[string]json.RawMessage
-	AllowWrites           bool
-	CreateStatus          int
-	UpdateStatus          map[string]int
-	DeleteStatus          map[string]int
-	EnrollmentWriteStatus map[string]int
-	ErrorBody             string
+	Current                  [][]watchers.Watcher
+	Archived                 [][]watchers.Watcher
+	CurrentStatus            int
+	ArchivedStatus           int
+	DetailStatus             map[string]int
+	EnrollmentStatus         map[string]int
+	Enrollment               map[string]bool
+	EnrollmentDetails        map[string]watchers.Enrollment
+	RawDetails               map[string]json.RawMessage
+	AllowWrites              bool
+	CreateStatus             int
+	UpdateStatus             map[string]int
+	DeleteStatus             map[string]int
+	EnrollmentWriteStatus    map[string]int
+	CalibrationRequestStatus int
+	CalibrationResponse      json.RawMessage
+	ErrorBody                string
 
 	mu              sync.Mutex
 	enrollmentReads map[string]int
@@ -186,6 +188,17 @@ func (s *Server) mutate(w http.ResponseWriter, r *http.Request) {
 	}
 	const prefix = "/api/plugins/grafana-assistant-app/resources/api/v1/watcher-agents"
 	path := strings.TrimPrefix(r.URL.Path, prefix+"/")
+	if strings.HasSuffix(path, "/initial-calibration") && r.Method == http.MethodPost {
+		if s.fail(w, s.CalibrationRequestStatus) {
+			return
+		}
+		if s.CalibrationResponse != nil {
+			_, _ = w.Write(s.CalibrationResponse)
+		} else {
+			write(w, map[string]any{"status": "queued", "startWhenReady": false})
+		}
+		return
+	}
 	if id, ok := strings.CutSuffix(path, "/auto-calibration"); ok && r.Method == http.MethodPut {
 		if s.fail(w, s.EnrollmentWriteStatus[id]) {
 			return

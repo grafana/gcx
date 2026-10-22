@@ -1,13 +1,9 @@
 ---
 name: diagnose-entity-graph
-description: >
-  Diagnose Entity Graph problems: missing entities, missing edges, disconnected
-  clusters, or filtering issues. Use when the user reports that Entity Graph
-  doesn't look right, services are missing, edges aren't appearing, or
-  environments can't be filtered. Triggers for: "entity graph is empty",
-  "services missing from entity graph", "no edges in entity graph",
-  "disconnected services", "can't filter entity graph", "entity graph not
-  working", "diagnose entity graph", "debug knowledge graph".
+description: >-
+  Diagnoses Entity Graph (knowledge graph) problems: missing entities or
+  services, missing edges, disconnected clusters, environment filters that do
+  not work. Use when the Entity Graph is empty or looks wrong.
 ---
 
 # Diagnose Entity Graph

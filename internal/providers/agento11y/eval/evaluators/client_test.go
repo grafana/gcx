@@ -3,6 +3,7 @@ package evaluators_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -11,6 +12,7 @@ import (
 	"github.com/grafana/gcx/internal/providers/agento11y/agento11yhttp"
 	"github.com/grafana/gcx/internal/providers/agento11y/eval"
 	"github.com/grafana/gcx/internal/providers/agento11y/eval/evaluators"
+	"github.com/grafana/gcx/internal/resources/adapter"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/client-go/rest"
@@ -78,14 +80,21 @@ func TestClient_Get(t *testing.T) {
 	assert.Equal(t, "1.0", e.Version)
 }
 
-func TestClient_Get_NotFound(t *testing.T) {
-	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		http.Error(w, "not found", http.StatusNotFound)
-	}))
-
-	_, err := client.Get(context.Background(), "nonexistent")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "404")
+func TestClient_Get_Error(t *testing.T) {
+	for _, status := range []int{http.StatusNotFound, http.StatusForbidden, http.StatusInternalServerError} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				http.Error(w, http.StatusText(status), status)
+			}))
+			item, err := client.Get(t.Context(), "nonexistent")
+			require.Error(t, err)
+			assert.Nil(t, item)
+			assert.Equal(t, status == http.StatusNotFound, errors.Is(err, adapter.ErrNotFound))
+			if status == http.StatusNotFound {
+				assert.Contains(t, err.Error(), "nonexistent")
+			}
+		})
+	}
 }
 
 func TestClient_Create(t *testing.T) {

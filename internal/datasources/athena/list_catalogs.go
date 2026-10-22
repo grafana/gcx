@@ -20,6 +20,7 @@ type listCatalogsOpts struct {
 }
 
 func (opts *listCatalogsOpts) setup(flags *pflag.FlagSet) {
+	cmdio.RegisterCSV(&opts.IO)
 	dsquery.RegisterCodecs(&opts.IO, false)
 	opts.IO.BindFlags(flags)
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.athena is configured)")

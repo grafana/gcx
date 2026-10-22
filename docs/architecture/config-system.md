@@ -16,65 +16,21 @@ All code lives under `internal/config/` and `cmd/gcx/config/command.go`.
 
 ## Data Model
 
-```
-Config
-├── Source          (runtime-only: path of loaded file)
-├── Version         1                 // legacy (pre-versioned) configs are auto-migrated on load
-├── Credentials      *CredentialsConfig // credential-store policy (`keychain`: on or off; absent is on)
-├── CurrentContext  "production"
-├── Resources       *ResourcesConfig  // global `gcx resources` settings; union-merged with per-stack
-├── Stacks          map[string]*StackConfig
-│   ├── "production"
-│   │   ├── Slug     "mystack"        // optional grafana.com stack slug (derived from Server if unset)
-│   │   ├── Grafana  *GrafanaConfig
-│   │   │   ├── Server    "https://grafana.example.com"
-│   │   │   ├── User      ""
-│   │   │   ├── Password  ""            // datapolicy:"secret"
-│   │   │   ├── APIToken  "glsa_..."    // datapolicy:"secret"
-│   │   │   ├── AuthMethod "token"       // authoritative: oauth, token, basic, or mtls
-│   │   │   ├── OrgID     0             // on-prem: org namespace
-│   │   │   ├── StackID   12345         // cloud: stack namespace
-│   │   │   └── TLS       *TLS
-│   │   │       ├── Insecure    false
-│   │   │       ├── ServerName  ""
-│   │   │       ├── CertData    []byte   // datapolicy:"secret" on KeyData
-│   │   │       ├── KeyData     []byte
-│   │   │       ├── CAData      []byte
-│   │   │       └── NextProtos  []string
-│   │   ├── Providers  map[string]map[string]string
-│   │   │   ├── "slo"       {"url": "...", "token": "..."}   // secret keys REDACTED in config view
-│   │   │   └── "oncall"    {"url": "..."}
-│   │   └── Resources  *ResourcesConfig   // per-stack; union-merged with the global one
-│   └── "staging"
-│       └── Grafana  *GrafanaConfig ...
-├── Cloud           map[string]*CloudEntry
-│   └── "grafana-com"
-│       ├── Token                "glc_..."   // datapolicy:"secret" — GCOM access policy token
-│       ├── OAuthToken           ""          // datapolicy:"secret" — from `gcx cloud login`
-│       ├── OAuthTokenExpiresAt  ""          // RFC3339
-│       ├── OAuthScopes          []          // granted scopes from the OAuth issuer
-│       ├── APIUrl               ""          // materialized Cloud API destination
-│       └── OAuthUrl             ""          // paired OAuth origin
-└── Contexts        map[string]*Context
-    ├── "production"
-    │   ├── Stack        "production"    // name ref into Stacks (required for Grafana access)
-    │   ├── Cloud        "grafana-com"   // name ref into Cloud (optional)
-    │   └── Datasources  {}              // map[kind→uid]: default datasource per kind
-    └── "staging"
-        └── Stack  "staging"
+```mermaid
+flowchart LR
+    Config[Config: version and current context] --> Contexts[Named contexts]
+    Config --> Stacks[Named stack entries]
+    Config --> Cloud[Named Cloud entries]
+    Contexts -->|stack reference| Stacks
+    Contexts -->|optional cloud reference| Cloud
+    Contexts --> Defaults[Datasource defaults]
+    Stacks --> Connection[Grafana destination, auth, TLS, and provider settings]
+    Cloud --> Credentials[Cloud destination and auth]
 ```
 
-`Config.Resolve()` wires each context's resolved view from its name refs after
-decode, merge, or mutation: `Context.StackEntry`/`.CloudEntry` plus the
-`.Grafana`/`.Providers` pointers initially shared with the stack entry.
-`ParseEnvIntoContext` deep-clones the selected context's runtime stack view
-before applying process-local overrides. Dangling refs leave nil pointers, which
-`Context.Validate` reports.
+`Config.Resolve()` wires each context's resolved view from its name references after decode, merge, or mutation. The resolved Grafana/provider pointers are initially shared with the stack entry. `ParseEnvIntoContext` deep-clones the selected context's runtime stack view before applying process-local overrides. Dangling references leave nil pointers that `Context.Validate` reports.
 
-Source files:
-- `internal/config/types.go` — all struct definitions (`Config`, `StackConfig`, `CloudEntry`, `Context`, `GrafanaConfig`, `TLS`)
-- `internal/config/errors.go` — `ValidationError`, `UnmarshalError`,
-  `ContextNotFound`, `UnsupportedVersionError`
+The structs and their tags in [internal/config](../../internal/config/) define the schema; the [configuration reference](../sources/configuration.md) documents its fields. Global resource settings are union-merged with the selected stack's settings. Credential-store policy belongs to trusted configuration sources, as described below.
 
 ### Comparison to kubectl kubeconfig
 
@@ -97,65 +53,24 @@ entries without breaking v1 files.
 
 ---
 
-## Annotated Config File Example
+## Config File Example
 
 ```yaml
-# ~/.config/gcx/config.yaml
-
-version: 1                        # current format; absent on legacy configs
-current-context: "production"     # which context is active
-
+version: 1
+current-context: production
 stacks:
-  # On-prem Grafana (uses org-id as namespace)
   production:
     grafana:
-      server: "https://grafana.example.com"
-      auth-method: token           # only this Grafana auth credential is attached
-      token: "glsa_xxxx"
-      org-id: 1                   # maps to namespace "org-1" in K8s API calls
-      tls:
-        insecure-skip-verify: false
-        ca-data: <base64 PEM>     # custom CA bundle (base64-encoded in file)
-
-  # Grafana Cloud (uses stack-id as namespace)
-  cloud-staging:
-    slug: mystack                 # grafana.com stack slug; derived from server if unset
-    grafana:
-      server: "https://mystack.grafana.net"
-      token: "glsa_yyyy"
-      stack-id: 12345             # maps to namespace "stacks-12345" in K8s API calls
-                                  # can be omitted if auto-discovery succeeds (see below)
-    providers:
-      synth:
-        sm-token: "..."           # per-provider config lives on the stack
-
-  # Basic auth, on-prem dev
-  local:
-    grafana:
-      server: "http://localhost:3000"
-      user: "admin"
-      password: "admin"           # REDACTED in `config view` output
+      server: https://grafana.example.com
+      auth-method: token
+      token: <token>
       org-id: 1
-
-cloud:
-  # Named grafana.com (GCOM) auth entries, shared across contexts
-  grafana-com:
-    token: "glc_xxxx"             # Cloud Access Policy token
-    api-url: https://grafana.com  # optional production environment anchor
-
 contexts:
   production:
-    stack: production             # required for Grafana access
-  cloud-staging:
-    stack: cloud-staging
-    cloud: grafana-com            # optional; without it, cloud commands fail at runtime with a hint
-    datasources:
-      prometheus: my-prom-uid     # per-kind default datasource UIDs
-  local:
-    stack: local
+    stack: production
 ```
 
----
+A context can also reference a named Cloud entry and select datasource defaults. Provider settings live on the stack. See the [configuration guide](../sources/configuration.md) for complete examples and supported fields.
 
 ## File Location and Loading Order
 
@@ -271,7 +186,7 @@ boundary:
 ### Load Function Signature
 
 ```go
-// internal/config/loader.go:66
+// internal/config/loader.go
 func Load(ctx context.Context, source Source, overrides ...Override) (Config, error)
 
 type Override func(cfg *Config) error   // applied in order after YAML decode
@@ -306,6 +221,10 @@ Loading steps (in `Load`):
    preserves the sentinel and the typed `credentials.ErrLocked` cause. A
    credential consumer surfaces that cause as the `Keychain locked` envelope;
    config inspection and repair continue to use the recorded rejection reason.
+   On Linux without a display, opening the store first checks the selected
+   Secret Service collection with a bounded D-Bus request. An already locked
+   collection returns `credentials.ErrLocked` before go-keyring can request an
+   interactive unlock prompt.
    Under `go test`, the default store is unavailable, so test binaries never
    prompt the OS keychain.
 9. **Migrate plaintext token-shaped secrets**: plaintext values in tracked stack
@@ -326,7 +245,10 @@ Loading steps (in `Load`):
    file.
 10. Apply each `Override` function in order, then lazily resolve a context selected
    by an override
-11. On `ValidationError`, annotate the error with YAML source information
+11. On `ValidationError`, annotate the error with YAML source information when
+    its path exists in the file. Environment-only values keep the original
+    validation message, source filename, and recovery suggestions without a YAML
+    annotation.
 
 `Write` validates the schema version and binds the configuration to its actual
 target source before encoding. Its keychain reconcile pass is mutation-aware:
@@ -524,7 +446,7 @@ A context is selected in this priority order (evaluated at load time):
 3. "default" (hardcoded fallback if file has no current-context)
 ```
 
-Implementation in `loadConfigTolerant` (`command.go:64-74`):
+Implementation in `loadConfigTolerant` (`command.go`):
 ```go
 if opts.Context != "" {
     overrides = append(overrides, func(cfg *config.Config) error {
@@ -537,10 +459,9 @@ if opts.Context != "" {
 }
 ```
 
-To switch permanently: `gcx config use-context <name>` writes the
-updated `current-context` field back to the file (`command.go:384-405`).
+To switch permanently: `gcx config use-context <name>` writes the updated `current-context` field back to the file (`command.go`).
 
-`GetCurrentContext()` (types.go:33):
+`GetCurrentContext()` (types.go):
 ```go
 func (config *Config) GetCurrentContext() *Context {
     return config.Contexts[config.CurrentContext]
@@ -559,7 +480,7 @@ config model and Kubernetes client-go:
 
 ```
 Context.ToRESTConfig(ctx)
-  └── NewNamespacedRESTConfig(ctx, context)   [rest.go:19]
+  └── NewNamespacedRESTConfig(ctx, context)   [rest.go]
         ├── rest.Config {
         │     Host:    GrafanaConfig.Server
         │     APIPath: "/apis"
@@ -697,7 +618,7 @@ DiscoverStackID(ctx, GrafanaConfig)
   5. Return int64(12345)
 ```
 
-Validation behavior (`types.go:106-145`):
+Validation behavior (`types.go`):
 - `OrgID != 0` → skip discovery entirely (short-circuit, no HTTP call)
 - Discovery succeeds, no `StackID` in config → valid (use discovered ID)
 - `StackID` in config → valid without a new discovery call; if a successful
@@ -717,7 +638,7 @@ The `config set` and `config unset` commands use a reflection-based path
 traversal to modify config fields without code-generating a setter per field.
 
 ```go
-// internal/config/editor.go:11-21
+// internal/config/editor.go
 func SetValue[V any](input *V, path string, value string) error
 func UnsetValue[V any](input *V, path string) error
 ```
@@ -770,7 +691,7 @@ or OAuth credential. A no-op or normalization-equivalent endpoint edit
 preserves the credential. Supply a fresh credential with a later login or
 explicit token edit.
 
-Path traversal algorithm (`editor.go:24-157`):
+Path traversal algorithm (`editor.go`):
 - Splits path on `.`
 - At each step: if `reflect.Struct` → match field by yaml tag name
 - If `reflect.Map` → use step as map key, auto-create entry if missing
@@ -778,8 +699,7 @@ Path traversal algorithm (`editor.go:24-157`):
 - Leaf kinds handled: `string`, `[]byte` (slice), `bool`, `int64`
 - `unset` mode: resets to zero value at the leaf or removes map entry
 
-Important: path traversal uses **YAML tag names** (e.g., `insecure-skip-verify`),
-not Go field names (e.g., `Insecure`). The tag lookup is at `editor.go:49`:
+Important: path traversal uses **YAML tag names** (e.g., `insecure-skip-verify`), not Go field names (e.g., `Insecure`). The tag lookup is at `editor.go`:
 ```go
 yamlName := strings.Split(fieldType.Tag.Get("yaml"), ",")[0]
 if yamlName != step { continue }
@@ -977,27 +897,6 @@ variable reference.
 
 ---
 
-## Key Files Reference
+## Implementation Boundary
 
-| File | Purpose |
-|------|---------|
-| `internal/config/types.go` | All config struct definitions, `Resolve`, `Minify`, `Validate` |
-| `internal/config/loader.go` | `Load`, `Write`, `StandardLocation`, `ExplicitConfigFile` |
-| `internal/config/layered_lock.go` | Source lock coordination after a layered read conflict |
-| `internal/config/migrate.go` | Legacy-format detection and auto-migration |
-| `internal/config/migrate_preflight.go` | Exact-snapshot layered migration safety checks |
-| `internal/config/version.go` | Declared-version validation for reads and writes |
-| `internal/config/path.go` | `ValidateConfigPath` — literal `config set` path validation + hints |
-| `internal/config/envparse.go` | `ParseEnvIntoContext` — env var overrides, ephemeral cloud entry |
-| `internal/config/keychain_mode.go` | Resolve trusted `credentials.keychain` policy and `GCX_KEYCHAIN` override |
-| `internal/config/keychain_policy_mutation.go` | `credentials.keychain` set/unset as one locked load-and-write transaction under the intended policy |
-| `internal/config/keychain.go` | Source/owner/field/destination-bound, generation-addressed keychain resolution and reconciliation |
-| `internal/config/editor.go` | `SetValue`, `UnsetValue` — reflection-based path traversal |
-| `internal/config/rest.go` | `NewNamespacedRESTConfig` — config → k8s REST client |
-| `internal/config/stack_id.go` | `DiscoverStackID` — Grafana Cloud namespace discovery |
-| `internal/config/cli_options.go` | `CLIOptions`, `LoadCLIOptions` — global CLI env var options |
-| `internal/config/errors.go` | `ValidationError`, `UnmarshalError`, `ContextNotFound`, `UnsupportedVersionError` |
-| `internal/secrets/redactor.go` | `Redact` — reflection-based secret redaction |
-| `internal/providers/provider.go` | `Provider` interface + `ConfigKey` type |
-| `internal/providers/redact.go` | `RedactSecrets` — provider config redaction |
-| `cmd/gcx/config/command.go` | CLI commands + `Options.LoadConfig`/`LoadGrafanaConfig` |
+[internal/config](../../internal/config/) owns loading, merging, validation, credential reconciliation, and transactional writes. The [config commands](../../cmd/gcx/config/) adapt those operations to CLI input and output. Keep write policy in the domain layer so login, config editing, and OAuth refresh share the same source and credential protections.

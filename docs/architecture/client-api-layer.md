@@ -398,80 +398,18 @@ data-frame envelope:
 
 ## HTTP Utilities (`internal/httputils`)
 
-Central HTTP client factory for all non-K8s HTTP calls. The K8s dynamic client
-path uses `rest.Config` with a `WrapTransport` hook that chains
-`LoggingRoundTripper`; all other callers use `httputils` directly.
+[internal/httputils](../../internal/httputils/) supplies direct HTTP client construction, logging middleware, and server response helpers. Grafana-authenticated clients reuse the selected `rest.Config` transport; the dynamic client installs logging through `WrapTransport`. `CloudRESTConfig.HTTPClient` uses the direct factory only when it has no REST config; otherwise it uses `rest.HTTPClientFor` and its configured transport chain. The development proxy uses `rest.TransportFor` to share selected auth and TLS.
 
-### `client.go` — Client Factory
+`NewDefaultClient(ctx)` provides the standard logging middleware and timeout. `NewClient(ClientOpts)` accepts explicit middleware, TLS, and timeout settings; nil middleware defaults to ordinary request logging. The root pre-run threads the payload-logging option through `context.Context`, avoiding flag parameters throughout constructors.
 
-```go
-func NewDefaultClient(ctx context.Context) *http.Client   // standard: LoggingRoundTripper, 60s timeout
-func NewClient(opts ClientOpts) *http.Client               // custom: explicit middleware, TLS, timeout
-```
+| Logging | Behavior |
+|---|---|
+| Ordinary request logging | Method, URL, and status at Debug for 2xx–4xx; Warn for 5xx and transport errors |
+| Opt-in payload logging | Full request/response dumps at Debug, enabled by `--insecure-log-http-payload` |
 
-`NewDefaultClient` wraps the transport with `LoggingRoundTripper` (Debug for
-2xx/3xx/4xx, Warn for 5xx + transport errors). When `PayloadLogging(ctx)` is
-true (set by `--insecure-log-http-payload`), it additionally wraps with
-`RequestResponseLoggingMiddleware` for full request/response body dumps.
-`NewClient` applies the first middleware closest to the base transport, so the
-dump middleware comes first in the slice and runs last before the wire. It
-therefore shows every header that an outer layer adds.
+The first middleware in the slice is closest to the base transport. Payload dumping is the innermost layer in both transport paths, so it includes headers added by outer authentication, caller-ID, and user-agent layers. Failed dumps produce Debug records.
 
-`NewClient` accepts explicit `ClientOpts` for custom middleware stacks, TLS
-configuration, and timeouts. If `Middlewares` is nil, it defaults to
-`[]Middleware{LoggingMiddleware}`.
-
-### `context.go` — Payload Logging Context
-
-```go
-func WithPayloadLogging(ctx context.Context, enabled bool) context.Context
-func PayloadLogging(ctx context.Context) bool
-```
-
-The `--insecure-log-http-payload` flag value is threaded into the context by root
-`PersistentPreRun` and read by `NewDefaultClient`. This avoids passing flag
-values through constructor chains.
-
-### `logger.go` — Logging Round-Trippers
-
-| Type | Log level | Content | Visible at |
-|------|-----------|---------|------------|
-| `LoggingRoundTripper` | Debug (2xx-4xx), Warn (5xx/error) | method, URL, status | `-vvv` / `-v` |
-| `RequestResponseLoggingRoundTripper` | Debug | Full dump via `httputil.DumpRequestOut` / `DumpResponse`, labelled `http request dump` and `http response dump` | `-vvv` + `--insecure-log-http-payload` |
-
-`RequestResponseLoggingRoundTripper` is the innermost layer in both tiers, so
-the dump shows the bearer token, the caller id, and the user agent that outer
-layers add. A failed dump logs a Debug record with the reason.
-
-### `response.go` — Server Response Helpers
-
-Used by server-side HTTP handlers in `internal/server/handlers/`.
-
-### `useragent.go`
-
-`UserAgentTransport` wraps any `http.RoundTripper` and injects the `User-Agent`
-header (`gcx/{version} ({os}/{arch}; user={human|agent})`) via `version.UserAgent()`
-on every request. The `user` token comes from `agent.IsAgentMode()`, the same
-detection usage stats report as `is_agent`. Used by `NewClient` (and thus
-`NewDefaultClient`) and `NewGCOMClient`. The k8s dynamic client gets User-Agent
-through `rest.Config.UserAgent`.
-
-### Callers
-
-| Caller | Factory | Notes |
-|--------|---------|-------|
-| Provider clients (SLO, Synth, Fleet, k6) | `NewDefaultClient(ctx)` | Via `CloudRESTConfig.HTTPClient(ctx)` when `RESTConfig` is nil; see note below |
-| Assistant client | `NewDefaultClient(ctx)` | Direct call |
-| K8s tier (dynamic client, query clients) | `rest.Config.WrapTransport` | Chains `LoggingRoundTripper` via `NewNamespacedRESTConfig` |
-| Dev server (`internal/server`) | `NewClient(ClientOpts{...})` | Custom TLS from config context |
-
-> **Note on `CloudRESTConfig.HTTPClient(ctx)`:** When `RESTConfig` is nil (most
-> external-API providers), it delegates to `httputils.NewDefaultClient(ctx)` and
-> gets `LoggingRoundTripper`. When `RESTConfig` is non-nil, it falls back to
-> `rest.HTTPClientFor()`, which does NOT go through `httputils` directly — logging
-> is provided by the K8s `WrapTransport` chain instead.
-
----
+`UserAgentTransport` injects `version.UserAgent()` for direct clients. The dynamic client supplies the same value through `rest.Config.UserAgent`. The human/agent label uses the same mode detector as usage telemetry.
 
 ## Authentication Flow Summary
 
@@ -558,23 +496,6 @@ To add a new operation to the dynamic client path (e.g., `Patch`):
 
 ---
 
-## Key Files Reference
+## Implementation Boundary
 
-| File | Purpose |
-|---|---|
-| `internal/config/types.go` | `GrafanaConfig`, `TLS`, `Context` data structures |
-| `internal/config/rest.go` | `NewNamespacedRESTConfig()` — converts config to k8s REST config |
-| `internal/config/stack_id.go` | `DiscoverStackID()` — auto-detect Grafana Cloud namespace |
-| `internal/resources/dynamic/namespaced_client.go` | Primary CRUD client wrapping k8s dynamic.Interface |
-| `internal/resources/dynamic/versioned_client.go` | Version-aware client for pull operations |
-| `internal/resources/dynamic/errors.go` | `ParseStatusError()` / `APIError` — error translation |
-| `internal/grafana/client.go` | OpenAPI client factory for /api operations |
-| `internal/httputils/client.go` | Central HTTP client factory (`NewDefaultClient`, `NewClient`) |
-| `internal/httputils/context.go` | `--insecure-log-http-payload` context threading |
-| `internal/httputils/logger.go` | Debug-logging round-tripper |
-| `internal/httputils/response.go` | HTTP response helpers for server handlers |
-| `internal/resources/remote/remote.go` | `Processor` interface definition |
-| `internal/resources/remote/puller.go` | `PullClient` interface, `Puller` using `VersionedClient` |
-| `internal/resources/remote/pusher.go` | `PushClient` interface, `Pusher` using `NamespacedClient` |
-| `internal/query/prometheus/client.go` | Prometheus query client using `rest.HTTPClientFor` |
-| `internal/query/loki/client.go` | Loki query client using `rest.HTTPClientFor` |
+[internal/config](../../internal/config/) constructs the selected REST configuration. [Dynamic resource clients](../../internal/resources/dynamic/) own Kubernetes request and version semantics, while [remote pipelines](../../internal/resources/remote/) depend on operation-specific client interfaces. [Query clients](../../internal/query/) reuse authenticated HTTP transport without taking on dynamic-resource behavior.

@@ -21,6 +21,7 @@ type describeTableOpts struct {
 }
 
 func (opts *describeTableOpts) setup(flags *pflag.FlagSet) {
+	opts.IO.RegisterCustomCodec("csv", cmdio.CSV[[]bigquery.ColumnInfo]{Records: bigquery.ColumnInfoCSVRecords})
 	dsquery.RegisterCodecs(&opts.IO, false)
 	opts.IO.BindFlags(flags)
 	flags.StringVarP(&opts.Datasource, "datasource", "d", "", "Datasource UID (required unless datasources.bigquery is configured)")

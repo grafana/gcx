@@ -149,6 +149,13 @@ func buildUsageEvent(info *root.TelemetryInfo, start time.Time, exitCode int) te
 	// or a canceled run as for any other outcome.
 	event.GrafanaAuthMethod = telemetry.GrafanaAuthMethodLabel(capture.CurrentGrafanaAuthMethod())
 
+	// Signup reports how far its login pipeline got. gcx login runs the same
+	// probes but does not report them. Like the auth method, the stage is as
+	// interesting for a canceled run as for a failed one.
+	if info.Command == "signup" {
+		event.SignupStage = telemetry.SignupStageLabel(capture.CurrentLoginStage())
+	}
+
 	return event
 }
 

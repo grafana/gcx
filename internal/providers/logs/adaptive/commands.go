@@ -254,6 +254,7 @@ func (h *logsHelper) patternsStatsCommand() *cobra.Command {
 	return cmd
 }
 
+// Calculated column widths and --no-truncate keep this outside the shared table declaration.
 type segmentStatsTableCodec struct {
 	wide bool
 	opts *patternsStatsOpts
@@ -301,7 +302,7 @@ func (c *segmentStatsTableCodec) Decode(_ io.Reader, _ any) error {
 	return errors.New("table format does not support decoding")
 }
 
-// patternsTableCodec renders LogRecommendations as a tabular table.
+// --top aggregates the remaining rows and calculates column widths from the result.
 type patternsTableCodec struct {
 	wide bool
 	opts *patternsListOpts
@@ -615,8 +616,7 @@ type exemptionsListOpts struct {
 }
 
 func (o *exemptionsListOpts) setup(cmd *cobra.Command) {
-	o.IO.RegisterCustomCodec("table", &exemptionsTableCodec{wide: false})
-	o.IO.RegisterCustomCodec("wide", &exemptionsTableCodec{wide: true})
+	cmdio.RegisterTable(&o.IO, ExemptionsTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(cmd.Flags())
 	cmd.Flags().Int64Var(&o.Limit, "limit", 50, "Maximum number of exemptions to return (0 for no limit)")
@@ -655,42 +655,20 @@ func (h *logsHelper) exemptionsListCommand() *cobra.Command {
 	return cmd
 }
 
-type exemptionsTableCodec struct{ wide bool }
-
-func (c *exemptionsTableCodec) Format() format.Format {
-	if c.wide {
-		return "wide"
+func ExemptionsTable() cmdio.Table[Exemption] {
+	return cmdio.Table[Exemption]{
+		Columns: []cmdio.Column[Exemption]{
+			{Header: "ID", Content: func(r Exemption) string { return r.ID }},
+			{Header: "STREAM SELECTOR", Content: func(r Exemption) string { return r.StreamSelector }},
+			{Header: "REASON", Content: func(r Exemption) string { return r.Reason }},
+			{Header: "CREATED AT", Content: func(r Exemption) string { return r.CreatedAt }},
+			{Header: "MANAGED BY", Content: func(r Exemption) string { return r.ManagedBy }},
+			{Header: "EXPIRES AT", Visible: cmdio.WideOnly, Content: func(r Exemption) string { return r.ExpiresAt }},
+			{Header: "ACTIVE INTERVAL", Visible: cmdio.WideOnly, Content: func(r Exemption) string { return r.ActiveInterval }},
+			{Header: "CREATED BY", Visible: cmdio.WideOnly, Content: func(r Exemption) string { return r.CreatedBy }},
+			{Header: "UPDATED AT", Visible: cmdio.WideOnly, Content: func(r Exemption) string { return r.UpdatedAt }},
+		},
 	}
-	return "table"
-}
-
-func (c *exemptionsTableCodec) Encode(w io.Writer, v any) error {
-	exemptions, ok := v.([]Exemption)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []Exemption")
-	}
-
-	var t *style.TableBuilder
-	if c.wide {
-		t = style.NewTable("ID", "STREAM SELECTOR", "REASON", "CREATED AT", "MANAGED BY", "EXPIRES AT", "ACTIVE INTERVAL", "CREATED BY", "UPDATED AT")
-	} else {
-		t = style.NewTable("ID", "STREAM SELECTOR", "REASON", "CREATED AT", "MANAGED BY")
-	}
-
-	for _, e := range exemptions {
-		if c.wide {
-			t.Row(e.ID, e.StreamSelector, e.Reason, e.CreatedAt, e.ManagedBy,
-				e.ExpiresAt, e.ActiveInterval, e.CreatedBy, e.UpdatedAt)
-		} else {
-			t.Row(e.ID, e.StreamSelector, e.Reason, e.CreatedAt, e.ManagedBy)
-		}
-	}
-
-	return t.Render(w)
-}
-
-func (c *exemptionsTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
 }
 
 // exemptions create
@@ -841,8 +819,7 @@ type segmentsListOpts struct {
 }
 
 func (o *segmentsListOpts) setup(cmd *cobra.Command) {
-	o.IO.RegisterCustomCodec("table", &segmentsTableCodec{wide: false})
-	o.IO.RegisterCustomCodec("wide", &segmentsTableCodec{wide: true})
+	cmdio.RegisterTable(&o.IO, SegmentsTable())
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(cmd.Flags())
 	cmd.Flags().Int64Var(&o.Limit, "limit", 50, "Maximum number of segments to return (0 for no limit)")
@@ -881,41 +858,18 @@ func (h *logsHelper) segmentsListCommand() *cobra.Command {
 	return cmd
 }
 
-type segmentsTableCodec struct{ wide bool }
-
-func (c *segmentsTableCodec) Format() format.Format {
-	if c.wide {
-		return "wide"
+func SegmentsTable() cmdio.Table[LogSegment] {
+	return cmdio.Table[LogSegment]{
+		Columns: []cmdio.Column[LogSegment]{
+			{Header: "ID", Content: func(r LogSegment) string { return r.ID }},
+			{Header: "NAME", Content: func(r LogSegment) string { return r.Name }},
+			{Header: "SELECTOR", Content: func(r LogSegment) string { return r.Selector }},
+			{Header: "FALLBACK", Content: func(r LogSegment) string { return strconv.FormatBool(r.FallbackToDefault) }},
+			{Header: "IS EARLY", Visible: cmdio.WideOnly, Content: func(r LogSegment) string { return strconv.FormatBool(r.IsEarly) }},
+			{Header: "CREATED AT", Visible: cmdio.WideOnly, Content: func(r LogSegment) string { return r.CreatedAt }},
+			{Header: "UPDATED AT", Visible: cmdio.WideOnly, Content: func(r LogSegment) string { return r.UpdatedAt }},
+		},
 	}
-	return "table"
-}
-
-func (c *segmentsTableCodec) Encode(w io.Writer, v any) error {
-	segments, ok := v.([]LogSegment)
-	if !ok {
-		return errors.New("invalid data type for table codec: expected []LogSegment")
-	}
-
-	var t *style.TableBuilder
-	if c.wide {
-		t = style.NewTable("ID", "NAME", "SELECTOR", "FALLBACK", "IS EARLY", "CREATED AT", "UPDATED AT")
-	} else {
-		t = style.NewTable("ID", "NAME", "SELECTOR", "FALLBACK")
-	}
-
-	for _, s := range segments {
-		if c.wide {
-			t.Row(s.ID, s.Name, s.Selector, strconv.FormatBool(s.FallbackToDefault), strconv.FormatBool(s.IsEarly), s.CreatedAt, s.UpdatedAt)
-		} else {
-			t.Row(s.ID, s.Name, s.Selector, strconv.FormatBool(s.FallbackToDefault))
-		}
-	}
-
-	return t.Render(w)
-}
-
-func (c *segmentsTableCodec) Decode(_ io.Reader, _ any) error {
-	return errors.New("table format does not support decoding")
 }
 
 // segments create
@@ -1175,6 +1129,7 @@ func (h *logsHelper) dropRulesGetCommand() *cobra.Command {
 	return cmd
 }
 
+// Both single-record mutations and lists use this codec; Table only accepts slices.
 type dropRulesTableCodec struct{ wide bool }
 
 func (c *dropRulesTableCodec) Format() format.Format {
