@@ -55,7 +55,7 @@ func (e *ContextRequiredError) Is(target error) bool {
 // StrictContextEnabled reports whether GCX_REQUIRE_CONTEXT turns on strict
 // context mode. It parses the variable the same way as CLIOptions.
 func StrictContextEnabled() bool {
-	return CLIOptions{RequireContext: os.Getenv("GCX_REQUIRE_CONTEXT")}.RequireContextEnabled()
+	return CLIOptions{RequireContext: os.Getenv(RequireContextEnvVar)}.RequireContextEnabled()
 }
 
 // SelectContext returns an Override that declares the context selection of the

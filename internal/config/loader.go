@@ -130,6 +130,7 @@ const (
 	StandardConfigFileName = "config.yaml"
 	ConfigFileEnvVar       = "GCX_CONFIG"
 	ContextEnvVar          = "GCX_CONTEXT"
+	RequireContextEnvVar   = "GCX_REQUIRE_CONTEXT"
 	LocalConfigFileName    = ".gcx.yaml"
 
 	defaultEmptyConfigFile = `
