@@ -218,6 +218,12 @@ func TestResolveContextName(t *testing.T) {
 		return config.Config{CurrentContext: current}
 	}
 
+	// scoped marks a config as loaded for the config file itself.
+	scoped := func(cfg config.Config) config.Config {
+		_ = config.FileScope(&cfg)
+		return cfg
+	}
+
 	withDefault := selected("", "")
 	withDefault.CurrentContext = config.DefaultContextName
 
@@ -242,6 +248,9 @@ func TestResolveContextName(t *testing.T) {
 
 		{name: "inherited, non-strict", cfg: selected("a", ""), want: "a"},
 		{name: "inherited, strict", strict: "true", cfg: selected("a", ""), wantErr: true},
+
+		{name: "inherited, file scoped, strict", strict: "true", cfg: scoped(selected("a", "")), want: "a"},
+		{name: "undeclared, file scoped, strict", strict: "true", cfg: scoped(undeclared("a")), want: "a"},
 
 		{name: "none, non-strict", cfg: selected("", ""), want: config.DefaultContextName},
 		{name: "none, strict", strict: "true", cfg: selected("", ""), want: config.DefaultContextName},

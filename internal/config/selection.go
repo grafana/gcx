@@ -129,7 +129,8 @@ func inheritedRefusal(cfg *Config) error {
 // An explicit or empty selection returns the current context, or the default
 // when that is empty. Strict context mode does not refuse these, because the
 // file did not supply the name. An inherited selection is refused in strict
-// mode. That load already failed, so this is a second check.
+// mode. That load already failed, so this is a second check. A file-scoped
+// config is never refused.
 //
 // A config without a recorded selection comes from a raw Load call. For it,
 // strict context mode refuses a non-empty current context. Outside strict mode,
@@ -138,7 +139,7 @@ func ResolveContextName(override string, cfg Config) (string, error) {
 	if override != "" {
 		return override, nil
 	}
-	if StrictContextEnabled() {
+	if StrictContextEnabled() && !cfg.fileScoped {
 		switch cfg.contextSelection {
 		case selectionExplicit, selectionNone:
 		case selectionInherited:
