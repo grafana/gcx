@@ -65,8 +65,8 @@ func (opts *Options) LoadConfigTolerant(ctx context.Context, extraOverrides ...c
 }
 
 // LoadConfigFileScoped is LoadConfigTolerant for commands that inspect the
-// config file itself (view, current-context, list-contexts). Strict context
-// mode does not apply to them. FileScope runs first. The loader stops at the
+// config file itself (view, current-context, list-contexts, and check without
+// --context). Strict context mode does not apply to them. FileScope runs first. The loader stops at the
 // first failing override, and a later env parse error must not hide that scope.
 func (opts *Options) LoadConfigFileScoped(ctx context.Context) (config.Config, error) {
 	return config.LoadLayered(ctx, opts.ConfigFile, opts.tolerantOverrides([]config.Override{config.FileScope}, nil)...)
@@ -556,7 +556,15 @@ Without --context, checks every configured context. With --context, checks only 
 	gcx config check
 	gcx config check --context production`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cfg, err := configOpts.LoadConfigTolerant(cmd.Context())
+			// Without --context, check reports every context by name. It does
+			// not use the inherited current-context as one target.
+			var cfg config.Config
+			var err error
+			if configOpts.EffectiveContext() == "" {
+				cfg, err = configOpts.LoadConfigFileScoped(cmd.Context())
+			} else {
+				cfg, err = configOpts.LoadConfigTolerant(cmd.Context())
+			}
 			if err != nil {
 				return err
 			}

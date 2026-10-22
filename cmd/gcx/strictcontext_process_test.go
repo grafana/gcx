@@ -163,7 +163,6 @@ func TestStrictContext_Refused(t *testing.T) {
 		{name: "cloud stacks list", args: []string{"cloud", "stacks", "list", "--org", "x"}, env: []string{"GRAFANA_SERVER=https://x.grafana.net"}},
 		{name: "resources list-examples", args: []string{"resources", "list-examples"}},
 		{name: "commands --validate", args: []string{"commands", "--validate"}},
-		{name: "config check", args: []string{"config", "check"}},
 		{name: "login", args: []string{"login", ""}},
 		// Refusal precedes any OAuth step, so no browser opens.
 		{name: "signup", args: []string{"signup"}},
@@ -242,6 +241,18 @@ func TestStrictContext_Accepted(t *testing.T) {
 			assert.Contains(t, out, tc.marker, "exit=%d", res.exitCode)
 		})
 	}
+}
+
+// config check without --context checks every context and names each one, so
+// strict mode does not refuse it. It contacts every context, so it does not
+// belong in the accepted table.
+func TestStrictContext_ConfigCheckWithoutContext(t *testing.T) {
+	res := runStrictContext(t, strictCase{name: "config check", args: []string{"config", "check"}})
+	out := res.stdout + res.stderr
+	assert.NotContains(t, out, strictRefusalDetail, "exit=%d", res.exitCode)
+	assert.Contains(t, out, "Configuration file:")
+	assert.Contains(t, out, "inherited")
+	assert.Contains(t, out, "selected")
 }
 
 func TestStrictContext_LocalCommandsNeverRefused(t *testing.T) {
