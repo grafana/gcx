@@ -53,7 +53,7 @@ mise run all         # lint + tests + build + docs
 mise run docs        # Build Grafana website docs (requires Docker)
 ```
 
-**Without mise**: replace with direct Go commands — `go build -buildvcs=false -o bin/gcx ./cmd/gcx/` and `go test ./...`. Always build to `bin/gcx`. Lint runs in Go **module mode** (`golangci-lint`'s `modules-download-mode: readonly`), so no `vendor/` directory is needed locally — the module cache (`go mod download`, run automatically on worktree entry) is sufficient.
+**Without mise**: replace with direct Go commands — `go build -buildvcs=false -o bin/gcx ./cmd/gcx/` and `go test ./...`. If you export `GCX_REQUIRE_CONTEXT`, clear it for direct test runs (`GCX_REQUIRE_CONTEXT= go test ./...`), as the mise test tasks do. Always build to `bin/gcx`. Lint runs in Go **module mode** (`golangci-lint`'s `modules-download-mode: readonly`), so no `vendor/` directory is needed locally — the module cache (`go mod download`, run automatically on worktree entry) is sufficient.
 
 > **Agent environments**: the test tasks and release-reference generator pin `GCX_AGENT_MODE=false` themselves. Normal docs builds validate `docs/sources` without regenerating the released CLI reference.
 
