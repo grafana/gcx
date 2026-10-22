@@ -77,8 +77,8 @@ with the same flags also prints scopes, metrics, logs, traces and profiles).
 Use only the labels, properties, relationship types and directions it lists.
 Types, properties and relationships differ between stacks and windows. A
 relationship is stored in the direction the schema lists; the undirected form
-'(a)-[r:TYPE]-(b)' matches it from either end, and startNode(r)/endNode(r)
-return its stored ends.
+'(a)-[r:TYPE]-(b)' matches it from either end, so one query returns both
+directions, and startNode(r)/endNode(r) return its stored ends.
 
 Queries are not checked against the schema. A label, property, relationship
 type, direction or scope value that does not exist matches nothing, and a
@@ -91,9 +91,10 @@ An entity's active insights come from 'gcx kg entities list --type <type>
 --property name=<name>' ('--insight any' keeps only entities that have one),
 and its insight timeline from 'gcx kg entities inspect'. Both take the window
 and --env, --site and --namespace, which match the node properties of the same
-names. With no scope flag, inspect first looks the entity up by type and name
-and uses the single match it gets, which can be a same-named entity in another
-scope.`,
+names. With no scope flag, inspect looks the entity up by type and name and
+uses the entity that lookup returns, which can be a same-named entity in
+another scope. Only when the lookup finds nothing does it search by name, and
+if several entities match, it fails with one command per candidate.`,
 		Example: `  # Project two properties of one Volume, matched on name and scope
   gcx kg graph query "MATCH (v:Volume {name: '<name>', env: '<env>', namespace: '<namespace>'}) RETURN v.storageclass AS storageclass, v.capacity_bytes AS capacity_bytes LIMIT 5" --from <start> --to <end>
 
