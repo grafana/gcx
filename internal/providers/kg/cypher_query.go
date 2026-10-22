@@ -42,9 +42,10 @@ Time window. Every query runs over a window: --since (ending now) or both
 it existed at any point in the window; this is checked at every MATCH and
 before aggregation. A result is not a snapshot: elements of one path need not
 coexist, entities can expire and reappear, and no match now does not mean it
-never existed. --from must be before --to, so an instant is a short window
-around it. The schema, scope values, entities, metrics and logs also depend on
-the window, and their commands take the same --from/--to.
+never existed. --from must be before --to and equal values are rejected, so an
+instant is a short window around it. The schema, scope values, entities,
+metrics and logs also depend on the window, and their commands take the same
+--from/--to.
 
 LIMIT. Every query needs a literal LIMIT (CYPHER_LIMIT_REQUIRED), including one
 that returns a single aggregate row such as count(n) ... LIMIT 1. It is capped
@@ -58,8 +59,9 @@ supported (CYPHER_PARAMETERS_NOT_SUPPORTED). Only a fixed subset of Cypher is
 accepted, and anything else is refused (CYPHER_UNSUPPORTED_CONSTRUCT) with a
 message naming the supported form. Common refusals: disconnected or multiple
 MATCH patterns, more than one OPTIONAL MATCH, UNION, id()/elementId(),
-shortestPath(), EXISTS{}/COUNT{} subqueries, list comprehensions, reduce() and
-unbounded variable-length paths.
+shortestPath(), EXISTS{}/COUNT{} subqueries, unbounded variable-length paths,
+and functions whose output size cannot be bounded, such as collect(), split(),
+reduce() and list comprehensions.
 
 Scope. Match an entity on name, type (node label, e.g. :Service) and scope
 (env, site, namespace) together. Scope is stack-specific: relabel rules decide
@@ -190,8 +192,11 @@ func (o *graphQueryOpts) Validate() error {
 		}
 		start = now.Add(-duration)
 	}
-	if start.UnixMilli() <= 0 || end.UnixMilli() <= 0 || start.UnixMilli() >= end.UnixMilli() {
-		return errors.New("time window must have positive epoch milliseconds and start before end")
+	if start.UnixMilli() <= 0 || end.UnixMilli() <= 0 {
+		return errors.New("time window must have positive epoch milliseconds")
+	}
+	if start.UnixMilli() >= end.UnixMilli() {
+		return errors.New("time window must start before end (--from equal to --to is rejected); for an instant, use a short window around it")
 	}
 	o.request = CypherQueryRequest{Query: o.query, Start: start.UnixMilli(), End: end.UnixMilli()}
 	return nil
