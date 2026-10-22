@@ -66,8 +66,9 @@ func (opts *Options) LoadConfigTolerant(ctx context.Context, extraOverrides ...c
 
 // LoadConfigFileScoped is LoadConfigTolerant for commands that inspect the
 // config file itself (view, current-context, list-contexts, and check without
-// --context). Strict context mode does not apply to them. FileScope runs first. The loader stops at the
-// first failing override, and a later env parse error must not hide that scope.
+// --context). Strict context mode does not apply to them. FileScope runs
+// first. The loader stops at the first failing override, and a later env parse
+// error must not hide that scope.
 func (opts *Options) LoadConfigFileScoped(ctx context.Context) (config.Config, error) {
 	return config.LoadLayered(ctx, opts.ConfigFile, opts.tolerantOverrides([]config.Override{config.FileScope}, nil)...)
 }
