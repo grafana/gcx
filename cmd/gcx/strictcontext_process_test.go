@@ -166,7 +166,7 @@ func TestStrictContext_Refused(t *testing.T) {
 		{name: "login", args: []string{"login", ""}},
 		// Refusal precedes any OAuth step, so no browser opens.
 		{name: "signup", args: []string{"signup"}},
-		// First run (Review Focus 3): the auto-created template inherits "default".
+		// First run: the auto-created template inherits "default".
 		{name: "no config file", args: []string{"slo", "definitions", "list"}, noConfig: true},
 		{name: "login with GCX_CONTEXT only", args: []string{"login"}, env: []string{"GCX_CONTEXT=selected"}},
 	}

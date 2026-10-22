@@ -2745,6 +2745,8 @@ current-context: a
 	config.CaptureTargetKindForServer("https://a.grafana.net")
 	require.NotEqual(t, string(config.TargetKindUnknown), config.CapturedTargetKind())
 
+	// GRAFANA_SERVER would name the login target, so the shell must not set it.
+	t.Setenv("GRAFANA_SERVER", "")
 	flags := &loginOpts{}
 	flags.Config.ConfigFile = cfgFile
 	_, src, _, err := loadLoginSourceContext(t.Context(), flags, "")
