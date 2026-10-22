@@ -44,6 +44,8 @@ func (err ParseError) Error() string {
 	return fmt.Sprintf("parse error in '%s': %s", err.File, err.Err)
 }
 
+type ErrorListener func(err error, path string)
+
 // FSReader is a reader that reads resources from the filesystem.
 //
 // The reader will read all resources from the filesystem and return them as
@@ -58,6 +60,10 @@ type FSReader struct {
 	MaxConcurrentReads int
 	// Warn receives deprecation diagnostics; nil suppresses them.
 	Warn io.Writer
+
+	// errorListeners contains a list of listeners that can be notified on
+	// error. Only used when StopOnError is false.
+	errorListeners []ErrorListener
 }
 
 // Read reads all resources from the filesystem and returns them as an unstructured list.
@@ -91,6 +97,7 @@ func (reader *FSReader) Read(
 				}
 
 				logger.Warn("Failed to stat path", slog.String("path", path), logs.Err(err))
+				reader.notifyErrorListeners(err, path)
 				continue
 			}
 
@@ -117,6 +124,7 @@ func (reader *FSReader) Read(
 						return err
 					}
 					logger.Warn("Failed to traverse directory", slog.String("path", path), logs.Err(err))
+					reader.notifyErrorListeners(err, path)
 					return nil
 				}
 
@@ -158,6 +166,7 @@ func (reader *FSReader) Read(
 					}
 
 					logger.Warn("failed to read file", slog.String("path", path), logs.Err(err))
+					reader.notifyErrorListeners(err, path)
 					return nil
 				}
 
@@ -324,6 +333,17 @@ func (reader *FSReader) decoderForFormat(input string) (format.Codec, error) {
 		return reader.Decoders[format.YAML], nil
 	default:
 		return nil, UnrecognisedFormatError{Format: input}
+	}
+}
+
+// AddErrorListener registers a new error listener.
+func (reader *FSReader) AddErrorListener(listener ErrorListener) {
+	reader.errorListeners = append(reader.errorListeners, listener)
+}
+
+func (reader *FSReader) notifyErrorListeners(err error, path string) {
+	for _, listener := range reader.errorListeners {
+		listener(err, path)
 	}
 }
 

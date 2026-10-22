@@ -131,15 +131,17 @@ func lintCmd() *cobra.Command {
 }
 
 func lint(cmd *cobra.Command, inputPaths []string, opts lintOpts) error {
+	resourceReader := &local.FSReader{
+		Decoders:           format.Codecs(),
+		MaxConcurrentReads: opts.maxConcurrent,
+		StopOnError:        false,
+	}
+
 	linterOpts := []linter.Option{
 		linter.InputPaths(inputPaths),
 		linter.WithCustomRules(opts.rules),
 		linter.MaxConcurrency(opts.maxConcurrent),
-		linter.ResourceReader(&local.FSReader{
-			Decoders:           format.Codecs(),
-			MaxConcurrentReads: opts.maxConcurrent,
-			StopOnError:        false,
-		}),
+		linter.ResourceReader(resourceReader),
 	}
 
 	if opts.disableAll {
@@ -175,6 +177,18 @@ func lint(cmd *cobra.Command, inputPaths []string, opts lintOpts) error {
 	if err != nil {
 		return err
 	}
+
+	// Record reader errors as linter violations: this makes sure parse errors
+	// (and other errors) are not silenced.
+	resourceReader.AddErrorListener(func(err error, path string) {
+		engine.RecordViolation(linter.Violation{
+			ResourceType: "unknown",
+			Severity:     "error",
+			Location:     linter.Location{File: path},
+			Details:      err.Error(),
+			Description:  err.Error(),
+		})
+	})
 
 	report, err := engine.Lint(cmd.Context())
 	if err != nil {

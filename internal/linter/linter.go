@@ -125,12 +125,13 @@ type resourceReader interface {
 }
 
 type Linter struct {
-	debugStream      io.Writer
-	resourceReader   resourceReader
-	inputPaths       []string
-	ruleBundles      []*bundle.Bundle
-	customRulesPaths []string
-	maxConcurrency   int
+	debugStream        io.Writer
+	resourceReader     resourceReader
+	externalViolations []Violation
+	inputPaths         []string
+	ruleBundles        []*bundle.Bundle
+	customRulesPaths   []string
+	maxConcurrency     int
 
 	disableAll         bool
 	disabledResources  []string
@@ -169,6 +170,10 @@ func New(opts ...Option) (*Linter, error) {
 	}
 
 	return linter, nil
+}
+
+func (linter *Linter) RecordViolation(violation Violation) {
+	linter.externalViolations = append(linter.externalViolations, violation)
 }
 
 func (linter *Linter) Rules(ctx context.Context) ([]Rule, error) {
@@ -345,6 +350,8 @@ func (linter *Linter) createDataBundle() *bundle.Bundle {
 }
 
 func (linter *Linter) Lint(ctx context.Context) (Report, error) {
+	linter.externalViolations = nil
+
 	preparedQuery, err := linter.prepare(ctx)
 	if err != nil {
 		return Report{}, err
@@ -381,7 +388,10 @@ func (linter *Linter) Lint(ctx context.Context) (Report, error) {
 		return Report{}, err
 	}
 
-	finalReport := Report{}
+	finalReport := Report{
+		Violations: linter.externalViolations,
+	}
+
 	for _, report := range reports {
 		finalReport.Violations = append(finalReport.Violations, report.Violations...)
 	}
