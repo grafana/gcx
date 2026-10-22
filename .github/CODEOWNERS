@@ -9,7 +9,7 @@
 /docs/sources/ @grafana/grafana-gcx @grafana/docs-ai
 
 /cmd/gcx/instrumentation/ @grafana/grafana-gcx @grafana/fleet-management-backend
-/cmd/gcx/cloud/ @grafana/grafana-gcx @grafana/grafana-com-maintainers
+/cmd/gcx/cloud/ @grafana/grafana-gcx @grafana/appcore
 
 # Providers
 /internal/providers/slo/ @grafana/grafana-gcx @grafana/slo-squad
@@ -28,7 +28,7 @@
 /internal/providers/agento11y/ @grafana/grafana-gcx @grafana/grafana-assistant-loop
 /internal/providers/dbo11y/ @grafana/grafana-gcx @grafana/db-o11y-squad
 /internal/providers/alert/ @grafana/grafana-gcx @grafana/alerting-squad
-/internal/providers/stacks/ @grafana/grafana-gcx @grafana/grafana-com-maintainers
+/internal/providers/stacks/ @grafana/grafana-gcx @grafana/appcore
 /internal/providers/logs/ @grafana/grafana-gcx @grafana/loki-team
 /internal/providers/metrics/ @grafana/grafana-gcx @grafana/cortex-team
 /internal/providers/profiles/ @grafana/grafana-gcx @grafana/pyroscope-team
