@@ -42,6 +42,8 @@ func (f *fakeGrafanaLoader) LoadGrafanaConfig(_ context.Context) (config.Namespa
 // reportAPIState drives the fake SLO report API.
 type reportAPIState struct {
 	mu             sync.Mutex
+	listCalls      int
+	updateCalls    int
 	createCalls    int
 	failCreateFrom int // fail POST create calls numbered >= this (1-based); 0 = never
 	reports        map[string]reports.Report
@@ -60,6 +62,7 @@ func newReportServer(t *testing.T, st *reportAPIState) *httptest.Server {
 		switch r.Method {
 		case http.MethodGet:
 			st.mu.Lock()
+			st.listCalls++
 			rpts := make([]reports.Report, 0, len(st.reports))
 			for _, s := range st.reports {
 				rpts = append(rpts, s)
@@ -102,6 +105,9 @@ func newReportServer(t *testing.T, st *reportAPIState) *httptest.Server {
 			}
 			writeJSON(w, rpt)
 		case http.MethodPut:
+			st.mu.Lock()
+			st.updateCalls++
+			st.mu.Unlock()
 			_, _ = w.Write([]byte("{}"))
 		case http.MethodDelete:
 			if st.failDelete[uuid] {

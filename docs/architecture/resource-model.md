@@ -387,6 +387,13 @@ ResourceAdapter interface
 constructor that is only called on first use and its result cached for the router's
 lifetime.
 
+SLO definitions and reports match `spec.name` through their registered natural-key
+extractor, which slugifies names. Both generic resource push and the deprecated
+SLO push commands reject multiple remote matches instead of choosing one; supply
+an explicit `metadata.name` UUID to disambiguate. Legacy push only matches names
+when the UUID is omitted and caches remote resources across its file batch,
+including successful writes. Its dry-run remains a local manifest preview.
+
 ### Adapter-owned read and mutation policies
 
 Adapters may provide an optional per-pull preflight that runs before identity-keyed
