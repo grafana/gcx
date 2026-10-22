@@ -59,12 +59,22 @@ MATCH patterns, more than one OPTIONAL MATCH, UNION, id()/elementId(),
 shortestPath(), EXISTS{}/COUNT{} subqueries, list comprehensions, reduce() and
 unbounded variable-length paths.
 
-Schema. Node labels are entity types (e.g. :Service). 'gcx kg meta schema
---from <start> --to <end> -o text' prints each type in the window with its
-properties, then every relationship as 'A --TYPE--> B' ('gcx kg meta all' with
-the same flags also prints scopes, metrics, logs, traces and profiles). Types,
-properties and relationships differ between stacks and windows. A relationship
-is stored in the direction the schema lists; the undirected form
+Scope. Match an entity on name, type (node label, e.g. :Service) and scope
+(env, site, namespace) together. Scope is stack-specific: relabel rules decide
+which label feeds each dimension (often cluster becomes env), and not every
+type carries all three. Discover values with 'gcx kg meta scopes', over the same
+window and once per window; never guess them. A dimension that scopes lists only
+as "none" is unset: leave it out rather than filling it with another
+dimension's value. Scope values are plain node properties, e.g.
+'MATCH (s:Service {name: "<name>", env: "<env>"}) RETURN s.name AS name, s.namespace AS namespace LIMIT 5'.
+
+Schema. Read it once per window, before writing queries:
+'gcx kg meta schema --from <start> --to <end> -o text' prints each entity type
+with its properties, then every 'A --TYPE--> B' relationship ('gcx kg meta all'
+with the same flags also prints scopes, metrics, logs, traces and profiles).
+Use only the labels, properties, relationship types and directions it lists.
+Types, properties and relationships differ between stacks and windows. A
+relationship is stored in the direction the schema lists; the undirected form
 '(a)-[r:TYPE]-(b)' matches it from either end, and startNode(r)/endNode(r)
 return its stored ends.
 
@@ -72,15 +82,6 @@ Queries are not checked against the schema. A label, property, relationship
 type, direction or scope value that does not exist matches nothing, and a
 property a node lacks, or a list index past the end such as nodes(p)[4] on a
 shorter path, returns null. Neither is an error.
-
-Scope. An entity is identified by type, name and scope (env, site,
-namespace), and the same name can exist in several scopes. The scope
-dimensions are node properties. Scope is stack-specific: relabel rules decide
-which label feeds each dimension (often cluster becomes env), and not every
-type carries all three. 'gcx kg meta scopes' lists each dimension's values in
-a window. "none" there stands for entities without that dimension: in a query
-their property is null, so {site: 'none'} matches nothing, while the --env,
---site and --namespace flags of 'kg entities list' and 'inspect' accept none.
 
 Insights. The graph holds entities, their properties and relationships, not
 health: no row carries insights (Saturation, Anomaly, Amend, Failure, Error).
