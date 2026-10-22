@@ -299,7 +299,7 @@ func (reader *FSReader) readRaw(
 	object := &unstructured.Unstructured{}
 
 	if err := decoder.Decode(src, object); err != nil {
-		return ParseError{Err: err}
+		return ParseError{Err: err, File: path}
 	}
 
 	if err := dst.SetUnstructured(object); err != nil {
