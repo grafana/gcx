@@ -161,9 +161,10 @@ func (c *Client) GetThresholdsByCategory(ctx context.Context, category string) (
 	return &dto, nil
 }
 
-// ThresholdIdentity is the {record, expr, labels} triple that identifies a single
-// v1 threshold. The backend has no delete-by-name, so upsert and delete both
-// take the full triple.
+// ThresholdIdentity is the {record, expr, labels} triple gcx sends to address a
+// single v1 threshold. The backend has no delete-by-name, so upsert and delete
+// both send the full triple. It matches on record and labels, plus expr unless the
+// expr is a plain number (PrometheusRuleKeyFactory in asserts-adi).
 type ThresholdIdentity struct {
 	Record string            `json:"record"`
 	Expr   string            `json:"expr"`

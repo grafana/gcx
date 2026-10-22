@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/grafana/gcx/internal/gcxerrors"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/kg"
 	"github.com/stretchr/testify/assert"
@@ -133,7 +134,7 @@ func TestThresholdsDeleteCommand(t *testing.T) {
 	t.Run("declining the prompt sends nothing", func(t *testing.T) {
 		server, got := recordingServer(t)
 		_, err := runThresholds(t, server, "n\n", args...)
-		require.NoError(t, err)
+		requireCancelled(t, err)
 		assert.Empty(t, *got)
 	})
 
@@ -198,15 +199,20 @@ func TestThresholdsUpdateCommand(t *testing.T) {
 	t.Run("declining the prompt sends nothing", func(t *testing.T) {
 		server, got := recordingServer(t)
 		_, err := runThresholds(t, server, "n\n", "update", "-f", writeTempYAML(t, bareThresholds))
-		require.NoError(t, err)
+		requireCancelled(t, err)
 		assert.Empty(t, *got)
 	})
 
 	rejected := map[string]string{
-		"a prom-rules document":   "apiVersion: kg.ext.grafana.app/v1alpha1\nkind: Rule\nspec:\n  groups:\n  - name: g\n",
-		"an empty groups list":    "groups: []\n",
-		"a document with no body": "foo: bar\n",
-		"invalid YAML":            "groups: [unclosed\n",
+		"a prom-rules document":    "apiVersion: kg.ext.grafana.app/v1alpha1\nkind: Rule\nspec:\n  groups:\n  - name: g\n",
+		"an empty groups list":     "groups: []\n",
+		"a document with no body":  "foo: bar\n",
+		"invalid YAML":             "groups: [unclosed\n",
+		"a misspelled key":         "groups:\n- name: g\n  rules:\n  - record: r\n    expr: \"1\"\n    lables: {a: b}\n",
+		"an unquoted numeric expr": "groups:\n- name: g\n  rules:\n  - record: r\n    expr: 200e6\n",
+		"a second YAML document":   bareThresholds + "---\ngroups:\n- name: second\n  rules:\n  - record: r2\n    expr: \"2\"\n",
+		"unknown envelope keys":    "kind: Thresholds\nbogus: 1\nspec:\n  groups:\n  - name: g\n",
+		"a kind with no spec":      "kind: Thresholds\n",
 	}
 	for name, content := range rejected {
 		t.Run("rejects "+name+" before any request", func(t *testing.T) {
@@ -240,9 +246,62 @@ func TestThresholdsUpdateRejectsNonStringKind(t *testing.T) {
 	assert.Empty(t, *got)
 }
 
+// requireCancelled asserts err is the ExitCancelled error a declined prompt returns.
+func requireCancelled(t *testing.T, err error) {
+	t.Helper()
+	var detailed *gcxerrors.DetailedError
+	require.ErrorAs(t, err, &detailed)
+	require.NotNil(t, detailed.ExitCode)
+	assert.Equal(t, gcxerrors.ExitCancelled, *detailed.ExitCode)
+}
+
+func TestThresholdsUpdateAllowsTrailingEmptyDocument(t *testing.T) {
+	server, got := recordingServer(t)
+	_, err := runThresholds(t, server, "", "update", "--force", "-f", writeTempYAML(t, bareThresholds+"---\n"))
+	require.NoError(t, err)
+	assert.Len(t, *got, 1)
+}
+
 func TestThresholdsDeletePromptNamesLabels(t *testing.T) {
 	server, _ := recordingServer(t)
 	out, err := runThresholds(t, server, "n\n", "delete", "--record", "r", "--expr", "1", "--label", "b=2", "--label", "a=1")
-	require.NoError(t, err)
+	requireCancelled(t, err)
 	assert.Contains(t, out, "labels a=1,b=2")
+}
+
+func TestThresholdsUpdateFromStdinNeedsForce(t *testing.T) {
+	server, got := recordingServer(t)
+	_, err := runThresholds(t, server, bareThresholds, "update", "-f", "-")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--force")
+	assert.Empty(t, *got)
+
+	_, err = runThresholds(t, server, bareThresholds, "update", "-f", "-", "--force")
+	require.NoError(t, err)
+	assert.Len(t, *got, 1)
+}
+
+func TestThresholdsUpdateSendsBareDocumentVerbatim(t *testing.T) {
+	server, got := recordingServer(t)
+	doc := "# keep my comment\ngroups:\n- name: custom_thresholds\n  rules:\n  - record: r\n    expr: \"0.10\"\n"
+	_, err := runThresholds(t, server, "", "update", "--force", "-f", writeTempYAML(t, doc))
+	require.NoError(t, err)
+	require.Len(t, *got, 1)
+	assert.Equal(t, doc, (*got)[0].Body)
+}
+
+func TestThresholdsRejectBlankIdentity(t *testing.T) {
+	server, got := recordingServer(t)
+	_, err := runThresholds(t, server, "", "upsert", "--record", "  ", "--expr", "1")
+	require.Error(t, err)
+	_, err = runThresholds(t, server, "", "upsert", "--record", "r", "--expr", " ")
+	require.Error(t, err)
+	assert.Empty(t, *got)
+}
+
+func TestThresholdsDeletePromptQuotesAmbiguousLabelValues(t *testing.T) {
+	server, _ := recordingServer(t)
+	out, err := runThresholds(t, server, "n\n", "delete", "--record", "r", "--expr", "1", "--label", `"k=a,b"`)
+	requireCancelled(t, err)
+	assert.Contains(t, out, `labels k="a,b"`)
 }
