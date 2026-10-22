@@ -15,7 +15,7 @@ gcx/
 │       │                     #   query.go + query_routes.go: auto-detecting query and its per-kind routing tables
 │       ├── commands/         # 'commands' catalog (agent metadata, resource types, live validation)
 │       ├── helptree/        # 'help-tree' compact text tree for agent context injection
-│       ├── setup/            # 'setup' command area (cross-product onboarding helpers)
+│       ├── setup/            # 'setup' command area (status + first-time quickstart wizard)
 │       ├── instrumentation/  # 'instrumentation' provider command tree (setup wizard, status, check, explain, list-explanations, clusters, services)
 │       │   ├── check/        #   otel-checker wrapper: local OTel setup validation
 │       │   │   └── fixplan/   #     --fix-plan orchestrator: two disjoint modes — local (deterministic doc aggregation) or assistant (Grafana Assistant, requires Cloud) — plus the shared prompt builder

@@ -137,6 +137,13 @@ If the discovered stack ID conflicts with a manually configured
 `grafana.stack-id`, gcx raises a validation error - see
 [Namespace resolution issues](#namespace-resolution-issues).
 
+Optional: bootstrap a starter email contact point, usage alert, and usage
+dashboard on an empty Cloud stack:
+
+```bash
+gcx setup quickstart --use-defaults --email you@example.com
+```
+
 ---
 
 ## Path B: On-Premise Grafana

@@ -74,7 +74,7 @@ cmd/gcx/
   linter/       Linting (mounted under dev lint)
   commands/     Commands catalog (agent metadata)
   helptree/     Help tree for agent context
-  setup/        Onboarding (gcx setup status)
+  setup/        Onboarding (gcx setup status, gcx setup quickstart)
   instrumentation/  Instrumentation Hub commands (clusters, services, setup wizard, status, check, explain, list-explanations)
   skills/       Portable Agent Skills installer for .agents-compatible tools (install/update/list/get/uninstall; get reads bundled SKILL.md or references without installing)
   dev/          Developer tools (import, scaffold, generate, lint, serve)

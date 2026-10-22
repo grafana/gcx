@@ -30,6 +30,85 @@ const statusTableEnabled = "PRODUCT          ENABLED  HEALTH   DETAILS\n" +
 const statusTableDisabled = "PRODUCT          ENABLED  HEALTH   DETAILS\n" +
 	"instrumentation  no       healthy  0 clusters\n"
 
+func TestSetupQuickstart_OutputContract(t *testing.T) {
+	steps := []setup.QuickstartStepForTest{
+		{Step: "contact_point", Action: "created", Detail: "email", Reference: "uid-1"},
+		{Step: "usage_alert", Action: "exists", Reference: "quickstart-usage"},
+		{Step: "usage_dashboard", Action: "created", Reference: "quickstart-usage-dashboard"},
+	}
+
+	tests := []struct {
+		name      string
+		agentMode bool
+		output    string
+		check     func(t *testing.T, stdout string)
+	}{
+		{
+			name: "human default is a table",
+			check: func(t *testing.T, stdout string) {
+				t.Helper()
+				if !strings.Contains(stdout, "STEP") || !strings.Contains(stdout, "contact_point") {
+					t.Fatalf("expected table, got:\n%s", stdout)
+				}
+			},
+		},
+		{
+			name:      "agent mode emits exactly one JSON document",
+			agentMode: true,
+			check: func(t *testing.T, stdout string) {
+				t.Helper()
+				doc := decodeSingleJSONValue(t, stdout)
+				if doc["type"] != "gcx.setup.quickstart.result" {
+					t.Fatalf("type = %v, want gcx.setup.quickstart.result", doc["type"])
+				}
+				if doc["schema_version"] != "1" {
+					t.Fatalf("schema_version = %v, want 1", doc["schema_version"])
+				}
+				gotSteps, ok := doc["steps"].([]any)
+				if !ok || len(gotSteps) != 3 {
+					t.Fatalf("steps = %v, want 3 entries", doc["steps"])
+				}
+			},
+		},
+		{
+			name:   "explicit -o json wins in human mode",
+			output: "json",
+			check: func(t *testing.T, stdout string) {
+				t.Helper()
+				doc := decodeSingleJSONValue(t, stdout)
+				if doc["type"] != "gcx.setup.quickstart.result" {
+					t.Fatalf("type = %v, want gcx.setup.quickstart.result", doc["type"])
+				}
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			agent.SetFlag(tc.agentMode)
+			t.Cleanup(func() { agent.SetFlag(false) })
+
+			flags := pflag.NewFlagSet("quickstart", pflag.ContinueOnError)
+			opts := setup.NewQuickstartOptsForTest(flags)
+			if tc.output != "" {
+				if err := flags.Set("output", tc.output); err != nil {
+					t.Fatalf("set -o %s: %v", tc.output, err)
+				}
+			}
+			if err := opts.Validate(); err != nil {
+				t.Fatalf("Validate() = %v", err)
+			}
+
+			var stdout, stderr bytes.Buffer
+			opts.IO.ErrWriter = &stderr
+			if err := opts.IO.Encode(&stdout, setup.QuickstartDocForTest(steps)); err != nil {
+				t.Fatalf("Encode() = %v", err)
+			}
+			tc.check(t, stdout.String())
+		})
+	}
+}
+
 func TestSetupStatus_OutputContract(t *testing.T) {
 	tests := []struct {
 		name       string

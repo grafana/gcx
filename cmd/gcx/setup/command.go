@@ -33,6 +33,7 @@ func Command() *cobra.Command {
 	loader.BindFlags(cmd.PersistentFlags())
 
 	cmd.AddCommand(newStatusCommand(loader))
+	cmd.AddCommand(newQuickstartCommand(loader))
 
 	return cmd
 }

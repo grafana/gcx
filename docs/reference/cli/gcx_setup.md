@@ -23,5 +23,6 @@ Onboard and configure Grafana Cloud products.
 ### SEE ALSO
 
 * [gcx](gcx.md)	 - Control plane for Grafana Cloud operations
+* [gcx setup quickstart](gcx_setup_quickstart.md)	 - Bootstrap a contact point, a usage alert, and a usage dashboard.
 * [gcx setup status](gcx_setup_status.md)	 - Show aggregated setup status across all products.
 

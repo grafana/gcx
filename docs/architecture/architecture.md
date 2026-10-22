@@ -764,6 +764,8 @@ Each LGTM signal has its own provider in `internal/providers/{signal}/` that reg
 | File | Purpose |
 |------|---------|
 | `cmd/gcx/setup/command.go` | Setup command area: aggregated cross-product `status` |
+| `cmd/gcx/setup/quickstart.go` | First-time `quickstart` wizard wiring (`--use-defaults`, per-step opt-out) |
+| `cmd/gcx/setup/quickstart_run.go` | Quickstart step orchestration (contact point, usage alert, usage dashboard) |
 
 ### Instrumentation Hub Provider
 

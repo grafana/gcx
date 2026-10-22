@@ -25,6 +25,7 @@ func TestIsCloudOnlyPath(t *testing.T) {
 		{"profiles adaptive", "gcx profiles adaptive", true},
 		{"setup group", "gcx setup", true},
 		{"setup status", "gcx setup status", true},
+		{"setup quickstart", "gcx setup quickstart", true},
 		// Instrumentation subtrees: the Hub-facing subtrees are cloud-only,
 		// but `check`, `explain`, and `list-explanations` run entirely
 		// locally and must be available on self-hosted too.

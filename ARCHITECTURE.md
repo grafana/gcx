@@ -114,6 +114,7 @@ The linter engine is also used by `gcx resources validate` for pre-push validati
 Cross-product onboarding helpers. Not a provider — standalone command area.
 
 - **`setup status`** — Aggregated connection, auth, and product-availability snapshot
+- **`setup quickstart`** — First-time wizard: email contact point, usage alert, and a usage dashboard
 
 The instrumentation onboarding wizard lives under the Instrumentation Hub provider (`gcx instrumentation setup`), not under `gcx setup`. See ADR-018 for the rationale.
 
