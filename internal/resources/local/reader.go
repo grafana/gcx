@@ -198,7 +198,7 @@ func (reader *FSReader) Read(
 
 	// Read all results in parallel.
 	gr.Go(func() error {
-		idx := make(map[objIdx]resources.Resource)
+		idx := make(map[resources.ResourceRef]string) // ref → path
 		warned := make(map[schema.GroupVersion]bool)
 
 		for res := range resCh {
@@ -215,10 +215,9 @@ func (reader *FSReader) Read(
 				continue
 			}
 
-			if _, ok := idx[objIdx{
-				gvk:  obj.Raw.GetGroupVersionKind(),
-				name: obj.Name(),
-			}]; ok {
+			ref := obj.Ref()
+
+			if _, ok := idx[ref]; ok {
 				logger.Info("skipping duplicate object",
 					"gvk", obj.Raw.GetGroupVersionKind(),
 					"name", obj.Name(),
@@ -234,6 +233,7 @@ func (reader *FSReader) Read(
 				"path", res.Path,
 			)
 
+			idx[ref] = res.Path
 			dst.Add(&obj)
 		}
 
@@ -345,11 +345,6 @@ func (reader *FSReader) notifyErrorListeners(err error, path string) {
 	for _, listener := range reader.errorListeners {
 		listener(err, path)
 	}
-}
-
-type objIdx struct {
-	gvk  schema.GroupVersionKind
-	name string
 }
 
 type readResult struct {
