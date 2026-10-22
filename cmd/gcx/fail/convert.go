@@ -207,14 +207,12 @@ func convertConfigErrors(err error) (*gcxerrors.DetailedError, bool) {
 	if errors.Is(err, config.ErrContextRequired) {
 		var reqErr *config.ContextRequiredError
 		inherited := ""
+		command := ""
 		var available []string
 		if errors.As(err, &reqErr) {
 			inherited = reqErr.Inherited
-			available = reqErr.Available
-		}
-		command := ""
-		if reqErr != nil {
 			command = reqErr.Command
+			available = reqErr.Available
 		}
 		suggestions := contextRequiredSuggestions(command)
 		if len(available) > 0 {
