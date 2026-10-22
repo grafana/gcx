@@ -1,10 +1,10 @@
 module github.com/grafana/gcx/experimental/sandbox
 
-go 1.25.0
+go 1.26.0
 
 require github.com/tetratelabs/wazero v1.12.1-0.20261008132129-ba9152059a15
 
-require golang.org/x/sys v0.44.0
+require golang.org/x/sys v0.49.0
 
 // wazero with fixes not yet upstream: compiled code is mapped from the
 // compilation cache file instead of copied into memory, without reading it
