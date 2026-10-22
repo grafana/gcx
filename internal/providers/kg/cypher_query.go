@@ -34,7 +34,8 @@ func newGraphQueryCommand(loader RESTConfigLoader) *cobra.Command {
 		Long: `Run a read-only Cypher query against the Knowledge Graph using /v1/query/cypher.
 The response has columns, rows and stats (rowCount, columnCount, elapsedMs).
 Each row is an array aligned with columns, values keep their JSON shape, and
-node/relationship refs are local to one response.
+node/relationship refs are local to one response. Output is a table by
+default, or -o json or -o yaml; unlike kg meta, there is no -o text.
 
 Time window. Every query runs over a window: --since (ending now) or both
 --from and --to, the last hour by default. A node or relationship matches if
@@ -45,7 +46,8 @@ never existed. --from must be before --to, so an instant is a short window
 around it. The schema, scope values, entities, metrics and logs also depend on
 the window, and their commands take the same --from/--to.
 
-LIMIT. Every query needs a literal LIMIT (CYPHER_LIMIT_REQUIRED). It is capped
+LIMIT. Every query needs a literal LIMIT (CYPHER_LIMIT_REQUIRED), including one
+that returns a single aggregate row such as count(n) ... LIMIT 1. It is capped
 per tenant, 300 by default; a larger LIMIT is rejected (CYPHER_LIMIT_TOO_LARGE)
 and the error names the cap. rowCount counts returned rows, not matches, and
 there is no total or next-page marker: a rowCount equal to LIMIT can mean more
