@@ -1454,10 +1454,13 @@ func TestConfigCommands_StrictFileScoped(t *testing.T) {
 		})
 	}
 
-	t.Run("check stays enforced", func(t *testing.T) {
+	// check without --context reports every context, so it is not refused. The
+	// example hosts do not resolve, so it may fail for other reasons.
+	t.Run("check without context is not refused", func(t *testing.T) {
 		configFile := testutils.CreateTempFile(t, strictCommandConfig)
-		_, err := runConfigCmd(t, "--config", configFile, "check")
-		require.ErrorIs(t, err, internalconfig.ErrContextRequired)
+		out, err := runConfigCmd(t, "--config", configFile, "check")
+		require.NotErrorIs(t, err, internalconfig.ErrContextRequired)
+		require.Contains(t, out, "Configuration file:")
 	})
 }
 
