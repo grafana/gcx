@@ -224,6 +224,10 @@ func (reader *FSReader) Read(
 					"path", res.Path,
 				)
 
+				reader.notifyErrorListeners(resources.DuplicatedResourceError{
+					Ref:   obj.Ref(),
+					Files: []string{idx[ref], res.Path},
+				}, res.Path)
 				continue
 			}
 
