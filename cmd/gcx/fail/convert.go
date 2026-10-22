@@ -1866,13 +1866,16 @@ func convertSavedMutationErrors(err error) (*gcxerrors.DetailedError, bool) {
 // login and signup, which ignore GCX_CONTEXT. signup has no --server, and
 // gcx login <name> is a different flow, so each names its own command.
 func commandContextSuggestions(command string, suggestions []string) []string {
+	var first string
 	switch command {
 	case "login":
-		suggestions[0] = "Pass a context name: gcx login <name>, or use --context <name> or --server <url>"
+		first = "Pass a context name: gcx login <name>, or use --context <name> or --server <url>"
 	case "signup":
-		suggestions[0] = "Pass a context name: gcx signup <name>, or gcx signup --context <name>"
+		first = "Pass a context name: gcx signup <name>, or gcx signup --context <name>"
 	default:
 		return suggestions
 	}
-	return append(suggestions[:1], suggestions[2:]...)
+	out := make([]string, 0, len(suggestions)-1)
+	out = append(out, first)
+	return append(out, suggestions[2:]...)
 }
