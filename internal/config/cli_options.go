@@ -33,8 +33,8 @@ type CLIOptions struct {
 	// once, where current-context is shared mutable state: another session's
 	// `config use-context` silently retargets every later command.
 	//
-	// Any non-empty value enables it, except false, 0, off and no in any letter
-	// case. Thus a typo keeps the mode on and does not turn it off.
+	// Any value enables it, except a blank value and false, 0, off and no in any
+	// letter case. Thus a typo keeps the mode on and does not turn it off.
 	RequireContext string `env:"GCX_REQUIRE_CONTEXT"`
 }
 

@@ -478,14 +478,15 @@ from the `current-context` field of the file. Then another session's
 code 2. Name the context with `--context` or `GCX_CONTEXT`. `gcx login` and
 `gcx signup` ignore `GCX_CONTEXT`. `gcx login` takes a `CONTEXT_NAME` argument,
 `--context`, `--server` or `GRAFANA_SERVER`. `gcx signup` takes a
-`CONTEXT_NAME` argument or `--context`. Env-only setups use
-`--context default`. `config.LoadLayered` enforces the mode
+`CONTEXT_NAME` argument or `--context`. For other commands, `GRAFANA_SERVER`
+and `--config` do not name a context. On a first run without a config file,
+and in env-only setups, use `--context default`. `config.LoadLayered` enforces the mode
 (`internal/config/loader.go`, `selection.go`) through `config.SelectContext`
 and `config.FileScope`. Commands that never load config are not affected.
 `config view`, `current-context`, `list-contexts`, `path`, `use-context`, `set`
-and `unset` are never refused. `config check` without `--context` checks every
-configured context and names each one, so the mode does not refuse it. With
-`--context`, it checks only that context.
+and `unset` are never refused. `config check` without `--context` or
+`GCX_CONTEXT` checks every configured context and names each one, so the mode
+does not refuse it. With either, it checks only that context.
 
 ---
 

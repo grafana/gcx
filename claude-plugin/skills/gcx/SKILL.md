@@ -126,7 +126,7 @@ asks for speed.
 | Intent | Flag |
 |--------|------|
 | Preview without changing anything | `--dry-run` |
-| Target a specific context | `--context <name>` (required when `GCX_REQUIRE_CONTEXT` is set) |
+| Target a specific context | `--context <name>` (with `GCX_REQUIRE_CONTEXT` set, pass it or set `GCX_CONTEXT`) |
 | Continue on errors vs stop | `--on-error fail\|ignore\|abort` |
 | Control concurrency | `--max-concurrent <n>` (default 10) |
 
