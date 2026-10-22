@@ -26,6 +26,7 @@ func isolatedConfigEnv(t *testing.T) (string, string) {
 	t.Setenv("XDG_CONFIG_HOME", userDir)
 	t.Setenv("XDG_CONFIG_DIRS", t.TempDir())
 	t.Setenv("GCX_CONFIG", "")
+	t.Setenv(internalconfig.RequireContextEnvVar, "")
 	t.Chdir(workDir)
 	return userDir, workDir
 }

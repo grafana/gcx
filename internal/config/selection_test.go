@@ -69,8 +69,8 @@ func TestLoadLayered_StrictRefusesInheritedContext(t *testing.T) {
 	for _, target := range selectionTargets() {
 		t.Run(target.name, func(t *testing.T) {
 			scrubStrictEnv(t)
-			t.Setenv("GCX_REQUIRE_CONTEXT", "true")
 			file := target.setup(t, selectionConfig)
+			t.Setenv("GCX_REQUIRE_CONTEXT", "true")
 
 			_, err := config.LoadLayered(t.Context(), file, config.SelectContext(""))
 			require.ErrorIs(t, err, config.ErrContextRequired)
@@ -88,8 +88,8 @@ func TestLoadLayered_StrictAcceptsExplicitContext(t *testing.T) {
 	for _, target := range selectionTargets() {
 		t.Run(target.name, func(t *testing.T) {
 			scrubStrictEnv(t)
-			t.Setenv("GCX_REQUIRE_CONTEXT", "true")
 			file := target.setup(t, selectionConfig)
+			t.Setenv("GCX_REQUIRE_CONTEXT", "true")
 
 			cfg, err := config.LoadLayered(t.Context(), file, config.SelectContext("b"))
 			require.NoError(t, err)
@@ -100,8 +100,8 @@ func TestLoadLayered_StrictAcceptsExplicitContext(t *testing.T) {
 
 func TestLoadLayered_StrictExplicitContextNotFound(t *testing.T) {
 	scrubStrictEnv(t)
-	t.Setenv("GCX_REQUIRE_CONTEXT", "true")
 	file := selectionTargets()[0].setup(t, selectionConfig)
+	t.Setenv("GCX_REQUIRE_CONTEXT", "true")
 
 	_, err := config.LoadLayered(t.Context(), file, config.SelectContext("nope"))
 	require.ErrorIs(t, err, config.ErrContextNotFound)
@@ -114,8 +114,8 @@ func TestLoadLayered_StrictAcceptsFileScope(t *testing.T) {
 	for _, target := range selectionTargets() {
 		t.Run(target.name, func(t *testing.T) {
 			scrubStrictEnv(t)
-			t.Setenv("GCX_REQUIRE_CONTEXT", "true")
 			file := target.setup(t, selectionConfig)
+			t.Setenv("GCX_REQUIRE_CONTEXT", "true")
 
 			cfg, err := config.LoadLayered(t.Context(), file, config.FileScope)
 			require.NoError(t, err)
@@ -128,8 +128,8 @@ func TestLoadLayered_StrictRefusesUndeclaredLoad(t *testing.T) {
 	for _, target := range selectionTargets() {
 		t.Run(target.name, func(t *testing.T) {
 			scrubStrictEnv(t)
-			t.Setenv("GCX_REQUIRE_CONTEXT", "true")
 			file := target.setup(t, selectionConfig)
+			t.Setenv("GCX_REQUIRE_CONTEXT", "true")
 
 			_, err := config.LoadLayered(t.Context(), file)
 			require.ErrorIs(t, err, config.ErrContextSelectionUndeclared)
@@ -142,8 +142,8 @@ func TestLoadLayered_StrictAllowsEmptyCurrentContext(t *testing.T) {
 	for _, target := range selectionTargets() {
 		t.Run(target.name, func(t *testing.T) {
 			scrubStrictEnv(t)
-			t.Setenv("GCX_REQUIRE_CONTEXT", "true")
 			file := target.setup(t, selectionConfigNoCurrent)
+			t.Setenv("GCX_REQUIRE_CONTEXT", "true")
 
 			_, err := config.LoadLayered(t.Context(), file, config.SelectContext(""))
 			require.NoError(t, err)
@@ -177,8 +177,8 @@ func TestLoadLayered_NonStrictUnchanged(t *testing.T) {
 
 func TestLoadLayered_StrictRefusalCapturesNoTargetKind(t *testing.T) {
 	scrubStrictEnv(t)
-	t.Setenv("GCX_REQUIRE_CONTEXT", "true")
 	file := selectionTargets()[0].setup(t, selectionConfig)
+	t.Setenv("GCX_REQUIRE_CONTEXT", "true")
 
 	config.ClearCapturedTargetKind()
 	_, err := config.LoadLayered(t.Context(), file, config.SelectContext(""))
@@ -193,8 +193,8 @@ func TestLoadLayered_StrictRefusalCapturesNoTargetKind(t *testing.T) {
 
 func TestLoadForWrite_StrictNotEnforced(t *testing.T) {
 	scrubStrictEnv(t)
-	t.Setenv("GCX_REQUIRE_CONTEXT", "true")
 	userDir, _ := isolatedLoaderEnv(t)
+	t.Setenv("GCX_REQUIRE_CONTEXT", "true")
 	path := filepath.Join(userDir, "gcx", "config.yaml")
 	writeLoaderConfig(t, path, selectionConfig)
 
@@ -299,8 +299,8 @@ func TestLoadLayered_StrictRefusalWinsOverLaterOverrideError(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			scrubStrictEnv(t)
-			t.Setenv("GCX_REQUIRE_CONTEXT", tc.strict)
 			file := selectionTargets()[0].setup(t, selectionConfig)
+			t.Setenv("GCX_REQUIRE_CONTEXT", tc.strict)
 
 			config.ClearCapturedTargetKind()
 			_, err := config.LoadLayered(t.Context(), file, tc.overrides...)
@@ -317,8 +317,8 @@ func TestLoadLayered_StrictRefusalWinsOverLaterOverrideError(t *testing.T) {
 
 func TestLoadLayered_StrictFileScopeFirstBeatsFailingOverride(t *testing.T) {
 	scrubStrictEnv(t)
-	t.Setenv("GCX_REQUIRE_CONTEXT", "true")
 	file := selectionTargets()[0].setup(t, selectionConfig)
+	t.Setenv("GCX_REQUIRE_CONTEXT", "true")
 	boom := errors.New("env override failed")
 
 	_, err := config.LoadLayered(t.Context(), file, config.FileScope, config.SelectContext(""), func(*config.Config) error { return boom })

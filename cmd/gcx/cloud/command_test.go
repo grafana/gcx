@@ -23,6 +23,8 @@ func (f gcomOAuthFlowFunc) Run(ctx context.Context) (*auth.GCOMResult, error) {
 }
 
 func TestMain(m *testing.M) {
+	// Strict context mode would refuse the contexts these tests inherit.
+	_ = os.Unsetenv("GCX_REQUIRE_CONTEXT")
 	previous, wasSet := os.LookupEnv("GCX_KEYCHAIN")
 	if err := os.Setenv("GCX_KEYCHAIN", "off"); err != nil {
 		panic(err)
@@ -549,6 +551,7 @@ func isolateCloudConfigEnv(t *testing.T) (string, string) {
 	t.Setenv("XDG_CONFIG_HOME", userDir)
 	t.Setenv("XDG_CONFIG_DIRS", t.TempDir())
 	t.Setenv("GCX_CONFIG", "")
+	t.Setenv(config.RequireContextEnvVar, "")
 	t.Setenv("GRAFANA_CLOUD_TOKEN", "")
 	t.Chdir(workDir)
 	return userDir, workDir
