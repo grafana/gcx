@@ -3330,18 +3330,19 @@ pass --from/--to for older data, the same window as your queries).
 
 The JSON output nests everything under .schema: .schema.entityTypes[] is
 {type, properties} and .schema.relationships[] is a string. Filter it with the
-built-in --jq rather than an external parser; -o text prints one line per type.`,
+built-in --jq rather than an external parser; -o text prints one line per type
+with its properties, then one line with every relationship.`,
 		Example: `  # Show the schema for an incident window
   gcx kg meta schema --from <start> --to <end>
+
+  # Print one line per entity type with its properties, then every relationship
+  gcx kg meta schema --since 1h -o text
 
   # List the properties of one entity type
   gcx kg meta schema --since 1h --jq '.schema.entityTypes[] | select(.type == "Pod") | .properties'
 
   # List the relationships that involve one entity type
-  gcx kg meta schema --since 1h --jq '.schema.relationships[] | select(contains("Pod"))'
-
-  # Print one line per entity type with its properties
-  gcx kg meta schema --since 1h -o text`,
+  gcx kg meta schema --since 1h --jq '.schema.relationships[] | select(contains("Pod"))'`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := opts.IO.Validate(); err != nil {
 				return err

@@ -32,75 +32,75 @@ func newGraphQueryCommand(loader RESTConfigLoader) *cobra.Command {
 		Use:   "query <cypher-query>",
 		Short: "Run a read-only Cypher query and return its columns and rows.",
 		Long: `Run a read-only Cypher query against the Knowledge Graph using /v1/query/cypher.
-The response has columns, rows and stats (rowCount, columnCount, elapsedMs);
-values keep their JSON shape, and node/relationship refs are local to one
-response. Use --json columns,rows,stats or --jq '.rows' to select fields.
+The response has columns, rows and stats (rowCount, columnCount, elapsedMs).
+Each row is an array aligned with columns, values keep their JSON shape, and
+node/relationship refs are local to one response.
 
 Time window. Every query runs over a window: --since (ending now) or both
 --from and --to, the last hour by default. A node or relationship matches if
 it existed at any point in the window; this is checked at every MATCH and
-before aggregation. It is not a snapshot: elements of one path need not
+before aggregation. A result is not a snapshot: elements of one path need not
 coexist, entities can expire and reappear, and no match now does not mean it
-never existed. Use the same --from/--to for kg meta schema, kg meta scopes,
-kg entities, metrics and logs. --since is relative to now; use --from/--to for
-a past incident. --from must be before --to; for an instant, query a short
-window around it (e.g. one minute either side), not a wide window that also
-covers other times.
+never existed. --from must be before --to, so an instant is a short window
+around it. The schema, scope values, entities, metrics and logs also depend on
+the window, and their commands take the same --from/--to.
 
 LIMIT. Every query needs a literal LIMIT (CYPHER_LIMIT_REQUIRED). It is capped
 per tenant, 300 by default; a larger LIMIT is rejected (CYPHER_LIMIT_TOO_LARGE)
-and the error names the cap. There is no paging indicator: if rowCount equals
-LIMIT the result may be truncated, so don't report it as complete or as a
-total. Page with ORDER BY and SKIP/LIMIT.
+and the error names the cap. rowCount counts returned rows, not matches, and
+there is no total or next-page marker: a rowCount equal to LIMIT can mean more
+rows exist. ORDER BY with SKIP and LIMIT pages through a result.
 
-Syntax. Inline values as Cypher literals; '$name' parameters are not
+Syntax. Values are inline Cypher literals; '$name' parameters are not
 supported (CYPHER_PARAMETERS_NOT_SUPPORTED). Only a fixed subset of Cypher is
 accepted, and anything else is refused (CYPHER_UNSUPPORTED_CONSTRUCT) with a
 message naming the supported form. Common refusals: disconnected or multiple
 MATCH patterns, more than one OPTIONAL MATCH, UNION, id()/elementId(),
-shortestPath(), EXISTS{}/COUNT{} subqueries and unbounded variable-length paths.
+shortestPath(), EXISTS{}/COUNT{} subqueries, list comprehensions, reduce() and
+unbounded variable-length paths.
 
-Scope. Match an entity on name, type (node label, e.g. :Service) and scope
-(env, site, namespace) together. Scope is stack-specific: relabel rules decide
+Schema. Node labels are entity types (e.g. :Service). 'gcx kg meta schema
+--from <start> --to <end> -o text' prints each type in the window with its
+properties, then every relationship as 'A --TYPE--> B' ('gcx kg meta all' with
+the same flags also prints scopes, metrics, logs, traces and profiles). Types,
+properties and relationships differ between stacks and windows. A relationship
+is stored in the direction the schema lists; the undirected form
+'(a)-[r:TYPE]-(b)' matches it from either end, and startNode(r)/endNode(r)
+return its stored ends.
+
+Queries are not checked against the schema. A label, property, relationship
+type, direction or scope value that does not exist matches nothing, and a
+property a node lacks, or a list index past the end such as nodes(p)[4] on a
+shorter path, returns null. Neither is an error.
+
+Scope. An entity is identified by type, name and scope (env, site,
+namespace), and the same name can exist in several scopes. The scope
+dimensions are node properties. Scope is stack-specific: relabel rules decide
 which label feeds each dimension (often cluster becomes env), and not every
-type carries all three. Discover values with 'gcx kg meta scopes', over the same
-window and once per window; never guess them. A dimension that scopes lists only
-as "none" is unset: leave it out rather than filling it with another
-dimension's value. Scope values are plain node properties, e.g.
-'MATCH (s:Service {name: "checkout", env: "prod"}) RETURN s LIMIT 1'.
+type carries all three. 'gcx kg meta scopes' lists each dimension's values in
+a window. "none" there stands for entities without that dimension: in a query
+their property is null, so {site: 'none'} matches nothing, while the --env,
+--site and --namespace flags of 'kg entities list' and 'inspect' accept none.
 
-Schema. Read it once per window, before writing queries:
-'gcx kg meta schema --from <start> --to <end> -o text' prints each entity type
-with its properties, then every 'A --TYPE--> B' relationship ('gcx kg meta all'
-with the same flags also prints scopes, metrics, logs, traces and profiles).
-Use only the labels, properties, relationship types and directions it lists.
-A property that is not listed returns null.
-
-Relationships. Match both directions when looking for what depends on an
-entity. One query can do it with the undirected form, returning both ends to
-keep the direction:
-'MATCH (a)-[r:TYPE]-(b) RETURN startNode(r).name, endNode(r).name LIMIT 50'.
-
-A property, scope value, label, relationship type or direction that does not
-exist matches nothing: the result is empty, not an error.
-
-Insights. This command never returns insights (Saturation, Anomaly, Amend,
-Failure, Error), and none should be inferred from its rows. For current health,
-use 'gcx kg entities list --type <type> --property name=<name>' (add
---insight any to keep only entities with an active insight); use
-'gcx kg entities inspect' for the full timeline. Call both with the same window
-and all three of --env, --site and --namespace (leave out a null one), so
-return each node's env, site and namespace in this query.`,
-		Example: `  # Read a few schema-listed properties of one Volume, matched on name and scope, instead of returning the whole node (scope values from 'gcx kg meta scopes')
+Insights. The graph holds entities, their properties and relationships, not
+health: no row carries insights (Saturation, Anomaly, Amend, Failure, Error).
+An entity's active insights come from 'gcx kg entities list --type <type>
+--property name=<name>' ('--insight any' keeps only entities that have one),
+and its insight timeline from 'gcx kg entities inspect'. Both take the window
+and --env, --site and --namespace, which match the node properties of the same
+names. With no scope flag, inspect first looks the entity up by type and name
+and uses the single match it gets, which can be a same-named entity in another
+scope.`,
+		Example: `  # Project two properties of one Volume, matched on name and scope
   gcx kg graph query "MATCH (v:Volume {name: '<name>', env: '<env>', namespace: '<namespace>'}) RETURN v.storageclass AS storageclass, v.capacity_bytes AS capacity_bytes LIMIT 5" --from <start> --to <end>
 
-  # Count one env's Nodes per zone and instance type (Nodes have no namespace); while rowCount equals LIMIT, fetch the next page with SKIP 50
+  # Count an env's Nodes per zone and instance type, 50 groups per page (the next page is SKIP 50)
   gcx kg graph query "MATCH (n:Node {env: '<env>'}) RETURN n.zone AS zone, n.instance_type AS instance_type, count(n) AS nodes ORDER BY zone, instance_type SKIP 0 LIMIT 50" --from <start> --to <end>
 
-  # Match one schema relationship type undirected around an env's Nodes and keep each edge's direction with startNode(r)/endNode(r)
+  # List the entity types at each end of the HOSTS edges that touch an env's Nodes, in stored direction
   gcx kg graph query "MATCH (n:Node {env: '<env>'})-[r:HOSTS]-(x) RETURN DISTINCT labels(startNode(r))[0] AS from_type, labels(endNode(r))[0] AS to_type ORDER BY from_type, to_type LIMIT 50" --from <start> --to <end>
 
-  # Trace the hosting paths from an env's cluster down to one ServiceInstance, up to 4 HOSTS hops, returning hop names rather than whole paths
+  # Name the hops of HOSTS paths up to 4 long from an env's cluster to one ServiceInstance; hops past a path's length are null
   gcx kg graph query "MATCH p = (c:KubeCluster {env: '<env>'})-[:HOSTS*1..4]->(i:ServiceInstance {name: '<name>', env: '<env>', namespace: '<namespace>'}) RETURN length(p) AS hops, nodes(p)[1].name AS hop1, nodes(p)[2].name AS hop2, nodes(p)[3].name AS hop3, nodes(p)[4].name AS hop4 ORDER BY hops LIMIT 50" --from <start> --to <end>`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
