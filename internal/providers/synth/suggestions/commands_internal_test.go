@@ -443,18 +443,6 @@ func TestCommand_NoTruncationNoteWhenUnderLimit(t *testing.T) {
 
 // The table renders from the same envelope the JSON does (one shape for every
 // format), and list_meta never leaks into it.
-func TestCommand_ListTable_RendersRowsFromEnvelope(t *testing.T) {
-	s := newGrafana(t, twoSuggestions)
-
-	stdout, _, err := runList(t, fakeLoader{host: s.URL, uid: "sm-uid"}, "-o", "table")
-	require.NoError(t, err)
-
-	assert.Contains(t, stdout, "TARGET")
-	assert.Contains(t, stdout, "https://a.example.com")
-	assert.Contains(t, stdout, "https://b.example.com")
-	assert.NotContains(t, stdout, "list_meta")
-}
-
 func TestCommand_ListTable_Golden(t *testing.T) {
 	testutils.SetAgentMode(t, false)
 	for _, tc := range []struct {

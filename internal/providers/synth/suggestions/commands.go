@@ -238,7 +238,7 @@ func (o *listOpts) setup(flags *pflag.FlagSet) {
 		Rows:  func(res *listResult) ([]Suggestion, error) { return res.Suggestions, nil },
 	}
 	o.IO.RegisterCustomCodec(cmdio.FormatTable, table.Codec(cmdio.FormatTable))
-	o.IO.DefaultFormat("table")
+	o.IO.DefaultFormat(cmdio.FormatTable)
 	o.IO.BindFlags(flags)
 
 	// The service has no pagination, so the whole generated set is always in
