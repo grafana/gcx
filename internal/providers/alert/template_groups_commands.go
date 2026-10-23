@@ -1,18 +1,14 @@
 package alert
 
 import (
-	"errors"
 	"fmt"
-	"io"
 	"strings"
 
 	"github.com/grafana/gcx/cmd/gcx/fail"
-	"github.com/grafana/gcx/internal/format"
 	cmdio "github.com/grafana/gcx/internal/output"
 	"github.com/grafana/gcx/internal/providers"
 	"github.com/grafana/gcx/internal/providers/native"
 	"github.com/grafana/gcx/internal/resources"
-	"github.com/grafana/gcx/internal/style"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -40,8 +36,9 @@ type templateGroupsListOpts struct {
 }
 
 func (o *templateGroupsListOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &templateGroupTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &templateGroupTableCodec{wide: true})
+	table := templateGroupListTable()
+	o.IO.RegisterCustomCodec(cmdio.FormatTable, table.Codec(cmdio.FormatTable))
+	o.IO.RegisterCustomCodec(cmdio.FormatWide, table.Codec(cmdio.FormatWide))
 	o.IO.DefaultFormat("table")
 	o.IO.BindFlags(flags)
 	flags.StringVar(&o.APIVersion, "api-version", "", apiVersionFlagUsage)
@@ -85,8 +82,9 @@ type templateGroupsGetOpts struct {
 }
 
 func (o *templateGroupsGetOpts) setup(flags *pflag.FlagSet) {
-	o.IO.RegisterCustomCodec("table", &templateGroupTableCodec{})
-	o.IO.RegisterCustomCodec("wide", &templateGroupTableCodec{wide: true})
+	table := templateGroupGetTable()
+	o.IO.RegisterCustomCodec(cmdio.FormatTable, table.Codec(cmdio.FormatTable))
+	o.IO.RegisterCustomCodec(cmdio.FormatWide, table.Codec(cmdio.FormatWide))
 	o.IO.DefaultFormat("yaml")
 	o.IO.BindFlags(flags)
 	flags.StringVar(&o.APIVersion, "api-version", "", apiVersionFlagUsage)
@@ -333,47 +331,47 @@ func normalizedTemplateKind(obj *unstructured.Unstructured) (string, error) {
 	return kind, nil
 }
 
-type templateGroupTableCodec struct{ wide bool }
+func templateGroupTable() cmdio.Table[unstructured.Unstructured] {
+	return cmdio.Table[unstructured.Unstructured]{Columns: []cmdio.Column[unstructured.Unstructured]{
+		{Header: "TITLE", Content: func(item unstructured.Unstructured) string {
+			title, _, _ := unstructured.NestedString(item.Object, "spec", "title")
+			return title
+		}},
+		{Header: "API_NAME", Content: func(item unstructured.Unstructured) string { return item.GetName() }},
+		{Header: "KIND", Content: func(item unstructured.Unstructured) string {
+			kind, err := normalizedTemplateKind(&item)
+			if err != nil {
+				kind, _, _ = unstructured.NestedString(item.Object, "spec", "kind")
+			}
+			return kind
+		}},
+		{Header: "READ-ONLY", Content: func(item unstructured.Unstructured) string {
+			if _, err := normalizedTemplateKind(&item); err != nil {
+				return "unknown"
+			}
+			if resources.IsReadOnlyNative(&item) {
+				return "true"
+			}
+			return "false"
+		}},
+		{Header: "PROVENANCE", Visible: cmdio.WideOnly, Content: func(item unstructured.Unstructured) string { return item.GetAnnotations()[provenanceAnnotation] }},
+	}}
+}
 
-func (c *templateGroupTableCodec) Format() format.Format {
-	if c.wide {
-		return "wide"
+func templateGroupListTable() cmdio.TableAdapter[*unstructured.UnstructuredList, unstructured.Unstructured] {
+	return cmdio.TableAdapter[*unstructured.UnstructuredList, unstructured.Unstructured]{
+		Table: templateGroupTable(),
+		Rows: func(items *unstructured.UnstructuredList) ([]unstructured.Unstructured, error) {
+			return items.Items, nil
+		},
 	}
-	return "table"
 }
-func (c *templateGroupTableCodec) Decode(io.Reader, any) error {
-	return errors.New("table format does not support decoding")
-}
-func (c *templateGroupTableCodec) Encode(w io.Writer, v any) error {
-	var items []unstructured.Unstructured
-	switch value := v.(type) {
-	case *unstructured.UnstructuredList:
-		items = value.Items
-	case *unstructured.Unstructured:
-		items = []unstructured.Unstructured{*value}
-	default:
-		return fmt.Errorf("template group table: unsupported type %T", v)
+
+func templateGroupGetTable() cmdio.TableAdapter[*unstructured.Unstructured, unstructured.Unstructured] {
+	return cmdio.TableAdapter[*unstructured.Unstructured, unstructured.Unstructured]{
+		Table: templateGroupTable(),
+		Rows: func(item *unstructured.Unstructured) ([]unstructured.Unstructured, error) {
+			return []unstructured.Unstructured{*item}, nil
+		},
 	}
-	headers := []string{"TITLE", "API_NAME", "KIND", "READ-ONLY"}
-	if c.wide {
-		headers = append(headers, "PROVENANCE")
-	}
-	table := style.NewTable(headers...)
-	for _, item := range items {
-		title, _, _ := unstructured.NestedString(item.Object, "spec", "title")
-		kind, err := normalizedTemplateKind(&item)
-		readOnly := "false"
-		if err != nil {
-			kind, _, _ = unstructured.NestedString(item.Object, "spec", "kind")
-			readOnly = "unknown"
-		} else if resources.IsReadOnlyNative(&item) {
-			readOnly = "true"
-		}
-		row := []string{title, item.GetName(), kind, readOnly}
-		if c.wide {
-			row = append(row, item.GetAnnotations()[provenanceAnnotation])
-		}
-		table.Row(row...)
-	}
-	return table.Render(w)
 }

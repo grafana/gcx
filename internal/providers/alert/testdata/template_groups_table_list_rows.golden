@@ -1,0 +1,6 @@
+TITLE         API_NAME             KIND     READ-ONLY
+editable      opaque-editable      grafana  false
+imported      opaque-imported      mimir    true
+protected     opaque-protected     grafana  true
+invalid       opaque-invalid       other    unknown
+default-kind  opaque-default-kind           unknown
