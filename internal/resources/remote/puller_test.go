@@ -299,6 +299,17 @@ func TestPuller_Pull(t *testing.T) {
 			wantSkippedCount: 1,
 		},
 		{
+			name:             "unsupported List is skipped",
+			listErrors:       map[string]error{"dashboards": errors.ErrUnsupported},
+			wantSkippedCount: 1,
+		},
+		{
+			name:             "wrapped unsupported List with StopOnError is skipped",
+			listErrors:       map[string]error{"dashboards": fmt.Errorf("provider list: %w", errors.ErrUnsupported)},
+			stopOnError:      true,
+			wantSkippedCount: 1,
+		},
+		{
 			name:        "403 Forbidden is still counted as failure",
 			listResults: map[string][]unstructured.Unstructured{},
 			listErrors: map[string]error{
